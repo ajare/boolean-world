@@ -1,25 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Debug|Win32">
-      <Configuration>Debug</Configuration>
-      <Platform>Win32</Platform>
-    </ProjectConfiguration>
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
-    <ProjectConfiguration Include="Profiling|Win32">
-      <Configuration>Profiling</Configuration>
-      <Platform>Win32</Platform>
-    </ProjectConfiguration>
     <ProjectConfiguration Include="Profiling|x64">
       <Configuration>Profiling</Configuration>
       <Platform>x64</Platform>
-    </ProjectConfiguration>
-    <ProjectConfiguration Include="Release|Win32">
-      <Configuration>Release</Configuration>
-      <Platform>Win32</Platform>
     </ProjectConfiguration>
     <ProjectConfiguration Include="Release|x64">
       <Configuration>Release</Configuration>
@@ -37,30 +25,10 @@
     <TargetPlatformVersion>$(WindowsTargetPlatformVersion)</TargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
-    <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
-    <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Profiling|Win32'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
-    <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
@@ -80,16 +48,7 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Profiling|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
@@ -99,14 +58,6 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <OutDir>$(ProjectDir)bin\$(Platform)\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
-    <TargetExt>.dll</TargetExt>
-    <TargetName>$(ProjectName)d</TargetName>
-    <IncludePath>$(DEV_LIB_PATH)\$(BOOST_DIR);C:\Program Files (x86)\Visual Leak Detector\include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
-    <LibraryPath>C:\Program Files (x86)\Visual Leak Detector\lib\$(Platform);$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86);</LibraryPath>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(ProjectDir)bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
@@ -114,20 +65,6 @@
     <TargetName>$(ProjectName)d</TargetName>
     <IncludePath>$(IncludePath)</IncludePath>
     <LibraryPath>$(LibraryPath)</LibraryPath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <OutDir>$(ProjectDir)bin\$(Platform)\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
-    <TargetExt>.dll</TargetExt>
-    <IncludePath>$(DEV_LIB_PATH)\$(BOOST_DIR);C:\Program Files (x86)\Visual Leak Detector\include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
-    <LibraryPath>C:\Program Files (x86)\Visual Leak Detector\lib\$(Platform);$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86);</LibraryPath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Profiling|Win32'">
-    <OutDir>$(ProjectDir)bin\$(Platform)\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
-    <TargetExt>.dll</TargetExt>
-    <IncludePath>$(DEV_LIB_PATH)\$(BOOST_DIR);C:\Program Files (x86)\Visual Leak Detector\include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
-    <LibraryPath>C:\Program Files (x86)\Visual Leak Detector\lib\$(Platform);$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86);</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(ProjectDir)bin\$(Platform)\$(Configuration)\</OutDir>
@@ -144,24 +81,6 @@
     <LibraryPath>$(LibraryPath)</LibraryPath>
     <TargetName>$(ProjectName)p</TargetName>
   </PropertyGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <ClCompile>
-      <WarningLevel>Level4</WarningLevel>
-      <Optimization>Disabled</Optimization>
-      <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-program\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-helper\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-mesh\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\vendor\include;$(ProjectDir)..\..\..\..\ext\Utils\include;$(ProjectDir)..\..\..\..\vendor\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Application\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Common\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Collide\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Firepower\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Geometry\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Serialization\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Viz\include;$(ProjectDir)..\..\..\..\AppLib\include;$(ProjectDir)..\..\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_DEBUG;WP_USE_ASSERT_TRACE;WP_USE_MEMLEAK_TRACKING;APPLICATION_DLL_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <LanguageStandard>stdcpp17</LanguageStandard>
-    </ClCompile>
-    <Link>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-helper\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\Utils\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Application\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Common\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Collide\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Firepower\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Geometry\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Serialization\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Viz\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Applib\build\vs2026\lib\$(Platform)\$(Configuration)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>MassivePolyPusherd.lib;MppHelperd.lib;Utilsd.lib;Willpower.Applicationd.lib;Willpower.Commond.lib;Willpower.Collided.lib;Willpower.Firepowerd.lib;Willpower.Geometryd.lib;Willpower.Serializationd.lib;Willpower.Vizd.lib;AppLibd.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <SubSystem>Windows</SubSystem>
-      <ImportLibrary>$(ProjectDir)lib\$(Platform)\$(Configuration)\$(TargetName).lib</ImportLibrary>
-      <ForceFileOutput>MultiplyDefinedSymbolOnly</ForceFileOutput>
-    </Link>
-  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
@@ -175,50 +94,6 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(ProjectDir)..\..\..\core\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\..\Applib\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\..\Willpower\Willpower.Application\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\..\Willpower\Willpower.Common\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\..\Willpower\Willpower.Collide\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\..\Willpower\Willpower.Firepower\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\..\Willpower\Willpower.Geometry\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\..\Willpower\Willpower.Serialization\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\..\Willpower\Willpower.Viz\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\..\ext\MassivePolyPusher\mpp\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\..\ext\MassivePolyPusher\mpp-helper\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\..\ext\MassivePolyPusher\mpp-mesh\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\..\ext\Utils\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\..\vendor\lib\vs2026\$(Platform)\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>MassivePolyPusherd.lib;MppHelperd.lib;MppMeshd.lib;Utilsd.lib;Willpower.Applicationd.lib;Willpower.Collided.lib;Willpower.Commond.lib;Willpower.Serializationd.lib;Willpower.Vizd.lib;AppLibd.lib;cored.lib;yaml-cppd.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <SubSystem>Windows</SubSystem>
-      <ImportLibrary>$(ProjectDir)lib\$(Platform)\$(Configuration)\$(TargetName).lib</ImportLibrary>
-      <ForceFileOutput>MultiplyDefinedSymbolOnly</ForceFileOutput>
-    </Link>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <ClCompile>
-      <WarningLevel>Level4</WarningLevel>
-      <Optimization>MaxSpeed</Optimization>
-      <FunctionLevelLinking>true</FunctionLevelLinking>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-program\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-helper\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-mesh\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\vendor\include;$(ProjectDir)..\..\..\..\ext\Utils\include;$(ProjectDir)..\..\..\..\vendor\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Application\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Common\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Collide\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Firepower\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Geometry\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Serialization\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Viz\include;$(ProjectDir)..\..\..\..\AppLib\include;$(ProjectDir)..\..\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>NDEBUG;WP_USE_ASSERT_TRACE;APPLICATION_DLL_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <LanguageStandard>stdcpp17</LanguageStandard>
-    </ClCompile>
-    <Link>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-helper\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\Utils\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Application\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Common\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Collide\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Firepower\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Geometry\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Serialization\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Viz\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Applib\build\vs2026\lib\$(Platform)\$(Configuration)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>MassivePolyPusher.lib;MppHelper.lib;Utils.lib;Willpower.Application.lib;Willpower.Common.lib;Willpower.Collide.lib;Willpower.Firepower.lib;Willpower.Geometry.lib;Willpower.Serialization.lib;Willpower.Viz.lib;AppLib.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <SubSystem>Windows</SubSystem>
-      <ImportLibrary>$(ProjectDir)lib\$(Platform)\$(Configuration)\$(TargetName).lib</ImportLibrary>
-      <ForceFileOutput>MultiplyDefinedSymbolOnly</ForceFileOutput>
-    </Link>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Profiling|Win32'">
-    <ClCompile>
-      <WarningLevel>Level4</WarningLevel>
-      <Optimization>MaxSpeed</Optimization>
-      <FunctionLevelLinking>true</FunctionLevelLinking>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-program\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-helper\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-mesh\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\vendor\include;$(ProjectDir)..\..\..\..\ext\Utils\include;$(ProjectDir)..\..\..\..\vendor\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Application\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Common\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Collide\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Firepower\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Geometry\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Serialization\include;$(ProjectDir)..\..\..\..\Willpower\Willpower.Viz\include;$(ProjectDir)..\..\..\..\AppLib\include;$(ProjectDir)..\..\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>NDEBUG;WP_USE_ASSERT_TRACE;APPLICATION_DLL_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <LanguageStandard>stdcpp17</LanguageStandard>
-    </ClCompile>
-    <Link>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-helper\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\Utils\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Application\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Common\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Collide\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Firepower\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Geometry\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Serialization\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Willpower\Willpower.Viz\build\vs2026\lib\$(Platform)\$(Configuration)\;$(ProjectDir)..\..\..\..\Applib\build\vs2026\lib\$(Platform)\$(Configuration)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>MassivePolyPusher.lib;MppHelper.lib;Utils.lib;Willpower.Application.lib;Willpower.Common.lib;Willpower.Collide.lib;Willpower.Firepower.lib;Willpower.Geometry.lib;Willpower.Serialization.lib;Willpower.Viz.lib;AppLib.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SubSystem>Windows</SubSystem>
       <ImportLibrary>$(ProjectDir)lib\$(Platform)\$(Configuration)\$(TargetName).lib</ImportLibrary>
       <ForceFileOutput>MultiplyDefinedSymbolOnly</ForceFileOutput>
