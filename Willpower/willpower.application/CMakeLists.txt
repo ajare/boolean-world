@@ -82,6 +82,9 @@ target_link_libraries(willpower_application_resource_yaml_tests PRIVATE Willpowe
 bw_output_dirs(willpower_application_resource_yaml_tests "build/vs2026/bin/x64/$<CONFIG>")
 set_target_properties(willpower_application_resource_yaml_tests PROPERTIES FOLDER Willpower)
 bw_deploy_runtime_dlls(willpower_application_resource_yaml_tests)
+# Willpower.Application.dll imports fmod/fmodstudio, whose import libraries are
+# stubs - no DLL for CMake to track, so copy vendor's bin directory as well.
+bw_deploy_vendor_dlls(willpower_application_resource_yaml_tests)
 add_test(NAME willpower_application_resource_yaml
     COMMAND willpower_application_resource_yaml_tests
         "${BW_ROOT}/Applications/BooleanWorld/app/resources/Resources.yaml")

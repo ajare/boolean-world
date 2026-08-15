@@ -85,6 +85,12 @@ bw_import_mpp(ext::mpp-helper  MppHelper  INCLUDE "${BW_MPP}/mpp-helper/include"
 bw_import_mpp(ext::mpp-program MppProgram INCLUDE "${BW_MPP}/mpp-program/include")
 bw_import_mpp(ext::mpp-data    MppData    INCLUDE "${BW_MPP}/mpp-data/include")
 
+# MassivePolyPusher.dll itself loads MppData.dll and glew32.dll at runtime.
+# CMake cannot see an imported library's own dependencies, so TARGET_RUNTIME_DLLS
+# would omit them and every executable would die with 0xC0000135 - state them.
+set_property(TARGET ext::mpp APPEND PROPERTY
+    INTERFACE_LINK_LIBRARIES ext::mpp-data ext::glew)
+
 # MppAppSupport is a static library in mpp's build.
 bw_import_static(ext::mpp-app-support
     "${BW_MPP_LIB}/Release/MppAppSupport.lib"

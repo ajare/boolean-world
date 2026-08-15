@@ -1,9 +1,11 @@
-#include <format>
 #include <stack>
 #include <algorithm>
+#include <format>
+#include <memory>
 
 #include "utils/StringUtils.h"
-#include "utils/XmlReader.h"
+#include "utils/YamlReader.h"
+#include "willpower/common/DataNode.h"
 
 #include "Platform.h"
 
@@ -16,14 +18,29 @@
 using namespace std;
 using namespace wp;
 
+namespace {
+StructuredData importStructuredData(utils::StructuredData const& source) {
+  if (source.isValue()) {
+    return StructuredData(source.getName(), source.getValue());
+  }
+  StructuredData result(source.getName());
+  for (auto const& entry : source) {
+    result.addEntry(entry.first, importStructuredData(entry.second));
+  }
+  return result;
+}
+}  // namespace
+
 ProgramOptions parseProgramOptions(string const& filename) {
-  utils::XmlReader* reader = utils::XmlReader::fromFile(filename);
+  unique_ptr<utils::YamlReader> reader(utils::YamlReader::fromFile(filename));
+  auto configurationData = importStructuredData(reader->readTree());
+  DataNode configuration(configurationData);
 
   ProgramOptions pOpts;
 
-  auto videoNode = reader->getNode("Configuration/Video");
-  auto gameNode = reader->getNode("Configuration/Game");
-  auto audioNode = reader->getNode("Configuration/Audio");
+  auto videoNode = configuration.getChild("Video");
+  auto gameNode = configuration.getChild("Game");
+  auto audioNode = configuration.getChild("Audio");
 
   pOpts.screenWidth = utils::StringUtils::parseInt(videoNode->getChild("Width")->getValue());
   pOpts.screenHeight = utils::StringUtils::parseInt(videoNode->getChild("Height")->getValue());
@@ -35,14 +52,14 @@ ProgramOptions parseProgramOptions(string const& filename) {
   pOpts.vSync = vsyncStr == "true" || fullScreenStr == "yes";
 
   // Get game DLL
-  pOpts.dll = gameNode->getChild("DLL")->getAttribute("path");
+  pOpts.dll = gameNode->getChild("DLL")->getProperty("path");
 
   // Game resource
   auto gameResNode = gameNode->getChild("GameResource");
   string gameRes, gameResNamespace;
 
   gameRes = gameResNode->getValue();
-  gameResNode->getOptionalAttribute("namespace", gameResNamespace);
+  gameResNode->getOptionalProperty("namespace", gameResNamespace);
   pOpts.gameResource = gameResNamespace + "/" + gameRes;
 
   // Get game resource locations
@@ -50,9 +67,9 @@ ProgramOptions parseProgramOptions(string const& filename) {
   do {
     ProgramOptions::ResourceLocation rl;
 
-    rl.type = resourceLocationNode->getAttribute("type");
-    rl.path = resourceLocationNode->getAttribute("path");
-    rl.definitionFile = resourceLocationNode->getAttribute("definition");
+    rl.type = resourceLocationNode->getProperty("type");
+    rl.path = resourceLocationNode->getProperty("path");
+    rl.definitionFile = resourceLocationNode->getProperty("definition");
 
     pOpts.resourceLocations.push_back(rl);
   } while (resourceLocationNode->next());
@@ -86,8 +103,8 @@ ProgramOptions parseProgramOptions(string const& filename) {
   if (argumentsNode) {
     auto argumentNode = argumentsNode->getOptionalChild("Argument");
     while (argumentNode) {
-      string argumentName = argumentNode->getAttribute("name");
-      string argumentValue = argumentNode->getValue();
+      string argumentName = argumentNode->getProperty("name");
+      string argumentValue = argumentNode->getProperty("value");
 
       pOpts.arguments[argumentName] = argumentValue;
 
@@ -97,7 +114,6 @@ ProgramOptions parseProgramOptions(string const& filename) {
     }
   }
 
-  delete reader;
   return pOpts;
 }
 

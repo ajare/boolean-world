@@ -65,33 +65,31 @@ add_custom_command(TARGET Launcher POST_BUILD
 # launcher's working directory or on %COMPUTERNAME% the way the checked-in
 # configs under build/support do.
 file(GENERATE
-    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/build/vs2026/bin/x64/$<CONFIG>/BooleanWorld.cfg"
+    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/build/vs2026/bin/x64/$<CONFIG>/BooleanWorld.yaml"
     CONTENT
-"<?xml version=\"1.0\"?>
-<Configuration>
-\t<Video>
-\t\t<Width>1024</Width>
-\t\t<Height>768</Height>
-\t\t<Fullscreen>false</Fullscreen>
-\t\t<VSync>true</VSync>
-\t</Video>
-\t<Audio>
-\t\t<Enabled>false</Enabled>
-\t\t<Channels>1024</Channels>
-\t\t<Sync>false</Sync>
-\t</Audio>
-\t<Game>
-\t\t<DLL path=\"$<TARGET_FILE:BooleanWorld>\" />
-\t\t<GameResource>BooleanWorld</GameResource>
-\t\t<ResourceLocations>
-\t\t\t<ResourceLocation type=\"Directory\" path=\"${BW_ROOT}/Applications/BooleanWorld/app/resources/\" definition=\"Resources.xml\" />
-\t\t</ResourceLocations>
-\t\t<Debug>
-\t\t\t<InGame>enabled</InGame>
-\t\t</Debug>
-\t\t<Arguments>
-\t\t\t<Argument name=\"ThreadedLoading\">false</Argument>
-\t\t</Arguments>
-\t</Game>
-</Configuration>
+"Configuration:
+  Video:
+    Width: 1024
+    Height: 768
+    Fullscreen: false
+    VSync: true
+  Audio:
+    Enabled: false
+    Channels: 1024
+    Sync: false
+  Game:
+    DLL:
+      path: $<TARGET_FILE:BooleanWorld>
+    GameResource: BooleanWorld
+    ResourceLocations:
+      ResourceLocation:
+        type: Directory
+        path: ${BW_ROOT}/Applications/BooleanWorld/app/resources/
+        definition: Resources.yaml
+    Debug:
+      InGame: enabled
+    Arguments:
+      Argument:
+        name: ThreadedLoading
+        value: false
 ")
