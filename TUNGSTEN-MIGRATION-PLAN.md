@@ -1,5 +1,10 @@
 # Adopting the tungsten-oxide stack in BooleanWorld
 
+**Status: complete.** All seven phases are done on branch
+`tungsten-migration`. The game builds and reaches its Play state on the new
+engine; `editor` and `floored` build and run on SDL3 + ImGui 1.92.9. See
+§8 for what actually happened versus what was planned.
+
 Target: bring `boolean-world` onto the same Willpower / AppLib / Launcher /
 MassivePolyPusher code as `D:\Code\Projects\tungsten-oxide`, and keep the
 BooleanWorld game working on it.
@@ -425,3 +430,94 @@ Two risks worth naming explicitly:
 - **Silent render regressions.** Phase 5 is the only phase whose failure mode is
   visual rather than a compiler or loader error. Screenshot comparison against
   the pre-migration build is the gate, not "it launched".
+
+---
+
+## 8. Outcome — what actually happened
+
+Every phase landed. The analysis held up: of the 23 MPP headers BooleanWorld
+used, only `ProgrammaticMaterialStream.h` was gone, and its replacement was a
+1:1 rename. `BasicMaterial` was the right call — BooleanWorld's materials are
+procedural shader programs bound with `setProgram(name)`, which needed no
+change beyond the class name, and **no `quality` argument was ever passed**, so
+that API removal cost nothing.
+
+The two-halves split (§3a) proved its worth: the SDL3/ImGui work was done last,
+independently, and could have been dropped without affecting the game.
+
+### Things the plan did not predict
+
+These cost real time and are worth recording:
+
+1. **`STR_FORMAT` no longer exists.** The macro came from the old `ext/Utils`.
+   tungsten-oxide uses `std::format` directly, so eight files in Willpower,
+   AppLib and Launcher were converted. BooleanWorld's `core` was untouched —
+   it defines its own `STR_FORMAT` in `core/Platform.h`.
+
+2. **Two yaml-cpp versions cannot coexist.** `vendor/` shipped an older one and
+   mpp ships 0.9.0. `core` compiled against vendor's headers while linking
+   mpp's library, which surfaced as `LNK2019` on
+   `YAML::detail::node_data::insert_map_pair`. Removing vendor's copy fixed it.
+
+3. **`windows.h` no longer arrives transitively**, so Launcher's GLFW backend
+   had to include it for `WNDPROC`.
+
+4. **GLEW moved layout.** vendor used `<glew/glew.h>`; mpp's FetchContent GLEW
+   uses the standard `<GL/glew.h>`.
+
+5. **`TARGET_RUNTIME_DLLS` does not see an imported library's own
+   dependencies.** `MassivePolyPusher.dll` loads `MppData.dll` and
+   `glew32.dll`, and nothing staged them, so executables died with
+   `0xC0000135`. `ext::mpp` now declares them in its interface. Separately,
+   FMOD's import libraries are stubs with no DLL for CMake to track, so
+   targets that need them also copy `vendor/bin`.
+
+6. **clang-format's `Standard: c++17`** (tungsten-oxide's value) rewrote
+   `operator<=>` as `operator<= >`, which does not compile. Ours is `c++20` —
+   the only deviation from their config.
+
+7. **`MapTiledDefinitionFactory` must keep XmlNode.** Tiled `.tmx`/`.tsx` files
+   really are XML and are read through `XmlFileResource`. Only the resource
+   *definition* moved to `DataNode`; converting the map parsing too would have
+   been wrong.
+
+8. **SDL3 has no SDL2main.** `editor`/`floored` are `WIN32` subsystem apps, so
+   they include `SDL3/SDL_main.h` for the `WinMain` shim rather than becoming
+   console apps as tungsten-oxide's editor did.
+
+9. **imnodes was the predicted risk, and it was real but small.** ImGui 1.92's
+   texture rework renamed `ImDrawCmd::TextureId` / `ImDrawList::_TextureIdStack`
+   to `TexRef` / `_TextureStack`, and `IM_OFFSETOF` was obsoleted in 1.90.
+   Three edits. `implot_demo.cpp` was dropped instead of being fixed — its
+   `ShowDemoWindow` call was already commented out in `Main.cpp`.
+
+10. **Dead code inherited from tungsten-oxide.**
+    `willpower.application/src/resourcesystem/ResourceExceptions.cpp` begins
+    `include "..."` — no `#` — and duplicates a fully-inline header.
+    tungsten-oxide carries it but never compiles it; we deleted it.
+    `geometry/MeshPropertyCollection.h` is the same story: it includes
+    `willpower/serialization/` headers that exist in neither repo.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `Willpower`, `AppLib`, `BooleanWorld`, `Launcher` Release x64 | clean |
+| Debug x64, engine + `core`/`experiments`/`profiler` | clean |
+| Debug x64, `editor`/`floored` | fails — pre-existing vendored spdlog vs current MSVC STL |
+| `Launcher.exe BooleanWorld.yaml` | reaches `Entering state: Play`, zero errors in `LauncherLog.html` and `mpp.log` |
+| `editor.exe`, `floored.exe` on SDL3 | run |
+| `experiments` | 20 failures — identical to the pre-migration count |
+| `willpower_application_resource_yaml` | passes against the converted manifest |
+| `gen-world.py` | generates a world against `core-dll.dll` |
+| fresh `--recurse-submodules` clone | builds and runs |
+
+The two known issues carried over unchanged and are **not** migration damage:
+`editor`/`floored` Debug, and the 20 `experiments` failures.
+
+### Not done
+
+Phase 7's optional PBR/render-graph work remains out of scope, as decided.
+BooleanWorld renders through `BasicMaterial` with its own shaders, and nothing
+in the codebase now depends on the PBR pipeline, `.mpppackage` or
+`PbrMaterialBinding`.
