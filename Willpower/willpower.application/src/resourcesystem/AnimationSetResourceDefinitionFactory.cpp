@@ -1,5 +1,5 @@
-#include <utils/StringUtils.h>
-#include <utils/XmlReader.h>
+#include "willpower/common/StringUtils.h"
+#include "willpower/common/DataNode.h"
 
 #include "willpower/common/Exceptions.h"
 
@@ -10,7 +10,6 @@ namespace WP_NAMESPACE {
 namespace application {
 namespace resourcesystem {
 using namespace std;
-using namespace utils;
 
 AnimationSetResourceDefinitionFactory::AnimationSetResourceDefinitionFactory(string const& factoryType)
     : ResourceDefinitionFactory("AnimationSet", factoryType) {
@@ -20,9 +19,9 @@ void AnimationSetResourceDefinitionFactory::clear(AnimationSetResource* resource
   resource->mAnimations.clear();
 }
 
-AnimationSetResource::LoopStyle AnimationSetResourceDefinitionFactory::parseLoopStyle(AnimationSetResource* resource, string const& animation, utils::XmlNode* node) {
+AnimationSetResource::LoopStyle AnimationSetResourceDefinitionFactory::parseLoopStyle(AnimationSetResource* resource, string const& animation, DataNode* node) {
   string loopStyle;
-  if (!node->getOptionalAttribute("loopStyle", loopStyle)) {
+  if (!node->getOptionalProperty("loopStyle", loopStyle)) {
     loopStyle = "forwards";
   }
 
@@ -44,10 +43,10 @@ AnimationSetResource::LoopStyle AnimationSetResourceDefinitionFactory::parseLoop
   return ls;
 }
 
-void AnimationSetResourceDefinitionFactory::parseFrame(AnimationSetResource const* resource, AnimationSetResource::Frame* frame, utils::XmlNode* node) {
+void AnimationSetResourceDefinitionFactory::parseFrame(AnimationSetResource const* resource, AnimationSetResource::Frame* frame, DataNode* node) {
   string timeStr;
-  if (node->getOptionalAttribute("time", timeStr)) {
-    frame->time = utils::StringUtils::parseFloat(timeStr);
+  if (node->getOptionalProperty("time", timeStr)) {
+    frame->time = StringUtils::parseFloat(timeStr);
 
     if (frame->time < 0) {
       throw ResourceException(resource, "animation with the name '" + resource->getName() + "' has frame with a 'time' value less than zero.");
@@ -55,13 +54,13 @@ void AnimationSetResourceDefinitionFactory::parseFrame(AnimationSetResource cons
   }
 
   string xoffStr;
-  if (node->getOptionalAttribute("xoff", xoffStr)) {
-    frame->renderOffsetX = utils::StringUtils::parseInt(xoffStr);
+  if (node->getOptionalProperty("xoff", xoffStr)) {
+    frame->renderOffsetX = StringUtils::parseInt(xoffStr);
   }
 
   string yoffStr;
-  if (node->getOptionalAttribute("yoff", yoffStr)) {
-    frame->renderOffsetY = utils::StringUtils::parseInt(yoffStr);
+  if (node->getOptionalProperty("yoff", yoffStr)) {
+    frame->renderOffsetY = StringUtils::parseInt(yoffStr);
   }
 
   // Tags
@@ -74,14 +73,14 @@ void AnimationSetResourceDefinitionFactory::parseFrame(AnimationSetResource cons
   }
 }
 
-void AnimationSetResourceDefinitionFactory::parseTag(AnimationSetResource::Frame* frame, utils::XmlNode* node) {
-  auto key = node->getAttribute("key");
-  auto value = node->getAttribute("value");
+void AnimationSetResourceDefinitionFactory::parseTag(AnimationSetResource::Frame* frame, DataNode* node) {
+  auto key = node->getProperty("key");
+  auto value = node->getProperty("value");
 
   frame->tags[key] = value;
 }
 
-void AnimationSetResourceDefinitionFactory::checkFrameOverrides(AnimationSetResource* resource, string const& animation, AnimationSetResource::FrameSet* frameset, utils::XmlNode* node, bool requireIndex) {
+void AnimationSetResourceDefinitionFactory::checkFrameOverrides(AnimationSetResource* resource, string const& animation, AnimationSetResource::FrameSet* frameset, DataNode* node, bool requireIndex) {
   auto& fs = *frameset;
 
   uint32_t defaultFrameIndex = 0;
@@ -94,10 +93,10 @@ void AnimationSetResourceDefinitionFactory::checkFrameOverrides(AnimationSetReso
       string frameStr;
       uint32_t thisFrameIndex{~0u};
       if (requireIndex) {
-        frameStr = frameNode->getAttribute("frame");
-        thisFrameIndex = utils::StringUtils::parseUInt(frameStr);
-      } else if (frameNode->getOptionalAttribute("frame", frameStr)) {
-        thisFrameIndex = utils::StringUtils::parseUInt(frameStr);
+        frameStr = frameNode->getProperty("frame");
+        thisFrameIndex = StringUtils::parseUInt(frameStr);
+      } else if (frameNode->getOptionalProperty("frame", frameStr)) {
+        thisFrameIndex = StringUtils::parseUInt(frameStr);
       }
 
       auto fi = thisFrameIndex == ~0u ? defaultFrameIndex : thisFrameIndex;

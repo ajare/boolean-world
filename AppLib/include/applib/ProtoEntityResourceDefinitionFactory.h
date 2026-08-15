@@ -12,6 +12,7 @@
 #include "Entity.h"
 #include "EntityHandler.h"
 #include "AnimationDatabase.h"
+#include "willpower/common/DataNode.h"
 
 namespace applib {
 
@@ -21,16 +22,16 @@ protected:
 
   std::shared_ptr<AnimationDatabase> getAnimationDatabase(ProtoEntity* resource);
 
-  void loadExtraDefinitions(ProtoEntity* resource, utils::XmlNode* node, entt::entity protoId);
+  void loadExtraDefinitions(ProtoEntity* resource, wp::DataNode* node, entt::entity protoId);
 
   virtual uint32_t getAnimationIdFromName(std::string const& actor, std::string const& anim);
 
-  virtual void createProtoEntity(ProtoEntity* entity, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) = 0;
+  virtual void createProtoEntity(ProtoEntity* entity, wp::application::resourcesystem::ResourceManager* resourceMgr, wp::DataNode* node) = 0;
 
 public:
   explicit ProtoEntityResourceDefinitionFactory(std::string const& factoryType);
 
-  void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) override;
+  void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, wp::DataNode* node) override;
 };
 
 }  // namespace applib

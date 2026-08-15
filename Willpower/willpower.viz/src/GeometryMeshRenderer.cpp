@@ -1,4 +1,5 @@
-#include <mpp/ProgrammaticMaterialStream.h>
+#include <format>
+#include <mpp/ProgrammaticBasicMaterialStream.h>
 
 #include <utils/StringUtils.h>
 
@@ -193,7 +194,7 @@ void GeometryMeshRenderer::createMaterials(mpp::ResourceManager* resourceMgr) {
 
         matName = getPolygonMaterialName(polygonIndex);
         if (!resourceMgr->getResource(matName, true)) {
-          auto matStream = make_shared<mpp::ProgrammaticMaterialStream>(resourceMgr);
+          auto matStream = make_shared<mpp::ProgrammaticBasicMaterialStream>(resourceMgr);
 
           matStream->setProgram(program->getName());
 
@@ -219,7 +220,7 @@ void GeometryMeshRenderer::createMaterials(mpp::ResourceManager* resourceMgr) {
       false,
       type);
 
-  auto matStream = make_shared<mpp::ProgrammaticMaterialStream>(resourceMgr);
+  auto matStream = make_shared<mpp::ProgrammaticBasicMaterialStream>(resourceMgr);
 
   matStream->setProgram(programResource->getName());
   matStream->setTexture("TEX1", "__mpp_tex_none__");
@@ -233,7 +234,7 @@ void GeometryMeshRenderer::createMaterials(mpp::ResourceManager* resourceMgr) {
       false,
       type);
 
-  matStream = make_shared<mpp::ProgrammaticMaterialStream>(resourceMgr);
+  matStream = make_shared<mpp::ProgrammaticBasicMaterialStream>(resourceMgr);
 
   matStream->setProgram(programResource->getName());
 
@@ -253,7 +254,7 @@ void GeometryMeshRenderer::createMaterials(mpp::ResourceManager* resourceMgr) {
       false,
       type);
 
-  matStream = make_shared<mpp::ProgrammaticMaterialStream>(resourceMgr);
+  matStream = make_shared<mpp::ProgrammaticBasicMaterialStream>(resourceMgr);
 
   matStream->setProgram(programResource->getName());
   matStream->setTexture("TEX1", "__mpp_tex_none__");
@@ -330,7 +331,7 @@ void GeometryMeshRenderer::createMeshes(mpp::ProgrammaticModelStream* stream, mp
 
               // Create mesh
               auto meshNamePrefix = getPolygonMeshNamePrefix(polygonIndex);
-              string meshName = STR_FORMAT("Background_{}_{}_{}_{}", meshNamePrefix, matName, x, y);
+              string meshName = std::format("Background_{}_{}_{}_{}", meshNamePrefix, matName, x, y);
 
               auto res = mBackgroundMeshes.insert(pair(meshName, BackgroundMeshData()));
               auto& data = res.first->second;

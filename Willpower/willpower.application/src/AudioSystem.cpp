@@ -9,6 +9,7 @@ namespace application {
 
 using namespace std;
 
+#if WP_PLATFORM == WP_PLATFORM_WINDOWS && defined(WP_APPLICATION_USE_FMOD)
 AudioSystem::AudioSystem(AudioOptions const& options)
     : mSystem(nullptr) {
   FMOD_RESULT res;
@@ -105,6 +106,21 @@ void AudioSystem::update() {
     throw exception(FMOD_ErrorString(res));
   }
 }
+#else
+AudioSystem::AudioSystem(AudioOptions const& options) {
+  WP_UNUSED(options);
+}
+
+AudioSystem::~AudioSystem() = default;
+
+void AudioSystem::createAudioBank(resourcesystem::AudioBankResource* audioBank, resourcesystem::DataStreamPtr dataPtr) {
+  WP_UNUSED(audioBank);
+  WP_UNUSED(dataPtr);
+}
+
+void AudioSystem::update() {
+}
+#endif
 
 }  // namespace application
 }  // namespace WP_NAMESPACE

@@ -2,7 +2,7 @@
 
 #include <mpp/mesh/MeshSpecification.h>
 
-#include <utils/XmlReader.h>
+#include "willpower/common/DataNode.h"
 
 #include "willpower/application/Platform.h"
 #include "willpower/application/resourcesystem/Resource.h"
@@ -20,18 +20,18 @@ class WP_APPLICATION_API ProgramResourceDefinitionFactory : public ResourceDefin
   std::map<std::string, mpp::mesh::Vertex::DataType> mDataTypes;
 
 private:
-  void parseMeshSpecificationPrimitiveType(ProgramResource* resource, mpp::mesh::MeshSpecification* meshSpec, utils::XmlNode* node);
+  void parseMeshSpecificationPrimitiveType(ProgramResource* resource, mpp::mesh::MeshSpecification* meshSpec, wp::DataNode* node);
 
-  void parseMeshSpecificationIndexed(ProgramResource* resource, mpp::mesh::MeshSpecification* meshSpec, utils::XmlNode* node);
+  void parseMeshSpecificationIndexed(ProgramResource* resource, mpp::mesh::MeshSpecification* meshSpec, wp::DataNode* node);
 
-  void parseMeshSpecificationStorage(ProgramResource* resource, mpp::mesh::MeshSpecification* meshSpec, utils::XmlNode* node);
+  void parseMeshSpecificationStorage(ProgramResource* resource, mpp::mesh::MeshSpecification* meshSpec, wp::DataNode* node);
 
-  void parseMeshSpecificationBuffer(ProgramResource* resource, mpp::mesh::VertexBufferAttributeLayout* layout, utils::XmlNode* node);
+  void parseMeshSpecificationBuffer(ProgramResource* resource, mpp::mesh::VertexBufferAttributeLayout* layout, wp::DataNode* node);
 
 protected:
-  void parseAttribs(ProgramResource* resource, utils::XmlNode* node);
+  void parseAttribs(ProgramResource* resource, wp::DataNode* node);
 
-  void parseMeshSpecification(ProgramResource* resource, utils::XmlNode* node);
+  void parseMeshSpecification(ProgramResource* resource, wp::DataNode* node);
 
 public:
   explicit ProgramResourceDefinitionFactory(std::string const& factoryType);

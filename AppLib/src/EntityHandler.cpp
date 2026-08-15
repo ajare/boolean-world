@@ -1,3 +1,4 @@
+#include <format>
 #include <cassert>
 
 #include "EntityHandler.h"
@@ -25,7 +26,7 @@ void EntityHandler::copyEntityComponents(entt::entity from, entt::entity to) {
 
 entt::entity EntityHandler::registerPrototype(string const& protoName) {
   if (mProtoIds.find(protoName) != mProtoIds.end()) {
-    throw Exception(STR_FORMAT("Entity prototype '{}' already registered in EntityHandler.", protoName));
+    throw Exception(std::format("Entity prototype '{}' already registered in EntityHandler.", protoName));
   }
 
   auto id = mComponentRegistry.create();
@@ -68,7 +69,7 @@ void EntityHandler::setup(Entity* entity, int type, wp::Vector2 const& position,
 
   auto protoIt = mProtoIds.find(prototypeName);
   if (protoIt == mProtoIds.end()) {
-    throw Exception(STR_FORMAT("Entity prototype '{}' not registered in EntityHandler", prototypeName));
+    throw Exception(std::format("Entity prototype '{}' not registered in EntityHandler", prototypeName));
   }
 
   auto protoId = protoIt->second;

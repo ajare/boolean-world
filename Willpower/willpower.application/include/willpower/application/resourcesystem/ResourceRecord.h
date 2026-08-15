@@ -5,6 +5,7 @@
 #include <map>
 
 #include "willpower/application/Platform.h"
+#include "willpower/common/StructuredData.h"
 
 namespace WP_NAMESPACE {
 namespace application {
@@ -45,7 +46,7 @@ public:
   std::string namesp;
   bool isComposite;
 
-  std::vector<std::pair<std::string, std::string>> definitions;
+  std::vector<std::pair<std::string, StructuredData>> definitions;
 
   std::vector<DependentResourceRecord> dependentResources;
 };

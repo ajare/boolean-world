@@ -1,4 +1,4 @@
-#include <mpp/ProgrammaticMaterialStream.h>
+#include <mpp/ProgrammaticBasicMaterialStream.h>
 
 #include "willpower/common/Exceptions.h"
 

@@ -96,13 +96,12 @@ ResourceDefinitionFactory* Resource::getResourceDefinitionFactory(string const& 
 
 void Resource::parseDefinition(ResourceManager* resourceMgr) {
   for (auto const& def : mDefinitions) {
-    auto const& [facType, defStr] = def;
+    auto const& [facType, definition] = def;
 
     auto fac = getResourceDefinitionFactory(getType(), facType, false);
     if (fac) {
-      auto reader = utils::XmlReader::fromString(defStr);
-      fac->create(this, resourceMgr, reader->getNode("Definition"));
-      delete reader;
+      DataNode node(definition);
+      fac->create(this, resourceMgr, &node);
       return;
     }
   }
@@ -113,7 +112,7 @@ void Resource::parseDefinition(ResourceManager* resourceMgr) {
 void Resource::parseData(DataStreamPtr dataPtr) {
 }
 
-void Resource::addDefinition(string const& factory, string const& definition) {
+void Resource::addDefinition(string const& factory, StructuredData const& definition) {
   mDefinitions.push_back(make_pair(factory, definition));
 }
 

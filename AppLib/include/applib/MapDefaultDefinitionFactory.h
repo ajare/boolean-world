@@ -2,13 +2,14 @@
 
 #include "Platform.h"
 #include "MapResourceDefinitionFactory.h"
+#include "willpower/common/DataNode.h"
 
 namespace applib {
 class APPLIB_API MapDefaultDefinitionFactory : public MapResourceDefinitionFactory {
 public:
   MapDefaultDefinitionFactory();
 
-  void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) override;
+  void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, wp::DataNode* node) override;
 };
 
 }  // namespace applib

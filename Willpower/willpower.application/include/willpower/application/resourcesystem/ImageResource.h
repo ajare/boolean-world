@@ -1,58 +1,70 @@
 #pragma once
 
+
 #include "willpower/application/Platform.h"
 #include "willpower/application/resourcesystem/Resource.h"
 #include "willpower/application/resourcesystem/ResourceFactory.h"
 
-namespace WP_NAMESPACE {
-namespace application {
-namespace resourcesystem {
+namespace WP_NAMESPACE
+{
+	namespace application
+	{
+		namespace resourcesystem
+		{
 
-class WP_APPLICATION_API ImageResource : public Resource {
-  uint8_t* mData;
+			class WP_APPLICATION_API ImageResource : public Resource
+			{
+				uint8_t* mData;
 
-  uint32_t mSize;
+				uint32_t mSize;
 
-  int mWidth;
+				int mWidth;
 
-  int mHeight;
+				int mHeight;
 
-  int mNumChannels;
+				int mNumChannels;
 
-private:
-  void parseData(DataStreamPtr dataPtr) override;
+			private:
 
-  void destroy() override;
+				void parseData(DataStreamPtr dataPtr) override;
 
-  bool load(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
+				void destroy() override;
 
-  bool unload(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
+				bool load(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
 
-public:
-  ImageResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, application::resourcesystem::ResourceLocation* location);
+				bool unload(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
 
-  uint8_t const* getData() const;
+			public:
 
-  uint32_t getSize() const;
+				ImageResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, application::resourcesystem::ResourceLocation* location);
 
-  int getWidth() const;
+				uint8_t const* getData() const;
 
-  int getHeight() const;
+				uint32_t getSize() const;
 
-  int getNumChannels() const;
-};
+				int getWidth() const;
 
-class ImageResourceFactory : public ResourceFactory {
-public:
-  ImageResourceFactory()
-      : ResourceFactory("Image") {
-  }
+				int getHeight() const;
 
-  Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, ResourceLocation* location) override {
-    return new ImageResource(name, namesp, source, tags, location);
-  }
-};
+				int getNumChannels() const;
+			};
 
-}  // namespace resourcesystem
-}  // namespace application
-}  // namespace WP_NAMESPACE
+			class ImageResourceFactory : public ResourceFactory
+			{
+			public:
+
+				ImageResourceFactory()
+					: ResourceFactory("Image")
+				{
+				}
+
+				Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, ResourceLocation* location) override
+				{
+					return new ImageResource(name, namesp, source, tags, location);
+				}
+			};
+
+		} // resourcesystem
+	} // application
+} // WP_NAMESPACE
+

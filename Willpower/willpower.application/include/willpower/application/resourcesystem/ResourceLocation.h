@@ -5,8 +5,7 @@
 #include <map>
 #include <functional>
 
-#include "utils/XmlReader.h"
-
+#include "willpower/common/DataNode.h"
 #include "willpower/common/Logger.h"
 
 #include "willpower/application/Platform.h"
@@ -46,9 +45,9 @@ protected:
   std::string mDefinitionFile;
 
 private:
-  ResourceRecordBaseData parseResource(utils::XmlNode* element, std::string const& namesp, std::string const& file);
+  ResourceRecordBaseData parseResource(wp::DataNode* element, std::string const& namesp, std::string const& file);
 
-  void scanResourceElement(utils::XmlNode* parent, std::string namesp = "");
+  void scanResourceElement(wp::DataNode* parent, std::string namesp = "");
 
   ResourceRecord const& getResourceRecord(std::string const& resource, std::string namesp = "") const;
 

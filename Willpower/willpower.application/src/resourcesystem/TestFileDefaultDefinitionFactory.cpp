@@ -1,4 +1,4 @@
-#include <utils/StringUtils.h>
+#include "willpower/common/StringUtils.h"
 
 #include "willpower/common/Exceptions.h"
 
@@ -9,13 +9,12 @@ namespace WP_NAMESPACE {
 namespace application {
 namespace resourcesystem {
 using namespace std;
-using namespace utils;
 
 TextFileDefaultDefinitionFactory::TextFileDefaultDefinitionFactory()
     : TextFileResourceDefinitionFactory("") {
 }
 
-void TextFileDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, utils::XmlNode* node) {
+void TextFileDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, DataNode* node) {
   WP_UNUSED(resource);
   WP_UNUSED(resourceMgr);
   WP_UNUSED(node);

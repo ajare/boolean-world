@@ -2,13 +2,18 @@
 
 #include "willpower/application/Platform.h"
 
-namespace WP_NAMESPACE {
-namespace application {
 
-struct AudioOptions {
-  bool synchronous{false};
-  int numChannels{1024};
-};
+namespace WP_NAMESPACE
+{
+	namespace application
+	{
 
-}  // namespace application
-}  // namespace WP_NAMESPACE
+		struct AudioOptions
+		{
+			bool synchronous{ false };
+			int numChannels{ 1024 };
+		};
+
+	} // application
+} // WP_NAMESPACE
+

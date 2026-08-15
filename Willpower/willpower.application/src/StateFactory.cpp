@@ -2,16 +2,20 @@
 
 using namespace std;
 
-namespace WP_NAMESPACE {
-namespace application {
+namespace WP_NAMESPACE
+{
+	namespace application
+	{
 
-StateFactory::StateFactory(string const& type)
-    : mType(type) {
-}
+		StateFactory::StateFactory(string const& type)
+			: mType(type)
+		{
+		}
 
-string const& StateFactory::getType() const {
-  return mType;
-}
+		string const& StateFactory::getType() const
+		{
+			return mType;
+		}
 
-}  // namespace application
-}  // namespace WP_NAMESPACE
+	} // application
+} // WP_NAMESPACE

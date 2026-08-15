@@ -1,61 +1,74 @@
 #pragma once
 
-#include <utils/XmlReader.h>
+#include "willpower/common/XmlReader.h"
 
 #include "willpower/application/Platform.h"
 #include "willpower/application/resourcesystem/Resource.h"
 #include "willpower/application/resourcesystem/ImageResource.h"
 #include "willpower/application/resourcesystem/ResourceFactory.h"
 
-namespace WP_NAMESPACE {
-namespace application {
-namespace resourcesystem {
+namespace WP_NAMESPACE
+{
+	namespace application
+	{
+		namespace resourcesystem
+		{
 
-class WP_APPLICATION_API MaterialResource : public Resource {
-  friend class MaterialResourceDefinitionFactory;
+			class WP_APPLICATION_API MaterialResource : public Resource
+			{
+				friend class MaterialResourceDefinitionFactory;
 
-public:
-  struct TextureDefinition {
-    std::string samplerName;
-    bool isResource;
-    std::string resourceName;
-  };
+			public:
 
-private:
-  std::vector<TextureDefinition> mTextureDefinitions;
+				struct TextureDefinition
+				{
+					std::string samplerName;
+					bool isResource;
+					std::string resourceName;
+				};
 
-private:
-  bool load(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
+			private:
 
-  bool unload(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
+				std::vector<TextureDefinition> mTextureDefinitions;
 
-  uint32_t getNumTextureDefinitions() const;
+			private:
 
-  TextureDefinition const& getTextureDefinition(uint32_t index) const;
+				bool load(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
 
-public:
-  MaterialResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, application::resourcesystem::ResourceLocation* location);
+				bool unload(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
 
-  uint32_t getNumTextures() const;
+				uint32_t getNumTextureDefinitions() const;
 
-  uint32_t getTextureWidth(uint32_t index) const;
+				TextureDefinition const& getTextureDefinition(uint32_t index) const;
 
-  uint32_t getTextureHeight(uint32_t index) const;
-};
+			public:
 
-class MaterialResourceFactory : public ResourceFactory {
-public:
-  MaterialResourceFactory()
-      : ResourceFactory("Material") {
-  }
+				MaterialResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, application::resourcesystem::ResourceLocation* location);
 
-  Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, ResourceLocation* location) override {
-    return new MaterialResource(name, namesp, source, tags, location);
-  }
-};
+				uint32_t getNumTextures() const;
 
-}  // namespace resourcesystem
-}  // namespace application
-}  // namespace WP_NAMESPACE
+				uint32_t getTextureWidth(uint32_t index) const;
+
+				uint32_t getTextureHeight(uint32_t index) const;
+			};
+
+			class MaterialResourceFactory : public ResourceFactory
+			{
+			public:
+
+				MaterialResourceFactory()
+					: ResourceFactory("Material")
+				{
+				}
+
+				Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, ResourceLocation* location) override
+				{
+					return new MaterialResource(name, namesp, source, tags, location);
+				}
+			};
+
+		} // resourcesystem
+	} // application
+} // WP_NAMESPACE
 
 #pragma once

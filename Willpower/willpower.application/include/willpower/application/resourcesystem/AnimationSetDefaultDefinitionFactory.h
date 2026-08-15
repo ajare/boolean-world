@@ -10,7 +10,7 @@ class WP_APPLICATION_API AnimationSetDefaultDefinitionFactory : public Animation
 public:
   AnimationSetDefaultDefinitionFactory();
 
-  void create(Resource* resource, ResourceManager* resourceMgr, utils::XmlNode* node) override;
+  void create(Resource* resource, ResourceManager* resourceMgr, wp::DataNode* node) override;
 };
 
 }  // namespace resourcesystem

@@ -10,7 +10,7 @@ class WP_APPLICATION_API XmlFileDefaultDefinitionFactory : public XmlFileResourc
 public:
   XmlFileDefaultDefinitionFactory();
 
-  void create(Resource* resource, ResourceManager* resourceMgr, utils::XmlNode* node) override;
+  void create(Resource* resource, ResourceManager* resourceMgr, DataNode* node) override;
 };
 
 }  // namespace resourcesystem

@@ -1,4 +1,4 @@
-#include <mpp/ProgrammaticMaterialStream.h>
+#include <mpp/ProgrammaticBasicMaterialStream.h>
 
 #include "willpower/common/Exceptions.h"
 
@@ -38,7 +38,7 @@ void FirepowerMeshRenderer::createMaterials(mpp::ResourceManager* resourceMgr) {
       false,
       getType());
 
-  auto matStream = make_shared<mpp::ProgrammaticMaterialStream>(resourceMgr);
+  auto matStream = make_shared<mpp::ProgrammaticBasicMaterialStream>(resourceMgr);
 
   matStream->setProgram(programResource->getName());
 

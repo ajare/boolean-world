@@ -15,7 +15,7 @@ ImageSetTiledDefinitionFactory::ImageSetTiledDefinitionFactory()
     : ImageSetResourceDefinitionFactory("Tiled") {
 }
 
-void ImageSetTiledDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) {
+void ImageSetTiledDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, wp::DataNode* node) {
   auto imageSetRes = static_cast<application::resourcesystem::ImageSetResource*>(resource);
   auto imageRes = static_cast<application::resourcesystem::ImageResource*>(imageSetRes->getDependentResource("Image").get());
   auto tiledRes = static_cast<application::resourcesystem::XmlFileResource*>(imageSetRes->getDependentResource("TileSpecs").get());

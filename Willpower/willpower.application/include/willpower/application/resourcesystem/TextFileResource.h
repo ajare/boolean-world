@@ -4,35 +4,46 @@
 #include "willpower/application/resourcesystem/Resource.h"
 #include "willpower/application/resourcesystem/ResourceFactory.h"
 
-namespace WP_NAMESPACE {
-namespace application {
-namespace resourcesystem {
+namespace WP_NAMESPACE
+{
+	namespace application
+	{
+		namespace resourcesystem
+		{
 
-class WP_APPLICATION_API TextFileResource : public Resource {
-  std::string mText;
+			class WP_APPLICATION_API TextFileResource : public Resource
+			{
+				std::string mText;
 
-private:
-  void parseData(DataStreamPtr dataPtr) override;
+			private:
 
-  void destroy() override;
+				void parseData(DataStreamPtr dataPtr) override;
 
-public:
-  TextFileResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, application::resourcesystem::ResourceLocation* location);
+				void destroy() override;
 
-  std::string const& getText() const;
-};
+			public:
 
-class TextFileResourceFactory : public ResourceFactory {
-public:
-  TextFileResourceFactory()
-      : ResourceFactory("TextFile") {
-  }
+				TextFileResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, application::resourcesystem::ResourceLocation* location);
+			
+				std::string const& getText() const;
+			};
 
-  Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, ResourceLocation* location) override {
-    return new TextFileResource(name, namesp, source, tags, location);
-  }
-};
+			class TextFileResourceFactory : public ResourceFactory
+			{
+			public:
 
-}  // namespace resourcesystem
-}  // namespace application
-}  // namespace WP_NAMESPACE
+				TextFileResourceFactory()
+					: ResourceFactory("TextFile")
+				{
+				}
+
+				Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, ResourceLocation* location) override
+				{
+					return new TextFileResource(name, namesp, source, tags, location);
+				}
+			};
+
+		} // resourcesystem
+	} // application
+} // WP_NAMESPACE
+

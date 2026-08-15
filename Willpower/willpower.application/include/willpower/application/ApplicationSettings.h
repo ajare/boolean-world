@@ -2,50 +2,57 @@
 
 #include "willpower/application/Platform.h"
 
-namespace WP_NAMESPACE {
-namespace application {
 
-/**	\class ApplicationSettings
- *   \brief Holds settings which need to be globally accessible from the Application.
- */
-class WP_APPLICATION_API ApplicationSettings {
-  // Helper function for copy constructor / assignment operator.
-  void copyFrom(ApplicationSettings const& other);
+namespace WP_NAMESPACE
+{
+	namespace application
+	{
 
-public:
-  /**	\brief Constructor.
-   */
-  ApplicationSettings() = default;
+		/**	\class ApplicationSettings
+		*   \brief Holds settings which need to be globally accessible from the Application.
+		*/
+		class WP_APPLICATION_API ApplicationSettings
+		{
 
-  /**	\brief Destructor.
-   */
-  ~ApplicationSettings() = default;
+			// Helper function for copy constructor / assignment operator.
+			void copyFrom(ApplicationSettings const& other);
 
-  /**	\brief Copy constructor.
-   *
-   *	\param other Application instance to copy from.
-   */
-  ApplicationSettings(ApplicationSettings const& other);
+		public:
 
-  /**	\brief Assignment operator.
-   *
-   *	\param other Application instance to assign from.
-   */
-  ApplicationSettings& operator=(ApplicationSettings const& other);
+			/**	\brief Constructor.
+			*/
+			ApplicationSettings() = default;
 
-public:
-  /**	\brief Width of the render window, in pixels.
-   */
-  int VideoWidth;
+			/**	\brief Destructor.
+			*/
+			~ApplicationSettings() = default;
 
-  /**	\brief Height of the render window, in pixels.
-   */
-  int VideoHeight;
+			/**	\brief Copy constructor.
+			*
+			*	\param other Application instance to copy from.
+			*/
+			ApplicationSettings(ApplicationSettings const& other);
 
-  /**	\brief Specifies whether the render window is fullscreen or not.
-   */
-  bool Fullscreen;
-};
+			/**	\brief Assignment operator.
+			*
+			*	\param other Application instance to assign from.
+			*/
+			ApplicationSettings& operator=(ApplicationSettings const& other);
 
-}  // namespace application
-}  // namespace WP_NAMESPACE
+		public:
+
+			/**	\brief Width of the render window, in pixels.
+			*/
+			int VideoWidth;
+				
+			/**	\brief Height of the render window, in pixels.
+			*/
+			int VideoHeight;
+
+			/**	\brief Specifies whether the render window is fullscreen or not.
+			*/
+			bool Fullscreen;
+		};
+
+	} // application
+} // WP_NAMESPACE

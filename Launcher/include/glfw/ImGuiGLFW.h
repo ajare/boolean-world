@@ -1,5 +1,11 @@
 #pragma once
 
+#ifdef _WIN32
+// WNDPROC below. This used to arrive transitively through the old ext/Utils
+// headers; nothing on the new include path pulls windows.h in for us.
+#include <windows.h>
+#endif
+
 #include "imgui/imgui.h"
 
 #include "WindowGLFW.h"

@@ -11,7 +11,7 @@ class WP_APPLICATION_API AudioBankDefaultDefinitionFactory : public AudioBankRes
 public:
   AudioBankDefaultDefinitionFactory();
 
-  void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) override;
+  void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, wp::DataNode* node) override;
 };
 
 }  // namespace resourcesystem

@@ -2,12 +2,13 @@
 
 #include "MapBooleanWorldDefinitionFactory.h"
 #include "Map.h"
+#include "willpower/common/DataNode.h"
 
 MapBooleanWorldDefinitionFactory::MapBooleanWorldDefinitionFactory()
     : applib::MapResourceDefinitionFactory("BooleanWorld", nullptr, nullptr, nullptr, nullptr) {
 }
 
-void MapBooleanWorldDefinitionFactory::create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) {
+void MapBooleanWorldDefinitionFactory::create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, wp::DataNode* node) {
   VAR_UNUSED(resourceMgr);
   VAR_UNUSED(node);
 

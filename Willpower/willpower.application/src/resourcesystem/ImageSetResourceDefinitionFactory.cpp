@@ -1,5 +1,4 @@
-#include <utils/StringUtils.h>
-
+#include "willpower/common/DataNode.h"
 #include "willpower/common/Exceptions.h"
 
 #include "willpower/application/resourcesystem/ImageSetResourceDefinitionFactory.h"
@@ -9,7 +8,6 @@ namespace WP_NAMESPACE {
 namespace application {
 namespace resourcesystem {
 using namespace std;
-using namespace utils;
 
 ImageSetResourceDefinitionFactory::ImageSetResourceDefinitionFactory(string const& factoryType)
     : ResourceDefinitionFactory("ImageSet", factoryType) {
@@ -49,11 +47,11 @@ void ImageSetResourceDefinitionFactory::calculateUvCoords(ImageSetResource* reso
   imageDef->v[1] = 1.0f - (float)imageDef->y / imageHeight;
 }
 
-ImageSetResource::ImageDefinition ImageSetResourceDefinitionFactory::createImageDefinition(ImageSetResource* resource, string const& name, utils::XmlNode* node) {
-  uint32_t x = StringUtils::parseUInt(node->getAttribute("x"));
-  uint32_t y = StringUtils::parseUInt(node->getAttribute("y"));
-  uint32_t width = StringUtils::parseUInt(node->getAttribute("width"));
-  uint32_t height = StringUtils::parseUInt(node->getAttribute("height"));
+ImageSetResource::ImageDefinition ImageSetResourceDefinitionFactory::createImageDefinition(ImageSetResource* resource, string const& name, DataNode* node) {
+  uint32_t x = StringUtils::parseUInt(node->getProperty("x"));
+  uint32_t y = StringUtils::parseUInt(node->getProperty("y"));
+  uint32_t width = StringUtils::parseUInt(node->getProperty("width"));
+  uint32_t height = StringUtils::parseUInt(node->getProperty("height"));
 
   validateCoordinates(resource, name, (int)x, (int)y, (int)width, (int)height);
 

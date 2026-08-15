@@ -1,6 +1,10 @@
+#include "willpower/application/Platform.h"
+
+#if WP_PLATFORM == WP_PLATFORM_WINDOWS && defined(WP_APPLICATION_USE_FMOD)
 #include <fmod/core/fmod.hpp>
 #include <fmod/core/fmod_errors.h>
 #include <fmod/studio/fmod_studio.hpp>
+#endif
 
 #include "willpower/application/resourcesystem/ResourceExceptions.h"
 #include "willpower/application/resourcesystem/AudioBankResource.h"
@@ -18,7 +22,12 @@ AudioBankResource::AudioBankResource(string const& name,
                                      map<string, string> const& tags,
                                      application::resourcesystem::ResourceLocation* location,
                                      AudioSystem* audioSystem)
-    : application::resourcesystem::Resource(name, namesp, "AudioBank", source, tags, location), mwAudioSystem(audioSystem), mBank(nullptr) {
+    : application::resourcesystem::Resource(name, namesp, "AudioBank", source, tags, location), mwAudioSystem(audioSystem)
+#if WP_PLATFORM == WP_PLATFORM_WINDOWS && defined(WP_APPLICATION_USE_FMOD)
+      ,
+      mBank(nullptr)
+#endif
+{
 }
 
 AudioBankResource::~AudioBankResource() {
@@ -34,6 +43,7 @@ void AudioBankResource::create(application::resourcesystem::DataStreamPtr dataPt
 }
 
 void AudioBankResource::destroy() {
+#if WP_PLATFORM == WP_PLATFORM_WINDOWS && defined(WP_APPLICATION_USE_FMOD)
   if (mwAudioSystem) {
     auto res = mBank->unload();
     mBank = nullptr;
@@ -42,12 +52,14 @@ void AudioBankResource::destroy() {
       throw application::resourcesystem::ResourceException(this, (FMOD_ErrorString(res)));
     }
   }
+#endif
 }
 
 bool AudioBankResource::load(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
   WP_UNUSED(renderSystem);
   WP_UNUSED(resourceMgr);
 
+#if WP_PLATFORM == WP_PLATFORM_WINDOWS && defined(WP_APPLICATION_USE_FMOD)
   if (mwAudioSystem) {
     auto res = mBank->loadSampleData();
 
@@ -55,6 +67,7 @@ bool AudioBankResource::load(mpp::RenderSystem* renderSystem, mpp::ResourceManag
       throw application::resourcesystem::ResourceException(this, (FMOD_ErrorString(res)));
     }
   }
+#endif
 
   return true;
 }
@@ -63,6 +76,7 @@ bool AudioBankResource::unload(mpp::RenderSystem* renderSystem, mpp::ResourceMan
   WP_UNUSED(renderSystem);
   WP_UNUSED(resourceMgr);
 
+#if WP_PLATFORM == WP_PLATFORM_WINDOWS && defined(WP_APPLICATION_USE_FMOD)
   if (mwAudioSystem) {
     auto res = mBank->unloadSampleData();
 
@@ -70,6 +84,7 @@ bool AudioBankResource::unload(mpp::RenderSystem* renderSystem, mpp::ResourceMan
       throw application::resourcesystem::ResourceException(this, (FMOD_ErrorString(res)));
     }
   }
+#endif
 
   return true;
 }

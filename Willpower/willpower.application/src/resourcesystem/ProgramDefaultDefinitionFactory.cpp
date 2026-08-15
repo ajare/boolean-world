@@ -1,5 +1,4 @@
-#include <utils/StringUtils.h>
-
+#include "willpower/common/DataNode.h"
 #include "willpower/common/Exceptions.h"
 
 #include "willpower/application/resourcesystem/ProgramDefaultDefinitionFactory.h"
@@ -9,13 +8,12 @@ namespace WP_NAMESPACE {
 namespace application {
 namespace resourcesystem {
 using namespace std;
-using namespace utils;
 
 ProgramDefaultDefinitionFactory::ProgramDefaultDefinitionFactory()
     : ProgramResourceDefinitionFactory("") {
 }
 
-void ProgramDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, utils::XmlNode* node) {
+void ProgramDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, DataNode* node) {
   WP_UNUSED(resourceMgr);
 
   auto programRes = static_cast<ProgramResource*>(resource);

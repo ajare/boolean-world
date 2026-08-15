@@ -1,8 +1,7 @@
-#include <utils/StringUtils.h>
-
 #include <mpp/ProgrammaticProgramStream.h>
 #include <mpp/program/Parser.h>
 
+#include "willpower/common/StringUtils.h"
 #include "willpower/common/Exceptions.h"
 
 #include "willpower/application/resourcesystem/ResourceExceptions.h"
@@ -12,7 +11,6 @@ namespace WP_NAMESPACE {
 namespace application {
 namespace resourcesystem {
 using namespace std;
-using namespace utils;
 
 ProgramResourceDefinitionFactory::ProgramResourceDefinitionFactory(string const& factoryType)
     : ResourceDefinitionFactory("Program", factoryType) {
@@ -53,24 +51,24 @@ ProgramResourceDefinitionFactory::ProgramResourceDefinitionFactory(string const&
   mDataTypes["UINT32"] = mpp::mesh::Vertex::DataType::UnsignedInt;
 }
 
-void ProgramResourceDefinitionFactory::parseAttribs(ProgramResource* resource, utils::XmlNode* node) {
+void ProgramResourceDefinitionFactory::parseAttribs(ProgramResource* resource, DataNode* node) {
   auto texturesNode = node->getOptionalChild("textures");
-  resource->mNumTextures = texturesNode ? utils::StringUtils::parseUInt(texturesNode->getValue()) : 0;
+  resource->mNumTextures = texturesNode ? StringUtils::parseUInt(texturesNode->getValue()) : 0;
 
   auto diffuseNode = node->getOptionalChild("diffuse");
-  resource->mUseDiffuse = diffuseNode ? utils::StringUtils::parseBool(diffuseNode->getValue()) : false;
+  resource->mUseDiffuse = diffuseNode ? StringUtils::parseBool(diffuseNode->getValue()) : false;
 
   auto coloursNode = node->getOptionalChild("colours");
-  resource->mUseColours = coloursNode ? utils::StringUtils::parseBool(coloursNode->getValue()) : false;
+  resource->mUseColours = coloursNode ? StringUtils::parseBool(coloursNode->getValue()) : false;
 
   auto atlasNode = node->getOptionalChild("atlas");
-  resource->mUseAtlas = atlasNode ? utils::StringUtils::parseBool(atlasNode->getValue()) : false;
+  resource->mUseAtlas = atlasNode ? StringUtils::parseBool(atlasNode->getValue()) : false;
 
   auto rotationNode = node->getOptionalChild("rotation");
-  resource->mUseRotation = rotationNode ? utils::StringUtils::parseBool(rotationNode->getValue()) : false;
+  resource->mUseRotation = rotationNode ? StringUtils::parseBool(rotationNode->getValue()) : false;
 }
 
-void ProgramResourceDefinitionFactory::parseMeshSpecificationPrimitiveType(ProgramResource* resource, mpp::mesh::MeshSpecification* meshSpec, utils::XmlNode* node) {
+void ProgramResourceDefinitionFactory::parseMeshSpecificationPrimitiveType(ProgramResource* resource, mpp::mesh::MeshSpecification* meshSpec, DataNode* node) {
   auto value = node->getValue();
   StringUtils::toUpper(value);
 
@@ -83,14 +81,14 @@ void ProgramResourceDefinitionFactory::parseMeshSpecificationPrimitiveType(Progr
   }
 }
 
-void ProgramResourceDefinitionFactory::parseMeshSpecificationIndexed(ProgramResource* resource, mpp::mesh::MeshSpecification* meshSpec, utils::XmlNode* node) {
+void ProgramResourceDefinitionFactory::parseMeshSpecificationIndexed(ProgramResource* resource, mpp::mesh::MeshSpecification* meshSpec, DataNode* node) {
   WP_UNUSED(resource);
 
   auto value = node->getValue();
   meshSpec->setIndexedVertices(StringUtils::parseBool(value));
 }
 
-void ProgramResourceDefinitionFactory::parseMeshSpecificationStorage(ProgramResource* resource, mpp::mesh::MeshSpecification* meshSpec, utils::XmlNode* node) {
+void ProgramResourceDefinitionFactory::parseMeshSpecificationStorage(ProgramResource* resource, mpp::mesh::MeshSpecification* meshSpec, DataNode* node) {
   auto value = node->getValue();
   StringUtils::toUpper(value);
 
@@ -103,7 +101,7 @@ void ProgramResourceDefinitionFactory::parseMeshSpecificationStorage(ProgramReso
   }
 }
 
-void ProgramResourceDefinitionFactory::parseMeshSpecificationBuffer(ProgramResource* resource, mpp::mesh::VertexBufferAttributeLayout* layout, utils::XmlNode* node) {
+void ProgramResourceDefinitionFactory::parseMeshSpecificationBuffer(ProgramResource* resource, mpp::mesh::VertexBufferAttributeLayout* layout, DataNode* node) {
   auto channelsNode = node->getChild("Channels");
   auto channelNode = channelsNode->getChild("Channel");
 
@@ -147,7 +145,7 @@ void ProgramResourceDefinitionFactory::parseMeshSpecificationBuffer(ProgramResou
   } while (channelNode->next());
 }
 
-void ProgramResourceDefinitionFactory::parseMeshSpecification(ProgramResource* resource, utils::XmlNode* node) {
+void ProgramResourceDefinitionFactory::parseMeshSpecification(ProgramResource* resource, DataNode* node) {
   parseMeshSpecificationPrimitiveType(resource, &resource->mSpecification, node->getChild("primitive"));
   parseMeshSpecificationIndexed(resource, &resource->mSpecification, node->getChild("indexed"));
   parseMeshSpecificationStorage(resource, &resource->mSpecification, node->getChild("storage"));

@@ -1,6 +1,5 @@
-#include <utils/StringUtils.h>
-#include <utils/XmlReader.h>
-
+#include "willpower/common/StringUtils.h"
+#include "willpower/common/DataNode.h"
 #include "willpower/common/Exceptions.h"
 
 #include "willpower/application/resourcesystem/ImageDefaultDefinitionFactory.h"
@@ -10,13 +9,12 @@ namespace WP_NAMESPACE {
 namespace application {
 namespace resourcesystem {
 using namespace std;
-using namespace utils;
 
 ImageDefaultDefinitionFactory::ImageDefaultDefinitionFactory()
     : ImageResourceDefinitionFactory("") {
 }
 
-void ImageDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, utils::XmlNode* node) {
+void ImageDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, DataNode* node) {
   WP_UNUSED(resource);
   WP_UNUSED(resourceMgr);
   WP_UNUSED(node);

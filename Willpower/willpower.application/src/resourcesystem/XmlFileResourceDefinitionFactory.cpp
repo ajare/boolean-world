@@ -2,15 +2,19 @@
 
 #include "willpower/application/resourcesystem/XmlFileResourceDefinitionFactory.h"
 
-namespace WP_NAMESPACE {
-namespace application {
-namespace resourcesystem {
-using namespace std;
+namespace WP_NAMESPACE
+{
+	namespace application
+	{
+		namespace resourcesystem
+		{
+			using namespace std;
 
-XmlFileResourceDefinitionFactory::XmlFileResourceDefinitionFactory(string const& factoryType)
-    : ResourceDefinitionFactory("XmlFile", factoryType) {
-}
+			XmlFileResourceDefinitionFactory::XmlFileResourceDefinitionFactory(string const& factoryType)
+				: ResourceDefinitionFactory("XmlFile", factoryType)
+			{
+			}
 
-}  // namespace resourcesystem
-}  // namespace application
-}  // namespace WP_NAMESPACE
+		} // resourcesystem
+	} // application
+} // WP_NAMESPACE

@@ -22,7 +22,7 @@ class WP_APPLICATION_API Resource : public mpp::ResourceWrangler {
   friend class ResourceManager;
 
 private:
-  typedef std::pair<std::string, std::string> FactoryTypeDefinition;
+  typedef std::pair<std::string, StructuredData> FactoryTypeDefinition;
 
 private:
   int mRefCount;
@@ -56,7 +56,7 @@ protected:
 private:
   ResourceDefinitionFactory* getResourceDefinitionFactory(std::string const& resType, std::string const& facType, bool errorIfNotFound = true) const;
 
-  void addDefinition(std::string const& factory, std::string const& definition);
+  void addDefinition(std::string const& factory, StructuredData const& definition);
 
   virtual void create(DataStreamPtr dataPtr, ResourceManager* resourceMgr);
 

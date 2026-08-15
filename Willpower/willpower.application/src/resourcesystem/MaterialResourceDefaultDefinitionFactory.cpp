@@ -1,5 +1,4 @@
-#include <utils/StringUtils.h>
-
+#include "willpower/common/DataNode.h"
 #include "willpower/common/Exceptions.h"
 
 #include "willpower/application/resourcesystem/MaterialDefaultDefinitionFactory.h"
@@ -9,13 +8,12 @@ namespace WP_NAMESPACE {
 namespace application {
 namespace resourcesystem {
 using namespace std;
-using namespace utils;
 
 MaterialDefaultDefinitionFactory::MaterialDefaultDefinitionFactory()
     : MaterialResourceDefinitionFactory("") {
 }
 
-void MaterialDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, utils::XmlNode* node) {
+void MaterialDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, DataNode* node) {
   WP_UNUSED(resourceMgr);
 
   auto materialRes = static_cast<MaterialResource*>(resource);
@@ -24,12 +22,12 @@ void MaterialDefaultDefinitionFactory::create(Resource* resource, ResourceManage
   auto textureNode = texturesNode->getOptionalChild("Texture");
   if (textureNode) {
     do {
-      string textureType = textureNode->getAttribute("type");
+      string textureType = textureNode->getProperty("type");
 
       if (textureType == "resource") {
-        addResourceTextureDefinition(materialRes, textureNode->getAttribute("sampler"), textureNode->getValue());
+        addResourceTextureDefinition(materialRes, textureNode->getProperty("sampler"), textureNode->getValue());
       } else if (textureType == "default") {
-        addDefaultTextureDefinition(materialRes, textureNode->getAttribute("sampler"));
+        addDefaultTextureDefinition(materialRes, textureNode->getProperty("sampler"));
       } else {
         string errMsg = "material '" + materialRes->getName() +
                         "' has invalid texture type '" + textureType + "'.";

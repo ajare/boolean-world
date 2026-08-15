@@ -1,12 +1,30 @@
 #include <algorithm>
+#include <memory>
 #include <thread>
 
+#include "utils/YamlReader.h"
+
+#include "willpower/common/DataNode.h"
 #include "willpower/common/Exceptions.h"
 
 #include "willpower/application/resourcesystem/ResourceExceptions.h"
 #include "willpower/application/resourcesystem/ResourceLocation.h"
 #include "willpower/application/resourcesystem/DataStream.h"
 #include "willpower/application/resourcesystem/Resource.h"
+
+namespace {
+StructuredData importStructuredData(utils::StructuredData const& source) {
+  if (source.isValue()) {
+    return StructuredData(source.getName(), source.getValue());
+  }
+
+  StructuredData result(source.getName());
+  for (auto const& entry : source) {
+    result.addEntry(entry.first, importStructuredData(entry.second));
+  }
+  return result;
+}
+}  // namespace
 
 namespace WP_NAMESPACE {
 namespace application {
@@ -42,14 +60,20 @@ void ResourceLocation::scan() {
   uint8_t* fileData = readData(mDefinitionFile, &fileSize);
   DataStreamPtr dataPtr(new DataStream(fileData, fileSize));
 
-  utils::XmlReader* reader = utils::XmlReader::fromString(string((char*)dataPtr->getData(), dataPtr->getSize()));
+  string const document((char*)dataPtr->getData(), dataPtr->getSize());
+  if (!mDefinitionFile.ends_with(".yaml") && !mDefinitionFile.ends_with(".yml")) {
+    throw ResourceSystemException("Resource definition file '" + mDefinitionFile + "' must use YAML.");
+  }
+  unique_ptr<utils::YamlReader> reader(utils::YamlReader::fromString(document));
+  StructuredData rootData = importStructuredData(reader->readTree());
+  DataNode root(rootData);
 
   // Iterate over namespaces
-  auto rootNode = reader->getNode("Resources");
+  auto rootNode = &root;
   auto namespaceNode = rootNode->getOptionalChild("Namespace");
   if (namespaceNode) {
     do {
-      string namesp = namespaceNode->getAttribute("name");
+      string namesp = namespaceNode->getProperty("name");
       scanResourceElement(namespaceNode, namesp);
     } while (namespaceNode->next());
   }
@@ -57,8 +81,6 @@ void ResourceLocation::scan() {
   // Iterate over non-namespaced resources
   scanResourceElement(rootNode);
   mScanDirty = false;
-
-  delete reader;
 }
 
 void ResourceLocation::rescan() {
@@ -70,20 +92,20 @@ map<string, ResourceLocation::NamespaceRecord> const& ResourceLocation::getNames
   return mNamespaces;
 }
 
-ResourceRecordBaseData ResourceLocation::parseResource(utils::XmlNode* element, string const& namesp, string const& file) {
+ResourceRecordBaseData ResourceLocation::parseResource(DataNode* element, string const& namesp, string const& file) {
   WP_UNUSED(file);
 
   ResourceRecordBaseData baseData;
 
-  baseData.locationFound = element->getOptionalAttribute("location", baseData.location);
-  baseData.typeFound = element->getOptionalAttribute("type", baseData.type);
-  baseData.nameFound = element->getOptionalAttribute("name", baseData.name);
+  baseData.locationFound = element->getOptionalProperty("location", baseData.location);
+  baseData.typeFound = element->getOptionalProperty("type", baseData.type);
+  baseData.nameFound = element->getOptionalProperty("name", baseData.name);
 
   // Check for 'Option' subelements.
   auto optionElem = element->getOptionalChild("Option");
   if (optionElem) {
     do {
-      string optionName = optionElem->getAttribute("name");
+      string optionName = optionElem->getProperty("name");
       string optionValue = optionElem->getValue();
 
       if (baseData.tags.find(optionName) != baseData.tags.end()) {
@@ -98,7 +120,7 @@ ResourceRecordBaseData ResourceLocation::parseResource(utils::XmlNode* element, 
   return baseData;
 }
 
-void ResourceLocation::scanResourceElement(utils::XmlNode* parent, string namesp) {
+void ResourceLocation::scanResourceElement(DataNode* parent, string namesp) {
   // Get namespace record
   auto it = mNamespaces.find(namesp);
   if (it == mNamespaces.end()) {
@@ -131,10 +153,9 @@ void ResourceLocation::scanResourceElement(utils::XmlNode* parent, string namesp
         if (definitionElem) {
           do {
             string factory = "";
-            definitionElem->getOptionalAttribute("factory", factory);
+            definitionElem->getOptionalProperty("factory", factory);
 
-            auto def = "<?xml version=\"1.0\"?>" + definitionElem->getAsText();
-            r.definitions.push_back(make_pair(factory, def));
+            r.definitions.push_back(make_pair(factory, definitionElem->getData()));
           } while (definitionElem->next());
         }
       }
@@ -149,8 +170,7 @@ void ResourceLocation::scanResourceElement(utils::XmlNode* parent, string namesp
       }
 
       if (!foundDefaultDef) {
-        auto defaultDef = "<?xml version=\"1.0\"?><Definition />";
-        r.definitions.push_back(make_pair("", defaultDef));
+        r.definitions.push_back(make_pair("", StructuredData("Definition")));
       }
 
       // Validate
@@ -173,7 +193,7 @@ void ResourceLocation::scanResourceElement(utils::XmlNode* parent, string namesp
               drr.owner = baseData.name;
 
               string id;
-              if (depResourceElem->getOptionalAttribute("id", id)) {
+              if (depResourceElem->getOptionalProperty("id", id)) {
                 if (id == "") {
                   throw Exception("Dependent resource specified with an empty 'id' attribute in '" + mName + "'.");
                 }
@@ -181,7 +201,7 @@ void ResourceLocation::scanResourceElement(utils::XmlNode* parent, string namesp
                 drr.id = id;
               }
 
-              if (!depResourceElem->getOptionalAttribute("ref", drr.ref)) {
+              if (!depResourceElem->getOptionalProperty("ref", drr.ref)) {
                 // Resource is declared 'inline', so parse and create, before adding.
                 ResourceRecord rr(namesp, this, false);
 

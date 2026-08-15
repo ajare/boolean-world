@@ -3,48 +3,56 @@
 #include <memory>
 #include <string>
 
+
 #include "willpower/application/Platform.h"
 
-namespace WP_NAMESPACE {
-namespace application {
-namespace resourcesystem {
+namespace WP_NAMESPACE
+{
+	namespace application
+	{
+		namespace resourcesystem
+		{
 
-class ResourceLocation;
+			class ResourceLocation;
 
-class WP_APPLICATION_API DataStream {
-  uint8_t* mData;
+			class WP_APPLICATION_API DataStream
+			{
+				uint8_t* mData;
 
-  uint32_t mSize;
+				uint32_t mSize;
 
-  ResourceLocation* mwLocation;
+				ResourceLocation* mwLocation;
 
-  std::string mSource;
+				std::string mSource;
 
-  std::string mNamespace;
+				std::string mNamespace;
 
-private:
-  void deleteData();
+			private:
 
-public:
-  DataStream(ResourceLocation* location, std::string const& source, std::string const& namesp);
+				void deleteData();
 
-  DataStream(uint8_t* data, uint32_t size);
+			public:
 
-  virtual ~DataStream();
+				DataStream(ResourceLocation* location, std::string const& source, std::string const& namesp);
 
-  uint8_t const* getData() const;
+				DataStream(uint8_t* data, uint32_t size);
 
-  uint32_t getSize() const;
+				virtual ~DataStream();
 
-  std::string const& getSource() const;
+				uint8_t const* getData() const;
 
-  std::string const& getNamespace() const;
+				uint32_t getSize() const;
 
-  void read();
-};
+				std::string const& getSource() const;
 
-typedef std::shared_ptr<DataStream> DataStreamPtr;
+				std::string const& getNamespace() const;
 
-}  // namespace resourcesystem
-}  // namespace application
-}  // namespace WP_NAMESPACE
+				void read();
+			};
+
+			typedef std::shared_ptr<DataStream> DataStreamPtr;
+
+		} // resourcesystem
+	} // application
+} // WP_NAMESPACE
+

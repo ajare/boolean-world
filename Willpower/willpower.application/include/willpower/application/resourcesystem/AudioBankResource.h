@@ -18,7 +18,9 @@ class WP_APPLICATION_API AudioBankResource : public Resource {
 private:
   AudioSystem* mwAudioSystem;
 
+#if WP_PLATFORM == WP_PLATFORM_WINDOWS && defined(WP_APPLICATION_USE_FMOD)
   FMOD::Studio::Bank* mBank;
+#endif
 
 private:
   void create(wp::application::resourcesystem::DataStreamPtr dataPtr, wp::application::resourcesystem::ResourceManager* resourceMgr) override;

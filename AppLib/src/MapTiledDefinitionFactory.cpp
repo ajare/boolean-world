@@ -1,3 +1,4 @@
+#include <format>
 #include <utils/StringUtils.h>
 
 #include "willpower/application/resourcesystem/XmlFileResource.h"
@@ -61,7 +62,7 @@ vector<string> MapTiledDefinitionFactory::getLayerCellData(application::resource
     auto id = utils::StringUtils::parseInt(cell);
     id -= idOffset;
 
-    cell = STR_FORMAT("{}", id);
+    cell = std::format("{}", id);
   }
 
   return cells;
@@ -112,7 +113,7 @@ vector<MapTiledDefinitionFactory::Strip> MapTiledDefinitionFactory::generateStri
   return strips;
 }
 
-void MapTiledDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, XmlNode* node) {
+void MapTiledDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, wp::DataNode* node) {
   auto mapRes = static_cast<Map*>(resource);
 
   // Create mesh

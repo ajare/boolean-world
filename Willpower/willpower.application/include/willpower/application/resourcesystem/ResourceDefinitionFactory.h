@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include <utils/XmlReader.h>
+#include "willpower/common/DataNode.h"
 
 #include "willpower/application/Platform.h"
 
@@ -49,7 +49,7 @@ public:
    *
    *	\return the Resource instance.
    */
-  virtual void create(Resource* resource, ResourceManager* resourceMgr, utils::XmlNode* node) = 0;
+  virtual void create(Resource* resource, ResourceManager* resourceMgr, wp::DataNode* node) = 0;
 };
 }  // namespace resourcesystem
 }  // namespace application

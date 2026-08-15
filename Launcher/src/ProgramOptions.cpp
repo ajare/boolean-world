@@ -1,3 +1,4 @@
+#include <format>
 #include <stack>
 #include <algorithm>
 
@@ -105,18 +106,18 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
   logger->info("Program Options");
   logger->info("---------------");
 
-  logger->info(STR_FORMAT("Video size: {}x{}", options.screenWidth, options.screenHeight));
-  logger->info(STR_FORMAT("Fullscreen: {}", options.fullScreen));
-  logger->info(STR_FORMAT("VSync enabled: {}", options.vSync));
+  logger->info(std::format("Video size: {}x{}", options.screenWidth, options.screenHeight));
+  logger->info(std::format("Fullscreen: {}", options.fullScreen));
+  logger->info(std::format("VSync enabled: {}", options.vSync));
 
-  logger->info(STR_FORMAT("Audio enabled: {}", options.audioEnabled));
+  logger->info(std::format("Audio enabled: {}", options.audioEnabled));
 
   if (options.audioEnabled) {
-    logger->info(STR_FORMAT("Audio synchronous: {}", options.audio.synchronous));
-    logger->info(STR_FORMAT("Audio channels: {}", options.audio.numChannels));
+    logger->info(std::format("Audio synchronous: {}", options.audio.synchronous));
+    logger->info(std::format("Audio channels: {}", options.audio.numChannels));
   }
 
-  logger->info(STR_FORMAT("DLL: {}", options.dll));
+  logger->info(std::format("DLL: {}", options.dll));
   logger->info("");
   logger->info("Resource locations:");
 
@@ -126,6 +127,6 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
 
   logger->info("");
   logger->info("Debugging:");
-  logger->info(STR_FORMAT("- In-game: {}", options.debugging.inGame));
+  logger->info(std::format("- In-game: {}", options.debugging.inGame));
   logger->info("");
 }

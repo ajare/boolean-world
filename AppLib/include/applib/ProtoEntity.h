@@ -13,6 +13,7 @@
 #include "Entity.h"
 #include "EntityHandler.h"
 #include "AnimationDatabase.h"
+#include "willpower/common/DataNode.h"
 
 namespace applib {
 
@@ -28,7 +29,7 @@ protected:
   std::shared_ptr<AnimationDatabase> mAnimationDatabase;
 
 private:
-  virtual void loadExtraDefinitions(utils::XmlNode* node, entt::entity protoId);
+  virtual void loadExtraDefinitions(wp::DataNode* node, entt::entity protoId);
 
 public:
   ProtoEntity(std::string const& name,

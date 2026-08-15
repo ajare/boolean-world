@@ -1,3 +1,4 @@
+#include <format>
 #include "EntityManager.h"
 
 namespace applib {
@@ -21,7 +22,7 @@ EntityManager::~EntityManager() {
 
 void EntityManager::registerFacadeFactory(string const& type, EntityFacadeFactory* factory) {
   if (mFacadeFactories.find(type) != mFacadeFactories.end()) {
-    throw Exception(STR_FORMAT("EntityFacadeFactory type  '{}' already registered.", type));
+    throw Exception(std::format("EntityFacadeFactory type  '{}' already registered.", type));
   } else {
     mFacadeFactories[type] = factory;
   }
@@ -47,7 +48,7 @@ void EntityManager::createFacade(
   // Create facade
   auto factoryIt = mFacadeFactories.find(facadeType);
   if (factoryIt == mFacadeFactories.end()) {
-    throw Exception(STR_FORMAT("EntityFacadeFactory type  '{}' not registered.", facadeType));
+    throw Exception(std::format("EntityFacadeFactory type  '{}' not registered.", facadeType));
   }
 
   auto facade = factoryIt->second->create(initialSize);

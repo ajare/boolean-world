@@ -1,5 +1,6 @@
+#include <format>
 #include <utils/StringUtils.h>
-#include <utils/XmlReader.h>
+#include "willpower/common/DataNode.h"
 
 #include "willpower/application/resourcesystem/AnimationSetResource.h"
 #include "willpower/application/resourcesystem/ResourceExceptions.h"
@@ -17,7 +18,7 @@ ProtoEntityDefaultDefinitionFactory::ProtoEntityDefaultDefinitionFactory()
     : ProtoEntityResourceDefinitionFactory("") {
 }
 
-void ProtoEntityDefaultDefinitionFactory::createProtoEntity(ProtoEntity* entity, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) {
+void ProtoEntityDefaultDefinitionFactory::createProtoEntity(ProtoEntity* entity, wp::application::resourcesystem::ResourceManager* resourceMgr, wp::DataNode* node) {
   auto handler = getEntityHandler(entity);
   auto protoId = entity->getComponentSystemId();
   auto const& protoName = entity->getName();
@@ -42,7 +43,7 @@ void ProtoEntityDefaultDefinitionFactory::createProtoEntity(ProtoEntity* entity,
 
     if (collides) {
       auto sizeNode = physicalNode->getChild("Size");
-      auto collType = sizeNode->getAttribute("type");
+      auto collType = sizeNode->getProperty("type");
 
       if (collType == "AABB") {
         auto sizeValue = sizeNode->getValue();
@@ -78,7 +79,7 @@ void ProtoEntityDefaultDefinitionFactory::createProtoEntity(ProtoEntity* entity,
 
       uint32_t initialAnimId{(uint32_t)-1};
       do {
-        auto animKey = animNode->getAttribute("key");
+        auto animKey = animNode->getProperty("key");
         auto animName = animNode->getValue();
 
         // Register animation
@@ -94,7 +95,7 @@ void ProtoEntityDefaultDefinitionFactory::createProtoEntity(ProtoEntity* entity,
 
         auto lookupKey = getAnimationIdFromName(protoName, animKey);
         if (lookupKey >= AnimationDatabase::MaxObjectAnimations) {
-          throw Exception(STR_FORMAT("Animation key {} out of bounds", lookupKey));
+          throw Exception(std::format("Animation key {} out of bounds", lookupKey));
         }
 
         visual.animations[lookupKey] = animId;

@@ -22,7 +22,7 @@ shared_ptr<AnimationDatabase> ProtoEntityResourceDefinitionFactory::getAnimation
   return resource->mAnimationDatabase;
 }
 
-void ProtoEntityResourceDefinitionFactory::loadExtraDefinitions(ProtoEntity* resource, utils::XmlNode* node, entt::entity protoId) {
+void ProtoEntityResourceDefinitionFactory::loadExtraDefinitions(ProtoEntity* resource, wp::DataNode* node, entt::entity protoId) {
   resource->loadExtraDefinitions(node, protoId);
 }
 
@@ -30,7 +30,7 @@ uint32_t ProtoEntityResourceDefinitionFactory::getAnimationIdFromName(string con
   throw NotImplementedException();
 }
 
-void ProtoEntityResourceDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) {
+void ProtoEntityResourceDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, wp::DataNode* node) {
   auto entity = static_cast<ProtoEntity*>(resource);
 
   auto protoId = getEntityHandler(entity)->registerPrototype(entity->getName());

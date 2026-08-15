@@ -1,6 +1,6 @@
 #pragma once
 
-#include <utils/XmlReader.h>
+#include "willpower/common/DataNode.h"
 
 #include "willpower/application/Platform.h"
 #include "willpower/application/resourcesystem/Resource.h"
@@ -24,7 +24,7 @@ protected:
 
   void calculateUvCoords(ImageSetResource* resource, ImageSetResource::ImageDefinition* imageDef);
 
-  ImageSetResource::ImageDefinition createImageDefinition(ImageSetResource* resource, std::string const& name, utils::XmlNode* node);
+  ImageSetResource::ImageDefinition createImageDefinition(ImageSetResource* resource, std::string const& name, wp::DataNode* node);
 
 public:
   explicit ImageSetResourceDefinitionFactory(std::string const& factoryType);

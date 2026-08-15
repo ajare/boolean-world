@@ -5,30 +5,42 @@
 #include "willpower/application/Platform.h"
 #include "willpower/application/resourcesystem/Resource.h"
 
-namespace WP_NAMESPACE {
-namespace application {
-namespace resourcesystem {
+namespace WP_NAMESPACE
+{
+	namespace application
+	{
+		namespace resourcesystem
+		{
 
-class ResourceSystemException : public Exception {
-public:
-  explicit ResourceSystemException(std::string const& message)
-      : Exception(message) {
-  }
-};
+			class ResourceSystemException : public Exception
+			{
+			public:
 
-class ResourceException : public ResourceSystemException {
-  Resource const* mwResource;
+				explicit ResourceSystemException(std::string const& message)
+					: Exception(message)
+				{
+				}
+			};
 
-public:
-  ResourceException(Resource const* resource, std::string const& message)
-      : ResourceSystemException(resource->getType() + " '" + resource->getQualifiedName() + "': " + message), mwResource(resource) {
-  }
+			class ResourceException : public ResourceSystemException
+			{
+				Resource const* mwResource;
 
-  Resource const* getResource() const {
-    return mwResource;
-  }
-};
+			public:
 
-}  // namespace resourcesystem
-}  // namespace application
-}  // namespace WP_NAMESPACE
+				ResourceException(Resource const* resource, std::string const& message)
+					: ResourceSystemException(resource->getType() + " '" + resource->getQualifiedName() + "': " + message)
+					, mwResource(resource)
+				{
+				}
+
+				Resource const* getResource() const
+				{
+					return mwResource;
+				}
+			};
+
+		} // resourcesystem
+	} // application
+} // WP_NAMESPACE
+

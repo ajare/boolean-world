@@ -17,7 +17,7 @@ ProtoEntity::ProtoEntity(string const& name,
     : application::resourcesystem::Resource(name, namesp, "ProtoEntity", source, tags, location), mEntityHandler(entityHandler), mAnimationDatabase(animDatabase) {
 }
 
-void ProtoEntity::loadExtraDefinitions(utils::XmlNode* node, entt::entity protoId) {
+void ProtoEntity::loadExtraDefinitions(wp::DataNode* node, entt::entity protoId) {
   // To be implemented by child class.
 }
 

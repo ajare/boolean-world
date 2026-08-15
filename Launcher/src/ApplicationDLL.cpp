@@ -1,3 +1,4 @@
+#include <format>
 #include "ApplicationDLL.h"
 
 using namespace std;
@@ -59,7 +60,7 @@ void ApplicationDLL::load(string const& filepath, map<string, string> const& arg
 
   if (!mGetProcIDDLL) {
     auto err = GetLastError();
-    string errMsg = STR_FORMAT("Could not load '{}'.  Error code: {}", mFilepath, err);
+    string errMsg = std::format("Could not load '{}'.  Error code: {}", mFilepath, err);
     throw exception(errMsg.c_str());
   }
 

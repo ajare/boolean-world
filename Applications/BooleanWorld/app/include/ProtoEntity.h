@@ -11,8 +11,10 @@
 
 #include "Platform.h"
 
+#include "willpower/common/DataNode.h"
+
 class ProtoEntity : public applib::ProtoEntity {
-  void loadExtraDefinitions(utils::XmlNode* node, entt::entity protoId) override;
+  void loadExtraDefinitions(wp::DataNode* node, entt::entity protoId) override;
 
 public:
   ProtoEntity(std::string const& name,

@@ -1,5 +1,4 @@
-#include <utils/StringUtils.h>
-
+#include "willpower/common/DataNode.h"
 #include "willpower/common/Exceptions.h"
 
 #include "willpower/application/resourcesystem/ImageSetDefaultDefinitionFactory.h"
@@ -9,13 +8,12 @@ namespace WP_NAMESPACE {
 namespace application {
 namespace resourcesystem {
 using namespace std;
-using namespace utils;
 
 ImageSetDefaultDefinitionFactory::ImageSetDefaultDefinitionFactory()
     : ImageSetResourceDefinitionFactory("") {
 }
 
-void ImageSetDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, utils::XmlNode* node) {
+void ImageSetDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, DataNode* node) {
   WP_UNUSED(resourceMgr);
 
   auto imageSetRes = static_cast<ImageSetResource*>(resource);
@@ -26,7 +24,7 @@ void ImageSetDefaultDefinitionFactory::create(Resource* resource, ResourceManage
   auto imageNode = imagesNode->getOptionalChild("Image");
   if (imageNode) {
     do {
-      string imageName = imageNode->getAttribute("name");
+      string imageName = imageNode->getProperty("name");
       if (imageSetRes->hasImageDefinition(imageName)) {
         throw ResourceException(imageSetRes, "image with the name '" + imageName + "' specified multiple times.");
       }
@@ -39,7 +37,7 @@ void ImageSetDefaultDefinitionFactory::create(Resource* resource, ResourceManage
   imageNode = imagesNode->getOptionalChild("ImageSet");
   if (imageNode) {
     do {
-      string imageSetName = imageNode->getAttribute("name");
+      string imageSetName = imageNode->getProperty("name");
       if (imageSetRes->hasImageDefinitionSet(imageSetName)) {
         throw ResourceException(imageSetRes, "imageset with the name '" + imageSetName + "' specified multiple times.");
       }
@@ -47,9 +45,9 @@ void ImageSetDefaultDefinitionFactory::create(Resource* resource, ResourceManage
       auto baseDef = createImageDefinition(imageSetRes, imageSetName, imageNode);
 
       // Calculate set details
-      uint32_t count = StringUtils::parseUInt(imageNode->getAttribute("count"));
-      int32_t dx = StringUtils::parseInt(imageNode->getAttribute("dx"));
-      int32_t dy = StringUtils::parseInt(imageNode->getAttribute("dy"));
+      uint32_t count = StringUtils::parseUInt(imageNode->getProperty("count"));
+      int32_t dx = StringUtils::parseInt(imageNode->getProperty("dx"));
+      int32_t dy = StringUtils::parseInt(imageNode->getProperty("dy"));
 
       vector<ImageSetResource::ImageDefinition> imageDefs;
 

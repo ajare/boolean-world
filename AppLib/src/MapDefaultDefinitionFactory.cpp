@@ -20,7 +20,7 @@ MapDefaultDefinitionFactory::MapDefaultDefinitionFactory()
                                    new PolygonVertexAttributeFactory) {
 }
 
-void MapDefaultDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) {
+void MapDefaultDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, wp::DataNode* node) {
   auto mapRes = static_cast<Map*>(resource);
 
   // Create mesh
@@ -28,7 +28,7 @@ void MapDefaultDefinitionFactory::create(application::resourcesystem::Resource* 
 
   // Load from code, or wherver
   auto sourceNode = node->getChild("Source");
-  auto sourceType = sourceNode->getAttribute("type");
+  auto sourceType = sourceNode->getProperty("type");
 
   if (sourceType == "code") {
     auto funcName = sourceNode->getValue();
