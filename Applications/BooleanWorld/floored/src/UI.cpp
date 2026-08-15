@@ -229,37 +229,37 @@ void renderSelectedObjectView(floored::Document* doc, floored::Settings& setting
 }
 
 void handleShortcuts(Document* doc, Settings& settings) {
-  if (ImGui::Shortcut(ImGuiKey_O | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_O | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       openWorld(doc);
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F2, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F2, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       settings.renderPrimitives = !settings.renderPrimitives;
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F3, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F3, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       settings.renderPrimitiveBounds = !settings.renderPrimitiveBounds;
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F4, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F4, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       settings.renderPrimitiveDebug = !settings.renderPrimitiveDebug;
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F6, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F6, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       settings.renderGraphVertices = !settings.renderGraphVertices;
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F7, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F7, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       settings.renderFaces = !settings.renderFaces;
     }

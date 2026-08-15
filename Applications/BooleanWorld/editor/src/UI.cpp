@@ -3082,7 +3082,7 @@ void renderCombinedPanel(editor::Document* doc, editor::Settings& settings, bw::
 }
 
 void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
-  if (ImGui::Shortcut(ImGuiKey_N | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_N | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       handleModifiedDocument(doc, true, true, "New world", newDocument);
     }
@@ -3090,7 +3090,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   checkModifiedOperation(doc, "New world", newDocument);
 
-  if (ImGui::Shortcut(ImGuiKey_O | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_O | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       handleModifiedDocument(doc, true, true, "Open world", openDocument);
     }
@@ -3098,7 +3098,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   checkModifiedOperation(doc, "Open world", openDocument);
 
-  if (ImGui::Shortcut(ImGuiKey_S | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_S | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       handleModifiedDocument(doc, true, false, "Save world", saveDocument);
     }
@@ -3106,7 +3106,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   checkModifiedOperation(doc, "Save world", saveDocument);
 
-  if (ImGui::Shortcut(ImGuiKey_Y | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_Y | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (canRedo()) {
         redo(doc);
@@ -3114,7 +3114,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_Z | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_Z | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (canUndo()) {
         undo(doc);
@@ -3122,7 +3122,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (doc->hasSelection() && !doc->getSelectedPrimitiveIndices().empty()) {
         auto const& indices = doc->getSelectedPrimitiveIndices();
@@ -3133,7 +3133,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_Delete, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_Delete, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (doc->hasSelection()) {
         auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
@@ -3152,7 +3152,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_LeftBracket | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_LeftBracket | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (doc->hasSelection() && !doc->getSelectedPrimitiveIndices().empty()) {
         auto const& indices = doc->getSelectedPrimitiveIndices();
@@ -3164,7 +3164,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_RightBracket | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_RightBracket | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (doc->hasSelection() && !doc->getSelectedPrimitiveIndices().empty()) {
         auto const& indices = doc->getSelectedPrimitiveIndices();
@@ -3176,45 +3176,45 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_B | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_B | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       auto const& indices = doc->getSelectedPrimitiveIndices();
       transactUndoableAction(doc, format("Bake {} Primitive(s)", indices.size()), bind(bakePrimitives, placeholders::_1, indices));
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_G, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_G, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       settings.showGrid = !settings.showGrid;
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_H, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_H, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       goHome(nullptr);
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_M, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_M, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       settings.renderMiniMap = !settings.renderMiniMap;
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Ctrl, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive()) {
       settings.ghostActive = !settings.ghostActive;
       enableGhost(doc, settings.ghostActive);
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Shift, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Shift, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive()) {
       selectAndHomeGhost(doc);
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_Z, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_Z, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       auto const& selected = doc->getSelectedPrimitiveIndices();
 
@@ -3224,63 +3224,63 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_P, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_P, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       doc->getWorld()->generateClipping(bw::core::WorldDataGenerator::NarrowPhaseCulling::None, true);
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_P | ImGuiMod_Shift, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_P | ImGuiMod_Shift, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive()) {
       doc->getWorld()->generateClipping(bw::core::WorldDataGenerator::NarrowPhaseCulling::Cone, true);
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F1, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F1, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       ImGui::OpenPopup("Help");
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F3, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F3, 0, ImGuiInputFlags_RouteGlobal)) {
     settings.renderPlayerView = !settings.renderPlayerView;
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F4, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F4, 0, ImGuiInputFlags_RouteGlobal)) {
     settings.renderPrimitiveBorders = !settings.renderPrimitiveBorders;
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F5, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F5, 0, ImGuiInputFlags_RouteGlobal)) {
     settings.renderPrimitiveBounds = !settings.renderPrimitiveBounds;
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F6, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F6, 0, ImGuiInputFlags_RouteGlobal)) {
     settings.renderInfluenceEyes = !settings.renderInfluenceEyes;
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F7, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F7, 0, ImGuiInputFlags_RouteGlobal)) {
     settings.renderTriggerLines = !settings.renderTriggerLines;
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F8, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F8, 0, ImGuiInputFlags_RouteGlobal)) {
     settings.renderClippedVertices = !settings.renderClippedVertices;
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F10, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F10, 0, ImGuiInputFlags_RouteGlobal)) {
     settings.showContextSensitiveHelpPanel = !settings.showContextSensitiveHelpPanel;
   }
 
-  if (ImGui::Shortcut(ImGuiKey_F11, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_F11, 0, ImGuiInputFlags_RouteGlobal)) {
     settings.expertMode = !settings.expertMode;
   }
 
-  if (ImGui::Shortcut(ImGuiKey_R, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_R, 0, ImGuiInputFlags_RouteGlobal)) {
     if (doc->getWorld()) {
       resetAnimatorCaptures(doc);
     }
   }
 
-  if (ImGui::Shortcut(ImGuiKey_C, 0, ImGuiInputFlags_RouteGlobalLow)) {
+  if (ImGui::Shortcut(ImGuiKey_C, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       transactUndoableAction(doc, format("Create {} Primitive", doc->getGhost()->getType()), createPrimitiveFromGhost);
       generateClipping(doc, settings, ED_CLIP_ON_PRIM_CREATE_DELETE);
@@ -3296,14 +3296,14 @@ void handleMouseInteraction(editor::Document* doc, editor::Settings& settings) {
       doc->setPlayerProxyPosition(worldPos);
 
       auto angle = doc->getPlayerProxyAngle();
-      if (ImGui::GetIO().KeysDown[ImGuiKey_Q]) {
+      if (ImGui::IsKeyDown(ImGuiKey_Q)) {
         angle -= 1.0f;
         if (angle < 0.0f) {
           angle += 360.0f;
         }
         doc->setPlayerProxyAngle(angle);
       }
-      if (ImGui::GetIO().KeysDown[ImGuiKey_W]) {
+      if (ImGui::IsKeyDown(ImGuiKey_W)) {
         angle += 1.0f;
         if (angle >= 360.0f) {
           angle -= 360.0f;

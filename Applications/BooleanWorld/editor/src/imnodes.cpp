@@ -11,6 +11,12 @@
 #include "imnodes.h"
 #include "imnodes_internal.h"
 
+// ImGui obsoleted IM_OFFSETOF in 1.90 in favour of the C++11 standard
+// offsetof. imnodes still uses the macro.
+#ifndef IM_OFFSETOF
+#define IM_OFFSETOF(_TYPE, _MEMBER) offsetof(_TYPE, _MEMBER)
+#endif
+
 #include <imgui_internal.h>
 
 // Check minimum ImGui version
@@ -355,7 +361,7 @@ void ImDrawListGrowChannels(ImDrawList* draw_list, const int num_channels)
         {
             ImDrawCmd draw_cmd;
             draw_cmd.ClipRect = draw_list->_ClipRectStack.back();
-            draw_cmd.TextureId = draw_list->_TextureIdStack.back();
+            draw_cmd.TexRef = draw_list->_TextureStack.back();
             channel._CmdBuffer.push_back(draw_cmd);
         }
     }

@@ -13,11 +13,10 @@ add_executable(floored WIN32
     src/imgui_demo.cpp
     src/imgui_draw.cpp
     src/imgui_impl_opengl3.cpp
-    src/imgui_impl_sdl2.cpp
+    src/imgui_impl_sdl3.cpp
     src/imgui_tables.cpp
     src/imgui_widgets.cpp
     src/implot.cpp
-    src/implot_demo.cpp
     src/implot_items.cpp)
 
 target_include_directories(floored PRIVATE include)
@@ -29,7 +28,7 @@ target_compile_definitions(floored PRIVATE YAML_CPP_STATIC_DEFINE USINGZ)
 target_link_libraries(floored PRIVATE
     core
     vendor::opengl ext::glew vendor::spdlog vendor::nfd
-    ext::yaml-cpp vendor::sdl2 vendor::sdl2main)
+    ext::yaml-cpp ext::sdl3)
 
 target_compile_features(floored PRIVATE cxx_std_23)
 target_compile_options(floored PRIVATE /W3)

@@ -22,11 +22,14 @@
 #include <fmod/core/fmod_errors.h>
 #pragma warning(pop)
 
-#include <SDL/SDL.h>
+#include <SDL3/SDL.h>
+// SDL2main is gone in SDL3. These stay WIN32 (subsystem:windows) apps, so
+// SDL_main.h supplies the WinMain shim that forwards to main().
+#include <SDL3/SDL_main.h>
 #if defined(IMGUI_IMPL_OPENGL_ES2)
-#include <SDL/SDL_opengles2.h>
+#include <SDL3/SDL_opengles2.h>
 #else
-#include <SDL/SDL_opengl.h>
+#include <SDL3/SDL_opengl.h>
 #endif
 
 #include <core/WorldData.h>
@@ -37,7 +40,7 @@
 
 #include "imgui.h"
 #include "imgui_internal.h"
-#include "imgui_impl_sdl2.h"
+#include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
 #include "implot.h"
 #include "IconsFontAwesome5.h"
@@ -61,7 +64,7 @@ SDL_GLContext gContext;
 static floored::Settings gSettings;
 
 SDL_Window* createWindow() {
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0) {
+  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
     printf("Error: %s\n", SDL_GetError());
     return nullptr;
   }
@@ -73,16 +76,13 @@ SDL_Window* createWindow() {
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 
   // From 2.0.18: Enable native IME.
-#ifdef SDL_HINT_IME_SHOW_UI
-  SDL_SetHint(SDL_HINT_IME_SHOW_UI, "1");
-#endif
 
   // Create window with graphics context
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
   SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
   SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-  SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-  SDL_Window* window = SDL_CreateWindow("Editor", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, FE_WINDOW_WIDTH, FE_WINDOW_HEIGHT, window_flags);
+  SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+  SDL_Window* window = SDL_CreateWindow("Editor", FE_WINDOW_WIDTH, FE_WINDOW_HEIGHT, window_flags);
 
   gLogger->info("Window created");
 
@@ -109,7 +109,7 @@ void setupImGui(SDL_Window* window, SDL_GLContext context) {
   // ImGui::StyleColorsLight();
 
   // Setup Platform/Renderer backends
-  ImGui_ImplSDL2_InitForOpenGL(window, context);
+  ImGui_ImplSDL3_InitForOpenGL(window, context);
 
   const char* glsl_version = "#version 130";
   ImGui_ImplOpenGL3_Init(glsl_version);
@@ -205,12 +205,12 @@ void shutdown() {
 
   // ImGui
   ImGui_ImplOpenGL3_Shutdown();
-  ImGui_ImplSDL2_Shutdown();
+  ImGui_ImplSDL3_Shutdown();
   ImPlot::DestroyContext();
   ImGui::DestroyContext();
 
   // Platform
-  SDL_GL_DeleteContext(gContext);
+  SDL_GL_DestroyContext(gContext);
   SDL_DestroyWindow(gWindow);
   SDL_Quit();
 
@@ -229,11 +229,11 @@ bool processEvents(SDL_Window* window) {
   bool done = false;
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
-    ImGui_ImplSDL2_ProcessEvent(&event);
-    if (event.type == SDL_QUIT) {
+    ImGui_ImplSDL3_ProcessEvent(&event);
+    if (event.type == SDL_EVENT_QUIT) {
       done = true;
     }
-    if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window)) {
+    if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(window)) {
       done = true;
     }
   }
@@ -343,7 +343,7 @@ void run() {
 
     // Start the Dear ImGui frame
     ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplSDL2_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
 
     ImGui::NewFrame();
 

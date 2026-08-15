@@ -23,7 +23,7 @@ void linkCallback(ImGui::MarkdownLinkCallbackData data) {
 
 inline ImGui::MarkdownImageData imageCallback(ImGui::MarkdownLinkCallbackData data) {
   // In your application you would load an image based on data input. Here we just use the imgui font texture.
-  ImTextureID image = ImGui::GetIO().Fonts->TexID;
+  ImTextureID image = ImGui::GetIO().Fonts->TexRef.GetTexID();
   // > C++14 can use ImGui::MarkdownImageData imageData{ true, false, image, ImVec2( 40.0f, 20.0f ) };
   ImGui::MarkdownImageData imageData;
   imageData.isValid = true;

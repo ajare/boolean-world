@@ -137,7 +137,7 @@ namespace ImGui
         float gridY = 10;
 
         const ImGuiID id = window->GetID(label);
-        hovered |= ItemHoverable(ImRect(bb.Min, bb.Max), id);
+        hovered |= ItemHoverable(ImRect(bb.Min, bb.Max), id, ImGuiItemFlags_None);
 
         RenderFrame(bb.Min, bb.Max, GetColorU32(ImGuiCol_FrameBg, 1), true, Style.FrameRounding);
 

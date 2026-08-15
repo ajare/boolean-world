@@ -15,12 +15,11 @@ add_executable(editor WIN32
     src/imgui_demo.cpp
     src/imgui_draw.cpp
     src/imgui_impl_opengl3.cpp
-    src/imgui_impl_sdl2.cpp
+    src/imgui_impl_sdl3.cpp
     src/imgui_tables.cpp
     src/imgui_widgets.cpp
     src/imnodes.cpp
     src/implot.cpp
-    src/implot_demo.cpp
     src/implot_items.cpp)
 
 target_include_directories(editor PRIVATE include)
@@ -32,7 +31,7 @@ target_compile_definitions(editor PRIVATE YAML_CPP_STATIC_DEFINE)
 target_link_libraries(editor PRIVATE
     core
     vendor::opengl ext::glew vendor::spdlog vendor::nfd
-    ext::yaml-cpp vendor::sdl2 vendor::sdl2main)
+    ext::yaml-cpp ext::sdl3)
 
 target_compile_features(editor PRIVATE cxx_std_20)
 target_compile_options(editor PRIVATE /W3)
