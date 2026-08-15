@@ -52,7 +52,7 @@ target_compile_definitions(AppLib PRIVATE
 
 target_link_libraries(AppLib PUBLIC
     Willpower.Application Willpower.Common Willpower.Collide
-    Willpower.Firepower Willpower.Geometry Willpower.Serialization WillPower.Viz
+    Willpower.Firepower Willpower.Geometry WillPower.Viz
     ext::mpp ext::mpp-mesh ext::mpp-helper ext::Utils
     vendor::headers)
 

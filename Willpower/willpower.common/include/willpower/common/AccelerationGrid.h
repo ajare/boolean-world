@@ -9,91 +9,99 @@
 #include "willpower/common/BoundingBox.h"
 #include "willpower/common/BoundingCircle.h"
 
-namespace WP_NAMESPACE {
+namespace WP_NAMESPACE
+{
 
-/*
-Use when you need a grid with no restrictions (ie on number of cells,
-or or maximum size of objects).
-*/
-class WP_COMMON_API AccelerationGrid {
-public:
-  typedef std::set<uint32_t> IndexCollection;
+	/*
+	Use when you need a grid with no restrictions (ie on number of cells,
+	or or maximum size of objects).
+	*/
+	class WP_COMMON_API AccelerationGrid
+	{
+	public:
 
-private:
-  // Map index to a set of cell indices that it is in.
-  std::map<uint32_t, IndexCollection> mIndicesToCells;
+		typedef std::set<uint32_t> IndexCollection;
 
-protected:
-  Vector2 mOffset;
+	private:
 
-  Vector2 mSize;
+		// Map index to a set of cell indices that it is in.
+		std::map<uint32_t, IndexCollection> mIndicesToCells;
 
-  int mCellDimX, mCellDimY;
+	protected:
 
-  std::vector<IndexCollection> mCells;
+		Vector2 mOffset;
 
-  int mMoveCount;
+		Vector2 mSize;
 
-private:
-  // Helper functions
-  IndexCollection& getCellItems(int x, int y);
+		int mCellDimX, mCellDimY;
 
-  IndexCollection getItemsInArea(Vector2 const& minExtent, Vector2 const& maxExtent) const;
+		std::vector<IndexCollection> mCells;
 
-  bool cellHasItem(IndexCollection const& cell, uint32_t index) const;
+		int mMoveCount;
 
-  void addItemToCell(IndexCollection& cell, uint32_t index);
+	private:
 
-  void removeItemFromCell(IndexCollection& cell, uint32_t index);
+		// Helper functions
+		IndexCollection& getCellItems(int x, int y);
 
-public:
-  AccelerationGrid(Vector2 const& offset, Vector2 const& size, int cellDimX, int cellDimY, float padding = 0.001f);
+		IndexCollection getItemsInArea(Vector2 const& minExtent, Vector2 const& maxExtent) const;
 
-  AccelerationGrid(float x, float y, float sizeX, float sizeY, int cellDimX, int cellDimY, float padding = 0.001f);
+		bool cellHasItem(IndexCollection const& cell, uint32_t index) const;
 
-  Vector2 const& getOffset() const;
+		void addItemToCell(IndexCollection& cell, uint32_t index);
 
-  Vector2 const& getSize() const;
+		void removeItemFromCell(IndexCollection& cell, uint32_t index);
 
-  int getCellDimensionX() const;
+	public:
 
-  int getCellDimensionY() const;
+		AccelerationGrid(Vector2 const& offset, Vector2 const& size, int cellDimX, int cellDimY, float padding = 0.001f);
 
-  Vector2 getCellSize() const;
+		AccelerationGrid(float x, float y, float sizeX, float sizeY, int cellDimX, int cellDimY, float padding = 0.001f);
 
-  void clear();
+		Vector2 const& getOffset() const;
 
-  IndexCollection const& _getCellItems(int x, int y) const;
+		Vector2 const& getSize() const;
 
-  void addItem(uint32_t index, BoundingBox const& box);
+		int getCellDimensionX() const;
 
-  void removeItem(uint32_t index);
+		int getCellDimensionY() const;
 
-  void removeAllItems();
+		Vector2 getCellSize() const;
 
-  void moveItem(uint32_t index, BoundingBox const& newBox);
+		void clear();
 
-  int getMoveCount() const;
+		IndexCollection const& _getCellItems(int x, int y) const;
 
-  void resetMoveCount();
+		void addItem(uint32_t index, BoundingBox const& box);
 
-  int getCount(int cellX, int cellY) const;
+		void removeItem(uint32_t index);
 
-  void getContainingCell(bool checkBounds, float x, float y, int& cellX, int& cellY) const;
+		void removeAllItems();
 
-  void getCellExtents(int cellX, int cellY, Vector2& minExtent, Vector2& maxExtent);
+		void moveItem(uint32_t index, BoundingBox const& newBox);
 
-  template <typename A>
-  IndexCollection getCandidateItemsInBoundingArea(A const& area) const {
-    Vector2 minExtent, maxExtent;
-    area.getExtents(minExtent, maxExtent);
+		int getMoveCount() const;
 
-    return getItemsInArea(minExtent, maxExtent);
-  }
+		void resetMoveCount();
 
-  IndexCollection _getItemsInCellRange(int x0, int y0, int x1, int y1) const;
+		int getCount(int cellX, int cellY) const;
 
-  IndexCollection const& _getItemCellIndices(uint32_t index) const;
-};
+		void getContainingCell(bool checkBounds, float x, float y, int& cellX, int& cellY) const;
 
-}  // namespace WP_NAMESPACE
+		void getCellExtents(int cellX, int cellY, Vector2& minExtent, Vector2& maxExtent);
+
+		template<typename A>
+		IndexCollection getCandidateItemsInBoundingArea(A const& area) const
+		{
+			Vector2 minExtent, maxExtent;
+			area.getExtents(minExtent, maxExtent);
+
+			return getItemsInArea(minExtent, maxExtent);
+		}
+
+		IndexCollection _getItemsInCellRange(int x0, int y0, int x1, int y1) const;
+
+		IndexCollection const& _getItemCellIndices(uint32_t index) const;
+	};
+
+} // WP_NAMESPACE

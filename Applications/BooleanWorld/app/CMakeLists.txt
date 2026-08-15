@@ -46,7 +46,7 @@ target_compile_definitions(BooleanWorld PRIVATE YAML_CPP_STATIC_DEFINE)
 target_link_libraries(BooleanWorld PRIVATE
     core AppLib
     Willpower.Application Willpower.Collide Willpower.Common
-    Willpower.Serialization WillPower.Viz
+    WillPower.Viz
     ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils
     ext::yaml-cpp)
 

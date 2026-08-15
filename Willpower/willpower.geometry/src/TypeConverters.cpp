@@ -3,83 +3,99 @@
 
 #include "willpower/geometry/TypeConverters.h"
 
-namespace WP_NAMESPACE {
-namespace geometry {
-using namespace std;
+namespace WP_NAMESPACE
+{
+	namespace geometry
+	{
+		using namespace std;
 
-DirectedEdgeList toDirectedEdgeList(DirectedEdgeVector const& edges) {
-  DirectedEdgeList result;
+		DirectedEdgeList toDirectedEdgeList(DirectedEdgeVector const& edges)
+		{
+			DirectedEdgeList result;
+			
+			copy(edges.begin(), edges.end(), back_inserter(result));
+			return result;
+		}
 
-  copy(edges.begin(), edges.end(), back_inserter(result));
-  return result;
-}
+		DirectedEdgeVector toDirectedEdgeVector(DirectedEdgeList const& edges)
+		{
+			DirectedEdgeVector result;
 
-DirectedEdgeVector toDirectedEdgeVector(DirectedEdgeList const& edges) {
-  DirectedEdgeVector result;
+			copy(edges.begin(), edges.end(), back_inserter(result));
+			return result;
+		}
 
-  copy(edges.begin(), edges.end(), back_inserter(result));
-  return result;
-}
+		IndexList toIndexList(DirectedEdgeVector const& edges)
+		{
+			IndexList result;
+			
+			for (auto const& edge: edges)
+			{
+				result.push_back(edge.index);
+			}
 
-IndexList toIndexList(DirectedEdgeVector const& edges) {
-  IndexList result;
+			return result;
+		}
 
-  for (auto const& edge : edges) {
-    result.push_back(edge.index);
-  }
+		IndexList toIndexList(DirectedEdgeList const& edges)
+		{
+			IndexList result;
 
-  return result;
-}
+			for (auto const& edge: edges)
+			{
+				result.push_back(edge.index);
+			}
 
-IndexList toIndexList(DirectedEdgeList const& edges) {
-  IndexList result;
+			return result;
+		}
 
-  for (auto const& edge : edges) {
-    result.push_back(edge.index);
-  }
+		IndexVector toIndexVector(DirectedEdgeVector const& edges)
+		{
+			IndexVector result;
 
-  return result;
-}
+			for (auto const& edge: edges)
+			{
+				result.push_back(edge.index);
+			}
 
-IndexVector toIndexVector(DirectedEdgeVector const& edges) {
-  IndexVector result;
+			return result;
+		}
 
-  for (auto const& edge : edges) {
-    result.push_back(edge.index);
-  }
+		IndexVector toIndexVector(DirectedEdgeList const& edges)
+		{
+			IndexVector result;
 
-  return result;
-}
+			for (auto const& edge: edges)
+			{
+				result.push_back(edge.index);
+			}
 
-IndexVector toIndexVector(DirectedEdgeList const& edges) {
-  IndexVector result;
+			return result;
+		}
 
-  for (auto const& edge : edges) {
-    result.push_back(edge.index);
-  }
+		IndexSet toIndexSet(DirectedEdgeVector const& edges)
+		{
+			IndexSet result;
 
-  return result;
-}
+			for (auto const& edge: edges)
+			{
+				result.insert(edge.index);
+			}
 
-IndexSet toIndexSet(DirectedEdgeVector const& edges) {
-  IndexSet result;
+			return result;
+		}
 
-  for (auto const& edge : edges) {
-    result.insert(edge.index);
-  }
+		IndexSet toIndexSet(DirectedEdgeList const& edges)
+		{
+			IndexSet result;
 
-  return result;
-}
+			for (auto const& edge: edges)
+			{
+				result.insert(edge.index);
+			}
 
-IndexSet toIndexSet(DirectedEdgeList const& edges) {
-  IndexSet result;
+			return result;
+		}
 
-  for (auto const& edge : edges) {
-    result.insert(edge.index);
-  }
-
-  return result;
-}
-
-}  // namespace geometry
-}  // namespace WP_NAMESPACE
+	} // geometry
+} //WP_NAMESPACE

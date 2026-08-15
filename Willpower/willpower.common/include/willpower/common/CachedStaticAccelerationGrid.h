@@ -13,80 +13,89 @@
 #include "willpower/common/BoundingCircle.h"
 #include "willpower/common/Renderable.h"
 
-namespace WP_NAMESPACE {
+namespace WP_NAMESPACE
+{
 
-/*
-Use when the items in the grid are static.
-*/
-class WP_COMMON_API CachedStaticAccelerationGrid : public Renderable {
-public:
-  typedef std::set<uint32_t> IndexCollection;
+	/*
+	Use when the items in the grid are static.
+	*/
+	class WP_COMMON_API CachedStaticAccelerationGrid : public Renderable
+	{
+	public:
 
-  typedef std::function<bool(Vector2 const&, Vector2 const&)> NarrowPhaseFunction;
+		typedef std::set<uint32_t> IndexCollection;
 
-private:
-  mutable std::vector<uint32_t> mCache;
+		typedef std::function<bool(Vector2 const&, Vector2 const&)> NarrowPhaseFunction;
 
-  // OPTIMISE:
-  // Depending on grid size and item count, could use a vector<uint64_t> or
-  // even a bitfield.
-  // mutable std::map<uint64_t, uint64_t> mCacheEntries;
-  mutable std::vector<uint64_t> mCacheEntries;
+	private:
 
-  int mDimBitsX, mDimBitsY;
+		mutable std::vector<uint32_t> mCache;
 
-  mutable uint64_t mCacheEnd;
-  mutable int mCacheHits, mCacheMisses;
+		// OPTIMISE:
+		// Depending on grid size and item count, could use a vector<uint64_t> or
+		// even a bitfield.
+		//mutable std::map<uint64_t, uint64_t> mCacheEntries;
+		mutable std::vector<uint64_t> mCacheEntries;
 
-protected:
-  Vector2 mOffset;
+		int mDimBitsX, mDimBitsY;
 
-  Vector2 mSize, mCellSize;
+		mutable uint64_t mCacheEnd;
+		mutable int mCacheHits, mCacheMisses;
 
-  int mCellDimX, mCellDimY;
+	protected:
 
-  std::vector<IndexCollection> mCells;
+		Vector2 mOffset;
 
-protected:
-  static NarrowPhaseFunction PassThrough;
+		Vector2 mSize, mCellSize;
 
-private:
-  uint64_t getCacheHash(Vector2 const& minExtent, Vector2 const& maxExtent) const;
+		int mCellDimX, mCellDimY;
 
-  uint64_t getCacheHash(uint64_t x0, uint64_t y0, uint64_t x1, uint64_t y1) const;
+		std::vector<IndexCollection> mCells;
 
-  uint32_t const* getItemsInArea(Vector2 const& minExtent, Vector2 const& maxExtent, uint32_t const** end) const;
+	protected:
 
-public:
-  CachedStaticAccelerationGrid(Vector2 const& offset, Vector2 const& size, int cellDimX, int cellDimY, int initialCount);
+		static NarrowPhaseFunction PassThrough;
 
-  CachedStaticAccelerationGrid(float x, float y, float sizeX, float sizeY, int cellDimX, int cellDimY, int initialCount);
+	private:
 
-  Vector2 const& getOffset() const;
+		uint64_t getCacheHash(Vector2 const& minExtent, Vector2 const& maxExtent) const;
 
-  Vector2 const& getSize() const;
+		uint64_t getCacheHash(uint64_t x0, uint64_t y0, uint64_t x1, uint64_t y1) const;
 
-  int getCellDimensionX() const;
+		uint32_t const* getItemsInArea(Vector2 const& minExtent, Vector2 const& maxExtent, uint32_t const** end) const;
 
-  int getCellDimensionY() const;
+	public:
 
-  Vector2 const& getCellSize() const;
+		CachedStaticAccelerationGrid(Vector2 const& offset, Vector2 const& size, int cellDimX, int cellDimY, int initialCount);
 
-  void clearCache();
+		CachedStaticAccelerationGrid(float x, float y, float sizeX, float sizeY, int cellDimX, int cellDimY, int initialCount);
 
-  int getCacheHits() const;
+		Vector2 const& getOffset() const;
 
-  int getCacheMisses() const;
+		Vector2 const& getSize() const;
 
-  uint32_t const* getCandidateItemsInBoundingArea(BoundingCircle const& area, uint32_t const** end) const;
+		int getCellDimensionX() const;
 
-  uint32_t const* getCandidateItemsInBoundingArea(BoundingBox const& area, uint32_t const** end) const;
+		int getCellDimensionY() const;
 
-  uint32_t const* _getItemsInCellRange(int x0, int y0, int x1, int y1, uint32_t const** end) const;
+		Vector2 const& getCellSize() const;
 
-  virtual void addItem(uint32_t itemId, Vector2 const& minExtent, Vector2 const& maxExtent, NarrowPhaseFunction narrowFn = PassThrough);
+		void clearCache();
 
-  void addItem(uint32_t itemId, BoundingBox const& bounds, NarrowPhaseFunction narrowFn = PassThrough);
-};
+		int getCacheHits() const;
 
-}  // namespace WP_NAMESPACE
+		int getCacheMisses() const;
+
+		uint32_t const* getCandidateItemsInBoundingArea(BoundingCircle const& area, uint32_t const** end) const;
+
+		uint32_t const* getCandidateItemsInBoundingArea(BoundingBox const& area, uint32_t const** end) const;
+
+		uint32_t const* _getItemsInCellRange(int x0, int y0, int x1, int y1, uint32_t const** end) const;
+
+		virtual void addItem(uint32_t itemId, Vector2 const& minExtent, Vector2 const& maxExtent, NarrowPhaseFunction narrowFn = PassThrough);
+
+		void addItem(uint32_t itemId, BoundingBox const& bounds, NarrowPhaseFunction narrowFn = PassThrough);
+
+	};
+
+} // WP_NAMESPACE

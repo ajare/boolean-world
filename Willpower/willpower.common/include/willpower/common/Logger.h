@@ -5,43 +5,49 @@
 
 #include "willpower/common/Platform.h"
 
-namespace WP_NAMESPACE {
+namespace WP_NAMESPACE
+{
 
-class WP_COMMON_API Logger {
-  enum MessageLevel {
-    Debug,
-    Warning,
-    Error,
-    Fatal,
-    Info
-  };
+	class WP_COMMON_API Logger
+	{
+		enum MessageLevel
+		{
+			Debug,
+			Warning,
+			Error,
+			Fatal,
+			Info
+		};
 
-private:
-  std::ofstream mLog;
+	private:
 
-  std::string mFileName;
+		std::ofstream mLog;
 
-  int mIgnoreLevel;
+		std::string mFileName;
 
-private:
-  void message(std::string const& msg, MessageLevel level = MessageLevel::Info);
+		int mIgnoreLevel;
 
-public:
-  Logger();
+	private:
 
-  ~Logger();
+		void message(std::string const& msg, MessageLevel level = MessageLevel::Info);
 
-  bool open(std::string const& filename);
+	public:
 
-  void debug(std::string const& msg);
+		Logger();
 
-  void info(std::string const& msg);
+		~Logger();
 
-  void warn(std::string const& msg);
+		bool open(std::string const& filename);
 
-  void error(std::string const& msg);
+		void debug(std::string const& msg);
+		
+		void info(std::string const& msg);
 
-  void fatal(std::string const& msg);
-};
+		void warn(std::string const& msg);
 
-}  // namespace WP_NAMESPACE
+		void error(std::string const& msg);
+
+		void fatal(std::string const& msg);
+	};
+
+} // WP_NAMESPACE

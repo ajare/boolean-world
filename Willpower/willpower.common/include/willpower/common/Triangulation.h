@@ -5,30 +5,34 @@
 #include "willpower/common/Platform.h"
 #include "willpower/common/Vector2.h"
 
-namespace WP_NAMESPACE {
+namespace WP_NAMESPACE
+{
 
-class WP_COMMON_API Triangulation {
-  std::vector<Vector2> mVertices;
+	class WP_COMMON_API Triangulation
+	{
+		std::vector<Vector2> mVertices;
 
-private:
-  void copyFrom(Triangulation const& other);
+	private:
 
-  void clear();
+		void copyFrom(Triangulation const& other);
 
-public:
-  Triangulation();
+		void clear();
 
-  Triangulation(Triangulation const& other);
+	public:
 
-  Triangulation& operator=(Triangulation const& other);
+		Triangulation();
 
-  void addTriangle(Vector2 const& v0, Vector2 const& v1, Vector2 const& v2);
+		Triangulation(Triangulation const& other);
 
-  uint32_t getNumTriangles() const;
+		Triangulation& operator=(Triangulation const& other);
+		
+		void addTriangle(Vector2 const& v0, Vector2 const& v1, Vector2 const& v2);
 
-  void getTriangle(uint32_t index, Vector2& v0, Vector2& v1, Vector2& v2) const;
+		uint32_t getNumTriangles() const;
 
-  bool intersects(Triangulation const& other) const;
-};
+		void getTriangle(uint32_t index, Vector2& v0, Vector2& v1, Vector2& v2) const;
 
-}  // namespace WP_NAMESPACE
+		bool intersects(Triangulation const& other) const;
+	};
+
+} // WP_NAMESPACE

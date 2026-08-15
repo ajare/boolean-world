@@ -7,34 +7,39 @@
 #include "willpower/common/BoundingBox.h"
 #include "willpower/common/Renderable.h"
 
-namespace WP_NAMESPACE {
+namespace WP_NAMESPACE
+{
 
-class WP_COMMON_API SplinePath : public Renderable {
-protected:
-  std::vector<Vector2> mPoints;
+	class WP_COMMON_API SplinePath : public Renderable
+	{
+	protected:
 
-public:
-  SplinePath();
+		std::vector<Vector2> mPoints;
 
-  explicit SplinePath(std::vector<Vector2> const& points);
+	public:
 
-  virtual std::vector<Vector2> divide(bool adaptive, float scale = 1.0f) const;
+		SplinePath();
 
-  int getNumControlPoints() const;
+		explicit SplinePath(std::vector<Vector2> const& points);
 
-  Vector2 const& getControlPoint(int index) const;
+		virtual std::vector<Vector2> divide(bool adaptive, float scale = 1.0f) const;
 
-  virtual void setControlPoint(int index, Vector2 const& position);
+		int getNumControlPoints() const;
 
-  virtual Vector2 getPosition(float distance) const = 0;
+		Vector2 const& getControlPoint(int index) const;
 
-  virtual Vector2 getDirection(float distance) const = 0;
+		virtual void setControlPoint(int index, Vector2 const& position);
 
-  virtual Vector2 getAcceleration(float distance) const = 0;
+		virtual Vector2 getPosition(float distance) const = 0;
 
-  virtual float getLength() const = 0;
+		virtual Vector2 getDirection(float distance) const = 0;
 
-  virtual BoundingBox getBounds() const;
-};
+		virtual Vector2 getAcceleration(float distance) const = 0;
 
-}  // namespace WP_NAMESPACE
+		virtual float getLength() const = 0;
+
+		virtual BoundingBox getBounds() const;
+	};
+
+} // WP_NAMESPACE
+

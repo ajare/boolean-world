@@ -17,116 +17,130 @@
 #include "willpower/geometry/Exception.h"
 #include "willpower/geometry/Types.h"
 
-namespace WP_NAMESPACE {
-namespace geometry {
+namespace WP_NAMESPACE
+{
+	namespace geometry
+	{
 
-class Mesh;
+		class Mesh;
 
-class WP_GEOMETRY_API Polygon : public DirectedEdgeLoop {
-  friend class Mesh;
-  friend class MeshOperations;
-  friend class SerializerMeshChunk;
+		class WP_GEOMETRY_API Polygon : public DirectedEdgeLoop
+		{
+			friend class Mesh;
+			friend class MeshOperations;
+			friend class SerializerMeshChunk;
 
-private:
-  class Triangulation {
-    typedef std::array<float, 2> Point;
+		private:
 
-  public:
-    enum Options {
-      NoCospatialVertices = 1,
-      NoCollinearVertices = 2
+			class Triangulation
+			{
+				typedef std::array<float, 2> Point;
 
-    };
+			public:
 
-  private:
-    std::vector<uint32_t> mIndices;
+				enum Options
+				{
+					NoCospatialVertices = 1,
+					NoCollinearVertices = 2
 
-  private:
-    void copyFrom(Triangulation const& other);
+				};
 
-    std::vector<Point> preprocessLoop(IndexVector const& vertIndices, Mesh const* mesh, std::map<uint32_t, uint32_t>& mapping, uint32_t options);
+			private:
 
-  public:
-    Triangulation();
+				std::vector<uint32_t> mIndices;
 
-    Triangulation(Triangulation const& other);
+			private:
 
-    Triangulation& operator=(Triangulation const& other);
+				void copyFrom(Triangulation const& other);
 
-    size_t getNumTriangles() const;
+				std::vector<Point> preprocessLoop(IndexVector const& vertIndices, Mesh const* mesh, std::map<uint32_t, uint32_t>& mapping, uint32_t options);
 
-    void getVertexIndices(size_t triangleIndex, uint32_t& v0, uint32_t& v1, uint32_t& v2) const;
+			public:
 
-    bool build(Polygon const& polygon, Mesh const* mesh, uint32_t options = Options::NoCospatialVertices);
+				Triangulation();
 
-    bool pointInside(float x, float y, Mesh const* mesh) const;
+				Triangulation(Triangulation const& other);
 
-    bool intersects(Triangulation const& other, Mesh const* mesh) const;
+				Triangulation& operator=(Triangulation const& other);
 
-    wp::Triangulation createBasicTriangulation(Mesh const* mesh) const;
-  };
+				size_t getNumTriangles() const;
 
-private:
-  int32_t mPublicId;
+				void getVertexIndices(size_t triangleIndex, uint32_t& v0, uint32_t& v1, uint32_t& v2) const;
 
-  int32_t mAttributeIndex;
+				bool build(Polygon const& polygon, Mesh const* mesh, uint32_t options = Options::NoCospatialVertices);
 
-  // Triangle data cache
-  mutable bool mTriangleDataCached;
+				bool pointInside(float x, float y, Mesh const* mesh) const;
 
-  mutable Triangulation mTriangleData;
+				bool intersects(Triangulation const& other, Mesh const* mesh) const;
 
-  IndexList mHoleIndices;
+				wp::Triangulation createBasicTriangulation(Mesh const* mesh) const;
+			};
 
-private:
-  void copyFrom(Polygon const& other);
+		private:
 
-  void cacheTriangleData() const;
+			int32_t mPublicId; 
 
-  void invalidateTriangleData();
+			int32_t mAttributeIndex;
+			
+			// Triangle data cache
+			mutable bool mTriangleDataCached;
+			
+			mutable Triangulation mTriangleData;
 
-  void invalidateEdgeData();
+			IndexList mHoleIndices;
 
-  void addHole(Polygon& hole);
+		private:
 
-  void removeHole(uint32_t holeIndex);
+			void copyFrom(Polygon const& other);
 
-  void convertToHole();
+			void cacheTriangleData() const;
 
-  void convertFromHole();
+			void invalidateTriangleData();
 
-protected:
-  void cut(uint32_t fromVertexIndex, uint32_t toVertexIndex, IndexVector const& vertexIndices, IndexVector* newEdgeIndices = nullptr, DirectedEdgeVector* removedEdges = nullptr);
+			void invalidateEdgeData();
 
-  Triangulation const& getTriangulation() const;
+			void addHole(Polygon& hole);
 
-public:
-  explicit Polygon(IndexVector const& edgeData);
+			void removeHole(uint32_t holeIndex);
 
-  Polygon(Polygon const& other);
+			void convertToHole();
 
-  Polygon& operator=(Polygon const& other);
+			void convertFromHole();
 
-  bool operator==(Polygon const& other) const;
+		protected:
 
-  bool operator!=(Polygon const& other) const;
+			void cut(uint32_t fromVertexIndex, uint32_t toVertexIndex, IndexVector const& vertexIndices, IndexVector* newEdgeIndices = nullptr, DirectedEdgeVector* removedEdges = nullptr);
 
-  int32_t getPublicId() const;
+			Triangulation const& getTriangulation() const;
 
-  bool pointInside(Vector2 const& point) const;
+		public:
 
-  bool pointInside(float x, float y) const;
+			explicit Polygon(IndexVector const& edgeData);
 
-  bool isHole() const;
+			Polygon(Polygon const& other);
 
-  IndexList const& getHoleIndices() const;
+			Polygon& operator=(Polygon const& other);
 
-  size_t getTriangulationTriangleCount() const;
+			bool operator==(Polygon const& other) const;
 
-  void getTriangulationVertexIndices(size_t triangleIndex, uint32_t& v0, uint32_t& v1, uint32_t& v2) const;
+			bool operator!=(Polygon const& other) const;
 
-  wp::Triangulation createBasicTriangulation() const;
-};
+			int32_t getPublicId() const;
 
-}  // namespace geometry
-}  // namespace WP_NAMESPACE
+			bool pointInside(Vector2 const& point) const;
+
+			bool pointInside(float x, float y) const;
+
+			bool isHole() const;
+
+			IndexList const& getHoleIndices() const;
+
+			size_t getTriangulationTriangleCount() const;
+
+			void getTriangulationVertexIndices(size_t triangleIndex, uint32_t& v0, uint32_t& v1, uint32_t& v2) const;
+
+			wp::Triangulation createBasicTriangulation() const;
+		};
+
+	} // geometry
+} // WP_NAMESPACE

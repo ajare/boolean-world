@@ -49,7 +49,7 @@
 #define WP_COMMON_API __declspec(dllimport)
 #endif
 #endif
-#elif WP_PLATFORM == WP_PLATFORM_LINUX
+#else
 #if defined(WP_COMMON_DLL_EXPORT)
 #define WP_COMMON_API __attribute__((visibility("default")))
 #else
@@ -66,8 +66,8 @@
 #define WP_NAMESPACE wp
 
 // Memleak tracking
-#ifdef WP_USE_MEMLEAK_TRACKING
-#if _MSC_VER < 1930
+#if WP_PLATFORM == WP_PLATFORM_WINDOWS && defined(WP_USE_MEMLEAK_TRACKING)
+#if defined(_MSC_VER) && _MSC_VER < 1930
 #include <vld.h>
 #endif
 #endif

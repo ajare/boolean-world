@@ -5,6 +5,9 @@
 #include <cassert>
 
 #include "willpower/common/Platform.h"
+
+#if WP_PLATFORM == WP_PLATFORM_WINDOWS
+
 #include "willpower/common/StackWalker.h"
 #include "willpower/common/Logger.h"
 
@@ -55,3 +58,7 @@ public:
 };
 
 }  // namespace WP_NAMESPACE
+
+#else
+#error "Willpower stack-trace support is available only on Windows."
+#endif

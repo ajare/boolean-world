@@ -6,49 +6,53 @@
 #include "willpower/common/Vector2.h"
 #include "willpower/common/Triangulation.h"
 
-namespace WP_NAMESPACE {
+namespace WP_NAMESPACE
+{
 
-class WP_COMMON_API BoundingConvexPolygon {
-  std::vector<Vector2> mVertices;
+	class WP_COMMON_API BoundingConvexPolygon
+	{
+		std::vector<Vector2> mVertices;
 
-  Vector2 mPosition;
+		Vector2 mPosition;
 
-  Vector2 mCentre;
+		Vector2 mCentre;
 
-  Vector2 mMinExtent, mMaxExtent;
+		Vector2 mMinExtent, mMaxExtent;
 
-private:
-  void updateExtents();
+	private:
 
-public:
-  BoundingConvexPolygon();
+		void updateExtents();
 
-  BoundingConvexPolygon(Vector2 const& position, std::vector<Vector2> vertices);
+	public:
 
-  void setPosition(Vector2 const& position);
+		BoundingConvexPolygon();
 
-  void setPosition(float x, float y);
+		BoundingConvexPolygon(Vector2 const& position, std::vector<Vector2> vertices);
 
-  Vector2 const& getPosition() const;
+		void setPosition(Vector2 const& position);
 
-  void move(Vector2 const& distance);
+		void setPosition(float x, float y);
 
-  void move(float x, float y);
+		Vector2 const& getPosition() const;
 
-  Vector2 const& getCentre() const;
+		void move(Vector2 const& distance);
 
-  void getExtents(Vector2& minExtent, Vector2& maxExtent) const;
+		void move(float x, float y);
 
-  Vector2 const& getMinExtent() const;
+		Vector2 const& getCentre() const;
 
-  Vector2 const& getMaxExtent() const;
+		void getExtents(Vector2& minExtent, Vector2& maxExtent) const;
 
-  // Intersection tests
-  bool pointInside(Vector2 const& point) const;
+		Vector2 const& getMinExtent() const;
 
-  bool pointInside(float x, float y) const;
+		Vector2 const& getMaxExtent() const;
 
-  bool intersectsTriMesh(Triangulation const& triangles) const;
-};
+		// Intersection tests
+		bool pointInside(Vector2 const& point) const;
 
-}  // namespace WP_NAMESPACE
+		bool pointInside(float x, float y) const;
+
+		bool intersectsTriMesh(Triangulation const& triangles) const;
+	};
+
+} // WP_NAMESPACE

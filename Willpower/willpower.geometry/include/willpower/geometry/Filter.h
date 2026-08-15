@@ -6,39 +6,47 @@
 #include "willpower/geometry/Types.h"
 #include "willpower/geometry/Mesh.h"
 
-namespace WP_NAMESPACE {
-namespace geometry {
+namespace WP_NAMESPACE
+{
+	namespace geometry
+	{
 
-class WP_GEOMETRY_API Filter {
-public:
-  typedef std::function<bool(uint32_t)> FilterFunction;
+		class WP_GEOMETRY_API Filter
+		{
+		public:
 
-  typedef std::function<bool(uint32_t, uint32_t)> CompareFunction;
+			typedef std::function<bool(uint32_t)> FilterFunction;
 
-private:
-  IndexSet mIndices;
+			typedef std::function<bool(uint32_t, uint32_t)> CompareFunction;
 
-protected:
-  Mesh const* mwMesh;
+		private:
 
-protected:
-  void setIndices(IndexSet const& indices);
+			IndexSet mIndices;
 
-  void addIndices(IndexSet const& indices);
+		protected:
 
-  void removeIndices(IndexSet const& indices);
+			Mesh const* mwMesh;
 
-  void filter(FilterFunction func);
+		protected:
 
-  void minElement(CompareFunction func);
+			void setIndices(IndexSet const& indices);
 
-  void maxElement(CompareFunction func);
+			void addIndices(IndexSet const& indices);
 
-public:
-  explicit Filter(Mesh const* mesh);
+			void removeIndices(IndexSet const& indices);
 
-  IndexSet const& getIndices() const;
-};
+			void filter(FilterFunction func);
 
-}  // namespace geometry
-}  // namespace WP_NAMESPACE
+			void minElement(CompareFunction func);
+
+			void maxElement(CompareFunction func);
+
+		public:
+
+			explicit Filter(Mesh const* mesh);
+
+			IndexSet const& getIndices() const;
+		};
+
+	} // geometry
+} // WP_NAMESPACE

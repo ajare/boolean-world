@@ -6,96 +6,113 @@
 
 #include "willpower/geometry/Platform.h"
 
-namespace WP_NAMESPACE {
-namespace geometry {
+namespace WP_NAMESPACE
+{
+	namespace geometry
+	{
 
-class Offsetter {
-  struct IntersectionInfo {
-    bool hit;
-    float t;
-    int edge;
-    wp::Vector2 position;
+		class Offsetter
+		{
+			struct IntersectionInfo
+			{
+				bool hit;
+				float t;
+				int edge;
+				wp::Vector2 position;
 
-    IntersectionInfo()
-        : hit(false), t(1.1f), edge(-1) {
-    }
-  };
+				IntersectionInfo()
+					: hit(false)
+					, t(1.1f)
+					, edge(-1)
+				{
+				}
+			};
 
-  struct Edge {
-    enum class Type {
-      Straight,        // Regular edge
-      CornerUnknown,   // To-be-decided corner type
-      CornerArc,       // Rounded corner connecting two edges
-      CornerUnmitred,  // Unmitred (ie sharp) corner connecting two edges
-      CornerSquare     // Square (ie flattened-off) corner connecting two edges
-    };
+			struct Edge
+			{
+				enum class Type
+				{
+					Straight,		// Regular edge
+					CornerUnknown,	// To-be-decided corner type
+					CornerArc,		// Rounded corner connecting two edges
+					CornerUnmitred,	// Unmitred (ie sharp) corner connecting two edges
+					CornerSquare	// Square (ie flattened-off) corner connecting two edges
+				};
 
-    Type type;
-    wp::Vector2 v0, v1, dir, normal0, normal1;
+				Type type;
+				wp::Vector2 v0, v1, dir, normal0, normal1;
 
-    wp::Vector2 centre;
-    std::vector<wp::Vector2> vertices;
-  };
+				wp::Vector2 centre;
+				std::vector<wp::Vector2> vertices;
+			};
 
-public:
-  enum class CornerType {
-    Arc,
-    Mitred,
-    Square
-  };
+		public:
 
-  typedef std::function<float(float)> WidthModificationFunction;
+			enum class CornerType
+			{
+				Arc,
+				Mitred,
+				Square
+			};
 
-private:
-  float mMaxMiter;
+			typedef std::function<float(float)> WidthModificationFunction;
 
-protected:
-  std::vector<wp::Vector2> mVertices;
+		private:
 
-  std::vector<std::vector<wp::Vector2>> mOutputVertices;
+			float mMaxMiter;
 
-private:
-  bool isVertexCollinear(int i, wp::Vector2 const& vertex, std::vector<wp::Vector2> const& vertices);
+		protected:
 
-  void addEdgeAndCorner(int i, std::vector<Edge>& edges, std::vector<wp::Vector2> const& vertices, CornerType cornerType, int normalDir);
+			std::vector<wp::Vector2> mVertices;
 
-  void offsetEdges(std::vector<Edge>& edges, bool isLoop, float amount1, float amount2, WidthModificationFunction widthModifier);
+			std::vector<std::vector<wp::Vector2>> mOutputVertices;
 
-  void addClippedVertexToOutput(std::vector<wp::Vector2>& outputVertices, wp::Vector2 const& vertex);
+		private:
 
-  void setClippedOutputVertex(std::vector<wp::Vector2>& outputVertices, int index, wp::Vector2 const& vertex);
+			bool isVertexCollinear(int i, wp::Vector2 const& vertex, std::vector<wp::Vector2> const& vertices);
 
-  IntersectionInfo checkIntersection(std::vector<wp::Vector2> const& vertices, int i, int j);
+			void addEdgeAndCorner(int i, std::vector<Edge>& edges, std::vector<wp::Vector2> const& vertices, CornerType cornerType, int normalDir);
 
-  void extrudeEdge(Edge& edge, Edge const* prev, Edge const* next, float distance);
+			void offsetEdges(std::vector<Edge>& edges, bool isLoop, float amount1, float amount2, WidthModificationFunction widthModifier);
 
-  void makeArcCorner(Edge& edge, Edge const* prev, Edge const* next, float distance, float segmentLength);
+			void addClippedVertexToOutput(std::vector<wp::Vector2>& outputVertices, wp::Vector2 const& vertex);
 
-  void makeUnmitredCorner(Edge& edge, Edge const* prev, Edge const* next, float distance);
+			void setClippedOutputVertex(std::vector<wp::Vector2>& outputVertices, int index, wp::Vector2 const& vertex);
 
-  void makeSquareCorner(Edge& edge, Edge const* prev, Edge const* next, float distance);
+			IntersectionInfo checkIntersection(std::vector<wp::Vector2> const& vertices, int i, int j);
 
-  void extrudeCorner(Edge& edge, Edge const* prev, Edge const* next, float distance);
+			void extrudeEdge(Edge& edge, Edge const* prev, Edge const* next, float distance);
 
-  Edge createCorner(CornerType cornerType, Edge const& prev, Edge const& next, int index);
+			void makeArcCorner(Edge& edge, Edge const* prev, Edge const* next, float distance, float segmentLength);
 
-protected:
-  std::vector<wp::Vector2> offsetImpl(float amount1, float amount2, CornerType cornerType, WidthModificationFunction widthModifier, int startVertex = 0, int endVertex = -1);
+			void makeUnmitredCorner(Edge& edge, Edge const* prev, Edge const* next, float distance);
 
-public:
-  Offsetter(std::vector<wp::Vector2> const& vertices, float maxMiter);
+			void makeSquareCorner(Edge& edge, Edge const* prev, Edge const* next, float distance);
 
-  std::vector<wp::Vector2> const& getVertices() const;
+			void extrudeCorner(Edge& edge, Edge const* prev, Edge const* next, float distance);
 
-  std::vector<std::vector<wp::Vector2>> const& getOffsetVertices() const;
+			Edge createCorner(CornerType cornerType, Edge const& prev, Edge const& next, int index);
 
-  virtual void offset(float amount1, float amount2, CornerType cornerType, WidthModificationFunction widthModifier = defaultWidthModifier, int startVertex = 0, int endVertex = -1) = 0;
+		protected:
+			
+			std::vector<wp::Vector2> offsetImpl(float amount1, float amount2, CornerType cornerType, WidthModificationFunction widthModifier, int startVertex = 0, int endVertex = -1);
 
-  static float defaultWidthModifier(float t) {
-    WP_UNUSED(t);
-    return 1.0f;
-  }
-};
+		public:
 
-}  // namespace geometry
-}  // namespace WP_NAMESPACE
+			Offsetter(std::vector<wp::Vector2> const& vertices, float maxMiter);
+
+			std::vector<wp::Vector2> const& getVertices() const;
+
+			std::vector<std::vector<wp::Vector2>> const& getOffsetVertices() const;
+
+			virtual void offset(float amount1, float amount2, CornerType cornerType, WidthModificationFunction widthModifier = defaultWidthModifier, int startVertex = 0, int endVertex = -1) = 0;
+
+			static float defaultWidthModifier(float t)
+			{
+				WP_UNUSED(t);
+				return 1.0f;
+			}
+		};
+
+	} // geometry
+} // WP_NAMESPACE

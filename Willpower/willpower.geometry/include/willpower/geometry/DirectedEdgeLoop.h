@@ -12,151 +12,159 @@
 #include "willpower/geometry/DirectedEdge.h"
 #include "willpower/geometry/Types.h"
 
-namespace WP_NAMESPACE {
-namespace geometry {
+namespace WP_NAMESPACE
+{
+	namespace geometry
+	{
 
-class Mesh;
+		class Mesh;
 
-class WP_GEOMETRY_API DirectedEdgeLoop {
-  friend class Mesh;
+		class WP_GEOMETRY_API DirectedEdgeLoop
+		{
+			friend class Mesh;
 
-  friend class MeshOperations;
+			friend class MeshOperations;
 
-  typedef std::function<void(Mesh*, uint32_t, int, int, bool)> UpdateRefFunction;
+			typedef std::function<void(Mesh*, uint32_t, int, int, bool)> UpdateRefFunction;
 
-  typedef std::function<void(Mesh*, uint32_t)> DeleteFunction;
+			typedef std::function<void(Mesh*, uint32_t)> DeleteFunction;
 
-private:
-  DirectedEdgeList mEdges;
+		private:
 
-  UpdateRefFunction mUpdateEdgesFunction;
+			DirectedEdgeList mEdges;
 
-  // Ordered vertex index cache
-  mutable bool mOrderedVertexIndicesCached;
+			UpdateRefFunction mUpdateEdgesFunction;
 
-  mutable IndexVector mOrderedVertexIndices;
+			// Ordered vertex index cache
+			mutable bool mOrderedVertexIndicesCached;
 
-  mutable std::pair<int, int> mOrderedVertexIndicesBreakIndices;
+			mutable IndexVector mOrderedVertexIndices;
 
-  mutable Winding mOrderedVertexIndicesWinding;
+			mutable std::pair<int, int> mOrderedVertexIndicesBreakIndices;
 
-  std::map<uint32_t, int32_t> mVertexAttributeIndices;
+			mutable Winding mOrderedVertexIndicesWinding;
 
-protected:
-  Mesh* mwMesh;
+			std::map<uint32_t, int32_t> mVertexAttributeIndices;
 
-  int32_t mMeshIndex;
+		protected:
 
-  Winding mWinding;
+			Mesh* mwMesh;
 
-  DeleteFunction mDeleteFunction;
+			int32_t mMeshIndex;
 
-private:
-  void copyFrom(DirectedEdgeLoop const& other);
+			Winding mWinding;
 
-  void updateEdgeFirstVertex(DirectedEdgeIterator edge, uint32_t vertexIndex);
+			DeleteFunction mDeleteFunction;
 
-  void updateEdgeSecondVertex(DirectedEdgeIterator edge, uint32_t vertexIndex);
+		private:
 
-  virtual void invalidateEdgeData() {}
+			void copyFrom(DirectedEdgeLoop const& other);
 
-protected:
-  void setMesh(Mesh* mesh, int32_t index);
+			void updateEdgeFirstVertex(DirectedEdgeIterator edge, uint32_t vertexIndex);
 
-  void setUpdateRefFunction(UpdateRefFunction func);
+			void updateEdgeSecondVertex(DirectedEdgeIterator edge, uint32_t vertexIndex);
 
-  void setDeleteFunction(DeleteFunction func);
+			virtual void invalidateEdgeData() {}
 
-  void invalidateOrderedVertexCache();
+		protected:
 
-  IndexVector const& getCachedOrderedVertexIndices(std::pair<int, int>* breakIndices) const;
+			void setMesh(Mesh* mesh, int32_t index);
 
-  void updateEdge(DirectedEdgeIterator edge, uint32_t firstVertex, uint32_t secondVertex, uint32_t edgeIndex);
+			void setUpdateRefFunction(UpdateRefFunction func);
 
-  void removeEdge(uint32_t edgeIndex, bool ignoreIfNotPresent);
+			void setDeleteFunction(DeleteFunction func);
 
-  void replaceEdge(uint32_t edgeIndex, uint32_t newEdgeIndex, uint32_t vertex0Index, uint32_t vertex1Index, bool fixAdjacent, bool ignoreIfNotPresent);
+			void invalidateOrderedVertexCache();
 
-  void removeEdgesNotInSet(IndexSet const& edgeIndices);
+			IndexVector const& getCachedOrderedVertexIndices(std::pair<int, int>* breakIndices) const;
 
-  void removeTwoSidedEdges();
+			void updateEdge(DirectedEdgeIterator edge, uint32_t firstVertex, uint32_t secondVertex, uint32_t edgeIndex);
 
-  virtual void cut(uint32_t fromVertexIndex, uint32_t toVertexIndex, IndexVector const& vertexIndices, IndexVector* newEdgeIndices = nullptr, DirectedEdgeVector* removedEdges = nullptr);
+			void removeEdge(uint32_t edgeIndex, bool ignoreIfNotPresent);
 
-  void reorderEdges(Mesh const* mesh);
+			void replaceEdge(uint32_t edgeIndex, uint32_t newEdgeIndex, uint32_t vertex0Index, uint32_t vertex1Index, bool fixAdjacent, bool ignoreIfNotPresent);
 
-  void setWinding(Winding winding);
+			void removeEdgesNotInSet(IndexSet const& edgeIndices);
 
-  DirectedEdgeIterator addEdge(uint32_t firstVertex, uint32_t secondVertex, uint32_t edgeIndex);
+			void removeTwoSidedEdges();
 
-  DirectedEdgeIterator insertEdge(uint32_t firstVertex, uint32_t secondVertex, uint32_t edgeIndex, DirectedEdgeIterator where);
+			virtual void cut(uint32_t fromVertexIndex, uint32_t toVertexIndex, IndexVector const& vertexIndices, IndexVector* newEdgeIndices = nullptr, DirectedEdgeVector* removedEdges = nullptr);
 
-  DirectedEdgeIterator insertEdge(uint32_t firstVertex, uint32_t secondVertex, uint32_t edgeIndex);
+			void reorderEdges(Mesh const* mesh);
 
-public:
-  DirectedEdgeLoop(Winding winding, IndexVector const& edgeData);
+			void setWinding(Winding winding);
 
-  DirectedEdgeLoop(DirectedEdgeLoop const& other);
+			DirectedEdgeIterator addEdge(uint32_t firstVertex, uint32_t secondVertex, uint32_t edgeIndex);
 
-  DirectedEdgeLoop& operator=(DirectedEdgeLoop const& other);
+			DirectedEdgeIterator insertEdge(uint32_t firstVertex, uint32_t secondVertex, uint32_t edgeIndex, DirectedEdgeIterator where);
 
-  Winding getWinding() const;
+			DirectedEdgeIterator insertEdge(uint32_t firstVertex, uint32_t secondVertex, uint32_t edgeIndex);
 
-  int getNumEdges() const;
+		public:
 
-  Mesh* getMesh();
+			DirectedEdgeLoop(Winding winding, IndexVector const& edgeData);
 
-  int32_t getMeshIndex() const;
+			DirectedEdgeLoop(DirectedEdgeLoop const& other);
 
-  DirectedEdgeIterator getFirstEdge() const;
+			DirectedEdgeLoop& operator=(DirectedEdgeLoop const& other);
 
-  DirectedEdgeIterator getEndEdge() const;
+			Winding getWinding() const;
 
-  std::list<DirectedEdgeIterator> getEdgesByFirstVertex(uint32_t vertexIndex) const;
+			int getNumEdges() const;
 
-  std::list<DirectedEdgeIterator> getEdgesBySecondVertex(uint32_t vertexIndex) const;
+			Mesh* getMesh();
 
-  DirectedEdgeIterator getEdgeByIndex(uint32_t edgeIndex) const;
+			int32_t getMeshIndex() const;
 
-  DirectedEdgeIterator getEdgeBySharedVertex(uint32_t vertexIndex, uint32_t edgeIndex) const;
+			DirectedEdgeIterator getFirstEdge() const;
 
-  std::pair<uint32_t, uint32_t> getNeighbourEdges(uint32_t edgeIndex) const;
+			DirectedEdgeIterator getEndEdge() const;
 
-  IndexSet getEdgeIndexSet() const;
+			std::list<DirectedEdgeIterator> getEdgesByFirstVertex(uint32_t vertexIndex) const;
 
-  IndexVector getEdgeIndexList() const;
+			std::list<DirectedEdgeIterator> getEdgesBySecondVertex(uint32_t vertexIndex) const;
 
-  IndexVector getOrderedVertexIndices(std::pair<int, int>* breakIndices = nullptr) const;
+			DirectedEdgeIterator getEdgeByIndex(uint32_t edgeIndex) const;
 
-  DirectedEdgeVector getEdges() const;
+			DirectedEdgeIterator getEdgeBySharedVertex(uint32_t vertexIndex, uint32_t edgeIndex) const;
 
-  IndexSet getVertexIndexSet() const;
+			std::pair<uint32_t, uint32_t> getNeighbourEdges(uint32_t edgeIndex) const;
 
-  IndexVector getVertexIndexList() const;
+			IndexSet getEdgeIndexSet() const;
 
-  bool usesVertex(uint32_t vertexIndex) const;
+			IndexVector getEdgeIndexList() const;
+			
+			IndexVector getOrderedVertexIndices(std::pair<int, int>* breakIndices = nullptr) const;
 
-  DirectedEdgeVector getOrderedEdges(IndexVector const& edgeIndices) const;
+			DirectedEdgeVector getEdges() const;
 
-  Vector2 getEdgeDirection(DirectedEdgeIterator edgeIt) const;
+			IndexSet getVertexIndexSet() const;
 
-  Vector2 getEdgeNormal(DirectedEdgeIterator edgeIt) const;
+			IndexVector getVertexIndexList() const;
 
-  Vector2 getEdgeCentre(DirectedEdgeIterator edgeIt) const;
+			bool usesVertex(uint32_t vertexIndex) const;
 
-  BoundingBox getBoundingBox() const;
+			DirectedEdgeVector getOrderedEdges(IndexVector const& edgeIndices) const;
 
-  IndexVector getConvexHullIndices() const;
+			Vector2 getEdgeDirection(DirectedEdgeIterator edgeIt) const;
 
-  bool pointInsideConvexHull(Vector2 const& point) const;
+			Vector2 getEdgeNormal(DirectedEdgeIterator edgeIt) const;
 
-  bool pointInsideConvexHull(float x, float y) const;
+			Vector2 getEdgeCentre(DirectedEdgeIterator edgeIt) const;
 
-  void setVertexAttributeIndex(uint32_t vertexIndex, int32_t attributeIndex);
+			BoundingBox getBoundingBox() const;
 
-  int32_t getVertexAttributeIndex(uint32_t vertexIndex) const;
-};
+			IndexVector getConvexHullIndices() const;
 
-}  // namespace geometry
-}  // namespace WP_NAMESPACE
+			bool pointInsideConvexHull(Vector2 const& point) const;
+
+			bool pointInsideConvexHull(float x, float y) const;
+
+			void setVertexAttributeIndex(uint32_t vertexIndex, int32_t attributeIndex);
+
+			int32_t getVertexAttributeIndex(uint32_t vertexIndex) const;
+		};
+
+	} // geometry
+} // WP_NAMESPACE
 #pragma once

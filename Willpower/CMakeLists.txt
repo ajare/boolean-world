@@ -4,7 +4,6 @@
 # from target_link_libraries.
 
 add_subdirectory(willpower.common)
-add_subdirectory(willpower.serialization)
 add_subdirectory(willpower.geometry)
 add_subdirectory(willpower.collide)
 add_subdirectory(willpower.application)

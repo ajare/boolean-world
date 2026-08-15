@@ -47,7 +47,7 @@ target_compile_definitions(Willpower.Application PRIVATE
     $<$<CONFIG:Debug>:WP_USE_MEMLEAK_TRACKING>)
 
 target_link_libraries(Willpower.Application
-    PUBLIC  Willpower.Common Willpower.Collide Willpower.Geometry Willpower.Serialization
+    PUBLIC  Willpower.Common Willpower.Collide Willpower.Geometry
             ext::mpp ext::mpp-mesh ext::mpp-program
     PRIVATE ext::Utils vendor::freeimage vendor::fmt
             vendor::fmod vendor::fmodstudio vendor::fsbank)

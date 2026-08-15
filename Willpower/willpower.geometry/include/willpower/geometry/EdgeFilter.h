@@ -2,39 +2,43 @@
 
 #include "willpower/geometry/Filter.h"
 
-namespace WP_NAMESPACE {
-namespace geometry {
+namespace WP_NAMESPACE
+{
+	namespace geometry
+	{
 
-class WP_GEOMETRY_API EdgeFilter : public Filter {
-public:
-  explicit EdgeFilter(Mesh const* mesh);
+		class WP_GEOMETRY_API EdgeFilter : public Filter
+		{
+		public:
 
-  EdgeFilter& selectEdges(IndexSet const& edgeIndices);
+			explicit EdgeFilter(Mesh const* mesh);
 
-  EdgeFilter& selectEdges(BoundingCircle const& bounds);
+			EdgeFilter& selectEdges(IndexSet const& edgeIndices);
 
-  EdgeFilter& selectEdges(BoundingBox const& bounds);
+			EdgeFilter& selectEdges(BoundingCircle const& bounds);
 
-  EdgeFilter& selectPolygonEdges(uint32_t polygonIndex);
+			EdgeFilter& selectEdges(BoundingBox const& bounds);
 
-  EdgeFilter& addEdges(IndexSet const& vertexIndices);
+			EdgeFilter& selectPolygonEdges(uint32_t polygonIndex);
 
-  EdgeFilter& addEdges(BoundingCircle const& bounds);
+			EdgeFilter& addEdges(IndexSet const& vertexIndices);
 
-  EdgeFilter& addEdges(BoundingBox const& bounds);
+			EdgeFilter& addEdges(BoundingCircle const& bounds);
 
-  EdgeFilter& addPolygonEdges(uint32_t polygonIndex);
+			EdgeFilter& addEdges(BoundingBox const& bounds);
 
-  EdgeFilter& normalAngle(float angle, float tolerance);
+			EdgeFilter& addPolygonEdges(uint32_t polygonIndex);
 
-  EdgeFilter& minimumCentreX();
+			EdgeFilter& normalAngle(float angle, float tolerance);
 
-  EdgeFilter& maximumCentreX();
+			EdgeFilter& minimumCentreX();
 
-  EdgeFilter& minimumCentreY();
+			EdgeFilter& maximumCentreX();
 
-  EdgeFilter& maximumCentreY();
-};
+			EdgeFilter& minimumCentreY();
 
-}  // namespace geometry
-}  // namespace WP_NAMESPACE
+			EdgeFilter& maximumCentreY();
+		};
+
+	} // geometry
+} // WP_NAMESPACE

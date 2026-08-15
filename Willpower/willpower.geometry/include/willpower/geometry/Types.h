@@ -5,13 +5,15 @@
 
 #include "willpower/geometry/Platform.h"
 
-namespace WP_NAMESPACE {
-namespace geometry {
+namespace WP_NAMESPACE
+{
+	namespace geometry
+	{
 
-typedef std::list<uint32_t> IndexList;
-typedef std::vector<uint32_t> IndexVector;
-typedef std::set<uint32_t> IndexSet;
+		typedef std::list<uint32_t> IndexList;
+		typedef std::vector<uint32_t> IndexVector;
+		typedef std::set<uint32_t> IndexSet;
 
-}  // namespace geometry
-}  // namespace WP_NAMESPACE
+	} // geometry
+} // WP_NAMESPACE
 #pragma once

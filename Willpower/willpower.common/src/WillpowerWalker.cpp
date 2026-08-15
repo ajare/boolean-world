@@ -1,13 +1,16 @@
+#include "willpower/common/Platform.h"
+
+#if WP_PLATFORM == WP_PLATFORM_WINDOWS
+
 #include <regex>
 
-#include <utils/StringUtils.h>
+#include <willpower/common/StringUtils.h>
 
 #include "willpower/common/WillpowerWalker.h"
 
 namespace WP_NAMESPACE {
 
 using namespace std;
-using namespace utils;
 
 // Singleton instantiation
 WillpowerWalker* StackWalkerInstance::mInstance = nullptr;
@@ -69,3 +72,7 @@ void StackWalkerInstance::deleteInstance() {
 }
 
 }  // namespace WP_NAMESPACE
+
+#else
+#error "Willpower stack-trace implementation is available only on Windows."
+#endif

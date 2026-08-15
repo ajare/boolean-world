@@ -3,42 +3,52 @@
 #include <list>
 #include <vector>
 
+
 #include "willpower/geometry/Platform.h"
 
-namespace WP_NAMESPACE {
-namespace geometry {
+namespace WP_NAMESPACE
+{
+	namespace geometry
+	{
 
-struct DirectedEdgeVertex {
-  uint32_t index{~0u};
-  int32_t attributeIndex{-1};
+		struct DirectedEdgeVertex
+		{
+			uint32_t index{ ~0u };
+			int32_t attributeIndex{ -1 };
 
-  bool operator==(DirectedEdgeVertex const& other) const {
-    return index == other.index && attributeIndex == other.attributeIndex;
-  }
+			bool operator==(DirectedEdgeVertex const& other) const
+			{
+				return index == other.index && attributeIndex == other.attributeIndex;
+			}
 
-  bool operator!=(DirectedEdgeVertex const& other) const {
-    return !(*this == other);
-  }
-};
+			bool operator!=(DirectedEdgeVertex const& other) const
+			{
+				return !(*this == other);
+			}
+		};
 
-struct DirectedEdge {
-  uint32_t v0, v1;
-  uint32_t index;
+		struct DirectedEdge
+		{
+			uint32_t v0, v1;
+			uint32_t index;
 
-public:
-  bool operator==(DirectedEdge const& other) const {
-    return v0 == other.v0 && v1 == other.v1 && index == other.index;
-  }
+		public:
 
-  bool operator!=(DirectedEdge const& other) const {
-    return !(*this == other);
-  }
-};
+			bool operator==(DirectedEdge const& other) const
+			{
+				return v0 == other.v0 && v1 == other.v1 && index == other.index;
+			}
 
-typedef std::list<DirectedEdge> DirectedEdgeList;
-typedef std::vector<DirectedEdge> DirectedEdgeVector;
+			bool operator!=(DirectedEdge const& other) const
+			{
+				return !(*this == other);
+			}
+		};
 
-typedef DirectedEdgeList::const_iterator DirectedEdgeIterator;
+		typedef std::list<DirectedEdge> DirectedEdgeList;
+		typedef std::vector<DirectedEdge> DirectedEdgeVector;
 
-}  // namespace geometry
-}  // namespace WP_NAMESPACE
+		typedef DirectedEdgeList::const_iterator DirectedEdgeIterator;
+		
+	} // geometry
+} // WP_NAMESPACE

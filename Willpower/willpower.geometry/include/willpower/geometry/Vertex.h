@@ -9,81 +9,88 @@
 #include "willpower/geometry/Platform.h"
 #include "willpower/geometry/Types.h"
 
-namespace WP_NAMESPACE {
-namespace geometry {
+namespace WP_NAMESPACE
+{
+	namespace geometry
+	{
 
-class Mesh;
+		class Mesh;
 
-class WP_GEOMETRY_API Vertex {
-  friend class Mesh;
-  friend class MeshOperations;
+		class WP_GEOMETRY_API Vertex
+		{
+			friend class Mesh;
+			friend class MeshOperations;
 
-public:
-  typedef std::function<void(Mesh*, uint32_t)> DeleteFunction;
+		public:
 
-  typedef std::function<void(Mesh*, uint32_t)> UpdateEdgeFunction;
+			typedef std::function<void(Mesh*, uint32_t)> DeleteFunction;
 
-private:
-  Mesh* mwMesh;
+			typedef std::function<void(Mesh*, uint32_t)> UpdateEdgeFunction;
 
-  int32_t mMeshIndex;
+		private:
 
-  int32_t mPublicId;
+			Mesh* mwMesh;
 
-  int32_t mAttributeIndex;
+			int32_t mMeshIndex;
 
-  Vector2 mPosition;
+			int32_t mPublicId;
 
-  IndexSet mEdgeRefs;
+			int32_t mAttributeIndex;
 
-  DeleteFunction mDeleteFunction;
+			Vector2 mPosition;
 
-  UpdateEdgeFunction mUpdateEdgeFunction;
+			IndexSet mEdgeRefs;
 
-private:
-  void copyFrom(Vertex const& other);
+			DeleteFunction mDeleteFunction;
 
-  void setMesh(Mesh* mesh, int32_t index);
+			UpdateEdgeFunction mUpdateEdgeFunction;
 
-  void setDeleteFunction(DeleteFunction func);
+		private:
 
-  void setUpdateEdgeFunction(UpdateEdgeFunction func);
+			void copyFrom(Vertex const& other);
 
-  void addEdgeReference(uint32_t id);
+			void setMesh(Mesh* mesh, int32_t index);
 
-  void removeEdgeReference(uint32_t id);
+			void setDeleteFunction(DeleteFunction func);
 
-  void updateEdgeReference(uint32_t oldId, uint32_t newId);
+			void setUpdateEdgeFunction(UpdateEdgeFunction func);
 
-  void updateReferencedEdges();
+			void addEdgeReference(uint32_t id);
 
-  void setPosition(Vector2 const& position);
+			void removeEdgeReference(uint32_t id);
 
-  void translatePosition(Vector2 const& position);
+			void updateEdgeReference(uint32_t oldId, uint32_t newId);
 
-public:
-  explicit Vertex(Vector2 const& position);
+			void updateReferencedEdges();
 
-  Vertex(float x, float y);
+			void setPosition(Vector2 const& position);
 
-  Vertex(Vertex const& other);
+			void translatePosition(Vector2 const& position);
 
-  ~Vertex();
+		public:
 
-  Vertex& operator=(Vertex const& other);
+			explicit Vertex(Vector2 const& position);
 
-  bool operator==(Vertex const& other) const;
+			Vertex(float x, float y);
+			
+			Vertex(Vertex const& other);
 
-  bool operator!=(Vertex const& other) const;
+			~Vertex();
 
-  int32_t getPublicId() const;
+			Vertex& operator=(Vertex const& other);
 
-  Vector2 const& getPosition() const;
+			bool operator==(Vertex const& other) const;
 
-  BoundingBox getBoundingBox() const;
+			bool operator!=(Vertex const& other) const;
 
-  IndexSet const& getEdgeReferences() const;
-};
+			int32_t getPublicId() const;
 
-}  // namespace geometry
-}  // namespace WP_NAMESPACE
+			Vector2 const& getPosition() const;
+
+			BoundingBox getBoundingBox() const;
+
+			IndexSet const& getEdgeReferences() const;
+		};
+
+	} // geometry
+} // WP_NAMESPACE

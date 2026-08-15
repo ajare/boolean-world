@@ -2,22 +2,26 @@
 
 #include "willpower/common/Platform.h"
 
-namespace WP_NAMESPACE {
+namespace WP_NAMESPACE
+{
 
-class WP_COMMON_API Renderable {
-  mutable bool mRenderableModified;
+	class WP_COMMON_API Renderable
+	{
+		mutable bool mRenderableModified;
 
-protected:
-  void rebuildRenderable();
+	protected:
 
-public:
-  Renderable();
+		void rebuildRenderable();
 
-  virtual ~Renderable() = default;
+	public:
 
-  void _setRenderableRebuilt() const;
+		Renderable();
 
-  bool isRenderableModified() const;
-};
+		virtual ~Renderable() = default;
 
-}  // namespace WP_NAMESPACE
+		void _setRenderableRebuilt() const;
+
+		bool isRenderableModified() const;
+	};
+
+} // WP_NAMESPACE

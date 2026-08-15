@@ -12,51 +12,56 @@
 #include "willpower/geometry/Types.h"
 #include "willpower/geometry/DirectedEdge.h"
 
-namespace WP_NAMESPACE {
-namespace geometry {
-class Mesh;
+namespace WP_NAMESPACE
+{
+	namespace geometry
+	{
+		class Mesh;
 
-class WP_GEOMETRY_API MeshUtils {
-public:
-  typedef std::tuple<uint32_t, uint32_t, uint32_t> EdgeIndexInfo;
+		class WP_GEOMETRY_API MeshUtils
+		{
+		public:
 
-  typedef std::vector<EdgeIndexInfo> EdgeInfoVector;
+			typedef std::tuple<uint32_t, uint32_t, uint32_t> EdgeIndexInfo;
 
-  typedef std::list<EdgeIndexInfo> EdgeInfoList;
+			typedef std::vector<EdgeIndexInfo> EdgeInfoVector;
 
-  typedef std::vector<EdgeInfoVector> OrderedEdgeGroupSet;
+			typedef std::list<EdgeIndexInfo> EdgeInfoList;
 
-public:
-  static OrderedEdgeGroupSet groupConnectedEdges(std::list<EdgeIndexInfo> const& edgeList, bool allowFlips = false);
+			typedef std::vector<EdgeInfoVector> OrderedEdgeGroupSet;
 
-  static OrderedEdgeGroupSet groupConnectedEdges(Mesh const* mesh, uint32_t polygonIndex, IndexVector const& edgeIndices, bool allowFlips = false);
+		public:
 
-  static std::vector<IndexVector> groupConnectedPolygons(Mesh const* mesh);
+			static OrderedEdgeGroupSet groupConnectedEdges(std::list<EdgeIndexInfo> const& edgeList, bool allowFlips = false);
 
-  static uint32_t getNearestEdgeIndex(Mesh const* mesh, Vector2 const& point, IndexSet const& edgeIndices);
+			static OrderedEdgeGroupSet groupConnectedEdges(Mesh const* mesh, uint32_t polygonIndex, IndexVector const& edgeIndices, bool allowFlips = false);
 
-  static float anticlockwiseAngleBetweenConnectedEdges(Mesh const* mesh, uint32_t edge0Index, uint32_t edge1Index);
+			static std::vector<IndexVector> groupConnectedPolygons(Mesh const* mesh);
 
-  static float clockwiseAngleBetweenConnectedEdges(Mesh const* mesh, uint32_t edge0Index, uint32_t edge1Index);
+			static uint32_t getNearestEdgeIndex(Mesh const* mesh, Vector2 const& point, IndexSet const& edgeIndices);
 
-  static Winding getVertexWinding(std::vector<Vector2> const& vertices);
+			static float anticlockwiseAngleBetweenConnectedEdges(Mesh const* mesh, uint32_t edge0Index, uint32_t edge1Index);
 
-  static std::vector<std::vector<Vector2>> insetVertexLoop(std::vector<Vector2> const& vertices, float distance, bool rounded);
+			static float clockwiseAngleBetweenConnectedEdges(Mesh const* mesh, uint32_t edge0Index, uint32_t edge1Index);
 
-  static std::vector<std::vector<Vector2>> insetVertexLoops(std::vector<std::vector<Vector2>> const& loops, float distance, bool rounded);
+			static Winding getVertexWinding(std::vector<Vector2> const& vertices);
 
-  static EdgeInfoList getEdgeInfo(IndexVector const& edgeIndices, Mesh* mesh);
+			static std::vector<std::vector<Vector2>> insetVertexLoop(std::vector<Vector2> const& vertices, float distance, bool rounded);
 
-  static std::list<DirectedEdgeVector> splitDirectedEdgeVector(DirectedEdgeVector const& edges, IndexVector const& delims);
+			static std::vector<std::vector<Vector2>> insetVertexLoops(std::vector<std::vector<Vector2>> const& loops, float distance, bool rounded);
 
-  static IndexSet getPolygonReferences(Mesh const* mesh, IndexVector const& edgeIndices);
+			static EdgeInfoList getEdgeInfo(IndexVector const& edgeIndices, Mesh* mesh);
 
-  static Vector2 calculateEdgeListCentre(Mesh const* mesh, EdgeInfoVector const& edgeInfo, uint32_t* edgeIndexResult = nullptr);
+			static std::list<DirectedEdgeVector> splitDirectedEdgeVector(DirectedEdgeVector const& edges, IndexVector const& delims);
 
-  static bool areEdgesInPolygon(Mesh const* mesh, uint32_t polygonIndex, IndexVector const& edgeIndices);
+			static IndexSet getPolygonReferences(Mesh const* mesh, IndexVector const& edgeIndices);
 
-  static std::vector<std::vector<wp::Vector2>> unionPolygons(std::vector<std::vector<wp::Vector2>> const& polygons);
-};
+			static Vector2 calculateEdgeListCentre(Mesh const* mesh, EdgeInfoVector const& edgeInfo, uint32_t* edgeIndexResult = nullptr);
 
-}  // namespace geometry
-}  // namespace WP_NAMESPACE
+			static bool areEdgesInPolygon(Mesh const* mesh, uint32_t polygonIndex, IndexVector const& edgeIndices);
+
+			static std::vector<std::vector<wp::Vector2>> unionPolygons(std::vector<std::vector<wp::Vector2>> const& polygons);
+		};
+
+	} // geometry
+} // WP_NAMESPACE
