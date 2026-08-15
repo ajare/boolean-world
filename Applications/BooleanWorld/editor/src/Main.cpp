@@ -94,7 +94,8 @@ SDL_Window* createWindow() {
 
   // GL 3.0 + GLSL 130
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+  // No profile mask: MassivePolyPusher's 2D text path enables GL_POINT_SPRITE,
+  // which a core profile rejects with GL_INVALID_ENUM. See WindowGLFW::create.
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 
@@ -157,6 +158,21 @@ void setupImGui(SDL_Window* window, SDL_GLContext context) {
   gLogger->info("ImGui set up");
 }
 
+void outputToDebugger(string const& msg);
+
+// Declared by imconfig.h, which redirects IM_ASSERT here.
+void EditorImGuiAssertFailed(char const* expr, char const* file, int line) {
+  auto msg = format("ImGui assertion failed: {} at {}:{}", expr, file, line);
+
+  if (gLogger) {
+    gLogger->critical(msg);
+    gLogger->flush();
+  }
+
+  outputToDebugger(msg);
+  abort();
+}
+
 void setupLogging() {
   auto fileSink = make_shared<spdlog::sinks::basic_file_sink_mt>("logs/editor.log", true);
 
@@ -174,6 +190,11 @@ void setupLogging() {
 #endif
 
   gLogger->set_level(spdlog::level::debug);
+
+  // abort() does not flush the CRT's file buffers, so without this an assert
+  // silently discards every line logged since the last flush - which makes the
+  // log look like it stopped somewhere it did not.
+  gLogger->flush_on(spdlog::level::debug);
 }
 
 map<string, string> loadHelpFiles(string const& dir) {
@@ -247,12 +268,15 @@ void initialise() {
   // Load help files
   gHelpFiles = loadHelpFiles("../../../../core/doc");
   gHelpFiles.merge(loadHelpFiles("../../../../editor/doc"));
+  gLogger->debug("Help files loaded");
 
   // Load prefab files
   loadPrefabFiles(gEditorSettings.prefabDir);
+  gLogger->debug("Prefabs loaded");
 
   // Allocators
   Clipper2Lib::WmInitialiseAllocators(4, 1 * 1024 * 1024);
+  gLogger->debug("Allocators initialised");
 }
 
 void setup() {
@@ -264,10 +288,18 @@ void setup() {
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable Gamepad Controls
 
-  io.Fonts->AddFontDefault();
+  gLogger->debug("NFD initialised");
 
   float baseFontSize = 13.0f;                       // 13.0f is the size of the default font. Change to the font size you use.
   float iconFontSize = baseFontSize * 2.0f / 3.0f;  // FontAwesome fonts need to have their sizes reduced by 2.0f/3.0f in order to align correctly
+
+  // SizePixels must be set explicitly. From ImGui 1.92 a bare AddFontDefault()
+  // gives the font an implicit reference size, and merging a font that has an
+  // explicit one into it asserts.
+  ImFontConfig default_config;
+  default_config.SizePixels = baseFontSize;
+  io.Fonts->AddFontDefault(&default_config);
+  gLogger->debug("Default font added");
 
   static const ImWchar icons_ranges[] = {ICON_MIN_FA, ICON_MAX_16_FA, 0};
   ImFontConfig icons_config;
@@ -275,7 +307,10 @@ void setup() {
   icons_config.PixelSnapH = true;
   icons_config.GlyphMinAdvanceX = iconFontSize;
   io.Fonts->AddFontFromFileTTF(FONT_ICON_FILE_NAME_FAS, iconFontSize, &icons_config, icons_ranges);
+  gLogger->debug("Icon font added");
+
   io.Fonts->Build();
+  gLogger->debug("Fonts built");
 }
 
 void shutdown() {
@@ -792,7 +827,10 @@ void outputToDebugger(string const& msg) {
 }
 
 void outputException(string const& msg) {
-  gLogger->critical(msg);
+  // May run before setupLogging() has completed, so the logger can be absent.
+  if (gLogger) {
+    gLogger->critical(msg);
+  }
   outputToDebugger(msg);
 }
 
@@ -802,9 +840,10 @@ void outputException(string const& msg) {
 int main(int, char**) {
   int exitCode{0};
 
-  initialise();
-
   try {
+    // Inside the try: initialisation throws too, and left outside it an
+    // uncaught exception here aborts with nothing written to the log.
+    initialise();
     setup();
     run();
   } catch (ExitApplicationException& e) {

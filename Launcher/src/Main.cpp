@@ -24,6 +24,7 @@
 #include <willpower/application/resourcesystem/ResourceManager.h>
 #include <willpower/application/resourcesystem/ResourceExceptions.h>
 
+#include <mpp/MppException.h>
 #include <mpp/RenderSystem.h>
 #include <mpp/ResourceManager.h>
 #include <mpp/ProgrammaticTextureStream.h>
@@ -510,6 +511,26 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 #ifdef _DEBUG
     char const* msg = e.what();
+
+    size_t reqLength = ::MultiByteToWideChar(CP_UTF8, 0, msg, (int)strlen(msg), 0, 0);
+    wstring ret(reqLength, L'\0');
+
+    ::MultiByteToWideChar(CP_UTF8, 0, msg, (int)strlen(msg), &ret[0], (int)ret.length());
+    OutputDebugString(ret.c_str());
+#endif
+  } catch (mpp::MppException& e) {
+    // what() alone is useless here - MppGlException's message is just the bare
+    // error name, e.g. "GL_INVALID_ENUM". The failing statement's location is
+    // carried separately by the exception (GL_CHECK passes __LINE__/__FILE__/
+    // __func__), so log that too or there is no way to find the call.
+    auto detail = format("{} at {}:{} in {}\nstack trace: {}", e.what(), e.getFile(), e.getLine(),
+                         e.getFunction(), e.getStackTrace());
+
+    gLogger->error(detail);
+    exitCode = 1;
+
+#ifdef _DEBUG
+    char const* msg = detail.c_str();
 
     size_t reqLength = ::MultiByteToWideChar(CP_UTF8, 0, msg, (int)strlen(msg), 0, 0);
     wstring ret(reqLength, L'\0');

@@ -178,7 +178,15 @@ void WindowGLFW::create() {
 
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+  // Deliberately no GLFW_OPENGL_PROFILE hint, which leaves GLFW_OPENGL_ANY_PROFILE.
+  //
+  // MassivePolyPusher draws text as point sprites whenever the driver reports a
+  // max point size of 16 or more, and that path enables GL_POINT_SPRITE - an
+  // enum removed in the core profile. Under a core context every 2D projection
+  // change raises GL_INVALID_ENUM, which Release silently queues but Debug turns
+  // into a throw via the engine's GL_CHECK. The SDL backend never asks for a
+  // profile either, so this keeps the two backends on the same context.
 
   auto monitor = mFullscreen ? glfwGetPrimaryMonitor() : nullptr;
 

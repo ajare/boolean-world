@@ -71,7 +71,8 @@ SDL_Window* createWindow() {
 
   // GL 3.0 + GLSL 130
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+  // No profile mask: MassivePolyPusher's 2D text path enables GL_POINT_SPRITE,
+  // which a core profile rejects with GL_INVALID_ENUM. See WindowGLFW::create.
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 
@@ -182,10 +183,15 @@ void setup() {
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable Gamepad Controls
 
-  io.Fonts->AddFontDefault();
-
   float baseFontSize = 13.0f;                       // 13.0f is the size of the default font. Change to the font size you use.
   float iconFontSize = baseFontSize * 2.0f / 3.0f;  // FontAwesome fonts need to have their sizes reduced by 2.0f/3.0f in order to align correctly
+
+  // SizePixels must be set explicitly. From ImGui 1.92 a bare AddFontDefault()
+  // gives the font an implicit reference size, and merging a font that has an
+  // explicit one into it asserts.
+  ImFontConfig default_config;
+  default_config.SizePixels = baseFontSize;
+  io.Fonts->AddFontDefault(&default_config);
 
   static const ImWchar icons_ranges[] = {ICON_MIN_FA, ICON_MAX_16_FA, 0};
   ImFontConfig icons_config;

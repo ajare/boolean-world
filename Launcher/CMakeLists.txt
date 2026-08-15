@@ -51,6 +51,24 @@ add_dependencies(Launcher BooleanWorld)
 bw_deploy_runtime_dlls(Launcher)
 bw_deploy_vendor_dlls(Launcher)
 
+# Per-machine support files, as CopyWillpowerBinaries.bat used to stage:
+#   build/support/<COMPUTERNAME>/vs2026/x64/<CONFIG>/*  ->  output directory
+# Run through a script so both $<CONFIG> and the directory's existence resolve
+# at build time - most machines have no support directory, and
+# `cmake -E copy_directory` fails outright on a missing source.
+#
+# This runs after the generated BooleanWorld.yaml below, so a machine that
+# provides its own config overrides the generated one.
+if(DEFINED ENV{COMPUTERNAME})
+    add_custom_command(TARGET Launcher POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+                "-DSRC=${CMAKE_CURRENT_SOURCE_DIR}/build/support/$ENV{COMPUTERNAME}/vs2026/x64/$<CONFIG>"
+                "-DDST=$<TARGET_FILE_DIR:Launcher>"
+                -P "${BW_ROOT}/cmake/CopyDirIfExists.cmake"
+        VERBATIM
+        COMMENT "Staging support files for $ENV{COMPUTERNAME}")
+endif()
+
 # The game DLL pulls in libraries Launcher itself never links (MppHelper via
 # AppLib, for one). Because it is loaded by name rather than linked, those do
 # not appear in Launcher's own TARGET_RUNTIME_DLLS - stage the game's set too.
