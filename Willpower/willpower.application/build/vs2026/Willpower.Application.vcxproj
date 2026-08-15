@@ -1,0 +1,229 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{1E9E1970-32EE-4FDB-959A-65678F5E4AD5}</ProjectGuid>
+    <RootNamespace>WillpowerApplication</RootNamespace>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(WindowsTargetPlatformVersion)'==''">
+    <!-- Latest Target Version property -->
+    <LatestTargetPlatformVersion>$([Microsoft.Build.Utilities.ToolLocationHelper]::GetLatestSDKTargetPlatformVersion('Windows', '10.0'))</LatestTargetPlatformVersion>
+    <WindowsTargetPlatformVersion Condition="'$(WindowsTargetPlatformVersion)' == ''">10.0</WindowsTargetPlatformVersion>
+    <TargetPlatformVersion>$(WindowsTargetPlatformVersion)</TargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(ProjectDir)bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
+    <IncludePath>$(IncludePath)</IncludePath>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
+    <TargetName>$(ProjectName)d</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(ProjectDir)bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
+    <IncludePath>$(IncludePath)</IncludePath>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\include;$(ProjectDir)..\..\..\willpower.common\include;$(ProjectDir)..\..\..\willpower.collide\include;$(ProjectDir)..\..\..\willpower.geometry\include;$(ProjectDir)..\..\..\willpower.serialization\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-mesh\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-program\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\vendor\include;$(ProjectDir)..\..\..\..\ext\Utils\include;$(ProjectDir)..\..\..\..\vendor\include;$(ProjectDir)..\..\..\..\vendor\include\fmod\core;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WP_APPLICATION_DLL_EXPORT;WP_USE_ASSERT_TRACE;WP_USE_MEMLEAK_TRACKING;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>DebugFull</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <ImportLibrary>$(ProjectDir)lib\$(Platform)\$(Configuration)\$(TargetName).lib</ImportLibrary>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\build\vs2026\\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-mesh\build\vs2026\\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-program\build\vs2026\\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\Utils\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\vendor\lib\vs2026\$(Platform)\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Utilsd.lib;MassivePolyPusherd.lib;MppMeshd.lib;MppProgramd.lib;FreeImage.lib;fmtd.lib;fmod_vc.lib;fmodstudio_vc.lib;fsbank_vc.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\include;$(ProjectDir)..\..\..\willpower.common\include;$(ProjectDir)..\..\..\willpower.collide\include;$(ProjectDir)..\..\..\willpower.geometry\include;$(ProjectDir)..\..\..\willpower.serialization\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-mesh\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-program\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\vendor\include;$(ProjectDir)..\..\..\..\ext\Utils\include;$(ProjectDir)..\..\..\..\vendor\include;$(ProjectDir)..\..\..\..\vendor\include\fmod\core;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WP_APPLICATION_DLL_EXPORT;WP_USE_ASSERT_TRACE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <SubSystem>Windows</SubSystem>
+      <ImportLibrary>$(ProjectDir)lib\$(Platform)\$(Configuration)\$(TargetName).lib</ImportLibrary>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\build\vs2026\\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-mesh\build\vs2026\\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-program\build\vs2026\\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\Utils\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\vendor\lib\vs2026\$(Platform)\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Utils.lib;MassivePolyPusher.lib;MppMesh.lib;MppProgram.lib;FreeImage.lib;fmt.lib;fmod_vc.lib;fmodstudio_vc.lib;fsbank_vc.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\include\willpower\application\AudioOptions.h" />
+    <ClInclude Include="..\..\include\willpower\application\AudioSystem.h" />
+    <ClInclude Include="..\..\include\willpower\application\Document.h" />
+    <ClInclude Include="..\..\include\willpower\application\DocumentManager.h" />
+    <ClInclude Include="..\..\include\willpower\application\InputHelper.h" />
+    <ClInclude Include="..\..\include\willpower\application\InputStateManager.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\AnimationSetDefaultDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\AnimationSetResource.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\AnimationSetResourceDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\AudioBankResource.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\AudioBankDefaultDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\AudioBankResourceDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\DataStream.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ImageDefaultDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ImageResourceDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ImageSetDefaultDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ImageSetResource.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ImageSetResourceDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\MaterialResource.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\MaterialDefaultDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\MaterialResourceDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ProgramDefaultDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ProgramResourceDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ResourceCallback.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ResourceDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ResourceExceptions.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ImageResource.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ProgramResource.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\Resource.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ResourceFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ResourceLocation.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ResourceManager.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ResourceRecord.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ShaderDefaultDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ShaderResource.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\ShaderResourceDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\TextFileDefaultDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\TextFileResource.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\TextFileResourceDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\XmlFileResource.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\XmlFileDefaultDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\resourcesystem\XmlFileResourceDefinitionFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\Scheduler.h" />
+    <ClInclude Include="..\..\include\willpower\application\SchedulerTask.h" />
+    <ClInclude Include="..\..\include\willpower\application\ServiceLocator.h" />
+    <ClInclude Include="..\..\include\willpower\application\StateExceptions.h" />
+    <ClInclude Include="..\..\include\willpower\application\StateFactory.h" />
+    <ClInclude Include="..\..\include\willpower\application\Key.h" />
+    <ClInclude Include="..\..\include\willpower\application\MouseButton.h" />
+    <ClInclude Include="..\..\include\willpower\application\Platform.h" />
+    <ClInclude Include="..\..\include\willpower\application\ApplicationSettings.h" />
+    <ClInclude Include="..\..\include\willpower\application\State.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\willpower.collide\build\vs2026\Willpower.Collide.vcxproj">
+      <Project>{cc5d02fd-b215-486b-ba0c-d9e23ed9e437}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\willpower.common\build\vs2026\Willpower.Common.vcxproj">
+      <Project>{1cc4b38c-a237-4953-ace4-636a0c890759}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\willpower.editor\build\vs2026\Willpower.Editor.vcxproj">
+      <Project>{e1c5dbef-39f9-4421-b4d0-a22072a4b7c7}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\willpower.eventuality\build\vs2026\Willpower.Eventuality.vcxproj">
+      <Project>{2a29739f-caae-42e5-8530-86d3d272fc3d}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\willpower.geometry\build\vs2026\Willpower.Geometry.vcxproj">
+      <Project>{6bd64411-a6a6-4b3d-bfe0-4c71fb4e713b}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\willpower.serialization\build\vs2026\Willpower.Serialization.vcxproj">
+      <Project>{15dde992-9c63-4624-bb73-996494302e70}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\src\ApplicationSettings.cpp" />
+    <ClCompile Include="..\..\src\AudioSystem.cpp" />
+    <ClCompile Include="..\..\src\InputHelper.cpp" />
+    <ClCompile Include="..\..\src\InputStateManager.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\AnimationSetDefaultDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\AnimationSetResource.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\AnimationSetResourceDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\AudioBankResource.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\AudioBankDefaultDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\AudioBankResourceDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\DataStream.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ImageDefaultDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ImageResource.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ImageResourceDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ImageSetDefaultDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ImageSetResource.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ImageSetResourceDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\MaterialResource.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\MaterialResourceDefaultDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\MaterialResourceDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ProgramDefaultDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ProgramResource.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ProgramResourceDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\Resource.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ResourceDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ResourceLocation.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ResourceManager.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ShaderDefaultDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ShaderResource.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\ShaderResourceDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\TestFileDefaultDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\TextFileResource.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\TextFileResourceDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\XmlFileDefaultDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\XmlFileResource.cpp" />
+    <ClCompile Include="..\..\src\resourcesystem\XmlFileResourceDefinitionFactory.cpp" />
+    <ClCompile Include="..\..\src\Scheduler.cpp" />
+    <ClCompile Include="..\..\src\SchedulerTask.cpp" />
+    <ClCompile Include="..\..\src\ServiceLocator.cpp" />
+    <ClCompile Include="..\..\src\State.cpp" />
+    <ClCompile Include="..\..\src\StateFactory.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\version\Version.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

@@ -1,0 +1,158 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{4536BA0A-9B0F-4960-AF96-4CE1B4BEA3E2}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>WillPowerViz</RootNamespace>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(WindowsTargetPlatformVersion)'==''">
+    <!-- Latest Target Version property -->
+    <LatestTargetPlatformVersion>$([Microsoft.Build.Utilities.ToolLocationHelper]::GetLatestSDKTargetPlatformVersion('Windows', '10.0'))</LatestTargetPlatformVersion>
+    <WindowsTargetPlatformVersion Condition="'$(WindowsTargetPlatformVersion)' == ''">10.0</WindowsTargetPlatformVersion>
+    <TargetPlatformVersion>$(WindowsTargetPlatformVersion)</TargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(ProjectDir)bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
+    <TargetName>$(ProjectName)d</TargetName>
+    <IncludePath>$(IncludePath)</IncludePath>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(ProjectDir)bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
+    <IncludePath>$(IncludePath)</IncludePath>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;WP_VIZ_DLL_EXPORT;WP_USE_ASSERT_TRACE;WP_USE_MEMLEAK_TRACKING;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\include;$(ProjectDir)..\..\..\willpower.collide\include;$(ProjectDir)..\..\..\willpower.common\include;$(ProjectDir)..\..\..\willpower.firepower\include;$(ProjectDir)..\..\..\willpower.geometry\include;$(ProjectDir)..\..\..\willpower.wayfinder\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-helper\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-mesh\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-program\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\vendor\include;$(ProjectDir)..\..\..\..\ext\Utils\include;$(ProjectDir)..\..\..\..\vendor\include</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>DebugFull</GenerateDebugInformation>
+      <ImportLibrary>$(ProjectDir)lib\$(Platform)\$(Configuration)\$(TargetName).lib</ImportLibrary>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\..\..\willpower.collide\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\willpower.firepower\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-helper\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-mesh\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-program\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\Utils\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\vendor\lib\vs2026\$(Platform)\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>MassivePolyPusherd.lib;MppMeshd.lib;MppHelperd.lib;MppProgramd.lib;Utilsd.lib;fmtd.lib;Willpower.Collided.lib;Willpower.Firepowerd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;WP_VIZ_DLL_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\include;$(ProjectDir)..\..\..\willpower.collide\include;$(ProjectDir)..\..\..\willpower.common\include;$(ProjectDir)..\..\..\willpower.firepower\include;$(ProjectDir)..\..\..\willpower.geometry\include;$(ProjectDir)..\..\..\willpower.wayfinder\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-helper\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-mesh\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-program\include;$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\vendor\include;$(ProjectDir)..\..\..\..\ext\Utils\include;$(ProjectDir)..\..\..\..\vendor\include</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ImportLibrary>$(ProjectDir)lib\$(Platform)\$(Configuration)\$(TargetName).lib</ImportLibrary>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\..\..\willpower.collide\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\willpower.firepower\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-helper\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-mesh\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\MassivePolyPusher\mpp-program\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\ext\Utils\build\vs2026\lib\$(Platform)\$(Configuration);$(ProjectDir)..\..\..\..\vendor\lib\vs2026\$(Platform)\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>MassivePolyPusher.lib;MppMesh.lib;MppHelper.lib;MppProgram.lib;Utils.lib;fmt.lib;Willpower.Collide.lib;Willpower.Firepower.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\include\willpower\viz\AccelerationGridRenderer.h" />
+    <ClInclude Include="..\..\include\willpower\viz\CollisionSimulationRenderer.h" />
+    <ClInclude Include="..\..\include\willpower\viz\CollisionSimulationRenderParams.h" />
+    <ClInclude Include="..\..\include\willpower\viz\DynamicLineRenderer.h" />
+    <ClInclude Include="..\..\include\willpower\viz\DynamicLineRenderParams.h" />
+    <ClInclude Include="..\..\include\willpower\viz\DynamicQuadRenderer.h" />
+    <ClInclude Include="..\..\include\willpower\viz\DynamicQuadRenderParams.h" />
+    <ClInclude Include="..\..\include\willpower\viz\DynamicRenderer.h" />
+    <ClInclude Include="..\..\include\willpower\viz\DynamicTriangleRenderer.h" />
+    <ClInclude Include="..\..\include\willpower\viz\DynamicTriangleRenderParams.h" />
+    <ClInclude Include="..\..\include\willpower\viz\FirepowerMeshRenderer.h" />
+    <ClInclude Include="..\..\include\willpower\viz\FirepowerMeshRenderParams.h" />
+    <ClInclude Include="..\..\include\willpower\viz\GeometryMeshRenderer.h" />
+    <ClInclude Include="..\..\include\willpower\viz\GeometryMeshRenderParams.h" />
+    <ClInclude Include="..\..\include\willpower\viz\Platform.h" />
+    <ClInclude Include="..\..\include\willpower\viz\Renderer.h" />
+    <ClInclude Include="..\..\include\willpower\viz\RenderParams.h" />
+    <ClInclude Include="..\..\include\willpower\viz\StaticRenderer.h" />
+    <ClInclude Include="..\..\include\willpower\viz\AccelerationGridRenderParams.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\willpower.common\build\vs2026\Willpower.Common.vcxproj">
+      <Project>{1cc4b38c-a237-4953-ace4-636a0c890759}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\willpower.geometry\build\vs2026\Willpower.Geometry.vcxproj">
+      <Project>{6bd64411-a6a6-4b3d-bfe0-4c71fb4e713b}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\version\Version.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\src\AccelerationGridRenderer.cpp" />
+    <ClCompile Include="..\..\src\CollisionSimulationRenderer.cpp" />
+    <ClCompile Include="..\..\src\CollisionSimulationRenderParams.cpp" />
+    <ClCompile Include="..\..\src\DynamicLineRenderer.cpp" />
+    <ClCompile Include="..\..\src\DynamicLineRenderParams.cpp" />
+    <ClCompile Include="..\..\src\DynamicQuadRenderParams.cpp" />
+    <ClCompile Include="..\..\src\DynamicRenderer.cpp" />
+    <ClCompile Include="..\..\src\DynamicTriangleRenderParams.cpp" />
+    <ClCompile Include="..\..\src\FirepowerMeshRenderer.cpp" />
+    <ClCompile Include="..\..\src\FirepowerMeshRenderParams.cpp" />
+    <ClCompile Include="..\..\src\GeometryMeshRenderer.cpp" />
+    <ClCompile Include="..\..\src\GeometryMeshRenderParams.cpp" />
+    <ClCompile Include="..\..\src\Renderer.cpp" />
+    <ClCompile Include="..\..\src\RenderParams.cpp" />
+    <ClCompile Include="..\..\src\AccelerationGridRenderParams.cpp" />
+    <ClCompile Include="..\..\src\StaticRenderer.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
