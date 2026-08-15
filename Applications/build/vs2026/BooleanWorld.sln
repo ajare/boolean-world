@@ -31,6 +31,9 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "profiler", "..\..\BooleanWo
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "experiments", "..\..\BooleanWorld\experiments\build\experiments.vcxproj", "{5ABC94E7-10C1-4FE9-82E1-956EA7C0C465}"
+	ProjectSection(ProjectDependencies) = postProject
+		{07115090-0DE8-4167-A3F9-780C9B994E02} = {07115090-0DE8-4167-A3F9-780C9B994E02}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
