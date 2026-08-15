@@ -90,9 +90,14 @@ Clipper 1) is excluded by explicit path.
 
 ## Known issues
 
-- `editor` and `floored` do not compile in `Debug|x64`: the vendored
-  `spdlog/fmt` uses `stdext::checked_array_iterator`, removed from the current
-  MSVC STL. Release and Profiling are unaffected. Pre-existing, inherited from
-  Willpower.
-- 20 of 24 `experiments` tests fail on PSLG hierarchy assertions. Also
-  pre-existing.
+- **Debug builds do not run.** All three GUI applications abort at startup in
+  `Debug|x64`; `Release` and `Profiling` are fine. For the Launcher the cause is
+  MassivePolyPusher's `GL_CHECK`, which is compiled in only when `_DEBUG` is
+  defined and throws on any GL error — it reports `GL_INVALID_ENUM` during the
+  first 2D draw, before any game content loads. That check lives in the
+  submodule, so it cannot be addressed from this repo, and tungsten-oxide has
+  never built or run its own Launcher in Debug either. `editor` and `floored`
+  abort too; their Debug path had never been reachable before spdlog was
+  upgraded, so it has never worked rather than having regressed.
+- 20 of 24 `experiments` tests fail on PSLG hierarchy assertions. Pre-existing,
+  inherited from Willpower.
