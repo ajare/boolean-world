@@ -10,29 +10,11 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Willpower.Collide", "..\..\
 		{6BD64411-A6A6-4B3D-BFE0-4C71FB4E713B} = {6BD64411-A6A6-4B3D-BFE0-4C71FB4E713B}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Willpower.Eventuality", "..\..\willpower.eventuality\build\vs2026\Willpower.Eventuality.vcxproj", "{2A29739F-CAAE-42E5-8530-86D3D272FC3D}"
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Willpower.Geometry", "..\..\willpower.geometry\build\vs2026\Willpower.Geometry.vcxproj", "{6BD64411-A6A6-4B3D-BFE0-4C71FB4E713B}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Willpower.Serialization", "..\..\willpower.serialization\build\vs2026\Willpower.Serialization.vcxproj", "{15DDE992-9C63-4624-BB73-996494302E70}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Willpower.Editor", "..\..\willpower.editor\build\vs2026\Willpower.Editor.vcxproj", "{E1C5DBEF-39F9-4421-B4D0-A22072A4B7C7}"
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Willpower.Application", "..\..\willpower.application\build\vs2026\Willpower.Application.vcxproj", "{1E9E1970-32EE-4FDB-959A-65678F5E4AD5}"
-EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ScratchPad", "..\..\scratchpad\build\vs2026\ScratchPad.vcxproj", "{17705D15-AD3C-45EE-893C-A402D25D9959}"
-	ProjectSection(ProjectDependencies) = postProject
-		{F4574D00-8EF8-4375-9C9F-2129E77DE5FE} = {F4574D00-8EF8-4375-9C9F-2129E77DE5FE}
-		{4536BA0A-9B0F-4960-AF96-4CE1B4BEA3E2} = {4536BA0A-9B0F-4960-AF96-4CE1B4BEA3E2}
-		{FE3B504D-CD28-4BCE-9998-2F571F9BCB91} = {FE3B504D-CD28-4BCE-9998-2F571F9BCB91}
-		{1E9E1970-32EE-4FDB-959A-65678F5E4AD5} = {1E9E1970-32EE-4FDB-959A-65678F5E4AD5}
-	EndProjectSection
-EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Willpower.Wayfinder", "..\..\willpower.wayfinder\build\vs2026\Willpower.Wayfinder.vcxproj", "{FE3B504D-CD28-4BCE-9998-2F571F9BCB91}"
-	ProjectSection(ProjectDependencies) = postProject
-		{6BD64411-A6A6-4B3D-BFE0-4C71FB4E713B} = {6BD64411-A6A6-4B3D-BFE0-4C71FB4E713B}
-		{1CC4B38C-A237-4953-ACE4-636A0C890759} = {1CC4B38C-A237-4953-ACE4-636A0C890759}
-	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Willpower.Firepower", "..\..\willpower.firepower\build\vs2026\Willpower.Firepower.vcxproj", "{F4574D00-8EF8-4375-9C9F-2129E77DE5FE}"
 	ProjectSection(ProjectDependencies) = postProject
@@ -60,10 +42,6 @@ Global
 		{CC5D02FD-B215-486B-BA0C-D9E23ED9E437}.Debug|x64.Build.0 = Debug|x64
 		{CC5D02FD-B215-486B-BA0C-D9E23ED9E437}.Release|x64.ActiveCfg = Release|x64
 		{CC5D02FD-B215-486B-BA0C-D9E23ED9E437}.Release|x64.Build.0 = Release|x64
-		{2A29739F-CAAE-42E5-8530-86D3D272FC3D}.Debug|x64.ActiveCfg = Debug|x64
-		{2A29739F-CAAE-42E5-8530-86D3D272FC3D}.Debug|x64.Build.0 = Debug|x64
-		{2A29739F-CAAE-42E5-8530-86D3D272FC3D}.Release|x64.ActiveCfg = Release|x64
-		{2A29739F-CAAE-42E5-8530-86D3D272FC3D}.Release|x64.Build.0 = Release|x64
 		{6BD64411-A6A6-4B3D-BFE0-4C71FB4E713B}.Debug|x64.ActiveCfg = Debug|x64
 		{6BD64411-A6A6-4B3D-BFE0-4C71FB4E713B}.Debug|x64.Build.0 = Debug|x64
 		{6BD64411-A6A6-4B3D-BFE0-4C71FB4E713B}.Release|x64.ActiveCfg = Release|x64
@@ -72,22 +50,10 @@ Global
 		{15DDE992-9C63-4624-BB73-996494302E70}.Debug|x64.Build.0 = Debug|x64
 		{15DDE992-9C63-4624-BB73-996494302E70}.Release|x64.ActiveCfg = Release|x64
 		{15DDE992-9C63-4624-BB73-996494302E70}.Release|x64.Build.0 = Release|x64
-		{E1C5DBEF-39F9-4421-B4D0-A22072A4B7C7}.Debug|x64.ActiveCfg = Debug|x64
-		{E1C5DBEF-39F9-4421-B4D0-A22072A4B7C7}.Debug|x64.Build.0 = Debug|x64
-		{E1C5DBEF-39F9-4421-B4D0-A22072A4B7C7}.Release|x64.ActiveCfg = Release|x64
-		{E1C5DBEF-39F9-4421-B4D0-A22072A4B7C7}.Release|x64.Build.0 = Release|x64
 		{1E9E1970-32EE-4FDB-959A-65678F5E4AD5}.Debug|x64.ActiveCfg = Debug|x64
 		{1E9E1970-32EE-4FDB-959A-65678F5E4AD5}.Debug|x64.Build.0 = Debug|x64
 		{1E9E1970-32EE-4FDB-959A-65678F5E4AD5}.Release|x64.ActiveCfg = Release|x64
 		{1E9E1970-32EE-4FDB-959A-65678F5E4AD5}.Release|x64.Build.0 = Release|x64
-		{17705D15-AD3C-45EE-893C-A402D25D9959}.Debug|x64.ActiveCfg = Debug|x64
-		{17705D15-AD3C-45EE-893C-A402D25D9959}.Debug|x64.Build.0 = Debug|x64
-		{17705D15-AD3C-45EE-893C-A402D25D9959}.Release|x64.ActiveCfg = Release|x64
-		{17705D15-AD3C-45EE-893C-A402D25D9959}.Release|x64.Build.0 = Release|x64
-		{FE3B504D-CD28-4BCE-9998-2F571F9BCB91}.Debug|x64.ActiveCfg = Debug|x64
-		{FE3B504D-CD28-4BCE-9998-2F571F9BCB91}.Debug|x64.Build.0 = Debug|x64
-		{FE3B504D-CD28-4BCE-9998-2F571F9BCB91}.Release|x64.ActiveCfg = Release|x64
-		{FE3B504D-CD28-4BCE-9998-2F571F9BCB91}.Release|x64.Build.0 = Release|x64
 		{F4574D00-8EF8-4375-9C9F-2129E77DE5FE}.Debug|x64.ActiveCfg = Debug|x64
 		{F4574D00-8EF8-4375-9C9F-2129E77DE5FE}.Debug|x64.Build.0 = Debug|x64
 		{F4574D00-8EF8-4375-9C9F-2129E77DE5FE}.Release|x64.ActiveCfg = Release|x64
