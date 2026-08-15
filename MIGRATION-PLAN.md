@@ -1,331 +1,163 @@
-# BooleanWorld extraction — migration plan
+# BooleanWorld extraction — migration record
 
 Source: `D:\Code\Projects\Willpower`
-Target: `D:\Code\Projects\boolean-world` (new git repo)
+This repo: the stripped-down result, containing only what the
+`Applications/BooleanWorld` projects need.
 
-Goal: a repo containing only what the `Applications/BooleanWorld` projects need,
-with `Willpower` and `AppLib` pruned to their used surface. Folder structure is
-preserved. Submodules (`ext/Utils`, `ext/MassivePolyPusher`) are copied as
-submodule references and **never edited**.
-
----
-
-## 1. What the analysis found
-
-Include-graph analysis was run over every non-vendored `.h/.cpp` in
-`Applications/BooleanWorld` and `Launcher`, resolving includes against the same
-search roots the `.vcxproj` files use, then transitively pulling each reached
-header's sibling `.cpp` in the same module.
-
-### Module usage (files reached / files present)
-
-| Module | Used | Total | Verdict |
-|---|---:|---:|---|
-| `AppLib` | 93 | 95 | keep |
-| `willpower.application` | 84 | 95 | keep, prune 10 |
-| `willpower.viz` | 35 | 38 | keep, prune 2 |
-| `willpower.geometry` | 42 | 53 | keep, prune 10 |
-| `willpower.common` | 39 | 66 | keep, prune 26 |
-| `willpower.collide` | 11 | 13 | keep, prune 1 |
-| `willpower.serialization` | 5 | 14 | keep, prune 8 |
-| `willpower.firepower` | 9 | 28 | keep, prune 18 |
-| **`willpower.editor`** | **0** | 17 | **delete whole module** |
-| **`willpower.eventuality`** | **0** | 9 | **delete whole module** |
-| **`willpower.wayfinder`** | **0** | 25 | **delete whole module** |
-
-Corroborated independently by the linker inputs: no `.vcxproj` under
-`Applications/BooleanWorld`, `AppLib`, or `Launcher` lists
-`Willpower.Editor*.lib`, `Willpower.Eventuality*.lib`, or
-`Willpower.Wayfinder*.lib` in `AdditionalDependencies`, and none lists those
-modules' `include` directories in `AdditionalIncludeDirectories`. Both signals
-agree, so those three modules are dead for BooleanWorld.
-
-### Dependency shape that survives
-
-```
-Launcher.exe ──loads──> BooleanWorld.dll (Applications/BooleanWorld/app)
-                             │
-     core.lib (BooleanWorld/core) ─────┤
-                             │
-                          AppLib.dll
-                             │
-   ┌────────┬────────┬───────┼────────┬──────────────┬─────────┐
- Common  Collide  Firepower Geometry  Serialization  Viz   Application
-   │                            └── SerializerMeshChunk → Serialization
-   └──────────────────── mpp / mpp-helper / mpp-mesh / mpp-program (submodule)
-                         Utils (submodule), vendor/ (prebuilt 3rd-party)
-```
-
-`willpower.serialization` is *only* reachable through
-`willpower.geometry/SerializerMeshChunk.{h,cpp}` — nothing in BooleanWorld or
-AppLib includes a `willpower/serialization/` header directly. It stays, but
-only its `Serializer`-chunk core is used; the `BinarySerializer` /
-`TextSerializer` / `SerializerDirectoryChunk` concrete implementations are not.
-
-### Sibling BooleanWorld projects, all kept
-
-`app` (the DLL Launcher loads), `core` (static lib, the shared engine),
-`core-dll` (DLL wrapper used by `scripts/*.py`), `editor`, `floored`,
-`experiments`, `profiler` — six executables plus the DLL, all defined in
-`Applications/build/vs2026/BooleanWorld.sln`, which is already standalone and
-references nothing from `HexWorld` or `Template`.
-
-### Size
-
-Source is small; the ~7.5 GB in the tree is almost entirely `obj/`, `bin/`,
-`lib/`, `.vs/`. Excluding those, the whole retained set is on the order of
-50 MB, dominated by `Applications/BooleanWorld/app/resources` (7 MB) and
-`vendor/` (161 MB of prebuilt libs, which must come across).
+**Status: complete and verified.** A fresh
+`git clone --recurse-submodules` of this repo builds end to end with
+`RebuildAll.bat Release` and the game reaches its Play state.
 
 ---
 
-## 2. Directories to drop entirely
+## 1. What was removed
 
-| Path | Reason |
+### Whole Willpower modules (51 files)
+
+`willpower.editor`, `willpower.eventuality`, `willpower.wayfinder` are
+unreachable from BooleanWorld. Two independent signals agreed, and the build
+then confirmed it: nothing in `Applications/BooleanWorld`, `AppLib` or
+`Launcher` includes their headers, no `.vcxproj` links their `.lib`, and
+`Willpower.sln` builds clean without them.
+
+### Other directories
+
+`Applications/HexWorld`, `Applications/Template`, `Applications/resources`
+(shared assets for the other apps), `Willpower/scratchpad` (the only consumer
+of `BinarySerializer`), `Willpower/tests`, `Willpower/3rd party` (referenced by
+no project file), `Willpower/doc`, `node_modules` + the empty `package.json`,
+`bitbucket-pipelines.yml`, and all `obj/ bin/ lib/ .vs/` build output. Also
+`willpower.collide/build/vs2017`, a stale toolset directory no solution
+referenced.
+
+### Files pruned inside retained modules (121)
+
+| Module | Files | Before → After |
+|---|---:|---|
+| `willpower.common` | 26 | 66 → 40 |
+| `willpower.firepower` | 18 | 28 → 10 |
+| `willpower.geometry` | 10 | 52 → 42 |
+| `willpower.application` | 8 | 95 → 87 |
+| `willpower.serialization` | 8 | 14 → 6 |
+| `willpower.viz` | 2 | 38 → 36 |
+| `AppLib` | 1 | 95 → 94 |
+| `willpower.collide` | 0 | 13 → 13 |
+
+Highlights: the entire spline family and `*BatchRenderable` hierarchy from
+`common` (BooleanWorld renders through `willpower.viz`); the beam and bomb
+subsystems from `firepower` (AppLib uses only `MeshCollisionManager.h` and
+`BeamShard.h`); the concrete `Binary`/`Text` serializers, leaving only the
+chunk core that `geometry/SerializerMeshChunk` actually reaches.
+
+Each removal took the `.h`/`.cpp` **and** its `<ClCompile>`/`<ClInclude>`
+entries in both the `.vcxproj` and the `.vcxproj.filters` — these are explicit
+lists, so a stale entry is a hard build error.
+
+---
+
+## 2. Three files the static analysis got wrong
+
+All three were flagged unused, and the build proved otherwise. Every one has a
+**filename that does not match the symbol it defines**, which is what defeated
+the header-to-source pairing:
+
+| File | Actually defines |
 |---|---|
-| `Applications/HexWorld`, `Applications/Template` | other applications |
-| `Applications/resources` | shared assets for HexWorld/Template/Shmup/TGD; nothing in BooleanWorld references them |
-| `Willpower/willpower.editor` | unreferenced (see above) |
-| `Willpower/willpower.eventuality` | unreferenced |
-| `Willpower/willpower.wayfinder` | unreferenced |
-| `Willpower/scratchpad` | Willpower's own sample app; the only consumer of `BinarySerializer` |
-| `Willpower/tests` | VS2026 solution stub, no BooleanWorld coverage |
-| `Willpower/3rd party` | not referenced by any `.vcxproj` or `.props`; superseded by `vendor/` |
-| `Willpower/doc`, `Willpower/build/doxyfile` | engine-wide docs |
-| `node_modules`, `package.json`, `package-lock.json` | `package.json` is `{}` — empty stub |
-| `bitbucket-pipelines.yml` | CI for the old repo; rewrite if needed |
-| all `obj/`, `bin/`, `lib/`, `.vs/`, `*.user`, `*.suo` | build output |
+| `collide/src/CollideAABB.cpp` | `ColliderAABB` (missing `r`) |
+| `application/…/TestFileDefaultDefinitionFactory.cpp` | `TextFileDefault…` (typo: Test/Text) |
+| `application/…/MaterialResourceDefaultDefinitionFactory.cpp` | `MaterialDefault…` |
 
-**Judgement call flagged:** `Launcher/build/support/` holds per-machine DLL
-drops keyed by `%COMPUTERNAME%` (seven machine names). I'd carry it across
-as-is rather than guess which are live — it is small and
-`CopyWillpowerBinaries.bat` depends on the layout. Delete the ones you know are
-dead machines after the migration.
+The two factories are the self-registering kind that static include analysis
+can never see — they are instantiated by `ResourceManager.cpp`, not included by
+name. Staging them last, as planned, is what caught them.
 
 ---
 
-## 3. Files to prune inside retained modules
+## 3. Other defects found and fixed
 
-The full list of 124 candidates is in `prune-candidates.txt` alongside this
-plan, one repo-relative path per line. Highlights:
-
-- **`willpower.common`** (26 files) — the whole spline family
-  (`CubicBSpline`, `CentripetalCatmullRomSpline`, and their `*Looping`
-  variants), `DynamicAccelerationGrid` + `CachedDynamicAccelerationGrid`,
-  `polypartition`, `DateTime`, and the entire `*BatchRenderable` hierarchy
-  (`BatchRenderable`, `Quad`, `Triangle`, `TriangleStrip`,
-  `IndexedTriangle`) — BooleanWorld renders through `willpower.viz` instead.
-- **`willpower.firepower`** (18 files) — the beam subsystem (`Beam`,
-  `BeamManager`, `BeamResource`, `BeamVertexDataBuilder`,
-  `BeamDefaultDefinitionFactory`), the bomb subsystem (`BombManager`,
-  `BombVertexDataBuilder`), `AreaQuery`, `ObjectCollisionManager`,
-  `DynamicCollisionObject`, `MeshCollisionCircle/Edge`. AppLib uses only
-  `firepower/MeshCollisionManager.h` and `firepower/BeamShard.h`.
-- **`willpower.geometry`** (10 files) — `CsgUtils`, `MeshValidator`,
-  `PolygonFilter`, `VertexFilter`, `MeshPropertyCollection`,
-  `OperationStatus`.
-- **`willpower.serialization`** (8 files) — `BinarySerializer`,
-  `TextSerializer`, `SerializerDirectoryChunk`, and `Serializer` itself.
-- **`willpower.application`** (10 files) — `Scheduler`, `SchedulerTask`,
-  `InputHelper`, `Document`, `DocumentManager`, and two unused
-  `resourcesystem` default-definition factories.
-- **`AppLib`** (1 file) — `include/applib/VisualTriMesh.h`.
-
-`build/version/Version.h` is excluded from the prune list in every module — it
-is generated by `SetVersion.ps1` and referenced by the `.rc` build.
-
-**Confidence caveat.** Static include analysis cannot see three things:
-
-1. TUs compiled into a DLL purely for side effects (factory
-   self-registration in a static initialiser).
-2. Types used only polymorphically through a base-class pointer, where the
-   derived header is never included by the consumer.
-3. Anything reached through the resource system by *string name* from a YAML
-   or XML resource file rather than by symbol.
-
-The `*DefaultDefinitionFactory.cpp` files are exactly the shape that trips
-hazard 1, so they are staged last and verified separately (step 5).
+- **`experiments` had no dependency on `core`.** It was the only project in
+  `BooleanWorld.sln` without one, so a clean parallel (`/m`) build could link
+  it before `cored.lib` existed (`LNK1181`). Pre-existing.
+- **Stale `ClInclude` in `BooleanWorld.vcxproj`** pointing at
+  `..\..\..\HexWorld\include\NotImplementedException.h` — a path that resolved
+  to `BooleanWorld\HexWorld\` and never existed.
+- **Win32/x86 configurations removed.** `vendor/lib` ships x64 only, so they
+  could never link, and they had drifted: `BooleanWorld.vcxproj`'s Win32 config
+  linked `Willpower.Firepower.lib` + `Willpower.Geometry.lib` while its x64
+  config links `MppMesh.lib` + `core.lib` + `yaml-cpp.lib`.
+- **`RebuildAll.bat` rewritten.** It pointed at `vs2017` paths that no longer
+  exist and rebuilt Win32. It now builds vs2026/x64 in dependency order —
+  including MassivePolyPusher's *nested* `ext/utils`, which it links instead of
+  the top-level one. The fresh-clone test is what caught that omission.
+- **FMOD `.bank` files are now tracked.** A clean clone built but could not
+  run: resource validation failed on `Master.bank`, `Master.strings.bank` and
+  `Themes.bank`, and the app exited during Load. They are FMOD Studio build
+  output that the upstream repo also ignores, so a clean clone of the
+  *original* has the same defect. They are validated even with audio disabled,
+  so they are required to reach Play. 92K total. Revert that commit if you
+  would rather regenerate them from the FMOD Studio project.
 
 ---
 
-## 4. Migration steps
+## 4. Verification performed
 
-### Step 0 — prepare the target repo
+| Check | Result |
+|---|---|
+| `Willpower.sln` Debug + Release x64 | clean |
+| `AppLib.sln` Debug + Release x64 | clean |
+| `BooleanWorld.sln` Release x64, all 7 projects | clean |
+| `BooleanWorld.sln` Debug x64 | clean except `editor` + `floored` — see below |
+| `Launcher.sln` Debug + Release x64 | clean |
+| `Launcher.exe` → `BooleanWorld.dll` | reaches **`Entering state: Play`**, zero errors in `LauncherLog.html` and `mpp.log` |
+| `editor.exe`, `floored.exe` | launch and stay up; **not** driven through a map load (GUI) |
+| `experiments.exe` gtest suite | 4 pass / 20 fail — **byte-identical failure set to the source tree** |
+| `scripts/gen-world.py` | generates a world against the freshly built `core-dll.dll` |
+| fresh `--recurse-submodules` clone → `RebuildAll.bat` → run | **builds and reaches Play** |
 
-```
-cd D:\Code\Projects\boolean-world
-git init
-```
+### Two known pre-existing failures, both reproduced in the untouched source tree
 
-Copy `.gitignore` from the source and strip the `HexWorld` / `Template` /
-`app-2d` / `Editor/build/` / `Willpower/tests/` entries.
-
-### Step 1 — bring the submodules across
-
-Do **not** copy `ext/Utils` and `ext/MassivePolyPusher` as files. Record the
-exact commits first, then re-add:
-
-```
-cd D:\Code\Projects\Willpower
-git submodule status            # capture the two SHAs
-
-cd D:\Code\Projects\boolean-world
-git submodule add https://wtmrsh@bitbucket.org/wtmrsh/utils.git ext/Utils
-git submodule add https://wtmrsh@bitbucket.org/wtmrsh/massivepolypusher.git ext/MassivePolyPusher
-git -C ext/Utils checkout <SHA>
-git -C ext/MassivePolyPusher checkout <SHA>
-git add ext/Utils ext/MassivePolyPusher && git commit -m "Pin submodules"
-```
-
-Also copy `ignore = dirty` onto both entries in the new `.gitmodules`, matching
-the source. The three `GeometryEditor/ext/*` entries in the source
-`.gitmodules` are stale — `GeometryEditor/` does not exist in the tree — so
-drop them.
-
-Note that `ext/MassivePolyPusher` has its own nested `ext/utils` submodule;
-clone the new repo with `--recurse-submodules` and confirm it populates before
-going further.
-
-### Step 2 — copy the retained tree
-
-Mirror these paths from source to target, preserving structure and excluding
-`obj bin lib .vs *.user *.suo *.log`:
-
-```
-AppLib/{build,doc,include,src}
-Applications/BooleanWorld/{app,common,core,core-dll,editor,experiments,floored,profiler,scripts,tiled}
-Applications/build/{SetVersion.ps1,version,vs2026/BooleanWorld.sln}
-Launcher/{build,include,src,version}
-Willpower/build/{SetVersion.ps1,vs2026}
-Willpower/version
-Willpower/willpower.{application,collide,common,firepower,geometry,serialization,viz}
-vendor/{bin,include,lib}
-README.md
-RebuildAll.bat
-```
-
-`robocopy` with `/MIR /XD obj bin lib .vs /XF *.user *.suo` is the reliable way
-to do this on Windows.
-
-`Applications/BooleanWorld/scripts/` contains checked-in DLLs
-(`core-dll.dll`, `Willpower.Common.dll`, `Utils.dll`, `FreeImage.dll`) that the
-Python tooling loads. They are build output living outside an ignored
-directory — carry them for now so `gen-world.py` keeps working, and consider
-replacing them with a post-build copy step later.
-
-### Step 3 — commit the verbatim copy, *then* prune
-
-Commit the untouched copy first. Every subsequent removal is then a reviewable
-diff against a known-good baseline, and `git bisect` works if a later build
-breaks.
-
-### Step 4 — remove the three dead modules
-
-Delete `Willpower/willpower.{editor,eventuality,wayfinder}`, then update:
-
-- `Willpower/build/vs2026/Willpower.sln` — remove the three `Project(...)`
-  blocks (`Willpower.Editor` `{E1C5DBEF-…}`, `Willpower.Eventuality`
-  `{2A29739F-…}`, `Willpower.Wayfinder` `{FE3B504D-…}`) and their
-  `GlobalSection(ProjectConfigurationPlatforms)` lines. Also remove the
-  `ScratchPad` project `{17705D15-…}` and its `ProjectDependencies` on
-  Wayfinder and Firepower.
-- `Launcher/build/CopyWillpowerBinaries.bat` — delete the
-  `willpower.editor` and `willpower.wayfinder` copy lines.
-- `RebuildAll.bat` — it still points at `vs2017` paths that no longer exist
-  and rebuilds `Win32`. Rewrite it against `vs2026` and `x64` while you are
-  here.
-
-Build the full solution. This should be clean — nothing links those libs.
-
-### Step 5 — prune files inside retained modules
-
-Work **one module at a time**, rebuilding the whole `BooleanWorld.sln` after
-each. For each file removed:
-
-1. Delete the `.h`/`.cpp` pair.
-2. Remove the matching `<ClCompile Include=…>` / `<ClInclude Include=…>` from
-   that module's `.vcxproj` — these are explicit lists, not wildcards, so a
-   stale entry is a hard build error.
-3. Remove the matching entry from the `.vcxproj.filters` alongside it.
-
-Suggested order, lowest risk first:
-
-1. `willpower.common` — the splines, grids, `polypartition`, `DateTime`.
-2. `willpower.geometry` — filters and `CsgUtils`.
-3. `willpower.application` — `Scheduler`, `InputHelper`, `Document*`.
-4. `willpower.collide` — `CollideAABB.cpp`.
-5. `AppLib` — `VisualTriMesh.h`.
-6. `willpower.viz` — `DynamicGeometryMeshRenderer.cpp`,
-   `SplineRenderParams.cpp`.
-7. `willpower.serialization` — the concrete serializers.
-8. `willpower.firepower` — the beam and bomb subsystems. **Highest risk**:
-   AppLib has its own `Beam`/`BeamManager`/`BeamInstance` types that shadow
-   firepower's, so confirm which one each call site binds to before deleting.
-
-The `*BatchRenderable` hierarchy in `willpower.common` should be removed as one
-unit (base + all four derived), not piecemeal.
-
-Leave the `*DefaultDefinitionFactory.cpp` files
-(`MaterialResourceDefaultDefinitionFactory`, `TestFileDefaultDefinitionFactory`,
-`BeamDefaultDefinitionFactory`, `BulletDefaultDefinitionFactory`) for **last**,
-and after removing them do a *runtime* check, not just a build: launch the app
-and the editor and load `app/resources/gen-1.yaml` and a `tiled/maps` level. A
-missing self-registering factory produces a resource-not-found at load time,
-not a link error.
-
-### Step 6 — fix up build configurations
-
-The `.vcxproj` files carry stale `Win32`/`x86` configurations whose link inputs
-have drifted from `x64` — e.g. `BooleanWorld.vcxproj`'s Win32 config links
-`Willpower.Firepower.lib` and `Willpower.Geometry.lib`, while its x64 config
-links `MppMesh.lib`, `core.lib`, and `yaml-cpp.lib` instead. `vendor/lib`
-ships `x64` only, so the Win32 configurations cannot build at all.
-
-Remove `Debug|Win32` and `Release|Win32` from every `.vcxproj` and from both
-`.sln` files. This eliminates the drift as a class of bug and roughly halves
-the config surface.
-
-Also reconcile the x64 link inputs against the pruned module set so the two
-solutions agree.
-
-### Step 7 — verification gate
-
-Before declaring the migration done:
-
-- [ ] `Willpower.sln` builds Debug|x64 and Release|x64, zero warnings-as-errors regressions
-- [ ] `AppLib.sln` builds both configs
-- [ ] `BooleanWorld.sln` builds all seven projects, both configs
-- [ ] `Launcher.sln` builds both configs
-- [ ] `Launcher.exe` loads `BooleanWorld.dll` and reaches the play state
-- [ ] `editor.exe` opens and loads a map from `tiled/maps`
-- [ ] `floored.exe` runs
-- [ ] `experiments.exe` — its gtest suite passes
-- [ ] `scripts/gen-world.py` runs against `core-dll.dll`
-- [ ] fresh `git clone --recurse-submodules` of the new repo builds from
-      scratch on a clean machine
-
-The last item is the one that catches accidental dependencies on files that
-exist locally but were never committed.
+1. **`editor` and `floored` do not compile in Debug|x64.** Vendored
+   `spdlog/fmt` v9 uses `stdext::checked_array_iterator`, which the current
+   MSVC STL removed. Release is unaffected because the path is gated on
+   `#if defined(_SECURE_SCL) && _SECURE_SCL`. Verified identical in
+   `D:\Code\Projects\Willpower`. Fixing it means updating vendored spdlog,
+   which is out of scope here.
+2. **20 of 24 `experiments` tests fail** — PSLG hierarchy assertions such as
+   `CountRoots(hierarchy): 2 vs expected 1`. The failing-test set is identical
+   between this repo and the source tree, so the migration did not cause them.
 
 ---
 
-## 5. Things deliberately not done
+## 5. Deliberately not done
 
-- **Not de-duplicating the four ImGui copies.** `Launcher`,
-  `BooleanWorld/app`, `BooleanWorld/editor`, and `BooleanWorld/floored` each
-  vendor their own ImGui + ImPlot (~130k lines total, and the app/Launcher
-  pair is a *newer* ImGui than the editor/floored pair). Consolidating them is
-  a real cleanup worth doing, but it changes behaviour and belongs in its own
-  change after the migration is verified green.
-- **Not pruning inside submodules.** `ext/MassivePolyPusher` carries
-  `demo-suite`, `model-convert`, and `program-builder` that BooleanWorld never
-  uses, but the constraint is explicit and they cost nothing at build time.
-- **Not touching `vendor/`.** It holds prebuilt libraries for roughly a dozen
-  packages BooleanWorld does not link (`fmod`, `entt`, `poly2tri`, `freeimage`,
-  `SDL3`, …). Pruning it is easy and safe *after* step 7 passes, guided by the
-  union of every `AdditionalDependencies` in the final tree — but doing it
-  before then adds noise to the failure diagnosis when a build breaks.
-- **Not renaming the `Willpower` namespace or directory.** The `WP_NAMESPACE`
-  macro and `willpower/…` include prefix appear in hundreds of files;
-  renaming buys nothing and would make every future cherry-pick from the
-  upstream Willpower repo conflict.
+- **The four ImGui copies are untouched.** `Launcher`, `app`, `editor` and
+  `floored` each vendor their own ImGui + ImPlot (~130k lines; the
+  `Launcher`/`app` pair is a *newer* ImGui than the `editor`/`floored` pair).
+  Consolidating changes behaviour and belongs in its own change.
+- **Submodules are unmodified**, as required. `ext/MassivePolyPusher` still
+  carries `demo-suite`, `model-convert` and `program-builder`, which
+  BooleanWorld never uses.
+- **`vendor/` is untouched.** It holds prebuilt libraries for packages
+  BooleanWorld does not link (`entt`, `poly2tri`, `SDL3`, …). Pruning it is
+  safe now that the build is green, guided by the union of every
+  `AdditionalDependencies` in the tree.
+- **`Launcher/build/support/`** still holds per-machine drops for seven
+  `%COMPUTERNAME%` values. Delete the dead machines when you know which they
+  are — this one is `ASTRALEMPRESS`.
+- **No namespace or directory rename.** `WP_NAMESPACE` and the `willpower/…`
+  include prefix appear in hundreds of files; renaming would make every future
+  cherry-pick from upstream Willpower conflict.
+
+---
+
+## 6. Build order
+
+`RebuildAll.bat [Debug|Release]` does all of this; the order matters:
+
+```
+ext/MassivePolyPusher/ext/utils   →  ext/Utils  →  ext/MassivePolyPusher
+       →  Willpower  →  AppLib  →  BooleanWorld  →  Launcher
+```
+
+Then run `Launcher.exe BooleanWorld.cfg` from
+`Launcher/build/vs2026/bin/x64/Release`.
