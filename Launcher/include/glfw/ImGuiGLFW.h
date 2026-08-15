@@ -4,24 +4,21 @@
 
 #include "WindowGLFW.h"
 
-
-struct ImGuiGlfwData
-{
-    GLFWwindow* window;
-    double time;
-    GLFWwindow* mouseWindow;
-    GLFWcursor* mouseCursors[ImGuiMouseCursor_COUNT];
-    ImVec2 lastValidMousePos;
-    bool callbacksChainForAllWindows;
+struct ImGuiGlfwData {
+  GLFWwindow* window;
+  double time;
+  GLFWwindow* mouseWindow;
+  GLFWcursor* mouseCursors[ImGuiMouseCursor_COUNT];
+  ImVec2 lastValidMousePos;
+  bool callbacksChainForAllWindows;
 
 #ifdef _WIN32
-    WNDPROC                 prevWndProc;
+  WNDPROC prevWndProc;
 #endif
 
-    ImGuiGlfwData()
-    {
-        memset((void*)this, 0, sizeof(*this));
-    }
+  ImGuiGlfwData() {
+    memset((void*)this, 0, sizeof(*this));
+  }
 };
 
 void initialiseImGuiForGlfw(GLFWwindow* window);

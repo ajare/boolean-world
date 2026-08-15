@@ -5,41 +5,36 @@
 
 #include "willpower/application/resourcesystem/ResourceLocation.h"
 
-class ZipResourceLocation : public wp::application::resourcesystem::ResourceLocation
-{
-	struct FileEntry
-	{
-		std::string filename;
-		size_t index, compressedSize, uncompressedSize;
-	};
+class ZipResourceLocation : public wp::application::resourcesystem::ResourceLocation {
+  struct FileEntry {
+    std::string filename;
+    size_t index, compressedSize, uncompressedSize;
+  };
 
 private:
+  std::string mRootPath, mDefinitionPath;
 
-	std::string mRootPath, mDefinitionPath;
+  void* mArchive;
 
-	void* mArchive;
-
-	std::map<std::string, FileEntry> mFileEntries;
+  std::map<std::string, FileEntry> mFileEntries;
 
 private:
+  /*
+  wp::application::resourcesystem::DataStreamPtr getHardResourceDataStream(std::string const& file, std::string const& namesp) const;
 
-	/*
-	wp::application::resourcesystem::DataStreamPtr getHardResourceDataStream(std::string const& file, std::string const& namesp) const;
+  wp::application::resourcesystem::DataStreamPtr getHardResourceDataStreamProgressive(std::string const& file, std::string const& namesp, DataStreamFetchProgressCallback progress) const;
+  */
 
-	wp::application::resourcesystem::DataStreamPtr getHardResourceDataStreamProgressive(std::string const& file, std::string const& namesp, DataStreamFetchProgressCallback progress) const;
-	*/
-
-	bool hardResourceExists(std::string const& file) const;
+  bool hardResourceExists(std::string const& file) const;
 
 public:
+  ZipResourceLocation(wp::Logger* logger, std::string const& file, std::string const& definitionFile);
 
-	ZipResourceLocation(wp::Logger* logger, std::string const& file, std::string const& definitionFile);
+  virtual ~ZipResourceLocation();
 
-	virtual ~ZipResourceLocation();
+  std::string const& getRootPath() const;
 
-	std::string const& getRootPath() const;
+  uint8_t* readData(std::string const& source, uint32_t* dataSize);
 
-	uint8_t* readData(std::string const& source, uint32_t* dataSize);
-
-	std::string const& getDefinitionFile() const;
+  std::string const& getDefinitionFile() const;
 };

@@ -2,23 +2,21 @@
 
 #include <deque>
 
-class Timer
-{
-	std::deque<float> mFrameTimes;
+class Timer {
+  std::deque<float> mFrameTimes;
 
-	float mFrameTimer, mFpsResolution;
+  float mFrameTimer, mFpsResolution;
 
 public:
+  Timer();
 
-	Timer();
+  virtual void reset() = 0;
 
-	virtual void reset() = 0;
+  virtual float getDeltaTime() const = 0;
 
-	virtual float getDeltaTime() const = 0;
+  virtual float getTotalTime() const = 0;
 
-	virtual float getTotalTime() const = 0;
+  void addFrameToCounter(float time);
 
-	void addFrameToCounter(float time);
-
-	float getFPS() const;
+  float getFPS() const;
 };

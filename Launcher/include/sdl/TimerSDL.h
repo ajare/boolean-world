@@ -1,16 +1,14 @@
 #include "Timer.h"
 
-class TimerSDL : public Timer
-{
-	mutable float mStartTime, mRunningTime;
+class TimerSDL : public Timer {
+  mutable float mStartTime, mRunningTime;
 
 public:
+  TimerSDL();
 
-	TimerSDL();
+  void reset();
 
-	void reset();
+  float getDeltaTime() const;
 
-	float getDeltaTime() const;
-
-	float getTotalTime() const;
+  float getTotalTime() const;
 };

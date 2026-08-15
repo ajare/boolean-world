@@ -7,54 +7,50 @@
 #include "Window.h"
 #include "StateManager.h"
 
+class WindowGLFW : public Window {
+  GLFWwindow* mWindow;
 
-class WindowGLFW : public Window
-{
-	GLFWwindow* mWindow;
-
-	float mContentScale;
+  float mContentScale;
 
 private:
-	
-	static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
+  static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
-	static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
+  static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
 
-	static void mousePosCallback(GLFWwindow* window, double x, double y);
+  static void mousePosCallback(GLFWwindow* window, double x, double y);
 
-	static void mouseEnterCallback(GLFWwindow* window, int entered);
+  static void mouseEnterCallback(GLFWwindow* window, int entered);
 
-	static void focusCallback(GLFWwindow* window, int focused);
+  static void focusCallback(GLFWwindow* window, int focused);
 
-	static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
+  static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 
-	static void charCallback(GLFWwindow* window, unsigned int c);
+  static void charCallback(GLFWwindow* window, unsigned int c);
 
 public:
+  WindowGLFW(std::string const& title, ProgramOptions const& options);
 
-	WindowGLFW(std::string const& title, ProgramOptions const& options);
+  ~WindowGLFW();
 
-	~WindowGLFW();
+  GLFWwindow* getWindow();
 
-	GLFWwindow* getWindow();
+  float getContentScale() const;
 
-	float getContentScale() const;
+  bool isActive() const;
 
-	bool isActive() const;
+  void create();
 
-	void create();
+  void destroy();
 
-	void destroy();
+  void setFullscreen(bool fullscreen);
 
-	void setFullscreen(bool fullscreen);
+  void setSize(int width, int height);
 
-	void setSize(int width, int height);
+  void show();
 
-	void show();
+  void showCursor(bool show);
 
-	void showCursor(bool show);
+  void setStateManager(StateManager* mgr);
 
-	void setStateManager(StateManager* mgr);
-
-	void processEvents(StateManager* stateMgr);
+  void processEvents(StateManager* stateMgr);
 };

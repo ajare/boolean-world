@@ -4,36 +4,33 @@
 
 #include "Window.h"
 
-class WindowSDL : public Window
-{
-	SDL_Window* mWindow;
+class WindowSDL : public Window {
+  SDL_Window* mWindow;
 
-	SDL_GLContext mContextGL;
+  SDL_GLContext mContextGL;
 
-	// Input translation
-	std::map<int, wp::application::Key> mKeyTranslator;
+  // Input translation
+  std::map<int, wp::application::Key> mKeyTranslator;
 
-	wp::application::MouseButton* mButtonTranslator;
+  wp::application::MouseButton* mButtonTranslator;
 
 private:
-
-	wp::application::KeyModifiers getKeyModifiers(uint16_t mod);
+  wp::application::KeyModifiers getKeyModifiers(uint16_t mod);
 
 public:
+  WindowSDL(std::string const& title, ProgramOptions const& options);
 
-	WindowSDL(std::string const& title, ProgramOptions const& options);
+  ~WindowSDL();
 
-	~WindowSDL();
+  void create();
 
-	void create();
+  void destroy();
 
-	void destroy();
+  void setFullscreen(bool fullscreen);
 
-	void setFullscreen(bool fullscreen);
+  void setSize(int width, int height);
 
-	void setSize(int width, int height);
-	
-	void show();
+  void show();
 
-	void processEvents(StateManager* stateMgr);
+  void processEvents(StateManager* stateMgr);
 };

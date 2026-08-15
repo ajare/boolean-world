@@ -8,39 +8,35 @@
 
 #include <willpower/application/AudioOptions.h>
 
-struct ProgramOptions
-{
-	struct ResourceLocation
-	{
-		std::string type;
-		std::string path;
-		std::string definitionFile;
-	};
+struct ProgramOptions {
+  struct ResourceLocation {
+    std::string type;
+    std::string path;
+    std::string definitionFile;
+  };
 
-	struct Debugging
-	{
-		bool inGame;
-	};
+  struct Debugging {
+    bool inGame;
+  };
 
 public:
+  int screenWidth, screenHeight;
 
-	int screenWidth, screenHeight;
+  bool fullScreen, vSync;
 
-	bool fullScreen, vSync;
+  std::string dll;
 
-	std::string dll;
+  std::string gameResource;
 
-	std::string gameResource;
+  std::vector<ResourceLocation> resourceLocations;
 
-	std::vector<ResourceLocation> resourceLocations;
+  std::map<std::string, std::string> arguments;
 
-	std::map<std::string, std::string> arguments;
+  bool audioEnabled;
 
-	bool audioEnabled;
+  wp::application::AudioOptions audio;
 
-	wp::application::AudioOptions audio;
-
-	Debugging debugging;
+  Debugging debugging;
 };
 
 ProgramOptions parseProgramOptions(std::string const& filename);

@@ -2,17 +2,15 @@
 
 #include "Timer.h"
 
-class TimerGLFW : public Timer
-{
-	mutable float mStartTime, mRunningTime;
+class TimerGLFW : public Timer {
+  mutable float mStartTime, mRunningTime;
 
 public:
+  TimerGLFW();
 
-	TimerGLFW();
+  void reset();
 
-	void reset();
+  float getDeltaTime() const;
 
-	float getDeltaTime() const;
-
-	float getTotalTime() const;
+  float getTotalTime() const;
 };
