@@ -1,31 +1,23 @@
 include "willpower/application/resourcesystem/ResourceExceptions.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
-		namespace resourcesystem
-		{
+    namespace WP_NAMESPACE {
+  namespace application {
+  namespace resourcesystem {
 
-			using namespace std;
+  using namespace std;
 
-			explicit ResourceSystemException::ResourceSystemException(string const& message)
-				: Exception(message)
-			{
-			}
+  explicit ResourceSystemException::ResourceSystemException(string const& message)
+      : Exception(message) {
+  }
 
-			ResourceException::ResourceException(Resource const* resource, string const& message)
-				: ResourceSystemException(message)
-				, mResource(resource)
-			{
-			}
+  ResourceException::ResourceException(Resource const* resource, string const& message)
+      : ResourceSystemException(message), mResource(resource) {
+  }
 
-			Resource const* ResourceException::getResource()
-			{
-				return mResource;
-			}
+  Resource const* ResourceException::getResource() {
+    return mResource;
+  }
 
-		} // resourcesystem
-	} // application
-} // WP_NAMESPACE
-
+  }  // namespace resourcesystem
+  }  // namespace application
+}  // WP_NAMESPACE

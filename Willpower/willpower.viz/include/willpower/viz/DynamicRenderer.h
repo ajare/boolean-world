@@ -14,18 +14,13 @@
 #include "willpower/viz/RenderParams.h"
 #include "willpower/viz/Renderer.h"
 
-namespace WP_NAMESPACE
-{
-	namespace viz
-	{
+namespace WP_NAMESPACE {
+namespace viz {
 
-		class WP_VIZ_API DynamicRenderer : public Renderer
-		{
-		public:
+class WP_VIZ_API DynamicRenderer : public Renderer {
+public:
+  DynamicRenderer(std::string const& name, std::string const& type, mpp::ResourceManager* renderResourceMgr);
+};
 
-			DynamicRenderer(std::string const& name, std::string const& type, mpp::ResourceManager* renderResourceMgr);
-		};
-
-	} // viz
-} // WP_NAMESPACE
-
+}  // namespace viz
+}  // namespace WP_NAMESPACE

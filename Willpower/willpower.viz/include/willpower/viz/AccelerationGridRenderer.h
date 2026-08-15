@@ -8,38 +8,32 @@
 #include "willpower/viz/StaticRenderer.h"
 #include "willpower/viz/AccelerationGridRenderParams.h"
 
-namespace WP_NAMESPACE
-{
-	namespace viz
-	{
+namespace WP_NAMESPACE {
+namespace viz {
 
-		class WP_VIZ_API AccelerationGridRenderer : public StaticRenderer
-		{
-			std::shared_ptr<AccelerationGrid> mGrid;
+class WP_VIZ_API AccelerationGridRenderer : public StaticRenderer {
+  std::shared_ptr<AccelerationGrid> mGrid;
 
-		private:
+private:
+  void getExtents(Vector2& minExtent, Vector2& maxExtent) override;
 
-			void getExtents(Vector2& minExtent, Vector2& maxExtent) override;
+  // MeshSpecifications
+  void createMeshSpecifications() override;
 
-			// MeshSpecifications
-			void createMeshSpecifications() override;
+  // Materials
+  void createMaterials(mpp::ResourceManager* resourceMgr) override;
 
-			// Materials
-			void createMaterials(mpp::ResourceManager* resourceMgr) override;
+  // Meshes
+  void createMeshes(mpp::ProgrammaticModelStream* stream, mpp::ResourceManager* resourceMgr) override;
 
-			// Meshes
-			void createMeshes(mpp::ProgrammaticModelStream* stream, mpp::ResourceManager* resourceMgr) override;
+  // RenderParams
+  RenderParams* createRenderParams(std::shared_ptr<mpp::ModelRenderParams> params) override;
 
-			// RenderParams
-			RenderParams* createRenderParams(std::shared_ptr<mpp::ModelRenderParams> params) override;
+public:
+  AccelerationGridRenderer(std::string const& name, std::shared_ptr<AccelerationGrid> grid, size_t indexWidth, mpp::ResourceManager* renderResourceMgr);
 
-		public:
+  void updateRenderParams() override;
+};
 
-			AccelerationGridRenderer(std::string const& name, std::shared_ptr<AccelerationGrid> grid, size_t indexWidth, mpp::ResourceManager* renderResourceMgr);
-
-			void updateRenderParams() override;
-		};
-
-	} // viz
-} // WP_NAMESPACE
-
+}  // namespace viz
+}  // namespace WP_NAMESPACE

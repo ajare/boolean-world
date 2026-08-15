@@ -7,209 +7,174 @@
 #include "willpower/application/resourcesystem/ImageResource.h"
 #include "willpower/application/resourcesystem/ResourceExceptions.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
-		namespace resourcesystem
-		{
-			using namespace std;
+namespace WP_NAMESPACE {
+namespace application {
+namespace resourcesystem {
+using namespace std;
 
-			bool isBigEndian()
-			{
-				union
-				{
-					uint32_t i;
-					char c[4];
-				} bint{ 0x01020304 };
+bool isBigEndian() {
+  union {
+    uint32_t i;
+    char c[4];
+  } bint{0x01020304};
 
-				return bint.c[0] == 1;
-			}
+  return bint.c[0] == 1;
+}
 
-			void FreeImageErrorHandler(FREE_IMAGE_FORMAT fif, const char *message)
-			{
-				WP_UNUSED(fif);
-				WP_UNUSED(message);
-				
-				// Hook into logging
-				// ...
-			}
+void FreeImageErrorHandler(FREE_IMAGE_FORMAT fif, const char* message) {
+  WP_UNUSED(fif);
+  WP_UNUSED(message);
 
-			ImageResource::ImageResource(string const& name, string const& namesp, string const& source, map<string, string> const& tags, ResourceLocation* location)
-				: Resource(name, namesp, "Image", source, tags, location)
-				, mData(nullptr)
-				, mSize(0)
-				, mWidth(0)
-				, mHeight(0)
-				, mNumChannels(0)
-			{
-			}
+  // Hook into logging
+  // ...
+}
 
-			void ImageResource::parseData(DataStreamPtr dataPtr)
-			{
-				FIMEMORY* fibuf = FreeImage_OpenMemory((BYTE*)dataPtr->getData(), dataPtr->getSize());
-				FIBITMAP* bitmap = FreeImage_LoadFromMemory(FreeImage_GetFIFFromFilename(getSource().c_str()), fibuf);
+ImageResource::ImageResource(string const& name, string const& namesp, string const& source, map<string, string> const& tags, ResourceLocation* location)
+    : Resource(name, namesp, "Image", source, tags, location), mData(nullptr), mSize(0), mWidth(0), mHeight(0), mNumChannels(0) {
+}
 
-				if (bitmap)
-				{
-					// Check it's supported
-					FREE_IMAGE_TYPE imageType = FreeImage_GetImageType(bitmap);
+void ImageResource::parseData(DataStreamPtr dataPtr) {
+  FIMEMORY* fibuf = FreeImage_OpenMemory((BYTE*)dataPtr->getData(), dataPtr->getSize());
+  FIBITMAP* bitmap = FreeImage_LoadFromMemory(FreeImage_GetFIFFromFilename(getSource().c_str()), fibuf);
 
-					if (imageType != FIT_BITMAP)
-					{
-						FreeImage_Unload(bitmap);
-						throw ResourceException(this, "unsupported image type.");
-					}
+  if (bitmap) {
+    // Check it's supported
+    FREE_IMAGE_TYPE imageType = FreeImage_GetImageType(bitmap);
 
-					// Convert to 8 bit.
-					if (imageType == FIT_RGB16 ||
-						imageType == FIT_RGBA16 ||
-						imageType == FIT_RGBF ||
-						imageType == FIT_RGBAF)
-					{
-						bitmap = FreeImage_ColorQuantizeEx(bitmap, FIQ_WUQUANT);
-						bitmap = FreeImage_ConvertTo8Bits(bitmap);
-					}
+    if (imageType != FIT_BITMAP) {
+      FreeImage_Unload(bitmap);
+      throw ResourceException(this, "unsupported image type.");
+    }
 
-					mWidth = (int)FreeImage_GetWidth(bitmap);
-					mHeight = (int)FreeImage_GetHeight(bitmap);
-					mNumChannels = (int)FreeImage_GetBPP(bitmap) / 8;
+    // Convert to 8 bit.
+    if (imageType == FIT_RGB16 ||
+        imageType == FIT_RGBA16 ||
+        imageType == FIT_RGBF ||
+        imageType == FIT_RGBAF) {
+      bitmap = FreeImage_ColorQuantizeEx(bitmap, FIQ_WUQUANT);
+      bitmap = FreeImage_ConvertTo8Bits(bitmap);
+    }
 
-					uint32_t dataSpan = mWidth * mNumChannels;
-					mSize = dataSpan * mHeight;
+    mWidth = (int)FreeImage_GetWidth(bitmap);
+    mHeight = (int)FreeImage_GetHeight(bitmap);
+    mNumChannels = (int)FreeImage_GetBPP(bitmap) / 8;
 
-					mData = new uint8_t[mSize];
-					memcpy(mData, (uint8_t*)FreeImage_GetBits(bitmap), mSize * sizeof(uint8_t));
+    uint32_t dataSpan = mWidth * mNumChannels;
+    mSize = dataSpan * mHeight;
 
-					FreeImage_Unload(bitmap);
-				}
-				else
-				{
-					// Error
-					// ...
-				}
-			}
+    mData = new uint8_t[mSize];
+    memcpy(mData, (uint8_t*)FreeImage_GetBits(bitmap), mSize * sizeof(uint8_t));
 
-			void ImageResource::destroy()
-			{
-				delete[] mData;
-				mData = nullptr;
+    FreeImage_Unload(bitmap);
+  } else {
+    // Error
+    // ...
+  }
+}
 
-				mSize = 0;
-				mWidth = 0;
-				mHeight = 0;
-				mNumChannels = 0;
-			}
+void ImageResource::destroy() {
+  delete[] mData;
+  mData = nullptr;
 
-			bool ImageResource::load(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr)
-			{
-				WP_UNUSED(renderSystem);
+  mSize = 0;
+  mWidth = 0;
+  mHeight = 0;
+  mNumChannels = 0;
+}
 
-				// Is this to be treated as an atlas?
-				auto tags = getTags();
+bool ImageResource::load(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
+  WP_UNUSED(renderSystem);
 
-				bool atlas = false;
-				if (tags.find("uv-style") != tags.end())
-				{
-					if (tags["uv-style"] == "atlas")
-					{
-						atlas = true;
-					}
-				}
+  // Is this to be treated as an atlas?
+  auto tags = getTags();
 
-				mpp::ProgrammaticTextureStream* textureStream = new mpp::ProgrammaticTextureStream(resourceMgr);
+  bool atlas = false;
+  if (tags.find("uv-style") != tags.end()) {
+    if (tags["uv-style"] == "atlas") {
+      atlas = true;
+    }
+  }
 
-				textureStream->setAtlas(atlas);
-				textureStream->setTarget(mpp::TextureTarget::Texture2D);
-				textureStream->setData([this](string const& id)
-				{
-					WP_UNUSED(id);
+  mpp::ProgrammaticTextureStream* textureStream = new mpp::ProgrammaticTextureStream(resourceMgr);
 
-					mpp::TextureData data;
+  textureStream->setAtlas(atlas);
+  textureStream->setTarget(mpp::TextureTarget::Texture2D);
+  textureStream->setData([this](string const& id) {
+    WP_UNUSED(id);
 
-					data.width = getWidth();
-					data.height = getHeight();
-					data.bitsPerPixel = getNumChannels() * 8;
-					data.dataType = GL_UNSIGNED_BYTE;
+    mpp::TextureData data;
 
-					switch (data.bitsPerPixel)
-					{
-					case 24:
-						data.pixelFormat = isBigEndian() ? GL_RGB : GL_BGR;
-						break;
-					case 32:
-						data.pixelFormat = isBigEndian() ? GL_RGBA : GL_BGRA;
-						break;
-					default:
-						throw ResourceException(this, "unsupported image bit depth.  Only 24- and 32-bit images are supported.");
-					}
+    data.width = getWidth();
+    data.height = getHeight();
+    data.bitsPerPixel = getNumChannels() * 8;
+    data.dataType = GL_UNSIGNED_BYTE;
 
-					size_t dataSize = (data.width * data.height * data.bitsPerPixel / 8);
+    switch (data.bitsPerPixel) {
+      case 24:
+        data.pixelFormat = isBigEndian() ? GL_RGB : GL_BGR;
+        break;
+      case 32:
+        data.pixelFormat = isBigEndian() ? GL_RGBA : GL_BGRA;
+        break;
+      default:
+        throw ResourceException(this, "unsupported image bit depth.  Only 24- and 32-bit images are supported.");
+    }
 
-					data.data = new uint8_t[dataSize];
-					memcpy(data.data, mData, dataSize);
-					return data;
-				});
+    size_t dataSize = (data.width * data.height * data.bitsPerPixel / 8);
 
-				// Other tags
-				bool filtered = true;
-				if (tags.find("filtering") != tags.end())
-				{
-					if (tags["filtering"] == "none")
-					{
-						filtered = false;
-					}
-				}
+    data.data = new uint8_t[dataSize];
+    memcpy(data.data, mData, dataSize);
+    return data;
+  });
 
-				if (filtered)
-				{
-					textureStream->setFiltering(mpp::TextureParams::MinFilter::Linear, mpp::TextureParams::MagFilter::Linear);
-				}
-				else
-				{
-					textureStream->setFiltering(mpp::TextureParams::MinFilter::Nearest, mpp::TextureParams::MagFilter::Nearest);
-				}
+  // Other tags
+  bool filtered = true;
+  if (tags.find("filtering") != tags.end()) {
+    if (tags["filtering"] == "none") {
+      filtered = false;
+    }
+  }
 
-				mMppResource = resourceMgr->declareResource(getQualifiedName(), mpp::ResourceStreamPtr(textureStream)).first;
-				mMppResource->acquire(this);
+  if (filtered) {
+    textureStream->setFiltering(mpp::TextureParams::MinFilter::Linear, mpp::TextureParams::MagFilter::Linear);
+  } else {
+    textureStream->setFiltering(mpp::TextureParams::MinFilter::Nearest, mpp::TextureParams::MagFilter::Nearest);
+  }
 
-				return true;
-			}
+  mMppResource = resourceMgr->declareResource(getQualifiedName(), mpp::ResourceStreamPtr(textureStream)).first;
+  mMppResource->acquire(this);
 
-			bool ImageResource::unload(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr)
-			{
-				WP_UNUSED(renderSystem);
-				WP_UNUSED(resourceMgr);
+  return true;
+}
 
-				mMppResource->release(this);
-				return true;
-			}
+bool ImageResource::unload(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
+  WP_UNUSED(renderSystem);
+  WP_UNUSED(resourceMgr);
 
-			uint8_t const* ImageResource::getData() const
-			{
-				return mData;
-			}
+  mMppResource->release(this);
+  return true;
+}
 
-			uint32_t ImageResource::getSize() const
-			{
-				return mSize;
-			}
+uint8_t const* ImageResource::getData() const {
+  return mData;
+}
 
-			int ImageResource::getWidth() const
-			{
-				return mWidth;
-			}
+uint32_t ImageResource::getSize() const {
+  return mSize;
+}
 
-			int ImageResource::getHeight() const
-			{
-				return mHeight;
-			}
+int ImageResource::getWidth() const {
+  return mWidth;
+}
 
-			int ImageResource::getNumChannels() const
-			{
-				return mNumChannels;
-			}
+int ImageResource::getHeight() const {
+  return mHeight;
+}
 
-		} // resourcesystem
-	} // application
-} // WP_NAMESPACE
+int ImageResource::getNumChannels() const {
+  return mNumChannels;
+}
+
+}  // namespace resourcesystem
+}  // namespace application
+}  // namespace WP_NAMESPACE

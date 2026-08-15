@@ -1,37 +1,33 @@
 #pragma once
 
 #include <string>
-#include <chrono> 
+#include <chrono>
 
 #include "willpower/common/Platform.h"
 
+namespace WP_NAMESPACE {
 
-namespace WP_NAMESPACE
-{
+class WP_COMMON_API Timer {
+  std::chrono::high_resolution_clock::time_point mTimeStarted;
 
-    class WP_COMMON_API Timer
-    {
-        std::chrono::high_resolution_clock::time_point mTimeStarted;
+  std::chrono::high_resolution_clock::duration mDuration = {};
 
-        std::chrono::high_resolution_clock::duration mDuration = {};
+  bool mPaused;
 
-        bool mPaused;
+public:
+  Timer();
 
-    public:
+  void restart();
 
-        Timer();
+  void resume();
 
-        void restart();
+  void pause();
 
-        void resume();
+  int64_t elapsedNanoseconds();
 
-        void pause();
+  static std::string nsToString(int64_t ns);
 
-        int64_t elapsedNanoseconds();
+  std::string elapsedStr();
+};
 
-        static std::string nsToString(int64_t ns);
-
-        std::string elapsedStr();
-    };
-
-} // WP_NAMESPACE
+}  // namespace WP_NAMESPACE

@@ -4,48 +4,43 @@
 
 #include "willpower/collide/Platform.h"
 
-namespace WP_NAMESPACE
-{
-	namespace collide
-	{
+namespace WP_NAMESPACE {
+namespace collide {
 
-		class WP_COLLIDE_API StaticLine
-		{
-			Vector2 mVertices[2];
-			
-			Vector2 mNormal;
+class WP_COLLIDE_API StaticLine {
+  Vector2 mVertices[2];
 
-			bool mDoubleSided;
+  Vector2 mNormal;
 
-			float mFriction;
+  bool mDoubleSided;
 
-			int32_t mUserData;
+  float mFriction;
 
-			bool mEnabled;
+  int32_t mUserData;
 
-		public:
+  bool mEnabled;
 
-			StaticLine();
+public:
+  StaticLine();
 
-			StaticLine(Vector2 const& v0, Vector2 const& v1, bool doubleSided, float friction, int32_t userData = -1);
+  StaticLine(Vector2 const& v0, Vector2 const& v1, bool doubleSided, float friction, int32_t userData = -1);
 
-			Vector2 const& getVertex(int index) const;
+  Vector2 const& getVertex(int index) const;
 
-			void getVertices(Vector2& v0, Vector2& v1) const;
+  void getVertices(Vector2& v0, Vector2& v1) const;
 
-			Vector2 const& getNormal() const;
+  Vector2 const& getNormal() const;
 
-			bool isDoubleSided() const;
+  bool isDoubleSided() const;
 
-			float getFriction() const;
+  float getFriction() const;
 
-			int32_t getUserData() const;
+  int32_t getUserData() const;
 
-			void enable(bool enable);
+  void enable(bool enable);
 
-			bool enabled() const;
-		};
+  bool enabled() const;
+};
 
-	} // collide
-} // WP_NAMESPACE
-
+}  // namespace collide
+}  // namespace WP_NAMESPACE

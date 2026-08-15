@@ -8,36 +8,30 @@
 #include "willpower/application/resourcesystem/ImageSetResource.h"
 #include "willpower/application/resourcesystem/ResourceFactory.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
-		namespace resourcesystem
-		{
+namespace WP_NAMESPACE {
+namespace application {
+namespace resourcesystem {
 
-			class WP_APPLICATION_API ImageSetResourceDefinitionFactory : public ResourceDefinitionFactory
-			{
-			protected:
+class WP_APPLICATION_API ImageSetResourceDefinitionFactory : public ResourceDefinitionFactory {
+protected:
+  void clear(ImageSetResource* resource);
 
-				void clear(ImageSetResource* resource);
+  void addImageDefinition(ImageSetResource* resource, std::string const& name, ImageSetResource::ImageDefinition const& def);
 
-				void addImageDefinition(ImageSetResource* resource, std::string const& name, ImageSetResource::ImageDefinition const& def);
+  void addImageDefinitionSet(ImageSetResource* resource, std::string const& name, std::vector<ImageSetResource::ImageDefinition> const& defs);
 
-				void addImageDefinitionSet(ImageSetResource* resource, std::string const& name, std::vector<ImageSetResource::ImageDefinition> const& defs);
+  void validateCoordinates(ImageSetResource* resource, std::string const& name, int x, int y, int width, int height);
 
-				void validateCoordinates(ImageSetResource* resource, std::string const& name, int x, int y, int width, int height);
+  void calculateUvCoords(ImageSetResource* resource, ImageSetResource::ImageDefinition* imageDef);
 
-				void calculateUvCoords(ImageSetResource* resource, ImageSetResource::ImageDefinition* imageDef);
+  ImageSetResource::ImageDefinition createImageDefinition(ImageSetResource* resource, std::string const& name, utils::XmlNode* node);
 
-				ImageSetResource::ImageDefinition createImageDefinition(ImageSetResource* resource, std::string const& name, utils::XmlNode* node);
+public:
+  explicit ImageSetResourceDefinitionFactory(std::string const& factoryType);
+};
 
-			public:
-
-				explicit ImageSetResourceDefinitionFactory(std::string const& factoryType);
-			};
-
-		} // resourcesystem
-	} // application
-} // WP_NAMESPACE
+}  // namespace resourcesystem
+}  // namespace application
+}  // namespace WP_NAMESPACE
 
 #pragma once

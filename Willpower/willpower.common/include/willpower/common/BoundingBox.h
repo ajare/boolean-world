@@ -4,114 +4,110 @@
 #include "willpower/common/Vector2.h"
 #include "willpower/common/Triangulation.h"
 
-namespace WP_NAMESPACE
-{
+namespace WP_NAMESPACE {
 
-	class BoundingCircle;
+class BoundingCircle;
 
-	class WP_COMMON_API BoundingBox
-	{
-		Vector2 mPosition;
+class WP_COMMON_API BoundingBox {
+  Vector2 mPosition;
 
-		Vector2 mSize;
+  Vector2 mSize;
 
-		Vector2 mMinExtent, mMaxExtent, mCentre;
+  Vector2 mMinExtent, mMaxExtent, mCentre;
 
-		float mRadius;
+  float mRadius;
 
-	private:
+private:
+  float calculateRadius() const;
 
-		float calculateRadius() const;
+  void updateExtents();
 
-		void updateExtents();
+public:
+  BoundingBox();
 
-	public:
+  BoundingBox(BoundingBox const& other);
 
-		BoundingBox();
+  BoundingBox(Vector2 const& position, Vector2 const& size);
 
-		BoundingBox(BoundingBox const& other);
+  BoundingBox(float x, float y, float width, float height);
 
-		BoundingBox(Vector2 const& position, Vector2 const& size);
+  BoundingBox(Vector2 const& position, float size);
 
-		BoundingBox(float x, float y, float width, float height);
+  BoundingBox(float x, float y, float size);
 
-		BoundingBox(Vector2 const& position, float size);
+  BoundingBox(std::vector<Vector2> const& points);
 
-		BoundingBox(float x, float y, float size);
+  void setPosition(Vector2 const& position);
 
-		BoundingBox(std::vector<Vector2> const& points);
+  void setPosition(float x, float y);
 
-		void setPosition(Vector2 const& position);
+  void centreOn(Vector2 const& position);
 
-		void setPosition(float x, float y);
+  void centreOn(float x, float y);
 
-		void centreOn(Vector2 const& position);
+  Vector2 const& getPosition() const;
 
-		void centreOn(float x, float y);
+  void move(Vector2 const& distance);
 
-		Vector2 const& getPosition() const;
+  void move(float x, float y);
 
-		void move(Vector2 const& distance);
+  void setSize(Vector2 const& size);
 
-		void move(float x, float y);
+  void setSize(float width, float height);
 
-		void setSize(Vector2 const& size);
+  Vector2 const& getSize() const;
 
-		void setSize(float width, float height);
+  Vector2 getHalfSize() const;
 
-		Vector2 const& getSize() const;
+  void setWidth(float width);
 
-		Vector2 getHalfSize() const;
+  void setHeight(float height);
 
-		void setWidth(float width);
+  float getWidth() const;
 
-		void setHeight(float height);
+  float getHeight() const;
 
-		float getWidth() const;
+  Vector2 const& getCentre() const;
 
-		float getHeight() const;
+  void getExtents(Vector2& minExtent, Vector2& maxExtent) const;
 
-		Vector2 const& getCentre() const;
+  Vector2 const& getMinExtent() const;
 
-		void getExtents(Vector2& minExtent, Vector2& maxExtent) const;
+  Vector2 const& getMaxExtent() const;
 
-		Vector2 const& getMinExtent() const;
+  float getRadius() const;
 
-		Vector2 const& getMaxExtent() const;
+  void expand(float scale);
 
-		float getRadius() const;
+  void expand(float x, float y);
 
-		void expand(float scale);
+  void expand(Vector2 const& amt);
 
-		void expand(float x, float y);
+  void expandToGrid(Vector2 const& gridSize);
 
-		void expand(Vector2 const& amt);
+  void inflate(float amount);
 
-		void expandToGrid(Vector2 const& gridSize);
+  // Intersection tests
+  bool pointInside(Vector2 const& point) const;
 
-		void inflate(float amount);
+  bool pointInside(float x, float y) const;
 
-		// Intersection tests
-		bool pointInside(Vector2 const& point) const;
+  bool contains(BoundingBox const* other) const;
 
-		bool pointInside(float x, float y) const;
+  bool intersectsBoundingObject(BoundingBox const* other) const;
 
-		bool contains(BoundingBox const* other) const;
+  bool intersectsBoundingObject(BoundingCircle const* other) const;
 
-		bool intersectsBoundingObject(BoundingBox const* other) const;
+  bool intersectsLine(Vector2 const& v0, Vector2 const& v1) const;
 
-		bool intersectsBoundingObject(BoundingCircle const* other) const;
+  bool intersectsLine(float v0x, float v0y, float v1x, float v1y) const;
 
-		bool intersectsLine(Vector2 const& v0, Vector2 const& v1) const;
+  bool intersectsTriangle(Vector2 const& p0, Vector2 const& p1, Vector2 const& p2) const;
 
-		bool intersectsLine(float v0x, float v0y, float v1x, float v1y) const;
+  bool intersectsTriMesh(Triangulation const& triangles) const;
 
-		bool intersectsTriangle(Vector2 const& p0, Vector2 const& p1, Vector2 const& p2) const;
+  // Utility
+  BoundingBox unionWith(BoundingBox const& other) const;
+};
 
-		bool intersectsTriMesh(Triangulation const& triangles) const;
-
-		// Utility
-		BoundingBox unionWith(BoundingBox const& other) const;
-	};
-
-} // WP_NAMESPACE
+}  // namespace WP_NAMESPACE

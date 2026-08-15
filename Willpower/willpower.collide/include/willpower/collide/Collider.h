@@ -9,99 +9,88 @@
 #include "willpower/collide/StaticLine.h"
 #include "willpower/collide/SweepResult.h"
 
-namespace WP_NAMESPACE
-{
-	namespace collide
-	{
+namespace WP_NAMESPACE {
+namespace collide {
 
-		class Simulation;
+class Simulation;
 
-		class WP_COLLIDE_API Collider
-		{
-			friend class Simulation;
+class WP_COLLIDE_API Collider {
+  friend class Simulation;
 
-		public:
+public:
+  typedef std::function<bool(SweepResult*, StaticLine const&, float, void*)> HitLineCallback;
 
-			typedef std::function<bool(SweepResult*, StaticLine const&, float, void*)> HitLineCallback;
+public:
+  enum Type {
+    Circle,
+    AABB,
+    MAX_TYPES = 8
+  };
 
-		public:
+private:
+  int32_t mIndex;
 
-			enum Type
-			{
-				Circle,
-				AABB,
-				MAX_TYPES = 8
-			};
+  Type mType;
 
-		private:
+  BoundingBox mBounds;
 
-			int32_t mIndex;
+  Vector2 mMovement;
 
-			Type mType;
+  bool mConsumeMovement;
 
-			BoundingBox mBounds;
+  HitLineCallback mHitLineCallback;
 
-			Vector2 mMovement;
+private:
+  void _setIndex(int32_t index);
 
-			bool mConsumeMovement;
+  void _consumeMovement(Vector2 const& movement);
 
-			HitLineCallback mHitLineCallback;
-			
-		private:
+protected:
+  void setBounds(BoundingBox const& box);
 
-			void _setIndex(int32_t index);
+  void setBounds(float x, float y, float width, float height);
 
-			void _consumeMovement(Vector2 const& movement);
+  void setBounds(Vector2 const& position, Vector2 const& size);
 
-		protected:
+public:
+  explicit Collider(Type type);
 
-			void setBounds(BoundingBox const& box);
+  virtual ~Collider() = default;
 
-			void setBounds(float x, float y, float width, float height);
+  int32_t getIndex() const;
 
-			void setBounds(Vector2 const& position, Vector2 const& size);
+  Type getType() const;
 
-		public:
+  Vector2 const& getCentre() const;
 
-			explicit Collider(Type type);
+  virtual void _setPosition(Vector2 const& position) = 0;
 
-			virtual ~Collider() = default;
+  BoundingBox const& getBounds() const;
 
-			int32_t getIndex() const;
+  void setHitLineCallback(HitLineCallback callback);
 
-			Type getType() const;
+  bool fireHitLineCallback(SweepResult* result, StaticLine const& line, float t, void* userObj) const;
 
-			Vector2 const& getCentre() const;
+  virtual bool pointInside(float x, float y) const = 0;
 
-			virtual void _setPosition(Vector2 const& position) = 0;
+  virtual bool pointInside(Vector2 const& point) const;
 
-			BoundingBox const& getBounds() const;
+  void setMovement(float x, float y);
 
-			void setHitLineCallback(HitLineCallback callback);
+  void setMovement(Vector2 const& movement);
 
-			bool fireHitLineCallback(SweepResult* result, StaticLine const& line, float t, void* userObj) const;
+  Vector2 const& getMovement() const;
 
-			virtual bool pointInside(float x, float y) const = 0;
+  void setConsumeMovement(bool consume);
 
-			virtual bool pointInside(Vector2 const& point) const;
+  bool isMovementConsumed() const;
 
-			void setMovement(float x, float y);
+  virtual bool sweepAgainstLine(Vector2 const& target, Vector2 const& linev0, Vector2 const& linev1, float* t) const = 0;
 
-			void setMovement(Vector2 const& movement);
+  virtual bool intersectsLine(Vector2 const& linev0, Vector2 const& linev1) const = 0;
 
-			Vector2 const& getMovement() const;
+  static void checkCollision(Collider* a, Collider* b);
+};
 
-			void setConsumeMovement(bool consume);
-
-			bool isMovementConsumed() const;
-
-			virtual bool sweepAgainstLine(Vector2 const& target, Vector2 const& linev0, Vector2 const& linev1, float* t) const = 0;
-
-			virtual bool intersectsLine(Vector2 const& linev0, Vector2 const& linev1) const = 0;
-
-			static void checkCollision(Collider* a, Collider* b);
-		};
-
-	} // collide
-} // WP_NAMESPACE
-
+}  // namespace collide
+}  // namespace WP_NAMESPACE

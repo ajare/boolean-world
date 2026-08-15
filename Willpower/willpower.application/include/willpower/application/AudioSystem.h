@@ -8,35 +8,29 @@
 #include "willpower/application/AudioOptions.h"
 #include "willpower/application/resourcesystem/Resource.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
+namespace WP_NAMESPACE {
+namespace application {
 
-		namespace resourcesystem
-		{
-			class AudioBankResource;
-		}
+namespace resourcesystem {
+class AudioBankResource;
+}
 
-		class WP_APPLICATION_API AudioSystem
-		{
-			FMOD::Studio::System* mSystem;
+class WP_APPLICATION_API AudioSystem {
+  FMOD::Studio::System* mSystem;
 
-		public:
+public:
+  explicit AudioSystem(AudioOptions const& options);
 
-			explicit AudioSystem(AudioOptions const& options);
+  ~AudioSystem();
 
-			~AudioSystem();
+  void createAudioBank(resourcesystem::AudioBankResource* audioBank, resourcesystem::DataStreamPtr dataPtr);
 
-			void createAudioBank(resourcesystem::AudioBankResource* audioBank, resourcesystem::DataStreamPtr dataPtr);
+  FMOD::Studio::EventInstance* startEvent(std::string const& eventName);
 
-			FMOD::Studio::EventInstance* startEvent(std::string const& eventName);
+  void setEventVolume(FMOD::Studio::EventInstance* inst, float volume);
 
-			void setEventVolume(FMOD::Studio::EventInstance* inst, float volume);
+  void update();
+};
 
-			void update();
-		};
-
-	} // application
-} // WP_NAMESPACE
-
+}  // namespace application
+}  // namespace WP_NAMESPACE

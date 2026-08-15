@@ -5,19 +5,15 @@
 #include "willpower/application/resourcesystem/ShaderResourceDefinitionFactory.h"
 #include "willpower/application/resourcesystem/ShaderResource.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
-		namespace resourcesystem
-		{
-			using namespace std;
+namespace WP_NAMESPACE {
+namespace application {
+namespace resourcesystem {
+using namespace std;
 
-			ShaderResourceDefinitionFactory::ShaderResourceDefinitionFactory(string const& factoryType)
-				: ResourceDefinitionFactory("Shader", factoryType)
-			{
-			}
+ShaderResourceDefinitionFactory::ShaderResourceDefinitionFactory(string const& factoryType)
+    : ResourceDefinitionFactory("Shader", factoryType) {
+}
 
-		} // resourcesystem
-	} // application
-} // WP_NAMESPACE
+}  // namespace resourcesystem
+}  // namespace application
+}  // namespace WP_NAMESPACE

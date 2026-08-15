@@ -6,27 +6,22 @@
 #include "willpower/application/resourcesystem/ShaderDefaultDefinitionFactory.h"
 #include "willpower/application/resourcesystem/ResourceExceptions.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
-		namespace resourcesystem
-		{
-			using namespace std;
-			using namespace utils;
+namespace WP_NAMESPACE {
+namespace application {
+namespace resourcesystem {
+using namespace std;
+using namespace utils;
 
-			ShaderDefaultDefinitionFactory::ShaderDefaultDefinitionFactory()
-				: ShaderResourceDefinitionFactory("")
-			{
-			}
+ShaderDefaultDefinitionFactory::ShaderDefaultDefinitionFactory()
+    : ShaderResourceDefinitionFactory("") {
+}
 
-			void ShaderDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, utils::XmlNode* node)
-			{
-				WP_UNUSED(resource);
-				WP_UNUSED(resourceMgr);
-				WP_UNUSED(node);
-			}
+void ShaderDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, utils::XmlNode* node) {
+  WP_UNUSED(resource);
+  WP_UNUSED(resourceMgr);
+  WP_UNUSED(node);
+}
 
-		} // resourcesystem
-	} // application
-} // WP_NAMESPACE
+}  // namespace resourcesystem
+}  // namespace application
+}  // namespace WP_NAMESPACE

@@ -13,92 +13,85 @@
 
 #include "willpower/geometry/Mesh.h"
 
-namespace WP_NAMESPACE
-{
-	namespace collide
-	{
+namespace WP_NAMESPACE {
+namespace collide {
 
-		class WP_COLLIDE_API Simulation
-		{
-			std::set<Collider*> mColliders;
+class WP_COLLIDE_API Simulation {
+  std::set<Collider*> mColliders;
 
-			int32_t mNextIndex;
+  int32_t mNextIndex;
 
-			AccelerationGrid* mCollidersGrid;
+  AccelerationGrid* mCollidersGrid;
 
-			AccelerationGrid* mStaticLinesGrid;
+  AccelerationGrid* mStaticLinesGrid;
 
-			void* mwUserObject;
+  void* mwUserObject;
 
-			Vector2 mMinExtent, mMaxExtent;
+  Vector2 mMinExtent, mMaxExtent;
 
-			// Stats
-			int mNumSweepChecks;
+  // Stats
+  int mNumSweepChecks;
 
-		protected:
+protected:
+  std::vector<StaticLine> mStaticLines;
 
-			std::vector<StaticLine> mStaticLines;
+private:
+  void destroyColliders();
 
-		private:
+  void createGrids(Vector2 const& minExtent, Vector2 const& maxExtent, float cellSizeX, float cellSizeY);
 
-			void destroyColliders();
+  void destroyGrids();
 
-			void createGrids(Vector2 const& minExtent, Vector2 const& maxExtent, float cellSizeX, float cellSizeY);
+  void sweepCollider(Collider* collider, Vector2 const& desiredMovement, float movementEpsilon, float lastMove = 1.0f);
 
-			void destroyGrids();
+  virtual std::set<uint32_t> getLineIndices(wp::BoundingBox const& bounds) const;
 
-			void sweepCollider(Collider* collider, Vector2 const& desiredMovement, float movementEpsilon, float lastMove = 1.0f);
+public:
+  Simulation(ExtentsCalculator const& extents, uint32_t cellsX, uint32_t cellsY, void* userObj = nullptr);
 
-			virtual std::set<uint32_t> getLineIndices(wp::BoundingBox const& bounds) const;
+  virtual ~Simulation();
 
-		public:
+  void getExtents(Vector2& minExtent, Vector2& maxExtent);
 
-			Simulation(ExtentsCalculator const& extents, uint32_t cellsX, uint32_t cellsY, void* userObj = nullptr);
-			
-			virtual ~Simulation();
+  int32_t addCollider(Collider* collider);
 
-			void getExtents(Vector2& minExtent, Vector2& maxExtent);
+  void removeCollider(Collider* collider);
 
-			int32_t addCollider(Collider* collider);
+  size_t getNumColliders() const;
 
-			void removeCollider(Collider* collider);
+  std::vector<Collider*> getColliders() const;
 
-			size_t getNumColliders() const;
+  void addMesh(geometry::Mesh const* mesh);
 
-			std::vector<Collider*> getColliders() const;
+  void addMesh(geometry::Mesh const* mesh, geometry::Mesh::EdgeFilterFunction edgeFilterFn);
 
-			void addMesh(geometry::Mesh const* mesh);
+  virtual std::pair<uint32_t, uint32_t> addStaticLine(float x0, float y0, float x1, float y1, bool doubleSided);
 
-			void addMesh(geometry::Mesh const* mesh, geometry::Mesh::EdgeFilterFunction edgeFilterFn);
+  virtual std::pair<uint32_t, uint32_t> addStaticLine(Vector2 const& v0, Vector2 const& v1, bool doubleSided);
 
-			virtual std::pair<uint32_t, uint32_t> addStaticLine(float x0, float y0, float x1, float y1, bool doubleSided);
+  StaticLine const& getStaticLine(uint32_t index) const;
 
-			virtual std::pair<uint32_t, uint32_t> addStaticLine(Vector2 const& v0, Vector2 const& v1, bool doubleSided);
+  void clearStaticLines();
 
-			StaticLine const& getStaticLine(uint32_t index) const;
+  AccelerationGrid const* getStaticLinesGrid() const;
 
-			void clearStaticLines();
+  AccelerationGrid const* getCollidersGrid() const;
 
-			AccelerationGrid const* getStaticLinesGrid() const;
+  uint32_t getNumStaticLines() const;
 
-			AccelerationGrid const* getCollidersGrid() const;
+  void enableStaticLines(uint32_t offset, uint32_t count, bool enabled);
 
-			uint32_t getNumStaticLines() const;
+  void update(float frameTime);
 
-			void enableStaticLines(uint32_t offset, uint32_t count, bool enabled);
+  // Queries
+  int getNumSweepChecks() const;
 
-			void update(float frameTime);
+  bool colliderIntersects(Collider const* collider) const;
 
-			// Queries
-			int getNumSweepChecks() const;
+  bool projectCollider(Collider const* collider, Vector2 const& desiredMovement, SweepResult* result);
 
-			bool colliderIntersects(Collider const* collider) const;
+  bool projectLine(Vector2 const& v0, Vector2 const& v1, SweepResult* result);
+};
 
-			bool projectCollider(Collider const* collider, Vector2 const& desiredMovement, SweepResult* result);
-
-			bool projectLine(Vector2 const& v0, Vector2 const& v1, SweepResult* result);
-		};
-
-	} // collide
-} // WP_NAMESPACE
-
+}  // namespace collide
+}  // namespace WP_NAMESPACE

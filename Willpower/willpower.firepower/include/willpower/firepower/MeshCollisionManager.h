@@ -11,87 +11,79 @@
 #include "willpower/firepower/Bomb.h"
 #include "willpower/firepower/BeamShard.h"
 
-namespace WP_NAMESPACE
-{
-	namespace firepower
-	{
-		class WP_FIREPOWER_API MeshCollisionManager : public Renderable
-		{
-			struct CollisionEdgeEntry
-			{
-				Vector2 v0, v1;
-				uint32_t index;
-			};
+namespace WP_NAMESPACE {
+namespace firepower {
+class WP_FIREPOWER_API MeshCollisionManager : public Renderable {
+  struct CollisionEdgeEntry {
+    Vector2 v0, v1;
+    uint32_t index;
+  };
 
-			struct Cell
-			{
-				std::vector<CollisionEdgeEntry> edgeEntries;
-				std::set<uint32_t> vertexIndices;
-			};
+  struct Cell {
+    std::vector<CollisionEdgeEntry> edgeEntries;
+    std::set<uint32_t> vertexIndices;
+  };
 
-		private:
+private:
+  std::vector<Cell> mCells;
 
-			std::vector<Cell> mCells;
+  int mCellsX, mCellsY;
 
-			int mCellsX, mCellsY;
+  float mCellSizeX, mCellSizeY;
 
-			float mCellSizeX, mCellSizeY;
+  Vector2 mOrigin, mSize;
 
-			Vector2 mOrigin, mSize;
+  Mesh mMesh;
 
-			Mesh mMesh;
+  // Bomb/beam collision variables
+  mutable std::vector<Bomb::Line> mBombLines;
 
-			// Bomb/beam collision variables
-			mutable std::vector<Bomb::Line> mBombLines;
+  mutable std::vector<int> mBombStartEnds;
 
-			mutable std::vector<int> mBombStartEnds;
+  mutable std::vector<Vertex> mVerticesToCheck;
 
-			mutable std::vector<Vertex> mVerticesToCheck;
+private:
+  void addEdge(Vector2 const& v0, Vector2 const& v1, uint32_t v0Index, uint32_t v1Index, uint32_t edgeIndex, BoundingBox const& bounds);
 
-		private:
+  bool lineIntersectsMesh(Vector2 const& v0, Vector2 const& v1, Vector2 const& dir, Vertex const& ignoreVertex) const;
 
-			void addEdge(Vector2 const& v0, Vector2 const& v1, uint32_t v0Index, uint32_t v1Index, uint32_t edgeIndex, BoundingBox const& bounds);
+  Vector2 projectLineThroughMesh(Vector2 const& v0, Vector2 const& v1, Vertex const* ignoreVertex = nullptr, bool* isFull = nullptr) const;
 
-			bool lineIntersectsMesh(Vector2 const& v0, Vector2 const& v1, Vector2 const& dir, Vertex const& ignoreVertex) const;
+public:
+  MeshCollisionManager(ExtentsCalculator const& extents, uint32_t cellsX, uint32_t cellsY);
 
-			Vector2 projectLineThroughMesh(Vector2 const& v0, Vector2 const& v1, Vertex const* ignoreVertex = nullptr, bool* isFull = nullptr) const;
+  ~MeshCollisionManager() = default;
 
-		public:
+  CachedStaticAccelerationGrid const* getGrid() const;
 
-			MeshCollisionManager(ExtentsCalculator const& extents, uint32_t cellsX, uint32_t cellsY);
+  Edge const& getCollisionEdge(uint32_t index) const;
 
-			~MeshCollisionManager() = default;
+  int getNumCollisionEdges() const;
 
-			CachedStaticAccelerationGrid const* getGrid() const;
+  Mesh const& getMesh() const;
 
-			Edge const& getCollisionEdge(uint32_t index) const;
+  void addMesh(geometry::Mesh const* mesh);
 
-			int getNumCollisionEdges() const;
+  void addMesh(geometry::Mesh const* mesh, geometry::Mesh::EdgeFilterFunction edgeFilterFn);
 
-			Mesh const& getMesh() const;
+  void addStaticPolygon(std::vector<Vector2> const& points);
 
-			void addMesh(geometry::Mesh const* mesh);
+  void addStaticOBB(Vector2 const& minExtent, Vector2 const& maxExtent, float angle);
 
-			void addMesh(geometry::Mesh const* mesh, geometry::Mesh::EdgeFilterFunction edgeFilterFn);
+  void addStaticAABB(Vector2 const& minExtent, Vector2 const& maxExtent);
 
-			void addStaticPolygon(std::vector<Vector2> const& points);
+  void getExtents(Vector2& minExtent, Vector2& maxExtent) const;
 
-			void addStaticOBB(Vector2 const& minExtent, Vector2 const& maxExtent, float angle);
-			
-			void addStaticAABB(Vector2 const& minExtent, Vector2 const& maxExtent);
+  int32_t checkBullet(Vector2 const& oldPosition, Vector2 const& newPosition, float radius, float checkTunnelling);
 
-			void getExtents(Vector2& minExtent, Vector2& maxExtent) const;
+  static std::vector<Bomb::Arc> getFullBomb(Bomb const& bomb);
 
-			int32_t checkBullet(Vector2 const& oldPosition, Vector2 const& newPosition, float radius, float checkTunnelling);
+  std::vector<Bomb::Arc> checkBomb(Bomb const& bomb) const;
 
-			static std::vector<Bomb::Arc> getFullBomb(Bomb const& bomb);
+  static std::vector<BeamShard> getFullBeam(Vector2 const& position, float angle, float width, float length);
 
-			std::vector<Bomb::Arc> checkBomb(Bomb const& bomb) const;
+  std::vector<BeamShard> checkBeam(Vector2 const& position, float angle, float width, float length) const;
+};
 
-			static std::vector<BeamShard> getFullBeam(Vector2 const& position, float angle, float width, float length);
-			
-			std::vector<BeamShard> checkBeam(Vector2 const& position, float angle, float width, float length) const;
-		};
-
-	} // firepower
-} // WP_NAMESPACW
+}  // namespace firepower
+}  // namespace WP_NAMESPACE

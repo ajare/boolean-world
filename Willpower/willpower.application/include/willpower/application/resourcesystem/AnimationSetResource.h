@@ -8,87 +8,70 @@
 #include "willpower/application/resourcesystem/ResourceDefinitionFactory.h"
 #include "willpower/application/resourcesystem/ImageSetResource.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
-		namespace resourcesystem
-		{
-			class AnimationSetResourceDefinitionFactory;
+namespace WP_NAMESPACE {
+namespace application {
+namespace resourcesystem {
+class AnimationSetResourceDefinitionFactory;
 
-			class WP_APPLICATION_API AnimationSetResource : public Resource
-			{
-				friend class AnimationSetResourceDefinitionFactory;
+class WP_APPLICATION_API AnimationSetResource : public Resource {
+  friend class AnimationSetResourceDefinitionFactory;
 
-			public:
+public:
+  enum class LoopStyle {
+    Forwards,
+    Once,
+    PingPong
+  };
 
-				enum class LoopStyle
-				{
-					Forwards,
-					Once,
-					PingPong
-				};
+public:
+  struct Frame {
+    uint32_t srcPosX, srcPosY;
+    uint32_t width, height;
+    uint32_t renderOffsetX, renderOffsetY;
+    float u[2], v[2];
+    float time;
+    std::map<std::string, std::string> tags;
+  };
 
-			public:
+  typedef std::vector<Frame> FrameSet;
 
-				struct Frame
-				{
-					uint32_t srcPosX, srcPosY;
-					uint32_t width, height;
-					uint32_t renderOffsetX, renderOffsetY;
-					float u[2], v[2];
-					float time;
-					std::map<std::string, std::string> tags;
-				};
+  struct Animation {
+    std::string name;
+    LoopStyle loopStyle;
+    FrameSet frames;
+  };
 
-				typedef std::vector<Frame> FrameSet;
+private:
+  std::map<std::string, Animation> mAnimations;
 
-				struct Animation
-				{
-					std::string name;
-					LoopStyle loopStyle;
-					FrameSet frames;
-				};
+private:
+  void destroy();
 
-			private:
+public:
+  AnimationSetResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, application::resourcesystem::ResourceLocation* location);
 
-				std::map<std::string, Animation> mAnimations;
+  ResourcePtr getImage();
 
-			private:
+  bool hasAnimation(std::string const& name) const;
 
-				void destroy();
+  Animation const& getAnimation(std::string const& name) const;
 
-			public:
+  std::vector<std::string> getAnimationNames() const;
 
-				AnimationSetResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, application::resourcesystem::ResourceLocation* location);
+  void getMaximumDimensions(uint32_t& width, uint32_t& height) const;
+};
 
-				ResourcePtr getImage();
+class AnimationSetResourceFactory : public ResourceFactory {
+public:
+  AnimationSetResourceFactory()
+      : ResourceFactory("AnimationSet") {
+  }
 
-				bool hasAnimation(std::string const& name) const;
+  Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, ResourceLocation* location) override {
+    return new AnimationSetResource(name, namesp, source, tags, location);
+  }
+};
 
-				Animation const& getAnimation(std::string const& name) const;
-
-				std::vector<std::string> getAnimationNames() const;
-
-				void getMaximumDimensions(uint32_t& width, uint32_t& height) const;
-			};
-
-			class AnimationSetResourceFactory : public ResourceFactory
-			{
-			public:
-
-				AnimationSetResourceFactory()
-					: ResourceFactory("AnimationSet")
-				{
-				}
-
-				Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, ResourceLocation* location) override
-				{
-					return new AnimationSetResource(name, namesp, source, tags, location);
-				}
-			};
-
-		} // resourcesystem
-	} // application
-} // WP_NAMESPACE
-
+}  // namespace resourcesystem
+}  // namespace application
+}  // namespace WP_NAMESPACE

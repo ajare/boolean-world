@@ -1,54 +1,41 @@
 #pragma once
 
-
 #include "willpower/application/Platform.h"
 #include "willpower/application/resourcesystem/Resource.h"
 #include "willpower/application/resourcesystem/ResourceFactory.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
-		namespace resourcesystem
-		{
+namespace WP_NAMESPACE {
+namespace application {
+namespace resourcesystem {
 
-			class WP_APPLICATION_API ShaderResource : public Resource
-			{
-				friend class ShaderResourceDefinitionFactory;
+class WP_APPLICATION_API ShaderResource : public Resource {
+  friend class ShaderResourceDefinitionFactory;
 
-			private:
+private:
+  std::string mText;
 
-				std::string mText;
+private:
+  void parseData(DataStreamPtr dataPtr) override;
 
-			private:
+  void destroy() override;
 
-				void parseData(DataStreamPtr dataPtr) override;
+public:
+  ShaderResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, application::resourcesystem::ResourceLocation* location);
 
-				void destroy() override;
+  std::string const& getText() const;
+};
 
-			public:
+class ShaderResourceFactory : public ResourceFactory {
+public:
+  ShaderResourceFactory()
+      : ResourceFactory("Shader") {
+  }
 
-				ShaderResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, application::resourcesystem::ResourceLocation* location);
+  Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, ResourceLocation* location) override {
+    return new ShaderResource(name, namesp, source, tags, location);
+  }
+};
 
-				std::string const& getText() const;
-			};
-
-			class ShaderResourceFactory : public ResourceFactory
-			{
-			public:
-
-				ShaderResourceFactory()
-					: ResourceFactory("Shader")
-				{
-				}
-
-				Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, ResourceLocation* location) override
-				{
-					return new ShaderResource(name, namesp, source, tags, location);
-				}
-			};
-
-		} // resourcesystem
-	} // application
-} // WP_NAMESPACE
-
+}  // namespace resourcesystem
+}  // namespace application
+}  // namespace WP_NAMESPACE

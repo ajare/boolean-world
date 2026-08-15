@@ -5,27 +5,22 @@
 #include "willpower/application/resourcesystem/XmlFileDefaultDefinitionFactory.h"
 #include "willpower/application/resourcesystem/ResourceExceptions.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
-		namespace resourcesystem
-		{
-			using namespace std;
-			using namespace utils;
+namespace WP_NAMESPACE {
+namespace application {
+namespace resourcesystem {
+using namespace std;
+using namespace utils;
 
-			XmlFileDefaultDefinitionFactory::XmlFileDefaultDefinitionFactory()
-				: XmlFileResourceDefinitionFactory("")
-			{
-			}
+XmlFileDefaultDefinitionFactory::XmlFileDefaultDefinitionFactory()
+    : XmlFileResourceDefinitionFactory("") {
+}
 
-			void XmlFileDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, utils::XmlNode* node)
-			{
-				WP_UNUSED(resource);
-				WP_UNUSED(resourceMgr);
-				WP_UNUSED(node);
-			}
+void XmlFileDefaultDefinitionFactory::create(Resource* resource, ResourceManager* resourceMgr, utils::XmlNode* node) {
+  WP_UNUSED(resource);
+  WP_UNUSED(resourceMgr);
+  WP_UNUSED(node);
+}
 
-		} // resourcesystem
-	} // application
-} // WP_NAMESPACE
+}  // namespace resourcesystem
+}  // namespace application
+}  // namespace WP_NAMESPACE

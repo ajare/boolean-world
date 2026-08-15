@@ -8,70 +8,60 @@
 #include "willpower/viz/StaticRenderer.h"
 #include "willpower/viz/GeometryMeshRenderParams.h"
 
-namespace WP_NAMESPACE
-{
-	namespace viz
-	{
+namespace WP_NAMESPACE {
+namespace viz {
 
-		class WP_VIZ_API GeometryMeshRenderer : public StaticRenderer
-		{
-		protected:
+class WP_VIZ_API GeometryMeshRenderer : public StaticRenderer {
+protected:
+  struct BackgroundMeshData {
+    mpp::ResourcePtr material{nullptr};
+    uint32_t numVertices{0};
+    size_t meshId{~0u};
+    std::vector<float> vertices;
+    mpp::mesh::VertexData* vertexData{nullptr};
+  };
 
-			struct BackgroundMeshData
-			{
-				mpp::ResourcePtr material{ nullptr };
-				uint32_t numVertices{ 0 };
-				size_t meshId{ ~0u };
-				std::vector<float> vertices;
-				mpp::mesh::VertexData* vertexData{ nullptr };
-			};
+protected:
+  std::shared_ptr<geometry::Mesh> mMesh;
 
-		protected:
+  std::map<std::string, BackgroundMeshData> mBackgroundMeshes;
 
-			std::shared_ptr<geometry::Mesh> mMesh;
+  std::map<uint32_t, std::string> mBackgroundMeshLookup;
 
-			std::map<std::string, BackgroundMeshData> mBackgroundMeshes;
+private:
+  void getExtents(Vector2& minExtent, Vector2& maxExtent) override;
 
-			std::map<uint32_t, std::string> mBackgroundMeshLookup;
+  // MeshSpecifications
+  void createMeshSpecifications() override;
 
-		private:
+  // Materials
+  void createMaterials(mpp::ResourceManager* resourceMgr) override;
 
-			void getExtents(Vector2& minExtent, Vector2& maxExtent) override;
+  std::vector<std::string> getPolygonTextures(uint32_t polygonIndex, uint32_t numTextures) const;
 
-			// MeshSpecifications
-			void createMeshSpecifications() override;
+  std::string getPolygonMaterialLookupKey(uint32_t polygonIndex) const;
 
-			// Materials
-			void createMaterials(mpp::ResourceManager* resourceMgr) override;
+  // Meshes
+  void createMeshes(mpp::ProgrammaticModelStream* stream, mpp::ResourceManager* resourceMgr) override;
 
-			std::vector<std::string> getPolygonTextures(uint32_t polygonIndex, uint32_t numTextures) const;
+  // RenderParams
+  RenderParams* createRenderParams(std::shared_ptr<mpp::ModelRenderParams> params) override;
 
-			std::string getPolygonMaterialLookupKey(uint32_t polygonIndex) const;
+  // Hooks
+  virtual std::string getPolygonMeshNamePrefix(uint32_t polygonIndex) const;
 
-			// Meshes
-			void createMeshes(mpp::ProgrammaticModelStream* stream, mpp::ResourceManager* resourceMgr) override;
+protected:
+  void onAddedToScene() override;
 
-			// RenderParams
-			RenderParams* createRenderParams(std::shared_ptr<mpp::ModelRenderParams> params) override;
+  std::string getPolygonMaterialName(uint32_t polygonIndex) const;
 
-			// Hooks
-			virtual std::string getPolygonMeshNamePrefix(uint32_t polygonIndex) const;
+public:
+  GeometryMeshRenderer(std::string const& name, std::shared_ptr<geometry::Mesh> mesh, GridOptions const& gridOptions, size_t indexWidth, mpp::ResourceManager* renderResourceMgr);
 
-		protected:
+  void updateRenderParams() override;
 
-			void onAddedToScene() override;
+  void update(BoundingBox const& viewBounds, float frameTime) override;
+};
 
-			std::string getPolygonMaterialName(uint32_t polygonIndex) const;
-
-		public:
-
-			GeometryMeshRenderer(std::string const& name, std::shared_ptr<geometry::Mesh> mesh, GridOptions const& gridOptions, size_t indexWidth, mpp::ResourceManager* renderResourceMgr);
-
-			void updateRenderParams() override;
-
-			void update(BoundingBox const& viewBounds, float frameTime) override;
-		};
-
-	} // viz
-} // WP_NAMESPACE
-
+}  // namespace viz
+}  // namespace WP_NAMESPACE

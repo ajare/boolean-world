@@ -14,114 +14,103 @@
 #include "willpower/viz/Platform.h"
 #include "willpower/viz/Renderer.h"
 
-namespace WP_NAMESPACE
-{
-	namespace viz
-	{
+namespace WP_NAMESPACE {
+namespace viz {
 
-		class WP_VIZ_API StaticRenderer : public Renderer
-		{
-		public:
+class WP_VIZ_API StaticRenderer : public Renderer {
+public:
+  struct GridOptions {
+    enum class CellStrategy {
+      Intersects,
+      CentreInside
+    };
 
-			struct GridOptions
-			{
-				enum class CellStrategy
-				{
-					Intersects,
-					CentreInside
-				};
+    bool useGrid{false};
+    float cellSize{256.0f};
+    float paddingPct{0.0f};
+    CellStrategy strategy{CellStrategy::Intersects};
+  };
 
-				bool useGrid{ false };
-				float cellSize{ 256.0f };
-				float paddingPct{ 0.0f };
-				CellStrategy strategy{ CellStrategy::Intersects };
-			};
+private:
+  mpp::ResourcePtr mModel;
 
-		private:
+  std::vector<mpp::ResourcePtr> mMaterials;
 
-			mpp::ResourcePtr mModel;
+  GridOptions mGridOptions;
 
-			std::vector<mpp::ResourcePtr> mMaterials;
+  bool mUseIncludeMasking, mUseExcludeMasking;
 
-			GridOptions mGridOptions;
+  std::set<uint32_t> mGridIncludeMask, mGridExcludeMask;
 
-			bool mUseIncludeMasking, mUseExcludeMasking;
+protected:
+  std::shared_ptr<AccelerationGrid> mLookupGrid;
 
-			std::set<uint32_t> mGridIncludeMask, mGridExcludeMask;
+  size_t mIndexWidth;
 
-		protected:
+  std::map<std::string, std::string> mMaterialNames;
 
-			std::shared_ptr<AccelerationGrid> mLookupGrid;
+  std::map<std::string, mpp::mesh::MeshSpecification> mMeshSpecifications;
 
-			size_t mIndexWidth;
+private:
+  void createLookupGrid();
 
-			std::map<std::string, std::string> mMaterialNames;
+  mpp::SceneModel2dPtr createSceneModelInScene(mpp::ScenePtr scene, int renderOrder) override;
 
-			std::map<std::string, mpp::mesh::MeshSpecification> mMeshSpecifications;
+  void removeSceneModelFromScene(mpp::ScenePtr scene, mpp::SceneModel2dPtr sceneModel) override;
 
-		private:
+  virtual void getExtents(Vector2& minExtent, Vector2& maxExtent) = 0;
 
-			void createLookupGrid();
+  // Mesh specifications
+  virtual void createMeshSpecifications() = 0;
 
-			mpp::SceneModel2dPtr createSceneModelInScene(mpp::ScenePtr scene, int renderOrder) override;
+  // Materials
+  virtual void createMaterials(mpp::ResourceManager* resourceMgr) = 0;
 
-			void removeSceneModelFromScene(mpp::ScenePtr scene, mpp::SceneModel2dPtr sceneModel) override;
-			
-			virtual void getExtents(Vector2& minExtent, Vector2& maxExtent) = 0;
+  // Meshes
+  virtual void createMeshes(mpp::ProgrammaticModelStream* stream, mpp::ResourceManager* resourceMgr) = 0;
 
-			// Mesh specifications
-			virtual void createMeshSpecifications() = 0;
+protected:
+  void addMaterialResource(std::string const& lookupName, mpp::ResourcePtr resource);
 
-			// Materials
-			virtual void createMaterials(mpp::ResourceManager* resourceMgr) = 0;
+  bool usingLookupGrid() const;
 
-			// Meshes
-			virtual void createMeshes(mpp::ProgrammaticModelStream* stream, mpp::ResourceManager* resourceMgr) = 0;
+  void addVertexData(mpp::mesh::VertexData* vertexData, Vector2 const& pos, Vector2 const& tex, float colour[4]);
 
-		protected:
+  void addVertexData(mpp::mesh::VertexData* vertexData, Vector2 const& pos0, Vector2 const& pos1, Vector2 const& tex0, Vector2 const& tex1, float colour[4]);
 
-			void addMaterialResource(std::string const& lookupName, mpp::ResourcePtr resource);
+  GridOptions::CellStrategy getGridCellStrategy() const;
 
-			bool usingLookupGrid() const;
+public:
+  StaticRenderer(std::string const& name, std::string const& type, GridOptions const& gridOptions, size_t indexWidth, mpp::ResourceManager* renderResourceMgr);
 
-			void addVertexData(mpp::mesh::VertexData* vertexData, Vector2 const& pos, Vector2 const& tex, float colour[4]);
+  ~StaticRenderer();
 
-			void addVertexData(mpp::mesh::VertexData* vertexData, Vector2 const& pos0, Vector2 const& pos1, Vector2 const& tex0, Vector2 const& tex1, float colour[4]);
+  std::shared_ptr<AccelerationGrid> getLookupGrid();
 
-			GridOptions::CellStrategy getGridCellStrategy() const;
+  void build(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
 
-		public:
+  void useGridIncludeMasking(bool use);
 
-			StaticRenderer(std::string const& name, std::string const& type, GridOptions const& gridOptions, size_t indexWidth, mpp::ResourceManager* renderResourceMgr);
+  bool usingGridIncludeMasking() const;
 
-			~StaticRenderer();
+  void useGridExcludeMasking(bool use);
 
-			std::shared_ptr<AccelerationGrid> getLookupGrid();
+  bool usingGridExcludeMasking() const;
 
-			void build(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
-		
-			void useGridIncludeMasking(bool use);
+  void clearGridIncludeMask();
 
-			bool usingGridIncludeMasking() const;
+  void clearGridExcludeMask();
 
-			void useGridExcludeMasking(bool use);
+  void addToGridIncludeMask(uint32_t id);
 
-			bool usingGridExcludeMasking() const;
+  void addToGridExcludeMask(uint32_t id);
 
-			void clearGridIncludeMask();
+  bool gridIdInIncludeMask(uint32_t id) const;
 
-			void clearGridExcludeMask();
+  bool gridIdInExcludeMask(uint32_t id) const;
+};
 
-			void addToGridIncludeMask(uint32_t id);
-
-			void addToGridExcludeMask(uint32_t id);
-
-			bool gridIdInIncludeMask(uint32_t id) const;
-
-			bool gridIdInExcludeMask(uint32_t id) const;
-		};
-
-	} // viz
-} // WP_NAMESPACE
+}  // namespace viz
+}  // namespace WP_NAMESPACE
 
 #pragma once

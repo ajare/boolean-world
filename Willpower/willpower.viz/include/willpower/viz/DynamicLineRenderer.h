@@ -7,37 +7,30 @@
 #include "willpower/viz/DynamicRenderer.h"
 #include "willpower/viz/DynamicLineRenderParams.h"
 
+namespace WP_NAMESPACE {
+namespace viz {
 
-namespace WP_NAMESPACE
-{
-	namespace viz
-	{
+class WP_VIZ_API DynamicLineRenderer : public DynamicRenderer {
+  std::shared_ptr<mpp::helper::LineBatchDataProvider<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte>> mDataProvider;
 
-		class WP_VIZ_API DynamicLineRenderer : public DynamicRenderer
-		{
-			std::shared_ptr<mpp::helper::LineBatchDataProvider<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte>> mDataProvider;
+  std::shared_ptr<mpp::helper::LineBatchRenderer<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte>> mRenderer;
 
-			std::shared_ptr<mpp::helper::LineBatchRenderer<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte>> mRenderer;
+  mpp::helper::LineBatchRendererParams mLineParams;
 
-			mpp::helper::LineBatchRendererParams mLineParams;
+private:
+  RenderParams* createRenderParams(std::shared_ptr<mpp::ModelRenderParams> params) override;
 
-		private:
+  mpp::SceneModel2dPtr createSceneModelInScene(mpp::ScenePtr scene, int renderOrder) override;
 
-			RenderParams* createRenderParams(std::shared_ptr<mpp::ModelRenderParams> params) override;
+  void removeSceneModelFromScene(mpp::ScenePtr scene, mpp::SceneModel2dPtr sceneModel) override;
 
-			mpp::SceneModel2dPtr createSceneModelInScene(mpp::ScenePtr scene, int renderOrder) override;
+public:
+  DynamicLineRenderer(std::string const& name, std::shared_ptr<mpp::helper::LineBatchDataProvider<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte>> dataProvider, mpp::helper::LineBatchRendererParams const& params, mpp::ResourceManager* renderResourceMgr);
 
-			void removeSceneModelFromScene(mpp::ScenePtr scene, mpp::SceneModel2dPtr sceneModel) override;
+  void build(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
 
-		public:
+  void update(BoundingBox const& viewBounds, float frameTime) override;
+};
 
-			DynamicLineRenderer(std::string const& name, std::shared_ptr<mpp::helper::LineBatchDataProvider<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte>> dataProvider, mpp::helper::LineBatchRendererParams const& params, mpp::ResourceManager* renderResourceMgr);
-
-			void build(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
-
-			void update(BoundingBox const& viewBounds, float frameTime) override;
-		};
-
-	} // viz
-} // WP_NAMESPACE
-
+}  // namespace viz
+}  // namespace WP_NAMESPACE

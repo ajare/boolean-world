@@ -2,37 +2,29 @@
 
 #include "willpower/application/resourcesystem/XmlFileResource.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
-		namespace resourcesystem
-		{
-			using namespace std;
+namespace WP_NAMESPACE {
+namespace application {
+namespace resourcesystem {
+using namespace std;
 
-			XmlFileResource::XmlFileResource(string const& name, string const& namesp, string const& source, map<string, string> const& tags, ResourceLocation* location)
-				: Resource(name, namesp, "XmlFile", source, tags, location)
-				, mReader(nullptr)
-			{
-			}
+XmlFileResource::XmlFileResource(string const& name, string const& namesp, string const& source, map<string, string> const& tags, ResourceLocation* location)
+    : Resource(name, namesp, "XmlFile", source, tags, location), mReader(nullptr) {
+}
 
-			void XmlFileResource::parseData(DataStreamPtr dataPtr)
-			{
-				assert(!mReader);
-				mReader = utils::XmlReader::fromString(string((char*)dataPtr->getData(), dataPtr->getSize()));
-			}
+void XmlFileResource::parseData(DataStreamPtr dataPtr) {
+  assert(!mReader);
+  mReader = utils::XmlReader::fromString(string((char*)dataPtr->getData(), dataPtr->getSize()));
+}
 
-			void XmlFileResource::destroy()
-			{
-				delete mReader;
-				mReader = nullptr;
-			}
+void XmlFileResource::destroy() {
+  delete mReader;
+  mReader = nullptr;
+}
 
-			utils::XmlReader* XmlFileResource::getReader()
-			{
-				return mReader;
-			}
+utils::XmlReader* XmlFileResource::getReader() {
+  return mReader;
+}
 
-		} // resourcesystem
-	} // application
-} // WP_NAMESPACE
+}  // namespace resourcesystem
+}  // namespace application
+}  // namespace WP_NAMESPACE

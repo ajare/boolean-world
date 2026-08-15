@@ -6,31 +6,25 @@
 #include "willpower/viz/Platform.h"
 #include "willpower/viz/RenderParams.h"
 
-namespace WP_NAMESPACE
-{
-	namespace viz
-	{
+namespace WP_NAMESPACE {
+namespace viz {
 
-		class WP_VIZ_API FirepowerMeshRenderParams : public RenderParams
-		{
-			std::shared_ptr<mpp::ModelRenderParams> mParams;
+class WP_VIZ_API FirepowerMeshRenderParams : public RenderParams {
+  std::shared_ptr<mpp::ModelRenderParams> mParams;
 
-			std::shared_ptr<mpp::UniformCollection> mLineUniforms;
+  std::shared_ptr<mpp::UniformCollection> mLineUniforms;
 
-			mpp::Colour mLineColour;
+  mpp::Colour mLineColour;
 
-		public:
+public:
+  explicit FirepowerMeshRenderParams(std::shared_ptr<mpp::ModelRenderParams> params);
 
-			explicit FirepowerMeshRenderParams(std::shared_ptr<mpp::ModelRenderParams> params);
+  void setLineColour(mpp::Colour const& colour);
 
-			void setLineColour(mpp::Colour const& colour);
+  mpp::Colour const& getLineColour() const;
 
-			mpp::Colour const& getLineColour() const;
+  float getGridPadding() const;
+};
 
-			float getGridPadding() const;
-
-		};
-
-	} // viz
-} // WP_NAMESPACE
-
+}  // namespace viz
+}  // namespace WP_NAMESPACE

@@ -4,42 +4,36 @@
 
 #include "willpower/viz/Platform.h"
 
-namespace WP_NAMESPACE
-{
-	namespace viz
-	{
-		
-		class WP_VIZ_API RenderParams
-		{
-			bool mRender;
+namespace WP_NAMESPACE {
+namespace viz {
 
-			bool mRenderAccelerationGrids;
+class WP_VIZ_API RenderParams {
+  bool mRender;
 
-		protected:
+  bool mRenderAccelerationGrids;
 
-			bool mInvalidated;
+protected:
+  bool mInvalidated;
 
-		public:
+public:
+  RenderParams();
 
-			RenderParams();
+  virtual ~RenderParams() = default;
 
-			virtual ~RenderParams() = default;
+  void setRender(bool render);
 
-			void setRender(bool render);
+  bool getRender() const;
 
-			bool getRender() const;
+  bool isInvalidated() const;
 
-			bool isInvalidated() const;
+  void rebuilt();
 
-			void rebuilt();
+  void setRenderAccelerationGrids(bool render);
 
-			void setRenderAccelerationGrids(bool render);
+  bool getRenderAccelerationGrids() const;
 
-			bool getRenderAccelerationGrids() const;
+  virtual float getGridPadding() const = 0;
+};
 
-			virtual float getGridPadding() const = 0;
-		};
-
-	} // viz
-} // WP_NAMESPACE
-
+}  // namespace viz
+}  // namespace WP_NAMESPACE

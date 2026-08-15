@@ -6,112 +6,104 @@
 #include "willpower/viz/Platform.h"
 #include "willpower/viz/RenderParams.h"
 
-namespace WP_NAMESPACE
-{
-	namespace viz
-	{
-		class GeometryMeshRenderer;
+namespace WP_NAMESPACE {
+namespace viz {
+class GeometryMeshRenderer;
 
-		class WP_VIZ_API GeometryMeshRenderParams : public RenderParams
-		{
-			friend class GeometryMeshRenderer;
+class WP_VIZ_API GeometryMeshRenderParams : public RenderParams {
+  friend class GeometryMeshRenderer;
 
-		private:
+private:
+  std::shared_ptr<mpp::ModelRenderParams> mParams;
 
-			std::shared_ptr<mpp::ModelRenderParams> mParams;
+  std::shared_ptr<mpp::UniformCollection> mBackgroundUniforms,
+      mPolygonEdgeUniforms,
+      mBorderUniforms,
+      mTriangulationUniforms,
+      mVertexUniforms,
+      mPolygonEdgeNormalUniforms,
+      mPolygonEdgeDirectionUniforms;
 
-			std::shared_ptr<mpp::UniformCollection> mBackgroundUniforms, 
-				mPolygonEdgeUniforms, 
-				mBorderUniforms, 
-				mTriangulationUniforms,
-				mVertexUniforms,
-				mPolygonEdgeNormalUniforms,
-				mPolygonEdgeDirectionUniforms;
+  // Vertex settings
+  float mVertexSize;
 
-			// Vertex settings
-			float mVertexSize;
+  mpp::Colour mVertexColour;
 
-			mpp::Colour mVertexColour;
+  bool mRenderVertices;
 
-			bool mRenderVertices;
+  // Edge settings
+  mpp::Colour mTriangulationColour, mPolygonEdgeColour, mBorderColour;
 
-			// Edge settings
-			mpp::Colour mTriangulationColour, mPolygonEdgeColour, mBorderColour;
+  bool mRenderTriangulation, mRenderPolygonEdges, mRenderBorder, mRenderEdgeNormals, mRenderEdgeDirections;
 
-			bool mRenderTriangulation, mRenderPolygonEdges, mRenderBorder, mRenderEdgeNormals, mRenderEdgeDirections;
+  // Background settings
+  mpp::Colour mBackgroundColour;
 
-			// Background settings
-			mpp::Colour mBackgroundColour;
+  bool mRenderBackground;
 
-			bool mRenderBackground;
+protected:
+  explicit GeometryMeshRenderParams(std::shared_ptr<mpp::ModelRenderParams> params);
 
-		protected:
+public:
+  // Vertices
+  void setVertexSize(float size);
 
-			explicit GeometryMeshRenderParams(std::shared_ptr<mpp::ModelRenderParams> params);
+  float getVertexSize() const;
 
-		public:
+  void setVertexColour(mpp::Colour const& colour);
 
-			// Vertices
-			void setVertexSize(float size);
+  mpp::Colour const& getVertexColour() const;
 
-			float getVertexSize() const;
+  void setRenderVertices(bool render);
 
-			void setVertexColour(mpp::Colour const& colour);
+  bool getRenderVertices() const;
 
-			mpp::Colour const& getVertexColour() const;
+  // Edges
+  void setTriangulationColour(mpp::Colour const& colour);
 
-			void setRenderVertices(bool render);
+  mpp::Colour const& getTriangulationColour() const;
 
-			bool getRenderVertices() const;
+  void setPolygonEdgeColour(mpp::Colour const& colour);
 
-			// Edges
-			void setTriangulationColour(mpp::Colour const& colour);
+  mpp::Colour const& getPolygonEdgeColour() const;
 
-			mpp::Colour const& getTriangulationColour() const;
+  void setBorderColour(mpp::Colour const& colour);
 
-			void setPolygonEdgeColour(mpp::Colour const& colour);
+  mpp::Colour const& getBorderColour() const;
 
-			mpp::Colour const& getPolygonEdgeColour() const;
+  void setRenderTriangulation(bool render);
 
-			void setBorderColour(mpp::Colour const& colour);
+  bool getRenderTriangulation() const;
 
-			mpp::Colour const& getBorderColour() const;
+  void setRenderPolygonEdges(bool render);
 
-			void setRenderTriangulation(bool render);
+  bool getRenderPolygonEdges() const;
 
-			bool getRenderTriangulation() const;
+  void setRenderBorder(bool render);
 
-			void setRenderPolygonEdges(bool render);
+  bool getRenderBorder() const;
 
-			bool getRenderPolygonEdges() const;
+  void setRenderEdgeNormals(bool render);
 
-			void setRenderBorder(bool render);
+  bool getRenderEdgeNormals() const;
 
-			bool getRenderBorder() const;
+  void setRenderEdgeDirections(bool render);
 
-			void setRenderEdgeNormals(bool render);
+  bool getRenderEdgeDirections() const;
 
-			bool getRenderEdgeNormals() const;
+  // Background
+  void setBackgroundUniforms(std::string const& name);
 
-			void setRenderEdgeDirections(bool render);
+  void setBackgroundColour(mpp::Colour const& colour);
 
-			bool getRenderEdgeDirections() const;
+  mpp::Colour const& getBackgroundColour() const;
 
-			// Background
-			void setBackgroundUniforms(std::string const& name);
+  void setRenderBackground(bool render);
 
-			void setBackgroundColour(mpp::Colour const& colour);
+  bool getRenderBackground() const;
 
-			mpp::Colour const& getBackgroundColour() const;
+  float getGridPadding() const;
+};
 
-			void setRenderBackground(bool render);
-
-			bool getRenderBackground() const;
-
-			float getGridPadding() const;
-
-		};
-
-	} // viz
-} // WP_NAMESPACE
-
+}  // namespace viz
+}  // namespace WP_NAMESPACE

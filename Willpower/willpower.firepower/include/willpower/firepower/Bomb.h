@@ -8,94 +8,80 @@
 #include "willpower/firepower/Mesh.h"
 #include "willpower/firepower/ControlSetting.h"
 
-namespace WP_NAMESPACE
-{
-	namespace firepower
-	{
-		class MeshCollisionManager;
+namespace WP_NAMESPACE {
+namespace firepower {
+class MeshCollisionManager;
 
-		class WP_FIREPOWER_API Bomb
-		{
-		public:
+class WP_FIREPOWER_API Bomb {
+public:
+  typedef std::pair<float, float> Arc;
 
-			typedef std::pair<float, float> Arc;
+public:
+  struct Line {
+    wp::Vector2 end;
+    float angle;
+    int startEnd;
+  };
 
-		public:
+  struct LifeOptions {
+    float maxRadius;
+    float lifetime;
 
-			struct Line
-			{
-				wp::Vector2 end;
-				float angle;
-				int startEnd;
-			};
+    LifeOptions()
+        : maxRadius(-1.0f), lifetime(-1.0f) {
+    }
+  };
 
-			struct LifeOptions
-			{
-				float maxRadius;
-				float lifetime;
+private:
+  wp::Vector2 mPosition;
 
-				LifeOptions()
-					: maxRadius(-1.0f)
-					, lifetime(-1.0f)
-				{
-				}
-			};
+  float mAcceleration;
 
-		private:
+  float mSpeed;
 
-			wp::Vector2 mPosition;
+  float mRotation;
 
-			float mAcceleration;
+  float mRadius;
 
-			float mSpeed;
+  float mDepth;
 
-			float mRotation;
+  float mLifeTime;
 
-			float mRadius;
+  float mMaxRadius;
 
-			float mDepth;
+  ControlFunction mGetAccelerationFn;
 
-			float mLifeTime;
+  ControlFunction mGetSpeedFn;
 
-			float mMaxRadius;
+  ControlFunction mGetRotationFn;
 
-			ControlFunction mGetAccelerationFn;
+  bool mClipArcs;
 
-			ControlFunction mGetSpeedFn;
+  // Working variables
+  bool mHasHit;
 
-			ControlFunction mGetRotationFn;
+  std::vector<Arc> mArcs, mResultArcs;
 
-			bool mClipArcs;
+private:
+  bool clipSlabs(float x0, float x1, float y0, float y1, float* a, float* b);
 
-			// Working variables
-			bool mHasHit;
+  void clipArcs(Arc const& a, Arc const& b, std::vector<Arc>& clipped);
 
-			std::vector<Arc> mArcs, mResultArcs;
+public:
+  Bomb();
 
-		private:
+  void initialise(Vector2 const& position, float radius, float depth, bool clipArcs, LifeOptions const& lifeOptions, ControlSetting accelValue, ControlSetting speedValue, ControlSetting rotateValue, std::vector<Arc> const& arcs);
 
-			bool clipSlabs(float x0, float x1, float y0, float y1, float* a, float* b);
+  wp::Vector2 const& getPosition() const;
 
-			void clipArcs(Arc const& a, Arc const& b, std::vector<Arc>& clipped);
+  float getRadius() const;
 
-		public:
+  float getDepth() const;
 
-			Bomb();
+  std::vector<Bomb::Arc> const& getArcs() const;
 
-			void initialise(Vector2 const& position, float radius, float depth, bool clipArcs, LifeOptions const& lifeOptions, ControlSetting accelValue, ControlSetting speedValue, ControlSetting rotateValue, std::vector<Arc> const& arcs);
+  bool update(MeshCollisionManager const* meshCollisionMgr, float frameTime);
+};
 
-			wp::Vector2 const& getPosition() const;
-
-			float getRadius() const;
-
-			float getDepth() const;
-
-			std::vector<Bomb::Arc> const& getArcs() const;
-
-			bool update(MeshCollisionManager const* meshCollisionMgr, float frameTime);
-
-		};
-
-	} // firepower
-} // WP_NAMESPACE
-
+}  // namespace firepower
+}  // namespace WP_NAMESPACE

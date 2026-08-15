@@ -13,95 +13,88 @@
 #include "willpower/viz/Platform.h"
 #include "willpower/viz/RenderParams.h"
 
-namespace WP_NAMESPACE
-{
-	namespace viz
-	{
+namespace WP_NAMESPACE {
+namespace viz {
 
-		class WP_VIZ_API Renderer : public mpp::ResourceWrangler
-		{
-			std::string mName;
+class WP_VIZ_API Renderer : public mpp::ResourceWrangler {
+  std::string mName;
 
-			std::string mType;
+  std::string mType;
 
-			std::shared_ptr<RenderParams> mParams;
+  std::shared_ptr<RenderParams> mParams;
 
-			bool mInScene;
+  bool mInScene;
 
-		protected:
+protected:
+  mpp::SceneModel2dPtr mSceneModel;
 
-			mpp::SceneModel2dPtr mSceneModel;
+  mpp::ResourceManager* mRenderResourceMgr;
 
-			mpp::ResourceManager* mRenderResourceMgr;
+private:
+  virtual RenderParams* createRenderParams(std::shared_ptr<mpp::ModelRenderParams> params) = 0;
 
-		private:
+  virtual mpp::SceneModel2dPtr createSceneModelInScene(mpp::ScenePtr scene, int renderOrder) = 0;
 
-			virtual RenderParams* createRenderParams(std::shared_ptr<mpp::ModelRenderParams> params) = 0;
+  virtual void removeSceneModelFromScene(mpp::ScenePtr scene, mpp::SceneModel2dPtr sceneModel) = 0;
 
-			virtual mpp::SceneModel2dPtr createSceneModelInScene(mpp::ScenePtr scene, int renderOrder) = 0;
+protected:
+  void setRenderParams(std::shared_ptr<mpp::ModelRenderParams> params);
 
-			virtual void removeSceneModelFromScene(mpp::ScenePtr scene, mpp::SceneModel2dPtr sceneModel) = 0;
+  virtual void onAddedToScene();
 
-		protected:
+public:
+  Renderer(std::string const& name, std::string const& type, mpp::ResourceManager* renderResourceMgr);
 
-			void setRenderParams(std::shared_ptr<mpp::ModelRenderParams> params);
+  virtual ~Renderer() = default;
 
-			virtual void onAddedToScene();
+  std::string const& getName() const;
 
-		public:
+  std::string const& getType() const;
 
-			Renderer(std::string const& name, std::string const& type, mpp::ResourceManager* renderResourceMgr);
+  std::shared_ptr<mpp::ModelRenderParams> getModelRenderParams();
 
-			virtual ~Renderer() = default;
+  std::shared_ptr<RenderParams> getParams();
 
-			std::string const& getName() const;
+  virtual void updateRenderParams();
 
-			std::string const& getType() const;
+  virtual void build(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) = 0;
 
-			std::shared_ptr<mpp::ModelRenderParams> getModelRenderParams();
+  void addToScene(mpp::ScenePtr scene, int renderOrder);
 
-			std::shared_ptr<RenderParams> getParams();
+  void removeFromScene(mpp::ScenePtr scene);
 
-			virtual void updateRenderParams();
+  virtual void update(BoundingBox const& viewBounds, float frameTime);
 
-			virtual void build(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) = 0;
+  void setVisible(bool visible);
 
-			void addToScene(mpp::ScenePtr scene, int renderOrder);
+  bool isVisible() const;
 
-			void removeFromScene(mpp::ScenePtr scene);
+  void setOrigin(wp::Vector2 const& origin);
 
-			virtual void update(BoundingBox const& viewBounds, float frameTime);
+  wp::Vector2 getOffset() const;
 
-			void setVisible(bool visible);
+  void setOffset(wp::Vector2 const& offset);
 
-			bool isVisible() const;
+  wp::Vector2 getOrigin() const;
 
-			void setOrigin(wp::Vector2 const& origin);
+  void setAngle(float angle);
 
-			wp::Vector2 getOffset() const;
+  float getAngle() const;
 
-			void setOffset(wp::Vector2 const& offset);
+  void setOrbitAngle(float angle);
 
-			wp::Vector2 getOrigin() const;
+  float getOrbitAngle() const;
 
-			void setAngle(float angle);
+  void setScale(wp::Vector2 const& scale);
 
-			float getAngle() const;
+  wp::Vector2 getScale() const;
 
-			void setOrbitAngle(float angle);
+  void setScreenSpace(bool screenSpace);
 
-			float getOrbitAngle() const;
+  bool inScreenSpace() const;
+};
 
-			void setScale(wp::Vector2 const& scale);
-
-			wp::Vector2 getScale() const;
-
-			void setScreenSpace(bool screenSpace);
-
-			bool inScreenSpace() const;
-		};
-
-	} // viz
-} // WP_NAMESPACE
+}  // namespace viz
+}  // namespace WP_NAMESPACE
 
 #pragma once

@@ -4,106 +4,94 @@
 
 #include "willpower/viz/AccelerationGridRenderer.h"
 
-namespace WP_NAMESPACE
-{
-	namespace viz
-	{
+namespace WP_NAMESPACE {
+namespace viz {
 
-		using namespace std;
-		using namespace wp;
+using namespace std;
+using namespace wp;
 
-		AccelerationGridRenderer::AccelerationGridRenderer(string const& name, shared_ptr<AccelerationGrid> grid, size_t indexWidth, mpp::ResourceManager* renderResourceMgr)
-			: StaticRenderer(name, "AccelerationGridRenderer", StaticRenderer::GridOptions(), indexWidth, renderResourceMgr)
-			, mGrid(grid)
-		{
-		}
+AccelerationGridRenderer::AccelerationGridRenderer(string const& name, shared_ptr<AccelerationGrid> grid, size_t indexWidth, mpp::ResourceManager* renderResourceMgr)
+    : StaticRenderer(name, "AccelerationGridRenderer", StaticRenderer::GridOptions(), indexWidth, renderResourceMgr), mGrid(grid) {
+}
 
-		void AccelerationGridRenderer::getExtents(Vector2& minExtent, Vector2& maxExtent)
-		{
-			minExtent = mGrid->getOffset();
-			maxExtent = minExtent + mGrid->getSize();
-		}
+void AccelerationGridRenderer::getExtents(Vector2& minExtent, Vector2& maxExtent) {
+  minExtent = mGrid->getOffset();
+  maxExtent = minExtent + mGrid->getSize();
+}
 
-		void AccelerationGridRenderer::createMeshSpecifications()
-		{
-			mpp::mesh::MeshSpecification lineMeshSpec(mpp::mesh::Primitive::Type::Lines);
+void AccelerationGridRenderer::createMeshSpecifications() {
+  mpp::mesh::MeshSpecification lineMeshSpec(mpp::mesh::Primitive::Type::Lines);
 
-			auto attribLayout = lineMeshSpec.createVertexBufferAttributeLayout(false);
-			attribLayout->createAttribute(mpp::mesh::Vertex::Component::Position2, mpp::mesh::Vertex::DataType::Float, false);
-			attribLayout->createAttribute(mpp::mesh::Vertex::Component::Colour4, mpp::mesh::Vertex::DataType::UnsignedByte, true);
-			lineMeshSpec.setStorageType(mpp::mesh::VertexBufferStorageType::Static);
-			lineMeshSpec.setIndexedVertices(false);
+  auto attribLayout = lineMeshSpec.createVertexBufferAttributeLayout(false);
+  attribLayout->createAttribute(mpp::mesh::Vertex::Component::Position2, mpp::mesh::Vertex::DataType::Float, false);
+  attribLayout->createAttribute(mpp::mesh::Vertex::Component::Colour4, mpp::mesh::Vertex::DataType::UnsignedByte, true);
+  lineMeshSpec.setStorageType(mpp::mesh::VertexBufferStorageType::Static);
+  lineMeshSpec.setIndexedVertices(false);
 
-			mMeshSpecifications["Lines"] = lineMeshSpec;
-		}
+  mMeshSpecifications["Lines"] = lineMeshSpec;
+}
 
-		void AccelerationGridRenderer::createMaterials(mpp::ResourceManager* resourceMgr)
-		{
-			// Lines
-			auto programResource = resourceMgr->getDefault2dProgram(
-				mMeshSpecifications["Lines"],
-				MPP_PROGRAM_TAGS_PRIM_LINES | MPP_PROGRAM_TAGS_DIFFUSE,
-				false,
-				getType());
+void AccelerationGridRenderer::createMaterials(mpp::ResourceManager* resourceMgr) {
+  // Lines
+  auto programResource = resourceMgr->getDefault2dProgram(
+      mMeshSpecifications["Lines"],
+      MPP_PROGRAM_TAGS_PRIM_LINES | MPP_PROGRAM_TAGS_DIFFUSE,
+      false,
+      getType());
 
-			auto matStream = make_shared<mpp::ProgrammaticMaterialStream>(resourceMgr);
+  auto matStream = make_shared<mpp::ProgrammaticMaterialStream>(resourceMgr);
 
-			matStream->setProgram(programResource->getName());
+  matStream->setProgram(programResource->getName());
 
-			addMaterialResource("Lines", resourceMgr->declareResource(getName() + "_Lines", matStream).first);
-		}
+  addMaterialResource("Lines", resourceMgr->declareResource(getName() + "_Lines", matStream).first);
+}
 
-		void AccelerationGridRenderer::createMeshes(mpp::ProgrammaticModelStream* stream, mpp::ResourceManager* resourceMgr)
-		{
-			WP_UNUSED(resourceMgr);
+void AccelerationGridRenderer::createMeshes(mpp::ProgrammaticModelStream* stream, mpp::ResourceManager* resourceMgr) {
+  WP_UNUSED(resourceMgr);
 
-			auto const& linesMeshSpec = mMeshSpecifications["Lines"];
+  auto const& linesMeshSpec = mMeshSpecifications["Lines"];
 
-			auto linesMeshId = stream->createMesh("Lines", linesMeshSpec, mMaterialNames["Lines"], (int)mIndexWidth);
-			size_t numLineVertices = ((mGrid->getCellDimensionX() + 1) + (mGrid->getCellDimensionY() + 1)) * 2;
+  auto linesMeshId = stream->createMesh("Lines", linesMeshSpec, mMaterialNames["Lines"], (int)mIndexWidth);
+  size_t numLineVertices = ((mGrid->getCellDimensionX() + 1) + (mGrid->getCellDimensionY() + 1)) * 2;
 
-			mpp::mesh::VertexData lineVertexData(linesMeshSpec, numLineVertices);
+  mpp::mesh::VertexData lineVertexData(linesMeshSpec, numLineVertices);
 
-			auto const& offset = mGrid->getOffset();
-			auto const& size = mGrid->getSize();
-			auto const& cellSize = mGrid->getCellSize();
-			
-			Vector2 t0{ 0.0f, 0.0f }, t1{ 1.0f, 0.0f };
-			float colour[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+  auto const& offset = mGrid->getOffset();
+  auto const& size = mGrid->getSize();
+  auto const& cellSize = mGrid->getCellSize();
 
-			for (int i = 0; i <= mGrid->getCellDimensionX(); ++i)
-			{
-				Vector2 v0 = offset + cellSize * Vector2::UNIT_X * (float)i;
-				Vector2 v1 = v0 + size * Vector2::UNIT_Y;
+  Vector2 t0{0.0f, 0.0f}, t1{1.0f, 0.0f};
+  float colour[4] = {1.0f, 1.0f, 1.0f, 1.0f};
 
-				addVertexData(&lineVertexData, v0, t0, colour);
-				addVertexData(&lineVertexData, v1, t1, colour);
-			}
+  for (int i = 0; i <= mGrid->getCellDimensionX(); ++i) {
+    Vector2 v0 = offset + cellSize * Vector2::UNIT_X * (float)i;
+    Vector2 v1 = v0 + size * Vector2::UNIT_Y;
 
-			for (int i = 0; i <= mGrid->getCellDimensionY(); ++i)
-			{
-				Vector2 v0 = offset + cellSize * Vector2::UNIT_Y * (float)i;
-				Vector2 v1 = v0 + size * Vector2::UNIT_X;
+    addVertexData(&lineVertexData, v0, t0, colour);
+    addVertexData(&lineVertexData, v1, t1, colour);
+  }
 
-				addVertexData(&lineVertexData, v0, t0, colour);
-				addVertexData(&lineVertexData, v1, t1, colour);
-			}
+  for (int i = 0; i <= mGrid->getCellDimensionY(); ++i) {
+    Vector2 v0 = offset + cellSize * Vector2::UNIT_Y * (float)i;
+    Vector2 v1 = v0 + size * Vector2::UNIT_X;
 
-			stream->addVertexData(linesMeshId, lineVertexData);
-		}
+    addVertexData(&lineVertexData, v0, t0, colour);
+    addVertexData(&lineVertexData, v1, t1, colour);
+  }
 
-		RenderParams* AccelerationGridRenderer::createRenderParams(shared_ptr<mpp::ModelRenderParams> params)
-		{
-			return new AccelerationGridRenderParams(params);
-		}
+  stream->addVertexData(linesMeshId, lineVertexData);
+}
 
-		void AccelerationGridRenderer::updateRenderParams()
-		{
-			auto renderParams = static_cast<wp::viz::AccelerationGridRenderParams*>(getParams().get());
-			auto modelRenderParams = getModelRenderParams();
+RenderParams* AccelerationGridRenderer::createRenderParams(shared_ptr<mpp::ModelRenderParams> params) {
+  return new AccelerationGridRenderParams(params);
+}
 
-			modelRenderParams->setMeshFlags("Lines", renderParams->getRender() ? mpp::ModelRenderParams::Flag_Visible : 0);
-		}
+void AccelerationGridRenderer::updateRenderParams() {
+  auto renderParams = static_cast<wp::viz::AccelerationGridRenderParams*>(getParams().get());
+  auto modelRenderParams = getModelRenderParams();
 
-	} // viz
-} // WP_NAMESPACE
+  modelRenderParams->setMeshFlags("Lines", renderParams->getRender() ? mpp::ModelRenderParams::Flag_Visible : 0);
+}
+
+}  // namespace viz
+}  // namespace WP_NAMESPACE

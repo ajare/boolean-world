@@ -1,26 +1,21 @@
 #include "willpower/common/Renderable.h"
 
-namespace WP_NAMESPACE
-{
+namespace WP_NAMESPACE {
 
-	Renderable::Renderable()
-		: mRenderableModified(true)
-	{
-	}
+Renderable::Renderable()
+    : mRenderableModified(true) {
+}
 
-	void Renderable::_setRenderableRebuilt() const
-	{
-		mRenderableModified = false;
-	}
+void Renderable::_setRenderableRebuilt() const {
+  mRenderableModified = false;
+}
 
-	bool Renderable::isRenderableModified() const
-	{
-		return mRenderableModified;
-	}
+bool Renderable::isRenderableModified() const {
+  return mRenderableModified;
+}
 
-	void Renderable::rebuildRenderable()
-	{
-		mRenderableModified = true;
-	}
+void Renderable::rebuildRenderable() {
+  mRenderableModified = true;
+}
 
-} // WP_NAMESPACE
+}  // namespace WP_NAMESPACE
