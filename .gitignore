@@ -1,3 +1,12 @@
+# CMake
+/build-cmake/
+/build/
+CMakeUserPresets.json
+
+# scripts/ tracks the Debug and Release core-dll that the Python tooling loads
+# (as the original build did). The Profiling variant is new - don't track it.
+**/BooleanWorld/scripts/core-dllp.dll
+
 *.opensdf
 *.opendb
 *.sdf

@@ -150,13 +150,73 @@ name. Staging them last, as planned, is what caught them.
 
 ---
 
-## 6. Build order
+## 6. CMake conversion
 
-`RebuildAll.bat [Debug|Release]` does all of this; the order matters:
+The four solutions -- `Willpower.sln`, `AppLib.sln`, `BooleanWorld.sln`,
+`Launcher.sln` -- and their 16 `.vcxproj` files were replaced by CMake. The
+submodules under `ext/` were **not** converted; they keep their own solutions
+and are imported as prebuilt libraries (`cmake/Prebuilt.cmake`), built on
+demand with MSBuild (`cmake/Submodules.cmake`).
+
+One `CMakeLists.txt` per module, so the folder structure is unchanged.
+
+### Verified equivalent
+
+- All eight DLLs export **identical symbol sets** to the MSBuild build
+  (`dumpbin /exports`, compared name by name).
+- `editor.exe` imports the identical DLL set.
+- Embedded version info matches (`Version.rc` is still compiled into the seven
+  Willpower modules and Launcher -- and nothing else, as before).
+- `experiments` produces the identical failing-test set.
+- `Launcher.exe` reaches `Entering state: Play`; `editor`, `floored` and
+  `gen-world.py` all work.
+
+### Four settings that had to be matched exactly
+
+Each of these was a real bug found by building and running, not by reading:
+
+1. **`CharacterSet=Unicode`** -> `UNICODE`/`_UNICODE`. Load-bearing:
+   `ApplicationDLL::load` builds a `wstring` and calls `LoadLibrary`, which
+   only resolves to `LoadLibraryW` when `UNICODE` is defined.
+2. **`SDLCheck`** is per project, not global. Six Willpower modules had it
+   **off**; enabling `/sdl` everywhere emitted extra `__autoclassinit2`
+   symbols and broke export parity.
+3. **`USINGZ` and `YAML_CPP_STATIC_DEFINE` are per target, not inherited.**
+   The original defines `USINGZ` for `core`, `floored` and `Launcher` but not
+   for `editor`, `experiments`, `profiler` or the game DLL -- even though they
+   all include `core`'s headers, which reach clipper2. Modelling it the clean
+   way (`PUBLIC` on `core`) changes the Point64 layout `editor` sees. It is a
+   latent ODR inconsistency in the original, preserved deliberately.
+4. **Output directories must match the original.** `editor`, `experiments` and
+   `profiler` resolve paths like `../../../../core/doc` against the working
+   directory. A single unified output tree makes those point outside the repo,
+   and `editor.exe` dies at startup with `0xC0000409` when
+   `directory_iterator` throws on the missing folder.
+
+### What CMake replaced outright
+
+`CopySupportFiles.bat` and `CopyWillpowerBinaries.bat` are gone. Runtime DLLs
+are staged from `$<TARGET_RUNTIME_DLLS:...>`, so the dependency list is derived
+from the link graph instead of being hand-maintained -- which is what let the
+old script keep copying `willpower.editor` and `willpower.wayfinder` long
+after nothing linked them.
+
+`Launcher` additionally stages `$<TARGET_RUNTIME_DLLS:BooleanWorld>`: the game
+DLL is loaded by name, so its dependencies (`MppHelper` via `AppLib`) are not
+in Launcher's own link closure.
+
+## 7. Build order
+
+`RebuildAll.bat [Debug|Release|Profiling]` configures and builds with CMake.
+CMake resolves the order for everything it owns; the only ordering that still
+has to be stated is the submodules, because MassivePolyPusher links its own
+nested `ext/utils` rather than the top-level one:
 
 ```
-ext/MassivePolyPusher/ext/utils   →  ext/Utils  →  ext/MassivePolyPusher
-       →  Willpower  →  AppLib  →  BooleanWorld  →  Launcher
+ext/MassivePolyPusher/ext/utils  →  ext/Utils  →  ext/MassivePolyPusher
+                          (MSBuild, cmake/Submodules.cmake)
+                                     ↓
+        Willpower  →  AppLib  →  BooleanWorld  →  Launcher   (CMake)
 ```
 
 Then run `Launcher.exe BooleanWorld.cfg` from

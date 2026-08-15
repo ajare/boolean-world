@@ -1,45 +1,42 @@
 @echo off
-REM Rebuilds BooleanWorld and everything it depends on, in dependency order.
-REM Usage: RebuildAll.bat [Debug|Release]        (default: Release)
+REM Configures and builds BooleanWorld with CMake.
+REM
+REM Usage: RebuildAll.bat [Debug|Release|Profiling]     (default: Release)
+REM
+REM The two submodules under ext\ keep their own Visual Studio solutions and
+REM are not part of the CMake build; CMake builds them with MSBuild on first
+REM configure if their libraries are missing. See cmake\Submodules.cmake.
 
 SETLOCAL
 
 SET CONFIG=%1
 IF "%CONFIG%"=="" SET CONFIG=Release
 
-SET MSBUILD="C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe"
-IF NOT EXIST %MSBUILD% (
-    echo ERROR: MSBuild not found at %MSBUILD%
-    echo Edit RebuildAll.bat to point at your Visual Studio installation.
+SET BUILDDIR=%~dp0build-cmake
+
+where cmake >nul 2>nul
+IF ERRORLEVEL 1 (
+    echo ERROR: cmake was not found on PATH.
+    echo Install CMake 3.25 or newer, or use the copy shipped with Visual Studio.
     EXIT /B 1
 )
 
-SET FLAGS=/t:Rebuild /p:Configuration=%CONFIG% /p:Platform=x64 /m /v:minimal /nologo
+IF NOT EXIST "%BUILDDIR%\CMakeCache.txt" (
+    echo === Configuring ===
+    cmake -S "%~dp0." -B "%BUILDDIR%" -G "Visual Studio 18 2026" -A x64 || GOTO :fail
+)
 
-echo === Utils (nested inside MassivePolyPusher) ===
-REM MassivePolyPusher links its own copy of Utils, so this must build first.
-%MSBUILD% "ext\MassivePolyPusher\ext\utils\build\vs2026\Utils.sln" %FLAGS% || GOTO :fail
-
-echo === Utils (submodule) ===
-%MSBUILD% "ext\Utils\build\vs2026\Utils.sln" %FLAGS% || GOTO :fail
-
-echo === MassivePolyPusher (submodule) ===
-%MSBUILD% "ext\MassivePolyPusher\build\vs2026\MassivePolyPusher.sln" %FLAGS% || GOTO :fail
-
-echo === Willpower ===
-%MSBUILD% "Willpower\build\vs2026\Willpower.sln" %FLAGS% || GOTO :fail
-
-echo === AppLib ===
-%MSBUILD% "AppLib\build\vs2026\AppLib.sln" %FLAGS% || GOTO :fail
-
-echo === BooleanWorld ===
-%MSBUILD% "Applications\build\vs2026\BooleanWorld.sln" %FLAGS% || GOTO :fail
-
-echo === Launcher ===
-%MSBUILD% "Launcher\build\vs2026\Launcher.sln" %FLAGS% || GOTO :fail
+echo === Building %CONFIG% ^| x64 ===
+cmake --build "%BUILDDIR%" --config %CONFIG% --parallel || GOTO :fail
 
 echo.
 echo Build succeeded (%CONFIG%^|x64).
+echo.
+echo Binaries keep the original layout, e.g.
+echo   Launcher\build\vs2026\bin\x64\%CONFIG%\Launcher.exe
+echo   Applications\BooleanWorld\editor\bin\x64\%CONFIG%\editor.exe
+echo.
+echo Run: cd Launcher\build\vs2026\bin\x64\%CONFIG% ^&^& Launcher.exe BooleanWorld.cfg
 EXIT /B 0
 
 :fail
