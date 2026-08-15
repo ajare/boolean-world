@@ -6,18 +6,14 @@
 
 #include "core/Edge.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+struct Clipper2Polygon {
+  bool isHole;
+  uint32_t primitiveIndex;
+  Clipper2Lib::Path64 path;
+};
 
-		struct Clipper2Polygon
-		{
-			bool isHole;
-			uint32_t primitiveIndex;
-			Clipper2Lib::Path64 path;
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

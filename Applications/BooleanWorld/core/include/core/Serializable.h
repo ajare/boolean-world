@@ -7,64 +7,57 @@
 #include "Serializer.h"
 #include "SerializationWorkData.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class Serializable {
+  std::vector<std::string> mDeserializationWarnings, mDeserializationErrors;
 
-		class Serializable
-		{
-			std::vector<std::string> mDeserializationWarnings, mDeserializationErrors;
+  mutable bool mModified;
 
-			mutable bool mModified;
+private:
+  virtual bool childrenModified() const = 0;
 
-		private:
+protected:
+  virtual void copyFrom(Serializable const& other);
 
-			virtual bool childrenModified() const = 0;
+  virtual void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const = 0;
 
-		protected:
+  virtual bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) = 0;
 
-			virtual void copyFrom(Serializable const& other);
+  virtual void preSerialization(SerializationWorkData& workData) const;
 
-			virtual void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const = 0;
+  virtual void preDeserialization(SerializationWorkData& workData);
 
-			virtual bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) = 0;
+  virtual void postSerialization(SerializationWorkData& workData) const;
 
-			virtual void preSerialization(SerializationWorkData& workData) const;
+  virtual void postDeserialization(SerializationWorkData& workData);
 
-			virtual void preDeserialization(SerializationWorkData& workData);
+  void copyErrorsAndWarnings(Serializable const* ser, bool errors, bool warnings);
 
-			virtual void postSerialization(SerializationWorkData& workData) const;
+  void addDeserializationWarning(std::string const& msg);
 
-			virtual void postDeserialization(SerializationWorkData& workData);
+  void addDeserializationError(std::string const& msg);
 
-			void copyErrorsAndWarnings(Serializable const* ser, bool errors, bool warnings);
+  void modify();
 
-			void addDeserializationWarning(std::string const& msg);
+public:
+  Serializable();
 
-			void addDeserializationError(std::string const& msg);
+  Serializable(Serializable const& other);
 
-			void modify();
+  Serializable& operator=(Serializable const& other);
 
-		public:
+  std::vector<std::string> const& getDeserializationWarnings() const;
 
-			Serializable();
+  std::vector<std::string> const& getDeserializationErrors() const;
 
-			Serializable(Serializable const& other);
+  bool isModified() const;
 
-			Serializable& operator=(Serializable const& other);
+  void serialize(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const;
 
-			std::vector<std::string> const& getDeserializationWarnings() const;
+  bool deserialize(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData);
+};
 
-			std::vector<std::string> const& getDeserializationErrors() const;
-
-			bool isModified() const;
-
-			void serialize(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const;
-
-			bool deserialize(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData);
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

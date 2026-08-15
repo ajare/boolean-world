@@ -7,56 +7,49 @@
 #include "core/Serializable.h"
 #include "core/SerializationException.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API InfluenceEye : public Serializable {
+  wp::Vector2 mOriginOffset;
 
-		class BW_API InfluenceEye : public Serializable
-		{
-			wp::Vector2 mOriginOffset;
+  float mAngleOffset;
 
-			float mAngleOffset;
+  float mArcLength;
 
-			float mArcLength;
+private:
+  bool childrenModified() const override;
 
-		private:
+protected:
+  void copyFrom(InfluenceEye const& other);
 
-			bool childrenModified() const override;
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-		protected:
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void copyFrom(InfluenceEye const& other);
+public:
+  InfluenceEye();
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+  InfluenceEye(wp::Vector2 const& originOffset, float angleOffset, float arcLength);
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  InfluenceEye(InfluenceEye const& other);
 
-		public:
+  InfluenceEye& operator=(InfluenceEye const& other);
 
-			InfluenceEye();
+  void setOriginOffset(wp::Vector2 const& originOffset);
 
-			InfluenceEye(wp::Vector2 const& originOffset, float angleOffset, float arcLength);
+  wp::Vector2 const& getOriginOffset() const;
 
-			InfluenceEye(InfluenceEye const& other);
+  void setAngleOffset(float angleOffset);
 
-			InfluenceEye& operator=(InfluenceEye const& other);
+  float getAngleOffset() const;
 
-			void setOriginOffset(wp::Vector2 const& originOffset);
+  void setArcLength(float arcLength);
 
-			wp::Vector2 const& getOriginOffset() const;
+  float getArcLength() const;
 
-			void setAngleOffset(float angleOffset);
+  bool inArc(wp::Vector2 const& position) const;
+};
 
-			float getAngleOffset() const;
-
-			void setArcLength(float arcLength);
-
-			float getArcLength() const;
-
-			bool inArc(wp::Vector2 const& position) const;
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

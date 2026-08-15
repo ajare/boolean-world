@@ -1,22 +1,17 @@
 #include "core/Tiling.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+using namespace std;
 
-		using namespace std;
+Tiling::Tiling(float baseSize)
+    : mBaseSize(baseSize) {
+}
 
-		Tiling::Tiling(float baseSize)
-			: mBaseSize(baseSize)
-		{
-		}
+float Tiling::getBaseSize() const {
+  return mBaseSize;
+}
 
-		float Tiling::getBaseSize() const
-		{
-			return mBaseSize;
-		}
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

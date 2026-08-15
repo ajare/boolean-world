@@ -6,103 +6,101 @@
 #include <functional>
 #include <optional>
 
-namespace bw
-{
-    namespace core
+namespace bw {
+namespace core {
+
+template <typename T>
+class ThreadSafeQueue {
+public:
+  ThreadSafeQueue() = default;
+
+  // Disable copy
+  ThreadSafeQueue(const ThreadSafeQueue&) = delete;
+  ThreadSafeQueue& operator=(const ThreadSafeQueue&) = delete;
+
+  // Push (lvalue)
+  void push(const T& value) {
     {
+      std::lock_guard<std::mutex> lock(mtx_);
+      if (closed_) return;  // or throw if you prefer strict behavior
+      queue_.push(value);
+    }
+    cv_.notify_one();
+  }
 
-        template <typename T>
-        class ThreadSafeQueue {
-        public:
-            ThreadSafeQueue() = default;
+  // Push (rvalue)
+  void push(T&& value) {
+    {
+      std::lock_guard<std::mutex> lock(mtx_);
+      if (closed_) return;
+      queue_.push(std::move(value));
+    }
+    cv_.notify_one();
+  }
 
-            // Disable copy
-            ThreadSafeQueue(const ThreadSafeQueue&) = delete;
-            ThreadSafeQueue& operator=(const ThreadSafeQueue&) = delete;
+  // Check if top value can be popped
+  bool can_pop(std::function<bool(T const&)> pred) const {
+    std::lock_guard<std::mutex> lock(mtx_);
+    return !queue_.empty() && pred(queue_.front());
+  }
 
-            // Push (lvalue)
-            void push(const T& value) {
-                {
-                    std::lock_guard<std::mutex> lock(mtx_);
-                    if (closed_) return; // or throw if you prefer strict behavior
-                    queue_.push(value);
-                }
-                cv_.notify_one();
-            }
+  // Blocking pop
+  // Returns std::nullopt if queue is closed and empty
+  std::optional<T> pop() {
+    std::unique_lock<std::mutex> lock(mtx_);
+    cv_.wait(lock, [this] {
+      return !queue_.empty() || closed_;
+    });
 
-            // Push (rvalue)
-            void push(T&& value) {
-                {
-                    std::lock_guard<std::mutex> lock(mtx_);
-                    if (closed_) return;
-                    queue_.push(std::move(value));
-                }
-                cv_.notify_one();
-            }
+    if (queue_.empty()) {
+      return std::nullopt;  // closed and drained
+    }
 
-            // Check if top value can be popped
-            bool can_pop(std::function<bool(T const&)> pred) const {
-                std::lock_guard<std::mutex> lock(mtx_);
-                return !queue_.empty() && pred(queue_.front());
-            }
+    T value = std::move(queue_.front());
+    queue_.pop();
+    return value;
+  }
 
-            // Blocking pop
-            // Returns std::nullopt if queue is closed and empty
-            std::optional<T> pop() {
-                std::unique_lock<std::mutex> lock(mtx_);
-                cv_.wait(lock, [this] {
-                    return !queue_.empty() || closed_;
-                });
+  // Non-blocking pop
+  bool try_pop(T& out) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (queue_.empty()) return false;
 
-                if (queue_.empty()) {
-                    return std::nullopt; // closed and drained
-                }
+    out = std::move(queue_.front());
+    queue_.pop();
+    return true;
+  }
 
-                T value = std::move(queue_.front());
-                queue_.pop();
-                return value;
-            }
+  // Close queue (signals no more pushes)
+  void close() {
+    {
+      std::lock_guard<std::mutex> lock(mtx_);
+      closed_ = true;
+    }
+    cv_.notify_all();
+  }
 
-            // Non-blocking pop
-            bool try_pop(T& out) {
-                std::lock_guard<std::mutex> lock(mtx_);
-                if (queue_.empty()) return false;
+  bool empty() const {
+    std::lock_guard<std::mutex> lock(mtx_);
+    return queue_.empty();
+  }
 
-                out = std::move(queue_.front());
-                queue_.pop();
-                return true;
-            }
+  T const& back() const {
+    std::lock_guard<std::mutex> lock(mtx_);
+    return queue_.back();
+  }
 
-            // Close queue (signals no more pushes)
-            void close() {
-                {
-                    std::lock_guard<std::mutex> lock(mtx_);
-                    closed_ = true;
-                }
-                cv_.notify_all();
-            }
+  bool closed() const {
+    std::lock_guard<std::mutex> lock(mtx_);
+    return closed_;
+  }
 
-            bool empty() const {
-                std::lock_guard<std::mutex> lock(mtx_);
-                return queue_.empty();
-            }
+private:
+  mutable std::mutex mtx_;
+  std::condition_variable cv_;
+  std::queue<T> queue_;
+  bool closed_ = false;
+};
 
-            T const& back() const {
-                std::lock_guard<std::mutex> lock(mtx_);
-                return queue_.back();
-            }
-
-            bool closed() const {
-                std::lock_guard<std::mutex> lock(mtx_);
-                return closed_;
-            }
-
-        private:
-            mutable std::mutex mtx_;
-            std::condition_variable cv_;
-            std::queue<T> queue_;
-            bool closed_ = false;
-        };
-
-    } // bw
-} // core
+}  // namespace core
+}  // namespace bw

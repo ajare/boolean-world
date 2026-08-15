@@ -3,50 +3,43 @@
 #include "core/Platform.h"
 #include "core/RegularPolygon.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API CirclePolygon : public RegularPolygon {
+  static const uint32_t BaseResolution = 64;
 
-		class BW_API CirclePolygon : public RegularPolygon
-		{
-			static const uint32_t BaseResolution = 64;
+  float mResolution;
 
-			float mResolution;
+private:
+  friend class World;  // Only World can call the default constructor (during deserialization)
 
-		private:
+protected:
+  CirclePolygon();
 
-			friend class World; // Only World can call the default constructor (during deserialization)
+  void copyFrom(CirclePolygon const& other);
 
-		protected:
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			CirclePolygon();
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void copyFrom(CirclePolygon const& other);
+public:
+  CirclePolygon(Operation operation, FillRule fillType, float resolution);
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+  CirclePolygon(CirclePolygon const& other);
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  CirclePolygon& operator=(CirclePolygon const& other);
 
-		public:
+  Primitive* copy() const override;
 
-			CirclePolygon(Operation operation, FillRule fillType, float resolution);
+  std::string getType() const override;
 
-			CirclePolygon(CirclePolygon const& other);
+  void setNumSides(uint32_t numSides) override;
 
-			CirclePolygon& operator=(CirclePolygon const& other);
+  void setResolution(float resolution);
 
-			Primitive* copy() const override;
+  float getResolution() const;
+};
 
-			std::string getType() const override;
-
-			void setNumSides(uint32_t numSides) override;
-			
-			void setResolution(float resolution);
-
-			float getResolution() const;
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

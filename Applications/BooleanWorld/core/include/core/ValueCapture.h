@@ -3,26 +3,20 @@
 #include "core/Platform.h"
 #include "core/ValueCaptureMode.h"
 
+namespace bw {
+namespace core {
+struct ValueCapture {
+  ValueCaptureMode mode{ValueCaptureMode::DistanceSticky};
+  float prevValue{std::numeric_limits<float>::quiet_NaN()};
+  float curValue{0.0f};
 
-namespace bw
-{
-	namespace core
-	{
-		struct ValueCapture
-		{
-			ValueCaptureMode mode{ ValueCaptureMode::DistanceSticky };
-			float prevValue{ std::numeric_limits<float>::quiet_NaN() };
-			float curValue{ 0.0f };
+public:
+  ValueCapture() = default;
 
-		public:
+  ValueCapture(ValueCaptureMode _mode)
+      : mode(_mode) {
+  }
+};
 
-			ValueCapture() = default;
-
-			ValueCapture(ValueCaptureMode _mode)
-				: mode(_mode)
-			{
-			}
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

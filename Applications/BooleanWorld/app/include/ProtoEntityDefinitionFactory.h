@@ -4,14 +4,10 @@
 
 #include "Platform.h"
 
-
-class ProtoEntityDefinitionFactory : public applib::ProtoEntityDefaultDefinitionFactory
-{
+class ProtoEntityDefinitionFactory : public applib::ProtoEntityDefaultDefinitionFactory {
 protected:
-
-	uint32_t getAnimationIdFromName(std::string const& actor, std::string const& anim) override;
+  uint32_t getAnimationIdFromName(std::string const& actor, std::string const& anim) override;
 
 public:
-
-	ProtoEntityDefinitionFactory();
+  ProtoEntityDefinitionFactory();
 };

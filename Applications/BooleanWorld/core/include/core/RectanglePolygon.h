@@ -3,50 +3,43 @@
 #include "core/Platform.h"
 #include "core/Primitive.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API RectanglePolygon : public Primitive {
+  friend class World;  // Only World can call the default constructor (during deserialization)
 
-		class BW_API RectanglePolygon : public Primitive
-		{
-			friend class World; // Only World can call the default constructor (during deserialization)
+protected:
+  float mXyRatio;
 
-		protected:
+protected:
+  RectanglePolygon();
 
-			float mXyRatio;
+  void copyFrom(RectanglePolygon const& other);
 
-		protected:
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			RectanglePolygon();
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void copyFrom(RectanglePolygon const& other);
+  std::vector<ComplexPolygon> generateVerticesImpl() override;
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+public:
+  RectanglePolygon(Operation operation, FillRule fillType, float xyRatio);
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  RectanglePolygon(RectanglePolygon const& other);
 
-			std::vector<ComplexPolygon> generateVerticesImpl() override;
+  RectanglePolygon& operator=(RectanglePolygon const& other);
 
-		public:
+  Primitive* copy() const override;
 
-			RectanglePolygon(Operation operation, FillRule fillType, float xyRatio);
+  std::string getType() const override;
 
-			RectanglePolygon(RectanglePolygon const& other);
+  float getRadius() const override;
 
-			RectanglePolygon& operator=(RectanglePolygon const& other);
+  void setXyRatio(float xyRatio);
 
-			Primitive* copy() const override;
+  float getXyRatio() const;
+};
 
-			std::string getType() const override;
-
-			float getRadius() const override;
-
-			void setXyRatio(float xyRatio);
-
-			float getXyRatio() const;
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

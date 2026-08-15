@@ -2,19 +2,15 @@
 
 #include "core/Platform.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+enum struct WorldTimerValue {
+  EndToEnd,
+  TransformVertices,
+  Clip,
+  Triangulate
+};
 
-		enum struct WorldTimerValue
-		{
-			EndToEnd,
-			TransformVertices,
-			Clip,
-			Triangulate
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

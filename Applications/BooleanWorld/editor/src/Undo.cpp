@@ -14,210 +14,180 @@
 
 extern editor::Settings gEditorSettings;
 
+namespace editor {
+using namespace std;
 
-namespace editor
-{
-	using namespace std;
+struct UndoData {
+  bw::core::World world;
+  set<uint32_t> selection;
+  bool docModified;
+};
 
-	struct UndoData
-	{
-		bw::core::World world;
-		set<uint32_t> selection;
-		bool docModified;
-	};
+struct UndoEntry {
+  std::string id;
+  UndoData data;
+};
 
-	struct UndoEntry
-	{
-		std::string id;
-		UndoData data;
-	};
+// Internal
+static std::deque<UndoEntry> gUndoStack, gRedoStack;
+static UndoData gTransactionalData;
+static std::string gTransactionalId;
+static float gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
+static wp::Vector2 gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
+static UndoableActionFunction gTransactionalFunc;
 
-	// Internal
-	static std::deque<UndoEntry> gUndoStack, gRedoStack;
-	static UndoData gTransactionalData;
-	static std::string gTransactionalId;
-	static float gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
-	static wp::Vector2 gTransactionalInitialVectorValue = { numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN() };
-	static UndoableActionFunction gTransactionalFunc;
+bool canUndo() {
+  return !gUndoStack.empty();
+}
 
+bool canRedo() {
+  return !gRedoStack.empty();
+}
 
-	bool canUndo()
-	{
-		return !gUndoStack.empty();
-	}
+size_t getUndoLevels() {
+  return gUndoStack.size();
+}
 
-	bool canRedo()
-	{
-		return !gRedoStack.empty();
-	}
+size_t getRedoLevels() {
+  return gRedoStack.size();
+}
 
-	size_t getUndoLevels()
-	{
-		return gUndoStack.size();
-	}
+void beginUndoableAction(Document* doc, string const& id, UndoableActionFunction func, float v) {
+  if (gTransactionalFunc) {
+    commitUndoableAction(doc);
+    //	throw EditorException(format("Tried to begin action '{}' but '{}' was already in a transactional state.", id, gTransactionalId));
+  }
 
-	size_t getRedoLevels()
-	{
-		return gRedoStack.size();
-	}
+  gTransactionalId = id;
 
-	void beginUndoableAction(Document* doc, string const& id, UndoableActionFunction func, float v)
-	{
-		if (gTransactionalFunc)
-		{
-			commitUndoableAction(doc);
-		//	throw EditorException(format("Tried to begin action '{}' but '{}' was already in a transactional state.", id, gTransactionalId));
-		}
+  gTransactionalData.world = *doc->getWorld();
+  gTransactionalData.selection = doc->getSelectedPrimitiveIndices();
+  gTransactionalData.docModified = doc->isModified();
 
-		gTransactionalId = id;
+  gTransactionalInitialFloatValue = v;
+  gTransactionalFunc = func;
+}
 
-		gTransactionalData.world = *doc->getWorld();
-		gTransactionalData.selection = doc->getSelectedPrimitiveIndices();
-		gTransactionalData.docModified = doc->isModified();
+void beginUndoableAction(Document* doc, string const& id, UndoableActionFunction func, wp::Vector2 const& v) {
+  if (gTransactionalFunc) {
+    commitUndoableAction(doc);
+    //	throw EditorException(format("Tried to begin action '{}' but '{}' was already in a transactional state.", id, gTransactionalId));
+  }
 
-		gTransactionalInitialFloatValue = v;
-		gTransactionalFunc = func;
-	}
+  gTransactionalId = id;
 
-	void beginUndoableAction(Document* doc, string const& id, UndoableActionFunction func, wp::Vector2 const& v)
-	{
-		if (gTransactionalFunc)
-		{
-			commitUndoableAction(doc);
-		//	throw EditorException(format("Tried to begin action '{}' but '{}' was already in a transactional state.", id, gTransactionalId));
-		}
+  gTransactionalData.world = *doc->getWorld();
+  gTransactionalData.selection = doc->getSelectedPrimitiveIndices();
+  gTransactionalData.docModified = doc->isModified();
 
-		gTransactionalId = id;
+  gTransactionalInitialVectorValue = v;
+  gTransactionalFunc = func;
+}
 
-		gTransactionalData.world = *doc->getWorld();
-		gTransactionalData.selection = doc->getSelectedPrimitiveIndices();
-		gTransactionalData.docModified = doc->isModified();
+bool transactionValueHasChanged(float v) {
+  return !isnan(gTransactionalInitialFloatValue) && gTransactionalInitialFloatValue != v;
+}
 
-		gTransactionalInitialVectorValue = v;
-		gTransactionalFunc = func;
-	}
+bool transactionValueHasChanged(wp::Vector2 const& v) {
+  return !isnan(gTransactionalInitialVectorValue.x) && gTransactionalInitialVectorValue != v;
+}
 
-	bool transactionValueHasChanged(float v)
-	{
-		return !isnan(gTransactionalInitialFloatValue) && gTransactionalInitialFloatValue != v;
-	}
+void commitUndoableAction(Document* doc, string const& id) {
+  while (gUndoStack.size() >= MAX_STACK_SIZE) {
+    gUndoStack.pop_front();
+  }
 
-	bool transactionValueHasChanged(wp::Vector2 const& v)
-	{
-		return !isnan(gTransactionalInitialVectorValue.x) && gTransactionalInitialVectorValue != v;
-	}
+  gRedoStack.clear();
 
-	void commitUndoableAction(Document* doc, string const& id)
-	{
-		while (gUndoStack.size() >= MAX_STACK_SIZE)
-		{
-			gUndoStack.pop_front();
-		}
+  UndoEntry data{id != "" ? id : gTransactionalId, gTransactionalData};
+  gUndoStack.push_back(data);
 
-		gRedoStack.clear();
+  if (gTransactionalFunc(doc)) {
+    doc->setModified();
+  }
 
-		UndoEntry data{ id != "" ? id : gTransactionalId, gTransactionalData};
-		gUndoStack.push_back(data);
+  gTransactionalFunc = nullptr;
+  gTransactionalId.clear();
+  gTransactionalData.world.clear();
+  gTransactionalData.selection.clear();
+}
 
-		if (gTransactionalFunc(doc))
-		{
-			doc->setModified();
-		}
+void transactUndoableAction(Document* doc, string const& id, UndoableActionFunction func) {
+  beginUndoableAction(doc, id, func, numeric_limits<float>::quiet_NaN());
+  commitUndoableAction(doc);
+}
 
-		gTransactionalFunc = nullptr;
-		gTransactionalId.clear();
-		gTransactionalData.world.clear();
-		gTransactionalData.selection.clear();
-	}
+void abandonUndoableAction(Document* doc) {
+  gTransactionalId.clear();
 
-	void transactUndoableAction(Document* doc, string const& id, UndoableActionFunction func)
-	{
-		beginUndoableAction(doc, id, func, numeric_limits<float>::quiet_NaN());
-		commitUndoableAction(doc);
-	}
+  gTransactionalData.world.clear();
+  gTransactionalData.selection.clear();
+  gTransactionalData.docModified = doc->isModified();
 
-	void abandonUndoableAction(Document* doc)
-	{
-		gTransactionalId.clear();
+  gTransactionalFunc = nullptr;
+}
 
-		gTransactionalData.world.clear();
-		gTransactionalData.selection.clear();
-		gTransactionalData.docModified = doc->isModified();
+bool undoableActionInProgress() {
+  return !gTransactionalId.empty();
+}
 
-		gTransactionalFunc = nullptr;
-	}
+void undo(Document* doc, int count) {
+  auto world = *doc->getWorld();
+  auto const& selection = doc->getSelectedPrimitiveIndices();
+  auto modified = doc->isModified();
 
-	bool undoableActionInProgress()
-	{
-		return !gTransactionalId.empty();
-	}
+  for (int i = 0; i < count; ++i) {
+    auto const& oldEntry = gUndoStack.back();
 
-	void undo(Document* doc, int count)
-	{
-		auto world = *doc->getWorld();
-		auto const& selection = doc->getSelectedPrimitiveIndices();
-		auto modified = doc->isModified();
+    gRedoStack.push_back({oldEntry.id, {world, selection, modified}});
 
-		for (int i = 0; i < count; ++i)
-		{
-			auto const& oldEntry = gUndoStack.back();
+    if (i == (count - 1)) {
+      doc->setWorld(oldEntry.data.world);
+      doc->setSelectedPrimitiveIndices(oldEntry.data.selection);
+      doc->setModified(oldEntry.data.docModified);
+    }
 
-			gRedoStack.push_back({ oldEntry.id, { world, selection, modified } });
+    gUndoStack.pop_back();
+  }
 
-			if (i == (count - 1))
-			{
-				doc->setWorld(oldEntry.data.world);
-				doc->setSelectedPrimitiveIndices(oldEntry.data.selection);
-				doc->setModified(oldEntry.data.docModified);
-			}
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_UNDO_REDO);
+}
 
-			gUndoStack.pop_back();
-		}
+void redo(Document* doc, int count) {
+  auto curWorld = *doc->getWorld();
+  auto const& curSelection = doc->getSelectedPrimitiveIndices();
+  auto modified = doc->isModified();
 
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_UNDO_REDO);
-	}
+  for (int i = 0; i < count; ++i) {
+    auto const& oldEntry = gRedoStack.back();
 
-	void redo(Document* doc, int count)
-	{
-		auto curWorld = *doc->getWorld();
-		auto const& curSelection = doc->getSelectedPrimitiveIndices();
-		auto modified = doc->isModified();
+    gUndoStack.push_back({oldEntry.id, {curWorld, curSelection, modified}});
 
-		for (int i = 0; i < count; ++i)
-		{
-			auto const& oldEntry = gRedoStack.back();
+    if (i == (count - 1)) {
+      doc->setWorld(oldEntry.data.world);
+      doc->setSelectedPrimitiveIndices(oldEntry.data.selection);
+      doc->setModified(oldEntry.data.docModified);
+    }
 
-			gUndoStack.push_back({ oldEntry.id, { curWorld, curSelection, modified } });
+    gRedoStack.pop_back();
+  }
 
-			if (i == (count - 1))
-			{
-				doc->setWorld(oldEntry.data.world);
-				doc->setSelectedPrimitiveIndices(oldEntry.data.selection);
-				doc->setModified(oldEntry.data.docModified);
-			}
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+}
 
-			gRedoStack.pop_back();
-		}
+vector<HistoryItem> getActionHistory() {
+  vector<HistoryItem> entries;
 
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-	}
+  for (auto item : gUndoStack) {
+    entries.push_back({item.id, true});
+  }
 
-	vector<HistoryItem> getActionHistory()
-	{
-		vector<HistoryItem> entries;
+  ranges::reverse_view redoStackRev{gRedoStack};
+  for (auto item : redoStackRev) {
+    entries.push_back({item.id, false});
+  }
 
-		for (auto item : gUndoStack)
-		{
-			entries.push_back({ item.id, true });
-		}
+  return entries;
+}
 
-		ranges::reverse_view redoStackRev{ gRedoStack };
-		for (auto item : redoStackRev)
-		{
-			entries.push_back({ item.id, false });
-		}
-
-		return entries;
-	}
-
-} // editor
+}  // namespace editor

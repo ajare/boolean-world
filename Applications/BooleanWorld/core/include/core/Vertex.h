@@ -8,31 +8,27 @@
 
 #include "Platform.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+struct Vertex {
+  wp::Vector2 p;
+  int64_t z{0};
+};
 
-		struct Vertex
-		{
-			wp::Vector2 p;
-			int64_t z{ 0 };
-		};
+typedef std::vector<Vertex> ClosedPolygon;
 
-		typedef std::vector<Vertex> ClosedPolygon;
+typedef std::vector<Vertex> OpenPolygon;
 
-		typedef std::vector<Vertex> OpenPolygon;
+typedef std::vector<Vertex> VertexList;
 
-		typedef std::vector<Vertex> VertexList;
+typedef std::vector<ClosedPolygon> ComplexPolygon;
 
-		typedef std::vector<ClosedPolygon> ComplexPolygon;
+wp::BoundingBox calculatePolygonBounds(ClosedPolygon const& polygon);
 
-		wp::BoundingBox calculatePolygonBounds(ClosedPolygon const& polygon);
+wp::BoundingBox calculatePolygonBounds(ComplexPolygon const& polygon);
 
-		wp::BoundingBox calculatePolygonBounds(ComplexPolygon const& polygon);
+wp::BoundingBox calculatePolygonBounds(std::vector<ComplexPolygon> const& polygons);
 
-		wp::BoundingBox calculatePolygonBounds(std::vector<ComplexPolygon> const& polygons);
-
-	} // bw
-} // core
+}  // namespace core
+}  // namespace bw

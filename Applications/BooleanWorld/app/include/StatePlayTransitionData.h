@@ -7,11 +7,8 @@
 
 #include "Platform.h"
 
-struct StatePlayTransitionData
-{
-	bw::core::World* world;
-	bw::core::WorldData* worldData;
-	mpp::ScenePtr scene;
+struct StatePlayTransitionData {
+  bw::core::World* world;
+  bw::core::WorldData* worldData;
+  mpp::ScenePtr scene;
 };
-
-

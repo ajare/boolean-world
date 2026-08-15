@@ -10,56 +10,52 @@
 
 #include "Expr.h"
 
-namespace floored
-{
+namespace floored {
 
-	class Document
-	{
-		std::shared_ptr<bw::core::World> mWorld;
+class Document {
+  std::shared_ptr<bw::core::World> mWorld;
 
-		std::vector<bw::core::Clipper2Polygon> mPolygons;
+  std::vector<bw::core::Clipper2Polygon> mPolygons;
 
-		expr::PSLG mPSLG;
+  expr::PSLG mPSLG;
 
-		std::vector<expr::Cycle> mCycles;
-			
-		std::vector<expr::PolygonNode> mHierarchy;
+  std::vector<expr::Cycle> mCycles;
 
-		std::vector<expr::Face> mFaces;
+  std::vector<expr::PolygonNode> mHierarchy;
 
-		std::vector<expr::FaceTriangle> mFaceTriangles;
+  std::vector<expr::Face> mFaces;
 
-		static Document* msInstance;
+  std::vector<expr::FaceTriangle> mFaceTriangles;
 
-	private:
+  static Document* msInstance;
 
-		void buildExpr();
+private:
+  void buildExpr();
 
-	public:
+public:
+  Document();
 
-		Document();
+  virtual ~Document();
 
-		virtual ~Document();
+  static Document* instance();
 
-		static Document* instance();
+  bool isActive() const;
 
-		bool isActive() const;
+  std::shared_ptr<bw::core::World> getWorld();
 
-		std::shared_ptr<bw::core::World> getWorld();
+  std::vector<bw::core::Clipper2Polygon> const& getPolygons();
 
-		std::vector<bw::core::Clipper2Polygon> const& getPolygons();
+  expr::PSLG const& getPSLG() const;
 
-		expr::PSLG const& getPSLG() const;
+  std::vector<expr::Cycle> const& getCycles() const;
 
-		std::vector<expr::Cycle> const& getCycles() const;
+  std::vector<expr::PolygonNode> const& getHierarchy() const;
 
-		std::vector<expr::PolygonNode> const& getHierarchy() const;
+  std::vector<expr::Face> const& getFaces() const;
 
-		std::vector<expr::Face> const& getFaces() const;
+  std::vector<expr::FaceTriangle> const& getFaceTriangles() const;
 
-		std::vector<expr::FaceTriangle> const& getFaceTriangles() const;
+  bool openWorld(std::string const& filepath);
+};
 
-		bool openWorld(std::string const& filepath);
-	};
-
-} // floored
+}  // namespace floored

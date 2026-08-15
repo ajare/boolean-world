@@ -1,11 +1,20 @@
-# Formatting for cpp/. Based on Google style with the tweaks the existing code
-# already follows; ColumnLimit is disabled because the physics core is a
-# deliberate line-for-line transliteration of js/track-physics.js (see
-# CPP_PORT_PLAN.md) — letting clang-format rewrap those lines would fight that
-# goal and make diffs against the JS harder to eyeball.
+# Formatting for BooleanWorld's own C++ sources.
+#
+# Taken from tungsten-oxide (D:\Code\Projects\tungsten-oxide\.clang-format) so
+# code can move between the two repos without reformatting churn. Every setting
+# below is identical to that file except one:
+#
+#   Standard: c++20, not c++17.
+#
+# tungsten-oxide's value is c++17, and under it clang-format does not recognise
+# the three-way comparison operator: it rewrites `operator<=>` as `operator<= >`,
+# which does not compile. BooleanWorld uses `<=>` in core/src/Clipper.cpp.
+#
+# Vendored third-party code (ImGui, ImPlot, imnodes, StackWalker, Clipper 1, ...)
+# is excluded by explicit path in tools/format.py, not by this file.
 BasedOnStyle: Google
 Language: Cpp
-Standard: c++17
+Standard: c++20
 
 IndentWidth: 2
 ColumnLimit: 0

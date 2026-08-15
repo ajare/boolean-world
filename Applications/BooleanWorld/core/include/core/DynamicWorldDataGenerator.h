@@ -15,141 +15,130 @@
 #include "core/Clipper.h"
 #include "core/ThreadSafeQueue.h"
 
+namespace bw {
+namespace core {
+class DynamicWorldDataGenerator : public WorldDataGenerator {
+public:
+  struct Clipping {
+    uint32_t id;
+    WorldData worldData;
+    std::vector<Primitive*> primitives;
+    std::vector<Primitive*> updatedPrimitives;
+    PrimitiveProcessingStats primStats;
+    uint64_t genTimeNs{0};
+  };
 
-namespace bw
-{
-	namespace core
-	{
-		class DynamicWorldDataGenerator : public WorldDataGenerator
-		{
-		public:
+  enum struct GenerationState {
+    Generating,
+    Generated,
+    Committed
+  };
 
-			struct Clipping
-			{
-				uint32_t id;
-				WorldData worldData;
-				std::vector<Primitive*> primitives;
-				std::vector<Primitive*> updatedPrimitives;
-				PrimitiveProcessingStats primStats;
-				uint64_t genTimeNs{ 0 };
-			};
+  struct GenerationDetails {
+    uint32_t clippingId;
+    GenerationState state;
+    uint64_t genTimeNs;
+    Stats stats;
+  };
 
-			enum struct GenerationState
-			{
-				Generating,
-				Generated,
-				Committed
-			};
+  typedef std::function<void(GenerationDetails const& details)> GenerationCompleteCallback;
 
-			struct GenerationDetails
-			{
-				uint32_t clippingId;
-				GenerationState state;
-				uint64_t genTimeNs;
-				Stats stats;
-			};
+private:
+  std::atomic_uint32_t mClippingIdGenerator;
 
-			typedef std::function<void(GenerationDetails const& details)> GenerationCompleteCallback;
+  World const* mWorld;
 
-		private:
-			
-			std::atomic_uint32_t mClippingIdGenerator;
+  Clipping mActiveClipping, mNextClipping;
 
-			World const* mWorld;
+  ThreadSafeQueue<Clipping> mPendingClippings;
 
-			Clipping mActiveClipping, mNextClipping;
+  std::vector<GenerationCompleteCallback> mCallbacks;
 
-			ThreadSafeQueue<Clipping> mPendingClippings;
+  mutable std::mutex mGenMutex;
 
-			std::vector<GenerationCompleteCallback> mCallbacks;
+  concurrencpp::runtime mExecutorRuntime;
 
-			mutable std::mutex mGenMutex;
+  bool mAlwaysUpdateVertices, mAllowCommitIfVisible;
 
-			concurrencpp::runtime mExecutorRuntime;
+  std::atomic_uint32_t mNumGenerationsInProgress;
 
-			bool mAlwaysUpdateVertices, mAllowCommitIfVisible;
-			
-			std::atomic_uint32_t mNumGenerationsInProgress;
+  std::atomic_uint32_t mNumGenerationsComplete, mNumCommits;
 
-			std::atomic_uint32_t mNumGenerationsComplete, mNumCommits;
+  std::atomic_uint64_t mLastGenTime;
 
-			std::atomic_uint64_t mLastGenTime;
+  // Regularly-scheduled worker
+  concurrencpp::result<void> mScheduledWorker;
 
-			// Regularly-scheduled worker
-			concurrencpp::result<void> mScheduledWorker;
+  std::atomic_bool mScheduledGenerationRunning;
 
-			std::atomic_bool mScheduledGenerationRunning;
+  std::atomic<float> mScheduledGenerationInterval;
 
-			std::atomic<float> mScheduledGenerationInterval;
+private:
+  void copyFrom(DynamicWorldDataGenerator const& other);
 
-		private:
+  void generateWorldData(World const* world);
 
-			void copyFrom(DynamicWorldDataGenerator const& other);
+  std::vector<Primitive*> preparePrimitives(std::vector<Primitive*>& primitives, PrimitiveProcessingStats* stats) const;
 
-			void generateWorldData(World const* world);
+  void handleEvents(uint32_t events) override;
 
-			std::vector<Primitive*> preparePrimitives(std::vector<Primitive*>& primitives, PrimitiveProcessingStats* stats) const;
+  void checkCommitPendingClipping();
 
-			void handleEvents(uint32_t events) override;
+  void generateOnInterval();
 
-			void checkCommitPendingClipping();
+  bool canCommit(Clipping const& clipping);
 
-			void generateOnInterval();
+  void fireCallbacks(GenerationDetails const& details);
 
-			bool canCommit(Clipping const& clipping);
+public:
+  explicit DynamicWorldDataGenerator(World const* world);
 
-			void fireCallbacks(GenerationDetails const& details);
+  ~DynamicWorldDataGenerator();
 
-		public:
+  DynamicWorldDataGenerator(DynamicWorldDataGenerator const& other);
 
-			explicit DynamicWorldDataGenerator(World const* world);
+  DynamicWorldDataGenerator& operator=(DynamicWorldDataGenerator const& other);
 
-			~DynamicWorldDataGenerator();
+  virtual WorldDataGenerator* copy() override;
 
-			DynamicWorldDataGenerator(DynamicWorldDataGenerator const& other);
+  void setAlwaysUpdateVertices(bool update);
 
-			DynamicWorldDataGenerator& operator=(DynamicWorldDataGenerator const& other);
+  bool getAlwaysUpdateVertices() const;
 
-			virtual WorldDataGenerator* copy() override;
+  void setAllowCommitIfVisible(bool allow);
 
-			void setAlwaysUpdateVertices(bool update);
+  bool getAllowCommitIfVisible() const;
 
-			bool getAlwaysUpdateVertices() const;
+  uint32_t getNumGenerationsInProgress() const;
 
-			void setAllowCommitIfVisible(bool allow);
+  uint32_t getNumGenerationsComplete() const;
 
-			bool getAllowCommitIfVisible() const;
+  uint32_t getNumCommits() const;
 
-			uint32_t getNumGenerationsInProgress() const;
+  uint64_t getLastGenTime() const;
 
-			uint32_t getNumGenerationsComplete() const;
+  std::vector<Primitive*> getSourceClippingPrimitives() const;
 
-			uint32_t getNumCommits() const;
+  void setScheduledGenerationInterval(float interval);
 
-			uint64_t getLastGenTime() const;
+  float getScheduledGenerationInterval() const;
 
-			std::vector<Primitive*> getSourceClippingPrimitives() const;
+  bool isScheduledGenerationRunning() const;
 
-			void setScheduledGenerationInterval(float interval);
+  void registerGenerationCallback(GenerationCompleteCallback callback);
 
-			float getScheduledGenerationInterval() const;
+  WorldData getWorldData(World const* world) override;
 
-			bool isScheduledGenerationRunning() const;
+  void generate(World const* world, NarrowPhaseCulling culling, bool regetPrimitives = false) override;
 
-			void registerGenerationCallback(GenerationCompleteCallback callback);
+  void generate(bool regetPrimitives = false);
 
-			WorldData getWorldData(World const* world) override;
+  void generateBlocking();
 
-			void generate(World const* world, NarrowPhaseCulling culling, bool regetPrimitives = false) override;
+  void startGenerationSchedule(float interval);
 
-			void generate(bool regetPrimitives = false);
+  void stopGenerationSchedule();
+};
 
-			void generateBlocking();
-
-			void startGenerationSchedule(float interval);
-
-			void stopGenerationSchedule();
-		};
-
-	} // bw
-} // core
+}  // namespace core
+}  // namespace bw

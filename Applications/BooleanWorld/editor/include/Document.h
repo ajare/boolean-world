@@ -10,121 +10,116 @@
 
 #include "Settings.h"
 
+namespace editor {
 
-namespace editor
-{
+class Document {
+  bool mModified;
 
-	class Document
-	{
-		bool mModified;
+  std::string mFilepath;
 
-		std::string mFilepath;
+  std::shared_ptr<bw::core::World> mWorld;
 
-		std::shared_ptr<bw::core::World> mWorld;
+  std::set<uint32_t> mSelectedPrimitiveIndices;
 
-		std::set<uint32_t> mSelectedPrimitiveIndices;
+  uint32_t mSelectedWorldVertexIndex;
 
-		uint32_t mSelectedWorldVertexIndex;
+  uint32_t mSelectedTriggerLineIndex;
 
-		uint32_t mSelectedTriggerLineIndex;
+  wp::Vector2 mPlayerOldProxyPosition, mPlayerProxyPosition;
 
-		wp::Vector2 mPlayerOldProxyPosition, mPlayerProxyPosition;
+  float mPlayerOldProxyAngle, mPlayerProxyAngle;
 
-		float mPlayerOldProxyAngle, mPlayerProxyAngle;
+  static Document* msInstance;
 
-		static Document* msInstance;
+private:
+  void reset();
 
-	private:
+  std::shared_ptr<bw::core::World> createWorld(float size, float gridSize);
 
-		void reset();
+  void loadTiledPrefabFile(std::string const& filepath, std::shared_ptr<bw::core::World> world);
 
-		std::shared_ptr<bw::core::World> createWorld(float size, float gridSize);
+public:
+  Document();
 
-		void loadTiledPrefabFile(std::string const& filepath, std::shared_ptr<bw::core::World> world);
+  virtual ~Document();
 
-	public:
+  static Document* instance();
 
-		Document();
+  bool isActive() const;
 
-		virtual ~Document();
+  void setModified(bool modified = true);
 
-		static Document* instance();
+  bool isModified() const;
 
-		bool isActive() const;
+  std::string const& getFilepath() const;
 
-		void setModified(bool modified = true);
+  bool hasFilepath() const;
 
-		bool isModified() const;
+  void setWorld(bw::core::World const& world);
 
-		std::string const& getFilepath() const;
+  std::shared_ptr<bw::core::World> getWorld();
 
-		bool hasFilepath() const;
+  bw::core::Primitive* getGhost();
 
-		void setWorld(bw::core::World const& world);
+  void updateGhost(std::shared_ptr<bw::core::World> world, bw::core::Primitive* primitive);
 
-		std::shared_ptr<bw::core::World> getWorld();
+  uint32_t getHoveredPrimitiveIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
 
-		bw::core::Primitive* getGhost();
+  std::vector<uint32_t> getHoveredPrimitiveIndices(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
 
-		void updateGhost(std::shared_ptr<bw::core::World> world, bw::core::Primitive* primitive);
+  bool indexInSelection(uint32_t index) const;
 
-		uint32_t getHoveredPrimitiveIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
+  void setSelectedWorldVertexIndex(uint32_t index);
 
-		std::vector<uint32_t> getHoveredPrimitiveIndices(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
+  void setSelectedTriggerLineIndex(uint32_t index);
 
-		bool indexInSelection(uint32_t index) const;
+  void setSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
 
-		void setSelectedWorldVertexIndex(uint32_t index);
+  void addSelectedPrimitiveIndex(uint32_t index);
 
-		void setSelectedTriggerLineIndex(uint32_t index);
+  void addSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
 
-		void setSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
+  void removeSelectedPrimitiveIndex(uint32_t index);
 
-		void addSelectedPrimitiveIndex(uint32_t index);
+  void removeSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
 
-		void addSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
+  void clearSelections();
 
-		void removeSelectedPrimitiveIndex(uint32_t index);
+  std::set<uint32_t> const& getSelectedPrimitiveIndices() const;
 
-		void removeSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
+  bool anyPrimitiveIndicesSelected(std::vector<uint32_t> const& indices) const;
 
-		void clearSelections();
+  uint32_t getSelectedWorldVertexIndex() const;
 
-		std::set<uint32_t> const& getSelectedPrimitiveIndices() const;
+  uint32_t getSelectedTriggerLineIndex() const;
 
-		bool anyPrimitiveIndicesSelected(std::vector<uint32_t> const& indices) const;
-		
-		uint32_t getSelectedWorldVertexIndex() const;
+  uint32_t getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
 
-		uint32_t getSelectedTriggerLineIndex() const;
+  bool hasSelection() const;
 
-		uint32_t getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
+  void setPlayerProxyPosition(wp::Vector2 const& pos);
 
-		bool hasSelection() const;
+  wp::Vector2 const& getPlayerProxyPosition() const;
 
-		void setPlayerProxyPosition(wp::Vector2 const& pos);
+  wp::Vector2 const& getPlayerOldProxyPosition() const;
 
-		wp::Vector2 const& getPlayerProxyPosition() const;
+  void setPlayerProxyAngle(float angle);
 
-		wp::Vector2 const& getPlayerOldProxyPosition() const;
+  float getPlayerProxyAngle() const;
 
-		void setPlayerProxyAngle(float angle);
+  float getPlayerOldProxyAngle() const;
 
-		float getPlayerProxyAngle() const;
+  void newDoc();
 
-		float getPlayerOldProxyAngle() const;
+  void closeDoc();
 
-		void newDoc();
+  bool openDoc(std::string const& filepath);
 
-		void closeDoc();
+  void saveDoc();
 
-		bool openDoc(std::string const& filepath);
+  void saveDocAs(std::string const& filepath);
 
-		void saveDoc();
+  void addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation, uint8_t layer);
+};
 
-		void saveDocAs(std::string const& filepath);
-
-		void addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation, uint8_t layer);
-	};
-
-} // editor
+}  // namespace editor

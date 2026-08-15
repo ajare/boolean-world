@@ -3,16 +3,13 @@
 
 using namespace std;
 
-
 ProtoEntityDefinitionFactory::ProtoEntityDefinitionFactory()
-	: applib::ProtoEntityDefaultDefinitionFactory()
-{
+    : applib::ProtoEntityDefaultDefinitionFactory() {
 }
 
-uint32_t ProtoEntityDefinitionFactory::getAnimationIdFromName(string const& actor, string const& anim)
-{
-	VAR_UNUSED(actor);
-	VAR_UNUSED(anim);
+uint32_t ProtoEntityDefinitionFactory::getAnimationIdFromName(string const& actor, string const& anim) {
+  VAR_UNUSED(actor);
+  VAR_UNUSED(anim);
 
-	return 0;
+  return 0;
 }

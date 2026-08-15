@@ -13,281 +13,274 @@
 #include "core/InputType.h"
 #include "core/WorldTriggerLine.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API VertexTransformerObject : public Serializable {
+  friend class World;
 
-		class BW_API VertexTransformerObject : public Serializable
-		{
-			friend class World;
+private:
+  uint32_t mId;
 
-		private:
+  VertexTransformerObject* mParent;
 
-			uint32_t mId;
+  VertexTransformer mVertexTransformer;
 
-			VertexTransformerObject* mParent;
+  wp::Vector2 mPosition;
 
-			VertexTransformer mVertexTransformer;
+  wp::Vector2 mTransformOffset;
 
-			wp::Vector2 mPosition;
+  float mOrientation;
 
-			wp::Vector2 mTransformOffset;
+  InfluenceEye mEye;
 
-			float mOrientation;
+  wp::Vector2 mPrevEntityPosition;
 
-			InfluenceEye mEye;
-			
-			wp::Vector2 mPrevEntityPosition;
+  float mPrevEntityAngle;
 
-			float mPrevEntityAngle;
+  InputValue mInputs;
 
-			InputValue mInputs;
+protected:
+  bool childrenModified() const override;
 
-		protected:
+  virtual void invalidatePostTransform(bool recalculateBounds, bool notifyWorld) const = 0;
 
-			bool childrenModified() const override;
+  virtual void notifyWorldChanged() const = 0;
 
-			virtual void invalidatePostTransform(bool recalculateBounds, bool notifyWorld) const = 0;
+  virtual void copyFrom(VertexTransformerObject const& other);
 
-			virtual void notifyWorldChanged() const = 0;
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			virtual void copyFrom(VertexTransformerObject const& other);
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+  VertexTransformer* getVertexTransformer();
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  Interpolator<float>& getAnimationInterpolator(VertexTransformer::Key key);
 
-			VertexTransformer* getVertexTransformer();
+  Interpolator<float>& getInfluenceInterpolator(VertexTransformer::Key key);
 
-			Interpolator<float>& getAnimationInterpolator(VertexTransformer::Key key);
+  wp::Vector2 calculateWorldPosition() const;
 
-			Interpolator<float>& getInfluenceInterpolator(VertexTransformer::Key key);
+  uint32_t calculateAnimationValues(double time);
 
-			wp::Vector2 calculateWorldPosition() const;
+  wp::Vector2 transformVertex(wp::Vector2 const& v, bool* cacheChanged) const;
 
-			uint32_t calculateAnimationValues(double time);
+public:
+  VertexTransformerObject();
 
-			wp::Vector2 transformVertex(wp::Vector2 const& v, bool* cacheChanged) const;
+  VertexTransformerObject(VertexTransformerObject const& other);
 
-		public:
+  VertexTransformerObject& operator=(VertexTransformerObject const& other);
 
-			VertexTransformerObject();
+  virtual ~VertexTransformerObject() = default;
 
-			VertexTransformerObject(VertexTransformerObject const& other);
+  bool isStatic() const;
 
-			VertexTransformerObject& operator=(VertexTransformerObject const& other);
+  void cacheStaticness(bool cache);
 
-			virtual ~VertexTransformerObject() = default;
+  void resetAnimatorCaptures();
 
-			bool isStatic() const;
+  void resetAnimator(VertexTransformer::Key key);
 
-			void cacheStaticness(bool cache);
+  virtual void setId(uint32_t id);
 
-			void resetAnimatorCaptures();
+  uint32_t getId() const;
 
-			void resetAnimator(VertexTransformer::Key key);
+  void setParent(VertexTransformerObject* parent);
 
-			virtual void setId(uint32_t id);
+  void setPosition(wp::Vector2 const& position);
 
-			uint32_t getId() const;
+  wp::Vector2 const& getPosition() const;
 
-			void setParent(VertexTransformerObject* parent);
+  void setTransformOffset(wp::Vector2 const& offset);
 
-			void setPosition(wp::Vector2 const& position);
+  wp::Vector2 const& getTransformOffset() const;
 
-			wp::Vector2 const& getPosition() const;
+  void setOrientation(float orient);
 
-			void setTransformOffset(wp::Vector2 const& offset);
+  float getOrientation() const;
 
-			wp::Vector2 const& getTransformOffset() const;
+  void setFollowOrbitAngle(bool follow);
 
-			void setOrientation(float orient);
+  bool getFollowOrbitAngle() const;
 
-			float getOrientation() const;
+  //
+  // Eyes
+  //
+  wp::Vector2 getInfluenceEyeOriginPosition() const;
 
-			void setFollowOrbitAngle(bool follow);
+  void setInfluenceEyeOriginOffset(wp::Vector2 const& originOffset);
 
-			bool getFollowOrbitAngle() const;
+  wp::Vector2 const& getInfluenceEyeOriginOffset() const;
 
-			//
-			// Eyes
-			// 
-			wp::Vector2 getInfluenceEyeOriginPosition() const;
+  void setInfluenceEyeAngleOffset(float offset);
 
-			void setInfluenceEyeOriginOffset(wp::Vector2 const& originOffset);
+  float getInfluenceEyeAngleOffset() const;
 
-			wp::Vector2 const& getInfluenceEyeOriginOffset() const;
+  //
+  // Animation interpolators
+  //
+  void setAnimationInterpolatorDefaultStructure(VertexTransformer::Key key, std::vector<Interpolator<float>::Point> const& points, std::vector<Interpolator<float>::Segment> const& segments, bool setToCurrent);
 
-			void setInfluenceEyeAngleOffset(float offset);
+  Interpolator<float> const& getAnimationInterpolator(VertexTransformer::Key key) const;
 
-			float getInfluenceEyeAngleOffset() const;
+  void setAnimationValues(VertexTransformer::Key key, std::vector<std::pair<float, float>> const& values);
 
-			//
-			// Animation interpolators
-			//
-			void setAnimationInterpolatorDefaultStructure(VertexTransformer::Key key, std::vector<Interpolator<float>::Point> const& points, std::vector<Interpolator<float>::Segment> const& segments, bool setToCurrent);
+  std::vector<Interpolator<float>::Point> const& getAnimationValues(VertexTransformer::Key key) const;
 
-			Interpolator<float> const& getAnimationInterpolator(VertexTransformer::Key key) const;
+  uint32_t getNumAnimationValues(VertexTransformer::Key key) const;
 
-			void setAnimationValues(VertexTransformer::Key key, std::vector<std::pair<float, float>> const& values);
+  void updateAnimationValue(VertexTransformer::Key key, uint32_t index, float time, float const& value);
 
-			std::vector<Interpolator<float>::Point> const& getAnimationValues(VertexTransformer::Key key) const;
+  void addAnimationValue(VertexTransformer::Key key, float time, float value);
 
-			uint32_t getNumAnimationValues(VertexTransformer::Key key) const;
+  void removeAnimationValue(VertexTransformer::Key key, uint32_t index);
 
-			void updateAnimationValue(VertexTransformer::Key key, uint32_t index, float time, float const& value);
+  float getAnimationValue(VertexTransformer::Key key, float t) const;
 
-			void addAnimationValue(VertexTransformer::Key key, float time, float value);
+  void getAnimationScale(VertexTransformer::Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax);
 
-			void removeAnimationValue(VertexTransformer::Key key, uint32_t index);
+  void setAnimationEasing(VertexTransformer::Key key, uint32_t segment, Easing easing);
 
-			float getAnimationValue(VertexTransformer::Key key, float t) const;
+  std::vector<Interpolator<float>::Segment> const& getAnimationSegments(VertexTransformer::Key key) const;
 
-			void getAnimationScale(VertexTransformer::Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax);
+  std::vector<std::vector<Interpolator<float>::Point>> renderAnimation(VertexTransformer::Key key, float resolution) const;
 
-			void setAnimationEasing(VertexTransformer::Key key, uint32_t segment, Easing easing);
+  void addPointToAnimationInterpolator(VertexTransformer::Key key, float time, float value);
 
-			std::vector<Interpolator<float>::Segment> const& getAnimationSegments(VertexTransformer::Key key) const;
+  void removePointFromAnimationInterpolator(VertexTransformer::Key key, uint32_t index);
 
-			std::vector<std::vector<Interpolator<float>::Point>> renderAnimation(VertexTransformer::Key key, float resolution) const;
+  void updatePointInAnimationInterpolator(VertexTransformer::Key key, uint32_t index, float time, float value);
 
-			void addPointToAnimationInterpolator(VertexTransformer::Key key, float time, float value);
+  void setAnimationInterpolatorEasing(VertexTransformer::Key key, uint32_t index, Easing easing);
 
-			void removePointFromAnimationInterpolator(VertexTransformer::Key key, uint32_t index);
+  //
+  // Influence interpolators
+  //
+  Interpolator<float> const& getInfluenceInterpolator(VertexTransformer::Key key) const;
 
-			void updatePointInAnimationInterpolator(VertexTransformer::Key key, uint32_t index, float time, float value);
+  void setInfluenceValues(VertexTransformer::Key key, std::vector<std::pair<float, float>> const& values);
 
-			void setAnimationInterpolatorEasing(VertexTransformer::Key key, uint32_t index, Easing easing);
+  std::vector<Interpolator<float>::Point> const& getInfluenceValues(VertexTransformer::Key key) const;
 
-			//
-			// Influence interpolators
-			//
-			Interpolator<float> const& getInfluenceInterpolator(VertexTransformer::Key key) const;
+  uint32_t getNumInfluenceValues(VertexTransformer::Key key) const;
 
-			void setInfluenceValues(VertexTransformer::Key key, std::vector<std::pair<float, float>> const& values);
+  void updateInfluenceValue(VertexTransformer::Key key, uint32_t index, float time, float const& value);
 
-			std::vector<Interpolator<float>::Point> const& getInfluenceValues(VertexTransformer::Key key) const;
+  void addInfluenceValue(VertexTransformer::Key key, float time, float value);
 
-			uint32_t getNumInfluenceValues(VertexTransformer::Key key) const;
+  void removeInfluenceValue(VertexTransformer::Key key, uint32_t index);
 
-			void updateInfluenceValue(VertexTransformer::Key key, uint32_t index, float time, float const& value);
+  float getInfluenceValue(VertexTransformer::Key key, float t) const;
 
-			void addInfluenceValue(VertexTransformer::Key key, float time, float value);
+  void getInfluenceScale(VertexTransformer::Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax);
 
-			void removeInfluenceValue(VertexTransformer::Key key, uint32_t index);
+  void setInfluenceEasing(VertexTransformer::Key key, uint32_t segment, Easing easing);
 
-			float getInfluenceValue(VertexTransformer::Key key, float t) const;
+  std::vector<Interpolator<float>::Segment> const& getInfluenceSegments(VertexTransformer::Key key) const;
 
-			void getInfluenceScale(VertexTransformer::Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax);
+  std::vector<std::vector<Interpolator<float>::Point>> renderInfluence(VertexTransformer::Key key, float resolution) const;
 
-			void setInfluenceEasing(VertexTransformer::Key key, uint32_t segment, Easing easing);
+  void addPointToInfluenceInterpolator(VertexTransformer::Key key, float time, float value);
 
-			std::vector<Interpolator<float>::Segment> const& getInfluenceSegments(VertexTransformer::Key key) const;
+  void removePointFromInfluenceInterpolator(VertexTransformer::Key key, uint32_t index);
 
-			std::vector<std::vector<Interpolator<float>::Point>> renderInfluence(VertexTransformer::Key key, float resolution) const;
+  void updatePointInInfluenceInterpolator(VertexTransformer::Key key, uint32_t index, float time, float value);
 
-			void addPointToInfluenceInterpolator(VertexTransformer::Key key, float time, float value);
+  void setInfluenceInterpolatorEasing(VertexTransformer::Key key, uint32_t index, Easing easing);
 
-			void removePointFromInfluenceInterpolator(VertexTransformer::Key key, uint32_t index);
+  //
+  // Transform flows
+  //
+  void setTransformOperand(VertexTransformer::Key key, uint32_t index, uint32_t operandIndex, tTransform::OperandType operand);
 
-			void updatePointInInfluenceInterpolator(VertexTransformer::Key key, uint32_t index, float time, float value);
+  void setTransformInput(VertexTransformer::Key key, uint32_t index, uint32_t inputIndex, InputType input);
 
-			void setInfluenceInterpolatorEasing(VertexTransformer::Key key, uint32_t index, Easing easing);
+  void setTransformConstant(VertexTransformer::Key key, uint32_t index, uint32_t constantIndex, float constant);
 
-			//
-			// Transform flows
-			//
-			void setTransformOperand(VertexTransformer::Key key, uint32_t index, uint32_t operandIndex, tTransform::OperandType operand);
+  void setTransformFnMultiplier(VertexTransformer::Key key, uint32_t index, uint32_t fnMulIndex, float value);
 
-			void setTransformInput(VertexTransformer::Key key, uint32_t index, uint32_t inputIndex, InputType input);
+  void setTransformTriggerLineIndex(VertexTransformer::Key key, uint32_t index, uint32_t indexIndex, uint32_t value);
 
-			void setTransformConstant(VertexTransformer::Key key, uint32_t index, uint32_t constantIndex, float constant);
+  void setTransformOperation(VertexTransformer::Key key, uint32_t index, tTransform::Operation operation);
 
-			void setTransformFnMultiplier(VertexTransformer::Key key, uint32_t index, uint32_t fnMulIndex, float value);
+  void addScaleTransform(tTransform const& transform);
 
-			void setTransformTriggerLineIndex(VertexTransformer::Key key, uint32_t index, uint32_t indexIndex, uint32_t value);
+  void removeScaleTransform(uint32_t index);
 
-			void setTransformOperation(VertexTransformer::Key key, uint32_t index, tTransform::Operation operation);
+  void swapScaleTransforms(uint32_t index1, uint32_t index2);
 
-			void addScaleTransform(tTransform const& transform);
+  void setScaleTransforms(std::vector<tTransform> const& transforms);
 
-			void removeScaleTransform(uint32_t index);
+  std::vector<tTransform> const& getScaleTransforms() const;
 
-			void swapScaleTransforms(uint32_t index1, uint32_t index2);
+  void addAngleTransform(tTransform const& transform);
 
-			void setScaleTransforms(std::vector<tTransform> const& transforms);
+  void removeAngleTransform(uint32_t index);
 
-			std::vector<tTransform> const& getScaleTransforms() const;
+  void swapAngleTransforms(uint32_t index1, uint32_t index2);
 
-			void addAngleTransform(tTransform const& transform);
+  void setAngleTransforms(std::vector<tTransform> const& transforms);
 
-			void removeAngleTransform(uint32_t index);
+  std::vector<tTransform> const& getAngleTransforms() const;
 
-			void swapAngleTransforms(uint32_t index1, uint32_t index2);
+  void addOrbitAngleTransform(tTransform const& transform);
 
-			void setAngleTransforms(std::vector<tTransform> const& transforms);
+  void removeOrbitAngleTransform(uint32_t index);
 
-			std::vector<tTransform> const& getAngleTransforms() const;
+  void swapOrbitAngleTransforms(uint32_t index1, uint32_t index2);
 
-			void addOrbitAngleTransform(tTransform const& transform);
+  void setOrbitAngleTransforms(std::vector<tTransform> const& transforms);
 
-			void removeOrbitAngleTransform(uint32_t index);
+  std::vector<tTransform> const& getOrbitAngleTransforms() const;
 
-			void swapOrbitAngleTransforms(uint32_t index1, uint32_t index2);
+  void addOrbitDistanceTransform(tTransform const& transform);
 
-			void setOrbitAngleTransforms(std::vector<tTransform> const& transforms);
+  void removeOrbitDistanceTransform(uint32_t index);
 
-			std::vector<tTransform> const& getOrbitAngleTransforms() const;
+  void swapOrbitDistanceTransforms(uint32_t index1, uint32_t index2);
 
-			void addOrbitDistanceTransform(tTransform const& transform);
+  void setOrbitDistanceTransforms(std::vector<tTransform> const& transforms);
 
-			void removeOrbitDistanceTransform(uint32_t index);
+  std::vector<tTransform> const& getOrbitDistanceTransforms() const;
 
-			void swapOrbitDistanceTransforms(uint32_t index1, uint32_t index2);
+  void updateTransformTriggerLineIndices(std::map<uint32_t, uint32_t> const& mapping);
 
-			void setOrbitDistanceTransforms(std::vector<tTransform> const& transforms);
+  //
+  // Capture
+  //
+  void setCaptureMode(VertexTransformer::Key key, ValueCaptureMode mode);
 
-			std::vector<tTransform> const& getOrbitDistanceTransforms() const;
+  ValueCaptureMode getCaptureMode(VertexTransformer::Key key) const;
 
-			void updateTransformTriggerLineIndices(std::map<uint32_t, uint32_t> const& mapping);
+  float getCurCapturedValue(VertexTransformer::Key key) const;
 
-			//
-			// Capture
-			//
-			void setCaptureMode(VertexTransformer::Key key, ValueCaptureMode mode);
+  //
+  // Events
+  //
+  uint32_t getNumAnimatedPropertyEvents(VertexTransformer::Key key) const;
 
-			ValueCaptureMode getCaptureMode(VertexTransformer::Key key) const;
+  std::vector<AnimatedPropertyEvent> const& getAnimatedPropertyEvents(VertexTransformer::Key key) const;
 
-			float getCurCapturedValue(VertexTransformer::Key key) const;
+  void addAnimatedPropertyEvent(VertexTransformer::Key key, uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value);
 
-			//
-			// Events
-			//
-			uint32_t getNumAnimatedPropertyEvents(VertexTransformer::Key key) const;
+  void removeAnimatedPropertyEvent(VertexTransformer::Key key, uint32_t index);
 
-			std::vector<AnimatedPropertyEvent> const& getAnimatedPropertyEvents(VertexTransformer::Key key) const;
+  void updateAnimatedPropertyEvent(VertexTransformer::Key key, uint32_t index, uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value);
 
-			void addAnimatedPropertyEvent(VertexTransformer::Key key, uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value);
+  //
+  // Utility
+  //
+  void setInputUserValue(uint32_t index, float value);
 
-			void removeAnimatedPropertyEvent(VertexTransformer::Key key, uint32_t index);
+  float getInputUserValue(uint32_t index) const;
 
-			void updateAnimatedPropertyEvent(VertexTransformer::Key key, uint32_t index, uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value);
+  void setInputs(wp::Vector2 const& entityPosition, float entityAngle, std::vector<WorldTriggerLine*>* triggerLines);
 
-			//
-			// Utility
-			//
-			void setInputUserValue(uint32_t index, float value);
+  InputValue const& getInputs() const;
 
-			float getInputUserValue(uint32_t index) const;
+  float transformT(VertexTransformer::Key key, double time) const;
+};
 
-			void setInputs(wp::Vector2 const& entityPosition, float entityAngle, std::vector<WorldTriggerLine*>* triggerLines);
-
-			InputValue const& getInputs() const;
-
-			float transformT(VertexTransformer::Key key, double time) const;
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

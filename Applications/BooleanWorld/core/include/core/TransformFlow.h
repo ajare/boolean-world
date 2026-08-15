@@ -9,50 +9,42 @@
 #include "core/Serializable.h"
 #include "core/SerializationException.h"
 
+namespace bw {
+namespace core {
+class TransformFlow : public Serializable {
+  std::vector<tTransform> mTransforms;
 
-namespace bw
-{
-	namespace core
-	{
-		class TransformFlow : public Serializable
-		{
-			std::vector<tTransform> mTransforms;
+private:
+  bool childrenModified() const override;
 
-		private:
+  float triangle(double time, float value) const;
 
-			bool childrenModified() const override;
+  float saw(double time, float value) const;
 
-			float triangle(double time, float value) const;
+  float square(double time, float value) const;
 
-			float saw(double time, float value) const;
+protected:
+  void copyFrom(TransformFlow const& other);
 
-			float square(double time, float value) const;
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-		protected:
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void copyFrom(TransformFlow const& other);
+public:
+  TransformFlow();
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+  TransformFlow(TransformFlow const& other);
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  TransformFlow& operator=(TransformFlow const& other);
 
-		public:
+  float transformT(InputValue const& inputs, double time) const;
 
-			TransformFlow();
+  void setTransforms(std::vector<tTransform> const& transforms);
 
-			TransformFlow(TransformFlow const& other);
+  std::vector<tTransform>& getTransforms();
 
-			TransformFlow& operator=(TransformFlow const& other);
+  std::vector<tTransform> const& getTransforms() const;
+};
 
-			float transformT(InputValue const& inputs, double time) const;
-
-			void setTransforms(std::vector<tTransform> const& transforms);
-
-			std::vector<tTransform>& getTransforms();
-
-			std::vector<tTransform> const& getTransforms() const;
-
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

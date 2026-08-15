@@ -22,239 +22,228 @@
 #include "core/WorldUpdateData.h"
 #include "core/WorldTriggerLine.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API World : public Serializable {
+  struct SortPrimitivesByPriority {
+    bool operator()(Primitive const* a, Primitive const* b) {
+      return a->getPriority() < b->getPriority();
+    }
+  };
 
-		class BW_API World : public Serializable
-		{
-			struct SortPrimitivesByPriority
-			{
-				bool operator()(Primitive const* a, Primitive const* b)
-				{
-					return a->getPriority() < b->getPriority();
-				}
-			};
+  struct PrimitiveCellMetadata {
+    frame_number_type lastUpdatedFrameNumber{0};
+  };
 
-			struct PrimitiveCellMetadata
-			{
-				frame_number_type lastUpdatedFrameNumber{ 0 };
-			};
+  typedef wp::ExtendedAccelerationGrid<PrimitiveCellMetadata> PrimitiveAccelerationGrid;
 
-			typedef wp::ExtendedAccelerationGrid<PrimitiveCellMetadata> PrimitiveAccelerationGrid;
+private:
+  // Properties
+  std::string mName;
 
-		private:
+  std::string mDescription;
 
-			// Properties
-			std::string mName;
+  wp::BoundingBox mExtents;
 
-			std::string mDescription;
+  std::vector<Primitive*> mPrimitives;
 
-			wp::BoundingBox mExtents;
+  std::vector<WorldTriggerLine*> mTriggerLines;
 
-			std::vector<Primitive*> mPrimitives;
+  wp::Vector2 mPlayerStartPosition;
 
-			std::vector<WorldTriggerLine*> mTriggerLines;
+  float mPlayerStartAngle;
 
-			wp::Vector2 mPlayerStartPosition;
+  bool mAlwaysUpdateVertices;
 
-			float mPlayerStartAngle;
+  // Runtime
+  frame_number_type mFrameNumber;
 
-			bool mAlwaysUpdateVertices;
+  std::function<void(PrimitiveCellMetadata*)> mPrimitiveCellMetadataUpdater;
 
-			// Runtime
-			frame_number_type mFrameNumber;
+  WorldDataGenerator* mDataGenerator;
 
-			std::function<void(PrimitiveCellMetadata*)> mPrimitiveCellMetadataUpdater;
+  // Lookups / caching
+  PrimitiveAccelerationGrid* mPrimitiveLookupGrid;
 
-			WorldDataGenerator* mDataGenerator;
+  wp::AccelerationGrid* mTriggerLookupGrid;
 
-			// Lookups / caching
-			PrimitiveAccelerationGrid* mPrimitiveLookupGrid;
+  mutable frame_number_type mLastPrimitiveUpdateFrameNumber;
 
-			wp::AccelerationGrid* mTriggerLookupGrid;
+  mutable frame_number_type mCachedVertexDataFrameNumber;
 
-			mutable frame_number_type mLastPrimitiveUpdateFrameNumber;
+  mutable std::vector<WorldVertexData> mCachedBorderVertexData;
 
-			mutable frame_number_type mCachedVertexDataFrameNumber;
+  wp::Vector2 mPrevPlayerPosition;
 
-			mutable std::vector<WorldVertexData> mCachedBorderVertexData;
+  // Metadata
+  PrefabAreaTilingType mPrefabAreaTilingType;
 
-			wp::Vector2 mPrevPlayerPosition;
+  uint32_t mPrefabAreaTileTypes;
 
-			// Metadata
-			PrefabAreaTilingType mPrefabAreaTilingType;
+private:
+  bool childrenModified() const override;
 
-			uint32_t mPrefabAreaTileTypes;
+  Primitive* instantiatePrimitive(std::string const& type) const;
 
-		private:
+  std::vector<Primitive*> sortPrimitiveIndicesByPriority(std::vector<uint32_t> const& indices) const;
 
-			bool childrenModified() const override;
+  WorldDataClipResults calculatePolygons(std::vector<Primitive*> const& primitives, uint32_t flags = 0) const;
 
-			Primitive* instantiatePrimitive(std::string const& type) const;
+  void validateVertexCount() const;
 
-			std::vector<Primitive*> sortPrimitiveIndicesByPriority(std::vector<uint32_t> const& indices) const;
+  void addPrimitiveToLookupGrid(Primitive* primitive);
 
-			WorldDataClipResults calculatePolygons(std::vector<Primitive*> const& primitives, uint32_t flags = 0) const;
+  void removePrimitiveFromLookupGrid(Primitive const* primitive, bool failIfNotFound = true);
 
-			void validateVertexCount() const;
+  void addTriggerLineToLookupGrid(WorldTriggerLine* triggerLine);
 
-			void addPrimitiveToLookupGrid(Primitive* primitive);
+  void removeTriggerLineFromLookupGrid(WorldTriggerLine const* triggerLine);
 
-			void removePrimitiveFromLookupGrid(Primitive const* primitive, bool failIfNotFound = true);
+  void updatePrimitiveCellMetadata(PrimitiveCellMetadata* metadata);
 
-			void addTriggerLineToLookupGrid(WorldTriggerLine* triggerLine);
+  void handleEvents(uint32_t events);
 
-			void removeTriggerLineFromLookupGrid(WorldTriggerLine const* triggerLine);
+protected:
+  void copyFrom(World const& other);
 
-			void updatePrimitiveCellMetadata(PrimitiveCellMetadata* metadata);
+  void preSerialization(SerializationWorkData& workData) const override;
 
-			void handleEvents(uint32_t events);
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-		protected:
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void copyFrom(World const& other);
+public:
+  World();
 
-			void preSerialization(SerializationWorkData& workData) const override;
+  World(float size, float gridSize, WorldDataGeneratorFactory generatorFactory = nullptr);
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+  World(World const& other);
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  World& operator=(World const& other);
 
-		public:
+  virtual ~World();
 
-			World();
+  void setWorldDataGeneratorFactory(WorldDataGeneratorFactory generatorFactory);
 
-			World(float size, float gridSize, WorldDataGeneratorFactory generatorFactory = nullptr);
+  WorldDataGenerator* getWorldDataGenerator();
 
-			World(World const& other);
+  WorldDataGenerator const* getWorldDataGenerator() const;
 
-			World& operator=(World const& other);
+  void createAccelerationGrids(float targetCellSize);
 
-			virtual ~World();
+  float getPrimitiveAccelerationGridSize() const;
 
-			void setWorldDataGeneratorFactory(WorldDataGeneratorFactory generatorFactory);
+  void clear();
 
-			WorldDataGenerator* getWorldDataGenerator();
+  void setName(std::string const& name);
 
-			WorldDataGenerator const* getWorldDataGenerator() const;
+  [[nodiscard]] std::string const& getName() const;
 
-			void createAccelerationGrids(float targetCellSize);
+  void setDescription(std::string const& desc);
 
-			float getPrimitiveAccelerationGridSize() const;
+  [[nodiscard]] std::string const& getDescription() const;
 
-			void clear();
+  void setPlayerStartPosition(wp::Vector2 const& pos);
 
-			void setName(std::string const& name);
+  [[nodiscard]] wp::Vector2 const& getPlayerStartPosition() const;
 
-			[[nodiscard]] std::string const& getName() const;
+  void setPlayerStartAngle(float angle);
 
-			void setDescription(std::string const& desc);
+  [[nodiscard]] float getPlayerStartAngle() const;
 
-			[[nodiscard]] std::string const& getDescription() const;
+  void setAlwaysUpdateVertices(bool always);
 
-			void setPlayerStartPosition(wp::Vector2 const& pos);
+  [[nodiscard]] bool getAlwaysUpdateVertices() const;
 
-			[[nodiscard]] wp::Vector2 const& getPlayerStartPosition() const;
+  [[nodiscard]] frame_number_type getFrameNumber() const;
 
-			void setPlayerStartAngle(float angle);
+  [[nodiscard]] wp::BoundingBox const& getExtents() const;
 
-			[[nodiscard]] float getPlayerStartAngle() const;
+  void setPrefabAreaTilingType(PrefabAreaTilingType type);
 
-			void setAlwaysUpdateVertices(bool always);
+  [[nodiscard]] PrefabAreaTilingType getPrefabAreaTilingType() const;
 
-			[[nodiscard]] bool getAlwaysUpdateVertices() const;
+  void setPrefabAreaTileTypes(uint32_t types);
 
-			[[nodiscard]] frame_number_type getFrameNumber() const;
+  [[nodiscard]] uint32_t getPrefabAreaTileTypes() const;
 
-			[[nodiscard]] wp::BoundingBox const& getExtents() const;
+  bool getGridSettings(int* dimX, int* dimY, float* cellSize);
 
-			void setPrefabAreaTilingType(PrefabAreaTilingType type);
+  void _cacheWorldVertexData() const;
 
-			[[nodiscard]] PrefabAreaTilingType getPrefabAreaTilingType() const;
+  void _cachePrimitiveStaticness(bool cache);
 
-			void setPrefabAreaTileTypes(uint32_t types);
+  [[nodiscard]] std::vector<WorldVertexData> const& getBorderVertexData(frame_number_type* frameNumber = nullptr) const;
 
-			[[nodiscard]] uint32_t getPrefabAreaTileTypes() const;
+  uint32_t addPrimitive(Primitive* primitive);
 
-			bool getGridSettings(int* dimX, int* dimY, float* cellSize);
+  void removePrimitive(Primitive* primitive, bool failIfNotFound = true);
 
-			void _cacheWorldVertexData() const;
+  void removePrimitive(uint32_t index);
 
-			void _cachePrimitiveStaticness(bool cache);
+  void removePrimitives(std::vector<uint32_t> const& indices);
 
-			[[nodiscard]] std::vector<WorldVertexData> const& getBorderVertexData(frame_number_type* frameNumber = nullptr) const;
+  void replacePrimitive(uint32_t index, Primitive* newPrimitive, bool failIfNotFound = true);
 
-			uint32_t addPrimitive(Primitive* primitive);
+  void removeTriggerLine(WorldTriggerLine* triggerLine, bool failIfNotFound = true);
 
-			void removePrimitive(Primitive* primitive, bool failIfNotFound = true);
+  void removeTriggerLine(uint32_t index);
 
-			void removePrimitive(uint32_t index);
+  void removeTriggerLines(std::vector<uint32_t> const& indices);
 
-			void removePrimitives(std::vector<uint32_t> const& indices);
+  void replaceTriggerLine(uint32_t index, WorldTriggerLine* newTriggerLine, bool failIfNotFound = true);
 
-			void replacePrimitive(uint32_t index, Primitive* newPrimitive, bool failIfNotFound = true);
+  Primitive* createMeshPrimitive(std::vector<uint32_t> const& indices) const;
 
-			void removeTriggerLine(WorldTriggerLine* triggerLine, bool failIfNotFound = true);
+  uint32_t convertPrimitivesToMesh(std::vector<uint32_t> const& indices);
 
-			void removeTriggerLine(uint32_t index);
+  void primitiveChanged(Primitive const* primitive);
 
-			void removeTriggerLines(std::vector<uint32_t> const& indices);
+  void getGridCellPrimitivesVersion(uint32_t cellIndex, frame_number_type* primitivesVersion) const;
 
-			void replaceTriggerLine(uint32_t index, WorldTriggerLine* newTriggerLine, bool failIfNotFound = true);
+  void getGridCellFrameNumber(uint32_t cellIndex, frame_number_type* frameNumber) const;
 
-			Primitive* createMeshPrimitive(std::vector<uint32_t> const& indices) const;
-			
-			uint32_t convertPrimitivesToMesh(std::vector<uint32_t> const& indices);
+  [[nodiscard]] Primitive* getPrimitive(uint32_t index);
 
-			void primitiveChanged(Primitive const* primitive);
+  [[nodiscard]] Primitive const* getPrimitive(uint32_t index) const;
 
-			void getGridCellPrimitivesVersion(uint32_t cellIndex, frame_number_type* primitivesVersion) const;
+  [[nodiscard]] std::vector<Primitive*> getPrimitivesInGridCell(uint32_t cellIndex, uint8_t activeLayer, frame_number_type* primitivesVersion = nullptr) const;
 
-			void getGridCellFrameNumber(uint32_t cellIndex, frame_number_type* frameNumber) const;
+  [[nodiscard]] Primitive* findPrimitive(wp::Vector2 const& worldPos) const;
 
-			[[nodiscard]] Primitive* getPrimitive(uint32_t index);
+  [[nodiscard]] uint32_t findPrimitiveIndex(wp::Vector2 const& worldPos, bool exact, std::set<uint32_t> ignoreIndices = {}) const;
 
-			[[nodiscard]] Primitive const* getPrimitive(uint32_t index) const;
+  [[nodiscard]] std::vector<uint32_t> findPrimitiveIndices(wp::Vector2 const& worldPos, bool exact, std::set<uint32_t> ignoreIndices = {}) const;
 
-			[[nodiscard]] std::vector<Primitive*> getPrimitivesInGridCell(uint32_t cellIndex, uint8_t activeLayer, frame_number_type* primitivesVersion = nullptr) const;
+  [[nodiscard]] std::vector<Primitive*> findPrimitives(wp::BoundingBox const& bounds) const;
 
-			[[nodiscard]] Primitive* findPrimitive(wp::Vector2 const& worldPos) const;
+  [[nodiscard]] std::vector<Primitive*> findPrimitives(wp::BoundingCircle const& bounds) const;
 
-			[[nodiscard]] uint32_t findPrimitiveIndex(wp::Vector2 const& worldPos, bool exact, std::set<uint32_t> ignoreIndices = {}) const;
+  [[nodiscard]] uint32_t getNumPrimitives() const;
 
-			[[nodiscard]] std::vector<uint32_t> findPrimitiveIndices(wp::Vector2 const& worldPos, bool exact, std::set<uint32_t> ignoreIndices = {}) const;
+  [[nodiscard]] std::vector<Primitive*> const& getPrimitives() const;
 
-			[[nodiscard]] std::vector<Primitive*> findPrimitives(wp::BoundingBox const& bounds) const;
+  [[nodiscard]] std::vector<Primitive*> getPrimitivesByPriority() const;
 
-			[[nodiscard]] std::vector<Primitive*> findPrimitives(wp::BoundingCircle const& bounds) const;
+  [[nodiscard]] uint32_t getNumTriggerLines() const;
 
-			[[nodiscard]] uint32_t getNumPrimitives() const;
+  [[nodiscard]] std::vector<WorldTriggerLine*> const& getTriggerLines() const;
 
-			[[nodiscard]] std::vector<Primitive*> const& getPrimitives() const;
+  [[nodiscard]] uint32_t findTriggerLineIndex(wp::Vector2 const& worldPos, float tolerance, float handleRadius = 0.0f) const;
 
-			[[nodiscard]] std::vector<Primitive*> getPrimitivesByPriority() const;
+  [[nodiscard]] WorldTriggerLine* getTriggerLine(uint32_t index) const;
 
-			[[nodiscard]] uint32_t getNumTriggerLines() const;
+  uint32_t addTriggerLine(WorldTriggerLine* triggerLine);
 
-			[[nodiscard]] std::vector<WorldTriggerLine*> const& getTriggerLines() const;
+  [[nodiscard]] std::vector<WorldTriggerLine*> findTriggerLines(wp::BoundingBox const& bounds) const;
 
-			[[nodiscard]] uint32_t findTriggerLineIndex(wp::Vector2 const& worldPos, float tolerance, float handleRadius = 0.0f) const;
+  void update(float frameTime, WorldUpdateData const& data, wp::Vector2 const& viewSize);
 
-			[[nodiscard]] WorldTriggerLine* getTriggerLine(uint32_t index) const;
+  void generateClipping(WorldDataGenerator::NarrowPhaseCulling culling, bool regetPrimitives);
 
-			uint32_t addTriggerLine(WorldTriggerLine* triggerLine);
+  [[nodiscard("returned WorldData should be used, otherwise method does nothing")]] WorldData getWorldData(wp::Vector2 const& position, float angle) const;
+};
 
-			[[nodiscard]] std::vector<WorldTriggerLine*> findTriggerLines(wp::BoundingBox const& bounds) const;
-
-			void update(float frameTime, WorldUpdateData const& data, wp::Vector2 const& viewSize);
-
-			void generateClipping(WorldDataGenerator::NarrowPhaseCulling culling, bool regetPrimitives);
-
-			[[nodiscard("returned WorldData should be used, otherwise method does nothing")]] WorldData getWorldData(wp::Vector2 const& position, float angle) const;
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

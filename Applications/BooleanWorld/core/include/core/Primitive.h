@@ -16,195 +16,181 @@
 #include "core/PrimitivePropertySet.h"
 #include "core/Defines.h"
 
+namespace bw {
+namespace core {
+class World;
 
-namespace bw
-{
-	namespace core
-	{
-		class World;
+class BW_API Primitive : public VertexTransformerObject {
+  friend class PrimitiveGroup;
 
-		class BW_API Primitive : public VertexTransformerObject
-		{
-			friend class PrimitiveGroup;
-			
-			friend class World;
+  friend class World;
 
-		public:
+public:
+  enum struct Operation {
+    Union,
+    Intersection,
+    Difference,
+    XOR
+  };
 
-			enum struct Operation
-			{
-				Union,
-				Intersection,
-				Difference,
-				XOR
-			};
+  enum struct FillRule {
+    NonZero,
+    EvenOdd
+  };
 
-			enum struct FillRule
-			{
-				NonZero,
-				EvenOdd
-			};
+protected:
+  enum struct Index {
+    Current = 0,
+    Original,
+    Min,
+    Max
+  };
 
-		protected:
+private:
+  World* mWorld;
 
-			enum struct Index
-			{
-				Current = 0,
-				Original,
-				Min,
-				Max
-			};
+  uint32_t mFlags;
 
-		private:
+  double mTime;
 
-			World* mWorld;
+  float mTimeUpdateDistance;
 
-			uint32_t mFlags;
+  uint8_t mLayer;
 
-			double mTime;
+  uint32_t mMetadata;
 
-			float mTimeUpdateDistance;
+  Operation mOperation;
 
-			uint8_t mLayer;
+  FillRule mFillRule;
 
-			uint32_t mMetadata;
+  uint8_t mPriority;
 
-			Operation mOperation;
+  wp::Vector2 mSize;
 
-			FillRule mFillRule;
+  PrimitivePropertySet mProperties;
 
-			uint8_t mPriority;
+  mutable wp::BoundingBox mBounds;
 
-			wp::Vector2 mSize;
+  std::vector<ComplexPolygon> mVertices;
 
-			PrimitivePropertySet mProperties;
+  mutable frame_number_type mFrameNumber;
 
-			mutable wp::BoundingBox mBounds;
+protected:
+  std::vector<ComplexPolygon> mPolygons;
 
-			std::vector<ComplexPolygon> mVertices;
+private:
+  virtual std::vector<ComplexPolygon> generateTransformedVertices(wp::Vector2* minExtent = nullptr, wp::Vector2* maxExtent = nullptr) const;
 
-			mutable frame_number_type mFrameNumber;
+  bool childrenModified() const override;
 
-		protected:
+protected:
+  Primitive(Operation operation, FillRule fillType, std::vector<ComplexPolygon> const& complexPolygons);
 
-			std::vector<ComplexPolygon> mPolygons;
+  virtual void generateVertices();
 
-		private:
+  virtual std::vector<ComplexPolygon> generateVerticesImpl() = 0;
 
-			virtual std::vector<ComplexPolygon> generateTransformedVertices(wp::Vector2* minExtent = nullptr, wp::Vector2* maxExtent = nullptr) const;
+  void notifyWorldChanged() const override;
 
-			bool childrenModified() const override;
+  void invalidatePostTransform(bool recalculateBounds, bool notifyWorld = true) const override;
 
-		protected:
+  void copyFrom(Primitive const& other);
 
-			Primitive(Operation operation, FillRule fillType, std::vector<ComplexPolygon> const& complexPolygons);
+  void setVertices(std::vector<ComplexPolygon> const& polygons);
 
-			virtual void generateVertices();
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			virtual std::vector<ComplexPolygon> generateVerticesImpl() = 0;
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void notifyWorldChanged() const override;
-			
-			void invalidatePostTransform(bool recalculateBounds, bool notifyWorld = true) const override;
+public:
+  Primitive();
 
-			void copyFrom(Primitive const& other);
+  Primitive(Operation operation, FillRule fillType);
 
-			void setVertices(std::vector<ComplexPolygon> const& polygons);
+  Primitive(Primitive const& other);
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+  Primitive& operator=(Primitive const& other);
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  virtual ~Primitive() = default;
 
-		public:
+  virtual Primitive* copy() const = 0;
 
-			Primitive();
+  Primitive* rotatedCopy(float angle) const;
 
-			Primitive(Operation operation, FillRule fillType);
+  void _invalidate() const;
 
-			Primitive(Primitive const& other);
+  void setId(uint32_t id) override;
 
-			Primitive& operator=(Primitive const& other);
+  virtual std::string getType() const = 0;
 
-			virtual ~Primitive() = default;
+  virtual std::string getName() const;
 
-			virtual Primitive* copy() const = 0;
+  void setFlags(uint32_t flags);
 
-			Primitive* rotatedCopy(float angle) const;
+  uint32_t getFlags() const;
 
-			void _invalidate() const;
+  bool hasFlag(uint32_t flag) const;
 
-			void setId(uint32_t id) override;
+  double getTime() const;
 
-			virtual std::string getType() const = 0;
+  void setTimeUpdateDistance(float dist);
 
-			virtual std::string getName() const;
+  float getTimeUpdateDistance() const;
 
-			void setFlags(uint32_t flags);
+  void setLayer(uint8_t layer);
 
-			uint32_t getFlags() const;
+  uint8_t getLayer() const;
 
-			bool hasFlag(uint32_t flag) const;
+  void setMetadata(uint32_t metadata);
 
-			double getTime() const;
+  uint32_t getMetadata() const;
 
-			void setTimeUpdateDistance(float dist);
+  frame_number_type getFrameNumber() const;
 
-			float getTimeUpdateDistance() const;
+  void setOperation(Operation operation);
 
-			void setLayer(uint8_t layer);
+  Operation getOperation() const;
 
-			uint8_t getLayer() const;
+  void setFillRule(FillRule fillRule);
 
-			void setMetadata(uint32_t metadata);
+  FillRule getFillRule() const;
 
-			uint32_t getMetadata() const;
+  void setPriority(uint8_t priority);
 
-			frame_number_type getFrameNumber() const;
+  uint8_t getPriority() const;
 
-			void setOperation(Operation operation);
+  virtual float getRadius() const = 0;
 
-			Operation getOperation() const;
+  void setSize(wp::Vector2 const& size);
 
-			void setFillRule(FillRule fillRule);
+  void setSize(float x, float y);
 
-			FillRule getFillRule() const;
+  wp::Vector2 const& getSize() const;
 
-			void setPriority(uint8_t priority);
+  void setProperties(PrimitivePropertySet const& properties);
 
-			uint8_t getPriority() const;
+  PrimitivePropertySet const& getProperties() const;
 
-			virtual float getRadius() const = 0;
+  uint32_t getNumVertices() const;
 
-			void setSize(wp::Vector2 const& size);
+  virtual std::vector<ComplexPolygon> const& getVertices() const;
 
-			void setSize(float x, float y);
+  wp::BoundingBox const& getBounds() const;
 
-			wp::Vector2 const& getSize() const;
+  uint32_t setVertexIdsAndWorldData(uint32_t id, std::vector<WorldVertexData>& vertexWorldData);
 
-			void setProperties(PrimitivePropertySet const& properties);
+  wp::BoundingBox calculateBounds() const;
 
-			PrimitivePropertySet const& getProperties() const;
+  wp::BoundingBox calculateExactBounds() const;
 
-			uint32_t getNumVertices() const;
+  void updateVertexPositions();
 
-			virtual std::vector<ComplexPolygon> const& getVertices() const;
+  Triangulation triangulate(bool calculateBounds, TriangulationStats* stats) const;
 
-			wp::BoundingBox const& getBounds() const;
+  void updateTime(float updateTime, WorldUpdateData const& data);
 
-			uint32_t setVertexIdsAndWorldData(uint32_t id, std::vector<WorldVertexData>& vertexWorldData);
+  uint32_t calculateAnimationValues();
+};
 
-			wp::BoundingBox calculateBounds() const;
-
-			wp::BoundingBox calculateExactBounds() const;
-
-			void updateVertexPositions();
-
-			Triangulation triangulate(bool calculateBounds, TriangulationStats* stats) const;
-
-			void updateTime(float updateTime, WorldUpdateData const& data);
-			
-			uint32_t calculateAnimationValues();
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

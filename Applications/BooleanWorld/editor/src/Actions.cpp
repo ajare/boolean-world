@@ -19,553 +19,467 @@
 
 extern editor::Settings gEditorSettings;
 
+namespace editor {
+using namespace std;
 
-namespace editor
-{
-	using namespace std;
-
-	bool recordCurrentState(Document* doc, bool modifying)
-	{
-		return modifying;
-	}
-
-	bool setWorldName(Document* doc, string const& name)
-	{
-		auto world = doc->getWorld();
-
-		world->setName(name);
-		return true;
-	}
-
-	bool setWorldDescription(Document* doc, string const& desc)
-	{
-		auto world = doc->getWorld();
-
-		world->setDescription(desc);
-		return true;
-	}
-
-	bool setPlayerStartPosition(Document* doc, wp::Vector2 const& pos)
-	{
-		auto world = doc->getWorld();
-
-		world->setPlayerStartPosition(pos);
-		return true;
-	}
-
-	bool setPlayerStartAngle(Document* doc, float angle)
-	{
-		auto world = doc->getWorld();
-
-		world->setPlayerStartAngle(angle);
-		return true;
-	}
-
-	bool selectWorldVertex(Document* doc, uint32_t worldVertexIndex)
-	{
-		doc->setSelectedWorldVertexIndex(worldVertexIndex);
-		return false;
-	}
-
-	bool selectTriggerLine(Document* doc, uint32_t triggerLineIndex)
-	{
-		doc->setSelectedTriggerLineIndex(triggerLineIndex);
-		return false;
-	}
-
-	bool deleteTriggerLine(Document* doc, uint32_t triggerLineIndex)
-	{
-		doc->getWorld()->removeTriggerLine(triggerLineIndex);
-		return true;
-	}
-
-	bool selectPrimitive(Document* doc, uint32_t primitiveIndex)
-	{
-		doc->setSelectedPrimitiveIndices({ primitiveIndex });
-		return false;
-	}
-
-	bool togglePrimitiveSelected(Document* doc, uint32_t primitiveIndex)
-	{
-		if (doc->indexInSelection(primitiveIndex))
-		{
-			doc->removeSelectedPrimitiveIndex(primitiveIndex);
-		}
-		else
-		{
-			doc->addSelectedPrimitiveIndex(primitiveIndex);
-		}
-
-		return false;
-	}
-
-	bool clearSelections(Document* doc)
-	{
-		doc->clearSelections();
-
-		return false;
-	}
-
-	void setPrimitiveDefaultMaterial(uint32_t materialIndex, bw::core::MaterialDefinitionData* materialDefinition)
-	{
-		auto const& material = bw::common::MaterialNames[materialIndex];
-		auto numParams = (uint32_t)get<1>(material);
-
-		for (uint32_t i = 0; i < numParams; ++i)
-		{
-			materialDefinition->params[i] = get<3>(bw::common::MaterialParams[materialIndex][i]);
-		}
-
-		auto const& defaultColour = get<2>(bw::common::MaterialNames[materialIndex]);
-
-		for (uint32_t i = 0; i < 3; ++i)
-		{
-			materialDefinition->baseColour[i] = defaultColour[i];
-		}
-	}
+bool recordCurrentState(Document* doc, bool modifying) {
+  return modifying;
+}
 
-	void setPrimitiveDefaultMaterials(bw::core::Primitive* prim)
-	{
-		auto properties = prim->getProperties();
-
-		setPrimitiveDefaultMaterial(properties.floorMaterialIndex, &properties.floorMaterialDef.data);
-		setPrimitiveDefaultMaterial(properties.ceilingMaterialIndex, &properties.ceilingMaterialDef.data);
-		setPrimitiveDefaultMaterial(properties.wallMaterialIndex, &properties.wallMaterialDef.data);
+bool setWorldName(Document* doc, string const& name) {
+  auto world = doc->getWorld();
 
-		prim->setProperties(properties);
-	}
-
-	bool createPrimitiveFromGhost(Document* doc)
-	{
-		auto world = doc->getWorld();
-		auto ghost = doc->getGhost();
-		auto prim = ghost->copy();
-
-		// Clear primitive flags and vertex z-coords
-		prim->setFlags(prim->getFlags() & ~BW_PRIMITIVE_GHOST_FLAG);
-
-		// Set material defaults
-		setPrimitiveDefaultMaterials(prim);
-
-		world->addPrimitive(prim);
-		return true;
-	}
-
-	bool clonePrimitive(Document* doc, uint32_t primitiveIndex)
-	{
-		auto world = doc->getWorld();
-
-		auto primitive = world->getPrimitive(primitiveIndex);
-
-		world->addPrimitive(primitive->copy());
-		return true;
-	}
-
-	bool cloneRotatedPrimitive(Document* doc, uint32_t primitiveIndex, float angle)
-	{
-		auto world = doc->getWorld();
-
-		auto primitive = world->getPrimitive(primitiveIndex);
-
-		world->addPrimitive(primitive->rotatedCopy(angle));
-		return true;
-	}
-
-	bool deletePrimitives(Document* doc, set<uint32_t> const& primitiveIndices)
-	{
-		vector<uint32_t> vec(primitiveIndices.begin(), primitiveIndices.end());
-		doc->getWorld()->removePrimitives(vec);
-		return true;
-	}
-
-	bool bakePrimitives(Document* doc, set<uint32_t> const& primitiveIndices)
-	{
-		vector<uint32_t> vec(primitiveIndices.begin(), primitiveIndices.end());
-		auto index = doc->getWorld()->convertPrimitivesToMesh(vec);
-
-		if (index != ~0u)
-		{
-			doc->setSelectedPrimitiveIndices({ index });
-			return true;
-		}
-		else
-		{
-			return false;
-		}
-	}
-
-	bool clipPrimitivesToGrid(Document* doc, set<uint32_t> const& primitiveIndices, float gridSize)
-	{
-		vector<uint32_t> vec(primitiveIndices.begin(), primitiveIndices.end());
-
-		auto world = doc->getWorld();
-
-		// Create a mesh primitive to clip
-		auto meshTemplateIndex = world->convertPrimitivesToMesh(vec);
-
-		if (meshTemplateIndex == ~0u)
-		{
-			return false;
-		}
-
-		auto meshTemplate = world->getPrimitive(meshTemplateIndex);
-
-		// Get all grid cells
-		auto templateBounds = meshTemplate->getBounds();
-		templateBounds.expandToGrid(wp::Vector2(gridSize, gridSize));
-
-		wp::Vector2 minExtent, maxExtent;
-		templateBounds.getExtents(minExtent, maxExtent);
-
-		int dx = (int)((maxExtent.x - minExtent.x) / gridSize);
-		int dy = (int)((maxExtent.y - minExtent.y) / gridSize);
-
-		vector<bw::core::Primitive*> createdPrimitives;
-
-		for (int y = 0; y < dy; y++)
-		{
-			for (int x = 0; x < dx; x++)
-			{
-				wp::Vector2 cellMin{ minExtent.x + x * gridSize, minExtent.y + y * gridSize };
-				wp::Vector2 cellMax = cellMin + gridSize;
-
-				wp::BoundingBox cellBounds(cellMin, cellMax - cellMin);
-
-				bw::core::Clipper clipper(world->getBorderVertexData(), {}, world.get());
-				auto clippedPolygons = clipper.clipToClippedPolygons({ meshTemplate }, bw::core::Primitive::Operation::Union, &cellBounds);
-			
-				if (!clippedPolygons.empty())
-				{
-					// Need to scale and recentre vertices appropriately
-					auto p = bw::core::MeshPrimitive::fromClippedPolygons(
-						bw::core::Primitive::Operation::Union, 
-						bw::core::Primitive::FillRule::EvenOdd, 
-						clippedPolygons);
-
-					createdPrimitives.push_back(p);
-				}
-			}
-		}
-
-		// Delete temporary mesh primitive
-		world->removePrimitive(meshTemplateIndex);
-
-		for (auto p : createdPrimitives)
-		{
-			world->addPrimitive(p);
-		}
-
-		return true;
-	}
-
-	bool setPrimitiveOperation(Document* doc, bw::core::Primitive* primitive, bw::core::Primitive::Operation op)
-	{
-		primitive->setOperation(op);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool setPrimitiveFillRule(Document* doc, bw::core::Primitive* primitive, bw::core::Primitive::FillRule fillRule)
-	{
-		primitive->setFillRule(fillRule);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool setPrimitiveOrientation(Document* doc, bw::core::Primitive* primitive, float orient)
-	{
-		primitive->setOrientation(orient);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool setPrimitiveSize(Document* doc, bw::core::Primitive* primitive, float size)
-	{
-		primitive->setSize(size, size);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool setPrimitivePosition(Document* doc, bw::core::Primitive* primitive, wp::Vector2 const& position)
-	{
-		primitive->setPosition(position);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool setPrimitiveTransformOffset(Document* doc, bw::core::Primitive* primitive, wp::Vector2 const& transformOrigin)
-	{
-		primitive->setTransformOffset(transformOrigin);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool setPrimitiveInfluenceOriginOffset(Document* doc, bw::core::Primitive* primitive, wp::Vector2 const& influenceOriginOffset)
-	{
-		primitive->setInfluenceEyeOriginOffset(influenceOriginOffset);
-		return true;
-	}
-
-	bool setPrimitiveFollowOrbitAngle(Document* doc, bw::core::Primitive* primitive, bool orient)
-	{
-		primitive->setFollowOrbitAngle(orient);
-		return true;
-	}
-
-	bool setPrimitiveLayer(Document* doc, bw::core::Primitive* primitive, uint8_t layer)
-	{
-		primitive->setLayer(layer);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool setPrimitivePriority(Document* doc, bw::core::Primitive* primitive, uint8_t priority)
-	{
-		primitive->setPriority(priority);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool increasePrimitivePriority(Document* doc, bw::core::Primitive* primitive)
-	{
-		int priority = (int)primitive->getPriority();
-		int newPriority = min(255, priority + 1);
-
-		primitive->setPriority((uint8_t)newPriority);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool decreasePrimitivePriority(Document* doc, bw::core::Primitive* primitive)
-	{
-		int priority = (int)primitive->getPriority();
-		int newPriority = max(0, priority - 1);
-
-		primitive->setPriority((uint8_t)newPriority);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool setPrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index, uint32_t eventType, bw::core::AnimatedPropertyEventTriggerType triggerType, float value)
-	{
-		primitive->updateAnimatedPropertyEvent(key, index, eventType, triggerType, value);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool deletePrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index)
-	{
-		primitive->removeAnimatedPropertyEvent(key, index);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool addKeyToInterpolator(Document* doc, string const& lerperName, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, float time, float value)
-	{
-		if (lerperName == "Animation")
-		{
-			primitive->addPointToAnimationInterpolator(key, time, value);
-		}
-		else if (lerperName == "Influence")
-		{
-			primitive->addPointToInfluenceInterpolator(key, time, value);
-		}
-		else
-		{
-			throw EditorException("Unknown interpolator name: " + lerperName);
-		}
-
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool removeKeyFromInterpolator(Document* doc, string const& lerperName, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index)
-	{
-		if (lerperName == "Animation")
-		{
-			primitive->removePointFromAnimationInterpolator(key, index);
-		}
-		else if (lerperName == "Influence")
-		{
-			primitive->removePointFromAnimationInterpolator(key, index);
-		}
-		else
-		{
-			throw EditorException("Unknown interpolator name: " + lerperName);
-		}
-
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool addAnimationKeyToPrimitive(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, float time, float value)
-	{
-		primitive->addAnimationValue(key, time, value);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool removeAnimationKeyFromPrimitive(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index)
-	{
-		primitive->removeAnimationValue(key, index);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE); 
-		return true;
-	}
-
-	bool updateAnimationKeyInInterpolator(Document* doc, string const& lerperName, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index, float time, float value)
-	{
-		if (lerperName == "Animation")
-		{
-			primitive->updatePointInAnimationInterpolator(key, index, time, value);
-		}
-		else if (lerperName == "Influence")
-		{
-			primitive->updatePointInInfluenceInterpolator(key, index, time, value);
-		}
-		else
-		{
-			throw EditorException("Unknown interpolator name: " + lerperName);
-		}
-
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE); 
-		return true;
-	}
-
-	bool setInterpolatorEasing(Document* doc, std::string const& lerperName, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index, bw::core::Easing easing)
-	{
-		if (lerperName == "Animation")
-		{
-			primitive->setAnimationEasing(key, index, easing);
-		}
-		else if (lerperName == "Influence")
-		{
-			primitive->setInfluenceEasing(key, index, easing);
-		}
-		else
-		{
-			throw EditorException("Unknown interpolator name: " + lerperName);
-		}
-
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE); 
-		return true;
-	}
-
-	bool addTransform(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key)
-	{
-		auto newTransform = bw::core::tTransform::makePassthroughPrevious();
-		switch (key)
-		{
-		case bw::core::VertexTransformer::Key::Scale:
-			primitive->addScaleTransform(newTransform);
-			break;
-
-		case bw::core::VertexTransformer::Key::Angle:
-			primitive->addAngleTransform(newTransform);
-			break;
-
-		case bw::core::VertexTransformer::Key::OrbitAngle:
-			primitive->addOrbitAngleTransform(newTransform);
-			break;
-
-		case bw::core::VertexTransformer::Key::OrbitDistance:
-			primitive->addOrbitDistanceTransform(newTransform);
-			break;
-		}
-
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE); 
-		return true;
-	}
-
-	bool removeTransform(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index)
-	{
-		switch (key)
-		{
-		case bw::core::VertexTransformer::Key::Scale:
-			primitive->removeScaleTransform(index);
-			break;
-
-		case bw::core::VertexTransformer::Key::Angle:
-			primitive->removeAngleTransform(index);
-			break;
-
-		case bw::core::VertexTransformer::Key::OrbitAngle:
-			primitive->removeOrbitAngleTransform(index);
-			break;
-
-		case bw::core::VertexTransformer::Key::OrbitDistance:
-			primitive->removeOrbitDistanceTransform(index);
-			break;
-		}
-
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE); 
-		return true;
-	}
-
-	bool swapTransforms(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index1, uint32_t index2)
-	{
-		switch (key)
-		{
-		case bw::core::VertexTransformer::Key::Scale:
-			primitive->swapScaleTransforms(index1, index2);
-			break;
-
-		case bw::core::VertexTransformer::Key::Angle:
-			primitive->swapAngleTransforms(index1, index2);
-			break;
-
-		case bw::core::VertexTransformer::Key::OrbitAngle:
-			primitive->swapOrbitAngleTransforms(index1, index2);
-			break;
-
-		case bw::core::VertexTransformer::Key::OrbitDistance:
-			primitive->swapOrbitDistanceTransforms(index1, index2);
-			break;
-		}
-
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE); 
-		return true;
-	}
-
-	bool setTransformOperand(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t operandIndex, bw::core::tTransform::OperandType operand)
-	{
-		primitive->setTransformOperand(key, transformIndex, operandIndex, operand);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-		return true;
-	}
-
-	bool setTransformInput(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t inputIndex, bw::core::InputType input)
-	{
-		primitive->setTransformInput(key, transformIndex, inputIndex, input);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE); 
-		return true;
-	}
-
-	bool setTransformConstant(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t constantIndex, float constant)
-	{
-		primitive->setTransformConstant(key, transformIndex, constantIndex, constant);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE); 
-		return true;
-	}
-
-	bool setTransformFnMultiplier(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t fnMulIndex, float value)
-	{
-		primitive->setTransformFnMultiplier(key, transformIndex, fnMulIndex, value);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE); 
-		return true;
-	}
-
-	bool setTransformTriggerLine(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t indexIndex, uint32_t index)
-	{
-		primitive->setTransformTriggerLineIndex(key, transformIndex, indexIndex, index);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE); 
-		return true;
-	}
-
-	bool setTransformOperation(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, bw::core::tTransform::Operation operation)
-	{
-		primitive->setTransformOperation(key, transformIndex, operation);
-		generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE); 
-		return true;
-	}
-
-} // editor
+  world->setName(name);
+  return true;
+}
+
+bool setWorldDescription(Document* doc, string const& desc) {
+  auto world = doc->getWorld();
+
+  world->setDescription(desc);
+  return true;
+}
+
+bool setPlayerStartPosition(Document* doc, wp::Vector2 const& pos) {
+  auto world = doc->getWorld();
+
+  world->setPlayerStartPosition(pos);
+  return true;
+}
+
+bool setPlayerStartAngle(Document* doc, float angle) {
+  auto world = doc->getWorld();
+
+  world->setPlayerStartAngle(angle);
+  return true;
+}
+
+bool selectWorldVertex(Document* doc, uint32_t worldVertexIndex) {
+  doc->setSelectedWorldVertexIndex(worldVertexIndex);
+  return false;
+}
+
+bool selectTriggerLine(Document* doc, uint32_t triggerLineIndex) {
+  doc->setSelectedTriggerLineIndex(triggerLineIndex);
+  return false;
+}
+
+bool deleteTriggerLine(Document* doc, uint32_t triggerLineIndex) {
+  doc->getWorld()->removeTriggerLine(triggerLineIndex);
+  return true;
+}
+
+bool selectPrimitive(Document* doc, uint32_t primitiveIndex) {
+  doc->setSelectedPrimitiveIndices({primitiveIndex});
+  return false;
+}
+
+bool togglePrimitiveSelected(Document* doc, uint32_t primitiveIndex) {
+  if (doc->indexInSelection(primitiveIndex)) {
+    doc->removeSelectedPrimitiveIndex(primitiveIndex);
+  } else {
+    doc->addSelectedPrimitiveIndex(primitiveIndex);
+  }
+
+  return false;
+}
+
+bool clearSelections(Document* doc) {
+  doc->clearSelections();
+
+  return false;
+}
+
+void setPrimitiveDefaultMaterial(uint32_t materialIndex, bw::core::MaterialDefinitionData* materialDefinition) {
+  auto const& material = bw::common::MaterialNames[materialIndex];
+  auto numParams = (uint32_t)get<1>(material);
+
+  for (uint32_t i = 0; i < numParams; ++i) {
+    materialDefinition->params[i] = get<3>(bw::common::MaterialParams[materialIndex][i]);
+  }
+
+  auto const& defaultColour = get<2>(bw::common::MaterialNames[materialIndex]);
+
+  for (uint32_t i = 0; i < 3; ++i) {
+    materialDefinition->baseColour[i] = defaultColour[i];
+  }
+}
+
+void setPrimitiveDefaultMaterials(bw::core::Primitive* prim) {
+  auto properties = prim->getProperties();
+
+  setPrimitiveDefaultMaterial(properties.floorMaterialIndex, &properties.floorMaterialDef.data);
+  setPrimitiveDefaultMaterial(properties.ceilingMaterialIndex, &properties.ceilingMaterialDef.data);
+  setPrimitiveDefaultMaterial(properties.wallMaterialIndex, &properties.wallMaterialDef.data);
+
+  prim->setProperties(properties);
+}
+
+bool createPrimitiveFromGhost(Document* doc) {
+  auto world = doc->getWorld();
+  auto ghost = doc->getGhost();
+  auto prim = ghost->copy();
+
+  // Clear primitive flags and vertex z-coords
+  prim->setFlags(prim->getFlags() & ~BW_PRIMITIVE_GHOST_FLAG);
+
+  // Set material defaults
+  setPrimitiveDefaultMaterials(prim);
+
+  world->addPrimitive(prim);
+  return true;
+}
+
+bool clonePrimitive(Document* doc, uint32_t primitiveIndex) {
+  auto world = doc->getWorld();
+
+  auto primitive = world->getPrimitive(primitiveIndex);
+
+  world->addPrimitive(primitive->copy());
+  return true;
+}
+
+bool cloneRotatedPrimitive(Document* doc, uint32_t primitiveIndex, float angle) {
+  auto world = doc->getWorld();
+
+  auto primitive = world->getPrimitive(primitiveIndex);
+
+  world->addPrimitive(primitive->rotatedCopy(angle));
+  return true;
+}
+
+bool deletePrimitives(Document* doc, set<uint32_t> const& primitiveIndices) {
+  vector<uint32_t> vec(primitiveIndices.begin(), primitiveIndices.end());
+  doc->getWorld()->removePrimitives(vec);
+  return true;
+}
+
+bool bakePrimitives(Document* doc, set<uint32_t> const& primitiveIndices) {
+  vector<uint32_t> vec(primitiveIndices.begin(), primitiveIndices.end());
+  auto index = doc->getWorld()->convertPrimitivesToMesh(vec);
+
+  if (index != ~0u) {
+    doc->setSelectedPrimitiveIndices({index});
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool clipPrimitivesToGrid(Document* doc, set<uint32_t> const& primitiveIndices, float gridSize) {
+  vector<uint32_t> vec(primitiveIndices.begin(), primitiveIndices.end());
+
+  auto world = doc->getWorld();
+
+  // Create a mesh primitive to clip
+  auto meshTemplateIndex = world->convertPrimitivesToMesh(vec);
+
+  if (meshTemplateIndex == ~0u) {
+    return false;
+  }
+
+  auto meshTemplate = world->getPrimitive(meshTemplateIndex);
+
+  // Get all grid cells
+  auto templateBounds = meshTemplate->getBounds();
+  templateBounds.expandToGrid(wp::Vector2(gridSize, gridSize));
+
+  wp::Vector2 minExtent, maxExtent;
+  templateBounds.getExtents(minExtent, maxExtent);
+
+  int dx = (int)((maxExtent.x - minExtent.x) / gridSize);
+  int dy = (int)((maxExtent.y - minExtent.y) / gridSize);
+
+  vector<bw::core::Primitive*> createdPrimitives;
+
+  for (int y = 0; y < dy; y++) {
+    for (int x = 0; x < dx; x++) {
+      wp::Vector2 cellMin{minExtent.x + x * gridSize, minExtent.y + y * gridSize};
+      wp::Vector2 cellMax = cellMin + gridSize;
+
+      wp::BoundingBox cellBounds(cellMin, cellMax - cellMin);
+
+      bw::core::Clipper clipper(world->getBorderVertexData(), {}, world.get());
+      auto clippedPolygons = clipper.clipToClippedPolygons({meshTemplate}, bw::core::Primitive::Operation::Union, &cellBounds);
+
+      if (!clippedPolygons.empty()) {
+        // Need to scale and recentre vertices appropriately
+        auto p = bw::core::MeshPrimitive::fromClippedPolygons(
+            bw::core::Primitive::Operation::Union,
+            bw::core::Primitive::FillRule::EvenOdd,
+            clippedPolygons);
+
+        createdPrimitives.push_back(p);
+      }
+    }
+  }
+
+  // Delete temporary mesh primitive
+  world->removePrimitive(meshTemplateIndex);
+
+  for (auto p : createdPrimitives) {
+    world->addPrimitive(p);
+  }
+
+  return true;
+}
+
+bool setPrimitiveOperation(Document* doc, bw::core::Primitive* primitive, bw::core::Primitive::Operation op) {
+  primitive->setOperation(op);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setPrimitiveFillRule(Document* doc, bw::core::Primitive* primitive, bw::core::Primitive::FillRule fillRule) {
+  primitive->setFillRule(fillRule);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setPrimitiveOrientation(Document* doc, bw::core::Primitive* primitive, float orient) {
+  primitive->setOrientation(orient);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setPrimitiveSize(Document* doc, bw::core::Primitive* primitive, float size) {
+  primitive->setSize(size, size);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setPrimitivePosition(Document* doc, bw::core::Primitive* primitive, wp::Vector2 const& position) {
+  primitive->setPosition(position);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setPrimitiveTransformOffset(Document* doc, bw::core::Primitive* primitive, wp::Vector2 const& transformOrigin) {
+  primitive->setTransformOffset(transformOrigin);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setPrimitiveInfluenceOriginOffset(Document* doc, bw::core::Primitive* primitive, wp::Vector2 const& influenceOriginOffset) {
+  primitive->setInfluenceEyeOriginOffset(influenceOriginOffset);
+  return true;
+}
+
+bool setPrimitiveFollowOrbitAngle(Document* doc, bw::core::Primitive* primitive, bool orient) {
+  primitive->setFollowOrbitAngle(orient);
+  return true;
+}
+
+bool setPrimitiveLayer(Document* doc, bw::core::Primitive* primitive, uint8_t layer) {
+  primitive->setLayer(layer);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setPrimitivePriority(Document* doc, bw::core::Primitive* primitive, uint8_t priority) {
+  primitive->setPriority(priority);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool increasePrimitivePriority(Document* doc, bw::core::Primitive* primitive) {
+  int priority = (int)primitive->getPriority();
+  int newPriority = min(255, priority + 1);
+
+  primitive->setPriority((uint8_t)newPriority);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool decreasePrimitivePriority(Document* doc, bw::core::Primitive* primitive) {
+  int priority = (int)primitive->getPriority();
+  int newPriority = max(0, priority - 1);
+
+  primitive->setPriority((uint8_t)newPriority);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setPrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index, uint32_t eventType, bw::core::AnimatedPropertyEventTriggerType triggerType, float value) {
+  primitive->updateAnimatedPropertyEvent(key, index, eventType, triggerType, value);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool deletePrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index) {
+  primitive->removeAnimatedPropertyEvent(key, index);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool addKeyToInterpolator(Document* doc, string const& lerperName, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, float time, float value) {
+  if (lerperName == "Animation") {
+    primitive->addPointToAnimationInterpolator(key, time, value);
+  } else if (lerperName == "Influence") {
+    primitive->addPointToInfluenceInterpolator(key, time, value);
+  } else {
+    throw EditorException("Unknown interpolator name: " + lerperName);
+  }
+
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool removeKeyFromInterpolator(Document* doc, string const& lerperName, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index) {
+  if (lerperName == "Animation") {
+    primitive->removePointFromAnimationInterpolator(key, index);
+  } else if (lerperName == "Influence") {
+    primitive->removePointFromAnimationInterpolator(key, index);
+  } else {
+    throw EditorException("Unknown interpolator name: " + lerperName);
+  }
+
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool addAnimationKeyToPrimitive(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, float time, float value) {
+  primitive->addAnimationValue(key, time, value);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool removeAnimationKeyFromPrimitive(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index) {
+  primitive->removeAnimationValue(key, index);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool updateAnimationKeyInInterpolator(Document* doc, string const& lerperName, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index, float time, float value) {
+  if (lerperName == "Animation") {
+    primitive->updatePointInAnimationInterpolator(key, index, time, value);
+  } else if (lerperName == "Influence") {
+    primitive->updatePointInInfluenceInterpolator(key, index, time, value);
+  } else {
+    throw EditorException("Unknown interpolator name: " + lerperName);
+  }
+
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setInterpolatorEasing(Document* doc, std::string const& lerperName, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index, bw::core::Easing easing) {
+  if (lerperName == "Animation") {
+    primitive->setAnimationEasing(key, index, easing);
+  } else if (lerperName == "Influence") {
+    primitive->setInfluenceEasing(key, index, easing);
+  } else {
+    throw EditorException("Unknown interpolator name: " + lerperName);
+  }
+
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool addTransform(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key) {
+  auto newTransform = bw::core::tTransform::makePassthroughPrevious();
+  switch (key) {
+    case bw::core::VertexTransformer::Key::Scale:
+      primitive->addScaleTransform(newTransform);
+      break;
+
+    case bw::core::VertexTransformer::Key::Angle:
+      primitive->addAngleTransform(newTransform);
+      break;
+
+    case bw::core::VertexTransformer::Key::OrbitAngle:
+      primitive->addOrbitAngleTransform(newTransform);
+      break;
+
+    case bw::core::VertexTransformer::Key::OrbitDistance:
+      primitive->addOrbitDistanceTransform(newTransform);
+      break;
+  }
+
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool removeTransform(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index) {
+  switch (key) {
+    case bw::core::VertexTransformer::Key::Scale:
+      primitive->removeScaleTransform(index);
+      break;
+
+    case bw::core::VertexTransformer::Key::Angle:
+      primitive->removeAngleTransform(index);
+      break;
+
+    case bw::core::VertexTransformer::Key::OrbitAngle:
+      primitive->removeOrbitAngleTransform(index);
+      break;
+
+    case bw::core::VertexTransformer::Key::OrbitDistance:
+      primitive->removeOrbitDistanceTransform(index);
+      break;
+  }
+
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool swapTransforms(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index1, uint32_t index2) {
+  switch (key) {
+    case bw::core::VertexTransformer::Key::Scale:
+      primitive->swapScaleTransforms(index1, index2);
+      break;
+
+    case bw::core::VertexTransformer::Key::Angle:
+      primitive->swapAngleTransforms(index1, index2);
+      break;
+
+    case bw::core::VertexTransformer::Key::OrbitAngle:
+      primitive->swapOrbitAngleTransforms(index1, index2);
+      break;
+
+    case bw::core::VertexTransformer::Key::OrbitDistance:
+      primitive->swapOrbitDistanceTransforms(index1, index2);
+      break;
+  }
+
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setTransformOperand(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t operandIndex, bw::core::tTransform::OperandType operand) {
+  primitive->setTransformOperand(key, transformIndex, operandIndex, operand);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setTransformInput(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t inputIndex, bw::core::InputType input) {
+  primitive->setTransformInput(key, transformIndex, inputIndex, input);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setTransformConstant(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t constantIndex, float constant) {
+  primitive->setTransformConstant(key, transformIndex, constantIndex, constant);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setTransformFnMultiplier(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t fnMulIndex, float value) {
+  primitive->setTransformFnMultiplier(key, transformIndex, fnMulIndex, value);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setTransformTriggerLine(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t indexIndex, uint32_t index) {
+  primitive->setTransformTriggerLineIndex(key, transformIndex, indexIndex, index);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool setTransformOperation(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, bw::core::tTransform::Operation operation) {
+  primitive->setTransformOperation(key, transformIndex, operation);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+}  // namespace editor

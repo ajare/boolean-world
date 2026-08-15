@@ -1,14 +1,12 @@
 #pragma once
 
-namespace floored
-{
+namespace floored {
 
-	enum struct SelectionType
-	{
-		None,
-		PolygonEdge,
-		GraphEdge,
-		Face
-	};
+enum struct SelectionType {
+  None,
+  PolygonEdge,
+  GraphEdge,
+  Face
+};
 
-} // floored
+}  // namespace floored

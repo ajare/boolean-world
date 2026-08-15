@@ -12,47 +12,40 @@
 #include "core/Triangulation.h"
 #include "core/Stats.h"
 
+namespace bw {
+namespace core {
+class World;
 
-namespace bw
-{
-	namespace core
-	{
-		class World;
+struct TriangulationData {
+  ClosedPolygon triangulation;
+  uint32_t primitiveIndex;
+};
 
-		struct TriangulationData
-		{
-			ClosedPolygon triangulation;
-			uint32_t primitiveIndex;
-		};
+class BW_API Triangulator {
+  World const* mwWorld;
 
-		class BW_API Triangulator
-		{
-			World const* mwWorld;
+  bool mGlobalBounds, mPerTriangleBounds, mRemoveDuplicates;
 
-			bool mGlobalBounds, mPerTriangleBounds, mRemoveDuplicates;
+  wp::AccelerationGrid* mGrid;
 
-			wp::AccelerationGrid* mGrid;
+  Triangulation mTriangulation;
 
-			Triangulation mTriangulation;
+  std::map<std::pair<float, float>, uint32_t> mTriCentreLookup;
 
-			std::map<std::pair<float, float>, uint32_t> mTriCentreLookup;
+private:
+  static std::vector<std::array<float, 2>> convertPolygon(ClosedPolygon const& polygon);
 
-		private:
+  void processPolygon(ClippedPolygon const& clippedPolygon, std::vector<TriangulationData>& triangulationData, VertexList& vertices, TriangulationStats* stats);
 
-			static std::vector<std::array<float, 2>> convertPolygon(ClosedPolygon const& polygon);
+public:
+  explicit Triangulator(World const* world, bool globalBounds, bool perTriangleBounds, bool removeDuplicates, wp::AccelerationGrid* grid = nullptr);
 
-			void processPolygon(ClippedPolygon const& clippedPolygon, std::vector<TriangulationData>& triangulationData, VertexList& vertices, TriangulationStats* stats);
+  Triangulation const& getTriangulation() const;
 
-		public:
+  void _triangulate(std::vector<TriangulationData> const& triangulationData, ClosedPolygon const& vertices, TriangulationStats* stats);
 
-			explicit Triangulator(World const* world, bool globalBounds, bool perTriangleBounds,bool removeDuplicates, wp::AccelerationGrid* grid = nullptr);
+  TriangulationStats execute(std::vector<ClippedPolygon> const& polygons);
+};
 
-			Triangulation const& getTriangulation() const;
-
-			void _triangulate(std::vector<TriangulationData> const& triangulationData, ClosedPolygon const& vertices, TriangulationStats* stats);
-
-			TriangulationStats execute(std::vector<ClippedPolygon> const& polygons);
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

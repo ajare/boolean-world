@@ -3,7 +3,7 @@
 #include <format>
 
 #pragma warning(push)
-#pragma warning(disable: 4307)
+#pragma warning(disable : 4307)
 #include <spdlog/spdlog.h>
 #pragma warning(pop)
 
@@ -14,159 +14,128 @@
 
 extern spdlog::logger* gLogger;
 
+namespace floored {
+using namespace std;
 
-namespace floored
-{
-	using namespace std;
+Document* Document::msInstance = nullptr;
 
-	Document* Document::msInstance = nullptr;
+Document::Document() {
+}
 
-	Document::Document()
-	{
-	}
+Document::~Document() {
+}
 
-	Document::~Document()
-	{
-	}
+Document* Document::instance() {
+  if (!msInstance) {
+    msInstance = new Document();
+  }
 
-	Document* Document::instance()
-	{
-		if (!msInstance)
-		{
-			msInstance = new Document();
-		}
+  return msInstance;
+}
 
-		return msInstance;
-	}
+bool Document::isActive() const {
+  return mWorld != nullptr;
+}
 
-	bool Document::isActive() const
-	{
-		return mWorld != nullptr;
-	}
+shared_ptr<bw::core::World> Document::getWorld() {
+  return mWorld;
+}
 
-	shared_ptr<bw::core::World> Document::getWorld()
-	{
-		return mWorld;
-	}
+std::vector<bw::core::Clipper2Polygon> const& Document::getPolygons() {
+  return mPolygons;
+}
 
-	std::vector<bw::core::Clipper2Polygon> const& Document::getPolygons()
-	{
-		return mPolygons;
-	}
+expr::PSLG const& Document::getPSLG() const {
+  return mPSLG;
+}
 
-	expr::PSLG const& Document::getPSLG() const
-	{
-		return mPSLG;
-	}
+vector<expr::Cycle> const& Document::getCycles() const {
+  return mCycles;
+}
 
-	vector<expr::Cycle> const& Document::getCycles() const
-	{
-		return mCycles;
-	}
+vector<expr::PolygonNode> const& Document::getHierarchy() const {
+  return mHierarchy;
+}
 
-	vector<expr::PolygonNode> const& Document::getHierarchy() const
-	{
-		return mHierarchy;
-	}
+std::vector<expr::Face> const& Document::getFaces() const {
+  return mFaces;
+}
 
-	std::vector<expr::Face> const& Document::getFaces() const
-	{
-		return mFaces;
-	}
+vector<expr::FaceTriangle> const& Document::getFaceTriangles() const {
+  return mFaceTriangles;
+}
 
-	vector<expr::FaceTriangle> const& Document::getFaceTriangles() const
-	{
-		return mFaceTriangles;
-	}
+void Document::buildExpr() {
+  if (!mWorld) {
+    return;
+  }
 
-	void Document::buildExpr()
-	{
-		if (!mWorld)
-		{
-			return;
-		}
+  auto primitives = mWorld->getPrimitives();
 
-		auto primitives = mWorld->getPrimitives();
+  mPolygons.clear();
 
-		mPolygons.clear();
-		
-		for (auto prim : primitives)
-		{
-			auto polygons = bw::core::ClipperUtils::convertPrimitiveToClipperPolygons(prim);
+  for (auto prim : primitives) {
+    auto polygons = bw::core::ClipperUtils::convertPrimitiveToClipperPolygons(prim);
 
-			mPolygons.reserve(mPolygons.size() + distance(polygons.begin(), polygons.end()));
-			mPolygons.insert(mPolygons.end(), polygons.begin(), polygons.end());
-		}
+    mPolygons.reserve(mPolygons.size() + distance(polygons.begin(), polygons.end()));
+    mPolygons.insert(mPolygons.end(), polygons.begin(), polygons.end());
+  }
 
-		mPSLG = expr::BuildPSLG(mPolygons, primitives);
+  mPSLG = expr::BuildPSLG(mPolygons, primitives);
 
-		mCycles = expr::ExtractMinimalCycles(mPSLG);
-		mHierarchy = expr::BuildPolygonHierarchy(mPSLG, mCycles);
+  mCycles = expr::ExtractMinimalCycles(mPSLG);
+  mHierarchy = expr::BuildPolygonHierarchy(mPSLG, mCycles);
 
- 		mFaces = expr::BuildFaces(mHierarchy, mCycles);
-		mFaces = expr::CalculateOwningPolygons(mFaces, mPolygons, mCycles, mPSLG, primitives);
-		
-		mFaceTriangles = expr::BuildFaceTriangles(mFaces, mCycles, mPSLG);
-	}
+  mFaces = expr::BuildFaces(mHierarchy, mCycles);
+  mFaces = expr::CalculateOwningPolygons(mFaces, mPolygons, mCycles, mPSLG, primitives);
 
-	bool Document::openWorld(string const& filepath)
-	{
-		auto path = filesystem::path(filepath);
-		auto ext = path.extension().string();
-		transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+  mFaceTriangles = expr::BuildFaceTriangles(mFaces, mCycles, mPSLG);
+}
 
-		if (ext == ".yaml")
-		{
-			auto ser = shared_ptr<bw::core::YamlSerializer>(bw::core::YamlSerializer::fromFile(filepath));
+bool Document::openWorld(string const& filepath) {
+  auto path = filesystem::path(filepath);
+  auto ext = path.extension().string();
+  transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-			try
-			{
-				ser->deserialize();
-			}
-			catch (exception& e)
-			{
-				gLogger->error(e.what());
-				return false;
-			}
+  if (ext == ".yaml") {
+    auto ser = shared_ptr<bw::core::YamlSerializer>(bw::core::YamlSerializer::fromFile(filepath));
 
-			mWorld = make_shared<bw::core::World>(1.0f, -1.0f);
+    try {
+      ser->deserialize();
+    } catch (exception& e) {
+      gLogger->error(e.what());
+      return false;
+    }
 
-			auto workData = bw::core::SerializationWorkData{ 512.0f };
+    mWorld = make_shared<bw::core::World>(1.0f, -1.0f);
 
-			if (mWorld->deserialize(ser, workData))
-			{
-				auto const& warnings = mWorld->getDeserializationWarnings();
+    auto workData = bw::core::SerializationWorkData{512.0f};
 
-				if (!warnings.empty())
-				{
-					for (auto const& warning : warnings)
-					{
-						gLogger->warn(warning);
-					}
-				}
+    if (mWorld->deserialize(ser, workData)) {
+      auto const& warnings = mWorld->getDeserializationWarnings();
 
-				buildExpr();
-				return true;
-			}
-			else
-			{
-				auto const& errors = mWorld->getDeserializationErrors();
+      if (!warnings.empty()) {
+        for (auto const& warning : warnings) {
+          gLogger->warn(warning);
+        }
+      }
 
-				if (!errors.empty())
-				{
-					for (auto const& error : errors)
-					{
-						gLogger->error(error);
-					}
-				}
+      buildExpr();
+      return true;
+    } else {
+      auto const& errors = mWorld->getDeserializationErrors();
 
-				return false;
-			}
-		}
-		else
-		{
-			return false;
-		}
-	}
+      if (!errors.empty()) {
+        for (auto const& error : errors) {
+          gLogger->error(error);
+        }
+      }
 
-} // floored
+      return false;
+    }
+  } else {
+    return false;
+  }
+}
+
+}  // namespace floored

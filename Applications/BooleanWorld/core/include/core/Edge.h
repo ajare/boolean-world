@@ -1,15 +1,11 @@
 #pragma once
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+struct Edge {
+  bool isOuterEdge{true};
+};
 
-		struct Edge
-		{
-			bool isOuterEdge{ true };
-		};
-
-	} // bw
-} // core
+}  // namespace core
+}  // namespace bw

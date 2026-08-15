@@ -4,11 +4,9 @@
 
 #include "Document.h"
 
+namespace floored {
+void openWorld(Document* doc);
 
-namespace floored
-{
-	void openWorld(Document* doc);
+void exitApp(Document* doc);
 
-	void exitApp(Document* doc);
-
-} // floored
+}  // namespace floored

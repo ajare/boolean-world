@@ -13,220 +13,210 @@
 #include "core/TransformFlow.h"
 #include "core/ValueCaptureMode.h"
 
-namespace bw
-{
-	namespace core
-	{
-		class BW_API VertexTransformer : public Serializable
-		{
-		public:
+namespace bw {
+namespace core {
+class BW_API VertexTransformer : public Serializable {
+public:
+  enum struct Key {
+    Scale,
+    Angle,
+    OrbitAngle,
+    OrbitDistance,
+    COUNT
+  };
 
-			enum struct Key
-			{
-				Scale,
-				Angle,
-				OrbitAngle,
-				OrbitDistance,
-				COUNT
-			};
+private:
+  AnimatedProperty mAnimators[(int)Key::COUNT];
 
-		private:
+  bool mFollowOrbitAngle;
 
-			AnimatedProperty mAnimators[(int)Key::COUNT];
+  float mCurValues[(int)Key::COUNT];
 
-			bool mFollowOrbitAngle;
+  float mPrevValues[(int)Key::COUNT];
 
-			float mCurValues[(int)Key::COUNT];
+  bool mCacheStaticness, mIsStatic;
 
-			float mPrevValues[(int)Key::COUNT];
+private:
+  bool childrenModified() const override;
 
-			bool mCacheStaticness, mIsStatic;
+  bool checkAnimatedPropertyEvent(AnimatedPropertyEvent const& event, float oldValue, float newValue) const;
 
-		private:
+protected:
+  void copyFrom(VertexTransformer const& other);
 
-			bool childrenModified() const override;
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			bool checkAnimatedPropertyEvent(AnimatedPropertyEvent const& event, float oldValue, float newValue) const;
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-		protected:
+  void removeTransform(std::vector<tTransform>& flow, uint32_t index);
 
-			void copyFrom(VertexTransformer const& other);
+  float captureAndCacheAnimationValue(VertexTransformer::Key key, bool* cacheChanged) const;
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+public:
+  VertexTransformer();
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  VertexTransformer(VertexTransformer const& other);
 
-			void removeTransform(std::vector<tTransform>& flow, uint32_t index);
+  VertexTransformer& operator=(VertexTransformer const& other);
 
-			float captureAndCacheAnimationValue(VertexTransformer::Key key, bool* cacheChanged) const;
+  bool isStatic() const;
 
-		public:
+  void cacheStaticness(bool cache);
 
-			VertexTransformer();
+  void resetAnimatorCaptures();
 
-			VertexTransformer(VertexTransformer const& other);
+  void resetAnimator(Key key);
 
-			VertexTransformer& operator=(VertexTransformer const& other);
+  //
+  // Transform flows
+  //
+  void setTransformOperand(Key key, uint32_t index, uint32_t operandIndex, tTransform::OperandType operand);
 
-			bool isStatic() const;
+  void setTransformInput(Key key, uint32_t index, uint32_t inputIndex, InputType input);
 
-			void cacheStaticness(bool cache);
+  void setTransformConstant(Key key, uint32_t index, uint32_t constantIndex, float constant);
 
-			void resetAnimatorCaptures();
+  void setTransformFnMultiplier(Key key, uint32_t index, uint32_t fnMulIndex, float value);
 
-			void resetAnimator(Key key);
+  void setTransformTriggerLineIndex(Key key, uint32_t index, uint32_t indexIndex, uint32_t value);
 
-			//
-			// Transform flows
-			//
-			void setTransformOperand(Key key, uint32_t index, uint32_t operandIndex, tTransform::OperandType operand);
+  void setTransformOperation(Key key, uint32_t index, tTransform::Operation operation);
 
-			void setTransformInput(Key key, uint32_t index, uint32_t inputIndex, InputType input);
+  void addTransform(Key key, tTransform const& transform);
 
-			void setTransformConstant(Key key, uint32_t index, uint32_t constantIndex, float constant);
+  void removeTransform(Key key, uint32_t index);
 
-			void setTransformFnMultiplier(Key key, uint32_t index, uint32_t fnMulIndex, float value);
+  void swapTransforms(Key key, uint32_t index1, uint32_t index2);
 
-			void setTransformTriggerLineIndex(Key key, uint32_t index, uint32_t indexIndex, uint32_t value);
+  void setScaleTransforms(std::vector<tTransform> const& transforms);
 
-			void setTransformOperation(Key key, uint32_t index, tTransform::Operation operation);
+  std::vector<tTransform> const& getScaleTransforms() const;
 
-			void addTransform(Key key, tTransform const& transform);
+  void setAngleTransforms(std::vector<tTransform> const& transforms);
 
-			void removeTransform(Key key, uint32_t index);
+  std::vector<tTransform> const& getAngleTransforms() const;
 
-			void swapTransforms(Key key, uint32_t index1, uint32_t index2);
+  void setOrbitAngleTransforms(std::vector<tTransform> const& transforms);
 
-			void setScaleTransforms(std::vector<tTransform> const& transforms);
+  std::vector<tTransform> const& getOrbitAngleTransforms() const;
 
-			std::vector<tTransform> const& getScaleTransforms() const;
+  void setOrbitDistanceTransforms(std::vector<tTransform> const& transforms);
 
-			void setAngleTransforms(std::vector<tTransform> const& transforms);
+  std::vector<tTransform> const& getOrbitDistanceTransforms() const;
 
-			std::vector<tTransform> const& getAngleTransforms() const;
+  void updateTransformTriggerLineIndices(std::map<uint32_t, uint32_t> const& mapping);
 
-			void setOrbitAngleTransforms(std::vector<tTransform> const& transforms);
+  void setFollowOrbitAngle(bool follow);
 
-			std::vector<tTransform> const& getOrbitAngleTransforms() const;
+  bool getFollowOrbitAngle() const;
 
-			void setOrbitDistanceTransforms(std::vector<tTransform> const& transforms);
+  //
+  // Animation interpolators
+  //
+  void setAnimationInterpolatorDefaultStructure(VertexTransformer::Key key, std::vector<Interpolator<float>::Point> const& points, std::vector<Interpolator<float>::Segment> const& segments, bool setToCurrent);
 
-			std::vector<tTransform> const& getOrbitDistanceTransforms() const;
+  void setAnimationValues(Key key, std::vector<std::pair<float, float>> const& values);
 
-			void updateTransformTriggerLineIndices(std::map<uint32_t, uint32_t> const& mapping);
+  std::vector<Interpolator<float>::Point> const& getAnimationValues(Key key) const;
 
-			void setFollowOrbitAngle(bool follow);
+  uint32_t getNumAnimationValues(Key key) const;
 
-			bool getFollowOrbitAngle() const;
+  void updateAnimationValue(Key key, uint32_t index, float time, float const& value);
 
-			//
-			// Animation interpolators
-			//
-			void setAnimationInterpolatorDefaultStructure(VertexTransformer::Key key, std::vector<Interpolator<float>::Point> const& points, std::vector<Interpolator<float>::Segment> const& segments, bool setToCurrent);
+  void addAnimationValue(Key key, float time, float value);
 
-			void setAnimationValues(Key key, std::vector<std::pair<float, float>> const& values);
+  void removeAnimationValue(Key key, uint32_t index);
 
-			std::vector<Interpolator<float>::Point> const& getAnimationValues(Key key) const;
+  float getAnimationValue(Key key, float time) const;
 
-			uint32_t getNumAnimationValues(Key key) const;
+  void getAnimationScale(Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax);
 
-			void updateAnimationValue(Key key, uint32_t index, float time, float const& value);
+  void setAnimationEasing(Key key, uint32_t segment, Easing easing);
 
-			void addAnimationValue(Key key, float time, float value);
+  std::vector<Interpolator<float>::Segment> const& getAnimationSegments(Key key) const;
 
-			void removeAnimationValue(Key key, uint32_t index);
+  std::vector<std::vector<Interpolator<float>::Point>> renderAnimation(Key key, float resolution) const;
 
-			float getAnimationValue(Key key, float time) const;
+  void addPointToAnimationInterpolator(Key key, float time, float value);
 
-			void getAnimationScale(Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax);
+  void removePointFromAnimationInterpolator(Key key, uint32_t index);
 
-			void setAnimationEasing(Key key, uint32_t segment, Easing easing);
+  void updatePointInAnimationInterpolator(Key key, uint32_t index, float time, float value);
 
-			std::vector<Interpolator<float>::Segment> const& getAnimationSegments(Key key) const;
+  void setAnimationInterpolatorEasing(Key key, uint32_t index, Easing easing);
 
-			std::vector<std::vector<Interpolator<float>::Point>> renderAnimation(Key key, float resolution) const;
+  Interpolator<float> const& getAnimationInterpolator(Key key) const;
 
-			void addPointToAnimationInterpolator(Key key, float time, float value);
+  Interpolator<float>& getAnimationInterpolator(Key key);
 
-			void removePointFromAnimationInterpolator(Key key, uint32_t index);
+  //
+  // Influence interpolators
+  //
+  void setInfluenceValues(Key key, std::vector<std::pair<float, float>> const& values);
 
-			void updatePointInAnimationInterpolator(Key key, uint32_t index, float time, float value);
+  std::vector<Interpolator<float>::Point> const& getInfluenceValues(Key key) const;
 
-			void setAnimationInterpolatorEasing(Key key, uint32_t index, Easing easing);
+  uint32_t getNumInfluenceValues(Key key) const;
 
-			Interpolator<float> const& getAnimationInterpolator(Key key) const;
+  void updateInfluenceValue(Key key, uint32_t index, float time, float const& value);
 
-			Interpolator<float>& getAnimationInterpolator(Key key);
+  void addInfluenceValue(Key key, float time, float value);
 
-			//
-			// Influence interpolators
-			// 
-			void setInfluenceValues(Key key, std::vector<std::pair<float, float>> const& values);
+  void removeInfluenceValue(Key key, uint32_t index);
 
-			std::vector<Interpolator<float>::Point> const& getInfluenceValues(Key key) const;
+  float getInfluenceValue(Key key, float time) const;
 
-			uint32_t getNumInfluenceValues(Key key) const;
+  void getInfluenceScale(Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax);
 
-			void updateInfluenceValue(Key key, uint32_t index, float time, float const& value);
+  void setInfluenceEasing(Key key, uint32_t segment, Easing easing);
 
-			void addInfluenceValue(Key key, float time, float value);
+  std::vector<Interpolator<float>::Segment> const& getInfluenceSegments(Key key) const;
 
-			void removeInfluenceValue(Key key, uint32_t index);
+  std::vector<std::vector<Interpolator<float>::Point>> renderInfluence(Key key, float resolution) const;
 
-			float getInfluenceValue(Key key, float time) const;
+  void addPointToInfluenceInterpolator(Key key, float time, float value);
 
-			void getInfluenceScale(Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax);
+  void removePointFromInfluenceInterpolator(Key key, uint32_t index);
 
-			void setInfluenceEasing(Key key, uint32_t segment, Easing easing);
+  void updatePointInInfluenceInterpolator(Key key, uint32_t index, float time, float value);
 
-			std::vector<Interpolator<float>::Segment> const& getInfluenceSegments(Key key) const;
+  void setInfluenceInterpolatorEasing(Key key, uint32_t index, Easing easing);
 
-			std::vector<std::vector<Interpolator<float>::Point>> renderInfluence(Key key, float resolution) const;
+  Interpolator<float> const& getInfluenceInterpolator(Key key) const;
 
-			void addPointToInfluenceInterpolator(Key key, float time, float value);
+  Interpolator<float>& getInfluenceInterpolator(Key key);
 
-			void removePointFromInfluenceInterpolator(Key key, uint32_t index);
+  //
+  // Capture
+  //
+  void setCaptureMode(Key key, ValueCaptureMode mode);
 
-			void updatePointInInfluenceInterpolator(Key key, uint32_t index, float time, float value);
+  ValueCaptureMode getCaptureMode(Key key) const;
 
-			void setInfluenceInterpolatorEasing(Key key, uint32_t index, Easing easing);
+  float getCurCapturedValue(Key key) const;
 
-			Interpolator<float> const& getInfluenceInterpolator(Key key) const;
+  //
+  // Events
+  //
+  uint32_t getNumAnimatedPropertyEvents(Key key) const;
 
-			Interpolator<float>& getInfluenceInterpolator(Key key);
+  std::vector<AnimatedPropertyEvent> const& getAnimatedPropertyEvents(Key key) const;
 
-			//
-			// Capture
-			//
-			void setCaptureMode(Key key, ValueCaptureMode mode);
+  void addAnimatedPropertyEvent(Key key, uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value);
 
-			ValueCaptureMode getCaptureMode(Key key) const;
+  void removeAnimatedPropertyEvent(Key key, uint32_t index);
 
-			float getCurCapturedValue(Key key) const;
+  void updateAnimatedPropertyEvent(Key key, uint32_t index, uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value);
 
-			//
-			// Events
-			//
-			uint32_t getNumAnimatedPropertyEvents(Key key) const;
+  //
+  // Transform
+  //
+  wp::Vector2 transformVertex(wp::Vector2 const& v, wp::Vector2 const& objectPosition, wp::Vector2 const& transformOffset, float orientation, InputValue const& inputs, bool* cacheChanged) const;
 
-			std::vector<AnimatedPropertyEvent> const& getAnimatedPropertyEvents(Key key) const;
+  float transformT(Key key, InputValue const& inputs, double time) const;
 
-			void addAnimatedPropertyEvent(Key key, uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value);
+  float calculateAnimationValue(VertexTransformer::Key key, InputValue const& inputs, double time, uint32_t* firedEvents);
+};
 
-			void removeAnimatedPropertyEvent(Key key, uint32_t index);
-
-			void updateAnimatedPropertyEvent(Key key, uint32_t index, uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value);
-
-			//
-			// Transform
-			// 
-			wp::Vector2 transformVertex(wp::Vector2 const& v, wp::Vector2 const& objectPosition, wp::Vector2 const& transformOffset, float orientation, InputValue const& inputs, bool* cacheChanged) const;
-
-			float transformT(Key key, InputValue const& inputs, double time) const;
-
-			float calculateAnimationValue(VertexTransformer::Key key, InputValue const& inputs, double time, uint32_t* firedEvents);
-
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

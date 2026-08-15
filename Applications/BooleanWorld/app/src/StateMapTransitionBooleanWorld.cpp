@@ -9,91 +9,80 @@
 using namespace std;
 using namespace wp;
 
-
 StateMapTransitionBooleanWorld::StateMapTransitionBooleanWorld(bool useThreading)
-	: applib::StateMapTransition(nullptr, useThreading)
-{
+    : applib::StateMapTransition(nullptr, useThreading) {
 }
 
-vector<applib::ThreadableLoadState::ThreadableWorkFunction> StateMapTransitionBooleanWorld::getPreWork(applib::StateTransitionData* transitionData)
-{
-	VAR_UNUSED(transitionData);
+vector<applib::ThreadableLoadState::ThreadableWorkFunction> StateMapTransitionBooleanWorld::getPreWork(applib::StateTransitionData* transitionData) {
+  VAR_UNUSED(transitionData);
 
-	auto destroyWorldRendererFn = [this](bool useThreading)
-	{
-		VAR_UNUSED(useThreading);
+  auto destroyWorldRendererFn = [this](bool useThreading) {
+    VAR_UNUSED(useThreading);
 
-		addText("Destroying world renderer");
-	};
+    addText("Destroying world renderer");
+  };
 
-	return { destroyWorldRendererFn };
+  return {destroyWorldRendererFn};
 }
 
-void StateMapTransitionBooleanWorld::processResources(application::resourcesystem::ResourceManager* resourceMgr, applib::MapTransitionData* transitionData)
-{
-	// Get transition data from previous state
-	auto prevMap = transitionData->prevMap.map;
-	auto nextMap = transitionData->nextMap.map;
+void StateMapTransitionBooleanWorld::processResources(application::resourcesystem::ResourceManager* resourceMgr, applib::MapTransitionData* transitionData) {
+  // Get transition data from previous state
+  auto prevMap = transitionData->prevMap.map;
+  auto nextMap = transitionData->nextMap.map;
 
-	// Set up new transition data to pass to next state
-	mTransitionData.mapData.nextMap.map = nextMap;
+  // Set up new transition data to pass to next state
+  mTransitionData.mapData.nextMap.map = nextMap;
 
-	// Release the previous map
-	if (usingThreading())
-	{
-		addPendingResourceName(prevMap->getName());
-		addPendingResourceName(nextMap->getName());
-	}
+  // Release the previous map
+  if (usingThreading()) {
+    addPendingResourceName(prevMap->getName());
+    addPendingResourceName(nextMap->getName());
+  }
 
-	mWillpowerResourcesToUnload = { prevMap };
+  mWillpowerResourcesToUnload = {prevMap};
 
-	if (usingThreading())
-	{
-		auto callback = bind(&StateMapTransitionBooleanWorld::unloadResourceCallback,
-			this,
-			placeholders::_1,
-			placeholders::_2,
-			placeholders::_3);
+  if (usingThreading()) {
+    auto callback = bind(&StateMapTransitionBooleanWorld::unloadResourceCallback,
+                         this,
+                         placeholders::_1,
+                         placeholders::_2,
+                         placeholders::_3);
 
-		for (auto resource : mWillpowerResourcesToUnload)
-		{
-			resourceMgr->releaseResource(resource, callback);
-		}
+    for (auto resource : mWillpowerResourcesToUnload) {
+      resourceMgr->releaseResource(resource, callback);
+    }
 
-		mWillpowerResourcesToUnload.clear();
-	}
+    mWillpowerResourcesToUnload.clear();
+  }
 
-	// Load next map
-	mWillpowerResourcesToLoad = { nextMap };
+  // Load next map
+  mWillpowerResourcesToLoad = {nextMap};
 
-	if (usingThreading())
-	{
-		auto loadCallbackFn = bind(&StateMapTransitionBooleanWorld::loadResourceCallback,
-			this,
-			placeholders::_1,
-			placeholders::_2,
-			placeholders::_3);
+  if (usingThreading()) {
+    auto loadCallbackFn = bind(&StateMapTransitionBooleanWorld::loadResourceCallback,
+                               this,
+                               placeholders::_1,
+                               placeholders::_2,
+                               placeholders::_3);
 
-		for (auto resource : mWillpowerResourcesToLoad)
-		{
-			resourceMgr->createResource(resource, loadCallbackFn);
-			resourceMgr->loadResource(resource, loadCallbackFn);
-		}
+    for (auto resource : mWillpowerResourcesToLoad) {
+      resourceMgr->createResource(resource, loadCallbackFn);
+      resourceMgr->loadResource(resource, loadCallbackFn);
+    }
 
-		mWillpowerResourcesToLoad.clear();
-	}
+    mWillpowerResourcesToLoad.clear();
+  }
 
-	auto createWorldRendererFn = [this, resourceMgr](bool useThreading)
-	{
-		VAR_UNUSED(useThreading);
+  auto createWorldRendererFn = [this, resourceMgr](bool useThreading) {
+    VAR_UNUSED(useThreading);
 
-		// Destroy
-		auto worldRenderer = static_cast<WorldRenderer*>(this->mTransitionData.userData);
-		delete worldRenderer;
+    // Destroy
+    auto worldRenderer = static_cast<WorldRenderer*>(this->mTransitionData.userData);
+    delete worldRenderer;
 
-		// Create new
-		this->mTransitionData.userData = new WorldRenderer(resourceMgr, this->mwLogger);
-	};
+    // Create new
+    this->mTransitionData.userData = new WorldRenderer(resourceMgr, this->mwLogger);
+  };
 
-	processPostWork({ createWorldRendererFn });
+  processPostWork({createWorldRendererFn});
 }

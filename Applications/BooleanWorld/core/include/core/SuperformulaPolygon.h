@@ -3,64 +3,56 @@
 #include "core/Platform.h"
 #include "core/Primitive.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API SuperformulaPolygon : public Primitive {
+  friend class World;  // Only World can call the default constructor (during deserialization)
 
-		class BW_API SuperformulaPolygon : public Primitive
-		{
-			friend class World; // Only World can call the default constructor (during deserialization)
+private:
+  static const uint32_t BaseResolution = 64;
 
-		private:
+  float mResolution;
 
-			static const uint32_t BaseResolution = 64;
+  float mValues[6];
 
-			float mResolution;
+private:
+  float r(float theta) const;
 
-			float mValues[6];
+  wp::Vector2 calculate(float theta) const;
 
-		private:
+protected:
+  SuperformulaPolygon();
 
-			float r(float theta) const;
+  void copyFrom(SuperformulaPolygon const& other);
 
-			wp::Vector2 calculate(float theta) const;
-			
-		protected:
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			SuperformulaPolygon();
-			
-			void copyFrom(SuperformulaPolygon const& other);
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+  std::vector<ComplexPolygon> generateVerticesImpl() override;
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+public:
+  SuperformulaPolygon(Operation operation, FillRule fillType, float resolution, float values[6]);
 
-			std::vector<ComplexPolygon> generateVerticesImpl() override;
+  SuperformulaPolygon(SuperformulaPolygon const& other);
 
-		public:
+  SuperformulaPolygon& operator=(SuperformulaPolygon const& other);
 
-			SuperformulaPolygon(Operation operation, FillRule fillType, float resolution, float values[6]);
+  Primitive* copy() const override;
 
-			SuperformulaPolygon(SuperformulaPolygon const& other);
+  std::string getType() const override;
 
-			SuperformulaPolygon& operator=(SuperformulaPolygon const& other);
+  float getRadius() const override;
 
-			Primitive* copy() const override;
+  void setResolution(float resolution);
 
-			std::string getType() const override;
+  float getResolution() const;
 
-			float getRadius() const override;
+  void setValue(uint32_t index, float value);
 
-			void setResolution(float resolution);
+  float getValue(uint32_t index) const;
+};
 
-			float getResolution() const;
-
-			void setValue(uint32_t index, float value);
-			
-			float getValue(uint32_t index) const;
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

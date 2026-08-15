@@ -4,13 +4,9 @@
 
 #include "Platform.h"
 
-
-class MapBooleanWorldDefinitionFactory : public applib::MapResourceDefinitionFactory
-{
+class MapBooleanWorldDefinitionFactory : public applib::MapResourceDefinitionFactory {
 public:
+  MapBooleanWorldDefinitionFactory();
 
-	MapBooleanWorldDefinitionFactory();
-
-	void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) override;
+  void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) override;
 };
-

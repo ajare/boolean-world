@@ -5,46 +5,40 @@
 #include "core/Vertex.h"
 #include "core/Clipper.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API MeshPrimitive : public Primitive {
+  friend class World;  // Only World can call the default constructor (during deserialization)
 
-		class BW_API MeshPrimitive : public Primitive
-		{
-			friend class World; // Only World can call the default constructor (during deserialization)
+protected:
+  MeshPrimitive();
 
-		protected:
+  void copyFrom(MeshPrimitive const& other);
 
-			MeshPrimitive();
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			void copyFrom(MeshPrimitive const& other);
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+  std::vector<ComplexPolygon> generateVerticesImpl() override;
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+public:
+  MeshPrimitive(Operation operation, FillRule fillType, std::vector<ComplexPolygon> const& polygons);
 
-			std::vector<ComplexPolygon> generateVerticesImpl() override;
+  MeshPrimitive(MeshPrimitive const& other);
 
-		public:
+  MeshPrimitive& operator=(MeshPrimitive const& other);
 
-			MeshPrimitive(Operation operation, FillRule fillType, std::vector<ComplexPolygon> const& polygons);
+  static MeshPrimitive* fromClippedPolygons(Operation operation, FillRule fillType, std::vector<ClippedPolygon> const& polygons);
 
-			MeshPrimitive(MeshPrimitive const& other);
+  Primitive* copy() const override;
 
-			MeshPrimitive& operator=(MeshPrimitive const& other);
+  std::string getType() const override;
 
-			static MeshPrimitive* fromClippedPolygons(Operation operation, FillRule fillType, std::vector<ClippedPolygon> const& polygons);
+  std::string getName() const override;
 
-			Primitive* copy() const override;
+  float getRadius() const override;
+};
 
-			std::string getType() const override;
-
-			std::string getName() const override;
-
-			float getRadius() const override;
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

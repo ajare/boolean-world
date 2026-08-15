@@ -7,23 +7,18 @@
 #include "core/Platform.h"
 #include "core/Tiling.h"
 
+namespace bw {
+namespace core {
+class BW_API SquareTiling : public Tiling {
+public:
+  explicit SquareTiling(float baseSize);
 
-namespace bw
-{
-	namespace core
-	{
-		class BW_API SquareTiling : public Tiling
-		{
-		public:
+  std::vector<TilingTile> generateTiles(float sizeX, float sizeY) const override;
 
-			explicit SquareTiling(float baseSize);
+  TilingTile createPrototypeTile(wp::Vector2 const& centre, float angle, uint32_t subType) const override;
 
-			std::vector<TilingTile> generateTiles(float sizeX, float sizeY) const override;
+  std::vector<wp::Vector2> generateTileOutline(wp::Vector2 const& centre, float angle, uint32_t subType) const override;
+};
 
-			TilingTile createPrototypeTile(wp::Vector2 const& centre, float angle, uint32_t subType) const override;
-
-			std::vector<wp::Vector2> generateTileOutline(wp::Vector2 const& centre, float angle, uint32_t subType) const override;
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

@@ -3,52 +3,45 @@
 #include "core/Platform.h"
 #include "core/Primitive.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API RegularPolygon : public Primitive {
+  friend class World;  // Only World can call the default constructor (during deserialization)
 
-		class BW_API RegularPolygon : public Primitive
-		{
-			friend class World; // Only World can call the default constructor (during deserialization)
+protected:
+  uint32_t mNumSides;
 
-		protected:
+protected:
+  RegularPolygon();
 
-			uint32_t mNumSides;
+  void copyFrom(RegularPolygon const& other);
 
-		protected:
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			RegularPolygon();
-			
-			void copyFrom(RegularPolygon const& other);
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+  std::vector<ComplexPolygon> generateVerticesImpl() override;
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+public:
+  RegularPolygon(Operation operation, FillRule fillType, uint32_t numSides);
 
-			std::vector<ComplexPolygon> generateVerticesImpl() override;
+  RegularPolygon(RegularPolygon const& other);
 
-		public:
+  RegularPolygon& operator=(RegularPolygon const& other);
 
-			RegularPolygon(Operation operation, FillRule fillType, uint32_t numSides);
+  Primitive* copy() const override;
 
-			RegularPolygon(RegularPolygon const& other);
+  std::string getType() const override;
 
-			RegularPolygon& operator=(RegularPolygon const& other);
+  std::string getName() const override;
 
-			Primitive* copy() const override;
+  float getRadius() const override;
 
-			std::string getType() const override;
+  virtual void setNumSides(uint32_t numSides);
 
-			std::string getName() const override;
+  uint32_t getNumSides() const;
+};
 
-			float getRadius() const override;
-
-			virtual void setNumSides(uint32_t numSides);
-
-			uint32_t getNumSides() const;
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

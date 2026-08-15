@@ -3,65 +3,57 @@
 #include "core/Platform.h"
 #include "core/Primitive.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API TorusPolygon : public Primitive {
+  friend class World;  // Only World can call the default constructor (during deserialization)
 
-		class BW_API TorusPolygon : public Primitive
-		{
-			friend class World; // Only World can call the default constructor (during deserialization)
+protected:
+  static const uint32_t BaseResolution = 64;
 
-		protected:
+  float mThickness;
 
-			static const uint32_t BaseResolution = 64;
+  float mResolution;
 
-			float mThickness;
+  uint32_t mNumSides;
 
-			float mResolution;
+protected:
+  TorusPolygon();
 
-			uint32_t mNumSides;
+  void copyFrom(TorusPolygon const& other);
 
-		protected:
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			TorusPolygon();
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void copyFrom(TorusPolygon const& other);
+  std::vector<ComplexPolygon> generateVerticesImpl() override;
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+public:
+  TorusPolygon(Operation operation, FillRule fillType, float thickness, float resolution);
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  TorusPolygon(TorusPolygon const& other);
 
-			std::vector<ComplexPolygon> generateVerticesImpl() override;
+  TorusPolygon& operator=(TorusPolygon const& other);
 
-		public:
+  Primitive* copy() const override;
 
-			TorusPolygon(Operation operation, FillRule fillType, float thickness, float resolution);
+  std::string getType() const override;
 
-			TorusPolygon(TorusPolygon const& other);
+  float getRadius() const override;
 
-			TorusPolygon& operator=(TorusPolygon const& other);
+  void setThickness(float thickness);
 
-			Primitive* copy() const override;
+  float getThickness() const;
 
-			std::string getType() const override;
+  void setResolution(float resolution);
 
-			float getRadius() const override;
+  float getResolution() const;
 
-			void setThickness(float thickness);
+  void setNumSides(uint32_t numSides);
 
-			float getThickness() const;
-			
-			void setResolution(float resolution);
+  uint32_t getNumSides() const;
+};
 
-			float getResolution() const;
-
-			void setNumSides(uint32_t numSides);
-
-			uint32_t getNumSides() const;
-
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

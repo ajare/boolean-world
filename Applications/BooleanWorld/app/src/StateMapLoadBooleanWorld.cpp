@@ -10,57 +10,49 @@
 using namespace std;
 using namespace wp;
 
-
 StateMapLoadBooleanWorld::StateMapLoadBooleanWorld(bool useThreading)
-	: applib::StateMapLoad(nullptr, useThreading)
-{
+    : applib::StateMapLoad(nullptr, useThreading) {
 }
 
-void StateMapLoadBooleanWorld::loadResources(wp::application::resourcesystem::ResourceManager* resourceMgr, applib::MapTransitionData* transitionData)
-{
-	string mapName = transitionData->nextMapName;
-	string mapNamespace = mapName;
+void StateMapLoadBooleanWorld::loadResources(wp::application::resourcesystem::ResourceManager* resourceMgr, applib::MapTransitionData* transitionData) {
+  string mapName = transitionData->nextMapName;
+  string mapNamespace = mapName;
 
-	// Set next map in transition data
-	auto mapResource = resourceMgr->getResource(mapName, mapNamespace);
-	mTransitionData.mapData.nextMap.map = mapResource;
+  // Set next map in transition data
+  auto mapResource = resourceMgr->getResource(mapName, mapNamespace);
+  mTransitionData.mapData.nextMap.map = mapResource;
 
-	// Initialise resource loading
-	mWillpowerResourcesToLoad = resourceMgr->getNamespaceResources(mapNamespace);
-	mWillpowerResourcesToUnload.clear();
+  // Initialise resource loading
+  mWillpowerResourcesToLoad = resourceMgr->getNamespaceResources(mapNamespace);
+  mWillpowerResourcesToUnload.clear();
 
-	if (usingThreading())
-	{
-		for (auto res : mWillpowerResourcesToLoad)
-		{
-			addPendingResourceName(res->getName());
-		}
+  if (usingThreading()) {
+    for (auto res : mWillpowerResourcesToLoad) {
+      addPendingResourceName(res->getName());
+    }
 
-		auto loadCallbackFn = bind(&StateMapLoadBooleanWorld::loadResourceCallback,
-			this,
-			placeholders::_1,
-			placeholders::_2,
-			placeholders::_3);
+    auto loadCallbackFn = bind(&StateMapLoadBooleanWorld::loadResourceCallback,
+                               this,
+                               placeholders::_1,
+                               placeholders::_2,
+                               placeholders::_3);
 
-		for (auto resource : mWillpowerResourcesToLoad)
-		{
-			resourceMgr->createResource(resource, loadCallbackFn);
-			resourceMgr->loadResource(resource, loadCallbackFn);
-			resourceMgr->acquireResource(resource);
-		}
+    for (auto resource : mWillpowerResourcesToLoad) {
+      resourceMgr->createResource(resource, loadCallbackFn);
+      resourceMgr->loadResource(resource, loadCallbackFn);
+      resourceMgr->acquireResource(resource);
+    }
 
-		mWillpowerResourcesToLoad.clear();
-	}
+    mWillpowerResourcesToLoad.clear();
+  }
 
-	auto createWorldRendererFn = [this, resourceMgr](bool useThreading)
-	{
-		VAR_UNUSED(useThreading);
+  auto createWorldRendererFn = [this, resourceMgr](bool useThreading) {
+    VAR_UNUSED(useThreading);
 
-		this->addText("Creating world renderer");
+    this->addText("Creating world renderer");
 
-		this->mTransitionData.userData = new WorldRenderer(resourceMgr, this->mwLogger);
+    this->mTransitionData.userData = new WorldRenderer(resourceMgr, this->mwLogger);
+  };
 
-	};
-
-	processPostWork({ createWorldRendererFn });
+  processPostWork({createWorldRendererFn});
 }

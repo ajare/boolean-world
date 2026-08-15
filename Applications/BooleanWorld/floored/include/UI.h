@@ -3,10 +3,8 @@
 #include "Document.h"
 #include "Settings.h"
 
+namespace floored {
 
-namespace floored
-{
+void renderUI(Document* doc, Settings& settings);
 
-	void renderUI(Document* doc, Settings& settings);
-
-} // floored
+}  // namespace floored

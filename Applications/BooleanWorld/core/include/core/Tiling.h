@@ -6,38 +6,31 @@
 
 #include "core/Platform.h"
 
+namespace bw {
+namespace core {
+struct TilingTile {
+  wp::Vector2 centre;
+  float angle;
+  uint32_t subType;
+};
 
-namespace bw
-{
-	namespace core
-	{
-		struct TilingTile
-		{
-			wp::Vector2 centre;
-			float angle;
-			uint32_t subType;
-		};
+class BW_API Tiling {
+  float mBaseSize;
 
-		class BW_API Tiling
-		{
-			float mBaseSize;
+protected:
+  float getBaseSize() const;
 
-		protected:
+public:
+  explicit Tiling(float baseSize);
 
-			float getBaseSize() const;
+  virtual ~Tiling() = default;
 
-		public:
+  virtual std::vector<TilingTile> generateTiles(float sizeX, float sizeY) const = 0;
 
-			explicit Tiling(float baseSize);
+  virtual TilingTile createPrototypeTile(wp::Vector2 const& centre, float angle, uint32_t subType) const = 0;
 
-			virtual ~Tiling() = default;
-		
-			virtual std::vector<TilingTile> generateTiles(float sizeX, float sizeY) const = 0;
+  virtual std::vector<wp::Vector2> generateTileOutline(wp::Vector2 const& centre, float angle, uint32_t subType) const = 0;
+};
 
-			virtual TilingTile createPrototypeTile(wp::Vector2 const& centre, float angle, uint32_t subType) const = 0;
-
-			virtual std::vector<wp::Vector2> generateTileOutline(wp::Vector2 const& centre, float angle, uint32_t subType) const = 0;
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

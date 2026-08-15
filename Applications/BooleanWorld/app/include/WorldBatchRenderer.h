@@ -10,38 +10,32 @@
 
 #include "WorldBatch.h"
 
+class WorldBatchRenderer : public mpp::BatchRenderer {
+  mpp::RenderSystem* mRenderSystem{nullptr};
 
-class WorldBatchRenderer : public mpp::BatchRenderer
-{
-	mpp::RenderSystem* mRenderSystem{ nullptr };
+  mpp::ResourceManager* mResourceMgr{nullptr};
 
-	mpp::ResourceManager* mResourceMgr{ nullptr };
+  WorldBatch* mBatch{nullptr};
 
-	WorldBatch* mBatch{ nullptr };
-
-	std::shared_ptr<mpp::helper::TriangleBatch3DBufferDataProvider<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte>> mDataProvider{ nullptr };
+  std::shared_ptr<mpp::helper::TriangleBatch3DBufferDataProvider<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte>> mDataProvider{nullptr};
 
 public:
+  WorldBatchRenderer(std::string const& name,
+                     std::shared_ptr<mpp::helper::TriangleBatch3DBufferDataProvider<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte>> dataProvider,
+                     mpp::ResourcePtr textureOrMaterial,
+                     mpp::RenderSystem* renderSystem,
+                     mpp::ResourceManager* resourceMgr,
+                     bw::core::World const* world);
 
-	WorldBatchRenderer(std::string const& name,
-		std::shared_ptr<mpp::helper::TriangleBatch3DBufferDataProvider<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte>> dataProvider,
-		mpp::ResourcePtr textureOrMaterial,
-		mpp::RenderSystem* renderSystem,
-		mpp::ResourceManager* resourceMgr,
-		bw::core::World const* world);
+  virtual ~WorldBatchRenderer();
 
-	virtual ~WorldBatchRenderer();
+  mpp::ResourcePtr getModel();
 
-	mpp::ResourcePtr getModel();
+  WorldBatch const* getWorldBatch() const;
 
-	WorldBatch const* getWorldBatch() const;
+  void create() override;
 
-	void create() override;
+  size_t update() override;
 
-	size_t update() override;
-
-	void render() override;
-
+  void render() override;
 };
-
-

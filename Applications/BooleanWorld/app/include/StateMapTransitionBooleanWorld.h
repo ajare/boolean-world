@@ -9,33 +9,25 @@
 
 #include "Platform.h"
 
-
-class APPLICATION_API StateMapTransitionBooleanWorld : public applib::StateMapTransition
-{
-	void processResources(wp::application::resourcesystem::ResourceManager* resourceMgr, applib::MapTransitionData* transitionData);
+class APPLICATION_API StateMapTransitionBooleanWorld : public applib::StateMapTransition {
+  void processResources(wp::application::resourcesystem::ResourceManager* resourceMgr, applib::MapTransitionData* transitionData);
 
 protected:
-
-	std::vector<ThreadableWorkFunction> getPreWork(applib::StateTransitionData* transitionData) override;
+  std::vector<ThreadableWorkFunction> getPreWork(applib::StateTransitionData* transitionData) override;
 
 public:
-
-	explicit StateMapTransitionBooleanWorld(bool useThreading);
+  explicit StateMapTransitionBooleanWorld(bool useThreading);
 };
 
-class StateMapTransitionBooleanWorldFactory : public applib::StateMapTransitionFactory
-{
+class StateMapTransitionBooleanWorldFactory : public applib::StateMapTransitionFactory {
 public:
+  explicit StateMapTransitionBooleanWorldFactory(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr, bool useThreading)
+      : applib::StateMapTransitionFactory(logger, resourceMgr, nullptr, useThreading) {
+  }
 
-	explicit StateMapTransitionBooleanWorldFactory(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr, bool useThreading)
-		: applib::StateMapTransitionFactory(logger, resourceMgr, nullptr, useThreading)
-	{
-	}
-
-	wp::application::State* createState()
-	{
-		auto state = new StateMapTransitionBooleanWorld(mUseThreading);
-		state->setLogger(mwLogger);
-		return state;
-	}
+  wp::application::State* createState() {
+    auto state = new StateMapTransitionBooleanWorld(mUseThreading);
+    state->setLogger(mwLogger);
+    return state;
+  }
 };

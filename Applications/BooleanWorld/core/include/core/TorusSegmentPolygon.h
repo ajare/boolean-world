@@ -3,71 +3,63 @@
 #include "core/Platform.h"
 #include "core/Primitive.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API TorusSegmentPolygon : public Primitive {
+  friend class World;  // Only World can call the default constructor (during deserialization)
 
-		class BW_API TorusSegmentPolygon : public Primitive
-		{
-			friend class World; // Only World can call the default constructor (during deserialization)
+protected:
+  static const uint32_t BaseResolution = 64;
 
-		protected:
+  float mThickness;
 
-			static const uint32_t BaseResolution = 64;
+  float mArcLength;
 
-			float mThickness;
+  float mResolution;
 
-			float mArcLength;
+  uint32_t mNumSides;
 
-			float mResolution;
+protected:
+  TorusSegmentPolygon();
 
-			uint32_t mNumSides;
+  void copyFrom(TorusSegmentPolygon const& other);
 
-		protected:
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			TorusSegmentPolygon();
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void copyFrom(TorusSegmentPolygon const& other);
+  std::vector<ComplexPolygon> generateVerticesImpl() override;
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+public:
+  TorusSegmentPolygon(Operation operation, FillRule fillType, float thickness, float arcLength, float resolution);
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  TorusSegmentPolygon(TorusSegmentPolygon const& other);
 
-			std::vector<ComplexPolygon> generateVerticesImpl() override;
+  TorusSegmentPolygon& operator=(TorusSegmentPolygon const& other);
 
-		public:
+  Primitive* copy() const override;
 
-			TorusSegmentPolygon(Operation operation, FillRule fillType, float thickness, float arcLength, float resolution);
+  std::string getType() const override;
 
-			TorusSegmentPolygon(TorusSegmentPolygon const& other);
+  float getRadius() const override;
 
-			TorusSegmentPolygon& operator=(TorusSegmentPolygon const& other);
+  void setThickness(float thickness);
 
-			Primitive* copy() const override;
+  float getThickness() const;
 
-			std::string getType() const override;
+  void setArcLength(float arcLength);
 
-			float getRadius() const override;
+  float getArcLength() const;
 
-			void setThickness(float thickness);
+  void setResolution(float resolution);
 
-			float getThickness() const;
+  float getResolution() const;
 
-			void setArcLength(float arcLength);
+  void setNumSides(uint32_t numSides);
 
-			float getArcLength() const;
+  uint32_t getNumSides() const;
+};
 
-			void setResolution(float resolution);
-
-			float getResolution() const;
-
-			void setNumSides(uint32_t numSides);
-
-			uint32_t getNumSides() const;
-
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

@@ -3,70 +3,59 @@
 #include "core/Clipper.h"
 #include "core/ClipperUtils.h"
 
+namespace bw {
+namespace core {
+using namespace std;
 
-namespace bw
-{
-	namespace core
-	{
-		using namespace std;
+DefaultWorldDataGenerator::DefaultWorldDataGenerator()
+    : WorldDataGenerator() {
+}
 
-		DefaultWorldDataGenerator::DefaultWorldDataGenerator()
-			: WorldDataGenerator()
-		{
-		}
+DefaultWorldDataGenerator::~DefaultWorldDataGenerator() {
+}
 
-		DefaultWorldDataGenerator::~DefaultWorldDataGenerator()
-		{
-		}
+DefaultWorldDataGenerator::DefaultWorldDataGenerator(DefaultWorldDataGenerator const& other) {
+  WorldDataGenerator::copyFrom(other);
+}
 
-		DefaultWorldDataGenerator::DefaultWorldDataGenerator(DefaultWorldDataGenerator const& other)
-		{
-			WorldDataGenerator::copyFrom(other);
-		}
+DefaultWorldDataGenerator& DefaultWorldDataGenerator::operator=(DefaultWorldDataGenerator const& other) {
+  WorldDataGenerator::copyFrom(other);
+  return *this;
+}
 
-		DefaultWorldDataGenerator& DefaultWorldDataGenerator::operator=(DefaultWorldDataGenerator const& other)
-		{
-			WorldDataGenerator::copyFrom(other);
-			return *this;
-		}
+WorldDataGenerator* DefaultWorldDataGenerator::copy() {
+  return new DefaultWorldDataGenerator(*this);
+}
 
-		WorldDataGenerator* DefaultWorldDataGenerator::copy()
-		{
-			return new DefaultWorldDataGenerator(*this);
-		}
+WorldData DefaultWorldDataGenerator::getWorldData(World const* world) {
+  generate(world, NarrowPhaseCulling::None, false);
 
-		WorldData DefaultWorldDataGenerator::getWorldData(World const* world)
-		{
-			generate(world, NarrowPhaseCulling::None, false);
+  return mWorldData;
+}
 
-			return mWorldData;
-		}
+void DefaultWorldDataGenerator::generate(World const* world, NarrowPhaseCulling culling, bool regetPrimitives) {
+  BW_UNUSED(regetPrimitives);
 
-		void DefaultWorldDataGenerator::generate(World const* world, NarrowPhaseCulling culling, bool regetPrimitives)
-		{
-			BW_UNUSED(regetPrimitives);
+  PrimitiveProcessingStats primStats;
 
-			PrimitiveProcessingStats primStats;
+  auto primitives = world->getPrimitives();
 
-			auto primitives = world->getPrimitives();
+  sort(primitives.begin(), primitives.end(), SortPrimitivesByPriority());
 
-			sort(primitives.begin(), primitives.end(), SortPrimitivesByPriority());
+  auto clipResults = clipPrimitives(primitives, world, true);
 
-			auto clipResults = clipPrimitives(primitives, world, true);
+  // Set up data to return
+  mWorldData = {
+      world->getExtents(),
+      (float)(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
+      ClipperUtils::convertClipper2PolygonsToClippedPolygons(clipResults.borderPolygons, nullptr),
+      ClipperUtils::convertClipper2PolygonsToClippedPolygons(clipResults.borderPolygons, nullptr),
+      clipResults.borderVertexData,
+      clipResults.graph,
+      clipResults.stats,
+      primStats,
+      world->getFrameNumber()};
+}
 
-			// Set up data to return
-			mWorldData = {
-				world->getExtents(),
-				(float)(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-				ClipperUtils::convertClipper2PolygonsToClippedPolygons(clipResults.borderPolygons, nullptr),
-				ClipperUtils::convertClipper2PolygonsToClippedPolygons(clipResults.borderPolygons, nullptr),
-				clipResults.borderVertexData,
-				clipResults.graph,
-				clipResults.stats,
-				primStats,
-				world->getFrameNumber()
-			};
-		}
-
-	} // bw
-} // core
+}  // namespace core
+}  // namespace bw

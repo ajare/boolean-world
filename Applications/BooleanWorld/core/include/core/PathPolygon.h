@@ -7,88 +7,77 @@
 #include "core/Platform.h"
 #include "core/Primitive.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API PathPolygon : public Primitive {
+  friend class World;  // Only World can call the default constructor (during deserialization)
 
-		class BW_API PathPolygon : public Primitive
-		{
-			friend class World; // Only World can call the default constructor (during deserialization)
+public:
+  enum struct JoinType {
+    Bevel,
+    Mitre,
+    Round,
+    Square
+  };
 
-		public:
+  enum struct EndType {
+    Butt,
+    Joined,
+    Polygon,
+    Round,
+    Square
+  };
 
-			enum struct JoinType
-			{
-				Bevel,
-				Mitre,
-				Round,
-				Square
-			};
+private:
+  std::vector<wp::Vector2> mPoints;
 
-			enum struct EndType
-			{
-				Butt,
-				Joined,
-				Polygon,
-				Round,
-				Square
-			};
+  float mWidth;
 
-		private:
+  JoinType mJoinType;
 
-			std::vector<wp::Vector2> mPoints;
-			
-			float mWidth;
-				
-			JoinType mJoinType;
-				
-			EndType mEndType;
+  EndType mEndType;
 
-		protected:
+protected:
+  PathPolygon();
 
-			PathPolygon();
+  void copyFrom(PathPolygon const& other);
 
-			void copyFrom(PathPolygon const& other);
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  std::vector<ComplexPolygon> generateVerticesImpl() override;
 
-			std::vector<ComplexPolygon> generateVerticesImpl() override;
+public:
+  PathPolygon(Operation operation, FillRule fillType, std::vector<wp::Vector2> const& points, float width, JoinType joinType = JoinType::Mitre, EndType endType = EndType::Square);
 
-		public:
+  PathPolygon(PathPolygon const& other);
 
-			PathPolygon(Operation operation, FillRule fillType, std::vector<wp::Vector2> const& points, float width, JoinType joinType = JoinType::Mitre, EndType endType = EndType::Square);
+  PathPolygon& operator=(PathPolygon const& other);
 
-			PathPolygon(PathPolygon const& other);
+  Primitive* copy() const override;
 
-			PathPolygon& operator=(PathPolygon const& other);
+  std::string getType() const override;
 
-			Primitive* copy() const override;
+  float getRadius() const override;
 
-			std::string getType() const override;
+  void setPoints(std::vector<wp::Vector2> const& points);
 
-			float getRadius() const override;
+  std::vector<wp::Vector2> const& getPoints() const;
 
-			void setPoints(std::vector<wp::Vector2> const& points);
+  void setWidth(float width);
 
-			std::vector<wp::Vector2> const& getPoints() const;
+  float getWidth() const;
 
-			void setWidth(float width);
+  void setJoinType(JoinType joinType);
 
-			float getWidth() const;
+  JoinType getJoinType() const;
 
-			void setJoinType(JoinType joinType);
+  void setEndType(EndType endType);
 
-			JoinType getJoinType() const;
+  EndType getEndType() const;
+};
 
-			void setEndType(EndType endType);
-
-			EndType getEndType() const;
-		};
-
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

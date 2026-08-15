@@ -7,40 +7,34 @@
 #include "core/Platform.h"
 #include "core/WorldVertexData.h"
 
+namespace bw {
+namespace core {
+namespace clipper2 {
+class ZCallback {
+  std::vector<WorldVertexData> mWorldVertexData;
 
-namespace bw
-{
-	namespace core
-	{
-		namespace clipper2
-		{
-			class ZCallback
-			{
-				std::vector<WorldVertexData> mWorldVertexData;
+  uint32_t mNumInterpolatedVertices;
 
-				uint32_t mNumInterpolatedVertices;
+  Clipper2Lib::ClipType mClipType;
 
-				Clipper2Lib::ClipType mClipType;
+  uint32_t mFlags;
 
-				uint32_t mFlags;
+public:
+  explicit ZCallback(std::vector<WorldVertexData> const& vertexWorldData, uint32_t flags);
 
-			public:
+  std::vector<WorldVertexData>& getVertexWorldData();
 
-				explicit ZCallback(std::vector<WorldVertexData> const& vertexWorldData, uint32_t flags);
+  uint32_t getNumInterpolatedVertices() const;
 
-				std::vector<WorldVertexData>& getVertexWorldData();
+  void setClipType(Clipper2Lib::ClipType const& clipType);
 
-				uint32_t getNumInterpolatedVertices() const;
+  void interpolateVertex(Clipper2Lib::Point64 const& v00,
+                         Clipper2Lib::Point64 const& v01,
+                         Clipper2Lib::Point64 const& v10,
+                         Clipper2Lib::Point64 const& v11,
+                         Clipper2Lib::Point64& p);
+};
 
-				void setClipType(Clipper2Lib::ClipType const& clipType);
-
-				void interpolateVertex(Clipper2Lib::Point64 const& v00, 
-					Clipper2Lib::Point64 const& v01,
-					Clipper2Lib::Point64 const& v10,
-					Clipper2Lib::Point64 const& v11,
-					Clipper2Lib::Point64& p);
-			};
-
-		} // clipper2
-	} // core
-} // bw
+}  // namespace clipper2
+}  // namespace core
+}  // namespace bw

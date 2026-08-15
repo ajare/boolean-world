@@ -17,85 +17,75 @@
 #include "core/Stats.h"
 #include "core/PolygonGraph.h"
 
+namespace bw {
+namespace core {
+class World;
 
-namespace bw
-{
-	namespace core
-	{
-		class World;
+class BW_API Clipper {
+  std::vector<WorldVertexData> mBaseWorldVertexData;
 
-		class BW_API Clipper
-		{
-			std::vector<WorldVertexData> mBaseWorldVertexData;
+  uint32_t mFlags;
 
-			uint32_t mFlags;
+  std::vector<Clipper2Polygon> mBorder;
 
-			std::vector<Clipper2Polygon> mBorder;
+  graph::PolygonGraph mArrangementGraph;
 
-			graph::PolygonGraph mArrangementGraph;
+  World const* mwWorld;
 
-			World const* mwWorld;
+protected:
+  struct ClipData {
+    Clipper2Lib::Paths64 paths;
+    Clipper2Lib::ClipType ct;
+    Clipper2Lib::FillRule fr;
+    bool saveBeforeClip{false};
+  };
 
-		protected:
+protected:
+  std::vector<WorldVertexData> mClippedWorldVertexData;
 
-			struct ClipData
-			{
-				Clipper2Lib::Paths64 paths;
-				Clipper2Lib::ClipType ct;
-				Clipper2Lib::FillRule fr;
-				bool saveBeforeClip{ false };
-			};
+  clipper2::ZCallback mCallback;
 
-		protected:
+  ClipStats mStats;
 
-			std::vector<WorldVertexData> mClippedWorldVertexData;
-			
-			clipper2::ZCallback mCallback;
+private:
+  void setPolygonPrimitiveIndex(Clipper2Lib::Paths64& polygons, uint32_t primitiveIndex);
 
-			ClipStats mStats;
+  void setPolygonPrimitiveIndex(std::vector<Clipper2Polygon>& polygons, uint32_t primitiveIndex);
 
-		private:
+  void addIntermediateClipping(Clipper2Lib::Paths64 const& paths, uint32_t primitiveIndex, std::vector<Clipper2Lib::Paths64>& states);
 
-			void setPolygonPrimitiveIndex(Clipper2Lib::Paths64& polygons, uint32_t primitiveIndex);
+  std::vector<Clipper2Lib::Paths64> generateIntermediateClippings(std::vector<ClipData> const& paths);
 
-			void setPolygonPrimitiveIndex(std::vector<Clipper2Polygon>& polygons, uint32_t primitiveIndex);
+  std::vector<Clipper2Polygon> clipIntermediateClippings(std::vector<Clipper2Lib::Paths64> const& states, Clipper2Lib::ClipType clipType, bool interpolate);
 
-			void addIntermediateClipping(Clipper2Lib::Paths64 const& paths, uint32_t primitiveIndex, std::vector<Clipper2Lib::Paths64>& states);
+  std::vector<Clipper2Polygon> clipIntermediateClipping(Clipper2Lib::Paths64 const& state, std::vector<Clipper2Polygon> const& polygons, Clipper2Lib::ClipType clipType, uint32_t primitiveIndex);
 
-			std::vector<Clipper2Lib::Paths64> generateIntermediateClippings(std::vector<ClipData> const& paths);
+  void calculateCombinedPolygons(Clipper2Lib::Paths64 const& interState, std::vector<Clipper2Polygon> const& arrangePolygons, Clipper2Lib::ClipType clipType, uint32_t primitiveIndex, std::vector<Clipper2Lib::Paths64>& combinedPaths);
 
-			std::vector<Clipper2Polygon> clipIntermediateClippings(std::vector<Clipper2Lib::Paths64> const& states, Clipper2Lib::ClipType clipType, bool interpolate);
+  void buildPolygonGraph(std::vector<Clipper2Polygon> const& polygons);
 
-			std::vector<Clipper2Polygon> clipIntermediateClipping(Clipper2Lib::Paths64 const& state, std::vector<Clipper2Polygon> const& polygons, Clipper2Lib::ClipType clipType, uint32_t primitiveIndex);
+protected:
+  std::vector<Clipper2Polygon> executeClip(Clipper2Lib::Clipper64& clipper, Clipper2Lib::ClipType op, Clipper2Lib::FillRule fillRule, PrimitivePropertySet const& clipProperties);
 
-			void calculateCombinedPolygons(Clipper2Lib::Paths64 const& interState, std::vector<Clipper2Polygon> const& arrangePolygons, Clipper2Lib::ClipType clipType, uint32_t primitiveIndex, std::vector<Clipper2Lib::Paths64>& combinedPaths);
-		
-			void buildPolygonGraph(std::vector<Clipper2Polygon> const& polygons);
+  std::vector<Clipper2Polygon> clip(std::vector<ClipData> const& paths);
 
-		protected:
+public:
+  Clipper(std::vector<WorldVertexData> const& baseWorldVertexData, std::vector<Clipper2Lib::Paths64> const& intermediateStates, World const* world, uint32_t flags = 0);
 
-			std::vector<Clipper2Polygon> executeClip(Clipper2Lib::Clipper64& clipper, Clipper2Lib::ClipType op, Clipper2Lib::FillRule fillRule, PrimitivePropertySet const& clipProperties);
+  std::vector<WorldVertexData> const& getBaseWorldVertexData() const;
 
-			std::vector<Clipper2Polygon> clip(std::vector<ClipData> const& paths);
+  std::vector<WorldVertexData> const& getClippedWorldVertexData() const;
 
-		public:
+  std::vector<Clipper2Polygon> const& getBorderPolygons() const;
 
-			Clipper(std::vector<WorldVertexData> const& baseWorldVertexData, std::vector<Clipper2Lib::Paths64> const& intermediateStates, World const* world, uint32_t flags = 0);
+  graph::PolygonGraph const& getArrangementGraph() const;
 
-			std::vector<WorldVertexData> const& getBaseWorldVertexData() const;
+  ClipStats getStats() const;
 
-			std::vector<WorldVertexData> const& getClippedWorldVertexData() const;
+  std::vector<Clipper2Polygon> clipToClipper2Polygons(std::vector<Primitive*> const& primitives, Primitive::Operation unionReplacementOp = Primitive::Operation::Union, wp::BoundingBox const* bounds = nullptr);
 
-			std::vector<Clipper2Polygon> const& getBorderPolygons() const;
+  std::vector<ClippedPolygon> clipToClippedPolygons(std::vector<Primitive*> const& primitives, Primitive::Operation unionReplacementOp = Primitive::Operation::Union, wp::BoundingBox const* bounds = nullptr);
+};
 
-			graph::PolygonGraph const& getArrangementGraph() const;
-
-			ClipStats getStats() const;
-
-			std::vector<Clipper2Polygon> clipToClipper2Polygons(std::vector<Primitive*> const& primitives, Primitive::Operation unionReplacementOp = Primitive::Operation::Union, wp::BoundingBox const* bounds = nullptr);
-			
-			std::vector<ClippedPolygon> clipToClippedPolygons(std::vector<Primitive*> const& primitives, Primitive::Operation unionReplacementOp = Primitive::Operation::Union, wp::BoundingBox const* bounds = nullptr);
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

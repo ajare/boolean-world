@@ -1,14 +1,12 @@
 #pragma once
 
-namespace editor
-{
+namespace editor {
 
-	enum struct HoverableType
-	{
-		None,
-		Primitive,
-		TriggerLine,
-		WorldVertex
-	};
+enum struct HoverableType {
+  None,
+  Primitive,
+  TriggerLine,
+  WorldVertex
+};
 
-} // editor
+}  // namespace editor

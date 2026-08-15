@@ -5,13 +5,9 @@
 
 #include "Platform.h"
 
-
-class MapException : public std::exception
-{
+class MapException : public std::exception {
 public:
-
-	explicit MapException(std::string const& msg)
-		: exception(msg.c_str())
-	{
-	}
+  explicit MapException(std::string const& msg)
+      : exception(msg.c_str()) {
+  }
 };

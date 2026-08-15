@@ -5,75 +5,67 @@
 
 #include "core/Serializable.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+enum struct WorldTriggerLineSide {
+  Red,
+  Blue,
+  Both
+};
 
-		enum struct WorldTriggerLineSide
-		{
-			Red,
-			Blue,
-			Both
-		};
+class WorldTriggerLine : public Serializable {
+  uint32_t mId;
 
-		class WorldTriggerLine : public Serializable
-		{
-			uint32_t mId;
+  uint8_t mLayer;
 
-			uint8_t mLayer;
+  uint32_t mTriggerCount[2];
 
-			uint32_t mTriggerCount[2];
+  wp::Vector2 mPoints[2];
 
-			wp::Vector2 mPoints[2];
+  wp::BoundingBox mBounds;
 
-			wp::BoundingBox mBounds;
+  WorldTriggerLineSide mSide;
 
-			WorldTriggerLineSide mSide;
+private:
+  bool childrenModified() const override;
 
-		private:
+  void updateBounds();
 
-			bool childrenModified() const override;
+protected:
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			void updateBounds();
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-		protected:
+public:
+  WorldTriggerLine();
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+  WorldTriggerLine(uint8_t layer, wp::Vector2 const& p0, wp::Vector2 const& p1, WorldTriggerLineSide side = WorldTriggerLineSide::Both);
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  void setId(uint32_t id);
 
-		public:
+  uint32_t getId() const;
 
-			WorldTriggerLine();
+  void setLayer(uint8_t layer);
 
-			WorldTriggerLine(uint8_t layer, wp::Vector2 const& p0, wp::Vector2 const& p1, WorldTriggerLineSide side = WorldTriggerLineSide::Both);
+  [[nodiscard]] uint8_t getLayer() const;
 
-			void setId(uint32_t id);
+  uint32_t getTriggerCount(WorldTriggerLineSide side) const;
 
-			uint32_t getId() const;
+  uint32_t getTotalTriggerCount() const;
 
-			void setLayer(uint8_t layer);
+  void setPoint(uint32_t index, wp::Vector2 const& position);
 
-			[[nodiscard]] uint8_t getLayer() const;
+  wp::Vector2 const& getPoint(uint32_t index) const;
 
-			uint32_t getTriggerCount(WorldTriggerLineSide side) const;
+  void setSide(WorldTriggerLineSide side);
 
-			uint32_t getTotalTriggerCount() const;
+  WorldTriggerLineSide getSide() const;
 
-			void setPoint(uint32_t index, wp::Vector2 const& position);
+  wp::BoundingBox const& getBounds() const;
 
-			wp::Vector2 const& getPoint(uint32_t index) const;
+  bool checkCollide(wp::Vector2 const& oldPos, wp::Vector2 const& newPos, float radius);
+};
 
-			void setSide(WorldTriggerLineSide side);
-
-			WorldTriggerLineSide getSide() const;
-
-			wp::BoundingBox const& getBounds() const;
-
-			bool checkCollide(wp::Vector2 const& oldPos, wp::Vector2 const& newPos, float radius);
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

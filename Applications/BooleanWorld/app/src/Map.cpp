@@ -10,89 +10,74 @@ using namespace std;
 using namespace wp;
 using namespace wp::geometry;
 
-
 Map::Map(string const& name,
-	string const& namesp,
-	string const& source,
-	map<string, string> const& tags,
-	application::resourcesystem::ResourceLocation* location,
-	wp::Logger* logger)
-	: applib::Map(name, namesp, source, tags, location, 512)
-	, mWorld(nullptr)
-	, mwLogger(logger)
-{
+         string const& namesp,
+         string const& source,
+         map<string, string> const& tags,
+         application::resourcesystem::ResourceLocation* location,
+         wp::Logger* logger)
+    : applib::Map(name, namesp, source, tags, location, 512), mWorld(nullptr), mwLogger(logger) {
 }
 
-Map::~Map()
-{
-	delete mWorld;
+Map::~Map() {
+  delete mWorld;
 }
 
-bw::core::World* Map::getWorld()
-{
-	return mWorld;
+bw::core::World* Map::getWorld() {
+  return mWorld;
 }
 
-bw::core::World const* Map::getWorld() const
-{
-	return mWorld;
+bw::core::World const* Map::getWorld() const {
+  return mWorld;
 }
 
-void Map::loadWorldFromYaml(wp::application::resourcesystem::ResourcePtr resource)
-{
-	delete mWorld;
+void Map::loadWorldFromYaml(wp::application::resourcesystem::ResourcePtr resource) {
+  delete mWorld;
 
-	auto res = static_cast<wp::application::resourcesystem::TextFileResource*>(resource.get());
-	string text = res->getText();
+  auto res = static_cast<wp::application::resourcesystem::TextFileResource*>(resource.get());
+  string text = res->getText();
 
-	auto ser = shared_ptr<bw::core::YamlSerializer>(bw::core::YamlSerializer::fromString(text));
+  auto ser = shared_ptr<bw::core::YamlSerializer>(bw::core::YamlSerializer::fromString(text));
 
-	ser->deserialize();
+  ser->deserialize();
 
-	mWorld = new bw::core::World(1.0f, -1.0f);
+  mWorld = new bw::core::World(1.0f, -1.0f);
 
-	// Create grid with cell size 512
-	auto workData = bw::core::SerializationWorkData{ 512.0f };
+  // Create grid with cell size 512
+  auto workData = bw::core::SerializationWorkData{512.0f};
 
-	if (mWorld->deserialize(ser, workData))
-	{
-		auto const& warnings = mWorld->getDeserializationWarnings();
+  if (mWorld->deserialize(ser, workData)) {
+    auto const& warnings = mWorld->getDeserializationWarnings();
 
-		if (!warnings.empty())
-		{
-			for (auto const& warning : warnings)
-			{
-				mwLogger->warn(warning);
-			}
-		}
+    if (!warnings.empty()) {
+      for (auto const& warning : warnings) {
+        mwLogger->warn(warning);
+      }
+    }
 
-		auto genFn = [this](wp::Vector2 offset, int dimX, int dimY, float cellSize) {
-			BW_UNUSED(offset);
-			BW_UNUSED(dimX);
-			BW_UNUSED(dimY);
-			BW_UNUSED(cellSize);
-			auto wdg = new bw::core::DynamicWorldDataGenerator(mWorld);
+    auto genFn = [this](wp::Vector2 offset, int dimX, int dimY, float cellSize) {
+      BW_UNUSED(offset);
+      BW_UNUSED(dimX);
+      BW_UNUSED(dimY);
+      BW_UNUSED(cellSize);
+      auto wdg = new bw::core::DynamicWorldDataGenerator(mWorld);
 
-			wdg->setBroadPhaseCulling(bw::core::WorldDataGenerator::BroadPhaseCulling::Circle);
-			wdg->setNarrowPhaseCulling(bw::core::WorldDataGenerator::NarrowPhaseCulling::None);
+      wdg->setBroadPhaseCulling(bw::core::WorldDataGenerator::BroadPhaseCulling::Circle);
+      wdg->setNarrowPhaseCulling(bw::core::WorldDataGenerator::NarrowPhaseCulling::None);
 
-			return wdg;
-		};
+      return wdg;
+    };
 
-		mWorld->setWorldDataGeneratorFactory(genFn);
-	}
-	else
-	{
-		auto const& errors = mWorld->getDeserializationErrors();
+    mWorld->setWorldDataGeneratorFactory(genFn);
+  } else {
+    auto const& errors = mWorld->getDeserializationErrors();
 
-		if (!errors.empty())
-		{
-			for (auto const& error : errors)
-			{
-				mwLogger->error(error);
-			}
-		}
+    if (!errors.empty()) {
+      for (auto const& error : errors) {
+        mwLogger->error(error);
+      }
+    }
 
-		throw wp::application::resourcesystem::ResourceException(resource.get(), "Could not load World from YAML.");
-	}
+    throw wp::application::resourcesystem::ResourceException(resource.get(), "Could not load World from YAML.");
+  }
 }

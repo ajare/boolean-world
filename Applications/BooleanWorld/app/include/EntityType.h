@@ -4,9 +4,6 @@
 
 #include "Platform.h"
 
-
-enum struct EntityType
-{
-	Player
+enum struct EntityType {
+  Player
 };
-

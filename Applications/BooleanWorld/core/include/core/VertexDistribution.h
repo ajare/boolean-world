@@ -7,23 +7,19 @@
 
 #include "core/Platform.h"
 
-namespace bw
-{
-	namespace core
-	{
+namespace bw {
+namespace core {
 
-		class BW_API VertexDistribution
-		{
-			std::vector<wp::Vector2> mPoints;
+class BW_API VertexDistribution {
+  std::vector<wp::Vector2> mPoints;
 
-		public:
+public:
+  VertexDistribution();
 
-			VertexDistribution();
+  virtual ~VertexDistribution() = default;
 
-			virtual ~VertexDistribution() = default;
+  void generatePoissonDiskFlat(wp::BoundingBox const& area, float r, float z);
+};
 
-			void generatePoissonDiskFlat(wp::BoundingBox const& area, float r, float z);
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

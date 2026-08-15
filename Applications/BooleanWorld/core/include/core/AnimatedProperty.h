@@ -12,148 +12,141 @@
 #include "core/AnimatedPropertyEvent.h"
 #include "core/Serializable.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class AnimatedProperty : public Serializable {
+  std::string mName;
 
-		class AnimatedProperty : public Serializable
-		{
-			std::string mName;
+  TransformFlow mTransformFlow;
 
-			TransformFlow mTransformFlow;
+  Interpolator<float> mAnimationInterpolator;
 
-			Interpolator<float> mAnimationInterpolator;
+  Interpolator<float> mInfluenceInterpolator;
 
-			Interpolator<float> mInfluenceInterpolator;
+  mutable ValueCapture mCapture;
 
-			mutable ValueCapture mCapture;
+  std::vector<AnimatedPropertyEvent> mEvents;
 
-			std::vector<AnimatedPropertyEvent> mEvents;
+private:
+  bool childrenModified() const override;
 
-		private:
+  float processValueCapture(float curValue, float newValue) const;
 
-			bool childrenModified() const override;
+protected:
+  void copyFrom(AnimatedProperty const& other);
 
-			float processValueCapture(float curValue, float newValue) const;
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-		protected:
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void copyFrom(AnimatedProperty const& other);
+public:
+  AnimatedProperty();
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+  AnimatedProperty(std::string const& name);
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  AnimatedProperty(std::string const& name, std::array<float, 2> const& animationRange, float animationDefault,
+                   std::array<float, 2> const& influenceRange, float influenceDefault);
 
-		public:
+  AnimatedProperty(AnimatedProperty const& other);
 
-			AnimatedProperty();
+  AnimatedProperty& operator=(AnimatedProperty const& other);
 
-			AnimatedProperty(std::string const& name);
+  bool isStatic() const;
 
-			AnimatedProperty(std::string const& name, std::array<float, 2> const& animationRange, float animationDefault,
-				std::array<float, 2> const& influenceRange, float influenceDefault);
+  void resetCapture();
 
-			AnimatedProperty(AnimatedProperty const& other);
+  void reset();
 
-			AnimatedProperty& operator=(AnimatedProperty const& other);
+  float transformT(InputValue const& inputs, double time) const;
 
-			bool isStatic() const;
+  float captureValue(float value) const;
 
-			void resetCapture();
+  // Transform flow
+  void setTransforms(std::vector<tTransform> const& transforms);
 
-			void reset();
+  std::vector<tTransform>& getTransforms();
 
-			float transformT(InputValue const& inputs, double time) const;
+  std::vector<tTransform> const& getTransforms() const;
 
-			float captureValue(float value) const;
+  // Animation interpolator
+  void setAnimationInterpolatorDefaultStructure(std::vector<Interpolator<float>::Point> const& points, std::vector<Interpolator<float>::Segment> const& segments, bool setToCurrent);
 
-			// Transform flow
-			void setTransforms(std::vector<tTransform> const& transforms);
+  void initialiseAnimation(std::array<float, 2> const& animationRange, float animationDefault);
 
-			std::vector<tTransform>& getTransforms();
+  void setAnimationValues(std::vector<std::pair<float, float>> const& values);
 
-			std::vector<tTransform> const& getTransforms() const;
+  std::vector<Interpolator<float>::Point> const& getAnimationValues() const;
 
-			// Animation interpolator
-			void setAnimationInterpolatorDefaultStructure(std::vector<Interpolator<float>::Point> const& points, std::vector<Interpolator<float>::Segment> const& segments, bool setToCurrent);
+  uint32_t getNumAnimationValues() const;
 
-			void initialiseAnimation(std::array<float, 2> const& animationRange, float animationDefault);
+  void updateAnimationValue(uint32_t index, float time, float const& value);
 
-			void setAnimationValues(std::vector<std::pair<float, float>> const& values);
+  void addAnimationValue(float time, float value);
 
-			std::vector<Interpolator<float>::Point> const& getAnimationValues() const;
+  void removeAnimationValue(uint32_t index);
 
-			uint32_t getNumAnimationValues() const;
+  float getAnimationValue(float time) const;
 
-			void updateAnimationValue(uint32_t index, float time, float const& value);
+  void getAnimationScale(wp::Vector2* scaleMin, wp::Vector2* scaleMax);
 
-			void addAnimationValue(float time, float value);
+  void setAnimationEasing(uint32_t segment, Easing easing);
 
-			void removeAnimationValue(uint32_t index);
+  std::vector<Interpolator<float>::Segment> const& getAnimationSegments() const;
 
-			float getAnimationValue(float time) const;
+  std::vector<std::vector<Interpolator<float>::Point>> renderAnimation(float resolution) const;
 
-			void getAnimationScale(wp::Vector2* scaleMin, wp::Vector2* scaleMax);
+  Interpolator<float>& getAnimationInterpolator();
 
-			void setAnimationEasing(uint32_t segment, Easing easing);
+  Interpolator<float> const& getAnimationInterpolator() const;
 
-			std::vector<Interpolator<float>::Segment> const& getAnimationSegments() const;
+  float getCurCapturedValue() const;
 
-			std::vector<std::vector<Interpolator<float>::Point>> renderAnimation(float resolution) const;
+  // Influence interpolator
+  void initialiseInfluence(std::array<float, 2> const& influenceRange, float influenceDefault);
 
-			Interpolator<float>& getAnimationInterpolator();
+  void setInfluenceValues(std::vector<std::pair<float, float>> const& values);
 
-			Interpolator<float> const& getAnimationInterpolator() const;
+  std::vector<Interpolator<float>::Point> const& getInfluenceValues() const;
 
-			float getCurCapturedValue() const;
+  uint32_t getNumInfluenceValues() const;
 
-			// Influence interpolator
-			void initialiseInfluence(std::array<float, 2> const& influenceRange, float influenceDefault);
+  void updateInfluenceValue(uint32_t index, float time, float const& value);
 
-			void setInfluenceValues(std::vector<std::pair<float, float>> const& values);
+  void addInfluenceValue(float time, float value);
 
-			std::vector<Interpolator<float>::Point> const& getInfluenceValues() const;
+  void removeInfluenceValue(uint32_t index);
 
-			uint32_t getNumInfluenceValues() const;
+  float getInfluenceValue(float time) const;
 
-			void updateInfluenceValue(uint32_t index, float time, float const& value);
+  void getInfluenceScale(wp::Vector2* scaleMin, wp::Vector2* scaleMax);
 
-			void addInfluenceValue(float time, float value);
+  void setInfluenceEasing(uint32_t segment, Easing easing);
 
-			void removeInfluenceValue(uint32_t index);
+  std::vector<Interpolator<float>::Segment> const& getInfluenceSegments() const;
 
-			float getInfluenceValue(float time) const;
+  std::vector<std::vector<Interpolator<float>::Point>> renderInfluence(float resolution) const;
 
-			void getInfluenceScale(wp::Vector2* scaleMin, wp::Vector2* scaleMax);
+  Interpolator<float>& getInfluenceInterpolator();
 
-			void setInfluenceEasing(uint32_t segment, Easing easing);
+  Interpolator<float> const& getInfluenceInterpolator() const;
 
-			std::vector<Interpolator<float>::Segment> const& getInfluenceSegments() const;
+  // Capture
+  void setCaptureMode(ValueCaptureMode mode);
 
-			std::vector<std::vector<Interpolator<float>::Point>> renderInfluence(float resolution) const;
+  ValueCaptureMode getCaptureMode() const;
 
-			Interpolator<float>& getInfluenceInterpolator();
+  // Events
+  uint32_t getNumEvents() const;
 
-			Interpolator<float> const& getInfluenceInterpolator() const;
+  std::vector<AnimatedPropertyEvent> const& getEvents() const;
 
-			// Capture
-			void setCaptureMode(ValueCaptureMode mode);
+  void addEvent(uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value);
 
-			ValueCaptureMode getCaptureMode() const;
+  void removeEvent(uint32_t index);
 
-			// Events
-			uint32_t getNumEvents() const;
+  void updateEvent(uint32_t index, uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value);
+};
 
-			std::vector<AnimatedPropertyEvent> const& getEvents() const;
-
-			void addEvent(uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value);
-
-			void removeEvent(uint32_t index);
-
-			void updateEvent(uint32_t index, uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value);
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

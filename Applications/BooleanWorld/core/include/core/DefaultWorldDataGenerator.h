@@ -6,32 +6,27 @@
 #include "core/WorldDataGenerator.h"
 #include "core/Clipper.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class DefaultWorldDataGenerator : public WorldDataGenerator {
+  WorldData mWorldData;
 
-		class DefaultWorldDataGenerator : public WorldDataGenerator
-		{
-			WorldData mWorldData;
+public:
+  DefaultWorldDataGenerator();
 
-		public:
+  ~DefaultWorldDataGenerator();
 
-			DefaultWorldDataGenerator();
+  DefaultWorldDataGenerator(DefaultWorldDataGenerator const& other);
 
-			~DefaultWorldDataGenerator();
+  DefaultWorldDataGenerator& operator=(DefaultWorldDataGenerator const& other);
 
-			DefaultWorldDataGenerator(DefaultWorldDataGenerator const& other);
+  virtual WorldDataGenerator* copy() override;
 
-			DefaultWorldDataGenerator& operator=(DefaultWorldDataGenerator const& other);
+  WorldData getWorldData(World const* world) override;
 
-			virtual WorldDataGenerator* copy() override;
+  void generate(World const* world, NarrowPhaseCulling culling, bool regetPrimitives) override;
+};
 
-			WorldData getWorldData(World const* world) override;
-
-			void generate(World const* world, NarrowPhaseCulling culling, bool regetPrimitives) override;
-		};
-
-	} // bw
-} // core
+}  // namespace core
+}  // namespace bw

@@ -3,29 +3,21 @@
 #include <exception>
 #include <string>
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class SerializationException : public std::exception {
+  std::string mMessage;
 
-		class SerializationException : public std::exception
-		{
-			std::string mMessage;
+public:
+  explicit SerializationException(std::string message)
+      : std::exception(message.c_str()), mMessage(message) {
+  }
 
-		public:
+  std::string const& getMessage() const {
+    return mMessage;
+  }
+};
 
-			explicit SerializationException(std::string message)
-				: std::exception(message.c_str())
-				, mMessage(message)
-			{
-			}
-
-			std::string const& getMessage() const
-			{
-				return mMessage;
-			}
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

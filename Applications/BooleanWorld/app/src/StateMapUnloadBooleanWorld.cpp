@@ -8,27 +8,23 @@
 using namespace std;
 using namespace wp;
 
-
 StateMapUnloadBooleanWorld::StateMapUnloadBooleanWorld(bool useThreading)
-	: applib::StateMapUnload(useThreading)
-{
+    : applib::StateMapUnload(useThreading) {
 }
 
-vector<applib::ThreadableLoadState::ThreadableWorkFunction> StateMapUnloadBooleanWorld::getPreWork(applib::StateTransitionData* transitionData)
-{
-	VAR_UNUSED(transitionData);
+vector<applib::ThreadableLoadState::ThreadableWorkFunction> StateMapUnloadBooleanWorld::getPreWork(applib::StateTransitionData* transitionData) {
+  VAR_UNUSED(transitionData);
 
-	auto destroyWorldRendererFn = [this](bool useThreading)
-	{
-		VAR_UNUSED(useThreading);
+  auto destroyWorldRendererFn = [this](bool useThreading) {
+    VAR_UNUSED(useThreading);
 
-		addText("Destroying world renderer");
+    addText("Destroying world renderer");
 
-		auto worldRenderer = static_cast<WorldRenderer*>(this->mTransitionData.userData);
+    auto worldRenderer = static_cast<WorldRenderer*>(this->mTransitionData.userData);
 
-		delete worldRenderer;
-		this->mTransitionData.userData = nullptr;
-	};
+    delete worldRenderer;
+    this->mTransitionData.userData = nullptr;
+  };
 
-	return { destroyWorldRendererFn };
+  return {destroyWorldRendererFn};
 }

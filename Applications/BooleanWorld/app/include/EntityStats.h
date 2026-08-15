@@ -2,8 +2,5 @@
 
 #include "Platform.h"
 
-
-struct EntityStats
-{
-
+struct EntityStats {
 };

@@ -3,26 +3,22 @@
 #include "MapBooleanWorldDefinitionFactory.h"
 #include "Map.h"
 
-
 MapBooleanWorldDefinitionFactory::MapBooleanWorldDefinitionFactory()
-	: applib::MapResourceDefinitionFactory("BooleanWorld", nullptr, nullptr, nullptr, nullptr)
-{
+    : applib::MapResourceDefinitionFactory("BooleanWorld", nullptr, nullptr, nullptr, nullptr) {
 }
 
-void MapBooleanWorldDefinitionFactory::create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node)
-{
-	VAR_UNUSED(resourceMgr);
-	VAR_UNUSED(node);
+void MapBooleanWorldDefinitionFactory::create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) {
+  VAR_UNUSED(resourceMgr);
+  VAR_UNUSED(node);
 
-	auto mapRes = static_cast<Map*>(resource);
+  auto mapRes = static_cast<Map*>(resource);
 
-	auto resourceNode = node->getChild("Resource");
-	auto resourceName = resourceNode->getValue();
+  auto resourceNode = node->getChild("Resource");
+  auto resourceName = resourceNode->getValue();
 
-	auto depResource = mapRes->getDependentResource(resourceName);
+  auto depResource = mapRes->getDependentResource(resourceName);
 
-	if (resourceName == "Yaml")
-	{
-		mapRes->loadWorldFromYaml(depResource);
-	}
+  if (resourceName == "Yaml") {
+    mapRes->loadWorldFromYaml(depResource);
+  }
 }

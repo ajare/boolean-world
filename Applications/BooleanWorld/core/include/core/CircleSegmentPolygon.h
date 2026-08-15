@@ -3,58 +3,51 @@
 #include "core/Platform.h"
 #include "core/RegularPolygon.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API CircleSegmentPolygon : public RegularPolygon {
+  static const uint32_t BaseResolution = 64;
 
-		class BW_API CircleSegmentPolygon : public RegularPolygon
-		{
-			static const uint32_t BaseResolution = 64;
+  float mArcLength;
 
-			float mArcLength;
+  float mResolution;
 
-			float mResolution;
+private:
+  friend class World;  // Only World can call the default constructor (during deserialization)
 
-		private:
+protected:
+  CircleSegmentPolygon();
 
-			friend class World; // Only World can call the default constructor (during deserialization)
+  void copyFrom(CircleSegmentPolygon const& other);
 
-		protected:
+  void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
-			CircleSegmentPolygon();
+  bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-			void copyFrom(CircleSegmentPolygon const& other);
+  std::vector<ComplexPolygon> generateVerticesImpl() override;
 
-			void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
+public:
+  CircleSegmentPolygon(Operation operation, FillRule fillType, float arcLength, float resolution);
 
-			bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
+  CircleSegmentPolygon(CircleSegmentPolygon const& other);
 
-			std::vector<ComplexPolygon> generateVerticesImpl() override;
+  CircleSegmentPolygon& operator=(CircleSegmentPolygon const& other);
 
-		public:
+  Primitive* copy() const override;
 
-			CircleSegmentPolygon(Operation operation, FillRule fillType, float arcLength, float resolution);
+  std::string getType() const override;
 
-			CircleSegmentPolygon(CircleSegmentPolygon const& other);
+  void setArcLength(float arcLength);
 
-			CircleSegmentPolygon& operator=(CircleSegmentPolygon const& other);
+  float getArcLength() const;
 
-			Primitive* copy() const override;
+  void setNumSides(uint32_t numSides) override;
 
-			std::string getType() const override;
+  void setResolution(float resolution);
 
-			void setArcLength(float arcLength);
+  float getResolution() const;
+};
 
-			float getArcLength() const;
-
-			void setNumSides(uint32_t numSides) override;
-
-			void setResolution(float resolution);
-
-			float getResolution() const;
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

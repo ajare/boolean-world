@@ -5,40 +5,34 @@
 #include "core/Primitive.h"
 #include "core/VertexTransformerObject.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+class BW_API PrimitiveGroup : public VertexTransformerObject {
+  std::vector<Primitive*> mPrimitives;
 
-		class BW_API PrimitiveGroup : public VertexTransformerObject
-		{
-			std::vector<Primitive*> mPrimitives;
+protected:
+  void invalidatePostTransform(bool recalculateBounds, bool notifyWorld) const override;
 
-		protected:
+  void copyFrom(PrimitiveGroup const& other);
 
-			void invalidatePostTransform(bool recalculateBounds, bool notifyWorld) const override;
+public:
+  PrimitiveGroup();
 
-			void copyFrom(PrimitiveGroup const& other);
+  explicit PrimitiveGroup(std::vector<Primitive*> primitives);
 
-		public:
+  PrimitiveGroup(PrimitiveGroup const& other);
 
-			PrimitiveGroup();
+  PrimitiveGroup& operator=(PrimitiveGroup const& other);
 
-			explicit PrimitiveGroup(std::vector<Primitive*> primitives);
+  std::vector<Primitive*> const& getPrimitives() const;
 
-			PrimitiveGroup(PrimitiveGroup const& other);
+  void addPrimitive(Primitive* primitive);
 
-			PrimitiveGroup& operator=(PrimitiveGroup const& other);
+  void removePrimitive(Primitive* primitive, bool failIfNotFound = true);
 
-			std::vector<Primitive*> const& getPrimitives() const;
+  void removeAllPrimitives();
+};
 
-			void addPrimitive(Primitive* primitive);
-
-			void removePrimitive(Primitive* primitive, bool failIfNotFound = true);
-
-			void removeAllPrimitives();
-		};
-
-	} // core
-} // bw
+}  // namespace core
+}  // namespace bw

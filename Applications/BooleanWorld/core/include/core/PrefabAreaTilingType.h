@@ -2,18 +2,14 @@
 
 #include "core/Platform.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+enum struct PrefabAreaTilingType {
+  None,
+  Square,
+  COUNT
+};
 
-		enum struct PrefabAreaTilingType
-		{
-			None,
-			Square,
-			COUNT
-		};
-
-	} // bw
-} // core
+}  // namespace core
+}  // namespace bw

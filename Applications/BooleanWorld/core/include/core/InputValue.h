@@ -5,71 +5,54 @@
 #include "core/Platform.h"
 #include "core/WorldTriggerLine.h"
 
+namespace bw {
+namespace core {
 
-namespace bw
-{
-	namespace core
-	{
+struct InputValue {
+  float entityInfluenceDistance;
 
-		struct InputValue
-		{
-			float entityInfluenceDistance;
+  float entityInfluenceAngle;
 
-			float entityInfluenceAngle;
+  float entityGlobalAngle;
 
-			float entityGlobalAngle;
+  bool playerMove, playerTurn;
 
-			bool playerMove, playerTurn;
+  float user[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
-			float user[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+  std::vector<WorldTriggerLine*>* triggerLines;
 
-			std::vector<WorldTriggerLine*>* triggerLines;
+private:
+  void copyFrom(InputValue const& other) {
+    entityInfluenceDistance = other.entityInfluenceDistance;
+    entityInfluenceAngle = other.entityInfluenceAngle;
+    entityGlobalAngle = other.entityGlobalAngle;
+    playerMove = other.playerMove;
+    playerTurn = other.playerTurn;
 
-		private:
+    for (int i = 0; i < 4; ++i) {
+      user[i] = other.user[i];
+    }
 
-			void copyFrom(InputValue const& other)
-			{
-				entityInfluenceDistance = other.entityInfluenceDistance;
-				entityInfluenceAngle = other.entityInfluenceAngle;
-				entityGlobalAngle = other.entityGlobalAngle;
-				playerMove = other.playerMove;
-				playerTurn = other.playerTurn;
+    triggerLines = other.triggerLines;
+  }
 
-				for (int i = 0; i < 4; ++i)
-				{
-					user[i] = other.user[i];
-				}
+public:
+  InputValue()
+      : entityInfluenceDistance(1.0f), entityInfluenceAngle(0.0f), entityGlobalAngle(0.0f), playerMove(false), playerTurn(false), triggerLines(nullptr) {
+    for (int i = 0; i < 4; ++i) {
+      user[i] = 0.0f;
+    }
+  }
 
-				triggerLines = other.triggerLines;
-			}
+  InputValue(InputValue const& other) {
+    copyFrom(other);
+  }
 
-		public:
+  InputValue& operator=(InputValue const& other) {
+    copyFrom(other);
+    return *this;
+  }
+};
 
-			InputValue()
-				: entityInfluenceDistance(1.0f)
-				, entityInfluenceAngle(0.0f)
-				, entityGlobalAngle(0.0f)
-				, playerMove(false)
-				, playerTurn(false)
-				, triggerLines(nullptr)
-			{
-				for (int i = 0; i < 4; ++i)
-				{
-					user[i] = 0.0f;
-				}
-			}
-
-			InputValue(InputValue const& other)
-			{
-				copyFrom(other);
-			}
-
-			InputValue& operator=(InputValue const& other)
-			{
-				copyFrom(other);
-				return *this;
-			}
-		};
-
-	} // bw
-} // core
+}  // namespace core
+}  // namespace bw

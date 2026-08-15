@@ -6,28 +6,24 @@
 #include "Defines.h"
 #include "PrimitivePropertySet.h"
 
+namespace bw {
+namespace core {
+class Primitive;
 
-namespace bw
-{
-	namespace core
-	{
-		class Primitive;
+struct WorldVertexData {
+  /*
+  enum struct InterpolationState
+  {
+          NotInterpolated,
+          InterpolatedUnset,
+          InterpolatedSet
+  };
 
-		struct WorldVertexData
-		{
-			/*
-			enum struct InterpolationState
-			{
-				NotInterpolated,
-				InterpolatedUnset,
-				InterpolatedSet
-			};
+  InterpolationState state;
+  */
+  PrimitivePropertySet properties[2];
+  uint32_t primitiveIndex{~0u};
+};
 
-			InterpolationState state;
-			*/
-			PrimitivePropertySet properties[2];
-			uint32_t primitiveIndex{ ~0u };
-		};
-
-	} // bw
-} // core
+}  // namespace core
+}  // namespace bw
