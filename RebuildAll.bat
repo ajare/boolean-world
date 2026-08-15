@@ -3,9 +3,10 @@ REM Configures and builds BooleanWorld with CMake.
 REM
 REM Usage: RebuildAll.bat [Debug|Release|Profiling]     (default: Release)
 REM
-REM The two submodules under ext\ keep their own Visual Studio solutions and
-REM are not part of the CMake build; CMake builds them with MSBuild on first
-REM configure if their libraries are missing. See cmake\Submodules.cmake.
+REM MassivePolyPusher (ext\massive-poly-pusher) keeps its own CMake build and is
+REM never modified by this project. CMake configures and builds it on demand if
+REM its libraries are missing - see cmake\Submodules.cmake. That first build
+REM fetches GLEW, SDL3, assimp and yaml-cpp and takes several minutes.
 
 SETLOCAL
 
@@ -18,6 +19,12 @@ where cmake >nul 2>nul
 IF ERRORLEVEL 1 (
     echo ERROR: cmake was not found on PATH.
     echo Install CMake 3.25 or newer, or use the copy shipped with Visual Studio.
+    EXIT /B 1
+)
+
+IF NOT EXIST "%~dp0ext\massive-poly-pusher\mpp\include" (
+    echo ERROR: ext\massive-poly-pusher is empty.
+    echo Run: git submodule update --init --recursive
     EXIT /B 1
 )
 
@@ -36,7 +43,7 @@ echo Binaries keep the original layout, e.g.
 echo   Launcher\build\vs2026\bin\x64\%CONFIG%\Launcher.exe
 echo   Applications\BooleanWorld\editor\bin\x64\%CONFIG%\editor.exe
 echo.
-echo Run: cd Launcher\build\vs2026\bin\x64\%CONFIG% ^&^& Launcher.exe BooleanWorld.cfg
+echo Run: cd Launcher\build\vs2026\bin\x64\%CONFIG% ^&^& Launcher.exe BooleanWorld.yaml
 EXIT /B 0
 
 :fail

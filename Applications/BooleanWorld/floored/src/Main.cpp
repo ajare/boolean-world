@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <fstream>
 
-#include <glew/glew.h>
+#include <GL/glew.h>
 #include <nfd/nfd.h>
 
 #pragma warning(push)

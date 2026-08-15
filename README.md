@@ -1,17 +1,20 @@
 # BooleanWorld
 
-2D game engine and the BooleanWorld applications, extracted from the
-[Willpower](https://wtmrsh@bitbucket.org/wtmrsh/willpower.git) repository.
+2D game engine and the BooleanWorld applications.
 
-See [MIGRATION-PLAN.md](MIGRATION-PLAN.md) for what was removed and why, and
-for the CMake conversion.
+Originally extracted from the
+[Willpower](https://wtmrsh@bitbucket.org/wtmrsh/willpower.git) repository, and
+since moved onto the same engine stack as
+[tungsten-oxide](https://github.com/ajare) — see
+[MIGRATION-PLAN.md](MIGRATION-PLAN.md) for the original extraction and
+[TUNGSTEN-MIGRATION-PLAN.md](TUNGSTEN-MIGRATION-PLAN.md) for the engine move.
 
 ## Cloning
 
     git clone --recurse-submodules <url>
 
-The submodules matter: `ext/MassivePolyPusher` has a nested `ext/utils` of its
-own, so a non-recursive clone will not build.
+`ext/massive-poly-pusher` has its own nested submodules (assimp, glew, sdl,
+utils), so a non-recursive clone will not build.
 
 ## Building
 
@@ -22,22 +25,31 @@ or directly:
     cmake -S . -B build-cmake -G "Visual Studio 18 2026" -A x64
     cmake --build build-cmake --config Release --parallel
 
-Configurations are `Debug`, `Release` and `Profiling`. Only `x64` is supported
--- `vendor/lib` ships x64 libraries only.
+Configurations are `Debug`, `Release` and `Profiling`. Only `x64` is supported.
 
 `build-cmake/BooleanWorld.sln` can be opened in Visual Studio; `Launcher` is
 the startup project.
 
-### The submodules are not part of the CMake build
+### MassivePolyPusher is built separately
 
-`ext/Utils` and `ext/MassivePolyPusher` keep their own Visual Studio solutions
-and are consumed as prebuilt imported libraries. On first configure CMake
-builds them with MSBuild if their `.lib` files are missing. Pass
-`-DBW_BUILD_SUBMODULES=OFF` to manage them yourself.
+`ext/massive-poly-pusher` keeps its own CMake build and is never modified by
+this project — it is consumed as a *build tree*: import libraries from
+`build/lib/<CONFIG>`, DLLs from `build/bin/<CONFIG>`. CMake configures and
+builds it on demand if its libraries are missing. That first build fetches
+GLEW, SDL3, assimp and yaml-cpp and takes several minutes.
+
+Pass `-DBW_BUILD_MPP=OFF` to manage it yourself:
+
+    cmake -S ext/massive-poly-pusher -B ext/massive-poly-pusher/build -G "Visual Studio 18 2026" -A x64
+    cmake --build ext/massive-poly-pusher/build --config Release --parallel
+
+`utils`, SDL3, GLEW and yaml-cpp all come from that tree. `vendor/` supplies
+only what MassivePolyPusher does not: spdlog, Clipper2, concurrencpp, entt,
+mapbox, FMOD, FreeImage, GLFW, gtest, nfd and Superluminal.
 
 ### Where things land
 
-Build products go where the original solutions put them, e.g.
+Build products go where the original Visual Studio solutions put them, e.g.
 `Applications/BooleanWorld/editor/bin/x64/Release`. This is deliberate:
 `editor`, `experiments` and `profiler` resolve paths such as
 `../../../../core/doc` relative to their working directory, so they only run
@@ -46,10 +58,10 @@ correctly from those locations.
 ## Running
 
     cd Launcher\build\vs2026\bin\x64\Release
-    Launcher.exe BooleanWorld.cfg
+    Launcher.exe BooleanWorld.yaml
 
-`Launcher.exe` loads an application DLL named in the `.cfg`. The build
-generates a `BooleanWorld.cfg` with absolute paths next to `Launcher.exe`.
+`Launcher.exe` loads an application DLL named in the config. The build
+generates `BooleanWorld.yaml` with absolute paths next to `Launcher.exe`.
 
 The other executables build standalone under
 `Applications/BooleanWorld/<app>/bin/x64/<Config>`. Run them from that
@@ -59,13 +71,28 @@ Tests:
 
     ctest --test-dir build-cmake -C Release
 
+## Configuration is YAML
+
+Both the resource manifest (`app/resources/Resources.yaml`) and the launcher
+config are YAML. The resource system rejects anything that is not `.yaml`/`.yml`.
+
+`tools/xml_to_resource_yaml.py` converts an old XML manifest, following the
+mapping the loader expects: elements and attributes both become keys, mixed
+text becomes a `value` key, and repeated siblings become a sequence.
+
+Tiled `.tmx`/`.tsx` map data is still XML — only resource *definitions* moved.
+
+## Formatting
+
+`tools/format.py [--check] [library ...]` runs clang-format over the project's
+own sources. Vendored third-party code (ImGui, ImPlot, imnodes, StackWalker,
+Clipper 1) is excluded by explicit path.
+
 ## Known issues
 
-Both are pre-existing and were verified to behave identically in the original
-Willpower repository:
-
 - `editor` and `floored` do not compile in `Debug|x64`: the vendored
-  `spdlog/fmt` v9 uses `stdext::checked_array_iterator`, removed from the
-  current MSVC STL. Release and Profiling are unaffected -- the offending path
-  is guarded by `#if defined(_SECURE_SCL) && _SECURE_SCL`.
-- 20 of 24 `experiments` tests fail on PSLG hierarchy assertions.
+  `spdlog/fmt` uses `stdext::checked_array_iterator`, removed from the current
+  MSVC STL. Release and Profiling are unaffected. Pre-existing, inherited from
+  Willpower.
+- 20 of 24 `experiments` tests fail on PSLG hierarchy assertions. Also
+  pre-existing.

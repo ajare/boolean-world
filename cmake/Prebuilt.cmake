@@ -131,8 +131,6 @@ endfunction()
 #              target                release stem      debug stem
 bw_vendor_lib(vendor::spdlog         spdlog            spdlogd)
 bw_vendor_lib(vendor::fmt            fmt               fmtd)
-bw_vendor_lib(vendor::sdl2           SDL2              SDL2d)
-bw_vendor_lib(vendor::sdl2main       SDL2main          SDL2maind)
 bw_vendor_lib(vendor::performanceapi PerformanceAPI_MD PerformanceAPI_MDd)
 # No debug variant shipped - the release library is used in every config.
 bw_vendor_lib(vendor::clipper2z      Clipper2Z         Clipper2Z)
