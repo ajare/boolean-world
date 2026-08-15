@@ -57,7 +57,7 @@ target_compile_definitions(core PRIVATE YAML_CPP_STATIC_DEFINE USINGZ _CONSOLE)
 
 target_link_libraries(core PUBLIC
     bw-common Willpower.Common
-    vendor::clipper2z vendor::concurrencpp vendor::yaml-cpp)
+    vendor::clipper2z vendor::concurrencpp ext::yaml-cpp)
 
 target_compile_features(core PRIVATE cxx_std_23)
 target_compile_options(core PRIVATE /W3)

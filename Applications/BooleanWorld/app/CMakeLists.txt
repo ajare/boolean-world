@@ -48,7 +48,7 @@ target_link_libraries(BooleanWorld PRIVATE
     Willpower.Application Willpower.Collide Willpower.Common
     Willpower.Serialization WillPower.Viz
     ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils
-    vendor::yaml-cpp)
+    ext::yaml-cpp)
 
 target_compile_features(BooleanWorld PRIVATE cxx_std_23)
 target_compile_options(BooleanWorld PRIVATE /W4)

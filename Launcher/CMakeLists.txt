@@ -34,7 +34,7 @@ target_compile_definitions(Launcher PRIVATE USINGZ)
 target_link_libraries(Launcher PRIVATE
     Willpower.Common Willpower.Application
     ext::mpp ext::Utils
-    vendor::sdl3 vendor::glfw3)
+    ext::sdl3 vendor::glfw3)
 
 target_compile_features(Launcher PRIVATE cxx_std_20)
 target_compile_options(Launcher PRIVATE /W3)

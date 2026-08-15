@@ -7,7 +7,7 @@ target_compile_definitions(experiments PRIVATE _CONSOLE)
 
 target_compile_definitions(experiments PRIVATE YAML_CPP_STATIC_DEFINE)
 
-target_link_libraries(experiments PRIVATE core vendor::yaml-cpp vendor::gtest)
+target_link_libraries(experiments PRIVATE core ext::yaml-cpp vendor::gtest)
 
 target_compile_features(experiments PRIVATE cxx_std_23)
 target_compile_options(experiments PRIVATE /W3)

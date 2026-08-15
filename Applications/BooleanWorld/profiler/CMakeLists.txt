@@ -8,7 +8,7 @@ target_compile_definitions(profiler PRIVATE _CONSOLE)
 
 target_compile_definitions(profiler PRIVATE YAML_CPP_STATIC_DEFINE)
 
-target_link_libraries(profiler PRIVATE core vendor::yaml-cpp vendor::performanceapi)
+target_link_libraries(profiler PRIVATE core ext::yaml-cpp vendor::performanceapi)
 
 target_compile_features(profiler PRIVATE cxx_std_23)
 target_compile_options(profiler PRIVATE /W3)

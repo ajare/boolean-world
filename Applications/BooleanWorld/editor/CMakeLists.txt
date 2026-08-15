@@ -31,8 +31,8 @@ target_compile_definitions(editor PRIVATE YAML_CPP_STATIC_DEFINE)
 
 target_link_libraries(editor PRIVATE
     core
-    vendor::opengl vendor::glew vendor::spdlog vendor::nfd
-    vendor::yaml-cpp vendor::sdl2 vendor::sdl2main)
+    vendor::opengl ext::glew vendor::spdlog vendor::nfd
+    ext::yaml-cpp vendor::sdl2 vendor::sdl2main)
 
 target_compile_features(editor PRIVATE cxx_std_20)
 target_compile_options(editor PRIVATE /W3)

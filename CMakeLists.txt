@@ -54,10 +54,10 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include(CTest)   # must be at top level for ctest to find tests in subdirectories
 
 include(Submodules)
+bw_ensure_mpp()
+
 include(Prebuilt)
 include(Helpers)
-
-bw_ensure_submodules()
 
 add_subdirectory(Willpower)
 add_subdirectory(AppLib)

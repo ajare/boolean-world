@@ -28,8 +28,8 @@ target_compile_definitions(floored PRIVATE YAML_CPP_STATIC_DEFINE USINGZ)
 
 target_link_libraries(floored PRIVATE
     core
-    vendor::opengl vendor::glew vendor::spdlog vendor::nfd
-    vendor::yaml-cpp vendor::sdl2 vendor::sdl2main)
+    vendor::opengl ext::glew vendor::spdlog vendor::nfd
+    ext::yaml-cpp vendor::sdl2 vendor::sdl2main)
 
 target_compile_features(floored PRIVATE cxx_std_23)
 target_compile_options(floored PRIVATE /W3)

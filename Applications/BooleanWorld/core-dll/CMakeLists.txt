@@ -6,7 +6,7 @@ target_include_directories(core-dll PRIVATE include)
 
 target_compile_definitions(core-dll PRIVATE COREDLL_EXPORTS _WINDOWS _USRDLL)
 
-target_link_libraries(core-dll PRIVATE core vendor::yaml-cpp)
+target_link_libraries(core-dll PRIVATE core ext::yaml-cpp)
 
 target_compile_features(core-dll PRIVATE cxx_std_20)
 target_compile_options(core-dll PRIVATE /W3)
