@@ -1,8 +1,4 @@
-[submodule "ext/Utils"]
-	path = ext/Utils
-	url = https://wtmrsh@bitbucket.org/wtmrsh/utils.git
-	ignore = dirty
-[submodule "ext/MassivePolyPusher"]
-	path = ext/MassivePolyPusher
-	url = https://wtmrsh@bitbucket.org/wtmrsh/massivepolypusher.git
+[submodule "ext/massive-poly-pusher"]
+	path = ext/massive-poly-pusher
+	url = https://github.com/ajare/massive-poly-pusher
 	ignore = dirty
