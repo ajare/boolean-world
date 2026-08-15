@@ -31,7 +31,9 @@ target_link_libraries(floored PRIVATE
     ext::yaml-cpp ext::sdl3)
 
 target_compile_features(floored PRIVATE cxx_std_23)
-target_compile_options(floored PRIVATE /W3)
+# fmt 11 (bundled in spdlog 1.15) static_asserts that MSVC is compiling as
+# UTF-8. All sources here are already valid UTF-8.
+target_compile_options(floored PRIVATE /W3 /utf-8)
 bw_target_defaults(floored)
 bw_output_dirs(floored "bin/x64/$<CONFIG>")
 bw_enable_sdl_checks(floored)
