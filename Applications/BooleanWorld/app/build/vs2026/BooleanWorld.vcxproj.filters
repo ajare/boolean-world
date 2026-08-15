@@ -78,9 +78,6 @@
     <ClInclude Include="..\..\include\GameException.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\HexWorld\include\NotImplementedException.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\include\StateMapLoadBooleanWorld.h">
       <Filter>Header Files</Filter>
     </ClInclude>

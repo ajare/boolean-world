@@ -109,32 +109,17 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\include\willpower\firepower\AreaQuery.h" />
-    <ClInclude Include="..\..\include\willpower\firepower\Beam.h" />
-    <ClInclude Include="..\..\include\willpower\firepower\BeamDefaultDefinitionFactory.h" />
-    <ClInclude Include="..\..\include\willpower\firepower\BeamManager.h" />
     <ClInclude Include="..\..\include\willpower\firepower\BeamShard.h" />
-    <ClInclude Include="..\..\include\willpower\firepower\BeamResource.h" />
-    <ClInclude Include="..\..\include\willpower\firepower\BeamVertexDataBuilder.h" />
     <ClInclude Include="..\..\include\willpower\firepower\Bomb.h" />
-    <ClInclude Include="..\..\include\willpower\firepower\BombManager.h" />
-    <ClInclude Include="..\..\include\willpower\firepower\BombVertexDataBuilder.h" />
     <ClInclude Include="..\..\include\willpower\firepower\ControlSetting.h" />
     <ClInclude Include="..\..\include\willpower\firepower\Mesh.h" />
-    <ClInclude Include="..\..\include\willpower\firepower\MeshCollisionCircle.h" />
     <ClInclude Include="..\..\include\willpower\firepower\MeshCollisionManager.h" />
-    <ClInclude Include="..\..\include\willpower\firepower\ObjectCollisionManager.h" />
     <ClInclude Include="..\..\include\willpower\firepower\Platform.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\src\AreaQuery.cpp" />
-    <ClCompile Include="..\..\src\Beam.cpp" />
-    <ClCompile Include="..\..\src\BeamDefaultDefinitionFactory.cpp" />
-    <ClCompile Include="..\..\src\BeamResource.cpp" />
     <ClCompile Include="..\..\src\Bomb.cpp" />
     <ClCompile Include="..\..\src\Mesh.cpp" />
     <ClCompile Include="..\..\src\MeshCollisionManager.cpp" />
-    <ClCompile Include="..\..\src\ObjectCollisionManager.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

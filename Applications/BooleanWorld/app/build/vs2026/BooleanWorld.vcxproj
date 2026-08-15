@@ -271,7 +271,6 @@
   <ItemGroup>
     <ClInclude Include="..\..\..\common\include\common\GameDefines.h" />
     <ClInclude Include="..\..\..\common\include\common\MaterialRegistry.h" />
-    <ClInclude Include="..\..\..\HexWorld\include\NotImplementedException.h" />
     <ClInclude Include="..\..\include\ClippingRecord.h" />
     <ClInclude Include="..\..\include\DebugLineDataProvider.h" />
     <ClInclude Include="..\..\include\DisplayMessage.h" />
