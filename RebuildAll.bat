@@ -16,6 +16,10 @@ IF NOT EXIST %MSBUILD% (
 
 SET FLAGS=/t:Rebuild /p:Configuration=%CONFIG% /p:Platform=x64 /m /v:minimal /nologo
 
+echo === Utils (nested inside MassivePolyPusher) ===
+REM MassivePolyPusher links its own copy of Utils, so this must build first.
+%MSBUILD% "ext\MassivePolyPusher\ext\utils\build\vs2026\Utils.sln" %FLAGS% || GOTO :fail
+
 echo === Utils (submodule) ===
 %MSBUILD% "ext\Utils\build\vs2026\Utils.sln" %FLAGS% || GOTO :fail
 
