@@ -11,34 +11,29 @@
 #include "EntityHandler.h"
 #include "AnimationDatabase.h"
 
-namespace applib
-{
+namespace applib {
 
-	typedef std::function<EntityHandler*(std::shared_ptr<AnimationDatabase>)> EntityHandlerFactoryFunction;
+typedef std::function<EntityHandler*(std::shared_ptr<AnimationDatabase>)> EntityHandlerFactoryFunction;
 
-	struct Model
-	{
-		std::shared_ptr<AnimationDatabase> animationDatabase;
+struct Model {
+  std::shared_ptr<AnimationDatabase> animationDatabase;
 
-		std::shared_ptr<EntityHandler> entityHandler;
+  std::shared_ptr<EntityHandler> entityHandler;
 
-		wp::collide::Simulation* collisionSim;
+  wp::collide::Simulation* collisionSim;
 
-		wp::firepower::MeshCollisionManager* collisionMgr;
+  wp::firepower::MeshCollisionManager* collisionMgr;
 
-	public:
+public:
+  Model(EntityHandlerFactoryFunction handlerFactory, wp::application::resourcesystem::ResourceManager* resourceMgr)
+      : collisionSim(nullptr), collisionMgr(nullptr) {
+    animationDatabase = std::make_shared<AnimationDatabase>(resourceMgr);
 
-		Model(EntityHandlerFactoryFunction handlerFactory, wp::application::resourcesystem::ResourceManager* resourceMgr)
-			: collisionSim(nullptr)
-			, collisionMgr(nullptr)
-		{
-			animationDatabase = std::make_shared<AnimationDatabase>(resourceMgr);
+    auto entityHandlerPtr = handlerFactory(animationDatabase);
+    entityHandler = std::shared_ptr<EntityHandler>(entityHandlerPtr);
+  }
 
-			auto entityHandlerPtr = handlerFactory(animationDatabase);
-			entityHandler = std::shared_ptr<EntityHandler>(entityHandlerPtr);
-		}
+  virtual ~Model() = default;
+};
 
-		virtual ~Model() = default;
-	};
-
-} // applib
+}  // namespace applib

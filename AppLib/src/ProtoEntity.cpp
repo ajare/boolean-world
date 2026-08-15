@@ -2,38 +2,31 @@
 
 #include "ProtoEntity.h"
 
-namespace applib
-{
+namespace applib {
 
-	using namespace std;
-	using namespace wp;
+using namespace std;
+using namespace wp;
 
-	ProtoEntity::ProtoEntity(string const& name,
-		string const& namesp,
-		string const& source,
-		map<string, string> const& tags,
-		application::resourcesystem::ResourceLocation* location,
-		shared_ptr<EntityHandler> entityHandler,
-		shared_ptr<AnimationDatabase> animDatabase)
-		: application::resourcesystem::Resource(name, namesp, "ProtoEntity", source, tags, location)
-		, mEntityHandler(entityHandler)
-		, mAnimationDatabase(animDatabase)
-	{
-	}
+ProtoEntity::ProtoEntity(string const& name,
+                         string const& namesp,
+                         string const& source,
+                         map<string, string> const& tags,
+                         application::resourcesystem::ResourceLocation* location,
+                         shared_ptr<EntityHandler> entityHandler,
+                         shared_ptr<AnimationDatabase> animDatabase)
+    : application::resourcesystem::Resource(name, namesp, "ProtoEntity", source, tags, location), mEntityHandler(entityHandler), mAnimationDatabase(animDatabase) {
+}
 
-	void ProtoEntity::loadExtraDefinitions(utils::XmlNode* node, entt::entity protoId)
-	{
-		// To be implemented by child class.
-	}
+void ProtoEntity::loadExtraDefinitions(utils::XmlNode* node, entt::entity protoId) {
+  // To be implemented by child class.
+}
 
-	void ProtoEntity::setComponentSystemId(entt::entity id)
-	{
-		mCompSysId = id;
-	}
+void ProtoEntity::setComponentSystemId(entt::entity id) {
+  mCompSysId = id;
+}
 
-	entt::entity ProtoEntity::getComponentSystemId() const
-	{
-		return mCompSysId;
-	}
+entt::entity ProtoEntity::getComponentSystemId() const {
+  return mCompSysId;
+}
 
-} // applib
+}  // namespace applib

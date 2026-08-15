@@ -22,201 +22,192 @@
 #include "BeamManager.h"
 #include "ScreenFxManager.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API StatePlay : public State
-	{
-	protected:
+class APPLIB_API StatePlay : public State {
+protected:
+  enum class RenderOrder {
+    Background = -2,
+    Map = -1,
+    Entities = 0,
+    Bullets,
+    Beams,
+    MapDebug
+  };
 
-		enum class RenderOrder
-		{
-			Background = -2,
-			Map = -1,
-			Entities = 0,
-			Bullets,
-			Beams,
-			MapDebug
-		};
+private:
+  wp::application::InputStateManager* mInputStateMgr;
 
-	private:
+  ScreenFxManager* mScreenFxMgr;
 
-		wp::application::InputStateManager* mInputStateMgr;
+  std::vector<std::string> mActiveInputStates;
 
-		ScreenFxManager* mScreenFxMgr;
+  float mMouseDeltaX, mMouseDeltaY;
 
-		std::vector<std::string> mActiveInputStates;
+  bool mUseDebugCamera;
 
-		float mMouseDeltaX, mMouseDeltaY;
+  glm::vec2 mDebugCameraPos;
 
-		bool mUseDebugCamera;
+  mpp::CameraPtr mDebugCamera;
 
-		glm::vec2 mDebugCameraPos;
+protected:
+  EntityManager* mEntityMgr;
 
-		mpp::CameraPtr mDebugCamera;
+  wp::application::resourcesystem::ResourcePtr mMap;
 
-	protected:
+  std::unique_ptr<wp::viz::GeometryMeshRenderer> mMapRenderer;
 
-		EntityManager* mEntityMgr;
+  std::unique_ptr<wp::collide::Simulation> mMapCollisionSim;
 
-		wp::application::resourcesystem::ResourcePtr mMap;
+  std::unique_ptr<wp::firepower::MeshCollisionManager> mMeshCollisionMgr;
 
-		std::unique_ptr<wp::viz::GeometryMeshRenderer> mMapRenderer;
+  std::map<std::string, std::tuple<wp::viz::Renderer*, int, bool>> mAdditionalRenderers;
 
-		std::unique_ptr<wp::collide::Simulation> mMapCollisionSim;
+  BulletManager* mBulletMgr;
 
-		std::unique_ptr<wp::firepower::MeshCollisionManager> mMeshCollisionMgr;
+  BeamManager* mBeamMgr;
 
-		std::map<std::string, std::tuple<wp::viz::Renderer*, int, bool>> mAdditionalRenderers;
+private:
+  virtual void setupEntityFacades();
 
-		BulletManager* mBulletMgr;
+  virtual void setupEntities();
 
-		BeamManager* mBeamMgr;
+  virtual void setupMapRenderer(StateTransitionData* transitionData);
 
-	private:
+  void setupMapCollisionSim(StateTransitionData* transitionData);
 
-		virtual void setupEntityFacades();
+  void setupMeshCollisionManager(StateTransitionData* transitionData);
 
-		virtual void setupEntities();
+  void setupAdditionalRenderers(mpp::ResourceManager* renderResourceMgr);
 
-		virtual void setupMapRenderer(StateTransitionData* transitionData);
+  virtual std::map<std::string, std::tuple<wp::viz::Renderer*, int, bool>> createAdditionalRenderers(mpp::ResourceManager* renderResourceMgr);
 
-		void setupMapCollisionSim(StateTransitionData* transitionData);
+  void destroyAdditionalRenderers();
 
-		void setupMeshCollisionManager(StateTransitionData* transitionData);
+  virtual void setInitialMapRenderParams(wp::viz::GeometryMeshRenderParams* params);
 
-		void setupAdditionalRenderers(mpp::ResourceManager* renderResourceMgr);
+  virtual void registerInput() = 0;
 
-		virtual std::map<std::string, std::tuple<wp::viz::Renderer*, int, bool>> createAdditionalRenderers(mpp::ResourceManager* renderResourceMgr);
+  virtual void createGameObjects(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args);
 
-		void destroyAdditionalRenderers();
+  virtual void destroyGameObjects();
 
-		virtual void setInitialMapRenderParams(wp::viz::GeometryMeshRenderParams* params);
+  void injectKeyInputImpl(wp::application::KeyEvent evt, wp::application::Key key, wp::application::KeyModifiers modifiers) override;
 
-		virtual void registerInput() = 0;
+  void injectMouseButtonInputImpl(wp::application::MouseButtonEvent evt, wp::application::MouseButton mouseButton, wp::application::KeyModifiers modifiers) override;
 
-		virtual void createGameObjects(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args);
+  void injectMouseMotionInputImpl(float positionX, float positionY) override;
 
-		virtual void destroyGameObjects();
+  mpp::CameraPtr getActiveCamera() const;
 
-		void injectKeyInputImpl(wp::application::KeyEvent evt, wp::application::Key key, wp::application::KeyModifiers modifiers) override;
+  glm::vec2 getPlayerPosition() const;
 
-		void injectMouseButtonInputImpl(wp::application::MouseButtonEvent evt, wp::application::MouseButton mouseButton, wp::application::KeyModifiers modifiers) override;
+protected:
+  void createEntityFacade(
+      std::string const& facadeType,
+      std::vector<int> const& types,
+      EntityFacadeRenderOptions const& options,
+      size_t initialSize);
 
-		void injectMouseMotionInputImpl(float positionX, float positionY) override;
+  Entity const& getPlayerEntity() const;
 
-		mpp::CameraPtr getActiveCamera() const;
+  void useDebugCamera(bool use);
 
-		glm::vec2 getPlayerPosition() const;
+  bool usingDebugCamera() const;
 
-	protected:
+  wp::BoundingBox getViewBounds() const;
 
-		void createEntityFacade(
-			std::string const& facadeType,
-			std::vector<int> const& types,
-			EntityFacadeRenderOptions const& options,
-			size_t initialSize);
+  wp::Vector2 getViewCentreWorldPosition() const;
 
-		Entity const& getPlayerEntity() const;
+  wp::Vector2 getViewOffsetWorldPosition() const;
 
-		void useDebugCamera(bool use);
+  wp::Vector2 getMouseScreenPosition() const;
 
-		bool usingDebugCamera() const;
+  wp::Vector2 getMouseScreenDelta() const;
 
-		wp::BoundingBox getViewBounds() const;
+  wp::Vector2 getMouseWorldPosition() const;
 
-		wp::Vector2 getViewCentreWorldPosition() const;
+  virtual void updatePreInput(float frameTime);
 
-		wp::Vector2 getViewOffsetWorldPosition() const;
+  virtual void updatePreEntities(float frameTime);
 
-		wp::Vector2 getMouseScreenPosition() const;
+  virtual void updatePostEntities(float frameTime);
 
-		wp::Vector2 getMouseScreenDelta() const;
+  virtual void updatePreRenderers(float frameTime);
 
-		wp::Vector2 getMouseWorldPosition() const;
+  void createRenderers(mpp::ResourceManager* renderResourceMgr, StateTransitionData* transitionData);
 
-		virtual void updatePreInput(float frameTime);
+  void destroyRenderers();
 
-		virtual void updatePreEntities(float frameTime);
+  void createInput();
 
-		virtual void updatePostEntities(float frameTime);
+  void destroyInput();
 
-		virtual void updatePreRenderers(float frameTime);
+  void updateInput(float frameTime);
 
-		void createRenderers(mpp::ResourceManager* renderResourceMgr, StateTransitionData* transitionData);
+  void createScreenFxManagement();
 
-		void destroyRenderers();
+  void destroyScreenFxManagement();
 
-		void createInput();
+  void updateScreenFxManagement(float frameTime);
 
-		void destroyInput();
+  void createEntityManagement();
 
-		void updateInput(float frameTime);
+  void destroyEntityManagement();
 
-		void createScreenFxManagement();
+  void updateEntityManagement(float frameTime);
 
-		void destroyScreenFxManagement();
+  void createFirepowerManagement(wp::application::resourcesystem::ResourceManager* resourceMgr,
+                                 mpp::RenderSystem* renderSystem,
+                                 mpp::ResourceManager* renderResourceMgr,
+                                 wp::application::resourcesystem::ResourcePtr gameResource);
 
-		void updateScreenFxManagement(float frameTime);
+  void destroyFirepowerManagement();
 
-		void createEntityManagement();
+  void updateFirepowerManagement(float frameTime);
 
-		void destroyEntityManagement();
+  void updateRenderers(float frameTime);
 
-		void updateEntityManagement(float frameTime);
+  virtual void updateCamera(float frameTime);
 
-		void createFirepowerManagement(wp::application::resourcesystem::ResourceManager* resourceMgr,
-			mpp::RenderSystem* renderSystem,
-			mpp::ResourceManager* renderResourceMgr,
-			wp::application::resourcesystem::ResourcePtr gameResource);
+  void createEntity(int type, wp::Vector2 const& position, float angle, bool addImmediately = false);
 
-		void destroyFirepowerManagement();
+  virtual void setupScene();
 
-		void updateFirepowerManagement(float frameTime);
+  void setup(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
 
-		void updateRenderers(float frameTime);
-		
-		virtual void updateCamera(float frameTime);
+  void teardown() override;
 
-		void createEntity(int type, wp::Vector2 const& position, float angle, bool addImmediately = false);
+  void enterImpl(wp::application::resourcesystem::ResourceManager* resourceMgr, wp::application::AudioSystem* audioSystem, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
 
-		virtual void setupScene();
+  void exitImpl();
 
-		void setup(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
+  void suspendImpl(void* args = nullptr);
 
-		void teardown() override;
+  void resumeImpl(void* args) override;
 
-		void enterImpl(wp::application::resourcesystem::ResourceManager* resourceMgr, wp::application::AudioSystem* audioSystem, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
+  void registerInputState(std::string const& name,
+                          std::vector<wp::application::Key> const& keysPressed,
+                          std::vector<wp::application::Key> const& keysReleased,
+                          std::vector<wp::application::Key> const& keysDown,
+                          std::vector<wp::application::MouseButton> const& buttonsPressed,
+                          std::vector<wp::application::MouseButton> const& buttonsReleased,
+                          std::vector<wp::application::MouseButton> const& buttonsDown,
+                          bool mouseWheelUp,
+                          bool mouseWheelDown,
+                          uint32_t keyModifiers,
+                          bool disableInGui = false);
 
-		void exitImpl();
+  void unregisterInputState(std::string const& name);
 
-		void suspendImpl(void* args = nullptr);
+  virtual void updateActions(std::vector<std::string> const& activeStates, float frameTime);
 
-		void resumeImpl(void* args) override;
+  void updateImpl(float frameTime) override;
 
-		void registerInputState(std::string const& name,
-			std::vector<wp::application::Key> const& keysPressed,
-			std::vector<wp::application::Key> const& keysReleased,
-			std::vector<wp::application::Key> const& keysDown,
-			std::vector<wp::application::MouseButton> const& buttonsPressed,
-			std::vector<wp::application::MouseButton> const& buttonsReleased,
-			std::vector<wp::application::MouseButton> const& buttonsDown,
-			bool mouseWheelUp,
-			bool mouseWheelDown,
-			uint32_t keyModifiers,
-			bool disableInGui = false);
+  void renderImpl(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
 
-		void unregisterInputState(std::string const& name);
+public:
+  StatePlay();
+};
 
-		virtual void updateActions(std::vector<std::string> const& activeStates, float frameTime);
-		
-		void updateImpl(float frameTime) override;
-
-		void renderImpl(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
-
-	public:
-
-		StatePlay();
-	};
-
-} // applib
+}  // namespace applib

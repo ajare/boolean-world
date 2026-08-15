@@ -2,18 +2,14 @@
 
 #include <willpower/viz/GeometryMeshRenderer.h>
 
-namespace applib
-{
+namespace applib {
 
-	class GeometryMeshRendererFactory
-	{
-	public:
+class GeometryMeshRendererFactory {
+public:
+  GeometryMeshRendererFactory() {
+  }
 
-		GeometryMeshRendererFactory()
-		{
-		}
+  virtual wp::viz::GeometryMeshRenderer* create(std::string const& name, std::shared_ptr<wp::geometry::Mesh> mesh, wp::viz::StaticRenderer::GridOptions const& gridOptions, size_t indexWidth, mpp::ResourceManager* renderResourceMgr) = 0;
+};
 
-		virtual wp::viz::GeometryMeshRenderer* create(std::string const& name, std::shared_ptr<wp::geometry::Mesh> mesh, wp::viz::StaticRenderer::GridOptions const& gridOptions, size_t indexWidth, mpp::ResourceManager* renderResourceMgr) = 0;
-	};
-
-}
+}  // namespace applib

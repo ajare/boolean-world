@@ -10,48 +10,37 @@
 #include "ThreadableLoadState.h"
 #include "Model.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API StateLoad : public ThreadableLoadState
-	{
-	private:
+class APPLIB_API StateLoad : public ThreadableLoadState {
+private:
+  LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
 
-		LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
+  void scanResourceLocationCallback(std::string const& locationName, wp::application::resourcesystem::ResourceLocationState state);
 
-		void scanResourceLocationCallback(std::string const& locationName, wp::application::resourcesystem::ResourceLocationState state);
+  void loadResources(wp::application::resourcesystem::ResourceManager* resourceMgr);
 
-		void loadResources(wp::application::resourcesystem::ResourceManager* resourceMgr);
+public:
+  explicit StateLoad(bool useThreading);
+};
 
-	public:
+class StateLoadFactory : public wp::application::StateFactory {
+  wp::Logger* mwLogger;
 
-		explicit StateLoad(bool useThreading);
-	};
+  wp::application::resourcesystem::ResourceManager* mwResourceMgr;
 
-	class StateLoadFactory : public wp::application::StateFactory
-	{
-		wp::Logger* mwLogger;
+  bool mUseThreading;
 
-		wp::application::resourcesystem::ResourceManager* mwResourceMgr;
+public:
+  StateLoadFactory(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr, bool useThreading)
+      : wp::application::StateFactory("Load"), mwLogger(logger), mwResourceMgr(resourceMgr), mUseThreading(useThreading) {
+  }
 
-		bool mUseThreading;
+  wp::application::State* createState() {
+    auto state = new StateLoad(mUseThreading);
+    state->setLogger(mwLogger);
+    return state;
+  }
+};
 
-	public:
-
-		StateLoadFactory(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr, bool useThreading)
-			: wp::application::StateFactory("Load")
-			, mwLogger(logger)
-			, mwResourceMgr(resourceMgr)
-			, mUseThreading(useThreading)
-		{
-		}
-
-		wp::application::State* createState()
-		{
-			auto state = new StateLoad(mUseThreading);
-			state->setLogger(mwLogger);
-			return state;
-		}
-	};
-
-} // applib
+}  // namespace applib

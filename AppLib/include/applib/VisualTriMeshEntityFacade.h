@@ -8,67 +8,55 @@
 #include "VisualTriMeshDataProvider.h"
 #include "AnimationDatabase.h"
 
-namespace applib
-{
+namespace applib {
 
-	struct VisualTrianglesEntityFacadeRenderOptions : EntityFacadeRenderOptions
-	{
-	};
+struct VisualTrianglesEntityFacadeRenderOptions : EntityFacadeRenderOptions {
+};
 
-	class APPLIB_API VisualTriMeshEntityFacade : public EntityFacade
-	{
-	public:
+class APPLIB_API VisualTriMeshEntityFacade : public EntityFacade {
+public:
+  typedef std::function<std::shared_ptr<VisualTriMeshDataProvider>(EntityFacade*)> DataProviderFactory;
 
-		typedef std::function<std::shared_ptr<VisualTriMeshDataProvider>(EntityFacade*)> DataProviderFactory;
+private:
+  DataProviderFactory mProviderFactory;
 
-	private:
+  wp::viz::DynamicTriangleRenderer<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat>* mEntityRenderer;
 
-		DataProviderFactory mProviderFactory;
+  std::shared_ptr<VisualTriMeshDataProvider> mRenderDataProvider;
 
-		wp::viz::DynamicTriangleRenderer<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat>* mEntityRenderer;
+  wp::application::resourcesystem::ResourcePtr mTexture;
 
-		std::shared_ptr<VisualTriMeshDataProvider> mRenderDataProvider;
+protected:
+  void createEntityRenderer(
+      mpp::ScenePtr scene,
+      mpp::RenderSystem* renderSystem,
+      mpp::ResourceManager* renderResourceMgr,
+      EntityFacadeRenderOptions const* options,
+      int renderOrder) override;
 
-		wp::application::resourcesystem::ResourcePtr mTexture;
+public:
+  VisualTriMeshEntityFacade(DataProviderFactory providerFactory, wp::application::resourcesystem::ResourcePtr texture, size_t initialSize);
 
-	protected:
+  ~VisualTriMeshEntityFacade();
 
-		void createEntityRenderer(
-			mpp::ScenePtr scene,
-			mpp::RenderSystem* renderSystem,
-			mpp::ResourceManager* renderResourceMgr,
-			EntityFacadeRenderOptions const* options,
-			int renderOrder) override;
+  void updateRenderer(wp::BoundingBox const& viewBounds, float frameTime) override;
 
-	public:
+  void setRenderersVisible(bool visible) override;
+};
 
-		VisualTriMeshEntityFacade(DataProviderFactory providerFactory, wp::application::resourcesystem::ResourcePtr texture, size_t initialSize);
+class VisualTriMeshEntityFacadeFactory : public EntityFacadeFactory {
+  VisualTriMeshEntityFacade::DataProviderFactory mProviderFactory;
 
-		~VisualTriMeshEntityFacade();
+  wp::application::resourcesystem::ResourcePtr mTexture;
 
-		void updateRenderer(wp::BoundingBox const& viewBounds, float frameTime) override;
+public:
+  VisualTriMeshEntityFacadeFactory(VisualTriMeshEntityFacade::DataProviderFactory providerFactory, wp::application::resourcesystem::ResourcePtr texture)
+      : mProviderFactory(providerFactory), mTexture(texture) {
+  }
 
-		void setRenderersVisible(bool visible) override;
-	};
+  EntityFacade* create(size_t initialSize) override {
+    return new VisualTriMeshEntityFacade(mProviderFactory, mTexture, initialSize);
+  }
+};
 
-	class VisualTriMeshEntityFacadeFactory : public EntityFacadeFactory
-	{
-		VisualTriMeshEntityFacade::DataProviderFactory mProviderFactory;
-		
-		wp::application::resourcesystem::ResourcePtr mTexture;
-
-	public:
-
-		VisualTriMeshEntityFacadeFactory(VisualTriMeshEntityFacade::DataProviderFactory providerFactory, wp::application::resourcesystem::ResourcePtr texture)
-			: mProviderFactory(providerFactory)
-			, mTexture(texture)
-		{
-		}
-
-		EntityFacade* create(size_t initialSize) override
-		{
-			return new VisualTriMeshEntityFacade(mProviderFactory, mTexture, initialSize);
-		}
-	};
-
-} // applib
+}  // namespace applib

@@ -7,43 +7,37 @@
 #include "MapDefaultDefinitionFactory.h"
 #include "MapGeometryObjectAttributes.h"
 
-namespace applib
-{
-	using namespace std;
-	using namespace utils;
-	using namespace wp;
+namespace applib {
+using namespace std;
+using namespace utils;
+using namespace wp;
 
-	MapDefaultDefinitionFactory::MapDefaultDefinitionFactory()
-		: MapResourceDefinitionFactory("",
-			new VertexAttributeFactory,
-			new EdgeAttributeFactory,
-			new PolygonAttributeFactory,
-			new PolygonVertexAttributeFactory)
-	{
-	}
+MapDefaultDefinitionFactory::MapDefaultDefinitionFactory()
+    : MapResourceDefinitionFactory("",
+                                   new VertexAttributeFactory,
+                                   new EdgeAttributeFactory,
+                                   new PolygonAttributeFactory,
+                                   new PolygonVertexAttributeFactory) {
+}
 
-	void MapDefaultDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node)
-	{
-		auto mapRes = static_cast<Map*>(resource);
+void MapDefaultDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) {
+  auto mapRes = static_cast<Map*>(resource);
 
-		// Create mesh
-		createMesh(mapRes);
+  // Create mesh
+  createMesh(mapRes);
 
-		// Load from code, or wherver
-		auto sourceNode = node->getChild("Source");
-		auto sourceType = sourceNode->getAttribute("type");
+  // Load from code, or wherver
+  auto sourceNode = node->getChild("Source");
+  auto sourceType = sourceNode->getAttribute("type");
 
-		if (sourceType == "code")
-		{
-			auto funcName = sourceNode->getValue();
-			auto func = mapRes->getMeshCreationFunction(funcName);
+  if (sourceType == "code") {
+    auto funcName = sourceNode->getValue();
+    auto func = mapRes->getMeshCreationFunction(funcName);
 
-			func(mapRes->getMesh().get(), resourceMgr);
-		}
-		else
-		{
-			throw application::resourcesystem::ResourceException(mapRes, "Unknown source type: " + sourceType);
-		}
-	}
+    func(mapRes->getMesh().get(), resourceMgr);
+  } else {
+    throw application::resourcesystem::ResourceException(mapRes, "Unknown source type: " + sourceType);
+  }
+}
 
-} // applib
+}  // namespace applib

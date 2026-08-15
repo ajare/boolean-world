@@ -3,16 +3,13 @@
 #include "Platform.h"
 #include "EntityFacade.h"
 
-namespace applib
-{
+namespace applib {
 
-	class EntityFacadeFactory
-	{
-	public:
+class EntityFacadeFactory {
+public:
+  virtual ~EntityFacadeFactory() = default;
 
-		virtual ~EntityFacadeFactory() = default;
+  virtual EntityFacade* create(size_t initialSize) = 0;
+};
 
-		virtual EntityFacade* create(size_t initialSize) = 0;
-	};
-
-} // applib
+}  // namespace applib

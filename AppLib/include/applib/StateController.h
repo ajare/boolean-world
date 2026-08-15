@@ -8,47 +8,41 @@
 #include "Platform.h"
 #include "State.h"
 
+namespace applib {
 
-namespace applib
-{
+class APPLIB_API StateController : public State {
+  std::string mNextState;
 
-	class APPLIB_API StateController : public State
-	{
-		std::string mNextState;
+  std::string mGameResourceName;
 
-		std::string mGameResourceName;
+private:
+  virtual std::string getNextStateName(std::string const& prevStateName, StateTransitionData* transitionData) = 0;
 
-	private:
+  virtual void updateTransitionData(std::string const& prevStateName, std::string const& nextStateName, StateTransitionData* transitionData) = 0;
 
-		virtual std::string getNextStateName(std::string const& prevStateName, StateTransitionData* transitionData) = 0;
+protected:
+  void transferTransitionMapData(MapTransitionData::MapData* from, MapTransitionData::MapData* to);
 
-		virtual void updateTransitionData(std::string const& prevStateName, std::string const& nextStateName, StateTransitionData* transitionData) = 0;
+  void setTransitionNextMap(MapTransitionData* data, std::string const& name, wp::application::resourcesystem::ResourcePtr resource);
 
-	protected:
+  void setup(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
 
-		void transferTransitionMapData(MapTransitionData::MapData* from, MapTransitionData::MapData* to);
+  void teardown() override;
 
-		void setTransitionNextMap(MapTransitionData* data, std::string const& name, wp::application::resourcesystem::ResourcePtr resource);
+  void suspendImpl(void* args = nullptr);
 
-		void setup(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
+  void resumeImpl(void* args) override;
 
-		void teardown() override;
+  void exitImpl();
 
-		void suspendImpl(void* args = nullptr);
+  void updateImpl(float frameTime);
 
-		void resumeImpl(void* args) override;
+  void renderImpl(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr);
 
-		void exitImpl();
+public:
+  StateController(std::string const& initialState);
 
-		void updateImpl(float frameTime);
+  ~StateController();
+};
 
-		void renderImpl(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr);
-
-	public:
-
-		StateController(std::string const& initialState);
-
-		~StateController();
-	};
-
-}
+}  // namespace applib

@@ -8,125 +8,108 @@
 #include "ProtoEntity.h"
 #include "ProtoEntityDefaultDefinitionFactory.h"
 
-namespace applib
-{
-	using namespace std;
-	using namespace utils;
-	using namespace wp;
+namespace applib {
+using namespace std;
+using namespace utils;
+using namespace wp;
 
-	ProtoEntityDefaultDefinitionFactory::ProtoEntityDefaultDefinitionFactory()
-		: ProtoEntityResourceDefinitionFactory("")
-	{
-	}
+ProtoEntityDefaultDefinitionFactory::ProtoEntityDefaultDefinitionFactory()
+    : ProtoEntityResourceDefinitionFactory("") {
+}
 
-	void ProtoEntityDefaultDefinitionFactory::createProtoEntity(ProtoEntity* entity, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node)
-	{
-		auto handler = getEntityHandler(entity);
-		auto protoId = entity->getComponentSystemId();
-		auto const& protoName = entity->getName();
-		auto propNode = node->getChild("Properties");
+void ProtoEntityDefaultDefinitionFactory::createProtoEntity(ProtoEntity* entity, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) {
+  auto handler = getEntityHandler(entity);
+  auto protoId = entity->getComponentSystemId();
+  auto const& protoName = entity->getName();
+  auto propNode = node->getChild("Properties");
 
-		// Physical
-		auto physicalNode = propNode->getOptionalChild("Physical");
-		if (physicalNode)
-		{
-			// Parse
-			Vector2 position = Vector2::ZERO;
-			float floorZ = 0.0f;
-			float angle = 0.0f;
-			float pitch = 0.0f;
-			
-			bool collides = false;
-			auto collisionNode = physicalNode->getOptionalChild("Collision");
-			if (collisionNode)
-			{
-				collides = utils::StringUtils::parseBool(collisionNode->getValue());
-			}
+  // Physical
+  auto physicalNode = propNode->getOptionalChild("Physical");
+  if (physicalNode) {
+    // Parse
+    Vector2 position = Vector2::ZERO;
+    float floorZ = 0.0f;
+    float angle = 0.0f;
+    float pitch = 0.0f;
 
-			Vector2 size(0, 0);
+    bool collides = false;
+    auto collisionNode = physicalNode->getOptionalChild("Collision");
+    if (collisionNode) {
+      collides = utils::StringUtils::parseBool(collisionNode->getValue());
+    }
 
-			if (collides)
-			{
-				auto sizeNode = physicalNode->getChild("Size");
-				auto collType = sizeNode->getAttribute("type");
+    Vector2 size(0, 0);
 
-				if (collType == "AABB")
-				{
-					auto sizeValue = sizeNode->getValue();
-					auto sizeComponents = utils::StringUtils::split(sizeValue, ", ");
+    if (collides) {
+      auto sizeNode = physicalNode->getChild("Size");
+      auto collType = sizeNode->getAttribute("type");
 
-					size.x = utils::StringUtils::parseFloat(sizeComponents[0]);
-					size.y = utils::StringUtils::parseFloat(sizeComponents[1]);
-				}
-				else
-				{
-					throw Exception("Unsupported collision size type: " + collType);
-				}
-			}
+      if (collType == "AABB") {
+        auto sizeValue = sizeNode->getValue();
+        auto sizeComponents = utils::StringUtils::split(sizeValue, ", ");
 
-			BoundingBox bounds(position - size / 2, size);
+        size.x = utils::StringUtils::parseFloat(sizeComponents[0]);
+        size.y = utils::StringUtils::parseFloat(sizeComponents[1]);
+      } else {
+        throw Exception("Unsupported collision size type: " + collType);
+      }
+    }
 
-			handler->registerProtoComponent<PhysicalStats>(protoId, {
-				position,
-				floorZ,
-				angle,
-				pitch,
-				collides,
-				bounds
-			});
-		}
+    BoundingBox bounds(position - size / 2, size);
 
-		// Visual
-		auto visualNode = propNode->getOptionalChild("Visual");
-		if (visualNode)
-		{
-			auto animationResource = static_cast<application::resourcesystem::AnimationSetResource*>(entity->getDependentResource("Animations").get());
-			auto animNode = visualNode->getOptionalChild("Animation");
-			if (animNode)
-			{
-				auto animDatabase = getAnimationDatabase(entity);
+    handler->registerProtoComponent<PhysicalStats>(protoId, {position,
+                                                             floorZ,
+                                                             angle,
+                                                             pitch,
+                                                             collides,
+                                                             bounds});
+  }
 
-				VisualSprite visual{ -1, 0,	0, 0.0f	};
-				visual.animations.fill((uint32_t)-1);
+  // Visual
+  auto visualNode = propNode->getOptionalChild("Visual");
+  if (visualNode) {
+    auto animationResource = static_cast<application::resourcesystem::AnimationSetResource*>(entity->getDependentResource("Animations").get());
+    auto animNode = visualNode->getOptionalChild("Animation");
+    if (animNode) {
+      auto animDatabase = getAnimationDatabase(entity);
 
-				uint32_t initialAnimId{ (uint32_t)-1 };
-				do
-				{
-					auto animKey = animNode->getAttribute("key");
-					auto animName = animNode->getValue();
+      VisualSprite visual{-1, 0, 0, 0.0f};
+      visual.animations.fill((uint32_t)-1);
 
-					// Register animation
-					auto animId = animDatabase->registerAnimation(
-						animationResource->getName(),
-						animationResource->getNamespace(),
-						animName);
+      uint32_t initialAnimId{(uint32_t)-1};
+      do {
+        auto animKey = animNode->getAttribute("key");
+        auto animName = animNode->getValue();
 
-					// Start with the first listed animation
-					if (initialAnimId == (uint32_t)-1)
-					{
-						initialAnimId = animId;
-					}
+        // Register animation
+        auto animId = animDatabase->registerAnimation(
+            animationResource->getName(),
+            animationResource->getNamespace(),
+            animName);
 
-					auto lookupKey = getAnimationIdFromName(protoName, animKey);
-					if (lookupKey >= AnimationDatabase::MaxObjectAnimations)
-					{
-						throw Exception(STR_FORMAT("Animation key {} out of bounds", lookupKey));
-					}
+        // Start with the first listed animation
+        if (initialAnimId == (uint32_t)-1) {
+          initialAnimId = animId;
+        }
 
-					visual.animations[lookupKey] = animId;
-				} while (animNode->next());
+        auto lookupKey = getAnimationIdFromName(protoName, animKey);
+        if (lookupKey >= AnimationDatabase::MaxObjectAnimations) {
+          throw Exception(STR_FORMAT("Animation key {} out of bounds", lookupKey));
+        }
 
-				visual.animation = initialAnimId;
-				handler->registerProtoComponent<VisualSprite>(protoId, visual);
-			}
-		}
+        visual.animations[lookupKey] = animId;
+      } while (animNode->next());
 
-		// BeamEmitter
-		auto beamEmitterNode = propNode->getOptionalChild("BeamEmitter");
-		if (beamEmitterNode)
-		{
-			handler->registerProtoComponent<BeamEmitter>(protoId, {});
-		}
-	}
+      visual.animation = initialAnimId;
+      handler->registerProtoComponent<VisualSprite>(protoId, visual);
+    }
+  }
 
-} // applib
+  // BeamEmitter
+  auto beamEmitterNode = propNode->getOptionalChild("BeamEmitter");
+  if (beamEmitterNode) {
+    handler->registerProtoComponent<BeamEmitter>(protoId, {});
+  }
+}
+
+}  // namespace applib

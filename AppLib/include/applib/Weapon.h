@@ -7,44 +7,37 @@
 #include "BulletManager.h"
 #include "BeamManager.h"
 
-namespace applib
-{
+namespace applib {
 
-	class Weapon
-	{
-	public:
+class Weapon {
+public:
+  Weapon();
 
-		Weapon();
+  virtual ~Weapon() = default;
+};
 
-		virtual ~Weapon() = default;
-	};
+class BulletWeapon : public Weapon {
+  BulletManager* mwBulletMgr;
 
-	class BulletWeapon : public Weapon
-	{
-		BulletManager* mwBulletMgr;
+public:
+  BulletWeapon();
 
-	public:
+  void setBulletManager(BulletManager* bulletMgr);
 
-		BulletWeapon();
+  void fire(int type, BulletParams const& params, BulletFireParams const& fireParams, Entity* entity);
+};
 
-		void setBulletManager(BulletManager* bulletMgr);
+class BeamWeapon : public Weapon {
+  BeamManager* mwBeamMgr;
 
-		void fire(int type, BulletParams const& params, BulletFireParams const& fireParams, Entity* entity);
-	};
+public:
+  BeamWeapon();
 
-	class BeamWeapon : public Weapon
-	{
-		BeamManager* mwBeamMgr;
+  void setBeamManager(BeamManager* beamMgr);
 
-	public:
+  void activate(Entity* entity);
 
-		BeamWeapon();
+  void deactivate(Entity* entity);
+};
 
-		void setBeamManager(BeamManager* beamMgr);
-
-		void activate(Entity* entity);
-
-		void deactivate(Entity* entity);
-	};
-
-} // applib
+}  // namespace applib

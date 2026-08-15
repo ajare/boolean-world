@@ -11,52 +11,47 @@
 #include "StateTransitionData.h"
 #include "Model.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API State : public wp::application::State
-	{
-	protected:
+class APPLIB_API State : public wp::application::State {
+protected:
+  wp::Logger* mwLogger;
 
-		wp::Logger* mwLogger;
+  mpp::RenderPipelinePtr mRenderPipeline;
 
-		mpp::RenderPipelinePtr mRenderPipeline;
+  mpp::ScenePtr mScene;
 
-		mpp::ScenePtr mScene;
+  mpp::CameraPtr mCamera;
 
-		mpp::CameraPtr mCamera;
+  wp::application::resourcesystem::ResourceManager* mwResourceMgr;
 
-		wp::application::resourcesystem::ResourceManager* mwResourceMgr;
+  wp::application::AudioSystem* mwAudioSystem;
 
-		wp::application::AudioSystem* mwAudioSystem;
+  mpp::RenderSystem* mwRenderSystem;
 
-		mpp::RenderSystem* mwRenderSystem;
+  mpp::ResourceManager* mwRenderResourceMgr;
 
-		mpp::ResourceManager* mwRenderResourceMgr;
+  StateTransitionData mTransitionData;
 
-		StateTransitionData mTransitionData;
+protected:
+  void enterImpl(wp::application::resourcesystem::ResourceManager* resourceMgr, wp::application::AudioSystem* audioSystem, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
 
-	protected:
+  void exitImpl() override;
 
-		void enterImpl(wp::application::resourcesystem::ResourceManager* resourceMgr, wp::application::AudioSystem* audioSystem, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
+  virtual void setup(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) = 0;
 
-		void exitImpl() override;
+  virtual void teardown() = 0;
 
-		virtual void setup(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) = 0;
+  void loadAllReferencedResources();
 
-		virtual void teardown() = 0;
+  std::vector<std::string> getDebuggingText() const override;
 
-		void loadAllReferencedResources();
+public:
+  explicit State(std::string const& name);
 
-		std::vector<std::string> getDebuggingText() const override;
+  wp::Vector2 getWindowSize() const;
 
-	public:
+  void setLogger(wp::Logger* logger);
+};
 
-		explicit State(std::string const& name);
-
-		wp::Vector2 getWindowSize() const;
-
-		void setLogger(wp::Logger* logger);
-	};
-
-} // applib
+}  // namespace applib

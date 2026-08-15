@@ -12,38 +12,34 @@
 #include "Bullet.h"
 #include "BulletRenderDataProvider.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API BulletManager
-	{
-		Battery<Bullet> mBattery;
+class APPLIB_API BulletManager {
+  Battery<Bullet> mBattery;
 
-		wp::application::resourcesystem::ResourcePtr mResource, mGameResource;
-		
-		std::shared_ptr<BulletRenderDataProvider> mDataProvider;
+  wp::application::resourcesystem::ResourcePtr mResource, mGameResource;
 
-		wp::viz::DynamicQuadRenderer<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat>* mRenderer;
+  std::shared_ptr<BulletRenderDataProvider> mDataProvider;
 
-		wp::firepower::MeshCollisionManager* mwMeshCollisionMgr;
+  wp::viz::DynamicQuadRenderer<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat>* mRenderer;
 
-	private:
+  wp::firepower::MeshCollisionManager* mwMeshCollisionMgr;
 
-		static bool updateBullet(Bullet& bullet, void* userObj, float frameTime);
+private:
+  static bool updateBullet(Bullet& bullet, void* userObj, float frameTime);
 
-		static bool destroyBullet(Bullet& bullet);
+  static bool destroyBullet(Bullet& bullet);
 
-	public:
+public:
+  BulletManager(wp::application::resourcesystem::ResourcePtr resource, wp::application::resourcesystem::ResourcePtr gameResource, wp::firepower::MeshCollisionManager* meshCollisionMgr, size_t initialCapacity);
 
-		BulletManager(wp::application::resourcesystem::ResourcePtr resource, wp::application::resourcesystem::ResourcePtr gameResource, wp::firepower::MeshCollisionManager* meshCollisionMgr, size_t initialCapacity);
+  virtual ~BulletManager();
 
-		virtual ~BulletManager();
+  void setupRenderer(mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, mpp::ScenePtr scene, int renderOrder);
 
-		void setupRenderer(mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, mpp::ScenePtr scene, int renderOrder);
+  void addBullet(int type, BulletParams const& params, wp::Vector2 const& pos, wp::Vector2 dir);
 
-		void addBullet(int type, BulletParams const& params, wp::Vector2 const& pos, wp::Vector2 dir);
+  void update(wp::BoundingBox const& viewBounds, float frameTime);
+};
 
-		void update(wp::BoundingBox const& viewBounds, float frameTime);
-	};
-
-} // applib
+}  // namespace applib

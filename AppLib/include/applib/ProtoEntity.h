@@ -14,40 +14,34 @@
 #include "EntityHandler.h"
 #include "AnimationDatabase.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API ProtoEntity : public wp::application::resourcesystem::Resource
-	{
-		friend class ProtoEntityResourceDefinitionFactory;
+class APPLIB_API ProtoEntity : public wp::application::resourcesystem::Resource {
+  friend class ProtoEntityResourceDefinitionFactory;
 
-	private:
+private:
+  entt::entity mCompSysId;
 
-		entt::entity mCompSysId;
+protected:
+  std::shared_ptr<EntityHandler> mEntityHandler;
 
-	protected:
+  std::shared_ptr<AnimationDatabase> mAnimationDatabase;
 
-		std::shared_ptr<EntityHandler> mEntityHandler;
+private:
+  virtual void loadExtraDefinitions(utils::XmlNode* node, entt::entity protoId);
 
-		std::shared_ptr<AnimationDatabase> mAnimationDatabase;
+public:
+  ProtoEntity(std::string const& name,
+              std::string const& namesp,
+              std::string const& source,
+              std::map<std::string, std::string> const& tags,
+              wp::application::resourcesystem::ResourceLocation* location,
+              std::shared_ptr<EntityHandler> entityHandler,
+              std::shared_ptr<AnimationDatabase> animDatabase);
 
-	private:
+  void setComponentSystemId(entt::entity id);
 
-		virtual void loadExtraDefinitions(utils::XmlNode* node, entt::entity protoId);
+  entt::entity getComponentSystemId() const;
+};
 
-	public:
-
-		ProtoEntity(std::string const& name,
-			std::string const& namesp,
-			std::string const& source,
-			std::map<std::string, std::string> const& tags,
-			wp::application::resourcesystem::ResourceLocation* location,
-			std::shared_ptr<EntityHandler> entityHandler,
-			std::shared_ptr<AnimationDatabase> animDatabase);
-
-		void setComponentSystemId(entt::entity id);
-
-		entt::entity getComponentSystemId() const;
-	};
-
-} // applib
+}  // namespace applib

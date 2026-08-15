@@ -6,16 +6,14 @@
 
 #include "AnimationDatabase.h"
 
-namespace applib
-{
+namespace applib {
 
-	struct VisualSprite
-	{
-		int animation;
-		int direction;
-		int frame;
-		float timer;
-		std::array<uint32_t, AnimationDatabase::MaxObjectAnimations> animations;
-	};
+struct VisualSprite {
+  int animation;
+  int direction;
+  int frame;
+  float timer;
+  std::array<uint32_t, AnimationDatabase::MaxObjectAnimations> animations;
+};
 
-} // applib
+}  // namespace applib

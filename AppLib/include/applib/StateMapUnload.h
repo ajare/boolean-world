@@ -11,50 +11,38 @@
 #include "Platform.h"
 #include "ThreadableLoadState.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API StateMapUnload : public ThreadableLoadState
-	{
-		LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
+class APPLIB_API StateMapUnload : public ThreadableLoadState {
+  LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
 
-		void unloadResources(wp::application::resourcesystem::ResourceManager* resourceMgr, MapTransitionData* transitionData);
+  void unloadResources(wp::application::resourcesystem::ResourceManager* resourceMgr, MapTransitionData* transitionData);
 
-	protected:
+protected:
+  std::vector<ThreadableWorkFunction> getPreWork(StateTransitionData* transitionData) override;
 
-		std::vector<ThreadableWorkFunction> getPreWork(StateTransitionData* transitionData) override;
+public:
+  explicit StateMapUnload(bool useThreading);
+};
 
-	public:
+class StateMapUnloadFactory : public wp::application::StateFactory {
+protected:
+  wp::Logger* mwLogger;
 
-		explicit StateMapUnload(bool useThreading);
-	};
+  wp::application::resourcesystem::ResourceManager* mwResourceMgr;
 
-	class StateMapUnloadFactory : public wp::application::StateFactory
-	{
-	protected:
+  bool mUseThreading;
 
-		wp::Logger* mwLogger;
+public:
+  StateMapUnloadFactory(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr, bool useThreading)
+      : wp::application::StateFactory("MapUnload"), mwLogger(logger), mwResourceMgr(resourceMgr), mUseThreading(useThreading) {
+  }
 
-		wp::application::resourcesystem::ResourceManager* mwResourceMgr;
+  wp::application::State* createState() {
+    auto state = new StateMapUnload(mUseThreading);
+    state->setLogger(mwLogger);
+    return state;
+  }
+};
 
-		bool mUseThreading;
-
-	public:
-
-		StateMapUnloadFactory(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr, bool useThreading)
-			: wp::application::StateFactory("MapUnload")
-			, mwLogger(logger)
-			, mwResourceMgr(resourceMgr)
-			, mUseThreading(useThreading)
-		{
-		}
-
-		wp::application::State* createState()
-		{
-			auto state = new StateMapUnload(mUseThreading);
-			state->setLogger(mwLogger);
-			return state;
-		}
-	};
-
-} // applib
+}  // namespace applib

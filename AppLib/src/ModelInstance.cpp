@@ -1,31 +1,26 @@
 #include "ModelInstance.h"
 
-namespace applib
-{
+namespace applib {
 
-	using namespace std;
-	using namespace wp;
+using namespace std;
+using namespace wp;
 
-	Model* ModelInstance::msModel = nullptr;
+Model* ModelInstance::msModel = nullptr;
 
-	void ModelInstance::set(Model* model)
-	{
-		msModel = model;
-	}
+void ModelInstance::set(Model* model) {
+  msModel = model;
+}
 
-	Model* ModelInstance::get()
-	{
-		return msModel;
-	}
+Model* ModelInstance::get() {
+  return msModel;
+}
 
-	shared_ptr<AnimationDatabase> ModelInstance::animationDatabase()
-	{
-		return get()->animationDatabase;
-	}
+shared_ptr<AnimationDatabase> ModelInstance::animationDatabase() {
+  return get()->animationDatabase;
+}
 
-	shared_ptr<EntityHandler> ModelInstance::entityHandler()
-	{
-		return get()->entityHandler;
-	}
+shared_ptr<EntityHandler> ModelInstance::entityHandler() {
+  return get()->entityHandler;
+}
 
-} // applib
+}  // namespace applib

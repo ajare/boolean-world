@@ -14,38 +14,34 @@
 #include "BeamRenderDataProvider.h"
 #include "Entity.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API BeamManager
-	{
-		Battery<BeamInstance> mBattery;
+class APPLIB_API BeamManager {
+  Battery<BeamInstance> mBattery;
 
-		wp::application::resourcesystem::ResourcePtr mGameResource;
+  wp::application::resourcesystem::ResourcePtr mGameResource;
 
-		std::shared_ptr<BeamRenderDataProvider> mDataProvider;
+  std::shared_ptr<BeamRenderDataProvider> mDataProvider;
 
-		wp::viz::DynamicLineRenderer* mRenderer;
+  wp::viz::DynamicLineRenderer* mRenderer;
 
-		wp::firepower::MeshCollisionManager* mwMeshCollisionMgr;
+  wp::firepower::MeshCollisionManager* mwMeshCollisionMgr;
 
-	private:
+private:
+  static bool updateBeam(BeamInstance& beamInstance, void* userObj, float frameTime);
 
-		static bool updateBeam(BeamInstance& beamInstance, void* userObj, float frameTime);
+public:
+  BeamManager(wp::application::resourcesystem::ResourcePtr gameResource, wp::firepower::MeshCollisionManager* meshCollisionMgr, size_t initialCapacity);
 
-	public:
+  virtual ~BeamManager();
 
-		BeamManager(wp::application::resourcesystem::ResourcePtr gameResource, wp::firepower::MeshCollisionManager* meshCollisionMgr, size_t initialCapacity);
+  void setupRenderer(mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, mpp::ScenePtr scene, int renderOrder);
 
-		virtual ~BeamManager();
+  int addBeam(int type, BeamData const& data, Entity* owner);
 
-		void setupRenderer(mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, mpp::ScenePtr scene, int renderOrder);
+  void removeBeam(int beamId);
 
-		int addBeam(int type, BeamData const& data, Entity* owner);
+  void update(wp::BoundingBox const& viewBounds, float frameTime);
+};
 
-		void removeBeam(int beamId);
-
-		void update(wp::BoundingBox const& viewBounds, float frameTime);
-	};
-
-} // applib
+}  // namespace applib

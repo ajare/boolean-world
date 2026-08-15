@@ -10,22 +10,19 @@
 
 #include <willpower/viz/GeometryMeshRenderer.h>
 
-namespace applib
-{
+namespace applib {
 
-	struct MapTransitionData
-	{
-		struct MapData
-		{
-			std::shared_ptr<wp::application::resourcesystem::Resource> map;
-			std::unique_ptr<wp::viz::GeometryMeshRenderer> mapRenderer;
-			std::unique_ptr<wp::collide::Simulation> mapCollisionSim;
-			std::unique_ptr<wp::firepower::MeshCollisionManager> meshCollisionMgr;
-		};
+struct MapTransitionData {
+  struct MapData {
+    std::shared_ptr<wp::application::resourcesystem::Resource> map;
+    std::unique_ptr<wp::viz::GeometryMeshRenderer> mapRenderer;
+    std::unique_ptr<wp::collide::Simulation> mapCollisionSim;
+    std::unique_ptr<wp::firepower::MeshCollisionManager> meshCollisionMgr;
+  };
 
-		MapData prevMap, nextMap;
+  MapData prevMap, nextMap;
 
-		std::string nextMapName;
-	};
+  std::string nextMapName;
+};
 
-}  // applib
+}  // namespace applib

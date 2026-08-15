@@ -3,22 +3,19 @@
 #include "Platform.h"
 #include "Model.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API ModelInstance
-	{
-		static Model* msModel;
+class APPLIB_API ModelInstance {
+  static Model* msModel;
 
-	public:
+public:
+  static void set(Model* model);
 
-		static void set(Model* model);
+  static Model* get();
 
-		static Model* get();
+  static std::shared_ptr<AnimationDatabase> animationDatabase();
 
-		static std::shared_ptr<AnimationDatabase> animationDatabase();
+  static std::shared_ptr<EntityHandler> entityHandler();
+};
 
-		static std::shared_ptr<EntityHandler> entityHandler();
-	};
-
-} // applib
+}  // namespace applib

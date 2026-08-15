@@ -12,117 +12,104 @@
 #include "Platform.h"
 #include "State.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API ThreadableLoadState : public State
-	{
-	public:
+class APPLIB_API ThreadableLoadState : public State {
+public:
+  enum class Action {
+    Load,
+    Unload
+  };
 
-		enum class Action
-		{
-			Load,
-			Unload
-		};
+private:
+  enum class Status {
+    Idle,
+    Initialise,
+    ProcessingWillpowerResources,
+    ProcessingCustomPostWork,
+    ProcessingMppResources,
+    ProcessingComplete
+  };
 
-	private:
+public:
+  typedef std::function<void()> LoadFunction;
 
-		enum class Status
-		{
-			Idle,
-			Initialise,
-			ProcessingWillpowerResources,
-			ProcessingCustomPostWork,
-			ProcessingMppResources,
-			ProcessingComplete
-		};
+  typedef std::function<void(bool)> ThreadableWorkFunction;
 
-	public:
+private:
+  Action mAction;
 
-		typedef std::function<void()> LoadFunction;
+  Status mStatus;
 
-		typedef std::function<void(bool)> ThreadableWorkFunction;
+  bool mWillpowerComplete;
 
-	private:
+  bool mUseThreading;
 
-		Action mAction;
+  std::vector<std::string> mText;
 
-		Status mStatus;
+  std::thread* mThread;
 
-		bool mWillpowerComplete;
+  mutable std::mutex mTextMutex, mFlagMutex, mPendingResourceMutex;
 
-		bool mUseThreading;
+  std::exception_ptr mWorkerException;
 
-		std::vector<std::string> mText;
+  std::set<std::string> mPendingResourceNames;
 
-		std::thread* mThread;
+  std::string mNextState;
 
-		mutable std::mutex mTextMutex, mFlagMutex, mPendingResourceMutex;
+  void* mNextStateArgs;
 
-		std::exception_ptr mWorkerException;
+  std::vector<mpp::ResourcePtr> mMppResourcesToProcess;
 
-		std::set<std::string> mPendingResourceNames;
+  std::vector<std::pair<wp::application::resourcesystem::ResourcePtr, Action>> mWillpowerResourcesToProcess;
 
-		std::string mNextState;
+protected:
+  std::vector<wp::application::resourcesystem::ResourcePtr> mWillpowerResourcesToLoad, mWillpowerResourcesToUnload;
 
-		void* mNextStateArgs;
+  std::vector<ThreadableWorkFunction> mCustomPostWork;
 
-		std::vector<mpp::ResourcePtr> mMppResourcesToProcess;
+private:
+  bool isWillpowerResourceProcessingFinished() const;
 
-		std::vector<std::pair<wp::application::resourcesystem::ResourcePtr, Action>> mWillpowerResourcesToProcess;
+  virtual LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args) = 0;
 
-	protected:
+protected:
+  virtual std::vector<ThreadableWorkFunction> getPreWork(StateTransitionData* transitionData);
 
-		std::vector<wp::application::resourcesystem::ResourcePtr> mWillpowerResourcesToLoad, mWillpowerResourcesToUnload;
+  void loadResourceCallback(wp::application::resourcesystem::ResourcePtr resource, wp::application::resourcesystem::ResourceState state, bool rootResource);
 
-		std::vector<ThreadableWorkFunction> mCustomPostWork;
+  void unloadResourceCallback(wp::application::resourcesystem::ResourcePtr resource, wp::application::resourcesystem::ResourceState state, bool rootResource);
 
-	private:
+  void addPendingResourceName(std::string const& name);
 
-		bool isWillpowerResourceProcessingFinished() const;
+  bool removePendingResourceName(std::string const& name);
 
-		virtual LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args) = 0;
+  bool isPendingResourceCountZero() const;
 
-	protected:
+  void startProcessingWillpowerResources();
 
-		virtual std::vector<ThreadableWorkFunction> getPreWork(StateTransitionData* transitionData);
+  void finishProcessingWillpowerResources();
 
-		void loadResourceCallback(wp::application::resourcesystem::ResourcePtr resource, wp::application::resourcesystem::ResourceState state, bool rootResource);
+  void processPostWork(std::vector<ThreadableWorkFunction> funcs);
 
-		void unloadResourceCallback(wp::application::resourcesystem::ResourcePtr resource, wp::application::resourcesystem::ResourceState state, bool rootResource);
+  void start(LoadFunction func);
 
-		void addPendingResourceName(std::string const& name);
+  void addText(std::string const& line, bool log = false);
 
-		bool removePendingResourceName(std::string const& name);
+  void exitImpl() override;
 
-		bool isPendingResourceCountZero() const;
+  void updateImpl(float frameTime) override;
 
-		void startProcessingWillpowerResources();
+  void renderImpl(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
 
-		void finishProcessingWillpowerResources();
+public:
+  ThreadableLoadState(std::string const& name, Action action, bool useThreading);
 
-		void processPostWork(std::vector<ThreadableWorkFunction> funcs);
+  void setup(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args);
 
-		void start(LoadFunction func);
+  void teardown() override;
 
-		void addText(std::string const& line, bool log = false);
+  bool usingThreading() const;
+};
 
-		void exitImpl() override;
-
-		void updateImpl(float frameTime) override;
-
-		void renderImpl(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
-
-	public:
-
-		ThreadableLoadState(std::string const& name, Action action, bool useThreading);
-
-		void setup(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args);
-
-		void teardown() override;
-
-		bool usingThreading() const;
-	};
-
-
-} // applib
+}  // namespace applib

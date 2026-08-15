@@ -5,46 +5,39 @@
 
 #include "ProtoEntityResourceDefinitionFactory.h"
 
-namespace applib
-{
+namespace applib {
 
-	using namespace std;
-	using namespace wp;
+using namespace std;
+using namespace wp;
 
-	ProtoEntityResourceDefinitionFactory::ProtoEntityResourceDefinitionFactory(string const& factoryType)
-		: ResourceDefinitionFactory("ProtoEntity", factoryType)
-	{
-	}
+ProtoEntityResourceDefinitionFactory::ProtoEntityResourceDefinitionFactory(string const& factoryType)
+    : ResourceDefinitionFactory("ProtoEntity", factoryType) {
+}
 
-	shared_ptr<EntityHandler> ProtoEntityResourceDefinitionFactory::getEntityHandler(ProtoEntity* resource)
-	{
-		return resource->mEntityHandler;
-	}
+shared_ptr<EntityHandler> ProtoEntityResourceDefinitionFactory::getEntityHandler(ProtoEntity* resource) {
+  return resource->mEntityHandler;
+}
 
-	shared_ptr<AnimationDatabase> ProtoEntityResourceDefinitionFactory::getAnimationDatabase(ProtoEntity* resource)
-	{
-		return resource->mAnimationDatabase;
-	}
+shared_ptr<AnimationDatabase> ProtoEntityResourceDefinitionFactory::getAnimationDatabase(ProtoEntity* resource) {
+  return resource->mAnimationDatabase;
+}
 
-	void ProtoEntityResourceDefinitionFactory::loadExtraDefinitions(ProtoEntity* resource, utils::XmlNode* node, entt::entity protoId)
-	{
-		resource->loadExtraDefinitions(node, protoId);
-	}
+void ProtoEntityResourceDefinitionFactory::loadExtraDefinitions(ProtoEntity* resource, utils::XmlNode* node, entt::entity protoId) {
+  resource->loadExtraDefinitions(node, protoId);
+}
 
-	uint32_t ProtoEntityResourceDefinitionFactory::getAnimationIdFromName(string const& actor, string const& anim)
-	{
-		throw NotImplementedException();
-	}
+uint32_t ProtoEntityResourceDefinitionFactory::getAnimationIdFromName(string const& actor, string const& anim) {
+  throw NotImplementedException();
+}
 
-	void ProtoEntityResourceDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node)
-	{
-		auto entity = static_cast<ProtoEntity*>(resource);
+void ProtoEntityResourceDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) {
+  auto entity = static_cast<ProtoEntity*>(resource);
 
-		auto protoId = getEntityHandler(entity)->registerPrototype(entity->getName());
-		entity->setComponentSystemId(protoId);
+  auto protoId = getEntityHandler(entity)->registerPrototype(entity->getName());
+  entity->setComponentSystemId(protoId);
 
-		createProtoEntity(entity, resourceMgr, node);
-		loadExtraDefinitions(entity, node->getChild("Properties"), protoId);
-	}
+  createProtoEntity(entity, resourceMgr, node);
+  loadExtraDefinitions(entity, node->getChild("Properties"), protoId);
+}
 
-} // applib
+}  // namespace applib

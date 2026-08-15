@@ -16,103 +16,94 @@
 #include "VisualSprite.h"
 #include "BeamEmitter.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API EntityHandler
-	{
-	protected:
+class APPLIB_API EntityHandler {
+protected:
+  BulletManager* mwBulletMgr;
 
-		BulletManager* mwBulletMgr;
+  BeamManager* mwBeamMgr;
 
-		BeamManager* mwBeamMgr;
+  BulletWeapon mBulletWeapon;
 
-		BulletWeapon mBulletWeapon;
+  wp::collide::Simulation* mwSimulation;
 
-		wp::collide::Simulation* mwSimulation;
+  wp::collide::Collider* mwPlayerCollider;
 
-		wp::collide::Collider* mwPlayerCollider;
+  // Input
+  std::vector<std::string> mActiveInputStates;
 
-		// Input
-		std::vector<std::string> mActiveInputStates;
+  float mMouseScreenX, mMouseScreenY;
 
-		float mMouseScreenX, mMouseScreenY;
+  float mMouseDeltaX, mMouseDeltaY;
 
-		float mMouseDeltaX, mMouseDeltaY;
+  wp::Vector2 mMouseWorld;
 
-		wp::Vector2 mMouseWorld;
+  // Component registries
+  entt::registry mComponentRegistry;
 
-		// Component registries
-		entt::registry mComponentRegistry;
-			
-		// Prototype lookups
-		std::map<std::string, entt::entity> mProtoIds;
+  // Prototype lookups
+  std::map<std::string, entt::entity> mProtoIds;
 
-		static const size_t MaxMappings = 4096;
+  static const size_t MaxMappings = 4096;
 
-	private:
+private:
+  virtual std::string getPrototypeName(int type) = 0;
 
-		virtual std::string getPrototypeName(int type) = 0;
+  virtual void setupImpl(Entity* entity) = 0;
 
-		virtual void setupImpl(Entity* entity) = 0;
+  virtual void destroyImpl(Entity* entity) = 0;
 
-		virtual void destroyImpl(Entity* entity) = 0;
+  virtual bool updateImpl(Entity* entity, bool inputControlled, float frameTime) = 0;
 
-		virtual bool updateImpl(Entity* entity, bool inputControlled, float frameTime) = 0;
+public:
+  EntityHandler();
 
-	public:
+  virtual ~EntityHandler() = default;
 
-		EntityHandler();
+  template <typename T>
+  void registerProtoComponent(entt::entity id, T const& component) {
+    mComponentRegistry.emplace<T>(id, component);
+  }
 
-		virtual ~EntityHandler() = default;
+  template <typename T>
+  T const& getEntityComponent(Entity const& entity) const {
+    return mComponentRegistry.get<T>(entity.mCompSysId);
+  }
 
-		template<typename T>
-		void registerProtoComponent(entt::entity id, T const& component)
-		{
-			mComponentRegistry.emplace<T>(id, component);
-		}
+  template <typename T>
+  T& getEntityComponent(Entity const& entity) {
+    return mComponentRegistry.get<T>(entity.mCompSysId);
+  }
 
-		template<typename T>
-		T const& getEntityComponent(Entity const& entity) const
-		{
-			return mComponentRegistry.get<T>(entity.mCompSysId);
-		}
+  template <typename T>
+  bool entityHasComponent(Entity const& entity) const {
+    return mComponentRegistry.try_get<T>(entity.mCompSysId) != nullptr;
+  }
 
-		template<typename T>
-		T& getEntityComponent(Entity const& entity)
-		{
-			return mComponentRegistry.get<T>(entity.mCompSysId);
-		}
+  void getMouseScreenPosition(float* mouseX, float* mouseY) const;
 
-		template<typename T>
-		bool entityHasComponent(Entity const& entity) const
-		{
-			return mComponentRegistry.try_get<T>(entity.mCompSysId) != nullptr;
-		}
+  void copyEntityComponents(entt::entity from, entt::entity to);
 
-		void getMouseScreenPosition(float* mouseX, float* mouseY) const;
+  entt::entity registerPrototype(std::string const& protoName);
 
-		void copyEntityComponents(entt::entity from, entt::entity to);
+  void setBulletManager(BulletManager* bulletMgr);
 
-		entt::entity registerPrototype(std::string const& protoName);
+  void setBeamManager(BeamManager* beamMgr);
 
-		void setBulletManager(BulletManager* bulletMgr);
+  void setActiveInputStates(std::vector<std::string> const& states, float mouseScreenX, float mouseScreenY, float mouseDeltaX, float mouseDeltaY, wp::Vector2 const& mouseWorld);
 
-		void setBeamManager(BeamManager* beamMgr);
+  std::vector<std::string> const& getActiveInputStates() const;
 
-		void setActiveInputStates(std::vector<std::string> const& states, float mouseScreenX, float mouseScreenY, float mouseDeltaX, float mouseDeltaY, wp::Vector2 const& mouseWorld);
+  void setupCollisions(wp::collide::Simulation* simulation, wp::collide::Collider* collider);
 
-		std::vector<std::string> const& getActiveInputStates() const;
+  void setup(Entity* entity, int type, wp::Vector2 const& position, float angle);
 
-		void setupCollisions(wp::collide::Simulation* simulation, wp::collide::Collider* collider);
+  void destroy(Entity* entity);
 
-		void setup(Entity* entity, int type, wp::Vector2 const& position, float angle);
+  void fireBullet(Entity* entity, int type, BulletParams const& params, BulletFireParams const& fireParams);
 
-		void destroy(Entity* entity);
+  virtual bool update(Entity* entity, bool controlActive, float frameTime);
+};
 
-		void fireBullet(Entity* entity, int type, BulletParams const& params, BulletFireParams const& fireParams);
-		
-		virtual bool update(Entity* entity, bool controlActive, float frameTime);
-	};
-
-} // applib
+}  // namespace applib

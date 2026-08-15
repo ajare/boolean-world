@@ -3,35 +3,28 @@
 #include "Platform.h"
 #include "MapResourceDefinitionFactory.h"
 
-namespace applib
-{
-	class APPLIB_API MapTiledDefinitionFactory : public MapResourceDefinitionFactory
-	{
-		// NOTE: in order for hashing to work, this cannot be any higher.
-		static const int MaxDimension = 128;
+namespace applib {
+class APPLIB_API MapTiledDefinitionFactory : public MapResourceDefinitionFactory {
+  // NOTE: in order for hashing to work, this cannot be any higher.
+  static const int MaxDimension = 128;
 
-	private:
+private:
+  struct Strip {
+    uint32_t x, y, w, h;
+    std::string id;
+  };
 
-		struct Strip
-		{
-			uint32_t x, y, w, h;
-			std::string id;
-		};
+private:
+  std::vector<std::string> parseCsv(wp::application::resourcesystem::Resource* resource, std::string const& data, int width, int height) const;
 
-	private:
+  std::vector<std::string> getLayerCellData(wp::application::resourcesystem::Resource* resource, utils::XmlNode const* layerNode, int idOffset, int* width, int* height) const;
 
-		std::vector<std::string> parseCsv(wp::application::resourcesystem::Resource* resource, std::string const& data, int width, int height) const;
+  std::vector<Strip> generateStrips(std::vector<std::string> const& cells, int width, int height, size_t maxDim) const;
 
-		std::vector<std::string> getLayerCellData(wp::application::resourcesystem::Resource* resource, utils::XmlNode const* layerNode, int idOffset, int* width, int* height) const;
+public:
+  MapTiledDefinitionFactory();
 
-		std::vector<Strip> generateStrips(std::vector<std::string> const& cells, int width, int height, size_t maxDim) const;
+  void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) override;
+};
 
-	public:
-
-		MapTiledDefinitionFactory();
-
-		void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) override;
-	};
-
-} // applib
-
+}  // namespace applib

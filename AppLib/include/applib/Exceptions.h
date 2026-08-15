@@ -5,37 +5,28 @@
 
 #include "Platform.h"
 
-namespace applib
-{
+namespace applib {
 
-	class Exception : public std::exception
-	{
-	public:
+class Exception : public std::exception {
+public:
+  explicit Exception(std::string const& message)
+      : std::exception(message.c_str()) {
+  }
+};
 
-		explicit Exception(std::string const& message)
-			: std::exception(message.c_str())
-		{
-		}
-	};
+class NotImplementedException : public Exception {
+public:
+  NotImplementedException()
+      : Exception("Not implemented yet.") {
+  }
 
-	class NotImplementedException : public Exception
-	{
-	public:
+  explicit NotImplementedException(std::string const& function)
+      : Exception(function + " is not implemented yet.") {
+  }
 
-		NotImplementedException()
-			: Exception("Not implemented yet.")
-		{
-		}
+  NotImplementedException(std::string const& function, std::string const& msg)
+      : Exception(function + ": " + msg + " is not implemented yet.") {
+  }
+};
 
-		explicit NotImplementedException(std::string const& function)
-			: Exception(function + " is not implemented yet.")
-		{
-		}
-
-		NotImplementedException(std::string const& function, std::string const& msg)
-			: Exception(function + ": " + msg + " is not implemented yet.")
-		{
-		}
-	};
-
-} // applib
+}  // namespace applib

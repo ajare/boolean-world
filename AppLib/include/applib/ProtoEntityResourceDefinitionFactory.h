@@ -13,29 +13,24 @@
 #include "EntityHandler.h"
 #include "AnimationDatabase.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API ProtoEntityResourceDefinitionFactory : public wp::application::resourcesystem::ResourceDefinitionFactory
-	{
-	protected:
+class APPLIB_API ProtoEntityResourceDefinitionFactory : public wp::application::resourcesystem::ResourceDefinitionFactory {
+protected:
+  std::shared_ptr<EntityHandler> getEntityHandler(ProtoEntity* resource);
 
-		std::shared_ptr<EntityHandler> getEntityHandler(ProtoEntity* resource);
+  std::shared_ptr<AnimationDatabase> getAnimationDatabase(ProtoEntity* resource);
 
-		std::shared_ptr<AnimationDatabase> getAnimationDatabase(ProtoEntity* resource);
+  void loadExtraDefinitions(ProtoEntity* resource, utils::XmlNode* node, entt::entity protoId);
 
-		void loadExtraDefinitions(ProtoEntity* resource, utils::XmlNode* node, entt::entity protoId);
+  virtual uint32_t getAnimationIdFromName(std::string const& actor, std::string const& anim);
 
-		virtual uint32_t getAnimationIdFromName(std::string const& actor, std::string const& anim);
+  virtual void createProtoEntity(ProtoEntity* entity, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) = 0;
 
-		virtual void createProtoEntity(ProtoEntity* entity, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) = 0;
+public:
+  explicit ProtoEntityResourceDefinitionFactory(std::string const& factoryType);
 
-	public:
+  void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) override;
+};
 
-		explicit ProtoEntityResourceDefinitionFactory(std::string const& factoryType);
-
-		void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) override;
-
-	};
-
-} // applib
+}  // namespace applib

@@ -2,18 +2,15 @@
 
 #include <willpower/common/Vector2.h>
 
-namespace applib
-{
+namespace applib {
 
-	struct Beam
-	{
-		static int msBeamIdGen;
+struct Beam {
+  static int msBeamIdGen;
 
-	public:
+public:
+  int id;
+  int type;
+  float time{0.0f};
+};
 
-		int id;
-		int type;
-		float time{ 0.0f };
-	};
-
-} // applib
+}  // namespace applib

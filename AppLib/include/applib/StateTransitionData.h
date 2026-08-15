@@ -4,15 +4,13 @@
 
 #include "MapTransitionData.h"
 
-namespace applib
-{
+namespace applib {
 
-	struct StateTransitionData
-	{
-		std::string prevStateName;
-		MapTransitionData mapData;
-		wp::application::resourcesystem::ResourcePtr gameResource;
-		void* userData{ nullptr };
-	};
+struct StateTransitionData {
+  std::string prevStateName;
+  MapTransitionData mapData;
+  wp::application::resourcesystem::ResourcePtr gameResource;
+  void* userData{nullptr};
+};
 
-} // applib
+}  // namespace applib

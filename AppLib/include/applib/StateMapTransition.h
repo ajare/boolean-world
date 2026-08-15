@@ -13,59 +13,45 @@
 #include "ThreadableLoadState.h"
 #include "GeometryMeshRendererFactory.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API StateMapTransition : public ThreadableLoadState
-	{
-		GeometryMeshRendererFactory* mFactory;
+class APPLIB_API StateMapTransition : public ThreadableLoadState {
+  GeometryMeshRendererFactory* mFactory;
 
-	private:
+private:
+  LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
 
-		LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
+  void acquireMapResource(wp::application::resourcesystem::ResourceManager* resourceMgr, wp::application::resourcesystem::ResourcePtr resource, bool useThreading);
 
-		void acquireMapResource(wp::application::resourcesystem::ResourceManager* resourceMgr, wp::application::resourcesystem::ResourcePtr resource, bool useThreading);
+  void processResources(wp::application::resourcesystem::ResourceManager* resourceMgr, MapTransitionData* transitionData);
 
-		void processResources(wp::application::resourcesystem::ResourceManager* resourceMgr, MapTransitionData* transitionData);
+protected:
+  std::vector<ThreadableWorkFunction> getPreWork(StateTransitionData* transitionData) override;
 
-	protected:
+public:
+  StateMapTransition(GeometryMeshRendererFactory* factory, bool useThreading);
+};
 
-		std::vector<ThreadableWorkFunction> getPreWork(StateTransitionData* transitionData) override;
+class StateMapTransitionFactory : public wp::application::StateFactory {
+protected:
+  wp::Logger* mwLogger;
 
-	public:
+  wp::application::resourcesystem::ResourceManager* mwResourceMgr;
 
-		StateMapTransition(GeometryMeshRendererFactory* factory, bool useThreading);
-	};
+  GeometryMeshRendererFactory* mFactory;
 
-	class StateMapTransitionFactory : public wp::application::StateFactory
-	{
-	protected:
+  bool mUseThreading;
 
-		wp::Logger* mwLogger;
+public:
+  StateMapTransitionFactory(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr, GeometryMeshRendererFactory* factory, bool useThreading)
+      : wp::application::StateFactory("MapTransition"), mwLogger(logger), mwResourceMgr(resourceMgr), mFactory(factory), mUseThreading(useThreading) {
+  }
 
-		wp::application::resourcesystem::ResourceManager* mwResourceMgr;
+  wp::application::State* createState() {
+    auto state = new StateMapTransition(mFactory, mUseThreading);
+    state->setLogger(mwLogger);
+    return state;
+  }
+};
 
-		GeometryMeshRendererFactory* mFactory;
-
-		bool mUseThreading;
-
-	public:
-
-		StateMapTransitionFactory(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr, GeometryMeshRendererFactory* factory, bool useThreading)
-			: wp::application::StateFactory("MapTransition")
-			, mwLogger(logger)
-			, mwResourceMgr(resourceMgr)
-			, mFactory(factory)
-			, mUseThreading(useThreading)
-		{
-		}
-
-		wp::application::State* createState()
-		{
-			auto state = new StateMapTransition(mFactory, mUseThreading);
-			state->setLogger(mwLogger);
-			return state;
-		}
-	};
-
-} // applib
+}  // namespace applib

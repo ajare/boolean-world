@@ -5,17 +5,15 @@
 
 #include "Platform.h"
 
-namespace applib
-{
+namespace applib {
 
-	struct PhysicalStats
-	{
-		wp::Vector2 position;
-		float floorZ;
-		float angle;
-		float pitch;
-		bool collides;
-		wp::BoundingBox bounds;
-	};
+struct PhysicalStats {
+  wp::Vector2 position;
+  float floorZ;
+  float angle;
+  float pitch;
+  bool collides;
+  wp::BoundingBox bounds;
+};
 
-} // applib
+}  // namespace applib

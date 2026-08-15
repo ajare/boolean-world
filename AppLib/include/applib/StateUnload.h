@@ -10,45 +10,34 @@
 #include "Platform.h"
 #include "ThreadableLoadState.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API StateUnload : public ThreadableLoadState
-	{
-		LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
+class APPLIB_API StateUnload : public ThreadableLoadState {
+  LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
 
-		void unloadResources(wp::application::resourcesystem::ResourceManager* resourceMgr);
+  void unloadResources(wp::application::resourcesystem::ResourceManager* resourceMgr);
 
-	public:
+public:
+  explicit StateUnload(bool useThreading);
+};
 
-		explicit StateUnload(bool useThreading);
-	};
+class StateUnloadFactory : public wp::application::StateFactory {
+  wp::Logger* mwLogger;
 
-	class StateUnloadFactory : public wp::application::StateFactory
-	{
-		wp::Logger* mwLogger;
+  wp::application::resourcesystem::ResourceManager* mwResourceMgr;
 
-		wp::application::resourcesystem::ResourceManager* mwResourceMgr;
+  bool mUseThreading;
 
-		bool mUseThreading;
+public:
+  StateUnloadFactory(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr, bool useThreading)
+      : wp::application::StateFactory("Unload"), mwLogger(logger), mwResourceMgr(resourceMgr), mUseThreading(useThreading) {
+  }
 
-	public:
+  wp::application::State* createState() {
+    auto state = new StateUnload(mUseThreading);
+    state->setLogger(mwLogger);
+    return state;
+  }
+};
 
-		StateUnloadFactory(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr, bool useThreading)
-			: wp::application::StateFactory("Unload")
-			, mwLogger(logger)
-			, mwResourceMgr(resourceMgr)
-			, mUseThreading(useThreading)
-		{
-		}
-
-		wp::application::State* createState()
-		{
-			auto state = new StateUnload(mUseThreading);
-			state->setLogger(mwLogger);
-			return state;
-		}
-	};
-
-
-} // applib
+}  // namespace applib

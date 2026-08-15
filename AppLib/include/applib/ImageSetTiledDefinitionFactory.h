@@ -5,16 +5,12 @@
 
 #include "Platform.h"
 
-namespace applib
-{
-	class APPLIB_API ImageSetTiledDefinitionFactory : public wp::application::resourcesystem::ImageSetResourceDefinitionFactory
-	{
-	public:
+namespace applib {
+class APPLIB_API ImageSetTiledDefinitionFactory : public wp::application::resourcesystem::ImageSetResourceDefinitionFactory {
+public:
+  ImageSetTiledDefinitionFactory();
 
-		ImageSetTiledDefinitionFactory();
+  void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) override;
+};
 
-		void create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) override;
-	};
-
-} // applib
-
+}  // namespace applib

@@ -8,76 +8,63 @@
 #include "VisualSpriteDataProvider.h"
 #include "AnimationDatabase.h"
 
-namespace applib
-{
+namespace applib {
 
-	struct VisualSpriteEntityFacadeRenderOptions : EntityFacadeRenderOptions
-	{
-		wp::viz::RotationOptions rotationType;
-	};
+struct VisualSpriteEntityFacadeRenderOptions : EntityFacadeRenderOptions {
+  wp::viz::RotationOptions rotationType;
+};
 
-	class APPLIB_API VisualSpriteEntityFacade : public EntityFacade
-	{
-	public:
+class APPLIB_API VisualSpriteEntityFacade : public EntityFacade {
+public:
+  typedef std::function<std::shared_ptr<VisualSpriteDataProvider>(EntityFacade*)> DataProviderFactory;
 
-		typedef std::function<std::shared_ptr<VisualSpriteDataProvider>(EntityFacade*)> DataProviderFactory;
+private:
+  DataProviderFactory mProviderFactory;
 
-	private:
+  wp::viz::DynamicQuadRenderer<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat>* mEntityRenderer;
 
-		DataProviderFactory mProviderFactory;
+  std::shared_ptr<VisualSpriteDataProvider> mRenderDataProvider;
 
-		wp::viz::DynamicQuadRenderer<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat>* mEntityRenderer;
+  wp::application::resourcesystem::ResourcePtr mTexture;
 
-		std::shared_ptr<VisualSpriteDataProvider> mRenderDataProvider;
+  std::shared_ptr<AnimationDatabase> mAnimDatabase;
 
-		wp::application::resourcesystem::ResourcePtr mTexture;
+protected:
+  void createEntityRenderer(
+      mpp::ScenePtr scene,
+      mpp::RenderSystem* renderSystem,
+      mpp::ResourceManager* renderResourceMgr,
+      EntityFacadeRenderOptions const* options,
+      int renderOrder) override;
 
-		std::shared_ptr<AnimationDatabase> mAnimDatabase;
+public:
+  VisualSpriteEntityFacade(DataProviderFactory providerFactory, wp::application::resourcesystem::ResourcePtr texture, std::shared_ptr<AnimationDatabase> animDatabase, size_t initialSize);
 
-	protected:
+  ~VisualSpriteEntityFacade();
 
-		void createEntityRenderer(
-			mpp::ScenePtr scene,
-			mpp::RenderSystem* renderSystem,
-			mpp::ResourceManager* renderResourceMgr,
-			EntityFacadeRenderOptions const* options,
-			int renderOrder) override;
+  void updateRenderer(wp::BoundingBox const& viewBounds, float frameTime) override;
 
-	public:
+  void setRenderersVisible(bool visible) override;
+};
 
-		VisualSpriteEntityFacade(DataProviderFactory providerFactory, wp::application::resourcesystem::ResourcePtr texture, std::shared_ptr<AnimationDatabase> animDatabase, size_t initialSize);
+class VisualSpriteEntityFacadeFactory : public EntityFacadeFactory {
+  wp::application::resourcesystem::ResourcePtr mTexture;
 
-		~VisualSpriteEntityFacade();
+  std::shared_ptr<AnimationDatabase> mAnimDatabase;
 
-		void updateRenderer(wp::BoundingBox const& viewBounds, float frameTime) override;
+  VisualSpriteEntityFacade::DataProviderFactory mProviderFactory;
 
-		void setRenderersVisible(bool visible) override;
-	};
+public:
+  VisualSpriteEntityFacadeFactory(wp::application::resourcesystem::ResourcePtr texture, std::shared_ptr<AnimationDatabase> animDatabase)
+      : EntityFacadeFactory(), mTexture(texture), mAnimDatabase(animDatabase) {
+    mProviderFactory = [animDatabase](auto facade) {
+      return std::make_shared<VisualSpriteDataProvider>(facade, animDatabase);
+    };
+  }
 
-	class VisualSpriteEntityFacadeFactory : public EntityFacadeFactory
-	{
-		wp::application::resourcesystem::ResourcePtr mTexture;
+  EntityFacade* create(size_t initialSize) override {
+    return new VisualSpriteEntityFacade(mProviderFactory, mTexture, mAnimDatabase, initialSize);
+  }
+};
 
-		std::shared_ptr<AnimationDatabase> mAnimDatabase;
-
-		VisualSpriteEntityFacade::DataProviderFactory mProviderFactory;
-
-	public:
-
-		VisualSpriteEntityFacadeFactory(wp::application::resourcesystem::ResourcePtr texture, std::shared_ptr<AnimationDatabase> animDatabase)
-			: EntityFacadeFactory()
-			, mTexture(texture)
-			, mAnimDatabase(animDatabase)
-		{
-			mProviderFactory = [animDatabase](auto facade) {
-				return std::make_shared<VisualSpriteDataProvider>(facade, animDatabase);
-			};
-		}
-
-		EntityFacade* create(size_t initialSize) override
-		{
-			return new VisualSpriteEntityFacade(mProviderFactory, mTexture, mAnimDatabase, initialSize);
-		}
-	};
-
-} // applib
+}  // namespace applib

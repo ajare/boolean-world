@@ -12,38 +12,33 @@
 
 #include "Platform.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API ScreenFxManager
-	{
-		struct FullscreenFlash
-		{
-			mpp::Colour colour;
-			float attack, hold, release, timer;
-		};
+class APPLIB_API ScreenFxManager {
+  struct FullscreenFlash {
+    mpp::Colour colour;
+    float attack, hold, release, timer;
+  };
 
-	private:
+private:
+  mpp::Texture* mwFullscreenTexture;
 
-		mpp::Texture* mwFullscreenTexture;
+  std::shared_ptr<mpp::UniformCollection> mFullscreenUniforms;
 
-		std::shared_ptr<mpp::UniformCollection> mFullscreenUniforms;
+  std::vector<FullscreenFlash> mFlashes;
 
-		std::vector<FullscreenFlash> mFlashes;
+public:
+  explicit ScreenFxManager(mpp::ResourceManager* renderResourceMgr);
 
-	public:
+  ~ScreenFxManager();
 
-		explicit ScreenFxManager(mpp::ResourceManager* renderResourceMgr);
+  void flash(mpp::Colour const& colour, float attack, float hold, float release);
 
-		~ScreenFxManager();
+  void update(float frameTime);
 
-		void flash(mpp::Colour const& colour, float attack, float hold, float release);
+  void preRender(wp::Vector2 const& viewPos);
 
-		void update(float frameTime);
+  void postRender(mpp::RenderSystem* renderSystem);
+};
 
-		void preRender(wp::Vector2 const& viewPos);
-
-		void postRender(mpp::RenderSystem* renderSystem);
-	};
-
-} // applib
+}  // namespace applib

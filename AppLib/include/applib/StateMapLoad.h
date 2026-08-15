@@ -13,55 +13,40 @@
 #include "ThreadableLoadState.h"
 #include "GeometryMeshRendererFactory.h"
 
+namespace applib {
 
-namespace applib
-{
+class APPLIB_API StateMapLoad : public ThreadableLoadState {
+  GeometryMeshRendererFactory* mFactory;
 
-	class APPLIB_API StateMapLoad : public ThreadableLoadState
-	{
-		GeometryMeshRendererFactory* mFactory;
+private:
+  LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
 
-	private:
+  virtual void loadResources(wp::application::resourcesystem::ResourceManager* resourceMgr, MapTransitionData* transitionData);
 
-		LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
+public:
+  StateMapLoad(GeometryMeshRendererFactory* factory, bool useThreading);
+};
 
-		virtual void loadResources(wp::application::resourcesystem::ResourceManager* resourceMgr, MapTransitionData* transitionData);
+class StateMapLoadFactory : public wp::application::StateFactory {
+protected:
+  wp::Logger* mwLogger;
 
-	public:
+  wp::application::resourcesystem::ResourceManager* mwResourceMgr;
 
-		StateMapLoad(GeometryMeshRendererFactory* factory, bool useThreading);
-	};
+  GeometryMeshRendererFactory* mFactory;
 
-	class StateMapLoadFactory : public wp::application::StateFactory
-	{
-	protected:
+  bool mUseThreading;
 
-		wp::Logger* mwLogger;
+public:
+  StateMapLoadFactory(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr, GeometryMeshRendererFactory* factory, bool useThreading)
+      : wp::application::StateFactory("MapLoad"), mwLogger(logger), mwResourceMgr(resourceMgr), mFactory(factory), mUseThreading(useThreading) {
+  }
 
-		wp::application::resourcesystem::ResourceManager* mwResourceMgr;
+  wp::application::State* createState() {
+    auto state = new StateMapLoad(mFactory, mUseThreading);
+    state->setLogger(mwLogger);
+    return state;
+  }
+};
 
-		GeometryMeshRendererFactory* mFactory;
-
-		bool mUseThreading;
-
-	public:
-
-		StateMapLoadFactory(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr, GeometryMeshRendererFactory* factory, bool useThreading)
-			: wp::application::StateFactory("MapLoad")
-			, mwLogger(logger)
-			, mwResourceMgr(resourceMgr)
-			, mFactory(factory)
-			, mUseThreading(useThreading)
-		{
-		}
-
-		wp::application::State* createState()
-		{
-			auto state = new StateMapLoad(mFactory, mUseThreading);
-			state->setLogger(mwLogger);
-			return state;
-		}
-	};
-
-
-} // applib
+}  // namespace applib

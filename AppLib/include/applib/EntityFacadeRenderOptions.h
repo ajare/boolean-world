@@ -1,10 +1,8 @@
 #pragma once
 
-namespace applib
-{
+namespace applib {
 
-	struct EntityFacadeRenderOptions
-	{
-	};
+struct EntityFacadeRenderOptions {
+};
 
-} // applib
+}  // namespace applib

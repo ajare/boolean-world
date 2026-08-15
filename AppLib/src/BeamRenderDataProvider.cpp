@@ -1,110 +1,91 @@
 #include "BeamRenderDataProvider.h"
 
-namespace applib
-{
-	using namespace std;
-	using namespace wp;
+namespace applib {
+using namespace std;
+using namespace wp;
 
-	BeamRenderDataProvider::BeamRenderDataProvider(Battery<BeamInstance>* battery)
-		: mwBattery(battery)
-	{
-		setNumPrimitives(0);
-	}
+BeamRenderDataProvider::BeamRenderDataProvider(Battery<BeamInstance>* battery)
+    : mwBattery(battery) {
+  setNumPrimitives(0);
+}
 
-	void BeamRenderDataProvider::getBounds(glm::vec3& bMin, glm::vec3& bMax)
-	{
-		bMin = mBounds[0];
-		bMax = mBounds[1];
-	}
+void BeamRenderDataProvider::getBounds(glm::vec3& bMin, glm::vec3& bMax) {
+  bMin = mBounds[0];
+  bMax = mBounds[1];
+}
 
-	void BeamRenderDataProvider::position(uint32_t index, float& x0, float& y0, float& x1, float& y1)
-	{
-		auto const& line = mLines[index];
-		
-		x0 = line.v0.x;
-		y0 = line.v0.y;
-		x1 = line.v1.x;
-		y1 = line.v1.y;
-	}
+void BeamRenderDataProvider::position(uint32_t index, float& x0, float& y0, float& x1, float& y1) {
+  auto const& line = mLines[index];
 
-	void BeamRenderDataProvider::colour(uint32_t index, uint8_t& red, uint8_t& green, uint8_t& blue, uint8_t& alpha)
-	{
-		auto const& line = mLines[index];
+  x0 = line.v0.x;
+  y0 = line.v0.y;
+  x1 = line.v1.x;
+  y1 = line.v1.y;
+}
 
-		red = line.r;
-		green = line.g;
-		blue = line.b;
-		alpha = line.a;
-	}
+void BeamRenderDataProvider::colour(uint32_t index, uint8_t& red, uint8_t& green, uint8_t& blue, uint8_t& alpha) {
+  auto const& line = mLines[index];
 
-	mpp::Colour BeamRenderDataProvider::diffuse()
-	{
-		return mpp::Colour::White;
-	}
+  red = line.r;
+  green = line.g;
+  blue = line.b;
+  alpha = line.a;
+}
 
-	bool BeamRenderDataProvider::update(float frameTime)
-	{
-		WP_UNUSED(frameTime);
+mpp::Colour BeamRenderDataProvider::diffuse() {
+  return mpp::Colour::White;
+}
 
-		setNumPrimitives(mLines.size());
-		return true;
-	}
+bool BeamRenderDataProvider::update(float frameTime) {
+  WP_UNUSED(frameTime);
 
-	void BeamRenderDataProvider::clearData()
-	{
-		mLines.clear();
+  setNumPrimitives(mLines.size());
+  return true;
+}
 
-		mBounds[0] = glm::vec3(1e10f, 1e10f, 1e10f);
-		mBounds[1] = glm::vec3(-1e10f, -1e10f, -1e10f);
+void BeamRenderDataProvider::clearData() {
+  mLines.clear();
 
-		setNumPrimitives(0);
-	}
+  mBounds[0] = glm::vec3(1e10f, 1e10f, 1e10f);
+  mBounds[1] = glm::vec3(-1e10f, -1e10f, -1e10f);
 
-	void BeamRenderDataProvider::addData(vector<firepower::BeamShard> const& shards)
-	{
-		for (auto const& shard : shards)
-		{
-			mLines.push_back({ shard.nearVertex, shard.farVertex, 255, 0, 0, 255 });
+  setNumPrimitives(0);
+}
 
-			// Near vertex bounds
-			if (shard.nearVertex.x < mBounds[0].x)
-			{
-				mBounds[0].x = shard.nearVertex.x;
-			}
-			if (shard.nearVertex.y < mBounds[0].y)
-			{
-				mBounds[0].y = shard.nearVertex.y;
-			}
-			if (shard.nearVertex.x > mBounds[1].x)
-			{
-				mBounds[1].x = shard.nearVertex.x;
-			}
-			if (shard.nearVertex.y > mBounds[1].y)
-			{
-				mBounds[1].y = shard.nearVertex.y;
-			}
+void BeamRenderDataProvider::addData(vector<firepower::BeamShard> const& shards) {
+  for (auto const& shard : shards) {
+    mLines.push_back({shard.nearVertex, shard.farVertex, 255, 0, 0, 255});
 
-			// Far vertex bounds
-			if (shard.farVertex.x < mBounds[0].x)
-			{
-				mBounds[0].x = shard.farVertex.x;
-			}
-			if (shard.farVertex.y < mBounds[0].y)
-			{
-				mBounds[0].y = shard.farVertex.y;
-			}
-			if (shard.farVertex.x > mBounds[1].x)
-			{
-				mBounds[1].x = shard.farVertex.x;
-			}
-			if (shard.farVertex.y > mBounds[1].y)
-			{
-				mBounds[1].y = shard.farVertex.y;
-			}
-		}
+    // Near vertex bounds
+    if (shard.nearVertex.x < mBounds[0].x) {
+      mBounds[0].x = shard.nearVertex.x;
+    }
+    if (shard.nearVertex.y < mBounds[0].y) {
+      mBounds[0].y = shard.nearVertex.y;
+    }
+    if (shard.nearVertex.x > mBounds[1].x) {
+      mBounds[1].x = shard.nearVertex.x;
+    }
+    if (shard.nearVertex.y > mBounds[1].y) {
+      mBounds[1].y = shard.nearVertex.y;
+    }
 
-		setNumPrimitives(getNumPrimitives() + shards.size());
-	}
+    // Far vertex bounds
+    if (shard.farVertex.x < mBounds[0].x) {
+      mBounds[0].x = shard.farVertex.x;
+    }
+    if (shard.farVertex.y < mBounds[0].y) {
+      mBounds[0].y = shard.farVertex.y;
+    }
+    if (shard.farVertex.x > mBounds[1].x) {
+      mBounds[1].x = shard.farVertex.x;
+    }
+    if (shard.farVertex.y > mBounds[1].y) {
+      mBounds[1].y = shard.farVertex.y;
+    }
+  }
 
+  setNumPrimitives(getNumPrimitives() + shards.size());
+}
 
-} // applib
+}  // namespace applib

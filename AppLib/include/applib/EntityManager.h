@@ -14,48 +14,45 @@
 #include "EntityFacadeFactory.h"
 #include "EntityFacadeRenderOptions.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API EntityManager
-	{
-		std::vector<EntityFacade*> mFacades;
+class APPLIB_API EntityManager {
+  std::vector<EntityFacade*> mFacades;
 
-		std::vector<EntityFacade*> mTypeFacadeMapping;
+  std::vector<EntityFacade*> mTypeFacadeMapping;
 
-		std::map<std::string, EntityFacadeFactory*> mFacadeFactories;
+  std::map<std::string, EntityFacadeFactory*> mFacadeFactories;
 
-		mpp::RenderSystem* mwRenderSystem;
+  mpp::RenderSystem* mwRenderSystem;
 
-		mpp::ResourceManager* mwRenderResourceMgr;
+  mpp::ResourceManager* mwRenderResourceMgr;
 
-	public:
+public:
+  EntityManager(
+      mpp::RenderSystem* renderSystem,
+      mpp::ResourceManager* renderResourceMgr);
 
-		EntityManager(
-			mpp::RenderSystem* renderSystem,
-			mpp::ResourceManager* renderResourceMgr);
+  virtual ~EntityManager();
 
-		virtual ~EntityManager();
+  void registerFacadeFactory(std::string const& type, EntityFacadeFactory* factory);
 
-		void registerFacadeFactory(std::string const& type, EntityFacadeFactory* factory);
+  void createFacade(
+      std::string const& facadeType,
+      mpp::ScenePtr scene,
+      std::vector<int> const& types,
+      EntityFacadeRenderOptions const& options,
+      int renderOrder,
+      size_t initialSize);
 
-		void createFacade(
-			std::string const& facadeType,
-			mpp::ScenePtr scene,
-			std::vector<int> const& types, 
-			EntityFacadeRenderOptions const& options,
-			int renderOrder,
-			size_t initialSize);
+  Entity const& getPlayerEntity() const;
 
-		Entity const& getPlayerEntity() const;
+  void createEntity(int type, wp::Vector2 const& position, float angle, bool addImmediately);
 
-		void createEntity(int type, wp::Vector2 const& position, float angle, bool addImmediately);
+  void updateEntities(bool controlActive, float frameTime);
 
-		void updateEntities(bool controlActive, float frameTime);
+  void updateRenderers(wp::BoundingBox const& viewBounds, float frameTime);
 
-		void updateRenderers(wp::BoundingBox const& viewBounds, float frameTime);
+  void setRenderersVisible(bool visible);
+};
 
-		void setRenderersVisible(bool visible);
-	};
-
-} // applib
+}  // namespace applib

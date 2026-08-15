@@ -5,137 +5,108 @@
 
 #include <willpower/common/Vector2.h>
 
-namespace applib
-{
+namespace applib {
 
-	template<class T>
-	class Battery
-	{
-		typedef std::function<bool(T&, void*, float)> ObjectUpdateFunction;
+template <class T>
+class Battery {
+  typedef std::function<bool(T&, void*, float)> ObjectUpdateFunction;
 
-	private:
+private:
+  std::vector<T> mCreatedObjects;
 
-		std::vector<T> mCreatedObjects;
+  std::vector<T> mObjects;
 
-		std::vector<T> mObjects;
+  size_t mCount;
 
-		size_t mCount;
+  ObjectUpdateFunction mUpdateFunc;
 
-		ObjectUpdateFunction mUpdateFunc;
+private:
+  void resize(size_t newSize) {
+    auto curSize = mObjects.size();
+    if (newSize > curSize) {
+      mObjects.resize(newSize);
+    }
+  }
 
-	private:
+  void autoResize(size_t newSize) {
+    if (newSize > mObjects.size()) {
+      auto tgtSize = mObjects.size();
+      while (tgtSize < newSize) {
+        tgtSize *= 3;
+        tgtSize /= 2;
+        tgtSize += 8;
+      }
 
-		void resize(size_t newSize)
-		{
-			auto curSize = mObjects.size();
-			if (newSize > curSize)
-			{
-				mObjects.resize(newSize);
-			}
-		}
+      resize(tgtSize);
+    }
+  }
 
-		void autoResize(size_t newSize)
-		{
-			if (newSize > mObjects.size())
-			{
-				auto tgtSize = mObjects.size();
-				while (tgtSize < newSize)
-				{
-					tgtSize *= 3;
-					tgtSize /= 2;
-					tgtSize += 8;
-				}
+  bool freeCapacity() const {
+    return mCount < mObjects.size();
+  }
 
-				resize(tgtSize);
-			}
-		}
+  void addCreatedObjects() {
+    // Added created objects
+    autoResize(mCount + mCreatedObjects.size());
 
-		bool freeCapacity() const
-		{
-			return mCount < mObjects.size();
-		}
+    for (auto const& object : mCreatedObjects) {
+      mObjects[mCount++] = object;
+    }
 
-		void addCreatedObjects()
-		{
-			// Added created objects
-			autoResize(mCount + mCreatedObjects.size());
+    mCreatedObjects.clear();
+  }
 
-			for (auto const& object : mCreatedObjects)
-			{
-				mObjects[mCount++] = object;
-			}
+public:
+  Battery(size_t initialSize, ObjectUpdateFunction updateFunc)
+      : mCount(0), mUpdateFunc(updateFunc) {
+    resize(initialSize);
+  }
 
-			mCreatedObjects.clear();
-		}
+  size_t getCount() const {
+    return mCount;
+  }
 
-	public:
+  T const& getObject(uint32_t index) const {
+    assert(index < mCount && "Index out of bounds!");
+    return mObjects[index];
+  }
 
-		Battery(size_t initialSize, ObjectUpdateFunction updateFunc)
-			: mCount(0)
-			, mUpdateFunc(updateFunc)
-		{
-			resize(initialSize);
-		}
+  T& getObject(uint32_t index) {
+    assert(index < mCount && "Index out of bounds!");
+    return mObjects[index];
+  }
 
-		size_t getCount() const
-		{
-			return mCount;
-		}
+  void addObject(T const& object, bool addImmediately = false) {
+    if (addImmediately) {
+      autoResize(mCount + 1);
+      mObjects[mCount++] = object;
+    } else {
+      mCreatedObjects.push_back(object);
+    }
+  }
 
-		T const& getObject(uint32_t index) const
-		{
-			assert(index < mCount && "Index out of bounds!");
-			return mObjects[index];
-		}
+  void update(void* userObj, float frameTime) {
+    // Add new objects
+    addCreatedObjects();
 
-		T& getObject(uint32_t index)
-		{
-			assert(index < mCount && "Index out of bounds!");
-			return mObjects[index];
-		}
+    // Update objects
+    size_t tCount{0};
+    for (size_t i = 0; i < mCount; ++i) {
+      auto& object = mObjects[i];
 
-		void addObject(T const& object, bool addImmediately = false)
-		{
-			if (addImmediately)
-			{
-				autoResize(mCount + 1);
-				mObjects[mCount++] = object;
-			}
-			else
-			{
-				mCreatedObjects.push_back(object);
-			}
-		}
+      if (mUpdateFunc(object, userObj, frameTime)) {
+        if (i != tCount) {
+          mObjects[tCount] = mObjects[i];
+        }
 
-		void update(void* userObj, float frameTime)
-		{
-			// Add new objects
-			addCreatedObjects();
+        tCount++;
+      } else {
+        // Destroy objects
+      }
+    }
 
-			// Update objects
-			size_t tCount{ 0 };
-			for (size_t i = 0; i < mCount; ++i)
-			{
-				auto& object = mObjects[i];
+    mCount = tCount;
+  }
+};
 
-				if (mUpdateFunc(object, userObj, frameTime))
-				{
-					if (i != tCount)
-					{
-						mObjects[tCount] = mObjects[i];
-					}
-
-					tCount++;
-				}
-				else
-				{
-					// Destroy objects
-				}
-			}
-
-			mCount = tCount;
-		}
-
-	};
-
-} // applib
+}  // namespace applib

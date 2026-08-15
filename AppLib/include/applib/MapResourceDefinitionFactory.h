@@ -11,32 +11,28 @@
 #include "Platform.h"
 #include "Map.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API MapResourceDefinitionFactory : public wp::application::resourcesystem::ResourceDefinitionFactory
-	{
-		wp::geometry::UserAttributesFactory* mVertexAttributeFactory;
+class APPLIB_API MapResourceDefinitionFactory : public wp::application::resourcesystem::ResourceDefinitionFactory {
+  wp::geometry::UserAttributesFactory* mVertexAttributeFactory;
 
-		wp::geometry::UserAttributesFactory* mEdgeAttributeFactory;
+  wp::geometry::UserAttributesFactory* mEdgeAttributeFactory;
 
-		wp::geometry::UserAttributesFactory* mPolygonAttributeFactory;
+  wp::geometry::UserAttributesFactory* mPolygonAttributeFactory;
 
-		wp::geometry::UserAttributesFactory* mPolygonVertexAttributeFactory;
+  wp::geometry::UserAttributesFactory* mPolygonVertexAttributeFactory;
 
-	protected:
+protected:
+  void createMesh(Map* map);
 
-		void createMesh(Map* map);
+public:
+  MapResourceDefinitionFactory(std::string const& factoryType,
+                               wp::geometry::UserAttributesFactory* vertexAttributeFactory,
+                               wp::geometry::UserAttributesFactory* edgeAttributeFactory,
+                               wp::geometry::UserAttributesFactory* polygonAttributeFactory,
+                               wp::geometry::UserAttributesFactory* polygonVertexAttributeFactory);
 
-	public:
+  ~MapResourceDefinitionFactory();
+};
 
-		MapResourceDefinitionFactory(std::string const& factoryType,
-			wp::geometry::UserAttributesFactory* vertexAttributeFactory,
-			wp::geometry::UserAttributesFactory* edgeAttributeFactory,
-			wp::geometry::UserAttributesFactory* polygonAttributeFactory,
-			wp::geometry::UserAttributesFactory* polygonVertexAttributeFactory);
-
-		~MapResourceDefinitionFactory();
-	};
-
-} // applib
+}  // namespace applib

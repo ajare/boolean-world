@@ -8,65 +8,60 @@
 #include "EntityFacadeRenderOptions.h"
 #include "EntityHandler.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API EntityFacade
-	{
-	protected:
+class APPLIB_API EntityFacade {
+protected:
+  std::vector<Entity> mEntities;
 
-		std::vector<Entity> mEntities;
+  std::vector<Entity> mCreatedEntities;
 
-		std::vector<Entity> mCreatedEntities;
+  uint32_t mCount;
 
-		uint32_t mCount;
+private:
+  void resize(size_t newSize);
 
-	private:
+  void autoResize(size_t newSize);
 
-		void resize(size_t newSize);
+  bool freeCapacity() const;
 
-		void autoResize(size_t newSize);
+  void addCreatedEntities();
 
-		bool freeCapacity() const;
+  void updateAllEntities(bool controlActive, float frameTime);
 
-		void addCreatedEntities();
+protected:
+  virtual void createEntityRenderer(
+      mpp::ScenePtr scene,
+      mpp::RenderSystem* renderSystem,
+      mpp::ResourceManager* renderResourceMgr,
+      EntityFacadeRenderOptions const* options,
+      int renderOrder) = 0;
 
-		void updateAllEntities(bool controlActive, float frameTime);
+public:
+  explicit EntityFacade(size_t initialSize);
 
-	protected:
+  virtual ~EntityFacade() = default;
 
-		virtual void createEntityRenderer(
-			mpp::ScenePtr scene,
-			mpp::RenderSystem* renderSystem,
-			mpp::ResourceManager* renderResourceMgr,
-			EntityFacadeRenderOptions const* options,
-			int renderOrder) = 0;
-	public:
+  void initialise(
+      mpp::ScenePtr scene,
+      mpp::RenderSystem* renderSystem,
+      mpp::ResourceManager* renderResourceMgr,
+      EntityFacadeRenderOptions const* options,
+      int renderOrder);
 
-		explicit EntityFacade(size_t initialSize);
+  uint32_t getCount() const;
 
-		virtual ~EntityFacade() = default;
+  Entity const& getEntity(uint32_t index) const;
 
-		void initialise(
-			mpp::ScenePtr scene, 
-			mpp::RenderSystem* renderSystem, 
-			mpp::ResourceManager* renderResourceMgr, 
-			EntityFacadeRenderOptions const* options, 
-			int renderOrder);
+  Entity const& getEntityById(uint32_t id) const;
 
-		uint32_t getCount() const;
+  void createEntity(int type, wp::Vector2 const& position, float angle, bool addImmediately);
 
-		Entity const& getEntity(uint32_t index) const;
+  virtual void updateRenderer(wp::BoundingBox const& viewBounds, float frameTime) = 0;
 
-		Entity const& getEntityById(uint32_t id) const;
+  void updateEntities(bool controlActive, float frameTime);
 
-		void createEntity(int type, wp::Vector2 const& position, float angle, bool addImmediately);
+  virtual void setRenderersVisible(bool visible) = 0;
+};
 
-		virtual void updateRenderer(wp::BoundingBox const& viewBounds, float frameTime) = 0;
-
-		void updateEntities(bool controlActive, float frameTime);
-
-		virtual void setRenderersVisible(bool visible) = 0;
-	};
-
-} // applib
+}  // namespace applib

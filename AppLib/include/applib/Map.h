@@ -12,60 +12,52 @@
 
 #include "Platform.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API Map : public wp::application::resourcesystem::Resource
-	{
-		friend class MapResourceDefinitionFactory;
+class APPLIB_API Map : public wp::application::resourcesystem::Resource {
+  friend class MapResourceDefinitionFactory;
 
-	public:
+public:
+  typedef std::function<void(wp::geometry::Mesh*, wp::application::resourcesystem::ResourceManager*)> MeshCreationFunction;
 
-		typedef std::function<void(wp::geometry::Mesh*, wp::application::resourcesystem::ResourceManager*)> MeshCreationFunction;
+private:
+  // Geometry
+  std::shared_ptr<wp::geometry::Mesh> mMesh;
 
-	private:
+  std::map<std::string, MeshCreationFunction> mMeshCreationFunctions;
 
-		// Geometry
-		std::shared_ptr<wp::geometry::Mesh> mMesh;
+  // Render options
+  wp::viz::StaticRenderer::GridOptions mGridOptions;
 
-		std::map<std::string, MeshCreationFunction> mMeshCreationFunctions;
+private:
+  void create(wp::application::resourcesystem::DataStreamPtr dataPtr, wp::application::resourcesystem::ResourceManager* resourceMgr) override;
 
-		// Render options
-		wp::viz::StaticRenderer::GridOptions mGridOptions;
+  void destroy() override;
 
-	private:
+protected:
+  void registerMeshCreationFunction(std::string const& name, MeshCreationFunction function);
 
-		void create(wp::application::resourcesystem::DataStreamPtr dataPtr, wp::application::resourcesystem::ResourceManager* resourceMgr) override;
+public:
+  Map(std::string const& name,
+      std::string const& namesp,
+      std::string const& source,
+      std::map<std::string, std::string> const& tags,
+      wp::application::resourcesystem::ResourceLocation* location,
+      float accelGridSize);
 
-		void destroy() override;
+  ~Map();
 
-	protected:
+  std::shared_ptr<wp::geometry::Mesh> getMesh();
 
-		void registerMeshCreationFunction(std::string const& name, MeshCreationFunction function);
+  wp::viz::StaticRenderer::GridOptions getGridOptions() const;
 
-	public:
+  MeshCreationFunction getMeshCreationFunction(std::string const& name) const;
 
-		Map(std::string const& name,
-			std::string const& namesp,
-			std::string const& source,
-			std::map<std::string, std::string> const& tags,
-			wp::application::resourcesystem::ResourceLocation* location,
-			float accelGridSize);
+  void setGridCellSize(float size);
 
-		~Map();
+  void setGridCellStrategy(wp::viz::StaticRenderer::GridOptions::CellStrategy strategy);
 
-		std::shared_ptr<wp::geometry::Mesh> getMesh();
+  void setGridPaddingPct(float pct);
+};
 
-		wp::viz::StaticRenderer::GridOptions getGridOptions() const;
-
-		MeshCreationFunction getMeshCreationFunction(std::string const& name) const;
-
-		void setGridCellSize(float size);
-
-		void setGridCellStrategy(wp::viz::StaticRenderer::GridOptions::CellStrategy strategy);
-
-		void setGridPaddingPct(float pct);
-
-	};
-
-} // applib
+}  // namespace applib

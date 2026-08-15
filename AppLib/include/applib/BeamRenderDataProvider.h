@@ -13,42 +13,37 @@
 #include "Beam.h"
 #include "BeamInstance.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API BeamRenderDataProvider : public mpp::helper::LineBatchDataProvider<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte>
-	{
-		struct Line
-		{
-			wp::Vector2 v0, v1;
-			uint8_t r, g, b, a;
-		};
+class APPLIB_API BeamRenderDataProvider : public mpp::helper::LineBatchDataProvider<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte> {
+  struct Line {
+    wp::Vector2 v0, v1;
+    uint8_t r, g, b, a;
+  };
 
-	private:
+private:
+  Battery<BeamInstance>* mwBattery;
 
-		Battery<BeamInstance>* mwBattery;
+  glm::vec3 mBounds[2];
 
-		glm::vec3 mBounds[2];
+  std::vector<Line> mLines;
 
-		std::vector<Line> mLines;
+public:
+  explicit BeamRenderDataProvider(Battery<BeamInstance>* battery);
 
-	public:
+  void getBounds(glm::vec3& bMin, glm::vec3& bMax) override;
 
-		explicit BeamRenderDataProvider(Battery<BeamInstance>* battery);
+  void position(uint32_t index, float& x0, float& y0, float& x1, float& y1) override;
 
-		void getBounds(glm::vec3& bMin, glm::vec3& bMax) override;
+  void colour(uint32_t index, uint8_t& red, uint8_t& green, uint8_t& blue, uint8_t& alpha) override;
 
-		void position(uint32_t index, float& x0, float& y0, float& x1, float& y1) override;
+  mpp::Colour diffuse() override;
 
-		void colour(uint32_t index, uint8_t& red, uint8_t& green, uint8_t& blue, uint8_t& alpha) override;
+  bool update(float frameTime) override;
 
-		mpp::Colour diffuse() override;
+  void clearData();
 
-		bool update(float frameTime) override;
+  void addData(std::vector<wp::firepower::BeamShard> const& shards);
+};
 
-		void clearData();
-
-		void addData(std::vector<wp::firepower::BeamShard> const& shards);
-	};
-
-} // applib
+}  // namespace applib

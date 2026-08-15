@@ -12,61 +12,49 @@
 #include "Platform.h"
 #include "EntityProperties.h"
 
-namespace applib
-{
+namespace applib {
 
-	struct Entity
-	{
-		friend class EntityHandler;
+struct Entity {
+  friend class EntityHandler;
 
-		entt::entity mCompSysId;
+  entt::entity mCompSysId;
 
-	private:
-		
-		static int msEntityIdGen;
+private:
+  static int msEntityIdGen;
 
-	public:
+public:
+  static const int NumLookups = 32;
 
-		static const int NumLookups = 32;
+private:
+  int mId;
 
-	private:
+  int mType;
 
-		int mId;
+  int mAlive;
 
-		int mType;
+private:
+  void setup(int type) {
+    mId = msEntityIdGen++;
+    mType = type;
+    mAlive = 1;
+  }
 
-		int mAlive;
+  void destroy() {
+    mAlive = 0;
+  }
 
-	private:
+public:
+  static void _resetIdGenerator() {
+    msEntityIdGen = 0;
+  }
 
-		void setup(int type)
-		{
-			mId = msEntityIdGen++;
-			mType = type;
-			mAlive = 1;
-		}
+  int getId() const {
+    return mId;
+  }
 
-		void destroy()
-		{
-			mAlive = 0;
-		}
+  int getType() const {
+    return mType;
+  }
+};
 
-	public:
-
-		static void _resetIdGenerator()
-		{
-			msEntityIdGen = 0;
-		}
-
-		int getId() const
-		{
-			return mId;
-		}
-
-		int getType() const
-		{
-			return mType;
-		}
-	};
-
-} // applib
+}  // namespace applib

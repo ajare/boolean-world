@@ -6,64 +6,57 @@
 #include "Game.h"
 #include "GameDefaultDefinitionFactory.h"
 
-namespace applib
-{
-	using namespace std;
-	using namespace utils;
-	using namespace wp;
+namespace applib {
+using namespace std;
+using namespace utils;
+using namespace wp;
 
-	GameDefaultDefinitionFactory::GameDefaultDefinitionFactory()
-		: GameResourceDefinitionFactory("")
-	{
-	}
+GameDefaultDefinitionFactory::GameDefaultDefinitionFactory()
+    : GameResourceDefinitionFactory("") {
+}
 
-	void GameDefaultDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node)
-	{
-		auto gameRes = static_cast<Game*>(resource);
-		
-		// Bullets
-		auto animSetRes = gameRes->getDependentResource("AnimationSet.Bullets");
-		setBulletsAnimationSet(gameRes, animSetRes);
+void GameDefaultDefinitionFactory::create(application::resourcesystem::Resource* resource, application::resourcesystem::ResourceManager* resourceMgr, utils::XmlNode* node) {
+  auto gameRes = static_cast<Game*>(resource);
 
-		auto bulletsNode = node->getOptionalChild("Bullets");
-		if (bulletsNode)
-		{
-			auto bulletNode = bulletsNode->getOptionalChild("Bullet");
+  // Bullets
+  auto animSetRes = gameRes->getDependentResource("AnimationSet.Bullets");
+  setBulletsAnimationSet(gameRes, animSetRes);
 
-			if (bulletNode)
-			{
-				do
-				{
-					auto bulletName = bulletNode->getAttribute("name");
-					auto fireAnimName = bulletNode->getAttribute("fire");
+  auto bulletsNode = node->getOptionalChild("Bullets");
+  if (bulletsNode) {
+    auto bulletNode = bulletsNode->getOptionalChild("Bullet");
 
-					string explodeAnimName;
-					bulletNode->getOptionalAttribute("explode", explodeAnimName);
+    if (bulletNode) {
+      do {
+        auto bulletName = bulletNode->getAttribute("name");
+        auto fireAnimName = bulletNode->getAttribute("fire");
 
-					string sizeStr;
-					bulletNode->getOptionalAttribute("size", sizeStr);
+        string explodeAnimName;
+        bulletNode->getOptionalAttribute("explode", explodeAnimName);
 
-					uint32_t sizeX, sizeY;
-					static_cast<application::resourcesystem::AnimationSetResource*>(animSetRes.get())->getMaximumDimensions(sizeX, sizeY);
+        string sizeStr;
+        bulletNode->getOptionalAttribute("size", sizeStr);
 
-					float size = (float)max(sizeX, sizeY);
+        uint32_t sizeX, sizeY;
+        static_cast<application::resourcesystem::AnimationSetResource*>(animSetRes.get())->getMaximumDimensions(sizeX, sizeY);
 
-					if (sizeStr != "")
-					{
-						size = (float)utils::StringUtils::parseFloat(sizeStr);
-					}
+        float size = (float)max(sizeX, sizeY);
 
-					auto bulletId = getBulletIdFromName(bulletName);
-					registerBullet(
-						gameRes, 
-						static_cast<application::resourcesystem::AnimationSetResource*>(animSetRes.get()), 
-						bulletId, 
-						fireAnimName, 
-						explodeAnimName, 
-						size);
-				} while (bulletNode->next());
-			}
-		}
-	}
+        if (sizeStr != "") {
+          size = (float)utils::StringUtils::parseFloat(sizeStr);
+        }
 
-} // applib
+        auto bulletId = getBulletIdFromName(bulletName);
+        registerBullet(
+            gameRes,
+            static_cast<application::resourcesystem::AnimationSetResource*>(animSetRes.get()),
+            bulletId,
+            fireAnimName,
+            explodeAnimName,
+            size);
+      } while (bulletNode->next());
+    }
+  }
+}
+
+}  // namespace applib

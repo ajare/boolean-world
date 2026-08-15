@@ -9,52 +9,45 @@
 #include "Platform.h"
 #include "AnimationDatabase.h"
 
-namespace applib
-{
+namespace applib {
 
-	class APPLIB_API Game : public wp::application::resourcesystem::Resource
-	{
-		friend class GameResourceDefinitionFactory;
+class APPLIB_API Game : public wp::application::resourcesystem::Resource {
+  friend class GameResourceDefinitionFactory;
 
-	public:
+public:
+  struct BulletData {
+    float size;
+    int32_t fireAnimationId;
+    int32_t explodeAnimationId;
+  };
 
-		struct BulletData
-		{
-			float size;
-			int32_t fireAnimationId;
-			int32_t explodeAnimationId;
-		};
+private:
+  std::shared_ptr<AnimationDatabase> mAnimDatabase;
 
-	private:
+  wp::application::resourcesystem::ResourcePtr mBulletsAnimationSet;
 
-		std::shared_ptr<AnimationDatabase> mAnimDatabase;
+  std::vector<BulletData> mBulletData;
 
-		wp::application::resourcesystem::ResourcePtr mBulletsAnimationSet;
+private:
+  void create(wp::application::resourcesystem::DataStreamPtr dataPtr, wp::application::resourcesystem::ResourceManager* resourceMgr) override;
 
-		std::vector<BulletData> mBulletData;
+public:
+  Game(std::string const& name,
+       std::string const& namesp,
+       std::string const& source,
+       std::map<std::string, std::string> const& tags,
+       wp::application::resourcesystem::ResourceLocation* location,
+       std::shared_ptr<AnimationDatabase> animDatabase);
 
-	private:
+  ~Game();
 
-		void create(wp::application::resourcesystem::DataStreamPtr dataPtr, wp::application::resourcesystem::ResourceManager* resourceMgr) override;
+  wp::application::resourcesystem::ResourcePtr getBulletAnimationSet() const;
 
-	public:
+  BulletData const& getBulletData(int objectId) const;
 
-		Game(std::string const& name,
-			std::string const& namesp,
-			std::string const& source,
-			std::map<std::string, std::string> const& tags,
-			wp::application::resourcesystem::ResourceLocation* location,
-			std::shared_ptr<AnimationDatabase> animDatabase);
+  virtual uint32_t getBulletReferenceId(std::string const& bulletName) = 0;
 
-		~Game();
+  virtual uint32_t getBulletAnimationReferenceId(std::string const& animationType) = 0;
+};
 
-		wp::application::resourcesystem::ResourcePtr getBulletAnimationSet() const;
-
-		BulletData const& getBulletData(int objectId) const;
-
-		virtual uint32_t getBulletReferenceId(std::string const& bulletName) = 0;
-
-		virtual uint32_t getBulletAnimationReferenceId(std::string const& animationType) = 0;
-	};
-
-} // applib
+}  // namespace applib
