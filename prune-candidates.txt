@@ -7,9 +7,6 @@ Willpower/willpower.application/include/willpower/application/SchedulerTask.h
 Willpower/willpower.application/src/InputHelper.cpp
 Willpower/willpower.application/src/Scheduler.cpp
 Willpower/willpower.application/src/SchedulerTask.cpp
-Willpower/willpower.application/src/resourcesystem/MaterialResourceDefaultDefinitionFactory.cpp
-Willpower/willpower.application/src/resourcesystem/TestFileDefaultDefinitionFactory.cpp
-Willpower/willpower.collide/src/CollideAABB.cpp
 Willpower/willpower.common/include/willpower/common/BatchRenderable.h
 Willpower/willpower.common/include/willpower/common/CachedDynamicAccelerationGrid.h
 Willpower/willpower.common/include/willpower/common/CentripetalCatmullRomSpline.h

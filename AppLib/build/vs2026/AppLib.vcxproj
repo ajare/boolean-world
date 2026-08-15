@@ -105,7 +105,6 @@
     <ClInclude Include="..\..\include\applib\VisualTriMeshDataProvider.h" />
     <ClInclude Include="..\..\include\applib\VisualTriMeshEntityFacade.h" />
     <ClInclude Include="..\..\include\applib\VisualSprite.h" />
-    <ClInclude Include="..\..\include\applib\VisualTriMesh.h" />
     <ClInclude Include="..\..\include\applib\Weapon.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

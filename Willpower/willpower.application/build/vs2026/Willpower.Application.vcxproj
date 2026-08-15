@@ -106,9 +106,6 @@
   <ItemGroup>
     <ClInclude Include="..\..\include\willpower\application\AudioOptions.h" />
     <ClInclude Include="..\..\include\willpower\application\AudioSystem.h" />
-    <ClInclude Include="..\..\include\willpower\application\Document.h" />
-    <ClInclude Include="..\..\include\willpower\application\DocumentManager.h" />
-    <ClInclude Include="..\..\include\willpower\application\InputHelper.h" />
     <ClInclude Include="..\..\include\willpower\application\InputStateManager.h" />
     <ClInclude Include="..\..\include\willpower\application\resourcesystem\AnimationSetDefaultDefinitionFactory.h" />
     <ClInclude Include="..\..\include\willpower\application\resourcesystem\AnimationSetResource.h" />
@@ -146,8 +143,6 @@
     <ClInclude Include="..\..\include\willpower\application\resourcesystem\XmlFileResource.h" />
     <ClInclude Include="..\..\include\willpower\application\resourcesystem\XmlFileDefaultDefinitionFactory.h" />
     <ClInclude Include="..\..\include\willpower\application\resourcesystem\XmlFileResourceDefinitionFactory.h" />
-    <ClInclude Include="..\..\include\willpower\application\Scheduler.h" />
-    <ClInclude Include="..\..\include\willpower\application\SchedulerTask.h" />
     <ClInclude Include="..\..\include\willpower\application\ServiceLocator.h" />
     <ClInclude Include="..\..\include\willpower\application\StateExceptions.h" />
     <ClInclude Include="..\..\include\willpower\application\StateFactory.h" />
@@ -180,7 +175,6 @@
   <ItemGroup>
     <ClCompile Include="..\..\src\ApplicationSettings.cpp" />
     <ClCompile Include="..\..\src\AudioSystem.cpp" />
-    <ClCompile Include="..\..\src\InputHelper.cpp" />
     <ClCompile Include="..\..\src\InputStateManager.cpp" />
     <ClCompile Include="..\..\src\resourcesystem\AnimationSetDefaultDefinitionFactory.cpp" />
     <ClCompile Include="..\..\src\resourcesystem\AnimationSetResource.cpp" />
@@ -214,8 +208,6 @@
     <ClCompile Include="..\..\src\resourcesystem\XmlFileDefaultDefinitionFactory.cpp" />
     <ClCompile Include="..\..\src\resourcesystem\XmlFileResource.cpp" />
     <ClCompile Include="..\..\src\resourcesystem\XmlFileResourceDefinitionFactory.cpp" />
-    <ClCompile Include="..\..\src\Scheduler.cpp" />
-    <ClCompile Include="..\..\src\SchedulerTask.cpp" />
     <ClCompile Include="..\..\src\ServiceLocator.cpp" />
     <ClCompile Include="..\..\src\State.cpp" />
     <ClCompile Include="..\..\src\StateFactory.cpp" />

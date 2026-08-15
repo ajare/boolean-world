@@ -104,25 +104,20 @@
     <ClInclude Include="..\..\include\willpower\geometry\BezierOffsetter.h" />
     <ClInclude Include="..\..\include\willpower\geometry\clipper.hpp" />
     <ClInclude Include="..\..\include\willpower\geometry\ConvexOffsetter.h" />
-    <ClInclude Include="..\..\include\willpower\geometry\CsgUtils.h" />
     <ClInclude Include="..\..\include\willpower\geometry\DirectedEdge.h" />
     <ClInclude Include="..\..\include\willpower\geometry\DirectedEdgeLoop.h" />
     <ClInclude Include="..\..\include\willpower\geometry\Edge.h" />
     <ClInclude Include="..\..\include\willpower\geometry\EdgeFilter.h" />
     <ClInclude Include="..\..\include\willpower\geometry\Exception.h" />
     <ClInclude Include="..\..\include\willpower\geometry\Filter.h" />
-    <ClInclude Include="..\..\include\willpower\geometry\PolygonFilter.h" />
-    <ClInclude Include="..\..\include\willpower\geometry\VertexFilter.h" />
     <ClInclude Include="..\..\include\willpower\geometry\Mesh.h" />
     <ClInclude Include="..\..\include\willpower\geometry\MeshCallbacks.h" />
     <ClInclude Include="..\..\include\willpower\geometry\MeshHelpers.h" />
     <ClInclude Include="..\..\include\willpower\geometry\MeshOperationOptions.h" />
     <ClInclude Include="..\..\include\willpower\geometry\MeshOperationResults.h" />
     <ClInclude Include="..\..\include\willpower\geometry\MeshOperations.h" />
-    <ClInclude Include="..\..\include\willpower\geometry\MeshPropertyCollection.h" />
     <ClInclude Include="..\..\include\willpower\geometry\MeshQuery.h" />
     <ClInclude Include="..\..\include\willpower\geometry\MeshUtils.h" />
-    <ClInclude Include="..\..\include\willpower\geometry\MeshValidator.h" />
     <ClInclude Include="..\..\include\willpower\geometry\Offsetter.h" />
     <ClInclude Include="..\..\include\willpower\geometry\Platform.h" />
     <ClInclude Include="..\..\include\willpower\geometry\Polygon.h" />
@@ -136,7 +131,6 @@
     <ClCompile Include="..\..\src\BezierOffsetter.cpp" />
     <ClCompile Include="..\..\src\clipper.cpp" />
     <ClCompile Include="..\..\src\ConvexOffsetter.cpp" />
-    <ClCompile Include="..\..\src\CsgUtils.cpp" />
     <ClCompile Include="..\..\src\DirectedEdgeLoop.cpp" />
     <ClCompile Include="..\..\src\Edge.cpp" />
     <ClCompile Include="..\..\src\EdgeFilter.cpp" />
@@ -146,14 +140,11 @@
     <ClCompile Include="..\..\src\MeshOperations.cpp" />
     <ClCompile Include="..\..\src\MeshQuery.cpp" />
     <ClCompile Include="..\..\src\MeshUtils.cpp" />
-    <ClCompile Include="..\..\src\MeshValidator.cpp" />
     <ClCompile Include="..\..\src\Offsetter.cpp" />
     <ClCompile Include="..\..\src\Polygon.cpp" />
-    <ClCompile Include="..\..\src\PolygonFilter.cpp" />
     <ClCompile Include="..\..\src\SerializerMeshChunk.cpp" />
     <ClCompile Include="..\..\src\TypeConverters.cpp" />
     <ClCompile Include="..\..\src\Vertex.cpp" />
-    <ClCompile Include="..\..\src\VertexFilter.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\willpower.common\build\vs2026\Willpower.Common.vcxproj">

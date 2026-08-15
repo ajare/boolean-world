@@ -293,9 +293,6 @@
     <ClInclude Include="..\..\include\applib\EntityFacadeFactory.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\include\applib\VisualTriMesh.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\include\applib\GeometryMeshRendererFactory.h">
       <Filter>Header Files</Filter>
     </ClInclude>

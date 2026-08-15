@@ -99,21 +99,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\src\BinarySerializer.cpp" />
     <ClCompile Include="..\..\src\SerializationUtils.cpp" />
-    <ClCompile Include="..\..\src\Serializer.cpp" />
     <ClCompile Include="..\..\src\SerializerChunk.cpp" />
-    <ClCompile Include="..\..\src\SerializerDirectoryChunk.cpp" />
-    <ClCompile Include="..\..\src\TextSerializer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\include\willpower\serialization\Platform.h" />
     <ClInclude Include="..\..\include\willpower\serialization\SerializationUtils.h" />
-    <ClInclude Include="..\..\include\willpower\serialization\Serializer.h" />
-    <ClInclude Include="..\..\include\willpower\serialization\BinarySerializer.h" />
     <ClInclude Include="..\..\include\willpower\serialization\SerializerChunk.h" />
-    <ClInclude Include="..\..\include\willpower\serialization\SerializerDirectoryChunk.h" />
-    <ClInclude Include="..\..\include\willpower\serialization\TextSerializer.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\willpower.common\build\vs2026\Willpower.Common.vcxproj">
