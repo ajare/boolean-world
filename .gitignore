@@ -29,5 +29,12 @@
 **/BooleanWorld/app/resources/audio/Themes/.cache/
 **/BooleanWorld/app/resources/audio/Themes/.unsaved/
 **/BooleanWorld/app/resources/audio/Themes/.user/
-**/BooleanWorld/app/resources/audio/Themes/Build/
+# FMOD Studio build output. The compiled .bank files are tracked: the game
+# validates them at resource-load time even when audio is disabled, so a
+# fresh clone cannot reach the Play state without them (~92K total).
+# Everything else FMOD Studio emits here stays ignored.
+**/BooleanWorld/app/resources/audio/Themes/Build/**
+!**/BooleanWorld/app/resources/audio/Themes/Build/
+!**/BooleanWorld/app/resources/audio/Themes/Build/Desktop/
+!**/BooleanWorld/app/resources/audio/Themes/Build/Desktop/*.bank
 **/__pycache__
