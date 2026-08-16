@@ -1,8 +1,12 @@
 # Remove Clipper2 and path primitives
 
-Clipper2 remained after the arrangement rewrite only as a fixed-point container library and as the offsetting implementation behind authored `Path` primitives. We will remove the dependency completely, replace its container types with native `bw::core::arr` fixed-point vertices and contours, and delete `PathPolygon` rather than maintain or replace its path-stroking algorithm.
+Clipper2 remained after the arrangement rewrite only as a fixed-point container library and as the offsetting implementation behind authored `Path` primitives.
 
-Existing worlds containing a `Path` primitive are not migrated or partially loaded: `Path` becomes an unknown primitive type and loading fails through the standard unknown-primitive error. The independent older Clipper implementation in `Willpower.Geometry` is unaffected.
+## Decision
+
+Remove the dependency completely, replace its container types with native `bw::core::arr` fixed-point vertices and contours, and delete `PathPolygon` rather than maintain or replace its path-stroking algorithm.
+
+Worlds containing a serialized `Path` primitive are not migrated or partially loaded: `Path` is an unknown primitive type and loading fails through the standard unknown-primitive error. The independent older Clipper implementation in `Willpower.Geometry` is unaffected.
 
 ## Consequences
 

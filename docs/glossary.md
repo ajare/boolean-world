@@ -80,7 +80,7 @@ canonical coordinate type for topology, contours, and arrangement output.
 so that all output topology is exactly representable and vertex identity is an
 integer comparison rather than a float comparison (ADR-0003).
 
-## Geometry — before the rewrite (being removed)
+## Geometry — before the rewrite (removed)
 
 **ClippedPolygon** — A single contour plus an `isHole` flag. Holes are
 associated with their parent *by list ordering* — "N polygons, and after each

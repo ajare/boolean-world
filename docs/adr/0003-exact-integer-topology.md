@@ -6,8 +6,8 @@
 ## Context
 
 The world is 8192 units across, centred on the origin, so coordinates span
-±4096. `BW_CLIPPER_SCALE` is 1000, giving a grid quantum of 0.001 world units
-and an integer range of ±4.1e6.
+±4096. The former `BW_CLIPPER_SCALE` was 1000, giving a grid quantum of 0.001
+world units and an integer range of ±4.1e6.
 
 Downstream types are `float`: `wp::Vector2` holds `float x, y`, so
 `ClippedPolygon` and `PolygonGraphVertex` are float. At ±4096 a float ULP is
@@ -49,5 +49,6 @@ the mercy of two ULP.
 - Consumers keep receiving float coordinates, unchanged. The two-ULP margin at
   the world edge remains, but it now affects only rendered positions, never
   topology.
-- `BW_CLIPPER_SCALE` and the coordinate conversion macros survive in some form;
-  the z-packing macros beside them in `Defines.h` do not (ADR-0004).
+- The scale and coordinate conversion contract survived as native fixed-point
+  arrangement utilities; the Clipper-named macros and the z-packing macros in
+  `Defines.h` were subsequently removed (ADR-0004, ADR-0010).

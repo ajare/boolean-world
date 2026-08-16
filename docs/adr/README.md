@@ -1,7 +1,8 @@
 # Architecture decisions — World geometry rewrite
 
-Replacing Clipper2 as the boolean engine of the World clip pipeline with a
-single planar arrangement. Terms are defined in [../glossary.md](../glossary.md).
+The World geometry rewrite replaced Clipper2 as its boolean engine with a
+single planar arrangement and later removed the dependency entirely. Terms are
+defined in [../glossary.md](../glossary.md).
 
 | # | Decision | Status |
 | --- | --- | --- |
