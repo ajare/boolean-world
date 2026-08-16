@@ -31,6 +31,28 @@ using namespace std;
 
 Document* Document::msInstance = nullptr;
 
+namespace {
+
+set<uint32_t> getIgnoredPrimitiveIndices(bw::core::World const& world, Settings const& settings) {
+  set<uint32_t> ignores;
+
+  if (!settings.ghostActive) {
+    ignores.insert(0);
+  }
+
+  if (!settings.renderAnimatedPrimitives) {
+    for (uint32_t i = 0; i < world.getNumPrimitives(); ++i) {
+      if (!world.getPrimitive(i)->isStatic()) {
+        ignores.insert(i);
+      }
+    }
+  }
+
+  return ignores;
+}
+
+}  // namespace
+
 Document::Document()
     : mModified(false), mSelectedWorldVertexIndex(~0u), mSelectedTriggerLineIndex(~0u), mPlayerOldProxyPosition({0, 0}), mPlayerProxyPosition({0, 0}), mPlayerProxyAngle(0.0f), mPlayerOldProxyAngle(0.0f) {
 }
@@ -125,39 +147,19 @@ void Document::clearSelections() {
 }
 
 uint32_t Document::getHoveredPrimitiveIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
-  set<uint32_t> ignores;
-
-  if (!settings.ghostActive) {
-    ignores.insert(0);
+  if (!isActive()) {
+    return ~0u;
   }
 
-  if (!settings.renderAnimatedPrimitives) {
-    for (uint32_t i = 0; i < mWorld->getNumPrimitives(); ++i) {
-      if (!mWorld->getPrimitive(i)->isStatic()) {
-        ignores.insert(i);
-      }
-    }
-  }
-
-  return isActive() ? mWorld->findPrimitiveIndex(mouseWorldPos, true, ignores) : ~0u;
+  return mWorld->findPrimitiveIndex(mouseWorldPos, true, getIgnoredPrimitiveIndices(*mWorld, settings));
 }
 
 vector<uint32_t> Document::getHoveredPrimitiveIndices(wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
-  set<uint32_t> ignores;
-
-  if (!settings.ghostActive) {
-    ignores.insert(0);
+  if (!isActive()) {
+    return {};
   }
 
-  if (!settings.renderAnimatedPrimitives) {
-    for (uint32_t i = 0; i < mWorld->getNumPrimitives(); ++i) {
-      if (!mWorld->getPrimitive(i)->isStatic()) {
-        ignores.insert(i);
-      }
-    }
-  }
-
-  return isActive() ? mWorld->findPrimitiveIndices(mouseWorldPos, true, ignores) : vector<uint32_t>();
+  return mWorld->findPrimitiveIndices(mouseWorldPos, true, getIgnoredPrimitiveIndices(*mWorld, settings));
 }
 
 uint32_t Document::getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
