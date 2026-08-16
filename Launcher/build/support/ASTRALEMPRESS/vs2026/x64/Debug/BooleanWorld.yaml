@@ -1,7 +1,7 @@
 Configuration:
   Video:
-    Width: 2048
-    Height: 1536
+    Width: 1024
+    Height: 768
     Fullscreen: false
     VSync: true
   Audio:
