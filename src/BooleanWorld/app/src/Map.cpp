@@ -33,6 +33,7 @@ bw::core::World const* Map::getWorld() const {
 
 void Map::loadWorldFromYaml(wp::application::resourcesystem::ResourcePtr resource) {
   delete mWorld;
+  mWorld = nullptr;
 
   auto res = static_cast<wp::application::resourcesystem::TextFileResource*>(resource.get());
   string text = res->getText();
