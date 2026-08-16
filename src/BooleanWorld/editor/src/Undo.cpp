@@ -178,12 +178,12 @@ void redo(Document* doc, int count) {
 vector<HistoryItem> getActionHistory() {
   vector<HistoryItem> entries;
 
-  for (auto item : gUndoStack) {
+  for (auto const& item : gUndoStack) {
     entries.push_back({item.id, true});
   }
 
   ranges::reverse_view redoStackRev{gRedoStack};
-  for (auto item : redoStackRev) {
+  for (auto const& item : redoStackRev) {
     entries.push_back({item.id, false});
   }
 
