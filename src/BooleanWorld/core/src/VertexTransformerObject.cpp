@@ -151,7 +151,9 @@ wp::Vector2 const& VertexTransformerObject::getTransformOffset() const {
 }
 
 void VertexTransformerObject::setOrientation(float orient) {
+  // The influence-eye angle offset is relative to this orientation.
   mOrientation = orient;
+  invalidatePostTransform(true, true);
 }
 
 float VertexTransformerObject::getOrientation() const {

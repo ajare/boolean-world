@@ -63,23 +63,20 @@ Primitive* Primitive::rotatedCopy(float angle) const {
   p->setPosition(getPosition().rotatedClockwiseCopy(angle));
 
   // Rotate vertices
-  for (auto& complexPolygon : p->mPolygons) {
-    ComplexPolygon polyVertices;
-
+  auto polygons = p->mPolygons;
+  for (auto& complexPolygon : polygons) {
     for (auto& polygon : complexPolygon) {
-      auto numVertices = (uint32_t)polygon.size();
+      for (auto& vertex : polygon) {
+        auto position = vertex.p;
+        position -= origin;
+        position.rotateClockwise(angle);
+        position += origin;
 
-      for (uint32_t i = 0; i < numVertices; ++i) {
-        auto p = polygon[i].p;
-
-        p -= origin;
-        p.rotateClockwise(angle);
-        p += origin;
-
-        polygon[i].p = p;
+        vertex.p = position;
       }
     }
   }
+  p->setVertices(polygons);
 
   // Bump angles
   p->setInfluenceEyeAngleOffset(p->getInfluenceEyeAngleOffset() + angle);
@@ -240,9 +237,8 @@ void Primitive::setVertices(vector<ComplexPolygon> const& polygons) {
   }
 
   mPolygons = polygons;
-
-  setId(getId());
-  notifyWorldChanged();
+  updateVertexPositions();
+  invalidatePostTransform(true, true);
 }
 
 bool Primitive::childrenModified() const {
