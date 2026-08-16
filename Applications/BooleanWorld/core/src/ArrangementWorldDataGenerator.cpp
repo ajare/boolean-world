@@ -9,12 +9,27 @@
 
 namespace bw::core {
 namespace {
-std::vector<expr::ArrangementPrimitive> SnapshotPrimitives(
+std::vector<arr::Contour> ToNativeContours(Clipper2Lib::Paths64 const& paths) {
+  std::vector<arr::Contour> contours;
+  contours.reserve(paths.size());
+  for (auto const& path : paths) {
+    arr::Contour contour;
+    contour.reserve(path.size());
+    for (auto const& point : path) {
+      contour.push_back({point.x, point.y});
+    }
+    contours.push_back(std::move(contour));
+  }
+  return contours;
+}
+
+std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
     std::vector<Primitive*> const& primitives) {
-  std::vector<expr::ArrangementPrimitive> result;
+  std::vector<arr::ArrangementPrimitive> result;
   result.reserve(primitives.size());
   for (auto primitive : primitives) {
-    result.push_back({ClipperUtils::convertComplexPolygonsToPath(primitive),
+    result.push_back({ToNativeContours(
+                          ClipperUtils::convertComplexPolygonsToPath(primitive)),
                       primitive->getOperation(),
                       primitive->getFillRule(),
                       primitive->getPriority(),

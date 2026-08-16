@@ -5,19 +5,26 @@
 #include <memory>
 #include <vector>
 
-#include <clipper2/clipper.h>
-
-#include "core/Primitive.h"
 #include "core/Clipper2Polygon.h"
+#include "core/Primitive.h"
 
-namespace expr {
-struct Vertex {
+namespace bw::core::arr {
+inline constexpr int64_t FixedPointUnitsPerWorldUnit = 1000;
+
+struct FixedPointVertex {
   int64_t x, y;
 
-  bool operator==(Vertex const& other) const {
+  bool operator==(FixedPointVertex const& other) const {
     return x == other.x && y == other.y;
   }
 };
+
+// A contour is implicitly closed from its last vertex back to its first.
+// Its role as a shell or hole is derived from geometry and the fill rule.
+using Contour = std::vector<FixedPointVertex>;
+
+// Temporary prototype name retained while existing arrangement consumers move.
+using Vertex = FixedPointVertex;
 
 struct WindingDelta {
   uint32_t primitiveIndex;
@@ -64,16 +71,22 @@ struct Face {
   bool solid{false};
 
   // If the face is owned by a non-hole polygon, then owningPolygon
-  // is set.  Otherwise holePolygon is set.
+  // is set. Otherwise holePolygon is set.
   int owningPolygon{-1};
   int holePolygon{-1};
 };
 
+struct ContourInput {
+  Contour contour;
+  uint32_t primitiveIndex{~0u};
+};
+
 struct PSLG {
-  std::vector<Vertex> vs;
+  std::vector<FixedPointVertex> vs;
   std::vector<Edge> es;
-  std::vector<Clipper2Lib::Path64> sourceContours;
-  std::vector<bool> sourceContourIsHole;
+  std::vector<Contour> sourceContours;
+  // Temporary metadata used only by the legacy Clipper2 test adapter.
+  std::vector<bool> legacySourceContourIsHole;
 };
 
 struct PolygonNode {
@@ -107,12 +120,12 @@ struct ArrangementWall {
 };
 
 struct ArrangementPrimitive {
-  std::vector<Clipper2Lib::Path64> contours;
-  bw::core::Primitive::Operation operation;
-  bw::core::Primitive::FillRule fillRule;
+  std::vector<Contour> contours;
+  Primitive::Operation operation;
+  Primitive::FillRule fillRule;
   uint8_t priority;
   uint32_t primitiveIndex;
-  bw::core::PrimitivePropertySet properties{};
+  PrimitivePropertySet properties{};
 };
 
 struct ArrangementEdge {
@@ -125,7 +138,7 @@ struct ArrangementFace {
   // Edge indices. Bounded faces have one CCW outer boundary; the unbounded
   // exterior face at index zero has no outer boundary.
   std::vector<uint32_t> outerBoundary;
-  // Each nested vector is one explicit hole boundary.
+  // Each nested vector is one explicit hole boundary, derived geometrically.
   std::vector<std::vector<uint32_t>> innerBoundaries;
   Membership membership;
   bool solid{false};
@@ -134,10 +147,10 @@ struct ArrangementFace {
 };
 
 struct ArrangementResult {
-  std::vector<Vertex> vertices;
+  std::vector<FixedPointVertex> vertices;
   std::vector<ArrangementEdge> edges;
   std::vector<ArrangementFace> faces;
-  std::vector<bw::core::PrimitivePropertySet> palette;
+  std::vector<PrimitivePropertySet> palette;
 };
 
 using ArrangementResultPtr = std::shared_ptr<ArrangementResult const>;
@@ -150,11 +163,15 @@ using ArrangementResultPtr = std::shared_ptr<ArrangementResult const>;
     std::vector<ArrangementPrimitive> const& primitives);
 
 bool PointInFace(
-    Vertex const& v,
+    FixedPointVertex const& v,
     ArrangementFace const& face,
     ArrangementResult const& arrangement);
 
-bool PointInFace(Vertex const& v, Face const& face, std::vector<Cycle> const& cycles, PSLG const& graph);
+bool PointInFace(
+    FixedPointVertex const& v,
+    Face const& face,
+    std::vector<Cycle> const& cycles,
+    PSLG const& graph);
 
 [[nodiscard]] std::vector<ArrangementTriangle> BuildArrangementTriangles(
     ArrangementResult const& arrangement);
@@ -162,15 +179,37 @@ bool PointInFace(Vertex const& v, Face const& face, std::vector<Cycle> const& cy
 [[nodiscard]] std::vector<ArrangementWall> BuildArrangementWalls(
     ArrangementResult const& arrangement);
 
-PSLG BuildPSLG(std::vector<bw::core::Clipper2Polygon> const& polygons, std::vector<bw::core::Primitive*> const& primitives);
+PSLG BuildPSLG(std::vector<ContourInput> const& contours);
+
+// Temporary Clipper2 input adapter retained until existing tests migrate.
+PSLG BuildPSLG(
+    std::vector<Clipper2Polygon> const& polygons,
+    std::vector<Primitive*> const& primitives);
 
 std::vector<Cycle> ExtractMinimalCycles(PSLG const& graph);
 
-std::vector<PolygonNode> BuildPolygonHierarchy(PSLG const& graph, std::vector<Cycle>& cycles);
+std::vector<PolygonNode> BuildPolygonHierarchy(
+    PSLG const& graph,
+    std::vector<Cycle>& cycles);
 
-std::vector<Face> BuildFaces(std::vector<PolygonNode> const& nodes, std::vector<Cycle> const& cycles);
+std::vector<Face> BuildFaces(
+    std::vector<PolygonNode> const& nodes,
+    std::vector<Cycle> const& cycles);
 
-std::vector<Face> CalculateOwningPolygons(std::vector<Face> const& faces, std::vector<bw::core::Clipper2Polygon> const& polygons, std::vector<Cycle> const& cycles, PSLG& graph, std::vector<bw::core::Primitive*> const& primitives);
+std::vector<Face> CalculateOwningPolygons(
+    std::vector<Face> const& faces,
+    std::vector<Clipper2Polygon> const& polygons,
+    std::vector<Cycle> const& cycles,
+    PSLG& graph,
+    std::vector<Primitive*> const& primitives);
 
-std::vector<FaceTriangle> BuildFaceTriangles(std::vector<Face> const& faces, std::vector<Cycle> const& cycles, PSLG const& graph);
-}  // namespace expr
+std::vector<FaceTriangle> BuildFaceTriangles(
+    std::vector<Face> const& faces,
+    std::vector<Cycle> const& cycles,
+    PSLG const& graph);
+}  // namespace bw::core::arr
+
+// Temporary namespace compatibility for consumers of the arrangement prototype.
+namespace expr {
+using namespace bw::core::arr;
+}

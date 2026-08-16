@@ -15,10 +15,10 @@
 #include <mapbox/earcut.hpp>
 
 #include <core/Arrangement.h>
+#include <core/Clipper2Polygon.h>
 #include <core/ClipperDefines.h>
 
-namespace expr {
-using namespace Clipper2Lib;
+namespace bw::core::arr {
 using namespace std;
 
 Membership::Membership(size_t primitiveCount)
@@ -178,21 +178,21 @@ int64_t RoundedCoordinate(int64_t base, int64_t numerator, int64_t multiplier, i
   return result;
 }
 
-vector<Segment> ExtractSegments(vector<bw::core::Clipper2Polygon> const& polygons) {
+vector<Segment> ExtractSegments(vector<ContourInput> const& contours) {
   vector<Segment> result;
 
-  for (int i = 0; i < int(polygons.size()); ++i) {
-    auto const& path = polygons[i].path;
-    if (path.size() < 2) {
+  for (auto const& input : contours) {
+    auto const& contour = input.contour;
+    if (contour.size() < 2) {
       continue;
     }
 
-    for (size_t j = 0; j < path.size(); ++j) {
-      auto k = (j + 1) % path.size();
-      Vertex a{path[j].x, path[j].y};
-      Vertex b{path[k].x, path[k].y};
+    for (size_t i = 0; i < contour.size(); ++i) {
+      auto j = (i + 1) % contour.size();
+      auto const& a = contour[i];
+      auto const& b = contour[j];
       if (a != b) {
-        result.push_back({{a, b}, polygons[i].primitiveIndex});
+        result.push_back({{a, b}, input.primitiveIndex});
       }
     }
   }
@@ -323,11 +323,13 @@ int PointInCycle(Vertex const& point, Cycle const& cycle, PSLG const& graph) {
   return winding == 0 ? 0 : 1;
 }
 
-int PointInPolygon(RationalPoint const& point, Path64 const& polygon) {
+template <typename Polygon>
+int PointInPolygon(RationalPoint const& point, Polygon const& polygon) {
   int winding = 0;
   for (size_t i = 0; i < polygon.size(); ++i) {
     Vertex a{polygon[i].x, polygon[i].y};
-    Vertex b{polygon[(i + 1) % polygon.size()].x, polygon[(i + 1) % polygon.size()].y};
+    Vertex b{polygon[(i + 1) % polygon.size()].x,
+             polygon[(i + 1) % polygon.size()].y};
     auto aBelow = a.y * point.denominator <= point.yNumerator;
     auto bBelow = b.y * point.denominator <= point.yNumerator;
     auto cross = CrossSign(a, b, point);
@@ -342,9 +344,9 @@ int PointInPolygon(RationalPoint const& point, Path64 const& polygon) {
   return winding;
 }
 
-Box GetPathBounds(Path64 const& path) {
-  Box bounds{path[0].x, path[0].y, path[0].x, path[0].y};
-  for (auto const& point : path) {
+Box GetContourBounds(Contour const& contour) {
+  Box bounds{contour[0].x, contour[0].y, contour[0].x, contour[0].y};
+  for (auto const& point : contour) {
     bounds.minx = min(bounds.minx, point.x);
     bounds.miny = min(bounds.miny, point.y);
     bounds.maxx = max(bounds.maxx, point.x);
@@ -383,20 +385,22 @@ bool IsLeafSolidBoundaryInsideSolid(PSLG const& graph, Cycle const& cycle) {
 
   auto cycleBounds = GetBounds(graph, cycle);
   for (size_t i = 0; i < graph.sourceContours.size(); ++i) {
-    if (graph.sourceContourIsHole[i] || graph.sourceContours[i].empty() ||
-        !EqualBox(cycleBounds, GetPathBounds(graph.sourceContours[i]))) {
+    if (graph.sourceContours[i].empty() ||
+        !EqualBox(cycleBounds, GetContourBounds(graph.sourceContours[i]))) {
       continue;
     }
 
     bool containsContour = false;
+    bool hasContainer = false;
     int nearestContainer = -1;
     int64_t nearestArea = numeric_limits<int64_t>::max();
     for (size_t j = 0; j < graph.sourceContours.size(); ++j) {
       if (i == j || graph.sourceContours[j].empty()) {
         continue;
       }
-      auto otherBounds = GetPathBounds(graph.sourceContours[j]);
+      auto otherBounds = GetContourBounds(graph.sourceContours[j]);
       if (ContainsBox(otherBounds, cycleBounds)) {
+        hasContainer = true;
         auto area = (otherBounds.maxx - otherBounds.minx) *
                     (otherBounds.maxy - otherBounds.miny);
         if (area < nearestArea) {
@@ -404,21 +408,21 @@ bool IsLeafSolidBoundaryInsideSolid(PSLG const& graph, Cycle const& cycle) {
           nearestContainer = int(j);
         }
       }
-      if (ContainsBox(cycleBounds, otherBounds)) {
-        containsContour = true;
-      }
+      containsContour = containsContour || ContainsBox(cycleBounds, otherBounds);
     }
-    return nearestContainer >= 0 &&
-           !graph.sourceContourIsHole[nearestContainer] &&
-           !containsContour;
+    if (!graph.legacySourceContourIsHole.empty()) {
+      return !graph.legacySourceContourIsHole[i] && nearestContainer >= 0 &&
+             !graph.legacySourceContourIsHole[nearestContainer] &&
+             !containsContour;
+    }
+    return hasContainer && !containsContour;
   }
   return false;
 }
 }  // namespace
 
-PSLG BuildPSLG(vector<bw::core::Clipper2Polygon> const& polygons, vector<bw::core::Primitive*> const& primitives) {
-  (void)primitives;
-  auto segments = ExtractSegments(polygons);
+PSLG BuildPSLG(vector<ContourInput> const& contours) {
+  auto segments = ExtractSegments(contours);
   vector<vector<Vertex>> splits(segments.size());
   vector<Vertex> candidates;
 
@@ -453,9 +457,8 @@ PSLG BuildPSLG(vector<bw::core::Clipper2Polygon> const& polygons, vector<bw::cor
   }
 
   PSLG graph;
-  for (auto const& polygon : polygons) {
-    graph.sourceContours.push_back(polygon.path);
-    graph.sourceContourIsHole.push_back(polygon.isHole);
+  for (auto const& input : contours) {
+    graph.sourceContours.push_back(input.contour);
   }
 
   unordered_map<Vertex, int, PointHash> vertexMap;
@@ -511,6 +514,28 @@ PSLG BuildPSLG(vector<bw::core::Clipper2Polygon> const& polygons, vector<bw::cor
     }
   }
 
+  return graph;
+}
+
+PSLG BuildPSLG(
+    vector<bw::core::Clipper2Polygon> const& polygons,
+    vector<bw::core::Primitive*> const& primitives) {
+  (void)primitives;
+  vector<ContourInput> contours;
+  contours.reserve(polygons.size());
+  for (auto const& polygon : polygons) {
+    Contour contour;
+    contour.reserve(polygon.path.size());
+    for (auto const& point : polygon.path) {
+      contour.push_back({point.x, point.y});
+    }
+    contours.push_back({move(contour), polygon.primitiveIndex});
+  }
+  auto graph = BuildPSLG(contours);
+  graph.legacySourceContourIsHole.reserve(polygons.size());
+  for (auto const& polygon : polygons) {
+    graph.legacySourceContourIsHole.push_back(polygon.isHole);
+  }
   return graph;
 }
 
@@ -714,15 +739,15 @@ vector<Face> CalculateOwningPolygons(vector<Face> const& faces, vector<bw::core:
 }
 
 ArrangementResultPtr BuildArrangement(vector<ArrangementPrimitive> const& primitives) {
-  vector<bw::core::Clipper2Polygon> contours;
+  vector<ContourInput> contours;
   for (uint32_t primitiveIndex = 0;
        primitiveIndex < uint32_t(primitives.size()); ++primitiveIndex) {
     for (auto const& contour : primitives[primitiveIndex].contours) {
-      contours.push_back({false, primitiveIndex, contour});
+      contours.push_back({contour, primitiveIndex});
     }
   }
 
-  auto graph = BuildPSLG(contours, {});
+  auto graph = BuildPSLG(contours);
   auto cycles = ExtractMinimalCycles(graph);
   erase_if(cycles, [](Cycle const& cycle) {
     return cycle.area <= 0;
@@ -984,8 +1009,8 @@ vector<ArrangementTriangle> BuildArrangementTriangles(
             edge.face[0] == faceIndex ? edge.v[0] : edge.v[1];
         auto const& vertex = arrangement.vertices[vertexIndex];
         polygon.push_back(
-            {float(vertex.x / BW_CLIPPER_SCALE),
-             float(vertex.y / BW_CLIPPER_SCALE)});
+            {float(double(vertex.x) / FixedPointUnitsPerWorldUnit),
+             float(double(vertex.y) / FixedPointUnitsPerWorldUnit)});
         vertexIndices.push_back(vertexIndex);
       }
       polygons.push_back(move(polygon));
@@ -1071,7 +1096,9 @@ vector<FaceTriangle> BuildFaceTriangles(vector<Face> const& faces, vector<Cycle>
       vector<EarcutPoint> polygon;
       for (auto vertexIndex : cycles[cycleIndex].vis) {
         auto const& vertex = graph.vs[vertexIndex];
-        polygon.push_back({float(vertex.x / BW_CLIPPER_SCALE), float(vertex.y / BW_CLIPPER_SCALE)});
+        polygon.push_back(
+            {float(double(vertex.x) / FixedPointUnitsPerWorldUnit),
+             float(double(vertex.y) / FixedPointUnitsPerWorldUnit)});
         vertexIndices.push_back(vertexIndex);
       }
       polygons.push_back(move(polygon));
@@ -1090,4 +1117,4 @@ vector<FaceTriangle> BuildFaceTriangles(vector<Face> const& faces, vector<Cycle>
   }
   return triangles;
 }
-}  // namespace expr
+}  // namespace bw::core::arr

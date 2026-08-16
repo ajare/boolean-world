@@ -452,7 +452,43 @@ TEST(Generation, GeometryIsIndependentOfViewerPosition) {
 using namespace Clipper2Lib;
 using namespace expr;
 
-static_assert(std::is_same_v<decltype(expr::Vertex::x), int64_t>);
+static_assert(
+    std::is_same_v<decltype(bw::core::arr::FixedPointVertex::x), int64_t>);
+static_assert(std::is_same_v<
+              bw::core::arr::Contour::value_type,
+              bw::core::arr::FixedPointVertex>);
+static_assert(bw::core::arr::FixedPointUnitsPerWorldUnit == 1000);
+
+TEST(NativeArrangement, ClassifiesGeometryWithoutIntrinsicContourRoles) {
+  using namespace bw::core::arr;
+  ArrangementPrimitive primitive{
+      {{{0, 0}, {30, 0}, {30, 30}, {0, 30}},
+       {{10, 10}, {20, 10}, {20, 20}, {10, 20}}},
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::EvenOdd,
+      0,
+      42};
+
+  ArrangementResultPtr arrangement = BuildArrangement({primitive});
+  auto shell = std::find_if(
+      arrangement->faces.begin(), arrangement->faces.end(),
+      [&](ArrangementFace const& face) {
+        return PointInFace({5, 5}, face, *arrangement);
+      });
+  auto hole = std::find_if(
+      arrangement->faces.begin(), arrangement->faces.end(),
+      [&](ArrangementFace const& face) {
+        return PointInFace({15, 15}, face, *arrangement);
+      });
+
+  ASSERT_NE(shell, arrangement->faces.end());
+  ASSERT_NE(hole, arrangement->faces.end());
+  EXPECT_TRUE(shell->membership.contains(0));
+  EXPECT_TRUE(shell->solid);
+  EXPECT_FALSE(hole->membership.contains(0));
+  EXPECT_FALSE(hole->solid);
+  EXPECT_EQ(shell->innerBoundaries.size(), 1u);
+}
 
 static PSLG BuildTestPSLG(
     std::vector<bw::core::Clipper2Polygon> polygons) {
