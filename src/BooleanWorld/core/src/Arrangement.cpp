@@ -6,6 +6,7 @@
 #include <map>
 #include <queue>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #ifdef _MSC_VER
@@ -15,6 +16,8 @@
 #include <mapbox/earcut.hpp>
 
 #include <core/Arrangement.h>
+#include <willpower/common/AccelerationGrid.h>
+#include <willpower/common/BoundingBox.h>
 
 namespace bw::core::arr {
 using namespace std;
@@ -402,9 +405,66 @@ bool IsLeafSolidBoundaryInsideSolid(PSLG const& graph, Cycle const& cycle) {
   }
   return false;
 }
+
+struct SegmentGrid {
+  wp::AccelerationGrid grid;
+
+  explicit SegmentGrid(vector<Segment> const& segments)
+      : grid(CreateGrid(segments)) {
+    for (uint32_t i = 0; i < uint32_t(segments.size()); ++i) {
+      auto const& segment = segments[i];
+      auto minx = min(segment.v[0].x, segment.v[1].x);
+      auto miny = min(segment.v[0].y, segment.v[1].y);
+      auto maxx = max(segment.v[0].x, segment.v[1].x);
+      auto maxy = max(segment.v[0].y, segment.v[1].y);
+      grid.addItem(
+          i,
+          wp::BoundingBox(
+              float(minx), float(miny),
+              float(maxx - minx), float(maxy - miny)));
+    }
+  }
+
+private:
+  static wp::AccelerationGrid CreateGrid(vector<Segment> const& segments) {
+    if (segments.empty()) {
+      return wp::AccelerationGrid(0.0f, 0.0f, 1.0f, 1.0f, 1, 1);
+    }
+
+    auto minx = segments[0].v[0].x;
+    auto miny = segments[0].v[0].y;
+    auto maxx = minx;
+    auto maxy = miny;
+    for (auto const& segment : segments) {
+      for (auto const& vertex : segment.v) {
+        minx = min(minx, vertex.x);
+        miny = min(miny, vertex.y);
+        maxx = max(maxx, vertex.x);
+        maxy = max(maxy, vertex.y);
+      }
+    }
+
+    auto width = max<int64_t>(1, maxx - minx);
+    auto height = max<int64_t>(1, maxy - miny);
+    auto targetCells = clamp<size_t>(segments.size(), 1, 128 * 128);
+    auto aspect = double(width) / double(height);
+    auto dimX = clamp(
+        int(lround(sqrt(double(targetCells) * aspect))), 1, 128);
+    auto dimY = clamp(
+        int(lround(sqrt(double(targetCells) / aspect))), 1, 128);
+    // Keep cells at least one fixed-point quantum wide so half-quantum
+    // snap-rounding cannot skip beyond the neighbouring-cell search.
+    dimX = int(min<int64_t>(dimX, width));
+    dimY = int(min<int64_t>(dimY, height));
+    return wp::AccelerationGrid(
+        float(minx), float(miny), float(width), float(height), dimX, dimY);
+  }
+};
 }  // namespace
 
-PSLG BuildPSLG(vector<ContourInput> const& contours) {
+PSLG BuildPSLG(
+    vector<ContourInput> const& contours,
+    PSLGConstructionStats* stats) {
   auto segments = ExtractSegments(contours);
   vector<vector<FixedPointVertex>> splits(segments.size());
   vector<FixedPointVertex> candidates;
@@ -416,27 +476,88 @@ PSLG BuildPSLG(vector<ContourInput> const& contours) {
     candidates.push_back(segments[i].v[1]);
   }
 
-  // Predicates are exact and each computed intersection is snapped immediately.
+  SegmentGrid broadPhase(segments);
+  vector<size_t> visited(segments.size(), numeric_limits<size_t>::max());
+  uint64_t candidateSegmentPairTests = 0;
+
+  // Segment bounding boxes are registered in every cell they touch. Walking
+  // each segment's cells and using a per-segment marker tests every possible
+  // intersection once without materialising the quadratic pair set.
   for (size_t i = 0; i < segments.size(); ++i) {
-    for (size_t j = i + 1; j < segments.size(); ++j) {
-      auto intersection = SegmentIntersection(segments[i], segments[j]);
-      if (!intersection.hit) {
-        continue;
+    for (auto cellIndex : broadPhase.grid._getItemCellIndices(uint32_t(i))) {
+      auto cellX = int(cellIndex % broadPhase.grid.getCellDimensionX());
+      auto cellY = int(cellIndex / broadPhase.grid.getCellDimensionX());
+      for (auto j : broadPhase.grid._getCellItems(cellX, cellY)) {
+        if (j <= i || visited[j] == i) {
+          continue;
+        }
+        visited[j] = i;
+        ++candidateSegmentPairTests;
+
+        auto intersection = SegmentIntersection(segments[i], segments[j]);
+        if (!intersection.hit) {
+          continue;
+        }
+        splits[i].push_back(intersection.point);
+        splits[j].push_back(intersection.point);
+        candidates.push_back(intersection.point);
       }
-      splits[i].push_back(intersection.point);
-      splits[j].push_back(intersection.point);
-      candidates.push_back(intersection.point);
     }
   }
 
-  // Snapping can create a new incidence on an edge that was not part of the
-  // original intersection. Re-check every snapped point against every edge.
-  for (auto const& candidate : candidates) {
-    for (size_t i = 0; i < segments.size(); ++i) {
-      if (PointOnSegment(candidate, segments[i].v[0], segments[i].v[1])) {
-        splits[i].push_back(candidate);
+  auto candidatePointCount = candidates.size();
+  unordered_set<FixedPointVertex, PointHash> uniqueCandidates;
+  uniqueCandidates.reserve(candidates.size());
+  uniqueCandidates.insert(candidates.begin(), candidates.end());
+
+  uint64_t candidatePointSegmentTests = 0;
+  fill(visited.begin(), visited.end(), numeric_limits<size_t>::max());
+  size_t candidateIndex = 0;
+
+  // Snapping can create an incidence on an edge that was not in the original
+  // intersection pair. A point can move by at most half a grid quantum, so
+  // its cell and eight neighbours conservatively contain every affected edge.
+  for (auto const& candidate : uniqueCandidates) {
+    int containingX;
+    int containingY;
+    broadPhase.grid.getContainingCell(
+        true, float(candidate.x), float(candidate.y),
+        containingX, containingY);
+
+    auto minX = max(0, containingX - 1);
+    auto minY = max(0, containingY - 1);
+    auto maxX = min(broadPhase.grid.getCellDimensionX() - 1, containingX + 1);
+    auto maxY = min(broadPhase.grid.getCellDimensionY() - 1, containingY + 1);
+    for (int y = minY; y <= maxY; ++y) {
+      for (int x = minX; x <= maxX; ++x) {
+        for (auto segmentIndex : broadPhase.grid._getCellItems(x, y)) {
+          if (visited[segmentIndex] == candidateIndex) {
+            continue;
+          }
+          visited[segmentIndex] = candidateIndex;
+          ++candidatePointSegmentTests;
+          if (PointOnSegment(
+                  candidate,
+                  segments[segmentIndex].v[0],
+                  segments[segmentIndex].v[1])) {
+            splits[segmentIndex].push_back(candidate);
+          }
+        }
       }
     }
+    ++candidateIndex;
+  }
+
+  if (stats != nullptr) {
+    stats->segmentCount = segments.size();
+    stats->exhaustiveSegmentPairTests =
+        uint64_t(segments.size()) * uint64_t(segments.size() - (segments.empty() ? 0 : 1)) / 2;
+    stats->candidateSegmentPairTests = candidateSegmentPairTests;
+    stats->candidatePointCount = candidatePointCount;
+    stats->uniqueCandidatePointCount = uniqueCandidates.size();
+    stats->exhaustivePointSegmentTests =
+        uint64_t(candidatePointCount) * uint64_t(segments.size());
+    stats->candidatePointSegmentTests = candidatePointSegmentTests;
   }
 
   PSLG graph;

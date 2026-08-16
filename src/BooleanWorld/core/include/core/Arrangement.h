@@ -93,6 +93,19 @@ struct PSLG {
   std::vector<Contour> sourceContours;
 };
 
+// Diagnostic counts for arrangement-construction performance tests and
+// benchmarks. The exhaustive counts describe the work BuildPSLG performed
+// before its grid broad phase was added.
+struct PSLGConstructionStats {
+  uint64_t segmentCount{0};
+  uint64_t exhaustiveSegmentPairTests{0};
+  uint64_t candidateSegmentPairTests{0};
+  uint64_t candidatePointCount{0};
+  uint64_t uniqueCandidatePointCount{0};
+  uint64_t exhaustivePointSegmentTests{0};
+  uint64_t candidatePointSegmentTests{0};
+};
+
 struct PolygonNode {
   int cycleIndex;
   int parent = -1;
@@ -183,7 +196,9 @@ bool PointInFace(
 [[nodiscard]] std::vector<ArrangementWall> BuildArrangementWalls(
     ArrangementResult const& arrangement);
 
-PSLG BuildPSLG(std::vector<ContourInput> const& contours);
+PSLG BuildPSLG(
+    std::vector<ContourInput> const& contours,
+    PSLGConstructionStats* stats = nullptr);
 
 std::vector<Cycle> ExtractMinimalCycles(PSLG const& graph);
 
