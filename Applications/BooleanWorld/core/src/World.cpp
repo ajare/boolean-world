@@ -23,6 +23,7 @@
 #include "core/TorusSegmentPolygon.h"
 #include "core/SuperformulaPolygon.h"
 #include "core/MeshPrimitive.h"
+#include "core/ArrangementWorldDataGenerator.h"
 #include "core/DefaultWorldDataGenerator.h"
 #include "core/ClipperDefines.h"
 
@@ -866,48 +867,87 @@ void World::replaceTriggerLine(uint32_t index, WorldTriggerLine* newTriggerLine,
   addTriggerLineToLookupGrid(newTriggerLine);
 }
 
-Primitive* World::createMeshPrimitive(vector<uint32_t> const& indices) const {
-  using Key = VertexTransformer::Key;
+Primitive* World::createMeshPrimitive(vector<Primitive*> const& fold) const {
+  auto selected = fold;
+  stable_sort(
+      selected.begin(), selected.end(),
+      [](Primitive const* lhs, Primitive const* rhs) {
+        return lhs->getPriority() < rhs->getPriority();
+      });
+  ArrangementWorldDataGenerator generator;
+  generator.generate(selected);
+  auto arrangement = generator.getWorldData();
 
-  // Clip selected primitives together and create a Mesh primitive from the result
-  // Then delete the primitives and add this new one at the end
-  WorldDataClipResults clipResults;
+  auto boundaryVertices = [&](vector<uint32_t> const& boundary) {
+    ClosedPolygon polygon;
+    if (boundary.empty()) {
+      return polygon;
+    }
+    auto firstEdge = arrangement->edges[boundary.front()];
+    uint32_t current = firstEdge.v[0];
+    uint32_t next = firstEdge.v[1];
+    if (boundary.size() > 1) {
+      auto secondEdge = arrangement->edges[boundary[1]];
+      auto firstEndpointContinues =
+          secondEdge.v[0] == firstEdge.v[0] ||
+          secondEdge.v[1] == firstEdge.v[0];
+      if (firstEndpointContinues) {
+        current = firstEdge.v[1];
+        next = firstEdge.v[0];
+      }
+    }
+    polygon.push_back({{float(arrangement->vertices[current].x /
+                              BW_CLIPPER_SCALE),
+                        float(arrangement->vertices[current].y /
+                              BW_CLIPPER_SCALE)}});
+    for (size_t i = 1; i < boundary.size(); ++i) {
+      polygon.push_back({{float(arrangement->vertices[next].x /
+                                BW_CLIPPER_SCALE),
+                          float(arrangement->vertices[next].y /
+                                BW_CLIPPER_SCALE)}});
+      auto edge = arrangement->edges[boundary[i]];
+      next = edge.v[0] == next ? edge.v[1] : edge.v[0];
+    }
+    return polygon;
+  };
 
-  // Pass primitives into clipper and get out a list of polygons
-  clipResults = calculatePolygons(sortPrimitiveIndicesByPriority(indices));
-
-  // The result is a flat list of [polygon, 0 or more holes], so convert
-  // this to a nested list
-  auto numPolygons = (uint32_t)clipResults.borderPolygons.size();
-
-  if (numPolygons == 0) {
+  vector<ComplexPolygon> polygons;
+  for (auto const& face : arrangement->faces) {
+    if (!face.solid || face.outerBoundary.empty()) {
+      continue;
+    }
+    ComplexPolygon polygon;
+    polygon.push_back(boundaryVertices(face.outerBoundary));
+    for (auto const& hole : face.innerBoundaries) {
+      polygon.push_back(boundaryVertices(hole));
+    }
+    polygons.push_back(move(polygon));
+  }
+  if (polygons.empty()) {
     return nullptr;
   }
 
-  // Create new primitive
-  auto p = MeshPrimitive::fromClippedPolygons(
+  auto mesh = MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union,
       Primitive::FillRule::EvenOdd,
-      ClipperUtils::convertClipper2PolygonsToClippedPolygons(clipResults.borderPolygons, nullptr));
-
-  // Set priority to maximum of inputs
+      move(polygons));
   uint8_t priority{0};
-  for (auto index : indices) {
-    auto primPriority = getPrimitive(index)->getPriority();
-    if (primPriority > priority) {
-      priority = primPriority;
-    }
+  for (auto primitive : fold) {
+    priority = max(priority, primitive->getPriority());
   }
+  mesh->setPriority(priority);
+  return mesh;
+}
 
-  p->setPriority(priority);
-
-  return p;
+Primitive* World::createMeshPrimitive(vector<uint32_t> const& indices) const {
+  return createMeshPrimitive(sortPrimitiveIndicesByPriority(indices));
 }
 
 uint32_t World::convertPrimitivesToMesh(vector<uint32_t> const& indices) {
   auto mesh = createMeshPrimitive(indices);
-
-  // Remove old primitives and add
+  if (!mesh) {
+    return ~0u;
+  }
   removePrimitives(indices);
   return addPrimitive(mesh);
 }

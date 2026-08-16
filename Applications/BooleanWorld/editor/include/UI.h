@@ -5,6 +5,8 @@
 
 #include <willpower/common/Vector2.h>
 
+#include <core/ArrangementWorldData.h>
+
 #include "Document.h"
 #include "Settings.h"
 
@@ -29,6 +31,11 @@ struct MouseButtonStatus {
   ImVec2 dragDelta[2];
 };
 
-void renderWidgets(editor::Document* doc, editor::Settings& settings, bw::core::WorldData const* worldData, double globalTime);
+void renderWidgets(
+    editor::Document* doc,
+    editor::Settings& settings,
+    bw::core::WorldData const* worldData,
+    bw::core::ArrangementWorldData const* arrangementData,
+    double globalTime);
 
 }  // namespace editor

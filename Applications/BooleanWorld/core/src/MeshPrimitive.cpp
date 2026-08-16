@@ -26,9 +26,11 @@ MeshPrimitive& MeshPrimitive::operator=(MeshPrimitive const& other) {
   return *this;
 }
 
-MeshPrimitive* MeshPrimitive::fromClippedPolygons(Operation operation, FillRule fillType, std::vector<ClippedPolygon> const& polygons) {
-  wp::BoundingBox bounds;
-  auto complexPolygons = ClipperUtils::convertClippedToComplexPolygons(polygons, &bounds);
+MeshPrimitive* MeshPrimitive::fromComplexPolygons(
+    Operation operation,
+    FillRule fillType,
+    vector<ComplexPolygon> complexPolygons) {
+  auto bounds = calculatePolygonBounds(complexPolygons);
 
   // Recentre and rescale vertices so that they are in unit space around the local origin
   auto const& pCentre = bounds.getCentre();
@@ -46,7 +48,7 @@ MeshPrimitive* MeshPrimitive::fromClippedPolygons(Operation operation, FillRule 
   }
 
   // Create new primitive
-  auto p = new MeshPrimitive(Primitive::Operation::Union, Primitive::FillRule::EvenOdd, complexPolygons);
+  auto p = new MeshPrimitive(operation, fillType, complexPolygons);
 
   p->setSize(scale * 2, scale * 2);
   p->setPosition(pCentre);
@@ -62,6 +64,16 @@ MeshPrimitive* MeshPrimitive::fromClippedPolygons(Operation operation, FillRule 
   p->getAnimationInterpolator(VertexTransformer::Key::OrbitDistance).setDefaultStructure({{0.0f, 0.0f}, {1.0f, 0.0f}}, {{bw::core::Easing::Linear}}, true);
 
   return p;
+}
+
+MeshPrimitive* MeshPrimitive::fromClippedPolygons(
+    Operation operation,
+    FillRule fillType,
+    vector<ClippedPolygon> const& polygons) {
+  return fromComplexPolygons(
+      operation,
+      fillType,
+      ClipperUtils::convertClippedToComplexPolygons(polygons, nullptr));
 }
 
 void MeshPrimitive::copyFrom(MeshPrimitive const& other) {

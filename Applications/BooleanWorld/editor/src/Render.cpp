@@ -9,6 +9,7 @@
 #pragma warning(pop)
 
 #include <core/WorldData.h>
+#include <core/ClipperDefines.h>
 #include <core/Utils.h>
 #include <core/SquareTiling.h>
 
@@ -104,7 +105,11 @@ void renderPrefabTiles(bw::core::PrefabAreaTilingType type, wp::Vector2 const& o
   drawList->AddPolyline(imPoints.data(), numVerts, ImColor(0.5f, 0.8f, 1.0f), ImDrawFlags_Closed, 1.0f);
 }
 
-void renderWorld(editor::Document* doc, editor::Settings const& settings, bw::core::WorldData const* worldData, double globalTime) {
+void renderWorld(
+    editor::Document* doc,
+    editor::Settings const& settings,
+    bw::core::ArrangementWorldData const* worldData,
+    double globalTime) {
   auto world = doc->getWorld();
 
   bool renderWorldStuff = world != nullptr;
@@ -130,54 +135,54 @@ void renderWorld(editor::Document* doc, editor::Settings const& settings, bw::co
   auto offset = viewBounds.getMinExtent();
 
   if (renderPrimitiveStuff) {
-    auto const& clippedPolygons = worldData->getArrangementPolygons();
-    auto const& worldBorder = worldData->getBorderPolygons();
-    auto const& triangulation = worldData->getTriangulation();
+    auto const& arrangement = worldData->getArrangement();
+    auto const& triangles = worldData->getTriangles();
+    auto toWorld = [&](uint32_t vertexIndex) {
+      auto const& vertex = arrangement.vertices[vertexIndex];
+      return wp::Vector2{
+          float(vertex.x / BW_CLIPPER_SCALE),
+          float(vertex.y / BW_CLIPPER_SCALE)};
+    };
 
     auto const& selectedPrimitiveIndices = doc->getSelectedPrimitiveIndices();
 
-    // Triangulation
-    uint32_t numWorldTriangles = (uint32_t)triangulation.tris.size();
-
-    if (numWorldTriangles > 0) {
+    if (!triangles.empty()) {
       drawList->AddDrawCmd();
       drawList->Flags &= ~ImDrawListFlags_AntiAliasedFill;
 
-      for (uint32_t i = 0; i < numWorldTriangles; ++i) {
-        auto const& tri = triangulation.tris[i];
-
+      for (auto const& triangle : triangles) {
+        auto v0 = toWorld(triangle.v[0]);
+        auto v1 = toWorld(triangle.v[1]);
+        auto v2 = toWorld(triangle.v[2]);
         if (settings.renderTriangulation) {
           drawList->AddTriangle(
-              {tri.v[0].p.x - offset.x, ED_WINDOW_HEIGHT - (tri.v[0].p.y - offset.y)},
-              {tri.v[1].p.x - offset.x, ED_WINDOW_HEIGHT - (tri.v[1].p.y - offset.y)},
-              {tri.v[2].p.x - offset.x, ED_WINDOW_HEIGHT - (tri.v[2].p.y - offset.y)},
+              {v0.x - offset.x, ED_WINDOW_HEIGHT - (v0.y - offset.y)},
+              {v1.x - offset.x, ED_WINDOW_HEIGHT - (v1.y - offset.y)},
+              {v2.x - offset.x, ED_WINDOW_HEIGHT - (v2.y - offset.y)},
               settings.triangulationColour);
         } else {
-          auto colour = settings.backgroundColour;  // gColours[tri.primitiveIndex % 11];
-
           drawList->AddTriangleFilled(
-              {tri.v[0].p.x - offset.x, ED_WINDOW_HEIGHT - (tri.v[0].p.y - offset.y)},
-              {tri.v[1].p.x - offset.x, ED_WINDOW_HEIGHT - (tri.v[1].p.y - offset.y)},
-              {tri.v[2].p.x - offset.x, ED_WINDOW_HEIGHT - (tri.v[2].p.y - offset.y)},
-              colour);
+              {v0.x - offset.x, ED_WINDOW_HEIGHT - (v0.y - offset.y)},
+              {v1.x - offset.x, ED_WINDOW_HEIGHT - (v1.y - offset.y)},
+              {v2.x - offset.x, ED_WINDOW_HEIGHT - (v2.y - offset.y)},
+              settings.backgroundColour);
         }
       }
 
-      // World border
       if (settings.renderWorldBorder) {
         drawList->AddDrawCmd();
-
-        for (auto const& polygon : worldBorder) {
-          auto numPolyVertices = (int)polygon.vertices.size();
-          vector<ImVec2> imPoints(numPolyVertices);
-
-          for (int j = 0; j < numPolyVertices; ++j) {
-            imPoints[j] = {
-                polygon.vertices[j].p.x - offset.x,
-                ED_WINDOW_HEIGHT - (polygon.vertices[j].p.y - offset.y)};
+        for (auto const& wall : worldData->getWalls()) {
+          if (wall.kind != expr::ArrangementWallKind::Border) {
+            continue;
           }
-
-          drawList->AddPolyline(imPoints.data(), numPolyVertices, settings.borderColour, ImDrawFlags_Closed, 3.0f);
+          auto const& edge = arrangement.edges[wall.edge];
+          auto v0 = toWorld(edge.v[0]);
+          auto v1 = toWorld(edge.v[1]);
+          drawList->AddLine(
+              {v0.x - offset.x, ED_WINDOW_HEIGHT - (v0.y - offset.y)},
+              {v1.x - offset.x, ED_WINDOW_HEIGHT - (v1.y - offset.y)},
+              settings.borderColour,
+              3.0f);
         }
       }
     }
@@ -290,31 +295,14 @@ void renderWorld(editor::Document* doc, editor::Settings const& settings, bw::co
     // Clipped vertices
     //
     if (settings.renderClippedVertices) {
-      auto hoveredWorldVertexIndex = editor::getHoveredWorldVertexIndex(doc, settings, worldData);
-      auto selectedWorldVertexIndex = doc->getSelectedWorldVertexIndex();
-
-      for (auto const& borderPolygon : worldBorder) {
-        for (auto const& vertex : borderPolygon.vertices) {
-          auto p = vertex.p;
-
-          p.x -= offset.x;
-          p.y = ED_WINDOW_HEIGHT - (p.y - offset.y);
-
-          auto vertexIndex = BW_VERTEX_Z_UNPACK_VERTEX_INDEX(vertex.z);
-
-          auto colour = settings.vertexColour;
-          float thickness = 1.0f;
-
-          if (vertexIndex == hoveredWorldVertexIndex) {
-            colour = ImColor(1.0f, 0.5f, 0.0f);
-            thickness = 2.0f;
-          } else if (vertexIndex == selectedWorldVertexIndex) {
-            colour = ImColor(1.0f, 0.0f, 0.0f);
-            thickness = 2.0f;
-          }
-
-          drawList->AddCircle({p.x, p.y}, settings.vertexRadius, colour, 16, thickness);
-        }
+      for (auto const& vertex : arrangement.vertices) {
+        wp::Vector2 p{
+            float(vertex.x / BW_CLIPPER_SCALE),
+            float(vertex.y / BW_CLIPPER_SCALE)};
+        p.x -= offset.x;
+        p.y = ED_WINDOW_HEIGHT - (p.y - offset.y);
+        drawList->AddCircle(
+            {p.x, p.y}, settings.vertexRadius, settings.vertexColour, 16, 1.0f);
       }
     }
 

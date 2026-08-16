@@ -29,6 +29,11 @@ public:
 
   MeshPrimitive& operator=(MeshPrimitive const& other);
 
+  static MeshPrimitive* fromComplexPolygons(
+      Operation operation,
+      FillRule fillType,
+      std::vector<ComplexPolygon> polygons);
+
   static MeshPrimitive* fromClippedPolygons(Operation operation, FillRule fillType, std::vector<ClippedPolygon> const& polygons);
 
   Primitive* copy() const override;

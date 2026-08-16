@@ -721,6 +721,66 @@ TEST(World, StepThresholdDefaultsToInfinity) {
   EXPECT_EQ(world.getStepThreshold(), 3.5f);
 }
 
+TEST(World, BakesArrangementFacesWithNestedHoles) {
+  ensureClipperAllocatorsInitialized();
+  auto world = createWorld(BW_WORLD_SIZE, 100.0f);
+  auto outer = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::EvenOdd,
+      1.0f);
+  outer->setSize(100.0f, 100.0f);
+  auto hole = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Difference,
+      bw::core::Primitive::FillRule::EvenOdd,
+      1.0f);
+  hole->setSize(50.0f, 50.0f);
+  hole->setPriority(1);
+  world->addPrimitive(outer);
+  world->addPrimitive(hole);
+  world->update(0, {{0, 0}, 0, 1, 60, 256, false, false, 0}, {100, 100});
+
+  auto baked =
+      world->createMeshPrimitive(vector<bw::core::Primitive*>{outer, hole});
+
+  ASSERT_NE(baked, nullptr);
+  world->addPrimitive(baked);
+  world->update(0, {{0, 0}, 0, 1, 60, 256, false, false, 0}, {100, 100});
+  ASSERT_EQ(baked->getVertices().size(), 1u);
+  EXPECT_EQ(baked->getVertices()[0].size(), 2u);
+}
+
+TEST(World, BakesFoldClippedByHighestPriorityIntersection) {
+  ensureClipperAllocatorsInitialized();
+  auto world = createWorld(BW_WORLD_SIZE, 100.0f);
+  auto shape = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::EvenOdd,
+      1.0f);
+  shape->setSize(100.0f, 100.0f);
+  auto cell = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Intersection,
+      bw::core::Primitive::FillRule::EvenOdd,
+      1.0f);
+  cell->setPosition({0.0f, 0.0f});
+  cell->setSize(50.0f, 50.0f);
+  cell->setPriority(BW_PRIORITY_MAX_VALUE);
+  world->addPrimitive(shape);
+  world->addPrimitive(cell);
+  world->update(0, {{0, 0}, 0, 1, 60, 256, false, false, 0}, {100, 100});
+
+  auto baked =
+      world->createMeshPrimitive(vector<bw::core::Primitive*>{shape, cell});
+
+  ASSERT_NE(baked, nullptr);
+  world->addPrimitive(baked);
+  world->update(0, {{0, 0}, 0, 1, 60, 256, false, false, 0}, {100, 100});
+  auto bounds = baked->getBounds();
+  wp::Vector2 minExtent, maxExtent;
+  bounds.getExtents(minExtent, maxExtent);
+  EXPECT_NEAR(minExtent.x, -25.0f, 0.001f);
+  EXPECT_NEAR(maxExtent.x, 25.0f, 0.001f);
+}
+
 TEST(ArrangementWorldData, IndexesFacesAndBlockingWalls) {
   bw::core::PrimitivePropertySet lowerProperties{};
   lowerProperties.floorZ = 0;

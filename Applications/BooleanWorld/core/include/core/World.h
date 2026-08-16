@@ -200,6 +200,9 @@ public:
 
   void replaceTriggerLine(uint32_t index, WorldTriggerLine* newTriggerLine, bool failIfNotFound = true);
 
+  Primitive* createMeshPrimitive(
+      std::vector<Primitive*> const& fold) const;
+
   Primitive* createMeshPrimitive(std::vector<uint32_t> const& indices) const;
 
   uint32_t convertPrimitivesToMesh(std::vector<uint32_t> const& indices);

@@ -6,9 +6,6 @@
 #include <core/RectanglePolygon.h>
 #include <core/SuperformulaPolygon.h>
 #include <core/MeshPrimitive.h>
-#include <core/Clipper.h>
-#include <core/WorldVertexData.h>
-#include <core/ClipperDefines.h>
 
 #include <common/MaterialRegistry.h>
 
@@ -196,20 +193,18 @@ bool clipPrimitivesToGrid(Document* doc, set<uint32_t> const& primitiveIndices, 
     for (int x = 0; x < dx; x++) {
       wp::Vector2 cellMin{minExtent.x + x * gridSize, minExtent.y + y * gridSize};
       wp::Vector2 cellMax = cellMin + gridSize;
+      bw::core::RectanglePolygon cell(
+          bw::core::Primitive::Operation::Intersection,
+          bw::core::Primitive::FillRule::EvenOdd,
+          1.0f);
+      cell.setPosition((cellMin + cellMax) * 0.5f);
+      cell.setSize(gridSize, gridSize);
+      cell.setPriority(BW_PRIORITY_MAX_VALUE);
+      cell.updateVertexPositions();
 
-      wp::BoundingBox cellBounds(cellMin, cellMax - cellMin);
-
-      bw::core::Clipper clipper(world->getBorderVertexData(), {}, world.get());
-      auto clippedPolygons = clipper.clipToClippedPolygons({meshTemplate}, bw::core::Primitive::Operation::Union, &cellBounds);
-
-      if (!clippedPolygons.empty()) {
-        // Need to scale and recentre vertices appropriately
-        auto p = bw::core::MeshPrimitive::fromClippedPolygons(
-            bw::core::Primitive::Operation::Union,
-            bw::core::Primitive::FillRule::EvenOdd,
-            clippedPolygons);
-
-        createdPrimitives.push_back(p);
+      auto clipped = world->createMeshPrimitive({meshTemplate, &cell});
+      if (clipped) {
+        createdPrimitives.push_back(clipped);
       }
     }
   }

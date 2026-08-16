@@ -2859,23 +2859,28 @@ void renderEditTriggerLineView(editor::Document* doc, editor::Settings& settings
   }
 }
 
-void renderWorldVertexView(editor::Document* doc, editor::Settings& settings, bw::core::WorldData const* worldData, uint32_t worldVertexIndex) {
-  auto const& vertexData = worldData->getVertexData(worldVertexIndex);
-
-  if (vertexData.primitiveIndex != BW_WORLD_PRIMITIVE_NO_INDEX) {
-    ImGui::Text("Primitive: %d", vertexData.primitiveIndex);
+void renderArrangementFaceView(
+    editor::Document* doc,
+    editor::Settings& settings,
+    bw::core::ArrangementWorldData const* worldData) {
+  if (!worldData) {
+    return;
   }
-
-  auto p0 = vertexData.properties[0];
-  auto p1 = vertexData.properties[1];
-
-  ImGui::Separator();
-  ImGui::Text("Previous properties");
-  renderPrimitivePropertySet(&p0, false, doc, settings);
-
-  ImGui::Separator();
-  ImGui::Text("Next properties");
-  renderPrimitivePropertySet(&p1, false, doc, settings);
+  auto faceIndex = worldData->getContainingFaceIndex(getMouseWorldPosition());
+  if (faceIndex == ~0u) {
+    ImGui::Text("Exterior");
+    return;
+  }
+  auto const& arrangement = worldData->getArrangement();
+  auto const& face = arrangement.faces[faceIndex];
+  ImGui::Text("Face: %u", faceIndex);
+  ImGui::Text("Primitive: %u", face.primitiveIndex);
+  auto properties = arrangement.palette[face.paletteIndex];
+  ImGui::Text(
+      "Floor / ceiling: %.2f / %.2f",
+      properties.floorZ,
+      properties.ceilingZ);
+  renderPrimitivePropertySet(&properties, false, doc, settings);
 }
 
 void renderConfigView(editor::Document* doc, editor::Settings& settings) {
@@ -3017,7 +3022,12 @@ void renderHistoryPanel(editor::Document* doc, editor::Settings& settings) {
   ImGui::End();
 }
 
-void renderCombinedPanel(editor::Document* doc, editor::Settings& settings, bw::core::WorldData const* worldData, double globalTime) {
+void renderCombinedPanel(
+    editor::Document* doc,
+    editor::Settings& settings,
+    bw::core::WorldData const* worldData,
+    bw::core::ArrangementWorldData const* arrangementData,
+    double globalTime) {
   if (!doc->isActive()) {
     return;
   }
@@ -3059,12 +3069,8 @@ void renderCombinedPanel(editor::Document* doc, editor::Settings& settings, bw::
       }
     }
 
-    auto selectedWorldVertexIndex = doc->getSelectedWorldVertexIndex();
-
-    if (selectedWorldVertexIndex != ~0u) {
-      if (ImGui::CollapsingHeader("World Vertex", nullptr, windowFlags)) {
-        renderWorldVertexView(doc, settings, worldData, selectedWorldVertexIndex);
-      }
+    if (ImGui::CollapsingHeader("Region under cursor", nullptr, windowFlags)) {
+      renderArrangementFaceView(doc, settings, arrangementData);
     }
 
     if (!getActionHistory().empty()) {
@@ -3338,7 +3344,12 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
   }
 }
 
-void renderDebug(editor::Document* doc, editor::Settings& settings, bw::core::WorldData const* worldData, double globalTime) {
+void renderDebug(
+    editor::Document* doc,
+    editor::Settings& settings,
+    bw::core::WorldData const* worldData,
+    bw::core::ArrangementWorldData const* arrangementData,
+    double globalTime) {
   auto windowFlags = 0;
 
   if (ImGui::Begin("Debug")) {
@@ -3401,42 +3412,12 @@ void renderDebug(editor::Document* doc, editor::Settings& settings, bw::core::Wo
       }
     }
 
-    if (doc->isActive()) {
-      if (ImGui::CollapsingHeader("World vertices", nullptr, windowFlags)) {
-        auto const& vertexWorldData = worldData->getVertexData();
-
-        ImGui::Text("Total vertices: %d", (uint32_t)vertexWorldData.size());
-        ImGui::Text("Interpolated vertices: %d", (uint32_t)worldData->getStats().clip.interpolatedVertices);
-
-        auto hoveredVertexIndex = editor::getHoveredWorldVertexIndex(doc, settings, worldData);
-
-        if (hoveredVertexIndex != ~0u) {
-          ImGui::Text("World vertex index: %d", hoveredVertexIndex);
-
-          auto const& vertexData = worldData->getVertexData(hoveredVertexIndex);
-
-          // ImGui::Text("Interpolated: %s", vertexData.state != bw::core::WorldVertexData::InterpolationState::NotInterpolated ? "yes" : "no");
-        }
-
-        auto const& triangulation = worldData->getTriangulation();
-
-        auto const& playerPosition = getMouseWorldPosition();
-        auto pIndex = triangulation.getContainingTriangleIndex(playerPosition);
-
-        if (pIndex >= 0) {
-          float u, v, w;
-          triangulation.tris[pIndex].getBarycentricCoords(playerPosition, u, v, w);
-
-          auto const& tri = triangulation.tris[pIndex];
-
-          auto i0 = (uint32_t)BW_VERTEX_Z_UNPACK_VERTEX_INDEX(tri.v[0].z);
-          auto i1 = (uint32_t)BW_VERTEX_Z_UNPACK_VERTEX_INDEX(tri.v[1].z);
-          auto i2 = (uint32_t)BW_VERTEX_Z_UNPACK_VERTEX_INDEX(tri.v[2].z);
-
-          auto const& vd0 = worldData->getVertexData(i0);
-          auto const& vd1 = worldData->getVertexData(i1);
-          auto const& vd2 = worldData->getVertexData(i2);
-        }
+    if (doc->isActive() && arrangementData) {
+      if (ImGui::CollapsingHeader("Arrangement face", nullptr, windowFlags)) {
+        ImGui::Text(
+            "Total vertices: %u",
+            uint32_t(arrangementData->getArrangement().vertices.size()));
+        renderArrangementFaceView(doc, settings, arrangementData);
       }
     }
   }
@@ -3507,7 +3488,12 @@ void renderContextSensitiveHelp(editor::Document* doc, editor::Settings& setting
   ImGui::End();
 }
 
-void renderWidgets(editor::Document* doc, editor::Settings& settings, bw::core::WorldData const* worldData, double globalTime) {
+void renderWidgets(
+    editor::Document* doc,
+    editor::Settings& settings,
+    bw::core::WorldData const* worldData,
+    bw::core::ArrangementWorldData const* arrangementData,
+    double globalTime) {
   handleShortcuts(doc, settings);
   handleMouseInteraction(doc, settings);
 
@@ -3516,7 +3502,8 @@ void renderWidgets(editor::Document* doc, editor::Settings& settings, bw::core::
 
   if (doc->isActive()) {
     if (!settings.expertMode) {
-      renderCombinedPanel(doc, settings, worldData, globalTime);
+      renderCombinedPanel(
+          doc, settings, worldData, arrangementData, globalTime);
 
       if (settings.showContextSensitiveHelpPanel) {
         renderContextSensitiveHelp(doc, settings);
@@ -3539,13 +3526,14 @@ void renderWidgets(editor::Document* doc, editor::Settings& settings, bw::core::
 
     // Views which use world data need to be done after it's been created
     if (settings.showDebugPanel) {
-      renderDebug(doc, settings, worldData, globalTime);
+      renderDebug(
+          doc, settings, worldData, arrangementData, globalTime);
     }
 
     renderStatusbar(doc, settings, worldData);
 
     // Render background
-    renderWorld(doc, settings, worldData, globalTime);
+    renderWorld(doc, settings, arrangementData, globalTime);
 
     if (settings.renderMiniMap) {
       renderMiniMap(doc, settings, worldData, globalTime);
