@@ -53,7 +53,7 @@ bw_ensure_mpp()
 include(Prebuilt)
 include(Helpers)
 
-add_subdirectory(Willpower)
+add_subdirectory(src/Willpower)
 add_subdirectory(AppLib)
 add_subdirectory(Applications/BooleanWorld)
 add_subdirectory(Launcher)

@@ -22,7 +22,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLANG_FORMAT = r"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\Llvm\x64\bin\clang-format.exe"
 
 LIBRARIES = {
-    "Willpower": ["Willpower"],
+    "Willpower": [os.path.join("src", "Willpower")],
     "AppLib": ["AppLib"],
     "Launcher": ["Launcher"],
     "BooleanWorld": [os.path.join("Applications", "BooleanWorld")],
@@ -55,11 +55,11 @@ _VENDOR_BASENAMES = {
 # Individually vendored files elsewhere in the tree.
 VENDOR_FILES = [
     # Jochen Kalmbach's StackWalker.
-    os.path.join("Willpower", "willpower.common", "include", "willpower", "common", "StackWalker.h"),
-    os.path.join("Willpower", "willpower.common", "src", "StackWalker.cpp"),
+    os.path.join("src", "Willpower", "willpower.common", "include", "willpower", "common", "StackWalker.h"),
+    os.path.join("src", "Willpower", "willpower.common", "src", "StackWalker.cpp"),
     # Angus Johnson's independent Clipper 1 implementation.
-    os.path.join("Willpower", "willpower.geometry", "include", "willpower", "geometry", "clipper.hpp"),
-    os.path.join("Willpower", "willpower.geometry", "src", "clipper.cpp"),
+    os.path.join("src", "Willpower", "willpower.geometry", "include", "willpower", "geometry", "clipper.hpp"),
+    os.path.join("src", "Willpower", "willpower.geometry", "src", "clipper.cpp"),
 ]
 
 SKIP_DIRS = {"obj", "bin", "lib", ".vs", "build-cmake", "ext", "vendor", "__pycache__", ".git"}
