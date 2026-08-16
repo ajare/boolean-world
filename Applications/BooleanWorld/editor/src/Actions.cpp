@@ -202,9 +202,9 @@ bool clipPrimitivesToGrid(Document* doc, set<uint32_t> const& primitiveIndices, 
       cell.setPriority(BW_PRIORITY_MAX_VALUE);
       cell.updateVertexPositions();
 
-      auto clipped = world->createMeshPrimitive({meshTemplate, &cell});
-      if (clipped) {
-        createdPrimitives.push_back(clipped);
+      auto cellMesh = world->createMeshPrimitive({meshTemplate, &cell});
+      if (cellMesh) {
+        createdPrimitives.push_back(cellMesh);
       }
     }
   }

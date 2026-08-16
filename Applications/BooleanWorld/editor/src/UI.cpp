@@ -279,7 +279,7 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
       ImGui::MenuItem("Primitive bounds", "F5", &settings.renderPrimitiveBounds);
       ImGui::MenuItem("Influence eyes", "F6", &settings.renderInfluenceEyes);
       ImGui::MenuItem("Trigger lines", "F7", &settings.renderTriggerLines);
-      ImGui::MenuItem("Clipped vertices", "F8", &settings.renderClippedVertices);
+      ImGui::MenuItem("Arrangement vertices", "F8", &settings.renderArrangementVertices);
       ImGui::MenuItem("Scale influence zones", 0, &settings.renderScaleInfluenceZones);
       ImGui::MenuItem("Angle influence zones", 0, &settings.renderAngleInfluenceZones);
       ImGui::MenuItem("Orbit angle influence zones", 0, &settings.renderOrbitAngleInfluenceZones);
@@ -1113,7 +1113,7 @@ bw::core::Primitive::FillRule setFillRuleWidget(Document* doc, bw::core::Primiti
       throw EditorException("Unknown fill rule");
   }
 
-  widgets::HelpMarker("This determines whether intersecting sections are filled or not.  See https://www.angusj.com/clipper2/Docs/Units/Clipper/Types/FillRule.htm for more details.");
+  widgets::HelpMarker("This determines whether intersecting sections are filled using non-zero winding or even-odd parity.");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(128);
 
@@ -1196,7 +1196,7 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
   // Priority
   int primitivePriority = (int)ghost->getPriority();
 
-  widgets::HelpMarker("Priority determines the order in which primitives are clipped against each other.  Lower value means earlier in the order.  Allowed values are 0 to 255.");
+  widgets::HelpMarker("Priority determines the order in which primitives are folded.  Lower value means earlier in the order.  Allowed values are 0 to 255.");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(128);
 
@@ -3240,7 +3240,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
   }
 
   if (ImGui::Shortcut(ImGuiKey_F8, 0, ImGuiInputFlags_RouteGlobal)) {
-    settings.renderClippedVertices = !settings.renderClippedVertices;
+    settings.renderArrangementVertices = !settings.renderArrangementVertices;
   }
 
   if (ImGui::Shortcut(ImGuiKey_F10, 0, ImGuiInputFlags_RouteGlobal)) {

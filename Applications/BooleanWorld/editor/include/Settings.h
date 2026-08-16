@@ -42,7 +42,7 @@ struct Settings {
   bool renderMiniMap{false};
   bool renderPrefabTiles{false};
   bool renderTriggerLines{true};
-  bool renderClippedVertices{false};
+  bool renderArrangementVertices{false};
 
   bool ghostActive{true};
   bool expertMode{false};

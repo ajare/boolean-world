@@ -25,7 +25,6 @@
 #endif
 
 #include <inifile-cpp/inicpp.h>
-#include <clipper2/clipper.h>
 
 #include <core/WorldData.h>
 
@@ -273,10 +272,6 @@ void initialise() {
   // Load prefab files
   loadPrefabFiles(gEditorSettings.prefabDir);
   gLogger->debug("Prefabs loaded");
-
-  // Allocators
-  Clipper2Lib::WmInitialiseAllocators(4, 1 * 1024 * 1024);
-  gLogger->debug("Allocators initialised");
 }
 
 void setup() {
@@ -315,9 +310,6 @@ void setup() {
 
 void shutdown() {
   gLogger->info("Shutting down");
-
-  // Allocators
-  Clipper2Lib::WmDestroyAllocators();
 
   delete gLogger;
   gLogger = nullptr;

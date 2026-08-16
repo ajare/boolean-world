@@ -9,7 +9,6 @@
 #pragma warning(pop)
 
 #include <core/WorldData.h>
-#include <core/ClipperDefines.h>
 #include <core/Utils.h>
 #include <core/SquareTiling.h>
 
@@ -140,8 +139,8 @@ void renderWorld(
     auto toWorld = [&](uint32_t vertexIndex) {
       auto const& vertex = arrangement.vertices[vertexIndex];
       return wp::Vector2{
-          float(vertex.x / BW_CLIPPER_SCALE),
-          float(vertex.y / BW_CLIPPER_SCALE)};
+          bw::core::arr::ToWorldCoordinate(vertex.x),
+          bw::core::arr::ToWorldCoordinate(vertex.y)};
     };
 
     auto const& selectedPrimitiveIndices = doc->getSelectedPrimitiveIndices();
@@ -172,7 +171,7 @@ void renderWorld(
       if (settings.renderWorldBorder) {
         drawList->AddDrawCmd();
         for (auto const& wall : worldData->getWalls()) {
-          if (wall.kind != expr::ArrangementWallKind::Border) {
+          if (wall.kind != bw::core::arr::ArrangementWallKind::Border) {
             continue;
           }
           auto const& edge = arrangement.edges[wall.edge];
@@ -292,13 +291,13 @@ void renderWorld(
     }
 
     //
-    // Clipped vertices
+    // Arrangement vertices
     //
-    if (settings.renderClippedVertices) {
+    if (settings.renderArrangementVertices) {
       for (auto const& vertex : arrangement.vertices) {
         wp::Vector2 p{
-            float(vertex.x / BW_CLIPPER_SCALE),
-            float(vertex.y / BW_CLIPPER_SCALE)};
+            bw::core::arr::ToWorldCoordinate(vertex.x),
+            bw::core::arr::ToWorldCoordinate(vertex.y)};
         p.x -= offset.x;
         p.y = ED_WINDOW_HEIGHT - (p.y - offset.y);
         drawList->AddCircle(
