@@ -307,7 +307,7 @@ void StatePlayBooleanWorld::setupEntities() {
 
   createEntity((int)EntityType::Player, playerPos, playerAngle, true);
 
-  world->update(0, {playerPos, viewAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, false, false, 0}, {0, 0});
+  world->update(0, {playerPos, viewAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, false, false, bw::core::SelectLayer(0)}, {0, 0});
 
   mWorldData = world->getWorldData(playerPos, viewAngle);
 
@@ -397,7 +397,7 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
   playerPosition = newPosition;
   playerAngle = bw::app::worldViewAngle(newAngle);
 
-  world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, mCurrentLayer}, {0, 0});
+  world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, bw::core::SelectLayer(mCurrentLayer)}, {0, 0});
 
   mWorldData = world->getWorldData(playerPosition, playerAngle);
 

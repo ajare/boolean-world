@@ -2,6 +2,7 @@
 
 #include <willpower/common/Vector2.h>
 
+#include "core/LayerSelection.h"
 #include "core/Platform.h"
 
 namespace bw {
@@ -15,7 +16,7 @@ struct WorldUpdateData {
   float entityViewDist;
   bool entityMoved;
   bool entityTurned;
-  uint8_t activeLayer;
+  LayerSelection layerSelection;
 };
 
 }  // namespace core

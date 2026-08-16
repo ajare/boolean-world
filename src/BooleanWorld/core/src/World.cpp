@@ -1149,7 +1149,8 @@ void World::update(float frameTime, WorldUpdateData const& data, wp::Vector2 con
 
   if (mPrevPlayerPosition.x < 999998.0f) {
     for (auto triggerLine : mTriggerLines) {
-      if (triggerLine->getLayer() == data.activeLayer) {
+      auto layer = triggerLine->getLayer();
+      if (layer == BW_LAYER_ALL || data.layerSelection.test(size_t(layer))) {
         triggerLine->checkCollide(mPrevPlayerPosition, data.entityPosition, data.entityRadius);
       }
     }

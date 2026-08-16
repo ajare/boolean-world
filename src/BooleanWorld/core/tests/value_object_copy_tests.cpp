@@ -142,7 +142,7 @@ void worldCopiesPreviousPlayerPosition() {
       0, {9.5f, 15.0f}, {10.5f, 15.0f}));
 
   bw::core::WorldUpdateData updateData{
-      {10.0f, 10.0f}, 0.0f, 0.0f, 0.0f, 0.0f, false, false, 0};
+      {10.0f, 10.0f}, 0.0f, 0.0f, 0.0f, 0.0f, false, false, bw::core::SelectLayer(0)};
   source.update(0.0f, updateData, {100.0f, 100.0f});
 
   bw::core::World copy(source);

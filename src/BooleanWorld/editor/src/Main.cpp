@@ -748,7 +748,7 @@ void run() {
       bool playerMoved = doc->getPlayerOldProxyPosition() != proxyPos;
       bool playerTurned = doc->getPlayerOldProxyAngle() != proxyAngle;
 
-      doc->getWorld()->update(updateTimeMicros / 1000000.0f, {proxyPos, proxyAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, gEditorSettings.activeLayer}, {ED_WINDOW_WIDTH, ED_WINDOW_HEIGHT});
+      doc->getWorld()->update(updateTimeMicros / 1000000.0f, {proxyPos, proxyAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, bw::core::SelectLayer(gEditorSettings.activeLayer)}, {ED_WINDOW_WIDTH, ED_WINDOW_HEIGHT});
     }
 
     // Rendering
