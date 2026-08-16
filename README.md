@@ -52,8 +52,8 @@ spline_library and Superluminal.
 
 Build products go where the original Visual Studio solutions put them, e.g.
 `Applications/BooleanWorld/editor/bin/x64/Release`. This is deliberate:
-`editor`, `experiments` and `profiler` resolve paths such as
-`../../../../core/doc` relative to their working directory, so they only run
+`editor` and `profiler` resolve paths such as `../../../../core/doc` relative
+to their working directory, so they only run
 correctly from those locations.
 
 ## Running

@@ -35,8 +35,8 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 add_compile_definitions(UNICODE _UNICODE)
 
 # Output locations match the original solutions exactly, and that is not
-# cosmetic. editor, experiments and profiler all resolve paths like
-# "../../../../core/doc" relative to the working directory, so they only work
+# cosmetic. editor and profiler both resolve paths like "../../../../core/doc"
+# relative to the working directory, so they only work
 # when the executable sits at <app>/bin/x64/<Config>. A single unified output
 # directory makes those paths point outside the repo, and the editor dies at
 # startup when directory_iterator throws on the missing folder.
