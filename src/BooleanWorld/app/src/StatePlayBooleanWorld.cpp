@@ -183,6 +183,8 @@ void StatePlayBooleanWorld::createGameObjects(application::resourcesystem::Resou
 }
 
 void StatePlayBooleanWorld::destroyGameObjects() {
+  getWDG()->stopGenerationSchedule();
+
   delete mWorldCollisionSim;
   mWorldCollisionSim = nullptr;
 }
@@ -351,7 +353,7 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
   auto dataGenerator = getWDG();
 
   dataGenerator->registerGenerationCallback(bind(&StatePlayBooleanWorld::handleClippingUpdate, this, std::placeholders::_1));
-  // dataGenerator->startGenerationSchedule(5.0f);
+  dataGenerator->startGenerationSchedule(5.0f);
 
   // Finish move of transition data
   transitionData->userData = nullptr;
