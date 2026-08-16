@@ -58,14 +58,14 @@ correctly from those locations.
 
 ## Running
 
-    cd Launcher\build\vs2026\bin\x64\Release
+    cd src\Launcher\build\vs2026\bin\x64\Release
     Launcher.exe BooleanWorld.yaml
 
 `Launcher.exe` loads an application DLL named in the config. The build
 generates `BooleanWorld.yaml` with absolute paths next to `Launcher.exe`.
 
 To override that on a given machine, put your own config in
-`Launcher/build/support/<COMPUTERNAME>/vs2026/x64/<Config>/` — the build stages
+`src/Launcher/build/support/<COMPUTERNAME>/vs2026/x64/<Config>/` — the build stages
 that directory over the generated one. Only `ASTRALEMPRESS` is checked in.
 
 The other executables build standalone under

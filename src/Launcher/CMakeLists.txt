@@ -1,4 +1,4 @@
-# Replaces Launcher/build/vs2026/Launcher.sln.
+# Replaces src/Launcher/build/vs2026/Launcher.sln.
 #
 # Launcher.exe is a shell: it creates the window and render system, then loads
 # a game DLL named in a .cfg file at runtime.
