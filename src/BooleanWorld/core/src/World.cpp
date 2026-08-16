@@ -650,13 +650,13 @@ uint32_t World::addPrimitive(Primitive* primitive) {
 }
 
 void World::removePrimitive(Primitive* primitive, bool failIfNotFound) {
-  if (mPrimitiveLookupGrid) {
-    mPrimitiveLookupGrid->removeItem(primitive->getId(), mPrimitiveCellMetadataUpdater);
-  }
-
   auto numPrimitives = (uint32_t)mPrimitives.size();
   for (uint32_t i = 0; i < numPrimitives; ++i) {
     if (mPrimitives[i] == primitive) {
+      if (mPrimitiveLookupGrid) {
+        mPrimitiveLookupGrid->removeItem(primitive->getId(), mPrimitiveCellMetadataUpdater);
+      }
+
       delete primitive;
 
       for (uint32_t j = i; j < numPrimitives - 1; ++j) {
