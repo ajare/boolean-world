@@ -1,6 +1,7 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <memory>
 #include <functional>
 #include <cassert>
 
@@ -248,8 +249,8 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   float stepThreshold;
   PrefabAreaTilingType prefabAreaTilingType;
   uint32_t prefabAreaTileTypes;
-  vector<Primitive*> primitives;
-  vector<WorldTriggerLine*> triggerLines;
+  vector<unique_ptr<Primitive>> primitives;
+  vector<unique_ptr<WorldTriggerLine>> triggerLines;
 
   uint32_t numVertices{0};
 
@@ -283,10 +284,10 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
               auto primitiveType = serializer->readString("type");
 
               // Instantiate primitive and deserialize
-              auto primitive = instantiatePrimitive(primitiveType);
+              auto primitive = unique_ptr<Primitive>(instantiatePrimitive(primitiveType));
 
               if (!primitive->deserialize(serializer, workData)) {
-                copyErrorsAndWarnings(primitive, true, true);
+                copyErrorsAndWarnings(primitive.get(), true, true);
                 return false;
               }
 
@@ -296,7 +297,7 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
                 throw CoreException("The World contains too many vertices");
               }
 
-              primitives.push_back(primitive);
+              primitives.push_back(move(primitive));
 
               serializer->endMap();  // primitive
             }
@@ -309,14 +310,14 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
         {
           while (serializer->nextArrayItem()) {
             // Instantiate triggerline and deserialize
-            auto triggerLine = new WorldTriggerLine();
+            auto triggerLine = make_unique<WorldTriggerLine>();
 
             if (!triggerLine->deserialize(serializer, workData)) {
-              copyErrorsAndWarnings(triggerLine, true, true);
+              copyErrorsAndWarnings(triggerLine.get(), true, true);
               return false;
             }
 
-            triggerLines.push_back(triggerLine);
+            triggerLines.push_back(move(triggerLine));
           }
 
           serializer->endArray();  // triggerlines
@@ -340,16 +341,6 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     serializer->endMap();  // root
   } catch (exception& e) {
     addDeserializationError(e.what());
-
-    // No memory leaks on failed open
-    for (auto primitive : primitives) {
-      delete primitive;
-    }
-
-    for (auto triggerLine : triggerLines) {
-      delete triggerLine;
-    }
-
     return false;
   }
 
@@ -366,7 +357,6 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mExtents.setSize(maxExtent - minExtent);
   mPlayerStartPosition = playerStartPosition;
   mPlayerStartAngle = playerStartAngle;
-  mAlwaysUpdateVertices = false;
   mStepThreshold = stepThreshold;
   mPrefabAreaTilingType = prefabAreaTilingType;
   mPrefabAreaTileTypes = prefabAreaTileTypes;
@@ -391,17 +381,20 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
 
   // Add TriggerLines before Primitives, as we will need them to set
   // Primitive initial values
-  for (auto triggerLine : triggerLines) {
-    addTriggerLine(triggerLine);
+  for (auto& triggerLine : triggerLines) {
+    addTriggerLine(triggerLine.get());
+    triggerLine.release();
   }
 
   // Fix up Primitive indices.  Because we might be dealing with
   // ghost Primitives, a World might have been saved which does not
   // have sequential indices.  We need to make sure this is enforecd, though.
   // Invalidate each primitive so it recalculates its transformed vertices.
-  for (auto primitive : primitives) {
-    addPrimitive(primitive);
-    primitive->_invalidate();
+  for (auto& primitive : primitives) {
+    auto* addedPrimitive = primitive.get();
+    addPrimitive(addedPrimitive);
+    primitive.release();
+    addedPrimitive->_invalidate();
   }
 
   mFrameNumber = 0;
@@ -603,6 +596,10 @@ void World::updatePrimitiveCellMetadata(PrimitiveCellMetadata* metadata) {
 }
 
 uint32_t World::addTriggerLine(WorldTriggerLine* triggerLine) {
+  if (!mTriggerLookupGrid) {
+    throw CoreException("AccelerationGrid for TriggerLines not created.");
+  }
+
   auto index = (uint32_t)mTriggerLines.size();
 
   mTriggerLines.push_back(triggerLine);
@@ -632,6 +629,10 @@ vector<WorldTriggerLine*> World::findTriggerLines(wp::BoundingBox const& bounds)
 }
 
 uint32_t World::addPrimitive(Primitive* primitive) {
+  if (!mPrimitiveLookupGrid) {
+    throw CoreException("AccelerationGrid for primitives not created.");
+  }
+
   if (getNumPrimitives() >= BW_WORLD_PRIMITIVE_COUNT_MAX) {
     throw CoreException("Too many primitives added to the World");
   }
@@ -917,6 +918,10 @@ uint32_t World::convertPrimitivesToMesh(vector<uint32_t> const& indices) {
 }
 
 void World::primitiveChanged(Primitive const* primitive) {
+  if (!mPrimitiveLookupGrid) {
+    throw CoreException("AccelerationGrid for primitives not created.");
+  }
+
   mLastPrimitiveUpdateFrameNumber = mFrameNumber;
 
   auto id = primitive->getId();
@@ -1197,6 +1202,10 @@ vector<Primitive*> World::sortPrimitiveIndicesByPriority(vector<uint32_t> const&
 }
 
 void World::addPrimitiveToLookupGrid(Primitive* primitive) {
+  if (!mPrimitiveLookupGrid) {
+    throw CoreException("AccelerationGrid for primitives not created.");
+  }
+
   primitive->updateVertexPositions();
   primitive->calculateBounds();
 
@@ -1204,14 +1213,26 @@ void World::addPrimitiveToLookupGrid(Primitive* primitive) {
 }
 
 void World::removePrimitiveFromLookupGrid(Primitive const* primitive, bool failIfNotFound) {
+  if (!mPrimitiveLookupGrid) {
+    throw CoreException("AccelerationGrid for primitives not created.");
+  }
+
   mPrimitiveLookupGrid->removeItem(primitive->getId(), mPrimitiveCellMetadataUpdater, failIfNotFound);
 }
 
 void World::addTriggerLineToLookupGrid(WorldTriggerLine* triggerLine) {
+  if (!mTriggerLookupGrid) {
+    throw CoreException("AccelerationGrid for TriggerLines not created.");
+  }
+
   mTriggerLookupGrid->addItem(triggerLine->getId(), triggerLine->getBounds());
 }
 
 void World::removeTriggerLineFromLookupGrid(WorldTriggerLine const* triggerLine) {
+  if (!mTriggerLookupGrid) {
+    throw CoreException("AccelerationGrid for TriggerLines not created.");
+  }
+
   mTriggerLookupGrid->removeItem(triggerLine->getId());
 }
 
