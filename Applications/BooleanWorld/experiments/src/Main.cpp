@@ -89,6 +89,35 @@ shared_ptr<bw::core::World> openWorld(string const& filepath) {
   }
 }
 
+TEST(WorldSerialization, PathUsesUnknownPrimitiveError) {
+  constexpr auto serializedWorld = R"yaml(
+world:
+  name: path-is-unknown
+  description: ""
+  minExtent: [-10, -10]
+  maxExtent: [10, 10]
+  playerStartPosition: [0, 0]
+  playerStartAngle: 0
+  tiling:
+    prefabAreaTilingType: 0
+    prefabAreaTileTypes: 0
+  primitives:
+    - type: Path
+)yaml";
+
+  auto serializer = shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::fromString(serializedWorld));
+  serializer->deserialize();
+
+  bw::core::World world(20.0f, -1.0f);
+  auto workData = bw::core::SerializationWorkData{};
+
+  EXPECT_FALSE(world.deserialize(serializer, workData));
+  ASSERT_EQ(world.getDeserializationErrors().size(), 1u);
+  EXPECT_EQ(world.getDeserializationErrors().front(),
+            "No primitive of type 'Path' registered");
+}
+
 bool gClipperAllocatorsInitialized = false;
 
 void ensureClipperAllocatorsInitialized() {

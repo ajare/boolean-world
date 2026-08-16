@@ -46,16 +46,6 @@ The number of degrees the segment spans, centred on 0.
 ### RectanglePolygon
 #### X/Y ratio
 The ratio of the height to the width.  Ie height/width.
-### PathPolygon
-An inflated 2d path.
-#### Points
-A list of 2d points making up the path.
-#### Width
-The width of the generated path.
-#### JoinType
-How to smooth the corners where two edges join at a vertex.  Options: bevel, mitre, round, square.
-#### EndType
-How to close the ends of the line.  Options: butt, joined, polygon, round, square.
 ### SuperformulaPolygon
 An implementation of the [Superformula](https://en.wikipedia.org/wiki/Superformula).  This takes 6 parameters, and produces different shapes.
 #### Values

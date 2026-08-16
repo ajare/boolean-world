@@ -18,7 +18,6 @@
 #include <core/CircleSegmentPolygon.h>
 #include <core/TorusPolygon.h>
 #include <core/TorusSegmentPolygon.h>
-#include <core/PathPolygon.h>
 #include <core/RectanglePolygon.h>
 #include <core/RegularPolygon.h>
 #include <core/SuperformulaPolygon.h>

@@ -15,7 +15,6 @@
 #include <core/TorusPolygon.h>
 #include <core/TorusSegmentPolygon.h>
 #include <core/RectanglePolygon.h>
-#include <core/PathPolygon.h>
 #include <core/SuperformulaPolygon.h>
 #include <core/MeshPrimitive.h>
 #include <core/DynamicWorldDataGenerator.h>
@@ -867,15 +866,6 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateRectanglePolygon(editor
       modified};
 }
 
-tuple<string, CreatePrimitiveFunction, bool> renderCreatePathPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t layer, uint8_t priority, wp::Vector2 const& pos, float scale, float angle) {
-  bool modified{false};
-
-  return {
-      "",
-      []() { return nullptr; },
-      modified};
-}
-
 tuple<string, CreatePrimitiveFunction, bool> renderCreateSuperformulaPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t layer, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
   static float resolution = 0.5f;
   static float values[6] = {1.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
@@ -1168,7 +1158,6 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
       "Torus",
       "Torus Segment",
       "Rectangle",
-      "Path",
       "Superformula",
   };
 
@@ -1179,7 +1168,7 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
     primitiveTypesStr += '\0';
   }
 
-  widgets::HelpMarker("Choose the primitive type to create.  Path-based primitives are not yet implemented.");
+  widgets::HelpMarker("Choose the primitive type to create.");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(128);
 
@@ -1276,10 +1265,6 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
       break;
 
     case 6:
-      funcDetails = renderCreatePathPolygon(doc, createOperation, createFillRule, (uint8_t)primitiveLayer, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
-      break;
-
-    case 7:
       funcDetails = renderCreateSuperformulaPolygon(doc, createOperation, createFillRule, (uint8_t)primitiveLayer, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
       break;
 
@@ -1465,9 +1450,6 @@ void renderEditRectanglePolygon(editor::Document* doc, bw::core::Primitive* prim
   } else if (ImGui::IsItemDeactivated()) {
     abandonUndoableAction(doc);
   }
-}
-
-void renderEditPathPolygon(editor::Document* doc, bw::core::Primitive* primitive, editor::Settings& settings) {
 }
 
 void renderEditSuperformulaPolygon(editor::Document* doc, bw::core::Primitive* primitive, editor::Settings& settings) {
@@ -2324,8 +2306,6 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
     renderEditTorusSegmentPolygon(doc, primitive, settings);
   } else if (primitive->getType() == "Rectangle") {
     renderEditRectanglePolygon(doc, primitive, settings);
-  } else if (primitive->getType() == "Path") {
-    renderEditPathPolygon(doc, primitive, settings);
   } else if (primitive->getType() == "Superformula") {
     renderEditSuperformulaPolygon(doc, primitive, settings);
   } else if (primitive->getType() == "Mesh") {

@@ -12,7 +12,6 @@
 #include "core/World.h"
 #include "core/CoreException.h"
 #include "core/Defines.h"
-#include "core/PathPolygon.h"
 #include "core/RectanglePolygon.h"
 #include "core/RegularPolygon.h"
 #include "core/CirclePolygon.h"
@@ -143,7 +142,6 @@ Primitive* World::instantiatePrimitive(string const& type) const {
   typedef function<Primitive*()> PrimitiveCreator;
 
   map<string, PrimitiveCreator> primCreators = {
-      {"Path", []() { return new PathPolygon; }},
       {"Rectangle", []() { return new RectanglePolygon; }},
       {"Regular", []() { return new RegularPolygon; }},
       {"Circle", []() { return new CirclePolygon; }},

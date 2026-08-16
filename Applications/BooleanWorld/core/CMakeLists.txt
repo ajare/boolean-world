@@ -15,7 +15,6 @@ add_library(core STATIC
     src/MaterialDefinition.cpp
     src/MeshPrimitive.cpp
     src/Module.cpp
-    src/PathPolygon.cpp
     src/Primitive.cpp
     src/PrimitiveGroup.cpp
     src/PrimitivePropertySet.cpp
