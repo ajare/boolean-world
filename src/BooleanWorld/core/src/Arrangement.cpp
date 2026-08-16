@@ -469,8 +469,8 @@ Box GetBounds(PSLG const& graph, Cycle const& cycle) {
 }
 
 bool ContainsBox(Box const& outer, Box const& inner) {
-  return outer.minx < inner.minx && outer.maxx > inner.maxx &&
-         outer.miny < inner.miny && outer.maxy > inner.maxy;
+  return outer.minx <= inner.minx && outer.maxx >= inner.maxx &&
+         outer.miny <= inner.miny && outer.maxy >= inner.maxy;
 }
 
 struct SegmentGrid {
