@@ -1090,7 +1090,7 @@ bool PointInFace(
 
 vector<ArrangementTriangle> BuildArrangementTriangles(
     ArrangementResult const& arrangement) {
-  using EarcutPoint = array<float, 2>;
+  using EarcutPoint = array<double, 2>;
   vector<ArrangementTriangle> triangles;
 
   for (uint32_t faceIndex = 0;
@@ -1107,8 +1107,8 @@ vector<ArrangementTriangle> BuildArrangementTriangles(
       for (auto vertexIndex : boundaryVertices) {
         auto const& vertex = arrangement.vertices[vertexIndex];
         polygon.push_back(
-            {float(double(vertex.x) / FixedPointUnitsPerWorldUnit),
-             float(double(vertex.y) / FixedPointUnitsPerWorldUnit)});
+            {double(vertex.x) / FixedPointUnitsPerWorldUnit,
+             double(vertex.y) / FixedPointUnitsPerWorldUnit});
         vertexIndices.push_back(vertexIndex);
       }
       polygons.push_back(move(polygon));
@@ -1183,7 +1183,7 @@ vector<ArrangementWall> BuildArrangementWalls(
 }
 
 vector<FaceTriangle> BuildFaceTriangles(vector<Face> const& faces, vector<Cycle> const& cycles, PSLG const& graph) {
-  using EarcutPoint = array<float, 2>;
+  using EarcutPoint = array<double, 2>;
   vector<FaceTriangle> triangles;
 
   for (int i = 0; i < int(faces.size()); ++i) {
@@ -1195,8 +1195,8 @@ vector<FaceTriangle> BuildFaceTriangles(vector<Face> const& faces, vector<Cycle>
       for (auto vertexIndex : cycles[cycleIndex].vis) {
         auto const& vertex = graph.vs[vertexIndex];
         polygon.push_back(
-            {float(double(vertex.x) / FixedPointUnitsPerWorldUnit),
-             float(double(vertex.y) / FixedPointUnitsPerWorldUnit)});
+            {double(vertex.x) / FixedPointUnitsPerWorldUnit,
+             double(vertex.y) / FixedPointUnitsPerWorldUnit});
         vertexIndices.push_back(vertexIndex);
       }
       polygons.push_back(move(polygon));
