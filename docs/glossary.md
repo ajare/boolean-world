@@ -6,14 +6,18 @@ given.
 
 ## Authoring
 
-**Primitive** — One authored 2D shape (`Rectangle`, `Regular`, `Circle`,
-`Torus`, `Superformula`, `Path`, `Mesh`). Carries geometry, a boolean
-**operation**, a **fill rule**, a **priority**, a **layer**, and a
-**property set**. Tessellated to a `vector<ComplexPolygon>` — up to
+**Primitive** — One authored 2D closed shape (`Rectangle`, `Regular`, `Circle`,
+`Torus`, `Superformula`, `Mesh`). Carries geometry, a boolean **operation**, a
+**fill rule**, a **priority**, a **layer**, and a **property set**. Tessellated
+to a `vector<ComplexPolygon>` — up to
 `BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX` (1024) vertices.
 
-**ComplexPolygon** — `vector<ClosedPolygon>`; one primitive may be several
-contours, resolved against each other by the primitive's own **fill rule**.
+**Contour** — A closed sequence of **fixed-point vertices** forming one
+boundary of a primitive. One primitive may contribute several contours,
+resolved against each other by the primitive's own **fill rule**.
+
+**ComplexPolygon** — `vector<ClosedPolygon>`; the authoring-side polygon and
+hole structure converted into contours before arrangement construction.
 
 **Operation** — `Union`, `Intersection`, `Difference`, `XOR`. Applied to the
 *accumulated result so far*, not to a named target. See **fold**.
@@ -68,6 +72,9 @@ blocked or steps up (ADR-0006).
 generation time. Faces store a `uint16_t` index into it, so `WorldData` is
 self-contained and never reaches back into live, animating primitives
 (ADR-0005).
+
+**Fixed-point vertex** — An exact point on the world geometry grid. The
+canonical coordinate type for topology, contours, and arrangement output.
 
 **Snap-rounding** — Forcing computed intersection points onto the integer grid,
 so that all output topology is exactly representable and vertex identity is an

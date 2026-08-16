@@ -71,10 +71,9 @@ structure:
   wall; an edge between two solid faces with differing heights is a step wall.
 - `Clipper::clip`, `ClipperUtils`' traversal and interpolation helpers, and the
   dead `SplitTouchingPolygon` workaround are all removed.
-- Clipper2 remains a dependency for **path offsetting** (`PathPolygon.cpp`
-  uses `InflatePaths`) and for the independent `floored` application. This
-  decision replaces Clipper2 as the boolean engine of the World clip pipeline
-  only.
+- This decision originally retained Clipper2 for path offsetting and replaced
+  it only as the boolean engine. ADR-0010 later removes both the remaining
+  dependency and the `Path` primitive.
 - New risk concentrates in one place: the arrangement builder. It must be
   correct under degeneracy (coincident vertices, collinear overlapping edges,
   edges meeting at a point). ADR-0003 covers the numeric approach; this code

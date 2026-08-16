@@ -14,6 +14,7 @@ single planar arrangement. Terms are defined in [../glossary.md](../glossary.md)
 | [0007](0007-remove-culling.md) | Remove culling from generation | Accepted |
 | [0008](0008-validation-by-sampled-predicate.md) | Validate by sampled predicate, not by diffing polygons | Accepted |
 | [0009](0009-layer-selection-is-a-per-generation-set.md) | Layer selection is a per-generation set | Accepted |
+| [0010](0010-remove-clipper2-and-path-primitives.md) | Remove Clipper2 and path primitives | Accepted |
 
 ## Scope
 
@@ -24,15 +25,12 @@ single planar arrangement. Terms are defined in [../glossary.md](../glossary.md)
 
 **Out:**
 
-- **Clipper2 as a dependency.** `PathPolygon.cpp` uses it for path *offsetting*
-  (`InflatePaths`), which is a different algorithm and one Clipper2 is good at.
-  It stays.
 - **The rest of the `floored` application.** Its arrangement prototype is in
   scope and moves into `core`; its document and UI remain otherwise untouched.
 - **`Tiling`, `SquareTiling`, `InfluenceEye`** and the prefab-area code, none of
   which touch the clip pipeline.
-- **The authoring model.** ADR-0001 preserves it; changing it is a separate
-  decision for later.
+- **The authoring model.** ADR-0001 preserves its priority-ordered fold.
+  ADR-0010 subsequently removes the `Path` primitive together with Clipper2.
 
 ## Defects found during analysis
 
