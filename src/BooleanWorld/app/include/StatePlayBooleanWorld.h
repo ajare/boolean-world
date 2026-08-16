@@ -127,7 +127,7 @@ private:
 
   void setupPlayerCollision();
 
-  void createWorldCollisions();
+  void createWorldCollisions(wp::Vector2 const& predictedPosition);
 
   void exit();
 

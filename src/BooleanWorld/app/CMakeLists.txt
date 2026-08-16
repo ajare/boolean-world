@@ -5,6 +5,7 @@ add_library(BooleanWorld SHARED
     src/EntityHandlerBooleanWorld.cpp
     src/Map.cpp
     src/MapBooleanWorldDefinitionFactory.cpp
+    src/PlayerLocation.cpp
     src/ProtoEntity.cpp
     src/ProtoEntityDefinitionFactory.cpp
     src/ReactiveCamera.cpp
@@ -69,6 +70,7 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_collision_tests
         tests/world_collision_sim_tests.cpp
+        src/PlayerLocation.cpp
         src/WorldCollisionSim.cpp)
     target_include_directories(boolean_world_collision_tests PRIVATE include)
     target_link_libraries(boolean_world_collision_tests PRIVATE

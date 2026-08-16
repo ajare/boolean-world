@@ -32,6 +32,7 @@
 #include "TriMeshDataProvider.h"
 #include "TriMeshEntityFacadeFactory.h"
 #include "Map.h"
+#include "PlayerLocation.h"
 #include "PlayerView.h"
 #include "ReactiveCamera.h"
 #include "GameException.h"
@@ -151,9 +152,10 @@ void StatePlayBooleanWorld::getWorldInput(wp::Vector2* curPosition, wp::Vector2*
   entityHandler->peekInput(player, curPosition, newPosition, curAngle, newAngle, &curPitch, &newPitch, &velocity, frameTime);
 }
 
-void StatePlayBooleanWorld::createWorldCollisions() {
+void StatePlayBooleanWorld::createWorldCollisions(
+    wp::Vector2 const& predictedPosition) {
   mWorldCollisionSim->clearLines();
-  if (!playerInWorld() || !mWorldData) {
+  if (!mWorldData) {
     return;
   }
 
@@ -161,7 +163,7 @@ void StatePlayBooleanWorld::createWorldCollisions() {
   auto const& walls = mWorldData->getWalls();
   auto radius = BW_PLAYER_SPEED + BW_PLAYER_RADIUS;
   for (auto wallIndex :
-       mWorldData->getWallsNear(getPlayerPosition(), radius)) {
+       mWorldData->getWallsNear(predictedPosition, radius)) {
     auto const& edge = arrangement.edges[walls[wallIndex].edge];
     auto const& fixed0 = arrangement.vertices[edge.v[0]];
     auto const& fixed1 = arrangement.vertices[edge.v[1]];
@@ -392,18 +394,9 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
 
   mWorldData = world->getWorldData(playerPosition, playerAngle);
 
-  auto playerFace = mWorldData->getContainingFaceIndex(curPosition);
-  mPlayerPolygonIndex = playerFace == ~0u ? -1 : int32_t(playerFace);
-  mPlayerBorderIntersectIndex =
-      mWorldData->circleIntersectsWall(curPosition, BW_PLAYER_RADIUS);
-
-  if (!playerInWorld() || playerIntersectsWorldBorders()) {
-    // TODO
-    // ...
-  }
-
-  // Do collision detection.
-  createWorldCollisions();
+  // Supply the physics step with walls around the predicted destination. Player
+  // location is evaluated only after that step has resolved movement.
+  createWorldCollisions(newPosition);
 }
 
 void StatePlayBooleanWorld::updateAudio(float frameTime) {
@@ -411,7 +404,16 @@ void StatePlayBooleanWorld::updateAudio(float frameTime) {
 }
 
 void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
-  VAR_UNUSED(frameTime);
+  auto const& physicalStats = getPlayerPhysicalStats();
+  auto location = bw::app::evaluatePlayerLocation(
+      *mWorldData, physicalStats.position, BW_PLAYER_RADIUS);
+  mPlayerPolygonIndex = location.faceIndex;
+  mPlayerBorderIntersectIndex = location.intersectingWallIndex;
+
+  if (!playerInWorld() || playerIntersectsWorldBorders()) {
+    // TODO
+    // ...
+  }
 
   if (mwAudioSystem) {
     updateAudio(frameTime);

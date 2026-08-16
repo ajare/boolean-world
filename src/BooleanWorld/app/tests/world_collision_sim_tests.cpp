@@ -13,6 +13,7 @@
 #include <core/World.h>
 #include <core/YamlSerializer.h>
 
+#include "PlayerLocation.h"
 #include "WorldCollisionSim.h"
 
 namespace {
@@ -22,7 +23,8 @@ struct CollisionWall {
   wp::Vector2 playableNormal;
 };
 
-std::vector<CollisionWall> loadCollisionWalls(std::string const& filename) {
+std::shared_ptr<bw::core::ArrangementWorldData> loadWorldData(
+    std::string const& filename) {
   auto path = std::filesystem::path(BW_COLLISION_TEST_RESOURCE_DIR) / filename;
   auto serializer = std::shared_ptr<bw::core::YamlSerializer>(
       bw::core::YamlSerializer::fromFile(path.string()));
@@ -36,12 +38,15 @@ std::vector<CollisionWall> loadCollisionWalls(std::string const& filename) {
 
   bw::core::ArrangementWorldDataGenerator generator;
   generator.generate(&world);
-  bw::core::ArrangementWorldData data(
+  return std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), world.getExtents(), 64.0f, 8.0f);
+}
 
-  auto const& arrangement = data.getArrangement();
+std::vector<CollisionWall> loadCollisionWalls(std::string const& filename) {
+  auto data = loadWorldData(filename);
+  auto const& arrangement = data->getArrangement();
   std::vector<CollisionWall> result;
-  for (auto const& wall : data.getWalls()) {
+  for (auto const& wall : data->getWalls()) {
     if (wall.kind != bw::core::arr::ArrangementWallKind::Border) {
       continue;
     }
@@ -73,6 +78,26 @@ void requireNear(float actual, float expected, float tolerance, std::string cons
         message + ": expected " + std::to_string(expected) +
         ", got " + std::to_string(actual));
   }
+}
+
+void playerLocationUsesResolvedPosition() {
+  auto data = loadWorldData("collision-issue-repro.yaml");
+  wp::Vector2 const preMovementPosition{4000.0f, 4000.0f};
+  wp::Vector2 const resolvedPosition{0.0f, 0.0f};
+
+  require(data->getContainingFaceIndex(preMovementPosition) == ~0u,
+          "Regression fixture pre-movement position must be outside the world");
+
+  auto location =
+      bw::app::evaluatePlayerLocation(*data, resolvedPosition, 6.0f);
+  auto expectedFace = data->getContainingFaceIndex(resolvedPosition);
+  require(expectedFace != ~0u,
+          "Regression fixture resolved position must be inside the world");
+  require(location.faceIndex == static_cast<int32_t>(expectedFace),
+          "Player face was not evaluated at the resolved position");
+  require(location.intersectingWallIndex ==
+              data->circleIntersectsWall(resolvedPosition, 6.0f),
+          "Player wall intersection was not evaluated at the resolved position");
 }
 
 void generatedWallsSlideFromThePlayableSide() {
@@ -402,6 +427,7 @@ void nearZeroContactUsesWallNormal() {
 
 int main() {
   try {
+    playerLocationUsesResolvedPosition();
     generatedWallsSlideFromThePlayableSide();
     diagonalMovementSlidesAlongWall();
     perpendicularMovementStopsAtWall();
