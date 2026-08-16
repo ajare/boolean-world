@@ -26,7 +26,7 @@ void WorldCollisionSim::addSlidingCollider(
         auto closestPoint = contactPosition.closestPointOnLine(
             line.getVertex(0), line.getVertex(1));
         auto normal = contactPosition - closestPoint;
-        if (normal.normalise() == 0.0) {
+        if (normal.normalise() <= 1e-8) {
           normal = line.getNormal();
           if (result->movementDesired.dot(normal) > 0.0f) {
             normal = -normal;

@@ -44,12 +44,25 @@ void pointOnlyCellTouchIsNotRegistered() {
   require(simulation.getNumStaticLines() == 0, "A point-only cell touch must not create a static line");
 }
 
+void backwardProjectedLineFindsStaticLine() {
+  auto simulation = createSimulation();
+  simulation.addStaticLine({5.0f, 0.0f}, {5.0f, 10.0f}, false);
+
+  wp::collide::SweepResult result;
+  auto const hit = simulation.projectLine({9.0f, 9.0f}, {1.0f, 1.0f}, &result);
+
+  require(hit, "A backwards projected line must query its intersecting static line");
+  require(result.newPosition.withinEpsilon({5.0f, 5.0f}),
+          "A backwards projected line must stop at the static-line intersection");
+}
+
 }  // namespace
 
 int main() {
   try {
     coincidentCellBoundaryLineIsRegisteredWithEndpoints();
     pointOnlyCellTouchIsNotRegistered();
+    backwardProjectedLineFindsStaticLine();
     std::cout << "Static-line clipping passed\n";
     return 0;
   } catch (std::exception const& error) {

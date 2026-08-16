@@ -397,8 +397,8 @@ bool Simulation::projectLine(Vector2 const& v0, Vector2 const& v1, SweepResult* 
 
   // Check acceleration grid
   BoundingBox lineBounds;
-  lineBounds.setPosition(v0);
-  lineBounds.setSize(v1 - v0);
+  lineBounds.setPosition({std::min(v0.x, v1.x), std::min(v0.y, v1.y)});
+  lineBounds.setSize({std::abs(v1.x - v0.x), std::abs(v1.y - v0.y)});
 
   auto lineIndices = getLineIndices(lineBounds);
 

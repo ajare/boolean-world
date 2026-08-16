@@ -383,6 +383,21 @@ void diagonalMovementSlidesBothWaysAlongWall() {
   requireNear(player->getCentre().y, -2.0f, 0.002f,
               "Player did not preserve downward movement along the wall");
 }
+
+void nearZeroContactUsesWallNormal() {
+  WorldCollisionSim simulation;
+  wp::Vector2 const lineStart{-1.422804f, -2.0411403f};
+  wp::Vector2 const lineEnd{-1.7840316f, 3.788934f};
+  auto player = new wp::collide::ColliderCircle({-1.5509014f, 0.02642727f}, 0.0f);
+  simulation.addSlidingCollider(player);
+  simulation.addLine(lineStart, lineEnd, 0);
+
+  wp::collide::SweepResult result;
+  require(simulation.projectCollider(player, {-6.7236485f, -0.41659293f}, &result),
+          "The player must contact the wall");
+  require(result.newPosition.distanceTo(result.newPosition.closestPointOnLine(lineStart, lineEnd)) > 0.0005f,
+          "A near-zero contact normal must fall back to the wall normal");
+}
 }  // namespace
 
 int main() {
@@ -400,6 +415,7 @@ int main() {
     slidingClearsConvexCorners();
     slidingStopsAtCornerWithoutPenetration();
     diagonalMovementSlidesBothWaysAlongWall();
+    nearZeroContactUsesWallNormal();
     std::cout << "World wall collision response passed\n";
     return 0;
   } catch (std::exception const& error) {
