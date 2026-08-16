@@ -9,6 +9,39 @@ WorldCollisionSim::WorldCollisionSim(void* userObj)
     : collide::Simulation(ExtentsCalculator({0.0f, 0.0f}, {100.0f, 100.f}, 0.0f), 1, 1, userObj) {
 }
 
+void WorldCollisionSim::addSlidingCollider(
+    wp::collide::Collider* collider,
+    std::function<void()> const& onWallHit) {
+  collider->setHitLineCallback(
+      [onWallHit](wp::collide::SweepResult* result,
+                  wp::collide::StaticLine const& line,
+                  float t,
+                  void*) {
+        if (onWallHit) {
+          onWallHit();
+        }
+
+        auto normal = line.getNormal();
+        if (result->movementDesired.dot(normal) > 0.0f) {
+          normal = -normal;
+        }
+
+        result->newPosition =
+            result->oldPosition + result->movementDesired * t +
+            normal * 0.001f;
+        result->movementDone = result->newPosition - result->oldPosition;
+        result->distanceMoved = result->movementDone.length();
+
+        auto tangent =
+            (line.getVertex(1) - line.getVertex(0)).normalisedCopy();
+        auto movementAfterContact = result->movementDesired * (1.0f - t);
+        result->movementLeft =
+            tangent * movementAfterContact.dot(tangent);
+        return true;
+      });
+  addCollider(collider);
+}
+
 set<uint32_t> WorldCollisionSim::getLineIndices(BoundingBox const& bounds) const {
   set<uint32_t> indices;
 

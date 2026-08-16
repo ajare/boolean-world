@@ -450,7 +450,7 @@ void Simulation::sweepCollider(Collider* collider, Vector2 const& desiredMovemen
   SweepResult result;
   bool continueSweeping = projectCollider(collider, desiredMovement, &result);
 
-  if (lastMove < movementEpsilon && result.distanceMoved < movementEpsilon) {
+  if (continueSweeping && lastMove < movementEpsilon && result.distanceMoved < movementEpsilon) {
     return;
   }
 

@@ -125,42 +125,9 @@ void StatePlayBooleanWorld::setupPlayerCollision() {
   auto const& physicalStats = getPlayerPhysicalStats();
   mPlayerCollider = new wp::collide::ColliderCircle(physicalStats.position, BW_PLAYER_RADIUS);
 
-  auto cb = [](wp::collide::SweepResult* result, wp::collide::StaticLine const& line, float t, void* user) -> bool {
-    auto state = static_cast<StatePlayBooleanWorld*>(user);
-    state->mCollisionsProcessed++;
-
-    // For two-sided lines, we can't rely on the normal, as we don't know which direction we're
-    // approaching from.  So, flip the normal based on the angle of approach
-    auto normal = line.getNormal();
-    Winding angleDir;
-    auto minAngle = result->movementDesired.minimumAngleTo(normal, &angleDir);
-
-    if (minAngle < 90) {
-      normal = -normal;
-      angleDir = angleDir == Winding::Clockwise ? Winding::Anticlockwise : Winding::Clockwise;
-    }
-
-    // Push the result position away from the line a small amount
-    result->newPosition = result->oldPosition + result->movementDesired * t + normal * 0.001f;  // * MathsUtils::Epsilon;
-    result->movementDone = result->newPosition - result->oldPosition;
-    result->distanceMoved = result->movementDone.length();
-
-    // Calculate edge normal to slide along
-    float angle = 180 - minAngle;
-
-    Vector2 newDirection = angleDir ==
-                                   Winding::Clockwise
-                               ? normal.perpendicular()
-                               : -normal.perpendicular();
-
-    // Get remaining movement
-    result->movementLeft = newDirection * result->movementDesired.distanceTo(result->movementDone) * sin(WP_DEGTORAD(angle));
-    return true;
-  };
-
-  mPlayerCollider->setHitLineCallback(cb);
-
-  mWorldCollisionSim->addCollider(mPlayerCollider);
+  mWorldCollisionSim->addSlidingCollider(
+      mPlayerCollider,
+      [this] { ++mCollisionsProcessed; });
 
   applib::ModelInstance::entityHandler()->setupCollisions(mWorldCollisionSim, mPlayerCollider);
 }
