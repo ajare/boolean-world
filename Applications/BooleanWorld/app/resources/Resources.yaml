@@ -1,10 +1,5 @@
 Resources:
   Resource:
-    - type: "Game"
-      name: "BooleanWorld"
-      DependentResources: ""
-      Definitions:
-        Definition: ""
     - type: "Image"
       name: "EntityImage"
       location: "images/entities.png"

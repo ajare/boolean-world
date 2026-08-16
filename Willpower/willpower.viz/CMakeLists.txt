@@ -10,8 +10,6 @@ add_library(WillPower.Viz SHARED
     src/DynamicQuadRenderParams.cpp
     src/DynamicRenderer.cpp
     src/DynamicTriangleRenderParams.cpp
-    src/FirepowerMeshRenderParams.cpp
-    src/FirepowerMeshRenderer.cpp
     src/GeometryMeshRenderParams.cpp
     src/GeometryMeshRenderer.cpp
     src/RenderParams.cpp
@@ -26,7 +24,7 @@ target_compile_definitions(WillPower.Viz PRIVATE
     $<$<CONFIG:Debug>:WP_USE_ASSERT_TRACE WP_USE_MEMLEAK_TRACKING>)
 
 target_link_libraries(WillPower.Viz
-    PUBLIC  Willpower.Common Willpower.Collide Willpower.Firepower
+    PUBLIC  Willpower.Common Willpower.Collide
             ext::mpp ext::mpp-mesh ext::mpp-helper ext::mpp-program
     PRIVATE ext::Utils vendor::fmt)
 

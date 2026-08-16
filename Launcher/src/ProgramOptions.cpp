@@ -42,6 +42,8 @@ ProgramOptions parseProgramOptions(string const& filename) {
   auto gameNode = configuration.getChild("Game");
   auto audioNode = configuration.getChild("Audio");
 
+  gameNode->requireOnlyChildren({"DLL", "ResourceLocations", "Debug", "Arguments"});
+
   pOpts.screenWidth = utils::StringUtils::parseInt(videoNode->getChild("Width")->getValue());
   pOpts.screenHeight = utils::StringUtils::parseInt(videoNode->getChild("Height")->getValue());
 
@@ -53,14 +55,6 @@ ProgramOptions parseProgramOptions(string const& filename) {
 
   // Get game DLL
   pOpts.dll = gameNode->getChild("DLL")->getProperty("path");
-
-  // Game resource
-  auto gameResNode = gameNode->getChild("GameResource");
-  string gameRes, gameResNamespace;
-
-  gameRes = gameResNode->getValue();
-  gameResNode->getOptionalProperty("namespace", gameResNamespace);
-  pOpts.gameResource = gameResNamespace + "/" + gameRes;
 
   // Get game resource locations
   auto resourceLocationNode = gameNode->getChild("ResourceLocations")->getChild("ResourceLocation");

@@ -33,6 +33,7 @@ public:
   DataNode* getOptionalChild(std::string const& child) const;
   std::string getProperty(std::string const& property) const;
   bool getOptionalProperty(std::string const& property, std::string& value) const;
+  void requireOnlyChildren(std::vector<std::string> const& children) const;
   StructuredData const& getData() const;
 };
 }  // namespace WP_NAMESPACE

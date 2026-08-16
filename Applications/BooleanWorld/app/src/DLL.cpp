@@ -8,14 +8,12 @@
 #include <applib/StateMapLoad.h>
 #include <applib/StateMapUnload.h>
 #include <applib/StateMapTransition.h>
-#include <applib/Game.h>
 #include <applib/MapDefaultDefinitionFactory.h>
 #include <applib/MapTiledDefinitionFactory.h>
 #include <applib/ProtoEntityDefaultDefinitionFactory.h>
 #include <applib/ImageSetTiledDefinitionFactory.h>
 
 #include "MapBooleanWorldDefinitionFactory.h"
-#include "GameDefinitionFactory.h"
 #include "ProtoEntityDefinitionFactory.h"
 
 // Model
@@ -30,7 +28,6 @@
 #include "StatePlayBooleanWorld.h"
 
 // Resources
-#include "Game.h"
 #include "Map.h"
 #include "ProtoEntity.h"
 
@@ -124,12 +121,10 @@ __declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resou
   statePlayBooleanWorldFactory = new StatePlayBooleanWorldFactory(logger);
 
   // Add resource factories
-  resourceMgr->addResourceFactory(new GameResourceFactory(model->animationDatabase));
   resourceMgr->addResourceFactory(new MapResourceFactory(logger));
   resourceMgr->addResourceFactory(new ProtoEntityResourceFactory(model->entityHandler, model->animationDatabase));
 
   // Add resource definition factories
-  resourceMgr->addResourceDefinitionFactory(new GameDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(new MapBooleanWorldDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(new applib::MapTiledDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(new ProtoEntityDefinitionFactory());

@@ -3,10 +3,8 @@
 #include <willpower/application/StateExceptions.h>
 #include <willpower/application/ServiceLocator.h>
 #include <willpower/application/ApplicationSettings.h>
-#include <willpower/application/resourcesystem/ImageSetResource.h>
 
 #include "StatePlay.h"
-#include "Game.h"
 #include "ModelInstance.h"
 
 namespace applib {
@@ -15,7 +13,7 @@ using namespace std;
 using namespace wp;
 
 StatePlay::StatePlay()
-    : State("Play"), mInputStateMgr(nullptr), mEntityMgr(nullptr), mBulletMgr(nullptr), mBeamMgr(nullptr), mScreenFxMgr(nullptr), mMouseDeltaX(0.0f), mMouseDeltaY(0.0f), mUseDebugCamera(false) {
+    : State("Play"), mInputStateMgr(nullptr), mEntityMgr(nullptr), mScreenFxMgr(nullptr), mMouseDeltaX(0.0f), mMouseDeltaY(0.0f), mUseDebugCamera(false) {
 }
 
 Entity const& StatePlay::getPlayerEntity() const {
@@ -170,38 +168,6 @@ void StatePlay::createEntityFacade(
       initialSize);
 }
 
-void StatePlay::createFirepowerManagement(application::resourcesystem::ResourceManager* resourceMgr,
-                                          mpp::RenderSystem* renderSystem,
-                                          mpp::ResourceManager* renderResourceMgr,
-                                          application::resourcesystem::ResourcePtr gameResource) {
-  auto gameRes = static_cast<Game*>(gameResource.get());
-
-  // Bullets
-  mBulletMgr = new BulletManager(gameRes->getBulletAnimationSet(), gameResource, mMeshCollisionMgr.get(), 256);
-  mBulletMgr->setupRenderer(renderSystem, renderResourceMgr, mScene, (int)RenderOrder::Bullets);
-  ModelInstance::entityHandler()->setBulletManager(mBulletMgr);
-
-  // Beams
-  mBeamMgr = new BeamManager(gameResource, mMeshCollisionMgr.get(), 32);
-  mBeamMgr->setupRenderer(renderSystem, renderResourceMgr, mScene, (int)RenderOrder::Beams);
-  ModelInstance::entityHandler()->setBeamManager(mBeamMgr);
-}
-
-void StatePlay::destroyFirepowerManagement() {
-  delete mBulletMgr;
-  mBulletMgr = nullptr;
-
-  delete mBeamMgr;
-  mBeamMgr = nullptr;
-}
-
-void StatePlay::updateFirepowerManagement(float frameTime) {
-  auto viewBounds = getViewBounds();
-
-  mBulletMgr->update(viewBounds, frameTime);
-  mBeamMgr->update(viewBounds, frameTime);
-}
-
 void StatePlay::setInitialMapRenderParams(viz::GeometryMeshRenderParams* params) {
   params->setRender(true);
   params->setRenderBackground(true);
@@ -244,11 +210,6 @@ void StatePlay::setupMapRenderer(StateTransitionData* transitionData) {
 void StatePlay::setupMapCollisionSim(StateTransitionData* transitionData) {
   mMapCollisionSim = transitionData->mapData.nextMap.mapCollisionSim ? move(transitionData->mapData.nextMap.mapCollisionSim) : nullptr;
   ModelInstance::get()->collisionSim = mMapCollisionSim.get();
-}
-
-void StatePlay::setupMeshCollisionManager(StateTransitionData* transitionData) {
-  mMeshCollisionMgr = transitionData->mapData.nextMap.meshCollisionMgr ? move(transitionData->mapData.nextMap.meshCollisionMgr) : nullptr;
-  ModelInstance::get()->collisionMgr = mMeshCollisionMgr.get();
 }
 
 void StatePlay::setupAdditionalRenderers(mpp::ResourceManager* renderResourceMgr) {
@@ -345,9 +306,6 @@ void StatePlay::setup(application::resourcesystem::ResourceManager* resourceMgr,
   createScreenFxManagement();
   createEntityManagement();
 
-  setupMeshCollisionManager(transitionData);
-  createFirepowerManagement(resourceMgr, renderSystem, renderResourceMgr, transitionData->gameResource);
-
   setupMapCollisionSim(transitionData);
 
   createRenderers(renderResourceMgr, transitionData);
@@ -386,7 +344,6 @@ void StatePlay::exitImpl() {
   mDebugCamera.reset();
 
   destroyRenderers();
-  destroyFirepowerManagement();
   destroyEntityManagement();
   destroyScreenFxManagement();
   destroyInput();
@@ -465,7 +422,6 @@ void StatePlay::updateImpl(float frameTime) {
   updatePreEntities(frameTime);
   updateEntityManagement(frameTime);
   updatePostEntities(frameTime);
-  updateFirepowerManagement(frameTime);
   updateCamera(frameTime);
   updatePreRenderers(frameTime);
   updateScreenFxManagement(frameTime);

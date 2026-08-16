@@ -8,7 +8,7 @@ using namespace std;
 using namespace wp;
 
 EntityHandler::EntityHandler()
-    : mwBulletMgr(nullptr), mwBeamMgr(nullptr), mwSimulation(nullptr), mwPlayerCollider(nullptr), mMouseScreenX(-1.0f), mMouseScreenY(-1.0f), mMouseDeltaX(0.0f), mMouseDeltaY(0.0f) {
+    : mwSimulation(nullptr), mwPlayerCollider(nullptr), mMouseScreenX(-1.0f), mMouseScreenY(-1.0f), mMouseDeltaX(0.0f), mMouseDeltaY(0.0f) {
 }
 
 void EntityHandler::getMouseScreenPosition(float* mouseX, float* mouseY) const {
@@ -32,15 +32,6 @@ entt::entity EntityHandler::registerPrototype(string const& protoName) {
   auto id = mComponentRegistry.create();
   mProtoIds[protoName] = id;
   return id;
-}
-
-void EntityHandler::setBulletManager(BulletManager* bulletMgr) {
-  mwBulletMgr = bulletMgr;
-  mBulletWeapon.setBulletManager(mwBulletMgr);
-}
-
-void EntityHandler::setBeamManager(BeamManager* beamMgr) {
-  mwBeamMgr = beamMgr;
 }
 
 void EntityHandler::setActiveInputStates(vector<string> const& states, float mouseScreenX, float mouseScreenY, float mouseDeltaX, float mouseDeltaY, Vector2 const& mouseWorld) {
@@ -97,10 +88,6 @@ void EntityHandler::destroy(Entity* entity) {
   mComponentRegistry.destroy(entity->mCompSysId);
 
   destroyImpl(entity);
-}
-
-void EntityHandler::fireBullet(Entity* entity, int type, BulletParams const& params, BulletFireParams const& fireParams) {
-  mBulletWeapon.fire(type, params, fireParams, entity);
 }
 
 bool EntityHandler::update(Entity* entity, bool controlActive, float frameTime) {

@@ -3,8 +3,6 @@
 add_library(BooleanWorld SHARED
     src/DLL.cpp
     src/EntityHandlerBooleanWorld.cpp
-    src/Game.cpp
-    src/GameDefinitionFactory.cpp
     src/Map.cpp
     src/MapBooleanWorldDefinitionFactory.cpp
     src/ProtoEntity.cpp

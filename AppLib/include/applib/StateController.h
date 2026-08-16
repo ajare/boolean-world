@@ -13,8 +13,6 @@ namespace applib {
 class APPLIB_API StateController : public State {
   std::string mNextState;
 
-  std::string mGameResourceName;
-
 private:
   virtual std::string getNextStateName(std::string const& prevStateName, StateTransitionData* transitionData) = 0;
 

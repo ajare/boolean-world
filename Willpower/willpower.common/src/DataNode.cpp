@@ -1,5 +1,7 @@
 #include "willpower/common/DataNode.h"
 
+#include <algorithm>
+
 #include "willpower/common/Exceptions.h"
 
 namespace WP_NAMESPACE {
@@ -66,6 +68,14 @@ bool DataNode::getOptionalProperty(std::string const& property, std::string& val
   }
   value = node->getValue();
   return true;
+}
+
+void DataNode::requireOnlyChildren(std::vector<std::string> const& children) const {
+  for (auto const& entry : current()) {
+    if (std::find(children.begin(), children.end(), entry.first) == children.end()) {
+      throw Exception("Unknown property '" + entry.first + "' in '" + current().getName() + "'.");
+    }
+  }
 }
 
 StructuredData const& DataNode::getData() const {

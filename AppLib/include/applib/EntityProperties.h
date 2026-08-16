@@ -9,7 +9,6 @@ namespace applib {
 enum EntityProperty {
   EP_Physical,
   EP_Visual,
-  EP_BeamEmitter,
   NumCoreProperties
 };
 

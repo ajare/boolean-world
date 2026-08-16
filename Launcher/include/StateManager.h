@@ -55,7 +55,7 @@ public:
 
   void registerStateFactory(wp::application::StateFactory* factory);
 
-  void enterInitialState(std::string const& gameResourceName);
+  void enterInitialState();
 
   void injectKeyInput(wp::application::KeyEvent evt, wp::application::Key key, wp::application::KeyModifiers modifiers);
 

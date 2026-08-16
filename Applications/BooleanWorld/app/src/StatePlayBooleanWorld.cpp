@@ -13,7 +13,6 @@
 
 #include <willpower/viz/DynamicLineRenderer.h>
 #include <willpower/viz/CollisionSimulationRenderer.h>
-#include <willpower/viz/FirepowerMeshRenderer.h>
 
 #include <applib/ModelInstance.h>
 #include <applib/VisualSpriteEntityFacade.h>
@@ -452,10 +451,7 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
 void StatePlayBooleanWorld::exit() {
   mTransitionData.mapData.prevMap.mapRenderer = mMapRenderer ? move(mMapRenderer) : nullptr;
   mTransitionData.mapData.prevMap.mapCollisionSim = mMapCollisionSim ? move(mMapCollisionSim) : nullptr;
-  mTransitionData.mapData.prevMap.meshCollisionMgr = mMeshCollisionMgr ? move(mMeshCollisionMgr) : nullptr;
-
   applib::ModelInstance::get()->collisionSim = nullptr;
-  applib::ModelInstance::get()->collisionMgr = nullptr;
 
   throw wp::application::ReturnFromStateException(&mTransitionData);
 }

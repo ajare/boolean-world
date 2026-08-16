@@ -11,7 +11,6 @@ Configuration:
   Game:
     DLL:
       path: ../../../../../../Applications/BooleanWorld/app/build/vs2026/bin/x64/Release/BooleanWorld.dll
-    GameResource: BooleanWorld
     ResourceLocations:
       ResourceLocation:
         type: Directory

@@ -71,13 +71,7 @@ void StateMapLoad::loadResources(application::resourcesystem::ResourceManager* r
     this->mTransitionData.mapData.nextMap.mapCollisionSim = collisionSim ? unique_ptr<collide::Simulation>(collisionSim) : nullptr;
   };
 
-  auto mapMeshCollisionMgrFn = [this, mapResource](bool useThreading) {
-    this->addText("Creating dynamic collision manager");
-    auto meshCollisionMgr = createMeshCollisionManager(mapResource, this->mwRenderSystem, this->mwRenderResourceMgr, useThreading);
-    this->mTransitionData.mapData.nextMap.meshCollisionMgr = meshCollisionMgr ? unique_ptr<firepower::MeshCollisionManager>(meshCollisionMgr) : nullptr;
-  };
-
-  processPostWork({mapRendererFn, mapCollSimFn, mapMeshCollisionMgrFn});
+  processPostWork({mapRendererFn, mapCollSimFn});
 }
 
 }  // namespace applib

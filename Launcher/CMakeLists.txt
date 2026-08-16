@@ -41,6 +41,21 @@ bw_enable_sdl_checks(Launcher)
 bw_add_version_resource(Launcher)
 set_target_properties(Launcher PROPERTIES FOLDER Launcher)
 
+if(BUILD_TESTING)
+    add_executable(launcher_program_options_tests
+        tests/program_options_tests.cpp
+        src/ProgramOptions.cpp)
+    target_include_directories(launcher_program_options_tests PRIVATE include)
+    target_link_libraries(launcher_program_options_tests PRIVATE
+        Willpower.Common Willpower.Application ext::Utils)
+    target_compile_features(launcher_program_options_tests PRIVATE cxx_std_20)
+    bw_target_defaults(launcher_program_options_tests)
+    bw_output_dirs(launcher_program_options_tests "build/vs2026/bin/x64/$<CONFIG>")
+    bw_deploy_runtime_dlls(launcher_program_options_tests)
+    bw_deploy_vendor_dlls(launcher_program_options_tests)
+    add_test(NAME launcher_program_options COMMAND launcher_program_options_tests)
+endif()
+
 # The game DLL is loaded by name at runtime, so there is no link-time edge -
 # state it explicitly so it is always built first.
 add_dependencies(Launcher BooleanWorld)
@@ -95,7 +110,6 @@ file(GENERATE
   Game:
     DLL:
       path: $<TARGET_FILE:BooleanWorld>
-    GameResource: BooleanWorld
     ResourceLocations:
       ResourceLocation:
         type: Directory

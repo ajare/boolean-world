@@ -3,7 +3,6 @@
 #include <willpower/application/ApplicationSettings.h>
 
 #include "StateController.h"
-#include "Game.h"
 
 namespace applib {
 
@@ -21,9 +20,7 @@ void StateController::setup(application::resourcesystem::ResourceManager* resour
   WP_UNUSED(resourceMgr);
   WP_UNUSED(renderResourceMgr);
   WP_UNUSED(renderSystem);
-
-  // Args is the name of the game resource
-  mGameResourceName = *static_cast<string*>(args);
+  WP_UNUSED(args);
 }
 
 void StateController::teardown() {
@@ -33,7 +30,6 @@ void StateController::transferTransitionMapData(MapTransitionData::MapData* from
   to->map = from->map;
   to->mapRenderer = from->mapRenderer ? move(from->mapRenderer) : nullptr;
   to->mapCollisionSim = from->mapCollisionSim ? move(from->mapCollisionSim) : nullptr;
-  to->meshCollisionMgr = from->meshCollisionMgr ? move(from->meshCollisionMgr) : nullptr;
 }
 
 void StateController::setTransitionNextMap(MapTransitionData* data, string const& name, application::resourcesystem::ResourcePtr resource) {
@@ -50,13 +46,6 @@ void StateController::suspendImpl(void* args) {
 
 void StateController::resumeImpl(void* args) {
   auto transitionData = static_cast<StateTransitionData*>(args);
-
-  if (transitionData->prevStateName == "Load") {
-    string gameResName, gameResNamespace;
-    application::resourcesystem::Resource::splitName(mGameResourceName, gameResNamespace, &gameResNamespace, &gameResName);
-
-    mTransitionData.gameResource = mwResourceMgr->getResource(gameResName, gameResNamespace);
-  }
 
   mTransitionData.userData = transitionData->userData;
 

@@ -26,8 +26,6 @@ public:
 
   std::string dll;
 
-  std::string gameResource;
-
   std::vector<ResourceLocation> resourceLocations;
 
   std::map<std::string, std::string> arguments;

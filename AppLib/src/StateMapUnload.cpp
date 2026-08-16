@@ -25,7 +25,6 @@ ThreadableLoadState::LoadFunction StateMapUnload::getWorkFunction(wp::applicatio
 vector<ThreadableLoadState::ThreadableWorkFunction> StateMapUnload::getPreWork(StateTransitionData* transitionData) {
   auto mapRenderer = transitionData->mapData.prevMap.mapRenderer ? transitionData->mapData.prevMap.mapRenderer.release() : nullptr;
   auto mapCollisionSim = transitionData->mapData.prevMap.mapCollisionSim ? transitionData->mapData.prevMap.mapCollisionSim.release() : nullptr;
-  auto meshCollisionMgr = transitionData->mapData.prevMap.meshCollisionMgr ? transitionData->mapData.prevMap.meshCollisionMgr.release() : nullptr;
 
   auto destroyPrevMapRendererFn = [this, mapRenderer](bool useThreading) {
     addText("Destroying map renderer");
@@ -37,12 +36,7 @@ vector<ThreadableLoadState::ThreadableWorkFunction> StateMapUnload::getPreWork(S
     destroyMapCollisionSim(mapCollisionSim, useThreading);
   };
 
-  auto destroyPrevMapMeshCollisionMgrFn = [this, meshCollisionMgr](bool useThreading) {
-    addText("Destroying dynamic collision manager");
-    destroyMeshCollisionManager(meshCollisionMgr, useThreading);
-  };
-
-  return {destroyPrevMapRendererFn, destroyPrevMapCollisionSimFn, destroyPrevMapMeshCollisionMgrFn};
+  return {destroyPrevMapRendererFn, destroyPrevMapCollisionSimFn};
 }
 
 void StateMapUnload::unloadResources(application::resourcesystem::ResourceManager* resourceMgr, MapTransitionData* transitionData) {

@@ -1,8 +1,9 @@
-# Architecture decisions — World geometry rewrite
+# Architecture decisions
 
-The World geometry rewrite replaced Clipper2 as its boolean engine with a
-single planar arrangement and later removed the dependency entirely. Terms are
-defined in [../glossary.md](../glossary.md).
+The first ten decisions document the World geometry rewrite, which replaced
+Clipper2 as its boolean engine with a single planar arrangement and later
+removed the dependency entirely. Geometry terms are defined in
+[../glossary.md](../glossary.md).
 
 | # | Decision | Status |
 | --- | --- | --- |
@@ -16,8 +17,9 @@ defined in [../glossary.md](../glossary.md).
 | [0008](0008-validation-by-sampled-predicate.md) | Validate by sampled predicate, not by diffing polygons | Accepted |
 | [0009](0009-layer-selection-is-a-per-generation-set.md) | Layer selection is a per-generation set | Accepted |
 | [0010](0010-remove-clipper2-and-path-primitives.md) | Remove Clipper2 and path primitives | Accepted |
+| [0011](0011-remove-dormant-combat-framework.md) | Remove the dormant combat framework | Accepted |
 
-## Scope
+## World geometry rewrite scope
 
 **In:** the boolean engine behind `World`'s geometry generation — `Clipper`,
 `ClipperUtils`, `ZCallback`, the `Defines.h` z-bitfield, `WorldVertexData`,

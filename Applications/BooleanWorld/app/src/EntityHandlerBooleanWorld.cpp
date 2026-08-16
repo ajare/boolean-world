@@ -1,8 +1,5 @@
 #include <willpower/common/Vector2.h>
 
-#include <applib/Bullet.h>
-#include <applib/BeamData.h>
-
 #include <core/Utils.h>
 
 #include <common/GameDefines.h>

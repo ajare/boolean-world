@@ -9,8 +9,6 @@
 
 #include <willpower/collide/Simulation.h>
 
-#include <willpower/firepower/MeshCollisionManager.h>
-
 #include <willpower/viz/AccelerationGridRenderer.h>
 #include <willpower/viz/DynamicQuadRenderer.h>
 
@@ -18,8 +16,6 @@
 #include "State.h"
 #include "EntityManager.h"
 #include "EntityHandler.h"
-#include "BulletManager.h"
-#include "BeamManager.h"
 #include "ScreenFxManager.h"
 
 namespace applib {
@@ -30,8 +26,6 @@ protected:
     Background = -2,
     Map = -1,
     Entities = 0,
-    Bullets,
-    Beams,
     MapDebug
   };
 
@@ -59,13 +53,7 @@ protected:
 
   std::unique_ptr<wp::collide::Simulation> mMapCollisionSim;
 
-  std::unique_ptr<wp::firepower::MeshCollisionManager> mMeshCollisionMgr;
-
   std::map<std::string, std::tuple<wp::viz::Renderer*, int, bool>> mAdditionalRenderers;
-
-  BulletManager* mBulletMgr;
-
-  BeamManager* mBeamMgr;
 
 private:
   virtual void setupEntityFacades();
@@ -75,8 +63,6 @@ private:
   virtual void setupMapRenderer(StateTransitionData* transitionData);
 
   void setupMapCollisionSim(StateTransitionData* transitionData);
-
-  void setupMeshCollisionManager(StateTransitionData* transitionData);
 
   void setupAdditionalRenderers(mpp::ResourceManager* renderResourceMgr);
 
@@ -156,15 +142,6 @@ protected:
   void destroyEntityManagement();
 
   void updateEntityManagement(float frameTime);
-
-  void createFirepowerManagement(wp::application::resourcesystem::ResourceManager* resourceMgr,
-                                 mpp::RenderSystem* renderSystem,
-                                 mpp::ResourceManager* renderResourceMgr,
-                                 wp::application::resourcesystem::ResourcePtr gameResource);
-
-  void destroyFirepowerManagement();
-
-  void updateFirepowerManagement(float frameTime);
 
   void updateRenderers(float frameTime);
 

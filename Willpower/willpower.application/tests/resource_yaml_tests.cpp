@@ -39,8 +39,6 @@ int main(int argc, char** argv) {
 
     // A plain resource, and one carrying <Option> entries (which become
     // name/value pairs rather than plain scalars).
-    require(root->second.resourceRecords.contains("BooleanWorld"),
-            "Root Game resource 'BooleanWorld' was not reconstructed.");
     require(root->second.resourceRecords.contains("EntityImage"),
             "Image resource 'EntityImage' was not reconstructed.");
 

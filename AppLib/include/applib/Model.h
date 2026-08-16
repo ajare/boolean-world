@@ -5,7 +5,6 @@
 #include <willpower/application/resourcesystem/ResourceManager.h>
 
 #include <willpower/collide/Simulation.h>
-#include <willpower/firepower/MeshCollisionManager.h>
 
 #include "Platform.h"
 #include "EntityHandler.h"
@@ -22,11 +21,9 @@ struct Model {
 
   wp::collide::Simulation* collisionSim;
 
-  wp::firepower::MeshCollisionManager* collisionMgr;
-
 public:
   Model(EntityHandlerFactoryFunction handlerFactory, wp::application::resourcesystem::ResourceManager* resourceMgr)
-      : collisionSim(nullptr), collisionMgr(nullptr) {
+      : collisionSim(nullptr) {
     animationDatabase = std::make_shared<AnimationDatabase>(resourceMgr);
 
     auto entityHandlerPtr = handlerFactory(animationDatabase);

@@ -32,7 +32,6 @@ void StateMapTransition::acquireMapResource(application::resourcesystem::Resourc
 vector<ThreadableLoadState::ThreadableWorkFunction> StateMapTransition::getPreWork(StateTransitionData* transitionData) {
   auto prevMapRenderer = transitionData->mapData.prevMap.mapRenderer ? transitionData->mapData.prevMap.mapRenderer.release() : nullptr;
   auto prevMapCollisionSim = transitionData->mapData.prevMap.mapCollisionSim ? transitionData->mapData.prevMap.mapCollisionSim.release() : nullptr;
-  auto prevMeshCollisionMgr = transitionData->mapData.prevMap.meshCollisionMgr ? transitionData->mapData.prevMap.meshCollisionMgr.release() : nullptr;
   auto nextMap = transitionData->mapData.nextMap.map;
 
   auto destroyPrevMapRendererFn = [this, prevMapRenderer](bool useThreading) {
@@ -45,11 +44,6 @@ vector<ThreadableLoadState::ThreadableWorkFunction> StateMapTransition::getPreWo
     destroyMapCollisionSim(prevMapCollisionSim, useThreading);
   };
 
-  auto destroyPrevMapMeshCollisionMgrFn = [this, prevMeshCollisionMgr](bool useThreading) {
-    addText("Destroying dynamic collision manager");
-    destroyMeshCollisionManager(prevMeshCollisionMgr, useThreading);
-  };
-
   // Acquire new map
   auto acquireNextMapFn = bind(&StateMapTransition::acquireMapResource,
                                this,
@@ -57,7 +51,7 @@ vector<ThreadableLoadState::ThreadableWorkFunction> StateMapTransition::getPreWo
                                nextMap,
                                placeholders::_1);
 
-  return {destroyPrevMapRendererFn, destroyPrevMapCollisionSimFn, destroyPrevMapMeshCollisionMgrFn, acquireNextMapFn};
+  return {destroyPrevMapRendererFn, destroyPrevMapCollisionSimFn, acquireNextMapFn};
 }
 
 void StateMapTransition::processResources(application::resourcesystem::ResourceManager* resourceMgr, MapTransitionData* transitionData) {
@@ -122,14 +116,7 @@ void StateMapTransition::processResources(application::resourcesystem::ResourceM
     this->mTransitionData.mapData.nextMap.mapCollisionSim = collisionSim ? unique_ptr<collide::Simulation>(collisionSim) : nullptr;
   };
 
-  // Create mesh collision manager for next map
-  auto createNextMapMeshCollisionMgrFn = [this, nextMap](bool useThreading) {
-    this->addText("Creating dynamic collision manager");
-    auto meshCollisionMgr = createMeshCollisionManager(nextMap, this->mwRenderSystem, this->mwRenderResourceMgr, useThreading);
-    this->mTransitionData.mapData.nextMap.meshCollisionMgr = meshCollisionMgr ? unique_ptr<firepower::MeshCollisionManager>(meshCollisionMgr) : nullptr;
-  };
-
-  processPostWork({createNextMapRendererFn, createNextMapCollisionSimFn, createNextMapMeshCollisionMgrFn});
+  processPostWork({createNextMapRendererFn, createNextMapCollisionSimFn});
 }
 
 }  // namespace applib

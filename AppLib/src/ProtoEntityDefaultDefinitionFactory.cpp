@@ -18,11 +18,19 @@ ProtoEntityDefaultDefinitionFactory::ProtoEntityDefaultDefinitionFactory()
     : ProtoEntityResourceDefinitionFactory("") {
 }
 
+vector<string> ProtoEntityDefaultDefinitionFactory::getExtraPropertyNames() const {
+  return {};
+}
+
 void ProtoEntityDefaultDefinitionFactory::createProtoEntity(ProtoEntity* entity, wp::application::resourcesystem::ResourceManager* resourceMgr, wp::DataNode* node) {
   auto handler = getEntityHandler(entity);
   auto protoId = entity->getComponentSystemId();
   auto const& protoName = entity->getName();
   auto propNode = node->getChild("Properties");
+  auto propertyNames = getExtraPropertyNames();
+  propertyNames.push_back("Physical");
+  propertyNames.push_back("Visual");
+  propNode->requireOnlyChildren(propertyNames);
 
   // Physical
   auto physicalNode = propNode->getOptionalChild("Physical");
@@ -104,12 +112,6 @@ void ProtoEntityDefaultDefinitionFactory::createProtoEntity(ProtoEntity* entity,
       visual.animation = initialAnimId;
       handler->registerProtoComponent<VisualSprite>(protoId, visual);
     }
-  }
-
-  // BeamEmitter
-  auto beamEmitterNode = propNode->getOptionalChild("BeamEmitter");
-  if (beamEmitterNode) {
-    handler->registerProtoComponent<BeamEmitter>(protoId, {});
   }
 }
 

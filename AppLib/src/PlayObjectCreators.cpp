@@ -1,9 +1,6 @@
-#include <willpower/application/resourcesystem/AnimationSetResource.h>
-
 #include <willpower/common/ExtentsCalculator.h>
 
 #include "PlayObjectCreators.h"
-#include "ProtoEntity.h"
 #include "Map.h"
 
 namespace applib {
@@ -63,37 +60,6 @@ void destroyMapCollisionSim(collide::Simulation* sim, bool useThreading) {
   WP_UNUSED(useThreading);
 
   delete sim;
-}
-
-void buildMeshCollisionManager(firepower::MeshCollisionManager* meshCollisionMgr, shared_ptr<wp::geometry::Mesh> mesh) {
-  meshCollisionMgr->addMesh(mesh.get());
-}
-
-firepower::MeshCollisionManager* createMeshCollisionManager(application::resourcesystem::ResourcePtr resource, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, bool useThreading) {
-  WP_UNUSED(useThreading);
-
-  auto mapMesh = static_cast<Map*>(resource.get())->getMesh();
-
-  if (mapMesh) {
-    Vector2 minExtent, maxExtent;
-    mapMesh->getExtents(minExtent, maxExtent);
-
-    ExtentsCalculator extents(minExtent, maxExtent, 1.0f);
-
-    auto size = maxExtent - minExtent;
-    auto meshCollisionMgr = new firepower::MeshCollisionManager(extents, 8, 8);
-    buildMeshCollisionManager(meshCollisionMgr, mapMesh);
-
-    return meshCollisionMgr;
-  } else {
-    return nullptr;
-  }
-}
-
-void destroyMeshCollisionManager(firepower::MeshCollisionManager* meshCollisionMgr, bool useThreading) {
-  WP_UNUSED(useThreading);
-
-  delete meshCollisionMgr;
 }
 
 }  // namespace applib

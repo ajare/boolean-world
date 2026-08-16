@@ -8,24 +8,14 @@
 #include "Platform.h"
 #include "Entity.h"
 #include "AnimationDatabase.h"
-#include "BulletManager.h"
-#include "BeamManager.h"
 #include "ObjectArray.h"
-#include "Weapon.h"
 #include "PhysicalStats.h"
 #include "VisualSprite.h"
-#include "BeamEmitter.h"
 
 namespace applib {
 
 class APPLIB_API EntityHandler {
 protected:
-  BulletManager* mwBulletMgr;
-
-  BeamManager* mwBeamMgr;
-
-  BulletWeapon mBulletWeapon;
-
   wp::collide::Simulation* mwSimulation;
 
   wp::collide::Collider* mwPlayerCollider;
@@ -87,10 +77,6 @@ public:
 
   entt::entity registerPrototype(std::string const& protoName);
 
-  void setBulletManager(BulletManager* bulletMgr);
-
-  void setBeamManager(BeamManager* beamMgr);
-
   void setActiveInputStates(std::vector<std::string> const& states, float mouseScreenX, float mouseScreenY, float mouseDeltaX, float mouseDeltaY, wp::Vector2 const& mouseWorld);
 
   std::vector<std::string> const& getActiveInputStates() const;
@@ -100,8 +86,6 @@ public:
   void setup(Entity* entity, int type, wp::Vector2 const& position, float angle);
 
   void destroy(Entity* entity);
-
-  void fireBullet(Entity* entity, int type, BulletParams const& params, BulletFireParams const& fireParams);
 
   virtual bool update(Entity* entity, bool controlActive, float frameTime);
 };

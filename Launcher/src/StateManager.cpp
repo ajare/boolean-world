@@ -120,9 +120,8 @@ void StateManager::executeStateChangeableAction(function<void()> func) {
   }
 }
 
-void StateManager::enterInitialState(string const& gameResourceName) {
-  string resourceName = gameResourceName;
-  moveToState(mInitialState, &resourceName);
+void StateManager::enterInitialState() {
+  moveToState(mInitialState, nullptr);
 }
 
 void StateManager::injectKeyInput(application::KeyEvent evt, application::Key key, application::KeyModifiers modifiers) {

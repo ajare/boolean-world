@@ -408,7 +408,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
     mpp::RenderInfo renderInfo;
 
-    gStateMgr->enterInitialState(options.gameResource);
+    gStateMgr->enterInitialState();
     gTimer->reset();
 
 #if WINDOWING_SYSTEM == WINDOW_SDL

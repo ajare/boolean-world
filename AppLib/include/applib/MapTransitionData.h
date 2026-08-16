@@ -6,8 +6,6 @@
 
 #include <willpower/collide/Simulation.h>
 
-#include <willpower/firepower/MeshCollisionManager.h>
-
 #include <willpower/viz/GeometryMeshRenderer.h>
 
 namespace applib {
@@ -17,7 +15,6 @@ struct MapTransitionData {
     std::shared_ptr<wp::application::resourcesystem::Resource> map;
     std::unique_ptr<wp::viz::GeometryMeshRenderer> mapRenderer;
     std::unique_ptr<wp::collide::Simulation> mapCollisionSim;
-    std::unique_ptr<wp::firepower::MeshCollisionManager> meshCollisionMgr;
   };
 
   MapData prevMap, nextMap;

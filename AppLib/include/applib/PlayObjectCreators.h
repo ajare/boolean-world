@@ -4,8 +4,6 @@
 
 #include <willpower/collide/Simulation.h>
 
-#include <willpower/firepower/MeshCollisionManager.h>
-
 #include <willpower/viz/GeometryMeshRenderer.h>
 
 #include "Platform.h"
@@ -21,9 +19,5 @@ void destroyMapRenderer(wp::viz::GeometryMeshRenderer* mapRenderer, bool useThre
 wp::collide::Simulation* createMapCollisionSim(wp::application::resourcesystem::ResourcePtr resource, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, bool useThreading);
 
 void destroyMapCollisionSim(wp::collide::Simulation* sim, bool useThreading);
-
-wp::firepower::MeshCollisionManager* createMeshCollisionManager(wp::application::resourcesystem::ResourcePtr resource, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, bool useThreading);
-
-void destroyMeshCollisionManager(wp::firepower::MeshCollisionManager* meshCollisionMgr, bool useThreading);
 
 }  // namespace applib
