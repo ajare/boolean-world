@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cmath>
 #include <filesystem>
 #include <random>
 #include <type_traits>
@@ -13,6 +14,8 @@
 #include <core/Clipper2Polygon.h>
 #include <core/Arrangement.h>
 #include <core/RectanglePolygon.h>
+
+#include "GeometryComparison.h"
 
 using namespace std;
 
@@ -87,6 +90,106 @@ void ensureClipperAllocatorsInitialized() {
   if (!gClipperAllocatorsInitialized) {
     Clipper2Lib::WmInitialiseAllocators(4, 16 * 1024 * 1024);
     gClipperAllocatorsInitialized = true;
+  }
+}
+
+TEST(GeometryComparison, SamplesAllStrategiesAndReportsEquivalentWorld) {
+  ensureClipperAllocatorsInitialized();
+  auto world = createWorld(8192, 512);
+
+  auto room = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  room->setPosition({0, 0});
+  room->setSize(20, 20);
+  world->addPrimitive(room);
+
+  bw::experiments::GeometryComparisonOptions options;
+  options.gridResolution = 4;
+  options.randomSampleCount = 8;
+  options.edgeSamplesPerEdge = 1;
+  auto report = bw::experiments::CompareWorldGeometry(*world, options);
+
+  EXPECT_EQ(
+      report.sampleCounts[size_t(bw::experiments::SampleKind::UniformGrid)],
+      16u);
+  EXPECT_EQ(
+      report.sampleCounts[size_t(bw::experiments::SampleKind::Random)],
+      8u);
+  EXPECT_EQ(
+      report.sampleCounts[size_t(bw::experiments::SampleKind::NearEdge)],
+      16u);
+  EXPECT_DOUBLE_EQ(report.oldSolidArea, 400.0);
+  EXPECT_DOUBLE_EQ(report.newSolidArea, 400.0);
+  EXPECT_TRUE(report.matches());
+}
+
+TEST(GeometryComparison, RepositoryWorldsMatchExceptKnownBadRepros) {
+  ensureClipperAllocatorsInitialized();
+
+  struct WorldCase {
+    char const* name;
+    char const* path;
+    bool knownBad;
+  };
+  std::array worlds{
+      WorldCase{"stress-test-1", "../../../../app/resources/stress-test-1.yaml", false},
+      WorldCase{"gen-3", "../../../../app/resources/gen-3.yaml", false},
+      WorldCase{"basic-test", "../../../../app/resources/basic-test.yaml", false},
+      WorldCase{"bug-1", "../../../../app/resources/bug-1.yaml", true},
+      WorldCase{"collision-issue-repro", "../../../../app/resources/collision-issue-repro.yaml", true},
+      WorldCase{"duplicate-test", "../../../../app/resources/duplicate-test.yaml", false},
+      WorldCase{"int-xor-test", "../../../../editor/resources/int-xor-test.yaml", false},
+      WorldCase{"z-optimisation", "../../../../app/resources/z-optimisation.yaml", false}};
+
+  bw::experiments::GeometryComparisonOptions options;
+  options.gridResolution = 64;
+  options.randomSampleCount = 512;
+  options.edgeSamplesPerEdge = 2;
+
+  for (auto const& worldCase : worlds) {
+    SCOPED_TRACE(worldCase.name);
+    auto world = openWorld(worldCase.path);
+    ASSERT_NE(world, nullptr);
+
+    auto report = bw::experiments::CompareWorldGeometry(*world, options);
+    cout << worldCase.name << ": " << report.disagreements.size()
+         << " disagreements across " << report.totalSampleCount()
+         << " samples; area old=" << report.oldSolidArea
+         << ", new=" << report.newSolidArea << "\n";
+    for (size_t i = 0; i < min<size_t>(report.disagreements.size(), 10); ++i) {
+      auto const& disagreement = report.disagreements[i];
+      cout << "  (" << disagreement.position.x << ", "
+           << disagreement.position.y << ") kind="
+           << int(disagreement.kind) << " old={"
+           << disagreement.oldEngine.solid << ", "
+           << disagreement.oldEngine.primitiveIndex << "} new={"
+           << disagreement.newEngine.solid << ", "
+           << disagreement.newEngine.primitiveIndex << "}";
+      for (auto primitiveIndex : {
+               disagreement.oldEngine.primitiveIndex,
+               disagreement.newEngine.primitiveIndex}) {
+        if (primitiveIndex < world->getNumPrimitives()) {
+          auto primitive = world->getPrimitive(primitiveIndex);
+          cout << " p" << primitiveIndex << "={op="
+               << int(primitive->getOperation()) << ", priority="
+               << int(primitive->getPriority()) << ", size=("
+               << primitive->getSize().x << ", "
+               << primitive->getSize().y << ")}";
+        }
+      }
+      cout << "\n";
+    }
+
+    if (!worldCase.knownBad) {
+      auto areaTolerance = max(0.01, abs(report.oldSolidArea) * 1e-6);
+      EXPECT_NEAR(
+          report.oldSolidArea,
+          report.newSolidArea,
+          areaTolerance);
+      EXPECT_TRUE(report.matches());
+    }
   }
 }
 
@@ -504,6 +607,37 @@ TEST(ArrangementOutput, FacePropertiesAreCopiedIntoImmutablePalette) {
   EXPECT_EQ(arrangement->palette[firstFace->paletteIndex].ceilingZ, 40);
   EXPECT_EQ(arrangement->palette[secondFace->paletteIndex].floorZ, 24);
   EXPECT_EQ(arrangement->palette[secondFace->paletteIndex].ceilingZ, 64);
+}
+
+TEST(ArrangementOutput, XorRetainsItsFoldRunOwner) {
+  bw::core::PrimitivePropertySet unionProperties{};
+  unionProperties.floorZ = 12;
+  bw::core::PrimitivePropertySet xorProperties{};
+  xorProperties.floorZ = 24;
+
+  auto arrangement = BuildArrangement(
+      {{{{{0, 0}, {20, 0}, {20, 20}, {0, 20}}},
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero,
+        0,
+        42,
+        unionProperties},
+       {{{{10, 0}, {30, 0}, {30, 20}, {10, 20}}},
+        bw::core::Primitive::Operation::XOR,
+        bw::core::Primitive::FillRule::NonZero,
+        1,
+        77,
+        xorProperties}});
+
+  auto xorOnlyFace = FindFaceAt(arrangement, {25, 10});
+  ASSERT_NE(xorOnlyFace, nullptr);
+  EXPECT_TRUE(xorOnlyFace->solid);
+  EXPECT_FALSE(xorOnlyFace->membership.contains(0));
+  EXPECT_TRUE(xorOnlyFace->membership.contains(1));
+  EXPECT_EQ(xorOnlyFace->primitiveIndex, 42u);
+  EXPECT_EQ(
+      arrangement->palette[xorOnlyFace->paletteIndex].floorZ,
+      12);
 }
 
 TEST(PSLG, SingleRectangle) {

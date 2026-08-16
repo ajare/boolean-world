@@ -119,6 +119,8 @@ public:
 
   std::vector<Primitive*> getSourceClippingPrimitives() const;
 
+  std::vector<Primitive*> getActiveClippingPrimitives() const;
+
   void setScheduledGenerationInterval(float interval);
 
   float getScheduledGenerationInterval() const;

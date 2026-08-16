@@ -1,6 +1,8 @@
 # GoogleTest suite for core.
 
-add_executable(experiments src/Main.cpp)
+add_executable(experiments
+    src/GeometryComparison.cpp
+    src/Main.cpp)
 
 target_include_directories(experiments PRIVATE include)
 target_compile_definitions(experiments PRIVATE _CONSOLE)

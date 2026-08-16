@@ -267,6 +267,21 @@ world:
         primitivePropertySet:
           floorZ: 0
           ceilingZ: 48
+          floorMaterial:
+            materialIndex: 0
+            materialDef:
+              params: [1, 1, 1, 1, 1, 1, 1, 1]
+              baseColour: [1, 1, 1]
+          ceilingMaterial:
+            materialIndex: 0
+            materialDef:
+              params: [1, 1, 1, 1, 1, 1, 1, 1]
+              baseColour: [1, 1, 1]
+          wallMaterial:
+            materialIndex: 0
+            materialDef:
+              params: [1, 1, 1, 1, 1, 1, 1, 1]
+              baseColour: [1, 1, 1]
         complexPolygons:
           - polygons:
               - vertices:
@@ -531,7 +546,7 @@ world:
         timeUpdateDistance: 3.40282347e+38
         layer: 0
         metadata: 0
-        operation: 4
+        operation: 3
         fillRule: 0
         priority: 2
         size: [100, 100]
@@ -539,6 +554,21 @@ world:
         primitivePropertySet:
           floorZ: 0
           ceilingZ: 48
+          floorMaterial:
+            materialIndex: 0
+            materialDef:
+              params: [1, 1, 1, 1, 1, 1, 1, 1]
+              baseColour: [1, 1, 1]
+          ceilingMaterial:
+            materialIndex: 0
+            materialDef:
+              params: [1, 1, 1, 1, 1, 1, 1, 1]
+              baseColour: [1, 1, 1]
+          wallMaterial:
+            materialIndex: 0
+            materialDef:
+              params: [1, 1, 1, 1, 1, 1, 1, 1]
+              baseColour: [1, 1, 1]
         complexPolygons:
           - polygons:
               - vertices:
@@ -811,6 +841,21 @@ world:
         primitivePropertySet:
           floorZ: 0
           ceilingZ: 48
+          floorMaterial:
+            materialIndex: 0
+            materialDef:
+              params: [1, 1, 1, 1, 1, 1, 1, 1]
+              baseColour: [1, 1, 1]
+          ceilingMaterial:
+            materialIndex: 0
+            materialDef:
+              params: [1, 1, 1, 1, 1, 1, 1, 1]
+              baseColour: [1, 1, 1]
+          wallMaterial:
+            materialIndex: 0
+            materialDef:
+              params: [1, 1, 1, 1, 1, 1, 1, 1]
+              baseColour: [1, 1, 1]
         complexPolygons:
           - polygons:
               - vertices:

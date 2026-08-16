@@ -100,6 +100,12 @@ vector<Primitive*> DynamicWorldDataGenerator::getSourceClippingPrimitives() cons
   return mNextClipping.primitives;
 }
 
+vector<Primitive*> DynamicWorldDataGenerator::getActiveClippingPrimitives() const {
+  lock_guard<mutex> lock(mGenMutex);
+
+  return mActiveClipping.primitives;
+}
+
 void DynamicWorldDataGenerator::setScheduledGenerationInterval(float interval) {
   mScheduledGenerationInterval = interval;
 }

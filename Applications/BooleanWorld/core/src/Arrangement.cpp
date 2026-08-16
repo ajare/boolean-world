@@ -41,6 +41,23 @@ bool Membership::contains(size_t primitiveIndex) const {
          (mWords[wordIndex] & (uint64_t(1) << (primitiveIndex % 64))) != 0;
 }
 
+static bool ApplyOperation(
+    bw::core::Primitive::Operation operation,
+    bool accumulated,
+    bool member) {
+  switch (operation) {
+    case bw::core::Primitive::Operation::Union:
+      return accumulated || member;
+    case bw::core::Primitive::Operation::Intersection:
+      return accumulated && member;
+    case bw::core::Primitive::Operation::Difference:
+      return accumulated && !member;
+    case bw::core::Primitive::Operation::XOR:
+      return accumulated != member;
+  }
+  return accumulated;
+}
+
 bool EvaluateFold(vector<ArrangementPrimitive> const& primitives, Membership const& membership) {
   vector<size_t> priorityOrder(primitives.size());
   for (size_t i = 0; i < priorityOrder.size(); ++i) {
@@ -52,21 +69,10 @@ bool EvaluateFold(vector<ArrangementPrimitive> const& primitives, Membership con
 
   bool inside = false;
   for (auto primitiveIndex : priorityOrder) {
-    auto member = membership.contains(primitiveIndex);
-    switch (primitives[primitiveIndex].operation) {
-      case bw::core::Primitive::Operation::Union:
-        inside = inside || member;
-        break;
-      case bw::core::Primitive::Operation::Intersection:
-        inside = inside && member;
-        break;
-      case bw::core::Primitive::Operation::Difference:
-        inside = inside && !member;
-        break;
-      case bw::core::Primitive::Operation::XOR:
-        inside = inside != member;
-        break;
-    }
+    inside = ApplyOperation(
+        primitives[primitiveIndex].operation,
+        inside,
+        membership.contains(primitiveIndex));
   }
   return inside;
 }
@@ -859,16 +865,45 @@ ArrangementResultPtr BuildArrangement(vector<ArrangementPrimitive> const& primit
     outputFace.membership = face.membership;
     outputFace.solid = face.solid;
 
+    // The old engine associates properties with the Union that starts an
+    // intermediate fold run. Later operations modify that run without taking
+    // ownership. The highest-priority solid run wins where runs overlap, with
+    // the first run winning an equal-priority tie.
     int winningPrimitive = -1;
+    int runPrimitive = -1;
+    bool runSolid = false;
+    auto finishRun = [&] {
+      if (runSolid &&
+          (winningPrimitive < 0 ||
+           primitives[runPrimitive].priority >
+               primitives[winningPrimitive].priority)) {
+        winningPrimitive = runPrimitive;
+      }
+    };
     for (int primitiveIndex = 0;
          primitiveIndex < int(primitives.size()); ++primitiveIndex) {
-      if (!face.membership.contains(primitiveIndex)) {
+      auto member = face.membership.contains(primitiveIndex);
+      auto operation = primitives[primitiveIndex].operation;
+      if (runPrimitive < 0 ||
+          operation == bw::core::Primitive::Operation::Union) {
+        finishRun();
+        runPrimitive = primitiveIndex;
+        runSolid = member;
         continue;
       }
-      if (winningPrimitive < 0 ||
-          primitives[primitiveIndex].priority >=
-              primitives[winningPrimitive].priority) {
-        winningPrimitive = primitiveIndex;
+      runSolid = ApplyOperation(operation, runSolid, member);
+    }
+    finishRun();
+    if (!face.solid) {
+      winningPrimitive = -1;
+      for (int primitiveIndex = 0;
+           primitiveIndex < int(primitives.size()); ++primitiveIndex) {
+        if (face.membership.contains(primitiveIndex) &&
+            (winningPrimitive < 0 ||
+             primitives[primitiveIndex].priority >
+                 primitives[winningPrimitive].priority)) {
+          winningPrimitive = primitiveIndex;
+        }
       }
     }
     if (winningPrimitive >= 0) {
