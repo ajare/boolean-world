@@ -5,6 +5,7 @@
 #include <exception>
 #include <set>
 
+#include <core/ClipperDefines.h>
 #include <core/WorldData.h>
 
 #include <common/GameDefines.h>
@@ -150,16 +151,16 @@ void renderWorld(floored::Document* doc, floored::Settings const& settings) {
       auto const& v2 = pslg.vs[tri.vi[2]];
 
       ImVec2 iv0 = {
-          (float)(v0.x) - offset.x,
-          FE_WINDOW_HEIGHT - ((float)(v0.y) - offset.y)};
+          (float)(v0.x / BW_CLIPPER_SCALE) - offset.x,
+          FE_WINDOW_HEIGHT - ((float)(v0.y / BW_CLIPPER_SCALE) - offset.y)};
 
       ImVec2 iv1 = {
-          (float)(v1.x) - offset.x,
-          FE_WINDOW_HEIGHT - ((float)(v1.y) - offset.y)};
+          (float)(v1.x / BW_CLIPPER_SCALE) - offset.x,
+          FE_WINDOW_HEIGHT - ((float)(v1.y / BW_CLIPPER_SCALE) - offset.y)};
 
       ImVec2 iv2 = {
-          (float)(v2.x) - offset.x,
-          FE_WINDOW_HEIGHT - ((float)(v2.y) - offset.y)};
+          (float)(v2.x / BW_CLIPPER_SCALE) - offset.x,
+          FE_WINDOW_HEIGHT - ((float)(v2.y / BW_CLIPPER_SCALE) - offset.y)};
 
       auto const& face = faces[tri.fi];
 
@@ -223,12 +224,12 @@ void renderWorld(floored::Document* doc, floored::Settings const& settings) {
         auto const& v1 = pslg.vs[edge.vi[1]];
 
         ImVec2 iv0 = {
-            (float)(v0.x) - offset.x,
-            FE_WINDOW_HEIGHT - ((float)(v0.y) - offset.y)};
+            (float)(v0.x / BW_CLIPPER_SCALE) - offset.x,
+            FE_WINDOW_HEIGHT - ((float)(v0.y / BW_CLIPPER_SCALE) - offset.y)};
 
         ImVec2 iv1 = {
-            (float)(v1.x) - offset.x,
-            FE_WINDOW_HEIGHT - ((float)(v1.y) - offset.y)};
+            (float)(v1.x / BW_CLIPPER_SCALE) - offset.x,
+            FE_WINDOW_HEIGHT - ((float)(v1.y / BW_CLIPPER_SCALE) - offset.y)};
 
         ImColor c;
         float width;

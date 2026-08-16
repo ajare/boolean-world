@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 #include <clipper2/clipper.h>
@@ -9,7 +10,7 @@
 
 namespace expr {
 struct Vertex {
-  double x, y;
+  int64_t x, y;
 
   bool operator==(Vertex const& other) const {
     return x == other.x && y == other.y;
@@ -29,10 +30,8 @@ struct Cycle {
   std::vector<int> vis;
   std::vector<int> eis;
 
-  double area;
+  int64_t area;
   std::vector<uint32_t> primitiveIndices;
-  Vertex interiorPoint{};
-  bool bounded{true};
 };
 
 struct Face {
@@ -48,6 +47,8 @@ struct Face {
 struct PSLG {
   std::vector<Vertex> vs;
   std::vector<Edge> es;
+  std::vector<Clipper2Lib::Path64> sourceContours;
+  std::vector<bool> sourceContourIsHole;
 };
 
 struct PolygonNode {

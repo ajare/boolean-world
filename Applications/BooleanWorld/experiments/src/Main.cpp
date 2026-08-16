@@ -1,6 +1,7 @@
 #include <iostream>
 #include <filesystem>
 #include <random>
+#include <type_traits>
 
 #include <gtest/gtest.h>
 
@@ -167,6 +168,8 @@ TEST(Generation, GeometryIsIndependentOfViewerPosition) {
 using namespace Clipper2Lib;
 using namespace expr;
 
+static_assert(std::is_same_v<decltype(expr::Vertex::x), int64_t>);
+
 static PSLG BuildTestPSLG(
     std::vector<bw::core::Clipper2Polygon> polygons) {
   for (auto& polygon : polygons) {
@@ -250,6 +253,19 @@ TEST(PSLG, SingleRectangle) {
        4,
        1,
        1});
+}
+
+TEST(PSLG, IntersectionsAreSnapRoundedToFixedPointGrid) {
+  std::vector<bw::core::Clipper2Polygon> polygons =
+      {
+          {false, ~0u, {{0, 0}, {10, 0}, {10, -5}, {0, -5}}},
+          {false, ~0u, {{1, -1}, {2, 2}, {3, -1}}}};
+
+  auto graph = BuildTestPSLG(polygons);
+
+  EXPECT_NE(
+      std::find(graph.vs.begin(), graph.vs.end(), expr::Vertex{1333, 0}),
+      graph.vs.end());
 }
 
 TEST(PSLG, TwoDisconnectedRectangles) {
@@ -885,34 +901,36 @@ TEST(PSLG_Pathological, Grid20x20) {
 }
 
 TEST(PSLG_Fuzz, RandomRectangles) {
-  std::mt19937 rng(12345);
+  for (auto seed : {12345u, 8675309u, 0xC0FFEEu, 0xDEADBEEFu}) {
+    std::mt19937 rng(seed);
 
-  for (int iter = 0; iter < 1000; ++iter) {
-    std::vector<bw::core::Clipper2Polygon> polygons;
+    for (int iter = 0; iter < 250; ++iter) {
+      std::vector<bw::core::Clipper2Polygon> polygons;
 
-    for (int i = 0; i < 50; ++i) {
-      int x = rng() % 1000;
-      int y = rng() % 1000;
+      for (int i = 0; i < 50; ++i) {
+        int x = rng() % 1000;
+        int y = rng() % 1000;
 
-      int w = 10 + rng() % 100;
-      int h = 10 + rng() % 100;
+        int w = 10 + rng() % 100;
+        int h = 10 + rng() % 100;
 
-      polygons.push_back(
-          {false,
-           ~0u,
-           {{x, y},
-            {x + w, y},
-            {x + w, y + h},
-            {x, y + h}}});
+        polygons.push_back(
+            {false,
+             ~0u,
+             {{x, y},
+              {x + w, y},
+              {x + w, y + h},
+              {x, y + h}}});
+      }
+
+      EXPECT_NO_THROW(
+          {
+            auto pslg = BuildTestPSLG(polygons);
+            auto cycles = ExtractMinimalCycles(pslg);
+            auto tree = BuildPolygonHierarchy(pslg, cycles);
+            auto faces = BuildFaces(tree, cycles);
+          });
     }
-
-    EXPECT_NO_THROW(
-        {
-          auto pslg = BuildTestPSLG(polygons);
-          auto cycles = ExtractMinimalCycles(pslg);
-                  auto tree = BuildPolygonHierarchy(pslg, cycles);
-          auto faces = BuildFaces(tree, cycles);
-        });
   }
 }
 

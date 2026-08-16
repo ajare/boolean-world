@@ -47,10 +47,11 @@ geometry (see ADR-0007).
    `duplicate-test`, `int-xor-test`, `z-optimisation`. Runs with
    `setAlwaysUpdateVertices(true)` and a pinned layer mask (ADR-0009).
 
-   The 20-of-24 pre-existing failures in `experiments` — PSLG hierarchy
-   assertions inherited from Willpower, recorded in the README — are
-   **quarantined** before the harness lands. A harness living in a mostly-red
-   target is a harness nobody reads.
+   The 24 degeneracy tests in `experiments` belong to the local arrangement
+   prototype and specify its required behaviour. They are made green by the
+   exact-integer topology work before the harness lands; they are not
+   quarantined. A harness living in a mostly-red target is a harness nobody
+   reads.
 3. **Integrate** as the generator; port consumers to the new contract.
 4. **Delete** the old engine, `ZCallback`, and the z-bitfield.
 

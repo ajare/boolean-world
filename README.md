@@ -93,11 +93,6 @@ Tiled `.tmx`/`.tsx` map data is still XML — only resource *definitions* moved.
 own sources. Vendored third-party code (ImGui, ImPlot, imnodes, StackWalker,
 Clipper 1) is excluded by explicit path.
 
-## Known issues
-
-- 20 of 24 `experiments` tests fail on PSLG hierarchy assertions against the
-  local arrangement prototype.
-
 ## The GL context is not a core profile
 
 MassivePolyPusher draws 2D text as point sprites whenever the driver reports a

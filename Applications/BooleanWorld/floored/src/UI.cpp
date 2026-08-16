@@ -1,5 +1,7 @@
+#include <cmath>
 #include <exception>
 
+#include <core/ClipperDefines.h>
 #include <core/DynamicWorldDataGenerator.h>
 
 #include "imgui.h"
@@ -294,8 +296,12 @@ pair<int, int> getHoveredGraphEdge(floored::Document* doc, wp::Vector2 const& po
   for (int i = 0; i < (int)graph.es.size(); ++i) {
     auto const& edge = graph.es[i];
 
-    wp::Vector2 v0{(float)graph.vs[edge.vi[0]].x, (float)graph.vs[edge.vi[0]].y};
-    wp::Vector2 v1{(float)graph.vs[edge.vi[1]].x, (float)graph.vs[edge.vi[1]].y};
+    wp::Vector2 v0{
+        (float)(graph.vs[edge.vi[0]].x / BW_CLIPPER_SCALE),
+        (float)(graph.vs[edge.vi[0]].y / BW_CLIPPER_SCALE)};
+    wp::Vector2 v1{
+        (float)(graph.vs[edge.vi[1]].x / BW_CLIPPER_SCALE),
+        (float)(graph.vs[edge.vi[1]].y / BW_CLIPPER_SCALE)};
 
     if (pos.distanceToLine(v0, v1) < 2) {
       return {i, -1};
@@ -306,7 +312,9 @@ pair<int, int> getHoveredGraphEdge(floored::Document* doc, wp::Vector2 const& po
 }
 
 int getHoveredFace(floored::Document* doc, wp::Vector2 const& pos) {
-  auto v = expr::Vertex{(double)pos.x, (double)pos.y};
+  auto v = expr::Vertex{
+      (int64_t)llround(pos.x * BW_CLIPPER_SCALE),
+      (int64_t)llround(pos.y * BW_CLIPPER_SCALE)};
   auto const& faces = doc->getFaces();
 
   for (int i = 0; i < (int)faces.size(); ++i) {
