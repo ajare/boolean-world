@@ -169,7 +169,7 @@ void StatePlayBooleanWorld::createWorldCollisions() {
     wp::Vector2 v1{
         bw::core::arr::ToWorldCoordinate(fixed1.x),
         bw::core::arr::ToWorldCoordinate(fixed1.y)};
-    mWorldCollisionSim->addLine(v0, v1, false, wallIndex);
+    mWorldCollisionSim->addLine(v0, v1, wallIndex);
   }
 }
 

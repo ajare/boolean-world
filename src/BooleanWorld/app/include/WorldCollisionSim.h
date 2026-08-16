@@ -20,5 +20,5 @@ public:
 
   void clearLines();
 
-  void addLine(wp::Vector2 const& v0, wp::Vector2 const& v1, bool doubleSided, uint32_t index);
+  void addLine(wp::Vector2 const& v0, wp::Vector2 const& v1, uint32_t index);
 };

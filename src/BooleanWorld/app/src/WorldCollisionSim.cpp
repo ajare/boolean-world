@@ -67,6 +67,6 @@ void WorldCollisionSim::clearLines() {
   mStaticLines.clear();
 }
 
-void WorldCollisionSim::addLine(wp::Vector2 const& v0, wp::Vector2 const& v1, bool doubleSided, uint32_t index) {
-  mStaticLines.push_back({v0, v1, doubleSided, 1.0f, (int32_t)index});
+void WorldCollisionSim::addLine(wp::Vector2 const& v0, wp::Vector2 const& v1, uint32_t index) {
+  mStaticLines.push_back({v0, v1, true, 1.0f, (int32_t)index});
 }

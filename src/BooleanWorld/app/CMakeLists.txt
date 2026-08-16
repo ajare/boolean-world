@@ -60,7 +60,9 @@ if(BUILD_TESTING)
         src/WorldCollisionSim.cpp)
     target_include_directories(boolean_world_collision_tests PRIVATE include)
     target_link_libraries(boolean_world_collision_tests PRIVATE
-        Willpower.Collide Willpower.Common)
+        core Willpower.Collide Willpower.Common)
+    target_compile_definitions(boolean_world_collision_tests PRIVATE
+        BW_COLLISION_TEST_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources")
     target_compile_features(boolean_world_collision_tests PRIVATE cxx_std_23)
     bw_target_defaults(boolean_world_collision_tests)
     bw_output_dirs(boolean_world_collision_tests)

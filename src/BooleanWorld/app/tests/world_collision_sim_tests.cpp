@@ -1,13 +1,66 @@
 #include <cmath>
+#include <filesystem>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <willpower/collide/ColliderCircle.h>
+
+#include <core/ArrangementWorldData.h>
+#include <core/ArrangementWorldDataGenerator.h>
+#include <core/World.h>
+#include <core/YamlSerializer.h>
 
 #include "WorldCollisionSim.h"
 
 namespace {
+struct CollisionWall {
+  wp::Vector2 v0;
+  wp::Vector2 v1;
+  wp::Vector2 playableNormal;
+};
+
+std::vector<CollisionWall> loadCollisionWalls(std::string const& filename) {
+  auto path = std::filesystem::path(BW_COLLISION_TEST_RESOURCE_DIR) / filename;
+  auto serializer = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::fromFile(path.string()));
+  serializer->deserialize();
+
+  bw::core::World world(8192.0f, 8192.0f);
+  bw::core::SerializationWorkData workData;
+  if (!world.deserialize(serializer, workData)) {
+    throw std::runtime_error("Could not deserialize collision fixture " + filename);
+  }
+
+  bw::core::ArrangementWorldDataGenerator generator;
+  generator.generate(&world);
+  bw::core::ArrangementWorldData data(
+      generator.getWorldData(), world.getExtents(), 64.0f, 8.0f);
+
+  auto const& arrangement = data.getArrangement();
+  std::vector<CollisionWall> result;
+  for (auto const& wall : data.getWalls()) {
+    if (wall.kind != bw::core::arr::ArrangementWallKind::Border) {
+      continue;
+    }
+    auto const& edge = arrangement.edges[wall.edge];
+    auto const& fixed0 = arrangement.vertices[edge.v[0]];
+    auto const& fixed1 = arrangement.vertices[edge.v[1]];
+    wp::Vector2 v0{
+        bw::core::arr::ToWorldCoordinate(fixed0.x),
+        bw::core::arr::ToWorldCoordinate(fixed0.y)};
+    wp::Vector2 v1{
+        bw::core::arr::ToWorldCoordinate(fixed1.x),
+        bw::core::arr::ToWorldCoordinate(fixed1.y)};
+    auto leftNormal = (v1 - v0).normalisedCopy().perpendicular();
+    auto leftIsPlayable = arrangement.faces[edge.face[0]].solid;
+    result.push_back({v0, v1, leftIsPlayable ? leftNormal : -leftNormal});
+  }
+  return result;
+}
+
 void require(bool condition, std::string const& message) {
   if (!condition) {
     throw std::runtime_error(message);
@@ -22,11 +75,46 @@ void requireNear(float actual, float expected, float tolerance, std::string cons
   }
 }
 
+void generatedWallsSlideFromThePlayableSide() {
+  constexpr float radius = 6.0f;
+  auto walls = loadCollisionWalls("collision-issue-repro.yaml");
+  require(walls.size() == 7, "Unexpected collision fixture topology");
+
+  for (uint32_t wallIndex = 0; wallIndex < walls.size(); ++wallIndex) {
+    auto const& testedWall = walls[wallIndex];
+    auto tangent = (testedWall.v1 - testedWall.v0).normalisedCopy();
+    auto midpoint = (testedWall.v0 + testedWall.v1) * 0.5f;
+
+    for (float tangentDirection : {-1.0f, 1.0f}) {
+      WorldCollisionSim simulation;
+      for (uint32_t index = 0; index < walls.size(); ++index) {
+        simulation.addLine(walls[index].v0, walls[index].v1, index);
+      }
+
+      auto start = midpoint + testedWall.playableNormal * (radius + 0.001f);
+      auto player = new wp::collide::ColliderCircle(start, radius);
+      simulation.addSlidingCollider(player);
+      player->setMovement(
+          tangent * (2.0f * tangentDirection) - testedWall.playableNormal);
+      simulation.update(1.0f);
+
+      auto movement = player->getCentre() - start;
+      requireNear(movement.dot(tangent), 2.0f * tangentDirection, 0.01f,
+                  "Player caught on generated wall " +
+                      std::to_string(wallIndex));
+      requireNear((player->getCentre() - midpoint).dot(testedWall.playableNormal),
+                  radius + 0.001f, 0.01f,
+                  "Player crossed generated wall " +
+                      std::to_string(wallIndex));
+    }
+  }
+}
+
 void diagonalMovementSlidesAlongWall() {
   WorldCollisionSim simulation;
   auto player = new wp::collide::ColliderCircle({-2.0f, 0.0f}, 0.5f);
   simulation.addSlidingCollider(player);
-  simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, false, 0);
+  simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, 0);
 
   player->setMovement({3.0f, 2.0f});
   simulation.update(1.0f);
@@ -41,7 +129,7 @@ void perpendicularMovementStopsAtWall() {
   WorldCollisionSim simulation;
   auto player = new wp::collide::ColliderCircle({-2.0f, 1.0f}, 0.5f);
   simulation.addSlidingCollider(player);
-  simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, false, 0);
+  simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, 0);
 
   player->setMovement({3.0f, 0.0f});
   simulation.update(1.0f);
@@ -56,7 +144,7 @@ void smallMovementStillSlidesAlongWall() {
   WorldCollisionSim simulation;
   auto player = new wp::collide::ColliderCircle({-0.55f, 0.0f}, 0.5f);
   simulation.addSlidingCollider(player);
-  simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, false, 0);
+  simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, 0);
 
   player->setMovement({0.1f, 0.05f});
   simulation.update(1.0f);
@@ -81,7 +169,7 @@ void straightWallSlidingIsRotationInvariant() {
         WorldCollisionSim simulation;
         auto player = new wp::collide::ColliderCircle(normal * (radius + 0.001f), radius);
         simulation.addSlidingCollider(player);
-        simulation.addLine(tangent * -100.0f, tangent * 100.0f, false, 0);
+        simulation.addLine(tangent * -100.0f, tangent * 100.0f, 0);
 
         for (int frame = 0; frame < frameCount; ++frame) {
           player->setMovement(tangent * tangentMovement - normal * inwardMovement);
@@ -106,8 +194,8 @@ void slidingCrossesCollinearWallJunction() {
   WorldCollisionSim simulation;
   auto player = new wp::collide::ColliderCircle({-0.501f, -1.0f}, 0.5f);
   simulation.addSlidingCollider(player);
-  simulation.addLine({0.0f, -10.0f}, {0.0f, 0.0f}, false, 0);
-  simulation.addLine({0.0f, 0.0f}, {0.0f, 10.0f}, false, 1);
+  simulation.addLine({0.0f, -10.0f}, {0.0f, 0.0f}, 0);
+  simulation.addLine({0.0f, 0.0f}, {0.0f, 10.0f}, 1);
 
   player->setMovement({1.0f, 2.0f});
   simulation.update(1.0f);
@@ -133,7 +221,7 @@ void slidingCrossesManyWallJunctionsAtEveryOrientation() {
     for (int segment = -20; segment < 20; ++segment) {
       simulation.addLine(tangent * (static_cast<float>(segment) * 2.0f),
                          tangent * (static_cast<float>(segment + 1) * 2.0f),
-                         false, static_cast<uint32_t>(segment + 20));
+                         static_cast<uint32_t>(segment + 20));
     }
 
     for (int frame = 0; frame < 30; ++frame) {
@@ -170,7 +258,7 @@ void slidingTraversesSlightlyKinkedWalls() {
           auto offset = (segment % 2 == 0 ? kink : -kink) * direction;
           auto next = tangent * (-25.0f + static_cast<float>(segment) * 5.0f) +
                       normal * offset;
-          simulation.addLine(previous, next, false,
+          simulation.addLine(previous, next,
                              static_cast<uint32_t>(segment));
           previous = next;
         }
@@ -197,7 +285,7 @@ void glancingMovementSlidesAroundWallEndpoint() {
   WorldCollisionSim simulation;
   auto player = new wp::collide::ColliderCircle({-1.0f, -0.8f}, 0.5f);
   simulation.addSlidingCollider(player);
-  simulation.addLine({0.0f, -10.0f}, {0.0f, 0.0f}, false, 0);
+  simulation.addLine({0.0f, -10.0f}, {0.0f, 0.0f}, 0);
 
   for (int frame = 0; frame < 10; ++frame) {
     player->setMovement({0.2f, 0.2f});
@@ -220,7 +308,7 @@ void shallowSlidesClearWallEndpoints() {
     WorldCollisionSim simulation;
     auto player = new wp::collide::ColliderCircle({-radius - 0.001f, -12.0f}, radius);
     simulation.addSlidingCollider(player);
-    simulation.addLine({0.0f, -100.0f}, {0.0f, 0.0f}, false, 0);
+    simulation.addLine({0.0f, -100.0f}, {0.0f, 0.0f}, 0);
 
     for (int frame = 0; frame < frameCount; ++frame) {
       player->setMovement({1.0f, tangentialMovement});
@@ -247,8 +335,8 @@ void slidingClearsConvexCorners() {
     WorldCollisionSim simulation;
     auto player = new wp::collide::ColliderCircle({-10.0f, radius + 0.001f}, radius);
     simulation.addSlidingCollider(player);
-    simulation.addLine({-100.0f, 0.0f}, {0.0f, 0.0f}, false, 0);
-    simulation.addLine({0.0f, 0.0f}, outgoing * 100.0f, false, 1);
+    simulation.addLine({-100.0f, 0.0f}, {0.0f, 0.0f}, 0);
+    simulation.addLine({0.0f, 0.0f}, outgoing * 100.0f, 1);
 
     for (int frame = 0; frame < 30; ++frame) {
       player->setMovement({1.0f, -0.2f});
@@ -269,8 +357,8 @@ void slidingStopsAtCornerWithoutPenetration() {
   WorldCollisionSim simulation;
   auto player = new wp::collide::ColliderCircle({-2.0f, 0.0f}, 0.5f);
   simulation.addSlidingCollider(player);
-  simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, false, 0);
-  simulation.addLine({10.0f, 2.0f}, {-10.0f, 2.0f}, false, 1);
+  simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, 0);
+  simulation.addLine({10.0f, 2.0f}, {-10.0f, 2.0f}, 1);
 
   player->setMovement({3.0f, 3.0f});
   simulation.update(1.0f);
@@ -285,7 +373,7 @@ void diagonalMovementSlidesBothWaysAlongWall() {
   WorldCollisionSim simulation;
   auto player = new wp::collide::ColliderCircle({-2.0f, 0.0f}, 0.5f);
   simulation.addSlidingCollider(player);
-  simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, false, 0);
+  simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, 0);
 
   player->setMovement({3.0f, -2.0f});
   simulation.update(1.0f);
@@ -299,6 +387,7 @@ void diagonalMovementSlidesBothWaysAlongWall() {
 
 int main() {
   try {
+    generatedWallsSlideFromThePlayableSide();
     diagonalMovementSlidesAlongWall();
     perpendicularMovementStopsAtWall();
     smallMovementStillSlidesAlongWall();
