@@ -42,6 +42,8 @@ protected:
   void modify();
 
 public:
+  virtual ~Serializable() = default;
+
   Serializable();
 
   Serializable(Serializable const& other);
