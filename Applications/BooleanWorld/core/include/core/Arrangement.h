@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -17,9 +18,17 @@ struct Vertex {
   }
 };
 
+struct WindingDelta {
+  uint32_t primitiveIndex;
+  // Change when crossing from the edge's right face to its left face.
+  int32_t delta;
+};
+
 struct Edge {
   int vi[2];
+  // Left and right faces relative to vi[0] -> vi[1].
   int fi[2] = {-1, -1};
+  std::vector<WindingDelta> windingDeltas;
 
   bool doubleSided() const {
     return fi[0] >= 0 && fi[1] >= 0;
@@ -34,9 +43,24 @@ struct Cycle {
   std::vector<uint32_t> primitiveIndices;
 };
 
+class Membership {
+  std::vector<uint64_t> mWords;
+
+public:
+  explicit Membership(size_t primitiveCount = 0);
+
+  void set(size_t primitiveIndex, bool value = true);
+
+  [[nodiscard]] bool contains(size_t primitiveIndex) const;
+
+  bool operator==(Membership const& other) const = default;
+};
+
 struct Face {
   int polygon;
   std::vector<int> holes;
+  Membership membership;
+  bool solid{false};
 
   // If the face is owned by a non-hole polygon, then owningPolygon
   // is set.  Otherwise holePolygon is set.
@@ -61,6 +85,28 @@ struct FaceTriangle {
   int vi[3];
   int fi;
 };
+
+struct ArrangementPrimitive {
+  std::vector<Clipper2Lib::Path64> contours;
+  bw::core::Primitive::Operation operation;
+  bw::core::Primitive::FillRule fillRule;
+  uint8_t priority;
+  uint32_t primitiveIndex;
+};
+
+struct ArrangementResult {
+  PSLG graph;
+  std::vector<Cycle> cycles;
+  std::vector<PolygonNode> hierarchy;
+  std::vector<Face> faces;
+};
+
+[[nodiscard]] bool EvaluateFold(
+    std::vector<ArrangementPrimitive> const& primitives,
+    Membership const& membership);
+
+[[nodiscard]] ArrangementResult BuildArrangement(
+    std::vector<ArrangementPrimitive> const& primitives);
 
 bool PointInFace(Vertex const& v, Face const& face, std::vector<Cycle> const& cycles, PSLG const& graph);
 

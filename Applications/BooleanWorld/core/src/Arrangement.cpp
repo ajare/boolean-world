@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <queue>
 #include <unordered_map>
 #include <vector>
 
@@ -20,9 +21,60 @@ namespace expr {
 using namespace Clipper2Lib;
 using namespace std;
 
+Membership::Membership(size_t primitiveCount)
+    : mWords((primitiveCount + 63) / 64) {
+}
+
+void Membership::set(size_t primitiveIndex, bool value) {
+  auto wordIndex = primitiveIndex / 64;
+  auto mask = uint64_t(1) << (primitiveIndex % 64);
+  if (value) {
+    mWords[wordIndex] |= mask;
+  } else {
+    mWords[wordIndex] &= ~mask;
+  }
+}
+
+bool Membership::contains(size_t primitiveIndex) const {
+  auto wordIndex = primitiveIndex / 64;
+  return wordIndex < mWords.size() &&
+         (mWords[wordIndex] & (uint64_t(1) << (primitiveIndex % 64))) != 0;
+}
+
+bool EvaluateFold(vector<ArrangementPrimitive> const& primitives, Membership const& membership) {
+  vector<size_t> priorityOrder(primitives.size());
+  for (size_t i = 0; i < priorityOrder.size(); ++i) {
+    priorityOrder[i] = i;
+  }
+  stable_sort(priorityOrder.begin(), priorityOrder.end(), [&](size_t lhs, size_t rhs) {
+    return primitives[lhs].priority < primitives[rhs].priority;
+  });
+
+  bool inside = false;
+  for (auto primitiveIndex : priorityOrder) {
+    auto member = membership.contains(primitiveIndex);
+    switch (primitives[primitiveIndex].operation) {
+      case bw::core::Primitive::Operation::Union:
+        inside = inside || member;
+        break;
+      case bw::core::Primitive::Operation::Intersection:
+        inside = inside && member;
+        break;
+      case bw::core::Primitive::Operation::Difference:
+        inside = inside && !member;
+        break;
+      case bw::core::Primitive::Operation::XOR:
+        inside = inside != member;
+        break;
+    }
+  }
+  return inside;
+}
+
 namespace {
 struct Segment {
   Vertex v[2];
+  uint32_t primitiveIndex;
 };
 
 struct RationalPoint {
@@ -134,7 +186,7 @@ vector<Segment> ExtractSegments(vector<bw::core::Clipper2Polygon> const& polygon
       Vertex a{path[j].x, path[j].y};
       Vertex b{path[k].x, path[k].y};
       if (a != b) {
-        result.push_back({{a, b}});
+        result.push_back({{a, b}, polygons[i].primitiveIndex});
       }
     }
   }
@@ -281,7 +333,7 @@ int PointInPolygon(RationalPoint const& point, Path64 const& polygon) {
       --winding;
     }
   }
-  return winding == 0 ? 0 : 1;
+  return winding;
 }
 
 Box GetPathBounds(Path64 const& path) {
@@ -422,13 +474,33 @@ PSLG BuildPSLG(vector<bw::core::Clipper2Polygon> const& polygons, vector<bw::cor
       if (points[j] == points[j + 1]) {
         continue;
       }
-      auto a = getVertex(points[j]);
-      auto b = getVertex(points[j + 1]);
+      auto directedStart = getVertex(points[j]);
+      auto directedEnd = getVertex(points[j + 1]);
+      auto a = directedStart;
+      auto b = directedEnd;
       if (a > b) {
         swap(a, b);
       }
-      if (edgeMap.emplace(make_pair(a, b), int(graph.es.size())).second) {
+
+      auto [edgeIt, inserted] = edgeMap.emplace(
+          make_pair(a, b), int(graph.es.size()));
+      if (inserted) {
         graph.es.push_back({a, b});
+      }
+
+      if (segments[i].primitiveIndex != ~0u) {
+        auto& edge = graph.es[edgeIt->second];
+        auto contribution = find_if(
+            edge.windingDeltas.begin(), edge.windingDeltas.end(),
+            [&](WindingDelta const& value) {
+              return value.primitiveIndex == segments[i].primitiveIndex;
+            });
+        auto delta = directedStart == edge.vi[0] ? 1 : -1;
+        if (contribution == edge.windingDeltas.end()) {
+          edge.windingDeltas.push_back({segments[i].primitiveIndex, delta});
+        } else {
+          contribution->delta += delta;
+        }
       }
     }
   }
@@ -633,6 +705,120 @@ vector<Face> CalculateOwningPolygons(vector<Face> const& faces, vector<bw::core:
     }
   }
   return keptFaces;
+}
+
+ArrangementResult BuildArrangement(vector<ArrangementPrimitive> const& primitives) {
+  vector<bw::core::Clipper2Polygon> contours;
+  for (uint32_t primitiveIndex = 0;
+       primitiveIndex < uint32_t(primitives.size()); ++primitiveIndex) {
+    for (auto const& contour : primitives[primitiveIndex].contours) {
+      contours.push_back({false, primitiveIndex, contour});
+    }
+  }
+
+  ArrangementResult result;
+  result.graph = BuildPSLG(contours, {});
+  result.cycles = ExtractMinimalCycles(result.graph);
+  erase_if(result.cycles, [](Cycle const& cycle) {
+    return cycle.area <= 0;
+  });
+  result.hierarchy = BuildPolygonHierarchy(result.graph, result.cycles);
+  result.faces = BuildFaces(result.hierarchy, result.cycles);
+
+  auto assignCycleSide = [&](int faceIndex, int cycleIndex, bool assignLeft) {
+    auto const& cycle = result.cycles[cycleIndex];
+    for (size_t i = 0; i < cycle.eis.size(); ++i) {
+      auto& edge = result.graph.es[cycle.eis[i]];
+      auto traversalMatchesEdge = edge.vi[0] == cycle.vis[i];
+      auto leftSide = traversalMatchesEdge ? 0 : 1;
+      auto side = assignLeft ? leftSide : 1 - leftSide;
+      edge.fi[side] = faceIndex;
+    }
+  };
+
+  for (int faceIndex = 0; faceIndex < int(result.faces.size()); ++faceIndex) {
+    auto const& face = result.faces[faceIndex];
+    assignCycleSide(faceIndex, face.polygon, true);
+    for (auto hole : face.holes) {
+      assignCycleSide(faceIndex, hole, false);
+    }
+  }
+
+  vector<vector<int>> faceEdges(result.faces.size());
+  for (int edgeIndex = 0; edgeIndex < int(result.graph.es.size()); ++edgeIndex) {
+    auto const& edge = result.graph.es[edgeIndex];
+    for (auto faceIndex : edge.fi) {
+      if (faceIndex >= 0) {
+        faceEdges[faceIndex].push_back(edgeIndex);
+      }
+    }
+  }
+
+  vector<vector<int32_t>> windingNumbers(
+      result.faces.size(), vector<int32_t>(primitives.size()));
+  vector<bool> visited(result.faces.size(), false);
+  queue<int> pending;
+
+  for (int seedFace = 0; seedFace < int(result.faces.size()); ++seedFace) {
+    if (visited[seedFace]) {
+      continue;
+    }
+
+    auto sample = SamplePoint(
+        result.graph, result.cycles[result.faces[seedFace].polygon]);
+    for (size_t primitiveIndex = 0;
+         primitiveIndex < primitives.size(); ++primitiveIndex) {
+      for (auto const& contour : primitives[primitiveIndex].contours) {
+        windingNumbers[seedFace][primitiveIndex] +=
+            PointInPolygon(sample, contour);
+      }
+    }
+
+    visited[seedFace] = true;
+    pending.push(seedFace);
+    while (!pending.empty()) {
+      auto faceIndex = pending.front();
+      pending.pop();
+
+      for (auto edgeIndex : faceEdges[faceIndex]) {
+        auto const& edge = result.graph.es[edgeIndex];
+        if (!edge.doubleSided()) {
+          continue;
+        }
+        auto neighbour = edge.fi[0] == faceIndex ? edge.fi[1] : edge.fi[0];
+        if (visited[neighbour]) {
+          continue;
+        }
+
+        windingNumbers[neighbour] = windingNumbers[faceIndex];
+        auto direction = edge.fi[1] == faceIndex ? 1 : -1;
+        for (auto const& delta : edge.windingDeltas) {
+          windingNumbers[neighbour][delta.primitiveIndex] +=
+              direction * delta.delta;
+        }
+        visited[neighbour] = true;
+        pending.push(neighbour);
+      }
+    }
+  }
+
+  for (size_t faceIndex = 0; faceIndex < result.faces.size(); ++faceIndex) {
+    Membership membership(primitives.size());
+    for (size_t primitiveIndex = 0;
+         primitiveIndex < primitives.size(); ++primitiveIndex) {
+      auto winding = windingNumbers[faceIndex][primitiveIndex];
+      auto member = primitives[primitiveIndex].fillRule ==
+                            bw::core::Primitive::FillRule::EvenOdd
+                        ? abs(winding) % 2 == 1
+                        : winding != 0;
+      membership.set(primitiveIndex, member);
+    }
+    result.faces[faceIndex].membership = move(membership);
+    result.faces[faceIndex].solid = EvaluateFold(
+        primitives, result.faces[faceIndex].membership);
+  }
+
+  return result;
 }
 
 vector<FaceTriangle> BuildFaceTriangles(vector<Face> const& faces, vector<Cycle> const& cycles, PSLG const& graph) {

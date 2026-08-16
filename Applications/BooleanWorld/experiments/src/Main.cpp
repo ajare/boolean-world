@@ -255,6 +255,179 @@ static void RunBasicTest(
 using namespace Clipper2Lib;
 using namespace expr;
 
+TEST(ArrangementFold, UnionIncludesMember) {
+  std::vector<ArrangementPrimitive> primitives =
+      {{{}, bw::core::Primitive::Operation::Union, bw::core::Primitive::FillRule::NonZero, 10, 100}};
+  Membership membership(primitives.size());
+  membership.set(0);
+
+  EXPECT_TRUE(EvaluateFold(primitives, membership));
+}
+
+TEST(ArrangementFold, IntersectionRequiresMember) {
+  std::vector<ArrangementPrimitive> primitives =
+      {{{}, bw::core::Primitive::Operation::Union, bw::core::Primitive::FillRule::NonZero, 0, 100},
+       {{}, bw::core::Primitive::Operation::Intersection, bw::core::Primitive::FillRule::NonZero, 1, 101}};
+  Membership membership(primitives.size());
+  membership.set(0);
+
+  EXPECT_FALSE(EvaluateFold(primitives, membership));
+
+  membership.set(1);
+  EXPECT_TRUE(EvaluateFold(primitives, membership));
+}
+
+TEST(ArrangementFold, DifferenceRemovesMember) {
+  std::vector<ArrangementPrimitive> primitives =
+      {{{}, bw::core::Primitive::Operation::Union, bw::core::Primitive::FillRule::NonZero, 0, 100},
+       {{}, bw::core::Primitive::Operation::Difference, bw::core::Primitive::FillRule::NonZero, 1, 101}};
+  Membership membership(primitives.size());
+  membership.set(0);
+
+  EXPECT_TRUE(EvaluateFold(primitives, membership));
+
+  membership.set(1);
+  EXPECT_FALSE(EvaluateFold(primitives, membership));
+}
+
+TEST(ArrangementFold, XorTogglesForMember) {
+  std::vector<ArrangementPrimitive> primitives =
+      {{{}, bw::core::Primitive::Operation::Union, bw::core::Primitive::FillRule::NonZero, 0, 100},
+       {{}, bw::core::Primitive::Operation::XOR, bw::core::Primitive::FillRule::NonZero, 1, 101}};
+  Membership membership(primitives.size());
+  membership.set(0);
+  membership.set(1);
+
+  EXPECT_FALSE(EvaluateFold(primitives, membership));
+}
+
+TEST(ArrangementFold, PriorityOverridesInputOrder) {
+  std::vector<ArrangementPrimitive> primitives =
+      {{{}, bw::core::Primitive::Operation::Difference, bw::core::Primitive::FillRule::NonZero, 20, 100},
+       {{}, bw::core::Primitive::Operation::Union, bw::core::Primitive::FillRule::NonZero, 10, 101}};
+  Membership membership(primitives.size());
+  membership.set(0);
+  membership.set(1);
+
+  EXPECT_FALSE(EvaluateFold(primitives, membership));
+}
+
+static Face const* FindFaceAt(
+    ArrangementResult const& arrangement,
+    expr::Vertex const& point) {
+  auto face = std::find_if(
+      arrangement.faces.begin(), arrangement.faces.end(),
+      [&](Face const& candidate) {
+        return PointInFace(
+            point, candidate, arrangement.cycles, arrangement.graph);
+      });
+  return face == arrangement.faces.end() ? nullptr : &*face;
+}
+
+TEST(Arrangement, ClassifiesOverlappingPrimitiveFaces) {
+  std::vector<ArrangementPrimitive> primitives =
+      {{{{{0, 0}, {20, 0}, {20, 20}, {0, 20}}},
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero,
+        0,
+        100},
+       {{{{10, 0}, {30, 0}, {30, 20}, {10, 20}}},
+        bw::core::Primitive::Operation::Difference,
+        bw::core::Primitive::FillRule::NonZero,
+        1,
+        101}};
+
+  auto arrangement = BuildArrangement(primitives);
+  auto left = FindFaceAt(arrangement, {5, 10});
+  auto overlap = FindFaceAt(arrangement, {15, 10});
+  auto right = FindFaceAt(arrangement, {25, 10});
+
+  ASSERT_NE(left, nullptr);
+  ASSERT_NE(overlap, nullptr);
+  ASSERT_NE(right, nullptr);
+  EXPECT_TRUE(left->membership.contains(0));
+  EXPECT_FALSE(left->membership.contains(1));
+  EXPECT_TRUE(left->solid);
+  EXPECT_TRUE(overlap->membership.contains(0));
+  EXPECT_TRUE(overlap->membership.contains(1));
+  EXPECT_FALSE(overlap->solid);
+  EXPECT_FALSE(right->membership.contains(0));
+  EXPECT_TRUE(right->membership.contains(1));
+  EXPECT_FALSE(right->solid);
+  EXPECT_EQ(arrangement.faces.size(), 3u);
+}
+
+static ArrangementResult BuildNestedContourArrangement(
+    bw::core::Primitive::FillRule fillRule) {
+  return BuildArrangement(
+      {{{{{0, 0}, {30, 0}, {30, 30}, {0, 30}},
+         {{10, 10}, {20, 10}, {20, 20}, {10, 20}}},
+        bw::core::Primitive::Operation::Union,
+        fillRule,
+        0,
+        500}});
+}
+
+TEST(Arrangement, MultiContourPrimitiveUsesEvenOddFillRule) {
+  auto arrangement = BuildNestedContourArrangement(
+      bw::core::Primitive::FillRule::EvenOdd);
+  auto outer = FindFaceAt(arrangement, {5, 5});
+  auto inner = FindFaceAt(arrangement, {15, 15});
+
+  ASSERT_NE(outer, nullptr);
+  ASSERT_NE(inner, nullptr);
+  EXPECT_TRUE(outer->membership.contains(0));
+  EXPECT_TRUE(outer->solid);
+  EXPECT_FALSE(inner->membership.contains(0));
+  EXPECT_FALSE(inner->solid);
+}
+
+TEST(Arrangement, MultiContourPrimitiveUsesNonZeroFillRuleWithoutMerging) {
+  auto arrangement = BuildNestedContourArrangement(
+      bw::core::Primitive::FillRule::NonZero);
+  auto outer = FindFaceAt(arrangement, {5, 5});
+  auto inner = FindFaceAt(arrangement, {15, 15});
+
+  ASSERT_NE(outer, nullptr);
+  ASSERT_NE(inner, nullptr);
+  EXPECT_TRUE(outer->membership.contains(0));
+  EXPECT_TRUE(outer->solid);
+  EXPECT_TRUE(inner->membership.contains(0));
+  EXPECT_TRUE(inner->solid);
+  EXPECT_NE(outer, inner);
+  EXPECT_EQ(arrangement.faces.size(), 2u);
+}
+
+static ArrangementResult BuildSelfIntersectingStarArrangement(
+    bw::core::Primitive::FillRule fillRule) {
+  return BuildArrangement(
+      {{{{{0, 30}, {18, -24}, {-29, 9}, {29, 9}, {-18, -24}}},
+        bw::core::Primitive::Operation::Union,
+        fillRule,
+        0,
+        600}});
+}
+
+TEST(Arrangement, SelfIntersectingPrimitiveUsesEvenOddFillRule) {
+  auto arrangement = BuildSelfIntersectingStarArrangement(
+      bw::core::Primitive::FillRule::EvenOdd);
+  auto centre = FindFaceAt(arrangement, {0, 0});
+
+  ASSERT_NE(centre, nullptr);
+  EXPECT_FALSE(centre->membership.contains(0));
+  EXPECT_FALSE(centre->solid);
+}
+
+TEST(Arrangement, SelfIntersectingPrimitiveUsesNonZeroFillRule) {
+  auto arrangement = BuildSelfIntersectingStarArrangement(
+      bw::core::Primitive::FillRule::NonZero);
+  auto centre = FindFaceAt(arrangement, {0, 0});
+
+  ASSERT_NE(centre, nullptr);
+  EXPECT_TRUE(centre->membership.contains(0));
+  EXPECT_TRUE(centre->solid);
+}
+
 TEST(PSLG, SingleRectangle) {
   std::vector<bw::core::Clipper2Polygon> polygons =
       {
