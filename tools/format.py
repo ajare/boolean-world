@@ -25,13 +25,13 @@ LIBRARIES = {
     "Willpower": [os.path.join("src", "Willpower")],
     "AppLib": [os.path.join("src", "AppLib")],
     "Launcher": ["Launcher"],
-    "BooleanWorld": [os.path.join("Applications", "BooleanWorld")],
+    "BooleanWorld": ["BooleanWorld"],
 }
 
 # Directories that contain nothing but vendored code.
 VENDOR_DIRS = [
-    os.path.join("Applications", "BooleanWorld", "app", "include", "imgui"),
-    os.path.join("Applications", "BooleanWorld", "app", "src", "imgui"),
+    os.path.join("BooleanWorld", "app", "include", "imgui"),
+    os.path.join("BooleanWorld", "app", "src", "imgui"),
     os.path.join("Launcher", "include", "imgui"),
     os.path.join("Launcher", "src", "imgui"),
 ]

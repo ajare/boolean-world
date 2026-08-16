@@ -86,4 +86,4 @@ bw_deploy_runtime_dlls(willpower_application_resource_yaml_tests)
 bw_deploy_vendor_dlls(willpower_application_resource_yaml_tests)
 add_test(NAME willpower_application_resource_yaml
     COMMAND willpower_application_resource_yaml_tests
-        "${BW_ROOT}/Applications/BooleanWorld/app/resources/Resources.yaml")
+        "${BW_ROOT}/BooleanWorld/app/resources/Resources.yaml")

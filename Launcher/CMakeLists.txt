@@ -112,7 +112,7 @@ file(GENERATE
     ResourceLocations:
       ResourceLocation:
         type: Directory
-        path: ${BW_ROOT}/Applications/BooleanWorld/app/resources/
+        path: ${BW_ROOT}/BooleanWorld/app/resources/
         definition: Resources.yaml
     Debug:
       InGame: enabled

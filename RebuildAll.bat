@@ -41,7 +41,7 @@ echo Build succeeded (%CONFIG%^|x64).
 echo.
 echo Binaries keep the original layout, e.g.
 echo   Launcher\build\vs2026\bin\x64\%CONFIG%\Launcher.exe
-echo   Applications\BooleanWorld\editor\bin\x64\%CONFIG%\editor.exe
+echo   BooleanWorld\editor\bin\x64\%CONFIG%\editor.exe
 echo.
 echo Run: cd Launcher\build\vs2026\bin\x64\%CONFIG% ^&^& Launcher.exe BooleanWorld.yaml
 EXIT /B 0
