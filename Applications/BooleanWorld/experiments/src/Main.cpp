@@ -14,7 +14,6 @@
 #include <core/YamlSerializer.h>
 #include <core/World.h>
 #include <core/DynamicWorldDataGenerator.h>
-#include <core/Clipper2Polygon.h>
 #include <core/Arrangement.h>
 #include <core/ArrangementWorldData.h>
 #include <core/ArrangementWorldDataGenerator.h>
@@ -118,15 +117,6 @@ world:
             "No primitive of type 'Path' registered");
 }
 
-bool gClipperAllocatorsInitialized = false;
-
-void ensureClipperAllocatorsInitialized() {
-  if (!gClipperAllocatorsInitialized) {
-    Clipper2Lib::WmInitialiseAllocators(4, 16 * 1024 * 1024);
-    gClipperAllocatorsInitialized = true;
-  }
-}
-
 TEST(ArrangementWorldDataGenerator, PrimitiveConversionProducesNativeContours) {
   bw::core::RectanglePolygon rectangle(
       bw::core::Primitive::Operation::Union,
@@ -162,7 +152,6 @@ TEST(ArrangementWorldDataGenerator, PrimitiveConversionProducesNativeContours) {
 }
 
 TEST(ArrangementWorldDataGenerator, PublishedWorldUsesArrangementContract) {
-  ensureClipperAllocatorsInitialized();
   auto world = createWorld(8192, 512);
 
   auto room = new bw::core::RectanglePolygon(
@@ -183,7 +172,7 @@ TEST(ArrangementWorldDataGenerator, PublishedWorldUsesArrangementContract) {
   ASSERT_NE(arrangement, nullptr);
   EXPECT_TRUE(std::any_of(
       arrangement->faces.begin(), arrangement->faces.end(),
-      [](expr::ArrangementFace const& face) {
+      [](bw::core::arr::ArrangementFace const& face) {
         return face.solid;
       }));
   EXPECT_EQ(
@@ -193,7 +182,6 @@ TEST(ArrangementWorldDataGenerator, PublishedWorldUsesArrangementContract) {
 }
 
 TEST(ArrangementWorldDataGenerator, SelectsMultipleLayersBeforeGlobalPriorityFold) {
-  ensureClipperAllocatorsInitialized();
   auto world = createWorld(8192, 512);
   auto base = new bw::core::RectanglePolygon(
       bw::core::Primitive::Operation::Union,
@@ -221,15 +209,15 @@ TEST(ArrangementWorldDataGenerator, SelectsMultipleLayersBeforeGlobalPriorityFol
   world->addPrimitive(shared);
 
   auto solidAt = [&](bw::core::LayerSelection const& selection,
-                     expr::Vertex point) {
+                     bw::core::arr::FixedPointVertex point) {
     bw::core::ArrangementWorldDataGenerator generator;
     generator.setLayerSelection(selection);
     generator.generate(world.get());
     auto arrangement = generator.getWorldData();
     return std::any_of(
         arrangement->faces.begin(), arrangement->faces.end(),
-        [&](expr::ArrangementFace const& face) {
-          return face.solid && expr::PointInFace(point, face, *arrangement);
+        [&](bw::core::arr::ArrangementFace const& face) {
+          return face.solid && bw::core::arr::PointInFace(point, face, *arrangement);
         });
   };
 
@@ -241,7 +229,6 @@ TEST(ArrangementWorldDataGenerator, SelectsMultipleLayersBeforeGlobalPriorityFol
 }
 
 TEST(Generation, LayerSelectionChangeBypassesVisibleCommitGate) {
-  ensureClipperAllocatorsInitialized();
   auto world = createWorld(8192, 512);
   auto base = new bw::core::RectanglePolygon(
       bw::core::Primitive::Operation::Union,
@@ -283,13 +270,12 @@ TEST(Generation, LayerSelectionChangeBypassesVisibleCommitGate) {
   EXPECT_TRUE(std::any_of(
       switched->getArrangement().faces.begin(),
       switched->getArrangement().faces.end(),
-      [&](expr::ArrangementFace const& face) {
+      [&](bw::core::arr::ArrangementFace const& face) {
         return face.solid && face.primitiveIndex == replacement->getId();
       }));
 }
 
 TEST(GeometryComparison, SamplesAllStrategiesAndReportsEquivalentWorld) {
-  ensureClipperAllocatorsInitialized();
   auto world = createWorld(8192, 512);
 
   auto room = new bw::core::RectanglePolygon(
@@ -321,8 +307,6 @@ TEST(GeometryComparison, SamplesAllStrategiesAndReportsEquivalentWorld) {
 }
 
 TEST(GeometryComparison, RepositoryWorldsMatchExceptKnownBadRepros) {
-  ensureClipperAllocatorsInitialized();
-
   struct WorldCase {
     char const* name;
     char const* path;
@@ -389,7 +373,6 @@ TEST(GeometryComparison, RepositoryWorldsMatchExceptKnownBadRepros) {
 }
 
 TEST(Generation, SynchronousGeneratorPublishesArrangementData) {
-  ensureClipperAllocatorsInitialized();
   bw::core::World world(8192, 512);
   auto room = new bw::core::RectanglePolygon(
       bw::core::Primitive::Operation::Union,
@@ -405,11 +388,10 @@ TEST(Generation, SynchronousGeneratorPublishesArrangementData) {
   EXPECT_TRUE(std::any_of(
       snapshot->getArrangement().faces.begin(),
       snapshot->getArrangement().faces.end(),
-      [](expr::ArrangementFace const& face) { return face.solid; }));
+      [](bw::core::arr::ArrangementFace const& face) { return face.solid; }));
 }
 
 TEST(Generation, PublishedSnapshotRemainsCoherentAfterNextGeneration) {
-  ensureClipperAllocatorsInitialized();
   auto world = createWorld(8192, 512);
 
   auto room = new bw::core::RectanglePolygon(
@@ -445,8 +427,6 @@ TEST(Generation, PublishedSnapshotRemainsCoherentAfterNextGeneration) {
 }
 
 TEST(Generation, GeometryIsIndependentOfViewerPosition) {
-  ensureClipperAllocatorsInitialized();
-
   auto generateAt = [](wp::Vector2 const& viewerPosition) {
     auto world = createWorld(8192, 512);
 
@@ -483,8 +463,7 @@ TEST(Generation, GeometryIsIndependentOfViewerPosition) {
 ////////////////////////////////////////////////////////////////
 // Geometry tests
 
-using namespace Clipper2Lib;
-using namespace expr;
+using namespace bw::core::arr;
 
 static_assert(
     std::is_same_v<decltype(bw::core::arr::FixedPointVertex::x), int64_t>);
@@ -524,32 +503,36 @@ TEST(NativeArrangement, ClassifiesGeometryWithoutIntrinsicContourRoles) {
   EXPECT_EQ(shell->innerBoundaries.size(), 1u);
 }
 
-static PSLG BuildTestPSLG(
-    std::vector<bw::core::Clipper2Polygon> polygons) {
-  for (auto& polygon : polygons) {
-    for (auto& point : polygon.path) {
-      point.x *= 1000;
-      point.y *= 1000;
+static PSLG BuildTestPSLG(std::vector<Contour> contours) {
+  std::vector<ContourInput> inputs;
+  inputs.reserve(contours.size());
+  for (auto& contour : contours) {
+    for (auto& point : contour) {
+      point.x *= FixedPointUnitsPerWorldUnit;
+      point.y *= FixedPointUnitsPerWorldUnit;
     }
+    inputs.push_back({std::move(contour)});
   }
-
-  return BuildPSLG(polygons, {});
+  return BuildPSLG(inputs);
 }
 
-static PSLG BuildFixedTestPSLG(
-    std::vector<bw::core::Clipper2Polygon> const& polygons,
-    std::vector<bw::core::Primitive*> const& primitives = {}) {
-  return BuildPSLG(polygons, primitives);
+static PSLG BuildNativeTestPSLG(std::vector<Contour> const& contours) {
+  std::vector<ContourInput> inputs;
+  inputs.reserve(contours.size());
+  for (auto const& contour : contours) {
+    inputs.push_back({contour});
+  }
+  return BuildPSLG(inputs);
 }
 
-static int VertexDegree(PSLG const& graph, expr::Vertex const& vertex) {
+static int VertexDegree(PSLG const& graph, bw::core::arr::FixedPointVertex const& vertex) {
   auto vertexIt = std::find(graph.vs.begin(), graph.vs.end(), vertex);
   if (vertexIt == graph.vs.end()) {
     return 0;
   }
 
   auto vertexIndex = (int)std::distance(graph.vs.begin(), vertexIt);
-  return (int)std::count_if(graph.es.begin(), graph.es.end(), [&](expr::Edge const& edge) {
+  return (int)std::count_if(graph.es.begin(), graph.es.end(), [&](bw::core::arr::Edge const& edge) {
     return edge.vi[0] == vertexIndex || edge.vi[1] == vertexIndex;
   });
 }
@@ -562,7 +545,7 @@ struct Expected {
 };
 
 static int CountRoots(
-    const std::vector<expr::PolygonNode>& nodes) {
+    std::vector<PolygonNode> const& nodes) {
   int count = 0;
 
   for (auto& n : nodes) {
@@ -574,18 +557,18 @@ static int CountRoots(
 }
 
 static void RunBasicTest(
-    std::vector<bw::core::Clipper2Polygon> const& polygons,
-    const Expected& expected) {
+    std::vector<Contour> const& polygons,
+    Expected const& expected) {
   // Create graph
-  expr::PSLG pslg = BuildTestPSLG(polygons);
+  bw::core::arr::PSLG pslg = BuildTestPSLG(polygons);
 
   // Get cycles
-  auto cycles = expr::ExtractMinimalCycles(pslg);
+  auto cycles = bw::core::arr::ExtractMinimalCycles(pslg);
 
   // Set faces as being either filled or not
 
   // Build hierarchy.
-  auto hierarchy = expr::BuildPolygonHierarchy(pslg, cycles);
+  auto hierarchy = bw::core::arr::BuildPolygonHierarchy(pslg, cycles);
 
   auto faces = BuildFaces(hierarchy, cycles);
 
@@ -606,8 +589,7 @@ static void RunBasicTest(
       expected.roots);
 }
 
-using namespace Clipper2Lib;
-using namespace expr;
+using namespace bw::core::arr;
 
 TEST(ArrangementFold, UnionIncludesMember) {
   std::vector<ArrangementPrimitive> primitives =
@@ -668,7 +650,7 @@ TEST(ArrangementFold, PriorityOverridesInputOrder) {
 
 static ArrangementFace const* FindFaceAt(
     ArrangementResultPtr const& arrangement,
-    expr::Vertex const& point) {
+    bw::core::arr::FixedPointVertex const& point) {
   auto face = std::find_if(
       arrangement->faces.begin(), arrangement->faces.end(),
       [&](ArrangementFace const& candidate) {
@@ -939,7 +921,6 @@ TEST(World, StepThresholdDefaultsToInfinity) {
 }
 
 TEST(World, BakesArrangementFacesWithNestedHoles) {
-  ensureClipperAllocatorsInitialized();
   auto world = createWorld(BW_WORLD_SIZE, 100.0f);
   auto outer = new bw::core::RectanglePolygon(
       bw::core::Primitive::Operation::Union,
@@ -967,7 +948,6 @@ TEST(World, BakesArrangementFacesWithNestedHoles) {
 }
 
 TEST(World, BakesFoldClippedByHighestPriorityIntersection) {
-  ensureClipperAllocatorsInitialized();
   auto world = createWorld(BW_WORLD_SIZE, 100.0f);
   auto shape = new bw::core::RectanglePolygon(
       bw::core::Primitive::Operation::Union,
@@ -1094,15 +1074,40 @@ TEST(ArrangementOutput, XorRetainsItsFoldRunOwner) {
       12);
 }
 
+TEST(ArrangementOutput, OwnerSelectionUsesPriorityAndStableTies) {
+  auto build = [](uint8_t secondPriority) {
+    return BuildArrangement(
+        {{{{{0, 0}, {20, 0}, {20, 20}, {0, 20}}},
+          bw::core::Primitive::Operation::Union,
+          bw::core::Primitive::FillRule::NonZero,
+          10,
+          42},
+         {{{{10, 0}, {30, 0}, {30, 20}, {10, 20}}},
+          bw::core::Primitive::Operation::Union,
+          bw::core::Primitive::FillRule::NonZero,
+          secondPriority,
+          77}});
+  };
+
+  auto higherPriorityArrangement = build(20);
+  auto higherPriority =
+      FindFaceAt(higherPriorityArrangement, {15, 10});
+  ASSERT_NE(higherPriority, nullptr);
+  EXPECT_EQ(higherPriority->primitiveIndex, 77u);
+
+  auto stableTieArrangement = build(10);
+  auto stableTie = FindFaceAt(stableTieArrangement, {15, 10});
+  ASSERT_NE(stableTie, nullptr);
+  EXPECT_EQ(stableTie->primitiveIndex, 42u);
+}
+
 TEST(PSLG, SingleRectangle) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0},
-            {10, 0},
-            {10, 10},
-            {0, 10}}}};
+          {{0, 0},
+           {10, 0},
+           {10, 10},
+           {0, 10}}};
 
   RunBasicTest(
       polygons,
@@ -1113,37 +1118,37 @@ TEST(PSLG, SingleRectangle) {
 }
 
 TEST(PSLG, IntersectionsAreSnapRoundedToFixedPointGrid) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false, ~0u, {{0, 0}, {10, 0}, {10, -5}, {0, -5}}},
-          {false, ~0u, {{1, -1}, {2, 2}, {3, -1}}}};
+          {{0, 0}, {10, 0}, {10, -5}, {0, -5}},
+          {{1, -1}, {2, 2}, {3, -1}}};
 
   auto graph = BuildTestPSLG(polygons);
 
   EXPECT_NE(
-      std::find(graph.vs.begin(), graph.vs.end(), expr::Vertex{1333, 0}),
+      std::find(graph.vs.begin(), graph.vs.end(), bw::core::arr::FixedPointVertex{1333, 0}),
       graph.vs.end());
 }
 
 TEST(PSLG, SnapRoundingCreatesIncidenceOnPreviouslyUnrelatedEdge) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false, 0, {{-10, 1}, {10, 0}, {10, 10}}},
-          {false, 1, {{-10, 0}, {10, 1}, {-10, -10}}},
-          {false, 2, {{-1, 1}, {1, 1}, {1, 2}, {-1, 2}}}};
+          {{-10, 1}, {10, 0}, {10, 10}},
+          {{-10, 0}, {10, 1}, {-10, -10}},
+          {{-1, 1}, {1, 1}, {1, 2}, {-1, 2}}};
 
-  auto graph = BuildFixedTestPSLG(polygons);
+  auto graph = BuildNativeTestPSLG(polygons);
 
   EXPECT_EQ(VertexDegree(graph, {0, 1}), 6);
 }
 
 TEST(PSLG, CollinearOverlapsProduceOneConsistentEdgeChain) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false, 0, {{0, 0}, {10, 0}, {10, 10}, {0, 10}}},
-          {false, 1, {{5, 0}, {15, 0}, {15, -10}, {5, -10}}}};
+          {{0, 0}, {10, 0}, {10, 10}, {0, 10}},
+          {{5, 0}, {15, 0}, {15, -10}, {5, -10}}};
 
-  auto graph = BuildFixedTestPSLG(polygons);
+  auto graph = BuildNativeTestPSLG(polygons);
 
   EXPECT_EQ(graph.vs.size(), 8u);
   EXPECT_EQ(graph.es.size(), 9u);
@@ -1153,14 +1158,14 @@ TEST(PSLG, CollinearOverlapsProduceOneConsistentEdgeChain) {
 
 TEST(PSLG, GridQuantumGeometrySurvivesAtEveryWorldExtent) {
   constexpr int64_t extent = 4'096'000;
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false, 0, {{-extent, -extent}, {-extent + 1, -extent}, {-extent + 1, -extent + 1}, {-extent, -extent + 1}}},
-          {false, 1, {{extent - 1, -extent}, {extent, -extent}, {extent, -extent + 1}, {extent - 1, -extent + 1}}},
-          {false, 2, {{-extent, extent - 1}, {-extent + 1, extent - 1}, {-extent + 1, extent}, {-extent, extent}}},
-          {false, 3, {{extent - 1, extent - 1}, {extent, extent - 1}, {extent, extent}, {extent - 1, extent}}}};
+          {{-extent, -extent}, {-extent + 1, -extent}, {-extent + 1, -extent + 1}, {-extent, -extent + 1}},
+          {{extent - 1, -extent}, {extent, -extent}, {extent, -extent + 1}, {extent - 1, -extent + 1}},
+          {{-extent, extent - 1}, {-extent + 1, extent - 1}, {-extent + 1, extent}, {-extent, extent}},
+          {{extent - 1, extent - 1}, {extent, extent - 1}, {extent, extent}, {extent - 1, extent}}};
 
-  auto graph = BuildFixedTestPSLG(polygons);
+  auto graph = BuildNativeTestPSLG(polygons);
   auto cycles = ExtractMinimalCycles(graph);
   auto hierarchy = BuildPolygonHierarchy(graph, cycles);
   auto faces = BuildFaces(hierarchy, cycles);
@@ -1174,19 +1179,22 @@ TEST(PSLG, GridQuantumGeometrySurvivesAtEveryWorldExtent) {
 
 static void ExpectSelfIntersectingContourTopology(
     bw::core::Primitive::FillRule fillRule) {
-  bw::core::RectanglePolygon primitive(
-      bw::core::Primitive::Operation::Union,
-      fillRule,
-      1.0f);
-  std::vector<bw::core::Clipper2Polygon> polygons =
-      {{false, 0, {{0, 0}, {2'000, 2'000}, {0, 2'000}, {2'000, 0}}}};
-
-  auto graph = BuildFixedTestPSLG(polygons, {&primitive});
+  Contour contour =
+      {{0, 0}, {2'000, 2'000}, {0, 2'000}, {2'000, 0}};
+  auto graph = BuildNativeTestPSLG({contour});
   auto cycles = ExtractMinimalCycles(graph);
+  auto arrangement = BuildArrangement(
+      {{{contour},
+        bw::core::Primitive::Operation::Union,
+        fillRule,
+        0,
+        0}});
 
   EXPECT_EQ(graph.vs.size(), 5u);
   EXPECT_EQ(graph.es.size(), 6u);
   EXPECT_EQ(cycles.size(), 2u);
+  EXPECT_EQ(arrangement->vertices.size(), 5u);
+  EXPECT_EQ(arrangement->edges.size(), 6u);
 }
 
 TEST(PSLG, SelfIntersectingContourWithEvenOddFillRule) {
@@ -1200,20 +1208,16 @@ TEST(PSLG, SelfIntersectingContourWithNonZeroFillRule) {
 }
 
 TEST(PSLG, TwoDisconnectedRectangles) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0},
-            {10, 0},
-            {10, 10},
-            {0, 10}}},
-          {false,
-           ~0u,
-           {{20, 0},
-            {30, 0},
-            {30, 10},
-            {20, 10}}}};
+          {{0, 0},
+           {10, 0},
+           {10, 10},
+           {0, 10}},
+          {{20, 0},
+           {30, 0},
+           {30, 10},
+           {20, 10}}};
 
   RunBasicTest(
       polygons,
@@ -1224,20 +1228,16 @@ TEST(PSLG, TwoDisconnectedRectangles) {
 }
 
 TEST(PSLG, PolygonWithHole) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0},
-            {20, 0},
-            {20, 20},
-            {0, 20}}},
-          {true,
-           ~0u,
-           {{5, 5},
-            {5, 15},
-            {15, 15},
-            {15, 5}}}};
+          {{0, 0},
+           {20, 0},
+           {20, 20},
+           {0, 20}},
+          {{5, 5},
+           {5, 15},
+           {15, 15},
+           {15, 5}}};
 
   PSLG pslg =
       BuildTestPSLG(polygons);
@@ -1254,24 +1254,20 @@ TEST(PSLG, PolygonWithHole) {
 
   ASSERT_EQ(
       hierarchy.size(),
-      2u);
+      3u);
 }
 
 TEST(PSLG, PolygonWithIsland) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0},
-            {20, 0},
-            {20, 20},
-            {0, 20}}},
-          {false,
-           ~0u,
-           {{5, 5},
-            {15, 5},
-            {15, 15},
-            {5, 15}}}};
+          {{0, 0},
+           {20, 0},
+           {20, 20},
+           {0, 20}},
+          {{5, 5},
+           {15, 5},
+           {15, 15},
+           {5, 15}}};
 
   PSLG pslg =
       BuildTestPSLG(polygons);
@@ -1296,26 +1292,20 @@ TEST(PSLG, PolygonWithIsland) {
 }
 
 TEST(PSLG, PolygonWithIslandAndHoleInIt) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0},
-            {20, 0},
-            {20, 20},
-            {0, 20}}},
-          {false,
-           ~0u,
-           {{5, 5},
-            {15, 5},
-            {15, 15},
-            {5, 15}}},
-          {true,
-           ~0u,
-           {{8, 8},
-            {8, 12},
-            {12, 12},
-            {12, 8}}}};
+          {{0, 0},
+           {20, 0},
+           {20, 20},
+           {0, 20}},
+          {{5, 5},
+           {15, 5},
+           {15, 15},
+           {5, 15}},
+          {{8, 8},
+           {8, 12},
+           {12, 12},
+           {12, 8}}};
 
   PSLG pslg =
       BuildTestPSLG(polygons);
@@ -1332,40 +1322,32 @@ TEST(PSLG, PolygonWithIslandAndHoleInIt) {
 
   ASSERT_EQ(
       faces.size(),
-      3u);
+      4u);
 
   ASSERT_EQ(
       hierarchy.size(),
-      3u);
+      4u);
 }
 
 TEST(PSLG, TwoPolygonsWithHole) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0},
-            {100, 0},
-            {100, 100},
-            {0, 100}}},
-          {true,
-           ~0u,
-           {{10, 10},
-            {10, 90},
-            {90, 90},
-            {90, 10}}},
-          {false,
-           ~0u,
-           {{50, 50},
-            {150, 50},
-            {150, 150},
-            {50, 150}}},
-          {true,
-           ~0u,
-           {{60, 60},
-            {60, 140},
-            {140, 140},
-            {140, 60}}}};
+          {{0, 0},
+           {100, 0},
+           {100, 100},
+           {0, 100}},
+          {{10, 10},
+           {10, 90},
+           {90, 90},
+           {90, 10}},
+          {{50, 50},
+           {150, 50},
+           {150, 150},
+           {50, 150}},
+          {{60, 60},
+           {60, 140},
+           {140, 140},
+           {140, 60}}};
 
   PSLG pslg =
       BuildTestPSLG(polygons);
@@ -1386,26 +1368,20 @@ TEST(PSLG, TwoPolygonsWithHole) {
 }
 
 TEST(PSLG, HoleWithIsland) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0},
-            {30, 0},
-            {30, 30},
-            {0, 30}}},
-          {true,
-           ~0u,
-           {{5, 5},
-            {5, 25},
-            {25, 25},
-            {25, 5}}},
-          {false,
-           ~0u,
-           {{10, 10},
-            {20, 10},
-            {20, 20},
-            {10, 20}}}};
+          {{0, 0},
+           {30, 0},
+           {30, 30},
+           {0, 30}},
+          {{5, 5},
+           {5, 25},
+           {25, 25},
+           {25, 5}},
+          {{10, 10},
+           {20, 10},
+           {20, 20},
+           {10, 20}}};
 
   PSLG pslg =
       BuildTestPSLG(polygons);
@@ -1422,7 +1398,7 @@ TEST(PSLG, HoleWithIsland) {
 
   ASSERT_EQ(
       hierarchy.size(),
-      3u);
+      4u);
 
   std::vector<int> depths;
 
@@ -1438,34 +1414,30 @@ TEST(PSLG, HoleWithIsland) {
       depths.begin(),
       depths.end());
 
+  ASSERT_EQ(depths.size(), 4u);
   EXPECT_EQ(depths[0], 0);
   EXPECT_EQ(depths[1], 1);
   EXPECT_EQ(depths[2], 2);
+  EXPECT_EQ(depths[3], 2);
 }
 
 TEST(PSLG, TwoHoles) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0},
-            {40, 0},
-            {40, 40},
-            {0, 40}}},
+          {{0, 0},
+           {40, 0},
+           {40, 40},
+           {0, 40}},
 
-          {true,
-           ~0u,
-           {{5, 5},
-            {5, 15},
-            {15, 15},
-            {15, 5}}},
+          {{5, 5},
+           {5, 15},
+           {15, 15},
+           {15, 5}},
 
-          {true,
-           ~0u,
-           {{25, 5},
-            {35, 5},
-            {35, 15},
-            {25, 15}}}};
+          {{25, 5},
+           {35, 5},
+           {35, 15},
+           {25, 15}}};
 
   PSLG pslg =
       BuildTestPSLG(polygons);
@@ -1480,25 +1452,21 @@ TEST(PSLG, TwoHoles) {
 
   auto faces = BuildFaces(hierarchy, cycles);
 
-  EXPECT_EQ(hierarchy.size(), 3);
+  EXPECT_EQ(hierarchy.size(), 5u);
 }
 
 TEST(PSLG, SharedEdge) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0},
-            {10, 0},
-            {10, 10},
-            {0, 10}}},
+          {{0, 0},
+           {10, 0},
+           {10, 10},
+           {0, 10}},
 
-          {false,
-           ~0u,
-           {{10, 0},
-            {20, 0},
-            {20, 10},
-            {10, 10}}}};
+          {{10, 0},
+           {20, 0},
+           {20, 10},
+           {10, 10}}};
 
   PSLG pslg =
       BuildTestPSLG(polygons);
@@ -1512,20 +1480,16 @@ TEST(PSLG, SharedEdge) {
 }
 
 TEST(PSLG, TouchingVertex) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0},
-            {10, 0},
-            {10, 10},
-            {0, 10}}},
+          {{0, 0},
+           {10, 0},
+           {10, 10},
+           {0, 10}},
 
-          {false,
-           ~0u,
-           {{10, 10},
-            {20, 10},
-            {15, 20}}}};
+          {{10, 10},
+           {20, 10},
+           {15, 20}}};
 
   PSLG pslg =
       BuildTestPSLG(polygons);
@@ -1539,13 +1503,13 @@ TEST(PSLG, TouchingVertex) {
 }
 
 TEST(PSLG, FiveLevelHierarchy) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false, ~0u, {{0, 0}, {100, 0}, {100, 100}, {0, 100}}},
-          {true, ~0u, {{10, 10}, {10, 90}, {90, 90}, {90, 10}}},
-          {false, ~0u, {{20, 20}, {80, 20}, {80, 80}, {20, 80}}},
-          {true, ~0u, {{30, 30}, {30, 70}, {70, 70}, {70, 30}}},
-          {false, ~0u, {{40, 40}, {60, 40}, {60, 60}, {40, 60}}}};
+          {{0, 0}, {100, 0}, {100, 100}, {0, 100}},
+          {{10, 10}, {10, 90}, {90, 90}, {90, 10}},
+          {{20, 20}, {80, 20}, {80, 80}, {20, 80}},
+          {{30, 30}, {30, 70}, {70, 70}, {70, 30}},
+          {{40, 40}, {60, 40}, {60, 60}, {40, 60}}};
 
   PSLG pslg =
       BuildTestPSLG(polygons);
@@ -1562,7 +1526,7 @@ TEST(PSLG, FiveLevelHierarchy) {
 
   ASSERT_EQ(
       hierarchy.size(),
-      5u);
+      6u);
 
   std::vector<int> depths;
 
@@ -1578,36 +1542,32 @@ TEST(PSLG, FiveLevelHierarchy) {
       depths.begin(),
       depths.end());
 
+  ASSERT_EQ(depths.size(), 6u);
   for (int i = 0; i < 5; ++i) {
     EXPECT_EQ(
         depths[i],
         i);
   }
+  EXPECT_EQ(depths[5], 4);
 }
 
 TEST(PSLG, Grid3x3) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0},
-            {30, 0},
-            {30, 30},
-            {0, 30}}},
+          {{0, 0},
+           {30, 0},
+           {30, 30},
+           {0, 30}},
 
-          {false,
-           ~0u,
-           {{10, 0},
-            {20, 0},
-            {20, 30},
-            {10, 30}}},
+          {{10, 0},
+           {20, 0},
+           {20, 30},
+           {10, 30}},
 
-          {false,
-           ~0u,
-           {{0, 10},
-            {30, 10},
-            {30, 20},
-            {0, 20}}}};
+          {{0, 10},
+           {30, 10},
+           {30, 20},
+           {0, 20}}};
 
   PSLG pslg =
       BuildTestPSLG(polygons);
@@ -1621,12 +1581,12 @@ TEST(PSLG, Grid3x3) {
 }
 
 TEST(PSLG_Pathological, FourWayVertex) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false, ~0u, {{0, 0}, {10, 0}, {10, 10}, {0, 10}}},
-          {false, ~0u, {{10, 0}, {20, 0}, {20, 10}, {10, 10}}},
-          {false, ~0u, {{0, 10}, {10, 10}, {10, 20}, {0, 20}}},
-          {false, ~0u, {{10, 10}, {20, 10}, {20, 20}, {10, 20}}}};
+          {{0, 0}, {10, 0}, {10, 10}, {0, 10}},
+          {{10, 0}, {20, 0}, {20, 10}, {10, 10}},
+          {{0, 10}, {10, 10}, {10, 20}, {0, 20}},
+          {{10, 10}, {20, 10}, {20, 20}, {10, 20}}};
 
   auto pslg = BuildTestPSLG(polygons);
   auto cycles = ExtractMinimalCycles(pslg);
@@ -1635,10 +1595,10 @@ TEST(PSLG_Pathological, FourWayVertex) {
 }
 
 TEST(PSLG_Pathological, TJunction) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false, ~0u, {{0, 0}, {30, 0}, {30, 20}, {0, 20}}},
-          {false, ~0u, {{10, 0}, {20, 0}, {20, 10}, {10, 10}}}};
+          {{0, 0}, {30, 0}, {30, 20}, {0, 20}},
+          {{10, 0}, {20, 0}, {20, 10}, {10, 10}}};
 
   auto pslg = BuildTestPSLG(polygons);
   auto cycles = ExtractMinimalCycles(pslg);
@@ -1647,17 +1607,17 @@ TEST(PSLG_Pathological, TJunction) {
 }
 
 TEST(Hierarchy_Pathological, EightChildren) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false, ~0u, {{0, 0}, {100, 0}, {100, 100}, {0, 100}}},
-          {false, ~0u, {{20, 20}, {40, 20}, {40, 40}, {20, 40}}},
-          {false, ~0u, {{45, 20}, {55, 20}, {55, 40}, {45, 40}}},
-          {false, ~0u, {{60, 20}, {80, 20}, {80, 40}, {60, 40}}},
-          {false, ~0u, {{20, 45}, {40, 45}, {40, 55}, {20, 55}}},
-          {false, ~0u, {{60, 45}, {80, 45}, {80, 55}, {60, 55}}},
-          {false, ~0u, {{20, 60}, {40, 60}, {40, 80}, {20, 80}}},
-          {false, ~0u, {{45, 60}, {55, 60}, {55, 80}, {45, 80}}},
-          {false, ~0u, {{60, 60}, {80, 60}, {80, 80}, {60, 80}}}};
+          {{0, 0}, {100, 0}, {100, 100}, {0, 100}},
+          {{20, 20}, {40, 20}, {40, 40}, {20, 40}},
+          {{45, 20}, {55, 20}, {55, 40}, {45, 40}},
+          {{60, 20}, {80, 20}, {80, 40}, {60, 40}},
+          {{20, 45}, {40, 45}, {40, 55}, {20, 55}},
+          {{60, 45}, {80, 45}, {80, 55}, {60, 55}},
+          {{20, 60}, {40, 60}, {40, 80}, {20, 80}},
+          {{45, 60}, {55, 60}, {55, 80}, {45, 80}},
+          {{60, 60}, {80, 60}, {80, 80}, {60, 80}}};
 
   auto pslg = BuildTestPSLG(polygons);
   auto cycles = ExtractMinimalCycles(pslg);
@@ -1668,31 +1628,28 @@ TEST(Hierarchy_Pathological, EightChildren) {
 }
 
 TEST(Hierarchy_Pathological, DeepNesting) {
-  std::vector<bw::core::Clipper2Polygon> polygons;
+  std::vector<Contour> polygons;
 
   for (int i = 0; i < 5; ++i) {
     int s = i * 10;
 
-    Path64 p;
+    Contour contour;
 
     if (i % 2 == 1) {
-      p = {
+      contour = {
           {s, s},
           {s, 100 - s},
           {100 - s, 100 - s},
           {100 - s, s}};
     } else {
-      p = {
+      contour = {
           {s, s},
           {100 - s, s},
           {100 - s, 100 - s},
           {s, 100 - s}};
     }
 
-    polygons.push_back(
-        {i % 2 == 1,
-         ~0u,
-         p});
+    polygons.push_back(std::move(contour));
   }
 
   auto pslg = BuildTestPSLG(polygons);
@@ -1700,7 +1657,7 @@ TEST(Hierarchy_Pathological, DeepNesting) {
   auto tree = BuildPolygonHierarchy(pslg, cycles);
   auto faces = BuildFaces(tree, cycles);
 
-  ASSERT_EQ(tree.size(), 5u);
+  ASSERT_EQ(tree.size(), 6u);
 
   int maxDepth = 0;
 
@@ -1716,12 +1673,12 @@ TEST(Hierarchy_Pathological, DeepNesting) {
 }
 
 TEST(PSLG_Pathological, SharedEdgeChain) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false, ~0u, {{0, 0}, {10, 0}, {10, 10}, {0, 10}}},
-          {false, ~0u, {{10, 0}, {20, 0}, {20, 10}, {10, 10}}},
-          {false, ~0u, {{20, 0}, {30, 0}, {30, 10}, {20, 10}}},
-          {false, ~0u, {{30, 0}, {40, 0}, {40, 10}, {30, 10}}}};
+          {{0, 0}, {10, 0}, {10, 10}, {0, 10}},
+          {{10, 0}, {20, 0}, {20, 10}, {10, 10}},
+          {{20, 0}, {30, 0}, {30, 10}, {20, 10}},
+          {{30, 0}, {40, 0}, {40, 10}, {30, 10}}};
 
   auto pslg = BuildTestPSLG(polygons);
   auto cycles = ExtractMinimalCycles(pslg);
@@ -1730,12 +1687,12 @@ TEST(PSLG_Pathological, SharedEdgeChain) {
 }
 
 TEST(PSLG_Pathological, Pinwheel) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false, ~0u, {{0, 0}, {50, 50}, {0, 100}}},
-          {false, ~0u, {{0, 100}, {50, 50}, {100, 100}}},
-          {false, ~0u, {{100, 100}, {50, 50}, {100, 0}}},
-          {false, ~0u, {{100, 0}, {50, 50}, {0, 0}}}};
+          {{0, 0}, {50, 50}, {0, 100}},
+          {{0, 100}, {50, 50}, {100, 100}},
+          {{100, 100}, {50, 50}, {100, 0}},
+          {{100, 0}, {50, 50}, {0, 0}}};
 
   auto pslg = BuildTestPSLG(polygons);
   auto cycles = ExtractMinimalCycles(pslg);
@@ -1744,14 +1701,12 @@ TEST(PSLG_Pathological, Pinwheel) {
 }
 
 TEST(PSLG_Pathological, ThinSliver) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0},
-            {1000000, 0},
-            {1000000, 1},
-            {0, 1}}}};
+          {{0, 0},
+           {1000000, 0},
+           {1000000, 1},
+           {0, 1}}};
 
   auto pslg = BuildTestPSLG(polygons);
   auto cycles = ExtractMinimalCycles(pslg);
@@ -1760,16 +1715,16 @@ TEST(PSLG_Pathological, ThinSliver) {
 }
 
 TEST(PSLG_Pathological, Comb) {
-  std::vector<bw::core::Clipper2Polygon> polygons;
+  std::vector<Contour> polygons;
 
   polygons.push_back(
-      {false, ~0u, {{0, 0}, {100, 0}, {100, 20}, {0, 20}}});
+      {{0, 0}, {100, 0}, {100, 20}, {0, 20}});
 
   for (int i = 0; i < 10; ++i) {
     int x = 5 + i * 9;
 
     polygons.push_back(
-        {false, ~0u, {{x, 20}, {x + 3, 20}, {x + 3, 40}, {x, 40}}});
+        {{x, 20}, {x + 3, 20}, {x + 3, 40}, {x, 40}});
   }
 
   auto pslg = BuildTestPSLG(polygons);
@@ -1779,14 +1734,10 @@ TEST(PSLG_Pathological, Comb) {
 }
 
 TEST(PSLG_Pathological, HoleTouchesShellAtVertex) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0}, {100, 0}, {100, 100}, {0, 100}}},
-          {true,
-           ~0u,
-           {{0, 0}, {20, 0}, {20, 20}, {0, 20}}}};
+          {{0, 0}, {100, 0}, {100, 100}, {0, 100}},
+          {{0, 0}, {20, 0}, {20, 20}, {0, 20}}};
 
   EXPECT_NO_THROW(
       {
@@ -1795,14 +1746,10 @@ TEST(PSLG_Pathological, HoleTouchesShellAtVertex) {
 }
 
 TEST(PSLG_Pathological, FigureEightTouch) {
-  std::vector<bw::core::Clipper2Polygon> polygons =
+  std::vector<Contour> polygons =
       {
-          {false,
-           ~0u,
-           {{0, 0}, {20, 0}, {20, 20}, {0, 20}}},
-          {false,
-           ~0u,
-           {{20, 20}, {40, 20}, {40, 40}, {20, 40}}}};
+          {{0, 0}, {20, 0}, {20, 20}, {0, 20}},
+          {{20, 20}, {40, 20}, {40, 40}, {20, 40}}};
 
   auto pslg = BuildTestPSLG(polygons);
   auto cycles = ExtractMinimalCycles(pslg);
@@ -1811,17 +1758,15 @@ TEST(PSLG_Pathological, FigureEightTouch) {
 }
 
 TEST(PSLG_Pathological, Grid20x20) {
-  std::vector<bw::core::Clipper2Polygon> polygons;
+  std::vector<Contour> polygons;
 
   for (int y = 0; y < 20; ++y) {
     for (int x = 0; x < 20; ++x) {
       polygons.push_back(
-          {false,
-           ~0u,
-           {{x * 10, y * 10},
-            {(x + 1) * 10, y * 10},
-            {(x + 1) * 10, (y + 1) * 10},
-            {x * 10, (y + 1) * 10}}});
+          {{x * 10, y * 10},
+           {(x + 1) * 10, y * 10},
+           {(x + 1) * 10, (y + 1) * 10},
+           {x * 10, (y + 1) * 10}});
     }
   }
 
@@ -1836,7 +1781,7 @@ TEST(PSLG_Fuzz, RandomRectangles) {
     std::mt19937 rng(seed);
 
     for (int iter = 0; iter < 250; ++iter) {
-      std::vector<bw::core::Clipper2Polygon> polygons;
+      std::vector<Contour> polygons;
 
       for (int i = 0; i < 50; ++i) {
         int x = rng() % 1000;
@@ -1846,12 +1791,10 @@ TEST(PSLG_Fuzz, RandomRectangles) {
         int h = 10 + rng() % 100;
 
         polygons.push_back(
-            {false,
-             ~0u,
-             {{x, y},
-              {x + w, y},
-              {x + w, y + h},
-              {x, y + h}}});
+            {{x, y},
+             {x + w, y},
+             {x + w, y + h},
+             {x, y + h}});
       }
 
       EXPECT_NO_THROW(
@@ -1869,89 +1812,5 @@ TEST(PSLG_Fuzz, RandomRectangles) {
 
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
-  auto result = RUN_ALL_TESTS();
-
-  if (gClipperAllocatorsInitialized) {
-    Clipper2Lib::WmDestroyAllocators();
-  }
-
-  return result;
-
-  /*
-  string filename;
-  if (argc < 2)
-  {
-          filename = "../../../../experiments/resources/test-1.yaml";
-  }
-  else
-  {
-          filename = argv[1];
-  }
-
-  try
-  {
-          auto world = openWorld(filename);
-
-          Clipper2Lib::WmInitialiseAllocators(4, 16 * 1024 * 1024);
-
-          // Create intermediate polygons
-
-          // Intersect polygons
-          // - Check clipper logic for collinear edges
-          // - Use clipper intersection function
-          // - Just do n^2 test for now, to prove it works conceptually, before doing sweep-lines
-          // - Just split vectors and insert in the middle for now
-
-          // Build graph
-          // - How to handle polygons entirely within other polygons?
-          //   This should produce "sector within sector", with outer sector having a hole
-          // Find minimal cycles
-          // - Will need to reconstruct the hole information by testing points
-
-          Clipper2Lib::Paths64 input;
-
-          input.push_back({
-                  {0,0},
-                  {100,0},
-                  {100,100},
-                  {0,100}
-          });
-
-          // polygon B
-          input.push_back({
-                  {50,50},
-                  {150,50},
-                  {150,150},
-                  {50,150}
-          });
-
-          // Hole in A
-          input.push_back({
-                  {10,10},
-                  {10,20},
-                  {20,20},
-                  {20,10}
-          });
-
-          // Clockwise has negative area.  Therefore, if the input cycle is clockwise (hole),
-          // we keep the negative one.
-          // So: if it's a hole, then it will be clockwise, and we only keep the negative loop
-          // If it's not a hole, we want to keep both, because if the polygon is inside another,
-          // we will need it both as a hole for the containing polygon, and a polygon in its own right.
-          // If it's not inside another, then we remove the clockwise (negative area) loop.
-          // Clipper will return correctly-ordered edges to us
-          auto graph = expr::BuildPSLG(input);
-          auto cycles = expr::ExtractMinimalCycles(graph);
-          auto hierarchy = expr::BuildPolygonHierarchy(graph, cycles);
-
-          Clipper2Lib::WmDestroyAllocators();
-  }
-  catch (std::exception& e)
-  {
-          cout << e.what() << "\n";
-          return 1;
-  }
-
-  return 0;
-  */
+  return RUN_ALL_TESTS();
 }

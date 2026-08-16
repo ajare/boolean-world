@@ -6,13 +6,12 @@
 
 #include <core/Arrangement.h>
 #include <core/ArrangementWorldDataGenerator.h>
-#include <core/ClipperDefines.h>
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/World.h>
 
 namespace bw::experiments {
 namespace {
-using expr::ArrangementResult;
+using bw::core::arr::ArrangementResult;
 
 GeometryPredicate QueryPublishedSnapshot(
     bw::core::WorldData const& worldData,
@@ -28,11 +27,11 @@ GeometryPredicate QueryPublishedSnapshot(
 GeometryPredicate QueryNewEngine(
     ArrangementResult const& arrangement,
     wp::Vector2 const& position) {
-  expr::Vertex point{
-      int64_t(std::llround(position.x * BW_CLIPPER_SCALE)),
-      int64_t(std::llround(position.y * BW_CLIPPER_SCALE))};
+  bw::core::arr::FixedPointVertex point{
+      bw::core::arr::ToFixedPointCoordinate(position.x),
+      bw::core::arr::ToFixedPointCoordinate(position.y)};
   for (auto const& face : arrangement.faces) {
-    if (!expr::PointInFace(point, face, arrangement)) {
+    if (!bw::core::arr::PointInFace(point, face, arrangement)) {
       continue;
     }
     return {
@@ -72,8 +71,9 @@ double NewSolidArea(ArrangementResult const& arrangement) {
           hole, faceIndex, arrangement));
     }
   }
-  return twiceArea * 0.5 /
-         (BW_CLIPPER_SCALE * BW_CLIPPER_SCALE);
+  constexpr auto scale =
+      double(bw::core::arr::FixedPointUnitsPerWorldUnit);
+  return twiceArea * 0.5 / (scale * scale);
 }
 
 bool InBounds(wp::Vector2 const& point, wp::BoundingBox const& bounds) {
@@ -86,14 +86,17 @@ bool InBounds(wp::Vector2 const& point, wp::BoundingBox const& bounds) {
 bool OnArrangementBoundary(
     wp::Vector2 const& point,
     ArrangementResult const& arrangement) {
-  constexpr double tolerance = 0.25 / BW_CLIPPER_SCALE;
+  constexpr double tolerance =
+      0.25 / bw::core::arr::FixedPointUnitsPerWorldUnit;
+  constexpr auto scale =
+      double(bw::core::arr::FixedPointUnitsPerWorldUnit);
   for (auto const& edge : arrangement.edges) {
     auto const& fixedA = arrangement.vertices[edge.v[0]];
     auto const& fixedB = arrangement.vertices[edge.v[1]];
-    double ax = fixedA.x / BW_CLIPPER_SCALE;
-    double ay = fixedA.y / BW_CLIPPER_SCALE;
-    double bx = fixedB.x / BW_CLIPPER_SCALE;
-    double by = fixedB.y / BW_CLIPPER_SCALE;
+    double ax = double(fixedA.x) / scale;
+    double ay = double(fixedA.y) / scale;
+    double bx = double(fixedB.x) / scale;
+    double by = double(fixedB.y) / scale;
     double dx = bx - ax;
     double dy = by - ay;
     double lengthSquared = dx * dx + dy * dy;
@@ -224,10 +227,10 @@ GeometryComparisonReport CompareWorldGeometry(
     auto const& fixedA = newWorld->vertices[arrangementEdge.v[0]];
     auto const& fixedB = newWorld->vertices[arrangementEdge.v[1]];
     sampleNearEdge(
-        {float(fixedA.x / BW_CLIPPER_SCALE),
-         float(fixedA.y / BW_CLIPPER_SCALE)},
-        {float(fixedB.x / BW_CLIPPER_SCALE),
-         float(fixedB.y / BW_CLIPPER_SCALE)});
+        {bw::core::arr::ToWorldCoordinate(fixedA.x),
+         bw::core::arr::ToWorldCoordinate(fixedA.y)},
+        {bw::core::arr::ToWorldCoordinate(fixedB.x),
+         bw::core::arr::ToWorldCoordinate(fixedB.y)});
   }
 
   return report;
