@@ -479,8 +479,6 @@ void StatePlayBooleanWorld::resumeImpl(void* args) {
 }
 
 void StatePlayBooleanWorld::handleClippingUpdate(bw::core::DynamicWorldDataGenerator::GenerationDetails const& details) {
-  const int MaxRecords = 10;
-
   lock_guard<mutex> lock(mClippingRecordsMutex);
 
   // If state is Generating, insert
@@ -488,8 +486,8 @@ void StatePlayBooleanWorld::handleClippingUpdate(bw::core::DynamicWorldDataGener
     case bw::core::DynamicWorldDataGenerator::GenerationState::Generating:
       mClippingRecords.push_back({details.clippingId,
                                   mGlobalTime,
-                                  0.0f,
-                                  0.0f,
+                                  -1.0,
+                                  -1.0,
                                   details.genTimeNs,
                                   details.stats});
       break;
@@ -764,12 +762,134 @@ void StatePlayBooleanWorld::debug_renderCollisionSim(wp::Vector2 const& viewSize
 }
 
 void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList) {
+  VAR_UNUSED(drawList);
+
   if (!mDebugDisplay.clipGeneration) {
     return;
   }
 
   if (ImGui::Begin("Clipping records")) {
-    lock_guard<mutex> lock(mClippingRecordsMutex);
+    vector<ClippingRecord> records;
+    {
+      lock_guard<mutex> lock(mClippingRecordsMutex);
+      records.assign(mClippingRecords.begin(), mClippingRecords.end());
+    }
+
+    constexpr double TimelineDuration = 5.0;
+    constexpr float TimelineRowHeight = 22.0f;
+    constexpr float TimelineAxisHeight = 24.0f;
+    auto timelineEnd = mGlobalTime;
+    auto timelineStart = timelineEnd - TimelineDuration;
+
+    vector<ClippingRecord const*> visibleRecords;
+    for (auto const& record : records) {
+      auto lastEventTime = record.commitedTime >= 0.0
+                               ? record.commitedTime
+                           : record.generationCompleteTime >= 0.0
+                               ? record.generationCompleteTime
+                               : timelineEnd;
+      if (lastEventTime >= timelineStart &&
+          record.generationStartedTime <= timelineEnd) {
+        visibleRecords.push_back(&record);
+      }
+    }
+
+    ImGui::TextUnformatted("Last 5 seconds");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.20f, 1.0f), "Start / generating");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.25f, 0.75f, 1.0f, 1.0f), "End");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.30f, 0.90f, 0.40f, 1.0f), "Commit");
+
+    auto canvasPosition = ImGui::GetCursorScreenPos();
+    auto canvasWidth = max(ImGui::GetContentRegionAvail().x, 320.0f);
+    auto rowCount = max(size_t(visibleRecords.size()), size_t(1));
+    auto canvasHeight = TimelineAxisHeight + TimelineRowHeight * rowCount;
+    ImGui::InvisibleButton(
+        "##GenerationTimeline", {canvasWidth, canvasHeight});
+
+    auto timelineDrawList = ImGui::GetWindowDrawList();
+    auto canvasEnd = ImVec2{
+        canvasPosition.x + canvasWidth,
+        canvasPosition.y + canvasHeight};
+    timelineDrawList->AddRectFilled(
+        canvasPosition, canvasEnd, IM_COL32(24, 26, 31, 255), 3.0f);
+
+    constexpr float LabelWidth = 52.0f;
+    auto graphStartX = canvasPosition.x + LabelWidth;
+    auto graphEndX = canvasEnd.x - 8.0f;
+    auto timeToX = [&](double time) {
+      auto fraction = clamp(
+          (time - timelineStart) / TimelineDuration, 0.0, 1.0);
+      return graphStartX +
+             static_cast<float>(fraction) * (graphEndX - graphStartX);
+    };
+
+    for (int second = 0; second <= int(TimelineDuration); ++second) {
+      auto x = graphStartX +
+               (graphEndX - graphStartX) *
+                   (static_cast<float>(second) / float(TimelineDuration));
+      timelineDrawList->AddLine(
+          {x, canvasPosition.y + TimelineAxisHeight - 5.0f},
+          {x, canvasEnd.y},
+          IM_COL32(65, 69, 78, 255));
+      auto label = second == int(TimelineDuration)
+                       ? string("now")
+                       : format("-{}s", int(TimelineDuration) - second);
+      timelineDrawList->AddText(
+          {x - 10.0f, canvasPosition.y + 3.0f},
+          IM_COL32(180, 184, 194, 255), label.c_str());
+    }
+
+    if (visibleRecords.empty()) {
+      timelineDrawList->AddText(
+          {graphStartX + 8.0f,
+           canvasPosition.y + TimelineAxisHeight + 3.0f},
+          IM_COL32(150, 154, 164, 255),
+          "No generation activity");
+    }
+
+    for (size_t row = 0; row < visibleRecords.size(); ++row) {
+      auto const& record = *visibleRecords[visibleRecords.size() - 1 - row];
+      auto y = canvasPosition.y + TimelineAxisHeight +
+               TimelineRowHeight * (static_cast<float>(row) + 0.5f);
+      auto idLabel = format("#{}", record.clippingId);
+      timelineDrawList->AddText(
+          {canvasPosition.x + 6.0f, y - 7.0f},
+          IM_COL32(205, 208, 216, 255), idLabel.c_str());
+
+      auto generationEnd = record.generationCompleteTime >= 0.0
+                               ? record.generationCompleteTime
+                               : timelineEnd;
+      if (generationEnd >= timelineStart &&
+          record.generationStartedTime <= timelineEnd) {
+        auto startX = timeToX(record.generationStartedTime);
+        auto endX = timeToX(generationEnd);
+        timelineDrawList->AddLine(
+            {startX, y}, {endX, y}, IM_COL32(242, 166, 51, 255), 6.0f);
+        if (record.generationStartedTime >= timelineStart) {
+          timelineDrawList->AddCircleFilled(
+              {startX, y}, 4.0f, IM_COL32(242, 166, 51, 255));
+        }
+        if (record.generationCompleteTime >= timelineStart &&
+            record.generationCompleteTime <= timelineEnd) {
+          timelineDrawList->AddCircleFilled(
+              {endX, y}, 4.0f, IM_COL32(64, 191, 255, 255));
+        }
+      }
+
+      if (record.commitedTime >= timelineStart &&
+          record.commitedTime <= timelineEnd) {
+        auto x = timeToX(record.commitedTime);
+        timelineDrawList->AddQuadFilled(
+            {x, y - 6.0f}, {x + 6.0f, y},
+            {x, y + 6.0f}, {x - 6.0f, y},
+            IM_COL32(76, 230, 102, 255));
+      }
+    }
+
+    ImGui::Spacing();
 
     ImGuiTableFlags flags =
         ImGuiTableFlags_SizingStretchSame |
@@ -794,9 +914,10 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
       ImGui::TableSetupColumn("> Pv:lerp");
       ImGui::TableHeadersRow();
 
-      auto numRecords = (int)mClippingRecords.size();
-      for (uint32_t i = 0; i < min(10, numRecords); ++i) {
-        auto const& record = mClippingRecords[numRecords - 1 - i];
+      auto numRecords = records.size();
+      auto recordsToShow = min(size_t(10), numRecords);
+      for (size_t i = 0; i < recordsToShow; ++i) {
+        auto const& record = records[numRecords - 1 - i];
 
         ImGui::TableNextRow();
 
