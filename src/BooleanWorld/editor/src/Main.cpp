@@ -762,10 +762,6 @@ void run() {
     ImGui_ImplSDL3_NewFrame();
 
     ImGui::NewFrame();
-    ImGui::DockSpaceOverViewport(
-        0,
-        ImGui::GetMainViewport(),
-        ImGuiDockNodeFlags_PassthruCentralNode);
 
     auto doc = editor::Document::instance();
     auto mouseButtonStatus = getMouseButtonStatus();

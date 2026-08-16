@@ -51,8 +51,6 @@ extern std::vector<uint32_t> gHoveredIndices;
 namespace editor {
 using namespace std;
 
-ImVec2 gMainMenuWindowSize;
-
 enum struct ActionType {
   None,
   Generic,
@@ -332,7 +330,6 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
       ImGui::EndMenu();
     }
 
-    gMainMenuWindowSize = ImGui::GetWindowSize();
     ImGui::EndMainMenuBar();
   }
 
@@ -355,19 +352,18 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
 }
 
 void renderToolbar(Document* doc, editor::Settings& settings) {
-  ImGuiIO& io = ImGui::GetIO();
+  ImGuiViewportP* viewport = (ImGuiViewportP*)(void*)ImGui::GetMainViewport();
 
-  auto windowFlags = 0 | ImGuiWindowFlags_NoDecoration;
-
-  ImGui::SetNextWindowPos(ImVec2(0, gMainMenuWindowSize.y));
-  ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, 35));
+  auto windowFlags =
+      ImGuiWindowFlags_NoDecoration |
+      ImGuiWindowFlags_NoSavedSettings;
 
   bool docAction = false;
   bool checkDocumentModified = false;
   DocumentHelperFunction helperFunc;
   static string docText;
 
-  if (ImGui::Begin("Toolbar", nullptr, windowFlags)) {
+  if (ImGui::BeginViewportSideBar("Toolbar", viewport, ImGuiDir_Up, 35, windowFlags)) {
     auto world = doc->getWorld();
 
     bool saveDisabled = !world || !doc->isModified();
@@ -3474,6 +3470,10 @@ void renderWidgets(
 
   renderMenu(doc, settings);
   renderToolbar(doc, settings);
+  ImGui::DockSpaceOverViewport(
+      0,
+      ImGui::GetMainViewport(),
+      ImGuiDockNodeFlags_PassthruCentralNode);
 
   if (doc->isActive()) {
     if (!settings.expertMode) {
