@@ -373,7 +373,9 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   // Create accel grids after setting extents but before adding primitives
   if (workData.accelGridSize > 0.0f) {
     delete mPrimitiveLookupGrid;
+    mPrimitiveLookupGrid = nullptr;
     delete mTriggerLookupGrid;
+    mTriggerLookupGrid = nullptr;
 
     createAccelerationGrids(workData.accelGridSize);
   } else {
