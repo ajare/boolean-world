@@ -56,22 +56,6 @@ function(bw_no_postfix)
     endforeach()
 endfunction()
 
-# bw_add_version_resource(<target>)
-#
-# Compiles build/version/Version.rc into the target, embedding the Windows
-# version-info block (FileVersion, ProductName, ...). The .rc includes
-# Version.h from the same directory, so that directory has to be on the
-# resource compiler's include path.
-function(bw_add_version_resource tgt)
-    set(rc "${CMAKE_CURRENT_SOURCE_DIR}/build/version/Version.rc")
-    if(NOT EXISTS "${rc}")
-        message(FATAL_ERROR "${tgt}: expected a version resource at ${rc}")
-    endif()
-    target_sources(${tgt} PRIVATE "${rc}")
-    target_include_directories(${tgt} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/build/version")
-    source_group("Resource Files" FILES "${rc}")
-endfunction()
-
 # bw_deploy_runtime_dlls(<target>)
 #
 # Stage every shared library the target needs next to the executable. This

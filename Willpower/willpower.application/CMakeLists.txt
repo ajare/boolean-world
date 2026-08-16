@@ -71,7 +71,6 @@ target_compile_options(Willpower.Application PRIVATE /W4)
 bw_target_defaults(Willpower.Application)
 bw_output_dirs(Willpower.Application "build/vs2026/bin/x64/$<CONFIG>" "build/vs2026/lib/x64/$<CONFIG>")
 bw_enable_sdl_checks(Willpower.Application)
-bw_add_version_resource(Willpower.Application)
 set_target_properties(Willpower.Application PROPERTIES FOLDER Willpower)
 
 # tungsten-oxide's loader test: parses a Resources.yaml through the real

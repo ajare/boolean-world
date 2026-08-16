@@ -38,7 +38,6 @@ target_compile_options(Launcher PRIVATE /W3)
 bw_target_defaults(Launcher)
 bw_output_dirs(Launcher "build/vs2026/bin/x64/$<CONFIG>" "build/vs2026/lib/x64/$<CONFIG>")
 bw_enable_sdl_checks(Launcher)
-bw_add_version_resource(Launcher)
 set_target_properties(Launcher PROPERTIES FOLDER Launcher)
 
 if(BUILD_TESTING)
