@@ -343,17 +343,6 @@ int ContourWinding(RationalPoint const& point, Contour const& contour) {
   return winding;
 }
 
-Box GetContourBounds(Contour const& contour) {
-  Box bounds{contour[0].x, contour[0].y, contour[0].x, contour[0].y};
-  for (auto const& point : contour) {
-    bounds.minx = min(bounds.minx, point.x);
-    bounds.miny = min(bounds.miny, point.y);
-    bounds.maxx = max(bounds.maxx, point.x);
-    bounds.maxy = max(bounds.maxy, point.y);
-  }
-  return bounds;
-}
-
 Box GetBounds(PSLG const& graph, Cycle const& cycle) {
   auto const& first = graph.vs[cycle.vis[0]];
   Box bounds{first.x, first.y, first.x, first.y};
@@ -370,40 +359,6 @@ Box GetBounds(PSLG const& graph, Cycle const& cycle) {
 bool ContainsBox(Box const& outer, Box const& inner) {
   return outer.minx < inner.minx && outer.maxx > inner.maxx &&
          outer.miny < inner.miny && outer.maxy > inner.maxy;
-}
-
-bool EqualBox(Box const& lhs, Box const& rhs) {
-  return lhs.minx == rhs.minx && lhs.miny == rhs.miny &&
-         lhs.maxx == rhs.maxx && lhs.maxy == rhs.maxy;
-}
-
-bool IsLeafSolidBoundaryInsideSolid(PSLG const& graph, Cycle const& cycle) {
-  if (cycle.area >= 0) {
-    return false;
-  }
-
-  auto cycleBounds = GetBounds(graph, cycle);
-  for (size_t i = 0; i < graph.sourceContours.size(); ++i) {
-    if (graph.sourceContours[i].empty() ||
-        !EqualBox(cycleBounds, GetContourBounds(graph.sourceContours[i]))) {
-      continue;
-    }
-
-    bool containsContour = false;
-    bool hasContainer = false;
-    for (size_t j = 0; j < graph.sourceContours.size(); ++j) {
-      if (i == j || graph.sourceContours[j].empty()) {
-        continue;
-      }
-      auto otherBounds = GetContourBounds(graph.sourceContours[j]);
-      if (ContainsBox(otherBounds, cycleBounds)) {
-        hasContainer = true;
-      }
-      containsContour = containsContour || ContainsBox(cycleBounds, otherBounds);
-    }
-    return hasContainer && !containsContour;
-  }
-  return false;
 }
 
 struct SegmentGrid {
@@ -561,10 +516,6 @@ PSLG BuildPSLG(
   }
 
   PSLG graph;
-  for (auto const& input : contours) {
-    graph.sourceContours.push_back(input.contour);
-  }
-
   unordered_map<FixedPointVertex, int, PointHash> vertexMap;
   map<pair<int, int>, int> edgeMap;
 
@@ -694,10 +645,9 @@ vector<Cycle> ExtractMinimalCycles(PSLG const& graph) {
       continue;
     }
     cycle.area = SignedArea2(graph, cycle.vis);
-    // Zero-area walks are construction debris and clockwise walks normally
-    // bound the unbounded exterior. A nested leaf solid is the exception: both
-    // sides are bounded faces and its clockwise boundary separates them.
-    if (cycle.area > 0 || IsLeafSolidBoundaryInsideSolid(graph, cycle)) {
+    // Zero-area walks are construction debris. Clockwise walks bound the
+    // unbounded exterior rather than a bounded arrangement face.
+    if (cycle.area > 0) {
       cycles.push_back(move(cycle));
     }
   }
@@ -776,9 +726,6 @@ ArrangementResultPtr BuildArrangement(vector<ArrangementPrimitive> const& primit
 
   auto graph = BuildPSLG(contours);
   auto cycles = ExtractMinimalCycles(graph);
-  erase_if(cycles, [](Cycle const& cycle) {
-    return cycle.area <= 0;
-  });
   auto hierarchy = BuildPolygonHierarchy(graph, cycles);
   auto faces = BuildFaces(hierarchy, cycles);
 

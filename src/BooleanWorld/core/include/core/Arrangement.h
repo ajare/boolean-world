@@ -90,7 +90,6 @@ struct ContourInput {
 struct PSLG {
   std::vector<FixedPointVertex> vs;
   std::vector<Edge> es;
-  std::vector<Contour> sourceContours;
 };
 
 // Diagnostic counts for arrangement-construction performance tests and
