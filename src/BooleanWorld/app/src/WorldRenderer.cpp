@@ -1,6 +1,7 @@
 #include <common/GameDefines.h>
 
 #include "WorldRenderer.h"
+#include "WorldWallOrientation.h"
 
 using namespace std;
 
@@ -107,16 +108,10 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
   }
 
   for (auto const& wall : walls) {
-    auto const& edge = worldData.edges[wall.edge];
-    auto const& fixed0 = worldData.vertices[edge.v[0]];
-    auto const& fixed1 = worldData.vertices[edge.v[1]];
-    wp::Vector2 v0{
-        bw::core::arr::ToWorldCoordinate(fixed0.x),
-        bw::core::arr::ToWorldCoordinate(fixed0.y)};
-    wp::Vector2 v1{
-        bw::core::arr::ToWorldCoordinate(fixed1.x),
-        bw::core::arr::ToWorldCoordinate(fixed1.y)};
-    auto normal = (v1 - v0).normalisedCopy().perpendicular();
+    auto const& orientation = bw::app::orientArrangementWall(worldData, wall);
+    auto const& v0 = orientation.v0;
+    auto const& v1 = orientation.v1;
+    auto const& normal = orientation.normal;
     auto const& properties = worldData.palette[wall.paletteIndex];
     auto wallColour = properties.wallMaterialDef.data.baseColourUint;
     auto wallHash = properties.wallMaterialDef.data.hash(

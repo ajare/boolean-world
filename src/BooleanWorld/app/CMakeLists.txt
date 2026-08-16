@@ -18,6 +18,7 @@ add_library(BooleanWorld SHARED
     src/WorldCollisionSim.cpp
     src/WorldRenderer.cpp
     src/WorldRenderer3d.cpp
+    src/WorldWallOrientation.cpp
     src/WorldTriangle3dDataProvider.cpp
     # Vendored ImGui + ImPlot. Each BooleanWorld app carries its own copy;
     # this one and Launcher's are a newer ImGui than editor's.
@@ -106,4 +107,17 @@ if(BUILD_TESTING)
                 "$<TARGET_FILE_DIR:boolean_world_triangle_data_provider_tests>")
     add_test(NAME boolean_world_triangle_data_provider
              COMMAND boolean_world_triangle_data_provider_tests)
+
+    add_executable(boolean_world_wall_orientation_tests
+        tests/world_wall_orientation_tests.cpp
+        src/WorldWallOrientation.cpp)
+    target_include_directories(boolean_world_wall_orientation_tests PRIVATE include)
+    target_link_libraries(boolean_world_wall_orientation_tests PRIVATE
+        core Willpower.Common)
+    target_compile_features(boolean_world_wall_orientation_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_wall_orientation_tests)
+    bw_output_dirs(boolean_world_wall_orientation_tests)
+    bw_deploy_runtime_dlls(boolean_world_wall_orientation_tests)
+    add_test(NAME boolean_world_wall_orientation
+             COMMAND boolean_world_wall_orientation_tests)
 endif()
