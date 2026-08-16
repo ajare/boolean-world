@@ -966,8 +966,8 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
         // Commit lag
         ImGui::TableSetColumnIndex(4);
 
-        if (record.commitedTime >= 0.0) {
-          ImGui::Text("%5.4f", record.commitedTime - record.generationCompleteTime);
+        if (auto commitLag = record.commitLag()) {
+          ImGui::Text("%5.4f", *commitLag);
         } else {
           ImGui::Text("-");
         }
@@ -976,7 +976,7 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
         ImGui::TableSetColumnIndex(5);
 
         if (record.generationCompleteTime >= 0.0) {
-          ImGui::Text("%d", record.generationTimeNs / 1000);
+          ImGui::TextUnformatted(record.generationTimeUsText().c_str());
         } else {
           ImGui::Text("-");
         }
