@@ -40,6 +40,9 @@ add_library(core STATIC
     src/tTransform.cpp)
 
 target_include_directories(core PUBLIC include)
+bw_add_header_filter(core
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../common/include")
 
 target_compile_definitions(core PRIVATE YAML_CPP_STATIC_DEFINE _CONSOLE)
 

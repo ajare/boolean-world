@@ -42,6 +42,7 @@ add_library(Willpower.Common SHARED
     src/tinyxml2.cpp)
 
 target_include_directories(Willpower.Common PUBLIC include)
+bw_add_header_filter(Willpower.Common)
 
 target_compile_definitions(Willpower.Common PRIVATE
     WIN32 _WINDOWS _USRDLL

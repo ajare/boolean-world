@@ -31,6 +31,7 @@ add_library(BooleanWorld SHARED
     src/imgui/implot_items.cpp)
 
 target_include_directories(BooleanWorld PRIVATE include include/imgui)
+bw_add_header_filter(BooleanWorld)
 
 target_compile_definitions(BooleanWorld PRIVATE
     _SILENCE_CXX23_DENORM_DEPRECATION_WARNING

@@ -17,6 +17,7 @@ add_library(WillPower.Viz SHARED
     src/StaticRenderer.cpp)
 
 target_include_directories(WillPower.Viz PUBLIC include)
+bw_add_header_filter(WillPower.Viz)
 
 target_compile_definitions(WillPower.Viz PRIVATE
     WIN32 _WINDOWS _USRDLL

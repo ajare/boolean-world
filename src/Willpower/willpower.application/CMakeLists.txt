@@ -50,6 +50,7 @@ add_library(Willpower.Application SHARED
     src/resourcesystem/XmlFileResourceDefinitionFactory.cpp)
 
 target_include_directories(Willpower.Application PUBLIC include)
+bw_add_header_filter(Willpower.Application)
 
 target_compile_definitions(Willpower.Application
     PUBLIC  WP_APPLICATION_USE_FMOD

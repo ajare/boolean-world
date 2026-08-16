@@ -1,5 +1,33 @@
 # Shared helpers for the BooleanWorld CMake build.
 
+# bw_add_header_filter(<target> [include-dir...])
+#
+# Add first-party headers to a target so Visual Studio emits a "Header Files"
+# filter in the generated project. With no directory arguments, use the
+# target's conventional include directory.
+function(bw_add_header_filter tgt)
+    if(ARGC EQUAL 1)
+        set(header_dirs "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    else()
+        set(header_dirs ${ARGN})
+    endif()
+
+    foreach(header_dir IN LISTS header_dirs)
+        if(NOT IS_DIRECTORY "${header_dir}")
+            continue()
+        endif()
+
+        file(GLOB_RECURSE headers CONFIGURE_DEPENDS
+            "${header_dir}/*.h"
+            "${header_dir}/*.hpp"
+            "${header_dir}/*.inl")
+        if(headers)
+            target_sources(${tgt} PRIVATE ${headers})
+            source_group(TREE "${header_dir}" PREFIX "Header Files" FILES ${headers})
+        endif()
+    endforeach()
+endfunction()
+
 # bw_target_defaults(<target>)
 #
 # Settings every project shared: multi-processor compilation and the Debug "d"

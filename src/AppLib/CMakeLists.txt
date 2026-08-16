@@ -33,6 +33,7 @@ add_library(AppLib SHARED
 target_include_directories(AppLib
     PUBLIC  include
     PRIVATE include/applib)
+bw_add_header_filter(AppLib)
 
 target_compile_definitions(AppLib PRIVATE
     APPLIB_DLL_EXPORT

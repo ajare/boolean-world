@@ -23,6 +23,7 @@ add_executable(editor WIN32
     src/implot_items.cpp)
 
 target_include_directories(editor PRIVATE include)
+bw_add_header_filter(editor)
 
 target_compile_definitions(editor PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
 

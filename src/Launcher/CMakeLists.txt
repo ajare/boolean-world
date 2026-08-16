@@ -25,6 +25,7 @@ add_executable(Launcher WIN32
     src/imgui/implot_items.cpp)
 
 target_include_directories(Launcher PRIVATE include include/imgui)
+bw_add_header_filter(Launcher)
 
 target_link_libraries(Launcher PRIVATE
     Willpower.Common Willpower.Application

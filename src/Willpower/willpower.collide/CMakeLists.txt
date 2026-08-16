@@ -6,6 +6,7 @@ add_library(Willpower.Collide SHARED
     src/StaticLine.cpp)
 
 target_include_directories(Willpower.Collide PUBLIC include)
+bw_add_header_filter(Willpower.Collide)
 
 target_compile_definitions(Willpower.Collide PRIVATE
     WIN32 _WINDOWS _USRDLL

@@ -26,6 +26,7 @@ add_library(Willpower.Geometry SHARED
     src/clipper.cpp)
 
 target_include_directories(Willpower.Geometry PUBLIC include)
+bw_add_header_filter(Willpower.Geometry)
 
 target_compile_definitions(Willpower.Geometry PRIVATE
     WIN32 _WINDOWS _USRDLL
