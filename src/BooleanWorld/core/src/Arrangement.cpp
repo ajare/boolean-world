@@ -271,17 +271,100 @@ int64_t SignedArea2(PSLG const& graph, vector<int> const& vertices) {
   return area;
 }
 
+bool PointInClosedTriangle(
+    FixedPointVertex const& point,
+    FixedPointVertex const& a,
+    FixedPointVertex const& b,
+    FixedPointVertex const& c) {
+  return Cross(a, b, point) >= 0 && Cross(b, c, point) >= 0 &&
+         Cross(c, a, point) >= 0;
+}
+
+vector<array<int, 3>> TriangulateCycle(PSLG const& graph, Cycle const& cycle) {
+  vector<int> remaining = cycle.vis;
+  bool removedCollinearVertex = true;
+  while (removedCollinearVertex && remaining.size() > 3) {
+    removedCollinearVertex = false;
+    for (size_t i = 0; i < remaining.size(); ++i) {
+      auto const& previous = graph.vs[remaining[(i + remaining.size() - 1) % remaining.size()]];
+      auto const& current = graph.vs[remaining[i]];
+      auto const& next = graph.vs[remaining[(i + 1) % remaining.size()]];
+      if (Cross(previous, current, next) == 0) {
+        remaining.erase(remaining.begin() + i);
+        removedCollinearVertex = true;
+        break;
+      }
+    }
+  }
+
+  vector<array<int, 3>> triangles;
+  while (remaining.size() > 3) {
+    bool removedEar = false;
+    for (size_t i = 0; i < remaining.size(); ++i) {
+      array<int, 3> triangle{
+          remaining[(i + remaining.size() - 1) % remaining.size()],
+          remaining[i],
+          remaining[(i + 1) % remaining.size()]};
+      auto const& a = graph.vs[triangle[0]];
+      auto const& b = graph.vs[triangle[1]];
+      auto const& c = graph.vs[triangle[2]];
+      if (Cross(a, b, c) <= 0) {
+        continue;
+      }
+
+      auto containsVertex = false;
+      for (auto vertexIndex : remaining) {
+        if (vertexIndex == triangle[0] || vertexIndex == triangle[1] ||
+            vertexIndex == triangle[2]) {
+          continue;
+        }
+        if (PointInClosedTriangle(graph.vs[vertexIndex], a, b, c)) {
+          containsVertex = true;
+          break;
+        }
+      }
+      if (containsVertex) {
+        continue;
+      }
+
+      triangles.push_back(triangle);
+      remaining.erase(remaining.begin() + i);
+      removedEar = true;
+      break;
+    }
+
+    // Minimal arrangement cycles are simple, so the ear theorem guarantees
+    // progress after collinear vertices are removed.
+    if (!removedEar) {
+      break;
+    }
+  }
+
+  if (remaining.size() == 3 &&
+      Cross(graph.vs[remaining[0]], graph.vs[remaining[1]], graph.vs[remaining[2]]) > 0) {
+    triangles.push_back({remaining[0], remaining[1], remaining[2]});
+  }
+  return triangles;
+}
+
+RationalPoint TriangleCentroid(PSLG const& graph, array<int, 3> const& triangle) {
+  auto const& a = graph.vs[triangle[0]];
+  auto const& b = graph.vs[triangle[1]];
+  auto const& c = graph.vs[triangle[2]];
+  return {a.x + b.x + c.x, a.y + b.y + c.y, 3};
+}
+
 RationalPoint SamplePoint(PSLG const& graph, Cycle const& cycle) {
-  auto const& p0 = graph.vs[cycle.vis[0]];
-  auto const& p1 = graph.vs[cycle.vis[1]];
-  auto dx = p1.x - p0.x;
-  auto dy = p1.y - p0.y;
-  auto scale = max<int64_t>(1, max(abs(dx), abs(dy)));
-  auto denominator = 4 * scale;
-  return {
-      2 * scale * (p0.x + p1.x) - dy,
-      2 * scale * (p0.y + p1.y) + dx,
-      denominator};
+  // A convex ear is wholly inside this counter-clockwise cycle, so its
+  // centroid is a strict interior point. Keep the largest ear from an exact
+  // integer triangulation to stay well clear of the boundary even for slivers.
+  auto triangles = TriangulateCycle(graph, cycle);
+  auto largest = max_element(
+      triangles.begin(), triangles.end(), [&](auto const& lhs, auto const& rhs) {
+        return Cross(graph.vs[lhs[0]], graph.vs[lhs[1]], graph.vs[lhs[2]]) <
+               Cross(graph.vs[rhs[0]], graph.vs[rhs[1]], graph.vs[rhs[2]]);
+      });
+  return TriangleCentroid(graph, *largest);
 }
 
 int PointInCycle(RationalPoint const& point, Cycle const& cycle, PSLG const& graph) {
@@ -302,6 +385,35 @@ int PointInCycle(RationalPoint const& point, Cycle const& cycle, PSLG const& gra
     }
   }
   return winding == 0 ? 0 : 1;
+}
+
+RationalPoint SamplePoint(
+    PSLG const& graph,
+    Face const& face,
+    vector<Cycle> const& cycles) {
+  auto const& cycle = cycles[face.polygon];
+  auto triangles = TriangulateCycle(graph, cycle);
+  array<int, 3> const* largestTriangle = nullptr;
+  int64_t largestArea = 0;
+  for (auto const& triangle : triangles) {
+    auto centroid = TriangleCentroid(graph, triangle);
+    auto insideHole = any_of(
+        face.holes.begin(), face.holes.end(), [&](auto hole) {
+          return PointInCycle(centroid, cycles[hole], graph) != 0;
+        });
+    auto area = Cross(
+        graph.vs[triangle[0]],
+        graph.vs[triangle[1]],
+        graph.vs[triangle[2]]);
+    if (!insideHole && area > largestArea) {
+      largestArea = area;
+      largestTriangle = &triangle;
+    }
+  }
+
+  // A non-empty arrangement face has positive area outside all of its holes,
+  // so at least one triangle centroid is available.
+  return TriangleCentroid(graph, *largestTriangle);
 }
 
 int PointInCycle(FixedPointVertex const& point, Cycle const& cycle, PSLG const& graph) {
@@ -771,7 +883,7 @@ ArrangementResultPtr BuildArrangement(vector<ArrangementPrimitive> const& primit
       continue;
     }
 
-    auto sample = SamplePoint(graph, cycles[faces[seedFace].polygon]);
+    auto sample = SamplePoint(graph, faces[seedFace], cycles);
     for (size_t primitiveIndex = 0;
          primitiveIndex < primitives.size(); ++primitiveIndex) {
       for (auto const& contour : primitives[primitiveIndex].contours) {
