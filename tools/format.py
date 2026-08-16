@@ -37,7 +37,7 @@ VENDOR_DIRS = [
 ]
 
 # Vendored files that sit alongside our own sources in the same directory.
-# editor/ and floored/ each carry a full ImGui + ImPlot + addon set inline.
+# editor/ carries a full ImGui + ImPlot + addon set inline.
 _VENDOR_BASENAMES = {
     "imgui.h", "imgui.cpp", "imgui_internal.h", "imconfig.h",
     "imgui_demo.cpp", "imgui_draw.cpp", "imgui_tables.cpp", "imgui_widgets.cpp",

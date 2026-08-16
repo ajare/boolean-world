@@ -29,8 +29,6 @@ CMakeUserPresets.json
 **/BooleanWorld/core-dll/bin/
 **/BooleanWorld/editor/bin/
 **/BooleanWorld/editor/obj/
-**/BooleanWorld/floored/bin/
-**/BooleanWorld/floored/obj/
 **/BooleanWorld/profiler/bin/
 **/BooleanWorld/profiler/obj/
 **/BooleanWorld/app/resources/audio/Themes/.cache/

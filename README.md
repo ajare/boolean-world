@@ -101,5 +101,5 @@ maximum point size of 16 or more, and that path calls
 context every 2D projection change raises `GL_INVALID_ENUM`, which `Release`
 queues harmlessly but `Debug` turns into a throw via the engine's `GL_CHECK`.
 
-So `Launcher`, `editor` and `floored` all ask for GL 3.x without a profile
-mask. Do not add one back without checking that code path first.
+So `Launcher` and `editor` both ask for GL 3.x without a profile mask. Do not
+add one back without checking that code path first.

@@ -22,7 +22,7 @@ add_library(BooleanWorld SHARED
     src/WorldRenderer3d.cpp
     src/WorldTriangle3dDataProvider.cpp
     # Vendored ImGui + ImPlot. Each BooleanWorld app carries its own copy;
-    # this one and Launcher's are a newer ImGui than editor's and floored's.
+    # this one and Launcher's are a newer ImGui than editor's.
     src/imgui/imgui.cpp
     src/imgui/imgui_demo.cpp
     src/imgui/imgui_draw.cpp
