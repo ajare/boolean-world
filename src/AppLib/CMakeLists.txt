@@ -63,4 +63,12 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(applib_proto_entity_schema_tests)
     bw_deploy_vendor_dlls(applib_proto_entity_schema_tests)
     add_test(NAME applib_proto_entity_schema COMMAND applib_proto_entity_schema_tests)
+
+    add_executable(applib_object_array_tests
+        tests/object_array_tests.cpp)
+    target_include_directories(applib_object_array_tests PRIVATE include)
+    target_compile_features(applib_object_array_tests PRIVATE cxx_std_23)
+    bw_target_defaults(applib_object_array_tests)
+    bw_output_dirs(applib_object_array_tests)
+    add_test(NAME applib_object_array COMMAND applib_object_array_tests)
 endif()

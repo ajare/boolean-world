@@ -1,5 +1,8 @@
 #pragma once
 
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
 #include <vector>
 
 namespace applib {
@@ -37,7 +40,7 @@ public:
 
   uint32_t acquireFreeSlot() {
     if (mFreeIndices.empty()) {
-      resize(mObjects.size() * 2);
+      resize(std::max(mObjects.size() * 2, size_t{8}));
     }
 
     auto index = mFreeIndices.back();
@@ -56,6 +59,8 @@ public:
   }
 
   void releaseSlot(uint32_t slot) {
+    assert(slot < mObjects.size());
+    assert(std::find(mFreeIndices.begin(), mFreeIndices.end(), slot) == mFreeIndices.end());
     mFreeIndices.push_back(slot);
   }
 
