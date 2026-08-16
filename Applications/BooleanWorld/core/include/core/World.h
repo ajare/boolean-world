@@ -240,7 +240,7 @@ public:
 
   void update(float frameTime, WorldUpdateData const& data, wp::Vector2 const& viewSize);
 
-  void generateClipping(WorldDataGenerator::NarrowPhaseCulling culling, bool regetPrimitives);
+  void generateClipping(bool regetPrimitives);
 
   [[nodiscard("returned WorldData should be used, otherwise method does nothing")]] WorldData getWorldData(wp::Vector2 const& position, float angle) const;
 };

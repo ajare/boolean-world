@@ -252,9 +252,6 @@ std::shared_ptr<bw::core::World> Document::createWorld(float size, float gridSiz
   auto genFn = [world](wp::Vector2 offset, int dimX, int dimY, float cellSize) {
     auto wdg = new bw::core::DynamicWorldDataGenerator(world.get());
 
-    wdg->setBroadPhaseCulling(bw::core::WorldDataGenerator::BroadPhaseCulling::Circle);
-    wdg->setNarrowPhaseCulling(bw::core::WorldDataGenerator::NarrowPhaseCulling::None);
-
     wdg->setAlwaysUpdateVertices(true);
     wdg->setAllowCommitIfVisible(true);
 

@@ -11,6 +11,7 @@
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/Clipper2Polygon.h>
 #include <core/Arrangement.h>
+#include <core/RectanglePolygon.h>
 
 using namespace std;
 
@@ -19,9 +20,6 @@ shared_ptr<bw::core::World> createWorld(float size, float gridSize) {
 
   auto genFn = [world](wp::Vector2 offset, int dimX, int dimY, float cellSize) {
     auto wdg = new bw::core::DynamicWorldDataGenerator(world.get());
-
-    wdg->setBroadPhaseCulling(bw::core::WorldDataGenerator::BroadPhaseCulling::None);
-    wdg->setNarrowPhaseCulling(bw::core::WorldDataGenerator::NarrowPhaseCulling::None);
 
     wdg->setAlwaysUpdateVertices(true);
     wdg->setAllowCommitIfVisible(true);
@@ -80,6 +78,53 @@ shared_ptr<bw::core::World> openWorld(string const& filepath) {
     cout << "Unsupported file format.\n";
     return nullptr;
   }
+}
+
+class ClipperAllocatorScope {
+public:
+  ClipperAllocatorScope() {
+    Clipper2Lib::WmInitialiseAllocators(4, 16 * 1024 * 1024);
+  }
+
+  ~ClipperAllocatorScope() {
+    Clipper2Lib::WmDestroyAllocators();
+  }
+};
+
+TEST(Generation, GeometryIsIndependentOfViewerPosition) {
+  ClipperAllocatorScope allocators;
+
+  auto generateAt = [](wp::Vector2 const& viewerPosition) {
+    auto world = createWorld(8192, 512);
+
+    auto room = new bw::core::RectanglePolygon(
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero,
+        1.0f);
+    room->setPosition({0, 0});
+    room->setSize(20, 20);
+    world->addPrimitive(room);
+
+    auto distantIntersection = new bw::core::RectanglePolygon(
+        bw::core::Primitive::Operation::Intersection,
+        bw::core::Primitive::FillRule::NonZero,
+        1.0f);
+    distantIntersection->setPosition({1000, 0});
+    distantIntersection->setSize(20, 20);
+    world->addPrimitive(distantIntersection);
+
+    world->update(
+        0,
+        {viewerPosition, 0, 1, 60, 256, false, false, 0},
+        {100, 100});
+    return world->getWorldData(viewerPosition, 0);
+  };
+
+  auto generatedAtRoom = generateAt({0, 0});
+  auto generatedFarAway = generateAt({3000, 0});
+
+  EXPECT_TRUE(generatedAtRoom.getBorderPolygons().empty());
+  EXPECT_TRUE(generatedFarAway.getBorderPolygons().empty());
 }
 
 ////////////////////////////////////////////////////////////////

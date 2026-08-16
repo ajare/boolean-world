@@ -25,7 +25,7 @@ public:
 
   WorldData getWorldData(World const* world) override;
 
-  void generate(World const* world, NarrowPhaseCulling culling, bool regetPrimitives) override;
+  void generate(World const* world, bool regetPrimitives) override;
 };
 
 }  // namespace core

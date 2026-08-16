@@ -60,12 +60,7 @@ void Map::loadWorldFromYaml(wp::application::resourcesystem::ResourcePtr resourc
       BW_UNUSED(dimX);
       BW_UNUSED(dimY);
       BW_UNUSED(cellSize);
-      auto wdg = new bw::core::DynamicWorldDataGenerator(mWorld);
-
-      wdg->setBroadPhaseCulling(bw::core::WorldDataGenerator::BroadPhaseCulling::Circle);
-      wdg->setNarrowPhaseCulling(bw::core::WorldDataGenerator::NarrowPhaseCulling::None);
-
-      return wdg;
+      return new bw::core::DynamicWorldDataGenerator(mWorld);
     };
 
     mWorld->setWorldDataGeneratorFactory(genFn);

@@ -122,11 +122,16 @@ std::vector<Primitive*> DynamicWorldDataGenerator::preparePrimitives(vector<Prim
 
   sort(primitives.begin(), primitives.end(), SortPrimitivesByPriority());
 
-  auto viewVertices = getViewVertices();
-
   // Generate vertices for non-visible Primitives
   for (auto primitive : primitives) {
-    auto visible = primitiveInView(primitive, viewVertices);
+    wp::Vector2 boundsMin, boundsMax;
+    primitive->getBounds().getExtents(boundsMin, boundsMax);
+    auto visible = wp::MathsUtils::boxIntersectsTriangle(
+        boundsMin,
+        boundsMax,
+        mViewTriangle[0],
+        mViewTriangle[1],
+        mViewTriangle[2]);
 
     if (visible) {
       stats->visibleCount++;
@@ -218,16 +223,16 @@ bool DynamicWorldDataGenerator::canCommit(Clipping const& clipping) {
   }
 
   // Only commit if none of the updated vertices are visible
-  auto viewVertices = getViewVertices();
-
   for (auto primitive : clipping.updatedPrimitives) {
-    auto const& bounds = primitive->getBounds();
-
     wp::Vector2 boundsMin, boundsMax;
+    primitive->getBounds().getExtents(boundsMin, boundsMax);
 
-    bounds.getExtents(boundsMin, boundsMax);
-
-    if (wp::MathsUtils::boxIntersectsTriangle(boundsMin, boundsMax, viewVertices[0], viewVertices[1], viewVertices[2])) {
+    if (wp::MathsUtils::boxIntersectsTriangle(
+            boundsMin,
+            boundsMax,
+            mViewTriangle[0],
+            mViewTriangle[1],
+            mViewTriangle[2])) {
       return false;
     }
   }
@@ -286,12 +291,7 @@ WorldData DynamicWorldDataGenerator::getWorldData(World const* world) {
   return mActiveClipping.worldData;
 }
 
-void DynamicWorldDataGenerator::generate(World const* world, NarrowPhaseCulling culling, bool regetPrimitives) {
-  if (culling != getNarrowPhaseCulling()) {
-    setNarrowPhaseCulling(culling);
-    regetPrimitives = true;
-  }
-
+void DynamicWorldDataGenerator::generate(World const* world, bool regetPrimitives) {
   if (regetPrimitives) {
     // Recalculate visible Primitives
     lock_guard<mutex> lock(mGenMutex);

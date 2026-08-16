@@ -129,7 +129,7 @@ public:
 
   WorldData getWorldData(World const* world) override;
 
-  void generate(World const* world, NarrowPhaseCulling culling, bool regetPrimitives = false) override;
+  void generate(World const* world, bool regetPrimitives = false) override;
 
   void generate(bool regetPrimitives = false);
 

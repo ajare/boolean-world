@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <functional>
 #include <map>
 
@@ -25,18 +26,6 @@ struct WorldDataClipResults {
 
 class WorldDataGenerator {
 public:
-  enum struct BroadPhaseCulling {
-    None,
-    Circle,
-    Box
-  };
-
-  enum struct NarrowPhaseCulling {
-    None,
-    Circle,
-    Cone
-  };
-
   struct SortPrimitivesByPriority {
     bool operator()(Primitive const* a, Primitive const* b) {
       return a->getPriority() < b->getPriority();
@@ -50,14 +39,8 @@ private:
 
   uint32_t mFlags;
 
-  BroadPhaseCulling mBroadPhaseCulling;
-
-  NarrowPhaseCulling mNarrowPhaseCulling;
-
 protected:
-  wp::Vector2 mViewerPosition, mViewerExtent;
-
-  float mViewerAngle, mViewerViewDistance, mViewFOV;
+  std::array<wp::Vector2, 3> mViewTriangle;
 
 private:
   virtual void handleEvents(uint32_t events);
@@ -94,27 +77,9 @@ public:
 
   uint8_t getActiveLayer() const;
 
-  BroadPhaseCulling getBroadPhaseCulling() const;
+  void update(float frameTime, WorldUpdateData const& data, uint32_t events);
 
-  void setBroadPhaseCulling(BroadPhaseCulling culling);
-
-  NarrowPhaseCulling getNarrowPhaseCulling() const;
-
-  void setNarrowPhaseCulling(NarrowPhaseCulling culling);
-
-  static std::vector<wp::Vector2> getViewVertices(wp::Vector2 const& pos, float viewAngle, float viewDist, float fov);
-
-  std::vector<wp::Vector2> getViewVertices() const;
-
-  static bool primitiveInView(Primitive const* primitive, std::vector<wp::Vector2> const& viewVertices);
-
-  bool primitiveInView(Primitive const* primitive) const;
-
-  void setView(wp::Vector2 const& pos, wp::Vector2 const& extent, float angle, float distance, float fov);
-
-  void update(float frameTime, WorldUpdateData const& data, wp::Vector2 const& viewSize, uint32_t events);
-
-  virtual void generate(World const* world, NarrowPhaseCulling culling, bool regetPrimitives) = 0;
+  virtual void generate(World const* world, bool regetPrimitives) = 0;
 };
 
 typedef std::function<WorldDataGenerator*(wp::Vector2, int, int, float)> WorldDataGeneratorFactory;

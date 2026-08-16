@@ -55,10 +55,7 @@ uint32_t getHoveredWorldVertexIndex(editor::Document* doc, Settings const& setti
 
 void generateClipping(editor::Document* doc, Settings const& settings, int flag) {
   if (settings.configFlags & flag) {
-    auto world = doc->getWorld();
-    auto culling = world->getWorldDataGenerator()->getNarrowPhaseCulling();
-
-    world->generateClipping(culling, true);
+    doc->getWorld()->generateClipping(true);
   }
 }
 

@@ -28,17 +28,17 @@ WorldDataGenerator* DefaultWorldDataGenerator::copy() {
 }
 
 WorldData DefaultWorldDataGenerator::getWorldData(World const* world) {
-  generate(world, NarrowPhaseCulling::None, false);
+  generate(world, false);
 
   return mWorldData;
 }
 
-void DefaultWorldDataGenerator::generate(World const* world, NarrowPhaseCulling culling, bool regetPrimitives) {
+void DefaultWorldDataGenerator::generate(World const* world, bool regetPrimitives) {
   BW_UNUSED(regetPrimitives);
 
   PrimitiveProcessingStats primStats;
 
-  auto primitives = world->getPrimitives();
+  auto primitives = getPrimitives(world, getActiveLayer());
 
   sort(primitives.begin(), primitives.end(), SortPrimitivesByPriority());
 

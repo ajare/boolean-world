@@ -1149,15 +1149,15 @@ void World::update(float frameTime, WorldUpdateData const& data, wp::Vector2 con
 
   // Handle the events after updating the WorldDataGenerator, so that the WorldDataGenerator
   // can pull the latest Primitives, in case an event fires off a clip request.
-  mDataGenerator->update(frameTime, data, viewSize, globalEvents);
+  mDataGenerator->update(frameTime, data, globalEvents);
 
   handleEvents(globalEvents);
 
   mPrevPlayerPosition = data.entityPosition;
 }
 
-void World::generateClipping(WorldDataGenerator::NarrowPhaseCulling culling, bool regetPrimitives) {
-  mDataGenerator->generate(this, culling, regetPrimitives);
+void World::generateClipping(bool regetPrimitives) {
+  mDataGenerator->generate(this, regetPrimitives);
 }
 
 vector<Primitive*> World::sortPrimitiveIndicesByPriority(vector<uint32_t> const& indices) const {

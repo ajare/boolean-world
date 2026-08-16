@@ -3226,13 +3226,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   if (ImGui::Shortcut(ImGuiKey_P, 0, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      doc->getWorld()->generateClipping(bw::core::WorldDataGenerator::NarrowPhaseCulling::None, true);
-    }
-  }
-
-  if (ImGui::Shortcut(ImGuiKey_P | ImGuiMod_Shift, 0, ImGuiInputFlags_RouteGlobal)) {
-    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive()) {
-      doc->getWorld()->generateClipping(bw::core::WorldDataGenerator::NarrowPhaseCulling::Cone, true);
+      doc->getWorld()->generateClipping(true);
     }
   }
 

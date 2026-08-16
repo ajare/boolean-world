@@ -547,7 +547,7 @@ void StatePlayBooleanWorld::updateActions(vector<string> const& activeStates, fl
     if (state == "Exit") {
       exit();
     } else if (state == "GenClip") {
-      getMap()->getWorld()->generateClipping(bw::core::WorldDataGenerator::NarrowPhaseCulling::None, true);
+      getMap()->getWorld()->generateClipping(true);
     } else if (state == "Debug.Minimap") {
       mDebugDisplay.minimap = !mDebugDisplay.minimap;
     } else if (state == "Debug.CollisionSim") {
@@ -775,7 +775,16 @@ void StatePlayBooleanWorld::ImGui_renderPrimitives(vector<wp::Vector2> const& vi
           }
 
           // Filled in polygon for those directly in view
-          if (dataGenerator->primitiveInView(primitive, viewVertices)) {
+          wp::Vector2 boundsMin, boundsMax;
+          primitive->getBounds().getExtents(boundsMin, boundsMax);
+          auto visible = wp::MathsUtils::boxIntersectsTriangle(
+              boundsMin,
+              boundsMax,
+              viewVertices[0],
+              viewVertices[1],
+              viewVertices[2]);
+
+          if (visible) {
             drawList->AddConcavePolyFilled(imPoints.data(), numVertices, gImGui_PrimitiveInViewColour);
           } else if (clippingPrimsSet.find(primitive) != clippingPrimsSet.end()) {
             drawList->AddConcavePolyFilled(imPoints.data(), numVertices, gImGui_PrimitiveInSourceSetColour);
@@ -836,8 +845,13 @@ void StatePlayBooleanWorld::debug_renderMinimap(wp::Vector2 const& viewSize, wp:
 
   // Shared objects
   auto world = getMap()->getWorld();
-  auto dataGenerator = dynamic_cast<bw::core::DynamicWorldDataGenerator const*>(world->getWorldDataGenerator());
-  auto viewVertices = dataGenerator->getViewVertices();
+  auto const& player = getPlayerPhysicalStats();
+  auto halfFov = BW_PLAYER_FOV * 0.5f;
+  auto viewDistance = BW_PLAYER_VIEW_DISTANCE * 1.1f / cosf(WP_DEGTORAD(halfFov));
+  vector<wp::Vector2> viewVertices{
+      player.position,
+      player.position + wp::Vector2::fromAngle(player.angle - halfFov, wp::Clockwise) * viewDistance,
+      player.position + wp::Vector2::fromAngle(player.angle + halfFov, wp::Clockwise) * viewDistance};
 
   auto const& triangulation = mWorldData.getTriangulation();
   auto const& clippedPolygons = mWorldData.getArrangementPolygons();
