@@ -198,29 +198,29 @@ float TransformFlow::transformT(InputValue const& inputs, double time) const {
           operands[i] = square(time, functionMultiplier(transform.fnMultipliers[i]));
           break;
 
-        case tTransform::OperandType::TriggerLine:
-          if (inputs.triggerLines) {
-            operands[i] = (float)inputs.triggerLines->at(transform.indices[i])->getTotalTriggerCount();
-          } else {
-            operands[i] = 0.0f;
-          }
+        case tTransform::OperandType::TriggerLine: {
+          auto index = transform.indices[i];
+          operands[i] = inputs.triggerLines && index < inputs.triggerLines->size()
+                            ? (float)(*inputs.triggerLines)[index]->getTotalTriggerCount()
+                            : 0.0f;
           break;
+        }
 
-        case tTransform::OperandType::TriggerLineRed:
-          if (inputs.triggerLines) {
-            operands[i] = (float)inputs.triggerLines->at(transform.indices[i])->getTriggerCount(WorldTriggerLineSide::Red);
-          } else {
-            operands[i] = 0.0f;
-          }
+        case tTransform::OperandType::TriggerLineRed: {
+          auto index = transform.indices[i];
+          operands[i] = inputs.triggerLines && index < inputs.triggerLines->size()
+                            ? (float)(*inputs.triggerLines)[index]->getTriggerCount(WorldTriggerLineSide::Red)
+                            : 0.0f;
           break;
+        }
 
-        case tTransform::OperandType::TriggerLineBlue:
-          if (inputs.triggerLines) {
-            operands[i] = (float)inputs.triggerLines->at(transform.indices[i])->getTriggerCount(WorldTriggerLineSide::Blue);
-          } else {
-            operands[i] = 0.0f;
-          }
+        case tTransform::OperandType::TriggerLineBlue: {
+          auto index = transform.indices[i];
+          operands[i] = inputs.triggerLines && index < inputs.triggerLines->size()
+                            ? (float)(*inputs.triggerLines)[index]->getTriggerCount(WorldTriggerLineSide::Blue)
+                            : 0.0f;
           break;
+        }
 
         case tTransform::OperandType::TransformOutput:
           operands[i] = value;

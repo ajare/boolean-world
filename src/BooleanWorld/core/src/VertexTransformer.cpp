@@ -281,7 +281,10 @@ void VertexTransformer::updateTransformTriggerLineIndices(map<uint32_t, uint32_t
         if (transform.operands[j] == bw::core::tTransform::OperandType::TriggerLine ||
             transform.operands[j] == bw::core::tTransform::OperandType::TriggerLineRed ||
             transform.operands[j] == bw::core::tTransform::OperandType::TriggerLineBlue) {
-          transform.indices[j] = mapping.at(transform.indices[j]);
+          auto mappedIndex = mapping.find(transform.indices[j]);
+          if (mappedIndex != mapping.end()) {
+            transform.indices[j] = mappedIndex->second;
+          }
         }
       }
     }
