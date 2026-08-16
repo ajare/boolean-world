@@ -26,6 +26,7 @@ InfluenceEye& InfluenceEye::operator=(InfluenceEye const& other) {
 void InfluenceEye::copyFrom(InfluenceEye const& other) {
   mOriginOffset = other.mOriginOffset;
   mAngleOffset = other.mAngleOffset;
+  mArcLength = other.mArcLength;
 }
 
 bool InfluenceEye::childrenModified() const {

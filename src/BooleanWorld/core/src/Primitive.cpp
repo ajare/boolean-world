@@ -46,6 +46,7 @@ void Primitive::copyFrom(Primitive const& other) {
   mFillRule = other.mFillRule;
   mPriority = other.mPriority;
   mSize = other.mSize;
+  mProperties = other.mProperties;
   mBounds = other.mBounds;
   mVertices = other.mVertices;
   mPolygons = other.mPolygons;

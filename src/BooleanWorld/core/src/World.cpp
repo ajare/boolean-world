@@ -87,6 +87,7 @@ void World::copyFrom(World const& other) {
   mAlwaysUpdateVertices = other.mAlwaysUpdateVertices;
   mStepThreshold = other.mStepThreshold;
   mFrameNumber = other.mFrameNumber;
+  mPrevPlayerPosition = other.mPrevPlayerPosition;
   mPrefabAreaTilingType = other.mPrefabAreaTilingType;
   mPrefabAreaTileTypes = other.mPrefabAreaTileTypes;
   mLastPrimitiveUpdateFrameNumber = other.mLastPrimitiveUpdateFrameNumber;

@@ -54,6 +54,7 @@ AnimatedProperty& AnimatedProperty::operator=(AnimatedProperty const& other) {
 }
 
 void AnimatedProperty::copyFrom(AnimatedProperty const& other) {
+  mName = other.mName;
   mTransformFlow = other.mTransformFlow;
   mAnimationInterpolator = other.mAnimationInterpolator;
   mInfluenceInterpolator = other.mInfluenceInterpolator;

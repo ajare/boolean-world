@@ -31,6 +31,8 @@ void VertexTransformerObject::copyFrom(VertexTransformerObject const& other) {
   mTransformOffset = other.mTransformOffset;
   mOrientation = other.mOrientation;
   mEye = other.mEye;
+  mPrevEntityPosition = other.mPrevEntityPosition;
+  mPrevEntityAngle = other.mPrevEntityAngle;
   mInputs = other.mInputs;
 }
 
