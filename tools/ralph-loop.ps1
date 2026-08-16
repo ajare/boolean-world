@@ -26,11 +26,20 @@ PowerShell's common -Verbose switch also passes --verbose to pi and enables
 extra loop diagnostics.
 
 .PARAMETER Model
-Pi model in provider/model form. Defaults to openai-codex/gpt-5.6-sol.
+Pi model in provider/model form. Defaults to openai-codex/gpt-5.6-sol. Ignored
+when AdaptiveModelAndEffort is specified.
 
 .PARAMETER Effort
 Thinking effort passed to pi. Defaults to medium. Valid values are off,
-minimal, low, medium, high, xhigh, and max.
+minimal, low, medium, high, xhigh, and max. Ignored when
+AdaptiveModelAndEffort is specified.
+
+.PARAMETER AdaptiveModelAndEffort
+Selects the model and effort from the ticket's difficulty label:
+difficulty:trivial uses GPT-5.6 Terra/medium; difficulty:small (or
+difficulty:low) uses Terra/high; difficulty:medium uses Sol/medium; and
+difficulty:large (or difficulty:high) uses Sol/high. The script stops if an
+eligible ticket has no supported difficulty label or has conflicting labels.
 
 .PARAMETER Repo
 GitHub repository in owner/name form. When omitted, the repository is inferred
@@ -75,6 +84,12 @@ Uses GPT-5.6 Terra with high reasoning effort for every eligible ticket.
 Uses GPT-5.6 Luna at low effort and stops after one ticket.
 
 .EXAMPLE
+.\tools\ralph-loop.ps1 -AdaptiveModelAndEffort
+
+Chooses GPT-5.6 Terra or Sol and medium or high effort independently for each
+ticket, based on its difficulty label.
+
+.EXAMPLE
 .\tools\ralph-loop.ps1 -Model openai-codex/gpt-5.4-mini -Effort minimal -Quiet
 
 Uses a smaller model at minimal effort and shows only essential output and the
@@ -108,6 +123,8 @@ param(
 
     [ValidateSet("off", "minimal", "low", "medium", "high", "xhigh", "max")]
     [string]$Effort = "medium",
+
+    [switch]$AdaptiveModelAndEffort,
 
     [string]$Repo = "",
     [string]$ReadyLabel = "ready-for-agent",
@@ -147,6 +164,42 @@ function Get-Priority {
         }
     }
     return $rank
+}
+
+function Get-AdaptiveModelAndEffort {
+    param([Parameter(Mandatory = $true)][object[]]$Labels)
+
+    $difficultyLabels = @($Labels | ForEach-Object {
+        $name = ([string]$_.name).ToLowerInvariant().Trim()
+        if ($name -match '^difficulty:\s*(trivial|small|low|medium|large|high)$') {
+            $Matches[1]
+        }
+    } | Select-Object -Unique)
+
+    if ($difficultyLabels.Count -eq 0) {
+        throw "Adaptive model and effort requires one of: difficulty:trivial, difficulty:small, difficulty:low, difficulty:medium, difficulty:large, or difficulty:high."
+    }
+    if ($difficultyLabels.Count -gt 1) {
+        throw "Adaptive model and effort found conflicting difficulty labels: $($difficultyLabels -join ', ')."
+    }
+
+    switch ($difficultyLabels[0]) {
+        "trivial" {
+            return [pscustomobject]@{ Difficulty = "trivial"; Model = "openai-codex/gpt-5.6-terra"; Effort = "medium" }
+        }
+        { $_ -in @("small", "low") } {
+            return [pscustomobject]@{ Difficulty = $_; Model = "openai-codex/gpt-5.6-terra"; Effort = "high" }
+        }
+        "medium" {
+            return [pscustomobject]@{ Difficulty = "medium"; Model = "openai-codex/gpt-5.6-sol"; Effort = "medium" }
+        }
+        { $_ -in @("large", "high") } {
+            return [pscustomobject]@{ Difficulty = $_; Model = "openai-codex/gpt-5.6-sol"; Effort = "high" }
+        }
+        default {
+            throw "Unsupported difficulty label '$($difficultyLabels[0])'."
+        }
+    }
 }
 
 function Get-NextTicket {
@@ -532,8 +585,20 @@ while ($true) {
 
     $number = [int]$ticket.number
     Write-Status "Selected #${number}: $($ticket.title)"
+
+    $ticketModel = $Model
+    $ticketEffort = $Effort
+    $selectionSource = "command line/default"
+    if ($AdaptiveModelAndEffort) {
+        $adaptiveSelection = Get-AdaptiveModelAndEffort -Labels @($ticket.labels)
+        $ticketModel = $adaptiveSelection.Model
+        $ticketEffort = $adaptiveSelection.Effort
+        $selectionSource = "adaptive difficulty:$($adaptiveSelection.Difficulty)"
+    }
+    Write-Host "Ticket #$number model: $ticketModel; effort: $ticketEffort ($selectionSource)."
+
     if ($DryRun) {
-        Write-Status "Dry run: would start pi with model '$Model' and effort '$Effort'."
+        Write-Status "Dry run: would start pi with model '$ticketModel' and effort '$ticketEffort'."
         break
     }
 
@@ -563,7 +628,7 @@ while ($true) {
         Write-Verbose "Session directory: $sessionDirectory"
 
         $piArguments = @(
-            "--print", "--approve", "--model", $Model, "--thinking", $Effort,
+            "--print", "--approve", "--model", $ticketModel, "--thinking", $ticketEffort,
             "--name", "ralph-$number", "--session-dir", $sessionDirectory
         )
         if ($VerbosePreference -eq "Continue") {
