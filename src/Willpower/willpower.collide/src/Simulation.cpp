@@ -70,13 +70,13 @@ int32_t Simulation::addCollider(unique_ptr<Collider> collider) {
   auto colliderObserver = collider.get();
   colliderObserver->_setIndex(colliderIndex);
 
-  auto colliderIt = mColliders.insert(colliderObserver).first;
+  mColliders.push_back(colliderObserver);
 
   // Add to grid
   try {
     mCollidersGrid->addItem((uint32_t)colliderIndex, colliderObserver->getBounds());
   } catch (...) {
-    mColliders.erase(colliderIt);
+    mColliders.pop_back();
     throw;
   }
 
@@ -85,7 +85,9 @@ int32_t Simulation::addCollider(unique_ptr<Collider> collider) {
 }
 
 void Simulation::removeCollider(Collider* collider) {
-  mColliders.erase(collider);
+  auto colliderIt = find(mColliders.begin(), mColliders.end(), collider);
+  assert(colliderIt != mColliders.end());
+  mColliders.erase(colliderIt);
 
   // Remove from grid
   mCollidersGrid->removeItem((uint32_t)collider->getIndex());

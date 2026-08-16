@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <set>
+#include <vector>
 
 #include "willpower/common/Vector2.h"
 #include "willpower/common/AccelerationGrid.h"
@@ -18,7 +19,7 @@ namespace WP_NAMESPACE {
 namespace collide {
 
 class WP_COLLIDE_API Simulation {
-  std::set<Collider*> mColliders;
+  std::vector<Collider*> mColliders;
 
   int32_t mNextIndex;
 
