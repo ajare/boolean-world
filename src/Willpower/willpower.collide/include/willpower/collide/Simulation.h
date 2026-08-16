@@ -42,7 +42,7 @@ private:
 
   void destroyGrids();
 
-  void sweepCollider(Collider* collider, Vector2 const& desiredMovement, float movementEpsilon, float lastMove = 1.0f);
+  void sweepCollider(Collider* collider, Vector2 const& desiredMovement, uint32_t sweepCount = 0);
 
   virtual std::set<uint32_t> getLineIndices(wp::BoundingBox const& bounds) const;
 

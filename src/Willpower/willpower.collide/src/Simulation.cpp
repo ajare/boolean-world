@@ -271,22 +271,7 @@ void Simulation::update(float frameTime) {
   mNumSweepChecks = 0;
 
   for (auto collider : mColliders) {
-    float moveEpsilon;
-    switch (collider->getType()) {
-      case collide::Collider::Type::Circle:
-        moveEpsilon = 0.1f;
-        break;
-
-      case collide::Collider::Type::AABB:
-        moveEpsilon = 0.01f;
-        break;
-
-      default:
-        moveEpsilon = 0.5f;
-        break;
-    }
-
-    sweepCollider(collider, collider->getMovement() * frameTime, moveEpsilon);
+    sweepCollider(collider, collider->getMovement() * frameTime);
   }
 }
 
@@ -440,8 +425,9 @@ bool Simulation::projectLine(Vector2 const& v0, Vector2 const& v1, SweepResult* 
   return hitLine;
 }
 
-void Simulation::sweepCollider(Collider* collider, Vector2 const& desiredMovement, float movementEpsilon, float lastMove) {
-  if (desiredMovement == Vector2::ZERO) {
+void Simulation::sweepCollider(Collider* collider, Vector2 const& desiredMovement, uint32_t sweepCount) {
+  constexpr uint32_t MaxSweepCount = 8;
+  if (desiredMovement == Vector2::ZERO || sweepCount >= MaxSweepCount) {
     return;
   }
 
@@ -449,10 +435,6 @@ void Simulation::sweepCollider(Collider* collider, Vector2 const& desiredMovemen
 
   SweepResult result;
   bool continueSweeping = projectCollider(collider, desiredMovement, &result);
-
-  if (continueSweeping && lastMove < movementEpsilon && result.distanceMoved < movementEpsilon) {
-    return;
-  }
 
   // Update collider position
   collider->_setPosition(result.newPosition);
@@ -470,7 +452,7 @@ void Simulation::sweepCollider(Collider* collider, Vector2 const& desiredMovemen
 
   float remainingDistance = desiredMovement.length() - result.distanceMoved;
   if (remainingDistance > 0 && continueSweeping) {
-    sweepCollider(collider, result.movementLeft, movementEpsilon, result.distanceMoved);
+    sweepCollider(collider, result.movementLeft, sweepCount + 1);
   }
 }
 
