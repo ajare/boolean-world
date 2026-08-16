@@ -210,6 +210,15 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_primitive_triangulation_tests)
     add_test(NAME boolean_world_primitive_triangulation COMMAND boolean_world_primitive_triangulation_tests)
 
+    add_executable(boolean_world_primitive_time_visibility_tests
+        tests/primitive_time_visibility_tests.cpp)
+    target_link_libraries(boolean_world_primitive_time_visibility_tests PRIVATE core)
+    target_compile_features(boolean_world_primitive_time_visibility_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_primitive_time_visibility_tests)
+    bw_output_dirs(boolean_world_primitive_time_visibility_tests)
+    bw_deploy_runtime_dlls(boolean_world_primitive_time_visibility_tests)
+    add_test(NAME boolean_world_primitive_time_visibility COMMAND boolean_world_primitive_time_visibility_tests)
+
     add_executable(boolean_world_derived_geometry_invalidation_tests
         tests/derived_geometry_invalidation_tests.cpp)
     target_link_libraries(boolean_world_derived_geometry_invalidation_tests PRIVATE core)

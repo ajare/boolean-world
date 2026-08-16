@@ -720,13 +720,10 @@ void StatePlayBooleanWorld::debug_renderMinimap(wp::Vector2 const& viewSize, wp:
   // Shared objects
   auto world = getMap()->getWorld();
   auto const& player = getPlayerPhysicalStats();
-  auto halfFov = BW_PLAYER_FOV * 0.5f;
-  auto viewDistance = BW_PLAYER_VIEW_DISTANCE * 1.1f / cosf(WP_DEGTORAD(halfFov));
   auto viewAngle = bw::app::worldViewAngle(player.angle);
-  vector<wp::Vector2> viewVertices{
-      player.position,
-      player.position + wp::Vector2::fromAngle(viewAngle - halfFov, wp::Clockwise) * viewDistance,
-      player.position + wp::Vector2::fromAngle(viewAngle + halfFov, wp::Clockwise) * viewDistance};
+  auto const [v1, v2] = bw::core::calculateFovTriangle(
+      player.position, viewAngle, BW_PLAYER_VIEW_DISTANCE, BW_PLAYER_FOV);
+  vector<wp::Vector2> viewVertices{player.position, v1, v2};
 
   auto primitives = world->findPrimitives(viewBounds);
 

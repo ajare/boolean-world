@@ -1,9 +1,9 @@
 #include "core/WorldDataGenerator.h"
 
-#include <cmath>
 #include <stdexcept>
 
 #include "core/Defines.h"
+#include "core/Utils.h"
 #include "core/World.h"
 
 namespace bw::core {
@@ -74,19 +74,9 @@ void WorldDataGenerator::update(
     WorldUpdateData const& data,
     uint32_t events) {
   BW_UNUSED(frameTime);
-  auto halfFov = data.entityFov * 0.5f;
-  auto viewDistance =
-      data.entityViewDist * 1.1f / cosf(WP_DEGTORAD(halfFov));
-  mViewTriangle = {
-      data.entityPosition,
-      data.entityPosition +
-          wp::Vector2::fromAngle(
-              data.entityAngle - halfFov, wp::Clockwise) *
-              viewDistance,
-      data.entityPosition +
-          wp::Vector2::fromAngle(
-              data.entityAngle + halfFov, wp::Clockwise) *
-              viewDistance};
+  auto const v0 = data.entityPosition;
+  auto const [v1, v2] = calculateFovTriangle(v0, data.entityAngle, data.entityViewDist, data.entityFov);
+  mViewTriangle = {v0, v1, v2};
   handleEvents(events);
 }
 }  // namespace bw::core

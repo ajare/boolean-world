@@ -559,16 +559,10 @@ void Primitive::updateTime(float updateTime, WorldUpdateData const& data) {
 
     bounds.getExtents(minBounds, maxBounds);
 
-    auto v0 = data.entityPosition;
-    auto [v1, v2] = calculateFovTriangle(v0, data.entityAngle, data.entityViewDist, data.entityFov);
+    auto const v0 = data.entityPosition;
+    auto const [v1, v2] = calculateFovTriangle(v0, data.entityAngle, data.entityViewDist, data.entityFov);
 
-    auto res0 = wp::MathsUtils::lineIntersectsBox(v0, v1, minBounds, maxBounds);
-    auto res1 = wp::MathsUtils::lineIntersectsBox(v0, v2, minBounds, maxBounds);
-    auto res2 = wp::MathsUtils::lineIntersectsBox(v1, v2, minBounds, maxBounds);
-
-    if (res0 == wp::MathsUtils::LineIntersectionType::Intersecting ||
-        res1 == wp::MathsUtils::LineIntersectionType::Intersecting ||
-        res2 == wp::MathsUtils::LineIntersectionType::Intersecting) {
+    if (wp::MathsUtils::boxIntersectsTriangle(minBounds, maxBounds, v0, v1, v2)) {
       return;
     }
   }

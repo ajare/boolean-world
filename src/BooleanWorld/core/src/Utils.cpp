@@ -23,14 +23,12 @@ float clamp_unit(float value) {
 }
 
 pair<wp::Vector2, wp::Vector2> calculateFovTriangle(wp::Vector2 const& pos, float viewAngle, float viewDist, float fov) {
-  auto angle0 = viewAngle - fov * 0.5f;
-  auto angle1 = viewAngle + fov * 0.5f;
-  auto up = wp::Vector2(0, viewDist);
+  auto halfFov = fov * 0.5f;
+  auto viewDistance = viewDist * 1.1f / cosf(WP_DEGTORAD(halfFov));
 
-  auto v0 = pos + up.rotatedClockwiseCopy(angle0);
-  auto v1 = pos + up.rotatedClockwiseCopy(angle1);
-
-  return make_pair(v0, v1);
+  return {
+      pos + wp::Vector2::fromAngle(viewAngle - halfFov, wp::Clockwise) * viewDistance,
+      pos + wp::Vector2::fromAngle(viewAngle + halfFov, wp::Clockwise) * viewDistance};
 }
 
 }  // namespace core
