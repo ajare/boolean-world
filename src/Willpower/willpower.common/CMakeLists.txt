@@ -59,3 +59,15 @@ target_compile_options(Willpower.Common PRIVATE /W4)
 bw_target_defaults(Willpower.Common)
 bw_output_dirs(Willpower.Common)
 set_target_properties(Willpower.Common PROPERTIES FOLDER Willpower)
+
+if(BUILD_TESTING)
+    add_executable(willpower_acceleration_grid_set_operations_tests
+        tests/acceleration_grid_set_operations_tests.cpp)
+    target_link_libraries(willpower_acceleration_grid_set_operations_tests PRIVATE Willpower.Common)
+    target_compile_features(willpower_acceleration_grid_set_operations_tests PRIVATE cxx_std_20)
+    bw_target_defaults(willpower_acceleration_grid_set_operations_tests)
+    bw_output_dirs(willpower_acceleration_grid_set_operations_tests)
+    bw_deploy_runtime_dlls(willpower_acceleration_grid_set_operations_tests)
+    add_test(NAME willpower_acceleration_grid_set_operations
+             COMMAND willpower_acceleration_grid_set_operations_tests)
+endif()

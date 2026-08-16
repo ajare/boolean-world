@@ -246,9 +246,7 @@ namespace WP_NAMESPACE
 			{
 				auto const& cell = _getCellItems(x, y);
 
-				set_union(cell.begin(), cell.end(),
-					indices.begin(), indices.end(),
-					inserter(indices, indices.end()));
+				indices.insert(cell.begin(), cell.end());
 			}
 		}
 

@@ -379,9 +379,7 @@ namespace WP_NAMESPACE
 				{
 					auto const& cell = getCell(x, y);
 
-					std::set_union(cell.indices.begin(), cell.indices.end(),
-						indices.begin(), indices.end(),
-						std::inserter(indices, indices.end()));
+					indices.insert(cell.indices.begin(), cell.indices.end());
 				}
 			}
 

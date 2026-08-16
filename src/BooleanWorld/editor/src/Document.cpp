@@ -105,12 +105,7 @@ void Document::addSelectedPrimitiveIndex(uint32_t index) {
 }
 
 void Document::addSelectedPrimitiveIndices(set<uint32_t> const& indices) {
-  set_union(
-      mSelectedPrimitiveIndices.begin(),
-      mSelectedPrimitiveIndices.end(),
-      indices.begin(),
-      indices.end(),
-      inserter(mSelectedPrimitiveIndices, mSelectedPrimitiveIndices.begin()));
+  mSelectedPrimitiveIndices.insert(indices.begin(), indices.end());
 }
 
 void Document::removeSelectedPrimitiveIndex(uint32_t index) {
@@ -118,12 +113,9 @@ void Document::removeSelectedPrimitiveIndex(uint32_t index) {
 }
 
 void Document::removeSelectedPrimitiveIndices(set<uint32_t> const& indices) {
-  set_difference(
-      mSelectedPrimitiveIndices.begin(),
-      mSelectedPrimitiveIndices.end(),
-      indices.begin(),
-      indices.end(),
-      inserter(mSelectedPrimitiveIndices, mSelectedPrimitiveIndices.begin()));
+  for (auto index : indices) {
+    mSelectedPrimitiveIndices.erase(index);
+  }
 }
 
 void Document::clearSelections() {
