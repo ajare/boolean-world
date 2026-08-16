@@ -10,7 +10,7 @@ WorldCollisionSim::WorldCollisionSim(void* userObj)
 }
 
 void WorldCollisionSim::addSlidingCollider(
-    wp::collide::Collider* collider,
+    unique_ptr<wp::collide::Collider> collider,
     std::function<void()> const& onWallHit) {
   collider->setHitLineCallback(
       [onWallHit](wp::collide::SweepResult* result,
@@ -44,7 +44,7 @@ void WorldCollisionSim::addSlidingCollider(
                                    : movementAfterContact;
         return true;
       });
-  addCollider(collider);
+  addCollider(move(collider));
 }
 
 set<uint32_t> WorldCollisionSim::getLineIndices(BoundingBox const& bounds) const {

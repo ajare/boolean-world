@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 
 #include <willpower/common/BoundingBox.h>
 
@@ -13,7 +14,7 @@ public:
   explicit WorldCollisionSim(void* userObj = nullptr);
 
   void addSlidingCollider(
-      wp::collide::Collider* collider,
+      std::unique_ptr<wp::collide::Collider> collider,
       std::function<void()> const& onWallHit = {});
 
   std::vector<wp::collide::StaticLine> const& getLines() const;

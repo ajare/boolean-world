@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <set>
 
 #include "willpower/common/Vector2.h"
@@ -49,11 +50,15 @@ private:
 public:
   Simulation(ExtentsCalculator const& extents, uint32_t cellsX, uint32_t cellsY, void* userObj = nullptr);
 
+  Simulation(Simulation const&) = delete;
+
+  Simulation& operator=(Simulation const&) = delete;
+
   virtual ~Simulation();
 
   void getExtents(Vector2& minExtent, Vector2& maxExtent);
 
-  int32_t addCollider(Collider* collider);
+  int32_t addCollider(std::unique_ptr<Collider> collider);
 
   void removeCollider(Collider* collider);
 

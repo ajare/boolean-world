@@ -15,7 +15,7 @@ namespace collide {
 using namespace utils;
 
 Simulation::Simulation(ExtentsCalculator const& extents, uint32_t cellsX, uint32_t cellsY, void* userObj)
-    : mNextIndex(0), mCollidersGrid(nullptr), mStaticLinesGrid(nullptr), mwUserObject(userObj), mMinExtent(1e10, 1e10), mMaxExtent(-1e10, -1e10) {
+    : mNextIndex(0), mCollidersGrid(nullptr), mStaticLinesGrid(nullptr), mwUserObject(userObj), mMinExtent(1e10, 1e10), mMaxExtent(-1e10, -1e10), mNumSweepChecks(0) {
   auto cellSize = extents.getCellSize(cellsX, cellsY);
   createGrids(extents.getMinExtent(), extents.getMaxExtent(), cellSize.x, cellSize.y);
 }
@@ -65,15 +65,22 @@ void Simulation::destroyGrids() {
   mStaticLinesGrid = nullptr;
 }
 
-int32_t Simulation::addCollider(Collider* collider) {
+int32_t Simulation::addCollider(unique_ptr<Collider> collider) {
   uint32_t colliderIndex = mNextIndex++;
-  collider->_setIndex(colliderIndex);
+  auto colliderObserver = collider.get();
+  colliderObserver->_setIndex(colliderIndex);
 
-  mColliders.insert(collider);
+  auto colliderIt = mColliders.insert(colliderObserver).first;
 
   // Add to grid
-  mCollidersGrid->addItem((uint32_t)colliderIndex, collider->getBounds());
+  try {
+    mCollidersGrid->addItem((uint32_t)colliderIndex, colliderObserver->getBounds());
+  } catch (...) {
+    mColliders.erase(colliderIt);
+    throw;
+  }
 
+  collider.release();
   return colliderIndex;
 }
 

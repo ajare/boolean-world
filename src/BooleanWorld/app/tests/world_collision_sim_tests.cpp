@@ -117,8 +117,9 @@ void generatedWallsSlideFromThePlayableSide() {
       }
 
       auto start = midpoint + testedWall.playableNormal * (radius + 0.001f);
-      auto player = new wp::collide::ColliderCircle(start, radius);
-      simulation.addSlidingCollider(player);
+      auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(start, radius);
+      auto player = playerOwner.get();
+      simulation.addSlidingCollider(std::move(playerOwner));
       player->setMovement(
           tangent * (2.0f * tangentDirection) - testedWall.playableNormal);
       simulation.update(1.0f);
@@ -137,8 +138,9 @@ void generatedWallsSlideFromThePlayableSide() {
 
 void diagonalMovementSlidesAlongWall() {
   WorldCollisionSim simulation;
-  auto player = new wp::collide::ColliderCircle({-2.0f, 0.0f}, 0.5f);
-  simulation.addSlidingCollider(player);
+  auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-2.0f, 0.0f}, 0.5f);
+  auto player = playerOwner.get();
+  simulation.addSlidingCollider(std::move(playerOwner));
   simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, 0);
 
   player->setMovement({3.0f, 2.0f});
@@ -152,8 +154,9 @@ void diagonalMovementSlidesAlongWall() {
 
 void perpendicularMovementStopsAtWall() {
   WorldCollisionSim simulation;
-  auto player = new wp::collide::ColliderCircle({-2.0f, 1.0f}, 0.5f);
-  simulation.addSlidingCollider(player);
+  auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-2.0f, 1.0f}, 0.5f);
+  auto player = playerOwner.get();
+  simulation.addSlidingCollider(std::move(playerOwner));
   simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, 0);
 
   player->setMovement({3.0f, 0.0f});
@@ -167,8 +170,9 @@ void perpendicularMovementStopsAtWall() {
 
 void smallMovementStillSlidesAlongWall() {
   WorldCollisionSim simulation;
-  auto player = new wp::collide::ColliderCircle({-0.55f, 0.0f}, 0.5f);
-  simulation.addSlidingCollider(player);
+  auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-0.55f, 0.0f}, 0.5f);
+  auto player = playerOwner.get();
+  simulation.addSlidingCollider(std::move(playerOwner));
   simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, 0);
 
   player->setMovement({0.1f, 0.05f});
@@ -192,8 +196,9 @@ void straightWallSlidingIsRotationInvariant() {
     for (float tangentMovement : {-1.0f, 1.0f}) {
       for (float inwardMovement : {0.01f, 0.2f, 1.0f}) {
         WorldCollisionSim simulation;
-        auto player = new wp::collide::ColliderCircle(normal * (radius + 0.001f), radius);
-        simulation.addSlidingCollider(player);
+        auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(normal * (radius + 0.001f), radius);
+        auto player = playerOwner.get();
+        simulation.addSlidingCollider(std::move(playerOwner));
         simulation.addLine(tangent * -100.0f, tangent * 100.0f, 0);
 
         for (int frame = 0; frame < frameCount; ++frame) {
@@ -217,8 +222,9 @@ void straightWallSlidingIsRotationInvariant() {
 
 void slidingCrossesCollinearWallJunction() {
   WorldCollisionSim simulation;
-  auto player = new wp::collide::ColliderCircle({-0.501f, -1.0f}, 0.5f);
-  simulation.addSlidingCollider(player);
+  auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-0.501f, -1.0f}, 0.5f);
+  auto player = playerOwner.get();
+  simulation.addSlidingCollider(std::move(playerOwner));
   simulation.addLine({0.0f, -10.0f}, {0.0f, 0.0f}, 0);
   simulation.addLine({0.0f, 0.0f}, {0.0f, 10.0f}, 1);
 
@@ -240,9 +246,10 @@ void slidingCrossesManyWallJunctionsAtEveryOrientation() {
     auto normal = tangent.perpendicular();
 
     WorldCollisionSim simulation;
-    auto player = new wp::collide::ColliderCircle(
+    auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(
         tangent * -15.0f + normal * (radius + 0.001f), radius);
-    simulation.addSlidingCollider(player);
+    auto player = playerOwner.get();
+    simulation.addSlidingCollider(std::move(playerOwner));
     for (int segment = -20; segment < 20; ++segment) {
       simulation.addLine(tangent * (static_cast<float>(segment) * 2.0f),
                          tangent * (static_cast<float>(segment + 1) * 2.0f),
@@ -274,9 +281,10 @@ void slidingTraversesSlightlyKinkedWalls() {
     for (float kink : {0.001f, 0.01f, 0.1f, 0.5f}) {
       for (float direction : {-1.0f, 1.0f}) {
         WorldCollisionSim simulation;
-        auto player = new wp::collide::ColliderCircle(
+        auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(
             tangent * -20.0f + normal * (radius + 1.0f), radius);
-        simulation.addSlidingCollider(player);
+        auto player = playerOwner.get();
+        simulation.addSlidingCollider(std::move(playerOwner));
 
         auto previous = tangent * -30.0f;
         for (int segment = 0; segment < 20; ++segment) {
@@ -308,8 +316,9 @@ void slidingTraversesSlightlyKinkedWalls() {
 
 void glancingMovementSlidesAroundWallEndpoint() {
   WorldCollisionSim simulation;
-  auto player = new wp::collide::ColliderCircle({-1.0f, -0.8f}, 0.5f);
-  simulation.addSlidingCollider(player);
+  auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-1.0f, -0.8f}, 0.5f);
+  auto player = playerOwner.get();
+  simulation.addSlidingCollider(std::move(playerOwner));
   simulation.addLine({0.0f, -10.0f}, {0.0f, 0.0f}, 0);
 
   for (int frame = 0; frame < 10; ++frame) {
@@ -331,8 +340,9 @@ void shallowSlidesClearWallEndpoints() {
 
   for (float tangentialMovement : {0.01f, 0.02f, 0.05f, 0.1f, 0.5f}) {
     WorldCollisionSim simulation;
-    auto player = new wp::collide::ColliderCircle({-radius - 0.001f, -12.0f}, radius);
-    simulation.addSlidingCollider(player);
+    auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-radius - 0.001f, -12.0f}, radius);
+    auto player = playerOwner.get();
+    simulation.addSlidingCollider(std::move(playerOwner));
     simulation.addLine({0.0f, -100.0f}, {0.0f, 0.0f}, 0);
 
     for (int frame = 0; frame < frameCount; ++frame) {
@@ -358,8 +368,9 @@ void slidingClearsConvexCorners() {
     wp::Vector2 outgoing{std::cos(angle), std::sin(angle)};
 
     WorldCollisionSim simulation;
-    auto player = new wp::collide::ColliderCircle({-10.0f, radius + 0.001f}, radius);
-    simulation.addSlidingCollider(player);
+    auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-10.0f, radius + 0.001f}, radius);
+    auto player = playerOwner.get();
+    simulation.addSlidingCollider(std::move(playerOwner));
     simulation.addLine({-100.0f, 0.0f}, {0.0f, 0.0f}, 0);
     simulation.addLine({0.0f, 0.0f}, outgoing * 100.0f, 1);
 
@@ -380,8 +391,9 @@ void slidingClearsConvexCorners() {
 
 void slidingStopsAtCornerWithoutPenetration() {
   WorldCollisionSim simulation;
-  auto player = new wp::collide::ColliderCircle({-2.0f, 0.0f}, 0.5f);
-  simulation.addSlidingCollider(player);
+  auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-2.0f, 0.0f}, 0.5f);
+  auto player = playerOwner.get();
+  simulation.addSlidingCollider(std::move(playerOwner));
   simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, 0);
   simulation.addLine({10.0f, 2.0f}, {-10.0f, 2.0f}, 1);
 
@@ -396,8 +408,9 @@ void slidingStopsAtCornerWithoutPenetration() {
 
 void diagonalMovementSlidesBothWaysAlongWall() {
   WorldCollisionSim simulation;
-  auto player = new wp::collide::ColliderCircle({-2.0f, 0.0f}, 0.5f);
-  simulation.addSlidingCollider(player);
+  auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-2.0f, 0.0f}, 0.5f);
+  auto player = playerOwner.get();
+  simulation.addSlidingCollider(std::move(playerOwner));
   simulation.addLine({0.0f, -10.0f}, {0.0f, 10.0f}, 0);
 
   player->setMovement({3.0f, -2.0f});
@@ -413,8 +426,9 @@ void nearZeroContactUsesWallNormal() {
   WorldCollisionSim simulation;
   wp::Vector2 const lineStart{-1.422804f, -2.0411403f};
   wp::Vector2 const lineEnd{-1.7840316f, 3.788934f};
-  auto player = new wp::collide::ColliderCircle({-1.5509014f, 0.02642727f}, 0.0f);
-  simulation.addSlidingCollider(player);
+  auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-1.5509014f, 0.02642727f}, 0.0f);
+  auto player = playerOwner.get();
+  simulation.addSlidingCollider(std::move(playerOwner));
   simulation.addLine(lineStart, lineEnd, 0);
 
   wp::collide::SweepResult result;

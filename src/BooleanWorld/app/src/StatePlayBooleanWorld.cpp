@@ -126,11 +126,14 @@ void StatePlayBooleanWorld::setupPlayerCollision() {
   mWorldCollisionSim = new WorldCollisionSim(this);
 
   auto const& physicalStats = getPlayerPhysicalStats();
-  mPlayerCollider = new wp::collide::ColliderCircle(physicalStats.position, BW_PLAYER_RADIUS);
+  auto playerCollider = make_unique<wp::collide::ColliderCircle>(
+      physicalStats.position, BW_PLAYER_RADIUS);
+  auto playerColliderObserver = playerCollider.get();
 
   mWorldCollisionSim->addSlidingCollider(
-      mPlayerCollider,
+      move(playerCollider),
       [this] { ++mCollisionsProcessed; });
+  mPlayerCollider = playerColliderObserver;
 
   applib::ModelInstance::entityHandler()->setupCollisions(mWorldCollisionSim, mPlayerCollider);
 }
@@ -193,8 +196,10 @@ void StatePlayBooleanWorld::destroyGameObjects() {
   mGenerationCallbackToken =
       bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken;
 
+  applib::ModelInstance::entityHandler()->setupCollisions(nullptr, nullptr);
   delete mWorldCollisionSim;
   mWorldCollisionSim = nullptr;
+  mPlayerCollider = nullptr;
 }
 
 void StatePlayBooleanWorld::setupEntityFacades() {
