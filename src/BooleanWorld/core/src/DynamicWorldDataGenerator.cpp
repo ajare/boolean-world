@@ -206,7 +206,7 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
   }
 
   auto primitives = mNextClipping.primitives;
-  auto primStats = mNextClipping.primStats;
+  auto primStats = mNextClipping.stats.prim;
   primStats.candidateCount = uint32_t(primitives.size());
   primStats.visibleCount = 0;
   primStats.updateVertexCount = 0;
@@ -230,7 +230,7 @@ void DynamicWorldDataGenerator::generateWorldData(GenerationInput input) {
       clippingId,
       GenerationState::Generating,
       0,
-      {input.primStats, {}, {}}};
+      {input.primStats, {}}};
 
   fireCallbacks(details);
 
@@ -239,11 +239,13 @@ void DynamicWorldDataGenerator::generateWorldData(GenerationInput input) {
   mNumGenerationsInProgress++;
   wp::Timer timer;
 
+  Stats stats{input.primStats, {}};
   auto results = make_shared<ArrangementWorldData>(
-      arr::BuildArrangement(input.primitives),
+      arr::BuildArrangement(input.primitives, &stats.arrangement),
       input.worldExtents,
       input.gridCellSize,
-      input.stepThreshold);
+      input.stepThreshold,
+      &stats.arrangement);
 
   mLastGenTime = timer.elapsedNanoseconds();
 
@@ -253,7 +255,7 @@ void DynamicWorldDataGenerator::generateWorldData(GenerationInput input) {
        move(input.sourcePrimitives),
        move(input.updatedPrimitives),
        input.layerSelection,
-       input.primStats,
+       stats,
        mLastGenTime},
       MaxPendingGenerations);
 
@@ -262,6 +264,7 @@ void DynamicWorldDataGenerator::generateWorldData(GenerationInput input) {
 
   details.state = GenerationState::Generated;
   details.genTimeNs = mLastGenTime;
+  details.stats = stats;
 
   fireCallbacks(details);
 }
@@ -341,13 +344,15 @@ void DynamicWorldDataGenerator::checkCommitPendingClipping() {
   }
 
   auto const clippingId = clipping.id;
+  Stats stats;
   {
     lock_guard<mutex> lock(mGenMutex);
     mActiveClipping = move(clipping);
+    stats = mActiveClipping.stats;
     mNumCommits++;
   }
 
-  fireCallbacks({clippingId, GenerationState::Committed, 0, {}});
+  fireCallbacks({clippingId, GenerationState::Committed, 0, stats});
 }
 
 WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
@@ -355,7 +360,7 @@ WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
     lock_guard<mutex> lock(mGenMutex);
     mNextClipping.primitives = getPrimitives(world);
     mNextClipping.layerSelection = getLayerSelection();
-    mNextClipping.primStats = {
+    mNextClipping.stats.prim = {
         uint32_t(mNextClipping.primitives.size()),
         0,
         0};

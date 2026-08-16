@@ -10,7 +10,6 @@
 #include "core/VertexTransformerObject.h"
 #include "core/Triangulation.h"
 #include "core/Vertex.h"
-#include "core/Stats.h"
 #include "core/WorldUpdateData.h"
 #include "core/PrimitivePropertySet.h"
 #include "core/Defines.h"
@@ -182,7 +181,7 @@ public:
 
   void updateVertexPositions();
 
-  Triangulation triangulate(bool calculateBounds, TriangulationStats* stats) const;
+  Triangulation triangulate(bool calculateBounds) const;
 
   void updateTime(float updateTime, WorldUpdateData const& data);
 

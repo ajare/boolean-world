@@ -18,6 +18,7 @@
 #include <core/Arrangement.h>
 #include <willpower/common/AccelerationGrid.h>
 #include <willpower/common/BoundingBox.h>
+#include <willpower/common/Timer.h>
 
 namespace bw::core::arr {
 using namespace std;
@@ -827,7 +828,9 @@ vector<Face> BuildFaces(vector<PolygonNode> const& nodes, vector<Cycle> const& c
   return faces;
 }
 
-ArrangementResultPtr BuildArrangement(vector<ArrangementPrimitive> const& primitives) {
+ArrangementResultPtr BuildArrangement(
+    vector<ArrangementPrimitive> const& primitives,
+    ArrangementStats* stats) {
   vector<ContourInput> contours;
   for (uint32_t primitiveIndex = 0;
        primitiveIndex < uint32_t(primitives.size()); ++primitiveIndex) {
@@ -836,7 +839,13 @@ ArrangementResultPtr BuildArrangement(vector<ArrangementPrimitive> const& primit
     }
   }
 
+  wp::Timer timer;
   auto graph = BuildPSLG(contours);
+  if (stats != nullptr) {
+    stats->buildPSLGTimeNs = timer.elapsedNanoseconds();
+  }
+  timer.restart();
+
   auto cycles = ExtractMinimalCycles(graph);
   auto hierarchy = BuildPolygonHierarchy(graph, cycles);
   auto faces = BuildFaces(hierarchy, cycles);
@@ -1046,6 +1055,12 @@ ArrangementResultPtr BuildArrangement(vector<ArrangementPrimitive> const& primit
                               edge.fi[1] < 0 ? 0u : uint32_t(edge.fi[1] + 1)}});
   }
 
+  if (stats != nullptr) {
+    stats->vertexCount = uint32_t(result->vertices.size());
+    stats->edgeCount = uint32_t(result->edges.size());
+    stats->faceCount = uint32_t(result->faces.size());
+    stats->classificationTimeNs = timer.elapsedNanoseconds();
+  }
   return result;
 }
 

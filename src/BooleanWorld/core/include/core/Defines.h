@@ -48,9 +48,6 @@ typedef int64_t frame_number_type;
 // Global events triggered by Primitive animation
 //
 
-// Debug event.
-#define BW_PRIMITIVE_GLOBAL_EVENT_DEBUG 0x00000001
-
 // Execute a clip on this frame.  Useful for when a Primitive has connected others together.
 #define BW_PRIMITIVE_GLOBAL_EVENT_CLIP 0x00000002
 

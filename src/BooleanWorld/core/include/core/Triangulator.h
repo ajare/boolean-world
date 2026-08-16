@@ -9,7 +9,6 @@
 #include "core/Platform.h"
 #include "core/Vertex.h"
 #include "core/Triangulation.h"
-#include "core/Stats.h"
 
 namespace bw {
 namespace core {
@@ -39,7 +38,7 @@ public:
 
   Triangulation const& getTriangulation() const;
 
-  void _triangulate(std::vector<TriangulationData> const& triangulationData, ClosedPolygon const& vertices, TriangulationStats* stats);
+  void _triangulate(std::vector<TriangulationData> const& triangulationData, ClosedPolygon const& vertices);
 };
 
 }  // namespace core

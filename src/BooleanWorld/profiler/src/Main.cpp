@@ -104,17 +104,6 @@ int main(int argc, char** argv) {
 
     auto totalTime = timer.elapsedNanoseconds();
 
-    /*
-    cout << "Primitives: candidate count: " << stats.prim.candidateCount << "\n";
-    cout << "Primitives: visible count: " << stats.prim.visibleCount << "\n";
-    cout << "Primitives: processed " << stats.clip.primitivesProcessed << "\n";
-    cout << "Primitives: vertices processed: " << stats.clip.primVerticesProcessed << "\n";
-    cout << "Polygons: generated: " << stats.clip.polygonsGenerated << "\n";
-    cout << "Polygons: vertices generated: " << stats.clip.verticesGenerated << "\n";
-    cout << "Triangulation: triangles generated: " << stats.tri.trianglesGenerated << "\n";
-    cout << "Generation time " << dataGenerator->getLastGenTime() / 1'000'000.0 << " ms\n";
-    */
-
     cout << "Profile time " << totalTime / 1'000'000.0 << " ms\n";
   }
 

@@ -76,10 +76,10 @@ bool RectanglePolygon::deserializeImpl(std::shared_ptr<Serializer> serializer, S
 vector<ComplexPolygon> RectanglePolygon::generateVerticesImpl() {
   float i1 = 1.0f / mXyRatio;
 
-  return {{{{wp::Vector2(1.0f, i1), 0},
-            {wp::Vector2(-1.0f, i1), 0},
-            {wp::Vector2(-1.0f, -i1), 0},
-            {wp::Vector2(1.0f, -i1), 0}}}};
+  return {{{{wp::Vector2(1.0f, i1)},
+            {wp::Vector2(-1.0f, i1)},
+            {wp::Vector2(-1.0f, -i1)},
+            {wp::Vector2(1.0f, -i1)}}}};
 }
 
 float RectanglePolygon::getRadius() const {

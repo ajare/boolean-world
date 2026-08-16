@@ -88,10 +88,9 @@ vector<ComplexPolygon> TorusPolygon::generateVerticesImpl() {
   for (uint32_t i = 0; i < mNumSides; ++i) {
     float angle = 360.0f * i / (float)mNumSides;
     outerVertices[i] = {
-        wp::Vector2::UNIT_Y.rotatedClockwiseCopy(angle),
-        0};
+        wp::Vector2::UNIT_Y.rotatedClockwiseCopy(angle)};
 
-    innerVertices[mNumSides - i - 1] = {outerVertices[i].p * (1.0f - mThickness), 0};
+    innerVertices[mNumSides - i - 1] = {outerVertices[i].p * (1.0f - mThickness)};
   }
 
   return {{outerVertices, innerVertices}};

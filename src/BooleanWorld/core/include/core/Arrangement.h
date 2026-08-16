@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/Primitive.h"
+#include "core/Stats.h"
 
 namespace bw::core::arr {
 inline constexpr int64_t FixedPointUnitsPerWorldUnit = 1000;
@@ -180,7 +181,8 @@ using ArrangementResultPtr = std::shared_ptr<ArrangementResult const>;
     Membership const& membership);
 
 [[nodiscard]] ArrangementResultPtr BuildArrangement(
-    std::vector<ArrangementPrimitive> const& primitives);
+    std::vector<ArrangementPrimitive> const& primitives,
+    ArrangementStats* stats = nullptr);
 
 bool PointInFace(
     FixedPointVertex const& v,

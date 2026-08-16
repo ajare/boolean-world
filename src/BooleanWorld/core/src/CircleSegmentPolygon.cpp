@@ -109,7 +109,7 @@ vector<ComplexPolygon> CircleSegmentPolygon::generateVerticesImpl() {
   } else {
     ClosedPolygon vertices(mNumSides + 2);
 
-    vertices[0] = {wp::Vector2::ZERO, 0};
+    vertices[0] = {wp::Vector2::ZERO};
 
     float offset = -mArcLength * 0.5f;
     for (uint32_t i = 0; i <= mNumSides; ++i) {
@@ -117,8 +117,7 @@ vector<ComplexPolygon> CircleSegmentPolygon::generateVerticesImpl() {
       float angle = offset + mArcLength * d;
 
       vertices[i + 1] = {
-          wp::Vector2::UNIT_Y.rotatedClockwiseCopy(angle),
-          0};
+          wp::Vector2::UNIT_Y.rotatedClockwiseCopy(angle)};
     }
 
     return {{vertices}};

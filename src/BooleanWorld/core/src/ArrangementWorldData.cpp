@@ -29,12 +29,18 @@ ArrangementWorldData::ArrangementWorldData(
     arr::ArrangementResultPtr arrangement,
     wp::BoundingBox const& extents,
     float gridCellSize,
-    float stepThreshold)
+    float stepThreshold,
+    ArrangementStats* stats)
     : mArrangement(std::move(arrangement)),
       mTriangles(arr::BuildArrangementTriangles(*mArrangement)),
       mWalls(arr::BuildArrangementWalls(*mArrangement)),
       mTriangleGrid(CreateGrid(extents, gridCellSize)),
       mWallGrid(CreateGrid(extents, gridCellSize)) {
+  if (stats != nullptr) {
+    stats->triangleCount = uint32_t(mTriangles.size());
+    stats->wallCount = uint32_t(mWalls.size());
+  }
+
   for (uint32_t triangleIndex = 0;
        triangleIndex < uint32_t(mTriangles.size()); ++triangleIndex) {
     auto const& triangle = mTriangles[triangleIndex];

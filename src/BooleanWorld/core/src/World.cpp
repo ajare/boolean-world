@@ -1078,7 +1078,7 @@ uint32_t World::findPrimitiveIndex(wp::Vector2 const& worldPos, bool exact, set<
     if (bounds.pointInside(worldPos) && ignoreIndices.find(i) == ignoreIndices.end()) {
       if (exact) {
         // Create triangulation and check that
-        auto triangulation = primitive->triangulate(true, nullptr);
+        auto triangulation = primitive->triangulate(true);
         if (triangulation.pointInside(worldPos)) {
           return i;
         }
@@ -1106,7 +1106,7 @@ vector<uint32_t> World::findPrimitiveIndices(wp::Vector2 const& worldPos, bool e
     if (bounds.pointInside(worldPos) && ignoreIndices.find(i) == ignoreIndices.end()) {
       if (exact) {
         // Create triangulation and check that
-        auto triangulation = primitive->triangulate(true, nullptr);
+        auto triangulation = primitive->triangulate(true);
         if (triangulation.pointInside(worldPos)) {
           result.push_back(i);
         }
@@ -1159,10 +1159,7 @@ vector<Primitive*> World::findPrimitives(wp::BoundingCircle const& bounds) const
   return result;
 }
 
-void World::handleEvents(uint32_t events) {
-  if (events & BW_PRIMITIVE_GLOBAL_EVENT_DEBUG) {
-    int x = 5;
-  }
+void World::handleEvents(uint32_t /*events*/) {
 }
 
 void World::update(float frameTime, WorldUpdateData const& data, wp::Vector2 const& viewSize) {

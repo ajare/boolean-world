@@ -356,6 +356,8 @@ bool Primitive::deserializeImpl(shared_ptr<Serializer> serializer, Serialization
                       serializer->beginMap("vertex");
                       {
                         wp::Vector2 p = serializer->readVector2("p");
+                        // Retain this ignored legacy field so shipped pre-arrangement
+                        // world files remain loadable after the Clipper z-bitfield removal.
                         serializer->readInt64("z", true, 0);
 
                         polygon.push_back({p});
@@ -511,7 +513,7 @@ wp::BoundingBox const& Primitive::getBounds() const {
   return mBounds;
 }
 
-Triangulation Primitive::triangulate(bool calculateBounds, TriangulationStats* stats) const {
+Triangulation Primitive::triangulate(bool calculateBounds) const {
   Triangulation result;
 
   auto complexPolygons = getVertices();
@@ -532,7 +534,7 @@ Triangulation Primitive::triangulate(bool calculateBounds, TriangulationStats* s
       triangulationData.push_back(td);
     }
 
-    triangulator._triangulate(triangulationData, vertices, stats);
+    triangulator._triangulate(triangulationData, vertices);
     result.merge(triangulator.getTriangulation(), calculateBounds);
   }
 

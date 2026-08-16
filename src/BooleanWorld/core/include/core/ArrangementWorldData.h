@@ -10,6 +10,7 @@
 
 #include "core/Arrangement.h"
 #include "core/Platform.h"
+#include "core/Stats.h"
 
 namespace bw::core {
 class BW_API ArrangementWorldData {
@@ -25,7 +26,8 @@ public:
       arr::ArrangementResultPtr arrangement,
       wp::BoundingBox const& extents,
       float gridCellSize,
-      float stepThreshold);
+      float stepThreshold,
+      ArrangementStats* stats = nullptr);
 
   [[nodiscard]] arr::ArrangementResult const& getArrangement() const;
 

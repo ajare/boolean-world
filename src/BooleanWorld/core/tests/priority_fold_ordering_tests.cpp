@@ -50,7 +50,7 @@ void preservesListOrderForEqualPriorities() {
   require(baked != nullptr,
           "baking an equal-priority fold unexpectedly produced no primitive");
   baked->updateVertexPositions();
-  auto triangulation = baked->triangulate(true, nullptr);
+  auto triangulation = baked->triangulate(true);
   require(triangulation.pointInside({1.0f, 5.0f}),
           "the first union primitive was missing from the baked fold");
   require(!triangulation.pointInside({3.5f, 5.0f}),

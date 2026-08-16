@@ -29,7 +29,9 @@ vector<array<float, 2>> Triangulator::convertPolygon(ClosedPolygon const& polygo
   return result;
 }
 
-void Triangulator::_triangulate(vector<TriangulationData> const& triangulationData, VertexList const& vertices, TriangulationStats* stats) {
+void Triangulator::_triangulate(
+    vector<TriangulationData> const& triangulationData,
+    VertexList const& vertices) {
   // Convert Vertex to array<float, 2> for the earcutter
   using Point = array<float, 2>;
 
@@ -108,10 +110,6 @@ void Triangulator::_triangulate(vector<TriangulationData> const& triangulationDa
   // Bounds
   if (mGlobalBounds) {
     mTriangulation.calculateBounds();
-  }
-
-  if (stats) {
-    stats->trianglesGenerated += (uint32_t)mTriangulation.tris.size();
   }
 }
 

@@ -120,6 +120,15 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_arrangement_triangulation_precision_tests)
     add_test(NAME boolean_world_arrangement_triangulation_precision COMMAND boolean_world_arrangement_triangulation_precision_tests)
 
+    add_executable(boolean_world_arrangement_statistics_tests
+        tests/arrangement_statistics_tests.cpp)
+    target_link_libraries(boolean_world_arrangement_statistics_tests PRIVATE core)
+    target_compile_features(boolean_world_arrangement_statistics_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_arrangement_statistics_tests)
+    bw_output_dirs(boolean_world_arrangement_statistics_tests)
+    bw_deploy_runtime_dlls(boolean_world_arrangement_statistics_tests)
+    add_test(NAME boolean_world_arrangement_statistics COMMAND boolean_world_arrangement_statistics_tests)
+
     add_executable(boolean_world_interpolator_tests
         tests/interpolator_tests.cpp)
     target_link_libraries(boolean_world_interpolator_tests PRIVATE core)

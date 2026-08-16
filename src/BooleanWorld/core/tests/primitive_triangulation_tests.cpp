@@ -35,15 +35,11 @@ void triangulatesEachComplexPolygonIndependently() {
   primitive->setId(42);
   primitive->updateVertexPositions();
 
-  bw::core::TriangulationStats stats;
-  auto triangulation = primitive->triangulate(false, &stats);
+  auto triangulation = primitive->triangulate(false);
 
   require(triangulation.tris.size() == 4,
           "two rectangular complex polygons did not produce four triangles: got " +
               std::to_string(triangulation.tris.size()));
-  require(stats.trianglesGenerated == 4,
-          "triangulation statistics included triangles from another complex polygon");
-
   for (auto const& triangle : triangulation.tris) {
     require(triangle.primitiveIndex == 42,
             "triangle did not retain its primitive index");

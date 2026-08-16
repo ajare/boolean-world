@@ -15,7 +15,7 @@ struct Vertex {
   wp::Vector2 p;
 
   Vertex() = default;
-  Vertex(wp::Vector2 const& position, int64_t = 0)
+  Vertex(wp::Vector2 const& position)
       : p(position) {
   }
 };

@@ -160,7 +160,7 @@ vector<ComplexPolygon> SuperformulaPolygon::generateVerticesImpl() {
   float inc = 1.0f / (BaseResolution * mResolution);
 
   for (float a = 0.0f; a < WP_TWOPI; a += inc) {
-    vertices.push_back({calculate(a), 0});
+    vertices.push_back({calculate(a)});
   }
 
   return {{vertices}};

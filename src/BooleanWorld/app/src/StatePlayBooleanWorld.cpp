@@ -52,8 +52,6 @@ const ImColor gImGui_MapBorderColour{1.0f, 1.0f, 0.7f};
 const ImColor gImGui_PrimitiveColour{0.8f, 0.2f, 0.2f};
 const ImColor gImGui_PrimitiveInSourceSetColour{0.8f, 0.8f, 0.2f, 0.5f};
 const ImColor gImGui_PrimitiveInViewColour{0.8f, 0.2f, 0.2f, 0.5f};
-const ImColor gImGui_PrimitiveStaticBoundsColour{0.2f, 0.8f, 0.2f};
-const ImColor gImGui_PrimitiveAnimatedBoundsColour{0.2f, 0.2f, 0.8f};
 const ImColor gImGui_CollisionLineSolidColour{0.8f, 0.8f, 0.2f};
 const ImColor gImGui_CollisionLine2WayColour{0.6f, 0.6f, 0.0f};
 const ImColor gImGui_ViewAreaColour{0.5f, 0.5f, 0.5f};
@@ -351,13 +349,6 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
   // For subclasses
   createGameObjects(resourceMgr, renderSystem, renderResourceMgr, args);
 
-  // Start audio events
-  if (mwAudioSystem) {
-    for (int i = 0; i < 1; ++i) {
-      // auto event = mwAudioSystem->startEvent();
-    }
-  }
-
   // Start scheduled world clipping
   auto dataGenerator = getWDG();
 
@@ -504,9 +495,12 @@ void StatePlayBooleanWorld::handleClippingUpdate(bw::core::DynamicWorldDataGener
 
     case bw::core::DynamicWorldDataGenerator::GenerationState::Committed:
       mwRenderer->setWorldChanged();
-      addDisplayMessage(DisplayMessage::Level::Debug, format("Clipping committed: {} prims, {} polys ",
-                                                             details.stats.clip.primitivesProcessed,
-                                                             details.stats.clip.polygonsGenerated));
+      addDisplayMessage(
+          DisplayMessage::Level::Debug,
+          format(
+              "Arrangement committed: {} vertices, {} faces",
+              details.stats.arrangement.vertexCount,
+              details.stats.arrangement.faceCount));
       [[fallthrough]];
     case bw::core::DynamicWorldDataGenerator::GenerationState::Generated:
       // Find the record with the matching ID and update
@@ -683,22 +677,6 @@ void StatePlayBooleanWorld::ImGui_renderPrimitives(vector<wp::Vector2> const& vi
           drawList->AddPolyline(imPoints.data(), numVertices, gImGui_PrimitiveColour, ImDrawFlags_Closed, 1.f);
         }
       }
-
-      // Primitive bounds
-      if (false) {
-        bool primStatic = primitive->isStatic();
-        auto primitiveBounds = primitive->getBounds();
-        auto primitiveBoundsColour = primStatic ? gImGui_PrimitiveStaticBoundsColour : gImGui_PrimitiveAnimatedBoundsColour;
-
-        wp::Vector2 primMinExtent, primMaxExtent;
-
-        primitiveBounds.getExtents(primMinExtent, primMaxExtent);
-
-        drawList->AddRect(
-            wpVecToImVec2(primMinExtent, viewOffset, viewSize, viewScale),
-            wpVecToImVec2(primMaxExtent, viewOffset, viewSize, viewScale),
-            primitiveBoundsColour);
-      }
     }
   }
 }
@@ -744,14 +722,13 @@ void StatePlayBooleanWorld::debug_renderMinimap(wp::Vector2 const& viewSize, wp:
       player.position + wp::Vector2::fromAngle(viewAngle + halfFov, wp::Clockwise) * viewDistance};
 
   auto primitives = world->findPrimitives(viewBounds);
-  auto cellSize = world->getPrimitiveAccelerationGridSize();
 
   ImGui_renderArrangement(*mWorldData, viewBounds, viewOffset, viewSize, viewScale, drawList);
   ImGui_renderPrimitives(viewVertices, primitives, viewBounds, viewOffset, viewSize, viewScale, drawList);
   ImGui_renderView(viewVertices, viewBounds, viewOffset, viewSize, viewScale, drawList);
 }
 
-void StatePlayBooleanWorld::debug_renderCollisionSim(wp::Vector2 const& viewSize, wp::Vector2 const& viewOffset, wp::Vector2 const& viewScale, wp::BoundingBox const& viewBounds, ImDrawList* drawList) {
+void StatePlayBooleanWorld::debug_renderCollisionSim(wp::Vector2 const& viewSize, wp::Vector2 const& viewOffset, wp::Vector2 const& viewScale, ImDrawList* drawList) {
   if (!mDebugDisplay.collisionSim) {
     return;
   }
@@ -909,7 +886,7 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
         ImGuiTableFlags_BordersV |
         ImGuiTableFlags_ContextMenuInBody;
 
-    if (ImGui::BeginTable("Generation", 13, flags)) {
+    if (ImGui::BeginTable("Generation", 16, flags)) {
       ImGui::TableSetupColumn("Id", ImGuiTableColumnFlags_WidthFixed, 128);
       ImGui::TableSetupColumn("Gen 0", ImGuiTableColumnFlags_WidthFixed, 128);
       ImGui::TableSetupColumn("Gen 1", ImGuiTableColumnFlags_WidthFixed, 128);
@@ -919,10 +896,13 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
       ImGui::TableSetupColumn("< p");
       ImGui::TableSetupColumn("< p:vis");
       ImGui::TableSetupColumn("< p:upd");
-      ImGui::TableSetupColumn("< pv");
-      ImGui::TableSetupColumn("> P");
-      ImGui::TableSetupColumn("> Pv");
-      ImGui::TableSetupColumn("> Pv:lerp");
+      ImGui::TableSetupColumn("Verts");
+      ImGui::TableSetupColumn("Edges");
+      ImGui::TableSetupColumn("Faces");
+      ImGui::TableSetupColumn("Tris");
+      ImGui::TableSetupColumn("Walls");
+      ImGui::TableSetupColumn("PSLG (us)");
+      ImGui::TableSetupColumn("Classify (us)");
       ImGui::TableHeadersRow();
 
       auto numRecords = records.size();
@@ -1008,41 +988,31 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
           ImGui::Text("-");
         }
 
-        // Primitive vertex count
-        ImGui::TableSetColumnIndex(9);
+        auto const& arrangement = record.stats.arrangement;
+        auto showArrangementStat = [&](int column, uint32_t value) {
+          ImGui::TableSetColumnIndex(column);
+          if (record.generationCompleteTime >= 0.0) {
+            ImGui::Text("%u", value);
+          } else {
+            ImGui::Text("-");
+          }
+        };
+        auto showArrangementTime = [&](int column, uint64_t nanoseconds) {
+          ImGui::TableSetColumnIndex(column);
+          if (record.generationCompleteTime >= 0.0) {
+            ImGui::Text("%llu", static_cast<unsigned long long>(nanoseconds / 1000));
+          } else {
+            ImGui::Text("-");
+          }
+        };
 
-        if (record.generationCompleteTime >= 0.0) {
-          ImGui::Text("%d", record.stats.clip.primVerticesProcessed);
-        } else {
-          ImGui::Text("-");
-        }
-
-        // Polygons created
-        ImGui::TableSetColumnIndex(10);
-
-        if (record.generationCompleteTime >= 0.0) {
-          ImGui::Text("%d", record.stats.clip.polygonsGenerated);
-        } else {
-          ImGui::Text("-");
-        }
-
-        // Vertices created
-        ImGui::TableSetColumnIndex(11);
-
-        if (record.generationCompleteTime >= 0.0) {
-          ImGui::Text("%d", record.stats.clip.verticesGenerated);
-        } else {
-          ImGui::Text("-");
-        }
-
-        // Vertices interpolated
-        ImGui::TableSetColumnIndex(12);
-
-        if (record.generationCompleteTime >= 0.0) {
-          ImGui::Text("%d", record.stats.clip.interpolatedVertices);
-        } else {
-          ImGui::Text("-");
-        }
+        showArrangementStat(9, arrangement.vertexCount);
+        showArrangementStat(10, arrangement.edgeCount);
+        showArrangementStat(11, arrangement.faceCount);
+        showArrangementStat(12, arrangement.triangleCount);
+        showArrangementStat(13, arrangement.wallCount);
+        showArrangementTime(14, arrangement.buildPSLGTimeNs);
+        showArrangementTime(15, arrangement.classificationTimeNs);
       }
 
       ImGui::EndTable();
@@ -1084,7 +1054,7 @@ void StatePlayBooleanWorld::_renderImGui(float frameTime, void* imGuiCtx, void* 
   auto drawList = ImGui::GetBackgroundDrawList();
 
   debug_renderMinimap(viewSize, viewOffset, viewScale, viewBounds, drawList);
-  debug_renderCollisionSim(viewSize, viewOffset, viewScale, viewBounds, drawList);
+  debug_renderCollisionSim(viewSize, viewOffset, viewScale, drawList);
   debug_renderClipGenerationInfo(drawList);
 
   // Reset.  We don't really need to do this as nothing is done on this DLL's context

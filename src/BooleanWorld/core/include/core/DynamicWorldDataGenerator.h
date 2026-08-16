@@ -29,7 +29,7 @@ public:
     std::vector<Primitive*> primitives;
     std::vector<Primitive*> updatedPrimitives;
     LayerSelection layerSelection;
-    PrimitiveProcessingStats primStats;
+    Stats stats;
     uint64_t genTimeNs{0};
   };
 

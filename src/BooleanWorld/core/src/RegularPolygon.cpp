@@ -89,8 +89,7 @@ vector<ComplexPolygon> RegularPolygon::generateVerticesImpl() {
   for (uint32_t i = 0; i < mNumSides; ++i) {
     float angle = 360.0f * i / (float)mNumSides;
     vertices[i] = {
-        wp::Vector2::UNIT_Y.rotatedClockwiseCopy(angle),
-        0};
+        wp::Vector2::UNIT_Y.rotatedClockwiseCopy(angle)};
   }
 
   return {{vertices}};
