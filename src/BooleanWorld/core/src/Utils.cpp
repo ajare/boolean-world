@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 
 #include "core/Utils.h"
 
@@ -9,15 +10,12 @@ namespace core {
 using namespace std;
 
 float clamp_angle(float angle) {
-  while (angle < 0.0f) {
-    angle += 360.0f;
+  if (!isfinite(angle)) {
+    return 0.0f;
   }
 
-  while (angle >= 360.0f) {
-    angle -= 360.0f;
-  }
-
-  return angle;
+  angle = fmod(angle, 360.0f);
+  return angle < 0.0f ? angle + 360.0f : angle;
 }
 
 float clamp_unit(float value) {

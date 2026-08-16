@@ -1,5 +1,17 @@
+#include <cmath>
+
 #include "core/TransformFlow.h"
 #include "core/Defines.h"
+
+namespace {
+constexpr float MinimumFunctionMultiplier = 0.0001f;
+
+float functionMultiplier(float value) {
+  return std::isfinite(value) && value > MinimumFunctionMultiplier
+             ? value
+             : MinimumFunctionMultiplier;
+}
+}  // namespace
 
 namespace bw {
 namespace core {
@@ -106,7 +118,7 @@ float TransformFlow::transformT(InputValue const& inputs, double time) const {
   float value{0.0f};
   for (auto const& transform : mTransforms) {
     // Transform value
-    float operands[2];
+    float operands[2] = {0.0f, 0.0f};
 
     for (int i = 0; i < 2; ++i) {
       switch (transform.operands[i]) {
@@ -151,6 +163,10 @@ float TransformFlow::transformT(InputValue const& inputs, double time) const {
             case InputType::User4:
               operands[i] = inputs.user[3];
               break;
+
+            default:
+              operands[i] = 0.0f;
+              break;
           }
           break;
 
@@ -158,29 +174,28 @@ float TransformFlow::transformT(InputValue const& inputs, double time) const {
           operands[i] = transform.constants[i];
           break;
 
-        case tTransform::OperandType::Sine:
-          assert(transform.fnMultipliers[i] > 0.0f && "Time value must be greater than zero!");
-          operands[i] = (float)(sin(time * BW_TWOPI / transform.fnMultipliers[i])) * 0.5f + 0.5f;
+        case tTransform::OperandType::Sine: {
+          auto multiplier = functionMultiplier(transform.fnMultipliers[i]);
+          operands[i] = (float)(sin(time * BW_TWOPI / multiplier)) * 0.5f + 0.5f;
           break;
+        }
 
-        case tTransform::OperandType::InvCosine:
-          assert(transform.fnMultipliers[i] > 0.0f && "Time value must be greater than zero!");
-          operands[i] = 1.0f - ((float)(cos(time * BW_TWOPI / transform.fnMultipliers[i])) * 0.5f + 0.5f);
+        case tTransform::OperandType::InvCosine: {
+          auto multiplier = functionMultiplier(transform.fnMultipliers[i]);
+          operands[i] = 1.0f - ((float)(cos(time * BW_TWOPI / multiplier)) * 0.5f + 0.5f);
           break;
+        }
 
         case tTransform::OperandType::Triangle:
-          assert(transform.fnMultipliers[i] > 0.0f && "Time value must be greater than zero!");
-          operands[i] = triangle(time, transform.fnMultipliers[i]);
+          operands[i] = triangle(time, functionMultiplier(transform.fnMultipliers[i]));
           break;
 
         case tTransform::OperandType::Saw:
-          assert(transform.fnMultipliers[i] > 0.0f && "Time value must be greater than zero!");
-          operands[i] = (float)fmod(time, transform.fnMultipliers[i]) / transform.fnMultipliers[i];
+          operands[i] = saw(time, functionMultiplier(transform.fnMultipliers[i]));
           break;
 
         case tTransform::OperandType::Square:
-          assert(transform.fnMultipliers[i] > 0.0f && "Time value must be greater than zero!");
-          operands[i] = square(time, transform.fnMultipliers[i]);
+          operands[i] = square(time, functionMultiplier(transform.fnMultipliers[i]));
           break;
 
         case tTransform::OperandType::TriggerLine:
@@ -209,6 +224,10 @@ float TransformFlow::transformT(InputValue const& inputs, double time) const {
 
         case tTransform::OperandType::TransformOutput:
           operands[i] = value;
+          break;
+
+        default:
+          operands[i] = 0.0f;
           break;
       }
     }
@@ -250,6 +269,10 @@ float TransformFlow::transformT(InputValue const& inputs, double time) const {
         }
 
         value = fmod(operands[0], operands[1]) / operands[1];
+        break;
+
+      default:
+        value = 0.0f;
         break;
     }
   }

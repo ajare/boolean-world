@@ -1,3 +1,5 @@
+#include <cmath>
+
 #include "core/tTransform.h"
 
 namespace bw {
@@ -95,17 +97,44 @@ bool tTransform::deserializeImpl(shared_ptr<Serializer> serializer, Serializatio
   try {
     serializer->beginMap("transform");
     {
-      _operands[0] = (OperandType)serializer->readUint32("operand0");
-      _operands[1] = (OperandType)serializer->readUint32("operand1");
+      auto operand0 = serializer->readUint32("operand0");
+      auto operand1 = serializer->readUint32("operand1");
       _constants[0] = serializer->readFloat("constant0");
       _constants[1] = serializer->readFloat("constant1");
       _fnMultipliers[0] = serializer->readFloat("fnMultiplier0");
       _fnMultipliers[1] = serializer->readFloat("fnMultiplier1");
       _indices[0] = serializer->readUint32("index0");
       _indices[1] = serializer->readUint32("index1");
-      _inputs[0] = (InputType)serializer->readUint32("input0");
-      _inputs[1] = (InputType)serializer->readUint32("input1");
-      _operation = (Operation)serializer->readUint32("operation");
+      auto input0 = serializer->readUint32("input0");
+      auto input1 = serializer->readUint32("input1");
+      auto operation = serializer->readUint32("operation");
+
+      if (operand0 >= (uint32_t)OperandType::COUNT) {
+        throw SerializationException(format("Invalid transform operand type: {}", operand0));
+      }
+      if (operand1 >= (uint32_t)OperandType::COUNT) {
+        throw SerializationException(format("Invalid transform operand type: {}", operand1));
+      }
+      if (input0 >= (uint32_t)InputType::COUNT) {
+        throw SerializationException(format("Invalid transform input type: {}", input0));
+      }
+      if (input1 >= (uint32_t)InputType::COUNT) {
+        throw SerializationException(format("Invalid transform input type: {}", input1));
+      }
+      if (operation >= (uint32_t)Operation::COUNT) {
+        throw SerializationException(format("Invalid transform operation: {}", operation));
+      }
+      for (auto fnMultiplier : _fnMultipliers) {
+        if (!isfinite(fnMultiplier) || fnMultiplier <= 0.0f) {
+          throw SerializationException(format("Invalid transform function multiplier: {}", fnMultiplier));
+        }
+      }
+
+      _operands[0] = (OperandType)operand0;
+      _operands[1] = (OperandType)operand1;
+      _inputs[0] = (InputType)input0;
+      _inputs[1] = (InputType)input1;
+      _operation = (Operation)operation;
 
       serializer->endMap();  // transform
     }
