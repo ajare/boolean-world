@@ -12,6 +12,8 @@ SETLOCAL
 
 SET CONFIG=%1
 IF "%CONFIG%"=="" SET CONFIG=Release
+SET LAUNCHER_EXE=Launcher.exe
+IF /I "%CONFIG%"=="Debug" SET LAUNCHER_EXE=Launcherd.exe
 
 SET BUILDDIR=%~dp0build-cmake
 
@@ -39,11 +41,11 @@ cmake --build "%BUILDDIR%" --config %CONFIG% --parallel || GOTO :fail
 echo.
 echo Build succeeded (%CONFIG%^|x64).
 echo.
-echo Binaries keep the original layout, e.g.
-echo   src\Launcher\build\vs2026\bin\x64\%CONFIG%\Launcher.exe
-echo   src\BooleanWorld\editor\bin\x64\%CONFIG%\editor.exe
+echo Binaries are under the CMake build tree, e.g.
+echo   build-cmake\bin\%CONFIG%\Launcher\%LAUNCHER_EXE%
+echo   build-cmake\bin\%CONFIG%\editor\editor.exe
 echo.
-echo Run: cd src\Launcher\build\vs2026\bin\x64\%CONFIG% ^&^& Launcher.exe BooleanWorld.yaml
+echo Run: cd build-cmake\bin\%CONFIG%\Launcher ^&^& %LAUNCHER_EXE% BooleanWorld.yaml
 EXIT /B 0
 
 :fail

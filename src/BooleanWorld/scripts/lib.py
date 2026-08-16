@@ -6,7 +6,7 @@ from ctypes import c_int, c_uint8, c_uint32, c_float, c_char_p, c_bool, POINTER
 _version3 = sys.version_info >= (3, 0)
 _integer = int if _version3 else (int, long)
 
-lib_name = 'core-dll.dll'
+lib_names = ('core-dll.dll', 'core-dlld.dll')
 
 
 class CtypesEnum(IntEnum):
@@ -57,26 +57,25 @@ class TransformOperation(CtypesEnum):
 def load_library():
     import os
     
-    # Figure out where the library binary should be
-    places = [sys.argv[0]]
-    try:
-        # Try to search near the wrapper module
-        places.insert(0, __file__)
-    except NameError:
-        # There may be no module (e. g. a standalone app)
-        pass
-    places = [os.path.dirname(os.path.abspath(place)) for place in places]
-    
-    # Construct a platform-specific name of the library binary file
-    if 'win32' in sys.platform:
-        name = lib_name
-    else:
+    if 'win32' not in sys.platform:
         raise RuntimeError('Unsupported platform: ' + sys.platform)
-    
-    # Now actually try to load the library binary
-    for place in places:
+
+    # Build products stay outside the source tree. A non-default CMake build
+    # directory can be selected explicitly for scripts and standalone tools.
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(script_dir, '..', '..', '..'))
+    build_dir = os.environ.get('BOOLEANWORLD_BUILD_DIR',
+                               os.path.join(repo_root, 'build-cmake'))
+    candidates = [
+        os.path.join(build_dir, 'bin', 'Release', 'core-dll', lib_names[0]),
+        os.path.join(build_dir, 'bin', 'Debug', 'core-dll', lib_names[1]),
+    ]
+
+    # Now actually try to load the library binary.
+    errors = []
+    for candidate in candidates:
         try:
-            l = ctypes.CDLL(os.path.join(place, name))
+            l = ctypes.CDLL(candidate)
             
             # Set function types
             l.create_world.argtypes = [c_float]
@@ -161,9 +160,10 @@ def load_library():
             
             return l
         except OSError as e:
-            print(e)
+            errors.append(str(e))
 
-    raise RuntimeError('Cannot load Core library: no loadable {} found in {}'.format(name, places))
+    raise RuntimeError('Cannot load Core library from {}: {}'.format(
+        candidates, errors))
     
     
 

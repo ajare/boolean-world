@@ -69,7 +69,7 @@ target_link_libraries(Willpower.Application
 target_compile_features(Willpower.Application PRIVATE cxx_std_20)
 target_compile_options(Willpower.Application PRIVATE /W4)
 bw_target_defaults(Willpower.Application)
-bw_output_dirs(Willpower.Application "build/vs2026/bin/x64/$<CONFIG>" "build/vs2026/lib/x64/$<CONFIG>")
+bw_output_dirs(Willpower.Application)
 bw_enable_sdl_checks(Willpower.Application)
 set_target_properties(Willpower.Application PROPERTIES FOLDER Willpower)
 
@@ -78,7 +78,7 @@ set_target_properties(Willpower.Application PROPERTIES FOLDER Willpower)
 add_executable(willpower_application_resource_yaml_tests tests/resource_yaml_tests.cpp)
 target_compile_features(willpower_application_resource_yaml_tests PRIVATE cxx_std_20)
 target_link_libraries(willpower_application_resource_yaml_tests PRIVATE Willpower.Application)
-bw_output_dirs(willpower_application_resource_yaml_tests "build/vs2026/bin/x64/$<CONFIG>")
+bw_output_dirs(willpower_application_resource_yaml_tests)
 set_target_properties(willpower_application_resource_yaml_tests PROPERTIES FOLDER Willpower)
 bw_deploy_runtime_dlls(willpower_application_resource_yaml_tests)
 # Willpower.Application.dll imports fmod/fmodstudio, whose import libraries are

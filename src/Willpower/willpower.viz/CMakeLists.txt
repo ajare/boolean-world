@@ -31,5 +31,5 @@ target_link_libraries(WillPower.Viz
 target_compile_features(WillPower.Viz PRIVATE cxx_std_20)
 target_compile_options(WillPower.Viz PRIVATE /W4)
 bw_target_defaults(WillPower.Viz)
-bw_output_dirs(WillPower.Viz "build/vs2026/bin/x64/$<CONFIG>" "build/vs2026/lib/x64/$<CONFIG>")
+bw_output_dirs(WillPower.Viz)
 set_target_properties(WillPower.Viz PROPERTIES FOLDER Willpower)

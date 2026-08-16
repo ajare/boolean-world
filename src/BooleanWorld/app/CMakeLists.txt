@@ -50,6 +50,6 @@ target_link_libraries(BooleanWorld PRIVATE
 target_compile_features(BooleanWorld PRIVATE cxx_std_23)
 target_compile_options(BooleanWorld PRIVATE /W4)
 bw_target_defaults(BooleanWorld)
-bw_output_dirs(BooleanWorld "build/vs2026/bin/x64/$<CONFIG>" "build/vs2026/lib/x64/$<CONFIG>")
+bw_output_dirs(BooleanWorld)
 bw_enable_sdl_checks(BooleanWorld)
 set_target_properties(BooleanWorld PROPERTIES FOLDER BooleanWorld)

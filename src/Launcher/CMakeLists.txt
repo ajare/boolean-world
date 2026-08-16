@@ -1,5 +1,3 @@
-# Replaces src/Launcher/build/vs2026/Launcher.sln.
-#
 # Launcher.exe is a shell: it creates the window and render system, then loads
 # a game DLL named in a .cfg file at runtime.
 
@@ -36,7 +34,7 @@ target_link_libraries(Launcher PRIVATE
 target_compile_features(Launcher PRIVATE cxx_std_20)
 target_compile_options(Launcher PRIVATE /W3)
 bw_target_defaults(Launcher)
-bw_output_dirs(Launcher "build/vs2026/bin/x64/$<CONFIG>" "build/vs2026/lib/x64/$<CONFIG>")
+bw_output_dirs(Launcher)
 bw_enable_sdl_checks(Launcher)
 set_target_properties(Launcher PROPERTIES FOLDER Launcher)
 
@@ -49,7 +47,7 @@ if(BUILD_TESTING)
         Willpower.Common Willpower.Application ext::Utils)
     target_compile_features(launcher_program_options_tests PRIVATE cxx_std_20)
     bw_target_defaults(launcher_program_options_tests)
-    bw_output_dirs(launcher_program_options_tests "build/vs2026/bin/x64/$<CONFIG>")
+    bw_output_dirs(launcher_program_options_tests)
     bw_deploy_runtime_dlls(launcher_program_options_tests)
     bw_deploy_vendor_dlls(launcher_program_options_tests)
     add_test(NAME launcher_program_options COMMAND launcher_program_options_tests)
@@ -62,8 +60,8 @@ add_dependencies(Launcher BooleanWorld)
 bw_deploy_runtime_dlls(Launcher)
 bw_deploy_vendor_dlls(Launcher)
 
-# Per-machine support files, as CopyWillpowerBinaries.bat used to stage:
-#   build/support/<COMPUTERNAME>/vs2026/x64/<CONFIG>/*  ->  output directory
+# Per-machine support files:
+#   support/<COMPUTERNAME>/<CONFIG>/*  ->  output directory
 # Run through a script so both $<CONFIG> and the directory's existence resolve
 # at build time - most machines have no support directory, and
 # `cmake -E copy_directory` fails outright on a missing source.
@@ -73,7 +71,7 @@ bw_deploy_vendor_dlls(Launcher)
 if(DEFINED ENV{COMPUTERNAME})
     add_custom_command(TARGET Launcher POST_BUILD
         COMMAND ${CMAKE_COMMAND}
-                "-DSRC=${CMAKE_CURRENT_SOURCE_DIR}/build/support/$ENV{COMPUTERNAME}/vs2026/x64/$<CONFIG>"
+                "-DSRC=${CMAKE_CURRENT_SOURCE_DIR}/support/$ENV{COMPUTERNAME}/$<CONFIG>"
                 "-DDST=$<TARGET_FILE_DIR:Launcher>"
                 -P "${BW_ROOT}/cmake/CopyDirIfExists.cmake"
         VERBATIM
@@ -92,9 +90,9 @@ add_custom_command(TARGET Launcher POST_BUILD
 
 # A ready-to-run configuration. Absolute paths, so it does not depend on the
 # launcher's working directory or on %COMPUTERNAME% the way the checked-in
-# configs under build/support do.
+# configs under support do.
 file(GENERATE
-    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/build/vs2026/bin/x64/$<CONFIG>/BooleanWorld.yaml"
+    OUTPUT "${CMAKE_BINARY_DIR}/bin/$<CONFIG>/Launcher/BooleanWorld.yaml"
     CONTENT
 "Configuration:
   Video:

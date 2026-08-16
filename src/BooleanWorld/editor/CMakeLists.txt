@@ -38,7 +38,7 @@ target_compile_features(editor PRIVATE cxx_std_20)
 # UTF-8. All sources here are already valid UTF-8.
 target_compile_options(editor PRIVATE /W3 /utf-8)
 bw_target_defaults(editor)
-bw_output_dirs(editor "bin/x64/$<CONFIG>")
+bw_output_dirs(editor)
 bw_enable_sdl_checks(editor)
 bw_no_postfix(editor)
 set_target_properties(editor PROPERTIES FOLDER BooleanWorld)
@@ -46,5 +46,7 @@ set_target_properties(editor PROPERTIES FOLDER BooleanWorld)
 bw_deploy_runtime_dlls(editor)
 bw_deploy_vendor_dlls(editor)
 bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/resources")
-# build/support/editor.ini - the editor's saved ImGui layout.
-bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/build/support")
+bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/../core/doc" "doc/core")
+bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/doc" "doc/editor")
+# support/editor.ini is the editor's saved ImGui layout.
+bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/support")

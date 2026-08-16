@@ -34,14 +34,8 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 # resolves to LoadLibraryW when UNICODE is defined.
 add_compile_definitions(UNICODE _UNICODE)
 
-# Output locations match the original solutions exactly, and that is not
-# cosmetic. editor and profiler both resolve paths like "../../../../core/doc"
-# relative to the working directory, so they only work
-# when the executable sits at <app>/bin/x64/<Config>. A single unified output
-# directory makes those paths point outside the repo, and the editor dies at
-# startup when directory_iterator throws on the missing folder.
-#
-# Each target sets its own location via bw_output_dirs().
+# All generated binaries live below this CMake build tree. Each target uses an
+# isolated output directory configured by bw_output_dirs().
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 

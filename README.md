@@ -50,27 +50,28 @@ spline_library and Superluminal.
 
 ### Where things land
 
-Build products go where the original Visual Studio solutions put them, e.g.
-`src/BooleanWorld/editor/bin/x64/Release`. This is deliberate:
-`editor` and `profiler` resolve paths such as `../../../../core/doc` relative
-to their working directory, so they only run
-correctly from those locations.
+All generated binaries, import libraries, staged runtime dependencies, and
+runtime support files stay beneath the selected CMake build directory. Runtime
+targets use `build-cmake/bin/<Config>/<Target>/`; import and static libraries
+use `build-cmake/lib/<Config>/<Target>/`.
 
 ## Running
 
-    cd src\Launcher\build\vs2026\bin\x64\Release
+    cd build-cmake\bin\Release\Launcher
     Launcher.exe BooleanWorld.yaml
 
 `Launcher.exe` loads an application DLL named in the config. The build
 generates `BooleanWorld.yaml` with absolute paths next to `Launcher.exe`.
 
 To override that on a given machine, put your own config in
-`src/Launcher/build/support/<COMPUTERNAME>/vs2026/x64/<Config>/` — the build stages
-that directory over the generated one. Only `ASTRALEMPRESS` is checked in.
+`src/Launcher/support/<COMPUTERNAME>/<Config>/` — the build stages that
+directory over the generated one. Only `ASTRALEMPRESS` is checked in.
 
-The other executables build standalone under
-`src/BooleanWorld/<app>/bin/x64/<Config>`. Run them from that
-directory.
+Other executables use their own target directories beneath
+`build-cmake/bin/<Config>/`.
+
+The Python tooling loads `core-dll` from the default `build-cmake` tree. Set
+`BOOLEANWORLD_BUILD_DIR` when using a differently named CMake build directory.
 
 Tests:
 

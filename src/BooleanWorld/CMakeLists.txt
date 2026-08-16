@@ -1,5 +1,3 @@
-# Replaces src/BooleanWorld/build/vs2026/BooleanWorld.sln.
-
 # Headers shared by every BooleanWorld target (common/GameDefines.h,
 # common/MaterialRegistry.h). Header-only, so an INTERFACE target.
 add_library(bw-common INTERFACE)

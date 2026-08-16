@@ -39,5 +39,5 @@ target_link_libraries(Willpower.Geometry PUBLIC Willpower.Common vendor::headers
 target_compile_features(Willpower.Geometry PRIVATE cxx_std_20)
 target_compile_options(Willpower.Geometry PRIVATE /W4)
 bw_target_defaults(Willpower.Geometry)
-bw_output_dirs(Willpower.Geometry "build/vs2026/bin/x64/$<CONFIG>" "build/vs2026/lib/x64/$<CONFIG>")
+bw_output_dirs(Willpower.Geometry)
 set_target_properties(Willpower.Geometry PROPERTIES FOLDER Willpower)

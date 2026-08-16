@@ -265,8 +265,8 @@ void initialise() {
   setupImGui(gWindow, gContext);
 
   // Load help files
-  gHelpFiles = loadHelpFiles("../../../../core/doc");
-  gHelpFiles.merge(loadHelpFiles("../../../../editor/doc"));
+  gHelpFiles = loadHelpFiles("doc/core");
+  gHelpFiles.merge(loadHelpFiles("doc/editor"));
   gLogger->debug("Help files loaded");
 
   // Load prefab files

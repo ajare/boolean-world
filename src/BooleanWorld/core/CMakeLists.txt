@@ -50,6 +50,6 @@ target_link_libraries(core PUBLIC
 target_compile_features(core PRIVATE cxx_std_23)
 target_compile_options(core PRIVATE /W3)
 bw_target_defaults(core)
-bw_output_dirs(core "lib/x64/$<CONFIG>")
+bw_output_dirs(core)
 bw_enable_sdl_checks(core)
 set_target_properties(core PROPERTIES FOLDER BooleanWorld)

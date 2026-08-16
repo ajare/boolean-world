@@ -20,5 +20,5 @@ target_link_libraries(Willpower.Collide
 target_compile_features(Willpower.Collide PRIVATE cxx_std_20)
 target_compile_options(Willpower.Collide PRIVATE /W4)
 bw_target_defaults(Willpower.Collide)
-bw_output_dirs(Willpower.Collide "build/vs2026/bin/x64/$<CONFIG>" "build/vs2026/lib/x64/$<CONFIG>")
+bw_output_dirs(Willpower.Collide)
 set_target_properties(Willpower.Collide PROPERTIES FOLDER Willpower)

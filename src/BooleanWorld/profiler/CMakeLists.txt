@@ -13,11 +13,16 @@ target_link_libraries(profiler PRIVATE core ext::yaml-cpp vendor::performanceapi
 target_compile_features(profiler PRIVATE cxx_std_23)
 target_compile_options(profiler PRIVATE /W3)
 bw_target_defaults(profiler)
-bw_output_dirs(profiler "bin/x64/$<CONFIG>")
+bw_output_dirs(profiler)
 bw_enable_sdl_checks(profiler)
 bw_no_postfix(profiler)
 set_target_properties(profiler PROPERTIES FOLDER BooleanWorld)
 
 bw_deploy_runtime_dlls(profiler)
 bw_deploy_vendor_dlls(profiler)
-bw_deploy_directory(profiler "${CMAKE_CURRENT_SOURCE_DIR}/resources")
+add_custom_command(TARGET profiler POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/stress-test-1.yaml"
+            "$<TARGET_FILE_DIR:profiler>/stress-test-1.yaml"
+    VERBATIM
+    COMMENT "Staging the profiler's default world")

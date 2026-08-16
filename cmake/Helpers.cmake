@@ -20,22 +20,19 @@ function(bw_target_defaults tgt)
         $<$<NOT:$<CONFIG:Debug>>:NDEBUG>)
 endfunction()
 
-# bw_output_dirs(<target> <runtime-dir> [archive-dir])
+# bw_output_dirs(<target>)
 #
-# Places build products exactly where the original .vcxproj put them. Paths are
-# relative to the current source directory; "$<CONFIG>" is appended by the
-# caller's pattern. If archive-dir is omitted the import library sits beside
-# the runtime output.
-function(bw_output_dirs tgt runtime)
-    set(archive "${runtime}")
-    if(ARGC GREATER 2)
-        set(archive "${ARGV2}")
-    endif()
+# Keeps every generated binary beneath the CMake build tree. Per-target
+# directories prevent post-build dependency staging for one executable from
+# polluting or racing another target's output.
+function(bw_output_dirs tgt)
+    set(runtime "${CMAKE_BINARY_DIR}/bin/$<CONFIG>/${tgt}")
+    set(archive "${CMAKE_BINARY_DIR}/lib/$<CONFIG>/${tgt}")
     set_target_properties(${tgt} PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${runtime}"
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${runtime}"
-        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${archive}"
-        PDB_OUTPUT_DIRECTORY     "${CMAKE_CURRENT_SOURCE_DIR}/${runtime}")
+        RUNTIME_OUTPUT_DIRECTORY "${runtime}"
+        LIBRARY_OUTPUT_DIRECTORY "${runtime}"
+        ARCHIVE_OUTPUT_DIRECTORY "${archive}"
+        PDB_OUTPUT_DIRECTORY     "${runtime}")
 endfunction()
 
 # bw_enable_sdl_checks(<target>...)

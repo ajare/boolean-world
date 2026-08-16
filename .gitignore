@@ -1,11 +1,7 @@
-# CMake
+# Out-of-source CMake build trees
 /build-cmake/
 /build/
 CMakeUserPresets.json
-
-# scripts/ tracks the Debug and Release core-dll that the Python tooling loads
-# (as the original build did). The Profiling variant is new - don't track it.
-**/src/BooleanWorld/scripts/core-dllp.dll
 
 *.opensdf
 *.opendb
@@ -14,32 +10,16 @@ CMakeUserPresets.json
 *.log
 *.user
 *.ipch
-**/build/vs*/bin
-**/build/vs*/obj
-**/build/vs*/lib
-**/build/**/.vs
-**/build/**/*.txt
-**/build/**/*.html
-**/build/**/*.log
-**/src/BooleanWorld/app/bin/
-**/src/BooleanWorld/app/obj/
-**/src/BooleanWorld/core/obj/
-**/src/BooleanWorld/core/lib/
-**/src/BooleanWorld/core-dll/obj/
-**/src/BooleanWorld/core-dll/bin/
-**/src/BooleanWorld/editor/bin/
-**/src/BooleanWorld/editor/obj/
-**/src/BooleanWorld/profiler/bin/
-**/src/BooleanWorld/profiler/obj/
-**/src/BooleanWorld/app/resources/audio/Themes/.cache/
-**/src/BooleanWorld/app/resources/audio/Themes/.unsaved/
-**/src/BooleanWorld/app/resources/audio/Themes/.user/
+**/.vs/
+/src/BooleanWorld/app/resources/audio/Themes/.cache/
+/src/BooleanWorld/app/resources/audio/Themes/.unsaved/
+/src/BooleanWorld/app/resources/audio/Themes/.user/
 # FMOD Studio build output. The compiled .bank files are tracked: the game
 # validates them at resource-load time even when audio is disabled, so a
 # fresh clone cannot reach the Play state without them (~92K total).
 # Everything else FMOD Studio emits here stays ignored.
-**/src/BooleanWorld/app/resources/audio/Themes/Build/**
-!**/src/BooleanWorld/app/resources/audio/Themes/Build/
-!**/src/BooleanWorld/app/resources/audio/Themes/Build/Desktop/
-!**/src/BooleanWorld/app/resources/audio/Themes/Build/Desktop/*.bank
+/src/BooleanWorld/app/resources/audio/Themes/Build/**
+!/src/BooleanWorld/app/resources/audio/Themes/Build/
+!/src/BooleanWorld/app/resources/audio/Themes/Build/Desktop/
+!/src/BooleanWorld/app/resources/audio/Themes/Build/Desktop/*.bank
 **/__pycache__

@@ -1,0 +1,25 @@
+Configuration:
+  Video:
+    Width: 2048
+    Height: 1280
+    Fullscreen: false
+    VSync: true
+  Audio:
+    Enabled: false
+    Channels: 1024
+    Sync: false
+  Game:
+    DLL:
+      path: ../BooleanWorld/BooleanWorld.dll
+    ResourceLocations:
+      ResourceLocation:
+        type: Directory
+        path: ../../../../src/BooleanWorld/app/resources/
+        definition: Resources.yaml
+    Debug:
+      InGame: enabled
+    Arguments:
+      # Leave blank (or leave out) for default engine value
+      Argument:
+        name: ThreadedLoading
+        value: false

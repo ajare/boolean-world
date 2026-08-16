@@ -1,5 +1,3 @@
-# Replaces src/Willpower/build/vs2026/Willpower.sln.
-#
 # Listed in dependency order for readability; CMake resolves the actual order
 # from target_link_libraries.
 
