@@ -383,13 +383,13 @@ void updateImGui(float frameTime) {
 //
 #if WINDOWING_SYSTEM == WINDOW_SDL
 int main(int argc, char** argv) {
-  string configFile = "Launcher.yaml";
+  string configFile = "BooleanWorld.yaml";
   if (argc > 1) {
     configFile = string(argv[1]);
   }
 #elif WINDOWING_SYSTEM == WINDOW_GLFW
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
-  string configFile = "Launcher.yaml";
+  string configFile = "BooleanWorld.yaml";
   if (__argc > 1) {
     configFile = string(__argv[1]);
   }
