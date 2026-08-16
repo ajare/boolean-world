@@ -10,11 +10,11 @@ Configuration:
     Sync: false
   Game:
     DLL:
-      path: ../../../../../../../BooleanWorld/app/build/vs2026/bin/x64/Release/BooleanWorld.dll
+      path: ../../../../../../BooleanWorld/app/bin/x64/Release/BooleanWorld.dll
     ResourceLocations:
       ResourceLocation:
         type: Directory
-        path: ../../../../../../../BooleanWorld/app/resources/
+        path: ../../../../../../BooleanWorld/app/resources/
         definition: Resources.yaml
     Debug:
       InGame: enabled

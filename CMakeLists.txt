@@ -55,7 +55,7 @@ include(Helpers)
 
 add_subdirectory(src/Willpower)
 add_subdirectory(src/AppLib)
-add_subdirectory(BooleanWorld)
+add_subdirectory(src/BooleanWorld)
 add_subdirectory(src/Launcher)
 
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Launcher)

@@ -5,7 +5,7 @@ CMakeUserPresets.json
 
 # scripts/ tracks the Debug and Release core-dll that the Python tooling loads
 # (as the original build did). The Profiling variant is new - don't track it.
-**/BooleanWorld/scripts/core-dllp.dll
+**/src/BooleanWorld/scripts/core-dllp.dll
 
 *.opensdf
 *.opendb
@@ -21,25 +21,25 @@ CMakeUserPresets.json
 **/build/**/*.txt
 **/build/**/*.html
 **/build/**/*.log
-**/BooleanWorld/app/bin/
-**/BooleanWorld/app/obj/
-**/BooleanWorld/core/obj/
-**/BooleanWorld/core/lib/
-**/BooleanWorld/core-dll/obj/
-**/BooleanWorld/core-dll/bin/
-**/BooleanWorld/editor/bin/
-**/BooleanWorld/editor/obj/
-**/BooleanWorld/profiler/bin/
-**/BooleanWorld/profiler/obj/
-**/BooleanWorld/app/resources/audio/Themes/.cache/
-**/BooleanWorld/app/resources/audio/Themes/.unsaved/
-**/BooleanWorld/app/resources/audio/Themes/.user/
+**/src/BooleanWorld/app/bin/
+**/src/BooleanWorld/app/obj/
+**/src/BooleanWorld/core/obj/
+**/src/BooleanWorld/core/lib/
+**/src/BooleanWorld/core-dll/obj/
+**/src/BooleanWorld/core-dll/bin/
+**/src/BooleanWorld/editor/bin/
+**/src/BooleanWorld/editor/obj/
+**/src/BooleanWorld/profiler/bin/
+**/src/BooleanWorld/profiler/obj/
+**/src/BooleanWorld/app/resources/audio/Themes/.cache/
+**/src/BooleanWorld/app/resources/audio/Themes/.unsaved/
+**/src/BooleanWorld/app/resources/audio/Themes/.user/
 # FMOD Studio build output. The compiled .bank files are tracked: the game
 # validates them at resource-load time even when audio is disabled, so a
 # fresh clone cannot reach the Play state without them (~92K total).
 # Everything else FMOD Studio emits here stays ignored.
-**/BooleanWorld/app/resources/audio/Themes/Build/**
-!**/BooleanWorld/app/resources/audio/Themes/Build/
-!**/BooleanWorld/app/resources/audio/Themes/Build/Desktop/
-!**/BooleanWorld/app/resources/audio/Themes/Build/Desktop/*.bank
+**/src/BooleanWorld/app/resources/audio/Themes/Build/**
+!**/src/BooleanWorld/app/resources/audio/Themes/Build/
+!**/src/BooleanWorld/app/resources/audio/Themes/Build/Desktop/
+!**/src/BooleanWorld/app/resources/audio/Themes/Build/Desktop/*.bank
 **/__pycache__

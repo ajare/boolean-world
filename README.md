@@ -51,7 +51,7 @@ spline_library and Superluminal.
 ### Where things land
 
 Build products go where the original Visual Studio solutions put them, e.g.
-`BooleanWorld/editor/bin/x64/Release`. This is deliberate:
+`src/BooleanWorld/editor/bin/x64/Release`. This is deliberate:
 `editor` and `profiler` resolve paths such as `../../../../core/doc` relative
 to their working directory, so they only run
 correctly from those locations.
@@ -69,7 +69,7 @@ To override that on a given machine, put your own config in
 that directory over the generated one. Only `ASTRALEMPRESS` is checked in.
 
 The other executables build standalone under
-`BooleanWorld/<app>/bin/x64/<Config>`. Run them from that
+`src/BooleanWorld/<app>/bin/x64/<Config>`. Run them from that
 directory.
 
 Tests:

@@ -35,7 +35,7 @@ actually get resolved.
 │       ├── 0001-preserve-priority-ordered-fold.md
 │       ├── 0002-single-arrangement-replaces-sequential-booleans.md
 │       └── …
-└── BooleanWorld/, src/AppLib/, src/Willpower/, src/Launcher/
+└── src/AppLib/, src/BooleanWorld/, src/Launcher/, src/Willpower/
 ```
 
 ## Use the glossary's vocabulary
