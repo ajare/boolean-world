@@ -1,6 +1,7 @@
 #include "core/ArrangementWorldDataGenerator.h"
 
 #include <algorithm>
+#include <stdexcept>
 
 #include "core/ClipperUtils.h"
 #include "core/Primitive.h"
@@ -28,20 +29,27 @@ ArrangementWorldDataGenerator::ArrangementWorldDataGenerator()
     : mWorldData(expr::BuildArrangement({})) {
 }
 
-void ArrangementWorldDataGenerator::setActiveLayer(uint8_t layer) {
-  mActiveLayer = layer;
+void ArrangementWorldDataGenerator::setLayerSelection(
+    LayerSelection const& selection) {
+  if (selection.none()) {
+    throw std::invalid_argument("layer selection must not be empty");
+  }
+  mLayerSelection = selection;
 }
 
-uint8_t ArrangementWorldDataGenerator::getActiveLayer() const {
-  return mActiveLayer;
+LayerSelection const& ArrangementWorldDataGenerator::getLayerSelection() const {
+  return mLayerSelection;
+}
+
+void ArrangementWorldDataGenerator::setActiveLayer(uint8_t layer) {
+  setLayerSelection(SelectLayer(layer));
 }
 
 void ArrangementWorldDataGenerator::generate(World const* world) {
   std::vector<Primitive*> primitives;
   for (auto primitive : world->getPrimitives()) {
     auto layer = primitive->getLayer();
-    if (layer == mActiveLayer || layer == BW_LAYER_ALL ||
-        mActiveLayer == BW_LAYER_ALL) {
+    if (layer == BW_LAYER_ALL || mLayerSelection.test(size_t(layer))) {
       primitives.push_back(primitive);
     }
   }

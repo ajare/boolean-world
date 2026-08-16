@@ -139,13 +139,13 @@ GeometryComparisonReport CompareWorldGeometry(
   world.setAlwaysUpdateVertices(true);
   generator->setAlwaysUpdateVertices(true);
   generator->setAllowCommitIfVisible(true);
-  generator->setActiveLayer(options.activeLayer);
+  generator->setLayerSelection(options.layerSelection);
 
   auto const& bounds = world.getExtents();
   auto centre = bounds.getCentre();
   world.update(
       0,
-      {centre, 0, 1, 60, 256, false, false, options.activeLayer},
+      {centre, 0, 1, 60, 256, false, false, 0},
       bounds.getSize());
   generator->generateBlocking();
   auto oldWorld = world.getWorldData(centre, 0);

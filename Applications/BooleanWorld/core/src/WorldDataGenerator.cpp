@@ -1,6 +1,7 @@
 #include "core/WorldDataGenerator.h"
 
 #include <cmath>
+#include <stdexcept>
 
 #include "core/Defines.h"
 #include "core/World.h"
@@ -25,34 +26,47 @@ WorldDataGenerator& WorldDataGenerator::operator=(
 }
 
 void WorldDataGenerator::copyFrom(WorldDataGenerator const& other) {
-  mActiveLayer = other.mActiveLayer;
+  mLayerSelection = other.mLayerSelection;
   mViewTriangle = other.mViewTriangle;
 }
 
 vector<Primitive*> WorldDataGenerator::getPrimitives(
-    World const* world,
-    uint8_t layer) const {
+    World const* world) const {
   vector<Primitive*> primitives;
   for (auto primitive : world->getPrimitives()) {
     auto primitiveLayer = primitive->getLayer();
-    if (primitiveLayer == layer || layer == BW_LAYER_ALL ||
-        primitiveLayer == BW_LAYER_ALL) {
+    if (primitiveLayer == BW_LAYER_ALL ||
+        mLayerSelection.test(size_t(primitiveLayer))) {
       primitives.push_back(primitive);
     }
   }
   return primitives;
 }
 
-void WorldDataGenerator::setActiveLayer(uint8_t layer) {
-  mActiveLayer = layer;
+void WorldDataGenerator::setLayerSelection(
+    LayerSelection const& selection) {
+  if (selection.none()) {
+    throw std::invalid_argument("layer selection must not be empty");
+  }
+  if (selection != mLayerSelection) {
+    mLayerSelection = selection;
+    handleLayerSelectionChanged();
+  }
 }
 
-uint8_t WorldDataGenerator::getActiveLayer() const {
-  return mActiveLayer;
+LayerSelection const& WorldDataGenerator::getLayerSelection() const {
+  return mLayerSelection;
+}
+
+void WorldDataGenerator::setActiveLayer(uint8_t layer) {
+  setLayerSelection(SelectLayer(layer));
 }
 
 void WorldDataGenerator::handleEvents(uint32_t events) {
   BW_UNUSED(events);
+}
+
+void WorldDataGenerator::handleLayerSelectionChanged() {
 }
 
 void WorldDataGenerator::update(
@@ -60,8 +74,6 @@ void WorldDataGenerator::update(
     WorldUpdateData const& data,
     uint32_t events) {
   BW_UNUSED(frameTime);
-  mActiveLayer = data.activeLayer;
-
   auto halfFov = data.entityFov * 0.5f;
   auto viewDistance =
       data.entityViewDist * 1.1f / cosf(WP_DEGTORAD(halfFov));

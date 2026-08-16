@@ -158,10 +158,12 @@ void DynamicWorldDataGenerator::generateWorldData(World const* world) {
 
   vector<Primitive*> prims;
   PrimitiveProcessingStats primStats;
+  LayerSelection layerSelection;
 
   if (true) {
     lock_guard<mutex> lock(mGenMutex);
     prims = mNextClipping.primitives;
+    layerSelection = mNextClipping.layerSelection;
     primStats = mNextClipping.primStats;
 
     primStats.candidateCount = (uint32_t)prims.size();
@@ -195,6 +197,7 @@ void DynamicWorldDataGenerator::generateWorldData(World const* world) {
                           move(results),
                           move(prims),
                           move(updatedPrimitives),
+                          layerSelection,
                           primStats,
                           mLastGenTime});
 
@@ -215,7 +218,12 @@ void DynamicWorldDataGenerator::fireCallbacks(GenerationDetails const& details) 
 }
 
 bool DynamicWorldDataGenerator::canCommit(Clipping const& clipping) {
-  if (mAllowCommitIfVisible) {
+  auto const& requestedSelection = getLayerSelection();
+  if (clipping.layerSelection != requestedSelection) {
+    return false;
+  }
+  if (mAllowCommitIfVisible ||
+      clipping.layerSelection != mActiveClipping.layerSelection) {
     return true;
   }
 
@@ -261,22 +269,20 @@ void DynamicWorldDataGenerator::checkCommitPendingClipping() {
 }
 
 WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
-  auto primitives = getPrimitives(world, getActiveLayer());
+  auto primitives = getPrimitives(world);
 
   if (mNumGenerationsComplete == 0) {
     mNextClipping.primitives = primitives;
-
+    mNextClipping.layerSelection = getLayerSelection();
     mNextClipping.primStats = {
         (uint32_t)primitives.size(),
         0,
         0};
-
     generateWorldData(world);
   } else {
     lock_guard<mutex> lock(mGenMutex);
-
     mNextClipping.primitives = primitives;
-
+    mNextClipping.layerSelection = getLayerSelection();
     mNextClipping.primStats = {
         (uint32_t)primitives.size(),
         0,
@@ -284,7 +290,6 @@ WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
   }
 
   checkCommitPendingClipping();
-
   return mActiveClipping.worldData;
 }
 
@@ -293,7 +298,8 @@ void DynamicWorldDataGenerator::generate(World const* world, bool regetPrimitive
     // Recalculate visible Primitives
     lock_guard<mutex> lock(mGenMutex);
 
-    mNextClipping.primitives = getPrimitives(world, getActiveLayer());
+    mNextClipping.primitives = getPrimitives(world);
+    mNextClipping.layerSelection = getLayerSelection();
   }
 
   mExecutorRuntime.thread_pool_executor()->post([this, world] {
@@ -306,7 +312,8 @@ void DynamicWorldDataGenerator::generate(bool regetPrimitives) {
     // Recalculate visible Primitives
     lock_guard<mutex> lock(mGenMutex);
 
-    mNextClipping.primitives = getPrimitives(mWorld, getActiveLayer());
+    mNextClipping.primitives = getPrimitives(mWorld);
+    mNextClipping.layerSelection = getLayerSelection();
   }
 
   mExecutorRuntime.thread_pool_executor()->post([this] {
@@ -315,13 +322,20 @@ void DynamicWorldDataGenerator::generate(bool regetPrimitives) {
 }
 
 void DynamicWorldDataGenerator::generateBlocking() {
-  mNextClipping.primitives = getPrimitives(mWorld, getActiveLayer());
+  mNextClipping.primitives = getPrimitives(mWorld);
+  mNextClipping.layerSelection = getLayerSelection();
   generateWorldData(mWorld);
 }
 
 void DynamicWorldDataGenerator::handleEvents(uint32_t events) {
   if (events & BW_PRIMITIVE_GLOBAL_EVENT_CLIP) {
     generate();
+  }
+}
+
+void DynamicWorldDataGenerator::handleLayerSelectionChanged() {
+  if (mWorld && mNumGenerationsComplete > 0) {
+    generate(true);
   }
 }
 

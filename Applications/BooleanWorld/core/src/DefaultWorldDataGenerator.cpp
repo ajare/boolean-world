@@ -35,7 +35,7 @@ void DefaultWorldDataGenerator::generate(
     World const* world,
     bool regetPrimitives) {
   BW_UNUSED(regetPrimitives);
-  auto primitives = getPrimitives(world, getActiveLayer());
+  auto primitives = getPrimitives(world);
   std::stable_sort(
       primitives.begin(), primitives.end(), SortPrimitivesByPriority());
   ArrangementWorldDataGenerator generator;

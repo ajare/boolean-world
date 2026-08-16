@@ -478,6 +478,8 @@ void StatePlayBooleanWorld::updateActions(vector<string> const& activeStates, fl
       mDebugDisplay.clipGeneration = !mDebugDisplay.clipGeneration;
     } else if (state == "ToggleAllLayers") {
       mCurrentLayer = mCurrentLayer == 0 ? BW_LAYER_ALL : 0;
+      getMap()->getWorld()->getWorldDataGenerator()->setActiveLayer(
+          mCurrentLayer);
     }
   }
 

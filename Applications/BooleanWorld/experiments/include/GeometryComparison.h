@@ -7,7 +7,7 @@
 
 #include <willpower/common/Vector2.h>
 
-#include <core/Defines.h>
+#include <core/LayerSelection.h>
 
 namespace bw::core {
 class World;
@@ -41,7 +41,7 @@ struct GeometryComparisonOptions {
   uint32_t edgeSamplesPerEdge{3};
   float edgeOffset{0.01f};
   uint32_t randomSeed{0xB001EA5u};
-  uint8_t activeLayer{0};
+  bw::core::LayerSelection layerSelection{bw::core::SelectLayer(0)};
 };
 
 struct GeometryComparisonReport {

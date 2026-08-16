@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "core/Arrangement.h"
-#include "core/Defines.h"
+#include "core/LayerSelection.h"
 #include "core/Platform.h"
 
 namespace bw::core {
@@ -12,15 +12,17 @@ class Primitive;
 class World;
 
 class BW_API ArrangementWorldDataGenerator {
-  uint8_t mActiveLayer{0};
+  LayerSelection mLayerSelection{SelectLayer(0)};
   expr::ArrangementResultPtr mWorldData;
 
 public:
   ArrangementWorldDataGenerator();
 
-  void setActiveLayer(uint8_t layer);
+  void setLayerSelection(LayerSelection const& selection);
 
-  [[nodiscard]] uint8_t getActiveLayer() const;
+  [[nodiscard]] LayerSelection const& getLayerSelection() const;
+
+  void setActiveLayer(uint8_t layer);
 
   void generate(World const* world);
 

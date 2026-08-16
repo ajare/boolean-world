@@ -1,8 +1,10 @@
 #include <iostream>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <limits>
 #include <random>
+#include <thread>
 #include <type_traits>
 
 #include <gtest/gtest.h>
@@ -125,6 +127,102 @@ TEST(ArrangementWorldDataGenerator, PublishedWorldUsesArrangementContract) {
       dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
           world->getWorldDataGenerator()) != nullptr,
       true);
+}
+
+TEST(ArrangementWorldDataGenerator, SelectsMultipleLayersBeforeGlobalPriorityFold) {
+  ensureClipperAllocatorsInitialized();
+  auto world = createWorld(8192, 512);
+  auto base = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  base->setSize(100, 100);
+  base->setLayer(0);
+  base->setPriority(10);
+  world->addPrimitive(base);
+  auto cut = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Difference,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  cut->setSize(50, 50);
+  cut->setLayer(1);
+  cut->setPriority(20);
+  world->addPrimitive(cut);
+  auto shared = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  shared->setPosition({200, 0});
+  shared->setSize(20, 20);
+  shared->setLayer(BW_LAYER_ALL);
+  world->addPrimitive(shared);
+
+  auto solidAt = [&](bw::core::LayerSelection const& selection,
+                     expr::Vertex point) {
+    bw::core::ArrangementWorldDataGenerator generator;
+    generator.setLayerSelection(selection);
+    generator.generate(world.get());
+    auto arrangement = generator.getWorldData();
+    return std::any_of(
+        arrangement->faces.begin(), arrangement->faces.end(),
+        [&](expr::ArrangementFace const& face) {
+          return face.solid && expr::PointInFace(point, face, *arrangement);
+        });
+  };
+
+  EXPECT_TRUE(solidAt(bw::core::SelectLayer(0), {0, 0}));
+  EXPECT_FALSE(solidAt(bw::core::SelectLayer(1), {0, 0}));
+  auto both = bw::core::SelectLayer(0) | bw::core::SelectLayer(1);
+  EXPECT_FALSE(solidAt(both, {0, 0}));
+  EXPECT_TRUE(solidAt(bw::core::SelectLayer(1), {200000, 0}));
+}
+
+TEST(Generation, LayerSelectionChangeBypassesVisibleCommitGate) {
+  ensureClipperAllocatorsInitialized();
+  auto world = createWorld(8192, 512);
+  auto base = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  base->setSize(20, 20);
+  base->setLayer(0);
+  world->addPrimitive(base);
+  auto replacement = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  replacement->setPosition({200, 0});
+  replacement->setSize(20, 20);
+  replacement->setLayer(1);
+  replacement->setAnimationValues(
+      bw::core::VertexTransformer::Key::Angle,
+      {{0.0f, 0.0f}, {1.0f, 90.0f}});
+  world->addPrimitive(replacement);
+  world->update(
+      0, {{200, 0}, 0, 1, 60, 256, false, false, 0}, {100, 100});
+  auto generator = static_cast<bw::core::DynamicWorldDataGenerator*>(
+      world->getWorldDataGenerator());
+  generator->setAlwaysUpdateVertices(true);
+  auto initial = world->getWorldData({200, 0}, 0);
+  ASSERT_NE(initial, nullptr);
+  EXPECT_FALSE(replacement->isStatic());
+
+  generator->setLayerSelection(bw::core::SelectLayer(1));
+  auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  auto switched = initial;
+  while (switched == initial && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    switched = world->getWorldData({200, 0}, 0);
+  }
+
+  ASSERT_NE(switched, initial);
+  EXPECT_FALSE(switched->getTriangles().empty());
+  EXPECT_TRUE(std::any_of(
+      switched->getArrangement().faces.begin(),
+      switched->getArrangement().faces.end(),
+      [&](expr::ArrangementFace const& face) {
+        return face.solid && face.primitiveIndex == replacement->getId();
+      }));
 }
 
 TEST(GeometryComparison, SamplesAllStrategiesAndReportsEquivalentWorld) {

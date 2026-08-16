@@ -24,6 +24,7 @@ public:
     WorldDataPtr worldData;
     std::vector<Primitive*> primitives;
     std::vector<Primitive*> updatedPrimitives;
+    LayerSelection layerSelection;
     PrimitiveProcessingStats primStats;
     uint64_t genTimeNs{0};
   };
@@ -81,6 +82,8 @@ private:
   std::vector<Primitive*> preparePrimitives(std::vector<Primitive*>& primitives, PrimitiveProcessingStats* stats) const;
 
   void handleEvents(uint32_t events) override;
+
+  void handleLayerSelectionChanged() override;
 
   void checkCommitPendingClipping();
 

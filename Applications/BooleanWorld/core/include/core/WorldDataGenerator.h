@@ -4,6 +4,7 @@
 #include <functional>
 #include <vector>
 
+#include "core/LayerSelection.h"
 #include "core/Platform.h"
 #include "core/Primitive.h"
 #include "core/WorldData.h"
@@ -21,19 +22,18 @@ public:
   };
 
 private:
-  uint8_t mActiveLayer{0};
+  LayerSelection mLayerSelection{SelectLayer(0)};
 
 protected:
   std::array<wp::Vector2, 3> mViewTriangle;
 
 private:
   virtual void handleEvents(uint32_t events);
+  virtual void handleLayerSelectionChanged();
 
 protected:
   void copyFrom(WorldDataGenerator const& other);
-  std::vector<Primitive*> getPrimitives(
-      World const* world,
-      uint8_t layer) const;
+  std::vector<Primitive*> getPrimitives(World const* world) const;
 
 public:
   WorldDataGenerator();
@@ -44,8 +44,10 @@ public:
   virtual WorldDataGenerator* copy() = 0;
   virtual WorldDataPtr getWorldData(World const* world) = 0;
 
+  void setLayerSelection(LayerSelection const& selection);
+  [[nodiscard]] LayerSelection const& getLayerSelection() const;
+
   void setActiveLayer(uint8_t layer);
-  uint8_t getActiveLayer() const;
   void update(float frameTime, WorldUpdateData const& data, uint32_t events);
   virtual void generate(World const* world, bool regetPrimitives) = 0;
 };
