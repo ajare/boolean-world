@@ -515,13 +515,13 @@ wp::BoundingBox const& Primitive::getBounds() const {
 }
 
 Triangulation Primitive::triangulate(bool calculateBounds, TriangulationStats* stats) const {
-  Triangulator triangulator(nullptr, calculateBounds, false, false);
-  vector<TriangulationData> triangulationData;
   Triangulation result;
 
   auto complexPolygons = getVertices();
 
   for (auto const& complexPolygon : complexPolygons) {
+    Triangulator triangulator(nullptr, calculateBounds, false, false);
+    vector<TriangulationData> triangulationData;
     ClosedPolygon vertices;
 
     for (auto const& polygon : complexPolygon) {
