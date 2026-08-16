@@ -5,31 +5,14 @@
 #include <stdexcept>
 
 #include <core/Arrangement.h>
+#include <core/ArrangementWorldDataGenerator.h>
 #include <core/ClipperDefines.h>
-#include <core/ClipperUtils.h>
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/World.h>
 
 namespace bw::experiments {
 namespace {
-using bw::core::Primitive;
-using expr::ArrangementPrimitive;
 using expr::ArrangementResult;
-
-std::vector<ArrangementPrimitive> BuildArrangementPrimitives(
-    std::vector<Primitive*> const& primitives) {
-  std::vector<ArrangementPrimitive> result;
-  result.reserve(primitives.size());
-  for (auto primitive : primitives) {
-    result.push_back({bw::core::ClipperUtils::convertComplexPolygonsToPath(primitive),
-                      primitive->getOperation(),
-                      primitive->getFillRule(),
-                      primitive->getPriority(),
-                      primitive->getId(),
-                      primitive->getProperties()});
-  }
-  return result;
-}
 
 GeometryPredicate QueryOldEngine(
     bw::core::WorldData const& worldData,
@@ -185,8 +168,9 @@ GeometryComparisonReport CompareWorldGeometry(
   auto oldWorld = world.getWorldData(centre, 0);
 
   auto primitives = generator->getActiveClippingPrimitives();
-  auto arrangementPrimitives = BuildArrangementPrimitives(primitives);
-  auto newWorld = expr::BuildArrangement(arrangementPrimitives);
+  bw::core::ArrangementWorldDataGenerator arrangementGenerator;
+  arrangementGenerator.generate(primitives);
+  auto newWorld = arrangementGenerator.getWorldData();
 
   GeometryComparisonReport report;
   report.oldSolidArea = OldSolidArea(*oldWorld);

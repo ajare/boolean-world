@@ -3,6 +3,7 @@
 add_library(core STATIC
     src/AnimatedProperty.cpp
     src/Arrangement.cpp
+    src/ArrangementWorldDataGenerator.cpp
     src/CirclePolygon.cpp
     src/CircleSegmentPolygon.cpp
     src/Clipper.cpp

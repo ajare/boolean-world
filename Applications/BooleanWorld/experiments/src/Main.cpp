@@ -13,6 +13,7 @@
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/Clipper2Polygon.h>
 #include <core/Arrangement.h>
+#include <core/ArrangementWorldDataGenerator.h>
 #include <core/RectanglePolygon.h>
 
 #include "GeometryComparison.h"
@@ -91,6 +92,37 @@ void ensureClipperAllocatorsInitialized() {
     Clipper2Lib::WmInitialiseAllocators(4, 16 * 1024 * 1024);
     gClipperAllocatorsInitialized = true;
   }
+}
+
+TEST(ArrangementWorldDataGenerator, NewPathIsSelectableWithoutChangingLegacyDefault) {
+  ensureClipperAllocatorsInitialized();
+  auto world = createWorld(8192, 512);
+
+  auto room = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  room->setPosition({0, 0});
+  room->setSize(20, 20);
+  world->addPrimitive(room);
+  world->update(0, {{0, 0}, 0, 1, 60, 256, false, false, 0}, {100, 100});
+
+  auto legacy = world->getWorldData({0, 0}, 0);
+  bw::core::ArrangementWorldDataGenerator arrangementGenerator;
+  arrangementGenerator.generate(world.get());
+  auto arrangement = arrangementGenerator.getWorldData();
+
+  EXPECT_FALSE(legacy->getBorderPolygons().empty());
+  ASSERT_NE(arrangement, nullptr);
+  EXPECT_TRUE(std::any_of(
+      arrangement->faces.begin(), arrangement->faces.end(),
+      [](expr::ArrangementFace const& face) {
+        return face.solid;
+      }));
+  EXPECT_EQ(
+      dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
+          world->getWorldDataGenerator()) != nullptr,
+      true);
 }
 
 TEST(GeometryComparison, SamplesAllStrategiesAndReportsEquivalentWorld) {
