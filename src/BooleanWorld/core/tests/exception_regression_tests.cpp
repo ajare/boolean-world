@@ -78,18 +78,24 @@ void coreExceptionsArePortableAndDescriptive() {
 
 void emptyTransformAndEventRemovalIsRejected() {
   bw::core::VertexTransformer transformer;
+  transformer.setScaleTransforms({});
   bw::core::AnimatedProperty property;
 
   requireIndexOutOfRange(
       [&] { transformer.removeTransform(bw::core::VertexTransformer::Key::Scale, 0); },
       "removing a transform from an empty collection did not throw");
+  require(transformer.getScaleTransforms().empty(),
+          "removing a transform from an empty collection changed the collection");
   requireIndexOutOfRange(
       [&] { property.removeEvent(0); },
       "removing an event from an empty collection did not throw");
+  require(property.getNumEvents() == 0,
+          "removing an event from an empty collection changed the collection");
 }
 
 void outOfRangeRemovalIsRejectedWithoutChangingCollections() {
   bw::core::VertexTransformer transformer;
+  transformer.setScaleTransforms({});
   transformer.addTransform(bw::core::VertexTransformer::Key::Scale, bw::core::tTransform::makeZero());
   bw::core::AnimatedProperty property;
   property.addEvent(1, bw::core::AnimatedPropertyEventTriggerType::Up, 0.25f);
@@ -107,6 +113,7 @@ void outOfRangeRemovalIsRejectedWithoutChangingCollections() {
 
 void validRemovalStillRemovesTheRequestedItem() {
   bw::core::VertexTransformer transformer;
+  transformer.setScaleTransforms({});
   transformer.addTransform(bw::core::VertexTransformer::Key::Scale, bw::core::tTransform::makeZero());
   transformer.addTransform(bw::core::VertexTransformer::Key::Scale, bw::core::tTransform::makeOne());
   transformer.removeTransform(bw::core::VertexTransformer::Key::Scale, 0);
