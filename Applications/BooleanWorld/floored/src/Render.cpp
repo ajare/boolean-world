@@ -5,7 +5,7 @@
 #include <exception>
 #include <set>
 
-#include <core/ClipperDefines.h>
+#include <core/Arrangement.h>
 #include <core/WorldData.h>
 
 #include <common/GameDefines.h>
@@ -133,11 +133,8 @@ void renderWorld(floored::Document* doc, floored::Settings const& settings) {
   auto worldOffset = worldBounds.getMinExtent();
   float renderScale = 0.5f / gViewZoom;
 
-  auto const& polygons = doc->getPolygons();
-  auto const& pslg = doc->getPSLG();
-  auto const& cycles = doc->getCycles();
-  auto const& hierarchy = doc->getHierarchy();
-  auto const& faces = doc->getFaces();
+  auto const& contours = doc->getContours();
+  auto const& arrangement = doc->getArrangement();
   auto const& faceTriangles = doc->getFaceTriangles();
 
   // Polygons
@@ -146,30 +143,33 @@ void renderWorld(floored::Document* doc, floored::Settings const& settings) {
 
   if (settings.renderFaces) {
     for (auto const& tri : faceTriangles) {
-      auto const& v0 = pslg.vs[tri.vi[0]];
-      auto const& v1 = pslg.vs[tri.vi[1]];
-      auto const& v2 = pslg.vs[tri.vi[2]];
+      auto const& v0 = arrangement.vertices[tri.v[0]];
+      auto const& v1 = arrangement.vertices[tri.v[1]];
+      auto const& v2 = arrangement.vertices[tri.v[2]];
 
       ImVec2 iv0 = {
-          (float)(v0.x / BW_CLIPPER_SCALE) - offset.x,
-          FE_WINDOW_HEIGHT - ((float)(v0.y / BW_CLIPPER_SCALE) - offset.y)};
+          bw::core::arr::ToWorldCoordinate(v0.x) - offset.x,
+          FE_WINDOW_HEIGHT -
+              (bw::core::arr::ToWorldCoordinate(v0.y) - offset.y)};
 
       ImVec2 iv1 = {
-          (float)(v1.x / BW_CLIPPER_SCALE) - offset.x,
-          FE_WINDOW_HEIGHT - ((float)(v1.y / BW_CLIPPER_SCALE) - offset.y)};
+          bw::core::arr::ToWorldCoordinate(v1.x) - offset.x,
+          FE_WINDOW_HEIGHT -
+              (bw::core::arr::ToWorldCoordinate(v1.y) - offset.y)};
 
       ImVec2 iv2 = {
-          (float)(v2.x / BW_CLIPPER_SCALE) - offset.x,
-          FE_WINDOW_HEIGHT - ((float)(v2.y / BW_CLIPPER_SCALE) - offset.y)};
+          bw::core::arr::ToWorldCoordinate(v2.x) - offset.x,
+          FE_WINDOW_HEIGHT -
+              (bw::core::arr::ToWorldCoordinate(v2.y) - offset.y)};
 
-      auto const& face = faces[tri.fi];
+      auto const& face = arrangement.faces[tri.face];
 
       auto nc = sizeof(Colours_Deep) / sizeof(Colours_Deep[0]);
-      ImColor c = Colours_Deep[face.owningPolygon % nc];
+      ImColor c = Colours_Deep[face.primitiveIndex % nc];
 
-      if (gSelectedType == floored::SelectionType::Face && gSelectedObject.first == tri.fi) {
+      if (gSelectedType == floored::SelectionType::Face && gSelectedObject.first == tri.face) {
         c = ImColor(1.0f, 1.0f, 0.0f);
-      } else if (gHoveredType == floored::SelectionType::Face && gHoveredObject.first == tri.fi) {
+      } else if (gHoveredType == floored::SelectionType::Face && gHoveredObject.first == tri.face) {
         c = ImColor(1.0f, 0.5f, 0.0f);
       }
 
@@ -182,21 +182,23 @@ void renderWorld(floored::Document* doc, floored::Settings const& settings) {
   // Polygons
   switch (settings.edgeRenderMode) {
     case floored::Settings::EdgeRenderMode::Polygons:
-      for (int i = 0; i < (int)polygons.size(); ++i) {
-        auto const& polygon = polygons[i];
+      for (int i = 0; i < (int)contours.size(); ++i) {
+        auto const& contour = contours[i];
 
-        auto numVertices = (int)polygon.path.size();
+        auto numVertices = (int)contour.size();
 
         for (int j = 0; j < numVertices; ++j) {
           int k = (j + 1) % numVertices;
 
           ImVec2 v0 = {
-              (float)(polygon.path[j].x / 1000.0) - offset.x,
-              FE_WINDOW_HEIGHT - ((float)(polygon.path[j].y / 1000.0) - offset.y)};
+              bw::core::arr::ToWorldCoordinate(contour[j].x) - offset.x,
+              FE_WINDOW_HEIGHT -
+                  (bw::core::arr::ToWorldCoordinate(contour[j].y) - offset.y)};
 
           ImVec2 v1 = {
-              (float)(polygon.path[k].x / 1000.0) - offset.x,
-              FE_WINDOW_HEIGHT - ((float)(polygon.path[k].y / 1000.0) - offset.y)};
+              bw::core::arr::ToWorldCoordinate(contour[k].x) - offset.x,
+              FE_WINDOW_HEIGHT -
+                  (bw::core::arr::ToWorldCoordinate(contour[k].y) - offset.y)};
 
           auto nc = sizeof(Colours_Deep) / sizeof(Colours_Deep[0]);
           ImColor c = Colours_Deep[i % nc];
@@ -207,37 +209,35 @@ void renderWorld(floored::Document* doc, floored::Settings const& settings) {
             c = ImColor(1.0f, 0.5f, 0.0f);
           }
 
-          if (polygon.isHole) {
-            c.Value.w = 0.5f;
-          }
-
           drawList->AddLine(v0, v1, c, 2.0f);
         }
       }
       break;
 
     case floored::Settings::EdgeRenderMode::Graph:
-      for (int i = 0; i < (int)pslg.es.size(); ++i) {
-        auto const& edge = pslg.es[i];
+      for (int i = 0; i < (int)arrangement.edges.size(); ++i) {
+        auto const& edge = arrangement.edges[i];
 
-        auto const& v0 = pslg.vs[edge.vi[0]];
-        auto const& v1 = pslg.vs[edge.vi[1]];
+        auto const& v0 = arrangement.vertices[edge.v[0]];
+        auto const& v1 = arrangement.vertices[edge.v[1]];
 
         ImVec2 iv0 = {
-            (float)(v0.x / BW_CLIPPER_SCALE) - offset.x,
-            FE_WINDOW_HEIGHT - ((float)(v0.y / BW_CLIPPER_SCALE) - offset.y)};
+            bw::core::arr::ToWorldCoordinate(v0.x) - offset.x,
+            FE_WINDOW_HEIGHT -
+                (bw::core::arr::ToWorldCoordinate(v0.y) - offset.y)};
 
         ImVec2 iv1 = {
-            (float)(v1.x / BW_CLIPPER_SCALE) - offset.x,
-            FE_WINDOW_HEIGHT - ((float)(v1.y / BW_CLIPPER_SCALE) - offset.y)};
+            bw::core::arr::ToWorldCoordinate(v1.x) - offset.x,
+            FE_WINDOW_HEIGHT -
+                (bw::core::arr::ToWorldCoordinate(v1.y) - offset.y)};
 
         ImColor c;
         float width;
 
-        if (!edge.doubleSided()) {
+        if (edge.face[0] == 0 || edge.face[1] == 0) {
           auto nc = sizeof(Colours_Deep) / sizeof(Colours_Deep[0]);
-          auto cc = Colours_Deep[edge.fi[0] % nc];
-          c = cc;
+          auto faceIndex = edge.face[0] == 0 ? edge.face[1] : edge.face[0];
+          c = Colours_Deep[faceIndex % nc];
           width = 3.0f;
         } else {
           c = ImColor(0.5f, 0.5f, 0.5f, 0.75f);
@@ -254,10 +254,11 @@ void renderWorld(floored::Document* doc, floored::Settings const& settings) {
       }
 
       if (settings.renderGraphVertices) {
-        for (auto const& v : pslg.vs) {
+        for (auto const& v : arrangement.vertices) {
           ImVec2 iv = {
-              (float)(v.x) - offset.x,
-              FE_WINDOW_HEIGHT - ((float)(v.y) - offset.y)};
+              bw::core::arr::ToWorldCoordinate(v.x) - offset.x,
+              FE_WINDOW_HEIGHT -
+                  (bw::core::arr::ToWorldCoordinate(v.y) - offset.y)};
 
           drawList->AddRectFilled({iv.x - 2, iv.y - 2}, {iv.x + 2, iv.y + 2}, settings.graphVertexColour, 0.3f);
         }

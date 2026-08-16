@@ -15,22 +15,16 @@ namespace floored {
 class Document {
   std::shared_ptr<bw::core::World> mWorld;
 
-  std::vector<bw::core::Clipper2Polygon> mPolygons;
+  std::vector<bw::core::arr::Contour> mContours;
 
-  expr::PSLG mPSLG;
+  bw::core::arr::ArrangementResultPtr mArrangement;
 
-  std::vector<expr::Cycle> mCycles;
-
-  std::vector<expr::PolygonNode> mHierarchy;
-
-  std::vector<expr::Face> mFaces;
-
-  std::vector<expr::FaceTriangle> mFaceTriangles;
+  std::vector<bw::core::arr::ArrangementTriangle> mFaceTriangles;
 
   static Document* msInstance;
 
 private:
-  void buildExpr();
+  void buildArrangement();
 
 public:
   Document();
@@ -43,17 +37,11 @@ public:
 
   std::shared_ptr<bw::core::World> getWorld();
 
-  std::vector<bw::core::Clipper2Polygon> const& getPolygons();
+  std::vector<bw::core::arr::Contour> const& getContours() const;
 
-  expr::PSLG const& getPSLG() const;
+  bw::core::arr::ArrangementResult const& getArrangement() const;
 
-  std::vector<expr::Cycle> const& getCycles() const;
-
-  std::vector<expr::PolygonNode> const& getHierarchy() const;
-
-  std::vector<expr::Face> const& getFaces() const;
-
-  std::vector<expr::FaceTriangle> const& getFaceTriangles() const;
+  std::vector<bw::core::arr::ArrangementTriangle> const& getFaceTriangles() const;
 
   bool openWorld(std::string const& filepath);
 };

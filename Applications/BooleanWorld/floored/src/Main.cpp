@@ -200,14 +200,10 @@ void setup() {
   icons_config.GlyphMinAdvanceX = iconFontSize;
   io.Fonts->AddFontFromFileTTF(FONT_ICON_FILE_NAME_FAS, iconFontSize, &icons_config, icons_ranges);
   io.Fonts->Build();
-
-  Clipper2Lib::WmInitialiseAllocators(4, 16 * 1024 * 1024);
 }
 
 void shutdown() {
   gLogger->info("Shutting down");
-
-  Clipper2Lib::WmDestroyAllocators();
 
   // ImGui
   ImGui_ImplOpenGL3_Shutdown();

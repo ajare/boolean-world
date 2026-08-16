@@ -7,8 +7,8 @@
 #include <spdlog/spdlog.h>
 #pragma warning(pop)
 
+#include "core/ArrangementWorldDataGenerator.h"
 #include "core/YamlSerializer.h"
-#include "core/ClipperUtils.h"
 
 #include "Document.h"
 
@@ -41,55 +41,45 @@ shared_ptr<bw::core::World> Document::getWorld() {
   return mWorld;
 }
 
-std::vector<bw::core::Clipper2Polygon> const& Document::getPolygons() {
-  return mPolygons;
+std::vector<bw::core::arr::Contour> const& Document::getContours() const {
+  return mContours;
 }
 
-expr::PSLG const& Document::getPSLG() const {
-  return mPSLG;
+bw::core::arr::ArrangementResult const& Document::getArrangement() const {
+  return *mArrangement;
 }
 
-vector<expr::Cycle> const& Document::getCycles() const {
-  return mCycles;
-}
-
-vector<expr::PolygonNode> const& Document::getHierarchy() const {
-  return mHierarchy;
-}
-
-std::vector<expr::Face> const& Document::getFaces() const {
-  return mFaces;
-}
-
-vector<expr::FaceTriangle> const& Document::getFaceTriangles() const {
+vector<bw::core::arr::ArrangementTriangle> const&
+Document::getFaceTriangles() const {
   return mFaceTriangles;
 }
 
-void Document::buildExpr() {
+void Document::buildArrangement() {
   if (!mWorld) {
     return;
   }
 
   auto primitives = mWorld->getPrimitives();
 
-  mPolygons.clear();
+  mContours.clear();
+  vector<bw::core::arr::ArrangementPrimitive> arrangementPrimitives;
+  arrangementPrimitives.reserve(primitives.size());
 
-  for (auto prim : primitives) {
-    auto polygons = bw::core::ClipperUtils::convertPrimitiveToClipperPolygons(prim);
-
-    mPolygons.reserve(mPolygons.size() + distance(polygons.begin(), polygons.end()));
-    mPolygons.insert(mPolygons.end(), polygons.begin(), polygons.end());
+  for (auto primitive : primitives) {
+    auto contours = bw::core::ConvertPrimitiveToContours(*primitive);
+    mContours.reserve(mContours.size() + contours.size());
+    mContours.insert(mContours.end(), contours.begin(), contours.end());
+    arrangementPrimitives.push_back(
+        {move(contours),
+         primitive->getOperation(),
+         primitive->getFillRule(),
+         primitive->getPriority(),
+         primitive->getId(),
+         primitive->getProperties()});
   }
 
-  mPSLG = expr::BuildPSLG(mPolygons, primitives);
-
-  mCycles = expr::ExtractMinimalCycles(mPSLG);
-  mHierarchy = expr::BuildPolygonHierarchy(mPSLG, mCycles);
-
-  mFaces = expr::BuildFaces(mHierarchy, mCycles);
-  mFaces = expr::CalculateOwningPolygons(mFaces, mPolygons, mCycles, mPSLG, primitives);
-
-  mFaceTriangles = expr::BuildFaceTriangles(mFaces, mCycles, mPSLG);
+  mArrangement = bw::core::arr::BuildArrangement(arrangementPrimitives);
+  mFaceTriangles = bw::core::arr::BuildArrangementTriangles(*mArrangement);
 }
 
 bool Document::openWorld(string const& filepath) {
@@ -120,7 +110,7 @@ bool Document::openWorld(string const& filepath) {
         }
       }
 
-      buildExpr();
+      buildArrangement();
       return true;
     } else {
       auto const& errors = mWorld->getDeserializationErrors();

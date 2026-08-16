@@ -1,7 +1,7 @@
 #include <cmath>
 #include <exception>
 
-#include <core/ClipperDefines.h>
+#include <core/Arrangement.h>
 #include <core/DynamicWorldDataGenerator.h>
 
 #include "imgui.h"
@@ -184,28 +184,28 @@ void renderStatusbar(floored::Document* doc, floored::Settings& settings) {
 void renderGraphEdgeDetails(floored::Document* doc, floored::Settings& settings, pair<int, int> const& selectedObject) {
   auto edgeIndex = selectedObject.first;
 
-  auto const& graph = doc->getPSLG();
-  auto const& edge = graph.es[edgeIndex];
+  auto const& arrangement = doc->getArrangement();
+  auto const& edge = arrangement.edges[edgeIndex];
 
   ImGui::Text("Graph edge: %d", edgeIndex);
   ImGui::Separator();
-  ImGui::Text("Face 0: %d", edge.fi[0]);
-  ImGui::Text("Face 1: %d", edge.fi[1]);
+  ImGui::Text("Face 0: %u", edge.face[0]);
+  ImGui::Text("Face 1: %u", edge.face[1]);
 }
 
 void renderFaceDetails(floored::Document* doc, floored::Settings& settings, pair<int, int> const& selectedObject) {
   auto faceIndex = selectedObject.first;
 
-  auto const& faces = doc->getFaces();
-  auto const& face = faces[faceIndex];
+  auto const& arrangement = doc->getArrangement();
+  auto const& face = arrangement.faces[faceIndex];
 
   ImGui::Text("Face: %d", faceIndex);
   ImGui::Separator();
 
-  if (face.owningPolygon >= 0) {
-    ImGui::Text("Polygon: %d", face.owningPolygon);
+  if (face.primitiveIndex != ~0u) {
+    ImGui::Text("Polygon: %u", face.primitiveIndex);
   } else {
-    ImGui::Text("Hole: %d", face.holePolygon);
+    ImGui::TextUnformatted("Hole");
   }
 }
 
@@ -269,17 +269,21 @@ void handleShortcuts(Document* doc, Settings& settings) {
 }
 
 pair<int, int> getHoveredPolygonEdge(floored::Document* doc, wp::Vector2 const& pos) {
-  auto const& polygons = doc->getPolygons();
+  auto const& contours = doc->getContours();
 
-  for (int i = 0; i < (int)polygons.size(); ++i) {
-    auto const& polygon = polygons[i];
+  for (int i = 0; i < (int)contours.size(); ++i) {
+    auto const& contour = contours[i];
 
-    auto numVertices = (int)polygon.path.size();
+    auto numVertices = (int)contour.size();
     for (int j = 0; j < numVertices; ++j) {
       int k = (j + 1) % numVertices;
 
-      wp::Vector2 v0{(float)polygon.path[j].x, (float)polygon.path[j].y};
-      wp::Vector2 v1{(float)polygon.path[k].x, (float)polygon.path[k].y};
+      wp::Vector2 v0{
+          bw::core::arr::ToWorldCoordinate(contour[j].x),
+          bw::core::arr::ToWorldCoordinate(contour[j].y)};
+      wp::Vector2 v1{
+          bw::core::arr::ToWorldCoordinate(contour[k].x),
+          bw::core::arr::ToWorldCoordinate(contour[k].y)};
 
       if (pos.distanceToLine(v0, v1) < 2) {
         return {i, j};
@@ -291,17 +295,17 @@ pair<int, int> getHoveredPolygonEdge(floored::Document* doc, wp::Vector2 const& 
 }
 
 pair<int, int> getHoveredGraphEdge(floored::Document* doc, wp::Vector2 const& pos) {
-  auto const& graph = doc->getPSLG();
+  auto const& arrangement = doc->getArrangement();
 
-  for (int i = 0; i < (int)graph.es.size(); ++i) {
-    auto const& edge = graph.es[i];
+  for (int i = 0; i < (int)arrangement.edges.size(); ++i) {
+    auto const& edge = arrangement.edges[i];
 
     wp::Vector2 v0{
-        (float)(graph.vs[edge.vi[0]].x / BW_CLIPPER_SCALE),
-        (float)(graph.vs[edge.vi[0]].y / BW_CLIPPER_SCALE)};
+        bw::core::arr::ToWorldCoordinate(arrangement.vertices[edge.v[0]].x),
+        bw::core::arr::ToWorldCoordinate(arrangement.vertices[edge.v[0]].y)};
     wp::Vector2 v1{
-        (float)(graph.vs[edge.vi[1]].x / BW_CLIPPER_SCALE),
-        (float)(graph.vs[edge.vi[1]].y / BW_CLIPPER_SCALE)};
+        bw::core::arr::ToWorldCoordinate(arrangement.vertices[edge.v[1]].x),
+        bw::core::arr::ToWorldCoordinate(arrangement.vertices[edge.v[1]].y)};
 
     if (pos.distanceToLine(v0, v1) < 2) {
       return {i, -1};
@@ -312,15 +316,15 @@ pair<int, int> getHoveredGraphEdge(floored::Document* doc, wp::Vector2 const& po
 }
 
 int getHoveredFace(floored::Document* doc, wp::Vector2 const& pos) {
-  auto v = expr::Vertex{
-      (int64_t)llround(pos.x * BW_CLIPPER_SCALE),
-      (int64_t)llround(pos.y * BW_CLIPPER_SCALE)};
-  auto const& faces = doc->getFaces();
+  auto v = bw::core::arr::FixedPointVertex{
+      bw::core::arr::ToFixedPointCoordinate(pos.x),
+      bw::core::arr::ToFixedPointCoordinate(pos.y)};
+  auto const& arrangement = doc->getArrangement();
 
-  for (int i = 0; i < (int)faces.size(); ++i) {
-    auto const& face = faces[i];
+  for (int i = 0; i < (int)arrangement.faces.size(); ++i) {
+    auto const& face = arrangement.faces[i];
 
-    if (expr::PointInFace(v, face, doc->getCycles(), doc->getPSLG())) {
+    if (bw::core::arr::PointInFace(v, face, arrangement)) {
       return i;
     }
   }
