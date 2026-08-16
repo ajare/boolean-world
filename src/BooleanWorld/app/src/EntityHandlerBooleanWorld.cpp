@@ -5,6 +5,7 @@
 #include <common/GameDefines.h>
 
 #include "EntityHandlerBooleanWorld.h"
+#include "PlayerView.h"
 #include "EntityType.h"
 
 #include "GameException.h"
@@ -139,14 +140,14 @@ void EntityHandlerBooleanWorld::peekInput(applib::Entity const& entity, wp::Vect
 
   // Get desired direction
   *curAngle = physicalStats.angle;
-  *newAngle = bw::core::clamp_angle(physicalStats.angle - mMouseDeltaX);
+  *newAngle = bw::app::applyMouseYaw(physicalStats.angle, mMouseDeltaX);
 
   *curPitch = physicalStats.pitch;
   *newPitch = clamp(physicalStats.pitch + mMouseDeltaY, -85.0f, 85.0f);
 
   // Get desired movement
   vel.normalise();
-  vel.rotateAnticlockwise(*newAngle);
+  vel = bw::app::playerMovement(vel, *newAngle);
   vel *= playerSpeed;
 
   *curPosition = physicalStats.position;

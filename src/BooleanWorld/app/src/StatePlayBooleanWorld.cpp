@@ -32,6 +32,7 @@
 #include "TriMeshDataProvider.h"
 #include "TriMeshEntityFacadeFactory.h"
 #include "Map.h"
+#include "PlayerView.h"
 #include "ReactiveCamera.h"
 #include "GameException.h"
 
@@ -86,7 +87,10 @@ applib::PhysicalStats const& StatePlayBooleanWorld::getPlayerPhysicalStats() con
 void StatePlayBooleanWorld::createCamera() {
   float aspectRatio = mwRenderSystem->getWindowWidth() / (float)mwRenderSystem->getWindowHeight();
 
-  auto camera = new ReactiveCamera(glm::vec3(0, BW_PLAYER_HEIGHT, 150), 180.0f, 0.0f, BW_PLAYER_FOV, aspectRatio);
+  auto const& physicalStats = getPlayerPhysicalStats();
+  auto camera = new ReactiveCamera(
+      glm::vec3(physicalStats.position.x, BW_PLAYER_HEIGHT, physicalStats.position.y),
+      physicalStats.angle, physicalStats.pitch, BW_PLAYER_FOV, aspectRatio);
   camera->setClipDistances(0.1f, BW_PLAYER_VIEW_DISTANCE + 10);
 
   mCamera3d = shared_ptr<mpp::Camera>(camera);
@@ -294,13 +298,14 @@ void StatePlayBooleanWorld::setupEntities() {
   auto world = getMap()->getWorld();
 
   auto playerPos = world->getPlayerStartPosition();
-  auto playerAngle = world->getPlayerStartAngle() - 180;
+  auto playerAngle = bw::core::clamp_angle(world->getPlayerStartAngle());
+  auto viewAngle = bw::app::worldViewAngle(playerAngle);
 
   createEntity((int)EntityType::Player, playerPos, playerAngle, true);
 
-  world->update(0, {playerPos, 0, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, false, false, 0}, {0, 0});
+  world->update(0, {playerPos, viewAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, false, false, 0}, {0, 0});
 
-  mWorldData = world->getWorldData(playerPos, playerAngle);
+  mWorldData = world->getWorldData(playerPos, viewAngle);
 
   if (mWorldData->getContainingFaceIndex(playerPos) == ~0u ||
       mWorldData->circleIntersectsWall(playerPos, BW_PLAYER_RADIUS) >= 0) {
@@ -385,7 +390,7 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
   float playerAngle;
 
   playerPosition = newPosition;
-  playerAngle = 360 - newAngle;
+  playerAngle = bw::app::worldViewAngle(newAngle);
 
   world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, mCurrentLayer}, {0, 0});
 
