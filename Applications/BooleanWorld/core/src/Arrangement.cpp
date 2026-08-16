@@ -707,7 +707,7 @@ vector<Face> CalculateOwningPolygons(vector<Face> const& faces, vector<bw::core:
   return keptFaces;
 }
 
-ArrangementResult BuildArrangement(vector<ArrangementPrimitive> const& primitives) {
+ArrangementResultPtr BuildArrangement(vector<ArrangementPrimitive> const& primitives) {
   vector<bw::core::Clipper2Polygon> contours;
   for (uint32_t primitiveIndex = 0;
        primitiveIndex < uint32_t(primitives.size()); ++primitiveIndex) {
@@ -716,19 +716,18 @@ ArrangementResult BuildArrangement(vector<ArrangementPrimitive> const& primitive
     }
   }
 
-  ArrangementResult result;
-  result.graph = BuildPSLG(contours, {});
-  result.cycles = ExtractMinimalCycles(result.graph);
-  erase_if(result.cycles, [](Cycle const& cycle) {
+  auto graph = BuildPSLG(contours, {});
+  auto cycles = ExtractMinimalCycles(graph);
+  erase_if(cycles, [](Cycle const& cycle) {
     return cycle.area <= 0;
   });
-  result.hierarchy = BuildPolygonHierarchy(result.graph, result.cycles);
-  result.faces = BuildFaces(result.hierarchy, result.cycles);
+  auto hierarchy = BuildPolygonHierarchy(graph, cycles);
+  auto faces = BuildFaces(hierarchy, cycles);
 
   auto assignCycleSide = [&](int faceIndex, int cycleIndex, bool assignLeft) {
-    auto const& cycle = result.cycles[cycleIndex];
+    auto const& cycle = cycles[cycleIndex];
     for (size_t i = 0; i < cycle.eis.size(); ++i) {
-      auto& edge = result.graph.es[cycle.eis[i]];
+      auto& edge = graph.es[cycle.eis[i]];
       auto traversalMatchesEdge = edge.vi[0] == cycle.vis[i];
       auto leftSide = traversalMatchesEdge ? 0 : 1;
       auto side = assignLeft ? leftSide : 1 - leftSide;
@@ -736,17 +735,17 @@ ArrangementResult BuildArrangement(vector<ArrangementPrimitive> const& primitive
     }
   };
 
-  for (int faceIndex = 0; faceIndex < int(result.faces.size()); ++faceIndex) {
-    auto const& face = result.faces[faceIndex];
+  for (int faceIndex = 0; faceIndex < int(faces.size()); ++faceIndex) {
+    auto const& face = faces[faceIndex];
     assignCycleSide(faceIndex, face.polygon, true);
     for (auto hole : face.holes) {
       assignCycleSide(faceIndex, hole, false);
     }
   }
 
-  vector<vector<int>> faceEdges(result.faces.size());
-  for (int edgeIndex = 0; edgeIndex < int(result.graph.es.size()); ++edgeIndex) {
-    auto const& edge = result.graph.es[edgeIndex];
+  vector<vector<int>> faceEdges(faces.size());
+  for (int edgeIndex = 0; edgeIndex < int(graph.es.size()); ++edgeIndex) {
+    auto const& edge = graph.es[edgeIndex];
     for (auto faceIndex : edge.fi) {
       if (faceIndex >= 0) {
         faceEdges[faceIndex].push_back(edgeIndex);
@@ -755,17 +754,19 @@ ArrangementResult BuildArrangement(vector<ArrangementPrimitive> const& primitive
   }
 
   vector<vector<int32_t>> windingNumbers(
-      result.faces.size(), vector<int32_t>(primitives.size()));
-  vector<bool> visited(result.faces.size(), false);
+      faces.size(), vector<int32_t>(primitives.size()));
+  vector<bool> visited(faces.size(), false);
   queue<int> pending;
 
-  for (int seedFace = 0; seedFace < int(result.faces.size()); ++seedFace) {
+  // The unbounded face is omitted while classifying, so each disconnected
+  // bounded component needs one direct winding seed. Every other face in that
+  // component is labelled by crossing edge deltas in a breadth-first traversal.
+  for (int seedFace = 0; seedFace < int(faces.size()); ++seedFace) {
     if (visited[seedFace]) {
       continue;
     }
 
-    auto sample = SamplePoint(
-        result.graph, result.cycles[result.faces[seedFace].polygon]);
+    auto sample = SamplePoint(graph, cycles[faces[seedFace].polygon]);
     for (size_t primitiveIndex = 0;
          primitiveIndex < primitives.size(); ++primitiveIndex) {
       for (auto const& contour : primitives[primitiveIndex].contours) {
@@ -781,7 +782,7 @@ ArrangementResult BuildArrangement(vector<ArrangementPrimitive> const& primitive
       pending.pop();
 
       for (auto edgeIndex : faceEdges[faceIndex]) {
-        auto const& edge = result.graph.es[edgeIndex];
+        auto const& edge = graph.es[edgeIndex];
         if (!edge.doubleSided()) {
           continue;
         }
@@ -802,7 +803,7 @@ ArrangementResult BuildArrangement(vector<ArrangementPrimitive> const& primitive
     }
   }
 
-  for (size_t faceIndex = 0; faceIndex < result.faces.size(); ++faceIndex) {
+  for (size_t faceIndex = 0; faceIndex < faces.size(); ++faceIndex) {
     Membership membership(primitives.size());
     for (size_t primitiveIndex = 0;
          primitiveIndex < primitives.size(); ++primitiveIndex) {
@@ -813,12 +814,117 @@ ArrangementResult BuildArrangement(vector<ArrangementPrimitive> const& primitive
                         : winding != 0;
       membership.set(primitiveIndex, member);
     }
-    result.faces[faceIndex].membership = move(membership);
-    result.faces[faceIndex].solid = EvaluateFold(
-        primitives, result.faces[faceIndex].membership);
+    faces[faceIndex].membership = move(membership);
+    faces[faceIndex].solid = EvaluateFold(
+        primitives, faces[faceIndex].membership);
+  }
+
+  auto result = make_shared<ArrangementResult>();
+  result->vertices = graph.vs;
+  result->palette.emplace_back();  // Exterior and empty faces.
+  for (auto const& primitive : primitives) {
+    result->palette.push_back(primitive.properties);
+  }
+
+  // Face zero is the unbounded exterior, allowing every edge to name two
+  // valid incident faces. Its empty outer boundary distinguishes it from all
+  // bounded arrangement faces; each root cycle is one of its explicit inner
+  // boundaries.
+  ArrangementFace exteriorFace;
+  exteriorFace.membership = Membership(primitives.size());
+  for (auto const& node : hierarchy) {
+    if (node.parent >= 0) {
+      continue;
+    }
+    vector<uint32_t> boundary;
+    for (auto edgeIndex : cycles[node.cycleIndex].eis) {
+      boundary.push_back(uint32_t(edgeIndex));
+    }
+    exteriorFace.innerBoundaries.push_back(move(boundary));
+  }
+  result->faces.push_back(move(exteriorFace));
+
+  for (auto const& face : faces) {
+    ArrangementFace outputFace;
+    for (auto edgeIndex : cycles[face.polygon].eis) {
+      outputFace.outerBoundary.push_back(uint32_t(edgeIndex));
+    }
+    for (auto hole : face.holes) {
+      vector<uint32_t> boundary;
+      for (auto edgeIndex : cycles[hole].eis) {
+        boundary.push_back(uint32_t(edgeIndex));
+      }
+      outputFace.innerBoundaries.push_back(move(boundary));
+    }
+    outputFace.membership = face.membership;
+    outputFace.solid = face.solid;
+
+    int winningPrimitive = -1;
+    for (int primitiveIndex = 0;
+         primitiveIndex < int(primitives.size()); ++primitiveIndex) {
+      if (!face.membership.contains(primitiveIndex)) {
+        continue;
+      }
+      if (winningPrimitive < 0 ||
+          primitives[primitiveIndex].priority >=
+              primitives[winningPrimitive].priority) {
+        winningPrimitive = primitiveIndex;
+      }
+    }
+    if (winningPrimitive >= 0) {
+      outputFace.paletteIndex = uint16_t(winningPrimitive + 1);
+      outputFace.primitiveIndex =
+          primitives[winningPrimitive].primitiveIndex;
+    }
+    result->faces.push_back(move(outputFace));
+  }
+
+  for (auto const& edge : graph.es) {
+    result->edges.push_back({{uint32_t(edge.vi[0]), uint32_t(edge.vi[1])},
+                             {edge.fi[0] < 0 ? 0u : uint32_t(edge.fi[0] + 1),
+                              edge.fi[1] < 0 ? 0u : uint32_t(edge.fi[1] + 1)}});
   }
 
   return result;
+}
+
+static int PointInBoundary(
+    Vertex const& point,
+    vector<uint32_t> const& boundary,
+    ArrangementResult const& arrangement) {
+  int crossings = 0;
+  for (auto edgeIndex : boundary) {
+    auto const& edge = arrangement.edges[edgeIndex];
+    auto const& a = arrangement.vertices[edge.v[0]];
+    auto const& b = arrangement.vertices[edge.v[1]];
+    if (PointOnSegment(point, a, b)) {
+      return -1;
+    }
+    if ((a.y > point.y) != (b.y > point.y)) {
+      auto cross = Cross(a, b, point);
+      if ((b.y > a.y && cross > 0) ||
+          (b.y < a.y && cross < 0)) {
+        ++crossings;
+      }
+    }
+  }
+  return crossings % 2;
+}
+
+bool PointInFace(
+    Vertex const& point,
+    ArrangementFace const& face,
+    ArrangementResult const& arrangement) {
+  if (face.outerBoundary.empty() ||
+      PointInBoundary(point, face.outerBoundary, arrangement) <= 0) {
+    return false;
+  }
+  for (auto const& hole : face.innerBoundaries) {
+    if (PointInBoundary(point, hole, arrangement) > 0) {
+      return false;
+    }
+  }
+  return true;
 }
 
 vector<FaceTriangle> BuildFaceTriangles(vector<Face> const& faces, vector<Cycle> const& cycles, PSLG const& graph) {

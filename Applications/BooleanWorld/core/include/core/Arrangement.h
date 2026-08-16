@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include <clipper2/clipper.h>
@@ -92,21 +93,47 @@ struct ArrangementPrimitive {
   bw::core::Primitive::FillRule fillRule;
   uint8_t priority;
   uint32_t primitiveIndex;
+  bw::core::PrimitivePropertySet properties{};
+};
+
+struct ArrangementEdge {
+  uint32_t v[2];
+  // Left and right faces relative to v[0] -> v[1].
+  uint32_t face[2];
+};
+
+struct ArrangementFace {
+  // Edge indices. Bounded faces have one CCW outer boundary; the unbounded
+  // exterior face at index zero has no outer boundary.
+  std::vector<uint32_t> outerBoundary;
+  // Each nested vector is one explicit hole boundary.
+  std::vector<std::vector<uint32_t>> innerBoundaries;
+  Membership membership;
+  bool solid{false};
+  uint16_t paletteIndex{0};
+  uint32_t primitiveIndex{~0u};
 };
 
 struct ArrangementResult {
-  PSLG graph;
-  std::vector<Cycle> cycles;
-  std::vector<PolygonNode> hierarchy;
-  std::vector<Face> faces;
+  std::vector<Vertex> vertices;
+  std::vector<ArrangementEdge> edges;
+  std::vector<ArrangementFace> faces;
+  std::vector<bw::core::PrimitivePropertySet> palette;
 };
+
+using ArrangementResultPtr = std::shared_ptr<ArrangementResult const>;
 
 [[nodiscard]] bool EvaluateFold(
     std::vector<ArrangementPrimitive> const& primitives,
     Membership const& membership);
 
-[[nodiscard]] ArrangementResult BuildArrangement(
+[[nodiscard]] ArrangementResultPtr BuildArrangement(
     std::vector<ArrangementPrimitive> const& primitives);
+
+bool PointInFace(
+    Vertex const& v,
+    ArrangementFace const& face,
+    ArrangementResult const& arrangement);
 
 bool PointInFace(Vertex const& v, Face const& face, std::vector<Cycle> const& cycles, PSLG const& graph);
 

@@ -312,16 +312,15 @@ TEST(ArrangementFold, PriorityOverridesInputOrder) {
   EXPECT_FALSE(EvaluateFold(primitives, membership));
 }
 
-static Face const* FindFaceAt(
-    ArrangementResult const& arrangement,
+static ArrangementFace const* FindFaceAt(
+    ArrangementResultPtr const& arrangement,
     expr::Vertex const& point) {
   auto face = std::find_if(
-      arrangement.faces.begin(), arrangement.faces.end(),
-      [&](Face const& candidate) {
-        return PointInFace(
-            point, candidate, arrangement.cycles, arrangement.graph);
+      arrangement->faces.begin(), arrangement->faces.end(),
+      [&](ArrangementFace const& candidate) {
+        return PointInFace(point, candidate, *arrangement);
       });
-  return face == arrangement.faces.end() ? nullptr : &*face;
+  return face == arrangement->faces.end() ? nullptr : &*face;
 }
 
 TEST(Arrangement, ClassifiesOverlappingPrimitiveFaces) {
@@ -348,16 +347,18 @@ TEST(Arrangement, ClassifiesOverlappingPrimitiveFaces) {
   EXPECT_TRUE(left->membership.contains(0));
   EXPECT_FALSE(left->membership.contains(1));
   EXPECT_TRUE(left->solid);
+  EXPECT_EQ(left->primitiveIndex, 100u);
   EXPECT_TRUE(overlap->membership.contains(0));
   EXPECT_TRUE(overlap->membership.contains(1));
   EXPECT_FALSE(overlap->solid);
+  EXPECT_EQ(overlap->primitiveIndex, 101u);
   EXPECT_FALSE(right->membership.contains(0));
   EXPECT_TRUE(right->membership.contains(1));
   EXPECT_FALSE(right->solid);
-  EXPECT_EQ(arrangement.faces.size(), 3u);
+  EXPECT_EQ(arrangement->faces.size(), 4u);
 }
 
-static ArrangementResult BuildNestedContourArrangement(
+static ArrangementResultPtr BuildNestedContourArrangement(
     bw::core::Primitive::FillRule fillRule) {
   return BuildArrangement(
       {{{{{0, 0}, {30, 0}, {30, 30}, {0, 30}},
@@ -395,10 +396,10 @@ TEST(Arrangement, MultiContourPrimitiveUsesNonZeroFillRuleWithoutMerging) {
   EXPECT_TRUE(inner->membership.contains(0));
   EXPECT_TRUE(inner->solid);
   EXPECT_NE(outer, inner);
-  EXPECT_EQ(arrangement.faces.size(), 2u);
+  EXPECT_EQ(arrangement->faces.size(), 3u);
 }
 
-static ArrangementResult BuildSelfIntersectingStarArrangement(
+static ArrangementResultPtr BuildSelfIntersectingStarArrangement(
     bw::core::Primitive::FillRule fillRule) {
   return BuildArrangement(
       {{{{{0, 30}, {18, -24}, {-29, 9}, {29, 9}, {-18, -24}}},
@@ -426,6 +427,83 @@ TEST(Arrangement, SelfIntersectingPrimitiveUsesNonZeroFillRule) {
   ASSERT_NE(centre, nullptr);
   EXPECT_TRUE(centre->membership.contains(0));
   EXPECT_TRUE(centre->solid);
+}
+
+TEST(ArrangementOutput, FacesOwnExplicitBoundariesAndEdgesOwnBothFaces) {
+  auto arrangement = BuildArrangement(
+      {{{{{0, 0}, {30, 0}, {30, 30}, {0, 30}},
+         {{10, 10}, {20, 10}, {20, 20}, {10, 20}}},
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero,
+        0,
+        500,
+        {}}});
+
+  ASSERT_EQ(arrangement->faces.size(), 3u);
+  EXPECT_TRUE(arrangement->faces[0].outerBoundary.empty());
+  EXPECT_EQ(arrangement->faces[0].innerBoundaries.size(), 1u);
+  auto faceWithHole = std::find_if(
+      arrangement->faces.begin(), arrangement->faces.end(),
+      [](ArrangementFace const& face) {
+        return !face.outerBoundary.empty() &&
+               !face.innerBoundaries.empty();
+      });
+  ASSERT_NE(faceWithHole, arrangement->faces.end());
+  EXPECT_EQ(faceWithHole->outerBoundary.size(), 4u);
+  ASSERT_EQ(faceWithHole->innerBoundaries.size(), 1u);
+  EXPECT_EQ(faceWithHole->innerBoundaries[0].size(), 4u);
+
+  for (auto const& edge : arrangement->edges) {
+    EXPECT_LT(edge.v[0], arrangement->vertices.size());
+    EXPECT_LT(edge.v[1], arrangement->vertices.size());
+    EXPECT_LT(edge.face[0], arrangement->faces.size());
+    EXPECT_LT(edge.face[1], arrangement->faces.size());
+  }
+}
+
+TEST(ArrangementOutput, FacePropertiesAreCopiedIntoImmutablePalette) {
+  bw::core::PrimitivePropertySet firstProperties{};
+  firstProperties.floorZ = 12;
+  firstProperties.ceilingZ = 40;
+  bw::core::PrimitivePropertySet secondProperties{};
+  secondProperties.floorZ = 24;
+  secondProperties.ceilingZ = 64;
+
+  std::vector<ArrangementPrimitive> primitives =
+      {{{{{0, 0}, {10, 0}, {10, 10}, {0, 10}}},
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero,
+        0,
+        42,
+        firstProperties},
+       {{{{20, 0}, {30, 0}, {30, 10}, {20, 10}}},
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero,
+        1,
+        77,
+        secondProperties}};
+
+  auto arrangement = BuildArrangement(primitives);
+  static_assert(std::is_const_v<ArrangementResultPtr::element_type>);
+  primitives[0].properties.floorZ = 999;
+
+  auto firstFace = std::find_if(
+      arrangement->faces.begin(), arrangement->faces.end(),
+      [](ArrangementFace const& face) {
+        return face.primitiveIndex == 42;
+      });
+  auto secondFace = std::find_if(
+      arrangement->faces.begin(), arrangement->faces.end(),
+      [](ArrangementFace const& face) {
+        return face.primitiveIndex == 77;
+      });
+
+  ASSERT_NE(firstFace, arrangement->faces.end());
+  ASSERT_NE(secondFace, arrangement->faces.end());
+  EXPECT_EQ(arrangement->palette[firstFace->paletteIndex].floorZ, 12);
+  EXPECT_EQ(arrangement->palette[firstFace->paletteIndex].ceilingZ, 40);
+  EXPECT_EQ(arrangement->palette[secondFace->paletteIndex].floorZ, 24);
+  EXPECT_EQ(arrangement->palette[secondFace->paletteIndex].ceilingZ, 64);
 }
 
 TEST(PSLG, SingleRectangle) {
