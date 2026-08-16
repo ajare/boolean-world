@@ -18,9 +18,9 @@ namespace editor {
 using namespace std;
 
 struct UndoData {
-  bw::core::World world;
+  WorldSnapshot world;
   set<uint32_t> selection;
-  bool docModified;
+  bool docModified{false};
 };
 
 struct UndoEntry {
@@ -60,7 +60,7 @@ void beginUndoableAction(Document* doc, string const& id, UndoableActionFunction
 
   gTransactionalId = id;
 
-  gTransactionalData.world = *doc->getWorld();
+  gTransactionalData.world = doc->captureWorldSnapshot();
   gTransactionalData.selection = doc->getSelectedPrimitiveIndices();
   gTransactionalData.docModified = doc->isModified();
 
@@ -76,7 +76,7 @@ void beginUndoableAction(Document* doc, string const& id, UndoableActionFunction
 
   gTransactionalId = id;
 
-  gTransactionalData.world = *doc->getWorld();
+  gTransactionalData.world = doc->captureWorldSnapshot();
   gTransactionalData.selection = doc->getSelectedPrimitiveIndices();
   gTransactionalData.docModified = doc->isModified();
 
@@ -108,7 +108,7 @@ void commitUndoableAction(Document* doc, string const& id) {
 
   gTransactionalFunc = nullptr;
   gTransactionalId.clear();
-  gTransactionalData.world.clear();
+  gTransactionalData.world = {};
   gTransactionalData.selection.clear();
   gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
   gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
@@ -122,7 +122,7 @@ void transactUndoableAction(Document* doc, string const& id, UndoableActionFunct
 void abandonUndoableAction(Document* doc) {
   gTransactionalId.clear();
 
-  gTransactionalData.world.clear();
+  gTransactionalData.world = {};
   gTransactionalData.selection.clear();
   gTransactionalData.docModified = doc->isModified();
   gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
@@ -136,34 +136,62 @@ bool undoableActionInProgress() {
 }
 
 void undo(Document* doc, int count) {
-  for (int i = 0; i < count && canUndo(); ++i) {
-    auto world = *doc->getWorld();
-    auto selection = doc->getSelectedPrimitiveIndices();
-    auto modified = doc->isModified();
-    auto const& oldEntry = gUndoStack.back();
+  if (count <= 0 || !canUndo()) {
+    generateClipping(doc, gEditorSettings, ED_CLIP_ON_UNDO_REDO);
+    return;
+  }
 
-    gRedoStack.push_back({oldEntry.id, {world, selection, modified}});
-    doc->setWorld(oldEntry.data.world);
-    doc->setSelectedPrimitiveIndices(oldEntry.data.selection);
-    doc->setModified(oldEntry.data.docModified);
+  auto data = UndoData{
+      doc->captureWorldSnapshot(),
+      doc->getSelectedPrimitiveIndices(),
+      doc->isModified()};
+  bool restored{false};
+
+  for (int i = 0; i < count && canUndo(); ++i) {
+    auto& oldEntry = gUndoStack.back();
+    auto id = oldEntry.id;
+
+    gRedoStack.push_back({move(id), move(data)});
+    data = move(oldEntry.data);
     gUndoStack.pop_back();
+    restored = true;
+  }
+
+  if (restored) {
+    doc->restoreWorldSnapshot(data.world);
+    doc->setSelectedPrimitiveIndices(data.selection);
+    doc->setModified(data.docModified);
   }
 
   generateClipping(doc, gEditorSettings, ED_CLIP_ON_UNDO_REDO);
 }
 
 void redo(Document* doc, int count) {
-  for (int i = 0; i < count && canRedo(); ++i) {
-    auto world = *doc->getWorld();
-    auto selection = doc->getSelectedPrimitiveIndices();
-    auto modified = doc->isModified();
-    auto const& oldEntry = gRedoStack.back();
+  if (count <= 0 || !canRedo()) {
+    generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+    return;
+  }
 
-    gUndoStack.push_back({oldEntry.id, {world, selection, modified}});
-    doc->setWorld(oldEntry.data.world);
-    doc->setSelectedPrimitiveIndices(oldEntry.data.selection);
-    doc->setModified(oldEntry.data.docModified);
+  auto data = UndoData{
+      doc->captureWorldSnapshot(),
+      doc->getSelectedPrimitiveIndices(),
+      doc->isModified()};
+  bool restored{false};
+
+  for (int i = 0; i < count && canRedo(); ++i) {
+    auto& oldEntry = gRedoStack.back();
+    auto id = oldEntry.id;
+
+    gUndoStack.push_back({move(id), move(data)});
+    data = move(oldEntry.data);
     gRedoStack.pop_back();
+    restored = true;
+  }
+
+  if (restored) {
+    doc->restoreWorldSnapshot(data.world);
+    doc->setSelectedPrimitiveIndices(data.selection);
+    doc->setModified(data.docModified);
   }
 
   generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);

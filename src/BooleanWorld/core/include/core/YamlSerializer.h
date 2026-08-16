@@ -57,9 +57,13 @@ private:
 public:
   static YamlSerializer* toFile(std::string const& filepath);
 
+  static YamlSerializer* toString();
+
   static YamlSerializer* fromFile(std::string const& filepath);
 
-  static YamlSerializer* fromString(std::string const& filepath);
+  static YamlSerializer* fromString(std::string const& text);
+
+  std::string getSerializedString() const;
 
   // Serialization
   void writeUint8(std::string const& name, uint8_t value) override;

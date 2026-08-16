@@ -27,18 +27,19 @@ DynamicWorldDataGenerator::~DynamicWorldDataGenerator() {
 }
 
 DynamicWorldDataGenerator::DynamicWorldDataGenerator(DynamicWorldDataGenerator const& other)
-    : mWorld(nullptr), mClippingIdGenerator(0), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationRequested(false), mScheduledGenerationInterval(5.0f) {
-  WorldDataGenerator::copyFrom(other);
-  mActiveClipping.worldData = other.mActiveClipping.worldData;
+    : mClippingIdGenerator(0), mWorld(nullptr), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationRequested(false), mScheduledGenerationInterval(5.0f) {
+  copyFrom(other);
 }
 
 DynamicWorldDataGenerator& DynamicWorldDataGenerator::operator=(DynamicWorldDataGenerator const& other) {
-  WorldDataGenerator::copyFrom(other);
-  mActiveClipping.worldData = other.mActiveClipping.worldData;
+  if (this != &other) {
+    copyFrom(other);
+  }
   return *this;
 }
 
 void DynamicWorldDataGenerator::copyFrom(DynamicWorldDataGenerator const& other) {
+  scoped_lock lock(mGenMutex, other.mGenMutex);
   WorldDataGenerator::copyFrom(other);
 
   mWorld = other.mWorld;
@@ -51,6 +52,7 @@ void DynamicWorldDataGenerator::copyFrom(DynamicWorldDataGenerator const& other)
   mNumGenerationsComplete.store(other.mNumGenerationsComplete.load());
   mNumCommits.store(other.mNumCommits.load());
   mLastGenTime.store(other.mLastGenTime.load());
+  mScheduledGenerationInterval.store(other.mScheduledGenerationInterval.load());
 }
 
 WorldDataGenerator* DynamicWorldDataGenerator::copy() {
@@ -376,11 +378,15 @@ void DynamicWorldDataGenerator::generate(World const* world, bool regetPrimitive
 }
 
 void DynamicWorldDataGenerator::generate(bool regetPrimitives) {
-  generate(mWorld, regetPrimitives);
+  if (mWorld) {
+    generate(mWorld, regetPrimitives);
+  }
 }
 
 void DynamicWorldDataGenerator::generateBlocking() {
-  generateWorldData(snapshotGenerationInput(mWorld, true));
+  if (mWorld) {
+    generateWorldData(snapshotGenerationInput(mWorld, true));
+  }
 }
 
 void DynamicWorldDataGenerator::handleEvents(uint32_t events) {

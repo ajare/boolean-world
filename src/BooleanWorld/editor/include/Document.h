@@ -12,6 +12,17 @@
 
 namespace editor {
 
+struct WorldSnapshot {
+  std::string serializedWorld;
+  float accelerationGridSize{-1.0f};
+  bw::core::LayerSelection layerSelection;
+  bool alwaysUpdateWorldVertices{false};
+  bool hasDynamicGenerator{false};
+  bool alwaysUpdateGeneratorVertices{false};
+  bool allowCommitIfVisible{false};
+  float scheduledGenerationInterval{5.0f};
+};
+
 class Document {
   bool mModified;
 
@@ -56,6 +67,10 @@ public:
   bool hasFilepath() const;
 
   void setWorld(bw::core::World const& world);
+
+  WorldSnapshot captureWorldSnapshot() const;
+
+  void restoreWorldSnapshot(WorldSnapshot const& snapshot);
 
   std::shared_ptr<bw::core::World> getWorld();
 

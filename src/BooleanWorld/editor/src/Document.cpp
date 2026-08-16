@@ -103,6 +103,64 @@ void Document::setWorld(bw::core::World const& world) {
   mWorld = make_shared<bw::core::World>(world);
 }
 
+WorldSnapshot Document::captureWorldSnapshot() const {
+  if (!mWorld) {
+    throw EditorException("Cannot snapshot an inactive document.");
+  }
+
+  auto serializer = shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::toString());
+  auto workData = bw::core::SerializationWorkData{};
+  workData.markSerializedUnmodified = false;
+  workData.includeGhostPrimitives = true;
+  mWorld->serialize(serializer, workData);
+  serializer->serialize();
+
+  WorldSnapshot snapshot;
+  snapshot.serializedWorld = serializer->getSerializedString();
+  snapshot.accelerationGridSize = mWorld->getPrimitiveAccelerationGridSize();
+  snapshot.alwaysUpdateWorldVertices = mWorld->getAlwaysUpdateVertices();
+
+  auto generator = mWorld->getWorldDataGenerator();
+  snapshot.layerSelection = generator->getLayerSelection();
+  if (auto dynamicGenerator = dynamic_cast<bw::core::DynamicWorldDataGenerator const*>(generator)) {
+    snapshot.hasDynamicGenerator = true;
+    snapshot.alwaysUpdateGeneratorVertices = dynamicGenerator->getAlwaysUpdateVertices();
+    snapshot.allowCommitIfVisible = dynamicGenerator->getAllowCommitIfVisible();
+    snapshot.scheduledGenerationInterval = dynamicGenerator->getScheduledGenerationInterval();
+  }
+
+  return snapshot;
+}
+
+void Document::restoreWorldSnapshot(WorldSnapshot const& snapshot) {
+  auto serializer = shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::fromString(snapshot.serializedWorld));
+  serializer->deserialize();
+
+  auto world = createWorld(ED_DEFAULT_WORLD_SIZE, ED_DEFAULT_WORLD_ACCEL_GRID_SIZE);
+  world->removePrimitive(uint32_t(ED_GHOST_INDEX));
+
+  auto workData = bw::core::SerializationWorkData{};
+  workData.accelGridSize = snapshot.accelerationGridSize;
+  workData.allowEmptyWorld = true;
+  if (!world->deserialize(serializer, workData)) {
+    throw EditorException("Could not restore the world snapshot.");
+  }
+
+  world->setAlwaysUpdateVertices(snapshot.alwaysUpdateWorldVertices);
+  auto generator = world->getWorldDataGenerator();
+  generator->setLayerSelection(snapshot.layerSelection);
+  if (snapshot.hasDynamicGenerator) {
+    auto dynamicGenerator = dynamic_cast<bw::core::DynamicWorldDataGenerator*>(generator);
+    dynamicGenerator->setAlwaysUpdateVertices(snapshot.alwaysUpdateGeneratorVertices);
+    dynamicGenerator->setAllowCommitIfVisible(snapshot.allowCommitIfVisible);
+    dynamicGenerator->setScheduledGenerationInterval(snapshot.scheduledGenerationInterval);
+  }
+
+  mWorld = move(world);
+}
+
 shared_ptr<bw::core::World> Document::getWorld() {
   return mWorld;
 }

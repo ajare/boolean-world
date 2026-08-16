@@ -1,10 +1,13 @@
 #include <iostream>
+#include <memory>
 #include <set>
 #include <stdexcept>
 #include <string>
 
 #include <spdlog/spdlog.h>
 
+#include <core/DynamicWorldDataGenerator.h>
+#include <core/RectanglePolygon.h>
 #include <core/World.h>
 #include <core/WorldDataGenerator.h>
 
@@ -51,13 +54,14 @@ void require(bool condition, std::string const& message) {
 
 void undoAndRedoPreserveEachIntermediateSnapshot() {
   editor::Document document;
-  bw::core::World world(100.0f, 10.0f);
-  world.setName("one");
-  document.setWorld(world);
+  document.newDoc();
+  document.getWorld()->setName("one");
   document.setSelectedPrimitiveIndices({1});
 
   editor::transactUndoableAction(&document, "two", [](editor::Document* doc) {
     doc->getWorld()->setName("two");
+    doc->getWorld()->getPrimitive(0)->setOperation(
+        bw::core::Primitive::Operation::Difference);
     doc->setSelectedPrimitiveIndices({2});
     doc->setModified();
     return false;
@@ -84,10 +88,14 @@ void undoAndRedoPreserveEachIntermediateSnapshot() {
   editor::undo(&document, 100);
   require(document.getWorld()->getName() == "one" && document.getSelectedPrimitiveIndices() == std::set<uint32_t>({1}) && !document.isModified(),
           "undo beyond the available history did not stop at the initial snapshot");
+  require(document.getWorld()->getPrimitive(0)->getOperation() == bw::core::Primitive::Operation::Union,
+          "undo did not restore the editor ghost from the runtime-free snapshot");
 
   editor::redo(&document, 100);
   require(document.getWorld()->getName() == "four" && document.getSelectedPrimitiveIndices() == std::set<uint32_t>({4}),
           "redo beyond the available history did not stop at the final snapshot");
+  require(document.getWorld()->getPrimitive(0)->getOperation() == bw::core::Primitive::Operation::Difference,
+          "redo did not restore the editor ghost from the runtime-free snapshot");
 }
 
 void abandonedAndCommittedActionsClearTransactionValues() {
@@ -120,6 +128,63 @@ void abandonedAndCommittedActionsClearTransactionValues() {
           "committed vector transaction retained its initial value");
 }
 
+void runtimeFreeSnapshotPreservesEditorGenerationConfiguration() {
+  editor::Document document;
+  document.newDoc();
+  auto world = document.getWorld();
+  world->setName("snapshot");
+  world->setAlwaysUpdateVertices(true);
+  auto generator = static_cast<bw::core::DynamicWorldDataGenerator*>(
+      world->getWorldDataGenerator());
+  generator->setAlwaysUpdateVertices(false);
+  generator->setAllowCommitIfVisible(false);
+  generator->setActiveLayer(9);
+  generator->setScheduledGenerationInterval(3.5f);
+
+  auto snapshot = document.captureWorldSnapshot();
+  require(world->isModified(),
+          "capturing an undo snapshot cleared the live world's modification state");
+  document.restoreWorldSnapshot(snapshot);
+
+  auto restoredWorld = document.getWorld();
+  auto restoredGenerator = static_cast<bw::core::DynamicWorldDataGenerator*>(
+      restoredWorld->getWorldDataGenerator());
+  require(restoredWorld->getName() == "snapshot" &&
+              restoredWorld->getAlwaysUpdateVertices(),
+          "runtime-free snapshot lost world authoring state");
+  require(!restoredGenerator->getAlwaysUpdateVertices() &&
+              !restoredGenerator->getAllowCommitIfVisible() &&
+              restoredGenerator->getLayerSelection() == bw::core::SelectLayer(9) &&
+              restoredGenerator->getScheduledGenerationInterval() == 3.5f,
+          "runtime-free snapshot lost editor generation configuration");
+}
+
+void copiedDynamicGeneratorRetainsItsWorldAndSettings() {
+  bw::core::World world(100.0f, 10.0f);
+  world.addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f));
+
+  bw::core::DynamicWorldDataGenerator generator(&world);
+  generator.setAlwaysUpdateVertices(true);
+  generator.setAllowCommitIfVisible(true);
+  generator.setActiveLayer(7);
+  generator.setScheduledGenerationInterval(2.5f);
+
+  auto copyBase = std::unique_ptr<bw::core::WorldDataGenerator>(generator.copy());
+  auto copy = static_cast<bw::core::DynamicWorldDataGenerator*>(copyBase.get());
+  require(copy->getAlwaysUpdateVertices() && copy->getAllowCommitIfVisible(),
+          "dynamic generator copy lost its generation settings");
+  require(copy->getLayerSelection() == generator.getLayerSelection() &&
+              copy->getScheduledGenerationInterval() == 2.5f,
+          "dynamic generator copy lost its layer or schedule settings");
+
+  copy->generateBlocking();
+  require(copy->getNumGenerationsComplete() == 1,
+          "dynamic generator copy could not generate from its retained world");
+}
+
 void historyDoesNotCopyUndoOrRedoWorldSnapshots() {
   CopyCountingWorldDataGenerator::copyCount = 0;
   editor::Document document;
@@ -129,7 +194,12 @@ void historyDoesNotCopyUndoOrRedoWorldSnapshots() {
       [](wp::Vector2, int, int, float) {
         return new CopyCountingWorldDataGenerator;
       });
+  world.addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f));
   document.setWorld(world);
+  CopyCountingWorldDataGenerator::copyCount = 0;
 
   editor::transactUndoableAction(&document, "first", [](editor::Document*) {
     return false;
@@ -139,6 +209,8 @@ void historyDoesNotCopyUndoOrRedoWorldSnapshots() {
   });
   editor::undo(&document);
 
+  require(CopyCountingWorldDataGenerator::copyCount == 0,
+          "recording or restoring undo history copied a live world data generator");
   auto const copiesBeforeHistory = CopyCountingWorldDataGenerator::copyCount;
   auto const history = editor::getActionHistory();
 
@@ -157,6 +229,8 @@ int main() {
   try {
     undoAndRedoPreserveEachIntermediateSnapshot();
     abandonedAndCommittedActionsClearTransactionValues();
+    runtimeFreeSnapshotPreservesEditorGenerationConfiguration();
+    copiedDynamicGeneratorRetainsItsWorldAndSettings();
     historyDoesNotCopyUndoOrRedoWorldSnapshots();
     std::cout << "Undo history regressions passed\n";
     return 0;

@@ -17,12 +17,24 @@ YamlSerializer* YamlSerializer::toFile(std::string const& filepath) {
   return new YamlSerializer(true, filepath, true);
 }
 
+YamlSerializer* YamlSerializer::toString() {
+  return new YamlSerializer(true, "", false);
+}
+
 YamlSerializer* YamlSerializer::fromFile(std::string const& filepath) {
   return new YamlSerializer(false, filepath, true);
 }
 
 YamlSerializer* YamlSerializer::fromString(std::string const& text) {
   return new YamlSerializer(false, text, false);
+}
+
+string YamlSerializer::getSerializedString() const {
+  if (!mSerializing) {
+    throw SerializationException("YamlSerializer not set to serialize!");
+  }
+
+  return mEmitter.c_str();
 }
 
 string YamlSerializer::getPath(string const& leaf) const {
@@ -201,8 +213,10 @@ void YamlSerializer::serialize() {
     throw SerializationException("YamlSerializer not set to serialize!");
   }
 
-  ofstream fout(mFilepath);
-  fout << mEmitter.c_str();
+  if (mSourceIsFile) {
+    ofstream fout(mFilepath);
+    fout << mEmitter.c_str();
+  }
 }
 
 void YamlSerializer::deserialize() {

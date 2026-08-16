@@ -79,7 +79,9 @@ void Serializable::serialize(shared_ptr<Serializer> serializer, SerializationWor
   preSerialization(workData);
   serializeImpl(serializer, workData);
   postSerialization(workData);
-  mModified = false;
+  if (workData.markSerializedUnmodified) {
+    mModified = false;
+  }
 }
 
 bool Serializable::deserialize(shared_ptr<Serializer> serializer, SerializationWorkData& workData) {

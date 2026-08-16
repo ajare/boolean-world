@@ -204,7 +204,8 @@ void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
       serializer->beginArray("primitives");
       {
         for (auto const* primitive : mPrimitives) {
-          if ((primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) != 0) {
+          if (!workData.includeGhostPrimitives &&
+              (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) != 0) {
             continue;
           }
 
@@ -352,7 +353,7 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     return false;
   }
 
-  if (primitives.empty()) {
+  if (primitives.empty() && !workData.allowEmptyWorld) {
     addDeserializationError("World file contains no primitives!");
 
     return false;
