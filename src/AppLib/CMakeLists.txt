@@ -1,4 +1,4 @@
-# Replaces AppLib/build/vs2026/AppLib.sln.
+# Replaces src/AppLib/build/vs2026/AppLib.sln.
 
 add_library(AppLib SHARED
     src/AnimationDatabase.cpp

@@ -23,7 +23,7 @@ CLANG_FORMAT = r"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\
 
 LIBRARIES = {
     "Willpower": [os.path.join("src", "Willpower")],
-    "AppLib": ["AppLib"],
+    "AppLib": [os.path.join("src", "AppLib")],
     "Launcher": ["Launcher"],
     "BooleanWorld": [os.path.join("Applications", "BooleanWorld")],
 }
