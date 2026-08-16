@@ -1,7 +1,6 @@
 #include <format>
 
 #include "core/MeshPrimitive.h"
-#include "core/ClipperUtils.h"
 
 namespace bw {
 namespace core {
@@ -64,16 +63,6 @@ MeshPrimitive* MeshPrimitive::fromComplexPolygons(
   p->getAnimationInterpolator(VertexTransformer::Key::OrbitDistance).setDefaultStructure({{0.0f, 0.0f}, {1.0f, 0.0f}}, {{bw::core::Easing::Linear}}, true);
 
   return p;
-}
-
-MeshPrimitive* MeshPrimitive::fromClippedPolygons(
-    Operation operation,
-    FillRule fillType,
-    vector<ClippedPolygon> const& polygons) {
-  return fromComplexPolygons(
-      operation,
-      fillType,
-      ClipperUtils::convertClippedToComplexPolygons(polygons, nullptr));
 }
 
 void MeshPrimitive::copyFrom(MeshPrimitive const& other) {

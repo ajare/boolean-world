@@ -7,7 +7,6 @@ add_library(core STATIC
     src/ArrangementWorldDataGenerator.cpp
     src/CirclePolygon.cpp
     src/CircleSegmentPolygon.cpp
-    src/Clipper.cpp
     src/ClipperUtils.cpp
     src/DefaultWorldDataGenerator.cpp
     src/DynamicWorldDataGenerator.cpp
@@ -37,26 +36,18 @@ add_library(core STATIC
     src/VertexTransformer.cpp
     src/VertexTransformerObject.cpp
     src/World.cpp
-    src/WorldData.cpp
     src/WorldDataGenerator.cpp
     src/WorldTriggerLine.cpp
     src/YamlSerializer.cpp
-    src/ZCallback.cpp
     src/tTransform.cpp)
 
 target_include_directories(core PUBLIC include)
 
-# Deliberately PRIVATE, not PUBLIC.
-#
-# USINGZ selects Clipper2's Point64-with-Z layout, and the original build
-# defined it for core, floored and Launcher but NOT for editor, experiments,
-# profiler or the game DLL - even though they all include core's headers,
-# which reach clipper2. That is a latent ODR inconsistency, but it is what the
-# shipping binaries were built with: propagating USINGZ to editor changes the
-# struct layout it sees and makes editor.exe die with 0xC0000409 on startup.
-#
-# Match the original exactly and set both defines per target instead.
-target_compile_definitions(core PRIVATE YAML_CPP_STATIC_DEFINE USINGZ _CONSOLE)
+# The supplied Clipper2 binary uses Point64's Z-enabled ABI. Z is not used by
+# world geometry, but the layout must be consistent anywhere public path types
+# are instantiated.
+target_compile_definitions(core PUBLIC USINGZ)
+target_compile_definitions(core PRIVATE YAML_CPP_STATIC_DEFINE _CONSOLE)
 
 target_link_libraries(core PUBLIC
     bw-common Willpower.Common

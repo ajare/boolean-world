@@ -112,14 +112,6 @@ void Primitive::notifyWorldChanged() const {
 
 void Primitive::setId(uint32_t id) {
   VertexTransformerObject::setId(id);
-
-  for (auto& complexPolygon : mPolygons) {
-    for (auto& polygon : complexPolygon) {
-      for (auto& vertex : polygon) {
-        vertex.z = BW_VERTEX_Z_PACK_PRIMITIVE_INDEX(vertex.z, id);
-      }
-    }
-  }
 }
 
 string Primitive::getName() const {
@@ -176,15 +168,6 @@ frame_number_type Primitive::getFrameNumber() const {
 
 void Primitive::setOperation(Operation operation) {
   mOperation = operation;
-
-  for (auto& complexPolygon : mPolygons) {
-    for (auto& polygon : complexPolygon) {
-      for (auto& vertex : polygon) {
-        vertex.z = BW_VERTEX_Z_PACK_PRIMITIVE_OP(vertex.z, (int)operation);
-      }
-    }
-  }
-
   notifyWorldChanged();
 }
 
@@ -245,41 +228,6 @@ uint32_t Primitive::getNumVertices() const {
   return numVertices;
 }
 
-uint32_t Primitive::setVertexIdsAndWorldData(uint32_t id, vector<WorldVertexData>& vertexWorldData) {
-  for (auto& complexPolygon : mPolygons) {
-    for (auto& polygon : complexPolygon) {
-      auto nv = (uint32_t)polygon.size();
-
-      for (uint32_t i = 0; i < nv; ++i) {
-        auto& vertex = polygon[i];
-
-        // Set world data
-        if (vertexWorldData.size() < (id + 1)) {
-          vertexWorldData.resize(id + 1);
-        }
-
-        auto& data = vertexWorldData[id];
-
-        vertex.z = BW_VERTEX_Z_SET_INTERPOLATED(vertex.z, 0);
-        vertex.z = BW_VERTEX_Z_SET_PREV_PROP(vertex.z, 1);
-        vertex.z = BW_VERTEX_Z_SET_NEXT_PROP(vertex.z, 1);
-
-        data.properties[0] = mProperties;
-        data.properties[1] = mProperties;
-        data.primitiveIndex = getId();
-
-        // Set vertex indices
-        vertex.z = BW_VERTEX_Z_PACK_VERTEX_INDEX(vertex.z, id);
-        vertex.z = BW_VERTEX_Z_PACK_PRIM_VERT_INDEX(vertex.z, i);
-
-        id++;
-      }
-    }
-  }
-
-  return id;
-}
-
 void Primitive::setVertices(vector<ComplexPolygon> const& polygons) {
   for (auto const& polygon : polygons) {
     for (auto const& path : polygon) {
@@ -331,7 +279,6 @@ void Primitive::serializeImpl(shared_ptr<Serializer> serializer, SerializationWo
                     serializer->beginMap("vertex");
                     {
                       serializer->writeVector2("p", vertex.p);
-                      serializer->writeInt64("z", vertex.z);
 
                       serializer->endMap();  // vertex
                     }
@@ -411,9 +358,9 @@ bool Primitive::deserializeImpl(shared_ptr<Serializer> serializer, Serialization
                       serializer->beginMap("vertex");
                       {
                         wp::Vector2 p = serializer->readVector2("p");
-                        int64_t z = serializer->readInt64("z");
+                        serializer->readInt64("z", true, 0);
 
-                        polygon.push_back({p, z});
+                        polygon.push_back({p});
 
                         serializer->endMap();  // vertex
                       }
@@ -492,7 +439,6 @@ vector<ComplexPolygon> Primitive::generateTransformedVertices(wp::Vector2* minEx
         bool vChanged{false};
 
         vertices[i].p = transformVertex(polygon[i].p * mSize, &vChanged);
-        vertices[i].z = polygon[i].z;
         verticesChanged = verticesChanged || vChanged;
 
         if (minExtent) {

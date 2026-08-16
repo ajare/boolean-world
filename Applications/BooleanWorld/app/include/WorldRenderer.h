@@ -10,7 +10,6 @@
 
 #include <willpower/application/resourcesystem/ResourceManager.h>
 
-#include <core/ArrangementWorldDataGenerator.h>
 #include <core/World.h>
 
 #include "WorldTriangle3dDataProvider.h"
@@ -29,8 +28,6 @@ private:
   bool mWorldHasChanged;
 
   wp::Logger* mwLogger;
-
-  bw::core::ArrangementWorldDataGenerator mArrangementGenerator;
 
 private:
   void updateDataProviders(expr::ArrangementResult const& worldData);

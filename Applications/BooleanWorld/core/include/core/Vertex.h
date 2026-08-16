@@ -13,7 +13,11 @@ namespace core {
 
 struct Vertex {
   wp::Vector2 p;
-  int64_t z{0};
+
+  Vertex() = default;
+  Vertex(wp::Vector2 const& position, int64_t = 0)
+      : p(position) {
+  }
 };
 
 typedef std::vector<Vertex> ClosedPolygon;

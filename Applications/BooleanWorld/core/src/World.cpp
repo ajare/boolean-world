@@ -10,8 +10,6 @@
 #include <willpower/common/MathsUtils.h>
 
 #include "core/World.h"
-#include "core/Clipper.h"
-#include "core/ClipperUtils.h"
 #include "core/CoreException.h"
 #include "core/Defines.h"
 #include "core/PathPolygon.h"
@@ -39,7 +37,7 @@ World::World()
 }
 
 World::World(float size, float gridSize, WorldDataGeneratorFactory generatorFactory)
-    : mExtents(-size / 2, -size / 2, size, size), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(nullptr), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mPrevPlayerPosition{999999.0f, 999999.0f}, mPrefabAreaTilingType(PrefabAreaTilingType::None), mPrefabAreaTileTypes(0), mLastPrimitiveUpdateFrameNumber(0), mCachedVertexDataFrameNumber(-1) {
+    : mExtents(-size / 2, -size / 2, size, size), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(nullptr), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mPrevPlayerPosition{999999.0f, 999999.0f}, mPrefabAreaTilingType(PrefabAreaTilingType::None), mPrefabAreaTileTypes(0), mLastPrimitiveUpdateFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&World::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   if (gridSize > 0.0f) {
@@ -94,8 +92,6 @@ void World::copyFrom(World const& other) {
   mPrefabAreaTilingType = other.mPrefabAreaTilingType;
   mPrefabAreaTileTypes = other.mPrefabAreaTileTypes;
   mLastPrimitiveUpdateFrameNumber = other.mLastPrimitiveUpdateFrameNumber;
-  mCachedVertexDataFrameNumber = other.mCachedVertexDataFrameNumber;
-  mCachedBorderVertexData = other.mCachedBorderVertexData;
 
   // Add Acceleration grids
   if (other.mPrimitiveLookupGrid) {
@@ -182,7 +178,7 @@ bool World::childrenModified() const {
 }
 
 void World::preSerialization(SerializationWorkData& workData) const {
-  validateVertexCount();
+  BW_UNUSED(workData);
 }
 
 void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) const {
@@ -401,23 +397,14 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   // Fix up Primitive indices.  Because we might be dealing with
   // ghost Primitives, a World might have been saved which does not
   // have sequential indices.  We need to make sure this is enforecd, though.
-  // We invalidate the primitive so that it recalculates its vertices after the
-  // IDs have been assigned (see cacheWorldVertexData() call below).
+  // Invalidate each primitive so it recalculates its transformed vertices.
   for (auto primitive : primitives) {
     addPrimitive(primitive);
     primitive->_invalidate();
   }
 
-  // These values need to be set as follows, so that immediately after loading,
-  // the cached vertex data frame number is behind the last primitive frame number,
-  // forcing an update.
   mFrameNumber = 0;
   mLastPrimitiveUpdateFrameNumber = 0;
-  mCachedVertexDataFrameNumber = -1;
-  mCachedBorderVertexData.clear();
-
-  // Cache vertex data, as this needs to be created before we transform vertices
-  _cacheWorldVertexData();
 
   // Calculate vertices/bounds to initialise
   for (auto primitive : mPrimitives) {
@@ -491,7 +478,6 @@ void World::clear() {
   mDescription = "";
   mFrameNumber = 0;
   mLastPrimitiveUpdateFrameNumber = 0;
-  mCachedVertexDataFrameNumber = -1;
 
   delete mDataGenerator;
   mDataGenerator = nullptr;
@@ -599,21 +585,6 @@ bool World::getGridSettings(int* dimX, int* dimY, float* cellSize) {
   return true;
 }
 
-void World::_cacheWorldVertexData() const {
-  if (mCachedVertexDataFrameNumber != mLastPrimitiveUpdateFrameNumber) {
-    mCachedBorderVertexData.clear();
-
-    // Set ids
-    uint32_t id{0};
-
-    for (auto primitive : mPrimitives) {
-      id = primitive->setVertexIdsAndWorldData(id, mCachedBorderVertexData);
-    }
-
-    mCachedVertexDataFrameNumber = mLastPrimitiveUpdateFrameNumber;
-  }
-}
-
 void World::_cachePrimitiveStaticness(bool cache) {
   for (auto prim : mPrimitives) {
     prim->cacheStaticness(cache);
@@ -622,16 +593,6 @@ void World::_cachePrimitiveStaticness(bool cache) {
 
 void World::updatePrimitiveCellMetadata(PrimitiveCellMetadata* metadata) {
   metadata->lastUpdatedFrameNumber = max(metadata->lastUpdatedFrameNumber, mFrameNumber);
-}
-
-vector<WorldVertexData> const& World::getBorderVertexData(frame_number_type* frameNumber) const {
-  _cacheWorldVertexData();
-
-  if (frameNumber) {
-    *frameNumber = mCachedVertexDataFrameNumber;
-  }
-
-  return mCachedBorderVertexData;
 }
 
 uint32_t World::addTriggerLine(WorldTriggerLine* triggerLine) {
@@ -1225,38 +1186,6 @@ vector<Primitive*> World::sortPrimitiveIndicesByPriority(vector<uint32_t> const&
   sort(primitives.begin(), primitives.end(), SortPrimitivesByPriority());
 
   return primitives;
-}
-
-WorldDataClipResults World::calculatePolygons(vector<Primitive*> const& primitives, uint32_t flags) const {
-  if (primitives.empty()) {
-    return {};
-  }
-
-  frame_number_type worldDataFrameNumber;
-
-  Clipper clipper(getBorderVertexData(&worldDataFrameNumber), {}, this, flags);
-
-  auto clipper2Polygons = clipper.clipToClipper2Polygons(primitives);
-
-  return {
-      clipper2Polygons,
-      {},
-      clipper.getClippedWorldVertexData(),
-      clipper.getArrangementGraph(),
-      worldDataFrameNumber,
-      clipper.getStats()};
-}
-
-void World::validateVertexCount() const {
-  // Check we don't have too many vertices
-  uint32_t numVertices{0};
-  for (auto primitive : mPrimitives) {
-    numVertices += primitive->getNumVertices();
-
-    if (numVertices > (BW_VERTEX_COUNT_USEABLE_MAX - 1)) {
-      throw CoreException("The World contains too many primitives");
-    }
-  }
 }
 
 void World::addPrimitiveToLookupGrid(Primitive* primitive) {

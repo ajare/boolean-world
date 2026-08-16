@@ -96,7 +96,7 @@ void ensureClipperAllocatorsInitialized() {
   }
 }
 
-TEST(ArrangementWorldDataGenerator, NewPathIsSelectableWithoutChangingLegacyDefault) {
+TEST(ArrangementWorldDataGenerator, PublishedWorldUsesArrangementContract) {
   ensureClipperAllocatorsInitialized();
   auto world = createWorld(8192, 512);
 
@@ -109,12 +109,12 @@ TEST(ArrangementWorldDataGenerator, NewPathIsSelectableWithoutChangingLegacyDefa
   world->addPrimitive(room);
   world->update(0, {{0, 0}, 0, 1, 60, 256, false, false, 0}, {100, 100});
 
-  auto legacy = world->getWorldData({0, 0}, 0);
+  auto published = world->getWorldData({0, 0}, 0);
   bw::core::ArrangementWorldDataGenerator arrangementGenerator;
   arrangementGenerator.generate(world.get());
   auto arrangement = arrangementGenerator.getWorldData();
 
-  EXPECT_FALSE(legacy->getBorderPolygons().empty());
+  EXPECT_FALSE(published->getTriangles().empty());
   ASSERT_NE(arrangement, nullptr);
   EXPECT_TRUE(std::any_of(
       arrangement->faces.begin(), arrangement->faces.end(),
@@ -153,7 +153,7 @@ TEST(GeometryComparison, SamplesAllStrategiesAndReportsEquivalentWorld) {
       8u);
   EXPECT_EQ(
       report.sampleCounts[size_t(bw::experiments::SampleKind::NearEdge)],
-      16u);
+      8u);
   EXPECT_DOUBLE_EQ(report.oldSolidArea, 400.0);
   EXPECT_DOUBLE_EQ(report.newSolidArea, 400.0);
   EXPECT_TRUE(report.matches());
@@ -227,6 +227,26 @@ TEST(GeometryComparison, RepositoryWorldsMatchExceptKnownBadRepros) {
   }
 }
 
+TEST(Generation, SynchronousGeneratorPublishesArrangementData) {
+  ensureClipperAllocatorsInitialized();
+  bw::core::World world(8192, 512);
+  auto room = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  room->setSize(20, 20);
+  world.addPrimitive(room);
+
+  auto snapshot = world.getWorldData({0, 0}, 0);
+
+  ASSERT_NE(snapshot, nullptr);
+  EXPECT_FALSE(snapshot->getTriangles().empty());
+  EXPECT_TRUE(std::any_of(
+      snapshot->getArrangement().faces.begin(),
+      snapshot->getArrangement().faces.end(),
+      [](expr::ArrangementFace const& face) { return face.solid; }));
+}
+
 TEST(Generation, PublishedSnapshotRemainsCoherentAfterNextGeneration) {
   ensureClipperAllocatorsInitialized();
   auto world = createWorld(8192, 512);
@@ -241,8 +261,8 @@ TEST(Generation, PublishedSnapshotRemainsCoherentAfterNextGeneration) {
   world->update(0, {{0, 0}, 0, 1, 60, 256, false, false, 0}, {100, 100});
 
   auto firstGeneration = world->getWorldData({0, 0}, 0);
-  ASSERT_FALSE(firstGeneration->getBorderPolygons().empty());
-  auto firstPosition = firstGeneration->getBorderPolygons()[0].bounds.getPosition();
+  ASSERT_FALSE(firstGeneration->getTriangles().empty());
+  auto firstVertex = firstGeneration->getArrangement().vertices.front();
 
   auto distantIntersection = new bw::core::RectanglePolygon(
       bw::core::Primitive::Operation::Intersection,
@@ -258,9 +278,9 @@ TEST(Generation, PublishedSnapshotRemainsCoherentAfterNextGeneration) {
   auto secondGeneration = world->getWorldData({0, 0}, 0);
 
   ASSERT_NE(firstGeneration.get(), secondGeneration.get());
-  EXPECT_TRUE(secondGeneration->getBorderPolygons().empty());
-  EXPECT_FALSE(firstGeneration->getBorderPolygons().empty());
-  EXPECT_EQ(firstGeneration->getBorderPolygons()[0].bounds.getPosition(), firstPosition);
+  EXPECT_TRUE(secondGeneration->getTriangles().empty());
+  EXPECT_FALSE(firstGeneration->getTriangles().empty());
+  EXPECT_EQ(firstGeneration->getArrangement().vertices.front(), firstVertex);
 }
 
 TEST(Generation, GeometryIsIndependentOfViewerPosition) {
@@ -295,8 +315,8 @@ TEST(Generation, GeometryIsIndependentOfViewerPosition) {
   auto generatedAtRoom = generateAt({0, 0});
   auto generatedFarAway = generateAt({3000, 0});
 
-  EXPECT_TRUE(generatedAtRoom->getBorderPolygons().empty());
-  EXPECT_TRUE(generatedFarAway->getBorderPolygons().empty());
+  EXPECT_TRUE(generatedAtRoom->getTriangles().empty());
+  EXPECT_TRUE(generatedFarAway->getTriangles().empty());
 }
 
 ////////////////////////////////////////////////////////////////

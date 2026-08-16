@@ -50,7 +50,7 @@ uint32_t getHoveredWorldVertexIndex(editor::Document* doc, Settings const& setti
     return ~0u;
   }
 
-  return (uint32_t)worldData->getNearestWorldVertexIndex(getMouseWorldPosition(), 3);
+  return (uint32_t)worldData->getNearestVertexIndex(getMouseWorldPosition(), 3);
 }
 
 void generateClipping(editor::Document* doc, Settings const& settings, int flag) {

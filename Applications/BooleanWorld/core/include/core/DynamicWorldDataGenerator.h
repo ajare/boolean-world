@@ -12,7 +12,7 @@
 #pragma warning(pop)
 
 #include "core/WorldDataGenerator.h"
-#include "core/Clipper.h"
+#include "core/Stats.h"
 #include "core/ThreadSafeQueue.h"
 
 namespace bw {

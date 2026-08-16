@@ -47,61 +47,10 @@ typedef int64_t frame_number_type;
 #define BW_PRIMITIVE_NO_TIME_UPDATE_IF_VISIBLE 0x0008     // Don't update Primitive time if visible to player
 #define BW_PRIMITIVE_EXACT_BOUNDS_FLAG 0x0010             // Calculate exact bounds using vertices
 
-/* Z-packing macros.
-
-Bitfield layout:
-
-Bit       Use
----------------------------
-64        <end-of-bitfield>
-49        <free>
-48        Next properties set
-47        Prev properties set
-46        Is interpolated
-44        Primitive operation
-24        Global vertex index
-14        Primitive vertex index
- 0        Primitive index
- ---------------------------
-
-*/
-
-#define BW_BITS_CL(v, count, offset) (v & ~(((1LL << count) - 1LL) << offset))             // clear bits [offset, offset+count)
-#define BW_BITS_OR(v, value, offset) (v | (value << offset))                               // union bits starting at offset with value
-#define BW_BITS_TR(v, bits) (v & ((1LL << bits) - 1LL))                                    // trim/clip a value to bits number of bits
-#define BW_BITS_OF(v, offset) (v << offset)                                                // offset a value
-#define BW_BITS_GT(v, count, offset) ((v >> offset) & ((1LL << count) - 1LL))              // get bits [offset, offset+count)
-#define BW_BIT_ST(v, value, offset) ((v & ~(1LL << offset)) | ((int64_t)value << offset))  // set an individual bit at (offset)
-#define BW_BIT_GT(v, offset) ((v >> offset) & 1LL)                                         // get an individual bit at (offset)
-
-#define BW_VERTEX_Z_PACK_PRIMITIVE_INDEX(v, i) BW_BITS_OR(BW_BITS_CL(v, 14, 0), BW_BITS_TR(i, 14), 0)
-#define BW_VERTEX_Z_UNPACK_PRIMITIVE_INDEX(v) BW_BITS_GT(v, 14, 0)
-
-#define BW_VERTEX_Z_PACK_PRIM_VERT_INDEX(v, i) BW_BITS_OR(BW_BITS_CL(v, 10, 14), BW_BITS_TR(i, 10), 14)
-#define BW_VERTEX_Z_UNPACK_PRIM_VERT_INDEX(v) BW_BITS_GT(v, 10, 14)
-
-#define BW_VERTEX_Z_PACK_VERTEX_INDEX(v, i) BW_BITS_OR(BW_BITS_CL(v, 20, 24), BW_BITS_TR(i, 20), 24)
-#define BW_VERTEX_Z_UNPACK_VERTEX_INDEX(v) BW_BITS_GT(v, 20, 24)
-
-#define BW_VERTEX_Z_PACK_PRIMITIVE_OP(v, i) BW_BITS_OR(BW_BITS_CL(v, 2, 44), BW_BITS_TR(i, 2), 44)
-#define BW_VERTEX_Z_UNPACK_PRIMITIVE_OP(v) BW_BITS_GT(v, 2, 44)
-
-#define BW_VERTEX_Z_SET_INTERPOLATED(v, i) BW_BIT_ST(v, i, 46)
-#define BW_VERTEX_Z_IS_INTERPOLATED(v) BW_BIT_GT(v, 46)
-
-#define BW_VERTEX_Z_SET_PREV_PROP(v, i) BW_BIT_ST(v, i, 47)
-#define BW_VERTEX_Z_GET_PREV_PROP(v) BW_BIT_GT(v, 47)
-
-#define BW_VERTEX_Z_SET_NEXT_PROP(v, i) BW_BIT_ST(v, i, 48)
-#define BW_VERTEX_Z_GET_NEXT_PROP(v) BW_BIT_GT(v, 48)
-
 // This is the maximum size that an interpolator for distance can take.  In particular this is used for influence zones.
 #define BW_INTERPOLATOR_MAX_DISTANCE 500.0f
 #define BW_INTERPOLATOR_MAX_SCALE 10.0f
 #define BW_INTERPOLATOR_MAX_ANGLE 360.0f
-
-// WorldDataGenerator flags
-#define BW_WDG_ALWAYS_FULL_CLIP 0x0001
 
 // The extra padding that is added on to the Player's view distance when calculating how close a Primitive
 // needs to be (taking its size into consideration), in order for the Primitive to update its Vertex positions.

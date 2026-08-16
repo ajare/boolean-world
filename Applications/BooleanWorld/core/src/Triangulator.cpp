@@ -17,23 +17,6 @@ Triangulation const& Triangulator::getTriangulation() const {
   return mTriangulation;
 }
 
-void Triangulator::processPolygon(ClippedPolygon const& clippedPolygon, vector<TriangulationData>& triangulationData, ClosedPolygon& vertices, TriangulationStats* stats) {
-  if (!clippedPolygon.isHole) {
-    // New polygon: time to calculate the current one
-    if (!triangulationData.empty()) {
-      _triangulate(triangulationData, vertices, stats);
-
-      vertices.clear();
-      triangulationData.clear();
-    }
-  }
-
-  triangulationData.push_back({clippedPolygon.vertices, clippedPolygon.primitiveIndex});
-
-  // Store vertices in contiguous list for later indexing
-  copy(clippedPolygon.vertices.begin(), clippedPolygon.vertices.end(), back_inserter(vertices));
-}
-
 vector<array<float, 2>> Triangulator::convertPolygon(ClosedPolygon const& polygon) {
   using Point = array<float, 2>;
 
@@ -130,21 +113,6 @@ void Triangulator::_triangulate(vector<TriangulationData> const& triangulationDa
   if (stats) {
     stats->trianglesGenerated += (uint32_t)mTriangulation.tris.size();
   }
-}
-
-TriangulationStats Triangulator::execute(vector<ClippedPolygon> const& polygons) {
-  vector<TriangulationData> triangulationData;
-  ClosedPolygon triVertList;
-  TriangulationStats stats;
-
-  for (auto const& polygon : polygons) {
-    processPolygon(polygon, triangulationData, triVertList, &stats);
-  }
-
-  // Triangulate final part
-  _triangulate(triangulationData, triVertList, &stats);
-
-  return stats;
 }
 
 }  // namespace core

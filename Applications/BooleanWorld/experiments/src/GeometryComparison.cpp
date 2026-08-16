@@ -14,16 +14,15 @@ namespace bw::experiments {
 namespace {
 using expr::ArrangementResult;
 
-GeometryPredicate QueryOldEngine(
+GeometryPredicate QueryPublishedSnapshot(
     bw::core::WorldData const& worldData,
     wp::Vector2 const& position) {
-  GeometryPredicate result;
-  result.solid = worldData.pointInPolygon(position) >= 0;
-  if (result.solid) {
-    result.primitiveIndex =
-        worldData.getContainingTrianglePrimitiveIndex(position);
+  auto faceIndex = worldData.getContainingFaceIndex(position);
+  if (faceIndex == ~0u) {
+    return {};
   }
-  return result;
+  auto const& face = worldData.getArrangement().faces[faceIndex];
+  return {face.solid, face.solid ? face.primitiveIndex : ~0u};
 }
 
 GeometryPredicate QueryNewEngine(
@@ -41,22 +40,6 @@ GeometryPredicate QueryNewEngine(
         face.solid ? face.primitiveIndex : ~0u};
   }
   return {};
-}
-
-double OldSolidArea(bw::core::WorldData const& worldData) {
-  double twiceArea = 0;
-  for (auto const& polygon : worldData.getBorderPolygons()) {
-    double polygonTwiceArea = 0;
-    for (size_t i = 0; i < polygon.vertices.size(); ++i) {
-      auto const& a = polygon.vertices[i].p;
-      auto const& b = polygon.vertices[(i + 1) % polygon.vertices.size()].p;
-      polygonTwiceArea += double(a.x) * b.y - double(b.x) * a.y;
-    }
-    twiceArea += polygon.isHole
-                     ? -std::abs(polygonTwiceArea)
-                     : std::abs(polygonTwiceArea);
-  }
-  return twiceArea * 0.5;
 }
 
 double BoundaryTwiceArea(
@@ -173,7 +156,7 @@ GeometryComparisonReport CompareWorldGeometry(
   auto newWorld = arrangementGenerator.getWorldData();
 
   GeometryComparisonReport report;
-  report.oldSolidArea = OldSolidArea(*oldWorld);
+  report.oldSolidArea = NewSolidArea(oldWorld->getArrangement());
   report.newSolidArea = NewSolidArea(*newWorld);
 
   auto sample = [&](wp::Vector2 const& position, SampleKind kind) {
@@ -182,7 +165,7 @@ GeometryComparisonReport CompareWorldGeometry(
     if (OnArrangementBoundary(position, *newWorld)) {
       return;
     }
-    auto oldPredicate = QueryOldEngine(*oldWorld, position);
+    auto oldPredicate = QueryPublishedSnapshot(*oldWorld, position);
     auto newPredicate = QueryNewEngine(*newWorld, position);
     ++report.sampleCounts[std::size_t(kind)];
     if (oldPredicate != newPredicate) {
@@ -232,15 +215,7 @@ GeometryComparisonReport CompareWorldGeometry(
     }
   };
 
-  // Sample both descriptions so a boundary omitted by either engine still
-  // attracts nearby probes.
-  for (auto const& polygon : oldWorld->getBorderPolygons()) {
-    for (size_t i = 0; i < polygon.vertices.size(); ++i) {
-      sampleNearEdge(
-          polygon.vertices[i].p,
-          polygon.vertices[(i + 1) % polygon.vertices.size()].p);
-    }
-  }
+  // Sample both independently-built arrangement descriptions.
   for (auto const& arrangementEdge : newWorld->edges) {
     if (newWorld->faces[arrangementEdge.face[0]].solid ==
         newWorld->faces[arrangementEdge.face[1]].solid) {

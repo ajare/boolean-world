@@ -612,13 +612,11 @@ void renderStatusbar(editor::Document* doc, editor::Settings& settings, bw::core
 
         ImGui::SameLine();
 
-        // Times
-        auto stats = worldData->getStats();
-
-        string processData = format("| {} primitives(s) -> {} vertices & {} polygon(s)",
-                                    stats.clip.primitivesProcessed,
-                                    stats.clip.verticesGenerated,
-                                    stats.clip.polygonsGenerated);
+        auto const& arrangement = worldData->getArrangement();
+        string processData = format(
+            "| {} vertices & {} face(s)",
+            arrangement.vertices.size(),
+            arrangement.faces.size());
 
         ImGui::TextColored(c, processData.c_str());
 
@@ -3026,7 +3024,6 @@ void renderCombinedPanel(
     editor::Document* doc,
     editor::Settings& settings,
     bw::core::WorldData const* worldData,
-    bw::core::ArrangementWorldData const* arrangementData,
     double globalTime) {
   if (!doc->isActive()) {
     return;
@@ -3070,7 +3067,7 @@ void renderCombinedPanel(
     }
 
     if (ImGui::CollapsingHeader("Region under cursor", nullptr, windowFlags)) {
-      renderArrangementFaceView(doc, settings, arrangementData);
+      renderArrangementFaceView(doc, settings, worldData);
     }
 
     if (!getActionHistory().empty()) {
@@ -3348,7 +3345,6 @@ void renderDebug(
     editor::Document* doc,
     editor::Settings& settings,
     bw::core::WorldData const* worldData,
-    bw::core::ArrangementWorldData const* arrangementData,
     double globalTime) {
   auto windowFlags = 0;
 
@@ -3412,12 +3408,12 @@ void renderDebug(
       }
     }
 
-    if (doc->isActive() && arrangementData) {
+    if (doc->isActive() && worldData) {
       if (ImGui::CollapsingHeader("Arrangement face", nullptr, windowFlags)) {
         ImGui::Text(
             "Total vertices: %u",
-            uint32_t(arrangementData->getArrangement().vertices.size()));
-        renderArrangementFaceView(doc, settings, arrangementData);
+            uint32_t(worldData->getArrangement().vertices.size()));
+        renderArrangementFaceView(doc, settings, worldData);
       }
     }
   }
@@ -3492,7 +3488,6 @@ void renderWidgets(
     editor::Document* doc,
     editor::Settings& settings,
     bw::core::WorldData const* worldData,
-    bw::core::ArrangementWorldData const* arrangementData,
     double globalTime) {
   handleShortcuts(doc, settings);
   handleMouseInteraction(doc, settings);
@@ -3502,8 +3497,7 @@ void renderWidgets(
 
   if (doc->isActive()) {
     if (!settings.expertMode) {
-      renderCombinedPanel(
-          doc, settings, worldData, arrangementData, globalTime);
+      renderCombinedPanel(doc, settings, worldData, globalTime);
 
       if (settings.showContextSensitiveHelpPanel) {
         renderContextSensitiveHelp(doc, settings);
@@ -3526,14 +3520,13 @@ void renderWidgets(
 
     // Views which use world data need to be done after it's been created
     if (settings.showDebugPanel) {
-      renderDebug(
-          doc, settings, worldData, arrangementData, globalTime);
+      renderDebug(doc, settings, worldData, globalTime);
     }
 
     renderStatusbar(doc, settings, worldData);
 
     // Render background
-    renderWorld(doc, settings, arrangementData, globalTime);
+    renderWorld(doc, settings, worldData, globalTime);
 
     if (settings.renderMiniMap) {
       renderMiniMap(doc, settings, worldData, globalTime);

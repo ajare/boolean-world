@@ -8,7 +8,6 @@
 
 #include "core/Platform.h"
 #include "core/Vertex.h"
-#include "core/Clipper.h"
 #include "core/Triangulation.h"
 #include "core/Stats.h"
 
@@ -35,16 +34,12 @@ class BW_API Triangulator {
 private:
   static std::vector<std::array<float, 2>> convertPolygon(ClosedPolygon const& polygon);
 
-  void processPolygon(ClippedPolygon const& clippedPolygon, std::vector<TriangulationData>& triangulationData, VertexList& vertices, TriangulationStats* stats);
-
 public:
   explicit Triangulator(World const* world, bool globalBounds, bool perTriangleBounds, bool removeDuplicates, wp::AccelerationGrid* grid = nullptr);
 
   Triangulation const& getTriangulation() const;
 
   void _triangulate(std::vector<TriangulationData> const& triangulationData, ClosedPolygon const& vertices, TriangulationStats* stats);
-
-  TriangulationStats execute(std::vector<ClippedPolygon> const& polygons);
 };
 
 }  // namespace core

@@ -186,15 +186,15 @@ void StatePlayBooleanWorld::getWorldInput(wp::Vector2* curPosition, wp::Vector2*
 
 void StatePlayBooleanWorld::createWorldCollisions() {
   mWorldCollisionSim->clearLines();
-  if (!playerInWorld() || !mArrangementWorldData) {
+  if (!playerInWorld() || !mWorldData) {
     return;
   }
 
-  auto const& arrangement = mArrangementWorldData->getArrangement();
-  auto const& walls = mArrangementWorldData->getWalls();
+  auto const& arrangement = mWorldData->getArrangement();
+  auto const& walls = mWorldData->getWalls();
   auto radius = BW_PLAYER_SPEED + BW_PLAYER_RADIUS;
   for (auto wallIndex :
-       mArrangementWorldData->getWallsNear(getPlayerPosition(), radius)) {
+       mWorldData->getWallsNear(getPlayerPosition(), radius)) {
     auto const& edge = arrangement.edges[walls[wallIndex].edge];
     auto const& fixed0 = arrangement.vertices[edge.v[0]];
     auto const& fixed1 = arrangement.vertices[edge.v[1]];
@@ -251,7 +251,6 @@ vector<string> StatePlayBooleanWorld::getDebuggingText() const {
   auto mouseWorld = getMouseWorldPosition();
 
   auto const& physicalStats = getPlayerPhysicalStats();
-  auto const& worldStats = mWorldData->getStats();
   auto playerPrimIndex = getPlayerPrimitive();
   auto floorHeight = getPlayerFloorHeight();
   auto ceilingHeight = getPlayerCeilingHeight();
@@ -270,9 +269,7 @@ vector<string> StatePlayBooleanWorld::getDebuggingText() const {
 }
 
 uint32_t StatePlayBooleanWorld::getPrimitiveAtPosition(wp::Vector2 const& pos) const {
-  return mArrangementWorldData
-             ? mArrangementWorldData->getContainingPrimitiveIndex(pos)
-             : ~0u;
+  return mWorldData ? mWorldData->getContainingPrimitiveIndex(pos) : ~0u;
 }
 
 uint32_t StatePlayBooleanWorld::getPlayerPrimitive() const {
@@ -290,15 +287,11 @@ float StatePlayBooleanWorld::getPlayerAngle() const {
 }
 
 float StatePlayBooleanWorld::getFloorHeightAt(wp::Vector2 const& pos) const {
-  return mArrangementWorldData
-             ? mArrangementWorldData->getFloorHeight(pos)
-             : 0.0f;
+  return mWorldData ? mWorldData->getFloorHeight(pos) : 0.0f;
 }
 
 float StatePlayBooleanWorld::getCeilingHeightAt(wp::Vector2 const& pos) const {
-  return mArrangementWorldData
-             ? mArrangementWorldData->getCeilingHeight(pos)
-             : 0.0f;
+  return mWorldData ? mWorldData->getCeilingHeight(pos) : 0.0f;
 }
 
 float StatePlayBooleanWorld::getPlayerFloorHeight() const {
@@ -317,28 +310,6 @@ bw::core::DynamicWorldDataGenerator* StatePlayBooleanWorld::getWDG() {
   auto world = getMap()->getWorld();
 
   return dynamic_cast<bw::core::DynamicWorldDataGenerator*>(world->getWorldDataGenerator());
-}
-
-void StatePlayBooleanWorld::updateArrangementWorldData() {
-  if (mArrangementSource == mWorldData) {
-    return;
-  }
-  auto world = getMap()->getWorld();
-  auto dynamicGenerator = getWDG();
-  if (dynamicGenerator) {
-    mArrangementGenerator.generate(
-        dynamicGenerator->getActiveClippingPrimitives());
-  } else {
-    mArrangementGenerator.setActiveLayer(
-        world->getWorldDataGenerator()->getActiveLayer());
-    mArrangementGenerator.generate(world);
-  }
-  mArrangementWorldData = make_shared<bw::core::ArrangementWorldData>(
-      mArrangementGenerator.getWorldData(),
-      world->getExtents(),
-      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      world->getStepThreshold());
-  mArrangementSource = mWorldData;
 }
 
 void StatePlayBooleanWorld::addDisplayMessage(DisplayMessage::Level level, string const& message) {
@@ -363,10 +334,9 @@ void StatePlayBooleanWorld::setupEntities() {
   world->update(0, {playerPos, 0, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, false, false, 0}, {0, 0});
 
   mWorldData = world->getWorldData(playerPos, playerAngle);
-  updateArrangementWorldData();
 
-  if (mArrangementWorldData->getContainingFaceIndex(playerPos) == ~0u ||
-      mArrangementWorldData->circleIntersectsWall(playerPos, BW_PLAYER_RADIUS) >= 0) {
+  if (mWorldData->getContainingFaceIndex(playerPos) == ~0u ||
+      mWorldData->circleIntersectsWall(playerPos, BW_PLAYER_RADIUS) >= 0) {
     throw GameException("Player is starting outside the world geometry");
   }
 }
@@ -453,13 +423,11 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
   world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, mCurrentLayer}, {0, 0});
 
   mWorldData = world->getWorldData(playerPosition, playerAngle);
-  updateArrangementWorldData();
 
-  auto playerFace = mArrangementWorldData->getContainingFaceIndex(curPosition);
+  auto playerFace = mWorldData->getContainingFaceIndex(curPosition);
   mPlayerPolygonIndex = playerFace == ~0u ? -1 : int32_t(playerFace);
   mPlayerBorderIntersectIndex =
-      mArrangementWorldData->circleIntersectsWall(
-          curPosition, BW_PLAYER_RADIUS);
+      mWorldData->circleIntersectsWall(curPosition, BW_PLAYER_RADIUS);
 
   if (!playerInWorld() || playerIntersectsWorldBorders()) {
     // TODO
@@ -472,27 +440,6 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
 
 void StatePlayBooleanWorld::updateAudio(float frameTime) {
   BW_UNUSED(frameTime);
-
-  bw::core::Triangulation::Triangle const* tri{nullptr};
-  auto const& physicalStats = getPlayerPhysicalStats();
-
-  if (mWorldData->getContainingTriangle(physicalStats.position, &tri)) {
-    float u, v, w;
-    tri->getBarycentricCoords(physicalStats.position, u, v, w);
-
-    auto i0 = (uint32_t)BW_VERTEX_Z_UNPACK_VERTEX_INDEX(tri->v[0].z);
-    auto i1 = (uint32_t)BW_VERTEX_Z_UNPACK_VERTEX_INDEX(tri->v[1].z);
-    auto i2 = (uint32_t)BW_VERTEX_Z_UNPACK_VERTEX_INDEX(tri->v[2].z);
-
-    auto const& vd0 = mWorldData->getVertexData(i0);
-    auto const& vd1 = mWorldData->getVertexData(i1);
-    auto const& vd2 = mWorldData->getVertexData(i2);
-
-    // Set volume
-    for (int i = 0; i < 1; ++i) {
-      // mwAudioSystem->setEventVolume(event, volume);
-    }
-  }
 }
 
 void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
@@ -673,54 +620,41 @@ ImVec2 StatePlayBooleanWorld::wpVecToImVec2(wp::Vector2 const& v, wp::Vector2 co
       size.y - (v.y - offset.y) * scale.y};
 }
 
-void StatePlayBooleanWorld::ImGui_renderTriangulation(bw::core::Triangulation const& triangulation, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList) {
+void StatePlayBooleanWorld::ImGui_renderArrangement(bw::core::ArrangementWorldData const& worldData, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList) {
   VAR_UNUSED(viewBounds);
-  VAR_UNUSED(viewSize);
-
-  auto numWorldTriangles = (uint32_t)triangulation.tris.size();
-
-  if (numWorldTriangles > 0) {
-    drawList->Flags &= ~ImDrawListFlags_AntiAliasedFill;
-
-    for (uint32_t i = 0; i < numWorldTriangles; ++i) {
-      auto const& tri = triangulation.tris[i];
-
-      drawList->AddTriangleFilled(
-          wpVecToImVec2(tri.v[0].p, viewOffset, viewSize, viewScale),
-          wpVecToImVec2(tri.v[1].p, viewOffset, viewSize, viewScale),
-          wpVecToImVec2(tri.v[2].p, viewOffset, viewSize, viewScale),
-          gImGui_MapBackgroundColour);
-
-      if (mDebugDisplay._renderTriangulationLines) {
-        drawList->AddTriangle(
-            wpVecToImVec2(tri.v[0].p, viewOffset, viewSize, viewScale),
-            wpVecToImVec2(tri.v[1].p, viewOffset, viewSize, viewScale),
-            wpVecToImVec2(tri.v[2].p, viewOffset, viewSize, viewScale),
-            gImGui_TriangulationLineColour);
-      }
+  auto const& arrangement = worldData.getArrangement();
+  auto toWorld = [&](uint32_t index) {
+    auto const& vertex = arrangement.vertices[index];
+    return wp::Vector2{float(vertex.x / BW_CLIPPER_SCALE), float(vertex.y / BW_CLIPPER_SCALE)};
+  };
+  drawList->Flags &= ~ImDrawListFlags_AntiAliasedFill;
+  for (auto const& triangle : worldData.getTriangles()) {
+    auto v0 = toWorld(triangle.v[0]);
+    auto v1 = toWorld(triangle.v[1]);
+    auto v2 = toWorld(triangle.v[2]);
+    drawList->AddTriangleFilled(
+        wpVecToImVec2(v0, viewOffset, viewSize, viewScale),
+        wpVecToImVec2(v1, viewOffset, viewSize, viewScale),
+        wpVecToImVec2(v2, viewOffset, viewSize, viewScale),
+        gImGui_MapBackgroundColour);
+    if (mDebugDisplay._renderTriangulationLines) {
+      drawList->AddTriangle(
+          wpVecToImVec2(v0, viewOffset, viewSize, viewScale),
+          wpVecToImVec2(v1, viewOffset, viewSize, viewScale),
+          wpVecToImVec2(v2, viewOffset, viewSize, viewScale),
+          gImGui_TriangulationLineColour);
     }
   }
-}
-
-void StatePlayBooleanWorld::ImGui_renderBorder(vector<bw::core::ClippedPolygon> const& clippedPolygons, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList) {
-  VAR_UNUSED(viewBounds);
-  VAR_UNUSED(viewSize);
-
-  auto numClippedPolygons = (uint32_t)clippedPolygons.size();
-
-  if (numClippedPolygons > 0) {
-    drawList->Flags |= ImDrawListFlags_AntiAliasedFill;
-
-    for (auto const& clippedPolygon : clippedPolygons) {
-      auto numPolyVertices = (int)clippedPolygon.vertices.size();
-      vector<ImVec2> imPoints(numPolyVertices);
-
-      for (int i = 0; i < numPolyVertices; ++i) {
-        imPoints[i] = wpVecToImVec2(clippedPolygon.vertices[i].p, viewOffset, viewSize, viewScale);
-      }
-
-      drawList->AddPolyline(imPoints.data(), numPolyVertices, gImGui_MapBorderColour, ImDrawFlags_Closed, 2.0f);
+  for (auto const& wall : worldData.getWalls()) {
+    if (wall.kind != expr::ArrangementWallKind::Border) {
+      continue;
     }
+    auto const& edge = arrangement.edges[wall.edge];
+    drawList->AddLine(
+        wpVecToImVec2(toWorld(edge.v[0]), viewOffset, viewSize, viewScale),
+        wpVecToImVec2(toWorld(edge.v[1]), viewOffset, viewSize, viewScale),
+        gImGui_MapBorderColour,
+        2.0f);
   }
 }
 
@@ -828,13 +762,10 @@ void StatePlayBooleanWorld::debug_renderMinimap(wp::Vector2 const& viewSize, wp:
       player.position + wp::Vector2::fromAngle(player.angle - halfFov, wp::Clockwise) * viewDistance,
       player.position + wp::Vector2::fromAngle(player.angle + halfFov, wp::Clockwise) * viewDistance};
 
-  auto const& triangulation = mWorldData->getTriangulation();
-  auto const& clippedPolygons = mWorldData->getArrangementPolygons();
   auto primitives = world->findPrimitives(viewBounds);
   auto cellSize = world->getPrimitiveAccelerationGridSize();
 
-  ImGui_renderTriangulation(triangulation, viewBounds, viewOffset, viewSize, viewScale, drawList);
-  ImGui_renderBorder(clippedPolygons, viewBounds, viewOffset, viewSize, viewScale, drawList);
+  ImGui_renderArrangement(*mWorldData, viewBounds, viewOffset, viewSize, viewScale, drawList);
   ImGui_renderPrimitives(viewVertices, primitives, viewBounds, viewOffset, viewSize, viewScale, drawList);
   ImGui_renderView(viewVertices, viewBounds, viewOffset, viewSize, viewScale, drawList);
 }
@@ -845,28 +776,14 @@ void StatePlayBooleanWorld::debug_renderCollisionSim(wp::Vector2 const& viewSize
   }
 
   auto const& lines = mWorldCollisionSim->getLines();
-  auto const& graph = mWorldData->getGraph();
-
   for (auto const& line : lines) {
     auto const& v0 = line.getVertex(0);
     auto const& v1 = line.getVertex(1);
-    auto edgeIndex = (uint32_t)line.getUserData();
-
-    // See if it's two-sided
-    auto const& edge = graph.edges[edgeIndex];
-    ImColor lineColour = gImGui_CollisionLineSolidColour;
-    float lineWidth = 2.5f;
-
-    if (edge.is2Sided()) {
-      lineColour = gImGui_CollisionLine2WayColour;
-      lineWidth = 1.0f;
-    }
-
     drawList->AddLine(
         wpVecToImVec2(v0, viewOffset, viewSize, viewScale),
         wpVecToImVec2(v1, viewOffset, viewSize, viewScale),
-        lineColour,
-        lineWidth);
+        gImGui_CollisionLineSolidColour,
+        2.5f);
   }
 
   // Player circle

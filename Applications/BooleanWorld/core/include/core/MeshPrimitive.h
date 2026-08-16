@@ -3,7 +3,6 @@
 #include "core/Platform.h"
 #include "core/Primitive.h"
 #include "core/Vertex.h"
-#include "core/Clipper.h"
 
 namespace bw {
 namespace core {
@@ -33,8 +32,6 @@ public:
       Operation operation,
       FillRule fillType,
       std::vector<ComplexPolygon> polygons);
-
-  static MeshPrimitive* fromClippedPolygons(Operation operation, FillRule fillType, std::vector<ClippedPolygon> const& polygons);
 
   Primitive* copy() const override;
 

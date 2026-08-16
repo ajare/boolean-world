@@ -14,7 +14,6 @@
 #include "core/Platform.h"
 #include "core/Serializable.h"
 #include "core/Primitive.h"
-#include "core/Clipper.h"
 #include "core/WorldData.h"
 #include "core/WorldDataGenerator.h"
 #include "core/Defines.h"
@@ -72,10 +71,6 @@ private:
 
   mutable frame_number_type mLastPrimitiveUpdateFrameNumber;
 
-  mutable frame_number_type mCachedVertexDataFrameNumber;
-
-  mutable std::vector<WorldVertexData> mCachedBorderVertexData;
-
   wp::Vector2 mPrevPlayerPosition;
 
   // Metadata
@@ -89,10 +84,6 @@ private:
   Primitive* instantiatePrimitive(std::string const& type) const;
 
   std::vector<Primitive*> sortPrimitiveIndicesByPriority(std::vector<uint32_t> const& indices) const;
-
-  WorldDataClipResults calculatePolygons(std::vector<Primitive*> const& primitives, uint32_t flags = 0) const;
-
-  void validateVertexCount() const;
 
   void addPrimitiveToLookupGrid(Primitive* primitive);
 
@@ -176,11 +167,7 @@ public:
 
   bool getGridSettings(int* dimX, int* dimY, float* cellSize);
 
-  void _cacheWorldVertexData() const;
-
   void _cachePrimitiveStaticness(bool cache);
-
-  [[nodiscard]] std::vector<WorldVertexData> const& getBorderVertexData(frame_number_type* frameNumber = nullptr) const;
 
   uint32_t addPrimitive(Primitive* primitive);
 

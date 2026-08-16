@@ -4,8 +4,8 @@
 
 #include "core/DynamicWorldDataGenerator.h"
 #include "core/World.h"
-#include "core/Clipper.h"
-#include "core/ClipperUtils.h"
+#include "core/ArrangementWorldDataGenerator.h"
+#include "core/Defines.h"
 
 #define MAX_NUM_PENDING_CLIPPINGS 4
 
@@ -15,16 +15,12 @@ using namespace std;
 
 DynamicWorldDataGenerator::DynamicWorldDataGenerator(World const* world)
     : WorldDataGenerator(), mClippingIdGenerator(0), mWorld(world), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationInterval(5.0f) {
-  mActiveClipping.worldData = WorldDataPtr(new WorldData{
+  ArrangementWorldDataGenerator generator;
+  mActiveClipping.worldData = make_shared<ArrangementWorldData>(
+      generator.getWorldData(),
       world->getExtents(),
-      (float)(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      world->getFrameNumber()});
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
+      world->getStepThreshold());
 }
 
 DynamicWorldDataGenerator::~DynamicWorldDataGenerator() {
@@ -184,24 +180,16 @@ void DynamicWorldDataGenerator::generateWorldData(World const* world) {
   wp::Timer timer;
 
   auto updatedPrimitives = preparePrimitives(prims, &primStats);
-  auto clipResults = clipPrimitives(prims, world, true);
-
-  // Set up data to return
-  auto results = std::shared_ptr<WorldData>(new WorldData{
+  ArrangementWorldDataGenerator generator;
+  generator.generate(prims);
+  auto results = make_shared<ArrangementWorldData>(
+      generator.getWorldData(),
       world->getExtents(),
-      (float)(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      ClipperUtils::convertClipper2PolygonsToClippedPolygons(clipResults.borderPolygons, nullptr),
-      ClipperUtils::convertClipper2PolygonsToClippedPolygons(clipResults.arrangementPolygons, nullptr),
-      clipResults.borderVertexData,
-      clipResults.graph,
-      clipResults.stats,
-      primStats,
-      world->getFrameNumber(),
-  });
-  results->triangulate(world);
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
+      world->getStepThreshold());
 
   mLastGenTime = timer.elapsedNanoseconds();
-  details.stats = results->getStats();
+  details.stats.prim = primStats;
 
   mPendingClippings.push({clippingId,
                           move(results),

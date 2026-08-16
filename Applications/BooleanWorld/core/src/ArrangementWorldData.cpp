@@ -112,6 +112,21 @@ uint32_t ArrangementWorldData::getContainingPrimitiveIndex(
              : mArrangement->faces[faceIndex].primitiveIndex;
 }
 
+int32_t ArrangementWorldData::getNearestVertexIndex(
+    wp::Vector2 const& position,
+    float radius) const {
+  int32_t result = -1;
+  float nearest = radius;
+  for (uint32_t i = 0; i < uint32_t(mArrangement->vertices.size()); ++i) {
+    auto distance = position.distanceTo(ToWorld(mArrangement->vertices[i]));
+    if (distance <= nearest) {
+      nearest = distance;
+      result = int32_t(i);
+    }
+  }
+  return result;
+}
+
 float ArrangementWorldData::getFloorHeight(
     wp::Vector2 const& position) const {
   auto faceIndex = getContainingFaceIndex(position);

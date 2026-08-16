@@ -1,25 +1,24 @@
 #include "core/DefaultWorldDataGenerator.h"
+
+#include <algorithm>
+
+#include "core/Defines.h"
 #include "core/World.h"
-#include "core/Clipper.h"
-#include "core/ClipperUtils.h"
 
-namespace bw {
-namespace core {
-using namespace std;
+namespace bw::core {
+DefaultWorldDataGenerator::DefaultWorldDataGenerator() = default;
+DefaultWorldDataGenerator::~DefaultWorldDataGenerator() = default;
 
-DefaultWorldDataGenerator::DefaultWorldDataGenerator()
-    : WorldDataGenerator() {
-}
-
-DefaultWorldDataGenerator::~DefaultWorldDataGenerator() {
-}
-
-DefaultWorldDataGenerator::DefaultWorldDataGenerator(DefaultWorldDataGenerator const& other) {
+DefaultWorldDataGenerator::DefaultWorldDataGenerator(
+    DefaultWorldDataGenerator const& other) {
   WorldDataGenerator::copyFrom(other);
+  mWorldData = other.mWorldData;
 }
 
-DefaultWorldDataGenerator& DefaultWorldDataGenerator::operator=(DefaultWorldDataGenerator const& other) {
+DefaultWorldDataGenerator& DefaultWorldDataGenerator::operator=(
+    DefaultWorldDataGenerator const& other) {
   WorldDataGenerator::copyFrom(other);
+  mWorldData = other.mWorldData;
   return *this;
 }
 
@@ -29,35 +28,22 @@ WorldDataGenerator* DefaultWorldDataGenerator::copy() {
 
 WorldDataPtr DefaultWorldDataGenerator::getWorldData(World const* world) {
   generate(world, false);
-
   return mWorldData;
 }
 
-void DefaultWorldDataGenerator::generate(World const* world, bool regetPrimitives) {
+void DefaultWorldDataGenerator::generate(
+    World const* world,
+    bool regetPrimitives) {
   BW_UNUSED(regetPrimitives);
-
-  PrimitiveProcessingStats primStats;
-
   auto primitives = getPrimitives(world, getActiveLayer());
-
-  sort(primitives.begin(), primitives.end(), SortPrimitivesByPriority());
-
-  auto clipResults = clipPrimitives(primitives, world, true);
-
-  // Set up data to return
-  auto worldData = std::shared_ptr<WorldData>(new WorldData{
+  std::stable_sort(
+      primitives.begin(), primitives.end(), SortPrimitivesByPriority());
+  ArrangementWorldDataGenerator generator;
+  generator.generate(primitives);
+  mWorldData = std::make_shared<ArrangementWorldData>(
+      generator.getWorldData(),
       world->getExtents(),
-      (float)(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      ClipperUtils::convertClipper2PolygonsToClippedPolygons(clipResults.borderPolygons, nullptr),
-      ClipperUtils::convertClipper2PolygonsToClippedPolygons(clipResults.borderPolygons, nullptr),
-      clipResults.borderVertexData,
-      clipResults.graph,
-      clipResults.stats,
-      primStats,
-      world->getFrameNumber()});
-  worldData->triangulate(world);
-  mWorldData = move(worldData);
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
+      world->getStepThreshold());
 }
-
-}  // namespace core
-}  // namespace bw
+}  // namespace bw::core

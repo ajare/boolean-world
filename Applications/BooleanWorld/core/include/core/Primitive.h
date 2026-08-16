@@ -10,7 +10,6 @@
 #include "core/VertexTransformerObject.h"
 #include "core/Triangulation.h"
 #include "core/Vertex.h"
-#include "core/WorldVertexData.h"
 #include "core/Stats.h"
 #include "core/WorldUpdateData.h"
 #include "core/PrimitivePropertySet.h"
@@ -176,8 +175,6 @@ public:
   virtual std::vector<ComplexPolygon> const& getVertices() const;
 
   wp::BoundingBox const& getBounds() const;
-
-  uint32_t setVertexIdsAndWorldData(uint32_t id, std::vector<WorldVertexData>& vertexWorldData);
 
   wp::BoundingBox calculateBounds() const;
 

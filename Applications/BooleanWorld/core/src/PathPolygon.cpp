@@ -173,7 +173,7 @@ vector<ComplexPolygon> PathPolygon::generateVerticesImpl() {
     auto x = static_cast<float>(point.x) / BW_CLIPPER_SCALE;
     auto y = static_cast<float>(point.y) / BW_CLIPPER_SCALE;
 
-    vertices.push_back({wp::Vector2(x, y), point.z});
+    vertices.push_back({wp::Vector2(x, y)});
   }
 
   return {{vertices}};

@@ -35,7 +35,6 @@ void renderWidgets(
     editor::Document* doc,
     editor::Settings& settings,
     bw::core::WorldData const* worldData,
-    bw::core::ArrangementWorldData const* arrangementData,
     double globalTime);
 
 }  // namespace editor

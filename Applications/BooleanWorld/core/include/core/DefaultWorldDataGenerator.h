@@ -4,7 +4,7 @@
 
 #include "core/Platform.h"
 #include "core/WorldDataGenerator.h"
-#include "core/Clipper.h"
+#include "core/ArrangementWorldDataGenerator.h"
 
 namespace bw {
 namespace core {

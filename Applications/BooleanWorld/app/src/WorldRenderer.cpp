@@ -1,7 +1,6 @@
 #include <common/GameDefines.h>
 
 #include <core/ClipperDefines.h>
-#include <core/DynamicWorldDataGenerator.h>
 
 #include "WorldRenderer.h"
 
@@ -147,20 +146,10 @@ void WorldRenderer::updateDataProviders(expr::ArrangementResult const& worldData
 }
 
 void WorldRenderer::update(bw::core::World* world, bw::core::WorldData const& worldData, float frameTime) {
-  BW_UNUSED(worldData);
+  BW_UNUSED(world);
 
   if (mWorldHasChanged) {
-    auto dynamicGenerator = dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
-        world->getWorldDataGenerator());
-    if (dynamicGenerator) {
-      mArrangementGenerator.generate(
-          dynamicGenerator->getActiveClippingPrimitives());
-    } else {
-      mArrangementGenerator.setActiveLayer(
-          world->getWorldDataGenerator()->getActiveLayer());
-      mArrangementGenerator.generate(world);
-    }
-    updateDataProviders(*mArrangementGenerator.getWorldData());
+    updateDataProviders(worldData.getArrangement());
     mWorldHasChanged = false;
   }
 

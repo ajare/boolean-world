@@ -27,8 +27,6 @@
 #include <inifile-cpp/inicpp.h>
 #include <clipper2/clipper.h>
 
-#include <core/ArrangementWorldData.h>
-#include <core/ArrangementWorldDataGenerator.h>
 #include <core/WorldData.h>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
@@ -729,10 +727,6 @@ void run() {
 
   bool done = false, showDemoWindow = false;
   LONGLONG globalTimeMicros{0};
-  bw::core::ArrangementWorldDataGenerator arrangementGenerator;
-  bw::core::ArrangementWorldDataPtr arrangementData;
-  bw::core::WorldDataPtr arrangementSource;
-  uint8_t arrangementLayer{BW_LAYER_ALL};
   while (!done) {
     // Get elapsed time
     QueryPerformanceCounter(&EndingTime);
@@ -787,19 +781,6 @@ void run() {
 
       worldDataPtr = worldData.get();
 
-      if (arrangementSource != worldData ||
-          arrangementLayer != gEditorSettings.activeLayer) {
-        arrangementGenerator.setActiveLayer(gEditorSettings.activeLayer);
-        arrangementGenerator.generate(doc->getWorld().get());
-        arrangementData = make_shared<bw::core::ArrangementWorldData>(
-            arrangementGenerator.getWorldData(),
-            doc->getWorld()->getExtents(),
-            float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-            doc->getWorld()->getStepThreshold());
-        arrangementSource = worldData;
-        arrangementLayer = gEditorSettings.activeLayer;
-      }
-
       // Set up selections, eg for logic on them
       if (!io.WantCaptureMouse) {
         handleSelections(doc, worldDataPtr, gEditorSettings);
@@ -811,8 +792,7 @@ void run() {
     handleContinuousKeyboardInput(updateTimeMicros);
 
     double globalTime = globalTimeMicros / 1'000'000.0;
-    editor::renderWidgets(
-        doc, gEditorSettings, worldDataPtr, arrangementData.get(), globalTime);
+    editor::renderWidgets(doc, gEditorSettings, worldDataPtr, globalTime);
 
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
       showDemoWindow = !showDemoWindow;

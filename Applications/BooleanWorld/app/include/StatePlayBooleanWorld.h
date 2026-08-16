@@ -17,7 +17,6 @@
 #include <applib/StatePlay.h>
 
 #include <core/ArrangementWorldData.h>
-#include <core/ArrangementWorldDataGenerator.h>
 #include <core/DynamicWorldDataGenerator.h>
 
 #include "imgui/imgui.h"
@@ -51,12 +50,6 @@ private:
   mpp::CameraPtr mCamera3d;
 
   bw::core::WorldDataPtr mWorldData;
-
-  bw::core::ArrangementWorldDataGenerator mArrangementGenerator;
-
-  bw::core::ArrangementWorldDataPtr mArrangementWorldData;
-
-  bw::core::WorldDataPtr mArrangementSource;
 
   WorldCollisionSim* mWorldCollisionSim;
 
@@ -133,8 +126,6 @@ private:
 
   void createWorldCollisions();
 
-  void updateArrangementWorldData();
-
   void exit();
 
   void handleClippingUpdate(bw::core::DynamicWorldDataGenerator::GenerationDetails const& details);
@@ -162,9 +153,7 @@ private:
 
   void debug_renderClipGenerationInfo(ImDrawList* drawList);
 
-  void ImGui_renderTriangulation(bw::core::Triangulation const& triangulation, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList);
-
-  void ImGui_renderBorder(std::vector<bw::core::ClippedPolygon> const& clippedPolygons, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList);
+  void ImGui_renderArrangement(bw::core::ArrangementWorldData const& worldData, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList);
 
   void ImGui_renderPrimitives(std::vector<wp::Vector2> const& viewVertices, std::vector<bw::core::Primitive*> const& primitives, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList);
 

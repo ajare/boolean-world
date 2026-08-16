@@ -42,6 +42,10 @@ public:
   [[nodiscard]] uint32_t getContainingPrimitiveIndex(
       wp::Vector2 const& position) const;
 
+  [[nodiscard]] int32_t getNearestVertexIndex(
+      wp::Vector2 const& position,
+      float radius) const;
+
   [[nodiscard]] float getFloorHeight(wp::Vector2 const& position) const;
 
   [[nodiscard]] float getCeilingHeight(wp::Vector2 const& position) const;
