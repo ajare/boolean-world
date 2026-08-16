@@ -129,7 +129,7 @@ void StatePlayBooleanWorld::setupPlayerCollision() {
   auto cb = [](wp::collide::SweepResult* result, wp::collide::StaticLine const& line, float t, void* user) -> bool {
     auto edgeIndex = (uint32_t)line.getUserData();
     auto state = static_cast<StatePlayBooleanWorld*>(user);
-    auto const& graph = state->mWorldData.getGraph();
+    auto const& graph = state->mWorldData->getGraph();
 
     state->mCollisionsProcessed++;
 
@@ -220,7 +220,7 @@ void StatePlayBooleanWorld::createWorldCollisions() {
   if (playerInWorld()) {
     auto const& playerPosition = getPlayerPosition();
 
-    auto const& graph = mWorldData.getGraph();
+    auto const& graph = mWorldData->getGraph();
     auto numEdges = (uint32_t)graph.edges.size();
 
     for (uint32_t i = 0; i < numEdges; ++i) {
@@ -290,7 +290,7 @@ vector<string> StatePlayBooleanWorld::getDebuggingText() const {
   auto mouseWorld = getMouseWorldPosition();
 
   auto const& physicalStats = getPlayerPhysicalStats();
-  auto const& worldStats = mWorldData.getStats();
+  auto const& worldStats = mWorldData->getStats();
   auto playerPrimIndex = getPlayerPrimitive();
   auto floorHeight = getPlayerFloorHeight();
   auto ceilingHeight = getPlayerCeilingHeight();
@@ -309,7 +309,7 @@ vector<string> StatePlayBooleanWorld::getDebuggingText() const {
 }
 
 uint32_t StatePlayBooleanWorld::getPrimitiveAtPosition(wp::Vector2 const& pos) const {
-  return mWorldData.getContainingTrianglePrimitiveIndex(pos);
+  return mWorldData->getContainingTrianglePrimitiveIndex(pos);
 }
 
 uint32_t StatePlayBooleanWorld::getPlayerPrimitive() const {
@@ -392,9 +392,8 @@ void StatePlayBooleanWorld::setupEntities() {
   world->update(0, {playerPos, 0, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, false, false, 0}, {0, 0});
 
   mWorldData = world->getWorldData(playerPos, playerAngle);
-  mWorldData.triangulate(world);
 
-  if (mWorldData.pointInPolygon(playerPos) < 0 || mWorldData.circleIntersectsBorder(playerPos, BW_PLAYER_RADIUS) >= 0) {
+  if (mWorldData->pointInPolygon(playerPos) < 0 || mWorldData->circleIntersectsBorder(playerPos, BW_PLAYER_RADIUS) >= 0) {
     throw GameException("Player is starting outside the world geometry");
   }
 }
@@ -481,10 +480,9 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
   world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, mCurrentLayer}, {0, 0});
 
   mWorldData = world->getWorldData(playerPosition, playerAngle);
-  mWorldData.triangulate(world);
 
-  mPlayerPolygonIndex = mWorldData.pointInPolygon(curPosition);
-  mPlayerBorderIntersectIndex = mWorldData.circleIntersectsBorder(curPosition, BW_PLAYER_RADIUS);
+  mPlayerPolygonIndex = mWorldData->pointInPolygon(curPosition);
+  mPlayerBorderIntersectIndex = mWorldData->circleIntersectsBorder(curPosition, BW_PLAYER_RADIUS);
 
   if (!playerInWorld() || playerIntersectsWorldBorders()) {
     // TODO
@@ -501,7 +499,7 @@ void StatePlayBooleanWorld::updateAudio(float frameTime) {
   bw::core::Triangulation::Triangle const* tri{nullptr};
   auto const& physicalStats = getPlayerPhysicalStats();
 
-  if (mWorldData.getContainingTriangle(physicalStats.position, &tri)) {
+  if (mWorldData->getContainingTriangle(physicalStats.position, &tri)) {
     float u, v, w;
     tri->getBarycentricCoords(physicalStats.position, u, v, w);
 
@@ -509,9 +507,9 @@ void StatePlayBooleanWorld::updateAudio(float frameTime) {
     auto i1 = (uint32_t)BW_VERTEX_Z_UNPACK_VERTEX_INDEX(tri->v[1].z);
     auto i2 = (uint32_t)BW_VERTEX_Z_UNPACK_VERTEX_INDEX(tri->v[2].z);
 
-    auto const& vd0 = mWorldData.getVertexData(i0);
-    auto const& vd1 = mWorldData.getVertexData(i1);
-    auto const& vd2 = mWorldData.getVertexData(i2);
+    auto const& vd0 = mWorldData->getVertexData(i0);
+    auto const& vd1 = mWorldData->getVertexData(i1);
+    auto const& vd2 = mWorldData->getVertexData(i2);
 
     // Set volume
     for (int i = 0; i < 1; ++i) {
@@ -576,7 +574,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   static_cast<ReactiveCamera*>(mCamera3d.get())->pitch(physicalStats.pitch - mPlayerPrevPitch);
 
   // World 3d
-  mwRenderer->update(getMap()->getWorld(), mWorldData, frameTime);
+  mwRenderer->update(getMap()->getWorld(), *mWorldData, frameTime);
 }
 
 void StatePlayBooleanWorld::suspendImpl(void* args) {
@@ -853,8 +851,8 @@ void StatePlayBooleanWorld::debug_renderMinimap(wp::Vector2 const& viewSize, wp:
       player.position + wp::Vector2::fromAngle(player.angle - halfFov, wp::Clockwise) * viewDistance,
       player.position + wp::Vector2::fromAngle(player.angle + halfFov, wp::Clockwise) * viewDistance};
 
-  auto const& triangulation = mWorldData.getTriangulation();
-  auto const& clippedPolygons = mWorldData.getArrangementPolygons();
+  auto const& triangulation = mWorldData->getTriangulation();
+  auto const& clippedPolygons = mWorldData->getArrangementPolygons();
   auto primitives = world->findPrimitives(viewBounds);
   auto cellSize = world->getPrimitiveAccelerationGridSize();
 
@@ -870,7 +868,7 @@ void StatePlayBooleanWorld::debug_renderCollisionSim(wp::Vector2 const& viewSize
   }
 
   auto const& lines = mWorldCollisionSim->getLines();
-  auto const& graph = mWorldData.getGraph();
+  auto const& graph = mWorldData->getGraph();
 
   for (auto const& line : lines) {
     auto const& v0 = line.getVertex(0);

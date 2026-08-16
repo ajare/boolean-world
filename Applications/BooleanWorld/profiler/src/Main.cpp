@@ -107,7 +107,7 @@ int main(int argc, char** argv) {
     auto totalTime = timer.elapsedNanoseconds();
 
     auto worldData = dataGenerator->getWorldData(world.get());
-    auto const& stats = worldData.getStats();
+    auto const& stats = worldData->getStats();
 
     /*
     cout << "Primitives: candidate count: " << stats.prim.candidateCount << "\n";

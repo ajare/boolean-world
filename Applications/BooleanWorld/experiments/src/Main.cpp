@@ -80,19 +80,53 @@ shared_ptr<bw::core::World> openWorld(string const& filepath) {
   }
 }
 
-class ClipperAllocatorScope {
-public:
-  ClipperAllocatorScope() {
-    Clipper2Lib::WmInitialiseAllocators(4, 16 * 1024 * 1024);
-  }
+bool gClipperAllocatorsInitialized = false;
 
-  ~ClipperAllocatorScope() {
-    Clipper2Lib::WmDestroyAllocators();
+void ensureClipperAllocatorsInitialized() {
+  if (!gClipperAllocatorsInitialized) {
+    Clipper2Lib::WmInitialiseAllocators(4, 16 * 1024 * 1024);
+    gClipperAllocatorsInitialized = true;
   }
-};
+}
+
+TEST(Generation, PublishedSnapshotRemainsCoherentAfterNextGeneration) {
+  ensureClipperAllocatorsInitialized();
+  auto world = createWorld(8192, 512);
+
+  auto room = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  room->setPosition({0, 0});
+  room->setSize(20, 20);
+  world->addPrimitive(room);
+  world->update(0, {{0, 0}, 0, 1, 60, 256, false, false, 0}, {100, 100});
+
+  auto firstGeneration = world->getWorldData({0, 0}, 0);
+  ASSERT_FALSE(firstGeneration->getBorderPolygons().empty());
+  auto firstPosition = firstGeneration->getBorderPolygons()[0].bounds.getPosition();
+
+  auto distantIntersection = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Intersection,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  distantIntersection->setPosition({1000, 0});
+  distantIntersection->setSize(20, 20);
+  world->addPrimitive(distantIntersection);
+
+  auto generator = static_cast<bw::core::DynamicWorldDataGenerator*>(
+      world->getWorldDataGenerator());
+  generator->generateBlocking();
+  auto secondGeneration = world->getWorldData({0, 0}, 0);
+
+  ASSERT_NE(firstGeneration.get(), secondGeneration.get());
+  EXPECT_TRUE(secondGeneration->getBorderPolygons().empty());
+  EXPECT_FALSE(firstGeneration->getBorderPolygons().empty());
+  EXPECT_EQ(firstGeneration->getBorderPolygons()[0].bounds.getPosition(), firstPosition);
+}
 
 TEST(Generation, GeometryIsIndependentOfViewerPosition) {
-  ClipperAllocatorScope allocators;
+  ensureClipperAllocatorsInitialized();
 
   auto generateAt = [](wp::Vector2 const& viewerPosition) {
     auto world = createWorld(8192, 512);
@@ -123,8 +157,8 @@ TEST(Generation, GeometryIsIndependentOfViewerPosition) {
   auto generatedAtRoom = generateAt({0, 0});
   auto generatedFarAway = generateAt({3000, 0});
 
-  EXPECT_TRUE(generatedAtRoom.getBorderPolygons().empty());
-  EXPECT_TRUE(generatedFarAway.getBorderPolygons().empty());
+  EXPECT_TRUE(generatedAtRoom->getBorderPolygons().empty());
+  EXPECT_TRUE(generatedFarAway->getBorderPolygons().empty());
 }
 
 ////////////////////////////////////////////////////////////////
@@ -886,7 +920,13 @@ TEST(PSLG_Fuzz, RandomRectangles) {
 
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  auto result = RUN_ALL_TESTS();
+
+  if (gClipperAllocatorsInitialized) {
+    Clipper2Lib::WmDestroyAllocators();
+  }
+
+  return result;
 
   /*
   string filename;

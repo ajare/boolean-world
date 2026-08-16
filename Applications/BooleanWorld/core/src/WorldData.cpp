@@ -36,86 +36,6 @@ WorldData::~WorldData() {
   delete mTriangleLookupGrid;
 }
 
-WorldData::WorldData(WorldData const& other)
-    : mClippedPolygonLookupGrid(nullptr), mTriangleLookupGrid(nullptr) {
-  copyFrom(other);
-}
-
-WorldData::WorldData(WorldData&& other) noexcept
-    : mClippedPolygonLookupGrid(nullptr), mTriangleLookupGrid(nullptr) {
-  moveFrom(other);
-}
-
-WorldData& WorldData::operator=(WorldData const& other) {
-  copyFrom(other);
-
-  return *this;
-}
-
-WorldData& WorldData::operator=(WorldData&& other) noexcept {
-  moveFrom(other);
-
-  return *this;
-}
-
-void WorldData::copyFrom(WorldData const& other) {
-  mDetail = other.mDetail;
-  mStats = other.mStats;
-  mTriangulation = other.mTriangulation;
-
-  if (other.mClippedPolygonLookupGrid) {
-    delete mClippedPolygonLookupGrid;
-
-    mClippedPolygonLookupGrid = new wp::AccelerationGrid(
-        other.mClippedPolygonLookupGrid->getOffset(),
-        other.mClippedPolygonLookupGrid->getSize(),
-        other.mClippedPolygonLookupGrid->getCellDimensionX(),
-        other.mClippedPolygonLookupGrid->getCellDimensionY(),
-        0.0f);
-
-    auto numPolygons = (uint32_t)mDetail.borderPolygons.size();
-
-    for (uint32_t i = 0; i < numPolygons; ++i) {
-      mClippedPolygonLookupGrid->addItem(i, mDetail.borderPolygons[i].bounds);
-    }
-  } else {
-    mClippedPolygonLookupGrid = nullptr;
-  }
-
-  if (other.mTriangleLookupGrid) {
-    delete mTriangleLookupGrid;
-
-    mTriangleLookupGrid = new wp::AccelerationGrid(
-        other.mTriangleLookupGrid->getOffset(),
-        other.mTriangleLookupGrid->getSize(),
-        other.mTriangleLookupGrid->getCellDimensionX(),
-        other.mTriangleLookupGrid->getCellDimensionY(),
-        0.0f);
-
-    auto numTriangles = (uint32_t)mTriangulation.tris.size();
-
-    for (uint32_t i = 0; i < numTriangles; ++i) {
-      mTriangleLookupGrid->addItem(i, mTriangulation.tris[i].bounds);
-    }
-  } else {
-    mTriangleLookupGrid = nullptr;
-  }
-}
-
-void WorldData::moveFrom(WorldData& other) {
-  mDetail = move(other.mDetail);
-  mTriangulation = move(other.mTriangulation);
-  mStats = other.mStats;
-
-  delete mClippedPolygonLookupGrid;
-  mClippedPolygonLookupGrid = other.mClippedPolygonLookupGrid;
-  other.mClippedPolygonLookupGrid = nullptr;
-
-  delete mTriangleLookupGrid;
-  mTriangleLookupGrid = other.mTriangleLookupGrid;
-  other.mTriangleLookupGrid = nullptr;
-}
-
 void WorldData::setClippedPolygonData(vector<ClippedPolygon> const& clippedPolygons, ClipStats const& clipStats) {
   mClippedPolygonLookupGrid->clear();
 
@@ -195,6 +115,12 @@ frame_number_type WorldData::getFrameNumber() const {
 
 uint32_t WorldData::triangulate(World const* world) {
   mTriangleLookupGrid->clear();
+
+  if (mDetail.arrangementPolygons.empty()) {
+    mTriangulation = {};
+    mStats.tri = {};
+    return 0;
+  }
   Triangulator triangulator(world, false, false, true, mTriangleLookupGrid);
 
   mStats.tri = triangulator.execute(mDetail.arrangementPolygons);

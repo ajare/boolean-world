@@ -771,17 +771,15 @@ void run() {
     auto mouseButtonStatus = getMouseButtonStatus();
 
     // Get world data
-    bw::core::WorldData worldData;
-    bw::core::WorldData* worldDataPtr{nullptr};
+    bw::core::WorldDataPtr worldData;
+    bw::core::WorldData const* worldDataPtr{nullptr};
 
     if (doc->isActive()) {
       worldData = doc->getWorld()->getWorldData(
           doc->getPlayerProxyPosition(),
           doc->getPlayerProxyAngle());
 
-      worldData.triangulate(doc->getWorld().get());
-
-      worldDataPtr = &worldData;
+      worldDataPtr = worldData.get();
 
       // Set up selections, eg for logic on them
       if (!io.WantCaptureMouse) {

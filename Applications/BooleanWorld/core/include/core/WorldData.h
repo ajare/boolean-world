@@ -1,7 +1,8 @@
 #pragma once
 
-#include <vector>
 #include <array>
+#include <memory>
+#include <vector>
 
 #include <willpower/common/Vector2.h>
 #include <willpower/common/BoundingBox.h>
@@ -100,15 +101,13 @@ private:
   wp::AccelerationGrid* mTriangleLookupGrid;
 
 private:
-  void copyFrom(WorldData const& other);
-
-  void moveFrom(WorldData& other);
-
   wp::AccelerationGrid* createLookupGrid(float cellSizeX, float cellSizeY);
 
   void createGeometryAccelerationGrids(float targetCellSize);
 
   void setClippedPolygonData(std::vector<ClippedPolygon> const& clippedPolygons, ClipStats const& clipStats);
+
+  uint32_t triangulate(World const* world);
 
   bool _pointInPolygon(wp::Vector2 const& pos, ClippedPolygon const& polygon) const;
 
@@ -124,13 +123,13 @@ public:
 
   virtual ~WorldData();
 
-  WorldData(WorldData const& other);
+  WorldData(WorldData const& other) = delete;
 
-  WorldData(WorldData&& other) noexcept;
+  WorldData(WorldData&& other) = delete;
 
-  WorldData& operator=(WorldData const& other);
+  WorldData& operator=(WorldData const& other) = delete;
 
-  WorldData& operator=(WorldData&& other) noexcept;
+  WorldData& operator=(WorldData&& other) = delete;
 
   [[nodiscard]] wp::BoundingBox const& getExtents() const;
 
@@ -152,8 +151,6 @@ public:
 
   [[nodiscard]] frame_number_type getFrameNumber() const;
 
-  uint32_t triangulate(World const* world);
-
   [[nodiscard]] int32_t pointInTriangle(wp::Vector2 const& pos) const;
 
   [[nodiscard]] int32_t pointInPolygon(wp::Vector2 const& pos) const;
@@ -172,6 +169,8 @@ public:
 
   [[nodiscard]] uint32_t getNumInterpolatedVertices() const;
 };
+
+using WorldDataPtr = std::shared_ptr<WorldData const>;
 
 }  // namespace core
 }  // namespace bw

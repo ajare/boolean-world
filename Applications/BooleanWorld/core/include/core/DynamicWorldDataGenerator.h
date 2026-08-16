@@ -21,7 +21,7 @@ class DynamicWorldDataGenerator : public WorldDataGenerator {
 public:
   struct Clipping {
     uint32_t id;
-    WorldData worldData;
+    WorldDataPtr worldData;
     std::vector<Primitive*> primitives;
     std::vector<Primitive*> updatedPrimitives;
     PrimitiveProcessingStats primStats;
@@ -127,7 +127,7 @@ public:
 
   void registerGenerationCallback(GenerationCompleteCallback callback);
 
-  WorldData getWorldData(World const* world) override;
+  WorldDataPtr getWorldData(World const* world) override;
 
   void generate(World const* world, bool regetPrimitives = false) override;
 

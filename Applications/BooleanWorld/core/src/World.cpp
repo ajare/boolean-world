@@ -1223,7 +1223,7 @@ void World::removeTriggerLineFromLookupGrid(WorldTriggerLine const* triggerLine)
   mTriggerLookupGrid->removeItem(triggerLine->getId());
 }
 
-WorldData World::getWorldData(wp::Vector2 const& position, float angle) const {
+WorldDataPtr World::getWorldData(wp::Vector2 const& position, float angle) const {
   return mDataGenerator->getWorldData(this);
 }
 

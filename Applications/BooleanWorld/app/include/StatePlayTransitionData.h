@@ -9,6 +9,6 @@
 
 struct StatePlayTransitionData {
   bw::core::World* world;
-  bw::core::WorldData* worldData;
+  bw::core::WorldDataPtr worldData;
   mpp::ScenePtr scene;
 };

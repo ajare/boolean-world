@@ -242,7 +242,7 @@ public:
 
   void generateClipping(bool regetPrimitives);
 
-  [[nodiscard("returned WorldData should be used, otherwise method does nothing")]] WorldData getWorldData(wp::Vector2 const& position, float angle) const;
+  [[nodiscard]] WorldDataPtr getWorldData(wp::Vector2 const& position, float angle) const;
 };
 
 }  // namespace core

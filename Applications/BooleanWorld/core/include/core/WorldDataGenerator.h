@@ -65,7 +65,7 @@ public:
 
   virtual WorldDataGenerator* copy() = 0;
 
-  virtual WorldData getWorldData(World const* world) = 0;
+  virtual WorldDataPtr getWorldData(World const* world) = 0;
 
   void setFlags(uint32_t flags);
 

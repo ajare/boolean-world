@@ -3525,16 +3525,16 @@ void renderWidgets(editor::Document* doc, editor::Settings& settings, bw::core::
   }
 
   // Create world data here
+  bw::core::WorldDataPtr generatedWorldData;
+
   if (doc->isActive()) {
     // If world data has not been created, then do so here, for the case where we load a map
     if (!worldData) {
-      auto newWorldData = doc->getWorld()->getWorldData(
+      generatedWorldData = doc->getWorld()->getWorldData(
           doc->getPlayerProxyPosition(),
           doc->getPlayerProxyAngle());
 
-      newWorldData.triangulate(doc->getWorld().get());
-
-      worldData = &newWorldData;
+      worldData = generatedWorldData.get();
     }
 
     // Views which use world data need to be done after it's been created

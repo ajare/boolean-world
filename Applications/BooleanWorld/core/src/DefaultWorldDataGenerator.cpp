@@ -27,7 +27,7 @@ WorldDataGenerator* DefaultWorldDataGenerator::copy() {
   return new DefaultWorldDataGenerator(*this);
 }
 
-WorldData DefaultWorldDataGenerator::getWorldData(World const* world) {
+WorldDataPtr DefaultWorldDataGenerator::getWorldData(World const* world) {
   generate(world, false);
 
   return mWorldData;
@@ -45,7 +45,7 @@ void DefaultWorldDataGenerator::generate(World const* world, bool regetPrimitive
   auto clipResults = clipPrimitives(primitives, world, true);
 
   // Set up data to return
-  mWorldData = {
+  auto worldData = std::shared_ptr<WorldData>(new WorldData{
       world->getExtents(),
       (float)(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
       ClipperUtils::convertClipper2PolygonsToClippedPolygons(clipResults.borderPolygons, nullptr),
@@ -54,7 +54,9 @@ void DefaultWorldDataGenerator::generate(World const* world, bool regetPrimitive
       clipResults.graph,
       clipResults.stats,
       primStats,
-      world->getFrameNumber()};
+      world->getFrameNumber()});
+  worldData->triangulate(world);
+  mWorldData = move(worldData);
 }
 
 }  // namespace core

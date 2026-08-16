@@ -48,7 +48,7 @@ private:
 
   mpp::CameraPtr mCamera3d;
 
-  bw::core::WorldData mWorldData;
+  bw::core::WorldDataPtr mWorldData;
 
   WorldCollisionSim* mWorldCollisionSim;
 

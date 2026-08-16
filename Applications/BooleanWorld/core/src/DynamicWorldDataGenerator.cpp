@@ -15,7 +15,7 @@ using namespace std;
 
 DynamicWorldDataGenerator::DynamicWorldDataGenerator(World const* world)
     : WorldDataGenerator(), mClippingIdGenerator(0), mWorld(world), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationInterval(5.0f) {
-  mActiveClipping.worldData = {
+  mActiveClipping.worldData = WorldDataPtr(new WorldData{
       world->getExtents(),
       (float)(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
       {},
@@ -24,7 +24,7 @@ DynamicWorldDataGenerator::DynamicWorldDataGenerator(World const* world)
       {},
       {},
       {},
-      world->getFrameNumber()};
+      world->getFrameNumber()});
 }
 
 DynamicWorldDataGenerator::~DynamicWorldDataGenerator() {
@@ -34,10 +34,12 @@ DynamicWorldDataGenerator::~DynamicWorldDataGenerator() {
 DynamicWorldDataGenerator::DynamicWorldDataGenerator(DynamicWorldDataGenerator const& other)
     : mWorld(nullptr), mClippingIdGenerator(0), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0) {
   WorldDataGenerator::copyFrom(other);
+  mActiveClipping.worldData = other.mActiveClipping.worldData;
 }
 
 DynamicWorldDataGenerator& DynamicWorldDataGenerator::operator=(DynamicWorldDataGenerator const& other) {
   WorldDataGenerator::copyFrom(other);
+  mActiveClipping.worldData = other.mActiveClipping.worldData;
   return *this;
 }
 
@@ -179,7 +181,7 @@ void DynamicWorldDataGenerator::generateWorldData(World const* world) {
   auto clipResults = clipPrimitives(prims, world, true);
 
   // Set up data to return
-  WorldData results = {
+  auto results = std::shared_ptr<WorldData>(new WorldData{
       world->getExtents(),
       (float)(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
       ClipperUtils::convertClipper2PolygonsToClippedPolygons(clipResults.borderPolygons, nullptr),
@@ -189,10 +191,11 @@ void DynamicWorldDataGenerator::generateWorldData(World const* world) {
       clipResults.stats,
       primStats,
       world->getFrameNumber(),
-  };
+  });
+  results->triangulate(world);
 
   mLastGenTime = timer.elapsedNanoseconds();
-  details.stats = results.getStats();
+  details.stats = results->getStats();
 
   mPendingClippings.push({clippingId,
                           move(results),
@@ -263,7 +266,7 @@ void DynamicWorldDataGenerator::checkCommitPendingClipping() {
   }
 }
 
-WorldData DynamicWorldDataGenerator::getWorldData(World const* world) {
+WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
   auto primitives = getPrimitives(world, getActiveLayer());
 
   if (mNumGenerationsComplete == 0) {

@@ -10,7 +10,7 @@ namespace bw {
 namespace core {
 
 class DefaultWorldDataGenerator : public WorldDataGenerator {
-  WorldData mWorldData;
+  WorldDataPtr mWorldData;
 
 public:
   DefaultWorldDataGenerator();
@@ -23,7 +23,7 @@ public:
 
   virtual WorldDataGenerator* copy() override;
 
-  WorldData getWorldData(World const* world) override;
+  WorldDataPtr getWorldData(World const* world) override;
 
   void generate(World const* world, bool regetPrimitives) override;
 };
