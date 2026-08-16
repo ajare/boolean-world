@@ -27,7 +27,7 @@ actually get resolved.
 
 ```
 /
-├── CONTEXT.md                 ← not yet created
+├── CONTEXT.md
 ├── docs/
 │   ├── glossary.md            ← domain vocabulary
 │   └── adr/
