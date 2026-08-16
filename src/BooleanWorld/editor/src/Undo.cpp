@@ -110,6 +110,8 @@ void commitUndoableAction(Document* doc, string const& id) {
   gTransactionalId.clear();
   gTransactionalData.world.clear();
   gTransactionalData.selection.clear();
+  gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
+  gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
 }
 
 void transactUndoableAction(Document* doc, string const& id, UndoableActionFunction func) {
@@ -123,30 +125,27 @@ void abandonUndoableAction(Document* doc) {
   gTransactionalData.world.clear();
   gTransactionalData.selection.clear();
   gTransactionalData.docModified = doc->isModified();
+  gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
+  gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
 
   gTransactionalFunc = nullptr;
 }
 
 bool undoableActionInProgress() {
-  return !gTransactionalId.empty();
+  return static_cast<bool>(gTransactionalFunc);
 }
 
 void undo(Document* doc, int count) {
-  auto world = *doc->getWorld();
-  auto const& selection = doc->getSelectedPrimitiveIndices();
-  auto modified = doc->isModified();
-
-  for (int i = 0; i < count; ++i) {
+  for (int i = 0; i < count && canUndo(); ++i) {
+    auto world = *doc->getWorld();
+    auto selection = doc->getSelectedPrimitiveIndices();
+    auto modified = doc->isModified();
     auto const& oldEntry = gUndoStack.back();
 
     gRedoStack.push_back({oldEntry.id, {world, selection, modified}});
-
-    if (i == (count - 1)) {
-      doc->setWorld(oldEntry.data.world);
-      doc->setSelectedPrimitiveIndices(oldEntry.data.selection);
-      doc->setModified(oldEntry.data.docModified);
-    }
-
+    doc->setWorld(oldEntry.data.world);
+    doc->setSelectedPrimitiveIndices(oldEntry.data.selection);
+    doc->setModified(oldEntry.data.docModified);
     gUndoStack.pop_back();
   }
 
@@ -154,21 +153,16 @@ void undo(Document* doc, int count) {
 }
 
 void redo(Document* doc, int count) {
-  auto curWorld = *doc->getWorld();
-  auto const& curSelection = doc->getSelectedPrimitiveIndices();
-  auto modified = doc->isModified();
-
-  for (int i = 0; i < count; ++i) {
+  for (int i = 0; i < count && canRedo(); ++i) {
+    auto world = *doc->getWorld();
+    auto selection = doc->getSelectedPrimitiveIndices();
+    auto modified = doc->isModified();
     auto const& oldEntry = gRedoStack.back();
 
-    gUndoStack.push_back({oldEntry.id, {curWorld, curSelection, modified}});
-
-    if (i == (count - 1)) {
-      doc->setWorld(oldEntry.data.world);
-      doc->setSelectedPrimitiveIndices(oldEntry.data.selection);
-      doc->setModified(oldEntry.data.docModified);
-    }
-
+    gUndoStack.push_back({oldEntry.id, {world, selection, modified}});
+    doc->setWorld(oldEntry.data.world);
+    doc->setSelectedPrimitiveIndices(oldEntry.data.selection);
+    doc->setModified(oldEntry.data.docModified);
     gRedoStack.pop_back();
   }
 
