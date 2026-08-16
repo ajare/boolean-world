@@ -491,6 +491,12 @@ void World::clear() {
   }
 
   mPrimitives.clear();
+
+  for (auto triggerLine : mTriggerLines) {
+    delete triggerLine;
+  }
+
+  mTriggerLines.clear();
 }
 
 void World::setName(string const& name) {
