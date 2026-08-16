@@ -12,9 +12,10 @@ as specs/maps rather than executable tickets.
 
 Pi runs in non-interactive print mode. Provider failures use capped exponential
 backoff; usage-limit failures poll at ten-minute intervals by default. After
-each completed ticket the loop reports that run's token usage and, where the
-provider exposes it, current-window and weekly usage. Logs and sessions are
-written below the system temporary directory in pi-ralph-loop.
+each completed ticket the loop reports its ISO 8601 start and end timestamps,
+duration, and total token usage across every retry attempt. Where the provider
+exposes it, the loop also reports current-window and weekly usage. Logs and
+sessions are written below the system temporary directory in pi-ralph-loop.
 
 Use `pi --list-models` to see models available for the providers configured on
 this machine. Model names use pi's provider/model form. Thinking support and
@@ -278,10 +279,8 @@ function Get-NumericProperty {
 function Get-SessionUsage {
     param([Parameter(Mandatory = $true)][string]$SessionDirectory)
 
-    $sessionFile = Get-ChildItem -Path $SessionDirectory -Filter "*.jsonl" -File -Recurse -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 1
-    if ($null -eq $sessionFile) {
+    $sessionFiles = @(Get-ChildItem -Path $SessionDirectory -Filter "*.jsonl" -File -Recurse -ErrorAction SilentlyContinue)
+    if ($sessionFiles.Count -eq 0) {
         return $null
     }
 
@@ -297,29 +296,31 @@ function Get-SessionUsage {
         Cost = [double]0
     }
 
-    foreach ($line in [System.IO.File]::ReadLines($sessionFile.FullName)) {
-        try {
-            $entry = $line | ConvertFrom-Json
-        } catch {
-            continue
-        }
-        if ($entry.type -ne "message" -or $entry.message.role -ne "assistant" -or $null -eq $entry.message.usage) {
-            continue
-        }
+    foreach ($sessionFile in $sessionFiles) {
+        foreach ($line in [System.IO.File]::ReadLines($sessionFile.FullName)) {
+            try {
+                $entry = $line | ConvertFrom-Json
+            } catch {
+                continue
+            }
+            if ($entry.type -ne "message" -or $entry.message.role -ne "assistant" -or $null -eq $entry.message.usage) {
+                continue
+            }
 
-        $message = $entry.message
-        $messageUsage = $message.usage
-        $usage.Provider = [string]$message.provider
-        $usage.Model = [string]$message.model
-        $usage.Input += [int64](Get-NumericProperty $messageUsage "input")
-        $usage.Output += [int64](Get-NumericProperty $messageUsage "output")
-        $usage.CacheRead += [int64](Get-NumericProperty $messageUsage "cacheRead")
-        $usage.CacheWrite += [int64](Get-NumericProperty $messageUsage "cacheWrite")
-        $usage.Reasoning += [int64](Get-NumericProperty $messageUsage "reasoning")
-        $usage.TotalTokens += [int64](Get-NumericProperty $messageUsage "totalTokens")
-        $costProperty = $messageUsage.psobject.Properties["cost"]
-        if ($null -ne $costProperty) {
-            $usage.Cost += Get-NumericProperty $costProperty.Value "total"
+            $message = $entry.message
+            $messageUsage = $message.usage
+            $usage.Provider = [string]$message.provider
+            $usage.Model = [string]$message.model
+            $usage.Input += [int64](Get-NumericProperty $messageUsage "input")
+            $usage.Output += [int64](Get-NumericProperty $messageUsage "output")
+            $usage.CacheRead += [int64](Get-NumericProperty $messageUsage "cacheRead")
+            $usage.CacheWrite += [int64](Get-NumericProperty $messageUsage "cacheWrite")
+            $usage.Reasoning += [int64](Get-NumericProperty $messageUsage "reasoning")
+            $usage.TotalTokens += [int64](Get-NumericProperty $messageUsage "totalTokens")
+            $costProperty = $messageUsage.psobject.Properties["cost"]
+            if ($null -ne $costProperty) {
+                $usage.Cost += Get-NumericProperty $costProperty.Value "total"
+            }
         }
     }
 
@@ -390,14 +391,32 @@ function Get-OAuthCredential {
     return $credentialProperty.Value
 }
 
+function Show-TicketSummary {
+    param(
+        [Parameter(Mandatory = $true)][int]$Number,
+        [Parameter(Mandatory = $true)][DateTimeOffset]$StartedAt,
+        [Parameter(Mandatory = $true)][DateTimeOffset]$EndedAt,
+        [object]$SessionUsage
+    )
+
+    Write-Host "Ticket #$Number summary"
+    Write-Host "  Started: $($StartedAt.ToString('o'))"
+    Write-Host "  Ended: $($EndedAt.ToString('o'))"
+    Write-Host "  Duration: $($EndedAt - $StartedAt)"
+    if ($null -eq $SessionUsage) {
+        Write-Host "  Total tokens spent: unavailable"
+        return
+    }
+    Write-Host ('  Total tokens spent: {0:N0} (input {1:N0}, output {2:N0}, reasoning {3:N0}, cache read {4:N0}, cache write {5:N0}); cost ${6:N4}' -f
+        $SessionUsage.TotalTokens, $SessionUsage.Input, $SessionUsage.Output, $SessionUsage.Reasoning,
+        $SessionUsage.CacheRead, $SessionUsage.CacheWrite, $SessionUsage.Cost)
+}
+
 function Show-ProviderUsage {
     param([Parameter(Mandatory = $true)][object]$SessionUsage)
 
     $provider = if ($SessionUsage.Provider) { $SessionUsage.Provider } else { ($Model -split '/', 2)[0] }
-    Write-Host "Usage ($provider/$($SessionUsage.Model))"
-    Write-Host ('  Current ticket: {0:N0} tokens (input {1:N0}, output {2:N0}, reasoning {3:N0}, cache read {4:N0}, cache write {5:N0}); cost ${6:N4}' -f
-        $SessionUsage.TotalTokens, $SessionUsage.Input, $SessionUsage.Output, $SessionUsage.Reasoning,
-        $SessionUsage.CacheRead, $SessionUsage.CacheWrite, $SessionUsage.Cost)
+    Write-Host "Provider usage ($provider/$($SessionUsage.Model))"
 
     if ($provider -notin @("openai-codex", "anthropic")) {
         Write-Host "  Current window: not available from this provider"
@@ -523,17 +542,22 @@ while ($true) {
         Write-Status "Claimed #$number as $currentUser."
     }
 
+    $ticketStartedAt = [DateTimeOffset]::Now
+    $ticketTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $ticketSessionDirectory = Join-Path $logDirectory "issue-$number-$ticketTimestamp-sessions"
+    New-Item -ItemType Directory -Force -Path $ticketSessionDirectory | Out-Null
+    Write-Status "Ticket #$number started at $($ticketStartedAt.ToString('o'))."
+
     $startingHead = (& git rev-parse HEAD).Trim()
     $prompt = Get-TicketPrompt -Repository $Repo -Number $number
     $retryInterval = $InitialRetryIntervalSeconds
     $attempt = 0
-    $successfulSessionDirectory = $null
 
     while ($true) {
         ++$attempt
-        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-        $logPath = Join-Path $logDirectory "issue-$number-$timestamp-attempt-$attempt.log"
-        $sessionDirectory = Join-Path $logDirectory "issue-$number-$timestamp-attempt-$attempt-session"
+        $attemptTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        $logPath = Join-Path $logDirectory "issue-$number-$attemptTimestamp-attempt-$attempt.log"
+        $sessionDirectory = Join-Path $ticketSessionDirectory "attempt-$attempt"
         New-Item -ItemType Directory -Force -Path $sessionDirectory | Out-Null
         Write-Status "Starting pi for #$number (attempt $attempt). Log: $logPath"
         Write-Verbose "Session directory: $sessionDirectory"
@@ -563,7 +587,6 @@ while ($true) {
         # A provider can fail after the agent has already committed and closed.
         if (Test-TicketComplete -Repository $Repo -Number $number -StartingHead $startingHead) {
             Write-Status "Ticket #$number completed successfully."
-            $successfulSessionDirectory = $sessionDirectory
             break
         }
 
@@ -587,9 +610,11 @@ while ($true) {
         throw "Pi failed for a non-retryable implementation reason on #$number. The issue remains assigned and open. Inspect $logPath."
     }
 
-    $sessionUsage = Get-SessionUsage -SessionDirectory $successfulSessionDirectory
+    $ticketEndedAt = [DateTimeOffset]::Now
+    $sessionUsage = Get-SessionUsage -SessionDirectory $ticketSessionDirectory
+    Show-TicketSummary -Number $number -StartedAt $ticketStartedAt -EndedAt $ticketEndedAt -SessionUsage $sessionUsage
     if ($null -eq $sessionUsage) {
-        Write-Warning "Could not read current-ticket usage from $successfulSessionDirectory."
+        Write-Warning "Could not read current-ticket usage from $ticketSessionDirectory."
     } else {
         Show-ProviderUsage -SessionUsage $sessionUsage
     }
