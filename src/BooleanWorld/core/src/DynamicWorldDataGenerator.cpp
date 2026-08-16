@@ -15,7 +15,7 @@ namespace core {
 using namespace std;
 
 DynamicWorldDataGenerator::DynamicWorldDataGenerator(World const* world)
-    : WorldDataGenerator(), mClippingIdGenerator(0), mWorld(world), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationInterval(5.0f) {
+    : WorldDataGenerator(), mClippingIdGenerator(0), mWorld(world), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationRequested(false), mScheduledGenerationInterval(5.0f) {
   ArrangementWorldDataGenerator generator;
   mActiveClipping.worldData = make_shared<ArrangementWorldData>(
       generator.getWorldData(),
@@ -29,7 +29,7 @@ DynamicWorldDataGenerator::~DynamicWorldDataGenerator() {
 }
 
 DynamicWorldDataGenerator::DynamicWorldDataGenerator(DynamicWorldDataGenerator const& other)
-    : mWorld(nullptr), mClippingIdGenerator(0), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0) {
+    : mWorld(nullptr), mClippingIdGenerator(0), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationRequested(false), mScheduledGenerationInterval(5.0f) {
   WorldDataGenerator::copyFrom(other);
   mActiveClipping.worldData = other.mActiveClipping.worldData;
 }
@@ -155,59 +155,69 @@ std::vector<Primitive*> DynamicWorldDataGenerator::preparePrimitives(vector<Prim
   return updatedPrimitives;
 }
 
-void DynamicWorldDataGenerator::generateWorldData(World const* world) {
-  // Create details to send back to clientS
-  auto clippingId = mClippingIdGenerator++;
+DynamicWorldDataGenerator::GenerationInput
+DynamicWorldDataGenerator::snapshotGenerationInput(
+    World const* world, bool regetPrimitives) {
+  lock_guard<mutex> lock(mGenMutex);
 
-  vector<Primitive*> prims;
-  PrimitiveProcessingStats primStats;
-  LayerSelection layerSelection;
-
-  if (true) {
-    lock_guard<mutex> lock(mGenMutex);
-    prims = mNextClipping.primitives;
-    layerSelection = mNextClipping.layerSelection;
-    primStats = mNextClipping.primStats;
-
-    primStats.candidateCount = (uint32_t)prims.size();
+  if (regetPrimitives) {
+    mNextClipping.primitives = getPrimitives(world);
+    mNextClipping.layerSelection = getLayerSelection();
   }
 
+  auto primitives = mNextClipping.primitives;
+  auto primStats = mNextClipping.primStats;
+  primStats.candidateCount = uint32_t(primitives.size());
+  primStats.visibleCount = 0;
+  primStats.updateVertexCount = 0;
+
+  auto updatedPrimitives = preparePrimitives(primitives, &primStats);
+  auto arrangementPrimitives = SnapshotPrimitives(primitives);
+
+  return {move(arrangementPrimitives),
+          move(primitives),
+          move(updatedPrimitives),
+          mNextClipping.layerSelection,
+          primStats,
+          world->getExtents(),
+          float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
+          world->getStepThreshold()};
+}
+
+void DynamicWorldDataGenerator::generateWorldData(GenerationInput input) {
+  auto clippingId = mClippingIdGenerator++;
   GenerationDetails details{
       clippingId,
       GenerationState::Generating,
       0,
-      {primStats, {}, {}}};
+      {input.primStats, {}, {}}};
 
   fireCallbacks(details);
 
-  // Generation
+  // Everything below runs on a worker for asynchronous generations. Its
+  // geometry and world settings were copied before the worker was posted.
   mNumGenerationsInProgress++;
   wp::Timer timer;
 
-  auto updatedPrimitives = preparePrimitives(prims, &primStats);
-  ArrangementWorldDataGenerator generator;
-  generator.generate(prims);
   auto results = make_shared<ArrangementWorldData>(
-      generator.getWorldData(),
-      world->getExtents(),
-      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      world->getStepThreshold());
+      arr::BuildArrangement(input.primitives),
+      input.worldExtents,
+      input.gridCellSize,
+      input.stepThreshold);
 
   mLastGenTime = timer.elapsedNanoseconds();
-  details.stats.prim = primStats;
 
   mPendingClippings.push({clippingId,
                           move(results),
-                          move(prims),
-                          move(updatedPrimitives),
-                          layerSelection,
-                          primStats,
+                          move(input.sourcePrimitives),
+                          move(input.updatedPrimitives),
+                          input.layerSelection,
+                          input.primStats,
                           mLastGenTime});
 
   mNumGenerationsInProgress--;
   mNumGenerationsComplete++;
 
-  // Update details for client
   details.state = GenerationState::Generated;
   details.genTimeNs = mLastGenTime;
 
@@ -272,24 +282,18 @@ void DynamicWorldDataGenerator::checkCommitPendingClipping() {
 }
 
 WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
-  auto primitives = getPrimitives(world);
+  {
+    lock_guard<mutex> lock(mGenMutex);
+    mNextClipping.primitives = getPrimitives(world);
+    mNextClipping.layerSelection = getLayerSelection();
+    mNextClipping.primStats = {
+        uint32_t(mNextClipping.primitives.size()),
+        0,
+        0};
+  }
 
   if (mNumGenerationsComplete == 0) {
-    mNextClipping.primitives = primitives;
-    mNextClipping.layerSelection = getLayerSelection();
-    mNextClipping.primStats = {
-        (uint32_t)primitives.size(),
-        0,
-        0};
-    generateWorldData(world);
-  } else {
-    lock_guard<mutex> lock(mGenMutex);
-    mNextClipping.primitives = primitives;
-    mNextClipping.layerSelection = getLayerSelection();
-    mNextClipping.primStats = {
-        (uint32_t)primitives.size(),
-        0,
-        0};
+    generateWorldData(snapshotGenerationInput(world, false));
   }
 
   checkCommitPendingClipping();
@@ -297,41 +301,24 @@ WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
 }
 
 void DynamicWorldDataGenerator::generate(World const* world, bool regetPrimitives) {
-  if (regetPrimitives) {
-    // Recalculate visible Primitives
-    lock_guard<mutex> lock(mGenMutex);
-
-    mNextClipping.primitives = getPrimitives(world);
-    mNextClipping.layerSelection = getLayerSelection();
-  }
-
-  mExecutorRuntime.thread_pool_executor()->post([this, world] {
-    generateWorldData(world);
-  });
+  auto input = snapshotGenerationInput(world, regetPrimitives);
+  mExecutorRuntime.thread_pool_executor()->post(
+      [this, input = move(input)]() mutable {
+        generateWorldData(move(input));
+      });
 }
 
 void DynamicWorldDataGenerator::generate(bool regetPrimitives) {
-  if (regetPrimitives) {
-    // Recalculate visible Primitives
-    lock_guard<mutex> lock(mGenMutex);
-
-    mNextClipping.primitives = getPrimitives(mWorld);
-    mNextClipping.layerSelection = getLayerSelection();
-  }
-
-  mExecutorRuntime.thread_pool_executor()->post([this] {
-    generateWorldData(mWorld);
-  });
+  generate(mWorld, regetPrimitives);
 }
 
 void DynamicWorldDataGenerator::generateBlocking() {
-  mNextClipping.primitives = getPrimitives(mWorld);
-  mNextClipping.layerSelection = getLayerSelection();
-  generateWorldData(mWorld);
+  generateWorldData(snapshotGenerationInput(mWorld, true));
 }
 
 void DynamicWorldDataGenerator::handleEvents(uint32_t events) {
-  if (events & BW_PRIMITIVE_GLOBAL_EVENT_CLIP) {
+  auto scheduled = mScheduledGenerationRequested.exchange(false);
+  if (scheduled || events & BW_PRIMITIVE_GLOBAL_EVENT_CLIP) {
     generate();
   }
 }
@@ -344,9 +331,9 @@ void DynamicWorldDataGenerator::handleLayerSelectionChanged() {
 
 void DynamicWorldDataGenerator::generateOnInterval() {
   while (true) {
-    generateWorldData(mWorld);
-
-    // Sleep in multiple phases so we can check for termination more regularly
+    // Sleep in multiple phases so we can check for termination more regularly.
+    // The scheduler only requests work; the next main-thread update captures
+    // the live primitive snapshot before posting the generation worker.
     auto sleepAmt = 0.0f;
     auto sleepTime = getScheduledGenerationInterval();
     auto sleepIters = int(ceil(sleepTime));
@@ -361,6 +348,8 @@ void DynamicWorldDataGenerator::generateOnInterval() {
         return;
       }
     }
+
+    mScheduledGenerationRequested = true;
   }
 }
 
@@ -369,7 +358,11 @@ void DynamicWorldDataGenerator::startGenerationSchedule(float interval) {
 
   if (!mScheduledGenerationRunning) {
     mScheduledGenerationRunning = true;
+    mScheduledGenerationRequested = false;
 
+    // Preserve the immediate first generation while taking its snapshot on
+    // the caller (main) thread.
+    generate();
     mScheduledWorker = mExecutorRuntime.thread_pool_executor()->submit([this] {
       generateOnInterval();
     });
@@ -380,6 +373,7 @@ void DynamicWorldDataGenerator::stopGenerationSchedule() {
   if (mScheduledGenerationRunning) {
     mScheduledGenerationRunning = false;
     mScheduledWorker.get();
+    mScheduledGenerationRequested = false;
   }
 }
 

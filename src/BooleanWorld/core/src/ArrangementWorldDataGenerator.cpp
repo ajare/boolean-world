@@ -26,7 +26,6 @@ std::vector<arr::Contour> ConvertPrimitiveToContours(
   return contours;
 }
 
-namespace {
 std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
     std::vector<Primitive*> const& primitives) {
   std::vector<arr::ArrangementPrimitive> result;
@@ -41,7 +40,6 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
   }
   return result;
 }
-}  // namespace
 
 ArrangementWorldDataGenerator::ArrangementWorldDataGenerator()
     : mWorldData(arr::BuildArrangement({})) {

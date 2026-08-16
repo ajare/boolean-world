@@ -16,6 +16,11 @@ class World;
 [[nodiscard]] BW_API std::vector<arr::Contour> ConvertPrimitiveToContours(
     Primitive const& primitive);
 
+// Copies every generation input needed by the arrangement so worker execution
+// never has to reach back into live authored primitives.
+[[nodiscard]] BW_API std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
+    std::vector<Primitive*> const& primitives);
+
 class BW_API ArrangementWorldDataGenerator {
   LayerSelection mLayerSelection{SelectLayer(0)};
   arr::ArrangementResultPtr mWorldData;

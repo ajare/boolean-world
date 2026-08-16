@@ -45,6 +45,17 @@ public:
   typedef std::function<void(GenerationDetails const& details)> GenerationCompleteCallback;
 
 private:
+  struct GenerationInput {
+    std::vector<arr::ArrangementPrimitive> primitives;
+    std::vector<Primitive*> sourcePrimitives;
+    std::vector<Primitive*> updatedPrimitives;
+    LayerSelection layerSelection;
+    PrimitiveProcessingStats primStats;
+    wp::BoundingBox worldExtents;
+    float gridCellSize;
+    float stepThreshold;
+  };
+
   std::atomic_uint32_t mClippingIdGenerator;
 
   World const* mWorld;
@@ -72,12 +83,17 @@ private:
 
   std::atomic_bool mScheduledGenerationRunning;
 
+  std::atomic_bool mScheduledGenerationRequested;
+
   std::atomic<float> mScheduledGenerationInterval;
 
 private:
   void copyFrom(DynamicWorldDataGenerator const& other);
 
-  void generateWorldData(World const* world);
+  void generateWorldData(GenerationInput input);
+
+  GenerationInput snapshotGenerationInput(
+      World const* world, bool regetPrimitives);
 
   std::vector<Primitive*> preparePrimitives(std::vector<Primitive*>& primitives, PrimitiveProcessingStats* stats) const;
 
