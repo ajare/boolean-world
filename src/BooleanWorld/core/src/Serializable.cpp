@@ -88,11 +88,12 @@ bool Serializable::deserialize(shared_ptr<Serializer> serializer, SerializationW
   mDeserializationWarnings.clear();
   mDeserializationErrors.clear();
 
-  mModified = deserializeImpl(serializer, workData);
+  bool const deserialized = deserializeImpl(serializer, workData);
 
   postDeserialization(workData);
 
-  return mModified;
+  mModified = false;
+  return deserialized;
 }
 
 }  // namespace core
