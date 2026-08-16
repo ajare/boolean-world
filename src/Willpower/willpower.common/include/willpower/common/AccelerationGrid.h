@@ -67,7 +67,7 @@ public:
 
   void addItem(uint32_t index, BoundingBox const& box);
 
-  void removeItem(uint32_t index);
+  void removeItem(uint32_t index, bool failIfNotFound = true);
 
   void removeAllItems();
 

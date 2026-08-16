@@ -1,6 +1,7 @@
-#include <cassert>
 #include <iterator>
 #include <algorithm>
+#include <format>
+#include <stdexcept>
 
 #include "willpower/common/AccelerationGrid.h"
 
@@ -98,8 +99,10 @@ void AccelerationGrid::addItem(uint32_t index, BoundingBox const& box) {
   cellX1 = max(0, min(cellX1, mCellDimX - 1));
   cellY1 = max(0, min(cellY1, mCellDimY - 1));
 
-  // Add to cells, and cell-to-index map
-  mIndicesToCells[index] = IndexCollection();
+  // Replace an existing item before recording its new cells.
+  if (mIndicesToCells.find(index) != mIndicesToCells.end()) {
+    removeItem(index);
+  }
   auto& indexToCellIt = mIndicesToCells[index];
 
   for (int y = cellY0; y <= cellY1; ++y) {
@@ -112,10 +115,15 @@ void AccelerationGrid::addItem(uint32_t index, BoundingBox const& box) {
   }
 }
 
-void AccelerationGrid::removeItem(uint32_t index) {
+void AccelerationGrid::removeItem(uint32_t index, bool failIfNotFound) {
   // Find which cells the item is in, and remove it from them.
   auto it = mIndicesToCells.find(index);
-  assert(it != mIndicesToCells.end() && "AccelerationGrid::removeItem() 'index' not found.");
+  if (it == mIndicesToCells.end()) {
+    if (failIfNotFound) {
+      throw runtime_error(format("Index {} not found in AccelerationGrid", index));
+    }
+    return;
+  }
 
   for (auto cellIndex : it->second) {
     removeItemFromCell(mCells[cellIndex], index);

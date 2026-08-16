@@ -77,14 +77,9 @@ private:
   }
 
   void removeItemFromCell(Cell& cell, uint32_t index, CellUserUpdateFunction updateFn, bool failIfNotFound = true) {
-    bool foundItem{true};
-    try {
-      cell.indices.erase(index);
-    } catch (std::exception const&) {
-      foundItem = false;
-      if (failIfNotFound) {
-        throw;
-      }
+    bool foundItem = cell.indices.erase(index) > 0;
+    if (!foundItem && failIfNotFound) {
+      throw std::runtime_error(std::format("Index {} not found in cell", index));
     }
 
     if (updateFn && foundItem) {
@@ -184,8 +179,10 @@ public:
     cellX1 = std::max(0, std::min(cellX1, mCellDimX - 1));
     cellY1 = std::max(0, std::min(cellY1, mCellDimY - 1));
 
-    // Add to cells, and cell-to-index map
-    mIndicesToCells[index] = IndexCollection();
+    // Replace an existing item before recording its new cells.
+    if (mIndicesToCells.find(index) != mIndicesToCells.end()) {
+      removeItem(index, updateFn);
+    }
     auto& indexToCellIt = mIndicesToCells[index];
 
     for (int y = cellY0; y <= cellY1; ++y) {
