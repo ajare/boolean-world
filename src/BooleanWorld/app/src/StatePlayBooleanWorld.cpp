@@ -584,7 +584,7 @@ bool StatePlayBooleanWorld::_imGuiActive() const {
 }
 
 bool StatePlayBooleanWorld::_imGuiCapturesInput() const {
-  return mDebugDisplay.collisionSim || mDebugDisplay.clipGeneration;
+  return mDebugDisplay.clipGeneration;
 }
 
 ImVec2 StatePlayBooleanWorld::wpVecToImVec2(wp::Vector2 const& v, wp::Vector2 const& offset, wp::Vector2 const& size, wp::Vector2 const& scale) {
