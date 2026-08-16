@@ -187,7 +187,11 @@ void StatePlayBooleanWorld::createGameObjects(application::resourcesystem::Resou
 }
 
 void StatePlayBooleanWorld::destroyGameObjects() {
-  getWDG()->stopGenerationSchedule();
+  auto dataGenerator = getWDG();
+  dataGenerator->stopGenerationSchedule();
+  dataGenerator->unregisterGenerationCallback(mGenerationCallbackToken);
+  mGenerationCallbackToken =
+      bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken;
 
   delete mWorldCollisionSim;
   mWorldCollisionSim = nullptr;
@@ -357,7 +361,8 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
   // Start scheduled world clipping
   auto dataGenerator = getWDG();
 
-  dataGenerator->registerGenerationCallback(bind(&StatePlayBooleanWorld::handleClippingUpdate, this, std::placeholders::_1));
+  mGenerationCallbackToken = dataGenerator->registerGenerationCallback(
+      bind(&StatePlayBooleanWorld::handleClippingUpdate, this, std::placeholders::_1));
   dataGenerator->startGenerationSchedule(5.0f);
 
   // Finish move of transition data

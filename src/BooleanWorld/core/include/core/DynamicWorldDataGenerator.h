@@ -3,7 +3,10 @@
 #include <vector>
 #include <mutex>
 #include <atomic>
+#include <condition_variable>
+#include <cstdint>
 #include <functional>
+#include <memory>
 
 // Disable padding warnings for concurrencpp
 #pragma warning(push)
@@ -43,8 +46,19 @@ public:
   };
 
   typedef std::function<void(GenerationDetails const& details)> GenerationCompleteCallback;
+  using GenerationCallbackToken = uint64_t;
+  static constexpr GenerationCallbackToken InvalidGenerationCallbackToken = 0;
 
 private:
+  struct GenerationCallbackRegistration {
+    GenerationCallbackToken token;
+    GenerationCompleteCallback callback;
+    std::mutex mutex;
+    std::condition_variable noCallbacksInProgress;
+    bool registered{true};
+    uint32_t callbacksInProgress{0};
+  };
+
   struct GenerationInput {
     std::vector<arr::ArrangementPrimitive> primitives;
     std::vector<Primitive*> sourcePrimitives;
@@ -64,7 +78,8 @@ private:
 
   ThreadSafeQueue<Clipping> mPendingClippings;
 
-  std::vector<GenerationCompleteCallback> mCallbacks;
+  std::vector<std::shared_ptr<GenerationCallbackRegistration>> mCallbacks;
+  GenerationCallbackToken mNextGenerationCallbackToken{1};
 
   mutable std::mutex mGenMutex;
 
@@ -146,7 +161,10 @@ public:
 
   bool isScheduledGenerationRunning() const;
 
-  void registerGenerationCallback(GenerationCompleteCallback callback);
+  GenerationCallbackToken registerGenerationCallback(GenerationCompleteCallback callback);
+
+  // Waits for any running invocation before the callback can become invalid.
+  void unregisterGenerationCallback(GenerationCallbackToken token);
 
   WorldDataPtr getWorldData(World const* world) override;
 

@@ -115,9 +115,49 @@ bool DynamicWorldDataGenerator::isScheduledGenerationRunning() const {
   return mScheduledGenerationRunning;
 }
 
-void DynamicWorldDataGenerator::registerGenerationCallback(GenerationCompleteCallback callback) {
+DynamicWorldDataGenerator::GenerationCallbackToken
+DynamicWorldDataGenerator::registerGenerationCallback(
+    GenerationCompleteCallback callback) {
   lock_guard<mutex> lock(mGenMutex);
-  mCallbacks.push_back(callback);
+
+  auto registration = make_shared<GenerationCallbackRegistration>();
+  registration->token = mNextGenerationCallbackToken++;
+  registration->callback = move(callback);
+  mCallbacks.push_back(registration);
+  return registration->token;
+}
+
+void DynamicWorldDataGenerator::unregisterGenerationCallback(
+    GenerationCallbackToken token) {
+  if (token == InvalidGenerationCallbackToken) {
+    return;
+  }
+
+  shared_ptr<GenerationCallbackRegistration> registration;
+  {
+    lock_guard<mutex> lock(mGenMutex);
+    auto found = find_if(
+        mCallbacks.begin(), mCallbacks.end(),
+        [token](auto const& callback) { return callback->token == token; });
+    if (found == mCallbacks.end()) {
+      return;
+    }
+
+    registration = *found;
+  }
+
+  {
+    unique_lock<mutex> lock(registration->mutex);
+    registration->registered = false;
+    registration->noCallbacksInProgress.wait(
+        lock,
+        [&registration] { return registration->callbacksInProgress == 0; });
+  }
+
+  lock_guard<mutex> lock(mGenMutex);
+  erase_if(
+      mCallbacks,
+      [&registration](auto const& callback) { return callback == registration; });
 }
 
 std::vector<Primitive*> DynamicWorldDataGenerator::preparePrimitives(vector<Primitive*>& primitives, PrimitiveProcessingStats* stats) const {
@@ -225,8 +265,33 @@ void DynamicWorldDataGenerator::generateWorldData(GenerationInput input) {
 }
 
 void DynamicWorldDataGenerator::fireCallbacks(GenerationDetails const& details) {
-  for (auto callback : mCallbacks) {
-    callback(details);
+  vector<shared_ptr<GenerationCallbackRegistration>> callbacks;
+  {
+    lock_guard<mutex> lock(mGenMutex);
+    callbacks = mCallbacks;
+  }
+
+  for (auto const& registration : callbacks) {
+    {
+      unique_lock<mutex> lock(registration->mutex);
+      if (!registration->registered) {
+        continue;
+      }
+      registration->callbacksInProgress++;
+    }
+
+    try {
+      registration->callback(details);
+    } catch (...) {
+      lock_guard<mutex> lock(registration->mutex);
+      registration->callbacksInProgress--;
+      registration->noCallbacksInProgress.notify_all();
+      throw;
+    }
+
+    lock_guard<mutex> lock(registration->mutex);
+    registration->callbacksInProgress--;
+    registration->noCallbacksInProgress.notify_all();
   }
 }
 
@@ -265,16 +330,16 @@ void DynamicWorldDataGenerator::checkCommitPendingClipping() {
     auto clipping = mPendingClippings.pop();
 
     if (clipping.has_value()) {
-      lock_guard<mutex> lock(mGenMutex);
-
-      mActiveClipping = move(clipping.value());
-      mNumCommits++;
-
       GenerationDetails details{
           clipping->id,
           GenerationState::Committed,
           0,
           {}};
+      {
+        lock_guard<mutex> lock(mGenMutex);
+        mActiveClipping = move(clipping.value());
+        mNumCommits++;
+      }
 
       fireCallbacks(details);
     }

@@ -77,6 +77,9 @@ private:
 
   std::deque<ClippingRecord> mClippingRecords;
 
+  bw::core::DynamicWorldDataGenerator::GenerationCallbackToken mGenerationCallbackToken{
+      bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken};
+
   std::deque<DisplayMessage> mDisplayMessages;
 
 private:
