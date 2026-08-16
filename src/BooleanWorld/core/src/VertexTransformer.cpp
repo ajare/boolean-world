@@ -103,6 +103,11 @@ bool VertexTransformer::deserializeImpl(shared_ptr<Serializer> serializer, Seria
         int i = 0;
 
         while (serializer->nextArrayItem()) {
+          if (i >= (int)Key::COUNT) {
+            addDeserializationError("Too many animators in VertexTransformer");
+            return false;
+          }
+
           serializer->beginMap(interpolators[i]);
           {
             if (!animators[i].deserialize(serializer, workData)) {
@@ -113,6 +118,11 @@ bool VertexTransformer::deserializeImpl(shared_ptr<Serializer> serializer, Seria
             i++;
             serializer->endMap();
           }
+        }
+
+        if (i != (int)Key::COUNT) {
+          addDeserializationError("Expected 4 animators in VertexTransformer");
+          return false;
         }
 
         serializer->endArray();  // animators
