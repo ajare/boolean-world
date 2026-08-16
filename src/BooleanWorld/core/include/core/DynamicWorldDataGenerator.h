@@ -4,6 +4,7 @@
 #include <mutex>
 #include <atomic>
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -48,6 +49,7 @@ public:
   typedef std::function<void(GenerationDetails const& details)> GenerationCompleteCallback;
   using GenerationCallbackToken = uint64_t;
   static constexpr GenerationCallbackToken InvalidGenerationCallbackToken = 0;
+  static constexpr std::size_t MaxPendingGenerations = 4;
 
 private:
   struct GenerationCallbackRegistration {

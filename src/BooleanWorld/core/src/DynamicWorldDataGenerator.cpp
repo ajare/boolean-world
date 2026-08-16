@@ -8,8 +8,6 @@
 #include "core/ArrangementWorldDataGenerator.h"
 #include "core/Defines.h"
 
-#define MAX_NUM_PENDING_CLIPPINGS 4
-
 namespace bw {
 namespace core {
 using namespace std;
@@ -247,13 +245,15 @@ void DynamicWorldDataGenerator::generateWorldData(GenerationInput input) {
 
   mLastGenTime = timer.elapsedNanoseconds();
 
-  mPendingClippings.push({clippingId,
-                          move(results),
-                          move(input.sourcePrimitives),
-                          move(input.updatedPrimitives),
-                          input.layerSelection,
-                          input.primStats,
-                          mLastGenTime});
+  mPendingClippings.push_bounded(
+      {clippingId,
+       move(results),
+       move(input.sourcePrimitives),
+       move(input.updatedPrimitives),
+       input.layerSelection,
+       input.primStats,
+       mLastGenTime},
+      MaxPendingGenerations);
 
   mNumGenerationsInProgress--;
   mNumGenerationsComplete++;
@@ -324,26 +324,28 @@ bool DynamicWorldDataGenerator::canCommit(Clipping const& clipping) {
 }
 
 void DynamicWorldDataGenerator::checkCommitPendingClipping() {
-  auto checker = bind(&DynamicWorldDataGenerator::canCommit, this, std::placeholders::_1);
-
-  if (mPendingClippings.can_pop(checker)) {
-    auto clipping = mPendingClippings.pop();
-
-    if (clipping.has_value()) {
-      GenerationDetails details{
-          clipping->id,
-          GenerationState::Committed,
-          0,
-          {}};
-      {
-        lock_guard<mutex> lock(mGenMutex);
-        mActiveClipping = move(clipping.value());
-        mNumCommits++;
-      }
-
-      fireCallbacks(details);
-    }
+  Clipping clipping;
+  auto const stale = [this](Clipping const& candidate) {
+    return candidate.layerSelection != getLayerSelection();
+  };
+  while (mPendingClippings.try_pop_if(clipping, stale)) {
   }
+
+  auto const checker = [this](Clipping const& candidate) {
+    return canCommit(candidate);
+  };
+  if (!mPendingClippings.try_pop_if(clipping, checker)) {
+    return;
+  }
+
+  auto const clippingId = clipping.id;
+  {
+    lock_guard<mutex> lock(mGenMutex);
+    mActiveClipping = move(clipping);
+    mNumCommits++;
+  }
+
+  fireCallbacks({clippingId, GenerationState::Committed, 0, {}});
 }
 
 WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {

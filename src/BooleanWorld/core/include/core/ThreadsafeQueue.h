@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <queue>
 #include <mutex>
 #include <condition_variable>
@@ -38,10 +39,33 @@ public:
     cv_.notify_one();
   }
 
+  // Push while retaining at most maxSize values. Oldest values are discarded.
+  void push_bounded(T&& value, std::size_t maxSize) {
+    {
+      std::lock_guard<std::mutex> lock(mtx_);
+      if (closed_ || maxSize == 0) return;
+      while (queue_.size() >= maxSize) {
+        queue_.pop();
+      }
+      queue_.push(std::move(value));
+    }
+    cv_.notify_one();
+  }
+
   // Check if top value can be popped
   bool can_pop(std::function<bool(T const&)> pred) const {
     std::lock_guard<std::mutex> lock(mtx_);
     return !queue_.empty() && pred(queue_.front());
+  }
+
+  // Non-blocking conditional pop
+  bool try_pop_if(T& out, std::function<bool(T const&)> pred) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (queue_.empty() || !pred(queue_.front())) return false;
+
+    out = std::move(queue_.front());
+    queue_.pop();
+    return true;
   }
 
   // Blocking pop
