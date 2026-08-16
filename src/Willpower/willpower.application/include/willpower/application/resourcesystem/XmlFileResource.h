@@ -6,46 +6,35 @@
 #include "willpower/application/resourcesystem/Resource.h"
 #include "willpower/application/resourcesystem/ResourceFactory.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
-		namespace resourcesystem
-		{
+namespace WP_NAMESPACE {
+namespace application {
+namespace resourcesystem {
 
-			class WP_APPLICATION_API XmlFileResource : public Resource
-			{
-				XmlReader* mReader;
+class WP_APPLICATION_API XmlFileResource : public Resource {
+  XmlReader* mReader;
 
-			private:
+private:
+  void parseData(DataStreamPtr dataPtr) override;
 
-				void parseData(DataStreamPtr dataPtr) override;
+  void destroy() override;
 
-				void destroy() override;
+public:
+  XmlFileResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, application::resourcesystem::ResourceLocation* location);
 
-			public:
+  XmlReader* getReader();
+};
 
-				XmlFileResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, application::resourcesystem::ResourceLocation* location);
+class XmlFileResourceFactory : public ResourceFactory {
+public:
+  XmlFileResourceFactory()
+      : ResourceFactory("XmlFile") {
+  }
 
-				XmlReader* getReader();
-			};
+  Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, ResourceLocation* location) override {
+    return new XmlFileResource(name, namesp, source, tags, location);
+  }
+};
 
-			class XmlFileResourceFactory : public ResourceFactory
-			{
-			public:
-
-				XmlFileResourceFactory()
-					: ResourceFactory("XmlFile")
-				{
-				}
-
-				Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, ResourceLocation* location) override
-				{
-					return new XmlFileResource(name, namesp, source, tags, location);
-				}
-			};
-
-		} // resourcesystem
-	} // application
-} // WP_NAMESPACE
-
+}  // namespace resourcesystem
+}  // namespace application
+}  // namespace WP_NAMESPACE

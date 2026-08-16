@@ -10,152 +10,136 @@
 #include "willpower/geometry/Platform.h"
 #include "willpower/geometry/Types.h"
 
-namespace WP_NAMESPACE
-{
-	namespace geometry
-	{
+namespace WP_NAMESPACE {
+namespace geometry {
 
-		class Mesh;
+class Mesh;
 
-		class WP_GEOMETRY_API Edge
-		{
-			friend class Mesh;
+class WP_GEOMETRY_API Edge {
+  friend class Mesh;
 
-		public:
+public:
+  enum Connectivity {
+    Orphaned,
+    External,
+    Internal,
+    Invalid,
+    COUNT
+  };
 
-			enum Connectivity
-			{
-				Orphaned,
-				External,
-				Internal,
-				Invalid,
-				COUNT
-			};
+public:
+  typedef std::function<void(Mesh*, uint32_t)> DeleteFunction;
 
-		public:
+  typedef std::function<void(Mesh*, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)> UpdateRefFunction;
 
-			typedef std::function<void(Mesh*, uint32_t)> DeleteFunction;
+private:
+  Mesh* mwMesh;
 
-			typedef std::function<void(Mesh*, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)> UpdateRefFunction;
+  int32_t mMeshIndex;
 
-		private:
+  int32_t mPublicId;
 
-			Mesh* mwMesh;
+  int32_t mAttributeIndex;
 
-			int32_t mMeshIndex;
+  int32_t mVertices[2];
 
-			int32_t mPublicId;
+  IndexSet mPolygonRefs;
 
-			int32_t mAttributeIndex;
+  DeleteFunction mDeleteFunction;
 
-			int32_t mVertices[2];
+  UpdateRefFunction mUpdateVerticesFunction;
 
-			IndexSet mPolygonRefs;
+  // Cached internals
+  Vector2 mNormal, mCentre, mDirection;
 
-			DeleteFunction mDeleteFunction;
+  float mLength;
 
-			UpdateRefFunction mUpdateVerticesFunction;
+private:
+  void copyFrom(Edge const& other);
 
-			// Cached internals
-			Vector2 mNormal, mCentre, mDirection;
+  void setMesh(Mesh* mesh, int32_t index);
 
-			float mLength;
+  void setDeleteFunction(DeleteFunction func);
 
-		private:
+  void setUpdateRefFunction(UpdateRefFunction func);
 
-			void copyFrom(Edge const& other);
+  void addPolygonReference(uint32_t id);
 
-			void setMesh(Mesh* mesh, int32_t index);
+  void _removePolygonReference(uint32_t id, bool deleteIfOrphaned);
 
-			void setDeleteFunction(DeleteFunction func);
+  void updatePolygonReference(uint32_t oldId, uint32_t newId);
 
-			void setUpdateRefFunction(UpdateRefFunction func);
+  void updateInternals();
 
-			void addPolygonReference(uint32_t id);
+public:
+  Edge();
 
-			void _removePolygonReference(uint32_t id, bool deleteIfOrphaned);
+  Edge(int vertex0, int vertex1);
 
-			void updatePolygonReference(uint32_t oldId, uint32_t newId);
+  Edge(Edge const& other);
 
-			void updateInternals();
+  Edge& operator=(Edge const& other);
 
-		public:
+  bool operator==(Edge const& other) const;
 
-			Edge();
+  bool operator!=(Edge const& other) const;
 
-			Edge(int vertex0, int vertex1);
+  int32_t getPublicId() const;
 
-			Edge(Edge const& other);
+  void setVertices(int32_t vertex0, int32_t vertex1);
 
-			Edge& operator=(Edge const& other);
+  void setFirstVertex(int32_t vertex);
 
-			bool operator==(Edge const& other) const;
+  void setSecondVertex(int32_t vertex);
 
-			bool operator!=(Edge const& other) const;
+  int32_t getFirstVertex() const;
 
-			int32_t getPublicId() const;
+  int32_t getSecondVertex() const;
 
-			void setVertices(int32_t vertex0, int32_t vertex1);
+  int32_t getOtherVertex(int32_t vertex) const;
 
-			void setFirstVertex(int32_t vertex);
+  Vector2 const& getCentre() const;
 
-			void setSecondVertex(int32_t vertex);
+  Vector2 const& getNormal() const;
 
-			int32_t getFirstVertex() const;
+  Vector2 const& getDirection() const;
 
-			int32_t getSecondVertex() const;
+  float getLength() const;
 
-			int32_t getOtherVertex(int32_t vertex) const;
+  BoundingBox getBoundingBox() const;
 
-			Vector2 const& getCentre() const;
+  IndexSet const& getPolygonReferences() const;
 
-			Vector2 const& getNormal() const;
+  Connectivity getConnectivity() const;
 
-			Vector2 const& getDirection() const;
-			
-			float getLength() const;
+  // Utility
+  Vector2 getClosestPoint(Vector2 const& point) const;
 
-			BoundingBox getBoundingBox() const;
+  float getDistanceTo(Vector2 const& point) const;
 
-			IndexSet const& getPolygonReferences() const;
+  Vector2 lerp(float t) const;
 
-			Connectivity getConnectivity() const;
+  bool connectedTo(Edge const& edge) const;
 
-			// Utility
-			Vector2 getClosestPoint(Vector2 const& point) const;
+  int32_t getSharedVertexIndex(Edge const& edge) const;
+};
 
-			float getDistanceTo(Vector2 const& point) const;
+struct UndirectedEdgeComparer {
+  bool operator()(Edge const& a, Edge const& b) const {
+    int32_t aMin = (std::min)(a.getFirstVertex(), a.getSecondVertex());
+    int32_t aMax = (std::max)(a.getFirstVertex(), a.getSecondVertex());
+    int32_t bMin = (std::min)(b.getFirstVertex(), b.getSecondVertex());
+    int32_t bMax = (std::max)(b.getFirstVertex(), b.getSecondVertex());
 
-			Vector2 lerp(float t) const;
+    if (aMin < bMin) {
+      return true;
+    } else if (aMin > bMin) {
+      return false;
+    } else {
+      return aMax < bMax;
+    }
+  }
+};
 
-			bool connectedTo(Edge const& edge) const;
-
-			int32_t getSharedVertexIndex(Edge const& edge) const;
-		};
-
-		struct UndirectedEdgeComparer
-		{
-			bool operator()(Edge const& a, Edge const& b) const
-			{
-				int32_t aMin = (std::min)(a.getFirstVertex(), a.getSecondVertex());
-				int32_t aMax = (std::max)(a.getFirstVertex(), a.getSecondVertex());
-				int32_t bMin = (std::min)(b.getFirstVertex(), b.getSecondVertex());
-				int32_t bMax = (std::max)(b.getFirstVertex(), b.getSecondVertex());
-
-				if (aMin < bMin)
-				{
-					return true;
-				}
-				else if (aMin > bMin)
-				{
-					return false;
-				}
-				else
-				{
-					return aMax < bMax;
-				}
-			}
-		};
-
-	} // geometry
-} // WP_NAMESPACE
+}  // namespace geometry
+}  // namespace WP_NAMESPACE

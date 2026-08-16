@@ -4,25 +4,21 @@
 
 #include "willpower/common/BatchRenderable.h"
 
-namespace WP_NAMESPACE
-{
+namespace WP_NAMESPACE {
 
-	class WP_COMMON_API TriangleBatchRenderable : public BatchRenderable
-	{
-		int mBatchCount, mVertexCount;
+class WP_COMMON_API TriangleBatchRenderable : public BatchRenderable {
+  int mBatchCount, mVertexCount;
 
-	public:
+public:
+  TriangleBatchRenderable(int vertexCount, int posStride, int texStride, int colourOffset);
 
-		TriangleBatchRenderable(int vertexCount, int posStride, int texStride, int colourOffset);
+  void setBatchCount(int count);
 
-		void setBatchCount(int count);
+  int getBatchCount() const;
 
-		int getBatchCount() const;
+  void setVertexCount(int count);
 
-		void setVertexCount(int count);
+  int getVertexCount() const;
+};
 
-		int getVertexCount() const;
-
-	};
-
-} // WP_NAMESPACE
+}  // namespace WP_NAMESPACE

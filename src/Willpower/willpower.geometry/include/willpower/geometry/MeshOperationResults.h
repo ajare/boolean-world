@@ -8,185 +8,167 @@
 #include "willpower/geometry/Offsetter.h"
 #include "willpower/geometry/DirectedEdge.h"
 
-namespace WP_NAMESPACE
-{
-	namespace geometry
-	{
+namespace WP_NAMESPACE {
+namespace geometry {
 
-		struct ExtrudeVertexResult
-		{
-			// Extruded vertex
-			uint32_t vertexIndex;
+struct ExtrudeVertexResult {
+  // Extruded vertex
+  uint32_t vertexIndex;
 
-			// Affected polygon
-			uint32_t affectedPolygon;
+  // Affected polygon
+  uint32_t affectedPolygon;
 
-			// New vertex indices
-			IndexVector newVertexIndices;
+  // New vertex indices
+  IndexVector newVertexIndices;
 
-			// New edge indices
-			IndexVector newEdgeIndices;
-		};
+  // New edge indices
+  IndexVector newEdgeIndices;
+};
 
-		struct ExtrudePolygonResult
-		{
-			struct Polygon
-			{
-				// New polygon
-				uint32_t index;
+struct ExtrudePolygonResult {
+  struct Polygon {
+    // New polygon
+    uint32_t index;
 
-				// Hole (ie old polygon, if unmerged full loop)
-				uint32_t holeIndex;
+    // Hole (ie old polygon, if unmerged full loop)
+    uint32_t holeIndex;
 
-				// New edge indices
-				IndexVector extrudedEdgeIndices;
+    // New edge indices
+    IndexVector extrudedEdgeIndices;
 
-				// Old edges (ie non-merged)
-				IndexVector sourceEdgeIndices;
-			};
+    // Old edges (ie non-merged)
+    IndexVector sourceEdgeIndices;
+  };
 
-			// Polygons created
-			std::vector<Polygon> polygons;
-		};
+  // Polygons created
+  std::vector<Polygon> polygons;
+};
 
-		struct BridgeEdgesResult
-		{
-			struct Polygon
-			{
-				// New polygon
-				uint32_t index;
+struct BridgeEdgesResult {
+  struct Polygon {
+    // New polygon
+    uint32_t index;
 
-				// Side edges
-				IndexVector edges[2];
-			};
+    // Side edges
+    IndexVector edges[2];
+  };
 
-			// Polygons created
-			std::vector<Polygon> polygons;
+  // Polygons created
+  std::vector<Polygon> polygons;
 
-			uint32_t polygonRemovedInMergeIndex;
-		};
+  uint32_t polygonRemovedInMergeIndex;
+};
 
-		struct WeldEdgesResult
-		{
-			uint32_t weldingEdges[2];
+struct WeldEdgesResult {
+  uint32_t weldingEdges[2];
 
-			uint32_t polygonIndices[2];
-			
-			// New edge
-			uint32_t weldedEdge;
-		};
+  uint32_t polygonIndices[2];
 
-		struct SplitEdgeResult
-		{
-			// Split edge
-			uint32_t splitEdgeIndex;
+  // New edge
+  uint32_t weldedEdge;
+};
 
-			// Split edge vertices
-			std::array<uint32_t, 2> splitEdgeVertexIndices;
+struct SplitEdgeResult {
+  // Split edge
+  uint32_t splitEdgeIndex;
 
-			// Affected polygons
-			std::vector<uint32_t> affectedPolygons;
+  // Split edge vertices
+  std::array<uint32_t, 2> splitEdgeVertexIndices;
 
-			// New vertices
-			std::vector<uint32_t> newVertexIndices;
+  // Affected polygons
+  std::vector<uint32_t> affectedPolygons;
 
-			// New edges
-			std::vector<uint32_t> newEdgeIndices;
-		};
+  // New vertices
+  std::vector<uint32_t> newVertexIndices;
 
-		struct SetEdgeLengthResult
-		{
-			// Edge
-			uint32_t edgeIndex;
+  // New edges
+  std::vector<uint32_t> newEdgeIndices;
+};
 
-			// Vertices
-			std::array<uint32_t, 2> splitEdgeVertexIndices;
+struct SetEdgeLengthResult {
+  // Edge
+  uint32_t edgeIndex;
 
-			// Affected polygons
-			std::vector<uint32_t> affectedPolygons;
-		};
+  // Vertices
+  std::array<uint32_t, 2> splitEdgeVertexIndices;
 
-		struct MergePolygonsResult
-		{
-			// Old indices;
-			uint32_t oldIndices[2];
+  // Affected polygons
+  std::vector<uint32_t> affectedPolygons;
+};
 
-			// New index
-			uint32_t newIndex;
+struct MergePolygonsResult {
+  // Old indices;
+  uint32_t oldIndices[2];
 
-			// Edges removed
-			IndexVector edgesRemoved;
+  // New index
+  uint32_t newIndex;
 
-			// Vertices removed
-			IndexVector verticesRemoved;
-		};
+  // Edges removed
+  IndexVector edgesRemoved;
 
-		struct SplitPolygonResult
-		{
-			// New polygon created
-			uint32_t newPolygonIndex;
+  // Vertices removed
+  IndexVector verticesRemoved;
+};
 
-			// New edges which have split the polygon
-			IndexVector splittingEdgeIndices;
-		};
+struct SplitPolygonResult {
+  // New polygon created
+  uint32_t newPolygonIndex;
 
-		struct SlicePolygonResult
-		{
-			// New polygon created
-			int32_t newPolygonIndex;
+  // New edges which have split the polygon
+  IndexVector splittingEdgeIndices;
+};
 
-			// New edges resulting from slice
-			IndexVector slicingEdgeIndices;
-		};
+struct SlicePolygonResult {
+  // New polygon created
+  int32_t newPolygonIndex;
 
-		struct CutPolygonResult
-		{
-			// New edge(s) which have cut the polygon
-			IndexVector cuttingEdgeIndices;
+  // New edges resulting from slice
+  IndexVector slicingEdgeIndices;
+};
 
-			// Edges which have been removed
-			DirectedEdgeVector edgesRemoved;
+struct CutPolygonResult {
+  // New edge(s) which have cut the polygon
+  IndexVector cuttingEdgeIndices;
 
-			// Holes which have been removed
-			IndexVector holesRemovedIndices;
-		};
+  // Edges which have been removed
+  DirectedEdgeVector edgesRemoved;
 
-		struct RemoveVertexResult
-		{
-			// Edge created.
-			uint32_t newEdgeIndex;
-		};
+  // Holes which have been removed
+  IndexVector holesRemovedIndices;
+};
 
-		struct SnipVertexResult
-		{
-			// Snipped vertex
-			uint32_t vertexIndex;
+struct RemoveVertexResult {
+  // Edge created.
+  uint32_t newEdgeIndex;
+};
 
-			// Affected polygon
-			uint32_t affectedPolygon;
+struct SnipVertexResult {
+  // Snipped vertex
+  uint32_t vertexIndex;
 
-			// Edge created, when not constraining the vertex.
-			uint32_t newEdgeIndex;
+  // Affected polygon
+  uint32_t affectedPolygon;
 
-			// Edge(s) created, when constraining
-			uint32_t newConstrainedEdgeIndices[2];
-		};
+  // Edge created, when not constraining the vertex.
+  uint32_t newEdgeIndex;
 
-		struct ChamferVertexResult
-		{
-			// Chamfered vertex
-			uint32_t vertexIndex;
+  // Edge(s) created, when constraining
+  uint32_t newConstrainedEdgeIndices[2];
+};
 
-			// Affected polygon
-			uint32_t affectedPolygon;
+struct ChamferVertexResult {
+  // Chamfered vertex
+  uint32_t vertexIndex;
 
-			// Vertices created
-			IndexVector newVertexIndices;
+  // Affected polygon
+  uint32_t affectedPolygon;
 
-			// Edges created.
-			IndexVector newEdgeIndices;
-		};
+  // Vertices created
+  IndexVector newVertexIndices;
 
-	} // geometry
-} // WP_NAMESPACE
+  // Edges created.
+  IndexVector newEdgeIndices;
+};
 
+}  // namespace geometry
+}  // namespace WP_NAMESPACE

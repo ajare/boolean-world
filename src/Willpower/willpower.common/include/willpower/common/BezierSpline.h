@@ -6,82 +6,74 @@
 #include "willpower/common/Vector2.h"
 #include "willpower/common/SplinePath.h"
 
-namespace WP_NAMESPACE
-{
+namespace WP_NAMESPACE {
 
-	class WP_COMMON_API BezierSpline : public SplinePath
-	{
-		struct Segment
-		{
-			float offset, length;
-		};
+class WP_COMMON_API BezierSpline : public SplinePath {
+  struct Segment {
+    float offset, length;
+  };
 
-	private:
+private:
+  int mRecursionLimit;
 
-		int mRecursionLimit;
+  float mScale, mPathEpsilon, mAngleToleranceEpsilon, mAngleTolerance, mCuspLimit;
 
-		float mScale, mPathEpsilon, mAngleToleranceEpsilon, mAngleTolerance, mCuspLimit;
+  mutable std::vector<Segment> mSegments;
 
-		mutable std::vector<Segment> mSegments;
+private:
+  void copyFrom(BezierSpline const& other);
 
-	private:
+  void createSegments() const;
 
-		void copyFrom(BezierSpline const& other);
+  void divideAdaptive(std::vector<Vector2>& vertices, Vector2 const& v1, Vector2 const& v2, Vector2 const& v3, Vector2 const& v4, float tolerance, int depth) const;
 
-		void createSegments() const;
+  void divideEqual(std::vector<Vector2>& vertices, int segment) const;
 
-		void divideAdaptive(std::vector<Vector2>& vertices, Vector2 const& v1, Vector2 const& v2, Vector2 const& v3, Vector2 const& v4, float tolerance, int depth) const;
+  int getSegmentIndex(float distance) const;
 
-		void divideEqual(std::vector<Vector2>& vertices, int segment) const;
+  Segment const& getSegment(int index) const;
 
-		int getSegmentIndex(float distance) const;
+  float calculateSegmentLength(int point) const;
 
-		Segment const& getSegment(int index) const;
+  BoundingBox getSegmentBounds(int segment) const;
 
-		float calculateSegmentLength(int point) const;
+protected:
+  Vector2 getPosition(int point, float t) const;
 
-		BoundingBox getSegmentBounds(int segment) const;
+  Vector2 get1stDerivative(int point, float t) const;
 
-	protected:
+  Vector2 get2ndDerivative(int point, float t) const;
 
-		Vector2 getPosition(int point, float t) const;
+  float getCurvature(int point, float t) const;
 
-		Vector2 get1stDerivative(int point, float t) const;
+public:
+  BezierSpline();
 
-		Vector2 get2ndDerivative(int point, float t) const;
+  explicit BezierSpline(std::vector<wp::Vector2> const& points);
 
-		float getCurvature(int point, float t) const;
+  BezierSpline(BezierSpline const& other);
 
-	public:
+  BezierSpline& operator=(BezierSpline const& other);
 
-		BezierSpline();
+  void setControlPoint(int index, Vector2 const& position);
 
-		explicit BezierSpline(std::vector<wp::Vector2> const& points);
+  std::vector<Vector2> divide(bool adaptive, float scale = 1.0f) const;
 
-		BezierSpline(BezierSpline const& other);
+  Vector2 getPositionAtT(float t) const;
 
-		BezierSpline& operator=(BezierSpline const& other);
+  Vector2 getPosition(float distance) const;
 
-		void setControlPoint(int index, Vector2 const& position);
+  Vector2 getDirectionAtT(float distance) const;
 
-		std::vector<Vector2> divide(bool adaptive, float scale = 1.0f) const;
+  Vector2 getDirection(float distance) const;
 
-		Vector2 getPositionAtT(float t) const;
+  Vector2 getAccelerationAtT(float distance) const;
 
-		Vector2 getPosition(float distance) const;
+  Vector2 getAcceleration(float distance) const;
 
-		Vector2 getDirectionAtT(float distance) const;
+  float getLength() const;
 
-		Vector2 getDirection(float distance) const;
+  BoundingBox getBounds() const;
+};
 
-		Vector2 getAccelerationAtT(float distance) const;
-
-		Vector2 getAcceleration(float distance) const;
-
-		float getLength() const;
-
-		BoundingBox getBounds() const;
-	};
-
-} // WP_NAMESPACE
-
+}  // namespace WP_NAMESPACE

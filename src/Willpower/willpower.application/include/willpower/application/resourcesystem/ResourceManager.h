@@ -17,135 +17,124 @@
 #include "willpower/application/resourcesystem/Resource.h"
 #include "willpower/application/AudioSystem.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
-		namespace resourcesystem
-		{
+namespace WP_NAMESPACE {
+namespace application {
+namespace resourcesystem {
 
-			class WP_APPLICATION_API ResourceManager
-			{
-				struct ResourceLocationRecord
-				{
-					ResourceLocation* location;
-					bool scanned;
-				};
+class WP_APPLICATION_API ResourceManager {
+  struct ResourceLocationRecord {
+    ResourceLocation* location;
+    bool scanned;
+  };
 
-			public:
+public:
+  typedef std::map<std::string, ResourceRecord> ResourceRecordMap;
+  typedef ResourceRecordMap::const_iterator ResourceRecordIterator;
 
-				typedef std::map<std::string, ResourceRecord> ResourceRecordMap;
-				typedef ResourceRecordMap::const_iterator ResourceRecordIterator;
+private:
+  Logger* mwLogger;
 
-			private:
+  // Render system for graphics resources
+  mpp::ResourceManager* mwRenderResourceMgr;
 
-				Logger* mwLogger;
+  mpp::RenderSystem* mwRenderSystem;
 
-				// Render system for graphics resources
-				mpp::ResourceManager* mwRenderResourceMgr;
+  // Audio system
+  AudioSystem* mwAudioSystem;
 
-				mpp::RenderSystem* mwRenderSystem;
+  // Resource locations
+  std::map<std::string, ResourceLocationFactory> mLocationFactories;
 
-				// Audio system
-				AudioSystem* mwAudioSystem;
+  std::vector<ResourceLocationRecord> mLocations;
 
-				// Resource locations
-				std::map<std::string, ResourceLocationFactory> mLocationFactories;
+  // Resource records
+  std::map<std::string, ResourceRecordMap> mNamespaces;
 
-				std::vector<ResourceLocationRecord> mLocations;
+  // Resources
+  std::map<std::string, ResourceFactory*> mResourceFactories;
 
-				// Resource records
-				std::map<std::string, ResourceRecordMap> mNamespaces;
+  typedef std::map<std::string, ResourcePtr> ResourceMap;
+  std::map<std::string, ResourceMap> mResources;
 
-				// Resources
-				std::map<std::string, ResourceFactory*> mResourceFactories;
+private:
+  void addResourceRecord(ResourceRecord const& record);
 
-				typedef std::map<std::string, ResourcePtr> ResourceMap;
-				std::map<std::string, ResourceMap> mResources;
+  void instantiateAllResources(bool create, bool load, ResourceCallback callback = nullptr, bool rootResource = true);
 
-			private:
+  ResourcePtr instantiateResource(ResourceRecord const& record, bool create = false, bool load = false, ResourceCallback callback = nullptr, bool rootResource = true);
 
-				void addResourceRecord(ResourceRecord const& record);
+  void _createResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
 
-				void instantiateAllResources(bool create, bool load, ResourceCallback callback = nullptr, bool rootResource = true);
+  void _destroyResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
 
-				ResourcePtr instantiateResource(ResourceRecord const& record, bool create = false, bool load = false, ResourceCallback callback = nullptr, bool rootResource = true);
+  void _loadResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
 
-				void _createResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
+  void _unloadResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
 
-				void _destroyResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
+  static std::vector<std::string> sortResourcesByDependency(std::vector<std::string> const& resourceNames, std::map<std::string, std::vector<std::string>> dependencies);
 
-				void _loadResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
+public:
+  ResourceManager(mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, AudioSystem* audioSystem, Logger* logger);
 
-				void _unloadResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
+  virtual ~ResourceManager();
 
-				static std::vector<std::string> sortResourcesByDependency(std::vector<std::string> const& resourceNames, std::map<std::string, std::vector<std::string>> dependencies);
+  void addResourceFactory(ResourceFactory* factory);
 
-			public:
+  void addResourceLocationFactory(std::string const& type, ResourceLocationFactory factory);
 
-				ResourceManager(mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, AudioSystem* audioSystem, Logger* logger);
+  void addResourceDefinitionFactory(ResourceDefinitionFactory* factory);
 
-				virtual ~ResourceManager();
+  void addResourceLocation(std::string const& type, std::string const& location, std::string const& definitionFile);
 
-				void addResourceFactory(ResourceFactory* factory);
+  void addResources(std::string const& file);
 
-				void addResourceLocationFactory(std::string const& type, ResourceLocationFactory factory);
+  void scanLocations(ResourceLocationCallback callback = nullptr);
 
-				void addResourceDefinitionFactory(ResourceDefinitionFactory* factory);
+  ResourcePtr getResource(std::string const& name, std::string const& namesp = "");
 
-				void addResourceLocation(std::string const& type, std::string const& location, std::string const& definitionFile);
+  ResourcePtr getQualifiedResource(std::string const& name);
 
-				void addResources(std::string const& file);
+  std::vector<ResourcePtr> getResourcesByType(std::string const& type);
 
-				void scanLocations(ResourceLocationCallback callback = nullptr);
+  std::vector<ResourcePtr> getNamespaceResources(std::string const& namesp);
 
-				ResourcePtr getResource(std::string const& name, std::string const& namesp = "");
+  std::vector<ResourcePtr> getAllResources();
 
-				ResourcePtr getQualifiedResource(std::string const& name);
+  ResourceDefinitionFactory* getResourceDefinitionFactory(std::string const& resType, std::string const& facType, bool errorIfNotFound = true);
 
-				std::vector<ResourcePtr> getResourcesByType(std::string const& type);
+  ResourcePtr acquireResource(std::string const& name, std::string const& namesp = "");
 
-				std::vector<ResourcePtr> getNamespaceResources(std::string const& namesp);
+  void acquireResource(ResourcePtr resource);
 
-				std::vector<ResourcePtr> getAllResources();
+  void releaseResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
 
-				ResourceDefinitionFactory* getResourceDefinitionFactory(std::string const& resType, std::string const& facType, bool errorIfNotFound = true);
+  bool isResourceCreated(ResourcePtr resource) const;
 
-				ResourcePtr acquireResource(std::string const& name, std::string const& namesp = "");
+  bool isResourceLoaded(ResourcePtr resource) const;
 
-				void acquireResource(ResourcePtr resource);
+  void createResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
 
-				void releaseResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
+  void loadResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
 
-				bool isResourceCreated(ResourcePtr resource) const;
+  void createNamespaceResources(std::string const& namesp, ResourceCallback callback = nullptr);
 
-				bool isResourceLoaded(ResourcePtr resource) const;
+  void createAllResources(ResourceCallback callback = nullptr);
 
-				void createResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
+  void createResources(std::vector<ResourcePtr> const& resources, ResourceCallback callback = nullptr);
 
-				void loadResource(ResourcePtr resource, ResourceCallback callback = nullptr, bool rootResource = true);
+  void destroyNamespaceResources(std::string const& namesp, ResourceCallback callback = nullptr);
 
-				void createNamespaceResources(std::string const& namesp, ResourceCallback callback = nullptr);
-				
-				void createAllResources(ResourceCallback callback = nullptr);
+  void destroyAllResources(ResourceCallback callback = nullptr);
 
-				void createResources(std::vector<ResourcePtr> const& resources, ResourceCallback callback = nullptr);
+  void destroyResources(std::vector<ResourcePtr> const& resources, ResourceCallback callback = nullptr);
 
-				void destroyNamespaceResources(std::string const& namesp, ResourceCallback callback = nullptr);
+  void loadNamespaceResources(std::string const& namesp, bool createFirst, ResourceCallback callback = nullptr);
 
-				void destroyAllResources(ResourceCallback callback = nullptr);
+  void loadAllResources(bool createFirst, ResourceCallback callback = nullptr);
 
-				void destroyResources(std::vector<ResourcePtr> const& resources, ResourceCallback callback = nullptr);
+  void loadResources(std::vector<ResourcePtr> const& resources, bool createFirst, ResourceCallback callback = nullptr);
+};
 
-				void loadNamespaceResources(std::string const& namesp, bool createFirst, ResourceCallback callback = nullptr);
-
-				void loadAllResources(bool createFirst, ResourceCallback callback = nullptr);
-
-				void loadResources(std::vector<ResourcePtr> const& resources, bool createFirst, ResourceCallback callback = nullptr);
-
-			};
-
-		} // resourcesystem
-	} // application
-} // WP_NAMESPACE
-
+}  // namespace resourcesystem
+}  // namespace application
+}  // namespace WP_NAMESPACE

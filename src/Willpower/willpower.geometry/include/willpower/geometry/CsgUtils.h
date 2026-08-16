@@ -6,20 +6,15 @@
 
 #include "willpower/geometry/Platform.h"
 
-namespace WP_NAMESPACE
-{
-	namespace geometry
-	{
-		class WP_GEOMETRY_API CsgUtils
-		{
-		public:
+namespace WP_NAMESPACE {
+namespace geometry {
+class WP_GEOMETRY_API CsgUtils {
+public:
+  typedef std::vector<wp::Vector2> Polygon;
 
-			typedef std::vector<wp::Vector2> Polygon;
+public:
+  static std::vector<Polygon> opUnion(std::vector<Polygon> const& polygons);
+};
 
-		public:
-
-			static std::vector<Polygon> opUnion(std::vector<Polygon> const& polygons);
-		};
-
-	} // geometry
-} // WP_NAMESPACE
+}  // namespace geometry
+}  // namespace WP_NAMESPACE

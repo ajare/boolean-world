@@ -2,51 +2,42 @@
 
 using namespace std;
 
-namespace WP_NAMESPACE
-{
+namespace WP_NAMESPACE {
 
-	CentripetalCatmullRomSpline::CentripetalCatmullRomSpline(vector<Vector2> const& points)
-		: SplinePath(points)
-		, mSpline(nullptr)
-	{
-		mSpline = new CubicHermiteSpline<Vector2>(mPoints, 0.5f);
-		mLength = mSpline->totalLength();
-		mMaxT = mSpline->getMaxT();
-	}
+CentripetalCatmullRomSpline::CentripetalCatmullRomSpline(vector<Vector2> const& points)
+    : SplinePath(points), mSpline(nullptr) {
+  mSpline = new CubicHermiteSpline<Vector2>(mPoints, 0.5f);
+  mLength = mSpline->totalLength();
+  mMaxT = mSpline->getMaxT();
+}
 
-	CentripetalCatmullRomSpline::~CentripetalCatmullRomSpline()
-	{
-		delete mSpline;
-	}
+CentripetalCatmullRomSpline::~CentripetalCatmullRomSpline() {
+  delete mSpline;
+}
 
-	void CentripetalCatmullRomSpline::setControlPoint(int index, Vector2 const& position)
-	{
-		SplinePath::setControlPoint(index, position);
+void CentripetalCatmullRomSpline::setControlPoint(int index, Vector2 const& position) {
+  SplinePath::setControlPoint(index, position);
 
-		delete mSpline;
-		mSpline = new CubicHermiteSpline<Vector2>(mPoints, 0.5f);
-		mLength = mSpline->totalLength();
-		mMaxT = mSpline->getMaxT();
-	}
-	
-	Vector2 CentripetalCatmullRomSpline::getPosition(float distance) const
-	{
-		return mSpline->getPosition((distance / mLength) * mMaxT);
-	}
+  delete mSpline;
+  mSpline = new CubicHermiteSpline<Vector2>(mPoints, 0.5f);
+  mLength = mSpline->totalLength();
+  mMaxT = mSpline->getMaxT();
+}
 
-	Vector2 CentripetalCatmullRomSpline::getDirection(float distance) const
-	{
-		return mSpline->getTangent((distance / mLength) * mMaxT).tangent;
-	}
+Vector2 CentripetalCatmullRomSpline::getPosition(float distance) const {
+  return mSpline->getPosition((distance / mLength) * mMaxT);
+}
 
-	Vector2 CentripetalCatmullRomSpline::getAcceleration(float distance) const
-	{
-		return mSpline->getCurvature((distance / mLength) * mMaxT).curvature;
-	}
+Vector2 CentripetalCatmullRomSpline::getDirection(float distance) const {
+  return mSpline->getTangent((distance / mLength) * mMaxT).tangent;
+}
 
-	float CentripetalCatmullRomSpline::getLength() const
-	{
-		return mLength;
-	}
+Vector2 CentripetalCatmullRomSpline::getAcceleration(float distance) const {
+  return mSpline->getCurvature((distance / mLength) * mMaxT).curvature;
+}
 
-} // WP_NAMESPACE
+float CentripetalCatmullRomSpline::getLength() const {
+  return mLength;
+}
+
+}  // namespace WP_NAMESPACE

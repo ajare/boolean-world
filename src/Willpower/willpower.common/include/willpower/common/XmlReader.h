@@ -8,84 +8,75 @@
 #include "StringUtils.h"
 #include "StructuredData.h"
 
-namespace WP_NAMESPACE
-{
+namespace WP_NAMESPACE {
 
-	class WP_COMMON_API XmlNode
-	{
-		friend class XmlReader;
+class WP_COMMON_API XmlNode {
+  friend class XmlReader;
 
-	private:
+private:
+  void* mNode;
 
-		void* mNode;
+  std::string mXpath;
 
-		std::string mXpath;
+  std::string mName;
 
-		std::string mName;
+  std::string mFilepath;
 
-		std::string mFilepath;
+  mutable std::vector<XmlNode*> mChildren;
 
-		mutable std::vector<XmlNode*> mChildren;
+private:
+  XmlNode(void* node, std::string const& xpath, std::string const& name, std::string const& filepath);
 
-	private:
+public:
+  ~XmlNode();
 
-		XmlNode(void* node, std::string const& xpath, std::string const& name, std::string const& filepath);
+  bool next();
 
-	public:
+  std::string getValue() const;
 
-		~XmlNode();
+  std::string const& getPath() const;
 
-		bool next();
+  XmlNode* getChild(std::string const& child) const;
 
-		std::string getValue() const;
+  XmlNode* getOptionalChild(std::string const& child) const;
 
-		std::string const& getPath() const;
+  std::string getAttribute(std::string const& attrib) const;
 
-		XmlNode* getChild(std::string const& child) const;
+  bool getOptionalAttribute(std::string const& attrib, std::string& value) const;
 
-		XmlNode* getOptionalChild(std::string const& child) const;
+  std::string getAsText() const;
+};
 
-		std::string getAttribute(std::string const& attrib) const;
+class WP_COMMON_API XmlReader {
+  void* mDocument;
 
-		bool getOptionalAttribute(std::string const& attrib, std::string& value) const;
+  std::string mFilepath;
 
-		std::string getAsText() const;
-	};
+  void* mRootNode;
 
+  std::string mRootNodeName;
 
-	class WP_COMMON_API XmlReader
-	{
-		void* mDocument;
+  std::vector<XmlNode*> mNodes;
 
-		std::string mFilepath;
+private:
+  XmlReader(void* doc, std::string const& filepath);
 
-		void* mRootNode;
+  static std::string getErrorMessage(int errorCode, bool loadNotParse, std::string const& filepath);
 
-		std::string mRootNodeName;
+  StructuredData _readTree(void* node);
 
-		std::vector<XmlNode*> mNodes;
+public:
+  ~XmlReader();
 
-	private:
+  static XmlReader* fromFile(std::string const& filepath);
 
-		XmlReader(void* doc, std::string const& filepath);
+  static XmlReader* fromString(std::string const& string);
 
-		static std::string getErrorMessage(int errorCode, bool loadNotParse, std::string const& filepath);
+  XmlNode* getNode(std::string const& path);
 
-		StructuredData _readTree(void* node);
+  XmlNode* getOptionalNode(std::string const& path);
 
-	public:
-
-		~XmlReader();
-
-		static XmlReader* fromFile(std::string const& filepath);
-
-		static XmlReader* fromString(std::string const& string);
-
-		XmlNode* getNode(std::string const& path);
-
-		XmlNode* getOptionalNode(std::string const& path);
-
-		StructuredData readTree();
-	};
+  StructuredData readTree();
+};
 
 }  // namespace WP_NAMESPACE

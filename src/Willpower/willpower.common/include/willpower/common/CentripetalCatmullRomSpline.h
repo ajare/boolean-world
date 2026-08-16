@@ -4,7 +4,7 @@
 #include <vector>
 
 #pragma warning(push)
-#pragma warning(disable: 4244)
+#pragma warning(disable : 4244)
 #include <spline_library/splines/cubic_hermite_spline.h>
 #pragma warning(pop)
 
@@ -12,31 +12,27 @@
 #include "willpower/common/Vector2.h"
 #include "willpower/common/SplinePath.h"
 
-namespace WP_NAMESPACE
-{
+namespace WP_NAMESPACE {
 
-	class WP_COMMON_API CentripetalCatmullRomSpline : public SplinePath
-	{
-		CubicHermiteSpline<Vector2>* mSpline;
+class WP_COMMON_API CentripetalCatmullRomSpline : public SplinePath {
+  CubicHermiteSpline<Vector2>* mSpline;
 
-		float mLength, mMaxT;
+  float mLength, mMaxT;
 
-	public:
+public:
+  explicit CentripetalCatmullRomSpline(std::vector<wp::Vector2> const& points);
 
-		explicit CentripetalCatmullRomSpline(std::vector<wp::Vector2> const& points);
+  ~CentripetalCatmullRomSpline();
 
-		~CentripetalCatmullRomSpline();
+  void setControlPoint(int index, Vector2 const& position);
 
-		void setControlPoint(int index, Vector2 const& position);
+  Vector2 getPosition(float distance) const;
 
-		Vector2 getPosition(float distance) const;
+  Vector2 getDirection(float distance) const;
 
-		Vector2 getDirection(float distance) const;
+  Vector2 getAcceleration(float distance) const;
 
-		Vector2 getAcceleration(float distance) const;
+  float getLength() const;
+};
 
-		float getLength() const;
-	};
-
-} // WP_NAMESPACE
-
+}  // namespace WP_NAMESPACE

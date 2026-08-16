@@ -9,44 +9,33 @@
 
 #undef max
 
-namespace WP_NAMESPACE
-{
-	namespace geometry
-	{
+namespace WP_NAMESPACE {
+namespace geometry {
 
-		class WP_GEOMETRY_API MeshValidator
-		{
-		public:
+class WP_GEOMETRY_API MeshValidator {
+public:
+  enum Result {
+    Valid = 0,
+    VertexInPolygon = 1,
+    EdgesCrossing = 2,
+    PolygonsIntersecting = 4
+  };
 
-			enum Result
-			{
-				Valid					= 0,
-				VertexInPolygon			= 1,
-				EdgesCrossing			= 2,
-				PolygonsIntersecting	= 4
-			};
+private:
+  Mesh const* mwMesh;
 
-		private:
+private:
+  uint32_t validateVertexMovePointContainment(uint32_t vertexIndex, Vector2 const& move) const;
 
-			Mesh const* mwMesh;
+  uint32_t validateVertexMoveEdgeCrossings(uint32_t vertexIndex, Vector2 const& move) const;
 
-		private:
+public:
+  explicit MeshValidator(Mesh const* mesh);
 
-			uint32_t validateVertexMovePointContainment(uint32_t vertexIndex, Vector2 const& move) const;
+  uint32_t validateVertexMove(uint32_t vertexIndex, Vector2 const& move) const;
 
-			uint32_t validateVertexMoveEdgeCrossings(uint32_t vertexIndex, Vector2 const& move) const;
+  uint32_t validatePolygonAdd(std::vector<Vector2> const& vertices) const;
+};
 
-		public:
-
-			explicit MeshValidator(Mesh const* mesh);
-
-			uint32_t validateVertexMove(uint32_t vertexIndex, Vector2 const& move) const;
-
-			uint32_t validatePolygonAdd(std::vector<Vector2> const& vertices) const;
-
-		};
-
-	} // geometry
-} // WP_NAMESPACE
-
-
+}  // namespace geometry
+}  // namespace WP_NAMESPACE

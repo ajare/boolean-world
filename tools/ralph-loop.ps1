@@ -639,7 +639,7 @@ while ($true) {
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
         try {
-            $output = @(& pi @piArguments 2>&1 | Tee-Object -FilePath $logPath)
+            $output = @(& pi @piArguments 2>&1 | Tee-Object -FilePath $logPath -Append)
             $piExitCode = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $previousErrorActionPreference

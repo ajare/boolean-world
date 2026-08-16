@@ -7,166 +7,138 @@
 
 #include "willpower/common/Platform.h"
 
-namespace WP_NAMESPACE
-{
-	namespace geometry
-	{
+namespace WP_NAMESPACE {
+namespace geometry {
 
-		enum class UserAttributePolygonColourType
-		{
-			Default,
-			Polygon,
-			Vertex,
-			PolygonVertex
-		};
+enum class UserAttributePolygonColourType {
+  Default,
+  Polygon,
+  Vertex,
+  PolygonVertex
+};
 
-		class UserAttributesBase
-		{
-		public:
+class UserAttributesBase {
+public:
+  virtual ~UserAttributesBase() = default;
 
-			virtual ~UserAttributesBase() = default;
+  virtual void clear() = 0;
 
-			virtual void clear() = 0;
+  virtual std::map<int32_t, int32_t> compact(std::set<int32_t> const& input) = 0;
 
-			virtual std::map<int32_t, int32_t> compact(std::set<int32_t> const& input) = 0;
+  virtual uint32_t createAttribute(void const* data) = 0;
 
-			virtual uint32_t createAttribute(void const* data) = 0;
+  virtual void updateAttribute(uint32_t index, void const* data) = 0;
 
-			virtual void updateAttribute(uint32_t index, void const* data) = 0;
+  virtual void const* readAttribute(uint32_t index) = 0;
 
-			virtual void const* readAttribute(uint32_t index) = 0;
+  virtual void getUvAttribute(void const* data, uint32_t textureIndex, float& u, float& v) const {
+    WP_UNUSED(data);
+    WP_UNUSED(textureIndex);
 
-			virtual void getUvAttribute(void const* data, uint32_t textureIndex, float& u, float& v) const
-			{
-				WP_UNUSED(data);
-				WP_UNUSED(textureIndex);
+    u = 0.0f;
+    v = 0.0f;
+  }
 
-				u = 0.0f;
-				v = 0.0f;
-			}
+  virtual void getUvWeightAttribute(void const* data, uint32_t textureIndex, float& weight) const {
+    WP_UNUSED(data);
+    WP_UNUSED(textureIndex);
 
-			virtual void getUvWeightAttribute(void const* data, uint32_t textureIndex, float& weight) const
-			{
-				WP_UNUSED(data);
-				WP_UNUSED(textureIndex);
+    weight = 1.0f;
+  }
 
-				weight = 1.0f;
-			}
+  virtual void getRgbaAttribute(void const* data, float& r, float& g, float& b, float& a) const {
+    WP_UNUSED(data);
 
-			virtual void getRgbaAttribute(void const* data, float& r, float& g, float& b, float& a) const
-			{
-				WP_UNUSED(data);
+    r = 1.0f;
+    g = 1.0f;
+    b = 1.0f;
+    a = 1.0f;
+  }
 
-				r = 1.0f;
-				g = 1.0f;
-				b = 1.0f;
-				a = 1.0f;
-			}
+  virtual void getMaterialAttribute(void const* data, std::string& material) const {
+    WP_UNUSED(data);
 
-			virtual void getMaterialAttribute(void const* data, std::string& material) const
-			{
-				WP_UNUSED(data);
+    material = "";
+  }
 
-				material = "";
-			}
+  virtual void getProgramAttribute(void const* data, std::string& program) const {
+    WP_UNUSED(data);
 
-			virtual void getProgramAttribute(void const* data, std::string& program) const
-			{
-				WP_UNUSED(data);
+    program = "";
+  }
 
-				program = "";
-			}
+  virtual void getTexturesAttribute(void const* data, std::vector<std::string>& textures) const {
+    WP_UNUSED(data);
 
-			virtual void getTexturesAttribute(void const* data, std::vector<std::string>& textures) const
-			{
-				WP_UNUSED(data);
+    textures.clear();
+  }
 
-				textures.clear();
-			}
+  virtual void getPolygonColourType(void const* data, UserAttributePolygonColourType& type) const {
+    WP_UNUSED(data);
+    type = UserAttributePolygonColourType::Default;
+  }
+};
 
-			virtual void getPolygonColourType(void const* data, UserAttributePolygonColourType& type) const
-			{
-				WP_UNUSED(data);
-				type = UserAttributePolygonColourType::Default;
-			}
-		};
+template <typename T>
+class UserAttributes : public UserAttributesBase {
+protected:
+  std::vector<T> mAttributes;
 
-		template<typename T>
-		class UserAttributes : public UserAttributesBase
-		{
-		protected:
+public:
+  void clear() override {
+    mAttributes.clear();
+  }
 
-			std::vector<T> mAttributes;
+  std::map<int32_t, int32_t> compact(std::set<int32_t> const& input) override {
+    std::map<int32_t, int32_t> remapped;
 
-		public:
+    uint32_t newLiveOffset{0};
+    for (uint32_t i = 0; i < mAttributes.size(); ++i) {
+      if (input.find((int32_t)i) != input.end()) {
+        auto& compactedAttrib = mAttributes[newLiveOffset];
+        compactedAttrib = mAttributes[i];
 
-			void clear() override
-			{
-				mAttributes.clear();
-			}
+        remapped[i] = newLiveOffset;
+        newLiveOffset++;
+      }
+    }
 
-			std::map<int32_t, int32_t> compact(std::set<int32_t> const& input) override
-			{
-				std::map<int32_t, int32_t> remapped;
-				
-				uint32_t newLiveOffset{ 0 };
-				for (uint32_t i = 0; i < mAttributes.size(); ++i)
-				{
-					if (input.find((int32_t)i) != input.end())
-					{
-						auto& compactedAttrib = mAttributes[newLiveOffset];
-						compactedAttrib = mAttributes[i];
+    for (uint32_t i = newLiveOffset; i < mAttributes.size(); ++i) {
+      mAttributes.pop_back();
+    }
 
-						remapped[i] = newLiveOffset;
-						newLiveOffset++;
-					}
-				}
+    return remapped;
+  }
 
-				for (uint32_t i = newLiveOffset; i < mAttributes.size(); ++i)
-				{
-					mAttributes.pop_back();
-				}
-				
-				return remapped;
-			}
+  uint32_t addAttribute(T attr) {
+    auto index = (uint32_t)mAttributes.size();
+    mAttributes.push_back(attr);
+    return index;
+  }
 
-			uint32_t addAttribute(T attr)
-			{
-				auto index = (uint32_t)mAttributes.size();
-				mAttributes.push_back(attr);
-				return index;
-			}
+  void setAttribute(uint32_t index, T attr) {
+    if (index >= mAttributes.size()) {
+      throw std::exception("Out of bounds.");
+    }
 
-			void setAttribute(uint32_t index, T attr)
-			{
-				if (index >= mAttributes.size())
-				{
-					throw std::exception("Out of bounds.");
-				}
+    mAttributes[index] = attr;
+  }
 
-				mAttributes[index] = attr;
-			}
+  T const& getAttribute(uint32_t index) const {
+    if (index >= mAttributes.size()) {
+      throw std::exception("Out of bounds.");
+    }
 
-			T const& getAttribute(uint32_t index) const
-			{
-				if (index >= mAttributes.size())
-				{
-					throw std::exception("Out of bounds.");
-				}
+    return mAttributes[index];
+  }
+};
 
-				return mAttributes[index];
-			}
+class UserAttributesFactory {
+public:
+  virtual UserAttributesBase* create() = 0;
 
-		};
+  virtual UserAttributesBase* copy(UserAttributesBase const* source) = 0;
+};
 
-		class UserAttributesFactory
-		{
-		public:
-
-			virtual UserAttributesBase* create() = 0;
-
-			virtual UserAttributesBase* copy(UserAttributesBase const* source) = 0;
-		};
-
-	} // geometry
-} // WP_NAMESPACE
+}  // namespace geometry
+}  // namespace WP_NAMESPACE

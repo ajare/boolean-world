@@ -5,60 +5,51 @@
 
 #undef max
 
-namespace WP_NAMESPACE
-{
-	namespace geometry
-	{
+namespace WP_NAMESPACE {
+namespace geometry {
 
-		using namespace std;
-		using namespace WP_NAMESPACE;
+using namespace std;
+using namespace WP_NAMESPACE;
 
-		vector<CsgUtils::Polygon> CsgUtils::opUnion(vector<Polygon> const& polygons)
-		{
-			vector<Polygon> result;
+vector<CsgUtils::Polygon> CsgUtils::opUnion(vector<Polygon> const& polygons) {
+  vector<Polygon> result;
 
-			ClipperLib::Clipper clipper;
+  ClipperLib::Clipper clipper;
 
-			for (uint32_t i = 0; i < polygons.size(); ++i)
-			{
-				ClipperLib::Path inPath;
-				
-				auto const& polygon = polygons[i];
-				for (auto const& vertex : polygon)
-				{
-					inPath.push_back(ClipperLib::IntPoint((int)vertex.x, (int)vertex.y));
-				}
+  for (uint32_t i = 0; i < polygons.size(); ++i) {
+    ClipperLib::Path inPath;
 
-				auto polyType = i == 0 ? 
-					ClipperLib::PolyType::ptSubject : 
-					ClipperLib::PolyType::ptClip;
+    auto const& polygon = polygons[i];
+    for (auto const& vertex : polygon) {
+      inPath.push_back(ClipperLib::IntPoint((int)vertex.x, (int)vertex.y));
+    }
 
-				clipper.AddPath(inPath, polyType, true);
-			}
+    auto polyType = i == 0 ? ClipperLib::PolyType::ptSubject : ClipperLib::PolyType::ptClip;
 
-			// Execute
-			ClipperLib::Paths solution;
-			clipper.Execute(
-				ClipperLib::ClipType::ctUnion, 
-				solution, 
-				ClipperLib::PolyFillType::pftEvenOdd, 
-				ClipperLib::PolyFillType::pftPositive);
+    clipper.AddPath(inPath, polyType, true);
+  }
 
-			// Build result
-			for (auto const& path : solution)
-			{
-				Polygon p;
+  // Execute
+  ClipperLib::Paths solution;
+  clipper.Execute(
+      ClipperLib::ClipType::ctUnion,
+      solution,
+      ClipperLib::PolyFillType::pftEvenOdd,
+      ClipperLib::PolyFillType::pftPositive);
 
-				for (auto const& point : path)
-				{
-					p.push_back(Vector2((float)point.X, (float)point.Y));
-				}
+  // Build result
+  for (auto const& path : solution) {
+    Polygon p;
 
-				result.push_back(p);
-			}
+    for (auto const& point : path) {
+      p.push_back(Vector2((float)point.X, (float)point.Y));
+    }
 
-			return result;
-		}
+    result.push_back(p);
+  }
 
-	} // geometry
-} // WP_NAMESPACE
+  return result;
+}
+
+}  // namespace geometry
+}  // namespace WP_NAMESPACE

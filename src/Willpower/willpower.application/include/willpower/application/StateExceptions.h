@@ -5,173 +5,143 @@
 
 #include "willpower/application/Platform.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
+namespace WP_NAMESPACE {
+namespace application {
 
-		/**	\class StateException
-		*   \brief Base class for state flow control
-		*/
-		class StateException : public std::exception
-		{
-		public:
+/**	\class StateException
+ *   \brief Base class for state flow control
+ */
+class StateException : public std::exception {
+public:
+  /**	\brief Constructor.
+   */
+  StateException()
+      : std::exception() {
+  }
+};
 
-			/**	\brief Constructor.
-			*/
-			StateException()
-				: std::exception()
-			{
-			}
-		};
+/**	\class MoveToStateException
+ *   \brief Used to move from one State to another
+ */
+class MoveToStateException : public StateException {
+  std::string mNextState;
 
-		/**	\class MoveToStateException
-		*   \brief Used to move from one State to another
-		*/
-		class MoveToStateException : public StateException
-		{
-			std::string mNextState;
+  void* mArgs;
 
-			void* mArgs;
+public:
+  /**	\brief Constructor.
+   *
+   *	\param nextState name of next State
+   *	\param args arguments to pass to next State's _enter method
+   */
+  MoveToStateException(std::string const& nextState, void* args = nullptr)
+      : StateException(), mNextState(nextState), mArgs(args) {
+  }
 
-		public:
+  /**	\brief Returns the name of the State to move to
+   *
+   *	\return the State name
+   */
+  std::string const& getNextState() const {
+    return mNextState;
+  }
 
-			/**	\brief Constructor.
-			*
-			*	\param nextState name of next State
-			*	\param args arguments to pass to next State's _enter method
-			*/
-			MoveToStateException(std::string const& nextState, void* args = nullptr)
-				: StateException()
-				, mNextState(nextState)
-				, mArgs(args)
-			{
-			}
+  /**	\brief Returns the arguments to pass to the next State
+   *
+   *	\return the arguments
+   */
+  void* getArguments() const {
+    return mArgs;
+  }
+};
 
-			/**	\brief Returns the name of the State to move to
-			*
-			*	\return the State name
-			*/
-			std::string const& getNextState() const
-			{
-				return mNextState;
-			}
+/**	\class SuspendAndMoveToStateException
+ *   \brief Used to suspend current State, and move to another.
+ */
+class SuspendAndMoveToStateException : public StateException {
+  std::string mNextState;
 
-			/**	\brief Returns the arguments to pass to the next State
-			*
-			*	\return the arguments
-			*/
-			void* getArguments() const
-			{
-				return mArgs;
-			}
-		};
+  bool mSuspendEvents, mSuspendUpdate, mSuspendRender;
 
-		/**	\class SuspendAndMoveToStateException
-		*   \brief Used to suspend current State, and move to another.
-		*/
-		class SuspendAndMoveToStateException : public StateException
-		{
-			std::string mNextState;
+  void* mwArgs;
 
-			bool mSuspendEvents, mSuspendUpdate, mSuspendRender;
+public:
+  /**	\brief Constructor.
+   *
+   *	\param nextState name of next State
+   *	\param suspendEvents whether to suspend event handling of current State
+   *	\param suspendUpdate whether to suspend logic processing of current State
+   *	\param suspendRender whether to suspend rendering of current State
+   *	\param args arguments to pass to next State's _enter method
+   */
+  SuspendAndMoveToStateException(std::string const& nextState, bool suspendEvents, bool suspendUpdate, bool suspendRender, void* args = nullptr)
+      : StateException(), mNextState(nextState), mSuspendEvents(suspendEvents), mSuspendUpdate(suspendUpdate), mSuspendRender(suspendRender), mwArgs(args) {
+  }
 
-			void* mwArgs;
+  /**	\brief Returns the name of the State to move to
+   *
+   *	\return the State name
+   */
+  std::string const& getNextState() const {
+    return mNextState;
+  }
 
-		public:
+  /**	\brief Returns the arguments to pass to the next State
+   *
+   *	\return the arguments
+   */
+  void* getArguments() const {
+    return mwArgs;
+  }
 
-			/**	\brief Constructor.
-			*
-			*	\param nextState name of next State
-			*	\param suspendEvents whether to suspend event handling of current State
-			*	\param suspendUpdate whether to suspend logic processing of current State
-			*	\param suspendRender whether to suspend rendering of current State
-			*	\param args arguments to pass to next State's _enter method
-			*/
-			SuspendAndMoveToStateException(std::string const& nextState, bool suspendEvents, bool suspendUpdate, bool suspendRender, void* args = nullptr)
-				: StateException()
-				, mNextState(nextState)
-				, mSuspendEvents(suspendEvents)
-				, mSuspendUpdate(suspendUpdate)
-				, mSuspendRender(suspendRender)
-				, mwArgs(args)
-			{
-			}
+  /**	\brief Returns whether event handling is suspended
+   *
+   *	\return whether event handling is suspended
+   */
+  bool getEventsSuspended() const {
+    return mSuspendEvents;
+  }
 
-			/**	\brief Returns the name of the State to move to
-			*
-			*	\return the State name
-			*/
-			std::string const& getNextState() const
-			{
-				return mNextState;
-			}
+  /**	\brief Returns whether logic processing is suspended
+   *
+   *	\return whether logic processing is suspended
+   */
+  bool getUpdateSuspended() const {
+    return mSuspendUpdate;
+  }
 
-			/**	\brief Returns the arguments to pass to the next State
-			*
-			*	\return the arguments
-			*/
-			void* getArguments() const
-			{
-				return mwArgs;
-			}
+  /**	\brief Returns whether rendering is suspended
+   *
+   *	\return whether rendering is suspended
+   */
+  bool getRenderSuspended() const {
+    return mSuspendRender;
+  }
+};
 
-			/**	\brief Returns whether event handling is suspended
-			*
-			*	\return whether event handling is suspended
-			*/
-			bool getEventsSuspended() const
-			{
-				return mSuspendEvents;
-			}
+/**	\class ReturnFromStateException
+ *   \brief Used to return from current State to previously-suspended State.
+ *
+ *	\param args arguments to pass to next State's _enter method
+ */
+class ReturnFromStateException : public StateException {
+  void* mwArgs;
 
-			/**	\brief Returns whether logic processing is suspended
-			*
-			*	\return whether logic processing is suspended
-			*/
-			bool getUpdateSuspended() const
-			{
-				return mSuspendUpdate;
-			}
+public:
+  /**	\brief Constructor.
+   */
+  explicit ReturnFromStateException(void* args = nullptr)
+      : StateException(), mwArgs(args) {
+  }
 
-			/**	\brief Returns whether rendering is suspended
-			*
-			*	\return whether rendering is suspended
-			*/
-			bool getRenderSuspended() const
-			{
-				return mSuspendRender;
-			}
-		};
+  /**	\brief Returns the arguments to pass to the next State
+   *
+   *	\return the arguments
+   */
+  void* getArguments() const {
+    return mwArgs;
+  }
+};
 
-		/**	\class ReturnFromStateException
-		*   \brief Used to return from current State to previously-suspended State.
-		*
-		*	\param args arguments to pass to next State's _enter method
-		*/
-		class ReturnFromStateException : public StateException
-		{
-			void* mwArgs;
-
-		public:
-
-			/**	\brief Constructor.
-			*/
-			explicit ReturnFromStateException(void* args = nullptr)
-				: StateException()
-				, mwArgs(args)
-			{
-			}
-
-			/**	\brief Returns the arguments to pass to the next State
-			*
-			*	\return the arguments
-			*/
-			void* getArguments() const
-			{
-				return mwArgs;
-			}
-		};
-
-	} // application
-} // WP_NAMESPACE
+}  // namespace application
+}  // namespace WP_NAMESPACE

@@ -12,86 +12,78 @@
 #include "willpower/common/BoundingCircle.h"
 #include "willpower/common/Renderable.h"
 
-namespace WP_NAMESPACE
-{
+namespace WP_NAMESPACE {
 
-	/*
-	Use when objects in the grid are moving a lot, and are small enough
-	that they can fit into a maximum of 2x2 grid cells.
-	*/
-	class WP_COMMON_API DynamicAccelerationGrid : public Renderable
-	{
-	public:
+/*
+Use when objects in the grid are moving a lot, and are small enough
+that they can fit into a maximum of 2x2 grid cells.
+*/
+class WP_COMMON_API DynamicAccelerationGrid : public Renderable {
+public:
+  typedef std::set<uint32_t> IndexCollection;
 
-		typedef std::set<uint32_t> IndexCollection;
+private:
+  Vector2 mOffset;
 
-	private:
+  Vector2 mSize, mCellSize;
 
-		Vector2 mOffset;
+  int mCellDimX, mCellDimY;
 
-		Vector2 mSize, mCellSize;
+  int mMoveCount;
 
-		int mCellDimX, mCellDimY;
+  std::vector<IndexCollection> mCells;
 
-		int mMoveCount;
+  std::vector<uint64_t> mItemCellHashes;
 
-		std::vector<IndexCollection> mCells;
+private:
+  static const uint16_t EMPTY_HASH_ENTRY = 0;
+  static const uint64_t EMPTY_HASH_SET = 0;
+  static const int SET_BITS = 16;
+  static const int MAX_SIZE_MASK = (1 << SET_BITS) - 1;
 
-		std::vector<uint64_t> mItemCellHashes;
+private:
+  void addItem(uint32_t itemId, uint64_t hash);
 
-	private:
+  uint64_t getHash(Vector2 const& minExtent, Vector2 const& maxExtent) const;
 
-		static const uint16_t EMPTY_HASH_ENTRY	= 0;
-		static const uint64_t EMPTY_HASH_SET	= 0;
-		static const int SET_BITS				= 16;
-		static const int MAX_SIZE_MASK			= (1 << SET_BITS) - 1;
+  uint64_t getHash(int x0, int y0, int x1, int y1) const;
 
-	private:
+  IndexCollection getItemsInArea(Vector2 const& minExtent, Vector2 const& maxExtent) const;
 
-		void addItem(uint32_t itemId, uint64_t hash);
+public:
+  DynamicAccelerationGrid(Vector2 const& offset, Vector2 const& size, int cellDimX, int cellDimY, int initialCount, float maxItemSize);
 
-		uint64_t getHash(Vector2 const& minExtent, Vector2 const& maxExtent) const;
+  DynamicAccelerationGrid(float x, float y, float sizeX, float sizeY, int cellDimX, int cellDimY, int initialCount, float maxItemSize);
 
-		uint64_t getHash(int x0, int y0, int x1, int y1) const;
+  Vector2 const& getOffset() const;
 
-		IndexCollection getItemsInArea(Vector2 const& minExtent, Vector2 const& maxExtent) const;
+  Vector2 const& getSize() const;
 
-	public:
+  int getCellDimensionX() const;
 
-		DynamicAccelerationGrid(Vector2 const& offset, Vector2 const& size, int cellDimX, int cellDimY, int initialCount, float maxItemSize);
+  int getCellDimensionY() const;
 
-		DynamicAccelerationGrid(float x, float y, float sizeX, float sizeY, int cellDimX, int cellDimY, int initialCount, float maxItemSize);
+  Vector2 const& getCellSize() const;
 
-		Vector2 const& getOffset() const;
+  int getMoveCount() const;
 
-		Vector2 const& getSize() const;
+  void resetMoveCount();
 
-		int getCellDimensionX() const;
+  std::vector<uint32_t> getCandidateItemsInBoundingArea(BoundingCircle const& area) const;
 
-		int getCellDimensionY() const;
+  std::vector<uint32_t> getCandidateItemsInBoundingArea(BoundingBox const& area) const;
 
-		Vector2 const& getCellSize() const;
+  IndexCollection _getItemsInCellRange(int x0, int y0, int x1, int y1) const;
 
-		int getMoveCount() const;
+  void addItem(uint32_t itemId, Vector2 const& minExtent, Vector2 const& maxExtent);
 
-		void resetMoveCount();
+  void addItem(uint32_t itemId, BoundingBox const& bounds);
 
-		std::vector<uint32_t> getCandidateItemsInBoundingArea(BoundingCircle const& area) const;
+  void removeItem(uint32_t itemId);
 
-		std::vector<uint32_t> getCandidateItemsInBoundingArea(BoundingBox const& area) const;
+  void moveItem(uint32_t itemId, Vector2 const& minExtent, Vector2 const& maxExtent);
 
-		IndexCollection _getItemsInCellRange(int x0, int y0, int x1, int y1) const;
+  void moveItem(uint32_t itemId, BoundingBox const& bounds);
+};
 
-		void addItem(uint32_t itemId, Vector2 const& minExtent, Vector2 const& maxExtent);
-
-		void addItem(uint32_t itemId, BoundingBox const& bounds);
-
-		void removeItem(uint32_t itemId);
-
-		void moveItem(uint32_t itemId, Vector2 const& minExtent, Vector2 const& maxExtent);
-
-		void moveItem(uint32_t itemId, BoundingBox const& bounds);
-
-	};
-
-} // WP_NAMESPACE
+}  // namespace WP_NAMESPACE

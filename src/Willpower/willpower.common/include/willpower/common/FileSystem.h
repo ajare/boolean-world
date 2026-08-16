@@ -7,120 +7,108 @@
 
 #include "Platform.h"
 
+namespace WP_NAMESPACE {
 
-namespace WP_NAMESPACE 
-{
+class FileSystem {
+public:
+  //
+  // Generic exception class
+  //
+  class FileException : public std::exception {
+  public:
+    explicit FileException(std::string const& message)
+        : exception(message.c_str()) {
+    }
+  };
 
-	class FileSystem
-	{
-	public:
+  //
+  // Class for holding info about a file
+  //
+  class FileInfo {
+    std::filesystem::path mFilepath;
 
-		//
-		// Generic exception class
-		//
-		class FileException : public std::exception
-		{
-		public:
+  public:
+    explicit FileInfo(std::string const& filepath);
 
-			explicit FileException(std::string const& message)
-				: exception(message.c_str())
-			{
-			}
-		};
+    std::string getFilePath() const;
 
-		//
-		// Class for holding info about a file
-		//
-		class FileInfo
-		{
-			std::filesystem::path mFilepath;
+    std::string getPath() const;
 
-		public:
+    std::string getFileName() const;
 
-			explicit FileInfo(std::string const& filepath);
+    std::string getFileNameWithoutExtension() const;
 
-			std::string getFilePath() const;
+    std::string getExtension() const;
 
-			std::string getPath() const;
+    bool isPathRelative() const;
+  };
 
-			std::string getFileName() const;
+  //
+  // Class for holding info about a directory
+  //
+  class DirectoryInfo {
+    std::filesystem::path mPath;
 
-			std::string getFileNameWithoutExtension() const;
+  public:
+    explicit DirectoryInfo(std::string const& path);
 
-			std::string getExtension() const;
+    std::string getDirectoryPath() const;
 
-			bool isPathRelative() const;
-		};
+    FileInfo createFile(std::string const& filename);
 
-		//
-		// Class for holding info about a directory
-		//
-		class DirectoryInfo
-		{
-			std::filesystem::path mPath;
+    DirectoryInfo createSubDirectory(std::string const& subdir);
 
-		public:
+    bool isPathRelative() const;
+  };
 
-			explicit DirectoryInfo(std::string const& path);
+public:
+  static bool matchesFilePattern(char const* input, char const* pattern);
 
-			std::string getDirectoryPath() const;
+  static void standardisePath(std::string& path);
 
-			FileInfo createFile(std::string const& filename);
+  static std::string standardisePath(std::string const& path);
 
-			DirectoryInfo createSubDirectory(std::string const& subdir);
+  static std::string concatPaths(std::string const& path1, std::string const& path2);
 
-			bool isPathRelative() const;
-		};
+  static std::string baseDirectory(std::string const& path);
 
-	public:
+  static std::string baseName(std::string const& path);
 
-		static bool matchesFilePattern(char const* input, char const* pattern);
+  static FileInfo createFile(std::string const& filepath);
 
-		static void standardisePath(std::string& path);
+  static FileInfo createFile(std::filesystem::path const& filepath);
 
-		static std::string standardisePath(std::string const& path);
+  static DirectoryInfo createDirectory(std::string const& dirpath);
 
-		static std::string concatPaths(std::string const& path1, std::string const& path2);
+  static DirectoryInfo createDirectory(std::filesystem::path const& dirpath);
 
-		static std::string baseDirectory(std::string const& path);
+  static void deleteFile(std::string const& filepath);
 
-		static std::string baseName(std::string const& path);
+  static void deleteFile(FileInfo const& fi);
 
-		static FileInfo createFile(std::string const& filepath);
+  static void deleteDirectory(std::string const& dirpath);
 
-		static FileInfo createFile(std::filesystem::path const& filepath);
+  static void deleteDirectory(DirectoryInfo const& di);
 
-		static DirectoryInfo createDirectory(std::string const& dirpath);
+  static FileInfo getFile(std::string const& filepath);
 
-		static DirectoryInfo createDirectory(std::filesystem::path const& dirpath);
+  static DirectoryInfo getDirectory(std::string const& dirpath);
 
-		static void deleteFile(std::string const& filepath);
+  static DirectoryInfo getCurrentDirectory();
 
-		static void deleteFile(FileInfo const& fi);
+  static std::vector<FileInfo> getFilesInDirectory(std::string const& dir, std::string const& pattern, bool subdirs);
 
-		static void deleteDirectory(std::string const& dirpath);
+  static std::vector<FileInfo> getFilesInDirectory(DirectoryInfo const& di, std::string const& pattern, bool subdirs);
 
-		static void deleteDirectory(DirectoryInfo const& di);
+  static bool fileExists(std::string const& filepath);
 
-		static FileInfo getFile(std::string const& filepath);
+  static bool fileExists(FileInfo const& fi);
 
-		static DirectoryInfo getDirectory(std::string const& dirpath);
+  static bool directoryExists(std::string const& dirpath);
 
-		static DirectoryInfo getCurrentDirectory();
+  static bool directoryExists(DirectoryInfo const& di);
 
-		static std::vector<FileInfo> getFilesInDirectory(std::string const& dir, std::string const& pattern, bool subdirs);
+  static std::string readTextFile(std::string const& filepath);
+};
 
-		static std::vector<FileInfo> getFilesInDirectory(DirectoryInfo const& di, std::string const& pattern, bool subdirs);
-
-		static bool fileExists(std::string const& filepath);
-
-		static bool fileExists(FileInfo const& fi);
-
-		static bool directoryExists(std::string const& dirpath);
-
-		static bool directoryExists(DirectoryInfo const& di);
-
-		static std::string readTextFile(std::string const& filepath);
-	};
-
-} // utils
+}  // namespace WP_NAMESPACE

@@ -28,457 +28,444 @@
 
 #define CHECK_INTEGRITY
 
-namespace WP_NAMESPACE
-{
-	namespace geometry
-	{
+namespace WP_NAMESPACE {
+namespace geometry {
 
-		class MeshQuery;
+class MeshQuery;
 
-		class WP_GEOMETRY_API Mesh : public Renderable
-		{
-			friend class MeshQuery;
-			friend class MeshOperations;
+class WP_GEOMETRY_API Mesh : public Renderable {
+  friend class MeshQuery;
+  friend class MeshOperations;
 
-		public:
+public:
+  typedef std::function<void(Mesh*, void*)> RenderCallback;
 
-			typedef std::function<void(Mesh*, void*)> RenderCallback;
+  typedef std::function<bool(Mesh const*, uint32_t)> EdgeFilterFunction;
 
-			typedef std::function<bool(Mesh const*, uint32_t)> EdgeFilterFunction;
+private:
+  Logger* mLogger;
 
-		private:
+  // User data
+  RenderCallback mRenderCallback;
 
-			Logger* mLogger;
+  UserAttributesFactory
+      *mVertexAttributeFactory,
+      *mEdgeAttributeFactory,
+      *mPolygonAttributeFactory,
+      *mPolygonVertexAttributeFactory;
 
-			// User data
-			RenderCallback mRenderCallback;
+  UserAttributesBase
+      *mVertexAttributes,
+      *mEdgeAttributes,
+      *mPolygonAttributes,
+      *mPolygonVertexAttributes;
 
-			UserAttributesFactory 
-				*mVertexAttributeFactory, 
-				*mEdgeAttributeFactory, 
-				*mPolygonAttributeFactory,
-				*mPolygonVertexAttributeFactory;
+  // Primitive lists
+  std::vector<Vertex> mVertices;
+  IndexSet mDeadVertices;
 
-			UserAttributesBase 
-				*mVertexAttributes, 
-				*mEdgeAttributes, 
-				*mPolygonAttributes,
-				*mPolygonVertexAttributes;
+  std::vector<Edge> mEdges;
+  IndexSet mDeadEdges;
 
-			// Primitive lists
-			std::vector<Vertex> mVertices;
-			IndexSet mDeadVertices;
+  std::vector<Polygon> mPolygons;
+  IndexSet mDeadPolygons;
 
-			std::vector<Edge> mEdges;
-			IndexSet mDeadEdges;
+  // Reverse lookups
+  std::map<uint64_t, uint32_t> mVerticesToEdges;
 
-			std::vector<Polygon> mPolygons;
-			IndexSet mDeadPolygons;
+  // Callbacks
+  std::map<uint32_t, MeshCallbacks> mCallbacks;
 
-			// Reverse lookups
-			std::map<uint64_t, uint32_t> mVerticesToEdges;
+  // Query acceleration structures
+  AccelerationGrid* mVertexAccelerationGrid;
+  AccelerationGrid* mEdgeAccelerationGrid;
+  AccelerationGrid* mPolygonAccelerationGrid;
 
-			// Callbacks
-			std::map<uint32_t, MeshCallbacks> mCallbacks;
+  // Extents
+  mutable Vector2 mMinExtent, mMaxExtent;
 
-			// Query acceleration structures
-			AccelerationGrid* mVertexAccelerationGrid;
-			AccelerationGrid* mEdgeAccelerationGrid;
-			AccelerationGrid* mPolygonAccelerationGrid;
+  mutable bool mRecalculateExtents;
 
-			// Extents
-			mutable Vector2 mMinExtent, mMaxExtent;
+  // Item Ids
+  int32_t mVertexIdGenerator;
+  int32_t mEdgeIdGenerator;
+  int32_t mPolygonIdGenerator;
 
-			mutable bool mRecalculateExtents;
+  // Checks
+  std::stack<bool> mCheckIntegrity;
 
-			// Item Ids
-			int32_t mVertexIdGenerator;
-			int32_t mEdgeIdGenerator;
-			int32_t mPolygonIdGenerator;
+private:
+  void copyFrom(Mesh const& other);
 
-			// Checks
-			std::stack<bool> mCheckIntegrity;
+  void recalculateExtents() const;
 
-		private:
+  //
+  // Vertices
+  //
 
-			void copyFrom(Mesh const& other);
+  // Get mutable reference to the vertex.
+  Vertex& _getVertex(uint32_t vertexIndex);
 
-			void recalculateExtents() const;
+  // Destroy the vertex, and propagate this change to anything that it uses.
+  void killVertex(uint32_t vertexIndex);
 
-			//
-			// Vertices
-			//
+  // Check whether the vertex is alive.
+  bool isVertexAlive(uint32_t vertexIndex) const;
 
-			// Get mutable reference to the vertex.
-			Vertex& _getVertex(uint32_t vertexIndex);
+  // Check whether a vertex has only two edges, and is directly
+  // in line with the neighbouring vertices' position.
+  bool isVertexCollinearOrphan(uint32_t vertexIndex, float vertexTolerance = -1.0f) const;
 
-			// Destroy the vertex, and propagate this change to anything that it uses.
-			void killVertex(uint32_t vertexIndex);
+  //
+  // Edges
+  //
 
-			// Check whether the vertex is alive.
-			bool isVertexAlive(uint32_t vertexIndex) const;
+  // Function to add an edge when the mesh is not internally consistent.
+  uint32_t addEdgeImpl(Edge const& edge, int32_t prototype);
 
-			// Check whether a vertex has only two edges, and is directly
-			// in line with the neighbouring vertices' position.
-			bool isVertexCollinearOrphan(uint32_t vertexIndex, float vertexTolerance = -1.0f) const;
+  // Get mutable reference to the edge.
+  Edge& _getEdge(uint32_t edgeIndex);
 
-			//
-			// Edges
-			//
+  // Destroy the edge, and propagate this change to anything that it uses.
+  void killEdge(uint32_t edgeIndex);
 
-			// Function to add an edge when the mesh is not internally consistent.
-			uint32_t addEdgeImpl(Edge const& edge, int32_t prototype);
+  // Check whether the edge is alive.
+  bool isEdgeAlive(uint32_t edgeIndex) const;
 
-			// Get mutable reference to the edge.
-			Edge& _getEdge(uint32_t edgeIndex);
+  // Callback used by edges to update the vertices that refer to them when they change
+  // their vertices.
+  void updateVertexEdgeReferences(uint32_t edgeIndex, uint32_t oldVertex0Index, uint32_t newVertex0Index,
+                                  uint32_t oldVertex1Index, uint32_t newVertex1Index);
 
-			// Destroy the edge, and propagate this change to anything that it uses.
-			void killEdge(uint32_t edgeIndex);
+  uint64_t addEdgeToReverseLookup(Edge const& edge, uint32_t edgeIndex);
 
-			// Check whether the edge is alive.
-			bool isEdgeAlive(uint32_t edgeIndex) const;
+  uint64_t addEdgeToReverseLookup(uint32_t edgeIndex, uint32_t firstVertex, uint32_t secondVertex);
 
-			// Callback used by edges to update the vertices that refer to them when they change
-			// their vertices.
-			void updateVertexEdgeReferences(uint32_t edgeIndex, uint32_t oldVertex0Index, uint32_t newVertex0Index, 
-				uint32_t oldVertex1Index, uint32_t newVertex1Index);
+  void removeEdgeFromReverseLookup(Edge const& edge);
 
-			uint64_t addEdgeToReverseLookup(Edge const& edge, uint32_t edgeIndex);
+  void removeEdgeFromReverseLookup(uint32_t firstVertex, uint32_t secondVertex);
 
-			uint64_t addEdgeToReverseLookup(uint32_t edgeIndex, uint32_t firstVertex, uint32_t secondVertex);
+  uint64_t getVertexEdgeKey(uint32_t firstVertex, uint32_t secondVertex) const;
 
-			void removeEdgeFromReverseLookup(Edge const& edge);
+  //
+  // Polygons
+  //
 
-			void removeEdgeFromReverseLookup(uint32_t firstVertex, uint32_t secondVertex);
+  // Get mutable reference to the polygon.
+  Polygon& _getPolygon(uint32_t polygonIndex);
 
-			uint64_t getVertexEdgeKey(uint32_t firstVertex, uint32_t secondVertex) const;
+  // Destroy the polygon, and propagate this change to anything that it uses.
+  void killPolygon(uint32_t polygonIndex);
 
-			//
-			// Polygons
-			//
+  // Check whether the polygon is alive.
+  bool isPolygonAlive(uint32_t polygonIndex) const;
 
-			// Get mutable reference to the polygon.
-			Polygon& _getPolygon(uint32_t polygonIndex);
+  void _mergePolygons(uint32_t targetIndex, uint32_t sourceIndex);
 
-			// Destroy the polygon, and propagate this change to anything that it uses.
-			void killPolygon(uint32_t polygonIndex);
+  uint32_t _mergePolygons(IndexSet const& polygonIndices);
 
-			// Check whether the polygon is alive.
-			bool isPolygonAlive(uint32_t polygonIndex) const;
+  void _closePolygon(uint32_t polygonIndex, bool insertNotStitch, int32_t prototypeEdgeIndex, uint32_t* createdEdgeIndex = nullptr);
 
-			void _mergePolygons(uint32_t targetIndex, uint32_t sourceIndex);
+  // Merge source vertex to target vertex by transferring properties from source to
+  // target, then destroying source.
+  void mergeVertices(uint32_t targetIndex, uint32_t sourceIndex);
 
-			uint32_t _mergePolygons(IndexSet const& polygonIndices);
+  // Merge source edge into target edge, by deleting target edge and bridging
+  // source edge to where it was.
+  void mergeEdges(uint32_t targetIndex, uint32_t sourceIndex);
 
-			void _closePolygon(uint32_t polygonIndex, bool insertNotStitch, int32_t prototypeEdgeIndex, uint32_t* createdEdgeIndex = nullptr);
+  // Callback used by polygons to update the edges that refer to them when they change
+  // their edges.
+  void updateEdgePolygonReferences(uint32_t polygonIndex, int oldEdgeIndex, int newEdgeIndex, bool deleteIfOrphaned);
 
-			// Merge source vertex to target vertex by transferring properties from source to
-			// target, then destroying source.
-			void mergeVertices(uint32_t targetIndex, uint32_t sourceIndex);
+  std::vector<std::pair<uint32_t, float>> linePolygonIntersection(uint32_t polygonIndex, Vector2 const& v0, Vector2 const& v1);
 
-			// Merge source edge into target edge, by deleting target edge and bridging
-			// source edge to where it was.
-			void mergeEdges(uint32_t targetIndex, uint32_t sourceIndex);
+  void extrudePolygonEdgesDirected(uint32_t polygonIndex, DirectedEdgeVector const& edgeData, Vector2 const& extrusion, ExtrudePolygonOptions options, uint32_t* endVertices, uint32_t* collinearVertices, uint32_t* newPolygonIndex, uint32_t* holeIndex, IndexVector* extrudedEdgeIndices, IndexVector* sourceEdgeIndices);
 
-			// Callback used by polygons to update the edges that refer to them when they change
-			// their edges.
-			void updateEdgePolygonReferences(uint32_t polygonIndex, int oldEdgeIndex, int newEdgeIndex, bool deleteIfOrphaned);
+  void extrudePolygonEdgesNormal(uint32_t polygonIndex, DirectedEdgeVector const& edgeData, float distance, ExtrudePolygonOptions options, uint32_t* endVertices, uint32_t* collinearVertices, uint32_t* newPolygonIndex, uint32_t* holeIndex, IndexVector* extrudedEdgeIndices, IndexVector* sourceEdgeIndices);
 
-			std::vector<std::pair<uint32_t, float>> linePolygonIntersection(uint32_t polygonIndex, Vector2 const& v0, Vector2 const& v1);
+  std::vector<DirectedEdgeVector> getExtrusionSections(uint32_t polygonIndex, IndexVector const& edgeIndices, bool separate, bool allowLoop);
 
-			void extrudePolygonEdgesDirected(uint32_t polygonIndex, DirectedEdgeVector const& edgeData, Vector2 const& extrusion, ExtrudePolygonOptions options, uint32_t* endVertices, uint32_t* collinearVertices, uint32_t* newPolygonIndex, uint32_t* holeIndex, IndexVector* extrudedEdgeIndices, IndexVector* sourceEdgeIndices);
+  // Check integrity of system.
+  void checkIntegrity();
 
-			void extrudePolygonEdgesNormal(uint32_t polygonIndex, DirectedEdgeVector const& edgeData, float distance, ExtrudePolygonOptions options, uint32_t* endVertices, uint32_t* collinearVertices, uint32_t* newPolygonIndex, uint32_t* holeIndex, IndexVector* extrudedEdgeIndices, IndexVector* sourceEdgeIndices);
+  // Sub-object handlers
+  static void _killVertex(Mesh* mesh, uint32_t vertexIndex) {
+    mesh->killVertex(vertexIndex);
+  }
 
-			std::vector<DirectedEdgeVector> getExtrusionSections(uint32_t polygonIndex, IndexVector const& edgeIndices, bool separate, bool allowLoop);
+  static void _updateVertexEdgeReference(Mesh* mesh, uint32_t edgeIndex) {
+    auto& edge = mesh->_getEdge(edgeIndex);
+    edge.updateInternals();
+  }
 
-			// Check integrity of system.
-			void checkIntegrity();
+  static void _killEdge(Mesh* mesh, uint32_t edgeEndex) {
+    mesh->killEdge(edgeEndex);
+  }
 
-			// Sub-object handlers
-			static void _killVertex(Mesh* mesh, uint32_t vertexIndex)
-			{
-				mesh->killVertex(vertexIndex);
-			}
+  static void _updateVertexEdgeReferences(Mesh* mesh, uint32_t edgeIndex, uint32_t oldVertex0Index,
+                                          uint32_t newVertex0Index, uint32_t oldVertex1Index, uint32_t newVertex1Index) {
+    mesh->updateVertexEdgeReferences(edgeIndex, oldVertex0Index, newVertex0Index, oldVertex1Index, newVertex1Index);
+  }
 
-			static void _updateVertexEdgeReference(Mesh* mesh, uint32_t edgeIndex)
-			{
-				auto& edge = mesh->_getEdge(edgeIndex);
-				edge.updateInternals();
-			}
+  static void _killPolygon(Mesh* mesh, uint32_t polygonIndex) {
+    mesh->killPolygon(polygonIndex);
+  }
 
-			static void _killEdge(Mesh* mesh, uint32_t edgeEndex)
-			{
-				mesh->killEdge(edgeEndex);
-			}
+  static void _updateEdgePolygonReferences(Mesh* mesh, uint32_t polygonIndex, int oldEdgeIndex, int newEdgeIndex, bool deleteIfOrphaned) {
+    mesh->updateEdgePolygonReferences(polygonIndex, oldEdgeIndex, newEdgeIndex, deleteIfOrphaned);
+  }
 
-			static void _updateVertexEdgeReferences(Mesh* mesh, uint32_t edgeIndex, uint32_t oldVertex0Index, 
-				uint32_t newVertex0Index, uint32_t oldVertex1Index, uint32_t newVertex1Index)
-			{
-				mesh->updateVertexEdgeReferences(edgeIndex, oldVertex0Index, newVertex0Index, oldVertex1Index, newVertex1Index);
-			}
+public:
+  // Default constructor
+  Mesh();
 
-			static void _killPolygon(Mesh* mesh, uint32_t polygonIndex)
-			{
-				mesh->killPolygon(polygonIndex);
-			}
+  explicit Mesh(Logger* logger);
 
-			static void _updateEdgePolygonReferences(Mesh* mesh, uint32_t polygonIndex, int oldEdgeIndex, int newEdgeIndex, bool deleteIfOrphaned)
-			{
-				mesh->updateEdgePolygonReferences(polygonIndex, oldEdgeIndex, newEdgeIndex, deleteIfOrphaned);
-			}
+  Mesh(
+      UserAttributesFactory* vertexFactory,
+      UserAttributesFactory* edgeFactory,
+      UserAttributesFactory* polygonFactory,
+      UserAttributesFactory* polygonVertexFactory);
 
-		public:
+  Mesh(
+      Logger* logger,
+      UserAttributesFactory* vertexFactory,
+      UserAttributesFactory* edgeFactory,
+      UserAttributesFactory* polygonFactory,
+      UserAttributesFactory* polygonVertexFactory);
 
-			// Default constructor
-			Mesh();
+  // Copy constructor
+  Mesh(Mesh const& other);
 
-			explicit Mesh(Logger* logger);
+  // Destructor
+  virtual ~Mesh();
 
-			Mesh(
-				UserAttributesFactory* vertexFactory, 
-				UserAttributesFactory* edgeFactory, 
-				UserAttributesFactory* polygonFactory,
-				UserAttributesFactory* polygonVertexFactory);
+  // Assignment operator
+  Mesh& operator=(Mesh const& other);
 
-			Mesh(
-				Logger* logger, 
-				UserAttributesFactory* vertexFactory, 
-				UserAttributesFactory* edgeFactory, 
-				UserAttributesFactory* polygonFactory,
-				UserAttributesFactory* polygonVertexFactory);
+  // User data
+  void setRenderCallback(RenderCallback callback);
 
-			// Copy constructor
-			Mesh(Mesh const& other);
+  void renderCallback(void* data);
 
-			// Destructor
-			virtual ~Mesh();
+  void clear();
 
-			// Assignment operator
-			Mesh& operator=(Mesh const& other);
+  //
+  // Vertices
+  //
 
-			// User data
-			void setRenderCallback(RenderCallback callback);
+  // Add vertex, returning its index.
+  uint32_t addVertex(Vertex vertex, int32_t prototype = -1);
 
-			void renderCallback(void* data);
+  // Remove vertex
+  void removeVertex(uint32_t vertexIndex, RemoveVertexResult* result = nullptr);
 
-			void clear();
+  void removeVertices(IndexVector const& vertexIndices);
 
-			//
-			// Vertices
-			//
+  // Move the specified vertex by the given amount. No checking is done as to
+  // whether this creates an invalid/'crossed-over' mesh.
+  void moveVertex(uint32_t vertexIndex, Vector2 const& move);
 
-			// Add vertex, returning its index.
-			uint32_t addVertex(Vertex vertex, int32_t prototype = -1);
+  void moveVertexTo(uint32_t vertexIndex, Vector2 const& pos);
 
-			// Remove vertex
-			void removeVertex(uint32_t vertexIndex, RemoveVertexResult* result = nullptr);
+  // Move the specified vertices by the given amount. No checking is done as to
+  // whether this creates an invalid/'crossed-over' mesh.
+  void moveVertices(IndexVector const& vertexIndices, Vector2 const& move);
 
-			void removeVertices(IndexVector const& vertexIndices);
+  // User data
+  void setVertexUserData(uint32_t vertexIndex, void const* data);
 
-			// Move the specified vertex by the given amount. No checking is done as to
-			// whether this creates an invalid/'crossed-over' mesh.
-			void moveVertex(uint32_t vertexIndex, Vector2 const& move);
+  void const* getVertexUserData(uint32_t vertexIndex) const;
 
-			void moveVertexTo(uint32_t vertexIndex, Vector2 const& pos);
+  void getVertexUvAttribute(uint32_t vertexIndex, uint32_t textureIndex, float& u, float& v) const;
 
-			// Move the specified vertices by the given amount. No checking is done as to
-			// whether this creates an invalid/'crossed-over' mesh.
-			void moveVertices(IndexVector const& vertexIndices, Vector2 const& move);
+  void getVertexRgbaAttribute(uint32_t vertexIndex, float& r, float& g, float& b, float& a) const;
 
-			// User data
-			void setVertexUserData(uint32_t vertexIndex, void const* data);
+  // Get the number of alive vertices.
+  uint32_t getNumVertices() const;
 
-			void const* getVertexUserData(uint32_t vertexIndex) const;
+  // Get first live vertex index.
+  uint32_t getFirstVertexIndex() const;
 
-			void getVertexUvAttribute(uint32_t vertexIndex, uint32_t textureIndex, float& u, float& v) const;
+  // Get the vertex index following the given one.
+  uint32_t getNextVertexIndex(uint32_t vertexIndex) const;
 
-			void getVertexRgbaAttribute(uint32_t vertexIndex, float& r, float& g, float& b, float& a) const;
+  // Query whether the given vertex is past the last one.
+  bool vertexIndexIterationFinished(uint32_t vertexIndex) const;
 
-			// Get the number of alive vertices.
-			uint32_t getNumVertices() const;
+  // Get const reference to the vertex.  All public access is non-mutable.
+  Vertex const& getVertex(uint32_t vertexIndex) const;
 
-			// Get first live vertex index.
-			uint32_t getFirstVertexIndex() const;
+  //
+  // Edges
+  //
 
-			// Get the vertex index following the given one.
-			uint32_t getNextVertexIndex(uint32_t vertexIndex) const;
+  // Add edge, returning its index.
+  uint32_t addEdge(Edge edge, int32_t prototype = -1);
 
-			// Query whether the given vertex is past the last one.
-			bool vertexIndexIterationFinished(uint32_t vertexIndex) const;
+  // Move the specified edge by the given amount. No checking is done as to
+  // whether this creates an invalid/'crossed-over' mesh.
+  void moveEdge(uint32_t edgeIndex, Vector2 const& move);
 
-			// Get const reference to the vertex.  All public access is non-mutable.
-			Vertex const& getVertex(uint32_t vertexIndex) const;
+  // Move the specified edges by the given amount. No checking is done as to
+  // whether this creates an invalid/'crossed-over' mesh.
+  void moveEdges(IndexVector const& edgeIndices, Vector2 const& move);
 
-			//
-			// Edges
-			//
+  // Move the edge vertices along the edge so that the edge is the specified length
+  void setEdgeLength(uint32_t edgeIndex, float length);
 
-			// Add edge, returning its index.
-			uint32_t addEdge(Edge edge, int32_t prototype = -1);
+  // User data
+  void setEdgeUserData(uint32_t edgeIndex, void const* data);
 
-			// Move the specified edge by the given amount. No checking is done as to
-			// whether this creates an invalid/'crossed-over' mesh.
-			void moveEdge(uint32_t edgeIndex, Vector2 const& move);
+  void const* getEdgeUserData(uint32_t edgeIndex) const;
 
-			// Move the specified edges by the given amount. No checking is done as to
-			// whether this creates an invalid/'crossed-over' mesh.
-			void moveEdges(IndexVector const& edgeIndices, Vector2 const& move);
+  void getEdgeRgbaAttribute(uint32_t edgeIndex, float& r, float& g, float& b, float& a) const;
 
-			// Move the edge vertices along the edge so that the edge is the specified length
-			void setEdgeLength(uint32_t edgeIndex, float length);
+  // Get the number of alive edges.
+  uint32_t getNumEdges() const;
 
-			// User data
-			void setEdgeUserData(uint32_t edgeIndex, void const* data);
+  // Get first live edge index.
+  uint32_t getFirstEdgeIndex() const;
 
-			void const* getEdgeUserData(uint32_t edgeIndex) const;
+  // Get the edge index following the given one.
+  uint32_t getNextEdgeIndex(uint32_t edgeIndex) const;
 
-			void getEdgeRgbaAttribute(uint32_t edgeIndex, float& r, float& g, float& b, float& a) const;
+  // Query whether the given edge is past the last one.
+  bool edgeIndexIterationFinished(uint32_t edgeIndex) const;
 
-			// Get the number of alive edges.
-			uint32_t getNumEdges() const;
+  // Get const reference to the edge.  All public access is non-mutable.
+  Edge const& getEdge(uint32_t edgeIndex) const;
 
-			// Get first live edge index.
-			uint32_t getFirstEdgeIndex() const;
+  int32_t getEdgeIndexByVertices(int32_t firstVertex, int32_t secondVertex, bool* correctOrder = nullptr) const;
 
-			// Get the edge index following the given one.
-			uint32_t getNextEdgeIndex(uint32_t edgeIndex) const;
+  int32_t getEdgeIndexByOrderedVertices(int32_t firstVertex, int32_t secondVertex) const;
 
-			// Query whether the given edge is past the last one.
-			bool edgeIndexIterationFinished(uint32_t edgeIndex) const;
+  // Get a list of edge indices by the given connectivity type.
+  IndexVector getEdgeIndicesByConnectivity(Edge::Connectivity type) const;
 
-			// Get const reference to the edge.  All public access is non-mutable.
-			Edge const& getEdge(uint32_t edgeIndex) const;
+  //
+  // Polygons
+  //
 
-			int32_t getEdgeIndexByVertices(int32_t firstVertex, int32_t secondVertex, bool* correctOrder = nullptr) const;
+  // Add polygon, returning its index.
+  uint32_t addPolygon(Polygon polygon, int32_t prototype = -1);
 
-			int32_t getEdgeIndexByOrderedVertices(int32_t firstVertex, int32_t secondVertex) const;
+  void addHoleToPolygon(uint32_t polygonIndex, uint32_t holeIndex);
 
-			// Get a list of edge indices by the given connectivity type.
-			IndexVector getEdgeIndicesByConnectivity(Edge::Connectivity type) const;
+  void addFilledHoleToPolygon(uint32_t polygonIndex, uint32_t holeIndex, uint32_t* newFilledIndex = nullptr);
 
-			//
-			// Polygons
-			//
+  void removeHoleFromPolygon(uint32_t polygonIndex, uint32_t holeIndex);
 
-			// Add polygon, returning its index.
-			uint32_t addPolygon(Polygon polygon, int32_t prototype = -1);
+  void removeHolesFromPolygon(uint32_t polygonIndex);
 
-			void addHoleToPolygon(uint32_t polygonIndex, uint32_t holeIndex);
+  void removePolygon(uint32_t polygonIndex, bool deleteHoles = true);
 
-			void addFilledHoleToPolygon(uint32_t polygonIndex, uint32_t holeIndex, uint32_t* newFilledIndex = nullptr);
+  void removePolygons(IndexSet const& polygonIndices);
 
-			void removeHoleFromPolygon(uint32_t polygonIndex, uint32_t holeIndex);
+  // Move the specified polygon by the given amount. No checking is done as to
+  // whether this creates an invalid/'crossed-over' mesh.
+  void movePolygon(uint32_t polygonIndex, Vector2 const& move);
 
-			void removeHolesFromPolygon(uint32_t polygonIndex);
+  // Move the specified polygons by the given amount. No checking is done as to
+  // whether this creates an invalid/'crossed-over' mesh.
+  void movePolygons(IndexVector const& polygonIndices, Vector2 const& move);
 
-			void removePolygon(uint32_t polygonIndex, bool deleteHoles = true);
+  // Move polygon so that the centre is in the new location.
+  void recentrePolygon(uint32_t polygonIndex, Vector2 const& centre);
 
-			void removePolygons(IndexSet const& polygonIndices);
+  // User data
+  void setPolygonUserData(uint32_t polygonIndex, void const* data);
 
-			// Move the specified polygon by the given amount. No checking is done as to
-			// whether this creates an invalid/'crossed-over' mesh.
-			void movePolygon(uint32_t polygonIndex, Vector2 const& move);
+  void const* getPolygonUserData(uint32_t polygonIndex) const;
 
-			// Move the specified polygons by the given amount. No checking is done as to
-			// whether this creates an invalid/'crossed-over' mesh.
-			void movePolygons(IndexVector const& polygonIndices, Vector2 const& move);
+  void getPolygonRgbaAttribute(uint32_t polygonIndex, float& r, float& g, float& b, float& a) const;
 
-			// Move polygon so that the centre is in the new location.
-			void recentrePolygon(uint32_t polygonIndex, Vector2 const& centre);
+  void getPolygonMaterialAttribute(uint32_t polygonIndex, std::string& material) const;
 
-			// User data
-			void setPolygonUserData(uint32_t polygonIndex, void const* data);
+  void getPolygonProgramAttribute(uint32_t polygonIndex, std::string& program) const;
 
-			void const* getPolygonUserData(uint32_t polygonIndex) const;
+  void getPolygonTexturesAttribute(uint32_t polygonIndex, std::vector<std::string>& textures) const;
 
-			void getPolygonRgbaAttribute(uint32_t polygonIndex, float& r, float& g, float& b, float& a) const;
+  void getPolygonColourType(uint32_t polygonIndex, UserAttributePolygonColourType& type) const;
 
-			void getPolygonMaterialAttribute(uint32_t polygonIndex, std::string& material) const;
+  void setPolygonVertexUserData(uint32_t polygonIndex, uint32_t vertexIndex, void const* data);
 
-			void getPolygonProgramAttribute(uint32_t polygonIndex, std::string& program) const;
+  void const* getPolygonVertexUserData(uint32_t polygonIndex, uint32_t vertexIndex) const;
 
-			void getPolygonTexturesAttribute(uint32_t polygonIndex, std::vector<std::string>& textures) const;
+  void getPolygonVertexUvAttribute(uint32_t polygonIndex, uint32_t vertexIndex, uint32_t textureIndex, float& u, float& v) const;
 
-			void getPolygonColourType(uint32_t polygonIndex, UserAttributePolygonColourType& type) const;
-				
-			void setPolygonVertexUserData(uint32_t polygonIndex, uint32_t vertexIndex, void const* data);
+  void getPolygonVertexUvWeightAttribute(uint32_t polygonIndex, uint32_t vertexIndex, uint32_t textureIndex, float& weight) const;
 
-			void const* getPolygonVertexUserData(uint32_t polygonIndex, uint32_t vertexIndex) const;
+  void getPolygonVertexRgbaAttribute(uint32_t polygonIndex, uint32_t vertexIndex, float& r, float& g, float& b, float& a) const;
 
-			void getPolygonVertexUvAttribute(uint32_t polygonIndex, uint32_t vertexIndex, uint32_t textureIndex, float& u, float& v) const;
+  // Get the number of alive polygons.
+  uint32_t getNumPolygons() const;
 
-			void getPolygonVertexUvWeightAttribute(uint32_t polygonIndex, uint32_t vertexIndex, uint32_t textureIndex, float& weight) const;
+  // Get first live polygon index.
+  uint32_t getFirstPolygonIndex() const;
 
-			void getPolygonVertexRgbaAttribute(uint32_t polygonIndex, uint32_t vertexIndex, float& r, float& g, float& b, float& a) const;
+  // Get the polygon index following the given one.
+  uint32_t getNextPolygonIndex(uint32_t polygonIndex) const;
 
-			// Get the number of alive polygons.
-			uint32_t getNumPolygons() const;
+  // Query whether the given polygon is past the last one.
+  bool polygonIndexIterationFinished(uint32_t polygonIndex) const;
 
-			// Get first live polygon index.
-			uint32_t getFirstPolygonIndex() const;
+  // Get const reference to the polygon.  All public access is non-mutable.
+  Polygon const& getPolygon(uint32_t polygonIndex) const;
 
-			// Get the polygon index following the given one.
-			uint32_t getNextPolygonIndex(uint32_t polygonIndex) const;
+  //
+  // Utility
+  //
+  uint32_t addMeshCallbacks(MeshCallbacks const& callbacks);
 
-			// Query whether the given polygon is past the last one.
-			bool polygonIndexIterationFinished(uint32_t polygonIndex) const;
+  void removeMeshCallbacks(uint32_t id);
 
-			// Get const reference to the polygon.  All public access is non-mutable.
-			Polygon const& getPolygon(uint32_t polygonIndex) const;
+  void getExtents(Vector2& minExtent, Vector2& maxExtent) const;
 
-			//
-			// Utility
-			//
-			uint32_t addMeshCallbacks(MeshCallbacks const& callbacks);
+  // Create acceleration grids, to speed up static queries.
+  void createAccelerationGrids(float x, float y, float sizeX, float sizeY, int dimX, int dimY);
 
-			void removeMeshCallbacks(uint32_t id);
+  AccelerationGrid const* _getVertexAccelerationGrid() const;
 
-			void getExtents(Vector2& minExtent, Vector2& maxExtent) const;
+  AccelerationGrid const* _getEdgeAccelerationGrid() const;
 
-			// Create acceleration grids, to speed up static queries.
-			void createAccelerationGrids(float x, float y, float sizeX, float sizeY, int dimX, int dimY);
+  AccelerationGrid const* _getPolygonAccelerationGrid() const;
 
-			AccelerationGrid const* _getVertexAccelerationGrid() const;
+  //
+  // High level
+  //
+  void merge(Mesh const* other);
 
-			AccelerationGrid const* _getEdgeAccelerationGrid() const;
+  //
+  // Query
+  //
+  int32_t getContainingPolygon(Vector2 const& position) const;
 
-			AccelerationGrid const* _getPolygonAccelerationGrid() const;
+  bool pointInside(Vector2 const& position) const;
 
-			//
-			// High level
-			//
-			void merge(Mesh const* other);
+  bool lineIntersects(Vector2 const& l0, Vector2 const& l1) const;
 
-			//
-			// Query
-			//
-			int32_t getContainingPolygon(Vector2 const& position) const;
+  // Clean up dead objects, and reindex everything.
+  void compact(std::map<uint32_t, uint32_t>* vertexRemapping = nullptr, std::map<uint32_t, uint32_t>* edgeRemapping = nullptr, std::map<uint32_t, uint32_t>* polygonRemapping = nullptr);
 
-			bool pointInside(Vector2 const& position) const;
+  MathsUtils::LineIntersectionType edgeEdgeIntersection(uint32_t edge0, uint32_t edge1, Vector2* point) const;
 
-			bool lineIntersects(Vector2 const& l0, Vector2 const& l1) const;
+  IndexSet getVertexIndicesInBoundingBox(BoundingBox const& box) const;
 
-			// Clean up dead objects, and reindex everything.
-			void compact(std::map<uint32_t, uint32_t>* vertexRemapping = nullptr, std::map<uint32_t, uint32_t>* edgeRemapping = nullptr, std::map<uint32_t, uint32_t>* polygonRemapping = nullptr);
+  IndexSet getVertexIndicesInBoundingCircle(BoundingCircle const& circle) const;
 
-			MathsUtils::LineIntersectionType edgeEdgeIntersection(uint32_t edge0, uint32_t edge1, Vector2* point) const;
+  //
+  // Debug
+  //
+  void print(std::ostream& out);
 
-			IndexSet getVertexIndicesInBoundingBox(BoundingBox const& box) const;
+  void setIntegrityCheck(bool enable);
 
-			IndexSet getVertexIndicesInBoundingCircle(BoundingCircle const& circle) const;
+  void popIntegrityCheck();
 
-			//
-			// Debug
-			//
-			void print(std::ostream& out);
+  bool integrityCheckEnabled() const;
+};
 
-			void setIntegrityCheck(bool enable);
-
-			void popIntegrityCheck();
-
-			bool integrityCheckEnabled() const;
-		};
-
-	} // geometry
-} // WP_NAMESPACE
+}  // namespace geometry
+}  // namespace WP_NAMESPACE

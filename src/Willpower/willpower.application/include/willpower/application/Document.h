@@ -2,131 +2,112 @@
 
 #include <string>
 
-
 #include "willpower/application/Platform.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
+namespace WP_NAMESPACE {
+namespace application {
 
-		/**	\class Document
-		 *  \brief Base class for a document with open/close/save/save-as functionality.
-		 */
-		template<typename T>
-		class Document
-		{
-			std::string mName;
+/**	\class Document
+ *  \brief Base class for a document with open/close/save/save-as functionality.
+ */
+template <typename T>
+class Document {
+  std::string mName;
 
-			std::string mFilepath;
+  std::string mFilepath;
 
-			T* mData;
+  T* mData;
 
-		public:
+public:
+  /**	\brief Constructor.
+   *
+   *	\param name document name.
+   *  \param data data to encapsulate.
+   */
+  Document(std::string const& name, T* data)
+      : mName(name), mData(data) {
+  }
 
-			/**	\brief Constructor.
-			 *
-			 *	\param name document name.
-			 *  \param data data to encapsulate.
-			 */
-			Document(std::string const& name, T* data)
-				: mName(name)
-				, mData(data)
-			{
-			}
+  /** \brief Copy constructor.
+   *
+   *	\param other document to instantiate from.
+   */
+  Document(Document const& other) {
+    mName = other.mName;
+    mFilepath = other.mFilepath;
 
-			/** \brief Copy constructor.
-			 *
-			 *	\param other document to instantiate from.
-			 */
-			Document(Document const& other)
-			{
-				mName = other.mName;
-				mFilepath = other.mFilepath;
+    mData = new T(*other.mData);
+  }
 
-				mData = new T(*other.mData);
-			}
+  /** \brief Assignment operator constructor.
+   *
+   *	\param other document to instantiate from.
+   *	\return reference for chaining.
+   */
+  Document& operator=(Document const& other) {
+    mName = other.mName;
+    mFilepath = other.mFilepath;
 
-			/** \brief Assignment operator constructor.
-			 *
-			 *	\param other document to instantiate from.
-			 *	\return reference for chaining.
-			 */
-			Document& operator=(Document const& other)
-			{
-				mName = other.mName;
-				mFilepath = other.mFilepath;
-				
-				delete mData;
-				mData = new T(*other.mData);
-				
-				return *this;
-			}
+    delete mData;
+    mData = new T(*other.mData);
 
-			/**	\brief Destructor.
-			 */
-			virtual ~Document()
-			{
-				delete mData;
-			}
+    return *this;
+  }
 
-			/** \brief return mutable underlying data.
-			 *
-			 * \return underlying data.
-			 */
-			T* getData()
-			{
-				return mData;
-			}
+  /**	\brief Destructor.
+   */
+  virtual ~Document() {
+    delete mData;
+  }
 
-			/** \brief return non-mutable underlying data.
-			 *
-			 * \return underlying data.
-			 */
-			T const* getData() const
-			{
-				return mData;
-			}
+  /** \brief return mutable underlying data.
+   *
+   * \return underlying data.
+   */
+  T* getData() {
+    return mData;
+  }
 
-			/** \brief Set name.
-					 *
-					 *	\param name document name.
-					 */
-			void setName(std::string const& name)
-			{
-				mName = name;
-			}
+  /** \brief return non-mutable underlying data.
+   *
+   * \return underlying data.
+   */
+  T const* getData() const {
+    return mData;
+  }
 
-			/** \brief Get document name.
-			  *
-			  * \return name
-			  **/
-			std::string const& getName() const
-			{
-				return mName;
-			}
+  /** \brief Set name.
+   *
+   *	\param name document name.
+   */
+  void setName(std::string const& name) {
+    mName = name;
+  }
 
-			void setFilepath(std::string const& filepath)
-			{
-				mFilepath = filepath;
-			}
+  /** \brief Get document name.
+   *
+   * \return name
+   **/
+  std::string const& getName() const {
+    return mName;
+  }
 
-			std::string const& getFilepath() const
-			{
-				return mFilepath;
-			}
+  void setFilepath(std::string const& filepath) {
+    mFilepath = filepath;
+  }
 
-			virtual bool isModified() const
-			{
-				return mData->isModified();
-			}
+  std::string const& getFilepath() const {
+    return mFilepath;
+  }
 
-			virtual bool saveDocument()
-			{
-				return mData->save();
-			}
-		};
+  virtual bool isModified() const {
+    return mData->isModified();
+  }
 
-	} // application
-} // WP_NAMESPACE
+  virtual bool saveDocument() {
+    return mData->save();
+  }
+};
 
+}  // namespace application
+}  // namespace WP_NAMESPACE

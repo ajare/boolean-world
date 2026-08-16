@@ -2,21 +2,16 @@
 #include "willpower/application/resourcesystem/ResourceExceptions.h"
 #include "willpower/common/Exceptions.h"
 
+namespace WP_NAMESPACE {
+namespace application {
+namespace resourcesystem {
+using namespace std;
+using namespace wp;
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
-		namespace resourcesystem
-		{
-			using namespace std;
-			using namespace wp;
+AudioBankResourceDefinitionFactory::AudioBankResourceDefinitionFactory(string const& factoryType)
+    : ResourceDefinitionFactory("AudioBank", factoryType) {
+}
 
-			AudioBankResourceDefinitionFactory::AudioBankResourceDefinitionFactory(string const& factoryType)
-				: ResourceDefinitionFactory("AudioBank", factoryType)
-			{
-			}
-
-		} // resourcesystem
-	} // application
-} // WP_NAMESPACE
+}  // namespace resourcesystem
+}  // namespace application
+}  // namespace WP_NAMESPACE

@@ -2,45 +2,41 @@
 
 #include "willpower/geometry/Filter.h"
 
-namespace WP_NAMESPACE
-{
-	namespace geometry
-	{
+namespace WP_NAMESPACE {
+namespace geometry {
 
-		class WP_GEOMETRY_API VertexFilter : public Filter
-		{
-		public:
+class WP_GEOMETRY_API VertexFilter : public Filter {
+public:
+  explicit VertexFilter(Mesh const* mesh);
 
-			explicit VertexFilter(Mesh const* mesh);
+  VertexFilter& selectVertices(IndexSet const& vertexIndices);
 
-			VertexFilter& selectVertices(IndexSet const& vertexIndices);
+  VertexFilter& selectVertices(BoundingCircle const& bounds);
 
-			VertexFilter& selectVertices(BoundingCircle const& bounds);
+  VertexFilter& selectVertices(BoundingBox const& bounds);
 
-			VertexFilter& selectVertices(BoundingBox const& bounds);
+  VertexFilter& selectEdgeVertices(uint32_t edgeIndex);
 
-			VertexFilter& selectEdgeVertices(uint32_t edgeIndex);
+  VertexFilter& selectPolygonVertices(uint32_t polygonIndex);
 
-			VertexFilter& selectPolygonVertices(uint32_t polygonIndex);
+  VertexFilter& addVertices(IndexSet const& vertexIndices);
 
-			VertexFilter& addVertices(IndexSet const& vertexIndices);
+  VertexFilter& addVertices(BoundingCircle const& bounds);
 
-			VertexFilter& addVertices(BoundingCircle const& bounds);
+  VertexFilter& addVertices(BoundingBox const& bounds);
 
-			VertexFilter& addVertices(BoundingBox const& bounds);
+  VertexFilter& addEdgeVertices(uint32_t edgeIndex);
 
-			VertexFilter& addEdgeVertices(uint32_t edgeIndex);
+  VertexFilter& addPolygonVertices(uint32_t polygonIndex);
 
-			VertexFilter& addPolygonVertices(uint32_t polygonIndex);
+  VertexFilter& minimumX();
 
-			VertexFilter& minimumX();
+  VertexFilter& maximumX();
 
-			VertexFilter& maximumX();
+  VertexFilter& minimumY();
 
-			VertexFilter& minimumY();
+  VertexFilter& maximumY();
+};
 
-			VertexFilter& maximumY();
-		};
-
-	} // geometry
-} // WP_NAMESPACE
+}  // namespace geometry
+}  // namespace WP_NAMESPACE

@@ -5,190 +5,152 @@
 #include <functional>
 #include <memory>
 
-
 #include "willpower/application/Platform.h"
 #include "willpower/application/Document.h"
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
+namespace WP_NAMESPACE {
+namespace application {
 
-		/**	\class DocumentManager
-		 *  \brief Manager for documents, with facade functions and undo/redo
-		 */
-		template<typename T>
-		class DocumentManager
-		{
-		public:
+/**	\class DocumentManager
+ *  \brief Manager for documents, with facade functions and undo/redo
+ */
+template <typename T>
+class DocumentManager {
+public:
+  typedef std::function<bool(Document<T>*)> UndoableAction;
 
-			typedef std::function<bool(Document<T>*)> UndoableAction;
+private:
+  std::deque<std::shared_ptr<Document<T>>> mDocumentHistory;
 
-		private:
+  typename std::deque<std::shared_ptr<Document<T>>>::iterator mWorkingDocument;
 
-			std::deque<std::shared_ptr<Document<T>>> mDocumentHistory;
+  int mHistorySize;
 
-			typename std::deque<std::shared_ptr<Document<T>>>::iterator mWorkingDocument;
+private:
+  void clearHistory() {
+    mDocumentHistory.clear();
+    mWorkingDocument = mDocumentHistory.end();
+  }
 
-			int mHistorySize;
+public:
+  DocumentManager(int historySize)
+      : mHistorySize(historySize) {
+    mWorkingDocument = mDocumentHistory.end();
+  }
 
-		private:
+  ~DocumentManager() {
+    clearHistory();
+  }
 
-			void clearHistory()
-			{
-				mDocumentHistory.clear();
-				mWorkingDocument = mDocumentHistory.end();
-			}
+  int getMaxHistorySize() const {
+    return mHistorySize;
+  }
 
+  int getCurrentHistorySize() const {
+    return (int)mDocumentHistory.size();
+  }
 
-		public:
+  void clear() {
+    clearHistory();
+  }
 
-			DocumentManager(int historySize)
-				: mHistorySize(historySize)
-			{
-				mWorkingDocument = mDocumentHistory.end();
-			}
+  void undo() {
+    mWorkingDocument++;
+    if (mWorkingDocument == mDocumentHistory.end()) {
+      mWorkingDocument--;
+    }
+  }
 
-			~DocumentManager()
-			{
-				clearHistory();
-			}
+  bool openDocument(std::shared_ptr<Document<T>> document) {
+    if (!closeDocument(false)) {
+      return false;
+    }
 
-			int getMaxHistorySize() const
-			{
-				return mHistorySize;
-			}
+    mDocumentHistory.push_back(document);
+    mWorkingDocument = mDocumentHistory.begin();
+    return true;
+  }
 
-			int getCurrentHistorySize() const
-			{
-				return (int)mDocumentHistory.size();
-			}
+  bool closeDocument(bool checkIfSaved) {
+    if (checkIfSaved) {
+      if (getWorkingDocument()->isModified()) {
+        return false;
+      }
+    }
 
-			void clear()
-			{
-				clearHistory();
-			}
+    clearHistory();
+    return true;
+  }
 
-			void undo()
-			{
-				mWorkingDocument++;
-				if (mWorkingDocument == mDocumentHistory.end())
-				{
-					mWorkingDocument--;
-				}
-			}
+  bool saveDocument() {
+    auto workingDoc = getWorkingDocument();
+    string filepath = workingDoc->getFilepath();
 
-			bool openDocument(std::shared_ptr<Document<T>> document)
-			{
-				if (!closeDocument(false))
-				{
-					return false;
-				}
+    if (filepath == "") {
+      return false;
+    }
 
-				mDocumentHistory.push_back(document);
-				mWorkingDocument = mDocumentHistory.begin();
-				return true;
-			}
+    return workingDoc->saveDocument();
+  }
 
-			bool closeDocument(bool checkIfSaved)
-			{
-				if (checkIfSaved)
-				{
-					if (getWorkingDocument()->isModified())
-					{
-						return false;
-					}
-				}
+  bool saveDocumentAs(std::string const& filepath) {
+    auto workingDoc = getWorkingDocument();
+    workingDoc->setFilepath(filepath);
+    return workingDoc->saveDocument();
+  }
 
-				clearHistory();
-				return true;
-			}
+  void redo() {
+    if (mWorkingDocument != mDocumentHistory.begin()) {
+      mWorkingDocument--;
+    }
+  }
 
-			bool saveDocument()
-			{
-				auto workingDoc = getWorkingDocument();
-				string filepath = workingDoc->getFilepath();
+  Document<T>* getWorkingDocument() {
+    return mWorkingDocument == mDocumentHistory.end() ? nullptr : (*mWorkingDocument).get();
+  }
 
-				if (filepath == "")
-				{
-					return false;
-				}
+  Document<T> const* getWorkingDocument() const {
+    return mWorkingDocument == mDocumentHistory.end() ? nullptr : (*mWorkingDocument).get();
+  }
 
-				return workingDoc->saveDocument();
-			}
+  std::shared_ptr<Document<T>> getWorkingDocumentPtr() {
+    return *mWorkingDocument;
+  }
 
-			bool saveDocumentAs(std::string const& filepath)
-			{
-				auto workingDoc = getWorkingDocument();
-				workingDoc->setFilepath(filepath);
-				return workingDoc->saveDocument();
-			}
+  int getWorkingDocumentIndex() {
+    std::deque<std::shared_ptr<Document<T>>>::iterator begin = mDocumentHistory.begin();
+    return std::distance<>(begin, mWorkingDocument);
+  }
 
-			void redo()
-			{
-				if (mWorkingDocument != mDocumentHistory.begin())
-				{
-					mWorkingDocument--;
-				}
-			}
+  void undoableAction(UndoableAction action) {
+    auto workingDoc = getWorkingDocumentPtr();
+    auto thisDoc = new Document<T>(*workingDoc);
 
-			Document<T>* getWorkingDocument()
-			{
-				return mWorkingDocument == mDocumentHistory.end() ? nullptr : (*mWorkingDocument).get();
-			}
+    if (action(workingDoc.get())) {
+      // Remove any rooms ahead of current room
+      auto it = mDocumentHistory.begin();
+      while (it != mWorkingDocument) {
+        mDocumentHistory.pop_front();
+        it = mDocumentHistory.begin();
+      }
 
-			Document<T> const* getWorkingDocument() const
-			{
-				return mWorkingDocument == mDocumentHistory.end() ? nullptr : (*mWorkingDocument).get();
-			}
+      mDocumentHistory.pop_front();
+      mDocumentHistory.push_front(std::shared_ptr<Document<T>>(thisDoc));
+      mDocumentHistory.push_front(workingDoc);
 
-			std::shared_ptr<Document<T>> getWorkingDocumentPtr()
-			{
-				return *mWorkingDocument;
-			}
+      // Trim list
+      while ((int)mDocumentHistory.size() > mHistorySize) {
+        mDocumentHistory.pop_back();
+      }
 
-			int getWorkingDocumentIndex()
-			{
-				std::deque<std::shared_ptr<Document<T>>>::iterator begin = mDocumentHistory.begin();
-				return std::distance<>(begin, mWorkingDocument);
-			}
+      mWorkingDocument = mDocumentHistory.begin();
+    } else {
+      delete thisDoc;
+    }
+  }
+};
 
-			void undoableAction(UndoableAction action)
-			{
-				auto workingDoc = getWorkingDocumentPtr();
-				auto thisDoc = new Document<T>(*workingDoc);
-
-				if (action(workingDoc.get()))
-				{
-					// Remove any rooms ahead of current room
-					auto it = mDocumentHistory.begin();
-					while (it != mWorkingDocument)
-					{
-						mDocumentHistory.pop_front();
-						it = mDocumentHistory.begin();
-					}
-
-					mDocumentHistory.pop_front();
-					mDocumentHistory.push_front(std::shared_ptr<Document<T>>(thisDoc));
-					mDocumentHistory.push_front(workingDoc);
-
-					// Trim list
-					while ((int)mDocumentHistory.size() > mHistorySize)
-					{
-						mDocumentHistory.pop_back();
-					}
-
-					mWorkingDocument = mDocumentHistory.begin();
-				}
-				else
-				{
-					delete thisDoc;
-				}
-			}
-
-		};
-
-	} // application
-} // WP_NAMESPACE
+}  // namespace application
+}  // namespace WP_NAMESPACE
 
 #pragma once

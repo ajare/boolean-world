@@ -2,45 +2,39 @@
 
 #include "willpower/common/Vector2.h"
 
-namespace WP_NAMESPACE
-{
+namespace WP_NAMESPACE {
 
-	class WP_COMMON_API LineHit
-	{
-	public:
+class WP_COMMON_API LineHit {
+public:
+  enum Flags {
+    None,
+    HitEnters = 1,
+    HitExits = 2
+  };
 
-		enum Flags
-		{
-			None,
-			HitEnters = 1,
-			HitExits = 2
-		};
+private:
+  float mTime;
 
-	private:
+  Vector2 mPosition, mNormal;
 
-		float mTime;
+  bool mTouching;
 
-		Vector2 mPosition, mNormal;
+  uint32_t mFlags;
 
-		bool mTouching;
-		
-		uint32_t mFlags;
+public:
+  LineHit();
 
-	public:
+  LineHit(float time, Vector2 const& position, Vector2 const& normal, bool touching, uint32_t flags = Flags::None);
 
-		LineHit();
+  float getTime() const;
 
-		LineHit(float time, Vector2 const& position, Vector2 const& normal, bool touching, uint32_t flags = Flags::None);
+  Vector2 const& getPosition() const;
 
-		float getTime() const;
+  Vector2 const& getNormal() const;
 
-		Vector2 const& getPosition() const;
+  bool isTouching() const;
 
-		Vector2 const& getNormal() const;
+  uint32_t getFlags() const;
+};
 
-		bool isTouching() const;
-
-		uint32_t getFlags() const;
-	};
-
-} // WP_NAMESPACE
+}  // namespace WP_NAMESPACE

@@ -2,57 +2,50 @@
 
 #include "willpower/application/Platform.h"
 
+namespace WP_NAMESPACE {
+namespace application {
 
-namespace WP_NAMESPACE
-{
-	namespace application
-	{
+/**	\class ApplicationSettings
+ *   \brief Holds settings which need to be globally accessible from the Application.
+ */
+class WP_APPLICATION_API ApplicationSettings {
+  // Helper function for copy constructor / assignment operator.
+  void copyFrom(ApplicationSettings const& other);
 
-		/**	\class ApplicationSettings
-		*   \brief Holds settings which need to be globally accessible from the Application.
-		*/
-		class WP_APPLICATION_API ApplicationSettings
-		{
+public:
+  /**	\brief Constructor.
+   */
+  ApplicationSettings() = default;
 
-			// Helper function for copy constructor / assignment operator.
-			void copyFrom(ApplicationSettings const& other);
+  /**	\brief Destructor.
+   */
+  ~ApplicationSettings() = default;
 
-		public:
+  /**	\brief Copy constructor.
+   *
+   *	\param other Application instance to copy from.
+   */
+  ApplicationSettings(ApplicationSettings const& other);
 
-			/**	\brief Constructor.
-			*/
-			ApplicationSettings() = default;
+  /**	\brief Assignment operator.
+   *
+   *	\param other Application instance to assign from.
+   */
+  ApplicationSettings& operator=(ApplicationSettings const& other);
 
-			/**	\brief Destructor.
-			*/
-			~ApplicationSettings() = default;
+public:
+  /**	\brief Width of the render window, in pixels.
+   */
+  int VideoWidth;
 
-			/**	\brief Copy constructor.
-			*
-			*	\param other Application instance to copy from.
-			*/
-			ApplicationSettings(ApplicationSettings const& other);
+  /**	\brief Height of the render window, in pixels.
+   */
+  int VideoHeight;
 
-			/**	\brief Assignment operator.
-			*
-			*	\param other Application instance to assign from.
-			*/
-			ApplicationSettings& operator=(ApplicationSettings const& other);
+  /**	\brief Specifies whether the render window is fullscreen or not.
+   */
+  bool Fullscreen;
+};
 
-		public:
-
-			/**	\brief Width of the render window, in pixels.
-			*/
-			int VideoWidth;
-				
-			/**	\brief Height of the render window, in pixels.
-			*/
-			int VideoHeight;
-
-			/**	\brief Specifies whether the render window is fullscreen or not.
-			*/
-			bool Fullscreen;
-		};
-
-	} // application
-} // WP_NAMESPACE
+}  // namespace application
+}  // namespace WP_NAMESPACE
