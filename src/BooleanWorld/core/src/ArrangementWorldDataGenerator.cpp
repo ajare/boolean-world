@@ -5,6 +5,7 @@
 
 #include "core/Primitive.h"
 #include "core/World.h"
+#include "core/WorldDataGenerator.h"
 
 namespace bw::core {
 std::vector<arr::Contour> ConvertPrimitiveToContours(
@@ -72,9 +73,7 @@ void ArrangementWorldDataGenerator::generate(World const* world) {
   }
   std::stable_sort(
       primitives.begin(), primitives.end(),
-      [](Primitive const* lhs, Primitive const* rhs) {
-        return lhs->getPriority() < rhs->getPriority();
-      });
+      WorldDataGenerator::SortPrimitivesByPriority());
   generate(primitives);
 }
 

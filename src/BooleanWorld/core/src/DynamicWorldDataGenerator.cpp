@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 
 #include <willpower/common/MathsUtils.h>
@@ -124,7 +125,9 @@ std::vector<Primitive*> DynamicWorldDataGenerator::preparePrimitives(vector<Prim
 
   updatedPrimitives.reserve(primitives.size());
 
-  sort(primitives.begin(), primitives.end(), SortPrimitivesByPriority());
+  stable_sort(
+      primitives.begin(), primitives.end(),
+      SortPrimitivesByPriority());
 
   // Generate vertices for non-visible Primitives
   for (auto primitive : primitives) {

@@ -838,9 +838,7 @@ Primitive* World::createMeshPrimitive(vector<Primitive*> const& fold) const {
   auto selected = fold;
   stable_sort(
       selected.begin(), selected.end(),
-      [](Primitive const* lhs, Primitive const* rhs) {
-        return lhs->getPriority() < rhs->getPriority();
-      });
+      WorldDataGenerator::SortPrimitivesByPriority());
   ArrangementWorldDataGenerator generator;
   generator.generate(selected);
   auto arrangement = generator.getWorldData();
@@ -956,9 +954,11 @@ vector<Primitive*> const& World::getPrimitives() const {
 }
 
 vector<Primitive*> World::getPrimitivesByPriority() const {
-  vector<Primitive*> sorted(mPrimitives.size());
+  auto sorted = mPrimitives;
 
-  partial_sort_copy(mPrimitives.begin(), mPrimitives.end(), sorted.begin(), sorted.end(), SortPrimitivesByPriority());
+  stable_sort(
+      sorted.begin(), sorted.end(),
+      WorldDataGenerator::SortPrimitivesByPriority());
 
   return sorted;
 }
@@ -1187,7 +1187,9 @@ vector<Primitive*> World::sortPrimitiveIndicesByPriority(vector<uint32_t> const&
     primitives.push_back(mPrimitives[index]);
   }
 
-  sort(primitives.begin(), primitives.end(), SortPrimitivesByPriority());
+  stable_sort(
+      primitives.begin(), primitives.end(),
+      WorldDataGenerator::SortPrimitivesByPriority());
 
   return primitives;
 }

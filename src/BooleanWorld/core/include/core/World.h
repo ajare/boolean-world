@@ -25,12 +25,6 @@ namespace bw {
 namespace core {
 
 class BW_API World : public Serializable {
-  struct SortPrimitivesByPriority {
-    bool operator()(Primitive const* a, Primitive const* b) {
-      return a->getPriority() < b->getPriority();
-    }
-  };
-
   struct PrimitiveCellMetadata {
     frame_number_type lastUpdatedFrameNumber{0};
   };
