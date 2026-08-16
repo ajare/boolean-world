@@ -845,33 +845,12 @@ Primitive* World::createMeshPrimitive(vector<Primitive*> const& fold) const {
   generator.generate(selected);
   auto arrangement = generator.getWorldData();
 
-  auto boundaryVertices = [&](vector<uint32_t> const& boundary) {
+  auto boundaryVertices = [&](vector<uint32_t> const& vertexIndices) {
     ClosedPolygon polygon;
-    if (boundary.empty()) {
-      return polygon;
-    }
-    auto firstEdge = arrangement->edges[boundary.front()];
-    uint32_t current = firstEdge.v[0];
-    uint32_t next = firstEdge.v[1];
-    if (boundary.size() > 1) {
-      auto secondEdge = arrangement->edges[boundary[1]];
-      auto firstEndpointContinues =
-          secondEdge.v[0] == firstEdge.v[0] ||
-          secondEdge.v[1] == firstEdge.v[0];
-      if (firstEndpointContinues) {
-        current = firstEdge.v[1];
-        next = firstEdge.v[0];
-      }
-    }
-    polygon.push_back(
-        {{arr::ToWorldCoordinate(arrangement->vertices[current].x),
-          arr::ToWorldCoordinate(arrangement->vertices[current].y)}});
-    for (size_t i = 1; i < boundary.size(); ++i) {
+    for (auto vertexIndex : vertexIndices) {
       polygon.push_back(
-          {{arr::ToWorldCoordinate(arrangement->vertices[next].x),
-            arr::ToWorldCoordinate(arrangement->vertices[next].y)}});
-      auto edge = arrangement->edges[boundary[i]];
-      next = edge.v[0] == next ? edge.v[1] : edge.v[0];
+          {{arr::ToWorldCoordinate(arrangement->vertices[vertexIndex].x),
+            arr::ToWorldCoordinate(arrangement->vertices[vertexIndex].y)}});
     }
     return polygon;
   };
@@ -882,8 +861,8 @@ Primitive* World::createMeshPrimitive(vector<Primitive*> const& fold) const {
       continue;
     }
     ComplexPolygon polygon;
-    polygon.push_back(boundaryVertices(face.outerBoundary));
-    for (auto const& hole : face.innerBoundaries) {
+    polygon.push_back(boundaryVertices(face.outerBoundaryVertices));
+    for (auto const& hole : face.innerBoundaryVertices) {
       polygon.push_back(boundaryVertices(hole));
     }
     polygons.push_back(move(polygon));

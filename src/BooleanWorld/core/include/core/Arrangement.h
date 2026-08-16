@@ -154,8 +154,12 @@ struct ArrangementFace {
   // Edge indices. Bounded faces have one CCW outer boundary; the unbounded
   // exterior face at index zero has no outer boundary.
   std::vector<uint32_t> outerBoundary;
+  // Vertices in traversal order, one for each outer-boundary edge.
+  std::vector<uint32_t> outerBoundaryVertices;
   // Each nested vector is one explicit hole boundary, derived geometrically.
   std::vector<std::vector<uint32_t>> innerBoundaries;
+  // Vertex traversal corresponding to each inner boundary.
+  std::vector<std::vector<uint32_t>> innerBoundaryVertices;
   Membership membership;
   bool solid{false};
   uint16_t paletteIndex{0};

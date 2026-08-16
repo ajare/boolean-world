@@ -954,24 +954,39 @@ ArrangementResultPtr BuildArrangement(vector<ArrangementPrimitive> const& primit
       continue;
     }
     vector<uint32_t> boundary;
-    for (auto edgeIndex : cycles[node.cycleIndex].eis) {
+    vector<uint32_t> boundaryVertices;
+    auto const& cycle = cycles[node.cycleIndex];
+    for (auto edgeIndex : cycle.eis) {
       boundary.push_back(uint32_t(edgeIndex));
     }
+    for (auto vertexIndex : cycle.vis) {
+      boundaryVertices.push_back(uint32_t(vertexIndex));
+    }
     exteriorFace.innerBoundaries.push_back(move(boundary));
+    exteriorFace.innerBoundaryVertices.push_back(move(boundaryVertices));
   }
   result->faces.push_back(move(exteriorFace));
 
   for (auto const& face : faces) {
     ArrangementFace outputFace;
-    for (auto edgeIndex : cycles[face.polygon].eis) {
+    auto const& outerCycle = cycles[face.polygon];
+    for (auto edgeIndex : outerCycle.eis) {
       outputFace.outerBoundary.push_back(uint32_t(edgeIndex));
+    }
+    for (auto vertexIndex : outerCycle.vis) {
+      outputFace.outerBoundaryVertices.push_back(uint32_t(vertexIndex));
     }
     for (auto hole : face.holes) {
       vector<uint32_t> boundary;
+      vector<uint32_t> boundaryVertices;
       for (auto edgeIndex : cycles[hole].eis) {
         boundary.push_back(uint32_t(edgeIndex));
       }
+      for (auto vertexIndex : cycles[hole].vis) {
+        boundaryVertices.push_back(uint32_t(vertexIndex));
+      }
       outputFace.innerBoundaries.push_back(move(boundary));
+      outputFace.innerBoundaryVertices.push_back(move(boundaryVertices));
     }
     outputFace.membership = face.membership;
     outputFace.solid = face.solid;
@@ -1087,12 +1102,9 @@ vector<ArrangementTriangle> BuildArrangementTriangles(
 
     vector<vector<EarcutPoint>> polygons;
     vector<uint32_t> vertexIndices;
-    auto addBoundary = [&](vector<uint32_t> const& boundary) {
+    auto addBoundary = [&](vector<uint32_t> const& boundaryVertices) {
       vector<EarcutPoint> polygon;
-      for (auto edgeIndex : boundary) {
-        auto const& edge = arrangement.edges[edgeIndex];
-        auto vertexIndex =
-            edge.face[0] == faceIndex ? edge.v[0] : edge.v[1];
+      for (auto vertexIndex : boundaryVertices) {
         auto const& vertex = arrangement.vertices[vertexIndex];
         polygon.push_back(
             {float(double(vertex.x) / FixedPointUnitsPerWorldUnit),
@@ -1102,8 +1114,8 @@ vector<ArrangementTriangle> BuildArrangementTriangles(
       polygons.push_back(move(polygon));
     };
 
-    addBoundary(face.outerBoundary);
-    for (auto const& hole : face.innerBoundaries) {
+    addBoundary(face.outerBoundaryVertices);
+    for (auto const& hole : face.innerBoundaryVertices) {
       addBoundary(hole);
     }
 
