@@ -962,6 +962,103 @@ bool PointInFace(
   return true;
 }
 
+vector<ArrangementTriangle> BuildArrangementTriangles(
+    ArrangementResult const& arrangement) {
+  using EarcutPoint = array<float, 2>;
+  vector<ArrangementTriangle> triangles;
+
+  for (uint32_t faceIndex = 0;
+       faceIndex < uint32_t(arrangement.faces.size()); ++faceIndex) {
+    auto const& face = arrangement.faces[faceIndex];
+    if (!face.solid || face.outerBoundary.empty()) {
+      continue;
+    }
+
+    vector<vector<EarcutPoint>> polygons;
+    vector<uint32_t> vertexIndices;
+    auto addBoundary = [&](vector<uint32_t> const& boundary) {
+      vector<EarcutPoint> polygon;
+      for (auto edgeIndex : boundary) {
+        auto const& edge = arrangement.edges[edgeIndex];
+        auto vertexIndex =
+            edge.face[0] == faceIndex ? edge.v[0] : edge.v[1];
+        auto const& vertex = arrangement.vertices[vertexIndex];
+        polygon.push_back(
+            {float(vertex.x / BW_CLIPPER_SCALE),
+             float(vertex.y / BW_CLIPPER_SCALE)});
+        vertexIndices.push_back(vertexIndex);
+      }
+      polygons.push_back(move(polygon));
+    };
+
+    addBoundary(face.outerBoundary);
+    for (auto const& hole : face.innerBoundaries) {
+      addBoundary(hole);
+    }
+
+    auto indices = mapbox::earcut<uint32_t>(polygons);
+    for (size_t i = 0; i < indices.size(); i += 3) {
+      triangles.push_back(
+          {{vertexIndices[indices[i]],
+            vertexIndices[indices[i + 1]],
+            vertexIndices[indices[i + 2]]},
+           faceIndex});
+    }
+  }
+  return triangles;
+}
+
+vector<ArrangementWall> BuildArrangementWalls(
+    ArrangementResult const& arrangement) {
+  vector<ArrangementWall> walls;
+  for (uint32_t edgeIndex = 0;
+       edgeIndex < uint32_t(arrangement.edges.size()); ++edgeIndex) {
+    auto const& edge = arrangement.edges[edgeIndex];
+    auto const& face0 = arrangement.faces[edge.face[0]];
+    auto const& face1 = arrangement.faces[edge.face[1]];
+
+    if (face0.solid != face1.solid) {
+      auto const& solidFace = face0.solid ? face0 : face1;
+      auto const& properties =
+          arrangement.palette[solidFace.paletteIndex];
+      walls.push_back(
+          {edgeIndex,
+           properties.floorZ,
+           properties.ceilingZ,
+           solidFace.paletteIndex,
+           ArrangementWallKind::Border});
+      continue;
+    }
+    if (!face0.solid) {
+      continue;
+    }
+
+    auto const& properties0 = arrangement.palette[face0.paletteIndex];
+    auto const& properties1 = arrangement.palette[face1.paletteIndex];
+    if (properties0.floorZ != properties1.floorZ) {
+      auto const& lowerFace =
+          properties0.floorZ < properties1.floorZ ? face0 : face1;
+      walls.push_back(
+          {edgeIndex,
+           min(properties0.floorZ, properties1.floorZ),
+           max(properties0.floorZ, properties1.floorZ),
+           lowerFace.paletteIndex,
+           ArrangementWallKind::FloorStep});
+    }
+    if (properties0.ceilingZ != properties1.ceilingZ) {
+      auto const& higherFace =
+          properties0.ceilingZ > properties1.ceilingZ ? face0 : face1;
+      walls.push_back(
+          {edgeIndex,
+           min(properties0.ceilingZ, properties1.ceilingZ),
+           max(properties0.ceilingZ, properties1.ceilingZ),
+           higherFace.paletteIndex,
+           ArrangementWallKind::CeilingStep});
+    }
+  }
+  return walls;
+}
+
 vector<FaceTriangle> BuildFaceTriangles(vector<Face> const& faces, vector<Cycle> const& cycles, PSLG const& graph) {
   using EarcutPoint = array<float, 2>;
   vector<FaceTriangle> triangles;

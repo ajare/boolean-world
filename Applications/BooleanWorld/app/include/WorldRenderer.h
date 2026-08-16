@@ -10,6 +10,7 @@
 
 #include <willpower/application/resourcesystem/ResourceManager.h>
 
+#include <core/ArrangementWorldDataGenerator.h>
 #include <core/World.h>
 
 #include "WorldTriangle3dDataProvider.h"
@@ -29,8 +30,10 @@ private:
 
   wp::Logger* mwLogger;
 
+  bw::core::ArrangementWorldDataGenerator mArrangementGenerator;
+
 private:
-  void updateDataProviders(bw::core::World* world, bw::core::WorldData const& worldData, float frameTime);
+  void updateDataProviders(expr::ArrangementResult const& worldData);
 
   void addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c);
 

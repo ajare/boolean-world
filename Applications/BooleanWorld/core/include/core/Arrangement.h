@@ -87,6 +87,25 @@ struct FaceTriangle {
   int fi;
 };
 
+struct ArrangementTriangle {
+  uint32_t v[3];
+  uint32_t face;
+};
+
+enum struct ArrangementWallKind : uint8_t {
+  Border,
+  FloorStep,
+  CeilingStep
+};
+
+struct ArrangementWall {
+  uint32_t edge;
+  float minZ;
+  float maxZ;
+  uint16_t paletteIndex;
+  ArrangementWallKind kind;
+};
+
 struct ArrangementPrimitive {
   std::vector<Clipper2Lib::Path64> contours;
   bw::core::Primitive::Operation operation;
@@ -136,6 +155,12 @@ bool PointInFace(
     ArrangementResult const& arrangement);
 
 bool PointInFace(Vertex const& v, Face const& face, std::vector<Cycle> const& cycles, PSLG const& graph);
+
+[[nodiscard]] std::vector<ArrangementTriangle> BuildArrangementTriangles(
+    ArrangementResult const& arrangement);
+
+[[nodiscard]] std::vector<ArrangementWall> BuildArrangementWalls(
+    ArrangementResult const& arrangement);
 
 PSLG BuildPSLG(std::vector<bw::core::Clipper2Polygon> const& polygons, std::vector<bw::core::Primitive*> const& primitives);
 

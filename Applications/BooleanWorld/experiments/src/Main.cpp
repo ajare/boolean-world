@@ -641,6 +641,105 @@ TEST(ArrangementOutput, FacePropertiesAreCopiedIntoImmutablePalette) {
   EXPECT_EQ(arrangement->palette[secondFace->paletteIndex].ceilingZ, 64);
 }
 
+TEST(ArrangementOutput, BuildsBorderAndStepWallSpansFromIncidentFaces) {
+  bw::core::PrimitivePropertySet lowerProperties{};
+  lowerProperties.floorZ = 0;
+  lowerProperties.ceilingZ = 10;
+  bw::core::PrimitivePropertySet higherProperties{};
+  higherProperties.floorZ = 2;
+  higherProperties.ceilingZ = 12;
+
+  auto arrangement = BuildArrangement(
+      {{{{{0, 0}, {10, 0}, {10, 10}, {0, 10}}},
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero,
+        0,
+        42,
+        lowerProperties},
+       {{{{10, 0}, {20, 0}, {20, 10}, {10, 10}}},
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero,
+        1,
+        77,
+        higherProperties}});
+
+  auto triangles = BuildArrangementTriangles(*arrangement);
+  auto walls = BuildArrangementWalls(*arrangement);
+  EXPECT_EQ(triangles.size(), 4u);
+
+  auto borderWall = std::find_if(
+      walls.begin(), walls.end(), [&](ArrangementWall const& wall) {
+        auto const& edge = arrangement->edges[wall.edge];
+        return wall.kind == ArrangementWallKind::Border &&
+               arrangement->vertices[edge.v[0]].x == 0 &&
+               arrangement->vertices[edge.v[1]].x == 0;
+      });
+  ASSERT_NE(borderWall, walls.end());
+  EXPECT_EQ(borderWall->minZ, 0);
+  EXPECT_EQ(borderWall->maxZ, 10);
+  EXPECT_EQ(
+      arrangement->palette[borderWall->paletteIndex].floorZ,
+      0);
+
+  auto sharedEdge = std::find_if(
+      arrangement->edges.begin(), arrangement->edges.end(),
+      [&](ArrangementEdge const& edge) {
+        auto const& a = arrangement->vertices[edge.v[0]];
+        auto const& b = arrangement->vertices[edge.v[1]];
+        return a.x == 10 && b.x == 10;
+      });
+  ASSERT_NE(sharedEdge, arrangement->edges.end());
+  auto sharedEdgeIndex = uint32_t(sharedEdge - arrangement->edges.begin());
+
+  std::vector<ArrangementWall> sharedWalls;
+  std::copy_if(
+      walls.begin(), walls.end(), std::back_inserter(sharedWalls),
+      [&](ArrangementWall const& wall) {
+        return wall.edge == sharedEdgeIndex;
+      });
+  ASSERT_EQ(sharedWalls.size(), 2u);
+  EXPECT_EQ(sharedWalls[0].kind, ArrangementWallKind::FloorStep);
+  EXPECT_EQ(sharedWalls[0].minZ, 0);
+  EXPECT_EQ(sharedWalls[0].maxZ, 2);
+  EXPECT_EQ(sharedWalls[1].kind, ArrangementWallKind::CeilingStep);
+  EXPECT_EQ(sharedWalls[1].minZ, 10);
+  EXPECT_EQ(sharedWalls[1].maxZ, 12);
+  EXPECT_EQ(
+      arrangement->palette[sharedWalls[0].paletteIndex].floorZ,
+      0);
+  EXPECT_EQ(
+      arrangement->palette[sharedWalls[1].paletteIndex].ceilingZ,
+      12);
+}
+
+TEST(ArrangementOutput, MatchingNeighbourHeightsDoNotBuildStepWalls) {
+  bw::core::PrimitivePropertySet properties{};
+  properties.floorZ = 3;
+  properties.ceilingZ = 15;
+  auto arrangement = BuildArrangement(
+      {{{{{0, 0}, {10, 0}, {10, 10}, {0, 10}}},
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero,
+        0,
+        42,
+        properties},
+       {{{{10, 0}, {20, 0}, {20, 10}, {10, 10}}},
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero,
+        1,
+        77,
+        properties}});
+
+  auto walls = BuildArrangementWalls(*arrangement);
+  auto sharedWall = std::find_if(
+      walls.begin(), walls.end(), [&](ArrangementWall const& wall) {
+        auto const& edge = arrangement->edges[wall.edge];
+        return arrangement->vertices[edge.v[0]].x == 10 &&
+               arrangement->vertices[edge.v[1]].x == 10;
+      });
+  EXPECT_EQ(sharedWall, walls.end());
+}
+
 TEST(ArrangementOutput, XorRetainsItsFoldRunOwner) {
   bw::core::PrimitivePropertySet unionProperties{};
   unionProperties.floorZ = 12;
