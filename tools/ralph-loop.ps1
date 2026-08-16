@@ -11,14 +11,23 @@ number. Issues referenced by another ticket's "## Parent" section are treated
 as specs/maps rather than executable tickets.
 
 Pi runs in non-interactive print mode. Provider failures use capped exponential
-backoff; usage-limit failures poll at ten-minute intervals by default. Logs are
+backoff; usage-limit failures poll at ten-minute intervals by default. After
+each completed ticket the loop reports that run's token usage and, where the
+provider exposes it, current-window and weekly usage. Logs and sessions are
 written below the system temporary directory in pi-ralph-loop.
+
+Use PowerShell's common -Verbose switch to pass --verbose to pi and show extra
+loop diagnostics. Use -Quiet to suppress routine loop and agent output; the
+required end-of-ticket usage summary is still shown.
 
 .EXAMPLE
 ./tools/ralph-loop.ps1
 
 .EXAMPLE
-./tools/ralph-loop.ps1 -Model anthropic/claude-opus-4-6 -Effort high -Once
+./tools/ralph-loop.ps1 -Model anthropic/claude-opus-4-6 -Effort high -Once -Verbose
+
+.EXAMPLE
+./tools/ralph-loop.ps1 -Quiet
 
 .EXAMPLE
 ./tools/ralph-loop.ps1 -DryRun
@@ -36,7 +45,8 @@ param(
     [int]$MaxRetryIntervalSeconds = 900,
     [int]$UsagePollSeconds = 600,
     [switch]$Once,
-    [switch]$DryRun
+    [switch]$DryRun,
+    [switch]$Quiet
 )
 
 Set-StrictMode -Version Latest
@@ -172,10 +182,202 @@ $commentText
 "@
 }
 
+function Write-Status {
+    param([Parameter(Mandatory = $true)][string]$Message)
+
+    if (-not $Quiet) {
+        Write-Host $Message
+    }
+}
+
+function Get-NumericProperty {
+    param(
+        [object]$Object,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    if ($null -eq $Object) {
+        return [double]0
+    }
+    $property = $Object.psobject.Properties[$Name]
+    if ($null -eq $property -or $null -eq $property.Value) {
+        return [double]0
+    }
+    return [double]$property.Value
+}
+
+function Get-SessionUsage {
+    param([Parameter(Mandatory = $true)][string]$SessionDirectory)
+
+    $sessionFile = Get-ChildItem -Path $SessionDirectory -Filter "*.jsonl" -File -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if ($null -eq $sessionFile) {
+        return $null
+    }
+
+    $usage = [ordered]@{
+        Provider = ""
+        Model = ""
+        Input = [int64]0
+        Output = [int64]0
+        CacheRead = [int64]0
+        CacheWrite = [int64]0
+        Reasoning = [int64]0
+        TotalTokens = [int64]0
+        Cost = [double]0
+    }
+
+    foreach ($line in [System.IO.File]::ReadLines($sessionFile.FullName)) {
+        try {
+            $entry = $line | ConvertFrom-Json
+        } catch {
+            continue
+        }
+        if ($entry.type -ne "message" -or $entry.message.role -ne "assistant" -or $null -eq $entry.message.usage) {
+            continue
+        }
+
+        $message = $entry.message
+        $messageUsage = $message.usage
+        $usage.Provider = [string]$message.provider
+        $usage.Model = [string]$message.model
+        $usage.Input += [int64](Get-NumericProperty $messageUsage "input")
+        $usage.Output += [int64](Get-NumericProperty $messageUsage "output")
+        $usage.CacheRead += [int64](Get-NumericProperty $messageUsage "cacheRead")
+        $usage.CacheWrite += [int64](Get-NumericProperty $messageUsage "cacheWrite")
+        $usage.Reasoning += [int64](Get-NumericProperty $messageUsage "reasoning")
+        $usage.TotalTokens += [int64](Get-NumericProperty $messageUsage "totalTokens")
+        $costProperty = $messageUsage.psobject.Properties["cost"]
+        if ($null -ne $costProperty) {
+            $usage.Cost += Get-NumericProperty $costProperty.Value "total"
+        }
+    }
+
+    return [pscustomobject]$usage
+}
+
+function Format-ResetDuration {
+    param([object]$Window)
+
+    if ($null -eq $Window) {
+        return "reset unknown"
+    }
+    $resetAfterProperty = $Window.psobject.Properties["reset_after_seconds"]
+    $resetAtProperty = $Window.psobject.Properties["resets_at"]
+    if ($null -ne $resetAfterProperty -and $null -ne $resetAfterProperty.Value) {
+        $duration = [TimeSpan]::FromSeconds([double]$resetAfterProperty.Value)
+    } elseif ($null -ne $resetAtProperty -and $resetAtProperty.Value) {
+        $resetAt = [DateTimeOffset]::Parse([string]$resetAtProperty.Value)
+        $duration = $resetAt - [DateTimeOffset]::UtcNow
+        if ($duration.TotalSeconds -lt 0) {
+            $duration = [TimeSpan]::Zero
+        }
+    } else {
+        return "reset unknown"
+    }
+    if ($duration.TotalDays -ge 1) {
+        return "resets in $([Math]::Floor($duration.TotalDays))d $($duration.Hours)h"
+    }
+    if ($duration.TotalHours -ge 1) {
+        return "resets in $([Math]::Floor($duration.TotalHours))h $($duration.Minutes)m"
+    }
+    return "resets in $([Math]::Max(0, [Math]::Ceiling($duration.TotalMinutes)))m"
+}
+
+function Write-UsageWindow {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [object]$Window
+    )
+
+    if ($null -eq $Window) {
+        Write-Host "  ${Name}: not reported"
+        return
+    }
+    $usedProperty = $Window.psobject.Properties["used_percent"]
+    if ($null -eq $usedProperty) {
+        $usedProperty = $Window.psobject.Properties["utilization"]
+    }
+    if ($null -eq $usedProperty -or $null -eq $usedProperty.Value) {
+        Write-Host "  ${Name}: usage not reported; $(Format-ResetDuration $Window)"
+        return
+    }
+    $used = [double]$usedProperty.Value
+    $remaining = [Math]::Max([double]0, 100.0 - $used)
+    Write-Host ("  {0}: {1:N1}% used, {2:N1}% remaining; {3}" -f $Name, $used, $remaining, (Format-ResetDuration $Window))
+}
+
+function Get-OAuthCredential {
+    param([Parameter(Mandatory = $true)][string]$Provider)
+
+    $configDirectory = if ($env:PI_CODING_AGENT_DIR) { $env:PI_CODING_AGENT_DIR } else { Join-Path $HOME ".pi/agent" }
+    $authPath = Join-Path $configDirectory "auth.json"
+    $authFile = Get-Content -Path $authPath -Raw | ConvertFrom-Json
+    $credentialProperty = $authFile.psobject.Properties[$Provider]
+    if ($null -eq $credentialProperty -or $credentialProperty.Value.type -ne "oauth") {
+        throw "No OAuth credential is configured for $Provider."
+    }
+    return $credentialProperty.Value
+}
+
+function Show-ProviderUsage {
+    param([Parameter(Mandatory = $true)][object]$SessionUsage)
+
+    $provider = if ($SessionUsage.Provider) { $SessionUsage.Provider } else { ($Model -split '/', 2)[0] }
+    Write-Host "Usage ($provider/$($SessionUsage.Model))"
+    Write-Host ('  Current ticket: {0:N0} tokens (input {1:N0}, output {2:N0}, reasoning {3:N0}, cache read {4:N0}, cache write {5:N0}); cost ${6:N4}' -f
+        $SessionUsage.TotalTokens, $SessionUsage.Input, $SessionUsage.Output, $SessionUsage.Reasoning,
+        $SessionUsage.CacheRead, $SessionUsage.CacheWrite, $SessionUsage.Cost)
+
+    if ($provider -notin @("openai-codex", "anthropic")) {
+        Write-Host "  Current window: not available from this provider"
+        Write-Host "  Weekly: not available from this provider"
+        return
+    }
+
+    try {
+        $credential = Get-OAuthCredential $provider
+        if ($provider -eq "anthropic") {
+            $headers = @{
+                Authorization = "Bearer $($credential.access)"
+                "anthropic-beta" = "oauth-2025-04-20"
+            }
+            $providerUsage = Invoke-RestMethod -Method Get -Uri "https://api.anthropic.com/api/oauth/usage" -Headers $headers
+            Write-UsageWindow -Name "Current window" -Window $providerUsage.five_hour
+            Write-UsageWindow -Name "Weekly" -Window $providerUsage.seven_day
+            return
+        }
+
+        $headers = @{
+            Authorization = "Bearer $($credential.access)"
+            "ChatGPT-Account-Id" = [string]$credential.accountId
+        }
+        $providerUsage = Invoke-RestMethod -Method Get -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers
+        $primary = $providerUsage.rate_limit.primary_window
+        $secondary = $providerUsage.rate_limit.secondary_window
+
+        # Codex normally reports a short rolling primary window and a weekly
+        # secondary window. Some plans expose only one seven-day primary window.
+        $currentWindow = $primary
+        $weeklyWindow = $secondary
+        if ($null -ne $primary -and [double]$primary.limit_window_seconds -ge 518400 -and $null -eq $secondary) {
+            $currentWindow = $null
+            $weeklyWindow = $primary
+        }
+        Write-UsageWindow -Name "Current window" -Window $currentWindow
+        Write-UsageWindow -Name "Weekly" -Window $weeklyWindow
+    } catch {
+        Write-Warning "Could not read provider usage: $($_.Exception.Message)"
+        Write-Host "  Current window: unavailable"
+        Write-Host "  Weekly: unavailable"
+    }
+}
+
 function Test-UsageLimitError {
     param([Parameter(Mandatory = $true)][string]$Text)
 
-    return $Text -match '(?is)(usage limit|usage_limit_reached|usage cap|quota exceeded|insufficient_quota|out of credits|credit balance|billing limit|subscription limit|weekly limit|monthly limit|weighted tokens|token limit.*reset|rate limit.*reset|limit resets? at)'},{
+    return $Text -match '(?is)(usage limit|usage_limit_reached|usage cap|quota exceeded|insufficient_quota|out of credits|credit balance|billing limit|subscription limit|weekly limit|monthly limit|weighted tokens|token limit.*reset|rate limit.*reset|limit resets? at)'
 }
 
 function Test-ServerOrApiError {
@@ -212,6 +414,9 @@ if ($InitialRetryIntervalSeconds -lt 1 -or $MaxRetryIntervalSeconds -lt $Initial
 if ($UsagePollSeconds -lt 1) {
     throw "UsagePollSeconds must be positive."
 }
+if ($Quiet -and $VerbosePreference -eq "Continue") {
+    throw "-Quiet and -Verbose cannot be used together."
+}
 
 $repoRoot = (& git rev-parse --show-toplevel 2>$null).Trim()
 if ($LASTEXITCODE -ne 0 -or -not $repoRoot) {
@@ -233,47 +438,63 @@ New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
 while ($true) {
     $ticket = Get-NextTicket -Repository $Repo -Label $ReadyLabel -CurrentUser $currentUser
     if ($null -eq $ticket) {
-        Write-Host "No unblocked, unclaimed '$ReadyLabel' tickets are available."
+        Write-Status "No unblocked, unclaimed '$ReadyLabel' tickets are available."
         break
     }
 
     $number = [int]$ticket.number
-    Write-Host "Selected #${number}: $($ticket.title)"
+    Write-Status "Selected #${number}: $($ticket.title)"
     if ($DryRun) {
-        Write-Host "Dry run: would start pi with model '$Model' and effort '$Effort'."
+        Write-Status "Dry run: would start pi with model '$Model' and effort '$Effort'."
         break
     }
 
     if (@($ticket.assignees).Count -eq 0) {
         Invoke-Gh @("issue", "edit", [string]$number, "--repo", $Repo, "--add-assignee", "@me") | Out-Null
-        Write-Host "Claimed #$number as $currentUser."
+        Write-Status "Claimed #$number as $currentUser."
     }
 
     $startingHead = (& git rev-parse HEAD).Trim()
     $prompt = Get-TicketPrompt -Repository $Repo -Number $number
     $retryInterval = $InitialRetryIntervalSeconds
     $attempt = 0
+    $successfulSessionDirectory = $null
 
     while ($true) {
         ++$attempt
         $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
         $logPath = Join-Path $logDirectory "issue-$number-$timestamp-attempt-$attempt.log"
-        Write-Host "Starting pi for #$number (attempt $attempt). Log: $logPath"
+        $sessionDirectory = Join-Path $logDirectory "issue-$number-$timestamp-attempt-$attempt-session"
+        New-Item -ItemType Directory -Force -Path $sessionDirectory | Out-Null
+        Write-Status "Starting pi for #$number (attempt $attempt). Log: $logPath"
+        Write-Verbose "Session directory: $sessionDirectory"
+
+        $piArguments = @(
+            "--print", "--approve", "--model", $Model, "--thinking", $Effort,
+            "--name", "ralph-$number", "--session-dir", $sessionDirectory
+        )
+        if ($VerbosePreference -eq "Continue") {
+            $piArguments += "--verbose"
+        }
+        $piArguments += $prompt
 
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
         try {
-            $output = @(& pi --print --approve --model $Model --thinking $Effort --name "ralph-$number" $prompt 2>&1 |
-                Tee-Object -FilePath $logPath)
+            $output = @(& pi @piArguments 2>&1 | Tee-Object -FilePath $logPath)
             $piExitCode = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $previousErrorActionPreference
         }
         $outputText = $output -join [Environment]::NewLine
+        if (-not $Quiet -and $outputText) {
+            Write-Host $outputText
+        }
 
         # A provider can fail after the agent has already committed and closed.
         if (Test-TicketComplete -Repository $Repo -Number $number -StartingHead $startingHead) {
-            Write-Host "Ticket #$number completed successfully."
+            Write-Status "Ticket #$number completed successfully."
+            $successfulSessionDirectory = $sessionDirectory
             break
         }
 
@@ -295,6 +516,13 @@ while ($true) {
         }
 
         throw "Pi failed for a non-retryable implementation reason on #$number. The issue remains assigned and open. Inspect $logPath."
+    }
+
+    $sessionUsage = Get-SessionUsage -SessionDirectory $successfulSessionDirectory
+    if ($null -eq $sessionUsage) {
+        Write-Warning "Could not read current-ticket usage from $successfulSessionDirectory."
+    } else {
+        Show-ProviderUsage -SessionUsage $sessionUsage
     }
 
     if ($Once) {
