@@ -84,37 +84,40 @@ uint64_t UnsignedMagnitude(int64_t value) {
   return value < 0 ? uint64_t(-(value + 1)) + 1 : uint64_t(value);
 }
 
-// Returns round(numerator * multiplier / denominator) without overflowing the
-// 64-bit intermediate. The result fits in int64 because intersections are
-// constrained to the input segments.
-int64_t RoundedProductQuotient(int64_t numerator, int64_t multiplier, int64_t denominator) {
-  if (numerator == 0 || multiplier == 0) {
-    return 0;
+// Returns round(base + numerator * multiplier / denominator) without
+// overflowing a 64-bit intermediate. Half-grid ties are rounded away from
+// zero, independently of segment direction or pair ordering.
+int64_t RoundedCoordinate(int64_t base, int64_t numerator, int64_t multiplier, int64_t denominator) {
+  if (denominator < 0) {
+    numerator = -numerator;
+    denominator = -denominator;
   }
 
-  auto a = UnsignedMagnitude(numerator);
-  auto b = UnsignedMagnitude(multiplier);
-  auto d = UnsignedMagnitude(denominator);
-  uint64_t quotient;
-  uint64_t remainder;
-
+  int64_t quotient;
+  int64_t remainder;
 #ifdef _MSC_VER
-  uint64_t high;
-  auto low = _umul128(a, b, &high);
-  quotient = _udiv128(high, low, d, &remainder);
+  int64_t high;
+  auto low = _mul128(numerator, multiplier, &high);
+  quotient = _div128(high, low, denominator, &remainder);
 #else
-  using uint128 = unsigned __int128;
-  auto product = uint128(a) * uint128(b);
-  quotient = uint64_t(product / d);
-  remainder = uint64_t(product % d);
+  using int128 = __int128;
+  auto product = int128(numerator) * int128(multiplier);
+  quotient = int64_t(product / denominator);
+  remainder = int64_t(product % denominator);
 #endif
 
-  if (remainder >= d - remainder) {
-    ++quotient;
-  }
+  auto result = base + quotient;
+  auto remainderMagnitude = UnsignedMagnitude(remainder);
+  auto denominatorMagnitude = uint64_t(denominator);
+  auto beyondHalf = remainderMagnitude > denominatorMagnitude - remainderMagnitude;
+  auto atHalf = remainderMagnitude == denominatorMagnitude - remainderMagnitude;
+  auto remainderSign = (remainder > 0) - (remainder < 0);
 
-  bool negative = (numerator < 0) != (multiplier < 0) != (denominator < 0);
-  return negative ? -int64_t(quotient) : int64_t(quotient);
+  if (beyondHalf ||
+      (atHalf && (result == 0 || (result > 0) == (remainder > 0)))) {
+    result += remainderSign;
+  }
+  return result;
 }
 
 vector<Segment> ExtractSegments(vector<bw::core::Clipper2Polygon> const& polygons) {
@@ -180,8 +183,8 @@ Intersection SegmentIntersection(Segment const& subject, Segment const& clip) {
 
   return {
       true,
-      {p.x + RoundedProductQuotient(subjectNumerator, rx, denominator),
-       p.y + RoundedProductQuotient(subjectNumerator, ry, denominator)}};
+      {RoundedCoordinate(p.x, subjectNumerator, rx, denominator),
+       RoundedCoordinate(p.y, subjectNumerator, ry, denominator)}};
 }
 
 bool VertexLessAlongSegment(Vertex const& lhs, Vertex const& rhs, Segment const& segment) {

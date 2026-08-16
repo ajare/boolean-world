@@ -182,6 +182,24 @@ static PSLG BuildTestPSLG(
   return BuildPSLG(polygons, {});
 }
 
+static PSLG BuildFixedTestPSLG(
+    std::vector<bw::core::Clipper2Polygon> const& polygons,
+    std::vector<bw::core::Primitive*> const& primitives = {}) {
+  return BuildPSLG(polygons, primitives);
+}
+
+static int VertexDegree(PSLG const& graph, expr::Vertex const& vertex) {
+  auto vertexIt = std::find(graph.vs.begin(), graph.vs.end(), vertex);
+  if (vertexIt == graph.vs.end()) {
+    return 0;
+  }
+
+  auto vertexIndex = (int)std::distance(graph.vs.begin(), vertexIt);
+  return (int)std::count_if(graph.es.begin(), graph.es.end(), [&](expr::Edge const& edge) {
+    return edge.vi[0] == vertexIndex || edge.vi[1] == vertexIndex;
+  });
+}
+
 struct Expected {
   int vertices;
   int edges;
@@ -266,6 +284,80 @@ TEST(PSLG, IntersectionsAreSnapRoundedToFixedPointGrid) {
   EXPECT_NE(
       std::find(graph.vs.begin(), graph.vs.end(), expr::Vertex{1333, 0}),
       graph.vs.end());
+}
+
+TEST(PSLG, SnapRoundingCreatesIncidenceOnPreviouslyUnrelatedEdge) {
+  std::vector<bw::core::Clipper2Polygon> polygons =
+      {
+          {false, 0, {{-10, 1}, {10, 0}, {10, 10}}},
+          {false, 1, {{-10, 0}, {10, 1}, {-10, -10}}},
+          {false, 2, {{-1, 1}, {1, 1}, {1, 2}, {-1, 2}}}};
+
+  auto graph = BuildFixedTestPSLG(polygons);
+
+  EXPECT_EQ(VertexDegree(graph, {0, 1}), 6);
+}
+
+TEST(PSLG, CollinearOverlapsProduceOneConsistentEdgeChain) {
+  std::vector<bw::core::Clipper2Polygon> polygons =
+      {
+          {false, 0, {{0, 0}, {10, 0}, {10, 10}, {0, 10}}},
+          {false, 1, {{5, 0}, {15, 0}, {15, -10}, {5, -10}}}};
+
+  auto graph = BuildFixedTestPSLG(polygons);
+
+  EXPECT_EQ(graph.vs.size(), 8u);
+  EXPECT_EQ(graph.es.size(), 9u);
+  EXPECT_EQ(VertexDegree(graph, {5, 0}), 3);
+  EXPECT_EQ(VertexDegree(graph, {10, 0}), 3);
+}
+
+TEST(PSLG, GridQuantumGeometrySurvivesAtEveryWorldExtent) {
+  constexpr int64_t extent = 4'096'000;
+  std::vector<bw::core::Clipper2Polygon> polygons =
+      {
+          {false, 0, {{-extent, -extent}, {-extent + 1, -extent}, {-extent + 1, -extent + 1}, {-extent, -extent + 1}}},
+          {false, 1, {{extent - 1, -extent}, {extent, -extent}, {extent, -extent + 1}, {extent - 1, -extent + 1}}},
+          {false, 2, {{-extent, extent - 1}, {-extent + 1, extent - 1}, {-extent + 1, extent}, {-extent, extent}}},
+          {false, 3, {{extent - 1, extent - 1}, {extent, extent - 1}, {extent, extent}, {extent - 1, extent}}}};
+
+  auto graph = BuildFixedTestPSLG(polygons);
+  auto cycles = ExtractMinimalCycles(graph);
+  auto hierarchy = BuildPolygonHierarchy(graph, cycles);
+  auto faces = BuildFaces(hierarchy, cycles);
+  auto triangles = BuildFaceTriangles(faces, cycles, graph);
+
+  EXPECT_EQ(graph.vs.size(), 16u);
+  EXPECT_EQ(graph.es.size(), 16u);
+  EXPECT_EQ(cycles.size(), 4u);
+  EXPECT_EQ(triangles.size(), 8u);
+}
+
+static void ExpectSelfIntersectingContourTopology(
+    bw::core::Primitive::FillRule fillRule) {
+  bw::core::RectanglePolygon primitive(
+      bw::core::Primitive::Operation::Union,
+      fillRule,
+      1.0f);
+  std::vector<bw::core::Clipper2Polygon> polygons =
+      {{false, 0, {{0, 0}, {2'000, 2'000}, {0, 2'000}, {2'000, 0}}}};
+
+  auto graph = BuildFixedTestPSLG(polygons, {&primitive});
+  auto cycles = ExtractMinimalCycles(graph);
+
+  EXPECT_EQ(graph.vs.size(), 5u);
+  EXPECT_EQ(graph.es.size(), 6u);
+  EXPECT_EQ(cycles.size(), 2u);
+}
+
+TEST(PSLG, SelfIntersectingContourWithEvenOddFillRule) {
+  ExpectSelfIntersectingContourTopology(
+      bw::core::Primitive::FillRule::EvenOdd);
+}
+
+TEST(PSLG, SelfIntersectingContourWithNonZeroFillRule) {
+  ExpectSelfIntersectingContourTopology(
+      bw::core::Primitive::FillRule::NonZero);
 }
 
 TEST(PSLG, TwoDisconnectedRectangles) {
