@@ -40,6 +40,10 @@ private:
 
   InputValue mInputs;
 
+  mutable wp::Vector2 mCachedWorldPosition;
+
+  mutable uint64_t mWorldPositionCacheRevision{0};
+
 protected:
   bool childrenModified() const override;
 

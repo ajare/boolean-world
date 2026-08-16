@@ -50,6 +50,31 @@ std::string withLastKeyRenamed(std::string yaml, std::string const& key) {
   return yaml;
 }
 
+std::string withParentId(std::string yaml, uint32_t index, int32_t parentId) {
+  std::string const marker = "parentId: ";
+  size_t position = 0;
+  for (uint32_t i = 0; i <= index; ++i) {
+    position = yaml.find(marker, position);
+    require(position != std::string::npos,
+            "serialized world does not contain the parent id to replace");
+    position += marker.size();
+  }
+
+  auto const end = yaml.find('\n', position);
+  yaml.replace(position, end - position, std::to_string(parentId));
+  return yaml;
+}
+
+bool containsMessage(std::vector<std::string> const& messages,
+                     std::string const& expected) {
+  for (auto const& message : messages) {
+    if (message.find(expected) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void reloadRecreatesAccelerationGrids() {
   std::string const path = "world_reload_tests.yaml";
 
@@ -132,6 +157,71 @@ void deserializationPreservesAlwaysUpdateVertices() {
           "deserializing a world reset alwaysUpdateVertices");
 }
 
+void parentChainsAreValidatedDuringDeserialization() {
+  bw::core::World source(100.0f, 10.0f);
+  auto* root = makeRectangle();
+  auto* child = makeRectangle();
+  auto* grandchild = makeRectangle();
+  source.addPrimitive(root);
+  source.addPrimitive(child);
+  source.addPrimitive(grandchild);
+  child->setParent(root);
+  grandchild->setParent(child);
+
+  auto const yaml = serializeWorld(source);
+
+  bw::core::World cyclicTarget(100.0f, 10.0f);
+  require(!deserializeWorld(withParentId(yaml, 0, 2), &cyclicTarget),
+          "world with a cyclic primitive parent chain deserialized");
+  require(containsMessage(cyclicTarget.getDeserializationErrors(),
+                          "parent chain contains a cycle"),
+          "cyclic primitive parent chain did not report a clear error");
+
+  bw::core::World unknownParentTarget(100.0f, 10.0f);
+  require(deserializeWorld(withParentId(yaml, 0, 999), &unknownParentTarget),
+          "world with an unknown primitive parent id did not deserialize");
+  require(containsMessage(unknownParentTarget.getDeserializationWarnings(),
+                          "Unknown primitive parent id 999"),
+          "unknown primitive parent id did not produce a warning");
+
+  bw::core::World rootsTarget(100.0f, 10.0f);
+  bw::core::World rootsSource(100.0f, 10.0f);
+  rootsSource.addPrimitive(makeRectangle());
+  require(deserializeWorld(serializeWorld(rootsSource), &rootsTarget),
+          "world with a root primitive did not deserialize");
+  require(rootsTarget.getDeserializationWarnings().empty(),
+          "the no-parent sentinel produced a deserialization warning");
+}
+
+void parentWorldPositionsAreCachedAndInvalidated() {
+  auto root = std::unique_ptr<bw::core::RectanglePolygon>(makeRectangle());
+  auto child = std::unique_ptr<bw::core::RectanglePolygon>(makeRectangle());
+  root->setPosition({10.0f, 20.0f});
+  child->setPosition({3.0f, 4.0f});
+  child->setParent(root.get());
+
+  child->updateVertexPositions();
+  auto const initialVertex = child->getVertices()[0][0][0].p;
+  child->updateVertexPositions();
+  require(child->getVertices()[0][0][0].p == initialVertex,
+          "cached primitive parent position changed transformed vertices");
+
+  root->setPosition({17.0f, 31.0f});
+  child->updateVertexPositions();
+  require(child->getVertices()[0][0][0].p ==
+              initialVertex + wp::Vector2(7.0f, 11.0f),
+          "moving a parent did not invalidate the child's cached world position");
+
+  bool rejectedCycle = false;
+  try {
+    root->setParent(child.get());
+  } catch (bw::core::CoreException const&) {
+    rejectedCycle = true;
+  }
+  require(rejectedCycle,
+          "setParent accepted a cyclic primitive parent chain");
+}
+
 void worldsWithoutGridsFailClearlyInsteadOfDereferencingNull() {
   bw::core::World world;
   auto primitive = std::unique_ptr<bw::core::RectanglePolygon>(makeRectangle());
@@ -177,6 +267,8 @@ int main() {
     reloadRecreatesAccelerationGrids();
     failedDeserializationRetainsTemporaryObjectsAndTargetConfiguration();
     deserializationPreservesAlwaysUpdateVertices();
+    parentChainsAreValidatedDuringDeserialization();
+    parentWorldPositionsAreCachedAndInvalidated();
     worldsWithoutGridsFailClearlyInsteadOfDereferencingNull();
     std::cout << "World deserialization and acceleration-grid regressions passed\n";
     return 0;

@@ -1,10 +1,22 @@
+#include <atomic>
+#include <unordered_set>
+
 #include "core/VertexTransformerObject.h"
+#include "core/CoreException.h"
 #include "core/Utils.h"
 #include "core/Defines.h"
 
 namespace bw {
 namespace core {
 using namespace std;
+
+namespace {
+atomic<uint64_t> WorldPositionRevision{1};
+
+void InvalidateWorldPositionCaches() {
+  WorldPositionRevision.fetch_add(1, memory_order_relaxed);
+}
+}  // namespace
 
 VertexTransformerObject::VertexTransformerObject()
     : mId(~0u), mParent(nullptr), mPosition(wp::Vector2::ZERO), mTransformOffset(wp::Vector2::ZERO), mOrientation(0.0f), mPrevEntityPosition(wp::Vector2::ZERO), mPrevEntityAngle(0.0f) {
@@ -34,6 +46,8 @@ void VertexTransformerObject::copyFrom(VertexTransformerObject const& other) {
   mPrevEntityPosition = other.mPrevEntityPosition;
   mPrevEntityAngle = other.mPrevEntityAngle;
   mInputs = other.mInputs;
+  mWorldPositionCacheRevision = 0;
+  InvalidateWorldPositionCaches();
 }
 
 bool VertexTransformerObject::isStatic() const {
@@ -88,7 +102,7 @@ bool VertexTransformerObject::deserializeImpl(shared_ptr<Serializer> serializer,
     serializer->beginMap("vertexTransformerObject");
     {
       id = serializer->readUint32("id");
-      parentId = (uint32_t)serializer->readInt32("parentId");
+      parentId = serializer->readInt32("parentId");
 
       // Update parent map to glue together later
       workData.vtoIdToVtoMap[id] = this;
@@ -123,17 +137,28 @@ bool VertexTransformerObject::deserializeImpl(shared_ptr<Serializer> serializer,
   mOrientation = orientation;
   mVertexTransformer = vertexTransformer;
   mEye = eye;
+  mWorldPositionCacheRevision = 0;
+  InvalidateWorldPositionCaches();
 
   return true;
 }
 
 void VertexTransformerObject::setParent(VertexTransformerObject* parent) {
+  unordered_set<VertexTransformerObject const*> ancestors;
+  for (auto ancestor = parent; ancestor; ancestor = ancestor->mParent) {
+    if (ancestor == this || !ancestors.insert(ancestor).second) {
+      throw CoreException("Primitive parent chain cannot contain a cycle");
+    }
+  }
+
   mParent = parent;
+  InvalidateWorldPositionCaches();
   invalidatePostTransform(true, true);
 }
 
 void VertexTransformerObject::setPosition(wp::Vector2 const& position) {
   mPosition = position;
+  InvalidateWorldPositionCaches();
   invalidatePostTransform(true, true);
 }
 
@@ -187,13 +212,18 @@ VertexTransformer* VertexTransformerObject::getVertexTransformer() {
 }
 
 wp::Vector2 VertexTransformerObject::calculateWorldPosition() const {
-  auto pos = mPosition;
-
-  if (mParent) {
-    pos += mParent->calculateWorldPosition();
+  auto const revision = WorldPositionRevision.load(memory_order_relaxed);
+  if (mWorldPositionCacheRevision == revision) {
+    return mCachedWorldPosition;
   }
 
-  return pos;
+  mCachedWorldPosition = mPosition;
+  if (mParent) {
+    mCachedWorldPosition += mParent->calculateWorldPosition();
+  }
+  mWorldPositionCacheRevision = revision;
+
+  return mCachedWorldPosition;
 }
 
 wp::Vector2 VertexTransformerObject::transformVertex(wp::Vector2 const& v, bool* cacheChanged) const {
