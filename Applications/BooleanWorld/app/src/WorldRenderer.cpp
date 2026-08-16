@@ -1,7 +1,5 @@
 #include <common/GameDefines.h>
 
-#include <core/ClipperDefines.h>
-
 #include "WorldRenderer.h"
 
 using namespace std;
@@ -47,9 +45,10 @@ void WorldRenderer::addVertexToDataProvider(DataProvider dataProvider, uint32_t 
   vertexPtr->col = c;
 }
 
-void WorldRenderer::updateDataProviders(expr::ArrangementResult const& worldData) {
-  auto triangles = expr::BuildArrangementTriangles(worldData);
-  auto walls = expr::BuildArrangementWalls(worldData);
+void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
+  auto const& worldData = snapshot.getArrangement();
+  auto const& triangles = snapshot.getTriangles();
+  auto const& walls = snapshot.getWalls();
   auto maxNumTrianglePrimitives = triangles.size() * 2 + walls.size() * 2;
 
   for (auto& item : mMaterialRenderers) {
@@ -70,8 +69,8 @@ void WorldRenderer::updateDataProviders(expr::ArrangementResult const& worldData
     for (int i = 0; i < 3; ++i) {
       auto const& vertex = worldData.vertices[triangle.v[i]];
       positions[i] = {
-          float(vertex.x / BW_CLIPPER_SCALE),
-          float(vertex.y / BW_CLIPPER_SCALE)};
+          bw::core::arr::ToWorldCoordinate(vertex.x),
+          bw::core::arr::ToWorldCoordinate(vertex.y)};
     }
 
     auto floorColour = properties.floorMaterialDef.data.baseColourUint;
@@ -113,11 +112,11 @@ void WorldRenderer::updateDataProviders(expr::ArrangementResult const& worldData
     auto const& fixed0 = worldData.vertices[edge.v[0]];
     auto const& fixed1 = worldData.vertices[edge.v[1]];
     wp::Vector2 v0{
-        float(fixed0.x / BW_CLIPPER_SCALE),
-        float(fixed0.y / BW_CLIPPER_SCALE)};
+        bw::core::arr::ToWorldCoordinate(fixed0.x),
+        bw::core::arr::ToWorldCoordinate(fixed0.y)};
     wp::Vector2 v1{
-        float(fixed1.x / BW_CLIPPER_SCALE),
-        float(fixed1.y / BW_CLIPPER_SCALE)};
+        bw::core::arr::ToWorldCoordinate(fixed1.x),
+        bw::core::arr::ToWorldCoordinate(fixed1.y)};
     auto normal = (v1 - v0).normalisedCopy().perpendicular();
     auto const& properties = worldData.palette[wall.paletteIndex];
     auto wallColour = properties.wallMaterialDef.data.baseColourUint;
@@ -149,7 +148,7 @@ void WorldRenderer::update(bw::core::World* world, bw::core::WorldData const& wo
   BW_UNUSED(world);
 
   if (mWorldHasChanged) {
-    updateDataProviders(worldData.getArrangement());
+    updateDataProviders(worldData);
     mWorldHasChanged = false;
   }
 

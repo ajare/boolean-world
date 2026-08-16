@@ -11,9 +11,14 @@ namespace bw::core {
 class Primitive;
 class World;
 
+// Converts authored floating-point polygons straight onto the topology grid.
+// Contour roles are deliberately not carried; the arrangement derives them.
+[[nodiscard]] BW_API std::vector<arr::Contour> ConvertPrimitiveToContours(
+    Primitive const& primitive);
+
 class BW_API ArrangementWorldDataGenerator {
   LayerSelection mLayerSelection{SelectLayer(0)};
-  expr::ArrangementResultPtr mWorldData;
+  arr::ArrangementResultPtr mWorldData;
 
 public:
   ArrangementWorldDataGenerator();
@@ -30,6 +35,6 @@ public:
   // primitive ordering used by the legacy generator.
   void generate(std::vector<Primitive*> const& primitives);
 
-  [[nodiscard]] expr::ArrangementResultPtr getWorldData() const;
+  [[nodiscard]] arr::ArrangementResultPtr getWorldData() const;
 };
 }  // namespace bw::core

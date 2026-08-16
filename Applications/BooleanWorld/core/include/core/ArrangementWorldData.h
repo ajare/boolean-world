@@ -13,26 +13,26 @@
 
 namespace bw::core {
 class BW_API ArrangementWorldData {
-  expr::ArrangementResultPtr mArrangement;
-  std::vector<expr::ArrangementTriangle> mTriangles;
-  std::vector<expr::ArrangementWall> mWalls;
+  arr::ArrangementResultPtr mArrangement;
+  std::vector<arr::ArrangementTriangle> mTriangles;
+  std::vector<arr::ArrangementWall> mWalls;
   std::vector<uint32_t> mCollisionWallIndices;
   std::unique_ptr<wp::AccelerationGrid> mTriangleGrid;
   std::unique_ptr<wp::AccelerationGrid> mWallGrid;
 
 public:
   ArrangementWorldData(
-      expr::ArrangementResultPtr arrangement,
+      arr::ArrangementResultPtr arrangement,
       wp::BoundingBox const& extents,
       float gridCellSize,
       float stepThreshold);
 
-  [[nodiscard]] expr::ArrangementResult const& getArrangement() const;
+  [[nodiscard]] arr::ArrangementResult const& getArrangement() const;
 
-  [[nodiscard]] std::vector<expr::ArrangementTriangle> const&
+  [[nodiscard]] std::vector<arr::ArrangementTriangle> const&
   getTriangles() const;
 
-  [[nodiscard]] std::vector<expr::ArrangementWall> const& getWalls() const;
+  [[nodiscard]] std::vector<arr::ArrangementWall> const& getWalls() const;
 
   [[nodiscard]] int32_t pointInTriangle(wp::Vector2 const& position) const;
 

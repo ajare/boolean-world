@@ -127,6 +127,40 @@ void ensureClipperAllocatorsInitialized() {
   }
 }
 
+TEST(ArrangementWorldDataGenerator, PrimitiveConversionProducesNativeContours) {
+  bw::core::RectanglePolygon rectangle(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  rectangle.setPosition({1.2344f, -2.3456f});
+  rectangle.setSize(4.0f, 6.0f);
+
+  auto contours = bw::core::ConvertPrimitiveToContours(rectangle);
+  static_assert(std::is_same_v<
+                decltype(contours),
+                std::vector<bw::core::arr::Contour>>);
+
+  size_t contourIndex = 0;
+  for (auto const& complexPolygon : rectangle.getVertices()) {
+    for (auto const& polygon : complexPolygon) {
+      ASSERT_LT(contourIndex, contours.size());
+      ASSERT_EQ(contours[contourIndex].size(), polygon.size());
+      for (size_t vertexIndex = 0; vertexIndex < polygon.size(); ++vertexIndex) {
+        EXPECT_EQ(
+            contours[contourIndex][vertexIndex].x,
+            bw::core::arr::ToFixedPointCoordinate(
+                polygon[vertexIndex].p.x));
+        EXPECT_EQ(
+            contours[contourIndex][vertexIndex].y,
+            bw::core::arr::ToFixedPointCoordinate(
+                polygon[vertexIndex].p.y));
+      }
+      ++contourIndex;
+    }
+  }
+  EXPECT_EQ(contourIndex, contours.size());
+}
+
 TEST(ArrangementWorldDataGenerator, PublishedWorldUsesArrangementContract) {
   ensureClipperAllocatorsInitialized();
   auto world = createWorld(8192, 512);

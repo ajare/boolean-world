@@ -6,14 +6,12 @@
 #include <willpower/common/BoundingCircle.h>
 #include <willpower/common/MathsUtils.h>
 
-#include "core/ClipperDefines.h"
-
 namespace bw::core {
 namespace {
-wp::Vector2 ToWorld(expr::Vertex const& vertex) {
+wp::Vector2 ToWorld(arr::FixedPointVertex const& vertex) {
   return {
-      float(vertex.x / BW_CLIPPER_SCALE),
-      float(vertex.y / BW_CLIPPER_SCALE)};
+      arr::ToWorldCoordinate(vertex.x),
+      arr::ToWorldCoordinate(vertex.y)};
 }
 
 std::unique_ptr<wp::AccelerationGrid> CreateGrid(
@@ -28,13 +26,13 @@ std::unique_ptr<wp::AccelerationGrid> CreateGrid(
 }  // namespace
 
 ArrangementWorldData::ArrangementWorldData(
-    expr::ArrangementResultPtr arrangement,
+    arr::ArrangementResultPtr arrangement,
     wp::BoundingBox const& extents,
     float gridCellSize,
     float stepThreshold)
     : mArrangement(std::move(arrangement)),
-      mTriangles(expr::BuildArrangementTriangles(*mArrangement)),
-      mWalls(expr::BuildArrangementWalls(*mArrangement)),
+      mTriangles(arr::BuildArrangementTriangles(*mArrangement)),
+      mWalls(arr::BuildArrangementWalls(*mArrangement)),
       mTriangleGrid(CreateGrid(extents, gridCellSize)),
       mWallGrid(CreateGrid(extents, gridCellSize)) {
   for (uint32_t triangleIndex = 0;
@@ -50,8 +48,8 @@ ArrangementWorldData::ArrangementWorldData(
   for (uint32_t wallIndex = 0; wallIndex < uint32_t(mWalls.size());
        ++wallIndex) {
     auto const& wall = mWalls[wallIndex];
-    auto blocks = wall.kind == expr::ArrangementWallKind::Border ||
-                  (wall.kind == expr::ArrangementWallKind::FloorStep &&
+    auto blocks = wall.kind == arr::ArrangementWallKind::Border ||
+                  (wall.kind == arr::ArrangementWallKind::FloorStep &&
                    wall.maxZ - wall.minZ > stepThreshold);
     if (!blocks) {
       continue;
@@ -65,16 +63,16 @@ ArrangementWorldData::ArrangementWorldData(
   }
 }
 
-expr::ArrangementResult const& ArrangementWorldData::getArrangement() const {
+arr::ArrangementResult const& ArrangementWorldData::getArrangement() const {
   return *mArrangement;
 }
 
-std::vector<expr::ArrangementTriangle> const&
+std::vector<arr::ArrangementTriangle> const&
 ArrangementWorldData::getTriangles() const {
   return mTriangles;
 }
 
-std::vector<expr::ArrangementWall> const& ArrangementWorldData::getWalls() const {
+std::vector<arr::ArrangementWall> const& ArrangementWorldData::getWalls() const {
   return mWalls;
 }
 

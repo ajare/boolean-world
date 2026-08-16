@@ -30,7 +30,7 @@ private:
   wp::Logger* mwLogger;
 
 private:
-  void updateDataProviders(expr::ArrangementResult const& worldData);
+  void updateDataProviders(bw::core::WorldData const& worldData);
 
   void addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c);
 

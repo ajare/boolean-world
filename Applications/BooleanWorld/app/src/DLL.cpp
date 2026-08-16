@@ -136,15 +136,9 @@ __declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resou
   resourceMgr->addResourceDefinitionFactory(new applib::MapTiledDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(new ProtoEntityDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(new applib::ImageSetTiledDefinitionFactory());
-
-  // Memory allocators
-  Clipper2Lib::WmInitialiseAllocators(4, 2 * 1024 * 1024);
 }
 
 __declspec(dllexport) void dllOnExit() {
-  // Memory allocators
-  Clipper2Lib::WmDestroyAllocators();
-
   // Destroy state factories
   delete stateControllerFactory;
   stateControllerFactory = nullptr;

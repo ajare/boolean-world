@@ -87,8 +87,6 @@ int main(int argc, char** argv) {
   auto world = openWorld(filename);
   auto dataGenerator = dynamic_cast<bw::core::DynamicWorldDataGenerator*>(world->getWorldDataGenerator());
 
-  Clipper2Lib::WmInitialiseAllocators(4, 16 * 1024 * 1024);
-
   // Run a few times to "warm up"
   for (int i = 0; i < 5; ++i) {
     dataGenerator->generateBlocking();
@@ -119,8 +117,6 @@ int main(int argc, char** argv) {
 
     cout << "Profile time " << totalTime / 1'000'000.0 << " ms\n";
   }
-
-  Clipper2Lib::WmDestroyAllocators();
 
   return 0;
 }

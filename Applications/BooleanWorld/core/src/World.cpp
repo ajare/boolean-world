@@ -22,7 +22,6 @@
 #include "core/MeshPrimitive.h"
 #include "core/ArrangementWorldDataGenerator.h"
 #include "core/DefaultWorldDataGenerator.h"
-#include "core/ClipperDefines.h"
 
 #include "common/GameDefines.h"
 
@@ -855,15 +854,13 @@ Primitive* World::createMeshPrimitive(vector<Primitive*> const& fold) const {
         next = firstEdge.v[0];
       }
     }
-    polygon.push_back({{float(arrangement->vertices[current].x /
-                              BW_CLIPPER_SCALE),
-                        float(arrangement->vertices[current].y /
-                              BW_CLIPPER_SCALE)}});
+    polygon.push_back(
+        {{arr::ToWorldCoordinate(arrangement->vertices[current].x),
+          arr::ToWorldCoordinate(arrangement->vertices[current].y)}});
     for (size_t i = 1; i < boundary.size(); ++i) {
-      polygon.push_back({{float(arrangement->vertices[next].x /
-                                BW_CLIPPER_SCALE),
-                          float(arrangement->vertices[next].y /
-                                BW_CLIPPER_SCALE)}});
+      polygon.push_back(
+          {{arr::ToWorldCoordinate(arrangement->vertices[next].x),
+            arr::ToWorldCoordinate(arrangement->vertices[next].y)}});
       auto edge = arrangement->edges[boundary[i]];
       next = edge.v[0] == next ? edge.v[1] : edge.v[0];
     }

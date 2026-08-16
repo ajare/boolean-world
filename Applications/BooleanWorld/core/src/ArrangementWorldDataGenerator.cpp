@@ -3,33 +3,35 @@
 #include <algorithm>
 #include <stdexcept>
 
-#include "core/ClipperUtils.h"
 #include "core/Primitive.h"
 #include "core/World.h"
 
 namespace bw::core {
-namespace {
-std::vector<arr::Contour> ToNativeContours(Clipper2Lib::Paths64 const& paths) {
+std::vector<arr::Contour> ConvertPrimitiveToContours(
+    Primitive const& primitive) {
   std::vector<arr::Contour> contours;
-  contours.reserve(paths.size());
-  for (auto const& path : paths) {
-    arr::Contour contour;
-    contour.reserve(path.size());
-    for (auto const& point : path) {
-      contour.push_back({point.x, point.y});
+  for (auto const& complexPolygon : primitive.getVertices()) {
+    for (auto const& polygon : complexPolygon) {
+      arr::Contour contour;
+      contour.reserve(polygon.size());
+      for (auto const& vertex : polygon) {
+        contour.push_back(
+            {arr::ToFixedPointCoordinate(vertex.p.x),
+             arr::ToFixedPointCoordinate(vertex.p.y)});
+      }
+      contours.push_back(std::move(contour));
     }
-    contours.push_back(std::move(contour));
   }
   return contours;
 }
 
+namespace {
 std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
     std::vector<Primitive*> const& primitives) {
   std::vector<arr::ArrangementPrimitive> result;
   result.reserve(primitives.size());
   for (auto primitive : primitives) {
-    result.push_back({ToNativeContours(
-                          ClipperUtils::convertComplexPolygonsToPath(primitive)),
+    result.push_back({ConvertPrimitiveToContours(*primitive),
                       primitive->getOperation(),
                       primitive->getFillRule(),
                       primitive->getPriority(),
@@ -41,7 +43,7 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
 }  // namespace
 
 ArrangementWorldDataGenerator::ArrangementWorldDataGenerator()
-    : mWorldData(expr::BuildArrangement({})) {
+    : mWorldData(arr::BuildArrangement({})) {
 }
 
 void ArrangementWorldDataGenerator::setLayerSelection(
@@ -78,10 +80,10 @@ void ArrangementWorldDataGenerator::generate(World const* world) {
 
 void ArrangementWorldDataGenerator::generate(
     std::vector<Primitive*> const& primitives) {
-  mWorldData = expr::BuildArrangement(SnapshotPrimitives(primitives));
+  mWorldData = arr::BuildArrangement(SnapshotPrimitives(primitives));
 }
 
-expr::ArrangementResultPtr ArrangementWorldDataGenerator::getWorldData() const {
+arr::ArrangementResultPtr ArrangementWorldDataGenerator::getWorldData() const {
   return mWorldData;
 }
 }  // namespace bw::core

@@ -19,7 +19,6 @@
 #include <applib/VisualSpriteEntityFacade.h>
 
 #include <core/Utils.h>
-#include <core/ClipperDefines.h>
 #include <core/DynamicWorldDataGenerator.h>
 
 #include <common/GameDefines.h>
@@ -199,11 +198,11 @@ void StatePlayBooleanWorld::createWorldCollisions() {
     auto const& fixed0 = arrangement.vertices[edge.v[0]];
     auto const& fixed1 = arrangement.vertices[edge.v[1]];
     wp::Vector2 v0{
-        float(fixed0.x / BW_CLIPPER_SCALE),
-        float(fixed0.y / BW_CLIPPER_SCALE)};
+        bw::core::arr::ToWorldCoordinate(fixed0.x),
+        bw::core::arr::ToWorldCoordinate(fixed0.y)};
     wp::Vector2 v1{
-        float(fixed1.x / BW_CLIPPER_SCALE),
-        float(fixed1.y / BW_CLIPPER_SCALE)};
+        bw::core::arr::ToWorldCoordinate(fixed1.x),
+        bw::core::arr::ToWorldCoordinate(fixed1.y)};
     mWorldCollisionSim->addLine(v0, v1, false, wallIndex);
   }
 }
@@ -627,7 +626,9 @@ void StatePlayBooleanWorld::ImGui_renderArrangement(bw::core::ArrangementWorldDa
   auto const& arrangement = worldData.getArrangement();
   auto toWorld = [&](uint32_t index) {
     auto const& vertex = arrangement.vertices[index];
-    return wp::Vector2{float(vertex.x / BW_CLIPPER_SCALE), float(vertex.y / BW_CLIPPER_SCALE)};
+    return wp::Vector2{
+        bw::core::arr::ToWorldCoordinate(vertex.x),
+        bw::core::arr::ToWorldCoordinate(vertex.y)};
   };
   drawList->Flags &= ~ImDrawListFlags_AntiAliasedFill;
   for (auto const& triangle : worldData.getTriangles()) {
@@ -648,7 +649,7 @@ void StatePlayBooleanWorld::ImGui_renderArrangement(bw::core::ArrangementWorldDa
     }
   }
   for (auto const& wall : worldData.getWalls()) {
-    if (wall.kind != expr::ArrangementWallKind::Border) {
+    if (wall.kind != bw::core::arr::ArrangementWallKind::Border) {
       continue;
     }
     auto const& edge = arrangement.edges[wall.edge];

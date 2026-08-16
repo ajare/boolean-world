@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -10,6 +11,15 @@
 
 namespace bw::core::arr {
 inline constexpr int64_t FixedPointUnitsPerWorldUnit = 1000;
+
+[[nodiscard]] inline int64_t ToFixedPointCoordinate(double coordinate) {
+  return int64_t(std::llround(
+      coordinate * double(FixedPointUnitsPerWorldUnit)));
+}
+
+[[nodiscard]] inline float ToWorldCoordinate(int64_t coordinate) {
+  return float(double(coordinate) / double(FixedPointUnitsPerWorldUnit));
+}
 
 struct FixedPointVertex {
   int64_t x, y;
