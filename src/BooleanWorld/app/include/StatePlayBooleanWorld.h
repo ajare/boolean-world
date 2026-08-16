@@ -185,6 +185,8 @@ public:
 
   bool _imGuiActive() const override;
 
+  bool _imGuiCapturesInput() const override;
+
   void _renderImGui(float frameTime, void* imGuiCtx, void* imPlotCtx, void* allocFunc, void* freeFunc, void* userData) override;
 };
 

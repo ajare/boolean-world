@@ -39,6 +39,11 @@ namespace WP_NAMESPACE
 			return false;
 		}
 
+		bool State::_imGuiCapturesInput() const
+		{
+			return _imGuiActive();
+		}
+
 		void State::_renderImGui(float frameTime, void* imGuiCtx, void* imPlotCtx, void* allocFunc, void* freeFunc, void* userData)
 		{
 		}

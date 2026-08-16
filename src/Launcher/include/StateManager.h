@@ -77,6 +77,8 @@ public:
 
   bool imGuiActive() const;
 
+  bool imGuiCapturesInput() const;
+
   void renderImGui(float frameTime, void* imguiCtx, void* imPlotCtx, void* allocFunc, void* freeFunc, void* userData);
 
   void render(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr);

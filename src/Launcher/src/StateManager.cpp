@@ -131,7 +131,7 @@ void StateManager::injectKeyInput(application::KeyEvent evt, application::Key ke
 }
 
 void StateManager::injectMouseButtonInput(application::MouseButtonEvent evt, application::MouseButton mouseButton, wp::application::KeyModifiers modifiers) {
-  if (imGuiActive()) {
+  if (imGuiCapturesInput()) {
     return;
   }
 
@@ -141,7 +141,7 @@ void StateManager::injectMouseButtonInput(application::MouseButtonEvent evt, app
 }
 
 void StateManager::injectMouseWheelInput(int y) {
-  if (imGuiActive()) {
+  if (imGuiCapturesInput()) {
     return;
   }
 
@@ -151,7 +151,7 @@ void StateManager::injectMouseWheelInput(int y) {
 }
 
 void StateManager::injectMouseButtonDoubleClicked(application::MouseButton mouseButton) {
-  if (imGuiActive()) {
+  if (imGuiCapturesInput()) {
     return;
   }
 
@@ -161,7 +161,7 @@ void StateManager::injectMouseButtonDoubleClicked(application::MouseButton mouse
 }
 
 void StateManager::injectMouseDragStarted(application::MouseButton mouseButton, int startPositionX, int startPositionY, float dragX, float dragY) {
-  if (imGuiActive()) {
+  if (imGuiCapturesInput()) {
     return;
   }
 
@@ -171,7 +171,7 @@ void StateManager::injectMouseDragStarted(application::MouseButton mouseButton, 
 }
 
 void StateManager::injectMouseDragFinished(application::MouseButton mouseButton, int finishPositionX, int finishPositionY) {
-  if (imGuiActive()) {
+  if (imGuiCapturesInput()) {
     return;
   }
 
@@ -181,7 +181,7 @@ void StateManager::injectMouseDragFinished(application::MouseButton mouseButton,
 }
 
 void StateManager::injectMouseMotionInput(float positionX, float positionY) {
-  if (imGuiActive()) {
+  if (imGuiCapturesInput()) {
     return;
   }
 
@@ -204,6 +204,10 @@ void StateManager::update(float frameTime) {
 
 bool StateManager::imGuiActive() const {
   return mCurState->_imGuiActive();
+}
+
+bool StateManager::imGuiCapturesInput() const {
+  return mCurState->_imGuiCapturesInput();
 }
 
 void StateManager::renderImGui(float frameTime, void* imguiCtx, void* imPlotCtx, void* allocFunc, void* freeFunc, void* userData) {

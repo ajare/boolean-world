@@ -89,7 +89,7 @@ void StatePlay::destroyInput() {
 void StatePlay::updateInput(float frameTime) {
   WP_UNUSED(frameTime);
 
-  mActiveInputStates = mInputStateMgr->process(_imGuiActive(), &mMouseDeltaX, &mMouseDeltaY);
+  mActiveInputStates = mInputStateMgr->process(_imGuiCapturesInput(), &mMouseDeltaX, &mMouseDeltaY);
 
   if (usingDebugCamera()) {
     const float debugCameraSpeed{500};

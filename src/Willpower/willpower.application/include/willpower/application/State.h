@@ -104,6 +104,9 @@ namespace WP_NAMESPACE
 			*/
 			virtual bool _imGuiActive() const;
 
+			/** \brief Should the active ImGui view capture game input and show a cursor. */
+			virtual bool _imGuiCapturesInput() const;
+
 			/**	\brief Render ImGui objects.
 			*
 			*   To be called by external manager.

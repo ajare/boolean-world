@@ -347,7 +347,7 @@ void setupDebugPanel() {
 
 void updateImGui(float frameTime) {
   if (gStateMgr->imGuiActive()) {
-    gWindow->showCursor(true);
+    gWindow->showCursor(gStateMgr->imGuiCapturesInput());
 
     imGuiNewFrame();
 
