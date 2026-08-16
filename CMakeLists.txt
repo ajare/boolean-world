@@ -21,16 +21,10 @@ if(CMAKE_SIZEOF_VOID_P AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "Only x64 is supported (vendor/lib is x64-only). Configure with -A x64.")
 endif()
 
-# Debug and Release come from the solutions; Profiling existed in the
-# .vcxproj files (BW_PROFILING_BUILD, Superluminal) but no solution exposed it.
+# Debug and Release, as the original solutions had.
 if(CMAKE_CONFIGURATION_TYPES)
-    set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Profiling" CACHE STRING "" FORCE)
+    set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE)
 endif()
-
-# Profiling is Release plus the profiling defines.
-foreach(_v CXX_FLAGS EXE_LINKER_FLAGS SHARED_LINKER_FLAGS STATIC_LINKER_FLAGS MODULE_LINKER_FLAGS)
-    set(CMAKE_${_v}_PROFILING "${CMAKE_${_v}_RELEASE}" CACHE STRING "Profiling build flags" FORCE)
-endforeach()
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)

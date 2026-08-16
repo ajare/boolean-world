@@ -25,7 +25,7 @@ or directly:
     cmake -S . -B build-cmake -G "Visual Studio 18 2026" -A x64
     cmake --build build-cmake --config Release --parallel
 
-Configurations are `Debug`, `Release` and `Profiling`. Only `x64` is supported.
+Configurations are `Debug` and `Release`. Only `x64` is supported.
 
 `build-cmake/BooleanWorld.sln` can be opened in Visual Studio; `Launcher` is
 the startup project.

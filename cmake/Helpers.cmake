@@ -2,9 +2,8 @@
 
 # bw_target_defaults(<target>)
 #
-# Settings every project shared: multi-processor compilation and the
-# per-configuration name suffixes (Debug "d", Profiling "p") the original
-# build used.
+# Settings every project shared: multi-processor compilation and the Debug "d"
+# name suffix the original build used.
 #
 # /sdl is deliberately NOT here. Six of the Willpower modules had
 # SDLCheck off, and enabling it changes codegen - it emits __autoclassinit2
@@ -12,8 +11,7 @@
 # on the targets that had it.
 function(bw_target_defaults tgt)
     set_target_properties(${tgt} PROPERTIES
-        DEBUG_POSTFIX     "d"
-        PROFILING_POSTFIX "p"
+        DEBUG_POSTFIX "d"
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
     target_compile_options(${tgt} PRIVATE /MP)
     # _DEBUG / NDEBUG were spelled out per configuration in every vcxproj.
@@ -51,8 +49,7 @@ endfunction()
 
 # bw_no_postfix(<target>...)
 #
-# The executables kept the same file name in every configuration; only the
-# Profiling suffix applied to them.
+# The executables kept the same file name in every configuration.
 function(bw_no_postfix)
     foreach(tgt ${ARGN})
         set_target_properties(${tgt} PROPERTIES DEBUG_POSTFIX "")

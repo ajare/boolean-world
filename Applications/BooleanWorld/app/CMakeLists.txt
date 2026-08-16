@@ -38,8 +38,7 @@ target_compile_definitions(BooleanWorld PRIVATE
     _SILENCE_CXX23_DENORM_DEPRECATION_WARNING
     WP_USE_ASSERT_TRACE
     APPLICATION_DLL_EXPORT
-    $<$<CONFIG:Debug>:WP_USE_MEMLEAK_TRACKING>
-    $<$<CONFIG:Profiling>:BW_PROFILING_BUILD>)
+    $<$<CONFIG:Debug>:WP_USE_MEMLEAK_TRACKING>)
 
 target_compile_definitions(BooleanWorld PRIVATE YAML_CPP_STATIC_DEFINE)
 

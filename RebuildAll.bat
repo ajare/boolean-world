@@ -1,7 +1,7 @@
 @echo off
 REM Configures and builds BooleanWorld with CMake.
 REM
-REM Usage: RebuildAll.bat [Debug|Release|Profiling]     (default: Release)
+REM Usage: RebuildAll.bat [Debug|Release]     (default: Release)
 REM
 REM MassivePolyPusher (ext\massive-poly-pusher) keeps its own CMake build and is
 REM never modified by this project. CMake configures and builds it on demand if

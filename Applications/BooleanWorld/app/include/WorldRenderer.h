@@ -27,10 +27,6 @@ private:
 
   bool mWorldHasChanged;
 
-#ifdef BW_PROFILING_BUILD
-  int64_t mUpdateDataProviderTimeStampNs, mBuildRendererMeshDataTimeStampNs;
-#endif
-
   wp::Logger* mwLogger;
 
 private:

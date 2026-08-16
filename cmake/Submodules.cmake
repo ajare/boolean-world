@@ -31,10 +31,6 @@ function(bw_ensure_mpp)
     endif()
 
     foreach(cfg ${CMAKE_CONFIGURATION_TYPES})
-        # Profiling has no mpp counterpart; it links the Release libraries.
-        if(cfg STREQUAL "Profiling")
-            continue()
-        endif()
         _bw_mpp_present("${cfg}" present)
         if(present)
             continue()

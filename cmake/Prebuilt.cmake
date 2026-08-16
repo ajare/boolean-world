@@ -22,10 +22,6 @@ bw_resolve_mpp_build_tree("${BW_MPP}")
 set(BW_MPP_LIB "${BW_MPP_BUILD_DIR}/lib")
 set(BW_MPP_BIN "${BW_MPP_BUILD_DIR}/bin")
 
-# The Profiling configuration has no counterpart in any prebuilt dependency,
-# so every imported target resolves it to Release.
-set(CMAKE_MAP_IMPORTED_CONFIG_PROFILING Release "")
-
 # bw_import_shared(<target> <lib-release> <lib-debug> [INCLUDE dirs...])
 function(bw_import_shared name rel_lib dbg_lib)
     cmake_parse_arguments(A "" "" "INCLUDE;DLL_RELEASE;DLL_DEBUG" ${ARGN})
@@ -33,8 +29,7 @@ function(bw_import_shared name rel_lib dbg_lib)
     set_target_properties(${name} PROPERTIES
         IMPORTED_IMPLIB_RELEASE   "${rel_lib}"
         IMPORTED_IMPLIB_DEBUG     "${dbg_lib}"
-        IMPORTED_IMPLIB           "${rel_lib}"
-        MAP_IMPORTED_CONFIG_PROFILING Release)
+        IMPORTED_IMPLIB           "${rel_lib}")
     if(A_DLL_RELEASE)
         set_target_properties(${name} PROPERTIES
             IMPORTED_LOCATION_RELEASE "${A_DLL_RELEASE}"
@@ -55,8 +50,7 @@ function(bw_import_static name rel_lib dbg_lib)
     set_target_properties(${name} PROPERTIES
         IMPORTED_LOCATION_RELEASE "${rel_lib}"
         IMPORTED_LOCATION_DEBUG   "${dbg_lib}"
-        IMPORTED_LOCATION         "${rel_lib}"
-        MAP_IMPORTED_CONFIG_PROFILING Release)
+        IMPORTED_LOCATION         "${rel_lib}")
     if(A_INCLUDE)
         target_include_directories(${name} INTERFACE ${A_INCLUDE})
     endif()

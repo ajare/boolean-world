@@ -207,7 +207,7 @@ in Launcher's own link closure.
 
 ## 7. Build order
 
-`RebuildAll.bat [Debug|Release|Profiling]` configures and builds with CMake.
+`RebuildAll.bat [Debug|Release]` configures and builds with CMake.
 CMake resolves the order for everything it owns; the only ordering that still
 has to be stated is the submodules, because MassivePolyPusher links its own
 nested `ext/utils` rather than the top-level one:
