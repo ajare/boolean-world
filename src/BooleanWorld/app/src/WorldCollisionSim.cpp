@@ -21,22 +21,27 @@ void WorldCollisionSim::addSlidingCollider(
           onWallHit();
         }
 
-        auto normal = line.getNormal();
-        if (result->movementDesired.dot(normal) > 0.0f) {
-          normal = -normal;
+        auto contactPosition =
+            result->oldPosition + result->movementDesired * t;
+        auto closestPoint = contactPosition.closestPointOnLine(
+            line.getVertex(0), line.getVertex(1));
+        auto normal = contactPosition - closestPoint;
+        if (normal.normalise() == 0.0) {
+          normal = line.getNormal();
+          if (result->movementDesired.dot(normal) > 0.0f) {
+            normal = -normal;
+          }
         }
 
-        result->newPosition =
-            result->oldPosition + result->movementDesired * t +
-            normal * 0.001f;
+        result->newPosition = contactPosition + normal * 0.001f;
         result->movementDone = result->newPosition - result->oldPosition;
         result->distanceMoved = result->movementDone.length();
 
-        auto tangent =
-            (line.getVertex(1) - line.getVertex(0)).normalisedCopy();
         auto movementAfterContact = result->movementDesired * (1.0f - t);
-        result->movementLeft =
-            tangent * movementAfterContact.dot(tangent);
+        auto inwardMovement = movementAfterContact.dot(normal);
+        result->movementLeft = inwardMovement < 0.0f
+                                   ? movementAfterContact - normal * inwardMovement
+                                   : movementAfterContact;
         return true;
       });
   addCollider(collider);
