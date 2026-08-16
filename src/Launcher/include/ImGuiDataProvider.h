@@ -121,7 +121,7 @@ public:
           vbrc.clipSize[1] = (int)(clipMax.y - clipMin.y);
 
           auto texId = (uint32_t)pcmd->GetTexID();
-          vbrc.textures[0] = mTextureIdMap[texId];
+          vbrc.textures.push_back(mTextureIdMap[texId]);
 
           vbrc.offset = pcmd->IdxOffset;
           vbrc.count = pcmd->ElemCount;
