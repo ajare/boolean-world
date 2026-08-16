@@ -53,6 +53,17 @@ int main() {
   }
 
   {
+    constexpr float yaw = 35.0f;
+    auto movement = bw::app::playerMovement({0.0f, 1.0f}, yaw);
+    auto viewDirection = wp::Vector2::fromAngle(
+        bw::app::worldViewAngle(yaw), wp::Clockwise);
+    if (!near(viewDirection.x, movement.x) ||
+        !near(viewDirection.y, movement.y)) {
+      return fail("debug view direction does not match forward movement");
+    }
+  }
+
+  {
     auto player = bw::app::minimapPosition({10.0f, 20.0f}, {0.0f, 0.0f}, {1.0f, 1.0f});
     auto forward = bw::app::minimapPosition({10.0f, 19.0f}, {0.0f, 0.0f}, {1.0f, 1.0f});
     auto right = bw::app::minimapPosition({11.0f, 20.0f}, {0.0f, 0.0f}, {1.0f, 1.0f});
