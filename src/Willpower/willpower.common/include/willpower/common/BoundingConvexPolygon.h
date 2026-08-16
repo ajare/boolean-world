@@ -48,10 +48,6 @@ namespace WP_NAMESPACE
 		Vector2 const& getMaxExtent() const;
 
 		// Intersection tests
-		bool pointInside(Vector2 const& point) const;
-
-		bool pointInside(float x, float y) const;
-
 		bool intersectsTriMesh(Triangulation const& triangles) const;
 	};
 

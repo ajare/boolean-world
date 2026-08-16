@@ -126,8 +126,6 @@ namespace WP_NAMESPACE
 		//
 		static bool polygonIsConvex(std::vector<Vector2> const& vertices);
 
-		static float convexPolygonArea(std::vector<Vector2> const& vertices);
-
 		static void barycentricCoords(Vector2 const& p, Vector2 const& v0, Vector2 const& v1, Vector2 const& v2, float& u, float& v, float& w);
 
 		static BoundingBox getPolygonBounds(std::vector<Vector2> const& vertices);
@@ -155,8 +153,6 @@ namespace WP_NAMESPACE
 
 		static bool pointInTriangle(Vector2 const& point, Vector2 const& p0, Vector2 const& p1, Vector2 const& p2);
 			
-		static bool pointInConvexPolygon(Vector2 const& point, std::vector<Vector2> const& vertices);
-
 		static bool pointInPolygon(Vector2 const& point, std::vector<Vector2> const& vertices);
 
 		static bool boxIntersectsBox(Vector2 const& box0Min, Vector2 const& box0Max, Vector2 const& box1Min, Vector2 const& box1Max);
@@ -178,10 +174,6 @@ namespace WP_NAMESPACE
 		static bool circleIntersectsTriangle(Vector2 const& circleCentre, float circleRadius, Vector2 const& tv0, Vector2 const& tv1, Vector2 const& tv2);
 			
 		static bool triangleIntersectsTriangle(Vector2 const& t0v0, Vector2 const& t0v1, Vector2 const& t0v2, Vector2 const& t1v0, Vector2 const& t1v1, Vector2 const& t1v2);
-
-		static bool triangleIntersectsConvexPolygon(Vector2 const& tv0, Vector2 const& tv1, Vector2 const& tv2, std::vector<Vector2> const& polyvertices);
-
-		static bool convexPolygonIntersectsConvexPolygon(std::vector<Vector2> const& poly0vertices, std::vector<Vector2> const& poly1vertices);
 
 		//
 		// Intersection queries, with closest intersection point calculated.

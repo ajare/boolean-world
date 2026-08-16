@@ -226,20 +226,6 @@ namespace WP_NAMESPACE
 		return true;
 	}
 
-	float MathsUtils::convexPolygonArea(vector<Vector2> const& vertices)
-	{
-		float area = 0.0f;
-
-		auto numVertices = (uint32_t)vertices.size();
-		for (uint32_t i = 0, j = numVertices - 1; i < numVertices; j = i++)
-		{
-			area += (vertices[j].x + vertices[i].x) - (vertices[j].y - vertices[i].y);
-		}
-
-		// This calculates for clockwise winding, so invert.
-		return -area;
-	}
-
 	void MathsUtils::barycentricCoords(Vector2 const& p, Vector2 const& v0, Vector2 const& v1, Vector2 const& v2, float& u, float& v, float& w)
 	{
 		wp::Vector2 vd0 = v1 - v0, vd1 = v2 - v0, vd2 = p - v0;
@@ -670,19 +656,6 @@ namespace WP_NAMESPACE
 		*/
 	}
 
-	bool MathsUtils::pointInConvexPolygon(Vector2 const& point, vector<Vector2> const& vertices)
-	{
-		for (uint32_t i = 1; i < vertices.size() - 1; ++i)
-		{
-			if (pointInTriangle(point, vertices[0], vertices[i], vertices[i + 1]))
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
 	bool MathsUtils::pointInPolygon(Vector2 const& point, vector<Vector2> const& vertices)
 	{
 		bool oddNodes = false;
@@ -995,44 +968,6 @@ namespace WP_NAMESPACE
 		}
 	}
 
-	bool MathsUtils::triangleIntersectsConvexPolygon(Vector2 const& tv0, Vector2 const& tv1, Vector2 const& tv2, vector<Vector2> const& polyvertices)
-	{
-		// This should be done using SAT, etc!  But this way is simple.
-		// ...
-
-		for (uint32_t i = 1; i < polyvertices.size() - 1; ++i)
-		{
-			if (triangleIntersectsTriangle(polyvertices[0], polyvertices[i], polyvertices[i + 1], tv0, tv1, tv2))
-			{
-				return true;
-			}
-		}
-
-		return false;
-
-	}
-
-	bool MathsUtils::convexPolygonIntersectsConvexPolygon(vector<Vector2> const& poly0vertices, vector<Vector2> const& poly1vertices)
-	{
-		// This should be done using SAT, etc!  But this way is simple.
-		// ...
-
-		for (uint32_t i = 1; i < poly0vertices.size() - 1; ++i)
-		{
-			for (uint32_t j = 1; j < poly1vertices.size() - 1; ++j)
-			{
-				if (triangleIntersectsTriangle(
-					poly0vertices[0], poly0vertices[i], poly0vertices[i + 1],
-					poly1vertices[0], poly1vertices[j], poly1vertices[j + 1]))
-				{
-					return true;
-				}
-			}
-		}
-
-		return false;
-	}
-		
 	MathsUtils::LineIntersectionType MathsUtils::rayRayIntersection(Vector2 const& ray0origin, Vector2 const& ray0dir, Vector2 const& ray1origin, Vector2 const& ray1dir, LineHit* hit)
 	{
 		float det = ray0dir.x * ray1dir.y - ray1dir.x * ray0dir.y;

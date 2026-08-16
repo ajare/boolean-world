@@ -70,4 +70,14 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(willpower_acceleration_grid_set_operations_tests)
     add_test(NAME willpower_acceleration_grid_set_operations
              COMMAND willpower_acceleration_grid_set_operations_tests)
+
+    add_executable(willpower_legacy_geometry_helper_removal_tests
+        tests/legacy_geometry_helper_removal_tests.cpp)
+    target_link_libraries(willpower_legacy_geometry_helper_removal_tests PRIVATE Willpower.Common)
+    target_compile_features(willpower_legacy_geometry_helper_removal_tests PRIVATE cxx_std_20)
+    bw_target_defaults(willpower_legacy_geometry_helper_removal_tests)
+    bw_output_dirs(willpower_legacy_geometry_helper_removal_tests)
+    bw_deploy_runtime_dlls(willpower_legacy_geometry_helper_removal_tests)
+    add_test(NAME willpower_legacy_geometry_helper_removal
+             COMMAND willpower_legacy_geometry_helper_removal_tests)
 endif()

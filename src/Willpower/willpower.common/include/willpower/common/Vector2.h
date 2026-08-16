@@ -327,15 +327,6 @@ namespace WP_NAMESPACE
 			}
 		}
 
-		inline float distanceToRay(Vector2 const& rayOrigin, Vector2 const& rayDir) const
-		{
-			Vector2 d = *this - rayOrigin;
-			float rayParam = rayDir.dot(d);
-
-			Vector2 closestPoint = rayParam > 0 ? rayOrigin + rayDir * rayParam : rayOrigin;
-			return rayDir.perpendicular().dot(*this - closestPoint);
-		}
-
 		inline Vector2 closestPointOnLine(Vector2 const& v0, Vector2 const& v1) const
 		{
 			Vector2 tv0 = *this - v0;

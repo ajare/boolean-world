@@ -106,16 +106,6 @@ namespace WP_NAMESPACE
 	}
 
 	// Intersection tests
-	bool BoundingConvexPolygon::pointInside(Vector2 const& point) const
-	{
-		return MathsUtils::pointInConvexPolygon(point, mVertices);
-	}
-
-	bool BoundingConvexPolygon::pointInside(float x, float y) const
-	{
-		return MathsUtils::pointInConvexPolygon(Vector2(x, y), mVertices);
-	}
-
 	bool BoundingConvexPolygon::intersectsTriMesh(Triangulation const& triangles) const
 	{
 		auto numTriangles = triangles.getNumTriangles();
