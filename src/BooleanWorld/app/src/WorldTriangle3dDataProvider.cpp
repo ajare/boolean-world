@@ -6,8 +6,8 @@ WorldTriangle3dDataProvider::WorldTriangle3dDataProvider()
 
 WorldTriangle3dDataProvider::~WorldTriangle3dDataProvider() {
   for (auto& meshData : mMeshData) {
-    delete meshData.vertexData;
-    delete meshData.indexData;
+    delete[] meshData.vertexData;
+    delete[] meshData.indexData;
   }
 }
 

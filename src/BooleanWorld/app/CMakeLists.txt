@@ -83,4 +83,27 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_player_view_tests)
     bw_deploy_runtime_dlls(boolean_world_player_view_tests)
     add_test(NAME boolean_world_player_view COMMAND boolean_world_player_view_tests)
+
+    add_executable(boolean_world_triangle_data_provider_tests
+        tests/world_triangle_3d_data_provider_tests.cpp
+        src/WorldTriangle3dDataProvider.cpp)
+    target_include_directories(boolean_world_triangle_data_provider_tests PRIVATE include)
+    target_link_libraries(boolean_world_triangle_data_provider_tests PRIVATE
+        ext::mpp ext::mpp-data ext::mpp-helper ext::mpp-mesh ext::mpp-program
+        ext::Utils)
+    target_compile_features(boolean_world_triangle_data_provider_tests PRIVATE cxx_std_23)
+    target_compile_options(boolean_world_triangle_data_provider_tests PRIVATE
+        /fsanitize=address /Zi)
+    target_link_options(boolean_world_triangle_data_provider_tests PRIVATE
+        /INFERASANLIBS /DEBUG)
+    bw_target_defaults(boolean_world_triangle_data_provider_tests)
+    bw_output_dirs(boolean_world_triangle_data_provider_tests)
+    bw_deploy_runtime_dlls(boolean_world_triangle_data_provider_tests)
+    get_filename_component(msvc_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    add_custom_command(TARGET boolean_world_triangle_data_provider_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${msvc_bin_dir}/clang_rt.asan_dynamic-x86_64.dll"
+                "$<TARGET_FILE_DIR:boolean_world_triangle_data_provider_tests>")
+    add_test(NAME boolean_world_triangle_data_provider
+             COMMAND boolean_world_triangle_data_provider_tests)
 endif()
