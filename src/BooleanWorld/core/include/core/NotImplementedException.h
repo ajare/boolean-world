@@ -7,9 +7,15 @@ namespace bw {
 namespace core {
 
 class NotImplementedException : public std::exception {
+  std::string mMessage;
+
 public:
   explicit NotImplementedException(std::string message)
-      : std::exception(message.c_str()) {
+      : mMessage(message) {
+  }
+
+  char const* what() const noexcept override {
+    return mMessage.c_str();
   }
 };
 

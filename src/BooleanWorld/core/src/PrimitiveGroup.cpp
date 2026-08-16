@@ -1,4 +1,5 @@
 #include "core/PrimitiveGroup.h"
+#include "core/CoreException.h"
 
 namespace bw {
 namespace core {
@@ -62,7 +63,7 @@ void PrimitiveGroup::removePrimitive(Primitive* primitive, bool failIfNotFound) 
   }
 
   if (failIfNotFound) {
-    throw exception("Primitive not found in group");
+    throw CoreException("Primitive not found in group");
   }
 }
 

@@ -4,6 +4,7 @@
 #include <willpower/common/MathsUtils.h>
 
 #include "core/Primitive.h"
+#include "core/CoreException.h"
 #include "core/Triangulator.h"
 #include "core/World.h"
 #include "core/Utils.h"
@@ -233,7 +234,7 @@ void Primitive::setVertices(vector<ComplexPolygon> const& polygons) {
   for (auto const& polygon : polygons) {
     for (auto const& path : polygon) {
       if (path.size() > BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX) {
-        throw exception("Too many vertices in Primitive sub-polygon!");
+        throw CoreException("Too many vertices in Primitive sub-polygon!");
       }
     }
   }

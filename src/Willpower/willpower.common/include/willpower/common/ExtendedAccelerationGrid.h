@@ -8,6 +8,7 @@
 #include <iterator>
 #include <functional>
 #include <format>
+#include <stdexcept>
 
 #include "willpower/common/Vector2.h"
 #include "willpower/common/BoundingBox.h"
@@ -79,10 +80,10 @@ private:
     bool foundItem{true};
     try {
       cell.indices.erase(index);
-    } catch (std::exception& e) {
+    } catch (std::exception const&) {
       foundItem = false;
       if (failIfNotFound) {
-        throw e;
+        throw;
       }
     }
 
@@ -207,7 +208,7 @@ public:
 
     if (it == mIndicesToCells.end() && failIfNotFound) {
       std::string errMsg = std::format("Index {} not found in AccelerationGrid", index);
-      throw std::exception(errMsg.c_str());
+      throw std::runtime_error(errMsg);
     }
 
     if (it != mIndicesToCells.end()) {

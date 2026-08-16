@@ -470,7 +470,7 @@ float VertexTransformer::calculateAnimationValue(VertexTransformer::Key key, Inp
       break;
 
     default:
-      throw exception("Bad VertexTransformer::Key");
+      throw CoreException("Bad VertexTransformer::Key");
   }
 
   // Update values
@@ -508,7 +508,7 @@ bool VertexTransformer::checkAnimatedPropertyEvent(AnimatedPropertyEvent const& 
       return crossedDown;
 
     default:
-      throw exception("Unhandled AnimatedPropertyEventTriggerType");
+      throw CoreException("Unhandled AnimatedPropertyEventTriggerType");
   }
 }
 

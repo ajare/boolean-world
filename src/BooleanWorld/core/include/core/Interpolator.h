@@ -434,13 +434,13 @@ public:
     }
 
     if (numPoints > MaxPoints) {
-      throw std::exception("Too many points");
+      throw CoreException("Too many points");
     }
 
     mCurStructure.points.resize(numPoints);
     for (uint32_t i = 0; i < numPoints; ++i) {
       if (i > 0 && points[i].first < points[i - 1].first) {
-        throw std::exception("Interpolator points not ascending in time");
+        throw CoreException("Interpolator points not ascending in time");
       }
 
       _setPointClamped(mCurStructure, i, points[i].first, points[i].second);
@@ -490,7 +490,7 @@ public:
     auto numPoints = (uint32_t)mCurStructure.points.size();
 
     if (numPoints == 0) {
-      throw std::exception("Cannot add a single point to an empty interpolator");
+      throw CoreException("Cannot add a single point to an empty interpolator");
     } else if (numPoints < MaxPoints) {
       mCurStructure.points.push_back({});
       mCurStructure.segments.push_back({});
@@ -522,7 +522,7 @@ public:
         mCurStructure.segments.back().easing = Easing::Linear;
       }
     } else {
-      throw std::exception("Too many points");
+      throw CoreException("Too many points");
     }
   }
 
@@ -533,7 +533,7 @@ public:
     auto numPoints = (uint32_t)mCurStructure.points.size();
 
     if (numPoints == 2) {
-      throw std::exception("Cannot have an interpolator with 1 point.");
+      throw CoreException("Cannot have an interpolator with 1 point.");
     }
 
     numPoints--;

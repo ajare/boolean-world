@@ -355,7 +355,7 @@ void Mesh::removeVertices(IndexVector const& vertexIndices) {
         e.setConsistentState(false);
       }
 
-      throw e;
+      throw;
     }
   }
 }
@@ -1385,7 +1385,7 @@ void Mesh::removePolygons(IndexSet const& polygonIndices) {
       e.setConsistentState(false);
     }
 
-    throw e;
+    throw;
   }
 }
 

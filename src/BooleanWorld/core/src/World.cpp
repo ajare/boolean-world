@@ -724,9 +724,9 @@ void World::replacePrimitive(uint32_t index, Primitive* newPrimitive, bool failI
 
   try {
     removePrimitiveFromLookupGrid(mPrimitives[index], failIfNotFound);
-  } catch (exception& e) {
+  } catch (exception const&) {
     if (failIfNotFound) {
-      throw e;
+      throw;
     }
   }
 
@@ -817,9 +817,9 @@ void World::replaceTriggerLine(uint32_t index, WorldTriggerLine* newTriggerLine,
 
   try {
     removeTriggerLineFromLookupGrid(mTriggerLines[index]);
-  } catch (exception& e) {
+  } catch (exception const&) {
     if (failIfNotFound) {
-      throw e;
+      throw;
     }
   }
 

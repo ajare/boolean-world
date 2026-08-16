@@ -3,6 +3,7 @@
 
 #include <willpower/common/Globals.h>
 
+#include "core/CoreException.h"
 #include "core/Easing.h"
 
 namespace bw {
@@ -114,7 +115,7 @@ float ease(Easing easing, float v) {
                  : (1 + easeOutBounce(2 * v - 1)) / 2;
 
     default:
-      throw exception("Unknown easing type.");
+      throw CoreException("Unknown easing type.");
   }
 }
 

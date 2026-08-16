@@ -1051,7 +1051,7 @@ void MeshOperations::doPolygonExtrusion(Mesh* mesh, uint32_t polygonIndex, vecto
         e.setConsistentState(false);
       }
 
-      throw e;
+      throw;
     }
 
     if (result) {
@@ -1734,8 +1734,8 @@ void MeshOperations::mergePolygonsByEdge(Mesh* mesh, uint32_t poly1Index, uint32
       if (mesh->isVertexCollinearOrphan(vertexIndex, vertexTolerance)) {
         try {
           mesh->removeVertex(vertexIndex);
-        } catch (GeometryOperationException& e) {
-          throw e;
+        } catch (GeometryOperationException const&) {
+          throw;
         }
 
         if (result) {

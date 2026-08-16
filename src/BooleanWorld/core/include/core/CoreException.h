@@ -11,7 +11,11 @@ class CoreException : public std::exception {
 
 public:
   explicit CoreException(std::string message)
-      : std::exception(message.c_str()), mMessage(message) {
+      : mMessage(message) {
+  }
+
+  char const* what() const noexcept override {
+    return mMessage.c_str();
   }
 
   std::string const& getMessage() const {
