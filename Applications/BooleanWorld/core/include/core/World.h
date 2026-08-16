@@ -56,6 +56,8 @@ private:
 
   bool mAlwaysUpdateVertices;
 
+  float mStepThreshold;
+
   // Runtime
   frame_number_type mFrameNumber;
 
@@ -155,6 +157,10 @@ public:
   void setAlwaysUpdateVertices(bool always);
 
   [[nodiscard]] bool getAlwaysUpdateVertices() const;
+
+  void setStepThreshold(float threshold);
+
+  [[nodiscard]] float getStepThreshold() const;
 
   [[nodiscard]] frame_number_type getFrameNumber() const;
 

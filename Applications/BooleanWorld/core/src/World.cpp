@@ -1,4 +1,5 @@
 #include <iterator>
+#include <limits>
 #include <map>
 #include <functional>
 #include <cassert>
@@ -37,7 +38,7 @@ World::World()
 }
 
 World::World(float size, float gridSize, WorldDataGeneratorFactory generatorFactory)
-    : mExtents(-size / 2, -size / 2, size, size), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mFrameNumber(0), mDataGenerator(nullptr), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mPrevPlayerPosition{999999.0f, 999999.0f}, mPrefabAreaTilingType(PrefabAreaTilingType::None), mPrefabAreaTileTypes(0), mLastPrimitiveUpdateFrameNumber(0), mCachedVertexDataFrameNumber(-1) {
+    : mExtents(-size / 2, -size / 2, size, size), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(nullptr), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mPrevPlayerPosition{999999.0f, 999999.0f}, mPrefabAreaTilingType(PrefabAreaTilingType::None), mPrefabAreaTileTypes(0), mLastPrimitiveUpdateFrameNumber(0), mCachedVertexDataFrameNumber(-1) {
   mPrimitiveCellMetadataUpdater = bind(&World::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   if (gridSize > 0.0f) {
@@ -87,6 +88,7 @@ void World::copyFrom(World const& other) {
   mPlayerStartPosition = other.mPlayerStartPosition;
   mPlayerStartAngle = other.mPlayerStartAngle;
   mAlwaysUpdateVertices = other.mAlwaysUpdateVertices;
+  mStepThreshold = other.mStepThreshold;
   mFrameNumber = other.mFrameNumber;
   mPrefabAreaTilingType = other.mPrefabAreaTilingType;
   mPrefabAreaTileTypes = other.mPrefabAreaTileTypes;
@@ -194,6 +196,7 @@ void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
       serializer->writeVector2("maxExtent", mExtents.getMaxExtent());
       serializer->writeVector2("playerStartPosition", mPlayerStartPosition);
       serializer->writeFloat("playerStartAngle", mPlayerStartAngle);
+      serializer->writeFloat("stepThreshold", mStepThreshold);
 
       serializer->beginMap("tiling");
       {
@@ -246,6 +249,7 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   wp::Vector2 minExtent, maxExtent;
   wp::Vector2 playerStartPosition;
   float playerStartAngle;
+  float stepThreshold;
   PrefabAreaTilingType prefabAreaTilingType;
   uint32_t prefabAreaTileTypes;
   vector<Primitive*> primitives;
@@ -264,6 +268,8 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
         maxExtent = serializer->readVector2("maxExtent");
         playerStartPosition = serializer->readVector2("playerStartPosition");
         playerStartAngle = serializer->readFloat("playerStartAngle");
+        stepThreshold = serializer->readFloat(
+            "stepThreshold", true, numeric_limits<float>::infinity());
 
         serializer->beginMap("tiling");
         {
@@ -365,6 +371,7 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mPlayerStartPosition = playerStartPosition;
   mPlayerStartAngle = playerStartAngle;
   mAlwaysUpdateVertices = false;
+  mStepThreshold = stepThreshold;
   mPrefabAreaTilingType = prefabAreaTilingType;
   mPrefabAreaTileTypes = prefabAreaTileTypes;
 
@@ -543,6 +550,14 @@ void World::setAlwaysUpdateVertices(bool always) {
 
 bool World::getAlwaysUpdateVertices() const {
   return mAlwaysUpdateVertices;
+}
+
+void World::setStepThreshold(float threshold) {
+  mStepThreshold = threshold;
+}
+
+float World::getStepThreshold() const {
+  return mStepThreshold;
 }
 
 void World::setPrefabAreaTilingType(PrefabAreaTilingType type) {

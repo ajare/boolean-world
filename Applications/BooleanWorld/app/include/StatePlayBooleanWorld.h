@@ -16,6 +16,8 @@
 
 #include <applib/StatePlay.h>
 
+#include <core/ArrangementWorldData.h>
+#include <core/ArrangementWorldDataGenerator.h>
 #include <core/DynamicWorldDataGenerator.h>
 
 #include "imgui/imgui.h"
@@ -49,6 +51,12 @@ private:
   mpp::CameraPtr mCamera3d;
 
   bw::core::WorldDataPtr mWorldData;
+
+  bw::core::ArrangementWorldDataGenerator mArrangementGenerator;
+
+  bw::core::ArrangementWorldDataPtr mArrangementWorldData;
+
+  bw::core::WorldDataPtr mArrangementSource;
 
   WorldCollisionSim* mWorldCollisionSim;
 
@@ -124,6 +132,8 @@ private:
   void setupPlayerCollision();
 
   void createWorldCollisions();
+
+  void updateArrangementWorldData();
 
   void exit();
 

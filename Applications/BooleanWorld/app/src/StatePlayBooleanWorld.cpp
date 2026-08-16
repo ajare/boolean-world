@@ -19,6 +19,7 @@
 #include <applib/VisualSpriteEntityFacade.h>
 
 #include <core/Utils.h>
+#include <core/ClipperDefines.h>
 #include <core/DynamicWorldDataGenerator.h>
 
 #include <common/GameDefines.h>
@@ -127,39 +128,8 @@ void StatePlayBooleanWorld::setupPlayerCollision() {
   mPlayerCollider = new wp::collide::ColliderCircle(physicalStats.position, BW_PLAYER_RADIUS);
 
   auto cb = [](wp::collide::SweepResult* result, wp::collide::StaticLine const& line, float t, void* user) -> bool {
-    auto edgeIndex = (uint32_t)line.getUserData();
     auto state = static_cast<StatePlayBooleanWorld*>(user);
-    auto const& graph = state->mWorldData->getGraph();
-
     state->mCollisionsProcessed++;
-
-    // See if it's two-sided
-    auto const& edge = graph.edges[edgeIndex];
-    bool twoSided = edge.p[0] != ~0u && edge.p[1] != ~0u;
-
-    if (twoSided) {
-      auto curPrimitiveIndex = state->getPlayerPrimitive();
-      auto newPrimitiveIndex = edge.p[0] == curPrimitiveIndex ? edge.p[1] : edge.p[0];
-
-      auto world = state->getMap()->getWorld();
-
-      auto const& curPrimitiveProps = world->getPrimitive(curPrimitiveIndex)->getProperties();
-      auto const& newPrimitiveProps = world->getPrimitive(newPrimitiveIndex)->getProperties();
-
-      auto curFloorZ = curPrimitiveProps.floorZ;
-      auto curCeilingZ = curPrimitiveProps.ceilingZ;
-
-      auto newFloorZ = newPrimitiveProps.floorZ;
-      auto newCeilingZ = newPrimitiveProps.ceilingZ;
-
-      auto stepLowEnough = newFloorZ - curFloorZ <= BW_PLAYER_STEP_HEIGHT;
-      auto ceilingHighEnough = (newCeilingZ >= (curFloorZ + BW_PLAYER_HEIGHT) &&
-                                (newCeilingZ - newFloorZ) >= BW_PLAYER_HEIGHT);
-
-      if (stepLowEnough && ceilingHighEnough) {
-        return false;
-      }
-    }
 
     // For two-sided lines, we can't rely on the normal, as we don't know which direction we're
     // approaching from.  So, flip the normal based on the angle of approach
@@ -216,34 +186,25 @@ void StatePlayBooleanWorld::getWorldInput(wp::Vector2* curPosition, wp::Vector2*
 
 void StatePlayBooleanWorld::createWorldCollisions() {
   mWorldCollisionSim->clearLines();
+  if (!playerInWorld() || !mArrangementWorldData) {
+    return;
+  }
 
-  if (playerInWorld()) {
-    auto const& playerPosition = getPlayerPosition();
-
-    auto const& graph = mWorldData->getGraph();
-    auto numEdges = (uint32_t)graph.edges.size();
-
-    for (uint32_t i = 0; i < numEdges; ++i) {
-      auto const& edge = graph.edges[i];
-      auto const& gv0 = graph.vertices[edge.v[0]];
-      auto const& gv1 = graph.vertices[edge.v[1]];
-      wp::Vector2 v0{gv0.x, gv0.y};
-      wp::Vector2 v1{gv1.x, gv1.y};
-      vector<wp::Vector2> bboxVerts{v0, v1};
-
-      // We don't want to add every line to the collision sim.  At the same time,
-      // using a lookup for the graph is probably overkill.  For now, at least.
-      // Bear in mind that, because we are inflating the line by max player speed in
-      // 1 second, if the framerate drops below 1 FPS then lines which the player can
-      // collide with may not be added, because the player will be moving at more than
-      // the max player speed for a single update.
-      wp::BoundingBox lineBB(bboxVerts);
-      lineBB.inflate(BW_PLAYER_SPEED + BW_PLAYER_RADIUS);
-
-      if (lineBB.pointInside(playerPosition)) {
-        mWorldCollisionSim->addLine(v0, v1, edge.is2Sided(), i);
-      }
-    }
+  auto const& arrangement = mArrangementWorldData->getArrangement();
+  auto const& walls = mArrangementWorldData->getWalls();
+  auto radius = BW_PLAYER_SPEED + BW_PLAYER_RADIUS;
+  for (auto wallIndex :
+       mArrangementWorldData->getWallsNear(getPlayerPosition(), radius)) {
+    auto const& edge = arrangement.edges[walls[wallIndex].edge];
+    auto const& fixed0 = arrangement.vertices[edge.v[0]];
+    auto const& fixed1 = arrangement.vertices[edge.v[1]];
+    wp::Vector2 v0{
+        float(fixed0.x / BW_CLIPPER_SCALE),
+        float(fixed0.y / BW_CLIPPER_SCALE)};
+    wp::Vector2 v1{
+        float(fixed1.x / BW_CLIPPER_SCALE),
+        float(fixed1.y / BW_CLIPPER_SCALE)};
+    mWorldCollisionSim->addLine(v0, v1, false, wallIndex);
   }
 }
 
@@ -309,7 +270,9 @@ vector<string> StatePlayBooleanWorld::getDebuggingText() const {
 }
 
 uint32_t StatePlayBooleanWorld::getPrimitiveAtPosition(wp::Vector2 const& pos) const {
-  return mWorldData->getContainingTrianglePrimitiveIndex(pos);
+  return mArrangementWorldData
+             ? mArrangementWorldData->getContainingPrimitiveIndex(pos)
+             : ~0u;
 }
 
 uint32_t StatePlayBooleanWorld::getPlayerPrimitive() const {
@@ -327,29 +290,15 @@ float StatePlayBooleanWorld::getPlayerAngle() const {
 }
 
 float StatePlayBooleanWorld::getFloorHeightAt(wp::Vector2 const& pos) const {
-  auto index = getPrimitiveAtPosition(pos);
-
-  if (index == ~0u) {
-    return 0.0f;
-  } else {
-    auto prim = getMap()->getWorld()->getPrimitive(index);
-    auto const& primProps = prim->getProperties();
-
-    return primProps.floorZ;
-  }
+  return mArrangementWorldData
+             ? mArrangementWorldData->getFloorHeight(pos)
+             : 0.0f;
 }
 
 float StatePlayBooleanWorld::getCeilingHeightAt(wp::Vector2 const& pos) const {
-  auto index = getPrimitiveAtPosition(pos);
-
-  if (index == ~0u) {
-    return 0.0f;
-  } else {
-    auto prim = getMap()->getWorld()->getPrimitive(index);
-    auto const& primProps = prim->getProperties();
-
-    return primProps.ceilingZ;
-  }
+  return mArrangementWorldData
+             ? mArrangementWorldData->getCeilingHeight(pos)
+             : 0.0f;
 }
 
 float StatePlayBooleanWorld::getPlayerFloorHeight() const {
@@ -368,6 +317,28 @@ bw::core::DynamicWorldDataGenerator* StatePlayBooleanWorld::getWDG() {
   auto world = getMap()->getWorld();
 
   return dynamic_cast<bw::core::DynamicWorldDataGenerator*>(world->getWorldDataGenerator());
+}
+
+void StatePlayBooleanWorld::updateArrangementWorldData() {
+  if (mArrangementSource == mWorldData) {
+    return;
+  }
+  auto world = getMap()->getWorld();
+  auto dynamicGenerator = getWDG();
+  if (dynamicGenerator) {
+    mArrangementGenerator.generate(
+        dynamicGenerator->getActiveClippingPrimitives());
+  } else {
+    mArrangementGenerator.setActiveLayer(
+        world->getWorldDataGenerator()->getActiveLayer());
+    mArrangementGenerator.generate(world);
+  }
+  mArrangementWorldData = make_shared<bw::core::ArrangementWorldData>(
+      mArrangementGenerator.getWorldData(),
+      world->getExtents(),
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
+      world->getStepThreshold());
+  mArrangementSource = mWorldData;
 }
 
 void StatePlayBooleanWorld::addDisplayMessage(DisplayMessage::Level level, string const& message) {
@@ -392,8 +363,10 @@ void StatePlayBooleanWorld::setupEntities() {
   world->update(0, {playerPos, 0, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, false, false, 0}, {0, 0});
 
   mWorldData = world->getWorldData(playerPos, playerAngle);
+  updateArrangementWorldData();
 
-  if (mWorldData->pointInPolygon(playerPos) < 0 || mWorldData->circleIntersectsBorder(playerPos, BW_PLAYER_RADIUS) >= 0) {
+  if (mArrangementWorldData->getContainingFaceIndex(playerPos) == ~0u ||
+      mArrangementWorldData->circleIntersectsWall(playerPos, BW_PLAYER_RADIUS) >= 0) {
     throw GameException("Player is starting outside the world geometry");
   }
 }
@@ -480,9 +453,13 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
   world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, mCurrentLayer}, {0, 0});
 
   mWorldData = world->getWorldData(playerPosition, playerAngle);
+  updateArrangementWorldData();
 
-  mPlayerPolygonIndex = mWorldData->pointInPolygon(curPosition);
-  mPlayerBorderIntersectIndex = mWorldData->circleIntersectsBorder(curPosition, BW_PLAYER_RADIUS);
+  auto playerFace = mArrangementWorldData->getContainingFaceIndex(curPosition);
+  mPlayerPolygonIndex = playerFace == ~0u ? -1 : int32_t(playerFace);
+  mPlayerBorderIntersectIndex =
+      mArrangementWorldData->circleIntersectsWall(
+          curPosition, BW_PLAYER_RADIUS);
 
   if (!playerInWorld() || playerIntersectsWorldBorders()) {
     // TODO

@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <random>
 #include <type_traits>
 
@@ -13,6 +14,7 @@
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/Clipper2Polygon.h>
 #include <core/Arrangement.h>
+#include <core/ArrangementWorldData.h>
 #include <core/ArrangementWorldDataGenerator.h>
 #include <core/RectanglePolygon.h>
 
@@ -710,6 +712,50 @@ TEST(ArrangementOutput, BuildsBorderAndStepWallSpansFromIncidentFaces) {
   EXPECT_EQ(
       arrangement->palette[sharedWalls[1].paletteIndex].ceilingZ,
       12);
+}
+
+TEST(World, StepThresholdDefaultsToInfinity) {
+  bw::core::World world;
+  EXPECT_TRUE(std::isinf(world.getStepThreshold()));
+  world.setStepThreshold(3.5f);
+  EXPECT_EQ(world.getStepThreshold(), 3.5f);
+}
+
+TEST(ArrangementWorldData, IndexesFacesAndBlockingWalls) {
+  bw::core::PrimitivePropertySet lowerProperties{};
+  lowerProperties.floorZ = 0;
+  lowerProperties.ceilingZ = 10;
+  bw::core::PrimitivePropertySet higherProperties{};
+  higherProperties.floorZ = 2;
+  higherProperties.ceilingZ = 10;
+  auto arrangement = BuildArrangement(
+      {{{{{0, 0}, {10000, 0}, {10000, 10000}, {0, 10000}}},
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero,
+        0,
+        42,
+        lowerProperties},
+       {{{{10000, 0}, {20000, 0}, {20000, 10000}, {10000, 10000}}},
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero,
+        1,
+        77,
+        higherProperties}});
+
+  bw::core::ArrangementWorldData blocking(
+      arrangement, wp::BoundingBox(-10, -10, 40, 30), 5, 1);
+  EXPECT_EQ(blocking.getContainingPrimitiveIndex({5, 5}), 42u);
+  EXPECT_EQ(blocking.getContainingPrimitiveIndex({15, 5}), 77u);
+  EXPECT_EQ(blocking.getFloorHeight({5, 5}), 0);
+  EXPECT_EQ(blocking.getFloorHeight({15, 5}), 2);
+  EXPECT_GE(blocking.circleIntersectsWall({10, 5}, 0.1f), 0);
+
+  bw::core::ArrangementWorldData walkable(
+      arrangement,
+      wp::BoundingBox(-10, -10, 40, 30),
+      5,
+      std::numeric_limits<float>::infinity());
+  EXPECT_EQ(walkable.circleIntersectsWall({10, 5}, 0.1f), -1);
 }
 
 TEST(ArrangementOutput, MatchingNeighbourHeightsDoNotBuildStepWalls) {
