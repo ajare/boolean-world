@@ -16,21 +16,90 @@ each completed ticket the loop reports that run's token usage and, where the
 provider exposes it, current-window and weekly usage. Logs and sessions are
 written below the system temporary directory in pi-ralph-loop.
 
-Use PowerShell's common -Verbose switch to pass --verbose to pi and show extra
-loop diagnostics. Use -Quiet to suppress routine loop and agent output; the
-required end-of-ticket usage summary is still shown.
+Use `pi --list-models` to see models available for the providers configured on
+this machine. Model names use pi's provider/model form. Thinking support and
+available effort levels vary by model; the script accepts off, minimal, low,
+medium, high, xhigh, and max and passes the selected value to pi.
+
+PowerShell's common -Verbose switch also passes --verbose to pi and enables
+extra loop diagnostics.
+
+.PARAMETER Model
+Pi model in provider/model form. Defaults to openai-codex/gpt-5.6-sol.
+
+.PARAMETER Effort
+Thinking effort passed to pi. Defaults to medium. Valid values are off,
+minimal, low, medium, high, xhigh, and max.
+
+.PARAMETER Repo
+GitHub repository in owner/name form. When omitted, the repository is inferred
+from the current checkout's origin remote.
+
+.PARAMETER ReadyLabel
+Label used to identify executable tickets. Defaults to ready-for-agent.
+
+.PARAMETER InitialRetryIntervalSeconds
+Initial delay after a retryable provider or server failure. Defaults to 30.
+
+.PARAMETER MaxRetryIntervalSeconds
+Maximum exponential-backoff delay for provider or server failures. Defaults to
+900.
+
+.PARAMETER UsagePollSeconds
+Delay between retries after a provider usage-limit response. Defaults to 600.
+
+.PARAMETER Once
+Processes at most one ticket, then exits.
+
+.PARAMETER DryRun
+Prints the next eligible ticket without claiming it or starting pi.
+
+.PARAMETER Quiet
+Suppresses routine loop and agent output while retaining warnings, errors, and
+the required end-of-ticket usage summary.
 
 .EXAMPLE
-./tools/ralph-loop.ps1
+.\tools\ralph-loop.ps1
+
+Runs the full frontier with the defaults: GPT-5.6 Sol at medium effort.
 
 .EXAMPLE
-./tools/ralph-loop.ps1 -Model anthropic/claude-opus-4-6 -Effort high -Once -Verbose
+.\tools\ralph-loop.ps1 -Model openai-codex/gpt-5.6-terra -Effort high
+
+Uses GPT-5.6 Terra with high reasoning effort for every eligible ticket.
 
 .EXAMPLE
-./tools/ralph-loop.ps1 -Quiet
+.\tools\ralph-loop.ps1 -Model openai-codex/gpt-5.6-luna -Effort low -Once
+
+Uses GPT-5.6 Luna at low effort and stops after one ticket.
 
 .EXAMPLE
-./tools/ralph-loop.ps1 -DryRun
+.\tools\ralph-loop.ps1 -Model openai-codex/gpt-5.4-mini -Effort minimal -Quiet
+
+Uses a smaller model at minimal effort and shows only essential output and the
+usage summary.
+
+.EXAMPLE
+.\tools\ralph-loop.ps1 -Model anthropic/claude-opus-4-6 -Effort high -Once -Verbose
+
+Uses an Anthropic model, when that provider and model are configured in pi,
+for one ticket with verbose pi and loop diagnostics.
+
+.EXAMPLE
+.\tools\ralph-loop.ps1 -Repo ajare/boolean-world -ReadyLabel ready-for-agent -DryRun
+
+Shows the next eligible ticket in an explicit repository without claiming or
+running it.
+
+.EXAMPLE
+.\tools\ralph-loop.ps1 -InitialRetryIntervalSeconds 15 -MaxRetryIntervalSeconds 300 -UsagePollSeconds 900
+
+Overrides provider-failure backoff and usage-limit polling intervals.
+
+.EXAMPLE
+Get-Help .\tools\ralph-loop.ps1 -Detailed
+
+Shows parameter descriptions and these examples in PowerShell help.
 #>
 [CmdletBinding()]
 param(
