@@ -22,4 +22,15 @@ inline float worldViewAngle(float playerYaw) {
   return core::clamp_angle(180.0f - playerYaw);
 }
 
+inline wp::Vector2 minimapPosition(
+    wp::Vector2 const& worldPosition,
+    wp::Vector2 const& viewOffset,
+    wp::Vector2 const& viewScale) {
+  // World Y maps to render Z. Keeping its sign here makes camera-forward
+  // appear upward and camera-right appear rightward on the minimap.
+  return {
+      (worldPosition.x - viewOffset.x) * viewScale.x,
+      (worldPosition.y - viewOffset.y) * viewScale.y};
+}
+
 }  // namespace bw::app

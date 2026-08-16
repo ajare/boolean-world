@@ -588,9 +588,9 @@ bool StatePlayBooleanWorld::_imGuiCapturesInput() const {
 }
 
 ImVec2 StatePlayBooleanWorld::wpVecToImVec2(wp::Vector2 const& v, wp::Vector2 const& offset, wp::Vector2 const& size, wp::Vector2 const& scale) {
-  return {
-      (v.x - offset.x) * scale.x,
-      size.y - (v.y - offset.y) * scale.y};
+  VAR_UNUSED(size);
+  auto position = bw::app::minimapPosition(v, offset, scale);
+  return {position.x, position.y};
 }
 
 void StatePlayBooleanWorld::ImGui_renderArrangement(bw::core::ArrangementWorldData const& worldData, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList) {
