@@ -117,7 +117,7 @@ bool createPrimitiveFromGhost(Document* doc) {
   auto ghost = doc->getGhost();
   auto prim = ghost->copy();
 
-  // Clear primitive flags and vertex z-coords
+  // Clear the editor-only ghost flag.
   prim->setFlags(prim->getFlags() & ~BW_PRIMITIVE_GHOST_FLAG);
 
   // Set material defaults

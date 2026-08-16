@@ -3,9 +3,9 @@
 
 Vendored third-party code is excluded by explicit path so it stays
 byte-comparable against upstream. The list is deliberately explicit rather
-than a name pattern: several of our own files start with names that look
-vendored (core/Clipper*.{h,cpp}, Launcher/ImGuiDataProvider.h,
-Launcher/glfw/ImGuiGLFW.*) and a prefix rule silently skips them.
+than a name pattern: several of our own files have names that look vendored
+(Launcher/ImGuiDataProvider.h and Launcher/glfw/ImGuiGLFW.*, for example), and
+a prefix rule silently skips them.
 
 Usage:
     python tools/format.py [--check] [library ...]
@@ -57,8 +57,7 @@ VENDOR_FILES = [
     # Jochen Kalmbach's StackWalker.
     os.path.join("Willpower", "willpower.common", "include", "willpower", "common", "StackWalker.h"),
     os.path.join("Willpower", "willpower.common", "src", "StackWalker.cpp"),
-    # Angus Johnson's Clipper 1. Note the lowercase name - BooleanWorld's own
-    # core/Clipper*.{h,cpp} are a different thing and ARE formatted.
+    # Angus Johnson's independent Clipper 1 implementation.
     os.path.join("Willpower", "willpower.geometry", "include", "willpower", "geometry", "clipper.hpp"),
     os.path.join("Willpower", "willpower.geometry", "src", "clipper.cpp"),
 ]

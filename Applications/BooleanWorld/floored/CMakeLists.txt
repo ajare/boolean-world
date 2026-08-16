@@ -22,7 +22,7 @@ target_include_directories(floored PRIVATE include)
 
 target_compile_definitions(floored PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
 
-target_compile_definitions(floored PRIVATE YAML_CPP_STATIC_DEFINE USINGZ)
+target_compile_definitions(floored PRIVATE YAML_CPP_STATIC_DEFINE)
 
 target_link_libraries(floored PRIVATE
     core

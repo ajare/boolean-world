@@ -15,8 +15,6 @@
 #include <mapbox/earcut.hpp>
 
 #include <core/Arrangement.h>
-#include <core/Clipper2Polygon.h>
-#include <core/ClipperDefines.h>
 
 namespace bw::core::arr {
 using namespace std;
@@ -79,7 +77,7 @@ bool EvaluateFold(vector<ArrangementPrimitive> const& primitives, Membership con
 
 namespace {
 struct Segment {
-  Vertex v[2];
+  FixedPointVertex v[2];
   uint32_t primitiveIndex;
 };
 
@@ -97,7 +95,7 @@ struct Box {
 };
 
 struct PointHash {
-  size_t operator()(Vertex const& v) const {
+  size_t operator()(FixedPointVertex const& v) const {
     auto x = hash<int64_t>()(v.x);
     auto y = hash<int64_t>()(v.y);
     return x ^ (y + 0x9e3779b97f4a7c15ULL + (x << 6) + (x >> 2));
@@ -108,7 +106,7 @@ int64_t CrossVector(int64_t ax, int64_t ay, int64_t bx, int64_t by) {
   return ax * by - ay * bx;
 }
 
-int64_t Cross(Vertex const& a, Vertex const& b, Vertex const& c) {
+int64_t Cross(FixedPointVertex const& a, FixedPointVertex const& b, FixedPointVertex const& c) {
   return CrossVector(b.x - a.x, b.y - a.y, c.x - a.x, c.y - a.y);
 }
 
@@ -128,7 +126,7 @@ int DifferenceOfProductsSign(int64_t a, int64_t b, int64_t c, int64_t d) {
 #endif
 }
 
-int CrossSign(Vertex const& a, Vertex const& b, RationalPoint const& point) {
+int CrossSign(FixedPointVertex const& a, FixedPointVertex const& b, RationalPoint const& point) {
   auto relativeX = point.xNumerator - a.x * point.denominator;
   auto relativeY = point.yNumerator - a.y * point.denominator;
   return DifferenceOfProductsSign(
@@ -200,7 +198,7 @@ vector<Segment> ExtractSegments(vector<ContourInput> const& contours) {
   return result;
 }
 
-bool PointOnSegment(Vertex const& point, Vertex const& a, Vertex const& b) {
+bool PointOnSegment(FixedPointVertex const& point, FixedPointVertex const& a, FixedPointVertex const& b) {
   return Cross(a, b, point) == 0 &&
          point.x >= min(a.x, b.x) && point.x <= max(a.x, b.x) &&
          point.y >= min(a.y, b.y) && point.y <= max(a.y, b.y);
@@ -208,7 +206,7 @@ bool PointOnSegment(Vertex const& point, Vertex const& a, Vertex const& b) {
 
 struct Intersection {
   bool hit{false};
-  Vertex point{};
+  FixedPointVertex point{};
 };
 
 Intersection SegmentIntersection(Segment const& subject, Segment const& clip) {
@@ -245,7 +243,7 @@ Intersection SegmentIntersection(Segment const& subject, Segment const& clip) {
        RoundedCoordinate(p.y, subjectNumerator, ry, denominator)}};
 }
 
-bool VertexLessAlongSegment(Vertex const& lhs, Vertex const& rhs, Segment const& segment) {
+bool FixedPointVertexLessAlongSegment(FixedPointVertex const& lhs, FixedPointVertex const& rhs, Segment const& segment) {
   auto dx = segment.v[1].x - segment.v[0].x;
   auto dy = segment.v[1].y - segment.v[0].y;
   if (abs(dx) >= abs(dy)) {
@@ -303,7 +301,7 @@ int PointInCycle(RationalPoint const& point, Cycle const& cycle, PSLG const& gra
   return winding == 0 ? 0 : 1;
 }
 
-int PointInCycle(Vertex const& point, Cycle const& cycle, PSLG const& graph) {
+int PointInCycle(FixedPointVertex const& point, Cycle const& cycle, PSLG const& graph) {
   int winding = 0;
   for (size_t i = 0; i < cycle.vis.size(); ++i) {
     auto const& a = graph.vs[cycle.vis[i]];
@@ -323,13 +321,11 @@ int PointInCycle(Vertex const& point, Cycle const& cycle, PSLG const& graph) {
   return winding == 0 ? 0 : 1;
 }
 
-template <typename Polygon>
-int PointInPolygon(RationalPoint const& point, Polygon const& polygon) {
+int ContourWinding(RationalPoint const& point, Contour const& contour) {
   int winding = 0;
-  for (size_t i = 0; i < polygon.size(); ++i) {
-    Vertex a{polygon[i].x, polygon[i].y};
-    Vertex b{polygon[(i + 1) % polygon.size()].x,
-             polygon[(i + 1) % polygon.size()].y};
+  for (size_t i = 0; i < contour.size(); ++i) {
+    auto const& a = contour[i];
+    auto const& b = contour[(i + 1) % contour.size()];
     auto aBelow = a.y * point.denominator <= point.yNumerator;
     auto bBelow = b.y * point.denominator <= point.yNumerator;
     auto cross = CrossSign(a, b, point);
@@ -392,8 +388,6 @@ bool IsLeafSolidBoundaryInsideSolid(PSLG const& graph, Cycle const& cycle) {
 
     bool containsContour = false;
     bool hasContainer = false;
-    int nearestContainer = -1;
-    int64_t nearestArea = numeric_limits<int64_t>::max();
     for (size_t j = 0; j < graph.sourceContours.size(); ++j) {
       if (i == j || graph.sourceContours[j].empty()) {
         continue;
@@ -401,19 +395,8 @@ bool IsLeafSolidBoundaryInsideSolid(PSLG const& graph, Cycle const& cycle) {
       auto otherBounds = GetContourBounds(graph.sourceContours[j]);
       if (ContainsBox(otherBounds, cycleBounds)) {
         hasContainer = true;
-        auto area = (otherBounds.maxx - otherBounds.minx) *
-                    (otherBounds.maxy - otherBounds.miny);
-        if (area < nearestArea) {
-          nearestArea = area;
-          nearestContainer = int(j);
-        }
       }
       containsContour = containsContour || ContainsBox(cycleBounds, otherBounds);
-    }
-    if (!graph.legacySourceContourIsHole.empty()) {
-      return !graph.legacySourceContourIsHole[i] && nearestContainer >= 0 &&
-             !graph.legacySourceContourIsHole[nearestContainer] &&
-             !containsContour;
     }
     return hasContainer && !containsContour;
   }
@@ -423,8 +406,8 @@ bool IsLeafSolidBoundaryInsideSolid(PSLG const& graph, Cycle const& cycle) {
 
 PSLG BuildPSLG(vector<ContourInput> const& contours) {
   auto segments = ExtractSegments(contours);
-  vector<vector<Vertex>> splits(segments.size());
-  vector<Vertex> candidates;
+  vector<vector<FixedPointVertex>> splits(segments.size());
+  vector<FixedPointVertex> candidates;
 
   for (size_t i = 0; i < segments.size(); ++i) {
     splits[i].push_back(segments[i].v[0]);
@@ -461,10 +444,10 @@ PSLG BuildPSLG(vector<ContourInput> const& contours) {
     graph.sourceContours.push_back(input.contour);
   }
 
-  unordered_map<Vertex, int, PointHash> vertexMap;
+  unordered_map<FixedPointVertex, int, PointHash> vertexMap;
   map<pair<int, int>, int> edgeMap;
 
-  auto getVertex = [&](Vertex const& vertex) {
+  auto getFixedPointVertex = [&](FixedPointVertex const& vertex) {
     auto [it, inserted] = vertexMap.emplace(vertex, int(graph.vs.size()));
     if (inserted) {
       graph.vs.push_back(vertex);
@@ -474,8 +457,8 @@ PSLG BuildPSLG(vector<ContourInput> const& contours) {
 
   for (size_t i = 0; i < segments.size(); ++i) {
     auto& points = splits[i];
-    sort(points.begin(), points.end(), [&](Vertex const& lhs, Vertex const& rhs) {
-      return VertexLessAlongSegment(lhs, rhs, segments[i]);
+    sort(points.begin(), points.end(), [&](FixedPointVertex const& lhs, FixedPointVertex const& rhs) {
+      return FixedPointVertexLessAlongSegment(lhs, rhs, segments[i]);
     });
     points.erase(unique(points.begin(), points.end()), points.end());
 
@@ -483,8 +466,8 @@ PSLG BuildPSLG(vector<ContourInput> const& contours) {
       if (points[j] == points[j + 1]) {
         continue;
       }
-      auto directedStart = getVertex(points[j]);
-      auto directedEnd = getVertex(points[j + 1]);
+      auto directedStart = getFixedPointVertex(points[j]);
+      auto directedEnd = getFixedPointVertex(points[j + 1]);
       auto a = directedStart;
       auto b = directedEnd;
       if (a > b) {
@@ -514,28 +497,6 @@ PSLG BuildPSLG(vector<ContourInput> const& contours) {
     }
   }
 
-  return graph;
-}
-
-PSLG BuildPSLG(
-    vector<bw::core::Clipper2Polygon> const& polygons,
-    vector<bw::core::Primitive*> const& primitives) {
-  (void)primitives;
-  vector<ContourInput> contours;
-  contours.reserve(polygons.size());
-  for (auto const& polygon : polygons) {
-    Contour contour;
-    contour.reserve(polygon.path.size());
-    for (auto const& point : polygon.path) {
-      contour.push_back({point.x, point.y});
-    }
-    contours.push_back({move(contour), polygon.primitiveIndex});
-  }
-  auto graph = BuildPSLG(contours);
-  graph.legacySourceContourIsHole.reserve(polygons.size());
-  for (auto const& polygon : polygons) {
-    graph.legacySourceContourIsHole.push_back(polygon.isHole);
-  }
   return graph;
 }
 
@@ -623,7 +584,7 @@ vector<Cycle> ExtractMinimalCycles(PSLG const& graph) {
   return cycles;
 }
 
-bool PointInFace(Vertex const& vertex, Face const& face, vector<Cycle> const& cycles, PSLG const& graph) {
+bool PointInFace(FixedPointVertex const& vertex, Face const& face, vector<Cycle> const& cycles, PSLG const& graph) {
   if (PointInCycle(vertex, cycles[face.polygon], graph) <= 0) {
     return false;
   }
@@ -681,61 +642,6 @@ vector<Face> BuildFaces(vector<PolygonNode> const& nodes, vector<Cycle> const& c
     faces.push_back(move(face));
   }
   return faces;
-}
-
-vector<Face> CalculateOwningPolygons(vector<Face> const& faces, vector<bw::core::Clipper2Polygon> const& polygons, vector<Cycle> const& cycles, PSLG& graph, vector<bw::core::Primitive*> const& primitives) {
-  vector<Face> keptFaces;
-  vector<int> removedFaceIndices;
-
-  for (int i = 0; i < int(faces.size()); ++i) {
-    auto const& cycle = cycles[faces[i].polygon];
-    auto sample = SamplePoint(graph, cycle);
-    auto face = faces[i];
-    int previousOwner{-1};
-
-    for (int j = 0; j < int(polygons.size()); ++j) {
-      if (!PointInPolygon(sample, polygons[j].path)) {
-        continue;
-      }
-      auto primitive = primitives[polygons[j].primitiveIndex];
-      if (primitive->getOperation() == bw::core::Primitive::Operation::Difference) {
-        face.holePolygon = j;
-        face.owningPolygon = previousOwner;
-      } else {
-        previousOwner = face.owningPolygon;
-        face.owningPolygon = j;
-      }
-    }
-
-    if (face.owningPolygon < 0) {
-      removedFaceIndices.push_back(i);
-      continue;
-    }
-
-    for (auto edgeIndex : cycle.eis) {
-      auto& edge = graph.es[edgeIndex];
-      (edge.fi[0] < 0 ? edge.fi[0] : edge.fi[1]) = i;
-    }
-    for (auto hole : face.holes) {
-      for (auto edgeIndex : cycles[hole].eis) {
-        auto& edge = graph.es[edgeIndex];
-        (edge.fi[0] < 0 ? edge.fi[0] : edge.fi[1]) = i;
-      }
-    }
-
-    auto primitive = primitives[polygons[face.owningPolygon].primitiveIndex];
-    if (primitive->getOperation() != bw::core::Primitive::Operation::Difference) {
-      keptFaces.push_back(move(face));
-    }
-  }
-
-  for (auto faceIndex : removedFaceIndices) {
-    for (auto edgeIndex : cycles[faces[faceIndex].polygon].eis) {
-      graph.es[edgeIndex].fi[0] = faceIndex;
-      graph.es[edgeIndex].fi[1] = -1;
-    }
-  }
-  return keptFaces;
 }
 
 ArrangementResultPtr BuildArrangement(vector<ArrangementPrimitive> const& primitives) {
@@ -802,7 +708,7 @@ ArrangementResultPtr BuildArrangement(vector<ArrangementPrimitive> const& primit
          primitiveIndex < primitives.size(); ++primitiveIndex) {
       for (auto const& contour : primitives[primitiveIndex].contours) {
         windingNumbers[seedFace][primitiveIndex] +=
-            PointInPolygon(sample, contour);
+            ContourWinding(sample, contour);
       }
     }
 
@@ -949,7 +855,7 @@ ArrangementResultPtr BuildArrangement(vector<ArrangementPrimitive> const& primit
 }
 
 static int PointInBoundary(
-    Vertex const& point,
+    FixedPointVertex const& point,
     vector<uint32_t> const& boundary,
     ArrangementResult const& arrangement) {
   int crossings = 0;
@@ -972,7 +878,7 @@ static int PointInBoundary(
 }
 
 bool PointInFace(
-    Vertex const& point,
+    FixedPointVertex const& point,
     ArrangementFace const& face,
     ArrangementResult const& arrangement) {
   if (face.outerBoundary.empty() ||

@@ -15,12 +15,9 @@ The output is the areas where the input polygons overlap.
 The output is the areas where exactly one polygon exists.  In other words this is the same as doing both a union and an intersection,
 and doing a difference of those two results.
 ## Fill rule
-Complex polygons are defined by one or more closed paths that set both outer and inner polygon boundaries. But only portions of these
-paths (or 'contours') may be setting polygon boundaries, so crossing a path may or may not mean entering or exiting a 'filled' polygon
-region. For this reason complex polygons require filling rules that define which polygon sub-regions will be considered inside a given
-polygon, and which sub-regions will not.
-
-See [here](https://www.angusj.com/clipper2/Docs/Units/Clipper/Types/FillRule.htm) for more specific information on how this is implemented.
+Complex polygons are defined by one or more closed contours that set both outer and inner polygon boundaries. Only portions of these
+contours may set polygon boundaries, so crossing a contour may or may not mean entering or exiting a filled polygon region. For this
+reason complex polygons require filling rules that define which polygon sub-regions are considered inside a given polygon.
 ### NonZero
 Only non-zero sub-regions are filled.
 ### Even-Odd

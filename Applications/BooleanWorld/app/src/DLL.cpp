@@ -1,5 +1,3 @@
-#include <clipper2/clipper.h>
-
 #include <willpower/common/Logger.h>
 
 #include <willpower/application/StateFactory.h>

@@ -8,7 +8,7 @@
 #
 # tungsten-oxide's value is c++17, and under it clang-format does not recognise
 # the three-way comparison operator: it rewrites `operator<=>` as `operator<= >`,
-# which does not compile. BooleanWorld uses `<=>` in core/src/Clipper.cpp.
+# which does not compile. BooleanWorld uses `<=>` in its own sources.
 #
 # Vendored third-party code (ImGui, ImPlot, imnodes, StackWalker, Clipper 1, ...)
 # is excluded by explicit path in tools/format.py, not by this file.

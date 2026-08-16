@@ -181,12 +181,9 @@ Each of these was a real bug found by building and running, not by reading:
 2. **`SDLCheck`** is per project, not global. Six Willpower modules had it
    **off**; enabling `/sdl` everywhere emitted extra `__autoclassinit2`
    symbols and broke export parity.
-3. **`USINGZ` and `YAML_CPP_STATIC_DEFINE` are per target, not inherited.**
-   The original defines `USINGZ` for `core`, `floored` and `Launcher` but not
-   for `editor`, `experiments`, `profiler` or the game DLL -- even though they
-   all include `core`'s headers, which reach clipper2. Modelling it the clean
-   way (`PUBLIC` on `core`) changes the Point64 layout `editor` sees. It is a
-   latent ODR inconsistency in the original, preserved deliberately.
+3. **`YAML_CPP_STATIC_DEFINE` is per target, not inherited.** The static
+   yaml-cpp consumers define it directly so their declarations match the
+   linked library.
 4. **Output directories must match the original.** `editor`, `experiments` and
    `profiler` resolve paths like `../../../../core/doc` against the working
    directory. A single unified output tree makes those point outside the repo,

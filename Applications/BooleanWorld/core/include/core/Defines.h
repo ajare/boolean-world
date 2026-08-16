@@ -17,22 +17,10 @@ typedef int64_t frame_number_type;
 // uint8_t for storing a special flag.
 #define BW_PRIMITIVE_GRID_DIM_MAX 128
 
-// Total number of vertices.  We need to define a maximum because we pack vertex index into z-coords.  Note that
-// in practise, the value is actually less, because some high indices are reserved for ghost primitives and clipping
-// primitives.
-#define BW_VERTEX_COUNT_MAX (1 << 20)
-#define BW_VERTEX_GHOST_ID (BW_VERTEX_COUNT_MAX - 1)
-#define BW_VERTEX_RECTCLIP_ID (BW_VERTEX_COUNT_MAX - 2)
-#define BW_VERTEX_COUNT_USEABLE_MAX (BW_VERTEX_COUNT_MAX - 2)
-
-// Total number of vertices per Primitive.  Indices are packed into the Vertex Z bitfield with index 0 being
-// at (2^14)
+// Resource limits retained from the original world format.
+#define BW_VERTEX_COUNT_USEABLE_MAX ((1 << 20) - 2)
 #define BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX (1 << 10)
-
-// Total number of Primitives in the world.  Primitive indices are packed into the Vertex Z bitfield,
-// so care needs to be taken when modifying this value.
-#define BW_WORLD_PRIMITIVE_NO_INDEX ((1 << 14) - 1)
-#define BW_WORLD_PRIMITIVE_COUNT_MAX BW_WORLD_PRIMITIVE_NO_INDEX
+#define BW_WORLD_PRIMITIVE_COUNT_MAX ((1 << 14) - 1)
 
 #define BW_LAYER_MIN_VALUE 0
 #define BW_LAYER_MAX_VALUE 255

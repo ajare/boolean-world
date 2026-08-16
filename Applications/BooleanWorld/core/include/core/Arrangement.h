@@ -6,7 +6,6 @@
 #include <memory>
 #include <vector>
 
-#include "core/Clipper2Polygon.h"
 #include "core/Primitive.h"
 
 namespace bw::core::arr {
@@ -32,9 +31,6 @@ struct FixedPointVertex {
 // A contour is implicitly closed from its last vertex back to its first.
 // Its role as a shell or hole is derived from geometry and the fill rule.
 using Contour = std::vector<FixedPointVertex>;
-
-// Temporary prototype name retained while existing arrangement consumers move.
-using Vertex = FixedPointVertex;
 
 struct WindingDelta {
   uint32_t primitiveIndex;
@@ -95,8 +91,6 @@ struct PSLG {
   std::vector<FixedPointVertex> vs;
   std::vector<Edge> es;
   std::vector<Contour> sourceContours;
-  // Temporary metadata used only by the legacy Clipper2 test adapter.
-  std::vector<bool> legacySourceContourIsHole;
 };
 
 struct PolygonNode {
@@ -191,11 +185,6 @@ bool PointInFace(
 
 PSLG BuildPSLG(std::vector<ContourInput> const& contours);
 
-// Temporary Clipper2 input adapter retained until existing tests migrate.
-PSLG BuildPSLG(
-    std::vector<Clipper2Polygon> const& polygons,
-    std::vector<Primitive*> const& primitives);
-
 std::vector<Cycle> ExtractMinimalCycles(PSLG const& graph);
 
 std::vector<PolygonNode> BuildPolygonHierarchy(
@@ -206,20 +195,8 @@ std::vector<Face> BuildFaces(
     std::vector<PolygonNode> const& nodes,
     std::vector<Cycle> const& cycles);
 
-std::vector<Face> CalculateOwningPolygons(
-    std::vector<Face> const& faces,
-    std::vector<Clipper2Polygon> const& polygons,
-    std::vector<Cycle> const& cycles,
-    PSLG& graph,
-    std::vector<Primitive*> const& primitives);
-
 std::vector<FaceTriangle> BuildFaceTriangles(
     std::vector<Face> const& faces,
     std::vector<Cycle> const& cycles,
     PSLG const& graph);
 }  // namespace bw::core::arr
-
-// Temporary namespace compatibility for consumers of the arrangement prototype.
-namespace expr {
-using namespace bw::core::arr;
-}

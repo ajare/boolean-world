@@ -188,8 +188,8 @@ Only `ApplicationDLL.h` (78 lines) and `ImGuiDataProvider.h` (8) differ.
    and library. Everything else in `src/glfw/` stays as-is.
 
 5. **`vendor/` after the migration.** SDL3, GLEW, yaml-cpp, ImGui, assimp and
-   Utils now come from MPP's build tree — drop those. Keep spdlog, clipper2,
-   mapbox, entt, rapidhash, nlohmann, inifile-cpp, concurrencpp, **glfw3**, plus
+   Utils now come from MPP's build tree — drop those. Keep spdlog, mapbox,
+   entt, rapidhash, nlohmann, inifile-cpp, concurrencpp, **glfw3**, plus
    link-only gtest, nfd, FreeImage, fmod, PerformanceAPI, fmt.
 
 ### What decision 3 actually costs

@@ -28,9 +28,6 @@ add_executable(Launcher WIN32
 
 target_include_directories(Launcher PRIVATE include include/imgui)
 
-# USINGZ must match core's Clipper2Z build wherever those headers are seen.
-target_compile_definitions(Launcher PRIVATE USINGZ)
-
 target_link_libraries(Launcher PRIVATE
     Willpower.Common Willpower.Application
     ext::mpp ext::Utils

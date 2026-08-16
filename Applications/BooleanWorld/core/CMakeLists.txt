@@ -7,7 +7,6 @@ add_library(core STATIC
     src/ArrangementWorldDataGenerator.cpp
     src/CirclePolygon.cpp
     src/CircleSegmentPolygon.cpp
-    src/ClipperUtils.cpp
     src/DefaultWorldDataGenerator.cpp
     src/DynamicWorldDataGenerator.cpp
     src/Easing.cpp
@@ -42,15 +41,11 @@ add_library(core STATIC
 
 target_include_directories(core PUBLIC include)
 
-# The supplied Clipper2 binary uses Point64's Z-enabled ABI. Z is not used by
-# world geometry, but the layout must be consistent anywhere public path types
-# are instantiated.
-target_compile_definitions(core PUBLIC USINGZ)
 target_compile_definitions(core PRIVATE YAML_CPP_STATIC_DEFINE _CONSOLE)
 
 target_link_libraries(core PUBLIC
     bw-common Willpower.Common
-    vendor::clipper2z vendor::concurrencpp ext::yaml-cpp)
+    vendor::concurrencpp ext::yaml-cpp)
 
 target_compile_features(core PRIVATE cxx_std_23)
 target_compile_options(core PRIVATE /W3)
