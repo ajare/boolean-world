@@ -31,6 +31,9 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 
 #include "imgui.h"
+#ifndef IMGUI_HAS_DOCK
+#error "The editor requires Dear ImGui's docking branch"
+#endif
 #include "imgui_internal.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
@@ -282,6 +285,7 @@ void setup() {
   ImGuiIO& io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable Gamepad Controls
+  io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
   gLogger->debug("NFD initialised");
 
@@ -758,6 +762,10 @@ void run() {
     ImGui_ImplSDL3_NewFrame();
 
     ImGui::NewFrame();
+    ImGui::DockSpaceOverViewport(
+        0,
+        ImGui::GetMainViewport(),
+        ImGuiDockNodeFlags_PassthruCentralNode);
 
     auto doc = editor::Document::instance();
     auto mouseButtonStatus = getMouseButtonStatus();
