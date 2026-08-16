@@ -44,8 +44,9 @@ Pass `-DBW_BUILD_MPP=OFF` to manage it yourself:
     cmake --build ext/massive-poly-pusher/build --config Release --parallel
 
 `utils`, SDL3, GLEW and yaml-cpp all come from that tree. `vendor/` supplies
-only what MassivePolyPusher does not: spdlog, Clipper2, concurrencpp, entt,
-mapbox, FMOD, FreeImage, GLFW, gtest, nfd and Superluminal.
+only what MassivePolyPusher does not: spdlog, fmt, Clipper2, concurrencpp,
+entt, mapbox, FMOD, GLFW, gtest, nfd, nlohmann, inifile-cpp, rapidhash,
+spline_library and Superluminal.
 
 ### Where things land
 

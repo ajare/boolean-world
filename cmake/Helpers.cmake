@@ -88,7 +88,7 @@ endfunction()
 
 # bw_deploy_vendor_dlls(<target>)
 #
-# vendor/bin holds DLLs (FMOD, FreeImage, GLEW, SDL) whose import libraries are
+# vendor/bin holds DLLs (the FMOD family) whose import libraries are
 # static stubs, so they never show up in TARGET_RUNTIME_DLLS. Copy the whole
 # per-configuration directory, which is what the old .bat files did.
 function(bw_deploy_vendor_dlls tgt)

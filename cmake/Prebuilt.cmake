@@ -134,7 +134,6 @@ bw_vendor_lib(vendor::nfd            nfd               nfd)
 # GLFW is NOT supplied by mpp (its ext/ is assimp, glew, imgui, sdl, utils),
 # so the Launcher's GLFW backend keeps using vendor's copy.
 bw_vendor_lib(vendor::glfw3          glfw3             glfw3)
-bw_vendor_lib(vendor::freeimage      FreeImage         FreeImage)
 bw_vendor_lib(vendor::fmod           fmod_vc           fmod_vc)
 bw_vendor_lib(vendor::fmodstudio     fmodstudio_vc     fmodstudio_vc)
 bw_vendor_lib(vendor::fsbank         fsbank_vc         fsbank_vc)

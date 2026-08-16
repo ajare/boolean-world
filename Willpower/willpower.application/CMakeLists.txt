@@ -63,7 +63,7 @@ target_compile_definitions(Willpower.Application
 target_link_libraries(Willpower.Application
     PUBLIC  Willpower.Common
             ext::mpp ext::mpp-mesh ext::mpp-program
-    PRIVATE ext::Utils vendor::freeimage
+    PRIVATE ext::Utils
             vendor::fmod vendor::fmodstudio vendor::fsbank)
 
 target_compile_features(Willpower.Application PRIVATE cxx_std_20)
