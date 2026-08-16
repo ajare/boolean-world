@@ -66,5 +66,5 @@ size_t WorldBatchRenderer::update() {
 
 void WorldBatchRenderer::render() {
   auto const& model = static_cast<mpp::Model const&>(*mBatch->getModel().get());
-  mRenderSystem->renderModelBatched(model, true);
+  mRenderSystem->renderModelBatched(model, false);
 }
