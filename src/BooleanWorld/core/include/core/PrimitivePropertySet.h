@@ -12,13 +12,13 @@ class Primitive;
 struct PrimitivePropertySet : public Serializable {
   float floorZ{0}, ceilingZ{48};
 
-  uint32_t floorMaterialIndex;
+  uint32_t floorMaterialIndex{0};
   MaterialDefinition floorMaterialDef;
 
-  uint32_t ceilingMaterialIndex;
+  uint32_t ceilingMaterialIndex{0};
   MaterialDefinition ceilingMaterialDef;
 
-  uint32_t wallMaterialIndex;
+  uint32_t wallMaterialIndex{0};
   MaterialDefinition wallMaterialDef;
 
 public:

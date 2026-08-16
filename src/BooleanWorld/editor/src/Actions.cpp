@@ -88,6 +88,10 @@ bool clearSelections(Document* doc) {
 }
 
 void setPrimitiveDefaultMaterial(uint32_t materialIndex, bw::core::MaterialDefinitionData* materialDefinition) {
+  if (materialIndex >= bw::common::MaterialNames.size()) {
+    return;
+  }
+
   auto const& material = bw::common::MaterialNames[materialIndex];
   auto numParams = (uint32_t)get<1>(material);
 

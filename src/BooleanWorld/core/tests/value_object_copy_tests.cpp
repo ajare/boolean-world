@@ -42,6 +42,21 @@ void requireMaterialDefinitionEqual(bw::core::MaterialDefinition const& actual,
           name + " packed base colour was not copied");
 }
 
+void primitivesInitializeMaterialIndices() {
+  bw::core::RectanglePolygon primitive(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  auto const& properties = primitive.getProperties();
+
+  require(properties.floorMaterialIndex == 0,
+          "a new primitive did not initialize its floor material index");
+  require(properties.ceilingMaterialIndex == 0,
+          "a new primitive did not initialize its ceiling material index");
+  require(properties.wallMaterialIndex == 0,
+          "a new primitive did not initialize its wall material index");
+}
+
 void primitiveCopiesItsPropertySet() {
   bw::core::RectanglePolygon source(
       bw::core::Primitive::Operation::Union,
@@ -142,6 +157,7 @@ void worldCopiesPreviousPlayerPosition() {
 
 int main() {
   try {
+    primitivesInitializeMaterialIndices();
     primitiveCopiesItsPropertySet();
     animatedPropertyCopiesItsSerializedName();
     influenceEyeCopiesItsArcLength();
