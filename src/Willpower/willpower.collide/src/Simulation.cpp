@@ -142,7 +142,10 @@ pair<uint32_t, uint32_t> Simulation::addStaticLine(float x0, float y0, float x1,
       LineHit hit1, hit2;
       auto intersect = MathsUtils::lineBoxIntersection(linev0, linev1, cellMin, cellMax, &hit1, &hit2);
 
-      Vector2 startPoint, endPoint;
+      // Keep a complete segment as the safe fallback for intersection results
+      // that do not provide a clipping hit.
+      Vector2 startPoint = linev0;
+      Vector2 endPoint = linev1;
       bool intersecting = false;
       switch (intersect) {
         case MathsUtils::LineIntersectionType::Intersecting:
@@ -160,6 +163,9 @@ pair<uint32_t, uint32_t> Simulation::addStaticLine(float x0, float y0, float x1,
                   startPoint = linev0;
                   endPoint = hit2.getPosition();
                   break;
+
+                default:
+                  break;
               }
               break;
 
@@ -171,6 +177,9 @@ pair<uint32_t, uint32_t> Simulation::addStaticLine(float x0, float y0, float x1,
             case LineHit::Flags::HitExits:
               startPoint = linev0;
               endPoint = hit1.getPosition();
+              break;
+
+            default:
               break;
           }
 
@@ -185,15 +194,19 @@ pair<uint32_t, uint32_t> Simulation::addStaticLine(float x0, float y0, float x1,
           break;
 
         case MathsUtils::LineIntersectionType::Inside:
-          // Create a line from start point to end point.
-          startPoint = linev0;
-          endPoint = linev1;
+        case MathsUtils::LineIntersectionType::Coincident:
+          // Keep lines wholly inside or coincident with a cell boundary.
           intersecting = true;
+          break;
+
+        case MathsUtils::LineIntersectionType::Touching:
+        case MathsUtils::LineIntersectionType::NotIntersecting:
+        default:
           break;
       }
 
-      // Add
-      if (intersecting) {
+      // Point-only contacts do not form static lines.
+      if (intersecting && startPoint != endPoint) {
         auto item = (uint32_t)mStaticLines.size();
         mStaticLines.push_back(StaticLine(startPoint, endPoint, doubleSided, 1.0f));
         mStaticLinesGrid->addItem(item, BoundingBox(startPoint.lerp(endPoint, 0.5f), Vector2::ZERO));

@@ -23,3 +23,15 @@ target_compile_options(Willpower.Collide PRIVATE /W4)
 bw_target_defaults(Willpower.Collide)
 bw_output_dirs(Willpower.Collide)
 set_target_properties(Willpower.Collide PROPERTIES FOLDER Willpower)
+
+if(BUILD_TESTING)
+    add_executable(willpower_static_line_clipping_tests
+        tests/static_line_clipping_tests.cpp)
+    target_link_libraries(willpower_static_line_clipping_tests PRIVATE Willpower.Collide)
+    target_compile_features(willpower_static_line_clipping_tests PRIVATE cxx_std_20)
+    bw_target_defaults(willpower_static_line_clipping_tests)
+    bw_output_dirs(willpower_static_line_clipping_tests)
+    bw_deploy_runtime_dlls(willpower_static_line_clipping_tests)
+    add_test(NAME willpower_static_line_clipping
+             COMMAND willpower_static_line_clipping_tests)
+endif()
