@@ -73,6 +73,10 @@ private:
     p1.second += baseY;
     p1.second += base2;
 
+    if (p1.first == p0.first) {
+      return p1.second;
+    }
+
     // Convert to unit, ease, then convert back to scale
     time -= p0.first;
     time /= (p1.first - p0.first);
@@ -310,6 +314,14 @@ public:
 
     assert(!points.empty() && "Interpolator::getValue(time) - points list is empty");
 
+    if (time <= points.front().first) {
+      return points.front().second;
+    }
+
+    if (time >= points.back().first) {
+      return points.back().second;
+    }
+
     auto numPoints = (int)points.size();
     float baseY{0.0f}, res{std::numeric_limits<float>::quiet_NaN()};
 
@@ -317,15 +329,24 @@ public:
       res = mCurStructure.points[0].second;
     } else {
       for (int i = 0; i < numPoints - 1; ++i) {
-        if (points[i].first <= time && points[i + 1].first >= time) {
+        auto const& p0 = points[i];
+        auto const& p1 = points[i + 1];
+        if (p0.first == p1.first) {
+          if (time == p0.first) {
+            res = mDeltaY
+                      ? getValueInSegment(i, baseY, p0.second, time)
+                      : getValueInSegment(i, 0.0f, 0.0f, time);
+            break;
+          }
+        } else if (p0.first <= time && time < p1.first) {
           res = mDeltaY
-                    ? getValueInSegment(i, baseY, points[i].second, time)
+                    ? getValueInSegment(i, baseY, p0.second, time)
                     : getValueInSegment(i, 0.0f, 0.0f, time);
 
           break;
         }
 
-        baseY += points[i].second;
+        baseY += p0.second;
       }
 
       if (std::isnan(res)) {
@@ -388,12 +409,12 @@ public:
   }
 
   void setScale(wp::Vector2 const& scaleMin, wp::Vector2 const& scaleMax) {
-    if (mScale[0].x < 0.0f) {
+    if (scaleMin.x < 0.0f) {
       throw CoreException("Interpolator time scale cannot go below zero");
     }
 
-    if (mScale[0].x >= mScale[1].x) {
-      throw CoreException("Interpolator time scale cannot cannot run backwards");
+    if (scaleMin.x >= scaleMax.x) {
+      throw CoreException("Interpolator time scale cannot run backwards");
     }
 
     mScale[0] = scaleMin;
@@ -407,6 +428,10 @@ public:
 
   void setPoints(std::vector<std::pair<float, T>> const& points) {
     auto numPoints = (uint32_t)points.size();
+
+    if (numPoints < 2) {
+      throw CoreException("An interpolator needs at least two points");
+    }
 
     if (numPoints > MaxPoints) {
       throw std::exception("Too many points");
@@ -449,7 +474,8 @@ public:
   }
 
   uint32_t getNumSegments() const {
-    return getNumPoints() - 1;
+    auto numPoints = getNumPoints();
+    return numPoints > 0 ? numPoints - 1 : 0;
   }
 
   std::vector<Point> const& getPoints() const {
@@ -490,7 +516,11 @@ public:
       numPoints++;
 
       _setPointClamped(mCurStructure, i, time, value);
-      mCurStructure.segments[i].easing = Easing::Linear;
+      if (i < mCurStructure.segments.size()) {
+        mCurStructure.segments[i].easing = Easing::Linear;
+      } else {
+        mCurStructure.segments.back().easing = Easing::Linear;
+      }
     } else {
       throw std::exception("Too many points");
     }
