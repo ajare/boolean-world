@@ -21,9 +21,9 @@ public:
     uint32_t vertexDataSize{0};
     uint32_t indexDataSize{0};
     int8_t* vertexData{nullptr};
-    uint16_t* indexData{nullptr};
+    uint32_t* indexData{nullptr};
     DrawVert* _workVert{nullptr};
-    uint16_t* _workIndex{nullptr};
+    uint32_t* _workIndex{nullptr};
   };
 
 private:
@@ -50,7 +50,7 @@ public:
 
   void updateInternals(uint32_t numVertices, uint32_t numTriangles);
 
-  void addTriangle(uint32_t meshIndex, uint16_t v0, uint16_t v1, uint16_t v2);
+  void addTriangle(uint32_t meshIndex, uint32_t v0, uint32_t v1, uint32_t v2);
 
   uint32_t getNumTriangles() const;
 

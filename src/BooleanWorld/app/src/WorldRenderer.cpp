@@ -85,8 +85,7 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
           positions[i].x, properties.floorZ, positions[i].y,
           0, 1, 0, uv.x, uv.y, floorColour);
     }
-    auto numIndices =
-        uint16_t(dataProvider->getNumIndices(floorMeshIndex));
+    auto numIndices = dataProvider->getNumIndices(floorMeshIndex);
     dataProvider->addTriangle(
         floorMeshIndex, numIndices, numIndices + 1, numIndices + 2);
 
@@ -102,7 +101,7 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
           positions[i].x, properties.ceilingZ, positions[i].y,
           0, -1, 0, uv.x, uv.y, ceilingColour);
     }
-    numIndices = uint16_t(dataProvider->getNumIndices(ceilingMeshIndex));
+    numIndices = dataProvider->getNumIndices(ceilingMeshIndex);
     dataProvider->addTriangle(
         ceilingMeshIndex, numIndices, numIndices + 1, numIndices + 2);
   }
@@ -124,7 +123,7 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
         properties.wallMaterialIndex);
     auto wallMeshIndex =
         matRenderer.first->getMeshIndexForMaterialHash(wallHash);
-    auto numIndices = uint16_t(dataProvider->getNumIndices(wallMeshIndex));
+    auto numIndices = dataProvider->getNumIndices(wallMeshIndex);
 
     addVertexToDataProvider(dataProvider, wallMeshIndex, v0.x, wall.minZ, v0.y, normal.x, 0, normal.y, 0, 0, wallColour);
     addVertexToDataProvider(dataProvider, wallMeshIndex, v1.x, wall.minZ, v1.y, normal.x, 0, normal.y, 1, 0, wallColour);

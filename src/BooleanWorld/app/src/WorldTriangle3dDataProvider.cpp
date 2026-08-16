@@ -40,7 +40,7 @@ WorldTriangle3dDataProvider::DrawVert* WorldTriangle3dDataProvider::nextVertexPt
   return meshData._workVert++;
 }
 
-void WorldTriangle3dDataProvider::addTriangle(uint32_t meshIndex, uint16_t v0, uint16_t v1, uint16_t v2) {
+void WorldTriangle3dDataProvider::addTriangle(uint32_t meshIndex, uint32_t v0, uint32_t v1, uint32_t v2) {
   auto& meshData = mMeshData[meshIndex];
 
   *meshData._workIndex++ = v0;
@@ -94,7 +94,7 @@ uint32_t WorldTriangle3dDataProvider::getNumIndices(uint32_t meshIndex) const {
 }
 
 uint32_t WorldTriangle3dDataProvider::getIndexWidth() const {
-  return 16;
+  return 32;
 }
 
 mpp::Colour WorldTriangle3dDataProvider::diffuse() {
@@ -113,13 +113,13 @@ void WorldTriangle3dDataProvider::updateInternals(uint32_t numVertices, uint32_t
     }
 
     auto numIndices = numTriangles * 3;
-    auto newIndexDataSize = (uint32_t)(numIndices * sizeof(uint16_t));
+    auto newIndexDataSize = (uint32_t)(numIndices * sizeof(uint32_t));
 
     if (newIndexDataSize > meshData.indexDataSize) {
       meshData.indexDataSize = newIndexDataSize;
 
       delete[] meshData.indexData;
-      meshData.indexData = new uint16_t[numIndices];
+      meshData.indexData = new uint32_t[numIndices];
     }
 
     meshData._workVert = (DrawVert*)meshData.vertexData;
