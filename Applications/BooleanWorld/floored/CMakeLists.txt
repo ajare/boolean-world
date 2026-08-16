@@ -1,7 +1,6 @@
 add_executable(floored WIN32
     src/AppHelpers.cpp
     src/Document.cpp
-    src/Expr.cpp
     src/Helpers.cpp
     src/Main.cpp
     src/Render.cpp

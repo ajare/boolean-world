@@ -6,7 +6,7 @@
 
 #include <mapbox/earcut.hpp>
 
-#include "Expr.h"
+#include <core/Arrangement.h>
 
 namespace expr {
 using namespace Clipper2Lib;

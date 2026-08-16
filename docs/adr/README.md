@@ -27,8 +27,8 @@ single planar arrangement. Terms are defined in [../glossary.md](../glossary.md)
 - **Clipper2 as a dependency.** `PathPolygon.cpp` uses it for path *offsetting*
   (`InflatePaths`), which is a different algorithm and one Clipper2 is good at.
   It stays.
-- **The `floored` application**, an independent Clipper2 consumer
-  (`Document.h`, `Expr.h`, `Expr.cpp`).
+- **The rest of the `floored` application.** Its arrangement prototype is in
+  scope and moves into `core`; its document and UI remain otherwise untouched.
 - **`Tiling`, `SquareTiling`, `InfluenceEye`** and the prefab-area code, none of
   which touch the clip pipeline.
 - **The authoring model.** ADR-0001 preserves it; changing it is a separate

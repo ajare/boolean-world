@@ -5,7 +5,7 @@ add_executable(experiments src/Main.cpp)
 target_include_directories(experiments PRIVATE include)
 target_compile_definitions(experiments PRIVATE _CONSOLE)
 
-target_compile_definitions(experiments PRIVATE YAML_CPP_STATIC_DEFINE)
+target_compile_definitions(experiments PRIVATE YAML_CPP_STATIC_DEFINE USINGZ)
 
 target_link_libraries(experiments PRIVATE core ext::yaml-cpp vendor::gtest)
 

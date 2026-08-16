@@ -95,8 +95,8 @@ Clipper 1) is excluded by explicit path.
 
 ## Known issues
 
-- 20 of 24 `experiments` tests fail on PSLG hierarchy assertions. Pre-existing,
-  inherited from Willpower.
+- 20 of 24 `experiments` tests fail on PSLG hierarchy assertions against the
+  local arrangement prototype.
 
 ## The GL context is not a core profile
 
