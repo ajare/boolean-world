@@ -179,13 +179,10 @@ void VertexTransformer::resetAnimator(Key key) {
 }
 
 void VertexTransformer::removeTransform(vector<tTransform>& flow, uint32_t index) {
-  auto numTransforms = (uint32_t)flow.size();
-
-  for (uint32_t i = index; i < numTransforms - 1; ++i) {
-    flow[i] = flow[i + 1];
+  if (index >= flow.size()) {
+    throw CoreException("index out of range");
   }
-
-  flow.pop_back();
+  flow.erase(flow.begin() + index);
 }
 
 void VertexTransformer::setTransformOperand(Key key, uint32_t index, uint32_t operandIndex, tTransform::OperandType operand) {

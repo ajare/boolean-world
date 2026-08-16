@@ -1,4 +1,5 @@
 #include "core/AnimatedProperty.h"
+#include "core/CoreException.h"
 #include "core/Interpolator.h"
 #include "core/tTransform.h"
 #include "core/InputValue.h"
@@ -489,14 +490,10 @@ void AnimatedProperty::addEvent(uint32_t eventType, AnimatedPropertyEventTrigger
 }
 
 void AnimatedProperty::removeEvent(uint32_t index) {
-  auto numEvents = (int)getNumEvents();
-  assert((int)index < numEvents && "AnimatedProperty::removeEvent(index) - index out of bounds");
-
-  for (int i = (int)index; i < numEvents - 1; ++i) {
-    mEvents[i] = mEvents[i + 1];
+  if (index >= mEvents.size()) {
+    throw CoreException("index out of range");
   }
-
-  mEvents.pop_back();
+  mEvents.erase(mEvents.begin() + index);
 }
 
 void AnimatedProperty::updateEvent(uint32_t index, uint32_t eventType, AnimatedPropertyEventTriggerType triggerType, float value) {
