@@ -648,7 +648,10 @@ void StatePlayBooleanWorld::ImGui_renderPrimitives(vector<wp::Vector2> const& vi
     return;
   }
   auto clippingPrims = dataGenerator->getSourceClippingPrimitives();
-  set<bw::core::Primitive*> clippingPrimsSet(clippingPrims.begin(), clippingPrims.end());
+  set<uint32_t> clippingPrimIds;
+  for (auto const& primitive : clippingPrims) {
+    clippingPrimIds.insert(primitive.id);
+  }
 
   if (!primitives.empty()) {
     drawList->Flags |= ImDrawListFlags_AntiAliasedFill;
@@ -679,7 +682,7 @@ void StatePlayBooleanWorld::ImGui_renderPrimitives(vector<wp::Vector2> const& vi
           // Filled in polygon for those directly in view
           if (visible) {
             drawList->AddConcavePolyFilled(imPoints.data(), numVertices, gImGui_PrimitiveInViewColour);
-          } else if (clippingPrimsSet.find(primitive) != clippingPrimsSet.end()) {
+          } else if (clippingPrimIds.contains(primitive->getId())) {
             drawList->AddConcavePolyFilled(imPoints.data(), numVertices, gImGui_PrimitiveInSourceSetColour);
           }
 

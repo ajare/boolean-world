@@ -9,6 +9,8 @@
 #include <functional>
 #include <memory>
 
+#include <willpower/common/BoundingBox.h>
+
 // Disable padding warnings for concurrencpp
 #pragma warning(push)
 #pragma warning(disable : 4324)
@@ -23,11 +25,16 @@ namespace bw {
 namespace core {
 class DynamicWorldDataGenerator : public WorldDataGenerator {
 public:
+  struct GenerationPrimitiveMetadata {
+    uint32_t id;
+    wp::BoundingBox bounds;
+  };
+
   struct Clipping {
     uint32_t id;
     WorldDataPtr worldData;
-    std::vector<Primitive*> primitives;
-    std::vector<Primitive*> updatedPrimitives;
+    std::vector<GenerationPrimitiveMetadata> primitives;
+    std::vector<GenerationPrimitiveMetadata> updatedPrimitives;
     LayerSelection layerSelection;
     Stats stats;
     uint64_t genTimeNs{0};
@@ -63,8 +70,8 @@ private:
 
   struct GenerationInput {
     std::vector<arr::ArrangementPrimitive> primitives;
-    std::vector<Primitive*> sourcePrimitives;
-    std::vector<Primitive*> updatedPrimitives;
+    std::vector<GenerationPrimitiveMetadata> sourcePrimitives;
+    std::vector<GenerationPrimitiveMetadata> updatedPrimitives;
     LayerSelection layerSelection;
     PrimitiveProcessingStats primStats;
     wp::BoundingBox worldExtents;
@@ -112,7 +119,12 @@ private:
   GenerationInput snapshotGenerationInput(
       World const* world, bool regetPrimitives);
 
-  std::vector<Primitive*> preparePrimitives(std::vector<Primitive*>& primitives, PrimitiveProcessingStats* stats) const;
+  std::vector<GenerationPrimitiveMetadata> preparePrimitives(
+      std::vector<Primitive*>& primitives,
+      PrimitiveProcessingStats* stats) const;
+
+  static std::vector<GenerationPrimitiveMetadata> snapshotPrimitiveMetadata(
+      std::vector<Primitive*> const& primitives);
 
   void handleEvents(uint32_t events) override;
 
@@ -157,9 +169,13 @@ public:
 
   uint64_t getLastGenTime() const;
 
-  std::vector<Primitive*> getSourceClippingPrimitives() const;
+  std::vector<GenerationPrimitiveMetadata> getSourceClippingPrimitives() const;
 
-  std::vector<Primitive*> getActiveClippingPrimitives() const;
+  std::vector<GenerationPrimitiveMetadata> getSourceClippingUpdatedPrimitives() const;
+
+  std::vector<GenerationPrimitiveMetadata> getActiveClippingPrimitives() const;
+
+  std::vector<GenerationPrimitiveMetadata> getActiveClippingUpdatedPrimitives() const;
 
   void setScheduledGenerationInterval(float interval);
 

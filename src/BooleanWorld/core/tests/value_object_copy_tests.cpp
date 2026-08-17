@@ -248,9 +248,9 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
               copiedActivePrimitives.size() == copy->getNumPrimitives(),
           "copied dynamic generator lost its clipping primitive set");
   for (uint32_t i = 0; i < copy->getNumPrimitives(); ++i) {
-    require(copiedSourcePrimitives[i] == copy->getPrimitive(i) &&
-                copiedActivePrimitives[i] == copy->getPrimitive(i),
-            "copied dynamic generator retained a source primitive");
+    require(copiedSourcePrimitives[i].id == i &&
+                copiedActivePrimitives[i].id == i,
+            "copied dynamic generator lost primitive snapshot identities");
   }
   auto const copiedProperties = copy->getPrimitive(2)->getProperties();
   require(copiedProperties.floorZ == properties.floorZ &&

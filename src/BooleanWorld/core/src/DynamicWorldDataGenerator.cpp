@@ -63,22 +63,6 @@ WorldDataGenerator* DynamicWorldDataGenerator::copyForWorld(
     World const* world) {
   auto result = make_unique<DynamicWorldDataGenerator>(*this);
   result->mWorld = world;
-
-  auto remapPrimitives = [world](vector<Primitive*>& primitives) {
-    for (auto& primitive : primitives) {
-      auto const id = primitive ? primitive->getId() : ~0u;
-      primitive = id < world->getNumPrimitives()
-                      ? world->getPrimitives()[id]
-                      : nullptr;
-    }
-    erase(primitives, nullptr);
-  };
-
-  remapPrimitives(result->mActiveClipping.primitives);
-  remapPrimitives(result->mActiveClipping.updatedPrimitives);
-  remapPrimitives(result->mNextClipping.primitives);
-  remapPrimitives(result->mNextClipping.updatedPrimitives);
-
   return result.release();
 }
 
@@ -118,16 +102,32 @@ uint64_t DynamicWorldDataGenerator::getLastGenTime() const {
   return mLastGenTime;
 }
 
-vector<Primitive*> DynamicWorldDataGenerator::getSourceClippingPrimitives() const {
+vector<DynamicWorldDataGenerator::GenerationPrimitiveMetadata>
+DynamicWorldDataGenerator::getSourceClippingPrimitives() const {
   lock_guard<mutex> lock(mGenMutex);
 
   return mNextClipping.primitives;
 }
 
-vector<Primitive*> DynamicWorldDataGenerator::getActiveClippingPrimitives() const {
+vector<DynamicWorldDataGenerator::GenerationPrimitiveMetadata>
+DynamicWorldDataGenerator::getSourceClippingUpdatedPrimitives() const {
+  lock_guard<mutex> lock(mGenMutex);
+
+  return mNextClipping.updatedPrimitives;
+}
+
+vector<DynamicWorldDataGenerator::GenerationPrimitiveMetadata>
+DynamicWorldDataGenerator::getActiveClippingPrimitives() const {
   lock_guard<mutex> lock(mGenMutex);
 
   return mActiveClipping.primitives;
+}
+
+vector<DynamicWorldDataGenerator::GenerationPrimitiveMetadata>
+DynamicWorldDataGenerator::getActiveClippingUpdatedPrimitives() const {
+  lock_guard<mutex> lock(mGenMutex);
+
+  return mActiveClipping.updatedPrimitives;
 }
 
 void DynamicWorldDataGenerator::setScheduledGenerationInterval(float interval) {
@@ -187,8 +187,11 @@ void DynamicWorldDataGenerator::unregisterGenerationCallback(
       [&registration](auto const& callback) { return callback == registration; });
 }
 
-std::vector<Primitive*> DynamicWorldDataGenerator::preparePrimitives(vector<Primitive*>& primitives, PrimitiveProcessingStats* stats) const {
-  vector<Primitive*> updatedPrimitives;
+vector<DynamicWorldDataGenerator::GenerationPrimitiveMetadata>
+DynamicWorldDataGenerator::preparePrimitives(
+    vector<Primitive*>& primitives,
+    PrimitiveProcessingStats* stats) const {
+  vector<GenerationPrimitiveMetadata> updatedPrimitives;
 
   updatedPrimitives.reserve(primitives.size());
 
@@ -209,7 +212,7 @@ std::vector<Primitive*> DynamicWorldDataGenerator::preparePrimitives(vector<Prim
 
     if (!primitive->isStatic() && (mAlwaysUpdateVertices || !visible)) {
       primitive->updateVertexPositions();
-      updatedPrimitives.push_back(primitive);
+      updatedPrimitives.push_back({primitive->getId(), primitive->getBounds()});
 
       stats->updateVertexCount++;
     }
@@ -218,18 +221,26 @@ std::vector<Primitive*> DynamicWorldDataGenerator::preparePrimitives(vector<Prim
   return updatedPrimitives;
 }
 
+vector<DynamicWorldDataGenerator::GenerationPrimitiveMetadata>
+DynamicWorldDataGenerator::snapshotPrimitiveMetadata(
+    vector<Primitive*> const& primitives) {
+  vector<GenerationPrimitiveMetadata> result;
+  result.reserve(primitives.size());
+  for (auto const primitive : primitives) {
+    result.push_back({primitive->getId(), primitive->getBounds()});
+  }
+  return result;
+}
+
 DynamicWorldDataGenerator::GenerationInput
 DynamicWorldDataGenerator::snapshotGenerationInput(
     World const* world, bool regetPrimitives) {
+  BW_UNUSED(regetPrimitives);
   lock_guard<mutex> lock(mGenMutex);
 
-  if (regetPrimitives) {
-    mNextClipping.primitives = selectAndOrderPrimitives(
-        *world, getLayerSelection());
-    mNextClipping.layerSelection = getLayerSelection();
-  }
-
-  auto primitives = mNextClipping.primitives;
+  // Culling is no longer part of generation, so selecting the current layer set
+  // is cheap and avoids retaining a live primitive list between generations.
+  auto primitives = selectAndOrderPrimitives(*world, getLayerSelection());
   auto primStats = mNextClipping.stats.prim;
   primStats.candidateCount = uint32_t(primitives.size());
   primStats.visibleCount = 0;
@@ -237,11 +248,18 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
 
   auto updatedPrimitives = preparePrimitives(primitives, &primStats);
   auto arrangementPrimitives = SnapshotPrimitives(primitives);
+  auto sourcePrimitives = snapshotPrimitiveMetadata(primitives);
+  auto layerSelection = getLayerSelection();
+
+  mNextClipping.primitives = sourcePrimitives;
+  mNextClipping.updatedPrimitives = updatedPrimitives;
+  mNextClipping.layerSelection = layerSelection;
+  mNextClipping.stats.prim = primStats;
 
   return {move(arrangementPrimitives),
-          move(primitives),
+          move(sourcePrimitives),
           move(updatedPrimitives),
-          mNextClipping.layerSelection,
+          layerSelection,
           primStats,
           world->getExtents(),
           float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
@@ -334,10 +352,11 @@ bool DynamicWorldDataGenerator::canCommit(Clipping const& clipping) {
     return true;
   }
 
-  // Only commit if none of the updated vertices are visible
-  for (auto primitive : clipping.updatedPrimitives) {
+  // Only commit if none of the updated geometry was visible at the position
+  // captured for this generation.
+  for (auto const& primitive : clipping.updatedPrimitives) {
     wp::Vector2 boundsMin, boundsMax;
-    primitive->getBounds().getExtents(boundsMin, boundsMax);
+    primitive.bounds.getExtents(boundsMin, boundsMax);
 
     if (wp::MathsUtils::boxIntersectsTriangle(
             boundsMin,
@@ -380,10 +399,12 @@ void DynamicWorldDataGenerator::checkCommitPendingClipping() {
 }
 
 WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
+  auto primitives = selectAndOrderPrimitives(*world, getLayerSelection());
+  auto primitiveMetadata = snapshotPrimitiveMetadata(primitives);
   {
     lock_guard<mutex> lock(mGenMutex);
-    mNextClipping.primitives = selectAndOrderPrimitives(
-        *world, getLayerSelection());
+    mNextClipping.primitives = move(primitiveMetadata);
+    mNextClipping.updatedPrimitives.clear();
     mNextClipping.layerSelection = getLayerSelection();
     mNextClipping.stats.prim = {
         uint32_t(mNextClipping.primitives.size()),
