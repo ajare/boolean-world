@@ -80,6 +80,22 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_clipping_record
              COMMAND boolean_world_clipping_record_tests)
 
+    add_executable(boolean_world_map_transition_tests
+        tests/map_transition_tests.cpp)
+    target_include_directories(boolean_world_map_transition_tests PRIVATE
+        include
+        ${BW_ROOT}/src/AppLib/include
+        ${BW_ROOT}/src/Willpower/willpower.application/include
+        ${BW_ROOT}/src/Willpower/willpower.common/include)
+    target_link_libraries(boolean_world_map_transition_tests PRIVATE AppLib)
+    target_compile_features(boolean_world_map_transition_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_map_transition_tests)
+    bw_output_dirs(boolean_world_map_transition_tests)
+    bw_deploy_runtime_dlls(boolean_world_map_transition_tests)
+    bw_deploy_vendor_dlls(boolean_world_map_transition_tests)
+    add_test(NAME boolean_world_map_transition
+             COMMAND boolean_world_map_transition_tests)
+
     add_executable(boolean_world_imgui_dll_boundary_state_tests
         tests/imgui_dll_boundary_state_tests.cpp
         src/imgui/imgui.cpp

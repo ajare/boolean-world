@@ -12,9 +12,6 @@
 class APPLICATION_API StateMapTransitionBooleanWorld : public applib::StateMapTransition {
   void processResources(wp::application::resourcesystem::ResourceManager* resourceMgr, applib::MapTransitionData* transitionData);
 
-protected:
-  std::vector<ThreadableWorkFunction> getPreWork(applib::StateTransitionData* transitionData) override;
-
 public:
   explicit StateMapTransitionBooleanWorld(bool useThreading);
 };

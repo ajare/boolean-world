@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <iostream>
 #include <set>
 #include <stdexcept>
@@ -5,10 +6,12 @@
 
 #include <spdlog/spdlog.h>
 
+#include <core/RectanglePolygon.h>
+
 #include "Document.h"
 #include "Tiled.h"
 
-spdlog::logger* gLogger = nullptr;
+spdlog::logger* gLogger = spdlog::default_logger_raw();
 
 void openTiledPrefabFile(std::string const&, std::shared_ptr<bw::core::World>) {
 }
@@ -45,12 +48,32 @@ void primitiveHoverQueriesAreSafeWithoutAnActiveDocument() {
           "primitive hover query did not report no primitives without an active document");
 }
 
+void openingADocumentReplacesTheActiveDocument() {
+  auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-test.yaml";
+
+  editor::Document document;
+  document.newDoc();
+  document.getWorld()->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f));
+  document.saveDocAs(filepath.string());
+  document.newDoc();
+
+  require(document.openDoc(filepath.string()),
+          "opening a document did not replace the active document");
+  require(document.isActive(), "opening a document left it inactive");
+
+  std::filesystem::remove(filepath);
+}
+
 }  // namespace
 
 int main() {
   try {
     changingSelectedPrimitiveIndicesDoesNotWriteIntoAnInputRange();
     primitiveHoverQueriesAreSafeWithoutAnActiveDocument();
+    openingADocumentReplacesTheActiveDocument();
     std::cout << "Document selection and hover queries passed\n";
     return 0;
   } catch (std::exception const& error) {

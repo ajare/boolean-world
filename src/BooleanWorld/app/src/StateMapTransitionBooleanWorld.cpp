@@ -13,18 +13,6 @@ StateMapTransitionBooleanWorld::StateMapTransitionBooleanWorld(bool useThreading
     : applib::StateMapTransition(nullptr, useThreading) {
 }
 
-vector<applib::ThreadableLoadState::ThreadableWorkFunction> StateMapTransitionBooleanWorld::getPreWork(applib::StateTransitionData* transitionData) {
-  VAR_UNUSED(transitionData);
-
-  auto destroyWorldRendererFn = [this](bool useThreading) {
-    VAR_UNUSED(useThreading);
-
-    addText("Destroying world renderer");
-  };
-
-  return {destroyWorldRendererFn};
-}
-
 void StateMapTransitionBooleanWorld::processResources(application::resourcesystem::ResourceManager* resourceMgr, applib::MapTransitionData* transitionData) {
   // Get transition data from previous state
   auto prevMap = transitionData->prevMap.map;

@@ -358,10 +358,6 @@ bool Document::openDoc(string const& filepath) {
       return false;
     }
 
-    if (mWorld) {
-      throw EditorException("Tried to create a new document with an existing one.");
-    }
-
     mWorld = createWorld(ED_DEFAULT_WORLD_SIZE, ED_DEFAULT_WORLD_ACCEL_GRID_SIZE);
 
     auto workData = bw::core::SerializationWorkData{};
