@@ -188,12 +188,8 @@ void copiedDynamicGeneratorRetainsItsWorldAndSettings() {
 void historyDoesNotCopyUndoOrRedoWorldSnapshots() {
   CopyCountingWorldDataGenerator::copyCount = 0;
   editor::Document document;
-  bw::core::World world(
-      100.0f,
-      10.0f,
-      [](wp::Vector2, int, int, float) {
-        return new CopyCountingWorldDataGenerator;
-      });
+  bw::core::World world(100.0f, 10.0f);
+  world.setWorldDataGenerator(new CopyCountingWorldDataGenerator);
   world.addPrimitive(new bw::core::RectanglePolygon(
       bw::core::Primitive::Operation::Union,
       bw::core::Primitive::FillRule::NonZero,

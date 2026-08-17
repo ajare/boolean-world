@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <functional>
 #include <vector>
 
 #include "core/LayerSelection.h"
@@ -54,6 +53,4 @@ public:
   virtual void generate(World const* world, bool regetPrimitives) = 0;
 };
 
-using WorldDataGeneratorFactory =
-    std::function<WorldDataGenerator*(wp::Vector2, int, int, float)>;
 }  // namespace bw::core

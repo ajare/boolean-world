@@ -3,6 +3,7 @@
 #include <vector>
 #include <set>
 #include <array>
+#include <functional>
 #include <map>
 
 #include <willpower/common/Vector2.h>
@@ -103,7 +104,7 @@ protected:
 public:
   World();
 
-  World(float size, float gridSize, WorldDataGeneratorFactory generatorFactory = nullptr);
+  World(float size, float gridSize);
 
   World(World const& other);
 
@@ -111,7 +112,8 @@ public:
 
   virtual ~World();
 
-  void setWorldDataGeneratorFactory(WorldDataGeneratorFactory generatorFactory);
+  // Takes ownership of generator.
+  void setWorldDataGenerator(WorldDataGenerator* generator);
 
   WorldDataGenerator* getWorldDataGenerator();
 

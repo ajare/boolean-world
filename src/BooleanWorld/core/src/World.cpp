@@ -35,28 +35,12 @@ World::World()
     : World(BW_WORLD_SIZE, -1.0f) {
 }
 
-World::World(float size, float gridSize, WorldDataGeneratorFactory generatorFactory)
-    : mExtents(-size / 2, -size / 2, size, size), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(nullptr), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mPrevPlayerPosition{999999.0f, 999999.0f}, mPrefabAreaTilingType(PrefabAreaTilingType::None), mPrefabAreaTileTypes(0), mLastPrimitiveUpdateFrameNumber(0) {
+World::World(float size, float gridSize)
+    : mExtents(-size / 2, -size / 2, size, size), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(new DefaultWorldDataGenerator()), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mPrevPlayerPosition{999999.0f, 999999.0f}, mPrefabAreaTilingType(PrefabAreaTilingType::None), mPrefabAreaTileTypes(0), mLastPrimitiveUpdateFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&World::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   if (gridSize > 0.0f) {
     createAccelerationGrids(gridSize);
-
-    if (generatorFactory) {
-      mDataGenerator = generatorFactory(
-          getExtents().getMinExtent(),
-          mPrimitiveLookupGrid->getCellDimensionX(),
-          mPrimitiveLookupGrid->getCellDimensionY(),
-          mPrimitiveLookupGrid->getCellSize().x);
-    } else {
-      mDataGenerator = new DefaultWorldDataGenerator();
-    }
-  } else {
-    if (generatorFactory) {
-      mDataGenerator = generatorFactory(getExtents().getMinExtent(), 1, 1, size);
-    } else {
-      mDataGenerator = new DefaultWorldDataGenerator();
-    }
   }
 }
 
@@ -457,17 +441,9 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   return true;
 }
 
-void World::setWorldDataGeneratorFactory(WorldDataGeneratorFactory generatorFactory) {
-  if (!mPrimitiveLookupGrid) {
-    throw CoreException("Cannot use a WorldDataGeneratorFactory without acceleration grids.");
-  }
-
+void World::setWorldDataGenerator(WorldDataGenerator* generator) {
   delete mDataGenerator;
-  mDataGenerator = generatorFactory(
-      getExtents().getMinExtent(),
-      mPrimitiveLookupGrid->getCellDimensionX(),
-      mPrimitiveLookupGrid->getCellDimensionY(),
-      mPrimitiveLookupGrid->getCellSize().x);
+  mDataGenerator = generator;
 }
 
 WorldDataGenerator* World::getWorldDataGenerator() {

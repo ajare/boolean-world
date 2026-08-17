@@ -301,16 +301,10 @@ void Document::updateGhost(std::shared_ptr<bw::core::World> world, bw::core::Pri
 std::shared_ptr<bw::core::World> Document::createWorld(float size, float gridSize) {
   auto world = make_shared<bw::core::World>(size, gridSize);
 
-  auto genFn = [world](wp::Vector2 offset, int dimX, int dimY, float cellSize) {
-    auto wdg = new bw::core::DynamicWorldDataGenerator(world.get());
-
-    wdg->setAlwaysUpdateVertices(true);
-    wdg->setAllowCommitIfVisible(true);
-
-    return wdg;
-  };
-
-  world->setWorldDataGeneratorFactory(genFn);
+  auto generator = new bw::core::DynamicWorldDataGenerator(world.get());
+  generator->setAlwaysUpdateVertices(true);
+  generator->setAllowCommitIfVisible(true);
+  world->setWorldDataGenerator(generator);
 
   // Create ghost primitive as a preview for creating primitives
   auto ghost = new bw::core::RegularPolygon(

@@ -14,16 +14,10 @@ using namespace std;
 shared_ptr<bw::core::World> createWorld(float size, float gridSize) {
   auto world = make_shared<bw::core::World>(size, gridSize);
 
-  auto genFn = [world](wp::Vector2 offset, int dimX, int dimY, float cellSize) {
-    auto wdg = new bw::core::DynamicWorldDataGenerator(world.get());
-
-    wdg->setAlwaysUpdateVertices(true);
-    wdg->setAllowCommitIfVisible(true);
-
-    return wdg;
-  };
-
-  world->setWorldDataGeneratorFactory(genFn);
+  auto generator = new bw::core::DynamicWorldDataGenerator(world.get());
+  generator->setAlwaysUpdateVertices(true);
+  generator->setAllowCommitIfVisible(true);
+  world->setWorldDataGenerator(generator);
 
   return world;
 }

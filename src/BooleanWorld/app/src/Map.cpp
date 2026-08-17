@@ -56,15 +56,7 @@ void Map::loadWorldFromYaml(wp::application::resourcesystem::ResourcePtr resourc
       }
     }
 
-    auto genFn = [this](wp::Vector2 offset, int dimX, int dimY, float cellSize) {
-      BW_UNUSED(offset);
-      BW_UNUSED(dimX);
-      BW_UNUSED(dimY);
-      BW_UNUSED(cellSize);
-      return new bw::core::DynamicWorldDataGenerator(mWorld);
-    };
-
-    mWorld->setWorldDataGeneratorFactory(genFn);
+    mWorld->setWorldDataGenerator(new bw::core::DynamicWorldDataGenerator(mWorld));
   } else {
     auto const& errors = mWorld->getDeserializationErrors();
 
