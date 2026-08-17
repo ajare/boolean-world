@@ -97,7 +97,7 @@ SDL_Window* createWindow() {
   // GL 3.0 + GLSL 130
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
   // No profile mask: MassivePolyPusher's 2D text path enables GL_POINT_SPRITE,
-  // which a core profile rejects with GL_INVALID_ENUM. See WindowGLFW::create.
+  // which a core profile rejects with GL_INVALID_ENUM. See WindowSDL::create.
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 

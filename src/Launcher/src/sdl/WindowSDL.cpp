@@ -1,17 +1,20 @@
+#include <format>
+
 #include <willpower/application/Key.h>
 #include <willpower/application/MouseButton.h>
 
 #include "sdl/WindowSDL.h"
-
-#include "ExitApplicationException.h"
+#include "sdl/ImGuiSDL.h"
 
 using namespace std;
 using namespace wp;
 
 extern Logger* gLogger;
 
+extern bool gDisplayDebugEnabled;
+
 WindowSDL::WindowSDL(string const& title, ProgramOptions const& options)
-    : Window(title, options), mWindow(nullptr), mContextGL(nullptr) {
+    : Window(title, options), mWindow(nullptr), mContextGL(nullptr), mContentScale(1.0f), mActive(true), mStateMgr(nullptr), mVirtualMouseX(0.0f), mVirtualMouseY(0.0f) {
   mKeyTranslator[SDLK_ESCAPE] = application::Key::Escape;
   mKeyTranslator[SDLK_1] = application::Key::_1;
   mKeyTranslator[SDLK_2] = application::Key::_2;
@@ -129,31 +132,63 @@ WindowSDL::~WindowSDL() {
   delete[] mButtonTranslator;
 }
 
+SDL_Window* WindowSDL::getWindow() {
+  return mWindow;
+}
+
+float WindowSDL::getContentScale() const {
+  return mContentScale;
+}
+
+bool WindowSDL::isActive() const {
+  return mActive;
+}
+
 void WindowSDL::create() {
-  // Use OpenGL 3.2
+  gLogger->info(format("Creating window at {}x{}", mWidth, mHeight));
+
+  // Use OpenGL 3.2.
+  //
+  // Deliberately no SDL_GL_CONTEXT_PROFILE_MASK, which leaves the driver's
+  // default (compatibility on Windows).
+  //
+  // MassivePolyPusher draws text as point sprites whenever the driver reports a
+  // max point size of 16 or more, and that path enables GL_POINT_SPRITE - an
+  // enum removed in the core profile. Under a core context every 2D projection
+  // change raises GL_INVALID_ENUM, which Release silently queues but Debug turns
+  // into a throw via the engine's GL_CHECK.
 
   if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3)) {
     string err = SDL_GetError();
-    throw exception(("Could not set OpenGL abbribute: " + err).c_str());
+    throw exception(("Could not set OpenGL attribute: " + err).c_str());
   }
 
   if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2)) {
     string err = SDL_GetError();
-    throw exception(("Could not set OpenGL abbribute: " + err).c_str());
+    throw exception(("Could not set OpenGL attribute: " + err).c_str());
   }
 
   if (!SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1)) {
     string err = SDL_GetError();
-    throw exception(("Could not set OpenGL abbribute: " + err).c_str());
+    throw exception(("Could not set OpenGL attribute: " + err).c_str());
   }
 
   if (!SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24)) {
     string err = SDL_GetError();
-    throw exception(("Could not set OpenGL abbribute: " + err).c_str());
+    throw exception(("Could not set OpenGL attribute: " + err).c_str());
+  }
+
+  // Relative-mouse hints are read when the mode is enabled, so set them first.
+  if (!SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_CENTER, "1")) {
+    throw exception("Could not set hint: SDL_HINT_MOUSE_RELATIVE_MODE_CENTER");
+  }
+
+  if (!SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_SPEED_SCALE, "0.3")) {
+    throw exception("Could not set hint: SDL_HINT_MOUSE_RELATIVE_SPEED_SCALE");
   }
 
   // Create window
-  unsigned int windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_MOUSE_CAPTURE;
+  SDL_WindowFlags windowFlags = SDL_WINDOW_OPENGL;
 
   if (mFullscreen) {
     windowFlags |= SDL_WINDOW_FULLSCREEN;
@@ -166,6 +201,14 @@ void WindowSDL::create() {
     throw exception(("Could not create SDL window: " + err).c_str());
   }
 
+  // An SDL3 fullscreen window is borderless-desktop unless it is given an
+  // explicit mode. Pin the closest mode to the requested size so fullscreen
+  // changes video mode the way GLFW's monitor argument did.
+  SDL_DisplayMode fullscreenMode;
+  if (SDL_GetClosestFullscreenDisplayMode(SDL_GetDisplayForWindow(mWindow), mWidth, mHeight, 0.0f, false, &fullscreenMode)) {
+    SDL_SetWindowFullscreenMode(mWindow, &fullscreenMode);
+  }
+
 #ifdef _DEBUG
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 #endif
@@ -175,19 +218,36 @@ void WindowSDL::create() {
     throw exception("Could not set the OpenGL context.");
   }
 
-  SDL_HideCursor();
+  // Log what the driver actually handed back rather than what was asked for -
+  // a pixel format without depth bits silently turns every depth test into a
+  // pass, which looks like depth testing having been switched off.
+  int depthBits = 0, doubleBuffered = 0;
+  SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &depthBits);
+  SDL_GL_GetAttribute(SDL_GL_DOUBLEBUFFER, &doubleBuffered);
+  gLogger->info(format("GL context: depth bits {}, double buffered {}", depthBits, doubleBuffered));
 
-  if (!SDL_SetWindowRelativeMouseMode(mWindow, true)) {
-    throw exception("Could not set relative mouse mode.");
+  // Get content scale for 2d rendering
+  mContentScale = SDL_GetWindowDisplayScale(mWindow);
+  if (mContentScale <= 0.0f) {
+    mContentScale = 1.0f;
   }
+  gLogger->info(format("Setting content scale to {}", mContentScale));
 
-  if (!SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_CENTER, "1")) {
-    throw exception("Could not set hint: SDL_HINT_MOUSE_RELATIVE_MODE_CENTER");
-  }
+  // This window presents through OpenGL, so vsync is the GL swap interval.
+  gLogger->info(format("Setting Vsync to {}", mVSync));
+  SDL_GL_SetSwapInterval(mVSync ? 1 : 0);
 
-  if (!SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_SPEED_SCALE, "0.3")) {
-    throw exception("Could not set hint: SDL_HINT_MOUSE_RELATIVE_SPEED_SCALE");
-  }
+  // SDL3 leaves text input disabled until it is asked for, and ImGui's text
+  // fields need the resulting SDL_EVENT_TEXT_INPUT.
+  SDL_StartTextInput(mWindow);
+
+  // Capture the cursor for mouse-look, matching GLFW_CURSOR_DISABLED.
+  showCursor(false);
+
+  mVirtualMouseX = (float)mWidth / 2.0f;
+  mVirtualMouseY = (float)mHeight / 2.0f;
+
+  mActive = true;
 }
 
 void WindowSDL::destroy() {
@@ -196,6 +256,9 @@ void WindowSDL::destroy() {
     mContextGL = nullptr;
   }
   if (mWindow) {
+    if (gLogger) {
+      gLogger->info("Destroying window");
+    }
     SDL_DestroyWindow(mWindow);
     mWindow = nullptr;
   }
@@ -229,98 +292,142 @@ void WindowSDL::show() {
   SDL_GL_SwapWindow(mWindow);
 }
 
+void WindowSDL::showCursor(bool show) {
+  SDL_SetWindowRelativeMouseMode(mWindow, !show);
+
+  if (show) {
+    SDL_ShowCursor();
+  } else {
+    SDL_HideCursor();
+  }
+}
+
+void WindowSDL::setStateManager(StateManager* mgr) {
+  mStateMgr = mgr;
+}
+
 application::KeyModifiers WindowSDL::getKeyModifiers(uint16_t mod) {
+  // Only the individual left/right bits are set, and with OR rather than +.
+  // KeyModifiers::Shift/Ctrl/Alt are the *union* of their two side bits
+  // (Shift == LeftShift | RightShift), so setting them as well would carry into
+  // an unrelated modifier - a lone left shift came out as LeftCtrl.
   uint32_t km = (int)application::KeyModifiers::None;
 
   if (mod & SDL_KMOD_LSHIFT)
-    km += (int)application::KeyModifiers::LeftShift;
+    km |= (int)application::KeyModifiers::LeftShift;
   if (mod & SDL_KMOD_RSHIFT)
-    km += (int)application::KeyModifiers::RightShift;
-  if (mod & SDL_KMOD_SHIFT)
-    km += (int)application::KeyModifiers::Shift;
+    km |= (int)application::KeyModifiers::RightShift;
   if (mod & SDL_KMOD_LCTRL)
-    km += (int)application::KeyModifiers::LeftCtrl;
+    km |= (int)application::KeyModifiers::LeftCtrl;
   if (mod & SDL_KMOD_RCTRL)
-    km += (int)application::KeyModifiers::RightCtrl;
-  if (mod & SDL_KMOD_CTRL)
-    km += (int)application::KeyModifiers::Ctrl;
+    km |= (int)application::KeyModifiers::RightCtrl;
   if (mod & SDL_KMOD_LALT)
-    km += (int)application::KeyModifiers::LeftAlt;
+    km |= (int)application::KeyModifiers::LeftAlt;
   if (mod & SDL_KMOD_RALT)
-    km += (int)application::KeyModifiers::RightAlt;
-  if (mod & SDL_KMOD_ALT)
-    km += (int)application::KeyModifiers::Alt;
+    km |= (int)application::KeyModifiers::RightAlt;
   if (mod & SDL_KMOD_NUM)
-    km += (int)application::KeyModifiers::NumLock;
+    km |= (int)application::KeyModifiers::NumLock;
   if (mod & SDL_KMOD_CAPS)
-    km += (int)application::KeyModifiers::CapsLock;
+    km |= (int)application::KeyModifiers::CapsLock;
 
   return (application::KeyModifiers)km;
+}
+
+bool WindowSDL::translateKey(SDL_Keycode keycode, wp::application::Key& key) const {
+  auto it = mKeyTranslator.find(keycode);
+
+  if (it == mKeyTranslator.end()) {
+    return false;
+  }
+
+  key = it->second;
+  return true;
 }
 
 void WindowSDL::processEvents(StateManager* stateMgr) {
   // Copy current keys to old
   saveKeys();
 
+  bool imGuiActive = stateMgr && stateMgr->imGuiActive();
+
   SDL_Event evt;
   while (SDL_PollEvent(&evt)) {
-    //
-    // Input events
-    //
-    float mouseX, mouseY;
+    if (imGuiActive) {
+      imGuiProcessEvent(evt);
+    }
+
     wp::application::Key key;
     switch (evt.type) {
       case SDL_EVENT_KEY_DOWN:
-        key = mKeyTranslator[evt.key.key];
-        setKey(key, true);
-
-        if (keyPressed(key)) {
-          stateMgr->injectKeyInput(application::KeyEvent::Pressed, key, getKeyModifiers(evt.key.mod));
+        // SDL repeats a held key; only the first press is an edge.
+        if (evt.key.repeat) {
+          break;
         }
 
-        // Debugging
-        if (mDisplayDebugEnabled && mKeyTranslator[evt.key.key] == application::Key::F11) {
-          displayDebugging(!displayDebugging());
+        if (translateKey(evt.key.key, key)) {
+          setKey(key, true);
+
+          if (keyPressed(key)) {
+            stateMgr->injectKeyInput(application::KeyEvent::Pressed, key, getKeyModifiers(evt.key.mod));
+          }
+
+          // Debugging
+          if (key == application::Key::F1) {
+            gDisplayDebugEnabled = !gDisplayDebugEnabled;
+          }
         }
         break;
 
       case SDL_EVENT_KEY_UP:
-        key = mKeyTranslator[evt.key.key];
-        setKey(key, false);
+        if (translateKey(evt.key.key, key)) {
+          setKey(key, false);
 
-        if (keyReleased(key)) {
-          stateMgr->injectKeyInput(application::KeyEvent::Released, key, getKeyModifiers(evt.key.mod));
+          if (keyReleased(key)) {
+            stateMgr->injectKeyInput(application::KeyEvent::Released, key, getKeyModifiers(evt.key.mod));
+          }
         }
-
         break;
 
       case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        stateMgr->injectMouseButtonInput(application::MouseButtonEvent::Pressed, mButtonTranslator[evt.button.button], getKeyModifiers(evt.key.mod));
+        if ((int)evt.button.button < (int)application::MouseButton::NUMBUTTONS) {
+          stateMgr->injectMouseButtonInput(application::MouseButtonEvent::Pressed, mButtonTranslator[evt.button.button], getKeyModifiers(SDL_GetModState()));
+        }
         break;
 
       case SDL_EVENT_MOUSE_BUTTON_UP:
-        stateMgr->injectMouseButtonInput(application::MouseButtonEvent::Released, mButtonTranslator[evt.button.button], getKeyModifiers(evt.key.mod));
+        if ((int)evt.button.button < (int)application::MouseButton::NUMBUTTONS) {
+          stateMgr->injectMouseButtonInput(application::MouseButtonEvent::Released, mButtonTranslator[evt.button.button], getKeyModifiers(SDL_GetModState()));
+        }
         break;
 
       case SDL_EVENT_MOUSE_WHEEL:
-        stateMgr->injectMouseWheelInput(evt.wheel.y);
+        stateMgr->injectMouseWheelInput((int)evt.wheel.y);
         break;
 
       case SDL_EVENT_MOUSE_MOTION:
-        SDL_GetMouseState(&mouseX, &mouseY);
-        stateMgr->injectMouseMotionInput(mouseX, mouseY);
+        // The game turns this position into a per-frame delta, so while the
+        // cursor is captured it needs the unbounded virtual position SDL only
+        // reports as relative motion - an absolute one would clamp at the edge.
+        if (SDL_GetWindowRelativeMouseMode(mWindow)) {
+          mVirtualMouseX += evt.motion.xrel;
+          mVirtualMouseY += evt.motion.yrel;
+        } else {
+          mVirtualMouseX = evt.motion.x;
+          mVirtualMouseY = evt.motion.y;
+        }
+
+        stateMgr->injectMouseMotionInput(mVirtualMouseX, mVirtualMouseY);
         break;
 
-      case SDL_EVENT_QUIT:
-        throw ExitApplicationException(0, "Application exited.");
-    }
+      case SDL_EVENT_WINDOW_RESIZED:
+        mWidth = evt.window.data1;
+        mHeight = evt.window.data2;
+        break;
 
-    //
-    // Window events
-    //
-    switch (evt.window.type) {
       case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-        throw ExitApplicationException(0, "Application exited.");
+      case SDL_EVENT_QUIT:
+        mActive = false;
+        break;
     }
   }
 }

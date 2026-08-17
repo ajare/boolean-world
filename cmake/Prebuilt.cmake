@@ -130,9 +130,6 @@ bw_vendor_lib(vendor::performanceapi PerformanceAPI_MD PerformanceAPI_MDd)
 bw_vendor_lib(vendor::concurrencpp   concurrencpp      concurrencpp)
 bw_vendor_lib(vendor::gtest          gtest             gtest)
 bw_vendor_lib(vendor::nfd            nfd               nfd)
-# GLFW is NOT supplied by mpp (its ext/ is assimp, glew, imgui, sdl, utils),
-# so the Launcher's GLFW backend keeps using vendor's copy.
-bw_vendor_lib(vendor::glfw3          glfw3             glfw3)
 bw_vendor_lib(vendor::fmod           fmod_vc           fmod_vc)
 bw_vendor_lib(vendor::fmodstudio     fmodstudio_vc     fmodstudio_vc)
 bw_vendor_lib(vendor::fsbank         fsbank_vc         fsbank_vc)

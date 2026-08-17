@@ -1,3 +1,5 @@
+#pragma once
+
 #include "Timer.h"
 
 class TimerSDL : public Timer {

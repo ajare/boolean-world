@@ -4,7 +4,7 @@
 Vendored third-party code is excluded by explicit path so it stays
 byte-comparable against upstream. The list is deliberately explicit rather
 than a name pattern: several of our own files have names that look vendored
-(src/Launcher/ImGuiDataProvider.h and src/Launcher/glfw/ImGuiGLFW.*, for example), and
+(src/Launcher/ImGuiDataProvider.h and src/Launcher/sdl/ImGuiSDL.*, for example), and
 a prefix rule silently skips them.
 
 Usage:

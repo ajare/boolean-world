@@ -11,9 +11,7 @@ add_executable(Launcher WIN32
     src/Timer.cpp
     src/Window.cpp
     src/ZipResourceLocation.cpp
-    src/glfw/ImGuiGLFW.cpp
-    src/glfw/TimerGLFW.cpp
-    src/glfw/WindowGLFW.cpp
+    src/sdl/ImGuiSDL.cpp
     src/sdl/TimerSDL.cpp
     src/sdl/WindowSDL.cpp
     src/imgui/imgui.cpp
@@ -31,7 +29,8 @@ bw_add_header_filter(Launcher)
 target_link_libraries(Launcher PRIVATE
     Willpower.Common Willpower.Application
     ext::mpp ext::Utils
-    ext::sdl3 vendor::glfw3)
+    ext::sdl3
+    vendor::opengl)  # [DEBUG-a4f2] glReadPixels for frame capture
 
 target_compile_features(Launcher PRIVATE cxx_std_20)
 target_compile_options(Launcher PRIVATE /W3)

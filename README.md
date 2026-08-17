@@ -48,7 +48,7 @@ Pass `-DBW_BUILD_WILLPOWER=OFF` to manage the build yourself:
 
 `utils`, SDL3, GLEW and yaml-cpp all come from that tree. `vendor/` supplies
 only what MassivePolyPusher does not: spdlog, fmt, concurrencpp, entt, mapbox,
-FMOD, GLFW, gtest, nfd, nlohmann, inifile-cpp, rapidhash,
+FMOD, gtest, nfd, nlohmann, inifile-cpp, rapidhash,
 spline_library and Superluminal.
 
 ### Where things land

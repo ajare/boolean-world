@@ -1,8 +1,3 @@
-#define WINDOW_GLFW 1
-#define WINDOW_SDL 2
-
-#define WINDOWING_SYSTEM WINDOW_GLFW
-
 #include <format>
 #include <iostream>
 
@@ -24,6 +19,10 @@
 #include <willpower/application/resourcesystem/ResourceManager.h>
 #include <willpower/application/resourcesystem/ResourceExceptions.h>
 
+// The GL enums the ImGui font texture is declared with. These used to arrive
+// through WindowGLFW.h; the SDL backend pulls in no GL headers of its own.
+#include <GL/glew.h>
+
 #include <mpp/MppException.h>
 #include <mpp/RenderSystem.h>
 #include <mpp/ResourceManager.h>
@@ -31,9 +30,9 @@
 #include <mpp/Logger.h>
 #include <mpp/BufferRenderer.h>
 
-#if WINDOWING_SYSTEM == WINDOW_SDL
+// Provides the WinMain that forwards to main() below, so the Launcher stays a
+// WIN32-subsystem executable without a platform-specific entry point.
 #include <SDL3/SDL_main.h>
-#endif
 
 #include "imgui/imgui.h"
 #include "imgui/implot.h"
@@ -47,14 +46,9 @@
 #include "ZipResourceLocation.h"
 #include "ImGuiDataProvider.h"
 
-#if WINDOWING_SYSTEM == WINDOW_SDL
 #include "sdl/WindowSDL.h"
 #include "sdl/TimerSDL.h"
-#elif WINDOWING_SYSTEM == WINDOW_GLFW
-#include "glfw/WindowGLFW.h"
-#include "glfw/TimerGLFW.h"
-#include "glfw/ImGuiGLFW.h"
-#endif
+#include "sdl/ImGuiSDL.h"
 
 using namespace std;
 using namespace wp;
@@ -68,13 +62,8 @@ static ApplicationDLL* gDLL = nullptr;
 static StateManager* gStateMgr = nullptr;
 static wp::application::AudioSystem* gAudioSystem = nullptr;
 
-#if WINDOWING_SYSTEM == WINDOW_SDL
 static WindowSDL* gWindow = nullptr;
 static TimerSDL* gTimer = nullptr;
-#elif WINDOWING_SYSTEM == WINDOW_GLFW
-static WindowGLFW* gWindow = nullptr;
-static TimerGLFW* gTimer = nullptr;
-#endif
 
 // Application objects
 static application::ApplicationSettings* gAppSettings = nullptr;
@@ -87,6 +76,121 @@ static mpp::RenderSystem* gRenderSystem = nullptr;
 static mpp::ResourceManager* gRenderSystemResourceMgr = nullptr;
 static shared_ptr<ImGuiDataProvider> gImGuiDataProvider;
 static mpp::BufferRenderer* gImGuiRenderer = nullptr;
+
+// Seconds since SDL started, at the performance counter's resolution - the
+// replacement for glfwGetTime(). Only differences are used, so the epoch does
+// not matter.
+static double elapsedSeconds() {
+  static uint64_t frequency = SDL_GetPerformanceFrequency();
+  return (double)SDL_GetPerformanceCounter() / (double)frequency;
+}
+
+#pragma warning(push)
+#pragma warning(disable : 4996)  // [DEBUG-a4f2] getenv/fopen in throwaway instrumentation
+
+// [DEBUG-a4f2] Frame capture for rendering diagnosis. Set BW_CAPTURE_AFTER to a
+// number of seconds; the first frame past that point is read back from the
+// draw buffer, written to BW_CAPTURE_FILE as a 32-bit BMP, and the app exits.
+// BMP rather than PNG because miniz's writer lives in another TU here, and
+// 32bpp so rows need no padding. glReadPixels and BI_RGB are both bottom-up,
+// so the rows already line up.
+// [DEBUG-a4f2] GL state left behind by the final world draw call. Logged once,
+// straight after the world render, so it reflects the state walls were drawn
+// with rather than whatever ImGui leaves at end of frame.
+static void logWorldRenderGlState() {
+  static bool logged = false;
+  if (logged || !getenv("BW_CAPTURE_AFTER")) {
+    return;
+  }
+  logged = true;
+
+  GLint drawFbo = -1, depthBits = -1, depthFunc = 0;
+  GLboolean depthWrite = GL_FALSE;
+  glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFbo);
+  glGetIntegerv(GL_DEPTH_BITS, &depthBits);
+  glGetIntegerv(GL_DEPTH_FUNC, &depthFunc);
+  glGetBooleanv(GL_DEPTH_WRITEMASK, &depthWrite);
+
+  gLogger->info(format("[DEBUG-a4f2] after world render: drawFbo={} depthBits={} depthTest={} depthWrite={} depthFunc=0x{:X}",
+                       drawFbo, depthBits, glIsEnabled(GL_DEPTH_TEST) == GL_TRUE,
+                       depthWrite == GL_TRUE, (unsigned)depthFunc));
+}
+
+static void captureFrameIfRequested() {
+  char const* after = getenv("BW_CAPTURE_AFTER");
+  if (!after) {
+    return;
+  }
+
+  if (gTimer->getTotalTime() < atof(after)) {
+    return;
+  }
+
+  int w = 0, h = 0;
+  SDL_GetWindowSizeInPixels(gWindow->getWindow(), &w, &h);
+  if (w <= 0 || h <= 0) {
+    return;
+  }
+
+  std::vector<uint8_t> pixels((size_t)w * h * 4);
+
+  if (getenv("BW_CAPTURE_DEPTH")) {
+    // Depth as greyscale, contrast-stretched over the range actually present -
+    // raw depth is bunched up near 1.0 and would look uniformly white.
+    std::vector<float> depth((size_t)w * h);
+    glReadPixels(0, 0, w, h, GL_DEPTH_COMPONENT, GL_FLOAT, depth.data());
+
+    float lo = 1.0f, hi = 0.0f;
+    for (float d : depth) {
+      if (d < lo) lo = d;
+      if (d > hi) hi = d;
+    }
+    float span = (hi - lo) > 1e-9f ? (hi - lo) : 1.0f;
+
+    for (size_t i = 0; i < depth.size(); ++i) {
+      auto v = (uint8_t)(255.0f * (1.0f - (depth[i] - lo) / span));
+      pixels[i * 4 + 0] = pixels[i * 4 + 1] = pixels[i * 4 + 2] = v;
+      pixels[i * 4 + 3] = 255;
+    }
+
+    gLogger->info(format("[DEBUG-a4f2] depth range {} .. {}", lo, hi));
+  } else {
+    glReadPixels(0, 0, w, h, GL_BGRA, GL_UNSIGNED_BYTE, pixels.data());
+  }
+
+  char const* path = getenv("BW_CAPTURE_FILE");
+  FILE* f = fopen(path ? path : "capture.bmp", "wb");
+  if (f) {
+    uint32_t dataSize = (uint32_t)pixels.size();
+    uint32_t fileSize = 14 + 40 + dataSize;
+    uint32_t offset = 14 + 40;
+    uint16_t zero = 0, planes = 1, bpp = 32;
+    uint32_t hdr = 40, compression = 0, zero32 = 0;
+    int32_t iw = w, ih = h;
+
+    fwrite("BM", 1, 2, f);
+    fwrite(&fileSize, 4, 1, f);
+    fwrite(&zero, 2, 1, f);
+    fwrite(&zero, 2, 1, f);
+    fwrite(&offset, 4, 1, f);
+    fwrite(&hdr, 4, 1, f);
+    fwrite(&iw, 4, 1, f);
+    fwrite(&ih, 4, 1, f);
+    fwrite(&planes, 2, 1, f);
+    fwrite(&bpp, 2, 1, f);
+    fwrite(&compression, 4, 1, f);
+    fwrite(&dataSize, 4, 1, f);
+    for (int i = 0; i < 4; ++i) {
+      fwrite(&zero32, 4, 1, f);
+    }
+    fwrite(pixels.data(), 1, pixels.size(), f);
+    fclose(f);
+  }
+
+  throw ExitApplicationException(0, "[DEBUG-a4f2] frame captured");
+}
+
+#pragma warning(pop)
 
 void initialiseImGui(float contentScale) {
   ImGuiIO& io = ImGui::GetIO();
@@ -185,7 +289,6 @@ ProgramOptions startup(string const& configFile, LauncherLifecycle& lifecycle) {
     gAppSettings = nullptr;
   });
 
-#if WINDOWING_SYSTEM == WINDOW_SDL
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     throw exception("Could not initialise SDL subsystem!");
   }
@@ -205,27 +308,6 @@ ProgramOptions startup(string const& configFile, LauncherLifecycle& lifecycle) {
     gWindow = nullptr;
   });
   gWindow->create();
-#elif WINDOWING_SYSTEM == WINDOW_GLFW
-  if (!glfwInit()) {
-    throw exception("Could not initialise GLFW subsystem!");
-  }
-  lifecycle.track(Service::Platform, []() { glfwTerminate(); });
-
-  // Create timer
-  gTimer = new TimerGLFW();
-  lifecycle.track(Service::Timer, []() {
-    delete gTimer;
-    gTimer = nullptr;
-  });
-
-  // Create window
-  gWindow = new WindowGLFW("Window", options);
-  lifecycle.track(Service::Window, []() {
-    delete gWindow;
-    gWindow = nullptr;
-  });
-  gWindow->create();
-#endif
 
   // Create render system
   // mpp::enable_static_log(MPP_RESOURCE_LOGFILE, true);
@@ -284,10 +366,8 @@ ProgramOptions startup(string const& configFile, LauncherLifecycle& lifecycle) {
   lifecycle.track(Service::ImGuiContext, [imGuiContext]() { ImGui::DestroyContext(imGuiContext); });
   auto imPlotContext = ImPlot::CreateContext();
   lifecycle.track(Service::ImPlotContext, [imPlotContext]() { ImPlot::DestroyContext(imPlotContext); });
-#if WINDOWING_SYSTEM == WINDOW_GLFW
-  initialiseImGuiForGlfw(gWindow->getWindow());
-  lifecycle.track(Service::ImGuiBackend, []() { shutdownImGuiForGlfw(); });
-#endif
+  initialiseImGuiForSdl(gWindow->getWindow());
+  lifecycle.track(Service::ImGuiBackend, []() { shutdownImGuiForSdl(); });
   initialiseImGui(gWindow->getContentScale());
 
   vector<mpp::ResourcePtr> imGuiTextures;
@@ -312,19 +392,15 @@ ProgramOptions startup(string const& configFile, LauncherLifecycle& lifecycle) {
   // Create state manager and get state factories
   gStateMgr = new StateManager(gResourceMgr, gAudioSystem, gRenderSystem, gRenderSystemResourceMgr);
   lifecycle.track(Service::StateManager, []() {
-#if WINDOWING_SYSTEM == WINDOW_GLFW
-    if (gWindow && gWindow->getWindow()) {
+    if (gWindow) {
       gWindow->setStateManager(nullptr);
     }
-#endif
     delete gStateMgr;
     gStateMgr = nullptr;
   });
   gDLL->registerStateFactories(gStateMgr);
 
-#if WINDOWING_SYSTEM == WINDOW_GLFW
   gWindow->setStateManager(gStateMgr);
-#endif
 
   return options;
 }
@@ -390,19 +466,11 @@ void updateImGui(float frameTime) {
 //
 // Entry point
 //
-#if WINDOWING_SYSTEM == WINDOW_SDL
 int main(int argc, char** argv) {
   string configFile = "BooleanWorld.yaml";
   if (argc > 1) {
     configFile = string(argv[1]);
   }
-#elif WINDOWING_SYSTEM == WINDOW_GLFW
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
-  string configFile = "BooleanWorld.yaml";
-  if (__argc > 1) {
-    configFile = string(__argv[1]);
-  }
-#endif
 
   LauncherLifecycle lifecycle;
   int exitCode = 0;
@@ -421,12 +489,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     gStateMgr->enterInitialState();
     gTimer->reset();
 
-#if WINDOWING_SYSTEM == WINDOW_SDL
-    while (true)
-#elif WINDOWING_SYSTEM == WINDOW_GLFW
-    while (gWindow->isActive())
-#endif
-    {
+    while (gWindow->isActive()) {
       // Get frame time
       float frameTime = gTimer->getDeltaTime();
       gTimer->addFrameToCounter(frameTime);
@@ -442,7 +505,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
         updateImGui(updateFreq);
 
-        auto startTime = glfwGetTime();
+        auto startTime = elapsedSeconds();
 
         wp::Timer timerNs;
         auto startTimeNs = timerNs.elapsedNanoseconds();
@@ -453,7 +516,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
           gAudioSystem->update();
         }
 
-        auto endTime = glfwGetTime();
+        auto endTime = elapsedSeconds();
         auto endTimeNs = timerNs.elapsedNanoseconds();
 
         numFramesProcessed++;
@@ -469,11 +532,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
       gStateMgr->render(gRenderSystem, gRenderSystemResourceMgr);
 
+      logWorldRenderGlState();  // [DEBUG-a4f2]
+
       auto ri = gRenderSystem->finishStatsCollection();
 
       if (gStateMgr->imGuiActive()) {
         gImGuiRenderer->render(gRenderSystem);
       }
+
+      captureFrameIfRequested();  // [DEBUG-a4f2]
 
       // Flip to screen
       gWindow->show();

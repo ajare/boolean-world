@@ -260,14 +260,15 @@ For `arcLength == 360`, inner radius is `1 - mThickness`; for every smaller arc 
 ## CA-15 — Input translation accepts indices and keys outside its tables
 
 **Where:**
-- `Launcher/src/glfw/WindowGLFW.cpp`
 - `Launcher/src/sdl/WindowSDL.cpp`
 
-The active GLFW backend indexes a three-element `gButtonTranslator` with any GLFW mouse-button number; side buttons read out of bounds. Unknown keys use `gKeyTranslator[key]`, inserting a default `Key::Escape`, so an unmapped/media key can become Escape.
+*Resolved when the Launcher moved from GLFW to SDL3; the GLFW backend it describes no longer exists.*
 
-The dormant SDL backend allocates `NUMBUTTONS` entries but writes `SDL_BUTTON_RIGHT` (value 3) into a 0..2 array, corrupting the heap in its constructor. It also adds aggregate modifier masks (`SDL_KMOD_SHIFT`, `CTRL`, `ALT`) on top of left/right masks, producing unrelated modifier values.
+The GLFW backend indexed a three-element `gButtonTranslator` with any GLFW mouse-button number, so side buttons read out of bounds, and unknown keys went through `gKeyTranslator[key]`, inserting a default `Key::Escape` so an unmapped/media key could become Escape.
 
-**Fix:** use checked maps/switches and ignore unsupported game input while still forwarding it to ImGui. For SDL, map button constants rather than indexing by their raw values and OR only the individual modifier bits. Add unknown-key and side-button tests for both backends.
+The SDL backend now looks keys up with a checked `find` and ignores ones it has no mapping for, and bounds-checks the button index against `MouseButton::NUMBUTTONS` before translating. `getKeyModifiers` ORs only the individual left/right bits: it previously *added* the aggregate masks (`SDL_KMOD_SHIFT`, `CTRL`, `ALT`) on top of them, and because `KeyModifiers::Shift == LeftShift | RightShift` that carried into unrelated modifiers.
+
+**Remaining:** add unknown-key and side-button tests.
 
 ---
 

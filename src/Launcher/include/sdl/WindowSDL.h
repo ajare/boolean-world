@@ -1,13 +1,29 @@
 #pragma once
 
-#include <sdl3/SDL.h>
+#include <map>
+
+#include <SDL3/SDL.h>
+
+#include <willpower/application/MouseButton.h>
 
 #include "Window.h"
+#include "StateManager.h"
 
 class WindowSDL : public Window {
   SDL_Window* mWindow;
 
   SDL_GLContext mContextGL;
+
+  float mContentScale;
+
+  bool mActive;
+
+  StateManager* mStateMgr;
+
+  // While the cursor is captured SDL only reports relative motion, so the
+  // absolute position the game consumes is accumulated here. GLFW's disabled
+  // cursor did this for us.
+  float mVirtualMouseX, mVirtualMouseY;
 
   // Input translation
   std::map<int, wp::application::Key> mKeyTranslator;
@@ -17,10 +33,18 @@ class WindowSDL : public Window {
 private:
   wp::application::KeyModifiers getKeyModifiers(uint16_t mod);
 
+  bool translateKey(SDL_Keycode keycode, wp::application::Key& key) const;
+
 public:
   WindowSDL(std::string const& title, ProgramOptions const& options);
 
   ~WindowSDL();
+
+  SDL_Window* getWindow();
+
+  float getContentScale() const;
+
+  bool isActive() const;
 
   void create();
 
@@ -31,6 +55,10 @@ public:
   void setSize(int width, int height);
 
   void show();
+
+  void showCursor(bool show);
+
+  void setStateManager(StateManager* mgr);
 
   void processEvents(StateManager* stateMgr);
 };
