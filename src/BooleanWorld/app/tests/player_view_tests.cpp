@@ -17,6 +17,15 @@ int fail(char const* message) {
   return 1;
 }
 
+class TestReactiveCamera : public ReactiveCamera {
+public:
+  using ReactiveCamera::ReactiveCamera;
+
+  bool isDirty() const {
+    return mDirty;
+  }
+};
+
 }  // namespace
 
 int main() {
@@ -87,6 +96,15 @@ int main() {
     if (!near(direction.x, 1.0f) || !near(direction.y, 0.0f) ||
         !near(direction.z, 0.0f)) {
       return fail("positive camera yaw does not turn right");
+    }
+  }
+
+  {
+    TestReactiveCamera camera({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 75.0f, 1.0f);
+    camera.getDirection();
+    camera.setPosition({1.0f, 2.0f, 3.0f});
+    if (!camera.isDirty()) {
+      return fail("position changes do not invalidate the camera");
     }
   }
 

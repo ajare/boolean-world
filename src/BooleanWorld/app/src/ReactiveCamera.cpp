@@ -11,6 +11,7 @@ ReactiveCamera::ReactiveCamera(glm::vec3 const& position, float yaw, float pitch
 
 void ReactiveCamera::setPosition(glm::vec3 const& position) {
   mPosition = position;
+  mDirty = true;
 }
 
 void ReactiveCamera::setYaw(float yaw) {
