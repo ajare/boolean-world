@@ -47,12 +47,10 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
   auto params = mSceneModel->getParams();
 
-  auto model = static_pointer_cast<mpp::Model>(mSceneModel->getModel());
-  auto numMeshes = model->getNumMeshes();
   auto worldBatch = mRenderer->getWorldBatch();
 
-  // Create uniforms for each mesh
-  mUniforms.resize(numMeshes, nullptr);
+  // Create uniforms for each material mesh.
+  mUniforms.resize(worldBatch->getMaterialMeshCount(), nullptr);
 
   auto numPrimitives = world->getNumPrimitives();
 
@@ -117,7 +115,10 @@ void WorldRenderer3d::update(float frameTime) {
   mGlobalTime += frameTime;
 
   // Globals
-  for (auto uc : mUniforms) {
+  for (auto const& uc : mUniforms) {
+    if (uc == nullptr) {
+      continue;
+    }
     uc->setUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
     uc->setUniform("GLOBAL_TIME", mGlobalTime);
     uc->setUniform("PIXEL_SIZE", 1.0f / 32);

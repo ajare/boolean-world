@@ -3,7 +3,6 @@
 #include <mpp/mesh/VertexTypeSpecification.h>
 
 #include "WorldBatch.h"
-#include "GameException.h"
 
 using namespace std;
 
@@ -67,11 +66,11 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
 uint32_t WorldBatch::getMeshIndexForMaterialHash(uint64_t hashValue) const {
   auto it = mMaterialHashToMesh.find(hashValue);
 
-  if (it == mMaterialHashToMesh.end()) {
-    throw GameException("Could not find a mesh index for material hash.");
-  } else {
-    return it->second;
-  }
+  return it == mMaterialHashToMesh.end() ? 0u : it->second;
+}
+
+size_t WorldBatch::getMaterialMeshCount() const {
+  return mMaterialHashToMesh.size();
 }
 
 string WorldBatch::formatMeshName(uint64_t hashValue) const {

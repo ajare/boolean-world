@@ -24,6 +24,8 @@ public:
 
   uint32_t getMeshIndexForMaterialHash(uint64_t hashValue) const;
 
+  size_t getMaterialMeshCount() const;
+
   std::string formatMeshName(uint64_t hashValue) const;
 
   void finishUpdate(uint32_t meshIndex, uint32_t numTriangles, size_t numVertices, bool updateFixedBuffers);

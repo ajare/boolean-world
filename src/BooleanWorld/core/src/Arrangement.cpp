@@ -1029,7 +1029,9 @@ ArrangementResultPtr BuildArrangement(
       runSolid = ApplyOperation(operation, runSolid, member);
     }
     finishRun();
-    if (!face.solid) {
+    // Empty faces retain their highest-priority member for inspection. A
+    // solid face also needs that fallback when the run fold has no winner.
+    if (!face.solid || winningPrimitive < 0) {
       winningPrimitive = -1;
       for (int primitiveIndex = 0;
            primitiveIndex < int(primitives.size()); ++primitiveIndex) {
