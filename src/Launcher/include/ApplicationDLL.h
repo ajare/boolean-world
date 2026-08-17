@@ -59,6 +59,8 @@ private:
 
   DllOnExitFunction mOnExitFunction;
 
+  bool mEntryStarted;
+
   static std::string msOnEntryFunctionName, msOnExitFunctionName;
 
 private:

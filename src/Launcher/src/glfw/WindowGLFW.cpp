@@ -163,6 +163,7 @@ WindowGLFW::WindowGLFW(string const& title, ProgramOptions const& options)
 }
 
 WindowGLFW::~WindowGLFW() {
+  destroy();
 }
 
 GLFWwindow* WindowGLFW::getWindow() {
@@ -243,8 +244,13 @@ void WindowGLFW::create() {
 }
 
 void WindowGLFW::destroy() {
-  gLogger->info("Destroying window");
+  if (!mWindow) {
+    return;
+  }
 
+  if (gLogger) {
+    gLogger->info("Destroying window");
+  }
   glfwDestroyWindow(mWindow);
   mWindow = nullptr;
 }

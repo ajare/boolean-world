@@ -11,7 +11,13 @@ string ApplicationDLL::msOnExitFunctionName = "dllOnExit";
 string ApplicationDLL::msSetArgumentFunctionName = "dllSetArgument";
 
 ApplicationDLL::ApplicationDLL()
-    : mGetProcIDDLL(0), mGetNameFunction(0), mGetNextStateFactoryFunction(0), mOnEntryFunction(0), mOnExitFunction(0) {
+    : mGetProcIDDLL(0),
+      mGetNameFunction(0),
+      mGetNextStateFactoryFunction(0),
+      mSetArgumentFunction(0),
+      mOnEntryFunction(0),
+      mOnExitFunction(0),
+      mEntryStarted(false) {
 }
 
 ApplicationDLL::~ApplicationDLL() {
@@ -77,6 +83,9 @@ void ApplicationDLL::load(string const& filepath, map<string, string> const& arg
 
   // Call entry function
   if (mOnEntryFunction) {
+    // dllOnEntry can itself fail after constructing some DLL-owned objects.
+    // Mark it started first so dllOnExit gets a chance to unwind those objects.
+    mEntryStarted = true;
     mOnEntryFunction(logger, resourceMgr);
   }
 
@@ -89,8 +98,9 @@ void ApplicationDLL::unload() {
 #if APP_PLATFORM == APP_PLATFORM_WINDOWS
 
   // Call exit function
-  if (mOnExitFunction) {
+  if (mEntryStarted && mOnExitFunction) {
     mOnExitFunction();
+    mEntryStarted = false;
   }
 
   if (mGetProcIDDLL != 0) {

@@ -11,7 +11,7 @@ using namespace wp;
 extern Logger* gLogger;
 
 WindowSDL::WindowSDL(string const& title, ProgramOptions const& options)
-    : Window(title, options), mWindow(nullptr) {
+    : Window(title, options), mWindow(nullptr), mContextGL(nullptr) {
   mKeyTranslator[SDLK_ESCAPE] = application::Key::Escape;
   mKeyTranslator[SDLK_1] = application::Key::_1;
   mKeyTranslator[SDLK_2] = application::Key::_2;
@@ -125,6 +125,7 @@ WindowSDL::WindowSDL(string const& title, ProgramOptions const& options)
 }
 
 WindowSDL::~WindowSDL() {
+  destroy();
   delete[] mButtonTranslator;
 }
 
@@ -190,8 +191,14 @@ void WindowSDL::create() {
 }
 
 void WindowSDL::destroy() {
-  SDL_GL_DestroyContext(mContextGL);
-  SDL_DestroyWindow(mWindow);
+  if (mContextGL) {
+    SDL_GL_DestroyContext(mContextGL);
+    mContextGL = nullptr;
+  }
+  if (mWindow) {
+    SDL_DestroyWindow(mWindow);
+    mWindow = nullptr;
+  }
 }
 
 void WindowSDL::setFullscreen(bool fullscreen) {

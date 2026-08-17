@@ -40,6 +40,7 @@
 
 #include "ProgramOptions.h"
 #include "ApplicationDLL.h"
+#include "LauncherLifecycle.h"
 #include "StateManager.h"
 #include "ExitApplicationException.h"
 #include "DirectoryResourceLocation.h"
@@ -88,13 +89,6 @@ static shared_ptr<ImGuiDataProvider> gImGuiDataProvider;
 static mpp::BufferRenderer* gImGuiRenderer = nullptr;
 
 void initialiseImGui(float contentScale) {
-  ImGui::CreateContext();
-  ImPlot::CreateContext();
-
-#if WINDOWING_SYSTEM == WINDOW_GLFW
-  initialiseImGuiForGlfw(gWindow->getWindow());
-#endif
-
   ImGuiIO& io = ImGui::GetIO();
 
   // Configure ImGui
@@ -153,12 +147,22 @@ void initialiseImGui(float contentScale) {
 //
 // Initialise all systems
 //
-ProgramOptions startup(string const& configFile) {
+ProgramOptions startup(string const& configFile, LauncherLifecycle& lifecycle) {
+  using Service = LauncherLifecycle::Service;
+
   // Create loggers
   gLogger = new Logger();
+  lifecycle.track(Service::Logger, []() {
+    delete gLogger;
+    gLogger = nullptr;
+  });
   gLogger->open("LauncherLog.html");
 
   gMppLogger = new mpp::Logger();
+  lifecycle.track(Service::MppLogger, []() {
+    delete gMppLogger;
+    gMppLogger = nullptr;
+  });
   if (!gMppLogger->initialise("mpp.log", mpp::Logger::Level::Debug)) {
     throw exception("Could not create MPP logger!");
   }
@@ -175,28 +179,51 @@ ProgramOptions startup(string const& configFile) {
   gAppSettings->Fullscreen = options.fullScreen;
 
   application::ServiceLocator::provideApplicatonSettings(gAppSettings);
+  lifecycle.track(Service::ApplicationSettings, []() {
+    application::ServiceLocator::provideApplicatonSettings(nullptr);
+    delete gAppSettings;
+    gAppSettings = nullptr;
+  });
 
 #if WINDOWING_SYSTEM == WINDOW_SDL
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     throw exception("Could not initialise SDL subsystem!");
   }
+  lifecycle.track(Service::Platform, []() { SDL_Quit(); });
 
   // Create timer
   gTimer = new TimerSDL();
+  lifecycle.track(Service::Timer, []() {
+    delete gTimer;
+    gTimer = nullptr;
+  });
 
   // Create window
   gWindow = new WindowSDL("Window", options);
+  lifecycle.track(Service::Window, []() {
+    delete gWindow;
+    gWindow = nullptr;
+  });
   gWindow->create();
 #elif WINDOWING_SYSTEM == WINDOW_GLFW
   if (!glfwInit()) {
     throw exception("Could not initialise GLFW subsystem!");
   }
+  lifecycle.track(Service::Platform, []() { glfwTerminate(); });
 
   // Create timer
   gTimer = new TimerGLFW();
+  lifecycle.track(Service::Timer, []() {
+    delete gTimer;
+    gTimer = nullptr;
+  });
 
   // Create window
   gWindow = new WindowGLFW("Window", options);
+  lifecycle.track(Service::Window, []() {
+    delete gWindow;
+    gWindow = nullptr;
+  });
   gWindow->create();
 #endif
 
@@ -204,14 +231,38 @@ ProgramOptions startup(string const& configFile) {
   // mpp::enable_static_log(MPP_RESOURCE_LOGFILE, true);
 
   gRenderSystem = new mpp::RenderSystem(gWindow->getWidth(), gWindow->getHeight(), gMppLogger);
+  lifecycle.track(Service::RenderSystem, []() {
+    delete gRenderSystem;
+    gRenderSystem = nullptr;
+  });
   gRenderSystemResourceMgr = new mpp::ResourceManager(gRenderSystem, gMppLogger);
+  lifecycle.track(Service::RenderResourceManager, []() {
+    gRenderSystemResourceMgr->dumpResources("final-resources.csv");
+    delete gRenderSystemResourceMgr;
+    gRenderSystemResourceMgr = nullptr;
+  });
+  lifecycle.track(Service::RenderCoreResources, []() {
+    if (gRenderSystem) {
+      gRenderSystem->destroyCoreResources();
+    }
+  });
   gRenderSystem->createCoreResources(gRenderSystemResourceMgr);
 
   // Audio
   gAudioSystem = options.audioEnabled ? new wp::application::AudioSystem(options.audio) : nullptr;
+  if (gAudioSystem) {
+    lifecycle.track(Service::AudioSystem, []() {
+      delete gAudioSystem;
+      gAudioSystem = nullptr;
+    });
+  }
 
   // Resource manager
   gResourceMgr = new application::resourcesystem::ResourceManager(gRenderSystem, gRenderSystemResourceMgr, gAudioSystem, gLogger);
+  lifecycle.track(Service::ResourceManager, []() {
+    delete gResourceMgr;
+    gResourceMgr = nullptr;
+  });
 
   // Add resource location factories
   gResourceMgr->addResourceLocationFactory("Directory", [](string const& location, string const& definitionFile) -> application::resourcesystem::ResourceLocation* {
@@ -227,21 +278,48 @@ ProgramOptions startup(string const& configFile) {
     gResourceMgr->addResourceLocation(rl.type, rl.path, rl.definitionFile);
   }
 
-  // ImGui
+  // ImGui. Track each context as soon as it exists so failures later in
+  // initialisation still unwind only the portions that were constructed.
+  auto imGuiContext = ImGui::CreateContext();
+  lifecycle.track(Service::ImGuiContext, [imGuiContext]() { ImGui::DestroyContext(imGuiContext); });
+  auto imPlotContext = ImPlot::CreateContext();
+  lifecycle.track(Service::ImPlotContext, [imPlotContext]() { ImPlot::DestroyContext(imPlotContext); });
+#if WINDOWING_SYSTEM == WINDOW_GLFW
+  initialiseImGuiForGlfw(gWindow->getWindow());
+  lifecycle.track(Service::ImGuiBackend, []() { shutdownImGuiForGlfw(); });
+#endif
   initialiseImGui(gWindow->getContentScale());
 
   vector<mpp::ResourcePtr> imGuiTextures;
   imGuiTextures.push_back(gRenderSystemResourceMgr->getResource("__ImGui_Font__"));
 
   gImGuiDataProvider = make_shared<ImGuiDataProvider>(imGuiTextures);
+  lifecycle.track(Service::ImGuiDataProvider, []() { gImGuiDataProvider.reset(); });
   gImGuiRenderer = new mpp::BufferRenderer(gImGuiDataProvider);
+  lifecycle.track(Service::ImGuiRenderer, []() {
+    delete gImGuiRenderer;
+    gImGuiRenderer = nullptr;
+  });
 
   // Load application DLL
   gDLL = new ApplicationDLL();
+  lifecycle.track(Service::ApplicationDll, []() {
+    delete gDLL;
+    gDLL = nullptr;
+  });
   gDLL->load(options.dll, options.arguments, gLogger, gResourceMgr);
 
   // Create state manager and get state factories
   gStateMgr = new StateManager(gResourceMgr, gAudioSystem, gRenderSystem, gRenderSystemResourceMgr);
+  lifecycle.track(Service::StateManager, []() {
+#if WINDOWING_SYSTEM == WINDOW_GLFW
+    if (gWindow && gWindow->getWindow()) {
+      gWindow->setStateManager(nullptr);
+    }
+#endif
+    delete gStateMgr;
+    gStateMgr = nullptr;
+  });
   gDLL->registerStateFactories(gStateMgr);
 
 #if WINDOWING_SYSTEM == WINDOW_GLFW
@@ -249,75 +327,6 @@ ProgramOptions startup(string const& configFile) {
 #endif
 
   return options;
-}
-
-//
-// Destroy all systems
-//
-void shutdown() {
-  // ImGui
-  delete gImGuiRenderer;
-  gImGuiRenderer = nullptr;
-
-#if WINDOWING_SYSTEM == WINDOW_GLFW
-  shutdownImGuiForGlfw();
-#endif
-
-  ImGui::DestroyContext();
-  ImPlot::DestroyContext();
-
-  // Destroy resource manager
-  delete gResourceMgr;
-  gResourceMgr = nullptr;
-
-  // Destroy audio
-  delete gAudioSystem;
-  gAudioSystem = nullptr;
-
-  // Destroy render system
-  gRenderSystem->destroyCoreResources();
-  delete gRenderSystem;
-  gRenderSystem = nullptr;
-
-  gRenderSystemResourceMgr->dumpResources("final-resources.csv");
-  delete gRenderSystemResourceMgr;
-  gRenderSystemResourceMgr = nullptr;
-
-  delete gMppLogger;
-  gMppLogger = nullptr;
-
-  // Destroy window
-  delete gWindow;
-  gWindow = nullptr;
-
-  // Destroy timer
-  delete gTimer;
-  gTimer = nullptr;
-
-#if WINDOWING_SYSTEM == WINDOW_SDL
-  // Shut down SDL
-  SDL_Quit();
-#elif WINDOWING_SYSTEM == WINDOW_GLFW
-  // Shut down GLFW
-  glfwTerminate();
-#endif
-
-  // Destroy state manager
-  delete gStateMgr;
-  gStateMgr = nullptr;
-
-  // Destroy application
-  delete gAppSettings;
-  gAppSettings = nullptr;
-  application::ServiceLocator::provideApplicatonSettings(nullptr);
-
-  // Destroy application DLL
-  delete gDLL;
-  gDLL = nullptr;
-
-  // Destroy logger
-  delete gLogger;
-  gLogger = nullptr;
 }
 
 //
@@ -395,12 +404,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
   }
 #endif
 
+  LauncherLifecycle lifecycle;
   int exitCode = 0;
   uint64_t numFramesProcessed{0};
   double totalTime{0};
   int64_t totalTimeNs{0};
   try {
-    auto options = startup(configFile);
+    auto options = startup(configFile, lifecycle);
 
     // Main loop
     float accum = 0.0f;
@@ -469,11 +479,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
       gWindow->show();
     }
   } catch (ExitApplicationException& e) {
-    auto upt = totalTime / numFramesProcessed;
-    gLogger->info(format("Avg update time ms: {}", upt * 1000.0));
-
-    auto uptNs = totalTimeNs / numFramesProcessed;
-    gLogger->info(format("Avg update time ms: {}", uptNs / 1000000.0));
+    if (auto average = LauncherLifecycle::averageDuration(totalTime, numFramesProcessed)) {
+      gLogger->info(format("Avg update time ms: {}", *average * 1000.0));
+      auto averageNs = LauncherLifecycle::averageDuration(static_cast<double>(totalTimeNs), numFramesProcessed);
+      gLogger->info(format("Avg update time ms: {}", *averageNs / 1000000.0));
+    } else {
+      gLogger->info("No update frames processed.");
+    }
 
     gLogger->info(e.getMessage());
     exitCode = e.getExitCode();
@@ -554,6 +566,18 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 #endif
   }
 
-  shutdown();
+  lifecycle.teardown([](string_view service, exception_ptr error) {
+    try {
+      rethrow_exception(error);
+    } catch (exception const& e) {
+      if (gLogger) {
+        gLogger->error(format("Error tearing down {}: {}", service, e.what()));
+      }
+    } catch (...) {
+      if (gLogger) {
+        gLogger->error(format("Unknown error tearing down {}", service));
+      }
+    }
+  });
   return exitCode;
 }

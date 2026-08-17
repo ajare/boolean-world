@@ -4,6 +4,7 @@
 add_executable(Launcher WIN32
     src/ApplicationDLL.cpp
     src/DirectoryResourceLocation.cpp
+    src/LauncherLifecycle.cpp
     src/Main.cpp
     src/ProgramOptions.cpp
     src/StateManager.cpp
@@ -40,6 +41,15 @@ bw_enable_sdl_checks(Launcher)
 set_target_properties(Launcher PROPERTIES FOLDER Launcher)
 
 if(BUILD_TESTING)
+    add_executable(launcher_lifecycle_tests
+        tests/launcher_lifecycle_tests.cpp
+        src/LauncherLifecycle.cpp)
+    target_include_directories(launcher_lifecycle_tests PRIVATE include)
+    target_compile_features(launcher_lifecycle_tests PRIVATE cxx_std_20)
+    bw_target_defaults(launcher_lifecycle_tests)
+    bw_output_dirs(launcher_lifecycle_tests)
+    add_test(NAME launcher_lifecycle COMMAND launcher_lifecycle_tests)
+
     add_executable(launcher_program_options_tests
         tests/program_options_tests.cpp
         src/ProgramOptions.cpp)
