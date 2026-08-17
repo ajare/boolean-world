@@ -478,8 +478,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     gLogger->info(e.getMessage());
     exitCode = e.getExitCode();
   } catch (application::resourcesystem::ResourceException& e) {
-    auto res = e.getResource();
-    gLogger->error("Error in resource: " + res->getQualifiedName());
+    if (auto const* resource = e.getResource()) {
+      gLogger->error("Error in resource: " + resource->getQualifiedName());
+    }
     gLogger->error(e.what());
     exitCode = 1;
 
