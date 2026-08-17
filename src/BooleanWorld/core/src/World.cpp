@@ -1027,14 +1027,6 @@ uint32_t World::findTriggerLineIndex(wp::Vector2 const& worldPos, float toleranc
   return ~0u;
 }
 
-void World::getGridCellPrimitivesVersion(uint32_t cellIndex, frame_number_type* primitivesVersion) const {
-  if (!mPrimitiveLookupGrid) {
-    throw CoreException("AccelerationGrid for primitives not created.");
-  }
-
-  *primitivesVersion = mPrimitiveLookupGrid->getUser(cellIndex).lastUpdatedFrameNumber;
-}
-
 void World::getGridCellFrameNumber(uint32_t cellIndex, frame_number_type* frameNumber) const {
   if (!mPrimitiveLookupGrid) {
     throw CoreException("AccelerationGrid for primitives not created.");
@@ -1043,7 +1035,7 @@ void World::getGridCellFrameNumber(uint32_t cellIndex, frame_number_type* frameN
   *frameNumber = mPrimitiveLookupGrid->getUser(cellIndex).lastUpdatedFrameNumber;
 }
 
-vector<Primitive*> World::getPrimitivesInGridCell(uint32_t cellIndex, uint8_t activeLayer, frame_number_type* primitivesVersion) const {
+vector<Primitive*> World::getPrimitivesInGridCell(uint32_t cellIndex, uint8_t activeLayer) const {
   vector<Primitive*> result;
 
   if (!mPrimitiveLookupGrid) {

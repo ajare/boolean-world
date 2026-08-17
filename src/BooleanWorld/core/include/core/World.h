@@ -190,15 +190,13 @@ public:
 
   void primitiveChanged(Primitive const* primitive);
 
-  void getGridCellPrimitivesVersion(uint32_t cellIndex, frame_number_type* primitivesVersion) const;
-
   void getGridCellFrameNumber(uint32_t cellIndex, frame_number_type* frameNumber) const;
 
   [[nodiscard]] Primitive* getPrimitive(uint32_t index);
 
   [[nodiscard]] Primitive const* getPrimitive(uint32_t index) const;
 
-  [[nodiscard]] std::vector<Primitive*> getPrimitivesInGridCell(uint32_t cellIndex, uint8_t activeLayer, frame_number_type* primitivesVersion = nullptr) const;
+  [[nodiscard]] std::vector<Primitive*> getPrimitivesInGridCell(uint32_t cellIndex, uint8_t activeLayer) const;
 
   [[nodiscard]] Primitive* findPrimitive(wp::Vector2 const& worldPos) const;
 
