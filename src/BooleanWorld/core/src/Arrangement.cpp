@@ -474,6 +474,51 @@ bool ContainsBox(Box const& outer, Box const& inner) {
          outer.miny <= inner.miny && outer.maxy >= inner.maxy;
 }
 
+struct HierarchyGrid {
+  wp::AccelerationGrid grid;
+
+  explicit HierarchyGrid(vector<Box> const& boxes)
+      : grid(CreateGrid(boxes)) {
+    for (uint32_t i = 0; i < uint32_t(boxes.size()); ++i) {
+      auto const& box = boxes[i];
+      grid.addItem(
+          i,
+          wp::BoundingBox(
+              float(box.minx), float(box.miny),
+              float(box.maxx - box.minx), float(box.maxy - box.miny)));
+    }
+  }
+
+private:
+  static wp::AccelerationGrid CreateGrid(vector<Box> const& boxes) {
+    if (boxes.empty()) {
+      return wp::AccelerationGrid(0.0f, 0.0f, 1.0f, 1.0f, 1, 1);
+    }
+
+    auto minx = boxes[0].minx;
+    auto miny = boxes[0].miny;
+    auto maxx = boxes[0].maxx;
+    auto maxy = boxes[0].maxy;
+    for (auto const& box : boxes) {
+      minx = min(minx, box.minx);
+      miny = min(miny, box.miny);
+      maxx = max(maxx, box.maxx);
+      maxy = max(maxy, box.maxy);
+    }
+
+    auto width = max<int64_t>(1, maxx - minx);
+    auto height = max<int64_t>(1, maxy - miny);
+    auto targetCells = clamp<size_t>(boxes.size(), 1, 128 * 128);
+    auto aspect = double(width) / double(height);
+    auto dimX = clamp(
+        int(lround(sqrt(double(targetCells) * aspect))), 1, 128);
+    auto dimY = clamp(
+        int(lround(sqrt(double(targetCells) / aspect))), 1, 128);
+    return wp::AccelerationGrid(
+        float(minx), float(miny), float(width), float(height), dimX, dimY);
+  }
+};
+
 struct SegmentGrid {
   wp::AccelerationGrid grid;
 
@@ -770,7 +815,12 @@ vector<Cycle> ExtractMinimalCycles(PSLG const& graph) {
 
 vector<PolygonNode> BuildPolygonHierarchy(
     PSLG const& graph,
-    vector<Cycle> const& cycles) {
+    vector<Cycle> const& cycles,
+    PolygonHierarchyStats* stats) {
+  if (stats != nullptr) {
+    *stats = {};
+  }
+
   vector<PolygonNode> nodes(cycles.size());
   vector<Box> boxes(cycles.size());
   for (int i = 0; i < int(cycles.size()); ++i) {
@@ -778,22 +828,45 @@ vector<PolygonNode> BuildPolygonHierarchy(
     boxes[i] = GetBounds(graph, cycles[i]);
   }
 
+  HierarchyGrid broadPhase(boxes);
+  wp::AccelerationGrid::IndexCollection candidates;
   for (int i = 0; i < int(cycles.size()); ++i) {
+    auto const& box = boxes[i];
+    // Every containing box covers the child's minimum corner. Querying that
+    // one grid cell avoids returning cycles that merely overlap the child.
+    broadPhase.grid.getCandidateItemsInBoundingArea(
+        wp::BoundingBox(float(box.minx), float(box.miny), 0.0f, 0.0f),
+        candidates);
+    sort(candidates.begin(), candidates.end(), [&](uint32_t lhs, uint32_t rhs) {
+      auto lhsArea = abs(cycles[lhs].area);
+      auto rhsArea = abs(cycles[rhs].area);
+      return lhsArea != rhsArea ? lhsArea < rhsArea : lhs < rhs;
+    });
+
     auto sample = SamplePoint(graph, cycles[i]);
-    auto bestArea = numeric_limits<int64_t>::max();
     auto bestParent = -1;
-    for (int j = 0; j < int(cycles.size()); ++j) {
-      if (i == j || !ContainsBox(boxes[j], boxes[i]) ||
-          !PointInCycle(sample, cycles[j], graph)) {
+    for (auto candidate : candidates) {
+      if (stats != nullptr) {
+        ++stats->indexedCandidateBoxTests;
+      }
+      if (candidate == uint32_t(i) ||
+          !ContainsBox(boxes[candidate], box)) {
         continue;
       }
-      auto area = abs(cycles[j].area);
-      if (area < bestArea) {
-        bestArea = area;
-        bestParent = j;
+      if (stats != nullptr) {
+        ++stats->pointInCycleTests;
+      }
+      if (PointInCycle(sample, cycles[candidate], graph)) {
+        bestParent = int(candidate);
+        break;
       }
     }
     nodes[i].parent = bestParent;
+  }
+
+  if (stats != nullptr) {
+    stats->exhaustiveCandidateBoxTests =
+        uint64_t(cycles.size()) * uint64_t(cycles.size() - (cycles.empty() ? 0 : 1));
   }
 
   for (int i = 0; i < int(nodes.size()); ++i) {

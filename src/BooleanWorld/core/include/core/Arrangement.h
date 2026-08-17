@@ -100,6 +100,15 @@ struct PSLGConstructionStats {
   uint64_t candidatePointSegmentTests{0};
 };
 
+// Diagnostic counts for arrangement-hierarchy performance tests and
+// benchmarks. The exhaustive count describes the candidate-box checks made by
+// the former linear scan.
+struct PolygonHierarchyStats {
+  uint64_t exhaustiveCandidateBoxTests{0};
+  uint64_t indexedCandidateBoxTests{0};
+  uint64_t pointInCycleTests{0};
+};
+
 struct PolygonNode {
   int cycleIndex;
   int parent = -1;
@@ -192,7 +201,8 @@ std::vector<Cycle> ExtractMinimalCycles(PSLG const& graph);
 
 std::vector<PolygonNode> BuildPolygonHierarchy(
     PSLG const& graph,
-    std::vector<Cycle> const& cycles);
+    std::vector<Cycle> const& cycles,
+    PolygonHierarchyStats* stats = nullptr);
 
 std::vector<Face> BuildFaces(std::vector<PolygonNode> const& nodes);
 }  // namespace bw::core::arr
