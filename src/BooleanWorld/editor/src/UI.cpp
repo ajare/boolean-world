@@ -3491,9 +3491,7 @@ void renderWidgets(
   if (doc->isActive()) {
     // If world data has not been created, then do so here, for the case where we load a map
     if (!worldData) {
-      generatedWorldData = doc->getWorld()->getWorldData(
-          doc->getPlayerProxyPosition(),
-          doc->getPlayerProxyAngle());
+      generatedWorldData = doc->getWorld()->getWorldData();
 
       worldData = generatedWorldData.get();
     }

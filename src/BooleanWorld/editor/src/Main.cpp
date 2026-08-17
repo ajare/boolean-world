@@ -779,9 +779,7 @@ void run() {
     bw::core::WorldData const* worldDataPtr{nullptr};
 
     if (doc->isActive()) {
-      worldData = doc->getWorld()->getWorldData(
-          doc->getPlayerProxyPosition(),
-          doc->getPlayerProxyAngle());
+      worldData = doc->getWorld()->getWorldData();
 
       worldDataPtr = worldData.get();
 

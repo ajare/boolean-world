@@ -314,7 +314,7 @@ void StatePlayBooleanWorld::setupEntities() {
 
   world->update(0, {playerPos, viewAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, false, false, bw::core::SelectLayer(0)}, {0, 0});
 
-  mWorldData = world->getWorldData(playerPos, viewAngle);
+  mWorldData = world->getWorldData();
 
   if (mWorldData->getContainingFaceIndex(playerPos) == ~0u ||
       mWorldData->circleIntersectsWall(playerPos, BW_PLAYER_RADIUS) >= 0) {
@@ -397,7 +397,7 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
 
   world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, bw::core::SelectLayer(mCurrentLayer)}, {0, 0});
 
-  mWorldData = world->getWorldData(playerPosition, playerAngle);
+  mWorldData = world->getWorldData();
 
   // Supply the physics step with walls around the predicted destination. Player
   // location is evaluated only after that step has resolved movement.

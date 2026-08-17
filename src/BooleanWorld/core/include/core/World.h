@@ -232,7 +232,7 @@ public:
 
   void generateClipping(bool regetPrimitives);
 
-  [[nodiscard]] WorldDataPtr getWorldData(wp::Vector2 const& position, float angle) const;
+  [[nodiscard]] WorldDataPtr getWorldData() const;
 };
 
 }  // namespace core
