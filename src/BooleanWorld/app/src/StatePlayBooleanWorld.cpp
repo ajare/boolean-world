@@ -37,6 +37,7 @@
 #include "PlayerView.h"
 #include "ReactiveCamera.h"
 #include "GameException.h"
+#include "ImGuiDllBoundaryState.h"
 
 #define CLIPPING_RECORD_COUNT_MAX 10
 #define DISPLAY_MESSAGE_COUNT_MAX 128
@@ -1025,22 +1026,12 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
 void StatePlayBooleanWorld::_renderImGui(float frameTime, void* imGuiCtx, void* imPlotCtx, void* allocFunc, void* freeFunc, void* userData) {
   VAR_UNUSED(frameTime);
 
-  // Set context from caller
-  auto thisImGuiCtx = static_cast<ImGuiContext*>(imGuiCtx);
-  auto prevImGuiCtx = ImGui::GetCurrentContext();
-
-  auto thisImPlotCtx = static_cast<ImPlotContext*>(imPlotCtx);
-  auto prevImPlotCtx = ImPlot::GetCurrentContext();
-
-  ImGui::SetCurrentContext(thisImGuiCtx);
-  ImPlot::SetCurrentContext(thisImPlotCtx);
-
-  ImGuiMemAllocFunc prevAllocFunc, imguiAllocFunc = static_cast<ImGuiMemAllocFunc>(allocFunc);
-  ImGuiMemFreeFunc prevFreeFunc, imguiFreeFunc = static_cast<ImGuiMemFreeFunc>(freeFunc);
-  void* prevUserData;
-
-  ImGui::GetAllocatorFunctions(&prevAllocFunc, &prevFreeFunc, &prevUserData);
-  ImGui::SetAllocatorFunctions(imguiAllocFunc, imguiFreeFunc, userData);
+  ImGuiDllBoundaryState imGuiBoundaryState{
+      static_cast<ImGuiContext*>(imGuiCtx),
+      static_cast<ImPlotContext*>(imPlotCtx),
+      static_cast<ImGuiMemAllocFunc>(allocFunc),
+      static_cast<ImGuiMemFreeFunc>(freeFunc),
+      userData};
 
   //
   // Render
@@ -1056,11 +1047,4 @@ void StatePlayBooleanWorld::_renderImGui(float frameTime, void* imGuiCtx, void* 
   debug_renderMinimap(viewSize, viewOffset, viewScale, viewBounds, drawList);
   debug_renderCollisionSim(viewSize, viewOffset, viewScale, drawList);
   debug_renderClipGenerationInfo(drawList);
-
-  // Reset.  We don't really need to do this as nothing is done on this DLL's context
-  VAR_UNUSED(prevImGuiCtx);
-  VAR_UNUSED(prevImPlotCtx);
-  // ImGui::SetCurrentContext(prevImGuiCtx);
-  // ImPlot::SetCurrentContext(prevImPlotCtx);
-  // ImGui::SetAllocatorFunctions(prevAllocFunc, prevFreeFunc, prevUserData);
 }

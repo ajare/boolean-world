@@ -80,6 +80,22 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_clipping_record
              COMMAND boolean_world_clipping_record_tests)
 
+    add_executable(boolean_world_imgui_dll_boundary_state_tests
+        tests/imgui_dll_boundary_state_tests.cpp
+        src/imgui/imgui.cpp
+        src/imgui/imgui_draw.cpp
+        src/imgui/imgui_tables.cpp
+        src/imgui/imgui_widgets.cpp
+        src/imgui/implot.cpp
+        src/imgui/implot_items.cpp)
+    target_include_directories(boolean_world_imgui_dll_boundary_state_tests PRIVATE
+        include include/imgui)
+    target_compile_features(boolean_world_imgui_dll_boundary_state_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_imgui_dll_boundary_state_tests)
+    bw_output_dirs(boolean_world_imgui_dll_boundary_state_tests)
+    add_test(NAME boolean_world_imgui_dll_boundary_state
+             COMMAND boolean_world_imgui_dll_boundary_state_tests)
+
     add_executable(boolean_world_entity_animation_tests
         tests/entity_animation_tests.cpp
         src/EntityHandlerBooleanWorld.cpp)
