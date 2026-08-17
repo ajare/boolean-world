@@ -341,62 +341,6 @@ vector<tTransform> const& AnimatedProperty::getTransforms() const {
   return mTransformFlow.getTransforms();
 }
 
-void AnimatedProperty::setAnimationInterpolatorDefaultStructure(vector<Interpolator<float>::Point> const& points, vector<Interpolator<float>::Segment> const& segments, bool setToCurrent) {
-  mAnimationInterpolator.setDefaultStructure(points, segments, setToCurrent);
-}
-
-void AnimatedProperty::initialiseAnimation(array<float, 2> const& animationRange, float animationDefault) {
-  mAnimationInterpolator.setScale({0.0f, animationRange[0]}, {1.0f, animationRange[1]});
-  mAnimationInterpolator.setDefaultStructure(
-      {{0.0f, animationDefault}, {1.0f, animationDefault}},
-      {{Easing::Linear}},
-      true);
-}
-
-void AnimatedProperty::setAnimationValues(vector<pair<float, float>> const& values) {
-  mAnimationInterpolator.setPoints(values);
-}
-
-vector<Interpolator<float>::Point> const& AnimatedProperty::getAnimationValues() const {
-  return mAnimationInterpolator.getPoints();
-}
-
-uint32_t AnimatedProperty::getNumAnimationValues() const {
-  return mAnimationInterpolator.getNumPoints();
-}
-
-void AnimatedProperty::updateAnimationValue(uint32_t index, float time, float const& value) {
-  mAnimationInterpolator.updatePoint(index, time, value);
-}
-
-void AnimatedProperty::addAnimationValue(float time, float value) {
-  mAnimationInterpolator.addPoint(time, value);
-}
-
-void AnimatedProperty::removeAnimationValue(uint32_t index) {
-  mAnimationInterpolator.removePoint(index);
-}
-
-float AnimatedProperty::getAnimationValue(float time) const {
-  return mAnimationInterpolator.getValue(time);
-}
-
-void AnimatedProperty::getAnimationScale(wp::Vector2* scaleMin, wp::Vector2* scaleMax) {
-  mAnimationInterpolator.getScale(scaleMin, scaleMax);
-}
-
-void AnimatedProperty::setAnimationEasing(uint32_t segment, Easing easing) {
-  mAnimationInterpolator.setEasing(segment, easing);
-}
-
-vector<Interpolator<float>::Segment> const& AnimatedProperty::getAnimationSegments() const {
-  return mAnimationInterpolator.getSegments();
-}
-
-vector<vector<Interpolator<float>::Point>> AnimatedProperty::renderAnimation(float resolution) const {
-  return mAnimationInterpolator.render(resolution);
-}
-
 Interpolator<float>& AnimatedProperty::getAnimationInterpolator() {
   return mAnimationInterpolator;
 }
@@ -405,68 +349,16 @@ Interpolator<float> const& AnimatedProperty::getAnimationInterpolator() const {
   return mAnimationInterpolator;
 }
 
-float AnimatedProperty::getCurCapturedValue() const {
-  return mCapture.curValue;
-}
-
-void AnimatedProperty::initialiseInfluence(array<float, 2> const& influenceRange, float influenceDefault) {
-  mInfluenceInterpolator.setScale({influenceRange[0], 0.0f}, {influenceRange[1], 1.0f});
-  mInfluenceInterpolator.setDefaultStructure(
-      {{influenceRange[0], influenceDefault}, {influenceRange[1], influenceDefault}},
-      {{Easing::Linear}},
-      true);
-}
-
-void AnimatedProperty::setInfluenceValues(vector<pair<float, float>> const& values) {
-  mInfluenceInterpolator.setPoints(values);
-}
-
-vector<Interpolator<float>::Point> const& AnimatedProperty::getInfluenceValues() const {
-  return mInfluenceInterpolator.getPoints();
-}
-
-uint32_t AnimatedProperty::getNumInfluenceValues() const {
-  return mInfluenceInterpolator.getNumPoints();
-}
-
-void AnimatedProperty::updateInfluenceValue(uint32_t index, float time, float const& value) {
-  mInfluenceInterpolator.updatePoint(index, time, value);
-}
-
-void AnimatedProperty::addInfluenceValue(float time, float value) {
-  mInfluenceInterpolator.addPoint(time, value);
-}
-
-void AnimatedProperty::removeInfluenceValue(uint32_t index) {
-  mInfluenceInterpolator.removePoint(index);
-}
-
-float AnimatedProperty::getInfluenceValue(float time) const {
-  return mInfluenceInterpolator.getValue(time);
-}
-
-void AnimatedProperty::getInfluenceScale(wp::Vector2* scaleMin, wp::Vector2* scaleMax) {
-  mInfluenceInterpolator.getScale(scaleMin, scaleMax);
-}
-
-void AnimatedProperty::setInfluenceEasing(uint32_t segment, Easing easing) {
-  mInfluenceInterpolator.setEasing(segment, easing);
-}
-
-vector<Interpolator<float>::Segment> const& AnimatedProperty::getInfluenceSegments() const {
-  return mInfluenceInterpolator.getSegments();
-}
-
-vector<vector<Interpolator<float>::Point>> AnimatedProperty::renderInfluence(float resolution) const {
-  return mInfluenceInterpolator.render(resolution);
-}
-
 Interpolator<float>& AnimatedProperty::getInfluenceInterpolator() {
   return mInfluenceInterpolator;
 }
 
 Interpolator<float> const& AnimatedProperty::getInfluenceInterpolator() const {
   return mInfluenceInterpolator;
+}
+
+float AnimatedProperty::getCurCapturedValue() const {
+  return mCapture.curValue;
 }
 
 void AnimatedProperty::setCaptureMode(ValueCaptureMode mode) {

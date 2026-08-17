@@ -80,8 +80,8 @@ void deserializingExactAnimatorCountPreservesAnimatorRanges() {
 
   wp::Vector2 scaleMin;
   wp::Vector2 scaleMax;
-  target.getAnimationScale(bw::core::VertexTransformer::Key::Scale, &scaleMin,
-                           &scaleMax);
+  target.getAnimationInterpolator(bw::core::VertexTransformer::Key::Scale)
+      .getScale(&scaleMin, &scaleMax);
   require(std::abs(scaleMin.y - 1.0f) < Epsilon,
           "a valid vertex transformer did not preserve its scale minimum");
   require(std::abs(scaleMax.y - 10.0f) < Epsilon,
@@ -110,8 +110,8 @@ void deserializingTooFewAnimatorsFailsWithoutReplacingAnimatorDefaults() {
 
   wp::Vector2 scaleMin;
   wp::Vector2 scaleMax;
-  target.getAnimationScale(bw::core::VertexTransformer::Key::Scale, &scaleMin,
-                           &scaleMax);
+  target.getAnimationInterpolator(bw::core::VertexTransformer::Key::Scale)
+      .getScale(&scaleMin, &scaleMax);
   require(std::abs(scaleMin.y - 1.0f) < Epsilon,
           "too few animators replaced the scale minimum");
   require(std::abs(scaleMax.y - 10.0f) < Epsilon,

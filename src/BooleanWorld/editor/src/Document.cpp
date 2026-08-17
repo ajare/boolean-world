@@ -321,10 +321,13 @@ std::shared_ptr<bw::core::World> Document::createWorld(float size, float gridSiz
   ghost->setPriority(0);
   ghost->setPosition(wp::Vector2::ZERO);
 
-  ghost->setAnimationValues(bw::core::VertexTransformer::Key::Scale, {{0.0f, 1.0f}, {1.0f, 1.0f}});
-  ghost->setAnimationValues(bw::core::VertexTransformer::Key::Angle, {{0.0f, 0.0f}, {1.0f, 0.0f}});
-  ghost->setAnimationValues(bw::core::VertexTransformer::Key::OrbitAngle, {{0.0f, 0.0f}, {1.0f, 0.0f}});
-  ghost->setAnimationValues(bw::core::VertexTransformer::Key::OrbitDistance, {{0.0f, 0.0f}, {1.0f, 0.0f}});
+  {
+    auto mutation = ghost->mutate();
+    mutation.animation(bw::core::VertexTransformer::Key::Scale).setPoints({{0.0f, 1.0f}, {1.0f, 1.0f}});
+    mutation.animation(bw::core::VertexTransformer::Key::Angle).setPoints({{0.0f, 0.0f}, {1.0f, 0.0f}});
+    mutation.animation(bw::core::VertexTransformer::Key::OrbitAngle).setPoints({{0.0f, 0.0f}, {1.0f, 0.0f}});
+    mutation.animation(bw::core::VertexTransformer::Key::OrbitDistance).setPoints({{0.0f, 0.0f}, {1.0f, 0.0f}});
+  }
 
   updateGhost(world, ghost);
 

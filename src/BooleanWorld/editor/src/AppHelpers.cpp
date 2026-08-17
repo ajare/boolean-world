@@ -272,29 +272,11 @@ void _setPrimitiveParameters(bw::core::Primitive* prim, uint8_t layer, uint8_t p
 
   // Set the scale and angle default values here, so that if we toggle them off/on, we don't lose the settings we
   // specified at creation.  Orbit angle and distance are not specified at creation so we can hardcode those defaults.
-  prim->setAnimationInterpolatorDefaultStructure(
-      Key::Scale,
-      {{0.0f, 1.0f}, {1.0f, 1.0f}},
-      {{bw::core::Easing::Linear}},
-      true);
-
-  prim->setAnimationInterpolatorDefaultStructure(
-      Key::Angle,
-      {{0.0f, angle}, {1.0f, angle}},
-      {{bw::core::Easing::Linear}},
-      true);
-
-  prim->setAnimationInterpolatorDefaultStructure(
-      Key::OrbitAngle,
-      {{0.0f, 0.0f}, {1.0f, 0.0f}},
-      {{bw::core::Easing::Linear}},
-      true);
-
-  prim->setAnimationInterpolatorDefaultStructure(
-      Key::OrbitDistance,
-      {{0.0f, 0.0f}, {1.0f, 0.0f}},
-      {{bw::core::Easing::Linear}},
-      true);
+  auto mutation = prim->mutate();
+  mutation.animation(Key::Scale).setDefaultStructure({{0.0f, 1.0f}, {1.0f, 1.0f}}, {{bw::core::Easing::Linear}}, true);
+  mutation.animation(Key::Angle).setDefaultStructure({{0.0f, angle}, {1.0f, angle}}, {{bw::core::Easing::Linear}}, true);
+  mutation.animation(Key::OrbitAngle).setDefaultStructure({{0.0f, 0.0f}, {1.0f, 0.0f}}, {{bw::core::Easing::Linear}}, true);
+  mutation.animation(Key::OrbitDistance).setDefaultStructure({{0.0f, 0.0f}, {1.0f, 0.0f}}, {{bw::core::Easing::Linear}}, true);
 }
 
 bw::core::Primitive* createRegularPolygonPrimitive(

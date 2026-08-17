@@ -540,14 +540,18 @@ void handleWorldInteraction(editor::Document* doc, bw::core::WorldData const* wo
         for (auto index : primitiveSelection) {
           auto primitive = doc->getWorld()->getPrimitive(index);
           auto delta = -mouseStatus.dragDelta[editor::MouseButtonStatus::Left].y * 0.01f;
-          auto newScale = primitive->getAnimationValue(bw::core::VertexTransformer::Key::Scale, 0.0f) + delta;
+          auto const key = bw::core::VertexTransformer::Key::Scale;
+          auto newScale = primitive->getAnimationInterpolator(key).getValue(0.0f) + delta;
 
           // If just 2 values, set them both so we have a contant angle.  Otherwise just set the first frame
-          primitive->updateAnimationValue(bw::core::VertexTransformer::Key::Scale, 0, 0.0f, newScale);
+          {
+            auto mutation = primitive->mutate();
+            auto& animation = mutation.animation(key);
+            animation.updatePoint(0, 0.0f, newScale);
 
-          if (primitive->getNumAnimationValues(bw::core::VertexTransformer::Key::Scale) == 2) {
-            auto wasStatic = primitive->isStatic();
-            primitive->updateAnimationValue(bw::core::VertexTransformer::Key::Scale, 1, 1.0f, newScale);
+            if (animation.getNumPoints() == 2) {
+              animation.updatePoint(1, 1.0f, newScale);
+            }
           }
 
           // Update vertices for visual purposes
@@ -570,14 +574,18 @@ void handleWorldInteraction(editor::Document* doc, bw::core::WorldData const* wo
         for (auto index : primitiveSelection) {
           auto primitive = doc->getWorld()->getPrimitive(index);
           auto delta = mouseStatus.dragDelta[editor::MouseButtonStatus::Left].x;
-          auto newAngle = primitive->getAnimationValue(bw::core::VertexTransformer::Key::Angle, 0.0f) + delta;
+          auto const key = bw::core::VertexTransformer::Key::Angle;
+          auto newAngle = primitive->getAnimationInterpolator(key).getValue(0.0f) + delta;
 
           // If just 2 values, set them both so we have a contant angle.  Otherwise just set the first frame
-          auto wasStatic = primitive->isStatic();
-          primitive->updateAnimationValue(bw::core::VertexTransformer::Key::Angle, 0, 0.0f, newAngle);
+          {
+            auto mutation = primitive->mutate();
+            auto& animation = mutation.animation(key);
+            animation.updatePoint(0, 0.0f, newAngle);
 
-          if (primitive->getNumAnimationValues(bw::core::VertexTransformer::Key::Angle) == 2) {
-            primitive->updateAnimationValue(bw::core::VertexTransformer::Key::Angle, 1, 1.0f, newAngle);
+            if (animation.getNumPoints() == 2) {
+              animation.updatePoint(1, 1.0f, newAngle);
+            }
           }
 
           // Update vertices for visual purposes

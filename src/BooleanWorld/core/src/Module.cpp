@@ -510,7 +510,8 @@ int mod_set_primitive_animation_value(uint32_t key, float const* values, int num
       animValues[i / 2] = std::make_pair(values[i], values[i + 1]);
     }
 
-    gPrimitive->setAnimationValues((VertexTransformer::Key)key, animValues);
+    auto mutation = gPrimitive->mutate();
+    mutation.animation((VertexTransformer::Key)key).setPoints(animValues);
     return 0;
   } catch (std::exception& e) {
     printf("ERROR: %s\n", e.what());

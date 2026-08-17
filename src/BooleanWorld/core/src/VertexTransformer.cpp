@@ -9,15 +9,27 @@ using namespace std;
 
 VertexTransformer::VertexTransformer()
     : mFollowOrbitAngle(false), mCacheStaticness(false), mIsStatic(false), mAnimators{string("Scale"), string("Angle"), string("OrbitAngle"), string("OrbitDistance")} {
-  mAnimators[(int)Key::Scale].initialiseAnimation({1.0f, BW_INTERPOLATOR_MAX_SCALE}, 1.0f);
-  mAnimators[(int)Key::Angle].initialiseAnimation({0.0f, BW_INTERPOLATOR_MAX_ANGLE}, 0.0f);
-  mAnimators[(int)Key::OrbitAngle].initialiseAnimation({0.0f, BW_INTERPOLATOR_MAX_ANGLE}, 0.0f);
-  mAnimators[(int)Key::OrbitDistance].initialiseAnimation({0.0f, BW_INTERPOLATOR_MAX_DISTANCE}, 100.0f);
+  auto initialiseAnimator = [this](Key key, array<float, 2> const& animationRange, float animationDefault) {
+    auto& animator = mAnimators[(int)key];
+    auto& animation = animator.getAnimationInterpolator();
+    animation.setScale({0.0f, animationRange[0]}, {1.0f, animationRange[1]});
+    animation.setDefaultStructure(
+        {{0.0f, animationDefault}, {1.0f, animationDefault}},
+        {{Easing::Linear}},
+        true);
 
-  mAnimators[(int)Key::Scale].initialiseInfluence({0.0f, BW_INTERPOLATOR_MAX_DISTANCE}, 1.0f);
-  mAnimators[(int)Key::Angle].initialiseInfluence({0.0f, BW_INTERPOLATOR_MAX_DISTANCE}, 1.0f);
-  mAnimators[(int)Key::OrbitAngle].initialiseInfluence({0.0f, BW_INTERPOLATOR_MAX_DISTANCE}, 1.0f);
-  mAnimators[(int)Key::OrbitDistance].initialiseInfluence({0.0f, BW_INTERPOLATOR_MAX_DISTANCE}, 1.0f);
+    auto& influence = animator.getInfluenceInterpolator();
+    influence.setScale({0.0f, 0.0f}, {BW_INTERPOLATOR_MAX_DISTANCE, 1.0f});
+    influence.setDefaultStructure(
+        {{0.0f, 1.0f}, {BW_INTERPOLATOR_MAX_DISTANCE, 1.0f}},
+        {{Easing::Linear}},
+        true);
+  };
+
+  initialiseAnimator(Key::Scale, {1.0f, BW_INTERPOLATOR_MAX_SCALE}, 1.0f);
+  initialiseAnimator(Key::Angle, {0.0f, BW_INTERPOLATOR_MAX_ANGLE}, 0.0f);
+  initialiseAnimator(Key::OrbitAngle, {0.0f, BW_INTERPOLATOR_MAX_ANGLE}, 0.0f);
+  initialiseAnimator(Key::OrbitDistance, {0.0f, BW_INTERPOLATOR_MAX_DISTANCE}, 100.0f);
 
   for (int i = 0; i < (int)Key::COUNT; ++i) {
     if (i == (int)Key::Scale) {
@@ -291,70 +303,6 @@ void VertexTransformer::updateTransformTriggerLineIndices(map<uint32_t, uint32_t
   }
 }
 
-void VertexTransformer::setAnimationInterpolatorDefaultStructure(VertexTransformer::Key key, vector<Interpolator<float>::Point> const& points, vector<Interpolator<float>::Segment> const& segments, bool setToCurrent) {
-  mAnimators[(int)key].setAnimationInterpolatorDefaultStructure(points, segments, setToCurrent);
-}
-
-void VertexTransformer::setAnimationValues(Key key, vector<std::pair<float, float>> const& values) {
-  mAnimators[(int)key].setAnimationValues(values);
-}
-
-vector<Interpolator<float>::Point> const& VertexTransformer::getAnimationValues(Key key) const {
-  return mAnimators[(int)key].getAnimationValues();
-}
-
-uint32_t VertexTransformer::getNumAnimationValues(Key key) const {
-  return mAnimators[(int)key].getNumAnimationValues();
-}
-
-void VertexTransformer::updateAnimationValue(Key key, uint32_t index, float time, float const& value) {
-  mAnimators[(int)key].updateAnimationValue(index, time, value);
-}
-
-void VertexTransformer::addAnimationValue(Key key, float time, float value) {
-  mAnimators[(int)key].addAnimationValue(time, value);
-}
-
-void VertexTransformer::removeAnimationValue(Key key, uint32_t index) {
-  mAnimators[(int)key].removeAnimationValue(index);
-}
-
-float VertexTransformer::getAnimationValue(Key key, float time) const {
-  return mAnimators[(int)key].getAnimationValue(time);
-}
-
-void VertexTransformer::getAnimationScale(Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax) {
-  mAnimators[(int)key].getAnimationScale(scaleMin, scaleMax);
-}
-
-void VertexTransformer::setAnimationEasing(Key key, uint32_t segment, Easing easing) {
-  mAnimators[(int)key].setAnimationEasing(segment, easing);
-}
-
-vector<Interpolator<float>::Segment> const& VertexTransformer::getAnimationSegments(Key key) const {
-  return mAnimators[(int)key].getAnimationSegments();
-}
-
-vector<vector<Interpolator<float>::Point>> VertexTransformer::renderAnimation(Key key, float resolution) const {
-  return mAnimators[(int)key].renderAnimation(resolution);
-}
-
-void VertexTransformer::addPointToAnimationInterpolator(Key key, float time, float value) {
-  mAnimators[(int)key].addAnimationValue(time, value);
-}
-
-void VertexTransformer::removePointFromAnimationInterpolator(Key key, uint32_t index) {
-  mAnimators[(int)key].removeAnimationValue(index);
-}
-
-void VertexTransformer::updatePointInAnimationInterpolator(Key key, uint32_t index, float time, float value) {
-  mAnimators[(int)key].updateAnimationValue(index, time, value);
-}
-
-void VertexTransformer::setAnimationInterpolatorEasing(Key key, uint32_t index, Easing easing) {
-  mAnimators[(int)key].setAnimationEasing(index, easing);
-}
-
 Interpolator<float> const& VertexTransformer::getAnimationInterpolator(Key key) const {
   return mAnimators[(int)key].getAnimationInterpolator();
 }
@@ -363,71 +311,11 @@ Interpolator<float>& VertexTransformer::getAnimationInterpolator(Key key) {
   return mAnimators[(int)key].getAnimationInterpolator();
 }
 
-void VertexTransformer::setInfluenceValues(Key key, vector<pair<float, float>> const& values) {
-  mAnimators[(int)key].setInfluenceValues(values);
-}
-
-vector<Interpolator<float>::Point> const& VertexTransformer::getInfluenceValues(Key key) const {
-  return mAnimators[(int)key].getInfluenceValues();
-}
-
-uint32_t VertexTransformer::getNumInfluenceValues(Key key) const {
-  return mAnimators[(int)key].getNumInfluenceValues();
-}
-
-void VertexTransformer::updateInfluenceValue(Key key, uint32_t index, float time, float const& value) {
-  mAnimators[(int)key].updateInfluenceValue(index, time, value);
-}
-
-void VertexTransformer::addInfluenceValue(Key key, float time, float value) {
-  mAnimators[(int)key].addInfluenceValue(time, value);
-}
-
-void VertexTransformer::removeInfluenceValue(Key key, uint32_t index) {
-  mAnimators[(int)key].removeInfluenceValue(index);
-}
-
-float VertexTransformer::getInfluenceValue(Key key, float time) const {
-  return mAnimators[(int)key].getInfluenceValue(time);
-}
-
-void VertexTransformer::getInfluenceScale(Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax) {
-  mAnimators[(int)key].getInfluenceScale(scaleMin, scaleMax);
-}
-
-void VertexTransformer::setInfluenceEasing(Key key, uint32_t segment, Easing easing) {
-  mAnimators[(int)key].setInfluenceEasing(segment, easing);
-}
-
-vector<Interpolator<float>::Segment> const& VertexTransformer::getInfluenceSegments(Key key) const {
-  return mAnimators[(int)key].getInfluenceSegments();
-}
-
-vector<vector<Interpolator<float>::Point>> VertexTransformer::renderInfluence(Key key, float resolution) const {
-  return mAnimators[(int)key].renderInfluence(resolution);
-}
-
-void VertexTransformer::addPointToInfluenceInterpolator(Key key, float time, float value) {
-  mAnimators[(int)key].addInfluenceValue(time, value);
-}
-
-void VertexTransformer::removePointFromInfluenceInterpolator(Key key, uint32_t index) {
-  mAnimators[(int)key].removeInfluenceValue(index);
-}
-
-void VertexTransformer::updatePointInInfluenceInterpolator(Key key, uint32_t index, float time, float value) {
-  mAnimators[(int)key].updateInfluenceValue(index, time, value);
-}
-
-void VertexTransformer::setInfluenceInterpolatorEasing(Key key, uint32_t index, Easing easing) {
-  mAnimators[(int)key].setInfluenceEasing(index, easing);
-}
-
-Interpolator<float>& VertexTransformer::getInfluenceInterpolator(Key key) {
+Interpolator<float> const& VertexTransformer::getInfluenceInterpolator(Key key) const {
   return mAnimators[(int)key].getInfluenceInterpolator();
 }
 
-Interpolator<float> const& VertexTransformer::getInfluenceInterpolator(Key key) const {
+Interpolator<float>& VertexTransformer::getInfluenceInterpolator(Key key) {
   return mAnimators[(int)key].getInfluenceInterpolator();
 }
 
@@ -455,8 +343,8 @@ float VertexTransformer::calculateAnimationValue(VertexTransformer::Key key, Inp
   auto influenceAmt = BW_INTERPOLATOR_MAX_DISTANCE - inputs.entityInfluenceDistance;
 
   float cap = mAnimators[(int)key].captureValue(transformT(key, inputs, globalTime));
-  float value = getAnimationValue(key, cap);
-  float infl = getInfluenceValue(key, influenceAmt);
+  float value = getAnimationInterpolator(key).getValue(cap);
+  float infl = getInfluenceInterpolator(key).getValue(influenceAmt);
 
   switch (key) {
     case Key::Angle:

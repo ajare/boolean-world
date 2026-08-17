@@ -111,76 +111,11 @@ public:
   bool getFollowOrbitAngle() const;
 
   //
-  // Animation interpolators
+  // Interpolators
   //
-  void setAnimationInterpolatorDefaultStructure(VertexTransformer::Key key, std::vector<Interpolator<float>::Point> const& points, std::vector<Interpolator<float>::Segment> const& segments, bool setToCurrent);
-
-  void setAnimationValues(Key key, std::vector<std::pair<float, float>> const& values);
-
-  std::vector<Interpolator<float>::Point> const& getAnimationValues(Key key) const;
-
-  uint32_t getNumAnimationValues(Key key) const;
-
-  void updateAnimationValue(Key key, uint32_t index, float time, float const& value);
-
-  void addAnimationValue(Key key, float time, float value);
-
-  void removeAnimationValue(Key key, uint32_t index);
-
-  float getAnimationValue(Key key, float time) const;
-
-  void getAnimationScale(Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax);
-
-  void setAnimationEasing(Key key, uint32_t segment, Easing easing);
-
-  std::vector<Interpolator<float>::Segment> const& getAnimationSegments(Key key) const;
-
-  std::vector<std::vector<Interpolator<float>::Point>> renderAnimation(Key key, float resolution) const;
-
-  void addPointToAnimationInterpolator(Key key, float time, float value);
-
-  void removePointFromAnimationInterpolator(Key key, uint32_t index);
-
-  void updatePointInAnimationInterpolator(Key key, uint32_t index, float time, float value);
-
-  void setAnimationInterpolatorEasing(Key key, uint32_t index, Easing easing);
-
   Interpolator<float> const& getAnimationInterpolator(Key key) const;
 
   Interpolator<float>& getAnimationInterpolator(Key key);
-
-  //
-  // Influence interpolators
-  //
-  void setInfluenceValues(Key key, std::vector<std::pair<float, float>> const& values);
-
-  std::vector<Interpolator<float>::Point> const& getInfluenceValues(Key key) const;
-
-  uint32_t getNumInfluenceValues(Key key) const;
-
-  void updateInfluenceValue(Key key, uint32_t index, float time, float const& value);
-
-  void addInfluenceValue(Key key, float time, float value);
-
-  void removeInfluenceValue(Key key, uint32_t index);
-
-  float getInfluenceValue(Key key, float time) const;
-
-  void getInfluenceScale(Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax);
-
-  void setInfluenceEasing(Key key, uint32_t segment, Easing easing);
-
-  std::vector<Interpolator<float>::Segment> const& getInfluenceSegments(Key key) const;
-
-  std::vector<std::vector<Interpolator<float>::Point>> renderInfluence(Key key, float resolution) const;
-
-  void addPointToInfluenceInterpolator(Key key, float time, float value);
-
-  void removePointFromInfluenceInterpolator(Key key, uint32_t index);
-
-  void updatePointInInfluenceInterpolator(Key key, uint32_t index, float time, float value);
-
-  void setInfluenceInterpolatorEasing(Key key, uint32_t index, Easing easing);
 
   Interpolator<float> const& getInfluenceInterpolator(Key key) const;
 

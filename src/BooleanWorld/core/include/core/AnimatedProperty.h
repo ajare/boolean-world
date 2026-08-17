@@ -69,67 +69,16 @@ public:
 
   std::vector<tTransform> const& getTransforms() const;
 
-  // Animation interpolator
-  void setAnimationInterpolatorDefaultStructure(std::vector<Interpolator<float>::Point> const& points, std::vector<Interpolator<float>::Segment> const& segments, bool setToCurrent);
-
-  void initialiseAnimation(std::array<float, 2> const& animationRange, float animationDefault);
-
-  void setAnimationValues(std::vector<std::pair<float, float>> const& values);
-
-  std::vector<Interpolator<float>::Point> const& getAnimationValues() const;
-
-  uint32_t getNumAnimationValues() const;
-
-  void updateAnimationValue(uint32_t index, float time, float const& value);
-
-  void addAnimationValue(float time, float value);
-
-  void removeAnimationValue(uint32_t index);
-
-  float getAnimationValue(float time) const;
-
-  void getAnimationScale(wp::Vector2* scaleMin, wp::Vector2* scaleMax);
-
-  void setAnimationEasing(uint32_t segment, Easing easing);
-
-  std::vector<Interpolator<float>::Segment> const& getAnimationSegments() const;
-
-  std::vector<std::vector<Interpolator<float>::Point>> renderAnimation(float resolution) const;
-
+  // Interpolators
   Interpolator<float>& getAnimationInterpolator();
 
   Interpolator<float> const& getAnimationInterpolator() const;
 
-  float getCurCapturedValue() const;
-
-  // Influence interpolator
-  void initialiseInfluence(std::array<float, 2> const& influenceRange, float influenceDefault);
-
-  void setInfluenceValues(std::vector<std::pair<float, float>> const& values);
-
-  std::vector<Interpolator<float>::Point> const& getInfluenceValues() const;
-
-  uint32_t getNumInfluenceValues() const;
-
-  void updateInfluenceValue(uint32_t index, float time, float const& value);
-
-  void addInfluenceValue(float time, float value);
-
-  void removeInfluenceValue(uint32_t index);
-
-  float getInfluenceValue(float time) const;
-
-  void getInfluenceScale(wp::Vector2* scaleMin, wp::Vector2* scaleMax);
-
-  void setInfluenceEasing(uint32_t segment, Easing easing);
-
-  std::vector<Interpolator<float>::Segment> const& getInfluenceSegments() const;
-
-  std::vector<std::vector<Interpolator<float>::Point>> renderInfluence(float resolution) const;
-
   Interpolator<float>& getInfluenceInterpolator();
 
   Interpolator<float> const& getInfluenceInterpolator() const;
+
+  float getCurCapturedValue() const;
 
   // Capture
   void setCaptureMode(ValueCaptureMode mode);

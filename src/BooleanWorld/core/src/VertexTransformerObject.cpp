@@ -207,10 +207,6 @@ float VertexTransformerObject::getInfluenceEyeAngleOffset() const {
   return mEye.getAngleOffset() + mOrientation;
 }
 
-VertexTransformer* VertexTransformerObject::getVertexTransformer() {
-  return &mVertexTransformer;
-}
-
 wp::Vector2 VertexTransformerObject::calculateWorldPosition() const {
   auto const revision = WorldPositionRevision.load(memory_order_relaxed);
   if (mWorldPositionCacheRevision == revision) {
@@ -230,163 +226,32 @@ wp::Vector2 VertexTransformerObject::transformVertex(wp::Vector2 const& v, bool*
   return mVertexTransformer.transformVertex(v, calculateWorldPosition(), mTransformOffset, -mOrientation, mInputs, cacheChanged);
 }
 
-void VertexTransformerObject::setAnimationInterpolatorDefaultStructure(VertexTransformer::Key key, vector<Interpolator<float>::Point> const& points, vector<Interpolator<float>::Segment> const& segments, bool setToCurrent) {
-  mVertexTransformer.setAnimationInterpolatorDefaultStructure(key, points, segments, setToCurrent);
-  invalidatePostTransform(true, true);
+VertexTransformerObject::AnimatorMutation::AnimatorMutation(VertexTransformerObject& object)
+    : mObject(object) {
+}
+
+VertexTransformerObject::AnimatorMutation::~AnimatorMutation() {
+  mObject.invalidatePostTransform(true, true);
+}
+
+Interpolator<float>& VertexTransformerObject::AnimatorMutation::animation(VertexTransformer::Key key) {
+  return mObject.mVertexTransformer.getAnimationInterpolator(key);
+}
+
+Interpolator<float>& VertexTransformerObject::AnimatorMutation::influence(VertexTransformer::Key key) {
+  return mObject.mVertexTransformer.getInfluenceInterpolator(key);
+}
+
+VertexTransformerObject::AnimatorMutation VertexTransformerObject::mutate() {
+  return AnimatorMutation(*this);
 }
 
 Interpolator<float> const& VertexTransformerObject::getAnimationInterpolator(VertexTransformer::Key key) const {
   return mVertexTransformer.getAnimationInterpolator(key);
 }
 
-Interpolator<float>& VertexTransformerObject::getAnimationInterpolator(VertexTransformer::Key key) {
-  return mVertexTransformer.getAnimationInterpolator(key);
-}
-
-void VertexTransformerObject::setAnimationValues(VertexTransformer::Key key, vector<pair<float, float>> const& values) {
-  mVertexTransformer.setAnimationValues(key, values);
-  invalidatePostTransform(true, true);
-}
-
-vector<Interpolator<float>::Point> const& VertexTransformerObject::getAnimationValues(VertexTransformer::Key key) const {
-  return mVertexTransformer.getAnimationValues(key);
-}
-
-uint32_t VertexTransformerObject::getNumAnimationValues(VertexTransformer::Key key) const {
-  return mVertexTransformer.getNumAnimationValues(key);
-}
-
-void VertexTransformerObject::updateAnimationValue(VertexTransformer::Key key, uint32_t index, float time, float const& value) {
-  mVertexTransformer.updateAnimationValue(key, index, time, value);
-  invalidatePostTransform(true, true);
-}
-
-void VertexTransformerObject::addAnimationValue(VertexTransformer::Key key, float time, float value) {
-  mVertexTransformer.addAnimationValue(key, time, value);
-  invalidatePostTransform(true, true);
-}
-
-void VertexTransformerObject::removeAnimationValue(VertexTransformer::Key key, uint32_t index) {
-  mVertexTransformer.removeAnimationValue(key, index);
-  invalidatePostTransform(true, true);
-}
-
-float VertexTransformerObject::getAnimationValue(VertexTransformer::Key key, float t) const {
-  return mVertexTransformer.getAnimationValue(key, t);
-}
-
-void VertexTransformerObject::getAnimationScale(VertexTransformer::Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax) {
-  mVertexTransformer.getAnimationScale(key, scaleMin, scaleMax);
-}
-
-void VertexTransformerObject::setAnimationEasing(VertexTransformer::Key key, uint32_t segment, Easing easing) {
-  mVertexTransformer.setAnimationEasing(key, segment, easing);
-  invalidatePostTransform(true, true);
-}
-
-vector<Interpolator<float>::Segment> const& VertexTransformerObject::getAnimationSegments(VertexTransformer::Key key) const {
-  return mVertexTransformer.getAnimationSegments(key);
-}
-
-vector<vector<Interpolator<float>::Point>> VertexTransformerObject::renderAnimation(VertexTransformer::Key key, float resolution) const {
-  return mVertexTransformer.renderAnimation(key, resolution);
-}
-
-void VertexTransformerObject::addPointToAnimationInterpolator(VertexTransformer::Key key, float time, float value) {
-  mVertexTransformer.addPointToAnimationInterpolator(key, time, value);
-  invalidatePostTransform(true, true);
-}
-
-void VertexTransformerObject::removePointFromAnimationInterpolator(VertexTransformer::Key key, uint32_t index) {
-  mVertexTransformer.removePointFromAnimationInterpolator(key, index);
-  invalidatePostTransform(true, true);
-}
-
-void VertexTransformerObject::updatePointInAnimationInterpolator(VertexTransformer::Key key, uint32_t index, float time, float value) {
-  mVertexTransformer.updatePointInAnimationInterpolator(key, index, time, value);
-  invalidatePostTransform(true, true);
-}
-
-void VertexTransformerObject::setAnimationInterpolatorEasing(VertexTransformer::Key key, uint32_t index, Easing easing) {
-  mVertexTransformer.setAnimationInterpolatorEasing(key, index, easing);
-  invalidatePostTransform(true, true);
-}
-
 Interpolator<float> const& VertexTransformerObject::getInfluenceInterpolator(VertexTransformer::Key key) const {
   return mVertexTransformer.getInfluenceInterpolator(key);
-}
-
-Interpolator<float>& VertexTransformerObject::getInfluenceInterpolator(VertexTransformer::Key key) {
-  return mVertexTransformer.getInfluenceInterpolator(key);
-}
-
-void VertexTransformerObject::setInfluenceValues(VertexTransformer::Key key, vector<pair<float, float>> const& values) {
-  mVertexTransformer.setInfluenceValues(key, values);
-  invalidatePostTransform(true, true);
-}
-
-vector<Interpolator<float>::Point> const& VertexTransformerObject::getInfluenceValues(VertexTransformer::Key key) const {
-  return mVertexTransformer.getInfluenceValues(key);
-}
-
-uint32_t VertexTransformerObject::getNumInfluenceValues(VertexTransformer::Key key) const {
-  return mVertexTransformer.getNumInfluenceValues(key);
-}
-
-void VertexTransformerObject::updateInfluenceValue(VertexTransformer::Key key, uint32_t index, float time, float const& value) {
-  mVertexTransformer.updateInfluenceValue(key, index, time, value);
-  invalidatePostTransform(true, true);
-}
-
-void VertexTransformerObject::addInfluenceValue(VertexTransformer::Key key, float time, float value) {
-  mVertexTransformer.addInfluenceValue(key, time, value);
-  invalidatePostTransform(true, true);
-}
-
-void VertexTransformerObject::removeInfluenceValue(VertexTransformer::Key key, uint32_t index) {
-  mVertexTransformer.removeInfluenceValue(key, index);
-  invalidatePostTransform(true, true);
-}
-
-float VertexTransformerObject::getInfluenceValue(VertexTransformer::Key key, float t) const {
-  return mVertexTransformer.getInfluenceValue(key, t);
-}
-
-void VertexTransformerObject::getInfluenceScale(VertexTransformer::Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax) {
-  mVertexTransformer.getInfluenceScale(key, scaleMin, scaleMax);
-}
-
-void VertexTransformerObject::setInfluenceEasing(VertexTransformer::Key key, uint32_t segment, Easing easing) {
-  mVertexTransformer.setInfluenceEasing(key, segment, easing);
-  invalidatePostTransform(true, true);
-}
-
-vector<Interpolator<float>::Segment> const& VertexTransformerObject::getInfluenceSegments(VertexTransformer::Key key) const {
-  return mVertexTransformer.getInfluenceSegments(key);
-}
-
-vector<vector<Interpolator<float>::Point>> VertexTransformerObject::renderInfluence(VertexTransformer::Key key, float resolution) const {
-  return mVertexTransformer.renderInfluence(key, resolution);
-}
-
-void VertexTransformerObject::addPointToInfluenceInterpolator(VertexTransformer::Key key, float time, float value) {
-  mVertexTransformer.addPointToInfluenceInterpolator(key, time, value);
-  invalidatePostTransform(true, true);
-}
-
-void VertexTransformerObject::removePointFromInfluenceInterpolator(VertexTransformer::Key key, uint32_t index) {
-  mVertexTransformer.removePointFromInfluenceInterpolator(key, index);
-  invalidatePostTransform(true, true);
-}
-
-void VertexTransformerObject::updatePointInInfluenceInterpolator(VertexTransformer::Key key, uint32_t index, float time, float value) {
-  mVertexTransformer.updatePointInInfluenceInterpolator(key, index, time, value);
-  invalidatePostTransform(true, true);
-}
-
-void VertexTransformerObject::setInfluenceInterpolatorEasing(VertexTransformer::Key key, uint32_t index, Easing easing) {
-  mVertexTransformer.setInfluenceInterpolatorEasing(key, index, easing);
-  invalidatePostTransform(true, true);
 }
 
 void VertexTransformerObject::setTransformOperand(VertexTransformer::Key key, uint32_t index, uint32_t operandIndex, tTransform::OperandType operand) {

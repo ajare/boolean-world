@@ -312,12 +312,17 @@ bool deletePrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* pr
 }
 
 bool addKeyToInterpolator(Document* doc, string const& lerperName, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, float time, float value) {
-  if (lerperName == "Animation") {
-    primitive->addPointToAnimationInterpolator(key, time, value);
-  } else if (lerperName == "Influence") {
-    primitive->addPointToInfluenceInterpolator(key, time, value);
-  } else {
+  if (lerperName != "Animation" && lerperName != "Influence") {
     throw EditorException("Unknown interpolator name: " + lerperName);
+  }
+
+  {
+    auto mutation = primitive->mutate();
+    if (lerperName == "Animation") {
+      mutation.animation(key).addPoint(time, value);
+    } else {
+      mutation.influence(key).addPoint(time, value);
+    }
   }
 
   generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
@@ -325,12 +330,17 @@ bool addKeyToInterpolator(Document* doc, string const& lerperName, bw::core::Pri
 }
 
 bool removeKeyFromInterpolator(Document* doc, string const& lerperName, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index) {
-  if (lerperName == "Animation") {
-    primitive->removePointFromAnimationInterpolator(key, index);
-  } else if (lerperName == "Influence") {
-    primitive->removePointFromAnimationInterpolator(key, index);
-  } else {
+  if (lerperName != "Animation" && lerperName != "Influence") {
     throw EditorException("Unknown interpolator name: " + lerperName);
+  }
+
+  {
+    auto mutation = primitive->mutate();
+    if (lerperName == "Animation") {
+      mutation.animation(key).removePoint(index);
+    } else {
+      mutation.influence(key).removePoint(index);
+    }
   }
 
   generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
@@ -338,24 +348,35 @@ bool removeKeyFromInterpolator(Document* doc, string const& lerperName, bw::core
 }
 
 bool addAnimationKeyToPrimitive(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, float time, float value) {
-  primitive->addAnimationValue(key, time, value);
+  {
+    auto mutation = primitive->mutate();
+    mutation.animation(key).addPoint(time, value);
+  }
   generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool removeAnimationKeyFromPrimitive(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index) {
-  primitive->removeAnimationValue(key, index);
+  {
+    auto mutation = primitive->mutate();
+    mutation.animation(key).removePoint(index);
+  }
   generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool updateAnimationKeyInInterpolator(Document* doc, string const& lerperName, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index, float time, float value) {
-  if (lerperName == "Animation") {
-    primitive->updatePointInAnimationInterpolator(key, index, time, value);
-  } else if (lerperName == "Influence") {
-    primitive->updatePointInInfluenceInterpolator(key, index, time, value);
-  } else {
+  if (lerperName != "Animation" && lerperName != "Influence") {
     throw EditorException("Unknown interpolator name: " + lerperName);
+  }
+
+  {
+    auto mutation = primitive->mutate();
+    if (lerperName == "Animation") {
+      mutation.animation(key).updatePoint(index, time, value);
+    } else {
+      mutation.influence(key).updatePoint(index, time, value);
+    }
   }
 
   generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
@@ -363,12 +384,17 @@ bool updateAnimationKeyInInterpolator(Document* doc, string const& lerperName, b
 }
 
 bool setInterpolatorEasing(Document* doc, std::string const& lerperName, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index, bw::core::Easing easing) {
-  if (lerperName == "Animation") {
-    primitive->setAnimationEasing(key, index, easing);
-  } else if (lerperName == "Influence") {
-    primitive->setInfluenceEasing(key, index, easing);
-  } else {
+  if (lerperName != "Animation" && lerperName != "Influence") {
     throw EditorException("Unknown interpolator name: " + lerperName);
+  }
+
+  {
+    auto mutation = primitive->mutate();
+    if (lerperName == "Animation") {
+      mutation.animation(key).setEasing(index, easing);
+    } else {
+      mutation.influence(key).setEasing(index, easing);
+    }
   }
 
   generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);

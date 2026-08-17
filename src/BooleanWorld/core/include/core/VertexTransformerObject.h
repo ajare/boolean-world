@@ -57,12 +57,6 @@ protected:
 
   bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-  VertexTransformer* getVertexTransformer();
-
-  Interpolator<float>& getAnimationInterpolator(VertexTransformer::Key key);
-
-  Interpolator<float>& getInfluenceInterpolator(VertexTransformer::Key key);
-
   wp::Vector2 calculateWorldPosition() const;
 
   uint32_t calculateAnimationValues(double time);
@@ -70,6 +64,26 @@ protected:
   wp::Vector2 transformVertex(wp::Vector2 const& v, bool* cacheChanged) const;
 
 public:
+  class AnimatorMutation {
+    friend class VertexTransformerObject;
+
+  private:
+    VertexTransformerObject& mObject;
+
+    explicit AnimatorMutation(VertexTransformerObject& object);
+
+  public:
+    AnimatorMutation(AnimatorMutation const&) = delete;
+
+    AnimatorMutation& operator=(AnimatorMutation const&) = delete;
+
+    ~AnimatorMutation();
+
+    Interpolator<float>& animation(VertexTransformer::Key key);
+
+    Interpolator<float>& influence(VertexTransformer::Key key);
+  };
+
   VertexTransformerObject();
 
   VertexTransformerObject(VertexTransformerObject const& other);
@@ -122,76 +136,13 @@ public:
   float getInfluenceEyeAngleOffset() const;
 
   //
-  // Animation interpolators
+  // Interpolators
   //
-  void setAnimationInterpolatorDefaultStructure(VertexTransformer::Key key, std::vector<Interpolator<float>::Point> const& points, std::vector<Interpolator<float>::Segment> const& segments, bool setToCurrent);
+  [[nodiscard]] AnimatorMutation mutate();
 
   Interpolator<float> const& getAnimationInterpolator(VertexTransformer::Key key) const;
 
-  void setAnimationValues(VertexTransformer::Key key, std::vector<std::pair<float, float>> const& values);
-
-  std::vector<Interpolator<float>::Point> const& getAnimationValues(VertexTransformer::Key key) const;
-
-  uint32_t getNumAnimationValues(VertexTransformer::Key key) const;
-
-  void updateAnimationValue(VertexTransformer::Key key, uint32_t index, float time, float const& value);
-
-  void addAnimationValue(VertexTransformer::Key key, float time, float value);
-
-  void removeAnimationValue(VertexTransformer::Key key, uint32_t index);
-
-  float getAnimationValue(VertexTransformer::Key key, float t) const;
-
-  void getAnimationScale(VertexTransformer::Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax);
-
-  void setAnimationEasing(VertexTransformer::Key key, uint32_t segment, Easing easing);
-
-  std::vector<Interpolator<float>::Segment> const& getAnimationSegments(VertexTransformer::Key key) const;
-
-  std::vector<std::vector<Interpolator<float>::Point>> renderAnimation(VertexTransformer::Key key, float resolution) const;
-
-  void addPointToAnimationInterpolator(VertexTransformer::Key key, float time, float value);
-
-  void removePointFromAnimationInterpolator(VertexTransformer::Key key, uint32_t index);
-
-  void updatePointInAnimationInterpolator(VertexTransformer::Key key, uint32_t index, float time, float value);
-
-  void setAnimationInterpolatorEasing(VertexTransformer::Key key, uint32_t index, Easing easing);
-
-  //
-  // Influence interpolators
-  //
   Interpolator<float> const& getInfluenceInterpolator(VertexTransformer::Key key) const;
-
-  void setInfluenceValues(VertexTransformer::Key key, std::vector<std::pair<float, float>> const& values);
-
-  std::vector<Interpolator<float>::Point> const& getInfluenceValues(VertexTransformer::Key key) const;
-
-  uint32_t getNumInfluenceValues(VertexTransformer::Key key) const;
-
-  void updateInfluenceValue(VertexTransformer::Key key, uint32_t index, float time, float const& value);
-
-  void addInfluenceValue(VertexTransformer::Key key, float time, float value);
-
-  void removeInfluenceValue(VertexTransformer::Key key, uint32_t index);
-
-  float getInfluenceValue(VertexTransformer::Key key, float t) const;
-
-  void getInfluenceScale(VertexTransformer::Key key, wp::Vector2* scaleMin, wp::Vector2* scaleMax);
-
-  void setInfluenceEasing(VertexTransformer::Key key, uint32_t segment, Easing easing);
-
-  std::vector<Interpolator<float>::Segment> const& getInfluenceSegments(VertexTransformer::Key key) const;
-
-  std::vector<std::vector<Interpolator<float>::Point>> renderInfluence(VertexTransformer::Key key, float resolution) const;
-
-  void addPointToInfluenceInterpolator(VertexTransformer::Key key, float time, float value);
-
-  void removePointFromInfluenceInterpolator(VertexTransformer::Key key, uint32_t index);
-
-  void updatePointInInfluenceInterpolator(VertexTransformer::Key key, uint32_t index, float time, float value);
-
-  void setInfluenceInterpolatorEasing(VertexTransformer::Key key, uint32_t index, Easing easing);
 
   //
   // Transform flows

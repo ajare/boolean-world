@@ -122,8 +122,11 @@ void primitiveCopiesPreviousEntityInputs() {
       bw::core::Primitive::Operation::Union,
       bw::core::Primitive::FillRule::NonZero,
       1.0f);
-  source.setAnimationValues(bw::core::VertexTransformer::Key::Scale,
-                            {{0.0f, 1.0f}, {1.0f, 2.0f}});
+  {
+    auto mutation = source.mutate();
+    mutation.animation(bw::core::VertexTransformer::Key::Scale)
+        .setPoints({{0.0f, 1.0f}, {1.0f, 2.0f}});
+  }
   source.setInputs({3.0f, 4.0f}, 30.0f, nullptr);
 
   bw::core::RectanglePolygon copy(source);

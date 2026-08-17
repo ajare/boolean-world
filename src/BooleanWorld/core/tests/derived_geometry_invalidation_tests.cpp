@@ -3,6 +3,8 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <core/MeshPrimitive.h>
@@ -23,6 +25,30 @@ void requireNear(float actual, float expected, std::string const& message) {
               ", got " + std::to_string(actual));
 }
 
+class MutationProbe final : public bw::core::VertexTransformerObject {
+public:
+  mutable uint32_t invalidationCount{0};
+  mutable bool recalculatedBounds{false};
+  mutable bool notifiedWorld{false};
+
+protected:
+  void invalidatePostTransform(bool recalculateBounds, bool notifyWorld) const override {
+    ++invalidationCount;
+    recalculatedBounds = recalculateBounds;
+    notifiedWorld = notifyWorld;
+  }
+
+  void notifyWorldChanged() const override {
+  }
+};
+
+using Key = bw::core::VertexTransformer::Key;
+
+static_assert(std::is_same_v<
+                  decltype(std::declval<MutationProbe&>().getAnimationInterpolator(Key::Scale)),
+                  bw::core::Interpolator<float> const&>,
+              "read access must not allow animator mutation without a scope");
+
 bw::core::MeshPrimitive makeAsymmetricMesh() {
   std::vector<bw::core::ComplexPolygon> const polygons{
       {{{{0.0f, 0.0f}}, {{2.0f, 0.0f}}, {{0.0f, 1.0f}}}}};
@@ -30,13 +56,55 @@ bw::core::MeshPrimitive makeAsymmetricMesh() {
       bw::core::Primitive::Operation::Union,
       bw::core::Primitive::FillRule::NonZero,
       polygons);
-  primitive.setAnimationValues(bw::core::VertexTransformer::Key::Scale,
-                               {{0.0f, 1.0f}, {1.0f, 1.0f}});
+  {
+    auto mutation = primitive.mutate();
+    mutation.animation(bw::core::VertexTransformer::Key::Scale)
+        .setPoints({{0.0f, 1.0f}, {1.0f, 1.0f}});
+  }
   primitive.setSize(1.0f, 1.0f);
   primitive.setFlags(primitive.getFlags() | BW_PRIMITIVE_EXACT_BOUNDS_FLAG);
   primitive.setPosition({3.0f, 4.0f});
   primitive.updateVertexPositions();
   return primitive;
+}
+
+void animatorMutationScopeInvalidatesOnce() {
+  MutationProbe probe;
+
+  {
+    auto mutation = probe.mutate();
+    mutation.animation(Key::Scale).setPoints({{0.0f, 2.0f}, {1.0f, 2.0f}});
+    mutation.influence(Key::Scale).setPoints({{0.0f, 0.5f}, {1.0f, 0.5f}});
+    require(probe.invalidationCount == 0,
+            "animator mutation invalidated before the scope completed");
+  }
+
+  require(probe.invalidationCount == 1,
+          "one animator mutation scope did not produce one invalidation");
+  require(probe.recalculatedBounds,
+          "animator mutation did not request bounds recalculation");
+  require(probe.notifiedWorld,
+          "animator mutation did not notify the world");
+  requireNear(probe.getAnimationInterpolator(Key::Scale).getValue(0.0f), 2.0f,
+              "animation interpolator mutation was not retained");
+  requireNear(probe.getInfluenceInterpolator(Key::Scale).getValue(0.0f), 0.5f,
+              "influence interpolator mutation was not retained");
+}
+
+void animatorMutationScopeInvalidatesDuringUnwinding() {
+  MutationProbe probe;
+
+  try {
+    auto mutation = probe.mutate();
+    mutation.animation(Key::Angle).setPoints({{0.0f, 45.0f}, {1.0f, 45.0f}});
+    throw std::runtime_error("abort edit");
+  } catch (std::runtime_error const&) {
+  }
+
+  require(probe.invalidationCount == 1,
+          "animator mutation was not invalidated while unwinding");
+  requireNear(probe.getAnimationInterpolator(Key::Angle).getValue(0.0f), 45.0f,
+              "animation mutation was lost while unwinding");
 }
 
 void orientationInvalidatesExactBounds() {
@@ -75,9 +143,11 @@ void rotatedCopyRefreshesTransformedVertices() {
 
 int main() {
   try {
+    animatorMutationScopeInvalidatesOnce();
+    animatorMutationScopeInvalidatesDuringUnwinding();
     orientationInvalidatesExactBounds();
     rotatedCopyRefreshesTransformedVertices();
-    std::cout << "Direct primitive mutations invalidate derived geometry\n";
+    std::cout << "Scoped animator and primitive mutations invalidate derived geometry\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';

@@ -1225,7 +1225,7 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
   }
 
   // Angle
-  float primitiveAngle = ghost->getAnimationValue(bw::core::VertexTransformer::Key::Angle, 0.0f);
+  float primitiveAngle = ghost->getAnimationInterpolator(bw::core::VertexTransformer::Key::Angle).getValue(0.0f);
   widgets::HelpMarker("Initial angle.  This will create two keyframes in the angle interpolator at times 0 and 1, set to this value.");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(128);
@@ -2146,7 +2146,7 @@ void renderAnimatedProperty(editor::Document* doc, bw::core::Primitive* primitiv
 
   float proxyValue = primitive->transformT(key, globalTime);
   float curValue = primitive->getCurCapturedValue(key);
-  bw::core::Primitive const* constPrim = const_cast<bw::core::Primitive*>(primitive);
+  bw::core::Primitive const* constPrim = primitive;
 
   renderInterpolator(doc, primitive, key, constPrim->getAnimationInterpolator(key), "Animation", proxyValue, curValue);
   ImGui::Separator();
@@ -3359,10 +3359,10 @@ void renderDebug(
           ImGui::Text("Trans orbit angle out: %3.2f", orbitAngleOut);
           ImGui::Text("Trans orbit dist out: %3.2f", orbitDistOut);
 
-          auto scaleAnim = primitive->getAnimationValue(bw::core::VertexTransformer::Key::Scale, scaleOut);
-          auto angleAnim = primitive->getAnimationValue(bw::core::VertexTransformer::Key::Angle, angleOut);
-          auto orbitAngleAnim = primitive->getAnimationValue(bw::core::VertexTransformer::Key::OrbitAngle, orbitAngleOut);
-          auto orbitDistAnim = primitive->getAnimationValue(bw::core::VertexTransformer::Key::OrbitDistance, orbitDistOut);
+          auto scaleAnim = primitive->getAnimationInterpolator(bw::core::VertexTransformer::Key::Scale).getValue(scaleOut);
+          auto angleAnim = primitive->getAnimationInterpolator(bw::core::VertexTransformer::Key::Angle).getValue(angleOut);
+          auto orbitAngleAnim = primitive->getAnimationInterpolator(bw::core::VertexTransformer::Key::OrbitAngle).getValue(orbitAngleOut);
+          auto orbitDistAnim = primitive->getAnimationInterpolator(bw::core::VertexTransformer::Key::OrbitDistance).getValue(orbitDistOut);
 
           ImGui::Text("Anim scale: %3.2f", scaleAnim);
           ImGui::Text("Anim angle: %3.2f", angleAnim);
@@ -3371,10 +3371,10 @@ void renderDebug(
 
           float infl = BW_INTERPOLATOR_MAX_DISTANCE - primitive->getInputs().entityInfluenceDistance;
 
-          auto scaleInfl = scaleAnim * primitive->getInfluenceValue(bw::core::VertexTransformer::Key::Scale, infl);
-          auto angleInfl = angleAnim * primitive->getInfluenceValue(bw::core::VertexTransformer::Key::Angle, infl);
-          auto orbitAngleInfl = orbitAngleAnim * primitive->getInfluenceValue(bw::core::VertexTransformer::Key::OrbitAngle, infl);
-          auto orbitDistInfl = orbitDistAnim * primitive->getInfluenceValue(bw::core::VertexTransformer::Key::OrbitDistance, infl);
+          auto scaleInfl = scaleAnim * primitive->getInfluenceInterpolator(bw::core::VertexTransformer::Key::Scale).getValue(infl);
+          auto angleInfl = angleAnim * primitive->getInfluenceInterpolator(bw::core::VertexTransformer::Key::Angle).getValue(infl);
+          auto orbitAngleInfl = orbitAngleAnim * primitive->getInfluenceInterpolator(bw::core::VertexTransformer::Key::OrbitAngle).getValue(infl);
+          auto orbitDistInfl = orbitDistAnim * primitive->getInfluenceInterpolator(bw::core::VertexTransformer::Key::OrbitDistance).getValue(infl);
 
           ImGui::Text("Influenced scale: %3.2f", scaleInfl);
           ImGui::Text("Influenced angle: %3.2f", angleInfl);
