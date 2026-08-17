@@ -90,4 +90,14 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(willpower_vector2_assignment_semantics_tests)
     add_test(NAME willpower_vector2_assignment_semantics
              COMMAND willpower_vector2_assignment_semantics_tests)
+
+    add_executable(willpower_geometric_epsilon_tests
+        tests/geometric_epsilon_tests.cpp)
+    target_link_libraries(willpower_geometric_epsilon_tests PRIVATE Willpower.Common)
+    target_compile_features(willpower_geometric_epsilon_tests PRIVATE cxx_std_20)
+    bw_target_defaults(willpower_geometric_epsilon_tests)
+    bw_output_dirs(willpower_geometric_epsilon_tests)
+    bw_deploy_runtime_dlls(willpower_geometric_epsilon_tests)
+    add_test(NAME willpower_geometric_epsilon
+             COMMAND willpower_geometric_epsilon_tests)
 endif()

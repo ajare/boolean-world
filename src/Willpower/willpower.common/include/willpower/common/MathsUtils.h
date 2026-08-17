@@ -29,7 +29,7 @@ public:
   };
 
 public:
-  static float Epsilon;
+  inline static constexpr float Epsilon = 0.0001f;
 
 private:
   inline static float xIntersect(Vector2 const& line0v0, Vector2 const& line0v1, Vector2 const& line1v0, Vector2 const& line1v1) {

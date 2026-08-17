@@ -16,8 +16,6 @@ namespace WP_NAMESPACE {
 
 using namespace std;
 
-float MathsUtils::Epsilon = 0.0001f;
-
 int MathsUtils::modulo(int x, int n) {
   return (x % n + n) % n;
 }
@@ -644,7 +642,7 @@ MathsUtils::LineIntersectionType MathsUtils::lineIntersectsLine(Vector2 const& l
   float det = s0.x * s1.y - s1.x * s0.y;
 
   // Are the lines parallel?
-  if (fabs(det) < Epsilon) {
+  if (fabs(det) < Epsilon * max(s0.lengthSq(), s1.lengthSq())) {
     // Are they coincident?
     float n0 = fabs(-s0.y * (line0v0.x - line1v0.x) + s0.x * (line0v0.y - line1v0.y));
     float n1 = fabs(s1.x * (line0v0.y - line1v0.y) - s1.y * (line0v0.x - line1v0.x));
