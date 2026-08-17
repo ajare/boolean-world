@@ -46,6 +46,11 @@ void WorldDataGenerator::copyFrom(WorldDataGenerator const& other) {
   mViewTriangle = other.mViewTriangle;
 }
 
+WorldDataGenerator* WorldDataGenerator::copyForWorld(World const* world) {
+  BW_UNUSED(world);
+  return copy();
+}
+
 void WorldDataGenerator::setLayerSelection(
     LayerSelection const& selection) {
   if (selection.none()) {

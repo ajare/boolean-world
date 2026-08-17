@@ -137,6 +137,8 @@ public:
 
   virtual WorldDataGenerator* copy() override;
 
+  WorldDataGenerator* copyForWorld(World const* world) override;
+
   void setAlwaysUpdateVertices(bool update);
 
   bool getAlwaysUpdateVertices() const;

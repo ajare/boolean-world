@@ -44,13 +44,19 @@ World::World(float size, float gridSize)
   }
 }
 
-World::World(World const& other) {
+World::World(World const& other)
+    : mDataGenerator(nullptr), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr) {
   mPrimitiveCellMetadataUpdater = bind(&World::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   copyFrom(other);
 }
 
 World& World::operator=(World const& other) {
+  if (this == &other) {
+    return *this;
+  }
+
+  clear();
   mPrimitiveCellMetadataUpdater = bind(&World::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   copyFrom(other);
@@ -99,25 +105,41 @@ void World::copyFrom(World const& other) {
     mTriggerLookupGrid = nullptr;
   }
 
-  // Create copies of primitives, making sure to instantiate correct subclass
-  map<Primitive*, Primitive*> primitiveMap;
-  for (auto primitive : other.mPrimitives) {
-    auto p = primitive->copy();
-
-    primitiveMap[primitive] = p;
-
-    addPrimitive(p);
+  // Trigger lines must exist before primitives so copied transform inputs can
+  // refer to this World's collection immediately.
+  for (auto triggerLine : other.mTriggerLines) {
+    auto tl = make_unique<WorldTriggerLine>(*triggerLine);
+    addTriggerLine(tl.get());
+    tl.release();
   }
 
-  for (auto triggerLine : other.mTriggerLines) {
-    auto tl = new WorldTriggerLine(*triggerLine);
+  // Clone every primitive before adding any of them. This lets parent links be
+  // remapped as a complete graph, regardless of primitive ordering.
+  map<VertexTransformerObject const*, VertexTransformerObject*> primitiveMap;
+  vector<unique_ptr<Primitive>> primitives;
+  primitives.reserve(other.mPrimitives.size());
+  for (auto primitive : other.mPrimitives) {
+    auto p = unique_ptr<Primitive>(primitive->copy());
+    p->mWorld = nullptr;
+    p->mInputs.triggerLines = &mTriggerLines;
+    primitiveMap[primitive] = p.get();
+    primitives.push_back(move(p));
+  }
 
-    addTriggerLine(tl);
+  for (size_t i = 0; i < primitives.size(); ++i) {
+    auto const* sourceParent = other.mPrimitives[i]->mParent;
+    auto const parent = primitiveMap.find(sourceParent);
+    primitives[i]->mParent = parent != primitiveMap.end() ? parent->second : nullptr;
+  }
+
+  for (auto& primitive : primitives) {
+    addPrimitive(primitive.get());
+    primitive.release();
   }
 
   // Data generator
   if (other.mDataGenerator) {
-    mDataGenerator = other.mDataGenerator->copy();
+    mDataGenerator = other.mDataGenerator->copyForWorld(this);
   } else {
     mDataGenerator = nullptr;
   }

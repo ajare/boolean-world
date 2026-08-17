@@ -43,6 +43,7 @@ public:
   WorldDataGenerator& operator=(WorldDataGenerator const& other);
 
   virtual WorldDataGenerator* copy() = 0;
+  virtual WorldDataGenerator* copyForWorld(World const* world);
   virtual WorldDataPtr getWorldData(World const* world) = 0;
 
   void setLayerSelection(LayerSelection const& selection);

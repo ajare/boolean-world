@@ -59,6 +59,29 @@ WorldDataGenerator* DynamicWorldDataGenerator::copy() {
   return new DynamicWorldDataGenerator(*this);
 }
 
+WorldDataGenerator* DynamicWorldDataGenerator::copyForWorld(
+    World const* world) {
+  auto result = make_unique<DynamicWorldDataGenerator>(*this);
+  result->mWorld = world;
+
+  auto remapPrimitives = [world](vector<Primitive*>& primitives) {
+    for (auto& primitive : primitives) {
+      auto const id = primitive ? primitive->getId() : ~0u;
+      primitive = id < world->getNumPrimitives()
+                      ? world->getPrimitives()[id]
+                      : nullptr;
+    }
+    erase(primitives, nullptr);
+  };
+
+  remapPrimitives(result->mActiveClipping.primitives);
+  remapPrimitives(result->mActiveClipping.updatedPrimitives);
+  remapPrimitives(result->mNextClipping.primitives);
+  remapPrimitives(result->mNextClipping.updatedPrimitives);
+
+  return result.release();
+}
+
 void DynamicWorldDataGenerator::setAllowCommitIfVisible(bool allow) {
   mAllowCommitIfVisible = allow;
 }
