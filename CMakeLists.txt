@@ -4,8 +4,9 @@ project(BooleanWorld LANGUAGES CXX)
 
 # --------------------------------------------------------------------------
 # This build replaces four Visual Studio solutions: Willpower.sln, AppLib.sln,
-# BooleanWorld.sln and Launcher.sln. The two git submodules under ext/ keep
-# their own solutions and are consumed as prebuilt imported libraries - see
+# BooleanWorld.sln and Launcher.sln. Willpower and MassivePolyPusher keep their
+# own builds and are consumed as prebuilt imported libraries. Only projects
+# under src/ are included in the generated BooleanWorld solution. See
 # cmake/Submodules.cmake and cmake/Prebuilt.cmake.
 # --------------------------------------------------------------------------
 
@@ -42,12 +43,11 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include(CTest)   # must be at top level for ctest to find tests in subdirectories
 
 include(Submodules)
-bw_ensure_mpp()
+bw_ensure_willpower()
 
 include(Prebuilt)
 include(Helpers)
 
-add_subdirectory(src/Willpower)
 add_subdirectory(src/AppLib)
 add_subdirectory(src/BooleanWorld)
 add_subdirectory(src/Launcher)

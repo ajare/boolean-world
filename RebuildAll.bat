@@ -3,10 +3,10 @@ REM Configures and builds BooleanWorld with CMake.
 REM
 REM Usage: RebuildAll.bat [Debug|Release]     (default: Release)
 REM
-REM MassivePolyPusher (ext\massive-poly-pusher) keeps its own CMake build and is
-REM never modified by this project. CMake configures and builds it on demand if
-REM its libraries are missing - see cmake\Submodules.cmake. That first build
-REM fetches GLEW, SDL3, assimp and yaml-cpp and takes several minutes.
+REM Willpower and its nested MassivePolyPusher dependency keep their own CMake
+REM build under ext\willpower\build. This project links their binaries rather
+REM than adding their projects to the generated solution. CMake builds them on
+REM demand if their libraries are missing - see cmake\Submodules.cmake.
 
 SETLOCAL
 
@@ -24,8 +24,8 @@ IF ERRORLEVEL 1 (
     EXIT /B 1
 )
 
-IF NOT EXIST "%~dp0ext\massive-poly-pusher\mpp\include" (
-    echo ERROR: ext\massive-poly-pusher is empty.
+IF NOT EXIST "%~dp0ext\willpower\CMakeLists.txt" (
+    echo ERROR: ext\willpower is empty.
     echo Run: git submodule update --init --recursive
     EXIT /B 1
 )

@@ -10,7 +10,7 @@ a prefix rule silently skips them.
 Usage:
     python tools/format.py [--check] [library ...]
 
-    library   Willpower | AppLib | Launcher | BooleanWorld   (default: all)
+    library   AppLib | Launcher | BooleanWorld   (default: all)
     --check   report files that would change; do not rewrite
 """
 import os
@@ -22,7 +22,6 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLANG_FORMAT = r"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\Llvm\x64\bin\clang-format.exe"
 
 LIBRARIES = {
-    "Willpower": [os.path.join("src", "Willpower")],
     "AppLib": [os.path.join("src", "AppLib")],
     "Launcher": [os.path.join("src", "Launcher")],
     "BooleanWorld": [os.path.join("src", "BooleanWorld")],
@@ -53,14 +52,7 @@ _VENDOR_BASENAMES = {
 }
 
 # Individually vendored files elsewhere in the tree.
-VENDOR_FILES = [
-    # Jochen Kalmbach's StackWalker.
-    os.path.join("src", "Willpower", "willpower.common", "include", "willpower", "common", "StackWalker.h"),
-    os.path.join("src", "Willpower", "willpower.common", "src", "StackWalker.cpp"),
-    # Angus Johnson's independent Clipper 1 implementation.
-    os.path.join("src", "Willpower", "willpower.geometry", "include", "willpower", "geometry", "clipper.hpp"),
-    os.path.join("src", "Willpower", "willpower.geometry", "src", "clipper.cpp"),
-]
+VENDOR_FILES = []
 
 SKIP_DIRS = {"obj", "bin", "lib", ".vs", "build-cmake", "ext", "vendor", "__pycache__", ".git"}
 EXTENSIONS = (".h", ".hpp", ".cpp", ".inl")

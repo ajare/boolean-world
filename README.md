@@ -3,8 +3,8 @@
 2D game engine and the BooleanWorld applications.
 
 Originally extracted from the
-[Willpower](https://wtmrsh@bitbucket.org/wtmrsh/willpower.git) repository, and
-since moved onto the same engine stack as
+[Willpower](https://github.com/ajare/willpower) repository, which is consumed as
+a submodule under `ext/willpower`, and since moved onto the same engine stack as
 [tungsten-oxide](https://github.com/ajare) — see
 [MIGRATION-PLAN.md](MIGRATION-PLAN.md) for the original extraction and
 [TUNGSTEN-MIGRATION-PLAN.md](TUNGSTEN-MIGRATION-PLAN.md) for the engine move.
@@ -13,8 +13,10 @@ since moved onto the same engine stack as
 
     git clone --recurse-submodules <url>
 
-`ext/massive-poly-pusher` has its own nested submodules (assimp, glew, sdl,
-utils), so a non-recursive clone will not build.
+`ext/willpower` has nested submodules, including MassivePolyPusher, so a
+non-recursive clone will not build. For an existing clone, run:
+
+    git submodule update --init --recursive
 
 ## Building
 
@@ -30,18 +32,19 @@ Configurations are `Debug` and `Release`. Only `x64` is supported.
 `build-cmake/BooleanWorld.sln` can be opened in Visual Studio; `Launcher` is
 the startup project.
 
-### MassivePolyPusher is built separately
+### Submodule libraries are built separately
 
-`ext/massive-poly-pusher` keeps its own CMake build and is never modified by
-this project — it is consumed as a *build tree*: import libraries from
-`build/lib/<CONFIG>`, DLLs from `build/bin/<CONFIG>`. CMake configures and
-builds it on demand if its libraries are missing. That first build fetches
-GLEW, SDL3, assimp and yaml-cpp and takes several minutes.
+The generated BooleanWorld solution contains only projects under `src/`.
+Willpower and MassivePolyPusher are consumed as imported binaries from
+Willpower's standalone build tree under `ext/willpower/build`. CMake configures
+and builds Willpower on demand if its libraries are missing; Willpower builds
+its nested MassivePolyPusher dependency in the same tree. The first build takes
+several minutes.
 
-Pass `-DBW_BUILD_MPP=OFF` to manage it yourself:
+Pass `-DBW_BUILD_WILLPOWER=OFF` to manage the build yourself:
 
-    cmake -S ext/massive-poly-pusher -B ext/massive-poly-pusher/build -G "Visual Studio 18 2026" -A x64
-    cmake --build ext/massive-poly-pusher/build --config Release --parallel
+    cmake -S ext/willpower -B ext/willpower/build -G "Visual Studio 18 2026" -A x64 -DBUILD_TESTING=OFF
+    cmake --build ext/willpower/build --config Release --parallel
 
 `utils`, SDL3, GLEW and yaml-cpp all come from that tree. `vendor/` supplies
 only what MassivePolyPusher does not: spdlog, fmt, concurrencpp, entt, mapbox,

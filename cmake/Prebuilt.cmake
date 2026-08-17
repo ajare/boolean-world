@@ -1,7 +1,7 @@
 # Imported targets for everything this repo does NOT build:
 #
-#   - MassivePolyPusher (ext/massive-poly-pusher), which keeps its own CMake
-#     build and must not be modified. We consume its build tree: import
+#   - MassivePolyPusher (ext/willpower/ext/massive-poly-pusher), which keeps its
+#     own CMake build and must not be modified. We consume its build tree: import
 #     libraries under lib/<CONFIG>/, DLLs under bin/<CONFIG>/, and its
 #     FetchContent'd dependencies (GLEW, SDL3, yaml-cpp) alongside them.
 #     `utils` also comes from there now, via mpp's own ext/utils submodule.
@@ -10,17 +10,18 @@
 # Both follow the same convention: Release artefacts are unsuffixed, Debug
 # artefacts carry a trailing "d". Anything that does not is spelled out below.
 
-set(BW_EXT     "${BW_ROOT}/ext")
-set(BW_MPP     "${BW_EXT}/massive-poly-pusher")
-set(BW_VENDOR  "${BW_ROOT}/vendor")
+set(BW_EXT       "${BW_ROOT}/ext")
+set(BW_WILLPOWER "${BW_EXT}/willpower")
+set(BW_MPP       "${BW_WILLPOWER}/ext/massive-poly-pusher")
+set(BW_VENDOR    "${BW_ROOT}/vendor")
 set(BW_VENDOR_LIB "${BW_VENDOR}/lib/vs2026/x64")
 set(BW_VENDOR_BIN "${BW_VENDOR}/bin/vs2026/x64")
 
-include(MppBuildTree)
-bw_resolve_mpp_build_tree("${BW_MPP}")
-
+set(BW_WILLPOWER_LIB "${BW_WILLPOWER_BUILD_DIR}/lib")
+set(BW_WILLPOWER_BIN "${BW_WILLPOWER_BUILD_DIR}/bin")
 set(BW_MPP_LIB "${BW_MPP_BUILD_DIR}/lib")
 set(BW_MPP_BIN "${BW_MPP_BUILD_DIR}/bin")
+set(BW_MPP_GLEW_INCLUDE_DIR "${BW_MPP_BUILD_DIR}/_deps/glew-2.3.1/include")
 
 # bw_import_shared(<target> <lib-release> <lib-debug> [INCLUDE dirs...])
 function(bw_import_shared name rel_lib dbg_lib)
@@ -139,3 +140,33 @@ bw_vendor_lib(vendor::fsbank         fsbank_vc         fsbank_vc)
 # System libraries.
 add_library(vendor::opengl INTERFACE IMPORTED GLOBAL)
 target_link_libraries(vendor::opengl INTERFACE opengl32)
+
+# --------------------------------------------------------------------------
+# Willpower's standalone build tree.
+# --------------------------------------------------------------------------
+
+function(bw_import_willpower target module)
+    bw_import_shared(${target}
+        "${BW_WILLPOWER_LIB}/Release/${target}/${target}.lib"
+        "${BW_WILLPOWER_LIB}/Debug/${target}/${target}d.lib"
+        DLL_RELEASE "${BW_WILLPOWER_BIN}/Release/${target}/${target}.dll"
+        DLL_DEBUG "${BW_WILLPOWER_BIN}/Debug/${target}/${target}d.dll"
+        INCLUDE "${BW_WILLPOWER}/${module}/include")
+endfunction()
+
+bw_import_willpower(Willpower.Common willpower.common)
+bw_import_willpower(Willpower.Geometry willpower.geometry)
+bw_import_willpower(Willpower.Collide willpower.collide)
+bw_import_willpower(Willpower.Application willpower.application)
+bw_import_willpower(WillPower.Viz willpower.viz)
+
+target_link_libraries(Willpower.Common INTERFACE vendor::headers)
+target_link_libraries(Willpower.Geometry INTERFACE
+    Willpower.Common vendor::headers)
+target_link_libraries(Willpower.Collide INTERFACE
+    Willpower.Common Willpower.Geometry)
+target_link_libraries(Willpower.Application INTERFACE
+    Willpower.Common ext::mpp ext::mpp-mesh ext::mpp-program)
+target_link_libraries(WillPower.Viz INTERFACE
+    Willpower.Common Willpower.Collide
+    ext::mpp ext::mpp-mesh ext::mpp-helper ext::mpp-program)

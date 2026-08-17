@@ -3,7 +3,7 @@
 **Date:** 2026-08-16
 **Commit:** `1183ca7` (master)
 **Scope:** the project's own C++ — 537 files, ~66,000 lines across `src/BooleanWorld`
-(`core`, `app`, `editor`, `common`, `profiler`, `core-dll`), `src/Willpower`, `src/AppLib`
+(`core`, `app`, `editor`, `common`, `profiler`, `core-dll`), `ext/willpower`, `src/AppLib`
 and `src/Launcher`.
 
 **Excluded:** `ext/` and `vendor/`, plus vendored third-party code identified by the same
@@ -291,8 +291,8 @@ void setPrimitiveDefaultMaterial(uint32_t materialIndex, bw::core::MaterialDefin
 **Priority** P1 · **Difficulty** Small · **Area** willpower / editor
 
 **Where:**
-- `src/Willpower/willpower.common/src/AccelerationGrid.cpp:249`
-- `src/Willpower/willpower.common/include/willpower/common/ExtendedAccelerationGrid.h:752`
+- `ext/willpower/willpower.common/src/AccelerationGrid.cpp:249`
+- `ext/willpower/willpower.common/include/willpower/common/ExtendedAccelerationGrid.h:752`
 - `src/BooleanWorld/editor/src/Document.cpp:108-127` (both `addSelectedPrimitiveIndices` and
   `removeSelectedPrimitiveIndices`)
 
@@ -842,7 +842,7 @@ The two-point minimum is the same invariant `removePoint` already enforces from 
 
 **Priority** P2 · **Difficulty** Trivial · **Area** willpower
 
-**Where:** `src/Willpower/willpower.common/src/MathsUtils.cpp:229-240`
+**Where:** `ext/willpower/willpower.common/src/MathsUtils.cpp:229-240`
 
 **Problem.** The body is `area += (v[j].x + v[i].x) - (v[j].y - v[i].y);`. The shoelace formula
 needs a product: `(v[j].x + v[i].x) * (v[j].y - v[i].y)`. As written the function sums coordinates
@@ -900,7 +900,7 @@ this object at all is the deeper problem.
 
 **Priority** P2 · **Difficulty** Small · **Area** willpower
 
-**Where:** `src/Willpower/willpower.collide/src/Simulation.cpp:142-201`
+**Where:** `ext/willpower/willpower.collide/src/Simulation.cpp:142-201`
 
 **Problem.** Inside the `Intersecting` case, `startPoint` and `endPoint` are assigned by a nested
 switch on `hit1.getFlags()` with cases for `None`, `HitEnters` and `HitExits` only, and the inner
@@ -999,9 +999,9 @@ pass and rebuilding the affected grid entries at the end.
 **Where:**
 - `src/BooleanWorld/core/src/World.cpp:720` (`replacePrimitive`)
 - `src/BooleanWorld/core/src/World.cpp:813` (`replaceTriggerLine`)
-- `src/Willpower/willpower.common/include/willpower/common/ExtendedAccelerationGrid.h:471`
-- `src/Willpower/willpower.geometry/src/Mesh.cpp:446`, `:1694`
-- `src/Willpower/willpower.geometry/src/MeshOperations.cpp:1204`, `:1980`
+- `ext/willpower/willpower.common/include/willpower/common/ExtendedAccelerationGrid.h:471`
+- `ext/willpower/willpower.geometry/src/Mesh.cpp:446`, `:1694`
+- `ext/willpower/willpower.geometry/src/MeshOperations.cpp:1204`, `:1980`
 
 **Problem.** Seven sites do `catch (exception& e) { … throw e; }`. That copy-constructs a plain
 `std::exception`, discarding the derived type and, on MSVC, the message — so a
@@ -1347,7 +1347,7 @@ polygon.push_back({double(vertex.x) / FixedPointUnitsPerWorldUnit,
 
 **Priority** P3 · **Difficulty** Trivial · **Area** willpower
 
-**Where:** `src/Willpower/willpower.common/include/willpower/common/Vector2.h:381-392`,
+**Where:** `ext/willpower/willpower.common/include/willpower/common/Vector2.h:381-392`,
 `src/BooleanWorld/app/src/WorldCollisionSim.cpp:616-623`
 
 **Problem.** `normalise()` leaves the vector untouched when its length is at or below `1e-8` and
@@ -1366,7 +1366,7 @@ to return `bool` with the length available separately, so the ambiguity cannot r
 
 **Priority** P3 · **Difficulty** Trivial · **Area** willpower
 
-**Where:** `src/Willpower/willpower.collide/src/Simulation.cpp:381-392`
+**Where:** `ext/willpower/willpower.collide/src/Simulation.cpp:381-392`
 
 **Problem.** `lineBounds.setPosition(v0); lineBounds.setSize(v1 - v0);` produces a box whose min
 exceeds its max whenever `v1` is left of or below `v0`. `getExtents` then reports an inverted
@@ -1386,7 +1386,7 @@ lineBounds.setSize({std::abs(v1.x - v0.x), std::abs(v1.y - v0.y)});
 
 **Priority** P3 · **Difficulty** Trivial · **Area** willpower
 
-**Where:** `src/Willpower/willpower.common/src/MathsUtils.cpp:670-681`, and the same pattern at
+**Where:** `ext/willpower/willpower.common/src/MathsUtils.cpp:670-681`, and the same pattern at
 `:1003` (`triangleIntersectsConvexPolygon`) and `:1020-1022`
 (`convexPolygonIntersectsConvexPolygon`)
 
@@ -1616,7 +1616,7 @@ time, or delete the block.
 **Where:**
 - `src/BooleanWorld/app/src/StatePlayBooleanWorld.cpp:126-137` (`setupPlayerCollision`)
 - `src/BooleanWorld/app/src/StatePlayBooleanWorld.cpp:189-194` (`destroyGameObjects`)
-- `src/Willpower/willpower.collide/src/Simulation.cpp:23-34` (destructor)
+- `ext/willpower/willpower.collide/src/Simulation.cpp:23-34` (destructor)
 
 **Problem.** `setupPlayerCollision` news a `ColliderCircle`, hands it to `WorldCollisionSim` (whose
 base destructor deletes all colliders) and also to `EntityHandler::setupCollisions`, which stores
@@ -1643,8 +1643,8 @@ mPlayerCollider = nullptr;
 
 **Priority** P3 · **Difficulty** Small · **Area** willpower
 
-**Where:** `src/Willpower/willpower.collide/include/willpower/collide/Simulation.h:484`,
-`src/Willpower/willpower.collide/src/Simulation.cpp:270-276`
+**Where:** `ext/willpower/willpower.collide/include/willpower/collide/Simulation.h:484`,
+`ext/willpower/willpower.collide/src/Simulation.cpp:270-276`
 
 **Problem.** `mColliders` is a `std::set<Collider*>`, so `update` resolves colliders in address
 order — which varies between runs and between allocator states. With one collider this is
@@ -1661,7 +1661,7 @@ assigns before iterating.
 
 **Priority** P3 · **Difficulty** Trivial · **Area** willpower
 
-**Where:** `src/Willpower/willpower.collide/include/willpower/collide/Simulation.h:483-558`
+**Where:** `ext/willpower/willpower.collide/include/willpower/collide/Simulation.h:483-558`
 
 **Problem.** The class owns two `AccelerationGrid*` and deletes every `Collider*` in its set, but
 declares neither a copy constructor nor a copy assignment operator and does not delete them. Any
@@ -1684,7 +1684,7 @@ and add `mNumSweepChecks(0)` to the initialiser list.
 
 **Priority** P3 · **Difficulty** Small · **Area** willpower
 
-**Where:** `src/Willpower/willpower.common/src/AccelerationGrid.cpp:95-135`, `:137-149`
+**Where:** `ext/willpower/willpower.common/src/AccelerationGrid.cpp:95-135`, `:137-149`
 
 **Problem.** `mIndicesToCells[index] = IndexCollection();` overwrites the record of which cells the
 index currently occupies without removing it from them. The item stays in its old cells forever,
@@ -1705,7 +1705,7 @@ whereas the `Extended` variant throws properly.
 **Priority** P3 · **Difficulty** Trivial · **Area** willpower
 
 **Where:**
-`src/Willpower/willpower.common/include/willpower/common/ExtendedAccelerationGrid.h:460-480`
+`ext/willpower/willpower.common/include/willpower/common/ExtendedAccelerationGrid.h:460-480`
 
 **Problem.** `removeItemFromCell` wraps `cell.indices.erase(index)` in a try/catch to set
 `foundItem = false`. `std::set::erase(key)` does not throw and returns a count, so `foundItem` is
