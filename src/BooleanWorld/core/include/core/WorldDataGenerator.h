@@ -13,6 +13,9 @@
 namespace bw::core {
 class World;
 
+[[nodiscard]] BW_API std::vector<Primitive*> selectAndOrderPrimitives(
+    World const& world, LayerSelection const& selection);
+
 class WorldDataGenerator {
 public:
   struct SortPrimitivesByPriority {
@@ -33,7 +36,6 @@ private:
 
 protected:
   void copyFrom(WorldDataGenerator const& other);
-  std::vector<Primitive*> getPrimitives(World const* world) const;
 
 public:
   WorldDataGenerator();

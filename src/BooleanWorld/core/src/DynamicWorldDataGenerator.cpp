@@ -165,10 +165,6 @@ std::vector<Primitive*> DynamicWorldDataGenerator::preparePrimitives(vector<Prim
 
   updatedPrimitives.reserve(primitives.size());
 
-  stable_sort(
-      primitives.begin(), primitives.end(),
-      SortPrimitivesByPriority());
-
   // Generate vertices for non-visible Primitives
   for (auto primitive : primitives) {
     wp::Vector2 boundsMin, boundsMax;
@@ -201,7 +197,8 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
   lock_guard<mutex> lock(mGenMutex);
 
   if (regetPrimitives) {
-    mNextClipping.primitives = getPrimitives(world);
+    mNextClipping.primitives = selectAndOrderPrimitives(
+        *world, getLayerSelection());
     mNextClipping.layerSelection = getLayerSelection();
   }
 
@@ -358,7 +355,8 @@ void DynamicWorldDataGenerator::checkCommitPendingClipping() {
 WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
   {
     lock_guard<mutex> lock(mGenMutex);
-    mNextClipping.primitives = getPrimitives(world);
+    mNextClipping.primitives = selectAndOrderPrimitives(
+        *world, getLayerSelection());
     mNextClipping.layerSelection = getLayerSelection();
     mNextClipping.stats.prim = {
         uint32_t(mNextClipping.primitives.size()),

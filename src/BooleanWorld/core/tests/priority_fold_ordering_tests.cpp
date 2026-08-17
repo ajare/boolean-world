@@ -3,8 +3,11 @@
 #include <stdexcept>
 #include <vector>
 
+#include <core/ArrangementWorldDataGenerator.h>
+#include <core/LayerSelection.h>
 #include <core/MeshPrimitive.h>
 #include <core/World.h>
+#include <core/WorldDataGenerator.h>
 
 namespace {
 
@@ -28,6 +31,55 @@ MeshPrimitive* makeRectangle(
   return MeshPrimitive::fromComplexPolygons(
       operation, Primitive::FillRule::NonZero,
       {rectangle(left, bottom, right, top)});
+}
+
+bool isSolidAt(
+    bw::core::arr::ArrangementResult const& arrangement, float x, float y) {
+  auto const point = bw::core::arr::FixedPointVertex{
+      bw::core::arr::ToFixedPointCoordinate(x),
+      bw::core::arr::ToFixedPointCoordinate(y)};
+  for (auto const& face : arrangement.faces) {
+    if (bw::core::arr::PointInFace(point, face, arrangement)) {
+      return face.solid;
+    }
+  }
+  return false;
+}
+
+void selectsLayersAndOrdersPrioritiesStably() {
+  bw::core::World world(20.0f, 2.0f);
+  auto base = makeRectangle(
+      Primitive::Operation::Union, 0.0f, 0.0f, 10.0f, 10.0f);
+  auto excluded = makeRectangle(
+      Primitive::Operation::Difference, 4.0f, 0.0f, 6.0f, 10.0f);
+  auto allLayers = makeRectangle(
+      Primitive::Operation::Difference, 4.0f, 0.0f, 6.0f, 10.0f);
+  auto restore = makeRectangle(
+      Primitive::Operation::Union, 4.0f, 0.0f, 6.0f, 10.0f);
+  base->setLayer(0);
+  base->setPriority(3);
+  excluded->setLayer(1);
+  excluded->setPriority(6);
+  allLayers->setLayer(BW_LAYER_ALL);
+  allLayers->setPriority(5);
+  restore->setLayer(2);
+  restore->setPriority(5);
+  world.addPrimitive(base);
+  world.addPrimitive(excluded);
+  world.addPrimitive(allLayers);
+  world.addPrimitive(restore);
+
+  bw::core::LayerSelection selection;
+  selection.set(0);
+  selection.set(2);
+  auto selected = bw::core::selectAndOrderPrimitives(world, selection);
+  require(selected == std::vector<Primitive*>{base, allLayers, restore},
+          "selected primitives were not globally priority-ordered stably");
+
+  bw::core::ArrangementWorldDataGenerator generator;
+  generator.generate(&world, selection);
+  require(isSolidAt(*generator.getWorldData(), 5.0f, 5.0f),
+          "the arrangement generator did not use the selected stable fold");
 }
 
 void preservesListOrderForEqualPriorities() {
@@ -63,8 +115,9 @@ void preservesListOrderForEqualPriorities() {
 
 int main() {
   try {
+    selectsLayersAndOrdersPrioritiesStably();
     preservesListOrderForEqualPriorities();
-    std::cout << "Equal-priority folds retain list order\n";
+    std::cout << "Layer selection and equal-priority folds retain order\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';

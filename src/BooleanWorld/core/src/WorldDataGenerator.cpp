@@ -1,5 +1,6 @@
 #include "core/WorldDataGenerator.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 #include "core/Defines.h"
@@ -8,6 +9,21 @@
 
 namespace bw::core {
 using namespace std;
+
+vector<Primitive*> selectAndOrderPrimitives(
+    World const& world, LayerSelection const& selection) {
+  vector<Primitive*> primitives;
+  for (auto primitive : world.getPrimitives()) {
+    auto const layer = primitive->getLayer();
+    if (layer == BW_LAYER_ALL || selection.test(size_t(layer))) {
+      primitives.push_back(primitive);
+    }
+  }
+  stable_sort(
+      primitives.begin(), primitives.end(),
+      WorldDataGenerator::SortPrimitivesByPriority());
+  return primitives;
+}
 
 WorldDataGenerator::WorldDataGenerator()
     : mViewTriangle{} {
@@ -28,19 +44,6 @@ WorldDataGenerator& WorldDataGenerator::operator=(
 void WorldDataGenerator::copyFrom(WorldDataGenerator const& other) {
   mLayerSelection = other.mLayerSelection;
   mViewTriangle = other.mViewTriangle;
-}
-
-vector<Primitive*> WorldDataGenerator::getPrimitives(
-    World const* world) const {
-  vector<Primitive*> primitives;
-  for (auto primitive : world->getPrimitives()) {
-    auto primitiveLayer = primitive->getLayer();
-    if (primitiveLayer == BW_LAYER_ALL ||
-        mLayerSelection.test(size_t(primitiveLayer))) {
-      primitives.push_back(primitive);
-    }
-  }
-  return primitives;
 }
 
 void WorldDataGenerator::setLayerSelection(

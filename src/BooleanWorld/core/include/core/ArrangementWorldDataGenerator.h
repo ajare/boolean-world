@@ -22,19 +22,14 @@ class World;
     std::vector<Primitive*> const& primitives);
 
 class BW_API ArrangementWorldDataGenerator {
-  LayerSelection mLayerSelection{SelectLayer(0)};
   arr::ArrangementResultPtr mWorldData;
 
 public:
   ArrangementWorldDataGenerator();
 
-  void setLayerSelection(LayerSelection const& selection);
-
-  [[nodiscard]] LayerSelection const& getLayerSelection() const;
-
-  void setActiveLayer(uint8_t layer);
-
-  void generate(World const* world);
+  void generate(
+      World const* world,
+      LayerSelection const& selection = SelectLayer(0));
 
   // Comparison and migration consumers can provide the exact generation-local
   // primitive ordering used by the legacy generator.

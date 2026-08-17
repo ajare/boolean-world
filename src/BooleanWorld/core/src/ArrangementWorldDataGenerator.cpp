@@ -1,8 +1,5 @@
 #include "core/ArrangementWorldDataGenerator.h"
 
-#include <algorithm>
-#include <stdexcept>
-
 #include "core/Primitive.h"
 #include "core/World.h"
 #include "core/WorldDataGenerator.h"
@@ -45,34 +42,9 @@ ArrangementWorldDataGenerator::ArrangementWorldDataGenerator()
     : mWorldData(arr::BuildArrangement({})) {
 }
 
-void ArrangementWorldDataGenerator::setLayerSelection(
-    LayerSelection const& selection) {
-  if (selection.none()) {
-    throw std::invalid_argument("layer selection must not be empty");
-  }
-  mLayerSelection = selection;
-}
-
-LayerSelection const& ArrangementWorldDataGenerator::getLayerSelection() const {
-  return mLayerSelection;
-}
-
-void ArrangementWorldDataGenerator::setActiveLayer(uint8_t layer) {
-  setLayerSelection(SelectLayer(layer));
-}
-
-void ArrangementWorldDataGenerator::generate(World const* world) {
-  std::vector<Primitive*> primitives;
-  for (auto primitive : world->getPrimitives()) {
-    auto layer = primitive->getLayer();
-    if (layer == BW_LAYER_ALL || mLayerSelection.test(size_t(layer))) {
-      primitives.push_back(primitive);
-    }
-  }
-  std::stable_sort(
-      primitives.begin(), primitives.end(),
-      WorldDataGenerator::SortPrimitivesByPriority());
-  generate(primitives);
+void ArrangementWorldDataGenerator::generate(
+    World const* world, LayerSelection const& selection) {
+  generate(selectAndOrderPrimitives(*world, selection));
 }
 
 void ArrangementWorldDataGenerator::generate(

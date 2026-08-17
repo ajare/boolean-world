@@ -1,7 +1,5 @@
 #include "core/DefaultWorldDataGenerator.h"
 
-#include <algorithm>
-
 #include "core/Defines.h"
 #include "core/World.h"
 
@@ -35,9 +33,7 @@ void DefaultWorldDataGenerator::generate(
     World const* world,
     bool regetPrimitives) {
   BW_UNUSED(regetPrimitives);
-  auto primitives = getPrimitives(world);
-  std::stable_sort(
-      primitives.begin(), primitives.end(), SortPrimitivesByPriority());
+  auto primitives = selectAndOrderPrimitives(*world, getLayerSelection());
   ArrangementWorldDataGenerator generator;
   generator.generate(primitives);
   mWorldData = std::make_shared<ArrangementWorldData>(
