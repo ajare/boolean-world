@@ -639,15 +639,25 @@ while ($true) {
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
         try {
-            $output = @(& pi @piArguments 2>&1 | Tee-Object -FilePath $logPath -Append)
+            $output = [System.Collections.Generic.List[string]]::new()
+            & pi @piArguments 2>&1 |
+                Tee-Object -FilePath $logPath -Append |
+                ForEach-Object {
+                    # Emit each line as it arrives instead of handing the host one
+                    # screen-sized string after pi exits. Splitting bare carriage
+                    # returns also turns progress-style redraws into scrolling lines.
+                    foreach ($line in ([string]$_ -split "`r`n|`n|`r")) {
+                        [void]$output.Add($line)
+                        if (-not $Quiet) {
+                            Write-Host $line
+                        }
+                    }
+                }
             $piExitCode = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $previousErrorActionPreference
         }
         $outputText = $output -join [Environment]::NewLine
-        if (-not $Quiet -and $outputText) {
-            Write-Host $outputText
-        }
 
         # A provider can fail after the agent has already committed and closed.
         if (Test-TicketComplete -Repository $Repo -Number $number -StartingHead $startingHead) {
