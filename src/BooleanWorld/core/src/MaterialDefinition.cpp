@@ -26,8 +26,12 @@ uint32_t packRGBA(array<float, 3> const& c) {
   return (a << 24) | (b << 16) | (g << 8) | (r);
 }
 
+uint32_t MaterialDefinitionData::packedColour() const {
+  return packRGBA(baseColour);
+}
+
 uint64_t MaterialDefinitionData::hash(uint32_t materialIndex) const {
-  array<uint32_t, 12> bits;
+  array<uint32_t, 1 + BW_MATERIAL_PARAMS_MAX + 3> bits;
 
   bits[0] = materialIndex;
 
@@ -132,9 +136,6 @@ bool MaterialDefinition::deserializeImpl(std::shared_ptr<Serializer> serializer,
   // Commit
   data.params = params;
   data.baseColour = baseColour;
-
-  // Calculate base colour as a uint32 for rendering
-  data.baseColourUint = packRGBA(data.baseColour);
 
   return true;
 }

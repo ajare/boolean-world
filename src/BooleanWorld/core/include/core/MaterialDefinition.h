@@ -10,8 +10,8 @@ namespace core {
 struct MaterialDefinitionData {
   std::array<float, BW_MATERIAL_PARAMS_MAX> params;
   std::array<float, 3> baseColour;
-  uint32_t baseColourUint;
 
+  uint32_t packedColour() const;
   uint64_t hash(uint32_t materialIndex) const;
 };
 

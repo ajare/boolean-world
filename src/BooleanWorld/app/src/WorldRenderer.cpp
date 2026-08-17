@@ -74,7 +74,7 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
           bw::core::arr::ToWorldCoordinate(vertex.y)};
     }
 
-    auto floorColour = properties.floorMaterialDef.data.baseColourUint;
+    auto floorColour = properties.floorMaterialDef.data.packedColour();
     auto floorHash = properties.floorMaterialDef.data.hash(
         properties.floorMaterialIndex);
     auto floorMeshIndex =
@@ -90,7 +90,7 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
     dataProvider->addTriangle(
         floorMeshIndex, numIndices, numIndices + 1, numIndices + 2);
 
-    auto ceilingColour = properties.ceilingMaterialDef.data.baseColourUint;
+    auto ceilingColour = properties.ceilingMaterialDef.data.packedColour();
     auto ceilingHash = properties.ceilingMaterialDef.data.hash(
         properties.ceilingMaterialIndex);
     auto ceilingMeshIndex =
@@ -113,7 +113,7 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
     auto const& v1 = orientation.v1;
     auto const& normal = orientation.normal;
     auto const& properties = worldData.palette[wall.paletteIndex];
-    auto wallColour = properties.wallMaterialDef.data.baseColourUint;
+    auto wallColour = properties.wallMaterialDef.data.packedColour();
     auto wallHash = properties.wallMaterialDef.data.hash(
         properties.wallMaterialIndex);
     auto wallMeshIndex =

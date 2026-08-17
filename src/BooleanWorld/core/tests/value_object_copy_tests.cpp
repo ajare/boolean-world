@@ -38,8 +38,8 @@ void requireMaterialDefinitionEqual(bw::core::MaterialDefinition const& actual,
           name + " parameters were not copied");
   require(actual.data.baseColour == expected.data.baseColour,
           name + " base colour was not copied");
-  require(actual.data.baseColourUint == expected.data.baseColourUint,
-          name + " packed base colour was not copied");
+  require(actual.data.packedColour() == expected.data.packedColour(),
+          name + " packed base colour differs");
 }
 
 void primitivesInitializeMaterialIndices() {
@@ -68,9 +68,9 @@ void primitiveCopiesItsPropertySet() {
   properties.floorMaterialIndex = 1;
   properties.ceilingMaterialIndex = 2;
   properties.wallMaterialIndex = 3;
-  properties.floorMaterialDef.data = {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}, {0.1f, 0.2f, 0.3f}, 0x11223344};
-  properties.ceilingMaterialDef.data = {{9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f}, {0.4f, 0.5f, 0.6f}, 0x55667788};
-  properties.wallMaterialDef.data = {{17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f}, {0.7f, 0.8f, 0.9f}, 0x99aabbcc};
+  properties.floorMaterialDef.data = {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}, {0.1f, 0.2f, 0.3f}};
+  properties.ceilingMaterialDef.data = {{9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f}, {0.4f, 0.5f, 0.6f}};
+  properties.wallMaterialDef.data = {{17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f}, {0.7f, 0.8f, 0.9f}};
   source.setProperties(properties);
 
   bw::core::RectanglePolygon copy(source);
