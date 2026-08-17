@@ -6,6 +6,7 @@
 
 #include "core/MaterialDefinition.h"
 #include "core/Defines.h"
+#include "core/SerializationException.h"
 
 namespace bw {
 namespace core {
@@ -103,8 +104,7 @@ bool MaterialDefinition::deserializeImpl(std::shared_ptr<Serializer> serializer,
 
       while (serializer->nextArrayItem()) {
         if (i >= BW_MATERIAL_PARAMS_MAX) {
-          addDeserializationError("Too many MaterialDefinition parameters.");
-          return false;
+          throw SerializationException("Too many MaterialDefinition parameters.");
         }
 
         params[i++] = serializer->readFloat();
@@ -120,8 +120,7 @@ bool MaterialDefinition::deserializeImpl(std::shared_ptr<Serializer> serializer,
 
       while (serializer->nextArrayItem()) {
         if (i >= 3) {
-          addDeserializationError("Too many colour components.");
-          return false;
+          throw SerializationException("Too many colour components.");
         }
 
         baseColour[i++] = serializer->readFloat();

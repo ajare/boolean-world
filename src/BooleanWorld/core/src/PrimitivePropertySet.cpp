@@ -68,7 +68,10 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
       serializer->beginMap("floorMaterial");
       {
         floorMaterialIndex_ = serializer->readUint32("materialIndex");
-        floorMaterialDef_.deserialize(serializer, workData);
+        if (!floorMaterialDef_.deserialize(serializer, workData)) {
+          copyErrorsAndWarnings(&floorMaterialDef_, true, true);
+          return false;
+        }
 
         serializer->endMap();
       }
@@ -76,7 +79,10 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
       serializer->beginMap("ceilingMaterial");
       {
         ceilingMaterialIndex_ = serializer->readUint32("materialIndex");
-        ceilingMaterialDef_.deserialize(serializer, workData);
+        if (!ceilingMaterialDef_.deserialize(serializer, workData)) {
+          copyErrorsAndWarnings(&ceilingMaterialDef_, true, true);
+          return false;
+        }
 
         serializer->endMap();
       }
@@ -84,7 +90,10 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
       serializer->beginMap("wallMaterial");
       {
         wallMaterialIndex_ = serializer->readUint32("materialIndex");
-        wallMaterialDef_.deserialize(serializer, workData);
+        if (!wallMaterialDef_.deserialize(serializer, workData)) {
+          copyErrorsAndWarnings(&wallMaterialDef_, true, true);
+          return false;
+        }
 
         serializer->endMap();
       }
