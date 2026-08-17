@@ -1037,18 +1037,38 @@ Primitive* World::findPrimitive(wp::Vector2 const& worldPos) const {
   return index != ~0u ? mPrimitives[index] : nullptr;
 }
 
-uint32_t World::findPrimitiveIndex(wp::Vector2 const& worldPos, bool exact, set<uint32_t> ignoreIndices) const {
-  auto numPrimitives = getNumPrimitives();
+vector<uint32_t> World::getPrimitiveCandidateIndices(wp::Vector2 const& worldPos) const {
+  vector<uint32_t> result;
+  if (mPrimitiveLookupGrid) {
+    int cellX;
+    int cellY;
+    mPrimitiveLookupGrid->getContainingCell(true, worldPos.x, worldPos.y, cellX, cellY);
+    if (cellX >= 0 && cellY >= 0) {
+      auto const cellIndex = uint32_t(cellY * mPrimitiveLookupGrid->getCellDimensionX() + cellX);
+      auto const& candidates = mPrimitiveLookupGrid->_getCellItemIndices(cellIndex);
+      result.assign(candidates.begin(), candidates.end());
+      return result;
+    }
+  }
 
-  for (uint32_t i = 0; i < numPrimitives; ++i) {
+  // Preserve picking for primitives and positions outside the configured grid.
+  result.reserve(mPrimitives.size());
+  for (uint32_t i = 0; i < uint32_t(mPrimitives.size()); ++i) {
+    result.push_back(i);
+  }
+  return result;
+}
+
+uint32_t World::findPrimitiveIndex(wp::Vector2 const& worldPos, bool exact, set<uint32_t> const& ignoreIndices) const {
+  auto const candidates = getPrimitiveCandidateIndices(worldPos);
+
+  for (auto i : candidates) {
     auto primitive = mPrimitives[i];
 
     auto const& bounds = primitive->getBounds();
     if (bounds.pointInside(worldPos) && ignoreIndices.find(i) == ignoreIndices.end()) {
       if (exact) {
-        // Create triangulation and check that
-        auto triangulation = primitive->triangulate(true);
-        if (triangulation.pointInside(worldPos)) {
+        if (primitive->getPickingTriangulation().pointInside(worldPos)) {
           return i;
         }
       } else {
@@ -1060,11 +1080,11 @@ uint32_t World::findPrimitiveIndex(wp::Vector2 const& worldPos, bool exact, set<
   return ~0u;
 }
 
-vector<uint32_t> World::findPrimitiveIndices(wp::Vector2 const& worldPos, bool exact, set<uint32_t> ignoreIndices) const {
+vector<uint32_t> World::findPrimitiveIndices(wp::Vector2 const& worldPos, bool exact, set<uint32_t> const& ignoreIndices) const {
   vector<uint32_t> result;
-  auto numPrimitives = getNumPrimitives();
+  auto const candidates = getPrimitiveCandidateIndices(worldPos);
 
-  for (uint32_t i = 0; i < numPrimitives; ++i) {
+  for (auto i : candidates) {
     auto primitive = mPrimitives[i];
 
     if (!primitive->hasFlag(BW_PRIMITIVE_INTERACTS_FLAG)) {
@@ -1074,9 +1094,7 @@ vector<uint32_t> World::findPrimitiveIndices(wp::Vector2 const& worldPos, bool e
     auto const& bounds = primitive->getBounds();
     if (bounds.pointInside(worldPos) && ignoreIndices.find(i) == ignoreIndices.end()) {
       if (exact) {
-        // Create triangulation and check that
-        auto triangulation = primitive->triangulate(true);
-        if (triangulation.pointInside(worldPos)) {
+        if (primitive->getPickingTriangulation().pointInside(worldPos)) {
           result.push_back(i);
         }
       } else {

@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <array>
+#include <optional>
 
 #include <willpower/common/Vector2.h>
 #include <willpower/common/BoundingBox.h>
@@ -67,6 +68,8 @@ private:
 
   mutable wp::BoundingBox mBounds;
 
+  mutable std::optional<Triangulation> mPickingTriangulation;
+
   std::vector<ComplexPolygon> mVertices;
 
   mutable frame_number_type mFrameNumber;
@@ -76,6 +79,8 @@ protected:
 
 private:
   virtual std::vector<ComplexPolygon> generateTransformedVertices(wp::Vector2* minExtent = nullptr, wp::Vector2* maxExtent = nullptr) const;
+
+  Triangulation const& getPickingTriangulation() const;
 
   bool childrenModified() const override;
 

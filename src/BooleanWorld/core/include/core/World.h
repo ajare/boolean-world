@@ -80,6 +80,8 @@ private:
 
   std::vector<Primitive*> sortPrimitiveIndicesByPriority(std::vector<uint32_t> const& indices) const;
 
+  std::vector<uint32_t> getPrimitiveCandidateIndices(wp::Vector2 const& worldPos) const;
+
   void addPrimitiveToLookupGrid(Primitive* primitive);
 
   void removePrimitiveFromLookupGrid(Primitive const* primitive, bool failIfNotFound = true);
@@ -202,9 +204,9 @@ public:
 
   [[nodiscard]] Primitive* findPrimitive(wp::Vector2 const& worldPos) const;
 
-  [[nodiscard]] uint32_t findPrimitiveIndex(wp::Vector2 const& worldPos, bool exact, std::set<uint32_t> ignoreIndices = {}) const;
+  [[nodiscard]] uint32_t findPrimitiveIndex(wp::Vector2 const& worldPos, bool exact, std::set<uint32_t> const& ignoreIndices = {}) const;
 
-  [[nodiscard]] std::vector<uint32_t> findPrimitiveIndices(wp::Vector2 const& worldPos, bool exact, std::set<uint32_t> ignoreIndices = {}) const;
+  [[nodiscard]] std::vector<uint32_t> findPrimitiveIndices(wp::Vector2 const& worldPos, bool exact, std::set<uint32_t> const& ignoreIndices = {}) const;
 
   [[nodiscard]] std::vector<Primitive*> findPrimitives(wp::BoundingBox const& bounds) const;
 

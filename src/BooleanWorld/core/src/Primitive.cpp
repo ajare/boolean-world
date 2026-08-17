@@ -49,6 +49,7 @@ void Primitive::copyFrom(Primitive const& other) {
   mSize = other.mSize;
   mProperties = other.mProperties;
   mBounds = other.mBounds;
+  mPickingTriangulation.reset();
   mVertices = other.mVertices;
   mPolygons = other.mPolygons;
   mFrameNumber = other.mFrameNumber;
@@ -101,6 +102,7 @@ void Primitive::invalidatePostTransform(bool recalculateBounds, bool notifyWorld
 }
 
 void Primitive::_invalidate() const {
+  mPickingTriangulation.reset();
 }
 
 void Primitive::notifyWorldChanged() const {
@@ -507,10 +509,18 @@ wp::BoundingBox Primitive::calculateBounds() const {
 
 void Primitive::updateVertexPositions() {
   mVertices = generateTransformedVertices();
+  mPickingTriangulation.reset();
 }
 
 wp::BoundingBox const& Primitive::getBounds() const {
   return mBounds;
+}
+
+Triangulation const& Primitive::getPickingTriangulation() const {
+  if (!mPickingTriangulation) {
+    mPickingTriangulation = triangulate(true);
+  }
+  return *mPickingTriangulation;
 }
 
 Triangulation Primitive::triangulate(bool calculateBounds) const {
