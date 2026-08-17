@@ -35,6 +35,7 @@ SuperformulaPolygon& SuperformulaPolygon::operator=(SuperformulaPolygon const& o
 void SuperformulaPolygon::copyFrom(SuperformulaPolygon const& other) {
   Primitive::copyFrom(other);
 
+  mResolution = other.mResolution;
   for (int i = 0; i < 6; ++i) {
     mValues[i] = other.mValues[i];
   }
@@ -109,7 +110,17 @@ bool SuperformulaPolygon::deserializeImpl(std::shared_ptr<Serializer> serializer
 }
 
 float SuperformulaPolygon::getRadius() const {
-  throw 1.0f;
+  float radius = 0.0f;
+
+  for (auto const& complexPolygon : mPolygons) {
+    for (auto const& contour : complexPolygon) {
+      for (auto const& vertex : contour) {
+        radius = max(radius, sqrt(vertex.p.x * vertex.p.x + vertex.p.y * vertex.p.y));
+      }
+    }
+  }
+
+  return radius;
 }
 
 float SuperformulaPolygon::r(float theta) const {

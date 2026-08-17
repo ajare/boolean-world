@@ -97,7 +97,7 @@ vector<ComplexPolygon> TorusPolygon::generateVerticesImpl() {
 }
 
 float TorusPolygon::getRadius() const {
-  throw 1.0f;
+  return 1.0f;
 }
 
 void TorusPolygon::setThickness(float thickness) {

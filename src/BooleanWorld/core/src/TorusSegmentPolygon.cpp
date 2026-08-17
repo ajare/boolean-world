@@ -123,7 +123,7 @@ vector<ComplexPolygon> TorusSegmentPolygon::generateVerticesImpl() {
 }
 
 float TorusSegmentPolygon::getRadius() const {
-  throw 1.0f;
+  return 1.0f;
 }
 
 void TorusSegmentPolygon::setThickness(float thickness) {
