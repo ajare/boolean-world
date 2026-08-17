@@ -11,11 +11,8 @@
 namespace {
 using bw::core::arr::ArrangementFace;
 using bw::core::arr::ArrangementResult;
-using bw::core::arr::Cycle;
-using bw::core::arr::Face;
 using bw::core::arr::FixedPointVertex;
 using bw::core::arr::Membership;
-using bw::core::arr::PSLG;
 
 void require(bool condition, std::string const& message) {
   if (!condition) {
@@ -65,32 +62,11 @@ void triangulatesArrangementAtFixedPointPrecision() {
   require(area2 == 2,
           "triangulation should preserve the one-grid-quantum square area");
 }
-
-void triangulatesFaceAtFixedPointPrecision() {
-  PSLG graph;
-  graph.vs = narrowWorldEdgeSquare();
-  std::vector<Cycle> cycles{{{0, 1, 2, 3}, {}, 1, {}}};
-  std::vector<Face> faces{{0, {}, Membership(0), false}};
-
-  auto triangles = bw::core::arr::BuildFaceTriangles(faces, cycles, graph);
-  require(triangles.size() == 2,
-          "a one-grid-quantum face at the world edge should triangulate");
-
-  int64_t area2 = 0;
-  for (auto const& triangle : triangles) {
-    area2 += std::abs(triangleArea2(graph.vs[triangle.vi[0]],
-                                    graph.vs[triangle.vi[1]],
-                                    graph.vs[triangle.vi[2]]));
-  }
-  require(area2 == 2,
-          "face triangulation should preserve the one-grid-quantum square area");
-}
 }  // namespace
 
 int main() {
   try {
     triangulatesArrangementAtFixedPointPrecision();
-    triangulatesFaceAtFixedPointPrecision();
     std::cout << "Arrangement triangulation preserves fixed-point precision\n";
     return 0;
   } catch (std::exception const& error) {

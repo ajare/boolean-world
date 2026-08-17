@@ -55,7 +55,6 @@ struct Cycle {
   std::vector<int> eis;
 
   int64_t area;
-  std::vector<uint32_t> primitiveIndices;
 };
 
 class Membership {
@@ -76,11 +75,6 @@ struct Face {
   std::vector<int> holes;
   Membership membership;
   bool solid{false};
-
-  // If the face is owned by a non-hole polygon, then owningPolygon
-  // is set. Otherwise holePolygon is set.
-  int owningPolygon{-1};
-  int holePolygon{-1};
 };
 
 struct ContourInput {
@@ -110,11 +104,6 @@ struct PolygonNode {
   int cycleIndex;
   int parent = -1;
   std::vector<int> children;
-};
-
-struct FaceTriangle {
-  int vi[3];
-  int fi;
 };
 
 struct ArrangementTriangle {
@@ -189,12 +178,6 @@ bool PointInFace(
     ArrangementFace const& face,
     ArrangementResult const& arrangement);
 
-bool PointInFace(
-    FixedPointVertex const& v,
-    Face const& face,
-    std::vector<Cycle> const& cycles,
-    PSLG const& graph);
-
 [[nodiscard]] std::vector<ArrangementTriangle> BuildArrangementTriangles(
     ArrangementResult const& arrangement);
 
@@ -209,14 +192,7 @@ std::vector<Cycle> ExtractMinimalCycles(PSLG const& graph);
 
 std::vector<PolygonNode> BuildPolygonHierarchy(
     PSLG const& graph,
-    std::vector<Cycle>& cycles);
-
-std::vector<Face> BuildFaces(
-    std::vector<PolygonNode> const& nodes,
     std::vector<Cycle> const& cycles);
 
-std::vector<FaceTriangle> BuildFaceTriangles(
-    std::vector<Face> const& faces,
-    std::vector<Cycle> const& cycles,
-    PSLG const& graph);
+std::vector<Face> BuildFaces(std::vector<PolygonNode> const& nodes);
 }  // namespace bw::core::arr

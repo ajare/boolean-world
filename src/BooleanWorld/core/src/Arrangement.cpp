@@ -768,19 +768,9 @@ vector<Cycle> ExtractMinimalCycles(PSLG const& graph) {
   return cycles;
 }
 
-bool PointInFace(FixedPointVertex const& vertex, Face const& face, vector<Cycle> const& cycles, PSLG const& graph) {
-  if (PointInCycle(vertex, cycles[face.polygon], graph) <= 0) {
-    return false;
-  }
-  for (auto hole : face.holes) {
-    if (PointInCycle(vertex, cycles[hole], graph) > 0) {
-      return false;
-    }
-  }
-  return true;
-}
-
-vector<PolygonNode> BuildPolygonHierarchy(PSLG const& graph, vector<Cycle>& cycles) {
+vector<PolygonNode> BuildPolygonHierarchy(
+    PSLG const& graph,
+    vector<Cycle> const& cycles) {
   vector<PolygonNode> nodes(cycles.size());
   vector<Box> boxes(cycles.size());
   for (int i = 0; i < int(cycles.size()); ++i) {
@@ -814,8 +804,7 @@ vector<PolygonNode> BuildPolygonHierarchy(PSLG const& graph, vector<Cycle>& cycl
   return nodes;
 }
 
-vector<Face> BuildFaces(vector<PolygonNode> const& nodes, vector<Cycle> const& cycles) {
-  (void)cycles;
+vector<Face> BuildFaces(vector<PolygonNode> const& nodes) {
   vector<Face> faces;
   for (auto const& node : nodes) {
     Face face;
@@ -848,7 +837,7 @@ ArrangementResultPtr BuildArrangement(
 
   auto cycles = ExtractMinimalCycles(graph);
   auto hierarchy = BuildPolygonHierarchy(graph, cycles);
-  auto faces = BuildFaces(hierarchy, cycles);
+  auto faces = BuildFaces(hierarchy);
 
   auto assignCycleSide = [&](int faceIndex, int cycleIndex, bool assignLeft) {
     auto const& cycle = cycles[cycleIndex];
@@ -1199,37 +1188,4 @@ vector<ArrangementWall> BuildArrangementWalls(
   return walls;
 }
 
-vector<FaceTriangle> BuildFaceTriangles(vector<Face> const& faces, vector<Cycle> const& cycles, PSLG const& graph) {
-  using EarcutPoint = array<double, 2>;
-  vector<FaceTriangle> triangles;
-
-  for (int i = 0; i < int(faces.size()); ++i) {
-    vector<vector<EarcutPoint>> polygons;
-    vector<int> vertexIndices;
-
-    auto addCycle = [&](int cycleIndex) {
-      vector<EarcutPoint> polygon;
-      for (auto vertexIndex : cycles[cycleIndex].vis) {
-        auto const& vertex = graph.vs[vertexIndex];
-        polygon.push_back(
-            {double(vertex.x) / FixedPointUnitsPerWorldUnit,
-             double(vertex.y) / FixedPointUnitsPerWorldUnit});
-        vertexIndices.push_back(vertexIndex);
-      }
-      polygons.push_back(move(polygon));
-    };
-
-    addCycle(faces[i].polygon);
-    for (auto hole : faces[i].holes) {
-      addCycle(hole);
-    }
-
-    auto indices = mapbox::earcut<uint32_t>(polygons);
-    for (size_t j = 0; j < indices.size(); j += 3) {
-      triangles.push_back({{vertexIndices[indices[j]], vertexIndices[indices[j + 1]], vertexIndices[indices[j + 2]]},
-                           i});
-    }
-  }
-  return triangles;
-}
 }  // namespace bw::core::arr
