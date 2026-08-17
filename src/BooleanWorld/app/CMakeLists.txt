@@ -35,6 +35,18 @@ add_library(BooleanWorld SHARED
 target_include_directories(BooleanWorld PRIVATE include include/imgui)
 bw_add_header_filter(BooleanWorld)
 
+set(removed_app_headers
+    DebugLineDataProvider.h
+    MetricsDataProvider.h
+    PrimitiveLineDataProvider.h
+    ScrollingBuffer.h
+    WorldTriangle.h)
+foreach(header IN LISTS removed_app_headers)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/include/${header}")
+        message(FATAL_ERROR "Unused app header must not remain: ${header}")
+    endif()
+endforeach()
+
 target_compile_definitions(BooleanWorld PRIVATE
     _SILENCE_CXX23_DENORM_DEPRECATION_WARNING
     WP_USE_ASSERT_TRACE
