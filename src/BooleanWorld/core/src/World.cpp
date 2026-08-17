@@ -126,7 +126,7 @@ void World::copyFrom(World const& other) {
 Primitive* World::instantiatePrimitive(string const& type) const {
   typedef function<Primitive*()> PrimitiveCreator;
 
-  map<string, PrimitiveCreator> primCreators = {
+  static const map<string, PrimitiveCreator> primCreators = {
       {"Rectangle", []() { return new RectanglePolygon; }},
       {"Regular", []() { return new RegularPolygon; }},
       {"Circle", []() { return new CirclePolygon; }},

@@ -145,6 +145,28 @@ void failedDeserializationRetainsTemporaryObjectsAndTargetConfiguration() {
           "failed trigger-line deserialization changed the target world");
 }
 
+void deserializationReusesPrimitiveCreators() {
+  bw::core::World source(100.0f, 10.0f);
+  for (uint32_t i = 0; i < 8; ++i) {
+    auto* primitive = makeRectangle();
+    primitive->setId(i);
+    source.addPrimitive(primitive);
+  }
+
+  auto const yaml = serializeWorld(source);
+  bw::core::World target(100.0f, 10.0f);
+  for (int reload = 0; reload < 2; ++reload) {
+    require(deserializeWorld(yaml, &target),
+            "world with repeated primitive constructors did not deserialize");
+    require(target.getNumPrimitives() == 8 * (reload + 1),
+            "world did not retain every repeatedly constructed primitive");
+    for (uint32_t i = 0; i < target.getNumPrimitives(); ++i) {
+      require(dynamic_cast<bw::core::RectanglePolygon*>(target.getPrimitive(i)),
+              "primitive constructor did not restore a rectangle");
+    }
+  }
+}
+
 void deserializationPreservesAlwaysUpdateVertices() {
   bw::core::World source(100.0f, 10.0f);
   source.addPrimitive(makeRectangle());
@@ -266,6 +288,7 @@ int main() {
   try {
     reloadRecreatesAccelerationGrids();
     failedDeserializationRetainsTemporaryObjectsAndTargetConfiguration();
+    deserializationReusesPrimitiveCreators();
     deserializationPreservesAlwaysUpdateVertices();
     parentChainsAreValidatedDuringDeserialization();
     parentWorldPositionsAreCachedAndInvalidated();
