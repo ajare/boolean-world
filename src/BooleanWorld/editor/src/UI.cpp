@@ -2469,7 +2469,7 @@ bool renderPrimitivePropertySet(bw::core::PrimitivePropertySet* properties, bool
       updateProperties = true;
     }
   } else {
-    ImGui::Text("Floor material: %s", get<0>(bw::common::MaterialNames[floorMaterialIndex]).c_str());
+    ImGui::Text("Floor material: %s", get<0>(bw::common::MaterialNames[floorMaterialIndex]).data());
   }
 
   if (editable) {
@@ -2487,7 +2487,7 @@ bool renderPrimitivePropertySet(bw::core::PrimitivePropertySet* properties, bool
       updateProperties = true;
     }
   } else {
-    ImGui::Text("Ceiling material: %s", get<0>(bw::common::MaterialNames[ceilingMaterialIndex]).c_str());
+    ImGui::Text("Ceiling material: %s", get<0>(bw::common::MaterialNames[ceilingMaterialIndex]).data());
   }
 
   if (editable) {
@@ -2505,7 +2505,7 @@ bool renderPrimitivePropertySet(bw::core::PrimitivePropertySet* properties, bool
       updateProperties = true;
     }
   } else {
-    ImGui::Text("Wall material: %s", get<0>(bw::common::MaterialNames[wallMaterialIndex]).c_str());
+    ImGui::Text("Wall material: %s", get<0>(bw::common::MaterialNames[wallMaterialIndex]).data());
   }
 
   if (editable) {

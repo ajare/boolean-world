@@ -1,20 +1,21 @@
 #pragma once
 
 #include <array>
-#include <string>
+#include <string_view>
+#include <tuple>
 
 namespace bw {
 namespace common {
 
-using MaterialDefinition = std::tuple<std::string, uint32_t, std::array<float, 3>>;
-using MaterialParameterDefinition = std::tuple<std::string, float, float, float>;
+using MaterialDefinition = std::tuple<std::string_view, uint32_t, std::array<float, 3>>;
+using MaterialParameterDefinition = std::tuple<std::string_view, float, float, float>;
 
 // Material name, param count, base colour
-static std::array<MaterialDefinition, BW_MATERIAL_COUNT> MaterialNames = {{{"Marble", 8, {0.18f, 0.18f, 0.20f}},
+inline constexpr std::array<MaterialDefinition, BW_MATERIAL_COUNT> MaterialNames = {{{"Marble", 8, {0.18f, 0.18f, 0.20f}},
                                                                            {"Stone", 3, {0.25f, 0.24f, 0.22f}}}};
 
 // Parameter name, min value, max value, default value
-static std::array MaterialParams{
+inline constexpr std::array MaterialParams{
     // Marble
     std::array<MaterialParameterDefinition, BW_MATERIAL_PARAMS_MAX>{{{"warp_scale", 0.0f, 5.0f, 1.1f},
                                                                      {"veins_scale", 1.0f, 10.0f, 6.0f},
