@@ -21,6 +21,8 @@ private:
 protected:
   virtual void copyFrom(Serializable const& other);
 
+  void swapState(Serializable& other) noexcept;
+
   virtual void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const = 0;
 
   virtual bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) = 0;

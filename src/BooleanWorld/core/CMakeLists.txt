@@ -245,6 +245,15 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_world_clear_tests)
     add_test(NAME boolean_world_world_clear COMMAND boolean_world_world_clear_tests)
 
+    add_executable(boolean_world_world_assignment_tests
+        tests/world_assignment_tests.cpp)
+    target_link_libraries(boolean_world_world_assignment_tests PRIVATE core)
+    target_compile_features(boolean_world_world_assignment_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_world_assignment_tests)
+    bw_output_dirs(boolean_world_world_assignment_tests)
+    bw_deploy_runtime_dlls(boolean_world_world_assignment_tests)
+    add_test(NAME boolean_world_world_assignment COMMAND boolean_world_world_assignment_tests)
+
     add_executable(boolean_world_world_data_generator_ownership_tests
         tests/world_data_generator_ownership_tests.cpp)
     target_link_libraries(boolean_world_world_data_generator_ownership_tests PRIVATE core)

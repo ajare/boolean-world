@@ -92,6 +92,10 @@ private:
 
   void updatePrimitiveCellMetadata(PrimitiveCellMetadata* metadata);
 
+  void swapState(World& other) noexcept;
+
+  void rebindOwnedState();
+
   void handleEvents(uint32_t events);
 
 protected:

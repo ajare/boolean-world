@@ -51,6 +51,10 @@ WorldDataGenerator* WorldDataGenerator::copyForWorld(World const* world) {
   return copy();
 }
 
+void WorldDataGenerator::rebindToWorld(World const* world) {
+  BW_UNUSED(world);
+}
+
 void WorldDataGenerator::setLayerSelection(
     LayerSelection const& selection) {
   if (selection.none()) {

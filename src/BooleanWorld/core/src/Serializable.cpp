@@ -1,5 +1,7 @@
 #include "core/Serializable.h"
 
+#include <utility>
+
 namespace bw {
 namespace core {
 using namespace std;
@@ -21,6 +23,12 @@ void Serializable::copyFrom(Serializable const& other) {
   mDeserializationWarnings = other.mDeserializationWarnings;
   mDeserializationErrors = other.mDeserializationErrors;
   mModified = other.mModified;
+}
+
+void Serializable::swapState(Serializable& other) noexcept {
+  mDeserializationWarnings.swap(other.mDeserializationWarnings);
+  mDeserializationErrors.swap(other.mDeserializationErrors);
+  std::swap(mModified, other.mModified);
 }
 
 void Serializable::addDeserializationWarning(string const& msg) {

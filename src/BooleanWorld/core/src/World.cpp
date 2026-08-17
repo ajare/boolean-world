@@ -56,11 +56,45 @@ World& World::operator=(World const& other) {
     return *this;
   }
 
-  clear();
-  mPrimitiveCellMetadataUpdater = bind(&World::updatePrimitiveCellMetadata, this, placeholders::_1);
-
-  copyFrom(other);
+  World replacement(other);
+  swapState(replacement);
+  rebindOwnedState();
+  replacement.rebindOwnedState();
   return *this;
+}
+
+void World::swapState(World& other) noexcept {
+  Serializable::swapState(other);
+
+  using std::swap;
+  swap(mName, other.mName);
+  swap(mDescription, other.mDescription);
+  swap(mExtents, other.mExtents);
+  swap(mPrimitives, other.mPrimitives);
+  swap(mTriggerLines, other.mTriggerLines);
+  swap(mPlayerStartPosition, other.mPlayerStartPosition);
+  swap(mPlayerStartAngle, other.mPlayerStartAngle);
+  swap(mAlwaysUpdateVertices, other.mAlwaysUpdateVertices);
+  swap(mStepThreshold, other.mStepThreshold);
+  swap(mFrameNumber, other.mFrameNumber);
+  swap(mDataGenerator, other.mDataGenerator);
+  swap(mPrimitiveLookupGrid, other.mPrimitiveLookupGrid);
+  swap(mTriggerLookupGrid, other.mTriggerLookupGrid);
+  swap(mLastPrimitiveUpdateFrameNumber, other.mLastPrimitiveUpdateFrameNumber);
+  swap(mPrevPlayerPosition, other.mPrevPlayerPosition);
+  swap(mPrefabAreaTilingType, other.mPrefabAreaTilingType);
+  swap(mPrefabAreaTileTypes, other.mPrefabAreaTileTypes);
+}
+
+void World::rebindOwnedState() {
+  for (auto* primitive : mPrimitives) {
+    primitive->mWorld = this;
+    primitive->mInputs.triggerLines = &mTriggerLines;
+  }
+
+  if (mDataGenerator) {
+    mDataGenerator->rebindToWorld(this);
+  }
 }
 
 World::~World() {

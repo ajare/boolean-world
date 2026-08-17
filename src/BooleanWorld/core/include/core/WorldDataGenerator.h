@@ -44,6 +44,7 @@ public:
 
   virtual WorldDataGenerator* copy() = 0;
   virtual WorldDataGenerator* copyForWorld(World const* world);
+  virtual void rebindToWorld(World const* world);
   virtual WorldDataPtr getWorldData(World const* world) = 0;
 
   void setLayerSelection(LayerSelection const& selection);

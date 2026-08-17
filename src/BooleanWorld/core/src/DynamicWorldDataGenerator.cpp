@@ -82,6 +82,10 @@ WorldDataGenerator* DynamicWorldDataGenerator::copyForWorld(
   return result.release();
 }
 
+void DynamicWorldDataGenerator::rebindToWorld(World const* world) {
+  mWorld = world;
+}
+
 void DynamicWorldDataGenerator::setAllowCommitIfVisible(bool allow) {
   mAllowCommitIfVisible = allow;
 }
