@@ -337,9 +337,7 @@ bool Simulation::colliderIntersects(Collider const* collider) const {
 void Simulation::getLineIndices(
     wp::BoundingBox const& bounds,
     vector<uint32_t>& indices) const {
-  indices.clear();
-  auto candidates = mStaticLinesGrid->getCandidateItemsInBoundingArea(bounds);
-  indices.insert(indices.end(), candidates.begin(), candidates.end());
+  mStaticLinesGrid->getCandidateItemsInBoundingArea(bounds, indices);
 }
 
 bool Simulation::projectCollider(Collider const* collider, Vector2 const& desiredMovement, SweepResult* result) {

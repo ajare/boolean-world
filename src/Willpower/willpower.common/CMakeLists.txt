@@ -71,6 +71,15 @@ if(BUILD_TESTING)
     add_test(NAME willpower_acceleration_grid_set_operations
              COMMAND willpower_acceleration_grid_set_operations_tests)
 
+    # Manual Release-mode evidence for PERF-3; deliberately not a pass/fail test.
+    add_executable(willpower_acceleration_grid_benchmark
+        tests/acceleration_grid_benchmark.cpp)
+    target_link_libraries(willpower_acceleration_grid_benchmark PRIVATE Willpower.Common)
+    target_compile_features(willpower_acceleration_grid_benchmark PRIVATE cxx_std_20)
+    bw_target_defaults(willpower_acceleration_grid_benchmark)
+    bw_output_dirs(willpower_acceleration_grid_benchmark)
+    bw_deploy_runtime_dlls(willpower_acceleration_grid_benchmark)
+
     add_executable(willpower_legacy_geometry_helper_removal_tests
         tests/legacy_geometry_helper_removal_tests.cpp)
     target_link_libraries(willpower_legacy_geometry_helper_removal_tests PRIVATE Willpower.Common)

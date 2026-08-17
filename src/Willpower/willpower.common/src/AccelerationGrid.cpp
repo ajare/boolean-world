@@ -1,4 +1,3 @@
-#include <iterator>
 #include <algorithm>
 #include <format>
 #include <stdexcept>
@@ -12,7 +11,6 @@ namespace WP_NAMESPACE {
 AccelerationGrid::AccelerationGrid(Vector2 const& offset, Vector2 const& size, int cellDimX, int cellDimY, float padding)
     : mOffset(offset), mSize(size), mCellDimX(cellDimX), mCellDimY(cellDimY), mMoveCount(0) {
   int cellCount = mCellDimX * mCellDimY;
-  mCells.reserve(cellCount);
   mCells.resize(cellCount);
 
   // Extend the grid a little to avoid floating point issues
@@ -53,10 +51,6 @@ AccelerationGrid::IndexCollection const& AccelerationGrid::_getCellItems(int x, 
   return mCells[y * mCellDimX + x];
 }
 
-bool AccelerationGrid::cellHasItem(IndexCollection const& cell, uint32_t index) const {
-  return cell.find(index) != cell.end();
-}
-
 void AccelerationGrid::clear() {
   mIndicesToCells.clear();
   mMoveCount = 0;
@@ -67,22 +61,23 @@ void AccelerationGrid::clear() {
 }
 
 void AccelerationGrid::addItemToCell(IndexCollection& cell, uint32_t index) {
-  cell.insert(index);
+  auto const position = lower_bound(cell.begin(), cell.end(), index);
+  if (position == cell.end() || *position != index) {
+    cell.insert(position, index);
+  }
 }
 
 void AccelerationGrid::removeItemFromCell(IndexCollection& cell, uint32_t index) {
-  cell.erase(index);
+  auto const position = lower_bound(cell.begin(), cell.end(), index);
+  if (position != cell.end() && *position == index) {
+    cell.erase(position);
+  }
 }
 
 void AccelerationGrid::addItem(uint32_t index, BoundingBox const& box) {
-  // Intersect bounding box with all cells, and all to each cell that
-  // it hits.
-
-  // Get box extents
   Vector2 minExtent, maxExtent;
   box.getExtents(minExtent, maxExtent);
 
-  // See which cells it spans
   Vector2 cellSize = getCellSize();
   Vector2 minCell = (minExtent - mOffset) / cellSize;
   Vector2 maxCell = (maxExtent - mOffset) / cellSize;
@@ -92,31 +87,25 @@ void AccelerationGrid::addItem(uint32_t index, BoundingBox const& box) {
   int cellX1 = (int)maxCell.x;
   int cellY1 = (int)maxCell.y;
 
-  // Clamp to the grid.  The only time it would be expected to go
-  // outside is when it lies directly on an exterior gridline.
   cellX0 = max(0, min(cellX0, mCellDimX - 1));
   cellY0 = max(0, min(cellY0, mCellDimY - 1));
   cellX1 = max(0, min(cellX1, mCellDimX - 1));
   cellY1 = max(0, min(cellY1, mCellDimY - 1));
 
-  // Replace an existing item before recording its new cells.
   if (mIndicesToCells.find(index) != mIndicesToCells.end()) {
     removeItem(index);
   }
-  auto& indexToCellIt = mIndicesToCells[index];
+  auto& indexToCells = mIndicesToCells[index];
 
   for (int y = cellY0; y <= cellY1; ++y) {
     for (int x = cellX0; x <= cellX1; ++x) {
       addItemToCell(getCellItems(x, y), index);
-
-      uint32_t cellIindex = mCellDimX * y + x;
-      indexToCellIt.insert(cellIindex);
+      indexToCells.push_back(uint32_t(mCellDimX * y + x));
     }
   }
 }
 
 void AccelerationGrid::removeItem(uint32_t index, bool failIfNotFound) {
-  // Find which cells the item is in, and remove it from them.
   auto it = mIndicesToCells.find(index);
   if (it == mIndicesToCells.end()) {
     if (failIfNotFound) {
@@ -142,7 +131,6 @@ void AccelerationGrid::removeAllItems() {
 }
 
 void AccelerationGrid::moveItem(uint32_t index, BoundingBox const& newBox) {
-  // Remove item, then add it back.
   removeItem(index);
   addItem(index, newBox);
   mMoveCount++;
@@ -194,7 +182,7 @@ void AccelerationGrid::getCellExtents(int cellX, int cellY, Vector2& minExtent, 
   maxExtent = minExtent + cellSize;
 }
 
-AccelerationGrid::IndexCollection AccelerationGrid::getItemsInArea(Vector2 const& minExtent, Vector2 const& maxExtent) const {
+void AccelerationGrid::getItemsInArea(Vector2 const& minExtent, Vector2 const& maxExtent, IndexCollection& indices) const {
   Vector2 cellSize = getCellSize();
 
   int minX = (std::max)(0, (int)((minExtent.x - mOffset.x) / cellSize.x));
@@ -202,22 +190,21 @@ AccelerationGrid::IndexCollection AccelerationGrid::getItemsInArea(Vector2 const
   int maxX = (std::min)((int)((maxExtent.x - mOffset.x) / cellSize.x), mCellDimX - 1);
   int maxY = (std::min)((int)((maxExtent.y - mOffset.y) / cellSize.y), mCellDimY - 1);
 
-  return _getItemsInCellRange(minX, minY, maxX, maxY);
+  _getItemsInCellRange(minX, minY, maxX, maxY, indices);
 }
 
-AccelerationGrid::IndexCollection AccelerationGrid::_getItemsInCellRange(int x0, int y0, int x1, int y1) const {
-  IndexCollection indices;
+void AccelerationGrid::_getItemsInCellRange(int x0, int y0, int x1, int y1, IndexCollection& indices) const {
+  indices.clear();
 
-  // Add items in all cells
   for (int y = y0; y <= y1; ++y) {
     for (int x = x0; x <= x1; ++x) {
       auto const& cell = _getCellItems(x, y);
-
-      indices.insert(cell.begin(), cell.end());
+      indices.insert(indices.end(), cell.begin(), cell.end());
     }
   }
 
-  return indices;
+  sort(indices.begin(), indices.end());
+  indices.erase(unique(indices.begin(), indices.end()), indices.end());
 }
 
 AccelerationGrid::IndexCollection const& AccelerationGrid::_getItemCellIndices(uint32_t index) const {

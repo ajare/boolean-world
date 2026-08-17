@@ -1,13 +1,13 @@
 #pragma once
 
-#include <vector>
-#include <set>
-#include <unordered_set>
+#include <algorithm>
+#include <cstdint>
 #include <map>
+#include <vector>
 
-#include "willpower/common/Vector2.h"
 #include "willpower/common/BoundingBox.h"
 #include "willpower/common/BoundingCircle.h"
+#include "willpower/common/Vector2.h"
 
 namespace WP_NAMESPACE {
 
@@ -17,10 +17,10 @@ or or maximum size of objects).
 */
 class WP_COMMON_API AccelerationGrid {
 public:
-  typedef std::set<uint32_t> IndexCollection;
+  using IndexCollection = std::vector<uint32_t>;
 
 private:
-  // Map index to a set of cell indices that it is in.
+  // Map index to the sorted cell indices that it is in.
   std::map<uint32_t, IndexCollection> mIndicesToCells;
 
 protected:
@@ -30,6 +30,7 @@ protected:
 
   int mCellDimX, mCellDimY;
 
+  // Each cell is a sorted, duplicate-free flat collection.
   std::vector<IndexCollection> mCells;
 
   int mMoveCount;
@@ -38,9 +39,7 @@ private:
   // Helper functions
   IndexCollection& getCellItems(int x, int y);
 
-  IndexCollection getItemsInArea(Vector2 const& minExtent, Vector2 const& maxExtent) const;
-
-  bool cellHasItem(IndexCollection const& cell, uint32_t index) const;
+  void getItemsInArea(Vector2 const& minExtent, Vector2 const& maxExtent, IndexCollection& indices) const;
 
   void addItemToCell(IndexCollection& cell, uint32_t index);
 
@@ -84,14 +83,14 @@ public:
   void getCellExtents(int cellX, int cellY, Vector2& minExtent, Vector2& maxExtent);
 
   template <typename A>
-  IndexCollection getCandidateItemsInBoundingArea(A const& area) const {
+  void getCandidateItemsInBoundingArea(A const& area, IndexCollection& indices) const {
     Vector2 minExtent, maxExtent;
     area.getExtents(minExtent, maxExtent);
 
-    return getItemsInArea(minExtent, maxExtent);
+    getItemsInArea(minExtent, maxExtent, indices);
   }
 
-  IndexCollection _getItemsInCellRange(int x0, int y0, int x1, int y1) const;
+  void _getItemsInCellRange(int x0, int y0, int x1, int y1, IndexCollection& indices) const;
 
   IndexCollection const& _getItemCellIndices(uint32_t index) const;
 };

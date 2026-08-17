@@ -1,7 +1,9 @@
+#include <algorithm>
 #include <iostream>
-#include <set>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <vector>
 
 #include <willpower/common/AccelerationGrid.h>
 #include <willpower/common/ExtendedAccelerationGrid.h>
@@ -21,12 +23,19 @@ void requireCellRangeCombinesItemsWithoutOverlappingRanges(std::string const& gr
   grid.addItem(2, wp::BoundingBox(10.0f, 10.0f, 5.0f, 5.0f));
   grid.addItem(3, wp::BoundingBox(70.0f, 10.0f, 5.0f, 5.0f));
 
-  auto const indices = grid._getItemsInCellRange(0, 0, 1, 0);
-  require(indices == std::set<uint32_t>({1, 2, 3}),
+  typename Grid::IndexCollection indices;
+  grid._getItemsInCellRange(0, 0, 1, 0, indices);
+  require(indices == std::vector<uint32_t>({1, 2, 3}),
           gridName + " did not return the union of both cells");
+
+  auto const capacity = indices.capacity();
+  grid._getItemsInCellRange(0, 0, 1, 0, indices);
+  require(indices.capacity() == capacity,
+          gridName + " did not reuse caller-owned query storage");
 }
 
 void accelerationGridCombinesItemsWithoutOverlappingRanges() {
+  static_assert(std::is_same_v<wp::AccelerationGrid::IndexCollection, std::vector<uint32_t>>);
   requireCellRangeCombinesItemsWithoutOverlappingRanges<wp::AccelerationGrid>(
       "AccelerationGrid");
 }
@@ -45,9 +54,11 @@ void requireReplacingItemRemovesItFromPreviousCells(std::string const& gridName)
   grid.addItem(1, oldBounds);
   grid.addItem(1, newBounds);
 
-  require(grid.getCandidateItemsInBoundingArea(oldBounds).empty(),
-          gridName + " retained a replaced item in its previous cells");
-  require(grid.getCandidateItemsInBoundingArea(newBounds) == std::set<uint32_t>({1}),
+  typename Grid::IndexCollection candidates;
+  grid.getCandidateItemsInBoundingArea(oldBounds, candidates);
+  require(candidates.empty(), gridName + " retained a replaced item in its previous cells");
+  grid.getCandidateItemsInBoundingArea(newBounds, candidates);
+  require(candidates == std::vector<uint32_t>({1}),
           gridName + " did not retain a replaced item in its new cells");
 }
 
@@ -79,6 +90,8 @@ void extendedAccelerationGridRejectsMissingCellItemsWithoutUpdatingMetadata() {
 
   Grid grid(0.0f, 0.0f, 100.0f, 25.0f, 4, 1, 0.0f);
   grid.addItem(1, wp::BoundingBox(5.0f, 5.0f, 5.0f, 5.0f));
+
+  static_assert(std::is_same_v<Grid::IndexCollection, std::vector<uint32_t>>);
 
   // Simulate a stale index-to-cell record and verify its removal contract.
   auto& cell = const_cast<Grid::Cell&>(static_cast<Grid const&>(grid).getCell(0, 0));

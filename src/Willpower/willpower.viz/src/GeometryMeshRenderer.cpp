@@ -692,7 +692,8 @@ void GeometryMeshRenderer::update(BoundingBox const& viewBounds, float frameTime
     }
 
     // Get visible ones and set
-    auto visibleItems = mLookupGrid->getCandidateItemsInBoundingArea(viewBounds);
+    AccelerationGrid::IndexCollection visibleItems;
+    mLookupGrid->getCandidateItemsInBoundingArea(viewBounds, visibleItems);
     for (uint32_t item : visibleItems) {
       bool include = !usingGridIncludeMasking() || gridIdInIncludeMask(item);
       bool exclude = usingGridExcludeMasking() && gridIdInExcludeMask(item);

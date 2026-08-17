@@ -44,7 +44,8 @@ public:
 
     if (mwMesh->mVertexAccelerationGrid) {
       // Get candidate vertices in broadphase and then check those
-      auto candidateVertices = mwMesh->mVertexAccelerationGrid->getCandidateItemsInBoundingArea(area);
+      AccelerationGrid::IndexCollection candidateVertices;
+      mwMesh->mVertexAccelerationGrid->getCandidateItemsInBoundingArea(area, candidateVertices);
       for (uint32_t candidateVertex : candidateVertices) {
         auto const& vertex = mwMesh->getVertex(candidateVertex);
         if (area.pointInside(vertex.getPosition())) {
@@ -105,7 +106,8 @@ public:
 
     if (mwMesh->mEdgeAccelerationGrid) {
       // Get candidate edges in broadphase and then check those
-      auto candidateEdges = mwMesh->mEdgeAccelerationGrid->getCandidateItemsInBoundingArea(area);
+      AccelerationGrid::IndexCollection candidateEdges;
+      mwMesh->mEdgeAccelerationGrid->getCandidateItemsInBoundingArea(area, candidateEdges);
       for (uint32_t candidateEdge : candidateEdges) {
         if (areaIntersectsEdge(area, mwMesh->getEdge(candidateEdge))) {
           edgeIndices.insert(candidateEdge);
@@ -169,7 +171,8 @@ public:
 
     if (mwMesh->mPolygonAccelerationGrid) {
       // Get candidate polygons in broadphase and then check those
-      auto candidatePolygons = mwMesh->mPolygonAccelerationGrid->getCandidateItemsInBoundingArea(area);
+      AccelerationGrid::IndexCollection candidatePolygons;
+      mwMesh->mPolygonAccelerationGrid->getCandidateItemsInBoundingArea(area, candidatePolygons);
       for (uint32_t candidatePolygon : candidatePolygons) {
         if (areaIntersectsPolygon(area, mwMesh->getPolygon(candidatePolygon))) {
           polygonIndices.insert(candidatePolygon);

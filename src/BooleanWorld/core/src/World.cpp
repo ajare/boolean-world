@@ -631,7 +631,8 @@ vector<WorldTriggerLine*> World::findTriggerLines(wp::BoundingBox const& bounds)
     throw CoreException("AccelerationGrid for TriggerLines not created.");
   }
 
-  set<uint32_t> indices = mTriggerLookupGrid->getCandidateItemsInBoundingArea(bounds);
+  wp::AccelerationGrid::IndexCollection indices;
+  mTriggerLookupGrid->getCandidateItemsInBoundingArea(bounds, indices);
 
   for (auto index : indices) {
     auto triggerLine = mTriggerLines[index];
@@ -920,7 +921,7 @@ void World::primitiveChanged(Primitive const* primitive) {
   auto id = primitive->getId();
 
   // Get the containing grid cell(s), and set the version
-  auto cellIndices = mPrimitiveLookupGrid->_getItemCellIndices(id);
+  auto const& cellIndices = mPrimitiveLookupGrid->_getItemCellIndices(id);
 
   for (auto cellIndex : cellIndices) {
     auto& userData = mPrimitiveLookupGrid->getUser(cellIndex);
@@ -1018,7 +1019,7 @@ vector<Primitive*> World::getPrimitivesInGridCell(uint32_t cellIndex, uint8_t ac
     throw CoreException("AccelerationGrid for primitives not created.");
   }
 
-  auto primIndices = mPrimitiveLookupGrid->_getCellItemIndices(cellIndex);
+  auto const& primIndices = mPrimitiveLookupGrid->_getCellItemIndices(cellIndex);
   for (auto primIndex : primIndices) {
     auto prim = mPrimitives[primIndex];
 
@@ -1094,7 +1095,8 @@ vector<Primitive*> World::findPrimitives(wp::BoundingBox const& bounds) const {
     throw CoreException("AccelerationGrid for primitives not created.");
   }
 
-  set<uint32_t> indices = mPrimitiveLookupGrid->getCandidateItemsInBoundingArea(bounds);
+  PrimitiveAccelerationGrid::IndexCollection indices;
+  mPrimitiveLookupGrid->getCandidateItemsInBoundingArea(bounds, indices);
 
   for (auto index : indices) {
     auto primitive = mPrimitives[index];
@@ -1114,7 +1116,8 @@ vector<Primitive*> World::findPrimitives(wp::BoundingCircle const& bounds) const
     throw CoreException("AccelerationGrid for primitives not created.");
   }
 
-  set<uint32_t> indices = mPrimitiveLookupGrid->getCandidateItemsInBoundingArea(bounds);
+  PrimitiveAccelerationGrid::IndexCollection indices;
+  mPrimitiveLookupGrid->getCandidateItemsInBoundingArea(bounds, indices);
 
   for (auto index : indices) {
     auto primitive = mPrimitives[index];

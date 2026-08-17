@@ -1,8 +1,6 @@
 #pragma once
 
 #include <vector>
-#include <set>
-#include <unordered_set>
 #include <map>
 #include <algorithm>
 #include <iterator>
@@ -23,7 +21,7 @@ or or maximum size of objects).
 template <typename T>
 class ExtendedAccelerationGrid {
 public:
-  typedef std::set<uint32_t> IndexCollection;
+  using IndexCollection = std::vector<uint32_t>;
 
   struct Cell {
     IndexCollection indices;
@@ -53,7 +51,7 @@ private:
     return mCells[y * mCellDimX + x];
   }
 
-  IndexCollection getItemsInArea(Vector2 const& minExtent, Vector2 const& maxExtent) const {
+  void getItemsInArea(Vector2 const& minExtent, Vector2 const& maxExtent, IndexCollection& indices) const {
     Vector2 cellSize = getCellSize();
 
     int minX = (std::max)(0, (int)((minExtent.x - mOffset.x) / cellSize.x));
@@ -61,29 +59,31 @@ private:
     int maxX = (std::min)((int)((maxExtent.x - mOffset.x) / cellSize.x), mCellDimX - 1);
     int maxY = (std::min)((int)((maxExtent.y - mOffset.y) / cellSize.y), mCellDimY - 1);
 
-    return _getItemsInCellRange(minX, minY, maxX, maxY);
-  }
-
-  bool cellHasItem(Cell const& cell, uint32_t index) const {
-    return cell.indices.find(index) != cell.indices.end();
+    _getItemsInCellRange(minX, minY, maxX, maxY, indices);
   }
 
   void addItemToCell(Cell& cell, uint32_t index, CellUserUpdateFunction updateFn) {
-    cell.indices.insert(index);
-
-    if (updateFn) {
-      updateFn(&cell.user);
+    auto const position = std::lower_bound(cell.indices.begin(), cell.indices.end(), index);
+    if (position == cell.indices.end() || *position != index) {
+      cell.indices.insert(position, index);
+      if (updateFn) {
+        updateFn(&cell.user);
+      }
     }
   }
 
   void removeItemFromCell(Cell& cell, uint32_t index, CellUserUpdateFunction updateFn, bool failIfNotFound = true) {
-    bool foundItem = cell.indices.erase(index) > 0;
+    auto const position = std::lower_bound(cell.indices.begin(), cell.indices.end(), index);
+    bool const foundItem = position != cell.indices.end() && *position == index;
     if (!foundItem && failIfNotFound) {
       throw std::runtime_error(std::format("Index {} not found in cell", index));
     }
 
-    if (updateFn && foundItem) {
-      updateFn(&cell.user);
+    if (foundItem) {
+      cell.indices.erase(position);
+      if (updateFn) {
+        updateFn(&cell.user);
+      }
     }
   }
 
@@ -189,8 +189,8 @@ public:
       for (int x = cellX0; x <= cellX1; ++x) {
         addItemToCell(getCell(x, y), index, updateFn);
 
-        uint32_t cellIindex = mCellDimX * y + x;
-        indexToCellIt.insert(cellIindex);
+        uint32_t cellIndex = mCellDimX * y + x;
+        indexToCellIt.push_back(cellIndex);
       }
     }
   }
@@ -296,26 +296,25 @@ public:
   }
 
   template <typename A>
-  IndexCollection getCandidateItemsInBoundingArea(A const& area) const {
+  void getCandidateItemsInBoundingArea(A const& area, IndexCollection& indices) const {
     Vector2 minExtent, maxExtent;
     area.getExtents(minExtent, maxExtent);
 
-    return getItemsInArea(minExtent, maxExtent);
+    getItemsInArea(minExtent, maxExtent, indices);
   }
 
-  IndexCollection _getItemsInCellRange(int x0, int y0, int x1, int y1) const {
-    IndexCollection indices;
+  void _getItemsInCellRange(int x0, int y0, int x1, int y1, IndexCollection& indices) const {
+    indices.clear();
 
-    // Add items in all cells
     for (int y = y0; y <= y1; ++y) {
       for (int x = x0; x <= x1; ++x) {
         auto const& cell = getCell(x, y);
-
-        indices.insert(cell.indices.begin(), cell.indices.end());
+        indices.insert(indices.end(), cell.indices.begin(), cell.indices.end());
       }
     }
 
-    return indices;
+    std::sort(indices.begin(), indices.end());
+    indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
   }
 
   IndexCollection const& _getItemCellIndices(uint32_t index) const {

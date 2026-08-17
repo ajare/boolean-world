@@ -153,7 +153,8 @@ std::vector<uint32_t> ArrangementWorldData::getWallsNear(
     wp::Vector2 const& position,
     float radius) const {
   wp::BoundingCircle bounds(position, radius);
-  auto candidates = mWallGrid->getCandidateItemsInBoundingArea(bounds);
+  wp::AccelerationGrid::IndexCollection candidates;
+  mWallGrid->getCandidateItemsInBoundingArea(bounds, candidates);
   std::vector<uint32_t> result;
   result.reserve(candidates.size());
   for (auto collisionWallIndex : candidates) {
