@@ -467,7 +467,7 @@ void updateImGui(float frameTime) {
 // Entry point
 //
 int main(int argc, char** argv) {
-  string configFile = "BooleanWorld.yaml";
+  string configFile = "Game.yaml";
   if (argc > 1) {
     configFile = string(argv[1]);
   }
