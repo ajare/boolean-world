@@ -91,6 +91,10 @@ void EntityHandlerBooleanWorld::updateVisual(Entity* entity, float frameTime) {
 
   visual->timer += frameTime;
   while (visual->timer >= frame.time) {
+    if (frame.time <= 0.0f) {
+      break;
+    }
+
     visual->timer -= frame.time;
     visual->frame += visual->direction;
 

@@ -98,16 +98,19 @@ uint32_t AnimationDatabase::registerAnimation(application::resourcesystem::Anima
 }
 
 AnimationDatabase::Animation const& AnimationDatabase::getAnimation(uint32_t id) const {
-  return mEntries[id];
+  return mEntries.at(id);
 }
 
 int32_t AnimationDatabase::getAnimationFrameCount(uint32_t id) const {
-  return mEntries[id].count;
+  return mEntries.at(id).count;
 }
 
 AnimationDatabase::Frame const& AnimationDatabase::getAnimationFrame(uint32_t id, uint32_t index) const {
-  auto offset = mEntries[id].offset;
-  return mFrames[offset + index];
+  auto const& animation = mEntries.at(id);
+  if (animation.count <= 0 || index >= static_cast<uint32_t>(animation.count)) {
+    throw Exception("Animation frame index is out of bounds.");
+  }
+  return mFrames.at(static_cast<size_t>(animation.offset) + index);
 }
 
 }  // namespace applib
