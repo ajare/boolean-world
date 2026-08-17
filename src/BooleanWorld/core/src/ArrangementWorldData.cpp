@@ -1,6 +1,7 @@
 #include "core/ArrangementWorldData.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 #include <willpower/common/BoundingCircle.h>
@@ -23,6 +24,24 @@ std::unique_ptr<wp::AccelerationGrid> CreateGrid(
   return std::make_unique<wp::AccelerationGrid>(
       extents.getMinExtent(), size, dimensionsX, dimensionsY, 0.0f);
 }
+
+std::unique_ptr<wp::AccelerationGrid> CreateVertexGrid(
+    wp::BoundingBox const& extents,
+    float targetCellSize,
+    std::vector<arr::FixedPointVertex> const& vertices) {
+  auto minExtent = extents.getMinExtent();
+  auto maxExtent = extents.getMaxExtent();
+  for (auto const& vertex : vertices) {
+    auto position = ToWorld(vertex);
+    minExtent.x = std::min(minExtent.x, position.x);
+    minExtent.y = std::min(minExtent.y, position.y);
+    maxExtent.x = std::max(maxExtent.x, position.x);
+    maxExtent.y = std::max(maxExtent.y, position.y);
+  }
+  maxExtent += {targetCellSize, targetCellSize};
+  return CreateGrid(
+      wp::BoundingBox(minExtent, maxExtent - minExtent), targetCellSize);
+}
 }  // namespace
 
 ArrangementWorldData::ArrangementWorldData(
@@ -35,6 +54,8 @@ ArrangementWorldData::ArrangementWorldData(
       mTriangles(arr::BuildArrangementTriangles(*mArrangement)),
       mWalls(arr::BuildArrangementWalls(*mArrangement)),
       mTriangleGrid(CreateGrid(extents, gridCellSize)),
+      mVertexGrid(CreateVertexGrid(
+          extents, gridCellSize, mArrangement->vertices)),
       mWallGrid(CreateGrid(extents, gridCellSize)) {
   if (stats != nullptr) {
     stats->triangleCount = uint32_t(mTriangles.size());
@@ -49,6 +70,12 @@ ArrangementWorldData::ArrangementWorldData(
       vertices.push_back(ToWorld(mArrangement->vertices[vertexIndex]));
     }
     mTriangleGrid->addItem(triangleIndex, wp::BoundingBox(vertices));
+  }
+
+  for (uint32_t vertexIndex = 0;
+       vertexIndex < uint32_t(mArrangement->vertices.size()); ++vertexIndex) {
+    auto vertex = ToWorld(mArrangement->vertices[vertexIndex]);
+    mVertexGrid->addItem(vertexIndex, wp::BoundingBox({vertex}));
   }
 
   for (uint32_t wallIndex = 0; wallIndex < uint32_t(mWalls.size());
@@ -119,13 +146,32 @@ uint32_t ArrangementWorldData::getContainingPrimitiveIndex(
 int32_t ArrangementWorldData::getNearestVertexIndex(
     wp::Vector2 const& position,
     float radius) const {
+  if (!std::isfinite(position.x) || !std::isfinite(position.y) ||
+      !std::isfinite(radius)) {
+    int32_t result = -1;
+    float nearest = radius;
+    for (uint32_t i = 0; i < uint32_t(mArrangement->vertices.size()); ++i) {
+      auto distance = position.distanceTo(ToWorld(mArrangement->vertices[i]));
+      if (distance <= nearest) {
+        nearest = distance;
+        result = int32_t(i);
+      }
+    }
+    return result;
+  }
+
+  wp::BoundingCircle bounds(position, radius);
+  wp::AccelerationGrid::IndexCollection candidates;
+  mVertexGrid->getCandidateItemsInBoundingArea(bounds, candidates);
+
   int32_t result = -1;
   float nearest = radius;
-  for (uint32_t i = 0; i < uint32_t(mArrangement->vertices.size()); ++i) {
-    auto distance = position.distanceTo(ToWorld(mArrangement->vertices[i]));
+  for (auto vertexIndex : candidates) {
+    auto distance =
+        position.distanceTo(ToWorld(mArrangement->vertices[vertexIndex]));
     if (distance <= nearest) {
       nearest = distance;
-      result = int32_t(i);
+      result = int32_t(vertexIndex);
     }
   }
   return result;

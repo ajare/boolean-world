@@ -19,6 +19,7 @@ class BW_API ArrangementWorldData {
   std::vector<arr::ArrangementWall> mWalls;
   std::vector<uint32_t> mCollisionWallIndices;
   std::unique_ptr<wp::AccelerationGrid> mTriangleGrid;
+  std::unique_ptr<wp::AccelerationGrid> mVertexGrid;
   std::unique_ptr<wp::AccelerationGrid> mWallGrid;
 
 public:
