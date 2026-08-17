@@ -67,6 +67,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       auto meshName = worldBatch->formatMeshName(hashValue);
 
       params->setMeshUniforms(meshName, uniforms);
+      params->setMeshBlend(meshName, false);
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)properties.floorMaterialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, properties.floorMaterialDef.data.params.data());
@@ -83,6 +84,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       auto meshName = worldBatch->formatMeshName(hashValue);
 
       params->setMeshUniforms(meshName, uniforms);
+      params->setMeshBlend(meshName, false);
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)properties.ceilingMaterialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, properties.ceilingMaterialDef.data.params.data());
@@ -99,6 +101,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       auto meshName = worldBatch->formatMeshName(hashValue);
 
       params->setMeshUniforms(meshName, uniforms);
+      params->setMeshBlend(meshName, false);
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)properties.wallMaterialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, properties.wallMaterialDef.data.params.data());
