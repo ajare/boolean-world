@@ -1,6 +1,7 @@
 #define NOMINMAX
 
 #include <algorithm>
+#include <cassert>
 
 #include <mpp/helper/FreeCamera.h>
 
@@ -192,9 +193,10 @@ void StatePlayBooleanWorld::createGameObjects(application::resourcesystem::Resou
 }
 
 void StatePlayBooleanWorld::destroyGameObjects() {
-  auto dataGenerator = getWDG();
-  dataGenerator->stopGenerationSchedule();
-  dataGenerator->unregisterGenerationCallback(mGenerationCallbackToken);
+  if (auto dataGenerator = getWDG()) {
+    dataGenerator->stopGenerationSchedule();
+    dataGenerator->unregisterGenerationCallback(mGenerationCallbackToken);
+  }
   mGenerationCallbackToken =
       bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken;
 
@@ -358,6 +360,7 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
 
   // Start scheduled world clipping
   auto dataGenerator = getWDG();
+  assert(dataGenerator && "StatePlayBooleanWorld requires a DynamicWorldDataGenerator");
 
   mGenerationCallbackToken = dataGenerator->registerGenerationCallback(
       bind(&StatePlayBooleanWorld::handleClippingUpdate, this, std::placeholders::_1));
@@ -641,6 +644,9 @@ void StatePlayBooleanWorld::ImGui_renderPrimitives(vector<wp::Vector2> const& vi
   VAR_UNUSED(viewBounds);
 
   auto dataGenerator = getWDG();
+  if (!dataGenerator) {
+    return;
+  }
   auto clippingPrims = dataGenerator->getSourceClippingPrimitives();
   set<bw::core::Primitive*> clippingPrimsSet(clippingPrims.begin(), clippingPrims.end());
 

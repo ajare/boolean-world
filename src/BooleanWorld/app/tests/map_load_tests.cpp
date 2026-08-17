@@ -11,6 +11,9 @@
 #include <willpower/application/resourcesystem/TextFileResource.h>
 #undef class
 
+#include <core/DynamicWorldDataGenerator.h>
+#include <core/World.h>
+
 #include "Map.h"
 
 namespace {
@@ -32,6 +35,21 @@ std::shared_ptr<wp::application::resourcesystem::TextFileResource> makeWorldReso
       "world", "", "", std::map<std::string, std::string>{}, nullptr);
   resource->mText = text;
   return resource;
+}
+
+void playMapsUseDynamicWorldDataGenerators() {
+  bw::core::World defaultWorld;
+  require(dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
+              defaultWorld.getWorldDataGenerator()) == nullptr,
+          "Default worlds unexpectedly satisfy the play-state generator requirement");
+
+  wp::Logger logger;
+  Map map("map", "", "", {}, nullptr, &logger);
+  map.loadWorldFromYaml(makeWorldResource(readFixture("basic-test.yaml")));
+
+  require(dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
+              map.getWorld()->getWorldDataGenerator()) != nullptr,
+          "Loaded play map did not install a dynamic world data generator");
 }
 
 void failedLoadReleasesThePreviousWorld() {
@@ -58,6 +76,7 @@ void failedLoadReleasesThePreviousWorld() {
 
 int main() {
   try {
+    playMapsUseDynamicWorldDataGenerators();
     failedLoadReleasesThePreviousWorld();
     std::cout << "Map failed-load ownership regression passed\n";
     return 0;
