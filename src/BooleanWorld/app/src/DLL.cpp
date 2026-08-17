@@ -13,6 +13,7 @@
 #include <applib/ProtoEntityDefaultDefinitionFactory.h>
 #include <applib/ImageSetTiledDefinitionFactory.h>
 
+#include "DLLState.h"
 #include "MapBooleanWorldDefinitionFactory.h"
 #include "ProtoEntityDefinitionFactory.h"
 
@@ -37,7 +38,7 @@ using namespace std;
 static applib::Model* model = nullptr;
 
 // State factories
-static int nextStateFactory = 0;
+static DLLState dllState;
 static StateControllerBooleanWorldFactory* stateControllerFactory = nullptr;
 static applib::StateLoadFactory* stateLoadFactory = nullptr;
 static applib::StateUnloadFactory* stateUnloadFactory = nullptr;
@@ -55,24 +56,12 @@ __declspec(dllexport) char const* dllGetName() {
 }
 
 __declspec(dllexport) int dllSetArgument(char const* arg, char const* value) {
-  if (!strcmp(arg, "ThreadedLoading")) {
-    string v = string(value);
-
-    if (v == "true") {
-      gThreadedLoading = true;
-    } else if (v == "false") {
-      gThreadedLoading = false;
-    } else {
-      return 1;
-    }
-  }
-
-  return 0;
+  return dllState.setArgument(arg, value, gThreadedLoading);
 }
 
 __declspec(dllexport) wp::application::StateFactory* dllGetNextStateFactory() {
   wp::application::StateFactory* stateFactory;
-  switch (nextStateFactory) {
+  switch (dllState.getNextStateFactoryIndex()) {
     case 0:
       stateFactory = stateControllerFactory;
       break;
@@ -99,11 +88,12 @@ __declspec(dllexport) wp::application::StateFactory* dllGetNextStateFactory() {
       break;
   }
 
-  nextStateFactory++;
   return stateFactory;
 }
 
 __declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
+  dllState.resetStateFactoryEnumeration();
+
   auto entityHandlerFactory = [](shared_ptr<applib::AnimationDatabase> animDatabase) {
     return new EntityHandlerBooleanWorld(animDatabase);
   };
