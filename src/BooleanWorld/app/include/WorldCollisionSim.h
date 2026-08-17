@@ -8,7 +8,9 @@
 #include <willpower/collide/Simulation.h>
 
 class WorldCollisionSim : public wp::collide::Simulation {
-  std::set<uint32_t> getLineIndices(wp::BoundingBox const& bounds) const override;
+  void getLineIndices(
+      wp::BoundingBox const& bounds,
+      std::vector<uint32_t>& indices) const override;
 
 public:
   explicit WorldCollisionSim(void* userObj = nullptr);

@@ -14,8 +14,12 @@ namespace collide {
 
 using namespace utils;
 
-Simulation::Simulation(ExtentsCalculator const& extents, uint32_t cellsX, uint32_t cellsY, void* userObj)
+Simulation::Simulation(void* userObj)
     : mNextIndex(0), mCollidersGrid(nullptr), mStaticLinesGrid(nullptr), mwUserObject(userObj), mMinExtent(1e10, 1e10), mMaxExtent(-1e10, -1e10), mNumSweepChecks(0) {
+}
+
+Simulation::Simulation(ExtentsCalculator const& extents, uint32_t cellsX, uint32_t cellsY, void* userObj)
+    : Simulation(userObj) {
   auto cellSize = extents.getCellSize(cellsX, cellsY);
   createGrids(extents.getMinExtent(), extents.getMaxExtent(), cellSize.x, cellSize.y);
 }
@@ -72,12 +76,14 @@ int32_t Simulation::addCollider(unique_ptr<Collider> collider) {
 
   mColliders.push_back(colliderObserver);
 
-  // Add to grid
-  try {
-    mCollidersGrid->addItem((uint32_t)colliderIndex, colliderObserver->getBounds());
-  } catch (...) {
-    mColliders.pop_back();
-    throw;
+  // Add to grid when this simulation uses spatial indexing.
+  if (mCollidersGrid) {
+    try {
+      mCollidersGrid->addItem((uint32_t)colliderIndex, colliderObserver->getBounds());
+    } catch (...) {
+      mColliders.pop_back();
+      throw;
+    }
   }
 
   collider.release();
@@ -89,8 +95,10 @@ void Simulation::removeCollider(Collider* collider) {
   assert(colliderIt != mColliders.end());
   mColliders.erase(colliderIt);
 
-  // Remove from grid
-  mCollidersGrid->removeItem((uint32_t)collider->getIndex());
+  // Remove from grid when this simulation uses spatial indexing.
+  if (mCollidersGrid) {
+    mCollidersGrid->removeItem((uint32_t)collider->getIndex());
+  }
 
   delete collider;
 }
@@ -298,7 +306,8 @@ void Simulation::update(float frameTime) {
 }
 
 bool Simulation::colliderIntersects(Collider const* collider) const {
-  auto lineIndices = getLineIndices(collider->getBounds());
+  vector<uint32_t> lineIndices;
+  getLineIndices(collider->getBounds(), lineIndices);
 
   for (auto const& lineIndex : lineIndices) {
     Vector2 v0, v1;
@@ -325,8 +334,12 @@ bool Simulation::colliderIntersects(Collider const* collider) const {
   return false;
 }
 
-set<uint32_t> Simulation::getLineIndices(wp::BoundingBox const& bounds) const {
-  return mStaticLinesGrid->getCandidateItemsInBoundingArea(bounds);
+void Simulation::getLineIndices(
+    wp::BoundingBox const& bounds,
+    vector<uint32_t>& indices) const {
+  indices.clear();
+  auto candidates = mStaticLinesGrid->getCandidateItemsInBoundingArea(bounds);
+  indices.insert(indices.end(), candidates.begin(), candidates.end());
 }
 
 bool Simulation::projectCollider(Collider const* collider, Vector2 const& desiredMovement, SweepResult* result) {
@@ -337,7 +350,8 @@ bool Simulation::projectCollider(Collider const* collider, Vector2 const& desire
   // Check acceleration grid
   auto const& colliderBounds = collider->getBounds();
   auto movementBounds = colliderBounds.unionWith(BoundingBox(desiredPosition, colliderBounds.getSize()));
-  auto lineIndices = getLineIndices(movementBounds);
+  vector<uint32_t> lineIndices;
+  getLineIndices(movementBounds, lineIndices);
 
   // Get all the lines we cross and order them by distance.  Then
   // check each one until we find one which blocks us.
@@ -409,7 +423,8 @@ bool Simulation::projectLine(Vector2 const& v0, Vector2 const& v1, SweepResult* 
   lineBounds.setPosition({std::min(v0.x, v1.x), std::min(v0.y, v1.y)});
   lineBounds.setSize({std::abs(v1.x - v0.x), std::abs(v1.y - v0.y)});
 
-  auto lineIndices = getLineIndices(lineBounds);
+  vector<uint32_t> lineIndices;
+  getLineIndices(lineBounds, lineIndices);
 
   bool hitLine = false;
   for (uint32_t lineIndex : lineIndices) {

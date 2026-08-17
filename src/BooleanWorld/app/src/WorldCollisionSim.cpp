@@ -1,12 +1,12 @@
-#include <willpower/common/ExtentsCalculator.h>
-
 #include "WorldCollisionSim.h"
 
 using namespace std;
 using namespace wp;
 
 WorldCollisionSim::WorldCollisionSim(void* userObj)
-    : collide::Simulation(ExtentsCalculator({0.0f, 0.0f}, {100.0f, 100.f}, 0.0f), 1, 1, userObj) {
+    : collide::Simulation(userObj) {
+  // StatePlayBooleanWorld narrows the active walls through ArrangementWorldData's
+  // wall grid before adding them, so a second spatial grid here would be unused.
 }
 
 void WorldCollisionSim::addSlidingCollider(
@@ -47,16 +47,15 @@ void WorldCollisionSim::addSlidingCollider(
   addCollider(move(collider));
 }
 
-set<uint32_t> WorldCollisionSim::getLineIndices(BoundingBox const& bounds) const {
-  set<uint32_t> indices;
-
-  auto numLines = getNumStaticLines();
-
+void WorldCollisionSim::getLineIndices(
+    BoundingBox const&,
+    vector<uint32_t>& indices) const {
+  indices.clear();
+  auto const numLines = getNumStaticLines();
+  indices.reserve(numLines);
   for (uint32_t i = 0; i < numLines; ++i) {
-    indices.insert(i);
+    indices.push_back(i);
   }
-
-  return indices;
 }
 
 vector<wp::collide::StaticLine> const& WorldCollisionSim::getLines() const {

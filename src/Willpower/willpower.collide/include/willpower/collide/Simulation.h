@@ -1,7 +1,6 @@
 #pragma once
 
 #include <memory>
-#include <set>
 #include <vector>
 
 #include "willpower/common/Vector2.h"
@@ -46,7 +45,12 @@ private:
 
   void sweepCollider(Collider* collider, Vector2 const& desiredMovement, uint32_t sweepCount = 0);
 
-  virtual std::set<uint32_t> getLineIndices(wp::BoundingBox const& bounds) const;
+  virtual void getLineIndices(
+      wp::BoundingBox const& bounds,
+      std::vector<uint32_t>& indices) const;
+
+protected:
+  explicit Simulation(void* userObj);
 
 public:
   Simulation(ExtentsCalculator const& extents, uint32_t cellsX, uint32_t cellsY, void* userObj = nullptr);

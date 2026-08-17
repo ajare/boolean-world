@@ -136,6 +136,26 @@ void generatedWallsSlideFromThePlayableSide() {
   }
 }
 
+void callerCulledWorldLinesDoNotCreateASecondSpatialGrid() {
+  WorldCollisionSim simulation;
+  require(simulation.getStaticLinesGrid() == nullptr,
+          "World collision lines must not create an unused spatial grid");
+  require(simulation.getCollidersGrid() == nullptr,
+          "World collision colliders must not create an unused spatial grid");
+
+  auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(
+      wp::Vector2{3998.0f, 4000.0f}, 0.5f);
+  auto player = playerOwner.get();
+  simulation.addSlidingCollider(std::move(playerOwner));
+  simulation.addLine({4000.0f, 3990.0f}, {4000.0f, 4010.0f}, 0);
+
+  player->setMovement({3.0f, 0.0f});
+  simulation.update(1.0f);
+
+  requireNear(player->getCentre().x, 3999.499f, 0.002f,
+              "Caller-culled wall outside the old grid extents was ignored");
+}
+
 void diagonalMovementSlidesAlongWall() {
   WorldCollisionSim simulation;
   auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-2.0f, 0.0f}, 0.5f);
@@ -443,6 +463,7 @@ int main() {
   try {
     playerLocationUsesResolvedPosition();
     generatedWallsSlideFromThePlayableSide();
+    callerCulledWorldLinesDoNotCreateASecondSpatialGrid();
     diagonalMovementSlidesAlongWall();
     perpendicularMovementStopsAtWall();
     smallMovementStillSlidesAlongWall();
