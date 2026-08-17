@@ -22,6 +22,10 @@ inline float worldViewAngle(float playerYaw) {
   return core::clamp_angle(180.0f - playerYaw);
 }
 
+inline float minimapRadius(float worldRadius, wp::Vector2 const& viewScale) {
+  return worldRadius * viewScale.x;
+}
+
 inline wp::Vector2 minimapPosition(
     wp::Vector2 const& worldPosition,
     wp::Vector2 const& viewOffset,

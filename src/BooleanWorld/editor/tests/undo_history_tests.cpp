@@ -185,6 +185,23 @@ void copiedDynamicGeneratorRetainsItsWorldAndSettings() {
           "dynamic generator copy could not generate from its retained world");
 }
 
+void undoHistoryRetainsConfiguredCapacity() {
+  editor::Document document;
+  document.newDoc();
+
+  for (int i = 0; i <= 20; ++i) {
+    editor::transactUndoableAction(&document, "capacity " + std::to_string(i), [](editor::Document*) {
+      return false;
+    });
+  }
+
+  auto const history = editor::getActionHistory();
+  require(editor::getUndoLevels() == 20 && history.size() >= 20 &&
+              history[history.size() - 20].id == "capacity 1" &&
+              history.back().id == "capacity 20",
+          "undo history did not retain its configured capacity");
+}
+
 void historyDoesNotCopyUndoOrRedoWorldSnapshots() {
   CopyCountingWorldDataGenerator::copyCount = 0;
   editor::Document document;
@@ -227,6 +244,7 @@ int main() {
     abandonedAndCommittedActionsClearTransactionValues();
     runtimeFreeSnapshotPreservesEditorGenerationConfiguration();
     copiedDynamicGeneratorRetainsItsWorldAndSettings();
+    undoHistoryRetainsConfiguredCapacity();
     historyDoesNotCopyUndoOrRedoWorldSnapshots();
     std::cout << "Undo history regressions passed\n";
     return 0;

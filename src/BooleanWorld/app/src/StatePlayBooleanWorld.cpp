@@ -20,6 +20,7 @@
 #include <core/Utils.h>
 #include <core/DynamicWorldDataGenerator.h>
 
+#include <common/BoundedDeque.h>
 #include <common/GameDefines.h>
 
 #include "imgui/imgui.h"
@@ -297,9 +298,7 @@ void StatePlayBooleanWorld::addDisplayMessage(DisplayMessage::Level level, strin
                               level,
                               message});
 
-  while (mDisplayMessages.size() >= DISPLAY_MESSAGE_COUNT_MAX) {
-    mDisplayMessages.pop_front();
-  }
+  bw::common::trimDequeToCapacity(mDisplayMessages, DISPLAY_MESSAGE_COUNT_MAX);
 }
 
 void StatePlayBooleanWorld::setupEntities() {
@@ -530,9 +529,7 @@ void StatePlayBooleanWorld::handleClippingUpdate(bw::core::DynamicWorldDataGener
       break;
   }
 
-  while (mClippingRecords.size() >= CLIPPING_RECORD_COUNT_MAX) {
-    mClippingRecords.pop_front();
-  }
+  bw::common::trimDequeToCapacity(mClippingRecords, CLIPPING_RECORD_COUNT_MAX);
 }
 
 void StatePlayBooleanWorld::updateImpl(float frameTime) {
@@ -705,10 +702,10 @@ void StatePlayBooleanWorld::ImGui_renderView(vector<wp::Vector2> const& viewVert
   ImVec2 playerPos = wpVecToImVec2(viewVertices[0], viewOffset, viewSize, viewScale);
 
   // View radius
-  drawList->AddCircleFilled(playerPos, BW_PLAYER_VIEW_DISTANCE, ImColor(0.5f, 0.8f, 0.5f, 0.25f));
+  drawList->AddCircleFilled(playerPos, bw::app::minimapRadius(BW_PLAYER_VIEW_DISTANCE, viewScale), ImColor(0.5f, 0.8f, 0.5f, 0.25f));
 
   // Player circle
-  drawList->AddCircleFilled(playerPos, BW_PLAYER_RADIUS, ImColor(0.8f, 0.8f, 0.4f));
+  drawList->AddCircleFilled(playerPos, bw::app::minimapRadius(BW_PLAYER_RADIUS, viewScale), ImColor(0.8f, 0.8f, 0.4f));
 }
 
 void StatePlayBooleanWorld::debug_renderMinimap(wp::Vector2 const& viewSize, wp::Vector2 const& viewOffset, wp::Vector2 const& viewScale, wp::BoundingBox const& viewBounds, ImDrawList* drawList) {

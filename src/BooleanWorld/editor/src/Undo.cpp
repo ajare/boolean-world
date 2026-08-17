@@ -2,6 +2,8 @@
 #include <set>
 #include <ranges>
 
+#include <common/BoundedDeque.h>
+
 #include <core/World.h>
 
 #include "Undo.h"
@@ -93,14 +95,11 @@ bool transactionValueHasChanged(wp::Vector2 const& v) {
 }
 
 void commitUndoableAction(Document* doc, string const& id) {
-  while (gUndoStack.size() >= MAX_STACK_SIZE) {
-    gUndoStack.pop_front();
-  }
-
   gRedoStack.clear();
 
   UndoEntry data{id != "" ? id : gTransactionalId, gTransactionalData};
   gUndoStack.push_back(data);
+  bw::common::trimDequeToCapacity(gUndoStack, MAX_STACK_SIZE);
 
   if (gTransactionalFunc(doc)) {
     doc->setModified();

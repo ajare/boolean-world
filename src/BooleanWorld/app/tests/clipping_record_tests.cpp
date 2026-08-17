@@ -1,6 +1,8 @@
 #include <iostream>
 #include <stdexcept>
 
+#include <common/BoundedDeque.h>
+
 #include "ClippingRecord.h"
 
 namespace {
@@ -31,12 +33,31 @@ void omitsLagUntilGenerationCompletes() {
           "commit lag did not use the completed generation time");
 }
 
+void retainsTheConfiguredDebugRingBufferCapacity() {
+  std::deque<int> values;
+  for (int i = 0; i <= 128; ++i) {
+    values.push_back(i);
+    bw::common::trimDequeToCapacity(values, 128);
+  }
+  require(values.size() == 128 && values.front() == 1 && values.back() == 128,
+          "display-message ring buffer did not retain its configured capacity");
+
+  values.clear();
+  for (int i = 0; i <= 10; ++i) {
+    values.push_back(i);
+    bw::common::trimDequeToCapacity(values, 10);
+  }
+  require(values.size() == 10 && values.front() == 1 && values.back() == 10,
+          "clipping-record ring buffer did not retain its configured capacity");
+}
+
 }  // namespace
 
 int main() {
   try {
     formatsGenerationTimeBeyond32Bits();
     omitsLagUntilGenerationCompletes();
+    retainsTheConfiguredDebugRingBufferCapacity();
     std::cout << "Clipping record diagnostics regression passed\n";
     return 0;
   } catch (std::exception const& error) {

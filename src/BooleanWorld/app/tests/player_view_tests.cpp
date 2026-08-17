@@ -73,6 +73,12 @@ int main() {
   }
 
   {
+    if (!near(bw::app::minimapRadius(15.0f, {2.0f, 3.0f}), 30.0f)) {
+      return fail("debug minimap radius does not follow horizontal view scale");
+    }
+  }
+
+  {
     auto player = bw::app::minimapPosition({10.0f, 20.0f}, {0.0f, 0.0f}, {1.0f, 1.0f});
     auto forward = bw::app::minimapPosition({10.0f, 19.0f}, {0.0f, 0.0f}, {1.0f, 1.0f});
     auto right = bw::app::minimapPosition({11.0f, 20.0f}, {0.0f, 0.0f}, {1.0f, 1.0f});
