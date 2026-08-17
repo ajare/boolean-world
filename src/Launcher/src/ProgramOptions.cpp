@@ -1,5 +1,6 @@
 #include <stack>
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <memory>
 
@@ -41,6 +42,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
   auto videoNode = configuration.getChild("Video");
   auto gameNode = configuration.getChild("Game");
   auto audioNode = configuration.getChild("Audio");
+  auto inputNode = configuration.getOptionalChild("Input");
 
   gameNode->requireOnlyChildren({"DLL", "ResourceLocations", "Debug", "Arguments"});
 
@@ -72,6 +74,26 @@ ProgramOptions parseProgramOptions(string const& filename) {
   pOpts.audioEnabled = utils::StringUtils::parseBool(audioNode->getChild("Enabled")->getValue());
   pOpts.audio.numChannels = utils::StringUtils::parseInt(audioNode->getChild("Channels")->getValue());
   pOpts.audio.synchronous = utils::StringUtils::parseBool(audioNode->getChild("Sync")->getValue());
+
+  // Get input options. The whole section is optional; the defaults in
+  // ProgramOptions::Input stand in for anything left out.
+  if (inputNode) {
+    inputNode->requireOnlyChildren({"MouseSensitivity"});
+
+    auto sensitivityNode = inputNode->getOptionalChild("MouseSensitivity");
+    if (sensitivityNode) {
+      // parseFloat reports unparseable text as zero, which this rejects along
+      // with the zero and negative values a user could write deliberately.
+      float sensitivity = utils::StringUtils::parseFloat(sensitivityNode->getValue());
+
+      if (!isfinite(sensitivity) || sensitivity <= 0.0f) {
+        string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Input/MouseSensitivity must be a number greater than zero.";
+        throw exception(errMsg.c_str());
+      }
+
+      pOpts.input.mouseSensitivity = sensitivity;
+    }
+  }
 
   // Get debug options
   pOpts.debugging.inGame = false;
@@ -126,6 +148,8 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
     logger->info(std::format("Audio synchronous: {}", options.audio.synchronous));
     logger->info(std::format("Audio channels: {}", options.audio.numChannels));
   }
+
+  logger->info(std::format("Mouse sensitivity: {}", options.input.mouseSensitivity));
 
   logger->info(std::format("DLL: {}", options.dll));
   logger->info("");

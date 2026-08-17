@@ -15,6 +15,7 @@
 
 #include "willpower/common/Logger.h"
 
+#include "ProgramOptions.h"
 #include "StateManager.h"
 
 class ApplicationDLL {
@@ -27,6 +28,10 @@ class ApplicationDLL {
   typedef void (*DllOnExitFunction)();
 
   typedef int (*DllSetArgumentFunction)(char const*, char const*);
+
+  // Input settings are passed as plain scalars rather than a struct: the
+  // launcher and the game share no headers of their own.
+  typedef int (*DllSetInputOptionsFunction)(float);
 
 private:
 #if APP_PLATFORM == APP_PLATFORM_WINDOWS
@@ -44,6 +49,8 @@ private:
 
   DllSetArgumentFunction mSetArgumentFunction;
 
+  DllSetInputOptionsFunction mSetInputOptionsFunction;
+
   static std::string msGetNameFunction;
 
   static std::string msCreateApplicationFunctionName, msDestroyApplicationFunctionName;
@@ -53,6 +60,8 @@ private:
   static std::string msGetNextResourceFactoryFunctionName;
 
   static std::string msSetArgumentFunctionName;
+
+  static std::string msSetInputOptionsFunctionName;
 
   // Optional DLL functions
   DllOnEntryFunction mOnEntryFunction;
@@ -75,7 +84,7 @@ public:
 
   std::string const& getFilepath() const;
 
-  void load(std::string const& file, std::map<std::string, std::string> const& arguments, wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr);
+  void load(std::string const& file, std::map<std::string, std::string> const& arguments, ProgramOptions::Input const& input, wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr);
 
   void unload();
 

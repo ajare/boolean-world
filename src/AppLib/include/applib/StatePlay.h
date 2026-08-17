@@ -84,6 +84,8 @@ private:
 
   void injectMouseMotionInputImpl(float positionX, float positionY) override;
 
+  void resyncMouseInputImpl() override;
+
   mpp::CameraPtr getActiveCamera() const;
 
   glm::vec2 getPlayerPosition() const;

@@ -182,6 +182,10 @@ void StateManager::injectMouseDragFinished(application::MouseButton mouseButton,
 
 void StateManager::injectMouseMotionInput(float positionX, float positionY) {
   if (imGuiCapturesInput()) {
+    // The mouse keeps moving while the GUI has it, so the position the state
+    // last saw is going stale. Tell it to measure from the next event it does
+    // receive - otherwise the whole gap arrives at once, as a view swing.
+    mCurState->_resyncMouseInput();
     return;
   }
 

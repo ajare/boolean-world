@@ -179,12 +179,10 @@ void WindowSDL::create() {
   }
 
   // Relative-mouse hints are read when the mode is enabled, so set them first.
+  // Motion is left at the scale SDL reports it: the application's own mouse
+  // sensitivity is the one place turn speed is scaled.
   if (!SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_CENTER, "1")) {
     throw exception("Could not set hint: SDL_HINT_MOUSE_RELATIVE_MODE_CENTER");
-  }
-
-  if (!SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_SPEED_SCALE, "0.3")) {
-    throw exception("Could not set hint: SDL_HINT_MOUSE_RELATIVE_SPEED_SCALE");
   }
 
   // Create window

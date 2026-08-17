@@ -14,6 +14,7 @@
 #include <applib/ImageSetTiledDefinitionFactory.h>
 
 #include "DLLState.h"
+#include "InputOptions.h"
 #include "MapBooleanWorldDefinitionFactory.h"
 #include "ProtoEntityDefinitionFactory.h"
 
@@ -50,6 +51,10 @@ static StatePlayBooleanWorldFactory* statePlayBooleanWorldFactory = nullptr;
 // Arguments
 static bool gThreadedLoading = true;
 
+// Input configuration, supplied by the launcher before dllOnEntry so the
+// entity handler can be built with it.
+static bw::app::InputOptions gInputOptions;
+
 extern "C" {
 __declspec(dllexport) char const* dllGetName() {
   return "BooleanWorld";
@@ -57,6 +62,10 @@ __declspec(dllexport) char const* dllGetName() {
 
 __declspec(dllexport) int dllSetArgument(char const* arg, char const* value) {
   return dllState.setArgument(arg, value, gThreadedLoading);
+}
+
+__declspec(dllexport) int dllSetInputOptions(float mouseSensitivity) {
+  return dllState.setInputOptions(mouseSensitivity, gInputOptions);
 }
 
 __declspec(dllexport) wp::application::StateFactory* dllGetNextStateFactory() {
@@ -95,7 +104,7 @@ __declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resou
   dllState.resetStateFactoryEnumeration();
 
   auto entityHandlerFactory = [](shared_ptr<applib::AnimationDatabase> animDatabase) {
-    return new EntityHandlerBooleanWorld(animDatabase);
+    return new EntityHandlerBooleanWorld(animDatabase, gInputOptions);
   };
 
   model = new BooleanWorldModel(entityHandlerFactory, resourceMgr);

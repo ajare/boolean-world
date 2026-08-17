@@ -9,12 +9,14 @@ string ApplicationDLL::msGetNextResourceFactoryFunctionName = "dllGetNextResourc
 string ApplicationDLL::msOnEntryFunctionName = "dllOnEntry";
 string ApplicationDLL::msOnExitFunctionName = "dllOnExit";
 string ApplicationDLL::msSetArgumentFunctionName = "dllSetArgument";
+string ApplicationDLL::msSetInputOptionsFunctionName = "dllSetInputOptions";
 
 ApplicationDLL::ApplicationDLL()
     : mGetProcIDDLL(0),
       mGetNameFunction(0),
       mGetNextStateFactoryFunction(0),
       mSetArgumentFunction(0),
+      mSetInputOptionsFunction(0),
       mOnEntryFunction(0),
       mOnExitFunction(0),
       mEntryStarted(false) {
@@ -49,6 +51,13 @@ void ApplicationDLL::registerRequiredFunctions() {
     string errMsg = "Could not find DLL function '" + msSetArgumentFunctionName + "' in '" + mFilepath + "'.";
     throw exception(errMsg.c_str());
   }
+
+  mSetInputOptionsFunction = (DllSetInputOptionsFunction)GetProcAddress(mGetProcIDDLL, msSetInputOptionsFunctionName.c_str());
+
+  if (!mSetInputOptionsFunction) {
+    string errMsg = "Could not find DLL function '" + msSetInputOptionsFunctionName + "' in '" + mFilepath + "'.";
+    throw exception(errMsg.c_str());
+  }
 }
 
 void ApplicationDLL::registerOptionalFunctions() {
@@ -56,7 +65,7 @@ void ApplicationDLL::registerOptionalFunctions() {
   mOnExitFunction = (DllOnExitFunction)GetProcAddress(mGetProcIDDLL, msOnExitFunctionName.c_str());
 }
 
-void ApplicationDLL::load(string const& filepath, map<string, string> const& arguments, wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
+void ApplicationDLL::load(string const& filepath, map<string, string> const& arguments, ProgramOptions::Input const& input, wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
   mFilepath = filepath;
 
 #if APP_PLATFORM == APP_PLATFORM_WINDOWS
@@ -79,6 +88,13 @@ void ApplicationDLL::load(string const& filepath, map<string, string> const& arg
       string errMsg = format("Application could not parse config argument: {}={}", argument.first, argument.second);
       throw exception(errMsg.c_str());
     }
+  }
+
+  // Pass in input options, before entry so the application can build its
+  // input-driven objects with them
+  if (mSetInputOptionsFunction(input.mouseSensitivity) != 0) {
+    string errMsg = format("Application rejected input options: MouseSensitivity={}", input.mouseSensitivity);
+    throw exception(errMsg.c_str());
   }
 
   // Call entry function

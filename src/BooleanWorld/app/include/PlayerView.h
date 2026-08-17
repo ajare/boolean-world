@@ -1,12 +1,21 @@
 #pragma once
 
+#include <algorithm>
+
 #include <core/Utils.h>
 #include <willpower/common/Vector2.h>
 
 namespace bw::app {
 
-inline float applyMouseYaw(float yaw, float mouseDeltaX) {
-  return core::clamp_angle(yaw + mouseDeltaX);
+// Pitch is held short of straight up and down so the view never flips over.
+constexpr float PitchLimit = 85.0f;
+
+inline float applyMouseYaw(float yaw, float mouseDeltaX, float sensitivity) {
+  return core::clamp_angle(yaw + mouseDeltaX * sensitivity);
+}
+
+inline float applyMousePitch(float pitch, float mouseDeltaY, float sensitivity) {
+  return std::clamp(pitch + mouseDeltaY * sensitivity, -PitchLimit, PitchLimit);
 }
 
 inline wp::Vector2 playerMovement(wp::Vector2 input, float yaw) {

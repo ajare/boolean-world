@@ -19,6 +19,14 @@ struct ProgramOptions {
     bool inGame;
   };
 
+  // Input settings handed to the game DLL. They govern control of the player
+  // in the 3d world; menus and other 2d interfaces are unaffected.
+  struct Input {
+    // Matches the game's own default: the flat scale SDL used to apply to
+    // relative motion, now applied once, where it can be configured.
+    float mouseSensitivity{0.3f};
+  };
+
 public:
   int screenWidth, screenHeight;
 
@@ -33,6 +41,8 @@ public:
   bool audioEnabled;
 
   wp::application::AudioOptions audio;
+
+  Input input;
 
   Debugging debugging;
 };

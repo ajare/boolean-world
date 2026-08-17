@@ -8,6 +8,8 @@ Configuration:
     Enabled: false
     Channels: 1024
     Sync: false
+  Input:
+    MouseSensitivity: 0.6
   Game:
     DLL:
       path: ../BooleanWorld/BooleanWorld.dll

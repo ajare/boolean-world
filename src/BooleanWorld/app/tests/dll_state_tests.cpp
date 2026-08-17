@@ -1,4 +1,5 @@
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -25,6 +26,20 @@ void rejectsUnknownArguments() {
   require(!threadedLoading, "Unknown DLL argument changed configuration.");
 }
 
+void rejectsUnusableMouseSensitivities() {
+  DLLState state;
+  bw::app::InputOptions options;
+
+  require(state.setInputOptions(2.5f, options) == 0, "Valid mouse sensitivity was rejected.");
+  require(options.mouseSensitivity == 2.5f, "Valid mouse sensitivity was not applied.");
+
+  require(state.setInputOptions(0.0f, options) != 0, "Zero mouse sensitivity was accepted.");
+  require(state.setInputOptions(-1.0f, options) != 0, "Negative mouse sensitivity was accepted.");
+  require(state.setInputOptions(std::numeric_limits<float>::quiet_NaN(), options) != 0,
+          "Non-finite mouse sensitivity was accepted.");
+  require(options.mouseSensitivity == 2.5f, "Rejected mouse sensitivity changed configuration.");
+}
+
 void resetsStateFactoryEnumerationOnEntry() {
   DLLState state;
 
@@ -44,6 +59,7 @@ void resetsStateFactoryEnumerationOnEntry() {
 int main() {
   try {
     rejectsUnknownArguments();
+    rejectsUnusableMouseSensitivities();
     resetsStateFactoryEnumerationOnEntry();
     std::cout << "DLL state regression tests passed\n";
     return 0;

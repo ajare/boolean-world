@@ -369,6 +369,14 @@ void StatePlay::injectMouseMotionInputImpl(float positionX, float positionY) {
   mInputStateMgr->setMousePosition(positionX, positionY);
 }
 
+void StatePlay::resyncMouseInputImpl() {
+  // Motion can be withheld before the state has its input, and after it has
+  // given it up again.
+  if (mInputStateMgr) {
+    mInputStateMgr->resyncMousePosition();
+  }
+}
+
 mpp::CameraPtr StatePlay::getActiveCamera() const {
   return mUseDebugCamera ? mDebugCamera : mCamera;
 }

@@ -18,8 +18,12 @@ using namespace applib;
 map<EntityType, string> gEntityTypeNames = {
     {EntityType::Player, "Player"}};
 
-EntityHandlerBooleanWorld::EntityHandlerBooleanWorld(shared_ptr<AnimationDatabase> animationDatabase)
-    : EntityHandler(), mAnimationDatabase(animationDatabase), mInputEnabled(true) {
+EntityHandlerBooleanWorld::EntityHandlerBooleanWorld(shared_ptr<AnimationDatabase> animationDatabase, bw::app::InputOptions const& inputOptions)
+    : EntityHandler(), mAnimationDatabase(animationDatabase), mInputEnabled(true), mInputOptions(inputOptions) {
+}
+
+bw::app::InputOptions const& EntityHandlerBooleanWorld::getInputOptions() const {
+  return mInputOptions;
 }
 
 void EntityHandlerBooleanWorld::enableInput(bool enable) {
@@ -142,12 +146,13 @@ void EntityHandlerBooleanWorld::peekInput(applib::Entity const& entity, wp::Vect
 
   auto const& physicalStats = getEntityComponent<applib::PhysicalStats>(entity);
 
-  // Get desired direction
+  // Get desired direction. Mouse sensitivity scales view control here, where
+  // the player is being turned in the 3d world, and nowhere else.
   *curAngle = physicalStats.angle;
-  *newAngle = bw::app::applyMouseYaw(physicalStats.angle, mMouseDeltaX);
+  *newAngle = bw::app::applyMouseYaw(physicalStats.angle, mMouseDeltaX, mInputOptions.mouseSensitivity);
 
   *curPitch = physicalStats.pitch;
-  *newPitch = clamp(physicalStats.pitch + mMouseDeltaY, -85.0f, 85.0f);
+  *newPitch = bw::app::applyMousePitch(physicalStats.pitch, mMouseDeltaY, mInputOptions.mouseSensitivity);
 
   // Get desired movement
   vel.normalise();

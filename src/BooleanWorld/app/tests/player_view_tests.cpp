@@ -52,8 +52,23 @@ int main() {
     }
   }
 
-  if (!near(bw::app::applyMouseYaw(350.0f, 20.0f), 10.0f)) {
+  if (!near(bw::app::applyMouseYaw(350.0f, 20.0f, 1.0f), 10.0f)) {
     return fail("rightward mouse input does not increase player yaw");
+  }
+
+  if (!near(bw::app::applyMouseYaw(0.0f, 20.0f, 2.0f), 40.0f) ||
+      !near(bw::app::applyMouseYaw(0.0f, 20.0f, 0.25f), 5.0f)) {
+    return fail("mouse sensitivity does not scale player yaw");
+  }
+
+  if (!near(bw::app::applyMousePitch(0.0f, 10.0f, 1.0f), 10.0f) ||
+      !near(bw::app::applyMousePitch(0.0f, 10.0f, 3.0f), 30.0f)) {
+    return fail("mouse sensitivity does not scale player pitch");
+  }
+
+  if (!near(bw::app::applyMousePitch(0.0f, 400.0f, 2.0f), bw::app::PitchLimit) ||
+      !near(bw::app::applyMousePitch(0.0f, -400.0f, 2.0f), -bw::app::PitchLimit)) {
+    return fail("a sensitive mouse turns the view past the pitch limit");
   }
 
   if (!near(bw::app::worldViewAngle(0.0f), 180.0f) ||

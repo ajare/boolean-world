@@ -136,6 +136,8 @@ file(GENERATE
     Enabled: false
     Channels: 1024
     Sync: false
+  Input:
+    MouseSensitivity: 0.3
   Game:
     DLL:
       path: $<TARGET_FILE:BooleanWorld>

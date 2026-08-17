@@ -387,7 +387,7 @@ ProgramOptions startup(string const& configFile, LauncherLifecycle& lifecycle) {
     delete gDLL;
     gDLL = nullptr;
   });
-  gDLL->load(options.dll, options.arguments, gLogger, gResourceMgr);
+  gDLL->load(options.dll, options.arguments, options.input, gLogger, gResourceMgr);
 
   // Create state manager and get state factories
   gStateMgr = new StateManager(gResourceMgr, gAudioSystem, gRenderSystem, gRenderSystemResourceMgr);

@@ -11,7 +11,7 @@ void require(bool condition, std::string const& message) {
   if (!condition) throw std::runtime_error(message);
 }
 
-std::filesystem::path writeConfiguration(std::string const& extraGameField) {
+std::filesystem::path writeConfiguration(std::string const& extraGameField, std::string const& inputSection = "") {
   auto path = std::filesystem::temp_directory_path() / "boolean-world-program-options-test.yaml";
   std::ofstream stream(path);
   stream << "Configuration:\n"
@@ -24,7 +24,8 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField) {
             "    Enabled: false\n"
             "    Channels: 32\n"
             "    Sync: false\n"
-            "  Game:\n"
+         << inputSection
+         << "  Game:\n"
             "    DLL:\n"
             "      path: BooleanWorld.dll\n"
             "    ResourceLocations:\n"
@@ -51,6 +52,27 @@ void requireRejected(std::string const& field) {
   std::filesystem::remove(path);
   throw std::runtime_error("Game configuration accepted unsupported field '" + field + "'.");
 }
+
+ProgramOptions parseWithInput(std::string const& inputSection) {
+  auto path = writeConfiguration("", inputSection);
+  try {
+    auto options = parseProgramOptions(path.string());
+    std::filesystem::remove(path);
+    return options;
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+}
+
+void requireInputRejected(std::string const& inputSection, std::string const& description) {
+  try {
+    (void)parseWithInput(inputSection);
+  } catch (std::exception const&) {
+    return;
+  }
+  throw std::runtime_error("Input configuration accepted " + description + ".");
+}
 }  // namespace
 
 int main() {
@@ -62,6 +84,18 @@ int main() {
 
     requireRejected("GameResource");
     requireRejected("MisspelledOption");
+
+    require(parseWithInput("").input.mouseSensitivity == 0.3f,
+            "A configuration without an Input section did not default the mouse sensitivity.");
+    require(parseWithInput("  Input:\n").input.mouseSensitivity == 0.3f,
+            "An empty Input section did not default the mouse sensitivity.");
+    require(parseWithInput("  Input:\n    MouseSensitivity: 2.5\n").input.mouseSensitivity == 2.5f,
+            "The configured mouse sensitivity did not parse.");
+
+    requireInputRejected("  Input:\n    MouseSensitivity: 0\n", "a zero mouse sensitivity");
+    requireInputRejected("  Input:\n    MouseSensitivity: -1.5\n", "a negative mouse sensitivity");
+    requireInputRejected("  Input:\n    MouseSensitivity: fast\n", "an unparseable mouse sensitivity");
+    requireInputRejected("  Input:\n    MouseSensitivty: 2.0\n", "a misspelled input field");
 
     std::cout << "Program-options schema validation passed\n";
     return 0;
