@@ -18,7 +18,6 @@ RegularPolygon::RegularPolygon(Operation operation, FillRule fillType, uint32_t 
 
 RegularPolygon::RegularPolygon(RegularPolygon const& other) {
   copyFrom(other);
-  this->mNumSides = other.mNumSides;
 }
 
 RegularPolygon& RegularPolygon::operator=(RegularPolygon const& other) {
@@ -28,6 +27,7 @@ RegularPolygon& RegularPolygon::operator=(RegularPolygon const& other) {
 
 void RegularPolygon::copyFrom(RegularPolygon const& other) {
   Primitive::copyFrom(other);
+  mNumSides = other.mNumSides;
 }
 
 Primitive* RegularPolygon::copy() const {

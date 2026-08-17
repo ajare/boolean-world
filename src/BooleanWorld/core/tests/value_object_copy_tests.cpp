@@ -6,12 +6,19 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
+
+#include <willpower/common/BezierSpline.h>
 
 #include <core/AnimatedProperty.h>
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/InfluenceEye.h>
+#include <core/CirclePolygon.h>
+#include <core/CircleSegmentPolygon.h>
 #include <core/PrimitivePropertySet.h>
 #include <core/RectanglePolygon.h>
+#include <core/RegularPolygon.h>
+#include <core/SuperformulaPolygon.h>
 #include <core/World.h>
 #include <core/WorldTriggerLine.h>
 #include <core/WorldUpdateData.h>
@@ -33,6 +40,35 @@ void requireNear(float actual, float expected, std::string const& message) {
               ", got " + std::to_string(actual));
 }
 
+void requireVectorNear(wp::Vector2 const& actual, wp::Vector2 const& expected,
+                       std::string const& message) {
+  requireNear(actual.x, expected.x, message + " x");
+  requireNear(actual.y, expected.y, message + " y");
+}
+
+void requireContoursMatch(bw::core::Primitive const& actual,
+                          bw::core::Primitive const& expected,
+                          std::string const& name) {
+  auto const& actualContours = actual.getVertices();
+  auto const& expectedContours = expected.getVertices();
+  require(actualContours.size() == expectedContours.size(),
+          name + " did not retain its complex-polygon count");
+
+  for (size_t polygon = 0; polygon < expectedContours.size(); ++polygon) {
+    require(actualContours[polygon].size() == expectedContours[polygon].size(),
+            name + " did not retain its contour count");
+    for (size_t contour = 0; contour < expectedContours[polygon].size(); ++contour) {
+      require(actualContours[polygon][contour].size() == expectedContours[polygon][contour].size(),
+              name + " did not retain its contour vertex count");
+      for (size_t vertex = 0; vertex < expectedContours[polygon][contour].size(); ++vertex) {
+        requireVectorNear(actualContours[polygon][contour][vertex].p,
+                          expectedContours[polygon][contour][vertex].p,
+                          name + " contour vertex differs after copying");
+      }
+    }
+  }
+}
+
 void requireMaterialDefinitionEqual(bw::core::MaterialDefinition const& actual,
                                     bw::core::MaterialDefinition const& expected,
                                     std::string const& name) {
@@ -42,6 +78,107 @@ void requireMaterialDefinitionEqual(bw::core::MaterialDefinition const& actual,
           name + " base colour was not copied");
   require(actual.data.packedColour() == expected.data.packedColour(),
           name + " packed base colour differs");
+}
+
+void generatedShapeCopiesRetainDefiningState() {
+  using Primitive = bw::core::Primitive;
+
+  bw::core::RegularPolygon regular(Primitive::Operation::Union,
+                                   Primitive::FillRule::NonZero, 7);
+  bw::core::RegularPolygon regularConstructed(regular);
+  bw::core::RegularPolygon regularAssigned(Primitive::Operation::Difference,
+                                           Primitive::FillRule::EvenOdd, 3);
+  regularAssigned = regular;
+  for (auto const* copy : {&regularConstructed, &regularAssigned}) {
+    require(copy->getNumSides() == regular.getNumSides(),
+            "regular polygon did not retain its side count");
+    requireContoursMatch(*copy, regular, "regular polygon");
+  }
+
+  bw::core::CirclePolygon circle(Primitive::Operation::Union,
+                                 Primitive::FillRule::NonZero, 0.5f);
+  circle.setNumSides(51);
+  bw::core::CirclePolygon circleConstructed(circle);
+  bw::core::CirclePolygon circleAssigned(Primitive::Operation::Difference,
+                                         Primitive::FillRule::EvenOdd, 1.0f);
+  circleAssigned = circle;
+  for (auto const* copy : {&circleConstructed, &circleAssigned}) {
+    require(copy->getNumSides() == circle.getNumSides(),
+            "circle did not retain its side count");
+    requireNear(copy->getResolution(), circle.getResolution(),
+                "circle did not retain its resolution");
+    requireContoursMatch(*copy, circle, "circle");
+  }
+
+  bw::core::CircleSegmentPolygon circleSegment(
+      Primitive::Operation::Union, Primitive::FillRule::NonZero, 180.0f, 0.5f);
+  circleSegment.setNumSides(17);
+  bw::core::CircleSegmentPolygon circleSegmentConstructed(circleSegment);
+  bw::core::CircleSegmentPolygon circleSegmentAssigned(
+      Primitive::Operation::Difference, Primitive::FillRule::EvenOdd, 90.0f, 1.0f);
+  circleSegmentAssigned = circleSegment;
+  for (auto const* copy : {&circleSegmentConstructed, &circleSegmentAssigned}) {
+    require(copy->getNumSides() == circleSegment.getNumSides(),
+            "circle segment did not retain its side count");
+    requireNear(copy->getResolution(), circleSegment.getResolution(),
+                "circle segment did not retain its resolution");
+    requireNear(copy->getArcLength(), circleSegment.getArcLength(),
+                "circle segment did not retain its arc length");
+    requireContoursMatch(*copy, circleSegment, "circle segment");
+  }
+
+  float values[] = {1.25f, 0.75f, 7.0f, 0.9f, 1.4f, 1.1f};
+  bw::core::SuperformulaPolygon superformula(
+      Primitive::Operation::Union, Primitive::FillRule::NonZero, 1.25f, values);
+  bw::core::SuperformulaPolygon superformulaConstructed(superformula);
+  bw::core::SuperformulaPolygon superformulaAssigned(
+      Primitive::Operation::Difference, Primitive::FillRule::EvenOdd, 0.5f, values);
+  superformulaAssigned = superformula;
+  for (auto const* copy : {&superformulaConstructed, &superformulaAssigned}) {
+    requireNear(copy->getResolution(), superformula.getResolution(),
+                "superformula did not retain its resolution");
+    for (uint32_t index = 0; index < 6; ++index) {
+      requireNear(copy->getValue(index), superformula.getValue(index),
+                  "superformula did not retain a control value");
+    }
+    requireContoursMatch(*copy, superformula, "superformula");
+  }
+}
+
+void bezierSplineCopiesRetainControlsAndSamples() {
+  std::vector<wp::Vector2> const points{
+      {0.0f, 0.0f}, {2.0f, 6.0f}, {4.0f, -3.0f}, {6.0f, 1.0f}, {8.0f, 5.0f}, {10.0f, -2.0f}, {12.0f, 0.0f}};
+  wp::BezierSpline source(points);
+  source.getLength();
+
+  wp::BezierSpline constructed(source);
+  wp::BezierSpline assigned({{0.0f, 0.0f}, {1.0f, 0.0f}, {2.0f, 0.0f}, {3.0f, 0.0f}});
+  assigned = source;
+
+  for (auto const* copy : {&constructed, &assigned}) {
+    require(copy->getNumControlPoints() == source.getNumControlPoints(),
+            "Bezier spline did not retain its control-point count");
+    for (int index = 0; index < source.getNumControlPoints(); ++index) {
+      requireVectorNear(copy->getControlPoint(index), source.getControlPoint(index),
+                        "Bezier spline did not retain a control point");
+    }
+
+    requireNear(copy->getLength(), source.getLength(),
+                "Bezier spline did not retain its sampling configuration");
+    for (float t : {0.0f, 0.125f, 0.4f, 0.75f, 1.0f}) {
+      requireVectorNear(copy->getPositionAtT(t), source.getPositionAtT(t),
+                        "Bezier spline sampled position differs after copying");
+    }
+
+    auto const copiedSamples = copy->divide(true, 2.0f);
+    auto const sourceSamples = source.divide(true, 2.0f);
+    require(copiedSamples.size() == sourceSamples.size(),
+            "Bezier spline did not retain its subdivision tuning");
+    for (size_t index = 0; index < sourceSamples.size(); ++index) {
+      requireVectorNear(copiedSamples[index], sourceSamples[index],
+                        "Bezier spline subdivision sample differs after copying");
+    }
+  }
 }
 
 void primitivesInitializeMaterialIndices() {
@@ -308,8 +445,9 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
 
 int main() {
   try {
+    generatedShapeCopiesRetainDefiningState();
+    bezierSplineCopiesRetainControlsAndSamples();
     primitivesInitializeMaterialIndices();
-    primitiveCopiesItsPropertySet();
     animatedPropertyCopiesItsSerializedName();
     influenceEyeCopiesItsArcLength();
     primitiveCopiesPreviousEntityInputs();
