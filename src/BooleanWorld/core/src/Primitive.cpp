@@ -516,7 +516,7 @@ wp::BoundingBox const& Primitive::getBounds() const {
 Triangulation Primitive::triangulate(bool calculateBounds) const {
   Triangulation result;
 
-  auto complexPolygons = getVertices();
+  auto const& complexPolygons = getVertices();
 
   for (auto const& complexPolygon : complexPolygons) {
     Triangulator triangulator(nullptr, calculateBounds, false, false);

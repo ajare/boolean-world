@@ -653,7 +653,15 @@ void StatePlayBooleanWorld::ImGui_renderPrimitives(vector<wp::Vector2> const& vi
       // Primitive borders
       vector<ImVec2> ghostBorderPoints;
 
-      auto complexPolygons = primitive->getVertices();
+      auto const& complexPolygons = primitive->getVertices();
+      wp::Vector2 boundsMin, boundsMax;
+      primitive->getBounds().getExtents(boundsMin, boundsMax);
+      auto const visible = wp::MathsUtils::boxIntersectsTriangle(
+          boundsMin,
+          boundsMax,
+          viewVertices[0],
+          viewVertices[1],
+          viewVertices[2]);
 
       for (auto const& complexPolygon : complexPolygons) {
         for (auto const& polygon : complexPolygon) {
@@ -665,15 +673,6 @@ void StatePlayBooleanWorld::ImGui_renderPrimitives(vector<wp::Vector2> const& vi
           }
 
           // Filled in polygon for those directly in view
-          wp::Vector2 boundsMin, boundsMax;
-          primitive->getBounds().getExtents(boundsMin, boundsMax);
-          auto visible = wp::MathsUtils::boxIntersectsTriangle(
-              boundsMin,
-              boundsMax,
-              viewVertices[0],
-              viewVertices[1],
-              viewVertices[2]);
-
           if (visible) {
             drawList->AddConcavePolyFilled(imPoints.data(), numVertices, gImGui_PrimitiveInViewColour);
           } else if (clippingPrimsSet.find(primitive) != clippingPrimsSet.end()) {
