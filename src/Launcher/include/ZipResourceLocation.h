@@ -1,20 +1,22 @@
 #pragma once
 
-#include <string>
+#include <cstdint>
 #include <map>
+#include <string>
 
 #include "willpower/application/resourcesystem/ResourceLocation.h"
 
 class ZipResourceLocation : public wp::application::resourcesystem::ResourceLocation {
   struct FileEntry {
     std::string filename;
-    size_t index, compressedSize, uncompressedSize;
+    std::uint32_t index;
+    std::uint64_t compressedSize, uncompressedSize;
   };
 
 private:
   std::string mRootPath, mDefinitionPath;
 
-  void* mArchive;
+  void* mArchive{nullptr};
 
   std::map<std::string, FileEntry> mFileEntries;
 
@@ -29,8 +31,10 @@ private:
 
 public:
   ZipResourceLocation(wp::Logger* logger, std::string const& file, std::string const& definitionFile);
+  ZipResourceLocation(ZipResourceLocation const&) = delete;
+  ZipResourceLocation& operator=(ZipResourceLocation const&) = delete;
 
-  virtual ~ZipResourceLocation();
+  ~ZipResourceLocation() override;
 
   std::string const& getRootPath() const;
 

@@ -52,6 +52,28 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(launcher_program_options_tests)
     bw_deploy_vendor_dlls(launcher_program_options_tests)
     add_test(NAME launcher_program_options COMMAND launcher_program_options_tests)
+
+    add_executable(launcher_zip_resource_location_tests
+        tests/zip_resource_location_tests.cpp
+        src/ZipResourceLocation.cpp)
+    target_include_directories(launcher_zip_resource_location_tests PRIVATE include)
+    target_link_libraries(launcher_zip_resource_location_tests PRIVATE
+        Willpower.Common Willpower.Application ext::Utils)
+    target_compile_features(launcher_zip_resource_location_tests PRIVATE cxx_std_20)
+    target_compile_options(launcher_zip_resource_location_tests PRIVATE
+        /fsanitize=address /Zi)
+    target_link_options(launcher_zip_resource_location_tests PRIVATE
+        /INFERASANLIBS /DEBUG)
+    bw_target_defaults(launcher_zip_resource_location_tests)
+    bw_output_dirs(launcher_zip_resource_location_tests)
+    bw_deploy_runtime_dlls(launcher_zip_resource_location_tests)
+    get_filename_component(msvc_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    add_custom_command(TARGET launcher_zip_resource_location_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${msvc_bin_dir}/clang_rt.asan_dynamic-x86_64.dll"
+                "$<TARGET_FILE_DIR:launcher_zip_resource_location_tests>")
+    add_test(NAME launcher_zip_resource_location
+             COMMAND launcher_zip_resource_location_tests)
 endif()
 
 # The game DLL is loaded by name at runtime, so there is no link-time edge -

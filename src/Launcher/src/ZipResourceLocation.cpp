@@ -1,4 +1,9 @@
+#include <limits>
+#include <memory>
+
 #include "utils/FileSystem.h"
+
+#include "willpower/common/Exceptions.h"
 
 #include "miniz.c"
 #include "ZipResourceLocation.h"
@@ -9,42 +14,46 @@ using namespace wp::application;
 
 ZipResourceLocation::ZipResourceLocation(wp::Logger* logger, string const& file, string const& definitionFile)
     : resourcesystem::ResourceLocation(logger, file, "ZipFile", definitionFile), mRootPath(file), mDefinitionPath(file + ":" + definitionFile) {
-  mArchive = new mz_zip_archive();
-  auto archive = static_cast<mz_zip_archive*>(mArchive);
+  auto archiveStorage = make_unique<mz_zip_archive>();
 
-  if (!mz_zip_reader_init_file(archive, mRootPath.c_str(), 0)) {
-    delete archive;
-
-    string errMsg = "Could not open zipfile '" + mRootPath + "'.";
-    throw exception(errMsg.c_str());
+  if (!mz_zip_reader_init_file(archiveStorage.get(), mRootPath.c_str(), 0)) {
+    throw wp::Exception("Could not open Zip archive '" + mRootPath + "'.");
   }
 
-  for (int i = 0; i < (int)mz_zip_reader_get_num_files(archive); ++i) {
+  auto archive = unique_ptr<mz_zip_archive, void (*)(mz_zip_archive*)>(
+      archiveStorage.release(), [](mz_zip_archive* value) {
+        mz_zip_reader_end(value);
+        delete value;
+      });
+
+  for (mz_uint i = 0; i < mz_zip_reader_get_num_files(archive.get()); ++i) {
     mz_zip_archive_file_stat fileStat;
 
-    if (!mz_zip_reader_file_stat(archive, i, &fileStat)) {
-      mz_zip_reader_end(archive);
-      delete archive;
-
-      string errMsg = "Could not read zipfile entry for '" + mRootPath + "'.";
-      throw exception(errMsg.c_str());
+    if (!mz_zip_reader_file_stat(archive.get(), i, &fileStat)) {
+      throw wp::Exception("Could not read member " + to_string(i) + " from Zip archive '" + mRootPath + "'.");
     }
 
-    FileEntry fe;
+    FileEntry entry;
+    entry.filename = utils::FileSystem::standardisePath(fileStat.m_filename);
+    entry.index = i;
+    entry.compressedSize = fileStat.m_comp_size;
+    entry.uncompressedSize = fileStat.m_uncomp_size;
 
-    fe.filename = utils::FileSystem::standardisePath(fileStat.m_filename);
-    fe.index = i;
-    fe.compressedSize = (size_t)fileStat.m_comp_size;
-    fe.uncompressedSize = (size_t)fileStat.m_uncomp_size;
-
-    mFileEntries[fe.filename] = fe;
+    mFileEntries[entry.filename] = entry;
   }
 
-  mz_zip_reader_end(archive);
+  // miniz keeps the archive's FILE and central-directory state in this object.
+  // It must remain live until the resource location is destroyed.
+  mArchive = archive.release();
 }
 
 ZipResourceLocation::~ZipResourceLocation() {
-  delete static_cast<mz_zip_archive*>(mArchive);
+  auto archive = static_cast<mz_zip_archive*>(mArchive);
+  if (archive) {
+    mz_zip_reader_end(archive);
+    delete archive;
+    mArchive = nullptr;
+  }
 }
 
 string const& ZipResourceLocation::getRootPath() const {
@@ -68,18 +77,31 @@ resourcesystem::DataStreamPtr ZipResourceLocation::getHardResourceDataStreamProg
 }
 */
 bool ZipResourceLocation::hardResourceExists(string const& file) const {
-  string filepath = utils::FileSystem::concatPaths(mRootPath, file);
-  return utils::FileSystem::fileExists(filepath);
+  return mFileEntries.contains(utils::FileSystem::standardisePath(file));
 }
 
 uint8_t* ZipResourceLocation::readData(string const& source, uint32_t* dataSize) {
-  auto it = mFileEntries.find(utils::FileSystem::standardisePath(source));
-  FileEntry const& e = it->second;
+  string const memberName = utils::FileSystem::standardisePath(source);
+  auto const it = mFileEntries.find(memberName);
+  if (it == mFileEntries.end()) {
+    throw wp::Exception("Member '" + memberName + "' was not found in Zip archive '" + mRootPath + "'.");
+  }
 
-  size_t ds = (size_t)*dataSize;
-  auto res = (uint8_t*)mz_zip_reader_extract_to_heap(static_cast<mz_zip_archive*>(mArchive), (mz_uint)e.index, &ds, 0);
-  *dataSize = (uint32_t)ds;
-  return res;
+  FileEntry const& entry = it->second;
+  if (entry.uncompressedSize > numeric_limits<uint32_t>::max()) {
+    throw wp::Exception("Member '" + memberName + "' in Zip archive '" + mRootPath + "' is " +
+                        to_string(entry.uncompressedSize) + " bytes, which exceeds the DataStream size limit of " +
+                        to_string(numeric_limits<uint32_t>::max()) + " bytes.");
+  }
+
+  uint32_t const size = static_cast<uint32_t>(entry.uncompressedSize);
+  auto data = make_unique<uint8_t[]>(size);
+  if (size != 0 && !mz_zip_reader_extract_to_mem(static_cast<mz_zip_archive*>(mArchive), entry.index, data.get(), size, 0)) {
+    throw wp::Exception("Could not extract member '" + memberName + "' from Zip archive '" + mRootPath + "'.");
+  }
+
+  *dataSize = size;
+  return data.release();
 }
 
 string const& ZipResourceLocation::getDefinitionFile() const {
