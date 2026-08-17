@@ -15,7 +15,6 @@ add_library(core STATIC
     src/MeshPrimitive.cpp
     src/Module.cpp
     src/Primitive.cpp
-    src/PrimitiveGroup.cpp
     src/PrimitivePropertySet.cpp
     src/RectanglePolygon.cpp
     src/RegularPolygon.cpp
@@ -38,6 +37,10 @@ add_library(core STATIC
     src/WorldTriggerLine.cpp
     src/YamlSerializer.cpp
     src/tTransform.cpp)
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/include/core/PrimitiveGroup.h")
+    message(FATAL_ERROR "PrimitiveGroup must not remain in the core public interface")
+endif()
 
 target_include_directories(core PUBLIC include)
 bw_add_header_filter(core
@@ -245,6 +248,15 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_primitive_time_visibility_tests)
     bw_deploy_runtime_dlls(boolean_world_primitive_time_visibility_tests)
     add_test(NAME boolean_world_primitive_time_visibility COMMAND boolean_world_primitive_time_visibility_tests)
+
+    add_executable(boolean_world_primitive_group_removal_tests
+        tests/primitive_group_removal_tests.cpp)
+    target_link_libraries(boolean_world_primitive_group_removal_tests PRIVATE core)
+    target_compile_features(boolean_world_primitive_group_removal_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_primitive_group_removal_tests)
+    bw_output_dirs(boolean_world_primitive_group_removal_tests)
+    bw_deploy_runtime_dlls(boolean_world_primitive_group_removal_tests)
+    add_test(NAME boolean_world_primitive_group_removal COMMAND boolean_world_primitive_group_removal_tests)
 
     add_executable(boolean_world_derived_geometry_invalidation_tests
         tests/derived_geometry_invalidation_tests.cpp)

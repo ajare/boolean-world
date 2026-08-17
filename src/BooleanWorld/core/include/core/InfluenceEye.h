@@ -47,8 +47,6 @@ public:
   void setArcLength(float arcLength);
 
   float getArcLength() const;
-
-  bool inArc(wp::Vector2 const& position) const;
 };
 
 }  // namespace core

@@ -19,8 +19,6 @@ namespace core {
 class World;
 
 class BW_API Primitive : public VertexTransformerObject {
-  friend class PrimitiveGroup;
-
   friend class World;
 
 public:

@@ -94,12 +94,5 @@ float InfluenceEye::getArcLength() const {
   return mArcLength;
 }
 
-bool InfluenceEye::inArc(wp::Vector2 const& position) const {
-  // Do we pre-transform position relative to the owning Primitive's
-  // global position, or pass it in?  Or do we do this in relative space,
-  // ie assume the eye is at (0,0)?
-  return false;
-}
-
 }  // namespace core
 }  // namespace bw
