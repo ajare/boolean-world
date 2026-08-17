@@ -17,3 +17,13 @@ set_target_properties(core-dll PROPERTIES FOLDER BooleanWorld)
 
 bw_deploy_runtime_dlls(core-dll)
 bw_deploy_vendor_dlls(core-dll)
+
+if(BUILD_TESTING)
+    add_executable(boolean_world_core_dll_api_tests tests/dll_api_tests.cpp)
+    target_compile_features(boolean_world_core_dll_api_tests PRIVATE cxx_std_20)
+    bw_target_defaults(boolean_world_core_dll_api_tests)
+    bw_output_dirs(boolean_world_core_dll_api_tests)
+    add_dependencies(boolean_world_core_dll_api_tests core-dll)
+    add_test(NAME boolean_world_core_dll_api
+             COMMAND boolean_world_core_dll_api_tests "$<TARGET_FILE:core-dll>")
+endif()
