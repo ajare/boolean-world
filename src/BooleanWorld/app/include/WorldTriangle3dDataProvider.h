@@ -48,7 +48,7 @@ public:
 
   DrawVert* nextVertexPtr(uint32_t meshIndex);
 
-  void updateInternals(uint32_t numVertices, uint32_t numTriangles);
+  void updateInternals(std::vector<uint32_t> const& numTrianglesPerMesh);
 
   void addTriangle(uint32_t meshIndex, uint32_t v0, uint32_t v1, uint32_t v2);
 

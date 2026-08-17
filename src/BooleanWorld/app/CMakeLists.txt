@@ -163,6 +163,18 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_player_view_tests)
     add_test(NAME boolean_world_player_view COMMAND boolean_world_player_view_tests)
 
+    add_executable(boolean_world_triangle_data_provider_benchmark
+        tests/world_triangle_3d_data_provider_benchmark.cpp
+        src/WorldTriangle3dDataProvider.cpp)
+    target_include_directories(boolean_world_triangle_data_provider_benchmark PRIVATE include)
+    target_link_libraries(boolean_world_triangle_data_provider_benchmark PRIVATE
+        ext::mpp ext::mpp-data ext::mpp-helper ext::mpp-mesh ext::mpp-program
+        ext::Utils)
+    target_compile_features(boolean_world_triangle_data_provider_benchmark PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_triangle_data_provider_benchmark)
+    bw_output_dirs(boolean_world_triangle_data_provider_benchmark)
+    bw_deploy_runtime_dlls(boolean_world_triangle_data_provider_benchmark)
+
     add_executable(boolean_world_triangle_data_provider_tests
         tests/world_triangle_3d_data_provider_tests.cpp
         src/WorldTriangle3dDataProvider.cpp)

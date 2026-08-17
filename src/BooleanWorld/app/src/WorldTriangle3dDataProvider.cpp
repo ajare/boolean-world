@@ -17,7 +17,7 @@ void WorldTriangle3dDataProvider::getBounds(glm::vec3& bMin, glm::vec3& bMax) {
 }
 
 void WorldTriangle3dDataProvider::clear() {
-  updateInternals(0, 0);
+  updateInternals(std::vector<uint32_t>(mMeshData.size()));
 }
 
 void WorldTriangle3dDataProvider::setMeshCount(uint32_t numMeshes) {
@@ -101,8 +101,12 @@ mpp::Colour WorldTriangle3dDataProvider::diffuse() {
   return mpp::Colour::White;
 }
 
-void WorldTriangle3dDataProvider::updateInternals(uint32_t numVertices, uint32_t numTriangles) {
-  for (auto& meshData : mMeshData) {
+void WorldTriangle3dDataProvider::updateInternals(
+    std::vector<uint32_t> const& numTrianglesPerMesh) {
+  for (uint32_t meshIndex = 0; meshIndex < mMeshData.size(); ++meshIndex) {
+    auto& meshData = mMeshData[meshIndex];
+    auto numTriangles = numTrianglesPerMesh[meshIndex];
+    auto numVertices = numTriangles * 3;
     auto newVertexDataSize = numVertices * mVertexStride;
 
     if (newVertexDataSize > meshData.vertexDataSize) {
@@ -127,7 +131,7 @@ void WorldTriangle3dDataProvider::updateInternals(uint32_t numVertices, uint32_t
 
     meshData.numVertices = 0;
     meshData.numTriangles = 0;
-
-    setNumPrimitives(meshData.numTriangles);
   }
+
+  setNumPrimitives(0);
 }

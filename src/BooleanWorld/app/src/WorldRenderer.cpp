@@ -50,18 +50,32 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
   auto const& worldData = snapshot.getArrangement();
   auto const& triangles = snapshot.getTriangles();
   auto const& walls = snapshot.getWalls();
-  auto maxNumTrianglePrimitives = triangles.size() * 2 + walls.size() * 2;
-
-  for (auto& item : mMaterialRenderers) {
-    auto& [renderer, dataProvider] = item;
-    dataProvider->clear();
-    dataProvider->updateInternals(
-        uint32_t(maxNumTrianglePrimitives * 3),
-        uint32_t(maxNumTrianglePrimitives));
-  }
 
   auto& matRenderer = mMaterialRenderers[0];
   auto& dataProvider = matRenderer.second;
+  std::vector<uint32_t> numTrianglesPerMesh(dataProvider->getNumMeshes());
+
+  for (auto const& triangle : triangles) {
+    auto const& face = worldData.faces[triangle.face];
+    auto const& properties = worldData.palette[face.paletteIndex];
+    auto floorHash = properties.floorMaterialDef.data.hash(
+        properties.floorMaterialIndex);
+    auto ceilingHash = properties.ceilingMaterialDef.data.hash(
+        properties.ceilingMaterialIndex);
+
+    ++numTrianglesPerMesh[matRenderer.first->getMeshIndexForMaterialHash(floorHash)];
+    ++numTrianglesPerMesh[matRenderer.first->getMeshIndexForMaterialHash(ceilingHash)];
+  }
+
+  for (auto const& wall : walls) {
+    auto const& properties = worldData.palette[wall.paletteIndex];
+    auto wallHash = properties.wallMaterialDef.data.hash(
+        properties.wallMaterialIndex);
+
+    numTrianglesPerMesh[matRenderer.first->getMeshIndexForMaterialHash(wallHash)] += 2;
+  }
+
+  dataProvider->updateInternals(numTrianglesPerMesh);
 
   for (auto const& triangle : triangles) {
     auto const& face = worldData.faces[triangle.face];
