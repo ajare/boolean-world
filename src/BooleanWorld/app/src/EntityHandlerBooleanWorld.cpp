@@ -26,6 +26,10 @@ bw::app::InputOptions const& EntityHandlerBooleanWorld::getInputOptions() const 
   return mInputOptions;
 }
 
+void EntityHandlerBooleanWorld::setInputOptions(bw::app::InputOptions const& inputOptions) {
+  mInputOptions = inputOptions;
+}
+
 void EntityHandlerBooleanWorld::enableInput(bool enable) {
   mInputEnabled = enable;
 }

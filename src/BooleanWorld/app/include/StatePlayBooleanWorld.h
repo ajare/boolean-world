@@ -21,6 +21,7 @@
 
 #include "imgui/imgui.h"
 
+#include "LodSettings.h"
 #include "Platform.h"
 #include "WorldCollisionSim.h"
 #include "WorldRenderer.h"
@@ -33,11 +34,12 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     bool minimap{false};
     bool collisionSim{false};
     bool clipGeneration{false};
+    bool options{false};
 
     bool _renderTriangulationLines{false};
 
     bool active() const {
-      return minimap || collisionSim || clipGeneration;
+      return minimap || collisionSim || clipGeneration || options;
     }
   };
 
@@ -81,6 +83,9 @@ private:
       bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken};
 
   std::deque<DisplayMessage> mDisplayMessages;
+
+  // Debug options, edited through the options panel
+  bw::app::LodSettings mLodSettings;
 
 private:
   void createCamera();
@@ -155,6 +160,8 @@ private:
   void debug_renderCollisionSim(wp::Vector2 const& viewSize, wp::Vector2 const& viewOffset, wp::Vector2 const& viewScale, ImDrawList* drawList);
 
   void debug_renderClipGenerationInfo(ImDrawList* drawList);
+
+  void debug_renderOptions();
 
   void ImGui_renderArrangement(bw::core::ArrangementWorldData const& worldData, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList);
 

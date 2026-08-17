@@ -4,6 +4,8 @@
 @@Uniform(float VIEW_DISTANCE);
 @@Uniform(float GLOBAL_TIME);
 @@Uniform(float PIXEL_SIZE);
+@@Uniform(int LOD_ENABLED);
+@@Uniform(float LOD_BIAS);
 
 // Per batch
 @@Uniform(int MATERIAL_INDEX);
@@ -16,6 +18,12 @@
 #define CLOUD_DETAIL     2.0
 #define CLOUD_DENSITY    0.55
 #define CLOUD_COVERAGE   0.45
+
+// Octaves of fbm() a fragment gets: the most up close, the fewest at the far
+// clip. Detail finer than a pixel only costs noise calls and aliases, so
+// there is nothing to see for it at a distance.
+#define FBM_OCTAVES_NEAR 5.0
+#define FBM_OCTAVES_FAR  1.0
 
 float hash(vec3 p)
 {
@@ -54,19 +62,71 @@ float noise(vec3 p)
 }
 
 // Fractal Brownian Motion
-float fbm(vec3 p)
+//
+// octaves is fractional, and the highest one fades in over its last whole
+// step rather than arriving all at once: walking towards a surface then
+// gains detail smoothly instead of popping a band of it into existence at a
+// fixed distance.
+float fbm(vec3 p, float octaves)
 {
     float v = 0.0;
     float a = 0.5;
 
-    for(int i = 0; i < 5; i++)
+    for(int i = 0; i < int(FBM_OCTAVES_NEAR); i++)
     {
-        v += noise(p) * a;
+        float remaining = octaves - float(i);
+
+        if(remaining <= 0.0)
+        {
+            break;
+        }
+
+        v += noise(p) * a * min(remaining, 1.0);
         p *= 2.0;
         a *= 0.5;
     }
 
     return v;
+}
+
+// Full detail, for callers with no viewer distance to work from.
+float fbm(vec3 p)
+{
+    return fbm(p, FBM_OCTAVES_NEAR);
+}
+
+// How much detail a fragment is worth: 1 at the viewer, falling to 0 at the
+// far clip. Distance is measured in 3d, so a surface off to the side of the
+// view loses detail at the same rate as one straight ahead.
+float detailLevel(vec3 fragPosition, vec3 viewPosition, float viewDistance)
+{
+    float d = length(viewPosition - fragPosition);
+
+    return 1.0 - clamp(d / viewDistance, 0.0, 1.0);
+}
+
+// Debug controls over that level of detail.
+//
+// Turning it off pins every fragment at full detail rather than switching the
+// code out, so the textures look as they did before there was a level of
+// detail to compare against. The bias pulls the level towards one end of its
+// range: -1 no detail anywhere, +1 full detail everywhere, 0 leaves distance
+// to decide.
+float applyLodControls(float lod, int enabled, float bias)
+{
+    if(enabled == 0)
+    {
+        return 1.0;
+    }
+
+    return bias >= 0.0
+        ? mix(lod, 1.0, bias)
+        : mix(lod, 0.0, -bias);
+}
+
+float detailOctaves(float lod)
+{
+    return mix(FBM_OCTAVES_FAR, FBM_OCTAVES_NEAR, lod);
 }
 
 //
@@ -80,7 +140,7 @@ float fbm(vec3 p)
 //   1: p_veins_scale:
 //   2: p_medium_scale:
 //   3: p_stone_mix
-vec3 stoneTexture(vec3 p)
+vec3 stoneTexture(vec3 p, float lod)
 {
     // -------------------------------------------------
     // Parameter vars
@@ -88,12 +148,14 @@ vec3 stoneTexture(vec3 p)
 	float p_base_scale = @Uniform(MATERIAL_PARAMS[0]);
 	float p_medium_scale = @Uniform(MATERIAL_PARAMS[1]);
 	float p_stone_mix = @Uniform(MATERIAL_PARAMS[2]);
-	
+
+    float octaves = detailOctaves(lod);
+
     // Large-scale stone structure
-    float base = fbm(p * p_base_scale);
+    float base = fbm(p * p_base_scale, octaves);
 
     // Medium detail
-    float detail = fbm(p * p_medium_scale);
+    float detail = fbm(p * p_medium_scale, octaves);
 
     // Crack-like veins
     float veins = abs(noise(p * 16.0) - 0.5);
@@ -137,7 +199,7 @@ vec3 stoneTexture(vec3 p)
 //   5: p_vein_mix:
 //   6: p_cloudiness:
 //   7: p_fbm_scale:
-vec3 marbleTexture(vec3 p)
+vec3 marbleTexture(vec3 p, float lod)
 {
     // -------------------------------------------------
     // Parameter vars
@@ -150,14 +212,16 @@ vec3 marbleTexture(vec3 p)
 	float p_vein_mix = @Uniform(MATERIAL_PARAMS[5]);
 	float p_cloudiness = @Uniform(MATERIAL_PARAMS[6]);
 	float p_fbm_scale = @Uniform(MATERIAL_PARAMS[7]);
-	
+
+    float octaves = detailOctaves(lod);
+
     // -------------------------------------------------
     // Domain warping for flowing veins
     // -------------------------------------------------
     vec3 warp;
-    warp.x = fbm(p * p_fbm_scale * 4.0 + vec3(1.7, 9.2, 2.4));
-    warp.y = fbm(p * p_fbm_scale * 4.0 + vec3(8.3, 2.8, 5.1));
-    warp.z = fbm(p * p_fbm_scale * 4.0 + vec3(4.5, 1.3, 7.2));
+    warp.x = fbm(p * p_fbm_scale * 4.0 + vec3(1.7, 9.2, 2.4), octaves);
+    warp.y = fbm(p * p_fbm_scale * 4.0 + vec3(8.3, 2.8, 5.1), octaves);
+    warp.z = fbm(p * p_fbm_scale * 4.0 + vec3(4.5, 1.3, 7.2), octaves);
 
     p += warp * p_warp_scale;
 
@@ -166,7 +230,7 @@ vec3 marbleTexture(vec3 p)
     // -------------------------------------------------
     float veins =
         sin(p.x * p_veins_scale +
-            fbm(p * p_fbm_scale * 6.0) * (p_veins_scale * 0.8333));
+            fbm(p * p_fbm_scale * 6.0, octaves) * (p_veins_scale * 0.8333));
 
     veins = veins * 0.5 + 0.5;
 
@@ -178,7 +242,7 @@ vec3 marbleTexture(vec3 p)
     // -------------------------------------------------
     float fine =
         sin(p.x * p_veins_fine_scale +
-            fbm(p * p_fbm_scale * 20.0) * (p_veins_fine_scale / 6.0));
+            fbm(p * p_fbm_scale * 20.0, octaves) * (p_veins_fine_scale / 6.0));
 
     fine = fine * 0.5 + 0.5;
     fine *= p_fine_detail_scale;
@@ -186,7 +250,7 @@ vec3 marbleTexture(vec3 p)
     // -------------------------------------------------
     // Marble base variation
     // -------------------------------------------------
-    float base = fbm(p * p_fbm_scale * 2.4);
+    float base = fbm(p * p_fbm_scale * 2.4, octaves);
 
     // -------------------------------------------------
     // Marble colors
@@ -215,8 +279,16 @@ vec3 marbleTexture(vec3 p)
     // Fine veins
     color -= fine;
 
-    // Soft cloudy variation
-    color += (fbm(p * p_fbm_scale * 16.0) - 0.5) * mix(0.0, 0.2, p_cloudiness);
+    // Soft cloudy variation. Centred on zero, so unlike the veins above -
+    // which only ever darken - it can be faded out with distance without
+    // shifting the average colour, and its noise skipped once it is gone.
+    float cloudFade = smoothstep(0.0, 0.35, lod);
+
+    if(cloudFade > 0.0)
+    {
+        color += (fbm(p * p_fbm_scale * 16.0, octaves) - 0.5) *
+                 mix(0.0, 0.2, p_cloudiness) * cloudFade;
+    }
 
     return color;
 }
@@ -449,16 +521,23 @@ void main()
 	//vec3 clamped = @In(FRAGPOSITION) / 32.0;
 	
 	vec3 value = vec3(1.0, 1.0, 1.0);
-	
-	switch (@Uniform(MATERIAL_INDEX)) 
+
+	// Level of detail from the fragment's distance to the viewer in 3d. The
+	// snapped position above is scaled into texture space, so the distance is
+	// taken from the world position the fragment actually sits at.
+	float lod = detailLevel(@In(FRAGPOSITION), @ViewPos, @Uniform(VIEW_DISTANCE));
+
+	lod = applyLodControls(lod, @Uniform(LOD_ENABLED), @Uniform(LOD_BIAS));
+
+	switch (@Uniform(MATERIAL_INDEX))
 	{
 		case 0:
-			value = marbleTexture(clamped);
+			value = marbleTexture(clamped, lod);
 			//value = vec3(0.5, 0.5, 0.5);//@In(COLOUR).xyz;//marbleTexture(clamped);
 			break;
 			
 		case 1:
-			value = stoneTexture(clamped);
+			value = stoneTexture(clamped, lod);
 			//value = vec3(0.5, 0.5, 0.5);//@In(COLOUR).xyz;//stoneTexture(clamped);
 			//CrystalMaterial mat = getCrystalMaterial(clamped);
 			//value = mat.albedo;

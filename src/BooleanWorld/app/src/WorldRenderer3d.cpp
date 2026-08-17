@@ -111,7 +111,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
   }
 }
 
-void WorldRenderer3d::update(float frameTime) {
+void WorldRenderer3d::update(float frameTime, bw::app::LodSettings const& lodSettings) {
   mGlobalTime += frameTime;
 
   // Globals
@@ -122,6 +122,8 @@ void WorldRenderer3d::update(float frameTime) {
     uc->setUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
     uc->setUniform("GLOBAL_TIME", mGlobalTime);
     uc->setUniform("PIXEL_SIZE", 1.0f / 32);
+    uc->setUniform("LOD_ENABLED", (int32_t)(lodSettings.enabled ? 1 : 0));
+    uc->setUniform("LOD_BIAS", lodSettings.bias);
   }
 
   mRenderer->update();

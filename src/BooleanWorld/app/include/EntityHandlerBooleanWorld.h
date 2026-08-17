@@ -37,6 +37,8 @@ public:
 
   bw::app::InputOptions const& getInputOptions() const;
 
+  void setInputOptions(bw::app::InputOptions const& inputOptions);
+
   void peekInput(applib::Entity const& entity, wp::Vector2* curPosition, wp::Vector2* newPosition, float* curAngle, float* newAngle, float* curPitch, float* newPitch, wp::Vector2* velocity, float frameTime) const;
 
   bool update(applib::Entity* entity, bool controlActive, float frameTime) override;

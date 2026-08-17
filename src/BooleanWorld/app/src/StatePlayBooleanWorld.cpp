@@ -49,6 +49,15 @@ using namespace wp;
 
 DisplayMessage::Level gDisplayMessageLevel = DisplayMessage::Level::Debug;
 
+// Bounds of the debug slider for mouse sensitivity. Configuration is not held
+// to them: they only need to cover the range worth dragging through.
+const float gImGui_MouseSensitivityMin = 0.03f;
+const float gImGui_MouseSensitivityMax = 3.0f;
+
+// The level-of-detail bias runs either way from its unbiased middle.
+const float gImGui_LodBiasMin = -1.0f;
+const float gImGui_LodBiasMax = 1.0f;
+
 // ImGui colours go here so they don't clutter up the header file
 const ImColor gImGui_MapBackgroundColour{0.2f, 0.2f, 0.8f};
 const ImColor gImGui_TriangulationLineColour{0.8f, 0.8f, 0.2f};
@@ -57,7 +66,9 @@ const ImColor gImGui_PrimitiveColour{0.8f, 0.2f, 0.2f};
 const ImColor gImGui_PrimitiveInSourceSetColour{0.8f, 0.8f, 0.2f, 0.5f};
 const ImColor gImGui_PrimitiveInViewColour{0.8f, 0.2f, 0.2f, 0.5f};
 const ImColor gImGui_CollisionLineSolidColour{0.8f, 0.8f, 0.2f};
-const ImColor gImGui_CollisionLine2WayColour{0.6f, 0.6f, 0.0f};
+// Lighter than the solid lines: two-sided walls are there to be seen beside
+// the ones that stop the player, not mistaken for them.
+const ImColor gImGui_CollisionLine2WayColour{1.0f, 1.0f, 0.65f};
 const ImColor gImGui_ViewAreaColour{0.5f, 0.5f, 0.5f};
 
 StatePlayBooleanWorld::StatePlayBooleanWorld()
@@ -122,6 +133,7 @@ void StatePlayBooleanWorld::registerInput() {
   registerInputState("Debug.Minimap", {Key::F2}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("Debug.CollisionSim", {Key::F3}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("Debug.ClipGen", {Key::F4}, {}, {}, {}, {}, {}, false, false, 0, false);
+  registerInputState("Debug.Options", {Key::F5}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("ToggleAllLayers", {Key::F9}, {}, {}, {}, {}, {}, false, false, 0, true);
 }
 
@@ -451,6 +463,8 @@ void StatePlayBooleanWorld::updateActions(vector<string> const& activeStates, fl
       mDebugDisplay.collisionSim = !mDebugDisplay.collisionSim;
     } else if (state == "Debug.ClipGen") {
       mDebugDisplay.clipGeneration = !mDebugDisplay.clipGeneration;
+    } else if (state == "Debug.Options") {
+      mDebugDisplay.options = !mDebugDisplay.options;
     } else if (state == "ToggleAllLayers") {
       mCurrentLayer = mCurrentLayer == 0 ? BW_LAYER_ALL : 0;
       getMap()->getWorld()->getWorldDataGenerator()->setActiveLayer(
@@ -475,7 +489,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   static_cast<ReactiveCamera*>(mCamera3d.get())->pitch(physicalStats.pitch - mPlayerPrevPitch);
 
   // World 3d
-  mwRenderer->update(getMap()->getWorld(), *mWorldData, frameTime);
+  mwRenderer->update(getMap()->getWorld(), *mWorldData, frameTime, mLodSettings);
 }
 
 void StatePlayBooleanWorld::suspendImpl(void* args) {
@@ -591,7 +605,10 @@ bool StatePlayBooleanWorld::_imGuiActive() const {
 }
 
 bool StatePlayBooleanWorld::_imGuiCapturesInput() const {
-  return mDebugDisplay.clipGeneration;
+  // The input panel is dragged with the mouse, so it needs the cursor - which
+  // means view control stops while it is up, and the mouse can be let go of
+  // over the slider without turning the player.
+  return mDebugDisplay.clipGeneration || mDebugDisplay.options;
 }
 
 ImVec2 StatePlayBooleanWorld::wpVecToImVec2(wp::Vector2 const& v, wp::Vector2 const& offset, wp::Vector2 const& size, wp::Vector2 const& scale) {
@@ -741,6 +758,44 @@ void StatePlayBooleanWorld::debug_renderMinimap(wp::Vector2 const& viewSize, wp:
 void StatePlayBooleanWorld::debug_renderCollisionSim(wp::Vector2 const& viewSize, wp::Vector2 const& viewOffset, wp::Vector2 const& viewScale, ImDrawList* drawList) {
   if (!mDebugDisplay.collisionSim) {
     return;
+  }
+
+  // Internal walls - the floor and ceiling steps that run between two open
+  // faces - never reach the collision sim: the wall grid holds only what
+  // blocks the player, so a step shallow enough to walk up is missing from
+  // the lines below. Draw them first and thinner, in a lighter colour, so a
+  // blocking wall drawn over the top of one still reads as solid.
+  //
+  // They cover the whole view rather than the patch the collision lines are
+  // gathered from: they are the context those lines sit in, and on the test
+  // map the nearest one to the player at spawn is already outside that patch.
+  // ImGui clips whatever falls off screen, as it does for the minimap's walls.
+  if (mWorldData) {
+    auto const& arrangement = mWorldData->getArrangement();
+
+    // Walls are not indexed by kind, so this walks all of them. It runs only
+    // while the overlay is up.
+    for (auto const& wall : mWorldData->getWalls()) {
+      if (wall.kind == bw::core::arr::ArrangementWallKind::Border) {
+        continue;
+      }
+
+      auto const& edge = arrangement.edges[wall.edge];
+      auto const& fixed0 = arrangement.vertices[edge.v[0]];
+      auto const& fixed1 = arrangement.vertices[edge.v[1]];
+      wp::Vector2 v0{
+          bw::core::arr::ToWorldCoordinate(fixed0.x),
+          bw::core::arr::ToWorldCoordinate(fixed0.y)};
+      wp::Vector2 v1{
+          bw::core::arr::ToWorldCoordinate(fixed1.x),
+          bw::core::arr::ToWorldCoordinate(fixed1.y)};
+
+      drawList->AddLine(
+          wpVecToImVec2(v0, viewOffset, viewSize, viewScale),
+          wpVecToImVec2(v1, viewOffset, viewSize, viewScale),
+          gImGui_CollisionLine2WayColour,
+          1.5f);
+    }
   }
 
   auto const& lines = mWorldCollisionSim->getLines();
@@ -1032,6 +1087,55 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
   ImGui::End();
 }
 
+void StatePlayBooleanWorld::debug_renderOptions() {
+  if (!mDebugDisplay.options) {
+    return;
+  }
+
+  // The entity handler holds the options the player is actually turned with,
+  // so edit those rather than a copy the launcher's configuration would win
+  // back on the next map load.
+  auto entityHandler = static_pointer_cast<EntityHandlerBooleanWorld>(
+      applib::ModelInstance::entityHandler());
+
+  auto inputOptions = entityHandler->getInputOptions();
+
+  if (ImGui::Begin("Options")) {
+    ImGui::SeparatorText("Input");
+
+    if (ImGui::SliderFloat(
+            "Mouse sensitivity",
+            &inputOptions.mouseSensitivity,
+            gImGui_MouseSensitivityMin,
+            gImGui_MouseSensitivityMax,
+            "%.2f")) {
+      entityHandler->setInputOptions(inputOptions);
+    }
+
+    ImGui::SeparatorText("Level of detail");
+
+    // Read straight from the settings the renderer is handed each frame, so
+    // the controls always show what the shader is actually being told.
+    ImGui::Checkbox("Enabled", &mLodSettings.enabled);
+
+    ImGui::BeginDisabled(!mLodSettings.enabled);
+    ImGui::SliderFloat(
+        "Bias",
+        &mLodSettings.bias,
+        gImGui_LodBiasMin,
+        gImGui_LodBiasMax,
+        "%.2f");
+    ImGui::EndDisabled();
+
+    ImGui::TextDisabled("-1 drops all detail, +1 holds full detail everywhere.");
+
+    ImGui::Separator();
+    ImGui::TextDisabled("Not saved - set Input/MouseSensitivity to keep a value.");
+  }
+
+  ImGui::End();
+}
+
 void StatePlayBooleanWorld::_renderImGui(float frameTime, void* imGuiCtx, void* imPlotCtx, void* allocFunc, void* freeFunc, void* userData) {
   VAR_UNUSED(frameTime);
 
@@ -1056,4 +1160,5 @@ void StatePlayBooleanWorld::_renderImGui(float frameTime, void* imGuiCtx, void* 
   debug_renderMinimap(viewSize, viewOffset, viewScale, viewBounds, drawList);
   debug_renderCollisionSim(viewSize, viewOffset, viewScale, drawList);
   debug_renderClipGenerationInfo(drawList);
+  debug_renderOptions();
 }
