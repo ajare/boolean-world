@@ -702,10 +702,17 @@ void World::removePrimitive(uint32_t index) {
 }
 
 void World::removePrimitives(vector<uint32_t> const& indices) {
+  auto sortedIndices = indices;
+  sort(sortedIndices.begin(), sortedIndices.end());
+
   uint32_t tCount{0};
+  uint32_t selectedIndex{0};
   auto numPrimitives = (uint32_t)mPrimitives.size();
   for (uint32_t i = 0; i < numPrimitives; ++i) {
-    auto found = find(indices.begin(), indices.end(), i) != indices.end();
+    auto found = selectedIndex < sortedIndices.size() && sortedIndices[selectedIndex] == i;
+    while (selectedIndex < sortedIndices.size() && sortedIndices[selectedIndex] <= i) {
+      selectedIndex++;
+    }
     if (!found) {
       if (i != tCount) {
         removePrimitiveFromLookupGrid(mPrimitives[i]);
