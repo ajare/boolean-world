@@ -55,6 +55,8 @@ public:
   // Deserialization
   virtual void deserialize() = 0;
 
+  // Optional reads return defaultValue when their value is absent or malformed.
+
   bool readBool(std::string const& name);
 
   virtual uint8_t readUint8(std::string const& name = "", bool optional = false, uint8_t defaultValue = 0) = 0;

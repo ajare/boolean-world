@@ -346,24 +346,24 @@ float YamlSerializer::readFloat(string const& name, bool optional, float default
 
 wp::Vector2 YamlSerializer::readVector2(string const& name, bool optional, wp::Vector2 const& defaultValue) {
   try {
-    beginArray(name);
+    auto const& topNode = !mNodeStack.empty() ? mNodeStack.top() : mLoadedData;
+    auto const node = name == "" ? topNode[mSeqIteratorStack.top()] : topNode[name];
 
-    float v[2];
-
-    int i = 0;
-    while (nextArrayItem()) {
-      v[i++] = readFloat();
+    if (!node.IsSequence() || node.size() != 2) {
+      throw SerializationException("Expected exactly two numeric values");
     }
 
-    endArray();
-
-    return wp::Vector2(v[0], v[1]);
-  } catch (exception& e) {
+    try {
+      return wp::Vector2(node[0].as<float>(), node[1].as<float>());
+    } catch (YAML::Exception const&) {
+      throw SerializationException("Expected exactly two numeric values");
+    }
+  } catch (exception const& e) {
     if (optional) {
       return defaultValue;
-    } else {
-      throw SerializationException(format("Could not read Vector2 at {}", getPath(name), e.what()));
     }
+
+    throw SerializationException(format("Could not read Vector2 at {}: {}", getPath(name), e.what()));
   }
 }
 
