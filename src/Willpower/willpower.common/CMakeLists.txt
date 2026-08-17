@@ -80,4 +80,14 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(willpower_legacy_geometry_helper_removal_tests)
     add_test(NAME willpower_legacy_geometry_helper_removal
              COMMAND willpower_legacy_geometry_helper_removal_tests)
+
+    add_executable(willpower_vector2_assignment_semantics_tests
+        tests/vector2_assignment_semantics_tests.cpp)
+    target_link_libraries(willpower_vector2_assignment_semantics_tests PRIVATE Willpower.Common)
+    target_compile_features(willpower_vector2_assignment_semantics_tests PRIVATE cxx_std_20)
+    bw_target_defaults(willpower_vector2_assignment_semantics_tests)
+    bw_output_dirs(willpower_vector2_assignment_semantics_tests)
+    bw_deploy_runtime_dlls(willpower_vector2_assignment_semantics_tests)
+    add_test(NAME willpower_vector2_assignment_semantics
+             COMMAND willpower_vector2_assignment_semantics_tests)
 endif()

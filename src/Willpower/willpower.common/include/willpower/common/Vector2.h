@@ -45,7 +45,7 @@ public:
   }
 
   // Operators
-  inline Vector2 operator=(Vector2 const& vec) {
+  inline Vector2& operator=(Vector2 const& vec) {
     x = vec.x;
     y = vec.y;
     return *this;
@@ -107,56 +107,56 @@ public:
     return Vector2(-x, -y);
   }
 
-  inline Vector2 operator+=(Vector2 const& vec) {
+  inline Vector2& operator+=(Vector2 const& vec) {
     x += vec.x;
     y += vec.y;
 
     return *this;
   }
 
-  inline Vector2 operator+=(float scalar) {
+  inline Vector2& operator+=(float scalar) {
     x += scalar;
     y += scalar;
 
     return *this;
   }
 
-  inline Vector2 operator-=(Vector2 const& vec) {
+  inline Vector2& operator-=(Vector2 const& vec) {
     x -= vec.x;
     y -= vec.y;
 
     return *this;
   }
 
-  inline Vector2 operator-=(float scalar) {
+  inline Vector2& operator-=(float scalar) {
     x -= scalar;
     y -= scalar;
 
     return *this;
   }
 
-  inline Vector2 operator*=(Vector2 const& vec) {
+  inline Vector2& operator*=(Vector2 const& vec) {
     x *= vec.x;
     y *= vec.y;
 
     return *this;
   }
 
-  inline Vector2 operator*=(float scalar) {
+  inline Vector2& operator*=(float scalar) {
     x *= scalar;
     y *= scalar;
 
     return *this;
   }
 
-  inline Vector2 operator/=(Vector2 const& vec) {
+  inline Vector2& operator/=(Vector2 const& vec) {
     x /= vec.x;
     y /= vec.y;
 
     return *this;
   }
 
-  inline Vector2 operator/=(float scalar) {
+  inline Vector2& operator/=(float scalar) {
     assert(scalar != 0.0);
 
     float inv = 1.0f / scalar;
@@ -166,7 +166,7 @@ public:
     return *this;
   }
 
-  inline Vector2 operator/=(int scalar) {
+  inline Vector2& operator/=(int scalar) {
     assert(scalar != 0.0);
 
     float inv = 1.0f / scalar;
@@ -176,7 +176,7 @@ public:
     return *this;
   }
 
-  inline Vector2 operator/=(unsigned int scalar) {
+  inline Vector2& operator/=(unsigned int scalar) {
     assert(scalar != 0.0);
 
     float inv = 1.0f / scalar;
@@ -438,13 +438,10 @@ public:
 
 struct Vector2Compare {
   bool operator()(Vector2 const& a, Vector2 const& b) const {
-    if (a.x < b.x) {
-      return false;
-    } else if (a.x > b.x) {
-      return true;
-    } else {
-      return a.y < b.y;
+    if (a.x != b.x) {
+      return a.x < b.x;
     }
+    return a.y < b.y;
   }
 };
 
