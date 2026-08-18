@@ -10,7 +10,7 @@ TorusSegmentPolygon::TorusSegmentPolygon()
 }
 
 TorusSegmentPolygon::TorusSegmentPolygon(Operation operation, FillRule fillType, float thickness, float arcLength, float resolution)
-    : Primitive(operation, fillType), mThickness(thickness), mArcLength(arcLength), mResolution(resolution), mNumSides((uint32_t)(resolution * BaseResolution)) {
+    : Primitive(operation, fillType), mThickness(thickness), mArcLength(clamp(arcLength, 0.01f, 360.0f)), mResolution(resolution), mNumSides((uint32_t)(resolution * BaseResolution)) {
   generateVertices();
 }
 
@@ -79,7 +79,7 @@ bool TorusSegmentPolygon::deserializeImpl(std::shared_ptr<Serializer> serializer
 
   // Commit
   mThickness = thickness;
-  mArcLength = arcLength;
+  mArcLength = clamp(arcLength, 0.01f, 360.0f);
   mResolution = resolution;
   mNumSides = numSides;
 
@@ -115,7 +115,7 @@ vector<ComplexPolygon> TorusSegmentPolygon::generateVerticesImpl() {
           wp::Vector2::UNIT_Y.rotatedClockwiseCopy(angle)};
 
       vertices[nv - i - 1] = {
-          vertices[i].p * mThickness};
+          vertices[i].p * (1.0f - mThickness)};
     }
 
     return {{vertices}};
