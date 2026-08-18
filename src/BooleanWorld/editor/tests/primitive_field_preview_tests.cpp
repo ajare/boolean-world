@@ -17,16 +17,21 @@ void opensWithDefaultsAndClosesWithoutDocumentData() {
   preview.minimumSpacing = 9.0f;
   preview.maximumSites = 4;
   preview.seed = 42;
+  preview.lloydIterations = 0;
   preview.requestOpen();
 
   require(preview.open && preview.openRequested,
           "preview did not request its modal");
   require(preview.minimumSpacing == 128.0f && preview.maximumSites == 2000 &&
-              preview.seed == 0,
+              preview.seed == 0 && preview.lloydIterations == 5,
           "preview did not restore the agreed defaults");
 
   preview.generate({{-128.0f, -128.0f}, {128.0f, 128.0f}});
   require(preview.layout.has_value(), "valid preview generation failed");
+  preview.lloydIterations = 6;
+  preview.invalidateLayout();
+  require(!preview.layout && preview.error.empty(),
+          "changing Lloyd iterations did not invalidate the layout");
   preview.close();
   require(!preview.open && !preview.openRequested && !preview.layout,
           "closing the modal retained editor overlay data");
@@ -42,6 +47,12 @@ void failedGenerationRetainsThePreviousValidPreview() {
   require(preview.layout.has_value(), "valid preview fixture failed");
   auto previousSites = preview.layout->sites;
 
+  preview.lloydIterations = 21;
+  preview.generate({{-128.0f, -128.0f}, {128.0f, 128.0f}});
+  require(preview.layout.has_value() && !preview.error.empty(),
+          "failed relaxation did not preserve the valid preview");
+
+  preview.lloydIterations = 5;
   preview.minimumSpacing = 1000.0f;
   preview.generate({{-128.0f, -128.0f}, {128.0f, 128.0f}});
   require(!preview.error.empty(), "failed generation did not expose an error");

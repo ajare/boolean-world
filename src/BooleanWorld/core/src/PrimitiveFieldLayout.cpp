@@ -367,6 +367,146 @@ PrimitiveFieldLayoutResult buildBoundedLayout(
   return {.layout = std::move(layout), .error = {}};
 }
 
+bool cellCentroid(PrimitiveFieldCell const& cell,
+                  IntPoint const& worldMinimum,
+                  IntPoint& centroid) {
+  if (cell.vertices.size() < 3) {
+    return false;
+  }
+
+  std::vector<IntPoint> vertices;
+  vertices.reserve(cell.vertices.size());
+  for (auto const& vertex : cell.vertices) {
+    IntPoint point;
+    if (!finitePoint(vertex) || !convertToGrid(vertex.x, point.x) ||
+        !convertToGrid(vertex.y, point.y)) {
+      return false;
+    }
+    vertices.push_back({point.x - worldMinimum.x, point.y - worldMinimum.y});
+  }
+
+  double twiceArea = 0.0;
+  double xMoment = 0.0;
+  double yMoment = 0.0;
+  for (size_t i = 0; i < vertices.size(); ++i) {
+    auto const& current = vertices[i];
+    auto const& next = vertices[(i + 1) % vertices.size()];
+    auto cross = static_cast<double>(current.x) * next.y -
+                 static_cast<double>(next.x) * current.y;
+    twiceArea += cross;
+    xMoment += static_cast<double>(current.x + next.x) * cross;
+    yMoment += static_cast<double>(current.y + next.y) * cross;
+  }
+  if (!std::isfinite(twiceArea) || !std::isfinite(xMoment) ||
+      !std::isfinite(yMoment) || !(twiceArea > 0.0)) {
+    return false;
+  }
+
+  auto x = xMoment / (3.0 * twiceArea);
+  auto y = yMoment / (3.0 * twiceArea);
+  if (!std::isfinite(x) || !std::isfinite(y) || x < 0.0 || y < 0.0 ||
+      x > static_cast<double>(MaximumExtentSpanUnits) ||
+      y > static_cast<double>(MaximumExtentSpanUnits)) {
+    return false;
+  }
+  centroid = {
+      worldMinimum.x + static_cast<int64_t>(std::floor(x + 0.5)),
+      worldMinimum.y + static_cast<int64_t>(std::floor(y + 0.5))};
+  return true;
+}
+
+PrimitiveFieldLayoutResult relaxLayout(
+    PrimitiveFieldLayout layout,
+    IntPoint const& worldMinimum,
+    IntPoint const& domainMinimum,
+    IntPoint const& domainMaximum,
+    int64_t spacing,
+    int32_t iterations) {
+  auto const retainedSiteCount = layout.sites.size();
+  auto const minimumDistanceSquared = spacing * spacing;
+
+  for (int32_t iteration = 0; iteration < iterations; ++iteration) {
+    if (layout.cells.size() != retainedSiteCount ||
+        layout.sites.size() != retainedSiteCount) {
+      return failure("Lloyd relaxation changed the retained site count.");
+    }
+
+    std::vector<IntPoint> retainedSites;
+    retainedSites.reserve(retainedSiteCount);
+    for (auto const& site : layout.sites) {
+      IntPoint point;
+      if (!finitePoint(site) || !convertToGrid(site.x, point.x) ||
+          !convertToGrid(site.y, point.y)) {
+        return failure("Lloyd relaxation encountered an invalid retained site.");
+      }
+      retainedSites.push_back(point);
+    }
+
+    // The layout's center-distance/x/y ordering is stable. Earlier decisions
+    // are visible to later proposals; sites not yet visited retain their old
+    // positions until their turn.
+    for (size_t siteIndex = 0; siteIndex < retainedSiteCount; ++siteIndex) {
+      IntPoint proposed;
+      if (!cellCentroid(layout.cells[siteIndex], worldMinimum, proposed)) {
+        return failure("Lloyd relaxation could not calculate a valid bounded-cell centroid.");
+      }
+      if (proposed.x < domainMinimum.x || proposed.x > domainMaximum.x ||
+          proposed.y < domainMinimum.y || proposed.y > domainMaximum.y) {
+        continue;
+      }
+
+      bool preservesSpacing = true;
+      for (size_t otherIndex = 0; otherIndex < retainedSiteCount; ++otherIndex) {
+        if (otherIndex != siteIndex &&
+            squaredDistance(proposed, retainedSites[otherIndex]) <
+                minimumDistanceSquared) {
+          preservesSpacing = false;
+          break;
+        }
+      }
+      if (preservesSpacing) {
+        retainedSites[siteIndex] = proposed;
+      }
+    }
+
+    std::vector<wp::Vector2> sites;
+    sites.reserve(retainedSiteCount);
+    for (auto const& site : retainedSites) {
+      sites.push_back({fromGrid(site.x), fromGrid(site.y)});
+    }
+    auto rebuilt = buildBoundedLayout(layout.worldExtents, std::move(sites));
+    if (!rebuilt.succeeded()) {
+      return failure("Lloyd relaxation iteration " +
+                     std::to_string(iteration + 1) + " failed: " +
+                     rebuilt.error);
+    }
+    if (rebuilt.layout->sites.size() != retainedSiteCount ||
+        rebuilt.layout->cells.size() != retainedSiteCount) {
+      return failure("Lloyd relaxation changed the retained site count.");
+    }
+    layout = std::move(*rebuilt.layout);
+  }
+
+  for (size_t i = 0; i < layout.sites.size(); ++i) {
+    IntPoint site;
+    if (!convertToGrid(layout.sites[i].x, site.x) ||
+        !convertToGrid(layout.sites[i].y, site.y) ||
+        site.x < domainMinimum.x || site.x > domainMaximum.x ||
+        site.y < domainMinimum.y || site.y > domainMaximum.y) {
+      return failure("Lloyd relaxation produced a site outside the spacing-inset domain.");
+    }
+    for (size_t j = i + 1; j < layout.sites.size(); ++j) {
+      IntPoint other;
+      if (!convertToGrid(layout.sites[j].x, other.x) ||
+          !convertToGrid(layout.sites[j].y, other.y) ||
+          squaredDistance(site, other) < minimumDistanceSquared) {
+        return failure("Lloyd relaxation produced sites below the requested minimum spacing.");
+      }
+    }
+  }
+  return {.layout = std::move(layout), .error = {}};
+}
+
 }  // namespace
 
 PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
@@ -390,6 +530,9 @@ PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
     }
     if (request.maximumSites > BW_WORLD_PRIMITIVE_COUNT_MAX) {
       return failure("Maximum site count exceeds the engine primitive limit.");
+    }
+    if (request.lloydIterations < 0 || request.lloydIterations > 20) {
+      return failure("Lloyd iterations must be between 0 and 20.");
     }
 
     int64_t spacing = 0;
@@ -517,7 +660,12 @@ PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
     for (auto const& point : accepted) {
       sites.push_back({fromGrid(point.x), fromGrid(point.y)});
     }
-    return buildBoundedLayout(request.worldExtents, std::move(sites));
+    auto initial = buildBoundedLayout(request.worldExtents, std::move(sites));
+    if (!initial.succeeded() || request.lloydIterations == 0) {
+      return initial;
+    }
+    return relaxLayout(std::move(*initial.layout), worldMinimum, domainMinimum,
+                       domainMaximum, spacing, request.lloydIterations);
   } catch (std::exception const& error) {
     return failure(std::string("Primitive-field layout generation failed: ") +
                    error.what());

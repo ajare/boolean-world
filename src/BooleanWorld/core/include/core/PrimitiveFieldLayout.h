@@ -26,6 +26,7 @@ struct BW_API PrimitiveFieldLayoutRequest {
   float minimumSpacing{128.0f};
   uint32_t maximumSites{2000};
   int32_t seed{0};
+  int32_t lloydIterations{5};
 };
 
 struct BW_API PrimitiveFieldCell {
@@ -51,8 +52,10 @@ struct BW_API PrimitiveFieldLayoutResult {
 // Uses PCG-XSH-RR 32 with a fixed stream. Candidate offsets are derived with
 // explicit integer arithmetic and converted to the public float grid by an
 // exact power-of-two scale. Sampling starts at the world centre and expands
-// through a distance-prioritized frontier. Output is ordered by squared
-// distance from the world centre, then x and y.
+// through a distance-prioritized frontier. Each requested Lloyd pass proposes
+// the bounded-cell centroid in stable site order, retaining the old site when
+// the proposal would violate the inset domain or minimum spacing. Output is
+// ordered by squared distance from the world centre, then x and y.
 [[nodiscard]] BW_API PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
     PrimitiveFieldLayoutRequest const& request);
 

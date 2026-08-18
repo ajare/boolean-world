@@ -10,6 +10,7 @@ void PrimitiveFieldPreview::requestOpen() {
   minimumSpacing = 128.0f;
   maximumSites = 2000;
   seed = 0;
+  lloydIterations = 5;
   layout.reset();
   error.clear();
 }
@@ -21,10 +22,16 @@ void PrimitiveFieldPreview::close() {
   error.clear();
 }
 
+void PrimitiveFieldPreview::invalidateLayout() {
+  layout.reset();
+  error.clear();
+}
+
 void PrimitiveFieldPreview::generate(
     bw::core::PrimitiveFieldExtents const& worldExtents) {
   auto result = bw::core::generatePrimitiveFieldLayout(
-      {worldExtents, minimumSpacing, static_cast<uint32_t>(maximumSites), seed});
+      {worldExtents, minimumSpacing, static_cast<uint32_t>(maximumSites), seed,
+       lloydIterations});
   if (!result.succeeded()) {
     error = std::move(result.error);
     return;

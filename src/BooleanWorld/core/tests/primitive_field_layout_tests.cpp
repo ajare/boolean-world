@@ -33,6 +33,34 @@ double area(std::vector<wp::Vector2> const& vertices) {
   return twiceArea * 0.5;
 }
 
+wp::Vector2 centroid(std::vector<wp::Vector2> const& vertices) {
+  double twiceArea = 0.0;
+  double xMoment = 0.0;
+  double yMoment = 0.0;
+  for (size_t i = 0; i < vertices.size(); ++i) {
+    auto const& current = vertices[i];
+    auto const& next = vertices[(i + 1) % vertices.size()];
+    auto cross = static_cast<double>(current.x) * next.y -
+                 static_cast<double>(next.x) * current.y;
+    twiceArea += cross;
+    xMoment += (static_cast<double>(current.x) + next.x) * cross;
+    yMoment += (static_cast<double>(current.y) + next.y) * cross;
+  }
+  return {static_cast<float>(xMoment / (3.0 * twiceArea)),
+          static_cast<float>(yMoment / (3.0 * twiceArea))};
+}
+
+double centroidEnergy(PrimitiveFieldLayout const& layout) {
+  double result = 0.0;
+  for (size_t i = 0; i < layout.sites.size(); ++i) {
+    auto cellCentroid = centroid(layout.cells[i].vertices);
+    auto dx = static_cast<double>(layout.sites[i].x) - cellCentroid.x;
+    auto dy = static_cast<double>(layout.sites[i].y) - cellCentroid.y;
+    result += dx * dx + dy * dy;
+  }
+  return result;
+}
+
 bool exactPoint(wp::Vector2 const& lhs, wp::Vector2 const& rhs) {
   return std::bit_cast<uint32_t>(lhs.x) == std::bit_cast<uint32_t>(rhs.x) &&
          std::bit_cast<uint32_t>(lhs.y) == std::bit_cast<uint32_t>(rhs.y);
@@ -159,7 +187,8 @@ void generatesSquareAndNonsquareBoundedLayouts() {
   auto square = generate({{{-128.0f, -128.0f}, {128.0f, 128.0f}},
                           64.0f,
                           BW_WORLD_PRIMITIVE_COUNT_MAX,
-                          17});
+                          17,
+                          0});
   require(square.sites.size() > 1 &&
               square.sites.size() < BW_WORLD_PRIMITIVE_COUNT_MAX,
           "uncapped square fixture did not naturally terminate");
@@ -170,7 +199,8 @@ void generatesSquareAndNonsquareBoundedLayouts() {
   auto nonsquare = generate({{{10.0f, -80.0f}, {330.0f, 80.0f}},
                              40.0f,
                              BW_WORLD_PRIMITIVE_COUNT_MAX,
-                             -29});
+                             -29,
+                             0});
   require(nonsquare.sites.size() > 1 &&
               nonsquare.sites.size() < BW_WORLD_PRIMITIVE_COUNT_MAX,
           "uncapped nonsquare fixture did not naturally terminate");
@@ -181,7 +211,7 @@ void generatesSquareAndNonsquareBoundedLayouts() {
 
 void cappedLayoutStopsAtMaximumAndIsAnUncappedPrefix() {
   PrimitiveFieldLayoutRequest request{
-      {{-256.0f, -192.0f}, {256.0f, 192.0f}}, 48.0f, 7, 123456};
+      {{-256.0f, -192.0f}, {256.0f, 192.0f}}, 48.0f, 7, 123456, 0};
   auto capped = generate(request);
   require(capped.sites.size() == 7,
           "capped layout did not stop at the requested maximum");
@@ -199,14 +229,14 @@ void cappedLayoutStopsAtMaximumAndIsAnUncappedPrefix() {
 
 void generatesTheDefaultEditorBatchWithoutOvergeneration() {
   auto layout = generate(
-      {{{-4096.0f, -4096.0f}, {4096.0f, 4096.0f}}, 128.0f, 2000, 0});
+      {{{-4096.0f, -4096.0f}, {4096.0f, 4096.0f}}, 128.0f, 2000, 0, 5});
   require(layout.sites.size() == 2000 && layout.cells.size() == 2000,
           "the default editor request did not stop at exactly 2000 sites");
 }
 
 void repeatsExactSiteAndCellOutput() {
   PrimitiveFieldLayoutRequest request{
-      {{-96.0f, -64.0f}, {160.0f, 128.0f}}, 56.0f, 6, -7654321};
+      {{-96.0f, -64.0f}, {160.0f, 128.0f}}, 56.0f, 6, -7654321, 0};
   auto first = generate(request);
   auto second = generate(request);
   require(first.sites.size() == 6, "deterministic fixture was not capped");
@@ -217,13 +247,13 @@ void repeatsExactSiteAndCellOutput() {
 
 void respectsInsetForNongridWorldExtents() {
   auto layout = generate(
-      {{{0.00012f, -0.00012f}, {128.00012f, 95.99988f}}, 16.0f, 12, 91});
+      {{{0.00012f, -0.00012f}, {128.00012f, 95.99988f}}, 16.0f, 12, 91, 0});
   requireLayoutInvariants(layout, 16.0f);
 }
 
 void acceptsAOneSiteInsetDomain() {
   auto layout = generate(
-      {{{-32.0f, -32.0f}, {32.0f, 32.0f}}, 64.0f, 50, 8});
+      {{{-32.0f, -32.0f}, {32.0f, 32.0f}}, 64.0f, 50, 8, 0});
   require(layout.sites.size() == 1,
           "a point-sized inset domain should retain its centre site");
   require(layout.cells.size() == 1 && layout.cells[0].vertices.size() == 4,
@@ -231,9 +261,80 @@ void acceptsAOneSiteInsetDomain() {
   requireLayoutInvariants(layout, 64.0f);
 }
 
+void relaxesDeterministicallyAcrossSupportedIterationCounts() {
+  PrimitiveFieldLayoutRequest defaults;
+  require(defaults.lloydIterations == 5,
+          "the core request did not default to five Lloyd iterations");
+
+  PrimitiveFieldLayoutRequest request{
+      {{-180.0f, -90.0f}, {220.0f, 150.0f}}, 42.0f, 18, 314159, 0};
+  std::vector<int32_t> iterationCounts{0, 1, 5, 20};
+  std::vector<uint64_t> fingerprints;
+  std::vector<PrimitiveFieldLayout> layouts;
+  for (auto iterations : iterationCounts) {
+    request.lloydIterations = iterations;
+    auto first = generate(request);
+    auto repeated = generate(request);
+    requireExactLayout(first, repeated);
+    require(first.sites.size() == 18,
+            "Lloyd relaxation changed the capped site count");
+    requireLayoutInvariants(first, request.minimumSpacing);
+    fingerprints.push_back(layoutFingerprint(first));
+    layouts.push_back(std::move(first));
+  }
+
+  std::vector<uint64_t> const expectedFingerprints{
+      0x6cb2af7fa72e3766ULL, 0xe63ba7e2e3f83923ULL,
+      0x8ec842b0e4b2846eULL, 0x55310ec16f8143c3ULL};
+  require(fingerprints == expectedFingerprints,
+          "a zero/one/default/maximum-iteration fixture changed");
+  require(centroidEnergy(layouts[1]) < centroidEnergy(layouts[0]),
+          "one Lloyd iteration did not regularize the representative layout");
+  require(centroidEnergy(layouts[2]) < centroidEnergy(layouts[0]),
+          "the default Lloyd iterations did not regularize the layout");
+
+  size_t retainedSites = 0;
+  bool rejectedOutsideInset = false;
+  bool rejectedForSpacing = false;
+  auto inset = request.minimumSpacing * 0.5f;
+  for (size_t i = 0; i < layouts[0].sites.size(); ++i) {
+    auto const& initialSite = layouts[0].sites[i];
+    bool retained = false;
+    for (auto const& relaxedSite : layouts[1].sites) {
+      retained |= exactPoint(initialSite, relaxedSite);
+    }
+    retainedSites += retained ? 1u : 0u;
+    if (!retained) {
+      continue;
+    }
+
+    auto proposed = centroid(layouts[0].cells[i].vertices);
+    rejectedOutsideInset |=
+        proposed.x < request.worldExtents.minimum.x + inset ||
+        proposed.x > request.worldExtents.maximum.x - inset ||
+        proposed.y < request.worldExtents.minimum.y + inset ||
+        proposed.y > request.worldExtents.maximum.y - inset;
+    for (size_t j = 0; j < layouts[0].sites.size(); ++j) {
+      if (i == j) {
+        continue;
+      }
+      auto dx = static_cast<double>(proposed.x) - layouts[0].sites[j].x;
+      auto dy = static_cast<double>(proposed.y) - layouts[0].sites[j].y;
+      rejectedForSpacing |=
+          dx * dx + dy * dy < request.minimumSpacing * request.minimumSpacing;
+    }
+  }
+  require(retainedSites < layouts[0].sites.size(),
+          "one Lloyd iteration did not move any eligible site");
+  require(rejectedOutsideInset,
+          "the boundary fixture did not reject an out-of-inset centroid");
+  require(rejectedForSpacing,
+          "the fixture did not reject a centroid below minimum spacing");
+}
+
 void rejectsInvalidAndDegenerateInputs() {
   auto valid = PrimitiveFieldLayoutRequest{
-      {{-64.0f, -64.0f}, {64.0f, 64.0f}}, 16.0f, 10, 0};
+      {{-64.0f, -64.0f}, {64.0f, 64.0f}}, 16.0f, 10, 0, 0};
 
   auto request = valid;
   request.minimumSpacing = std::numeric_limits<float>::infinity();
@@ -266,6 +367,16 @@ void rejectsInvalidAndDegenerateInputs() {
   require(!bw::core::generatePrimitiveFieldLayout(request).succeeded(),
           "a maximum above the engine limit was accepted");
 
+  request = valid;
+  request.lloydIterations = -1;
+  require(!bw::core::generatePrimitiveFieldLayout(request).succeeded(),
+          "a negative Lloyd iteration count was accepted");
+
+  request = valid;
+  request.lloydIterations = 21;
+  require(!bw::core::generatePrimitiveFieldLayout(request).succeeded(),
+          "a Lloyd iteration count above twenty was accepted");
+
   auto extents = PrimitiveFieldExtents{{0.0f, 0.0f}, {100.0f, 100.0f}};
   auto duplicates = bw::core::buildBoundedPrimitiveFieldLayout(
       extents, {{25.0f, 25.0f}, {25.0f, 25.0f}});
@@ -292,6 +403,7 @@ int main() {
     repeatsExactSiteAndCellOutput();
     respectsInsetForNongridWorldExtents();
     acceptsAOneSiteInsetDomain();
+    relaxesDeterministicallyAcrossSupportedIterationCounts();
     rejectsInvalidAndDegenerateInputs();
     std::cout << "Deterministic bounded primitive-field layout tests passed\n";
     return 0;

@@ -3340,6 +3340,14 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
       }
 
       ImGui::SetNextItemWidth(220.0f);
+      if (ImGui::InputInt("Lloyd iterations",
+                          &primitiveFieldPreview.lloydIterations)) {
+        primitiveFieldPreview.lloydIterations = std::clamp(
+            primitiveFieldPreview.lloydIterations, 0, 20);
+        primitiveFieldPreview.invalidateLayout();
+      }
+
+      ImGui::SetNextItemWidth(220.0f);
       ImGui::InputInt("Seed", &primitiveFieldPreview.seed);
       ImGui::SameLine();
       if (ImGui::Button("Randomize")) {

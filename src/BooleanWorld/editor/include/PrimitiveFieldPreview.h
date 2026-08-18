@@ -14,11 +14,13 @@ struct PrimitiveFieldPreview {
   float minimumSpacing{128.0f};
   int maximumSites{2000};
   int seed{0};
+  int lloydIterations{5};
   std::optional<bw::core::PrimitiveFieldLayout> layout;
   std::string error;
 
   void requestOpen();
   void close();
+  void invalidateLayout();
   void generate(bw::core::PrimitiveFieldExtents const& worldExtents);
 };
 
