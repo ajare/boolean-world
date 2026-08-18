@@ -31,9 +31,11 @@ uint8_t WorldTriggerLine::getLayer() const {
   return mLayer;
 }
 
-void WorldTriggerLine::setPoint(uint32_t index, wp::Vector2 const& position) {
-  assert(index < 2);
-  mPoints[index] = position;
+void WorldTriggerLine::setPoints(wp::Vector2 const& p0, wp::Vector2 const& p1) {
+  mPoints[0] = p0;
+  mPoints[1] = p1;
+  updateBounds();
+  modify();
 }
 
 wp::Vector2 const& WorldTriggerLine::getPoint(uint32_t index) const {

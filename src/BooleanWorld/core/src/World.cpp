@@ -914,6 +914,39 @@ void World::replaceTriggerLine(uint32_t index, WorldTriggerLine* newTriggerLine,
   addTriggerLineToLookupGrid(newTriggerLine);
 }
 
+void World::setTriggerLinePoint(uint32_t triggerLineIndex, uint32_t pointIndex, wp::Vector2 const& position) {
+  assert(triggerLineIndex < getNumTriggerLines() && "World::setTriggerLinePoint - trigger line index out of bounds");
+  assert(pointIndex < 2 && "World::setTriggerLinePoint - point index out of bounds");
+
+  auto* triggerLine = mTriggerLines[triggerLineIndex];
+  auto p0 = triggerLine->getPoint(0);
+  auto p1 = triggerLine->getPoint(1);
+  (pointIndex == 0 ? p0 : p1) = position;
+  setTriggerLinePoints(triggerLineIndex, p0, p1);
+}
+
+void World::setTriggerLinePoints(uint32_t triggerLineIndex, wp::Vector2 const& p0, wp::Vector2 const& p1) {
+  assert(triggerLineIndex < getNumTriggerLines() && "World::setTriggerLinePoints - trigger line index out of bounds");
+
+  if (!mTriggerLookupGrid) {
+    throw CoreException("AccelerationGrid for TriggerLines not created.");
+  }
+
+  auto* triggerLine = mTriggerLines[triggerLineIndex];
+  triggerLine->setPoints(p0, p1);
+  mTriggerLookupGrid->moveItem(triggerLineIndex, triggerLine->getBounds());
+}
+
+void World::moveTriggerLine(uint32_t triggerLineIndex, wp::Vector2 const& offset) {
+  assert(triggerLineIndex < getNumTriggerLines() && "World::moveTriggerLine - trigger line index out of bounds");
+
+  auto const* triggerLine = mTriggerLines[triggerLineIndex];
+  setTriggerLinePoints(
+      triggerLineIndex,
+      triggerLine->getPoint(0) + offset,
+      triggerLine->getPoint(1) + offset);
+}
+
 Primitive* World::createMeshPrimitive(vector<Primitive*> const& fold) const {
   auto selected = fold;
   stable_sort(

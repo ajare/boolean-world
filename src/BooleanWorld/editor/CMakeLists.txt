@@ -86,6 +86,22 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_editor_undo_history
              COMMAND boolean_world_editor_undo_history_tests)
 
+    add_executable(boolean_world_editor_prefab_trigger_line_geometry_tests
+        tests/prefab_trigger_line_geometry_tests.cpp
+        src/Document.cpp)
+    target_include_directories(boolean_world_editor_prefab_trigger_line_geometry_tests PRIVATE include)
+    target_compile_definitions(boolean_world_editor_prefab_trigger_line_geometry_tests PRIVATE
+        YAML_CPP_STATIC_DEFINE)
+    target_link_libraries(boolean_world_editor_prefab_trigger_line_geometry_tests PRIVATE
+        core vendor::spdlog ext::glew)
+    target_compile_features(boolean_world_editor_prefab_trigger_line_geometry_tests PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_prefab_trigger_line_geometry_tests PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_prefab_trigger_line_geometry_tests)
+    bw_output_dirs(boolean_world_editor_prefab_trigger_line_geometry_tests)
+    bw_deploy_runtime_dlls(boolean_world_editor_prefab_trigger_line_geometry_tests)
+    add_test(NAME boolean_world_editor_prefab_trigger_line_geometry
+             COMMAND boolean_world_editor_prefab_trigger_line_geometry_tests)
+
     add_executable(boolean_world_editor_material_colour_tests
         tests/material_colour_tests.cpp
         src/Actions.cpp

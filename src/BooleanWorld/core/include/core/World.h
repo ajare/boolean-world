@@ -189,6 +189,12 @@ public:
 
   void replaceTriggerLine(uint32_t index, WorldTriggerLine* newTriggerLine, bool failIfNotFound = true);
 
+  void setTriggerLinePoint(uint32_t triggerLineIndex, uint32_t pointIndex, wp::Vector2 const& position);
+
+  void setTriggerLinePoints(uint32_t triggerLineIndex, wp::Vector2 const& p0, wp::Vector2 const& p1);
+
+  void moveTriggerLine(uint32_t triggerLineIndex, wp::Vector2 const& offset);
+
   Primitive* createMeshPrimitive(
       std::vector<Primitive*> const& fold) const;
 

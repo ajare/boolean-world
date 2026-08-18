@@ -30,7 +30,11 @@ class WorldTriggerLine : public Serializable {
 private:
   bool childrenModified() const override;
 
+  void setPoints(wp::Vector2 const& p0, wp::Vector2 const& p1);
+
   void updateBounds();
+
+  friend class World;
 
 protected:
   void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
@@ -53,8 +57,6 @@ public:
   uint32_t getTriggerCount(WorldTriggerLineSide side) const;
 
   uint32_t getTotalTriggerCount() const;
-
-  void setPoint(uint32_t index, wp::Vector2 const& position);
 
   wp::Vector2 const& getPoint(uint32_t index) const;
 

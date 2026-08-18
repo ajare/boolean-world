@@ -639,7 +639,8 @@ void handleWorldInteraction(editor::Document* doc, bw::core::WorldData const* wo
       }
 
       // Find the part of the trigger which we're moving - handle or line
-      auto triggerLine = doc->getWorld()->getTriggerLine(selectedTriggerLineIndex);
+      auto world = doc->getWorld();
+      auto triggerLine = world->getTriggerLine(selectedTriggerLineIndex);
 
       auto p0 = triggerLine->getPoint(0);
       auto p1 = triggerLine->getPoint(1);
@@ -648,15 +649,15 @@ void handleWorldInteraction(editor::Document* doc, bw::core::WorldData const* wo
       auto delta = mouseStatus.dragDelta[editor::MouseButtonStatus::Left];
       auto triggerLineHandleRadiusSq = settings.triggerLineHandleRadius * settings.triggerLineHandleRadius;
 
+      auto movement = wp::Vector2{delta.x, -delta.y};
       if (mouseWorldPos.distanceToSq(p0) <= triggerLineHandleRadiusSq || movingSelectedTriggerAreaPart == 0) {
-        triggerLine->setPoint(0, p0 + wp::Vector2{delta.x, -delta.y});
+        world->setTriggerLinePoint(selectedTriggerLineIndex, 0, p0 + movement);
         movingSelectedTriggerAreaPart = 0;
       } else if (mouseWorldPos.distanceToSq(p1) <= triggerLineHandleRadiusSq || movingSelectedTriggerAreaPart == 1) {
-        triggerLine->setPoint(1, p1 + wp::Vector2{delta.x, -delta.y});
+        world->setTriggerLinePoint(selectedTriggerLineIndex, 1, p1 + movement);
         movingSelectedTriggerAreaPart = 1;
       } else {
-        triggerLine->setPoint(0, p0 + wp::Vector2{delta.x, -delta.y});
-        triggerLine->setPoint(1, p1 + wp::Vector2{delta.x, -delta.y});
+        world->moveTriggerLine(selectedTriggerLineIndex, movement);
         movingSelectedTriggerAreaPart = 2;
       }
     }

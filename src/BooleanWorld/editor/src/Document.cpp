@@ -435,22 +435,15 @@ void Document::addPrefabInstance(bw::core::World const* prefab, int tileX, int t
   map<uint32_t, uint32_t> triggerLineMap;
 
   for (auto prefabTriggerLine : prefabTriggerLines) {
-    auto triggerLineCopy = new bw::core::WorldTriggerLine(*prefabTriggerLine);
-    auto tlc = triggerLineCopy->getPoint(0).lerp(triggerLineCopy->getPoint(1), 0.5f);
-
-    for (uint32_t i = 0; i < 2; ++i) {
-      auto v = triggerLineCopy->getPoint(i);
-
-      v -= tlc;
-
-      v.rotateAnticlockwise(rotation);
-
-      v += tlc.rotatedAnticlockwiseCopy(rotation);
-      v += offset;
-
-      // Move points
-      triggerLineCopy->setPoint(i, v);
-    }
+    auto transformPoint = [rotation, offset](wp::Vector2 point) {
+      point.rotateAnticlockwise(rotation);
+      return point + offset;
+    };
+    auto triggerLineCopy = new bw::core::WorldTriggerLine(
+        prefabTriggerLine->getLayer(),
+        transformPoint(prefabTriggerLine->getPoint(0)),
+        transformPoint(prefabTriggerLine->getPoint(1)),
+        prefabTriggerLine->getSide());
 
     mWorld->addTriggerLine(triggerLineCopy);
 
