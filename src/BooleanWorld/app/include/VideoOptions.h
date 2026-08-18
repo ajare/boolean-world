@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string_view>
 
@@ -15,16 +16,51 @@ enum class RenderScale : int {
   Full = 0,
   Half = 1,
   Quarter = 2,
+  Eighth = 3,
 };
 
 // Every member, in configuration order. Callers that need one target, log line
 // or menu entry per scale iterate this rather than counting members themselves.
-inline constexpr std::array<RenderScale, 3> allRenderScales{
+inline constexpr std::array<RenderScale, 4> allRenderScales{
     RenderScale::Full,
     RenderScale::Half,
-    RenderScale::Quarter};
+    RenderScale::Quarter,
+    RenderScale::Eighth};
 
 inline constexpr std::size_t renderScaleCount = allRenderScales.size();
+
+// One mutually-exclusive world anti-aliasing choice. MSAA is applied during
+// scene rasterization; FXAA is applied to the resolved image.
+enum class AntiAliasing : int {
+  Off = 0,
+  Msaa2x = 1,
+  Msaa4x = 2,
+  Msaa8x = 3,
+  Fxaa = 4,
+};
+
+inline constexpr std::array<AntiAliasing, 5> allAntiAliasingOptions{
+    AntiAliasing::Off,
+    AntiAliasing::Msaa2x,
+    AntiAliasing::Msaa4x,
+    AntiAliasing::Msaa8x,
+    AntiAliasing::Fxaa};
+
+inline constexpr std::size_t antiAliasingOptionCount =
+    allAntiAliasingOptions.size();
+
+// Sampling used when the resolved world target is stretched across the screen.
+enum class RenderTextureFilter : int {
+  Linear = 0,
+  Nearest = 1,
+};
+
+inline constexpr std::array<RenderTextureFilter, 2> allRenderTextureFilters{
+    RenderTextureFilter::Linear,
+    RenderTextureFilter::Nearest};
+
+inline constexpr std::size_t renderTextureFilterCount =
+    allRenderTextureFilters.size();
 
 inline constexpr int renderScaleCode(RenderScale scale) {
   return static_cast<int>(scale);
@@ -42,10 +78,12 @@ inline constexpr std::size_t renderScaleIndex(RenderScale scale) {
   return static_cast<std::size_t>(renderScaleCode(scale));
 }
 
-// Video settings the launcher hands to the game DLL at load time. The scale is
-// the only one so far; it seeds the model's active scale on DLL entry.
+// Video settings the launcher hands to the game DLL at load time. They seed
+// the model's active world-rendering options on DLL entry.
 struct VideoOptions {
   RenderScale renderScale{RenderScale::Full};
+  AntiAliasing antiAliasing{AntiAliasing::Off};
+  RenderTextureFilter renderTextureFilter{RenderTextureFilter::Linear};
 };
 
 // The configuration's spelling of a scale, and the reverse. Both directions run
@@ -56,6 +94,8 @@ inline constexpr std::string_view renderScaleName(RenderScale scale) {
       return "half";
     case RenderScale::Quarter:
       return "quarter";
+    case RenderScale::Eighth:
+      return "eighth";
     case RenderScale::Full:
       break;
   }
@@ -69,6 +109,113 @@ inline constexpr std::optional<RenderScale> renderScaleFromName(std::string_view
   for (auto scale : allRenderScales) {
     if (renderScaleName(scale) == name) {
       return scale;
+    }
+  }
+
+  return std::nullopt;
+}
+
+inline constexpr std::string_view renderTextureFilterName(
+    RenderTextureFilter filter) {
+  return filter == RenderTextureFilter::Nearest ? "nearest" : "linear";
+}
+
+inline constexpr int renderTextureFilterCode(RenderTextureFilter filter) {
+  return static_cast<int>(filter);
+}
+
+inline constexpr std::optional<RenderTextureFilter> renderTextureFilterFromCode(
+    int code) {
+  if (code < 0 || static_cast<std::size_t>(code) >= renderTextureFilterCount) {
+    return std::nullopt;
+  }
+
+  return allRenderTextureFilters[static_cast<std::size_t>(code)];
+}
+
+inline constexpr std::optional<RenderTextureFilter> renderTextureFilterFromName(
+    std::string_view name) {
+  for (auto filter : allRenderTextureFilters) {
+    if (renderTextureFilterName(filter) == name) {
+      return filter;
+    }
+  }
+
+  return std::nullopt;
+}
+
+inline constexpr std::string_view antiAliasingName(AntiAliasing antiAliasing) {
+  switch (antiAliasing) {
+    case AntiAliasing::Msaa2x:
+      return "msaa-2x";
+    case AntiAliasing::Msaa4x:
+      return "msaa-4x";
+    case AntiAliasing::Msaa8x:
+      return "msaa-8x";
+    case AntiAliasing::Fxaa:
+      return "fxaa";
+    case AntiAliasing::Off:
+      break;
+  }
+
+  return "off";
+}
+
+inline constexpr std::string_view antiAliasingLabel(AntiAliasing antiAliasing) {
+  switch (antiAliasing) {
+    case AntiAliasing::Msaa2x:
+      return "2x MSAA";
+    case AntiAliasing::Msaa4x:
+      return "4x MSAA";
+    case AntiAliasing::Msaa8x:
+      return "8x MSAA";
+    case AntiAliasing::Fxaa:
+      return "FXAA";
+    case AntiAliasing::Off:
+      break;
+  }
+
+  return "Off";
+}
+
+inline constexpr uint32_t antiAliasingMsaaSamples(
+    AntiAliasing antiAliasing) {
+  switch (antiAliasing) {
+    case AntiAliasing::Msaa2x:
+      return 2;
+    case AntiAliasing::Msaa4x:
+      return 4;
+    case AntiAliasing::Msaa8x:
+      return 8;
+    case AntiAliasing::Off:
+    case AntiAliasing::Fxaa:
+      return 1;
+  }
+
+  return 1;
+}
+
+inline constexpr bool antiAliasingIsFxaa(AntiAliasing antiAliasing) {
+  return antiAliasing == AntiAliasing::Fxaa;
+}
+
+inline constexpr int antiAliasingCode(AntiAliasing antiAliasing) {
+  return static_cast<int>(antiAliasing);
+}
+
+inline constexpr std::optional<AntiAliasing> antiAliasingFromCode(int code) {
+  if (code < 0 || static_cast<std::size_t>(code) >= antiAliasingOptionCount) {
+    return std::nullopt;
+  }
+
+  return allAntiAliasingOptions[static_cast<std::size_t>(code)];
+}
+
+inline constexpr std::optional<AntiAliasing> antiAliasingFromName(
+    std::string_view name) {
+  for (auto antiAliasing : allAntiAliasingOptions) {
+    if (antiAliasingName(antiAliasing) == name) {
+      return antiAliasing;
     }
   }
 
@@ -94,6 +241,9 @@ inline constexpr RenderTargetSize renderTargetSize(std::size_t screenWidth, std:
       break;
     case RenderScale::Quarter:
       divisor = 4;
+      break;
+    case RenderScale::Eighth:
+      divisor = 8;
       break;
     case RenderScale::Full:
       break;

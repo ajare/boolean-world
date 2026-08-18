@@ -13,7 +13,9 @@ void require(bool condition, std::string const& message) {
 
 std::filesystem::path writeConfiguration(std::string const& extraGameField,
                                          std::string const& inputSection = "",
-                                         std::string const& renderScaleLine = "") {
+                                         std::string const& renderScaleLine = "",
+                                         std::string const& antiAliasingLine = "",
+                                         std::string const& renderTextureFilterLine = "") {
   auto path = std::filesystem::temp_directory_path() / "boolean-world-program-options-test.yaml";
   std::ofstream stream(path);
   stream << "Configuration:\n"
@@ -23,6 +25,8 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
             "    Fullscreen: false\n"
             "    VSync: true\n"
          << renderScaleLine
+         << antiAliasingLine
+         << renderTextureFilterLine
          << "  Audio:\n"
             "    Enabled: false\n"
             "    Channels: 32\n"
@@ -80,6 +84,30 @@ ProgramOptions parseWithRenderScale(std::string const& renderScaleLine) {
   }
 }
 
+ProgramOptions parseWithAntiAliasing(std::string const& antiAliasingLine) {
+  auto path = writeConfiguration("", "", "", antiAliasingLine);
+  try {
+    auto options = parseProgramOptions(path.string());
+    std::filesystem::remove(path);
+    return options;
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+}
+
+ProgramOptions parseWithRenderTextureFilter(std::string const& filterLine) {
+  auto path = writeConfiguration("", "", "", "", filterLine);
+  try {
+    auto options = parseProgramOptions(path.string());
+    std::filesystem::remove(path);
+    return options;
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+}
+
 void requireInputRejected(std::string const& inputSection, std::string const& description) {
   try {
     (void)parseWithInput(inputSection);
@@ -95,6 +123,32 @@ void requireRenderScaleRejected(std::string const& renderScaleLine, std::string 
   } catch (std::exception const& error) {
     require(std::string(error.what()).find("RenderScale") != std::string::npos,
             "The render-scale error did not name the field.");
+    return;
+  }
+  throw std::runtime_error("Video configuration accepted " + description + ".");
+}
+
+void requireAntiAliasingRejected(
+    std::string const& antiAliasingLine,
+    std::string const& description) {
+  try {
+    (void)parseWithAntiAliasing(antiAliasingLine);
+  } catch (std::exception const& error) {
+    require(std::string(error.what()).find("AA") != std::string::npos,
+            "The anti-aliasing error did not name the field.");
+    return;
+  }
+  throw std::runtime_error("Video configuration accepted " + description + ".");
+}
+
+void requireRenderTextureFilterRejected(
+    std::string const& filterLine,
+    std::string const& description) {
+  try {
+    (void)parseWithRenderTextureFilter(filterLine);
+  } catch (std::exception const& error) {
+    require(std::string(error.what()).find("RenderTextureFilter") != std::string::npos,
+            "The render-texture filter error did not name the field.");
     return;
   }
   throw std::runtime_error("Video configuration accepted " + description + ".");
@@ -129,9 +183,36 @@ int main() {
             "The configured half render scale did not parse case-insensitively.");
     require(parseWithRenderScale("    RenderScale: QUARTER\n").video.renderScale == bw::app::RenderScale::Quarter,
             "The configured quarter render scale did not parse case-insensitively.");
-    requireRenderScaleRejected("    RenderScale: eighth\n", "an unknown render scale");
+    require(parseWithRenderScale("    RenderScale: EiGhTh\n").video.renderScale == bw::app::RenderScale::Eighth,
+            "The configured eighth render scale did not parse case-insensitively.");
+    requireRenderScaleRejected("    RenderScale: sixteenth\n", "an unknown render scale");
     requireRenderScaleRejected("    RenderScale: 2\n", "a numeric render scale");
     requireRenderScaleRejected("    RenderScale:\n", "an empty render scale");
+
+    require(parseWithAntiAliasing("").video.antiAliasing == bw::app::AntiAliasing::Off,
+            "A configuration without AA did not default to off.");
+    require(parseWithAntiAliasing("    AA: MSAA-2X\n").video.antiAliasing == bw::app::AntiAliasing::Msaa2x,
+            "The configured 2x MSAA did not parse case-insensitively.");
+    require(parseWithAntiAliasing("    AA: msaa-4x\n").video.antiAliasing == bw::app::AntiAliasing::Msaa4x,
+            "The configured 4x MSAA did not parse.");
+    require(parseWithAntiAliasing("    AA: msaa-8x\n").video.antiAliasing == bw::app::AntiAliasing::Msaa8x,
+            "The configured 8x MSAA did not parse.");
+    require(parseWithAntiAliasing("    AA: FXAA\n").video.antiAliasing == bw::app::AntiAliasing::Fxaa,
+            "The configured FXAA did not parse case-insensitively.");
+    requireAntiAliasingRejected("    AA: msaa-16x\n", "an unsupported MSAA sample count");
+    requireAntiAliasingRejected("    AA: 4\n", "a numeric AA setting");
+    requireAntiAliasingRejected("    AA:\n", "an empty AA setting");
+
+    require(parseWithRenderTextureFilter("").video.renderTextureFilter ==
+                bw::app::RenderTextureFilter::Linear,
+            "A configuration without RenderTextureFilter did not default to linear.");
+    require(parseWithRenderTextureFilter("    RenderTextureFilter: NeArEsT\n").video.renderTextureFilter ==
+                bw::app::RenderTextureFilter::Nearest,
+            "The configured nearest filter did not parse case-insensitively.");
+    requireRenderTextureFilterRejected(
+        "    RenderTextureFilter: bilinear\n", "an unknown render-texture filter");
+    requireRenderTextureFilterRejected(
+        "    RenderTextureFilter:\n", "an empty render-texture filter");
 
     std::cout << "Program-options schema validation passed\n";
     return 0;

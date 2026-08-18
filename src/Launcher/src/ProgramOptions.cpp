@@ -44,7 +44,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
   auto audioNode = configuration.getChild("Audio");
   auto inputNode = configuration.getOptionalChild("Input");
 
-  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale"});
+  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale", "AA", "RenderTextureFilter"});
   gameNode->requireOnlyChildren({"DLL", "ResourceLocations", "Debug", "Arguments"});
 
   pOpts.screenWidth = utils::StringUtils::parseInt(videoNode->getChild("Width")->getValue());
@@ -61,11 +61,38 @@ ProgramOptions parseProgramOptions(string const& filename) {
     auto renderScaleName = utils::StringUtils::toLower(renderScaleNode->getValue());
     auto renderScale = bw::app::renderScaleFromName(renderScaleName);
     if (!renderScale) {
-      string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/RenderScale must be 'full', 'half' or 'quarter'.";
+      string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/RenderScale must be 'full', 'half', 'quarter' or 'eighth'.";
       throw exception(errMsg.c_str());
     }
 
     pOpts.video.renderScale = *renderScale;
+  }
+
+  auto antiAliasingNode = videoNode->getOptionalChild("AA");
+  if (antiAliasingNode) {
+    auto antiAliasingName =
+        utils::StringUtils::toLower(antiAliasingNode->getValue());
+    auto antiAliasing = bw::app::antiAliasingFromName(antiAliasingName);
+    if (!antiAliasing) {
+      string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/AA must be 'off', 'msaa-2x', 'msaa-4x', 'msaa-8x' or 'fxaa'.";
+      throw exception(errMsg.c_str());
+    }
+
+    pOpts.video.antiAliasing = *antiAliasing;
+  }
+
+  auto renderTextureFilterNode =
+      videoNode->getOptionalChild("RenderTextureFilter");
+  if (renderTextureFilterNode) {
+    auto filterName =
+        utils::StringUtils::toLower(renderTextureFilterNode->getValue());
+    auto filter = bw::app::renderTextureFilterFromName(filterName);
+    if (!filter) {
+      string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/RenderTextureFilter must be 'linear' or 'nearest'.";
+      throw exception(errMsg.c_str());
+    }
+
+    pOpts.video.renderTextureFilter = *filter;
   }
 
   // Get game DLL
@@ -155,6 +182,12 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
   logger->info(std::format("Fullscreen: {}", options.fullScreen));
   logger->info(std::format("VSync enabled: {}", options.vSync));
   logger->info(std::format("World render scale: {}", bw::app::renderScaleName(options.video.renderScale)));
+  logger->info(std::format(
+      "World anti-aliasing: {}",
+      bw::app::antiAliasingName(options.video.antiAliasing)));
+  logger->info(std::format(
+      "World render texture filter: {}",
+      bw::app::renderTextureFilterName(options.video.renderTextureFilter)));
 
   logger->info(std::format("Audio enabled: {}", options.audioEnabled));
 

@@ -162,6 +162,9 @@ file(GENERATE
     Height: 768
     Fullscreen: false
     VSync: true
+    RenderScale: full
+    AA: off
+    RenderTextureFilter: linear
   Audio:
     Enabled: false
     Channels: 1024

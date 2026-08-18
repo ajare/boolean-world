@@ -5,6 +5,7 @@
 #include <deque>
 #include <mutex>
 
+#include <mpp/AntiAliasing.h>
 #include <mpp/Camera.h>
 
 #include <willpower/application/StateFactory.h>
@@ -72,10 +73,13 @@ private:
   // Created/managed in load states
   WorldRenderer* mwRenderer;
 
-  // One MPP scene target per world target. They are sized together when play
-  // starts, so changing scale later selects ready resources rather than
-  // reallocating the pipeline's internal target.
-  std::array<mpp::RenderPipelinePtr, bw::app::renderScaleCount> mWorldRenderPipelines;
+  // Pipeline options are immutable, so each render scale/AA pair has its own
+  // pipeline. Entries are created lazily; unsupported MSAA sample counts remain
+  // empty and are disabled in the options panel.
+  std::array<
+      std::array<mpp::RenderPipelinePtr, bw::app::antiAliasingOptionCount>,
+      bw::app::renderScaleCount>
+      mWorldRenderPipelines;
 
   // ImGui view
   DebugDisplay mDebugDisplay;
@@ -91,6 +95,10 @@ private:
 
 private:
   void createCamera();
+
+  mpp::RenderPipelinePtr const& getOrCreateWorldRenderPipeline(
+      bw::app::RenderScale renderScale,
+      bw::app::AntiAliasing antiAliasing);
 
   void setupMapRenderer(applib::StateTransitionData* transitionData) override;
 

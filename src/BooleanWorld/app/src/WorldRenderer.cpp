@@ -5,8 +5,13 @@
 
 using namespace std;
 
-WorldRenderer::WorldRenderer(wp::application::resourcesystem::ResourceManager* resourceMgr, wp::Logger* logger)
-    : mWorldHasChanged(true), mwLogger(logger) {
+WorldRenderer::WorldRenderer(
+    wp::application::resourcesystem::ResourceManager* resourceMgr,
+    wp::Logger* logger,
+    bw::app::RenderTextureFilter renderTextureFilter)
+    : mWorldHasChanged(true),
+      mwLogger(logger),
+      mRenderTextureFilter(renderTextureFilter) {
   set<string> materialsFound;
 
   auto defaultMaterial = resourceMgr->getResource("Material.Default", "World");
@@ -22,11 +27,14 @@ WorldRenderer::~WorldRenderer() {
 void WorldRenderer::createRenderTargets(mpp::RenderSystem* renderSystem) {
   mpp::RenderTextureOptions options;
 
-  // The composite stretches each target over the whole screen, so it samples
-  // linearly and clamps at the edge rather than wrapping. MPP takes the OpenGL
-  // wire values here: 0x2601 is GL_LINEAR and 0x812F is GL_CLAMP_TO_EDGE.
-  options.params.minFilter = 0x2601;
-  options.params.magFilter = 0x2601;
+  // The composite stretches each target over the whole screen. MPP takes the
+  // OpenGL wire values here: 0x2600 is GL_NEAREST, 0x2601 is GL_LINEAR and
+  // 0x812F is GL_CLAMP_TO_EDGE.
+  auto filter = mRenderTextureFilter == bw::app::RenderTextureFilter::Nearest
+                    ? 0x2600
+                    : 0x2601;
+  options.params.minFilter = filter;
+  options.params.magFilter = filter;
   options.params.wrap = 0x812F;
 
   for (auto renderScale : bw::app::allRenderScales) {

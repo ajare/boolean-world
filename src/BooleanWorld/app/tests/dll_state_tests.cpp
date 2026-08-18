@@ -43,18 +43,46 @@ void rejectsUnusableMouseSensitivities() {
 void acceptsAndValidatesRenderScaleCodes() {
   DLLState state;
   bw::app::VideoOptions options;
+  auto full = bw::app::renderScaleCode(bw::app::RenderScale::Full);
+  auto msaa2x = bw::app::antiAliasingCode(bw::app::AntiAliasing::Msaa2x);
+  auto nearest = bw::app::renderTextureFilterCode(
+      bw::app::RenderTextureFilter::Nearest);
 
-  require(state.setVideoOptions(bw::app::renderScaleCode(bw::app::RenderScale::Quarter), options) == 0,
-          "Valid render scale was rejected.");
+  require(state.setVideoOptions(
+              bw::app::renderScaleCode(bw::app::RenderScale::Quarter),
+              bw::app::antiAliasingCode(bw::app::AntiAliasing::Fxaa),
+              nearest, options) == 0,
+          "Valid video options were rejected.");
   require(options.renderScale == bw::app::RenderScale::Quarter,
           "Valid render scale was not applied.");
+  require(options.antiAliasing == bw::app::AntiAliasing::Fxaa,
+          "Valid anti-aliasing setting was not applied.");
+  require(options.renderTextureFilter == bw::app::RenderTextureFilter::Nearest,
+          "Valid render-texture filter was not applied.");
 
-  require(state.setVideoOptions(-1, options) != 0,
+  require(state.setVideoOptions(-1, msaa2x, nearest, options) != 0,
           "Negative render scale code was accepted.");
-  require(state.setVideoOptions(static_cast<int>(bw::app::renderScaleCount), options) != 0,
+  require(state.setVideoOptions(
+              static_cast<int>(bw::app::renderScaleCount),
+              msaa2x, nearest, options) != 0,
           "Out-of-range render scale code was accepted.");
-  require(options.renderScale == bw::app::RenderScale::Quarter,
-          "Rejected render scale changed configuration.");
+  require(state.setVideoOptions(full, -1, nearest, options) != 0,
+          "Negative anti-aliasing code was accepted.");
+  require(state.setVideoOptions(
+              full, static_cast<int>(bw::app::antiAliasingOptionCount),
+              nearest, options) != 0,
+          "Out-of-range anti-aliasing code was accepted.");
+  require(state.setVideoOptions(full, msaa2x, -1, options) != 0,
+          "Negative render-texture filter code was accepted.");
+  require(state.setVideoOptions(
+              full, msaa2x,
+              static_cast<int>(bw::app::renderTextureFilterCount),
+              options) != 0,
+          "Out-of-range render-texture filter code was accepted.");
+  require(options.renderScale == bw::app::RenderScale::Quarter &&
+              options.antiAliasing == bw::app::AntiAliasing::Fxaa &&
+              options.renderTextureFilter == bw::app::RenderTextureFilter::Nearest,
+          "Rejected video options changed configuration.");
 }
 
 void renderScaleVocabularyIsClosedAndSizesTargets() {
@@ -67,17 +95,44 @@ void renderScaleVocabularyIsClosedAndSizesTargets() {
             "Render scale did not round-trip through its boundary code.");
   }
 
-  require(!bw::app::renderScaleFromName("eighth"),
+  require(!bw::app::renderScaleFromName("sixteenth"),
           "Unknown render scale name was accepted.");
+  for (auto antiAliasing : bw::app::allAntiAliasingOptions) {
+    auto fromName = bw::app::antiAliasingFromName(
+        bw::app::antiAliasingName(antiAliasing));
+    require(fromName && *fromName == antiAliasing,
+            "Anti-aliasing setting did not round-trip through its name.");
+    auto fromCode = bw::app::antiAliasingFromCode(
+        bw::app::antiAliasingCode(antiAliasing));
+    require(fromCode && *fromCode == antiAliasing,
+            "Anti-aliasing setting did not round-trip through its boundary code.");
+  }
+  require(!bw::app::antiAliasingFromName("msaa-16x"),
+          "Unknown anti-aliasing setting was accepted.");
+  for (auto filter : bw::app::allRenderTextureFilters) {
+    auto fromName = bw::app::renderTextureFilterFromName(
+        bw::app::renderTextureFilterName(filter));
+    require(fromName && *fromName == filter,
+            "Render-texture filter did not round-trip through its name.");
+    auto fromCode = bw::app::renderTextureFilterFromCode(
+        bw::app::renderTextureFilterCode(filter));
+    require(fromCode && *fromCode == filter,
+            "Render-texture filter did not round-trip through its boundary code.");
+  }
+  require(!bw::app::renderTextureFilterFromName("bilinear"),
+          "Unknown render-texture filter was accepted.");
   auto exact = bw::app::renderTargetSize(1024, 768, bw::app::RenderScale::Half);
   require(exact.width == 512 && exact.height == 384,
           "Evenly divisible target dimensions were incorrect.");
   auto rounded = bw::app::renderTargetSize(1025, 769, bw::app::RenderScale::Quarter);
   require(rounded.width == 257 && rounded.height == 193,
           "Sub-full target dimensions did not round up.");
-  auto tiny = bw::app::renderTargetSize(1, 1, bw::app::RenderScale::Quarter);
+  auto eighth = bw::app::renderTargetSize(1025, 769, bw::app::RenderScale::Eighth);
+  require(eighth.width == 129 && eighth.height == 97,
+          "Eighth-scale target dimensions did not round up.");
+  auto tiny = bw::app::renderTargetSize(1, 1, bw::app::RenderScale::Eighth);
   require(tiny.width == 1 && tiny.height == 1,
-          "A small screen produced a zero-sized render target.");
+          "A small screen produced a zero-sized target.");
 }
 
 void resetsStateFactoryEnumerationOnEntry() {

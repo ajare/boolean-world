@@ -35,6 +35,8 @@ private:
 
   wp::Logger* mwLogger;
 
+  bw::app::RenderTextureFilter mRenderTextureFilter;
+
   // All scale targets are ready for the map's lifetime (ADR 0012), so changing
   // the model's active scale only chooses another target.
   RenderTargets mWorldTargets;
@@ -45,7 +47,10 @@ private:
   uint32_t addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c);
 
 public:
-  WorldRenderer(wp::application::resourcesystem::ResourceManager* resourceMgr, wp::Logger* logger);
+  WorldRenderer(
+      wp::application::resourcesystem::ResourceManager* resourceMgr,
+      wp::Logger* logger,
+      bw::app::RenderTextureFilter renderTextureFilter);
 
   virtual ~WorldRenderer();
 

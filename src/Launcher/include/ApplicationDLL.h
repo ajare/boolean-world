@@ -34,7 +34,7 @@ class ApplicationDLL {
   typedef int (*DllSetInputOptionsFunction)(float);
 
   // Video enums cross as their stable integer code so the ABI remains plain.
-  typedef int (*DllSetVideoOptionsFunction)(int);
+  typedef int (*DllSetVideoOptionsFunction)(int, int, int);
 
 private:
 #if APP_PLATFORM == APP_PLATFORM_WINDOWS

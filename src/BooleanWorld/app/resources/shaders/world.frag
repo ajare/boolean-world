@@ -442,38 +442,41 @@ void main()
 	
 	depth /= @Uniform(VIEW_DISTANCE);
 	depth = pow(1 - depth, 1.7);
-
-	// Calculate material value
-	//float modt = (sin(@Uniform(GLOBAL_TIME)) * 0.5) + 0.6;
-	vec3 clamped = snapToGrid(@In(FRAGPOSITION) / 32.0, @Uniform(PIXEL_SIZE));
-	//vec3 clamped = @In(FRAGPOSITION) / 32.0;
 	
-	vec3 value = vec3(1.0, 1.0, 1.0);
+	vec4 shadedColour = vec4(depth, depth, depth, 1.0);	
+	vec3 value = vec3(0.0, 0.0, 0.0);
 	
-	switch (@Uniform(MATERIAL_INDEX)) 
+	if (depth > 0.05)
 	{
-		case 0:
-			value = marbleTexture(clamped);
-			//value = vec3(0.5, 0.5, 0.5);//@In(COLOUR).xyz;//marbleTexture(clamped);
-			break;
+		// Calculate material value
+		//float modt = (sin(@Uniform(GLOBAL_TIME)) * 0.5) + 0.6;
+		//vec3 clamped = snapToGrid(@In(FRAGPOSITION) / 32.0, @Uniform(PIXEL_SIZE));
+		vec3 clamped = @In(FRAGPOSITION) / 32.0;
+				
+		switch (@Uniform(MATERIAL_INDEX)) 
+		{
+			case 0:
+				value = marbleTexture(clamped);
+				//value = vec3(0.5, 0.5, 0.5);//@In(COLOUR).xyz;//marbleTexture(clamped);
+				break;
+				
+			case 1:
+				value = stoneTexture(clamped);
+				//value = vec3(0.5, 0.5, 0.5);//@In(COLOUR).xyz;//stoneTexture(clamped);
+				//CrystalMaterial mat = getCrystalMaterial(clamped);
+				//value = mat.albedo;
+				break;
 			
-		case 1:
-			value = stoneTexture(clamped);
-			//value = vec3(0.5, 0.5, 0.5);//@In(COLOUR).xyz;//stoneTexture(clamped);
-			//CrystalMaterial mat = getCrystalMaterial(clamped);
-			//value = mat.albedo;
-			break;
-		
-		default:
-			value = vec3(1.0, 0.0, 1.0);
-			break;
+			default:
+				value = vec3(1.0, 0.0, 1.0);
+				break;
+		}
+
+		// Shading
+		vec3 normalDir = @In(NORMAL);
+		vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));	
 	}
-
-	// Shading
-    vec3 normalDir = @In(NORMAL);
-    vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));	
-	vec4 shadedColour = vec4(depth, depth, depth, 1.0);
-
+	
 	@Out(vec4 COLOUR) = vec4(value, 1.0f) * shadedColour;
     //@Out(vec4 COLOUR) = texture(@Texture(TEX1), @In(TEXCOORDS).xy) * shadedColour;
 	//#@Out(vec4 COLOUR) = mix(marble, stone, cloudDensity(clamped)) * shadedColour;

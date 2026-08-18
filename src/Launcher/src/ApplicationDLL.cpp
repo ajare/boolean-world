@@ -107,10 +107,17 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
   }
 
   // Pass video options before entry so the model starts with the configured
-  // process-wide scale.
+  // process-wide scale and anti-aliasing setting.
   auto renderScaleCode = bw::app::renderScaleCode(options.video.renderScale);
-  if (mSetVideoOptionsFunction(renderScaleCode) != 0) {
-    string errMsg = format("Application rejected video options: RenderScale={}", renderScaleCode);
+  auto antiAliasingCode =
+      bw::app::antiAliasingCode(options.video.antiAliasing);
+  auto renderTextureFilterCode =
+      bw::app::renderTextureFilterCode(options.video.renderTextureFilter);
+  if (mSetVideoOptionsFunction(
+          renderScaleCode, antiAliasingCode, renderTextureFilterCode) != 0) {
+    string errMsg = format(
+        "Application rejected video options: RenderScale={}, AA={}, RenderTextureFilter={}",
+        renderScaleCode, antiAliasingCode, renderTextureFilterCode);
     throw exception(errMsg.c_str());
   }
 

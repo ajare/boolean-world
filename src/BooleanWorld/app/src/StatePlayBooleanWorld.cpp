@@ -105,21 +105,65 @@ void StatePlayBooleanWorld::createCamera() {
   mCamera3d = shared_ptr<mpp::Camera>(camera);
 }
 
+mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipeline(
+    bw::app::RenderScale renderScale,
+    bw::app::AntiAliasing antiAliasing) {
+  auto antiAliasingIndex =
+      static_cast<std::size_t>(bw::app::antiAliasingCode(antiAliasing));
+  assert(antiAliasingIndex < bw::app::antiAliasingOptionCount);
+
+  auto& pipeline = mWorldRenderPipelines[
+      bw::app::renderScaleIndex(renderScale)][antiAliasingIndex];
+  if (pipeline) {
+    return pipeline;
+  }
+
+  auto const& target = mwRenderer->getRenderTarget(renderScale);
+  auto pipelineName = getName() + ".World." +
+                      std::string(bw::app::renderScaleName(renderScale)) + ".aa-" +
+                      std::string(bw::app::antiAliasingName(antiAliasing));
+
+  mpp::AntiAliasingSamples msaa = mpp::AntiAliasingSamples::Off;
+  switch (bw::app::antiAliasingMsaaSamples(antiAliasing)) {
+    case 2:
+      msaa = mpp::AntiAliasingSamples::X2;
+      break;
+    case 4:
+      msaa = mpp::AntiAliasingSamples::X4;
+      break;
+    case 8:
+      msaa = mpp::AntiAliasingSamples::X8;
+      break;
+  }
+
+  // MPP applies the selected AA stage through immutable render-pipeline output
+  // options. MSAA resolves the external Presentation image; FXAA processes the
+  // internal SceneLdr image, which this state copies after renderScene.
+  mpp::RenderPipelineOptions options;
+  options.mode = mpp::RenderPipelineMode::GraphLegacyForward;
+  mpp::RenderPipelineOutput output;
+  output.name = "World";
+  output.image = bw::app::antiAliasingIsFxaa(antiAliasing)
+                     ? "SceneLdr"
+                     : "Presentation";
+  output.antiAliasing.msaa = msaa;
+  output.antiAliasing.fxaa = bw::app::antiAliasingIsFxaa(antiAliasing);
+  options.outputs.push_back(output);
+
+  pipeline = mwRenderSystem->getOrCreateRenderPipeline(pipelineName, options);
+  pipeline->resize(target->getWidth(), target->getHeight());
+  return pipeline;
+}
+
 void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transitionData) {
   mwRenderer = static_cast<WorldRenderer*>(transitionData->userData);
   mwRenderer->create(mScene, getMap()->getWorld(), mwRenderSystem, mwRenderResourceMgr);
 
+  // Keep the default path ready. Other supported sample counts are allocated
+  // only if selected in the debug GUI.
   for (auto renderScale : bw::app::allRenderScales) {
-    auto target = mwRenderer->getRenderTarget(renderScale);
-    auto& pipeline = mWorldRenderPipelines[bw::app::renderScaleIndex(renderScale)];
-    if (renderScale == bw::app::RenderScale::Full) {
-      pipeline = mRenderPipeline;
-    } else {
-      auto pipelineName = getName() + ".World." +
-                          std::string(bw::app::renderScaleName(renderScale));
-      pipeline = mwRenderSystem->getOrCreateRenderPipeline(pipelineName);
-    }
-    pipeline->resize(target->getWidth(), target->getHeight());
+    getOrCreateWorldRenderPipeline(
+        renderScale, bw::app::AntiAliasing::Off);
   }
 }
 
@@ -582,44 +626,50 @@ void StatePlayBooleanWorld::updateImpl(float frameTime) {
 // after this call - HUD messages, the debug panel, ImGui - lands on the screen
 // at native resolution.
 //
-// The scene itself is still handed to renderScene: an MPP pipeline binds its
-// own scene target and presents to the screen itself, so a target bound around
-// renderScene would not survive the call. The world is therefore taken from the
-// pipeline's completed scene target into ours, and it is ours that reaches the
-// screen.
+// The scene is handed to an MPP render-graph pipeline, which applies the
+// selected MSAA or FXAA stage. This state copies the filtered output into the
+// selected world target and composites it to the actual screen.
 void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSystem) {
   auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
   auto renderScale = model->getActiveRenderScale();
+  auto antiAliasing = model->getActiveAntiAliasing();
   auto const& worldTarget = mwRenderer->getRenderTarget(renderScale);
   auto const& pipeline =
-      mWorldRenderPipelines[bw::app::renderScaleIndex(renderScale)];
+      getOrCreateWorldRenderPipeline(renderScale, antiAliasing);
 
-  // MPP's scene pass owns an internal target. Each pipeline was sized alongside
-  // its map-owned target when play started, so fragments are generated at the
-  // configured resolution without reallocating when the active scale changes.
-  // The camera retains the window aspect ratio, and the final composite
-  // stretches this target over that same window.
+  // The graph pipeline renders at the target's dimensions and applies its
+  // selected AA stage. The camera retains the window aspect ratio, and
+  // the final composite stretches this target over that same window.
   mScene->setViewport(0, 0, worldTarget->getWidth(), worldTarget->getHeight());
   renderSystem->renderScene(
       mScene, mCamera3d, {0.0f, 0.0f}, pipeline->getName());
 
+  // FXAA is written back to SceneLdr (image 0); the other choices resolve into
+  // Presentation (image 2). Both scene/present passes write version 1.
+  auto outputImage = bw::app::antiAliasingIsFxaa(antiAliasing) ? 0u : 2u;
+  auto sceneTarget = pipeline->getGraphImageRenderTarget({outputImage, 1});
+  assert(sceneTarget);
+  auto sceneTexture = static_cast<mpp::RenderTexture*>(sceneTarget.get());
   auto worldTexture = static_cast<mpp::RenderTexture*>(worldTarget.get());
-  auto sceneTexture = static_cast<mpp::RenderTexture*>(
-      pipeline->getOutputRenderTarget().get());
 
-  // Into the target. The viewport follows the bound target, and the clear stops
-  // any part of a previous frame showing through a blit that failed to cover.
+  // MPP's fullscreen quad has window-sized geometry, so scale it to the world
+  // target before drawing. This keeps half and quarter render scales from
+  // clipping the source to only part of the view.
   renderSystem->pushRenderTarget(worldTarget);
   renderSystem->resetViewport();
   renderSystem->clearScreen(mpp::Colour::Black);
   renderSystem->setProjection2dOrthographic();
   renderSystem->resetTransform();
+  renderSystem->scaleTransform2d({
+      static_cast<float>(worldTarget->getWidth()) / renderSystem->getWindowWidth(),
+      static_cast<float>(worldTarget->getHeight()) / renderSystem->getWindowHeight()});
   renderSystem->renderFullscreenQuad(
       sceneTexture, mpp::BlendMode::One, mpp::BlendMode::Zero);
   renderSystem->popRenderTarget();
 
-  // And across the screen. The blend factors are set explicitly so the
-  // composite replaces the screen rather than being tinted or blended by
+  // Composite the resolved world across the screen. The blend factors are set
+  // explicitly so the composite replaces the screen rather than being tinted
+  // or blended by
   // whatever state the scene left behind.
   renderSystem->resetViewport();
   renderSystem->clearScreen(mpp::Colour::Black);
@@ -1199,6 +1249,30 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     }
 
     ImGui::TextDisabled("Not saved - set Video/RenderScale to keep a value.");
+
+    auto activeAntiAliasing = model->getActiveAntiAliasing();
+    if (ImGui::BeginCombo(
+            "Anti-aliasing",
+            bw::app::antiAliasingLabel(activeAntiAliasing).data())) {
+      for (auto antiAliasing : bw::app::allAntiAliasingOptions) {
+        auto samples = bw::app::antiAliasingMsaaSamples(antiAliasing);
+        auto supported = mwRenderSystem->getCaps().supportsMsaa(samples);
+        auto selected = antiAliasing == activeAntiAliasing;
+        auto flags = supported ? ImGuiSelectableFlags_None
+                               : ImGuiSelectableFlags_Disabled;
+        if (ImGui::Selectable(
+                bw::app::antiAliasingLabel(antiAliasing).data(),
+                selected, flags)) {
+          model->setActiveAntiAliasing(antiAliasing);
+        }
+        if (selected) {
+          ImGui::SetItemDefaultFocus();
+        }
+      }
+      ImGui::EndCombo();
+    }
+
+    ImGui::TextDisabled("Not saved - set Video/AA to keep a value.");
   }
 
   ImGui::End();

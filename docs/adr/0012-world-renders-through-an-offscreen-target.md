@@ -6,7 +6,7 @@ Drawing the 3D world at a fraction of screen resolution is the cheapest graphica
 
 ## Decision
 
-The play state renders the world into an offscreen target and composites it across the whole screen with a linearly filtered fullscreen quad. A *render scale* of `full`, `half` or `quarter` selects which of three targets is used; all three are created up front, so changing the setting swaps a target rather than building one.
+The play state renders the world into an offscreen target and composites it across the whole screen with a fullscreen quad. `Video/RenderTextureFilter` selects `linear` or `nearest` sampling at startup; unlike render scale and anti-aliasing, it is not session-editable in the debug GUI. A *render scale* of `full`, `half`, `quarter` or `eighth` selects which of four targets is used; all four are created up front, so changing the setting swaps a target rather than building one.
 
 The offscreen pass covers the 3D scene alone. HUD text, the debug panel and ImGui are drawn after the composite, at native resolution, so no setting can make the interface harder to read than it is at full scale.
 

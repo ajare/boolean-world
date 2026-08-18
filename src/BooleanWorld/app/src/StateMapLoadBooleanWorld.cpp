@@ -2,8 +2,11 @@
 #include <willpower/application/ServiceLocator.h>
 #include <willpower/application/ApplicationSettings.h>
 
+#include <applib/ModelInstance.h>
+
 #include "Platform.h"
 #include "StateMapLoadBooleanWorld.h"
+#include "BooleanWorldModel.h"
 #include "WorldRenderer.h"
 #include "Map.h"
 
@@ -51,7 +54,9 @@ void StateMapLoadBooleanWorld::loadResources(wp::application::resourcesystem::Re
 
     this->addText("Creating world renderer");
 
-    auto worldRenderer = new WorldRenderer(resourceMgr, this->mwLogger);
+    auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
+    auto worldRenderer = new WorldRenderer(
+        resourceMgr, this->mwLogger, model->getRenderTextureFilter());
 
     // The world is composited from an offscreen target rather than drawn
     // straight to the back buffer (ADR 0012). Post-work runs on the main

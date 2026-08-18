@@ -2,7 +2,10 @@
 #include <willpower/application/ServiceLocator.h>
 #include <willpower/application/ApplicationSettings.h>
 
+#include <applib/ModelInstance.h>
+
 #include "StateMapTransitionBooleanWorld.h"
+#include "BooleanWorldModel.h"
 #include "WorldRenderer.h"
 #include "Map.h"
 
@@ -69,7 +72,9 @@ void StateMapTransitionBooleanWorld::processResources(application::resourcesyste
     delete worldRenderer;
 
     // Create new
-    auto newWorldRenderer = new WorldRenderer(resourceMgr, this->mwLogger);
+    auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
+    auto newWorldRenderer = new WorldRenderer(
+        resourceMgr, this->mwLogger, model->getRenderTextureFilter());
     newWorldRenderer->createRenderTargets(this->mwRenderSystem);
 
     this->mTransitionData.userData = newWorldRenderer;
