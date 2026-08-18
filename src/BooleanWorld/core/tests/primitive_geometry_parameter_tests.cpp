@@ -12,6 +12,8 @@
 #include <core/CoreException.h>
 #include <core/RectanglePolygon.h>
 #include <core/RegularPolygon.h>
+#include <core/TorusPolygon.h>
+#include <core/TorusSegmentPolygon.h>
 #include <core/World.h>
 #include <core/YamlSerializer.h>
 
@@ -23,6 +25,8 @@ using bw::core::Primitive;
 using bw::core::RectanglePolygon;
 using bw::core::RegularPolygon;
 using bw::core::SerializationWorkData;
+using bw::core::TorusPolygon;
+using bw::core::TorusSegmentPolygon;
 using bw::core::World;
 using Operation = Primitive::Operation;
 using FillRule = Primitive::FillRule;
@@ -125,6 +129,87 @@ void circleSegmentValidatesConstructorsAndSetters() {
           "failed circle segment setter changed authored geometry");
 }
 
+void torusValidatesConstructorsAndSetters() {
+  TorusPolygon minimum(Union, NonZero, 0.01f, MinimumResolution);
+  TorusPolygon maximum(Union, NonZero, 0.99f, 1.0f);
+  require(minimum.getNumSides() == 3 && maximum.getNumSides() == 64,
+          "torus rejected a documented parameter boundary");
+
+  float const belowMinimumResolution = std::nextafter(MinimumResolution, 0.0f);
+  for (float invalid : {0.0f, belowMinimumResolution, -1.0f, 1.01f,
+                        std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::quiet_NaN()}) {
+    requireDomainError([&] { TorusPolygon torus(Union, NonZero, 0.5f, invalid); },
+                       "torus constructor accepted an invalid resolution");
+    requireDomainError([&] { maximum.setResolution(invalid); },
+                       "torus setter accepted an invalid resolution");
+  }
+
+  for (float invalid : {0.0f, -0.01f, 0.009f, 1.0f,
+                        std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::quiet_NaN()}) {
+    requireDomainError([&] { TorusPolygon torus(Union, NonZero, invalid, 1.0f); },
+                       "torus constructor accepted an invalid thickness");
+    requireDomainError([&] { maximum.setThickness(invalid); },
+                       "torus setter accepted an invalid thickness");
+  }
+
+  requireDomainError([&] { maximum.setNumSides(2); },
+                     "torus side-count setter accepted fewer than three vertices");
+  requireDomainError([&] { maximum.setNumSides(65); },
+                     "torus side-count setter accepted a resolution above one");
+  require(maximum.getThickness() == 0.99f && maximum.getResolution() == 1.0f &&
+              maximum.getNumSides() == 64,
+          "failed torus setter changed authored geometry");
+}
+
+void torusSegmentValidatesConstructorsAndSetters() {
+  TorusSegmentPolygon minimum(
+      Union, NonZero, 0.01f, 0.01f, MinimumResolution);
+  TorusSegmentPolygon maximum(Union, NonZero, 0.99f, 360.0f, 1.0f);
+  require(minimum.getNumSides() == 3 && maximum.getNumSides() == 64,
+          "torus segment rejected a documented parameter boundary");
+  require(minimum.getVertices().front().front().size() == 8,
+          "minimum torus segment did not produce a bounded contour");
+
+  for (float invalid : {0.0f, -1.0f, 360.01f,
+                        std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::quiet_NaN()}) {
+    requireDomainError(
+        [&] { TorusSegmentPolygon segment(Union, NonZero, 0.5f, invalid, 1.0f); },
+        "torus segment constructor accepted an invalid arc length");
+    requireDomainError([&] { maximum.setArcLength(invalid); },
+                       "torus segment setter accepted an invalid arc length");
+  }
+
+  for (float invalid : {0.0f, -1.0f, 0.009f, 1.0f,
+                        std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::quiet_NaN()}) {
+    requireDomainError(
+        [&] { TorusSegmentPolygon segment(Union, NonZero, invalid, 90.0f, 1.0f); },
+        "torus segment constructor accepted an invalid thickness");
+    requireDomainError([&] { maximum.setThickness(invalid); },
+                       "torus segment setter accepted an invalid thickness");
+  }
+
+  float const belowMinimumResolution = std::nextafter(MinimumResolution, 0.0f);
+  for (float invalid : {0.0f, belowMinimumResolution, -1.0f, 1.01f,
+                        std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::quiet_NaN()}) {
+    requireDomainError(
+        [&] { TorusSegmentPolygon segment(Union, NonZero, 0.5f, 90.0f, invalid); },
+        "torus segment constructor accepted an invalid resolution");
+    requireDomainError([&] { maximum.setResolution(invalid); },
+                       "torus segment setter accepted an invalid resolution");
+  }
+
+  requireDomainError([&] { maximum.setNumSides(2); },
+                     "torus segment side-count setter accepted fewer than three vertices");
+  require(maximum.getThickness() == 0.99f && maximum.getArcLength() == 360.0f &&
+              maximum.getResolution() == 1.0f && maximum.getNumSides() == 64,
+          "failed torus segment setter changed authored geometry");
+}
+
 void rectangleValidatesConstructorsAndSetters() {
   RectanglePolygon minimum(Union, NonZero, 1.0f);
   RectanglePolygon maximum(Union, NonZero, 10.0f);
@@ -202,6 +287,36 @@ void malformedFilesRejectEveryAffectedPrimitive() {
       replaceScalar(serializeWorld(std::make_unique<RectanglePolygon>(Union, NonZero, 1.0f)),
                     "xyRatio", "0"),
       "Rectangle width-to-height ratio");
+  requireMalformedWorldRejected(
+      replaceScalar(serializeWorld(std::make_unique<TorusPolygon>(
+                        Union, NonZero, 0.5f, 1.0f)),
+                    "resolution", ".inf"),
+      "Torus resolution");
+  requireMalformedWorldRejected(
+      replaceScalar(serializeWorld(std::make_unique<TorusPolygon>(
+                        Union, NonZero, 0.5f, 1.0f)),
+                    "thickness", "0"),
+      "Torus thickness");
+  requireMalformedWorldRejected(
+      replaceScalar(serializeWorld(std::make_unique<TorusSegmentPolygon>(
+                        Union, NonZero, 0.5f, 90.0f, 1.0f)),
+                    "thickness", ".nan"),
+      "Torus segment thickness");
+  requireMalformedWorldRejected(
+      replaceScalar(serializeWorld(std::make_unique<TorusSegmentPolygon>(
+                        Union, NonZero, 0.5f, 90.0f, 1.0f)),
+                    "arcLength", "-1"),
+      "Torus segment arc length");
+  requireMalformedWorldRejected(
+      replaceScalar(serializeWorld(std::make_unique<TorusSegmentPolygon>(
+                        Union, NonZero, 0.5f, 90.0f, 1.0f)),
+                    "resolution", "0"),
+      "Torus segment resolution");
+  requireMalformedWorldRejected(
+      replaceScalar(serializeWorld(std::make_unique<TorusSegmentPolygon>(
+                        Union, NonZero, 0.5f, 90.0f, 1.0f)),
+                    "numSides", "0"),
+      "Torus segment resolution does not match its side count");
 }
 
 }  // namespace
@@ -211,6 +326,8 @@ int main() {
     regularPolygonValidatesConstructorsAndSetters();
     circleValidatesConstructorsAndSetters();
     circleSegmentValidatesConstructorsAndSetters();
+    torusValidatesConstructorsAndSetters();
+    torusSegmentValidatesConstructorsAndSetters();
     rectangleValidatesConstructorsAndSetters();
     malformedFilesRejectEveryAffectedPrimitive();
     std::cout << "Primitive geometry parameters are validated consistently\n";

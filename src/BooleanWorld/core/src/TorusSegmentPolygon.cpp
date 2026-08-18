@@ -1,3 +1,8 @@
+#include <cmath>
+#include <format>
+
+#include "core/CoreException.h"
+#include "core/Defines.h"
 #include "core/TorusSegmentPolygon.h"
 
 namespace bw {
@@ -5,12 +10,49 @@ namespace core {
 
 using namespace std;
 
+namespace {
+
+float validateThickness(float thickness) {
+  if (!isfinite(thickness) || thickness < 0.01f || thickness > 0.99f) {
+    throw CoreException("Torus segment thickness must be finite and in [0.01, 0.99]");
+  }
+  return thickness;
+}
+
+float validateArcLength(float arcLength) {
+  if (!isfinite(arcLength) || arcLength < 0.01f || arcLength > 360.0f) {
+    throw CoreException("Torus segment arc length must be finite and in [0.01, 360]");
+  }
+  return arcLength;
+}
+
+uint32_t sideCountForParameters(float arcLength, float resolution, uint32_t baseResolution) {
+  validateArcLength(arcLength);
+  if (!isfinite(resolution) || resolution < 3.0f / baseResolution || resolution > 1.0f) {
+    throw CoreException(format(
+        "Torus segment resolution must be finite and in [{}, 1]",
+        3.0f / baseResolution));
+  }
+
+  auto const numSides = static_cast<uint32_t>(resolution * baseResolution);
+  auto const contourVertexCount =
+      arcLength == 360.0f ? numSides : static_cast<uint64_t>(numSides + 1) * 2;
+  if (numSides < 3 || contourVertexCount > BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX) {
+    throw CoreException(format(
+        "Torus segment parameters must produce at least 3 arc vertices and no more than {} vertices per contour",
+        BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX));
+  }
+  return numSides;
+}
+
+}  // namespace
+
 TorusSegmentPolygon::TorusSegmentPolygon()
     : Primitive(), mThickness(0.5f), mArcLength(90.0f), mResolution(1.0f), mNumSides(BaseResolution) {
 }
 
 TorusSegmentPolygon::TorusSegmentPolygon(Operation operation, FillRule fillType, float thickness, float arcLength, float resolution)
-    : Primitive(operation, fillType), mThickness(thickness), mArcLength(clamp(arcLength, 0.01f, 360.0f)), mResolution(resolution), mNumSides((uint32_t)(resolution * BaseResolution)) {
+    : Primitive(operation, fillType), mThickness(validateThickness(thickness)), mArcLength(validateArcLength(arcLength)), mResolution(resolution), mNumSides(sideCountForParameters(arcLength, resolution, BaseResolution)) {
   generateVertices();
 }
 
@@ -65,10 +107,14 @@ bool TorusSegmentPolygon::deserializeImpl(std::shared_ptr<Serializer> serializer
   try {
     serializer->beginMap("torusPolygon");
     {
-      thickness = serializer->readFloat("thickness");
-      arcLength = serializer->readFloat("arcLength");
+      thickness = validateThickness(serializer->readFloat("thickness"));
+      arcLength = validateArcLength(serializer->readFloat("arcLength"));
       resolution = serializer->readFloat("resolution");
       numSides = serializer->readUint32("numSides");
+      auto const expectedNumSides = sideCountForParameters(arcLength, resolution, BaseResolution);
+      if (numSides != expectedNumSides) {
+        throw CoreException("Torus segment resolution does not match its side count");
+      }
 
       serializer->endMap();  // torusPolygon
     }
@@ -79,7 +125,7 @@ bool TorusSegmentPolygon::deserializeImpl(std::shared_ptr<Serializer> serializer
 
   // Commit
   mThickness = thickness;
-  mArcLength = clamp(arcLength, 0.01f, 360.0f);
+  mArcLength = arcLength;
   mResolution = resolution;
   mNumSides = numSides;
 
@@ -87,7 +133,11 @@ bool TorusSegmentPolygon::deserializeImpl(std::shared_ptr<Serializer> serializer
 }
 
 vector<ComplexPolygon> TorusSegmentPolygon::generateVerticesImpl() {
-  assert(mNumSides >= 3 && "Too few sides.");
+  validateThickness(mThickness);
+  auto const expectedNumSides = sideCountForParameters(mArcLength, mResolution, BaseResolution);
+  if (mNumSides != expectedNumSides) {
+    throw CoreException("Torus segment resolution does not match its side count");
+  }
 
   if (mArcLength == 360.0f) {
     ClosedPolygon outerVertices(mNumSides), innerVertices(mNumSides);
@@ -127,7 +177,8 @@ float TorusSegmentPolygon::getRadius() const {
 }
 
 void TorusSegmentPolygon::setThickness(float thickness) {
-  mThickness = thickness;
+  auto const validatedThickness = validateThickness(thickness);
+  mThickness = validatedThickness;
   generateVertices();
 }
 
@@ -136,7 +187,9 @@ float TorusSegmentPolygon::getThickness() const {
 }
 
 void TorusSegmentPolygon::setArcLength(float arcLength) {
-  mArcLength = clamp(arcLength, 0.01f, 360.0f);
+  auto const validatedArcLength = validateArcLength(arcLength);
+  sideCountForParameters(validatedArcLength, mResolution, BaseResolution);
+  mArcLength = validatedArcLength;
   generateVertices();
 }
 
@@ -145,8 +198,9 @@ float TorusSegmentPolygon::getArcLength() const {
 }
 
 void TorusSegmentPolygon::setResolution(float resolution) {
+  auto const numSides = sideCountForParameters(mArcLength, resolution, BaseResolution);
   mResolution = resolution;
-  mNumSides = (uint32_t)(resolution * BaseResolution);
+  mNumSides = numSides;
   generateVertices();
 }
 
@@ -155,8 +209,10 @@ float TorusSegmentPolygon::getResolution() const {
 }
 
 void TorusSegmentPolygon::setNumSides(uint32_t numSides) {
+  auto const resolution = numSides / static_cast<float>(BaseResolution);
+  sideCountForParameters(mArcLength, resolution, BaseResolution);
   mNumSides = numSides;
-  mResolution = mNumSides / (float)BaseResolution;
+  mResolution = resolution;
   generateVertices();
 }
 

@@ -1,3 +1,8 @@
+#include <cmath>
+#include <format>
+
+#include "core/CoreException.h"
+#include "core/Defines.h"
 #include "core/TorusPolygon.h"
 
 namespace bw {
@@ -5,12 +10,38 @@ namespace core {
 
 using namespace std;
 
+namespace {
+
+float validateThickness(float thickness) {
+  if (!isfinite(thickness) || thickness < 0.01f || thickness > 0.99f) {
+    throw CoreException("Torus thickness must be finite and in [0.01, 0.99]");
+  }
+  return thickness;
+}
+
+uint32_t sideCountForResolution(float resolution, uint32_t baseResolution) {
+  if (!isfinite(resolution) || resolution < 3.0f / baseResolution || resolution > 1.0f) {
+    throw CoreException(format(
+        "Torus resolution must be finite and in [{}, 1]", 3.0f / baseResolution));
+  }
+
+  auto const numSides = static_cast<uint32_t>(resolution * baseResolution);
+  if (numSides < 3 || numSides > BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX) {
+    throw CoreException(format(
+        "Torus resolution must produce between 3 and {} vertices per contour",
+        BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX));
+  }
+  return numSides;
+}
+
+}  // namespace
+
 TorusPolygon::TorusPolygon()
     : Primitive(), mThickness(0.5f), mResolution(1.0f), mNumSides(BaseResolution) {
 }
 
 TorusPolygon::TorusPolygon(Operation operation, FillRule fillType, float thickness, float resolution)
-    : Primitive(operation, fillType), mThickness(thickness), mResolution(resolution), mNumSides((uint32_t)(resolution * BaseResolution)) {
+    : Primitive(operation, fillType), mThickness(validateThickness(thickness)), mResolution(resolution), mNumSides(sideCountForResolution(resolution, BaseResolution)) {
   generateVertices();
 }
 
@@ -63,9 +94,13 @@ bool TorusPolygon::deserializeImpl(std::shared_ptr<Serializer> serializer, Seria
   try {
     serializer->beginMap("torusPolygon");
     {
-      thickness = serializer->readFloat("thickness");
+      thickness = validateThickness(serializer->readFloat("thickness"));
       resolution = serializer->readFloat("resolution");
       numSides = serializer->readUint32("numSides");
+      auto const expectedNumSides = sideCountForResolution(resolution, BaseResolution);
+      if (numSides != expectedNumSides) {
+        throw CoreException("Torus resolution does not match its side count");
+      }
 
       serializer->endMap();  // torusPolygon
     }
@@ -83,6 +118,12 @@ bool TorusPolygon::deserializeImpl(std::shared_ptr<Serializer> serializer, Seria
 }
 
 vector<ComplexPolygon> TorusPolygon::generateVerticesImpl() {
+  validateThickness(mThickness);
+  auto const expectedNumSides = sideCountForResolution(mResolution, BaseResolution);
+  if (mNumSides != expectedNumSides) {
+    throw CoreException("Torus resolution does not match its side count");
+  }
+
   ClosedPolygon outerVertices(mNumSides), innerVertices(mNumSides);
 
   for (uint32_t i = 0; i < mNumSides; ++i) {
@@ -101,7 +142,8 @@ float TorusPolygon::getRadius() const {
 }
 
 void TorusPolygon::setThickness(float thickness) {
-  mThickness = thickness;
+  auto const validatedThickness = validateThickness(thickness);
+  mThickness = validatedThickness;
   generateVertices();
 }
 
@@ -110,8 +152,9 @@ float TorusPolygon::getThickness() const {
 }
 
 void TorusPolygon::setResolution(float resolution) {
+  auto const numSides = sideCountForResolution(resolution, BaseResolution);
   mResolution = resolution;
-  mNumSides = (uint32_t)(resolution * BaseResolution);
+  mNumSides = numSides;
   generateVertices();
 }
 
@@ -120,8 +163,10 @@ float TorusPolygon::getResolution() const {
 }
 
 void TorusPolygon::setNumSides(uint32_t numSides) {
+  auto const resolution = numSides / static_cast<float>(BaseResolution);
+  sideCountForResolution(resolution, BaseResolution);
   mNumSides = numSides;
-  mResolution = mNumSides / (float)BaseResolution;
+  mResolution = resolution;
   generateVertices();
 }
 

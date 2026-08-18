@@ -784,7 +784,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusPolygon(editor::Do
 
   ImGui::SetNextItemWidth(128);
 
-  widgets::HelpMarker("This is the thickness of the torus, in [0, 1].");
+  widgets::HelpMarker("This is the thickness of the torus, in [0.01, 0.99].");
   ImGui::SameLine();
   if (ImGui::SliderFloat("Thickness##CreateTorus", &thickness, 0.01f, 0.99f)) {
     modified = true;
@@ -795,7 +795,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusPolygon(editor::Do
   ImGui::SetNextItemWidth(128);
 
   if (ImGui::InputFloat("Res##CreateTorus", &resolution, 0.01f, 0.1f)) {
-    resolution = clamp(resolution, 0.0f, 1.0f);
+    resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
     modified = true;
   }
 
@@ -811,7 +811,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusSegmentPolygon(edi
   static float resolution = 0.5f;
   bool modified{false};
 
-  widgets::HelpMarker("This is the thickness of the torus segment, in [0, 1].");
+  widgets::HelpMarker("This is the thickness of the torus segment, in [0.01, 0.99].");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(128);
 
@@ -833,7 +833,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusSegmentPolygon(edi
   ImGui::SetNextItemWidth(128);
 
   if (ImGui::InputFloat("Res##CreateTorusSegment", &resolution, 0.01f, 0.1f)) {
-    resolution = clamp(resolution, 0.0f, 1.0f);
+    resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
     modified = true;
   }
 
@@ -1363,7 +1363,7 @@ void renderEditTorusPolygon(editor::Document* doc, bw::core::Primitive* primitiv
   float thickness = torus->getThickness();
   float resolution = torus->getResolution();
 
-  widgets::HelpMarker("This is the thickness of the torus, in [0, 1].");
+  widgets::HelpMarker("This is the thickness of the torus, in [0.01, 0.99].");
   ImGui::SameLine();
   if (ImGui::SliderFloat("Thickness##CreateTorus", &thickness, 0.01f, 0.99f)) {
     torus->setThickness(thickness);
@@ -1372,7 +1372,7 @@ void renderEditTorusPolygon(editor::Document* doc, bw::core::Primitive* primitiv
   widgets::HelpMarker("This value determines the number of sides in the torus polygon.");
   ImGui::SameLine();
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-    resolution = clamp(resolution, 0.0f, 1.0f);
+    resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
 
     transactUndoableAction(doc, format("Set Torus Resolution to {}", resolution), [torus, resolution](editor::Document* doc) {
       torus->setResolution(resolution);
@@ -1389,7 +1389,7 @@ void renderEditTorusSegmentPolygon(editor::Document* doc, bw::core::Primitive* p
   float arcLength = torusSeg->getArcLength();
   float resolution = torusSeg->getResolution();
 
-  widgets::HelpMarker("This is the thickness of the torus segment, in [0, 1].");
+  widgets::HelpMarker("This is the thickness of the torus segment, in [0.01, 0.99].");
   ImGui::SameLine();
   if (ImGui::SliderFloat("Thickness##CreateTorus", &thickness, 0.01f, 0.99f)) {
     torusSeg->setThickness(thickness);
@@ -1411,7 +1411,7 @@ void renderEditTorusSegmentPolygon(editor::Document* doc, bw::core::Primitive* p
   widgets::HelpMarker("This value determines the number of sides in the torus segment polygon.");
   ImGui::SameLine();
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-    resolution = clamp(resolution, 0.0f, 1.0f);
+    resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
 
     transactUndoableAction(doc, format("Set Torus Resolution to {}", resolution), [torusSeg, resolution](editor::Document* doc) {
       torusSeg->setResolution(resolution);

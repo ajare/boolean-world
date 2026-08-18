@@ -50,14 +50,14 @@ A list of 6  float parameters to define the Superformula.
 ### Torus
 A torus/doughnut shape, with variable resolution and thickness.
 #### Resolution
-A value in [0, 1] which acts as a multiplier for the number of vertices making up the torus geometry.
+A finite value in [3/64, 1] which acts as a multiplier for the torus's base resolution of 64 vertices per contour.
 #### Thickness
-The thickness of the torus.  Must necessarily be less than the radius.
+A finite radial width in [0.01, 0.99], relative to the torus radius.
 ### TorusSegment
 A torus/doughnut shape but only with a given arc length (centred at angle 0), with variable resolution and thickness.
 #### Resolution
-A value in [0, 1] which acts as a multiplier for the number of vertices making up the torus geometry.
+A finite value in [3/64, 1] which acts as a multiplier for the segment's base resolution of 64 arc-boundary vertices.
 #### Thickness
-The thickness of the torus.  Must necessarily be less than the radius.
+A finite radial width in [0.01, 0.99], relative to the torus radius.
 #### ArcLength
-The number of degrees the segment spans, centred on 0.
+A finite value in [0.01, 360] giving the number of degrees the segment spans, centred on 0.

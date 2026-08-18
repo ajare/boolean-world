@@ -41,13 +41,6 @@ void requireRadius(ClosedPolygon const& contour, float expectedRadius, std::stri
   }
 }
 
-void requireEqualContours(ClosedPolygon const& left, ClosedPolygon const& right, std::string const& message) {
-  require(left.size() == right.size(), message);
-  for (size_t index = 0; index < left.size(); ++index) {
-    require(distance(left[index], right[index]) < Epsilon, message);
-  }
-}
-
 void torusAndSegmentsUseThicknessAsRadialWidth(float thickness) {
   auto const operation = Primitive::Operation::Union;
   auto const fillRule = Primitive::FillRule::NonZero;
@@ -92,31 +85,21 @@ void geometryIsContinuousAtNormalizedFullArcBoundary(float thickness) {
 
   TorusSegmentPolygon below(operation, fillRule, thickness, 359.99f, 1.0f);
   TorusSegmentPolygon at(operation, fillRule, thickness, 360.0f, 1.0f);
-  TorusSegmentPolygon above(operation, fillRule, thickness, 360.01f, 1.0f);
   below.setSize(1.0f, 1.0f);
   at.setSize(1.0f, 1.0f);
-  above.setSize(1.0f, 1.0f);
   below.updateVertexPositions();
   at.updateVertexPositions();
-  above.updateVertexPositions();
 
   auto const& belowContour = below.getVertices().front().front();
   auto const& atContours = at.getVertices().front();
-  auto const& aboveContours = above.getVertices().front();
   size_t const oppositeVertex = at.getNumSides() / 2;
 
-  require(std::abs(above.getArcLength() - 360.0f) < Epsilon,
-          "arc lengths above 360 degrees were not normalized");
   require(distance(belowContour.front(), atContours[0][oppositeVertex]) < BoundaryEpsilon,
           "outer geometry was discontinuous immediately below 360 degrees: " +
               std::to_string(distance(belowContour.front(), atContours[0][oppositeVertex])));
   require(distance(belowContour.back(), atContours[1][oppositeVertex - 1]) < BoundaryEpsilon,
           "inner geometry was discontinuous immediately below 360 degrees: " +
               std::to_string(distance(belowContour.back(), atContours[1][oppositeVertex - 1])));
-  requireEqualContours(atContours[0], aboveContours[0],
-                       "outer geometry changed immediately above 360 degrees");
-  requireEqualContours(atContours[1], aboveContours[1],
-                       "inner geometry changed immediately above 360 degrees");
 }
 
 }  // namespace
