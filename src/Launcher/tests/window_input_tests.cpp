@@ -21,14 +21,16 @@ using namespace wp::application;
 
 struct InputRecorder {
   std::vector<std::pair<KeyEvent, Key>> keyEvents;
+  std::vector<KeyModifiers> keyModifiers;
   std::vector<std::pair<MouseButtonEvent, MouseButton>> mouseButtonEvents;
 };
 
 class RecordingState final : public State {
   InputRecorder& mRecorder;
 
-  void injectKeyInputImpl(KeyEvent event, Key key, KeyModifiers) override {
+  void injectKeyInputImpl(KeyEvent event, Key key, KeyModifiers modifiers) override {
     mRecorder.keyEvents.emplace_back(event, key);
+    mRecorder.keyModifiers.push_back(modifiers);
   }
 
   void injectMouseButtonInputImpl(MouseButtonEvent event, MouseButton button, KeyModifiers) override {
@@ -69,10 +71,11 @@ void processEvent(WindowSDL& window, StateManager& stateManager, SDL_Event event
   window.processEvents(&stateManager);
 }
 
-SDL_Event keyEvent(Uint32 type, SDL_Keycode key) {
+SDL_Event keyEvent(Uint32 type, SDL_Keycode key, SDL_Keymod modifiers = SDL_KMOD_NONE) {
   SDL_Event event{};
   event.type = type;
   event.key.key = key;
+  event.key.mod = modifiers;
   return event;
 }
 
@@ -85,6 +88,13 @@ SDL_Event mouseButtonEvent(Uint32 type, uint8_t button) {
 
 void finishImGuiFrame() {
   ImGui::EndFrame();
+}
+
+void requireKeyModifiers(WindowSDL& window, StateManager& stateManager, InputRecorder& recorder,
+                         SDL_Keymod sdlModifiers, KeyModifiers expectedModifiers) {
+  processEvent(window, stateManager, keyEvent(SDL_EVENT_KEY_DOWN, SDLK_A, sdlModifiers));
+  require(recorder.keyModifiers.back() == expectedModifiers, "SDL modifier translation changed.");
+  processEvent(window, stateManager, keyEvent(SDL_EVENT_KEY_UP, SDLK_A, sdlModifiers));
 }
 }  // namespace
 
@@ -123,7 +133,19 @@ int main() {
     require(!ImGui::IsMouseDown(3), "ImGui did not receive side-button release.");
     finishImGuiFrame();
 
-    require(recorder.mouseButtonEvents.empty(), "Side-button events reached the game input callback.");
+    processEvent(window, stateManager, mouseButtonEvent(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_X2));
+    ImGui::NewFrame();
+    require(ImGui::IsMouseDown(4), "ImGui did not receive second side-button press.");
+    finishImGuiFrame();
+
+    processEvent(window, stateManager, mouseButtonEvent(SDL_EVENT_MOUSE_BUTTON_UP, SDL_BUTTON_X2));
+    ImGui::NewFrame();
+    require(!ImGui::IsMouseDown(4), "ImGui did not receive second side-button release.");
+    finishImGuiFrame();
+
+    processEvent(window, stateManager, mouseButtonEvent(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_X2 + 1));
+    processEvent(window, stateManager, mouseButtonEvent(SDL_EVENT_MOUSE_BUTTON_UP, SDL_BUTTON_X2 + 1));
+    require(recorder.mouseButtonEvents.empty(), "Unsupported mouse button reached the game input callback.");
 
     // An unknown key must not be default-inserted as Escape on either edge.
     processEvent(window, stateManager, keyEvent(SDL_EVENT_KEY_DOWN, SDLK_UNKNOWN));
@@ -136,6 +158,15 @@ int main() {
                                       {KeyEvent::Pressed, Key::A},
                                       {KeyEvent::Released, Key::A}},
             "Supported key callbacks changed.");
+
+    // The aggregate SDL masks overlap the left/right bits. Each side must map
+    // only to its matching application bit rather than being added twice.
+    requireKeyModifiers(window, stateManager, recorder, SDL_KMOD_LSHIFT, KeyModifiers::LeftShift);
+    requireKeyModifiers(window, stateManager, recorder, SDL_KMOD_RSHIFT, KeyModifiers::RightShift);
+    requireKeyModifiers(window, stateManager, recorder, SDL_KMOD_LCTRL, KeyModifiers::LeftCtrl);
+    requireKeyModifiers(window, stateManager, recorder, SDL_KMOD_RCTRL, KeyModifiers::RightCtrl);
+    requireKeyModifiers(window, stateManager, recorder, SDL_KMOD_LALT, KeyModifiers::LeftAlt);
+    requireKeyModifiers(window, stateManager, recorder, SDL_KMOD_RALT, KeyModifiers::RightAlt);
 
     processEvent(window, stateManager, mouseButtonEvent(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_LEFT));
     processEvent(window, stateManager, mouseButtonEvent(SDL_EVENT_MOUSE_BUTTON_UP, SDL_BUTTON_LEFT));
