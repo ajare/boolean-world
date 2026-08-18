@@ -51,7 +51,14 @@ void StateMapLoadBooleanWorld::loadResources(wp::application::resourcesystem::Re
 
     this->addText("Creating world renderer");
 
-    this->mTransitionData.userData = new WorldRenderer(resourceMgr, this->mwLogger);
+    auto worldRenderer = new WorldRenderer(resourceMgr, this->mwLogger);
+
+    // The world is composited from an offscreen target rather than drawn
+    // straight to the back buffer (ADR 0012). Post-work runs on the main
+    // thread, which is where a render target may be built.
+    worldRenderer->createRenderTarget(this->mwRenderSystem);
+
+    this->mTransitionData.userData = worldRenderer;
   };
 
   processPostWork({createWorldRendererFn});

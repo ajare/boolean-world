@@ -16,9 +16,9 @@ namespace applib {
 class APPLIB_API StateMapUnload : public ThreadableLoadState {
   LoadFunction getWorkFunction(wp::application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args = nullptr) override;
 
-  void unloadResources(wp::application::resourcesystem::ResourceManager* resourceMgr, MapTransitionData* transitionData);
-
 protected:
+  virtual void unloadResources(wp::application::resourcesystem::ResourceManager* resourceMgr, MapTransitionData* transitionData);
+
   std::vector<ThreadableWorkFunction> getPreWork(StateTransitionData* transitionData) override;
 
 public:

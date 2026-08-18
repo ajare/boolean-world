@@ -564,13 +564,53 @@ void StatePlayBooleanWorld::updateImpl(float frameTime) {
   updateRenderers(frameTime);
 }
 
+// Draws the 3d world through the world renderer's offscreen target and
+// composites that target across the whole screen (ADR 0012). Everything drawn
+// after this call - HUD messages, the debug panel, ImGui - lands on the screen
+// at native resolution.
+//
+// The scene itself is still handed to renderScene: an MPP pipeline binds its
+// own scene target and presents to the screen itself, so a target bound around
+// renderScene would not survive the call. The world is therefore taken from the
+// pipeline's completed scene target into ours, and it is ours that reaches the
+// screen.
+void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSystem) {
+  renderSystem->renderScene(mScene, mCamera3d, {0.0f, 0.0f}, getName());
+
+  auto const& worldTarget = mwRenderer->getRenderTarget();
+  auto worldTexture = static_cast<mpp::RenderTexture*>(worldTarget.get());
+  auto sceneTexture = static_cast<mpp::RenderTexture*>(
+      mRenderPipeline->getOutputRenderTarget().get());
+
+  // Into the target. The viewport follows the bound target, and the clear stops
+  // any part of a previous frame showing through a blit that failed to cover.
+  renderSystem->pushRenderTarget(worldTarget);
+  renderSystem->resetViewport();
+  renderSystem->clearScreen(mpp::Colour::Black);
+  renderSystem->setProjection2dOrthographic();
+  renderSystem->resetTransform();
+  renderSystem->renderFullscreenQuad(
+      sceneTexture, mpp::BlendMode::One, mpp::BlendMode::Zero);
+  renderSystem->popRenderTarget();
+
+  // And across the screen. The blend factors are set explicitly so the
+  // composite replaces the screen rather than being tinted or blended by
+  // whatever state the scene left behind.
+  renderSystem->resetViewport();
+  renderSystem->clearScreen(mpp::Colour::Black);
+  renderSystem->setProjection2dOrthographic();
+  renderSystem->resetTransform();
+  renderSystem->renderFullscreenQuad(
+      worldTexture, mpp::BlendMode::One, mpp::BlendMode::Zero);
+}
+
 void StatePlayBooleanWorld::renderImpl(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
   WP_UNUSED(resourceMgr);
 
   // Screen FX setup
   // mScreenFxMgr->preRender(getViewCentreWorldPosition());
 
-  renderSystem->renderScene(mScene, mCamera3d, {0.0f, 0.0f}, getName());
+  renderWorldThroughTarget(renderSystem);
 
   // Render post-effects
   // mScreenFxMgr->postRender(renderSystem);

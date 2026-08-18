@@ -150,6 +150,8 @@ private:
 
   void addDisplayMessage(DisplayMessage::Level level, std::string const& message);
 
+  void renderWorldThroughTarget(mpp::RenderSystem* renderSystem);
+
   // Debug / UI
   void debug_renderMinimap(wp::Vector2 const& viewSize, wp::Vector2 const& viewOffset, wp::Vector2 const& viewScale, wp::BoundingBox const& viewBounds, ImDrawList* drawList);
 

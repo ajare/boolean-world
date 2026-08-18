@@ -29,6 +29,9 @@ private:
 
   wp::Logger* mwLogger;
 
+  // The screen-sized target the 3d world is composited from (ADR 0012).
+  mpp::RenderTargetPtr mWorldTarget;
+
 private:
   void updateDataProviders(bw::core::WorldData const& worldData);
 
@@ -42,6 +45,17 @@ public:
   void setWorldChanged();
 
   void create(mpp::ScenePtr scene, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr);
+
+  // Builds the offscreen target the world is composited from. This talks to
+  // OpenGL, so it belongs on the main thread - the map load post-work step.
+  void createRenderTarget(mpp::RenderSystem* renderSystem);
+
+  mpp::RenderTargetPtr const& getRenderTarget() const;
+
+  // Hands the target to a caller that outlives this renderer, so map unload can
+  // release it from its main-thread post-work step rather than from the
+  // threadable pre-work that tears the renderer itself down.
+  mpp::RenderTargetPtr detachRenderTarget();
 
   void update(bw::core::World* world, bw::core::WorldData const& worldData, float frameTime);
 };
