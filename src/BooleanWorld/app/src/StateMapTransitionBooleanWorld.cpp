@@ -70,7 +70,7 @@ void StateMapTransitionBooleanWorld::processResources(application::resourcesyste
 
     // Create new
     auto newWorldRenderer = new WorldRenderer(resourceMgr, this->mwLogger);
-    newWorldRenderer->createRenderTarget(this->mwRenderSystem);
+    newWorldRenderer->createRenderTargets(this->mwRenderSystem);
 
     this->mTransitionData.userData = newWorldRenderer;
   };

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 #include <deque>
 #include <mutex>
@@ -70,6 +71,11 @@ private:
 
   // Created/managed in load states
   WorldRenderer* mwRenderer;
+
+  // One MPP scene target per world target. They are sized together when play
+  // starts, so changing scale later selects ready resources rather than
+  // reallocating the pipeline's internal target.
+  std::array<mpp::RenderPipelinePtr, bw::app::renderScaleCount> mWorldRenderPipelines;
 
   // ImGui view
   DebugDisplay mDebugDisplay;

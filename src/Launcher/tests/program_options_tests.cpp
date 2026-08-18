@@ -11,7 +11,9 @@ void require(bool condition, std::string const& message) {
   if (!condition) throw std::runtime_error(message);
 }
 
-std::filesystem::path writeConfiguration(std::string const& extraGameField, std::string const& inputSection = "") {
+std::filesystem::path writeConfiguration(std::string const& extraGameField,
+                                         std::string const& inputSection = "",
+                                         std::string const& renderScaleLine = "") {
   auto path = std::filesystem::temp_directory_path() / "boolean-world-program-options-test.yaml";
   std::ofstream stream(path);
   stream << "Configuration:\n"
@@ -20,7 +22,8 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField, std:
             "    Height: 768\n"
             "    Fullscreen: false\n"
             "    VSync: true\n"
-            "  Audio:\n"
+         << renderScaleLine
+         << "  Audio:\n"
             "    Enabled: false\n"
             "    Channels: 32\n"
             "    Sync: false\n"
@@ -65,6 +68,18 @@ ProgramOptions parseWithInput(std::string const& inputSection) {
   }
 }
 
+ProgramOptions parseWithRenderScale(std::string const& renderScaleLine) {
+  auto path = writeConfiguration("", "", renderScaleLine);
+  try {
+    auto options = parseProgramOptions(path.string());
+    std::filesystem::remove(path);
+    return options;
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+}
+
 void requireInputRejected(std::string const& inputSection, std::string const& description) {
   try {
     (void)parseWithInput(inputSection);
@@ -72,6 +87,17 @@ void requireInputRejected(std::string const& inputSection, std::string const& de
     return;
   }
   throw std::runtime_error("Input configuration accepted " + description + ".");
+}
+
+void requireRenderScaleRejected(std::string const& renderScaleLine, std::string const& description) {
+  try {
+    (void)parseWithRenderScale(renderScaleLine);
+  } catch (std::exception const& error) {
+    require(std::string(error.what()).find("RenderScale") != std::string::npos,
+            "The render-scale error did not name the field.");
+    return;
+  }
+  throw std::runtime_error("Video configuration accepted " + description + ".");
 }
 }  // namespace
 
@@ -96,6 +122,16 @@ int main() {
     requireInputRejected("  Input:\n    MouseSensitivity: -1.5\n", "a negative mouse sensitivity");
     requireInputRejected("  Input:\n    MouseSensitivity: fast\n", "an unparseable mouse sensitivity");
     requireInputRejected("  Input:\n    MouseSensitivty: 2.0\n", "a misspelled input field");
+
+    require(parseWithRenderScale("").video.renderScale == bw::app::RenderScale::Full,
+            "A configuration without RenderScale did not default to full.");
+    require(parseWithRenderScale("    RenderScale: HaLf\n").video.renderScale == bw::app::RenderScale::Half,
+            "The configured half render scale did not parse case-insensitively.");
+    require(parseWithRenderScale("    RenderScale: QUARTER\n").video.renderScale == bw::app::RenderScale::Quarter,
+            "The configured quarter render scale did not parse case-insensitively.");
+    requireRenderScaleRejected("    RenderScale: eighth\n", "an unknown render scale");
+    requireRenderScaleRejected("    RenderScale: 2\n", "a numeric render scale");
+    requireRenderScaleRejected("    RenderScale:\n", "an empty render scale");
 
     std::cout << "Program-options schema validation passed\n";
     return 0;

@@ -40,6 +40,45 @@ void rejectsUnusableMouseSensitivities() {
   require(options.mouseSensitivity == 2.5f, "Rejected mouse sensitivity changed configuration.");
 }
 
+void acceptsAndValidatesRenderScaleCodes() {
+  DLLState state;
+  bw::app::VideoOptions options;
+
+  require(state.setVideoOptions(bw::app::renderScaleCode(bw::app::RenderScale::Quarter), options) == 0,
+          "Valid render scale was rejected.");
+  require(options.renderScale == bw::app::RenderScale::Quarter,
+          "Valid render scale was not applied.");
+
+  require(state.setVideoOptions(-1, options) != 0,
+          "Negative render scale code was accepted.");
+  require(state.setVideoOptions(static_cast<int>(bw::app::renderScaleCount), options) != 0,
+          "Out-of-range render scale code was accepted.");
+  require(options.renderScale == bw::app::RenderScale::Quarter,
+          "Rejected render scale changed configuration.");
+}
+
+void renderScaleVocabularyIsClosedAndSizesTargets() {
+  for (auto scale : bw::app::allRenderScales) {
+    auto fromName = bw::app::renderScaleFromName(bw::app::renderScaleName(scale));
+    require(fromName && *fromName == scale,
+            "Render scale did not round-trip through its name.");
+    auto fromCode = bw::app::renderScaleFromCode(bw::app::renderScaleCode(scale));
+    require(fromCode && *fromCode == scale,
+            "Render scale did not round-trip through its boundary code.");
+  }
+
+  require(!bw::app::renderScaleFromName("eighth"),
+          "Unknown render scale name was accepted.");
+  require(bw::app::renderTargetSize(1024, 768, bw::app::RenderScale::Half).width == 512,
+          "Evenly divisible target width was incorrect.");
+  auto rounded = bw::app::renderTargetSize(1025, 769, bw::app::RenderScale::Quarter);
+  require(rounded.width == 257 && rounded.height == 193,
+          "Sub-full target dimensions did not round up.");
+  auto tiny = bw::app::renderTargetSize(1, 1, bw::app::RenderScale::Quarter);
+  require(tiny.width == 1 && tiny.height == 1,
+          "A small screen produced a zero-sized render target.");
+}
+
 void resetsStateFactoryEnumerationOnEntry() {
   DLLState state;
 
@@ -60,6 +99,8 @@ int main() {
   try {
     rejectsUnknownArguments();
     rejectsUnusableMouseSensitivities();
+    acceptsAndValidatesRenderScaleCodes();
+    renderScaleVocabularyIsClosedAndSizesTargets();
     resetsStateFactoryEnumerationOnEntry();
     std::cout << "DLL state regression tests passed\n";
     return 0;

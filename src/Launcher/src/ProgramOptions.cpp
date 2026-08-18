@@ -44,6 +44,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
   auto audioNode = configuration.getChild("Audio");
   auto inputNode = configuration.getOptionalChild("Input");
 
+  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale"});
   gameNode->requireOnlyChildren({"DLL", "ResourceLocations", "Debug", "Arguments"});
 
   pOpts.screenWidth = utils::StringUtils::parseInt(videoNode->getChild("Width")->getValue());
@@ -54,6 +55,18 @@ ProgramOptions parseProgramOptions(string const& filename) {
 
   pOpts.fullScreen = fullScreenStr == "true" || fullScreenStr == "yes";
   pOpts.vSync = vsyncStr == "true" || fullScreenStr == "yes";
+
+  auto renderScaleNode = videoNode->getOptionalChild("RenderScale");
+  if (renderScaleNode) {
+    auto renderScaleName = utils::StringUtils::toLower(renderScaleNode->getValue());
+    auto renderScale = bw::app::renderScaleFromName(renderScaleName);
+    if (!renderScale) {
+      string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/RenderScale must be 'full', 'half' or 'quarter'.";
+      throw exception(errMsg.c_str());
+    }
+
+    pOpts.video.renderScale = *renderScale;
+  }
 
   // Get game DLL
   pOpts.dll = gameNode->getChild("DLL")->getProperty("path");
@@ -141,6 +154,7 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
   logger->info(std::format("Video size: {}x{}", options.screenWidth, options.screenHeight));
   logger->info(std::format("Fullscreen: {}", options.fullScreen));
   logger->info(std::format("VSync enabled: {}", options.vSync));
+  logger->info(std::format("World render scale: {}", bw::app::renderScaleName(options.video.renderScale)));
 
   logger->info(std::format("Audio enabled: {}", options.audioEnabled));
 

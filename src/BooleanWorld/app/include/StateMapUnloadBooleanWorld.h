@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 
 #include <willpower/application/StateFactory.h>
@@ -10,12 +11,13 @@
 #include <applib/StateMapUnload.h>
 
 #include "Platform.h"
+#include "VideoOptions.h"
 
 class APPLICATION_API StateMapUnloadBooleanWorld : public applib::StateMapUnload {
   // Taken off the world renderer before pre-work tears it down, and dropped in
-  // post-work: releasing a render target is OpenGL work, and post-work is the
+  // post-work: releasing render targets is OpenGL work, and post-work is the
   // step that runs on the main thread.
-  mpp::RenderTargetPtr mRetiredWorldTarget;
+  std::array<mpp::RenderTargetPtr, bw::app::renderScaleCount> mRetiredWorldTargets;
 
 protected:
   std::vector<ThreadableWorkFunction> getPreWork(applib::StateTransitionData* transitionData) override;

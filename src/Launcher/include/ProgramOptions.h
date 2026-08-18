@@ -8,6 +8,8 @@
 
 #include <willpower/application/AudioOptions.h>
 
+#include "VideoOptions.h"
+
 struct ProgramOptions {
   struct ResourceLocation {
     std::string type;
@@ -43,6 +45,8 @@ public:
   wp::application::AudioOptions audio;
 
   Input input;
+
+  bw::app::VideoOptions video;
 
   Debugging debugging;
 };

@@ -108,6 +108,19 @@ void StatePlayBooleanWorld::createCamera() {
 void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transitionData) {
   mwRenderer = static_cast<WorldRenderer*>(transitionData->userData);
   mwRenderer->create(mScene, getMap()->getWorld(), mwRenderSystem, mwRenderResourceMgr);
+
+  for (auto renderScale : bw::app::allRenderScales) {
+    auto target = mwRenderer->getRenderTarget(renderScale);
+    auto& pipeline = mWorldRenderPipelines[bw::app::renderScaleIndex(renderScale)];
+    if (renderScale == bw::app::RenderScale::Full) {
+      pipeline = mRenderPipeline;
+    } else {
+      auto pipelineName = getName() + ".World." +
+                          std::string(bw::app::renderScaleName(renderScale));
+      pipeline = mwRenderSystem->getOrCreateRenderPipeline(pipelineName);
+    }
+    pipeline->resize(target->getWidth(), target->getHeight());
+  }
 }
 
 map<string, tuple<wp::viz::Renderer*, int, bool>> StatePlayBooleanWorld::createAdditionalRenderers(mpp::ResourceManager* renderResourceMgr) {
@@ -575,12 +588,24 @@ void StatePlayBooleanWorld::updateImpl(float frameTime) {
 // pipeline's completed scene target into ours, and it is ours that reaches the
 // screen.
 void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSystem) {
-  renderSystem->renderScene(mScene, mCamera3d, {0.0f, 0.0f}, getName());
+  auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
+  auto renderScale = model->getActiveRenderScale();
+  auto const& worldTarget = mwRenderer->getRenderTarget(renderScale);
+  auto const& pipeline =
+      mWorldRenderPipelines[bw::app::renderScaleIndex(renderScale)];
 
-  auto const& worldTarget = mwRenderer->getRenderTarget();
+  // MPP's scene pass owns an internal target. Each pipeline was sized alongside
+  // its map-owned target when play started, so fragments are generated at the
+  // configured resolution without reallocating when the active scale changes.
+  // The camera retains the window aspect ratio, and the final composite
+  // stretches this target over that same window.
+  mScene->setViewport(0, 0, worldTarget->getWidth(), worldTarget->getHeight());
+  renderSystem->renderScene(
+      mScene, mCamera3d, {0.0f, 0.0f}, pipeline->getName());
+
   auto worldTexture = static_cast<mpp::RenderTexture*>(worldTarget.get());
   auto sceneTexture = static_cast<mpp::RenderTexture*>(
-      mRenderPipeline->getOutputRenderTarget().get());
+      pipeline->getOutputRenderTarget().get());
 
   // Into the target. The viewport follows the bound target, and the clear stops
   // any part of a previous frame showing through a blit that failed to cover.

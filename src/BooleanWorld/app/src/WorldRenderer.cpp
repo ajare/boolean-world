@@ -19,29 +19,35 @@ WorldRenderer::WorldRenderer(wp::application::resourcesystem::ResourceManager* r
 WorldRenderer::~WorldRenderer() {
 }
 
-void WorldRenderer::createRenderTarget(mpp::RenderSystem* renderSystem) {
+void WorldRenderer::createRenderTargets(mpp::RenderSystem* renderSystem) {
   mpp::RenderTextureOptions options;
 
-  // The composite stretches this target over the whole screen, so it samples
+  // The composite stretches each target over the whole screen, so it samples
   // linearly and clamps at the edge rather than wrapping. MPP takes the OpenGL
   // wire values here: 0x2601 is GL_LINEAR and 0x812F is GL_CLAMP_TO_EDGE.
   options.params.minFilter = 0x2601;
   options.params.magFilter = 0x2601;
   options.params.wrap = 0x812F;
 
-  mWorldTarget = renderSystem->createRenderTexture(
-      "BooleanWorld.WorldTarget",
-      renderSystem->getWindowWidth(),
-      renderSystem->getWindowHeight(),
-      options);
+  for (auto renderScale : bw::app::allRenderScales) {
+    auto size = bw::app::renderTargetSize(
+        renderSystem->getWindowWidth(),
+        renderSystem->getWindowHeight(),
+        renderScale);
+    auto name = "BooleanWorld.WorldTarget." +
+                std::string(bw::app::renderScaleName(renderScale));
+    mWorldTargets[bw::app::renderScaleIndex(renderScale)] =
+        renderSystem->createRenderTexture(name, size.width, size.height, options);
+  }
 }
 
-mpp::RenderTargetPtr const& WorldRenderer::getRenderTarget() const {
-  return mWorldTarget;
+mpp::RenderTargetPtr const& WorldRenderer::getRenderTarget(
+    bw::app::RenderScale renderScale) const {
+  return mWorldTargets[bw::app::renderScaleIndex(renderScale)];
 }
 
-mpp::RenderTargetPtr WorldRenderer::detachRenderTarget() {
-  return std::move(mWorldTarget);
+WorldRenderer::RenderTargets WorldRenderer::detachRenderTargets() {
+  return std::move(mWorldTargets);
 }
 
 void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {

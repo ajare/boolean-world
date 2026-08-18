@@ -23,7 +23,10 @@ add_executable(Launcher WIN32
     src/imgui/implot_demo.cpp
     src/imgui/implot_items.cpp)
 
-target_include_directories(Launcher PRIVATE include include/imgui)
+target_include_directories(Launcher PRIVATE
+    include
+    include/imgui
+    ${BW_ROOT}/src/BooleanWorld/app/include)
 bw_add_header_filter(Launcher)
 
 target_link_libraries(Launcher PRIVATE
@@ -52,7 +55,9 @@ if(BUILD_TESTING)
     add_executable(launcher_program_options_tests
         tests/program_options_tests.cpp
         src/ProgramOptions.cpp)
-    target_include_directories(launcher_program_options_tests PRIVATE include)
+    target_include_directories(launcher_program_options_tests PRIVATE
+        include
+        ${BW_ROOT}/src/BooleanWorld/app/include)
     target_link_libraries(launcher_program_options_tests PRIVATE
         Willpower.Common Willpower.Application ext::Utils)
     target_compile_features(launcher_program_options_tests PRIVATE cxx_std_20)
@@ -72,7 +77,10 @@ if(BUILD_TESTING)
         src/imgui/imgui_draw.cpp
         src/imgui/imgui_tables.cpp
         src/imgui/imgui_widgets.cpp)
-    target_include_directories(launcher_window_input_tests PRIVATE include include/imgui)
+    target_include_directories(launcher_window_input_tests PRIVATE
+        include
+        include/imgui
+        ${BW_ROOT}/src/BooleanWorld/app/include)
     target_link_libraries(launcher_window_input_tests PRIVATE
         Willpower.Common Willpower.Application ext::mpp ext::Utils ext::sdl3)
     target_compile_features(launcher_window_input_tests PRIVATE cxx_std_20)

@@ -29,9 +29,12 @@ class ApplicationDLL {
 
   typedef int (*DllSetArgumentFunction)(char const*, char const*);
 
-  // Input settings are passed as plain scalars rather than a struct: the
-  // launcher and the game share no headers of their own.
+  // Keep configuration exports to plain scalars rather than making a C++
+  // struct layout part of the DLL ABI.
   typedef int (*DllSetInputOptionsFunction)(float);
+
+  // Video enums cross as their stable integer code so the ABI remains plain.
+  typedef int (*DllSetVideoOptionsFunction)(int);
 
 private:
 #if APP_PLATFORM == APP_PLATFORM_WINDOWS
@@ -51,6 +54,8 @@ private:
 
   DllSetInputOptionsFunction mSetInputOptionsFunction;
 
+  DllSetVideoOptionsFunction mSetVideoOptionsFunction;
+
   static std::string msGetNameFunction;
 
   static std::string msCreateApplicationFunctionName, msDestroyApplicationFunctionName;
@@ -62,6 +67,8 @@ private:
   static std::string msSetArgumentFunctionName;
 
   static std::string msSetInputOptionsFunctionName;
+
+  static std::string msSetVideoOptionsFunctionName;
 
   // Optional DLL functions
   DllOnEntryFunction mOnEntryFunction;
@@ -84,7 +91,7 @@ public:
 
   std::string const& getFilepath() const;
 
-  void load(std::string const& file, std::map<std::string, std::string> const& arguments, ProgramOptions::Input const& input, wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr);
+  void load(ProgramOptions const& options, wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr);
 
   void unload();
 

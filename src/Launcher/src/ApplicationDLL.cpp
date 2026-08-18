@@ -10,6 +10,7 @@ string ApplicationDLL::msOnEntryFunctionName = "dllOnEntry";
 string ApplicationDLL::msOnExitFunctionName = "dllOnExit";
 string ApplicationDLL::msSetArgumentFunctionName = "dllSetArgument";
 string ApplicationDLL::msSetInputOptionsFunctionName = "dllSetInputOptions";
+string ApplicationDLL::msSetVideoOptionsFunctionName = "dllSetVideoOptions";
 
 ApplicationDLL::ApplicationDLL()
     : mGetProcIDDLL(0),
@@ -17,6 +18,7 @@ ApplicationDLL::ApplicationDLL()
       mGetNextStateFactoryFunction(0),
       mSetArgumentFunction(0),
       mSetInputOptionsFunction(0),
+      mSetVideoOptionsFunction(0),
       mOnEntryFunction(0),
       mOnExitFunction(0),
       mEntryStarted(false) {
@@ -58,6 +60,13 @@ void ApplicationDLL::registerRequiredFunctions() {
     string errMsg = "Could not find DLL function '" + msSetInputOptionsFunctionName + "' in '" + mFilepath + "'.";
     throw exception(errMsg.c_str());
   }
+
+  mSetVideoOptionsFunction = (DllSetVideoOptionsFunction)GetProcAddress(mGetProcIDDLL, msSetVideoOptionsFunctionName.c_str());
+
+  if (!mSetVideoOptionsFunction) {
+    string errMsg = "Could not find DLL function '" + msSetVideoOptionsFunctionName + "' in '" + mFilepath + "'.";
+    throw exception(errMsg.c_str());
+  }
 }
 
 void ApplicationDLL::registerOptionalFunctions() {
@@ -65,8 +74,8 @@ void ApplicationDLL::registerOptionalFunctions() {
   mOnExitFunction = (DllOnExitFunction)GetProcAddress(mGetProcIDDLL, msOnExitFunctionName.c_str());
 }
 
-void ApplicationDLL::load(string const& filepath, map<string, string> const& arguments, ProgramOptions::Input const& input, wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
-  mFilepath = filepath;
+void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
+  mFilepath = options.dll;
 
 #if APP_PLATFORM == APP_PLATFORM_WINDOWS
 
@@ -83,7 +92,7 @@ void ApplicationDLL::load(string const& filepath, map<string, string> const& arg
   registerOptionalFunctions();
 
   // Pass in arguments
-  for (auto const& argument : arguments) {
+  for (auto const& argument : options.arguments) {
     if (mSetArgumentFunction(argument.first.c_str(), argument.second.c_str()) != 0) {
       string errMsg = format("Application could not parse config argument: {}={}", argument.first, argument.second);
       throw exception(errMsg.c_str());
@@ -92,8 +101,16 @@ void ApplicationDLL::load(string const& filepath, map<string, string> const& arg
 
   // Pass in input options, before entry so the application can build its
   // input-driven objects with them
-  if (mSetInputOptionsFunction(input.mouseSensitivity) != 0) {
-    string errMsg = format("Application rejected input options: MouseSensitivity={}", input.mouseSensitivity);
+  if (mSetInputOptionsFunction(options.input.mouseSensitivity) != 0) {
+    string errMsg = format("Application rejected input options: MouseSensitivity={}", options.input.mouseSensitivity);
+    throw exception(errMsg.c_str());
+  }
+
+  // Pass video options before entry so the model starts with the configured
+  // process-wide scale.
+  auto renderScaleCode = bw::app::renderScaleCode(options.video.renderScale);
+  if (mSetVideoOptionsFunction(renderScaleCode) != 0) {
+    string errMsg = format("Application rejected video options: RenderScale={}", renderScaleCode);
     throw exception(errMsg.c_str());
   }
 

@@ -15,9 +15,11 @@ StateMapUnloadBooleanWorld::StateMapUnloadBooleanWorld(bool useThreading)
 vector<applib::ThreadableLoadState::ThreadableWorkFunction> StateMapUnloadBooleanWorld::getPreWork(applib::StateTransitionData* transitionData) {
   auto worldRenderer = static_cast<WorldRenderer*>(transitionData->userData);
 
-  // The renderer goes away on the threadable pre-work path, so its target is
-  // held here until the main-thread post-work step can release it.
-  mRetiredWorldTarget = worldRenderer ? worldRenderer->detachRenderTarget() : nullptr;
+  // The renderer goes away on the threadable pre-work path, so its targets are
+  // held here until the main-thread post-work step can release them.
+  mRetiredWorldTargets = worldRenderer
+                             ? worldRenderer->detachRenderTargets()
+                             : WorldRenderer::RenderTargets{};
 
   transitionData->userData = nullptr;
   mTransitionData.userData = nullptr;
@@ -39,9 +41,11 @@ void StateMapUnloadBooleanWorld::unloadResources(application::resourcesystem::Re
   auto releaseWorldTargetFn = [this](bool useThreading) {
     VAR_UNUSED(useThreading);
 
-    addText("Releasing world render target");
+    addText("Releasing world render targets");
 
-    mRetiredWorldTarget.reset();
+    for (auto& target : mRetiredWorldTargets) {
+      target.reset();
+    }
   };
 
   processPostWork({releaseWorldTargetFn});

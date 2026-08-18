@@ -15,6 +15,7 @@
 
 #include "DLLState.h"
 #include "InputOptions.h"
+#include "VideoOptions.h"
 #include "MapBooleanWorldDefinitionFactory.h"
 #include "ProtoEntityDefinitionFactory.h"
 
@@ -55,6 +56,10 @@ static bool gThreadedLoading = true;
 // entity handler can be built with it.
 static bw::app::InputOptions gInputOptions;
 
+// Video configuration is validated before entry and seeds the model, whose
+// active scale then survives every map-owned renderer.
+static bw::app::VideoOptions gVideoOptions;
+
 extern "C" {
 __declspec(dllexport) char const* dllGetName() {
   return "BooleanWorld";
@@ -66,6 +71,10 @@ __declspec(dllexport) int dllSetArgument(char const* arg, char const* value) {
 
 __declspec(dllexport) int dllSetInputOptions(float mouseSensitivity) {
   return dllState.setInputOptions(mouseSensitivity, gInputOptions);
+}
+
+__declspec(dllexport) int dllSetVideoOptions(int renderScaleCode) {
+  return dllState.setVideoOptions(renderScaleCode, gVideoOptions);
 }
 
 __declspec(dllexport) wp::application::StateFactory* dllGetNextStateFactory() {
@@ -107,7 +116,7 @@ __declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resou
     return new EntityHandlerBooleanWorld(animDatabase, gInputOptions);
   };
 
-  model = new BooleanWorldModel(entityHandlerFactory, resourceMgr);
+  model = new BooleanWorldModel(entityHandlerFactory, resourceMgr, gVideoOptions);
   applib::ModelInstance::set(model);
 
   // Create state factories

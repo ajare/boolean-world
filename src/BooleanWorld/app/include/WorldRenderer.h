@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <map>
 #include <vector>
 #include <string>
@@ -12,10 +13,15 @@
 
 #include <core/World.h>
 
+#include "VideoOptions.h"
 #include "WorldTriangle3dDataProvider.h"
 #include "WorldRenderer3d.h"
 
 class WorldRenderer {
+public:
+  using RenderTargets = std::array<mpp::RenderTargetPtr, bw::app::renderScaleCount>;
+
+private:
   typedef std::shared_ptr<WorldTriangle3dDataProvider> DataProvider;
 
   typedef std::shared_ptr<WorldRenderer3d> Renderer;
@@ -29,8 +35,9 @@ private:
 
   wp::Logger* mwLogger;
 
-  // The screen-sized target the 3d world is composited from (ADR 0012).
-  mpp::RenderTargetPtr mWorldTarget;
+  // All scale targets are ready for the map's lifetime (ADR 0012), so changing
+  // the model's active scale only chooses another target.
+  RenderTargets mWorldTargets;
 
 private:
   void updateDataProviders(bw::core::WorldData const& worldData);
@@ -46,16 +53,16 @@ public:
 
   void create(mpp::ScenePtr scene, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr);
 
-  // Builds the offscreen target the world is composited from. This talks to
-  // OpenGL, so it belongs on the main thread - the map load post-work step.
-  void createRenderTarget(mpp::RenderSystem* renderSystem);
+  // Builds all offscreen targets the world can be composited from. This talks
+  // to OpenGL, so it belongs on the main thread - the map load post-work step.
+  void createRenderTargets(mpp::RenderSystem* renderSystem);
 
-  mpp::RenderTargetPtr const& getRenderTarget() const;
+  mpp::RenderTargetPtr const& getRenderTarget(bw::app::RenderScale renderScale) const;
 
-  // Hands the target to a caller that outlives this renderer, so map unload can
-  // release it from its main-thread post-work step rather than from the
+  // Hands the targets to a caller that outlives this renderer, so map unload
+  // can release them from its main-thread post-work step rather than from the
   // threadable pre-work that tears the renderer itself down.
-  mpp::RenderTargetPtr detachRenderTarget();
+  RenderTargets detachRenderTargets();
 
   void update(bw::core::World* world, bw::core::WorldData const& worldData, float frameTime);
 };
