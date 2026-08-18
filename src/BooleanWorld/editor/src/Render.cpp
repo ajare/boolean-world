@@ -87,7 +87,8 @@ void renderPrimitiveFieldPreview(
     wp::Vector2 const& offset,
     ImDrawList* drawList) {
   auto const cellColour = ImColor(0.1f, 0.85f, 1.0f, 0.9f);
-  auto const primitiveColour = ImColor(0.95f, 0.3f, 0.75f, 0.55f);
+  auto const primitiveFillColour = ImColor(0.95f, 0.3f, 0.75f, 0.12f);
+  auto const primitiveColour = ImColor(0.95f, 0.3f, 0.75f, 0.72f);
   auto const siteColour = ImColor(1.0f, 0.55f, 0.1f, 1.0f);
 
   drawList->AddDrawCmd();
@@ -111,6 +112,8 @@ void renderPrimitiveFieldPreview(
       points.push_back({vertex.x - offset.x,
                         ED_WINDOW_HEIGHT - (vertex.y - offset.y)});
     }
+    drawList->AddConvexPolyFilled(
+        points.data(), static_cast<int>(points.size()), primitiveFillColour);
     drawList->AddPolyline(
         points.data(), static_cast<int>(points.size()), primitiveColour,
         ImDrawFlags_Closed, 2.0f);

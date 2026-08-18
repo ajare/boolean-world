@@ -632,6 +632,49 @@ PrimitiveFieldLayoutResult validateFinalLayout(
 
 }  // namespace
 
+PrimitiveFieldSiteCountEstimate estimatePrimitiveFieldSiteCount(
+    PrimitiveFieldExtents const& worldExtents,
+    float minimumSpacing) {
+  IntPoint minimum;
+  IntPoint maximum;
+  std::string error;
+  if (!validExtents(worldExtents, minimum, maximum, error)) {
+    return {.uncappedSiteCount = std::nullopt, .error = std::move(error)};
+  }
+  if (!std::isfinite(minimumSpacing)) {
+    return {.uncappedSiteCount = std::nullopt,
+            .error = "Minimum site spacing must be finite."};
+  }
+  if (minimumSpacing < 8.0f) {
+    return {.uncappedSiteCount = std::nullopt,
+            .error = "Minimum site spacing must be at least 8 world units."};
+  }
+
+  auto width = static_cast<double>(worldExtents.maximum.x) -
+               worldExtents.minimum.x;
+  auto height = static_cast<double>(worldExtents.maximum.y) -
+                worldExtents.minimum.y;
+  if (minimumSpacing > width || minimumSpacing > height) {
+    return {.uncappedSiteCount = std::nullopt,
+            .error =
+                "The world is too small to inset by half the requested spacing."};
+  }
+
+  // A saturated random Poisson field occupies roughly one spacing-square per
+  // site. Include both inset-domain boundaries so narrow valid domains still
+  // estimate their centre site. This intentionally remains an estimate: it
+  // never advances the generator's random stream or performs layout work.
+  auto columns = (width - minimumSpacing) / minimumSpacing + 1.0;
+  auto rows = (height - minimumSpacing) / minimumSpacing + 1.0;
+  auto estimate = std::max(1.0, std::ceil(columns * rows));
+  if (!std::isfinite(estimate) ||
+      estimate > static_cast<double>(std::numeric_limits<uint64_t>::max())) {
+    return {.uncappedSiteCount = std::nullopt,
+            .error = "The approximate site count is outside the supported range."};
+  }
+  return {.uncappedSiteCount = static_cast<uint64_t>(estimate), .error = {}};
+}
+
 PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
     PrimitiveFieldLayoutRequest const& request,
     PrimitiveFieldLayoutExecution const& execution) {
@@ -810,6 +853,8 @@ PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
       return initial;
     }
 
+    initial.layout->samplingStoppedAtMaximum =
+        accepted.size() == request.maximumSites && !candidates.empty();
     PrimitiveFieldLayoutResult generated = std::move(initial);
     if (request.lloydIterations > 0) {
       generated = relaxLayout(
@@ -820,6 +865,8 @@ PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
       }
     }
 
+    generated.layout->samplingStoppedAtMaximum =
+        accepted.size() == request.maximumSites && !candidates.empty();
     auto validated = validateFinalLayout(
         std::move(*generated.layout), domainMinimum, domainMaximum, spacing,
         executionContext);

@@ -42,7 +42,25 @@ struct BW_API PrimitiveFieldLayout {
   PrimitiveFieldExtents worldExtents;
   std::vector<wp::Vector2> sites;
   std::vector<PrimitiveFieldCell> cells;
+  // True only when sampling still had candidates but stopped at maximumSites.
+  bool samplingStoppedAtMaximum{false};
 };
+
+struct BW_API PrimitiveFieldSiteCountEstimate {
+  std::optional<uint64_t> uncappedSiteCount;
+  std::string error;
+
+  [[nodiscard]] bool succeeded() const {
+    return uncappedSiteCount.has_value();
+  }
+};
+
+// Cheap area/density estimate used by authoring UI. This validates extents and
+// spacing but does not sample, relax, or construct Voronoi cells.
+[[nodiscard]] BW_API PrimitiveFieldSiteCountEstimate
+estimatePrimitiveFieldSiteCount(
+    PrimitiveFieldExtents const& worldExtents,
+    float minimumSpacing);
 
 struct BW_API PrimitiveFieldLayoutResult {
   std::optional<PrimitiveFieldLayout> layout;

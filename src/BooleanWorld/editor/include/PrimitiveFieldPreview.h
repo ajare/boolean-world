@@ -60,6 +60,26 @@ struct PrimitiveFieldPrimitivePreviewResult {
     int maximumSites,
     uint32_t existingPrimitiveCount);
 
+struct PrimitiveFieldControlEvaluation {
+  uint64_t approximateUncappedSites{0};
+  uint32_t remainingWorldCapacity{0};
+  uint32_t effectivePlacementCap{0};
+  std::string error;
+
+  [[nodiscard]] bool valid() const { return error.empty(); }
+};
+
+enum class PrimitiveFieldWorkflowState : uint8_t {
+  Idle,
+  Generating,
+  CurrentPreview,
+  StalePreview,
+  Cancelled,
+  Failed,
+  Placing,
+  NoCapacity,
+};
+
 struct PrimitiveFieldGenerationIdentity {
   bw::core::PrimitiveFieldExtents worldExtents;
   float minimumSpacing{128.0f};
@@ -86,6 +106,7 @@ struct PrimitiveFieldPreview {
   std::optional<bw::core::PrimitiveFieldLayout> layout;
   std::vector<PrimitiveFieldPrimitivePreview> primitives;
   std::string error;
+  PrimitiveFieldWorkflowState state{PrimitiveFieldWorkflowState::Idle};
 
   PrimitiveFieldPreview();
   ~PrimitiveFieldPreview();
@@ -98,6 +119,9 @@ struct PrimitiveFieldPreview {
   // request is asked to stop; poll() performs final result coordination.
   void invalidateLayout();
   void refreshPrimitives();
+  [[nodiscard]] PrimitiveFieldControlEvaluation evaluateControls(
+      bw::core::PrimitiveFieldExtents const& worldExtents,
+      uint32_t existingPrimitiveCount) const;
   void generate(
       bw::core::PrimitiveFieldExtents const& worldExtents,
       uint32_t existingPrimitiveCount);
@@ -107,6 +131,8 @@ struct PrimitiveFieldPreview {
       bw::core::PrimitiveFieldExtents const& worldExtents,
       uint32_t existingPrimitiveCount);
   void cancelGeneration();
+  void beginPlacement();
+  void finishPlacement(bool succeeded, std::string failure = {});
   [[nodiscard]] bool isGenerating() const;
   [[nodiscard]] float generationProgress() const;
   [[nodiscard]] bw::core::PrimitiveFieldLayoutPhase generationPhase() const;

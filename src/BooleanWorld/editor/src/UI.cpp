@@ -3319,65 +3319,30 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
       primitiveFieldPreview.poll(
           {worldMinimum, worldMaximum}, world->getNumPrimitives());
 
-      auto worldSize = world->getExtents().getSize();
-      auto maximumSpacing = std::min(worldSize.x, worldSize.y);
-      auto validSpacingRange = std::isfinite(maximumSpacing) &&
-                               maximumSpacing >= 8.0f;
-      auto spacingBeforeClamp = primitiveFieldPreview.minimumSpacing;
-      if (!std::isfinite(primitiveFieldPreview.minimumSpacing)) {
-        primitiveFieldPreview.minimumSpacing = 8.0f;
-      }
-      if (validSpacingRange) {
-        primitiveFieldPreview.minimumSpacing = std::clamp(
-            primitiveFieldPreview.minimumSpacing, 8.0f, maximumSpacing);
-      }
-      if (primitiveFieldPreview.minimumSpacing != spacingBeforeClamp) {
-        primitiveFieldPreview.invalidateLayout();
-      }
-
       ImGui::SetNextItemWidth(220.0f);
       if (ImGui::DragFloat(
               "Minimum site spacing", &primitiveFieldPreview.minimumSpacing,
-              1.0f, 8.0f, maximumSpacing, "%.3f",
-              ImGuiSliderFlags_AlwaysClamp)) {
+              1.0f, 0.0f, 0.0f, "%.3f")) {
         primitiveFieldPreview.invalidateLayout();
       }
 
       ImGui::SetNextItemWidth(220.0f);
       if (ImGui::InputInt(
-              "Maximum generated primitives",
+              "Requested batch maximum",
               &primitiveFieldPreview.maximumSites)) {
-        primitiveFieldPreview.maximumSites = std::clamp(
-            primitiveFieldPreview.maximumSites, 1,
-            static_cast<int>(BW_WORLD_PRIMITIVE_COUNT_MAX));
         primitiveFieldPreview.invalidateLayout();
       }
 
       ImGui::SetNextItemWidth(220.0f);
       if (ImGui::InputInt("Lloyd iterations",
                           &primitiveFieldPreview.lloydIterations)) {
-        primitiveFieldPreview.lloydIterations = std::clamp(
-            primitiveFieldPreview.lloydIterations, 0, 20);
         primitiveFieldPreview.invalidateLayout();
       }
 
       ImGui::TextUnformatted("Primitive types");
       auto typeCheckbox = [&](char const* label, bool& enabled) {
-        auto const enabledCount =
-            static_cast<int>(primitiveFieldPreview.enabledTypes.rectangle) +
-            static_cast<int>(primitiveFieldPreview.enabledTypes.triangle) +
-            static_cast<int>(primitiveFieldPreview.enabledTypes.pentagon) +
-            static_cast<int>(primitiveFieldPreview.enabledTypes.hexagon) +
-            static_cast<int>(primitiveFieldPreview.enabledTypes.circle);
-        auto const mustRemainEnabled = enabled && enabledCount == 1;
-        if (mustRemainEnabled) {
-          ImGui::BeginDisabled();
-        }
         if (ImGui::Checkbox(label, &enabled)) {
           primitiveFieldPreview.refreshPrimitives();
-        }
-        if (mustRemainEnabled) {
-          ImGui::EndDisabled();
         }
       };
       typeCheckbox("Rectangle", primitiveFieldPreview.enabledTypes.rectangle);
@@ -3386,24 +3351,10 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
       typeCheckbox("Hexagon", primitiveFieldPreview.enabledTypes.hexagon);
       typeCheckbox("Circle", primitiveFieldPreview.enabledTypes.circle);
 
-      auto overlapBeforeClamp = primitiveFieldPreview.overlapPercent;
-      if (!std::isfinite(primitiveFieldPreview.overlapPercent)) {
-        primitiveFieldPreview.overlapPercent = 10.0f;
-      } else {
-        primitiveFieldPreview.overlapPercent = std::clamp(
-            primitiveFieldPreview.overlapPercent, 0.0f, 100.0f);
-      }
-      if (primitiveFieldPreview.overlapPercent != overlapBeforeClamp) {
-        primitiveFieldPreview.refreshPrimitives();
-      }
-
       ImGui::SetNextItemWidth(220.0f);
       if (ImGui::DragFloat(
               "Overlap (%)", &primitiveFieldPreview.overlapPercent, 0.25f,
-              0.0f, 100.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
-        if (!std::isfinite(primitiveFieldPreview.overlapPercent)) {
-          primitiveFieldPreview.overlapPercent = 10.0f;
-        }
+              0.0f, 100.0f, "%.2f")) {
         primitiveFieldPreview.refreshPrimitives();
       }
 
@@ -3424,24 +3375,51 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
         primitiveFieldPreview.invalidateLayout();
       }
 
-      if (!validSpacingRange) {
-        ImGui::TextColored(
-            ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-            "The world must be at least 8 units in each dimension.");
+      auto controls = primitiveFieldPreview.evaluateControls(
+          {worldMinimum, worldMaximum}, world->getNumPrimitives());
+      auto generatedCount = primitiveFieldPreview.layout
+                                ? primitiveFieldPreview.layout->sites.size()
+                                : size_t{0};
+      ImGui::Separator();
+      if (controls.valid()) {
+        ImGui::Text("Approximate uncapped sites: %llu",
+                    static_cast<unsigned long long>(
+                        controls.approximateUncappedSites));
+      } else {
+        ImGui::TextUnformatted("Approximate uncapped sites: unavailable");
       }
+      ImGui::Text("Requested batch maximum: %d",
+                  primitiveFieldPreview.maximumSites);
+      ImGui::Text("Remaining world capacity: %u (authored primitives and ghost included)",
+                  controls.remainingWorldCapacity);
+      ImGui::Text("Effective placement cap: %u",
+                  controls.effectivePlacementCap);
+      ImGui::Text("Actual generated count: %zu", generatedCount);
 
-      if (!validSpacingRange) {
-        ImGui::BeginDisabled();
+      auto expensiveRequest = controls.approximateUncappedSites > 2000 ||
+                              controls.effectivePlacementCap > 2000 ||
+                              generatedCount > 2000;
+      if (expensiveRequest) {
+        ImGui::TextColored(
+            ImVec4(1.0f, 0.7f, 0.15f, 1.0f),
+            "Performance warning: counts above 2,000 may take substantial time and memory.");
       }
-      if (ImGui::Button("Generate Layout")) {
-        primitiveFieldPreview.generate(
-            {worldMinimum, worldMaximum}, world->getNumPrimitives());
-      }
-      if (!validSpacingRange) {
-        ImGui::EndDisabled();
+      if (primitiveFieldPreview.layout &&
+          primitiveFieldPreview.layout->samplingStoppedAtMaximum) {
+        ImGui::TextColored(
+            ImVec4(1.0f, 0.7f, 0.15f, 1.0f),
+            "Capped: center-outward sampling stopped at the effective placement cap.");
       }
 
       auto generationActive = primitiveFieldPreview.isGenerating();
+      if (!controls.valid()) ImGui::BeginDisabled();
+      if (ImGui::Button("Generate Layout")) {
+        primitiveFieldPreview.generate(
+            {worldMinimum, worldMaximum}, world->getNumPrimitives());
+        generationActive = primitiveFieldPreview.isGenerating();
+      }
+      if (!controls.valid()) ImGui::EndDisabled();
+
       if (generationActive) {
         ImGui::SameLine();
         if (ImGui::Button("Cancel")) {
@@ -3451,30 +3429,23 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
       }
 
       ImGui::SameLine();
-      auto capacityStillAvailable =
-          primitiveFieldPreview.primitives.size() <=
-          static_cast<size_t>(BW_WORLD_PRIMITIVE_COUNT_MAX -
-                              world->getNumPrimitives());
-      auto canPlace = primitiveFieldPreview.hasCompletePreview() &&
-                      capacityStillAvailable && !generationActive;
-      if (!canPlace) {
-        ImGui::BeginDisabled();
-      }
-      if (ImGui::Button("Place Primitives") &&
-          primitiveFieldPreview.layout) {
+      auto canPlace = controls.valid() &&
+                      primitiveFieldPreview.hasCompletePreview() &&
+                      generatedCount <= controls.remainingWorldCapacity &&
+                      !generationActive;
+      if (!canPlace) ImGui::BeginDisabled();
+      if (ImGui::Button("Place Primitives") && primitiveFieldPreview.layout) {
+        primitiveFieldPreview.beginPlacement();
         auto result = placePrimitiveField(
             doc, *primitiveFieldPreview.layout,
             primitiveFieldPreview.primitives, settings);
+        primitiveFieldPreview.finishPlacement(result.placed, result.error);
         if (result.placed) {
           ImGui::CloseCurrentPopup();
           primitiveFieldPreview.close();
-        } else {
-          primitiveFieldPreview.error = std::move(result.error);
         }
       }
-      if (!canPlace) {
-        ImGui::EndDisabled();
-      }
+      if (!canPlace) ImGui::EndDisabled();
 
       if (generationActive) {
         auto phaseLabel = "Sampling sites";
@@ -3500,13 +3471,40 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
             phaseLabel);
       }
 
-      auto generatedCount = primitiveFieldPreview.layout
-                                ? primitiveFieldPreview.layout->sites.size()
-                                : size_t{0};
-      auto effectiveMaximum = effectivePrimitiveFieldMaximum(
-          primitiveFieldPreview.maximumSites, world->getNumPrimitives());
-      ImGui::Text("Effective capacity: %u", effectiveMaximum);
-      ImGui::Text("Generated sites: %zu", generatedCount);
+      char const* workflowStatus = "Idle — configure controls, then generate a layout.";
+      switch (primitiveFieldPreview.state) {
+        case PrimitiveFieldWorkflowState::Idle:
+          break;
+        case PrimitiveFieldWorkflowState::Generating:
+          workflowStatus = "Generating layout…";
+          break;
+        case PrimitiveFieldWorkflowState::CurrentPreview:
+          workflowStatus = "Preview is current and ready to place.";
+          break;
+        case PrimitiveFieldWorkflowState::StalePreview:
+          workflowStatus = "Preview is stale; generate the layout again.";
+          break;
+        case PrimitiveFieldWorkflowState::Cancelled:
+          workflowStatus = "Generation was cancelled; document unchanged.";
+          break;
+        case PrimitiveFieldWorkflowState::Failed:
+          workflowStatus = "Request failed; previous preview and document preserved.";
+          break;
+        case PrimitiveFieldWorkflowState::Placing:
+          workflowStatus = "Placing primitives…";
+          break;
+        case PrimitiveFieldWorkflowState::NoCapacity:
+          workflowStatus = "No capacity remains; delete primitives to continue.";
+          break;
+      }
+      ImGui::TextWrapped("Status: %s", workflowStatus);
+
+      if (!controls.valid() && primitiveFieldPreview.error.empty()) {
+        ImGui::PushStyleColor(
+            ImGuiCol_Text, ImVec4(1.0f, 0.35f, 0.35f, 1.0f));
+        ImGui::TextWrapped("%s", controls.error.c_str());
+        ImGui::PopStyleColor();
+      }
       if (!primitiveFieldPreview.error.empty()) {
         ImGui::PushStyleColor(
             ImGuiCol_Text, ImVec4(1.0f, 0.35f, 0.35f, 1.0f));

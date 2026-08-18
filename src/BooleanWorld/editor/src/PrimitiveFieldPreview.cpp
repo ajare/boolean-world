@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <mutex>
+#include <set>
 #include <thread>
 #include <utility>
 
@@ -100,6 +101,38 @@ float cross(wp::Vector2 const& lhs, wp::Vector2 const& rhs) {
   return lhs.x * rhs.y - lhs.y * rhs.x;
 }
 
+bool validCell(
+    bw::core::PrimitiveFieldCell const& cell,
+    wp::Vector2 const& site) {
+  if (cell.vertices.size() < 3 ||
+      !std::all_of(cell.vertices.begin(), cell.vertices.end(), finitePoint)) {
+    return false;
+  }
+  double twiceArea = 0.0;
+  for (size_t i = 0; i < cell.vertices.size(); ++i) {
+    auto const& a = cell.vertices[i];
+    auto const& b = cell.vertices[(i + 1) % cell.vertices.size()];
+    if (a == b) return false;
+    twiceArea += static_cast<double>(cross(a, b));
+  }
+  if (!std::isfinite(twiceArea) ||
+      twiceArea <= bw::core::PrimitiveFieldNumericTolerance) {
+    return false;
+  }
+  for (size_t i = 0; i < cell.vertices.size(); ++i) {
+    auto const& previous =
+        cell.vertices[(i + cell.vertices.size() - 1) % cell.vertices.size()];
+    auto const& current = cell.vertices[i];
+    auto const& next = cell.vertices[(i + 1) % cell.vertices.size()];
+    if (cross(current - previous, next - current) <= 0.0f ||
+        cross(next - current, site - current) <
+            -bw::core::PrimitiveFieldNumericTolerance) {
+      return false;
+    }
+  }
+  return true;
+}
+
 float fitUniformSize(
     bw::core::PrimitiveFieldCell const& cell,
     wp::Vector2 const& position,
@@ -186,16 +219,21 @@ PrimitiveFieldPrimitivePreviewResult buildPrimitiveFieldPreview(
   PlacementPcg32 choiceRandom(placementSeed, 0x6d2b79f5u);
   PlacementPcg32 angleRandom(placementSeed, 0xa511e9b3u);
   constexpr float AngleQuantum = 360.0f / 16777216.0f;
+  std::set<std::pair<float, float>> uniqueSites;
 
   for (size_t i = 0; i < layout.sites.size(); ++i) {
     auto const& site = layout.sites[i];
     auto const& cell = layout.cells[i];
-    if (!finitePoint(site) || cell.vertices.size() < 3) {
-      return failure(
-          "Every primitive requires a finite site and a complete Voronoi cell.");
+    if (!finitePoint(site)) {
+      return failure("Every retained site must contain finite coordinates.");
     }
-    if (!std::all_of(cell.vertices.begin(), cell.vertices.end(), finitePoint)) {
-      return failure("Voronoi cell vertices must be finite.");
+    if (!uniqueSites.emplace(site.x, site.y).second) {
+      return failure(
+          "Retained sites collide after coordinate quantization; increase spacing or change the seed.");
+    }
+    if (!validCell(cell, site)) {
+      return failure(
+          "A retained site has a malformed, non-convex, or mismatched Voronoi cell.");
     }
 
     auto type = types[choiceRandom.bounded(static_cast<uint32_t>(types.size()))];
@@ -281,16 +319,13 @@ void PrimitiveFieldPreview::requestOpen() {
   cancelGeneration();
   open = true;
   openRequested = true;
-  minimumSpacing = 128.0f;
-  maximumSites = 2000;
-  seed = 0;
-  lloydIterations = 5;
-  overlapPercent = 10.0f;
-  enabledTypes = {};
+  // Controls intentionally retain their process-local values. Preview value
+  // data belongs to one modal/document lifetime and never survives reopening.
   layout.reset();
   primitives.clear();
   mGeneratedIdentity.reset();
   mLayoutCurrent = false;
+  state = PrimitiveFieldWorkflowState::Idle;
   error.clear();
 }
 
@@ -302,12 +337,16 @@ void PrimitiveFieldPreview::close() {
   primitives.clear();
   mGeneratedIdentity.reset();
   mLayoutCurrent = false;
+  state = PrimitiveFieldWorkflowState::Idle;
   error.clear();
 }
 
 void PrimitiveFieldPreview::invalidateLayout() {
   mLayoutCurrent = false;
-  error.clear();
+  state = layout ? PrimitiveFieldWorkflowState::StalePreview
+                 : PrimitiveFieldWorkflowState::Idle;
+  error = layout ? "Layout inputs changed. Generate Layout again."
+                 : std::string{};
   if (mGeneration->worker.joinable()) {
     mGeneration->worker.request_stop();
   }
@@ -317,7 +356,9 @@ void PrimitiveFieldPreview::refreshPrimitives() {
   if (!layout) {
     primitives.clear();
     error = enabledTypes.any() ? std::string{}
-                               : "At least one primitive type must be enabled.";
+                               : "Enable at least one primitive type.";
+    state = error.empty() ? PrimitiveFieldWorkflowState::Idle
+                          : PrimitiveFieldWorkflowState::Failed;
     return;
   }
 
@@ -325,27 +366,75 @@ void PrimitiveFieldPreview::refreshPrimitives() {
       *layout, enabledTypes, overlapPercent, static_cast<int32_t>(seed));
   if (!result.succeeded()) {
     error = std::move(result.error);
+    state = PrimitiveFieldWorkflowState::Failed;
     return;
   }
   primitives = std::move(*result.primitives);
-  error.clear();
+  state = mLayoutCurrent ? PrimitiveFieldWorkflowState::CurrentPreview
+                         : PrimitiveFieldWorkflowState::StalePreview;
+  error = mLayoutCurrent ? std::string{}
+                         : "Layout inputs changed. Generate Layout again.";
+}
+
+PrimitiveFieldControlEvaluation PrimitiveFieldPreview::evaluateControls(
+    bw::core::PrimitiveFieldExtents const& worldExtents,
+    uint32_t existingPrimitiveCount) const {
+  PrimitiveFieldControlEvaluation evaluation;
+  evaluation.remainingWorldCapacity =
+      existingPrimitiveCount >= BW_WORLD_PRIMITIVE_COUNT_MAX
+          ? 0
+          : static_cast<uint32_t>(BW_WORLD_PRIMITIVE_COUNT_MAX) -
+                existingPrimitiveCount;
+  evaluation.effectivePlacementCap = effectivePrimitiveFieldMaximum(
+      maximumSites, existingPrimitiveCount);
+
+  if (!enabledTypes.any()) {
+    evaluation.error = "Enable at least one primitive type.";
+    return evaluation;
+  }
+  if (!std::isfinite(overlapPercent) || overlapPercent < 0.0f ||
+      overlapPercent > 100.0f) {
+    evaluation.error = "Overlap must be finite and between 0 and 100 percent.";
+    return evaluation;
+  }
+  if (maximumSites < 1 || maximumSites > BW_WORLD_PRIMITIVE_COUNT_MAX) {
+    evaluation.error = "Requested maximum must be between 1 and the engine limit.";
+    return evaluation;
+  }
+  if (lloydIterations < 0 || lloydIterations > 20) {
+    evaluation.error = "Lloyd iterations must be between 0 and 20.";
+    return evaluation;
+  }
+  auto estimate = bw::core::estimatePrimitiveFieldSiteCount(
+      worldExtents, minimumSpacing);
+  if (!estimate.succeeded()) {
+    evaluation.error = std::move(estimate.error);
+    return evaluation;
+  }
+  evaluation.approximateUncappedSites = *estimate.uncappedSiteCount;
+  if (evaluation.remainingWorldCapacity == 0) {
+    evaluation.error =
+        "No world capacity remains. Delete primitives before generating a field.";
+  }
+  return evaluation;
 }
 
 void PrimitiveFieldPreview::generate(
     bw::core::PrimitiveFieldExtents const& worldExtents,
     uint32_t existingPrimitiveCount) {
-  if (!enabledTypes.any()) {
-    error = "At least one primitive type must be enabled.";
+  auto controls = evaluateControls(worldExtents, existingPrimitiveCount);
+  if (!controls.valid()) {
+    error = std::move(controls.error);
+    state = controls.remainingWorldCapacity == 0
+                ? PrimitiveFieldWorkflowState::NoCapacity
+                : PrimitiveFieldWorkflowState::Failed;
     return;
   }
   auto identity = currentIdentity(worldExtents, existingPrimitiveCount);
-  if (identity.effectiveMaximumSites == 0) {
-    error = "The world has no remaining primitive capacity.";
-    return;
-  }
 
   cancelGeneration();
   mLayoutCurrent = mGeneratedIdentity && *mGeneratedIdentity == identity;
+  state = PrimitiveFieldWorkflowState::Generating;
   error.clear();
 
   auto shared = std::make_shared<PrimitiveFieldGenerationState::Shared>();
@@ -375,6 +464,7 @@ void PrimitiveFieldPreview::generate(
         });
   } catch (std::exception const& exception) {
     mGeneration->shared.reset();
+    state = PrimitiveFieldWorkflowState::Failed;
     error = std::string("Could not start layout generation: ") + exception.what();
   }
 }
@@ -382,8 +472,19 @@ void PrimitiveFieldPreview::generate(
 void PrimitiveFieldPreview::poll(
     bw::core::PrimitiveFieldExtents const& worldExtents,
     uint32_t existingPrimitiveCount) {
+  auto controls = evaluateControls(worldExtents, existingPrimitiveCount);
   auto identity = currentIdentity(worldExtents, existingPrimitiveCount);
   mLayoutCurrent = mGeneratedIdentity && *mGeneratedIdentity == identity;
+  if (controls.remainingWorldCapacity == 0) {
+    state = PrimitiveFieldWorkflowState::NoCapacity;
+    error = std::move(controls.error);
+  } else if (!mGeneration->shared && state != PrimitiveFieldWorkflowState::Failed &&
+             state != PrimitiveFieldWorkflowState::Cancelled &&
+             state != PrimitiveFieldWorkflowState::Placing) {
+    state = mLayoutCurrent ? PrimitiveFieldWorkflowState::CurrentPreview
+                           : (layout ? PrimitiveFieldWorkflowState::StalePreview
+                                     : PrimitiveFieldWorkflowState::Idle);
+  }
 
   auto shared = mGeneration->shared;
   if (!shared) {
@@ -411,6 +512,7 @@ void PrimitiveFieldPreview::poll(
     return;
   }
   if (!result->succeeded()) {
+    state = PrimitiveFieldWorkflowState::Failed;
     error = result->error.empty()
                 ? "Layout generation failed without an error message."
                 : std::move(result->error);
@@ -421,6 +523,7 @@ void PrimitiveFieldPreview::poll(
       *result->layout, enabledTypes, overlapPercent,
       static_cast<int32_t>(identity.seed));
   if (!primitiveResult.succeeded()) {
+    state = PrimitiveFieldWorkflowState::Failed;
     error = std::move(primitiveResult.error);
     return;
   }
@@ -429,16 +532,37 @@ void PrimitiveFieldPreview::poll(
   primitives = std::move(*primitiveResult.primitives);
   mGeneratedIdentity = identity;
   mLayoutCurrent = true;
+  state = PrimitiveFieldWorkflowState::CurrentPreview;
   error.clear();
 }
 
 void PrimitiveFieldPreview::cancelGeneration() {
+  auto wasGenerating = isGenerating();
   if (mGeneration->worker.joinable()) {
     mGeneration->worker.request_stop();
     mGeneration->worker.join();
   }
   mGeneration->shared.reset();
   mGeneration->currentRequestId = 0;
+  if (wasGenerating && open) {
+    state = PrimitiveFieldWorkflowState::Cancelled;
+    error = "Layout generation cancelled; the previous preview was preserved.";
+  }
+}
+
+void PrimitiveFieldPreview::beginPlacement() {
+  state = PrimitiveFieldWorkflowState::Placing;
+  error.clear();
+}
+
+void PrimitiveFieldPreview::finishPlacement(bool succeeded, std::string failure) {
+  if (succeeded) {
+    state = PrimitiveFieldWorkflowState::CurrentPreview;
+    error.clear();
+  } else {
+    state = PrimitiveFieldWorkflowState::Failed;
+    error = failure.empty() ? "Primitive placement failed." : std::move(failure);
+  }
 }
 
 bool PrimitiveFieldPreview::isGenerating() const {

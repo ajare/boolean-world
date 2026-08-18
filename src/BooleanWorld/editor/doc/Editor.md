@@ -4,6 +4,31 @@ The editor uses a "ghost" or "preview" primitive, in order to help create new pr
 in the viewport.  You can then either hit "Create" in the Create Primitive panel, hit C to create a primitive from it, or Ctrl+C to clone it (with the ghost selected).
 
 The ghost can be selected in the Clip Order view but cannot be manipulated in it: all manipulation must be in the Create Primitive view or directly in the viewport.
+
+## Primitive fields
+Choose **Edit > Generate Primitive Field…** to author a reproducible batch of
+fitted primitives. Set minimum site spacing, seed, Lloyd relaxation iterations,
+requested batch maximum, overlap, and the eligible primitive types. The live
+approximate count is uncapped and requires no Poisson/Voronoi generation; use it
+and the warning above 2,000 to judge request cost. Circle fields use resolution
+`0.5`.
+
+This is a two-stage workflow: **Generate Layout** creates only an editor preview
+(sites, clipped cell edges, and translucent fitted primitive outlines), then
+**Place Primitives** appends that exact centre-outward ordered batch as one
+undoable action. The effective cap is the smaller of the requested maximum and
+the remaining engine capacity; existing authored primitives and the ghost
+consume that capacity. The dialog reports when sampling was capped. Delete
+primitives before generating when no capacity remains.
+
+Spacing, seed, Lloyd iterations, maximum, overlap, and enabled types remain at
+their last-used values only for the current editor process. A fixed seed and the
+same controls/world extents reproduce the same preview. Layout inputs require
+generation again; changing overlap or enabled types refits the retained cells
+without rerunning layout generation. Closing the dialog or replacing the world
+discards all preview geometry, which is never saved or included in world
+generation.
+
 ## Keyboard shortcuts
 | Modifier | Key/Mouse     | Action                               |
 | -------- | ------------- | ------------------------------------ |

@@ -65,11 +65,14 @@ void validatePreview(
   }
 
   auto const tolerance = bw::core::PrimitiveFieldNumericTolerance;
+  std::set<std::pair<float, float>> uniqueSites;
   for (size_t i = 0; i < primitives.size(); ++i) {
     auto const& site = layout.sites[i];
     auto const& cell = layout.cells[i];
     auto const& primitive = primitives[i];
-    if (!finitePoint(site) || cell.vertices.size() < 3 ||
+    if (!finitePoint(site) ||
+        !uniqueSites.emplace(site.x, site.y).second ||
+        cell.vertices.size() < 3 ||
         primitive.position != site || !std::isfinite(primitive.size) ||
         primitive.size <= 0.0f || !std::isfinite(primitive.angle) ||
         primitive.angle < 0.0f || primitive.angle >= 360.0f ||
@@ -79,14 +82,31 @@ void validatePreview(
       throw std::runtime_error("A primitive preview is incomplete or invalid.");
     }
 
-    for (auto const& vertex : cell.vertices) {
-      if (!finitePoint(vertex)) {
-        throw std::runtime_error("A Voronoi cell contains a non-finite vertex.");
+    float cellTwiceArea = 0.0f;
+    for (size_t vertexIndex = 0; vertexIndex < cell.vertices.size();
+         ++vertexIndex) {
+      auto const& previous = cell.vertices[(vertexIndex + cell.vertices.size() - 1) % cell.vertices.size()];
+      auto const& vertex = cell.vertices[vertexIndex];
+      auto const& next =
+          cell.vertices[(vertexIndex + 1) % cell.vertices.size()];
+      if (!finitePoint(vertex) || vertex == next) {
+        throw std::runtime_error(
+            "A Voronoi cell contains an invalid or duplicate vertex.");
+      }
+      cellTwiceArea += cross(vertex, next);
+      if (cross(vertex - previous, next - vertex) <= 0.0f) {
+        throw std::runtime_error(
+            "A Voronoi cell is degenerate or not strictly convex.");
       }
       if (!contourContains(primitive.contour, vertex, tolerance)) {
         throw std::runtime_error(
             "A fitted primitive does not contain its complete Voronoi cell.");
       }
+    }
+    if (!std::isfinite(cellTwiceArea) || cellTwiceArea <= tolerance ||
+        !contourContains(cell.vertices, site, tolerance)) {
+      throw std::runtime_error(
+          "A Voronoi cell is malformed or does not contain its retained site.");
     }
   }
 }

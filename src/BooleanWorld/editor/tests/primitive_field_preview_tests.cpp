@@ -85,9 +85,8 @@ editor::PrimitiveFieldTypeSelection only(editor::PrimitiveFieldType type) {
   return selection;
 }
 
-void opensWithAllTypeDefaultsAndRefreshesWithoutRegeneratingLayout() {
+void opensWithAllTypeDefaultsRetainsControlsAndRefreshesWithoutRegeneratingLayout() {
   editor::PrimitiveFieldPreview preview;
-  preview.enabledTypes = only(editor::PrimitiveFieldType::Rectangle);
   preview.requestOpen();
   require(preview.enabledTypes.rectangle && preview.enabledTypes.triangle &&
               preview.enabledTypes.pentagon && preview.enabledTypes.hexagon &&
@@ -118,11 +117,21 @@ void opensWithAllTypeDefaultsAndRefreshesWithoutRegeneratingLayout() {
 
   preview.invalidateLayout();
   require(preview.layout && !preview.primitives.empty() &&
-              !preview.hasCompletePreview() && preview.error.empty(),
-          "layout invalidation did not retain stale preview value data");
+              !preview.hasCompletePreview() && !preview.error.empty() &&
+              preview.state == editor::PrimitiveFieldWorkflowState::StalePreview,
+          "layout invalidation did not retain and identify stale preview data");
+  preview.overlapPercent = 17.0f;
+  preview.lloydIterations = 4;
   preview.close();
   require(!preview.open && preview.primitives.empty(),
           "closing retained editor overlay geometry");
+  preview.requestOpen();
+  require(preview.minimumSpacing == 64.0f && preview.maximumSites == 5 &&
+              preview.seed == 11 && preview.lloydIterations == 4 &&
+              preview.overlapPercent == 17.0f &&
+              preview.enabledTypes.triangle &&
+              !preview.enabledTypes.rectangle,
+          "process-local generator controls did not retain last-used values");
 }
 
 void deterministicChoicesAnglesAndMixedSubsets() {
@@ -285,6 +294,41 @@ void coordinatesStaleSupersededCancelledAndFailedRequests() {
           "closing the modal retained worker or preview lifetime");
 }
 
+void estimatesCountsReportsCapsAndRejectsMalformedLayouts() {
+  editor::PrimitiveFieldPreview preview;
+  preview.requestOpen();
+  auto extents = bw::core::PrimitiveFieldExtents{
+      {-4096.0f, -4096.0f}, {4096.0f, 4096.0f}};
+  auto controls = preview.evaluateControls(extents, 1);
+  require(controls.valid() && controls.approximateUncappedSites > 2000 &&
+              controls.remainingWorldCapacity ==
+                  BW_WORLD_PRIMITIVE_COUNT_MAX - 1 &&
+              controls.effectivePlacementCap == 2000,
+          "live uncapped estimate or distinct capacity counts were incorrect");
+
+  preview.maximumSites = 2;
+  preview.minimumSpacing = 64.0f;
+  preview.lloydIterations = 0;
+  preview.generate({{-128.0f, -128.0f}, {128.0f, 128.0f}}, 1);
+  waitForGeneration(preview, {{-128.0f, -128.0f}, {128.0f, 128.0f}}, 1);
+  require(preview.hasCompletePreview() &&
+              preview.layout->samplingStoppedAtMaximum &&
+              preview.layout->sites.size() == 2,
+          "sampling did not report stopping at its effective cap");
+
+  auto duplicate = representativeLayout();
+  duplicate.sites[1] = duplicate.sites[0];
+  require(!editor::buildPrimitiveFieldPreview(duplicate, {}, 10.0f, 0)
+               .succeeded(),
+          "duplicate retained sites were silently accepted");
+  auto malformed = representativeLayout();
+  std::swap(malformed.cells[0].vertices[1],
+            malformed.cells[0].vertices[2]);
+  require(!editor::buildPrimitiveFieldPreview(malformed, {}, 10.0f, 0)
+               .succeeded(),
+          "a malformed retained cell was silently accepted");
+}
+
 void invalidSelectionsOverlapAndCapacityAreRejected() {
   auto layout = representativeLayout();
   editor::PrimitiveFieldTypeSelection none{
@@ -304,17 +348,35 @@ void invalidSelectionsOverlapAndCapacityAreRejected() {
               editor::effectivePrimitiveFieldMaximum(
                   2000, BW_WORLD_PRIMITIVE_COUNT_MAX) == 0,
           "effective capacity did not account for existing primitives");
+
+  editor::PrimitiveFieldPreview preview;
+  preview.requestOpen();
+  auto extents = bw::core::PrimitiveFieldExtents{{-64.0f, -64.0f},
+                                                 {64.0f, 64.0f}};
+  auto exhausted = preview.evaluateControls(
+      extents, BW_WORLD_PRIMITIVE_COUNT_MAX);
+  require(!exhausted.valid() && exhausted.remainingWorldCapacity == 0 &&
+              exhausted.effectivePlacementCap == 0,
+          "exhausted capacity was accepted without actionable evaluation");
+  preview.minimumSpacing = std::numeric_limits<float>::infinity();
+  require(!preview.evaluateControls(extents, 1).valid(),
+          "non-finite spacing passed pre-dispatch validation");
+  preview.minimumSpacing = 64.0f;
+  preview.maximumSites = BW_WORLD_PRIMITIVE_COUNT_MAX + 1;
+  require(!preview.evaluateControls(extents, 1).valid(),
+          "out-of-range maximum passed pre-dispatch validation");
 }
 
 }  // namespace
 
 int main() {
   try {
-    opensWithAllTypeDefaultsAndRefreshesWithoutRegeneratingLayout();
+    opensWithAllTypeDefaultsRetainsControlsAndRefreshesWithoutRegeneratingLayout();
     deterministicChoicesAnglesAndMixedSubsets();
     everyEligibleTypeFitsAtGeneratedAnglesAndAppliesOverlap();
     completeGenerationIdentityIncludesEveryLayoutInput();
     coordinatesStaleSupersededCancelledAndFailedRequests();
+    estimatesCountsReportsCapsAndRejectsMalformedLayouts();
     invalidSelectionsOverlapAndCapacityAreRejected();
     std::cout << "Primitive-field preview state tests passed\n";
     return 0;
