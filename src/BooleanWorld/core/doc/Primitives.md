@@ -44,9 +44,11 @@ A finite value in [0.01, 360] giving the number of degrees the segment spans, ce
 #### X/Y ratio
 A finite width-to-height ratio in [1, 10].
 ### SuperformulaPolygon
-An implementation of the [Superformula](https://en.wikipedia.org/wiki/Superformula).  This takes 6 parameters, and produces different shapes.
+An implementation of the [Superformula](https://en.wikipedia.org/wiki/Superformula). This takes 6 parameters and produces different shapes.
+#### Resolution
+A finite positive value controlling contour sampling density, bounded at approximately 2.55 so the contour cannot exceed 1024 vertices.
 #### Values
-A list of 6  float parameters to define the Superformula.
+Exactly 6 finite float parameters (`a`, `b`, `m`, `n1`, `n2`, and `n3`) define the superformula. The denominators `a` and `b` and the exponents `n1`, `n2`, and `n3` must be positive.
 ### Torus
 A torus/doughnut shape, with variable resolution and thickness.
 #### Resolution

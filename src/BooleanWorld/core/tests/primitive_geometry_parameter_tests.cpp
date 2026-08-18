@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <format>
 #include <iostream>
@@ -12,6 +13,7 @@
 #include <core/CoreException.h>
 #include <core/RectanglePolygon.h>
 #include <core/RegularPolygon.h>
+#include <core/SuperformulaPolygon.h>
 #include <core/TorusPolygon.h>
 #include <core/TorusSegmentPolygon.h>
 #include <core/World.h>
@@ -25,6 +27,7 @@ using bw::core::Primitive;
 using bw::core::RectanglePolygon;
 using bw::core::RegularPolygon;
 using bw::core::SerializationWorkData;
+using bw::core::SuperformulaPolygon;
 using bw::core::TorusPolygon;
 using bw::core::TorusSegmentPolygon;
 using bw::core::World;
@@ -210,6 +213,45 @@ void torusSegmentValidatesConstructorsAndSetters() {
           "failed torus segment setter changed authored geometry");
 }
 
+void superformulaValidatesConstructorsAndSetters() {
+  float values[] = {1.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  SuperformulaPolygon superformula(Union, NonZero, 0.5f, values);
+
+  for (float invalid : {0.0f, -1.0f, 3.0f,
+                        std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::quiet_NaN()}) {
+    requireDomainError(
+        [&] { SuperformulaPolygon candidate(Union, NonZero, invalid, values); },
+        "superformula constructor accepted an invalid resolution");
+    requireDomainError([&] { superformula.setResolution(invalid); },
+                       "superformula setter accepted an invalid resolution");
+  }
+
+  for (uint32_t index : {0u, 1u, 3u, 4u, 5u}) {
+    float invalidValues[6];
+    std::copy_n(values, 6, invalidValues);
+    invalidValues[index] = 0.0f;
+    requireDomainError(
+        [&] { SuperformulaPolygon candidate(Union, NonZero, 0.5f, invalidValues); },
+        "superformula constructor accepted a zero denominator or exponent");
+    requireDomainError([&] { superformula.setValue(index, -1.0f); },
+                       "superformula setter accepted a negative denominator or exponent");
+  }
+
+  for (uint32_t index = 0; index < 6; ++index) {
+    requireDomainError(
+        [&] { superformula.setValue(index, std::numeric_limits<float>::quiet_NaN()); },
+        "superformula setter accepted a non-finite control value");
+  }
+
+  float overflowingValues[] = {1.0e20f, 1.0e20f, 2.0f, 0.1f, 10.0f, 10.0f};
+  requireDomainError(
+      [&] { SuperformulaPolygon candidate(Union, NonZero, 0.5f, overflowingValues); },
+      "superformula accepted parameters that generate non-finite vertices");
+  require(superformula.getResolution() == 0.5f && superformula.getValue(0) == 1.0f,
+          "failed superformula setter changed authored geometry");
+}
+
 void rectangleValidatesConstructorsAndSetters() {
   RectanglePolygon minimum(Union, NonZero, 1.0f);
   RectanglePolygon maximum(Union, NonZero, 10.0f);
@@ -247,6 +289,18 @@ std::string replaceScalar(std::string yaml, std::string const& key,
   auto const valueStart = position + marker.size();
   auto const valueEnd = yaml.find('\n', valueStart);
   yaml.replace(valueStart, valueEnd - valueStart, value);
+  return yaml;
+}
+
+std::string replaceFlowSequence(std::string yaml, std::string const& key,
+                                std::string const& sequence) {
+  std::string const marker = key + ": [";
+  auto const position = yaml.rfind(marker);
+  require(position != std::string::npos,
+          std::format("serialized primitive did not contain {}", key));
+  auto const valueStart = position + key.size() + 2;
+  auto const valueEnd = yaml.find(']', valueStart);
+  yaml.replace(valueStart, valueEnd - valueStart + 1, sequence);
   return yaml;
 }
 
@@ -317,6 +371,47 @@ void malformedFilesRejectEveryAffectedPrimitive() {
                         Union, NonZero, 0.5f, 90.0f, 1.0f)),
                     "numSides", "0"),
       "Torus segment resolution does not match its side count");
+
+  float values[] = {1.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  auto const superformulaYaml = serializeWorld(std::make_unique<SuperformulaPolygon>(
+      Union, NonZero, 0.5f, values));
+  for (auto const* invalidResolution : {"0", "-1", ".inf", ".nan"}) {
+    requireMalformedWorldRejected(
+        replaceScalar(superformulaYaml, "resolution", invalidResolution),
+        "Superformula resolution");
+  }
+  requireMalformedWorldRejected(
+      replaceFlowSequence(superformulaYaml, "values", "[1, 1, 2, 3, 4]"),
+      "Exactly 6 control values");
+  requireMalformedWorldRejected(
+      replaceFlowSequence(superformulaYaml, "values", "[1, 1, 2, 3, 4, 5, 6]"),
+      "Exactly 6 control values");
+  requireMalformedWorldRejected(
+      replaceFlowSequence(superformulaYaml, "values", "[1, 1, .nan, 3, 4, 5]"),
+      "control values must be finite");
+}
+
+void superformulaRoundTrips() {
+  float values[] = {1.25f, 1.5f, 2.0f, 3.0f, 4.0f, 5.0f};
+  auto const yaml = serializeWorld(std::make_unique<SuperformulaPolygon>(
+      Union, NonZero, 0.5f, values));
+  auto reader = std::shared_ptr<bw::core::Serializer>(
+      bw::core::YamlSerializer::fromString(yaml));
+  reader->deserialize();
+
+  World target(100.0f, 10.0f);
+  SerializationWorkData workData{10.0f};
+  require(target.deserialize(reader, workData),
+          "valid superformula did not deserialize");
+  require(target.getNumPrimitives() == 1,
+          "valid superformula round-trip lost its primitive");
+  auto const* restored = dynamic_cast<SuperformulaPolygon const*>(target.getPrimitive(0));
+  require(restored != nullptr && restored->getResolution() == 0.5f,
+          "valid superformula round-trip lost its resolution");
+  for (uint32_t index = 0; index < 6; ++index) {
+    require(restored->getValue(index) == values[index],
+            "valid superformula round-trip lost a control value");
+  }
 }
 
 }  // namespace
@@ -328,8 +423,10 @@ int main() {
     circleSegmentValidatesConstructorsAndSetters();
     torusValidatesConstructorsAndSetters();
     torusSegmentValidatesConstructorsAndSetters();
+    superformulaValidatesConstructorsAndSetters();
     rectangleValidatesConstructorsAndSetters();
     malformedFilesRejectEveryAffectedPrimitive();
+    superformulaRoundTrips();
     std::cout << "Primitive geometry parameters are validated consistently\n";
     return 0;
   } catch (std::exception const& error) {

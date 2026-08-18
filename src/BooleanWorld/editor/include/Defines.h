@@ -23,6 +23,7 @@
 #define ED_MIN_RECTANGLE_XYRATIO 1.0f
 #define ED_MAX_RECTANGLE_XYRATIO 10.0f
 
+#define ED_MIN_SUPERFORMULA_RESOLUTION 0.01f
 #define ED_MIN_SUPERFORMULA_A 1.0f  // Cannot be lower than 1, otherwise SuperformulaPrimitive::getRadius() breaks
 #define ED_MAX_SUPERFORMULA_A 2.0f
 #define ED_MIN_SUPERFORMULA_B 1.0f  // Cannot be lower than 1, otherwise SuperformulaPrimitive::getRadius() breaks

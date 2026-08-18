@@ -1,7 +1,11 @@
+#include <algorithm>
+#include <array>
 #include <cmath>
 
 #include <willpower/common/Globals.h>
 
+#include "core/CoreException.h"
+#include "core/Defines.h"
 #include "core/SuperformulaPolygon.h"
 #include "core/SerializationException.h"
 
@@ -10,16 +14,82 @@ namespace core {
 
 using namespace std;
 
+namespace {
+
+constexpr size_t ControlValueCount = 6;
+constexpr uint32_t SamplingBaseResolution = 64;
+constexpr float MaximumResolution =
+    BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX /
+    (SamplingBaseResolution * static_cast<float>(WP_TWOPI));
+
+float validateResolution(float resolution) {
+  if (!isfinite(resolution) || resolution <= 0.0f || resolution > MaximumResolution) {
+    throw CoreException(
+        "Superformula resolution must be finite, positive, and within the contour vertex limit");
+  }
+  return resolution;
+}
+
+void validateControlValues(array<float, ControlValueCount> const& values) {
+  for (auto value : values) {
+    if (!isfinite(value)) {
+      throw CoreException("Superformula control values must be finite");
+    }
+  }
+
+  if (values[0] <= 0.0f || values[1] <= 0.0f) {
+    throw CoreException("Superformula denominators a and b must be positive");
+  }
+  if (values[3] <= 0.0f || values[4] <= 0.0f || values[5] <= 0.0f) {
+    throw CoreException("Superformula exponents n1, n2, and n3 must be positive");
+  }
+}
+
+array<float, ControlValueCount> copyControlValues(float const* values) {
+  array<float, ControlValueCount> result;
+  copy_n(values, ControlValueCount, result.begin());
+  return result;
+}
+
+float formulaRadius(float theta, array<float, ControlValueCount> const& values) {
+  return static_cast<float>(pow(
+      pow(abs(cos(values[2] * theta / 4.0) / values[0]), values[4]) +
+          pow(abs(sin(values[2] * theta / 4.0) / values[1]), values[5]),
+      -1.0 / values[3]));
+}
+
+vector<ComplexPolygon> generateSuperformulaVertices(
+    float resolution, array<float, ControlValueCount> const& values) {
+  validateResolution(resolution);
+  validateControlValues(values);
+
+  ClosedPolygon vertices;
+  float const increment = 1.0f / (SamplingBaseResolution * resolution);
+  for (float angle = 0.0f; angle < WP_TWOPI; angle += increment) {
+    float const radius = formulaRadius(angle, values);
+    wp::Vector2 const vertex{radius * cosf(angle), radius * sinf(angle)};
+    if (!isfinite(vertex.x) || !isfinite(vertex.y)) {
+      throw CoreException("Superformula generated a non-finite vertex");
+    }
+    if (vertices.size() >= BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX) {
+      throw CoreException("Superformula resolution exceeds the contour vertex limit");
+    }
+    vertices.push_back({vertex});
+  }
+  return {{vertices}};
+}
+
+}  // namespace
+
 SuperformulaPolygon::SuperformulaPolygon()
     : Primitive(), mResolution(1.0f), mValues() {
 }
 
 SuperformulaPolygon::SuperformulaPolygon(Operation operation, FillRule fillType, float resolution, float values[6])
-    : Primitive(operation, fillType), mResolution(resolution) {
-  for (int i = 0; i < 6; ++i) {
-    mValues[i] = values[i];
-  }
-
+    : Primitive(operation, fillType), mResolution(validateResolution(resolution)) {
+  auto const validatedValues = copyControlValues(values);
+  validateControlValues(validatedValues);
+  std::copy(validatedValues.begin(), validatedValues.end(), mValues);
   generateVertices();
 }
 
@@ -70,26 +140,31 @@ bool SuperformulaPolygon::deserializeImpl(std::shared_ptr<Serializer> serializer
   }
 
   float resolution;
-  float values[6];
+  array<float, ControlValueCount> values{};
 
   try {
     serializer->beginMap("superformulaPolygon");
     {
-      resolution = serializer->readFloat("resolution");
+      resolution = validateResolution(serializer->readFloat("resolution"));
 
       serializer->beginArray("values");
       {
-        int i = 0;
+        size_t count = 0;
         while (serializer->nextArrayItem()) {
-          if (i >= 6) {
-            throw SerializationException("More than 6 control values found for Superformula primitive.");
+          if (count >= ControlValueCount) {
+            throw SerializationException("Exactly 6 control values are required for Superformula primitive");
           }
-
-          values[i++] = serializer->readFloat();
+          values[count++] = serializer->readFloat();
+        }
+        if (count != ControlValueCount) {
+          throw SerializationException("Exactly 6 control values are required for Superformula primitive");
         }
 
         serializer->endArray();
       }
+
+      validateControlValues(values);
+      generateSuperformulaVertices(resolution, values);
 
       serializer->endMap();  // superformulaPolygon
     }
@@ -101,10 +176,7 @@ bool SuperformulaPolygon::deserializeImpl(std::shared_ptr<Serializer> serializer
 
   // Commit
   mResolution = resolution;
-
-  for (int i = 0; i < 6; ++i) {
-    mValues[i] = values[i];
-  }
+  std::copy(values.begin(), values.end(), mValues);
 
   return true;
 }
@@ -124,10 +196,7 @@ float SuperformulaPolygon::getRadius() const {
 }
 
 float SuperformulaPolygon::r(float theta) const {
-  return (float)pow(
-      pow(abs(cos(mValues[2] * theta / 4.0) / mValues[0]), mValues[4]) +
-          pow(abs(sin(mValues[2] * theta / 4.0) / mValues[1]), mValues[5]),
-      -1.0 / mValues[3]);
+  return formulaRadius(theta, copyControlValues(mValues));
 }
 
 wp::Vector2 SuperformulaPolygon::calculate(float theta) const {
@@ -148,8 +217,11 @@ string SuperformulaPolygon::getType() const {
 }
 
 void SuperformulaPolygon::setResolution(float resolution) {
-  mResolution = resolution;
-  generateVertices();
+  auto const validatedResolution = validateResolution(resolution);
+  auto const vertices = generateSuperformulaVertices(
+      validatedResolution, copyControlValues(mValues));
+  mResolution = validatedResolution;
+  setVertices(vertices);
 }
 
 float SuperformulaPolygon::getResolution() const {
@@ -157,8 +229,15 @@ float SuperformulaPolygon::getResolution() const {
 }
 
 void SuperformulaPolygon::setValue(uint32_t index, float value) {
-  mValues[index] = value;
-  generateVertices();
+  if (index >= ControlValueCount) {
+    throw CoreException("Superformula control value index is out of range");
+  }
+
+  auto values = copyControlValues(mValues);
+  values[index] = value;
+  auto const vertices = generateSuperformulaVertices(mResolution, values);
+  std::copy(values.begin(), values.end(), mValues);
+  setVertices(vertices);
 }
 
 float SuperformulaPolygon::getValue(uint32_t index) const {
@@ -166,15 +245,7 @@ float SuperformulaPolygon::getValue(uint32_t index) const {
 }
 
 vector<ComplexPolygon> SuperformulaPolygon::generateVerticesImpl() {
-  ClosedPolygon vertices;
-
-  float inc = 1.0f / (BaseResolution * mResolution);
-
-  for (float a = 0.0f; a < WP_TWOPI; a += inc) {
-    vertices.push_back({calculate(a)});
-  }
-
-  return {{vertices}};
+  return generateSuperformulaVertices(mResolution, copyControlValues(mValues));
 }
 
 }  // namespace core

@@ -10,8 +10,6 @@ class BW_API SuperformulaPolygon : public Primitive {
   friend class World;  // Only World can call the default constructor (during deserialization)
 
 private:
-  static const uint32_t BaseResolution = 64;
-
   float mResolution;
 
   float mValues[6];

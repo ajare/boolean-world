@@ -872,7 +872,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateSuperformulaPolygon(edi
   ImGui::SetNextItemWidth(128);
 
   if (ImGui::InputFloat("Res##CreateSuperformula", &resolution, 0.01f, 0.1f)) {
-    resolution = clamp(resolution, 0.0f, 1.0f);
+    resolution = clamp(resolution, ED_MIN_SUPERFORMULA_RESOLUTION, 1.0f);
     modified = true;
   }
 
@@ -1457,7 +1457,7 @@ void renderEditSuperformulaPolygon(editor::Document* doc, bw::core::Primitive* p
   widgets::HelpMarker("This value determines the number of sides in the superformula polygon.");
   ImGui::SameLine();
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-    resolution = clamp(resolution, 0.0f, 1.0f);
+    resolution = clamp(resolution, ED_MIN_SUPERFORMULA_RESOLUTION, 1.0f);
 
     transactUndoableAction(doc, format("Set Superformula Resolution to {}", resolution), [sf, resolution](editor::Document* doc) {
       sf->setResolution(resolution);
