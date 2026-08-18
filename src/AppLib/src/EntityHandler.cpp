@@ -66,9 +66,7 @@ void EntityHandler::setup(Entity* entity, int type, wp::Vector2 const& position,
   auto protoId = protoIt->second;
   entity->mCompSysId = mComponentRegistry.create();
 
-  for (auto [id, storage] : mComponentRegistry.storage()) {
-    storage.push(entity->mCompSysId, storage.value(protoId));
-  }
+  copyEntityComponents(protoId, entity->mCompSysId);
 
   if (entityHasComponent<PhysicalStats>(*entity)) {
     auto& physicalStats = getEntityComponent<PhysicalStats>(*entity);
