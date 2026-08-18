@@ -60,17 +60,26 @@ static bool ApplyOperation(
   return accumulated;
 }
 
-bool EvaluateFold(vector<ArrangementPrimitive> const& primitives, Membership const& membership) {
-  vector<size_t> priorityOrder(primitives.size());
-  for (size_t i = 0; i < priorityOrder.size(); ++i) {
-    priorityOrder[i] = i;
+PrimitiveFoldOrder BuildPrimitiveFoldOrder(
+    vector<ArrangementPrimitive> const& primitives) {
+  PrimitiveFoldOrder foldOrder(primitives.size());
+  for (uint32_t primitiveIndex = 0;
+       primitiveIndex < uint32_t(foldOrder.size()); ++primitiveIndex) {
+    foldOrder[primitiveIndex] = primitiveIndex;
   }
-  stable_sort(priorityOrder.begin(), priorityOrder.end(), [&](size_t lhs, size_t rhs) {
-    return primitives[lhs].priority < primitives[rhs].priority;
-  });
+  stable_sort(
+      foldOrder.begin(), foldOrder.end(), [&](uint32_t lhs, uint32_t rhs) {
+        return primitives[lhs].priority < primitives[rhs].priority;
+      });
+  return foldOrder;
+}
 
+bool EvaluateFold(
+    vector<ArrangementPrimitive> const& primitives,
+    Membership const& membership,
+    PrimitiveFoldOrder const& foldOrder) {
   bool inside = false;
-  for (auto primitiveIndex : priorityOrder) {
+  for (auto primitiveIndex : foldOrder) {
     inside = ApplyOperation(
         primitives[primitiveIndex].operation,
         inside,
@@ -893,6 +902,8 @@ vector<Face> BuildFaces(vector<PolygonNode> const& nodes) {
 ArrangementResultPtr BuildArrangement(
     vector<ArrangementPrimitive> const& primitives,
     ArrangementStats* stats) {
+  auto foldOrder = BuildPrimitiveFoldOrder(primitives);
+
   vector<ContourInput> contours;
   for (uint32_t primitiveIndex = 0;
        primitiveIndex < uint32_t(primitives.size()); ++primitiveIndex) {
@@ -1004,7 +1015,7 @@ ArrangementResultPtr BuildArrangement(
     }
     faces[faceIndex].membership = move(membership);
     faces[faceIndex].solid = EvaluateFold(
-        primitives, faces[faceIndex].membership);
+        primitives, faces[faceIndex].membership, foldOrder);
   }
 
   auto result = make_shared<ArrangementResult>();
@@ -1077,14 +1088,13 @@ ArrangementResultPtr BuildArrangement(
         winningPrimitive = runPrimitive;
       }
     };
-    for (int primitiveIndex = 0;
-         primitiveIndex < int(primitives.size()); ++primitiveIndex) {
+    for (auto primitiveIndex : foldOrder) {
       auto member = face.membership.contains(primitiveIndex);
       auto operation = primitives[primitiveIndex].operation;
       if (runPrimitive < 0 ||
           operation == bw::core::Primitive::Operation::Union) {
         finishRun();
-        runPrimitive = primitiveIndex;
+        runPrimitive = int(primitiveIndex);
         runSolid = member;
         continue;
       }
@@ -1095,13 +1105,12 @@ ArrangementResultPtr BuildArrangement(
     // solid face also needs that fallback when the run fold has no winner.
     if (!face.solid || winningPrimitive < 0) {
       winningPrimitive = -1;
-      for (int primitiveIndex = 0;
-           primitiveIndex < int(primitives.size()); ++primitiveIndex) {
+      for (auto primitiveIndex : foldOrder) {
         if (face.membership.contains(primitiveIndex) &&
             (winningPrimitive < 0 ||
              primitives[primitiveIndex].priority >
                  primitives[winningPrimitive].priority)) {
-          winningPrimitive = primitiveIndex;
+          winningPrimitive = int(primitiveIndex);
         }
       }
     }

@@ -59,12 +59,37 @@ void preservesRunBasedWinnerWhenOneExists() {
           "the fallback must not replace an existing run-based winner");
 }
 
+void usesOneStableOrderForUnsortedEqualPriorityFolds() {
+  std::vector<ArrangementPrimitive> primitives{
+      primitive(Primitive::Operation::Difference, 5, 61),
+      primitive(Primitive::Operation::XOR, 5, 62),
+      primitive(Primitive::Operation::Union, 1, 63)};
+  auto foldOrder = bw::core::arr::BuildPrimitiveFoldOrder(primitives);
+  require(foldOrder == std::vector<uint32_t>({2, 0, 1}),
+          "the fold order did not sort priorities while retaining equal-priority list order");
+
+  bw::core::arr::Membership membership(primitives.size());
+  for (size_t primitiveIndex = 0; primitiveIndex < primitives.size(); ++primitiveIndex) {
+    membership.set(primitiveIndex);
+  }
+  require(bw::core::arr::EvaluateFold(primitives, membership, foldOrder),
+          "the stable priority-ordered fold was not preserved");
+
+  auto arrangement = bw::core::arr::BuildArrangement(primitives);
+  auto const& face = arrangement->faces[1];
+  require(face.solid,
+          "the arrangement did not classify an unsorted equal-priority fold in stable order");
+  require(face.primitiveIndex == 63,
+          "winning-primitive resolution did not use the priority-ordered fold");
+}
+
 }  // namespace
 
 int main() {
   try {
     assignsHighestPriorityMemberWhenNoRunWins();
     preservesRunBasedWinnerWhenOneExists();
+    usesOneStableOrderForUnsortedEqualPriorityFolds();
     std::cout << "Solid arrangement faces always have a winning primitive\n";
     return 0;
   } catch (std::exception const& error) {

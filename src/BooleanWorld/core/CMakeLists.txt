@@ -101,6 +101,14 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_arrangement_broad_phase_benchmark)
     bw_deploy_runtime_dlls(boolean_world_arrangement_broad_phase_benchmark)
 
+    add_executable(boolean_world_arrangement_fold_order_benchmark
+        tests/arrangement_fold_order_benchmark.cpp)
+    target_link_libraries(boolean_world_arrangement_fold_order_benchmark PRIVATE core)
+    target_compile_features(boolean_world_arrangement_fold_order_benchmark PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_arrangement_fold_order_benchmark)
+    bw_output_dirs(boolean_world_arrangement_fold_order_benchmark)
+    bw_deploy_runtime_dlls(boolean_world_arrangement_fold_order_benchmark)
+
     add_executable(boolean_world_arrangement_broad_phase_tests
         tests/arrangement_broad_phase_tests.cpp)
     target_link_libraries(boolean_world_arrangement_broad_phase_tests PRIVATE core)

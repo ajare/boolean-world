@@ -173,10 +173,17 @@ struct ArrangementResult {
 };
 
 using ArrangementResultPtr = std::shared_ptr<ArrangementResult const>;
+using PrimitiveFoldOrder = std::vector<uint32_t>;
+
+// Orders primitive-list indices by ascending priority. stable_sort preserves
+// authored list order for equal priorities, as required by ADR-0001.
+[[nodiscard]] PrimitiveFoldOrder BuildPrimitiveFoldOrder(
+    std::vector<ArrangementPrimitive> const& primitives);
 
 [[nodiscard]] bool EvaluateFold(
     std::vector<ArrangementPrimitive> const& primitives,
-    Membership const& membership);
+    Membership const& membership,
+    PrimitiveFoldOrder const& foldOrder);
 
 [[nodiscard]] ArrangementResultPtr BuildArrangement(
     std::vector<ArrangementPrimitive> const& primitives,
