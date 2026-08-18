@@ -62,6 +62,28 @@ if(BUILD_TESTING)
     bw_deploy_vendor_dlls(launcher_program_options_tests)
     add_test(NAME launcher_program_options COMMAND launcher_program_options_tests)
 
+    add_executable(launcher_window_input_tests
+        tests/window_input_tests.cpp
+        src/StateManager.cpp
+        src/Window.cpp
+        src/sdl/ImGuiSDL.cpp
+        src/sdl/WindowSDL.cpp
+        src/imgui/imgui.cpp
+        src/imgui/imgui_draw.cpp
+        src/imgui/imgui_tables.cpp
+        src/imgui/imgui_widgets.cpp)
+    target_include_directories(launcher_window_input_tests PRIVATE include include/imgui)
+    target_link_libraries(launcher_window_input_tests PRIVATE
+        Willpower.Common Willpower.Application ext::mpp ext::Utils ext::sdl3)
+    target_compile_features(launcher_window_input_tests PRIVATE cxx_std_20)
+    target_compile_options(launcher_window_input_tests PRIVATE /W3)
+    bw_target_defaults(launcher_window_input_tests)
+    bw_output_dirs(launcher_window_input_tests)
+    bw_enable_sdl_checks(launcher_window_input_tests)
+    bw_deploy_runtime_dlls(launcher_window_input_tests)
+    bw_deploy_vendor_dlls(launcher_window_input_tests)
+    add_test(NAME launcher_window_input COMMAND launcher_window_input_tests)
+
     add_executable(launcher_zip_resource_location_tests
         tests/zip_resource_location_tests.cpp
         src/ZipResourceLocation.cpp)

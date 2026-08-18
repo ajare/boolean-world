@@ -28,8 +28,6 @@ class WindowSDL : public Window {
   // Input translation
   std::map<int, wp::application::Key> mKeyTranslator;
 
-  wp::application::MouseButton* mButtonTranslator;
-
 private:
   wp::application::KeyModifiers getKeyModifiers(uint16_t mod);
 

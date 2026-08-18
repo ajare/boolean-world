@@ -13,6 +13,24 @@ extern Logger* gLogger;
 
 extern bool gDisplayDebugEnabled;
 
+namespace {
+bool translateMouseButton(uint8_t button, application::MouseButton& mouseButton) {
+  switch (button) {
+    case SDL_BUTTON_LEFT:
+      mouseButton = application::MouseButton::Left;
+      return true;
+    case SDL_BUTTON_RIGHT:
+      mouseButton = application::MouseButton::Right;
+      return true;
+    case SDL_BUTTON_MIDDLE:
+      mouseButton = application::MouseButton::Middle;
+      return true;
+    default:
+      return false;
+  }
+}
+}  // namespace
+
 WindowSDL::WindowSDL(string const& title, ProgramOptions const& options)
     : Window(title, options), mWindow(nullptr), mContextGL(nullptr), mContentScale(1.0f), mActive(true), mStateMgr(nullptr), mVirtualMouseX(0.0f), mVirtualMouseY(0.0f) {
   mKeyTranslator[SDLK_ESCAPE] = application::Key::Escape;
@@ -118,18 +136,10 @@ WindowSDL::WindowSDL(string const& title, ProgramOptions const& options)
   mKeyTranslator[SDLK_PAGEDOWN] = application::Key::PageDown;
   mKeyTranslator[SDLK_INSERT] = application::Key::Insert;
   mKeyTranslator[SDLK_DELETE] = application::Key::Delete;
-
-  // Set up mouse
-  mButtonTranslator = new application::MouseButton[application::MouseButton::NUMBUTTONS];
-
-  mButtonTranslator[SDL_BUTTON_LEFT] = application::MouseButton::Left;
-  mButtonTranslator[SDL_BUTTON_RIGHT] = application::MouseButton::Right;
-  mButtonTranslator[SDL_BUTTON_MIDDLE] = application::MouseButton::Middle;
 }
 
 WindowSDL::~WindowSDL() {
   destroy();
-  delete[] mButtonTranslator;
 }
 
 SDL_Window* WindowSDL::getWindow() {
@@ -387,14 +397,14 @@ void WindowSDL::processEvents(StateManager* stateMgr) {
         break;
 
       case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        if ((int)evt.button.button < (int)application::MouseButton::NUMBUTTONS) {
-          stateMgr->injectMouseButtonInput(application::MouseButtonEvent::Pressed, mButtonTranslator[evt.button.button], getKeyModifiers(SDL_GetModState()));
+        if (application::MouseButton mouseButton; translateMouseButton(evt.button.button, mouseButton)) {
+          stateMgr->injectMouseButtonInput(application::MouseButtonEvent::Pressed, mouseButton, getKeyModifiers(SDL_GetModState()));
         }
         break;
 
       case SDL_EVENT_MOUSE_BUTTON_UP:
-        if ((int)evt.button.button < (int)application::MouseButton::NUMBUTTONS) {
-          stateMgr->injectMouseButtonInput(application::MouseButtonEvent::Released, mButtonTranslator[evt.button.button], getKeyModifiers(SDL_GetModState()));
+        if (application::MouseButton mouseButton; translateMouseButton(evt.button.button, mouseButton)) {
+          stateMgr->injectMouseButtonInput(application::MouseButtonEvent::Released, mouseButton, getKeyModifiers(SDL_GetModState()));
         }
         break;
 
