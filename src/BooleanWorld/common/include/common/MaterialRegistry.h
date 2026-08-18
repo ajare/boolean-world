@@ -12,7 +12,7 @@ using MaterialParameterDefinition = std::tuple<std::string_view, float, float, f
 
 // Material name, param count, base colour
 inline constexpr std::array<MaterialDefinition, BW_MATERIAL_COUNT> MaterialNames = {{{"Marble", 8, {0.18f, 0.18f, 0.20f}},
-                                                                           {"Stone", 3, {0.25f, 0.24f, 0.22f}}}};
+                                                                                     {"Stone", 3, {0.25f, 0.24f, 0.22f}}}};
 
 // Parameter name, min value, max value, default value
 inline constexpr std::array MaterialParams{
