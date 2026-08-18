@@ -89,6 +89,8 @@ void renderPrimitiveFieldPreview(
   auto const cellColour = ImColor(0.1f, 0.85f, 1.0f, 0.9f);
   auto const primitiveFillColour = ImColor(0.95f, 0.3f, 0.75f, 0.12f);
   auto const primitiveColour = ImColor(0.95f, 0.3f, 0.75f, 0.72f);
+  auto const holeFillColour = ImColor(0.95f, 0.15f, 0.1f, 0.18f);
+  auto const holeColour = ImColor(1.0f, 0.2f, 0.1f, 0.9f);
   auto const siteColour = ImColor(1.0f, 0.55f, 0.1f, 1.0f);
 
   drawList->AddDrawCmd();
@@ -113,10 +115,12 @@ void renderPrimitiveFieldPreview(
                         ED_WINDOW_HEIGHT - (vertex.y - offset.y)});
     }
     drawList->AddConvexPolyFilled(
-        points.data(), static_cast<int>(points.size()), primitiveFillColour);
+        points.data(), static_cast<int>(points.size()),
+        primitive.isHole ? holeFillColour : primitiveFillColour);
     drawList->AddPolyline(
-        points.data(), static_cast<int>(points.size()), primitiveColour,
-        ImDrawFlags_Closed, 2.0f);
+        points.data(), static_cast<int>(points.size()),
+        primitive.isHole ? holeColour : primitiveColour, ImDrawFlags_Closed,
+        2.0f);
   }
 
   drawList->AddDrawCmd();

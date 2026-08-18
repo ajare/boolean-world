@@ -80,7 +80,7 @@ std::vector<editor::PrimitiveFieldPrimitivePreview> previews(
     float overlap = 10.0f,
     int seed = 1) {
   auto result = editor::buildPrimitiveFieldPreview(
-      layout, {}, overlap, seed);
+      layout, {}, 100.0f, overlap, seed);
   require(result.succeeded(), "representative primitive preview failed");
   return std::move(*result.primitives);
 }
@@ -139,7 +139,9 @@ void placementAppendsDefaultsAndIsOneUndoableAction() {
     auto index = oldCount + static_cast<uint32_t>(i);
     expectedSelection.insert(index);
     auto primitive = world->getPrimitive(index);
-    require(primitive && primitive->getPosition() == layout.sites[i] &&
+    require(primitive &&
+                primitive->getPosition() ==
+                    layout.sites[primitives[i].cellIndex] &&
                 primitive->getSize() ==
                     wp::Vector2{primitives[i].size, primitives[i].size},
             "primitive insertion order, position, or size did not match preview");
@@ -253,6 +255,81 @@ void placementAppendsDefaultsAndIsOneUndoableAction() {
   }
 }
 
+void placementSupportsDeterministicOccupiedCellSubsets() {
+  editor::Document document;
+  document.newDoc();
+  auto layout = representativeLayout();
+  auto all = previews(layout, 0.0f, 73);
+  std::vector<editor::PrimitiveFieldPrimitivePreview> occupied{
+      all[1], all[3]};
+  auto oldCount = document.getWorld()->getNumPrimitives();
+
+  auto result = editor::placePrimitiveField(
+      &document, layout, occupied, gEditorSettings);
+  require(result.placed &&
+              document.getWorld()->getNumPrimitives() == oldCount + 2 &&
+              document.getWorld()->getPrimitive(oldCount)->getPosition() ==
+                  layout.sites[occupied[0].cellIndex] &&
+              document.getWorld()->getPrimitive(oldCount + 1)->getPosition() ==
+                  layout.sites[occupied[1].cellIndex] &&
+              document.getSelectedPrimitiveIndices() ==
+                  std::set<uint32_t>{oldCount, oldCount + 1},
+          "placement did not preserve occupied-cell mapping and ordering");
+
+  editor::undo(&document);
+}
+
+void holePrimitivesFollowOccupiedCellsAsHalfSizeDifferences() {
+  editor::Document document;
+  document.newDoc();
+  auto layout = representativeLayout();
+  auto previewResult = editor::buildPrimitiveFieldPreview(
+      layout, {}, 100.0f, 100.0f, 10.0f, 73);
+  require(previewResult.succeeded() &&
+              previewResult.primitives->size() == layout.cells.size() * 2 - 1,
+          "100 percent hole preview did not exclude the origin cell");
+  auto oldCount = document.getWorld()->getNumPrimitives();
+
+  auto result = editor::placePrimitiveField(
+      &document, layout, *previewResult.primitives, gEditorSettings);
+  require(result.placed &&
+              document.getWorld()->getNumPrimitives() ==
+                  oldCount + previewResult.primitives->size(),
+          "cell/hole batch placement failed");
+
+  size_t primitiveIndex = 0;
+  for (size_t cellIndex = 0; cellIndex < layout.cells.size(); ++cellIndex) {
+    auto worldIndex = oldCount + static_cast<uint32_t>(primitiveIndex);
+    auto cellPrimitive = document.getWorld()->getPrimitive(worldIndex);
+    auto const& cellPreview = (*previewResult.primitives)[primitiveIndex];
+    require(!cellPreview.isHole && cellPreview.cellIndex == cellIndex &&
+                cellPrimitive->getOperation() ==
+                    bw::core::Primitive::Operation::Union,
+            "an occupied cell primitive was not placed before its hole");
+    ++primitiveIndex;
+    if (layout.sites[cellIndex] == wp::Vector2::ZERO) {
+      continue;
+    }
+
+    auto holePrimitive = document.getWorld()->getPrimitive(worldIndex + 1);
+    auto regularHole = dynamic_cast<bw::core::RegularPolygon*>(holePrimitive);
+    auto const& holePreview = (*previewResult.primitives)[primitiveIndex];
+    require(holePrimitive->getOperation() ==
+                    bw::core::Primitive::Operation::Difference &&
+                regularHole &&
+                regularHole->getNumSides() == holePreview.regularSideCount &&
+                holePrimitive->getPosition() == cellPrimitive->getPosition() &&
+                holePrimitive->getSize() ==
+                    wp::Vector2{cellPreview.size * 0.5f,
+                                cellPreview.size * 0.5f} &&
+                holePreview.isHole && holePreview.cellIndex == cellIndex,
+            "a hole was not a following half-size 3/4/6-sided Difference primitive");
+    ++primitiveIndex;
+  }
+
+  editor::undo(&document);
+}
+
 void insertionFailureIsAtomicAndDoesNotTouchHistory() {
   editor::Document document;
   document.newDoc();
@@ -326,6 +403,8 @@ void invalidBatchFailsBeforeInsertionAndCapacitySettingIsHonoured() {
 int main() {
   try {
     placementAppendsDefaultsAndIsOneUndoableAction();
+    placementSupportsDeterministicOccupiedCellSubsets();
+    holePrimitivesFollowOccupiedCellsAsHalfSizeDifferences();
     insertionFailureIsAtomicAndDoesNotTouchHistory();
     invalidBatchFailsBeforeInsertionAndCapacitySettingIsHonoured();
     std::cout << "Primitive-field placement action tests passed\n";

@@ -92,11 +92,12 @@ struct BW_API PrimitiveFieldLayoutExecution {
 
 // Uses PCG-XSH-RR 32 with a fixed stream. Candidate offsets are derived with
 // explicit integer arithmetic and converted to the public float grid by an
-// exact power-of-two scale. Sampling starts at the world centre and expands
-// through a distance-prioritized frontier. Each requested Lloyd pass proposes
-// the bounded-cell centroid in stable site order, retaining the old site when
-// the proposal would violate the inset domain or minimum spacing. Output is
-// ordered by squared distance from the world centre, then x and y.
+// exact power-of-two scale. Sampling starts with a required site at the origin
+// and expands through a distance-prioritized frontier. Lloyd relaxation pins
+// the origin; each other site proposes the bounded-cell centroid in stable
+// order and retains its old position when the proposal would violate the inset
+// domain or minimum spacing. Output is ordered by squared distance from the
+// world centre, then x and y.
 [[nodiscard]] BW_API PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
     PrimitiveFieldLayoutRequest const& request);
 

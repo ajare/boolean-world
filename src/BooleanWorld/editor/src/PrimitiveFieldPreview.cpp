@@ -163,6 +163,7 @@ float fitUniformSize(
 }
 
 PrimitiveFieldPrimitivePreview fitPrimitive(
+    size_t cellIndex,
     bw::core::PrimitiveFieldCell const& cell,
     wp::Vector2 const& position,
     PrimitiveFieldType type,
@@ -176,6 +177,7 @@ PrimitiveFieldPrimitivePreview fitPrimitive(
   auto size = fittedSize * (1.0f + overlapPercent / 100.0f);
 
   PrimitiveFieldPrimitivePreview preview{
+      .cellIndex = cellIndex,
       .type = type,
       .position = position,
       .fittedSize = fittedSize,
@@ -190,6 +192,38 @@ PrimitiveFieldPrimitivePreview fitPrimitive(
   return preview;
 }
 
+PrimitiveFieldPrimitivePreview makeHolePrimitive(
+    PrimitiveFieldPrimitivePreview const& cellPrimitive,
+    uint8_t sideCount,
+    float angle) {
+  auto localContour = regularContour(sideCount);
+  PrimitiveFieldPrimitivePreview preview{
+      .cellIndex = cellPrimitive.cellIndex,
+      .type = PrimitiveFieldType::Triangle,
+      .isHole = true,
+      .regularSideCount = sideCount,
+      .position = cellPrimitive.position,
+      .fittedSize = cellPrimitive.size * 0.5f,
+      .size = cellPrimitive.size * 0.5f,
+      .angle = angle};
+  preview.contour.reserve(localContour.size());
+  for (auto vertex : localContour) {
+    vertex *= preview.size * 0.5f;
+    vertex.rotateAnticlockwise(angle);
+    preview.contour.push_back(preview.position + vertex);
+  }
+  return preview;
+}
+
+uint32_t percentCutoff(float percent) {
+  constexpr uint32_t RandomQuantumCount = 1u << 24u;
+  return percent >= 100.0f
+             ? RandomQuantumCount
+             : static_cast<uint32_t>(
+                   percent *
+                   (static_cast<double>(RandomQuantumCount) / 100.0));
+}
+
 }  // namespace
 
 bool PrimitiveFieldTypeSelection::any() const {
@@ -199,10 +233,20 @@ bool PrimitiveFieldTypeSelection::any() const {
 PrimitiveFieldPrimitivePreviewResult buildPrimitiveFieldPreview(
     bw::core::PrimitiveFieldLayout const& layout,
     PrimitiveFieldTypeSelection const& enabledTypes,
+    float occupancyPercent,
+    float holeChancePercent,
     float overlapPercent,
     int32_t placementSeed) {
   if (!enabledTypes.any()) {
     return failure("At least one primitive type must be enabled.");
+  }
+  if (!std::isfinite(occupancyPercent) || occupancyPercent < 0.0f ||
+      occupancyPercent > 100.0f) {
+    return failure("Cell occupancy must be finite and between 0 and 100 percent.");
+  }
+  if (!std::isfinite(holeChancePercent) || holeChancePercent < 0.0f ||
+      holeChancePercent > 100.0f) {
+    return failure("Hole chance must be finite and between 0 and 100 percent.");
   }
   if (!std::isfinite(overlapPercent) || overlapPercent < 0.0f ||
       overlapPercent > 100.0f) {
@@ -216,9 +260,17 @@ PrimitiveFieldPrimitivePreviewResult buildPrimitiveFieldPreview(
   auto types = enabledTypeList(enabledTypes);
   std::vector<PrimitiveFieldPrimitivePreview> primitives;
   primitives.reserve(layout.sites.size());
+  PlacementPcg32 occupancyRandom(placementSeed, 0x9e3779b9u);
   PlacementPcg32 choiceRandom(placementSeed, 0x6d2b79f5u);
   PlacementPcg32 angleRandom(placementSeed, 0xa511e9b3u);
-  constexpr float AngleQuantum = 360.0f / 16777216.0f;
+  PlacementPcg32 holeChanceRandom(placementSeed, 0x3c6ef372u);
+  PlacementPcg32 holeSidesRandom(placementSeed, 0xbb67ae85u);
+  PlacementPcg32 holeAngleRandom(placementSeed, 0x510e527fu);
+  constexpr uint32_t RandomQuantumCount = 1u << 24u;
+  constexpr float AngleQuantum = 360.0f / RandomQuantumCount;
+  auto occupancyCutoff = percentCutoff(occupancyPercent);
+  auto holeChanceCutoff = percentCutoff(holeChancePercent);
+  constexpr uint8_t HoleSideCounts[] = {3, 4, 6};
   std::set<std::pair<float, float>> uniqueSites;
 
   for (size_t i = 0; i < layout.sites.size(); ++i) {
@@ -236,21 +288,48 @@ PrimitiveFieldPrimitivePreviewResult buildPrimitiveFieldPreview(
           "A retained site has a malformed, non-convex, or mismatched Voronoi cell.");
     }
 
+    auto occupancyValue = occupancyRandom.next() >> 8u;
+    auto occupied = site == wp::Vector2::ZERO || occupancyValue < occupancyCutoff;
     auto type = types[choiceRandom.bounded(static_cast<uint32_t>(types.size()))];
     auto angle = static_cast<float>(angleRandom.next() >> 8u) * AngleQuantum;
-    auto primitive = fitPrimitive(cell, site, type, angle, overlapPercent);
-    if (!std::isfinite(primitive.fittedSize) || primitive.fittedSize <= 0.0f ||
-        !std::isfinite(primitive.size) || primitive.size <= 0.0f) {
-      return failure("A fitted primitive has an invalid uniform size.");
+    auto holeChanceValue = holeChanceRandom.next() >> 8u;
+    auto hasHole =
+        site != wp::Vector2::ZERO && holeChanceValue < holeChanceCutoff;
+    auto holeSideCount = HoleSideCounts[holeSidesRandom.bounded(3)];
+    auto holeAngle =
+        static_cast<float>(holeAngleRandom.next() >> 8u) * AngleQuantum;
+    if (occupied) {
+      auto primitive =
+          fitPrimitive(i, cell, site, type, angle, overlapPercent);
+      if (!std::isfinite(primitive.fittedSize) ||
+          primitive.fittedSize <= 0.0f || !std::isfinite(primitive.size) ||
+          primitive.size <= 0.0f) {
+        return failure("A fitted primitive has an invalid uniform size.");
+      }
+      if (!std::all_of(
+              primitive.contour.begin(), primitive.contour.end(), finitePoint)) {
+        return failure("A fitted primitive contour contains non-finite vertices.");
+      }
+      primitives.push_back(std::move(primitive));
+      if (hasHole) {
+        primitives.push_back(makeHolePrimitive(
+            primitives.back(), holeSideCount, holeAngle));
+      }
     }
-    if (!std::all_of(
-            primitive.contour.begin(), primitive.contour.end(), finitePoint)) {
-      return failure("A fitted primitive contour contains non-finite vertices.");
-    }
-    primitives.push_back(std::move(primitive));
   }
 
   return {.primitives = std::move(primitives), .error = {}};
+}
+
+PrimitiveFieldPrimitivePreviewResult buildPrimitiveFieldPreview(
+    bw::core::PrimitiveFieldLayout const& layout,
+    PrimitiveFieldTypeSelection const& enabledTypes,
+    float occupancyPercent,
+    float overlapPercent,
+    int32_t placementSeed) {
+  return buildPrimitiveFieldPreview(
+      layout, enabledTypes, occupancyPercent, 0.0f, overlapPercent,
+      placementSeed);
 }
 
 uint32_t effectivePrimitiveFieldMaximum(
@@ -363,7 +442,8 @@ void PrimitiveFieldPreview::refreshPrimitives() {
   }
 
   auto result = buildPrimitiveFieldPreview(
-      *layout, enabledTypes, overlapPercent, static_cast<int32_t>(seed));
+      *layout, enabledTypes, occupancyPercent, holeChancePercent,
+      overlapPercent, static_cast<int32_t>(seed));
   if (!result.succeeded()) {
     error = std::move(result.error);
     state = PrimitiveFieldWorkflowState::Failed;
@@ -390,6 +470,18 @@ PrimitiveFieldControlEvaluation PrimitiveFieldPreview::evaluateControls(
 
   if (!enabledTypes.any()) {
     evaluation.error = "Enable at least one primitive type.";
+    return evaluation;
+  }
+  if (!std::isfinite(occupancyPercent) || occupancyPercent < 0.0f ||
+      occupancyPercent > 100.0f) {
+    evaluation.error =
+        "Cell occupancy must be finite and between 0 and 100 percent.";
+    return evaluation;
+  }
+  if (!std::isfinite(holeChancePercent) || holeChancePercent < 0.0f ||
+      holeChancePercent > 100.0f) {
+    evaluation.error =
+        "Hole chance must be finite and between 0 and 100 percent.";
     return evaluation;
   }
   if (!std::isfinite(overlapPercent) || overlapPercent < 0.0f ||
@@ -520,8 +612,8 @@ void PrimitiveFieldPreview::poll(
   }
 
   auto primitiveResult = buildPrimitiveFieldPreview(
-      *result->layout, enabledTypes, overlapPercent,
-      static_cast<int32_t>(identity.seed));
+      *result->layout, enabledTypes, occupancyPercent, holeChancePercent,
+      overlapPercent, static_cast<int32_t>(identity.seed));
   if (!primitiveResult.succeeded()) {
     state = PrimitiveFieldWorkflowState::Failed;
     error = std::move(primitiveResult.error);
@@ -586,7 +678,16 @@ bool PrimitiveFieldPreview::hasCompletePreview() const {
   return mLayoutCurrent && enabledTypes.any() && layout.has_value() &&
          !layout->sites.empty() &&
          layout->sites.size() == layout->cells.size() &&
-         primitives.size() == layout->sites.size();
+         std::all_of(
+             primitives.begin(), primitives.end(),
+             [this](PrimitiveFieldPrimitivePreview const& primitive) {
+               return primitive.cellIndex < layout->cells.size() &&
+                      primitive.position == layout->sites[primitive.cellIndex] &&
+                      (!primitive.isHole ||
+                       primitive.regularSideCount == 3 ||
+                       primitive.regularSideCount == 4 ||
+                       primitive.regularSideCount == 6);
+             });
 }
 
 PrimitiveFieldPreview& getPrimitiveFieldPreview() {

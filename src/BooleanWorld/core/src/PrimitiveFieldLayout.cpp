@@ -525,7 +525,8 @@ PrimitiveFieldLayoutResult relaxLayout(
 
     // The layout's center-distance/x/y ordering is stable. Earlier decisions
     // are visible to later proposals; sites not yet visited retain their old
-    // positions until their turn.
+    // positions until their turn. The origin is the field's guaranteed anchor
+    // and is never moved by Lloyd relaxation.
     for (size_t siteIndex = 0; siteIndex < retainedSiteCount; ++siteIndex) {
       auto lloydCompletion =
           (static_cast<float>(iteration) +
@@ -535,6 +536,9 @@ PrimitiveFieldLayoutResult relaxLayout(
       if (execution.report(PrimitiveFieldLayoutPhase::LloydRelaxation,
                            0.25f + 0.40f * lloydCompletion)) {
         return cancelled();
+      }
+      if (retainedSites[siteIndex] == IntPoint{0, 0}) {
+        continue;
       }
       IntPoint proposed;
       if (!cellCentroid(layout.cells[siteIndex], worldMinimum, proposed)) {
@@ -744,11 +748,12 @@ PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
       return failure("The requested spacing leaves no valid inset site domain.");
     }
 
-    IntPoint centre{(worldMinimum.x + worldMaximum.x) / 2,
-                    (worldMinimum.y + worldMaximum.y) / 2};
-    centre.x = std::clamp(centre.x, domainMinimum.x, domainMaximum.x);
-    centre.y = std::clamp(centre.y, domainMinimum.y, domainMaximum.y);
-
+    IntPoint origin{0, 0};
+    if (origin.x < domainMinimum.x || origin.x > domainMaximum.x ||
+        origin.y < domainMinimum.y || origin.y > domainMaximum.y) {
+      return failure(
+          "The spacing-inset world domain must contain the origin (0, 0).");
+    }
     std::vector<IntPoint> accepted;
     accepted.reserve(request.maximumSites);
     std::map<std::pair<int64_t, int64_t>, std::vector<size_t>> grid;
@@ -788,7 +793,7 @@ PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
         candidates;
     uint64_t sequence = 0;
     auto queueChildren = [&](IntPoint const& parent) {
-      auto parentDistance = squaredDistance(parent, centre);
+      auto parentDistance = squaredDistance(parent, origin);
       int produced = 0;
       while (produced < CandidateCountPerSite) {
         auto rawX = static_cast<int32_t>(random.next() & 0xffffu) - 32768;
@@ -806,7 +811,7 @@ PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
                                      32768),
             parent.y + roundedDivide(static_cast<int64_t>(rawY) * 2 * spacing,
                                      32768)};
-        auto distance = squaredDistance(point, centre);
+        auto distance = squaredDistance(point, origin);
         if (distance >= parentDistance) {
           candidates.push({point, distance, sequence++});
         }
@@ -814,8 +819,8 @@ PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
       }
     };
 
-    addAccepted(centre);
-    queueChildren(centre);
+    addAccepted(origin);
+    queueChildren(origin);
     while (accepted.size() < request.maximumSites && !candidates.empty()) {
       if (executionContext.report(
               PrimitiveFieldLayoutPhase::Sampling,

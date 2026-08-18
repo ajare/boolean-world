@@ -8,8 +8,14 @@ The ghost can be selected in the Clip Order view but cannot be manipulated in it
 ## Primitive fields
 Choose **Edit > Generate Primitive Field…** to author a reproducible batch of
 fitted primitives. Set minimum site spacing, seed, Lloyd relaxation iterations,
-requested batch maximum, overlap, and the eligible primitive types. The live
-approximate count is uncapped and requires no Poisson/Voronoi generation; use it
+requested batch maximum, cell occupancy, hole chance, overlap, and the eligible
+primitive types. Cell occupancy is the seeded percentage chance that a Voronoi cell
+receives a primitive, allowing reproducible gaps in the field. Every layout has
+a pinned site at `[0, 0]`, and that site always receives a primitive regardless
+of the occupancy percentage. Hole chance is the seeded percentage chance that
+an occupied non-origin cell also receives a half-size Difference Regular
+primitive with 3, 4, or 6 sides. Empty cells and the `[0, 0]` origin cell never
+receive holes. The live approximate count is uncapped and requires no Poisson/Voronoi generation; use it
 and the warning above 2,000 to judge request cost. Circle fields use resolution
 `0.5`.
 
@@ -21,13 +27,13 @@ the remaining engine capacity; existing authored primitives and the ghost
 consume that capacity. The dialog reports when sampling was capped. Delete
 primitives before generating when no capacity remains.
 
-Spacing, seed, Lloyd iterations, maximum, overlap, and enabled types remain at
-their last-used values only for the current editor process. A fixed seed and the
-same controls/world extents reproduce the same preview. Layout inputs require
-generation again; changing overlap or enabled types refits the retained cells
-without rerunning layout generation. Closing the dialog or replacing the world
-discards all preview geometry, which is never saved or included in world
-generation.
+Spacing, seed, Lloyd iterations, maximum, cell occupancy, hole chance, overlap,
+and enabled types remain at their last-used values only for the current editor process. A
+fixed seed and the same controls/world extents reproduce the same preview.
+Layout inputs require generation again; changing cell occupancy, hole chance,
+overlap, or enabled types rebuilds or refits the primitive preview without
+rerunning layout generation. Closing the dialog or replacing the world discards all preview
+geometry, which is never saved or included in world generation.
 
 ## Keyboard shortcuts
 | Modifier | Key/Mouse     | Action                               |

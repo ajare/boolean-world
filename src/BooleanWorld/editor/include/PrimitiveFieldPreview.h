@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -32,7 +33,10 @@ struct PrimitiveFieldTypeSelection {
 };
 
 struct PrimitiveFieldPrimitivePreview {
+  size_t cellIndex{0};
   PrimitiveFieldType type{PrimitiveFieldType::Rectangle};
+  bool isHole{false};
+  uint8_t regularSideCount{0};
   wp::Vector2 position;
   float fittedSize{0.0f};
   float size{0.0f};
@@ -47,12 +51,23 @@ struct PrimitiveFieldPrimitivePreviewResult {
   [[nodiscard]] bool succeeded() const { return primitives.has_value(); }
 };
 
-// Primitive choices and angles use independent PCG-XSH-RR 32 streams derived
-// independently from layout sampling. Bounded choice uses rejection sampling;
-// angles use the high 24 random bits and an exact power-of-two conversion.
+// Cell occupancy, primitive choices/angles, and hole chance/shape/angle use
+// independent PCG-XSH-RR 32 streams derived independently from layout sampling.
+// Bounded choices use rejection sampling; percentages and angles use the high
+// 24 random bits.
 [[nodiscard]] PrimitiveFieldPrimitivePreviewResult buildPrimitiveFieldPreview(
     bw::core::PrimitiveFieldLayout const& layout,
     PrimitiveFieldTypeSelection const& enabledTypes,
+    float occupancyPercent,
+    float holeChancePercent,
+    float overlapPercent,
+    int32_t placementSeed);
+
+// Compatibility overload for consumers that do not request hole primitives.
+[[nodiscard]] PrimitiveFieldPrimitivePreviewResult buildPrimitiveFieldPreview(
+    bw::core::PrimitiveFieldLayout const& layout,
+    PrimitiveFieldTypeSelection const& enabledTypes,
+    float occupancyPercent,
     float overlapPercent,
     int32_t placementSeed);
 
@@ -101,6 +116,8 @@ struct PrimitiveFieldPreview {
   int maximumSites{2000};
   int seed{0};
   int lloydIterations{5};
+  float occupancyPercent{100.0f};
+  float holeChancePercent{0.0f};
   float overlapPercent{10.0f};
   PrimitiveFieldTypeSelection enabledTypes;
   std::optional<bw::core::PrimitiveFieldLayout> layout;

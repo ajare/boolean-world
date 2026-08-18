@@ -120,6 +120,8 @@ void opensWithAllTypeDefaultsRetainsControlsAndRefreshesWithoutRegeneratingLayou
               !preview.hasCompletePreview() && !preview.error.empty() &&
               preview.state == editor::PrimitiveFieldWorkflowState::StalePreview,
           "layout invalidation did not retain and identify stale preview data");
+  preview.occupancyPercent = 65.0f;
+  preview.holeChancePercent = 35.0f;
   preview.overlapPercent = 17.0f;
   preview.lloydIterations = 4;
   preview.close();
@@ -128,6 +130,8 @@ void opensWithAllTypeDefaultsRetainsControlsAndRefreshesWithoutRegeneratingLayou
   preview.requestOpen();
   require(preview.minimumSpacing == 64.0f && preview.maximumSites == 5 &&
               preview.seed == 11 && preview.lloydIterations == 4 &&
+              preview.occupancyPercent == 65.0f &&
+              preview.holeChancePercent == 35.0f &&
               preview.overlapPercent == 17.0f &&
               preview.enabledTypes.triangle &&
               !preview.enabledTypes.rectangle,
@@ -137,8 +141,10 @@ void opensWithAllTypeDefaultsRetainsControlsAndRefreshesWithoutRegeneratingLayou
 void deterministicChoicesAnglesAndMixedSubsets() {
   auto layout = representativeLayout();
   editor::PrimitiveFieldTypeSelection all;
-  auto first = editor::buildPrimitiveFieldPreview(layout, all, 0.0f, 73);
-  auto repeated = editor::buildPrimitiveFieldPreview(layout, all, 0.0f, 73);
+  auto first =
+      editor::buildPrimitiveFieldPreview(layout, all, 100.0f, 0.0f, 73);
+  auto repeated =
+      editor::buildPrimitiveFieldPreview(layout, all, 100.0f, 0.0f, 73);
   require(first.succeeded() && repeated.succeeded() &&
               first.primitives->size() == 3,
           "deterministic mixed preview failed");
@@ -161,7 +167,8 @@ void deterministicChoicesAnglesAndMixedSubsets() {
 
   editor::PrimitiveFieldTypeSelection subset{
       true, false, true, false, true};
-  auto mixed = editor::buildPrimitiveFieldPreview(layout, subset, 0.0f, 73);
+  auto mixed = editor::buildPrimitiveFieldPreview(
+      layout, subset, 100.0f, 0.0f, 73);
   require(mixed.succeeded() &&
               (*mixed.primitives)[0].type == editor::PrimitiveFieldType::Pentagon &&
               (*mixed.primitives)[1].type == editor::PrimitiveFieldType::Rectangle &&
@@ -170,6 +177,84 @@ void deterministicChoicesAnglesAndMixedSubsets() {
   for (size_t i = 0; i < expectedAngles.size(); ++i)
     require((*mixed.primitives)[i].angle == expectedAngles[i],
             "type selection perturbed the independent angle stream");
+}
+
+void occupancyCreatesDeterministicGapsWithoutPerturbingAssignments() {
+  auto layout = representativeLayout();
+  editor::PrimitiveFieldTypeSelection all;
+  auto full = editor::buildPrimitiveFieldPreview(
+      layout, all, 100.0f, 0.0f, 73);
+  auto sparse = editor::buildPrimitiveFieldPreview(
+      layout, all, 20.0f, 0.0f, 73);
+  auto repeated = editor::buildPrimitiveFieldPreview(
+      layout, all, 20.0f, 0.0f, 73);
+  auto empty = editor::buildPrimitiveFieldPreview(
+      layout, all, 0.0f, 0.0f, 73);
+
+  require(full.succeeded() && sparse.succeeded() && repeated.succeeded() &&
+              empty.succeeded() && full.primitives->size() == 3 &&
+              sparse.primitives->size() == 2 &&
+              repeated.primitives->size() == 2 &&
+              empty.primitives->size() == 1 &&
+              empty.primitives->front().cellIndex == 0,
+          "valid cell occupancy percentages did not preserve the origin or produce expected gaps");
+  std::vector<size_t> expectedCellIndices{0, 1};
+  for (size_t i = 0; i < expectedCellIndices.size(); ++i) {
+    auto cellIndex = expectedCellIndices[i];
+    auto const& occupied = (*sparse.primitives)[i];
+    auto const& again = (*repeated.primitives)[i];
+    auto const& assigned = (*full.primitives)[cellIndex];
+    require(occupied.cellIndex == cellIndex &&
+                occupied.position == layout.sites[cellIndex] &&
+                occupied.type == assigned.type &&
+                occupied.angle == assigned.angle &&
+                occupied.cellIndex == again.cellIndex &&
+                occupied.type == again.type && occupied.angle == again.angle,
+            "occupancy was not deterministic or perturbed type/angle assignment");
+  }
+}
+
+void holesAreDeterministicHalfSizeDifferencesOnlyForOccupiedCells() {
+  auto layout = representativeLayout();
+  editor::PrimitiveFieldTypeSelection all;
+  auto full = editor::buildPrimitiveFieldPreview(
+      layout, all, 100.0f, 100.0f, 0.0f, 73);
+  auto repeated = editor::buildPrimitiveFieldPreview(
+      layout, all, 100.0f, 100.0f, 0.0f, 73);
+  auto originOnly = editor::buildPrimitiveFieldPreview(
+      layout, all, 0.0f, 100.0f, 0.0f, 73);
+
+  require(full.succeeded() && repeated.succeeded() &&
+              originOnly.succeeded() && full.primitives->size() == 5 &&
+              repeated.primitives->size() == 5 &&
+              originOnly.primitives->size() == 1,
+          "100 percent hole chance did not exclude the origin cell");
+  size_t primitiveIndex = 0;
+  for (size_t cellIndex = 0; cellIndex < layout.cells.size(); ++cellIndex) {
+    auto const& cellPrimitive = (*full.primitives)[primitiveIndex];
+    require(!cellPrimitive.isHole && cellPrimitive.cellIndex == cellIndex,
+            "occupied cell primitive ordering was incorrect");
+    ++primitiveIndex;
+    if (cellIndex == 0) {
+      continue;
+    }
+    auto const& hole = (*full.primitives)[primitiveIndex];
+    auto const& repeatedHole = (*repeated.primitives)[primitiveIndex];
+    require(hole.isHole && hole.cellIndex == cellIndex &&
+                hole.position == cellPrimitive.position &&
+                hole.size == cellPrimitive.size * 0.5f &&
+                (hole.regularSideCount == 3 ||
+                 hole.regularSideCount == 4 ||
+                 hole.regularSideCount == 6) &&
+                hole.contour.size() == hole.regularSideCount &&
+                hole.regularSideCount == repeatedHole.regularSideCount &&
+                hole.angle == repeatedHole.angle,
+            "hole shape, size, cell association, or deterministic output was incorrect");
+    ++primitiveIndex;
+  }
+  require(!originOnly.primitives->front().isHole &&
+              originOnly.primitives->front().cellIndex == 0,
+          "the origin-only field received a hole");
 }
 
 void everyEligibleTypeFitsAtGeneratedAnglesAndAppliesOverlap() {
@@ -184,9 +269,9 @@ void everyEligibleTypeFitsAtGeneratedAnglesAndAppliesOverlap() {
 
   for (size_t typeIndex = 0; typeIndex < types.size(); ++typeIndex) {
     auto zero = editor::buildPrimitiveFieldPreview(
-        layout, only(types[typeIndex]), 0.0f, 73);
+        layout, only(types[typeIndex]), 100.0f, 0.0f, 73);
     auto overlap = editor::buildPrimitiveFieldPreview(
-        layout, only(types[typeIndex]), 25.0f, 73);
+        layout, only(types[typeIndex]), 100.0f, 25.0f, 73);
     require(zero.succeeded() && overlap.succeeded(),
             "eligible-type fitting failed");
     for (size_t i = 0; i < layout.cells.size(); ++i) {
@@ -318,13 +403,15 @@ void estimatesCountsReportsCapsAndRejectsMalformedLayouts() {
 
   auto duplicate = representativeLayout();
   duplicate.sites[1] = duplicate.sites[0];
-  require(!editor::buildPrimitiveFieldPreview(duplicate, {}, 10.0f, 0)
+  require(!editor::buildPrimitiveFieldPreview(
+               duplicate, {}, 100.0f, 10.0f, 0)
                .succeeded(),
           "duplicate retained sites were silently accepted");
   auto malformed = representativeLayout();
   std::swap(malformed.cells[0].vertices[1],
             malformed.cells[0].vertices[2]);
-  require(!editor::buildPrimitiveFieldPreview(malformed, {}, 10.0f, 0)
+  require(!editor::buildPrimitiveFieldPreview(
+               malformed, {}, 100.0f, 10.0f, 0)
                .succeeded(),
           "a malformed retained cell was silently accepted");
 }
@@ -333,13 +420,41 @@ void invalidSelectionsOverlapAndCapacityAreRejected() {
   auto layout = representativeLayout();
   editor::PrimitiveFieldTypeSelection none{
       false, false, false, false, false};
-  require(!editor::buildPrimitiveFieldPreview(layout, none, 0.0f, 0).succeeded(),
+  require(!editor::buildPrimitiveFieldPreview(
+               layout, none, 100.0f, 0.0f, 0)
+               .succeeded(),
           "a configuration with no enabled types was accepted");
-  require(!editor::buildPrimitiveFieldPreview(layout, {}, -0.01f, 0).succeeded() &&
+  require(!editor::buildPrimitiveFieldPreview(
+               layout, {}, -0.01f, 10.0f, 0)
+                  .succeeded() &&
               !editor::buildPrimitiveFieldPreview(
-                   layout, {}, std::numeric_limits<float>::infinity(), 0)
+                   layout, {}, std::numeric_limits<float>::infinity(), 10.0f,
+                   0)
                    .succeeded() &&
-              !editor::buildPrimitiveFieldPreview(layout, {}, 100.01f, 0)
+              !editor::buildPrimitiveFieldPreview(
+                   layout, {}, 100.01f, 10.0f, 0)
+                   .succeeded(),
+          "invalid cell occupancy was accepted");
+  require(!editor::buildPrimitiveFieldPreview(
+               layout, {}, 100.0f, -0.01f, 10.0f, 0)
+                  .succeeded() &&
+              !editor::buildPrimitiveFieldPreview(
+                   layout, {}, 100.0f,
+                   std::numeric_limits<float>::infinity(), 10.0f, 0)
+                   .succeeded() &&
+              !editor::buildPrimitiveFieldPreview(
+                   layout, {}, 100.0f, 100.01f, 10.0f, 0)
+                   .succeeded(),
+          "invalid hole chance was accepted");
+  require(!editor::buildPrimitiveFieldPreview(
+               layout, {}, 100.0f, -0.01f, 0)
+                  .succeeded() &&
+              !editor::buildPrimitiveFieldPreview(
+                   layout, {}, 100.0f,
+                   std::numeric_limits<float>::infinity(), 0)
+                   .succeeded() &&
+              !editor::buildPrimitiveFieldPreview(
+                   layout, {}, 100.0f, 100.01f, 0)
                    .succeeded(),
           "invalid overlap was accepted");
   require(editor::effectivePrimitiveFieldMaximum(2000, 1) == 2000 &&
@@ -373,6 +488,8 @@ int main() {
   try {
     opensWithAllTypeDefaultsRetainsControlsAndRefreshesWithoutRegeneratingLayout();
     deterministicChoicesAnglesAndMixedSubsets();
+    occupancyCreatesDeterministicGapsWithoutPerturbingAssignments();
+    holesAreDeterministicHalfSizeDifferencesOnlyForOccupiedCells();
     everyEligibleTypeFitsAtGeneratedAnglesAndAppliesOverlap();
     completeGenerationIdentityIncludesEveryLayoutInput();
     coordinatesStaleSupersededCancelledAndFailedRequests();

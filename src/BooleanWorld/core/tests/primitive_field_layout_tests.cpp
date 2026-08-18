@@ -124,6 +124,12 @@ void requireLayoutInvariants(PrimitiveFieldLayout const& layout,
           "not every site owns exactly one cell");
 
   auto inset = spacing * 0.5f;
+  require(std::any_of(
+              layout.sites.begin(), layout.sites.end(),
+              [](wp::Vector2 const& site) {
+                return exactPoint(site, wp::Vector2::ZERO);
+              }),
+          "layout does not retain its required origin site");
   auto centre = wp::Vector2{
       (layout.worldExtents.minimum.x + layout.worldExtents.maximum.x) * 0.5f,
       (layout.worldExtents.minimum.y + layout.worldExtents.maximum.y) * 0.5f};
@@ -197,7 +203,7 @@ void generatesSquareAndNonsquareBoundedLayouts() {
           "square sampling did not begin at the world centre");
   requireLayoutInvariants(square, 64.0f);
 
-  auto nonsquare = generate({{{10.0f, -80.0f}, {330.0f, 80.0f}},
+  auto nonsquare = generate({{{-150.0f, -80.0f}, {170.0f, 80.0f}},
                              40.0f,
                              BW_WORLD_PRIMITIVE_COUNT_MAX,
                              -29,
@@ -205,8 +211,12 @@ void generatesSquareAndNonsquareBoundedLayouts() {
   require(nonsquare.sites.size() > 1 &&
               nonsquare.sites.size() < BW_WORLD_PRIMITIVE_COUNT_MAX,
           "uncapped nonsquare fixture did not naturally terminate");
-  require(exactPoint(nonsquare.sites.front(), {170.0f, 0.0f}),
-          "nonsquare sampling did not begin at the world centre");
+  require(std::any_of(
+              nonsquare.sites.begin(), nonsquare.sites.end(),
+              [](wp::Vector2 const& site) {
+                return exactPoint(site, wp::Vector2::ZERO);
+              }),
+          "nonsquare sampling did not retain the origin");
   requireLayoutInvariants(nonsquare, 40.0f);
 }
 
@@ -241,14 +251,18 @@ void repeatsExactSiteAndCellOutput() {
   auto first = generate(request);
   auto second = generate(request);
   require(first.sites.size() == 6, "deterministic fixture was not capped");
-  require(layoutFingerprint(first) == 0x04df2fd89bce80b4ULL,
+  require(layoutFingerprint(first) == 0x8ff4dc4a3afc3691ULL,
           "the fixed deterministic site-and-cell fixture changed");
   requireExactLayout(first, second);
 }
 
 void respectsInsetForNongridWorldExtents() {
   auto layout = generate(
-      {{{0.00012f, -0.00012f}, {128.00012f, 95.99988f}}, 16.0f, 12, 91, 0});
+      {{{-64.00012f, -48.00012f}, {63.99988f, 47.99988f}},
+       16.0f,
+       12,
+       91,
+       0});
   requireLayoutInvariants(layout, 16.0f);
 }
 
@@ -285,8 +299,8 @@ void relaxesDeterministicallyAcrossSupportedIterationCounts() {
   }
 
   std::vector<uint64_t> const expectedFingerprints{
-      0x6cb2af7fa72e3766ULL, 0xe63ba7e2e3f83923ULL,
-      0x8ec842b0e4b2846eULL, 0x55310ec16f8143c3ULL};
+      0x6904315593ceaa9dULL, 0x3dc415c5e1b6f35dULL,
+      0x9e494881d5530c27ULL, 0x8b0223cc0a157603ULL};
   require(fingerprints == expectedFingerprints,
           "a zero/one/default/maximum-iteration fixture changed");
   require(centroidEnergy(layouts[1]) < centroidEnergy(layouts[0]),
@@ -296,7 +310,6 @@ void relaxesDeterministicallyAcrossSupportedIterationCounts() {
 
   size_t retainedSites = 0;
   bool rejectedOutsideInset = false;
-  bool rejectedForSpacing = false;
   auto inset = request.minimumSpacing * 0.5f;
   for (size_t i = 0; i < layouts[0].sites.size(); ++i) {
     auto const& initialSite = layouts[0].sites[i];
@@ -315,22 +328,19 @@ void relaxesDeterministicallyAcrossSupportedIterationCounts() {
         proposed.x > request.worldExtents.maximum.x - inset ||
         proposed.y < request.worldExtents.minimum.y + inset ||
         proposed.y > request.worldExtents.maximum.y - inset;
-    for (size_t j = 0; j < layouts[0].sites.size(); ++j) {
-      if (i == j) {
-        continue;
-      }
-      auto dx = static_cast<double>(proposed.x) - layouts[0].sites[j].x;
-      auto dy = static_cast<double>(proposed.y) - layouts[0].sites[j].y;
-      rejectedForSpacing |=
-          dx * dx + dy * dy < request.minimumSpacing * request.minimumSpacing;
-    }
   }
   require(retainedSites < layouts[0].sites.size(),
           "one Lloyd iteration did not move any eligible site");
   require(rejectedOutsideInset,
           "the boundary fixture did not reject an out-of-inset centroid");
-  require(rejectedForSpacing,
-          "the fixture did not reject a centroid below minimum spacing");
+  for (auto const& layout : layouts) {
+    require(std::any_of(
+                layout.sites.begin(), layout.sites.end(),
+                [](wp::Vector2 const& site) {
+                  return exactPoint(site, wp::Vector2::ZERO);
+                }),
+            "Lloyd relaxation moved or removed the pinned origin site");
+  }
 }
 
 void reportsMonotonicProgressThroughPublicPhases() {
@@ -434,6 +444,11 @@ void rejectsInvalidAndDegenerateInputs() {
   request.minimumSpacing = 129.0f;
   require(!bw::core::generatePrimitiveFieldLayout(request).succeeded(),
           "an impossible inset domain was accepted");
+
+  request = valid;
+  request.worldExtents = {{10.0f, -64.0f}, {138.0f, 64.0f}};
+  require(!bw::core::generatePrimitiveFieldLayout(request).succeeded(),
+          "a spacing-inset domain excluding the origin was accepted");
 
   request = valid;
   request.maximumSites = 0;

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <exception>
 #include <format>
+#include <map>
 #include <memory>
 #include <set>
 #include <stdexcept>
@@ -59,24 +60,55 @@ void validatePreview(
     bw::core::PrimitiveFieldLayout const& layout,
     std::vector<PrimitiveFieldPrimitivePreview> const& primitives) {
   if (layout.sites.empty() || layout.sites.size() != layout.cells.size() ||
-      primitives.size() != layout.sites.size()) {
+      primitives.empty()) {
     throw std::runtime_error(
-        "Placement requires one complete primitive preview per Voronoi cell.");
+        "Placement requires a complete layout with at least one occupied cell.");
   }
 
   auto const tolerance = bw::core::PrimitiveFieldNumericTolerance;
-  std::set<std::pair<float, float>> uniqueSites;
-  for (size_t i = 0; i < primitives.size(); ++i) {
-    auto const& site = layout.sites[i];
-    auto const& cell = layout.cells[i];
-    auto const& primitive = primitives[i];
-    if (!finitePoint(site) ||
-        !uniqueSites.emplace(site.x, site.y).second ||
-        cell.vertices.size() < 3 ||
+  std::map<size_t, float> cellPrimitiveSizes;
+  std::map<std::pair<float, float>, size_t> siteOwners;
+  std::set<size_t> holeCellIndices;
+  for (auto const& primitive : primitives) {
+    if (primitive.cellIndex >= layout.cells.size()) {
+      throw std::runtime_error(
+          "A primitive preview has an invalid cell index.");
+    }
+    if (primitive.isHole) {
+      auto cellPrimitive = cellPrimitiveSizes.find(primitive.cellIndex);
+      if (layout.sites[primitive.cellIndex] == wp::Vector2::ZERO ||
+          cellPrimitive == cellPrimitiveSizes.end() ||
+          !holeCellIndices.insert(primitive.cellIndex).second ||
+          (primitive.regularSideCount != 3 &&
+           primitive.regularSideCount != 4 &&
+           primitive.regularSideCount != 6) ||
+          primitive.size != cellPrimitive->second * 0.5f) {
+        throw std::runtime_error(
+            "A hole preview must follow one occupied cell primitive and use half its size.");
+      }
+    } else if (!cellPrimitiveSizes
+                    .emplace(primitive.cellIndex, primitive.size)
+                    .second) {
+      throw std::runtime_error(
+          "A cell has more than one non-hole primitive preview.");
+    }
+
+    auto const& site = layout.sites[primitive.cellIndex];
+    auto [siteOwner, insertedSite] =
+        siteOwners.emplace(std::pair{site.x, site.y}, primitive.cellIndex);
+    if ((!insertedSite && siteOwner->second != primitive.cellIndex) ||
+        !finitePoint(site)) {
+      throw std::runtime_error(
+          "Primitive previews reference duplicate or non-finite sites.");
+    }
+    auto const& cell = layout.cells[primitive.cellIndex];
+    if (cell.vertices.size() < 3 ||
         primitive.position != site || !std::isfinite(primitive.size) ||
         primitive.size <= 0.0f || !std::isfinite(primitive.angle) ||
         primitive.angle < 0.0f || primitive.angle >= 360.0f ||
         primitive.contour.size() < 3 ||
+        (primitive.isHole &&
+         primitive.contour.size() != primitive.regularSideCount) ||
         !std::all_of(
             primitive.contour.begin(), primitive.contour.end(), finitePoint)) {
       throw std::runtime_error("A primitive preview is incomplete or invalid.");
@@ -98,7 +130,8 @@ void validatePreview(
         throw std::runtime_error(
             "A Voronoi cell is degenerate or not strictly convex.");
       }
-      if (!contourContains(primitive.contour, vertex, tolerance)) {
+      if (!primitive.isHole &&
+          !contourContains(primitive.contour, vertex, tolerance)) {
         throw std::runtime_error(
             "A fitted primitive does not contain its complete Voronoi cell.");
       }
@@ -114,6 +147,11 @@ void validatePreview(
 std::unique_ptr<bw::core::Primitive> createPrimitive(
     PrimitiveFieldPrimitivePreview const& preview) {
   using Primitive = bw::core::Primitive;
+  if (preview.isHole) {
+    return std::make_unique<bw::core::RegularPolygon>(
+        Primitive::Operation::Difference, Primitive::FillRule::NonZero,
+        preview.regularSideCount);
+  }
   switch (preview.type) {
     case PrimitiveFieldType::Rectangle:
       return std::make_unique<bw::core::RectanglePolygon>(
@@ -150,7 +188,10 @@ std::vector<std::unique_ptr<bw::core::Primitive>> buildBatch(
     auto const& angle = primitive->getAnimationInterpolator(
         bw::core::VertexTransformer::Key::Angle);
     auto const& points = angle.getPoints();
-    if (primitive->getOperation() != bw::core::Primitive::Operation::Union ||
+    auto expectedOperation =
+        preview.isHole ? bw::core::Primitive::Operation::Difference
+                       : bw::core::Primitive::Operation::Union;
+    if (primitive->getOperation() != expectedOperation ||
         primitive->getFillRule() != bw::core::Primitive::FillRule::NonZero ||
         primitive->getLayer() != 0 || primitive->getPriority() != 0 ||
         primitive->getOrientation() != 0.0f ||

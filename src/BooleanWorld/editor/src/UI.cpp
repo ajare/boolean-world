@@ -3353,6 +3353,23 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
 
       ImGui::SetNextItemWidth(220.0f);
       if (ImGui::DragFloat(
+              "Cell occupancy (%)", &primitiveFieldPreview.occupancyPercent,
+              0.25f, 0.0f, 100.0f, "%.2f")) {
+        primitiveFieldPreview.refreshPrimitives();
+      }
+      ImGui::TextDisabled("The cell at 0, 0 is always occupied.");
+
+      ImGui::SetNextItemWidth(220.0f);
+      if (ImGui::DragFloat(
+              "Hole chance (%)", &primitiveFieldPreview.holeChancePercent,
+              0.25f, 0.0f, 100.0f, "%.2f")) {
+        primitiveFieldPreview.refreshPrimitives();
+      }
+      ImGui::TextDisabled(
+          "Occupied non-origin cells may receive a half-size Difference polygon.");
+
+      ImGui::SetNextItemWidth(220.0f);
+      if (ImGui::DragFloat(
               "Overlap (%)", &primitiveFieldPreview.overlapPercent, 0.25f,
               0.0f, 100.0f, "%.2f")) {
         primitiveFieldPreview.refreshPrimitives();
@@ -3394,7 +3411,18 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
                   controls.remainingWorldCapacity);
       ImGui::Text("Effective placement cap: %u",
                   controls.effectivePlacementCap);
-      ImGui::Text("Actual generated count: %zu", generatedCount);
+      ImGui::Text("Generated cells: %zu", generatedCount);
+      auto holeCount = static_cast<size_t>(std::count_if(
+          primitiveFieldPreview.primitives.begin(),
+          primitiveFieldPreview.primitives.end(),
+          [](PrimitiveFieldPrimitivePreview const& primitive) {
+            return primitive.isHole;
+          }));
+      ImGui::Text("Occupied cells: %zu",
+                  primitiveFieldPreview.primitives.size() - holeCount);
+      ImGui::Text("Hole primitives: %zu", holeCount);
+      ImGui::Text("Primitives to place: %zu",
+                  primitiveFieldPreview.primitives.size());
 
       auto expensiveRequest = controls.approximateUncappedSites > 2000 ||
                               controls.effectivePlacementCap > 2000 ||
@@ -3409,6 +3437,12 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
         ImGui::TextColored(
             ImVec4(1.0f, 0.7f, 0.15f, 1.0f),
             "Capped: center-outward sampling stopped at the effective placement cap.");
+      }
+      if (primitiveFieldPreview.primitives.size() >
+          controls.remainingWorldCapacity) {
+        ImGui::TextColored(
+            ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
+            "The occupied cells and holes require more primitive slots than remain.");
       }
 
       auto generationActive = primitiveFieldPreview.isGenerating();
@@ -3431,7 +3465,9 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
       ImGui::SameLine();
       auto canPlace = controls.valid() &&
                       primitiveFieldPreview.hasCompletePreview() &&
-                      generatedCount <= controls.remainingWorldCapacity &&
+                      !primitiveFieldPreview.primitives.empty() &&
+                      primitiveFieldPreview.primitives.size() <=
+                          controls.remainingWorldCapacity &&
                       !generationActive;
       if (!canPlace) ImGui::BeginDisabled();
       if (ImGui::Button("Place Primitives") && primitiveFieldPreview.layout) {
@@ -3479,7 +3515,9 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
           workflowStatus = "Generating layout…";
           break;
         case PrimitiveFieldWorkflowState::CurrentPreview:
-          workflowStatus = "Preview is current and ready to place.";
+          workflowStatus = primitiveFieldPreview.primitives.empty()
+                               ? "Preview is current, but no cells were selected for placement."
+                               : "Preview is current and ready to place.";
           break;
         case PrimitiveFieldWorkflowState::StalePreview:
           workflowStatus = "Preview is stale; generate the layout again.";
