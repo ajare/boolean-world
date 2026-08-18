@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-Runs ready GitHub tickets through pi until no dependency-free work remains.
+Runs ready GitHub tickets through pi or Claude Code until no dependency-free
+work remains.
 
 .DESCRIPTION
 Selects open issues carrying the ready-for-agent label, excludes issues with
@@ -10,36 +11,57 @@ current user before claiming new work. New work is ordered by priority labels
 number. Issues referenced by another ticket's "## Parent" section are treated
 as specs/maps rather than executable tickets.
 
-Pi runs in non-interactive print mode. Provider failures use capped exponential
-backoff; usage-limit failures poll at ten-minute intervals by default. After
-each completed ticket the loop reports its ISO 8601 start and end timestamps,
+The agent is chosen with the mandatory -Agent parameter and runs in
+non-interactive print mode. Provider failures use capped exponential backoff;
+usage-limit failures poll at ten-minute intervals by default. After each
+completed ticket the loop reports its ISO 8601 start and end timestamps,
 duration, and total token usage across every retry attempt. Where the provider
 exposes it, the loop also reports current-window and weekly usage. Logs and
-sessions are written below the system temporary directory in pi-ralph-loop.
+sessions are written below the system temporary directory, in pi-ralph-loop or
+claude-ralph-loop according to the agent.
 
-Use `pi --list-models` to see models available for the providers configured on
-this machine. Model names use pi's provider/model form. Thinking support and
-available effort levels vary by model; the script accepts off, minimal, low,
-medium, high, xhigh, and max and passes the selected value to pi.
+Model names and effort levels differ by agent. Pi takes provider/model names -
+use `pi --list-models` to see what the providers configured on this machine
+offer - and accepts off, minimal, low, medium, high, xhigh, and max. Claude
+Code takes an alias such as opus or sonnet, or a full model name, and accepts
+low, medium, high, xhigh, and max; off and minimal are rejected for Claude
+because that agent has no equivalent.
 
-PowerShell's common -Verbose switch also passes --verbose to pi and enables
-extra loop diagnostics.
+Token usage is read from the agent's own session transcripts. Pi reports cost
+per message and the loop totals it; Claude Code does not record cost in its
+transcripts, so cost is reported as unavailable rather than guessed.
+
+PowerShell's common -Verbose switch also passes --verbose to the agent and
+enables extra loop diagnostics.
+
+.PARAMETER Agent
+Coding agent to run tickets through: pi or claude. Mandatory. The agent's
+command must be on PATH, and it determines model naming, effort levels, and
+where session transcripts are read from.
 
 .PARAMETER Model
-Pi model in provider/model form. Defaults to openai-codex/gpt-5.6-sol. Ignored
-when AdaptiveModelAndEffort is specified.
+Model for the selected agent. For pi, a provider/model name defaulting to
+openai-codex/gpt-5.6-sol. For claude, an alias or full model name defaulting
+to opus. Ignored when AdaptiveModelAndEffort is specified.
 
 .PARAMETER Effort
-Thinking effort passed to pi. Defaults to medium. Valid values are off,
-minimal, low, medium, high, xhigh, and max. Ignored when
-AdaptiveModelAndEffort is specified.
+Thinking effort passed to the agent. Defaults to medium. Pi accepts off,
+minimal, low, medium, high, xhigh, and max; claude accepts low, medium, high,
+xhigh, and max. Ignored when AdaptiveModelAndEffort is specified.
 
 .PARAMETER AdaptiveModelAndEffort
-Selects the model and effort from the ticket's difficulty label:
-difficulty:trivial uses GPT-5.6 Terra/medium; difficulty:small (or
-difficulty:low) uses Terra/high; difficulty:medium uses Sol/medium; and
-difficulty:large (or difficulty:high) uses Sol/high. The script stops if an
-eligible ticket has no supported difficulty label or has conflicting labels.
+Selects the model and effort from the ticket's difficulty label. The bigger
+model of the pair handles the harder tickets, and effort rises within each
+model:
+
+  difficulty:trivial            smaller model, medium effort
+  difficulty:small (or :low)    smaller model, high effort
+  difficulty:medium             larger model, medium effort
+  difficulty:large (or :high)   larger model, high effort
+
+For pi the pair is GPT-5.6 Terra and Sol; for claude it is Sonnet and Opus.
+The script stops if an eligible ticket has no supported difficulty label or
+has conflicting labels.
 
 .PARAMETER Repo
 GitHub repository in owner/name form. When omitted, the repository is inferred
@@ -62,47 +84,60 @@ Delay between retries after a provider usage-limit response. Defaults to 600.
 Processes at most one ticket, then exits.
 
 .PARAMETER DryRun
-Prints the next eligible ticket without claiming it or starting pi.
+Prints the next eligible ticket without claiming it or starting the agent.
 
 .PARAMETER Quiet
 Suppresses routine loop and agent output while retaining warnings, errors, and
 the required end-of-ticket usage summary.
 
 .EXAMPLE
-.\tools\ralph-loop.ps1
+.\tools\ralph-loop.ps1 -Agent pi
 
-Runs the full frontier with the defaults: GPT-5.6 Sol at medium effort.
+Runs the full frontier through pi with its defaults: GPT-5.6 Sol at medium
+effort.
 
 .EXAMPLE
-.\tools\ralph-loop.ps1 -Model openai-codex/gpt-5.6-terra -Effort high
+.\tools\ralph-loop.ps1 -Agent claude
+
+Runs the full frontier through Claude Code with its defaults: Opus at medium
+effort.
+
+.EXAMPLE
+.\tools\ralph-loop.ps1 -Agent pi -Model openai-codex/gpt-5.6-terra -Effort high
 
 Uses GPT-5.6 Terra with high reasoning effort for every eligible ticket.
 
 .EXAMPLE
-.\tools\ralph-loop.ps1 -Model openai-codex/gpt-5.6-luna -Effort low -Once
+.\tools\ralph-loop.ps1 -Agent claude -Model sonnet -Effort low -Once
 
-Uses GPT-5.6 Luna at low effort and stops after one ticket.
+Uses Sonnet at low effort and stops after one ticket.
 
 .EXAMPLE
-.\tools\ralph-loop.ps1 -AdaptiveModelAndEffort
+.\tools\ralph-loop.ps1 -Agent pi -AdaptiveModelAndEffort
 
 Chooses GPT-5.6 Terra or Sol and medium or high effort independently for each
 ticket, based on its difficulty label.
 
 .EXAMPLE
-.\tools\ralph-loop.ps1 -Model openai-codex/gpt-5.4-mini -Effort minimal -Quiet
+.\tools\ralph-loop.ps1 -Agent claude -AdaptiveModelAndEffort
+
+Chooses Sonnet or Opus and medium or high effort independently for each ticket,
+based on its difficulty label.
+
+.EXAMPLE
+.\tools\ralph-loop.ps1 -Agent pi -Model openai-codex/gpt-5.4-mini -Effort minimal -Quiet
 
 Uses a smaller model at minimal effort and shows only essential output and the
 usage summary.
 
 .EXAMPLE
-.\tools\ralph-loop.ps1 -Model anthropic/claude-opus-4-6 -Effort high -Once -Verbose
+.\tools\ralph-loop.ps1 -Agent claude -Effort xhigh -Once -Verbose
 
-Uses an Anthropic model, when that provider and model are configured in pi,
-for one ticket with verbose pi and loop diagnostics.
+Uses Claude Code's default model at extra-high effort for one ticket, with
+verbose agent and loop diagnostics.
 
 .EXAMPLE
-.\tools\ralph-loop.ps1 -Repo ajare/boolean-world -ReadyLabel ready-for-agent -DryRun
+.\tools\ralph-loop.ps1 -Agent pi -Repo ajare/boolean-world -ReadyLabel ready-for-agent -DryRun
 
 Shows the next eligible ticket in an explicit repository without claiming or
 running it.
@@ -119,7 +154,11 @@ Shows parameter descriptions and these examples in PowerShell help.
 #>
 [CmdletBinding()]
 param(
-    [string]$Model = "openai-codex/gpt-5.6-sol",
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("pi", "claude")]
+    [string]$Agent,
+
+    [string]$Model = "",
 
     [ValidateSet("off", "minimal", "low", "medium", "high", "xhigh", "max")]
     [string]$Effort = "medium",
@@ -166,8 +205,41 @@ function Get-Priority {
     return $rank
 }
 
+function Get-AgentModelPair {
+    param([Parameter(Mandatory = $true)][string]$AgentName)
+
+    # The larger model of each pair is also that agent's default.
+    switch ($AgentName) {
+        "pi" {
+            return [pscustomobject]@{ Smaller = "openai-codex/gpt-5.6-terra"; Larger = "openai-codex/gpt-5.6-sol" }
+        }
+        "claude" {
+            return [pscustomobject]@{ Smaller = "sonnet"; Larger = "opus" }
+        }
+        default {
+            throw "Unsupported agent '$AgentName'."
+        }
+    }
+}
+
+function Test-EffortSupported {
+    param(
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [Parameter(Mandatory = $true)][string]$EffortLevel
+    )
+
+    # Claude Code has no equivalent of pi's off and minimal levels.
+    if ($AgentName -eq "claude") {
+        return $EffortLevel -in @("low", "medium", "high", "xhigh", "max")
+    }
+    return $true
+}
+
 function Get-AdaptiveModelAndEffort {
-    param([Parameter(Mandatory = $true)][object[]]$Labels)
+    param(
+        [Parameter(Mandatory = $true)][string]$AgentName,
+        [Parameter(Mandatory = $true)][object[]]$Labels
+    )
 
     $difficultyLabels = @($Labels | ForEach-Object {
         $name = ([string]$_.name).ToLowerInvariant().Trim()
@@ -183,18 +255,20 @@ function Get-AdaptiveModelAndEffort {
         throw "Adaptive model and effort found conflicting difficulty labels: $($difficultyLabels -join ', ')."
     }
 
+    $models = Get-AgentModelPair -AgentName $AgentName
+
     switch ($difficultyLabels[0]) {
         "trivial" {
-            return [pscustomobject]@{ Difficulty = "trivial"; Model = "openai-codex/gpt-5.6-terra"; Effort = "medium" }
+            return [pscustomobject]@{ Difficulty = "trivial"; Model = $models.Smaller; Effort = "medium" }
         }
         { $_ -in @("small", "low") } {
-            return [pscustomobject]@{ Difficulty = $_; Model = "openai-codex/gpt-5.6-terra"; Effort = "high" }
+            return [pscustomobject]@{ Difficulty = $_; Model = $models.Smaller; Effort = "high" }
         }
         "medium" {
-            return [pscustomobject]@{ Difficulty = "medium"; Model = "openai-codex/gpt-5.6-sol"; Effort = "medium" }
+            return [pscustomobject]@{ Difficulty = "medium"; Model = $models.Larger; Effort = "medium" }
         }
         { $_ -in @("large", "high") } {
-            return [pscustomobject]@{ Difficulty = $_; Model = "openai-codex/gpt-5.6-sol"; Effort = "high" }
+            return [pscustomobject]@{ Difficulty = $_; Model = $models.Larger; Effort = "high" }
         }
         default {
             throw "Unsupported difficulty label '$($difficultyLabels[0])'."
@@ -329,7 +403,91 @@ function Get-NumericProperty {
     return [double]$property.Value
 }
 
-function Get-SessionUsage {
+function Get-ClaudeConfigDirectory {
+    if ($env:CLAUDE_CONFIG_DIR) {
+        return $env:CLAUDE_CONFIG_DIR
+    }
+    return (Join-Path $HOME ".claude")
+}
+
+function Get-ClaudeSessionUsage {
+    param([Parameter(Mandatory = $true)][string[]]$SessionIds)
+
+    # Claude Code writes one transcript per session under its projects
+    # directory, named for the session id. Find them by that name rather than
+    # by reconstructing the project's directory slug.
+    $projectsDirectory = Join-Path (Get-ClaudeConfigDirectory) "projects"
+    if (-not (Test-Path $projectsDirectory)) {
+        return $null
+    }
+
+    $usage = [ordered]@{
+        Provider = "anthropic"
+        Model = ""
+        Input = [int64]0
+        Output = [int64]0
+        CacheRead = [int64]0
+        CacheWrite = [int64]0
+        Reasoning = [int64]0
+        TotalTokens = [int64]0
+        Cost = [double]0
+        CostKnown = $false
+    }
+
+    $sawUsage = $false
+    foreach ($sessionId in $SessionIds) {
+        $transcripts = @(Get-ChildItem -Path $projectsDirectory -Filter "$sessionId.jsonl" -File -Recurse -ErrorAction SilentlyContinue)
+        foreach ($transcript in $transcripts) {
+            foreach ($line in [System.IO.File]::ReadLines($transcript.FullName)) {
+                try {
+                    $entry = $line | ConvertFrom-Json
+                } catch {
+                    continue
+                }
+
+                $typeProperty = $entry.psobject.Properties["type"]
+                if ($null -eq $typeProperty -or ([string]$typeProperty.Value) -ne "assistant") {
+                    continue
+                }
+                $messageProperty = $entry.psobject.Properties["message"]
+                if ($null -eq $messageProperty -or $null -eq $messageProperty.Value) {
+                    continue
+                }
+                $message = $messageProperty.Value
+                $usageProperty = $message.psobject.Properties["usage"]
+                if ($null -eq $usageProperty -or $null -eq $usageProperty.Value) {
+                    continue
+                }
+
+                $messageUsage = $usageProperty.Value
+                $modelProperty = $message.psobject.Properties["model"]
+                if ($null -ne $modelProperty) {
+                    $usage.Model = [string]$modelProperty.Value
+                }
+                $usage.Input += [int64](Get-NumericProperty $messageUsage "input_tokens")
+                $usage.Output += [int64](Get-NumericProperty $messageUsage "output_tokens")
+                $usage.CacheRead += [int64](Get-NumericProperty $messageUsage "cache_read_input_tokens")
+                $usage.CacheWrite += [int64](Get-NumericProperty $messageUsage "cache_creation_input_tokens")
+                $detailsProperty = $messageUsage.psobject.Properties["output_tokens_details"]
+                if ($null -ne $detailsProperty) {
+                    $usage.Reasoning += [int64](Get-NumericProperty $detailsProperty.Value "thinking_tokens")
+                }
+                $sawUsage = $true
+            }
+        }
+    }
+
+    if (-not $sawUsage) {
+        return $null
+    }
+
+    # Claude Code transcripts carry no cost, so it is totalled from the parts
+    # rather than reported.
+    $usage.TotalTokens = $usage.Input + $usage.Output + $usage.CacheRead + $usage.CacheWrite
+    return [pscustomobject]$usage
+}
+
+function Get-PiSessionUsage {
     param([Parameter(Mandatory = $true)][string]$SessionDirectory)
 
     $sessionFiles = @(Get-ChildItem -Path $SessionDirectory -Filter "*.jsonl" -File -Recurse -ErrorAction SilentlyContinue)
@@ -347,6 +505,7 @@ function Get-SessionUsage {
         Reasoning = [int64]0
         TotalTokens = [int64]0
         Cost = [double]0
+        CostKnown = $true
     }
 
     foreach ($sessionFile in $sessionFiles) {
@@ -434,6 +593,19 @@ function Write-UsageWindow {
 function Get-OAuthCredential {
     param([Parameter(Mandatory = $true)][string]$Provider)
 
+    if ($Agent -eq "claude") {
+        $credentialPath = Join-Path (Get-ClaudeConfigDirectory) ".credentials.json"
+        if (-not (Test-Path $credentialPath)) {
+            throw "No Claude Code credential file was found at $credentialPath."
+        }
+        $claudeAuth = Get-Content -Path $credentialPath -Raw | ConvertFrom-Json
+        $oauthProperty = $claudeAuth.psobject.Properties["claudeAiOauth"]
+        if ($null -eq $oauthProperty -or -not $oauthProperty.Value.accessToken) {
+            throw "No OAuth credential is configured for Claude Code."
+        }
+        return [pscustomobject]@{ access = $oauthProperty.Value.accessToken; accountId = "" }
+    }
+
     $configDirectory = if ($env:PI_CODING_AGENT_DIR) { $env:PI_CODING_AGENT_DIR } else { Join-Path $HOME ".pi/agent" }
     $authPath = Join-Path $configDirectory "auth.json"
     $authFile = Get-Content -Path $authPath -Raw | ConvertFrom-Json
@@ -460,9 +632,15 @@ function Show-TicketSummary {
         Write-Host "  Total tokens spent: unavailable"
         return
     }
-    Write-Host ('  Total tokens spent: {0:N0} (input {1:N0}, output {2:N0}, reasoning {3:N0}, cache read {4:N0}, cache write {5:N0}); cost ${6:N4}' -f
-        $SessionUsage.TotalTokens, $SessionUsage.Input, $SessionUsage.Output, $SessionUsage.Reasoning,
-        $SessionUsage.CacheRead, $SessionUsage.CacheWrite, $SessionUsage.Cost)
+    if ($SessionUsage.CostKnown) {
+        Write-Host ('  Total tokens spent: {0:N0} (input {1:N0}, output {2:N0}, reasoning {3:N0}, cache read {4:N0}, cache write {5:N0}); cost ${6:N4}' -f
+            $SessionUsage.TotalTokens, $SessionUsage.Input, $SessionUsage.Output, $SessionUsage.Reasoning,
+            $SessionUsage.CacheRead, $SessionUsage.CacheWrite, $SessionUsage.Cost)
+    } else {
+        Write-Host ('  Total tokens spent: {0:N0} (input {1:N0}, output {2:N0}, reasoning {3:N0}, cache read {4:N0}, cache write {5:N0}); cost not reported by this agent' -f
+            $SessionUsage.TotalTokens, $SessionUsage.Input, $SessionUsage.Output, $SessionUsage.Reasoning,
+            $SessionUsage.CacheRead, $SessionUsage.CacheWrite)
+    }
 }
 
 function Show-ProviderUsage {
@@ -543,8 +721,8 @@ function Test-TicketComplete {
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     throw "gh is required but was not found on PATH."
 }
-if (-not (Get-Command pi -ErrorAction SilentlyContinue)) {
-    throw "pi is required but was not found on PATH."
+if (-not (Get-Command $Agent -ErrorAction SilentlyContinue)) {
+    throw "$Agent is required for -Agent $Agent but was not found on PATH."
 }
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw "git is required but was not found on PATH."
@@ -557,6 +735,12 @@ if ($UsagePollSeconds -lt 1) {
 }
 if ($Quiet -and $VerbosePreference -eq "Continue") {
     throw "-Quiet and -Verbose cannot be used together."
+}
+if (-not $Model) {
+    $Model = (Get-AgentModelPair -AgentName $Agent).Larger
+}
+if (-not (Test-EffortSupported -AgentName $Agent -EffortLevel $Effort)) {
+    throw "Effort '$Effort' is not supported by $Agent. Use low, medium, high, xhigh, or max."
 }
 
 $repoRoot = (& git rev-parse --show-toplevel 2>$null).Trim()
@@ -573,7 +757,7 @@ if (-not $Repo) {
     $Repo = (Invoke-Gh @("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")).Trim()
 }
 $currentUser = (Invoke-Gh @("api", "user", "--jq", ".login")).Trim()
-$logDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "pi-ralph-loop"
+$logDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "$Agent-ralph-loop"
 New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
 
 while ($true) {
@@ -590,7 +774,7 @@ while ($true) {
     $ticketEffort = $Effort
     $selectionSource = "command line/default"
     if ($AdaptiveModelAndEffort) {
-        $adaptiveSelection = Get-AdaptiveModelAndEffort -Labels @($ticket.labels)
+        $adaptiveSelection = Get-AdaptiveModelAndEffort -AgentName $Agent -Labels @($ticket.labels)
         $ticketModel = $adaptiveSelection.Model
         $ticketEffort = $adaptiveSelection.Effort
         $selectionSource = "adaptive difficulty:$($adaptiveSelection.Difficulty)"
@@ -598,7 +782,7 @@ while ($true) {
     Write-Host "Ticket #$number model: $ticketModel; effort: $ticketEffort ($selectionSource)."
 
     if ($DryRun) {
-        Write-Status "Dry run: would start pi with model '$ticketModel' and effort '$ticketEffort'."
+        Write-Status "Dry run: would start $Agent with model '$ticketModel' and effort '$ticketEffort'."
         break
     }
 
@@ -610,7 +794,10 @@ while ($true) {
     $ticketStartedAt = [DateTimeOffset]::Now
     $ticketTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $ticketSessionDirectory = Join-Path $logDirectory "issue-$number-$ticketTimestamp-sessions"
-    New-Item -ItemType Directory -Force -Path $ticketSessionDirectory | Out-Null
+    $ticketSessionIds = @()
+    if ($Agent -eq "pi") {
+        New-Item -ItemType Directory -Force -Path $ticketSessionDirectory | Out-Null
+    }
     Write-Status "Ticket #$number started at $($ticketStartedAt.ToString('o'))."
 
     $startingHead = (& git rev-parse HEAD).Trim()
@@ -622,29 +809,44 @@ while ($true) {
         ++$attempt
         $attemptTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
         $logPath = Join-Path $logDirectory "issue-$number-$attemptTimestamp-attempt-$attempt.log"
-        $sessionDirectory = Join-Path $ticketSessionDirectory "attempt-$attempt"
-        New-Item -ItemType Directory -Force -Path $sessionDirectory | Out-Null
-        Write-Status "Starting pi for #$number (attempt $attempt). Log: $logPath"
-        Write-Verbose "Session directory: $sessionDirectory"
+        Write-Status "Starting $Agent for #$number (attempt $attempt). Log: $logPath"
 
-        $piArguments = @(
-            "--print", "--approve", "--model", $ticketModel, "--thinking", $ticketEffort,
-            "--name", "ralph-$number", "--session-dir", $sessionDirectory
-        )
-        if ($VerbosePreference -eq "Continue") {
-            $piArguments += "--verbose"
+        if ($Agent -eq "pi") {
+            $sessionDirectory = Join-Path $ticketSessionDirectory "attempt-$attempt"
+            New-Item -ItemType Directory -Force -Path $sessionDirectory | Out-Null
+            Write-Verbose "Session directory: $sessionDirectory"
+
+            $agentArguments = @(
+                "--print", "--approve", "--model", $ticketModel, "--thinking", $ticketEffort,
+                "--name", "ralph-$number", "--session-dir", $sessionDirectory
+            )
+        } else {
+            # Claude Code names sessions by id rather than taking a directory,
+            # so each attempt gets its own id and the transcripts are found by
+            # those ids afterwards.
+            $sessionId = [guid]::NewGuid().ToString()
+            $ticketSessionIds += $sessionId
+            Write-Verbose "Session id: $sessionId"
+
+            $agentArguments = @(
+                "--print", "--dangerously-skip-permissions", "--model", $ticketModel,
+                "--effort", $ticketEffort, "--session-id", $sessionId
+            )
         }
-        $piArguments += $prompt
+        if ($VerbosePreference -eq "Continue") {
+            $agentArguments += "--verbose"
+        }
+        $agentArguments += $prompt
 
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
         try {
             $output = [System.Collections.Generic.List[string]]::new()
-            & pi @piArguments 2>&1 |
+            & $Agent @agentArguments 2>&1 |
                 Tee-Object -FilePath $logPath -Append |
                 ForEach-Object {
                     # Emit each line as it arrives instead of handing the host one
-                    # screen-sized string after pi exits. Splitting bare carriage
+                    # screen-sized string after the agent exits. Splitting bare carriage
                     # returns also turns progress-style redraws into scrolling lines.
                     foreach ($line in ([string]$_ -split "`r`n|`n|`r")) {
                         [void]$output.Add($line)
@@ -653,7 +855,7 @@ while ($true) {
                         }
                     }
                 }
-            $piExitCode = $LASTEXITCODE
+            $agentExitCode = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $previousErrorActionPreference
         }
@@ -665,8 +867,8 @@ while ($true) {
             break
         }
 
-        if ($piExitCode -eq 0) {
-            throw "Pi exited successfully, but #$number was not closed with a new commit and clean tracked worktree. Inspect $logPath."
+        if ($agentExitCode -eq 0) {
+            throw "$Agent exited successfully, but #$number was not closed with a new commit and clean tracked worktree. Inspect $logPath."
         }
 
         if (Test-UsageLimitError $outputText) {
@@ -682,14 +884,20 @@ while ($true) {
             continue
         }
 
-        throw "Pi failed for a non-retryable implementation reason on #$number. The issue remains assigned and open. Inspect $logPath."
+        throw "$Agent failed for a non-retryable implementation reason on #$number. The issue remains assigned and open. Inspect $logPath."
     }
 
     $ticketEndedAt = [DateTimeOffset]::Now
-    $sessionUsage = Get-SessionUsage -SessionDirectory $ticketSessionDirectory
+    if ($Agent -eq "pi") {
+        $sessionUsage = Get-PiSessionUsage -SessionDirectory $ticketSessionDirectory
+        $usageSource = $ticketSessionDirectory
+    } else {
+        $sessionUsage = Get-ClaudeSessionUsage -SessionIds $ticketSessionIds
+        $usageSource = "Claude Code sessions $($ticketSessionIds -join ', ')"
+    }
     Show-TicketSummary -Number $number -StartedAt $ticketStartedAt -EndedAt $ticketEndedAt -SessionUsage $sessionUsage
     if ($null -eq $sessionUsage) {
-        Write-Warning "Could not read current-ticket usage from $ticketSessionDirectory."
+        Write-Warning "Could not read current-ticket usage from $usageSource."
     } else {
         Show-ProviderUsage -SessionUsage $sessionUsage
     }
