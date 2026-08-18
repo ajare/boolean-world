@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include <core/Arrangement.h>
 #include <core/CirclePolygon.h>
 #include <core/CircleSegmentPolygon.h>
 #include <core/CoreException.h>
@@ -217,7 +218,7 @@ void superformulaValidatesConstructorsAndSetters() {
   float values[] = {1.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
   SuperformulaPolygon superformula(Union, NonZero, 0.5f, values);
 
-  for (float invalid : {0.0f, -1.0f, 3.0f,
+  for (float invalid : {0.0f, -1.0f, 17.0f,
                         std::numeric_limits<float>::infinity(),
                         std::numeric_limits<float>::quiet_NaN()}) {
     requireDomainError(
@@ -250,6 +251,33 @@ void superformulaValidatesConstructorsAndSetters() {
       "superformula accepted parameters that generate non-finite vertices");
   require(superformula.getResolution() == 0.5f && superformula.getValue(0) == 1.0f,
           "failed superformula setter changed authored geometry");
+}
+
+void superformulaResolutionSamplesBaseContourDensity() {
+  float values[] = {1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f};
+  for (auto const [resolution, expectedVertexCount] :
+       {std::pair{1.0f, 64u}, std::pair{0.5f, 32u}, std::pair{0.25f, 16u}}) {
+    SuperformulaPolygon superformula(Union, NonZero, resolution, values);
+    auto const& polygons = superformula.getVertices();
+    require(polygons.size() == 1 && polygons.front().size() == 1,
+            "superformula did not produce one contour");
+    auto const& contour = polygons.front().front();
+    require(contour.size() == expectedVertexCount,
+            "superformula resolution did not produce the expected contour vertex count");
+    require(std::isfinite(contour.front().p.x) && std::isfinite(contour.front().p.y) &&
+                std::isfinite(contour.back().p.x) && std::isfinite(contour.back().p.y),
+            "superformula contour did not produce finite boundary samples");
+
+    bw::core::arr::Contour arrangementContour;
+    arrangementContour.reserve(contour.size());
+    for (auto const& vertex : contour) {
+      arrangementContour.push_back({std::lround(vertex.p.x * 1000.0f),
+                                    std::lround(vertex.p.y * 1000.0f)});
+    }
+    auto const graph = bw::core::arr::BuildPSLG({{arrangementContour, 0}});
+    require(graph.es.size() == contour.size(),
+            "superformula contour did not remain closed in arrangement input");
+  }
 }
 
 void rectangleValidatesConstructorsAndSetters() {
@@ -424,6 +452,7 @@ int main() {
     torusValidatesConstructorsAndSetters();
     torusSegmentValidatesConstructorsAndSetters();
     superformulaValidatesConstructorsAndSetters();
+    superformulaResolutionSamplesBaseContourDensity();
     rectangleValidatesConstructorsAndSetters();
     malformedFilesRejectEveryAffectedPrimitive();
     superformulaRoundTrips();

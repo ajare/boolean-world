@@ -19,8 +19,7 @@ namespace {
 constexpr size_t ControlValueCount = 6;
 constexpr uint32_t SamplingBaseResolution = 64;
 constexpr float MaximumResolution =
-    BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX /
-    (SamplingBaseResolution * static_cast<float>(WP_TWOPI));
+    BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX / static_cast<float>(SamplingBaseResolution);
 
 float validateResolution(float resolution) {
   if (!isfinite(resolution) || resolution <= 0.0f || resolution > MaximumResolution) {
@@ -28,6 +27,10 @@ float validateResolution(float resolution) {
         "Superformula resolution must be finite, positive, and within the contour vertex limit");
   }
   return resolution;
+}
+
+uint32_t sampleCountForResolution(float resolution) {
+  return max(3u, static_cast<uint32_t>(resolution * SamplingBaseResolution));
 }
 
 void validateControlValues(array<float, ControlValueCount> const& values) {
@@ -63,16 +66,16 @@ vector<ComplexPolygon> generateSuperformulaVertices(
   validateResolution(resolution);
   validateControlValues(values);
 
+  auto const sampleCount = sampleCountForResolution(resolution);
   ClosedPolygon vertices;
-  float const increment = 1.0f / (SamplingBaseResolution * resolution);
-  for (float angle = 0.0f; angle < WP_TWOPI; angle += increment) {
+  vertices.reserve(sampleCount);
+  for (uint32_t sample = 0; sample < sampleCount; ++sample) {
+    float const angle =
+        static_cast<float>(WP_TWOPI) * sample / static_cast<float>(sampleCount);
     float const radius = formulaRadius(angle, values);
     wp::Vector2 const vertex{radius * cosf(angle), radius * sinf(angle)};
     if (!isfinite(vertex.x) || !isfinite(vertex.y)) {
       throw CoreException("Superformula generated a non-finite vertex");
-    }
-    if (vertices.size() >= BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX) {
-      throw CoreException("Superformula resolution exceeds the contour vertex limit");
     }
     vertices.push_back({vertex});
   }

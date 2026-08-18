@@ -46,7 +46,7 @@ A finite width-to-height ratio in [1, 10].
 ### SuperformulaPolygon
 An implementation of the [Superformula](https://en.wikipedia.org/wiki/Superformula). This takes 6 parameters and produces different shapes.
 #### Resolution
-A finite positive value controlling contour sampling density, bounded at approximately 2.55 so the contour cannot exceed 1024 vertices.
+A finite positive value controlling contour sampling density. Resolution 1 produces the base 64-vertex contour; the value is bounded at 16 so the contour cannot exceed 1024 vertices.
 #### Values
 Exactly 6 finite float parameters (`a`, `b`, `m`, `n1`, `n2`, and `n3`) define the superformula. The denominators `a` and `b` and the exponents `n1`, `n2`, and `n3` must be positive.
 ### Torus
