@@ -4,11 +4,11 @@
 #include <memory>
 #include <vector>
 
-#include <willpower/common/AccelerationGrid.h>
 #include <willpower/common/BoundingBox.h>
 #include <willpower/common/Vector2.h>
 
 #include "core/Arrangement.h"
+#include "core/ImmutableAccelerationGrid.h"
 #include "core/Platform.h"
 #include "core/Stats.h"
 
@@ -18,9 +18,9 @@ class BW_API ArrangementWorldData {
   std::vector<arr::ArrangementTriangle> mTriangles;
   std::vector<arr::ArrangementWall> mWalls;
   std::vector<uint32_t> mCollisionWallIndices;
-  std::unique_ptr<wp::AccelerationGrid> mTriangleGrid;
-  std::unique_ptr<wp::AccelerationGrid> mVertexGrid;
-  std::unique_ptr<wp::AccelerationGrid> mWallGrid;
+  std::unique_ptr<ImmutableAccelerationGrid> mTriangleGrid;
+  std::unique_ptr<ImmutableAccelerationGrid> mVertexGrid;
+  std::unique_ptr<ImmutableAccelerationGrid> mWallGrid;
 
 public:
   ArrangementWorldData(

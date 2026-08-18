@@ -11,6 +11,7 @@ add_library(core STATIC
     src/DynamicWorldDataGenerator.cpp
     src/Easing.cpp
     src/InfluenceEye.cpp
+    src/ImmutableAccelerationGrid.cpp
     src/MaterialDefinition.cpp
     src/MeshPrimitive.cpp
     src/Module.cpp
@@ -84,6 +85,14 @@ if(BUILD_TESTING)
     bw_target_defaults(boolean_world_arrangement_vertex_lookup_benchmark)
     bw_output_dirs(boolean_world_arrangement_vertex_lookup_benchmark)
     bw_deploy_runtime_dlls(boolean_world_arrangement_vertex_lookup_benchmark)
+
+    add_executable(boolean_world_arrangement_grid_generation_benchmark
+        tests/arrangement_grid_generation_benchmark.cpp)
+    target_link_libraries(boolean_world_arrangement_grid_generation_benchmark PRIVATE core)
+    target_compile_features(boolean_world_arrangement_grid_generation_benchmark PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_arrangement_grid_generation_benchmark)
+    bw_output_dirs(boolean_world_arrangement_grid_generation_benchmark)
+    bw_deploy_runtime_dlls(boolean_world_arrangement_grid_generation_benchmark)
 
     add_executable(boolean_world_arrangement_hierarchy_benchmark
         tests/arrangement_hierarchy_benchmark.cpp)
@@ -197,6 +206,15 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_arrangement_vertex_lookup_tests)
     bw_deploy_runtime_dlls(boolean_world_arrangement_vertex_lookup_tests)
     add_test(NAME boolean_world_arrangement_vertex_lookup COMMAND boolean_world_arrangement_vertex_lookup_tests)
+
+    add_executable(boolean_world_immutable_acceleration_grid_tests
+        tests/immutable_acceleration_grid_tests.cpp)
+    target_link_libraries(boolean_world_immutable_acceleration_grid_tests PRIVATE core)
+    target_compile_features(boolean_world_immutable_acceleration_grid_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_immutable_acceleration_grid_tests)
+    bw_output_dirs(boolean_world_immutable_acceleration_grid_tests)
+    bw_deploy_runtime_dlls(boolean_world_immutable_acceleration_grid_tests)
+    add_test(NAME boolean_world_immutable_acceleration_grid COMMAND boolean_world_immutable_acceleration_grid_tests)
 
     add_executable(boolean_world_arrangement_statistics_tests
         tests/arrangement_statistics_tests.cpp)

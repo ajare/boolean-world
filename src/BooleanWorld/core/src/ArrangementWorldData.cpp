@@ -15,17 +15,18 @@ wp::Vector2 ToWorld(arr::FixedPointVertex const& vertex) {
       arr::ToWorldCoordinate(vertex.y)};
 }
 
-std::unique_ptr<wp::AccelerationGrid> CreateGrid(
+std::unique_ptr<ImmutableAccelerationGrid> CreateGrid(
     wp::BoundingBox const& extents,
-    float targetCellSize) {
+    float targetCellSize,
+    std::span<ImmutableAccelerationGrid::ItemBounds const> itemBounds) {
   auto size = extents.getSize();
   auto dimensionsX = std::max(1, int(size.x / targetCellSize));
   auto dimensionsY = std::max(1, int(size.y / targetCellSize));
-  return std::make_unique<wp::AccelerationGrid>(
-      extents.getMinExtent(), size, dimensionsX, dimensionsY, 0.0f);
+  return std::make_unique<ImmutableAccelerationGrid>(
+      extents.getMinExtent(), size, dimensionsX, dimensionsY, itemBounds);
 }
 
-std::unique_ptr<wp::AccelerationGrid> CreateVertexGrid(
+wp::BoundingBox VertexGridExtents(
     wp::BoundingBox const& extents,
     float targetCellSize,
     std::vector<arr::FixedPointVertex> const& vertices) {
@@ -39,8 +40,7 @@ std::unique_ptr<wp::AccelerationGrid> CreateVertexGrid(
     maxExtent.y = std::max(maxExtent.y, position.y);
   }
   maxExtent += {targetCellSize, targetCellSize};
-  return CreateGrid(
-      wp::BoundingBox(minExtent, maxExtent - minExtent), targetCellSize);
+  return {minExtent, maxExtent - minExtent};
 }
 }  // namespace
 
@@ -52,32 +52,36 @@ ArrangementWorldData::ArrangementWorldData(
     ArrangementStats* stats)
     : mArrangement(std::move(arrangement)),
       mTriangles(arr::BuildArrangementTriangles(*mArrangement)),
-      mWalls(arr::BuildArrangementWalls(*mArrangement)),
-      mTriangleGrid(CreateGrid(extents, gridCellSize)),
-      mVertexGrid(CreateVertexGrid(
-          extents, gridCellSize, mArrangement->vertices)),
-      mWallGrid(CreateGrid(extents, gridCellSize)) {
+      mWalls(arr::BuildArrangementWalls(*mArrangement)) {
   if (stats != nullptr) {
     stats->triangleCount = uint32_t(mTriangles.size());
     stats->wallCount = uint32_t(mWalls.size());
   }
 
-  for (uint32_t triangleIndex = 0;
-       triangleIndex < uint32_t(mTriangles.size()); ++triangleIndex) {
-    auto const& triangle = mTriangles[triangleIndex];
-    std::vector<wp::Vector2> vertices;
-    for (auto vertexIndex : triangle.v) {
-      vertices.push_back(ToWorld(mArrangement->vertices[vertexIndex]));
-    }
-    mTriangleGrid->addItem(triangleIndex, wp::BoundingBox(vertices));
+  std::vector<ImmutableAccelerationGrid::ItemBounds> triangleBounds;
+  triangleBounds.reserve(mTriangles.size());
+  for (auto const& triangle : mTriangles) {
+    auto a = ToWorld(mArrangement->vertices[triangle.v[0]]);
+    auto b = ToWorld(mArrangement->vertices[triangle.v[1]]);
+    auto c = ToWorld(mArrangement->vertices[triangle.v[2]]);
+    triangleBounds.push_back({{std::min({a.x, b.x, c.x}), std::min({a.y, b.y, c.y})},
+                              {std::max({a.x, b.x, c.x}), std::max({a.y, b.y, c.y})}});
   }
+  mTriangleGrid = CreateGrid(extents, gridCellSize, triangleBounds);
 
-  for (uint32_t vertexIndex = 0;
-       vertexIndex < uint32_t(mArrangement->vertices.size()); ++vertexIndex) {
-    auto vertex = ToWorld(mArrangement->vertices[vertexIndex]);
-    mVertexGrid->addItem(vertexIndex, wp::BoundingBox({vertex}));
+  std::vector<ImmutableAccelerationGrid::ItemBounds> vertexBounds;
+  vertexBounds.reserve(mArrangement->vertices.size());
+  for (auto const& fixedVertex : mArrangement->vertices) {
+    auto vertex = ToWorld(fixedVertex);
+    vertexBounds.push_back({vertex, vertex});
   }
+  auto vertexExtents = VertexGridExtents(
+      extents, gridCellSize, mArrangement->vertices);
+  mVertexGrid = CreateGrid(vertexExtents, gridCellSize, vertexBounds);
 
+  std::vector<ImmutableAccelerationGrid::ItemBounds> wallBounds;
+  wallBounds.reserve(mWalls.size());
+  mCollisionWallIndices.reserve(mWalls.size());
   for (uint32_t wallIndex = 0; wallIndex < uint32_t(mWalls.size());
        ++wallIndex) {
     auto const& wall = mWalls[wallIndex];
@@ -90,10 +94,11 @@ ArrangementWorldData::ArrangementWorldData(
     auto const& edge = mArrangement->edges[wall.edge];
     auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
     auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
-    mWallGrid->addItem(
-        uint32_t(mCollisionWallIndices.size()), wp::BoundingBox({a, b}));
+    wallBounds.push_back({{std::min(a.x, b.x), std::min(a.y, b.y)},
+                          {std::max(a.x, b.x), std::max(a.y, b.y)}});
     mCollisionWallIndices.push_back(wallIndex);
   }
+  mWallGrid = CreateGrid(extents, gridCellSize, wallBounds);
 }
 
 arr::ArrangementResult const& ArrangementWorldData::getArrangement() const {
@@ -117,7 +122,7 @@ int32_t ArrangementWorldData::pointInTriangle(
   if (cellX < 0 || cellY < 0) {
     return -1;
   }
-  for (auto triangleIndex : mTriangleGrid->_getCellItems(cellX, cellY)) {
+  for (auto triangleIndex : mTriangleGrid->getCellItems(cellX, cellY)) {
     auto const& triangle = mTriangles[triangleIndex];
     auto a = ToWorld(mArrangement->vertices[triangle.v[0]]);
     auto b = ToWorld(mArrangement->vertices[triangle.v[1]]);
@@ -161,7 +166,7 @@ int32_t ArrangementWorldData::getNearestVertexIndex(
   }
 
   wp::BoundingCircle bounds(position, radius);
-  wp::AccelerationGrid::IndexCollection candidates;
+  ImmutableAccelerationGrid::IndexCollection candidates;
   mVertexGrid->getCandidateItemsInBoundingArea(bounds, candidates);
 
   int32_t result = -1;
@@ -199,7 +204,7 @@ std::vector<uint32_t> ArrangementWorldData::getWallsNear(
     wp::Vector2 const& position,
     float radius) const {
   wp::BoundingCircle bounds(position, radius);
-  wp::AccelerationGrid::IndexCollection candidates;
+  ImmutableAccelerationGrid::IndexCollection candidates;
   mWallGrid->getCandidateItemsInBoundingArea(bounds, candidates);
   std::vector<uint32_t> result;
   result.reserve(candidates.size());
