@@ -1448,6 +1448,16 @@ void renderEditRectanglePolygon(editor::Document* doc, bw::core::Primitive* prim
   }
 }
 
+void completeSuperformulaControlValueEdit(editor::Document* doc, bw::core::SuperformulaPolygon* superformula, uint32_t index, string const& name) {
+  if (ImGui::IsItemActivated()) {
+    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+  } else if (ImGui::IsItemDeactivatedAfterEdit()) {
+    commitUndoableAction(doc, format("Set Superformula {} to {}", name, superformula->getValue(index)));
+  } else if (ImGui::IsItemDeactivated()) {
+    abandonUndoableAction(doc);
+  }
+}
+
 void renderEditSuperformulaPolygon(editor::Document* doc, bw::core::Primitive* primitive, editor::Settings& settings) {
   ImGui::SetNextItemWidth(128);
 
@@ -1470,52 +1480,31 @@ void renderEditSuperformulaPolygon(editor::Document* doc, bw::core::Primitive* p
     values[i] = sf->getValue(i);
   }
 
-  widgets::HelpMarker("Superformula parameter.  This is usually set to 1.");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-  if (ImGui::SliderFloat("a##EditPrimitive", &values[0], ED_MIN_SUPERFORMULA_A, ED_MAX_SUPERFORMULA_A)) {
-    auto staticBefore = sf->isStatic();
-    sf->setValue(0, values[0]);
-  }
+  struct SuperformulaControl {
+    char const* label;
+    char const* name;
+    char const* help;
+    float minimum;
+    float maximum;
+  };
+  SuperformulaControl const controls[] = {
+      {"a##EditPrimitive", "a", "Superformula parameter.  This is usually set to 1.", ED_MIN_SUPERFORMULA_A, ED_MAX_SUPERFORMULA_A},
+      {"b##EditPrimitive", "b", "Superformula parameter.  This is usually set to 1.", ED_MIN_SUPERFORMULA_B, ED_MAX_SUPERFORMULA_B},
+      {"m##EditPrimitive", "m", "Superformula parameter.  See https://en.wikipedia.org/wiki/Superformula for examples.", ED_MIN_SUPERFORMULA_M, ED_MAX_SUPERFORMULA_M},
+      {"n1##EditPrimitive", "n1", "Superformula parameter.  See https://en.wikipedia.org/wiki/Superformula for examples.", ED_MIN_SUPERFORMULA_N1, ED_MAX_SUPERFORMULA_N1},
+      {"n2##EditPrimitive", "n2", "Superformula parameter.  See https://en.wikipedia.org/wiki/Superformula for examples.", ED_MIN_SUPERFORMULA_N2, ED_MAX_SUPERFORMULA_N2},
+      {"n3##EditPrimitive", "n3", "Superformula parameter.  See https://en.wikipedia.org/wiki/Superformula for examples.", ED_MIN_SUPERFORMULA_N3, ED_MAX_SUPERFORMULA_N3},
+  };
 
-  widgets::HelpMarker("Superformula parameter.  This is usually set to 1.");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-  if (ImGui::SliderFloat("b##EditPrimitive", &values[1], ED_MIN_SUPERFORMULA_B, ED_MAX_SUPERFORMULA_B)) {
-    auto staticBefore = sf->isStatic();
-    sf->setValue(1, values[1]);
-  }
-
-  widgets::HelpMarker("Superformula parameter.  See https://en.wikipedia.org/wiki/Superformula for examples.");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-  if (ImGui::SliderFloat("m##EditPrimitive", &values[2], ED_MIN_SUPERFORMULA_M, ED_MAX_SUPERFORMULA_M)) {
-    auto staticBefore = sf->isStatic();
-    sf->setValue(2, values[2]);
-  }
-
-  widgets::HelpMarker("Superformula parameter.  See https://en.wikipedia.org/wiki/Superformula for examples.");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-  if (ImGui::SliderFloat("n1##EditPrimitive", &values[3], ED_MIN_SUPERFORMULA_N1, ED_MAX_SUPERFORMULA_N1)) {
-    auto staticBefore = sf->isStatic();
-    sf->setValue(3, values[3]);
-  }
-
-  widgets::HelpMarker("Superformula parameter.  See https://en.wikipedia.org/wiki/Superformula for examples.");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-  if (ImGui::SliderFloat("n2##EditPrimitive", &values[4], ED_MIN_SUPERFORMULA_N2, ED_MAX_SUPERFORMULA_N2)) {
-    auto staticBefore = sf->isStatic();
-    sf->setValue(4, values[4]);
-  }
-
-  widgets::HelpMarker("Superformula parameter.  See https://en.wikipedia.org/wiki/Superformula for examples.");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-  if (ImGui::SliderFloat("n3##EditPrimitive", &values[5], ED_MIN_SUPERFORMULA_N3, ED_MAX_SUPERFORMULA_N3)) {
-    auto staticBefore = sf->isStatic();
-    sf->setValue(5, values[5]);
+  for (uint32_t i = 0; i < 6; ++i) {
+    auto const& control = controls[i];
+    widgets::HelpMarker(control.help);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(128);
+    if (ImGui::SliderFloat(control.label, &values[i], control.minimum, control.maximum)) {
+      sf->setValue(i, values[i]);
+    }
+    completeSuperformulaControlValueEdit(doc, sf, i, control.name);
   }
 }
 

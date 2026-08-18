@@ -8,6 +8,7 @@
 
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/RectanglePolygon.h>
+#include <core/SuperformulaPolygon.h>
 #include <core/World.h>
 #include <core/WorldDataGenerator.h>
 
@@ -128,6 +129,50 @@ void abandonedAndCommittedActionsClearTransactionValues() {
           "committed vector transaction retained its initial value");
 }
 
+void superformulaControlValueEditIsDirtyAndUndoable() {
+  float values[6] = {1.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  bw::core::World world(100.0f, 10.0f);
+  world.addPrimitive(new bw::core::SuperformulaPolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      0.5f,
+      values));
+
+  editor::Document document;
+  document.setWorld(world);
+  document.setModified(false);
+
+  auto getSuperformula = [&document]() {
+    return static_cast<bw::core::SuperformulaPolygon*>(document.getWorld()->getPrimitive(0));
+  };
+  auto const originalValue = getSuperformula()->getValue(0);
+  auto const originalRadius = getSuperformula()->getRadius();
+  auto const undoLevelsBeforeEdit = editor::getUndoLevels();
+
+  editor::beginUndoableAction(&document, "", [](editor::Document*) { return true; }, originalValue);
+  getSuperformula()->setValue(0, 1.25f);
+  getSuperformula()->setValue(0, 1.75f);
+  editor::commitUndoableAction(&document, "Set Superformula a to 1.75");
+
+  auto const editedRadius = getSuperformula()->getRadius();
+  require(document.isModified(),
+          "editing a superformula control value did not mark the document modified");
+  require(editor::getUndoLevels() == undoLevelsBeforeEdit + 1,
+          "one superformula control drag did not create exactly one history entry");
+  require(getSuperformula()->getValue(0) == 1.75f && editedRadius != originalRadius,
+          "editing a superformula control value did not regenerate its contour");
+
+  editor::undo(&document);
+  require(!document.isModified() && getSuperformula()->getValue(0) == originalValue &&
+              getSuperformula()->getRadius() == originalRadius,
+          "undo did not restore the superformula control value and contour");
+
+  editor::redo(&document);
+  require(document.isModified() && getSuperformula()->getValue(0) == 1.75f &&
+              getSuperformula()->getRadius() == editedRadius,
+          "redo did not restore the superformula control value and contour");
+}
+
 void runtimeFreeSnapshotPreservesEditorGenerationConfiguration() {
   editor::Document document;
   document.newDoc();
@@ -242,6 +287,7 @@ int main() {
   try {
     undoAndRedoPreserveEachIntermediateSnapshot();
     abandonedAndCommittedActionsClearTransactionValues();
+    superformulaControlValueEditIsDirtyAndUndoable();
     runtimeFreeSnapshotPreservesEditorGenerationConfiguration();
     copiedDynamicGeneratorRetainsItsWorldAndSettings();
     undoHistoryRetainsConfiguredCapacity();
