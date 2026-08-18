@@ -18,6 +18,7 @@
 
 #include "Defines.h"
 #include "Document.h"
+#include "PrimitiveFieldPreview.h"
 #include "Render.h"
 #include "UiHelpers.h"
 
@@ -77,6 +78,35 @@ void renderGrid(float gridSize, wp::Vector2 const& offset, ImColor const& colour
         {xMax, ED_WINDOW_HEIGHT - (y - gridOffset.y)},
         colour,
         width);
+  }
+}
+
+void renderPrimitiveFieldPreview(
+    bw::core::PrimitiveFieldLayout const& layout,
+    wp::Vector2 const& offset,
+    ImDrawList* drawList) {
+  auto const cellColour = ImColor(0.1f, 0.85f, 1.0f, 0.9f);
+  auto const siteColour = ImColor(1.0f, 0.55f, 0.1f, 1.0f);
+
+  drawList->AddDrawCmd();
+  for (auto const& cell : layout.cells) {
+    vector<ImVec2> points;
+    points.reserve(cell.vertices.size());
+    for (auto const& vertex : cell.vertices) {
+      points.push_back({vertex.x - offset.x,
+                        ED_WINDOW_HEIGHT - (vertex.y - offset.y)});
+    }
+    drawList->AddPolyline(
+        points.data(), static_cast<int>(points.size()), cellColour,
+        ImDrawFlags_Closed, 1.5f);
+  }
+
+  drawList->AddDrawCmd();
+  for (auto const& site : layout.sites) {
+    auto screenPoint = ImVec2{
+        site.x - offset.x, ED_WINDOW_HEIGHT - (site.y - offset.y)};
+    drawList->AddCircleFilled(screenPoint, 3.5f, siteColour, 12);
+    drawList->AddCircle(screenPoint, 5.0f, siteColour, 12, 1.0f);
   }
 }
 
@@ -472,6 +502,13 @@ void renderWorld(
   // Prefab tiles
   if (settings.renderPrefabTiles) {
     renderPrefabTiles(world->getPrefabAreaTilingType(), offset, drawList);
+  }
+
+  // Primitive-field layout preview. This editor-only overlay is deliberately
+  // rendered after authored geometry and is never added to World.
+  auto const& primitiveFieldPreview = editor::getPrimitiveFieldPreview();
+  if (primitiveFieldPreview.open && primitiveFieldPreview.layout) {
+    renderPrimitiveFieldPreview(*primitiveFieldPreview.layout, offset, drawList);
   }
 }
 

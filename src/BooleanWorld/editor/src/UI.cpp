@@ -1,10 +1,14 @@
 #define NOMINMAX
 
-#include <string>
-#include <vector>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <format>
-#include <cmath>
+#include <limits>
+#include <random>
+#include <string>
+#include <vector>
 
 #include <nfd/nfd.h>
 
@@ -17,6 +21,7 @@
 #include <core/RectanglePolygon.h>
 #include <core/SuperformulaPolygon.h>
 #include <core/MeshPrimitive.h>
+#include <core/Defines.h>
 #include <core/DynamicWorldDataGenerator.h>
 
 #include <common/MaterialRegistry.h>
@@ -38,6 +43,7 @@
 #include "Undo.h"
 #include "Actions.h"
 #include "Markdown.h"
+#include "PrimitiveFieldPreview.h"
 #include "ExitApplicationException.h"
 #include "Render.h"
 #include "HoverableType.h"
@@ -235,6 +241,13 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
         widgets::PopDisabled();
       }
 
+      if (world) {
+        ImGui::Separator();
+        if (ImGui::MenuItem("Generate Primitive Field\u2026")) {
+          getPrimitiveFieldPreview().requestOpen();
+        }
+      }
+
       if (resetDisabled) {
         widgets::PushDisabled();
       }
@@ -247,12 +260,12 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
         resetAnimatorCaptures(doc);
       }
 
-      if (resetDisabled) {
-        widgets::PushDisabled();
-      }
-
       if (ImGui::MenuItem("Use ghost primitive", "Ctrl+G", &settings.ghostActive)) {
         enableGhost(doc, settings.ghostActive);
+      }
+
+      if (resetDisabled) {
+        widgets::PopDisabled();
       }
 
       ImGui::EndMenu();
@@ -3278,6 +3291,115 @@ void handleMouseInteraction(editor::Document* doc, editor::Settings& settings) {
 
 void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
   ImVec2 centre = ImGui::GetMainViewport()->GetCenter();
+  auto& primitiveFieldPreview = getPrimitiveFieldPreview();
+  constexpr char PrimitiveFieldPopupTitle[] = "Generate Primitive Field\u2026";
+
+  if (primitiveFieldPreview.openRequested) {
+    ImGui::OpenPopup(PrimitiveFieldPopupTitle);
+    primitiveFieldPreview.openRequested = false;
+  }
+
+  ImGui::SetNextWindowPos(centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  bool keepPrimitiveFieldOpen = primitiveFieldPreview.open;
+  if (ImGui::BeginPopupModal(
+          PrimitiveFieldPopupTitle, &keepPrimitiveFieldOpen,
+          ImGuiWindowFlags_AlwaysAutoResize)) {
+    auto world = doc->getWorld();
+    if (!world) {
+      ImGui::TextUnformatted("The document world is no longer available.");
+      if (ImGui::Button("Close")) {
+        ImGui::CloseCurrentPopup();
+        primitiveFieldPreview.close();
+      }
+    } else {
+      auto worldSize = world->getExtents().getSize();
+      auto maximumSpacing = std::min(worldSize.x, worldSize.y);
+      auto validSpacingRange = std::isfinite(maximumSpacing) &&
+                               maximumSpacing >= 8.0f;
+      if (!std::isfinite(primitiveFieldPreview.minimumSpacing)) {
+        primitiveFieldPreview.minimumSpacing = 8.0f;
+      }
+      if (validSpacingRange) {
+        primitiveFieldPreview.minimumSpacing = std::clamp(
+            primitiveFieldPreview.minimumSpacing, 8.0f, maximumSpacing);
+      }
+
+      ImGui::SetNextItemWidth(220.0f);
+      ImGui::DragFloat(
+          "Minimum site spacing", &primitiveFieldPreview.minimumSpacing,
+          1.0f, 8.0f, maximumSpacing, "%.3f",
+          ImGuiSliderFlags_AlwaysClamp);
+
+      ImGui::SetNextItemWidth(220.0f);
+      if (ImGui::InputInt(
+              "Maximum generated primitives",
+              &primitiveFieldPreview.maximumSites)) {
+        primitiveFieldPreview.maximumSites = std::clamp(
+            primitiveFieldPreview.maximumSites, 1,
+            static_cast<int>(BW_WORLD_PRIMITIVE_COUNT_MAX));
+      }
+
+      ImGui::SetNextItemWidth(220.0f);
+      ImGui::InputInt("Seed", &primitiveFieldPreview.seed);
+      ImGui::SameLine();
+      if (ImGui::Button("Randomize")) {
+        static std::random_device randomDevice;
+        auto randomizedSeed = static_cast<int32_t>(randomDevice());
+        if (randomizedSeed == primitiveFieldPreview.seed) {
+          randomizedSeed = randomizedSeed == std::numeric_limits<int32_t>::max()
+                               ? std::numeric_limits<int32_t>::min()
+                               : randomizedSeed + 1;
+        }
+        primitiveFieldPreview.seed = randomizedSeed;
+      }
+
+      if (!validSpacingRange) {
+        ImGui::TextColored(
+            ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
+            "The world must be at least 8 units in each dimension.");
+      }
+
+      if (!validSpacingRange) {
+        ImGui::BeginDisabled();
+      }
+      if (ImGui::Button("Generate Layout")) {
+        wp::Vector2 minimum;
+        wp::Vector2 maximum;
+        world->getExtents().getExtents(minimum, maximum);
+        primitiveFieldPreview.generate({minimum, maximum});
+      }
+      if (!validSpacingRange) {
+        ImGui::EndDisabled();
+      }
+
+      ImGui::SameLine();
+      ImGui::BeginDisabled();
+      ImGui::Button("Place Primitives");
+      ImGui::EndDisabled();
+
+      auto generatedCount = primitiveFieldPreview.layout
+                                ? primitiveFieldPreview.layout->sites.size()
+                                : size_t{0};
+      ImGui::Text("Generated sites: %zu", generatedCount);
+      if (!primitiveFieldPreview.error.empty()) {
+        ImGui::PushStyleColor(
+            ImGuiCol_Text, ImVec4(1.0f, 0.35f, 0.35f, 1.0f));
+        ImGui::TextWrapped("%s", primitiveFieldPreview.error.c_str());
+        ImGui::PopStyleColor();
+      }
+
+      auto const* closeLabel = primitiveFieldPreview.layout ? "Close" : "Cancel";
+      if (ImGui::Button(closeLabel, ImVec2(120.0f, 0.0f))) {
+        ImGui::CloseCurrentPopup();
+        primitiveFieldPreview.close();
+      }
+    }
+
+    ImGui::EndPopup();
+  }
+  if (!keepPrimitiveFieldOpen && primitiveFieldPreview.open) {
+    primitiveFieldPreview.close();
+  }
 
   //
   // Open file failed

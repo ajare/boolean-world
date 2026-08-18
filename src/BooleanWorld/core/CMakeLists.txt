@@ -16,6 +16,7 @@ add_library(core STATIC
     src/MeshPrimitive.cpp
     src/Module.cpp
     src/Primitive.cpp
+    src/PrimitiveFieldLayout.cpp
     src/PrimitivePropertySet.cpp
     src/RectanglePolygon.cpp
     src/RegularPolygon.cpp
@@ -62,6 +63,15 @@ bw_enable_sdl_checks(core)
 set_target_properties(core PROPERTIES FOLDER BooleanWorld)
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_primitive_field_layout_tests
+        tests/primitive_field_layout_tests.cpp)
+    target_link_libraries(boolean_world_primitive_field_layout_tests PRIVATE core)
+    target_compile_features(boolean_world_primitive_field_layout_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_primitive_field_layout_tests)
+    bw_output_dirs(boolean_world_primitive_field_layout_tests)
+    bw_deploy_runtime_dlls(boolean_world_primitive_field_layout_tests)
+    add_test(NAME boolean_world_primitive_field_layout COMMAND boolean_world_primitive_field_layout_tests)
+
     add_executable(boolean_world_world_primitive_picking_benchmark
         tests/world_primitive_picking_benchmark.cpp)
     target_link_libraries(boolean_world_world_primitive_picking_benchmark PRIVATE core)

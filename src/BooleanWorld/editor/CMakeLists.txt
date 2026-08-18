@@ -4,6 +4,7 @@ add_executable(editor WIN32
     src/Document.cpp
     src/Main.cpp
     src/Markdown.cpp
+    src/PrimitiveFieldPreview.cpp
     src/Render.cpp
     src/Tiled.cpp
     src/UI.cpp
@@ -53,6 +54,19 @@ bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/doc" "doc/editor")
 bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/support")
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_editor_primitive_field_preview_tests
+        tests/primitive_field_preview_tests.cpp
+        src/PrimitiveFieldPreview.cpp)
+    target_include_directories(boolean_world_editor_primitive_field_preview_tests PRIVATE include)
+    target_link_libraries(boolean_world_editor_primitive_field_preview_tests PRIVATE core)
+    target_compile_features(boolean_world_editor_primitive_field_preview_tests PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_primitive_field_preview_tests PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_primitive_field_preview_tests)
+    bw_output_dirs(boolean_world_editor_primitive_field_preview_tests)
+    bw_deploy_runtime_dlls(boolean_world_editor_primitive_field_preview_tests)
+    add_test(NAME boolean_world_editor_primitive_field_preview
+             COMMAND boolean_world_editor_primitive_field_preview_tests)
+
     add_executable(boolean_world_editor_document_selection_tests
         tests/document_selection_tests.cpp
         src/Document.cpp)
