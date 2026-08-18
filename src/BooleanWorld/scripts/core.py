@@ -97,11 +97,11 @@ def create_rectangle_polygon(l, op, x, y, size, ratio, angle, orbit_distance, or
     l.set_primitive_transform_0_constant(VertexTransformerKey.Angle, 0, 1)
     l.set_primitive_transform_0_constant(VertexTransformerKey.Angle, 1, 1)
       
-    set_primitive_animation_value(l, VertexTransformerKey.OrbitAngle, [(0, orbit_distance), (1, orbit_distance)])
+    set_primitive_animation_value(l, VertexTransformerKey.OrbitAngle, [(0, orbit_angle), (1, orbit_angle)])
     l.set_primitive_transform_0_constant(VertexTransformerKey.OrbitAngle, 0, 1)
     l.set_primitive_transform_0_constant(VertexTransformerKey.OrbitAngle, 1, 1)
     
-    set_primitive_animation_value(l, VertexTransformerKey.OrbitDistance, [(0, orbit_angle), (1, orbit_angle)])
+    set_primitive_animation_value(l, VertexTransformerKey.OrbitDistance, [(0, orbit_distance), (1, orbit_distance)])
     l.set_primitive_transform_0_constant(VertexTransformerKey.OrbitDistance, 0, 1)
     l.set_primitive_transform_0_constant(VertexTransformerKey.OrbitDistance, 1, 1)
     
@@ -144,11 +144,11 @@ def create_regular_polygon(l, sides, op, x, y, size, angle, orbit_distance, orbi
     l.set_primitive_transform_0_constant(VertexTransformerKey.Angle, 0, 1)
     l.set_primitive_transform_0_constant(VertexTransformerKey.Angle, 1, 1)
       
-    set_primitive_animation_value(l, VertexTransformerKey.OrbitAngle, [(0, orbit_distance), (1, orbit_distance)])
+    set_primitive_animation_value(l, VertexTransformerKey.OrbitAngle, [(0, orbit_angle), (1, orbit_angle)])
     l.set_primitive_transform_0_constant(VertexTransformerKey.OrbitAngle, 0, 1)
     l.set_primitive_transform_0_constant(VertexTransformerKey.OrbitAngle, 1, 1)
     
-    set_primitive_animation_value(l, VertexTransformerKey.OrbitDistance, [(0, orbit_angle), (1, orbit_angle)])
+    set_primitive_animation_value(l, VertexTransformerKey.OrbitDistance, [(0, orbit_distance), (1, orbit_distance)])
     l.set_primitive_transform_0_constant(VertexTransformerKey.OrbitDistance, 0, 1)
     l.set_primitive_transform_0_constant(VertexTransformerKey.OrbitDistance, 1, 1)
 

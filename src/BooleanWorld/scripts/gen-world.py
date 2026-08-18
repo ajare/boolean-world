@@ -19,7 +19,7 @@ from blue_noise import generate_blue_noise
 # Initialise World with ghost Primitive and set as active
 #
 def create_world(l, name, size):
-    if l.create_world(8192) != 0:
+    if l.create_world(size) != 0:
         raise Exception(f"Could not create World '{name}' with size {size}")
         
     l.set_world_name(name.encode("utf-8"))

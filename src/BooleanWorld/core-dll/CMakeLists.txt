@@ -19,6 +19,8 @@ bw_deploy_runtime_dlls(core-dll)
 bw_deploy_vendor_dlls(core-dll)
 
 if(BUILD_TESTING)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
     add_executable(boolean_world_core_dll_api_tests tests/dll_api_tests.cpp)
     target_compile_features(boolean_world_core_dll_api_tests PRIVATE cxx_std_20)
     bw_target_defaults(boolean_world_core_dll_api_tests)
@@ -26,4 +28,19 @@ if(BUILD_TESTING)
     add_dependencies(boolean_world_core_dll_api_tests core-dll)
     add_test(NAME boolean_world_core_dll_api
              COMMAND boolean_world_core_dll_api_tests "$<TARGET_FILE:core-dll>")
+
+    add_executable(boolean_world_python_world_generation_tests
+        tests/python_world_generation_tests.cpp)
+    target_link_libraries(boolean_world_python_world_generation_tests PRIVATE core)
+    target_compile_features(boolean_world_python_world_generation_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_python_world_generation_tests)
+    bw_output_dirs(boolean_world_python_world_generation_tests)
+    bw_deploy_runtime_dlls(boolean_world_python_world_generation_tests)
+    add_dependencies(boolean_world_python_world_generation_tests core-dll)
+    add_test(NAME boolean_world_python_world_generation
+             COMMAND boolean_world_python_world_generation_tests
+                     "${Python3_EXECUTABLE}"
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/generate_world_for_test.py"
+                     "$<TARGET_FILE:core-dll>"
+                     "$<TARGET_FILE_DIR:boolean_world_python_world_generation_tests>/python_generated_world.yaml")
 endif()
