@@ -1162,6 +1162,7 @@ void StatePlayBooleanWorld::debug_renderOptions() {
   auto inputOptions = entityHandler->getInputOptions();
 
   if (ImGui::Begin("Options")) {
+    ImGui::TextUnformatted("Input");
     if (ImGui::SliderFloat(
             "Mouse sensitivity",
             &inputOptions.mouseSensitivity,
@@ -1172,6 +1173,32 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     }
 
     ImGui::TextDisabled("Not saved - set Input/MouseSensitivity to keep a value.");
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Video");
+
+    // The model owns the session's active scale, rather than the map-owned
+    // renderer or launch configuration, so a selection is ready for the next
+    // frame and survives every map transition.
+    auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
+    auto activeRenderScale = model->getActiveRenderScale();
+    if (ImGui::BeginCombo(
+            "Render scale",
+            bw::app::renderScaleName(activeRenderScale).data())) {
+      for (auto renderScale : bw::app::allRenderScales) {
+        auto selected = renderScale == activeRenderScale;
+        if (ImGui::Selectable(
+                bw::app::renderScaleName(renderScale).data(), selected)) {
+          model->setActiveRenderScale(renderScale);
+        }
+        if (selected) {
+          ImGui::SetItemDefaultFocus();
+        }
+      }
+      ImGui::EndCombo();
+    }
+
+    ImGui::TextDisabled("Not saved - set Video/RenderScale to keep a value.");
   }
 
   ImGui::End();
