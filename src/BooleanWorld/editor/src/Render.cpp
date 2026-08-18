@@ -83,11 +83,11 @@ void renderGrid(float gridSize, wp::Vector2 const& offset, ImColor const& colour
 
 void renderPrimitiveFieldPreview(
     bw::core::PrimitiveFieldLayout const& layout,
-    vector<editor::PrimitiveFieldRectanglePreview> const& rectangles,
+    vector<editor::PrimitiveFieldPrimitivePreview> const& primitives,
     wp::Vector2 const& offset,
     ImDrawList* drawList) {
   auto const cellColour = ImColor(0.1f, 0.85f, 1.0f, 0.9f);
-  auto const rectangleColour = ImColor(0.95f, 0.3f, 0.75f, 0.55f);
+  auto const primitiveColour = ImColor(0.95f, 0.3f, 0.75f, 0.55f);
   auto const siteColour = ImColor(1.0f, 0.55f, 0.1f, 1.0f);
 
   drawList->AddDrawCmd();
@@ -104,15 +104,15 @@ void renderPrimitiveFieldPreview(
   }
 
   drawList->AddDrawCmd();
-  for (auto const& rectangle : rectangles) {
-    array<ImVec2, 4> points;
-    for (size_t i = 0; i < rectangle.contour.size(); ++i) {
-      auto const& vertex = rectangle.contour[i];
-      points[i] = {vertex.x - offset.x,
-                   ED_WINDOW_HEIGHT - (vertex.y - offset.y)};
+  for (auto const& primitive : primitives) {
+    vector<ImVec2> points;
+    points.reserve(primitive.contour.size());
+    for (auto const& vertex : primitive.contour) {
+      points.push_back({vertex.x - offset.x,
+                        ED_WINDOW_HEIGHT - (vertex.y - offset.y)});
     }
     drawList->AddPolyline(
-        points.data(), static_cast<int>(points.size()), rectangleColour,
+        points.data(), static_cast<int>(points.size()), primitiveColour,
         ImDrawFlags_Closed, 2.0f);
   }
 
@@ -524,7 +524,7 @@ void renderWorld(
   auto const& primitiveFieldPreview = editor::getPrimitiveFieldPreview();
   if (primitiveFieldPreview.open && primitiveFieldPreview.layout) {
     renderPrimitiveFieldPreview(
-        *primitiveFieldPreview.layout, primitiveFieldPreview.rectangles,
+        *primitiveFieldPreview.layout, primitiveFieldPreview.primitives,
         offset, drawList);
   }
 }

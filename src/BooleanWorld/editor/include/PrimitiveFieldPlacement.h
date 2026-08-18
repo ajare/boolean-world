@@ -31,7 +31,7 @@ using PrimitiveFieldInserter =
 [[nodiscard]] PrimitiveFieldPlacementResult placePrimitiveField(
     Document* document,
     bw::core::PrimitiveFieldLayout const& layout,
-    std::vector<PrimitiveFieldRectanglePreview> const& rectangles,
+    std::vector<PrimitiveFieldPrimitivePreview> const& primitives,
     Settings const& settings,
     PrimitiveFieldInserter inserter = {});
 

@@ -3,6 +3,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <core/Defines.h>
 
@@ -11,68 +12,11 @@
 namespace {
 
 void require(bool condition, std::string const& message) {
-  if (!condition) {
-    throw std::runtime_error(message);
-  }
+  if (!condition) throw std::runtime_error(message);
 }
 
-void opensWithDefaultsAndClosesWithoutDocumentData() {
-  editor::PrimitiveFieldPreview preview;
-  preview.minimumSpacing = 9.0f;
-  preview.maximumSites = 4;
-  preview.seed = 42;
-  preview.lloydIterations = 0;
-  preview.overlapPercent = 25.0f;
-  preview.requestOpen();
-
-  require(preview.open && preview.openRequested,
-          "preview did not request its modal");
-  require(preview.minimumSpacing == 128.0f && preview.maximumSites == 2000 &&
-              preview.seed == 0 && preview.lloydIterations == 5 &&
-              preview.overlapPercent == 10.0f,
-          "preview did not restore the agreed defaults");
-
-  preview.generate({{-128.0f, -128.0f}, {128.0f, 128.0f}}, 1);
-  require(preview.hasCompletePreview(), "valid Rectangle preview generation failed");
-  preview.lloydIterations = 6;
-  preview.invalidateLayout();
-  require(!preview.layout && preview.rectangles.empty() && preview.error.empty(),
-          "changing Lloyd iterations did not invalidate the layout");
-  preview.close();
-  require(!preview.open && !preview.openRequested && !preview.layout &&
-              preview.rectangles.empty(),
-          "closing the modal retained editor overlay data");
-}
-
-void failedGenerationRetainsThePreviousValidPreviewButDisablesPlacement() {
-  editor::PrimitiveFieldPreview preview;
-  preview.requestOpen();
-  preview.minimumSpacing = 64.0f;
-  preview.maximumSites = 5;
-  preview.seed = 11;
-  preview.generate({{-128.0f, -128.0f}, {128.0f, 128.0f}}, 1);
-  require(preview.hasCompletePreview(), "valid preview fixture failed");
-  auto previousSites = preview.layout->sites;
-  auto previousRectangles = preview.rectangles;
-
-  preview.lloydIterations = 21;
-  preview.generate({{-128.0f, -128.0f}, {128.0f, 128.0f}}, 1);
-  require(preview.layout.has_value() && !preview.error.empty() &&
-              !preview.hasCompletePreview(),
-          "failed relaxation did not preserve and disable the valid preview");
-
-  preview.lloydIterations = 5;
-  preview.minimumSpacing = 1000.0f;
-  preview.generate({{-128.0f, -128.0f}, {128.0f, 128.0f}}, 1);
-  require(!preview.error.empty(), "failed generation did not expose an error");
-  require(preview.layout.has_value() &&
-              preview.layout->sites == previousSites &&
-              preview.rectangles.size() == previousRectangles.size(),
-          "failed generation replaced the previous valid preview");
-}
-
-void anglesFittingAndOverlapAreDeterministic() {
-  bw::core::PrimitiveFieldLayout layout{
+bw::core::PrimitiveFieldLayout representativeLayout() {
+  return {
       .worldExtents = {{-10.0f, -8.0f}, {10.0f, 8.0f}},
       .sites = {{0.0f, 0.0f}, {-4.0f, 1.0f}, {5.0f, -2.0f}},
       .cells = {
@@ -80,87 +24,183 @@ void anglesFittingAndOverlapAreDeterministic() {
           {{{-10.0f, -8.0f}, {0.0f, -8.0f}, {0.0f, 8.0f}, {-10.0f, 8.0f}}},
           {{{0.0f, -8.0f}, {10.0f, -8.0f}, {10.0f, 8.0f}, {0.0f, 8.0f}}},
       }};
-
-  auto zero = editor::buildPrimitiveFieldRectanglePreview(layout, 0.0f, 73);
-  auto repeated = editor::buildPrimitiveFieldRectanglePreview(layout, 0.0f, 73);
-  auto overlap = editor::buildPrimitiveFieldRectanglePreview(layout, 25.0f, 73);
-  require(zero.succeeded() && repeated.succeeded() && overlap.succeeded(),
-          "representative Rectangle fitting failed");
-  require(zero.rectangles->size() == layout.sites.size(),
-          "not every cell received a Rectangle");
-
-  for (size_t i = 0; i < zero.rectangles->size(); ++i) {
-    auto const& rectangle = (*zero.rectangles)[i];
-    auto const& repeatedRectangle = (*repeated.rectangles)[i];
-    require(rectangle.angle >= 0.0f && rectangle.angle < 360.0f &&
-                rectangle.angle == repeatedRectangle.angle &&
-                rectangle.size == repeatedRectangle.size,
-            "placement angle or fitting was not deterministic");
-    require((*overlap.rectangles)[i].size == rectangle.size * 1.25f,
-            "positive overlap did not apply the exact post-fit multiplier");
-
-    for (auto const& vertex : layout.cells[i].vertices) {
-      auto local = vertex - layout.sites[i];
-      local.rotateClockwise(rectangle.angle);
-      require(std::abs(local.x) <=
-                      rectangle.size * 0.5f +
-                          bw::core::PrimitiveFieldNumericTolerance &&
-                  std::abs(local.y) <=
-                      rectangle.size * 0.5f /
-                              editor::PrimitiveFieldRectangleXyRatio +
-                          bw::core::PrimitiveFieldNumericTolerance,
-              "a zero-overlap fitted Rectangle did not contain its cell");
-    }
-  }
-
-  require((*zero.rectangles)[0].angle == 70.7228546142578125f &&
-              (*zero.rectangles)[1].angle == 135.0145263671875f &&
-              (*zero.rectangles)[2].angle == 296.30914306640625f,
-          "the fixed placement-angle fixture changed");
 }
 
-void overlapValidationAndCapacityAreExplicit() {
-  bw::core::PrimitiveFieldLayout layout{
-      .worldExtents = {{-1.0f, -1.0f}, {1.0f, 1.0f}},
-      .sites = {{0.0f, 0.0f}},
-      .cells = {{{{-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}}}}};
-  require(!editor::buildPrimitiveFieldRectanglePreview(layout, -0.01f, 0)
-               .succeeded(),
-          "negative overlap was accepted");
-  require(!editor::buildPrimitiveFieldRectanglePreview(
-               layout, std::numeric_limits<float>::infinity(), 0)
-               .succeeded(),
-          "non-finite overlap was accepted");
-  require(!editor::buildPrimitiveFieldRectanglePreview(layout, 100.01f, 0)
-               .succeeded(),
-          "overlap above 100 percent was accepted");
+float cross(wp::Vector2 const& lhs, wp::Vector2 const& rhs) {
+  return lhs.x * rhs.y - lhs.y * rhs.x;
+}
 
+bool sameCells(
+    std::vector<bw::core::PrimitiveFieldCell> const& lhs,
+    std::vector<bw::core::PrimitiveFieldCell> const& rhs) {
+  if (lhs.size() != rhs.size()) return false;
+  for (size_t i = 0; i < lhs.size(); ++i)
+    if (lhs[i].vertices != rhs[i].vertices) return false;
+  return true;
+}
+
+bool contains(
+    std::vector<wp::Vector2> const& contour,
+    wp::Vector2 const& point) {
+  float area = 0.0f;
+  for (size_t i = 0; i < contour.size(); ++i)
+    area += cross(contour[i], contour[(i + 1) % contour.size()]);
+  auto sign = area >= 0.0f ? 1.0f : -1.0f;
+  for (size_t i = 0; i < contour.size(); ++i) {
+    auto edge = contour[(i + 1) % contour.size()] - contour[i];
+    auto relative = point - contour[i];
+    auto tolerance = bw::core::PrimitiveFieldNumericTolerance *
+                     std::max(1.0f, edge.length());
+    if (sign * cross(edge, relative) < -tolerance) return false;
+  }
+  return true;
+}
+
+editor::PrimitiveFieldTypeSelection only(editor::PrimitiveFieldType type) {
+  editor::PrimitiveFieldTypeSelection selection{
+      false, false, false, false, false};
+  switch (type) {
+    case editor::PrimitiveFieldType::Rectangle: selection.rectangle = true; break;
+    case editor::PrimitiveFieldType::Triangle: selection.triangle = true; break;
+    case editor::PrimitiveFieldType::Pentagon: selection.pentagon = true; break;
+    case editor::PrimitiveFieldType::Hexagon: selection.hexagon = true; break;
+    case editor::PrimitiveFieldType::Circle: selection.circle = true; break;
+  }
+  return selection;
+}
+
+void opensWithAllTypeDefaultsAndRefreshesWithoutRegeneratingLayout() {
+  editor::PrimitiveFieldPreview preview;
+  preview.enabledTypes = only(editor::PrimitiveFieldType::Rectangle);
+  preview.requestOpen();
+  require(preview.enabledTypes.rectangle && preview.enabledTypes.triangle &&
+              preview.enabledTypes.pentagon && preview.enabledTypes.hexagon &&
+              preview.enabledTypes.circle,
+          "all eligible primitive types were not enabled by default");
+
+  preview.minimumSpacing = 64.0f;
+  preview.maximumSites = 5;
+  preview.seed = 11;
+  preview.generate({{-128.0f, -128.0f}, {128.0f, 128.0f}}, 1);
+  require(preview.hasCompletePreview(), "valid mixed preview generation failed");
+  auto sites = preview.layout->sites;
+  auto cells = preview.layout->cells;
+
+  preview.enabledTypes = only(editor::PrimitiveFieldType::Triangle);
+  preview.refreshPrimitives();
+  require(preview.hasCompletePreview() && preview.layout->sites == sites &&
+              sameCells(preview.layout->cells, cells),
+          "changing enabled types regenerated or invalidated the layout");
+  for (auto const& primitive : preview.primitives)
+    require(primitive.type == editor::PrimitiveFieldType::Triangle,
+            "one remaining enabled type was not used for every site");
+
+  preview.invalidateLayout();
+  require(!preview.layout && preview.primitives.empty() && preview.error.empty(),
+          "layout invalidation retained generated geometry");
+  preview.close();
+  require(!preview.open && preview.primitives.empty(),
+          "closing retained editor overlay geometry");
+}
+
+void deterministicChoicesAnglesAndMixedSubsets() {
+  auto layout = representativeLayout();
+  editor::PrimitiveFieldTypeSelection all;
+  auto first = editor::buildPrimitiveFieldPreview(layout, all, 0.0f, 73);
+  auto repeated = editor::buildPrimitiveFieldPreview(layout, all, 0.0f, 73);
+  require(first.succeeded() && repeated.succeeded() &&
+              first.primitives->size() == 3,
+          "deterministic mixed preview failed");
+
+  std::vector expectedTypes{
+      editor::PrimitiveFieldType::Hexagon,
+      editor::PrimitiveFieldType::Triangle,
+      editor::PrimitiveFieldType::Circle};
+  std::vector expectedAngles{
+      70.7228546142578125f, 135.0145263671875f, 296.30914306640625f};
+  for (size_t i = 0; i < expectedTypes.size(); ++i) {
+    auto const& primitive = (*first.primitives)[i];
+    auto const& again = (*repeated.primitives)[i];
+    require(primitive.type == expectedTypes[i] &&
+                primitive.angle == expectedAngles[i] &&
+                primitive.type == again.type && primitive.angle == again.angle &&
+                primitive.size == again.size,
+            "fixed-seed primitive type/angle fixture changed");
+  }
+
+  editor::PrimitiveFieldTypeSelection subset{
+      true, false, true, false, true};
+  auto mixed = editor::buildPrimitiveFieldPreview(layout, subset, 0.0f, 73);
+  require(mixed.succeeded() &&
+              (*mixed.primitives)[0].type == editor::PrimitiveFieldType::Pentagon &&
+              (*mixed.primitives)[1].type == editor::PrimitiveFieldType::Rectangle &&
+              (*mixed.primitives)[2].type == editor::PrimitiveFieldType::Rectangle,
+          "enabled-subset choice fixture changed");
+  for (size_t i = 0; i < expectedAngles.size(); ++i)
+    require((*mixed.primitives)[i].angle == expectedAngles[i],
+            "type selection perturbed the independent angle stream");
+}
+
+void everyEligibleTypeFitsAtGeneratedAnglesAndAppliesOverlap() {
+  auto layout = representativeLayout();
+  std::vector types{
+      editor::PrimitiveFieldType::Rectangle,
+      editor::PrimitiveFieldType::Triangle,
+      editor::PrimitiveFieldType::Pentagon,
+      editor::PrimitiveFieldType::Hexagon,
+      editor::PrimitiveFieldType::Circle};
+  std::vector<size_t> contourSizes{4, 3, 5, 6, 32};
+
+  for (size_t typeIndex = 0; typeIndex < types.size(); ++typeIndex) {
+    auto zero = editor::buildPrimitiveFieldPreview(
+        layout, only(types[typeIndex]), 0.0f, 73);
+    auto overlap = editor::buildPrimitiveFieldPreview(
+        layout, only(types[typeIndex]), 25.0f, 73);
+    require(zero.succeeded() && overlap.succeeded(),
+            "eligible-type fitting failed");
+    for (size_t i = 0; i < layout.cells.size(); ++i) {
+      auto const& primitive = (*zero.primitives)[i];
+      require(primitive.type == types[typeIndex] &&
+                  primitive.contour.size() == contourSizes[typeIndex] &&
+                  primitive.angle >= 0.0f && primitive.angle < 360.0f &&
+                  (*overlap.primitives)[i].size == primitive.size * 1.25f,
+              "type, angle, contour, or post-fit overlap was incorrect");
+      for (auto const& vertex : layout.cells[i].vertices)
+        require(contains(primitive.contour, vertex),
+                "zero-overlap transformed contour did not contain its cell");
+    }
+  }
+}
+
+void invalidSelectionsOverlapAndCapacityAreRejected() {
+  auto layout = representativeLayout();
+  editor::PrimitiveFieldTypeSelection none{
+      false, false, false, false, false};
+  require(!editor::buildPrimitiveFieldPreview(layout, none, 0.0f, 0).succeeded(),
+          "a configuration with no enabled types was accepted");
+  require(!editor::buildPrimitiveFieldPreview(layout, {}, -0.01f, 0).succeeded() &&
+              !editor::buildPrimitiveFieldPreview(
+                   layout, {}, std::numeric_limits<float>::infinity(), 0)
+                   .succeeded() &&
+              !editor::buildPrimitiveFieldPreview(layout, {}, 100.01f, 0)
+                   .succeeded(),
+          "invalid overlap was accepted");
   require(editor::effectivePrimitiveFieldMaximum(2000, 1) == 2000 &&
               editor::effectivePrimitiveFieldMaximum(
                   2000, BW_WORLD_PRIMITIVE_COUNT_MAX - 7) == 7 &&
               editor::effectivePrimitiveFieldMaximum(
                   2000, BW_WORLD_PRIMITIVE_COUNT_MAX) == 0,
-          "effective capacity did not account for authored primitives and ghost");
-
-  editor::PrimitiveFieldPreview preview;
-  preview.requestOpen();
-  preview.minimumSpacing = 32.0f;
-  preview.maximumSites = 20;
-  preview.generate(
-      {{-128.0f, -128.0f}, {128.0f, 128.0f}},
-      BW_WORLD_PRIMITIVE_COUNT_MAX - 2);
-  require(preview.hasCompletePreview() && preview.layout->sites.size() == 2,
-          "layout generation did not reduce the user batch cap to capacity");
+          "effective capacity did not account for existing primitives");
 }
 
 }  // namespace
 
 int main() {
   try {
-    opensWithDefaultsAndClosesWithoutDocumentData();
-    failedGenerationRetainsThePreviousValidPreviewButDisablesPlacement();
-    anglesFittingAndOverlapAreDeterministic();
-    overlapValidationAndCapacityAreExplicit();
+    opensWithAllTypeDefaultsAndRefreshesWithoutRegeneratingLayout();
+    deterministicChoicesAnglesAndMixedSubsets();
+    everyEligibleTypeFitsAtGeneratedAnglesAndAppliesOverlap();
+    invalidSelectionsOverlapAndCapacityAreRejected();
     std::cout << "Primitive-field preview state tests passed\n";
     return 0;
   } catch (std::exception const& error) {

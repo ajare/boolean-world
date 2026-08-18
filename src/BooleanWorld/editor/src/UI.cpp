@@ -3355,6 +3355,31 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
         primitiveFieldPreview.invalidateLayout();
       }
 
+      ImGui::TextUnformatted("Primitive types");
+      auto typeCheckbox = [&](char const* label, bool& enabled) {
+        auto const enabledCount =
+            static_cast<int>(primitiveFieldPreview.enabledTypes.rectangle) +
+            static_cast<int>(primitiveFieldPreview.enabledTypes.triangle) +
+            static_cast<int>(primitiveFieldPreview.enabledTypes.pentagon) +
+            static_cast<int>(primitiveFieldPreview.enabledTypes.hexagon) +
+            static_cast<int>(primitiveFieldPreview.enabledTypes.circle);
+        auto const mustRemainEnabled = enabled && enabledCount == 1;
+        if (mustRemainEnabled) {
+          ImGui::BeginDisabled();
+        }
+        if (ImGui::Checkbox(label, &enabled)) {
+          primitiveFieldPreview.refreshPrimitives();
+        }
+        if (mustRemainEnabled) {
+          ImGui::EndDisabled();
+        }
+      };
+      typeCheckbox("Rectangle", primitiveFieldPreview.enabledTypes.rectangle);
+      typeCheckbox("Triangle", primitiveFieldPreview.enabledTypes.triangle);
+      typeCheckbox("Pentagon", primitiveFieldPreview.enabledTypes.pentagon);
+      typeCheckbox("Hexagon", primitiveFieldPreview.enabledTypes.hexagon);
+      typeCheckbox("Circle", primitiveFieldPreview.enabledTypes.circle);
+
       auto overlapBeforeClamp = primitiveFieldPreview.overlapPercent;
       if (!std::isfinite(primitiveFieldPreview.overlapPercent)) {
         primitiveFieldPreview.overlapPercent = 10.0f;
@@ -3363,7 +3388,7 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
             primitiveFieldPreview.overlapPercent, 0.0f, 100.0f);
       }
       if (primitiveFieldPreview.overlapPercent != overlapBeforeClamp) {
-        primitiveFieldPreview.refreshRectangles();
+        primitiveFieldPreview.refreshPrimitives();
       }
 
       ImGui::SetNextItemWidth(220.0f);
@@ -3373,7 +3398,7 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
         if (!std::isfinite(primitiveFieldPreview.overlapPercent)) {
           primitiveFieldPreview.overlapPercent = 10.0f;
         }
-        primitiveFieldPreview.refreshRectangles();
+        primitiveFieldPreview.refreshPrimitives();
       }
 
       ImGui::SetNextItemWidth(220.0f);
@@ -3415,7 +3440,7 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
 
       ImGui::SameLine();
       auto capacityStillAvailable =
-          primitiveFieldPreview.rectangles.size() <=
+          primitiveFieldPreview.primitives.size() <=
           static_cast<size_t>(BW_WORLD_PRIMITIVE_COUNT_MAX -
                               world->getNumPrimitives());
       auto canPlace = primitiveFieldPreview.hasCompletePreview() &&
@@ -3427,7 +3452,7 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
           primitiveFieldPreview.layout) {
         auto result = placePrimitiveField(
             doc, *primitiveFieldPreview.layout,
-            primitiveFieldPreview.rectangles, settings);
+            primitiveFieldPreview.primitives, settings);
         if (result.placed) {
           ImGui::CloseCurrentPopup();
           primitiveFieldPreview.close();

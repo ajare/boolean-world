@@ -17,11 +17,9 @@ class PlacementPcg32 {
   static constexpr uint64_t Increment = 1442695040888963407ULL;
 
 public:
-  explicit PlacementPcg32(int32_t seed) {
+  PlacementPcg32(int32_t seed, uint32_t derivation) {
     next();
-    // This derivation gives placement its own stream without consuming or
-    // depending on layout-generation random values.
-    mState += static_cast<uint32_t>(seed) ^ 0xa511e9b3u;
+    mState += static_cast<uint32_t>(seed) ^ derivation;
     next();
   }
 
@@ -34,59 +32,141 @@ public:
     return (xorshifted >> rotation) |
            (xorshifted << ((0u - rotation) & 31u));
   }
+
+  uint32_t bounded(uint32_t bound) {
+    auto threshold = static_cast<uint32_t>(0u - bound) % bound;
+    for (;;) {
+      auto value = next();
+      if (value >= threshold) {
+        return value % bound;
+      }
+    }
+  }
 };
 
 bool finitePoint(wp::Vector2 const& point) {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
-PrimitiveFieldRectanglePreviewResult failure(std::string message) {
-  return {.rectangles = std::nullopt, .error = std::move(message)};
+PrimitiveFieldPrimitivePreviewResult failure(std::string message) {
+  return {.primitives = std::nullopt, .error = std::move(message)};
 }
 
-PrimitiveFieldRectanglePreview fitRectangle(
+std::vector<PrimitiveFieldType> enabledTypeList(
+    PrimitiveFieldTypeSelection const& selection) {
+  std::vector<PrimitiveFieldType> types;
+  if (selection.rectangle) types.push_back(PrimitiveFieldType::Rectangle);
+  if (selection.triangle) types.push_back(PrimitiveFieldType::Triangle);
+  if (selection.pentagon) types.push_back(PrimitiveFieldType::Pentagon);
+  if (selection.hexagon) types.push_back(PrimitiveFieldType::Hexagon);
+  if (selection.circle) types.push_back(PrimitiveFieldType::Circle);
+  return types;
+}
+
+std::vector<wp::Vector2> regularContour(uint32_t sideCount) {
+  std::vector<wp::Vector2> contour;
+  contour.reserve(sideCount);
+  for (uint32_t i = 0; i < sideCount; ++i) {
+    contour.push_back(wp::Vector2::UNIT_Y.rotatedClockwiseCopy(
+        360.0f * static_cast<float>(i) / static_cast<float>(sideCount)));
+  }
+  return contour;
+}
+
+std::vector<wp::Vector2> unitContour(PrimitiveFieldType type) {
+  switch (type) {
+    case PrimitiveFieldType::Rectangle:
+      return {{1.0f, 1.0f / PrimitiveFieldRectangleXyRatio},
+              {-1.0f, 1.0f / PrimitiveFieldRectangleXyRatio},
+              {-1.0f, -1.0f / PrimitiveFieldRectangleXyRatio},
+              {1.0f, -1.0f / PrimitiveFieldRectangleXyRatio}};
+    case PrimitiveFieldType::Triangle:
+      return regularContour(3);
+    case PrimitiveFieldType::Pentagon:
+      return regularContour(5);
+    case PrimitiveFieldType::Hexagon:
+      return regularContour(6);
+    case PrimitiveFieldType::Circle:
+      return regularContour(32);
+  }
+  return {};
+}
+
+float cross(wp::Vector2 const& lhs, wp::Vector2 const& rhs) {
+  return lhs.x * rhs.y - lhs.y * rhs.x;
+}
+
+float fitUniformSize(
     bw::core::PrimitiveFieldCell const& cell,
     wp::Vector2 const& position,
     float angle,
-    float overlapPercent) {
+    std::vector<wp::Vector2> const& contour) {
+  float twiceArea = 0.0f;
+  for (size_t i = 0; i < contour.size(); ++i) {
+    twiceArea += cross(contour[i], contour[(i + 1) % contour.size()]);
+  }
+  auto orientation = twiceArea >= 0.0f ? 1.0f : -1.0f;
+
   float fittedSize = 0.0f;
   for (auto const& vertex : cell.vertices) {
     auto local = vertex - position;
     local.rotateClockwise(angle);
-    fittedSize = std::max(
-        fittedSize,
-        2.0f * std::max(std::abs(local.x),
-                        std::abs(local.y) * PrimitiveFieldRectangleXyRatio));
+    for (size_t i = 0; i < contour.size(); ++i) {
+      auto const& a = contour[i];
+      auto edge = contour[(i + 1) % contour.size()] - a;
+      auto support = -orientation * cross(edge, a);
+      if (support <= 0.0f || !std::isfinite(support)) {
+        return std::numeric_limits<float>::quiet_NaN();
+      }
+      fittedSize = std::max(
+          fittedSize, -orientation * cross(edge, local) / support);
+    }
   }
+  return fittedSize;
+}
 
+PrimitiveFieldPrimitivePreview fitPrimitive(
+    bw::core::PrimitiveFieldCell const& cell,
+    wp::Vector2 const& position,
+    PrimitiveFieldType type,
+    float angle,
+    float overlapPercent) {
+  auto localContour = unitContour(type);
+  // Editor size is the primitive's full diameter; unit contour coordinates are
+  // transformed by half that value.
+  auto fittedSize =
+      2.0f * fitUniformSize(cell, position, angle, localContour);
   auto size = fittedSize * (1.0f + overlapPercent / 100.0f);
-  PrimitiveFieldRectanglePreview rectangle{
+
+  PrimitiveFieldPrimitivePreview preview{
+      .type = type,
       .position = position,
       .fittedSize = fittedSize,
       .size = size,
       .angle = angle};
-
-  auto halfWidth = size * 0.5f;
-  auto halfHeight = halfWidth / PrimitiveFieldRectangleXyRatio;
-  std::array<wp::Vector2, 4> localContour{{
-      {halfWidth, halfHeight},
-      {-halfWidth, halfHeight},
-      {-halfWidth, -halfHeight},
-      {halfWidth, -halfHeight},
-  }};
-  for (size_t i = 0; i < localContour.size(); ++i) {
-    localContour[i].rotateAnticlockwise(angle);
-    rectangle.contour[i] = position + localContour[i];
+  preview.contour.reserve(localContour.size());
+  for (auto vertex : localContour) {
+    vertex *= size * 0.5f;
+    vertex.rotateAnticlockwise(angle);
+    preview.contour.push_back(position + vertex);
   }
-  return rectangle;
+  return preview;
 }
 
 }  // namespace
 
-PrimitiveFieldRectanglePreviewResult buildPrimitiveFieldRectanglePreview(
+bool PrimitiveFieldTypeSelection::any() const {
+  return rectangle || triangle || pentagon || hexagon || circle;
+}
+
+PrimitiveFieldPrimitivePreviewResult buildPrimitiveFieldPreview(
     bw::core::PrimitiveFieldLayout const& layout,
+    PrimitiveFieldTypeSelection const& enabledTypes,
     float overlapPercent,
     int32_t placementSeed) {
+  if (!enabledTypes.any()) {
+    return failure("At least one primitive type must be enabled.");
+  }
   if (!std::isfinite(overlapPercent) || overlapPercent < 0.0f ||
       overlapPercent > 100.0f) {
     return failure("Overlap must be finite and between 0 and 100 percent.");
@@ -96,9 +176,11 @@ PrimitiveFieldRectanglePreviewResult buildPrimitiveFieldRectanglePreview(
         "A complete layout with one Voronoi cell per site is required.");
   }
 
-  std::vector<PrimitiveFieldRectanglePreview> rectangles;
-  rectangles.reserve(layout.sites.size());
-  PlacementPcg32 random(placementSeed);
+  auto types = enabledTypeList(enabledTypes);
+  std::vector<PrimitiveFieldPrimitivePreview> primitives;
+  primitives.reserve(layout.sites.size());
+  PlacementPcg32 choiceRandom(placementSeed, 0x6d2b79f5u);
+  PlacementPcg32 angleRandom(placementSeed, 0xa511e9b3u);
   constexpr float AngleQuantum = 360.0f / 16777216.0f;
 
   for (size_t i = 0; i < layout.sites.size(); ++i) {
@@ -106,28 +188,27 @@ PrimitiveFieldRectanglePreviewResult buildPrimitiveFieldRectanglePreview(
     auto const& cell = layout.cells[i];
     if (!finitePoint(site) || cell.vertices.size() < 3) {
       return failure(
-          "Every Rectangle requires a finite site and a complete Voronoi cell.");
+          "Every primitive requires a finite site and a complete Voronoi cell.");
     }
-    for (auto const& vertex : cell.vertices) {
-      if (!finitePoint(vertex)) {
-        return failure("Voronoi cell vertices must be finite.");
-      }
+    if (!std::all_of(cell.vertices.begin(), cell.vertices.end(), finitePoint)) {
+      return failure("Voronoi cell vertices must be finite.");
     }
 
-    auto angle = static_cast<float>(random.next() >> 8u) * AngleQuantum;
-    auto rectangle = fitRectangle(cell, site, angle, overlapPercent);
-    if (!std::isfinite(rectangle.fittedSize) || rectangle.fittedSize <= 0.0f ||
-        !std::isfinite(rectangle.size) || rectangle.size <= 0.0f) {
-      return failure("A fitted Rectangle has an invalid uniform size.");
+    auto type = types[choiceRandom.bounded(static_cast<uint32_t>(types.size()))];
+    auto angle = static_cast<float>(angleRandom.next() >> 8u) * AngleQuantum;
+    auto primitive = fitPrimitive(cell, site, type, angle, overlapPercent);
+    if (!std::isfinite(primitive.fittedSize) || primitive.fittedSize <= 0.0f ||
+        !std::isfinite(primitive.size) || primitive.size <= 0.0f) {
+      return failure("A fitted primitive has an invalid uniform size.");
     }
     if (!std::all_of(
-            rectangle.contour.begin(), rectangle.contour.end(), finitePoint)) {
-      return failure("A fitted Rectangle contour contains non-finite vertices.");
+            primitive.contour.begin(), primitive.contour.end(), finitePoint)) {
+      return failure("A fitted primitive contour contains non-finite vertices.");
     }
-    rectangles.push_back(rectangle);
+    primitives.push_back(std::move(primitive));
   }
 
-  return {.rectangles = std::move(rectangles), .error = {}};
+  return {.primitives = std::move(primitives), .error = {}};
 }
 
 uint32_t effectivePrimitiveFieldMaximum(
@@ -150,8 +231,9 @@ void PrimitiveFieldPreview::requestOpen() {
   seed = 0;
   lloydIterations = 5;
   overlapPercent = 10.0f;
+  enabledTypes = {};
   layout.reset();
-  rectangles.clear();
+  primitives.clear();
   error.clear();
 }
 
@@ -159,37 +241,42 @@ void PrimitiveFieldPreview::close() {
   open = false;
   openRequested = false;
   layout.reset();
-  rectangles.clear();
+  primitives.clear();
   error.clear();
 }
 
 void PrimitiveFieldPreview::invalidateLayout() {
   layout.reset();
-  rectangles.clear();
+  primitives.clear();
   error.clear();
 }
 
-void PrimitiveFieldPreview::refreshRectangles() {
+void PrimitiveFieldPreview::refreshPrimitives() {
   if (!layout) {
-    rectangles.clear();
-    error.clear();
+    primitives.clear();
+    error = enabledTypes.any() ? std::string{}
+                               : "At least one primitive type must be enabled.";
     return;
   }
 
-  auto result = buildPrimitiveFieldRectanglePreview(
-      *layout, overlapPercent, static_cast<int32_t>(seed));
+  auto result = buildPrimitiveFieldPreview(
+      *layout, enabledTypes, overlapPercent, static_cast<int32_t>(seed));
   if (!result.succeeded()) {
-    rectangles.clear();
+    primitives.clear();
     error = std::move(result.error);
     return;
   }
-  rectangles = std::move(*result.rectangles);
+  primitives = std::move(*result.primitives);
   error.clear();
 }
 
 void PrimitiveFieldPreview::generate(
     bw::core::PrimitiveFieldExtents const& worldExtents,
     uint32_t existingPrimitiveCount) {
+  if (!enabledTypes.any()) {
+    error = "At least one primitive type must be enabled.";
+    return;
+  }
   auto effectiveMaximum = effectivePrimitiveFieldMaximum(
       maximumSites, existingPrimitiveCount);
   if (effectiveMaximum == 0) {
@@ -204,22 +291,22 @@ void PrimitiveFieldPreview::generate(
     return;
   }
 
-  auto rectangleResult = buildPrimitiveFieldRectanglePreview(
-      *result.layout, overlapPercent, static_cast<int32_t>(seed));
-  if (!rectangleResult.succeeded()) {
-    error = std::move(rectangleResult.error);
+  auto primitiveResult = buildPrimitiveFieldPreview(
+      *result.layout, enabledTypes, overlapPercent, static_cast<int32_t>(seed));
+  if (!primitiveResult.succeeded()) {
+    error = std::move(primitiveResult.error);
     return;
   }
 
   layout = std::move(result.layout);
-  rectangles = std::move(*rectangleResult.rectangles);
+  primitives = std::move(*primitiveResult.primitives);
   error.clear();
 }
 
 bool PrimitiveFieldPreview::hasCompletePreview() const {
-  return error.empty() && layout.has_value() && !layout->sites.empty() &&
-         layout->sites.size() == layout->cells.size() &&
-         rectangles.size() == layout->sites.size();
+  return enabledTypes.any() && error.empty() && layout.has_value() &&
+         !layout->sites.empty() && layout->sites.size() == layout->cells.size() &&
+         primitives.size() == layout->sites.size();
 }
 
 PrimitiveFieldPreview& getPrimitiveFieldPreview() {
