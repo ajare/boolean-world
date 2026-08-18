@@ -1253,7 +1253,13 @@ void World::update(float frameTime, WorldUpdateData const& data, wp::Vector2 con
   uint32_t globalEvents{0};
 
   if (mPrevPlayerPosition.x < 999998.0f) {
-    for (auto triggerLine : mTriggerLines) {
+    auto sweptPlayerBounds = wp::BoundingBox(
+        mPrevPlayerPosition, data.entityPosition - mPrevPlayerPosition);
+    sweptPlayerBounds.inflate(data.entityRadius);
+
+    // This is local trigger-query acceleration, not primitive generation culling
+    // (ADR-0007): every primitive remains in every selected generation.
+    for (auto triggerLine : findTriggerLines(sweptPlayerBounds)) {
       auto layer = triggerLine->getLayer();
       if (layer == BW_LAYER_ALL || data.layerSelection.test(size_t(layer))) {
         triggerLine->checkCollide(mPrevPlayerPosition, data.entityPosition, data.entityRadius);

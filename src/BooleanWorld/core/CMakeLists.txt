@@ -78,6 +78,14 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_world_primitive_removal_benchmark)
     bw_deploy_runtime_dlls(boolean_world_world_primitive_removal_benchmark)
 
+    add_executable(boolean_world_trigger_line_acceleration_benchmark
+        tests/trigger_line_acceleration_benchmark.cpp)
+    target_link_libraries(boolean_world_trigger_line_acceleration_benchmark PRIVATE core)
+    target_compile_features(boolean_world_trigger_line_acceleration_benchmark PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_trigger_line_acceleration_benchmark)
+    bw_output_dirs(boolean_world_trigger_line_acceleration_benchmark)
+    bw_deploy_runtime_dlls(boolean_world_trigger_line_acceleration_benchmark)
+
     add_executable(boolean_world_arrangement_vertex_lookup_benchmark
         tests/arrangement_vertex_lookup_benchmark.cpp)
     target_link_libraries(boolean_world_arrangement_vertex_lookup_benchmark PRIVATE core)
@@ -512,4 +520,13 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_trigger_line_layer_selection_tests)
     bw_deploy_runtime_dlls(boolean_world_trigger_line_layer_selection_tests)
     add_test(NAME boolean_world_trigger_line_layer_selection COMMAND boolean_world_trigger_line_layer_selection_tests)
+
+    add_executable(boolean_world_trigger_line_acceleration_tests
+        tests/trigger_line_acceleration_tests.cpp)
+    target_link_libraries(boolean_world_trigger_line_acceleration_tests PRIVATE core)
+    target_compile_features(boolean_world_trigger_line_acceleration_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_trigger_line_acceleration_tests)
+    bw_output_dirs(boolean_world_trigger_line_acceleration_tests)
+    bw_deploy_runtime_dlls(boolean_world_trigger_line_acceleration_tests)
+    add_test(NAME boolean_world_trigger_line_acceleration COMMAND boolean_world_trigger_line_acceleration_tests)
 endif()

@@ -52,6 +52,14 @@ Removes `BroadPhaseCulling`, `NarrowPhaseCulling`, `primitiveInView`,
   any primitive it moved is on screen. Together with the above, geometry
   changes are invisible as they happen.
 
+## Local trigger-line query acceleration
+
+`World::update` may use the trigger-line acceleration grid to restrict exact
+trigger collision checks to lines intersecting the player's radius-expanded
+swept bounds. This is a local runtime query optimization: it never changes a
+generation's primitive set, fold, or selected layer set, so it is not culling
+and does not conflict with this decision.
+
 ## Consequences
 
 - Generation's *primitive set* becomes independent of player position. A view
