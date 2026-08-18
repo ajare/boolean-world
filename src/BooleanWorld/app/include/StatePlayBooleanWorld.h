@@ -21,7 +21,6 @@
 
 #include "imgui/imgui.h"
 
-#include "LodSettings.h"
 #include "Platform.h"
 #include "WorldCollisionSim.h"
 #include "WorldRenderer.h"
@@ -83,9 +82,6 @@ private:
       bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken};
 
   std::deque<DisplayMessage> mDisplayMessages;
-
-  // Debug options, edited through the options panel
-  bw::app::LodSettings mLodSettings;
 
 private:
   void createCamera();

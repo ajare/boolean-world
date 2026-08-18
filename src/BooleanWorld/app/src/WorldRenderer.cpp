@@ -140,7 +140,7 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
   }
 }
 
-void WorldRenderer::update(bw::core::World* world, bw::core::WorldData const& worldData, float frameTime, bw::app::LodSettings const& lodSettings) {
+void WorldRenderer::update(bw::core::World* world, bw::core::WorldData const& worldData, float frameTime) {
   BW_UNUSED(world);
 
   if (mWorldHasChanged) {
@@ -152,6 +152,6 @@ void WorldRenderer::update(bw::core::World* world, bw::core::WorldData const& wo
     auto& [renderer, dataProvider] = item;
 
     // Update renderer
-    renderer->update(frameTime, lodSettings);
+    renderer->update(frameTime);
   }
 }

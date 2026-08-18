@@ -12,7 +12,6 @@
 
 #include <core/World.h>
 
-#include "LodSettings.h"
 #include "WorldTriangle3dDataProvider.h"
 #include "WorldRenderer3d.h"
 
@@ -44,5 +43,5 @@ public:
 
   void create(mpp::ScenePtr scene, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr);
 
-  void update(bw::core::World* world, bw::core::WorldData const& worldData, float frameTime, bw::app::LodSettings const& lodSettings);
+  void update(bw::core::World* world, bw::core::WorldData const& worldData, float frameTime);
 };

@@ -54,10 +54,6 @@ DisplayMessage::Level gDisplayMessageLevel = DisplayMessage::Level::Debug;
 const float gImGui_MouseSensitivityMin = 0.03f;
 const float gImGui_MouseSensitivityMax = 3.0f;
 
-// The level-of-detail bias runs either way from its unbiased middle.
-const float gImGui_LodBiasMin = -1.0f;
-const float gImGui_LodBiasMax = 1.0f;
-
 // ImGui colours go here so they don't clutter up the header file
 const ImColor gImGui_MapBackgroundColour{0.2f, 0.2f, 0.8f};
 const ImColor gImGui_TriangulationLineColour{0.8f, 0.8f, 0.2f};
@@ -489,7 +485,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   static_cast<ReactiveCamera*>(mCamera3d.get())->pitch(physicalStats.pitch - mPlayerPrevPitch);
 
   // World 3d
-  mwRenderer->update(getMap()->getWorld(), *mWorldData, frameTime, mLodSettings);
+  mwRenderer->update(getMap()->getWorld(), *mWorldData, frameTime);
 }
 
 void StatePlayBooleanWorld::suspendImpl(void* args) {
@@ -1101,8 +1097,6 @@ void StatePlayBooleanWorld::debug_renderOptions() {
   auto inputOptions = entityHandler->getInputOptions();
 
   if (ImGui::Begin("Options")) {
-    ImGui::SeparatorText("Input");
-
     if (ImGui::SliderFloat(
             "Mouse sensitivity",
             &inputOptions.mouseSensitivity,
@@ -1112,24 +1106,6 @@ void StatePlayBooleanWorld::debug_renderOptions() {
       entityHandler->setInputOptions(inputOptions);
     }
 
-    ImGui::SeparatorText("Level of detail");
-
-    // Read straight from the settings the renderer is handed each frame, so
-    // the controls always show what the shader is actually being told.
-    ImGui::Checkbox("Enabled", &mLodSettings.enabled);
-
-    ImGui::BeginDisabled(!mLodSettings.enabled);
-    ImGui::SliderFloat(
-        "Bias",
-        &mLodSettings.bias,
-        gImGui_LodBiasMin,
-        gImGui_LodBiasMax,
-        "%.2f");
-    ImGui::EndDisabled();
-
-    ImGui::TextDisabled("-1 drops all detail, +1 holds full detail everywhere.");
-
-    ImGui::Separator();
     ImGui::TextDisabled("Not saved - set Input/MouseSensitivity to keep a value.");
   }
 

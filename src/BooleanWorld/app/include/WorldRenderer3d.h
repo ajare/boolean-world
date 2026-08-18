@@ -11,7 +11,6 @@
 
 #include <willpower/common/Logger.h>
 
-#include "LodSettings.h"
 #include "WorldBatchRenderer.h"
 #include "WorldTriangle3dDataProvider.h"
 
@@ -45,5 +44,5 @@ public:
 
   void addToScene(mpp::ScenePtr scene, bw::core::World const* world);
 
-  void update(float frameTime, bw::app::LodSettings const& lodSettings);
+  void update(float frameTime);
 };
