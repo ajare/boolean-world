@@ -109,6 +109,14 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_arrangement_fold_order_benchmark)
     bw_deploy_runtime_dlls(boolean_world_arrangement_fold_order_benchmark)
 
+    add_executable(boolean_world_arrangement_winding_classification_benchmark
+        tests/arrangement_winding_classification_benchmark.cpp)
+    target_link_libraries(boolean_world_arrangement_winding_classification_benchmark PRIVATE core)
+    target_compile_features(boolean_world_arrangement_winding_classification_benchmark PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_arrangement_winding_classification_benchmark)
+    bw_output_dirs(boolean_world_arrangement_winding_classification_benchmark)
+    bw_deploy_runtime_dlls(boolean_world_arrangement_winding_classification_benchmark)
+
     add_executable(boolean_world_arrangement_broad_phase_tests
         tests/arrangement_broad_phase_tests.cpp)
     target_link_libraries(boolean_world_arrangement_broad_phase_tests PRIVATE core)
@@ -162,6 +170,15 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_arrangement_winning_primitive_tests)
     bw_deploy_runtime_dlls(boolean_world_arrangement_winning_primitive_tests)
     add_test(NAME boolean_world_arrangement_winning_primitive COMMAND boolean_world_arrangement_winning_primitive_tests)
+
+    add_executable(boolean_world_arrangement_winding_classification_tests
+        tests/arrangement_winding_classification_tests.cpp)
+    target_link_libraries(boolean_world_arrangement_winding_classification_tests PRIVATE core)
+    target_compile_features(boolean_world_arrangement_winding_classification_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_arrangement_winding_classification_tests)
+    bw_output_dirs(boolean_world_arrangement_winding_classification_tests)
+    bw_deploy_runtime_dlls(boolean_world_arrangement_winding_classification_tests)
+    add_test(NAME boolean_world_arrangement_winding_classification COMMAND boolean_world_arrangement_winding_classification_tests)
 
     add_executable(boolean_world_arrangement_triangulation_precision_tests
         tests/arrangement_triangulation_precision_tests.cpp)

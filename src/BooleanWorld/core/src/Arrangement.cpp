@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <limits>
 #include <map>
-#include <queue>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -942,71 +941,27 @@ ArrangementResultPtr BuildArrangement(
     }
   }
 
-  vector<vector<int>> faceEdges(faces.size());
-  for (int edgeIndex = 0; edgeIndex < int(graph.es.size()); ++edgeIndex) {
-    auto const& edge = graph.es[edgeIndex];
-    for (auto faceIndex : edge.fi) {
-      if (faceIndex >= 0) {
-        faceEdges[faceIndex].push_back(edgeIndex);
-      }
-    }
-  }
+  // A depth-first traversal needs only one primitive winding row. Crossing an
+  // edge mutates its sparse primitive deltas; backtracking applies the inverse.
+  // This avoids both the dense face-by-primitive matrix and full-row copies for
+  // every face transition.
+  struct TraversalFrame {
+    int faceIndex;
+    int boundaryIndex{-1};  // -1 is the outer boundary; holes follow.
+    size_t edgeOffset{0};
+    int entryEdge{-1};
+    int entryDirection{0};
+  };
+  vector<int32_t> windingNumbers(primitives.size());
+  vector<uint8_t> visited(faces.size());
+  vector<TraversalFrame> traversal;
+  traversal.reserve(faces.size());
 
-  vector<vector<int32_t>> windingNumbers(
-      faces.size(), vector<int32_t>(primitives.size()));
-  vector<bool> visited(faces.size(), false);
-  queue<int> pending;
-
-  // The unbounded face is omitted while classifying, so each disconnected
-  // bounded component needs one direct winding seed. Every other face in that
-  // component is labelled by crossing edge deltas in a breadth-first traversal.
-  for (int seedFace = 0; seedFace < int(faces.size()); ++seedFace) {
-    if (visited[seedFace]) {
-      continue;
-    }
-
-    auto sample = SamplePoint(graph, faces[seedFace], cycles);
-    for (size_t primitiveIndex = 0;
-         primitiveIndex < primitives.size(); ++primitiveIndex) {
-      for (auto const& contour : primitives[primitiveIndex].contours) {
-        windingNumbers[seedFace][primitiveIndex] +=
-            ContourWinding(sample, contour);
-      }
-    }
-
-    visited[seedFace] = true;
-    pending.push(seedFace);
-    while (!pending.empty()) {
-      auto faceIndex = pending.front();
-      pending.pop();
-
-      for (auto edgeIndex : faceEdges[faceIndex]) {
-        auto const& edge = graph.es[edgeIndex];
-        if (!edge.doubleSided()) {
-          continue;
-        }
-        auto neighbour = edge.fi[0] == faceIndex ? edge.fi[1] : edge.fi[0];
-        if (visited[neighbour]) {
-          continue;
-        }
-
-        windingNumbers[neighbour] = windingNumbers[faceIndex];
-        auto direction = edge.fi[1] == faceIndex ? 1 : -1;
-        for (auto const& delta : edge.windingDeltas) {
-          windingNumbers[neighbour][delta.primitiveIndex] +=
-              direction * delta.delta;
-        }
-        visited[neighbour] = true;
-        pending.push(neighbour);
-      }
-    }
-  }
-
-  for (size_t faceIndex = 0; faceIndex < faces.size(); ++faceIndex) {
+  auto classify = [&](int faceIndex) {
     Membership membership(primitives.size());
     for (size_t primitiveIndex = 0;
          primitiveIndex < primitives.size(); ++primitiveIndex) {
-      auto winding = windingNumbers[faceIndex][primitiveIndex];
+      auto winding = windingNumbers[primitiveIndex];
       auto member = primitives[primitiveIndex].fillRule ==
                             bw::core::Primitive::FillRule::EvenOdd
                         ? abs(winding) % 2 == 1
@@ -1016,6 +971,74 @@ ArrangementResultPtr BuildArrangement(
     faces[faceIndex].membership = move(membership);
     faces[faceIndex].solid = EvaluateFold(
         primitives, faces[faceIndex].membership, foldOrder);
+  };
+  auto applyEdge = [&](int edgeIndex, int direction) {
+    for (auto const& delta : graph.es[edgeIndex].windingDeltas) {
+      windingNumbers[delta.primitiveIndex] += direction * delta.delta;
+    }
+  };
+  auto nextEdge = [&](TraversalFrame& frame) {
+    while (frame.boundaryIndex < int(faces[frame.faceIndex].holes.size())) {
+      auto cycleIndex = frame.boundaryIndex < 0
+                            ? faces[frame.faceIndex].polygon
+                            : faces[frame.faceIndex].holes[frame.boundaryIndex];
+      auto const& edges = cycles[cycleIndex].eis;
+      if (frame.edgeOffset < edges.size()) {
+        return edges[frame.edgeOffset++];
+      }
+      ++frame.boundaryIndex;
+      frame.edgeOffset = 0;
+    }
+    return -1;
+  };
+
+  // The unbounded face is omitted while classifying, so each disconnected
+  // bounded component needs one direct winding seed.
+  for (int seedFace = 0; seedFace < int(faces.size()); ++seedFace) {
+    if (visited[seedFace]) {
+      continue;
+    }
+
+    fill(windingNumbers.begin(), windingNumbers.end(), 0);
+    auto sample = SamplePoint(graph, faces[seedFace], cycles);
+    for (size_t primitiveIndex = 0;
+         primitiveIndex < primitives.size(); ++primitiveIndex) {
+      for (auto const& contour : primitives[primitiveIndex].contours) {
+        windingNumbers[primitiveIndex] += ContourWinding(sample, contour);
+      }
+    }
+
+    visited[seedFace] = 1;
+    classify(seedFace);
+    traversal.push_back({seedFace});
+    while (!traversal.empty()) {
+      auto edgeIndex = nextEdge(traversal.back());
+      if (edgeIndex < 0) {
+        auto frame = traversal.back();
+        traversal.pop_back();
+        if (frame.entryEdge >= 0) {
+          applyEdge(frame.entryEdge, -frame.entryDirection);
+        }
+        continue;
+      }
+
+      auto faceIndex = traversal.back().faceIndex;
+      auto const& edge = graph.es[edgeIndex];
+      if (!edge.doubleSided() ||
+          (edge.fi[0] != faceIndex && edge.fi[1] != faceIndex)) {
+        continue;
+      }
+      auto neighbour = edge.fi[0] == faceIndex ? edge.fi[1] : edge.fi[0];
+      if (neighbour == faceIndex || visited[neighbour]) {
+        continue;
+      }
+
+      auto direction = edge.fi[1] == faceIndex ? 1 : -1;
+      applyEdge(edgeIndex, direction);
+      visited[neighbour] = 1;
+      classify(neighbour);
+      traversal.push_back({neighbour, -1, 0, edgeIndex, direction});
+    }
   }
 
   auto result = make_shared<ArrangementResult>();
@@ -1049,7 +1072,7 @@ ArrangementResultPtr BuildArrangement(
   }
   result->faces.push_back(move(exteriorFace));
 
-  for (auto const& face : faces) {
+  for (auto& face : faces) {
     ArrangementFace outputFace;
     auto const& outerCycle = cycles[face.polygon];
     for (auto edgeIndex : outerCycle.eis) {
@@ -1070,7 +1093,6 @@ ArrangementResultPtr BuildArrangement(
       outputFace.innerBoundaries.push_back(move(boundary));
       outputFace.innerBoundaryVertices.push_back(move(boundaryVertices));
     }
-    outputFace.membership = face.membership;
     outputFace.solid = face.solid;
 
     // The old engine associates properties with the Union that starts an
@@ -1119,6 +1141,7 @@ ArrangementResultPtr BuildArrangement(
       outputFace.primitiveIndex =
           primitives[winningPrimitive].primitiveIndex;
     }
+    outputFace.membership = move(face.membership);
     result->faces.push_back(move(outputFace));
   }
 
