@@ -739,7 +739,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateCirclePolygon(editor::D
   widgets::HelpMarker("This value determines the number of sides in the circle polygon.");
   ImGui::SameLine();
   if (ImGui::InputFloat("Res##CreateCircle", &resolution, 0.01f, 0.1f)) {
-    resolution = clamp(resolution, 0.0f, 1.0f);
+    resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
     modified = true;
   }
 
@@ -768,7 +768,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateCircleSegmentPolygon(ed
   widgets::HelpMarker("This value determines the number of sides in the circle segment polygon.");
   ImGui::SameLine();
   if (ImGui::InputFloat("Res##CreateCircleSegment", &resolution, 0.01f, 0.1f)) {
-    resolution = clamp(resolution, 0.0f, 1.0f);
+    resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
     modified = true;
   }
 
@@ -1313,7 +1313,7 @@ void renderEditCirclePolygon(editor::Document* doc, bw::core::Primitive* primiti
   widgets::HelpMarker("This value determines the number of sides in the circle polygon.");
   ImGui::SameLine();
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-    resolution = clamp(resolution, 0.0f, 1.0f);
+    resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
 
     transactUndoableAction(doc, format("Set Circle Resolution to {}", resolution), [circle, resolution](editor::Document* doc) {
       auto staticBefore = circle->isStatic();
@@ -1347,7 +1347,7 @@ void renderEditCircleSegmentPolygon(editor::Document* doc, bw::core::Primitive* 
   widgets::HelpMarker("This value determines the number of sides in the circle polygon.");
   ImGui::SameLine();
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-    resolution = clamp(resolution, 0.0f, 1.0f);
+    resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
 
     transactUndoableAction(doc, format("Set Circle Segment Resolution to {}", resolution), [circleSeg, resolution](editor::Document* doc) {
       circleSeg->setResolution(resolution);

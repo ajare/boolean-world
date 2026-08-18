@@ -1,5 +1,7 @@
 #include <format>
 
+#include "core/CoreException.h"
+#include "core/Defines.h"
 #include "core/RegularPolygon.h"
 
 namespace bw {
@@ -7,12 +9,24 @@ namespace core {
 
 using namespace std;
 
+namespace {
+
+uint32_t validateNumSides(uint32_t numSides) {
+  if (numSides < 3 || numSides > BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX) {
+    throw CoreException(format(
+        "Regular polygon side count must be in [3, {}]", BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX));
+  }
+  return numSides;
+}
+
+}  // namespace
+
 RegularPolygon::RegularPolygon()
     : Primitive(), mNumSides(0) {
 }
 
 RegularPolygon::RegularPolygon(Operation operation, FillRule fillType, uint32_t numSides)
-    : Primitive(operation, fillType), mNumSides(numSides) {
+    : Primitive(operation, fillType), mNumSides(validateNumSides(numSides)) {
   generateVertices();
 }
 
@@ -67,7 +81,7 @@ bool RegularPolygon::deserializeImpl(std::shared_ptr<Serializer> serializer, Ser
   try {
     serializer->beginMap("regularPolygon");
     {
-      numSides = serializer->readUint32("numSides");
+      numSides = validateNumSides(serializer->readUint32("numSides"));
 
       serializer->endMap();  // regularPolygon
     }
@@ -82,7 +96,7 @@ bool RegularPolygon::deserializeImpl(std::shared_ptr<Serializer> serializer, Ser
 }
 
 vector<ComplexPolygon> RegularPolygon::generateVerticesImpl() {
-  assert(mNumSides >= 3 && "Too few sides.");
+  validateNumSides(mNumSides);
 
   ClosedPolygon vertices(mNumSides);
 
@@ -100,7 +114,8 @@ float RegularPolygon::getRadius() const {
 }
 
 void RegularPolygon::setNumSides(uint32_t numSides) {
-  mNumSides = numSides;
+  auto const validatedNumSides = validateNumSides(numSides);
+  mNumSides = validatedNumSides;
   generateVertices();
 }
 

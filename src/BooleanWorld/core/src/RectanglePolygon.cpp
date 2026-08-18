@@ -1,3 +1,6 @@
+#include <cmath>
+
+#include "core/CoreException.h"
 #include "core/RectanglePolygon.h"
 
 namespace bw {
@@ -5,12 +8,23 @@ namespace core {
 
 using namespace std;
 
+namespace {
+
+float validateXyRatio(float xyRatio) {
+  if (!isfinite(xyRatio) || xyRatio < 1.0f || xyRatio > 10.0f) {
+    throw CoreException("Rectangle width-to-height ratio must be finite and in [1, 10]");
+  }
+  return xyRatio;
+}
+
+}  // namespace
+
 RectanglePolygon::RectanglePolygon()
     : Primitive(), mXyRatio(1.0f) {
 }
 
 RectanglePolygon::RectanglePolygon(Operation operation, FillRule fillType, float xyRatio)
-    : Primitive(operation, fillType), mXyRatio(xyRatio) {
+    : Primitive(operation, fillType), mXyRatio(validateXyRatio(xyRatio)) {
   generateVertices();
 }
 
@@ -58,7 +72,7 @@ bool RectanglePolygon::deserializeImpl(std::shared_ptr<Serializer> serializer, S
   try {
     serializer->beginMap("rectanglePolygon");
     {
-      xyRatio = serializer->readFloat("xyRatio");
+      xyRatio = validateXyRatio(serializer->readFloat("xyRatio"));
 
       serializer->endMap();  // rectanglePolygon
     }
@@ -74,7 +88,7 @@ bool RectanglePolygon::deserializeImpl(std::shared_ptr<Serializer> serializer, S
 }
 
 vector<ComplexPolygon> RectanglePolygon::generateVerticesImpl() {
-  float i1 = 1.0f / mXyRatio;
+  float i1 = 1.0f / validateXyRatio(mXyRatio);
 
   return {{{{wp::Vector2(1.0f, i1)},
             {wp::Vector2(-1.0f, i1)},
@@ -89,7 +103,8 @@ float RectanglePolygon::getRadius() const {
 }
 
 void RectanglePolygon::setXyRatio(float xyRatio) {
-  mXyRatio = xyRatio;
+  auto const validatedXyRatio = validateXyRatio(xyRatio);
+  mXyRatio = validatedXyRatio;
   generateVertices();
 }
 

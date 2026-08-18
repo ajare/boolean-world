@@ -28,21 +28,21 @@ get their operations done first.  The very first polygon's operation is ignored,
 polygon's operation on the first, then the third polygon's operation on the result of that, and so on.
 ## Basic types
 ### RegularPolygon
-This primitive has at least 3 sides (ie a triangle), with the first vertex pointing up, so a 4-sided primitive is diamond-
+This primitive has between 3 and 1024 sides (inclusive), with the first vertex pointing up, so a 4-sided primitive is diamond-
 shaped rather than square shaped.
 ### Circle
 This is a standard circle, with variable resolution.
 #### Resolution
-A value in [0, 1] which acts as a multiplier for the number of vertices making up the circle geometry.
+A finite value in [3/64, 1] which acts as a multiplier for the circle's base resolution of 64 vertices.
 ### CircleSegment
 A circle but only with a given arc length (centred at angle 0), with variable resolution.
 #### Resolution
-A value in [0, 1] which acts as a multiplier for the number of vertices making up the circle geometry.
+A finite value in [3/64, 1] which acts as a multiplier for the segment's base resolution of 64 arc-boundary vertices.
 #### ArcLength
-The number of degrees the segment spans, centred on 0.
+A finite value in [0.01, 360] giving the number of degrees the segment spans, centred on 0.
 ### RectanglePolygon
 #### X/Y ratio
-The ratio of the height to the width.  Ie height/width.
+A finite width-to-height ratio in [1, 10].
 ### SuperformulaPolygon
 An implementation of the [Superformula](https://en.wikipedia.org/wiki/Superformula).  This takes 6 parameters, and produces different shapes.
 #### Values
