@@ -358,9 +358,14 @@ bool Primitive::deserializeImpl(shared_ptr<Serializer> serializer, Serialization
                       serializer->beginMap("vertex");
                       {
                         wp::Vector2 p = serializer->readVector2("p");
+
                         // Retain this ignored legacy field so shipped pre-arrangement
                         // world files remain loadable after the Clipper z-bitfield removal.
-                        serializer->readInt64("z", true, 0);
+                        // Positional formats (e.g. binary) never had this field to begin
+                        // with, so there is nothing to skip there.
+                        if (!serializer->isPositional()) {
+                          serializer->readInt64("z", true, 0);
+                        }
 
                         polygon.push_back({p});
 

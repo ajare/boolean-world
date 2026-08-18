@@ -10,6 +10,7 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include "core/BinarySerializer.h"
 #include "core/YamlSerializer.h"
 #include "core/RegularPolygon.h"
 #include "core/DynamicWorldDataGenerator.h"
@@ -348,8 +349,10 @@ bool Document::openDoc(string const& filepath) {
   auto ext = path.extension().string();
   transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-  if (ext == ".yaml") {
-    auto ser = shared_ptr<bw::core::YamlSerializer>(bw::core::YamlSerializer::fromFile(mFilepath));
+  if (ext == ".yaml" || ext == ".world") {
+    shared_ptr<bw::core::Serializer> ser = ext == ".yaml"
+        ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(mFilepath))
+        : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(mFilepath));
 
     try {
       ser->deserialize();
@@ -404,8 +407,10 @@ void Document::saveDoc() {
   auto ext = path.extension().string();
   std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-  if (ext == ".yaml") {
-    auto ser = shared_ptr<bw::core::YamlSerializer>(bw::core::YamlSerializer::toFile(mFilepath));
+  if (ext == ".yaml" || ext == ".world") {
+    shared_ptr<bw::core::Serializer> ser = ext == ".yaml"
+        ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toFile(mFilepath))
+        : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::toFile(mFilepath));
     auto workData = bw::core::SerializationWorkData{};
 
     mWorld->serialize(ser, workData);

@@ -13,6 +13,7 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <core/BinarySerializer.h>
 #include <core/YamlSerializer.h>
 #include <core/CirclePolygon.h>
 #include <core/CircleSegmentPolygon.h>
@@ -47,6 +48,7 @@ void newDocument(editor::Document* doc) {
 void openDocument(editor::Document* doc) {
   vector<pair<string, string>> extensions = {
       make_pair("YAML", "yaml"),
+      make_pair("Binary world", "world"),
       make_pair("Tiled prefab", "json")};
 
   auto numExtensions = extensions.size();
@@ -76,7 +78,8 @@ void openDocument(editor::Document* doc) {
 
 void saveDocumentAs(editor::Document* doc) {
   vector<pair<string, string>> extensions = {
-      make_pair("YAML", "yaml")};
+      make_pair("YAML", "yaml"),
+      make_pair("Binary world", "world")};
 
   auto numExtensions = extensions.size();
 
@@ -203,8 +206,10 @@ bw::core::World* loadWorld(string const& filepath) {
 
   bw::core::World* world{nullptr};
 
-  if (ext == ".yaml") {
-    auto ser = shared_ptr<bw::core::YamlSerializer>(bw::core::YamlSerializer::fromFile(filepath));
+  if (ext == ".yaml" || ext == ".world") {
+    shared_ptr<bw::core::Serializer> ser = ext == ".yaml"
+        ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(filepath))
+        : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(filepath));
 
     try {
       ser->deserialize();

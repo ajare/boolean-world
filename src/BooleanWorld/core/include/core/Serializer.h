@@ -11,6 +11,18 @@ class Serializer {
 public:
   virtual ~Serializer() = default;
 
+  // Keyed formats (e.g. YAML) look fields up by name, so a read for a field
+  // that a writer never emitted simply misses and falls back to its default
+  // without disturbing anything else. Positional formats (e.g. BinarySerializer)
+  // have no such per-field marker: every read consumes the next bytes in the
+  // stream regardless of name, so attempting to read a field that no writer
+  // ever produced would instead misread the following field. Deserialization
+  // code that reads a field kept only for compatibility with old keyed-format
+  // files (and never written any more) must skip that read when this is true.
+  virtual bool isPositional() const {
+    return false;
+  }
+
   // Serialization
   void writeBool(std::string const& name, bool value);
 

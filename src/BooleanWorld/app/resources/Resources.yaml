@@ -404,7 +404,7 @@ Resources:
                 value: "Texture"
       - type: "TextFile"
         name: "WorldFile"
-        location: "gen-2.yaml"
+        location: "stress-test-2000.world"
       - type: "Map"
         name: "World"
         DependentResources:

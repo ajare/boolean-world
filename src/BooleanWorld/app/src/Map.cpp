@@ -1,6 +1,10 @@
+#include <algorithm>
+#include <filesystem>
+
 #include <willpower/application/resourcesystem/TextFileResource.h>
 #include <willpower/application/resourcesystem/ResourceExceptions.h>
 
+#include <core/BinarySerializer.h>
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/YamlSerializer.h>
 
@@ -38,7 +42,16 @@ void Map::loadWorldFromYaml(wp::application::resourcesystem::ResourcePtr resourc
   auto res = static_cast<wp::application::resourcesystem::TextFileResource*>(resource.get());
   string text = res->getText();
 
-  auto ser = shared_ptr<bw::core::YamlSerializer>(bw::core::YamlSerializer::fromString(text));
+  // The resource's source carries the original filename (e.g. "world.world" or
+  // "world.yaml"), so use its extension to pick the matching Serializer. Worlds
+  // exported from the editor as .world files are binary, not YAML, and parsing
+  // one as YAML text either fails outright or silently misreads the data.
+  auto ext = filesystem::path(resource->getSource()).extension().string();
+  transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+  shared_ptr<bw::core::Serializer> ser = ext == ".world"
+      ? shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromString(text))
+      : shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromString(text));
 
   ser->deserialize();
 

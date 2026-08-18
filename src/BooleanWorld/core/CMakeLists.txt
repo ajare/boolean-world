@@ -5,6 +5,7 @@ add_library(core STATIC
     src/Arrangement.cpp
     src/ArrangementWorldData.cpp
     src/ArrangementWorldDataGenerator.cpp
+    src/BinarySerializer.cpp
     src/CirclePolygon.cpp
     src/CircleSegmentPolygon.cpp
     src/DefaultWorldDataGenerator.cpp
@@ -304,6 +305,15 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_yaml_serializer_vector2_tests)
     bw_deploy_runtime_dlls(boolean_world_yaml_serializer_vector2_tests)
     add_test(NAME boolean_world_yaml_serializer_vector2 COMMAND boolean_world_yaml_serializer_vector2_tests)
+
+    add_executable(boolean_world_binary_serializer_tests
+        tests/binary_serializer_tests.cpp)
+    target_link_libraries(boolean_world_binary_serializer_tests PRIVATE core)
+    target_compile_features(boolean_world_binary_serializer_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_binary_serializer_tests)
+    bw_output_dirs(boolean_world_binary_serializer_tests)
+    bw_deploy_runtime_dlls(boolean_world_binary_serializer_tests)
+    add_test(NAME boolean_world_binary_serializer COMMAND boolean_world_binary_serializer_tests)
 
     add_executable(boolean_world_value_object_copy_tests
         tests/value_object_copy_tests.cpp)
