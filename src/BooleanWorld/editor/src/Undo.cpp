@@ -22,6 +22,8 @@ using namespace std;
 struct UndoData {
   WorldSnapshot world;
   set<uint32_t> selection;
+  uint32_t selectedWorldVertex{~0u};
+  uint32_t selectedTriggerLine{~0u};
   bool docModified{false};
 };
 
@@ -37,6 +39,29 @@ static std::string gTransactionalId;
 static float gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
 static wp::Vector2 gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
 static UndoableActionFunction gTransactionalFunc;
+
+UndoData captureUndoData(Document* doc) {
+  return {
+      doc->captureWorldSnapshot(),
+      doc->getSelectedPrimitiveIndices(),
+      doc->getSelectedWorldVertexIndex(),
+      doc->getSelectedTriggerLineIndex(),
+      doc->isModified()};
+}
+
+void restoreUndoData(Document* doc, UndoData const& data) {
+  doc->restoreWorldSnapshot(data.world);
+  if (!data.selection.empty()) {
+    doc->setSelectedPrimitiveIndices(data.selection);
+  } else if (data.selectedTriggerLine != ~0u) {
+    doc->setSelectedTriggerLineIndex(data.selectedTriggerLine);
+  } else if (data.selectedWorldVertex != ~0u) {
+    doc->setSelectedWorldVertexIndex(data.selectedWorldVertex);
+  } else {
+    doc->clearSelections();
+  }
+  doc->setModified(data.docModified);
+}
 
 bool canUndo() {
   return !gUndoStack.empty();
@@ -61,10 +86,7 @@ void beginUndoableAction(Document* doc, string const& id, UndoableActionFunction
   }
 
   gTransactionalId = id;
-
-  gTransactionalData.world = doc->captureWorldSnapshot();
-  gTransactionalData.selection = doc->getSelectedPrimitiveIndices();
-  gTransactionalData.docModified = doc->isModified();
+  gTransactionalData = captureUndoData(doc);
 
   gTransactionalInitialFloatValue = v;
   gTransactionalFunc = func;
@@ -77,10 +99,7 @@ void beginUndoableAction(Document* doc, string const& id, UndoableActionFunction
   }
 
   gTransactionalId = id;
-
-  gTransactionalData.world = doc->captureWorldSnapshot();
-  gTransactionalData.selection = doc->getSelectedPrimitiveIndices();
-  gTransactionalData.docModified = doc->isModified();
+  gTransactionalData = captureUndoData(doc);
 
   gTransactionalInitialVectorValue = v;
   gTransactionalFunc = func;
@@ -107,8 +126,7 @@ void commitUndoableAction(Document* doc, string const& id) {
 
   gTransactionalFunc = nullptr;
   gTransactionalId.clear();
-  gTransactionalData.world = {};
-  gTransactionalData.selection.clear();
+  gTransactionalData = {};
   gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
   gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
 }
@@ -118,11 +136,40 @@ void transactUndoableAction(Document* doc, string const& id, UndoableActionFunct
   commitUndoableAction(doc);
 }
 
+bool transactUndoableActionAtomically(
+    Document* doc,
+    string const& id,
+    UndoableActionFunction func) {
+  if (gTransactionalFunc) {
+    throw EditorException(
+        "Cannot run an atomic action while another undoable action is in progress.");
+  }
+
+  auto previous = captureUndoData(doc);
+  UndoEntry entry{id, previous};
+  auto restorePrevious = [&]() { restoreUndoData(doc, previous); };
+
+  try {
+    if (!func(doc)) {
+      restorePrevious();
+      return false;
+    }
+
+    gUndoStack.push_back(move(entry));
+    bw::common::trimDequeToCapacity(gUndoStack, MAX_STACK_SIZE);
+    gRedoStack.clear();
+    doc->setModified();
+    return true;
+  } catch (...) {
+    restorePrevious();
+    throw;
+  }
+}
+
 void abandonUndoableAction(Document* doc) {
   gTransactionalId.clear();
 
-  gTransactionalData.world = {};
-  gTransactionalData.selection.clear();
+  gTransactionalData = {};
   gTransactionalData.docModified = doc->isModified();
   gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
   gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
@@ -140,10 +187,7 @@ void undo(Document* doc, int count) {
     return;
   }
 
-  auto data = UndoData{
-      doc->captureWorldSnapshot(),
-      doc->getSelectedPrimitiveIndices(),
-      doc->isModified()};
+  auto data = captureUndoData(doc);
   bool restored{false};
 
   for (int i = 0; i < count && canUndo(); ++i) {
@@ -157,9 +201,7 @@ void undo(Document* doc, int count) {
   }
 
   if (restored) {
-    doc->restoreWorldSnapshot(data.world);
-    doc->setSelectedPrimitiveIndices(data.selection);
-    doc->setModified(data.docModified);
+    restoreUndoData(doc, data);
   }
 
   generateClipping(doc, gEditorSettings, ED_CLIP_ON_UNDO_REDO);
@@ -167,14 +209,11 @@ void undo(Document* doc, int count) {
 
 void redo(Document* doc, int count) {
   if (count <= 0 || !canRedo()) {
-    generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+    generateClipping(doc, gEditorSettings, ED_CLIP_ON_UNDO_REDO);
     return;
   }
 
-  auto data = UndoData{
-      doc->captureWorldSnapshot(),
-      doc->getSelectedPrimitiveIndices(),
-      doc->isModified()};
+  auto data = captureUndoData(doc);
   bool restored{false};
 
   for (int i = 0; i < count && canRedo(); ++i) {
@@ -188,12 +227,10 @@ void redo(Document* doc, int count) {
   }
 
   if (restored) {
-    doc->restoreWorldSnapshot(data.world);
-    doc->setSelectedPrimitiveIndices(data.selection);
-    doc->setModified(data.docModified);
+    restoreUndoData(doc, data);
   }
 
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_UNDO_REDO);
 }
 
 vector<HistoryItem> getActionHistory() {

@@ -44,6 +44,7 @@
 #include "Actions.h"
 #include "Markdown.h"
 #include "PrimitiveFieldPreview.h"
+#include "PrimitiveFieldPlacement.h"
 #include "ExitApplicationException.h"
 #include "Render.h"
 #include "HoverableType.h"
@@ -3316,6 +3317,7 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
       auto maximumSpacing = std::min(worldSize.x, worldSize.y);
       auto validSpacingRange = std::isfinite(maximumSpacing) &&
                                maximumSpacing >= 8.0f;
+      auto spacingBeforeClamp = primitiveFieldPreview.minimumSpacing;
       if (!std::isfinite(primitiveFieldPreview.minimumSpacing)) {
         primitiveFieldPreview.minimumSpacing = 8.0f;
       }
@@ -3323,12 +3325,17 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
         primitiveFieldPreview.minimumSpacing = std::clamp(
             primitiveFieldPreview.minimumSpacing, 8.0f, maximumSpacing);
       }
+      if (primitiveFieldPreview.minimumSpacing != spacingBeforeClamp) {
+        primitiveFieldPreview.invalidateLayout();
+      }
 
       ImGui::SetNextItemWidth(220.0f);
-      ImGui::DragFloat(
-          "Minimum site spacing", &primitiveFieldPreview.minimumSpacing,
-          1.0f, 8.0f, maximumSpacing, "%.3f",
-          ImGuiSliderFlags_AlwaysClamp);
+      if (ImGui::DragFloat(
+              "Minimum site spacing", &primitiveFieldPreview.minimumSpacing,
+              1.0f, 8.0f, maximumSpacing, "%.3f",
+              ImGuiSliderFlags_AlwaysClamp)) {
+        primitiveFieldPreview.invalidateLayout();
+      }
 
       ImGui::SetNextItemWidth(220.0f);
       if (ImGui::InputInt(
@@ -3337,6 +3344,7 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
         primitiveFieldPreview.maximumSites = std::clamp(
             primitiveFieldPreview.maximumSites, 1,
             static_cast<int>(BW_WORLD_PRIMITIVE_COUNT_MAX));
+        primitiveFieldPreview.invalidateLayout();
       }
 
       ImGui::SetNextItemWidth(220.0f);
@@ -3347,8 +3355,31 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
         primitiveFieldPreview.invalidateLayout();
       }
 
+      auto overlapBeforeClamp = primitiveFieldPreview.overlapPercent;
+      if (!std::isfinite(primitiveFieldPreview.overlapPercent)) {
+        primitiveFieldPreview.overlapPercent = 10.0f;
+      } else {
+        primitiveFieldPreview.overlapPercent = std::clamp(
+            primitiveFieldPreview.overlapPercent, 0.0f, 100.0f);
+      }
+      if (primitiveFieldPreview.overlapPercent != overlapBeforeClamp) {
+        primitiveFieldPreview.refreshRectangles();
+      }
+
       ImGui::SetNextItemWidth(220.0f);
-      ImGui::InputInt("Seed", &primitiveFieldPreview.seed);
+      if (ImGui::DragFloat(
+              "Overlap (%)", &primitiveFieldPreview.overlapPercent, 0.25f,
+              0.0f, 100.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
+        if (!std::isfinite(primitiveFieldPreview.overlapPercent)) {
+          primitiveFieldPreview.overlapPercent = 10.0f;
+        }
+        primitiveFieldPreview.refreshRectangles();
+      }
+
+      ImGui::SetNextItemWidth(220.0f);
+      if (ImGui::InputInt("Seed", &primitiveFieldPreview.seed)) {
+        primitiveFieldPreview.invalidateLayout();
+      }
       ImGui::SameLine();
       if (ImGui::Button("Randomize")) {
         static std::random_device randomDevice;
@@ -3359,6 +3390,7 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
                                : randomizedSeed + 1;
         }
         primitiveFieldPreview.seed = randomizedSeed;
+        primitiveFieldPreview.invalidateLayout();
       }
 
       if (!validSpacingRange) {
@@ -3374,20 +3406,45 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
         wp::Vector2 minimum;
         wp::Vector2 maximum;
         world->getExtents().getExtents(minimum, maximum);
-        primitiveFieldPreview.generate({minimum, maximum});
+        primitiveFieldPreview.generate(
+            {minimum, maximum}, world->getNumPrimitives());
       }
       if (!validSpacingRange) {
         ImGui::EndDisabled();
       }
 
       ImGui::SameLine();
-      ImGui::BeginDisabled();
-      ImGui::Button("Place Primitives");
-      ImGui::EndDisabled();
+      auto capacityStillAvailable =
+          primitiveFieldPreview.rectangles.size() <=
+          static_cast<size_t>(BW_WORLD_PRIMITIVE_COUNT_MAX -
+                              world->getNumPrimitives());
+      auto canPlace = primitiveFieldPreview.hasCompletePreview() &&
+                      capacityStillAvailable;
+      if (!canPlace) {
+        ImGui::BeginDisabled();
+      }
+      if (ImGui::Button("Place Primitives") &&
+          primitiveFieldPreview.layout) {
+        auto result = placePrimitiveField(
+            doc, *primitiveFieldPreview.layout,
+            primitiveFieldPreview.rectangles, settings);
+        if (result.placed) {
+          ImGui::CloseCurrentPopup();
+          primitiveFieldPreview.close();
+        } else {
+          primitiveFieldPreview.error = std::move(result.error);
+        }
+      }
+      if (!canPlace) {
+        ImGui::EndDisabled();
+      }
 
       auto generatedCount = primitiveFieldPreview.layout
                                 ? primitiveFieldPreview.layout->sites.size()
                                 : size_t{0};
+      auto effectiveMaximum = effectivePrimitiveFieldMaximum(
+          primitiveFieldPreview.maximumSites, world->getNumPrimitives());
+      ImGui::Text("Effective capacity: %u", effectiveMaximum);
       ImGui::Text("Generated sites: %zu", generatedCount);
       if (!primitiveFieldPreview.error.empty()) {
         ImGui::PushStyleColor(

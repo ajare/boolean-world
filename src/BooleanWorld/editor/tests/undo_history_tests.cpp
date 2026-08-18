@@ -99,6 +99,26 @@ void undoAndRedoPreserveEachIntermediateSnapshot() {
           "redo did not restore the editor ghost from the runtime-free snapshot");
 }
 
+void undoAndRedoRestoreNonPrimitiveSelections() {
+  editor::Document document;
+  document.newDoc();
+  document.setSelectedTriggerLineIndex(7);
+
+  editor::transactUndoableAction(&document, "select primitive", [](editor::Document* doc) {
+    doc->setSelectedPrimitiveIndices({0});
+    return false;
+  });
+  editor::undo(&document);
+  require(document.getSelectedPrimitiveIndices().empty() &&
+              document.getSelectedTriggerLineIndex() == 7,
+          "undo did not restore a trigger-line selection");
+
+  editor::redo(&document);
+  require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>{0} &&
+              document.getSelectedTriggerLineIndex() == ~0u,
+          "redo did not restore the corresponding primitive selection");
+}
+
 void abandonedAndCommittedActionsClearTransactionValues() {
   editor::Document document;
   bw::core::World world(100.0f, 10.0f);
@@ -286,6 +306,7 @@ void historyDoesNotCopyUndoOrRedoWorldSnapshots() {
 int main() {
   try {
     undoAndRedoPreserveEachIntermediateSnapshot();
+    undoAndRedoRestoreNonPrimitiveSelections();
     abandonedAndCommittedActionsClearTransactionValues();
     superformulaControlValueEditIsDirtyAndUndoable();
     runtimeFreeSnapshotPreservesEditorGenerationConfiguration();

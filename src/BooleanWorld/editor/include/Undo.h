@@ -31,6 +31,14 @@ void commitUndoableAction(Document* doc, std::string const& id = "");
 
 void transactUndoableAction(Document* doc, std::string const& id, UndoableActionFunction func);
 
+// Executes immediately and records the snapshot only when the function
+// succeeds. If the function returns false or throws, the world, selection,
+// modification state, and history remain as they were.
+bool transactUndoableActionAtomically(
+    Document* doc,
+    std::string const& id,
+    UndoableActionFunction func);
+
 void abandonUndoableAction(Document* doc);
 
 bool undoableActionInProgress();

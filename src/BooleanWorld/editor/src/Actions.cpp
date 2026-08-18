@@ -7,8 +7,6 @@
 #include <core/SuperformulaPolygon.h>
 #include <core/MeshPrimitive.h>
 
-#include <common/MaterialRegistry.h>
-
 #include "Defines.h"
 #include "Actions.h"
 #include "UiHelpers.h"
@@ -85,35 +83,6 @@ bool clearSelections(Document* doc) {
   doc->clearSelections();
 
   return false;
-}
-
-void setPrimitiveDefaultMaterial(uint32_t materialIndex, bw::core::MaterialDefinitionData* materialDefinition) {
-  if (materialIndex >= bw::common::MaterialNames.size()) {
-    return;
-  }
-
-  auto const& material = bw::common::MaterialNames[materialIndex];
-  auto numParams = (uint32_t)get<1>(material);
-
-  for (uint32_t i = 0; i < numParams; ++i) {
-    materialDefinition->params[i] = get<3>(bw::common::MaterialParams[materialIndex][i]);
-  }
-
-  auto const& defaultColour = get<2>(bw::common::MaterialNames[materialIndex]);
-
-  for (uint32_t i = 0; i < 3; ++i) {
-    materialDefinition->baseColour[i] = defaultColour[i];
-  }
-}
-
-void setPrimitiveDefaultMaterials(bw::core::Primitive* prim) {
-  auto properties = prim->getProperties();
-
-  setPrimitiveDefaultMaterial(properties.floorMaterialIndex, &properties.floorMaterialDef.data);
-  setPrimitiveDefaultMaterial(properties.ceilingMaterialIndex, &properties.ceilingMaterialDef.data);
-  setPrimitiveDefaultMaterial(properties.wallMaterialIndex, &properties.wallMaterialDef.data);
-
-  prim->setProperties(properties);
 }
 
 bool createPrimitiveFromGhost(Document* doc) {

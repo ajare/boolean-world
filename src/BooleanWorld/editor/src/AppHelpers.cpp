@@ -262,23 +262,6 @@ void selectAndHomeGhost(editor::Document* doc) {
   goHome(doc->getGhost());
 }
 
-void _setPrimitiveParameters(bw::core::Primitive* prim, uint8_t layer, uint8_t priority, wp::Vector2 const& position, wp::Vector2 const& offset, float scale, float angle) {
-  using Key = bw::core::VertexTransformer::Key;
-
-  prim->setLayer(layer);
-  prim->setPriority(priority);
-  prim->setSize(scale, scale);
-  prim->setPosition(position);
-
-  // Set the scale and angle default values here, so that if we toggle them off/on, we don't lose the settings we
-  // specified at creation.  Orbit angle and distance are not specified at creation so we can hardcode those defaults.
-  auto mutation = prim->mutate();
-  mutation.animation(Key::Scale).setDefaultStructure({{0.0f, 1.0f}, {1.0f, 1.0f}}, {{bw::core::Easing::Linear}}, true);
-  mutation.animation(Key::Angle).setDefaultStructure({{0.0f, angle}, {1.0f, angle}}, {{bw::core::Easing::Linear}}, true);
-  mutation.animation(Key::OrbitAngle).setDefaultStructure({{0.0f, 0.0f}, {1.0f, 0.0f}}, {{bw::core::Easing::Linear}}, true);
-  mutation.animation(Key::OrbitDistance).setDefaultStructure({{0.0f, 0.0f}, {1.0f, 0.0f}}, {{bw::core::Easing::Linear}}, true);
-}
-
 bw::core::Primitive* createRegularPolygonPrimitive(
     bw::core::Primitive::Operation op,
     bw::core::Primitive::FillRule fillRule,
