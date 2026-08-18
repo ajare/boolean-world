@@ -170,8 +170,8 @@ void bezierSplineCopiesRetainControlsAndSamples() {
                         "Bezier spline sampled position differs after copying");
     }
 
-    auto const copiedSamples = copy->divide(true, 2.0f);
-    auto const sourceSamples = source.divide(true, 2.0f);
+    auto const copiedSamples = copy->divide(2.0f);
+    auto const sourceSamples = source.divide(2.0f);
     require(copiedSamples.size() == sourceSamples.size(),
             "Bezier spline did not retain its subdivision tuning");
     for (size_t index = 0; index < sourceSamples.size(); ++index) {
