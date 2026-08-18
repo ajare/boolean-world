@@ -14,6 +14,20 @@ WorldRenderer3d::WorldRenderer3d(ResourcePtr resource, wp::Logger* logger)
 }
 
 WorldRenderer3d::~WorldRenderer3d() {
+  // mSceneModel holds its own acquire() on the batch's Model resource (see
+  // SceneModel3d's constructor), and Scene::m3dModels holds a second
+  // shared_ptr to the same SceneModel3d. Unless both are dropped here,
+  // before mRenderer is destroyed, that acquire is still outstanding when
+  // Batch::~Batch() checks the resource's ref count - so its deleteResource
+  // call is silently skipped and the Model resource (and its ResourceStream)
+  // never leaves ResourceManager's cache, no matter how cleanly everything
+  // else is torn down.
+  if (mScene && mSceneModel) {
+    mScene->remove3dModel(mSceneModel);
+  }
+  mSceneModel.reset();
+  mScene.reset();
+
   delete mRenderer;
 }
 
@@ -43,6 +57,7 @@ void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvide
 }
 
 void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* world) {
+  mScene = scene;
   mSceneModel = scene->add3dModel(mRenderer->getModel());
 
   auto params = mSceneModel->getParams();

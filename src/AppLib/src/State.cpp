@@ -60,9 +60,13 @@ void State::exitImpl() {
 
   mScene->unload();
 
-  // Pipelines are managed by the RenderSystem, so resetting here won't release it, as it might also be used by something else.
-  // We really need to reference count this, excepting the one stored in the RenderSystem, so if resetting ever takes it down
-  // to 1, we can delete it from the RenderSystem.
+  // RenderSystem keeps its own reference to the pipeline under this state's
+  // name (see enterImpl), so resetting mRenderPipeline alone would not
+  // destroy it - RenderSystem's copy, and anything its render-graph
+  // callbacks captured (e.g. the last camera rendered with it), would
+  // survive until RenderSystem itself is torn down. No other state shares
+  // this name, so it is safe to evict it here.
+  mwRenderSystem->removeRenderPipeline(getName());
   mRenderPipeline.reset();
 }
 

@@ -7,6 +7,19 @@ using Service = LauncherLifecycle::Service;
 
 // Teardown is dependency order, not simply reverse construction order. In
 // particular, states and resource factories can execute code from the game DLL.
+//
+// RenderCoreResources/RenderResourceManager/RenderSystem come before
+// ApplicationDll, not after: the render system's long-lived caches
+// (RenderSystem::mPipelines, ResourceManager's resource cache, the pooled
+// MeshInstances RenderSystem owns) can end up holding the last shared_ptr
+// to an object whose most-derived type - or whose members, like a
+// UniformCollection allocated inside BooleanWorld.dll's own instrumented
+// heap - only exist while BooleanWorld.dll is loaded. Destroying those
+// caches after ApplicationDll has already unloaded the DLL crashes when
+// that reference is finally released. Tearing the render system down
+// first, while the DLL is still mapped, avoids the whole class of bug
+// regardless of which object happens to be the last one holding a
+// reference.
 constexpr std::array teardownOrder{
     Service::StateManager,
     Service::ImGuiRenderer,
@@ -15,11 +28,11 @@ constexpr std::array teardownOrder{
     Service::ImPlotContext,
     Service::ImGuiContext,
     Service::ResourceManager,
-    Service::ApplicationDll,
-    Service::AudioSystem,
     Service::RenderCoreResources,
     Service::RenderResourceManager,
     Service::RenderSystem,
+    Service::ApplicationDll,
+    Service::AudioSystem,
     Service::Window,
     Service::Timer,
     Service::Platform,

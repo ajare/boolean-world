@@ -49,7 +49,20 @@ function(bw_ensure_willpower)
             "git submodule update --init --recursive")
     endif()
 
+    # MemCheck reuses the Debug Willpower/MassivePolyPusher build (see
+    # CMAKE_MAP_IMPORTED_CONFIG_MEMCHECK in the top-level CMakeLists.txt) -
+    # Willpower's own build has no MemCheck configuration to pass here.
+    set(_bw_underlying_configs "")
     foreach(cfg ${CMAKE_CONFIGURATION_TYPES})
+        if(cfg STREQUAL "MemCheck")
+            list(APPEND _bw_underlying_configs "Debug")
+        else()
+            list(APPEND _bw_underlying_configs "${cfg}")
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _bw_underlying_configs)
+
+    foreach(cfg ${_bw_underlying_configs})
         _bw_willpower_present("${cfg}" present)
         if(present)
             continue()

@@ -40,12 +40,14 @@ endfunction()
 function(bw_target_defaults tgt)
     set_target_properties(${tgt} PROPERTIES
         DEBUG_POSTFIX "d"
-        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug,MemCheck>:Debug>DLL")
     target_compile_options(${tgt} PRIVATE /MP)
     # _DEBUG / NDEBUG were spelled out per configuration in every vcxproj.
+    # MemCheck is a Debug build (see the top-level CMakeLists.txt), so it
+    # takes the _DEBUG branch too.
     target_compile_definitions(${tgt} PRIVATE
-        $<$<CONFIG:Debug>:_DEBUG>
-        $<$<NOT:$<CONFIG:Debug>>:NDEBUG>)
+        $<$<CONFIG:Debug,MemCheck>:_DEBUG>
+        $<$<NOT:$<CONFIG:Debug,MemCheck>>:NDEBUG>)
 endfunction()
 
 # bw_output_dirs(<target>)
@@ -61,6 +63,30 @@ function(bw_output_dirs tgt)
         LIBRARY_OUTPUT_DIRECTORY "${runtime}"
         ARCHIVE_OUTPUT_DIRECTORY "${archive}"
         PDB_OUTPUT_DIRECTORY     "${runtime}")
+
+    get_target_property(_bw_type ${tgt} TYPE)
+    if(_bw_type STREQUAL "EXECUTABLE")
+        bw_deploy_asan_runtime(${tgt})
+    endif()
+endfunction()
+
+# bw_deploy_asan_runtime(<target>)
+#
+# MemCheck compiles with /fsanitize=address, which needs its runtime DLL
+# next to the executable - and its PDB alongside that, so ASan frames in a
+# call stack resolve to symbols instead of raw addresses. No-op outside the
+# MemCheck configuration: the $<$<CONFIG:MemCheck>:...> generator expression
+# drops the COMMAND when it evaluates empty, and the same generator
+# expression on COMMENT keeps the build step silent for Debug/Release too.
+function(bw_deploy_asan_runtime tgt)
+    get_filename_component(msvc_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    add_custom_command(TARGET ${tgt} POST_BUILD
+        COMMAND "$<$<CONFIG:MemCheck>:${CMAKE_COMMAND}>" -E copy_if_different
+                "${msvc_bin_dir}/clang_rt.asan_dynamic-x86_64.dll"
+                "${msvc_bin_dir}/clang_rt.asan_dynamic-x86_64.pdb"
+                "$<TARGET_FILE_DIR:${tgt}>"
+        VERBATIM
+        COMMENT "$<$<CONFIG:MemCheck>:Staging AddressSanitizer runtime for ${tgt} (MemCheck)>")
 endfunction()
 
 # bw_enable_sdl_checks(<target>...)
@@ -103,7 +129,7 @@ endfunction()
 function(bw_deploy_vendor_dlls tgt)
     add_custom_command(TARGET ${tgt} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${BW_VENDOR_BIN}/$<IF:$<CONFIG:Debug>,Debug,Release>"
+                "${BW_VENDOR_BIN}/$<IF:$<CONFIG:Debug,MemCheck>,Debug,Release>"
                 "$<TARGET_FILE_DIR:${tgt}>"
         VERBATIM
         COMMENT "Staging vendor DLLs for ${tgt}")

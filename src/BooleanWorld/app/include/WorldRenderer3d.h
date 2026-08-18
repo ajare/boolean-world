@@ -17,6 +17,8 @@
 class WorldRenderer3d {
   wp::application::resourcesystem::ResourcePtr mMaterial;
 
+  mpp::ScenePtr mScene;
+
   mpp::SceneModel3dPtr mSceneModel;
 
   std::vector<std::shared_ptr<mpp::UniformCollection>> mUniforms;

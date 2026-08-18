@@ -269,6 +269,20 @@ void StatePlayBooleanWorld::destroyGameObjects() {
   delete mWorldCollisionSim;
   mWorldCollisionSim = nullptr;
   mPlayerCollider = nullptr;
+
+  // RenderSystem keeps its own reference to each named pipeline (see
+  // getOrCreateWorldRenderPipeline), so resetting mWorldRenderPipelines
+  // alone would not destroy them. Evict them here, while BooleanWorld.dll
+  // is still loaded, instead of leaving that to RenderSystem's own
+  // teardown - which runs after this DLL has already been unloaded.
+  for (auto& row : mWorldRenderPipelines) {
+    for (auto& pipeline : row) {
+      if (pipeline) {
+        mwRenderSystem->removeRenderPipeline(pipeline->getName());
+        pipeline.reset();
+      }
+    }
+  }
 }
 
 void StatePlayBooleanWorld::setupEntityFacades() {

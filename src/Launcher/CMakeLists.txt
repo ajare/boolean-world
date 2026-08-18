@@ -40,7 +40,10 @@ target_compile_options(Launcher PRIVATE /W3)
 bw_target_defaults(Launcher)
 bw_output_dirs(Launcher)
 bw_enable_sdl_checks(Launcher)
-set_target_properties(Launcher PROPERTIES FOLDER Launcher)
+set_target_properties(Launcher PROPERTIES
+    FOLDER Launcher
+    VS_DEBUGGER_ENVIRONMENT "$<$<CONFIG:MemCheck>:${BW_MEMCHECK_ENVIRONMENT}>"
+    VS_DEBUGGER_WORKING_DIRECTORY "$<$<CONFIG:Debug,MemCheck>:$(OutDir)>")
 
 if(BUILD_TESTING)
     add_executable(launcher_lifecycle_tests
@@ -127,9 +130,6 @@ bw_deploy_vendor_dlls(Launcher)
 # Run through a script so both $<CONFIG> and the directory's existence resolve
 # at build time - most machines have no support directory, and
 # `cmake -E copy_directory` fails outright on a missing source.
-#
-# This runs after the generated BooleanWorld.yaml below, so a machine that
-# provides its own config overrides the generated one.
 if(DEFINED ENV{COMPUTERNAME})
     add_custom_command(TARGET Launcher POST_BUILD
         COMMAND ${CMAKE_COMMAND}
@@ -149,40 +149,3 @@ add_custom_command(TARGET Launcher POST_BUILD
     COMMAND_EXPAND_LISTS
     VERBATIM
     COMMENT "Staging the game DLL's own dependencies")
-
-# A ready-to-run configuration. Absolute paths, so it does not depend on the
-# launcher's working directory or on %COMPUTERNAME% the way the checked-in
-# configs under support do.
-file(GENERATE
-    OUTPUT "${CMAKE_BINARY_DIR}/bin/$<CONFIG>/Launcher/BooleanWorld.yaml"
-    CONTENT
-"Configuration:
-  Video:
-    Width: 1024
-    Height: 768
-    Fullscreen: false
-    VSync: true
-    RenderScale: full
-    AA: off
-    RenderTextureFilter: linear
-  Audio:
-    Enabled: false
-    Channels: 1024
-    Sync: false
-  Input:
-    MouseSensitivity: 0.3
-  Game:
-    DLL:
-      path: $<TARGET_FILE:BooleanWorld>
-    ResourceLocations:
-      ResourceLocation:
-        type: Directory
-        path: ${BW_ROOT}/src/BooleanWorld/app/resources/
-        definition: Resources.yaml
-    Debug:
-      InGame: enabled
-    Arguments:
-      Argument:
-        name: ThreadedLoading
-        value: false
-")
