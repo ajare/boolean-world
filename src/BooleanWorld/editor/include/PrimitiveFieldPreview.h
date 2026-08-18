@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -59,6 +60,20 @@ struct PrimitiveFieldPrimitivePreviewResult {
     int maximumSites,
     uint32_t existingPrimitiveCount);
 
+struct PrimitiveFieldGenerationIdentity {
+  bw::core::PrimitiveFieldExtents worldExtents;
+  float minimumSpacing{128.0f};
+  int maximumSites{2000};
+  uint32_t effectiveMaximumSites{2000};
+  int seed{0};
+  int lloydIterations{5};
+
+  friend bool operator==(PrimitiveFieldGenerationIdentity const& lhs,
+                         PrimitiveFieldGenerationIdentity const& rhs);
+};
+
+class PrimitiveFieldGenerationState;
+
 struct PrimitiveFieldPreview {
   bool open{false};
   bool openRequested{false};
@@ -72,14 +87,39 @@ struct PrimitiveFieldPreview {
   std::vector<PrimitiveFieldPrimitivePreview> primitives;
   std::string error;
 
+  PrimitiveFieldPreview();
+  ~PrimitiveFieldPreview();
+  PrimitiveFieldPreview(PrimitiveFieldPreview const&) = delete;
+  PrimitiveFieldPreview& operator=(PrimitiveFieldPreview const&) = delete;
+
   void requestOpen();
   void close();
+  // Marks retained preview value data stale without clearing it. Any active
+  // request is asked to stop; poll() performs final result coordination.
   void invalidateLayout();
   void refreshPrimitives();
   void generate(
       bw::core::PrimitiveFieldExtents const& worldExtents,
       uint32_t existingPrimitiveCount);
+  // Must be called on the editor thread. This is the only path that transfers
+  // a completed worker result into preview state.
+  void poll(
+      bw::core::PrimitiveFieldExtents const& worldExtents,
+      uint32_t existingPrimitiveCount);
+  void cancelGeneration();
+  [[nodiscard]] bool isGenerating() const;
+  [[nodiscard]] float generationProgress() const;
+  [[nodiscard]] bw::core::PrimitiveFieldLayoutPhase generationPhase() const;
   [[nodiscard]] bool hasCompletePreview() const;
+
+private:
+  [[nodiscard]] PrimitiveFieldGenerationIdentity currentIdentity(
+      bw::core::PrimitiveFieldExtents const& worldExtents,
+      uint32_t existingPrimitiveCount) const;
+
+  std::unique_ptr<PrimitiveFieldGenerationState> mGeneration;
+  std::optional<PrimitiveFieldGenerationIdentity> mGeneratedIdentity;
+  bool mLayoutCurrent{false};
 };
 
 PrimitiveFieldPreview& getPrimitiveFieldPreview();

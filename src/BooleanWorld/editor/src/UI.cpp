@@ -3313,6 +3313,12 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
         primitiveFieldPreview.close();
       }
     } else {
+      wp::Vector2 worldMinimum;
+      wp::Vector2 worldMaximum;
+      world->getExtents().getExtents(worldMinimum, worldMaximum);
+      primitiveFieldPreview.poll(
+          {worldMinimum, worldMaximum}, world->getNumPrimitives());
+
       auto worldSize = world->getExtents().getSize();
       auto maximumSpacing = std::min(worldSize.x, worldSize.y);
       auto validSpacingRange = std::isfinite(maximumSpacing) &&
@@ -3428,14 +3434,20 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
         ImGui::BeginDisabled();
       }
       if (ImGui::Button("Generate Layout")) {
-        wp::Vector2 minimum;
-        wp::Vector2 maximum;
-        world->getExtents().getExtents(minimum, maximum);
         primitiveFieldPreview.generate(
-            {minimum, maximum}, world->getNumPrimitives());
+            {worldMinimum, worldMaximum}, world->getNumPrimitives());
       }
       if (!validSpacingRange) {
         ImGui::EndDisabled();
+      }
+
+      auto generationActive = primitiveFieldPreview.isGenerating();
+      if (generationActive) {
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+          primitiveFieldPreview.cancelGeneration();
+          generationActive = false;
+        }
       }
 
       ImGui::SameLine();
@@ -3444,7 +3456,7 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
           static_cast<size_t>(BW_WORLD_PRIMITIVE_COUNT_MAX -
                               world->getNumPrimitives());
       auto canPlace = primitiveFieldPreview.hasCompletePreview() &&
-                      capacityStillAvailable;
+                      capacityStillAvailable && !generationActive;
       if (!canPlace) {
         ImGui::BeginDisabled();
       }
@@ -3462,6 +3474,30 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
       }
       if (!canPlace) {
         ImGui::EndDisabled();
+      }
+
+      if (generationActive) {
+        auto phaseLabel = "Sampling sites";
+        switch (primitiveFieldPreview.generationPhase()) {
+          case bw::core::PrimitiveFieldLayoutPhase::Sampling:
+            phaseLabel = "Sampling sites";
+            break;
+          case bw::core::PrimitiveFieldLayoutPhase::LloydRelaxation:
+            phaseLabel = "Lloyd relaxation";
+            break;
+          case bw::core::PrimitiveFieldLayoutPhase::VoronoiConstruction:
+            phaseLabel = "Constructing bounded Voronoi cells";
+            break;
+          case bw::core::PrimitiveFieldLayoutPhase::Validation:
+            phaseLabel = "Validating layout";
+            break;
+          case bw::core::PrimitiveFieldLayoutPhase::Complete:
+            phaseLabel = "Layout complete";
+            break;
+        }
+        ImGui::ProgressBar(
+            primitiveFieldPreview.generationProgress(), ImVec2(360.0f, 0.0f),
+            phaseLabel);
       }
 
       auto generatedCount = primitiveFieldPreview.layout

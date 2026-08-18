@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -332,6 +333,83 @@ void relaxesDeterministicallyAcrossSupportedIterationCounts() {
           "the fixture did not reject a centroid below minimum spacing");
 }
 
+void reportsMonotonicProgressThroughPublicPhases() {
+  std::vector<bw::core::PrimitiveFieldLayoutProgress> progress;
+  auto result = bw::core::generatePrimitiveFieldLayout(
+      {{{-256.0f, -192.0f}, {256.0f, 192.0f}}, 32.0f, 80, 42, 2},
+      {{}, [&](auto const& update) { progress.push_back(update); }});
+  require(result.succeeded(), "progress fixture did not complete");
+  require(!progress.empty(), "layout generation reported no progress");
+
+  float previous = 0.0f;
+  bool sawSampling = false;
+  bool sawLloyd = false;
+  bool sawVoronoi = false;
+  bool sawValidation = false;
+  for (auto const& update : progress) {
+    require(update.completion >= 0.0f && update.completion <= 1.0f,
+            "layout progress left its documented bounds");
+    require(update.completion >= previous,
+            "layout progress moved backwards");
+    previous = update.completion;
+    sawSampling |= update.phase ==
+                   bw::core::PrimitiveFieldLayoutPhase::Sampling;
+    sawLloyd |= update.phase ==
+                bw::core::PrimitiveFieldLayoutPhase::LloydRelaxation;
+    sawVoronoi |= update.phase ==
+                  bw::core::PrimitiveFieldLayoutPhase::VoronoiConstruction;
+    sawValidation |= update.phase ==
+                     bw::core::PrimitiveFieldLayoutPhase::Validation;
+  }
+  require(sawSampling && sawLloyd && sawVoronoi && sawValidation,
+          "progress omitted a meaningful public pipeline phase");
+  require(progress.back().phase ==
+                  bw::core::PrimitiveFieldLayoutPhase::Complete &&
+              progress.back().completion == 1.0f,
+          "progress did not end with the public completion signal");
+}
+
+void cancelsWithinEveryExpensiveCorePhase() {
+  using Phase = bw::core::PrimitiveFieldLayoutPhase;
+  struct Fixture {
+    Phase phase;
+    float threshold;
+    char const* name;
+  };
+  std::vector<Fixture> fixtures{
+      {Phase::Sampling, 0.01f, "sampling"},
+      {Phase::LloydRelaxation, 0.26f, "Lloyd relaxation"},
+      {Phase::VoronoiConstruction, 0.70f, "Voronoi construction"},
+      {Phase::Validation, 0.90f, "validation"}};
+
+  for (auto const& fixture : fixtures) {
+    std::stop_source stopSource;
+    bool reachedPhase = false;
+    auto started = std::chrono::steady_clock::now();
+    auto result = bw::core::generatePrimitiveFieldLayout(
+        {{{-4096.0f, -4096.0f}, {4096.0f, 4096.0f}},
+         128.0f,
+         2000,
+         17,
+         5},
+        {stopSource.get_token(), [&](auto const& update) {
+           if (update.phase == fixture.phase &&
+               update.completion >= fixture.threshold) {
+             reachedPhase = true;
+             stopSource.request_stop();
+           }
+         }});
+    auto elapsed = std::chrono::steady_clock::now() - started;
+    require(reachedPhase,
+            std::string("cancellation fixture did not reach ") + fixture.name);
+    require(result.cancelled() && !result.succeeded() && result.error.empty(),
+            std::string("cancellation was not observed during ") + fixture.name);
+    require(elapsed < std::chrono::seconds(5),
+            std::string("cancellation latency was unbounded during ") +
+                fixture.name);
+  }
+}
+
 void rejectsInvalidAndDegenerateInputs() {
   auto valid = PrimitiveFieldLayoutRequest{
       {{-64.0f, -64.0f}, {64.0f, 64.0f}}, 16.0f, 10, 0, 0};
@@ -404,6 +482,8 @@ int main() {
     respectsInsetForNongridWorldExtents();
     acceptsAOneSiteInsetDomain();
     relaxesDeterministicallyAcrossSupportedIterationCounts();
+    reportsMonotonicProgressThroughPublicPhases();
+    cancelsWithinEveryExpensiveCorePhase();
     rejectsInvalidAndDegenerateInputs();
     std::cout << "Deterministic bounded primitive-field layout tests passed\n";
     return 0;

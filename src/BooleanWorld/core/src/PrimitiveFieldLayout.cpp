@@ -80,8 +80,36 @@ public:
 };
 
 PrimitiveFieldLayoutResult failure(std::string message) {
-  return {.layout = std::nullopt, .error = std::move(message)};
+  return {.layout = std::nullopt,
+          .error = std::move(message),
+          .wasCancelled = false};
 }
+
+PrimitiveFieldLayoutResult cancelled() {
+  return {.layout = std::nullopt, .error = {}, .wasCancelled = true};
+}
+
+class ExecutionContext {
+  PrimitiveFieldLayoutExecution const* mExecution{};
+  float mLastCompletion{0.0f};
+
+public:
+  explicit ExecutionContext(PrimitiveFieldLayoutExecution const* execution)
+      : mExecution(execution) {}
+
+  [[nodiscard]] bool cancellationRequested() const {
+    return mExecution && mExecution->stopToken.stop_requested();
+  }
+
+  bool report(PrimitiveFieldLayoutPhase phase, float completion) {
+    completion = std::clamp(completion, mLastCompletion, 1.0f);
+    mLastCompletion = completion;
+    if (mExecution && mExecution->reportProgress) {
+      mExecution->reportProgress({phase, completion});
+    }
+    return cancellationRequested();
+  }
+};
 
 bool finitePoint(wp::Vector2 const& point) {
   return std::isfinite(point.x) && std::isfinite(point.y);
@@ -200,7 +228,17 @@ struct DiagramOwner {
 
 PrimitiveFieldLayoutResult buildBoundedLayout(
     PrimitiveFieldExtents const& worldExtents,
-    std::vector<wp::Vector2> sites) {
+    std::vector<wp::Vector2> sites,
+    ExecutionContext* execution = nullptr,
+    bool reportFinalPhases = false) {
+  if (execution && execution->cancellationRequested()) {
+    return cancelled();
+  }
+  if (reportFinalPhases &&
+      execution->report(PrimitiveFieldLayoutPhase::VoronoiConstruction,
+                        0.65f)) {
+    return cancelled();
+  }
   IntPoint extentMinimum;
   IntPoint extentMaximum;
   std::string extentError;
@@ -217,6 +255,9 @@ PrimitiveFieldLayoutResult buildBoundedLayout(
   std::vector<IntPoint> canonicalSites;
   canonicalSites.reserve(sites.size());
   for (auto& site : sites) {
+    if (execution && execution->cancellationRequested()) {
+      return cancelled();
+    }
     if (!finitePoint(site)) {
       return failure("Every Voronoi site must contain finite coordinates.");
     }
@@ -276,8 +317,14 @@ PrimitiveFieldLayoutResult buildBoundedLayout(
       {worldExtents.minimum.x, worldExtents.minimum.y},
       {worldExtents.maximum.x, worldExtents.maximum.y}};
   DiagramOwner owner;
+  if (execution && execution->cancellationRequested()) {
+    return cancelled();
+  }
   jcv_diagram_generate(static_cast<int>(inputPoints.size()), inputPoints.data(),
                        &clippingRectangle, nullptr, &owner.diagram);
+  if (execution && execution->cancellationRequested()) {
+    return cancelled();
+  }
   if (!owner.diagram.internal) {
     return failure("Voronoi tessellation failed to allocate a diagram.");
   }
@@ -293,6 +340,16 @@ PrimitiveFieldLayoutResult buildBoundedLayout(
 
   auto const* diagramSites = jcv_diagram_get_sites(&owner.diagram);
   for (int diagramIndex = 0; diagramIndex < owner.diagram.numsites; ++diagramIndex) {
+    if (execution && execution->cancellationRequested()) {
+      return cancelled();
+    }
+    if (reportFinalPhases &&
+        execution->report(
+            PrimitiveFieldLayoutPhase::VoronoiConstruction,
+            0.65f + 0.25f * static_cast<float>(diagramIndex + 1) /
+                        static_cast<float>(owner.diagram.numsites))) {
+      return cancelled();
+    }
     auto const& diagramSite = diagramSites[diagramIndex];
     auto siteIndex = static_cast<size_t>(diagramSite.index);
     if (siteIndex >= layout.cells.size() || assigned[siteIndex]) {
@@ -305,6 +362,9 @@ PrimitiveFieldLayoutResult buildBoundedLayout(
     std::vector<wp::Vector2> ends;
     jcv_edge edge{};
     while (jcv_edge_next(&iterator, &edge)) {
+      if (execution && execution->cancellationRequested()) {
+        return cancelled();
+      }
       auto start = canonicalPoint(edge.pos[0], worldExtents);
       auto end = canonicalPoint(edge.pos[1], worldExtents);
       if (!finitePoint(start) || !finitePoint(end)) {
@@ -347,9 +407,23 @@ PrimitiveFieldLayoutResult buildBoundedLayout(
     return failure("Voronoi tessellation did not produce exactly one cell for every site.");
   }
 
+  if (reportFinalPhases &&
+      execution->report(PrimitiveFieldLayoutPhase::Validation, 0.90f)) {
+    return cancelled();
+  }
   double cellArea = 0.0;
-  for (auto const& cell : layout.cells) {
-    cellArea += signedArea(cell.vertices);
+  for (size_t cellIndex = 0; cellIndex < layout.cells.size(); ++cellIndex) {
+    if (execution && execution->cancellationRequested()) {
+      return cancelled();
+    }
+    cellArea += signedArea(layout.cells[cellIndex].vertices);
+    if (reportFinalPhases &&
+        execution->report(
+            PrimitiveFieldLayoutPhase::Validation,
+            0.90f + 0.08f * static_cast<float>(cellIndex + 1) /
+                        static_cast<float>(layout.cells.size()))) {
+      return cancelled();
+    }
   }
   auto worldWidth = static_cast<double>(worldExtents.maximum.x) -
                     worldExtents.minimum.x;
@@ -364,7 +438,7 @@ PrimitiveFieldLayoutResult buildBoundedLayout(
     return failure("Voronoi cells do not form a complete bounded tessellation of the world extents.");
   }
 
-  return {.layout = std::move(layout), .error = {}};
+  return {.layout = std::move(layout), .error = {}, .wasCancelled = false};
 }
 
 bool cellCentroid(PrimitiveFieldCell const& cell,
@@ -421,11 +495,15 @@ PrimitiveFieldLayoutResult relaxLayout(
     IntPoint const& domainMinimum,
     IntPoint const& domainMaximum,
     int64_t spacing,
-    int32_t iterations) {
+    int32_t iterations,
+    ExecutionContext& execution) {
   auto const retainedSiteCount = layout.sites.size();
   auto const minimumDistanceSquared = spacing * spacing;
 
   for (int32_t iteration = 0; iteration < iterations; ++iteration) {
+    if (execution.cancellationRequested()) {
+      return cancelled();
+    }
     if (layout.cells.size() != retainedSiteCount ||
         layout.sites.size() != retainedSiteCount) {
       return failure("Lloyd relaxation changed the retained site count.");
@@ -434,6 +512,9 @@ PrimitiveFieldLayoutResult relaxLayout(
     std::vector<IntPoint> retainedSites;
     retainedSites.reserve(retainedSiteCount);
     for (auto const& site : layout.sites) {
+      if (execution.cancellationRequested()) {
+        return cancelled();
+      }
       IntPoint point;
       if (!finitePoint(site) || !convertToGrid(site.x, point.x) ||
           !convertToGrid(site.y, point.y)) {
@@ -446,6 +527,15 @@ PrimitiveFieldLayoutResult relaxLayout(
     // are visible to later proposals; sites not yet visited retain their old
     // positions until their turn.
     for (size_t siteIndex = 0; siteIndex < retainedSiteCount; ++siteIndex) {
+      auto lloydCompletion =
+          (static_cast<float>(iteration) +
+           static_cast<float>(siteIndex) /
+               static_cast<float>(retainedSiteCount)) /
+          static_cast<float>(iterations);
+      if (execution.report(PrimitiveFieldLayoutPhase::LloydRelaxation,
+                           0.25f + 0.40f * lloydCompletion)) {
+        return cancelled();
+      }
       IntPoint proposed;
       if (!cellCentroid(layout.cells[siteIndex], worldMinimum, proposed)) {
         return failure("Lloyd relaxation could not calculate a valid bounded-cell centroid.");
@@ -457,6 +547,9 @@ PrimitiveFieldLayoutResult relaxLayout(
 
       bool preservesSpacing = true;
       for (size_t otherIndex = 0; otherIndex < retainedSiteCount; ++otherIndex) {
+        if (execution.cancellationRequested()) {
+          return cancelled();
+        }
         if (otherIndex != siteIndex &&
             squaredDistance(proposed, retainedSites[otherIndex]) <
                 minimumDistanceSquared) {
@@ -474,7 +567,16 @@ PrimitiveFieldLayoutResult relaxLayout(
     for (auto const& site : retainedSites) {
       sites.push_back({fromGrid(site.x), fromGrid(site.y)});
     }
-    auto rebuilt = buildBoundedLayout(layout.worldExtents, std::move(sites));
+    auto const finalIteration = iteration + 1 == iterations;
+    if (finalIteration &&
+        execution.report(PrimitiveFieldLayoutPhase::LloydRelaxation, 0.65f)) {
+      return cancelled();
+    }
+    auto rebuilt = buildBoundedLayout(layout.worldExtents, std::move(sites),
+                                      &execution, finalIteration);
+    if (rebuilt.cancelled()) {
+      return rebuilt;
+    }
     if (!rebuilt.succeeded()) {
       return failure("Lloyd relaxation iteration " +
                      std::to_string(iteration + 1) + " failed: " +
@@ -487,31 +589,57 @@ PrimitiveFieldLayoutResult relaxLayout(
     layout = std::move(*rebuilt.layout);
   }
 
+  return {.layout = std::move(layout), .error = {}, .wasCancelled = false};
+}
+
+PrimitiveFieldLayoutResult validateFinalLayout(
+    PrimitiveFieldLayout layout,
+    IntPoint const& domainMinimum,
+    IntPoint const& domainMaximum,
+    int64_t spacing,
+    ExecutionContext& execution) {
+  auto const minimumDistanceSquared = spacing * spacing;
   for (size_t i = 0; i < layout.sites.size(); ++i) {
+    if (execution.report(
+            PrimitiveFieldLayoutPhase::Validation,
+            0.98f + 0.019f * static_cast<float>(i + 1) /
+                        static_cast<float>(layout.sites.size()))) {
+      return cancelled();
+    }
     IntPoint site;
     if (!convertToGrid(layout.sites[i].x, site.x) ||
         !convertToGrid(layout.sites[i].y, site.y) ||
         site.x < domainMinimum.x || site.x > domainMaximum.x ||
         site.y < domainMinimum.y || site.y > domainMaximum.y) {
-      return failure("Lloyd relaxation produced a site outside the spacing-inset domain.");
+      return failure(
+          "Layout validation found a site outside the spacing-inset domain.");
     }
     for (size_t j = i + 1; j < layout.sites.size(); ++j) {
+      if (execution.cancellationRequested()) {
+        return cancelled();
+      }
       IntPoint other;
       if (!convertToGrid(layout.sites[j].x, other.x) ||
           !convertToGrid(layout.sites[j].y, other.y) ||
           squaredDistance(site, other) < minimumDistanceSquared) {
-        return failure("Lloyd relaxation produced sites below the requested minimum spacing.");
+        return failure(
+            "Layout validation found sites below the requested minimum spacing.");
       }
     }
   }
-  return {.layout = std::move(layout), .error = {}};
+  return {.layout = std::move(layout), .error = {}, .wasCancelled = false};
 }
 
 }  // namespace
 
 PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
-    PrimitiveFieldLayoutRequest const& request) {
+    PrimitiveFieldLayoutRequest const& request,
+    PrimitiveFieldLayoutExecution const& execution) {
+  ExecutionContext executionContext(&execution);
   try {
+    if (executionContext.report(PrimitiveFieldLayoutPhase::Sampling, 0.0f)) {
+      return cancelled();
+    }
     IntPoint worldMinimum;
     IntPoint worldMaximum;
     std::string extentError;
@@ -646,6 +774,12 @@ PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
     addAccepted(centre);
     queueChildren(centre);
     while (accepted.size() < request.maximumSites && !candidates.empty()) {
+      if (executionContext.report(
+              PrimitiveFieldLayoutPhase::Sampling,
+              0.25f * static_cast<float>(accepted.size()) /
+                  static_cast<float>(request.maximumSites))) {
+        return cancelled();
+      }
       auto candidate = candidates.top();
       candidates.pop();
       if (!canAccept(candidate.point)) {
@@ -655,21 +789,54 @@ PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
       queueChildren(candidate.point);
     }
 
+    if (executionContext.report(PrimitiveFieldLayoutPhase::Sampling, 0.25f)) {
+      return cancelled();
+    }
+
     std::vector<wp::Vector2> sites;
     sites.reserve(accepted.size());
     for (auto const& point : accepted) {
       sites.push_back({fromGrid(point.x), fromGrid(point.y)});
     }
-    auto initial = buildBoundedLayout(request.worldExtents, std::move(sites));
-    if (!initial.succeeded() || request.lloydIterations == 0) {
+    if (request.lloydIterations > 0 &&
+        executionContext.report(PrimitiveFieldLayoutPhase::LloydRelaxation,
+                                0.25f)) {
+      return cancelled();
+    }
+    auto initial = buildBoundedLayout(
+        request.worldExtents, std::move(sites), &executionContext,
+        request.lloydIterations == 0);
+    if (initial.cancelled() || !initial.succeeded()) {
       return initial;
     }
-    return relaxLayout(std::move(*initial.layout), worldMinimum, domainMinimum,
-                       domainMaximum, spacing, request.lloydIterations);
+
+    PrimitiveFieldLayoutResult generated = std::move(initial);
+    if (request.lloydIterations > 0) {
+      generated = relaxLayout(
+          std::move(*generated.layout), worldMinimum, domainMinimum,
+          domainMaximum, spacing, request.lloydIterations, executionContext);
+      if (generated.cancelled() || !generated.succeeded()) {
+        return generated;
+      }
+    }
+
+    auto validated = validateFinalLayout(
+        std::move(*generated.layout), domainMinimum, domainMaximum, spacing,
+        executionContext);
+    if (validated.cancelled() || !validated.succeeded()) {
+      return validated;
+    }
+    executionContext.report(PrimitiveFieldLayoutPhase::Complete, 1.0f);
+    return validated;
   } catch (std::exception const& error) {
     return failure(std::string("Primitive-field layout generation failed: ") +
                    error.what());
   }
+}
+
+PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
+    PrimitiveFieldLayoutRequest const& request) {
+  return generatePrimitiveFieldLayout(request, {});
 }
 
 PrimitiveFieldLayoutResult buildBoundedPrimitiveFieldLayout(

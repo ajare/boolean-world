@@ -30,6 +30,7 @@
 #include "Defines.h"
 #include "Markdown.h"
 #include "ExitApplicationException.h"
+#include "PrimitiveFieldPreview.h"
 
 extern wp::Vector2 gViewOffset;
 extern std::map<std::string, std::string> gHelpFiles;
@@ -39,6 +40,7 @@ namespace editor {
 using namespace std;
 
 void newDocument(editor::Document* doc) {
+  getPrimitiveFieldPreview().close();
   doc->newDoc();
 }
 
@@ -59,6 +61,7 @@ void openDocument(editor::Document* doc) {
 
   if (res == NFD_OKAY) {
     string filepath(outPath);
+    getPrimitiveFieldPreview().close();
     bool ok = doc->openDoc(filepath);
 
     NFD_FreePath(outPath);
@@ -104,6 +107,7 @@ void saveDocument(editor::Document* doc) {
 }
 
 void exitApp(editor::Document* doc) {
+  getPrimitiveFieldPreview().close();
   throw ExitApplicationException(0, "Exit");
 }
 

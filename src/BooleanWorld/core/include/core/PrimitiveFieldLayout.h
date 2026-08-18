@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -45,8 +47,29 @@ struct BW_API PrimitiveFieldLayout {
 struct BW_API PrimitiveFieldLayoutResult {
   std::optional<PrimitiveFieldLayout> layout;
   std::string error;
+  bool wasCancelled{false};
 
   [[nodiscard]] bool succeeded() const { return layout.has_value(); }
+  [[nodiscard]] bool cancelled() const { return wasCancelled; }
+};
+
+enum class PrimitiveFieldLayoutPhase : uint8_t {
+  Sampling,
+  LloydRelaxation,
+  VoronoiConstruction,
+  Validation,
+  Complete,
+};
+
+struct BW_API PrimitiveFieldLayoutProgress {
+  PrimitiveFieldLayoutPhase phase{PrimitiveFieldLayoutPhase::Sampling};
+  // Overall request completion in the inclusive range [0, 1].
+  float completion{0.0f};
+};
+
+struct BW_API PrimitiveFieldLayoutExecution {
+  std::stop_token stopToken;
+  std::function<void(PrimitiveFieldLayoutProgress const&)> reportProgress;
 };
 
 // Uses PCG-XSH-RR 32 with a fixed stream. Candidate offsets are derived with
@@ -58,6 +81,13 @@ struct BW_API PrimitiveFieldLayoutResult {
 // ordered by squared distance from the world centre, then x and y.
 [[nodiscard]] BW_API PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
     PrimitiveFieldLayoutRequest const& request);
+
+// The execution controls are value/callback-only: the core never owns or
+// reaches into caller state. Cancellation returns a result with cancelled()
+// true, and progress is monotonic and ends with Complete/1 on success.
+[[nodiscard]] BW_API PrimitiveFieldLayoutResult generatePrimitiveFieldLayout(
+    PrimitiveFieldLayoutRequest const& request,
+    PrimitiveFieldLayoutExecution const& execution);
 
 // Builds and validates the bounded Voronoi stage for caller-supplied sites.
 // This is useful to consumers that already own a deterministic sampler and

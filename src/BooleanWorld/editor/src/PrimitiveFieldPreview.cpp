@@ -1,9 +1,13 @@
 #include "PrimitiveFieldPreview.h"
 
 #include <algorithm>
+#include <atomic>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <mutex>
+#include <thread>
 #include <utility>
 
 #include <core/Defines.h>
@@ -223,7 +227,58 @@ uint32_t effectivePrimitiveFieldMaximum(
   return std::min(static_cast<uint32_t>(maximumSites), remaining);
 }
 
+bool operator==(PrimitiveFieldGenerationIdentity const& lhs,
+                PrimitiveFieldGenerationIdentity const& rhs) {
+  auto sameFloat = [](float first, float second) {
+    return std::bit_cast<uint32_t>(first) == std::bit_cast<uint32_t>(second);
+  };
+  return sameFloat(lhs.worldExtents.minimum.x, rhs.worldExtents.minimum.x) &&
+         sameFloat(lhs.worldExtents.minimum.y, rhs.worldExtents.minimum.y) &&
+         sameFloat(lhs.worldExtents.maximum.x, rhs.worldExtents.maximum.x) &&
+         sameFloat(lhs.worldExtents.maximum.y, rhs.worldExtents.maximum.y) &&
+         sameFloat(lhs.minimumSpacing, rhs.minimumSpacing) &&
+         lhs.maximumSites == rhs.maximumSites &&
+         lhs.effectiveMaximumSites == rhs.effectiveMaximumSites &&
+         lhs.seed == rhs.seed && lhs.lloydIterations == rhs.lloydIterations;
+}
+
+class PrimitiveFieldGenerationState {
+public:
+  struct Shared {
+    uint64_t requestId{};
+    PrimitiveFieldGenerationIdentity identity;
+    std::atomic<bw::core::PrimitiveFieldLayoutPhase> phase{
+        bw::core::PrimitiveFieldLayoutPhase::Sampling};
+    std::atomic<float> progress{0.0f};
+    std::atomic<bool> done{false};
+    std::mutex resultMutex;
+    std::optional<bw::core::PrimitiveFieldLayoutResult> result;
+  };
+
+  uint64_t nextRequestId{1};
+  uint64_t currentRequestId{0};
+  std::jthread worker;
+  std::shared_ptr<Shared> shared;
+};
+
+PrimitiveFieldPreview::PrimitiveFieldPreview()
+    : mGeneration(std::make_unique<PrimitiveFieldGenerationState>()) {}
+
+PrimitiveFieldPreview::~PrimitiveFieldPreview() { cancelGeneration(); }
+
+PrimitiveFieldGenerationIdentity PrimitiveFieldPreview::currentIdentity(
+    bw::core::PrimitiveFieldExtents const& worldExtents,
+    uint32_t existingPrimitiveCount) const {
+  return {worldExtents,
+          minimumSpacing,
+          maximumSites,
+          effectivePrimitiveFieldMaximum(maximumSites, existingPrimitiveCount),
+          seed,
+          lloydIterations};
+}
+
 void PrimitiveFieldPreview::requestOpen() {
+  cancelGeneration();
   open = true;
   openRequested = true;
   minimumSpacing = 128.0f;
@@ -234,21 +289,28 @@ void PrimitiveFieldPreview::requestOpen() {
   enabledTypes = {};
   layout.reset();
   primitives.clear();
+  mGeneratedIdentity.reset();
+  mLayoutCurrent = false;
   error.clear();
 }
 
 void PrimitiveFieldPreview::close() {
+  cancelGeneration();
   open = false;
   openRequested = false;
   layout.reset();
   primitives.clear();
+  mGeneratedIdentity.reset();
+  mLayoutCurrent = false;
   error.clear();
 }
 
 void PrimitiveFieldPreview::invalidateLayout() {
-  layout.reset();
-  primitives.clear();
+  mLayoutCurrent = false;
   error.clear();
+  if (mGeneration->worker.joinable()) {
+    mGeneration->worker.request_stop();
+  }
 }
 
 void PrimitiveFieldPreview::refreshPrimitives() {
@@ -262,7 +324,6 @@ void PrimitiveFieldPreview::refreshPrimitives() {
   auto result = buildPrimitiveFieldPreview(
       *layout, enabledTypes, overlapPercent, static_cast<int32_t>(seed));
   if (!result.succeeded()) {
-    primitives.clear();
     error = std::move(result.error);
     return;
   }
@@ -277,35 +338,130 @@ void PrimitiveFieldPreview::generate(
     error = "At least one primitive type must be enabled.";
     return;
   }
-  auto effectiveMaximum = effectivePrimitiveFieldMaximum(
-      maximumSites, existingPrimitiveCount);
-  if (effectiveMaximum == 0) {
+  auto identity = currentIdentity(worldExtents, existingPrimitiveCount);
+  if (identity.effectiveMaximumSites == 0) {
     error = "The world has no remaining primitive capacity.";
     return;
   }
 
-  auto result = bw::core::generatePrimitiveFieldLayout(
-      {worldExtents, minimumSpacing, effectiveMaximum, seed, lloydIterations});
-  if (!result.succeeded()) {
-    error = std::move(result.error);
+  cancelGeneration();
+  mLayoutCurrent = mGeneratedIdentity && *mGeneratedIdentity == identity;
+  error.clear();
+
+  auto shared = std::make_shared<PrimitiveFieldGenerationState::Shared>();
+  shared->requestId = mGeneration->nextRequestId++;
+  mGeneration->currentRequestId = shared->requestId;
+  shared->identity = identity;
+  mGeneration->shared = shared;
+  auto request = bw::core::PrimitiveFieldLayoutRequest{
+      identity.worldExtents, identity.minimumSpacing,
+      identity.effectiveMaximumSites, identity.seed, identity.lloydIterations};
+  try {
+    mGeneration->worker = std::jthread(
+        [shared, request](std::stop_token stopToken) {
+          auto result = bw::core::generatePrimitiveFieldLayout(
+              request,
+              {stopToken,
+               [shared](bw::core::PrimitiveFieldLayoutProgress const& value) {
+                 shared->phase.store(value.phase, std::memory_order_relaxed);
+                 shared->progress.store(value.completion,
+                                        std::memory_order_relaxed);
+               }});
+          {
+            std::lock_guard lock(shared->resultMutex);
+            shared->result.emplace(std::move(result));
+          }
+          shared->done.store(true, std::memory_order_release);
+        });
+  } catch (std::exception const& exception) {
+    mGeneration->shared.reset();
+    error = std::string("Could not start layout generation: ") + exception.what();
+  }
+}
+
+void PrimitiveFieldPreview::poll(
+    bw::core::PrimitiveFieldExtents const& worldExtents,
+    uint32_t existingPrimitiveCount) {
+  auto identity = currentIdentity(worldExtents, existingPrimitiveCount);
+  mLayoutCurrent = mGeneratedIdentity && *mGeneratedIdentity == identity;
+
+  auto shared = mGeneration->shared;
+  if (!shared) {
+    return;
+  }
+  if (!(shared->identity == identity) && mGeneration->worker.joinable()) {
+    mGeneration->worker.request_stop();
+  }
+  if (!shared->done.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  if (mGeneration->worker.joinable()) {
+    mGeneration->worker.join();
+  }
+  std::optional<bw::core::PrimitiveFieldLayoutResult> result;
+  {
+    std::lock_guard lock(shared->resultMutex);
+    result = std::move(shared->result);
+  }
+  mGeneration->shared.reset();
+
+  if (shared->requestId != mGeneration->currentRequestId ||
+      !(shared->identity == identity) || !result || result->cancelled()) {
+    return;
+  }
+  if (!result->succeeded()) {
+    error = result->error.empty()
+                ? "Layout generation failed without an error message."
+                : std::move(result->error);
     return;
   }
 
   auto primitiveResult = buildPrimitiveFieldPreview(
-      *result.layout, enabledTypes, overlapPercent, static_cast<int32_t>(seed));
+      *result->layout, enabledTypes, overlapPercent,
+      static_cast<int32_t>(identity.seed));
   if (!primitiveResult.succeeded()) {
     error = std::move(primitiveResult.error);
     return;
   }
 
-  layout = std::move(result.layout);
+  layout = std::move(result->layout);
   primitives = std::move(*primitiveResult.primitives);
+  mGeneratedIdentity = identity;
+  mLayoutCurrent = true;
   error.clear();
 }
 
+void PrimitiveFieldPreview::cancelGeneration() {
+  if (mGeneration->worker.joinable()) {
+    mGeneration->worker.request_stop();
+    mGeneration->worker.join();
+  }
+  mGeneration->shared.reset();
+  mGeneration->currentRequestId = 0;
+}
+
+bool PrimitiveFieldPreview::isGenerating() const {
+  return mGeneration->worker.joinable() && mGeneration->shared != nullptr;
+}
+
+float PrimitiveFieldPreview::generationProgress() const {
+  return mGeneration->shared
+             ? mGeneration->shared->progress.load(std::memory_order_relaxed)
+             : 0.0f;
+}
+
+bw::core::PrimitiveFieldLayoutPhase
+PrimitiveFieldPreview::generationPhase() const {
+  return mGeneration->shared
+             ? mGeneration->shared->phase.load(std::memory_order_relaxed)
+             : bw::core::PrimitiveFieldLayoutPhase::Sampling;
+}
+
 bool PrimitiveFieldPreview::hasCompletePreview() const {
-  return enabledTypes.any() && error.empty() && layout.has_value() &&
-         !layout->sites.empty() && layout->sites.size() == layout->cells.size() &&
+  return mLayoutCurrent && enabledTypes.any() && layout.has_value() &&
+         !layout->sites.empty() &&
+         layout->sites.size() == layout->cells.size() &&
          primitives.size() == layout->sites.size();
 }
 

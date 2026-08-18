@@ -52,6 +52,7 @@
 #include "ExitApplicationException.h"
 #include "AppHelpers.h"
 #include "HoverableType.h"
+#include "PrimitiveFieldPreview.h"
 
 wp::Vector2 gViewOffset{0.0f, 0.0f};
 
@@ -313,6 +314,7 @@ void setup() {
 }
 
 void shutdown() {
+  editor::getPrimitiveFieldPreview().close();
   gLogger->info("Shutting down");
 
   delete gLogger;

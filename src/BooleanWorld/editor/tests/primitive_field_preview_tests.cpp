@@ -1,8 +1,10 @@
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <core/Defines.h>
@@ -56,6 +58,20 @@ bool contains(
   return true;
 }
 
+void waitForGeneration(
+    editor::PrimitiveFieldPreview& preview,
+    bw::core::PrimitiveFieldExtents const& extents,
+    uint32_t existingPrimitiveCount) {
+  auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while (preview.isGenerating() &&
+         std::chrono::steady_clock::now() < deadline) {
+    preview.poll(extents, existingPrimitiveCount);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  preview.poll(extents, existingPrimitiveCount);
+  require(!preview.isGenerating(), "background layout generation timed out");
+}
+
 editor::PrimitiveFieldTypeSelection only(editor::PrimitiveFieldType type) {
   editor::PrimitiveFieldTypeSelection selection{
       false, false, false, false, false};
@@ -81,7 +97,12 @@ void opensWithAllTypeDefaultsAndRefreshesWithoutRegeneratingLayout() {
   preview.minimumSpacing = 64.0f;
   preview.maximumSites = 5;
   preview.seed = 11;
-  preview.generate({{-128.0f, -128.0f}, {128.0f, 128.0f}}, 1);
+  auto extents = bw::core::PrimitiveFieldExtents{
+      {-128.0f, -128.0f}, {128.0f, 128.0f}};
+  preview.generate(extents, 1);
+  require(preview.isGenerating(),
+          "layout generation did not dispatch to a background worker");
+  waitForGeneration(preview, extents, 1);
   require(preview.hasCompletePreview(), "valid mixed preview generation failed");
   auto sites = preview.layout->sites;
   auto cells = preview.layout->cells;
@@ -96,8 +117,9 @@ void opensWithAllTypeDefaultsAndRefreshesWithoutRegeneratingLayout() {
             "one remaining enabled type was not used for every site");
 
   preview.invalidateLayout();
-  require(!preview.layout && preview.primitives.empty() && preview.error.empty(),
-          "layout invalidation retained generated geometry");
+  require(preview.layout && !preview.primitives.empty() &&
+              !preview.hasCompletePreview() && preview.error.empty(),
+          "layout invalidation did not retain stale preview value data");
   preview.close();
   require(!preview.open && preview.primitives.empty(),
           "closing retained editor overlay geometry");
@@ -172,6 +194,97 @@ void everyEligibleTypeFitsAtGeneratedAnglesAndAppliesOverlap() {
   }
 }
 
+void completeGenerationIdentityIncludesEveryLayoutInput() {
+  editor::PrimitiveFieldGenerationIdentity baseline{
+      {{-100.0f, -80.0f}, {120.0f, 90.0f}}, 32.0f, 2000, 1999, 7, 5};
+  auto changed = baseline;
+  changed.worldExtents.minimum.x -= 1.0f;
+  require(changed != baseline, "minimum world extent was omitted from identity");
+  changed = baseline;
+  changed.worldExtents.maximum.y += 1.0f;
+  require(changed != baseline, "maximum world extent was omitted from identity");
+  changed = baseline;
+  changed.minimumSpacing += 1.0f;
+  require(changed != baseline, "spacing was omitted from identity");
+  changed = baseline;
+  ++changed.maximumSites;
+  require(changed != baseline, "requested maximum was omitted from identity");
+  changed = baseline;
+  --changed.effectiveMaximumSites;
+  require(changed != baseline, "effective maximum was omitted from identity");
+  changed = baseline;
+  ++changed.seed;
+  require(changed != baseline, "seed was omitted from identity");
+  changed = baseline;
+  ++changed.lloydIterations;
+  require(changed != baseline, "Lloyd iterations were omitted from identity");
+}
+
+void coordinatesStaleSupersededCancelledAndFailedRequests() {
+  editor::PrimitiveFieldPreview preview;
+  preview.requestOpen();
+  preview.minimumSpacing = 48.0f;
+  preview.maximumSites = 120;
+  preview.lloydIterations = 2;
+  auto extents = bw::core::PrimitiveFieldExtents{
+      {-384.0f, -256.0f}, {384.0f, 256.0f}};
+
+  preview.seed = 1;
+  preview.generate(extents, 0);
+  waitForGeneration(preview, extents, 0);
+  require(preview.hasCompletePreview(),
+          "baseline background preview did not complete");
+  auto baselineSites = preview.layout->sites;
+  auto baselineCells = preview.layout->cells;
+  auto baselinePrimitives = preview.primitives;
+
+  preview.seed = 2;
+  preview.invalidateLayout();
+  preview.generate(extents, 0);
+  preview.cancelGeneration();
+  require(preview.layout->sites == baselineSites &&
+              sameCells(preview.layout->cells, baselineCells) &&
+              preview.primitives.size() == baselinePrimitives.size() &&
+              !preview.hasCompletePreview(),
+          "cancellation changed or made current the prior preview");
+
+  preview.generate(extents, 0);
+  preview.seed = 3;
+  preview.invalidateLayout();
+  waitForGeneration(preview, extents, 0);
+  require(preview.layout->sites == baselineSites &&
+              sameCells(preview.layout->cells, baselineCells) &&
+              !preview.hasCompletePreview(),
+          "a stale result replaced the prior preview");
+
+  preview.generate(extents, 0);
+  preview.seed = 4;
+  preview.invalidateLayout();
+  preview.generate(extents, 0);
+  waitForGeneration(preview, extents, 0);
+  require(preview.hasCompletePreview() &&
+              preview.layout->sites != baselineSites,
+          "the newest superseding request did not become current");
+  auto supersedingSites = preview.layout->sites;
+  auto supersedingCells = preview.layout->cells;
+
+  preview.minimumSpacing = 7.0f;
+  preview.invalidateLayout();
+  preview.generate(extents, 0);
+  waitForGeneration(preview, extents, 0);
+  require(!preview.error.empty() && preview.layout->sites == supersedingSites &&
+              sameCells(preview.layout->cells, supersedingCells),
+          "background failure was not surfaced while preserving preview data");
+
+  preview.minimumSpacing = 48.0f;
+  preview.seed = 5;
+  preview.invalidateLayout();
+  preview.generate(extents, 0);
+  preview.close();
+  require(!preview.isGenerating() && !preview.open && !preview.layout,
+          "closing the modal retained worker or preview lifetime");
+}
+
 void invalidSelectionsOverlapAndCapacityAreRejected() {
   auto layout = representativeLayout();
   editor::PrimitiveFieldTypeSelection none{
@@ -200,6 +313,8 @@ int main() {
     opensWithAllTypeDefaultsAndRefreshesWithoutRegeneratingLayout();
     deterministicChoicesAnglesAndMixedSubsets();
     everyEligibleTypeFitsAtGeneratedAnglesAndAppliesOverlap();
+    completeGenerationIdentityIncludesEveryLayoutInput();
+    coordinatesStaleSupersededCancelledAndFailedRequests();
     invalidSelectionsOverlapAndCapacityAreRejected();
     std::cout << "Primitive-field preview state tests passed\n";
     return 0;
