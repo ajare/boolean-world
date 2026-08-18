@@ -18,6 +18,7 @@ removed the dependency entirely. Geometry terms are defined in
 | [0009](0009-layer-selection-is-a-per-generation-set.md) | Layer selection is a per-generation set | Accepted |
 | [0010](0010-remove-clipper2-and-path-primitives.md) | Remove Clipper2 and path primitives | Accepted |
 | [0011](0011-remove-dormant-combat-framework.md) | Remove the dormant combat framework | Accepted |
+| [0012](0012-world-renders-through-an-offscreen-target.md) | The world renders through an offscreen target, always composited | Accepted |
 
 ## World geometry rewrite scope
 
