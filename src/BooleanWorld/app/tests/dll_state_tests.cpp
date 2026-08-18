@@ -69,8 +69,9 @@ void renderScaleVocabularyIsClosedAndSizesTargets() {
 
   require(!bw::app::renderScaleFromName("eighth"),
           "Unknown render scale name was accepted.");
-  require(bw::app::renderTargetSize(1024, 768, bw::app::RenderScale::Half).width == 512,
-          "Evenly divisible target width was incorrect.");
+  auto exact = bw::app::renderTargetSize(1024, 768, bw::app::RenderScale::Half);
+  require(exact.width == 512 && exact.height == 384,
+          "Evenly divisible target dimensions were incorrect.");
   auto rounded = bw::app::renderTargetSize(1025, 769, bw::app::RenderScale::Quarter);
   require(rounded.width == 257 && rounded.height == 193,
           "Sub-full target dimensions did not round up.");

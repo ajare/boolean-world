@@ -114,6 +114,10 @@ intersection, on every pass. Removed.
 two primitive indices per edge and an `is2Sided()` test. Superseded by the
 arrangement's native edge–face incidence.
 
+## Rendering
+
+**Render scale** — The fraction of screen resolution at which the 3D world is drawn. `full`, `half`, and `quarter` select the available scales; the resulting world image is composited across the screen while the interface remains at native resolution.
+
 ## Pipeline
 
 **Generation** — One full rebuild of world geometry from primitives. Runs on a
