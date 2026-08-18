@@ -26,9 +26,15 @@ struct ArrangementStats {
   uint64_t classificationTimeNs{0};
 };
 
+struct GenerationRequestStats {
+  // Number of pending generation requests replaced by a newer snapshot.
+  uint64_t coalescedRequestCount{0};
+};
+
 struct Stats {
   PrimitiveProcessingStats prim;
   ArrangementStats arrangement;
+  GenerationRequestStats generationRequests;
 };
 
 }  // namespace core

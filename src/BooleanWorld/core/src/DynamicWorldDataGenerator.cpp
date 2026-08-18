@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <stdexcept>
 
 #include <willpower/common/MathsUtils.h>
 
@@ -52,6 +54,10 @@ void DynamicWorldDataGenerator::copyFrom(DynamicWorldDataGenerator const& other)
   mNumGenerationsComplete.store(other.mNumGenerationsComplete.load());
   mNumCommits.store(other.mNumCommits.load());
   mLastGenTime.store(other.mLastGenTime.load());
+  mPendingGenerationInput.reset();
+  mGenerationWorkerRunning = false;
+  mNumGenerationRequestsCoalesced.store(
+      other.mNumGenerationRequestsCoalesced.load());
   mScheduledGenerationInterval.store(other.mScheduledGenerationInterval.load());
 }
 
@@ -94,6 +100,15 @@ uint32_t DynamicWorldDataGenerator::getNumGenerationsComplete() const {
   return mNumGenerationsComplete;
 }
 
+uint32_t DynamicWorldDataGenerator::getNumGenerationsPending() const {
+  lock_guard<mutex> lock(mGenMutex);
+  return mPendingGenerationInput.has_value() ? 1u : 0u;
+}
+
+uint64_t DynamicWorldDataGenerator::getNumGenerationRequestsCoalesced() const {
+  return mNumGenerationRequestsCoalesced;
+}
+
 uint32_t DynamicWorldDataGenerator::getNumCommits() const {
   return mNumCommits;
 }
@@ -131,6 +146,10 @@ DynamicWorldDataGenerator::getActiveClippingUpdatedPrimitives() const {
 }
 
 void DynamicWorldDataGenerator::setScheduledGenerationInterval(float interval) {
+  if (!isfinite(interval) || interval <= 0.0f) {
+    throw invalid_argument(
+        "scheduled generation interval must be finite and positive");
+  }
   mScheduledGenerationInterval = interval;
 }
 
@@ -268,20 +287,24 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
 
 void DynamicWorldDataGenerator::generateWorldData(GenerationInput input) {
   auto clippingId = mClippingIdGenerator++;
+  auto requestStats = GenerationRequestStats{
+      mNumGenerationRequestsCoalesced.load()};
   GenerationDetails details{
       clippingId,
       GenerationState::Generating,
       0,
-      {input.primStats, {}}};
+      {input.primStats, {}, requestStats}};
 
+  // Count the callback-blocked portion as active work as well as the geometry
+  // build itself. The asynchronous drain calls this function serially.
+  mNumGenerationsInProgress++;
   fireCallbacks(details);
 
   // Everything below runs on a worker for asynchronous generations. Its
   // geometry and world settings were copied before the worker was posted.
-  mNumGenerationsInProgress++;
   wp::Timer timer;
 
-  Stats stats{input.primStats, {}};
+  Stats stats{input.primStats, {}, requestStats};
   auto results = make_shared<ArrangementWorldData>(
       arr::BuildArrangement(input.primitives, &stats.arrangement),
       input.worldExtents,
@@ -290,6 +313,8 @@ void DynamicWorldDataGenerator::generateWorldData(GenerationInput input) {
       &stats.arrangement);
 
   mLastGenTime = timer.elapsedNanoseconds();
+  stats.generationRequests.coalescedRequestCount =
+      mNumGenerationRequestsCoalesced.load();
 
   mPendingClippings.push_bounded(
       {clippingId,
@@ -309,6 +334,44 @@ void DynamicWorldDataGenerator::generateWorldData(GenerationInput input) {
   details.stats = stats;
 
   fireCallbacks(details);
+}
+
+void DynamicWorldDataGenerator::drainGenerationRequests() {
+  while (true) {
+    optional<GenerationInput> input;
+    {
+      lock_guard<mutex> lock(mGenMutex);
+      if (!mPendingGenerationInput) {
+        mGenerationWorkerRunning = false;
+        return;
+      }
+      input = move(mPendingGenerationInput);
+      mPendingGenerationInput.reset();
+    }
+
+    generateWorldData(move(*input));
+  }
+}
+
+void DynamicWorldDataGenerator::enqueueGeneration(GenerationInput input) {
+  bool startWorker = false;
+  {
+    lock_guard<mutex> lock(mGenMutex);
+    if (mPendingGenerationInput) {
+      mNumGenerationRequestsCoalesced++;
+    }
+    mPendingGenerationInput = move(input);
+
+    if (!mGenerationWorkerRunning) {
+      mGenerationWorkerRunning = true;
+      startWorker = true;
+    }
+  }
+
+  if (startWorker) {
+    mExecutorRuntime.thread_pool_executor()->post(
+        [this] { drainGenerationRequests(); });
+  }
 }
 
 void DynamicWorldDataGenerator::fireCallbacks(GenerationDetails const& details) {
@@ -421,11 +484,7 @@ WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
 }
 
 void DynamicWorldDataGenerator::generate(World const* world, bool regetPrimitives) {
-  auto input = snapshotGenerationInput(world, regetPrimitives);
-  mExecutorRuntime.thread_pool_executor()->post(
-      [this, input = move(input)]() mutable {
-        generateWorldData(move(input));
-      });
+  enqueueGeneration(snapshotGenerationInput(world, regetPrimitives));
 }
 
 void DynamicWorldDataGenerator::generate(bool regetPrimitives) {

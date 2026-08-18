@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include <willpower/common/BoundingBox.h>
 
@@ -102,6 +103,11 @@ private:
 
   std::atomic_uint64_t mLastGenTime;
 
+  // Asynchronous work is a single running worker plus its latest request.
+  std::optional<GenerationInput> mPendingGenerationInput;
+  bool mGenerationWorkerRunning{false};
+  std::atomic_uint64_t mNumGenerationRequestsCoalesced{0};
+
   // Regularly-scheduled worker
   concurrencpp::result<void> mScheduledWorker;
 
@@ -115,6 +121,10 @@ private:
   void copyFrom(DynamicWorldDataGenerator const& other);
 
   void generateWorldData(GenerationInput input);
+
+  void drainGenerationRequests();
+
+  void enqueueGeneration(GenerationInput input);
 
   GenerationInput snapshotGenerationInput(
       World const* world, bool regetPrimitives);
@@ -164,6 +174,10 @@ public:
   uint32_t getNumGenerationsInProgress() const;
 
   uint32_t getNumGenerationsComplete() const;
+
+  uint32_t getNumGenerationsPending() const;
+
+  uint64_t getNumGenerationRequestsCoalesced() const;
 
   uint32_t getNumCommits() const;
 
