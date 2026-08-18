@@ -32,18 +32,10 @@ void WorldRenderer::setWorldChanged() {
   mWorldHasChanged = true;
 }
 
-void WorldRenderer::addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c) {
-  auto vertexPtr = dataProvider->nextVertexPtr(meshIndex);
-
-  vertexPtr->pos[0] = px;
-  vertexPtr->pos[1] = py;
-  vertexPtr->pos[2] = pz;
-  vertexPtr->nor[0] = nx;
-  vertexPtr->nor[1] = ny;
-  vertexPtr->nor[2] = nz;
-  vertexPtr->tex[0] = u;
-  vertexPtr->tex[1] = v;
-  vertexPtr->col = c;
+uint32_t WorldRenderer::addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c) {
+  WorldTriangle3dDataProvider::DrawVert vertex{
+      {px, py, pz}, {nx, ny, nz}, {u, v}, c};
+  return dataProvider->addVertex(meshIndex, vertex);
 }
 
 void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
@@ -93,32 +85,32 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
         properties.floorMaterialIndex);
     auto floorMeshIndex =
         matRenderer.first->getMeshIndexForMaterialHash(floorHash);
+    uint32_t floorIndices[3];
     for (int i = 0; i < 3; ++i) {
       auto uv = positions[i] / 64.0f;
-      addVertexToDataProvider(
+      floorIndices[i] = addVertexToDataProvider(
           dataProvider, floorMeshIndex,
           positions[i].x, properties.floorZ, positions[i].y,
           0, 1, 0, uv.x, uv.y, floorColour);
     }
-    auto numIndices = dataProvider->getNumIndices(floorMeshIndex);
     dataProvider->addTriangle(
-        floorMeshIndex, numIndices, numIndices + 1, numIndices + 2);
+        floorMeshIndex, floorIndices[0], floorIndices[1], floorIndices[2]);
 
     auto ceilingColour = properties.ceilingMaterialDef.data.packedColour();
     auto ceilingHash = properties.ceilingMaterialDef.data.hash(
         properties.ceilingMaterialIndex);
     auto ceilingMeshIndex =
         matRenderer.first->getMeshIndexForMaterialHash(ceilingHash);
+    uint32_t ceilingIndices[3];
     for (int i = 2; i >= 0; --i) {
       auto uv = positions[i] / 64.0f;
-      addVertexToDataProvider(
+      ceilingIndices[2 - i] = addVertexToDataProvider(
           dataProvider, ceilingMeshIndex,
           positions[i].x, properties.ceilingZ, positions[i].y,
           0, -1, 0, uv.x, uv.y, ceilingColour);
     }
-    numIndices = dataProvider->getNumIndices(ceilingMeshIndex);
     dataProvider->addTriangle(
-        ceilingMeshIndex, numIndices, numIndices + 1, numIndices + 2);
+        ceilingMeshIndex, ceilingIndices[0], ceilingIndices[1], ceilingIndices[2]);
   }
 
   for (auto const& wall : walls) {
@@ -132,19 +124,15 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
         properties.wallMaterialIndex);
     auto wallMeshIndex =
         matRenderer.first->getMeshIndexForMaterialHash(wallHash);
-    auto numIndices = dataProvider->getNumIndices(wallMeshIndex);
-
-    addVertexToDataProvider(dataProvider, wallMeshIndex, v0.x, wall.minZ, v0.y, normal.x, 0, normal.y, 0, 0, wallColour);
-    addVertexToDataProvider(dataProvider, wallMeshIndex, v1.x, wall.minZ, v1.y, normal.x, 0, normal.y, 1, 0, wallColour);
-    addVertexToDataProvider(dataProvider, wallMeshIndex, v1.x, wall.maxZ, v1.y, normal.x, 0, normal.y, 1, 1, wallColour);
-    addVertexToDataProvider(dataProvider, wallMeshIndex, v1.x, wall.maxZ, v1.y, normal.x, 0, normal.y, 1, 1, wallColour);
-    addVertexToDataProvider(dataProvider, wallMeshIndex, v0.x, wall.maxZ, v0.y, normal.x, 0, normal.y, 0, 1, wallColour);
-    addVertexToDataProvider(dataProvider, wallMeshIndex, v0.x, wall.minZ, v0.y, normal.x, 0, normal.y, 0, 0, wallColour);
-    dataProvider->addTriangle(
-        wallMeshIndex, numIndices, numIndices + 1, numIndices + 2);
-    dataProvider->addTriangle(
-        wallMeshIndex, numIndices + 3, numIndices + 4, numIndices + 5);
+    auto bottom0 = addVertexToDataProvider(dataProvider, wallMeshIndex, v0.x, wall.minZ, v0.y, normal.x, 0, normal.y, 0, 0, wallColour);
+    auto bottom1 = addVertexToDataProvider(dataProvider, wallMeshIndex, v1.x, wall.minZ, v1.y, normal.x, 0, normal.y, 1, 0, wallColour);
+    auto top1 = addVertexToDataProvider(dataProvider, wallMeshIndex, v1.x, wall.maxZ, v1.y, normal.x, 0, normal.y, 1, 1, wallColour);
+    auto top0 = addVertexToDataProvider(dataProvider, wallMeshIndex, v0.x, wall.maxZ, v0.y, normal.x, 0, normal.y, 0, 1, wallColour);
+    dataProvider->addTriangle(wallMeshIndex, bottom0, bottom1, top1);
+    dataProvider->addTriangle(wallMeshIndex, top1, top0, bottom0);
   }
+
+  dataProvider->finalizeInternals();
 
   for (auto& item : mMaterialRenderers) {
     auto& [renderer, provider] = item;

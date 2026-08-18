@@ -1,5 +1,19 @@
 #include "WorldTriangle3dDataProvider.h"
 
+#include <bit>
+#include <cstring>
+
+static_assert(sizeof(WorldTriangle3dDataProvider::DrawVert) == 9 * sizeof(uint32_t));
+
+size_t WorldTriangle3dDataProvider::VertexKeyHash::operator()(
+    VertexKey const& key) const noexcept {
+  size_t hash = 0;
+  for (auto word : key) {
+    hash ^= size_t(word) + 0x9e3779b9u + (hash << 6) + (hash >> 2);
+  }
+  return hash;
+}
+
 WorldTriangle3dDataProvider::WorldTriangle3dDataProvider()
     : mVertexStride(sizeof(float) * 8 + sizeof(uint8_t) * 4) {
 }
@@ -22,6 +36,7 @@ void WorldTriangle3dDataProvider::clear() {
 
 void WorldTriangle3dDataProvider::setMeshCount(uint32_t numMeshes) {
   mMeshData.resize(numMeshes);
+  mVertexIndices.resize(numMeshes);
 }
 
 uint32_t WorldTriangle3dDataProvider::getNumMeshes() const {
@@ -38,6 +53,21 @@ WorldTriangle3dDataProvider::DrawVert* WorldTriangle3dDataProvider::nextVertexPt
   meshData.numVertices++;
 
   return meshData._workVert++;
+}
+
+uint32_t WorldTriangle3dDataProvider::addVertex(
+    uint32_t meshIndex, DrawVert const& vertex) {
+  auto key = std::bit_cast<VertexKey>(vertex);
+  auto& indices = mVertexIndices[meshIndex];
+  if (auto existing = indices.find(key); existing != indices.end()) {
+    return existing->second;
+  }
+
+  auto& meshData = mMeshData[meshIndex];
+  auto index = meshData.numVertices;
+  *nextVertexPtr(meshIndex) = vertex;
+  indices.emplace(key, index);
+  return index;
 }
 
 void WorldTriangle3dDataProvider::addTriangle(uint32_t meshIndex, uint32_t v0, uint32_t v1, uint32_t v2) {
@@ -131,7 +161,31 @@ void WorldTriangle3dDataProvider::updateInternals(
 
     meshData.numVertices = 0;
     meshData.numTriangles = 0;
+    mVertexIndices[meshIndex].clear();
+    mVertexIndices[meshIndex].reserve(numVertices);
   }
 
   setNumPrimitives(0);
+}
+
+void WorldTriangle3dDataProvider::finalizeInternals() {
+  for (uint32_t meshIndex = 0; meshIndex < mMeshData.size(); ++meshIndex) {
+    auto& meshData = mMeshData[meshIndex];
+    auto usedSize = meshData.numVertices * mVertexStride;
+    if (usedSize != meshData.vertexDataSize) {
+      auto* compactVertexData = usedSize == 0 ? nullptr : new int8_t[usedSize];
+      if (usedSize != 0) {
+        std::memcpy(compactVertexData, meshData.vertexData, usedSize);
+      }
+      delete[] meshData.vertexData;
+      meshData.vertexData = compactVertexData;
+      meshData.vertexDataSize = usedSize;
+      meshData._workVert = usedSize == 0 ? nullptr : reinterpret_cast<DrawVert*>(meshData.vertexData + usedSize);
+    }
+
+    // Vertex lookup is generation-only working state, not part of the
+    // persistent renderer representation.
+    mVertexIndices[meshIndex].clear();
+    mVertexIndices[meshIndex].rehash(0);
+  }
 }

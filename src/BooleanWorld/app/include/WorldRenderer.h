@@ -33,7 +33,7 @@ private:
 private:
   void updateDataProviders(bw::core::WorldData const& worldData);
 
-  void addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c);
+  uint32_t addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c);
 
 public:
   WorldRenderer(wp::application::resourcesystem::ResourceManager* resourceMgr, wp::Logger* logger);

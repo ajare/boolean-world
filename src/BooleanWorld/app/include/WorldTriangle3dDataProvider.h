@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <unordered_map>
 #include <vector>
 
 #include <mpp/helper/TriangleBatchDataProvider.h>
@@ -27,9 +29,16 @@ public:
   };
 
 private:
+  using VertexKey = std::array<uint32_t, 9>;
+
+  struct VertexKeyHash {
+    size_t operator()(VertexKey const& key) const noexcept;
+  };
+
   uint32_t mVertexStride;
 
   std::vector<MeshData> mMeshData;
+  std::vector<std::unordered_map<VertexKey, uint32_t, VertexKeyHash>> mVertexIndices;
 
 public:
   WorldTriangle3dDataProvider();
@@ -48,7 +57,11 @@ public:
 
   DrawVert* nextVertexPtr(uint32_t meshIndex);
 
+  uint32_t addVertex(uint32_t meshIndex, DrawVert const& vertex);
+
   void updateInternals(std::vector<uint32_t> const& numTrianglesPerMesh);
+
+  void finalizeInternals();
 
   void addTriangle(uint32_t meshIndex, uint32_t v0, uint32_t v1, uint32_t v2);
 
