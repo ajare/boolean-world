@@ -60,13 +60,12 @@ bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromInde
   return true;
 }
 
-// Wired into the same transactUndoableAction/undo/redo mechanism as every
-// other Action. Document's Undo snapshot round-trips a World through
-// serialize/deserialize, which currently only carries the active Layer's
-// content (#164 gives every Layer inline representation); until then, an
-// undo/redo spanning this move won't fully restore a destination Layer that
-// only the move itself populated. This is a pre-existing limitation of every
-// Layer-affecting Action since #159/#160, not something this move introduces.
+// World::movePrimitiveToLayer lands primitive in destinationLayer's first
+// (PrimitiveField) step via Layer::addPrimitive, and releases it from
+// whichever step of its source Layer produced it. Every Layer this World
+// owns is serialized inline (docs/adr/0013), so the transactUndoableAction
+// this is wired into snapshots and restores both the source and destination
+// Layers' resulting Primitives exactly.
 bool movePrimitiveToLayer(Document* doc, bw::core::Primitive* primitive, bw::core::Layer* destinationLayer) {
   auto world = doc->getWorld();
 
