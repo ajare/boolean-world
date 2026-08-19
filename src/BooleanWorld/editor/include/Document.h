@@ -134,6 +134,17 @@ public:
 
   void saveDocAs(std::string const& filepath);
 
+  // Exports a single Layer to its own file, independent of the rest of the
+  // World - ".layer" (binary) or ".layer.yaml", chosen by filepath's
+  // extension.
+  void exportLayer(bw::core::Layer const* layer, std::string const& filepath) const;
+
+  // Imports a standalone ".layer"/".layer.yaml" file into the current
+  // World's Layer collection, returning the new Layer (with a fresh id if
+  // its own collided with one the World already had), or nullptr on
+  // failure.
+  bw::core::Layer* importLayer(std::string const& filepath);
+
   void addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation);
 };
 

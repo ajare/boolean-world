@@ -453,6 +453,10 @@ uint32_t Layer::getId() const {
   return mId;
 }
 
+void Layer::_setId(uint32_t id) {
+  mId = id;
+}
+
 void Layer::setName(string const& name) {
   mName = name;
 }

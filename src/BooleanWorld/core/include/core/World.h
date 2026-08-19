@@ -131,6 +131,13 @@ public:
 
   Layer* addLayer(std::string const& name);
 
+  // Takes ownership of layer, appending it to this World's ordered Layer
+  // collection - used to import a standalone Layer deserialized outside
+  // this World. If layer's own id collides with one this World already
+  // has, it is reassigned a fresh, non-colliding one; otherwise its id (and
+  // its content) is preserved exactly as loaded.
+  Layer* addLayer(Layer* layer);
+
   void removeLayer(Layer* layer, bool failIfNotFound = true);
 
   void removeLayer(uint32_t index);

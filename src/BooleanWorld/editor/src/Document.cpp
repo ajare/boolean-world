@@ -427,6 +427,75 @@ void Document::saveDocAs(string const& filepath) {
   saveDoc();
 }
 
+namespace {
+// ".layer.yaml" is a distinct extension from ".yaml" - own weight, own
+// dispatch here - not filesystem::path::extension(), which only ever sees
+// the last dot-segment and would report ".yaml" for both.
+bool hasExtension(string const& filepath, string const& extension) {
+  if (filepath.size() < extension.size()) {
+    return false;
+  }
+
+  auto const tail = filepath.substr(filepath.size() - extension.size());
+  return equal(tail.begin(), tail.end(), extension.begin(), [](char a, char b) {
+    return tolower(static_cast<unsigned char>(a)) == tolower(static_cast<unsigned char>(b));
+  });
+}
+}  // namespace
+
+void Document::exportLayer(bw::core::Layer const* layer, string const& filepath) const {
+  shared_ptr<bw::core::Serializer> ser;
+
+  if (hasExtension(filepath, ".layer.yaml")) {
+    ser = shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toFile(filepath));
+  } else if (hasExtension(filepath, ".layer")) {
+    ser = shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::toFile(filepath));
+  } else {
+    throw EditorException(format("Could not export {} (filetype not supported)", filepath));
+  }
+
+  auto workData = bw::core::SerializationWorkData{};
+  layer->serialize(ser, workData);
+  ser->serialize();
+}
+
+bw::core::Layer* Document::importLayer(string const& filepath) {
+  shared_ptr<bw::core::Serializer> ser;
+
+  if (hasExtension(filepath, ".layer.yaml")) {
+    ser = shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(filepath));
+  } else if (hasExtension(filepath, ".layer")) {
+    ser = shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(filepath));
+  } else {
+    throw EditorException(format("Could not import {} (filetype not supported)", filepath));
+  }
+
+  try {
+    ser->deserialize();
+  } catch (exception& e) {
+    gLogger->error(e.what());
+    return nullptr;
+  }
+
+  auto layer = make_unique<bw::core::Layer>();
+
+  auto workData = bw::core::SerializationWorkData{};
+  workData.accelGridSize = mWorld->getPrimitiveAccelerationGridSize();
+
+  if (!layer->deserialize(ser, workData)) {
+    for (auto const& error : layer->getDeserializationErrors()) {
+      gLogger->error(error);
+    }
+    return nullptr;
+  }
+
+  for (auto const& warning : layer->getDeserializationWarnings()) {
+    gLogger->warn(warning);
+  }
+
+  return mWorld->addLayer(layer.release());
+}
+
 void Document::loadTiledPrefabFile(string const& filepath, shared_ptr<bw::core::World> world) {
   ::openTiledPrefabFile(filepath, world);
 }

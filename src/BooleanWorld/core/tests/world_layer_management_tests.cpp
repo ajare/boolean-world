@@ -1,6 +1,8 @@
 #include <iostream>
 #include <stdexcept>
 
+#include <core/Layer.h>
+#include <core/RectanglePolygon.h>
 #include <core/World.h>
 
 namespace {
@@ -98,6 +100,44 @@ void reorderingLayersPreservesIdsAndTheActiveLayerIdentity() {
   require(world.getActiveLayer() == layer0, "reordering Layers lost track of the active Layer's identity");
 }
 
+void importingALayerWithANonCollidingIdPreservesIt() {
+  bw::core::World world(100.0f, 10.0f);
+
+  auto* imported = new bw::core::Layer(41, "Imported", 100.0f, 10.0f);
+
+  auto* added = world.addLayer(imported);
+
+  require(added == imported, "addLayer(Layer*) did not return the appended Layer");
+  require(added->getId() == 41, "addLayer(Layer*) changed a non-colliding imported id");
+  require(world.getNumLayers() == 2, "addLayer(Layer*) did not grow the World's Layer collection");
+  require(world.getLayers()[1] == imported, "addLayer(Layer*) did not append at the end of the collection");
+
+  // A later addLayer(name) must not collide with the imported id.
+  auto* next = world.addLayer("Next");
+  require(next->getId() != 41, "a subsequently added Layer collided with an imported id");
+}
+
+void importingALayerWithACollidingIdIsReassignedAFreshOne() {
+  bw::core::World world(100.0f, 10.0f);
+
+  // World's own default Layer already has id 0; importing another Layer
+  // that also claims id 0 must not collide with it.
+  auto* imported = new bw::core::Layer(0, "Imported", 100.0f, 10.0f);
+  auto* rect = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  imported->addPrimitive(rect);
+
+  auto* added = world.addLayer(imported);
+
+  require(added->getId() != 0, "addLayer(Layer*) did not reassign a colliding imported id");
+  require(added->getNumPrimitives() == 1 && added->getPrimitive(0) == rect,
+          "addLayer(Layer*) lost the imported Layer's content while reassigning its id");
+  require(world.getLayers()[0]->getId() == 0,
+          "addLayer(Layer*) disturbed the World's existing Layer's id");
+}
+
 }  // namespace
 
 int main() {
@@ -107,6 +147,8 @@ int main() {
     removingTheLastLayerIsRejected();
     removingTheActiveLayerFallsBackWithoutChangingSurvivorIds();
     reorderingLayersPreservesIdsAndTheActiveLayerIdentity();
+    importingALayerWithANonCollidingIdPreservesIt();
+    importingALayerWithACollidingIdIsReassignedAFreshOne();
     std::cout << "World's Layer collection supports add/remove/reorder with stable ids and a tracked active Layer\n";
     return 0;
   } catch (std::exception const& error) {

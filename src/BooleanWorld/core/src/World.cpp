@@ -490,6 +490,22 @@ Layer* World::addLayer(string const& name) {
   return layer;
 }
 
+Layer* World::addLayer(Layer* layer) {
+  auto const colliding = any_of(mLayers.begin(), mLayers.end(), [&](Layer const* existing) {
+    return existing->getId() == layer->getId();
+  });
+
+  if (colliding) {
+    layer->_setId(mNextLayerId);
+  }
+
+  mNextLayerId = max(mNextLayerId, layer->getId() + 1);
+
+  mLayers.push_back(layer);
+
+  return layer;
+}
+
 void World::removeLayer(Layer* layer, bool failIfNotFound) {
   if (mLayers.size() <= 1) {
     throw CoreException("Cannot remove the last remaining Layer from a World");

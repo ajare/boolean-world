@@ -113,6 +113,10 @@ public:
 
   [[nodiscard]] uint32_t getId() const;
 
+  // Rehomes a Layer under a new stable id - used when importing a
+  // standalone Layer whose id collides with one a World already has.
+  void _setId(uint32_t id);
+
   void setName(std::string const& name);
 
   [[nodiscard]] std::string const& getName() const;
