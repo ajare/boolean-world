@@ -8,6 +8,7 @@ namespace core {
 
 class BW_API RectanglePolygon : public Primitive {
   friend class World;  // Only World can call the default constructor (during deserialization)
+  friend class Layer;  // Only World/Layer can call the default constructor (during deserialization)
 
 protected:
   float mXyRatio;

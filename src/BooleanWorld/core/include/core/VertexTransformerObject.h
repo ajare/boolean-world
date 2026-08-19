@@ -18,6 +18,7 @@ namespace core {
 
 class BW_API VertexTransformerObject : public Serializable {
   friend class World;
+  friend class Layer;
 
 private:
   uint32_t mId;

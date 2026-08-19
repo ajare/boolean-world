@@ -18,9 +18,11 @@
 namespace bw {
 namespace core {
 class World;
+class Layer;
 
 class BW_API Primitive : public VertexTransformerObject {
   friend class World;
+  friend class Layer;
 
 public:
   enum struct Operation {

@@ -187,5 +187,34 @@ public:
   }
 };
 
+// Same wire format as BinarySerializerFactory, but for standalone Layer
+// files rather than whole Worlds.
+class LayerBinarySerializerFactory : public SerializerFactory {
+  bool mSerializing;
+
+  bool mIsFile;
+
+public:
+  LayerBinarySerializerFactory(bool serializing, bool isFile)
+      : SerializerFactory(), mSerializing(serializing), mIsFile(isFile) {
+  }
+
+  Serializer* create(std::string const& target) override {
+    if (mSerializing) {
+      return BinarySerializer::toFile(target);
+    } else {
+      return mIsFile ? BinarySerializer::fromFile(target) : BinarySerializer::fromString(target);
+    }
+  }
+
+  std::string description() override {
+    return "Binary Layer";
+  }
+
+  std::string extension() override {
+    return "layer";
+  }
+};
+
 }  // namespace core
 }  // namespace bw

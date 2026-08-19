@@ -15,6 +15,7 @@ class BW_API CircleSegmentPolygon : public RegularPolygon {
 
 private:
   friend class World;  // Only World can call the default constructor (during deserialization)
+  friend class Layer;  // Only World/Layer can call the default constructor (during deserialization)
 
 protected:
   CircleSegmentPolygon();

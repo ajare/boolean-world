@@ -19,6 +19,7 @@ removed the dependency entirely. Geometry terms are defined in
 | [0010](0010-remove-clipper2-and-path-primitives.md) | Remove Clipper2 and path primitives | Accepted |
 | [0011](0011-remove-dormant-combat-framework.md) | Remove the dormant combat framework | Accepted |
 | [0012](0012-world-renders-through-an-offscreen-target.md) | The world renders through an offscreen target, always composited | Accepted |
+| [0013](0013-layer-is-a-first-class-owning-collection.md) | Layer is a first-class collection that owns its Primitives and WorldTriggerLines | Accepted |
 
 ## World geometry rewrite scope
 

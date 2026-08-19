@@ -1,6 +1,6 @@
 # ADR-0009: Layer selection is a per-generation set
 
-**Status:** Accepted
+**Status:** Accepted (ownership stance revisited by [ADR-0013](0013-layer-is-a-first-class-owning-collection.md); the per-generation-set model below is retained)
 **Date:** 2026-08-16
 
 ## Context

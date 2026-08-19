@@ -8,6 +8,7 @@ namespace core {
 
 class BW_API TorusPolygon : public Primitive {
   friend class World;  // Only World can call the default constructor (during deserialization)
+  friend class Layer;  // Only World/Layer can call the default constructor (during deserialization)
 
 protected:
   static const uint32_t BaseResolution = 64;
