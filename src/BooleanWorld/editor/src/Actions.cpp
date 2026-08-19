@@ -6,6 +6,7 @@
 #include <core/RectanglePolygon.h>
 #include <core/SuperformulaPolygon.h>
 #include <core/MeshPrimitive.h>
+#include <core/PrimitiveField.h>
 
 #include "Defines.h"
 #include "Actions.h"
@@ -37,6 +38,24 @@ bool addLayer(Document* doc, string const& name) {
 
 bool setLayerBuildStepEnabled(Document* doc, bw::core::Layer* layer, uint32_t stepIndex, bool enabled) {
   layer->setStepEnabled(stepIndex, enabled);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool addLayerBuildStep(Document* doc, bw::core::Layer* layer) {
+  layer->addStep(new bw::core::PrimitiveField());
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool removeLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t stepIndex) {
+  layer->removeStep(stepIndex);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromIndex, uint32_t toIndex) {
+  layer->moveStep(fromIndex, toIndex);
   generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }

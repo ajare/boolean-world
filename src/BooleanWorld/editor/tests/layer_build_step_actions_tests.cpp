@@ -1,10 +1,14 @@
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <spdlog/spdlog.h>
 
+#include <core/CoreException.h>
 #include <core/LayerBuildStep.h>
+#include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
 #include <core/World.h>
 
@@ -30,6 +34,59 @@ void require(bool condition, std::string const& message) {
   if (!condition) {
     throw std::runtime_error(message);
   }
+}
+
+template <typename Function>
+void requireCoreException(Function&& function, std::string const& message) {
+  try {
+    function();
+  } catch (bw::core::CoreException const&) {
+    return;
+  }
+  throw std::runtime_error(message);
+}
+
+std::vector<std::string> stepTypes(bw::core::Layer const& layer) {
+  std::vector<std::string> types;
+  for (uint32_t i = 0; i < layer.getNumSteps(); ++i) {
+    types.push_back(layer.getStep(i)->getType());
+  }
+  return types;
+}
+
+bw::core::RectanglePolygon* makeRectangle(float x) {
+  auto* rect = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::EvenOdd, 1.0f);
+  rect->setPosition({x, 0.0f});
+  return rect;
+}
+
+// A step is only ever handed to a Layer, which owns it from then on.
+bw::core::PrimitiveField* makeField(std::vector<float> const& positions) {
+  auto* field = new bw::core::PrimitiveField();
+  for (auto x : positions) {
+    field->addPrimitive(makeRectangle(x));
+  }
+  return field;
+}
+
+std::vector<float> builtPositions(bw::core::Layer const& layer) {
+  std::vector<float> positions;
+  for (uint32_t i = 0; i < layer.getNumPrimitives(); ++i) {
+    positions.push_back(layer.getPrimitive(i)->getPosition().x);
+  }
+  return positions;
+}
+
+// A newDoc() Layer starts with an editor-only ghost Primitive, so the build
+// order is checked via the relative order of two marker positions rather
+// than the full list.
+bool comesBefore(bw::core::Layer const& layer, float first, float second) {
+  auto positions = builtPositions(layer);
+  auto firstIt = std::find(positions.begin(), positions.end(), first);
+  auto secondIt = std::find(positions.begin(), positions.end(), second);
+  return firstIt != positions.end() && secondIt != positions.end() && firstIt < secondIt;
 }
 
 void disablingStepZeroRemovesItsPrimitivesAndRebuildRestoresThemOnReEnable() {
@@ -102,12 +159,131 @@ void togglingStepEnabledIsOneUndoableActionThatRestoresLayerState() {
   require(document.isModified(), "redo did not restore the modified state");
 }
 
+void addingAStepAppendsAPrimitiveFieldAsOneUndoableAction() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+
+  document.setModified(false);
+  auto undoBefore = editor::getUndoLevels();
+
+  editor::transactUndoableAction(&document, "Add Layer Step",
+      std::bind(editor::addLayerBuildStep, std::placeholders::_1, layer));
+
+  require(editor::getUndoLevels() == undoBefore + 1,
+          "adding a step did not create exactly one undo entry");
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getNumSteps() == 2 && layer->getStep(1)->getType() == "PrimitiveField",
+          "adding a step did not append a new PrimitiveField step at the end");
+  require(document.isModified(), "adding a step did not mark the document modified");
+
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getNumSteps() == 1, "undo did not remove the added step");
+  require(!document.isModified(), "undo did not restore the clean modified state");
+
+  editor::redo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getNumSteps() == 2 && layer->getStep(1)->getType() == "PrimitiveField",
+          "redo did not restore the added step");
+  require(document.isModified(), "redo did not restore the modified state");
+}
+
+void removingANonFirstStepIsOneUndoableActionAndTheFirstStepIsRejected() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  layer->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::EvenOdd, 1.0f));
+  layer->addStep(new bw::core::PrimitiveField());
+  layer->addStep(new bw::core::PrimitiveField());
+
+  auto numPrimitivesBefore = layer->getNumPrimitives();
+  document.setModified(false);
+  auto undoBefore = editor::getUndoLevels();
+
+  editor::transactUndoableAction(&document, "Remove Layer Step",
+      std::bind(editor::removeLayerBuildStep, std::placeholders::_1, layer, 1));
+
+  require(editor::getUndoLevels() == undoBefore + 1,
+          "removing a step did not create exactly one undo entry");
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getNumSteps() == 2, "removing a step did not shorten the Layer's step list");
+  require(document.isModified(), "removing a step did not mark the document modified");
+
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getNumSteps() == 3, "undo did not restore the removed step");
+  require(layer->getNumPrimitives() == numPrimitivesBefore,
+          "undo did not restore the Layer's resulting Primitives");
+  require(!document.isModified(), "undo did not restore the clean modified state");
+
+  editor::redo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getNumSteps() == 2, "redo did not restore the step removal");
+  require(document.isModified(), "redo did not restore the modified state");
+
+  requireCoreException(
+      [&] { editor::removeLayerBuildStep(&document, layer, 0); },
+      "removing a Layer's first step was not rejected");
+  require(layer->getNumSteps() == 2 && layer->getStep(0)->getType() == "PrimitiveField",
+          "a rejected removal of the first step disturbed the Layer's step list");
+}
+
+void movingAStepIsOneUndoableActionAndMovesIntoOrOutOfIndexZeroAreRejected() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  layer->addPrimitive(makeRectangle(0.0f));
+  layer->addStep(makeField({10.0f}));
+  layer->addStep(makeField({20.0f}));
+
+  document.setModified(false);
+  auto undoBefore = editor::getUndoLevels();
+
+  editor::transactUndoableAction(&document, "Move Layer Step",
+      std::bind(editor::moveLayerBuildStep, std::placeholders::_1, layer, 1, 2));
+
+  require(editor::getUndoLevels() == undoBefore + 1,
+          "moving a step did not create exactly one undo entry");
+  layer = document.getWorld()->getActiveLayer();
+  require(comesBefore(*layer, 20.0f, 10.0f),
+          "moving a step did not change the build order to match its new position");
+  require(document.isModified(), "moving a step did not mark the document modified");
+
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(comesBefore(*layer, 10.0f, 20.0f),
+          "undo did not restore the Layer's original build order");
+  require(!document.isModified(), "undo did not restore the clean modified state");
+
+  editor::redo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(comesBefore(*layer, 20.0f, 10.0f),
+          "redo did not restore the reordered build order");
+  require(document.isModified(), "redo did not restore the modified state");
+
+  auto typesBefore = stepTypes(*layer);
+  requireCoreException(
+      [&] { editor::moveLayerBuildStep(&document, layer, 0, 1); },
+      "moving the first step out of index 0 was not rejected");
+  requireCoreException(
+      [&] { editor::moveLayerBuildStep(&document, layer, 1, 0); },
+      "moving another step into index 0 was not rejected");
+  require(stepTypes(*layer) == typesBefore,
+          "a rejected move disturbed the Layer's step list");
+}
+
 }  // namespace
 
 int main() {
   try {
     disablingStepZeroRemovesItsPrimitivesAndRebuildRestoresThemOnReEnable();
     togglingStepEnabledIsOneUndoableActionThatRestoresLayerState();
+    addingAStepAppendsAPrimitiveFieldAsOneUndoableAction();
+    removingANonFirstStepIsOneUndoableActionAndTheFirstStepIsRejected();
+    movingAStepIsOneUndoableActionAndMovesIntoOrOutOfIndexZeroAreRejected();
     std::cout << "Layer build step enable/disable action tests passed\n";
     return 0;
   } catch (std::exception const& error) {

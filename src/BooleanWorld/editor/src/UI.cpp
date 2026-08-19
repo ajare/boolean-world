@@ -2840,10 +2840,15 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
   auto* layer = world->getActiveLayer();
   auto numSteps = layer->getNumSteps();
 
-  widgets::HelpMarker("Disabling a step and rebuilding removes its Primitives from this Layer; re-enabling restores them.");
+  widgets::HelpMarker("Disabling a step and rebuilding removes its Primitives from this Layer; re-enabling restores them. The first step can be disabled but never removed, retyped, or reordered.");
 
   for (uint32_t i = 0; i < numSteps; ++i) {
     ImGui::PushID(i);
+
+    // A step list mutation below invalidates numSteps and every later
+    // step's index for the rest of this frame, so this loop stops as soon
+    // as one happens; the next frame renders the fresh list.
+    bool listChanged = false;
 
     auto* step = layer->getStep(i);
     bool enabled = step->isEnabled();
@@ -2855,7 +2860,47 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
       transactUndoableAction(doc, format("Toggle Layer Step {}", i), bind(setLayerBuildStepEnabled, placeholders::_1, layer, i, enabled));
     }
 
+    if (i != 0) {
+      ImGui::PushButtonRepeat(false);
+
+      ImGui::SameLine();
+      // Moving step 1 up would move it into the reserved index 0, so that
+      // arrow is omitted rather than offered and rejected.
+      if (i > 1) {
+        if (ImGui::ArrowButton("##StepUp", ImGuiDir_Up)) {
+          transactUndoableAction(doc, format("Move Layer Step {}", i), bind(moveLayerBuildStep, placeholders::_1, layer, i, i - 1));
+          listChanged = true;
+        }
+        ImGui::SameLine();
+      }
+
+      if (!listChanged && i < numSteps - 1) {
+        if (ImGui::ArrowButton("##StepDown", ImGuiDir_Down)) {
+          transactUndoableAction(doc, format("Move Layer Step {}", i), bind(moveLayerBuildStep, placeholders::_1, layer, i, i + 1));
+          listChanged = true;
+        }
+        ImGui::SameLine();
+      }
+
+      ImGui::PopButtonRepeat();
+
+      if (!listChanged && ImGui::Button("Remove")) {
+        transactUndoableAction(doc, format("Remove Layer Step {}", i), bind(removeLayerBuildStep, placeholders::_1, layer, i));
+        listChanged = true;
+      }
+    }
+
+    ImGui::Separator();
+
     ImGui::PopID();
+
+    if (listChanged) {
+      break;
+    }
+  }
+
+  if (ImGui::Button("Add PrimitiveField Step")) {
+    transactUndoableAction(doc, "Add Layer Step", bind(addLayerBuildStep, placeholders::_1, layer));
   }
 }
 

@@ -210,6 +210,37 @@ void removingAStepDropsThePrimitivesItProduced() {
           "removing a step left the Primitives it produced behind");
 }
 
+void movingAStepReordersItAndRejectsMovesInvolvingIndexZero() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  layer.addPrimitive(makeRectangle(0.0f));
+  layer.addStep(makeField({10.0f}));
+  layer.addStep(makeField({20.0f}));
+
+  auto* movedStep = layer.getStep(1);
+
+  layer.moveStep(1, 2);
+
+  require(layer.getStep(2) == movedStep, "moveStep did not move the step to its target index");
+  require(builtPositions(layer) == std::vector<float>({0.0f, 20.0f, 10.0f}),
+          "moving a step did not change the order Primitives were built in");
+
+  layer.moveStep(2, 1);
+
+  require(layer.getStep(1) == movedStep, "moveStep did not move the step back");
+  require(builtPositions(layer) == std::vector<float>({0.0f, 10.0f, 20.0f}),
+          "moving a step back did not restore the original build order");
+
+  requireCoreException(
+      [&] { layer.moveStep(0, 1); },
+      "a Layer allowed its first step to be moved out of index 0");
+  requireCoreException(
+      [&] { layer.moveStep(1, 0); },
+      "a Layer allowed another step to be moved into index 0");
+  require(layer.getStep(0)->getType() == "PrimitiveField" && layer.getNumSteps() == 3,
+          "a rejected moveStep call disturbed the Layer's step list");
+}
+
 void copyingALayerCopiesItsStepsAndRebuildsFromThem() {
   bw::core::Layer layer(5, "Source", 100.0f, 10.0f);
 
@@ -243,6 +274,7 @@ int main() {
     disablingTheFirstStepIsAllowedButDeletingAndRetypingItIsNot();
     stepsAreOnlyInsertableAtIndexOneOrAbove();
     removingAStepDropsThePrimitivesItProduced();
+    movingAStepReordersItAndRejectsMovesInvolvingIndexZero();
     copyingALayerCopiesItsStepsAndRebuildsFromThem();
     std::cout << "A Layer derives its Primitives by running its enabled LayerBuildSteps in order\n";
     return 0;

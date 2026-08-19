@@ -186,6 +186,11 @@ public:
   // and never retyped.
   void removeStep(uint32_t index);
 
+  // Rejected if either index is 0: index 0's step can never move, and no
+  // other step may move into it. Rebuilds only when the enabled steps'
+  // relative order actually changed.
+  void moveStep(uint32_t fromIndex, uint32_t toIndex);
+
   void setStepEnabled(uint32_t index, bool enabled);
 
   // Appends a Primitive a step just produced to the derived collection.

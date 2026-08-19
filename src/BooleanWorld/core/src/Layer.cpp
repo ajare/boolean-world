@@ -535,6 +535,26 @@ void Layer::removeStep(uint32_t index) {
   rebuild();
 }
 
+void Layer::moveStep(uint32_t fromIndex, uint32_t toIndex) {
+  if (fromIndex == 0 || toIndex == 0) {
+    throw CoreException("A Layer's first build step is pinned at index 0 and cannot be moved, and no other step may move into index 0");
+  }
+
+  if (fromIndex >= getNumSteps() || toIndex >= getNumSteps()) {
+    throw CoreException(format("Cannot move build step {} to {} in a Layer with {} steps", fromIndex, toIndex, getNumSteps()));
+  }
+
+  if (fromIndex == toIndex) {
+    return;
+  }
+
+  auto* step = mSteps[fromIndex];
+  mSteps.erase(mSteps.begin() + fromIndex);
+  mSteps.insert(mSteps.begin() + toIndex, step);
+
+  rebuild();
+}
+
 void Layer::setStepEnabled(uint32_t index, bool enabled) {
   assert(index < getNumSteps() && "Layer::setStepEnabled(index) - index out of bounds");
 

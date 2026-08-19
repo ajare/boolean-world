@@ -15,6 +15,12 @@ bool addLayer(Document* doc, std::string const& name);
 
 bool setLayerBuildStepEnabled(Document* doc, bw::core::Layer* layer, uint32_t stepIndex, bool enabled);
 
+bool addLayerBuildStep(Document* doc, bw::core::Layer* layer);
+
+bool removeLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t stepIndex);
+
+bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromIndex, uint32_t toIndex);
+
 // Replaces the old field-mutation setPrimitiveLayer (removed in #161) as the
 // mechanism for changing which Layer a Primitive/WorldTriggerLine belongs to.
 bool movePrimitiveToLayer(Document* doc, bw::core::Primitive* primitive, bw::core::Layer* destinationLayer);
