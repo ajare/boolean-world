@@ -38,7 +38,7 @@ void prefabPlacementIndexesTransformedTriggerLineBounds() {
 
   editor::Document document;
   document.newDoc();
-  document.addPrefabInstance(&prefab, 0, 0, 90.0f);
+  document.addPrefabInstance(&prefab, 0, 0, 90.0f, document.getWorld()->getActiveLayer());
 
   auto world = document.getWorld();
   require(world->getNumTriggerLines() == 1,

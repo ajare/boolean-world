@@ -1197,6 +1197,14 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
   // Fill rule
   createFillRule = setFillRuleWidget(doc, ghost, 0);
 
+  // Layer
+  static uint32_t createPrimitiveLayerId = doc->getWorld()->getActiveLayer()->getId();
+
+  widgets::HelpMarker("The Layer to place the Primitive on.");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(128);
+  createPrimitiveLayerId = widgets::LayerPicker("Layer##CreatePrimitive", doc->getWorld().get(), createPrimitiveLayerId);
+
   // Priority
   int primitivePriority = (int)ghost->getPriority();
 
@@ -1288,7 +1296,22 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
   widgets::HelpMarker("Create primitive.");
   ImGui::SameLine();
   if (ImGui::Button("Create##CreatePrimitive")) {
-    transactUndoableAction(doc, funcText, createPrimitiveFromGhost);
+    auto const targetLayerId = createPrimitiveLayerId;
+    transactUndoableAction(doc, funcText, [targetLayerId](editor::Document* doc) {
+      auto world = doc->getWorld();
+
+      if (!createPrimitiveFromGhost(doc)) {
+        return false;
+      }
+
+      if (targetLayerId != world->getActiveLayer()->getId()) {
+        if (auto* destinationLayer = world->getLayer(targetLayerId)) {
+          world->movePrimitiveToLayer(world->getPrimitive(world->getNumPrimitives() - 1), destinationLayer);
+        }
+      }
+
+      return true;
+    });
     generateClipping(doc, settings, ED_CLIP_ON_PRIM_CREATE_DELETE);
   }
 }
@@ -2183,6 +2206,27 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   setOperationWidget(doc, primitive, 1);
   setFillRuleWidget(doc, primitive, 1);
 
+  // Layer
+  auto world = doc->getWorld();
+  auto currentLayerId = world->getActiveLayer()->getId();
+
+  widgets::HelpMarker("Move the Primitive to a different Layer.");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(128);
+  auto const pickedLayerId = widgets::LayerPicker("Layer##EditPrimitive", world.get(), currentLayerId);
+
+  if (pickedLayerId != currentLayerId) {
+    if (auto* destinationLayer = world->getLayer(pickedLayerId)) {
+      auto index = primitive->getId();
+      transactUndoableAction(doc, "Move Primitive to Layer", [index, destinationLayer](editor::Document* doc) {
+        auto world = doc->getWorld();
+        world->movePrimitiveToLayer(world->getPrimitive(index), destinationLayer);
+        doc->clearSelections();
+        return true;
+      });
+    }
+  }
+
   // Priority
   int primitivePriority = (int)primitive->getPriority();
   ImGui::SetNextItemWidth(128);
@@ -2646,6 +2690,14 @@ void renderPrefabView(editor::Document* doc, editor::Settings& settings) {
   ImGui::SetNextItemWidth(96);
   ImGui::Combo("Rotation", &prefabRotation, "North\0East\0South\0West\0\0", 4);
 
+  // Layer
+  static uint32_t prefabLayerId = world->getActiveLayer()->getId();
+
+  widgets::HelpMarker("The Layer to place the prefab instance's Primitives and WorldTriggerLines on.");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(128);
+  prefabLayerId = widgets::LayerPicker("Layer##Prefab", world.get(), prefabLayerId);
+
   ImGui::Separator();
 
   // Loaded prefabs
@@ -2665,7 +2717,8 @@ void renderPrefabView(editor::Document* doc, editor::Settings& settings) {
 
     if (ImGui::Button("Create")) {
       float r = prefabRotation * 90.0f;
-      doc->addPrefabInstance(prefab, prefabTileX, prefabTileY, r);
+      auto* destinationLayer = world->getLayer(prefabLayerId);
+      doc->addPrefabInstance(prefab, prefabTileX, prefabTileY, r, destinationLayer ? destinationLayer : world->getActiveLayer());
       generateClipping(doc, settings, ED_CLIP_ON_PREFAB_CREATE_DELETE);
     }
 
@@ -2767,12 +2820,28 @@ void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings)
 void renderCreateTriggerLineView(editor::Document* doc, editor::Settings& settings) {
   auto world = doc->getWorld();
 
+  // Layer
+  static uint32_t createTriggerLineLayerId = world->getActiveLayer()->getId();
+
+  widgets::HelpMarker("The Layer to place the WorldTriggerLine on.");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(128);
+  createTriggerLineLayerId = widgets::LayerPicker("Layer##CreateTriggerLine", world.get(), createTriggerLineLayerId);
+
   if (ImGui::Button("Create at ghost##CreateTriggerLine")) {
-    transactUndoableAction(doc, "Create Trigger Line##CreateTriggerLine", [world](editor::Document* doc) {
+    auto const targetLayerId = createTriggerLineLayerId;
+    transactUndoableAction(doc, "Create Trigger Line##CreateTriggerLine", [world, targetLayerId](editor::Document* doc) {
       auto ghost = world->getPrimitive(0);
       auto triggerLine = new bw::core::WorldTriggerLine(ghost->getPosition() - wp::Vector2(100, 0), ghost->getPosition() + wp::Vector2(100, 0));
 
       world->addTriggerLine(triggerLine);
+
+      if (targetLayerId != world->getActiveLayer()->getId()) {
+        if (auto* destinationLayer = world->getLayer(targetLayerId)) {
+          world->moveTriggerLineToLayer(triggerLine, destinationLayer);
+        }
+      }
+
       return true;
     });
   }
@@ -2781,6 +2850,24 @@ void renderCreateTriggerLineView(editor::Document* doc, editor::Settings& settin
 void renderEditTriggerLineView(editor::Document* doc, editor::Settings& settings, uint32_t triggerLineIndex) {
   auto world = doc->getWorld();
   auto triggerLine = world->getTriggerLine(triggerLineIndex);
+
+  // Layer
+  auto currentLayerId = world->getActiveLayer()->getId();
+
+  widgets::HelpMarker("Move the WorldTriggerLine to a different Layer.");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(128);
+  auto const pickedLayerId = widgets::LayerPicker("Layer##EditTriggerLine", world.get(), currentLayerId);
+
+  if (pickedLayerId != currentLayerId) {
+    if (auto* destinationLayer = world->getLayer(pickedLayerId)) {
+      transactUndoableAction(doc, "Move Trigger Line to Layer", [triggerLine, destinationLayer](editor::Document* doc) {
+        doc->getWorld()->moveTriggerLineToLayer(triggerLine, destinationLayer);
+        doc->clearSelections();
+        return true;
+      });
+    }
+  }
 
   ImGui::Text("ID: %d", triggerLine->getId());
 

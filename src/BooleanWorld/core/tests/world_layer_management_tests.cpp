@@ -138,6 +138,18 @@ void importingALayerWithACollidingIdIsReassignedAFreshOne() {
           "addLayer(Layer*) disturbed the World's existing Layer's id");
 }
 
+void getLayerFindsAnExistingIdAndReportsAMissingOneAsNull() {
+  bw::core::World world(100.0f, 10.0f);
+  auto* second = world.addLayer("Second");
+
+  require(world.getLayer(0) == world.getLayers()[0], "getLayer did not find the default Layer by id");
+  require(world.getLayer(second->getId()) == second, "getLayer did not find an added Layer by id");
+  require(world.getLayer(999) == nullptr, "getLayer did not report a missing id as null");
+
+  bw::core::World const& constWorld = world;
+  require(constWorld.getLayer(second->getId()) == second, "the const overload of getLayer did not find an added Layer");
+}
+
 }  // namespace
 
 int main() {
@@ -149,6 +161,7 @@ int main() {
     reorderingLayersPreservesIdsAndTheActiveLayerIdentity();
     importingALayerWithANonCollidingIdPreservesIt();
     importingALayerWithACollidingIdIsReassignedAFreshOne();
+    getLayerFindsAnExistingIdAndReportsAMissingOneAsNull();
     std::cout << "World's Layer collection supports add/remove/reorder with stable ids and a tracked active Layer\n";
     return 0;
   } catch (std::exception const& error) {

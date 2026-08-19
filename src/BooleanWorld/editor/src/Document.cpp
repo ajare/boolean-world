@@ -500,11 +500,17 @@ void Document::loadTiledPrefabFile(string const& filepath, shared_ptr<bw::core::
   ::openTiledPrefabFile(filepath, world);
 }
 
-void Document::addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation) {
+void Document::addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation, bw::core::Layer* destinationLayer) {
   float prefabScale = BW_PLAYER_RADIUS * BW_PREFAB_PLAYER_RATIO;
   wp::Vector2 offset = {(tileX + 0.5f) * prefabScale, (tileY + 0.5f) * prefabScale};
 
-  // Copy all trigger lines first, updating their index for the Primitives to use
+  auto const* activeLayer = mWorld->getActiveLayer();
+
+  // Copy all trigger lines first, updating their index for the Primitives to
+  // use. Each is placed on the active Layer, then moved to destinationLayer
+  // if that's a different one - the move step is what reassigns each
+  // trigger line's final id, so triggerLineMap must record ids from after
+  // it, not before.
   auto prefabTriggerLines = prefab->getTriggerLines();
   map<uint32_t, uint32_t> triggerLineMap;
 
@@ -519,6 +525,10 @@ void Document::addPrefabInstance(bw::core::World const* prefab, int tileX, int t
         prefabTriggerLine->getSide());
 
     mWorld->addTriggerLine(triggerLineCopy);
+
+    if (destinationLayer != activeLayer) {
+      mWorld->moveTriggerLineToLayer(triggerLineCopy, destinationLayer);
+    }
 
     triggerLineMap[prefabTriggerLine->getId()] = triggerLineCopy->getId();
   }
@@ -546,6 +556,10 @@ void Document::addPrefabInstance(bw::core::World const* prefab, int tileX, int t
     primCopy->updateTransformTriggerLineIndices(triggerLineMap);
 
     mWorld->addPrimitive(primCopy);
+
+    if (destinationLayer != activeLayer) {
+      mWorld->movePrimitiveToLayer(primCopy, destinationLayer);
+    }
   }
 }
 }  // namespace editor

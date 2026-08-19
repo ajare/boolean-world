@@ -480,6 +480,26 @@ Layer const* World::getActiveLayer() const {
   return mLayers[mActiveLayerIndex];
 }
 
+Layer* World::getLayer(uint32_t id) {
+  for (auto* layer : mLayers) {
+    if (layer->getId() == id) {
+      return layer;
+    }
+  }
+
+  return nullptr;
+}
+
+Layer const* World::getLayer(uint32_t id) const {
+  for (auto const* layer : mLayers) {
+    if (layer->getId() == id) {
+      return layer;
+    }
+  }
+
+  return nullptr;
+}
+
 Layer* World::addLayer(string const& name) {
   auto id = mNextLayerId++;
 

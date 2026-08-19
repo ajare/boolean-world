@@ -145,7 +145,7 @@ public:
   // failure.
   bw::core::Layer* importLayer(std::string const& filepath);
 
-  void addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation);
+  void addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation, bw::core::Layer* destinationLayer);
 };
 
 }  // namespace editor

@@ -129,6 +129,11 @@ public:
 
   [[nodiscard]] Layer const* getActiveLayer() const;
 
+  // The Layer with the given stable id, or nullptr if this World has none.
+  [[nodiscard]] Layer* getLayer(uint32_t id);
+
+  [[nodiscard]] Layer const* getLayer(uint32_t id) const;
+
   Layer* addLayer(std::string const& name);
 
   // Takes ownership of layer, appending it to this World's ordered Layer
