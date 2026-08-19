@@ -35,6 +35,28 @@ bool addLayer(Document* doc, string const& name) {
   return true;
 }
 
+// Wired into the same transactUndoableAction/undo/redo mechanism as every
+// other Action. Document's Undo snapshot round-trips a World through
+// serialize/deserialize, which currently only carries the active Layer's
+// content (#164 gives every Layer inline representation); until then, an
+// undo/redo spanning this move won't fully restore a destination Layer that
+// only the move itself populated. This is a pre-existing limitation of every
+// Layer-affecting Action since #159/#160, not something this move introduces.
+bool movePrimitiveToLayer(Document* doc, bw::core::Primitive* primitive, bw::core::Layer* destinationLayer) {
+  auto world = doc->getWorld();
+
+  world->movePrimitiveToLayer(primitive, destinationLayer);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
+bool moveTriggerLineToLayer(Document* doc, bw::core::WorldTriggerLine* triggerLine, bw::core::Layer* destinationLayer) {
+  auto world = doc->getWorld();
+
+  world->moveTriggerLineToLayer(triggerLine, destinationLayer);
+  return true;
+}
+
 bool setWorldDescription(Document* doc, string const& desc) {
   auto world = doc->getWorld();
 

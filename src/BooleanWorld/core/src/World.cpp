@@ -604,6 +604,42 @@ void World::moveLayer(uint32_t fromIndex, uint32_t toIndex) {
   mActiveLayerIndex = (uint32_t)distance(mLayers.begin(), it);
 }
 
+void World::movePrimitiveToLayer(Primitive* primitive, Layer* destinationLayer) {
+  for (auto* layer : mLayers) {
+    if (layer == destinationLayer) {
+      continue;
+    }
+
+    auto const& primitives = layer->getPrimitives();
+    if (find(primitives.begin(), primitives.end(), primitive) == primitives.end()) {
+      continue;
+    }
+
+    destinationLayer->addPrimitive(layer->releasePrimitive(primitive));
+    return;
+  }
+
+  throw CoreException("Primitive not found in any Layer of this World");
+}
+
+void World::moveTriggerLineToLayer(WorldTriggerLine* triggerLine, Layer* destinationLayer) {
+  for (auto* layer : mLayers) {
+    if (layer == destinationLayer) {
+      continue;
+    }
+
+    auto const& triggerLines = layer->getTriggerLines();
+    if (find(triggerLines.begin(), triggerLines.end(), triggerLine) == triggerLines.end()) {
+      continue;
+    }
+
+    destinationLayer->addTriggerLine(layer->releaseTriggerLine(triggerLine));
+    return;
+  }
+
+  throw CoreException("WorldTriggerLine not found in any Layer of this World");
+}
+
 void World::setPlayerStartPosition(wp::Vector2 const& pos) {
   mPlayerStartPosition = pos;
 }
