@@ -729,6 +729,23 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
     transactUndoableAction(doc, "Set Primitive Position",
                            bind(setPlayerStartPosition, placeholders::_1, position));
   }
+
+  // Layers
+  ImGui::Separator();
+  widgets::HelpMarker("Selecting a Layer here also makes it the active Layer, so Create/Edit Primitive writes into it.");
+  ImGui::SameLine();
+  ImGui::Text("Layers");
+
+  auto* activeLayer = world->getActiveLayer();
+  for (auto* layer : world->getLayers()) {
+    ImGui::PushID((int)layer->getId());
+
+    if (ImGui::Selectable(layer->getName().c_str(), layer == activeLayer)) {
+      world->setActiveLayer(layer);
+    }
+
+    ImGui::PopID();
+  }
 }
 
 tuple<string, CreatePrimitiveFunction, bool> renderCreateRegularPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {

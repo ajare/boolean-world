@@ -460,6 +460,18 @@ Layer const* World::getActiveLayer() const {
   return mLayers[mActiveLayerIndex];
 }
 
+void World::setActiveLayer(Layer* layer) {
+  auto numLayers = (uint32_t)mLayers.size();
+  for (uint32_t i = 0; i < numLayers; ++i) {
+    if (mLayers[i] == layer) {
+      mActiveLayerIndex = i;
+      return;
+    }
+  }
+
+  throw CoreException("Layer not found in World");
+}
+
 Layer* World::getLayer(uint32_t id) {
   for (auto* layer : mLayers) {
     if (layer->getId() == id) {

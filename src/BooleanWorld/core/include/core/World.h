@@ -127,6 +127,11 @@ public:
 
   [[nodiscard]] Layer const* getActiveLayer() const;
 
+  // Sets the editor's authoring focus to layer, which must already belong
+  // to this World. Not part of the serialized World state (see
+  // mActiveLayerIndex above), so this is not undoable.
+  void setActiveLayer(Layer* layer);
+
   // The Layer with the given stable id, or nullptr if this World has none.
   [[nodiscard]] Layer* getLayer(uint32_t id);
 

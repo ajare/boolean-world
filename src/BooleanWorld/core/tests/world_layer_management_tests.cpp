@@ -150,6 +150,31 @@ void getLayerFindsAnExistingIdAndReportsAMissingOneAsNull() {
   require(constWorld.getLayer(second->getId()) == second, "the const overload of getLayer did not find an added Layer");
 }
 
+void setActiveLayerUpdatesFocusAndRejectsAForeignLayer() {
+  bw::core::World world(100.0f, 10.0f);
+
+  auto layer1 = world.addLayer("Midground");
+  world.addLayer("Background");
+
+  world.setActiveLayer(layer1);
+  require(world.getActiveLayerIndex() == 1, "setActiveLayer did not move focus to the given Layer");
+  require(world.getActiveLayer() == layer1, "setActiveLayer did not track the given Layer's identity");
+
+  world.setActiveLayer(world.getLayers()[0]);
+  require(world.getActiveLayerIndex() == 0, "setActiveLayer did not move focus back to the first Layer");
+
+  bw::core::Layer foreign(999, "Foreign", 100.0f, 10.0f);
+  bool threw = false;
+  try {
+    world.setActiveLayer(&foreign);
+  } catch (std::exception const&) {
+    threw = true;
+  }
+
+  require(threw, "setActiveLayer accepted a Layer that does not belong to this World");
+  require(world.getActiveLayerIndex() == 0, "a rejected setActiveLayer call moved focus anyway");
+}
+
 }  // namespace
 
 int main() {
@@ -162,6 +187,7 @@ int main() {
     importingALayerWithANonCollidingIdPreservesIt();
     importingALayerWithACollidingIdIsReassignedAFreshOne();
     getLayerFindsAnExistingIdAndReportsAMissingOneAsNull();
+    setActiveLayerUpdatesFocusAndRejectsAForeignLayer();
     std::cout << "World's Layer collection supports add/remove/reorder with stable ids and a tracked active Layer\n";
     return 0;
   } catch (std::exception const& error) {
