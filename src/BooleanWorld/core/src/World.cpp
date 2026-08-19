@@ -182,10 +182,6 @@ void World::preSerialization(SerializationWorkData& workData) const {
 }
 
 void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) const {
-  // The .world format is still a flat World of Primitives and TriggerLines:
-  // it is the active Layer's content that is written out, unchanged.
-  auto const* activeLayer = getActiveLayer();
-
   serializer->beginMap("root");
   {
     serializer->beginMap("world");
@@ -207,35 +203,18 @@ void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
         serializer->endMap();  // tiling
       }
 
-      serializer->beginArray("primitives");
+      // Every Layer this World owns is written inline, each self-contained
+      // (id, name, extents, its own Primitives/WorldTriggerLines), in order.
+      // Neither the active-layer index nor the generation layer-selection
+      // mask is part of this: both are transient authoring/runtime state
+      // (docs/adr/0013).
+      serializer->beginArray("layers");
       {
-        for (auto const* primitive : activeLayer->getPrimitives()) {
-          if (!workData.includeGhostPrimitives &&
-              (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) != 0) {
-            continue;
-          }
-
-          // Serialize the type, so we can instantiate it ahead of time during deserialization.
-          serializer->beginMap("primitive");
-          {
-            serializer->writeString("type", primitive->getType());
-
-            primitive->serialize(serializer, workData);
-
-            serializer->endMap();  // primitive
-          }
+        for (auto const* layer : mLayers) {
+          layer->serialize(serializer, workData);
         }
 
-        serializer->endArray();  // primitives
-      }
-
-      serializer->beginArray("triggerLines");
-      {
-        for (auto const* triggerLine : activeLayer->getTriggerLines()) {
-          triggerLine->serialize(serializer, workData);
-        }
-
-        serializer->endArray();  // triggerlines
+        serializer->endArray();  // layers
       }
 
       serializer->endMap();  // world
@@ -246,8 +225,15 @@ void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
 }
 
 bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) {
-  workData.vtoIdToVtoMap.clear();
-  workData.vtoIdToParentMap.clear();
+  // <= 0 conventionally means "keep whatever grid size the target World
+  // already has" (see SerializationWorkData). Deserializing now constructs
+  // fresh Layer objects rather than refilling the target's existing ones, so
+  // that convention is honoured explicitly: fall back to the size the
+  // pre-existing active Layer's grid was built with, read before it and its
+  // siblings are replaced below.
+  if (workData.accelGridSize <= 0.0f) {
+    workData.accelGridSize = getPrimitiveAccelerationGridSize();
+  }
 
   // Read in to temporary objects
   string worldName, description;
@@ -257,10 +243,7 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   float stepThreshold;
   PrefabAreaTilingType prefabAreaTilingType;
   uint32_t prefabAreaTileTypes;
-  vector<unique_ptr<Primitive>> primitives;
-  vector<unique_ptr<WorldTriggerLine>> triggerLines;
-
-  uint32_t numVertices{0};
+  vector<unique_ptr<Layer>> layers;
 
   try {
     serializer->beginMap("root");
@@ -284,101 +267,33 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
           serializer->endMap();  // tiling
         }
 
-        serializer->beginArray("primitives");
+        // Each Layer parses and validates its own Primitives/
+        // WorldTriggerLines - including its own parent-chain cycle check -
+        // entirely on its own (Layer::deserializeImpl), self-contained
+        // exactly as its serialized form is.
+        serializer->beginArray("layers");
         {
           while (serializer->nextArrayItem()) {
-            serializer->beginMap("primitive");
-            {
-              auto primitiveType = serializer->readString("type");
+            auto layer = make_unique<Layer>();
+            auto const deserialized = layer->deserialize(serializer, workData);
 
-              // Instantiate primitive and deserialize
-              auto primitive = unique_ptr<Primitive>(instantiatePrimitive(primitiveType));
+            // A Layer that deserializes successfully may still have
+            // recorded warnings (e.g. an unknown primitive parent id) that
+            // this World's own callers expect to see.
+            copyErrorsAndWarnings(layer.get(), !deserialized, true);
 
-              if (!primitive->deserialize(serializer, workData)) {
-                copyErrorsAndWarnings(primitive.get(), true, true);
-                return false;
-              }
-
-              numVertices += primitive->getNumVertices();
-
-              if (numVertices > BW_VERTEX_COUNT_USEABLE_MAX) {
-                throw CoreException("The World contains too many vertices");
-              }
-
-              primitives.push_back(move(primitive));
-
-              serializer->endMap();  // primitive
-            }
-          }
-
-          serializer->endArray();  // primitives
-        }
-
-        serializer->beginArray("triggerLines");
-        {
-          while (serializer->nextArrayItem()) {
-            // Instantiate triggerline and deserialize
-            auto triggerLine = make_unique<WorldTriggerLine>();
-
-            if (!triggerLine->deserialize(serializer, workData)) {
-              copyErrorsAndWarnings(triggerLine.get(), true, true);
+            if (!deserialized) {
               return false;
             }
 
-            triggerLines.push_back(move(triggerLine));
+            layers.push_back(move(layer));
           }
 
-          serializer->endArray();  // triggerlines
+          serializer->endArray();  // layers
         }
+
+        serializer->endMap();  // world
       }
-
-      // Validate parent chains before linking the temporary primitives.
-      map<uint32_t, uint8_t> parentVisitState;
-      function<bool(uint32_t)> validateParentChain = [&](uint32_t id) {
-        auto& state = parentVisitState[id];
-        if (state == 1) {
-          return false;
-        }
-        if (state == 2) {
-          return true;
-        }
-
-        state = 1;
-        auto parentIdIt = workData.vtoIdToParentMap.find(id);
-        if (parentIdIt != workData.vtoIdToParentMap.end() && parentIdIt->second >= 0) {
-          auto const parentId = uint32_t(parentIdIt->second);
-          if (workData.vtoIdToVtoMap.contains(parentId) &&
-              !validateParentChain(parentId)) {
-            return false;
-          }
-        }
-        state = 2;
-        return true;
-      };
-
-      for (auto const& item : workData.vtoIdToVtoMap) {
-        if (!validateParentChain(item.first)) {
-          throw CoreException("Primitive parent chain contains a cycle");
-        }
-      }
-
-      // Fix up VertexTransformer parents.
-      for (auto const& [id, vt] : workData.vtoIdToVtoMap) {
-        auto parentIdIt = workData.vtoIdToParentMap.find(id);
-        if (parentIdIt == workData.vtoIdToParentMap.end() || parentIdIt->second < 0) {
-          continue;
-        }
-
-        auto const parentId = uint32_t(parentIdIt->second);
-        auto parentIt = workData.vtoIdToVtoMap.find(parentId);
-        if (parentIt == workData.vtoIdToVtoMap.end()) {
-          addDeserializationWarning(format("Unknown primitive parent id {}", parentId));
-          continue;
-        }
-        vt->setParent(parentIt->second);
-      }
-
-      serializer->endMap();  // world
     }
 
     serializer->endMap();  // root
@@ -387,8 +302,30 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     return false;
   }
 
-  if (primitives.empty() && !workData.allowEmptyWorld) {
+  if (layers.empty()) {
+    addDeserializationError("World file contains no layers!");
+
+    return false;
+  }
+
+  uint32_t numPrimitives{0};
+  uint32_t numVertices{0};
+  for (auto const& layer : layers) {
+    numPrimitives += layer->getNumPrimitives();
+
+    for (auto const* primitive : layer->getPrimitives()) {
+      numVertices += primitive->getNumVertices();
+    }
+  }
+
+  if (numPrimitives == 0 && !workData.allowEmptyWorld) {
     addDeserializationError("World file contains no primitives!");
+
+    return false;
+  }
+
+  if (numVertices > BW_VERTEX_COUNT_USEABLE_MAX) {
+    addDeserializationError("The World contains too many vertices");
 
     return false;
   }
@@ -404,37 +341,26 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mPrefabAreaTilingType = prefabAreaTilingType;
   mPrefabAreaTileTypes = prefabAreaTileTypes;
 
+  for (auto layer : mLayers) {
+    delete layer;
+  }
+  mLayers.clear();
+
+  uint32_t nextLayerId{0};
+  for (auto& layer : layers) {
+    nextLayerId = max(nextLayerId, layer->getId() + 1);
+    mLayers.push_back(layer.release());
+  }
+  mNextLayerId = nextLayerId;
+
   // The active Layer index is never part of the serialized format: a
   // deserialized World always starts focused on its first Layer.
   mActiveLayerIndex = 0;
 
-  // Re-home the active Layer onto the loaded extents, then create accel grids
-  // before adding primitives.
-  auto* activeLayer = getActiveLayer();
-  activeLayer->setExtents(mExtents);
-  activeLayer->rebuildAccelerationGrids(workData.accelGridSize);
-
-  // Add TriggerLines before Primitives, as we will need them to set
-  // Primitive initial values
-  for (auto& triggerLine : triggerLines) {
-    addTriggerLine(triggerLine.get());
-    triggerLine.release();
-  }
-
-  // Fix up Primitive indices.  Because we might be dealing with
-  // ghost Primitives, a World might have been saved which does not
-  // have sequential indices.  We need to make sure this is enforecd, though.
-  // Invalidate each primitive so it recalculates its transformed vertices.
-  for (auto& primitive : primitives) {
-    auto* addedPrimitive = primitive.get();
-    addPrimitive(addedPrimitive);
-    primitive.release();
-    addedPrimitive->_invalidate();
-  }
-
   mFrameNumber = 0;
   mLastPrimitiveUpdateFrameNumber = 0;
-  activeLayer->_setFrameNumber(0);
+
+  auto* activeLayer = getActiveLayer();
 
   // The generation layer selection is never serialized: a loaded World always
   // starts scoped to just its active Layer, never a mask carried over from
@@ -443,20 +369,34 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     mDataGenerator->_resetLayerSelection(SelectLayer(activeLayer->getId()));
   }
 
-  // Calculate vertices/bounds to initialise
-  for (auto primitive : activeLayer->getPrimitives()) {
-    primitive->updateTime(0.0, {wp::Vector2::ZERO,
-                                BW_PLAYER_RADIUS,
-                                BW_PLAYER_FOV,
-                                BW_PLAYER_VIEW_DISTANCE,
-                                false,
-                                false,
-                                0});
+  // Calculate vertices/bounds to initialise every Layer's Primitives, not
+  // just the active one: a generation may fold across any selected set.
+  for (auto* layer : mLayers) {
+    layer->_setFrameNumber(0);
 
-    primitive->setInputs(wp::Vector2::ZERO, 0.0f, activeLayer->_getTriggerLineStorage());
-    primitive->calculateAnimationValues();
-    primitive->updateVertexPositions();
-    primitive->calculateBounds();
+    for (auto primitive : layer->getPrimitives()) {
+      primitive->mWorld = this;
+
+      primitive->updateTime(0.0, {wp::Vector2::ZERO,
+                                  BW_PLAYER_RADIUS,
+                                  BW_PLAYER_FOV,
+                                  BW_PLAYER_VIEW_DISTANCE,
+                                  false,
+                                  false,
+                                  0});
+
+      primitive->setInputs(wp::Vector2::ZERO, 0.0f, layer->_getTriggerLineStorage());
+      primitive->calculateAnimationValues();
+      primitive->updateVertexPositions();
+
+      // Layer::addPrimitive (used internally by Layer::deserializeImpl) does
+      // not compute a deserialized Primitive's bounds - only World::
+      // addPrimitive does, for normal authoring adds. Do that now that
+      // mWorld is bound, so the acceleration grid ends up holding this
+      // Primitive at its real bounds rather than its default-constructed
+      // ones.
+      primitive->invalidatePostTransform(true, true);
+    }
   }
 
   return true;
@@ -852,7 +792,18 @@ uint32_t World::convertPrimitivesToMesh(vector<uint32_t> const& indices) {
 void World::primitiveChanged(Primitive const* primitive) {
   mLastPrimitiveUpdateFrameNumber = mFrameNumber;
 
-  getActiveLayer()->primitiveChanged(primitive);
+  // A mutated Primitive is not necessarily on the active Layer - #163 lets
+  // content live on any Layer - so its own acceleration grid, not
+  // necessarily the active Layer's, is the one that needs updating.
+  for (auto* layer : mLayers) {
+    auto const& primitives = layer->getPrimitives();
+    if (find(primitives.begin(), primitives.end(), primitive) != primitives.end()) {
+      layer->primitiveChanged(primitive);
+      return;
+    }
+  }
+
+  throw CoreException("Primitive not found in any Layer of this World.");
 }
 
 Primitive* World::getPrimitive(uint32_t index) {

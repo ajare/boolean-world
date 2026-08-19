@@ -276,25 +276,54 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
 
       serializer->endMap();  // layer
     }
+    // Validate parent chains before linking the temporary primitives.
+    map<uint32_t, uint8_t> parentVisitState;
+    function<bool(uint32_t)> validateParentChain = [&](uint32_t id) {
+      auto& state = parentVisitState[id];
+      if (state == 1) {
+        return false;
+      }
+      if (state == 2) {
+        return true;
+      }
+
+      state = 1;
+      auto parentIdIt = workData.vtoIdToParentMap.find(id);
+      if (parentIdIt != workData.vtoIdToParentMap.end() && parentIdIt->second >= 0) {
+        auto const parentId = uint32_t(parentIdIt->second);
+        if (workData.vtoIdToVtoMap.contains(parentId) &&
+            !validateParentChain(parentId)) {
+          return false;
+        }
+      }
+      state = 2;
+      return true;
+    };
+
+    for (auto const& item : workData.vtoIdToVtoMap) {
+      if (!validateParentChain(item.first)) {
+        throw CoreException("Primitive parent chain contains a cycle");
+      }
+    }
+
+    // Fix up VertexTransformer parents.
+    for (auto const& [vtoId, vt] : workData.vtoIdToVtoMap) {
+      auto parentIdIt = workData.vtoIdToParentMap.find(vtoId);
+      if (parentIdIt == workData.vtoIdToParentMap.end() || parentIdIt->second < 0) {
+        continue;
+      }
+
+      auto const parentId = uint32_t(parentIdIt->second);
+      auto parentIt = workData.vtoIdToVtoMap.find(parentId);
+      if (parentIt == workData.vtoIdToVtoMap.end()) {
+        addDeserializationWarning(format("Unknown primitive parent id {}", parentId));
+        continue;
+      }
+      vt->setParent(parentIt->second);
+    }
   } catch (exception& e) {
     addDeserializationError(e.what());
     return false;
-  }
-
-  // Fix up VertexTransformer parents.
-  for (auto const& [vtoId, vt] : workData.vtoIdToVtoMap) {
-    auto parentIdIt = workData.vtoIdToParentMap.find(vtoId);
-    if (parentIdIt == workData.vtoIdToParentMap.end() || parentIdIt->second < 0) {
-      continue;
-    }
-
-    auto const parentId = uint32_t(parentIdIt->second);
-    auto parentIt = workData.vtoIdToVtoMap.find(parentId);
-    if (parentIt == workData.vtoIdToVtoMap.end()) {
-      addDeserializationWarning(format("Unknown primitive parent id {}", parentId));
-      continue;
-    }
-    vt->setParent(parentIt->second);
   }
 
   // Commit

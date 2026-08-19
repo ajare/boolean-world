@@ -158,7 +158,12 @@ void deserializationReusesPrimitiveCreators() {
   for (int reload = 0; reload < 2; ++reload) {
     require(deserializeWorld(yaml, &target),
             "world with repeated primitive constructors did not deserialize");
-    require(target.getNumPrimitives() == 8 * (reload + 1),
+    // Deserializing replaces a World's Layers wholesale (matching how it
+    // already replaces every other World property), so a second reload does
+    // not accumulate primitives on top of the first - this loop instead
+    // exercises that the primitive-type-creator map is reused correctly
+    // across repeated deserialize() calls on the same World.
+    require(target.getNumPrimitives() == 8,
             "world did not retain every repeatedly constructed primitive");
     for (uint32_t i = 0; i < target.getNumPrimitives(); ++i) {
       require(dynamic_cast<bw::core::RectanglePolygon*>(target.getPrimitive(i)),
