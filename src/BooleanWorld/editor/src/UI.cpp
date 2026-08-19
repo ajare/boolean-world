@@ -12,6 +12,7 @@
 
 #include <nfd/nfd.h>
 
+#include <core/LayerBuildStep.h>
 #include <core/WorldData.h>
 #include <core/RegularPolygon.h>
 #include <core/CirclePolygon.h>
@@ -2817,6 +2818,30 @@ void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings)
   }
 }
 
+void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
+  auto world = doc->getWorld();
+  auto* layer = world->getActiveLayer();
+  auto numSteps = layer->getNumSteps();
+
+  widgets::HelpMarker("Disabling a step and rebuilding removes its Primitives from this Layer; re-enabling restores them.");
+
+  for (uint32_t i = 0; i < numSteps; ++i) {
+    ImGui::PushID(i);
+
+    auto* step = layer->getStep(i);
+    bool enabled = step->isEnabled();
+
+    ImGui::Text("%u :: %s", i, step->getType().c_str());
+    ImGui::SameLine();
+
+    if (widgets::ToggleButton("##StepEnabled", "Enabled", &enabled)) {
+      transactUndoableAction(doc, format("Toggle Layer Step {}", i), bind(setLayerBuildStepEnabled, placeholders::_1, layer, i, enabled));
+    }
+
+    ImGui::PopID();
+  }
+}
+
 void renderCreateTriggerLineView(editor::Document* doc, editor::Settings& settings) {
   auto world = doc->getWorld();
 
@@ -3078,6 +3103,10 @@ void renderCombinedPanel(
       if (ImGui::CollapsingHeader("Edit Primitive", nullptr, windowFlags)) {
         renderEditPrimitiveView(doc, settings, globalTime);
       }
+    }
+
+    if (ImGui::CollapsingHeader("Layer", nullptr, windowFlags)) {
+      renderLayerStepsView(doc, settings);
     }
 
     if (ImGui::CollapsingHeader("Clip Order", nullptr, windowFlags)) {

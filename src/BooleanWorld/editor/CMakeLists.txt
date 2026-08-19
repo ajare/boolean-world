@@ -171,4 +171,23 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_editor_material_colour_tests)
     add_test(NAME boolean_world_editor_material_colour
              COMMAND boolean_world_editor_material_colour_tests)
+
+    add_executable(boolean_world_editor_layer_build_step_actions_tests
+        tests/layer_build_step_actions_tests.cpp
+        src/Actions.cpp
+        src/Document.cpp
+        src/PrimitiveDefaults.cpp
+        src/Undo.cpp)
+    target_include_directories(boolean_world_editor_layer_build_step_actions_tests PRIVATE include)
+    target_compile_definitions(boolean_world_editor_layer_build_step_actions_tests PRIVATE
+        YAML_CPP_STATIC_DEFINE)
+    target_link_libraries(boolean_world_editor_layer_build_step_actions_tests PRIVATE
+        core vendor::spdlog ext::glew)
+    target_compile_features(boolean_world_editor_layer_build_step_actions_tests PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_layer_build_step_actions_tests PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_layer_build_step_actions_tests)
+    bw_output_dirs(boolean_world_editor_layer_build_step_actions_tests)
+    bw_deploy_runtime_dlls(boolean_world_editor_layer_build_step_actions_tests)
+    add_test(NAME boolean_world_editor_layer_build_step_actions
+             COMMAND boolean_world_editor_layer_build_step_actions_tests)
 endif()

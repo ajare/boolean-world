@@ -35,6 +35,12 @@ bool addLayer(Document* doc, string const& name) {
   return true;
 }
 
+bool setLayerBuildStepEnabled(Document* doc, bw::core::Layer* layer, uint32_t stepIndex, bool enabled) {
+  layer->setStepEnabled(stepIndex, enabled);
+  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+  return true;
+}
+
 // Wired into the same transactUndoableAction/undo/redo mechanism as every
 // other Action. Document's Undo snapshot round-trips a World through
 // serialize/deserialize, which currently only carries the active Layer's
