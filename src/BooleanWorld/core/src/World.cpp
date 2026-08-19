@@ -888,17 +888,13 @@ void World::getGridCellFrameNumber(uint32_t cellIndex, frame_number_type* frameN
   getActiveLayer()->getGridCellFrameNumber(cellIndex, frameNumber);
 }
 
-vector<Primitive*> World::getPrimitivesInGridCell(uint32_t cellIndex, uint8_t activeLayer) const {
+vector<Primitive*> World::getPrimitivesInGridCell(uint32_t cellIndex) const {
   vector<Primitive*> result;
 
   auto const* layer = getActiveLayer();
 
   for (auto primIndex : layer->getPrimitiveIndicesInGridCell(cellIndex)) {
-    auto prim = layer->getPrimitive(primIndex);
-
-    if (prim->getLayer() == activeLayer) {
-      result.push_back(prim);
-    }
+    result.push_back(layer->getPrimitive(primIndex));
   }
 
   return result;
@@ -990,11 +986,12 @@ void World::update(float frameTime, WorldUpdateData const& data, wp::Vector2 con
 
     // This is local trigger-query acceleration, not primitive generation culling
     // (ADR-0007): every primitive remains in every selected generation.
+    //
+    // A WorldTriggerLine no longer carries a layer tag: it belongs to the
+    // Layer that owns it, and these come from the active Layer. Scoping
+    // collisions to the selected set of Layer ids is #162.
     for (auto triggerLine : findTriggerLines(sweptPlayerBounds)) {
-      auto layer = triggerLine->getLayer();
-      if (layer == BW_LAYER_ALL || data.layerSelection.test(size_t(layer))) {
-        triggerLine->checkCollide(mPrevPlayerPosition, data.entityPosition, data.entityRadius);
-      }
+      triggerLine->checkCollide(mPrevPlayerPosition, data.entityPosition, data.entityRadius);
     }
   }
 

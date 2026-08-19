@@ -132,7 +132,7 @@ void placementAppendsDefaultsAndIsOneUndoableAction() {
       bw::core::Primitive::FillRule::NonZero,
       editor::PrimitiveFieldRectangleXyRatio);
   editor::_setPrimitiveParameters(
-      &expected, 0, 0, {}, {}, primitives[0].size, primitives[0].angle);
+      &expected, 0, {}, {}, primitives[0].size, primitives[0].angle);
   editor::setPrimitiveDefaultMaterials(&expected);
 
   for (size_t i = 0; i < primitives.size(); ++i) {
@@ -178,7 +178,7 @@ void placementAppendsDefaultsAndIsOneUndoableAction() {
                     bw::core::Primitive::Operation::Union &&
                 primitive->getFillRule() ==
                     bw::core::Primitive::FillRule::NonZero &&
-                primitive->getLayer() == 0 && primitive->getPriority() == 0 &&
+                primitive->getPriority() == 0 &&
                 primitive->getOrientation() == 0.0f && primitive->isStatic(),
             "a placed primitive did not use normal editor defaults");
     require(sameProperties(primitive->getProperties(), expected.getProperties()),

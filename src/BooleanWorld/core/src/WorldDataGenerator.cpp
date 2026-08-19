@@ -12,13 +12,14 @@ using namespace std;
 
 vector<Primitive*> selectAndOrderPrimitives(
     World const& world, LayerSelection const& selection) {
-  vector<Primitive*> primitives;
-  for (auto primitive : world.getPrimitives()) {
-    auto const layer = primitive->getLayer();
-    if (layer == BW_LAYER_ALL || selection.test(size_t(layer))) {
-      primitives.push_back(primitive);
-    }
-  }
+  // A Primitive no longer carries a layer tag to filter on: it belongs to
+  // whichever Layer owns it, and World's facade exposes the active Layer's
+  // content. Folding across the selected set of Layer ids is #162; until
+  // then every Primitive the World hands out participates.
+  BW_UNUSED(selection);
+
+  auto primitives = world.getPrimitives();
+
   stable_sort(
       primitives.begin(), primitives.end(),
       WorldDataGenerator::SortPrimitivesByPriority());

@@ -431,7 +431,7 @@ void Document::loadTiledPrefabFile(string const& filepath, shared_ptr<bw::core::
   ::openTiledPrefabFile(filepath, world);
 }
 
-void Document::addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation, uint8_t layer) {
+void Document::addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation) {
   float prefabScale = BW_PLAYER_RADIUS * BW_PREFAB_PLAYER_RATIO;
   wp::Vector2 offset = {(tileX + 0.5f) * prefabScale, (tileY + 0.5f) * prefabScale};
 
@@ -445,7 +445,6 @@ void Document::addPrefabInstance(bw::core::World const* prefab, int tileX, int t
       return point + offset;
     };
     auto triggerLineCopy = new bw::core::WorldTriggerLine(
-        prefabTriggerLine->getLayer(),
         transformPoint(prefabTriggerLine->getPoint(0)),
         transformPoint(prefabTriggerLine->getPoint(1)),
         prefabTriggerLine->getSide());
@@ -467,7 +466,6 @@ void Document::addPrefabInstance(bw::core::World const* prefab, int tileX, int t
 
     primCopy->setPosition(newPos + offset);
     primCopy->setOrientation(rotation);
-    primCopy->setLayer(layer);
 
     // Update transform offset
     primCopy->setTransformOffset(prefabPrim->getTransformOffset().rotatedClockwiseCopy(rotation));

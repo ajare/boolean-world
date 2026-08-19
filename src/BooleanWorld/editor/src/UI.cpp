@@ -730,7 +730,7 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
   }
 }
 
-tuple<string, CreatePrimitiveFunction, bool> renderCreateRegularPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t layer, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
+tuple<string, CreatePrimitiveFunction, bool> renderCreateRegularPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
   static int numSides = 3;
   bool modified{false};
 
@@ -745,11 +745,11 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateRegularPolygon(editor::
 
   return {
       format("Create Regular {}-Gon Primitive", numSides),
-      bind(createRegularPolygonPrimitive, op, fillRule, (uint32_t)numSides, layer, priority, position, scale, angle),
+      bind(createRegularPolygonPrimitive, op, fillRule, (uint32_t)numSides, priority, position, scale, angle),
       modified};
 }
 
-tuple<string, CreatePrimitiveFunction, bool> renderCreateCirclePolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t layer, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
+tuple<string, CreatePrimitiveFunction, bool> renderCreateCirclePolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
   static float resolution = 0.5f;
   bool modified{false};
 
@@ -764,11 +764,11 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateCirclePolygon(editor::D
 
   return {
       "Create Circle Primitive",
-      bind(createCirclePrimitive, op, fillRule, resolution, layer, priority, position, scale, angle),
+      bind(createCirclePrimitive, op, fillRule, resolution, priority, position, scale, angle),
       modified};
 }
 
-tuple<string, CreatePrimitiveFunction, bool> renderCreateCircleSegmentPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t layer, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
+tuple<string, CreatePrimitiveFunction, bool> renderCreateCircleSegmentPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
   static float arcLength = 90.0f;
   static float resolution = 0.5f;
   bool modified{false};
@@ -793,11 +793,11 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateCircleSegmentPolygon(ed
 
   return {
       "Create Circle Segment Primitive",
-      bind(createCircleSegmentPrimitive, op, fillRule, arcLength, resolution, layer, priority, position, scale, angle),
+      bind(createCircleSegmentPrimitive, op, fillRule, arcLength, resolution, priority, position, scale, angle),
       modified};
 }
 
-tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t layer, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
+tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
   static float thickness = 0.5f, resolution = 0.5f;
   bool modified{false};
 
@@ -820,11 +820,11 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusPolygon(editor::Do
 
   return {
       "Create Torus Primitive",
-      bind(createTorusPrimitive, op, fillRule, thickness, resolution, layer, priority, position, scale, angle),
+      bind(createTorusPrimitive, op, fillRule, thickness, resolution, priority, position, scale, angle),
       modified};
 }
 
-tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusSegmentPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t layer, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
+tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusSegmentPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
   static float thickness = 0.5f;
   static float arcLength = 90.0f;
   static float resolution = 0.5f;
@@ -858,11 +858,11 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusSegmentPolygon(edi
 
   return {
       "Create Torus Segment Primitive",
-      bind(createTorusSegmentPrimitive, op, fillRule, thickness, arcLength, resolution, layer, priority, position, scale, angle),
+      bind(createTorusSegmentPrimitive, op, fillRule, thickness, arcLength, resolution, priority, position, scale, angle),
       modified};
 }
 
-tuple<string, CreatePrimitiveFunction, bool> renderCreateRectanglePolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t layer, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
+tuple<string, CreatePrimitiveFunction, bool> renderCreateRectanglePolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
   static float xyRatio = 2.0f;
   bool modified{false};
 
@@ -877,11 +877,11 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateRectanglePolygon(editor
 
   return {
       "Create Rectangle Primitive",
-      bind(createRectanglePrimitive, op, fillRule, xyRatio, layer, priority, position, scale, angle),
+      bind(createRectanglePrimitive, op, fillRule, xyRatio, priority, position, scale, angle),
       modified};
 }
 
-tuple<string, CreatePrimitiveFunction, bool> renderCreateSuperformulaPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t layer, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
+tuple<string, CreatePrimitiveFunction, bool> renderCreateSuperformulaPolygon(editor::Document* doc, bw::core::Primitive::Operation op, bw::core::Primitive::FillRule fillRule, uint8_t priority, wp::Vector2 const& position, float scale, float angle) {
   static float resolution = 0.5f;
   static float values[6] = {1.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
   bool modified{false};
@@ -1009,7 +1009,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateSuperformulaPolygon(edi
 
   return {
       "Create Superformula Primitive",
-      bind(createSuperformulaPrimitive, op, fillRule, values, resolution, layer, priority, position, scale, angle),
+      bind(createSuperformulaPrimitive, op, fillRule, values, resolution, priority, position, scale, angle),
       modified};
 }
 
@@ -1197,17 +1197,6 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
   // Fill rule
   createFillRule = setFillRuleWidget(doc, ghost, 0);
 
-  // Layer
-  static int primitiveLayer = (int)settings.activeLayer;
-
-  widgets::HelpMarker("The layer to place the Primitive on");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-
-  if (ImGui::SliderInt("Layer##CreatePrimitive", &primitiveLayer, BW_LAYER_MIN_VALUE, BW_LAYER_MAX_VALUE)) {
-    modified = true;
-  }
-
   // Priority
   int primitivePriority = (int)ghost->getPriority();
 
@@ -1256,31 +1245,31 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
   tuple<string, CreatePrimitiveFunction, bool> funcDetails;
   switch (selectedPrimitiveType) {
     case 0:
-      funcDetails = renderCreateRegularPolygon(doc, createOperation, createFillRule, (uint8_t)primitiveLayer, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
+      funcDetails = renderCreateRegularPolygon(doc, createOperation, createFillRule, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
       break;
 
     case 1:
-      funcDetails = renderCreateCirclePolygon(doc, createOperation, createFillRule, (uint8_t)primitiveLayer, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
+      funcDetails = renderCreateCirclePolygon(doc, createOperation, createFillRule, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
       break;
 
     case 2:
-      funcDetails = renderCreateCircleSegmentPolygon(doc, createOperation, createFillRule, (uint8_t)primitiveLayer, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
+      funcDetails = renderCreateCircleSegmentPolygon(doc, createOperation, createFillRule, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
       break;
 
     case 3:
-      funcDetails = renderCreateTorusPolygon(doc, createOperation, createFillRule, (uint8_t)primitiveLayer, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
+      funcDetails = renderCreateTorusPolygon(doc, createOperation, createFillRule, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
       break;
 
     case 4:
-      funcDetails = renderCreateTorusSegmentPolygon(doc, createOperation, createFillRule, (uint8_t)primitiveLayer, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
+      funcDetails = renderCreateTorusSegmentPolygon(doc, createOperation, createFillRule, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
       break;
 
     case 5:
-      funcDetails = renderCreateRectanglePolygon(doc, createOperation, createFillRule, (uint8_t)primitiveLayer, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
+      funcDetails = renderCreateRectanglePolygon(doc, createOperation, createFillRule, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
       break;
 
     case 6:
-      funcDetails = renderCreateSuperformulaPolygon(doc, createOperation, createFillRule, (uint8_t)primitiveLayer, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
+      funcDetails = renderCreateSuperformulaPolygon(doc, createOperation, createFillRule, (uint8_t)primitivePriority, primitivePos, primitiveScale, primitiveAngle);
       break;
 
     default:
@@ -2194,18 +2183,6 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   setOperationWidget(doc, primitive, 1);
   setFillRuleWidget(doc, primitive, 1);
 
-  // Layer
-  int primitiveLayer = (int)primitive->getLayer();
-
-  widgets::HelpMarker("The layer to place the Primitive on");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-
-  if (ImGui::SliderInt("Layer##EditPrimitive", &primitiveLayer, BW_LAYER_MIN_VALUE, BW_LAYER_MAX_VALUE)) {
-    transactUndoableAction(doc, "Set Primitive Layer",
-                           bind(setPrimitiveLayer, placeholders::_1, primitive, (uint8_t)primitiveLayer));
-  }
-
   // Priority
   int primitivePriority = (int)primitive->getPriority();
   ImGui::SetNextItemWidth(128);
@@ -2641,7 +2618,6 @@ void renderPrefabView(editor::Document* doc, editor::Settings& settings) {
   // Prefab placement settings
   static int prefabTileX = 0, prefabTileY = 0;
   static int prefabRotation = 0;
-  static int prefabLayer = 0;
 
   ImGui::SetNextItemWidth(96);
   if (ImGui::InputInt("Tile X", &prefabTileX, 1, 5, ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -2670,11 +2646,6 @@ void renderPrefabView(editor::Document* doc, editor::Settings& settings) {
   ImGui::SetNextItemWidth(96);
   ImGui::Combo("Rotation", &prefabRotation, "North\0East\0South\0West\0\0", 4);
 
-  ImGui::SameLine();
-
-  ImGui::SetNextItemWidth(96);
-  ImGui::SliderInt("Layer", &prefabLayer, BW_LAYER_MIN_VALUE, BW_LAYER_MAX_VALUE);
-
   ImGui::Separator();
 
   // Loaded prefabs
@@ -2694,7 +2665,7 @@ void renderPrefabView(editor::Document* doc, editor::Settings& settings) {
 
     if (ImGui::Button("Create")) {
       float r = prefabRotation * 90.0f;
-      doc->addPrefabInstance(prefab, prefabTileX, prefabTileY, r, (uint8_t)prefabLayer);
+      doc->addPrefabInstance(prefab, prefabTileX, prefabTileY, r);
       generateClipping(doc, settings, ED_CLIP_ON_PREFAB_CREATE_DELETE);
     }
 
@@ -2796,15 +2767,10 @@ void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings)
 void renderCreateTriggerLineView(editor::Document* doc, editor::Settings& settings) {
   auto world = doc->getWorld();
 
-  static int layer = 0;
-
-  ImGui::SetNextItemWidth(128);
-  ImGui::SliderInt("Layer##CreateTriggerLine", &layer, BW_LAYER_MIN_VALUE, BW_LAYER_MAX_VALUE);
-
   if (ImGui::Button("Create at ghost##CreateTriggerLine")) {
     transactUndoableAction(doc, "Create Trigger Line##CreateTriggerLine", [world](editor::Document* doc) {
       auto ghost = world->getPrimitive(0);
-      auto triggerLine = new bw::core::WorldTriggerLine((uint8_t)layer, ghost->getPosition() - wp::Vector2(100, 0), ghost->getPosition() + wp::Vector2(100, 0));
+      auto triggerLine = new bw::core::WorldTriggerLine(ghost->getPosition() - wp::Vector2(100, 0), ghost->getPosition() + wp::Vector2(100, 0));
 
       world->addTriggerLine(triggerLine);
       return true;
@@ -2815,13 +2781,6 @@ void renderCreateTriggerLineView(editor::Document* doc, editor::Settings& settin
 void renderEditTriggerLineView(editor::Document* doc, editor::Settings& settings, uint32_t triggerLineIndex) {
   auto world = doc->getWorld();
   auto triggerLine = world->getTriggerLine(triggerLineIndex);
-
-  int layer = (int)triggerLine->getLayer();
-
-  ImGui::SetNextItemWidth(128);
-  if (ImGui::SliderInt("Layer##EditTriggerLine", &layer, BW_LAYER_MIN_VALUE, BW_LAYER_MAX_VALUE)) {
-    triggerLine->setLayer((uint8_t)layer);
-  }
 
   ImGui::Text("ID: %d", triggerLine->getId());
 

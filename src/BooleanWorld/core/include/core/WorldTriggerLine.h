@@ -17,8 +17,6 @@ enum struct WorldTriggerLineSide {
 class WorldTriggerLine : public Serializable {
   uint32_t mId;
 
-  uint8_t mLayer;
-
   uint32_t mTriggerCount[2];
 
   wp::Vector2 mPoints[2];
@@ -46,15 +44,11 @@ protected:
 public:
   WorldTriggerLine();
 
-  WorldTriggerLine(uint8_t layer, wp::Vector2 const& p0, wp::Vector2 const& p1, WorldTriggerLineSide side = WorldTriggerLineSide::Both);
+  WorldTriggerLine(wp::Vector2 const& p0, wp::Vector2 const& p1, WorldTriggerLineSide side = WorldTriggerLineSide::Both);
 
   void setId(uint32_t id);
 
   uint32_t getId() const;
-
-  void setLayer(uint8_t layer);
-
-  [[nodiscard]] uint8_t getLayer() const;
 
   uint32_t getTriggerCount(WorldTriggerLineSide side) const;
 

@@ -281,7 +281,7 @@ void primitiveCopiesPreviousEntityInputs() {
 void worldCopiesPreviousPlayerPosition() {
   bw::core::World source(100.0f, 10.0f);
   source.addTriggerLine(new bw::core::WorldTriggerLine(
-      0, {9.5f, 15.0f}, {10.5f, 15.0f}));
+      {9.5f, 15.0f}, {10.5f, 15.0f}));
 
   bw::core::WorldUpdateData updateData{
       {10.0f, 10.0f}, 0.0f, 0.0f, 0.0f, 0.0f, false, false, bw::core::SelectLayer(0)};
@@ -300,7 +300,7 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
   source->setAlwaysUpdateVertices(true);
 
   auto* triggerLine = new bw::core::WorldTriggerLine(
-      7, {30.0f, -5.0f}, {30.0f, 5.0f},
+      {30.0f, -5.0f}, {30.0f, 5.0f},
       bw::core::WorldTriggerLineSide::Both);
   require(triggerLine->checkCollide({29.0f, 0.0f}, {31.0f, 0.0f}, 0.0f),
           "source trigger line did not record its authored test crossing");
@@ -311,7 +311,6 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
         bw::core::Primitive::Operation::Union,
         bw::core::Primitive::FillRule::NonZero,
         1.0f);
-    primitive->setLayer(3);
     primitive->setSize(6.0f, 6.0f);
     return primitive;
   };
@@ -362,7 +361,6 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
               copy->getPrimitive(1) != childPtr,
           "world copy retained source primitive instances");
   require(copy->getTriggerLine(0) != triggerLine &&
-              copy->getTriggerLine(0)->getLayer() == 7 &&
               copy->getTriggerLine(0)->getPoint(0) == wp::Vector2(30.0f, -5.0f) &&
               copy->getTriggerLine(0)->getPoint(1) == wp::Vector2(30.0f, 5.0f) &&
               copy->getTriggerLine(0)->getSide() == bw::core::WorldTriggerLineSide::Both &&

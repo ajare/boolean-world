@@ -7,11 +7,11 @@ namespace core {
 using namespace std;
 
 WorldTriggerLine::WorldTriggerLine()
-    : WorldTriggerLine(0, {0, -1}, {0, 1}, WorldTriggerLineSide::Both) {
+    : WorldTriggerLine({0, -1}, {0, 1}, WorldTriggerLineSide::Both) {
 }
 
-WorldTriggerLine::WorldTriggerLine(uint8_t layer, wp::Vector2 const& p0, wp::Vector2 const& p1, WorldTriggerLineSide side)
-    : mId{~0u}, mLayer(layer), mTriggerCount{0, 0}, mPoints{p0, p1}, mSide(side) {
+WorldTriggerLine::WorldTriggerLine(wp::Vector2 const& p0, wp::Vector2 const& p1, WorldTriggerLineSide side)
+    : mId{~0u}, mTriggerCount{0, 0}, mPoints{p0, p1}, mSide(side) {
   updateBounds();
 }
 
@@ -21,14 +21,6 @@ void WorldTriggerLine::setId(uint32_t id) {
 
 uint32_t WorldTriggerLine::getId() const {
   return mId;
-}
-
-void WorldTriggerLine::setLayer(uint8_t layer) {
-  mLayer = layer;
-}
-
-uint8_t WorldTriggerLine::getLayer() const {
-  return mLayer;
 }
 
 void WorldTriggerLine::setPoints(wp::Vector2 const& p0, wp::Vector2 const& p1) {
@@ -117,7 +109,6 @@ bool WorldTriggerLine::childrenModified() const {
 void WorldTriggerLine::serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const {
   serializer->beginMap("worldTriggerLine");
   {
-    serializer->writeInt32("layer", (int32_t)mLayer);
     serializer->writeVector2("point0", mPoints[0]);
     serializer->writeVector2("point1", mPoints[1]);
     serializer->writeUint32("side", (uint32_t)mSide);
@@ -127,14 +118,12 @@ void WorldTriggerLine::serializeImpl(std::shared_ptr<Serializer> serializer, Ser
 }
 
 bool WorldTriggerLine::deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) {
-  uint8_t layer;
   wp::Vector2 point0, point1;
   WorldTriggerLineSide side;
 
   try {
     serializer->beginMap("worldTriggerLine");
     {
-      layer = (uint8_t)serializer->readInt32("layer");
       point0 = serializer->readVector2("point0");
       point1 = serializer->readVector2("point1");
       side = (WorldTriggerLineSide)serializer->readUint32("side");
@@ -147,7 +136,6 @@ bool WorldTriggerLine::deserializeImpl(std::shared_ptr<Serializer> serializer, S
   }
 
   // Commit
-  mLayer = layer;
   mPoints[0] = point0;
   mPoints[1] = point1;
   mSide = side;

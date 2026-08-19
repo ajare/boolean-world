@@ -181,7 +181,7 @@ std::vector<std::unique_ptr<bw::core::Primitive>> buildBatch(
   for (auto const& preview : previews) {
     auto primitive = createPrimitive(preview);
     _setPrimitiveParameters(
-        primitive.get(), 0, 0, preview.position, wp::Vector2::ZERO,
+        primitive.get(), 0, preview.position, wp::Vector2::ZERO,
         preview.size, preview.angle);
     setPrimitiveDefaultMaterials(primitive.get());
 
@@ -193,7 +193,7 @@ std::vector<std::unique_ptr<bw::core::Primitive>> buildBatch(
                        : bw::core::Primitive::Operation::Union;
     if (primitive->getOperation() != expectedOperation ||
         primitive->getFillRule() != bw::core::Primitive::FillRule::NonZero ||
-        primitive->getLayer() != 0 || primitive->getPriority() != 0 ||
+        primitive->getPriority() != 0 ||
         primitive->getOrientation() != 0.0f ||
         primitive->getPosition() != preview.position ||
         primitive->getSize() != wp::Vector2{preview.size, preview.size} ||

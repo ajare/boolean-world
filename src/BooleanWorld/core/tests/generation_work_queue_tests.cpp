@@ -28,22 +28,20 @@ ComplexPolygon rectangle(float left, float bottom, float right, float top) {
   return {{{{left, bottom}}, {{right, bottom}}, {{right, top}}, {{left, top}}}};
 }
 
-void addLayerPrimitive(
+void addPrimitive(
     bw::core::World& world,
-    uint8_t layer,
     ComplexPolygon polygon) {
   auto primitive = MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union,
       Primitive::FillRule::NonZero,
       {std::move(polygon)});
-  primitive->setLayer(layer);
   world.addPrimitive(primitive);
 }
 
 void blockedWorkerCoalescesToLatestGenerationSnapshot() {
   bw::core::World world(100.0f, 10.0f);
-  addLayerPrimitive(world, 1, rectangle(0.0f, 0.0f, 10.0f, 10.0f));
-  addLayerPrimitive(world, 2, rectangle(20.0f, 20.0f, 30.0f, 30.0f));
+  addPrimitive(world, rectangle(0.0f, 0.0f, 10.0f, 10.0f));
+  addPrimitive(world, rectangle(20.0f, 20.0f, 30.0f, 30.0f));
 
   DynamicWorldDataGenerator generator(&world);
   generator.setAllowCommitIfVisible(true);
@@ -134,13 +132,15 @@ void blockedWorkerCoalescesToLatestGenerationSnapshot() {
       generator.getNumGenerationsComplete() == 2,
       "superseded requests performed generation work");
 
+  // Scoping the fold to the request's selected Layer ids is #162; for now the
+  // generated snapshot is the whole World, so both rectangles must be in it.
   auto worldData = generator.getWorldData(&world);
   require(
       worldData->getContainingFaceIndex({25.0f, 25.0f}) != ~0u,
-      "latest request lost its layer selection");
+      "the coalesced request did not generate the world's content");
   require(
-      worldData->getContainingFaceIndex({5.0f, 5.0f}) == ~0u,
-      "an older request's layer selection was generated");
+      worldData->getContainingFaceIndex({5.0f, 5.0f}) != ~0u,
+      "the coalesced request generated only part of the world's content");
 
   generator.unregisterGenerationCallback(token);
 }

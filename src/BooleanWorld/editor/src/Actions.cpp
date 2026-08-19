@@ -245,12 +245,6 @@ bool setPrimitiveFollowOrbitAngle(Document* doc, bw::core::Primitive* primitive,
   return true;
 }
 
-bool setPrimitiveLayer(Document* doc, bw::core::Primitive* primitive, uint8_t layer) {
-  primitive->setLayer(layer);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
-  return true;
-}
-
 bool setPrimitivePriority(Document* doc, bw::core::Primitive* primitive, uint8_t priority) {
   primitive->setPriority(priority);
   generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);

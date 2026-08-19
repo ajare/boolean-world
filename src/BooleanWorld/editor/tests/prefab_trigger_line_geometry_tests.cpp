@@ -34,11 +34,11 @@ bool contains(std::vector<bw::core::WorldTriggerLine*> const& lines,
 void prefabPlacementIndexesTransformedTriggerLineBounds() {
   bw::core::World prefab(1000.0f, 100.0f);
   prefab.addTriggerLine(new bw::core::WorldTriggerLine(
-      0, {-120.0f, -100.0f}, {-80.0f, -100.0f}));
+      {-120.0f, -100.0f}, {-80.0f, -100.0f}));
 
   editor::Document document;
   document.newDoc();
-  document.addPrefabInstance(&prefab, 0, 0, 90.0f, 0);
+  document.addPrefabInstance(&prefab, 0, 0, 90.0f);
 
   auto world = document.getWorld();
   require(world->getNumTriggerLines() == 1,

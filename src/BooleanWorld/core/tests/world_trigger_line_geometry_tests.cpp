@@ -32,7 +32,7 @@ void markUnmodified(bw::core::WorldTriggerLine const& triggerLine) {
 void endpointMovementUpdatesGeometryLookupAndAuthoredState() {
   bw::core::World world(1000.0f, 100.0f);
   auto* triggerLine = new bw::core::WorldTriggerLine(
-      0, {-410.0f, -10.0f}, {-390.0f, 10.0f});
+      {-410.0f, -10.0f}, {-390.0f, 10.0f});
   auto const index = world.addTriggerLine(triggerLine);
   markUnmodified(*triggerLine);
 
@@ -54,7 +54,7 @@ void endpointMovementUpdatesGeometryLookupAndAuthoredState() {
 void wholeLineMovementReplacesOldLookupBounds() {
   bw::core::World world(1000.0f, 100.0f);
   auto* triggerLine = new bw::core::WorldTriggerLine(
-      0, {-410.0f, -10.0f}, {-390.0f, 10.0f});
+      {-410.0f, -10.0f}, {-390.0f, 10.0f});
   auto const index = world.addTriggerLine(triggerLine);
   markUnmodified(*triggerLine);
 

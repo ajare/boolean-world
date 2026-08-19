@@ -19,7 +19,6 @@ using bw::core::WorldTriggerLineSide;
 using bw::core::WorldUpdateData;
 
 struct TriggerLineSpec {
-  uint8_t layer;
   wp::Vector2 p0;
   wp::Vector2 p1;
   WorldTriggerLineSide side{WorldTriggerLineSide::Both};
@@ -40,12 +39,6 @@ WorldUpdateData updateData(
   return {position, 0.0f, radius, 0.0f, 0.0f, false, false, layerSelection};
 }
 
-bool layerIsSelected(WorldTriggerLine const& triggerLine,
-                     LayerSelection const& layerSelection) {
-  auto const layer = triggerLine.getLayer();
-  return layer == BW_LAYER_ALL || layerSelection.test(size_t(layer));
-}
-
 std::vector<TriggerCounts> runAcceleratedAndExhaustive(
     std::vector<TriggerLineSpec> const& specs,
     std::vector<wp::Vector2> const& positions,
@@ -56,9 +49,9 @@ std::vector<TriggerCounts> runAcceleratedAndExhaustive(
   exhaustiveLines.reserve(specs.size());
 
   for (auto const& spec : specs) {
-    world.addTriggerLine(new WorldTriggerLine(spec.layer, spec.p0, spec.p1, spec.side));
+    world.addTriggerLine(new WorldTriggerLine(spec.p0, spec.p1, spec.side));
     exhaustiveLines.push_back(
-        std::make_unique<WorldTriggerLine>(spec.layer, spec.p0, spec.p1, spec.side));
+        std::make_unique<WorldTriggerLine>(spec.p0, spec.p1, spec.side));
   }
 
   for (size_t i = 0; i < positions.size(); ++i) {
@@ -70,9 +63,7 @@ std::vector<TriggerCounts> runAcceleratedAndExhaustive(
     }
 
     for (auto const& triggerLine : exhaustiveLines) {
-      if (layerIsSelected(*triggerLine, layerSelection)) {
-        triggerLine->checkCollide(positions[i - 1], positions[i], radius);
-      }
+      triggerLine->checkCollide(positions[i - 1], positions[i], radius);
     }
   }
 
@@ -99,28 +90,23 @@ std::vector<TriggerCounts> runAcceleratedAndExhaustive(
   return counts;
 }
 
-std::vector<TriggerLineSpec> makeLayeredLines(
+// Several coincident lines, so the sweep has to report every line sharing a
+// grid cell rather than just the first one it finds.
+std::vector<TriggerLineSpec> makeCoincidentLines(
     wp::Vector2 const& p0,
     wp::Vector2 const& p1) {
   return {
-      {1, p0, p1},
-      {2, p0, p1},
-      {3, p0, p1},
-      {BW_LAYER_ALL, p0, p1},
+      {p0, p1},
+      {p0, p1},
+      {p0, p1},
+      {p0, p1},
   };
-}
-
-LayerSelection selectedLayers() {
-  LayerSelection layers;
-  layers.set(1);
-  layers.set(2);
-  return layers;
 }
 
 void stationarySweepMatchesExhaustive() {
   auto const counts = runAcceleratedAndExhaustive(
-      makeLayeredLines({12.0f, 0.0f}, {30.0f, 0.0f}),
-      {{9.0f, -10.0f}, {9.0f, -10.0f}}, 4.0f, selectedLayers());
+      makeCoincidentLines({12.0f, 0.0f}, {30.0f, 0.0f}),
+      {{9.0f, -10.0f}, {9.0f, -10.0f}}, 4.0f, bw::core::SelectLayer(0));
 
   for (auto const& lineCounts : counts) {
     require(lineCounts[2] == 0,
@@ -130,28 +116,24 @@ void stationarySweepMatchesExhaustive() {
 
 void movingRadiusExpandedSweepMatchesExhaustive() {
   auto const counts = runAcceleratedAndExhaustive(
-      makeLayeredLines({12.0f, 0.0f}, {30.0f, 0.0f}),
-      {{9.0f, -10.0f}, {9.0f, 10.0f}}, 4.0f, selectedLayers());
+      makeCoincidentLines({12.0f, 0.0f}, {30.0f, 0.0f}),
+      {{9.0f, -10.0f}, {9.0f, 10.0f}}, 4.0f, bw::core::SelectLayer(0));
 
-  require(counts[0][2] == 1 && counts[1][2] == 1,
-          "selected trigger lines were missed by the radius-expanded sweep");
-  require(counts[2][2] == 0,
-          "an unselected-layer trigger line was checked");
-  require(counts[3][2] == 1,
-          "an all-layer trigger line was missed by the radius-expanded sweep");
+  for (auto const& lineCounts : counts) {
+    require(lineCounts[2] == 1,
+            "a trigger line was missed by the radius-expanded sweep");
+  }
 }
 
 void longStepSweepMatchesExhaustive() {
   auto const counts = runAcceleratedAndExhaustive(
-      makeLayeredLines({0.0f, -20.0f}, {0.0f, 20.0f}),
-      {{-450.0f, 0.0f}, {450.0f, 0.0f}}, 1.0f, selectedLayers());
+      makeCoincidentLines({0.0f, -20.0f}, {0.0f, 20.0f}),
+      {{-450.0f, 0.0f}, {450.0f, 0.0f}}, 1.0f, bw::core::SelectLayer(0));
 
-  require(counts[0][2] == 1 && counts[1][2] == 1,
-          "a long player step missed selected trigger lines");
-  require(counts[2][2] == 0,
-          "a long player step checked an unselected-layer trigger line");
-  require(counts[3][2] == 1,
-          "a long player step missed an all-layer trigger line");
+  for (auto const& lineCounts : counts) {
+    require(lineCounts[2] == 1,
+            "a long player step missed a trigger line");
+  }
 }
 
 }  // namespace

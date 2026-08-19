@@ -70,7 +70,7 @@ void layerOwnsAddedTriggerLinesAndFindsThemSpatially() {
   bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
 
   auto triggerLine = new bw::core::WorldTriggerLine(
-      0, {9.0f, 15.0f}, {11.0f, 15.0f});
+      {9.0f, 15.0f}, {11.0f, 15.0f});
   auto index = layer.addTriggerLine(triggerLine);
 
   require(index == 0, "the first trigger line added to a Layer did not get index 0");
@@ -85,7 +85,7 @@ void layerOwnsAddedTriggerLinesAndFindsThemSpatially() {
 void copyingALayerDeepCopiesItsContent() {
   bw::core::Layer layer(5, "Source", 100.0f, 10.0f);
   layer.addPrimitive(makeRectangle(0.0f, 0.0f, 10.0f, 10.0f));
-  layer.addTriggerLine(new bw::core::WorldTriggerLine(0, {9.0f, 15.0f}, {11.0f, 15.0f}));
+  layer.addTriggerLine(new bw::core::WorldTriggerLine({9.0f, 15.0f}, {11.0f, 15.0f}));
 
   bw::core::Layer copy(layer);
 

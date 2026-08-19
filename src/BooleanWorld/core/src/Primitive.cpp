@@ -22,7 +22,7 @@ Primitive::Primitive(Operation operation, FillRule fillType)
 }
 
 Primitive::Primitive(Operation operation, FillRule fillType, vector<ComplexPolygon> const& complexPolygons)
-    : mWorld(nullptr), mFlags(BW_PRIMITIVE_INTERACTS_FLAG), mTime(0.0), mTimeUpdateDistance(numeric_limits<float>::max()), mLayer(0), mMetadata(0), mOperation(operation), mFillRule(fillType), mPriority(0), mSize(100.0f, 100.0f), mProperties{}, mFrameNumber(0), mPolygons(complexPolygons) {
+    : mWorld(nullptr), mFlags(BW_PRIMITIVE_INTERACTS_FLAG), mTime(0.0), mTimeUpdateDistance(numeric_limits<float>::max()), mMetadata(0), mOperation(operation), mFillRule(fillType), mPriority(0), mSize(100.0f, 100.0f), mProperties{}, mFrameNumber(0), mPolygons(complexPolygons) {
 }
 
 Primitive::Primitive(Primitive const& other) {
@@ -41,7 +41,6 @@ void Primitive::copyFrom(Primitive const& other) {
   mFlags = other.mFlags;
   mTime = 0.0f;
   mTimeUpdateDistance = other.mTimeUpdateDistance;
-  mLayer = other.mLayer;
   mMetadata = other.mMetadata;
   mOperation = other.mOperation;
   mFillRule = other.mFillRule;
@@ -155,14 +154,6 @@ float Primitive::getTimeUpdateDistance() const {
   return mTimeUpdateDistance;
 }
 
-void Primitive::setLayer(uint8_t layer) {
-  mLayer = layer;
-}
-
-uint8_t Primitive::getLayer() const {
-  return mLayer;
-}
-
 frame_number_type Primitive::getFrameNumber() const {
   return mFrameNumber;
 }
@@ -254,7 +245,6 @@ void Primitive::serializeImpl(shared_ptr<Serializer> serializer, SerializationWo
   {
     serializer->writeUint32("flags", mFlags);
     serializer->writeFloat("timeUpdateDistance", mTimeUpdateDistance);
-    serializer->writeInt32("layer", (int32_t)mLayer);
     serializer->writeUint32("metadata", mMetadata);
     serializer->writeUint32("operation", (uint32_t)mOperation);
     serializer->writeUint32("fillRule", (uint32_t)mFillRule);
@@ -312,7 +302,6 @@ bool Primitive::deserializeImpl(shared_ptr<Serializer> serializer, Serialization
 
   uint32_t flags;
   float timeUpdateDistance;
-  uint8_t layer;
   uint32_t metadata;
   Operation operation;
   FillRule fillRule;
@@ -326,7 +315,6 @@ bool Primitive::deserializeImpl(shared_ptr<Serializer> serializer, Serialization
     {
       flags = serializer->readUint32("flags");
       timeUpdateDistance = serializer->readFloat("timeUpdateDistance");
-      layer = (uint8_t)serializer->readInt32("layer");
       metadata = serializer->readUint32("metadata", true);
       operation = (Operation)serializer->readUint32("operation");
       fillRule = (FillRule)serializer->readUint32("fillRule");
@@ -405,7 +393,6 @@ bool Primitive::deserializeImpl(shared_ptr<Serializer> serializer, Serialization
   mFlags = flags;
   mTime = 0.0;
   mTimeUpdateDistance = timeUpdateDistance;
-  mLayer = layer;
   mMetadata = metadata;
   mOperation = operation;
   mFillRule = fillRule;

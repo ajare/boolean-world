@@ -101,9 +101,6 @@ def load_library():
             l.set_primitive_size.argtypes = [c_float, c_float]
             l.set_primitive_size.restype = c_int
             
-            l.set_primitive_layer.argtypes = [c_uint8]
-            l.set_primitive_layer.restype = c_int
-
             l.set_primitive_priority.argtypes = [c_uint8]
             l.set_primitive_priority.restype = c_int
 

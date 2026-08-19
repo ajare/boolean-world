@@ -14,8 +14,8 @@ void require(bool condition, char const* message) {
 
 void clearReleasesTriggerLines() {
   bw::core::World world(100.0f, 10.0f);
-  world.addTriggerLine(new bw::core::WorldTriggerLine(0, {10.0f, 20.0f}, {30.0f, 40.0f}));
-  world.addTriggerLine(new bw::core::WorldTriggerLine(0, {50.0f, 60.0f}, {70.0f, 80.0f}));
+  world.addTriggerLine(new bw::core::WorldTriggerLine({10.0f, 20.0f}, {30.0f, 40.0f}));
+  world.addTriggerLine(new bw::core::WorldTriggerLine({50.0f, 60.0f}, {70.0f, 80.0f}));
 
   world.clear();
 
@@ -24,7 +24,7 @@ void clearReleasesTriggerLines() {
 
   world.createAccelerationGrids(10.0f);
   auto id = world.addTriggerLine(new bw::core::WorldTriggerLine(
-      0, {10.0f, 20.0f}, {30.0f, 40.0f}));
+      {10.0f, 20.0f}, {30.0f, 40.0f}));
 
   require(id == 0,
           "a trigger line added after clearing a world did not receive the first id");

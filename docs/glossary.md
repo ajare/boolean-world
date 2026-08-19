@@ -127,11 +127,11 @@ worker thread, not every frame; cadence of at least one second.
 so geometry does not visibly pop: a generation is held back while any primitive
 it moved is on screen.
 
-**Layer set** — The layers a generation draws primitives from, held as a
-256-bit mask. Chosen per generation; a primitive is included when its layer is
-in the mask or when its layer is `BW_LAYER_ALL`. Layers filter the fold's input;
-they do not group or nest it, and priority ordering runs across the whole
-selected set (ADR-0009).
+**Layer set** — The Layers a generation draws primitives from, held as a
+256-bit mask indexed by stable Layer id. Chosen per generation; a primitive is
+included when the Layer owning it is in the mask. Layers filter the fold's
+input; they do not group or nest it, and priority ordering runs across the
+whole selected set (ADR-0009, ADR-0013).
 
 **Culling** *(removed)* — Broad phase (none / circle / box, via the primitive
 acceleration grid) then narrow phase (none / circle / view cone), choosing

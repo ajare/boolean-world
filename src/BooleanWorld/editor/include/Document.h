@@ -134,7 +134,7 @@ public:
 
   void saveDocAs(std::string const& filepath);
 
-  void addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation, uint8_t layer);
+  void addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation);
 };
 
 }  // namespace editor

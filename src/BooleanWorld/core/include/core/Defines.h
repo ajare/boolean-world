@@ -22,10 +22,6 @@ typedef int64_t frame_number_type;
 #define BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX (1 << 10)
 #define BW_WORLD_PRIMITIVE_COUNT_MAX ((1 << 14) - 1)
 
-#define BW_LAYER_MIN_VALUE 0
-#define BW_LAYER_MAX_VALUE 255
-#define BW_LAYER_ALL 255
-
 #define BW_PRIORITY_MIN_VALUE 0
 #define BW_PRIORITY_MAX_VALUE 255
 

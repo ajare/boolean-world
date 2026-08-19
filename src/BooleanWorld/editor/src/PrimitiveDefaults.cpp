@@ -7,7 +7,6 @@
 
 void editor::_setPrimitiveParameters(
     bw::core::Primitive* prim,
-    uint8_t layer,
     uint8_t priority,
     wp::Vector2 const& position,
     wp::Vector2 const& offset,
@@ -15,7 +14,6 @@ void editor::_setPrimitiveParameters(
     float angle) {
   using Key = bw::core::VertexTransformer::Key;
 
-  prim->setLayer(layer);
   prim->setPriority(priority);
   prim->setSize(scale, scale);
   prim->setPosition(position);

@@ -192,16 +192,6 @@ int mod_set_primitive_size(float width, float height) {
   });
 }
 
-int mod_set_primitive_layer(uint8_t layer) {
-  return InvokeApi([&]() {
-    if (!HasCurrentPrimitive()) {
-      return 1;
-    }
-    gPrimitive->setLayer(layer);
-    return 0;
-  });
-}
-
 int mod_set_primitive_priority(uint8_t priority) {
   return InvokeApi([&]() {
     if (!HasCurrentPrimitive()) {

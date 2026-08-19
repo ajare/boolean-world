@@ -45,7 +45,7 @@ void triggerLinesAddedViaTheFacadeLandInTheActiveLayer() {
   auto* other = world.addLayer("other");
 
   auto* triggerLine = new bw::core::WorldTriggerLine(
-      0, {10.0f, 20.0f}, {30.0f, 40.0f});
+      {10.0f, 20.0f}, {30.0f, 40.0f});
   world.addTriggerLine(triggerLine);
 
   auto* active = world.getActiveLayer();
@@ -62,7 +62,7 @@ void removalThroughTheFacadeEmptiesTheActiveLayer() {
   auto* primitive = makeRectangle();
   world.addPrimitive(primitive);
   world.addTriggerLine(new bw::core::WorldTriggerLine(
-      0, {10.0f, 20.0f}, {30.0f, 40.0f}));
+      {10.0f, 20.0f}, {30.0f, 40.0f}));
 
   world.removePrimitive(primitive);
   world.removeTriggerLine(0u);

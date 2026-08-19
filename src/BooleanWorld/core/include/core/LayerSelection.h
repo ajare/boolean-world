@@ -7,15 +7,19 @@
 #include "core/Defines.h"
 
 namespace bw::core {
+// The set of Layers a generation folds across, indexed by stable Layer id
+// (docs/adr/0013).
 using LayerSelection = std::bitset<256>;
 
 inline LayerSelection SelectLayer(uint8_t layer) {
   LayerSelection selection;
-  if (layer == BW_LAYER_ALL) {
-    selection.set();
-  } else {
-    selection.set(size_t(layer));
-  }
+  selection.set(size_t(layer));
+  return selection;
+}
+
+inline LayerSelection SelectAllLayers() {
+  LayerSelection selection;
+  selection.set();
   return selection;
 }
 }  // namespace bw::core

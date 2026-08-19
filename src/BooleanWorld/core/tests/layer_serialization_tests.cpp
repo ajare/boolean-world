@@ -28,7 +28,7 @@ bw::core::Layer makeSourceLayer() {
   rect->setSize(10.0f, 10.0f);
   layer.addPrimitive(rect);
 
-  layer.addTriggerLine(new bw::core::WorldTriggerLine(0, {9.0f, 15.0f}, {11.0f, 15.0f}));
+  layer.addTriggerLine(new bw::core::WorldTriggerLine({9.0f, 15.0f}, {11.0f, 15.0f}));
 
   return layer;
 }

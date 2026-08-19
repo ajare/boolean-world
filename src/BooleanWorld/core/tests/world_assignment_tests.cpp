@@ -44,7 +44,7 @@ class TrackingTriggerLine : public bw::core::WorldTriggerLine {
 
 public:
   explicit TrackingTriggerLine(int& destructionCount)
-      : WorldTriggerLine(0, {-4.0f, 0.0f}, {4.0f, 0.0f}),
+      : WorldTriggerLine({-4.0f, 0.0f}, {4.0f, 0.0f}),
         mDestructionCount(&destructionCount) {
   }
 
@@ -115,7 +115,7 @@ void populatedAssignmentReplacesCollectionsAndSurvivesSourceDestruction() {
   auto source = std::make_unique<bw::core::World>(300.0f, 30.0f);
   source->setName("populated source");
   source->addTriggerLine(new bw::core::WorldTriggerLine(
-      3, {20.0f, -5.0f}, {20.0f, 5.0f},
+      {20.0f, -5.0f}, {20.0f, 5.0f},
       bw::core::WorldTriggerLineSide::Both));
 
   auto* root = new bw::core::RectanglePolygon(
@@ -137,7 +137,7 @@ void populatedAssignmentReplacesCollectionsAndSurvivesSourceDestruction() {
       bw::core::Primitive::Operation::Difference,
       bw::core::Primitive::FillRule::EvenOdd, 1.0f));
   destination.addTriggerLine(new bw::core::WorldTriggerLine(
-      0, {-10.0f, 0.0f}, {10.0f, 0.0f}));
+      {-10.0f, 0.0f}, {10.0f, 0.0f}));
 
   destination = *source;
 

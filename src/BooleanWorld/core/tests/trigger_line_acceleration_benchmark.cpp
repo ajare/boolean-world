@@ -27,7 +27,7 @@ wp::BoundingBox sweptBounds(
 
 WorldUpdateData updateData(wp::Vector2 const& position, float radius) {
   return {position, 0.0f, radius, 0.0f, 0.0f, false, false,
-          bw::core::SelectLayer(BW_LAYER_ALL)};
+          bw::core::SelectAllLayers()};
 }
 
 }  // namespace
@@ -49,10 +49,10 @@ int main() {
       auto const position = wp::Vector2{
           -3800.0f + float(x) * spacing, -3800.0f + float(y) * spacing};
       world.addTriggerLine(new WorldTriggerLine(
-          0, position + wp::Vector2{-8.0f, 0.0f},
+          position + wp::Vector2{-8.0f, 0.0f},
           position + wp::Vector2{8.0f, 0.0f}));
       exhaustiveLines.push_back(std::make_unique<WorldTriggerLine>(
-          0, position + wp::Vector2{-8.0f, 0.0f},
+          position + wp::Vector2{-8.0f, 0.0f},
           position + wp::Vector2{8.0f, 0.0f}));
     }
   }

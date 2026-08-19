@@ -37,10 +37,6 @@ __declspec(dllexport) int set_primitive_size(float width, float height) {
   return mod_set_primitive_size(width, height);
 }
 
-__declspec(dllexport) int set_primitive_layer(uint8_t layer) {
-  return mod_set_primitive_layer(layer);
-}
-
 __declspec(dllexport) int set_primitive_priority(uint8_t priority) {
   return mod_set_primitive_priority(priority);
 }

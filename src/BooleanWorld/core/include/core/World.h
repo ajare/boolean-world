@@ -216,7 +216,7 @@ public:
 
   [[nodiscard]] Primitive const* getPrimitive(uint32_t index) const;
 
-  [[nodiscard]] std::vector<Primitive*> getPrimitivesInGridCell(uint32_t cellIndex, uint8_t activeLayer) const;
+  [[nodiscard]] std::vector<Primitive*> getPrimitivesInGridCell(uint32_t cellIndex) const;
 
   [[nodiscard]] Primitive* findPrimitive(wp::Vector2 const& worldPos) const;
 

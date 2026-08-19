@@ -275,26 +275,24 @@ bw::core::Primitive* createRegularPolygonPrimitive(
     bw::core::Primitive::Operation op,
     bw::core::Primitive::FillRule fillRule,
     uint32_t numSides,
-    uint8_t layer,
     uint8_t priority,
     wp::Vector2 const& position,
     float scale,
     float angle) {
   auto p = new bw::core::RegularPolygon(op, fillRule, numSides);
-  _setPrimitiveParameters(p, layer, priority, position, wp::Vector2::ZERO, scale, angle);
+  _setPrimitiveParameters(p, priority, position, wp::Vector2::ZERO, scale, angle);
   return p;
 }
 
 bw::core::Primitive* createMeshPrimitive(
     bw::core::Primitive::Operation op,
     bw::core::Primitive::FillRule fillRule,
-    uint8_t layer,
     uint8_t priority,
     wp::Vector2 const& position,
     float scale,
     float angle) {
   auto p = new bw::core::MeshPrimitive(op, fillRule, {});
-  _setPrimitiveParameters(p, layer, priority, position, wp::Vector2::ZERO, scale, angle);
+  _setPrimitiveParameters(p, priority, position, wp::Vector2::ZERO, scale, angle);
   return p;
 }
 
@@ -302,13 +300,12 @@ bw::core::Primitive* createCirclePrimitive(
     bw::core::Primitive::Operation op,
     bw::core::Primitive::FillRule fillRule,
     float resolution,
-    uint8_t layer,
     uint8_t priority,
     wp::Vector2 const& position,
     float scale,
     float angle) {
   auto p = new bw::core::CirclePolygon(op, fillRule, resolution);
-  _setPrimitiveParameters(p, layer, priority, position, wp::Vector2::ZERO, scale, angle);
+  _setPrimitiveParameters(p, priority, position, wp::Vector2::ZERO, scale, angle);
   return p;
 }
 
@@ -317,13 +314,12 @@ bw::core::Primitive* createCircleSegmentPrimitive(
     bw::core::Primitive::FillRule fillRule,
     float arcLength,
     float resolution,
-    uint8_t layer,
     uint8_t priority,
     wp::Vector2 const& position,
     float scale,
     float angle) {
   auto p = new bw::core::CircleSegmentPolygon(op, fillRule, arcLength, resolution);
-  _setPrimitiveParameters(p, layer, priority, position, wp::Vector2::ZERO, scale, angle);
+  _setPrimitiveParameters(p, priority, position, wp::Vector2::ZERO, scale, angle);
   return p;
 }
 
@@ -332,13 +328,12 @@ bw::core::Primitive* createTorusPrimitive(
     bw::core::Primitive::FillRule fillRule,
     float thickness,
     float resolution,
-    uint8_t layer,
     uint8_t priority,
     wp::Vector2 const& position,
     float scale,
     float angle) {
   auto p = new bw::core::TorusPolygon(op, fillRule, thickness, resolution);
-  _setPrimitiveParameters(p, layer, priority, position, wp::Vector2::ZERO, scale, angle);
+  _setPrimitiveParameters(p, priority, position, wp::Vector2::ZERO, scale, angle);
   return p;
 }
 
@@ -348,13 +343,12 @@ bw::core::Primitive* createTorusSegmentPrimitive(
     float thickness,
     float arcLength,
     float resolution,
-    uint8_t layer,
     uint8_t priority,
     wp::Vector2 const& position,
     float scale,
     float angle) {
   auto p = new bw::core::TorusSegmentPolygon(op, fillRule, thickness, arcLength, resolution);
-  _setPrimitiveParameters(p, layer, priority, position, wp::Vector2::ZERO, scale, angle);
+  _setPrimitiveParameters(p, priority, position, wp::Vector2::ZERO, scale, angle);
   return p;
 }
 
@@ -362,13 +356,12 @@ bw::core::Primitive* createRectanglePrimitive(
     bw::core::Primitive::Operation op,
     bw::core::Primitive::FillRule fillRule,
     float xyRatio,
-    uint8_t layer,
     uint8_t priority,
     wp::Vector2 const& position,
     float scale,
     float angle) {
   auto p = new bw::core::RectanglePolygon(op, fillRule, xyRatio);
-  _setPrimitiveParameters(p, layer, priority, position, wp::Vector2::ZERO, scale, angle);
+  _setPrimitiveParameters(p, priority, position, wp::Vector2::ZERO, scale, angle);
   return p;
 }
 
@@ -377,13 +370,12 @@ bw::core::Primitive* createSuperformulaPrimitive(
     bw::core::Primitive::FillRule fillRule,
     float values[6],
     float resolution,
-    uint8_t layer,
     uint8_t priority,
     wp::Vector2 const& position,
     float scale,
     float angle) {
   auto p = new bw::core::SuperformulaPolygon(op, fillRule, resolution, values);
-  _setPrimitiveParameters(p, layer, priority, position, wp::Vector2::ZERO, scale, angle);
+  _setPrimitiveParameters(p, priority, position, wp::Vector2::ZERO, scale, angle);
   return p;
 }
 

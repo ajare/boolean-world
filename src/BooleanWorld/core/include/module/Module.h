@@ -18,7 +18,6 @@ int mod_create_rectangle_polygon(uint32_t operation, uint32_t fillType, float xy
 
 int mod_create_torus_polygon(uint32_t operation, uint32_t fillType, float thickness, float resolution, uint32_t materialIndex);
 
-int mod_set_primitive_layer(uint8_t layer);
 
 int mod_set_primitive_priority(uint8_t priority);
 

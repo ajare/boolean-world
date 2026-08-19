@@ -54,8 +54,6 @@ private:
 
   float mTimeUpdateDistance;
 
-  uint8_t mLayer;
-
   uint32_t mMetadata;
 
   Operation mOperation;
@@ -139,10 +137,6 @@ public:
   void setTimeUpdateDistance(float dist);
 
   float getTimeUpdateDistance() const;
-
-  void setLayer(uint8_t layer);
-
-  uint8_t getLayer() const;
 
   void setMetadata(uint32_t metadata);
 

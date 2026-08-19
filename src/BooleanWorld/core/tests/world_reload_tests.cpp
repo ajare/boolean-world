@@ -81,7 +81,7 @@ void reloadRecreatesAccelerationGrids() {
   bw::core::World source(100.0f, 10.0f);
   source.addPrimitive(makeRectangle());
   source.addTriggerLine(new bw::core::WorldTriggerLine(
-      0, {10.0f, 20.0f}, {30.0f, 40.0f}));
+      {10.0f, 20.0f}, {30.0f, 40.0f}));
 
   auto writer = std::shared_ptr<bw::core::Serializer>(
       bw::core::YamlSerializer::toFile(path));
@@ -118,9 +118,9 @@ void failedDeserializationRetainsTemporaryObjectsAndTargetConfiguration() {
   source.addPrimitive(makeRectangle());
   source.addPrimitive(makeRectangle());
   source.addTriggerLine(new bw::core::WorldTriggerLine(
-      0, {10.0f, 20.0f}, {30.0f, 40.0f}));
+      {10.0f, 20.0f}, {30.0f, 40.0f}));
   source.addTriggerLine(new bw::core::WorldTriggerLine(
-      0, {50.0f, 60.0f}, {70.0f, 80.0f}));
+      {50.0f, 60.0f}, {70.0f, 80.0f}));
   auto const yaml = serializeWorld(source);
 
   bw::core::World target(100.0f, 10.0f);
@@ -128,7 +128,7 @@ void failedDeserializationRetainsTemporaryObjectsAndTargetConfiguration() {
   target.setDescription("existing configuration");
   target.addPrimitive(makeRectangle());
   target.addTriggerLine(new bw::core::WorldTriggerLine(
-      0, {1.0f, 2.0f}, {3.0f, 4.0f}));
+      {1.0f, 2.0f}, {3.0f, 4.0f}));
 
   require(!deserializeWorld(withLastKeyRenamed(yaml, "xyRatio"), &target),
           "world with a malformed later primitive deserialized");
@@ -269,7 +269,7 @@ void worldsWithoutGridsFailClearlyInsteadOfDereferencingNull() {
           "changing a primitive without acceleration grids did not fail clearly");
 
   auto triggerLine = std::unique_ptr<bw::core::WorldTriggerLine>(
-      new bw::core::WorldTriggerLine(0, {10.0f, 20.0f}, {30.0f, 40.0f}));
+      new bw::core::WorldTriggerLine({10.0f, 20.0f}, {30.0f, 40.0f}));
   bool triggerLineRejected = false;
   try {
     world.addTriggerLine(triggerLine.get());

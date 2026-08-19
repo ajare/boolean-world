@@ -58,7 +58,8 @@ private:
 
   wp::collide::Collider* mPlayerCollider;
 
-  uint8_t mCurrentLayer;
+  // Debug toggle: fold across every Layer, or just the first one.
+  bool mAllLayers;
 
   int32_t mPlayerPolygonIndex;
 
@@ -94,6 +95,8 @@ private:
   std::deque<DisplayMessage> mDisplayMessages;
 
 private:
+  [[nodiscard]] bw::core::LayerSelection layerSelection() const;
+
   void createCamera();
 
   mpp::RenderPipelinePtr const& getOrCreateWorldRenderPipeline(

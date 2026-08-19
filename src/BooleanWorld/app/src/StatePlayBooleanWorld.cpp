@@ -68,11 +68,15 @@ const ImColor gImGui_CollisionLine2WayColour{1.0f, 1.0f, 0.65f};
 const ImColor gImGui_ViewAreaColour{0.5f, 0.5f, 0.5f};
 
 StatePlayBooleanWorld::StatePlayBooleanWorld()
-    : StatePlay(), mGlobalTime(0.0), mWorldCollisionSim(nullptr), mPlayerCollider(nullptr), mCurrentLayer(0), mPlayerPolygonIndex(-1), mPlayerBorderIntersectIndex(-1), mCollisionsProcessed(0), mwRenderer(nullptr), mPlayerPrevAngle(0), mPlayerPrevPitch(0), mExitScheduled(false) {
+    : StatePlay(), mGlobalTime(0.0), mWorldCollisionSim(nullptr), mPlayerCollider(nullptr), mAllLayers(false), mPlayerPolygonIndex(-1), mPlayerBorderIntersectIndex(-1), mCollisionsProcessed(0), mwRenderer(nullptr), mPlayerPrevAngle(0), mPlayerPrevPitch(0), mExitScheduled(false) {
 }
 
 StatePlayBooleanWorld::~StatePlayBooleanWorld() {
   delete mWorldCollisionSim;
+}
+
+bw::core::LayerSelection StatePlayBooleanWorld::layerSelection() const {
+  return mAllLayers ? bw::core::SelectAllLayers() : bw::core::SelectLayer(0);
 }
 
 Map* StatePlayBooleanWorld::getMap() {
@@ -477,7 +481,7 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
   playerPosition = newPosition;
   playerAngle = bw::app::worldViewAngle(newAngle);
 
-  world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, bw::core::SelectLayer(mCurrentLayer)}, {0, 0});
+  world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, layerSelection()}, {0, 0});
 
   mWorldData = world->getWorldData();
 
@@ -533,9 +537,9 @@ void StatePlayBooleanWorld::updateActions(vector<string> const& activeStates, fl
     } else if (state == "Debug.Options") {
       mDebugDisplay.options = !mDebugDisplay.options;
     } else if (state == "ToggleAllLayers") {
-      mCurrentLayer = mCurrentLayer == 0 ? BW_LAYER_ALL : 0;
-      getMap()->getWorld()->getWorldDataGenerator()->setActiveLayer(
-          mCurrentLayer);
+      mAllLayers = !mAllLayers;
+      getMap()->getWorld()->getWorldDataGenerator()->setLayerSelection(
+          layerSelection());
     }
   }
 

@@ -59,8 +59,6 @@ bool setPrimitiveInfluenceOriginOffset(Document* doc, bw::core::Primitive* primi
 
 bool setPrimitiveFollowOrbitAngle(Document* doc, bw::core::Primitive* primitive, bool orient);
 
-bool setPrimitiveLayer(Document* doc, bw::core::Primitive* primitive, uint8_t layer);
-
 bool setPrimitivePriority(Document* doc, bw::core::Primitive* primitive, uint8_t priority);
 
 void setPrimitiveDefaultMaterial(uint32_t materialIndex, bw::core::MaterialDefinitionData* materialDefinition);

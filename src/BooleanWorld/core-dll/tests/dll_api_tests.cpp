@@ -68,7 +68,6 @@ int main(int argc, char** argv) {
   auto createRectangle = LoadFunction<CreateRectangle>(module, "create_rectangle_polygon");
   auto createTorus = LoadFunction<CreateTorus>(module, "create_torus_polygon");
   auto setSize = LoadFunction<Float2>(module, "set_primitive_size");
-  auto setLayer = LoadFunction<Uint8>(module, "set_primitive_layer");
   auto setPriority = LoadFunction<Uint8>(module, "set_primitive_priority");
   auto setFloor = LoadFunction<Float1>(module, "set_primitive_floor_z");
   auto setCeiling = LoadFunction<Float1>(module, "set_primitive_ceiling_z");
@@ -98,7 +97,6 @@ int main(int argc, char** argv) {
   Expect("serialization without a world fails", serializeWorld("unused.yaml") != 0);
 
   Expect("size without a primitive fails", setSize(1.0f, 1.0f) != 0);
-  Expect("layer without a primitive fails", setLayer(0) != 0);
   Expect("priority without a primitive fails", setPriority(0) != 0);
   Expect("floor without a primitive fails", setFloor(0.0f) != 0);
   Expect("ceiling without a primitive fails", setCeiling(1.0f) != 0);
