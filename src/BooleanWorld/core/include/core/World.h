@@ -14,6 +14,7 @@
 
 #include "core/Platform.h"
 #include "core/Serializable.h"
+#include "core/Layer.h"
 #include "core/Primitive.h"
 #include "core/WorldData.h"
 #include "core/WorldDataGenerator.h"
@@ -43,6 +44,13 @@ private:
   std::vector<Primitive*> mPrimitives;
 
   std::vector<WorldTriggerLine*> mTriggerLines;
+
+  // The ordered set of Layers this World owns (docs/adr/0013). Never empty.
+  // mActiveLayerIndex is the editor's current authoring focus, not part of
+  // the serialized World state: it is always 0 after construction or load.
+  std::vector<Layer*> mLayers;
+
+  uint32_t mActiveLayerIndex;
 
   wp::Vector2 mPlayerStartPosition;
 
@@ -130,6 +138,16 @@ public:
   float getPrimitiveAccelerationGridSize() const;
 
   void clear();
+
+  [[nodiscard]] std::vector<Layer*> const& getLayers() const;
+
+  [[nodiscard]] uint32_t getNumLayers() const;
+
+  [[nodiscard]] uint32_t getActiveLayerIndex() const;
+
+  [[nodiscard]] Layer* getActiveLayer();
+
+  [[nodiscard]] Layer const* getActiveLayer() const;
 
   void setName(std::string const& name);
 

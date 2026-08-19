@@ -36,16 +36,18 @@ World::World()
 }
 
 World::World(float size, float gridSize)
-    : mExtents(-size / 2, -size / 2, size, size), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(new DefaultWorldDataGenerator()), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mPrevPlayerPosition{999999.0f, 999999.0f}, mPrefabAreaTilingType(PrefabAreaTilingType::None), mPrefabAreaTileTypes(0), mLastPrimitiveUpdateFrameNumber(0) {
+    : mExtents(-size / 2, -size / 2, size, size), mActiveLayerIndex(0), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(new DefaultWorldDataGenerator()), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mPrevPlayerPosition{999999.0f, 999999.0f}, mPrefabAreaTilingType(PrefabAreaTilingType::None), mPrefabAreaTileTypes(0), mLastPrimitiveUpdateFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&World::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   if (gridSize > 0.0f) {
     createAccelerationGrids(gridSize);
   }
+
+  mLayers.push_back(new Layer(0, "Layer 0", size, gridSize));
 }
 
 World::World(World const& other)
-    : mDataGenerator(nullptr), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr) {
+    : mActiveLayerIndex(0), mDataGenerator(nullptr), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr) {
   mPrimitiveCellMetadataUpdater = bind(&World::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   copyFrom(other);
@@ -72,6 +74,8 @@ void World::swapState(World& other) noexcept {
   swap(mExtents, other.mExtents);
   swap(mPrimitives, other.mPrimitives);
   swap(mTriggerLines, other.mTriggerLines);
+  swap(mLayers, other.mLayers);
+  swap(mActiveLayerIndex, other.mActiveLayerIndex);
   swap(mPlayerStartPosition, other.mPlayerStartPosition);
   swap(mPlayerStartAngle, other.mPlayerStartAngle);
   swap(mAlwaysUpdateVertices, other.mAlwaysUpdateVertices);
@@ -116,6 +120,13 @@ void World::copyFrom(World const& other) {
   mPrefabAreaTilingType = other.mPrefabAreaTilingType;
   mPrefabAreaTileTypes = other.mPrefabAreaTileTypes;
   mLastPrimitiveUpdateFrameNumber = other.mLastPrimitiveUpdateFrameNumber;
+
+  // mActiveLayerIndex is intentionally left at 0 (set by the constructor's
+  // member-init list) rather than copied from other: it is authoring
+  // session state, not part of a World's value.
+  for (auto layer : other.mLayers) {
+    mLayers.push_back(new Layer(*layer));
+  }
 
   // Add Acceleration grids
   if (other.mPrimitiveLookupGrid) {
@@ -439,6 +450,10 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mPrefabAreaTilingType = prefabAreaTilingType;
   mPrefabAreaTileTypes = prefabAreaTileTypes;
 
+  // The active Layer index is never part of the serialized format: a
+  // deserialized World always starts focused on its first Layer.
+  mActiveLayerIndex = 0;
+
   // Create accel grids after setting extents but before adding primitives
   if (workData.accelGridSize > 0.0f) {
     delete mPrimitiveLookupGrid;
@@ -563,6 +578,13 @@ void World::clear() {
   }
 
   mTriggerLines.clear();
+
+  for (auto layer : mLayers) {
+    delete layer;
+  }
+
+  mLayers.clear();
+  mActiveLayerIndex = 0;
 }
 
 void World::setName(string const& name) {
@@ -583,6 +605,26 @@ string const& World::getDescription() const {
 
 wp::BoundingBox const& World::getExtents() const {
   return mExtents;
+}
+
+vector<Layer*> const& World::getLayers() const {
+  return mLayers;
+}
+
+uint32_t World::getNumLayers() const {
+  return (uint32_t)mLayers.size();
+}
+
+uint32_t World::getActiveLayerIndex() const {
+  return mActiveLayerIndex;
+}
+
+Layer* World::getActiveLayer() {
+  return mLayers[mActiveLayerIndex];
+}
+
+Layer const* World::getActiveLayer() const {
+  return mLayers[mActiveLayerIndex];
 }
 
 void World::setPlayerStartPosition(wp::Vector2 const& pos) {
