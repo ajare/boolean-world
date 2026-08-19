@@ -341,10 +341,12 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
   childPtr->setParent(rootPtr);
   source->getPrimitive(2)->setParent(childPtr);
 
+  auto* extraLayer = source->addLayer("extra");
+
   auto* sourceGenerator = new bw::core::DynamicWorldDataGenerator(source.get());
   bw::core::LayerSelection selectedLayers;
-  selectedLayers.set(3);
-  selectedLayers.set(7);
+  selectedLayers.set(source->getActiveLayer()->getId());
+  selectedLayers.set(extraLayer->getId());
   sourceGenerator->setLayerSelection(selectedLayers);
   sourceGenerator->setAlwaysUpdateVertices(true);
   sourceGenerator->setAllowCommitIfVisible(true);

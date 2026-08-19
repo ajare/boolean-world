@@ -397,7 +397,7 @@ void StatePlayBooleanWorld::setupEntities() {
 
   createEntity((int)EntityType::Player, playerPos, playerAngle, true);
 
-  world->update(0, {playerPos, viewAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, false, false, bw::core::SelectLayer(0)}, {0, 0});
+  world->update(0, {playerPos, viewAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, false, false, layerSelection()}, {0, 0});
 
   mWorldData = world->getWorldData();
 

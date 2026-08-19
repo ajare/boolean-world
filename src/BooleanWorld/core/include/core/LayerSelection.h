@@ -8,12 +8,23 @@
 
 namespace bw::core {
 // The set of Layers a generation folds across, indexed by stable Layer id
-// (docs/adr/0013).
+// (docs/adr/0013). Layer ids beyond the mask's width cannot be selected.
 using LayerSelection = std::bitset<256>;
 
-inline LayerSelection SelectLayer(uint8_t layer) {
+[[nodiscard]] inline bool IsLayerSelectable(uint32_t layerId) {
+  return size_t(layerId) < LayerSelection{}.size();
+}
+
+[[nodiscard]] inline bool IsLayerSelected(
+    LayerSelection const& selection, uint32_t layerId) {
+  return IsLayerSelectable(layerId) && selection.test(size_t(layerId));
+}
+
+inline LayerSelection SelectLayer(uint32_t layerId) {
   LayerSelection selection;
-  selection.set(size_t(layer));
+  if (IsLayerSelectable(layerId)) {
+    selection.set(size_t(layerId));
+  }
   return selection;
 }
 

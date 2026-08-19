@@ -12,13 +12,21 @@ using namespace std;
 
 vector<Primitive*> selectAndOrderPrimitives(
     World const& world, LayerSelection const& selection) {
-  // A Primitive no longer carries a layer tag to filter on: it belongs to
-  // whichever Layer owns it, and World's facade exposes the active Layer's
-  // content. Folding across the selected set of Layer ids is #162; until
-  // then every Primitive the World hands out participates.
-  BW_UNUSED(selection);
+  // Layers filter which content enters the fold; they do not group, scope or
+  // nest it (ADR-0009, ADR-0013). Everything the selected Layers own is
+  // gathered first and then priority-ordered as one set, so the fold stays
+  // non-local across Layer boundaries.
+  vector<Primitive*> primitives;
 
-  auto primitives = world.getPrimitives();
+  for (auto const* layer : world.getLayers()) {
+    if (!IsLayerSelected(selection, layer->getId())) {
+      continue;
+    }
+
+    auto const& layerPrimitives = layer->getPrimitives();
+    primitives.insert(
+        primitives.end(), layerPrimitives.begin(), layerPrimitives.end());
+  }
 
   stable_sort(
       primitives.begin(), primitives.end(),
@@ -71,8 +79,16 @@ LayerSelection const& WorldDataGenerator::getLayerSelection() const {
   return mLayerSelection;
 }
 
-void WorldDataGenerator::setActiveLayer(uint8_t layer) {
-  setLayerSelection(SelectLayer(layer));
+void WorldDataGenerator::setActiveLayer(uint32_t layerId) {
+  setLayerSelection(SelectLayer(layerId));
+}
+
+void WorldDataGenerator::_resetLayerSelection(
+    LayerSelection const& selection) {
+  if (selection.none()) {
+    throw std::invalid_argument("layer selection must not be empty");
+  }
+  mLayerSelection = selection;
 }
 
 void WorldDataGenerator::handleEvents(uint32_t events) {

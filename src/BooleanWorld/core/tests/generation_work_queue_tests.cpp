@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <core/DynamicWorldDataGenerator.h>
+#include <core/Layer.h>
 #include <core/MeshPrimitive.h>
 #include <core/World.h>
 
@@ -28,20 +29,22 @@ ComplexPolygon rectangle(float left, float bottom, float right, float top) {
   return {{{{left, bottom}}, {{right, bottom}}, {{right, top}}, {{left, top}}}};
 }
 
-void addPrimitive(
-    bw::core::World& world,
+void addLayerPrimitive(
+    bw::core::Layer& layer,
     ComplexPolygon polygon) {
   auto primitive = MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union,
       Primitive::FillRule::NonZero,
       {std::move(polygon)});
-  world.addPrimitive(primitive);
+  layer.addPrimitive(primitive);
 }
 
 void blockedWorkerCoalescesToLatestGenerationSnapshot() {
   bw::core::World world(100.0f, 10.0f);
-  addPrimitive(world, rectangle(0.0f, 0.0f, 10.0f, 10.0f));
-  addPrimitive(world, rectangle(20.0f, 20.0f, 30.0f, 30.0f));
+  auto* firstLayer = world.getActiveLayer();
+  auto* secondLayer = world.addLayer("second");
+  addLayerPrimitive(*firstLayer, rectangle(0.0f, 0.0f, 10.0f, 10.0f));
+  addLayerPrimitive(*secondLayer, rectangle(20.0f, 20.0f, 30.0f, 30.0f));
 
   DynamicWorldDataGenerator generator(&world);
   generator.setAllowCommitIfVisible(true);
@@ -86,7 +89,8 @@ void blockedWorkerCoalescesToLatestGenerationSnapshot() {
 
   constexpr uint32_t requestCount = 3000;
   for (uint32_t i = 0; i < requestCount; ++i) {
-    generator.setActiveLayer(i % 2 == 0 ? 1 : 2);
+    generator.setActiveLayer(
+        i % 2 == 0 ? firstLayer->getId() : secondLayer->getId());
     generator.generate(&world, true);
     require(
         generator.getNumGenerationsPending() <= 1,
@@ -132,15 +136,15 @@ void blockedWorkerCoalescesToLatestGenerationSnapshot() {
       generator.getNumGenerationsComplete() == 2,
       "superseded requests performed generation work");
 
-  // Scoping the fold to the request's selected Layer ids is #162; for now the
-  // generated snapshot is the whole World, so both rectangles must be in it.
+  // The final request selected the second Layer, so only its rectangle may
+  // appear: coalescing must keep the latest selection, not an earlier one.
   auto worldData = generator.getWorldData(&world);
   require(
       worldData->getContainingFaceIndex({25.0f, 25.0f}) != ~0u,
-      "the coalesced request did not generate the world's content");
+      "latest request lost its layer selection");
   require(
-      worldData->getContainingFaceIndex({5.0f, 5.0f}) != ~0u,
-      "the coalesced request generated only part of the world's content");
+      worldData->getContainingFaceIndex({5.0f, 5.0f}) == ~0u,
+      "an older request's layer selection was generated");
 
   generator.unregisterGenerationCallback(token);
 }

@@ -436,6 +436,13 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mLastPrimitiveUpdateFrameNumber = 0;
   activeLayer->_setFrameNumber(0);
 
+  // The generation layer selection is never serialized: a loaded World always
+  // starts scoped to just its active Layer, never a mask carried over from
+  // the previous contents (docs/adr/0013).
+  if (mDataGenerator) {
+    mDataGenerator->_resetLayerSelection(SelectLayer(activeLayer->getId()));
+  }
+
   // Calculate vertices/bounds to initialise
   for (auto primitive : activeLayer->getPrimitives()) {
     primitive->updateTime(0.0, {wp::Vector2::ZERO,
@@ -987,11 +994,17 @@ void World::update(float frameTime, WorldUpdateData const& data, wp::Vector2 con
     // This is local trigger-query acceleration, not primitive generation culling
     // (ADR-0007): every primitive remains in every selected generation.
     //
-    // A WorldTriggerLine no longer carries a layer tag: it belongs to the
-    // Layer that owns it, and these come from the active Layer. Scoping
-    // collisions to the selected set of Layer ids is #162.
-    for (auto triggerLine : findTriggerLines(sweptPlayerBounds)) {
-      triggerLine->checkCollide(mPrevPlayerPosition, data.entityPosition, data.entityRadius);
+    // A WorldTriggerLine belongs to the Layer that owns it, so the same
+    // Layer-id selection that scopes generation scopes trigger collision -
+    // each selected Layer answers from its own trigger grid.
+    for (auto* layer : mLayers) {
+      if (!IsLayerSelected(data.layerSelection, layer->getId())) {
+        continue;
+      }
+
+      for (auto triggerLine : layer->findTriggerLines(sweptPlayerBounds)) {
+        triggerLine->checkCollide(mPrevPlayerPosition, data.entityPosition, data.entityRadius);
+      }
     }
   }
 

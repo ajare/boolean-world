@@ -50,7 +50,12 @@ public:
   void setLayerSelection(LayerSelection const& selection);
   [[nodiscard]] LayerSelection const& getLayerSelection() const;
 
-  void setActiveLayer(uint8_t layer);
+  void setActiveLayer(uint32_t layerId);
+
+  // Assign without running the change hook: used when a World load re-homes
+  // the selection onto its active Layer, where the caller drives the
+  // regeneration itself.
+  void _resetLayerSelection(LayerSelection const& selection);
   void update(float frameTime, WorldUpdateData const& data, uint32_t events);
   virtual void generate(World const* world, bool regetPrimitives) = 0;
 };
