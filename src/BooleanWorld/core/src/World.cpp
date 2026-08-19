@@ -13,6 +13,7 @@
 #include "core/World.h"
 #include "core/CoreException.h"
 #include "core/Defines.h"
+#include "core/Registry.h"
 #include "core/RectanglePolygon.h"
 #include "core/RegularPolygon.h"
 #include "core/CirclePolygon.h"
@@ -147,24 +148,17 @@ void World::copyFrom(World const& other) {
 }
 
 Primitive* World::instantiatePrimitive(string const& type) const {
-  typedef function<Primitive*()> PrimitiveCreator;
+  static const Registry<Primitive> primRegistry(
+      "primitive", {{"Rectangle", []() { return new RectanglePolygon; }},
+                    {"Regular", []() { return new RegularPolygon; }},
+                    {"Circle", []() { return new CirclePolygon; }},
+                    {"CircleSegment", []() { return new CircleSegmentPolygon; }},
+                    {"Torus", []() { return new TorusPolygon; }},
+                    {"TorusSegment", []() { return new TorusSegmentPolygon; }},
+                    {"Superformula", []() { return new SuperformulaPolygon; }},
+                    {"Mesh", []() { return new MeshPrimitive; }}});
 
-  static const map<string, PrimitiveCreator> primCreators = {
-      {"Rectangle", []() { return new RectanglePolygon; }},
-      {"Regular", []() { return new RegularPolygon; }},
-      {"Circle", []() { return new CirclePolygon; }},
-      {"CircleSegment", []() { return new CircleSegmentPolygon; }},
-      {"Torus", []() { return new TorusPolygon; }},
-      {"TorusSegment", []() { return new TorusSegmentPolygon; }},
-      {"Superformula", []() { return new SuperformulaPolygon; }},
-      {"Mesh", []() { return new MeshPrimitive; }}};
-
-  auto it = primCreators.find(type);
-  if (it == primCreators.end()) {
-    throw CoreException(format("No primitive of type '{}' registered", type));
-  }
-
-  return it->second();
+  return primRegistry.create(type);
 }
 
 bool World::childrenModified() const {
