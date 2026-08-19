@@ -2,19 +2,13 @@
 #include <memory>
 #include <algorithm>
 #include <cassert>
+#include <iterator>
 
 #include "core/Layer.h"
 #include "core/CoreException.h"
 #include "core/Defines.h"
-#include "core/Registry.h"
-#include "core/RectanglePolygon.h"
-#include "core/RegularPolygon.h"
-#include "core/CirclePolygon.h"
-#include "core/CircleSegmentPolygon.h"
-#include "core/TorusPolygon.h"
-#include "core/TorusSegmentPolygon.h"
-#include "core/SuperformulaPolygon.h"
-#include "core/MeshPrimitive.h"
+#include "core/LayerBuildStep.h"
+#include "core/PrimitiveField.h"
 
 namespace bw {
 namespace core {
@@ -28,6 +22,8 @@ Layer::Layer()
 Layer::Layer(uint32_t id, string const& name, float size, float gridSize)
     : mId(id), mName(name), mExtents(-size / 2, -size / 2, size, size), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&Layer::updatePrimitiveCellMetadata, this, placeholders::_1);
+
+  seedFirstStep();
 
   if (gridSize > 0.0f) {
     createAccelerationGrids(gridSize);
@@ -60,6 +56,7 @@ void Layer::swapState(Layer& other) noexcept {
   swap(mId, other.mId);
   swap(mName, other.mName);
   swap(mExtents, other.mExtents);
+  swap(mSteps, other.mSteps);
   swap(mPrimitives, other.mPrimitives);
   swap(mTriggerLines, other.mTriggerLines);
   swap(mPrimitiveLookupGrid, other.mPrimitiveLookupGrid);
@@ -75,7 +72,7 @@ void Layer::rebindOwnedState() {
 }
 
 Layer::~Layer() {
-  clear();
+  teardown();
 }
 
 void Layer::copyFrom(Layer const& other) {
@@ -114,48 +111,43 @@ void Layer::copyFrom(Layer const& other) {
     tl.release();
   }
 
-  // Clone every primitive before adding any of them, so parent links can be
-  // remapped as a complete graph regardless of primitive ordering.
+  // Clone every step, recording each cloned Primitive against the one it came
+  // from, so parent links can then be remapped as a complete graph regardless
+  // of which step a parent happens to live in.
   map<VertexTransformerObject const*, VertexTransformerObject*> primitiveMap;
-  vector<unique_ptr<Primitive>> primitives;
-  primitives.reserve(other.mPrimitives.size());
-  for (auto primitive : other.mPrimitives) {
-    auto p = unique_ptr<Primitive>(primitive->copy());
-    p->mWorld = nullptr;
-    p->mInputs.triggerLines = &mTriggerLines;
-    primitiveMap[primitive] = p.get();
-    primitives.push_back(move(p));
+
+  deleteSteps();
+  mSteps.reserve(other.mSteps.size());
+  for (auto const* step : other.mSteps) {
+    mSteps.push_back(step->copy(primitiveMap));
   }
 
-  for (size_t i = 0; i < primitives.size(); ++i) {
-    auto const* sourceParent = other.mPrimitives[i]->mParent;
-    auto const parent = primitiveMap.find(sourceParent);
-    primitives[i]->mParent = parent != primitiveMap.end() ? parent->second : nullptr;
+  for (auto const& [source, clone] : primitiveMap) {
+    auto const parent = primitiveMap.find(source->mParent);
+    clone->mParent = parent != primitiveMap.end() ? parent->second : nullptr;
   }
 
-  for (auto& primitive : primitives) {
-    addPrimitive(primitive.get());
-    primitive.release();
-  }
+  rebuild();
+  rebindOwnedState();
 }
 
-Primitive* Layer::instantiatePrimitive(string const& type) const {
-  static const Registry<Primitive> primRegistry(
-      "primitive", {{"Rectangle", []() { return new RectanglePolygon; }},
-                    {"Regular", []() { return new RegularPolygon; }},
-                    {"Circle", []() { return new CirclePolygon; }},
-                    {"CircleSegment", []() { return new CircleSegmentPolygon; }},
-                    {"Torus", []() { return new TorusPolygon; }},
-                    {"TorusSegment", []() { return new TorusSegmentPolygon; }},
-                    {"Superformula", []() { return new SuperformulaPolygon; }},
-                    {"Mesh", []() { return new MeshPrimitive; }}});
+void Layer::seedFirstStep() {
+  assert(mSteps.empty() && "Layer::seedFirstStep - the Layer already has steps");
 
-  return primRegistry.create(type);
+  mSteps.push_back(new PrimitiveField);
+}
+
+void Layer::deleteSteps() {
+  for (auto* step : mSteps) {
+    delete step;
+  }
+
+  mSteps.clear();
 }
 
 bool Layer::childrenModified() const {
-  for (auto const* primitive : mPrimitives) {
-    if (primitive->isModified()) {
+  for (auto const* step : mSteps) {
+    if (step->isModified()) {
       return true;
     }
   }
@@ -177,25 +169,22 @@ void Layer::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
     serializer->writeVector2("minExtent", mExtents.getMinExtent());
     serializer->writeVector2("maxExtent", mExtents.getMaxExtent());
 
-    serializer->beginArray("primitives");
+    // Only the recipe is written; the Primitives it produces are derived on
+    // load by rebuilding from it (docs/adr/0014).
+    serializer->beginArray("steps");
     {
-      for (auto const* primitive : mPrimitives) {
-        if (!workData.includeGhostPrimitives &&
-            (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) != 0) {
-          continue;
-        }
-
-        serializer->beginMap("primitive");
+      for (auto const* step : mSteps) {
+        serializer->beginMap("step");
         {
-          serializer->writeString("type", primitive->getType());
+          serializer->writeString("type", step->getType());
 
-          primitive->serialize(serializer, workData);
+          step->serialize(serializer, workData);
 
-          serializer->endMap();  // primitive
+          serializer->endMap();  // step
         }
       }
 
-      serializer->endArray();  // primitives
+      serializer->endArray();  // steps
     }
 
     serializer->beginArray("triggerLines");
@@ -218,7 +207,7 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   uint32_t id;
   string name;
   wp::Vector2 minExtent, maxExtent;
-  vector<unique_ptr<Primitive>> primitives;
+  vector<unique_ptr<LayerBuildStep>> steps;
   vector<unique_ptr<WorldTriggerLine>> triggerLines;
 
   try {
@@ -229,27 +218,31 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
       minExtent = serializer->readVector2("minExtent");
       maxExtent = serializer->readVector2("maxExtent");
 
-      serializer->beginArray("primitives");
+      serializer->beginArray("steps");
       {
         while (serializer->nextArrayItem()) {
-          serializer->beginMap("primitive");
+          serializer->beginMap("step");
           {
-            auto primitiveType = serializer->readString("type");
+            auto stepType = serializer->readString("type");
 
-            auto primitive = unique_ptr<Primitive>(instantiatePrimitive(primitiveType));
+            auto step = unique_ptr<LayerBuildStep>(LayerBuildStep::instantiate(stepType));
 
-            if (!primitive->deserialize(serializer, workData)) {
-              copyErrorsAndWarnings(primitive.get(), true, true);
+            if (!step->deserialize(serializer, workData)) {
+              copyErrorsAndWarnings(step.get(), true, true);
               return false;
             }
 
-            primitives.push_back(move(primitive));
+            steps.push_back(move(step));
 
-            serializer->endMap();  // primitive
+            serializer->endMap();  // step
           }
         }
 
-        serializer->endArray();  // primitives
+        serializer->endArray();  // steps
+      }
+
+      if (steps.empty() || !dynamic_cast<PrimitiveField*>(steps.front().get())) {
+        throw CoreException("A Layer's first build step must be a PrimitiveField step");
       }
 
       serializer->beginArray("triggerLines");
@@ -326,22 +319,23 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mExtents.setPosition(minExtent);
   mExtents.setSize(maxExtent - minExtent);
 
+  mPrimitives.clear();
   rebuildAccelerationGrids(workData.accelGridSize);
 
-  // Add TriggerLines before Primitives, as Primitives may need them for
-  // their initial values.
+  // Add TriggerLines before the steps run, as the Primitives they produce may
+  // need them for their initial values.
   for (auto& triggerLine : triggerLines) {
     addTriggerLine(triggerLine.get());
     triggerLine.release();
   }
 
-  for (auto& primitive : primitives) {
-    auto* addedPrimitive = primitive.get();
-    addPrimitive(addedPrimitive);
-    primitive.release();
-    addedPrimitive->_invalidate();
+  deleteSteps();
+  mSteps.reserve(steps.size());
+  for (auto& step : steps) {
+    mSteps.push_back(step.release());
   }
 
+  rebuild();
   return true;
 }
 
@@ -424,17 +418,22 @@ void Layer::_setFrameNumber(frame_number_type frameNumber) {
 }
 
 void Layer::clear() {
+  teardown();
+
+  seedFirstStep();
+}
+
+void Layer::teardown() {
   delete mPrimitiveLookupGrid;
   mPrimitiveLookupGrid = nullptr;
 
   delete mTriggerLookupGrid;
   mTriggerLookupGrid = nullptr;
 
-  for (auto primitive : mPrimitives) {
-    delete primitive;
-  }
-
+  // The derived Primitives are owned by the steps, so dropping the steps is
+  // what destroys them.
   mPrimitives.clear();
+  deleteSteps();
 
   for (auto triggerLine : mTriggerLines) {
     delete triggerLine;
@@ -471,13 +470,106 @@ void Layer::updatePrimitiveCellMetadata(PrimitiveCellMetadata* metadata) {
   metadata->lastUpdatedFrameNumber = max(metadata->lastUpdatedFrameNumber, mFrameNumber);
 }
 
-uint32_t Layer::addPrimitive(Primitive* primitive) {
-  if (!mPrimitiveLookupGrid) {
-    throw CoreException("AccelerationGrid for primitives not created.");
+void Layer::rebuild() {
+  if (mPrimitiveLookupGrid) {
+    mPrimitiveLookupGrid->removeAllItems(mPrimitiveCellMetadataUpdater);
   }
 
-  if (getNumPrimitives() >= BW_WORLD_PRIMITIVE_COUNT_MAX) {
-    throw CoreException("Too many primitives added to the Layer");
+  mPrimitives.clear();
+
+  for (auto const* step : mSteps) {
+    if (step->isEnabled()) {
+      step->execute(*this);
+    }
+  }
+}
+
+uint32_t Layer::getNumSteps() const {
+  return (uint32_t)mSteps.size();
+}
+
+LayerBuildStep* Layer::getStep(uint32_t index) const {
+  assert(index < getNumSteps() && "Layer::getStep(index) - index out of bounds");
+
+  return mSteps[index];
+}
+
+PrimitiveField* Layer::getPrimitiveField() const {
+  assert(!mSteps.empty() && "Layer::getPrimitiveField - the Layer has no first step");
+
+  return static_cast<PrimitiveField*>(mSteps.front());
+}
+
+uint32_t Layer::insertStep(uint32_t index, LayerBuildStep* step) {
+  if (index == 0) {
+    throw CoreException("Index 0 is reserved for a Layer's PrimitiveField step; steps may only be inserted at index 1 or above");
+  }
+
+  if (index > getNumSteps()) {
+    throw CoreException(format("Cannot insert a build step at index {} into a Layer with {} steps", index, getNumSteps()));
+  }
+
+  mSteps.insert(mSteps.begin() + index, step);
+
+  rebuild();
+
+  return index;
+}
+
+uint32_t Layer::addStep(LayerBuildStep* step) {
+  return insertStep(getNumSteps(), step);
+}
+
+void Layer::removeStep(uint32_t index) {
+  if (index == 0) {
+    throw CoreException("A Layer's first build step cannot be deleted; it can only be disabled");
+  }
+
+  if (index >= getNumSteps()) {
+    throw CoreException(format("Cannot remove build step {} from a Layer with {} steps", index, getNumSteps()));
+  }
+
+  delete mSteps[index];
+  mSteps.erase(mSteps.begin() + index);
+
+  rebuild();
+}
+
+void Layer::setStepEnabled(uint32_t index, bool enabled) {
+  assert(index < getNumSteps() && "Layer::setStepEnabled(index) - index out of bounds");
+
+  if (mSteps[index]->isEnabled() == enabled) {
+    return;
+  }
+
+  mSteps[index]->setEnabled(enabled);
+
+  rebuild();
+}
+
+bool Layer::isLastEnabledStep(LayerBuildStep const* step) const {
+  auto it = find(mSteps.begin(), mSteps.end(), step);
+  if (it == mSteps.end()) {
+    return false;
+  }
+
+  return none_of(it + 1, mSteps.end(), [](auto const* later) { return later->isEnabled(); });
+}
+
+PrimitiveField* Layer::findOwningField(Primitive const* primitive) const {
+  for (auto* step : mSteps) {
+    auto* field = dynamic_cast<PrimitiveField*>(step);
+    if (field && field->contains(primitive)) {
+      return field;
+    }
+  }
+
+  return nullptr;
+}
+
+uint32_t Layer::_appendBuiltPrimitive(Primitive* primitive) {
+  if (!mPrimitiveLookupGrid) {
+    throw CoreException("AccelerationGrid for primitives not created.");
   }
 
   auto index = (uint32_t)mPrimitives.size();
@@ -494,33 +586,51 @@ uint32_t Layer::addPrimitive(Primitive* primitive) {
   return index;
 }
 
+uint32_t Layer::addPrimitive(Primitive* primitive) {
+  if (!mPrimitiveLookupGrid) {
+    throw CoreException("AccelerationGrid for primitives not created.");
+  }
+
+  if (getNumPrimitives() >= BW_WORLD_PRIMITIVE_COUNT_MAX) {
+    throw CoreException("Too many primitives added to the Layer");
+  }
+
+  auto* field = getPrimitiveField();
+
+  if (!field->isEnabled()) {
+    throw CoreException("Cannot add a Primitive while the Layer's PrimitiveField step is disabled");
+  }
+
+  field->addPrimitive(primitive);
+
+  // Nothing enabled runs after this step, so the new Primitive lands at the
+  // end of the derived collection and the cache can simply be extended.
+  if (isLastEnabledStep(field)) {
+    return _appendBuiltPrimitive(primitive);
+  }
+
+  rebuild();
+
+  auto it = find(mPrimitives.begin(), mPrimitives.end(), primitive);
+  return (uint32_t)distance(mPrimitives.begin(), it);
+}
+
 Primitive* Layer::extractPrimitive(Primitive* primitive, bool failIfNotFound) {
-  auto numPrimitives = (uint32_t)mPrimitives.size();
-  for (uint32_t i = 0; i < numPrimitives; ++i) {
-    if (mPrimitives[i] == primitive) {
-      if (mPrimitiveLookupGrid) {
-        mPrimitiveLookupGrid->removeItem(primitive->getId(), mPrimitiveCellMetadataUpdater);
-      }
+  auto* field = findOwningField(primitive);
 
-      for (uint32_t j = i; j < numPrimitives - 1; ++j) {
-        removePrimitiveFromLookupGrid(mPrimitives[j + 1]);
-
-        mPrimitives[j] = mPrimitives[j + 1];
-        mPrimitives[j]->setId(j);
-
-        addPrimitiveToLookupGrid(mPrimitives[j]);
-      }
-
-      mPrimitives.pop_back();
-      return primitive;
+  if (!field) {
+    if (failIfNotFound) {
+      throw CoreException(format("{} primitive {} not found in layer", primitive->getType(), primitive->getName()));
     }
+
+    return nullptr;
   }
 
-  if (failIfNotFound) {
-    throw CoreException(format("{} primitive {} not found in layer", primitive->getType(), primitive->getName()));
-  }
+  auto* released = field->releasePrimitive(primitive);
 
-  return nullptr;
+  rebuild();
+
+  return released;
 }
 
 void Layer::removePrimitive(Primitive* primitive, bool failIfNotFound) {
@@ -538,64 +648,69 @@ void Layer::removePrimitive(uint32_t index) {
 }
 
 void Layer::removePrimitives(vector<uint32_t> const& indices) {
-  auto sortedIndices = indices;
-  sort(sortedIndices.begin(), sortedIndices.end());
-
-  uint32_t tCount{0};
-  uint32_t selectedIndex{0};
-  auto numPrimitives = (uint32_t)mPrimitives.size();
-  for (uint32_t i = 0; i < numPrimitives; ++i) {
-    auto found = selectedIndex < sortedIndices.size() && sortedIndices[selectedIndex] == i;
-    while (selectedIndex < sortedIndices.size() && sortedIndices[selectedIndex] <= i) {
-      selectedIndex++;
-    }
-    if (!found) {
-      if (i != tCount) {
-        removePrimitiveFromLookupGrid(mPrimitives[i]);
-
-        mPrimitives[tCount] = mPrimitives[i];
-        mPrimitives[tCount]->setId(tCount);
-
-        addPrimitiveToLookupGrid(mPrimitives[tCount]);
-      }
-
-      tCount++;
-    } else {
-      removePrimitiveFromLookupGrid(mPrimitives[i]);
-
-      delete mPrimitives[i];
+  // Resolve every index up front: each removal rebuilds the derived
+  // collection, so indices taken against the original one go stale.
+  vector<Primitive*> targets;
+  targets.reserve(indices.size());
+  for (auto index : indices) {
+    if (index < getNumPrimitives()) {
+      targets.push_back(mPrimitives[index]);
     }
   }
 
-  auto numDeleted = numPrimitives - tCount;
+  uint32_t numDeleted{0};
+  for (auto* target : targets) {
+    // A repeated index resolves to a Primitive already removed, which leaves
+    // numDeleted short and is reported below.
+    auto* field = findOwningField(target);
+    if (!field) {
+      continue;
+    }
+
+    field->removePrimitive(target);
+    numDeleted++;
+  }
+
+  rebuild();
 
   if (numDeleted != (uint32_t)indices.size()) {
     throw CoreException("Could not delete all selected primitives");
-  }
-
-  while (numDeleted > 0) {
-    mPrimitives.pop_back();
-    numDeleted--;
   }
 }
 
 void Layer::replacePrimitive(uint32_t index, Primitive* newPrimitive, bool failIfNotFound) {
   assert(index < getNumPrimitives() && "Layer::replacePrimitive(index, newPrimitive) - index out of bounds");
 
+  auto* oldPrimitive = mPrimitives[index];
+  auto* field = findOwningField(oldPrimitive);
+
+  if (!field) {
+    if (failIfNotFound) {
+      throw CoreException(format("{} primitive {} not found in layer", oldPrimitive->getType(), oldPrimitive->getName()));
+    }
+
+    return;
+  }
+
   try {
-    removePrimitiveFromLookupGrid(mPrimitives[index], failIfNotFound);
+    removePrimitiveFromLookupGrid(oldPrimitive, failIfNotFound);
   } catch (exception const&) {
     if (failIfNotFound) {
       throw;
     }
   }
 
-  auto oldPrimitive = mPrimitives[index];
+  field->replacePrimitive(oldPrimitive, newPrimitive);
 
-  if (newPrimitive != oldPrimitive) {
-    delete mPrimitives[index];
-    mPrimitives[index] = newPrimitive;
+  // A replacement changes neither the number of Primitives nor their order,
+  // so as long as no enabled step runs after this one the cache stays valid
+  // with the new Primitive slotted into the old one's place.
+  if (!isLastEnabledStep(field)) {
+    rebuild();
+    return;
   }
+
+  mPrimitives[index] = newPrimitive;
 
   newPrimitive->setId(index);
   newPrimitive->setInputs(wp::Vector2::ZERO, 0.0f, &mTriggerLines);

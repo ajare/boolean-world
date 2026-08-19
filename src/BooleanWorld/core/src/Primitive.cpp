@@ -4,7 +4,16 @@
 #include <willpower/common/MathsUtils.h>
 
 #include "core/Primitive.h"
+#include "core/CirclePolygon.h"
+#include "core/CircleSegmentPolygon.h"
 #include "core/CoreException.h"
+#include "core/MeshPrimitive.h"
+#include "core/RectanglePolygon.h"
+#include "core/RegularPolygon.h"
+#include "core/Registry.h"
+#include "core/SuperformulaPolygon.h"
+#include "core/TorusPolygon.h"
+#include "core/TorusSegmentPolygon.h"
 #include "core/Triangulator.h"
 #include "core/World.h"
 #include "core/Utils.h"
@@ -12,6 +21,20 @@
 namespace bw {
 namespace core {
 using namespace std;
+
+Primitive* Primitive::instantiate(string const& type) {
+  static const Registry<Primitive> primitiveRegistry(
+      "primitive", {{"Rectangle", []() { return new RectanglePolygon; }},
+                    {"Regular", []() { return new RegularPolygon; }},
+                    {"Circle", []() { return new CirclePolygon; }},
+                    {"CircleSegment", []() { return new CircleSegmentPolygon; }},
+                    {"Torus", []() { return new TorusPolygon; }},
+                    {"TorusSegment", []() { return new TorusSegmentPolygon; }},
+                    {"Superformula", []() { return new SuperformulaPolygon; }},
+                    {"Mesh", []() { return new MeshPrimitive; }}});
+
+  return primitiveRegistry.create(type);
+}
 
 Primitive::Primitive()
     : Primitive(Operation::Union, FillRule::NonZero) {

@@ -20,6 +20,7 @@ removed the dependency entirely. Geometry terms are defined in
 | [0011](0011-remove-dormant-combat-framework.md) | Remove the dormant combat framework | Accepted |
 | [0012](0012-world-renders-through-an-offscreen-target.md) | The world renders through an offscreen target, always composited | Accepted |
 | [0013](0013-layer-is-a-first-class-owning-collection.md) | Layer is a first-class collection that owns its Primitives and WorldTriggerLines | Accepted |
+| [0014](0014-primitives-are-derived-from-layerbuildsteps.md) | A Layer's Primitives are derived from its LayerBuildSteps, never stored independently | Accepted |
 
 ## World geometry rewrite scope
 

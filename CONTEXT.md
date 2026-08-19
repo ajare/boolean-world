@@ -23,3 +23,11 @@ _Avoid_: Clipper point, floating-point topology vertex
 **Arrangement**:
 The planar subdivision induced by all selected primitive contours. Its faces are classified by primitive membership and the priority-ordered fold.
 _Avoid_: Clip result
+
+**LayerBuildStep**:
+One step in a Layer's ordered, serialized recipe for producing its Primitives. Each step's `execute()` reads the Layer as built so far and may only add new Primitives to it; a Layer's Primitives are always derived by re-running its enabled steps in order, never authored or stored independently. A step's type is fixed once created — changing it means deleting the step and adding a new one, never an in-place type change. The first step of a Layer is always a PrimitiveField step and its type cannot be changed (it can only be disabled, never deleted). Deliberately not called "LayerGenerationStep" — "Generation" already names the unrelated boolean-fold pipeline that turns selected Layers' Primitives into world geometry (see `docs/glossary.md`).
+_Avoid_: LayerGenerationStep, generation step
+
+**PrimitiveField (step)**:
+The basic LayerBuildStep: an embedded, literal list of Primitive definitions that it adds verbatim. Unrelated to the existing Voronoi/Lloyd-relaxed `PrimitiveFieldLayout`/"Generate Primitive Field…" placement feature, which the name coincidentally echoes.
+_Avoid_: conflating with the Voronoi Primitive Field placement feature

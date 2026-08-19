@@ -116,6 +116,10 @@ public:
 
   virtual Primitive* copy() const = 0;
 
+  // Constructs a default Primitive of the named type through the shared
+  // Primitive Registry - the single factory every deserializer goes through.
+  [[nodiscard]] static Primitive* instantiate(std::string const& type);
+
   Primitive* rotatedCopy(float angle) const;
 
   void _invalidate() const;

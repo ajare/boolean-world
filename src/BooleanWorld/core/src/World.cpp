@@ -147,20 +147,6 @@ void World::copyFrom(World const& other) {
   }
 }
 
-Primitive* World::instantiatePrimitive(string const& type) const {
-  static const Registry<Primitive> primRegistry(
-      "primitive", {{"Rectangle", []() { return new RectanglePolygon; }},
-                    {"Regular", []() { return new RegularPolygon; }},
-                    {"Circle", []() { return new CirclePolygon; }},
-                    {"CircleSegment", []() { return new CircleSegmentPolygon; }},
-                    {"Torus", []() { return new TorusPolygon; }},
-                    {"TorusSegment", []() { return new TorusSegmentPolygon; }},
-                    {"Superformula", []() { return new SuperformulaPolygon; }},
-                    {"Mesh", []() { return new MeshPrimitive; }}});
-
-  return primRegistry.create(type);
-}
-
 bool World::childrenModified() const {
   for (auto const* layer : mLayers) {
     if (layer->isModified()) {

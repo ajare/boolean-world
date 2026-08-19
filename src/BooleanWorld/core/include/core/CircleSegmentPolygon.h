@@ -14,8 +14,7 @@ class BW_API CircleSegmentPolygon : public RegularPolygon {
   float mResolution;
 
 private:
-  friend class World;  // Only World can call the default constructor (during deserialization)
-  friend class Layer;  // Only World/Layer can call the default constructor (during deserialization)
+  friend class Primitive;  // Only Primitive::instantiate calls the default constructor (during deserialization)
 
 protected:
   CircleSegmentPolygon();

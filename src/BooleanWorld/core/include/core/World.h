@@ -74,8 +74,6 @@ private:
 private:
   bool childrenModified() const override;
 
-  Primitive* instantiatePrimitive(std::string const& type) const;
-
   std::vector<Primitive*> sortPrimitiveIndicesByPriority(std::vector<uint32_t> const& indices) const;
 
   void releaseOwnedState();

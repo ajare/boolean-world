@@ -18,9 +18,20 @@
 namespace bw {
 namespace core {
 
-// A named, owned collection of Primitives and WorldTriggerLines. A World
-// holds an ordered set of Layers; a generation selects a set of Layers by
-// id and folds across their combined content (docs/adr/0013).
+class LayerBuildStep;
+class PrimitiveField;
+
+// A named collection of WorldTriggerLines and of the Primitives its ordered
+// LayerBuildSteps produce. A World holds an ordered set of Layers; a
+// generation selects a set of Layers by id and folds across their combined
+// content (docs/adr/0013).
+//
+// A Layer's Primitives are derived, never stored: they are recomputed from
+// scratch by re-running the enabled steps in order, and the step list - not
+// the Primitives - is what a Layer serializes (docs/adr/0014). The
+// addPrimitive/removePrimitive/replacePrimitive facade is preserved for
+// authoring, and now reads and writes the Layer's first step, which is
+// permanently a PrimitiveField.
 class BW_API Layer : public Serializable {
   struct PrimitiveCellMetadata {
     frame_number_type lastUpdatedFrameNumber{0};
@@ -35,6 +46,12 @@ private:
 
   wp::BoundingBox mExtents;
 
+  // The recipe. Index 0 is always a PrimitiveField step: it can be disabled,
+  // but never deleted or retyped, and no step may be inserted before it.
+  std::vector<LayerBuildStep*> mSteps;
+
+  // Derived from mSteps, and not owned - every Primitive here belongs to the
+  // step that produced it.
   std::vector<Primitive*> mPrimitives;
 
   std::vector<WorldTriggerLine*> mTriggerLines;
@@ -52,7 +69,26 @@ private:
 private:
   bool childrenModified() const override;
 
-  Primitive* instantiatePrimitive(std::string const& type) const;
+  // Drops the derived Primitives and everything the Layer owns outright.
+  // Unlike clear(), it leaves no first step behind, so only teardown paths
+  // may call it.
+  void teardown();
+
+  void seedFirstStep();
+
+  void deleteSteps();
+
+  // The PrimitiveField step that owns primitive, or null if no step here
+  // does. Only PrimitiveField steps hold Primitives that can be edited in
+  // place; a Primitive produced by any other kind of step is not removable
+  // or replaceable through the authoring facade.
+  [[nodiscard]] PrimitiveField* findOwningField(Primitive const* primitive) const;
+
+  // True when no enabled step follows step, so what step contributes lands
+  // at the end of the derived Primitives and appending to it cannot change
+  // any other step's output - the case where the cache can be updated in
+  // place instead of rebuilt.
+  [[nodiscard]] bool isLastEnabledStep(LayerBuildStep const* step) const;
 
   // Removes a Primitive/WorldTriggerLine from this Layer's collection and
   // acceleration grid, compacting the remaining ids exactly as
@@ -125,6 +161,41 @@ public:
 
   [[nodiscard]] wp::BoundingBox const& getExtents() const;
 
+  // --- Build steps (docs/adr/0014) ---
+
+  // Recomputes the derived Primitives from scratch by re-running the enabled
+  // steps in order.
+  void rebuild();
+
+  [[nodiscard]] uint32_t getNumSteps() const;
+
+  [[nodiscard]] LayerBuildStep* getStep(uint32_t index) const;
+
+  // The first step, always a PrimitiveField - the target of this Layer's
+  // authoring facade.
+  [[nodiscard]] PrimitiveField* getPrimitiveField() const;
+
+  // Takes ownership of step and rebuilds. Index 0 is reserved for the
+  // Layer's PrimitiveField step, so index must be >= 1; anything lower is
+  // rejected and step is not adopted.
+  uint32_t insertStep(uint32_t index, LayerBuildStep* step);
+
+  uint32_t addStep(LayerBuildStep* step);
+
+  // Rejected for index 0: the first step can be disabled, but never deleted
+  // and never retyped.
+  void removeStep(uint32_t index);
+
+  void setStepEnabled(uint32_t index, bool enabled);
+
+  // Appends a Primitive a step just produced to the derived collection.
+  // Called by LayerBuildStep::execute during a rebuild; the Layer does not
+  // take ownership.
+  uint32_t _appendBuiltPrimitive(Primitive* primitive);
+
+  // Adds primitive to this Layer's PrimitiveField step and rebuilds, taking
+  // ownership of it. Rejected while that step is disabled - the Primitive
+  // would be authored into a recipe that produces nothing.
   uint32_t addPrimitive(Primitive* primitive);
 
   void removePrimitive(Primitive* primitive, bool failIfNotFound = true);
