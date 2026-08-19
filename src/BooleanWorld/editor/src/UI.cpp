@@ -247,6 +247,11 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
         if (ImGui::MenuItem("Generate Primitive Field\u2026")) {
           getPrimitiveFieldPreview().requestOpen();
         }
+
+        if (ImGui::MenuItem("New Layer")) {
+          auto layerName = format("Layer {}", world->getNumLayers());
+          transactUndoableAction(doc, "New Layer", bind(addLayer, placeholders::_1, layerName));
+        }
       }
 
       if (resetDisabled) {

@@ -36,7 +36,7 @@ World::World()
 }
 
 World::World(float size, float gridSize)
-    : mExtents(-size / 2, -size / 2, size, size), mActiveLayerIndex(0), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(new DefaultWorldDataGenerator()), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mPrevPlayerPosition{999999.0f, 999999.0f}, mPrefabAreaTilingType(PrefabAreaTilingType::None), mPrefabAreaTileTypes(0), mLastPrimitiveUpdateFrameNumber(0) {
+    : mExtents(-size / 2, -size / 2, size, size), mActiveLayerIndex(0), mNextLayerId(1), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(new DefaultWorldDataGenerator()), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mPrevPlayerPosition{999999.0f, 999999.0f}, mPrefabAreaTilingType(PrefabAreaTilingType::None), mPrefabAreaTileTypes(0), mLastPrimitiveUpdateFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&World::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   if (gridSize > 0.0f) {
@@ -47,7 +47,7 @@ World::World(float size, float gridSize)
 }
 
 World::World(World const& other)
-    : mActiveLayerIndex(0), mDataGenerator(nullptr), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr) {
+    : mActiveLayerIndex(0), mNextLayerId(1), mDataGenerator(nullptr), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr) {
   mPrimitiveCellMetadataUpdater = bind(&World::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   copyFrom(other);
@@ -76,6 +76,7 @@ void World::swapState(World& other) noexcept {
   swap(mTriggerLines, other.mTriggerLines);
   swap(mLayers, other.mLayers);
   swap(mActiveLayerIndex, other.mActiveLayerIndex);
+  swap(mNextLayerId, other.mNextLayerId);
   swap(mPlayerStartPosition, other.mPlayerStartPosition);
   swap(mPlayerStartAngle, other.mPlayerStartAngle);
   swap(mAlwaysUpdateVertices, other.mAlwaysUpdateVertices);
@@ -124,6 +125,7 @@ void World::copyFrom(World const& other) {
   // mActiveLayerIndex is intentionally left at 0 (set by the constructor's
   // member-init list) rather than copied from other: it is authoring
   // session state, not part of a World's value.
+  mNextLayerId = other.mNextLayerId;
   for (auto layer : other.mLayers) {
     mLayers.push_back(new Layer(*layer));
   }
@@ -585,6 +587,7 @@ void World::clear() {
 
   mLayers.clear();
   mActiveLayerIndex = 0;
+  mNextLayerId = 1;
 }
 
 void World::setName(string const& name) {
@@ -625,6 +628,70 @@ Layer* World::getActiveLayer() {
 
 Layer const* World::getActiveLayer() const {
   return mLayers[mActiveLayerIndex];
+}
+
+Layer* World::addLayer(string const& name) {
+  auto id = mNextLayerId++;
+
+  auto layer = new Layer(id, name, mExtents.getSize().x, getPrimitiveAccelerationGridSize());
+
+  mLayers.push_back(layer);
+
+  return layer;
+}
+
+void World::removeLayer(Layer* layer, bool failIfNotFound) {
+  if (mLayers.size() <= 1) {
+    throw CoreException("Cannot remove the last remaining Layer from a World");
+  }
+
+  auto numLayers = (uint32_t)mLayers.size();
+  for (uint32_t i = 0; i < numLayers; ++i) {
+    if (mLayers[i] == layer) {
+      delete layer;
+      mLayers.erase(mLayers.begin() + i);
+
+      // Keep the active Layer's identity stable across the removal: if it
+      // was the one removed, fall back to the first Layer; otherwise track
+      // its new position.
+      if (mActiveLayerIndex == i) {
+        mActiveLayerIndex = 0;
+      } else if (mActiveLayerIndex > i) {
+        mActiveLayerIndex--;
+      }
+
+      return;
+    }
+  }
+
+  if (failIfNotFound) {
+    throw CoreException("Layer not found in World");
+  }
+}
+
+void World::removeLayer(uint32_t index) {
+  assert(index < getNumLayers() && "World::removeLayer(index) - index out of bounds");
+
+  removeLayer(mLayers[index]);
+}
+
+void World::moveLayer(uint32_t fromIndex, uint32_t toIndex) {
+  assert(fromIndex < getNumLayers() && "World::moveLayer(fromIndex, toIndex) - fromIndex out of bounds");
+  assert(toIndex < getNumLayers() && "World::moveLayer(fromIndex, toIndex) - toIndex out of bounds");
+
+  if (fromIndex == toIndex) {
+    return;
+  }
+
+  auto activeLayer = mLayers[mActiveLayerIndex];
+
+  auto layer = mLayers[fromIndex];
+  mLayers.erase(mLayers.begin() + fromIndex);
+  mLayers.insert(mLayers.begin() + toIndex, layer);
+
+  // Reordering must not silently change which Layer is being authored.
+  auto it = find(mLayers.begin(), mLayers.end(), activeLayer);
+  mActiveLayerIndex = (uint32_t)distance(mLayers.begin(), it);
 }
 
 void World::setPlayerStartPosition(wp::Vector2 const& pos) {

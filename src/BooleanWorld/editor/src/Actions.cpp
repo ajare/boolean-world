@@ -28,6 +28,13 @@ bool setWorldName(Document* doc, string const& name) {
   return true;
 }
 
+bool addLayer(Document* doc, string const& name) {
+  auto world = doc->getWorld();
+
+  world->addLayer(name);
+  return true;
+}
+
 bool setWorldDescription(Document* doc, string const& desc) {
   auto world = doc->getWorld();
 

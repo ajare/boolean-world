@@ -11,6 +11,8 @@ bool recordCurrentState(Document* doc, bool modifying);
 
 bool setWorldName(Document* doc, std::string const& name);
 
+bool addLayer(Document* doc, std::string const& name);
+
 bool setWorldDescription(Document* doc, std::string const& desc);
 
 bool setPlayerStartPosition(Document* doc, wp::Vector2 const& pos);

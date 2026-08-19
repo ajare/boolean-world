@@ -52,6 +52,10 @@ private:
 
   uint32_t mActiveLayerIndex;
 
+  // Next id to hand to a Layer created via addLayer(). Ids are never reused,
+  // so a Layer's identity survives removal/reordering of its siblings.
+  uint32_t mNextLayerId;
+
   wp::Vector2 mPlayerStartPosition;
 
   float mPlayerStartAngle;
@@ -148,6 +152,14 @@ public:
   [[nodiscard]] Layer* getActiveLayer();
 
   [[nodiscard]] Layer const* getActiveLayer() const;
+
+  Layer* addLayer(std::string const& name);
+
+  void removeLayer(Layer* layer, bool failIfNotFound = true);
+
+  void removeLayer(uint32_t index);
+
+  void moveLayer(uint32_t fromIndex, uint32_t toIndex);
 
   void setName(std::string const& name);
 
