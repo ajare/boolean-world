@@ -9,8 +9,6 @@
 #include <willpower/common/Vector2.h>
 #include <willpower/common/BoundingBox.h>
 #include <willpower/common/BoundingCircle.h>
-#include <willpower/common/AccelerationGrid.h>
-#include <willpower/common/ExtendedAccelerationGrid.h>
 
 #include "core/Platform.h"
 #include "core/Serializable.h"
@@ -27,12 +25,6 @@ namespace bw {
 namespace core {
 
 class BW_API World : public Serializable {
-  struct PrimitiveCellMetadata {
-    frame_number_type lastUpdatedFrameNumber{0};
-  };
-
-  typedef wp::ExtendedAccelerationGrid<PrimitiveCellMetadata> PrimitiveAccelerationGrid;
-
 private:
   // Properties
   std::string mName;
@@ -41,10 +33,10 @@ private:
 
   wp::BoundingBox mExtents;
 
-  std::vector<Primitive*> mPrimitives;
-
-  std::vector<WorldTriggerLine*> mTriggerLines;
-
+  // Primitives and WorldTriggerLines - and the grids that accelerate looking
+  // them up - are stored on the Layers, not here. World's facade below reads
+  // and writes the active Layer's storage.
+  //
   // The ordered set of Layers this World owns (docs/adr/0013). Never empty.
   // mActiveLayerIndex is the editor's current authoring focus, not part of
   // the serialized World state: it is always 0 after construction or load.
@@ -67,15 +59,9 @@ private:
   // Runtime
   frame_number_type mFrameNumber;
 
-  std::function<void(PrimitiveCellMetadata*)> mPrimitiveCellMetadataUpdater;
-
   WorldDataGenerator* mDataGenerator;
 
   // Lookups / caching
-  PrimitiveAccelerationGrid* mPrimitiveLookupGrid;
-
-  wp::AccelerationGrid* mTriggerLookupGrid;
-
   mutable frame_number_type mLastPrimitiveUpdateFrameNumber;
 
   wp::Vector2 mPrevPlayerPosition;
@@ -92,17 +78,7 @@ private:
 
   std::vector<Primitive*> sortPrimitiveIndicesByPriority(std::vector<uint32_t> const& indices) const;
 
-  std::vector<uint32_t> getPrimitiveCandidateIndices(wp::Vector2 const& worldPos) const;
-
-  void addPrimitiveToLookupGrid(Primitive* primitive);
-
-  void removePrimitiveFromLookupGrid(Primitive const* primitive, bool failIfNotFound = true);
-
-  void addTriggerLineToLookupGrid(WorldTriggerLine* triggerLine);
-
-  void removeTriggerLineFromLookupGrid(WorldTriggerLine const* triggerLine);
-
-  void updatePrimitiveCellMetadata(PrimitiveCellMetadata* metadata);
+  void releaseOwnedState();
 
   void swapState(World& other) noexcept;
 

@@ -36,6 +36,8 @@ private:
 
   friend class World;
 
+  friend class Layer;
+
 protected:
   void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 

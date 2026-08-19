@@ -25,7 +25,7 @@ Layer::Layer()
 }
 
 Layer::Layer(uint32_t id, string const& name, float size, float gridSize)
-    : mId(id), mName(name), mExtents(-size / 2, -size / 2, size, size), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr) {
+    : mId(id), mName(name), mExtents(-size / 2, -size / 2, size, size), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&Layer::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   if (gridSize > 0.0f) {
@@ -34,7 +34,7 @@ Layer::Layer(uint32_t id, string const& name, float size, float gridSize)
 }
 
 Layer::Layer(Layer const& other)
-    : mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr) {
+    : mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&Layer::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   copyFrom(other);
@@ -63,6 +63,7 @@ void Layer::swapState(Layer& other) noexcept {
   swap(mTriggerLines, other.mTriggerLines);
   swap(mPrimitiveLookupGrid, other.mPrimitiveLookupGrid);
   swap(mTriggerLookupGrid, other.mTriggerLookupGrid);
+  swap(mFrameNumber, other.mFrameNumber);
 }
 
 void Layer::rebindOwnedState() {
@@ -302,22 +303,7 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mExtents.setPosition(minExtent);
   mExtents.setSize(maxExtent - minExtent);
 
-  if (workData.accelGridSize > 0.0f) {
-    delete mPrimitiveLookupGrid;
-    mPrimitiveLookupGrid = nullptr;
-    delete mTriggerLookupGrid;
-    mTriggerLookupGrid = nullptr;
-
-    createAccelerationGrids(workData.accelGridSize);
-  } else {
-    if (mPrimitiveLookupGrid) {
-      mPrimitiveLookupGrid->removeAllItems(mPrimitiveCellMetadataUpdater);
-    }
-
-    if (mTriggerLookupGrid) {
-      mTriggerLookupGrid->removeAllItems();
-    }
-  }
+  rebuildAccelerationGrids(workData.accelGridSize);
 
   // Add TriggerLines before Primitives, as Primitives may need them for
   // their initial values.
@@ -359,6 +345,61 @@ void Layer::createAccelerationGrids(float targetCellSize) {
   }
 }
 
+void Layer::rebuildAccelerationGrids(float targetCellSize) {
+  if (targetCellSize > 0.0f) {
+    delete mPrimitiveLookupGrid;
+    mPrimitiveLookupGrid = nullptr;
+    delete mTriggerLookupGrid;
+    mTriggerLookupGrid = nullptr;
+
+    createAccelerationGrids(targetCellSize);
+
+    return;
+  }
+
+  if (mPrimitiveLookupGrid) {
+    mPrimitiveLookupGrid->removeAllItems(mPrimitiveCellMetadataUpdater);
+  }
+
+  if (mTriggerLookupGrid) {
+    mTriggerLookupGrid->removeAllItems();
+  }
+}
+
+float Layer::getPrimitiveAccelerationGridSize() const {
+  return mPrimitiveLookupGrid ? mPrimitiveLookupGrid->getCellSize().x : -1.0f;
+}
+
+bool Layer::getGridSettings(int* dimX, int* dimY, float* cellSize) const {
+  if (!mPrimitiveLookupGrid) {
+    return false;
+  }
+
+  if (dimX) {
+    *dimX = mPrimitiveLookupGrid->getCellDimensionX();
+  }
+  if (dimY) {
+    *dimY = mPrimitiveLookupGrid->getCellDimensionY();
+  }
+  if (cellSize) {
+    *cellSize = mPrimitiveLookupGrid->getCellSize().x;
+  }
+
+  return true;
+}
+
+void Layer::getGridCellFrameNumber(uint32_t cellIndex, frame_number_type* frameNumber) const {
+  if (!mPrimitiveLookupGrid) {
+    throw CoreException("AccelerationGrid for primitives not created.");
+  }
+
+  *frameNumber = mPrimitiveLookupGrid->getUser(cellIndex).lastUpdatedFrameNumber;
+}
+
+void Layer::_setFrameNumber(frame_number_type frameNumber) {
+  mFrameNumber = frameNumber;
+}
+
 void Layer::clear() {
   delete mPrimitiveLookupGrid;
   mPrimitiveLookupGrid = nullptr;
@@ -391,14 +432,16 @@ string const& Layer::getName() const {
   return mName;
 }
 
+void Layer::setExtents(wp::BoundingBox const& extents) {
+  mExtents = extents;
+}
+
 wp::BoundingBox const& Layer::getExtents() const {
   return mExtents;
 }
 
 void Layer::updatePrimitiveCellMetadata(PrimitiveCellMetadata* metadata) {
-  // Layer has no frame-number concept of its own yet (that lives on World);
-  // cell metadata is otherwise unused until generation is wired up to it.
-  BW_UNUSED(metadata);
+  metadata->lastUpdatedFrameNumber = max(metadata->lastUpdatedFrameNumber, mFrameNumber);
 }
 
 uint32_t Layer::addPrimitive(Primitive* primitive) {
@@ -451,6 +494,129 @@ void Layer::removePrimitive(Primitive* primitive, bool failIfNotFound) {
   if (failIfNotFound) {
     throw CoreException(format("{} primitive {} not found in layer", primitive->getType(), primitive->getName()));
   }
+}
+
+void Layer::removePrimitive(uint32_t index) {
+  assert(index < getNumPrimitives() && "Layer::removePrimitive(index) - index out of bounds");
+
+  removePrimitive(mPrimitives[index]);
+}
+
+void Layer::removePrimitives(vector<uint32_t> const& indices) {
+  auto sortedIndices = indices;
+  sort(sortedIndices.begin(), sortedIndices.end());
+
+  uint32_t tCount{0};
+  uint32_t selectedIndex{0};
+  auto numPrimitives = (uint32_t)mPrimitives.size();
+  for (uint32_t i = 0; i < numPrimitives; ++i) {
+    auto found = selectedIndex < sortedIndices.size() && sortedIndices[selectedIndex] == i;
+    while (selectedIndex < sortedIndices.size() && sortedIndices[selectedIndex] <= i) {
+      selectedIndex++;
+    }
+    if (!found) {
+      if (i != tCount) {
+        removePrimitiveFromLookupGrid(mPrimitives[i]);
+
+        mPrimitives[tCount] = mPrimitives[i];
+        mPrimitives[tCount]->setId(tCount);
+
+        addPrimitiveToLookupGrid(mPrimitives[tCount]);
+      }
+
+      tCount++;
+    } else {
+      removePrimitiveFromLookupGrid(mPrimitives[i]);
+
+      delete mPrimitives[i];
+    }
+  }
+
+  auto numDeleted = numPrimitives - tCount;
+
+  if (numDeleted != (uint32_t)indices.size()) {
+    throw CoreException("Could not delete all selected primitives");
+  }
+
+  while (numDeleted > 0) {
+    mPrimitives.pop_back();
+    numDeleted--;
+  }
+}
+
+void Layer::replacePrimitive(uint32_t index, Primitive* newPrimitive, bool failIfNotFound) {
+  assert(index < getNumPrimitives() && "Layer::replacePrimitive(index, newPrimitive) - index out of bounds");
+
+  try {
+    removePrimitiveFromLookupGrid(mPrimitives[index], failIfNotFound);
+  } catch (exception const&) {
+    if (failIfNotFound) {
+      throw;
+    }
+  }
+
+  auto oldPrimitive = mPrimitives[index];
+
+  if (newPrimitive != oldPrimitive) {
+    delete mPrimitives[index];
+    mPrimitives[index] = newPrimitive;
+  }
+
+  newPrimitive->setId(index);
+  newPrimitive->setInputs(wp::Vector2::ZERO, 0.0f, &mTriggerLines);
+  addPrimitiveToLookupGrid(newPrimitive);
+}
+
+void Layer::primitiveChanged(Primitive const* primitive) {
+  if (!mPrimitiveLookupGrid) {
+    throw CoreException("AccelerationGrid for primitives not created.");
+  }
+
+  auto id = primitive->getId();
+
+  // Get the containing grid cell(s), and set the version
+  auto const& cellIndices = mPrimitiveLookupGrid->_getItemCellIndices(id);
+
+  for (auto cellIndex : cellIndices) {
+    auto& userData = mPrimitiveLookupGrid->getUser(cellIndex);
+
+    mPrimitiveCellMetadataUpdater(&userData);
+  }
+
+  // Move the item between grids as required
+  mPrimitiveLookupGrid->moveItem(id, primitive->getBounds(), mPrimitiveCellMetadataUpdater);
+}
+
+vector<uint32_t> Layer::getPrimitiveIndicesInGridCell(uint32_t cellIndex) const {
+  if (!mPrimitiveLookupGrid) {
+    throw CoreException("AccelerationGrid for primitives not created.");
+  }
+
+  auto const& primIndices = mPrimitiveLookupGrid->_getCellItemIndices(cellIndex);
+
+  return {primIndices.begin(), primIndices.end()};
+}
+
+vector<uint32_t> Layer::getPrimitiveCandidateIndices(wp::Vector2 const& worldPos) const {
+  vector<uint32_t> result;
+  if (mPrimitiveLookupGrid) {
+    int cellX;
+    int cellY;
+    mPrimitiveLookupGrid->getContainingCell(true, worldPos.x, worldPos.y, cellX, cellY);
+    if (cellX >= 0 && cellY >= 0) {
+      auto const cellIndex = uint32_t(cellY * mPrimitiveLookupGrid->getCellDimensionX() + cellX);
+      auto const& candidates = mPrimitiveLookupGrid->_getCellItemIndices(cellIndex);
+      result.assign(candidates.begin(), candidates.end());
+      return result;
+    }
+  }
+
+  // Preserve picking for primitives and positions outside the configured grid.
+  result.reserve(mPrimitives.size());
+  for (uint32_t i = 0; i < uint32_t(mPrimitives.size()); ++i) {
+    result.push_back(i);
+  }
+  return result;
 }
 
 uint32_t Layer::getNumPrimitives() const {
@@ -572,12 +738,91 @@ void Layer::removeTriggerLine(WorldTriggerLine* triggerLine, bool failIfNotFound
   }
 }
 
+void Layer::removeTriggerLine(uint32_t index) {
+  assert(index < getNumTriggerLines() && "Layer::removeTriggerLine(index) - index out of bounds");
+
+  removeTriggerLine(mTriggerLines[index]);
+}
+
+void Layer::removeTriggerLines(vector<uint32_t> const& indices) {
+  uint32_t tCount{0};
+  auto numTriggerLines = (uint32_t)mTriggerLines.size();
+  for (uint32_t i = 0; i < numTriggerLines; ++i) {
+    auto found = find(indices.begin(), indices.end(), i) != indices.end();
+    if (!found) {
+      if (i != tCount) {
+        removeTriggerLineFromLookupGrid(mTriggerLines[i]);
+
+        mTriggerLines[tCount] = mTriggerLines[i];
+        mTriggerLines[tCount]->setId(tCount);
+
+        addTriggerLineToLookupGrid(mTriggerLines[tCount]);
+      }
+
+      tCount++;
+    } else {
+      removeTriggerLineFromLookupGrid(mTriggerLines[i]);
+
+      delete mTriggerLines[i];
+    }
+  }
+
+  auto numDeleted = numTriggerLines - tCount;
+
+  if (numDeleted != (uint32_t)indices.size()) {
+    throw CoreException("Could not delete all selected triggerlines");
+  }
+
+  while (numDeleted > 0) {
+    mTriggerLines.pop_back();
+    numDeleted--;
+  }
+}
+
+void Layer::replaceTriggerLine(uint32_t index, WorldTriggerLine* newTriggerLine, bool failIfNotFound) {
+  assert(index < getNumTriggerLines() && "Layer::replaceTriggerLine(index, newTriggerLine) - index out of bounds");
+
+  try {
+    removeTriggerLineFromLookupGrid(mTriggerLines[index]);
+  } catch (exception const&) {
+    if (failIfNotFound) {
+      throw;
+    }
+  }
+
+  auto oldTriggerLine = mTriggerLines[index];
+
+  if (newTriggerLine != oldTriggerLine) {
+    delete mTriggerLines[index];
+    mTriggerLines[index] = newTriggerLine;
+  }
+
+  newTriggerLine->setId(index);
+  addTriggerLineToLookupGrid(newTriggerLine);
+}
+
+void Layer::setTriggerLinePoints(uint32_t triggerLineIndex, wp::Vector2 const& p0, wp::Vector2 const& p1) {
+  assert(triggerLineIndex < getNumTriggerLines() && "Layer::setTriggerLinePoints - trigger line index out of bounds");
+
+  if (!mTriggerLookupGrid) {
+    throw CoreException("AccelerationGrid for TriggerLines not created.");
+  }
+
+  auto* triggerLine = mTriggerLines[triggerLineIndex];
+  triggerLine->setPoints(p0, p1);
+  mTriggerLookupGrid->moveItem(triggerLineIndex, triggerLine->getBounds());
+}
+
 uint32_t Layer::getNumTriggerLines() const {
   return (uint32_t)mTriggerLines.size();
 }
 
 vector<WorldTriggerLine*> const& Layer::getTriggerLines() const {
   return mTriggerLines;
+}
+
+vector<WorldTriggerLine*>* Layer::_getTriggerLineStorage() {
+  return &mTriggerLines;
 }
 
 WorldTriggerLine* Layer::getTriggerLine(uint32_t index) const {
