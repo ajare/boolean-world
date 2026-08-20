@@ -33,7 +33,7 @@ target_compile_definitions(editor PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_
 target_compile_definitions(editor PRIVATE YAML_CPP_STATIC_DEFINE)
 
 target_link_libraries(editor PRIVATE
-    core
+    core Willpower.Geometry
     vendor::opengl ext::glew vendor::spdlog vendor::nfd
     ext::yaml-cpp ext::sdl3)
 

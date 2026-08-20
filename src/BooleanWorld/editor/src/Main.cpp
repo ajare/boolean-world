@@ -393,7 +393,7 @@ editor::PointerInput readPointerInput(
 void handleSelections(
     editor::Document* doc,
     bw::core::WorldData const* worldData,
-    editor::Settings const& settings,
+    editor::Settings& settings,
     editor::PointerInput const& input) {
   gEditorInteraction.updateSelection(doc, worldData, settings, input);
 

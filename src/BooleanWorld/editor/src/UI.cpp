@@ -3147,16 +3147,29 @@ void renderHistoryPanel(editor::Document* doc, editor::Settings& settings) {
 }
 
 void renderMeshView(editor::Document* doc, editor::Settings& settings) {
-  auto world = doc->getWorld();
-  auto index = settings.activeMeshPrimitiveIndex;
-  if (index == ~0u || index >= world->getNumPrimitives() ||
-      !dynamic_cast<bw::core::MeshPrimitive*>(world->getPrimitive(index))) {
+  auto index = doc->getActiveMeshPrimitiveIndex();
+  if (doc->getActiveMesh() && !doc->meshIneligibilityReason(index).empty()) {
+    doc->clearActiveMesh();
+    settings.activeMeshPrimitiveIndex = ~0u;
+    index = ~0u;
+  }
+  if (!doc->getActiveMesh()) {
     ImGui::TextUnformatted("No active MeshPrimitive");
+    auto const& explanation = doc->getMeshHoverExplanation();
+    if (!explanation.empty()) {
+      ImGui::TextWrapped("%s", explanation.c_str());
+    } else {
+      ImGui::TextWrapped("Click an eligible MeshPrimitive in the selected LayerBuildStep.");
+    }
     return;
   }
 
   ImGui::Text("Active MeshPrimitive: %u", index);
-  ImGui::TextUnformatted("Mesh editing is not available yet.");
+  ImGui::TextUnformatted("Showing t=0 rest pose while active.");
+  auto const& explanation = doc->getMeshHoverExplanation();
+  if (!explanation.empty() && explanation != "Nothing under the cursor.") {
+    ImGui::TextWrapped("Under cursor: %s", explanation.c_str());
+  }
 }
 
 void renderCombinedPanel(

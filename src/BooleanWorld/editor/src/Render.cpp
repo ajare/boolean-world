@@ -33,6 +33,8 @@ extern float gViewZoom;
 extern int gHoveredPrimitiveHandle;
 extern wp::Vector2 gWorldViewScreenOrigin;
 extern wp::Vector2 gWorldViewSize;
+extern editor::HoverableType gHoveredType;
+extern std::vector<uint32_t> gHoveredIndices;
 
 // Converts a point in canvas-local pixel space (0,0 at the World window's
 // top-left, y-down) to the absolute screen space that ImGui draw lists use.
@@ -313,6 +315,13 @@ void renderWorld(
     };
 
     auto const& selectedPrimitiveIndices = doc->getSelectedPrimitiveIndices();
+    auto activeMeshPrimitiveIndex = doc->getActiveMeshPrimitiveIndex();
+    auto hoveredInMeshMode = [&](uint32_t primitiveId) {
+      return settings.mode == editor::Settings::Mode::Mesh &&
+             gHoveredType == editor::HoverableType::Primitive &&
+             find(gHoveredIndices.begin(), gHoveredIndices.end(), primitiveId) !=
+                 gHoveredIndices.end();
+    };
 
     if (!triangles.empty()) {
       drawList->AddDrawCmd();
@@ -327,6 +336,10 @@ void renderWorld(
       };
 
       for (auto const& triangle : triangles) {
+        if (settings.mode == editor::Settings::Mode::Mesh &&
+            arrangement.faces[triangle.face].primitiveIndex == activeMeshPrimitiveIndex) {
+          continue;
+        }
         auto v0 = toWorld(triangle.v[0]);
         auto v1 = toWorld(triangle.v[1]);
         auto v2 = toWorld(triangle.v[2]);
@@ -390,6 +403,8 @@ void renderWorld(
 
         auto primitiveId = primitive->getId();
         bool selected = selectedPrimitiveIndices.find(primitiveId) != selectedPrimitiveIndices.end();
+        bool activeMesh = settings.mode == editor::Settings::Mode::Mesh &&
+                          primitiveId == activeMeshPrimitiveIndex;
 
         // Mesh mode fades every non-MeshPrimitive; Primitive mode retains
         // its active-step focus exactly as before.
@@ -400,7 +415,7 @@ void renderWorld(
                                    : settings.primitiveColour;
 
         // Primitive borders
-        if (settings.renderPrimitiveBorders || isGhost || selected) {
+        if ((settings.renderPrimitiveBorders || isGhost || selected) && !activeMesh) {
           auto complexPolygons = primitive->getVertices();
 
           for (auto const& complexPolygon : complexPolygons) {
@@ -417,6 +432,8 @@ void renderWorld(
                 ghostBorderPolylines.push_back(move(imPoints));
               } else if (selected) {
                 drawList->AddPolyline(imPoints.data(), numVertices, settings.selectedPrimitiveColour, ImDrawFlags_Closed, 2.5f);
+              } else if (hoveredInMeshMode(primitiveId)) {
+                drawList->AddPolyline(imPoints.data(), numVertices, settings.hoveredPrimitiveColour, ImDrawFlags_Closed, 2.5f);
               } else {
                 drawList->AddPolyline(imPoints.data(), numVertices, primitiveColour, ImDrawFlags_Closed, 1.5f);
               }
@@ -447,6 +464,49 @@ void renderWorld(
             ghostColour,
             ImDrawFlags_Closed,
             ED_GHOST_BORDER_THICKNESS);
+      }
+
+      // Active Mesh sub-object overlay. Mesh indices are intentionally walked
+      // without compacting, preserving stable identities for the whole active
+      // session. Its coordinates are already t=0 world space.
+      if (settings.mode == editor::Settings::Mode::Mesh) {
+        if (auto const* mesh = doc->getActiveMesh()) {
+          drawList->AddDrawCmd();
+          for (auto polygonIndex = mesh->getFirstPolygonIndex();
+               !mesh->polygonIndexIterationFinished(polygonIndex);
+               polygonIndex = mesh->getNextPolygonIndex(polygonIndex)) {
+            auto const& polygon = mesh->getPolygon(polygonIndex);
+            if (polygon.isHole()) {
+              continue;
+            }
+            auto triangulation = polygon.createBasicTriangulation();
+            for (uint32_t triangleIndex = 0;
+                 triangleIndex < triangulation.getNumTriangles(); ++triangleIndex) {
+              wp::Vector2 first, second, third;
+              triangulation.getTriangle(triangleIndex, first, second, third);
+              drawList->AddTriangleFilled(
+                  worldToScreen(first), worldToScreen(second), worldToScreen(third),
+                  settings.backgroundColour);
+            }
+          }
+          for (auto edgeIndex = mesh->getFirstEdgeIndex();
+               !mesh->edgeIndexIterationFinished(edgeIndex);
+               edgeIndex = mesh->getNextEdgeIndex(edgeIndex)) {
+            auto const& edge = mesh->getEdge(edgeIndex);
+            auto const& first = mesh->getVertex(edge.getFirstVertex()).getPosition();
+            auto const& second = mesh->getVertex(edge.getSecondVertex()).getPosition();
+            drawList->AddLine(
+                worldToScreen(first), worldToScreen(second),
+                settings.selectedPrimitiveColour, 2.5f);
+          }
+          for (auto vertexIndex = mesh->getFirstVertexIndex();
+               !mesh->vertexIndexIterationFinished(vertexIndex);
+               vertexIndex = mesh->getNextVertexIndex(vertexIndex)) {
+            drawList->AddCircleFilled(
+                worldToScreen(mesh->getVertex(vertexIndex).getPosition()),
+                settings.vertexRadius, settings.vertexColour, 16);
+          }
+        }
       }
 
       // Influence origin

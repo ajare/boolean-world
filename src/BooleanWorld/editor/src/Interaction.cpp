@@ -49,11 +49,25 @@ void EditorInteraction::applyPrimitiveClick(
 void EditorInteraction::updateSelection(
     Document* doc,
     bw::core::WorldData const* worldData,
-    Settings const& settings,
+    Settings& settings,
     PointerInput const& input) {
   mHover = input.cursorInWorldView
                ? doc->getHover(input.worldPosition, settings, worldData)
                : DocumentHover{};
+
+  if (settings.mode == Settings::Mode::Mesh) {
+    auto rawIndex = input.cursorInWorldView
+                        ? doc->getPrimitiveIndexAt(input.worldPosition)
+                        : ~0u;
+    doc->setMeshHoverExplanation(
+        input.cursorInWorldView ? doc->meshIneligibilityReason(rawIndex) : "");
+    if (input.leftClicked && mHover.type == HoverableType::Primitive &&
+        !mHover.indices.empty() && doc->activateMesh(mHover.indices.front())) {
+      settings.activeMeshPrimitiveIndex = mHover.indices.front();
+      doc->clearSelections();
+    }
+    return;
+  }
 
   // This chord belongs to view navigation, never object selection.
   if (input.shift && input.alt) {

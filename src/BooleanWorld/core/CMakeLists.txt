@@ -54,7 +54,7 @@ bw_add_header_filter(core
 target_compile_definitions(core PRIVATE YAML_CPP_STATIC_DEFINE _CONSOLE)
 
 target_link_libraries(core PUBLIC
-    bw-common Willpower.Common
+    bw-common Willpower.Common Willpower.Geometry
     vendor::concurrencpp ext::yaml-cpp)
 
 target_compile_features(core PRIVATE cxx_std_23)
@@ -65,6 +65,16 @@ bw_enable_sdl_checks(core)
 set_target_properties(core PROPERTIES FOLDER BooleanWorld)
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_mesh_primitive_geometry_proxy_tests
+        tests/mesh_primitive_geometry_proxy_tests.cpp)
+    target_link_libraries(boolean_world_mesh_primitive_geometry_proxy_tests PRIVATE core)
+    target_compile_features(boolean_world_mesh_primitive_geometry_proxy_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_mesh_primitive_geometry_proxy_tests)
+    bw_output_dirs(boolean_world_mesh_primitive_geometry_proxy_tests)
+    bw_deploy_runtime_dlls(boolean_world_mesh_primitive_geometry_proxy_tests)
+    add_test(NAME boolean_world_mesh_primitive_geometry_proxy
+             COMMAND boolean_world_mesh_primitive_geometry_proxy_tests)
+
     add_executable(boolean_world_primitive_field_layout_tests
         tests/primitive_field_layout_tests.cpp)
     target_link_libraries(boolean_world_primitive_field_layout_tests PRIVATE core)

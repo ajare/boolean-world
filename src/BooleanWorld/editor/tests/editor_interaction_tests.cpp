@@ -5,6 +5,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <core/MeshPrimitive.h>
 #include <core/RectanglePolygon.h>
 
 #include "Actions.h"
@@ -42,6 +43,18 @@ uint32_t addRectangle(
   primitive->updateVertexPositions();
   document.getWorld()->addPrimitive(primitive);
   return primitive->getId();
+}
+
+uint32_t addMesh(editor::Document& document, wp::Vector2 const& position) {
+  auto* mesh = new bw::core::MeshPrimitive(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::EvenOdd,
+      {{{{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}}}});
+  mesh->setSize(10.0f, 10.0f);
+  mesh->setPosition(position);
+  mesh->updateVertexPositions();
+  document.getWorld()->addPrimitive(mesh);
+  return mesh->getId();
 }
 
 editor::PointerInput pointerAt(wp::Vector2 const& position) {
@@ -152,6 +165,30 @@ void modeAndSubModeChangesAreEditorPreferencesAndClearSelection() {
           "leaving Mesh mode did not clear the selection");
 }
 
+void meshClicksBuildAndSwitchTheActiveProxy() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  document.newDoc();
+  auto first = addMesh(document, {50.0f, 50.0f});
+  auto second = addMesh(document, {100.0f, 100.0f});
+  editor::setEditorMode(&document, settings, editor::Settings::Mode::Mesh);
+  editor::EditorInteraction interaction;
+
+  auto click = pointerAt({50.0f, 50.0f});
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  require(document.getActiveMeshPrimitiveIndex() == first && document.getActiveMesh(),
+          "clicking an eligible MeshPrimitive did not build its proxy");
+
+  click = pointerAt({100.0f, 100.0f});
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  require(document.getActiveMeshPrimitiveIndex() == second &&
+              settings.activeMeshPrimitiveIndex == second,
+          "clicking another MeshPrimitive did not switch the active proxy");
+}
+
 void rubberBandSelectionSupportsPlainControlAndShiftPolicies() {
   editor::Document document;
   editor::Settings settings;
@@ -209,6 +246,7 @@ int main() {
     plainControlAndShiftClicksApplyTheirSelectionPolicies();
     repeatedClicksCycleThroughStackedPrimitives();
     modeAndSubModeChangesAreEditorPreferencesAndClearSelection();
+    meshClicksBuildAndSwitchTheActiveProxy();
     rubberBandSelectionSupportsPlainControlAndShiftPolicies();
     std::cout << "Editor selection interactions passed\n";
     return 0;

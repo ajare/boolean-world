@@ -26,11 +26,15 @@ void setEditorMode(Document* doc, Settings& settings, Settings::Mode mode) {
 
   if (mode == Settings::Mode::Mesh && doc->isActive()) {
     auto const& selection = doc->getSelectedPrimitiveIndices();
-    if (selection.size() == 1 &&
-        dynamic_cast<bw::core::MeshPrimitive*>(
-            doc->getWorld()->getPrimitive(*selection.begin()))) {
+    if (selection.size() == 1 && doc->activateMesh(*selection.begin())) {
       settings.activeMeshPrimitiveIndex = *selection.begin();
+    } else {
+      doc->clearActiveMesh();
+      settings.activeMeshPrimitiveIndex = ~0u;
     }
+  } else {
+    doc->clearActiveMesh();
+    settings.activeMeshPrimitiveIndex = ~0u;
   }
 
   settings.mode = mode;

@@ -52,7 +52,7 @@ public:
   void updateSelection(
       Document* doc,
       bw::core::WorldData const* worldData,
-      Settings const& settings,
+      Settings& settings,
       PointerInput const& input);
 
   void updateDrag(

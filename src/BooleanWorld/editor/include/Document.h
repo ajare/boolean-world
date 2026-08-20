@@ -3,6 +3,9 @@
 #include <string>
 #include <set>
 #include <map>
+#include <memory>
+
+#include <willpower/geometry/Mesh.h>
 
 #include <willpower/common/Vector2.h>
 
@@ -62,6 +65,10 @@ class Document {
   uint32_t mSelectedWorldVertexIndex;
 
   uint32_t mSelectedTriggerLineIndex;
+
+  uint32_t mActiveMeshPrimitiveIndex{~0u};
+  std::unique_ptr<wp::geometry::Mesh> mActiveMesh;
+  std::string mMeshHoverExplanation;
 
   wp::Vector2 mPlayerOldProxyPosition, mPlayerProxyPosition;
 
@@ -127,6 +134,18 @@ public:
   // its active step (and earlier) unless showAllStepPrimitives opts out -
   // for Select All.
   std::vector<uint32_t> getSelectablePrimitiveIndices(Settings const& settings) const;
+
+  // Mesh-mode eligibility is deliberately stricter than ordinary Primitive
+  // selection: only a MeshPrimitive produced by the selected step itself is
+  // directly editable.
+  [[nodiscard]] std::string meshIneligibilityReason(uint32_t primitiveIndex) const;
+  [[nodiscard]] uint32_t getPrimitiveIndexAt(wp::Vector2 const& worldPosition) const;
+  bool activateMesh(uint32_t primitiveIndex);
+  void clearActiveMesh();
+  [[nodiscard]] uint32_t getActiveMeshPrimitiveIndex() const;
+  [[nodiscard]] wp::geometry::Mesh const* getActiveMesh() const;
+  void setMeshHoverExplanation(std::string explanation);
+  [[nodiscard]] std::string const& getMeshHoverExplanation() const;
 
   bool indexInSelection(uint32_t index) const;
 

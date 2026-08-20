@@ -92,8 +92,11 @@ set<uint32_t> getIgnoredPrimitiveIndices(bw::core::World const& world, Settings 
 
     if (activeLayer) {
       auto owningStepIndex = activeLayer->getOwningStepIndex(primitive);
-      if (owningStepIndex != ~0u &&
-          !activeLayer->getStep(owningStepIndex)->permitsDirectPrimitiveEditing()) {
+      if (settings.mode == Settings::Mode::Mesh &&
+          owningStepIndex != activeLayer->getActiveStepIndex()) {
+        ignores.insert(i);
+      } else if (owningStepIndex != ~0u &&
+                 !activeLayer->getStep(owningStepIndex)->permitsDirectPrimitiveEditing()) {
         ignores.insert(i);
       }
     }
@@ -126,6 +129,8 @@ void Document::reset() {
   mSelectedWorldVertexIndex = ~0u;
   mSelectedTriggerLineIndex = ~0u;
   mSelectedPrimitiveIndices.clear();
+  clearActiveMesh();
+  mMeshHoverExplanation.clear();
   mPlayerProxyPosition.set(0.0f, 0.0f);
   mPlayerProxyAngle = 0.0f;
 }
@@ -329,6 +334,70 @@ vector<uint32_t> Document::getHoveredPrimitiveIndices(wp::Vector2 const& mouseWo
   }
 
   return hovered;
+}
+
+string Document::meshIneligibilityReason(uint32_t primitiveIndex) const {
+  if (!mWorld || primitiveIndex >= mWorld->getNumPrimitives()) {
+    return "Nothing under the cursor.";
+  }
+
+  auto* primitive = mWorld->getPrimitive(primitiveIndex);
+  if (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) {
+    return "The ghost is not an authored MeshPrimitive.";
+  }
+  if (!dynamic_cast<bw::core::MeshPrimitive*>(primitive)) {
+    return "The Primitive under the cursor is not a MeshPrimitive.";
+  }
+
+  auto* layer = mWorld->getActiveLayer();
+  auto owningStep = layer->getOwningStepIndex(primitive);
+  if (owningStep != layer->getActiveStepIndex()) {
+    return "This MeshPrimitive belongs to another LayerBuildStep.";
+  }
+  if (!layer->getStep(owningStep)->permitsDirectPrimitiveEditing()) {
+    return "The selected LayerBuildStep does not permit direct editing.";
+  }
+  return {};
+}
+
+uint32_t Document::getPrimitiveIndexAt(wp::Vector2 const& worldPosition) const {
+  if (!mWorld) {
+    return ~0u;
+  }
+  auto hits = mWorld->findPrimitiveIndices(worldPosition, true, {});
+  hits.erase(remove(hits.begin(), hits.end(), uint32_t(ED_GHOST_INDEX)), hits.end());
+  return hits.empty() ? ~0u : hits.front();
+}
+
+bool Document::activateMesh(uint32_t primitiveIndex) {
+  if (!meshIneligibilityReason(primitiveIndex).empty()) {
+    return false;
+  }
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(primitiveIndex));
+  mActiveMesh = primitive->createGeometryProxy();
+  mActiveMeshPrimitiveIndex = primitiveIndex;
+  return true;
+}
+
+void Document::clearActiveMesh() {
+  mActiveMesh.reset();
+  mActiveMeshPrimitiveIndex = ~0u;
+}
+
+uint32_t Document::getActiveMeshPrimitiveIndex() const {
+  return mActiveMeshPrimitiveIndex;
+}
+
+wp::geometry::Mesh const* Document::getActiveMesh() const {
+  return mActiveMesh.get();
+}
+
+void Document::setMeshHoverExplanation(string explanation) {
+  mMeshHoverExplanation = move(explanation);
+}
+
+string const& Document::getMeshHoverExplanation() const {
+  return mMeshHoverExplanation;
 }
 
 vector<uint32_t> Document::getPrimitiveIndicesInBounds(wp::BoundingBox const& worldBounds, Settings const& settings) const {

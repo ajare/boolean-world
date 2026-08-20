@@ -8,6 +8,7 @@
 #include <spdlog/spdlog.h>
 
 #include <core/LayerBuildStep.h>
+#include <core/MeshPrimitive.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
 
@@ -219,6 +220,36 @@ void refusingStepPrimitivesAreNotSelectableInPrimitiveMode() {
           "Select All included a Primitive from a refusing step");
 }
 
+void meshEligibilityRequiresTheSelectedDirectlyEditableStep() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+
+  auto* editableMesh = new bw::core::MeshPrimitive(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::EvenOdd,
+      {{{{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}}}});
+  document.getWorld()->addPrimitive(editableMesh);
+  auto editableIndex = editableMesh->getId();
+
+  auto* refusedMesh = new bw::core::MeshPrimitive(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::EvenOdd,
+      {{{{{9.0f, 9.0f}}, {{11.0f, 9.0f}}, {{11.0f, 11.0f}}, {{9.0f, 11.0f}}}}});
+  auto refusingStepIndex = layer->addStep(new RefusingStep(refusedMesh));
+
+  layer->setActiveStep(refusingStepIndex);
+  require(document.meshIneligibilityReason(editableIndex).find("another LayerBuildStep") != std::string::npos,
+          "a MeshPrimitive in another step was eligible");
+  require(document.meshIneligibilityReason(refusedMesh->getId()).find("does not permit") != std::string::npos,
+          "a MeshPrimitive from a refusing step was eligible");
+
+  layer->setActiveStep(0);
+  require(document.meshIneligibilityReason(editableIndex).empty() &&
+              document.activateMesh(editableIndex) && document.getActiveMesh(),
+          "an editable MeshPrimitive in the selected step was not eligible");
+}
+
 void openingADocumentReplacesTheActiveDocument() {
   auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-test.yaml";
 
@@ -248,6 +279,7 @@ int main() {
     primitiveIndicesInBoundsFindsOverlappingPrimitivesAndIgnoresTheGhost();
     selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps();
     refusingStepPrimitivesAreNotSelectableInPrimitiveMode();
+    meshEligibilityRequiresTheSelectedDirectlyEditableStep();
     openingADocumentReplacesTheActiveDocument();
     std::cout << "Document selection and hover queries passed\n";
     return 0;
