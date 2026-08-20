@@ -279,11 +279,14 @@ void goHome(editor::Document* doc) {
   // window edge to edge.
   constexpr float ED_HOME_VIEW_PADDING_SCALE = 0.9f;
 
+  // goHome only ever zooms out to fit the selection; if it's already fully
+  // visible at the current zoom, leave zoom alone and just recentre on it.
   auto selectionSize = maxExtent - minExtent;
   if (selectionSize.x > 0.0f && selectionSize.y > 0.0f) {
-    gViewZoom = clamp(
+    auto fitZoom = clamp(
         min(gWorldViewSize.x / selectionSize.x, gWorldViewSize.y / selectionSize.y) * ED_HOME_VIEW_PADDING_SCALE,
         ED_MIN_VIEW_ZOOM, ED_MAX_VIEW_ZOOM);
+    gViewZoom = min(gViewZoom, fitZoom);
   }
 }
 
