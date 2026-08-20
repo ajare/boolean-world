@@ -846,6 +846,10 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusPolygon(editor::Do
     modified = true;
   }
 
+  if (ImGui::IsItemDeactivatedAfterEdit()) {
+    regenerateWorldData(doc);
+  }
+
   widgets::HelpMarker("This value determines the number of sides in the torus polygon.");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(128);
@@ -873,6 +877,10 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusSegmentPolygon(edi
 
   if (ImGui::SliderFloat("Thickness##CreateTorusSegment", &thickness, 0.01f, 0.99f)) {
     modified = true;
+  }
+
+  if (ImGui::IsItemDeactivatedAfterEdit()) {
+    regenerateWorldData(doc);
   }
 
   widgets::HelpMarker("Arc length in degrees.");
@@ -1004,12 +1012,20 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateSuperformulaPolygon(edi
     modified = true;
   }
 
+  if (ImGui::IsItemDeactivatedAfterEdit()) {
+    regenerateWorldData(doc);
+  }
+
   widgets::HelpMarker("Superformula parameter.  This is usually set to 1.");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(128);
 
   if (ImGui::SliderFloat("b##CreateSuperformula", &values[1], ED_MIN_SUPERFORMULA_B, ED_MAX_SUPERFORMULA_B)) {
     modified = true;
+  }
+
+  if (ImGui::IsItemDeactivatedAfterEdit()) {
+    regenerateWorldData(doc);
   }
 
   widgets::HelpMarker("Superformula parameter.  See https://en.wikipedia.org/wiki/Superformula for examples.");
@@ -1020,12 +1036,20 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateSuperformulaPolygon(edi
     modified = true;
   }
 
+  if (ImGui::IsItemDeactivatedAfterEdit()) {
+    regenerateWorldData(doc);
+  }
+
   widgets::HelpMarker("Superformula parameter.  See https://en.wikipedia.org/wiki/Superformula for examples.");
   ImGui::SameLine();
 
   ImGui::SetNextItemWidth(128);
   if (ImGui::SliderFloat("n1##CreateSuperformula", &values[3], ED_MIN_SUPERFORMULA_N1, ED_MAX_SUPERFORMULA_N1)) {
     modified = true;
+  }
+
+  if (ImGui::IsItemDeactivatedAfterEdit()) {
+    regenerateWorldData(doc);
   }
 
   widgets::HelpMarker("Superformula parameter.  See https://en.wikipedia.org/wiki/Superformula for examples.");
@@ -1036,12 +1060,20 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateSuperformulaPolygon(edi
     modified = true;
   }
 
+  if (ImGui::IsItemDeactivatedAfterEdit()) {
+    regenerateWorldData(doc);
+  }
+
   widgets::HelpMarker("Superformula parameter.  See https://en.wikipedia.org/wiki/Superformula for examples.");
   ImGui::SameLine();
 
   ImGui::SetNextItemWidth(128);
   if (ImGui::SliderFloat("n3##CreateSuperformula", &values[5], ED_MIN_SUPERFORMULA_N3, ED_MAX_SUPERFORMULA_N3)) {
     modified = true;
+  }
+
+  if (ImGui::IsItemDeactivatedAfterEdit()) {
+    regenerateWorldData(doc);
   }
 
   return {
@@ -1196,6 +1228,7 @@ bw::core::Primitive::FillRule setFillRuleWidget(Document* doc, bw::core::Primiti
 void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings) {
   static int selectedPrimitiveType = 0;
   bool modified{false};
+  bool committed{false};
 
   auto ghost = doc->getWorld()->getPrimitive(0);
 
@@ -1253,6 +1286,8 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
     modified = true;
   }
 
+  committed |= ImGui::IsItemDeactivatedAfterEdit();
+
   // Position
   auto const& pos = ghost->getPosition();
   float primitivePosition[2] = {pos.x, pos.y};
@@ -1277,6 +1312,8 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
     modified = true;
   }
 
+  committed |= ImGui::IsItemDeactivatedAfterEdit();
+
   // Angle
   float primitiveAngle = ghost->getAnimationInterpolator(bw::core::VertexTransformer::Key::Angle).getValue(0.0f);
   widgets::HelpMarker("Initial angle.  This will create two keyframes in the angle interpolator at times 0 and 1, set to this value.");
@@ -1286,6 +1323,8 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
   if (ImGui::SliderFloat("Angle##CreatePrimitive", &primitiveAngle, 0.0f, 360.0f)) {
     modified = true;
   }
+
+  committed |= ImGui::IsItemDeactivatedAfterEdit();
 
   tuple<string, CreatePrimitiveFunction, bool> funcDetails;
   switch (selectedPrimitiveType) {
@@ -1328,6 +1367,10 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
   if (modified || primOptionsModified) {
     auto newGhost = newPrimitiveFunc();
     doc->updateGhost(doc->getWorld(), newGhost);
+  }
+
+  if (committed) {
+    regenerateWorldData(doc);
   }
 
   widgets::HelpMarker("Create primitive.");
