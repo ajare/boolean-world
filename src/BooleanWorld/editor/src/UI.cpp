@@ -3369,7 +3369,23 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      if (doc->hasSelection()) {
+      if (settings.mode == Settings::Mode::Mesh) {
+        if (doc->getActiveMesh()) {
+          auto const& indices = doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);
+          if (!indices.empty()) {
+            auto previewCount = doc->previewMeshSubObjectDeletionCount(settings.meshSubMode, indices);
+            if (previewCount > 0) {
+              char const* subObjectLabel =
+                  settings.meshSubMode == Settings::MeshSubMode::Vertex ? "Vertex(es)"
+                  : settings.meshSubMode == Settings::MeshSubMode::Edge ? "Edge(s)"
+                                                                        : "Polygon(s)";
+              transactUndoableAction(
+                  doc, format("Delete {} Mesh {}", previewCount, subObjectLabel),
+                  bind(deleteMeshSubObjects, placeholders::_1, settings.meshSubMode, indices));
+            }
+          }
+        }
+      } else if (doc->hasSelection()) {
         auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
 
         if (!primitiveIndices.empty()) {

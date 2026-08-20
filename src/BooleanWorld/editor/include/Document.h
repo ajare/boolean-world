@@ -212,6 +212,22 @@ public:
   // are degenerate.
   bool recentreActiveMesh();
 
+  // Deletes the given sub-mode's sub-objects from the active mesh, in
+  // ascending index order, refusing (and skipping) any item whose Ring
+  // would drop to two vertices/edges, or whose Ring/hole containment
+  // invariant would break. A vertex heals its Ring by joining its
+  // neighbours; an edge welds its two endpoints together at the edge's
+  // midpoint; a Ring is removed outright, and removing the last Ring
+  // deletes the whole MeshPrimitive. Returns the number of items actually
+  // removed.
+  uint32_t deleteMeshSubObjects(
+      Settings::MeshSubMode subMode, std::set<uint32_t> const& indices);
+
+  // A side-effect-free run of deleteMeshSubObjects, for building an
+  // accurate "N removed" report before the real, undoable delete runs.
+  [[nodiscard]] uint32_t previewMeshSubObjectDeletionCount(
+      Settings::MeshSubMode subMode, std::set<uint32_t> const& indices) const;
+
   bool indexInSelection(uint32_t index) const;
 
   void setSelectedWorldVertexIndex(uint32_t index);

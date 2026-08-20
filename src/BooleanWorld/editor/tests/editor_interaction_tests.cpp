@@ -1,4 +1,5 @@
 #include <cmath>
+#include <functional>
 #include <iostream>
 #include <set>
 #include <stdexcept>
@@ -71,6 +72,22 @@ uint32_t addMeshWithHole(editor::Document& document) {
       });
   mesh->setSize(20.0f, 20.0f);
   mesh->setPosition({0.0f, 0.0f});
+  mesh->updateVertexPositions();
+  document.getWorld()->addPrimitive(mesh);
+  return mesh->getId();
+}
+
+uint32_t addPolygonMesh(
+    editor::Document& document,
+    wp::Vector2 const& position,
+    std::vector<wp::Vector2> const& points) {
+  bw::core::ClosedPolygon ring(points.begin(), points.end());
+  auto* mesh = new bw::core::MeshPrimitive(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::EvenOdd,
+      {{ring}});
+  mesh->setSize(10.0f, 10.0f);
+  mesh->setPosition(position);
   mesh->updateVertexPositions();
   document.getWorld()->addPrimitive(mesh);
   return mesh->getId();
@@ -669,6 +686,221 @@ void meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive() {
   require(foundOriginalVertex, "undo did not restore the mesh vertex's original position");
 }
 
+void vertexDeletionHealsRingAndRefusesAtMinimumCount() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addPolygonMesh(
+      document, {0.0f, 0.0f},
+      {{-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}});
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+  auto ringIndex = mesh->getFirstPolygonIndex();
+  auto vertexToDelete = *mesh->getPolygon(ringIndex).getVertexIndexSet().begin();
+
+  auto removed = document.deleteMeshSubObjects(
+      editor::Settings::MeshSubMode::Vertex, {vertexToDelete});
+  require(removed == 1, "a legal vertex delete on a 4-vertex Ring was refused");
+  require(mesh->getPolygon(ringIndex).getVertexIndexSet().size() == 3,
+          "the Ring did not heal to three vertices after the delete");
+
+  auto remaining = mesh->getPolygon(ringIndex).getVertexIndexSet();
+  auto secondVertex = *remaining.begin();
+  auto refused = document.deleteMeshSubObjects(
+      editor::Settings::MeshSubMode::Vertex, {secondVertex});
+  require(refused == 0,
+          "a vertex delete that would drop a Ring below three vertices was not refused");
+  require(mesh->getPolygon(ringIndex).getVertexIndexSet().size() == 3,
+          "a refused vertex delete still changed the Ring");
+}
+
+void edgeDeletionWeldsEndpointsAtMidpointAndRefusesAtMinimumCount() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addPolygonMesh(
+      document, {0.0f, 0.0f},
+      {{0.0f, -2.0f}, {2.0f, 0.0f}, {1.0f, 2.0f}, {-1.0f, 2.0f}, {-2.0f, 0.0f}});
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+  auto ringIndex = mesh->getFirstPolygonIndex();
+  require(mesh->getPolygon(ringIndex).getVertexIndexSet().size() == 5,
+          "the test mesh did not start with five vertices");
+
+  auto edgeToDelete = mesh->getFirstEdgeIndex();
+  auto const& edge = mesh->getEdge(edgeToDelete);
+  auto v0 = static_cast<uint32_t>(edge.getFirstVertex());
+  auto v1 = static_cast<uint32_t>(edge.getSecondVertex());
+  auto midpoint = (mesh->getVertex(v0).getPosition() + mesh->getVertex(v1).getPosition()) / 2.0f;
+
+  auto removed = document.deleteMeshSubObjects(
+      editor::Settings::MeshSubMode::Edge, {edgeToDelete});
+  require(removed == 1, "a legal edge delete on a 5-edge Ring was refused");
+  require(mesh->getPolygon(ringIndex).getVertexIndexSet().size() == 4,
+          "welding an edge did not reduce the Ring to four vertices");
+
+  bool foundWeldedVertex = false;
+  for (auto vertexIndex : mesh->getPolygon(ringIndex).getVertexIndexSet()) {
+    if (mesh->getVertex(vertexIndex).getPosition().distanceToSq(midpoint) < 0.0001f) {
+      foundWeldedVertex = true;
+      break;
+    }
+  }
+  require(foundWeldedVertex, "no surviving vertex sits at the deleted edge's midpoint");
+
+  // Now down to a quad; deleting again brings the Ring to a triangle, which
+  // remains above the three-edge minimum.
+  auto secondEdge = mesh->getFirstEdgeIndex();
+  require(document.deleteMeshSubObjects(
+              editor::Settings::MeshSubMode::Edge, {secondEdge}) == 1,
+          "a legal edge delete on a 4-edge Ring was refused");
+  require(mesh->getPolygon(ringIndex).getNumEdges() == 3,
+          "the Ring did not reduce to a triangle");
+
+  auto thirdEdge = mesh->getFirstEdgeIndex();
+  require(document.deleteMeshSubObjects(
+              editor::Settings::MeshSubMode::Edge, {thirdEdge}) == 0,
+          "an edge delete that would drop a Ring below three edges was not refused");
+  require(mesh->getPolygon(ringIndex).getNumEdges() == 3,
+          "a refused edge delete still changed the Ring");
+}
+
+void ringDeletionRemovesJustTheHoleWhenOthersRemain() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMeshWithHole(document);
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+
+  uint32_t holeIndex = ~0u, outerIndex = ~0u;
+  for (auto polygonIndex = mesh->getFirstPolygonIndex();
+       !mesh->polygonIndexIterationFinished(polygonIndex);
+       polygonIndex = mesh->getNextPolygonIndex(polygonIndex)) {
+    if (mesh->getPolygon(polygonIndex).isHole()) {
+      holeIndex = polygonIndex;
+    } else {
+      outerIndex = polygonIndex;
+    }
+  }
+  require(holeIndex != ~0u && outerIndex != ~0u, "the test mesh did not have both an outer and a hole");
+
+  auto removed = document.deleteMeshSubObjects(
+      editor::Settings::MeshSubMode::Polygon, {holeIndex});
+  require(removed == 1, "deleting a hole Ring was refused");
+  require(document.getActiveMesh() != nullptr,
+          "deleting a hole Ring deleted the whole MeshPrimitive");
+  require(mesh->getPolygon(outerIndex).getHoleIndices().empty(),
+          "the outer Ring still references the deleted hole");
+}
+
+void ringDeletionOfTheLastRingDeletesTheMeshPrimitive() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+  auto ringIndex = mesh->getFirstPolygonIndex();
+
+  auto removed = document.deleteMeshSubObjects(
+      editor::Settings::MeshSubMode::Polygon, {ringIndex});
+  require(removed == 1, "deleting the only Ring was refused");
+  require(document.getActiveMesh() == nullptr,
+          "deleting the last Ring did not clear the active mesh");
+  require(document.getActiveMeshPrimitiveIndex() == ~0u,
+          "deleting the last Ring did not clear the active mesh Primitive index");
+}
+
+void multiVertexDeleteProcessesAscendingAndReportsActualCount() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addPolygonMesh(
+      document, {0.0f, 0.0f},
+      {{0.0f, -2.0f}, {2.0f, 0.0f}, {1.0f, 2.0f}, {-1.0f, 2.0f}, {-2.0f, 0.0f}});
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+  auto ringIndex = mesh->getFirstPolygonIndex();
+  auto allVertices = mesh->getPolygon(ringIndex).getVertexIndexSet();
+  require(allVertices.size() == 5, "the test mesh did not start with five vertices");
+  std::vector<wp::Vector2> startPositions;
+  for (auto v : allVertices) {
+    startPositions.push_back(mesh->getVertex(v).getPosition());
+  }
+
+  auto previewCount = document.previewMeshSubObjectDeletionCount(
+      editor::Settings::MeshSubMode::Vertex, allVertices);
+  auto removed = document.deleteMeshSubObjects(
+      editor::Settings::MeshSubMode::Vertex, allVertices);
+  require(previewCount == removed,
+          "the preview count did not match the number actually removed");
+
+  // Ascending order: index 0 (5 > 3) and index 1 (4 > 3) succeed, then the
+  // Ring is down to three vertices and every later index is refused. The
+  // delete compacts the mesh on the way out, so the surviving vertices are
+  // identified by position (their original indices no longer apply).
+  require(removed == 2, "a partial multi-delete did not stop exactly at the minimum-count rule");
+  auto remaining = mesh->getPolygon(ringIndex).getVertexIndexSet();
+  require(remaining.size() == 3, "the Ring did not end with exactly three vertices");
+
+  auto survives = [&](wp::Vector2 const& pos) {
+    for (auto v : remaining) {
+      if (mesh->getVertex(v).getPosition().distanceToSq(pos) < 0.0001f) {
+        return true;
+      }
+    }
+    return false;
+  };
+  require(!survives(startPositions[0]), "the lowest-index vertex was not the first one removed");
+  require(!survives(startPositions[1]), "the second-lowest-index vertex was not the second one removed");
+  require(survives(startPositions[2]) && survives(startPositions[3]) && survives(startPositions[4]),
+          "a vertex outside the ascending-order deletes was unexpectedly removed");
+}
+
+void meshSubObjectDeleteIsOneUndoEntry() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Mesh;
+  document.newDoc();
+  auto meshIndex = addPolygonMesh(
+      document, {0.0f, 0.0f},
+      {{-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}});
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+  auto ringIndex = mesh->getFirstPolygonIndex();
+  auto vertexToDelete = *mesh->getPolygon(ringIndex).getVertexIndexSet().begin();
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Vertex, {vertexToDelete});
+  document.setModified(false);
+  auto const undoLevelsBefore = editor::getUndoLevels();
+
+  editor::transactUndoableAction(
+      &document, "Delete 1 Mesh Vertex(es)",
+      std::bind(
+          editor::deleteMeshSubObjects, std::placeholders::_1,
+          editor::Settings::MeshSubMode::Vertex, std::set<uint32_t>{vertexToDelete}));
+
+  require(editor::getUndoLevels() == undoLevelsBefore + 1,
+          "a mesh sub-object delete produced more than one undo entry");
+  require(document.isModified(), "the delete did not mark the Document modified");
+
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto committedProxy = primitive->createGeometryProxy();
+  require(committedProxy->getPolygon(committedProxy->getFirstPolygonIndex())
+                  .getVertexIndexSet()
+                  .size() == 3,
+          "the committed MeshPrimitive geometry did not reflect the delete");
+
+  editor::undo(&document);
+  require(editor::getUndoLevels() == undoLevelsBefore,
+          "undo after a mesh delete did not remove exactly one entry");
+
+  auto* undonePrimitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto undoneProxy = undonePrimitive->createGeometryProxy();
+  require(undoneProxy->getPolygon(undoneProxy->getFirstPolygonIndex())
+                  .getVertexIndexSet()
+                  .size() == 4,
+          "undo did not restore the deleted vertex");
+}
+
 void rubberBandSelectionSupportsPlainControlAndShiftPolicies() {
   editor::Document document;
   editor::Settings settings;
@@ -737,6 +969,12 @@ int main() {
     meshDragClampsAtLastValidPositionWhenAHoleWouldEscapeItsOuter();
     meshDragSnapsToGridBeforeValidating();
     meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive();
+    vertexDeletionHealsRingAndRefusesAtMinimumCount();
+    edgeDeletionWeldsEndpointsAtMidpointAndRefusesAtMinimumCount();
+    ringDeletionRemovesJustTheHoleWhenOthersRemain();
+    ringDeletionOfTheLastRingDeletesTheMeshPrimitive();
+    multiVertexDeleteProcessesAscendingAndReportsActualCount();
+    meshSubObjectDeleteIsOneUndoEntry();
     std::cout << "Editor selection interactions passed\n";
     return 0;
   } catch (std::exception const& error) {

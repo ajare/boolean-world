@@ -12,6 +12,7 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <willpower/common/MathsUtils.h>
 #include <willpower/geometry/MeshValidator.h>
 
 #include "core/BinarySerializer.h"
@@ -636,6 +637,239 @@ bool meshGroupMoveIsValid(
   return true;
 }
 
+// Ordered world-space positions of a Ring's vertices, for the geometric
+// checks below.
+vector<wp::Vector2> ringPositions(wp::geometry::Mesh const& mesh, uint32_t polygonIndex) {
+  vector<wp::Vector2> points;
+  for (auto vertexIndex : mesh.getPolygon(polygonIndex).getOrderedVertexIndices()) {
+    points.push_back(mesh.getVertex(vertexIndex).getPosition());
+  }
+  return points;
+}
+
+bool segmentsCross(wp::Vector2 const& a0, wp::Vector2 const& a1, wp::Vector2 const& b0, wp::Vector2 const& b1) {
+  auto type = wp::MathsUtils::lineIntersectsLine(a0, a1, b0, b1);
+  return type != wp::MathsUtils::NotIntersecting && type != wp::MathsUtils::Touching;
+}
+
+// A simple (non-self-intersecting) polygon check over the Ring's own edges,
+// skipping edges that share a vertex (including the wraparound pair).
+bool ringIsSimple(vector<wp::Vector2> const& points) {
+  auto n = points.size();
+  for (size_t i = 0; i < n; ++i) {
+    for (size_t j = i + 2; j < n; ++j) {
+      if (i == 0 && j == n - 1) {
+        continue;
+      }
+      if (segmentsCross(points[i], points[(i + 1) % n], points[j], points[(j + 1) % n])) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Whether holePoints, taken as a Ring in their own right, sits entirely
+// inside outerPoints without crossing it - checked directly against
+// explicit position lists (rather than a live Polygon) so a delete can be
+// validated against its *would-be* shape before ever mutating the mesh.
+bool pointsFormAValidHoleInOuter(
+    vector<wp::Vector2> const& outerPoints, vector<wp::Vector2> const& holePoints) {
+  for (auto const& p : holePoints) {
+    if (!wp::MathsUtils::pointInPolygon(p, outerPoints)) {
+      return false;
+    }
+  }
+
+  auto numOuter = outerPoints.size(), numHole = holePoints.size();
+  for (size_t i = 0; i < numHole; ++i) {
+    for (size_t j = 0; j < numOuter; ++j) {
+      if (segmentsCross(
+              holePoints[i], holePoints[(i + 1) % numHole],
+              outerPoints[j], outerPoints[(j + 1) % numOuter])) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// A vertex/edge deletion's effect is scoped to the one Ring it belongs to:
+// the Ring itself must stay simple, and if it is a hole or has holes, the
+// containment between it and its counterpart must still hold. Takes the
+// Ring's own would-be positions explicitly, since this runs before the
+// mesh is actually mutated - every other Ring's positions are read live.
+bool ringMutationIsValid(
+    wp::geometry::Mesh const& mesh, uint32_t ringIndex,
+    vector<wp::Vector2> const& newPositions) {
+  if (!ringIsSimple(newPositions)) {
+    return false;
+  }
+
+  auto const& polygon = mesh.getPolygon(ringIndex);
+  if (polygon.isHole()) {
+    for (auto outerIndex = mesh.getFirstPolygonIndex();
+         !mesh.polygonIndexIterationFinished(outerIndex);
+         outerIndex = mesh.getNextPolygonIndex(outerIndex)) {
+      auto const& outerPolygon = mesh.getPolygon(outerIndex);
+      auto const& holes = outerPolygon.getHoleIndices();
+      if (!outerPolygon.isHole() && find(holes.begin(), holes.end(), ringIndex) != holes.end()) {
+        return pointsFormAValidHoleInOuter(ringPositions(mesh, outerIndex), newPositions);
+      }
+    }
+    return true;
+  }
+
+  for (auto holeIndex : polygon.getHoleIndices()) {
+    if (!pointsFormAValidHoleInOuter(newPositions, ringPositions(mesh, holeIndex))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// The single Ring a vertex/edge belongs to, or ~0u if it is shared by more
+// than one - an adjacency this simple editing model refuses to delete
+// through.
+uint32_t owningRing(wp::geometry::IndexSet const& polygonRefs) {
+  return polygonRefs.size() == 1 ? *polygonRefs.begin() : ~0u;
+}
+
+// Deleting a vertex/edge tombstones mesh sub-objects rather than compacting
+// them away immediately, and Mesh's copy/assignment rebinds every edge -
+// dead ones included - which touches whichever vertices they still name.
+// Copying or assigning a mesh that already has any tombstoned edges is
+// therefore unsafe until it has been compact()ed. Every delete below
+// mutates its Mesh& argument directly and validates from plain position
+// lists computed beforehand, so no such copy ever has to happen mid-batch;
+// Document::deleteMeshSubObjects compacts once, after the whole batch, right
+// before handing the result back to Document state.
+bool deleteOneMeshVertex(wp::geometry::Mesh& mesh, uint32_t vertexIndex) {
+  wp::geometry::IndexSet polygonRefs;
+  for (auto edgeIndex : mesh.getVertex(vertexIndex).getEdgeReferences()) {
+    auto const& refs = mesh.getEdge(edgeIndex).getPolygonReferences();
+    polygonRefs.insert(refs.begin(), refs.end());
+  }
+
+  auto ringIndex = owningRing(polygonRefs);
+  if (ringIndex == ~0u || mesh.getPolygon(ringIndex).getVertexIndexSet().size() <= 3) {
+    return false;
+  }
+
+  vector<wp::Vector2> healedPositions;
+  for (auto v : mesh.getPolygon(ringIndex).getOrderedVertexIndices()) {
+    if (v != vertexIndex) {
+      healedPositions.push_back(mesh.getVertex(v).getPosition());
+    }
+  }
+  if (!ringMutationIsValid(mesh, ringIndex, healedPositions)) {
+    return false;
+  }
+
+  mesh.removeVertex(vertexIndex);
+  return true;
+}
+
+// Welds an edge's two endpoints together at its midpoint by moving both
+// there and then removing one of them, so the Ring heals through the same
+// neighbour-joining path a vertex delete uses.
+bool deleteOneMeshEdge(wp::geometry::Mesh& mesh, uint32_t edgeIndex, set<uint32_t>& consumedEdges) {
+  if (consumedEdges.contains(edgeIndex)) {
+    return false;
+  }
+
+  auto const& edge = mesh.getEdge(edgeIndex);
+  auto ringIndex = owningRing(edge.getPolygonReferences());
+  if (ringIndex == ~0u || mesh.getPolygon(ringIndex).getNumEdges() <= 3) {
+    return false;
+  }
+
+  auto v0 = static_cast<uint32_t>(edge.getFirstVertex());
+  auto v1 = static_cast<uint32_t>(edge.getSecondVertex());
+  auto midpoint = (mesh.getVertex(v0).getPosition() + mesh.getVertex(v1).getPosition()) / 2.0f;
+
+  // v0 is about to be removed - both of its edges (this one, and its other
+  // neighbour) die with it, so anything else queued that names either must
+  // be skipped rather than acted on again.
+  auto v0EdgeRefs = mesh.getVertex(v0).getEdgeReferences();
+
+  vector<wp::Vector2> weldedPositions;
+  for (auto v : mesh.getPolygon(ringIndex).getOrderedVertexIndices()) {
+    if (v == v0) {
+      continue;
+    }
+    weldedPositions.push_back(v == v1 ? midpoint : mesh.getVertex(v).getPosition());
+  }
+  if (!ringMutationIsValid(mesh, ringIndex, weldedPositions)) {
+    return false;
+  }
+
+  mesh.moveVertexTo(v0, midpoint);
+  mesh.moveVertexTo(v1, midpoint);
+  mesh.removeVertex(v0);
+  consumedEdges.insert(v0EdgeRefs.begin(), v0EdgeRefs.end());
+  return true;
+}
+
+// Removes a whole Ring: a hole is detached from its outer, an outer takes
+// its holes with it. Ring deletion has no minimum-count rule and cannot
+// make a surviving Ring self-intersect, so there is nothing to validate.
+bool deleteOneMeshRing(wp::geometry::Mesh& mesh, uint32_t ringIndex, set<uint32_t>& consumedRings) {
+  if (consumedRings.contains(ringIndex)) {
+    return false;
+  }
+
+  auto const& polygon = mesh.getPolygon(ringIndex);
+  if (polygon.isHole()) {
+    for (auto outerIndex = mesh.getFirstPolygonIndex();
+         !mesh.polygonIndexIterationFinished(outerIndex);
+         outerIndex = mesh.getNextPolygonIndex(outerIndex)) {
+      auto const& outerPolygon = mesh.getPolygon(outerIndex);
+      auto const& holes = outerPolygon.getHoleIndices();
+      if (!outerPolygon.isHole() && find(holes.begin(), holes.end(), ringIndex) != holes.end()) {
+        mesh.removeHoleFromPolygon(outerIndex, ringIndex);
+        break;
+      }
+    }
+  } else {
+    auto holeIndices = polygon.getHoleIndices();
+    mesh.removePolygon(ringIndex, true);
+    consumedRings.insert(holeIndices.begin(), holeIndices.end());
+  }
+
+  return true;
+}
+
+// Processes indices in ascending order (the set's natural iteration order),
+// re-checking each item's minimum-count rule and shape invariants against
+// the mesh as it stands after every prior removal in the same batch.
+uint32_t simulateMeshSubObjectDeletion(
+    wp::geometry::Mesh& mesh, Settings::MeshSubMode subMode, set<uint32_t> const& indices) {
+  uint32_t removed = 0;
+  if (subMode == Settings::MeshSubMode::Vertex) {
+    for (auto vertexIndex : indices) {
+      if (deleteOneMeshVertex(mesh, vertexIndex)) {
+        ++removed;
+      }
+    }
+  } else if (subMode == Settings::MeshSubMode::Edge) {
+    set<uint32_t> consumedEdges;
+    for (auto edgeIndex : indices) {
+      if (deleteOneMeshEdge(mesh, edgeIndex, consumedEdges)) {
+        ++removed;
+      }
+    }
+  } else {
+    set<uint32_t> consumedRings;
+    for (auto ringIndex : indices) {
+      if (deleteOneMeshRing(mesh, ringIndex, consumedRings)) {
+        ++removed;
+      }
+    }
+  }
+  return removed;
+}
+
 }  // namespace
 
 void Document::beginMeshDrag(Settings::MeshSubMode subMode) {
@@ -733,6 +967,55 @@ bool Document::moveMeshVertexTo(uint32_t vertexIndex, wp::Vector2 const& positio
   primitive->updateFromGeometryProxy(*mActiveMesh);
   primitive->updateVertexPositions();
   return true;
+}
+
+uint32_t Document::previewMeshSubObjectDeletionCount(
+    Settings::MeshSubMode subMode, set<uint32_t> const& indices) const {
+  if (!mActiveMesh || indices.empty()) {
+    return 0;
+  }
+  wp::geometry::Mesh candidate(*mActiveMesh);
+  return simulateMeshSubObjectDeletion(candidate, subMode, indices);
+}
+
+uint32_t Document::deleteMeshSubObjects(
+    Settings::MeshSubMode subMode, set<uint32_t> const& indices) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u || indices.empty()) {
+    return 0;
+  }
+
+  wp::geometry::Mesh candidate(*mActiveMesh);
+  auto removed = simulateMeshSubObjectDeletion(candidate, subMode, indices);
+  if (removed == 0) {
+    return 0;
+  }
+
+  uint32_t remainingRings = 0;
+  for (auto index = candidate.getFirstPolygonIndex();
+       !candidate.polygonIndexIterationFinished(index);
+       index = candidate.getNextPolygonIndex(index)) {
+    if (!candidate.getPolygon(index).isHole()) {
+      ++remainingRings;
+    }
+  }
+
+  auto primitiveIndex = mActiveMeshPrimitiveIndex;
+  if (remainingRings == 0) {
+    clearActiveMesh();
+    mWorld->removePrimitives({primitiveIndex});
+  } else {
+    // Reindexes away the tombstones the deletes above left behind, so the
+    // assignment below - a full Mesh copy - never has to rebind a dead edge.
+    candidate.compact();
+    *mActiveMesh = candidate;
+    clearMeshSelections();
+    auto* primitive =
+        static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(primitiveIndex));
+    primitive->updateFromGeometryProxy(*mActiveMesh);
+    primitive->updateVertexPositions();
+  }
+
+  return removed;
 }
 
 bool Document::recentreActiveMesh() {

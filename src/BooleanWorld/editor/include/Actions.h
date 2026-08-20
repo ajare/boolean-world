@@ -132,6 +132,12 @@ bool toggleMeshSubObjectsSelected(
     std::set<uint32_t> const& indices);
 bool selectAllMeshSubObjects(Document* doc, Settings::MeshSubMode subMode);
 
+// Deletes the sub-mode's selected sub-objects from the active mesh
+// (Document::deleteMeshSubObjects). Returns true if anything was removed.
+bool deleteMeshSubObjects(
+    Document* doc, Settings::MeshSubMode subMode,
+    std::set<uint32_t> const& indices);
+
 // One-shot vertex placement for the Mesh panel's numeric coordinate field,
 // as opposed to the frame-by-frame drag EditorInteraction drives directly
 // through Document::updateMeshDrag. Refused (returning false, leaving the
