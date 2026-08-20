@@ -19,6 +19,34 @@ bool recordCurrentState(Document* doc, bool modifying) {
   return modifying;
 }
 
+void setEditorMode(Document* doc, Settings& settings, Settings::Mode mode) {
+  if (settings.mode == mode) {
+    return;
+  }
+
+  if (mode == Settings::Mode::Mesh && doc->isActive()) {
+    auto const& selection = doc->getSelectedPrimitiveIndices();
+    if (selection.size() == 1 &&
+        dynamic_cast<bw::core::MeshPrimitive*>(
+            doc->getWorld()->getPrimitive(*selection.begin()))) {
+      settings.activeMeshPrimitiveIndex = *selection.begin();
+    }
+  }
+
+  settings.mode = mode;
+  doc->clearSelections();
+}
+
+void setMeshSubMode(
+    Document* doc, Settings& settings, Settings::MeshSubMode subMode) {
+  if (settings.meshSubMode == subMode) {
+    return;
+  }
+
+  settings.meshSubMode = subMode;
+  doc->clearSelections();
+}
+
 bool setWorldName(Document* doc, string const& name) {
   auto world = doc->getWorld();
 

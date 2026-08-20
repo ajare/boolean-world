@@ -68,6 +68,12 @@ public:
 
 bool recordCurrentState(Document* doc, bool modifying);
 
+// Editor-mode changes are preferences, not authored edits: they clear the
+// current selection without entering undo history or dirtying the Document.
+void setEditorMode(Document* doc, Settings& settings, Settings::Mode mode);
+
+void setMeshSubMode(Document* doc, Settings& settings, Settings::MeshSubMode subMode);
+
 bool setWorldName(Document* doc, std::string const& name);
 
 bool addLayer(Document* doc, std::string const& name);

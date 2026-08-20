@@ -13,6 +13,7 @@
 #include <core/Utils.h>
 #include <core/Layer.h>
 #include <core/LayerBuildStep.h>
+#include <core/MeshPrimitive.h>
 
 #include <common/GameDefines.h>
 
@@ -276,13 +277,22 @@ void renderWorld(
   auto inactiveStepPrimitives =
       activeLayer ? collectFadedStepPrimitives(*activeLayer) : vector<uint8_t>{};
 
+  auto primitiveFaded = [&](uint32_t primitiveId) {
+    if (settings.mode == editor::Settings::Mode::Mesh) {
+      return primitiveId >= world->getNumPrimitives() ||
+             !dynamic_cast<bw::core::MeshPrimitive*>(world->getPrimitive(primitiveId)) ||
+             fromInactiveStep(inactiveStepPrimitives, primitiveId);
+    }
+    return fromInactiveStep(inactiveStepPrimitives, primitiveId);
+  };
+
   if (activeLayer) {
     primitives.erase(
         remove_if(primitives.begin(), primitives.end(),
-            [&](bw::core::Primitive const* primitive) {
-              return !editor::primitiveVisibleForActiveStep(
-                  *activeLayer, primitive, settings);
-            }),
+                  [&](bw::core::Primitive const* primitive) {
+                    return !editor::primitiveVisibleForActiveStep(
+                        *activeLayer, primitive, settings);
+                  }),
         primitives.end());
   }
 
@@ -313,8 +323,7 @@ void renderWorld(
       // under a fill drawn at full strength. A face names the Primitive that
       // won the fold over it, which is the one whose step it belongs to.
       auto faceFaded = [&](uint32_t faceIndex) {
-        return fromInactiveStep(
-            inactiveStepPrimitives, arrangement.faces[faceIndex].primitiveIndex);
+        return primitiveFaded(arrangement.faces[faceIndex].primitiveIndex);
       };
 
       for (auto const& triangle : triangles) {
@@ -382,13 +391,13 @@ void renderWorld(
         auto primitiveId = primitive->getId();
         bool selected = selectedPrimitiveIndices.find(primitiveId) != selectedPrimitiveIndices.end();
 
-        // A Primitive from any step but the active one renders faded, so
-        // the active step's contribution stands out among what's shown.
-        bool faded = !isGhost && fromInactiveStep(inactiveStepPrimitives, primitiveId);
+        // Mesh mode fades every non-MeshPrimitive; Primitive mode retains
+        // its active-step focus exactly as before.
+        bool faded = primitiveFaded(primitiveId);
 
         auto primitiveColour = faded
-                                    ? fadeColour(settings.primitiveColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
-                                    : settings.primitiveColour;
+                                   ? fadeColour(settings.primitiveColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
+                                   : settings.primitiveColour;
 
         // Primitive borders
         if (settings.renderPrimitiveBorders || isGhost || selected) {
@@ -414,7 +423,6 @@ void renderWorld(
             }
           }
         }
-
       }
 
       // The ghost, over every Primitive and in its own colour, always: it is
@@ -423,17 +431,20 @@ void renderWorld(
       for (auto const& ghostOutline : ghostBorderPolylines) {
         auto band = insetOutline(ghostOutline, ED_GHOST_INNER_BAND_INSET);
 
+        auto ghostColour = settings.mode == editor::Settings::Mode::Mesh
+                               ? fadeColour(settings.ghostPrimitiveColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
+                               : settings.ghostPrimitiveColour;
         drawList->AddPolyline(
             band.data(),
             (int)band.size(),
-            fadeColour(settings.ghostPrimitiveColour, ED_GHOST_INNER_BAND_ALPHA_SCALE),
+            fadeColour(ghostColour, ED_GHOST_INNER_BAND_ALPHA_SCALE),
             ImDrawFlags_Closed,
             ED_GHOST_INNER_BAND_THICKNESS);
 
         drawList->AddPolyline(
             ghostOutline.data(),
             (int)ghostOutline.size(),
-            settings.ghostPrimitiveColour,
+            ghostColour,
             ImDrawFlags_Closed,
             ED_GHOST_BORDER_THICKNESS);
       }
@@ -501,7 +512,11 @@ void renderWorld(
             bw::core::arr::ToWorldCoordinate(vertex.y)};
         auto screenP = worldToScreen(p);
         drawList->AddCircle(
-            screenP, settings.vertexRadius, settings.vertexColour, 16, 1.0f);
+            screenP, settings.vertexRadius,
+            settings.mode == editor::Settings::Mode::Mesh
+                ? fadeColour(settings.vertexColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
+                : settings.vertexColour,
+            16, 1.0f);
       }
     }
 
@@ -530,17 +545,29 @@ void renderWorld(
     auto playerProxyScreen = worldToScreen(playerProxyPos);
 
     if (settings.renderPlayerView) {
-      drawList->AddCircleFilled(playerProxyScreen, BW_PLAYER_VIEW_DISTANCE * gViewZoom, ImColor(1.0f, 1.0f, 1.0f, 0.3f));
+      drawList->AddCircleFilled(
+          playerProxyScreen, BW_PLAYER_VIEW_DISTANCE * gViewZoom,
+          settings.mode == editor::Settings::Mode::Mesh
+              ? ImColor(1.0f, 1.0f, 1.0f, 0.105f)
+              : ImColor(1.0f, 1.0f, 1.0f, 0.3f));
     }
 
-    drawList->AddCircleFilled(playerProxyScreen, BW_PLAYER_RADIUS * gViewZoom, settings.playerProxyColour);
+    drawList->AddCircleFilled(
+        playerProxyScreen, BW_PLAYER_RADIUS * gViewZoom,
+        settings.mode == editor::Settings::Mode::Mesh
+            ? fadeColour(settings.playerProxyColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
+            : settings.playerProxyColour);
 
     // FOV - flip Y values
     if (settings.renderPlayerView) {
       auto v0 = playerProxyPos;
       auto [v1, v2] = bw::core::calculateFovTriangle(v0, playerProxyAngle - 180, BW_PLAYER_VIEW_DISTANCE, BW_PLAYER_FOV);
 
-      drawList->AddTriangleFilled(worldToScreen(v0), worldToScreen(v1), worldToScreen(v2), ImColor(0.0f, 0.5f, 0.7f, 0.4f));
+      drawList->AddTriangleFilled(
+          worldToScreen(v0), worldToScreen(v1), worldToScreen(v2),
+          settings.mode == editor::Settings::Mode::Mesh
+              ? ImColor(0.0f, 0.5f, 0.7f, 0.14f)
+              : ImColor(0.0f, 0.5f, 0.7f, 0.4f));
     }
 
     // Influence circles
@@ -612,7 +639,10 @@ void renderWorld(
           continue;
         }
 
-        renderBounds(primitive->getBounds(), settings, settings.animatedBoundsColour, drawList);
+        auto colour = primitiveFaded(primitive->getId())
+                          ? fadeColour(settings.animatedBoundsColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
+                          : settings.animatedBoundsColour;
+        renderBounds(primitive->getBounds(), settings, colour, drawList);
       }
     }
   }
@@ -635,6 +665,10 @@ void renderWorld(
         colour = ImColor(1.0f, 0.5f, 0.5f);
       }
 
+      if (settings.mode == editor::Settings::Mode::Mesh) {
+        colour = fadeColour(colour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE);
+      }
+
       drawList->AddLine({p0.x, p0.y}, {p1.x, p1.y}, colour, settings.triggerLineHandleRadius - 2);
 
       // Handles
@@ -651,8 +685,14 @@ void renderWorld(
       auto v3 = centre + normal;
       auto v4 = centre - normal;
 
-      drawList->AddTriangleFilled({v1.x, v1.y}, {v2.x, v2.y}, {v3.x, v3.y}, settings.triggerLineBlue);
-      drawList->AddTriangleFilled({v1.x, v1.y}, {v2.x, v2.y}, {v4.x, v4.y}, settings.triggerLineRed);
+      auto blue = settings.mode == editor::Settings::Mode::Mesh
+                      ? fadeColour(settings.triggerLineBlue, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
+                      : settings.triggerLineBlue;
+      auto red = settings.mode == editor::Settings::Mode::Mesh
+                     ? fadeColour(settings.triggerLineRed, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
+                     : settings.triggerLineRed;
+      drawList->AddTriangleFilled({v1.x, v1.y}, {v2.x, v2.y}, {v3.x, v3.y}, blue);
+      drawList->AddTriangleFilled({v1.x, v1.y}, {v2.x, v2.y}, {v4.x, v4.y}, red);
     }
   }
 

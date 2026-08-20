@@ -111,6 +111,47 @@ void repeatedClicksCycleThroughStackedPrimitives() {
           "the click cycle did not wrap to the first stacked Primitive");
 }
 
+void modeAndSubModeChangesAreEditorPreferencesAndClearSelection() {
+  editor::Document document;
+  editor::Settings settings;
+  document.newDoc();
+  auto rectangle = addRectangle(document, {50.0f, 50.0f});
+  auto mesh = document.getWorld()->convertPrimitivesToMesh({rectangle});
+  auto nonMesh = addRectangle(document, {100.0f, 100.0f});
+  document.setSelectedPrimitiveIndices({mesh});
+  document.setModified(false);
+  auto const undoLevels = editor::getUndoLevels();
+
+  editor::setEditorMode(&document, settings, editor::Settings::Mode::Mesh);
+  require(settings.mode == editor::Settings::Mode::Mesh,
+          "switching to Mesh mode did not change the editor preference");
+  require(settings.activeMeshPrimitiveIndex == mesh,
+          "entering Mesh mode did not adopt the selected MeshPrimitive");
+  require(!document.hasSelection(),
+          "switching editor mode did not clear the selection");
+  require(document.getHover({100.0f, 100.0f}, settings, nullptr).type ==
+                  editor::HoverableType::None &&
+              document.getSelectablePrimitiveIndices(settings) ==
+                  std::vector<uint32_t>{mesh},
+          "Mesh mode left a non-MeshPrimitive selectable");
+  require(!document.isModified() && editor::getUndoLevels() == undoLevels,
+          "switching editor mode dirtied the Document or entered undo history");
+
+  document.setSelectedPrimitiveIndices({mesh});
+  editor::setMeshSubMode(
+      &document, settings, editor::Settings::MeshSubMode::Edge);
+  require(settings.meshSubMode == editor::Settings::MeshSubMode::Edge &&
+              !document.hasSelection(),
+          "switching Mesh sub-mode did not clear the selection");
+  require(!document.isModified() && editor::getUndoLevels() == undoLevels,
+          "switching Mesh sub-mode dirtied the Document or entered undo history");
+
+  editor::setEditorMode(&document, settings, editor::Settings::Mode::Primitive);
+  require(settings.mode == editor::Settings::Mode::Primitive &&
+              !document.hasSelection(),
+          "leaving Mesh mode did not clear the selection");
+}
+
 void rubberBandSelectionSupportsPlainControlAndShiftPolicies() {
   editor::Document document;
   editor::Settings settings;
@@ -167,6 +208,7 @@ int main() {
   try {
     plainControlAndShiftClicksApplyTheirSelectionPolicies();
     repeatedClicksCycleThroughStackedPrimitives();
+    modeAndSubModeChangesAreEditorPreferencesAndClearSelection();
     rubberBandSelectionSupportsPlainControlAndShiftPolicies();
     std::cout << "Editor selection interactions passed\n";
     return 0;

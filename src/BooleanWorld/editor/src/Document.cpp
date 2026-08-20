@@ -76,6 +76,15 @@ set<uint32_t> getIgnoredPrimitiveIndices(bw::core::World const& world, Settings 
       continue;
     }
 
+    // Mesh mode only exposes authored MeshPrimitives to the viewport. The
+    // rest of the editor's objects remain visible but cannot receive a
+    // hover, click, or box selection there.
+    if (settings.mode == Settings::Mode::Mesh &&
+        !dynamic_cast<bw::core::MeshPrimitive const*>(primitive)) {
+      ignores.insert(i);
+      continue;
+    }
+
     if (activeLayer && !primitiveVisibleForActiveStep(*activeLayer, primitive, settings)) {
       ignores.insert(i);
       continue;
@@ -262,6 +271,13 @@ DocumentHover Document::getHover(
     return {};
   }
 
+  if (settings.mode == Settings::Mode::Mesh) {
+    auto primitiveIndices = getHoveredPrimitiveIndices(mouseWorldPos, settings);
+    return primitiveIndices.empty()
+               ? DocumentHover{}
+               : DocumentHover{HoverableType::Primitive, std::move(primitiveIndices)};
+  }
+
   if (worldData) {
     auto worldVertexIndex = static_cast<uint32_t>(
         worldData->getNearestVertexIndex(mouseWorldPos, 3.0f));
@@ -360,7 +376,11 @@ vector<uint32_t> Document::getSelectablePrimitiveIndices(Settings const& setting
 }
 
 uint32_t Document::getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
-  return isActive() ? mWorld->findTriggerLineIndex(mouseWorldPos, settings.triggerLineSelectionDistance, settings.triggerLineHandleRadius) : ~0u;
+  return isActive() && settings.mode != Settings::Mode::Mesh
+             ? mWorld->findTriggerLineIndex(
+                   mouseWorldPos, settings.triggerLineSelectionDistance,
+                   settings.triggerLineHandleRadius)
+             : ~0u;
 }
 
 bool Document::indexInSelection(uint32_t index) const {
@@ -490,8 +510,8 @@ bool Document::openDoc(string const& filepath) {
 
   if (ext == ".yaml" || ext == ".world") {
     shared_ptr<bw::core::Serializer> ser = ext == ".yaml"
-        ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(mFilepath))
-        : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(mFilepath));
+                                               ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(mFilepath))
+                                               : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(mFilepath));
 
     try {
       ser->deserialize();
@@ -543,8 +563,8 @@ void Document::saveDoc() {
 
   if (ext == ".yaml" || ext == ".world") {
     shared_ptr<bw::core::Serializer> ser = ext == ".yaml"
-        ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toFile(mFilepath))
-        : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::toFile(mFilepath));
+                                               ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toFile(mFilepath))
+                                               : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::toFile(mFilepath));
     auto workData = bw::core::SerializationWorkData{};
 
     mWorld->serialize(ser, workData);

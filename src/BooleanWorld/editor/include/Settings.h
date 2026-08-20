@@ -22,6 +22,24 @@ struct Settings {
 
   Style style{Style::Dark};
 
+  // Editor authoring focus is a preference, never World data. Mesh mode's
+  // active Primitive is likewise editor-only and is deliberately an index
+  // rather than a serialized Primitive attribute.
+  enum struct Mode {
+    Primitive,
+    Mesh
+  };
+
+  enum struct MeshSubMode {
+    Vertex,
+    Edge,
+    Polygon
+  };
+
+  Mode mode{Mode::Primitive};
+  MeshSubMode meshSubMode{MeshSubMode::Vertex};
+  uint32_t activeMeshPrimitiveIndex{~0u};
+
   float gridSize{32};
 
   bool showGrid{false};

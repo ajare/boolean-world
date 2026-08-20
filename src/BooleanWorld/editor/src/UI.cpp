@@ -411,6 +411,25 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
     bool hasPrimitiveSelection = !doc->getSelectedPrimitiveIndices().empty();
     bool hasTriggerLineSelection = doc->getSelectedTriggerLineIndex() != ~0u;
 
+    // Authoring mode is an editor preference, so it deliberately bypasses
+    // undoable actions and Document modification.
+    ImGui::SetNextItemWidth(105);
+    int mode = static_cast<int>(settings.mode);
+    if (ImGui::Combo("Mode##Editor", &mode, "Primitive\0Mesh\0\0", 2)) {
+      setEditorMode(doc, settings, static_cast<Settings::Mode>(mode));
+    }
+
+    if (settings.mode == Settings::Mode::Mesh) {
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(100);
+      int subMode = static_cast<int>(settings.meshSubMode);
+      if (ImGui::Combo("Select##Mesh", &subMode,
+                       "Vertex\0Edge\0Polygon\0\0", 3)) {
+        setMeshSubMode(
+            doc, settings, static_cast<Settings::MeshSubMode>(subMode));
+      }
+    }
+
     //
     // File operations
     //
@@ -3127,6 +3146,19 @@ void renderHistoryPanel(editor::Document* doc, editor::Settings& settings) {
   ImGui::End();
 }
 
+void renderMeshView(editor::Document* doc, editor::Settings& settings) {
+  auto world = doc->getWorld();
+  auto index = settings.activeMeshPrimitiveIndex;
+  if (index == ~0u || index >= world->getNumPrimitives() ||
+      !dynamic_cast<bw::core::MeshPrimitive*>(world->getPrimitive(index))) {
+    ImGui::TextUnformatted("No active MeshPrimitive");
+    return;
+  }
+
+  ImGui::Text("Active MeshPrimitive: %u", index);
+  ImGui::TextUnformatted("Mesh editing is not available yet.");
+}
+
 void renderCombinedPanel(
     editor::Document* doc,
     editor::Settings& settings,
@@ -3147,19 +3179,23 @@ void renderCombinedPanel(
       renderLayerStepsView(doc, settings);
     }
 
-    // Below Layer: creating a Primitive writes into the active Layer's active
-    // step, so the choice of where comes before the making of what, and
-    // editing one comes after both.
-    if (ImGui::CollapsingHeader("Create Primitive", nullptr, windowFlags)) {
-      renderCreatePrimitiveView(doc, settings);
-    }
-
-    // The header follows the view: no header where the view would have
-    // nothing under it.
-    if (hasEditablePrimitiveSelection(doc)) {
-      if (ImGui::CollapsingHeader("Edit Primitive", nullptr, windowFlags)) {
-        renderEditPrimitiveView(doc, settings, globalTime);
+    if (settings.mode == Settings::Mode::Primitive) {
+      // Below Layer: creating a Primitive writes into the active Layer's active
+      // step, so the choice of where comes before the making of what, and
+      // editing one comes after both.
+      if (ImGui::CollapsingHeader("Create Primitive", nullptr, windowFlags)) {
+        renderCreatePrimitiveView(doc, settings);
       }
+
+      // The header follows the view: no header where the view would have
+      // nothing under it.
+      if (hasEditablePrimitiveSelection(doc)) {
+        if (ImGui::CollapsingHeader("Edit Primitive", nullptr, windowFlags)) {
+          renderEditPrimitiveView(doc, settings, globalTime);
+        }
+      }
+    } else if (ImGui::CollapsingHeader("Mesh", nullptr, windowFlags)) {
+      renderMeshView(doc, settings);
     }
 
     if (ImGui::CollapsingHeader("Clip Order", nullptr, windowFlags)) {
@@ -3234,6 +3270,19 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
       if (canUndo()) {
         undo(doc);
       }
+    }
+  }
+
+  if (settings.mode == Settings::Mode::Mesh &&
+      !ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+    if (ImGui::Shortcut(ImGuiKey_1 | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
+      setMeshSubMode(doc, settings, Settings::MeshSubMode::Vertex);
+    }
+    if (ImGui::Shortcut(ImGuiKey_2 | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
+      setMeshSubMode(doc, settings, Settings::MeshSubMode::Edge);
+    }
+    if (ImGui::Shortcut(ImGuiKey_3 | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
+      setMeshSubMode(doc, settings, Settings::MeshSubMode::Polygon);
     }
   }
 

@@ -149,6 +149,12 @@ void EditorInteraction::updateSelection(
 
 void EditorInteraction::updateDrag(
     Document* doc, Settings const& settings, PointerInput const& input) {
+  // Mesh mode is a shell in this ticket: it may select a MeshPrimitive, but
+  // no viewport drag is an authored edit yet.
+  if (settings.mode == Settings::Mode::Mesh) {
+    return;
+  }
+
   if ((input.shift && input.alt) || mBoxSelectPending ||
       (input.cursorInMiniMap && input.leftDragging)) {
     return;
