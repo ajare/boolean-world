@@ -2630,26 +2630,31 @@ void renderEditPrimitiveProperties(editor::Document* doc, editor::Settings& sett
   }
 }
 
-void renderEditPrimitiveView(editor::Document* doc, editor::Settings& settings, double globalTime) {
-  auto windowFlags = 0;
-
-  bool docIsActive = doc->isActive();
-
+// Whether the Edit Primitive view has anything at all to show. Document's
+// hasSelection() is not the question: it is also true for a TriggerLine or a
+// world vertex. Nor is a selected ghost, which is authoring furniture with
+// nothing to edit - and being index 0 it sorts first, so it is what the view
+// would otherwise reach for.
+bool hasEditablePrimitiveSelection(editor::Document* doc) {
   auto const& selectedIndices = doc->getSelectedPrimitiveIndices();
 
-  if (!selectedIndices.empty()) {
-    auto selected = *selectedIndices.begin();
-    if (selected != ED_GHOST_INDEX) {
-      ImGui::SeparatorText("Settings");
-      renderEditPrimitiveSettings(doc, settings);
+  return !selectedIndices.empty() &&
+         *selectedIndices.begin() != uint32_t(ED_GHOST_INDEX);
+}
 
-      ImGui::SeparatorText("Geometry");
-      renderEditPrimitiveGeometry(doc, settings, globalTime);
-
-      ImGui::SeparatorText("Properties");
-      renderEditPrimitiveProperties(doc, settings);
-    }
+void renderEditPrimitiveView(editor::Document* doc, editor::Settings& settings, double globalTime) {
+  if (!hasEditablePrimitiveSelection(doc)) {
+    return;
   }
+
+  ImGui::SeparatorText("Settings");
+  renderEditPrimitiveSettings(doc, settings);
+
+  ImGui::SeparatorText("Geometry");
+  renderEditPrimitiveGeometry(doc, settings, globalTime);
+
+  ImGui::SeparatorText("Properties");
+  renderEditPrimitiveProperties(doc, settings);
 }
 
 void renderPrefabView(editor::Document* doc, editor::Settings& settings) {
@@ -3182,18 +3187,23 @@ void renderCombinedPanel(
       renderPrefabView(doc, settings);
     }
 
+    if (ImGui::CollapsingHeader("Layer", nullptr, windowFlags)) {
+      renderLayerStepsView(doc, settings);
+    }
+
+    // Below Layer: creating a Primitive writes into the active Layer's active
+    // step, so the choice of where comes before the making of what, and
+    // editing one comes after both.
     if (ImGui::CollapsingHeader("Create Primitive", nullptr, windowFlags)) {
       renderCreatePrimitiveView(doc, settings);
     }
 
-    if (doc->hasSelection()) {
+    // The header follows the view: no header where the view would have
+    // nothing under it.
+    if (hasEditablePrimitiveSelection(doc)) {
       if (ImGui::CollapsingHeader("Edit Primitive", nullptr, windowFlags)) {
         renderEditPrimitiveView(doc, settings, globalTime);
       }
-    }
-
-    if (ImGui::CollapsingHeader("Layer", nullptr, windowFlags)) {
-      renderLayerStepsView(doc, settings);
     }
 
     if (ImGui::CollapsingHeader("Clip Order", nullptr, windowFlags)) {
