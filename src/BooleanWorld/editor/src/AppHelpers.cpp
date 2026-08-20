@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <format>
+#include <limits>
 #include <filesystem>
 #include <nfd/nfd.h>
 
@@ -249,11 +250,40 @@ bw::core::World* loadWorld(string const& filepath) {
   }
 }
 
-void goHome(bw::core::Primitive const* primitive) {
-  if (primitive) {
-    gViewOffset = primitive->getPosition();
-  } else {
+void goHome(editor::Document* doc) {
+  auto world = doc->getWorld();
+  auto const& selected = doc->getSelectedPrimitiveIndices();
+
+  if (!world || selected.empty()) {
     gViewOffset.set(0.0f, 0.0f);
+    gViewZoom = 1.0f;
+    return;
+  }
+
+  wp::Vector2 minExtent{numeric_limits<float>::max(), numeric_limits<float>::max()};
+  wp::Vector2 maxExtent{numeric_limits<float>::lowest(), numeric_limits<float>::lowest()};
+
+  for (auto index : selected) {
+    wp::Vector2 primMin, primMax;
+    world->getPrimitive(index)->getBounds().getExtents(primMin, primMax);
+
+    minExtent.x = min(minExtent.x, primMin.x);
+    minExtent.y = min(minExtent.y, primMin.y);
+    maxExtent.x = max(maxExtent.x, primMax.x);
+    maxExtent.y = max(maxExtent.y, primMax.y);
+  }
+
+  gViewOffset = (minExtent + maxExtent) * 0.5f;
+
+  // Leave a border around the framed selection rather than filling the
+  // window edge to edge.
+  constexpr float ED_HOME_VIEW_PADDING_SCALE = 0.9f;
+
+  auto selectionSize = maxExtent - minExtent;
+  if (selectionSize.x > 0.0f && selectionSize.y > 0.0f) {
+    gViewZoom = clamp(
+        min(gWorldViewSize.x / selectionSize.x, gWorldViewSize.y / selectionSize.y) * ED_HOME_VIEW_PADDING_SCALE,
+        ED_MIN_VIEW_ZOOM, ED_MAX_VIEW_ZOOM);
   }
 }
 
@@ -289,7 +319,7 @@ void enableGhost(editor::Document* doc, bool enable) {
 
 void selectAndHomeGhost(editor::Document* doc) {
   doc->setSelectedPrimitiveIndices({ED_GHOST_INDEX});
-  goHome(doc->getGhost());
+  goHome(doc);
 }
 
 bw::core::Primitive* createRegularPolygonPrimitive(

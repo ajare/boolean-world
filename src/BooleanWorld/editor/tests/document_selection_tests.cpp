@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <set>
@@ -6,6 +7,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
 
 #include "Defines.h"
@@ -68,6 +70,84 @@ void theGhostIsHoveredFirstWhereItOverlapsAnotherPrimitive() {
           "the hovered primitive was not the ghost where it overlaps another primitive");
 }
 
+void primitiveIndicesInBoundsFindsOverlappingPrimitivesAndIgnoresTheGhost() {
+  editor::Document document;
+  editor::Settings settings;
+
+  document.newDoc();
+
+  // Lands well clear of the origin (and so of the ghost seeded there), so a
+  // bounds query can distinguish "found this primitive" from "found the
+  // ghost too".
+  auto primitive = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  primitive->setPosition({100.0f, 100.0f});
+  document.getWorld()->addPrimitive(primitive);
+
+  auto overlapping = document.getPrimitiveIndicesInBounds(
+      wp::BoundingBox({90.0f, 90.0f}, {20.0f, 20.0f}), settings);
+  require(overlapping.size() == 1 && overlapping.front() != uint32_t(ED_GHOST_INDEX),
+          "a bounds query missed a primitive its rectangle overlaps");
+
+  auto elsewhere = document.getPrimitiveIndicesInBounds(
+      wp::BoundingBox({-500.0f, -500.0f}, {20.0f, 20.0f}), settings);
+  require(elsewhere.empty(),
+          "a bounds query found a primitive outside its rectangle");
+}
+
+void selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.showAllStepPrimitives = false;
+
+  document.newDoc();
+
+  auto* layer = document.getWorld()->getActiveLayer();
+
+  // Step 0 (always present) is active by construction: this primitive lands
+  // in it.
+  auto* earlyStepPrimitive = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  earlyStepPrimitive->setPosition({100.0f, 100.0f});
+  document.getWorld()->addPrimitive(earlyStepPrimitive);
+
+  auto laterStepIndex = layer->addStep(new bw::core::PrimitiveField());
+  layer->setActiveStep(laterStepIndex);
+
+  auto* laterStepPrimitive = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  laterStepPrimitive->setPosition({100.0f, 100.0f});
+  document.getWorld()->addPrimitive(laterStepPrimitive);
+
+  // Back to step 0 as the authoring/selection context: the later step's
+  // primitive is out of context and should drop out of every selection
+  // query, even though it geometrically coincides with the one that stays.
+  layer->setActiveStep(0);
+
+  auto selectable = document.getSelectablePrimitiveIndices(settings);
+  require(std::find(selectable.begin(), selectable.end(), earlyStepPrimitive->getId()) != selectable.end(),
+          "Select All dropped a Primitive that belongs to the active step");
+  require(std::find(selectable.begin(), selectable.end(), laterStepPrimitive->getId()) == selectable.end(),
+          "Select All picked up a Primitive from a step later than the active one");
+
+  auto inBounds = document.getPrimitiveIndicesInBounds(
+      wp::BoundingBox({90.0f, 90.0f}, {20.0f, 20.0f}), settings);
+  require(std::find(inBounds.begin(), inBounds.end(), laterStepPrimitive->getId()) == inBounds.end(),
+          "a bounds query picked up a Primitive from a step later than the active one");
+
+  // Opting back into every step restores it.
+  settings.showAllStepPrimitives = true;
+  auto selectableAllSteps = document.getSelectablePrimitiveIndices(settings);
+  require(std::find(selectableAllSteps.begin(), selectableAllSteps.end(), laterStepPrimitive->getId()) != selectableAllSteps.end(),
+          "showAllStepPrimitives did not restore a later step's Primitive to Select All");
+}
+
 void openingADocumentReplacesTheActiveDocument() {
   auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-test.yaml";
 
@@ -94,6 +174,8 @@ int main() {
     changingSelectedPrimitiveIndicesDoesNotWriteIntoAnInputRange();
     primitiveHoverQueriesAreSafeWithoutAnActiveDocument();
     theGhostIsHoveredFirstWhereItOverlapsAnotherPrimitive();
+    primitiveIndicesInBoundsFindsOverlappingPrimitivesAndIgnoresTheGhost();
+    selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps();
     openingADocumentReplacesTheActiveDocument();
     std::cout << "Document selection and hover queries passed\n";
     return 0;

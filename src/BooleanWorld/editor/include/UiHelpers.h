@@ -56,6 +56,12 @@ bool mouseInteractingWithBackground();
 
 wp::Vector2 getMouseWorldPosition();
 
+// The inverse of Render.cpp's worldToScreen() for an arbitrary screen point,
+// rather than just the current mouse position - used to convert a rubber-band
+// selection rectangle's corners once the drag that defined them has moved the
+// mouse on.
+wp::Vector2 screenToWorldPosition(ImVec2 const& screenPos);
+
 uint32_t getHoveredPrimitiveIndex(editor::Document* doc, Settings const& settings);
 
 std::vector<uint32_t> getHoveredPrimitiveIndices(editor::Document* doc, Settings const& settings);
@@ -72,20 +78,9 @@ void generateClipping(editor::Document* doc, Settings const& settings, int flag)
 // auto-clipping preference should be able to swallow.
 void regenerateWorldData(editor::Document* doc);
 
-// The rule behind Settings::showAllStepPrimitives: with it off, a Primitive
-// produced by a LayerBuildStep after its Layer's active step is not shown at
-// all. A ghost, and a Primitive belonging to no step in this Layer
-// (getOwningStepIndex returns ~0u), are always shown.
-//
-// Both halves of "not shown" go through here - the world view's overlay skips
-// it, and the world data generator's filter keeps it out of the fold so it
-// contributes no geometry either.
-bool primitiveVisibleForActiveStep(
-    bw::core::Layer const& layer,
-    bw::core::Primitive const* primitive,
-    Settings const& settings);
-
-// Installs primitiveVisibleForActiveStep on the Document, which applies it to
+// Installs primitiveVisibleForActiveStep (declared in Document.h - it also
+// bounds Document's own selection queries, which have no business depending
+// on this file's ImGui-linked helpers) on the Document, which applies it to
 // every World it builds from here on, and regenerates the current one. The
 // filter reads settings live, so it must outlive the Document - pass the
 // editor's global Settings, not a temporary.

@@ -12,6 +12,22 @@
 
 namespace editor {
 
+// The rule behind Settings::showAllStepPrimitives: with it off, a Primitive
+// produced by a LayerBuildStep after its Layer's active step is not shown at
+// all. A ghost, and a Primitive belonging to no step in this Layer
+// (getOwningStepIndex returns ~0u), are always shown.
+//
+// Both halves of "not shown" go through here - the world view's overlay
+// skips it, the world data generator's filter keeps it out of the fold so it
+// contributes no geometry either, and Document's own selection queries
+// (hover, rubber-band, Select All) exclude it from the current context. Pure
+// logic with no ImGui dependency, unlike the rest of UiHelpers - kept here so
+// Document (and its unit tests) can use it without linking ImGui.
+bool primitiveVisibleForActiveStep(
+    bw::core::Layer const& layer,
+    bw::core::Primitive const* primitive,
+    Settings const& settings);
+
 struct WorldSnapshot {
   std::string serializedWorld;
   float accelerationGridSize{-1.0f};
@@ -88,6 +104,16 @@ public:
   uint32_t getHoveredPrimitiveIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
 
   std::vector<uint32_t> getHoveredPrimitiveIndices(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
+
+  // Primitives whose bounds overlap a rubber-band selection rectangle, in the
+  // same index space (and subject to the same ignore rules - ghost, hidden
+  // animated primitives) as getHoveredPrimitiveIndex(es).
+  std::vector<uint32_t> getPrimitiveIndicesInBounds(wp::BoundingBox const& worldBounds, Settings const& settings) const;
+
+  // Every Primitive in the current context - the active Layer, filtered to
+  // its active step (and earlier) unless showAllStepPrimitives opts out -
+  // for Select All.
+  std::vector<uint32_t> getSelectablePrimitiveIndices(Settings const& settings) const;
 
   bool indexInSelection(uint32_t index) const;
 

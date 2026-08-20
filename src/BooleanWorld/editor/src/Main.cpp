@@ -352,6 +352,12 @@ editor::MouseButtonStatus getMouseButtonStatus() {
   return status;
 }
 
+// Rubber-band multi-select drag state. Read by handleWorldInteraction too, so
+// that a background drag intended as a box select is not also interpreted as
+// a move/scale/rotate of whatever's already selected.
+bool gBoxSelectPending = false;
+bool gBoxSelectDragging = false;
+
 void handleSelections(editor::Document* doc, bw::core::WorldData const* worldData, editor::Settings const& settings) {
   static int curHoveredPrimitiveIndex = -1;
 
@@ -386,13 +392,26 @@ void handleSelections(editor::Document* doc, bw::core::WorldData const* worldDat
     return;
   }
 
+  // Rubber-band multi-select: a left-mouse-button drag started over empty
+  // background draws a rectangle, and on release selects (or, with
+  // Ctrl/Shift held, toggles/adds) whatever primitives it overlaps. A click
+  // that never crosses the drag threshold falls through to the plain
+  // click-to-deselect behaviour below.
+  static ImVec2 sBoxSelectStartScreen;
+  constexpr float ED_BOX_SELECT_DRAG_THRESHOLD_SQ = 4.0f;
+
   // Select single primitive on left-mouse click
   if (ImGui::IsMouseClicked(0)) {
     switch (gHoveredType) {
       case editor::HoverableType::Primitive:
-        // If we are hovering over some Primitives, see if one of those is currently selected.
-        // If it is, then don't change the selectedPrimitiveIndices on mouse down.
-        if (!doc->anyPrimitiveIndicesSelected(hoveredPrimitiveIndices)) {
+        // Multiple Primitives stacked under the cursor need repeated plain
+        // clicks to cycle through, which relies on this first click of a
+        // pair leaving a click-through in progress alone (see the release
+        // branch below). That ambiguity does not exist with only one
+        // Primitive hovered, so a plain click there always takes effect
+        // immediately, collapsing any other selection down to just it - the
+        // same as clicking a Primitive that was not selected at all.
+        if (hoveredPrimitiveIndices.size() == 1 || !doc->anyPrimitiveIndicesSelected(hoveredPrimitiveIndices)) {
           // The cycle restarts whenever what is under the cursor changes, so
           // a first click lands on the head of the list - the ghost, when it
           // is one of them - rather than wherever the last cycle left off.
@@ -409,8 +428,17 @@ void handleSelections(editor::Document* doc, bw::core::WorldData const* worldDat
           if (io.KeyCtrl) {
             auto f = bind(editor::togglePrimitiveSelected, placeholders::_1, hoveredPrimitiveIndex);
             editor::transactUndoableAction(doc, format("Toggle Primitive {}", hoveredPrimitiveIndex), f);
-          } else {
+          } else if (io.KeyShift) {
             if (selectedPrimitiveIndices.find(hoveredPrimitiveIndex) == selectedPrimitiveIndices.end()) {
+              auto f = bind(editor::addPrimitivesToSelection, placeholders::_1, set<uint32_t>{hoveredPrimitiveIndex});
+              editor::transactUndoableAction(doc, format("Add Primitive {} To Selection", hoveredPrimitiveIndex), f);
+            }
+          } else {
+            // A plain click always ends with exactly this Primitive selected
+            // - not merely "among the selection", which a multi-selection
+            // (e.g. from a rubber-band drag) could already satisfy without
+            // this being the only Primitive selected.
+            if (selectedPrimitiveIndices != set<uint32_t>{hoveredPrimitiveIndex}) {
               auto f = bind(editor::selectPrimitive, placeholders::_1, hoveredPrimitiveIndex);
               editor::transactUndoableAction(doc, format("Select Primitive {}", hoveredPrimitiveIndex), f);
             }
@@ -428,34 +456,108 @@ void handleSelections(editor::Document* doc, bw::core::WorldData const* worldDat
                                        bind(editor::selectWorldVertex, placeholders::_1, hoveredWorldVertexIndex));
         break;
 
-      case editor::HoverableType::None:
-        editor::transactUndoableAction(doc, "Clear selection", editor::clearSelections);
+      case editor::HoverableType::None: {
+        // The minimap has its own drag-to-pan handling in
+        // handleWorldInteraction; don't also arm a box select there.
+        auto miniMapBounds = getMiniMapBounds(doc);
+        miniMapBounds.setPosition(miniMapBounds.getMinExtent() + gWorldViewScreenOrigin);
+        auto mouseScreenPos = ImGui::GetMousePos();
+
+        if (!doc->getWorld() || !settings.renderMiniMap ||
+            !miniMapBounds.pointInside(mouseScreenPos.x, mouseScreenPos.y)) {
+          gBoxSelectPending = true;
+          gBoxSelectDragging = false;
+          sBoxSelectStartScreen = mouseScreenPos;
+        }
         break;
+      }
 
       default:
         break;
     }
-  } else if (ImGui::IsMouseReleased(0)) {
-    uint32_t hoveredIndex;
+  }
 
-    switch (gHoveredType) {
-      case editor::HoverableType::Primitive:
-        curHoveredPrimitiveIndex = (curHoveredPrimitiveIndex + 1) % hoveredPrimitiveIndices.size();
-        hoveredIndex = hoveredPrimitiveIndices[curHoveredPrimitiveIndex];
+  if (gBoxSelectPending && ImGui::IsMouseDown(0) && !ImGui::IsMouseClicked(0)) {
+    auto currentScreen = ImGui::GetMousePos();
+    auto delta = ImVec2(currentScreen.x - sBoxSelectStartScreen.x, currentScreen.y - sBoxSelectStartScreen.y);
 
-        if (io.KeyCtrl) {
-          auto f = bind(editor::togglePrimitiveSelected, placeholders::_1, hoveredIndex);
-          editor::transactUndoableAction(doc, format("Toggle Primitive {}", hoveredIndex), f);
-        } else {
-          if (selectedPrimitiveIndices.find(hoveredIndex) == selectedPrimitiveIndices.end()) {
-            auto f = bind(editor::selectPrimitive, placeholders::_1, hoveredIndex);
-            editor::transactUndoableAction(doc, format("Select Primitive {}", hoveredIndex), f);
+    if (!gBoxSelectDragging && (delta.x * delta.x + delta.y * delta.y) > ED_BOX_SELECT_DRAG_THRESHOLD_SQ) {
+      gBoxSelectDragging = true;
+    }
+
+    if (gBoxSelectDragging) {
+      ImVec2 rectMin{min(sBoxSelectStartScreen.x, currentScreen.x), min(sBoxSelectStartScreen.y, currentScreen.y)};
+      ImVec2 rectMax{max(sBoxSelectStartScreen.x, currentScreen.x), max(sBoxSelectStartScreen.y, currentScreen.y)};
+
+      auto drawList = ImGui::GetForegroundDrawList();
+      drawList->AddRectFilled(rectMin, rectMax, IM_COL32(180, 200, 255, 40));
+      drawList->AddRect(rectMin, rectMax, IM_COL32(180, 200, 255, 220));
+    }
+  }
+
+  if (ImGui::IsMouseReleased(0)) {
+    if (gBoxSelectPending) {
+      gBoxSelectPending = false;
+
+      if (gBoxSelectDragging) {
+        gBoxSelectDragging = false;
+
+        auto startWorld = editor::screenToWorldPosition(sBoxSelectStartScreen);
+        auto endWorld = editor::getMouseWorldPosition();
+
+        wp::Vector2 minExtent{min(startWorld.x, endWorld.x), min(startWorld.y, endWorld.y)};
+        wp::Vector2 maxExtent{max(startWorld.x, endWorld.x), max(startWorld.y, endWorld.y)};
+        wp::BoundingBox boxBounds(minExtent, maxExtent - minExtent);
+
+        auto boxIndices = doc->getPrimitiveIndicesInBounds(boxBounds, settings);
+        set<uint32_t> boxIndicesSet(boxIndices.begin(), boxIndices.end());
+
+        if (!boxIndicesSet.empty()) {
+          if (io.KeyCtrl) {
+            auto f = bind(editor::togglePrimitivesSelected, placeholders::_1, boxIndicesSet);
+            editor::transactUndoableAction(doc, "Toggle Primitives In Selection Box", f);
+          } else if (io.KeyShift) {
+            auto f = bind(editor::addPrimitivesToSelection, placeholders::_1, boxIndicesSet);
+            editor::transactUndoableAction(doc, "Add Primitives In Selection Box", f);
+          } else {
+            auto f = bind(editor::selectPrimitives, placeholders::_1, boxIndicesSet);
+            editor::transactUndoableAction(doc, "Select Primitives In Selection Box", f);
           }
+        } else if (!io.KeyCtrl && !io.KeyShift) {
+          editor::transactUndoableAction(doc, "Clear selection", editor::clearSelections);
         }
-        break;
+      } else if (!io.KeyCtrl && !io.KeyShift) {
+        editor::transactUndoableAction(doc, "Clear selection", editor::clearSelections);
+      }
+    } else {
+      uint32_t hoveredIndex;
 
-      default:
-        break;
+      switch (gHoveredType) {
+        case editor::HoverableType::Primitive:
+          curHoveredPrimitiveIndex = (curHoveredPrimitiveIndex + 1) % hoveredPrimitiveIndices.size();
+          hoveredIndex = hoveredPrimitiveIndices[curHoveredPrimitiveIndex];
+
+          if (io.KeyCtrl) {
+            auto f = bind(editor::togglePrimitiveSelected, placeholders::_1, hoveredIndex);
+            editor::transactUndoableAction(doc, format("Toggle Primitive {}", hoveredIndex), f);
+          } else if (io.KeyShift) {
+            if (selectedPrimitiveIndices.find(hoveredIndex) == selectedPrimitiveIndices.end()) {
+              auto f = bind(editor::addPrimitivesToSelection, placeholders::_1, set<uint32_t>{hoveredIndex});
+              editor::transactUndoableAction(doc, format("Add Primitive {} To Selection", hoveredIndex), f);
+            }
+          } else {
+            // See the matching comment in the click branch above: a plain
+            // click always leaves exactly this Primitive selected.
+            if (selectedPrimitiveIndices != set<uint32_t>{hoveredIndex}) {
+              auto f = bind(editor::selectPrimitive, placeholders::_1, hoveredIndex);
+              editor::transactUndoableAction(doc, format("Select Primitive {}", hoveredIndex), f);
+            }
+          }
+          break;
+
+        default:
+          break;
+      }
     }
   }
 
@@ -526,6 +628,13 @@ void handleWorldInteraction(editor::Document* doc, bw::core::WorldData const* wo
   // Shift+Alt+left-mouse-button drag is reserved for panning the view (see
   // handleViewNavigation), so it must not also transform the selection.
   if (ImGui::GetIO().KeyShift && ImGui::GetIO().KeyAlt) {
+    return;
+  }
+
+  // A left-mouse-button drag that started over empty background is a
+  // rubber-band selection (see handleSelections), not a grab of whatever is
+  // already selected.
+  if (gBoxSelectPending) {
     return;
   }
 

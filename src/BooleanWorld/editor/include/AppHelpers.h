@@ -37,11 +37,15 @@ void renderHelp();
 
 bw::core::World* loadWorld(std::string const& filepath);
 
-void goHome(bw::core::Primitive const* primitive = nullptr);
+// Pans and zooms so every selected Primitive fits the World window with a
+// small margin, à la Blender's numpad "." (View Selected). With nothing
+// selected, resets both pan and zoom to their defaults instead.
+void goHome(editor::Document* doc);
 
 // Blender's View > Frame All (Home key): pans to the world's centre and
-// zooms so its full extents fit the World window, unlike goHome() which only
-// re-centres without touching zoom.
+// zooms so its full extents fit the World window, regardless of selection -
+// unlike goHome(), which frames the selection (or, with none, resets to the
+// default view).
 void frameAllWorld(editor::Document* doc);
 
 void enableGhost(editor::Document* doc, bool enable);

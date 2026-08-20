@@ -31,8 +31,33 @@ using namespace std;
 
 Document* Document::msInstance = nullptr;
 
+bool primitiveVisibleForActiveStep(
+    bw::core::Layer const& layer,
+    bw::core::Primitive const* primitive,
+    Settings const& settings) {
+  if (settings.showAllStepPrimitives) {
+    return true;
+  }
+
+  if (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) {
+    return true;
+  }
+
+  auto owningStepIndex = layer.getOwningStepIndex(primitive);
+
+  return owningStepIndex == ~0u || owningStepIndex <= layer.getActiveStepIndex();
+}
+
 namespace {
 
+// Selection's "current context" (the active Layer, and - unless
+// showAllStepPrimitives opts out of the boundary - primitives no later than
+// its active step) mirrors the world view's own visibility rule
+// (editor::primitiveVisibleForActiveStep): a Primitive nothing draws should
+// be nothing a click, a box, or Select All can pick up either. World's
+// index-space is already scoped to the active Layer (World::getPrimitive et
+// al forward to getActiveLayer()), so only the step boundary needs adding
+// here.
 set<uint32_t> getIgnoredPrimitiveIndices(bw::core::World const& world, Settings const& settings) {
   set<uint32_t> ignores;
 
@@ -40,11 +65,18 @@ set<uint32_t> getIgnoredPrimitiveIndices(bw::core::World const& world, Settings 
     ignores.insert(0);
   }
 
-  if (!settings.renderAnimatedPrimitives) {
-    for (uint32_t i = 0; i < world.getNumPrimitives(); ++i) {
-      if (!world.getPrimitive(i)->isStatic()) {
-        ignores.insert(i);
-      }
+  auto* activeLayer = world.getActiveLayer();
+
+  for (uint32_t i = 0; i < world.getNumPrimitives(); ++i) {
+    auto* primitive = world.getPrimitive(i);
+
+    if (!settings.renderAnimatedPrimitives && !primitive->isStatic()) {
+      ignores.insert(i);
+      continue;
+    }
+
+    if (activeLayer && !primitiveVisibleForActiveStep(*activeLayer, primitive, settings)) {
+      ignores.insert(i);
     }
   }
 
@@ -242,6 +274,50 @@ vector<uint32_t> Document::getHoveredPrimitiveIndices(wp::Vector2 const& mouseWo
   }
 
   return hovered;
+}
+
+vector<uint32_t> Document::getPrimitiveIndicesInBounds(wp::BoundingBox const& worldBounds, Settings const& settings) const {
+  if (!isActive()) {
+    return {};
+  }
+
+  auto ignores = getIgnoredPrimitiveIndices(*mWorld, settings);
+
+  vector<uint32_t> result;
+  auto numPrimitives = mWorld->getNumPrimitives();
+
+  for (uint32_t index = 0; index < numPrimitives; ++index) {
+    if (ignores.find(index) != ignores.end()) {
+      continue;
+    }
+
+    auto primitive = mWorld->getPrimitive(index);
+
+    if (worldBounds.intersectsBoundingObject(&primitive->getBounds())) {
+      result.push_back(index);
+    }
+  }
+
+  return result;
+}
+
+vector<uint32_t> Document::getSelectablePrimitiveIndices(Settings const& settings) const {
+  if (!isActive()) {
+    return {};
+  }
+
+  auto ignores = getIgnoredPrimitiveIndices(*mWorld, settings);
+
+  vector<uint32_t> result;
+  auto numPrimitives = mWorld->getNumPrimitives();
+
+  for (uint32_t index = 0; index < numPrimitives; ++index) {
+    if (ignores.find(index) == ignores.end()) {
+      result.push_back(index);
+    }
+  }
+
+  return result;
 }
 
 uint32_t Document::getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const {

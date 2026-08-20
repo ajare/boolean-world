@@ -124,6 +124,28 @@ bool togglePrimitiveSelected(Document* doc, uint32_t primitiveIndex) {
   return false;
 }
 
+bool selectPrimitives(Document* doc, set<uint32_t> const& primitiveIndices) {
+  doc->setSelectedPrimitiveIndices(primitiveIndices);
+  return false;
+}
+
+bool addPrimitivesToSelection(Document* doc, set<uint32_t> const& primitiveIndices) {
+  doc->addSelectedPrimitiveIndices(primitiveIndices);
+  return false;
+}
+
+bool togglePrimitivesSelected(Document* doc, set<uint32_t> const& primitiveIndices) {
+  for (auto primitiveIndex : primitiveIndices) {
+    if (doc->indexInSelection(primitiveIndex)) {
+      doc->removeSelectedPrimitiveIndex(primitiveIndex);
+    } else {
+      doc->addSelectedPrimitiveIndex(primitiveIndex);
+    }
+  }
+
+  return false;
+}
+
 bool clearSelections(Document* doc) {
   doc->clearSelections();
 

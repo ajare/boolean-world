@@ -232,11 +232,24 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
         widgets::PopDisabled();
       }
 
+      if (!world) {
+        widgets::PushDisabled();
+      }
+
+      if (ImGui::MenuItem("Select all", "Ctrl+A")) {
+        auto indices = doc->getSelectablePrimitiveIndices(settings);
+        transactUndoableAction(doc, "Select All", bind(selectPrimitives, placeholders::_1, set<uint32_t>(indices.begin(), indices.end())));
+      }
+
+      if (!world) {
+        widgets::PopDisabled();
+      }
+
       if (!hasPrimitiveSelection && !hasTriggerLineSelection) {
         widgets::PushDisabled();
       }
 
-      if (ImGui::MenuItem("Deselect all")) {
+      if (ImGui::MenuItem("Deselect all", "Ctrl+D")) {
         transactUndoableAction(doc, "Clear Selections", clearSelections);
       }
 
@@ -285,7 +298,7 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
 
     if (ImGui::BeginMenu("View")) {
       if (ImGui::MenuItem("Reset view position", "H")) {
-        goHome(nullptr);
+        goHome(doc);
       }
 
       ImGui::MenuItem("Minimap", "M", &settings.renderMiniMap);
@@ -512,7 +525,7 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
     ImGui::SameLine();
 
     if (ImGui::Button(ICON_FA_HOME)) {
-      goHome(nullptr);
+      goHome(doc);
     }
 
     ImGui::SameLine();
@@ -3253,6 +3266,23 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
+  if (ImGui::Shortcut(ImGuiKey_A | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+      if (doc->isActive()) {
+        auto indices = doc->getSelectablePrimitiveIndices(settings);
+        transactUndoableAction(doc, "Select All", bind(selectPrimitives, placeholders::_1, set<uint32_t>(indices.begin(), indices.end())));
+      }
+    }
+  }
+
+  if (ImGui::Shortcut(ImGuiKey_D | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+      if (doc->hasSelection()) {
+        transactUndoableAction(doc, "Clear Selections", clearSelections);
+      }
+    }
+  }
+
   if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (doc->hasSelection()) {
@@ -3310,7 +3340,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   if (ImGui::Shortcut(ImGuiKey_H, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      goHome(nullptr);
+      goHome(doc);
     }
   }
 
@@ -3342,10 +3372,8 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   if (ImGui::Shortcut(ImGuiKey_Z, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      auto const& selected = doc->getSelectedPrimitiveIndices();
-
-      if (selected.size() == 1) {
-        goHome(doc->getWorld()->getPrimitive(*selected.begin()));
+      if (!doc->getSelectedPrimitiveIndices().empty()) {
+        goHome(doc);
       }
     }
   }

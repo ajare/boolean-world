@@ -28,10 +28,13 @@ bool mouseInteractingWithBackground() {
 // The inverse of Render.cpp's worldToScreen(): screen -> canvas-local (undo
 // the World window's screen origin) -> world (undo the pan/zoom/y-flip).
 wp::Vector2 getMouseWorldPosition() {
-  auto mouseScreenPos = ImGui::GetMousePos();
+  return screenToWorldPosition(ImGui::GetMousePos());
+}
+
+wp::Vector2 screenToWorldPosition(ImVec2 const& screenPos) {
   wp::Vector2 canvasPos{
-      mouseScreenPos.x - gWorldViewScreenOrigin.x,
-      mouseScreenPos.y - gWorldViewScreenOrigin.y};
+      screenPos.x - gWorldViewScreenOrigin.x,
+      screenPos.y - gWorldViewScreenOrigin.y};
 
   return {
       (canvasPos.x - gWorldViewSize.x / 2.0f) / gViewZoom + gViewOffset.x,
@@ -82,23 +85,6 @@ void regenerateWorldData(editor::Document* doc) {
   }
 
   doc->getWorld()->generateClipping(true);
-}
-
-bool primitiveVisibleForActiveStep(
-    bw::core::Layer const& layer,
-    bw::core::Primitive const* primitive,
-    Settings const& settings) {
-  if (settings.showAllStepPrimitives) {
-    return true;
-  }
-
-  if (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) {
-    return true;
-  }
-
-  auto owningStepIndex = layer.getOwningStepIndex(primitive);
-
-  return owningStepIndex == ~0u || owningStepIndex <= layer.getActiveStepIndex();
 }
 
 void applyStepVisibilityFilter(editor::Document* doc, Settings const& settings) {

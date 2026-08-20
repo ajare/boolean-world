@@ -43,6 +43,12 @@ bool selectPrimitive(Document* doc, uint32_t primitiveIndex);
 
 bool togglePrimitiveSelected(Document* doc, uint32_t primitiveIndex);
 
+bool selectPrimitives(Document* doc, std::set<uint32_t> const& primitiveIndices);
+
+bool addPrimitivesToSelection(Document* doc, std::set<uint32_t> const& primitiveIndices);
+
+bool togglePrimitivesSelected(Document* doc, std::set<uint32_t> const& primitiveIndices);
+
 bool clearSelections(Document* doc);
 
 bool createPrimitiveFromGhost(Document* doc);

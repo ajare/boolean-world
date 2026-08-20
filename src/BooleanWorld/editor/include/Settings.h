@@ -68,7 +68,7 @@ struct Settings {
   ImColor staticBoundsColour{0.0f, 1.0f, 0.0f, 1.0f};
   ImColor animatedBoundsColour{0.0f, 1.0f, 1.0f, 1.0f};
   ImColor primitiveColour{0.5f, 0.5f, 0.5f, 1.0f};
-  ImColor selectedPrimitiveColour{1.0f, 0.3f, 0.3f, 1.0f};
+  ImColor selectedPrimitiveColour{1.0f, 1.0f, 0.0f, 1.0f};
   ImColor hoveredPrimitiveColour{1.0f, 0.1f, 0.1f, 1.0f};
   ImColor ghostPrimitiveColour{0.0f, 1.0f, 1.0f, 1.0f};
   ImColor triggerLineColour{0.8f, 0.8f, 0.0f, 1.0f};
