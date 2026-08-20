@@ -5,9 +5,9 @@
 
 #include "imgui.h"
 
-#define ED_CLIP_ON_PRIM_TRANSFORM_END 0x0001
-#define ED_CLIP_ON_PRIM_CREATE_DELETE 0x0002
-#define ED_CLIP_ON_PRIM_SETTING_CHANGE 0x0004
+// What is left to choose about auto-clipping. Everything that goes through an
+// undoable action regenerates unconditionally when it commits (see
+// Undo.cpp), so only the paths that are not one of those are a policy.
 #define ED_CLIP_ON_ACTIVE_LAYER_CHANGE 0x0008
 #define ED_CLIP_ON_UNDO_REDO 0x0020
 
@@ -54,10 +54,7 @@ struct Settings {
   bool showDebugPanel{false};
   bool showContextSensitiveHelpPanel{false};
 
-  int configFlags{ED_CLIP_ON_PRIM_TRANSFORM_END |
-                  ED_CLIP_ON_PRIM_CREATE_DELETE |
-                  ED_CLIP_ON_PRIM_SETTING_CHANGE |
-                  ED_CLIP_ON_ACTIVE_LAYER_CHANGE |
+  int configFlags{ED_CLIP_ON_ACTIVE_LAYER_CHANGE |
                   ED_CLIP_ON_UNDO_REDO};
 
   uint8_t activeLayer{0};

@@ -129,6 +129,15 @@ void commitUndoableAction(Document* doc, string const& id) {
   gTransactionalData = {};
   gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
   gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
+
+  // The arrangement and everything drawn from it are derived from the World,
+  // so an action that changed the World has just made them stale. This is the
+  // one place that needs to say so: every action commits through here.
+  //
+  // Regeneration is asynchronous, and a request that has not started is
+  // replaced by the next one, while one already running has its result
+  // discarded - so a run of quick edits collapses onto the last of them.
+  regenerateWorldData(doc);
 }
 
 void transactUndoableAction(Document* doc, string const& id, UndoableActionFunction func) {
@@ -159,6 +168,7 @@ bool transactUndoableActionAtomically(
     bw::common::trimDequeToCapacity(gUndoStack, MAX_STACK_SIZE);
     gRedoStack.clear();
     doc->setModified();
+    regenerateWorldData(doc);
     return true;
   } catch (...) {
     restorePrevious();

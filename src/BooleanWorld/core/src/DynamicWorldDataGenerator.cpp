@@ -286,7 +286,8 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
           world->getStepThreshold()};
 }
 
-void DynamicWorldDataGenerator::generateWorldData(GenerationInput input) {
+void DynamicWorldDataGenerator::generateWorldData(
+    GenerationInput input, bool discardIfSuperseded) {
   auto clippingId = mClippingIdGenerator++;
   auto requestStats = GenerationRequestStats{
       mNumGenerationRequestsCoalesced.load()};
@@ -317,15 +318,28 @@ void DynamicWorldDataGenerator::generateWorldData(GenerationInput input) {
   stats.generationRequests.coalescedRequestCount =
       mNumGenerationRequestsCoalesced.load();
 
-  mPendingClippings.push_bounded(
-      {clippingId,
-       move(results),
-       move(input.sourcePrimitives),
-       move(input.updatedPrimitives),
-       input.layerSelection,
-       stats,
-       mLastGenTime},
-      MaxPendingGenerations);
+  // A request that arrived while this one was building supersedes it: the
+  // drain loop generates from that newer input next, so committing this
+  // result would only show a world already known to be out of date. Work
+  // already running cannot be called back - only its result dropped.
+  bool superseded = false;
+
+  if (discardIfSuperseded) {
+    lock_guard<mutex> lock(mGenMutex);
+    superseded = mPendingGenerationInput.has_value();
+  }
+
+  if (!superseded) {
+    mPendingClippings.push_bounded(
+        {clippingId,
+         move(results),
+         move(input.sourcePrimitives),
+         move(input.updatedPrimitives),
+         input.layerSelection,
+         stats,
+         mLastGenTime},
+        MaxPendingGenerations);
+  }
 
   mNumGenerationsInProgress--;
   mNumGenerationsComplete++;
@@ -350,7 +364,7 @@ void DynamicWorldDataGenerator::drainGenerationRequests() {
       mPendingGenerationInput.reset();
     }
 
-    generateWorldData(move(*input));
+    generateWorldData(move(*input), true);
   }
 }
 

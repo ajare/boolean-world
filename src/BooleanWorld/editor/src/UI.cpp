@@ -198,7 +198,6 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
 
         if (!primitiveIndices.empty()) {
           transactUndoableAction(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), bind(deletePrimitives, placeholders::_1, primitiveIndices));
-          generateClipping(doc, settings, ED_CLIP_ON_PRIM_CREATE_DELETE);
         }
 
         auto triggerLineIndex = doc->getSelectedTriggerLineIndex();
@@ -463,7 +462,6 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
       if (!primitiveIndices.empty()) {
         transactUndoableAction(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), bind(deletePrimitives, placeholders::_1, primitiveIndices));
-        generateClipping(doc, settings, ED_CLIP_ON_PRIM_CREATE_DELETE);
       }
 
       auto triggerLineIndex = doc->getSelectedTriggerLineIndex();
@@ -1344,7 +1342,6 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
 
       return true;
     });
-    generateClipping(doc, settings, ED_CLIP_ON_PRIM_CREATE_DELETE);
   }
 }
 
@@ -2940,9 +2937,7 @@ void renderConfigView(editor::Document* doc, editor::Settings& settings) {
 
     ImGui::SeparatorText("Auto clipping");
 
-    ImGui::CheckboxFlags("On Primitive transform end", configFlags, ED_CLIP_ON_PRIM_TRANSFORM_END);
-    ImGui::CheckboxFlags("On Primitive create/delete", configFlags, ED_CLIP_ON_PRIM_CREATE_DELETE);
-    ImGui::CheckboxFlags("On Primitive setting change", configFlags, ED_CLIP_ON_PRIM_SETTING_CHANGE);
+    widgets::HelpMarker("Every undoable action regenerates when it commits; these are the paths that are not one.");
     ImGui::CheckboxFlags("On active layer change", configFlags, ED_CLIP_ON_ACTIVE_LAYER_CHANGE);
     ImGui::CheckboxFlags("On undo/redo", configFlags, ED_CLIP_ON_UNDO_REDO);
 
@@ -3197,7 +3192,6 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
         if (!primitiveIndices.empty()) {
           transactUndoableAction(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), bind(deletePrimitives, placeholders::_1, primitiveIndices));
-          generateClipping(doc, settings, ED_CLIP_ON_PRIM_CREATE_DELETE);
         }
 
         auto triggerLineIndex = doc->getSelectedTriggerLineIndex();
@@ -3334,7 +3328,6 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
   if (ImGui::Shortcut(ImGuiKey_C, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       transactUndoableAction(doc, format("Create {} Primitive", doc->getGhost()->getType()), createPrimitiveFromGhost);
-      generateClipping(doc, settings, ED_CLIP_ON_PRIM_CREATE_DELETE);
     }
   }
 }

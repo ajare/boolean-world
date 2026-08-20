@@ -312,7 +312,6 @@ PrimitiveFieldPlacementResult placePrimitiveField(
               .error = "Primitive field placement did not modify the document."};
     }
 
-    generateClipping(document, settings, ED_CLIP_ON_PRIM_CREATE_DELETE);
     return {.placed = true, .error = {}};
   } catch (std::exception const& error) {
     return {.placed = false,

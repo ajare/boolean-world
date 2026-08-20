@@ -10,10 +10,7 @@
 
 #include "Defines.h"
 #include "Actions.h"
-#include "UiHelpers.h"
 #include "EditorException.h"
-
-extern editor::Settings gEditorSettings;
 
 namespace editor {
 using namespace std;
@@ -38,25 +35,21 @@ bool addLayer(Document* doc, string const& name) {
 
 bool setLayerBuildStepEnabled(Document* doc, bw::core::Layer* layer, uint32_t stepIndex, bool enabled) {
   layer->setStepEnabled(stepIndex, enabled);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool addLayerBuildStep(Document* doc, bw::core::Layer* layer) {
   layer->addStep(new bw::core::PrimitiveField());
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool removeLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t stepIndex) {
   layer->removeStep(stepIndex);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromIndex, uint32_t toIndex) {
   layer->moveStep(fromIndex, toIndex);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -70,7 +63,6 @@ bool movePrimitiveToLayer(Document* doc, bw::core::Primitive* primitive, bw::cor
   auto world = doc->getWorld();
 
   world->movePrimitiveToLayer(primitive, destinationLayer);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -252,37 +244,31 @@ bool clipPrimitivesToGrid(Document* doc, set<uint32_t> const& primitiveIndices, 
 
 bool setPrimitiveOperation(Document* doc, bw::core::Primitive* primitive, bw::core::Primitive::Operation op) {
   primitive->setOperation(op);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool setPrimitiveFillRule(Document* doc, bw::core::Primitive* primitive, bw::core::Primitive::FillRule fillRule) {
   primitive->setFillRule(fillRule);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool setPrimitiveOrientation(Document* doc, bw::core::Primitive* primitive, float orient) {
   primitive->setOrientation(orient);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool setPrimitiveSize(Document* doc, bw::core::Primitive* primitive, float size) {
   primitive->setSize(size, size);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool setPrimitivePosition(Document* doc, bw::core::Primitive* primitive, wp::Vector2 const& position) {
   primitive->setPosition(position);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool setPrimitiveTransformOffset(Document* doc, bw::core::Primitive* primitive, wp::Vector2 const& transformOrigin) {
   primitive->setTransformOffset(transformOrigin);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -298,7 +284,6 @@ bool setPrimitiveFollowOrbitAngle(Document* doc, bw::core::Primitive* primitive,
 
 bool setPrimitivePriority(Document* doc, bw::core::Primitive* primitive, uint8_t priority) {
   primitive->setPriority(priority);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -307,7 +292,6 @@ bool increasePrimitivePriority(Document* doc, bw::core::Primitive* primitive) {
   int newPriority = min(255, priority + 1);
 
   primitive->setPriority((uint8_t)newPriority);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -316,19 +300,16 @@ bool decreasePrimitivePriority(Document* doc, bw::core::Primitive* primitive) {
   int newPriority = max(0, priority - 1);
 
   primitive->setPriority((uint8_t)newPriority);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool setPrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index, uint32_t eventType, bw::core::AnimatedPropertyEventTriggerType triggerType, float value) {
   primitive->updateAnimatedPropertyEvent(key, index, eventType, triggerType, value);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool deletePrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index) {
   primitive->removeAnimatedPropertyEvent(key, index);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -346,7 +327,6 @@ bool addKeyToInterpolator(Document* doc, string const& lerperName, bw::core::Pri
     }
   }
 
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -364,7 +344,6 @@ bool removeKeyFromInterpolator(Document* doc, string const& lerperName, bw::core
     }
   }
 
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -373,7 +352,6 @@ bool addAnimationKeyToPrimitive(Document* doc, bw::core::Primitive* primitive, b
     auto mutation = primitive->mutate();
     mutation.animation(key).addPoint(time, value);
   }
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -382,7 +360,6 @@ bool removeAnimationKeyFromPrimitive(Document* doc, bw::core::Primitive* primiti
     auto mutation = primitive->mutate();
     mutation.animation(key).removePoint(index);
   }
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -400,7 +377,6 @@ bool updateAnimationKeyInInterpolator(Document* doc, string const& lerperName, b
     }
   }
 
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -418,7 +394,6 @@ bool setInterpolatorEasing(Document* doc, std::string const& lerperName, bw::cor
     }
   }
 
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -442,7 +417,6 @@ bool addTransform(Document* doc, bw::core::Primitive* primitive, bw::core::Verte
       break;
   }
 
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -465,7 +439,6 @@ bool removeTransform(Document* doc, bw::core::Primitive* primitive, bw::core::Ve
       break;
   }
 
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
@@ -488,43 +461,36 @@ bool swapTransforms(Document* doc, bw::core::Primitive* primitive, bw::core::Ver
       break;
   }
 
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool setTransformOperand(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t operandIndex, bw::core::tTransform::OperandType operand) {
   primitive->setTransformOperand(key, transformIndex, operandIndex, operand);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool setTransformInput(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t inputIndex, bw::core::InputType input) {
   primitive->setTransformInput(key, transformIndex, inputIndex, input);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool setTransformConstant(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t constantIndex, float constant) {
   primitive->setTransformConstant(key, transformIndex, constantIndex, constant);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool setTransformFnMultiplier(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t fnMulIndex, float value) {
   primitive->setTransformFnMultiplier(key, transformIndex, fnMulIndex, value);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool setTransformTriggerLine(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t indexIndex, uint32_t index) {
   primitive->setTransformTriggerLineIndex(key, transformIndex, indexIndex, index);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 
 bool setTransformOperation(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, bw::core::tTransform::Operation operation) {
   primitive->setTransformOperation(key, transformIndex, operation);
-  generateClipping(doc, gEditorSettings, ED_CLIP_ON_PRIM_SETTING_CHANGE);
   return true;
 }
 

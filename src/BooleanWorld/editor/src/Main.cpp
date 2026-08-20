@@ -482,7 +482,6 @@ void handleWorldInteraction(editor::Document* doc, bw::core::WorldData const* wo
       if ((movingSelectedPrimitives || scalingSelectedPrimitives || rotatingSelectedPrimitives) &&
           editor::undoableActionInProgress()) {
         editor::commitUndoableAction(doc);
-        generateClipping(doc, settings, ED_CLIP_ON_PRIM_TRANSFORM_END);
       }
 
       movingSelectedPrimitives = false;

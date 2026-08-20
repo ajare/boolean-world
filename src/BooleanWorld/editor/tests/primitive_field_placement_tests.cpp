@@ -35,6 +35,10 @@ void generateClipping(Document*, Settings const& settings, int flag) {
     ++generationRequests;
   }
 }
+
+void regenerateWorldData(Document*) {
+  ++generationRequests;
+}
 }  // namespace editor
 
 namespace {
@@ -385,14 +389,16 @@ void invalidBatchFailsBeforeInsertionAndCapacitySettingIsHonoured() {
               editor::getUndoLevels() == undoBefore,
           "invalid batch mutated the document before complete validation");
 
+  // Placement commits an undoable action, and every commit regenerates - no
+  // configFlags policy stands between the two any more.
   auto validPrimitives = previews(layout);
-  editor::Settings noCreateGeneration = gEditorSettings;
-  noCreateGeneration.configFlags &= ~ED_CLIP_ON_PRIM_CREATE_DELETE;
+  editor::Settings noAutoClipping = gEditorSettings;
+  noAutoClipping.configFlags = 0;
   generationRequests = 0;
   result = editor::placePrimitiveField(
-      &document, layout, validPrimitives, noCreateGeneration);
-  require(result.placed && generationRequests == 0,
-          "disabled create/delete generation policy was not honoured");
+      &document, layout, validPrimitives, noAutoClipping);
+  require(result.placed && generationRequests == 1,
+          "placement did not regenerate once with every auto-clipping flag off");
 }
 
 }  // namespace

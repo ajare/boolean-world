@@ -120,7 +120,10 @@ private:
 private:
   void copyFrom(DynamicWorldDataGenerator const& other);
 
-  void generateWorldData(GenerationInput input);
+  // discardIfSuperseded drops the result when a newer request arrived while
+  // this one was building. Only the asynchronous drain passes it: a caller
+  // that generates directly is waiting for this result and must get it.
+  void generateWorldData(GenerationInput input, bool discardIfSuperseded = false);
 
   void drainGenerationRequests();
 
