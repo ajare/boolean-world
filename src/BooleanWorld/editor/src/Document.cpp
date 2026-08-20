@@ -254,6 +254,35 @@ void Document::clearSelections() {
   mSelectedTriggerLineIndex = ~0u;
 }
 
+DocumentHover Document::getHover(
+    wp::Vector2 const& mouseWorldPos,
+    Settings const& settings,
+    bw::core::WorldData const* worldData) const {
+  if (!isActive()) {
+    return {};
+  }
+
+  if (worldData) {
+    auto worldVertexIndex = static_cast<uint32_t>(
+        worldData->getNearestVertexIndex(mouseWorldPos, 3.0f));
+    if (worldVertexIndex != ~0u) {
+      return {HoverableType::WorldVertex, {worldVertexIndex}};
+    }
+  }
+
+  auto triggerLineIndex = getHoveredTriggerLineIndex(mouseWorldPos, settings);
+  if (triggerLineIndex != ~0u) {
+    return {HoverableType::TriggerLine, {triggerLineIndex}};
+  }
+
+  auto primitiveIndices = getHoveredPrimitiveIndices(mouseWorldPos, settings);
+  if (!primitiveIndices.empty()) {
+    return {HoverableType::Primitive, std::move(primitiveIndices)};
+  }
+
+  return {};
+}
+
 uint32_t Document::getHoveredPrimitiveIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
   if (!isActive()) {
     return ~0u;

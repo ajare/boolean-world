@@ -2,11 +2,70 @@
 
 #include <cstdint>
 #include <set>
+#include <vector>
 
 #include "Undo.h"
 #include "Document.h"
 
 namespace editor {
+
+// Raw, toolkit-independent input consumed by EditorInteraction. Screen-space
+// values are retained because the existing transform gestures are measured in
+// pixels; worldPosition is used for picking and rubber-band bounds.
+struct PointerInput {
+  wp::Vector2 screenPosition;
+  wp::Vector2 worldPosition;
+  wp::Vector2 boxSelectStartWorld;
+  wp::Vector2 dragDelta;
+  bool cursorInWorldView{false};
+  bool cursorInMiniMap{false};
+  bool leftClicked{false};
+  bool leftDown{false};
+  bool leftReleased{false};
+  bool leftDragging{false};
+  bool control{false};
+  bool shift{false};
+  bool alt{false};
+};
+
+// Owns the state of one editor pointer gesture. All decisions about hover,
+// click modifiers, stacked-hit cycling, rubber-band selection, and dragging
+// selected authored objects live here rather than in the ImGui main loop.
+class EditorInteraction {
+  DocumentHover mHover;
+  std::vector<uint32_t> mCycledPrimitiveIndices;
+  int mCycledPrimitiveIndex{-1};
+
+  bool mBoxSelectPending{false};
+  bool mBoxSelectDragging{false};
+  wp::Vector2 mBoxSelectStartScreen;
+
+  bool mMovingSelectedPrimitives{false};
+  bool mScalingSelectedPrimitives{false};
+  bool mRotatingSelectedPrimitives{false};
+  bool mMovingSelectedTriggerLine{false};
+  int mMovingSelectedTriggerLinePart{-1};
+
+  void applyPrimitiveClick(Document* doc, bool control, bool shift);
+
+public:
+  void updateSelection(
+      Document* doc,
+      bw::core::WorldData const* worldData,
+      Settings const& settings,
+      PointerInput const& input);
+
+  void updateDrag(
+      Document* doc,
+      Settings const& settings,
+      PointerInput const& input);
+
+  DocumentHover const& getHover() const;
+  bool boxSelectPending() const;
+  bool boxSelectDragging() const;
+  wp::Vector2 const& getBoxSelectStartScreen() const;
+};
+
 bool recordCurrentState(Document* doc, bool modifying);
 
 bool setWorldName(Document* doc, std::string const& name);

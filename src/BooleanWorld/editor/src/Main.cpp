@@ -72,6 +72,7 @@ SDL_GLContext gContext;
 editor::Settings gEditorSettings;
 editor::HoverableType gHoveredType{editor::HoverableType::None};
 std::vector<uint32_t> gHoveredIndices;
+editor::EditorInteraction gEditorInteraction;
 
 using namespace std;
 
@@ -319,7 +320,7 @@ bool processEvents(SDL_Window* window) {
 }
 
 editor::MouseButtonStatus getMouseButtonStatus() {
-  editor::MouseButtonStatus status;
+  editor::MouseButtonStatus status{};
 
   auto const& io = ImGui::GetIO();
 
@@ -352,216 +353,65 @@ editor::MouseButtonStatus getMouseButtonStatus() {
   return status;
 }
 
-// Rubber-band multi-select drag state. Read by handleWorldInteraction too, so
-// that a background drag intended as a box select is not also interpreted as
-// a move/scale/rotate of whatever's already selected.
-bool gBoxSelectPending = false;
-bool gBoxSelectDragging = false;
-
-void handleSelections(editor::Document* doc, bw::core::WorldData const* worldData, editor::Settings const& settings) {
-  static int curHoveredPrimitiveIndex = -1;
-
-  auto hoveredPrimitiveIndices = editor::getHoveredPrimitiveIndices(doc, settings);
-  auto hoveredTriggerLineIndex = editor::getHoveredTriggerLineIndex(doc, settings);
-  auto hoveredWorldVertexIndex = editor::getHoveredWorldVertexIndex(doc, settings, worldData);
-
-  // Choose primary hovered object
-  if (hoveredWorldVertexIndex != ~0u) {
-    gHoveredType = editor::HoverableType::WorldVertex;
-    gHoveredIndices = {hoveredWorldVertexIndex};
-  } else if (hoveredTriggerLineIndex != ~0u) {
-    gHoveredType = editor::HoverableType::TriggerLine;
-    gHoveredIndices = {hoveredTriggerLineIndex};
-  } else if (!hoveredPrimitiveIndices.empty()) {
-    gHoveredType = editor::HoverableType::Primitive;
-    gHoveredIndices = hoveredPrimitiveIndices;
-  } else {
-    gHoveredType = editor::HoverableType::None;
-    gHoveredIndices.clear();
-  }
-
-  auto const& selectedPrimitiveIndices = doc->getSelectedPrimitiveIndices();
+editor::PointerInput readPointerInput(
+    editor::Document* doc,
+    editor::MouseButtonStatus const& mouseStatus) {
   auto const& io = ImGui::GetIO();
+  auto mouseScreen = ImGui::GetMousePos();
+  auto miniMapBounds = getMiniMapBounds(doc);
+  miniMapBounds.setPosition(
+      miniMapBounds.getMinExtent() + gWorldViewScreenOrigin);
 
-  // Shift+Alt+left-mouse-button is reserved for panning the view (see
-  // handleViewNavigation), so it must not also select what's under it.
-  if (io.KeyShift && io.KeyAlt) {
-    if (gHoveredType != editor::HoverableType::None) {
-      ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-    }
-    return;
+  editor::PointerInput input;
+  input.screenPosition = {mouseScreen.x, mouseScreen.y};
+  input.worldPosition = editor::getMouseWorldPosition();
+  auto const& boxStart = gEditorInteraction.getBoxSelectStartScreen();
+  input.boxSelectStartWorld = editor::screenToWorldPosition(
+      ImVec2{boxStart.x, boxStart.y});
+  input.dragDelta = {
+      mouseStatus.dragDelta[editor::MouseButtonStatus::Left].x,
+      mouseStatus.dragDelta[editor::MouseButtonStatus::Left].y};
+  input.cursorInWorldView = editor::mouseInteractingWithBackground();
+  input.cursorInMiniMap = doc->getWorld() && gEditorSettings.renderMiniMap &&
+                          miniMapBounds.pointInside(mouseScreen.x, mouseScreen.y);
+  input.leftClicked =
+      mouseStatus.state[editor::MouseButtonStatus::Left] ==
+      editor::MouseButtonStatus::State::Clicked;
+  input.leftDown =
+      mouseStatus.state[editor::MouseButtonStatus::Left] ==
+      editor::MouseButtonStatus::State::Down;
+  input.leftReleased =
+      mouseStatus.state[editor::MouseButtonStatus::Left] ==
+      editor::MouseButtonStatus::State::Released;
+  input.leftDragging = mouseStatus.dragging[editor::MouseButtonStatus::Left];
+  input.control = io.KeyCtrl;
+  input.shift = io.KeyShift;
+  input.alt = io.KeyAlt;
+  return input;
+}
+
+void handleSelections(
+    editor::Document* doc,
+    bw::core::WorldData const* worldData,
+    editor::Settings const& settings,
+    editor::PointerInput const& input) {
+  gEditorInteraction.updateSelection(doc, worldData, settings, input);
+
+  auto const& hover = gEditorInteraction.getHover();
+  gHoveredType = hover.type;
+  gHoveredIndices = hover.indices;
+
+  if (gEditorInteraction.boxSelectDragging()) {
+    auto const& start = gEditorInteraction.getBoxSelectStartScreen();
+    auto current = input.screenPosition;
+    ImVec2 rectMin{min(start.x, current.x), min(start.y, current.y)};
+    ImVec2 rectMax{max(start.x, current.x), max(start.y, current.y)};
+    auto drawList = ImGui::GetForegroundDrawList();
+    drawList->AddRectFilled(rectMin, rectMax, IM_COL32(180, 200, 255, 40));
+    drawList->AddRect(rectMin, rectMax, IM_COL32(180, 200, 255, 220));
   }
 
-  // Rubber-band multi-select: a left-mouse-button drag started over empty
-  // background draws a rectangle, and on release selects (or, with
-  // Ctrl/Shift held, toggles/adds) whatever primitives it overlaps. A click
-  // that never crosses the drag threshold falls through to the plain
-  // click-to-deselect behaviour below.
-  static ImVec2 sBoxSelectStartScreen;
-  constexpr float ED_BOX_SELECT_DRAG_THRESHOLD_SQ = 4.0f;
-
-  // Select single primitive on left-mouse click
-  if (ImGui::IsMouseClicked(0)) {
-    switch (gHoveredType) {
-      case editor::HoverableType::Primitive:
-        // Multiple Primitives stacked under the cursor need repeated plain
-        // clicks to cycle through, which relies on this first click of a
-        // pair leaving a click-through in progress alone (see the release
-        // branch below). That ambiguity does not exist with only one
-        // Primitive hovered, so a plain click there always takes effect
-        // immediately, collapsing any other selection down to just it - the
-        // same as clicking a Primitive that was not selected at all.
-        if (hoveredPrimitiveIndices.size() == 1 || !doc->anyPrimitiveIndicesSelected(hoveredPrimitiveIndices)) {
-          // The cycle restarts whenever what is under the cursor changes, so
-          // a first click lands on the head of the list - the ghost, when it
-          // is one of them - rather than wherever the last cycle left off.
-          static vector<uint32_t> cycledPrimitiveIndices;
-
-          if (cycledPrimitiveIndices != hoveredPrimitiveIndices) {
-            cycledPrimitiveIndices = hoveredPrimitiveIndices;
-            curHoveredPrimitiveIndex = -1;
-          }
-
-          curHoveredPrimitiveIndex = (curHoveredPrimitiveIndex + 1) % hoveredPrimitiveIndices.size();
-          auto hoveredPrimitiveIndex = hoveredPrimitiveIndices[curHoveredPrimitiveIndex];
-
-          if (io.KeyCtrl) {
-            auto f = bind(editor::togglePrimitiveSelected, placeholders::_1, hoveredPrimitiveIndex);
-            editor::transactUndoableAction(doc, format("Toggle Primitive {}", hoveredPrimitiveIndex), f);
-          } else if (io.KeyShift) {
-            if (selectedPrimitiveIndices.find(hoveredPrimitiveIndex) == selectedPrimitiveIndices.end()) {
-              auto f = bind(editor::addPrimitivesToSelection, placeholders::_1, set<uint32_t>{hoveredPrimitiveIndex});
-              editor::transactUndoableAction(doc, format("Add Primitive {} To Selection", hoveredPrimitiveIndex), f);
-            }
-          } else {
-            // A plain click always ends with exactly this Primitive selected
-            // - not merely "among the selection", which a multi-selection
-            // (e.g. from a rubber-band drag) could already satisfy without
-            // this being the only Primitive selected.
-            if (selectedPrimitiveIndices != set<uint32_t>{hoveredPrimitiveIndex}) {
-              auto f = bind(editor::selectPrimitive, placeholders::_1, hoveredPrimitiveIndex);
-              editor::transactUndoableAction(doc, format("Select Primitive {}", hoveredPrimitiveIndex), f);
-            }
-          }
-        }
-        break;
-
-      case editor::HoverableType::TriggerLine:
-        editor::transactUndoableAction(doc, format("Select TriggerLine {}", hoveredTriggerLineIndex),
-                                       bind(editor::selectTriggerLine, placeholders::_1, hoveredTriggerLineIndex));
-        break;
-
-      case editor::HoverableType::WorldVertex:
-        editor::transactUndoableAction(doc, format("Select World Vertex {}", hoveredWorldVertexIndex),
-                                       bind(editor::selectWorldVertex, placeholders::_1, hoveredWorldVertexIndex));
-        break;
-
-      case editor::HoverableType::None: {
-        // The minimap has its own drag-to-pan handling in
-        // handleWorldInteraction; don't also arm a box select there.
-        auto miniMapBounds = getMiniMapBounds(doc);
-        miniMapBounds.setPosition(miniMapBounds.getMinExtent() + gWorldViewScreenOrigin);
-        auto mouseScreenPos = ImGui::GetMousePos();
-
-        if (!doc->getWorld() || !settings.renderMiniMap ||
-            !miniMapBounds.pointInside(mouseScreenPos.x, mouseScreenPos.y)) {
-          gBoxSelectPending = true;
-          gBoxSelectDragging = false;
-          sBoxSelectStartScreen = mouseScreenPos;
-        }
-        break;
-      }
-
-      default:
-        break;
-    }
-  }
-
-  if (gBoxSelectPending && ImGui::IsMouseDown(0) && !ImGui::IsMouseClicked(0)) {
-    auto currentScreen = ImGui::GetMousePos();
-    auto delta = ImVec2(currentScreen.x - sBoxSelectStartScreen.x, currentScreen.y - sBoxSelectStartScreen.y);
-
-    if (!gBoxSelectDragging && (delta.x * delta.x + delta.y * delta.y) > ED_BOX_SELECT_DRAG_THRESHOLD_SQ) {
-      gBoxSelectDragging = true;
-    }
-
-    if (gBoxSelectDragging) {
-      ImVec2 rectMin{min(sBoxSelectStartScreen.x, currentScreen.x), min(sBoxSelectStartScreen.y, currentScreen.y)};
-      ImVec2 rectMax{max(sBoxSelectStartScreen.x, currentScreen.x), max(sBoxSelectStartScreen.y, currentScreen.y)};
-
-      auto drawList = ImGui::GetForegroundDrawList();
-      drawList->AddRectFilled(rectMin, rectMax, IM_COL32(180, 200, 255, 40));
-      drawList->AddRect(rectMin, rectMax, IM_COL32(180, 200, 255, 220));
-    }
-  }
-
-  if (ImGui::IsMouseReleased(0)) {
-    if (gBoxSelectPending) {
-      gBoxSelectPending = false;
-
-      if (gBoxSelectDragging) {
-        gBoxSelectDragging = false;
-
-        auto startWorld = editor::screenToWorldPosition(sBoxSelectStartScreen);
-        auto endWorld = editor::getMouseWorldPosition();
-
-        wp::Vector2 minExtent{min(startWorld.x, endWorld.x), min(startWorld.y, endWorld.y)};
-        wp::Vector2 maxExtent{max(startWorld.x, endWorld.x), max(startWorld.y, endWorld.y)};
-        wp::BoundingBox boxBounds(minExtent, maxExtent - minExtent);
-
-        auto boxIndices = doc->getPrimitiveIndicesInBounds(boxBounds, settings);
-        set<uint32_t> boxIndicesSet(boxIndices.begin(), boxIndices.end());
-
-        if (!boxIndicesSet.empty()) {
-          if (io.KeyCtrl) {
-            auto f = bind(editor::togglePrimitivesSelected, placeholders::_1, boxIndicesSet);
-            editor::transactUndoableAction(doc, "Toggle Primitives In Selection Box", f);
-          } else if (io.KeyShift) {
-            auto f = bind(editor::addPrimitivesToSelection, placeholders::_1, boxIndicesSet);
-            editor::transactUndoableAction(doc, "Add Primitives In Selection Box", f);
-          } else {
-            auto f = bind(editor::selectPrimitives, placeholders::_1, boxIndicesSet);
-            editor::transactUndoableAction(doc, "Select Primitives In Selection Box", f);
-          }
-        } else if (!io.KeyCtrl && !io.KeyShift) {
-          editor::transactUndoableAction(doc, "Clear selection", editor::clearSelections);
-        }
-      } else if (!io.KeyCtrl && !io.KeyShift) {
-        editor::transactUndoableAction(doc, "Clear selection", editor::clearSelections);
-      }
-    } else {
-      uint32_t hoveredIndex;
-
-      switch (gHoveredType) {
-        case editor::HoverableType::Primitive:
-          curHoveredPrimitiveIndex = (curHoveredPrimitiveIndex + 1) % hoveredPrimitiveIndices.size();
-          hoveredIndex = hoveredPrimitiveIndices[curHoveredPrimitiveIndex];
-
-          if (io.KeyCtrl) {
-            auto f = bind(editor::togglePrimitiveSelected, placeholders::_1, hoveredIndex);
-            editor::transactUndoableAction(doc, format("Toggle Primitive {}", hoveredIndex), f);
-          } else if (io.KeyShift) {
-            if (selectedPrimitiveIndices.find(hoveredIndex) == selectedPrimitiveIndices.end()) {
-              auto f = bind(editor::addPrimitivesToSelection, placeholders::_1, set<uint32_t>{hoveredIndex});
-              editor::transactUndoableAction(doc, format("Add Primitive {} To Selection", hoveredIndex), f);
-            }
-          } else {
-            // See the matching comment in the click branch above: a plain
-            // click always leaves exactly this Primitive selected.
-            if (selectedPrimitiveIndices != set<uint32_t>{hoveredIndex}) {
-              auto f = bind(editor::selectPrimitive, placeholders::_1, hoveredIndex);
-              editor::transactUndoableAction(doc, format("Select Primitive {}", hoveredIndex), f);
-            }
-          }
-          break;
-
-        default:
-          break;
-      }
-    }
-  }
-
-  if (gHoveredType != editor::HoverableType::None) {
+  if (hover.type != editor::HoverableType::None) {
     ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
   }
 }
@@ -607,199 +457,20 @@ void handleViewNavigation(editor::Document* doc) {
   }
 }
 
-void handleWorldInteraction(editor::Document* doc, bw::core::WorldData const* worldData, editor::MouseButtonStatus const& mouseStatus, editor::Settings const& settings) {
-  // Check Minimap
-  if (doc->getWorld()) {
-    auto mouseScreenPos = ImGui::GetMousePos();
-    auto miniMapBounds = getMiniMapBounds(doc);
-    miniMapBounds.setPosition(miniMapBounds.getMinExtent() + gWorldViewScreenOrigin);
-
-    if (settings.renderMiniMap && miniMapBounds.pointInside(mouseScreenPos.x, mouseScreenPos.y)) {
-      ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-
-      if (mouseStatus.dragging[editor::MouseButtonStatus::Left]) {
-        auto delta = mouseStatus.dragDelta[editor::MouseButtonStatus::Left];
-        gViewOffset += wp::Vector2(delta.x, -delta.y) * MINIMAP_SCALE;
-        return;
-      }
+void handleWorldInteraction(
+    editor::Document* doc,
+    editor::PointerInput const& input) {
+  // View navigation remains a presentation concern; authored-object drag
+  // semantics are delegated to the ImGui-free interaction seam below.
+  if (input.cursorInMiniMap) {
+    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    if (input.leftDragging) {
+      gViewOffset += wp::Vector2(input.dragDelta.x, -input.dragDelta.y) *
+                     MINIMAP_SCALE;
     }
   }
 
-  // Shift+Alt+left-mouse-button drag is reserved for panning the view (see
-  // handleViewNavigation), so it must not also transform the selection.
-  if (ImGui::GetIO().KeyShift && ImGui::GetIO().KeyAlt) {
-    return;
-  }
-
-  // A left-mouse-button drag that started over empty background is a
-  // rubber-band selection (see handleSelections), not a grab of whatever is
-  // already selected.
-  if (gBoxSelectPending) {
-    return;
-  }
-
-  // Check selections
-  static bool movingSelectedPrimitives{false};
-  static bool scalingSelectedPrimitives{false};
-  static bool rotatingSelectedPrimitives{false};
-  static bool movingSelectedTriggerArea{false};
-  static int movingSelectedTriggerAreaPart{-1};
-
-  auto const& primitiveSelection = doc->getSelectedPrimitiveIndices();
-  auto selectedTriggerLineIndex = doc->getSelectedTriggerLineIndex();
-
-  if (primitiveSelection.empty() && selectedTriggerLineIndex == ~0u) {
-    return;
-  }
-
-  // Primitives
-  if (!primitiveSelection.empty()) {
-    if (mouseStatus.state[editor::MouseButtonStatus::Left] == editor::MouseButtonStatus::State::Released) {
-      if ((movingSelectedPrimitives || scalingSelectedPrimitives || rotatingSelectedPrimitives) &&
-          editor::undoableActionInProgress()) {
-        editor::commitUndoableAction(doc);
-      }
-
-      movingSelectedPrimitives = false;
-      scalingSelectedPrimitives = false;
-      rotatingSelectedPrimitives = false;
-    }
-
-    if (mouseStatus.dragging[editor::MouseButtonStatus::Left]) {
-      if (ImGui::GetIO().KeyShift) {
-        if (!scalingSelectedPrimitives) {
-          scalingSelectedPrimitives = true;
-          if (!editor::undoableActionInProgress()) {
-            editor::beginUndoableAction(doc, "Transform Primitive(s)", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
-          }
-        }
-
-        // Scale selected primitives by mouse Y
-        for (auto index : primitiveSelection) {
-          auto primitive = doc->getWorld()->getPrimitive(index);
-          auto delta = -mouseStatus.dragDelta[editor::MouseButtonStatus::Left].y * 0.01f;
-          auto const key = bw::core::VertexTransformer::Key::Scale;
-          auto newScale = primitive->getAnimationInterpolator(key).getValue(0.0f) + delta;
-
-          // If just 2 values, set them both so we have a contant angle.  Otherwise just set the first frame
-          {
-            auto mutation = primitive->mutate();
-            auto& animation = mutation.animation(key);
-            animation.updatePoint(0, 0.0f, newScale);
-
-            if (animation.getNumPoints() == 2) {
-              animation.updatePoint(1, 1.0f, newScale);
-            }
-          }
-
-          // Update vertices for visual purposes
-          primitive->updateVertexPositions();
-        }
-      } else if (scalingSelectedPrimitives) {
-        // We've stopped scaling
-        scalingSelectedPrimitives = false;
-      }
-
-      if (ImGui::GetIO().KeyAlt) {
-        if (!rotatingSelectedPrimitives) {
-          rotatingSelectedPrimitives = true;
-          if (!editor::undoableActionInProgress()) {
-            editor::beginUndoableAction(doc, "Transform Primitive(s)", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
-          }
-        }
-
-        // Rotate selected primitives by mouse X
-        for (auto index : primitiveSelection) {
-          auto primitive = doc->getWorld()->getPrimitive(index);
-          auto delta = mouseStatus.dragDelta[editor::MouseButtonStatus::Left].x;
-          auto const key = bw::core::VertexTransformer::Key::Angle;
-          auto newAngle = primitive->getAnimationInterpolator(key).getValue(0.0f) + delta;
-
-          // If just 2 values, set them both so we have a contant angle.  Otherwise just set the first frame
-          {
-            auto mutation = primitive->mutate();
-            auto& animation = mutation.animation(key);
-            animation.updatePoint(0, 0.0f, newAngle);
-
-            if (animation.getNumPoints() == 2) {
-              animation.updatePoint(1, 1.0f, newAngle);
-            }
-          }
-
-          // Update vertices for visual purposes
-          primitive->updateVertexPositions();
-        }
-      } else if (rotatingSelectedPrimitives) {
-        // We've stopped scaling
-        rotatingSelectedPrimitives = false;
-      }
-
-      if (!scalingSelectedPrimitives && !rotatingSelectedPrimitives) {
-        if (!movingSelectedPrimitives) {
-          movingSelectedPrimitives = true;
-          if (!editor::undoableActionInProgress()) {
-            editor::beginUndoableAction(doc, "Transform Primitive(s)", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
-          }
-        }
-
-        // Move selected primitives to mouse position
-        for (auto index : primitiveSelection) {
-          auto primitive = doc->getWorld()->getPrimitive(index);
-
-          auto delta = mouseStatus.dragDelta[editor::MouseButtonStatus::Left];
-          auto newPos = primitive->getPosition() + wp::Vector2{delta.x, -delta.y};
-          primitive->setPosition(newPos);
-
-          // Update vertices for visual purposes
-          primitive->updateVertexPositions();
-        }
-      }
-    }
-  }
-
-  // Trigger line
-  if (selectedTriggerLineIndex != ~0u) {
-    if (mouseStatus.state[editor::MouseButtonStatus::Left] == editor::MouseButtonStatus::State::Released) {
-      if (movingSelectedTriggerArea && editor::undoableActionInProgress()) {
-        editor::commitUndoableAction(doc);
-      }
-
-      movingSelectedTriggerArea = false;
-      movingSelectedTriggerAreaPart = -1;
-    }
-
-    if (mouseStatus.dragging[editor::MouseButtonStatus::Left]) {
-      if (!movingSelectedTriggerArea) {
-        movingSelectedTriggerArea = true;
-        if (!editor::undoableActionInProgress()) {
-          editor::beginUndoableAction(doc, "Move TriggerLine", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
-        }
-      }
-
-      // Find the part of the trigger which we're moving - handle or line
-      auto world = doc->getWorld();
-      auto triggerLine = world->getTriggerLine(selectedTriggerLineIndex);
-
-      auto p0 = triggerLine->getPoint(0);
-      auto p1 = triggerLine->getPoint(1);
-
-      auto mouseWorldPos = editor::getMouseWorldPosition();
-      auto delta = mouseStatus.dragDelta[editor::MouseButtonStatus::Left];
-      auto triggerLineHandleRadiusSq = settings.triggerLineHandleRadius * settings.triggerLineHandleRadius;
-
-      auto movement = wp::Vector2{delta.x, -delta.y};
-      if (mouseWorldPos.distanceToSq(p0) <= triggerLineHandleRadiusSq || movingSelectedTriggerAreaPart == 0) {
-        world->setTriggerLinePoint(selectedTriggerLineIndex, 0, p0 + movement);
-        movingSelectedTriggerAreaPart = 0;
-      } else if (mouseWorldPos.distanceToSq(p1) <= triggerLineHandleRadiusSq || movingSelectedTriggerAreaPart == 1) {
-        world->setTriggerLinePoint(selectedTriggerLineIndex, 1, p1 + movement);
-        movingSelectedTriggerAreaPart = 1;
-      } else {
-        world->moveTriggerLine(selectedTriggerLineIndex, movement);
-        movingSelectedTriggerAreaPart = 2;
-      }
-    }
-  }
+  gEditorInteraction.updateDrag(doc, gEditorSettings, input);
 }
 
 void handleContinuousKeyboardInput(uint64_t updateTimeMicros) {
@@ -895,12 +566,14 @@ void run() {
 
       worldDataPtr = worldData.get();
 
-      // Set up selections, eg for logic on them
+      auto pointerInput = readPointerInput(doc, mouseButtonStatus);
+
+      // The main loop only samples input and delegates editor decisions.
       if (!io.WantCaptureMouse) {
-        handleSelections(doc, worldDataPtr, gEditorSettings);
+        handleSelections(doc, worldDataPtr, gEditorSettings, pointerInput);
       }
 
-      handleWorldInteraction(doc, worldDataPtr, mouseButtonStatus, gEditorSettings);
+      handleWorldInteraction(doc, pointerInput);
       handleViewNavigation(doc);
     }
 

@@ -8,6 +8,7 @@
 
 #include "core/World.h"
 
+#include "HoverableType.h"
 #include "Settings.h"
 
 namespace editor {
@@ -27,6 +28,11 @@ bool primitiveVisibleForActiveStep(
     bw::core::Layer const& layer,
     bw::core::Primitive const* primitive,
     Settings const& settings);
+
+struct DocumentHover {
+  HoverableType type{HoverableType::None};
+  std::vector<uint32_t> indices;
+};
 
 struct WorldSnapshot {
   std::string serializedWorld;
@@ -100,6 +106,13 @@ public:
   bw::core::Primitive* getGhost();
 
   void updateGhost(std::shared_ptr<bw::core::World> world, bw::core::Primitive* primitive);
+
+  // Resolves the editor's hover priority without depending on ImGui:
+  // generated World vertices, then trigger lines, then Primitives.
+  DocumentHover getHover(
+      wp::Vector2 const& mouseWorldPos,
+      Settings const& settings,
+      bw::core::WorldData const* worldData) const;
 
   uint32_t getHoveredPrimitiveIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
 
