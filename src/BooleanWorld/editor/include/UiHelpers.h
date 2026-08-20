@@ -66,6 +66,12 @@ uint32_t getHoveredTriggerLineIndex(editor::Document* doc, Settings const& setti
 
 void generateClipping(editor::Document* doc, Settings const& settings, int flag);
 
+// Rebuilds the World's arrangement and the render data derived from it. Unlike
+// generateClipping this is not gated on configFlags: an explicit request - the
+// menu item, the toolbar button, the P shortcut - is not something an
+// auto-clipping preference should be able to swallow.
+void regenerateWorldData(editor::Document* doc);
+
 // The rule behind Settings::showAllStepPrimitives: with it off, a Primitive
 // produced by a LayerBuildStep after its Layer's active step is not shown at
 // all. A ghost, and a Primitive belonging to no step in this Layer

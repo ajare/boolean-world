@@ -252,6 +252,10 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
           auto layerName = format("Layer {}", world->getNumLayers());
           transactUndoableAction(doc, "New Layer", bind(addLayer, placeholders::_1, layerName));
         }
+
+        if (ImGui::MenuItem("Regenerate world data", "P")) {
+          regenerateWorldData(doc);
+        }
       }
 
       if (resetDisabled) {
@@ -508,6 +512,20 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
     if (ImGui::Button(ICON_FA_HOME)) {
       goHome(nullptr);
+    }
+
+    ImGui::SameLine();
+
+    if (!world) {
+      widgets::PushDisabled();
+    }
+
+    if (ImGui::Button(ICON_FA_SYNC)) {
+      regenerateWorldData(doc);
+    }
+
+    if (!world) {
+      widgets::PopDisabled();
     }
 
     ImGui::SameLine();
@@ -3265,7 +3283,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   if (ImGui::Shortcut(ImGuiKey_P, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      doc->getWorld()->generateClipping(true);
+      regenerateWorldData(doc);
     }
   }
 

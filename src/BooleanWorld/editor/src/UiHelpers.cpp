@@ -62,6 +62,14 @@ void generateClipping(editor::Document* doc, Settings const& settings, int flag)
   }
 }
 
+void regenerateWorldData(editor::Document* doc) {
+  if (!doc->isActive()) {
+    return;
+  }
+
+  doc->getWorld()->generateClipping(true);
+}
+
 bool primitiveVisibleForActiveStep(
     bw::core::Layer const& layer,
     bw::core::Primitive const* primitive,
