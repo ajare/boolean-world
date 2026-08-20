@@ -140,6 +140,8 @@ private:
 
   void handleLayerSelectionChanged() override;
 
+  void handlePrimitiveFilterChanged() override;
+
   void checkCommitPendingClipping();
 
   void generateOnInterval();

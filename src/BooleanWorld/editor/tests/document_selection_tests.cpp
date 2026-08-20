@@ -8,6 +8,7 @@
 
 #include <core/RectanglePolygon.h>
 
+#include "Defines.h"
 #include "Document.h"
 #include "Tiled.h"
 
@@ -48,6 +49,29 @@ void primitiveHoverQueriesAreSafeWithoutAnActiveDocument() {
           "primitive hover query did not report no primitives without an active document");
 }
 
+void theGhostIsHoveredFirstWhereItOverlapsAnotherPrimitive() {
+  editor::Document document;
+  editor::Settings settings;
+
+  document.newDoc();
+
+  // A new document seeds its ghost at the origin, and this lands on top of
+  // it, so the cursor there is over both.
+  document.getWorld()->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f));
+
+  auto const hovered = document.getHoveredPrimitiveIndices({0.0f, 0.0f}, settings);
+
+  require(hovered.size() > 1,
+          "the test did not put more than one primitive under the cursor");
+  require(hovered.front() == uint32_t(ED_GHOST_INDEX),
+          "the ghost did not come first among the hovered primitives");
+  require(document.getHoveredPrimitiveIndex({0.0f, 0.0f}, settings) == uint32_t(ED_GHOST_INDEX),
+          "the hovered primitive was not the ghost where it overlaps another primitive");
+}
+
 void openingADocumentReplacesTheActiveDocument() {
   auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-test.yaml";
 
@@ -73,6 +97,7 @@ int main() {
   try {
     changingSelectedPrimitiveIndicesDoesNotWriteIntoAnInputRange();
     primitiveHoverQueriesAreSafeWithoutAnActiveDocument();
+    theGhostIsHoveredFirstWhereItOverlapsAnotherPrimitive();
     openingADocumentReplacesTheActiveDocument();
     std::cout << "Document selection and hover queries passed\n";
     return 0;

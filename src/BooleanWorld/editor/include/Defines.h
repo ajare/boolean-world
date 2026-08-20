@@ -12,9 +12,19 @@
 
 #define ED_GHOST_INDEX 0
 
-// Alpha multiplier applied to a Primitive's border colour when it belongs
-// to a LayerBuildStep other than the active Layer's active step.
+// Alpha multiplier applied to a Primitive's border colour, and to the fill of
+// the geometry it won, when it belongs to a LayerBuildStep other than the
+// active Layer's active step.
 #define ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE 0.35f
+
+// The ghost draws its own outline solid, then a wider translucent band just
+// inside it, so it reads as a region rather than a line - whatever it happens
+// to sit over, and whether or not it is selected. The inset keeps the two
+// bands adjacent: half of each thickness.
+#define ED_GHOST_BORDER_THICKNESS 2.0f
+#define ED_GHOST_INNER_BAND_THICKNESS 6.0f
+#define ED_GHOST_INNER_BAND_INSET 4.0f
+#define ED_GHOST_INNER_BAND_ALPHA_SCALE 0.35f
 
 // Creation/edit params
 #define ED_MIN_REGULAR_POLYGON_SIDES 3

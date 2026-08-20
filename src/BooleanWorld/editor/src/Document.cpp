@@ -162,6 +162,14 @@ void Document::restoreWorldSnapshot(WorldSnapshot const& snapshot) {
   mWorld = move(world);
 }
 
+void Document::setPrimitiveFilter(bw::core::PrimitiveFilter filter) {
+  mPrimitiveFilter = move(filter);
+
+  if (mWorld) {
+    mWorld->getWorldDataGenerator()->setPrimitiveFilter(mPrimitiveFilter);
+  }
+}
+
 shared_ptr<bw::core::World> Document::getWorld() {
   return mWorld;
 }
@@ -210,7 +218,12 @@ uint32_t Document::getHoveredPrimitiveIndex(wp::Vector2 const& mouseWorldPos, Se
     return ~0u;
   }
 
-  return mWorld->findPrimitiveIndex(mouseWorldPos, true, getIgnoredPrimitiveIndices(*mWorld, settings));
+  // Taken from the ordered list rather than from World::findPrimitiveIndex,
+  // so the single hovered Primitive is the same one a click would select -
+  // the ghost, where it overlaps something.
+  auto hovered = getHoveredPrimitiveIndices(mouseWorldPos, settings);
+
+  return hovered.empty() ? ~0u : hovered.front();
 }
 
 vector<uint32_t> Document::getHoveredPrimitiveIndices(wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
@@ -218,7 +231,18 @@ vector<uint32_t> Document::getHoveredPrimitiveIndices(wp::Vector2 const& mouseWo
     return {};
   }
 
-  return mWorld->findPrimitiveIndices(mouseWorldPos, true, getIgnoredPrimitiveIndices(*mWorld, settings));
+  auto hovered = mWorld->findPrimitiveIndices(
+      mouseWorldPos, true, getIgnoredPrimitiveIndices(*mWorld, settings));
+
+  // Ghost first, so the first click of a click-through cycle lands on it; the
+  // rest keep their order, so clicking again still walks what is underneath.
+  auto ghost = find(hovered.begin(), hovered.end(), uint32_t(ED_GHOST_INDEX));
+
+  if (ghost != hovered.end()) {
+    rotate(hovered.begin(), ghost, ghost + 1);
+  }
+
+  return hovered;
 }
 
 uint32_t Document::getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
@@ -305,6 +329,7 @@ std::shared_ptr<bw::core::World> Document::createWorld(float size, float gridSiz
   auto generator = new bw::core::DynamicWorldDataGenerator(world.get());
   generator->setAlwaysUpdateVertices(true);
   generator->setAllowCommitIfVisible(true);
+  generator->setPrimitiveFilter(mPrimitiveFilter);
   world->setWorldDataGenerator(generator);
 
   // Create ghost primitive as a preview for creating primitives

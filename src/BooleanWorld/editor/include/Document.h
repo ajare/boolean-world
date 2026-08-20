@@ -30,6 +30,11 @@ class Document {
 
   std::shared_ptr<bw::core::World> mWorld;
 
+  // Held here rather than on one World, so that every World the Document
+  // builds - new, opened, or restored from an undo snapshot - generates
+  // through the same filter.
+  bw::core::PrimitiveFilter mPrimitiveFilter;
+
   std::set<uint32_t> mSelectedPrimitiveIndices;
 
   uint32_t mSelectedWorldVertexIndex;
@@ -71,6 +76,10 @@ public:
   WorldSnapshot captureWorldSnapshot() const;
 
   void restoreWorldSnapshot(WorldSnapshot const& snapshot);
+
+  // Applies to the current World immediately, which regenerates its world
+  // data, and to every World built afterwards.
+  void setPrimitiveFilter(bw::core::PrimitiveFilter filter);
 
   std::shared_ptr<bw::core::World> getWorld();
 

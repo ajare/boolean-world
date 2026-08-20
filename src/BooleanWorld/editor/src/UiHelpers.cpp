@@ -1,3 +1,6 @@
+#include <core/Defines.h>
+#include <core/Layer.h>
+
 #include "Defines.h"
 #include "UiHelpers.h"
 
@@ -57,6 +60,30 @@ void generateClipping(editor::Document* doc, Settings const& settings, int flag)
   if (settings.configFlags & flag) {
     doc->getWorld()->generateClipping(true);
   }
+}
+
+bool primitiveVisibleForActiveStep(
+    bw::core::Layer const& layer,
+    bw::core::Primitive const* primitive,
+    Settings const& settings) {
+  if (settings.showAllStepPrimitives) {
+    return true;
+  }
+
+  if (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) {
+    return true;
+  }
+
+  auto owningStepIndex = layer.getOwningStepIndex(primitive);
+
+  return owningStepIndex == ~0u || owningStepIndex <= layer.getActiveStepIndex();
+}
+
+void applyStepVisibilityFilter(editor::Document* doc, Settings const& settings) {
+  doc->setPrimitiveFilter(
+      [&settings](bw::core::Layer const& layer, bw::core::Primitive const* primitive) {
+        return primitiveVisibleForActiveStep(layer, primitive, settings);
+      });
 }
 
 }  // namespace editor

@@ -66,4 +66,23 @@ uint32_t getHoveredTriggerLineIndex(editor::Document* doc, Settings const& setti
 
 void generateClipping(editor::Document* doc, Settings const& settings, int flag);
 
+// The rule behind Settings::showAllStepPrimitives: with it off, a Primitive
+// produced by a LayerBuildStep after its Layer's active step is not shown at
+// all. A ghost, and a Primitive belonging to no step in this Layer
+// (getOwningStepIndex returns ~0u), are always shown.
+//
+// Both halves of "not shown" go through here - the world view's overlay skips
+// it, and the world data generator's filter keeps it out of the fold so it
+// contributes no geometry either.
+bool primitiveVisibleForActiveStep(
+    bw::core::Layer const& layer,
+    bw::core::Primitive const* primitive,
+    Settings const& settings);
+
+// Installs primitiveVisibleForActiveStep on the Document, which applies it to
+// every World it builds from here on, and regenerates the current one. The
+// filter reads settings live, so it must outlive the Document - pass the
+// editor's global Settings, not a temporary.
+void applyStepVisibilityFilter(editor::Document* doc, Settings const& settings);
+
 }  // namespace editor

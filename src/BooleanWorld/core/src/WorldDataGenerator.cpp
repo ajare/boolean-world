@@ -11,7 +11,9 @@ namespace bw::core {
 using namespace std;
 
 vector<Primitive*> selectAndOrderPrimitives(
-    World const& world, LayerSelection const& selection) {
+    World const& world,
+    LayerSelection const& selection,
+    PrimitiveFilter const& filter) {
   // Layers filter which content enters the fold; they do not group, scope or
   // nest it (ADR-0009, ADR-0013). Everything the selected Layers own is
   // gathered first and then priority-ordered as one set, so the fold stays
@@ -24,8 +26,18 @@ vector<Primitive*> selectAndOrderPrimitives(
     }
 
     auto const& layerPrimitives = layer->getPrimitives();
-    primitives.insert(
-        primitives.end(), layerPrimitives.begin(), layerPrimitives.end());
+
+    if (!filter) {
+      primitives.insert(
+          primitives.end(), layerPrimitives.begin(), layerPrimitives.end());
+      continue;
+    }
+
+    for (auto* primitive : layerPrimitives) {
+      if (filter(*layer, primitive)) {
+        primitives.push_back(primitive);
+      }
+    }
   }
 
   stable_sort(
@@ -52,6 +64,7 @@ WorldDataGenerator& WorldDataGenerator::operator=(
 
 void WorldDataGenerator::copyFrom(WorldDataGenerator const& other) {
   mLayerSelection = other.mLayerSelection;
+  mPrimitiveFilter = other.mPrimitiveFilter;
   mViewTriangle = other.mViewTriangle;
 }
 
@@ -79,6 +92,19 @@ LayerSelection const& WorldDataGenerator::getLayerSelection() const {
   return mLayerSelection;
 }
 
+void WorldDataGenerator::setPrimitiveFilter(PrimitiveFilter filter) {
+  mPrimitiveFilter = move(filter);
+  handlePrimitiveFilterChanged();
+}
+
+PrimitiveFilter const& WorldDataGenerator::getPrimitiveFilter() const {
+  return mPrimitiveFilter;
+}
+
+void WorldDataGenerator::refreshPrimitiveFilter() {
+  handlePrimitiveFilterChanged();
+}
+
 void WorldDataGenerator::setActiveLayer(uint32_t layerId) {
   setLayerSelection(SelectLayer(layerId));
 }
@@ -96,6 +122,9 @@ void WorldDataGenerator::handleEvents(uint32_t events) {
 }
 
 void WorldDataGenerator::handleLayerSelectionChanged() {
+}
+
+void WorldDataGenerator::handlePrimitiveFilterChanged() {
 }
 
 void WorldDataGenerator::update(

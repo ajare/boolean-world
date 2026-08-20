@@ -1,6 +1,7 @@
 #define NOMINMAX
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 
 #pragma warning(push)
@@ -12,6 +13,7 @@
 #include <core/Utils.h>
 #include <core/SquareTiling.h>
 #include <core/Layer.h>
+#include <core/PrimitiveField.h>
 
 #include <common/GameDefines.h>
 
@@ -162,6 +164,113 @@ ImColor fadeColour(ImColor colour, float alphaScale) {
   return colour;
 }
 
+// A closed screen-space outline offset inward, for the band drawn inside the
+// ghost. Each vertex moves along the bisector of its two edge normals. The
+// bisector is deliberately not scaled by the corner angle: that keeps a sharp
+// corner pinching the band inward a little rather than flinging the vertex
+// across the shape.
+vector<ImVec2> insetOutline(vector<ImVec2> const& points, float distance) {
+  auto count = (int)points.size();
+
+  if (count < 3) {
+    return points;
+  }
+
+  // Screen space flips y, so the authored winding says nothing about which
+  // side of an edge faces inward; the signed area has to.
+  float twiceArea = 0.0f;
+  for (int i = 0; i < count; ++i) {
+    auto const& a = points[i];
+    auto const& b = points[(i + 1) % count];
+    twiceArea += a.x * b.y - b.x * a.y;
+  }
+
+  auto inward = twiceArea > 0.0f ? 1.0f : -1.0f;
+
+  auto edgeNormal = [&](int index) {
+    auto const& a = points[index];
+    auto const& b = points[(index + 1) % count];
+    auto dx = b.x - a.x;
+    auto dy = b.y - a.y;
+    auto length = sqrtf(dx * dx + dy * dy);
+
+    if (length <= 0.0f) {
+      return ImVec2{0.0f, 0.0f};
+    }
+
+    return ImVec2{-dy / length * inward, dx / length * inward};
+  };
+
+  vector<ImVec2> inset(count);
+
+  for (int i = 0; i < count; ++i) {
+    auto previous = edgeNormal((i + count - 1) % count);
+    auto next = edgeNormal(i);
+
+    auto bx = previous.x + next.x;
+    auto by = previous.y + next.y;
+    auto length = sqrtf(bx * bx + by * by);
+
+    // The two normals cancel on a spike; the edge's own normal still points
+    // the right way there.
+    if (length <= 1e-4f) {
+      bx = next.x;
+      by = next.y;
+      length = sqrtf(bx * bx + by * by);
+    }
+
+    inset[i] = length > 0.0f
+                   ? ImVec2{points[i].x + bx / length * distance,
+                            points[i].y + by / length * distance}
+                   : points[i];
+  }
+
+  return inset;
+}
+
+// Which of a Layer's built Primitives come from a step other than its active
+// one, indexed by Primitive id - the id being its position in that built
+// collection, which is also what an arrangement face reports as the Primitive
+// it belongs to.
+//
+// Built by walking the steps once. Asking each Primitive for its owning step
+// instead would rescan every step's field for every Primitive, every frame.
+vector<uint8_t> collectInactiveStepPrimitives(bw::core::Layer const& layer) {
+  vector<uint8_t> flags(layer.getNumPrimitives(), 0);
+
+  auto activeStepIndex = layer.getActiveStepIndex();
+  auto numSteps = layer.getNumSteps();
+
+  for (uint32_t stepIndex = 0; stepIndex < numSteps; ++stepIndex) {
+    if (stepIndex == activeStepIndex) {
+      continue;
+    }
+
+    auto const* field =
+        dynamic_cast<bw::core::PrimitiveField const*>(layer.getStep(stepIndex));
+
+    if (!field) {
+      continue;
+    }
+
+    for (auto const* primitive : field->getPrimitives()) {
+      auto id = primitive->getId();
+
+      // A disabled step's Primitives never reached the built collection, so
+      // the ids they still carry belong to somebody else.
+      if (id < flags.size() && layer.getPrimitive(id) == primitive) {
+        flags[id] = 1;
+      }
+    }
+  }
+
+  return flags;
+}
+
+bool fromInactiveStep(vector<uint8_t> const& flags, uint32_t primitiveId) {
+  return primitiveId < flags.size() && flags[primitiveId] != 0;
+}
+
 void renderWorld(
     editor::Document* doc,
     editor::Settings const& settings,
@@ -184,22 +293,21 @@ void renderWorld(
     triggerLines = world->findTriggerLines(viewBounds);
   }
 
-  // Primitives from a LayerBuildStep after the active Layer's active step
-  // are hidden entirely when settings.showAllStepPrimitives is off; a
-  // ghost or a Primitive belonging to no step here (getOwningStepIndex
-  // returns ~0u) is always shown.
+  // The same rule the world data generator folds by (see
+  // editor::primitiveVisibleForActiveStep) drops the overlay for a hidden
+  // Primitive here: the generator answers for the geometry, and the Layer's
+  // lookup grid - which this list comes from - knows nothing of either.
   auto* activeLayer = world ? world->getActiveLayer() : nullptr;
-  auto activeStepIndex = activeLayer ? activeLayer->getActiveStepIndex() : 0u;
 
-  if (activeLayer && !settings.showAllStepPrimitives) {
+  auto inactiveStepPrimitives =
+      activeLayer ? collectInactiveStepPrimitives(*activeLayer) : vector<uint8_t>{};
+
+  if (activeLayer) {
     primitives.erase(
         remove_if(primitives.begin(), primitives.end(),
             [&](bw::core::Primitive const* primitive) {
-              if (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) {
-                return false;
-              }
-              auto owningStepIndex = activeLayer->getOwningStepIndex(primitive);
-              return owningStepIndex != ~0u && owningStepIndex > activeStepIndex;
+              return !editor::primitiveVisibleForActiveStep(
+                  *activeLayer, primitive, settings);
             }),
         primitives.end());
   }
@@ -227,22 +335,36 @@ void renderWorld(
       drawList->AddDrawCmd();
       drawList->Flags &= ~ImDrawListFlags_AntiAliasedFill;
 
+      // The geometry a Primitive contributes is the bulk of what it looks
+      // like, so it carries the fade too - a border-only fade is invisible
+      // under a fill drawn at full strength. A face names the Primitive that
+      // won the fold over it, which is the one whose step it belongs to.
+      auto faceFaded = [&](uint32_t faceIndex) {
+        return fromInactiveStep(
+            inactiveStepPrimitives, arrangement.faces[faceIndex].primitiveIndex);
+      };
+
       for (auto const& triangle : triangles) {
         auto v0 = toWorld(triangle.v[0]);
         auto v1 = toWorld(triangle.v[1]);
         auto v2 = toWorld(triangle.v[2]);
+        auto faded = faceFaded(triangle.face);
         if (settings.renderTriangulation) {
           drawList->AddTriangle(
               {v0.x - offset.x, ED_WINDOW_HEIGHT - (v0.y - offset.y)},
               {v1.x - offset.x, ED_WINDOW_HEIGHT - (v1.y - offset.y)},
               {v2.x - offset.x, ED_WINDOW_HEIGHT - (v2.y - offset.y)},
-              settings.triangulationColour);
+              faded
+                  ? fadeColour(settings.triangulationColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
+                  : settings.triangulationColour);
         } else {
           drawList->AddTriangleFilled(
               {v0.x - offset.x, ED_WINDOW_HEIGHT - (v0.y - offset.y)},
               {v1.x - offset.x, ED_WINDOW_HEIGHT - (v1.y - offset.y)},
               {v2.x - offset.x, ED_WINDOW_HEIGHT - (v2.y - offset.y)},
-              settings.backgroundColour);
+              faded
+                  ? fadeColour(settings.backgroundColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
+                  : settings.backgroundColour);
         }
       }
 
@@ -268,6 +390,12 @@ void renderWorld(
     if (!primitives.empty()) {
       drawList->AddDrawCmd();
 
+      // The ghost's contours, held back until every Primitive has been drawn
+      // so that it lands on top of all of them rather than only on top of
+      // itself. It keeps every contour it has: dropping all but the last
+      // would hide its holes and disjoint pieces.
+      vector<vector<ImVec2>> ghostBorderPolylines;
+
       for (auto primitive : primitives) {
         bool isGhost = (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) != 0;
         if (isGhost && !settings.ghostActive) {
@@ -283,18 +411,13 @@ void renderWorld(
 
         // A Primitive from any step but the active one renders faded, so
         // the active step's contribution stands out among what's shown.
-        bool fromInactiveStep = false;
-        if (!isGhost && activeLayer) {
-          auto owningStepIndex = activeLayer->getOwningStepIndex(primitive);
-          fromInactiveStep = owningStepIndex != ~0u && owningStepIndex != activeStepIndex;
-        }
-        auto primitiveColour = fromInactiveStep
+        bool faded = !isGhost && fromInactiveStep(inactiveStepPrimitives, primitiveId);
+
+        auto primitiveColour = faded
                                     ? fadeColour(settings.primitiveColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
                                     : settings.primitiveColour;
 
         // Primitive borders
-        vector<ImVec2> ghostBorderPoints;
-
         if (settings.renderPrimitiveBorders || isGhost || selected) {
           auto complexPolygons = primitive->getVertices();
 
@@ -311,7 +434,7 @@ void renderWorld(
 
               if (isGhost) {
                 // Defer ghost to end, so that its lines are always visible
-                ghostBorderPoints = imPoints;
+                ghostBorderPolylines.push_back(move(imPoints));
               } else if (selected) {
                 drawList->AddPolyline(imPoints.data(), numVertices, settings.selectedPrimitiveColour, ImDrawFlags_Closed, 2.5f);
               } else {
@@ -321,9 +444,27 @@ void renderWorld(
           }
         }
 
-        if (!ghostBorderPoints.empty()) {
-          drawList->AddPolyline(ghostBorderPoints.data(), (int)ghostBorderPoints.size(), settings.ghostPrimitiveColour, ImDrawFlags_Closed, 2.0f);
-        }
+      }
+
+      // The ghost, over every Primitive and in its own colour, always: it is
+      // authoring furniture rather than world content, so neither the step
+      // fade nor a selection restyles it, and nothing draws over it.
+      for (auto const& ghostOutline : ghostBorderPolylines) {
+        auto band = insetOutline(ghostOutline, ED_GHOST_INNER_BAND_INSET);
+
+        drawList->AddPolyline(
+            band.data(),
+            (int)band.size(),
+            fadeColour(settings.ghostPrimitiveColour, ED_GHOST_INNER_BAND_ALPHA_SCALE),
+            ImDrawFlags_Closed,
+            ED_GHOST_INNER_BAND_THICKNESS);
+
+        drawList->AddPolyline(
+            ghostOutline.data(),
+            (int)ghostOutline.size(),
+            settings.ghostPrimitiveColour,
+            ImDrawFlags_Closed,
+            ED_GHOST_BORDER_THICKNESS);
       }
 
       // Influence origin

@@ -259,7 +259,8 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
 
   // Culling is no longer part of generation, so selecting the current layer set
   // is cheap and avoids retaining a live primitive list between generations.
-  auto primitives = selectAndOrderPrimitives(*world, getLayerSelection());
+  auto primitives = selectAndOrderPrimitives(
+      *world, getLayerSelection(), getPrimitiveFilter());
   auto primStats = mNextClipping.stats.prim;
   primStats.candidateCount = uint32_t(primitives.size());
   primStats.visibleCount = 0;
@@ -462,7 +463,8 @@ void DynamicWorldDataGenerator::checkCommitPendingClipping() {
 }
 
 WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
-  auto primitives = selectAndOrderPrimitives(*world, getLayerSelection());
+  auto primitives = selectAndOrderPrimitives(
+      *world, getLayerSelection(), getPrimitiveFilter());
   auto primitiveMetadata = snapshotPrimitiveMetadata(primitives);
   {
     lock_guard<mutex> lock(mGenMutex);
@@ -507,6 +509,14 @@ void DynamicWorldDataGenerator::handleEvents(uint32_t events) {
 }
 
 void DynamicWorldDataGenerator::handleLayerSelectionChanged() {
+  if (mWorld && mNumGenerationsComplete > 0) {
+    generate(true);
+  }
+}
+
+void DynamicWorldDataGenerator::handlePrimitiveFilterChanged() {
+  // Which Primitives enter the fold has changed, so the committed clipping is
+  // stale for exactly the same reason a Layer selection change makes it so.
   if (mWorld && mNumGenerationsComplete > 0) {
     generate(true);
   }

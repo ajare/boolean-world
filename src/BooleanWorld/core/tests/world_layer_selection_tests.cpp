@@ -8,6 +8,7 @@
 #include <core/Layer.h>
 #include <core/LayerSelection.h>
 #include <core/MeshPrimitive.h>
+#include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
 #include <core/SerializationWorkData.h>
 #include <core/World.h>
@@ -105,6 +106,64 @@ void thePriorityFoldStaysNonLocalAcrossLayerBoundaries() {
           "priority ordering did not run across the whole selected set");
 }
 
+void aPrimitiveFilterKeepsRejectedPrimitivesOutOfTheFold() {
+  bw::core::World world(100.0f, 10.0f);
+  auto* layer = world.getActiveLayer();
+
+  auto* onFirstStep = makeRectangle(1);
+  layer->addPrimitive(onFirstStep);
+
+  auto laterStepIndex = layer->addStep(new bw::core::PrimitiveField());
+  layer->setActiveStep(laterStepIndex);
+  auto* onLaterStep = makeRectangle(2);
+  layer->addPrimitive(onLaterStep);
+
+  layer->setActiveStep(0);
+
+  auto const selection = bw::core::SelectLayer(layer->getId());
+
+  require(bw::core::selectAndOrderPrimitives(world, selection) ==
+              std::vector<Primitive*>{onFirstStep, onLaterStep},
+          "an unfiltered fold did not gather every step's primitives");
+
+  // The rule behind the editor's "Show all steps' Primitives": nothing from a
+  // step after the Layer's active one enters the fold, so a hidden Primitive
+  // contributes no geometry either.
+  auto const upToActiveStep = [](Layer const& owner, Primitive const* primitive) {
+    auto owningStepIndex = owner.getOwningStepIndex(primitive);
+    return owningStepIndex == ~0u ||
+           owningStepIndex <= owner.getActiveStepIndex();
+  };
+
+  auto const folded =
+      bw::core::selectAndOrderPrimitives(world, selection, upToActiveStep);
+
+  require(folded == std::vector<Primitive*>{onFirstStep},
+          "a filtered fold gathered a primitive its filter rejected");
+  require(layer->getNumPrimitives() == 2,
+          "filtering the fold removed a primitive from the Layer itself");
+}
+
+void aPrimitiveFilterSeesTheLayerThatOwnsEachPrimitive() {
+  bw::core::World world(100.0f, 10.0f);
+  auto* onActive = makeRectangle(1);
+  world.addPrimitive(onActive);
+
+  Primitive* onOther{nullptr};
+  auto* other = addLayerWithPrimitive(world, "other", 2, &onOther);
+
+  auto selection = bw::core::SelectLayer(world.getActiveLayer()->getId());
+  selection.set(other->getId());
+
+  auto const onlyOther = [](Layer const& owner, Primitive const*) {
+    return owner.getName() == "other";
+  };
+
+  require(bw::core::selectAndOrderPrimitives(world, selection, onlyOther) ==
+              std::vector<Primitive*>{onOther},
+          "the filter did not receive the Layer owning each primitive");
+}
+
 void triggerLinesUseTheSameLayerIdSelection() {
   bw::core::World world(100.0f, 10.0f);
   world.addTriggerLine(new bw::core::WorldTriggerLine(
@@ -198,6 +257,8 @@ int main() {
   try {
     theFoldGathersOnlyTheSelectedLayersPrimitives();
     thePriorityFoldStaysNonLocalAcrossLayerBoundaries();
+    aPrimitiveFilterKeepsRejectedPrimitivesOutOfTheFold();
+    aPrimitiveFilterSeesTheLayerThatOwnsEachPrimitive();
     triggerLinesUseTheSameLayerIdSelection();
     selectingEveryLayerKeepsEveryTriggerLineActive();
     loadingAWorldRescopesTheSelectionToTheActiveLayer();

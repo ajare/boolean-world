@@ -33,7 +33,8 @@ void DefaultWorldDataGenerator::generate(
     World const* world,
     bool regetPrimitives) {
   BW_UNUSED(regetPrimitives);
-  auto primitives = selectAndOrderPrimitives(*world, getLayerSelection());
+  auto primitives = selectAndOrderPrimitives(
+      *world, getLayerSelection(), getPrimitiveFilter());
   ArrangementWorldDataGenerator generator;
   generator.generate(primitives);
   mWorldData = std::make_shared<ArrangementWorldData>(

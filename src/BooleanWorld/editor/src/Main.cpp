@@ -311,6 +311,11 @@ void setup() {
 
   io.Fonts->Build();
   gLogger->debug("Fonts built");
+
+  // Installed once, ahead of any World: every World the Document builds
+  // generates through it, so a Primitive hidden by the step filter contributes
+  // no geometry either.
+  editor::applyStepVisibilityFilter(editor::Document::instance(), gEditorSettings);
 }
 
 void shutdown() {
@@ -423,6 +428,16 @@ void handleSelections(editor::Document* doc, bw::core::WorldData const* worldDat
         // If we are hovering over some Primitives, see if one of those is currently selected.
         // If it is, then don't change the selectedPrimitiveIndices on mouse down.
         if (!doc->anyPrimitiveIndicesSelected(hoveredPrimitiveIndices)) {
+          // The cycle restarts whenever what is under the cursor changes, so
+          // a first click lands on the head of the list - the ghost, when it
+          // is one of them - rather than wherever the last cycle left off.
+          static vector<uint32_t> cycledPrimitiveIndices;
+
+          if (cycledPrimitiveIndices != hoveredPrimitiveIndices) {
+            cycledPrimitiveIndices = hoveredPrimitiveIndices;
+            curHoveredPrimitiveIndex = -1;
+          }
+
           curHoveredPrimitiveIndex = (curHoveredPrimitiveIndex + 1) % hoveredPrimitiveIndices.size();
           auto hoveredPrimitiveIndex = hoveredPrimitiveIndices[curHoveredPrimitiveIndex];
 

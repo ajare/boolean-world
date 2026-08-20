@@ -2842,9 +2842,14 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
 
   widgets::HelpMarker("Disabling a step and rebuilding removes its Primitives from this Layer; re-enabling restores them. The first step can be disabled but never removed, retyped, or reordered. The active step (radio button) is where Create/Edit Primitive writes.");
 
-  widgets::HelpMarker("When off, the world view only shows Primitives from the active step and earlier ones; Primitives from later steps are hidden. Either way, Primitives outside the active step render faded.");
+  widgets::HelpMarker("When off, the world view only shows Primitives from the active step and earlier ones; Primitives from later steps are hidden, and contribute no geometry. Either way, Primitives outside the active step render faded.");
   ImGui::SameLine();
-  ImGui::Checkbox("Show all steps' Primitives##Layer", &settings.showAllStepPrimitives);
+  if (ImGui::Checkbox("Show all steps' Primitives##Layer", &settings.showAllStepPrimitives)) {
+    // The filter reads the setting live, so what changed here is only which
+    // Primitives it now admits: regenerate unconditionally, since a view the
+    // user just asked for is not something a config flag should gate.
+    world->getWorldDataGenerator()->refreshPrimitiveFilter();
+  }
 
   auto activeStepIndex = layer->getActiveStepIndex();
 
@@ -2863,6 +2868,12 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
     // ephemeral editor-authoring focus, never serialized.
     if (ImGui::RadioButton("##StepActive", i == activeStepIndex)) {
       layer->setActiveStep(i);
+
+      // The step filter is anchored on the active step, so moving it changes
+      // which Primitives reach the fold.
+      if (!settings.showAllStepPrimitives) {
+        world->getWorldDataGenerator()->refreshPrimitiveFilter();
+      }
     }
     widgets::HelpMarker("Make this the step Create/Edit Primitive writes into.");
     ImGui::SameLine();
