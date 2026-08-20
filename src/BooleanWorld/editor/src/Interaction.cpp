@@ -255,9 +255,42 @@ void EditorInteraction::updateSelection(
 
 void EditorInteraction::updateDrag(
     Document* doc, Settings const& settings, PointerInput const& input) {
-  // Sub-object transforms are implemented by the follow-up editing ticket;
-  // selection gestures in Mesh mode never move whole Primitives.
+  // Shift and Alt are inert here by construction: unlike Primitive mode
+  // below, nothing in this branch ever inspects them.
   if (settings.mode == Settings::Mode::Mesh) {
+    if (mBoxSelectPending || (input.cursorInMiniMap && input.leftDragging)) {
+      return;
+    }
+
+    auto const& selection =
+        doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);
+
+    if (input.leftReleased) {
+      if (mMovingMeshSelection) {
+        doc->commitMeshDrag();
+        doc->endMeshDrag();
+        if (undoableActionInProgress()) {
+          commitUndoableAction(doc);
+        }
+      }
+      mMovingMeshSelection = false;
+      mMeshDragCumulativeDelta = {};
+      return;
+    }
+
+    if (input.leftDragging && doc->getActiveMesh() && !selection.empty()) {
+      if (!mMovingMeshSelection) {
+        mMovingMeshSelection = true;
+        mMeshDragCumulativeDelta = {};
+        doc->beginMeshDrag(settings.meshSubMode);
+        beginTransform(doc, "Move Mesh Selection");
+      }
+
+      mMeshDragCumulativeDelta +=
+          wp::Vector2{input.dragDelta.x, -input.dragDelta.y};
+      doc->updateMeshDrag(
+          mMeshDragCumulativeDelta, settings.showGrid, settings.gridSize);
+    }
     return;
   }
 

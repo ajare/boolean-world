@@ -213,6 +213,14 @@ bool selectAllMeshSubObjects(Document* doc, Settings::MeshSubMode subMode) {
   return false;
 }
 
+bool setMeshVertexPosition(Document* doc, uint32_t vertexIndex, wp::Vector2 const& position) {
+  return doc->moveMeshVertexTo(vertexIndex, position);
+}
+
+bool recentreActiveMesh(Document* doc) {
+  return doc->recentreActiveMesh();
+}
+
 bool createPrimitiveFromGhost(Document* doc) {
   auto world = doc->getWorld();
   auto* activeStep = world->getActiveLayer()->getActiveStep();

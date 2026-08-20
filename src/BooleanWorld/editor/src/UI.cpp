@@ -3182,6 +3182,27 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
   if (!explanation.empty() && explanation != "Nothing under the cursor.") {
     ImGui::TextWrapped("Under cursor: %s", explanation.c_str());
   }
+
+  auto const& selectedVertices = doc->getSelectedMeshVertexIndices();
+  if (selectedVertices.size() == 1) {
+    auto vertexIndex = *selectedVertices.begin();
+    auto const& position = doc->getActiveMesh()->getVertex(vertexIndex).getPosition();
+
+    float pPosition[2] = {position.x, position.y};
+    ImGui::SetNextItemWidth(128);
+    if (ImGui::InputFloat2("Vertex Position##Mesh", pPosition)) {
+      wp::Vector2 newPosition{pPosition[0], pPosition[1]};
+      transactUndoableAction(
+          doc, "Set Mesh Vertex Position",
+          bind(setMeshVertexPosition, placeholders::_1, vertexIndex, newPosition));
+    }
+  }
+
+  if (ImGui::Button("Recentre mesh")) {
+    transactUndoableAction(doc, "Recentre Mesh", recentreActiveMesh);
+  }
+  widgets::HelpMarker(
+      "Restores the relationship between the Primitive's position/size and its geometry.");
 }
 
 void renderCombinedPanel(

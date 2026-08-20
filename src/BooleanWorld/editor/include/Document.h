@@ -73,6 +73,16 @@ class Document {
   std::set<uint32_t> mSelectedMeshRingIndices;
   std::string mMeshHoverExplanation;
 
+  // Sub-object drag state (ticket #180). Kept as a snapshot taken at the
+  // start of the gesture, rather than the live mesh, so each frame's
+  // candidate delta is validated against a fixed reference and clamping
+  // never compounds an earlier frame's rejection.
+  std::unique_ptr<wp::geometry::Mesh> mMeshDragStartSnapshot;
+  std::set<uint32_t> mMeshDragAffectedVertices;
+  uint32_t mMeshDragAnchorVertexIndex{~0u};
+  wp::Vector2 mMeshDragAnchorStartPosition;
+  wp::Vector2 mMeshDragLastValidDelta;
+
   wp::Vector2 mPlayerOldProxyPosition, mPlayerProxyPosition;
 
   float mPlayerOldProxyAngle, mPlayerProxyAngle;
@@ -171,6 +181,36 @@ public:
       std::set<uint32_t> const& rings);
   void setMeshHoverExplanation(std::string explanation);
   [[nodiscard]] std::string const& getMeshHoverExplanation() const;
+
+  // Begins a rigid-group drag of the current sub-mode's selection: the
+  // group moves together or not at all, so a clamped move never deforms
+  // the selection's shape.
+  void beginMeshDrag(Settings::MeshSubMode subMode);
+
+  // Applies totalWorldDelta - accumulated since beginMeshDrag - snapped to
+  // gridSize around the drag's anchor vertex first when snapToGrid is set,
+  // to the active mesh, provided every affected vertex's move stays clear
+  // of both invariants (Ring simplicity, hole-in-outer containment).
+  // Otherwise the mesh is left at the last delta that validated. Returns
+  // the delta actually applied, which may be smaller than requested.
+  wp::Vector2 updateMeshDrag(wp::Vector2 const& totalWorldDelta, bool snapToGrid, float gridSize);
+
+  void endMeshDrag();
+
+  // Writes the active mesh's current geometry back into its MeshPrimitive,
+  // as a drag gesture does on release. Returns false with no active mesh.
+  bool commitMeshDrag();
+
+  // A one-shot vertex move outside a drag gesture (the Mesh panel's numeric
+  // coordinate field). Validated the same way; returns false and leaves the
+  // mesh unchanged if the move would break an invariant.
+  bool moveMeshVertexTo(uint32_t vertexIndex, wp::Vector2 const& position);
+
+  // Restores the relationship between the active mesh's Primitive position
+  // and size and its geometry, by recentring the Primitive on the mesh's
+  // current bounds. Returns false if there is no active mesh or its bounds
+  // are degenerate.
+  bool recentreActiveMesh();
 
   bool indexInSelection(uint32_t index) const;
 

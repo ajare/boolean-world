@@ -46,6 +46,9 @@ class EditorInteraction {
   bool mMovingSelectedTriggerLine{false};
   int mMovingSelectedTriggerLinePart{-1};
 
+  bool mMovingMeshSelection{false};
+  wp::Vector2 mMeshDragCumulativeDelta;
+
   void applyPrimitiveClick(Document* doc, bool control, bool shift);
   void applyMeshSubObjectClick(
       Document* doc, Settings::MeshSubMode subMode, bool control, bool shift);
@@ -128,6 +131,16 @@ bool toggleMeshSubObjectsSelected(
     Document* doc, Settings::MeshSubMode subMode,
     std::set<uint32_t> const& indices);
 bool selectAllMeshSubObjects(Document* doc, Settings::MeshSubMode subMode);
+
+// One-shot vertex placement for the Mesh panel's numeric coordinate field,
+// as opposed to the frame-by-frame drag EditorInteraction drives directly
+// through Document::updateMeshDrag. Refused (returning false, leaving the
+// mesh unchanged) if it would break an invariant.
+bool setMeshVertexPosition(Document* doc, uint32_t vertexIndex, wp::Vector2 const& position);
+
+// Restores the relationship between the active mesh's Primitive position
+// and size and its geometry ("Recentre mesh").
+bool recentreActiveMesh(Document* doc);
 
 bool createPrimitiveFromGhost(Document* doc);
 

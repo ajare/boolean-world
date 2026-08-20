@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cmath>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -9,6 +11,8 @@
 #pragma warning(pop)
 
 #include <yaml-cpp/yaml.h>
+
+#include <willpower/geometry/MeshValidator.h>
 
 #include "core/BinarySerializer.h"
 #include "core/YamlSerializer.h"
@@ -577,6 +581,181 @@ void Document::setMeshHoverExplanation(string explanation) {
 
 string const& Document::getMeshHoverExplanation() const {
   return mMeshHoverExplanation;
+}
+
+namespace {
+
+set<uint32_t> affectedMeshVertices(
+    wp::geometry::Mesh const& mesh, Settings::MeshSubMode subMode,
+    set<uint32_t> const& selection) {
+  set<uint32_t> vertices;
+  if (subMode == Settings::MeshSubMode::Vertex) {
+    vertices = selection;
+  } else if (subMode == Settings::MeshSubMode::Edge) {
+    for (auto edgeIndex : selection) {
+      auto const& edge = mesh.getEdge(edgeIndex);
+      vertices.insert(edge.getFirstVertex());
+      vertices.insert(edge.getSecondVertex());
+    }
+  } else {
+    for (auto polygonIndex : selection) {
+      auto polygonVertices = mesh.getPolygon(polygonIndex).getVertexIndexSet();
+      vertices.insert(polygonVertices.begin(), polygonVertices.end());
+    }
+  }
+  return vertices;
+}
+
+// MeshValidator::validateVertexMove is meant to be asked "what if this
+// vertex moved by delta", against a mesh where it has NOT yet moved -
+// querying it with a zero move after actually applying the move makes the
+// query point coincide exactly with a real mesh vertex, which trips
+// point-in-polygon's own boundary handling and reports false containment
+// violations against a hole's outer. So fullyMoved (every affected vertex
+// already at its final position, giving co-selected neighbours their
+// correct final positions for the crossing/containment checks) has each
+// vertex tested by momentarily setting it back to its start position and
+// calling validateVertexMove with the real delta, exactly as the API
+// expects, then restoring it before testing the next one.
+bool meshGroupMoveIsValid(
+    wp::geometry::Mesh& fullyMoved,
+    wp::geometry::Mesh const& startPositions,
+    set<uint32_t> const& affectedVertices,
+    wp::Vector2 const& delta) {
+  wp::geometry::MeshValidator validator(&fullyMoved);
+  for (auto vertexIndex : affectedVertices) {
+    auto startPosition = startPositions.getVertex(vertexIndex).getPosition();
+    auto finalPosition = startPosition + delta;
+    fullyMoved.moveVertexTo(vertexIndex, startPosition);
+    auto result = validator.validateVertexMove(vertexIndex, delta);
+    fullyMoved.moveVertexTo(vertexIndex, finalPosition);
+    if (result != wp::geometry::MeshValidator::Valid) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
+void Document::beginMeshDrag(Settings::MeshSubMode subMode) {
+  mMeshDragStartSnapshot.reset();
+  mMeshDragAffectedVertices.clear();
+  mMeshDragAnchorVertexIndex = ~0u;
+  mMeshDragAnchorStartPosition = {};
+  mMeshDragLastValidDelta = {};
+
+  if (!mActiveMesh) {
+    return;
+  }
+
+  mMeshDragAffectedVertices = affectedMeshVertices(
+      *mActiveMesh, subMode, getSelectedMeshSubObjectIndices(subMode));
+  if (mMeshDragAffectedVertices.empty()) {
+    return;
+  }
+
+  mMeshDragStartSnapshot = make_unique<wp::geometry::Mesh>(*mActiveMesh);
+  mMeshDragAnchorVertexIndex = *mMeshDragAffectedVertices.begin();
+  mMeshDragAnchorStartPosition =
+      mActiveMesh->getVertex(mMeshDragAnchorVertexIndex).getPosition();
+}
+
+wp::Vector2 Document::updateMeshDrag(
+    wp::Vector2 const& totalWorldDelta, bool snapToGrid, float gridSize) {
+  if (!mActiveMesh || !mMeshDragStartSnapshot ||
+      mMeshDragAffectedVertices.empty()) {
+    return {};
+  }
+
+  auto delta = totalWorldDelta;
+  if (snapToGrid && gridSize > 0.0f) {
+    auto target = mMeshDragAnchorStartPosition + totalWorldDelta;
+    wp::Vector2 snapped{
+        std::round(target.x / gridSize) * gridSize,
+        std::round(target.y / gridSize) * gridSize};
+    delta = snapped - mMeshDragAnchorStartPosition;
+  }
+
+  wp::geometry::Mesh candidate(*mMeshDragStartSnapshot);
+  wp::geometry::IndexVector indices(
+      mMeshDragAffectedVertices.begin(), mMeshDragAffectedVertices.end());
+  candidate.moveVertices(indices, delta);
+
+  if (meshGroupMoveIsValid(
+          candidate, *mMeshDragStartSnapshot, mMeshDragAffectedVertices, delta)) {
+    mMeshDragLastValidDelta = delta;
+    // Assigned in place, not replaced, so a pointer taken from
+    // getActiveMesh() earlier in the same frame stays valid.
+    *mActiveMesh = candidate;
+  }
+
+  return mMeshDragLastValidDelta;
+}
+
+void Document::endMeshDrag() {
+  mMeshDragStartSnapshot.reset();
+  mMeshDragAffectedVertices.clear();
+  mMeshDragAnchorVertexIndex = ~0u;
+  mMeshDragAnchorStartPosition = {};
+  mMeshDragLastValidDelta = {};
+}
+
+bool Document::commitMeshDrag() {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) {
+    return false;
+  }
+
+  auto* primitive =
+      static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(mActiveMeshPrimitiveIndex));
+  primitive->updateFromGeometryProxy(*mActiveMesh);
+  primitive->updateVertexPositions();
+  return true;
+}
+
+bool Document::moveMeshVertexTo(uint32_t vertexIndex, wp::Vector2 const& position) {
+  if (!mActiveMesh) {
+    return false;
+  }
+
+  auto delta = position - mActiveMesh->getVertex(vertexIndex).getPosition();
+
+  wp::geometry::MeshValidator validator(mActiveMesh.get());
+  if (validator.validateVertexMove(vertexIndex, delta) !=
+      wp::geometry::MeshValidator::Valid) {
+    return false;
+  }
+
+  mActiveMesh->moveVertex(vertexIndex, delta);
+
+  auto* primitive =
+      static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(mActiveMeshPrimitiveIndex));
+  primitive->updateFromGeometryProxy(*mActiveMesh);
+  primitive->updateVertexPositions();
+  return true;
+}
+
+bool Document::recentreActiveMesh() {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) {
+    return false;
+  }
+
+  wp::Vector2 minExtent, maxExtent;
+  mActiveMesh->getExtents(minExtent, maxExtent);
+  auto centre = (minExtent + maxExtent) * 0.5f;
+  auto halfSize = (maxExtent - minExtent) * 0.5f;
+  auto scale = std::max(halfSize.x, halfSize.y);
+  if (scale <= 0.0f) {
+    return false;
+  }
+
+  auto* primitive =
+      static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(mActiveMeshPrimitiveIndex));
+  primitive->setPosition(centre);
+  primitive->setSize(scale * 2.0f, scale * 2.0f);
+  primitive->updateFromGeometryProxy(*mActiveMesh);
+  primitive->updateVertexPositions();
+  return true;
 }
 
 vector<uint32_t> Document::getPrimitiveIndicesInBounds(wp::BoundingBox const& worldBounds, Settings const& settings) const {
