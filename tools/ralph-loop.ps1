@@ -262,13 +262,13 @@ function Get-AdaptiveModelAndEffort {
             return [pscustomobject]@{ Difficulty = "trivial"; Model = $models.Smaller; Effort = "medium" }
         }
         { $_ -in @("small", "low") } {
-            return [pscustomobject]@{ Difficulty = $_; Model = $models.Smaller; Effort = "high" }
+            return [pscustomobject]@{ Difficulty = $_; Model = $models.Smaller; Effort = "medium" }
         }
         "medium" {
-            return [pscustomobject]@{ Difficulty = "medium"; Model = $models.Larger; Effort = "medium" }
+            return [pscustomobject]@{ Difficulty = "medium"; Model = $models.Smaller; Effort = "medium" }
         }
         { $_ -in @("large", "high") } {
-            return [pscustomobject]@{ Difficulty = $_; Model = $models.Larger; Effort = "high" }
+            return [pscustomobject]@{ Difficulty = $_; Model = $models.Larger; Effort = "medium" }
         }
         default {
             throw "Unsupported difficulty label '$($difficultyLabels[0])'."
