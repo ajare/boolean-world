@@ -264,11 +264,17 @@ bool setPrimitiveSize(Document* doc, bw::core::Primitive* primitive, float size)
 
 bool setPrimitivePosition(Document* doc, bw::core::Primitive* primitive, wp::Vector2 const& position) {
   primitive->setPosition(position);
+
+  // Update vertices for visual purposes
+  primitive->updateVertexPositions();
   return true;
 }
 
 bool setPrimitiveTransformOffset(Document* doc, bw::core::Primitive* primitive, wp::Vector2 const& transformOrigin) {
   primitive->setTransformOffset(transformOrigin);
+
+  // Update vertices for visual purposes
+  primitive->updateVertexPositions();
   return true;
 }
 
