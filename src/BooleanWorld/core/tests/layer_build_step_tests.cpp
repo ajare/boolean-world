@@ -325,6 +325,26 @@ void insertRemoveAndMoveStepTrackTheActiveStepsIdentity() {
           "moving the active step did not track its new position");
 }
 
+void getOwningStepIndexFindsWhichStepProducedAPrimitive() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto* first = makeRectangle(0.0f);
+  layer.addPrimitive(first);
+  auto secondIndex = layer.addStep(makeField({10.0f}));
+  auto* second = static_cast<bw::core::PrimitiveField*>(layer.getStep(secondIndex))->getPrimitive(0);
+
+  require(layer.getOwningStepIndex(first) == 0,
+          "getOwningStepIndex did not attribute a first-step Primitive to step 0");
+  require(layer.getOwningStepIndex(second) == secondIndex,
+          "getOwningStepIndex did not attribute a second-step Primitive to its step");
+
+  bw::core::RectanglePolygon stray(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f);
+  require(layer.getOwningStepIndex(&stray) == ~0u,
+          "getOwningStepIndex did not report ~0u for a Primitive owned by no step here");
+}
+
 void copyingALayerCopiesItsStepsAndRebuildsFromThem() {
   bw::core::Layer layer(5, "Source", 100.0f, 10.0f);
 
@@ -366,6 +386,7 @@ int main() {
     selectingAnotherStepRedirectsWhereAddPrimitiveWrites();
     addPrimitiveIsRejectedWhenTheActiveStepIsDisabled();
     insertRemoveAndMoveStepTrackTheActiveStepsIdentity();
+    getOwningStepIndexFindsWhichStepProducedAPrimitive();
     copyingALayerCopiesItsStepsAndRebuildsFromThem();
     std::cout << "A Layer derives its Primitives by running its enabled LayerBuildSteps in order\n";
     return 0;

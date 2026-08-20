@@ -615,14 +615,21 @@ bool Layer::isLastEnabledStep(LayerBuildStep const* step) const {
 }
 
 PrimitiveField* Layer::findOwningField(Primitive const* primitive) const {
-  for (auto* step : mSteps) {
-    auto* field = dynamic_cast<PrimitiveField*>(step);
+  auto index = getOwningStepIndex(primitive);
+
+  return index != ~0u ? static_cast<PrimitiveField*>(mSteps[index]) : nullptr;
+}
+
+uint32_t Layer::getOwningStepIndex(Primitive const* primitive) const {
+  auto numSteps = (uint32_t)mSteps.size();
+  for (uint32_t i = 0; i < numSteps; ++i) {
+    auto* field = dynamic_cast<PrimitiveField*>(mSteps[i]);
     if (field && field->contains(primitive)) {
-      return field;
+      return i;
     }
   }
 
-  return nullptr;
+  return ~0u;
 }
 
 uint32_t Layer::_appendBuiltPrimitive(Primitive* primitive) {

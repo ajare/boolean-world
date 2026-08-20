@@ -11,6 +11,7 @@
 #include <core/WorldData.h>
 #include <core/Utils.h>
 #include <core/SquareTiling.h>
+#include <core/Layer.h>
 
 #include <common/GameDefines.h>
 
@@ -156,6 +157,11 @@ void renderPrefabTiles(bw::core::PrefabAreaTilingType type, wp::Vector2 const& o
   drawList->AddPolyline(imPoints.data(), numVerts, ImColor(0.5f, 0.8f, 1.0f), ImDrawFlags_Closed, 1.0f);
 }
 
+ImColor fadeColour(ImColor colour, float alphaScale) {
+  colour.Value.w *= alphaScale;
+  return colour;
+}
+
 void renderWorld(
     editor::Document* doc,
     editor::Settings const& settings,
@@ -176,6 +182,26 @@ void renderWorld(
   if (world) {
     primitives = world->findPrimitives(viewBounds);
     triggerLines = world->findTriggerLines(viewBounds);
+  }
+
+  // Primitives from a LayerBuildStep after the active Layer's active step
+  // are hidden entirely when settings.showAllStepPrimitives is off; a
+  // ghost or a Primitive belonging to no step here (getOwningStepIndex
+  // returns ~0u) is always shown.
+  auto* activeLayer = world ? world->getActiveLayer() : nullptr;
+  auto activeStepIndex = activeLayer ? activeLayer->getActiveStepIndex() : 0u;
+
+  if (activeLayer && !settings.showAllStepPrimitives) {
+    primitives.erase(
+        remove_if(primitives.begin(), primitives.end(),
+            [&](bw::core::Primitive const* primitive) {
+              if (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) {
+                return false;
+              }
+              auto owningStepIndex = activeLayer->getOwningStepIndex(primitive);
+              return owningStepIndex != ~0u && owningStepIndex > activeStepIndex;
+            }),
+        primitives.end());
   }
 
   auto numPrimitives = (uint32_t)primitives.size();
@@ -255,6 +281,17 @@ void renderWorld(
         auto primitiveId = primitive->getId();
         bool selected = selectedPrimitiveIndices.find(primitiveId) != selectedPrimitiveIndices.end();
 
+        // A Primitive from any step but the active one renders faded, so
+        // the active step's contribution stands out among what's shown.
+        bool fromInactiveStep = false;
+        if (!isGhost && activeLayer) {
+          auto owningStepIndex = activeLayer->getOwningStepIndex(primitive);
+          fromInactiveStep = owningStepIndex != ~0u && owningStepIndex != activeStepIndex;
+        }
+        auto primitiveColour = fromInactiveStep
+                                    ? fadeColour(settings.primitiveColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
+                                    : settings.primitiveColour;
+
         // Primitive borders
         vector<ImVec2> ghostBorderPoints;
 
@@ -278,7 +315,7 @@ void renderWorld(
               } else if (selected) {
                 drawList->AddPolyline(imPoints.data(), numVertices, settings.selectedPrimitiveColour, ImDrawFlags_Closed, 2.5f);
               } else {
-                drawList->AddPolyline(imPoints.data(), numVertices, settings.primitiveColour, ImDrawFlags_Closed, 1.5f);
+                drawList->AddPolyline(imPoints.data(), numVertices, primitiveColour, ImDrawFlags_Closed, 1.5f);
               }
             }
           }

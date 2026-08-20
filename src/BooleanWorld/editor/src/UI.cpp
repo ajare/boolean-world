@@ -2842,6 +2842,10 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
 
   widgets::HelpMarker("Disabling a step and rebuilding removes its Primitives from this Layer; re-enabling restores them. The first step can be disabled but never removed, retyped, or reordered. The active step (radio button) is where Create/Edit Primitive writes.");
 
+  widgets::HelpMarker("When off, the world view only shows Primitives from the active step and earlier ones; Primitives from later steps are hidden. Either way, Primitives outside the active step render faded.");
+  ImGui::SameLine();
+  ImGui::Checkbox("Show all steps' Primitives##Layer", &settings.showAllStepPrimitives);
+
   auto activeStepIndex = layer->getActiveStepIndex();
 
   for (uint32_t i = 0; i < numSteps; ++i) {

@@ -44,6 +44,12 @@ struct Settings {
   bool renderTriggerLines{true};
   bool renderArrangementVertices{false};
 
+  // When false, the world view only renders Primitives from the active
+  // Layer's active LayerBuildStep and earlier ones; later steps' Primitives
+  // are hidden entirely. Either way, non-active-step Primitives among those
+  // shown render faded (see Render.cpp).
+  bool showAllStepPrimitives{true};
+
   bool ghostActive{true};
   bool expertMode{false};
 

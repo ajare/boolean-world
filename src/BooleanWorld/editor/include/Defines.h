@@ -12,6 +12,10 @@
 
 #define ED_GHOST_INDEX 0
 
+// Alpha multiplier applied to a Primitive's border colour when it belongs
+// to a LayerBuildStep other than the active Layer's active step.
+#define ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE 0.35f
+
 // Creation/edit params
 #define ED_MIN_REGULAR_POLYGON_SIDES 3
 #define ED_MAX_REGULAR_POLYGON_SIDES 8

@@ -192,6 +192,10 @@ public:
   // addPrimitive itself rejects a non-PrimitiveField active step.
   void setActiveStep(uint32_t index);
 
+  // The index of the PrimitiveField step that owns primitive, or ~0u if no
+  // step here does (see findOwningField).
+  [[nodiscard]] uint32_t getOwningStepIndex(Primitive const* primitive) const;
+
   // Takes ownership of step and rebuilds. Index 0 is reserved for the
   // Layer's PrimitiveField step, so index must be >= 1; anything lower is
   // rejected and step is not adopted.
