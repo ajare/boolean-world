@@ -11,7 +11,6 @@
 
 #include <core/WorldData.h>
 #include <core/Utils.h>
-#include <core/SquareTiling.h>
 #include <core/Layer.h>
 #include <core/PrimitiveField.h>
 
@@ -133,30 +132,6 @@ void renderPrimitiveFieldPreview(
     drawList->AddCircleFilled(screenPoint, 3.5f, siteColour, 12);
     drawList->AddCircle(screenPoint, 5.0f, siteColour, 12, 1.0f);
   }
-}
-
-void renderPrefabTiles(bw::core::PrefabAreaTilingType type, wp::Vector2 const& offset, ImDrawList* drawList) {
-  vector<wp::Vector2> verts;
-
-  switch (type) {
-    case bw::core::PrefabAreaTilingType::None:
-      return;
-
-    case bw::core::PrefabAreaTilingType::Square:
-      verts = bw::core::SquareTiling(BW_PLAYER_RADIUS * BW_PREFAB_PLAYER_RATIO).generateTileOutline({0.0f, 0.0}, 0.0f, 0);
-      break;
-  }
-
-  auto numVerts = (uint32_t)verts.size();
-  vector<ImVec2> imPoints(numVerts);
-
-  for (uint32_t i = 0; i < numVerts; ++i) {
-    imPoints[i] = {
-        verts[i].x - offset.x,
-        ED_WINDOW_HEIGHT - (verts[i].y - offset.y)};
-  }
-
-  drawList->AddPolyline(imPoints.data(), numVerts, ImColor(0.5f, 0.8f, 1.0f), ImDrawFlags_Closed, 1.0f);
 }
 
 ImColor fadeColour(ImColor colour, float alphaScale) {
@@ -697,11 +672,6 @@ void renderWorld(
   // Grid
   if (settings.showGrid) {
     renderGrid(settings.gridSize, offset, settings.gridColour, 1.0f, renderWorldStuff ? world : nullptr, drawList);
-  }
-
-  // Prefab tiles
-  if (settings.renderPrefabTiles) {
-    renderPrefabTiles(world->getPrefabAreaTilingType(), offset, drawList);
   }
 
   // Primitive-field layout preview. This editor-only overlay is deliberately

@@ -9,7 +9,6 @@
 #define ED_CLIP_ON_PRIM_CREATE_DELETE 0x0002
 #define ED_CLIP_ON_PRIM_SETTING_CHANGE 0x0004
 #define ED_CLIP_ON_ACTIVE_LAYER_CHANGE 0x0008
-#define ED_CLIP_ON_PREFAB_CREATE_DELETE 0x0010
 #define ED_CLIP_ON_UNDO_REDO 0x0020
 
 namespace editor {
@@ -40,7 +39,6 @@ struct Settings {
   bool renderInfluenceEyes{false};
   bool renderPlayerView{true};
   bool renderMiniMap{false};
-  bool renderPrefabTiles{false};
   bool renderTriggerLines{true};
   bool renderArrangementVertices{false};
 
@@ -60,7 +58,6 @@ struct Settings {
                   ED_CLIP_ON_PRIM_CREATE_DELETE |
                   ED_CLIP_ON_PRIM_SETTING_CHANGE |
                   ED_CLIP_ON_ACTIVE_LAYER_CHANGE |
-                  ED_CLIP_ON_PREFAB_CREATE_DELETE |
                   ED_CLIP_ON_UNDO_REDO};
 
   uint8_t activeLayer{0};
@@ -94,8 +91,6 @@ struct Settings {
 
   ImColor triggerLineRed{1.0f, 0.2f, 0.2f, 1.0f};
   ImColor triggerLineBlue{0.2f, 0.2f, 1.0f, 1.0f};
-
-  std::string prefabDir;
 };
 
 }  // namespace editor

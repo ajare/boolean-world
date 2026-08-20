@@ -24,7 +24,6 @@
 #include <SDL3/SDL_opengl.h>
 #endif
 
-#include <inifile-cpp/inicpp.h>
 
 #include <core/WorldData.h>
 
@@ -61,33 +60,12 @@ SDL_Window* gWindow{nullptr};
 SDL_GLContext gContext;
 
 editor::Settings gEditorSettings;
-std::map<std::string, bw::core::World*> gPrefabInstances;
 editor::HoverableType gHoveredType{editor::HoverableType::None};
 std::vector<uint32_t> gHoveredIndices;
 
 using namespace std;
 
 map<string, string> gHelpFiles;
-
-void loadSettings(std::string const& filename, editor::Settings* settings) {
-  ini::IniFile inif;
-
-  inif.load(filename);
-
-  for (auto const& section : inif) {
-    auto const& [sectionName, sectionData] = section;
-
-    for (const auto& field : sectionData) {
-      auto const& [fieldName, fieldData] = field;
-
-      if (sectionName == "Paths") {
-        if (fieldName == "PrefabDir") {
-          settings->prefabDir = fieldData.as<string>();
-        }
-      }
-    }
-  }
-}
 
 SDL_Window* createWindow() {
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
@@ -223,34 +201,8 @@ map<string, string> loadHelpFiles(string const& dir) {
   return data;
 }
 
-void loadPrefabFiles(string const& dir) {
-  for (const auto& entry : filesystem::directory_iterator(dir)) {
-    auto filepath = entry.path();
-
-    if (filepath.extension() == ".yaml") {
-      auto name = filepath.stem();
-      auto world = editor::loadWorld(filepath.string());
-      auto worldName = world->getName();
-
-      if (gPrefabInstances.find(worldName) != gPrefabInstances.end()) {
-        delete world;
-        throw EditorException(format("Prefab '{}' already loaded.", worldName));
-      }
-
-      gPrefabInstances[worldName] = world;
-    }
-  }
-}
-
-void deletePrefabs() {
-  for (auto item : gPrefabInstances) {
-    delete item.second;
-  }
-}
-
 void initialise() {
   setupLogging();
-  loadSettings("editor.ini", &gEditorSettings);
 
   //
   // Set up SDL
@@ -272,10 +224,6 @@ void initialise() {
   gHelpFiles = loadHelpFiles("doc/core");
   gHelpFiles.merge(loadHelpFiles("doc/editor"));
   gLogger->debug("Help files loaded");
-
-  // Load prefab files
-  loadPrefabFiles(gEditorSettings.prefabDir);
-  gLogger->debug("Prefabs loaded");
 }
 
 void setup() {
@@ -324,8 +272,6 @@ void shutdown() {
 
   delete gLogger;
   gLogger = nullptr;
-
-  deletePrefabs();
 
   // ImGui
   ImGui_ImplOpenGL3_Shutdown();

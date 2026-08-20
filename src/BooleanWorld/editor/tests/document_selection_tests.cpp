@@ -10,12 +10,8 @@
 
 #include "Defines.h"
 #include "Document.h"
-#include "Tiled.h"
 
 spdlog::logger* gLogger = spdlog::default_logger_raw();
-
-void openTiledPrefabFile(std::string const&, std::shared_ptr<bw::core::World>) {
-}
 
 namespace {
 

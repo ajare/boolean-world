@@ -20,9 +20,6 @@
 spdlog::logger* gLogger = spdlog::default_logger_raw();
 editor::Settings gEditorSettings;
 
-void openTiledPrefabFile(std::string const&, std::shared_ptr<bw::core::World>) {
-}
-
 namespace editor {
 void generateClipping(Document*, Settings const&, int) {
 }

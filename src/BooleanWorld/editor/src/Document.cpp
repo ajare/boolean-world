@@ -23,7 +23,6 @@
 #include "Document.h"
 #include "EditorException.h"
 #include "AppHelpers.h"
-#include "Tiled.h"
 
 extern spdlog::logger* gLogger;
 
@@ -413,11 +412,6 @@ bool Document::openDoc(string const& filepath) {
 
       return false;
     }
-  } else if (ext == ".json") {
-    mWorld = createWorld(ED_DEFAULT_WORLD_SIZE, ED_DEFAULT_WORLD_ACCEL_GRID_SIZE);
-
-    loadTiledPrefabFile(mFilepath, mWorld);
-    return true;
   } else {
     throw EditorException(format("Could not open {} (filetype not supported)", mFilepath));
   }
@@ -521,70 +515,4 @@ bw::core::Layer* Document::importLayer(string const& filepath) {
   return mWorld->addLayer(layer.release());
 }
 
-void Document::loadTiledPrefabFile(string const& filepath, shared_ptr<bw::core::World> world) {
-  ::openTiledPrefabFile(filepath, world);
-}
-
-void Document::addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation, bw::core::Layer* destinationLayer) {
-  float prefabScale = BW_PLAYER_RADIUS * BW_PREFAB_PLAYER_RATIO;
-  wp::Vector2 offset = {(tileX + 0.5f) * prefabScale, (tileY + 0.5f) * prefabScale};
-
-  auto const* activeLayer = mWorld->getActiveLayer();
-
-  // Copy all trigger lines first, updating their index for the Primitives to
-  // use. Each is placed on the active Layer, then moved to destinationLayer
-  // if that's a different one - the move step is what reassigns each
-  // trigger line's final id, so triggerLineMap must record ids from after
-  // it, not before.
-  auto prefabTriggerLines = prefab->getTriggerLines();
-  map<uint32_t, uint32_t> triggerLineMap;
-
-  for (auto prefabTriggerLine : prefabTriggerLines) {
-    auto transformPoint = [rotation, offset](wp::Vector2 point) {
-      point.rotateAnticlockwise(rotation);
-      return point + offset;
-    };
-    auto triggerLineCopy = new bw::core::WorldTriggerLine(
-        transformPoint(prefabTriggerLine->getPoint(0)),
-        transformPoint(prefabTriggerLine->getPoint(1)),
-        prefabTriggerLine->getSide());
-
-    mWorld->addTriggerLine(triggerLineCopy);
-
-    if (destinationLayer != activeLayer) {
-      mWorld->moveTriggerLineToLayer(triggerLineCopy, destinationLayer);
-    }
-
-    triggerLineMap[prefabTriggerLine->getId()] = triggerLineCopy->getId();
-  }
-
-  // Get all Primitives from prefab
-  auto prefabPrims = prefab->getPrimitives();
-
-  // Copy each one, translating it
-  for (auto prefabPrim : prefabPrims) {
-    auto primCopy = prefabPrim->copy();
-
-    // Rotate position
-    auto newPos = primCopy->getPosition().rotatedClockwiseCopy(rotation);
-
-    primCopy->setPosition(newPos + offset);
-    primCopy->setOrientation(rotation);
-
-    // Update transform offset
-    primCopy->setTransformOffset(prefabPrim->getTransformOffset().rotatedClockwiseCopy(rotation));
-
-    // Rotate eye offset
-    primCopy->setInfluenceEyeOriginOffset(prefabPrim->getInfluenceEyeOriginOffset().rotatedClockwiseCopy(rotation));
-
-    // Update trigger line refs
-    primCopy->updateTransformTriggerLineIndices(triggerLineMap);
-
-    mWorld->addPrimitive(primCopy);
-
-    if (destinationLayer != activeLayer) {
-      mWorld->movePrimitiveToLayer(primCopy, destinationLayer);
-    }
-  }
-}
 }  // namespace editor

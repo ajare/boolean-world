@@ -17,7 +17,6 @@
 #include "core/WorldData.h"
 #include "core/WorldDataGenerator.h"
 #include "core/Defines.h"
-#include "core/PrefabAreaTilingType.h"
 #include "core/WorldUpdateData.h"
 #include "core/WorldTriggerLine.h"
 
@@ -65,11 +64,6 @@ private:
   mutable frame_number_type mLastPrimitiveUpdateFrameNumber;
 
   wp::Vector2 mPrevPlayerPosition;
-
-  // Metadata
-  PrefabAreaTilingType mPrefabAreaTilingType;
-
-  uint32_t mPrefabAreaTileTypes;
 
 private:
   bool childrenModified() const override;
@@ -188,14 +182,6 @@ public:
   [[nodiscard]] frame_number_type getFrameNumber() const;
 
   [[nodiscard]] wp::BoundingBox const& getExtents() const;
-
-  void setPrefabAreaTilingType(PrefabAreaTilingType type);
-
-  [[nodiscard]] PrefabAreaTilingType getPrefabAreaTilingType() const;
-
-  void setPrefabAreaTileTypes(uint32_t types);
-
-  [[nodiscard]] uint32_t getPrefabAreaTileTypes() const;
 
   bool getGridSettings(int* dimX, int* dimY, float* cellSize);
 

@@ -51,7 +51,6 @@
 #include "HoverableType.h"
 
 extern std::map<std::string, std::string> gHelpFiles;
-extern std::map<std::string, bw::core::World*> gPrefabInstances;
 extern wp::Vector2 gViewOffset;
 extern editor::HoverableType gHoveredType;
 extern std::vector<uint32_t> gHoveredIndices;
@@ -555,9 +554,6 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
     ImGui::SameLine();
     widgets::ToggleButton("ToggleTimeUpdateDistance", "[TUD]", &settings.renderTimeUpdateDistance);
-
-    ImGui::SameLine();
-    widgets::ToggleButton("TogglePrefabTiles", "[PT]", &settings.renderPrefabTiles);
 
     if (!world) {
       widgets::PopDisabled();
@@ -2262,21 +2258,6 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
     abandonUndoableAction(doc);
   }
 
-  /*
-   * Don't allow user to change orientation, it's really there to support prefab rotation
-   *
-  float orientation = wp::MathsUtils::radians(primitive->getOrientation());
-
-  widgets::HelpMarker("Set the orientation of the primitive."); ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-
-  if (ImGui::SliderAngle("Orientation##EditPrimitive", &orientation, 0, 360))
-  {
-          transactUndoableAction(doc, "Set Primitive Orientation",
-                  bind(setPrimitiveOrientation, placeholders::_1, primitive, wp::MathsUtils::degrees(orientation)));
-  }
-  */
-
   float primitiveSize = primitive->getSize().x;
 
   widgets::HelpMarker("Set the base size of the primitive.");
@@ -2657,102 +2638,6 @@ void renderEditPrimitiveView(editor::Document* doc, editor::Settings& settings, 
   renderEditPrimitiveProperties(doc, settings);
 }
 
-void renderPrefabView(editor::Document* doc, editor::Settings& settings) {
-  auto world = doc->getWorld();
-
-  // World settings
-  vector<string> prefabTilingTypes = {
-      "None",
-      "Squares"};
-
-  string prefabTilingTypesStr;
-
-  for (auto const& prefabTilingType : prefabTilingTypes) {
-    prefabTilingTypesStr += prefabTilingType;
-    prefabTilingTypesStr += '\0';
-  }
-
-  int selectedTiling = (int)world->getPrefabAreaTilingType();
-
-  widgets::HelpMarker("Tiling type to use for building prefab.");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-
-  if (ImGui::Combo("Prefab tiling", &selectedTiling, prefabTilingTypesStr.c_str(), 6)) {
-    world->setPrefabAreaTilingType((bw::core::PrefabAreaTilingType)selectedTiling);
-  }
-
-  // Prefab placement settings
-  static int prefabTileX = 0, prefabTileY = 0;
-  static int prefabRotation = 0;
-
-  ImGui::SetNextItemWidth(96);
-  if (ImGui::InputInt("Tile X", &prefabTileX, 1, 5, ImGuiInputTextFlags_EnterReturnsTrue)) {
-    if (prefabTileX < -3) {
-      prefabTileX = -3;
-    }
-    if (prefabTileX > 3) {
-      prefabTileX = 3;
-    }
-  }
-
-  ImGui::SameLine();
-
-  ImGui::SetNextItemWidth(96);
-  if (ImGui::InputInt("Tile Y", &prefabTileY, 1, 5, ImGuiInputTextFlags_EnterReturnsTrue)) {
-    if (prefabTileY < -3) {
-      prefabTileY = -3;
-    }
-    if (prefabTileY > 3) {
-      prefabTileY = 3;
-    }
-  }
-
-  ImGui::SameLine();
-
-  ImGui::SetNextItemWidth(96);
-  ImGui::Combo("Rotation", &prefabRotation, "North\0East\0South\0West\0\0", 4);
-
-  // Layer
-  static uint32_t prefabLayerId = world->getActiveLayer()->getId();
-
-  widgets::HelpMarker("The Layer to place the prefab instance's Primitives and WorldTriggerLines on.");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-  prefabLayerId = widgets::LayerPicker("Layer##Prefab", world.get(), prefabLayerId);
-
-  ImGui::Separator();
-
-  // Loaded prefabs
-  for (auto item : gPrefabInstances) {
-    ImGui::PushID(item.first.c_str());
-
-    auto const& [name, prefab] = item;
-
-    ImGui::Text(name.c_str());
-    ImGui::SameLine();
-
-    bool enablePrefab = prefab->getPrefabAreaTilingType() == world->getPrefabAreaTilingType();
-
-    if (!enablePrefab) {
-      widgets::PushDisabled();
-    }
-
-    if (ImGui::Button("Create")) {
-      float r = prefabRotation * 90.0f;
-      auto* destinationLayer = world->getLayer(prefabLayerId);
-      doc->addPrefabInstance(prefab, prefabTileX, prefabTileY, r, destinationLayer ? destinationLayer : world->getActiveLayer());
-      generateClipping(doc, settings, ED_CLIP_ON_PREFAB_CREATE_DELETE);
-    }
-
-    if (!enablePrefab) {
-      widgets::PopDisabled();
-    }
-
-    ImGui::PopID();
-  }
-}
-
 void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings) {
   auto const& selection = doc->getSelectedPrimitiveIndices();
   auto primitives = doc->getWorld()->getPrimitivesByPriority();
@@ -3041,7 +2926,6 @@ void renderConfigView(editor::Document* doc, editor::Settings& settings) {
     ImGui::CheckboxFlags("On Primitive create/delete", configFlags, ED_CLIP_ON_PRIM_CREATE_DELETE);
     ImGui::CheckboxFlags("On Primitive setting change", configFlags, ED_CLIP_ON_PRIM_SETTING_CHANGE);
     ImGui::CheckboxFlags("On active layer change", configFlags, ED_CLIP_ON_ACTIVE_LAYER_CHANGE);
-    ImGui::CheckboxFlags("On prefab create/delete", configFlags, ED_CLIP_ON_PREFAB_CREATE_DELETE);
     ImGui::CheckboxFlags("On undo/redo", configFlags, ED_CLIP_ON_UNDO_REDO);
 
     ImGui::SeparatorText("Primitive vertices");
@@ -3181,10 +3065,6 @@ void renderCombinedPanel(
 
     if (ImGui::CollapsingHeader("World", nullptr, windowFlags)) {
       renderWorldView(doc, settings);
-    }
-
-    if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {
-      renderPrefabView(doc, settings);
     }
 
     if (ImGui::CollapsingHeader("Layer", nullptr, windowFlags)) {

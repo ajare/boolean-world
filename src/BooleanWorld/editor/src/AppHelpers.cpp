@@ -48,8 +48,7 @@ void newDocument(editor::Document* doc) {
 void openDocument(editor::Document* doc) {
   vector<pair<string, string>> extensions = {
       make_pair("YAML", "yaml"),
-      make_pair("Binary world", "world"),
-      make_pair("Tiled prefab", "json")};
+      make_pair("Binary world", "world")};
 
   auto numExtensions = extensions.size();
 

@@ -26,9 +26,7 @@ add_library(core STATIC
     src/RegularPolygon.cpp
     src/Serializable.cpp
     src/Serializer.cpp
-    src/SquareTiling.cpp
     src/SuperformulaPolygon.cpp
-    src/Tiling.cpp
     src/TorusPolygon.cpp
     src/TorusSegmentPolygon.cpp
     src/TransformFlow.cpp

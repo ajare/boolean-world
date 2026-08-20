@@ -37,7 +37,7 @@ World::World()
 }
 
 World::World(float size, float gridSize)
-    : mExtents(-size / 2, -size / 2, size, size), mActiveLayerIndex(0), mNextLayerId(1), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(new DefaultWorldDataGenerator()), mPrevPlayerPosition{999999.0f, 999999.0f}, mPrefabAreaTilingType(PrefabAreaTilingType::None), mPrefabAreaTileTypes(0), mLastPrimitiveUpdateFrameNumber(0) {
+    : mExtents(-size / 2, -size / 2, size, size), mActiveLayerIndex(0), mNextLayerId(1), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(new DefaultWorldDataGenerator()), mPrevPlayerPosition{999999.0f, 999999.0f}, mLastPrimitiveUpdateFrameNumber(0) {
   mLayers.push_back(new Layer(0, "Layer 0", size, gridSize));
 }
 
@@ -76,8 +76,6 @@ void World::swapState(World& other) noexcept {
   swap(mDataGenerator, other.mDataGenerator);
   swap(mLastPrimitiveUpdateFrameNumber, other.mLastPrimitiveUpdateFrameNumber);
   swap(mPrevPlayerPosition, other.mPrevPlayerPosition);
-  swap(mPrefabAreaTilingType, other.mPrefabAreaTilingType);
-  swap(mPrefabAreaTileTypes, other.mPrefabAreaTileTypes);
 }
 
 void World::rebindOwnedState() {
@@ -123,8 +121,6 @@ void World::copyFrom(World const& other) {
   mStepThreshold = other.mStepThreshold;
   mFrameNumber = other.mFrameNumber;
   mPrevPlayerPosition = other.mPrevPlayerPosition;
-  mPrefabAreaTilingType = other.mPrefabAreaTilingType;
-  mPrefabAreaTileTypes = other.mPrefabAreaTileTypes;
   mLastPrimitiveUpdateFrameNumber = other.mLastPrimitiveUpdateFrameNumber;
 
   // mActiveLayerIndex is intentionally left at 0 (set by the constructor's
@@ -175,14 +171,6 @@ void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
       serializer->writeFloat("playerStartAngle", mPlayerStartAngle);
       serializer->writeFloat("stepThreshold", mStepThreshold);
 
-      serializer->beginMap("tiling");
-      {
-        serializer->writeUint32("prefabAreaTilingType", (uint32_t)mPrefabAreaTilingType);
-        serializer->writeUint32("prefabAreaTileTypes", mPrefabAreaTileTypes);
-
-        serializer->endMap();  // tiling
-      }
-
       // Every Layer this World owns is written inline, each self-contained
       // (id, name, extents, its own Primitives/WorldTriggerLines), in order.
       // Neither the active-layer index nor the generation layer-selection
@@ -221,8 +209,6 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   wp::Vector2 playerStartPosition;
   float playerStartAngle;
   float stepThreshold;
-  PrefabAreaTilingType prefabAreaTilingType;
-  uint32_t prefabAreaTileTypes;
   vector<unique_ptr<Layer>> layers;
 
   try {
@@ -238,14 +224,6 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
         playerStartAngle = serializer->readFloat("playerStartAngle");
         stepThreshold = serializer->readFloat(
             "stepThreshold", true, numeric_limits<float>::infinity());
-
-        serializer->beginMap("tiling");
-        {
-          prefabAreaTilingType = (PrefabAreaTilingType)serializer->readUint32("prefabAreaTilingType");
-          prefabAreaTileTypes = serializer->readUint32("prefabAreaTileTypes");
-
-          serializer->endMap();  // tiling
-        }
 
         // Each Layer parses and validates its own Primitives/
         // WorldTriggerLines - including its own parent-chain cycle check -
@@ -318,8 +296,6 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mPlayerStartPosition = playerStartPosition;
   mPlayerStartAngle = playerStartAngle;
   mStepThreshold = stepThreshold;
-  mPrefabAreaTilingType = prefabAreaTilingType;
-  mPrefabAreaTileTypes = prefabAreaTileTypes;
 
   for (auto layer : mLayers) {
     delete layer;
@@ -638,22 +614,6 @@ void World::setStepThreshold(float threshold) {
 
 float World::getStepThreshold() const {
   return mStepThreshold;
-}
-
-void World::setPrefabAreaTilingType(PrefabAreaTilingType type) {
-  mPrefabAreaTilingType = type;
-}
-
-PrefabAreaTilingType World::getPrefabAreaTilingType() const {
-  return mPrefabAreaTilingType;
-}
-
-void World::setPrefabAreaTileTypes(uint32_t types) {
-  mPrefabAreaTileTypes = types;
-}
-
-uint32_t World::getPrefabAreaTileTypes() const {
-  return mPrefabAreaTileTypes;
 }
 
 frame_number_type World::getFrameNumber() const {

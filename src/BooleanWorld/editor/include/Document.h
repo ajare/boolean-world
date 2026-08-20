@@ -52,8 +52,6 @@ private:
 
   std::shared_ptr<bw::core::World> createWorld(float size, float gridSize);
 
-  void loadTiledPrefabFile(std::string const& filepath, std::shared_ptr<bw::core::World> world);
-
 public:
   Document();
 
@@ -153,8 +151,6 @@ public:
   // its own collided with one the World already had), or nullptr on
   // failure.
   bw::core::Layer* importLayer(std::string const& filepath);
-
-  void addPrefabInstance(bw::core::World const* prefab, int tileX, int tileY, float rotation, bw::core::Layer* destinationLayer);
 };
 
 }  // namespace editor

@@ -4,9 +4,6 @@ world:
   maxExtent: [4096, 4096]
   playerStartPosition: [0, 0]
   playerStartAngle: 0
-  tiling:
-    prefabAreaTilingType: 0
-    prefabAreaTileTypes: 0
   layers:
     - id: 0
       name: "Layer 0"
