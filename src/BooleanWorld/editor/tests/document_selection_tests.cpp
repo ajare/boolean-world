@@ -7,6 +7,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <core/LayerBuildStep.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
 
@@ -22,6 +23,50 @@ void require(bool condition, std::string const& message) {
     throw std::runtime_error(message);
   }
 }
+
+class RefusingStep final : public bw::core::LayerBuildStep {
+  bw::core::Primitive* mPrimitive;
+
+public:
+  explicit RefusingStep(bw::core::Primitive* primitive)
+      : mPrimitive(primitive) {
+  }
+
+  ~RefusingStep() override {
+    delete mPrimitive;
+  }
+
+  std::string getType() const override {
+    return "RefusingStep";
+  }
+
+  bw::core::LayerBuildStep* copy(
+      std::map<bw::core::VertexTransformerObject const*, bw::core::VertexTransformerObject*>& primitiveMap) const override {
+    auto* primitive = mPrimitive->copy();
+    primitiveMap[mPrimitive] = primitive;
+    return new RefusingStep(primitive);
+  }
+
+  void execute(bw::core::Layer& layer) const override {
+    layer._appendBuiltPrimitive(mPrimitive, this);
+  }
+
+  bool permitsDirectPrimitiveEditing() const override {
+    return false;
+  }
+
+  bool acceptsNewPrimitives() const override {
+    return false;
+  }
+
+private:
+  void serializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) const override {
+  }
+
+  bool deserializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) override {
+    return true;
+  }
+};
 
 void changingSelectedPrimitiveIndicesDoesNotWriteIntoAnInputRange() {
   editor::Document document;
@@ -148,6 +193,32 @@ void selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps() {
           "showAllStepPrimitives did not restore a later step's Primitive to Select All");
 }
 
+void refusingStepPrimitivesAreNotSelectableInPrimitiveMode() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.showAllStepPrimitives = true;
+
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* primitive = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  primitive->setPosition({100.0f, 100.0f});
+  auto refusingIndex = layer->addStep(new RefusingStep(primitive));
+  layer->setActiveStep(refusingIndex);
+
+  require(document.getHoveredPrimitiveIndices({100.0f, 100.0f}, settings).empty(),
+          "a Primitive from a refusing step responded to hover selection");
+  require(document.getPrimitiveIndicesInBounds(
+                      wp::BoundingBox({90.0f, 90.0f}, {20.0f, 20.0f}), settings)
+              .empty(),
+          "a Primitive from a refusing step responded to box selection");
+  auto selectable = document.getSelectablePrimitiveIndices(settings);
+  require(std::find(selectable.begin(), selectable.end(), primitive->getId()) == selectable.end(),
+          "Select All included a Primitive from a refusing step");
+}
+
 void openingADocumentReplacesTheActiveDocument() {
   auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-test.yaml";
 
@@ -176,6 +247,7 @@ int main() {
     theGhostIsHoveredFirstWhereItOverlapsAnotherPrimitive();
     primitiveIndicesInBoundsFindsOverlappingPrimitivesAndIgnoresTheGhost();
     selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps();
+    refusingStepPrimitivesAreNotSelectableInPrimitiveMode();
     openingADocumentReplacesTheActiveDocument();
     std::cout << "Document selection and hover queries passed\n";
     return 0;

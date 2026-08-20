@@ -39,8 +39,16 @@ LayerBuildStep* PrimitiveField::copy(map<VertexTransformerObject const*, VertexT
 
 void PrimitiveField::execute(Layer& layer) const {
   for (auto* primitive : mPrimitives) {
-    layer._appendBuiltPrimitive(primitive);
+    layer._appendBuiltPrimitive(primitive, this);
   }
+}
+
+bool PrimitiveField::permitsDirectPrimitiveEditing() const {
+  return true;
+}
+
+bool PrimitiveField::acceptsNewPrimitives() const {
+  return true;
 }
 
 bool PrimitiveField::childrenModified() const {

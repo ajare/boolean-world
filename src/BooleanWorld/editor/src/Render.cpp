@@ -12,7 +12,7 @@
 #include <core/WorldData.h>
 #include <core/Utils.h>
 #include <core/Layer.h>
-#include <core/PrimitiveField.h>
+#include <core/LayerBuildStep.h>
 
 #include <common/GameDefines.h>
 
@@ -220,40 +220,22 @@ vector<ImVec2> insetOutline(vector<ImVec2> const& points, float distance) {
   return inset;
 }
 
-// Which of a Layer's built Primitives come from a step other than its active
-// one, indexed by Primitive id - the id being its position in that built
-// collection, which is also what an arrangement face reports as the Primitive
-// it belongs to.
-//
-// Built by walking the steps once. Asking each Primitive for its owning step
-// instead would rescan every step's field for every Primitive, every frame.
-vector<uint8_t> collectInactiveStepPrimitives(bw::core::Layer const& layer) {
+// Which built Primitives should render faded, indexed by Primitive id. A
+// Primitive is faded when it is outside the active-step focus or its owning
+// step refuses direct editing. The ownership query and capability predicate
+// make this independent of the concrete step type.
+vector<uint8_t> collectFadedStepPrimitives(bw::core::Layer const& layer) {
   vector<uint8_t> flags(layer.getNumPrimitives(), 0);
 
-  auto activeStepIndex = layer.getActiveStepIndex();
-  auto numSteps = layer.getNumSteps();
-
-  for (uint32_t stepIndex = 0; stepIndex < numSteps; ++stepIndex) {
-    if (stepIndex == activeStepIndex) {
+  for (uint32_t primitiveIndex = 0; primitiveIndex < layer.getNumPrimitives(); ++primitiveIndex) {
+    auto owningStepIndex = layer.getOwningStepIndex(layer.getPrimitive(primitiveIndex));
+    if (owningStepIndex == ~0u) {
       continue;
     }
 
-    auto const* field =
-        dynamic_cast<bw::core::PrimitiveField const*>(layer.getStep(stepIndex));
-
-    if (!field) {
-      continue;
-    }
-
-    for (auto const* primitive : field->getPrimitives()) {
-      auto id = primitive->getId();
-
-      // A disabled step's Primitives never reached the built collection, so
-      // the ids they still carry belong to somebody else.
-      if (id < flags.size() && layer.getPrimitive(id) == primitive) {
-        flags[id] = 1;
-      }
-    }
+    auto const* step = layer.getStep(owningStepIndex);
+    flags[primitiveIndex] = owningStepIndex != layer.getActiveStepIndex() ||
+                            !step->permitsDirectPrimitiveEditing();
   }
 
   return flags;
@@ -292,7 +274,7 @@ void renderWorld(
   auto* activeLayer = world ? world->getActiveLayer() : nullptr;
 
   auto inactiveStepPrimitives =
-      activeLayer ? collectInactiveStepPrimitives(*activeLayer) : vector<uint8_t>{};
+      activeLayer ? collectFadedStepPrimitives(*activeLayer) : vector<uint8_t>{};
 
   if (activeLayer) {
     primitives.erase(

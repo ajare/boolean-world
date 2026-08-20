@@ -154,6 +154,11 @@ bool clearSelections(Document* doc) {
 
 bool createPrimitiveFromGhost(Document* doc) {
   auto world = doc->getWorld();
+  auto* activeStep = world->getActiveLayer()->getActiveStep();
+  if (!activeStep->acceptsNewPrimitives()) {
+    return false;
+  }
+
   auto ghost = doc->getGhost();
   auto prim = ghost->copy();
 
@@ -174,6 +179,9 @@ bool createPrimitiveFromGhost(Document* doc) {
 
 bool clonePrimitive(Document* doc, uint32_t primitiveIndex) {
   auto world = doc->getWorld();
+  if (!world->getActiveLayer()->getActiveStep()->acceptsNewPrimitives()) {
+    return false;
+  }
 
   auto primitive = world->getPrimitive(primitiveIndex);
 
@@ -183,6 +191,9 @@ bool clonePrimitive(Document* doc, uint32_t primitiveIndex) {
 
 bool cloneRotatedPrimitive(Document* doc, uint32_t primitiveIndex, float angle) {
   auto world = doc->getWorld();
+  if (!world->getActiveLayer()->getActiveStep()->acceptsNewPrimitives()) {
+    return false;
+  }
 
   auto primitive = world->getPrimitive(primitiveIndex);
 

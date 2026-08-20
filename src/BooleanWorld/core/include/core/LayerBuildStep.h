@@ -57,6 +57,13 @@ public:
   // preceding enabled steps produced. A step may only ever add.
   virtual void execute(Layer& layer) const = 0;
 
+  // These deliberately have no base-class answer: every new step type must
+  // say whether the Primitives it produces can be edited directly and whether
+  // it can accept newly authored Primitives (docs/adr/0015).
+  [[nodiscard]] virtual bool permitsDirectPrimitiveEditing() const = 0;
+
+  [[nodiscard]] virtual bool acceptsNewPrimitives() const = 0;
+
   void setEnabled(bool enabled);
 
   [[nodiscard]] bool isEnabled() const;

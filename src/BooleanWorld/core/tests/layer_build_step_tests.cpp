@@ -49,6 +49,54 @@ bw::core::PrimitiveField* makeField(std::vector<float> const& positions) {
   return field.release();
 }
 
+class RefusingStep final : public bw::core::LayerBuildStep {
+  bw::core::Primitive* mPrimitive;
+
+public:
+  explicit RefusingStep(bw::core::Primitive* primitive = nullptr)
+      : mPrimitive(primitive) {
+  }
+
+  ~RefusingStep() override {
+    delete mPrimitive;
+  }
+
+  std::string getType() const override {
+    return "RefusingStep";
+  }
+
+  bw::core::LayerBuildStep* copy(
+      std::map<bw::core::VertexTransformerObject const*, bw::core::VertexTransformerObject*>& primitiveMap) const override {
+    auto* primitive = mPrimitive ? mPrimitive->copy() : nullptr;
+    if (mPrimitive) {
+      primitiveMap[mPrimitive] = primitive;
+    }
+    return new RefusingStep(primitive);
+  }
+
+  void execute(bw::core::Layer& layer) const override {
+    if (mPrimitive) {
+      layer._appendBuiltPrimitive(mPrimitive, this);
+    }
+  }
+
+  bool permitsDirectPrimitiveEditing() const override {
+    return false;
+  }
+
+  bool acceptsNewPrimitives() const override {
+    return false;
+  }
+
+private:
+  void serializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) const override {
+  }
+
+  bool deserializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) override {
+    return true;
+  }
+};
+
 std::vector<float> builtPositions(bw::core::Layer const& layer) {
   std::vector<float> positions;
   for (auto const* primitive : layer.getPrimitives()) {
@@ -325,6 +373,34 @@ void insertRemoveAndMoveStepTrackTheActiveStepsIdentity() {
           "moving the active step did not track its new position");
 }
 
+void buildStepCapabilitiesAreDeliberateAndPrimitiveFieldPermitsBoth() {
+  bw::core::PrimitiveField field;
+  RefusingStep refusing;
+
+  require(field.permitsDirectPrimitiveEditing(),
+          "PrimitiveField did not permit direct Primitive editing");
+  require(field.acceptsNewPrimitives(),
+          "PrimitiveField did not accept new Primitives");
+  require(!refusing.permitsDirectPrimitiveEditing(),
+          "the refusing test step permitted direct Primitive editing");
+  require(!refusing.acceptsNewPrimitives(),
+          "the refusing test step accepted new Primitives");
+}
+
+void aRefusingActiveStepDoesNotAcceptNewPrimitives() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+  auto refusingIndex = layer.addStep(new RefusingStep(makeRectangle(10.0f)));
+  auto* produced = layer.getPrimitive(0);
+
+  require(layer.getOwningStepIndex(produced) == refusingIndex,
+          "getOwningStepIndex did not attribute a derived Primitive to a non-field step");
+
+  layer.setActiveStep(refusingIndex);
+  requireCoreException(
+      [&] { layer.addPrimitive(makeRectangle(20.0f)); },
+      "addPrimitive redirected to another step when the active step refused new Primitives");
+}
+
 void getOwningStepIndexFindsWhichStepProducedAPrimitive() {
   bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
 
@@ -386,6 +462,8 @@ int main() {
     selectingAnotherStepRedirectsWhereAddPrimitiveWrites();
     addPrimitiveIsRejectedWhenTheActiveStepIsDisabled();
     insertRemoveAndMoveStepTrackTheActiveStepsIdentity();
+    buildStepCapabilitiesAreDeliberateAndPrimitiveFieldPermitsBoth();
+    aRefusingActiveStepDoesNotAcceptNewPrimitives();
     getOwningStepIndexFindsWhichStepProducedAPrimitive();
     copyingALayerCopiesItsStepsAndRebuildsFromThem();
     std::cout << "A Layer derives its Primitives by running its enabled LayerBuildSteps in order\n";

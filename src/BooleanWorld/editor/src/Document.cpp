@@ -16,6 +16,7 @@
 #include "core/DynamicWorldDataGenerator.h"
 #include "core/Vertex.h"
 #include "core/MeshPrimitive.h"
+#include "core/LayerBuildStep.h"
 
 #include "common/GameDefines.h"
 
@@ -77,6 +78,15 @@ set<uint32_t> getIgnoredPrimitiveIndices(bw::core::World const& world, Settings 
 
     if (activeLayer && !primitiveVisibleForActiveStep(*activeLayer, primitive, settings)) {
       ignores.insert(i);
+      continue;
+    }
+
+    if (activeLayer) {
+      auto owningStepIndex = activeLayer->getOwningStepIndex(primitive);
+      if (owningStepIndex != ~0u &&
+          !activeLayer->getStep(owningStepIndex)->permitsDirectPrimitiveEditing()) {
+        ignores.insert(i);
+      }
     }
   }
 

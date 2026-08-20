@@ -47,6 +47,10 @@ public:
 
   void execute(Layer& layer) const override;
 
+  [[nodiscard]] bool permitsDirectPrimitiveEditing() const override;
+
+  [[nodiscard]] bool acceptsNewPrimitives() const override;
+
   // Takes ownership of primitive and returns its index in this step's list.
   uint32_t addPrimitive(Primitive* primitive);
 

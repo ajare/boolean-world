@@ -59,6 +59,7 @@ void Layer::swapState(Layer& other) noexcept {
   swap(mSteps, other.mSteps);
   swap(mActiveStepIndex, other.mActiveStepIndex);
   swap(mPrimitives, other.mPrimitives);
+  swap(mPrimitiveSteps, other.mPrimitiveSteps);
   swap(mTriggerLines, other.mTriggerLines);
   swap(mPrimitiveLookupGrid, other.mPrimitiveLookupGrid);
   swap(mTriggerLookupGrid, other.mTriggerLookupGrid);
@@ -322,6 +323,7 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mActiveStepIndex = 0;
 
   mPrimitives.clear();
+  mPrimitiveSteps.clear();
   rebuildAccelerationGrids(workData.accelGridSize);
 
   // Add TriggerLines before the steps run, as the Primitives they produce may
@@ -435,6 +437,7 @@ void Layer::teardown() {
   // The derived Primitives are owned by the steps, so dropping the steps is
   // what destroys them.
   mPrimitives.clear();
+  mPrimitiveSteps.clear();
   deleteSteps();
 
   for (auto triggerLine : mTriggerLines) {
@@ -478,6 +481,7 @@ void Layer::rebuild() {
   }
 
   mPrimitives.clear();
+  mPrimitiveSteps.clear();
 
   for (auto const* step : mSteps) {
     if (step->isEnabled()) {
@@ -617,22 +621,24 @@ bool Layer::isLastEnabledStep(LayerBuildStep const* step) const {
 PrimitiveField* Layer::findOwningField(Primitive const* primitive) const {
   auto index = getOwningStepIndex(primitive);
 
-  return index != ~0u ? static_cast<PrimitiveField*>(mSteps[index]) : nullptr;
+  return index != ~0u ? dynamic_cast<PrimitiveField*>(mSteps[index]) : nullptr;
 }
 
 uint32_t Layer::getOwningStepIndex(Primitive const* primitive) const {
-  auto numSteps = (uint32_t)mSteps.size();
-  for (uint32_t i = 0; i < numSteps; ++i) {
-    auto* field = dynamic_cast<PrimitiveField*>(mSteps[i]);
-    if (field && field->contains(primitive)) {
-      return i;
-    }
+  auto it = find(mPrimitives.begin(), mPrimitives.end(), primitive);
+  if (it == mPrimitives.end()) {
+    return ~0u;
   }
 
-  return ~0u;
+  auto primitiveIndex = (uint32_t)distance(mPrimitives.begin(), it);
+  auto const* owningStep = mPrimitiveSteps[primitiveIndex];
+  auto step = find(mSteps.begin(), mSteps.end(), owningStep);
+  return step != mSteps.end() ? (uint32_t)distance(mSteps.begin(), step) : ~0u;
 }
 
-uint32_t Layer::_appendBuiltPrimitive(Primitive* primitive) {
+uint32_t Layer::_appendBuiltPrimitive(Primitive* primitive, LayerBuildStep const* owningStep) {
+  assert(owningStep && "Layer::_appendBuiltPrimitive requires the producing step");
+
   if (!mPrimitiveLookupGrid) {
     throw CoreException("AccelerationGrid for primitives not created.");
   }
@@ -640,6 +646,7 @@ uint32_t Layer::_appendBuiltPrimitive(Primitive* primitive) {
   auto index = (uint32_t)mPrimitives.size();
 
   mPrimitives.push_back(primitive);
+  mPrimitiveSteps.push_back(owningStep);
 
   primitive->setId(index);
   primitive->setInputs(wp::Vector2::ZERO, 0.0f, &mTriggerLines);
@@ -660,14 +667,18 @@ uint32_t Layer::addPrimitive(Primitive* primitive) {
     throw CoreException("Too many primitives added to the Layer");
   }
 
-  auto* field = dynamic_cast<PrimitiveField*>(getActiveStep());
-
-  if (!field) {
-    throw CoreException("Cannot add a Primitive: the active step is not a PrimitiveField step");
+  auto* activeStep = getActiveStep();
+  if (!activeStep->acceptsNewPrimitives()) {
+    throw CoreException("Cannot add a Primitive: the active step does not accept new Primitives");
   }
 
-  if (!field->isEnabled()) {
-    throw CoreException("Cannot add a Primitive while the active PrimitiveField step is disabled");
+  if (!activeStep->isEnabled()) {
+    throw CoreException("Cannot add a Primitive while the active step is disabled");
+  }
+
+  auto* field = dynamic_cast<PrimitiveField*>(activeStep);
+  if (!field) {
+    throw CoreException("Cannot add a Primitive: the active step does not implement Primitive storage");
   }
 
   field->addPrimitive(primitive);
@@ -675,7 +686,7 @@ uint32_t Layer::addPrimitive(Primitive* primitive) {
   // Nothing enabled runs after this step, so the new Primitive lands at the
   // end of the derived collection and the cache can simply be extended.
   if (isLastEnabledStep(field)) {
-    return _appendBuiltPrimitive(primitive);
+    return _appendBuiltPrimitive(primitive, field);
   }
 
   rebuild();

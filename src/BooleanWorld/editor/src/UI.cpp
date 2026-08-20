@@ -1289,14 +1289,6 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
   // Fill rule
   createFillRule = setFillRuleWidget(doc, ghost, 0);
 
-  // Layer
-  static uint32_t createPrimitiveLayerId = doc->getWorld()->getActiveLayer()->getId();
-
-  widgets::HelpMarker("The Layer to place the Primitive on.");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-  createPrimitiveLayerId = widgets::LayerPicker("Layer##CreatePrimitive", doc->getWorld().get(), createPrimitiveLayerId);
-
   // Priority
   int primitivePriority = (int)ghost->getPriority();
 
@@ -1395,26 +1387,16 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
     regenerateWorldData(doc);
   }
 
-  widgets::HelpMarker("Create primitive.");
+  auto acceptsNewPrimitives = doc->getWorld()->getActiveLayer()->getActiveStep()->acceptsNewPrimitives();
+  widgets::HelpMarker(acceptsNewPrimitives
+                          ? "Create a Primitive in the active Layer's selected step."
+                          : "The selected step does not accept new Primitives.");
   ImGui::SameLine();
+  ImGui::BeginDisabled(!acceptsNewPrimitives);
   if (ImGui::Button("Create##CreatePrimitive")) {
-    auto const targetLayerId = createPrimitiveLayerId;
-    transactUndoableAction(doc, funcText, [targetLayerId](editor::Document* doc) {
-      auto world = doc->getWorld();
-
-      if (!createPrimitiveFromGhost(doc)) {
-        return false;
-      }
-
-      if (targetLayerId != world->getActiveLayer()->getId()) {
-        if (auto* destinationLayer = world->getLayer(targetLayerId)) {
-          world->movePrimitiveToLayer(world->getPrimitive(world->getNumPrimitives() - 1), destinationLayer);
-        }
-      }
-
-      return true;
-    });
+    transactUndoableAction(doc, funcText, createPrimitiveFromGhost);
   }
+  ImGui::EndDisabled();
 }
 
 void renderCreatePrimitiveView(editor::Document* doc, editor::Settings& settings) {
@@ -3429,7 +3411,8 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
   }
 
   if (ImGui::Shortcut(ImGuiKey_C, ImGuiInputFlags_RouteGlobal)) {
-    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() &&
+        doc->getWorld()->getActiveLayer()->getActiveStep()->acceptsNewPrimitives()) {
       transactUndoableAction(doc, format("Create {} Primitive", doc->getGhost()->getType()), createPrimitiveFromGhost);
     }
   }

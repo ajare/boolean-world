@@ -59,8 +59,10 @@ private:
   uint32_t mActiveStepIndex;
 
   // Derived from mSteps, and not owned - every Primitive here belongs to the
-  // step that produced it.
+  // step that produced it. mPrimitiveSteps is kept in lockstep with this
+  // collection so ownership and capabilities do not depend on a step's type.
   std::vector<Primitive*> mPrimitives;
+  std::vector<LayerBuildStep const*> mPrimitiveSteps;
 
   std::vector<WorldTriggerLine*> mTriggerLines;
 
@@ -86,10 +88,9 @@ private:
 
   void deleteSteps();
 
-  // The PrimitiveField step that owns primitive, or null if no step here
-  // does. Only PrimitiveField steps hold Primitives that can be edited in
-  // place; a Primitive produced by any other kind of step is not removable
-  // or replaceable through the authoring facade.
+  // The PrimitiveField step that owns primitive, or null if no such field
+  // does. This locates the storage implementation for removal and
+  // replacement; it is not a capability check (docs/adr/0015).
   [[nodiscard]] PrimitiveField* findOwningField(Primitive const* primitive) const;
 
   // True when no enabled step follows step, so what step contributes lands
@@ -188,12 +189,11 @@ public:
   [[nodiscard]] LayerBuildStep* getActiveStep() const;
 
   // Sets which step addPrimitive writes into. Rejected if index is out of
-  // bounds; unlike World::setActiveLayer, any step type is accepted here -
-  // addPrimitive itself rejects a non-PrimitiveField active step.
+  // bounds; unlike World::setActiveLayer, any step type is accepted here.
   void setActiveStep(uint32_t index);
 
-  // The index of the PrimitiveField step that owns primitive, or ~0u if no
-  // step here does (see findOwningField).
+  // The index of the build step that produced primitive, or ~0u if no step
+  // here did. This works for every step type.
   [[nodiscard]] uint32_t getOwningStepIndex(Primitive const* primitive) const;
 
   // Takes ownership of step and rebuilds. Index 0 is reserved for the
@@ -216,12 +216,14 @@ public:
 
   // Appends a Primitive a step just produced to the derived collection.
   // Called by LayerBuildStep::execute during a rebuild; the Layer does not
-  // take ownership.
-  uint32_t _appendBuiltPrimitive(Primitive* primitive);
+  // take ownership. owningStep records the step's capabilities alongside its
+  // derived Primitive.
+  uint32_t _appendBuiltPrimitive(Primitive* primitive, LayerBuildStep const* owningStep);
 
-  // Adds primitive to this Layer's PrimitiveField step and rebuilds, taking
-  // ownership of it. Rejected while that step is disabled - the Primitive
-  // would be authored into a recipe that produces nothing.
+  // Adds primitive to this Layer's active step and rebuilds, taking
+  // ownership of it. Rejected when that step does not accept new Primitives
+  // or is disabled - the Primitive would be authored into a recipe that
+  // produces nothing.
   uint32_t addPrimitive(Primitive* primitive);
 
   void removePrimitive(Primitive* primitive, bool failIfNotFound = true);
