@@ -722,8 +722,15 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
   ImGui::SetNextItemWidth(128);
 
   if (ImGui::SliderAngle("PlayerStartAngle##World", &playerStartAngle, 0, 360)) {
-    transactUndoableAction(doc, "Set Player start angle",
-                           bind(setPlayerStartAngle, placeholders::_1, wp::MathsUtils::degrees(playerStartAngle)));
+    setPlayerStartAngle(doc, wp::MathsUtils::degrees(playerStartAngle));
+  }
+
+  if (ImGui::IsItemActivated()) {
+    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+  } else if (ImGui::IsItemDeactivatedAfterEdit()) {
+    commitUndoableAction(doc, format("Set Player start angle to {}", world->getPlayerStartAngle()));
+  } else if (ImGui::IsItemDeactivated()) {
+    abandonUndoableAction(doc);
   }
 
   // Player start position
@@ -2261,8 +2268,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   ImGui::SetNextItemWidth(128);
 
   if (ImGui::SliderInt("Priority##EditPrimitive", &primitivePriority, BW_PRIORITY_MIN_VALUE, BW_PRIORITY_MAX_VALUE)) {
-    transactUndoableAction(doc, "Set Primitive Priority",
-                           bind(setPrimitivePriority, placeholders::_1, primitive, (uint8_t)primitivePriority));
+    primitive->setPriority((uint8_t)primitivePriority);
   }
 
   if (ImGui::IsItemActivated()) {
@@ -2280,8 +2286,15 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   ImGui::SetNextItemWidth(128);
 
   if (ImGui::SliderFloat("Size##EditPrimitive", &primitiveSize, ED_MIN_PRIMITIVE_SIZE, ED_MAX_PRIMITIVE_SIZE)) {
-    transactUndoableAction(doc, "Set Primitive Size",
-                           bind(setPrimitiveSize, placeholders::_1, primitive, primitiveSize));
+    primitive->setSize(primitiveSize, primitiveSize);
+  }
+
+  if (ImGui::IsItemActivated()) {
+    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+  } else if (ImGui::IsItemDeactivatedAfterEdit()) {
+    commitUndoableAction(doc, format("Set Primitive Size to {}", primitive->getSize().x));
+  } else if (ImGui::IsItemDeactivated()) {
+    abandonUndoableAction(doc);
   }
 
   wp::Vector2 const& primitivePosition = primitive->getPosition();
