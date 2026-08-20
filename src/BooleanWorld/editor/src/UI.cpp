@@ -2814,7 +2814,7 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
 
       ImGui::PopButtonRepeat();
 
-      if (!listChanged && ImGui::Button("Remove")) {
+      if (!listChanged && ImGui::Button(ICON_FA_TRASH)) {
         transactUndoableAction(doc, format("Remove Layer Step {}", i), bind(removeLayerBuildStep, placeholders::_1, layer, i));
         listChanged = true;
       }
