@@ -2330,6 +2330,9 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
 
   if (ImGui::SliderFloat("Size##EditPrimitive", &primitiveSize, ED_MIN_PRIMITIVE_SIZE, ED_MAX_PRIMITIVE_SIZE)) {
     primitive->setSize(primitiveSize, primitiveSize);
+
+    // Update vertices for visual purposes
+    primitive->updateVertexPositions();
   }
 
   if (ImGui::IsItemActivated()) {
