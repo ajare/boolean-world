@@ -146,10 +146,15 @@ bool createPrimitiveFromGhost(Document* doc) {
   // Clear the editor-only ghost flag.
   prim->setFlags(prim->getFlags() & ~BW_PRIMITIVE_GHOST_FLAG);
 
+  // copy() carries mWorld over from ghost (already added to world), so prim
+  // must be added to a Layer before anything on it can trigger
+  // notifyWorldChanged - otherwise World::primitiveChanged's scan for its
+  // owning Layer finds none and throws.
+  world->addPrimitive(prim);
+
   // Set material defaults
   setPrimitiveDefaultMaterials(prim);
 
-  world->addPrimitive(prim);
   return true;
 }
 
