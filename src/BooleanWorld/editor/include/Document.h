@@ -228,6 +228,11 @@ public:
   [[nodiscard]] uint32_t previewMeshSubObjectDeletionCount(
       Settings::MeshSubMode subMode, std::set<uint32_t> const& indices) const;
 
+  // Splits every given edge at its (unsnapped) midpoint, leaving both
+  // resulting half-edges selected so repeated splits subdivide further.
+  // Returns the number of edges split.
+  uint32_t splitMeshEdges(std::set<uint32_t> const& edgeIndices);
+
   bool indexInSelection(uint32_t index) const;
 
   void setSelectedWorldVertexIndex(uint32_t index);

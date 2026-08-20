@@ -13,6 +13,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <willpower/common/MathsUtils.h>
+#include <willpower/geometry/MeshOperations.h>
 #include <willpower/geometry/MeshValidator.h>
 
 #include "core/BinarySerializer.h"
@@ -1016,6 +1017,32 @@ uint32_t Document::deleteMeshSubObjects(
   }
 
   return removed;
+}
+
+uint32_t Document::splitMeshEdges(set<uint32_t> const& edgeIndices) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u || edgeIndices.empty()) {
+    return 0;
+  }
+
+  // Splitting only ever appends a new vertex and a new edge - it never
+  // tombstones anything - so every original index in edgeIndices stays
+  // valid for the rest of this loop, whatever order they're processed in.
+  set<uint32_t> resultingEdges;
+  for (auto edgeIndex : edgeIndices) {
+    wp::geometry::SplitEdgeResult result;
+    wp::geometry::MeshOperations::splitEdge(mActiveMesh.get(), edgeIndex, 0.5f, &result);
+    resultingEdges.insert(result.newEdgeIndices.begin(), result.newEdgeIndices.end());
+  }
+
+  clearMeshSelections();
+  mSelectedMeshEdgeIndices = resultingEdges;
+
+  auto* primitive =
+      static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(mActiveMeshPrimitiveIndex));
+  primitive->updateFromGeometryProxy(*mActiveMesh);
+  primitive->updateVertexPositions();
+
+  return static_cast<uint32_t>(edgeIndices.size());
 }
 
 bool Document::recentreActiveMesh() {

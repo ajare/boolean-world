@@ -3401,6 +3401,20 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
+  if (ImGui::Shortcut(ImGuiKey_S | ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal)) {
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+      if (settings.mode == Settings::Mode::Mesh &&
+          settings.meshSubMode == Settings::MeshSubMode::Edge && doc->getActiveMesh()) {
+        auto const& indices = doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);
+        if (!indices.empty()) {
+          transactUndoableAction(
+              doc, format("Split {} Mesh Edge(s)", indices.size()),
+              bind(splitMeshEdges, placeholders::_1, indices));
+        }
+      }
+    }
+  }
+
   if (ImGui::Shortcut(ImGuiKey_LeftBracket | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (doc->hasSelection() && !doc->getSelectedPrimitiveIndices().empty()) {

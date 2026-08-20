@@ -138,6 +138,10 @@ bool deleteMeshSubObjects(
     Document* doc, Settings::MeshSubMode subMode,
     std::set<uint32_t> const& indices);
 
+// Splits every given edge of the active mesh at its midpoint
+// (Document::splitMeshEdges). Returns true if any edge was split.
+bool splitMeshEdges(Document* doc, std::set<uint32_t> const& edgeIndices);
+
 // One-shot vertex placement for the Mesh panel's numeric coordinate field,
 // as opposed to the frame-by-frame drag EditorInteraction drives directly
 // through Document::updateMeshDrag. Refused (returning false, leaving the

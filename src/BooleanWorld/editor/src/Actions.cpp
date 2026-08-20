@@ -222,6 +222,10 @@ bool deleteMeshSubObjects(
   return doc->deleteMeshSubObjects(subMode, indices) > 0;
 }
 
+bool splitMeshEdges(Document* doc, set<uint32_t> const& edgeIndices) {
+  return doc->splitMeshEdges(edgeIndices) > 0;
+}
+
 bool recentreActiveMesh(Document* doc) {
   return doc->recentreActiveMesh();
 }

@@ -901,6 +901,124 @@ void meshSubObjectDeleteIsOneUndoEntry() {
           "undo did not restore the deleted vertex");
 }
 
+void edgeSplitInsertsUnsnappedMidpointAndSelectsBothHalves() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addPolygonMesh(
+      document, {0.0f, 0.0f},
+      {{0.0f, 0.0f}, {7.0f, 3.0f}, {7.0f, 10.0f}, {0.0f, 10.0f}});
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+  auto ringIndex = mesh->getFirstPolygonIndex();
+  require(mesh->getPolygon(ringIndex).getNumEdges() == 4, "the test mesh did not start with four edges");
+
+  // The first edge, {0,0}-{7,3}, has a midpoint off any reasonable grid.
+  auto edgeToSplit = mesh->getFirstEdgeIndex();
+  auto const& edge = mesh->getEdge(edgeToSplit);
+  auto expectedMidpoint =
+      (mesh->getVertex(edge.getFirstVertex()).getPosition() +
+       mesh->getVertex(edge.getSecondVertex()).getPosition()) /
+      2.0f;
+
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Edge, {edgeToSplit});
+  auto split = document.splitMeshEdges({edgeToSplit});
+  require(split == 1, "splitting one selected edge did not report one split");
+  require(mesh->getPolygon(ringIndex).getNumEdges() == 5,
+          "splitting an edge did not add exactly one edge to the Ring");
+  require(mesh->getPolygon(ringIndex).getVertexIndexSet().size() == 5,
+          "splitting an edge did not add exactly one vertex to the Ring");
+
+  bool foundMidpointVertex = false;
+  for (auto vertexIndex : mesh->getPolygon(ringIndex).getVertexIndexSet()) {
+    if (mesh->getVertex(vertexIndex).getPosition().distanceToSq(expectedMidpoint) < 0.0001f) {
+      foundMidpointVertex = true;
+      break;
+    }
+  }
+  require(foundMidpointVertex, "the new vertex was not placed exactly at the edge's unsnapped midpoint");
+
+  auto const& selected = document.getSelectedMeshEdgeIndices();
+  require(selected.size() == 2, "splitting one edge did not leave exactly two edges selected");
+  for (auto selectedEdge : selected) {
+    auto const& e = mesh->getEdge(selectedEdge);
+    auto v0 = mesh->getVertex(e.getFirstVertex()).getPosition();
+    auto v1 = mesh->getVertex(e.getSecondVertex()).getPosition();
+    require(v0.distanceToSq(expectedMidpoint) < 0.0001f || v1.distanceToSq(expectedMidpoint) < 0.0001f,
+            "a selected edge after the split does not touch the new midpoint vertex");
+  }
+}
+
+void repeatedEdgeSplitSubdividesIntoFourSegments() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+  auto ringIndex = mesh->getFirstPolygonIndex();
+  require(mesh->getPolygon(ringIndex).getNumEdges() == 4, "the test mesh did not start with four edges");
+
+  auto firstEdge = mesh->getFirstEdgeIndex();
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Edge, {firstEdge});
+
+  document.splitMeshEdges(document.getSelectedMeshEdgeIndices());
+  require(mesh->getPolygon(ringIndex).getNumEdges() == 5,
+          "the first split did not turn one edge of the Ring into two");
+  require(document.getSelectedMeshEdgeIndices().size() == 2,
+          "the first split did not leave both halves selected");
+
+  document.splitMeshEdges(document.getSelectedMeshEdgeIndices());
+  // The other three original edges of the square are untouched throughout;
+  // only the one repeatedly-split edge's region grows from two segments to
+  // four, so the Ring's total edge count is the other three plus those four.
+  require(mesh->getPolygon(ringIndex).getNumEdges() == 7,
+          "resplitting both halves did not turn two segments into four");
+  require(document.getSelectedMeshEdgeIndices().size() == 4,
+          "resplitting both halves did not leave all four quarters selected");
+}
+
+void edgeSplitIsOneUndoEntry() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshSubMode = editor::Settings::MeshSubMode::Edge;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+  auto ringIndex = mesh->getFirstPolygonIndex();
+  auto edgeToSplit = mesh->getFirstEdgeIndex();
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Edge, {edgeToSplit});
+  document.setModified(false);
+  auto const undoLevelsBefore = editor::getUndoLevels();
+
+  editor::transactUndoableAction(
+      &document, "Split 1 Mesh Edge(s)",
+      std::bind(editor::splitMeshEdges, std::placeholders::_1, std::set<uint32_t>{edgeToSplit}));
+
+  require(editor::getUndoLevels() == undoLevelsBefore + 1,
+          "a mesh edge split produced more than one undo entry");
+  require(document.isModified(), "the split did not mark the Document modified");
+
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto committedProxy = primitive->createGeometryProxy();
+  require(committedProxy->getPolygon(committedProxy->getFirstPolygonIndex()).getNumEdges() == 5,
+          "the committed MeshPrimitive geometry did not reflect the split");
+
+  editor::undo(&document);
+  require(editor::getUndoLevels() == undoLevelsBefore,
+          "undo after a mesh edge split did not remove exactly one entry");
+
+  auto* undonePrimitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto undoneProxy = undonePrimitive->createGeometryProxy();
+  require(undoneProxy->getPolygon(undoneProxy->getFirstPolygonIndex()).getNumEdges() == 4,
+          "undo did not restore the Ring to its unsplit edge count");
+}
+
 void rubberBandSelectionSupportsPlainControlAndShiftPolicies() {
   editor::Document document;
   editor::Settings settings;
@@ -975,6 +1093,9 @@ int main() {
     ringDeletionOfTheLastRingDeletesTheMeshPrimitive();
     multiVertexDeleteProcessesAscendingAndReportsActualCount();
     meshSubObjectDeleteIsOneUndoEntry();
+    edgeSplitInsertsUnsnappedMidpointAndSelectsBothHalves();
+    repeatedEdgeSplitSubdividesIntoFourSegments();
+    edgeSplitIsOneUndoEntry();
     std::cout << "Editor selection interactions passed\n";
     return 0;
   } catch (std::exception const& error) {
