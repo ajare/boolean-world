@@ -21,6 +21,8 @@ removed the dependency entirely. Geometry terms are defined in
 | [0012](0012-world-renders-through-an-offscreen-target.md) | The world renders through an offscreen target, always composited | Accepted |
 | [0013](0013-layer-is-a-first-class-owning-collection.md) | Layer is a first-class collection that owns its Primitives and WorldTriggerLines | Accepted |
 | [0014](0014-primitives-are-derived-from-layerbuildsteps.md) | A Layer's Primitives are derived from its LayerBuildSteps, never stored independently | Accepted |
+| [0015](0015-layerbuildsteps-declare-editing-capabilities.md) | LayerBuildSteps declare whether their Primitives may be directly edited or added to | Accepted |
+| [0016](0016-meshprimitive-editing-goes-through-a-geometry-proxy.md) | MeshPrimitive editing goes through a `wp::geometry::Mesh` proxy | Accepted |
 
 ## World geometry rewrite scope
 
