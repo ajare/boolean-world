@@ -701,18 +701,11 @@ wp::Vector2 worldToMinimap(wp::Vector2 const& worldPos, wp::BoundingBox const& w
 }
 
 wp::BoundingBox getMiniMapBounds(editor::Document* doc) {
-  auto windowSize = gWorldViewSize;
-
   auto world = doc->getWorld();
   auto worldBounds = world->getExtents();
   auto worldSize = worldBounds.getSize() / MINIMAP_SCALE;
 
-  float x0 = windowSize.x - worldSize.x;
-  float y0 = windowSize.y - MINIMAP_Y_OFFSET;
-  float x1 = x0 + worldSize.x;
-  float y1 = y0 - worldSize.y;
-
-  return wp::BoundingBox(x0, y0, x1 - x0, y1 - y0);
+  return wp::BoundingBox(MINIMAP_PADDING, MINIMAP_PADDING, worldSize.x, worldSize.y);
 }
 
 void renderMiniMap(editor::Document* doc, editor::Settings const& settings, bw::core::WorldData const* worldData, double globalTime) {
