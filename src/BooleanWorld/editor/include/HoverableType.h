@@ -6,7 +6,8 @@ enum struct HoverableType {
   None,
   Primitive,
   TriggerLine,
-  WorldVertex
+  WorldVertex,
+  MeshSubObject
 };
 
 }  // namespace editor

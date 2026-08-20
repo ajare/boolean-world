@@ -489,22 +489,55 @@ void renderWorld(
                   settings.backgroundColour);
             }
           }
+          auto const& selectedVertices = doc->getSelectedMeshVertexIndices();
+          auto const& selectedEdges = doc->getSelectedMeshEdgeIndices();
+          auto const& selectedRings = doc->getSelectedMeshRingIndices();
+          auto hovered = [&](uint32_t index) {
+            return gHoveredType == editor::HoverableType::MeshSubObject &&
+                   find(gHoveredIndices.begin(), gHoveredIndices.end(), index) !=
+                       gHoveredIndices.end();
+          };
+          for (auto polygonIndex = mesh->getFirstPolygonIndex();
+               !mesh->polygonIndexIterationFinished(polygonIndex);
+               polygonIndex = mesh->getNextPolygonIndex(polygonIndex)) {
+            vector<ImVec2> points;
+            for (auto vertexIndex : mesh->getPolygon(polygonIndex).getVertexIndexList()) {
+              points.push_back(worldToScreen(mesh->getVertex(vertexIndex).getPosition()));
+            }
+            auto colour = selectedRings.contains(polygonIndex)
+                              ? settings.meshSelectedColour
+                              : (settings.meshSubMode == editor::Settings::MeshSubMode::Polygon && hovered(polygonIndex)
+                                     ? settings.meshHoveredColour
+                                     : settings.meshEdgeColour);
+            drawList->AddPolyline(points.data(), static_cast<int>(points.size()),
+                                  colour, ImDrawFlags_Closed,
+                                  selectedRings.contains(polygonIndex) ? 3.5f : 2.5f);
+          }
           for (auto edgeIndex = mesh->getFirstEdgeIndex();
                !mesh->edgeIndexIterationFinished(edgeIndex);
                edgeIndex = mesh->getNextEdgeIndex(edgeIndex)) {
             auto const& edge = mesh->getEdge(edgeIndex);
             auto const& first = mesh->getVertex(edge.getFirstVertex()).getPosition();
             auto const& second = mesh->getVertex(edge.getSecondVertex()).getPosition();
-            drawList->AddLine(
-                worldToScreen(first), worldToScreen(second),
-                settings.selectedPrimitiveColour, 2.5f);
+            auto colour = selectedEdges.contains(edgeIndex)
+                              ? settings.meshSelectedColour
+                              : (settings.meshSubMode == editor::Settings::MeshSubMode::Edge && hovered(edgeIndex)
+                                     ? settings.meshHoveredColour
+                                     : settings.meshEdgeColour);
+            drawList->AddLine(worldToScreen(first), worldToScreen(second), colour,
+                              selectedEdges.contains(edgeIndex) ? 3.5f : 2.5f);
           }
           for (auto vertexIndex = mesh->getFirstVertexIndex();
                !mesh->vertexIndexIterationFinished(vertexIndex);
                vertexIndex = mesh->getNextVertexIndex(vertexIndex)) {
+            auto colour = selectedVertices.contains(vertexIndex)
+                              ? settings.meshSelectedColour
+                              : (settings.meshSubMode == editor::Settings::MeshSubMode::Vertex && hovered(vertexIndex)
+                                     ? settings.meshHoveredColour
+                                     : settings.meshVertexColour);
             drawList->AddCircleFilled(
                 worldToScreen(mesh->getVertex(vertexIndex).getPosition()),
-                settings.vertexRadius, settings.vertexColour, 16);
+                settings.meshVertexPickRadius, colour, 16);
           }
         }
       }

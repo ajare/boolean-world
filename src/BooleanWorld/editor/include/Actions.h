@@ -47,6 +47,8 @@ class EditorInteraction {
   int mMovingSelectedTriggerLinePart{-1};
 
   void applyPrimitiveClick(Document* doc, bool control, bool shift);
+  void applyMeshSubObjectClick(
+      Document* doc, Settings::MeshSubMode subMode, bool control, bool shift);
 
 public:
   void updateSelection(
@@ -115,6 +117,17 @@ bool addPrimitivesToSelection(Document* doc, std::set<uint32_t> const& primitive
 bool togglePrimitivesSelected(Document* doc, std::set<uint32_t> const& primitiveIndices);
 
 bool clearSelections(Document* doc);
+
+bool selectMeshSubObjects(
+    Document* doc, Settings::MeshSubMode subMode,
+    std::set<uint32_t> const& indices);
+bool addMeshSubObjectsToSelection(
+    Document* doc, Settings::MeshSubMode subMode,
+    std::set<uint32_t> const& indices);
+bool toggleMeshSubObjectsSelected(
+    Document* doc, Settings::MeshSubMode subMode,
+    std::set<uint32_t> const& indices);
+bool selectAllMeshSubObjects(Document* doc, Settings::MeshSubMode subMode);
 
 bool createPrimitiveFromGhost(Document* doc);
 

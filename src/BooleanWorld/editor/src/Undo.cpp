@@ -24,6 +24,10 @@ struct UndoData {
   set<uint32_t> selection;
   uint32_t selectedWorldVertex{~0u};
   uint32_t selectedTriggerLine{~0u};
+  uint32_t activeMeshPrimitive{~0u};
+  set<uint32_t> selectedMeshVertices;
+  set<uint32_t> selectedMeshEdges;
+  set<uint32_t> selectedMeshRings;
   bool docModified{false};
 };
 
@@ -46,18 +50,26 @@ UndoData captureUndoData(Document* doc) {
       doc->getSelectedPrimitiveIndices(),
       doc->getSelectedWorldVertexIndex(),
       doc->getSelectedTriggerLineIndex(),
+      doc->getActiveMeshPrimitiveIndex(),
+      doc->getSelectedMeshVertexIndices(),
+      doc->getSelectedMeshEdgeIndices(),
+      doc->getSelectedMeshRingIndices(),
       doc->isModified()};
 }
 
 void restoreUndoData(Document* doc, UndoData const& data) {
   doc->restoreWorldSnapshot(data.world);
+  doc->restoreMeshSelection(
+      data.activeMeshPrimitive, data.selectedMeshVertices,
+      data.selectedMeshEdges, data.selectedMeshRings);
   if (!data.selection.empty()) {
     doc->setSelectedPrimitiveIndices(data.selection);
   } else if (data.selectedTriggerLine != ~0u) {
     doc->setSelectedTriggerLineIndex(data.selectedTriggerLine);
   } else if (data.selectedWorldVertex != ~0u) {
     doc->setSelectedWorldVertexIndex(data.selectedWorldVertex);
-  } else {
+  } else if (data.selectedMeshVertices.empty() && data.selectedMeshEdges.empty() &&
+             data.selectedMeshRings.empty()) {
     doc->clearSelections();
   }
   doc->setModified(data.docModified);

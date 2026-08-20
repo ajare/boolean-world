@@ -46,6 +46,38 @@ void EditorInteraction::applyPrimitiveClick(
   }
 }
 
+void EditorInteraction::applyMeshSubObjectClick(
+    Document* doc, Settings::MeshSubMode subMode, bool control, bool shift) {
+  if (mHover.type != HoverableType::MeshSubObject || mHover.indices.empty()) {
+    return;
+  }
+  if (mCycledPrimitiveIndices != mHover.indices) {
+    mCycledPrimitiveIndices = mHover.indices;
+    mCycledPrimitiveIndex = -1;
+  }
+  mCycledPrimitiveIndex =
+      (mCycledPrimitiveIndex + 1) % static_cast<int>(mHover.indices.size());
+  auto index = mHover.indices[mCycledPrimitiveIndex];
+  auto indices = set<uint32_t>{index};
+  auto const& selection = doc->getSelectedMeshSubObjectIndices(subMode);
+
+  if (control) {
+    transactUndoableAction(
+        doc, "Toggle Mesh Sub-object " + to_string(index),
+        bind(toggleMeshSubObjectsSelected, placeholders::_1, subMode, indices));
+  } else if (shift) {
+    if (!selection.contains(index)) {
+      transactUndoableAction(
+          doc, "Add Mesh Sub-object " + to_string(index) + " To Selection",
+          bind(addMeshSubObjectsToSelection, placeholders::_1, subMode, indices));
+    }
+  } else if (selection != indices) {
+    transactUndoableAction(
+        doc, "Select Mesh Sub-object " + to_string(index),
+        bind(selectMeshSubObjects, placeholders::_1, subMode, indices));
+  }
+}
+
 void EditorInteraction::updateSelection(
     Document* doc,
     bw::core::WorldData const* worldData,
@@ -61,10 +93,70 @@ void EditorInteraction::updateSelection(
                         : ~0u;
     doc->setMeshHoverExplanation(
         input.cursorInWorldView ? doc->meshIneligibilityReason(rawIndex) : "");
-    if (input.leftClicked && mHover.type == HoverableType::Primitive &&
-        !mHover.indices.empty() && doc->activateMesh(mHover.indices.front())) {
-      settings.activeMeshPrimitiveIndex = mHover.indices.front();
-      doc->clearSelections();
+
+    if (input.leftClicked) {
+      if (mHover.type == HoverableType::Primitive && !mHover.indices.empty() &&
+          doc->activateMesh(mHover.indices.front())) {
+        settings.activeMeshPrimitiveIndex = mHover.indices.front();
+        auto hits = doc->getHoveredMeshSubObjectIndices(input.worldPosition, settings);
+        mHover = hits.empty() ? DocumentHover{}
+                              : DocumentHover{HoverableType::MeshSubObject, move(hits)};
+      }
+
+      if (mHover.type == HoverableType::MeshSubObject) {
+        applyMeshSubObjectClick(doc, settings.meshSubMode, input.control, input.shift);
+      } else if (!input.cursorInMiniMap) {
+        mBoxSelectPending = true;
+        mBoxSelectDragging = false;
+        mBoxSelectStartScreen = input.screenPosition;
+      }
+    }
+
+    constexpr float meshBoxSelectDragThresholdSq = 4.0f;
+    if (mBoxSelectPending && input.leftDown && !input.leftClicked) {
+      auto delta = input.screenPosition - mBoxSelectStartScreen;
+      if (!mBoxSelectDragging && delta.lengthSq() > meshBoxSelectDragThresholdSq) {
+        mBoxSelectDragging = true;
+      }
+    }
+    if (!input.leftReleased) {
+      return;
+    }
+    if (!mBoxSelectPending) {
+      return;
+    }
+
+    mBoxSelectPending = false;
+    if (mBoxSelectDragging) {
+      mBoxSelectDragging = false;
+      wp::Vector2 minExtent{min(input.boxSelectStartWorld.x, input.worldPosition.x),
+                            min(input.boxSelectStartWorld.y, input.worldPosition.y)};
+      wp::Vector2 maxExtent{max(input.boxSelectStartWorld.x, input.worldPosition.x),
+                            max(input.boxSelectStartWorld.y, input.worldPosition.y)};
+      auto indices = doc->getMeshSubObjectIndicesInBounds(
+          wp::BoundingBox(minExtent, maxExtent - minExtent), settings);
+      if (indices.empty()) {
+        if (!input.control && !input.shift) {
+          transactUndoableAction(doc, "Clear selection", clearSelections);
+        }
+      } else if (input.control) {
+        transactUndoableAction(
+            doc, "Toggle Mesh Sub-objects In Selection Box",
+            bind(toggleMeshSubObjectsSelected, placeholders::_1,
+                 settings.meshSubMode, indices));
+      } else if (input.shift) {
+        transactUndoableAction(
+            doc, "Add Mesh Sub-objects In Selection Box",
+            bind(addMeshSubObjectsToSelection, placeholders::_1,
+                 settings.meshSubMode, indices));
+      } else {
+        transactUndoableAction(
+            doc, "Select Mesh Sub-objects In Selection Box",
+            bind(selectMeshSubObjects, placeholders::_1,
+                 settings.meshSubMode, indices));
+      }
+    } else if (!input.control && !input.shift) {
+      transactUndoableAction(doc, "Clear selection", clearSelections);
     }
     return;
   }
@@ -163,8 +255,8 @@ void EditorInteraction::updateSelection(
 
 void EditorInteraction::updateDrag(
     Document* doc, Settings const& settings, PointerInput const& input) {
-  // Mesh mode is a shell in this ticket: it may select a MeshPrimitive, but
-  // no viewport drag is an authored edit yet.
+  // Sub-object transforms are implemented by the follow-up editing ticket;
+  // selection gestures in Mesh mode never move whole Primitives.
   if (settings.mode == Settings::Mode::Mesh) {
     return;
   }

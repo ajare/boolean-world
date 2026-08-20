@@ -57,6 +57,23 @@ uint32_t addMesh(editor::Document& document, wp::Vector2 const& position) {
   return mesh->getId();
 }
 
+uint32_t addMeshWithHole(editor::Document& document) {
+  auto* mesh = new bw::core::MeshPrimitive(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::EvenOdd,
+      {
+          {
+              {{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}},
+              {{{-0.5f, -0.5f}}, {{-0.5f, 0.5f}}, {{0.5f, 0.5f}}, {{0.5f, -0.5f}}},
+          },
+      });
+  mesh->setSize(20.0f, 20.0f);
+  mesh->setPosition({0.0f, 0.0f});
+  mesh->updateVertexPositions();
+  document.getWorld()->addPrimitive(mesh);
+  return mesh->getId();
+}
+
 editor::PointerInput pointerAt(wp::Vector2 const& position) {
   editor::PointerInput input;
   input.screenPosition = position;
@@ -189,6 +206,178 @@ void meshClicksBuildAndSwitchTheActiveProxy() {
           "clicking another MeshPrimitive did not switch the active proxy");
 }
 
+void meshSubObjectClicksSupportModifiersAndRingCycling() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshVertexPickRadius = 0.25f;
+  document.newDoc();
+  auto meshIndex = addMeshWithHole(document);
+  require(document.activateMesh(meshIndex), "could not activate test mesh");
+  editor::EditorInteraction interaction;
+  auto const* mesh = document.getActiveMesh();
+  auto first = mesh->getFirstVertexIndex();
+  auto second = mesh->getNextVertexIndex(first);
+
+  auto click = pointerAt(mesh->getVertex(first).getPosition());
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  require(document.getSelectedMeshVertexIndices() == std::set<uint32_t>{first},
+          "plain mesh click did not replace the vertex selection");
+
+  click = pointerAt(mesh->getVertex(second).getPosition());
+  click.leftClicked = true;
+  click.shift = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  require(document.getSelectedMeshVertexIndices() ==
+              std::set<uint32_t>({first, second}),
+          "Shift-click did not add a mesh vertex");
+
+  click.shift = false;
+  click.control = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  require(document.getSelectedMeshVertexIndices() == std::set<uint32_t>{first},
+          "Ctrl-click did not toggle a mesh vertex");
+
+  editor::setMeshSubMode(
+      &document, settings, editor::Settings::MeshSubMode::Edge);
+  settings.meshEdgeSelectionDistance = 0.25f;
+  auto edge = mesh->getFirstEdgeIndex();
+  click = pointerAt(mesh->getEdge(edge).getCentre());
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  require(document.getSelectedMeshEdgeIndices() == std::set<uint32_t>{edge},
+          "plain mesh click did not select an edge in Edge sub-mode");
+
+  editor::setMeshSubMode(
+      &document, settings, editor::Settings::MeshSubMode::Polygon);
+  wp::Vector2 meshMin, meshMax;
+  mesh->getExtents(meshMin, meshMax);
+  auto meshCentre = (meshMin + meshMax) / 2.0f;
+  click = pointerAt(meshCentre);
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  auto firstRing = *document.getSelectedMeshRingIndices().begin();
+  interaction.updateSelection(&document, nullptr, settings, click);
+  auto secondRing = *document.getSelectedMeshRingIndices().begin();
+  require(firstRing != secondRing,
+          "repeated clicks did not cycle through stacked Rings");
+}
+
+void meshRubberBandUsesContainmentAndModifierPolicies() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  settings.mode = editor::Settings::Mode::Mesh;
+  document.newDoc();
+  auto meshIndex = addMeshWithHole(document);
+  document.activateMesh(meshIndex);
+
+  wp::Vector2 meshMin, meshMax;
+  document.getActiveMesh()->getExtents(meshMin, meshMax);
+  auto meshCentre = (meshMin + meshMax) / 2.0f;
+
+  settings.meshSubMode = editor::Settings::MeshSubMode::Edge;
+  auto edges = document.getMeshSubObjectIndicesInBounds(
+      wp::BoundingBox({meshMin.x - 1.0f, meshMin.y - 1.0f},
+                      {meshMax.x - meshMin.x + 2.0f, 1.5f}),
+      settings);
+  require(edges.size() == 1,
+          "edge rubber band did not require both endpoints to be contained");
+
+  settings.meshSubMode = editor::Settings::MeshSubMode::Polygon;
+  auto partialRings = document.getMeshSubObjectIndicesInBounds(
+      wp::BoundingBox({meshMin.x - 1.0f, meshMin.y - 1.0f},
+                      {meshMax.x - meshMin.x + 2.0f,
+                       meshCentre.y - meshMin.y + 4.0f}),
+      settings);
+  require(partialRings.empty(),
+          "Ring rubber band selected a Ring with vertices outside");
+  auto containedRings = document.getMeshSubObjectIndicesInBounds(
+      wp::BoundingBox(meshCentre - wp::Vector2{6.0f, 6.0f}, {12.0f, 12.0f}), settings);
+  require(containedRings.size() == 1,
+          "Ring rubber band did not select the wholly contained hole Ring");
+
+  settings.meshSubMode = editor::Settings::MeshSubMode::Vertex;
+  editor::EditorInteraction interaction;
+  auto begin = pointerAt(meshMin - wp::Vector2{5.0f, 5.0f});
+  begin.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, begin);
+  auto drag = pointerAt(meshCentre);
+  drag.leftDown = true;
+  interaction.updateSelection(&document, nullptr, settings, drag);
+  auto release = pointerAt(meshCentre);
+  release.boxSelectStartWorld = meshMin - wp::Vector2{5.0f, 5.0f};
+  release.leftReleased = true;
+  interaction.updateSelection(&document, nullptr, settings, release);
+  auto plainSelection = document.getSelectedMeshVertexIndices();
+  require(!plainSelection.empty(), "plain mesh rubber band selected no vertices");
+
+  begin.control = drag.control = release.control = true;
+  interaction.updateSelection(&document, nullptr, settings, begin);
+  interaction.updateSelection(&document, nullptr, settings, drag);
+  interaction.updateSelection(&document, nullptr, settings, release);
+  require(document.getSelectedMeshVertexIndices().empty(),
+          "Ctrl mesh rubber band did not toggle contained vertices");
+
+  auto allVertices = document.getSelectableMeshSubObjectIndices(settings.meshSubMode);
+  document.setSelectedMeshSubObjectIndices(
+      settings.meshSubMode, {*allVertices.rbegin()});
+  begin.control = drag.control = release.control = false;
+  begin.shift = drag.shift = release.shift = true;
+  interaction.updateSelection(&document, nullptr, settings, begin);
+  interaction.updateSelection(&document, nullptr, settings, drag);
+  interaction.updateSelection(&document, nullptr, settings, release);
+  require(document.getSelectedMeshVertexIndices().size() > plainSelection.size(),
+          "Shift mesh rubber band did not add to the selection");
+}
+
+void meshSelectAllAndBoundsStayScopedToActiveMesh() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Mesh;
+  document.newDoc();
+  auto first = addMesh(document, {0.0f, 0.0f});
+  addMesh(document, {100.0f, 100.0f});
+  document.activateMesh(first);
+
+  editor::selectAllMeshSubObjects(
+      &document, editor::Settings::MeshSubMode::Vertex);
+  require(document.getSelectedMeshVertexIndices().size() == 4,
+          "Select All escaped the active mesh");
+  auto boxed = document.getMeshSubObjectIndicesInBounds(
+      wp::BoundingBox({-1000.0f, -1000.0f}, {2000.0f, 2000.0f}), settings);
+  require(boxed.size() == 4, "rubber band escaped the active mesh");
+
+  document.clearActiveMesh();
+  document.setSelectedPrimitiveIndices({first});
+  editor::selectAllMeshSubObjects(
+      &document, editor::Settings::MeshSubMode::Vertex);
+  require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>{first},
+          "mesh Select All changed selection with no active mesh");
+}
+
+void undoRestoresMeshSubObjectSelection() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Mesh;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  document.activateMesh(meshIndex);
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Vertex, {0});
+  editor::transactUndoableAction(
+      &document, "Change mesh selection",
+      std::bind(editor::selectMeshSubObjects, std::placeholders::_1,
+                editor::Settings::MeshSubMode::Vertex,
+                std::set<uint32_t>{1}));
+  editor::undo(&document);
+  require(document.getActiveMeshPrimitiveIndex() == meshIndex &&
+              document.getSelectedMeshVertexIndices() == std::set<uint32_t>{0},
+          "undo did not restore active-mesh sub-object selection");
+}
+
 void rubberBandSelectionSupportsPlainControlAndShiftPolicies() {
   editor::Document document;
   editor::Settings settings;
@@ -248,6 +437,10 @@ int main() {
     modeAndSubModeChangesAreEditorPreferencesAndClearSelection();
     meshClicksBuildAndSwitchTheActiveProxy();
     rubberBandSelectionSupportsPlainControlAndShiftPolicies();
+    meshSubObjectClicksSupportModifiersAndRingCycling();
+    meshRubberBandUsesContainmentAndModifierPolicies();
+    meshSelectAllAndBoundsStayScopedToActiveMesh();
+    undoRestoresMeshSubObjectSelection();
     std::cout << "Editor selection interactions passed\n";
     return 0;
   } catch (std::exception const& error) {

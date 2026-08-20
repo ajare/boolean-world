@@ -99,10 +99,16 @@ struct Settings {
       {1.0f, 0.3f, 1.0f, 1.0f}};
   ImColor timeUpdateDistColour{1.0f, 1.0f, 0.3f, 1.0f};
   ImColor playerProxyColour{1.0f, 0.5f, 0.0f, 1.0f};
+  ImColor meshVertexColour{0.8f, 0.5f, 0.0f, 1.0f};
+  ImColor meshEdgeColour{1.0f, 0.7f, 0.2f, 1.0f};
+  ImColor meshSelectedColour{1.0f, 1.0f, 0.0f, 1.0f};
+  ImColor meshHoveredColour{1.0f, 0.1f, 0.1f, 1.0f};
 
   float triggerLineSelectionDistance{5.0f};
   float triggerLineHandleRadius{5.0f};
   float vertexRadius{5.0f};
+  float meshVertexPickRadius{5.0f};
+  float meshEdgeSelectionDistance{5.0f};
 
   ImColor triggerLineRed{1.0f, 0.2f, 0.2f, 1.0f};
   ImColor triggerLineBlue{0.2f, 0.2f, 1.0f, 1.0f};

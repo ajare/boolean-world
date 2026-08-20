@@ -151,6 +151,7 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
       bool canRedoAction = canRedo();
       bool hasPrimitiveSelection = !doc->getSelectedPrimitiveIndices().empty();
       bool hasTriggerLineSelection = doc->getSelectedTriggerLineIndex() != ~0u;
+      bool hasAnySelection = doc->hasSelection();
       bool resetDisabled = !world;
 
       if (!canUndoAction) {
@@ -237,15 +238,23 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
       }
 
       if (ImGui::MenuItem("Select all", "Ctrl+A")) {
-        auto indices = doc->getSelectablePrimitiveIndices(settings);
-        transactUndoableAction(doc, "Select All", bind(selectPrimitives, placeholders::_1, set<uint32_t>(indices.begin(), indices.end())));
+        if (settings.mode == Settings::Mode::Mesh) {
+          if (doc->getActiveMesh()) {
+            transactUndoableAction(
+                doc, "Select All Mesh Sub-objects",
+                bind(selectAllMeshSubObjects, placeholders::_1, settings.meshSubMode));
+          }
+        } else {
+          auto indices = doc->getSelectablePrimitiveIndices(settings);
+          transactUndoableAction(doc, "Select All", bind(selectPrimitives, placeholders::_1, set<uint32_t>(indices.begin(), indices.end())));
+        }
       }
 
       if (!world) {
         widgets::PopDisabled();
       }
 
-      if (!hasPrimitiveSelection && !hasTriggerLineSelection) {
+      if (!hasAnySelection) {
         widgets::PushDisabled();
       }
 
@@ -253,7 +262,7 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
         transactUndoableAction(doc, "Clear Selections", clearSelections);
       }
 
-      if (!hasPrimitiveSelection && !hasTriggerLineSelection) {
+      if (!hasAnySelection) {
         widgets::PopDisabled();
       }
 
@@ -3165,6 +3174,9 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
   }
 
   ImGui::Text("Active MeshPrimitive: %u", index);
+  ImGui::Text("Vertices selected: %zu", doc->getSelectedMeshVertexIndices().size());
+  ImGui::Text("Edges selected: %zu", doc->getSelectedMeshEdgeIndices().size());
+  ImGui::Text("Rings selected: %zu", doc->getSelectedMeshRingIndices().size());
   ImGui::TextUnformatted("Showing t=0 rest pose while active.");
   auto const& explanation = doc->getMeshHoverExplanation();
   if (!explanation.empty() && explanation != "Nothing under the cursor.") {
@@ -3312,7 +3324,13 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   if (ImGui::Shortcut(ImGuiKey_A | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      if (doc->isActive()) {
+      if (settings.mode == Settings::Mode::Mesh) {
+        if (doc->getActiveMesh()) {
+          transactUndoableAction(
+              doc, "Select All Mesh Sub-objects",
+              bind(selectAllMeshSubObjects, placeholders::_1, settings.meshSubMode));
+        }
+      } else if (doc->isActive()) {
         auto indices = doc->getSelectablePrimitiveIndices(settings);
         transactUndoableAction(doc, "Select All", bind(selectPrimitives, placeholders::_1, set<uint32_t>(indices.begin(), indices.end())));
       }
@@ -3321,7 +3339,8 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   if (ImGui::Shortcut(ImGuiKey_D | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      if (doc->hasSelection()) {
+      if (doc->hasSelection() &&
+          (settings.mode != Settings::Mode::Mesh || doc->getActiveMesh())) {
         transactUndoableAction(doc, "Clear Selections", clearSelections);
       }
     }

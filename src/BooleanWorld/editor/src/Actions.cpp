@@ -180,7 +180,36 @@ bool togglePrimitivesSelected(Document* doc, set<uint32_t> const& primitiveIndic
 
 bool clearSelections(Document* doc) {
   doc->clearSelections();
+  return false;
+}
 
+bool selectMeshSubObjects(
+    Document* doc, Settings::MeshSubMode subMode,
+    set<uint32_t> const& indices) {
+  doc->setSelectedMeshSubObjectIndices(subMode, indices);
+  return false;
+}
+
+bool addMeshSubObjectsToSelection(
+    Document* doc, Settings::MeshSubMode subMode,
+    set<uint32_t> const& indices) {
+  doc->addSelectedMeshSubObjectIndices(subMode, indices);
+  return false;
+}
+
+bool toggleMeshSubObjectsSelected(
+    Document* doc, Settings::MeshSubMode subMode,
+    set<uint32_t> const& indices) {
+  doc->toggleSelectedMeshSubObjectIndices(subMode, indices);
+  return false;
+}
+
+bool selectAllMeshSubObjects(Document* doc, Settings::MeshSubMode subMode) {
+  if (!doc->getActiveMesh()) {
+    return false;
+  }
+  doc->setSelectedMeshSubObjectIndices(
+      subMode, doc->getSelectableMeshSubObjectIndices(subMode));
   return false;
 }
 

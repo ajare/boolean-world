@@ -59,6 +59,26 @@ namespace {
 // index-space is already scoped to the active Layer (World::getPrimitive et
 // al forward to getActiveLayer()), so only the step boundary needs adding
 // here.
+bool pointInsideRing(
+    wp::geometry::Mesh const& mesh,
+    wp::geometry::Polygon const& ring,
+    wp::Vector2 const& point) {
+  auto vertices = ring.getOrderedVertexIndices();
+  if (vertices.size() < 3) {
+    return false;
+  }
+  bool inside = false;
+  for (size_t i = 0, previous = vertices.size() - 1; i < vertices.size(); previous = i++) {
+    auto const& a = mesh.getVertex(vertices[i]).getPosition();
+    auto const& b = mesh.getVertex(vertices[previous]).getPosition();
+    if ((a.y > point.y) != (b.y > point.y) &&
+        point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 set<uint32_t> getIgnoredPrimitiveIndices(bw::core::World const& world, Settings const& settings) {
   set<uint32_t> ignores;
 
@@ -266,6 +286,13 @@ void Document::clearSelections() {
   mSelectedPrimitiveIndices.clear();
   mSelectedWorldVertexIndex = ~0u;
   mSelectedTriggerLineIndex = ~0u;
+  clearMeshSelections();
+}
+
+void Document::clearMeshSelections() {
+  mSelectedMeshVertexIndices.clear();
+  mSelectedMeshEdgeIndices.clear();
+  mSelectedMeshRingIndices.clear();
 }
 
 DocumentHover Document::getHover(
@@ -277,6 +304,10 @@ DocumentHover Document::getHover(
   }
 
   if (settings.mode == Settings::Mode::Mesh) {
+    auto subObjectIndices = getHoveredMeshSubObjectIndices(mouseWorldPos, settings);
+    if (!subObjectIndices.empty()) {
+      return {HoverableType::MeshSubObject, std::move(subObjectIndices)};
+    }
     auto primitiveIndices = getHoveredPrimitiveIndices(mouseWorldPos, settings);
     return primitiveIndices.empty()
                ? DocumentHover{}
@@ -373,15 +404,20 @@ bool Document::activateMesh(uint32_t primitiveIndex) {
   if (!meshIneligibilityReason(primitiveIndex).empty()) {
     return false;
   }
+  if (mActiveMesh && mActiveMeshPrimitiveIndex == primitiveIndex) {
+    return true;
+  }
   auto* primitive = static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(primitiveIndex));
   mActiveMesh = primitive->createGeometryProxy();
   mActiveMeshPrimitiveIndex = primitiveIndex;
+  clearMeshSelections();
   return true;
 }
 
 void Document::clearActiveMesh() {
   mActiveMesh.reset();
   mActiveMeshPrimitiveIndex = ~0u;
+  clearMeshSelections();
 }
 
 uint32_t Document::getActiveMeshPrimitiveIndex() const {
@@ -390,6 +426,149 @@ uint32_t Document::getActiveMeshPrimitiveIndex() const {
 
 wp::geometry::Mesh const* Document::getActiveMesh() const {
   return mActiveMesh.get();
+}
+
+vector<uint32_t> Document::getHoveredMeshSubObjectIndices(
+    wp::Vector2 const& worldPosition, Settings const& settings) const {
+  vector<uint32_t> result;
+  if (!mActiveMesh || settings.mode != Settings::Mode::Mesh) {
+    return result;
+  }
+
+  if (settings.meshSubMode == Settings::MeshSubMode::Vertex) {
+    auto radiusSq = settings.meshVertexPickRadius * settings.meshVertexPickRadius;
+    for (auto index = mActiveMesh->getFirstVertexIndex();
+         !mActiveMesh->vertexIndexIterationFinished(index);
+         index = mActiveMesh->getNextVertexIndex(index)) {
+      if (mActiveMesh->getVertex(index).getPosition().distanceToSq(worldPosition) <= radiusSq) {
+        result.push_back(index);
+      }
+    }
+  } else if (settings.meshSubMode == Settings::MeshSubMode::Edge) {
+    for (auto index = mActiveMesh->getFirstEdgeIndex();
+         !mActiveMesh->edgeIndexIterationFinished(index);
+         index = mActiveMesh->getNextEdgeIndex(index)) {
+      if (mActiveMesh->getEdge(index).getDistanceTo(worldPosition) <=
+          settings.meshEdgeSelectionDistance) {
+        result.push_back(index);
+      }
+    }
+  } else {
+    for (auto index = mActiveMesh->getFirstPolygonIndex();
+         !mActiveMesh->polygonIndexIterationFinished(index);
+         index = mActiveMesh->getNextPolygonIndex(index)) {
+      if (pointInsideRing(*mActiveMesh, mActiveMesh->getPolygon(index), worldPosition)) {
+        result.push_back(index);
+      }
+    }
+  }
+  return result;
+}
+
+set<uint32_t> Document::getMeshSubObjectIndicesInBounds(
+    wp::BoundingBox const& worldBounds, Settings const& settings) const {
+  set<uint32_t> result;
+  if (!mActiveMesh || settings.mode != Settings::Mode::Mesh) {
+    return result;
+  }
+
+  if (settings.meshSubMode == Settings::MeshSubMode::Vertex) {
+    return mActiveMesh->getVertexIndicesInBoundingBox(worldBounds);
+  }
+  if (settings.meshSubMode == Settings::MeshSubMode::Edge) {
+    for (auto index = mActiveMesh->getFirstEdgeIndex();
+         !mActiveMesh->edgeIndexIterationFinished(index);
+         index = mActiveMesh->getNextEdgeIndex(index)) {
+      auto const& edge = mActiveMesh->getEdge(index);
+      if (worldBounds.pointInside(mActiveMesh->getVertex(edge.getFirstVertex()).getPosition()) &&
+          worldBounds.pointInside(mActiveMesh->getVertex(edge.getSecondVertex()).getPosition())) {
+        result.insert(index);
+      }
+    }
+  } else {
+    for (auto index = mActiveMesh->getFirstPolygonIndex();
+         !mActiveMesh->polygonIndexIterationFinished(index);
+         index = mActiveMesh->getNextPolygonIndex(index)) {
+      auto const vertices = mActiveMesh->getPolygon(index).getVertexIndexSet();
+      if (all_of(vertices.begin(), vertices.end(), [&](uint32_t vertexIndex) {
+            return worldBounds.pointInside(mActiveMesh->getVertex(vertexIndex).getPosition());
+          })) {
+        result.insert(index);
+      }
+    }
+  }
+  return result;
+}
+
+set<uint32_t> Document::getSelectableMeshSubObjectIndices(
+    Settings::MeshSubMode subMode) const {
+  set<uint32_t> result;
+  if (!mActiveMesh) {
+    return result;
+  }
+  if (subMode == Settings::MeshSubMode::Vertex) {
+    for (auto index = mActiveMesh->getFirstVertexIndex();
+         !mActiveMesh->vertexIndexIterationFinished(index);
+         index = mActiveMesh->getNextVertexIndex(index)) result.insert(index);
+  } else if (subMode == Settings::MeshSubMode::Edge) {
+    for (auto index = mActiveMesh->getFirstEdgeIndex();
+         !mActiveMesh->edgeIndexIterationFinished(index);
+         index = mActiveMesh->getNextEdgeIndex(index)) result.insert(index);
+  } else {
+    for (auto index = mActiveMesh->getFirstPolygonIndex();
+         !mActiveMesh->polygonIndexIterationFinished(index);
+         index = mActiveMesh->getNextPolygonIndex(index)) result.insert(index);
+  }
+  return result;
+}
+
+set<uint32_t> const& Document::getSelectedMeshSubObjectIndices(
+    Settings::MeshSubMode subMode) const {
+  if (subMode == Settings::MeshSubMode::Vertex) return mSelectedMeshVertexIndices;
+  if (subMode == Settings::MeshSubMode::Edge) return mSelectedMeshEdgeIndices;
+  return mSelectedMeshRingIndices;
+}
+
+set<uint32_t> const& Document::getSelectedMeshVertexIndices() const { return mSelectedMeshVertexIndices; }
+set<uint32_t> const& Document::getSelectedMeshEdgeIndices() const { return mSelectedMeshEdgeIndices; }
+set<uint32_t> const& Document::getSelectedMeshRingIndices() const { return mSelectedMeshRingIndices; }
+
+void Document::setSelectedMeshSubObjectIndices(
+    Settings::MeshSubMode subMode, set<uint32_t> const& indices) {
+  clearSelections();
+  auto* selection = subMode == Settings::MeshSubMode::Vertex ? &mSelectedMeshVertexIndices
+                    : subMode == Settings::MeshSubMode::Edge ? &mSelectedMeshEdgeIndices
+                                                             : &mSelectedMeshRingIndices;
+  *selection = indices;
+}
+
+void Document::addSelectedMeshSubObjectIndices(
+    Settings::MeshSubMode subMode, set<uint32_t> const& indices) {
+  auto* selection = subMode == Settings::MeshSubMode::Vertex ? &mSelectedMeshVertexIndices
+                    : subMode == Settings::MeshSubMode::Edge ? &mSelectedMeshEdgeIndices
+                                                             : &mSelectedMeshRingIndices;
+  selection->insert(indices.begin(), indices.end());
+}
+
+void Document::toggleSelectedMeshSubObjectIndices(
+    Settings::MeshSubMode subMode, set<uint32_t> const& indices) {
+  auto* selection = subMode == Settings::MeshSubMode::Vertex ? &mSelectedMeshVertexIndices
+                    : subMode == Settings::MeshSubMode::Edge ? &mSelectedMeshEdgeIndices
+                                                             : &mSelectedMeshRingIndices;
+  for (auto index : indices) {
+    if (!selection->erase(index)) selection->insert(index);
+  }
+}
+
+void Document::restoreMeshSelection(
+    uint32_t activeMeshPrimitiveIndex, set<uint32_t> const& vertices,
+    set<uint32_t> const& edges, set<uint32_t> const& rings) {
+  clearActiveMesh();
+  if (activeMeshPrimitiveIndex != ~0u && activateMesh(activeMeshPrimitiveIndex)) {
+    mSelectedMeshVertexIndices = vertices;
+    mSelectedMeshEdgeIndices = edges;
+    mSelectedMeshRingIndices = rings;
+  }
 }
 
 void Document::setMeshHoverExplanation(string explanation) {
@@ -479,7 +658,9 @@ uint32_t Document::getSelectedTriggerLineIndex() const {
 }
 
 bool Document::hasSelection() const {
-  return !mSelectedPrimitiveIndices.empty() || mSelectedTriggerLineIndex != ~0u || mSelectedWorldVertexIndex != ~0u;
+  return !mSelectedPrimitiveIndices.empty() || mSelectedTriggerLineIndex != ~0u ||
+         mSelectedWorldVertexIndex != ~0u || !mSelectedMeshVertexIndices.empty() ||
+         !mSelectedMeshEdgeIndices.empty() || !mSelectedMeshRingIndices.empty();
 }
 
 void Document::setPlayerProxyPosition(wp::Vector2 const& pos) {

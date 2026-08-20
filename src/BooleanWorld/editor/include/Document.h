@@ -68,6 +68,9 @@ class Document {
 
   uint32_t mActiveMeshPrimitiveIndex{~0u};
   std::unique_ptr<wp::geometry::Mesh> mActiveMesh;
+  std::set<uint32_t> mSelectedMeshVertexIndices;
+  std::set<uint32_t> mSelectedMeshEdgeIndices;
+  std::set<uint32_t> mSelectedMeshRingIndices;
   std::string mMeshHoverExplanation;
 
   wp::Vector2 mPlayerOldProxyPosition, mPlayerProxyPosition;
@@ -144,6 +147,28 @@ public:
   void clearActiveMesh();
   [[nodiscard]] uint32_t getActiveMeshPrimitiveIndex() const;
   [[nodiscard]] wp::geometry::Mesh const* getActiveMesh() const;
+  [[nodiscard]] std::vector<uint32_t> getHoveredMeshSubObjectIndices(
+      wp::Vector2 const& worldPosition, Settings const& settings) const;
+  [[nodiscard]] std::set<uint32_t> getMeshSubObjectIndicesInBounds(
+      wp::BoundingBox const& worldBounds, Settings const& settings) const;
+  [[nodiscard]] std::set<uint32_t> getSelectableMeshSubObjectIndices(
+      Settings::MeshSubMode subMode) const;
+  [[nodiscard]] std::set<uint32_t> const& getSelectedMeshSubObjectIndices(
+      Settings::MeshSubMode subMode) const;
+  [[nodiscard]] std::set<uint32_t> const& getSelectedMeshVertexIndices() const;
+  [[nodiscard]] std::set<uint32_t> const& getSelectedMeshEdgeIndices() const;
+  [[nodiscard]] std::set<uint32_t> const& getSelectedMeshRingIndices() const;
+  void setSelectedMeshSubObjectIndices(
+      Settings::MeshSubMode subMode, std::set<uint32_t> const& indices);
+  void addSelectedMeshSubObjectIndices(
+      Settings::MeshSubMode subMode, std::set<uint32_t> const& indices);
+  void toggleSelectedMeshSubObjectIndices(
+      Settings::MeshSubMode subMode, std::set<uint32_t> const& indices);
+  void restoreMeshSelection(
+      uint32_t activeMeshPrimitiveIndex,
+      std::set<uint32_t> const& vertices,
+      std::set<uint32_t> const& edges,
+      std::set<uint32_t> const& rings);
   void setMeshHoverExplanation(std::string explanation);
   [[nodiscard]] std::string const& getMeshHoverExplanation() const;
 
@@ -164,6 +189,7 @@ public:
   void removeSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
 
   void clearSelections();
+  void clearMeshSelections();
 
   std::set<uint32_t> const& getSelectedPrimitiveIndices() const;
 
