@@ -5,6 +5,9 @@
 #include "UiHelpers.h"
 
 extern wp::Vector2 gViewOffset;
+extern float gViewZoom;
+extern wp::Vector2 gWorldViewScreenOrigin;
+extern wp::Vector2 gWorldViewSize;
 
 namespace editor {
 using namespace std;
@@ -13,15 +16,26 @@ bool mouseInteractingWithBackground() {
   auto worldPos = getMouseWorldPosition();
 
   auto const& io = ImGui::GetIO();
-  return !io.WantCaptureMouse;
+  if (io.WantCaptureMouse) {
+    return false;
+  }
+
+  auto mouseScreenPos = ImGui::GetMousePos();
+  wp::BoundingBox worldViewBounds(gWorldViewScreenOrigin, gWorldViewSize);
+  return worldViewBounds.pointInside(mouseScreenPos.x, mouseScreenPos.y);
 }
 
+// The inverse of Render.cpp's worldToScreen(): screen -> canvas-local (undo
+// the World window's screen origin) -> world (undo the pan/zoom/y-flip).
 wp::Vector2 getMouseWorldPosition() {
   auto mouseScreenPos = ImGui::GetMousePos();
+  wp::Vector2 canvasPos{
+      mouseScreenPos.x - gWorldViewScreenOrigin.x,
+      mouseScreenPos.y - gWorldViewScreenOrigin.y};
 
   return {
-      (mouseScreenPos.x + gViewOffset.x) - ED_WINDOW_WIDTH / 2.0f,
-      ((ED_WINDOW_HEIGHT - mouseScreenPos.y) + gViewOffset.y) - ED_WINDOW_HEIGHT / 2.0f};
+      (canvasPos.x - gWorldViewSize.x / 2.0f) / gViewZoom + gViewOffset.x,
+      gViewOffset.y - (canvasPos.y - gWorldViewSize.y / 2.0f) / gViewZoom};
 }
 
 uint32_t getHoveredPrimitiveIndex(editor::Document* doc, Settings const& settings) {

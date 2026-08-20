@@ -2,6 +2,7 @@
 #include <Windows.h>
 #undef NOMINMAX
 
+#include <algorithm>
 #include <format>
 #include <filesystem>
 #include <nfd/nfd.h>
@@ -34,6 +35,8 @@
 #include "PrimitiveFieldPreview.h"
 
 extern wp::Vector2 gViewOffset;
+extern float gViewZoom;
+extern wp::Vector2 gWorldViewSize;
 extern std::map<std::string, std::string> gHelpFiles;
 extern spdlog::logger* gLogger;
 
@@ -251,6 +254,25 @@ void goHome(bw::core::Primitive const* primitive) {
     gViewOffset = primitive->getPosition();
   } else {
     gViewOffset.set(0.0f, 0.0f);
+  }
+}
+
+void frameAllWorld(editor::Document* doc) {
+  auto world = doc->getWorld();
+  if (!world) {
+    return;
+  }
+
+  wp::Vector2 minExtent, maxExtent;
+  world->getExtents().getExtents(minExtent, maxExtent);
+
+  gViewOffset = world->getExtents().getCentre();
+
+  auto worldSize = maxExtent - minExtent;
+  if (worldSize.x > 0.0f && worldSize.y > 0.0f) {
+    gViewZoom = clamp(
+        min(gWorldViewSize.x / worldSize.x, gWorldViewSize.y / worldSize.y),
+        ED_MIN_VIEW_ZOOM, ED_MAX_VIEW_ZOOM);
   }
 }
 

@@ -4,6 +4,10 @@
 
 #define ED_WINDOW_WIDTH 1440
 #define ED_WINDOW_HEIGHT 900
+
+// Limits for the world view's Blender-style scroll-wheel zoom (gViewZoom).
+#define ED_MIN_VIEW_ZOOM 0.02f
+#define ED_MAX_VIEW_ZOOM 20.0f
 #define ED_VERTEX_RENDER_SIZE 4.0
 #define ED_MAX_NAME_LENGTH 16
 

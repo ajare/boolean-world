@@ -52,6 +52,9 @@
 
 extern std::map<std::string, std::string> gHelpFiles;
 extern wp::Vector2 gViewOffset;
+extern float gViewZoom;
+extern wp::Vector2 gWorldViewScreenOrigin;
+extern wp::Vector2 gWorldViewSize;
 extern editor::HoverableType gHoveredType;
 extern std::vector<uint32_t> gHoveredIndices;
 
@@ -653,6 +656,12 @@ void renderStatusbar(editor::Document* doc, editor::Settings& settings, bw::core
 
         ImGui::SameLine();
         ImGui::TextColored(c, mouseData.c_str());
+
+        // Zoom
+        string zoomData = format("| {:.0f}%", gViewZoom * 100.0f);
+
+        ImGui::SameLine();
+        ImGui::TextColored(c, zoomData.c_str());
 
         // Hovered objects
         switch (gHoveredType) {
@@ -3305,6 +3314,13 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
+  // Blender's View > Frame All.
+  if (ImGui::Shortcut(ImGuiKey_Home, ImGuiInputFlags_RouteGlobal)) {
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+      frameAllWorld(doc);
+    }
+  }
+
   if (ImGui::Shortcut(ImGuiKey_M, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       settings.renderMiniMap = !settings.renderMiniMap;
@@ -3392,29 +3408,6 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 }
 
 void handleMouseInteraction(editor::Document* doc, editor::Settings& settings) {
-  // Right mouse button
-  if (ImGui::IsMouseDown(1)) {
-    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      auto worldPos = getMouseWorldPosition();
-      doc->setPlayerProxyPosition(worldPos);
-
-      auto angle = doc->getPlayerProxyAngle();
-      if (ImGui::IsKeyDown(ImGuiKey_Q)) {
-        angle -= 1.0f;
-        if (angle < 0.0f) {
-          angle += 360.0f;
-        }
-        doc->setPlayerProxyAngle(angle);
-      }
-      if (ImGui::IsKeyDown(ImGuiKey_W)) {
-        angle += 1.0f;
-        if (angle >= 360.0f) {
-          angle -= 360.0f;
-        }
-        doc->setPlayerProxyAngle(angle);
-      }
-    }
-  }
 }
 
 void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
@@ -3870,7 +3863,7 @@ void renderWidgets(
 
   renderMenu(doc, settings);
   renderToolbar(doc, settings);
-  ImGui::DockSpaceOverViewport(
+  auto dockspaceId = ImGui::DockSpaceOverViewport(
       0,
       ImGui::GetMainViewport(),
       ImGuiDockNodeFlags_PassthruCentralNode);
@@ -3903,12 +3896,44 @@ void renderWidgets(
 
     renderStatusbar(doc, settings, worldData);
 
-    // Render background
-    renderWorld(doc, settings, worldData, globalTime);
-
-    if (settings.renderMiniMap) {
-      renderMiniMap(doc, settings, worldData, globalTime);
+    // The World window fills the dockspace's central node - chromeless, so it
+    // reads the same as the old background draw list did, but as real window
+    // content instead of something drawn behind every other panel.
+    ImVec2 worldPos, worldSize;
+    if (auto* centralNode = ImGui::DockBuilderGetCentralNode(dockspaceId)) {
+      worldPos = centralNode->Pos;
+      worldSize = centralNode->Size;
+    } else {
+      auto* mainViewport = ImGui::GetMainViewport();
+      worldPos = mainViewport->WorkPos;
+      worldSize = mainViewport->WorkSize;
     }
+
+    gWorldViewScreenOrigin = {worldPos.x, worldPos.y};
+    gWorldViewSize = {worldSize.x, worldSize.y};
+
+    ImGui::SetNextWindowPos(worldPos);
+    ImGui::SetNextWindowSize(worldSize);
+
+    // NoInputs keeps this window transparent to ImGui's own mouse handling
+    // (it won't set io.WantCaptureMouse), so the raw-mouse world interaction
+    // code below continues to see the canvas exactly as it did when this was
+    // drawn to the background draw list rather than a window.
+    constexpr ImGuiWindowFlags worldWindowFlags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoDocking |
+        ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs;
+
+    if (ImGui::Begin("World", nullptr, worldWindowFlags)) {
+      renderWorld(doc, settings, worldData, globalTime);
+
+      if (settings.renderMiniMap) {
+        renderMiniMap(doc, settings, worldData, globalTime);
+      }
+    }
+    ImGui::End();
   }
 
   checkModalPopups(doc, settings);

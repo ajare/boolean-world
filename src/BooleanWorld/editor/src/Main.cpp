@@ -55,6 +55,16 @@
 
 wp::Vector2 gViewOffset{0.0f, 0.0f};
 
+// World units per screen pixel scale of the world view. 1 = unzoomed (the
+// original, pre-zoom 1:1 mapping); >1 zooms in, <1 zooms out.
+float gViewZoom{1.0f};
+
+// The screen-space rect the World window currently occupies, set each frame
+// by renderWidgets() before renderWorld()/renderMiniMap() draw into it. Read
+// one frame late by input handling below, same as io.WantCaptureMouse.
+wp::Vector2 gWorldViewScreenOrigin{0.0f, 0.0f};
+wp::Vector2 gWorldViewSize{ED_WINDOW_WIDTH, ED_WINDOW_HEIGHT};
+
 spdlog::logger* gLogger{nullptr};
 SDL_Window* gWindow{nullptr};
 SDL_GLContext gContext;
@@ -367,6 +377,15 @@ void handleSelections(editor::Document* doc, bw::core::WorldData const* worldDat
   auto const& selectedPrimitiveIndices = doc->getSelectedPrimitiveIndices();
   auto const& io = ImGui::GetIO();
 
+  // Shift+Alt+left-mouse-button is reserved for panning the view (see
+  // handleViewNavigation), so it must not also select what's under it.
+  if (io.KeyShift && io.KeyAlt) {
+    if (gHoveredType != editor::HoverableType::None) {
+      ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    }
+    return;
+  }
+
   // Select single primitive on left-mouse click
   if (ImGui::IsMouseClicked(0)) {
     switch (gHoveredType) {
@@ -445,11 +464,53 @@ void handleSelections(editor::Document* doc, bw::core::WorldData const* worldDat
   }
 }
 
+// Blender-style navigation for the world view: middle-mouse-button drag pans
+// (also Shift+Alt+left-mouse-button drag, Blender's alternate binding for
+// trackpad/one-button setups), and the scroll wheel zooms toward the cursor
+// (as in Blender's 2D editors - Shader/UV/Node/Image editor - rather than its
+// 3D viewport's orbit).
+void handleViewNavigation(editor::Document* doc) {
+  if (!doc->getWorld()) {
+    return;
+  }
+
+  if (!editor::mouseInteractingWithBackground()) {
+    return;
+  }
+
+  auto const& io = ImGui::GetIO();
+
+  auto panBy = [](ImVec2 const& screenDelta) {
+    gViewOffset.x -= screenDelta.x / gViewZoom;
+    gViewOffset.y += screenDelta.y / gViewZoom;
+  };
+
+  if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle, 0.0f)) {
+    panBy(io.MouseDelta);
+  } else if (ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0.0f)) {
+    panBy(io.MouseDelta);
+  }
+
+  if (io.MouseWheel != 0.0f) {
+    // Keep the world point under the cursor fixed on screen: read it before
+    // and after changing zoom, and fold the difference into the pan offset.
+    auto worldPosBeforeZoom = editor::getMouseWorldPosition();
+
+    constexpr float ED_VIEW_ZOOM_STEP = 1.15f;
+    float factor = io.MouseWheel > 0.0f ? ED_VIEW_ZOOM_STEP : 1.0f / ED_VIEW_ZOOM_STEP;
+    gViewZoom = clamp(gViewZoom * factor, ED_MIN_VIEW_ZOOM, ED_MAX_VIEW_ZOOM);
+
+    auto worldPosAfterZoom = editor::getMouseWorldPosition();
+    gViewOffset += worldPosBeforeZoom - worldPosAfterZoom;
+  }
+}
+
 void handleWorldInteraction(editor::Document* doc, bw::core::WorldData const* worldData, editor::MouseButtonStatus const& mouseStatus, editor::Settings const& settings) {
   // Check Minimap
   if (doc->getWorld()) {
     auto mouseScreenPos = ImGui::GetMousePos();
     auto miniMapBounds = getMiniMapBounds(doc);
+    miniMapBounds.setPosition(miniMapBounds.getMinExtent() + gWorldViewScreenOrigin);
 
     if (settings.renderMiniMap && miniMapBounds.pointInside(mouseScreenPos.x, mouseScreenPos.y)) {
       ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
@@ -460,6 +521,12 @@ void handleWorldInteraction(editor::Document* doc, bw::core::WorldData const* wo
         return;
       }
     }
+  }
+
+  // Shift+Alt+left-mouse-button drag is reserved for panning the view (see
+  // handleViewNavigation), so it must not also transform the selection.
+  if (ImGui::GetIO().KeyShift && ImGui::GetIO().KeyAlt) {
+    return;
   }
 
   // Check selections
@@ -640,34 +707,7 @@ void handleContinuousKeyboardInput(uint64_t updateTimeMicros) {
   }
 
   float frameTime = updateTimeMicros / 1000000.0f;
-
   float moveSpeed = MoveSpeed * frameTime * (io.KeyShift ? 4.0f : 1.0f);
-
-  if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
-    gViewOffset.x += ED_WINDOW_WIDTH;
-  }
-  if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
-    gViewOffset.x -= ED_WINDOW_WIDTH;
-  }
-  if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
-    gViewOffset.y += ED_WINDOW_HEIGHT;
-  }
-  if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
-    gViewOffset.y -= ED_WINDOW_HEIGHT;
-  }
-
-  if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) {
-    gViewOffset.x += moveSpeed;
-  }
-  if (ImGui::IsKeyDown(ImGuiKey_LeftArrow)) {
-    gViewOffset.x -= moveSpeed;
-  }
-  if (ImGui::IsKeyDown(ImGuiKey_UpArrow)) {
-    gViewOffset.y += moveSpeed;
-  }
-  if (ImGui::IsKeyDown(ImGuiKey_DownArrow)) {
-    gViewOffset.y -= moveSpeed;
-  }
 
   // Clamp to world bounds
   auto const& worldBounds = editor::Document::instance()->getWorld()->getExtents();
@@ -675,8 +715,8 @@ void handleContinuousKeyboardInput(uint64_t updateTimeMicros) {
 
   worldBounds.getExtents(minExtent, maxExtent);
 
-  gViewOffset.x = clamp(gViewOffset.x, minExtent.x + ED_WINDOW_WIDTH * 0.5f, maxExtent.x - ED_WINDOW_WIDTH * 0.5f);
-  gViewOffset.y = clamp(gViewOffset.y, minExtent.y + ED_WINDOW_HEIGHT * 0.5f, maxExtent.y - ED_WINDOW_HEIGHT * 0.5f);
+  gViewOffset.x = clamp(gViewOffset.x, minExtent.x + gWorldViewSize.x * 0.5f, maxExtent.x - gWorldViewSize.x * 0.5f);
+  gViewOffset.y = clamp(gViewOffset.y, minExtent.y + gWorldViewSize.y * 0.5f, maxExtent.y - gWorldViewSize.y * 0.5f);
 }
 
 void run() {
@@ -752,6 +792,7 @@ void run() {
       }
 
       handleWorldInteraction(doc, worldDataPtr, mouseButtonStatus, gEditorSettings);
+      handleViewNavigation(doc);
     }
 
     handleContinuousKeyboardInput(updateTimeMicros);

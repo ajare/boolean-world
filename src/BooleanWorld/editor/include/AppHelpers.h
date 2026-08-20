@@ -39,6 +39,11 @@ bw::core::World* loadWorld(std::string const& filepath);
 
 void goHome(bw::core::Primitive const* primitive = nullptr);
 
+// Blender's View > Frame All (Home key): pans to the world's centre and
+// zooms so its full extents fit the World window, unlike goHome() which only
+// re-centres without touching zoom.
+void frameAllWorld(editor::Document* doc);
+
 void enableGhost(editor::Document* doc, bool enable);
 
 void selectAndHomeGhost(editor::Document* doc);

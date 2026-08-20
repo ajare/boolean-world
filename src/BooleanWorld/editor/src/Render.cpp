@@ -28,30 +28,49 @@ using namespace std;
 
 extern spdlog::logger* gLogger;
 extern wp::Vector2 gViewOffset;
+extern float gViewZoom;
 extern int gHoveredPrimitiveHandle;
+extern wp::Vector2 gWorldViewScreenOrigin;
+extern wp::Vector2 gWorldViewSize;
+
+// Converts a point in canvas-local pixel space (0,0 at the World window's
+// top-left, y-down) to the absolute screen space that ImGui draw lists use.
+static ImVec2 toScreen(wp::Vector2 const& canvasPoint) {
+  return {
+      gWorldViewScreenOrigin.x + canvasPoint.x,
+      gWorldViewScreenOrigin.y + canvasPoint.y};
+}
+
+static ImVec2 toScreen(float canvasX, float canvasY) {
+  return {gWorldViewScreenOrigin.x + canvasX, gWorldViewScreenOrigin.y + canvasY};
+}
+
+// Converts a point in world space to absolute screen space, applying pan
+// (gViewOffset), zoom (gViewZoom) and the world-to-canvas y-flip in one step.
+// This is the single source of truth for where a world point lands on
+// screen; every other world-space transform in this file should go through
+// it rather than re-deriving the pan/zoom/flip maths inline.
+static ImVec2 worldToScreen(wp::Vector2 const& worldPoint) {
+  return toScreen(
+      (worldPoint.x - gViewOffset.x) * gViewZoom + gWorldViewSize.x * 0.5f,
+      gWorldViewSize.y * 0.5f - (worldPoint.y - gViewOffset.y) * gViewZoom);
+}
 
 // const ImU32 gColours[] = { 4289639675, 4293119411, 4291161036, 4293184478, 4289124862, 4291624959, 4290631909, 4293712637, 4294111986 };
 const ImU32 gColours[] = {4283695428, 4285867080, 4287054913, 4287455029, 4287526954, 4287402273, 4286883874, 4285579076, 4283552122, 4280737725, 4280674301};
 
-void renderBounds(wp::BoundingBox const& bounds, wp::Vector2 const& offset, editor::Settings const& settings, ImColor colour, ImDrawList* drawList) {
+void renderBounds(wp::BoundingBox const& bounds, editor::Settings const& settings, ImColor colour, ImDrawList* drawList) {
   wp::Vector2 minExtent, maxExtent;
   bounds.getExtents(minExtent, maxExtent);
 
-  minExtent.x -= offset.x;
-  minExtent.y = ED_WINDOW_HEIGHT - (minExtent.y - offset.y);
-
-  maxExtent.x -= offset.x;
-  maxExtent.y = ED_WINDOW_HEIGHT - (maxExtent.y - offset.y);
-
-  drawList->AddRect({minExtent.x, minExtent.y}, {maxExtent.x, maxExtent.y}, colour);
+  drawList->AddRect(worldToScreen(minExtent), worldToScreen(maxExtent), colour);
 }
 
-void renderGrid(float gridSize, wp::Vector2 const& offset, ImColor const& colour, float width, shared_ptr<bw::core::World> world, ImDrawList* drawList) {
-  wp::Vector2 gridOffset;
-  gridOffset.x = fmod(offset.x, gridSize);
-  gridOffset.y = fmod(offset.y, gridSize);
+void renderGrid(float gridSize, wp::BoundingBox const& viewBounds, ImColor const& colour, float width, shared_ptr<bw::core::World> world, ImDrawList* drawList) {
+  wp::Vector2 xMinMax, yMinMax;
+  viewBounds.getExtents(xMinMax, yMinMax);
 
-  float xMin = 0.0f, yMin = 0.0f, xMax = ED_WINDOW_WIDTH, yMax = ED_WINDOW_HEIGHT;
+  float xMin = xMinMax.x, yMin = xMinMax.y, xMax = yMinMax.x, yMax = yMinMax.y;
 
   if (world) {
     auto const& worldBounds = world->getExtents();
@@ -59,25 +78,27 @@ void renderGrid(float gridSize, wp::Vector2 const& offset, ImColor const& colour
     wp::Vector2 minExtent, maxExtent;
     worldBounds.getExtents(minExtent, maxExtent);
 
-    xMin = max(0.0f, minExtent.x - offset.x);
-    xMax = min(maxExtent.x - offset.x, (float)ED_WINDOW_WIDTH);
+    xMin = max(xMin, minExtent.x);
+    xMax = min(xMax, maxExtent.x);
 
-    yMin = max(0.0f, minExtent.y - offset.y);
-    yMax = min(maxExtent.y - offset.y, (float)ED_WINDOW_HEIGHT);
+    yMin = max(yMin, minExtent.y);
+    yMax = min(yMax, maxExtent.y);
   }
 
-  for (float x = xMin; x <= xMax; x += gridSize) {
+  // Iterating in world space (rather than pre-computing pixel positions)
+  // keeps grid lines correctly spaced and clipped at any zoom level.
+  for (float x = ceilf(xMin / gridSize) * gridSize; x <= xMax; x += gridSize) {
     drawList->AddLine(
-        {x - gridOffset.x, ED_WINDOW_HEIGHT - yMin},
-        {x - gridOffset.x, ED_WINDOW_HEIGHT - yMax},
+        worldToScreen({x, yMin}),
+        worldToScreen({x, yMax}),
         colour,
         width);
   }
 
-  for (float y = yMin; y <= yMax; y += gridSize) {
+  for (float y = ceilf(yMin / gridSize) * gridSize; y <= yMax; y += gridSize) {
     drawList->AddLine(
-        {xMin, ED_WINDOW_HEIGHT - (y - gridOffset.y)},
-        {xMax, ED_WINDOW_HEIGHT - (y - gridOffset.y)},
+        worldToScreen({xMin, y}),
+        worldToScreen({xMax, y}),
         colour,
         width);
   }
@@ -86,7 +107,6 @@ void renderGrid(float gridSize, wp::Vector2 const& offset, ImColor const& colour
 void renderPrimitiveFieldPreview(
     bw::core::PrimitiveFieldLayout const& layout,
     vector<editor::PrimitiveFieldPrimitivePreview> const& primitives,
-    wp::Vector2 const& offset,
     ImDrawList* drawList) {
   auto const cellColour = ImColor(0.1f, 0.85f, 1.0f, 0.9f);
   auto const primitiveFillColour = ImColor(0.95f, 0.3f, 0.75f, 0.12f);
@@ -100,8 +120,7 @@ void renderPrimitiveFieldPreview(
     vector<ImVec2> points;
     points.reserve(cell.vertices.size());
     for (auto const& vertex : cell.vertices) {
-      points.push_back({vertex.x - offset.x,
-                        ED_WINDOW_HEIGHT - (vertex.y - offset.y)});
+      points.push_back(worldToScreen(vertex));
     }
     drawList->AddPolyline(
         points.data(), static_cast<int>(points.size()), cellColour,
@@ -113,8 +132,7 @@ void renderPrimitiveFieldPreview(
     vector<ImVec2> points;
     points.reserve(primitive.contour.size());
     for (auto const& vertex : primitive.contour) {
-      points.push_back({vertex.x - offset.x,
-                        ED_WINDOW_HEIGHT - (vertex.y - offset.y)});
+      points.push_back(worldToScreen(vertex));
     }
     drawList->AddConvexPolyFilled(
         points.data(), static_cast<int>(points.size()),
@@ -127,8 +145,7 @@ void renderPrimitiveFieldPreview(
 
   drawList->AddDrawCmd();
   for (auto const& site : layout.sites) {
-    auto screenPoint = ImVec2{
-        site.x - offset.x, ED_WINDOW_HEIGHT - (site.y - offset.y)};
+    auto screenPoint = worldToScreen(site);
     drawList->AddCircleFilled(screenPoint, 3.5f, siteColour, 12);
     drawList->AddCircle(screenPoint, 5.0f, siteColour, 12, 1.0f);
   }
@@ -256,8 +273,8 @@ void renderWorld(
   bool renderWorldStuff = world != nullptr;
 
   // Triangulate, etc
-  auto windowSize = wp::Vector2(ED_WINDOW_WIDTH, ED_WINDOW_HEIGHT);
-  wp::BoundingBox viewBounds(gViewOffset - windowSize / 2, windowSize);
+  auto visibleWorldSize = gWorldViewSize / gViewZoom;
+  wp::BoundingBox viewBounds(gViewOffset - visibleWorldSize / 2, visibleWorldSize);
 
   // Get all primitives for now
   vector<bw::core::Primitive*> primitives;
@@ -291,8 +308,7 @@ void renderWorld(
   bool renderPrimitiveStuff = numPrimitives > 0;
 
   // Render
-  auto drawList = ImGui::GetBackgroundDrawList();
-  auto offset = viewBounds.getMinExtent();
+  auto drawList = ImGui::GetWindowDrawList();
 
   if (renderPrimitiveStuff) {
     auto const& arrangement = worldData->getArrangement();
@@ -326,17 +342,17 @@ void renderWorld(
         auto faded = faceFaded(triangle.face);
         if (settings.renderTriangulation) {
           drawList->AddTriangle(
-              {v0.x - offset.x, ED_WINDOW_HEIGHT - (v0.y - offset.y)},
-              {v1.x - offset.x, ED_WINDOW_HEIGHT - (v1.y - offset.y)},
-              {v2.x - offset.x, ED_WINDOW_HEIGHT - (v2.y - offset.y)},
+              worldToScreen(v0),
+              worldToScreen(v1),
+              worldToScreen(v2),
               faded
                   ? fadeColour(settings.triangulationColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
                   : settings.triangulationColour);
         } else {
           drawList->AddTriangleFilled(
-              {v0.x - offset.x, ED_WINDOW_HEIGHT - (v0.y - offset.y)},
-              {v1.x - offset.x, ED_WINDOW_HEIGHT - (v1.y - offset.y)},
-              {v2.x - offset.x, ED_WINDOW_HEIGHT - (v2.y - offset.y)},
+              worldToScreen(v0),
+              worldToScreen(v1),
+              worldToScreen(v2),
               faded
                   ? fadeColour(settings.backgroundColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
                   : settings.backgroundColour);
@@ -353,8 +369,8 @@ void renderWorld(
           auto v0 = toWorld(edge.v[0]);
           auto v1 = toWorld(edge.v[1]);
           drawList->AddLine(
-              {v0.x - offset.x, ED_WINDOW_HEIGHT - (v0.y - offset.y)},
-              {v1.x - offset.x, ED_WINDOW_HEIGHT - (v1.y - offset.y)},
+              worldToScreen(v0),
+              worldToScreen(v1),
               settings.borderColour,
               3.0f);
         }
@@ -402,9 +418,7 @@ void renderWorld(
               vector<ImVec2> imPoints(numVertices);
 
               for (int i = 0; i < numVertices; ++i) {
-                imPoints[i] = {
-                    polygon[i].p.x - offset.x,
-                    ED_WINDOW_HEIGHT - (polygon[i].p.y - offset.y)};
+                imPoints[i] = worldToScreen(polygon[i].p);
               }
 
               if (isGhost) {
@@ -459,11 +473,11 @@ void renderWorld(
             continue;
           }
 
-          // Influence centre
-          auto influenceCentre = primitive->getInfluenceEyeOriginPosition();
-
-          influenceCentre.x -= offset.x;
-          influenceCentre.y = ED_WINDOW_HEIGHT - (influenceCentre.y - offset.y);
+          // Influence centre. Kept as a screen-space point so the fixed-size
+          // eye decoration below (radius/offsets in constant screen pixels)
+          // stays a legible, constant size regardless of zoom.
+          auto influenceCentreScreen = worldToScreen(primitive->getInfluenceEyeOriginPosition());
+          wp::Vector2 influenceCentre{influenceCentreScreen.x, influenceCentreScreen.y};
 
           drawList->AddCircleFilled({influenceCentre.x, influenceCentre.y}, 6, settings.influenceEyeColour);
 
@@ -503,10 +517,9 @@ void renderWorld(
         wp::Vector2 p{
             bw::core::arr::ToWorldCoordinate(vertex.x),
             bw::core::arr::ToWorldCoordinate(vertex.y)};
-        p.x -= offset.x;
-        p.y = ED_WINDOW_HEIGHT - (p.y - offset.y);
+        auto screenP = worldToScreen(p);
         drawList->AddCircle(
-            {p.x, p.y}, settings.vertexRadius, settings.vertexColour, 16, 1.0f);
+            screenP, settings.vertexRadius, settings.vertexColour, 16, 1.0f);
       }
     }
 
@@ -517,15 +530,12 @@ void renderWorld(
     auto playerStartAngle = world->getPlayerStartAngle();
     auto startLookPos = playerStartPos + wp::Vector2(0, 1).rotatedCopy(playerStartAngle) * (BW_PLAYER_RADIUS + 20);
 
-    playerStartPos.x -= offset.x;
-    playerStartPos.y = ED_WINDOW_HEIGHT - (playerStartPos.y - offset.y);
+    auto playerStartScreen = worldToScreen(playerStartPos);
+    auto startLookScreen = worldToScreen(startLookPos);
 
-    drawList->AddCircle({playerStartPos.x, playerStartPos.y}, BW_PLAYER_RADIUS + 20, ImColor(0, 1, 0), BW_PLAYER_RADIUS * 2, 2);
+    drawList->AddCircle(playerStartScreen, (BW_PLAYER_RADIUS + 20) * gViewZoom, ImColor(0, 1, 0), BW_PLAYER_RADIUS * 2, 2);
 
-    startLookPos.x -= offset.x;
-    startLookPos.y = ED_WINDOW_HEIGHT - (startLookPos.y - offset.y);
-
-    drawList->AddLine({playerStartPos.x, playerStartPos.y}, {startLookPos.x, startLookPos.y}, ImColor(0, 1, 0), 2);
+    drawList->AddLine(playerStartScreen, startLookScreen, ImColor(0, 1, 0), 2);
 
     //
     // Player proxy
@@ -535,21 +545,20 @@ void renderWorld(
     auto playerProxyPos = doc->getPlayerProxyPosition();
     float playerProxyAngle = doc->getPlayerProxyAngle();
 
-    playerProxyPos.x -= offset.x;
-    playerProxyPos.y = ED_WINDOW_HEIGHT - (playerProxyPos.y - offset.y);
+    auto playerProxyScreen = worldToScreen(playerProxyPos);
 
     if (settings.renderPlayerView) {
-      drawList->AddCircleFilled({playerProxyPos.x, playerProxyPos.y}, BW_PLAYER_VIEW_DISTANCE, ImColor(1.0f, 1.0f, 1.0f, 0.3f));
+      drawList->AddCircleFilled(playerProxyScreen, BW_PLAYER_VIEW_DISTANCE * gViewZoom, ImColor(1.0f, 1.0f, 1.0f, 0.3f));
     }
 
-    drawList->AddCircleFilled({playerProxyPos.x, playerProxyPos.y}, BW_PLAYER_RADIUS, settings.playerProxyColour);
+    drawList->AddCircleFilled(playerProxyScreen, BW_PLAYER_RADIUS * gViewZoom, settings.playerProxyColour);
 
     // FOV - flip Y values
     if (settings.renderPlayerView) {
       auto v0 = playerProxyPos;
       auto [v1, v2] = bw::core::calculateFovTriangle(v0, playerProxyAngle - 180, BW_PLAYER_VIEW_DISTANCE, BW_PLAYER_FOV);
 
-      drawList->AddTriangleFilled({v0.x, v0.y}, {v1.x, v1.y}, {v2.x, v2.y}, ImColor(0.0f, 0.5f, 0.7f, 0.4f));
+      drawList->AddTriangleFilled(worldToScreen(v0), worldToScreen(v1), worldToScreen(v2), ImColor(0.0f, 0.5f, 0.7f, 0.4f));
     }
 
     // Influence circles
@@ -575,18 +584,12 @@ void renderWorld(
             auto tuDist = primitive->getTimeUpdateDistance();
 
             if (tuDist < 1000.0f) {
-              primPosition.x -= offset.x;
-              primPosition.y = ED_WINDOW_HEIGHT - (primPosition.y - offset.y);
-
               int numSegs = (int)(tuDist / 8);
-              drawList->AddCircle({primPosition.x, primPosition.y}, tuDist, settings.timeUpdateDistColour, numSegs, 1.5f);
+              drawList->AddCircle(worldToScreen(primPosition), tuDist * gViewZoom, settings.timeUpdateDistColour, numSegs, 1.5f);
             }
           }
 
-          auto influenceCentre = primitive->getInfluenceEyeOriginPosition();
-
-          influenceCentre.x -= offset.x;
-          influenceCentre.y = ED_WINDOW_HEIGHT - (influenceCentre.y - offset.y);
+          auto influenceCentre = worldToScreen(primitive->getInfluenceEyeOriginPosition());
 
           for (int i = 0; i < (int)bw::core::VertexTransformer::Key::COUNT; ++i) {
             if (i == 0 && !settings.renderScaleInfluenceZones ||
@@ -606,8 +609,8 @@ void renderWorld(
 
             for (auto const& point : point) {
               int numSegs = (int)point.first;
-              float radius = scaleMax.x - point.first;
-              drawList->AddCircle({influenceCentre.x, influenceCentre.y}, radius, colour, numSegs, 1.5f);
+              float radius = (scaleMax.x - point.first) * gViewZoom;
+              drawList->AddCircle(influenceCentre, radius, colour, numSegs, 1.5f);
             }
           }
         }
@@ -627,7 +630,7 @@ void renderWorld(
           continue;
         }
 
-        renderBounds(primitive->getBounds(), offset, settings, settings.animatedBoundsColour, drawList);
+        renderBounds(primitive->getBounds(), settings, settings.animatedBoundsColour, drawList);
       }
     }
   }
@@ -640,8 +643,10 @@ void renderWorld(
       points[0] = triggerLine->getPoint(0);
       points[1] = triggerLine->getPoint(1);
 
-      wp::Vector2 p0 = {points[0].x - offset.x, ED_WINDOW_HEIGHT - (points[0].y - offset.y)};
-      wp::Vector2 p1 = {points[1].x - offset.x, ED_WINDOW_HEIGHT - (points[1].y - offset.y)};
+      auto p0Screen = worldToScreen(points[0]);
+      auto p1Screen = worldToScreen(points[1]);
+      wp::Vector2 p0{p0Screen.x, p0Screen.y};
+      wp::Vector2 p1{p1Screen.x, p1Screen.y};
 
       auto colour = settings.triggerLineColour;
       if (triggerLine->getId() == doc->getSelectedTriggerLineIndex()) {
@@ -671,7 +676,7 @@ void renderWorld(
 
   // Grid
   if (settings.showGrid) {
-    renderGrid(settings.gridSize, offset, settings.gridColour, 1.0f, renderWorldStuff ? world : nullptr, drawList);
+    renderGrid(settings.gridSize, viewBounds, settings.gridColour, 1.0f, renderWorldStuff ? world : nullptr, drawList);
   }
 
   // Primitive-field layout preview. This editor-only overlay is deliberately
@@ -680,7 +685,7 @@ void renderWorld(
   if (primitiveFieldPreview.open && primitiveFieldPreview.layout) {
     renderPrimitiveFieldPreview(
         *primitiveFieldPreview.layout, primitiveFieldPreview.primitives,
-        offset, drawList);
+        drawList);
   }
 }
 
@@ -696,7 +701,7 @@ wp::Vector2 worldToMinimap(wp::Vector2 const& worldPos, wp::BoundingBox const& w
 }
 
 wp::BoundingBox getMiniMapBounds(editor::Document* doc) {
-  auto windowSize = wp::Vector2(ED_WINDOW_WIDTH, ED_WINDOW_HEIGHT);
+  auto windowSize = gWorldViewSize;
 
   auto world = doc->getWorld();
   auto worldBounds = world->getExtents();
@@ -711,10 +716,10 @@ wp::BoundingBox getMiniMapBounds(editor::Document* doc) {
 }
 
 void renderMiniMap(editor::Document* doc, editor::Settings const& settings, bw::core::WorldData const* worldData, double globalTime) {
-  auto windowSize = wp::Vector2(ED_WINDOW_WIDTH, ED_WINDOW_HEIGHT);
+  auto windowSize = gWorldViewSize;
 
   // Render
-  auto drawList = ImGui::GetBackgroundDrawList();
+  auto drawList = ImGui::GetWindowDrawList();
 
   auto world = doc->getWorld();
   auto worldBounds = world->getExtents();
@@ -737,18 +742,19 @@ void renderMiniMap(editor::Document* doc, editor::Settings const& settings, bw::
     ImColor bColour = primitive->isStatic() ? ImColor(1.0f, 0.0f, 1.0f, 0.5f) : ImColor(1.0f, 1.0f, 0.0f, 0.5f);
     ImColor fColour = ImColor(0.2f, 0.2f, 1.0f, 0.5f);
 
-    drawList->AddRectFilled({pb0.x, pb0.y}, {pb1.x, pb1.y}, fColour);
-    drawList->AddRect({pb0.x, pb0.y}, {pb1.x, pb1.y}, bColour);
+    drawList->AddRectFilled(toScreen(pb0), toScreen(pb1), fColour);
+    drawList->AddRect(toScreen(pb0), toScreen(pb1), bColour);
   }
 
   // View window
-  wp::BoundingBox viewBounds(gViewOffset - windowSize / 2, windowSize);
+  auto visibleWorldSize = windowSize / gViewZoom;
+  wp::BoundingBox viewBounds(gViewOffset - visibleWorldSize / 2, visibleWorldSize);
 
   auto b0 = worldToMinimap(viewBounds.getMinExtent(), worldBounds, mmBounds);
   auto b1 = worldToMinimap(viewBounds.getMaxExtent(), worldBounds, mmBounds);
 
-  drawList->AddRect({b0.x, b0.y}, {b1.x, b1.y}, ImColor(1.0f, 0.5f, 0.0f));
+  drawList->AddRect(toScreen(b0), toScreen(b1), ImColor(1.0f, 0.5f, 0.0f));
 
   // Border
-  drawList->AddRect({mmMin.x, mmMin.y}, {mmMax.x, mmMax.y}, ImColor(1.0f, 0.0f, 0.0f));
+  drawList->AddRect(toScreen(mmMin), toScreen(mmMax), ImColor(1.0f, 0.0f, 0.0f));
 }
