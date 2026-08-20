@@ -24,6 +24,9 @@ void setEditorMode(Document* doc, Settings& settings, Settings::Mode mode) {
     return;
   }
 
+  // A half-drawn Ring means nothing outside the context it was started in.
+  doc->disarmMeshDrawTool();
+
   if (mode == Settings::Mode::Mesh && doc->isActive()) {
     auto const& selection = doc->getSelectedPrimitiveIndices();
     if (selection.size() == 1 && doc->activateMesh(*selection.begin())) {
@@ -39,6 +42,13 @@ void setEditorMode(Document* doc, Settings& settings, Settings::Mode mode) {
 
   settings.mode = mode;
   doc->clearSelections();
+
+  // The step filter reads the mode live, and Mesh mode keeps the ghost out of
+  // the fold entirely - so which Primitives contribute geometry has just
+  // changed and the generator needs telling.
+  if (doc->isActive()) {
+    doc->getWorld()->getWorldDataGenerator()->refreshPrimitiveFilter();
+  }
 }
 
 void setMeshSubMode(
@@ -47,6 +57,7 @@ void setMeshSubMode(
     return;
   }
 
+  doc->disarmMeshDrawTool();
   settings.meshSubMode = subMode;
   doc->clearSelections();
 }
@@ -228,6 +239,16 @@ bool splitMeshEdges(Document* doc, set<uint32_t> const& edgeIndices) {
 
 bool recentreActiveMesh(Document* doc) {
   return doc->recentreActiveMesh();
+}
+
+bool createMeshPrimitiveFromDrawnRing(Document* doc) {
+  auto* mesh = doc->closeMeshDrawRing();
+  if (!mesh) {
+    return false;
+  }
+
+  setPrimitiveDefaultMaterials(mesh);
+  return true;
 }
 
 bool createPrimitiveFromGhost(Document* doc) {

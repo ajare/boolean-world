@@ -8,6 +8,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
 #include <core/RectanglePolygon.h>
 
@@ -91,6 +92,68 @@ uint32_t addPolygonMesh(
   mesh->updateVertexPositions();
   document.getWorld()->addPrimitive(mesh);
   return mesh->getId();
+}
+
+// A step that produces nothing and refuses everything, for the draw tool's
+// "the selected step accepts new Primitives" arming rule.
+class RefusingStep final : public bw::core::LayerBuildStep {
+public:
+  std::string getType() const override {
+    return "RefusingStep";
+  }
+
+  bw::core::LayerBuildStep* copy(
+      std::map<bw::core::VertexTransformerObject const*, bw::core::VertexTransformerObject*>&) const override {
+    return new RefusingStep();
+  }
+
+  void execute(bw::core::Layer&) const override {
+  }
+
+  bool permitsDirectPrimitiveEditing() const override {
+    return false;
+  }
+
+  bool acceptsNewPrimitives() const override {
+    return false;
+  }
+
+private:
+  void serializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) const override {
+  }
+
+  bool deserializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) override {
+    return true;
+  }
+};
+
+float twiceSignedArea(std::vector<wp::Vector2> const& points) {
+  float area = 0.0f;
+  for (size_t i = 0; i < points.size(); ++i) {
+    auto const& a = points[i];
+    auto const& b = points[(i + 1) % points.size()];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return area;
+}
+
+// The active mesh's only Ring, in its stored order, for winding checks.
+std::vector<wp::Vector2> activeRingPositions(editor::Document const& document) {
+  std::vector<wp::Vector2> positions;
+  auto const* mesh = document.getActiveMesh();
+  auto ringIndex = mesh->getFirstPolygonIndex();
+  for (auto vertexIndex : mesh->getPolygon(ringIndex).getOrderedVertexIndices()) {
+    positions.push_back(mesh->getVertex(vertexIndex).getPosition());
+  }
+  return positions;
+}
+
+editor::Settings meshDrawSettings() {
+  editor::Settings settings;
+  settings.ghostActive = false;
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshSubMode = editor::Settings::MeshSubMode::Vertex;
+  return settings;
 }
 
 editor::PointerInput pointerAt(wp::Vector2 const& position) {
@@ -1019,6 +1082,204 @@ void edgeSplitIsOneUndoEntry() {
           "undo did not restore the Ring to its unsplit edge count");
 }
 
+void drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  document.newDoc();
+
+  settings.mode = editor::Settings::Mode::Primitive;
+  require(!document.armMeshDrawTool(settings) && !document.meshDrawToolArmed(),
+          "the draw tool armed outside Mesh mode");
+
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshSubMode = editor::Settings::MeshSubMode::Edge;
+  require(!document.armMeshDrawTool(settings) &&
+              document.meshDrawToolUnavailableReason(settings).find("Vertex sub-mode") !=
+                  std::string::npos,
+          "the draw tool armed outside Vertex sub-mode");
+
+  settings.meshSubMode = editor::Settings::MeshSubMode::Vertex;
+  require(document.meshDrawToolUnavailableReason(settings).empty() &&
+              document.armMeshDrawTool(settings) && document.meshDrawToolArmed(),
+          "the draw tool did not arm in Vertex sub-mode on an accepting step");
+
+  document.disarmMeshDrawTool();
+  auto* layer = document.getWorld()->getActiveLayer();
+  layer->setActiveStep(layer->addStep(new RefusingStep()));
+
+  require(document.meshDrawToolUnavailableReason(settings).find("does not accept new Primitives") !=
+                  std::string::npos &&
+              !document.armMeshDrawTool(settings),
+          "the draw tool armed on a step that refuses new Primitives");
+}
+
+void drawClicksPlaceGridSnappedVerticesAndRefuseToCloseBelowThree() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  settings.showGrid = true;
+  settings.gridSize = 10.0f;
+  document.newDoc();
+  require(document.armMeshDrawTool(settings), "the draw tool did not arm");
+  editor::EditorInteraction interaction;
+
+  auto click = [&](wp::Vector2 const& position) {
+    auto input = pointerAt(position);
+    input.leftClicked = true;
+    interaction.updateSelection(&document, nullptr, settings, input);
+  };
+  auto placedAt = [&](size_t index, wp::Vector2 const& expected) {
+    return document.getMeshDrawVertices()[index].distanceToSq(expected) < 0.0001f;
+  };
+
+  click({102.0f, 97.0f});
+  require(document.getMeshDrawVertices().size() == 1 && placedAt(0, {100.0f, 100.0f}),
+          "a draw click did not place a vertex snapped to the grid");
+
+  click({141.0f, 98.0f});
+  require(document.getMeshDrawVertices().size() == 2 && placedAt(1, {140.0f, 100.0f}),
+          "the second draw click did not place a grid-snapped vertex");
+
+  // The first vertex with only two placed can neither close the shape nor
+  // stack a third vertex on top of itself.
+  click({101.0f, 101.0f});
+  require(document.getMeshDrawVertices().size() == 2 && !document.getActiveMesh(),
+          "the first vertex closed or stacked a vertex below three vertices");
+
+  click({139.0f, 142.0f});
+  require(document.getMeshDrawVertices().size() == 3, "the third draw click did not place a vertex");
+  require(document.meshDrawClickWouldClose({100.0f, 100.0f}, settings),
+          "the first vertex refused to close a three-vertex Ring");
+
+  click({101.0f, 99.0f});
+  require(!document.meshDrawToolArmed() && document.getActiveMesh(),
+          "clicking the first vertex did not close the shape into an active mesh");
+}
+
+void backspaceStepsBackAndEscapeIsTwoStage() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  document.newDoc();
+  require(document.armMeshDrawTool(settings), "the draw tool did not arm");
+
+  document.placeMeshDrawVertex({0.0f, 0.0f}, settings);
+  document.placeMeshDrawVertex({100.0f, 0.0f}, settings);
+  require(document.removeLastMeshDrawVertex() && document.getMeshDrawVertices().size() == 1,
+          "Backspace did not remove the last placed vertex");
+
+  require(document.escapeMeshDraw() && document.meshDrawToolArmed() &&
+              document.getMeshDrawVertices().empty(),
+          "the first Esc did not discard the in-progress Ring while staying armed");
+  require(document.escapeMeshDraw() && !document.meshDrawToolArmed(),
+          "the second Esc did not disarm the draw tool");
+  require(!document.escapeMeshDraw(), "Esc acted with the draw tool already disarmed");
+}
+
+void switchingSubModeOrLeavingMeshModeDisarmsAndDiscards() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  document.newDoc();
+
+  require(document.armMeshDrawTool(settings), "the draw tool did not arm");
+  document.placeMeshDrawVertex({0.0f, 0.0f}, settings);
+  editor::setMeshSubMode(&document, settings, editor::Settings::MeshSubMode::Edge);
+  require(!document.meshDrawToolArmed() && document.getMeshDrawVertices().empty(),
+          "switching sub-mode did not disarm the draw tool and discard its Ring");
+
+  editor::setMeshSubMode(&document, settings, editor::Settings::MeshSubMode::Vertex);
+  require(document.armMeshDrawTool(settings), "the draw tool did not re-arm");
+  document.placeMeshDrawVertex({0.0f, 0.0f}, settings);
+  editor::setEditorMode(&document, settings, editor::Settings::Mode::Primitive);
+  require(!document.meshDrawToolArmed() && document.getMeshDrawVertices().empty(),
+          "leaving Mesh mode did not disarm the draw tool and discard its Ring");
+}
+
+void closingADrawnRingCreatesAMeshPrimitiveWithCanonicalWinding() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  document.newDoc();
+
+  auto* ghost = document.getGhost();
+  ghost->setOperation(bw::core::Primitive::Operation::Difference);
+  ghost->setFillRule(bw::core::Primitive::FillRule::NonZero);
+  ghost->setPriority(7);
+
+  // Drawn clockwise: the closed Ring must still come out anticlockwise.
+  require(document.armMeshDrawTool(settings), "the draw tool did not arm");
+  document.placeMeshDrawVertex({0.0f, 0.0f}, settings);
+  document.placeMeshDrawVertex({0.0f, 100.0f}, settings);
+  document.placeMeshDrawVertex({100.0f, 100.0f}, settings);
+  document.placeMeshDrawVertex({100.0f, 0.0f}, settings);
+
+  auto* created = document.closeMeshDrawRing();
+  require(created != nullptr, "closing a four-vertex Ring did not create a Primitive");
+  require(!document.meshDrawToolArmed() && document.getMeshDrawVertices().empty(),
+          "closing the shape did not disarm the draw tool");
+  require(document.getActiveMesh() && document.getActiveMeshPrimitiveIndex() == created->getId(),
+          "closing the shape did not make the new mesh the active one");
+  require(document.getSelectedMeshVertexIndices().empty() &&
+              document.getSelectedMeshEdgeIndices().empty() &&
+              document.getSelectedMeshRingIndices().empty() &&
+              document.getSelectedPrimitiveIndices().empty(),
+          "closing the shape left something selected");
+  require(created->getOperation() == bw::core::Primitive::Operation::Difference &&
+              created->getFillRule() == bw::core::Primitive::FillRule::NonZero &&
+              created->getPriority() == 7,
+          "the new MeshPrimitive did not take the Mesh panel's operation, fill rule and priority");
+
+  auto clockwiseRing = activeRingPositions(document);
+  require(clockwiseRing.size() == 4, "the new MeshPrimitive did not carry the four drawn vertices");
+  require(twiceSignedArea(clockwiseRing) > 0.0f,
+          "a clockwise-drawn Ring was not forced to the canonical winding");
+
+  // The same shape drawn the other way round produces the same winding.
+  editor::Document other;
+  other.newDoc();
+  require(other.armMeshDrawTool(settings), "the draw tool did not arm");
+  other.placeMeshDrawVertex({0.0f, 0.0f}, settings);
+  other.placeMeshDrawVertex({100.0f, 0.0f}, settings);
+  other.placeMeshDrawVertex({100.0f, 100.0f}, settings);
+  other.placeMeshDrawVertex({0.0f, 100.0f}, settings);
+  require(other.closeMeshDrawRing() != nullptr, "closing an anticlockwise Ring did not create a Primitive");
+  require(twiceSignedArea(activeRingPositions(other)) > 0.0f,
+          "an anticlockwise-drawn Ring did not keep the canonical winding");
+}
+
+void theWholeDrawingGestureIsOneUndoEntry() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  document.newDoc();
+  editor::EditorInteraction interaction;
+
+  auto click = [&](wp::Vector2 const& position) {
+    auto input = pointerAt(position);
+    input.leftClicked = true;
+    interaction.updateSelection(&document, nullptr, settings, input);
+  };
+
+  require(document.armMeshDrawTool(settings), "the draw tool did not arm");
+  auto const primitivesBefore = document.getWorld()->getNumPrimitives();
+  document.setModified(false);
+  auto const undoLevelsBefore = editor::getUndoLevels();
+
+  click({0.0f, 0.0f});
+  click({100.0f, 0.0f});
+  click({100.0f, 100.0f});
+  require(editor::getUndoLevels() == undoLevelsBefore && !document.isModified(),
+          "placing vertices entered undo history before the shape was closed");
+
+  click({0.0f, 0.0f});
+  require(document.getWorld()->getNumPrimitives() == primitivesBefore + 1,
+          "closing the shape did not add a Primitive");
+  require(editor::getUndoLevels() == undoLevelsBefore + 1,
+          "a drawing gesture produced more than one undo entry");
+  require(document.isModified(), "closing the shape did not mark the Document modified");
+
+  editor::undo(&document);
+  require(editor::getUndoLevels() == undoLevelsBefore &&
+              document.getWorld()->getNumPrimitives() == primitivesBefore,
+          "one undo did not remove the whole drawn shape");
+}
+
 void rubberBandSelectionSupportsPlainControlAndShiftPolicies() {
   editor::Document document;
   editor::Settings settings;
@@ -1096,6 +1357,12 @@ int main() {
     edgeSplitInsertsUnsnappedMidpointAndSelectsBothHalves();
     repeatedEdgeSplitSubdividesIntoFourSegments();
     edgeSplitIsOneUndoEntry();
+    drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep();
+    drawClicksPlaceGridSnappedVerticesAndRefuseToCloseBelowThree();
+    backspaceStepsBackAndEscapeIsTwoStage();
+    switchingSubModeOrLeavingMeshModeDisarmsAndDiscards();
+    closingADrawnRingCreatesAMeshPrimitiveWithCanonicalWinding();
+    theWholeDrawingGestureIsOneUndoEntry();
     std::cout << "Editor selection interactions passed\n";
     return 0;
   } catch (std::exception const& error) {

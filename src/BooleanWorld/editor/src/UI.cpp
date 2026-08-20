@@ -1151,6 +1151,10 @@ bw::core::Primitive::Operation setOperationWidget(Document* doc, bw::core::Primi
       name = "Operation##OrderPrimitive";
       break;
 
+    case 3:
+      name = "Operation##MeshDraw";
+      break;
+
     default:
       throw EditorException("Unknown widget mode");
   }
@@ -1228,6 +1232,10 @@ bw::core::Primitive::FillRule setFillRuleWidget(Document* doc, bw::core::Primiti
 
     case 2:
       name = "FillRule##OrderPrimitive";
+      break;
+
+    case 3:
+      name = "FillRule##MeshDraw";
       break;
 
     default:
@@ -3155,7 +3163,65 @@ void renderHistoryPanel(editor::Document* doc, editor::Settings& settings) {
   ImGui::End();
 }
 
+// The draw tool's own half of the Mesh panel. Create Primitive is hidden in
+// Mesh mode, so the operation, fill rule and priority a drawn mesh is born
+// with are set here - written through to the same ghost state the Create
+// Primitive panel writes to in Primitive mode.
+void renderMeshDrawToolView(editor::Document* doc, editor::Settings& settings) {
+  auto* ghost = doc->getGhost();
+
+  setOperationWidget(doc, ghost, 3);
+  setFillRuleWidget(doc, ghost, 3);
+
+  int priority = (int)ghost->getPriority();
+  widgets::HelpMarker("Priority the drawn MeshPrimitive is created with.  Lower value means earlier in the fold order.");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(128);
+
+  if (ImGui::SliderInt("Priority##MeshDraw", &priority, BW_PRIORITY_MIN_VALUE, BW_PRIORITY_MAX_VALUE)) {
+    ghost->setPriority((uint8_t)priority);
+  }
+
+  if (ImGui::IsItemActivated()) {
+    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+  } else if (ImGui::IsItemDeactivatedAfterEdit()) {
+    commitUndoableAction(doc, format("Set Drawn Mesh Priority to {}", (int)ghost->getPriority()));
+  } else if (ImGui::IsItemDeactivated()) {
+    abandonUndoableAction(doc);
+  }
+
+  auto reason = doc->meshDrawToolUnavailableReason(settings);
+  bool armed = doc->meshDrawToolArmed();
+
+  widgets::HelpMarker(reason.empty()
+                          ? "Arm the draw tool, then click in the world view to place vertices."
+                          : reason.c_str());
+  ImGui::SameLine();
+  ImGui::BeginDisabled(!reason.empty() || armed);
+
+  if (ImGui::Button("Draw mesh##MeshDraw")) {
+    doc->armMeshDrawTool(settings);
+  }
+
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  ImGui::TextUnformatted("Ctrl+Shift+C");
+
+  if (!reason.empty()) {
+    ImGui::TextWrapped("%s", reason.c_str());
+  } else if (armed) {
+    ImGui::Text("Drawing: %zu vertex(es) placed.", doc->getMeshDrawVertices().size());
+    ImGui::TextWrapped(
+        "Click to place a vertex, and click the first vertex to close the shape "
+        "(three vertices minimum).  Backspace steps back a vertex; Esc discards "
+        "the shape, and a second Esc disarms the tool.");
+  }
+}
+
 void renderMeshView(editor::Document* doc, editor::Settings& settings) {
+  renderMeshDrawToolView(doc, settings);
+  ImGui::Separator();
+
   auto index = doc->getActiveMeshPrimitiveIndex();
   if (doc->getActiveMesh() && !doc->meshIneligibilityReason(index).empty()) {
     doc->clearActiveMesh();
@@ -3398,6 +3464,26 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
           transactUndoableAction(doc, "Delete TriggerLine", bind(deleteTriggerLine, placeholders::_1, triggerLineIndex));
         }
       }
+    }
+  }
+
+  // The draw tool. Arming is deliberate and one-way: Esc is what stands
+  // between drawing and not drawing, in two stages.
+  if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal)) {
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+      doc->armMeshDrawTool(settings);
+    }
+  }
+
+  if (ImGui::Shortcut(ImGuiKey_Backspace, ImGuiInputFlags_RouteGlobal)) {
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+      doc->removeLastMeshDrawVertex();
+    }
+  }
+
+  if (ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal)) {
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+      doc->escapeMeshDraw();
     }
   }
 

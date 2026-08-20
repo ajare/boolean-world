@@ -152,6 +152,13 @@ bool setMeshVertexPosition(Document* doc, uint32_t vertexIndex, wp::Vector2 cons
 // and size and its geometry ("Recentre mesh").
 bool recentreActiveMesh(Document* doc);
 
+// Closes the draw tool's in-progress Ring into a new MeshPrimitive
+// (Document::closeMeshDrawRing) carrying the default materials. This is the
+// one undoable action of a whole drawing gesture: placing vertices, stepping
+// back over them and discarding the Ring all touch nothing but the tool's own
+// transient state.
+bool createMeshPrimitiveFromDrawnRing(Document* doc);
+
 bool createPrimitiveFromGhost(Document* doc);
 
 bool clonePrimitive(Document* doc, uint32_t primitiveIndex);

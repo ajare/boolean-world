@@ -83,6 +83,28 @@ void EditorInteraction::updateSelection(
     bw::core::WorldData const* worldData,
     Settings& settings,
     PointerInput const& input) {
+  if (settings.mode == Settings::Mode::Mesh && doc->meshDrawToolArmed()) {
+    // An armed draw tool owns the left button outright: a click places a
+    // vertex or closes the Ring, and nothing selects, cycles or rubber-bands
+    // behind it. Nothing is hoverable while it is armed either.
+    mHover = DocumentHover{};
+    doc->setMeshHoverExplanation("");
+
+    if (input.leftClicked && input.cursorInWorldView && !input.cursorInMiniMap) {
+      auto position = Document::snapMeshDrawPosition(
+          input.worldPosition, settings.showGrid, settings.gridSize);
+
+      if (doc->meshDrawClickWouldClose(position, settings)) {
+        transactUndoableAction(
+            doc, "Create Mesh Primitive", createMeshPrimitiveFromDrawnRing);
+        settings.activeMeshPrimitiveIndex = doc->getActiveMeshPrimitiveIndex();
+      } else {
+        doc->placeMeshDrawVertex(position, settings);
+      }
+    }
+    return;
+  }
+
   mHover = input.cursorInWorldView
                ? doc->getHover(input.worldPosition, settings, worldData)
                : DocumentHover{};
@@ -258,7 +280,8 @@ void EditorInteraction::updateDrag(
   // Shift and Alt are inert here by construction: unlike Primitive mode
   // below, nothing in this branch ever inspects them.
   if (settings.mode == Settings::Mode::Mesh) {
-    if (mBoxSelectPending || (input.cursorInMiniMap && input.leftDragging)) {
+    if (doc->meshDrawToolArmed() || mBoxSelectPending ||
+        (input.cursorInMiniMap && input.leftDragging)) {
       return;
     }
 

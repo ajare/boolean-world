@@ -116,6 +116,24 @@ void theGhostIsHoveredFirstWhereItOverlapsAnotherPrimitive() {
           "the hovered primitive was not the ghost where it overlaps another primitive");
 }
 
+void theGhostIsHiddenFromTheViewAndTheFoldInMeshMode() {
+  editor::Document document;
+  editor::Settings settings;
+
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto const* ghost = document.getGhost();
+
+  require(editor::primitiveVisibleForActiveStep(*layer, ghost, settings),
+          "the ghost was hidden in Primitive mode");
+
+  settings.mode = editor::Settings::Mode::Mesh;
+  require(!editor::primitiveVisibleForActiveStep(*layer, ghost, settings),
+          "the ghost was still shown - and still folded - in Mesh mode");
+  require(document.meshIneligibilityReason(ED_GHOST_INDEX).find("ghost") != std::string::npos,
+          "the ghost was eligible to become the active mesh");
+}
+
 void primitiveIndicesInBoundsFindsOverlappingPrimitivesAndIgnoresTheGhost() {
   editor::Document document;
   editor::Settings settings;
@@ -276,6 +294,7 @@ int main() {
     changingSelectedPrimitiveIndicesDoesNotWriteIntoAnInputRange();
     primitiveHoverQueriesAreSafeWithoutAnActiveDocument();
     theGhostIsHoveredFirstWhereItOverlapsAnotherPrimitive();
+    theGhostIsHiddenFromTheViewAndTheFoldInMeshMode();
     primitiveIndicesInBoundsFindsOverlappingPrimitivesAndIgnoresTheGhost();
     selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps();
     refusingStepPrimitivesAreNotSelectableInPrimitiveMode();

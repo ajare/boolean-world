@@ -42,11 +42,15 @@ bool primitiveVisibleForActiveStep(
     bw::core::Layer const& layer,
     bw::core::Primitive const* primitive,
     Settings const& settings) {
-  if (settings.showAllStepPrimitives) {
-    return true;
+  // The ghost is Primitive mode's authoring furniture. Mesh mode neither
+  // draws it nor lets anything touch it, and the fold must not see it there
+  // either: a Primitive hidden from the overlay while still contributing
+  // geometry would read as a phantom shape.
+  if (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) {
+    return settings.mode != Settings::Mode::Mesh;
   }
 
-  if (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) {
+  if (settings.showAllStepPrimitives) {
     return true;
   }
 
@@ -156,6 +160,7 @@ void Document::reset() {
   mSelectedTriggerLineIndex = ~0u;
   mSelectedPrimitiveIndices.clear();
   clearActiveMesh();
+  disarmMeshDrawTool();
   mMeshHoverExplanation.clear();
   mPlayerProxyPosition.set(0.0f, 0.0f);
   mPlayerProxyAngle = 0.0f;
@@ -1043,6 +1048,159 @@ uint32_t Document::splitMeshEdges(set<uint32_t> const& edgeIndices) {
   primitive->updateVertexPositions();
 
   return static_cast<uint32_t>(edgeIndices.size());
+}
+
+namespace {
+
+float twiceSignedArea(vector<wp::Vector2> const& points) {
+  float area = 0.0f;
+  for (size_t i = 0; i < points.size(); ++i) {
+    auto const& a = points[i];
+    auto const& b = points[(i + 1) % points.size()];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return area;
+}
+
+}  // namespace
+
+string Document::meshDrawToolUnavailableReason(Settings const& settings) const {
+  if (!isActive()) {
+    return "No World is open.";
+  }
+  if (settings.mode != Settings::Mode::Mesh) {
+    return "The draw tool is only available in Mesh mode.";
+  }
+  if (settings.meshSubMode != Settings::MeshSubMode::Vertex) {
+    return "The draw tool is only available in Vertex sub-mode.";
+  }
+
+  auto* step = mWorld->getActiveLayer()->getActiveStep();
+  if (!step->acceptsNewPrimitives()) {
+    return "The selected LayerBuildStep does not accept new Primitives.";
+  }
+  if (!step->isEnabled()) {
+    return "The selected LayerBuildStep is disabled.";
+  }
+  return {};
+}
+
+bool Document::armMeshDrawTool(Settings const& settings) {
+  if (!meshDrawToolUnavailableReason(settings).empty()) {
+    return false;
+  }
+  mMeshDrawToolArmed = true;
+  mMeshDrawVertices.clear();
+  return true;
+}
+
+void Document::disarmMeshDrawTool() {
+  mMeshDrawToolArmed = false;
+  mMeshDrawVertices.clear();
+}
+
+bool Document::meshDrawToolArmed() const {
+  return mMeshDrawToolArmed;
+}
+
+vector<wp::Vector2> const& Document::getMeshDrawVertices() const {
+  return mMeshDrawVertices;
+}
+
+wp::Vector2 Document::snapMeshDrawPosition(
+    wp::Vector2 const& worldPosition, bool snapToGrid, float gridSize) {
+  if (!snapToGrid || gridSize <= 0.0f) {
+    return worldPosition;
+  }
+  return {
+      std::round(worldPosition.x / gridSize) * gridSize,
+      std::round(worldPosition.y / gridSize) * gridSize};
+}
+
+bool Document::meshDrawClickWouldClose(
+    wp::Vector2 const& position, Settings const& settings) const {
+  if (!mMeshDrawToolArmed || mMeshDrawVertices.size() < 3) {
+    return false;
+  }
+  auto radiusSq = settings.meshVertexPickRadius * settings.meshVertexPickRadius;
+  return mMeshDrawVertices.front().distanceToSq(position) <= radiusSq;
+}
+
+bool Document::placeMeshDrawVertex(
+    wp::Vector2 const& position, Settings const& settings) {
+  if (!mMeshDrawToolArmed) {
+    return false;
+  }
+
+  // A click that lands on a vertex already placed is a close attempt, and one
+  // the caller has already found it cannot honour - stacking a second vertex
+  // on top of the first would bound no region.
+  auto radiusSq = settings.meshVertexPickRadius * settings.meshVertexPickRadius;
+  for (auto const& placed : mMeshDrawVertices) {
+    if (placed.distanceToSq(position) <= radiusSq) {
+      return false;
+    }
+  }
+
+  mMeshDrawVertices.push_back(position);
+  return true;
+}
+
+bool Document::removeLastMeshDrawVertex() {
+  if (!mMeshDrawToolArmed || mMeshDrawVertices.empty()) {
+    return false;
+  }
+  mMeshDrawVertices.pop_back();
+  return true;
+}
+
+bool Document::escapeMeshDraw() {
+  if (!mMeshDrawToolArmed) {
+    return false;
+  }
+  if (!mMeshDrawVertices.empty()) {
+    mMeshDrawVertices.clear();
+    return true;
+  }
+  mMeshDrawToolArmed = false;
+  return true;
+}
+
+bw::core::Primitive* Document::closeMeshDrawRing() {
+  if (!mMeshDrawToolArmed || mMeshDrawVertices.size() < 3 || !isActive()) {
+    return nullptr;
+  }
+
+  auto* step = mWorld->getActiveLayer()->getActiveStep();
+  if (!step->acceptsNewPrimitives() || !step->isEnabled()) {
+    return nullptr;
+  }
+
+  // Canonical winding is anticlockwise, which is what the arrangement's own
+  // outer boundaries carry and therefore what a baked MeshPrimitive already
+  // has: a drawn Ring is then indistinguishable from a baked one downstream.
+  auto points = mMeshDrawVertices;
+  if (twiceSignedArea(points) < 0.0f) {
+    reverse(points.begin(), points.end());
+  }
+
+  bw::core::ClosedPolygon ring;
+  for (auto const& point : points) {
+    ring.emplace_back(point);
+  }
+
+  // The Create Primitive panel is hidden in Mesh mode, so the ghost carries
+  // the settings for what is about to be created and the Mesh panel writes
+  // through to it.
+  auto* ghost = getGhost();
+  auto* mesh = bw::core::MeshPrimitive::fromComplexPolygons(
+      ghost->getOperation(), ghost->getFillRule(), {{ring}});
+  mesh->setPriority(ghost->getPriority());
+
+  disarmMeshDrawTool();
+  clearSelections();
+  activateMesh(mWorld->addPrimitive(mesh));
+  return mesh;
 }
 
 bool Document::recentreActiveMesh() {

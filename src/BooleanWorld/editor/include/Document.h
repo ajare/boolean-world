@@ -18,8 +18,10 @@ namespace editor {
 
 // The rule behind Settings::showAllStepPrimitives: with it off, a Primitive
 // produced by a LayerBuildStep after its Layer's active step is not shown at
-// all. A ghost, and a Primitive belonging to no step in this Layer
-// (getOwningStepIndex returns ~0u), are always shown.
+// all. A Primitive belonging to no step in this Layer (getOwningStepIndex
+// returns ~0u) is always shown. The ghost is shown whatever the step rule
+// says in Primitive mode, and never in Mesh mode, where it is hidden and
+// inert.
 //
 // Both halves of "not shown" go through here - the world view's overlay
 // skips it, the world data generator's filter keeps it out of the fold so it
@@ -82,6 +84,13 @@ class Document {
   uint32_t mMeshDragAnchorVertexIndex{~0u};
   wp::Vector2 mMeshDragAnchorStartPosition;
   wp::Vector2 mMeshDragLastValidDelta;
+
+  // Draw tool state (ticket #183). Transient gesture state like the drag
+  // snapshot above: the Ring being drawn is not Document data and never
+  // enters undo history - only the MeshPrimitive it closes into does, as a
+  // single entry.
+  bool mMeshDrawToolArmed{false};
+  std::vector<wp::Vector2> mMeshDrawVertices;
 
   wp::Vector2 mPlayerOldProxyPosition, mPlayerProxyPosition;
 
@@ -227,6 +236,45 @@ public:
   // accurate "N removed" report before the real, undoable delete runs.
   [[nodiscard]] uint32_t previewMeshSubObjectDeletionCount(
       Settings::MeshSubMode subMode, std::set<uint32_t> const& indices) const;
+
+  // The draw tool (Ctrl+Shift+C). An empty reason means it can be armed;
+  // otherwise the reason is what the Mesh panel shows beside the disabled
+  // control.
+  [[nodiscard]] std::string meshDrawToolUnavailableReason(Settings const& settings) const;
+  bool armMeshDrawTool(Settings const& settings);
+  void disarmMeshDrawTool();
+  [[nodiscard]] bool meshDrawToolArmed() const;
+  [[nodiscard]] std::vector<wp::Vector2> const& getMeshDrawVertices() const;
+
+  // The position a draw click actually acts on: snapped to the grid while
+  // the grid is shown, since close detection and placement both run on the
+  // snapped position rather than the raw cursor.
+  [[nodiscard]] static wp::Vector2 snapMeshDrawPosition(
+      wp::Vector2 const& worldPosition, bool snapToGrid, float gridSize);
+
+  // Whether a click at this (already snapped) position lands on the first
+  // placed vertex with enough vertices behind it to bound a region. Below
+  // three the first vertex refuses, and the click places nothing either -
+  // placement rejects a position already occupied by a placed vertex.
+  [[nodiscard]] bool meshDrawClickWouldClose(
+      wp::Vector2 const& position, Settings const& settings) const;
+
+  bool placeMeshDrawVertex(wp::Vector2 const& position, Settings const& settings);
+
+  // Backspace: steps back over the last placed vertex.
+  bool removeLastMeshDrawVertex();
+
+  // Esc, in two stages: discards the in-progress Ring and stays armed, or
+  // disarms when there is nothing in progress. False if the tool was not
+  // armed at all.
+  bool escapeMeshDraw();
+
+  // Closes the in-progress Ring into a new MeshPrimitive on the currently-
+  // selected LayerBuildStep, with its winding forced to the canonical
+  // direction and its operation, fill rule and priority taken from the
+  // ghost. Disarms the tool, makes the new mesh active with nothing
+  // sub-selected. Returns the new Primitive, or nullptr if it refused.
+  bw::core::Primitive* closeMeshDrawRing();
 
   // Splits every given edge at its (unsnapped) midpoint, leaving both
   // resulting half-edges selected so repeated splits subdivide further.

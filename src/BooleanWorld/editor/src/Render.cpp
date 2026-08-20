@@ -392,6 +392,8 @@ void renderWorld(
       vector<vector<ImVec2>> ghostBorderPolylines;
 
       for (auto primitive : primitives) {
+        // Mesh mode's ghost never reaches here: primitiveVisibleForActiveStep
+        // drops it from this list along with the fold.
         bool isGhost = (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) != 0;
         if (isGhost && !settings.ghostActive) {
           continue;
@@ -448,9 +450,7 @@ void renderWorld(
       for (auto const& ghostOutline : ghostBorderPolylines) {
         auto band = insetOutline(ghostOutline, ED_GHOST_INNER_BAND_INSET);
 
-        auto ghostColour = settings.mode == editor::Settings::Mode::Mesh
-                               ? fadeColour(settings.ghostPrimitiveColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
-                               : settings.ghostPrimitiveColour;
+        auto ghostColour = settings.ghostPrimitiveColour;
         drawList->AddPolyline(
             band.data(),
             (int)band.size(),
@@ -538,6 +538,34 @@ void renderWorld(
             drawList->AddCircleFilled(
                 worldToScreen(mesh->getVertex(vertexIndex).getPosition()),
                 settings.meshVertexPickRadius, colour, 16);
+          }
+        }
+
+        // The Ring being drawn. It stays open until it closes - the segment
+        // back to the first vertex is drawn by the MeshPrimitive it becomes,
+        // never before - and the first vertex takes the selected colour once
+        // there are enough vertices behind it to accept a close.
+        auto const& drawnVertices = doc->getMeshDrawVertices();
+        if (doc->meshDrawToolArmed() && !drawnVertices.empty()) {
+          drawList->AddDrawCmd();
+
+          vector<ImVec2> points;
+          for (auto const& position : drawnVertices) {
+            points.push_back(worldToScreen(position));
+          }
+
+          if (points.size() > 1) {
+            drawList->AddPolyline(
+                points.data(), (int)points.size(), settings.meshEdgeColour,
+                ImDrawFlags_None, 2.5f);
+          }
+
+          bool canClose = drawnVertices.size() >= 3;
+          for (size_t i = 0; i < points.size(); ++i) {
+            drawList->AddCircleFilled(
+                points[i], settings.meshVertexPickRadius,
+                i == 0 && canClose ? settings.meshSelectedColour : settings.meshVertexColour,
+                16);
           }
         }
       }
