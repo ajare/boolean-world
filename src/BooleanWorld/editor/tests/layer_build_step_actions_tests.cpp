@@ -331,6 +331,33 @@ void movingAPrimitiveToAnotherLayerLandsInItsFirstStepAsOneUndoableAction() {
   require(document.isModified(), "redo did not restore the modified state");
 }
 
+void selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto secondIndex = layer->addStep(new bw::core::PrimitiveField());
+
+  auto firstStepCountBefore = layer->getPrimitiveField()->getNumPrimitives();
+  auto undoBefore = editor::getUndoLevels();
+  document.setModified(false);
+
+  layer->setActiveStep(secondIndex);
+
+  require(editor::getUndoLevels() == undoBefore,
+          "selecting the active step created an undo entry, but it is ephemeral editor focus");
+  require(!document.isModified(),
+          "selecting the active step marked the document modified, but it is ephemeral editor focus");
+
+  auto* authored = makeRectangle(3.0f);
+  document.getWorld()->addPrimitive(authored);
+
+  require(layer->getStep(secondIndex)->getType() == "PrimitiveField" &&
+              static_cast<bw::core::PrimitiveField*>(layer->getStep(secondIndex))->getPrimitive(0) == authored,
+          "a Primitive created while the second step was active did not land there");
+  require(layer->getPrimitiveField()->getNumPrimitives() == firstStepCountBefore,
+          "a Primitive created while the second step was active reached the first step instead");
+}
+
 }  // namespace
 
 int main() {
@@ -341,6 +368,7 @@ int main() {
     removingANonFirstStepIsOneUndoableActionAndTheFirstStepIsRejected();
     movingAStepIsOneUndoableActionAndMovesIntoOrOutOfIndexZeroAreRejected();
     movingAPrimitiveToAnotherLayerLandsInItsFirstStepAsOneUndoableAction();
+    selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable();
     std::cout << "Layer build step enable/disable action tests passed\n";
     return 0;
   } catch (std::exception const& error) {

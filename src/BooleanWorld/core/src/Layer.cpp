@@ -20,7 +20,7 @@ Layer::Layer()
 }
 
 Layer::Layer(uint32_t id, string const& name, float size, float gridSize)
-    : mId(id), mName(name), mExtents(-size / 2, -size / 2, size, size), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
+    : mId(id), mName(name), mExtents(-size / 2, -size / 2, size, size), mActiveStepIndex(0), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&Layer::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   seedFirstStep();
@@ -31,7 +31,7 @@ Layer::Layer(uint32_t id, string const& name, float size, float gridSize)
 }
 
 Layer::Layer(Layer const& other)
-    : mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
+    : mActiveStepIndex(0), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&Layer::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   copyFrom(other);
@@ -57,6 +57,7 @@ void Layer::swapState(Layer& other) noexcept {
   swap(mName, other.mName);
   swap(mExtents, other.mExtents);
   swap(mSteps, other.mSteps);
+  swap(mActiveStepIndex, other.mActiveStepIndex);
   swap(mPrimitives, other.mPrimitives);
   swap(mTriggerLines, other.mTriggerLines);
   swap(mPrimitiveLookupGrid, other.mPrimitiveLookupGrid);
@@ -318,6 +319,7 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mName = name;
   mExtents.setPosition(minExtent);
   mExtents.setSize(maxExtent - minExtent);
+  mActiveStepIndex = 0;
 
   mPrimitives.clear();
   rebuildAccelerationGrids(workData.accelGridSize);
@@ -500,6 +502,22 @@ PrimitiveField* Layer::getPrimitiveField() const {
   return static_cast<PrimitiveField*>(mSteps.front());
 }
 
+uint32_t Layer::getActiveStepIndex() const {
+  return mActiveStepIndex;
+}
+
+LayerBuildStep* Layer::getActiveStep() const {
+  return mSteps[mActiveStepIndex];
+}
+
+void Layer::setActiveStep(uint32_t index) {
+  if (index >= getNumSteps()) {
+    throw CoreException(format("Cannot make step {} active in a Layer with {} steps", index, getNumSteps()));
+  }
+
+  mActiveStepIndex = index;
+}
+
 uint32_t Layer::insertStep(uint32_t index, LayerBuildStep* step) {
   if (index == 0) {
     throw CoreException("Index 0 is reserved for a Layer's PrimitiveField step; steps may only be inserted at index 1 or above");
@@ -510,6 +528,12 @@ uint32_t Layer::insertStep(uint32_t index, LayerBuildStep* step) {
   }
 
   mSteps.insert(mSteps.begin() + index, step);
+
+  // Inserting at or before the active step's index shifts it along with
+  // everything else that was there.
+  if (index <= mActiveStepIndex) {
+    mActiveStepIndex++;
+  }
 
   rebuild();
 
@@ -532,6 +556,15 @@ void Layer::removeStep(uint32_t index) {
   delete mSteps[index];
   mSteps.erase(mSteps.begin() + index);
 
+  // Keep the active step's identity stable across the removal: if it was
+  // the one removed, fall back to the first step; otherwise track its new
+  // position, mirroring World::removeLayer's active-Layer handling.
+  if (mActiveStepIndex == index) {
+    mActiveStepIndex = 0;
+  } else if (mActiveStepIndex > index) {
+    mActiveStepIndex--;
+  }
+
   rebuild();
 }
 
@@ -548,9 +581,14 @@ void Layer::moveStep(uint32_t fromIndex, uint32_t toIndex) {
     return;
   }
 
+  auto* activeStep = mSteps[mActiveStepIndex];
+
   auto* step = mSteps[fromIndex];
   mSteps.erase(mSteps.begin() + fromIndex);
   mSteps.insert(mSteps.begin() + toIndex, step);
+
+  auto it = find(mSteps.begin(), mSteps.end(), activeStep);
+  mActiveStepIndex = (uint32_t)distance(mSteps.begin(), it);
 
   rebuild();
 }
@@ -615,10 +653,14 @@ uint32_t Layer::addPrimitive(Primitive* primitive) {
     throw CoreException("Too many primitives added to the Layer");
   }
 
-  auto* field = getPrimitiveField();
+  auto* field = dynamic_cast<PrimitiveField*>(getActiveStep());
+
+  if (!field) {
+    throw CoreException("Cannot add a Primitive: the active step is not a PrimitiveField step");
+  }
 
   if (!field->isEnabled()) {
-    throw CoreException("Cannot add a Primitive while the Layer's PrimitiveField step is disabled");
+    throw CoreException("Cannot add a Primitive while the active PrimitiveField step is disabled");
   }
 
   field->addPrimitive(primitive);

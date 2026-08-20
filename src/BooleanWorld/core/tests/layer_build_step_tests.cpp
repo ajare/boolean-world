@@ -241,6 +241,90 @@ void movingAStepReordersItAndRejectsMovesInvolvingIndexZero() {
           "a rejected moveStep call disturbed the Layer's step list");
 }
 
+void aNewLayersActiveStepIsTheFirstStepAndAddPrimitiveWritesIntoIt() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  require(layer.getActiveStepIndex() == 0, "a new Layer's active step was not the first step");
+  require(layer.getActiveStep() == layer.getStep(0),
+          "a new Layer's active step was not identical to its first step");
+
+  layer.addPrimitive(makeRectangle(0.0f));
+
+  require(layer.getPrimitiveField()->getNumPrimitives() == 1,
+          "addPrimitive did not write into the active (first) step by default");
+}
+
+void selectingAnotherStepRedirectsWhereAddPrimitiveWrites() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  layer.addPrimitive(makeRectangle(0.0f));
+  auto secondIndex = layer.addStep(makeField({}));
+  auto* secondField = static_cast<bw::core::PrimitiveField*>(layer.getStep(secondIndex));
+
+  layer.setActiveStep(secondIndex);
+
+  require(layer.getActiveStepIndex() == secondIndex, "setActiveStep did not move the active step");
+  require(layer.getActiveStep() == secondField, "setActiveStep did not track the given step's identity");
+
+  auto* authored = makeRectangle(10.0f);
+  layer.addPrimitive(authored);
+
+  require(secondField->getNumPrimitives() == 1 && secondField->getPrimitive(0) == authored,
+          "selecting the second step did not redirect addPrimitive into it");
+  require(layer.getPrimitiveField()->getNumPrimitives() == 1,
+          "selecting another step let addPrimitive still reach the first step");
+
+  requireCoreException(
+      [&] { layer.setActiveStep(layer.getNumSteps()); },
+      "setActiveStep accepted an out-of-bounds index");
+}
+
+void addPrimitiveIsRejectedWhenTheActiveStepIsDisabled() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto secondIndex = layer.addStep(makeField({}));
+  layer.setActiveStep(secondIndex);
+  layer.setStepEnabled(secondIndex, false);
+
+  requireCoreException(
+      [&] { layer.addPrimitive(makeRectangle(0.0f)); },
+      "addPrimitive succeeded while its active step was disabled");
+}
+
+void insertRemoveAndMoveStepTrackTheActiveStepsIdentity() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto middleIndex = layer.addStep(makeField({}));
+  auto* middleStep = layer.getStep(middleIndex);
+  layer.addStep(makeField({}));
+
+  layer.setActiveStep(middleIndex);
+
+  // Inserting before the active step's index shifts it along.
+  layer.insertStep(1, makeField({}));
+  require(layer.getActiveStep() == middleStep,
+          "inserting a step before the active step lost track of its identity");
+
+  auto activeAfterInsert = layer.getActiveStepIndex();
+
+  // Removing a step before the active step shifts it back down.
+  layer.removeStep(1);
+  require(layer.getActiveStep() == middleStep && layer.getActiveStepIndex() == activeAfterInsert - 1,
+          "removing a step before the active step did not track its new position");
+
+  // Removing the active step itself falls back to the first step.
+  layer.removeStep(layer.getActiveStepIndex());
+  require(layer.getActiveStepIndex() == 0,
+          "removing the active step did not fall back to the first step");
+
+  layer.addStep(makeField({}));
+  layer.setActiveStep(1);
+  auto* activeStep = layer.getStep(1);
+  layer.moveStep(1, 2);
+  require(layer.getActiveStep() == activeStep && layer.getActiveStepIndex() == 2,
+          "moving the active step did not track its new position");
+}
+
 void copyingALayerCopiesItsStepsAndRebuildsFromThem() {
   bw::core::Layer layer(5, "Source", 100.0f, 10.0f);
 
@@ -248,10 +332,13 @@ void copyingALayerCopiesItsStepsAndRebuildsFromThem() {
   layer.addStep(makeField({10.0f}));
   auto disabled = layer.addStep(makeField({20.0f}));
   layer.setStepEnabled(disabled, false);
+  layer.setActiveStep(1);
 
   bw::core::Layer copy(layer);
 
   require(copy.getNumSteps() == 3, "a copied Layer did not preserve its step list");
+  require(copy.getActiveStepIndex() == 0,
+          "a copied Layer's active step was not reset to the first step");
   require(!copy.getStep(disabled)->isEnabled(),
           "a copied Layer did not preserve a step's disabled flag");
   require(builtPositions(copy) == std::vector<float>({0.0f, 10.0f}),
@@ -275,6 +362,10 @@ int main() {
     stepsAreOnlyInsertableAtIndexOneOrAbove();
     removingAStepDropsThePrimitivesItProduced();
     movingAStepReordersItAndRejectsMovesInvolvingIndexZero();
+    aNewLayersActiveStepIsTheFirstStepAndAddPrimitiveWritesIntoIt();
+    selectingAnotherStepRedirectsWhereAddPrimitiveWrites();
+    addPrimitiveIsRejectedWhenTheActiveStepIsDisabled();
+    insertRemoveAndMoveStepTrackTheActiveStepsIdentity();
     copyingALayerCopiesItsStepsAndRebuildsFromThem();
     std::cout << "A Layer derives its Primitives by running its enabled LayerBuildSteps in order\n";
     return 0;

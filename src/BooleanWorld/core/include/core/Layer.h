@@ -30,8 +30,10 @@ class PrimitiveField;
 // scratch by re-running the enabled steps in order, and the step list - not
 // the Primitives - is what a Layer serializes (docs/adr/0014). The
 // addPrimitive/removePrimitive/replacePrimitive facade is preserved for
-// authoring, and now reads and writes the Layer's first step, which is
-// permanently a PrimitiveField.
+// authoring: addPrimitive writes into the active step (see setActiveStep;
+// it starts out as the first step, permanently a PrimitiveField), while
+// removePrimitive/replacePrimitive look the Primitive up by identity across
+// every PrimitiveField step regardless of which is active.
 class BW_API Layer : public Serializable {
   struct PrimitiveCellMetadata {
     frame_number_type lastUpdatedFrameNumber{0};
@@ -49,6 +51,12 @@ private:
   // The recipe. Index 0 is always a PrimitiveField step: it can be disabled,
   // but never deleted or retyped, and no step may be inserted before it.
   std::vector<LayerBuildStep*> mSteps;
+
+  // The editor's authoring focus among mSteps: addPrimitive writes into this
+  // step. Not part of the serialized Layer state, mirroring World's
+  // mActiveLayerIndex (docs/adr/0013) - always 0 after construction, copy,
+  // or load.
+  uint32_t mActiveStepIndex;
 
   // Derived from mSteps, and not owned - every Primitive here belongs to the
   // step that produced it.
@@ -171,9 +179,18 @@ public:
 
   [[nodiscard]] LayerBuildStep* getStep(uint32_t index) const;
 
-  // The first step, always a PrimitiveField - the target of this Layer's
-  // authoring facade.
+  // The first step, always a PrimitiveField. Distinct from the active step
+  // below, which is where addPrimitive actually writes.
   [[nodiscard]] PrimitiveField* getPrimitiveField() const;
+
+  [[nodiscard]] uint32_t getActiveStepIndex() const;
+
+  [[nodiscard]] LayerBuildStep* getActiveStep() const;
+
+  // Sets which step addPrimitive writes into. Rejected if index is out of
+  // bounds; unlike World::setActiveLayer, any step type is accepted here -
+  // addPrimitive itself rejects a non-PrimitiveField active step.
+  void setActiveStep(uint32_t index);
 
   // Takes ownership of step and rebuilds. Index 0 is reserved for the
   // Layer's PrimitiveField step, so index must be >= 1; anything lower is

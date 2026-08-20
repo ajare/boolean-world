@@ -2840,7 +2840,9 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
   auto* layer = world->getActiveLayer();
   auto numSteps = layer->getNumSteps();
 
-  widgets::HelpMarker("Disabling a step and rebuilding removes its Primitives from this Layer; re-enabling restores them. The first step can be disabled but never removed, retyped, or reordered.");
+  widgets::HelpMarker("Disabling a step and rebuilding removes its Primitives from this Layer; re-enabling restores them. The first step can be disabled but never removed, retyped, or reordered. The active step (radio button) is where Create/Edit Primitive writes.");
+
+  auto activeStepIndex = layer->getActiveStepIndex();
 
   for (uint32_t i = 0; i < numSteps; ++i) {
     ImGui::PushID(i);
@@ -2852,6 +2854,14 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
 
     auto* step = layer->getStep(i);
     bool enabled = step->isEnabled();
+
+    // Not undoable: like World's active Layer, a Layer's active step is
+    // ephemeral editor-authoring focus, never serialized.
+    if (ImGui::RadioButton("##StepActive", i == activeStepIndex)) {
+      layer->setActiveStep(i);
+    }
+    widgets::HelpMarker("Make this the step Create/Edit Primitive writes into.");
+    ImGui::SameLine();
 
     ImGui::Text("%u :: %s", i, step->getType().c_str());
     ImGui::SameLine();
