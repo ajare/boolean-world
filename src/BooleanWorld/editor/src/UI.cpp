@@ -1540,7 +1540,7 @@ void renderEditTorusPolygon(editor::Document* doc, bw::core::Primitive* primitiv
 
   widgets::HelpMarker("This is the thickness of the torus, in [0.01, 0.99].");
   ImGui::SameLine();
-  if (ImGui::SliderFloat("Thickness##CreateTorus", &thickness, 0.01f, 0.99f)) {
+  if (ImGui::SliderFloat("Thickness##EditTorus", &thickness, 0.01f, 0.99f)) {
     torus->setThickness(thickness);
   }
 
@@ -1574,7 +1574,7 @@ void renderEditTorusSegmentPolygon(editor::Document* doc, bw::core::Primitive* p
 
   widgets::HelpMarker("This is the thickness of the torus segment, in [0.01, 0.99].");
   ImGui::SameLine();
-  if (ImGui::SliderFloat("Thickness##CreateTorus", &thickness, 0.01f, 0.99f)) {
+  if (ImGui::SliderFloat("Thickness##EditTorusSegment", &thickness, 0.01f, 0.99f)) {
     torusSeg->setThickness(thickness);
   }
 
