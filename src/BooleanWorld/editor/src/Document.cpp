@@ -717,34 +717,13 @@ set<uint32_t> affectedMeshVertices(
       vertices.insert(edge.getSecondVertex());
     }
   } else {
-    auto includeRing = [&](uint32_t polygonIndex) {
+    // A Ring selection means exactly those authored boundaries. Structural
+    // descendants are independent authored Rings and remain fixed unless they
+    // are selected too. Exact welded vertices still move together, as required
+    // by the proxy's shared-topology contract.
+    for (auto polygonIndex : selection) {
       auto polygonVertices = mesh.getPolygon(polygonIndex).getVertexIndexSet();
       vertices.insert(polygonVertices.begin(), polygonVertices.end());
-    };
-    for (auto polygonIndex : selection) {
-      auto const& polygon = mesh.getPolygon(polygonIndex);
-      includeRing(polygonIndex);
-
-      // Storage explicitly links an outer Ring to its holes, while filled
-      // islands are deliberately top-level ComplexPolygons whose hierarchy is
-      // re-derived geometrically. Include every Ring contained by the selected
-      // Ring so the complete alternating hole/island hierarchy translates as
-      // one rigid group.
-      for (auto candidateIndex = mesh.getFirstPolygonIndex();
-           !mesh.polygonIndexIterationFinished(candidateIndex);
-           candidateIndex = mesh.getNextPolygonIndex(candidateIndex)) {
-        if (candidateIndex == polygonIndex) {
-          continue;
-        }
-        auto const& candidate = mesh.getPolygon(candidateIndex);
-        auto const orderedVertices = candidate.getOrderedVertexIndices();
-        if (!orderedVertices.empty() &&
-            pointInsideRing(
-                mesh, polygon,
-                mesh.getVertex(orderedVertices.front()).getPosition())) {
-          includeRing(candidateIndex);
-        }
-      }
     }
   }
   return vertices;
@@ -1261,10 +1240,12 @@ wp::Vector2 Document::updateMeshDrag(
   candidate.moveVertices(indices, delta);
 
   if (meshGroupMoveIsValid(
-          candidate, *mMeshDragStartSnapshot, mMeshDragAffectedVertices, delta)) {
+          candidate, *mMeshDragStartSnapshot, mMeshDragAffectedVertices, delta) &&
+      // The proxy validates the complete authoritative hierarchy, including
+      // arbitrary-depth parent containment and sibling separation, before it
+      // installs the candidate.
+      mActiveMesh->replaceMesh(move(candidate))) {
     mMeshDragLastValidDelta = delta;
-    // Installed through the proxy so consumers never receive mutable Mesh access.
-    mActiveMesh->replaceMesh(move(candidate));
   }
 
   return mMeshDragLastValidDelta;
@@ -1306,7 +1287,11 @@ bool Document::moveMeshVertexTo(uint32_t vertexIndex, wp::Vector2 const& positio
     return false;
   }
 
-  mActiveMesh->moveVertex(vertexIndex, delta);
+  wp::geometry::Mesh candidate(mActiveMesh->getMesh());
+  candidate.moveVertex(vertexIndex, delta);
+  if (!mActiveMesh->replaceMesh(move(candidate))) {
+    return false;
+  }
 
   commitMeshPolygons(mActiveMeshPrimitiveIndex);
   return true;
@@ -1652,6 +1637,7 @@ bool Document::placeMeshDrawVertex(
   }
 
   if (mMeshDrawVertices.empty()) {
+    auto previouslyActiveMeshIndex = mActiveMeshPrimitiveIndex;
     // Exact picking finds filled regions. A point in a hole is not an exact
     // hit, so make a second pass over MeshPrimitive Rings to recover that
     // authoring context. The first geometrically-containing Primitive wins,
@@ -1683,6 +1669,13 @@ bool Document::placeMeshDrawVertex(
         mMeshDrawCreatesIsland = mActiveMesh->getPolygon(ring).isHole();
         mMeshDrawCreatesHole = !mMeshDrawCreatesIsland;
       }
+    } else if (previouslyActiveMeshIndex != ~0u &&
+               meshIneligibilityReason(previouslyActiveMeshIndex).empty() &&
+               activateMesh(previouslyActiveMeshIndex)) {
+      // No existing Ring contains the first point: author another root Shell
+      // on the active MeshPrimitive rather than silently switching authority
+      // to a new Primitive.
+      mMeshDrawContainingPrimitiveIndex = previouslyActiveMeshIndex;
     } else {
       clearActiveMesh();
     }
@@ -1781,9 +1774,21 @@ bw::core::Primitive* Document::closeMeshDrawRing() {
   if (mMeshDrawContainingPrimitiveIndex != ~0u && mActiveMesh) {
     auto* primitive = static_cast<bw::core::MeshPrimitive*>(
         mWorld->getPrimitive(mMeshDrawContainingPrimitiveIndex));
-    auto newRing = mMeshDrawCreatesHole
-                       ? mActiveMesh->addHole(mMeshDrawContainingRingIndex, ring)
-                       : mActiveMesh->addIsland(mMeshDrawContainingRingIndex, ring);
+    uint32_t newRing = ~0u;
+    try {
+      newRing = mMeshDrawContainingRingIndex == ~0u
+                    ? mActiveMesh->addShell(ring)
+                : mMeshDrawCreatesHole
+                    ? mActiveMesh->addHole(mMeshDrawContainingRingIndex, ring)
+                    : mActiveMesh->addIsland(mMeshDrawContainingRingIndex, ring);
+    } catch (std::exception const&) {
+      // addShell/addHole/addIsland validate a complete candidate before
+      // rebuilding the proxy, so both proxy and authored geometry remain
+      // untouched when the closing Ring overlaps a sibling or escapes its
+      // fixed creation-time parent.
+      mMeshDrawRejection = "Rejected: the Ring overlaps existing topology or leaves its parent.";
+      return nullptr;
+    }
     if (newRing == ~0u) {
       return nullptr;
     }

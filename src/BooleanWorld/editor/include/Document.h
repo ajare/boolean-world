@@ -212,17 +212,18 @@ public:
   void setMeshHoverExplanation(std::string explanation);
   [[nodiscard]] std::string const& getMeshHoverExplanation() const;
 
-  // Begins a rigid-group drag of the current sub-mode's selection: the
-  // group moves together or not at all, so a clamped move never deforms
-  // the selection's shape.
+  // Begins a rigid-group drag of exactly the current sub-mode's selection:
+  // selected Rings do not implicitly select their descendants. The group
+  // moves together or not at all, so a clamped move never deforms it.
   void beginMeshDrag(Settings::MeshSubMode subMode);
 
   // Applies totalWorldDelta - accumulated since beginMeshDrag - snapped to
   // gridSize around the drag's anchor vertex first when snapToGrid is set,
   // to the active mesh, provided every affected vertex's move stays clear
   // of both invariants (Ring simplicity, hole-in-outer containment).
-  // Otherwise the mesh is left at the last delta that validated. Returns
-  // the delta actually applied, which may be smaller than requested.
+  // The complete authoritative hierarchy is validated at every candidate;
+  // otherwise the mesh is left at the last delta that validated. Returns the
+  // delta actually applied, which may be smaller than requested.
   wp::Vector2 updateMeshDrag(wp::Vector2 const& totalWorldDelta, bool snapToGrid, float gridSize);
 
   void endMeshDrag();

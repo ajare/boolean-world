@@ -1,3 +1,4 @@
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -5,6 +6,7 @@
 #include <functional>
 #include <iostream>
 #include <mutex>
+#include <numeric>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -12,6 +14,8 @@
 
 #include <spdlog/spdlog.h>
 
+#include <core/ArrangementWorldData.h>
+#include <core/ArrangementWorldDataGenerator.h>
 #include <core/LayerBuildStep.h>
 #include <core/DefinePrefabs.h>
 #include <core/DynamicWorldDataGenerator.h>
@@ -22,6 +26,7 @@
 
 #include "Actions.h"
 #include "Defines.h"
+#include "Undo.h"
 
 spdlog::logger* gLogger = spdlog::default_logger_raw();
 editor::Settings gEditorSettings;
@@ -654,7 +659,7 @@ void meshDragMovesAffectedSubObjectsAsARigidGroup() {
   }
 }
 
-void draggingAnOuterRingMovesItsFullNestedHierarchyAsOneGroup() {
+void draggingARingLeavesUnselectedDescendantsFixed() {
   editor::Document document;
   editor::Settings settings;
   settings.mode = editor::Settings::Mode::Mesh;
@@ -716,12 +721,14 @@ void draggingAnOuterRingMovesItsFullNestedHierarchyAsOneGroup() {
   document.setSelectedMeshSubObjectIndices(
       editor::Settings::MeshSubMode::Polygon, {outerIndex});
   document.beginMeshDrag(editor::Settings::MeshSubMode::Polygon);
-  wp::Vector2 delta{2.0f, -3.0f};
+  wp::Vector2 delta{0.25f, -0.25f};
   require(document.updateMeshDrag(delta, false, 0.0f) == delta,
-          "the outer Ring and its hole did not accept a rigid-group move");
+          "the selected outer Ring did not accept a valid move");
+  auto const& outerVertices = mesh->getPolygon(outerIndex).getVertexIndexSet();
   for (auto const& [vertex, start] : starts) {
-    require(mesh->getVertex(vertex).getPosition() == start + delta,
-            "a nested hole or filled island did not move with its outer Ring");
+    require(mesh->getVertex(vertex).getPosition() ==
+                start + (outerVertices.contains(vertex) ? delta : wp::Vector2{}),
+            "a Ring drag did not move exactly the selected Ring");
   }
   for (auto const& [vertex, start] : unrelatedStarts) {
     require(mesh->getVertex(vertex).getPosition() == start,
@@ -1745,6 +1752,209 @@ void drawingContextCreatesHolesAndFilledIslands() {
   require(topLevel == 2, "the reloaded proxy did not re-derive the filled island");
 }
 
+void arbitraryDepthRingAuthoringManipulationAndHistoryStayAuthoritative() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  settings.meshVertexPickRadius = 0.01f;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  require(document.activateMesh(meshIndex), "the deep Ring fixture did not activate");
+  wp::Vector2 topologyCentre{};
+  auto initialShell = document.getActiveMesh()->getFirstPolygonIndex();
+  auto initialVertices =
+      document.getActiveMesh()->getPolygon(initialShell).getOrderedVertexIndices();
+  for (auto vertex : initialVertices) {
+    topologyCentre += document.getActiveMesh()->getVertex(vertex).getPosition();
+  }
+  topologyCentre /= static_cast<float>(initialVertices.size());
+  wp::Vector2 initialMinimum, initialMaximum;
+  document.getActiveMesh()->getExtents(initialMinimum, initialMaximum);
+  auto halfExtent = std::min(initialMaximum.x - initialMinimum.x,
+                             initialMaximum.y - initialMinimum.y) *
+                    0.5f;
+
+  uint32_t drawNumber = 0;
+  auto drawSquare = [&](float extent, wp::Vector2 centre = {}) {
+    ++drawNumber;
+    require(document.armMeshDrawTool(settings), "the deep Ring draw tool did not arm");
+    require(document.placeMeshDrawVertex(centre + wp::Vector2{-extent, -extent}, settings) &&
+                document.placeMeshDrawVertex(centre + wp::Vector2{extent, -extent}, settings) &&
+                document.placeMeshDrawVertex(centre + wp::Vector2{extent, extent}, settings) &&
+                document.placeMeshDrawVertex(centre + wp::Vector2{-extent, extent}, settings),
+            "a valid deep Ring vertex was rejected in draw " + std::to_string(drawNumber) +
+                ": " + document.getMeshDrawRejection());
+    auto* result = document.closeMeshDrawRing();
+    require(result != nullptr,
+            "a valid deep Ring did not close in draw " + std::to_string(drawNumber) +
+                ": " + document.getMeshDrawRejection());
+    return result;
+  };
+
+  // Outside every existing Ring, the active MeshPrimitive receives another
+  // root Shell rather than a geometrically inferred relationship.
+  require(drawSquare(halfExtent * 0.4f,
+                     topologyCentre + wp::Vector2{halfExtent * 3.0f, 0.0f}) != nullptr,
+          "a Ring outside existing topology did not become a root Shell");
+  auto mappings = static_cast<bw::core::MeshPrimitive*>(
+                      document.getWorld()->getPrimitive(meshIndex))
+                      ->createEditingProxy()
+                      ->getNodeMappings();
+  require(mappings.size() == 2 &&
+              mappings[0].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Shell &&
+              mappings[1].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Shell,
+          "the outside Ring was not authored as a second root Shell");
+
+  // Deepest geometric containment fixes each direct structural parent at the
+  // first click: Shell -> Hole -> Island -> Hole -> Island.
+  require(drawSquare(halfExtent * 0.8f, topologyCentre) &&
+              drawSquare(halfExtent * 0.6f, topologyCentre) &&
+              drawSquare(halfExtent * 0.4f, topologyCentre) &&
+              drawSquare(halfExtent * 0.2f, topologyCentre),
+          "the five-level Ring hierarchy could not be drawn");
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto proxy = primitive->createEditingProxy();
+  mappings = proxy->getNodeMappings();
+  require(mappings.size() == 6 &&
+              mappings[0].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Shell &&
+              mappings[1].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Hole &&
+              mappings[1].parentPolygonIndex == mappings[0].polygonIndex &&
+              mappings[2].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Island &&
+              mappings[2].parentPolygonIndex == mappings[1].polygonIndex &&
+              mappings[3].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Hole &&
+              mappings[3].parentPolygonIndex == mappings[2].polygonIndex &&
+              mappings[4].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Island &&
+              mappings[4].parentPolygonIndex == mappings[3].polygonIndex &&
+              mappings[5].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Shell,
+          "drawn Rings did not retain the deepest direct structural parents (mapping count " +
+              std::to_string(mappings.size()) + ")");
+
+  // A closing Ring can enclose an existing sibling without crossing an edge.
+  // Complete-tree validation must still reject it atomically.
+  auto beforeRejectedTree = primitive->flattenTree();
+  require(document.armMeshDrawTool(settings) &&
+              document.placeMeshDrawVertex(topologyCentre + wp::Vector2{-halfExtent * 0.9f, -halfExtent * 0.9f}, settings) &&
+              document.placeMeshDrawVertex(topologyCentre + wp::Vector2{halfExtent * 0.9f, -halfExtent * 0.9f}, settings) &&
+              document.placeMeshDrawVertex(topologyCentre + wp::Vector2{halfExtent * 0.9f, halfExtent * 0.9f}, settings) &&
+              document.placeMeshDrawVertex(topologyCentre + wp::Vector2{-halfExtent * 0.9f, halfExtent * 0.9f}, settings) &&
+              document.closeMeshDrawRing() == nullptr &&
+              !document.getMeshDrawRejection().empty() &&
+              primitive->flattenTree().size() == beforeRejectedTree.size(),
+          "an overlapping sibling Ring mutated authored geometry");
+  document.disarmMeshDrawTool();
+
+  auto* mesh = document.getActiveMesh();
+  auto shell = mappings[0].polygonIndex;
+  auto directHole = mappings[1].polygonIndex;
+  auto secondShell = mappings[5].polygonIndex;
+  std::map<uint32_t, wp::Vector2> starts;
+  for (auto vertex = mesh->getFirstVertexIndex();
+       !mesh->vertexIndexIterationFinished(vertex);
+       vertex = mesh->getNextVertexIndex(vertex)) {
+    starts[vertex] = mesh->getVertex(vertex).getPosition();
+  }
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Polygon, {shell, secondShell});
+  document.beginMeshDrag(editor::Settings::MeshSubMode::Polygon);
+  wp::Vector2 validDelta{halfExtent * 0.01f, halfExtent * 0.01f};
+  require(document.updateMeshDrag(validDelta, false, 0.0f) == validDelta,
+          "a valid combined Ring drag was rejected");
+  std::set<uint32_t> selectedVertices = mesh->getPolygon(shell).getVertexIndexSet();
+  auto secondVertices = mesh->getPolygon(secondShell).getVertexIndexSet();
+  selectedVertices.insert(secondVertices.begin(), secondVertices.end());
+  for (auto const& [vertex, start] : starts) {
+    require(mesh->getVertex(vertex).getPosition() ==
+                start + (selectedVertices.contains(vertex) ? validDelta : wp::Vector2{}),
+            "a combined drag moved something outside its exact Ring selection");
+  }
+  require(document.updateMeshDrag({halfExtent * 0.5f, 0.0f}, false, 0.0f) == validDelta,
+          "an invalid combined drag did not clamp to its last valid proxy state");
+  require(document.commitMeshDrag(), "the last valid combined drag did not commit");
+  document.endMeshDrag();
+
+  primitive->updateVertexPositions();
+  auto const& derived = primitive->getVertices();
+  auto maximumX = [](bw::core::ClosedPolygon const& ring) {
+    return std::max_element(
+               ring.begin(), ring.end(),
+               [](auto const& left, auto const& right) {
+                 return left.p.x < right.p.x;
+               })
+        ->p.x;
+  };
+  auto generatedY = std::accumulate(
+                        derived[2][0].begin(), derived[2][0].end(), 0.0f,
+                        [](float value, auto const& vertex) { return value + vertex.p.y; }) /
+                    static_cast<float>(derived[2][0].size());
+  auto shellX = maximumX(derived[0][0]);
+  auto holeX = maximumX(derived[0][1]);
+  auto islandX = maximumX(derived[1][0]);
+  auto nestedHoleX = maximumX(derived[1][1]);
+  auto deepestIslandX = maximumX(derived[2][0]);
+  bw::core::ArrangementWorldDataGenerator generator;
+  generator.generate(std::vector<bw::core::Primitive*>{primitive});
+  auto generatedCentre = wp::Vector2{
+      (maximumX(derived[0][0]) +
+       std::min_element(
+           derived[0][0].begin(), derived[0][0].end(),
+           [](auto const& left, auto const& right) { return left.p.x < right.p.x; })
+           ->p.x) *
+          0.5f,
+      generatedY};
+  bw::core::ArrangementWorldData generated(
+      generator.getWorldData(),
+      {generatedCentre - wp::Vector2{halfExtent * 5.0f, halfExtent * 5.0f},
+       {halfExtent * 10.0f, halfExtent * 10.0f}},
+      1.0f, 1.0f);
+  auto sample = [&](float outer, float inner) {
+    return wp::Vector2{(outer + inner) * 0.5f, generatedY};
+  };
+  auto generatedSamples = std::array{
+      generated.getContainingFaceIndex(sample(shellX, holeX)),
+      generated.getContainingFaceIndex(sample(holeX, islandX)),
+      generated.getContainingFaceIndex(sample(islandX, nestedHoleX)),
+      generated.getContainingFaceIndex(sample(nestedHoleX, deepestIslandX)),
+      generated.getContainingFaceIndex({deepestIslandX - halfExtent * 0.1f, generatedY})};
+  require(generatedSamples[0] != ~0u && generatedSamples[1] == ~0u &&
+              generatedSamples[2] != ~0u && generatedSamples[3] == ~0u &&
+              generatedSamples[4] != ~0u,
+          "generated data did not alternate solid and empty through the deep tree (" +
+              std::to_string(generatedSamples[0]) + "," + std::to_string(generatedSamples[1]) +
+              "," + std::to_string(generatedSamples[2]) + "," +
+              std::to_string(generatedSamples[3]) + "," + std::to_string(generatedSamples[4]) +
+              "; x=" + std::to_string(shellX) + ", y=" + std::to_string(generatedY) +
+              ", proxy=" + std::to_string(topologyCentre.x) + "," +
+              std::to_string(topologyCentre.y) + ")");
+
+  // Deleting a direct Hole removes all four nested nodes. Undo restores the
+  // hierarchy and its selected Ring focus; redo restores the post-delete focus.
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Polygon, {directHole});
+  editor::transactUndoableAction(
+      &document, "Delete deep Ring subtree",
+      [directHole](editor::Document* doc) {
+        return doc->deleteMeshSubObjects(
+                   editor::Settings::MeshSubMode::Polygon, {directHole}) == 1;
+      });
+  require(primitive->flattenTree().size() == 2 &&
+              document.getSelectedMeshRingIndices().empty(),
+          "deleting a Hole promoted or retained part of its subtree");
+  editor::undo(&document);
+  primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  require(primitive->flattenTree().size() == 4 &&
+              document.getActiveMeshPrimitiveIndex() == meshIndex &&
+              document.getSelectedMeshRingIndices() == std::set<uint32_t>{directHole},
+          "undo did not restore deep hierarchy and Ring focus");
+  editor::redo(&document);
+  primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  require(primitive->flattenTree().size() == 2 &&
+              document.getActiveMeshPrimitiveIndex() == meshIndex &&
+              document.getSelectedMeshRingIndices().empty(),
+          "redo did not restore subtree deletion and editor focus");
+}
+
 void drawingMultipleHolesKeepsThemOnTheSameComplexPolygon() {
   editor::Document document;
   auto settings = meshDrawSettings();
@@ -1879,16 +2089,13 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
   document.setSelectedMeshSubObjectIndices(
       editor::Settings::MeshSubMode::Polygon, {filledRing});
   document.beginMeshDrag(editor::Settings::MeshSubMode::Polygon);
-  auto weldedDelta = wp::Vector2{3.0f, 4.0f};
+  auto weldedDelta = wp::Vector2{0.5f, 0.5f};
   require(document.updateMeshDrag(weldedDelta, false, 0.0f) == weldedDelta &&
               document.getActiveMesh()->getVertex(weldedVertex).getPosition() ==
                   weldedStart + weldedDelta,
           "moving the island did not move its welded hole boundary");
   require(document.commitMeshDrag(), "the welded island move did not commit");
   document.endMeshDrag();
-  auto islandAfterMove =
-      primitive->getVertices()[2][0][0].p;
-
   auto path = std::filesystem::temp_directory_path() /
               "boolean-world-fill-hole-topology.world.yaml";
   document.saveDocAs(path.string());
@@ -1927,11 +2134,9 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
 
   require(document.deleteMeshSubObjects(
               editor::Settings::MeshSubMode::Polygon, {filledRing}) == 1 &&
-              primitive->getVertices().size() == 2 &&
-              primitive->getVertices()[0].size() == 2 &&
-              primitive->getVertices()[1].size() == islandBefore.size() &&
-              primitive->getVertices()[1][0][0].p == islandAfterMove,
-          "deleting the gap polygon did not restore the previous hole and island topology");
+              primitive->getVertices().size() == 1 &&
+              primitive->getVertices()[0].size() == 2,
+          "deleting an Island did not delete its complete subtree");
 }
 
 void decomposingAMeshCreatesOrderedRingPrimitives() {
@@ -2313,7 +2518,7 @@ int main() {
     meshSelectAllAndBoundsStayScopedToActiveMesh();
     undoRestoresMeshSubObjectSelection();
     meshDragMovesAffectedSubObjectsAsARigidGroup();
-    draggingAnOuterRingMovesItsFullNestedHierarchyAsOneGroup();
+    draggingARingLeavesUnselectedDescendantsFixed();
     meshDragClampsAtLastValidPositionOnSelfIntersection();
     meshDragClampsAtLastValidPositionWhenAHoleWouldEscapeItsOuter();
     addingAMeshHoleInvalidatesTheParentTriangulation();
@@ -2336,6 +2541,7 @@ int main() {
     switchingSubModeOrLeavingMeshModeDisarmsAndDiscards();
     closingADrawnRingCreatesAMeshPrimitiveWithCanonicalWinding();
     drawingContextCreatesHolesAndFilledIslands();
+    arbitraryDepthRingAuthoringManipulationAndHistoryStayAuthoritative();
     drawingMultipleHolesKeepsThemOnTheSameComplexPolygon();
     fillingASelectedHoleCreatesASolidAlongsideExistingIslands();
     decomposingAMeshCreatesOrderedRingPrimitives();

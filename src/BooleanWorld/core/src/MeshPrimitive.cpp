@@ -437,23 +437,28 @@ struct MeshPrimitiveEditingProxy::Impl {
     for (auto const& shell : worldTree) shells.push_back(builder.addFilled(shell));
   }
 
-  ClosedPolygon readMappedRing(uint32_t polygonIndex, uint32_t anchorVertexIndex) const {
-    auto ordered = mesh.getPolygon(polygonIndex).getOrderedVertexIndices();
+  ClosedPolygon readMappedRing(
+      wp::geometry::Mesh const& source,
+      uint32_t polygonIndex,
+      uint32_t anchorVertexIndex) const {
+    auto ordered = source.getPolygon(polygonIndex).getOrderedVertexIndices();
     auto anchor = find(ordered.begin(), ordered.end(), anchorVertexIndex);
     if (anchor != ordered.end()) rotate(ordered.begin(), anchor, ordered.end());
     ClosedPolygon result;
-    for (auto vertex : ordered) result.emplace_back(mesh.getVertex(vertex).getPosition());
+    for (auto vertex : ordered) result.emplace_back(source.getVertex(vertex).getPosition());
     if (twiceArea(result) < 0.0 && result.size() > 1) {
       reverse(next(result.begin()), result.end());
     }
     return result;
   }
 
-  vector<MeshFilledRegion> readTree() const {
+  vector<MeshFilledRegion> readTree(wp::geometry::Mesh const& sourceMesh) const {
     auto readFilled = [&](auto&& self, Filled const& source) -> MeshFilledRegion {
-      MeshFilledRegion result{readMappedRing(source.polygonIndex, source.anchorVertexIndex), {}};
+      MeshFilledRegion result{
+          readMappedRing(sourceMesh, source.polygonIndex, source.anchorVertexIndex), {}};
       for (auto const& sourceHole : source.holes) {
-        MeshHole hole{readMappedRing(sourceHole.polygonIndex, sourceHole.anchorVertexIndex), {}};
+        MeshHole hole{
+            readMappedRing(sourceMesh, sourceHole.polygonIndex, sourceHole.anchorVertexIndex), {}};
         for (auto const& island : sourceHole.islands) {
           hole.islands.push_back(self(self, island));
         }
@@ -465,6 +470,8 @@ struct MeshPrimitiveEditingProxy::Impl {
     for (auto const& shell : shells) result.push_back(readFilled(readFilled, shell));
     return result;
   }
+
+  vector<MeshFilledRegion> readTree() const { return readTree(mesh); }
 
   bool allMappingsAreLive(wp::geometry::Mesh const& candidate) const {
     set<uint32_t> live;
@@ -633,6 +640,12 @@ vector<MeshPrimitiveEditingProxy::NodeMapping> MeshPrimitiveEditingProxy::getNod
 
 bool MeshPrimitiveEditingProxy::replaceMesh(wp::geometry::Mesh mesh) {
   if (!mImpl->allMappingsAreLive(mesh)) return false;
+  try {
+    auto candidateTree = mImpl->readTree(mesh);
+    normalizeAndValidateTree(candidateTree);
+  } catch (exception const&) {
+    return false;
+  }
   mImpl->mesh = move(mesh);
   return true;
 }
@@ -720,30 +733,7 @@ bool MeshPrimitiveEditingProxy::removeRing(uint32_t polygonIndex) {
           filled[i].holes.erase(filled[i].holes.begin() + h);
           removed = true;
         } else {
-          auto& islands = filled[i].holes[h].islands;
-          auto const& islandMappings = mappings[i].holes[h].islands;
-          bool restoredFilledHole = false;
-          for (size_t island = 0; island < islands.size(); ++island) {
-            if (islandMappings[island].polygonIndex != polygonIndex ||
-                !ringsCoincide(islands[island].ring, filled[i].holes[h].ring)) {
-              continue;
-            }
-            vector<MeshFilledRegion> promoted;
-            for (auto& gap : islands[island].holes) {
-              for (auto& previousIsland : gap.islands) {
-                promoted.push_back(move(previousIsland));
-              }
-            }
-            islands.erase(islands.begin() + island);
-            islands.insert(islands.begin() + island,
-                           make_move_iterator(promoted.begin()),
-                           make_move_iterator(promoted.end()));
-            removed = restoredFilledHole = true;
-            break;
-          }
-          if (!restoredFilledHole) {
-            self(self, islands, islandMappings);
-          }
+          self(self, filled[i].holes[h].islands, mappings[i].holes[h].islands);
         }
       }
     }
