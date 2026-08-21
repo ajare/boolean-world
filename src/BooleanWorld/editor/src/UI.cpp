@@ -766,23 +766,21 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
   string worldName = world->getName();
 
   ImGui::SetNextItemWidth(192);
-  char buffer[256];
-  strcpy_s(buffer, 256, worldName.c_str());
-  if (ImGui::InputText("Name##World", buffer, 256, ImGuiInputTextFlags_EnterReturnsTrue)) {
+  if (widgets::InputText(
+          "Name##World", &worldName, ImGuiInputTextFlags_EnterReturnsTrue)) {
     transactUndoableAction(doc, "Set World name",
-                           bind(setWorldName, placeholders::_1, string(buffer)));
+                           bind(setWorldName, placeholders::_1, worldName));
   }
 
   // Description
   string worldDesc = world->getDescription();
 
-  char buffer2[2048];
-  strcpy_s(buffer2, 2048, worldDesc.c_str());
-  if (ImGui::InputTextMultiline("Description##World", buffer2, 2048, ImVec2(512, 96))) {
+  if (widgets::InputTextMultiline(
+          "Description##World", &worldDesc, ImVec2(512, 96))) {
     // Don't make this transactional as every character change will create an undo state
     // transactUndoableAction(doc, "Set World description",
-    //	bind(setWorldDescription, placeholders::_1, string(buffer2)));
-    setWorldDescription(doc, string(buffer2));
+    //	bind(setWorldDescription, placeholders::_1, worldDesc));
+    setWorldDescription(doc, worldDesc);
     doc->setModified(true);
   }
 

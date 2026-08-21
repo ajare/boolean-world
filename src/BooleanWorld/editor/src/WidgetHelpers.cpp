@@ -82,5 +82,54 @@ void HelpMarker(char const* desc) {
   }
 }
 
+namespace {
+
+struct InputTextCallbackUserData {
+  std::string* str;
+  ImGuiInputTextCallback chainCallback;
+  void* chainCallbackUserData;
+};
+
+int InputTextResizeCallback(ImGuiInputTextCallbackData* data) {
+  auto* userData = static_cast<InputTextCallbackUserData*>(data->UserData);
+  if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+    std::string* str = userData->str;
+    IM_ASSERT(data->Buf == str->c_str());
+    str->resize(data->BufTextLen);
+    data->Buf = const_cast<char*>(str->c_str());
+  } else if (userData->chainCallback) {
+    data->UserData = userData->chainCallbackUserData;
+    return userData->chainCallback(data);
+  }
+  return 0;
+}
+
+}  // namespace
+
+bool InputText(
+    const char* label, std::string* str, ImGuiInputTextFlags flags,
+    ImGuiInputTextCallback callback, void* userData) {
+  IM_ASSERT((flags & ImGuiInputTextFlags_CallbackResize) == 0);
+  flags |= ImGuiInputTextFlags_CallbackResize;
+
+  InputTextCallbackUserData cbUserData{str, callback, userData};
+  return ImGui::InputText(
+      label, const_cast<char*>(str->c_str()), str->capacity() + 1, flags,
+      InputTextResizeCallback, &cbUserData);
+}
+
+bool InputTextMultiline(
+    const char* label, std::string* str, const ImVec2& size,
+    ImGuiInputTextFlags flags, ImGuiInputTextCallback callback,
+    void* userData) {
+  IM_ASSERT((flags & ImGuiInputTextFlags_CallbackResize) == 0);
+  flags |= ImGuiInputTextFlags_CallbackResize;
+
+  InputTextCallbackUserData cbUserData{str, callback, userData};
+  return ImGui::InputTextMultiline(
+      label, const_cast<char*>(str->c_str()), str->capacity() + 1, size,
+      flags, InputTextResizeCallback, &cbUserData);
+}
+
 }  // namespace widgets
 }  // namespace editor
