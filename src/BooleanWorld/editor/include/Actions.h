@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "Undo.h"
@@ -85,7 +86,8 @@ bool addLayer(Document* doc, std::string const& name);
 
 bool setLayerBuildStepEnabled(Document* doc, bw::core::Layer* layer, uint32_t stepIndex, bool enabled);
 
-bool addLayerBuildStep(Document* doc, bw::core::Layer* layer);
+bool addLayerBuildStep(
+    Document* doc, bw::core::Layer* layer, std::string const& type);
 
 bool removeLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t stepIndex);
 

@@ -2931,8 +2931,34 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
-  if (ImGui::Button("Add PrimitiveField Step")) {
-    transactUndoableAction(doc, "Add Layer Step", bind(addLayerBuildStep, placeholders::_1, layer));
+  auto const stepTypes = bw::core::LayerBuildStep::getRegisteredTypes();
+  static string selectedStepType;
+  if (find(stepTypes.begin(), stepTypes.end(), selectedStepType) == stepTypes.end() &&
+      !stepTypes.empty()) {
+    selectedStepType = stepTypes.front();
+  }
+
+  ImGui::TextUnformatted("Step type");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(180.0f);
+  if (ImGui::BeginCombo("##StepType", selectedStepType.c_str())) {
+    for (auto const& type : stepTypes) {
+      bool const selected = type == selectedStepType;
+      if (ImGui::Selectable(type.c_str(), selected)) {
+        selectedStepType = type;
+      }
+      if (selected) {
+        ImGui::SetItemDefaultFocus();
+      }
+    }
+    ImGui::EndCombo();
+  }
+
+  ImGui::SameLine();
+  if (ImGui::Button("Add Step") && !selectedStepType.empty()) {
+    transactUndoableAction(
+        doc, "Add Layer Step",
+        bind(addLayerBuildStep, placeholders::_1, layer, selectedStepType));
   }
 }
 

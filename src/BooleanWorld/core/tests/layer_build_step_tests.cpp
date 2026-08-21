@@ -29,6 +29,19 @@ void requireCoreException(Function&& function, char const* message) {
   throw std::runtime_error(message);
 }
 
+void theStepRegistryEnumeratesAndInstantiatesEachRegisteredType() {
+  auto const types = bw::core::LayerBuildStep::getRegisteredTypes();
+  require(std::find(types.begin(), types.end(), "PrimitiveField") != types.end(),
+          "the step Registry did not enumerate PrimitiveField");
+
+  for (auto const& type : types) {
+    auto step = std::unique_ptr<bw::core::LayerBuildStep>(
+        bw::core::LayerBuildStep::instantiate(type));
+    require(step->getType() == type,
+            "the step Registry did not instantiate its enumerated type");
+  }
+}
+
 bw::core::RectanglePolygon* makeRectangle(float x) {
   auto* rect = new bw::core::RectanglePolygon(
       bw::core::Primitive::Operation::Union,
@@ -519,6 +532,7 @@ void copyingALayerCopiesItsStepsAndRebuildsFromThem() {
 
 int main() {
   try {
+    theStepRegistryEnumeratesAndInstantiatesEachRegisteredType();
     aNewLayerStartsWithOneEmptyPrimitiveFieldStep();
     executingAPrimitiveFieldStepAddsItsEmbeddedPrimitives();
     authoringThroughTheLayerFacadeGoesIntoTheFirstStep();

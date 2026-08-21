@@ -159,7 +159,7 @@ void togglingStepEnabledIsOneUndoableActionThatRestoresLayerState() {
   require(document.isModified(), "redo did not restore the modified state");
 }
 
-void addingAStepAppendsAPrimitiveFieldAsOneUndoableAction() {
+void addingARegisteredStepTypeAsOneUndoableAction() {
   editor::Document document;
   document.newDoc();
   auto* layer = document.getWorld()->getActiveLayer();
@@ -167,8 +167,10 @@ void addingAStepAppendsAPrimitiveFieldAsOneUndoableAction() {
   document.setModified(false);
   auto undoBefore = editor::getUndoLevels();
 
-  editor::transactUndoableAction(&document, "Add Layer Step",
-                                 std::bind(editor::addLayerBuildStep, std::placeholders::_1, layer));
+  editor::transactUndoableAction(
+      &document, "Add Layer Step",
+      std::bind(editor::addLayerBuildStep, std::placeholders::_1, layer,
+                "PrimitiveField"));
 
   require(editor::getUndoLevels() == undoBefore + 1,
           "adding a step did not create exactly one undo entry");
@@ -308,7 +310,7 @@ int main() {
   try {
     disablingStepZeroRemovesItsPrimitivesAndRebuildRestoresThemOnReEnable();
     togglingStepEnabledIsOneUndoableActionThatRestoresLayerState();
-    addingAStepAppendsAPrimitiveFieldAsOneUndoableAction();
+    addingARegisteredStepTypeAsOneUndoableAction();
     removingANonFirstStepIsOneUndoableActionAndTheFirstStepIsRejected();
     movingAStepIsOneUndoableActionAndMovesIntoOrOutOfIndexZeroAreRejected();
     selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable();

@@ -6,7 +6,7 @@
 #include <core/RectanglePolygon.h>
 #include <core/SuperformulaPolygon.h>
 #include <core/MeshPrimitive.h>
-#include <core/PrimitiveField.h>
+#include <core/LayerBuildStep.h>
 
 #include "Defines.h"
 #include "Actions.h"
@@ -81,8 +81,9 @@ bool setLayerBuildStepEnabled(Document* doc, bw::core::Layer* layer, uint32_t st
   return true;
 }
 
-bool addLayerBuildStep(Document* doc, bw::core::Layer* layer) {
-  layer->addStep(new bw::core::PrimitiveField());
+bool addLayerBuildStep(
+    Document* doc, bw::core::Layer* layer, string const& type) {
+  layer->addStep(bw::core::LayerBuildStep::instantiate(type));
   return true;
 }
 

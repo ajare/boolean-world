@@ -12,11 +12,19 @@ LayerBuildStep::LayerBuildStep()
     : mEnabled(true) {
 }
 
-LayerBuildStep* LayerBuildStep::instantiate(string const& type) {
+Registry<LayerBuildStep> const& LayerBuildStep::registry() {
   static const Registry<LayerBuildStep> stepRegistry(
       "layer build step", {{"PrimitiveField", []() { return new PrimitiveField; }}});
 
-  return stepRegistry.create(type);
+  return stepRegistry;
+}
+
+vector<string> LayerBuildStep::getRegisteredTypes() {
+  return registry().getTypes();
+}
+
+LayerBuildStep* LayerBuildStep::instantiate(string const& type) {
+  return registry().create(type);
 }
 
 void LayerBuildStep::copyFrom(LayerBuildStep const& other) {

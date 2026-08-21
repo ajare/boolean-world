@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "core/CoreException.h"
 
@@ -19,6 +20,15 @@ public:
   Registry(std::string typeLabel, std::map<std::string, Creator> creators)
       : mTypeLabel(std::move(typeLabel)),
         mCreators(std::move(creators)) {
+  }
+
+  [[nodiscard]] std::vector<std::string> getTypes() const {
+    std::vector<std::string> types;
+    types.reserve(mCreators.size());
+    for (auto const& [type, creator] : mCreators) {
+      types.push_back(type);
+    }
+    return types;
   }
 
   T* create(std::string const& type) const {

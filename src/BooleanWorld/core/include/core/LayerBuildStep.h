@@ -15,6 +15,8 @@ class Layer;
 class LayerBuildStep;
 class Primitive;
 class VertexTransformerObject;
+template <typename T>
+class Registry;
 
 // The only view of a Layer that a build step receives while executing. It
 // exposes prior Primitives that participate in the build, never the raw
@@ -50,6 +52,8 @@ private:
 private:
   bool childrenModified() const override;
 
+  [[nodiscard]] static Registry<LayerBuildStep> const& registry();
+
   // The step's own arguments, written into the map the Layer opens for it.
   // The enabled flag is handled by the base class, so subclasses never write
   // it themselves.
@@ -66,6 +70,9 @@ protected:
 
 public:
   LayerBuildStep();
+
+  // The type names held by the shared step Registry.
+  [[nodiscard]] static std::vector<std::string> getRegisteredTypes();
 
   // Constructs a step of the named type through the shared step Registry.
   [[nodiscard]] static LayerBuildStep* instantiate(std::string const& type);
