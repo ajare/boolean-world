@@ -1536,6 +1536,40 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
                       .getEdgeIndexSet(),
           "the gap duplicated boundaries instead of sharing the existing topology");
 
+  settings.meshSubMode = editor::Settings::MeshSubMode::Polygon;
+  settings.meshEdgeSelectionDistance = 0.01f;
+  auto sharedEdge = document.getActiveMesh()
+                        ->getPolygon(filledRing)
+                        .getEdges()
+                        .front();
+  auto edgeMidpoint =
+      (document.getActiveMesh()->getVertex(sharedEdge.v0).getPosition() +
+       document.getActiveMesh()->getVertex(sharedEdge.v1).getPosition()) /
+      2.0f;
+  auto weldedHover =
+      document.getHoveredMeshSubObjectIndices(edgeMidpoint, settings);
+  require(weldedHover == std::vector<uint32_t>{filledRing},
+          "the welded hole was selectable instead of only its filled island (hover count " +
+              std::to_string(weldedHover.size()) + ")");
+
+  auto weldedVertex = document.getActiveMesh()
+                          ->getPolygon(holeIndex)
+                          .getOrderedVertexIndices()
+                          .front();
+  auto weldedStart = document.getActiveMesh()->getVertex(weldedVertex).getPosition();
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Polygon, {filledRing});
+  document.beginMeshDrag(editor::Settings::MeshSubMode::Polygon);
+  auto weldedDelta = wp::Vector2{3.0f, 4.0f};
+  require(document.updateMeshDrag(weldedDelta, false, 0.0f) == weldedDelta &&
+              document.getActiveMesh()->getVertex(weldedVertex).getPosition() ==
+                  weldedStart + weldedDelta,
+          "moving the island did not move its welded hole boundary");
+  require(document.commitMeshDrag(), "the welded island move did not commit");
+  document.endMeshDrag();
+  auto islandAfterMove =
+      primitive->getVertices()[1][0][0].p;
+
   auto path = std::filesystem::temp_directory_path() /
               "boolean-world-fill-hole-topology.world.yaml";
   document.saveDocAs(path.string());
@@ -1577,7 +1611,7 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
               primitive->getVertices().size() == 2 &&
               primitive->getVertices()[0].size() == 2 &&
               primitive->getVertices()[1].size() == islandBefore.size() &&
-              primitive->getVertices()[1][0][0].p == islandBefore[0][0].p,
+              primitive->getVertices()[1][0][0].p == islandAfterMove,
           "deleting the gap polygon did not restore the previous hole and island topology");
 }
 

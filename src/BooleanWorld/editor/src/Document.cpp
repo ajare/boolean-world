@@ -73,6 +73,24 @@ namespace {
 // index-space is already scoped to the active Layer (World::getPrimitive et
 // al forward to getActiveLayer()), so only the step boundary needs adding
 // here.
+bool filledHoleHasWeldedIsland(
+    wp::geometry::Mesh const& mesh, uint32_t polygonIndex) {
+  auto const& polygon = mesh.getPolygon(polygonIndex);
+  if (!polygon.isHole()) {
+    return false;
+  }
+  auto const edges = polygon.getEdgeIndexSet();
+  for (auto candidateIndex = mesh.getFirstPolygonIndex();
+       !mesh.polygonIndexIterationFinished(candidateIndex);
+       candidateIndex = mesh.getNextPolygonIndex(candidateIndex)) {
+    auto const& candidate = mesh.getPolygon(candidateIndex);
+    if (!candidate.isHole() && candidate.getEdgeIndexSet() == edges) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool pointInsideRing(
     wp::geometry::Mesh const& mesh,
     wp::geometry::Polygon const& ring,
@@ -485,14 +503,19 @@ vector<uint32_t> Document::getHoveredMeshSubObjectIndices(
       }
     }
     if (!edgeOwners.empty()) {
-      result.assign(edgeOwners.begin(), edgeOwners.end());
+      for (auto index : edgeOwners) {
+        if (!filledHoleHasWeldedIsland(*mActiveMesh, index)) {
+          result.push_back(index);
+        }
+      }
       return result;
     }
 
     for (auto index = mActiveMesh->getFirstPolygonIndex();
          !mActiveMesh->polygonIndexIterationFinished(index);
          index = mActiveMesh->getNextPolygonIndex(index)) {
-      if (pointInsideRing(*mActiveMesh, mActiveMesh->getPolygon(index), worldPosition)) {
+      if (!filledHoleHasWeldedIsland(*mActiveMesh, index) &&
+          pointInsideRing(*mActiveMesh, mActiveMesh->getPolygon(index), worldPosition)) {
         result.push_back(index);
       }
     }
@@ -524,6 +547,9 @@ set<uint32_t> Document::getMeshSubObjectIndicesInBounds(
     for (auto index = mActiveMesh->getFirstPolygonIndex();
          !mActiveMesh->polygonIndexIterationFinished(index);
          index = mActiveMesh->getNextPolygonIndex(index)) {
+      if (filledHoleHasWeldedIsland(*mActiveMesh, index)) {
+        continue;
+      }
       auto const vertices = mActiveMesh->getPolygon(index).getVertexIndexSet();
       if (all_of(vertices.begin(), vertices.end(), [&](uint32_t vertexIndex) {
             return worldBounds.pointInside(mActiveMesh->getVertex(vertexIndex).getPosition());
@@ -552,7 +578,11 @@ set<uint32_t> Document::getSelectableMeshSubObjectIndices(
   } else {
     for (auto index = mActiveMesh->getFirstPolygonIndex();
          !mActiveMesh->polygonIndexIterationFinished(index);
-         index = mActiveMesh->getNextPolygonIndex(index)) result.insert(index);
+         index = mActiveMesh->getNextPolygonIndex(index)) {
+      if (!filledHoleHasWeldedIsland(*mActiveMesh, index)) {
+        result.insert(index);
+      }
+    }
   }
   return result;
 }
