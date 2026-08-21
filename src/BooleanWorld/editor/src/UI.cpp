@@ -439,6 +439,10 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
       }
     }
 
+    // Keep the fixed-height viewport toolbar on one row after the mode
+    // controls. Without this, the file buttons begin a clipped second row.
+    ImGui::SameLine();
+
     //
     // File operations
     //
