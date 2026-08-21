@@ -1615,6 +1615,29 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
           "deleting the gap polygon did not restore the previous hole and island topology");
 }
 
+void deletingAWeldedVertexHealsTheHoleAndIsland() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMeshWithHole(document);
+  require(document.activateMesh(meshIndex),
+          "the welded-vertex Mesh did not activate");
+
+  auto* mesh = document.getActiveMesh();
+  auto outer = mesh->getFirstPolygonIndex();
+  auto hole = mesh->getPolygon(outer).getHoleIndices().front();
+  require(document.fillMeshHole(hole), "the welded-vertex hole did not fill");
+  auto island = *document.getSelectedMeshRingIndices().begin();
+  auto vertex = mesh->getPolygon(island).getOrderedVertexIndices().front();
+
+  require(document.deleteMeshSubObjects(
+              editor::Settings::MeshSubMode::Vertex, {vertex}) == 1 &&
+              mesh->getPolygon(hole).getNumEdges() == 3 &&
+              mesh->getPolygon(island).getNumEdges() == 3 &&
+              mesh->getPolygon(hole).getEdgeIndexSet() ==
+                  mesh->getPolygon(island).getEdgeIndexSet(),
+          "deleting a welded vertex did not heal both the hole and island");
+}
+
 void drawingContextRejectsEscapesAndSelfCrossings() {
   auto settings = meshDrawSettings();
 
@@ -1787,6 +1810,7 @@ int main() {
     drawingContextCreatesHolesAndFilledIslands();
     drawingMultipleHolesKeepsThemOnTheSameComplexPolygon();
     fillingASelectedHoleCreatesASolidAlongsideExistingIslands();
+    deletingAWeldedVertexHealsTheHoleAndIsland();
     drawingContextRejectsEscapesAndSelfCrossings();
     theWholeDrawingGestureIsOneUndoEntry();
     std::cout << "Editor selection interactions passed\n";

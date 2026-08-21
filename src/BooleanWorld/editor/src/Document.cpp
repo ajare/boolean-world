@@ -919,6 +919,15 @@ uint32_t owningRing(wp::geometry::IndexSet const& polygonRefs) {
   return polygonRefs.size() == 1 ? *polygonRefs.begin() : ~0u;
 }
 
+uint32_t addRingSharingBoundary(
+    wp::geometry::Mesh& mesh, uint32_t sourcePolygonIndex) {
+  wp::geometry::IndexVector edgeData;
+  for (auto const& edge : mesh.getPolygon(sourcePolygonIndex).getEdges()) {
+    edgeData.insert(edgeData.end(), {edge.v0, edge.v1, edge.index});
+  }
+  return mesh.addPolygon(wp::geometry::Polygon(edgeData));
+}
+
 // Deleting a vertex/edge tombstones mesh sub-objects rather than compacting
 // them away immediately, and Mesh's copy/assignment rebinds every edge -
 // dead ones included - which touches whichever vertices they still name.
@@ -935,21 +944,62 @@ bool deleteOneMeshVertex(wp::geometry::Mesh& mesh, uint32_t vertexIndex) {
     polygonRefs.insert(refs.begin(), refs.end());
   }
 
-  auto ringIndex = owningRing(polygonRefs);
-  if (ringIndex == ~0u || mesh.getPolygon(ringIndex).getVertexIndexSet().size() <= 3) {
+  if (polygonRefs.empty()) {
     return false;
   }
 
-  vector<wp::Vector2> healedPositions;
-  for (auto v : mesh.getPolygon(ringIndex).getOrderedVertexIndices()) {
-    if (v != vertexIndex) {
-      healedPositions.push_back(mesh.getVertex(v).getPosition());
+  // A filled island and the hole beneath it are two Polygon faces over one
+  // welded boundary. They may be edited together only when every Ring
+  // referencing this vertex uses that exact same vertex loop. Unrelated
+  // junctions remain deliberately unsupported.
+  auto const& referenceVertices =
+      mesh.getPolygon(*polygonRefs.begin()).getVertexIndexSet();
+  if (referenceVertices.size() <= 3 ||
+      any_of(polygonRefs.begin(), polygonRefs.end(), [&](uint32_t ringIndex) {
+        return mesh.getPolygon(ringIndex).getVertexIndexSet() !=
+               referenceVertices;
+      })) {
+    return false;
+  }
+
+  for (auto ringIndex : polygonRefs) {
+    vector<wp::Vector2> healedPositions;
+    for (auto v : mesh.getPolygon(ringIndex).getOrderedVertexIndices()) {
+      if (v != vertexIndex) {
+        healedPositions.push_back(mesh.getVertex(v).getPosition());
+      }
+    }
+    if (!ringMutationIsValid(mesh, ringIndex, healedPositions)) {
+      return false;
     }
   }
-  if (!ringMutationIsValid(mesh, ringIndex, healedPositions)) {
-    return false;
+
+  if (polygonRefs.size() == 2) {
+    uint32_t holeIndex = ~0u;
+    uint32_t islandIndex = ~0u;
+    for (auto ringIndex : polygonRefs) {
+      (mesh.getPolygon(ringIndex).isHole() ? holeIndex : islandIndex) =
+          ringIndex;
+    }
+    if (holeIndex != ~0u && islandIndex != ~0u) {
+      // Mesh::removeVertex normally merges every face incident to a shared
+      // vertex. Temporarily remove the island face, heal the remaining hole,
+      // then recreate the island over the healed shared boundary. Its own
+      // holes are detached and reattached without changing their geometry.
+      auto islandHoles = mesh.getPolygon(islandIndex).getHoleIndices();
+      mesh.removePolygon(islandIndex, false);
+      mesh.removeVertex(vertexIndex);
+      auto healedIsland = addRingSharingBoundary(mesh, holeIndex);
+      for (auto islandHole : islandHoles) {
+        mesh.addHoleToPolygon(healedIsland, islandHole);
+      }
+      return true;
+    }
   }
 
+  if (polygonRefs.size() > 1) {
+    return false;
+  }
   mesh.removeVertex(vertexIndex);
   return true;
 }
@@ -1327,15 +1377,6 @@ bool segmentCrossesDrawnRing(
     }
   }
   return false;
-}
-
-uint32_t addRingSharingBoundary(
-    wp::geometry::Mesh& mesh, uint32_t sourcePolygonIndex) {
-  wp::geometry::IndexVector edgeData;
-  for (auto const& edge : mesh.getPolygon(sourcePolygonIndex).getEdges()) {
-    edgeData.insert(edgeData.end(), {edge.v0, edge.v1, edge.index});
-  }
-  return mesh.addPolygon(wp::geometry::Polygon(edgeData));
 }
 
 uint32_t addDrawnRing(
