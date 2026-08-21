@@ -20,6 +20,22 @@ _Avoid_: Clipper path, Clipper polygon
 A closed loop of authored vertices forming one boundary of a Primitive's shape, in that Primitive's own local space. Becomes a Contour when the World's geometry is generated. The editor's Polygon sub-mode — so labelled because Vertex/Edge/Polygon is the familiar sub-object triad — selects Rings.
 _Avoid_: Contour (which is the fixed-point, generation-side form), loop, path, outline (the editor's Outline panel is unrelated)
 
+**Filled region**:
+A Ring together with the Holes it directly contains. A filled region is a Shell at the root of a MeshPrimitive's containment hierarchy and an Island when directly contained by a Hole.
+_Avoid_: positive polygon, solid Ring
+
+**Shell**:
+A filled region at the root of a MeshPrimitive's containment hierarchy.
+_Avoid_: outer polygon, exterior Ring
+
+**Hole**:
+An empty Ring directly contained by a Shell or Island. A Hole may contain Islands.
+_Avoid_: negative polygon, Difference Ring
+
+**Island**:
+A filled Ring directly contained by a Hole. An Island may itself contain Holes, acting as their containing filled region without becoming a root Shell.
+_Avoid_: inner shell, nested outer polygon
+
 **Fixed-point vertex**:
 An exact point on the world geometry grid. It is the canonical coordinate type for topology and arrangement output.
 _Avoid_: Clipper point, floating-point topology vertex
