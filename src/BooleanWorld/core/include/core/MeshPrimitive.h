@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -13,6 +14,7 @@ namespace bw {
 namespace core {
 
 struct MeshFilledRegion;
+class MeshPrimitiveEditingProxy;
 
 // A Hole is an empty Ring directly contained by a filled region. Its children
 // are Islands; the types make non-alternating links unrepresentable.
@@ -29,6 +31,7 @@ struct BW_API MeshFilledRegion {
 
 class BW_API MeshPrimitive : public Primitive {
   friend class Primitive;  // Only Primitive::instantiate constructs for loading.
+  friend class MeshPrimitiveEditingProxy;
 
   std::vector<MeshFilledRegion> mShells;
 
@@ -81,15 +84,92 @@ public:
   // Island, with only that filled region's direct Hole Rings.
   [[nodiscard]] std::vector<ComplexPolygon> flattenTree() const;
 
-  // Temporary ADR-0016 editing compatibility entry points.
-  [[nodiscard]] std::unique_ptr<wp::geometry::Mesh> createGeometryProxy() const;
-  void updateFromGeometryProxy(wp::geometry::Mesh const& mesh);
+  // Builds the hierarchy-aware, rest-pose world-space editing authority.
+  // Its wrapped Mesh is exposed only as const; every mutation is routed through
+  // MeshPrimitiveEditingProxy so welded topology and hierarchy cannot diverge.
+  [[nodiscard]] std::unique_ptr<MeshPrimitiveEditingProxy> createEditingProxy() const;
+  // Temporary name retained while downstream callers migrate; it returns the
+  // same specialized proxy, never a mutable geometry Mesh.
+  [[nodiscard]] std::unique_ptr<MeshPrimitiveEditingProxy> createGeometryProxy() const {
+    return createEditingProxy();
+  }
   bool retainRing(uint32_t complexPolygonIndex, uint32_t ringIndex);
 
   Primitive* copy() const override;
   std::string getType() const override;
   std::string getName() const override;
   float getRadius() const override;
+};
+
+class BW_API MeshPrimitiveEditingProxy {
+public:
+  enum class NodeRole { Shell,
+                        Hole,
+                        Island };
+
+  struct NodeMapping {
+    uint32_t polygonIndex;
+    NodeRole role;
+    uint32_t parentPolygonIndex;
+  };
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> mImpl;
+
+  explicit MeshPrimitiveEditingProxy(MeshPrimitive const& primitive);
+  bool mutateRings(std::function<bool(ClosedPolygon&)> mutation);
+  friend class MeshPrimitive;
+
+public:
+  ~MeshPrimitiveEditingProxy();
+  MeshPrimitiveEditingProxy(MeshPrimitiveEditingProxy&&) noexcept;
+  MeshPrimitiveEditingProxy& operator=(MeshPrimitiveEditingProxy&&) noexcept;
+  MeshPrimitiveEditingProxy(MeshPrimitiveEditingProxy const&);
+  MeshPrimitiveEditingProxy& operator=(MeshPrimitiveEditingProxy const&);
+
+  [[nodiscard]] wp::geometry::Mesh const& getMesh() const;
+  [[nodiscard]] std::vector<NodeMapping> getNodeMappings() const;
+  operator wp::geometry::Mesh const&() const { return getMesh(); }
+
+  // Read-only forwarding keeps query-heavy editor code concise without ever
+  // exposing a mutable Mesh reference.
+  [[nodiscard]] uint32_t getFirstVertexIndex() const { return getMesh().getFirstVertexIndex(); }
+  [[nodiscard]] uint32_t getNextVertexIndex(uint32_t index) const { return getMesh().getNextVertexIndex(index); }
+  [[nodiscard]] bool vertexIndexIterationFinished(uint32_t index) const { return getMesh().vertexIndexIterationFinished(index); }
+  [[nodiscard]] wp::geometry::Vertex const& getVertex(uint32_t index) const { return getMesh().getVertex(index); }
+  [[nodiscard]] uint32_t getFirstEdgeIndex() const { return getMesh().getFirstEdgeIndex(); }
+  [[nodiscard]] uint32_t getNextEdgeIndex(uint32_t index) const { return getMesh().getNextEdgeIndex(index); }
+  [[nodiscard]] bool edgeIndexIterationFinished(uint32_t index) const { return getMesh().edgeIndexIterationFinished(index); }
+  [[nodiscard]] wp::geometry::Edge const& getEdge(uint32_t index) const { return getMesh().getEdge(index); }
+  [[nodiscard]] uint32_t getFirstPolygonIndex() const { return getMesh().getFirstPolygonIndex(); }
+  [[nodiscard]] uint32_t getNextPolygonIndex(uint32_t index) const { return getMesh().getNextPolygonIndex(index); }
+  [[nodiscard]] bool polygonIndexIterationFinished(uint32_t index) const { return getMesh().polygonIndexIterationFinished(index); }
+  [[nodiscard]] wp::geometry::Polygon const& getPolygon(uint32_t index) const { return getMesh().getPolygon(index); }
+  [[nodiscard]] wp::geometry::IndexSet getVertexIndicesInBoundingBox(wp::BoundingBox const& bounds) const { return getMesh().getVertexIndicesInBoundingBox(bounds); }
+  void getExtents(wp::Vector2& minimum, wp::Vector2& maximum) const { getMesh().getExtents(minimum, maximum); }
+
+  // Geometry-only candidates may be prepared by validators and installed as
+  // one mutation. The hierarchy mapping is retained and checked first.
+  bool replaceMesh(wp::geometry::Mesh mesh);
+  void moveVertex(uint32_t vertexIndex, wp::Vector2 const& delta);
+  void moveVertices(wp::geometry::IndexVector const& vertexIndices, wp::Vector2 const& delta);
+  void moveEdge(uint32_t edgeIndex, wp::Vector2 const& delta);
+  void moveRing(uint32_t polygonIndex, wp::Vector2 const& delta);
+  bool splitEdge(uint32_t edgeIndex, wp::geometry::SplitEdgeResult* result = nullptr);
+  bool removeVertex(uint32_t vertexIndex);
+  bool removeEdge(uint32_t edgeIndex);
+  bool removeRing(uint32_t polygonIndex);
+
+  [[nodiscard]] uint32_t addShell(ClosedPolygon ring);
+  [[nodiscard]] uint32_t addHole(uint32_t filledPolygonIndex, ClosedPolygon ring);
+  [[nodiscard]] uint32_t addIsland(uint32_t holePolygonIndex, ClosedPolygon ring);
+  [[nodiscard]] uint32_t fillHole(uint32_t holePolygonIndex);
+
+  // Builds and validates a complete local-space candidate before replacing
+  // authored storage. On failure the Primitive and all derived geometry are
+  // unchanged. Primitive transforms are never modified.
+  void commitTo(MeshPrimitive& primitive) const;
 };
 
 }  // namespace core

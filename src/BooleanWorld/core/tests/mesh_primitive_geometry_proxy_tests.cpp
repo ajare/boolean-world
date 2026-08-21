@@ -104,11 +104,11 @@ void conversionsPreserveStorageOrderingAndDegenerateShapes() {
     primitive.setSize(20.0f, 30.0f);
     primitive.setPosition({17.0f, -9.0f});
     primitive.setOrientation(23.0f);
-    auto proxy = primitive.createGeometryProxy();
-    auto expected = readProxy(*proxy);
-    primitive.updateFromGeometryProxy(*proxy);
-    auto rebuilt = primitive.createGeometryProxy();
-    requireEqual(expected, readProxy(*rebuilt),
+    auto proxy = primitive.createEditingProxy();
+    auto expected = readProxy(proxy->getMesh());
+    proxy->commitTo(primitive);
+    auto rebuilt = primitive.createEditingProxy();
+    requireEqual(expected, readProxy(rebuilt->getMesh()),
                  "round-trip for degenerate case " + std::to_string(i));
   }
 }
@@ -158,8 +158,16 @@ void authoritativeTreePreservesArbitraryDepth() {
               rotated->getBounds().getSize().x > 0.0f,
           "copying, assignment, rotation, bounds, or vertex counts lost tree data");
 
-  auto proxy = primitive->createGeometryProxy();
-  primitive->updateFromGeometryProxy(*proxy);
+  auto proxy = primitive->createEditingProxy();
+  auto mappings = proxy->getNodeMappings();
+  require(mappings.size() == 5 &&
+              mappings[0].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Shell &&
+              mappings[1].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Hole &&
+              mappings[2].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Island &&
+              mappings[3].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Hole &&
+              mappings[4].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Island,
+          "the proxy mappings lost arbitrary-depth structural roles");
+  proxy->commitTo(*primitive);
   require(primitive->flattenTree().size() == 3,
           "the temporary editing compatibility round-trip lost deep topology");
 }
@@ -189,6 +197,142 @@ void deepTreeGeneratesAlternatingFilledRegions() {
           "the nested Hole was not empty");
   require(worldData.getContainingFaceIndex({0.5f, 0.0f}) != ~0u,
           "the deeply nested Island was not filled");
+}
+
+void coincidentHoleAndIslandRemainIndependentAuthoredRings() {
+  auto shared = ring(-2, -2, 2, 2);
+  bw::core::MeshFilledRegion island{shared, {}};
+  bw::core::MeshFilledRegion shell{
+      ring(-4, -4, 4, 4), {{shared, {island}}}};
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {shell}));
+  auto proxy = primitive->createEditingProxy();
+  require(proxy->getMesh().getNumVertices() == 8 &&
+              proxy->getMesh().getNumEdges() == 8,
+          "coincident Hole and Island boundaries were duplicated in the proxy");
+
+  auto mappings = proxy->getNodeMappings();
+  auto hole = mappings[1].polygonIndex;
+  auto islandIndex = mappings[2].polygonIndex;
+  require(proxy->getMesh().getPolygon(hole).getEdgeIndexSet() ==
+              proxy->getMesh().getPolygon(islandIndex).getEdgeIndexSet(),
+          "coincident Hole and Island Rings do not share Mesh edges");
+  auto vertex = proxy->getMesh().getPolygon(hole).getOrderedVertexIndices().front();
+  proxy->moveVertex(vertex, {0.25f, 0.0f});
+  proxy->commitTo(*primitive);
+  auto const& storedHole = primitive->getShells()[0].holes[0];
+  require(storedHole.ring.size() == storedHole.islands[0].ring.size(),
+          "coincident Rings did not remain independent authored values");
+  for (auto const& holeVertex : storedHole.ring) {
+    bool matched = false;
+    for (auto const& islandVertex : storedHole.islands[0].ring)
+      matched |= holeVertex.p == islandVertex.p;
+    require(matched, "moving shared topology detached the authored boundary values");
+  }
+}
+
+void hierarchyAwareProxyWeldsOnlyExactSharedTopology() {
+  bw::core::MeshFilledRegion left{ring(-2, -1, 0, 1), {}};
+  bw::core::MeshFilledRegion right{ring(0, -1, 2, 1), {}};
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {left, right}));
+  auto proxy = primitive->createEditingProxy();
+  auto const& mesh = proxy->getMesh();
+  require(mesh.getNumVertices() == 6 && mesh.getNumEdges() == 7,
+          "exactly shared Shell boundary topology was not welded");
+
+  uint32_t sharedEdge = ~0u;
+  for (auto edge = mesh.getFirstEdgeIndex();
+       !mesh.edgeIndexIterationFinished(edge);
+       edge = mesh.getNextEdgeIndex(edge)) {
+    if (mesh.getEdge(edge).getPolygonReferences().size() == 2) sharedEdge = edge;
+  }
+  require(sharedEdge != ~0u, "the exact shared boundary has no shared Mesh edge");
+
+  auto mappings = proxy->getNodeMappings();
+  require(mappings.size() == 2 &&
+              mappings[0].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Shell &&
+              mappings[1].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Shell,
+          "the proxy did not retain explicit Shell mappings");
+
+  bw::core::MeshFilledRegion nearby{ring(0.00001f, -1, 2, 1), {}};
+  auto nearPrimitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {left, nearby}));
+  auto nearProxy = nearPrimitive->createEditingProxy();
+  require(nearProxy->getMesh().getNumVertices() == 8,
+          "near-but-not-equal coordinates were welded");
+}
+
+void sharedMutationsCommitToEveryAuthoredRingAtomically() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union,
+      {{ring(-2, -1, 0, 1), {}}, {ring(0, -1, 2, 1), {}}}));
+  auto position = primitive->getPosition();
+  auto size = primitive->getSize();
+  auto orientation = primitive->getOrientation();
+  auto proxy = primitive->createEditingProxy();
+
+  uint32_t sharedEdge = ~0u;
+  for (auto edge = proxy->getMesh().getFirstEdgeIndex();
+       !proxy->getMesh().edgeIndexIterationFinished(edge);
+       edge = proxy->getMesh().getNextEdgeIndex(edge)) {
+    if (proxy->getMesh().getEdge(edge).getPolygonReferences().size() == 2) sharedEdge = edge;
+  }
+  require(sharedEdge != ~0u, "shared mutation fixture has no welded edge");
+  wp::geometry::SplitEdgeResult split;
+  require(proxy->splitEdge(sharedEdge, &split), "the shared edge was not split");
+  proxy->commitTo(*primitive);
+  require(primitive->getShells()[0].ring.size() == 5 &&
+              primitive->getShells()[1].ring.size() == 5,
+          "splitting shared topology detached one authored Ring");
+  require(primitive->getPosition() == position && primitive->getSize() == size &&
+              primitive->getOrientation() == orientation,
+          "the rest-pose round trip changed the Primitive transform");
+
+  auto deleteProxy = primitive->createEditingProxy();
+  uint32_t sharedVertex = ~0u;
+  for (auto vertex = deleteProxy->getMesh().getFirstVertexIndex();
+       !deleteProxy->getMesh().vertexIndexIterationFinished(vertex);
+       vertex = deleteProxy->getMesh().getNextVertexIndex(vertex)) {
+    size_t participatingRings = 0;
+    for (auto edge : deleteProxy->getMesh().getVertex(vertex).getEdgeReferences()) {
+      participatingRings += deleteProxy->getMesh().getEdge(edge).getPolygonReferences().size();
+    }
+    if (participatingRings > 2) {
+      sharedVertex = vertex;
+      break;
+    }
+  }
+  require(sharedVertex != ~0u && deleteProxy->removeVertex(sharedVertex),
+          "deleting a shared Vertex was refused");
+  deleteProxy->commitTo(*primitive);
+  require(primitive->getShells()[0].ring.size() == 4 &&
+              primitive->getShells()[1].ring.size() == 4,
+          "deleting a shared Vertex did not update every participating Ring");
+}
+
+void failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{{ring(-2, -2, 2, 2), {}}}}));
+  auto beforeTree = primitive->flattenTree();
+  auto beforeVertices = primitive->getVertices();
+  auto proxy = primitive->createEditingProxy();
+  auto first = proxy->getMesh().getFirstVertexIndex();
+  auto second = proxy->getMesh().getNextVertexIndex(first);
+  proxy->moveVertex(first,
+                    proxy->getMesh().getVertex(second).getPosition() -
+                        proxy->getMesh().getVertex(first).getPosition());
+  bool rejected = false;
+  try {
+    proxy->commitTo(*primitive);
+  } catch (std::exception const&) {
+    rejected = true;
+  }
+  require(rejected, "an invalid complete proxy candidate committed");
+  requireEqual(beforeTree, primitive->flattenTree(),
+               "failed commit changed the authoritative tree");
+  requireEqual(beforeVertices, primitive->getVertices(),
+               "failed commit changed derived geometry");
 }
 
 void shallowConversionRejectsCrossEntryNestingAndMalformedTrees() {
@@ -222,6 +366,10 @@ int main() {
     conversionsPreserveStorageOrderingAndDegenerateShapes();
     authoritativeTreePreservesArbitraryDepth();
     deepTreeGeneratesAlternatingFilledRegions();
+    coincidentHoleAndIslandRemainIndependentAuthoredRings();
+    hierarchyAwareProxyWeldsOnlyExactSharedTopology();
+    sharedMutationsCommitToEveryAuthoredRingAtomically();
+    failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged();
     shallowConversionRejectsCrossEntryNestingAndMalformedTrees();
     std::cout << "MeshPrimitive geometry proxy tests passed\n";
     return 0;

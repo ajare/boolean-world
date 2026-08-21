@@ -1,11 +1,15 @@
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <format>
 #include <limits>
+#include <map>
 #include <numeric>
+#include <set>
 #include <stdexcept>
 
 #include <willpower/geometry/Edge.h>
+#include <willpower/geometry/MeshOperations.h>
 #include <willpower/geometry/Polygon.h>
 #include <willpower/geometry/Vertex.h>
 
@@ -354,75 +358,133 @@ uint32_t addRingSharingBoundary(
   return mesh.addPolygon(wp::geometry::Polygon(edgeData));
 }
 
-uint32_t addRing(wp::geometry::Mesh& mesh, ClosedPolygon const& ring) {
-  wp::geometry::IndexVector vertices;
-  wp::geometry::IndexVector edgeData;
-  for (auto const& vertex : ring) {
-    vertices.push_back(mesh.addVertex(wp::geometry::Vertex(vertex.p)));
-  }
-  for (size_t i = 0; i < vertices.size(); ++i) {
-    auto first = vertices[i];
-    auto second = vertices[(i + 1) % vertices.size()];
-    auto edge = mesh.addEdge(wp::geometry::Edge(first, second));
-    edgeData.insert(edgeData.end(), {first, second, edge});
-  }
-  return mesh.addPolygon(wp::geometry::Polygon(edgeData));
-}
+}  // namespace
 
-ClosedPolygon readRing(wp::geometry::Mesh const& mesh, uint32_t polygonIndex) {
-  ClosedPolygon ring;
-  for (auto vertex : mesh.getPolygon(polygonIndex).getOrderedVertexIndices()) {
-    ring.emplace_back(mesh.getVertex(vertex).getPosition());
-  }
-  return ring;
-}
+struct MeshPrimitiveEditingProxy::Impl {
+  struct Filled;
+  struct Hole {
+    uint32_t polygonIndex{};
+    uint32_t anchorVertexIndex{};
+    vector<Filled> islands;
+  };
+  struct Filled {
+    uint32_t polygonIndex{};
+    uint32_t anchorVertexIndex{};
+    vector<Hole> holes;
+  };
 
-vector<MeshFilledRegion> inferTree(vector<ComplexPolygon> const& polygons) {
-  vector<MeshFilledRegion> regions;
-  regions.reserve(polygons.size());
-  // Proxy polygons are a derived list of independently filled regions, so
-  // validate each shallow entry before rebuilding their compatibility-only
-  // hierarchy. The public shallow converter deliberately does not do this.
-  for (auto const& polygon : polygons) {
-    auto one = shallowTree({polygon});
-    regions.push_back(move(one.front()));
-  }
-  vector<int> parents(regions.size(), -1);
-  vector<size_t> parentHoles(regions.size());
-  for (size_t child = 0; child < regions.size(); ++child) {
-    double smallest = numeric_limits<double>::max();
-    for (size_t candidate = 0; candidate < regions.size(); ++candidate) {
-      if (candidate == child) continue;
-      for (size_t hole = 0; hole < regions[candidate].holes.size(); ++hole) {
-        auto const& boundary = regions[candidate].holes[hole].ring;
-        if (ringContainedBy(regions[child].ring, boundary) && abs(twiceArea(boundary)) < smallest) {
-          parents[child] = int(candidate);
-          parentHoles[child] = hole;
-          smallest = abs(twiceArea(boundary));
-        }
-      }
+  wp::geometry::Mesh mesh;
+  vector<Filled> shells;
+
+  struct ExactPointLess {
+    bool operator()(wp::Vector2 const& left, wp::Vector2 const& right) const {
+      auto bits = [](float value) {
+        return value == 0.0f ? uint32_t{} : bit_cast<uint32_t>(value);
+      };
+      return pair{bits(left.x), bits(left.y)} < pair{bits(right.x), bits(right.y)};
     }
+  };
+
+  struct Builder {
+    Impl& target;
+    map<wp::Vector2, uint32_t, ExactPointLess> vertices;
+    map<pair<uint32_t, uint32_t>, uint32_t> edges;
+
+    uint32_t addRing(ClosedPolygon const& ring, uint32_t& anchorVertexIndex) {
+      wp::geometry::IndexVector vertexIndices;
+      wp::geometry::IndexVector edgeData;
+      for (auto const& vertex : ring) {
+        auto [found, inserted] = vertices.try_emplace(vertex.p, 0);
+        if (inserted) {
+          found->second = target.mesh.addVertex(wp::geometry::Vertex(vertex.p));
+        }
+        vertexIndices.push_back(found->second);
+      }
+      anchorVertexIndex = vertexIndices.front();
+      for (size_t i = 0; i < vertexIndices.size(); ++i) {
+        auto first = vertexIndices[i];
+        auto second = vertexIndices[(i + 1) % vertexIndices.size()];
+        auto key = minmax(first, second);
+        auto [found, inserted] = edges.try_emplace(key, 0);
+        if (inserted) {
+          found->second = target.mesh.addEdge(wp::geometry::Edge(first, second));
+        }
+        edgeData.insert(edgeData.end(), {first, second, found->second});
+      }
+      return target.mesh.addPolygon(wp::geometry::Polygon(edgeData));
+    }
+
+    Filled addFilled(MeshFilledRegion const& source) {
+      Filled result;
+      result.polygonIndex = addRing(source.ring, result.anchorVertexIndex);
+      for (auto const& sourceHole : source.holes) {
+        Hole hole;
+        hole.polygonIndex = addRing(sourceHole.ring, hole.anchorVertexIndex);
+        target.mesh.addHoleToPolygon(result.polygonIndex, hole.polygonIndex);
+        for (auto const& island : sourceHole.islands) {
+          hole.islands.push_back(addFilled(island));
+        }
+        result.holes.push_back(move(hole));
+      }
+      return result;
+    }
+  };
+
+  void rebuild(vector<MeshFilledRegion> const& worldTree) {
+    mesh.clear();
+    shells.clear();
+    Builder builder{*this};
+    for (auto const& shell : worldTree) shells.push_back(builder.addFilled(shell));
   }
-  vector<vector<size_t>> children(regions.size());
-  for (size_t child = 0; child < regions.size(); ++child) {
-    if (parents[child] >= 0) children[size_t(parents[child])].push_back(child);
-  }
-  auto build = [&](auto&& self, size_t index) -> MeshFilledRegion {
-    auto result = regions[index];
-    for (auto child : children[index]) {
-      result.holes[parentHoles[child]].islands.push_back(self(self, child));
+
+  ClosedPolygon readMappedRing(uint32_t polygonIndex, uint32_t anchorVertexIndex) const {
+    auto ordered = mesh.getPolygon(polygonIndex).getOrderedVertexIndices();
+    auto anchor = find(ordered.begin(), ordered.end(), anchorVertexIndex);
+    if (anchor != ordered.end()) rotate(ordered.begin(), anchor, ordered.end());
+    ClosedPolygon result;
+    for (auto vertex : ordered) result.emplace_back(mesh.getVertex(vertex).getPosition());
+    if (twiceArea(result) < 0.0 && result.size() > 1) {
+      reverse(next(result.begin()), result.end());
     }
     return result;
-  };
-  vector<MeshFilledRegion> roots;
-  for (size_t i = 0; i < regions.size(); ++i) {
-    if (parents[i] < 0) roots.push_back(build(build, i));
   }
-  normalizeAndValidateTree(roots);
-  return roots;
-}
 
-}  // namespace
+  vector<MeshFilledRegion> readTree() const {
+    auto readFilled = [&](auto&& self, Filled const& source) -> MeshFilledRegion {
+      MeshFilledRegion result{readMappedRing(source.polygonIndex, source.anchorVertexIndex), {}};
+      for (auto const& sourceHole : source.holes) {
+        MeshHole hole{readMappedRing(sourceHole.polygonIndex, sourceHole.anchorVertexIndex), {}};
+        for (auto const& island : sourceHole.islands) {
+          hole.islands.push_back(self(self, island));
+        }
+        result.holes.push_back(move(hole));
+      }
+      return result;
+    };
+    vector<MeshFilledRegion> result;
+    for (auto const& shell : shells) result.push_back(readFilled(readFilled, shell));
+    return result;
+  }
+
+  bool allMappingsAreLive(wp::geometry::Mesh const& candidate) const {
+    set<uint32_t> live;
+    for (auto index = candidate.getFirstPolygonIndex();
+         !candidate.polygonIndexIterationFinished(index);
+         index = candidate.getNextPolygonIndex(index)) {
+      live.insert(index);
+    }
+    bool valid = true;
+    auto visit = [&](auto&& self, Filled const& filled) -> void {
+      valid &= live.contains(filled.polygonIndex);
+      for (auto const& hole : filled.holes) {
+        valid &= live.contains(hole.polygonIndex);
+        for (auto const& island : hole.islands) self(self, island);
+      }
+    };
+    for (auto const& shell : shells) visit(visit, shell);
+    return valid;
+  }
+};
 
 MeshPrimitive::MeshPrimitive()
     : Primitive(Operation::Union, FillRule::EvenOdd) {
@@ -517,38 +579,300 @@ void MeshPrimitive::rotateAuthoredGeometry(float angle, wp::Vector2 const& origi
   replaceTree(move(candidate));
 }
 
-unique_ptr<wp::geometry::Mesh> MeshPrimitive::createGeometryProxy() const {
-  MeshPrimitive restPose(*this);
-  restPose.calculateAnimationValues();
-  restPose.updateVertexPositions();
-  auto mesh = make_unique<wp::geometry::Mesh>();
-  vector<ClosedPolygon> rings;
-  vector<uint32_t> indices;
-  auto addCompatibleRing = [&](ClosedPolygon const& ring) {
-    for (size_t candidate = 0; candidate < rings.size(); ++candidate) {
-      if (ringsCoincide(rings[candidate], ring)) {
-        rings.push_back(ring);
-        indices.push_back(addRingSharingBoundary(*mesh, indices[candidate]));
-        return indices.back();
-      }
-    }
-    rings.push_back(ring);
-    indices.push_back(addRing(*mesh, ring));
-    return indices.back();
-  };
-  for (auto const& polygon : restPose.getVertices()) {
-    if (polygon.empty()) continue;
-    auto outer = addCompatibleRing(polygon.front());
-    for (size_t ring = 1; ring < polygon.size(); ++ring) {
-      auto hole = addCompatibleRing(polygon[ring]);
-      mesh->addHoleToPolygon(outer, hole);
-    }
-  }
-  return mesh;
+unique_ptr<MeshPrimitiveEditingProxy> MeshPrimitive::createEditingProxy() const {
+  return unique_ptr<MeshPrimitiveEditingProxy>(new MeshPrimitiveEditingProxy(*this));
 }
 
-void MeshPrimitive::updateFromGeometryProxy(wp::geometry::Mesh const& mesh) {
-  MeshPrimitive restPose(*this);
+MeshPrimitiveEditingProxy::MeshPrimitiveEditingProxy(MeshPrimitive const& primitive)
+    : mImpl(make_unique<Impl>()) {
+  MeshPrimitive restPose(primitive);
+  restPose.calculateAnimationValues();
+  auto worldTree = restPose.mShells;
+  forEachRing(worldTree, [&](ClosedPolygon& ring) {
+    for (auto& vertex : ring) {
+      vertex.p = restPose.transformVertex(vertex.p * restPose.getSize(), nullptr);
+    }
+  });
+  mImpl->rebuild(worldTree);
+}
+
+MeshPrimitiveEditingProxy::~MeshPrimitiveEditingProxy() = default;
+MeshPrimitiveEditingProxy::MeshPrimitiveEditingProxy(MeshPrimitiveEditingProxy&&) noexcept = default;
+MeshPrimitiveEditingProxy& MeshPrimitiveEditingProxy::operator=(
+    MeshPrimitiveEditingProxy&& other) noexcept {
+  if (this != &other) *mImpl = move(*other.mImpl);
+  return *this;
+}
+MeshPrimitiveEditingProxy::MeshPrimitiveEditingProxy(MeshPrimitiveEditingProxy const& other)
+    : mImpl(make_unique<Impl>(*other.mImpl)) {}
+MeshPrimitiveEditingProxy& MeshPrimitiveEditingProxy::operator=(
+    MeshPrimitiveEditingProxy const& other) {
+  if (this != &other) *mImpl = *other.mImpl;
+  return *this;
+}
+
+wp::geometry::Mesh const& MeshPrimitiveEditingProxy::getMesh() const {
+  return mImpl->mesh;
+}
+
+vector<MeshPrimitiveEditingProxy::NodeMapping> MeshPrimitiveEditingProxy::getNodeMappings() const {
+  vector<NodeMapping> result;
+  auto visit = [&](auto&& self, Impl::Filled const& filled, NodeRole role,
+                   uint32_t parent) -> void {
+    result.push_back({filled.polygonIndex, role, parent});
+    for (auto const& hole : filled.holes) {
+      result.push_back({hole.polygonIndex, NodeRole::Hole, filled.polygonIndex});
+      for (auto const& island : hole.islands) {
+        self(self, island, NodeRole::Island, hole.polygonIndex);
+      }
+    }
+  };
+  for (auto const& shell : mImpl->shells) visit(visit, shell, NodeRole::Shell, ~0u);
+  return result;
+}
+
+bool MeshPrimitiveEditingProxy::replaceMesh(wp::geometry::Mesh mesh) {
+  if (!mImpl->allMappingsAreLive(mesh)) return false;
+  mImpl->mesh = move(mesh);
+  return true;
+}
+
+void MeshPrimitiveEditingProxy::moveVertex(uint32_t vertexIndex, wp::Vector2 const& delta) {
+  mImpl->mesh.moveVertex(vertexIndex, delta);
+}
+
+void MeshPrimitiveEditingProxy::moveVertices(
+    wp::geometry::IndexVector const& vertexIndices, wp::Vector2 const& delta) {
+  mImpl->mesh.moveVertices(vertexIndices, delta);
+}
+
+void MeshPrimitiveEditingProxy::moveEdge(uint32_t edgeIndex, wp::Vector2 const& delta) {
+  mImpl->mesh.moveEdge(edgeIndex, delta);
+}
+
+void MeshPrimitiveEditingProxy::moveRing(uint32_t polygonIndex, wp::Vector2 const& delta) {
+  mImpl->mesh.movePolygon(polygonIndex, delta);
+}
+
+bool MeshPrimitiveEditingProxy::splitEdge(
+    uint32_t edgeIndex, wp::geometry::SplitEdgeResult* result) {
+  wp::geometry::MeshOperations::splitEdge(&mImpl->mesh, edgeIndex, 0.5f, result);
+  return !result || !result->newEdgeIndices.empty();
+}
+
+bool MeshPrimitiveEditingProxy::mutateRings(
+    function<bool(ClosedPolygon&)> mutation) {
+  auto candidate = mImpl->readTree();
+  bool changed = false;
+  forEachRing(candidate, [&](ClosedPolygon& ring) { changed |= mutation(ring); });
+  if (!changed) return false;
+  try {
+    auto validated = candidate;
+    normalizeAndValidateTree(validated);
+    mImpl->rebuild(candidate);
+    return true;
+  } catch (exception const&) {
+    return false;
+  }
+}
+
+bool MeshPrimitiveEditingProxy::removeVertex(uint32_t vertexIndex) {
+  auto const position = mImpl->mesh.getVertex(vertexIndex).getPosition();
+  return mutateRings([&](ClosedPolygon& ring) {
+    auto oldSize = ring.size();
+    erase_if(ring, [&](Vertex const& vertex) { return vertex.p == position; });
+    return ring.size() != oldSize;
+  });
+}
+
+bool MeshPrimitiveEditingProxy::removeEdge(uint32_t edgeIndex) {
+  auto const& edge = mImpl->mesh.getEdge(edgeIndex);
+  auto first = mImpl->mesh.getVertex(edge.getFirstVertex()).getPosition();
+  auto second = mImpl->mesh.getVertex(edge.getSecondVertex()).getPosition();
+  auto midpoint = (first + second) / 2.0f;
+  return mutateRings([&](ClosedPolygon& ring) {
+    bool changed = false;
+    for (auto& vertex : ring) {
+      if (vertex.p == second) {
+        vertex.p = midpoint;
+        changed = true;
+      }
+    }
+    auto oldSize = ring.size();
+    erase_if(ring, [&](Vertex const& vertex) { return vertex.p == first; });
+    return changed || ring.size() != oldSize;
+  });
+}
+
+bool MeshPrimitiveEditingProxy::removeRing(uint32_t polygonIndex) {
+  auto candidate = mImpl->readTree();
+  bool removed = false;
+  auto pruneFilled = [&](auto&& self, vector<MeshFilledRegion>& filled,
+                         vector<Impl::Filled> const& mappings) -> void {
+    for (size_t i = filled.size(); i-- > 0;) {
+      if (mappings[i].polygonIndex == polygonIndex) {
+        filled.erase(filled.begin() + i);
+        removed = true;
+        continue;
+      }
+      for (size_t h = filled[i].holes.size(); h-- > 0;) {
+        if (mappings[i].holes[h].polygonIndex == polygonIndex) {
+          filled[i].holes.erase(filled[i].holes.begin() + h);
+          removed = true;
+        } else {
+          auto& islands = filled[i].holes[h].islands;
+          auto const& islandMappings = mappings[i].holes[h].islands;
+          bool restoredFilledHole = false;
+          for (size_t island = 0; island < islands.size(); ++island) {
+            if (islandMappings[island].polygonIndex != polygonIndex ||
+                !ringsCoincide(islands[island].ring, filled[i].holes[h].ring)) {
+              continue;
+            }
+            vector<MeshFilledRegion> promoted;
+            for (auto& gap : islands[island].holes) {
+              for (auto& previousIsland : gap.islands) {
+                promoted.push_back(move(previousIsland));
+              }
+            }
+            islands.erase(islands.begin() + island);
+            islands.insert(islands.begin() + island,
+                           make_move_iterator(promoted.begin()),
+                           make_move_iterator(promoted.end()));
+            removed = restoredFilledHole = true;
+            break;
+          }
+          if (!restoredFilledHole) {
+            self(self, islands, islandMappings);
+          }
+        }
+      }
+    }
+  };
+  pruneFilled(pruneFilled, candidate, mImpl->shells);
+  if (removed) mImpl->rebuild(candidate);
+  return removed;
+}
+
+uint32_t MeshPrimitiveEditingProxy::addShell(ClosedPolygon ring) {
+  auto candidate = mImpl->readTree();
+  candidate.push_back({move(ring), {}});
+  normalizeAndValidateTree(candidate);
+  mImpl->rebuild(candidate);
+  return mImpl->shells.back().polygonIndex;
+}
+
+uint32_t MeshPrimitiveEditingProxy::addHole(
+    uint32_t filledPolygonIndex, ClosedPolygon ring) {
+  auto candidate = mImpl->readTree();
+  uint32_t result = ~0u;
+  auto add = [&](auto&& self, vector<MeshFilledRegion>& filled,
+                 vector<Impl::Filled> const& mappings) -> void {
+    for (size_t i = 0; i < filled.size(); ++i) {
+      if (mappings[i].polygonIndex == filledPolygonIndex) {
+        filled[i].holes.push_back({ring, {}});
+        result = uint32_t(i);  // found marker
+        return;
+      }
+      for (size_t h = 0; h < filled[i].holes.size(); ++h)
+        self(self, filled[i].holes[h].islands, mappings[i].holes[h].islands);
+    }
+  };
+  add(add, candidate, mImpl->shells);
+  if (result == ~0u) return ~0u;
+  normalizeAndValidateTree(candidate);
+  mImpl->rebuild(candidate);
+  for (auto const& mapping : getNodeMappings())
+    if (mapping.role == NodeRole::Hole && mapping.parentPolygonIndex == filledPolygonIndex)
+      result = mapping.polygonIndex;
+  return result;
+}
+
+uint32_t MeshPrimitiveEditingProxy::addIsland(
+    uint32_t holePolygonIndex, ClosedPolygon ring) {
+  auto candidate = mImpl->readTree();
+  bool found = false;
+  auto add = [&](auto&& self, vector<MeshFilledRegion>& filled,
+                 vector<Impl::Filled> const& mappings) -> void {
+    for (size_t i = 0; i < filled.size(); ++i) {
+      for (size_t h = 0; h < filled[i].holes.size(); ++h) {
+        if (mappings[i].holes[h].polygonIndex == holePolygonIndex) {
+          filled[i].holes[h].islands.push_back({ring, {}});
+          found = true;
+          return;
+        }
+        self(self, filled[i].holes[h].islands, mappings[i].holes[h].islands);
+      }
+    }
+  };
+  add(add, candidate, mImpl->shells);
+  if (!found) return ~0u;
+  normalizeAndValidateTree(candidate);
+  mImpl->rebuild(candidate);
+  for (auto const& mapping : getNodeMappings())
+    if (mapping.role == NodeRole::Island && mapping.parentPolygonIndex == holePolygonIndex)
+      return mapping.polygonIndex;
+  return ~0u;
+}
+
+uint32_t MeshPrimitiveEditingProxy::fillHole(uint32_t holePolygonIndex) {
+  auto candidate = mImpl->readTree();
+  bool found = false;
+  auto fill = [&](auto&& self, vector<MeshFilledRegion>& filled,
+                  vector<Impl::Filled> const& mappings) -> void {
+    for (size_t i = 0; i < filled.size(); ++i) {
+      for (size_t h = 0; h < filled[i].holes.size(); ++h) {
+        auto& hole = filled[i].holes[h];
+        if (mappings[i].holes[h].polygonIndex == holePolygonIndex) {
+          MeshFilledRegion wrapper{hole.ring, {}};
+          for (auto& island : hole.islands) {
+            wrapper.holes.push_back({island.ring, {move(island)}});
+          }
+          hole.islands = {move(wrapper)};
+          found = true;
+          return;
+        }
+        self(self, hole.islands, mappings[i].holes[h].islands);
+      }
+    }
+  };
+  fill(fill, candidate, mImpl->shells);
+  if (!found) return ~0u;
+  normalizeAndValidateTree(candidate);
+
+  Impl::Hole* target = nullptr;
+  auto findHole = [&](auto&& self, vector<Impl::Filled>& filled) -> void {
+    for (auto& region : filled) {
+      for (auto& hole : region.holes) {
+        if (hole.polygonIndex == holePolygonIndex) {
+          target = &hole;
+          return;
+        }
+        self(self, hole.islands);
+        if (target) return;
+      }
+    }
+  };
+  findHole(findHole, mImpl->shells);
+  if (!target) return ~0u;
+
+  Impl::Filled wrapper;
+  wrapper.polygonIndex = addRingSharingBoundary(mImpl->mesh, target->polygonIndex);
+  wrapper.anchorVertexIndex = target->anchorVertexIndex;
+  for (auto& island : target->islands) {
+    Impl::Hole gap;
+    gap.polygonIndex = addRingSharingBoundary(mImpl->mesh, island.polygonIndex);
+    gap.anchorVertexIndex = island.anchorVertexIndex;
+    mImpl->mesh.addHoleToPolygon(wrapper.polygonIndex, gap.polygonIndex);
+    gap.islands.push_back(move(island));
+    wrapper.holes.push_back(move(gap));
+  }
+  target->islands = {move(wrapper)};
+  return target->islands.front().polygonIndex;
+}
+
+void MeshPrimitiveEditingProxy::commitTo(MeshPrimitive& primitive) const {
+  auto candidate = mImpl->readTree();
+  MeshPrimitive restPose(primitive);
   restPose.calculateAnimationValues();
   auto origin = restPose.transformVertex({0.0f, 0.0f}, nullptr);
   auto xAxis = restPose.transformVertex({1.0f, 0.0f}, nullptr) - origin;
@@ -562,22 +886,13 @@ void MeshPrimitive::updateFromGeometryProxy(wp::geometry::Mesh const& mesh) {
     return wp::Vector2{
                (p.x * yAxis.y - p.y * yAxis.x) / determinant,
                (xAxis.x * p.y - xAxis.y * p.x) / determinant} /
-           getSize();
+           primitive.getSize();
   };
-  vector<ComplexPolygon> polygons;
-  for (auto index = mesh.getFirstPolygonIndex();
-       !mesh.polygonIndexIterationFinished(index);
-       index = mesh.getNextPolygonIndex(index)) {
-    auto const& polygon = mesh.getPolygon(index);
-    if (polygon.isHole()) continue;
-    ComplexPolygon complex{readRing(mesh, index)};
-    for (auto hole : polygon.getHoleIndices()) complex.push_back(readRing(mesh, hole));
-    for (auto& ring : complex)
-      for (auto& vertex : ring) vertex.p = toLocal(vertex.p);
-    polygons.push_back(move(complex));
-  }
-  auto candidate = inferTree(polygons);
-  replaceTree(move(candidate));  // candidate is complete before authority changes
+  forEachRing(candidate, [&](ClosedPolygon& ring) {
+    for (auto& vertex : ring) vertex.p = toLocal(vertex.p);
+  });
+  normalizeAndValidateTree(candidate);
+  primitive.replaceTree(move(candidate));
 }
 
 bool MeshPrimitive::retainRing(uint32_t complexPolygonIndex, uint32_t ringIndex) {

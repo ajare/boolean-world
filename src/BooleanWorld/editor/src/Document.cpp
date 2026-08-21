@@ -499,7 +499,7 @@ bool Document::activateMesh(uint32_t primitiveIndex) {
     return true;
   }
   auto* primitive = static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(primitiveIndex));
-  mActiveMesh = primitive->createGeometryProxy();
+  mActiveMesh = primitive->createEditingProxy();
   mActiveMeshPrimitiveIndex = primitiveIndex;
   clearMeshSelections();
   return true;
@@ -516,7 +516,7 @@ uint32_t Document::getActiveMeshPrimitiveIndex() const {
 }
 
 wp::geometry::Mesh const* Document::getActiveMesh() const {
-  return mActiveMesh.get();
+  return mActiveMesh ? &mActiveMesh->getMesh() : nullptr;
 }
 
 vector<uint32_t> Document::getHoveredMeshSubObjectIndices(
@@ -1162,6 +1162,58 @@ uint32_t simulateMeshSubObjectDeletion(
   return removed;
 }
 
+uint32_t mutateProxyDeletion(
+    bw::core::MeshPrimitiveEditingProxy& proxy,
+    Settings::MeshSubMode subMode,
+    set<uint32_t> const& indices) {
+  uint32_t removed = 0;
+  if (subMode == Settings::MeshSubMode::Vertex) {
+    vector<wp::Vector2> positions;
+    for (auto index : indices) positions.push_back(proxy.getVertex(index).getPosition());
+    for (auto const& position : positions) {
+      uint32_t current = ~0u;
+      for (auto index = proxy.getFirstVertexIndex();
+           !proxy.vertexIndexIterationFinished(index);
+           index = proxy.getNextVertexIndex(index)) {
+        if (proxy.getVertex(index).getPosition() == position) {
+          current = index;
+          break;
+        }
+      }
+      if (current != ~0u && proxy.removeVertex(current)) ++removed;
+    }
+  } else if (subMode == Settings::MeshSubMode::Edge) {
+    vector<pair<wp::Vector2, wp::Vector2>> endpoints;
+    for (auto index : indices) {
+      auto const& edge = proxy.getEdge(index);
+      endpoints.emplace_back(
+          proxy.getVertex(edge.getFirstVertex()).getPosition(),
+          proxy.getVertex(edge.getSecondVertex()).getPosition());
+    }
+    for (auto const& [first, second] : endpoints) {
+      uint32_t current = ~0u;
+      for (auto index = proxy.getFirstEdgeIndex();
+           !proxy.edgeIndexIterationFinished(index);
+           index = proxy.getNextEdgeIndex(index)) {
+        auto const& edge = proxy.getEdge(index);
+        auto a = proxy.getVertex(edge.getFirstVertex()).getPosition();
+        auto b = proxy.getVertex(edge.getSecondVertex()).getPosition();
+        if ((a == first && b == second) || (a == second && b == first)) {
+          current = index;
+          break;
+        }
+      }
+      if (current != ~0u && proxy.removeEdge(current)) ++removed;
+    }
+  } else {
+    // Polygon indices are assigned in structural pre-order, so removing in
+    // reverse retains every lower requested index until it is processed.
+    for (auto index = indices.rbegin(); index != indices.rend(); ++index)
+      if (proxy.removeRing(*index)) ++removed;
+  }
+  return removed;
+}
+
 }  // namespace
 
 void Document::beginMeshDrag(Settings::MeshSubMode subMode) {
@@ -1211,9 +1263,8 @@ wp::Vector2 Document::updateMeshDrag(
   if (meshGroupMoveIsValid(
           candidate, *mMeshDragStartSnapshot, mMeshDragAffectedVertices, delta)) {
     mMeshDragLastValidDelta = delta;
-    // Assigned in place, not replaced, so a pointer taken from
-    // getActiveMesh() earlier in the same frame stays valid.
-    *mActiveMesh = candidate;
+    // Installed through the proxy so consumers never receive mutable Mesh access.
+    mActiveMesh->replaceMesh(move(candidate));
   }
 
   return mMeshDragLastValidDelta;
@@ -1230,7 +1281,7 @@ void Document::endMeshDrag() {
 void Document::commitMeshPolygons(uint32_t primitiveIndex) {
   auto* primitive = static_cast<bw::core::MeshPrimitive*>(
       mWorld->getPrimitive(primitiveIndex));
-  primitive->updateFromGeometryProxy(*mActiveMesh);
+  mActiveMesh->commitTo(*primitive);
 }
 
 bool Document::commitMeshDrag() {
@@ -1249,7 +1300,7 @@ bool Document::moveMeshVertexTo(uint32_t vertexIndex, wp::Vector2 const& positio
 
   auto delta = position - mActiveMesh->getVertex(vertexIndex).getPosition();
 
-  wp::geometry::MeshValidator validator(mActiveMesh.get());
+  wp::geometry::MeshValidator validator(&mActiveMesh->getMesh());
   if (validator.validateVertexMove(vertexIndex, delta) !=
       wp::geometry::MeshValidator::Valid) {
     return false;
@@ -1266,8 +1317,8 @@ uint32_t Document::previewMeshSubObjectDeletionCount(
   if (!mActiveMesh || indices.empty()) {
     return 0;
   }
-  wp::geometry::Mesh candidate(*mActiveMesh);
-  return simulateMeshSubObjectDeletion(candidate, subMode, indices);
+  auto candidate = *mActiveMesh;
+  return mutateProxyDeletion(candidate, subMode, indices);
 }
 
 uint32_t Document::deleteMeshSubObjects(
@@ -1276,30 +1327,23 @@ uint32_t Document::deleteMeshSubObjects(
     return 0;
   }
 
-  wp::geometry::Mesh candidate(*mActiveMesh);
-  auto removed = simulateMeshSubObjectDeletion(candidate, subMode, indices);
+  auto candidate = *mActiveMesh;
+  auto removed = mutateProxyDeletion(candidate, subMode, indices);
   if (removed == 0) {
     return 0;
   }
 
-  uint32_t remainingRings = 0;
-  for (auto index = candidate.getFirstPolygonIndex();
-       !candidate.polygonIndexIterationFinished(index);
-       index = candidate.getNextPolygonIndex(index)) {
-    if (!candidate.getPolygon(index).isHole()) {
-      ++remainingRings;
-    }
-  }
+  auto mappings = candidate.getNodeMappings();
+  auto hasFilledRegion = any_of(mappings.begin(), mappings.end(), [](auto const& mapping) {
+    return mapping.role != bw::core::MeshPrimitiveEditingProxy::NodeRole::Hole;
+  });
 
   auto primitiveIndex = mActiveMeshPrimitiveIndex;
-  if (remainingRings == 0) {
+  if (!hasFilledRegion) {
     clearActiveMesh();
     mWorld->removePrimitives({primitiveIndex});
   } else {
-    // Reindexes away the tombstones the deletes above left behind, so the
-    // assignment below - a full Mesh copy - never has to rebind a dead edge.
-    candidate.compact();
-    *mActiveMesh = candidate;
+    *mActiveMesh = move(candidate);
     clearMeshSelections();
     commitMeshPolygons(primitiveIndex);
   }
@@ -1315,11 +1359,12 @@ uint32_t Document::splitMeshEdges(set<uint32_t> const& edgeIndices) {
   // Splitting only ever appends a new vertex and a new edge - it never
   // tombstones anything - so every original index in edgeIndices stays
   // valid for the rest of this loop, whatever order they're processed in.
+  auto candidate = *mActiveMesh;
   set<uint32_t> resultingEdges;
   uint32_t splitCount = 0;
   for (auto edgeIndex : edgeIndices) {
     wp::geometry::SplitEdgeResult result;
-    wp::geometry::MeshOperations::splitEdge(mActiveMesh.get(), edgeIndex, 0.5f, &result);
+    candidate.splitEdge(edgeIndex, &result);
     if (!result.newEdgeIndices.empty()) {
       ++splitCount;
     }
@@ -1330,6 +1375,7 @@ uint32_t Document::splitMeshEdges(set<uint32_t> const& edgeIndices) {
     return 0;
   }
 
+  *mActiveMesh = move(candidate);
   clearMeshSelections();
   mSelectedMeshEdgeIndices = resultingEdges;
 
@@ -1619,8 +1665,8 @@ bool Document::placeMeshDrawVertex(
         }
         auto proxy = i == mActiveMeshPrimitiveIndex && mActiveMesh
                          ? nullptr
-                         : primitive->createGeometryProxy();
-        auto const& candidate = proxy ? *proxy : *mActiveMesh;
+                         : primitive->createEditingProxy();
+        auto const& candidate = proxy ? proxy->getMesh() : mActiveMesh->getMesh();
         if (innermostRingAt(candidate, position) != ~0u) {
           primitiveIndex = i;
           break;
@@ -1695,64 +1741,9 @@ bool Document::fillMeshHole(uint32_t holeRingIndex) {
     return false;
   }
 
-  bool found = false;
-  for (auto index = mActiveMesh->getFirstPolygonIndex();
-       !mActiveMesh->polygonIndexIterationFinished(index);
-       index = mActiveMesh->getNextPolygonIndex(index)) {
-    if (index == holeRingIndex) {
-      found = true;
-      break;
-    }
-  }
-  if (!found || !mActiveMesh->getPolygon(holeRingIndex).isHole()) {
+  auto filledRingIndex = mActiveMesh->fillHole(holeRingIndex);
+  if (filledRingIndex == ~0u) {
     return false;
-  }
-
-  // Find the hole's immediate filled islands before adding anything. A
-  // deeper island belongs to the smallest hole containing it and is already
-  // excluded transitively by its ancestor island.
-  vector<uint32_t> immediateIslands;
-  for (auto candidateIndex = mActiveMesh->getFirstPolygonIndex();
-       !mActiveMesh->polygonIndexIterationFinished(candidateIndex);
-       candidateIndex = mActiveMesh->getNextPolygonIndex(candidateIndex)) {
-    auto const& candidate = mActiveMesh->getPolygon(candidateIndex);
-    if (candidate.isHole()) {
-      continue;
-    }
-    auto ordered = candidate.getOrderedVertexIndices();
-    if (ordered.empty()) {
-      continue;
-    }
-    auto sample = mActiveMesh->getVertex(ordered.front()).getPosition();
-    uint32_t smallestContainingHole = ~0u;
-    float smallestArea = numeric_limits<float>::max();
-    for (auto containingIndex = mActiveMesh->getFirstPolygonIndex();
-         !mActiveMesh->polygonIndexIterationFinished(containingIndex);
-         containingIndex = mActiveMesh->getNextPolygonIndex(containingIndex)) {
-      auto const& containing = mActiveMesh->getPolygon(containingIndex);
-      auto area = ringArea(*mActiveMesh, containingIndex);
-      if (containing.isHole() && area < smallestArea &&
-          pointInsideRing(*mActiveMesh, containing, sample)) {
-        smallestContainingHole = containingIndex;
-        smallestArea = area;
-      }
-    }
-    if (smallestContainingHole == holeRingIndex) {
-      immediateIslands.push_back(candidateIndex);
-    }
-  }
-
-  // The gap is a new Polygon face bounded by the selected hole's existing
-  // edges, not a second coincident set of vertices and edges.
-  auto filledRingIndex = addRingSharingBoundary(*mActiveMesh, holeRingIndex);
-
-  // Fill only the gap. Existing islands remain independent top-level solids,
-  // while new hole loops share their boundary edges with those islands. Thus
-  // the pieces meet without overlap, and deleting this polygon restores the
-  // exact previous hole/island topology.
-  for (auto islandIndex : immediateIslands) {
-    auto gapHoleIndex = addRingSharingBoundary(*mActiveMesh, islandIndex);
-    mActiveMesh->addHoleToPolygon(filledRingIndex, gapHoleIndex);
   }
 
   commitMeshPolygons(mActiveMeshPrimitiveIndex);
@@ -1790,9 +1781,11 @@ bw::core::Primitive* Document::closeMeshDrawRing() {
   if (mMeshDrawContainingPrimitiveIndex != ~0u && mActiveMesh) {
     auto* primitive = static_cast<bw::core::MeshPrimitive*>(
         mWorld->getPrimitive(mMeshDrawContainingPrimitiveIndex));
-    auto newRing = addDrawnRing(*mActiveMesh, points);
-    if (mMeshDrawCreatesHole) {
-      mActiveMesh->addHoleToPolygon(mMeshDrawContainingRingIndex, newRing);
+    auto newRing = mMeshDrawCreatesHole
+                       ? mActiveMesh->addHole(mMeshDrawContainingRingIndex, ring)
+                       : mActiveMesh->addIsland(mMeshDrawContainingRingIndex, ring);
+    if (newRing == ~0u) {
+      return nullptr;
     }
     // Commit topology to the authored Primitive before requesting
     // asynchronous regeneration; the proxy alone is never generator input.

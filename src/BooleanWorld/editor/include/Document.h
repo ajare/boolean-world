@@ -9,6 +9,7 @@
 
 #include <willpower/common/Vector2.h>
 
+#include "core/MeshPrimitive.h"
 #include "core/World.h"
 
 #include "HoverableType.h"
@@ -78,7 +79,7 @@ class Document {
   uint32_t mSelectedTriggerLineIndex;
 
   uint32_t mActiveMeshPrimitiveIndex{~0u};
-  std::unique_ptr<wp::geometry::Mesh> mActiveMesh;
+  std::unique_ptr<bw::core::MeshPrimitiveEditingProxy> mActiveMesh;
   std::set<uint32_t> mSelectedMeshVertexIndices;
   std::set<uint32_t> mSelectedMeshEdgeIndices;
   std::set<uint32_t> mSelectedMeshRingIndices;
