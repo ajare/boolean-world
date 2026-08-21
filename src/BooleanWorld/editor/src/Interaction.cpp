@@ -24,6 +24,10 @@ void EditorInteraction::applyPrimitiveClick(
     return;
   }
 
+  if (mCycledPrimitiveIndices != mHover.indices) {
+    mCycledPrimitiveIndices = mHover.indices;
+    mCycledPrimitiveIndex = -1;
+  }
   mCycledPrimitiveIndex =
       (mCycledPrimitiveIndex + 1) % static_cast<int>(mHover.indices.size());
   auto hoveredIndex = mHover.indices[mCycledPrimitiveIndex];
@@ -231,10 +235,6 @@ void EditorInteraction::updateSelection(
         // hit, or a wholly new stack, acts on press as before.
         if (mHover.indices.size() == 1 ||
             !doc->anyPrimitiveIndicesSelected(mHover.indices)) {
-          if (mCycledPrimitiveIndices != mHover.indices) {
-            mCycledPrimitiveIndices = mHover.indices;
-            mCycledPrimitiveIndex = -1;
-          }
           applyPrimitiveClick(doc, input.control, input.shift);
         }
         break;
