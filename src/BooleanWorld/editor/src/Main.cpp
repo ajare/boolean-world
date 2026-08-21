@@ -67,7 +67,7 @@ wp::Vector2 gWorldViewSize{ED_WINDOW_WIDTH, ED_WINDOW_HEIGHT};
 
 spdlog::logger* gLogger{nullptr};
 SDL_Window* gWindow{nullptr};
-SDL_GLContext gContext;
+SDL_GLContext gContext{nullptr};
 
 editor::Settings gEditorSettings;
 editor::HoverableType gHoveredType{editor::HoverableType::None};
@@ -290,23 +290,32 @@ void setup() {
 
 void shutdown() {
   editor::getPrimitiveFieldPreview().close();
-  gLogger->info("Shutting down");
-
-  delete gLogger;
-  gLogger = nullptr;
 
   // ImGui
-  ImGui_ImplOpenGL3_Shutdown();
-  ImGui_ImplSDL3_Shutdown();
-  ImPlot::DestroyContext();
-  ImGui::DestroyContext();
+  if (ImGui::GetCurrentContext()) {
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+    ImPlot::DestroyContext();
+    ImGui::DestroyContext();
+  }
 
   // Platform
-  SDL_GL_DestroyContext(gContext);
-  SDL_DestroyWindow(gWindow);
+  if (gContext) {
+    SDL_GL_DestroyContext(gContext);
+  }
+  if (gWindow) {
+    SDL_DestroyWindow(gWindow);
+  }
   SDL_Quit();
 
   NFD_Quit();
+
+  if (gLogger) {
+    gLogger->info("Shutting down");
+    gLogger->flush();
+    delete gLogger;
+    gLogger = nullptr;
+  }
 }
 
 bool processEvents(SDL_Window* window) {
