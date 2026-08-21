@@ -74,9 +74,10 @@ uint32_t getHoveredWorldVertexIndex(editor::Document* doc, Settings const& setti
 }
 
 void generateClipping(editor::Document* doc, Settings const& settings, int flag) {
-  if (settings.configFlags & flag) {
-    doc->getWorld()->generateClipping(true);
+  if (!doc->isActive() || !(settings.configFlags & flag)) {
+    return;
   }
+  doc->getWorld()->generateClipping(true);
 }
 
 void regenerateWorldData(editor::Document* doc) {
