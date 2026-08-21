@@ -112,6 +112,20 @@ bool PrefabField::clearInstance(Layer& layer, Tile tile) {
   layer.rebuild();
   return true;
 }
+bool PrefabField::rotateInstance(Layer& layer, Tile tile, bool next) {
+  auto it = mInstances.find(tile);
+  auto* definitions = getDefinePrefabs(layer);
+  if (it == mInstances.end() || !definitions) return false;
+
+  auto const angles = prefabTilingRotationAngles(definitions->getTilingType());
+  if (angles.empty()) return false;
+  auto const count = static_cast<uint32_t>(angles.size());
+  auto const current = it->second.rotation % count;
+  it->second.rotation = next ? (current + 1) % count : (current + count - 1) % count;
+  modify();
+  layer.rebuild();
+  return true;
+}
 PrefabInstance const* PrefabField::getInstance(Tile tile) const {
   auto it = mInstances.find(tile);
   return it == mInstances.end() ? nullptr : &it->second;

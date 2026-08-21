@@ -506,6 +506,31 @@ bool EditorInteraction::applyPrefabShortcut(Document* doc, bool place, bool clea
   return true;
 }
 
+bool EditorInteraction::movePrefabTileCursor(Document* doc, int32_t x, int32_t y) {
+  auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
+  auto* field = layer ? dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep()) : nullptr;
+  if (!field) return false;
+  if (field->hasSelectedTile()) {
+    auto tile = field->getSelectedTile();
+    field->selectTile({tile.x + x, tile.y + y});
+  }
+  return true;
+}
+
+bool EditorInteraction::rotateSelectedPrefabInstance(Document* doc, bool next) {
+  auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
+  auto* field = layer ? dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep()) : nullptr;
+  if (!field) return false;
+  if (!field->hasSelectedTile()) return true;
+
+  auto tile = field->getSelectedTile();
+  if (!field->getInstance(tile)) return true;
+  transactUndoableActionAtomically(
+      doc, "Rotate Prefab Instance",
+      bind(rotatePrefabInstance, placeholders::_1, layer, field, tile, next));
+  return true;
+}
+
 DocumentHover const& EditorInteraction::getHover() const {
   return mHover;
 }

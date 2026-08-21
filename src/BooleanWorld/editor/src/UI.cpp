@@ -3634,6 +3634,41 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
+  if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive()) {
+    auto* layer = doc->getWorld()->getActiveLayer();
+    auto* field = dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep());
+    if (field && field->hasSelectedTile()) {
+      auto tile = field->getSelectedTile();
+      if (ImGui::Shortcut(
+              ImGuiKey_LeftArrow | ImGuiMod_Shift,
+              ImGuiInputFlags_RouteGlobal)) {
+        if (field->getInstance(tile)) {
+          transactUndoableActionAtomically(
+              doc, "Rotate Prefab Instance",
+              bind(rotatePrefabInstance, placeholders::_1, layer, field, tile, false));
+        }
+      } else if (ImGui::Shortcut(
+                     ImGuiKey_RightArrow | ImGuiMod_Shift,
+                     ImGuiInputFlags_RouteGlobal)) {
+        if (field->getInstance(tile)) {
+          transactUndoableActionAtomically(
+              doc, "Rotate Prefab Instance",
+              bind(rotatePrefabInstance, placeholders::_1, layer, field, tile, true));
+        }
+      } else if (ImGui::GetIO().KeyMods == ImGuiMod_None) {
+        if (ImGui::Shortcut(ImGuiKey_LeftArrow, ImGuiInputFlags_RouteGlobal)) {
+          field->selectTile({tile.x - 1, tile.y});
+        } else if (ImGui::Shortcut(ImGuiKey_RightArrow, ImGuiInputFlags_RouteGlobal)) {
+          field->selectTile({tile.x + 1, tile.y});
+        } else if (ImGui::Shortcut(ImGuiKey_UpArrow, ImGuiInputFlags_RouteGlobal)) {
+          field->selectTile({tile.x, tile.y + 1});
+        } else if (ImGui::Shortcut(ImGuiKey_DownArrow, ImGuiInputFlags_RouteGlobal)) {
+          field->selectTile({tile.x, tile.y - 1});
+        }
+      }
+    }
+  }
+
   if (ImGui::Shortcut(ImGuiKey_Space, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive()) {
       auto* layer = doc->getWorld()->getActiveLayer();

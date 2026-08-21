@@ -77,6 +77,8 @@ public:
   // Keyboard routing for PrefabField authoring. Returns true when an active
   // PrefabField consumed the key, including an intentional no-op.
   bool applyPrefabShortcut(Document* doc, bool place, bool clear);
+  bool movePrefabTileCursor(Document* doc, int32_t x, int32_t y);
+  bool rotateSelectedPrefabInstance(Document* doc, bool next);
 
   DocumentHover const& getHover() const;
   bool boxSelectPending() const;
@@ -137,6 +139,9 @@ bool placePrefabInstance(
 bool clearPrefabInstance(
     Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
     bw::core::Tile tile);
+bool rotatePrefabInstance(
+    Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::Tile tile, bool next);
 
 bool setWorldDescription(Document* doc, std::string const& desc);
 

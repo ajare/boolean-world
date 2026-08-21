@@ -204,6 +204,13 @@ bool clearPrefabInstance(
   return field->clearInstance(*layer, tile);
 }
 
+bool rotatePrefabInstance(
+    Document*, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::Tile tile, bool next) {
+  if (layer->getActiveStep() != field) return false;
+  return field->rotateInstance(*layer, tile, next);
+}
+
 bool setWorldDescription(Document* doc, string const& desc) {
   auto world = doc->getWorld();
 

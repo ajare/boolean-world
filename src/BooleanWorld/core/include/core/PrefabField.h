@@ -63,6 +63,9 @@ public:
 
   bool placeSelected(Layer& layer, Tile tile);
   bool clearInstance(Layer& layer, Tile tile);
+  // Advances (or reverses) an occupied Tile through its tiling type's
+  // ordered rotation table. Empty Tiles are intentionally unchanged.
+  bool rotateInstance(Layer& layer, Tile tile, bool next);
   [[nodiscard]] PrefabInstance const* getInstance(Tile tile) const;
   [[nodiscard]] std::map<Tile, PrefabInstance> const& getInstances() const;
   [[nodiscard]] bool referencesPrefab(uint32_t prefabId) const;

@@ -2005,6 +2005,71 @@ void prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint() {
           "PrefabField shortcut remained active after its step lost focus");
 }
 
+void prefabFieldArrowNavigationAndRotationAreActiveStepGated() {
+  editor::Document document;
+  document.newDoc();
+  while (editor::canUndo()) editor::undo(&document);
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs;
+  auto defineIndex = layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Tile");
+  auto* field = new bw::core::PrefabField;
+  auto fieldIndex = layer->addStep(field);
+  field->bind(*layer, definitions);
+  field->setSelectedPrefab(*definitions, prefab);
+  layer->setActiveStep(fieldIndex);
+  field->selectTile({0, 0});
+  require(field->placeSelected(*layer, {0, 0}), "could not place the rotation fixture");
+  editor::EditorInteraction interaction;
+
+  auto const instanceCountBefore = field->getInstances().size();
+  auto const rotationBeforeNavigation = field->getInstance({0, 0})->rotation;
+  require(interaction.movePrefabTileCursor(&document, -1, 0) &&
+              field->getSelectedTile() == bw::core::Tile{-1, 0} &&
+              interaction.movePrefabTileCursor(&document, 1, 0) &&
+              field->getSelectedTile() == bw::core::Tile{0, 0} &&
+              interaction.movePrefabTileCursor(&document, 0, 1) &&
+              field->getSelectedTile() == bw::core::Tile{0, 1} &&
+              interaction.movePrefabTileCursor(&document, 0, -1) &&
+              field->getSelectedTile() == bw::core::Tile{0, 0},
+          "arrow navigation did not move the selected Tile cursor one Tile in each direction");
+  require(field->getInstances().size() == instanceCountBefore &&
+              field->getInstance({0, 0})->rotation == rotationBeforeNavigation,
+          "arrow navigation placed, cleared, or rotated a Prefab instance");
+
+  auto const undoBeforeRotation = editor::getUndoLevels();
+  require(interaction.rotateSelectedPrefabInstance(&document, false) &&
+              field->getInstance({0, 0})->rotation == 3 &&
+              editor::getUndoLevels() == undoBeforeRotation + 1,
+          "Shift+Left did not wrap to the previous allowed rotation in one undo entry");
+  require(interaction.rotateSelectedPrefabInstance(&document, true) &&
+              field->getInstance({0, 0})->rotation == 0 &&
+              editor::getUndoLevels() == undoBeforeRotation + 2,
+          "Shift+Right did not wrap to the next allowed rotation in one undo entry");
+  require(interaction.rotateSelectedPrefabInstance(&document, true) &&
+              field->getInstance({0, 0})->rotation == 1 &&
+              editor::getUndoLevels() == undoBeforeRotation + 3,
+          "Shift+Right did not advance through the allowed rotations");
+
+  field->selectTile({99, 99});
+  auto const undoBeforeEmptyRotation = editor::getUndoLevels();
+  require(interaction.rotateSelectedPrefabInstance(&document, true) &&
+              !field->getInstance({99, 99}) &&
+              editor::getUndoLevels() == undoBeforeEmptyRotation,
+          "rotating an empty Tile changed it or entered undo history");
+
+  auto const selectedBeforeGate = field->getSelectedTile();
+  auto const rotationBeforeGate = field->getInstance({0, 0})->rotation;
+  layer->setActiveStep(defineIndex);
+  require(!interaction.movePrefabTileCursor(&document, 1, 0) &&
+              !interaction.rotateSelectedPrefabInstance(&document, true) &&
+              field->getSelectedTile() == selectedBeforeGate &&
+              field->getInstance({0, 0})->rotation == rotationBeforeGate &&
+              editor::getUndoLevels() == undoBeforeEmptyRotation,
+          "PrefabField arrow navigation or rotation remained active after its step lost focus");
+}
+
 }  // namespace
 
 int main() {
@@ -2048,6 +2113,7 @@ int main() {
     drawingContextRejectsEscapesAndSelfCrossings();
     theWholeDrawingGestureIsOneUndoEntry();
     prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint();
+    prefabFieldArrowNavigationAndRotationAreActiveStepGated();
     std::cout << "Editor selection interactions passed\n";
     return 0;
   } catch (std::exception const& error) {
