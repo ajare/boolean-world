@@ -243,13 +243,17 @@ void selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps() {
           "showAllStepPrimitives did not restore a later step's Primitive to Select All");
 }
 
-void prefabPrimitivesAreVisibleOnlyForTheirActiveStepAndNeverFolded() {
+void prefabPrimitivesAreVisibleAndFoldedInIsolationOnlyWhileTheirPrefabIsSelected() {
   editor::Document document;
   editor::Settings settings;
   settings.showAllStepPrimitives = true;
 
   document.newDoc();
   auto* layer = document.getWorld()->getActiveLayer();
+  layer->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f));
+  auto* earlierStepPrimitive = layer->getPrimitive(layer->getNumPrimitives() - 1);
   auto* step = new bw::core::DefinePrefabs();
   auto stepIndex = layer->addStep(step);
   auto* prefab = step->addPrefab("Visible");
@@ -271,12 +275,17 @@ void prefabPrimitivesAreVisibleOnlyForTheirActiveStepAndNeverFolded() {
 
   require(editor::primitiveVisibleForActiveStep(*layer, primitive, settings),
           "the selected Prefab was hidden while its DefinePrefabs step was active");
-  require(!editor::primitiveParticipatesInEditorFold(*layer, primitive, settings),
-          "a selected Prefab Primitive was admitted to the editor fold");
+  require(editor::primitiveParticipatesInEditorFold(*layer, primitive, settings),
+          "a selected Prefab's own Primitive was withheld from the editor fold while it was active");
+  require(!editor::primitiveParticipatesInEditorFold(*layer, earlierStepPrimitive, settings),
+          "an earlier step's Primitive was folded alongside an active Prefab, "
+          "which should clip in isolation");
 
   layer->setActiveStep(0);
   require(!editor::primitiveVisibleForActiveStep(*layer, primitive, settings),
           "showAllStepPrimitives exposed a Prefab while another step was active");
+  require(!editor::primitiveParticipatesInEditorFold(*layer, primitive, settings),
+          "a Prefab Primitive was folded while another step was active");
 }
 
 void refusingStepPrimitivesAreNotSelectableInPrimitiveMode() {
@@ -364,7 +373,7 @@ int main() {
     theGhostIsHiddenFromTheViewAndTheFoldInMeshMode();
     primitiveIndicesInBoundsFindsOverlappingPrimitivesAndIgnoresTheGhost();
     selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps();
-    prefabPrimitivesAreVisibleOnlyForTheirActiveStepAndNeverFolded();
+    prefabPrimitivesAreVisibleAndFoldedInIsolationOnlyWhileTheirPrefabIsSelected();
     refusingStepPrimitivesAreNotSelectableInPrimitiveMode();
     meshEligibilityRequiresTheSelectedDirectlyEditableStep();
     openingADocumentReplacesTheActiveDocument();

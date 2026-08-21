@@ -73,6 +73,16 @@ bool primitiveParticipatesInEditorFold(
     bw::core::Layer const& layer,
     bw::core::Primitive const* primitive,
     Settings const& settings) {
+  // Editing a Prefab clips that Prefab in isolation - its Primitives have no
+  // world-space relationship to the rest of the Layer (ADR-0017), so while
+  // it is the active step they are the only thing the fold admits for this
+  // Layer at all, not an addition to the Layer's ordinary content.
+  auto const* activeDefinePrefabs =
+      dynamic_cast<bw::core::DefinePrefabs const*>(layer.getActiveStep());
+  if (activeDefinePrefabs && activeDefinePrefabs->getSelectedPrefab()) {
+    return activeDefinePrefabs->ownsPrimitive(primitive);
+  }
+
   auto owningStepIndex = layer.getOwningStepIndex(primitive);
   if (owningStepIndex != ~0u &&
       dynamic_cast<bw::core::DefinePrefabs const*>(

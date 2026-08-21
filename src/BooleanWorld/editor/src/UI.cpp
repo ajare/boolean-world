@@ -2887,10 +2887,11 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
       doc->clearSelections();
 
       // The step filter is anchored on the active step, so moving it changes
-      // which ordinary Primitives reach the fold when show-all is off.
-      if (!settings.showAllStepPrimitives) {
-        world->getWorldDataGenerator()->refreshPrimitiveFilter();
-      }
+      // which ordinary Primitives reach the fold when show-all is off - and
+      // unconditionally changes whether a DefinePrefabs step's selected
+      // Prefab is now the fold's sole content (Document.cpp), so this always
+      // needs telling regardless of that setting.
+      world->getWorldDataGenerator()->refreshPrimitiveFilter();
     }
     widgets::HelpMarker("Make this the step Create/Edit Primitive writes into.");
     ImGui::SameLine();
@@ -2982,35 +2983,32 @@ void renderPrefabsView(
     ImGui::PushID(prefab->getId());
 
     if (ImGui::RadioButton(
-            prefab->getName().c_str(), step->getSelectedPrefab() == prefab)) {
+            "##Select", step->getSelectedPrefab() == prefab)) {
       selectPrefab(doc, layer, step, prefab);
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Rename")) {
-      ImGui::OpenPopup("Rename Prefab");
+    // Only one Prefab's name can be under edit at a time, so a single static
+    // buffer (keyed by which Prefab is active) is enough - it stays synced to
+    // the model except while the user is actively typing into it.
+    static char name[256]{};
+    static bw::core::Prefab* editingPrefab = nullptr;
+    if (editingPrefab != prefab) {
+      snprintf(name, sizeof(name), "%s", prefab->getName().c_str());
     }
-    if (ImGui::BeginPopup("Rename Prefab")) {
-      static char name[256]{};
-      static bw::core::Prefab* editingPrefab = nullptr;
-      if (editingPrefab != prefab) {
-        snprintf(name, sizeof(name), "%s", prefab->getName().c_str());
-        editingPrefab = prefab;
-      }
-      ImGui::SetNextItemWidth(220.0f);
-      bool submitted = ImGui::InputText(
-          "Name", name, sizeof(name), ImGuiInputTextFlags_EnterReturnsTrue);
-      ImGui::SameLine();
-      submitted = ImGui::Button("Apply") || submitted;
-      if (submitted) {
-        transactUndoableAction(
-            doc, "Rename Prefab",
-            bind(renamePrefab, placeholders::_1, layer, step, prefab,
-                 string(name)));
-        editingPrefab = nullptr;
-        ImGui::CloseCurrentPopup();
-      }
-      ImGui::EndPopup();
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputText("##Name", name, sizeof(name));
+    if (ImGui::IsItemActivated()) {
+      editingPrefab = prefab;
+    }
+    if (editingPrefab == prefab && ImGui::IsItemDeactivatedAfterEdit()) {
+      transactUndoableAction(
+          doc, "Rename Prefab",
+          bind(renamePrefab, placeholders::_1, layer, step, prefab,
+               string(name)));
+    }
+    if (ImGui::IsItemDeactivated()) {
+      editingPrefab = nullptr;
     }
 
     ImGui::SameLine();

@@ -104,6 +104,13 @@ void rebuildPrefabAuthoringContext(Document* doc, bw::core::Layer* layer) {
   doc->clearActiveMesh();
   doc->clearSelections();
   layer->rebuild();
+
+  // The fold filter reads the selected Prefab live (Document.cpp), so which
+  // Primitives it admits has just changed - the generator needs telling, the
+  // same way switching the active step or editor mode does.
+  if (doc->isActive()) {
+    doc->getWorld()->getWorldDataGenerator()->refreshPrimitiveFilter();
+  }
 }
 
 }  // namespace
