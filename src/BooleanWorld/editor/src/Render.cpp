@@ -519,8 +519,7 @@ void renderWorld(
                                     ImDrawFlags_Closed, 5.5f);
             }
             drawList->AddPolyline(points.data(), static_cast<int>(points.size()),
-                                  colour, ImDrawFlags_Closed,
-                                  selectedRings.contains(polygonIndex) ? 3.5f : 2.5f);
+                                  colour, ImDrawFlags_Closed, 2.5f);
           }
           for (auto edgeIndex = mesh->getFirstEdgeIndex();
                !mesh->edgeIndexIterationFinished(edgeIndex);
@@ -533,9 +532,33 @@ void renderWorld(
                               : (settings.meshSubMode == editor::Settings::MeshSubMode::Edge && hovered(edgeIndex)
                                      ? settings.meshHoveredColour
                                      : settings.meshEdgeColour);
-            drawList->AddLine(worldToScreen(first), worldToScreen(second), colour,
-                              selectedEdges.contains(edgeIndex) ? 3.5f : 2.5f);
+            auto firstScreen = worldToScreen(first);
+            auto secondScreen = worldToScreen(second);
+            if (selectedEdges.contains(edgeIndex)) {
+              drawList->AddLine(
+                  firstScreen, secondScreen, settings.backgroundColour, 8.0f);
+              drawList->AddLine(
+                  firstScreen, secondScreen, settings.meshSelectedColour, 5.0f);
+            } else {
+              drawList->AddLine(firstScreen, secondScreen, colour, 2.5f);
+            }
           }
+
+          // Draw selected Rings after individual edges so their highlight is
+          // not mostly covered by the ordinary edge overlay.
+          for (auto polygonIndex : selectedRings) {
+            vector<ImVec2> points;
+            for (auto vertexIndex : mesh->getPolygon(polygonIndex).getVertexIndexList()) {
+              points.push_back(worldToScreen(mesh->getVertex(vertexIndex).getPosition()));
+            }
+            drawList->AddPolyline(
+                points.data(), static_cast<int>(points.size()),
+                settings.backgroundColour, ImDrawFlags_Closed, 9.0f);
+            drawList->AddPolyline(
+                points.data(), static_cast<int>(points.size()),
+                settings.meshSelectedColour, ImDrawFlags_Closed, 6.0f);
+          }
+
           for (auto vertexIndex = mesh->getFirstVertexIndex();
                !mesh->vertexIndexIterationFinished(vertexIndex);
                vertexIndex = mesh->getNextVertexIndex(vertexIndex)) {
@@ -544,9 +567,18 @@ void renderWorld(
                               : (settings.meshSubMode == editor::Settings::MeshSubMode::Vertex && hovered(vertexIndex)
                                      ? settings.meshHoveredColour
                                      : settings.meshVertexColour);
-            drawList->AddCircleFilled(
-                worldToScreen(mesh->getVertex(vertexIndex).getPosition()),
-                settings.meshVertexPickRadius, colour, 16);
+            auto position = worldToScreen(mesh->getVertex(vertexIndex).getPosition());
+            if (selectedVertices.contains(vertexIndex)) {
+              drawList->AddCircleFilled(
+                  position, settings.meshVertexPickRadius + 4.0f,
+                  settings.backgroundColour, 16);
+              drawList->AddCircleFilled(
+                  position, settings.meshVertexPickRadius + 2.0f,
+                  settings.meshSelectedColour, 16);
+            } else {
+              drawList->AddCircleFilled(
+                  position, settings.meshVertexPickRadius, colour, 16);
+            }
           }
         }
 
