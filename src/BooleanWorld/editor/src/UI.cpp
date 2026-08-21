@@ -1702,11 +1702,8 @@ void renderEditSuperformulaPolygon(editor::Document* doc, bw::core::Primitive* p
 
 bool renderEditMeshPrimitive(editor::Document* doc, bw::core::Primitive* primitive, editor::Settings& settings) {
   auto* mesh = static_cast<bw::core::MeshPrimitive*>(primitive);
-  size_t ringCount = 0;
-  for (auto const& polygon : mesh->getVertices()) {
-    ringCount += polygon.size();
-  }
-  ImGui::BeginDisabled(ringCount <= 1);
+  auto const filledRegionCount = mesh->flattenTree().size();
+  ImGui::BeginDisabled(filledRegionCount <= 1);
   auto decompose = ImGui::Button("Decompose");
   ImGui::EndDisabled();
   if (decompose) {
@@ -1716,8 +1713,8 @@ bool renderEditMeshPrimitive(editor::Document* doc, bw::core::Primitive* primiti
         bind(decomposeMeshPrimitive, placeholders::_1, index));
   }
   widgets::HelpMarker(
-      "Replace this MeshPrimitive with one MeshPrimitive per Ring. Filled "
-      "Rings use Union, holes use Difference, and nesting depth increases priority.");
+      "Replace this MeshPrimitive with one Union MeshPrimitive per filled "
+      "region, retaining each region's direct Holes.");
   return decompose;
 }
 

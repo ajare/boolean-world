@@ -414,123 +414,18 @@ bool decomposeMeshPrimitive(Document* doc, uint32_t primitiveIndex) {
     return false;
   }
 
-  struct RingPart {
-    uint32_t complex;
-    uint32_t ring;
-    bool filled;
-    bw::core::ClosedPolygon const* vertices;
-    int parent{-1};
-    vector<uint32_t> children;
-  };
-  vector<RingPart> parts;
-  auto const& polygons = source->getVertices();
-  for (uint32_t complex = 0; complex < polygons.size(); ++complex) {
-    auto outer = uint32_t(parts.size());
-    parts.push_back({complex, 0, true, &polygons[complex][0]});
-    for (uint32_t ring = 1; ring < polygons[complex].size(); ++ring) {
-      auto child = uint32_t(parts.size());
-      parts.push_back({complex, ring, false, &polygons[complex][ring],
-                       int(outer)});
-      parts[outer].children.push_back(child);
-    }
-  }
-  if (parts.size() <= 1) {
-    return false;
+  auto created = source->decomposeFilledRegions();
+  if (created.empty()) return false;
+
+  // The source's transform children must survive its removal. Capture them
+  // before adding copies, whose inherited parent is intentionally preserved.
+  vector<bw::core::Primitive*> children;
+  for (auto* primitive : world->getActiveLayer()->getPrimitives()) {
+    if (primitive->getParent() == source) children.push_back(primitive);
   }
 
-  auto twiceArea = [](bw::core::ClosedPolygon const& ring) {
-    float area = 0.0f;
-    for (size_t i = 0; i < ring.size(); ++i) {
-      auto const& a = ring[i].p;
-      auto const& b = ring[(i + 1) % ring.size()].p;
-      area += a.x * b.y - b.x * a.y;
-    }
-    return area;
-  };
-  auto contains = [](bw::core::ClosedPolygon const& ring,
-                     wp::Vector2 const& point) {
-    bool inside = false;
-    for (size_t i = 0, previous = ring.size() - 1;
-         i < ring.size(); previous = i++) {
-      auto const& a = ring[i].p;
-      auto const& b = ring[previous].p;
-      if ((a.y > point.y) != (b.y > point.y) &&
-          point.x < (b.x - a.x) * (point.y - a.y) /
-                            (b.y - a.y) +
-                        a.x) {
-        inside = !inside;
-      }
-    }
-    return inside;
-  };
-  auto coincide = [](bw::core::ClosedPolygon const& first,
-                     bw::core::ClosedPolygon const& second) {
-    if (first.size() != second.size() || first.empty()) {
-      return false;
-    }
-    for (size_t start = 0; start < second.size(); ++start) {
-      if (first[0].p != second[start].p) continue;
-      bool forward = true, reverse = true;
-      for (size_t i = 0; i < first.size(); ++i) {
-        forward &= first[i].p == second[(start + i) % second.size()].p;
-        reverse &= first[i].p ==
-                   second[(start + second.size() - i) % second.size()].p;
-      }
-      if (forward || reverse) return true;
-    }
-    return false;
-  };
-
-  // A filled island follows the smallest hole which contains it. Coincident
-  // hole/island boundaries are the welded adjacency created by Fill Hole.
-  for (uint32_t filled = 0; filled < parts.size(); ++filled) {
-    if (!parts[filled].filled) continue;
-    float smallestArea = numeric_limits<float>::max();
-    int parent = -1;
-    for (uint32_t hole = 0; hole < parts.size(); ++hole) {
-      if (parts[hole].filled) continue;
-      auto area = abs(twiceArea(*parts[hole].vertices));
-      if (area < smallestArea &&
-          (coincide(*parts[hole].vertices, *parts[filled].vertices) ||
-           contains(*parts[hole].vertices,
-                    parts[filled].vertices->front().p))) {
-        parent = int(hole);
-        smallestArea = area;
-      }
-    }
-    if (parent >= 0) {
-      parts[filled].parent = parent;
-      parts[parent].children.push_back(filled);
-    }
-  }
-
-  vector<pair<uint32_t, uint32_t>> ordered;  // part, containment depth
-  auto visit = [&](auto&& self, uint32_t part, uint32_t depth) -> void {
-    ordered.push_back({part, depth});
-    for (auto child : parts[part].children) self(self, child, depth + 1);
-  };
-  for (uint32_t part = 0; part < parts.size(); ++part) {
-    if (parts[part].parent < 0) visit(visit, part, 0);
-  }
-  if (ordered.size() != parts.size()) {
-    return false;
-  }
-
-  vector<bw::core::Primitive*> created;
-  created.reserve(ordered.size());
-  for (auto [partIndex, depth] : ordered) {
-    auto* part = static_cast<bw::core::MeshPrimitive*>(source->copy());
-    world->addPrimitive(part);
-    if (!part->retainRing(parts[partIndex].complex, parts[partIndex].ring)) {
-      throw EditorException("Could not retain a MeshPrimitive Ring while decomposing.");
-    }
-    part->setOperation(parts[partIndex].filled
-                           ? bw::core::Primitive::Operation::Union
-                           : bw::core::Primitive::Operation::Difference);
-    part->setPriority(uint8_t(min<uint32_t>(
-        BW_PRIORITY_MAX_VALUE, uint32_t(source->getPriority()) + depth)));
-    created.push_back(part);
-  }
+  for (auto* part : created) world->addPrimitive(part);
+  for (auto* child : children) child->setParent(created.front());
 
   doc->clearActiveMesh();
   world->removePrimitives({primitiveIndex});

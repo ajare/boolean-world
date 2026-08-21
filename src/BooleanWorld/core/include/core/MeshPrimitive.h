@@ -84,6 +84,13 @@ public:
   // Island, with only that filled region's direct Hole Rings.
   [[nodiscard]] std::vector<ComplexPolygon> flattenTree() const;
 
+  // One independently fillable MeshPrimitive for every Shell and Island in
+  // deterministic pre-order. Each output retains that filled region and its
+  // direct Holes, copies this Primitive's authored state, and is a Union at
+  // this Primitive's priority. An empty result means this has fewer than two
+  // filled regions and must not be decomposed.
+  [[nodiscard]] std::vector<MeshPrimitive*> decomposeFilledRegions() const;
+
   // Builds the hierarchy-aware, rest-pose world-space editing authority.
   // Its wrapped Mesh is exposed only as const; every mutation is routed through
   // MeshPrimitiveEditingProxy so welded topology and hierarchy cannot diverge.

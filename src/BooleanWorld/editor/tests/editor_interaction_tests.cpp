@@ -2257,10 +2257,14 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
           "deleting an Island did not delete its complete subtree");
 }
 
-void decomposingAMeshCreatesOrderedRingPrimitives() {
+void decomposingAMeshCreatesFilledRegionPrimitives() {
   editor::Document document;
   document.newDoc();
   auto meshIndex = addMeshWithHole(document);
+  auto const primitiveCountBeforeDecomposition = document.getWorld()->getNumPrimitives();
+  require(!editor::decomposeMeshPrimitive(&document, meshIndex) &&
+              document.getWorld()->getNumPrimitives() == primitiveCountBeforeDecomposition,
+          "a single filled region decomposed because it contained a Hole");
   require(document.activateMesh(meshIndex),
           "the decomposition Mesh did not activate");
   auto* proxy = document.getActiveMesh();
@@ -2285,43 +2289,61 @@ void decomposingAMeshCreatesOrderedRingPrimitives() {
   auto* source = static_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(meshIndex));
   source->setPriority(9);
+  source->setFlags(0x1234);
+  source->setMetadata(42);
+  source->setTimeUpdateDistance(17.0f);
+  source->setTransformOffset({3.0f, -4.0f});
   auto properties = source->getProperties();
   properties.floorZ = -12.0f;
   properties.ceilingZ = 72.0f;
   properties.floorMaterialIndex = 17;
   source->setProperties(properties);
 
-  require(editor::decomposeMeshPrimitive(&document, meshIndex),
-          "the multi-Ring MeshPrimitive did not decompose");
+  auto const undoBefore = editor::getUndoLevels();
+  require(editor::transactUndoableActionAtomically(
+              &document, "Decompose MeshPrimitive",
+              std::bind(editor::decomposeMeshPrimitive, std::placeholders::_1, meshIndex)),
+          "the multi-filled-region MeshPrimitive did not decompose");
+  require(editor::getUndoLevels() == undoBefore + 1,
+          "decomposition did not use one Undo transaction");
   auto const& selected = document.getSelectedPrimitiveIndices();
-  require(selected.size() == 3,
-          "decomposition did not select one Primitive per Ring");
+  require(selected.size() == 2,
+          "decomposition did not select every filled-region Primitive");
   auto selection = selected.begin();
   auto* outer = dynamic_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(*selection++));
-  auto* hole = dynamic_cast<bw::core::MeshPrimitive*>(
-      document.getWorld()->getPrimitive(*selection++));
   auto* island = dynamic_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(*selection));
-  require(outer && hole && island && outer->getVertices().size() == 1 &&
-              outer->getVertices()[0].size() == 1 &&
-              hole->getVertices().size() == 1 &&
-              hole->getVertices()[0].size() == 1 &&
+  require(outer && island && outer->getVertices().size() == 1 &&
+              outer->getVertices()[0].size() == 2 &&
               island->getVertices().size() == 1 &&
               island->getVertices()[0].size() == 1,
-          "a decomposed Primitive retained more than one Ring");
+          "decomposition did not retain each filled region and its direct Holes");
   require(outer->getOperation() == bw::core::Primitive::Operation::Union &&
-              hole->getOperation() == bw::core::Primitive::Operation::Difference &&
               island->getOperation() == bw::core::Primitive::Operation::Union &&
-              outer->getPriority() == 9 && hole->getPriority() == 10 &&
-              island->getPriority() == 11,
-          "decomposed Rings did not receive containment-ordered operations and priorities");
+              outer->getPriority() == 9 && island->getPriority() == 9,
+          "decomposed filled regions did not receive the source Union and priority");
   require(outer->getProperties().floorZ == properties.floorZ &&
-              hole->getProperties().ceilingZ == properties.ceilingZ &&
+              island->getProperties().ceilingZ == properties.ceilingZ &&
               outer->getProperties().floorMaterialIndex == 17 &&
-              hole->getProperties().floorMaterialIndex == 17 &&
-              island->getProperties().floorMaterialIndex == 17,
-          "decomposition did not preserve the source properties and materials");
+              island->getFlags() == 0x1234 && island->getMetadata() == 42 &&
+              island->getTimeUpdateDistance() == 17.0f &&
+              island->getTransformOffset() == wp::Vector2{3.0f, -4.0f},
+          "decomposition did not preserve source state");
+
+  editor::undo(&document);
+  auto restoredSource = std::any_of(
+      document.getWorld()->getPrimitives().begin(),
+      document.getWorld()->getPrimitives().end(),
+      [](auto* primitive) {
+        return dynamic_cast<bw::core::MeshPrimitive*>(primitive) != nullptr;
+      });
+  require(document.getWorld()->getNumPrimitives() == primitiveCountBeforeDecomposition &&
+              restoredSource,
+          "Undo did not restore the source MeshPrimitive");
+  editor::redo(&document);
+  require(document.getSelectedPrimitiveIndices().size() == 2,
+          "Redo did not restore decomposed selection");
 }
 
 void deletingAWeldedVertexHealsTheHoleAndIsland() {
@@ -2662,7 +2684,7 @@ int main() {
     arbitraryDepthRingAuthoringManipulationAndHistoryStayAuthoritative();
     drawingMultipleHolesKeepsThemOnTheSameComplexPolygon();
     fillingASelectedHoleCreatesASolidAlongsideExistingIslands();
-    decomposingAMeshCreatesOrderedRingPrimitives();
+    decomposingAMeshCreatesFilledRegionPrimitives();
     deletingAWeldedVertexHealsTheHoleAndIsland();
     drawingContextRejectsEscapesAndSelfCrossings();
     theWholeDrawingGestureIsOneUndoEntry();

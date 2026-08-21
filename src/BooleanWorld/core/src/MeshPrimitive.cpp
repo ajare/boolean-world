@@ -562,6 +562,33 @@ vector<ComplexPolygon> MeshPrimitive::flattenTree() const {
   return flatten(mShells);
 }
 
+vector<MeshPrimitive*> MeshPrimitive::decomposeFilledRegions() const {
+  vector<MeshFilledRegion const*> filledRegions;
+  auto collect = [&](auto&& self, MeshFilledRegion const& filled) -> void {
+    filledRegions.push_back(&filled);
+    for (auto const& hole : filled.holes) {
+      for (auto const& island : hole.islands) self(self, island);
+    }
+  };
+  for (auto const& shell : mShells) collect(collect, shell);
+
+  if (filledRegions.size() < 2) return {};
+
+  vector<MeshPrimitive*> result;
+  result.reserve(filledRegions.size());
+  for (auto const* filled : filledRegions) {
+    auto region = *filled;
+    for (auto& hole : region.holes) hole.islands.clear();
+
+    auto* part = static_cast<MeshPrimitive*>(copy());
+    part->replaceTree({move(region)});
+    part->setOperation(Operation::Union);
+    part->setPriority(getPriority());
+    result.push_back(part);
+  }
+  return result;
+}
+
 void MeshPrimitive::replaceTree(vector<MeshFilledRegion> shells) {
   normalizeAndValidateTree(shells);
   auto polygons = flatten(shells);
