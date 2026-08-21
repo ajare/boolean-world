@@ -120,6 +120,11 @@ bool renamePrefab(
 bool deletePrefab(
     Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
     bw::core::Prefab* prefab);
+// Empty when the Prefab can be deleted, otherwise the reason it cannot -
+// i.e. the same check deletePrefab throws on, without the throw.
+std::string prefabDeletionBlockedReason(
+    bw::core::Layer const* layer, bw::core::DefinePrefabs const* step,
+    bw::core::Prefab const* prefab);
 bool setPrefabTilingType(
     Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
     bw::core::PrefabTilingType type);

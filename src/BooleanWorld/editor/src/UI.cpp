@@ -3012,11 +3012,18 @@ void renderPrefabsView(
     }
 
     ImGui::SameLine();
+    auto blockedReason = prefabDeletionBlockedReason(layer, step, prefab);
+    ImGui::BeginDisabled(!blockedReason.empty());
     if (ImGui::Button(ICON_FA_TRASH)) {
       transactUndoableAction(
           doc, "Delete Prefab",
           bind(deletePrefab, placeholders::_1, layer, step, prefab));
       listChanged = true;
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) &&
+        !blockedReason.empty()) {
+      ImGui::SetTooltip("%s", blockedReason.c_str());
     }
 
     ImGui::PopID();

@@ -530,6 +530,34 @@ void newDocClearsUndoHistory() {
           "newDoc did not clear the undo and redo history");
 }
 
+void aThrowingActionLeavesNoTransactionInProgressOrStrayUndoEntry() {
+  editor::Document document;
+  document.newDoc();
+
+  auto undoLevelsBefore = editor::getUndoLevels();
+
+  editor::beginUndoableAction(
+      &document, "throwing action",
+      [](editor::Document*) -> bool {
+        throw std::runtime_error("boom");
+      },
+      1.0f);
+  require(editor::undoableActionInProgress(),
+          "beginUndoableAction did not start a transaction");
+
+  bool threw = false;
+  try {
+    editor::commitUndoableAction(&document);
+  } catch (std::runtime_error const&) {
+    threw = true;
+  }
+  require(threw, "commitUndoableAction swallowed the action's exception");
+  require(!editor::undoableActionInProgress(),
+          "a throwing action left a transaction in progress");
+  require(editor::getUndoLevels() == undoLevelsBefore,
+          "a throwing action left a stray entry on the undo stack");
+}
+
 }  // namespace
 
 int main() {
@@ -547,6 +575,7 @@ int main() {
     undoHistoryRetainsConfiguredCapacity();
     historyDoesNotCopyUndoOrRedoWorldSnapshots();
     newDocClearsUndoHistory();
+    aThrowingActionLeavesNoTransactionInProgressOrStrayUndoEntry();
     std::cout << "Undo history regressions passed\n";
     return 0;
   } catch (std::exception const& error) {

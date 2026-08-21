@@ -145,15 +145,25 @@ bool renamePrefab(
   return true;
 }
 
-bool deletePrefab(
-    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
-    bw::core::Prefab* prefab) {
+string prefabDeletionBlockedReason(
+    bw::core::Layer const* layer, bw::core::DefinePrefabs const* step,
+    bw::core::Prefab const* prefab) {
   for (uint32_t i = 0; i < layer->getNumSteps(); ++i) {
     auto const* field = dynamic_cast<bw::core::PrefabField const*>(layer->getStep(i));
     if (field && field->getDefinePrefabsStepId() == step->getId() &&
         field->referencesPrefab(prefab->getId())) {
-      throw bw::core::CoreException("Cannot delete a Prefab referenced by a PrefabField");
+      return "Cannot delete a Prefab referenced by a PrefabField";
     }
+  }
+  return "";
+}
+
+bool deletePrefab(
+    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab) {
+  auto reason = prefabDeletionBlockedReason(layer, step, prefab);
+  if (!reason.empty()) {
+    throw bw::core::CoreException(reason);
   }
   step->removePrefab(prefab);
   rebuildPrefabAuthoringContext(doc, layer);

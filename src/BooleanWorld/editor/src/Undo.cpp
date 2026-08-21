@@ -199,15 +199,32 @@ void commitUndoableAction(Document* doc, string const& id) {
   gUndoStack.push_back(data);
   bw::common::trimDequeToCapacity(gUndoStack, MAX_STACK_SIZE);
 
-  if (gTransactionalFunc(doc)) {
+  auto func = gTransactionalFunc;
+  auto clearTransactionalState = [] {
+    gTransactionalFunc = nullptr;
+    gTransactionalId.clear();
+    gTransactionalData = {};
+    gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
+    gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
+  };
+
+  bool modified;
+  try {
+    modified = func(doc);
+  } catch (...) {
+    // The entry pushed above belongs to this action alone - nothing else can
+    // have touched gUndoStack between the push and here, so it is safe to
+    // pop unconditionally and leave no transaction in progress.
+    gUndoStack.pop_back();
+    clearTransactionalState();
+    throw;
+  }
+
+  if (modified) {
     doc->setModified();
   }
 
-  gTransactionalFunc = nullptr;
-  gTransactionalId.clear();
-  gTransactionalData = {};
-  gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
-  gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
+  clearTransactionalState();
 
   // Indices in the Document's selection may have been invalidated by the
   // action just committed - e.g. a delete rebuilds the Layer's Primitive
