@@ -110,6 +110,18 @@ protected:
 
   void setVertices(std::vector<ComplexPolygon> const& polygons);
 
+  // MeshPrimitive persists its authoritative containment tree instead of the
+  // derived flat polygon cache. Other Primitive schemas retain that payload.
+  void serializePrimitive(
+      std::shared_ptr<Serializer> serializer,
+      SerializationWorkData& workData,
+      bool includeComplexPolygons) const;
+
+  bool deserializePrimitive(
+      std::shared_ptr<Serializer> serializer,
+      SerializationWorkData& workData,
+      bool includeComplexPolygons);
+
   void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
   bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;

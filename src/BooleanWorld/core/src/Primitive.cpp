@@ -279,6 +279,13 @@ bool Primitive::childrenModified() const {
 }
 
 void Primitive::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) const {
+  serializePrimitive(serializer, workData, true);
+}
+
+void Primitive::serializePrimitive(
+    shared_ptr<Serializer> serializer,
+    SerializationWorkData& workData,
+    bool includeComplexPolygons) const {
   VertexTransformerObject::serializeImpl(serializer, workData);
 
   serializer->beginMap("primitive");
@@ -293,42 +300,44 @@ void Primitive::serializeImpl(shared_ptr<Serializer> serializer, SerializationWo
 
     mProperties.serialize(serializer, workData);
 
-    serializer->beginArray("complexPolygons");
-    {
-      for (auto const& complexPolygon : mPolygons) {
-        serializer->beginMap("complexPolygon");
-        {
-          serializer->beginArray("polygons");
+    if (includeComplexPolygons) {
+      serializer->beginArray("complexPolygons");
+      {
+        for (auto const& complexPolygon : mPolygons) {
+          serializer->beginMap("complexPolygon");
           {
-            for (auto const& polygon : complexPolygon) {
-              serializer->beginMap("polygon");
-              {
-                serializer->beginArray("vertices");
+            serializer->beginArray("polygons");
+            {
+              for (auto const& polygon : complexPolygon) {
+                serializer->beginMap("polygon");
                 {
-                  for (auto const& vertex : polygon) {
-                    serializer->beginMap("vertex");
-                    {
-                      serializer->writeVector2("p", vertex.p);
+                  serializer->beginArray("vertices");
+                  {
+                    for (auto const& vertex : polygon) {
+                      serializer->beginMap("vertex");
+                      {
+                        serializer->writeVector2("p", vertex.p);
 
-                      serializer->endMap();  // vertex
+                        serializer->endMap();  // vertex
+                      }
                     }
+
+                    serializer->endArray();  // vertices
                   }
 
-                  serializer->endArray();  // vertices
+                  serializer->endMap();  // polygon
                 }
-
-                serializer->endMap();  // polygon
               }
+
+              serializer->endArray();  // polygons
             }
 
-            serializer->endArray();  // polygons
+            serializer->endMap();  // complexPolygon
           }
-
-          serializer->endMap();  // complexPolygon
         }
-      }
 
-      serializer->endArray();  // complexPolygons
+        serializer->endArray();  // complexPolygons
+      }
     }
 
     serializer->endMap();  // primitive
@@ -336,6 +345,13 @@ void Primitive::serializeImpl(shared_ptr<Serializer> serializer, SerializationWo
 }
 
 bool Primitive::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) {
+  return deserializePrimitive(serializer, workData, true);
+}
+
+bool Primitive::deserializePrimitive(
+    shared_ptr<Serializer> serializer,
+    SerializationWorkData& workData,
+    bool includeComplexPolygons) {
   if (!VertexTransformerObject::deserializeImpl(serializer, workData)) {
     return false;
   }
@@ -366,60 +382,62 @@ bool Primitive::deserializeImpl(shared_ptr<Serializer> serializer, Serialization
         return false;
       }
 
-      serializer->beginArray("complexPolygons");
-      {
-        while (serializer->nextArrayItem()) {
-          serializer->beginMap("complexPolygon");
-          {
-            ComplexPolygon complexPolygon;
-
-            serializer->beginArray("polygons");
+      if (includeComplexPolygons) {
+        serializer->beginArray("complexPolygons");
+        {
+          while (serializer->nextArrayItem()) {
+            serializer->beginMap("complexPolygon");
             {
-              while (serializer->nextArrayItem()) {
-                serializer->beginMap("polygon");
-                {
-                  ClosedPolygon polygon;
+              ComplexPolygon complexPolygon;
 
-                  serializer->beginArray("vertices");
+              serializer->beginArray("polygons");
+              {
+                while (serializer->nextArrayItem()) {
+                  serializer->beginMap("polygon");
                   {
-                    while (serializer->nextArrayItem()) {
-                      serializer->beginMap("vertex");
-                      {
-                        wp::Vector2 p = serializer->readVector2("p");
+                    ClosedPolygon polygon;
 
-                        // Retain this ignored legacy field so shipped pre-arrangement
-                        // world files remain loadable after the Clipper z-bitfield removal.
-                        // Positional formats (e.g. binary) never had this field to begin
-                        // with, so there is nothing to skip there.
-                        if (!serializer->isPositional()) {
-                          serializer->readInt64("z", true, 0);
+                    serializer->beginArray("vertices");
+                    {
+                      while (serializer->nextArrayItem()) {
+                        serializer->beginMap("vertex");
+                        {
+                          wp::Vector2 p = serializer->readVector2("p");
+
+                          // Retain this ignored legacy field so shipped pre-arrangement
+                          // world files remain loadable after the Clipper z-bitfield removal.
+                          // Positional formats (e.g. binary) never had this field to begin
+                          // with, so there is nothing to skip there.
+                          if (!serializer->isPositional()) {
+                            serializer->readInt64("z", true, 0);
+                          }
+
+                          polygon.push_back({p});
+
+                          serializer->endMap();  // vertex
                         }
-
-                        polygon.push_back({p});
-
-                        serializer->endMap();  // vertex
                       }
+
+                      serializer->endArray();  // vertices
                     }
 
-                    serializer->endArray();  // vertices
+                    serializer->endMap();  // polygon
+
+                    complexPolygon.push_back(polygon);
                   }
-
-                  serializer->endMap();  // polygon
-
-                  complexPolygon.push_back(polygon);
                 }
+
+                serializer->endArray();  // polygons
               }
 
-              serializer->endArray();  // polygons
+              serializer->endMap();  // complexPolygon
+
+              complexPolygons.push_back(complexPolygon);
             }
-
-            serializer->endMap();  // complexPolygon
-
-            complexPolygons.push_back(complexPolygon);
           }
-        }
 
-        serializer->endArray();  // complexPolygons
+          serializer->endArray();  // complexPolygons
+        }
       }
 
       serializer->endMap();  // primitive

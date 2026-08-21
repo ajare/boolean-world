@@ -22,6 +22,7 @@ namespace {
 constexpr double GeometryEpsilon = 1e-6;
 constexpr size_t MaxTreeRings = 1024;
 constexpr size_t MaxTreeVertices = 1048576;
+constexpr uint32_t TreeFormatMagic = 0x4d545245;  // "MTRE"
 
 struct PointLocation {
   bool inside{};
@@ -607,7 +608,8 @@ string MeshPrimitive::getName() const {
 }
 
 void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) const {
-  Primitive::serializeImpl(serializer, workData);
+  serializePrimitive(serializer, workData, false);
+
   auto writeRing = [&](ClosedPolygon const& ring) {
     serializer->beginArray("vertices");
     for (auto const& vertex : ring) {
@@ -617,36 +619,100 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
     }
     serializer->endArray();
   };
-  auto writeFilled = [&](auto&& self, MeshFilledRegion const& filled) -> void {
-    serializer->beginMap("filledRegion");
-    writeRing(filled.ring);
-    serializer->beginArray("holes");
-    for (auto const& hole : filled.holes) {
-      serializer->beginMap("hole");
-      writeRing(hole.ring);
-      serializer->beginArray("islands");
-      for (auto const& island : hole.islands) self(self, island);
-      serializer->endArray();
-      serializer->endMap();
-    }
-    serializer->endArray();
-    serializer->endMap();
+
+  enum struct EventType { BeginFilled,
+                          EndFilled,
+                          BeginHole,
+                          EndHole };
+  struct Event {
+    EventType type;
+    MeshFilledRegion const* filled{};
+    MeshHole const* hole{};
   };
+
   serializer->beginMap("meshPrimitive");
+  serializer->writeUint32("treeFormat", TreeFormatMagic);
   serializer->beginArray("shells");
-  for (auto const& shell : mShells) writeFilled(writeFilled, shell);
+  vector<Event> events;
+  for (auto shell = mShells.rbegin(); shell != mShells.rend(); ++shell) {
+    events.push_back({EventType::BeginFilled, &*shell});
+  }
+  while (!events.empty()) {
+    auto event = events.back();
+    events.pop_back();
+    switch (event.type) {
+      case EventType::BeginFilled:
+        serializer->beginMap("filledRegion");
+        writeRing(event.filled->ring);
+        serializer->beginArray("holes");
+        events.push_back({EventType::EndFilled});
+        for (auto hole = event.filled->holes.rbegin();
+             hole != event.filled->holes.rend(); ++hole) {
+          events.push_back({EventType::BeginHole, nullptr, &*hole});
+        }
+        break;
+      case EventType::EndFilled:
+        serializer->endArray();
+        serializer->endMap();
+        break;
+      case EventType::BeginHole:
+        serializer->beginMap("hole");
+        writeRing(event.hole->ring);
+        serializer->beginArray("islands");
+        events.push_back({EventType::EndHole});
+        for (auto island = event.hole->islands.rbegin();
+             island != event.hole->islands.rend(); ++island) {
+          events.push_back({EventType::BeginFilled, &*island});
+        }
+        break;
+      case EventType::EndHole:
+        serializer->endArray();
+        serializer->endMap();
+        break;
+    }
+  }
   serializer->endArray();
   serializer->endMap();
 }
 
 bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) {
-  if (!Primitive::deserializeImpl(serializer, workData)) return false;
-  vector<MeshFilledRegion> candidate;
+  // All inherited and tree state is read into a detached object. No failed
+  // read, including one in common Primitive state, can partially mutate this.
+  MeshPrimitive candidate;
+  if (!candidate.deserializePrimitive(serializer, workData, false)) {
+    copyErrorsAndWarnings(&candidate, true, true);
+    return false;
+  }
+
+  size_t ringCount = 0;
+  size_t vertexCount = 0;
   try {
+    serializer->beginMap("meshPrimitive");
+    uint32_t treeFormat;
+    try {
+      treeFormat = serializer->readUint32("treeFormat");
+    } catch (exception const&) {
+      throw CoreException(
+          "Legacy flat MeshPrimitive input is unsupported; a containment tree is required.");
+    }
+    if (treeFormat != TreeFormatMagic) {
+      throw CoreException(
+          "Legacy or unsupported MeshPrimitive input has no recognized containment tree.");
+    }
+
     auto readRing = [&]() {
+      if (++ringCount > MaxTreeRings) {
+        throw CoreException(
+            "MeshPrimitive containment tree exceeds its aggregate Ring limit.");
+      }
       ClosedPolygon ring;
       serializer->beginArray("vertices");
       while (serializer->nextArrayItem()) {
+        if (++vertexCount > MaxTreeVertices ||
+            ring.size() >= BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX) {
+          throw CoreException(
+              "MeshPrimitive containment tree exceeds its aggregate vertex limit.");
+        }
         serializer->beginMap("vertex");
         ring.emplace_back(serializer->readVector2("p"));
         serializer->endMap();
@@ -654,36 +720,69 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
       serializer->endArray();
       return ring;
     };
-    auto readFilled = [&](auto&& self) -> MeshFilledRegion {
+
+    enum struct FrameType { Filled,
+                            Hole };
+    struct Frame {
+      FrameType type;
+      MeshFilledRegion* filled{};
+      MeshHole* hole{};
+    };
+    vector<Frame> frames;
+
+    auto beginFilled = [&](MeshFilledRegion& filled) {
       serializer->beginMap("filledRegion");
-      MeshFilledRegion filled{readRing(), {}};
+      filled.ring = readRing();
       serializer->beginArray("holes");
-      while (serializer->nextArrayItem()) {
-        serializer->beginMap("hole");
-        MeshHole hole{readRing(), {}};
-        serializer->beginArray("islands");
-        while (serializer->nextArrayItem()) hole.islands.push_back(self(self));
+      frames.push_back({FrameType::Filled, &filled});
+    };
+
+    serializer->beginArray("shells");
+    while (true) {
+      if (frames.empty()) {
+        if (!serializer->nextArrayItem()) {
+          serializer->endArray();
+          break;
+        }
+        candidate.mShells.emplace_back();
+        beginFilled(candidate.mShells.back());
+        continue;
+      }
+
+      auto& frame = frames.back();
+      if (frame.type == FrameType::Filled) {
+        if (serializer->nextArrayItem()) {
+          frame.filled->holes.emplace_back();
+          auto& hole = frame.filled->holes.back();
+          serializer->beginMap("hole");
+          hole.ring = readRing();
+          serializer->beginArray("islands");
+          frames.push_back({FrameType::Hole, nullptr, &hole});
+        } else {
+          serializer->endArray();
+          serializer->endMap();
+          frames.pop_back();
+        }
+      } else if (serializer->nextArrayItem()) {
+        frame.hole->islands.emplace_back();
+        beginFilled(frame.hole->islands.back());
+      } else {
         serializer->endArray();
         serializer->endMap();
-        filled.holes.push_back(move(hole));
+        frames.pop_back();
       }
-      serializer->endArray();
-      serializer->endMap();
-      return filled;
-    };
-    serializer->beginMap("meshPrimitive");
-    serializer->beginArray("shells");
-    while (serializer->nextArrayItem()) candidate.push_back(readFilled(readFilled));
-    serializer->endArray();
+    }
     serializer->endMap();
-    normalizeAndValidateTree(candidate);
+
+    normalizeAndValidateTree(candidate.mShells);
+    candidate.mPolygons = flatten(candidate.mShells);
+    candidate.updateVertexPositions();
   } catch (exception const& error) {
     addDeserializationError(error.what());
     return false;
   }
-  mShells = move(candidate);
-  mPolygons = flattenTree();
-  updateVertexPositions();
+
+  copyFrom(candidate);
   return true;
 }
 
