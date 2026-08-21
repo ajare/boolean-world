@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -373,6 +374,9 @@ RationalPoint SamplePoint(PSLG const& graph, Cycle const& cycle) {
         return Cross(graph.vs[lhs[0]], graph.vs[lhs[1]], graph.vs[lhs[2]]) <
                Cross(graph.vs[rhs[0]], graph.vs[rhs[1]], graph.vs[rhs[2]]);
       });
+  if (largest == triangles.end()) {
+    throw logic_error("Cannot sample a zero-area arrangement cycle.");
+  }
   return TriangleCentroid(graph, *largest);
 }
 
@@ -420,9 +424,56 @@ RationalPoint SamplePoint(
     }
   }
 
-  // A non-empty arrangement face has positive area outside all of its holes,
-  // so at least one triangle centroid is available.
-  return TriangleCentroid(graph, *largestTriangle);
+  if (largestTriangle) {
+    return TriangleCentroid(graph, *largestTriangle);
+  }
+
+  // A large hole can contain every ear centroid even though a positive-area
+  // strip remains between it and the outer boundary. Approach an original
+  // boundary-edge midpoint from inside one of its ears until the point clears
+  // every hole. Keeping the point rational avoids losing a narrow face to
+  // fixed-point rounding.
+  auto isBoundaryEdge = [&](int first, int second) {
+    for (size_t i = 0; i < cycle.vis.size(); ++i) {
+      auto a = cycle.vis[i];
+      auto b = cycle.vis[(i + 1) % cycle.vis.size()];
+      if ((a == first && b == second) || (a == second && b == first)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  auto outsideHoles = [&](RationalPoint const& point) {
+    return all_of(face.holes.begin(), face.holes.end(), [&](auto hole) {
+      return PointInCycle(point, cycles[hole], graph) == 0;
+    });
+  };
+
+  for (auto const& triangle : triangles) {
+    for (size_t edge = 0; edge < 3; ++edge) {
+      auto first = triangle[edge];
+      auto second = triangle[(edge + 1) % 3];
+      if (!isBoundaryEdge(first, second)) {
+        continue;
+      }
+      auto opposite = triangle[(edge + 2) % 3];
+      auto const& a = graph.vs[first];
+      auto const& b = graph.vs[second];
+      auto const& c = graph.vs[opposite];
+      for (int64_t edgeWeight = 1; edgeWeight <= (int64_t{1} << 30);
+           edgeWeight *= 2) {
+        RationalPoint point{
+            edgeWeight * (a.x + b.x) + c.x,
+            edgeWeight * (a.y + b.y) + c.y,
+            edgeWeight * 2 + 1};
+        if (outsideHoles(point)) {
+          return point;
+        }
+      }
+    }
+  }
+
+  throw logic_error("Cannot find an interior sample for an arrangement face.");
 }
 
 int PointInCycle(FixedPointVertex const& point, Cycle const& cycle, PSLG const& graph) {
