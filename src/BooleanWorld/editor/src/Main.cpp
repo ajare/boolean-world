@@ -192,7 +192,18 @@ void setupLogging() {
 map<string, string> loadHelpFiles(string const& dir) {
   map<string, string> data;
 
-  for (const auto& entry : filesystem::directory_iterator(dir)) {
+  // Help is optional editor content. Visual Studio may launch the executable
+  // with the project directory as its working directory rather than the
+  // staged runtime directory, so do not turn a missing help directory into a
+  // startup exception.
+  error_code error;
+  filesystem::directory_iterator entries(dir, error);
+  if (error) {
+    gLogger->warn("Could not load help files from '{}': {}", dir, error.message());
+    return data;
+  }
+
+  for (const auto& entry : entries) {
     auto filepath = entry.path();
 
     if (filepath.extension() == ".md") {
