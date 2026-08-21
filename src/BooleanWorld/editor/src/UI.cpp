@@ -3820,8 +3820,10 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   if (ImGui::Shortcut(ImGuiKey_B | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      auto const& indices = doc->getSelectedPrimitiveIndices();
-      transactUndoableAction(doc, format("Bake {} Primitive(s)", indices.size()), bind(bakePrimitives, placeholders::_1, indices));
+      if (doc->hasSelection() && !doc->getSelectedPrimitiveIndices().empty()) {
+        auto const& indices = doc->getSelectedPrimitiveIndices();
+        transactUndoableAction(doc, format("Bake {} Primitive(s)", indices.size()), bind(bakePrimitives, placeholders::_1, indices));
+      }
     }
   }
 
