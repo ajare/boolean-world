@@ -302,6 +302,11 @@ public:
   // Returns the number of edges split.
   uint32_t splitMeshEdges(std::set<uint32_t> const& edgeIndices);
 
+  // A side-effect-free run of splitMeshEdges, for building an accurate
+  // "N split" report before the real, undoable split runs.
+  [[nodiscard]] uint32_t previewMeshEdgeSplitCount(
+      std::set<uint32_t> const& edgeIndices) const;
+
   // Duplicates a selected hole boundary as a top-level filled Ring while
   // retaining the original hole on its outer ComplexPolygon.
   bool fillMeshHole(uint32_t holeRingIndex);

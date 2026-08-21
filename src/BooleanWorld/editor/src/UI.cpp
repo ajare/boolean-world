@@ -3805,9 +3805,12 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
           settings.meshSubMode == Settings::MeshSubMode::Edge && doc->getActiveMesh()) {
         auto const& indices = doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);
         if (!indices.empty()) {
-          transactUndoableAction(
-              doc, format("Split {} Mesh Edge(s)", indices.size()),
-              bind(splitMeshEdges, placeholders::_1, indices));
+          auto previewCount = doc->previewMeshEdgeSplitCount(indices);
+          if (previewCount > 0) {
+            transactUndoableAction(
+                doc, format("Split {} Mesh Edge(s)", previewCount),
+                bind(splitMeshEdges, placeholders::_1, indices));
+          }
         }
       }
     }

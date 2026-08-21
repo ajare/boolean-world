@@ -1319,10 +1319,18 @@ uint32_t Document::splitMeshEdges(set<uint32_t> const& edgeIndices) {
   // tombstones anything - so every original index in edgeIndices stays
   // valid for the rest of this loop, whatever order they're processed in.
   set<uint32_t> resultingEdges;
+  uint32_t splitCount = 0;
   for (auto edgeIndex : edgeIndices) {
     wp::geometry::SplitEdgeResult result;
     wp::geometry::MeshOperations::splitEdge(mActiveMesh.get(), edgeIndex, 0.5f, &result);
+    if (!result.newEdgeIndices.empty()) {
+      ++splitCount;
+    }
     resultingEdges.insert(result.newEdgeIndices.begin(), result.newEdgeIndices.end());
+  }
+
+  if (splitCount == 0) {
+    return 0;
   }
 
   clearMeshSelections();
@@ -1333,7 +1341,25 @@ uint32_t Document::splitMeshEdges(set<uint32_t> const& edgeIndices) {
   primitive->updateFromGeometryProxy(*mActiveMesh);
   primitive->updateVertexPositions();
 
-  return static_cast<uint32_t>(edgeIndices.size());
+  return splitCount;
+}
+
+uint32_t Document::previewMeshEdgeSplitCount(set<uint32_t> const& edgeIndices) const {
+  if (!mActiveMesh || edgeIndices.empty()) {
+    return 0;
+  }
+
+  wp::geometry::Mesh candidate(*mActiveMesh);
+  uint32_t splitCount = 0;
+  for (auto edgeIndex : edgeIndices) {
+    wp::geometry::SplitEdgeResult result;
+    wp::geometry::MeshOperations::splitEdge(&candidate, edgeIndex, 0.5f, &result);
+    if (!result.newEdgeIndices.empty()) {
+      ++splitCount;
+    }
+  }
+
+  return splitCount;
 }
 
 namespace {
