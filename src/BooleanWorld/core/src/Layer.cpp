@@ -695,7 +695,7 @@ uint32_t Layer::addPrimitive(Primitive* primitive) {
   return (uint32_t)distance(mPrimitives.begin(), it);
 }
 
-Primitive* Layer::extractPrimitive(Primitive* primitive, bool failIfNotFound) {
+void Layer::removePrimitive(Primitive* primitive, bool failIfNotFound) {
   auto* field = findOwningField(primitive);
 
   if (!field) {
@@ -703,22 +703,11 @@ Primitive* Layer::extractPrimitive(Primitive* primitive, bool failIfNotFound) {
       throw CoreException(format("{} primitive {} not found in layer", primitive->getType(), primitive->getName()));
     }
 
-    return nullptr;
+    return;
   }
 
-  auto* released = field->releasePrimitive(primitive);
-
+  field->removePrimitive(primitive);
   rebuild();
-
-  return released;
-}
-
-void Layer::removePrimitive(Primitive* primitive, bool failIfNotFound) {
-  delete extractPrimitive(primitive, failIfNotFound);
-}
-
-Primitive* Layer::releasePrimitive(Primitive* primitive, bool failIfNotFound) {
-  return extractPrimitive(primitive, failIfNotFound);
 }
 
 void Layer::removePrimitive(uint32_t index) {
@@ -939,41 +928,30 @@ uint32_t Layer::addTriggerLine(WorldTriggerLine* triggerLine) {
   return index;
 }
 
-WorldTriggerLine* Layer::extractTriggerLine(WorldTriggerLine* triggerLine, bool failIfNotFound) {
-  if (mTriggerLookupGrid) {
-    mTriggerLookupGrid->removeItem(triggerLine->getId());
-  }
-
+void Layer::removeTriggerLine(WorldTriggerLine* triggerLine, bool failIfNotFound) {
   auto numTriggerLines = (uint32_t)mTriggerLines.size();
   for (uint32_t i = 0; i < numTriggerLines; ++i) {
-    if (mTriggerLines[i] == triggerLine) {
-      for (uint32_t j = i; j < numTriggerLines - 1; ++j) {
-        removeTriggerLineFromLookupGrid(mTriggerLines[j + 1]);
-
-        mTriggerLines[j] = mTriggerLines[j + 1];
-        mTriggerLines[j]->setId(j);
-
-        addTriggerLineToLookupGrid(mTriggerLines[j]);
-      }
-
-      mTriggerLines.pop_back();
-      return triggerLine;
+    if (mTriggerLines[i] != triggerLine) {
+      continue;
     }
+
+    removeTriggerLineFromLookupGrid(triggerLine);
+    delete triggerLine;
+    for (uint32_t j = i; j < numTriggerLines - 1; ++j) {
+      auto* shifted = mTriggerLines[j + 1];
+      removeTriggerLineFromLookupGrid(shifted);
+      mTriggerLines[j] = shifted;
+      shifted->setId(j);
+      addTriggerLineToLookupGrid(shifted);
+    }
+
+    mTriggerLines.pop_back();
+    return;
   }
 
   if (failIfNotFound) {
     throw CoreException("WorldTriggerLine not found.");
   }
-
-  return nullptr;
-}
-
-void Layer::removeTriggerLine(WorldTriggerLine* triggerLine, bool failIfNotFound) {
-  delete extractTriggerLine(triggerLine, failIfNotFound);
-}
-
-WorldTriggerLine* Layer::releaseTriggerLine(WorldTriggerLine* triggerLine, bool failIfNotFound) {
-  return extractTriggerLine(triggerLine, failIfNotFound);
 }
 
 void Layer::removeTriggerLine(uint32_t index) {

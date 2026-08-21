@@ -91,12 +91,6 @@ bool removeLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t stepIn
 
 bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromIndex, uint32_t toIndex);
 
-// Replaces the old field-mutation setPrimitiveLayer (removed in #161) as the
-// mechanism for changing which Layer a Primitive/WorldTriggerLine belongs to.
-bool movePrimitiveToLayer(Document* doc, bw::core::Primitive* primitive, bw::core::Layer* destinationLayer);
-
-bool moveTriggerLineToLayer(Document* doc, bw::core::WorldTriggerLine* triggerLine, bw::core::Layer* destinationLayer);
-
 bool setWorldDescription(Document* doc, std::string const& desc);
 
 bool setPlayerStartPosition(Document* doc, wp::Vector2 const& pos);

@@ -136,7 +136,7 @@ void togglingStepEnabledIsOneUndoableActionThatRestoresLayerState() {
   auto undoBefore = editor::getUndoLevels();
 
   editor::transactUndoableAction(&document, "Toggle Layer Step 0",
-      std::bind(editor::setLayerBuildStepEnabled, std::placeholders::_1, layer, 0, false));
+                                 std::bind(editor::setLayerBuildStepEnabled, std::placeholders::_1, layer, 0, false));
 
   require(editor::getUndoLevels() == undoBefore + 1,
           "toggling a step's enabled state did not create exactly one undo entry");
@@ -168,7 +168,7 @@ void addingAStepAppendsAPrimitiveFieldAsOneUndoableAction() {
   auto undoBefore = editor::getUndoLevels();
 
   editor::transactUndoableAction(&document, "Add Layer Step",
-      std::bind(editor::addLayerBuildStep, std::placeholders::_1, layer));
+                                 std::bind(editor::addLayerBuildStep, std::placeholders::_1, layer));
 
   require(editor::getUndoLevels() == undoBefore + 1,
           "adding a step did not create exactly one undo entry");
@@ -204,7 +204,7 @@ void removingANonFirstStepIsOneUndoableActionAndTheFirstStepIsRejected() {
   auto undoBefore = editor::getUndoLevels();
 
   editor::transactUndoableAction(&document, "Remove Layer Step",
-      std::bind(editor::removeLayerBuildStep, std::placeholders::_1, layer, 1));
+                                 std::bind(editor::removeLayerBuildStep, std::placeholders::_1, layer, 1));
 
   require(editor::getUndoLevels() == undoBefore + 1,
           "removing a step did not create exactly one undo entry");
@@ -243,7 +243,7 @@ void movingAStepIsOneUndoableActionAndMovesIntoOrOutOfIndexZeroAreRejected() {
   auto undoBefore = editor::getUndoLevels();
 
   editor::transactUndoableAction(&document, "Move Layer Step",
-      std::bind(editor::moveLayerBuildStep, std::placeholders::_1, layer, 1, 2));
+                                 std::bind(editor::moveLayerBuildStep, std::placeholders::_1, layer, 1, 2));
 
   require(editor::getUndoLevels() == undoBefore + 1,
           "moving a step did not create exactly one undo entry");
@@ -273,62 +273,6 @@ void movingAStepIsOneUndoableActionAndMovesIntoOrOutOfIndexZeroAreRejected() {
       "moving another step into index 0 was not rejected");
   require(stepTypes(*layer) == typesBefore,
           "a rejected move disturbed the Layer's step list");
-}
-
-void movingAPrimitiveToAnotherLayerLandsInItsFirstStepAsOneUndoableAction() {
-  editor::Document document;
-  document.newDoc();
-  auto world = document.getWorld();
-  auto* sourceLayer = world->getActiveLayer();
-  auto sourceLayerId = sourceLayer->getId();
-  auto* destinationLayer = world->addLayer("Destination");
-  auto destinationLayerId = destinationLayer->getId();
-
-  auto* moved = makeRectangle(7.0f);
-  world->addPrimitive(moved);
-
-  auto sourceCountBefore = sourceLayer->getNumPrimitives();
-  auto destCountBefore = destinationLayer->getNumPrimitives();
-  document.setModified(false);
-  auto undoBefore = editor::getUndoLevels();
-
-  editor::transactUndoableAction(&document, "Move Primitive to Layer",
-      std::bind(editor::movePrimitiveToLayer, std::placeholders::_1, moved, destinationLayer));
-
-  require(editor::getUndoLevels() == undoBefore + 1,
-          "moving a Primitive to another Layer did not create exactly one undo entry");
-  world = document.getWorld();
-  sourceLayer = world->getLayer(sourceLayerId);
-  destinationLayer = world->getLayer(destinationLayerId);
-  require(sourceLayer->getNumPrimitives() == sourceCountBefore - 1,
-          "moving a Primitive did not remove it from the source Layer");
-  require(destinationLayer->getNumPrimitives() == destCountBefore + 1,
-          "moving a Primitive did not add it to the destination Layer");
-  require(destinationLayer->getPrimitiveField()->getNumPrimitives() == 1,
-          "the moved Primitive did not land in the destination Layer's first step");
-  require(document.isModified(), "moving a Primitive to another Layer did not mark the document modified");
-
-  editor::undo(&document);
-  world = document.getWorld();
-  sourceLayer = world->getLayer(sourceLayerId);
-  destinationLayer = world->getLayer(destinationLayerId);
-  require(sourceLayer->getNumPrimitives() == sourceCountBefore,
-          "undo did not restore the source Layer's resulting Primitives");
-  require(destinationLayer->getNumPrimitives() == destCountBefore,
-          "undo did not restore the destination Layer's resulting Primitives");
-  require(!document.isModified(), "undo did not restore the clean modified state");
-
-  editor::redo(&document);
-  world = document.getWorld();
-  sourceLayer = world->getLayer(sourceLayerId);
-  destinationLayer = world->getLayer(destinationLayerId);
-  require(sourceLayer->getNumPrimitives() == sourceCountBefore - 1,
-          "redo did not restore the source Layer's resulting Primitives");
-  require(destinationLayer->getNumPrimitives() == destCountBefore + 1,
-          "redo did not restore the destination Layer's resulting Primitives");
-  require(destinationLayer->getPrimitiveField()->getNumPrimitives() == 1,
-          "redo did not restore the moved Primitive in the destination Layer's first step");
-  require(document.isModified(), "redo did not restore the modified state");
 }
 
 void selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable() {
@@ -367,7 +311,6 @@ int main() {
     addingAStepAppendsAPrimitiveFieldAsOneUndoableAction();
     removingANonFirstStepIsOneUndoableActionAndTheFirstStepIsRejected();
     movingAStepIsOneUndoableActionAndMovesIntoOrOutOfIndexZeroAreRejected();
-    movingAPrimitiveToAnotherLayerLandsInItsFirstStepAsOneUndoableAction();
     selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable();
     std::cout << "Layer build step enable/disable action tests passed\n";
     return 0;

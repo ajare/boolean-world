@@ -96,26 +96,6 @@ bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromInde
   return true;
 }
 
-// World::movePrimitiveToLayer lands primitive in destinationLayer's first
-// (PrimitiveField) step via Layer::addPrimitive, and releases it from
-// whichever step of its source Layer produced it. Every Layer this World
-// owns is serialized inline (docs/adr/0013), so the transactUndoableAction
-// this is wired into snapshots and restores both the source and destination
-// Layers' resulting Primitives exactly.
-bool movePrimitiveToLayer(Document* doc, bw::core::Primitive* primitive, bw::core::Layer* destinationLayer) {
-  auto world = doc->getWorld();
-
-  world->movePrimitiveToLayer(primitive, destinationLayer);
-  return true;
-}
-
-bool moveTriggerLineToLayer(Document* doc, bw::core::WorldTriggerLine* triggerLine, bw::core::Layer* destinationLayer) {
-  auto world = doc->getWorld();
-
-  world->moveTriggerLineToLayer(triggerLine, destinationLayer);
-  return true;
-}
-
 bool setWorldDescription(Document* doc, string const& desc) {
   auto world = doc->getWorld();
 
@@ -355,7 +335,8 @@ bool decomposeMeshPrimitive(Document* doc, uint32_t primitiveIndex) {
       auto const& b = ring[previous].p;
       if ((a.y > point.y) != (b.y > point.y) &&
           point.x < (b.x - a.x) * (point.y - a.y) /
-                            (b.y - a.y) + a.x) {
+                            (b.y - a.y) +
+                        a.x) {
         inside = !inside;
       }
     }

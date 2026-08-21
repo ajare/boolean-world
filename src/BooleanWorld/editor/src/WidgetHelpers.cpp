@@ -2,8 +2,6 @@
 #include "imgui_internal.h"
 #include "IconsFontAwesome5.h"
 
-#include <core/World.h>
-
 #include "WidgetHelpers.h"
 
 namespace editor {
@@ -82,38 +80,6 @@ void HelpMarker(char const* desc) {
     ImGui::PopTextWrapPos();
     ImGui::EndTooltip();
   }
-}
-
-uint32_t LayerPicker(char const* label, bw::core::World const* world, uint32_t currentLayerId) {
-  auto const& layers = world->getLayers();
-
-  int currentIndex = 0;
-  for (size_t i = 0; i < layers.size(); ++i) {
-    if (layers[i]->getId() == currentLayerId) {
-      currentIndex = (int)i;
-      break;
-    }
-  }
-
-  if (ImGui::BeginCombo(label, layers[currentIndex]->getName().c_str())) {
-    for (size_t i = 0; i < layers.size(); ++i) {
-      ImGui::PushID((int)i);
-
-      bool const selected = (int)i == currentIndex;
-      if (ImGui::Selectable(layers[i]->getName().c_str(), selected)) {
-        currentIndex = (int)i;
-      }
-      if (selected) {
-        ImGui::SetItemDefaultFocus();
-      }
-
-      ImGui::PopID();
-    }
-
-    ImGui::EndCombo();
-  }
-
-  return layers[currentIndex]->getId();
 }
 
 }  // namespace widgets

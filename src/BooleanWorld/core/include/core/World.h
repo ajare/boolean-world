@@ -146,15 +146,6 @@ public:
 
   void moveLayer(uint32_t fromIndex, uint32_t toIndex);
 
-  // Moves a Primitive/WorldTriggerLine into destinationLayer's collection
-  // from whichever of this World's Layers currently owns it - an object's
-  // layer is solely a function of ownership (#161), so there is no field to
-  // flip; this reparents it. Throws if the object is not owned by any Layer
-  // of this World.
-  void movePrimitiveToLayer(Primitive* primitive, Layer* destinationLayer);
-
-  void moveTriggerLineToLayer(WorldTriggerLine* triggerLine, Layer* destinationLayer);
-
   void setName(std::string const& name);
 
   [[nodiscard]] std::string const& getName() const;

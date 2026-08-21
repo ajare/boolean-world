@@ -2347,27 +2347,6 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   setOperationWidget(doc, primitive, 1);
   setFillRuleWidget(doc, primitive, 1);
 
-  // Layer
-  auto world = doc->getWorld();
-  auto currentLayerId = world->getActiveLayer()->getId();
-
-  widgets::HelpMarker("Move the Primitive to a different Layer.");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-  auto const pickedLayerId = widgets::LayerPicker("Layer##EditPrimitive", world.get(), currentLayerId);
-
-  if (pickedLayerId != currentLayerId) {
-    if (auto* destinationLayer = world->getLayer(pickedLayerId)) {
-      auto index = primitive->getId();
-      transactUndoableAction(doc, "Move Primitive to Layer", [index, destinationLayer](editor::Document* doc) {
-        auto world = doc->getWorld();
-        world->movePrimitiveToLayer(world->getPrimitive(index), destinationLayer);
-        doc->clearSelections();
-        return true;
-      });
-    }
-  }
-
   // Priority
   int primitivePriority = (int)primitive->getPriority();
   ImGui::SetNextItemWidth(128);
@@ -2960,28 +2939,11 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
 void renderCreateTriggerLineView(editor::Document* doc, editor::Settings& settings) {
   auto world = doc->getWorld();
 
-  // Layer
-  static uint32_t createTriggerLineLayerId = world->getActiveLayer()->getId();
-
-  widgets::HelpMarker("The Layer to place the WorldTriggerLine on.");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-  createTriggerLineLayerId = widgets::LayerPicker("Layer##CreateTriggerLine", world.get(), createTriggerLineLayerId);
-
   if (ImGui::Button("Create at ghost##CreateTriggerLine")) {
-    auto const targetLayerId = createTriggerLineLayerId;
-    transactUndoableAction(doc, "Create Trigger Line##CreateTriggerLine", [world, targetLayerId](editor::Document* doc) {
+    transactUndoableAction(doc, "Create Trigger Line##CreateTriggerLine", [world](editor::Document*) {
       auto ghost = world->getPrimitive(0);
-      auto triggerLine = new bw::core::WorldTriggerLine(ghost->getPosition() - wp::Vector2(100, 0), ghost->getPosition() + wp::Vector2(100, 0));
-
-      world->addTriggerLine(triggerLine);
-
-      if (targetLayerId != world->getActiveLayer()->getId()) {
-        if (auto* destinationLayer = world->getLayer(targetLayerId)) {
-          world->moveTriggerLineToLayer(triggerLine, destinationLayer);
-        }
-      }
-
+      world->addTriggerLine(new bw::core::WorldTriggerLine(
+          ghost->getPosition() - wp::Vector2(100, 0), ghost->getPosition() + wp::Vector2(100, 0)));
       return true;
     });
   }
@@ -2990,24 +2952,6 @@ void renderCreateTriggerLineView(editor::Document* doc, editor::Settings& settin
 void renderEditTriggerLineView(editor::Document* doc, editor::Settings& settings, uint32_t triggerLineIndex) {
   auto world = doc->getWorld();
   auto triggerLine = world->getTriggerLine(triggerLineIndex);
-
-  // Layer
-  auto currentLayerId = world->getActiveLayer()->getId();
-
-  widgets::HelpMarker("Move the WorldTriggerLine to a different Layer.");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(128);
-  auto const pickedLayerId = widgets::LayerPicker("Layer##EditTriggerLine", world.get(), currentLayerId);
-
-  if (pickedLayerId != currentLayerId) {
-    if (auto* destinationLayer = world->getLayer(pickedLayerId)) {
-      transactUndoableAction(doc, "Move Trigger Line to Layer", [triggerLine, destinationLayer](editor::Document* doc) {
-        doc->getWorld()->moveTriggerLineToLayer(triggerLine, destinationLayer);
-        doc->clearSelections();
-        return true;
-      });
-    }
-  }
 
   ImGui::Text("ID: %d", triggerLine->getId());
 

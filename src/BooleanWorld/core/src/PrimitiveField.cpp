@@ -126,10 +126,6 @@ uint32_t PrimitiveField::addPrimitive(Primitive* primitive) {
 }
 
 void PrimitiveField::removePrimitive(Primitive* primitive) {
-  delete releasePrimitive(primitive);
-}
-
-Primitive* PrimitiveField::releasePrimitive(Primitive* primitive) {
   auto it = find(mPrimitives.begin(), mPrimitives.end(), primitive);
   if (it == mPrimitives.end()) {
     throw CoreException(format("{} primitive {} not found in this PrimitiveField step",
@@ -137,10 +133,9 @@ Primitive* PrimitiveField::releasePrimitive(Primitive* primitive) {
                                primitive->getName()));
   }
 
+  delete *it;
   mPrimitives.erase(it);
   modify();
-
-  return primitive;
 }
 
 void PrimitiveField::replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive) {

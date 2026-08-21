@@ -56,10 +56,6 @@ public:
 
   void removePrimitive(Primitive* primitive);
 
-  // Like removePrimitive, but hands the Primitive back instead of destroying
-  // it - the caller now owns it.
-  [[nodiscard]] Primitive* releasePrimitive(Primitive* primitive);
-
   // Destroys oldPrimitive and takes ownership of newPrimitive in its place.
   // Replacing a Primitive with itself is a no-op.
   void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive);

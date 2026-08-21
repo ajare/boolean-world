@@ -99,14 +99,6 @@ private:
   // place instead of rebuilt.
   [[nodiscard]] bool isLastEnabledStep(LayerBuildStep const* step) const;
 
-  // Removes a Primitive/WorldTriggerLine from this Layer's collection and
-  // acceleration grid, compacting the remaining ids exactly as
-  // removePrimitive/removeTriggerLine do, but without destroying it - so it
-  // can be handed to another Layer's addPrimitive/addTriggerLine.
-  Primitive* extractPrimitive(Primitive* primitive, bool failIfNotFound);
-
-  WorldTriggerLine* extractTriggerLine(WorldTriggerLine* triggerLine, bool failIfNotFound);
-
   void addPrimitiveToLookupGrid(Primitive* primitive);
 
   void removePrimitiveFromLookupGrid(Primitive const* primitive, bool failIfNotFound = true);
@@ -228,10 +220,6 @@ public:
 
   void removePrimitive(Primitive* primitive, bool failIfNotFound = true);
 
-  // Like removePrimitive, but hands the Primitive back instead of destroying
-  // it - the caller now owns it, typically to add it to another Layer.
-  [[nodiscard]] Primitive* releasePrimitive(Primitive* primitive, bool failIfNotFound = true);
-
   void removePrimitive(uint32_t index);
 
   void removePrimitives(std::vector<uint32_t> const& indices);
@@ -259,11 +247,6 @@ public:
   uint32_t addTriggerLine(WorldTriggerLine* triggerLine);
 
   void removeTriggerLine(WorldTriggerLine* triggerLine, bool failIfNotFound = true);
-
-  // Like removeTriggerLine, but hands the WorldTriggerLine back instead of
-  // destroying it - the caller now owns it, typically to add it to another
-  // Layer.
-  [[nodiscard]] WorldTriggerLine* releaseTriggerLine(WorldTriggerLine* triggerLine, bool failIfNotFound = true);
 
   void removeTriggerLine(uint32_t index);
 
