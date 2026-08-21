@@ -3,6 +3,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "core/Platform.h"
 #include "core/Serializable.h"
@@ -11,7 +12,31 @@ namespace bw {
 namespace core {
 
 class Layer;
+class LayerBuildStep;
+class Primitive;
 class VertexTransformerObject;
+
+// The only view of a Layer that a build step receives while executing. It
+// exposes prior Primitives that participate in the build, never the raw
+// derived cache, and records appended output against the executing step.
+class BW_API LayerBuildContext {
+private:
+  Layer& mLayer;
+  LayerBuildStep const* mStep;
+  std::vector<Primitive*> const& mBuildPrimitives;
+
+  LayerBuildContext(
+      Layer& layer,
+      LayerBuildStep const* step,
+      std::vector<Primitive*> const& buildPrimitives);
+
+  friend class Layer;
+
+public:
+  [[nodiscard]] std::vector<Primitive*> const& getBuildPrimitives() const;
+
+  uint32_t appendPrimitive(Primitive* primitive);
+};
 
 // One step in a Layer's ordered, serialized recipe for producing its
 // Primitives. A Layer's Primitives are always derived by re-running its
@@ -47,15 +72,23 @@ public:
 
   [[nodiscard]] virtual std::string getType() const = 0;
 
+  // Whether this step may occupy the Layer's reserved first position.
+  [[nodiscard]] virtual bool mayBeFirstStep() const = 0;
+
   // Clones this step. Every Primitive the clone owns is recorded in
   // primitiveMap, keyed by the Primitive it was cloned from, so the owning
   // Layer can remap parent links across the whole step list afterwards.
   [[nodiscard]] virtual LayerBuildStep* copy(
       std::map<VertexTransformerObject const*, VertexTransformerObject*>& primitiveMap) const = 0;
 
-  // Adds this step's Primitives to layer, which already holds everything the
-  // preceding enabled steps produced. A step may only ever add.
-  virtual void execute(Layer& layer) const = 0;
+  // Reads only the build-participating Primitives produced by preceding
+  // enabled steps and may append new derived Primitives through context.
+  virtual void execute(LayerBuildContext& context) const = 0;
+
+  // Whether Primitives this step produces participate in later steps' build
+  // input. This is deliberately explicit so a defining step can expose its
+  // Primitives to authoring without leaking them into the build.
+  [[nodiscard]] virtual bool primitivesParticipateInBuild() const = 0;
 
   // These deliberately have no base-class answer: every new step type must
   // say whether the Primitives it produces can be edited directly and whether
@@ -63,6 +96,15 @@ public:
   [[nodiscard]] virtual bool permitsDirectPrimitiveEditing() const = 0;
 
   [[nodiscard]] virtual bool acceptsNewPrimitives() const = 0;
+
+  // Storage operations are virtual because more than one kind of step may
+  // own Primitives. Layer uses these only to maintain its derived cache.
+  virtual uint32_t adoptPrimitive(Primitive* primitive) = 0;
+
+  // Replaces one owned Primitive. A null replacement removes it.
+  virtual void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive) = 0;
+
+  [[nodiscard]] virtual bool ownsPrimitive(Primitive const* primitive) const = 0;
 
   void setEnabled(bool enabled);
 

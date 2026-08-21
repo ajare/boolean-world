@@ -23,6 +23,10 @@ string PrimitiveField::getType() const {
   return "PrimitiveField";
 }
 
+bool PrimitiveField::mayBeFirstStep() const {
+  return true;
+}
+
 LayerBuildStep* PrimitiveField::copy(map<VertexTransformerObject const*, VertexTransformerObject*>& primitiveMap) const {
   auto clone = make_unique<PrimitiveField>();
   clone->copyFrom(*this);
@@ -37,10 +41,14 @@ LayerBuildStep* PrimitiveField::copy(map<VertexTransformerObject const*, VertexT
   return clone.release();
 }
 
-void PrimitiveField::execute(Layer& layer) const {
+void PrimitiveField::execute(LayerBuildContext& context) const {
   for (auto* primitive : mPrimitives) {
-    layer._appendBuiltPrimitive(primitive, this);
+    context.appendPrimitive(primitive);
   }
+}
+
+bool PrimitiveField::primitivesParticipateInBuild() const {
+  return true;
 }
 
 bool PrimitiveField::permitsDirectPrimitiveEditing() const {
@@ -116,13 +124,17 @@ bool PrimitiveField::deserializeArgs(shared_ptr<Serializer> serializer, Serializ
   return true;
 }
 
-uint32_t PrimitiveField::addPrimitive(Primitive* primitive) {
+uint32_t PrimitiveField::adoptPrimitive(Primitive* primitive) {
   auto index = (uint32_t)mPrimitives.size();
 
   mPrimitives.push_back(primitive);
   modify();
 
   return index;
+}
+
+uint32_t PrimitiveField::addPrimitive(Primitive* primitive) {
+  return adoptPrimitive(primitive);
 }
 
 void PrimitiveField::removePrimitive(Primitive* primitive) {
@@ -151,12 +163,20 @@ void PrimitiveField::replacePrimitive(Primitive* oldPrimitive, Primitive* newPri
   }
 
   delete *it;
-  *it = newPrimitive;
+  if (newPrimitive) {
+    *it = newPrimitive;
+  } else {
+    mPrimitives.erase(it);
+  }
   modify();
 }
 
-bool PrimitiveField::contains(Primitive const* primitive) const {
+bool PrimitiveField::ownsPrimitive(Primitive const* primitive) const {
   return find(mPrimitives.begin(), mPrimitives.end(), primitive) != mPrimitives.end();
+}
+
+bool PrimitiveField::contains(Primitive const* primitive) const {
+  return ownsPrimitive(primitive);
 }
 
 uint32_t PrimitiveField::getNumPrimitives() const {

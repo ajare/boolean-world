@@ -18,6 +18,7 @@
 namespace bw {
 namespace core {
 
+class LayerBuildContext;
 class LayerBuildStep;
 class PrimitiveField;
 
@@ -33,7 +34,7 @@ class PrimitiveField;
 // authoring: addPrimitive writes into the active step (see setActiveStep;
 // it starts out as the first step, permanently a PrimitiveField), while
 // removePrimitive/replacePrimitive look the Primitive up by identity across
-// every PrimitiveField step regardless of which is active.
+// every owning step regardless of which is active.
 class BW_API Layer : public Serializable {
   struct PrimitiveCellMetadata {
     frame_number_type lastUpdatedFrameNumber{0};
@@ -88,16 +89,20 @@ private:
 
   void deleteSteps();
 
-  // The PrimitiveField step that owns primitive, or null if no such field
-  // does. This locates the storage implementation for removal and
-  // replacement; it is not a capability check (docs/adr/0015).
-  [[nodiscard]] PrimitiveField* findOwningField(Primitive const* primitive) const;
+  // The step that owns primitive, or null if no step does. This locates the
+  // storage implementation for removal and replacement; it is not a
+  // capability check (docs/adr/0015).
+  [[nodiscard]] LayerBuildStep* findOwningStep(Primitive const* primitive) const;
 
   // True when no enabled step follows step, so what step contributes lands
   // at the end of the derived Primitives and appending to it cannot change
   // any other step's output - the case where the cache can be updated in
   // place instead of rebuilt.
   [[nodiscard]] bool isLastEnabledStep(LayerBuildStep const* step) const;
+
+  // Whether any output of step forms one contiguous tail of the derived
+  // cache. The in-place add and replace fast paths rely on this invariant.
+  [[nodiscard]] bool hasContiguousTailOutput(LayerBuildStep const* step) const;
 
   void addPrimitiveToLookupGrid(Primitive* primitive);
 
@@ -112,6 +117,8 @@ private:
   void swapState(Layer& other) noexcept;
 
   void rebindOwnedState();
+
+  friend class LayerBuildContext;
 
 protected:
   void copyFrom(Layer const& other);

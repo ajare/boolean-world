@@ -109,12 +109,20 @@ public:
     return "RefusingStep";
   }
 
+  bool mayBeFirstStep() const override {
+    return false;
+  }
+
   bw::core::LayerBuildStep* copy(
       std::map<bw::core::VertexTransformerObject const*, bw::core::VertexTransformerObject*>&) const override {
     return new RefusingStep();
   }
 
-  void execute(bw::core::Layer&) const override {
+  void execute(bw::core::LayerBuildContext&) const override {
+  }
+
+  bool primitivesParticipateInBuild() const override {
+    return true;
   }
 
   bool permitsDirectPrimitiveEditing() const override {
@@ -122,6 +130,17 @@ public:
   }
 
   bool acceptsNewPrimitives() const override {
+    return false;
+  }
+
+  uint32_t adoptPrimitive(bw::core::Primitive*) override {
+    return 0;
+  }
+
+  void replacePrimitive(bw::core::Primitive*, bw::core::Primitive*) override {
+  }
+
+  bool ownsPrimitive(bw::core::Primitive const*) const override {
     return false;
   }
 

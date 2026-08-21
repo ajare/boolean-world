@@ -15,6 +15,21 @@ namespace core {
 
 using namespace std;
 
+LayerBuildContext::LayerBuildContext(
+    Layer& layer,
+    LayerBuildStep const* step,
+    vector<Primitive*> const& buildPrimitives)
+    : mLayer(layer), mStep(step), mBuildPrimitives(buildPrimitives) {
+}
+
+vector<Primitive*> const& LayerBuildContext::getBuildPrimitives() const {
+  return mBuildPrimitives;
+}
+
+uint32_t LayerBuildContext::appendPrimitive(Primitive* primitive) {
+  return mLayer._appendBuiltPrimitive(primitive, mStep);
+}
+
 Layer::Layer()
     : Layer(0, "", BW_WORLD_SIZE, -1.0f) {
 }
@@ -243,7 +258,7 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
         serializer->endArray();  // steps
       }
 
-      if (steps.empty() || !dynamic_cast<PrimitiveField*>(steps.front().get())) {
+      if (steps.empty() || !steps.front()->mayBeFirstStep()) {
         throw CoreException("A Layer's first build step must be a PrimitiveField step");
       }
 
@@ -485,7 +500,16 @@ void Layer::rebuild() {
 
   for (auto const* step : mSteps) {
     if (step->isEnabled()) {
-      step->execute(*this);
+      vector<Primitive*> buildPrimitives;
+      buildPrimitives.reserve(mPrimitives.size());
+      for (uint32_t i = 0; i < mPrimitives.size(); ++i) {
+        if (mPrimitiveSteps[i]->primitivesParticipateInBuild()) {
+          buildPrimitives.push_back(mPrimitives[i]);
+        }
+      }
+
+      LayerBuildContext context(*this, step, buildPrimitives);
+      step->execute(context);
     }
   }
 }
@@ -618,10 +642,18 @@ bool Layer::isLastEnabledStep(LayerBuildStep const* step) const {
   return none_of(it + 1, mSteps.end(), [](auto const* later) { return later->isEnabled(); });
 }
 
-PrimitiveField* Layer::findOwningField(Primitive const* primitive) const {
+bool Layer::hasContiguousTailOutput(LayerBuildStep const* step) const {
+  auto first = find(mPrimitiveSteps.begin(), mPrimitiveSteps.end(), step);
+  return first == mPrimitiveSteps.end() ||
+         all_of(first, mPrimitiveSteps.end(), [step](auto const* owner) {
+           return owner == step;
+         });
+}
+
+LayerBuildStep* Layer::findOwningStep(Primitive const* primitive) const {
   auto index = getOwningStepIndex(primitive);
 
-  return index != ~0u ? dynamic_cast<PrimitiveField*>(mSteps[index]) : nullptr;
+  return index != ~0u && mSteps[index]->ownsPrimitive(primitive) ? mSteps[index] : nullptr;
 }
 
 uint32_t Layer::getOwningStepIndex(Primitive const* primitive) const {
@@ -676,17 +708,14 @@ uint32_t Layer::addPrimitive(Primitive* primitive) {
     throw CoreException("Cannot add a Primitive while the active step is disabled");
   }
 
-  auto* field = dynamic_cast<PrimitiveField*>(activeStep);
-  if (!field) {
-    throw CoreException("Cannot add a Primitive: the active step does not implement Primitive storage");
-  }
-
-  field->addPrimitive(primitive);
+  activeStep->adoptPrimitive(primitive);
 
   // Nothing enabled runs after this step, so the new Primitive lands at the
   // end of the derived collection and the cache can simply be extended.
-  if (isLastEnabledStep(field)) {
-    return _appendBuiltPrimitive(primitive, field);
+  if (isLastEnabledStep(activeStep)) {
+    assert(hasContiguousTailOutput(activeStep) &&
+           "in-place add requires the active step's output to be a contiguous tail");
+    return _appendBuiltPrimitive(primitive, activeStep);
   }
 
   rebuild();
@@ -696,9 +725,9 @@ uint32_t Layer::addPrimitive(Primitive* primitive) {
 }
 
 void Layer::removePrimitive(Primitive* primitive, bool failIfNotFound) {
-  auto* field = findOwningField(primitive);
+  auto* step = findOwningStep(primitive);
 
-  if (!field) {
+  if (!step) {
     if (failIfNotFound) {
       throw CoreException(format("{} primitive {} not found in layer", primitive->getType(), primitive->getName()));
     }
@@ -706,7 +735,9 @@ void Layer::removePrimitive(Primitive* primitive, bool failIfNotFound) {
     return;
   }
 
-  field->removePrimitive(primitive);
+  // The storage interface has no release operation: the owning step
+  // destroys the Primitive as part of replacement with no successor.
+  step->replacePrimitive(primitive, nullptr);
   rebuild();
 }
 
@@ -731,12 +762,12 @@ void Layer::removePrimitives(vector<uint32_t> const& indices) {
   for (auto* target : targets) {
     // A repeated index resolves to a Primitive already removed, which leaves
     // numDeleted short and is reported below.
-    auto* field = findOwningField(target);
-    if (!field) {
+    auto* step = findOwningStep(target);
+    if (!step) {
       continue;
     }
 
-    field->removePrimitive(target);
+    step->replacePrimitive(target, nullptr);
     numDeleted++;
   }
 
@@ -751,9 +782,9 @@ void Layer::replacePrimitive(uint32_t index, Primitive* newPrimitive, bool failI
   assert(index < getNumPrimitives() && "Layer::replacePrimitive(index, newPrimitive) - index out of bounds");
 
   auto* oldPrimitive = mPrimitives[index];
-  auto* field = findOwningField(oldPrimitive);
+  auto* step = findOwningStep(oldPrimitive);
 
-  if (!field) {
+  if (!step) {
     if (failIfNotFound) {
       throw CoreException(format("{} primitive {} not found in layer", oldPrimitive->getType(), oldPrimitive->getName()));
     }
@@ -769,15 +800,18 @@ void Layer::replacePrimitive(uint32_t index, Primitive* newPrimitive, bool failI
     }
   }
 
-  field->replacePrimitive(oldPrimitive, newPrimitive);
+  step->replacePrimitive(oldPrimitive, newPrimitive);
 
   // A replacement changes neither the number of Primitives nor their order,
   // so as long as no enabled step runs after this one the cache stays valid
   // with the new Primitive slotted into the old one's place.
-  if (!isLastEnabledStep(field)) {
+  if (!isLastEnabledStep(step)) {
     rebuild();
     return;
   }
+
+  assert(hasContiguousTailOutput(step) &&
+         "in-place replacement requires the owning step's output to be a contiguous tail");
 
   mPrimitives[index] = newPrimitive;
 

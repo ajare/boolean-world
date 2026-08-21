@@ -42,23 +42,33 @@ public:
 
   [[nodiscard]] std::string getType() const override;
 
+  [[nodiscard]] bool mayBeFirstStep() const override;
+
   [[nodiscard]] LayerBuildStep* copy(
       std::map<VertexTransformerObject const*, VertexTransformerObject*>& primitiveMap) const override;
 
-  void execute(Layer& layer) const override;
+  void execute(LayerBuildContext& context) const override;
+
+  [[nodiscard]] bool primitivesParticipateInBuild() const override;
 
   [[nodiscard]] bool permitsDirectPrimitiveEditing() const override;
 
   [[nodiscard]] bool acceptsNewPrimitives() const override;
 
   // Takes ownership of primitive and returns its index in this step's list.
+  uint32_t adoptPrimitive(Primitive* primitive) override;
+
+  // Compatibility spelling for direct users of PrimitiveField storage.
   uint32_t addPrimitive(Primitive* primitive);
 
   void removePrimitive(Primitive* primitive);
 
   // Destroys oldPrimitive and takes ownership of newPrimitive in its place.
-  // Replacing a Primitive with itself is a no-op.
-  void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive);
+  // A null newPrimitive removes it; replacing a Primitive with itself is a
+  // no-op.
+  void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive) override;
+
+  [[nodiscard]] bool ownsPrimitive(Primitive const* primitive) const override;
 
   [[nodiscard]] bool contains(Primitive const* primitive) const;
 

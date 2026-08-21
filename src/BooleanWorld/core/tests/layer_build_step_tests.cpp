@@ -51,10 +51,13 @@ bw::core::PrimitiveField* makeField(std::vector<float> const& positions) {
 
 class RefusingStep final : public bw::core::LayerBuildStep {
   bw::core::Primitive* mPrimitive;
+  bool mParticipatesInBuild;
 
 public:
-  explicit RefusingStep(bw::core::Primitive* primitive = nullptr)
-      : mPrimitive(primitive) {
+  explicit RefusingStep(
+      bw::core::Primitive* primitive = nullptr,
+      bool participatesInBuild = true)
+      : mPrimitive(primitive), mParticipatesInBuild(participatesInBuild) {
   }
 
   ~RefusingStep() override {
@@ -65,19 +68,28 @@ public:
     return "RefusingStep";
   }
 
+  bool mayBeFirstStep() const override {
+    return false;
+  }
+
   bw::core::LayerBuildStep* copy(
       std::map<bw::core::VertexTransformerObject const*, bw::core::VertexTransformerObject*>& primitiveMap) const override {
     auto* primitive = mPrimitive ? mPrimitive->copy() : nullptr;
     if (mPrimitive) {
       primitiveMap[mPrimitive] = primitive;
     }
-    return new RefusingStep(primitive);
+    return new RefusingStep(primitive, mParticipatesInBuild);
   }
 
-  void execute(bw::core::Layer& layer) const override {
+  void execute(bw::core::LayerBuildContext& context) const override {
+    mObservedBuildPrimitives = context.getBuildPrimitives();
     if (mPrimitive) {
-      layer._appendBuiltPrimitive(mPrimitive, this);
+      context.appendPrimitive(mPrimitive);
     }
+  }
+
+  bool primitivesParticipateInBuild() const override {
+    return mParticipatesInBuild;
   }
 
   bool permitsDirectPrimitiveEditing() const override {
@@ -88,7 +100,35 @@ public:
     return false;
   }
 
+  uint32_t adoptPrimitive(bw::core::Primitive* primitive) override {
+    if (mPrimitive) {
+      throw bw::core::CoreException("RefusingStep already owns a Primitive");
+    }
+    mPrimitive = primitive;
+    return 0;
+  }
+
+  void replacePrimitive(
+      bw::core::Primitive* oldPrimitive,
+      bw::core::Primitive* newPrimitive) override {
+    if (oldPrimitive != mPrimitive) {
+      throw bw::core::CoreException("Primitive not owned by RefusingStep");
+    }
+    delete mPrimitive;
+    mPrimitive = newPrimitive;
+  }
+
+  bool ownsPrimitive(bw::core::Primitive const* primitive) const override {
+    return mPrimitive == primitive;
+  }
+
+  std::vector<bw::core::Primitive*> const& observedBuildPrimitives() const {
+    return mObservedBuildPrimitives;
+  }
+
 private:
+  mutable std::vector<bw::core::Primitive*> mObservedBuildPrimitives;
+
   void serializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) const override {
   }
 
@@ -401,6 +441,36 @@ void aRefusingActiveStepDoesNotAcceptNewPrimitives() {
       "addPrimitive redirected to another step when the active step refused new Primitives");
 }
 
+void stepsReceiveOnlyBuildParticipatingPrimitives() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+  auto* participating = makeRectangle(0.0f);
+  layer.addPrimitive(participating);
+  layer.addStep(new RefusingStep(makeRectangle(10.0f), false));
+  auto observerIndex = layer.addStep(new RefusingStep());
+  auto* observer = static_cast<RefusingStep*>(layer.getStep(observerIndex));
+
+  require(observer->observedBuildPrimitives() ==
+              std::vector<bw::core::Primitive*>({participating}),
+          "a step received a derived Primitive excluded from the build");
+}
+
+void primitiveStorageIsDispatchedToTheOwningStep() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+  layer.addStep(new RefusingStep(makeRectangle(10.0f)));
+
+  auto* replacement = makeRectangle(20.0f);
+  layer.replacePrimitive(0, replacement);
+
+  require(layer.getNumPrimitives() == 1 && layer.getPrimitive(0) == replacement,
+          "replacing a Primitive owned by a non-PrimitiveField step did not use that step's storage");
+  require(layer.getOwningStepIndex(replacement) == 1,
+          "replacing a Primitive changed its owning step");
+
+  layer.removePrimitive(replacement);
+  require(layer.getNumPrimitives() == 0,
+          "removing a Primitive owned by a non-PrimitiveField step did not use that step's storage");
+}
+
 void getOwningStepIndexFindsWhichStepProducedAPrimitive() {
   bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
 
@@ -464,6 +534,8 @@ int main() {
     insertRemoveAndMoveStepTrackTheActiveStepsIdentity();
     buildStepCapabilitiesAreDeliberateAndPrimitiveFieldPermitsBoth();
     aRefusingActiveStepDoesNotAcceptNewPrimitives();
+    stepsReceiveOnlyBuildParticipatingPrimitives();
+    primitiveStorageIsDispatchedToTheOwningStep();
     getOwningStepIndexFindsWhichStepProducedAPrimitive();
     copyingALayerCopiesItsStepsAndRebuildsFromThem();
     std::cout << "A Layer derives its Primitives by running its enabled LayerBuildSteps in order\n";

@@ -41,6 +41,10 @@ public:
     return "RefusingStep";
   }
 
+  bool mayBeFirstStep() const override {
+    return false;
+  }
+
   bw::core::LayerBuildStep* copy(
       std::map<bw::core::VertexTransformerObject const*, bw::core::VertexTransformerObject*>& primitiveMap) const override {
     auto* primitive = mPrimitive->copy();
@@ -48,8 +52,12 @@ public:
     return new RefusingStep(primitive);
   }
 
-  void execute(bw::core::Layer& layer) const override {
-    layer._appendBuiltPrimitive(mPrimitive, this);
+  void execute(bw::core::LayerBuildContext& context) const override {
+    context.appendPrimitive(mPrimitive);
+  }
+
+  bool primitivesParticipateInBuild() const override {
+    return true;
   }
 
   bool permitsDirectPrimitiveEditing() const override {
@@ -58,6 +66,28 @@ public:
 
   bool acceptsNewPrimitives() const override {
     return false;
+  }
+
+  uint32_t adoptPrimitive(bw::core::Primitive* primitive) override {
+    if (mPrimitive) {
+      throw std::runtime_error("RefusingStep already owns a Primitive");
+    }
+    mPrimitive = primitive;
+    return 0;
+  }
+
+  void replacePrimitive(
+      bw::core::Primitive* oldPrimitive,
+      bw::core::Primitive* newPrimitive) override {
+    if (oldPrimitive != mPrimitive) {
+      throw std::runtime_error("Primitive not owned by RefusingStep");
+    }
+    delete mPrimitive;
+    mPrimitive = newPrimitive;
+  }
+
+  bool ownsPrimitive(bw::core::Primitive const* primitive) const override {
+    return mPrimitive == primitive;
   }
 
 private:
