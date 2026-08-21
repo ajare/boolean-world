@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include <core/ArrangementWorldData.h>
+#include <core/ArrangementWorldDataGenerator.h>
 #include <core/MeshPrimitive.h>
 
 namespace {
@@ -111,26 +113,106 @@ void conversionsPreserveStorageOrderingAndDegenerateShapes() {
   }
 }
 
-void islandContainmentIsDerived() {
-  std::vector<ComplexPolygon> polygons{
-      {ring(-5, -5, 5, 5), ring(-4, -4, 4, 4)},
-      {ring(-2, -2, 2, 2)}};
-  MeshPrimitive primitive(Primitive::Operation::Union, Primitive::FillRule::EvenOdd, polygons);
-  auto proxy = primitive.createGeometryProxy();
+void authoritativeTreePreservesArbitraryDepth() {
+  bw::core::MeshFilledRegion deepest{ring(-1, -1, 1, 1), {}};
+  bw::core::MeshFilledRegion island{
+      ring(-3, -3, 3, 3),
+      {{ring(-2, -2, 2, 2), {deepest}}}};
+  bw::core::MeshFilledRegion shell{
+      ring(-5, -5, 5, 5),
+      {{ring(-4, -4, 4, 4), {island}}}};
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {shell}));
 
-  auto outer = proxy->getFirstPolygonIndex();
-  require(proxy->getPolygon(outer).getHoleIndices().size() == 1,
-          "Ring 0 did not own the remaining Ring as a hole");
-  auto hole = proxy->getPolygon(outer).getHoleIndices().front();
-  require(proxy->getPolygon(hole).isHole(),
-          "the inner Ring was not represented as a hole");
-  require(proxy->getContainingPolygon({0.0f, 0.0f}) != static_cast<int32_t>(outer),
-          "filled island containment inside a hole was not re-derived");
+  auto const& stored = primitive->getShells();
+  require(stored.size() == 1 && stored[0].holes.size() == 1 &&
+              stored[0].holes[0].islands.size() == 1 &&
+              stored[0].holes[0].islands[0].holes[0].islands.size() == 1,
+          "the authoritative tree lost deep alternating containment");
+  auto flattened = primitive->flattenTree();
+  require(flattened.size() == 3 && flattened[0].size() == 2 &&
+              flattened[1].size() == 2 && flattened[2].size() == 1,
+          "pre-order flattening did not emit one filled region with direct Holes");
+  for (auto const& polygon : flattened) {
+    for (auto const& value : polygon) {
+      float area = 0.0f;
+      for (size_t i = 0; i < value.size(); ++i) {
+        auto const& a = value[i].p;
+        auto const& b = value[(i + 1) % value.size()].p;
+        area += a.x * b.y - b.x * a.y;
+      }
+      require(area > 0.0f, "a stored Ring was not canonical anticlockwise");
+    }
+  }
 
-  primitive.updateFromGeometryProxy(*proxy);
-  auto roundTripped = primitive.createGeometryProxy();
-  require(roundTripped->getNumPolygons() == 3,
-          "island round-trip did not restore top-level island storage");
+  auto copy = std::unique_ptr<MeshPrimitive>(static_cast<MeshPrimitive*>(primitive->copy()));
+  MeshPrimitive assigned(
+      Primitive::Operation::Difference, Primitive::FillRule::NonZero, {});
+  assigned = *primitive;
+  auto rotated = std::unique_ptr<Primitive>(primitive->rotatedCopy(90.0f));
+  require(copy->flattenTree().size() == 3 &&
+              assigned.flattenTree().size() == 3 &&
+              static_cast<MeshPrimitive*>(rotated.get())->flattenTree().size() == 3 &&
+              copy->getNumVertices() == primitive->getNumVertices() &&
+              assigned.getNumVertices() == primitive->getNumVertices() &&
+              rotated->getBounds().getSize().x > 0.0f,
+          "copying, assignment, rotation, bounds, or vertex counts lost tree data");
+
+  auto proxy = primitive->createGeometryProxy();
+  primitive->updateFromGeometryProxy(*proxy);
+  require(primitive->flattenTree().size() == 3,
+          "the temporary editing compatibility round-trip lost deep topology");
+}
+
+void deepTreeGeneratesAlternatingFilledRegions() {
+  bw::core::MeshFilledRegion deepest{ring(-1, -1, 1, 1), {}};
+  bw::core::MeshFilledRegion island{
+      ring(-3, -3, 3, 3), {{ring(-2, -2, 2, 2), {deepest}}}};
+  bw::core::MeshFilledRegion shell{
+      ring(-5, -5, 5, 5), {{ring(-4, -4, 4, 4), {island}}}};
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {shell}));
+  primitive->updateVertexPositions();
+
+  bw::core::ArrangementWorldDataGenerator generator;
+  generator.generate(std::vector<Primitive*>{primitive.get()});
+  bw::core::ArrangementWorldData worldData(
+      generator.getWorldData(), {{-10.0f, -10.0f}, {20.0f, 20.0f}},
+      1.0f, 1.0f);
+  require(worldData.getContainingFaceIndex({4.5f, 0.0f}) != ~0u,
+          "the root Shell was not filled");
+  require(worldData.getContainingFaceIndex({3.5f, 0.0f}) == ~0u,
+          "the direct Hole was not empty");
+  require(worldData.getContainingFaceIndex({2.5f, 0.0f}) != ~0u,
+          "the Island was not filled");
+  require(worldData.getContainingFaceIndex({1.5f, 0.0f}) == ~0u,
+          "the nested Hole was not empty");
+  require(worldData.getContainingFaceIndex({0.5f, 0.0f}) != ~0u,
+          "the deeply nested Island was not filled");
+}
+
+void shallowConversionRejectsCrossEntryNestingAndMalformedTrees() {
+  bool rejectedNesting = false;
+  try {
+    std::unique_ptr<MeshPrimitive> invalid(MeshPrimitive::fromComplexPolygons(
+        Primitive::Operation::Union, Primitive::FillRule::EvenOdd,
+        {{ring(-5, -5, 5, 5), ring(-4, -4, 4, 4)},
+         {ring(-2, -2, 2, 2)}}));
+  } catch (std::exception const&) {
+    rejectedNesting = true;
+  }
+  require(rejectedNesting, "the shallow converter inferred cross-entry nesting");
+
+  bool rejectedContainment = false;
+  try {
+    bw::core::MeshFilledRegion invalid{
+        ring(-1, -1, 1, 1), {{ring(2, 2, 3, 3), {}}}};
+    std::unique_ptr<MeshPrimitive> primitive(
+        MeshPrimitive::fromTree(Primitive::Operation::Union, {invalid}));
+  } catch (std::exception const&) {
+    rejectedContainment = true;
+  }
+  require(rejectedContainment, "an uncontained Hole entered the authoritative tree");
 }
 
 }  // namespace
@@ -138,7 +220,9 @@ void islandContainmentIsDerived() {
 int main() {
   try {
     conversionsPreserveStorageOrderingAndDegenerateShapes();
-    islandContainmentIsDerived();
+    authoritativeTreePreservesArbitraryDepth();
+    deepTreeGeneratesAlternatingFilledRegions();
+    shallowConversionRejectsCrossEntryNestingAndMalformedTrees();
     std::cout << "MeshPrimitive geometry proxy tests passed\n";
     return 0;
   } catch (std::exception const& error) {

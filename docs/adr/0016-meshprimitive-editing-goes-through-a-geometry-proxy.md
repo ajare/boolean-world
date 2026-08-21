@@ -1,6 +1,6 @@
 # ADR-0016: MeshPrimitive editing goes through a `wp::geometry::Mesh` proxy
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0020
 **Date:** 2026-08-20
 **Relates to:** ADR-0003 (exact integer topology), ADR-0015 (step editing capabilities)
 

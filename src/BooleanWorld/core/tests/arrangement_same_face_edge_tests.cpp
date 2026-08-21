@@ -94,7 +94,7 @@ void preservesTraversalAcrossAnEdgeIncidentToTheSameFace() {
           "the triangulated area should equal the full square");
 }
 
-void preservesTraversalWhenBakingAMeshPrimitive() {
+void meshPrimitiveRejectsDanglingSameFaceEdgeBoundary() {
   bw::core::ComplexPolygon polygon{{{{0.0f, 0.0f}},
                                     {{4.0f, 0.0f}},
                                     {{4.0f, 4.0f}},
@@ -102,37 +102,18 @@ void preservesTraversalWhenBakingAMeshPrimitive() {
                                     {{0.0f, 2.0f}},
                                     {{2.0f, 2.0f}},
                                     {{0.0f, 2.0f}}}};
-  auto source = std::unique_ptr<bw::core::MeshPrimitive>(
-      bw::core::MeshPrimitive::fromComplexPolygons(
-          Primitive::Operation::Union,
-          Primitive::FillRule::EvenOdd,
-          {std::move(polygon)}));
-  source->updateVertexPositions();
-
-  bw::core::World world(10.0f, 1.0f);
-  auto baked = std::unique_ptr<Primitive>(
-      world.createMeshPrimitive({source.get()}));
-  require(baked != nullptr,
-          "baking the same-face edge arrangement should produce a primitive");
-  baked->updateVertexPositions();
-  require(baked->getVertices().size() == 1 &&
-              baked->getVertices()[0].size() == 1,
-          "baking should preserve the arrangement face as one complex polygon");
-  require(baked->getVertices()[0][0].size() == 7,
-          "baking should preserve both traversals of the dangling edge");
-
-  auto const& bakedContour = baked->getVertices()[0][0];
-  auto spurTip = std::ranges::find_if(bakedContour, [](auto const& vertex) {
-    return vertex.p.x == 2.0f && vertex.p.y == 2.0f;
-  });
-  require(spurTip != bakedContour.end(),
-          "baking should retain the dangling edge's tip");
-  auto tipIndex = size_t(std::distance(bakedContour.begin(), spurTip));
-  auto const& previous = bakedContour[(tipIndex + bakedContour.size() - 1) % bakedContour.size()];
-  auto const& next = bakedContour[(tipIndex + 1) % bakedContour.size()];
-  require(previous.p.x == 0.0f && previous.p.y == 2.0f &&
-              next.p.x == 0.0f && next.p.y == 2.0f,
-          "baking should retain both directions of the dangling edge");
+  bool rejected = false;
+  try {
+    auto source = std::unique_ptr<bw::core::MeshPrimitive>(
+        bw::core::MeshPrimitive::fromComplexPolygons(
+            Primitive::Operation::Union,
+            Primitive::FillRule::EvenOdd,
+            {std::move(polygon)}));
+  } catch (std::exception const&) {
+    rejected = true;
+  }
+  require(rejected,
+          "MeshPrimitive accepted a boundary with a dangling same-face edge as a Ring");
 }
 
 }  // namespace
@@ -140,7 +121,7 @@ void preservesTraversalWhenBakingAMeshPrimitive() {
 int main() {
   try {
     preservesTraversalAcrossAnEdgeIncidentToTheSameFace();
-    preservesTraversalWhenBakingAMeshPrimitive();
+    meshPrimitiveRejectsDanglingSameFaceEdgeBoundary();
     std::cout << "Same-face arrangement edges retain boundary traversal order\n";
     return 0;
   } catch (std::exception const& error) {

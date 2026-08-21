@@ -544,8 +544,14 @@ void meshRubberBandUsesContainmentAndModifierPolicies() {
           "Ctrl mesh rubber band did not toggle contained vertices");
 
   auto allVertices = document.getSelectableMeshSubObjectIndices(settings.meshSubMode);
+  auto outsideRubberBand = std::ranges::find_if(allVertices, [&](uint32_t vertex) {
+    auto const& position = document.getActiveMesh()->getVertex(vertex).getPosition();
+    return position.x > meshCentre.x || position.y > meshCentre.y;
+  });
+  require(outsideRubberBand != allVertices.end(),
+          "test mesh had no Vertex outside the rubber band");
   document.setSelectedMeshSubObjectIndices(
-      settings.meshSubMode, {*allVertices.rbegin()});
+      settings.meshSubMode, {*outsideRubberBand});
   begin.control = drag.control = release.control = false;
   begin.shift = drag.shift = release.shift = true;
   interaction.updateSelection(&document, nullptr, settings, begin);
@@ -654,22 +660,19 @@ void draggingAnOuterRingMovesItsFullNestedHierarchyAsOneGroup() {
   settings.mode = editor::Settings::Mode::Mesh;
   settings.meshSubMode = editor::Settings::MeshSubMode::Polygon;
   document.newDoc();
-  auto* primitive = new bw::core::MeshPrimitive(
-      bw::core::Primitive::Operation::Union,
-      bw::core::Primitive::FillRule::EvenOdd,
-      {
-          {
-              {{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}},
-              {{{-0.5f, -0.5f}}, {{-0.5f, 0.5f}}, {{0.5f, 0.5f}}, {{0.5f, -0.5f}}},
-          },
-          {
-              {{{-0.25f, -0.25f}}, {{0.25f, -0.25f}}, {{0.25f, 0.25f}}, {{-0.25f, 0.25f}}},
-              {{{-0.1f, -0.1f}}, {{-0.1f, 0.1f}}, {{0.1f, 0.1f}}, {{0.1f, -0.1f}}},
-          },
-          {{{{3.0f, -1.0f}}, {{5.0f, -1.0f}}, {{5.0f, 1.0f}}, {{3.0f, 1.0f}}}},
-      });
-  primitive->setSize(20.0f, 20.0f);
-  primitive->updateVertexPositions();
+  bw::core::MeshFilledRegion island{
+      {{{-0.25f, -0.25f}}, {{0.25f, -0.25f}}, {{0.25f, 0.25f}}, {{-0.25f, 0.25f}}},
+      {{{{{-0.1f, -0.1f}}, {{-0.1f, 0.1f}}, {{0.1f, 0.1f}}, {{0.1f, -0.1f}}},
+        {}}}};
+  bw::core::MeshFilledRegion shell{
+      {{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}},
+      {{{{{-0.5f, -0.5f}}, {{-0.5f, 0.5f}}, {{0.5f, 0.5f}}, {{0.5f, -0.5f}}},
+        {island}}}};
+  bw::core::MeshFilledRegion unrelated{
+      {{{3.0f, -1.0f}}, {{5.0f, -1.0f}}, {{5.0f, 1.0f}}, {{3.0f, 1.0f}}},
+      {}};
+  auto* primitive = bw::core::MeshPrimitive::fromTree(
+      bw::core::Primitive::Operation::Union, {shell, unrelated});
   auto meshIndex = document.getWorld()->addPrimitive(primitive);
   document.activateMesh(meshIndex);
   auto* mesh = document.getActiveMesh();
@@ -1827,11 +1830,11 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
           "the selected hole could not be filled");
   require(primitive->getVertices().size() == 3 &&
               primitive->getVertices()[0].size() == 2 &&
-              primitive->getVertices()[1].size() == islandBefore.size() &&
-              primitive->getVertices()[1][0].size() == islandBefore[0].size() &&
-              primitive->getVertices()[1][0][0].p == islandBefore[0][0].p &&
-              primitive->getVertices()[2].size() == 2,
-          "filling the hole did not create only the gap around its existing island");
+              primitive->getVertices()[1].size() == 2 &&
+              primitive->getVertices()[2].size() == islandBefore.size() &&
+              primitive->getVertices()[2][0].size() == islandBefore[0].size() &&
+              primitive->getVertices()[2][0][0].p == islandBefore[0][0].p,
+          "filling the Hole did not wrap its existing Island in deterministic pre-order");
   require(document.getSelectedMeshRingIndices().size() == 1 &&
               !document.getActiveMesh()
                    ->getPolygon(*document.getSelectedMeshRingIndices().begin())
@@ -1884,7 +1887,7 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
   require(document.commitMeshDrag(), "the welded island move did not commit");
   document.endMeshDrag();
   auto islandAfterMove =
-      primitive->getVertices()[1][0][0].p;
+      primitive->getVertices()[2][0][0].p;
 
   auto path = std::filesystem::temp_directory_path() /
               "boolean-world-fill-hole-topology.world.yaml";

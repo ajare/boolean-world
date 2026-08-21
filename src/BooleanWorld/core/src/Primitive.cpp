@@ -90,21 +90,9 @@ Primitive* Primitive::rotatedCopy(float angle) const {
   // Rotate position
   p->setPosition(getPosition().rotatedClockwiseCopy(angle));
 
-  // Rotate vertices
-  auto polygons = p->mPolygons;
-  for (auto& complexPolygon : polygons) {
-    for (auto& polygon : complexPolygon) {
-      for (auto& vertex : polygon) {
-        auto position = vertex.p;
-        position -= origin;
-        position.rotateClockwise(angle);
-        position += origin;
-
-        vertex.p = position;
-      }
-    }
-  }
-  p->setVertices(polygons);
+  // Rotate authored geometry. Procedural Primitives rotate their polygon
+  // parameters; MeshPrimitive rotates its authoritative containment tree.
+  p->rotateAuthoredGeometry(angle, origin);
 
   // Bump angles
   p->setInfluenceEyeAngleOffset(p->getInfluenceEyeAngleOffset() + angle);
@@ -145,6 +133,20 @@ void Primitive::notifyWorldPolygonsChanged() const {
 }
 
 void Primitive::polygonsUpdated() {
+}
+
+void Primitive::rotateAuthoredGeometry(float angle, wp::Vector2 const& origin) {
+  auto polygons = mPolygons;
+  for (auto& complexPolygon : polygons) {
+    for (auto& polygon : complexPolygon) {
+      for (auto& vertex : polygon) {
+        vertex.p -= origin;
+        vertex.p.rotateClockwise(angle);
+        vertex.p += origin;
+      }
+    }
+  }
+  setVertices(polygons);
 }
 
 void Primitive::setId(uint32_t id) {

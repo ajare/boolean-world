@@ -22,10 +22,11 @@ removed the dependency entirely. Geometry terms are defined in
 | [0013](0013-layer-is-a-first-class-owning-collection.md) | Layer is a first-class collection that owns its Primitives and WorldTriggerLines | Accepted |
 | [0014](0014-primitives-are-derived-from-layerbuildsteps.md) | A Layer's Primitives are derived from its LayerBuildSteps, never stored independently | Accepted |
 | [0015](0015-layerbuildsteps-declare-editing-capabilities.md) | LayerBuildSteps declare whether their Primitives may be directly edited or added to | Accepted |
-| [0016](0016-meshprimitive-editing-goes-through-a-geometry-proxy.md) | MeshPrimitive editing goes through a `wp::geometry::Mesh` proxy | Accepted |
+| [0016](0016-meshprimitive-editing-goes-through-a-geometry-proxy.md) | MeshPrimitive editing goes through a `wp::geometry::Mesh` proxy | Superseded by ADR-0020 |
 | [0017](0017-prefab-primitives-are-derived-but-excluded-from-the-build.md) | Prefab Primitives are derived Primitives excluded from the build | Accepted |
 | [0018](0018-a-prefabs-pivot-is-the-origin.md) | A Prefab's pivot is the origin, not its bounds centre | Accepted |
 | [0019](0019-layer-ownership-is-permanent.md) | Layer ownership is permanent — nothing moves between Layers | Accepted |
+| [0020](0020-meshprimitive-stores-an-authoritative-containment-tree.md) | MeshPrimitive stores an authoritative containment tree | Accepted |
 
 ## World geometry rewrite scope
 

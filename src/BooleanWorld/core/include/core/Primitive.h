@@ -100,6 +100,10 @@ protected:
   // LayerBuildStep output and regenerate World geometry.
   virtual void polygonsUpdated();
 
+  // Rotates authored geometry for rotatedCopy(). MeshPrimitive overrides this
+  // because its inherited flat polygons are derived from its containment tree.
+  virtual void rotateAuthoredGeometry(float angle, wp::Vector2 const& origin);
+
   void invalidatePostTransform(bool recalculateBounds, bool notifyWorld = true) const override;
 
   void copyFrom(Primitive const& other);

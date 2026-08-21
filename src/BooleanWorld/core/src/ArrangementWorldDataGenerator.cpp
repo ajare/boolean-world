@@ -1,5 +1,6 @@
 #include "core/ArrangementWorldDataGenerator.h"
 
+#include "core/MeshPrimitive.h"
 #include "core/Primitive.h"
 #include "core/World.h"
 #include "core/WorldDataGenerator.h"
@@ -28,9 +29,15 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
   std::vector<arr::ArrangementPrimitive> result;
   result.reserve(primitives.size());
   for (auto primitive : primitives) {
+    // MeshPrimitive containment, rather than Ring winding, is authoritative.
+    // Its derived contours therefore always alternate under EvenOdd while the
+    // temporary public FillRule entry point remains for downstream consumers.
+    auto fillRule = dynamic_cast<MeshPrimitive const*>(primitive)
+                        ? Primitive::FillRule::EvenOdd
+                        : primitive->getFillRule();
     result.push_back({ConvertPrimitiveToContours(*primitive),
                       primitive->getOperation(),
-                      primitive->getFillRule(),
+                      fillRule,
                       primitive->getPriority(),
                       primitive->getId(),
                       primitive->getProperties()});

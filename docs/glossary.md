@@ -8,16 +8,34 @@ given.
 
 **Primitive** — One authored 2D closed shape (`Rectangle`, `Regular`, `Circle`,
 `Torus`, `Superformula`, `Mesh`). Carries geometry, a boolean **operation**, a
-**fill rule**, a **priority**, a **layer**, and a **property set**. Tessellated
-to a `vector<ComplexPolygon>` — up to
-`BW_WORLD_PRIMITIVE_VERTEX_COUNT_MAX` (1024) vertices.
+**fill rule**, a **priority**, a **layer**, and a **property set**. Procedural
+Primitives tessellate directly to `vector<ComplexPolygon>`; a MeshPrimitive
+derives that form from its containment tree.
+
+**Ring** — A closed loop of authored vertices forming one boundary of a
+Primitive in that Primitive's local space. It becomes a **Contour** during
+World generation.
+
+**Filled region** — A Ring together with the **Holes** it directly contains. A
+filled region is a **Shell** at the root of a MeshPrimitive's containment tree
+and an **Island** when directly contained by a Hole.
+
+**Shell** — A root Filled region of a MeshPrimitive. Shell sibling interiors do
+not overlap.
+
+**Hole** — An empty Ring directly contained by a Shell or Island. A Hole may
+contain Islands.
+
+**Island** — A Filled region directly contained by a Hole. It may contain
+further Holes without a semantic nesting-depth limit.
 
 **Contour** — A closed sequence of **fixed-point vertices** forming one
 boundary of a primitive. One primitive may contribute several contours,
 resolved against each other by the primitive's own **fill rule**.
 
-**ComplexPolygon** — `vector<ClosedPolygon>`; the authoring-side polygon and
-hole structure converted into contours before arrangement construction.
+**ComplexPolygon** — `vector<ClosedPolygon>`; a shallow filled Ring followed by
+its direct Hole Rings. For MeshPrimitive it is deterministic derived data, not
+authoritative authored topology.
 
 **Operation** — `Union`, `Intersection`, `Difference`, `XOR`. Applied to the
 *accumulated result so far*, not to a named target. See **fold**.
