@@ -1,11 +1,15 @@
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 
 #include <core/DefinePrefabs.h>
 #include <core/Layer.h>
 #include <core/PrefabField.h>
 #include <core/RectanglePolygon.h>
+#include <core/SerializationWorkData.h>
+#include <core/YamlSerializer.h>
 
 namespace {
 void require(bool value, char const* message) {
@@ -52,6 +56,88 @@ void referencesAreClonedPositionedAndStayLive() {
           "editing a Prefab did not propagate to its instance on rebuild");
 }
 
+void prefabFieldRegistersBindsByStableIdAndProtectsItsDefinitions() {
+  auto const types = bw::core::LayerBuildStep::getRegisteredTypes();
+  require(std::find(types.begin(), types.end(), "PrefabField") != types.end(),
+          "the step Registry did not enumerate PrefabField");
+  auto registered = std::unique_ptr<bw::core::LayerBuildStep>(
+      bw::core::LayerBuildStep::instantiate("PrefabField"));
+  require(registered->getType() == "PrefabField" && !registered->mayBeFirstStep() &&
+              registered->primitivesParticipateInBuild() &&
+              !registered->permitsDirectPrimitiveEditing() &&
+              !registered->acceptsNewPrimitives(),
+          "PrefabField did not declare its registration or editing capabilities");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* boundDefinitions = new bw::core::DefinePrefabs;
+  layer.addStep(boundDefinitions);
+  auto* unboundDefinitions = new bw::core::DefinePrefabs;
+  layer.addStep(unboundDefinitions);
+  auto* field = new bw::core::PrefabField;
+  layer.addStep(field);
+  require(field->getDefinePrefabsStepId() == ~0u &&
+              field->getDefinePrefabs(layer) == nullptr && layer.getNumPrimitives() == 0,
+          "a fresh PrefabField was not empty and unbound");
+
+  field->bind(layer, boundDefinitions);
+  auto const boundId = boundDefinitions->getId();
+  require(field->getDefinePrefabsStepId() == boundId &&
+              field->getDefinePrefabs(layer) == boundDefinitions,
+          "PrefabField did not retain its DefinePrefabs step id binding");
+  layer.moveStep(1, 2);
+  require(field->getDefinePrefabs(layer) == boundDefinitions,
+          "PrefabField binding followed a step index rather than its stable id");
+
+  bw::core::Layer otherLayer(1, "other", 512.0f, 16.0f);
+  auto* foreignDefinitions = new bw::core::DefinePrefabs;
+  otherLayer.addStep(foreignDefinitions);
+  try {
+    field->bind(layer, foreignDefinitions);
+    throw std::runtime_error("PrefabField bound to a DefinePrefabs step on another Layer");
+  } catch (bw::core::CoreException const&) {
+  }
+
+  auto const boundIndex = layer.getNumSteps() - 2;
+  try {
+    layer.removeStep(boundIndex);
+    throw std::runtime_error("removing a referenced DefinePrefabs step was not refused");
+  } catch (bw::core::CoreException const&) {
+  }
+  layer.removeStep(1);
+  require(layer.getNumSteps() == 3 && field->getDefinePrefabs(layer) == boundDefinitions,
+          "removing an unbound DefinePrefabs step did not succeed normally");
+}
+
+void prefabFieldBindingSurvivesSerialization() {
+  bw::core::Layer source(0, "test", 512.0f, 16.0f);
+  auto* definitions = new bw::core::DefinePrefabs;
+  source.addStep(definitions);
+  auto* field = new bw::core::PrefabField;
+  source.addStep(field);
+  field->bind(source, definitions);
+  auto const definitionId = definitions->getId();
+
+  auto writer = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::toString());
+  bw::core::SerializationWorkData writeData;
+  source.serialize(writer, writeData);
+  writer->serialize();
+
+  bw::core::Layer loaded;
+  auto reader = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::fromString(writer->getSerializedString()));
+  reader->deserialize();
+  bw::core::SerializationWorkData readData;
+  readData.accelGridSize = 16.0f;
+  require(loaded.deserialize(reader, readData),
+          "Layer containing PrefabField failed to deserialize");
+
+  auto* loadedField = static_cast<bw::core::PrefabField*>(loaded.getStep(2));
+  require(loadedField->getDefinePrefabsStepId() == definitionId &&
+              loadedField->getDefinePrefabs(loaded) == loaded.getStep(1),
+          "PrefabField binding did not survive serialization");
+}
+
 void overwriteAndClearUseOneOccupantPerTile() {
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
   auto* definitions = new bw::core::DefinePrefabs;
@@ -74,6 +160,8 @@ void overwriteAndClearUseOneOccupantPerTile() {
 
 int main() {
   try {
+    prefabFieldRegistersBindsByStableIdAndProtectsItsDefinitions();
+    prefabFieldBindingSurvivesSerialization();
     referencesAreClonedPositionedAndStayLive();
     overwriteAndClearUseOneOccupantPerTile();
     std::cout << "PrefabField placement and live fold tests passed\n";

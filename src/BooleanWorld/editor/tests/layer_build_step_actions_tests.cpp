@@ -360,6 +360,30 @@ void prefabInstanceActionsUndoAndRefuseDeletingReferencedPrefabs() {
           "clearing an empty Tile created an undo entry");
 }
 
+void prefabFieldBindingRefusesRemovingItsDefinitionsThroughActions() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* boundDefinitions = new bw::core::DefinePrefabs;
+  layer->addStep(boundDefinitions);
+  auto* unboundDefinitions = new bw::core::DefinePrefabs;
+  layer->addStep(unboundDefinitions);
+  auto* field = new bw::core::PrefabField;
+  layer->addStep(field);
+
+  require(editor::bindPrefabField(&document, layer, field, boundDefinitions) &&
+              field->getDefinePrefabsStepId() == boundDefinitions->getId(),
+          "PrefabField bind action did not retain the selected DefinePrefabs step");
+  requireCoreException(
+      [&] { editor::removeLayerBuildStep(&document, layer, 1); },
+      "removing a DefinePrefabs step bound by a PrefabField action was not refused");
+  require(layer->getNumSteps() == 4,
+          "a refused DefinePrefabs removal disturbed the Layer's step list");
+
+  require(editor::removeLayerBuildStep(&document, layer, 2) && layer->getNumSteps() == 3,
+          "removing an unbound DefinePrefabs step through actions did not succeed");
+}
+
 void selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable() {
   editor::Document document;
   document.newDoc();
@@ -398,6 +422,7 @@ int main() {
     movingAStepIsOneUndoableActionAndMovesIntoOrOutOfIndexZeroAreRejected();
     prefabActionsCreateSelectRenameDeleteAndChangeTilingArguments();
     prefabInstanceActionsUndoAndRefuseDeletingReferencedPrefabs();
+    prefabFieldBindingRefusesRemovingItsDefinitionsThroughActions();
     selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable();
     std::cout << "Layer build step enable/disable action tests passed\n";
     return 0;

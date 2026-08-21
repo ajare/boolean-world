@@ -8,6 +8,7 @@
 
 #include "core/Layer.h"
 #include "core/CoreException.h"
+#include "core/DefinePrefabs.h"
 #include "core/Defines.h"
 #include "core/LayerBuildStep.h"
 #include "core/PrimitiveField.h"
@@ -630,10 +631,10 @@ void Layer::removeStep(uint32_t index) {
     throw CoreException(format("Cannot remove build step {} from a Layer with {} steps", index, getNumSteps()));
   }
 
-  auto const removedId = mSteps[index]->getId();
-  if (any_of(mSteps.begin(), mSteps.end(), [removedId](auto const* candidate) {
+  auto const* definitions = dynamic_cast<DefinePrefabs const*>(mSteps[index]);
+  if (definitions && any_of(mSteps.begin(), mSteps.end(), [definitions](auto const* candidate) {
         auto const* field = dynamic_cast<PrefabField const*>(candidate);
-        return field && field->getDefinePrefabsStepId() == removedId;
+        return field && field->getDefinePrefabsStepId() == definitions->getId();
       })) {
     throw CoreException("Cannot delete a DefinePrefabs step referenced by a PrefabField");
   }
