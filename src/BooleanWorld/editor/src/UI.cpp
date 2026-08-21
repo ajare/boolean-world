@@ -727,6 +727,31 @@ void renderStatusbar(editor::Document* doc, editor::Settings& settings, bw::core
         ImGui::SameLine();
         ImGui::TextColored(c, "%s", zoomData.c_str());
 
+        if (settings.mode == editor::Settings::Mode::Mesh &&
+            doc->meshDrawToolArmed()) {
+          auto snappedPosition = editor::Document::snapMeshDrawPosition(
+              mousePos, settings.showGrid, settings.gridSize);
+          auto drawState = doc->getMeshDrawPositionState(
+              snappedPosition, settings);
+          char const* action =
+              drawState == editor::Document::MeshDrawPositionState::CloseRing
+                  ? "click to close"
+              : drawState == editor::Document::MeshDrawPositionState::Invalid
+                  ? "invalid position"
+                  : "click to place vertex";
+          auto const& vertices = doc->getMeshDrawVertices();
+          auto drawStatus = vertices.empty()
+                                ? format("| Mesh draw armed - {}", action)
+                                : format("| Drawing Ring: {} vertices - {}",
+                                         vertices.size(), action);
+          ImGui::SameLine();
+          ImGui::TextColored(
+              drawState == editor::Document::MeshDrawPositionState::Invalid
+                  ? ImVec4(1.0f, 0.3f, 0.3f, 1.0f)
+                  : ImVec4(0.7f, 0.85f, 1.0f, 1.0f),
+              "%s", drawStatus.c_str());
+        }
+
         // Hovered objects
         switch (gHoveredType) {
           case editor::HoverableType::Primitive:

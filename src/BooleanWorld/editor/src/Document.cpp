@@ -1601,6 +1601,39 @@ bool Document::meshDrawClickWouldClose(
          !segmentCrossesMesh(*mActiveMesh, mMeshDrawVertices.back(), endpoint);
 }
 
+Document::MeshDrawPositionState Document::getMeshDrawPositionState(
+    wp::Vector2 const& position, Settings const& settings) const {
+  if (!mMeshDrawToolArmed) {
+    return MeshDrawPositionState::Invalid;
+  }
+  if (meshDrawClickWouldClose(position, settings)) {
+    return MeshDrawPositionState::CloseRing;
+  }
+
+  auto radiusSq = settings.meshVertexPickRadius * settings.meshVertexPickRadius;
+  if (ranges::any_of(mMeshDrawVertices, [&](wp::Vector2 const& vertex) {
+        return vertex.distanceToSq(position) <= radiusSq;
+      })) {
+    return MeshDrawPositionState::Invalid;
+  }
+
+  if (!mMeshDrawVertices.empty()) {
+    if (segmentCrossesDrawnRing(mMeshDrawVertices, position, false)) {
+      return MeshDrawPositionState::Invalid;
+    }
+    if (mMeshDrawContainingRingIndex != ~0u &&
+        (!mActiveMesh ||
+         innermostRingAt(
+             *mActiveMesh, mActiveMesh->getNodeMappings(), position) !=
+             mMeshDrawContainingRingIndex ||
+         segmentCrossesMesh(*mActiveMesh, mMeshDrawVertices.back(), position))) {
+      return MeshDrawPositionState::Invalid;
+    }
+  }
+
+  return MeshDrawPositionState::PlaceVertex;
+}
+
 bool Document::placeMeshDrawVertex(
     wp::Vector2 const& position, Settings const& settings) {
   if (!mMeshDrawToolArmed) {

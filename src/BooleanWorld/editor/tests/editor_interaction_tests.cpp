@@ -1599,6 +1599,9 @@ void drawClicksPlaceGridSnappedVerticesAndRefuseToCloseBelowThree() {
   settings.gridSize = 10.0f;
   document.newDoc();
   require(document.armMeshDrawTool(settings), "the draw tool did not arm");
+  require(document.getMeshDrawPositionState({100.0f, 100.0f}, settings) ==
+              editor::Document::MeshDrawPositionState::PlaceVertex,
+          "an empty draw tool did not preview a valid first vertex");
   editor::EditorInteraction interaction;
 
   auto click = [&](wp::Vector2 const& position) {
@@ -1613,6 +1616,9 @@ void drawClicksPlaceGridSnappedVerticesAndRefuseToCloseBelowThree() {
   click({102.0f, 97.0f});
   require(document.getMeshDrawVertices().size() == 1 && placedAt(0, {100.0f, 100.0f}),
           "a draw click did not place a vertex snapped to the grid");
+  require(document.getMeshDrawPositionState({100.0f, 100.0f}, settings) ==
+              editor::Document::MeshDrawPositionState::Invalid,
+          "an occupied draw position was not previewed as invalid");
 
   click({141.0f, 98.0f});
   require(document.getMeshDrawVertices().size() == 2 && placedAt(1, {140.0f, 100.0f}),
@@ -1626,8 +1632,13 @@ void drawClicksPlaceGridSnappedVerticesAndRefuseToCloseBelowThree() {
 
   click({139.0f, 142.0f});
   require(document.getMeshDrawVertices().size() == 3, "the third draw click did not place a vertex");
-  require(document.meshDrawClickWouldClose({100.0f, 100.0f}, settings),
-          "the first vertex refused to close a three-vertex Ring");
+  require(document.getMeshDrawPositionState({120.0f, 80.0f}, settings) ==
+              editor::Document::MeshDrawPositionState::Invalid,
+          "a self-crossing next edge was not previewed as invalid");
+  require(document.meshDrawClickWouldClose({100.0f, 100.0f}, settings) &&
+              document.getMeshDrawPositionState({100.0f, 100.0f}, settings) ==
+                  editor::Document::MeshDrawPositionState::CloseRing,
+          "the first vertex refused to preview closure of a three-vertex Ring");
 
   click({101.0f, 99.0f});
   require(!document.meshDrawToolArmed() && document.getActiveMesh(),

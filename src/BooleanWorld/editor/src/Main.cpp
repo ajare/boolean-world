@@ -424,15 +424,6 @@ void handleSelections(
     bw::core::WorldData const* worldData,
     editor::Settings& settings,
     editor::PointerInput const& input) {
-  if (input.cursorInWorldView && !input.cursorInMiniMap &&
-      doc->meshDrawToolArmed()) {
-    auto position = editor::Document::snapMeshDrawPosition(
-        input.worldPosition, settings.showGrid, settings.gridSize);
-    if (doc->meshDrawClickWouldClose(position, settings)) {
-      ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-    }
-  }
-
   gEditorInteraction.updateSelection(doc, worldData, settings, input);
 
   auto const& hover = gEditorInteraction.getHover();
@@ -449,7 +440,39 @@ void handleSelections(
     drawList->AddRect(rectMin, rectMax, IM_COL32(180, 200, 255, 220));
   }
 
-  if (hover.type != editor::HoverableType::None) {
+  if (input.cursorInWorldView && !input.cursorInMiniMap &&
+      doc->meshDrawToolArmed()) {
+    auto position = editor::Document::snapMeshDrawPosition(
+        input.worldPosition, settings.showGrid, settings.gridSize);
+    auto state = doc->getMeshDrawPositionState(position, settings);
+    if (state == editor::Document::MeshDrawPositionState::CloseRing) {
+      ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    } else {
+      // ImGui has no crosshair cursor. Draw one at the pointer so the armed
+      // authoring state is unmistakable; invalid positions use a red X.
+      ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+      auto drawList = ImGui::GetForegroundDrawList();
+      auto centre = ImVec2{input.screenPosition.x, input.screenPosition.y};
+      constexpr float radius = 7.0f;
+      if (state == editor::Document::MeshDrawPositionState::Invalid) {
+        auto colour = IM_COL32(255, 70, 70, 255);
+        drawList->AddLine(
+            {centre.x - radius, centre.y - radius},
+            {centre.x + radius, centre.y + radius}, colour, 2.5f);
+        drawList->AddLine(
+            {centre.x - radius, centre.y + radius},
+            {centre.x + radius, centre.y - radius}, colour, 2.5f);
+      } else {
+        auto colour = IM_COL32(220, 235, 255, 255);
+        drawList->AddLine(
+            {centre.x - radius, centre.y}, {centre.x + radius, centre.y},
+            colour, 2.0f);
+        drawList->AddLine(
+            {centre.x, centre.y - radius}, {centre.x, centre.y + radius},
+            colour, 2.0f);
+      }
+    }
+  } else if (hover.type != editor::HoverableType::None) {
     ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
   }
 }

@@ -287,6 +287,13 @@ public:
   [[nodiscard]] bool meshDrawClickWouldClose(
       wp::Vector2 const& position, Settings const& settings) const;
 
+  enum class MeshDrawPositionState { PlaceVertex, CloseRing, Invalid };
+
+  // Side-effect-free preview used by the viewport cursor. The position must
+  // already be snapped in exactly the same way as a real draw click.
+  [[nodiscard]] MeshDrawPositionState getMeshDrawPositionState(
+      wp::Vector2 const& position, Settings const& settings) const;
+
   bool placeMeshDrawVertex(wp::Vector2 const& position, Settings const& settings);
 
   // Backspace: steps back over the last placed vertex.
