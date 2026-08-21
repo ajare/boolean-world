@@ -3270,13 +3270,42 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     auto vertexIndex = *selectedVertices.begin();
     auto const& position = doc->getActiveMesh()->getVertex(vertexIndex).getPosition();
 
-    float pPosition[2] = {position.x, position.y};
-    ImGui::SetNextItemWidth(128);
-    if (ImGui::InputFloat2("Vertex Position##Mesh", pPosition)) {
-      wp::Vector2 newPosition{pPosition[0], pPosition[1]};
+    ImGui::Text("Selected vertex: %u", vertexIndex);
+    float x = position.x;
+    float y = position.y;
+    ImGui::SetNextItemWidth(112);
+    if (ImGui::InputFloat("X##MeshVertexPosition", &x)) {
       transactUndoableAction(
-          doc, "Set Mesh Vertex Position",
-          bind(setMeshVertexPosition, placeholders::_1, vertexIndex, newPosition));
+          doc, "Set Mesh Vertex X Position",
+          bind(setMeshVertexPosition, placeholders::_1, vertexIndex,
+               wp::Vector2{x, position.y}));
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(112);
+    if (ImGui::InputFloat("Y##MeshVertexPosition", &y)) {
+      transactUndoableAction(
+          doc, "Set Mesh Vertex Y Position",
+          bind(setMeshVertexPosition, placeholders::_1, vertexIndex,
+               wp::Vector2{position.x, y}));
+    }
+
+    ImGui::SameLine();
+    auto indices = set<uint32_t>{vertexIndex};
+    auto canDelete =
+        doc->previewMeshSubObjectDeletionCount(
+            Settings::MeshSubMode::Vertex, indices) > 0;
+    ImGui::BeginDisabled(!canDelete);
+    if (ImGui::Button(ICON_FA_TRASH "##DeleteSelectedMeshVertex")) {
+      transactUndoableAction(
+          doc, "Delete Mesh Vertex",
+          bind(deleteMeshSubObjects, placeholders::_1,
+               Settings::MeshSubMode::Vertex, indices));
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      ImGui::SetTooltip(canDelete
+                            ? "Delete selected vertex"
+                            : "This Ring cannot contain fewer than three vertices");
     }
   }
 
