@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,11 @@ namespace core {
 enum class PrefabTilingType : uint32_t {
   Square = 0,
 };
+
+// The ordered rotations a Prefab instance may use for this tiling type.
+// This core lookup deliberately does not depend on the editor-only tiling
+// guide definitions.
+[[nodiscard]] std::span<float const> prefabTilingRotationAngles(PrefabTilingType type);
 
 // A named, stably identified collection of Primitives authored as a unit.
 // Prefab deliberately is not Serializable: DefinePrefabs owns persistence and

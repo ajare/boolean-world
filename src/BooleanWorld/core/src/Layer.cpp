@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cassert>
 #include <iterator>
+#include <limits>
+#include <set>
 
 #include "core/Layer.h"
 #include "core/CoreException.h"
@@ -35,7 +37,7 @@ Layer::Layer()
 }
 
 Layer::Layer(uint32_t id, string const& name, float size, float gridSize)
-    : mId(id), mName(name), mExtents(-size / 2, -size / 2, size, size), mActiveStepIndex(0), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
+    : mId(id), mNextStepId(0), mName(name), mExtents(-size / 2, -size / 2, size, size), mActiveStepIndex(0), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&Layer::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   seedFirstStep();
@@ -46,7 +48,7 @@ Layer::Layer(uint32_t id, string const& name, float size, float gridSize)
 }
 
 Layer::Layer(Layer const& other)
-    : mActiveStepIndex(0), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
+    : mNextStepId(0), mActiveStepIndex(0), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&Layer::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   copyFrom(other);
@@ -69,6 +71,7 @@ void Layer::swapState(Layer& other) noexcept {
 
   using std::swap;
   swap(mId, other.mId);
+  swap(mNextStepId, other.mNextStepId);
   swap(mName, other.mName);
   swap(mExtents, other.mExtents);
   swap(mSteps, other.mSteps);
@@ -96,6 +99,7 @@ void Layer::copyFrom(Layer const& other) {
   Serializable::copyFrom(other);
 
   mId = other.mId;
+  mNextStepId = other.mNextStepId;
   mName = other.mName;
   mExtents = other.mExtents;
 
@@ -136,7 +140,9 @@ void Layer::copyFrom(Layer const& other) {
   deleteSteps();
   mSteps.reserve(other.mSteps.size());
   for (auto const* step : other.mSteps) {
-    mSteps.push_back(step->copy(primitiveMap));
+    auto* clone = step->copy(primitiveMap);
+    clone->setId(step->getId());
+    mSteps.push_back(clone);
   }
 
   for (auto const& [source, clone] : primitiveMap) {
@@ -151,7 +157,17 @@ void Layer::copyFrom(Layer const& other) {
 void Layer::seedFirstStep() {
   assert(mSteps.empty() && "Layer::seedFirstStep - the Layer already has steps");
 
-  mSteps.push_back(new PrimitiveField);
+  auto* step = new PrimitiveField;
+  assignStepId(step);
+  mSteps.push_back(step);
+}
+
+void Layer::assignStepId(LayerBuildStep* step) {
+  if (mNextStepId == numeric_limits<uint32_t>::max()) {
+    throw CoreException("No LayerBuildStep ids remain in this Layer");
+  }
+
+  step->setId(mNextStepId++);
 }
 
 void Layer::deleteSteps() {
@@ -185,6 +201,7 @@ void Layer::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
     serializer->writeString("name", mName);
     serializer->writeVector2("minExtent", mExtents.getMinExtent());
     serializer->writeVector2("maxExtent", mExtents.getMaxExtent());
+    serializer->writeUint32("nextStepId", mNextStepId);
 
     // Only the recipe is written; the Primitives it produces are derived on
     // load by rebuilding from it (docs/adr/0014).
@@ -224,6 +241,7 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   uint32_t id;
   string name;
   wp::Vector2 minExtent, maxExtent;
+  uint32_t nextStepId;
   vector<unique_ptr<LayerBuildStep>> steps;
   vector<unique_ptr<WorldTriggerLine>> triggerLines;
 
@@ -234,6 +252,8 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
       name = serializer->readString("name", true);
       minExtent = serializer->readVector2("minExtent");
       maxExtent = serializer->readVector2("maxExtent");
+      nextStepId = serializer->readUint32(
+          "nextStepId", !serializer->isPositional(), ~0u);
 
       serializer->beginArray("steps");
       {
@@ -260,6 +280,23 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
 
       if (steps.empty() || !steps.front()->mayBeFirstStep()) {
         throw CoreException("A Layer's first build step must be a PrimitiveField step");
+      }
+
+      if (nextStepId == ~0u) {
+        // Files saved before LayerBuildStep ids existed have no references to
+        // preserve, so assign their recipe-order ids as they are first loaded.
+        nextStepId = (uint32_t)steps.size();
+        for (uint32_t i = 0; i < steps.size(); ++i) {
+          steps[i]->setId(i);
+        }
+      } else {
+        set<uint32_t> stepIds;
+        for (auto const& step : steps) {
+          if (step->getId() == ~0u || !stepIds.insert(step->getId()).second ||
+              step->getId() >= nextStepId) {
+            throw CoreException("Invalid or duplicate LayerBuildStep id in Layer");
+          }
+        }
       }
 
       serializer->beginArray("triggerLines");
@@ -332,6 +369,7 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
 
   // Commit
   mId = id;
+  mNextStepId = nextStepId;
   mName = name;
   mExtents.setPosition(minExtent);
   mExtents.setSize(maxExtent - minExtent);
@@ -555,6 +593,7 @@ uint32_t Layer::insertStep(uint32_t index, LayerBuildStep* step) {
     throw CoreException(format("Cannot insert a build step at index {} into a Layer with {} steps", index, getNumSteps()));
   }
 
+  assignStepId(step);
   mSteps.insert(mSteps.begin() + index, step);
 
   // Inserting at or before the active step's index shifts it along with

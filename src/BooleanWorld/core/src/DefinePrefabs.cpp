@@ -1,6 +1,7 @@
 #include "core/DefinePrefabs.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <format>
 #include <limits>
@@ -12,8 +13,31 @@
 
 namespace bw {
 namespace core {
+namespace {
+
+constexpr std::array squareRotationAngles{0.0f, 90.0f, 180.0f, 270.0f};
+
+struct PrefabTilingRotationDefinition {
+  PrefabTilingType type;
+  std::span<float const> angles;
+};
+
+const std::array prefabTilingRotationDefinitions{
+    PrefabTilingRotationDefinition{PrefabTilingType::Square, squareRotationAngles},
+};
+
+}  // namespace
 
 using namespace std;
+
+span<float const> prefabTilingRotationAngles(PrefabTilingType type) {
+  auto const it = find_if(
+      prefabTilingRotationDefinitions.begin(), prefabTilingRotationDefinitions.end(),
+      [type](PrefabTilingRotationDefinition const& definition) {
+        return definition.type == type;
+      });
+  return it != prefabTilingRotationDefinitions.end() ? it->angles : span<float const>{};
+}
 
 Prefab::Prefab(uint32_t id, string const& name)
     : mId(id), mName(name) {

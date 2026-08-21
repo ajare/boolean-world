@@ -44,6 +44,7 @@ class BW_API Layer : public Serializable {
 
 private:
   uint32_t mId;
+  uint32_t mNextStepId;
 
   std::string mName;
 
@@ -86,6 +87,8 @@ private:
   void teardown();
 
   void seedFirstStep();
+
+  void assignStepId(LayerBuildStep* step);
 
   void deleteSteps();
 

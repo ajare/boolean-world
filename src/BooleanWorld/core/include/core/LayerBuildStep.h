@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -47,7 +48,12 @@ public:
 // (docs/adr/0014). A step's type is fixed for its lifetime.
 class BW_API LayerBuildStep : public Serializable {
 private:
+  uint32_t mId;
   bool mEnabled;
+
+  void setId(uint32_t id);
+
+  friend class Layer;
 
 private:
   bool childrenModified() const override;
@@ -78,6 +84,10 @@ public:
   [[nodiscard]] static LayerBuildStep* instantiate(std::string const& type);
 
   [[nodiscard]] virtual std::string getType() const = 0;
+
+  // Stable within the owning Layer's lifetime. Unlike a step's position in
+  // the recipe, this does not change when other steps are moved or removed.
+  [[nodiscard]] uint32_t getId() const;
 
   // Whether this step may occupy the Layer's reserved first position.
   [[nodiscard]] virtual bool mayBeFirstStep() const = 0;

@@ -10,6 +10,8 @@
 #include <core/LayerBuildStep.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
+#include <core/SerializationWorkData.h>
+#include <core/YamlSerializer.h>
 
 namespace {
 
@@ -342,6 +344,53 @@ void movingAStepReordersItAndRejectsMovesInvolvingIndexZero() {
           "a rejected moveStep call disturbed the Layer's step list");
 }
 
+void layerBuildStepIdsRemainStableAcrossRecipeChangesAndSerialization() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+  auto const firstId = layer.getStep(0)->getId();
+  auto const secondIndex = layer.addStep(makeField({10.0f}));
+  auto* secondStep = layer.getStep(secondIndex);
+  auto const secondId = secondStep->getId();
+  auto const thirdIndex = layer.addStep(makeField({20.0f}));
+  auto* thirdStep = layer.getStep(thirdIndex);
+  auto const thirdId = thirdStep->getId();
+
+  require(firstId != secondId && secondId != thirdId && firstId != thirdId,
+          "a Layer assigned duplicate build step ids");
+
+  layer.moveStep(secondIndex, thirdIndex);
+  require(secondStep->getId() == secondId && thirdStep->getId() == thirdId,
+          "moving build steps changed their ids");
+
+  layer.removeStep(1);
+  auto const replacementIndex = layer.addStep(makeField({30.0f}));
+  auto const replacementId = layer.getStep(replacementIndex)->getId();
+  require(replacementId != thirdId && replacementId > thirdId,
+          "removing a build step allowed its id to be reused");
+
+  auto writer = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::toString());
+  bw::core::SerializationWorkData writeData;
+  layer.serialize(writer, writeData);
+  writer->serialize();
+
+  bw::core::Layer loaded;
+  auto reader = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::fromString(writer->getSerializedString()));
+  reader->deserialize();
+  bw::core::SerializationWorkData readData;
+  readData.accelGridSize = 10.0f;
+  require(loaded.deserialize(reader, readData),
+          "a Layer with build step ids failed to deserialize");
+  require(loaded.getStep(0)->getId() == firstId &&
+              loaded.getStep(1)->getId() == secondId &&
+              loaded.getStep(2)->getId() == replacementId,
+          "LayerBuildStep ids did not round-trip through serialization");
+
+  auto const afterLoadIndex = loaded.addStep(makeField({40.0f}));
+  require(loaded.getStep(afterLoadIndex)->getId() > replacementId,
+          "deserializing a Layer allowed a removed build step id to be reused");
+}
+
 void aNewLayersActiveStepIsTheFirstStepAndAddPrimitiveWritesIntoIt() {
   bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
 
@@ -542,6 +591,7 @@ int main() {
     stepsAreOnlyInsertableAtIndexOneOrAbove();
     removingAStepDropsThePrimitivesItProduced();
     movingAStepReordersItAndRejectsMovesInvolvingIndexZero();
+    layerBuildStepIdsRemainStableAcrossRecipeChangesAndSerialization();
     aNewLayersActiveStepIsTheFirstStepAndAddPrimitiveWritesIntoIt();
     selectingAnotherStepRedirectsWhereAddPrimitiveWrites();
     addPrimitiveIsRejectedWhenTheActiveStepIsDisabled();

@@ -78,6 +78,14 @@ private:
   }
 };
 
+void squareTilingHasTheCoreRotationAngleTable() {
+  auto const angles = bw::core::prefabTilingRotationAngles(
+      bw::core::PrefabTilingType::Square);
+  require(angles.size() == 4 && angles[0] == 0.0f && angles[1] == 90.0f &&
+              angles[2] == 180.0f && angles[3] == 270.0f,
+          "Square tiling did not expose its four allowed rotation angles");
+}
+
 void prefabIdsNamesAndStepArgumentsBehaveAsAuthoredData() {
   bw::core::DefinePrefabs step;
   require(step.getSelectedPrefab() == nullptr,
@@ -262,6 +270,7 @@ void registryConstructsDefinePrefabsByTypeName() {
 int main() {
   try {
     registryConstructsDefinePrefabsByTypeName();
+    squareTilingHasTheCoreRotationAngleTable();
     prefabIdsNamesAndStepArgumentsBehaveAsAuthoredData();
     selectionControlsOutputCapabilitiesAndLayerStorage();
     laterStepsCannotObserveSelectedPrefabPrimitives();
