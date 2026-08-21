@@ -406,6 +406,15 @@ void handleSelections(
     bw::core::WorldData const* worldData,
     editor::Settings& settings,
     editor::PointerInput const& input) {
+  if (input.cursorInWorldView && !input.cursorInMiniMap &&
+      doc->meshDrawToolArmed()) {
+    auto position = editor::Document::snapMeshDrawPosition(
+        input.worldPosition, settings.showGrid, settings.gridSize);
+    if (doc->meshDrawClickWouldClose(position, settings)) {
+      ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    }
+  }
+
   gEditorInteraction.updateSelection(doc, worldData, settings, input);
 
   auto const& hover = gEditorInteraction.getHover();
