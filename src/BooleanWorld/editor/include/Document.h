@@ -314,8 +314,8 @@ public:
   [[nodiscard]] uint32_t previewMeshEdgeSplitCount(
       std::set<uint32_t> const& edgeIndices) const;
 
-  // Duplicates a selected hole boundary as a top-level filled Ring while
-  // retaining the original hole on its outer ComplexPolygon.
+  // Retains a selected Hole and fills it with a welded direct Island. Existing
+  // immediate Islands are wrapped in matching Holes beneath the new Island.
   bool fillMeshHole(uint32_t holeRingIndex);
 
   bool indexInSelection(uint32_t index) const;

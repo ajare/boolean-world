@@ -2036,8 +2036,10 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
           "the existing island was not top-level before filling the hole");
   auto islandBefore = primitive->getVertices()[1];
 
-  require(document.fillMeshHole(holeIndex),
-          "the selected hole could not be filled");
+  auto treeBeforeFill = primitive->flattenTree();
+  editor::transactUndoableAction(
+      &document, "Fill nested Hole",
+      [holeIndex](editor::Document* doc) { return doc->fillMeshHole(holeIndex); });
   require(primitive->getVertices().size() == 3 &&
               primitive->getVertices()[0].size() == 2 &&
               primitive->getVertices()[1].size() == 2 &&
@@ -2052,18 +2054,52 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
           "the newly filled Ring was not selected as a solid polygon");
 
   auto filledRing = *document.getSelectedMeshRingIndices().begin();
+  editor::undo(&document);
+  primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  require(primitive->flattenTree().size() == treeBeforeFill.size() &&
+              primitive->getShells()[0].holes[0].islands.size() == 1,
+          "Undo did not restore the original Hole and its immediate Island");
+  editor::redo(&document);
+  primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  require(document.getActiveMeshPrimitiveIndex() == meshIndex &&
+              document.getSelectedMeshRingIndices() == std::set<uint32_t>{filledRing} &&
+              primitive->getShells()[0].holes[0].islands.size() == 1 &&
+              primitive->getShells()[0].holes[0].islands[0].holes.size() == 1,
+          "Redo did not restore the wrapping hierarchy and filled Ring focus");
+
   auto const& gapHoles = document.getActiveMesh()
                              ->getPolygon(filledRing)
                              .getHoleIndices();
+  auto mappingsAfterRedo = primitive->createEditingProxy()->getNodeMappings();
+  uint32_t wrappedIsland = ~0u;
+  if (gapHoles.size() == 1) {
+    for (auto const& mapping : mappingsAfterRedo) {
+      if (mapping.role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Island &&
+          mapping.parentPolygonIndex == gapHoles.front()) {
+        wrappedIsland = mapping.polygonIndex;
+      }
+    }
+  }
   require(document.getActiveMesh()->getPolygon(holeIndex).getEdgeIndexSet() ==
                   document.getActiveMesh()->getPolygon(filledRing).getEdgeIndexSet() &&
-              gapHoles.size() == 1 &&
+              gapHoles.size() == 1 && wrappedIsland != ~0u &&
               document.getActiveMesh()->getPolygon(gapHoles.front()).getEdgeIndexSet() ==
-                  document.getActiveMesh()
-                      ->getPolygon(document.getActiveMesh()
-                                       ->getNextPolygonIndex(holeIndex))
-                      .getEdgeIndexSet(),
+                  document.getActiveMesh()->getPolygon(wrappedIsland).getEdgeIndexSet(),
           "the gap duplicated boundaries instead of sharing the existing topology");
+  auto const& storedFilledHole = primitive->getShells()[0].holes[0];
+  auto ringsEqual = [](bw::core::ClosedPolygon const& first,
+                       bw::core::ClosedPolygon const& second) {
+    return first.size() == second.size() &&
+           std::equal(first.begin(), first.end(), second.begin(),
+                      [](auto const& a, auto const& b) { return a.p == b.p; });
+  };
+  require(&storedFilledHole.ring != &storedFilledHole.islands[0].ring &&
+              ringsEqual(storedFilledHole.ring, storedFilledHole.islands[0].ring) &&
+              ringsEqual(storedFilledHole.islands[0].holes[0].ring,
+                         storedFilledHole.islands[0].holes[0].islands[0].ring),
+          "welded proxy boundaries were not stored as independent equal Ring values");
 
   settings.meshSubMode = editor::Settings::MeshSubMode::Polygon;
   settings.meshEdgeSelectionDistance = 0.01f;
@@ -2077,8 +2113,10 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
       2.0f;
   auto weldedHover =
       document.getHoveredMeshSubObjectIndices(edgeMidpoint, settings);
-  require(weldedHover == std::vector<uint32_t>{filledRing},
-          "the welded hole was selectable instead of only its filled island (hover count " +
+  require(weldedHover.size() == 2 &&
+              std::find(weldedHover.begin(), weldedHover.end(), holeIndex) != weldedHover.end() &&
+              std::find(weldedHover.begin(), weldedHover.end(), filledRing) != weldedHover.end(),
+          "both authored sides of the welded boundary were not selectable (hover count " +
               std::to_string(weldedHover.size()) + ")");
 
   auto weldedVertex = document.getActiveMesh()
@@ -2096,6 +2134,82 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
           "moving the island did not move its welded hole boundary");
   require(document.commitMeshDrag(), "the welded island move did not commit");
   document.endMeshDrag();
+
+  // The retained Hole remains independently selectable, but moving that side
+  // still edits the one shared boundary and therefore both stored Ring values.
+  auto afterIslandMove = document.getActiveMesh()->getVertex(weldedVertex).getPosition();
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Polygon, {holeIndex});
+  document.beginMeshDrag(editor::Settings::MeshSubMode::Polygon);
+  auto holeDelta = wp::Vector2{-0.25f, 0.25f};
+  require(document.updateMeshDrag(holeDelta, false, 0.0f) == holeDelta &&
+              document.getActiveMesh()->getVertex(weldedVertex).getPosition() ==
+                  afterIslandMove + holeDelta,
+          "moving the retained Hole did not move its welded Island boundary");
+  require(document.commitMeshDrag(), "the welded Hole move did not commit");
+  document.endMeshDrag();
+
+  auto sharedEdgeIndex = document.getActiveMesh()
+                             ->getPolygon(filledRing)
+                             .getEdges()
+                             .front()
+                             .index;
+  editor::transactUndoableAction(
+      &document, "Split welded boundary",
+      [sharedEdgeIndex](editor::Document* doc) {
+        return doc->splitMeshEdges({sharedEdgeIndex}) == 1;
+      });
+  primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  require(primitive->getShells()[0].holes[0].ring.size() == 5 &&
+              primitive->getShells()[0].holes[0].islands[0].ring.size() == 5,
+          "splitting the welded Edge did not update both stored boundaries");
+  editor::undo(&document);
+  primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  require(primitive->getShells()[0].holes[0].ring.size() == 4 &&
+              primitive->getShells()[0].holes[0].islands[0].ring.size() == 4,
+          "Undo did not restore both sides of the welded Edge split");
+  editor::redo(&document);
+  primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  require(primitive->getShells()[0].holes[0].ring.size() == 5 &&
+              primitive->getShells()[0].holes[0].islands[0].ring.size() == 5,
+          "Redo detached one side of the welded Edge split");
+
+  auto generatedSamples = [](bw::core::MeshPrimitive* value) {
+    value->updateVertexPositions();
+    bw::core::ArrangementWorldDataGenerator generator;
+    generator.generate(std::vector<bw::core::Primitive*>{value});
+    bw::core::ArrangementWorldData data(
+        generator.getWorldData(), {{-1000.0f, -1000.0f}, {2000.0f, 2000.0f}},
+        1.0f, 1.0f);
+    std::array<bool, 4> result{};
+    auto const& shell = value->getVertices().front().front();
+    auto [minimumX, maximumX] = std::minmax_element(
+        shell.begin(), shell.end(), [](auto const& a, auto const& b) {
+          return a.p.x < b.p.x;
+        });
+    auto centre = (minimumX->p + maximumX->p) * 0.5f;
+    auto halfWidth = (maximumX->p.x - minimumX->p.x) * 0.5f;
+    auto points = std::array{
+        centre, centre + wp::Vector2{halfWidth * 0.4f, 0.0f},
+        centre + wp::Vector2{halfWidth * 0.8f, 0.0f},
+        centre + wp::Vector2{halfWidth * 2.0f, 0.0f}};
+    std::transform(points.begin(), points.end(), result.begin(),
+                   [&](wp::Vector2 const& point) {
+                     return data.getContainingFaceIndex(point) != ~0u;
+                   });
+    return result;
+  };
+  auto samplesBeforeReload = generatedSamples(primitive);
+  require(samplesBeforeReload == std::array{true, true, true, false},
+          "generated World geometry did not contain the complete filled result (" +
+              std::to_string(samplesBeforeReload[0]) + "," +
+              std::to_string(samplesBeforeReload[1]) + "," +
+              std::to_string(samplesBeforeReload[2]) + "," +
+              std::to_string(samplesBeforeReload[3]) + ")");
+
   auto path = std::filesystem::temp_directory_path() /
               "boolean-world-fill-hole-topology.world.yaml";
   document.saveDocAs(path.string());
@@ -2103,14 +2217,18 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
   require(reloaded.openDoc(path.string()), "the filled-hole World did not reload");
   std::filesystem::remove(path);
   uint32_t reloadedMeshIndex = ~0u;
+  bw::core::MeshPrimitive* reloadedPrimitive = nullptr;
   for (uint32_t i = 0; i < reloaded.getWorld()->getNumPrimitives(); ++i) {
     auto* candidate = dynamic_cast<bw::core::MeshPrimitive*>(
         reloaded.getWorld()->getPrimitive(i));
     if (candidate && !candidate->hasFlag(BW_PRIMITIVE_GHOST_FLAG)) {
       reloadedMeshIndex = i;
+      reloadedPrimitive = candidate;
       break;
     }
   }
+  require(reloadedPrimitive && generatedSamples(reloadedPrimitive) == samplesBeforeReload,
+          "save/reload changed generated World geometry at representative points");
   require(reloaded.activateMesh(reloadedMeshIndex),
           "the reloaded filled-hole Mesh did not activate");
   auto* reloadedMesh = reloaded.getActiveMesh();

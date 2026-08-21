@@ -29,6 +29,21 @@ bool near(float a, float b) {
   return std::abs(a - b) < 1e-3f;
 }
 
+bool sameRing(ClosedPolygon const& first, ClosedPolygon const& second) {
+  if (first.size() != second.size() || first.empty()) return false;
+  for (size_t offset = 0; offset < second.size(); ++offset) {
+    bool forward = true;
+    bool reverse = true;
+    for (size_t i = 0; i < first.size(); ++i) {
+      forward &= first[i].p == second[(offset + i) % second.size()].p;
+      reverse &= first[i].p ==
+                 second[(offset + second.size() - i) % second.size()].p;
+    }
+    if (forward || reverse) return true;
+  }
+  return false;
+}
+
 std::vector<ComplexPolygon> readProxy(wp::geometry::Mesh const& mesh) {
   std::vector<ComplexPolygon> result;
   for (auto polygonIndex = mesh.getFirstPolygonIndex();
@@ -311,6 +326,69 @@ void sharedMutationsCommitToEveryAuthoredRingAtomically() {
           "deleting a shared Vertex did not update every participating Ring");
 }
 
+void fillHoleWrapsImmediateIslandsWithoutLosingDescendants() {
+  bw::core::MeshFilledRegion descendant{ring(-6, -1, -5, 1), {}};
+  bw::core::MeshFilledRegion left{
+      ring(-7, -3, -4, 3), {{ring(-6.5f, -2, -4.5f, 2), {descendant}}}};
+  bw::core::MeshFilledRegion right{ring(4, -3, 7, 3), {}};
+  bw::core::MeshFilledRegion shell{
+      ring(-10, -10, 10, 10), {{ring(-9, -9, 9, 9), {left, right}}}};
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {shell}));
+  auto proxy = primitive->createEditingProxy();
+  auto mappings = proxy->getNodeMappings();
+  auto originalHole = mappings[1].polygonIndex;
+  auto filled = proxy->fillHole(originalHole);
+  require(filled != ~0u, "a Hole containing Islands could not be filled");
+  proxy->commitTo(*primitive);
+
+  auto const& retainedHole = primitive->getShells()[0].holes[0];
+  require(retainedHole.islands.size() == 1,
+          "Fill Hole did not create exactly one direct Island");
+  auto const& wrapper = retainedHole.islands[0];
+  require(wrapper.holes.size() == 2 &&
+              wrapper.holes[0].islands.size() == 1 &&
+              wrapper.holes[1].islands.size() == 1 &&
+              wrapper.holes[0].islands[0].holes.size() == 1 &&
+              wrapper.holes[0].islands[0].holes[0].islands.size() == 1,
+          "Fill Hole did not wrap every immediate Island with descendants intact");
+  require(sameRing(retainedHole.ring, wrapper.ring) &&
+              sameRing(wrapper.holes[0].ring,
+                       wrapper.holes[0].islands[0].ring) &&
+              sameRing(wrapper.holes[1].ring,
+                       wrapper.holes[1].islands[0].ring),
+          "Fill Hole did not retain independent coincident Ring values");
+
+  auto rebuilt = primitive->createEditingProxy();
+  auto rebuiltMappings = rebuilt->getNodeMappings();
+  size_t weldedPairs = 0;
+  auto readRing = [&](uint32_t polygonIndex) {
+    ClosedPolygon result;
+    for (auto vertex : rebuilt->getPolygon(polygonIndex).getOrderedVertexIndices()) {
+      result.emplace_back(rebuilt->getVertex(vertex).getPosition());
+    }
+    return result;
+  };
+  for (auto const& mapping : rebuiltMappings) {
+    if (mapping.role != bw::core::MeshPrimitiveEditingProxy::NodeRole::Hole) {
+      continue;
+    }
+    auto const& hole = rebuilt->getPolygon(mapping.polygonIndex);
+    for (auto const& candidate : rebuiltMappings) {
+      if (candidate.role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Island &&
+          candidate.parentPolygonIndex == mapping.polygonIndex &&
+          sameRing(readRing(mapping.polygonIndex), readRing(candidate.polygonIndex))) {
+        ++weldedPairs;
+        require(hole.getEdgeIndexSet() ==
+                    rebuilt->getPolygon(candidate.polygonIndex).getEdgeIndexSet(),
+                "reactivation did not reconstruct a welded Hole/Island boundary");
+      }
+    }
+  }
+  require(weldedPairs == 3,
+          "reactivation did not retain all three created coincident boundaries");
+}
+
 void failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged() {
   auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{{ring(-2, -2, 2, 2), {}}}}));
@@ -369,6 +447,7 @@ int main() {
     coincidentHoleAndIslandRemainIndependentAuthoredRings();
     hierarchyAwareProxyWeldsOnlyExactSharedTopology();
     sharedMutationsCommitToEveryAuthoredRingAtomically();
+    fillHoleWrapsImmediateIslandsWithoutLosingDescendants();
     failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged();
     shallowConversionRejectsCrossEntryNestingAndMalformedTrees();
     std::cout << "MeshPrimitive geometry proxy tests passed\n";

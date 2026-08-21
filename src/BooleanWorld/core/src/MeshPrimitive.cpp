@@ -349,15 +349,6 @@ void normalizeWorldTree(vector<MeshFilledRegion>& shells, wp::Vector2& centre, f
   });
 }
 
-uint32_t addRingSharingBoundary(
-    wp::geometry::Mesh& mesh, uint32_t sourcePolygonIndex) {
-  wp::geometry::IndexVector edgeData;
-  for (auto const& edge : mesh.getPolygon(sourcePolygonIndex).getEdges()) {
-    edgeData.insert(edgeData.end(), {edge.v0, edge.v1, edge.index});
-  }
-  return mesh.addPolygon(wp::geometry::Polygon(edgeData));
-}
-
 }  // namespace
 
 struct MeshPrimitiveEditingProxy::Impl {
@@ -473,7 +464,7 @@ struct MeshPrimitiveEditingProxy::Impl {
 
   vector<MeshFilledRegion> readTree() const { return readTree(mesh); }
 
-  bool allMappingsAreLive(wp::geometry::Mesh const& candidate) const {
+  bool mappingTopologyMatches(wp::geometry::Mesh const& candidate) const {
     set<uint32_t> live;
     for (auto index = candidate.getFirstPolygonIndex();
          !candidate.polygonIndexIterationFinished(index);
@@ -482,9 +473,21 @@ struct MeshPrimitiveEditingProxy::Impl {
     }
     bool valid = true;
     auto visit = [&](auto&& self, Filled const& filled) -> void {
-      valid &= live.contains(filled.polygonIndex);
+      auto check = [&](uint32_t polygonIndex) {
+        valid &= live.contains(polygonIndex);
+        if (valid) {
+          // replaceMesh is a geometry-only entry point. In particular, it may
+          // not duplicate the vertices or edges of just one side of a welded
+          // boundary: no editor operation implicitly unwelds authored Rings.
+          valid &= mesh.getPolygon(polygonIndex).getVertexIndexSet() ==
+                       candidate.getPolygon(polygonIndex).getVertexIndexSet() &&
+                   mesh.getPolygon(polygonIndex).getEdgeIndexSet() ==
+                       candidate.getPolygon(polygonIndex).getEdgeIndexSet();
+        }
+      };
+      check(filled.polygonIndex);
       for (auto const& hole : filled.holes) {
-        valid &= live.contains(hole.polygonIndex);
+        check(hole.polygonIndex);
         for (auto const& island : hole.islands) self(self, island);
       }
     };
@@ -639,7 +642,7 @@ vector<MeshPrimitiveEditingProxy::NodeMapping> MeshPrimitiveEditingProxy::getNod
 }
 
 bool MeshPrimitiveEditingProxy::replaceMesh(wp::geometry::Mesh mesh) {
-  if (!mImpl->allMappingsAreLive(mesh)) return false;
+  if (!mImpl->mappingTopologyMatches(mesh)) return false;
   try {
     auto candidateTree = mImpl->readTree(mesh);
     normalizeAndValidateTree(candidateTree);
@@ -829,6 +832,12 @@ uint32_t MeshPrimitiveEditingProxy::fillHole(uint32_t holePolygonIndex) {
   if (!found) return ~0u;
   normalizeAndValidateTree(candidate);
 
+  // Rebuild in structural pre-order on a detached Impl. That is the same
+  // deterministic ordering used after Undo and save/reload, while Builder's
+  // exact coordinate maps reconstruct every coincident boundary as welded
+  // proxy topology. Publishing only the completed Impl keeps Fill Hole atomic.
+  Impl updated;
+  updated.rebuild(candidate);
   Impl::Hole* target = nullptr;
   auto findHole = [&](auto&& self, vector<Impl::Filled>& filled) -> void {
     for (auto& region : filled) {
@@ -842,22 +851,11 @@ uint32_t MeshPrimitiveEditingProxy::fillHole(uint32_t holePolygonIndex) {
       }
     }
   };
-  findHole(findHole, mImpl->shells);
-  if (!target) return ~0u;
-
-  Impl::Filled wrapper;
-  wrapper.polygonIndex = addRingSharingBoundary(mImpl->mesh, target->polygonIndex);
-  wrapper.anchorVertexIndex = target->anchorVertexIndex;
-  for (auto& island : target->islands) {
-    Impl::Hole gap;
-    gap.polygonIndex = addRingSharingBoundary(mImpl->mesh, island.polygonIndex);
-    gap.anchorVertexIndex = island.anchorVertexIndex;
-    mImpl->mesh.addHoleToPolygon(wrapper.polygonIndex, gap.polygonIndex);
-    gap.islands.push_back(move(island));
-    wrapper.holes.push_back(move(gap));
-  }
-  target->islands = {move(wrapper)};
-  return target->islands.front().polygonIndex;
+  findHole(findHole, updated.shells);
+  if (!target || target->islands.empty()) return ~0u;
+  auto result = target->islands.front().polygonIndex;
+  *mImpl = move(updated);
+  return result;
 }
 
 void MeshPrimitiveEditingProxy::commitTo(MeshPrimitive& primitive) const {
