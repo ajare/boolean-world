@@ -11,7 +11,6 @@
 #include "Defines.h"
 #include "Actions.h"
 #include "EditorException.h"
-#include "UiHelpers.h"
 
 namespace editor {
 using namespace std;
@@ -263,7 +262,7 @@ bool createMeshPrimitiveFromDrawnRing(Document* doc) {
     // authored topology, rather than relying on subsequent proxy movement to
     // emit a Primitive event. The transaction's normal request may coalesce
     // with this one; both snapshot the completed hole.
-    regenerateWorldData(doc);
+    doc->getWorld()->generateClipping(true);
   }
   return true;
 }
