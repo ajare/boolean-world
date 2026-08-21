@@ -325,6 +325,17 @@ public:
   void clearSelections();
   void clearMeshSelections();
 
+  // Drops any selected Primitive/TriggerLine index that no longer names a
+  // live object - e.g. after a delete rebuilds the Layer's Primitive list
+  // and re-stamps ids from scratch. Called at the end of every undoable
+  // action (ticket #198) since selection is index-based, not identity-based:
+  // a surviving index may now name a different Primitive, which is accepted
+  // as out of scope for this ticket. mSelectedWorldVertexIndex is left
+  // alone - it names a vertex in the asynchronously regenerated WorldData,
+  // which Document has no synchronous bound for, and nothing dereferences it
+  // as an array index.
+  void revalidateSelection();
+
   std::set<uint32_t> const& getSelectedPrimitiveIndices() const;
 
   bool anyPrimitiveIndicesSelected(std::vector<uint32_t> const& indices) const;

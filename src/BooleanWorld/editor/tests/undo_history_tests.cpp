@@ -1,3 +1,4 @@
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <set>
@@ -13,6 +14,7 @@
 #include <core/SuperformulaPolygon.h>
 #include <core/World.h>
 #include <core/WorldDataGenerator.h>
+#include <core/WorldTriggerLine.h>
 
 #include "Actions.h"
 #include "Document.h"
@@ -60,6 +62,17 @@ void undoAndRedoPreserveEachIntermediateSnapshot() {
   editor::Document document;
   document.newDoc();
   document.getWorld()->setName("one");
+
+  // Selection is revalidated against live Primitive indices at the end of
+  // every committed action (ticket #198), so the indices this test selects
+  // across undo/redo need real Primitives behind them - the ghost alone
+  // (index 0) is not enough.
+  for (int i = 0; i < 4; ++i) {
+    document.getWorld()->addPrimitive(new bw::core::RectanglePolygon(
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero, 1.0f));
+  }
+
   document.setSelectedPrimitiveIndices({1});
 
   editor::transactUndoableAction(&document, "two", [](editor::Document* doc) {
@@ -279,6 +292,47 @@ void prefabFieldStepActionsUndoAndRedoWithoutLosingReferences() {
           "redo moving DefinePrefabs lost PrefabField references");
 }
 
+void deletingTheLastPrimitiveDropsItFromTheSelection() {
+  editor::Document document;
+  document.newDoc();
+  auto* world = document.getWorld().get();
+
+  world->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f));
+  world->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f));
+
+  auto lastIndex = world->getNumPrimitives() - 1;
+  document.setSelectedPrimitiveIndices({lastIndex});
+
+  editor::transactUndoableAction(&document, "Delete Primitive",
+      std::bind(editor::deletePrimitives, std::placeholders::_1, std::set<uint32_t>{lastIndex}));
+
+  for (auto index : document.getSelectedPrimitiveIndices()) {
+    require(index < document.getWorld()->getNumPrimitives(),
+            "deleting the last Primitive left an out-of-range index in the selection");
+  }
+}
+
+void deletingASelectedTriggerLineLeavesTheSelectionValidOrUnset() {
+  editor::Document document;
+  document.newDoc();
+  auto* world = document.getWorld().get();
+
+  auto triggerLineIndex = world->addTriggerLine(
+      new bw::core::WorldTriggerLine({0.0f, 0.0f}, {1.0f, 1.0f}));
+  document.setSelectedTriggerLineIndex(triggerLineIndex);
+
+  editor::transactUndoableAction(&document, "Delete TriggerLine",
+      std::bind(editor::deleteTriggerLine, std::placeholders::_1, triggerLineIndex));
+
+  require(document.getSelectedTriggerLineIndex() == ~0u ||
+              document.getSelectedTriggerLineIndex() < document.getWorld()->getNumTriggerLines(),
+          "deleting a selected TriggerLine left an out-of-range selected index");
+}
+
 void abandonedAndCommittedActionsClearTransactionValues() {
   editor::Document document;
   bw::core::World world(100.0f, 10.0f);
@@ -469,6 +523,8 @@ int main() {
     undoAndRedoRestoreNonPrimitiveSelections();
     prefabEditsAreUndoableAndRestoreStepQualifiedFocus();
     prefabFieldStepActionsUndoAndRedoWithoutLosingReferences();
+    deletingTheLastPrimitiveDropsItFromTheSelection();
+    deletingASelectedTriggerLineLeavesTheSelectionValidOrUnset();
     abandonedAndCommittedActionsClearTransactionValues();
     superformulaControlValueEditIsDirtyAndUndoable();
     runtimeFreeSnapshotPreservesEditorGenerationConfiguration();

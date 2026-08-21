@@ -358,6 +358,32 @@ void Document::clearMeshSelections() {
   mSelectedMeshRingIndices.clear();
 }
 
+void Document::revalidateSelection() {
+  if (!mWorld) {
+    return;
+  }
+
+  auto numPrimitives = mWorld->getNumPrimitives();
+
+  for (auto it = mSelectedPrimitiveIndices.begin(); it != mSelectedPrimitiveIndices.end();) {
+    if (*it >= numPrimitives) {
+      it = mSelectedPrimitiveIndices.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  if (mSelectedTriggerLineIndex != ~0u && mSelectedTriggerLineIndex >= mWorld->getNumTriggerLines()) {
+    mSelectedTriggerLineIndex = ~0u;
+  }
+
+  // mSelectedWorldVertexIndex names a vertex in the asynchronously
+  // regenerated WorldData, which Document has no synchronous handle on here,
+  // so there is no live count to bound-check it against. It is left alone:
+  // nothing dereferences it as an array index (only compares it to ~0u), so
+  // unlike the two selections above it cannot cause an out-of-bounds read.
+}
+
 DocumentHover Document::getHover(
     wp::Vector2 const& mouseWorldPos,
     Settings const& settings,

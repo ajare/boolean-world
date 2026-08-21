@@ -209,6 +209,11 @@ void commitUndoableAction(Document* doc, string const& id) {
   gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
   gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
 
+  // Indices in the Document's selection may have been invalidated by the
+  // action just committed - e.g. a delete rebuilds the Layer's Primitive
+  // list and re-stamps every id from its new position (ticket #198).
+  doc->revalidateSelection();
+
   // The arrangement and everything drawn from it are derived from the World,
   // so an action that changed the World has just made them stale. This is the
   // one place that needs to say so: every action commits through here.
@@ -247,6 +252,7 @@ bool transactUndoableActionAtomically(
     bw::common::trimDequeToCapacity(gUndoStack, MAX_STACK_SIZE);
     gRedoStack.clear();
     doc->setModified();
+    doc->revalidateSelection();
     regenerateWorldData(doc);
     return true;
   } catch (...) {
