@@ -3541,11 +3541,23 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
-  // The draw tool. Arming is deliberate and one-way: Esc is what stands
-  // between drawing and not drawing, in two stages.
+  // In Polygon sub-mode Ctrl+Shift+C fills one explicitly selected hole.
+  // Otherwise it retains its draw-tool meaning; arming is deliberate and
+  // one-way, with Esc standing between drawing and not drawing in two stages.
   if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      doc->armMeshDrawTool(settings);
+      auto const& selectedRings = doc->getSelectedMeshRingIndices();
+      if (settings.mode == Settings::Mode::Mesh &&
+          settings.meshSubMode == Settings::MeshSubMode::Polygon &&
+          doc->getActiveMesh() && selectedRings.size() == 1 &&
+          doc->getActiveMesh()->getPolygon(*selectedRings.begin()).isHole()) {
+        auto holeRing = *selectedRings.begin();
+        transactUndoableAction(
+            doc, "Fill Mesh Hole",
+            bind(fillMeshHole, placeholders::_1, holeRing));
+      } else {
+        doc->armMeshDrawTool(settings);
+      }
     }
   }
 

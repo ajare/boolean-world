@@ -1473,6 +1473,56 @@ void drawingMultipleHolesKeepsThemOnTheSameComplexPolygon() {
           "the two drawn holes were not retained as independent Rings");
 }
 
+void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  settings.meshVertexPickRadius = 0.1f;
+  document.newDoc();
+  auto meshIndex = addMeshWithHole(document);
+  require(document.activateMesh(meshIndex), "the fill-hole Mesh did not activate");
+
+  auto* mesh = document.getActiveMesh();
+  auto outerIndex = mesh->getFirstPolygonIndex();
+  auto holeIndex = mesh->getPolygon(outerIndex).getHoleIndices().front();
+  std::vector<wp::Vector2> holePositions;
+  for (auto vertex : mesh->getPolygon(holeIndex).getOrderedVertexIndices()) {
+    holePositions.push_back(mesh->getVertex(vertex).getPosition());
+  }
+  auto holeCentre = wp::Vector2{};
+  for (auto const& position : holePositions) {
+    holeCentre += position;
+  }
+  holeCentre /= static_cast<float>(holePositions.size());
+
+  require(document.armMeshDrawTool(settings), "the island draw tool did not arm");
+  document.placeMeshDrawVertex(holeCentre + wp::Vector2{-2.0f, -2.0f}, settings);
+  document.placeMeshDrawVertex(holeCentre + wp::Vector2{2.0f, -2.0f}, settings);
+  document.placeMeshDrawVertex(holeCentre + wp::Vector2{0.0f, 2.0f}, settings);
+  require(document.closeMeshDrawRing() != nullptr,
+          "the existing island fixture did not close");
+
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  require(primitive->getVertices().size() == 2,
+          "the existing island was not top-level before filling the hole");
+  auto islandBefore = primitive->getVertices()[1];
+
+  require(document.fillMeshHole(holeIndex),
+          "the selected hole could not be filled");
+  require(primitive->getVertices().size() == 3 &&
+              primitive->getVertices()[0].size() == 2 &&
+              primitive->getVertices()[1].size() == islandBefore.size() &&
+              primitive->getVertices()[1][0].size() == islandBefore[0].size() &&
+              primitive->getVertices()[1][0][0].p == islandBefore[0][0].p &&
+              primitive->getVertices()[2].size() == 1,
+          "filling the hole did not create a top-level solid alongside its existing island");
+  require(document.getSelectedMeshRingIndices().size() == 1 &&
+              !document.getActiveMesh()
+                   ->getPolygon(*document.getSelectedMeshRingIndices().begin())
+                   .isHole(),
+          "the newly filled Ring was not selected as a solid polygon");
+}
+
 void drawingContextRejectsEscapesAndSelfCrossings() {
   auto settings = meshDrawSettings();
 
@@ -1644,6 +1694,7 @@ int main() {
     closingADrawnRingCreatesAMeshPrimitiveWithCanonicalWinding();
     drawingContextCreatesHolesAndFilledIslands();
     drawingMultipleHolesKeepsThemOnTheSameComplexPolygon();
+    fillingASelectedHoleCreatesASolidAlongsideExistingIslands();
     drawingContextRejectsEscapesAndSelfCrossings();
     theWholeDrawingGestureIsOneUndoEntry();
     std::cout << "Editor selection interactions passed\n";

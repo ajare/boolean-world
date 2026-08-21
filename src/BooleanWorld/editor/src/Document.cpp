@@ -1528,6 +1528,41 @@ bool Document::escapeMeshDraw() {
   return true;
 }
 
+bool Document::fillMeshHole(uint32_t holeRingIndex) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) {
+    return false;
+  }
+
+  bool found = false;
+  for (auto index = mActiveMesh->getFirstPolygonIndex();
+       !mActiveMesh->polygonIndexIterationFinished(index);
+       index = mActiveMesh->getNextPolygonIndex(index)) {
+    if (index == holeRingIndex) {
+      found = true;
+      break;
+    }
+  }
+  if (!found || !mActiveMesh->getPolygon(holeRingIndex).isHole()) {
+    return false;
+  }
+
+  auto points = ringPositions(*mActiveMesh, holeRingIndex);
+  // The retained hole stays clockwise; its new, independent solid copy uses
+  // canonical anticlockwise winding and its own vertices/edges.
+  if (twiceSignedArea(points) < 0.0f) {
+    reverse(points.begin(), points.end());
+  }
+  auto filledRingIndex = addDrawnRing(*mActiveMesh, points);
+
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      mWorld->getPrimitive(mActiveMeshPrimitiveIndex));
+  primitive->updateFromGeometryProxy(*mActiveMesh);
+  primitive->updateVertexPositions();
+  clearMeshSelections();
+  mSelectedMeshRingIndices.insert(filledRingIndex);
+  return true;
+}
+
 bw::core::Primitive* Document::closeMeshDrawRing() {
   if (!mMeshDrawToolArmed || mMeshDrawVertices.size() < 3 || !isActive()) {
     return nullptr;

@@ -237,6 +237,10 @@ bool splitMeshEdges(Document* doc, set<uint32_t> const& edgeIndices) {
   return doc->splitMeshEdges(edgeIndices) > 0;
 }
 
+bool fillMeshHole(Document* doc, uint32_t holeRingIndex) {
+  return doc->fillMeshHole(holeRingIndex);
+}
+
 bool recentreActiveMesh(Document* doc) {
   return doc->recentreActiveMesh();
 }

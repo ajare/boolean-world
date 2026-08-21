@@ -293,6 +293,10 @@ public:
   // Returns the number of edges split.
   uint32_t splitMeshEdges(std::set<uint32_t> const& edgeIndices);
 
+  // Duplicates a selected hole boundary as a top-level filled Ring while
+  // retaining the original hole on its outer ComplexPolygon.
+  bool fillMeshHole(uint32_t holeRingIndex);
+
   bool indexInSelection(uint32_t index) const;
 
   void setSelectedWorldVertexIndex(uint32_t index);
