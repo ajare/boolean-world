@@ -753,6 +753,57 @@ void meshDragClampsAtLastValidPositionWhenAHoleWouldEscapeItsOuter() {
           "the hole vertex did not stay inside its outer at the last valid position");
 }
 
+void addingAMeshHoleInvalidatesTheParentTriangulation() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  require(document.activateMesh(meshIndex), "the hole invalidation Mesh did not activate");
+  auto* mesh = document.getActiveMesh();
+  auto outer = mesh->getFirstPolygonIndex();
+
+  // Cache the solid triangulation before attaching the new hole, matching the
+  // render path that has already drawn the enclosing Ring.
+  wp::Vector2 min{std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+  wp::Vector2 max{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+  for (auto vertex : mesh->getPolygon(outer).getOrderedVertexIndices()) {
+    auto const& p = mesh->getVertex(vertex).getPosition();
+    min.x = std::min(min.x, p.x);
+    min.y = std::min(min.y, p.y);
+    max.x = std::max(max.x, p.x);
+    max.y = std::max(max.y, p.y);
+  }
+  auto pointAt = [&](float x, float y) {
+    return min + wp::Vector2{(max.x - min.x) * x, (max.y - min.y) * y};
+  };
+  auto settings = meshDrawSettings();
+  settings.meshVertexPickRadius = 0.1f;
+  require(document.armMeshDrawTool(settings), "the hole draw tool did not arm");
+  require(document.placeMeshDrawVertex(pointAt(0.3f, 0.3f), settings) &&
+              document.meshDrawCreatesHole(),
+          "the first interior vertex did not establish a hole context");
+
+  // The first point can activate and reconstruct the proxy. Cache the exact
+  // parent triangulation which addHoleToPolygon will subsequently mutate.
+  mesh = document.getActiveMesh();
+  outer = document.getMeshDrawContainingRingIndex();
+  auto triangleCountBefore =
+      mesh->getPolygon(outer).createBasicTriangulation().getNumTriangles();
+  require(triangleCountBefore > 0,
+          "the enclosing Ring did not initially triangulate");
+  require(document.placeMeshDrawVertex(pointAt(0.7f, 0.3f), settings) &&
+              document.placeMeshDrawVertex(pointAt(0.7f, 0.7f), settings) &&
+              document.placeMeshDrawVertex(pointAt(0.3f, 0.7f), settings) &&
+              document.closeMeshDrawRing() != nullptr,
+          "the hole Ring did not close");
+
+  mesh = document.getActiveMesh();
+  outer = mesh->getFirstPolygonIndex();
+  auto triangleCountAfter =
+      mesh->getPolygon(outer).createBasicTriangulation().getNumTriangles();
+  require(triangleCountAfter != triangleCountBefore,
+          "adding a hole left the enclosing Ring's cached triangulation stale");
+}
+
 void meshDragSnapsToGridBeforeValidating() {
   editor::Document document;
   editor::Settings settings;
@@ -1891,6 +1942,7 @@ int main() {
     draggingAnOuterRingMovesItsFullNestedHierarchyAsOneGroup();
     meshDragClampsAtLastValidPositionOnSelfIntersection();
     meshDragClampsAtLastValidPositionWhenAHoleWouldEscapeItsOuter();
+    addingAMeshHoleInvalidatesTheParentTriangulation();
     meshDragSnapsToGridBeforeValidating();
     draggingADifferencePrimitiveDoesNotClearItsSelectionOnRelease();
     meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive();
