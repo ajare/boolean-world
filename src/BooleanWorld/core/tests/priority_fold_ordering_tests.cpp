@@ -29,7 +29,7 @@ MeshPrimitive* makeRectangle(
     Primitive::Operation operation, float left, float bottom, float right,
     float top) {
   return MeshPrimitive::fromComplexPolygons(
-      operation, Primitive::FillRule::NonZero,
+      operation,
       {rectangle(left, bottom, right, top)});
 }
 
@@ -74,6 +74,33 @@ void ordersPrioritiesStablyAcrossTheFold() {
           "the arrangement generator did not use the stable priority fold");
 }
 
+void bakingPreservesArrangementContainmentWithoutInference() {
+  bw::core::World world(40.0f, 2.0f);
+  auto shell = makeRectangle(
+      Primitive::Operation::Union, -10.0f, -10.0f, 10.0f, 10.0f);
+  auto hole = makeRectangle(
+      Primitive::Operation::Difference, -8.0f, -8.0f, 8.0f, 8.0f);
+  auto island = makeRectangle(
+      Primitive::Operation::Union, -6.0f, -6.0f, 6.0f, 6.0f);
+  auto nestedHole = makeRectangle(
+      Primitive::Operation::Difference, -4.0f, -4.0f, 4.0f, 4.0f);
+  world.addPrimitive(shell);
+  world.addPrimitive(hole);
+  world.addPrimitive(island);
+  world.addPrimitive(nestedHole);
+
+  auto baked = std::unique_ptr<Primitive>(
+      world.createMeshPrimitive({0, 1, 2, 3}));
+  auto* mesh = dynamic_cast<MeshPrimitive*>(baked.get());
+  require(mesh && mesh->getShells().size() == 1,
+          "arrangement baking did not produce one tree-native Shell");
+  auto const& bakedShell = mesh->getShells().front();
+  require(bakedShell.holes.size() == 1 &&
+              bakedShell.holes.front().islands.size() == 1 &&
+              bakedShell.holes.front().islands.front().holes.size() == 1,
+          "arrangement baking lost nested Hole/Island topology");
+}
+
 void preservesListOrderForEqualPriorities() {
   bw::core::World world(20.0f, 2.0f);
   auto first = makeRectangle(Primitive::Operation::Union, 0.0f, 0.0f, 10.0f, 10.0f);
@@ -108,6 +135,7 @@ void preservesListOrderForEqualPriorities() {
 int main() {
   try {
     ordersPrioritiesStablyAcrossTheFold();
+    bakingPreservesArrangementContainmentWithoutInference();
     preservesListOrderForEqualPriorities();
     std::cout << "Priority folds retain stable order\n";
     return 0;

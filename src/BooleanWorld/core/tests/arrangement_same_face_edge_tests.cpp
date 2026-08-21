@@ -107,7 +107,6 @@ void meshPrimitiveRejectsDanglingSameFaceEdgeBoundary() {
     auto source = std::unique_ptr<bw::core::MeshPrimitive>(
         bw::core::MeshPrimitive::fromComplexPolygons(
             Primitive::Operation::Union,
-            Primitive::FillRule::EvenOdd,
             {std::move(polygon)}));
   } catch (std::exception const&) {
     rejected = true;

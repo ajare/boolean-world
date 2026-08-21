@@ -1768,8 +1768,8 @@ bw::core::Primitive* Document::closeMeshDrawRing() {
   }
 
   auto* ghost = getGhost();
-  auto* mesh = bw::core::MeshPrimitive::fromComplexPolygons(
-      ghost->getOperation(), ghost->getFillRule(), {{ring}});
+  auto* mesh = bw::core::MeshPrimitive::fromTree(
+      ghost->getOperation(), {{ring, {}}});
   mesh->setPriority(ghost->getPriority());
 
   disarmMeshDrawTool();

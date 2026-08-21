@@ -192,8 +192,8 @@ bw::core::World* loadWorld(string const& filepath) {
 
   if (ext == ".yaml" || ext == ".world") {
     shared_ptr<bw::core::Serializer> ser = ext == ".yaml"
-        ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(filepath))
-        : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(filepath));
+                                               ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(filepath))
+                                               : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(filepath));
 
     try {
       ser->deserialize();
@@ -319,18 +319,6 @@ bw::core::Primitive* createRegularPolygonPrimitive(
     float scale,
     float angle) {
   auto p = new bw::core::RegularPolygon(op, fillRule, numSides);
-  _setPrimitiveParameters(p, priority, position, wp::Vector2::ZERO, scale, angle);
-  return p;
-}
-
-bw::core::Primitive* createMeshPrimitive(
-    bw::core::Primitive::Operation op,
-    bw::core::Primitive::FillRule fillRule,
-    uint8_t priority,
-    wp::Vector2 const& position,
-    float scale,
-    float angle) {
-  auto p = new bw::core::MeshPrimitive(op, fillRule, {});
   _setPrimitiveParameters(p, priority, position, wp::Vector2::ZERO, scale, angle);
   return p;
 }

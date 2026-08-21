@@ -30,7 +30,6 @@ void triangulatesEachComplexPolygonIndependently() {
   auto primitive = std::unique_ptr<bw::core::MeshPrimitive>(
       bw::core::MeshPrimitive::fromComplexPolygons(
           bw::core::Primitive::Operation::Union,
-          bw::core::Primitive::FillRule::NonZero,
           complexPolygons));
   primitive->setId(42);
   primitive->updateVertexPositions();

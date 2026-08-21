@@ -30,7 +30,6 @@ void generationWorkerUsesCapturedPrimitiveSnapshot() {
   bw::core::World world(20.0f, 2.0f);
   auto primitive = MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union,
-      Primitive::FillRule::NonZero,
       {rectangle(0.0f, 0.0f, 10.0f, 10.0f)});
   auto properties = primitive->getProperties();
   properties.floorZ = 3.0f;
@@ -110,7 +109,6 @@ void primitiveRemovalBeforeCompletionAndCommitIsSafe() {
   bw::core::World world(100.0f, 10.0f);
   auto primitive = MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union,
-      Primitive::FillRule::NonZero,
       {rectangle(-10.0f, -10.0f, 10.0f, 10.0f)});
   {
     auto mutation = primitive->mutate();

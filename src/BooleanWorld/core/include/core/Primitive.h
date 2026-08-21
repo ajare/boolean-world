@@ -175,9 +175,9 @@ public:
 
   Operation getOperation() const;
 
-  void setFillRule(FillRule fillRule);
+  virtual void setFillRule(FillRule fillRule);
 
-  FillRule getFillRule() const;
+  [[nodiscard]] virtual FillRule getFillRule() const;
 
   void setPriority(uint8_t priority);
 

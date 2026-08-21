@@ -30,7 +30,6 @@ ComplexPolygon rectangle(float left, float bottom, float right, float top) {
 void addPrimitive(bw::core::World& world) {
   world.addPrimitive(MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union,
-      Primitive::FillRule::NonZero,
       {rectangle(0.0f, 0.0f, 10.0f, 10.0f)}));
 }
 

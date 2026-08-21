@@ -181,19 +181,19 @@ void hierarchyRoundTripsThroughYamlAndBinary() {
               yaml.find("id:", meshPosition) == std::string::npos,
           "serialized tree contains subtype tags or persistent node IDs");
 
-  MeshPrimitive yamlLoaded(
-      Primitive::Operation::Union, Primitive::FillRule::NonZero,
-      {{square(-1.0f, -1.0f, 1.0f, 1.0f)}});
-  require(deserializeYaml(yaml, yamlLoaded),
+  auto yamlLoaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union,
+      {{square(-1.0f, -1.0f, 1.0f, 1.0f), {}}}));
+  require(deserializeYaml(yaml, *yamlLoaded),
           "deep MeshPrimitive YAML did not deserialize");
-  checkDeepRoundTrip(yamlLoaded, Depth);
+  checkDeepRoundTrip(*yamlLoaded, Depth);
 
-  MeshPrimitive binaryLoaded(
-      Primitive::Operation::Union, Primitive::FillRule::NonZero,
-      {{square(-1.0f, -1.0f, 1.0f, 1.0f)}});
-  require(deserializeBinary(serializeBinary(*source), binaryLoaded),
+  auto binaryLoaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union,
+      {{square(-1.0f, -1.0f, 1.0f, 1.0f), {}}}));
+  require(deserializeBinary(serializeBinary(*source), *binaryLoaded),
           "deep MeshPrimitive binary data did not deserialize");
-  checkDeepRoundTrip(binaryLoaded, Depth);
+  checkDeepRoundTrip(*binaryLoaded, Depth);
 }
 
 bool containsMessage(
@@ -233,6 +233,20 @@ void failedReadsLeaveTheTargetUnchangedAndRejectLegacyInput() {
   require(target->getPriority() == 99 && target->getMetadata() == beforeMetadata &&
               polygonsEqual(target->flattenTree(), beforeTree),
           "legacy input changed the target");
+
+  auto conflictingFill = serializeYaml(*source);
+  auto fillRule = conflictingFill.find("fillRule: 1");
+  require(fillRule != std::string::npos,
+          "serialized MeshPrimitive did not report EvenOdd FillRule");
+  conflictingFill.replace(fillRule, std::string("fillRule: 1").size(),
+                          "fillRule: 0");
+  require(!deserializeYaml(conflictingFill, *target),
+          "nested MeshPrimitive input with NonZero FillRule was accepted");
+  require(containsMessage(target->getDeserializationErrors(),
+                          "FillRule must be EvenOdd") &&
+              target->getPriority() == 99 &&
+              polygonsEqual(target->flattenTree(), beforeTree),
+          "conflicting FillRule failure was unclear or changed the target");
 }
 
 void aggregateLimitsRejectOversizedInputBeforeCommit() {

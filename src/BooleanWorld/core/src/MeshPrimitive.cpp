@@ -505,14 +505,6 @@ MeshPrimitive::MeshPrimitive(Operation operation, vector<MeshFilledRegion> shell
   replaceTree(move(mShells));
 }
 
-MeshPrimitive::MeshPrimitive(
-    Operation operation, FillRule fillType, vector<ComplexPolygon> const& polygons)
-    : Primitive(operation, fillType), mShells(shallowTree(polygons)) {
-  // Keep the compatibility FillRule, while tree-native construction uses
-  // EvenOdd. Existing consumers still edit this setting pending contraction.
-  replaceTree(move(mShells));
-}
-
 MeshPrimitive::MeshPrimitive(MeshPrimitive const& other) {
   copyFrom(other);
 }
@@ -534,13 +526,12 @@ MeshPrimitive* MeshPrimitive::fromTree(Operation operation, vector<MeshFilledReg
 }
 
 MeshPrimitive* MeshPrimitive::fromComplexPolygons(
-    Operation operation, FillRule fillType, vector<ComplexPolygon> polygons) {
+    Operation operation, vector<ComplexPolygon> polygons) {
   auto shells = shallowTree(polygons);  // validates before any object exists
   wp::Vector2 centre;
   float scale;
   normalizeWorldTree(shells, centre, scale);
   auto* primitive = new MeshPrimitive(operation, move(shells), LocalTreeTag{});
-  primitive->Primitive::setFillRule(fillType);
   primitive->setSize(scale * 2.0f, scale * 2.0f);
   primitive->setPosition(centre);
   {
@@ -910,14 +901,14 @@ void MeshPrimitiveEditingProxy::commitTo(MeshPrimitive& primitive) const {
   primitive.replaceTree(move(candidate));
 }
 
-bool MeshPrimitive::retainRing(uint32_t complexPolygonIndex, uint32_t ringIndex) {
-  auto polygons = flattenTree();
-  if (complexPolygonIndex >= polygons.size() || ringIndex >= polygons[complexPolygonIndex].size()) {
-    return false;
+void MeshPrimitive::setFillRule(FillRule fillRule) {
+  if (fillRule != FillRule::EvenOdd) {
+    throw CoreException("MeshPrimitive FillRule is fixed to EvenOdd by its containment tree.");
   }
-  MeshFilledRegion shell{polygons[complexPolygonIndex][ringIndex], {}};
-  replaceTree({move(shell)});
-  return true;
+}
+
+Primitive::FillRule MeshPrimitive::getFillRule() const {
+  return FillRule::EvenOdd;
 }
 
 void MeshPrimitive::copyFrom(MeshPrimitive const& other) {
@@ -1011,6 +1002,11 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
   MeshPrimitive candidate;
   if (!candidate.deserializePrimitive(serializer, workData, false)) {
     copyErrorsAndWarnings(&candidate, true, true);
+    return false;
+  }
+  if (candidate.Primitive::getFillRule() != FillRule::EvenOdd) {
+    addDeserializationError(
+        "MeshPrimitive FillRule must be EvenOdd for containment-tree input.");
     return false;
   }
 

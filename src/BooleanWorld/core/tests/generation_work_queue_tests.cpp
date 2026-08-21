@@ -34,7 +34,6 @@ void addLayerPrimitive(
     ComplexPolygon polygon) {
   auto primitive = MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union,
-      Primitive::FillRule::NonZero,
       {std::move(polygon)});
   layer.addPrimitive(primitive);
 }

@@ -52,20 +52,19 @@ static_assert(std::is_same_v<
 bw::core::MeshPrimitive makeAsymmetricMesh() {
   std::vector<bw::core::ComplexPolygon> const polygons{
       {{{{0.0f, 0.0f}}, {{2.0f, 0.0f}}, {{0.0f, 1.0f}}}}};
-  bw::core::MeshPrimitive primitive(
-      bw::core::Primitive::Operation::Union,
-      bw::core::Primitive::FillRule::NonZero,
-      polygons);
+  auto primitive = std::unique_ptr<bw::core::MeshPrimitive>(
+      bw::core::MeshPrimitive::fromComplexPolygons(
+          bw::core::Primitive::Operation::Union, polygons));
   {
-    auto mutation = primitive.mutate();
+    auto mutation = primitive->mutate();
     mutation.animation(bw::core::VertexTransformer::Key::Scale)
         .setPoints({{0.0f, 1.0f}, {1.0f, 1.0f}});
   }
-  primitive.setSize(1.0f, 1.0f);
-  primitive.setFlags(primitive.getFlags() | BW_PRIMITIVE_EXACT_BOUNDS_FLAG);
-  primitive.setPosition({3.0f, 4.0f});
-  primitive.updateVertexPositions();
-  return primitive;
+  primitive->setSize(1.0f, 1.0f);
+  primitive->setFlags(primitive->getFlags() | BW_PRIMITIVE_EXACT_BOUNDS_FLAG);
+  primitive->setPosition({3.0f, 4.0f});
+  primitive->updateVertexPositions();
+  return *primitive;
 }
 
 void animatorMutationScopeInvalidatesOnce() {

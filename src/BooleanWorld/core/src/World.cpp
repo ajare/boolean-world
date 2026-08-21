@@ -700,26 +700,79 @@ Primitive* World::createMeshPrimitive(vector<Primitive*> const& fold) const {
     return polygon;
   };
 
-  vector<ComplexPolygon> polygons;
-  for (auto const& face : arrangement->faces) {
-    if (!face.solid || face.outerBoundary.empty()) {
-      continue;
-    }
-    ComplexPolygon polygon;
-    polygon.push_back(boundaryVertices(face.outerBoundaryVertices));
-    for (auto const& hole : face.innerBoundaryVertices) {
-      polygon.push_back(boundaryVertices(hole));
-    }
-    polygons.push_back(move(polygon));
+  // Arrangement faces already carry an explicit containment hierarchy through
+  // shared boundary-edge identities. Preserve that topology directly instead
+  // of flattening faces and asking a converter to rediscover cross-entry
+  // nesting from coordinates.
+  map<vector<uint32_t>, uint32_t> faceByOuterBoundary;
+  for (uint32_t i = 1; i < arrangement->faces.size(); ++i) {
+    auto key = arrangement->faces[i].outerBoundary;
+    sort(key.begin(), key.end());
+    faceByOuterBoundary.emplace(move(key), i);
   }
-  if (polygons.empty()) {
+  vector<vector<uint32_t>> children(arrangement->faces.size());
+  for (uint32_t parent = 0; parent < arrangement->faces.size(); ++parent) {
+    for (auto const& boundary : arrangement->faces[parent].innerBoundaries) {
+      auto key = boundary;
+      sort(key.begin(), key.end());
+      auto child = faceByOuterBoundary.find(key);
+      if (child == faceByOuterBoundary.end()) {
+        throw CoreException("Arrangement face hierarchy has an unmatched boundary.");
+      }
+      children[parent].push_back(child->second);
+    }
+  }
+
+  vector<MeshFilledRegion> shells;
+  function<void(uint32_t, MeshFilledRegion&)> collectHoles;
+  function<void(uint32_t, MeshHole&)> collectIslands;
+  collectHoles = [&](uint32_t faceIndex, MeshFilledRegion& filled) {
+    for (auto child : children[faceIndex]) {
+      auto const& childFace = arrangement->faces[child];
+      if (childFace.solid) {
+        // An arrangement edge that does not change solidity is not an authored
+        // output boundary. Continue through that subdivision in the same node.
+        collectHoles(child, filled);
+      } else {
+        MeshHole hole{boundaryVertices(childFace.outerBoundaryVertices), {}};
+        collectIslands(child, hole);
+        filled.holes.push_back(move(hole));
+      }
+    }
+  };
+  collectIslands = [&](uint32_t faceIndex, MeshHole& hole) {
+    for (auto child : children[faceIndex]) {
+      auto const& childFace = arrangement->faces[child];
+      if (!childFace.solid) {
+        collectIslands(child, hole);
+      } else {
+        MeshFilledRegion island{
+            boundaryVertices(childFace.outerBoundaryVertices), {}};
+        collectHoles(child, island);
+        hole.islands.push_back(move(island));
+      }
+    }
+  };
+  function<void(uint32_t)> collectShells = [&](uint32_t faceIndex) {
+    for (auto child : children[faceIndex]) {
+      auto const& childFace = arrangement->faces[child];
+      if (!childFace.solid) {
+        collectShells(child);
+      } else {
+        MeshFilledRegion shell{
+            boundaryVertices(childFace.outerBoundaryVertices), {}};
+        collectHoles(child, shell);
+        shells.push_back(move(shell));
+      }
+    }
+  };
+  collectShells(0);
+  if (shells.empty()) {
     return nullptr;
   }
 
-  auto mesh = MeshPrimitive::fromComplexPolygons(
-      Primitive::Operation::Union,
-      Primitive::FillRule::EvenOdd,
-      move(polygons));
+  auto mesh = MeshPrimitive::fromTree(
+      Primitive::Operation::Union, move(shells));
   uint8_t priority{0};
   for (auto primitive : fold) {
     priority = max(priority, primitive->getPriority());

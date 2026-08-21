@@ -36,7 +36,7 @@ ComplexPolygon rectangle(float left, float bottom, float right, float top) {
 
 MeshPrimitive* makeRectangle(uint8_t priority) {
   auto* primitive = MeshPrimitive::fromComplexPolygons(
-      Primitive::Operation::Union, Primitive::FillRule::NonZero,
+      Primitive::Operation::Union,
       {rectangle(0.0f, 0.0f, 10.0f, 10.0f)});
   primitive->setPriority(priority);
   return primitive;

@@ -2382,7 +2382,9 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   ImGui::Separator();
 
   setOperationWidget(doc, primitive, 1);
-  setFillRuleWidget(doc, primitive, 1);
+  if (!dynamic_cast<bw::core::MeshPrimitive*>(primitive)) {
+    setFillRuleWidget(doc, primitive, 1);
+  }
 
   // Priority
   int primitivePriority = (int)primitive->getPriority();
@@ -2865,7 +2867,9 @@ void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings)
 
       if (i != 0) {
         setOperationWidget(doc, primitive, 2);
-        setFillRuleWidget(doc, primitive, 2);
+        if (!dynamic_cast<bw::core::MeshPrimitive*>(primitive)) {
+          setFillRuleWidget(doc, primitive, 2);
+        }
       }
     }
 
@@ -3324,14 +3328,13 @@ void renderHistoryPanel(editor::Document* doc, editor::Settings& settings) {
 }
 
 // The draw tool's own half of the Mesh panel. Create Primitive is hidden in
-// Mesh mode, so the operation, fill rule and priority a drawn mesh is born
-// with are set here - written through to the same ghost state the Create
-// Primitive panel writes to in Primitive mode.
+// Mesh mode, so the operation and priority a drawn mesh is born with are set
+// here through the same ghost state used in Primitive mode. MeshPrimitive fill
+// semantics come exclusively from its containment tree.
 void renderMeshDrawToolView(editor::Document* doc, editor::Settings& settings) {
   auto* ghost = doc->getGhost();
 
   setOperationWidget(doc, ghost, 3);
-  setFillRuleWidget(doc, ghost, 3);
 
   int priority = (int)ghost->getPriority();
   widgets::HelpMarker("Priority the drawn MeshPrimitive is created with.  Lower value means earlier in the fold order.");

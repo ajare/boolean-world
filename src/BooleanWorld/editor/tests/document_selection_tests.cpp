@@ -379,16 +379,14 @@ void meshEligibilityRequiresTheSelectedDirectlyEditableStep() {
   document.newDoc();
   auto* layer = document.getWorld()->getActiveLayer();
 
-  auto* editableMesh = new bw::core::MeshPrimitive(
+  auto* editableMesh = bw::core::MeshPrimitive::fromComplexPolygons(
       bw::core::Primitive::Operation::Union,
-      bw::core::Primitive::FillRule::EvenOdd,
       {{{{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}}}});
   document.getWorld()->addPrimitive(editableMesh);
   auto editableIndex = editableMesh->getId();
 
-  auto* refusedMesh = new bw::core::MeshPrimitive(
+  auto* refusedMesh = bw::core::MeshPrimitive::fromComplexPolygons(
       bw::core::Primitive::Operation::Union,
-      bw::core::Primitive::FillRule::EvenOdd,
       {{{{{9.0f, 9.0f}}, {{11.0f, 9.0f}}, {{11.0f, 11.0f}}, {{9.0f, 11.0f}}}}});
   auto refusingStepIndex = layer->addStep(new RefusingStep(refusedMesh));
 

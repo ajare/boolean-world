@@ -29,7 +29,7 @@ struct BW_API MeshFilledRegion {
   std::vector<MeshHole> holes;
 };
 
-class BW_API MeshPrimitive : public Primitive {
+class BW_API MeshPrimitive final : public Primitive {
   friend class Primitive;  // Only Primitive::instantiate constructs for loading.
   friend class MeshPrimitiveEditingProxy;
 
@@ -57,10 +57,6 @@ protected:
   void rotateAuthoredGeometry(float angle, wp::Vector2 const& origin) override;
 
 public:
-  // Temporary shallow compatibility constructor. Every ComplexPolygon is one
-  // root Shell followed by its direct Holes; cross-entry nesting is rejected.
-  MeshPrimitive(Operation operation, FillRule fillType, std::vector<ComplexPolygon> const& polygons);
-
   MeshPrimitive(MeshPrimitive const& other);
 
   MeshPrimitive& operator=(MeshPrimitive const& other);
@@ -70,11 +66,10 @@ public:
   [[nodiscard]] static MeshPrimitive* fromTree(
       Operation operation, std::vector<MeshFilledRegion> shells);
 
-  // Temporary shallow converter for flat producers. It never infers nesting.
+  // Shallow converter for producers that know only one Shell and its direct
+  // Holes per entry. It never infers containment between entries.
   [[nodiscard]] static MeshPrimitive* fromComplexPolygons(
-      Operation operation,
-      FillRule fillType,
-      std::vector<ComplexPolygon> polygons);
+      Operation operation, std::vector<ComplexPolygon> polygons);
 
   // Authoritative topology is const-only. Sibling order is authored order and
   // traversal can continue to arbitrary depth through holes/islands.
@@ -95,12 +90,11 @@ public:
   // Its wrapped Mesh is exposed only as const; every mutation is routed through
   // MeshPrimitiveEditingProxy so welded topology and hierarchy cannot diverge.
   [[nodiscard]] std::unique_ptr<MeshPrimitiveEditingProxy> createEditingProxy() const;
-  // Temporary name retained while downstream callers migrate; it returns the
-  // same specialized proxy, never a mutable geometry Mesh.
-  [[nodiscard]] std::unique_ptr<MeshPrimitiveEditingProxy> createGeometryProxy() const {
-    return createEditingProxy();
-  }
-  bool retainRing(uint32_t complexPolygonIndex, uint32_t ringIndex);
+
+  // Hierarchy determines MeshPrimitive membership, so its fill semantics are
+  // fixed. A non-EvenOdd assignment is an authored-contract error.
+  void setFillRule(FillRule fillRule) override;
+  [[nodiscard]] FillRule getFillRule() const override;
 
   Primitive* copy() const override;
   std::string getType() const override;

@@ -80,29 +80,27 @@ uint32_t addRectangle(
 }
 
 uint32_t addMesh(editor::Document& document, wp::Vector2 const& position) {
-  auto* mesh = new bw::core::MeshPrimitive(
+  auto point = [&](float x, float y) {
+    return bw::core::Vertex{position + wp::Vector2{x * 5.0f, y * 5.0f}};
+  };
+  auto* mesh = bw::core::MeshPrimitive::fromTree(
       bw::core::Primitive::Operation::Union,
-      bw::core::Primitive::FillRule::EvenOdd,
-      {{{{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}}}});
-  mesh->setSize(10.0f, 10.0f);
-  mesh->setPosition(position);
+      {{{point(-1.0f, -1.0f), point(1.0f, -1.0f),
+         point(1.0f, 1.0f), point(-1.0f, 1.0f)},
+        {}}});
   mesh->updateVertexPositions();
   document.getWorld()->addPrimitive(mesh);
   return mesh->getId();
 }
 
 uint32_t addMeshWithHole(editor::Document& document) {
-  auto* mesh = new bw::core::MeshPrimitive(
+  bw::core::ClosedPolygon outer{
+      {{-10.0f, -10.0f}}, {{10.0f, -10.0f}}, {{10.0f, 10.0f}}, {{-10.0f, 10.0f}}};
+  bw::core::ClosedPolygon hole{
+      {{-5.0f, -5.0f}}, {{-5.0f, 5.0f}}, {{5.0f, 5.0f}}, {{5.0f, -5.0f}}};
+  auto* mesh = bw::core::MeshPrimitive::fromTree(
       bw::core::Primitive::Operation::Union,
-      bw::core::Primitive::FillRule::EvenOdd,
-      {
-          {
-              {{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}},
-              {{{-0.5f, -0.5f}}, {{-0.5f, 0.5f}}, {{0.5f, 0.5f}}, {{0.5f, -0.5f}}},
-          },
-      });
-  mesh->setSize(20.0f, 20.0f);
-  mesh->setPosition({0.0f, 0.0f});
+      {{outer, {{hole, {}}}}});
   mesh->updateVertexPositions();
   document.getWorld()->addPrimitive(mesh);
   return mesh->getId();
@@ -112,13 +110,13 @@ uint32_t addPolygonMesh(
     editor::Document& document,
     wp::Vector2 const& position,
     std::vector<wp::Vector2> const& points) {
-  bw::core::ClosedPolygon ring(points.begin(), points.end());
-  auto* mesh = new bw::core::MeshPrimitive(
+  bw::core::ClosedPolygon ring;
+  for (auto const& point : points) {
+    ring.emplace_back(position + point * 5.0f);
+  }
+  auto* mesh = bw::core::MeshPrimitive::fromTree(
       bw::core::Primitive::Operation::Union,
-      bw::core::Primitive::FillRule::EvenOdd,
-      {{ring}});
-  mesh->setSize(10.0f, 10.0f);
-  mesh->setPosition(position);
+      {{ring, {}}});
   mesh->updateVertexPositions();
   document.getWorld()->addPrimitive(mesh);
   return mesh->getId();
@@ -952,12 +950,10 @@ void meshPolygonCommitRebuildsPrefabFieldInstancesBeforeRegeneration() {
   auto* prefab = definitions->addPrefab("Tile");
   definitions->setSelectedPrefab(prefab);
   layer->setActiveStep(defineIndex);
-  auto* source = new bw::core::MeshPrimitive(
+  auto* source = bw::core::MeshPrimitive::fromTree(
       bw::core::Primitive::Operation::Union,
-      bw::core::Primitive::FillRule::EvenOdd,
-      {{{{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}}}});
-  source->setSize(20.0f, 20.0f);
-  source->setPosition({0.0f, 0.0f});
+      {{{{{-10.0f, -10.0f}}, {{10.0f, -10.0f}}, {{10.0f, 10.0f}}, {{-10.0f, 10.0f}}},
+        {}}});
   source->updateVertexPositions();
   layer->addPrimitive(source);
 
@@ -1001,14 +997,17 @@ void meshPolygonCommitRebuildsPrefabFieldInstancesBeforeRegeneration() {
   };
   auto settings = meshDrawSettings();
   settings.meshVertexPickRadius = 0.1f;
-  require(document.armMeshDrawTool(settings) &&
-              document.placeMeshDrawVertex(pointAt(0.3f, 0.3f), settings) &&
-              document.getMeshDrawContainingRingIndex() == outer &&
-              document.meshDrawCreatesHole() &&
-              document.placeMeshDrawVertex(pointAt(0.7f, 0.3f), settings) &&
+  require(document.armMeshDrawTool(settings),
+          "could not arm drawing in the Mesh Prefab source");
+  require(document.placeMeshDrawVertex(pointAt(0.3f, 0.3f), settings),
+          "could not place the first Mesh Prefab Hole vertex");
+  require(document.getMeshDrawContainingRingIndex() == outer &&
+              document.meshDrawCreatesHole(),
+          "the Mesh Prefab Ring did not establish Hole context");
+  require(document.placeMeshDrawVertex(pointAt(0.7f, 0.3f), settings) &&
               document.placeMeshDrawVertex(pointAt(0.7f, 0.7f), settings) &&
               document.placeMeshDrawVertex(pointAt(0.3f, 0.7f), settings),
-          "could not draw a hole in the Mesh Prefab source");
+          "could not complete the Mesh Prefab Hole vertices");
 
   auto* generator = dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
       document.getWorld()->getWorldDataGenerator());
@@ -1152,7 +1151,7 @@ void meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive() {
 
   auto* primitive = static_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(meshIndex));
-  auto committedProxy = primitive->createGeometryProxy();
+  auto committedProxy = primitive->createEditingProxy();
   bool foundMovedVertex = false;
   for (auto index = committedProxy->getFirstVertexIndex();
        !committedProxy->vertexIndexIterationFinished(index);
@@ -1171,7 +1170,7 @@ void meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive() {
 
   auto* undonePrimitive = static_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(meshIndex));
-  auto undoneProxy = undonePrimitive->createGeometryProxy();
+  auto undoneProxy = undonePrimitive->createEditingProxy();
   bool foundOriginalVertex = false;
   for (auto index = undoneProxy->getFirstVertexIndex();
        !undoneProxy->vertexIndexIterationFinished(index);
@@ -1380,7 +1379,7 @@ void meshSubObjectDeleteIsOneUndoEntry() {
 
   auto* primitive = static_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(meshIndex));
-  auto committedProxy = primitive->createGeometryProxy();
+  auto committedProxy = primitive->createEditingProxy();
   require(committedProxy->getPolygon(committedProxy->getFirstPolygonIndex())
                   .getVertexIndexSet()
                   .size() == 3,
@@ -1392,7 +1391,7 @@ void meshSubObjectDeleteIsOneUndoEntry() {
 
   auto* undonePrimitive = static_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(meshIndex));
-  auto undoneProxy = undonePrimitive->createGeometryProxy();
+  auto undoneProxy = undonePrimitive->createEditingProxy();
   require(undoneProxy->getPolygon(undoneProxy->getFirstPolygonIndex())
                   .getVertexIndexSet()
                   .size() == 4,
@@ -1502,7 +1501,7 @@ void edgeSplitIsOneUndoEntry() {
 
   auto* primitive = static_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(meshIndex));
-  auto committedProxy = primitive->createGeometryProxy();
+  auto committedProxy = primitive->createEditingProxy();
   require(committedProxy->getPolygon(committedProxy->getFirstPolygonIndex()).getNumEdges() == 5,
           "the committed MeshPrimitive geometry did not reflect the split");
 
@@ -1512,7 +1511,7 @@ void edgeSplitIsOneUndoEntry() {
 
   auto* undonePrimitive = static_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(meshIndex));
-  auto undoneProxy = undonePrimitive->createGeometryProxy();
+  auto undoneProxy = undonePrimitive->createEditingProxy();
   require(undoneProxy->getPolygon(undoneProxy->getFirstPolygonIndex()).getNumEdges() == 4,
           "undo did not restore the Ring to its unsplit edge count");
 }
@@ -1657,9 +1656,9 @@ void closingADrawnRingCreatesAMeshPrimitiveWithCanonicalWinding() {
               document.getSelectedPrimitiveIndices().empty(),
           "closing the shape left something selected");
   require(created->getOperation() == bw::core::Primitive::Operation::Difference &&
-              created->getFillRule() == bw::core::Primitive::FillRule::NonZero &&
+              created->getFillRule() == bw::core::Primitive::FillRule::EvenOdd &&
               created->getPriority() == 7,
-          "the new MeshPrimitive did not take the Mesh panel's operation, fill rule and priority");
+          "the new MeshPrimitive did not use the Mesh panel operation and priority with fixed EvenOdd semantics");
 
   auto clockwiseRing = activeRingPositions(document);
   require(clockwiseRing.size() == 4, "the new MeshPrimitive did not carry the four drawn vertices");

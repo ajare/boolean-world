@@ -115,14 +115,15 @@ void conversionsPreserveStorageOrderingAndDegenerateShapes() {
       {{ring(-4, -1, -2, 1)}, {ring(2, -1, 4, 1)}}};
 
   for (size_t i = 0; i < cases.size(); ++i) {
-    MeshPrimitive primitive(Primitive::Operation::Union, Primitive::FillRule::EvenOdd, cases[i]);
-    primitive.setSize(20.0f, 30.0f);
-    primitive.setPosition({17.0f, -9.0f});
-    primitive.setOrientation(23.0f);
-    auto proxy = primitive.createEditingProxy();
+    auto primitive = std::unique_ptr<MeshPrimitive>(
+        MeshPrimitive::fromComplexPolygons(Primitive::Operation::Union, cases[i]));
+    primitive->setSize(20.0f, 30.0f);
+    primitive->setPosition({17.0f, -9.0f});
+    primitive->setOrientation(23.0f);
+    auto proxy = primitive->createEditingProxy();
     auto expected = readProxy(proxy->getMesh());
-    proxy->commitTo(primitive);
-    auto rebuilt = primitive.createEditingProxy();
+    proxy->commitTo(*primitive);
+    auto rebuilt = primitive->createEditingProxy();
     requireEqual(expected, readProxy(rebuilt->getMesh()),
                  "round-trip for degenerate case " + std::to_string(i));
   }
@@ -161,15 +162,15 @@ void authoritativeTreePreservesArbitraryDepth() {
   }
 
   auto copy = std::unique_ptr<MeshPrimitive>(static_cast<MeshPrimitive*>(primitive->copy()));
-  MeshPrimitive assigned(
-      Primitive::Operation::Difference, Primitive::FillRule::NonZero, {});
-  assigned = *primitive;
+  auto assigned = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Difference, {}));
+  *assigned = *primitive;
   auto rotated = std::unique_ptr<Primitive>(primitive->rotatedCopy(90.0f));
   require(copy->flattenTree().size() == 3 &&
-              assigned.flattenTree().size() == 3 &&
+              assigned->flattenTree().size() == 3 &&
               static_cast<MeshPrimitive*>(rotated.get())->flattenTree().size() == 3 &&
               copy->getNumVertices() == primitive->getNumVertices() &&
-              assigned.getNumVertices() == primitive->getNumVertices() &&
+              assigned->getNumVertices() == primitive->getNumVertices() &&
               rotated->getBounds().getSize().x > 0.0f,
           "copying, assignment, rotation, bounds, or vertex counts lost tree data");
 
@@ -413,11 +414,29 @@ void failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged() {
                "failed commit changed derived geometry");
 }
 
+void fillRuleIsFixedToEvenOddAndRejectsConflictingAssignment() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{ring(-1, -1, 1, 1), {}}}));
+  require(primitive->getFillRule() == Primitive::FillRule::EvenOdd,
+          "a tree-native MeshPrimitive did not report EvenOdd semantics");
+  primitive->setFillRule(Primitive::FillRule::EvenOdd);
+
+  bool rejected = false;
+  try {
+    Primitive* generic = primitive.get();
+    generic->setFillRule(Primitive::FillRule::NonZero);
+  } catch (std::exception const&) {
+    rejected = true;
+  }
+  require(rejected && primitive->getFillRule() == Primitive::FillRule::EvenOdd,
+          "a generic non-EvenOdd assignment changed or silently ignored MeshPrimitive meaning");
+}
+
 void shallowConversionRejectsCrossEntryNestingAndMalformedTrees() {
   bool rejectedNesting = false;
   try {
     std::unique_ptr<MeshPrimitive> invalid(MeshPrimitive::fromComplexPolygons(
-        Primitive::Operation::Union, Primitive::FillRule::EvenOdd,
+        Primitive::Operation::Union,
         {{ring(-5, -5, 5, 5), ring(-4, -4, 4, 4)},
          {ring(-2, -2, 2, 2)}}));
   } catch (std::exception const&) {
@@ -449,6 +468,7 @@ int main() {
     sharedMutationsCommitToEveryAuthoredRingAtomically();
     fillHoleWrapsImmediateIslandsWithoutLosingDescendants();
     failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged();
+    fillRuleIsFixedToEvenOddAndRejectsConflictingAssignment();
     shallowConversionRejectsCrossEntryNestingAndMalformedTrees();
     std::cout << "MeshPrimitive geometry proxy tests passed\n";
     return 0;
