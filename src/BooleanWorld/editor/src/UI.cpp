@@ -45,6 +45,7 @@
 #include "Undo.h"
 #include "Actions.h"
 #include "Markdown.h"
+#include "PrefabTilingGuide.h"
 #include "PrimitiveFieldPreview.h"
 #include "PrimitiveFieldPlacement.h"
 #include "ExitApplicationException.h"
@@ -3036,13 +3037,17 @@ void renderPrefabsView(
   ImGui::TextUnformatted("Tiling type");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(140.0f);
-  if (ImGui::BeginCombo("##PrefabTilingType", "Square")) {
-    bool selected = step->getTilingType() == bw::core::PrefabTilingType::Square;
-    if (ImGui::Selectable("Square", selected) && !selected) {
-      transactUndoableAction(
-          doc, "Set Prefab Tiling Type",
-          bind(setPrefabTilingType, placeholders::_1, layer, step,
-               bw::core::PrefabTilingType::Square));
+  auto const tilingType = step->getTilingType();
+  auto const tilingTypeName = prefabTilingGuideName(tilingType);
+  if (ImGui::BeginCombo("##PrefabTilingType", tilingTypeName.data())) {
+    for (auto const& definition : prefabTilingGuideDefinitions()) {
+      bool selected = tilingType == definition.type;
+      if (ImGui::Selectable(definition.name.data(), selected) && !selected) {
+        transactUndoableAction(
+            doc, "Set Prefab Tiling Type",
+            bind(setPrefabTilingType, placeholders::_1, layer, step,
+                 definition.type));
+      }
     }
     ImGui::EndCombo();
   }

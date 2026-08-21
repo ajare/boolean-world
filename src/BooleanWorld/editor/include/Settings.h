@@ -79,6 +79,7 @@ struct Settings {
 
   // Render colours
   ImColor gridColour{0.35f, 0.35f, 0.35f, 0.5f};
+  ImColor prefabTilingGuideColour{0.2f, 0.9f, 0.75f, 0.9f};
   ImColor backgroundColour{0.2f, 0.3f, 1.0f, 1.0f};
   ImColor triangulationColour{0.9f, 0.6f, 0.1f, 1.0f};
   ImColor borderColour{1.0f, 0.7f, 0.2f, 1.0f};

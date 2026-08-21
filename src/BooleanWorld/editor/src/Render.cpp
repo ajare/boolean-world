@@ -12,6 +12,7 @@
 #include <core/WorldData.h>
 #include <core/Utils.h>
 #include <core/Layer.h>
+#include <core/DefinePrefabs.h>
 #include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
 
@@ -21,6 +22,7 @@
 
 #include "Defines.h"
 #include "Document.h"
+#include "PrefabTilingGuide.h"
 #include "PrimitiveFieldPreview.h"
 #include "Render.h"
 #include "UiHelpers.h"
@@ -305,6 +307,27 @@ void renderWorld(
 
   // Render
   auto drawList = ImGui::GetWindowDrawList();
+
+  // The tiling guide is the active DefinePrefabs step's pivot frame, not the
+  // snapping grid. Draw it before every Primitive so it cannot obscure the
+  // authoring content, and do not consult showGrid.
+  if (auto const* definePrefabs = activeLayer
+                                      ? dynamic_cast<bw::core::DefinePrefabs const*>(
+                                            activeLayer->getActiveStep())
+                                      : nullptr) {
+    auto const outline = editor::prefabTilingOutline(
+        definePrefabs->getTilingType(), definePrefabs->getSize());
+    std::vector<ImVec2> screenOutline;
+    screenOutline.reserve(outline.size());
+    for (auto const& point : outline) {
+      screenOutline.push_back(worldToScreen(point));
+    }
+    if (screenOutline.size() >= 3) {
+      drawList->AddPolyline(
+          screenOutline.data(), static_cast<int>(screenOutline.size()),
+          settings.prefabTilingGuideColour, ImDrawFlags_Closed, 1.5f);
+    }
+  }
 
   if (renderPrimitiveStuff) {
     auto const& arrangement = worldData->getArrangement();
