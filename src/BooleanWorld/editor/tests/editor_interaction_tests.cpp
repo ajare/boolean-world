@@ -510,6 +510,66 @@ void meshDragMovesAffectedSubObjectsAsARigidGroup() {
   }
 }
 
+void draggingAnOuterRingMovesItsHolesAsOneGroup() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshSubMode = editor::Settings::MeshSubMode::Polygon;
+  document.newDoc();
+  auto* primitive = new bw::core::MeshPrimitive(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::EvenOdd,
+      {
+          {
+              {{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}},
+              {{{-0.5f, -0.5f}}, {{-0.5f, 0.5f}}, {{0.5f, 0.5f}}, {{0.5f, -0.5f}}},
+          },
+          {{{{3.0f, -1.0f}}, {{5.0f, -1.0f}}, {{5.0f, 1.0f}}, {{3.0f, 1.0f}}}},
+      });
+  primitive->setSize(20.0f, 20.0f);
+  primitive->updateVertexPositions();
+  auto meshIndex = document.getWorld()->addPrimitive(primitive);
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+
+  auto outerIndex = mesh->getFirstPolygonIndex();
+  auto const& holes = mesh->getPolygon(outerIndex).getHoleIndices();
+  require(holes.size() == 1, "the drag fixture did not contain one hole");
+  auto holeIndex = holes.front();
+
+  auto unrelatedIndex = mesh->getNextPolygonIndex(holeIndex);
+  require(!mesh->polygonIndexIterationFinished(unrelatedIndex) &&
+              !mesh->getPolygon(unrelatedIndex).isHole(),
+          "the drag fixture did not contain an unrelated top-level Ring");
+
+  std::map<uint32_t, wp::Vector2> starts;
+  for (auto vertex : mesh->getPolygon(outerIndex).getVertexIndexSet()) {
+    starts[vertex] = mesh->getVertex(vertex).getPosition();
+  }
+  for (auto vertex : mesh->getPolygon(holeIndex).getVertexIndexSet()) {
+    starts[vertex] = mesh->getVertex(vertex).getPosition();
+  }
+  std::map<uint32_t, wp::Vector2> unrelatedStarts;
+  for (auto vertex : mesh->getPolygon(unrelatedIndex).getVertexIndexSet()) {
+    unrelatedStarts[vertex] = mesh->getVertex(vertex).getPosition();
+  }
+
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Polygon, {outerIndex});
+  document.beginMeshDrag(editor::Settings::MeshSubMode::Polygon);
+  wp::Vector2 delta{2.0f, -3.0f};
+  require(document.updateMeshDrag(delta, false, 0.0f) == delta,
+          "the outer Ring and its hole did not accept a rigid-group move");
+  for (auto const& [vertex, start] : starts) {
+    require(mesh->getVertex(vertex).getPosition() == start + delta,
+            "a hole vertex did not move with its outer Ring");
+  }
+  for (auto const& [vertex, start] : unrelatedStarts) {
+    require(mesh->getVertex(vertex).getPosition() == start,
+            "an unrelated top-level Ring moved with the selected outer Ring");
+  }
+}
+
 void meshDragClampsAtLastValidPositionOnSelfIntersection() {
   editor::Document document;
   editor::Settings settings;
@@ -1469,6 +1529,7 @@ int main() {
     meshSelectAllAndBoundsStayScopedToActiveMesh();
     undoRestoresMeshSubObjectSelection();
     meshDragMovesAffectedSubObjectsAsARigidGroup();
+    draggingAnOuterRingMovesItsHolesAsOneGroup();
     meshDragClampsAtLastValidPositionOnSelfIntersection();
     meshDragClampsAtLastValidPositionWhenAHoleWouldEscapeItsOuter();
     meshDragSnapsToGridBeforeValidating();

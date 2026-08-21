@@ -609,9 +609,22 @@ set<uint32_t> affectedMeshVertices(
       vertices.insert(edge.getSecondVertex());
     }
   } else {
-    for (auto polygonIndex : selection) {
+    auto includeRing = [&](uint32_t polygonIndex) {
       auto polygonVertices = mesh.getPolygon(polygonIndex).getVertexIndexSet();
       vertices.insert(polygonVertices.begin(), polygonVertices.end());
+    };
+    for (auto polygonIndex : selection) {
+      auto const& polygon = mesh.getPolygon(polygonIndex);
+      includeRing(polygonIndex);
+      // An outer Ring and its holes form one ComplexPolygon. Moving only the
+      // outer would reshape it around stationary holes rather than moving the
+      // selected polygon as a rigid group. Filled islands remain independent
+      // top-level ComplexPolygons and are intentionally not included.
+      if (!polygon.isHole()) {
+        for (auto holeIndex : polygon.getHoleIndices()) {
+          includeRing(holeIndex);
+        }
+      }
     }
   }
   return vertices;
@@ -633,6 +646,86 @@ bool meshGroupMoveIsValid(
     wp::geometry::Mesh const& startPositions,
     set<uint32_t> const& affectedVertices,
     wp::Vector2 const& delta) {
+  // Whole Rings translated together preserve their internal shape and
+  // containment. Validate such a group against stationary Rings as rigid
+  // geometry instead of feeding its vertices one at a time to MeshValidator:
+  // those transient partial-Ring states can incorrectly report that a hole
+  // escaped an outer which is moving by the same delta.
+  bool completeRings = true;
+  for (auto polygonIndex = startPositions.getFirstPolygonIndex();
+       !startPositions.polygonIndexIterationFinished(polygonIndex);
+       polygonIndex = startPositions.getNextPolygonIndex(polygonIndex)) {
+    auto const ringVertices =
+        startPositions.getPolygon(polygonIndex).getVertexIndexSet();
+    auto affectedCount = count_if(
+        ringVertices.begin(), ringVertices.end(), [&](auto vertex) {
+          return affectedVertices.contains(vertex);
+        });
+    if (affectedCount != 0 && affectedCount != ringVertices.size()) {
+      completeRings = false;
+      break;
+    }
+  }
+
+  wp::geometry::IndexVector movedEdges;
+  wp::geometry::IndexVector stationaryEdges;
+  if (completeRings) {
+    for (auto edgeIndex = startPositions.getFirstEdgeIndex();
+         !startPositions.edgeIndexIterationFinished(edgeIndex);
+         edgeIndex = startPositions.getNextEdgeIndex(edgeIndex)) {
+      auto const& edge = startPositions.getEdge(edgeIndex);
+      auto firstMoved = affectedVertices.contains(edge.getFirstVertex());
+      auto secondMoved = affectedVertices.contains(edge.getSecondVertex());
+      if (firstMoved != secondMoved) {
+        completeRings = false;
+        break;
+      }
+      (firstMoved ? movedEdges : stationaryEdges).push_back(edgeIndex);
+    }
+  }
+
+  if (completeRings) {
+    auto crosses = [](wp::Vector2 const& a0, wp::Vector2 const& a1,
+                      wp::Vector2 const& b0, wp::Vector2 const& b1) {
+      auto type = wp::MathsUtils::lineIntersectsLine(a0, a1, b0, b1);
+      return type != wp::MathsUtils::NotIntersecting &&
+             type != wp::MathsUtils::Touching;
+    };
+    // A translating Ring crosses a stationary Ring iff either a moved vertex
+    // sweeps through a stationary edge, or (in the moved Ring's reference
+    // frame) a stationary vertex sweeps through a moved edge.
+    for (auto vertex : affectedVertices) {
+      auto from = startPositions.getVertex(vertex).getPosition();
+      for (auto edgeIndex : stationaryEdges) {
+        auto const& edge = startPositions.getEdge(edgeIndex);
+        if (crosses(
+                from, from + delta,
+                startPositions.getVertex(edge.getFirstVertex()).getPosition(),
+                startPositions.getVertex(edge.getSecondVertex()).getPosition())) {
+          return false;
+        }
+      }
+    }
+    for (auto vertex = startPositions.getFirstVertexIndex();
+         !startPositions.vertexIndexIterationFinished(vertex);
+         vertex = startPositions.getNextVertexIndex(vertex)) {
+      if (affectedVertices.contains(vertex)) {
+        continue;
+      }
+      auto from = startPositions.getVertex(vertex).getPosition();
+      for (auto edgeIndex : movedEdges) {
+        auto const& edge = startPositions.getEdge(edgeIndex);
+        if (crosses(
+                from, from - delta,
+                startPositions.getVertex(edge.getFirstVertex()).getPosition(),
+                startPositions.getVertex(edge.getSecondVertex()).getPosition())) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   wp::geometry::MeshValidator validator(&fullyMoved);
   for (auto vertexIndex : affectedVertices) {
     auto startPosition = startPositions.getVertex(vertexIndex).getPosition();
