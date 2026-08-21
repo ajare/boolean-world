@@ -325,7 +325,7 @@ void EditorInteraction::updateDrag(
       }
 
       mMeshDragCumulativeDelta +=
-          wp::Vector2{input.dragDelta.x, -input.dragDelta.y};
+          wp::Vector2{input.dragDelta.x, -input.dragDelta.y} / input.zoom;
       doc->updateMeshDrag(
           mMeshDragCumulativeDelta, settings.showGrid, settings.gridSize);
     }
@@ -415,7 +415,7 @@ void EditorInteraction::updateDrag(
           auto primitive = doc->getWorld()->getPrimitive(index);
           primitive->setPosition(
               primitive->getPosition() +
-              wp::Vector2{input.dragDelta.x, -input.dragDelta.y});
+              wp::Vector2{input.dragDelta.x, -input.dragDelta.y} / input.zoom);
           primitive->updateVertexPositions();
         }
       }
@@ -443,7 +443,7 @@ void EditorInteraction::updateDrag(
       auto p1 = triggerLine->getPoint(1);
       auto radiusSq = settings.triggerLineHandleRadius *
                       settings.triggerLineHandleRadius;
-      auto movement = wp::Vector2{input.dragDelta.x, -input.dragDelta.y};
+      auto movement = wp::Vector2{input.dragDelta.x, -input.dragDelta.y} / input.zoom;
 
       if (input.worldPosition.distanceToSq(p0) <= radiusSq ||
           mMovingSelectedTriggerLinePart == 0) {

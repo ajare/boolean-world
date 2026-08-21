@@ -14,12 +14,17 @@ namespace editor {
 
 // Raw, toolkit-independent input consumed by EditorInteraction. Screen-space
 // values are retained because the existing transform gestures are measured in
-// pixels; worldPosition is used for picking and rubber-band bounds.
+// pixels; worldPosition is used for picking and rubber-band bounds. dragDelta
+// is screen pixels, not world units - a gesture that must track the cursor
+// 1:1 in world space (moving a Primitive, a TriggerLine, a mesh vertex) has
+// to divide it by zoom itself; a gesture whose sensitivity is deliberately
+// screen-space and zoom-independent (scale, rotate) uses it as-is.
 struct PointerInput {
   wp::Vector2 screenPosition;
   wp::Vector2 worldPosition;
   wp::Vector2 boxSelectStartWorld;
   wp::Vector2 dragDelta;
+  float zoom{1.0f};
   bool cursorInWorldView{false};
   bool cursorInMiniMap{false};
   bool leftClicked{false};

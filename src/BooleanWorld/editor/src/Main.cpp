@@ -382,6 +382,7 @@ editor::PointerInput readPointerInput(
   input.dragDelta = {
       mouseStatus.dragDelta[editor::MouseButtonStatus::Left].x,
       mouseStatus.dragDelta[editor::MouseButtonStatus::Left].y};
+  input.zoom = gViewZoom;
   input.cursorInWorldView = editor::mouseInteractingWithBackground();
   input.cursorInMiniMap = doc->getWorld() && gEditorSettings.renderMiniMap &&
                           miniMapBounds.pointInside(mouseScreen.x, mouseScreen.y);
