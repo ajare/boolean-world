@@ -515,6 +515,21 @@ void historyDoesNotCopyUndoOrRedoWorldSnapshots() {
           "reading history copied an undo or redo world snapshot");
 }
 
+void newDocClearsUndoHistory() {
+  editor::Document document;
+  document.newDoc();
+
+  editor::transactUndoableAction(&document, "edit", [](editor::Document* doc) {
+    doc->getWorld()->setName("edited");
+    return true;
+  });
+  require(editor::canUndo(), "an undoable edit did not register in the undo history");
+
+  document.newDoc();
+  require(!editor::canUndo() && !editor::canRedo(),
+          "newDoc did not clear the undo and redo history");
+}
+
 }  // namespace
 
 int main() {
@@ -531,6 +546,7 @@ int main() {
     copiedDynamicGeneratorRetainsItsWorldAndSettings();
     undoHistoryRetainsConfiguredCapacity();
     historyDoesNotCopyUndoOrRedoWorldSnapshots();
+    newDocClearsUndoHistory();
     std::cout << "Undo history regressions passed\n";
     return 0;
   } catch (std::exception const& error) {

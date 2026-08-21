@@ -35,6 +35,7 @@
 #include "Document.h"
 #include "EditorException.h"
 #include "AppHelpers.h"
+#include "Undo.h"
 
 extern spdlog::logger* gLogger;
 
@@ -205,6 +206,7 @@ Document* Document::instance() {
 }
 
 void Document::reset() {
+  clearUndoHistory();
   mModified = false;
   mFilepath = "";
   mWorld.reset();

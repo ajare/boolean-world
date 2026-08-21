@@ -43,6 +43,8 @@ void abandonUndoableAction(Document* doc);
 
 bool undoableActionInProgress();
 
+void clearUndoHistory();
+
 bool transactionValueHasChanged(float v);
 
 bool transactionValueHasChanged(wp::Vector2 const& v);

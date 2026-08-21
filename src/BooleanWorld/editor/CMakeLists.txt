@@ -105,7 +105,8 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_editor_document_selection_tests
         tests/document_selection_tests.cpp
-        src/Document.cpp)
+        src/Document.cpp
+        src/Undo.cpp)
     target_include_directories(boolean_world_editor_document_selection_tests PRIVATE include)
     target_compile_definitions(boolean_world_editor_document_selection_tests PRIVATE
         YAML_CPP_STATIC_DEFINE)
@@ -141,7 +142,8 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_editor_document_layer_import_export_tests
         tests/document_layer_import_export_tests.cpp
-        src/Document.cpp)
+        src/Document.cpp
+        src/Undo.cpp)
     target_include_directories(boolean_world_editor_document_layer_import_export_tests PRIVATE include)
     target_compile_definitions(boolean_world_editor_document_layer_import_export_tests PRIVATE
         YAML_CPP_STATIC_DEFINE)
@@ -178,7 +180,8 @@ if(BUILD_TESTING)
         tests/material_colour_tests.cpp
         src/Actions.cpp
         src/Document.cpp
-        src/PrimitiveDefaults.cpp)
+        src/PrimitiveDefaults.cpp
+        src/Undo.cpp)
     target_include_directories(boolean_world_editor_material_colour_tests PRIVATE include)
     target_compile_definitions(boolean_world_editor_material_colour_tests PRIVATE
         YAML_CPP_STATIC_DEFINE)

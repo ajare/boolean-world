@@ -15,6 +15,9 @@ editor::Settings gEditorSettings;
 namespace editor {
 void generateClipping(Document*, Settings const&, int) {
 }
+
+void regenerateWorldData(Document*) {
+}
 }  // namespace editor
 
 namespace {

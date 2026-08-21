@@ -276,6 +276,17 @@ bool undoableActionInProgress() {
   return static_cast<bool>(gTransactionalFunc);
 }
 
+void clearUndoHistory() {
+  gUndoStack.clear();
+  gRedoStack.clear();
+
+  gTransactionalFunc = nullptr;
+  gTransactionalId.clear();
+  gTransactionalData = {};
+  gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
+  gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
+}
+
 void undo(Document* doc, int count) {
   if (count <= 0 || !canUndo()) {
     generateClipping(doc, gEditorSettings, ED_CLIP_ON_UNDO_REDO);

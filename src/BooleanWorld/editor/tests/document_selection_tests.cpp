@@ -16,8 +16,19 @@
 
 #include "Defines.h"
 #include "Document.h"
+#include "Settings.h"
+#include "UiHelpers.h"
 
 spdlog::logger* gLogger = spdlog::default_logger_raw();
+editor::Settings gEditorSettings;
+
+namespace editor {
+void generateClipping(Document*, Settings const&, int) {
+}
+
+void regenerateWorldData(Document*) {
+}
+}  // namespace editor
 
 namespace {
 
