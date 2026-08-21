@@ -127,7 +127,7 @@ void checkModifiedOperation(editor::Document* doc, string const& title, Document
 
   if (ImGui::BeginPopupModal(title.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
     string saveText = "Do you want to save changes?";
-    ImGui::Text(saveText.c_str());
+    ImGui::TextUnformatted(saveText.c_str());
     ImGui::Separator();
 
     if (ImGui::Button("Save", ImVec2(120, 0))) {

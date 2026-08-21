@@ -701,7 +701,7 @@ void renderStatusbar(editor::Document* doc, editor::Settings& settings, bw::core
         string numPrimsText = format("{} total primitive(s)", numPrimitives);
 
         ImVec4 c = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-        ImGui::TextColored(c, numPrimsText.c_str());
+        ImGui::TextColored(c, "%s", numPrimsText.c_str());
 
         ImGui::SameLine();
 
@@ -711,20 +711,20 @@ void renderStatusbar(editor::Document* doc, editor::Settings& settings, bw::core
             arrangement.vertices.size(),
             arrangement.faces.size());
 
-        ImGui::TextColored(c, processData.c_str());
+        ImGui::TextColored(c, "%s", processData.c_str());
 
         // Mouse
         auto mousePos = getMouseWorldPosition();
         string mouseData = format("| {:.1f}, {:.1f}", mousePos.x, mousePos.y);
 
         ImGui::SameLine();
-        ImGui::TextColored(c, mouseData.c_str());
+        ImGui::TextColored(c, "%s", mouseData.c_str());
 
         // Zoom
         string zoomData = format("| {:.0f}%", gViewZoom * 100.0f);
 
         ImGui::SameLine();
-        ImGui::TextColored(c, zoomData.c_str());
+        ImGui::TextColored(c, "%s", zoomData.c_str());
 
         // Hovered objects
         switch (gHoveredType) {
@@ -2032,7 +2032,7 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
 
   ImGui::PushID(name.c_str());
 
-  ImGui::Text(name.c_str());
+  ImGui::TextUnformatted(name.c_str());
 
   if (addWidgetFunc) {
     addWidgetFunc();
@@ -3309,7 +3309,7 @@ void renderHistoryView(editor::Document* doc, editor::Settings& settings) {
     }
 
     ImGui::SameLine();
-    ImGui::Text(item.id.c_str());
+    ImGui::TextUnformatted(item.id.c_str());
 
     ImGui::PopID();
   }

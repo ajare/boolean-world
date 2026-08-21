@@ -57,7 +57,7 @@ bool ToggleButton(const char* str_id, const char* title, bool v) {
   draw_list->AddCircleFilled(ImVec2(p.x + radius + t * (width - radius * 2.0f), p.y + radius), radius - 1.5f, IM_COL32(255, 255, 255, 255));
 
   ImGui::SameLine();
-  ImGui::Text(title);
+  ImGui::TextUnformatted(title);
 
   return clicked;
 }
