@@ -45,7 +45,9 @@ bw_target_defaults(editor)
 bw_output_dirs(editor)
 bw_enable_sdl_checks(editor)
 bw_no_postfix(editor)
-set_target_properties(editor PROPERTIES FOLDER BooleanWorld)
+set_target_properties(editor PROPERTIES
+    FOLDER BooleanWorld
+    VS_DEBUGGER_WORKING_DIRECTORY "$(OutDir)")
 
 bw_deploy_runtime_dlls(editor)
 bw_deploy_vendor_dlls(editor)
