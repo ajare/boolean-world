@@ -138,6 +138,67 @@ void prefabFieldBindingSurvivesSerialization() {
           "PrefabField binding did not survive serialization");
 }
 
+void reorderingBoundStepsPreservesPrefabFieldReferences() {
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* definitions = new bw::core::DefinePrefabs;
+  layer.addStep(definitions);
+  auto* prefab = definitions->addPrefab("Door");
+  definitions->setSelectedPrefab(prefab);
+  layer.setActiveStep(1);
+  layer.addPrimitive(rectangle(3.0f));
+  definitions->clearSelectedPrefab();
+
+  auto* field = new bw::core::PrefabField;
+  layer.addStep(field);
+  field->bind(layer, definitions);
+  field->setSelectedPrefab(*definitions, prefab);
+  require(field->placeSelected(layer, {2, -1}), "placement failed before reordering");
+
+  auto requireResolved = [&] {
+    require(field->getDefinePrefabs(layer) == definitions &&
+                field->getInstance({2, -1})->prefabId == prefab->getId() &&
+                layer.getNumPrimitives() == 1,
+            "reordering left a PrefabField reference dangling");
+  };
+  requireResolved();
+  layer.moveStep(1, 2);
+  requireResolved();
+  layer.moveStep(1, 2);
+  requireResolved();
+}
+
+void copyingBoundPrefabFieldUsesCopiedDefinitionsAndPrefabs() {
+  auto source = std::make_unique<bw::core::Layer>(0, "test", 512.0f, 16.0f);
+  auto* definitions = new bw::core::DefinePrefabs;
+  source->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Door");
+  definitions->setSelectedPrefab(prefab);
+  source->setActiveStep(1);
+  source->addPrimitive(rectangle(3.0f));
+  definitions->clearSelectedPrefab();
+
+  auto* field = new bw::core::PrefabField;
+  source->addStep(field);
+  field->bind(*source, definitions);
+  field->setSelectedPrefab(*definitions, prefab);
+  require(field->placeSelected(*source, {2, -1}), "placement failed before copying");
+
+  auto copy = std::make_unique<bw::core::Layer>(*source);
+  auto* copiedDefinitions = static_cast<bw::core::DefinePrefabs*>(copy->getStep(1));
+  auto* copiedField = static_cast<bw::core::PrefabField*>(copy->getStep(2));
+  auto* copiedPrefab = copiedDefinitions->getPrefab(0);
+  require(copiedDefinitions != definitions && copiedPrefab != prefab &&
+              copiedField != field && copiedField->getDefinePrefabs(*copy) == copiedDefinitions &&
+              copiedField->getInstance({2, -1})->prefabId == copiedPrefab->getId() &&
+              copy->getNumPrimitives() == 1,
+          "a copied PrefabField retained a source definition or Prefab reference");
+
+  source.reset();
+  copy->rebuild();
+  require(copy->getNumPrimitives() == 1,
+          "a copied PrefabField depended on destroyed source Prefabs");
+}
+
 void overwriteAndClearUseOneOccupantPerTile() {
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
   auto* definitions = new bw::core::DefinePrefabs;
@@ -163,6 +224,8 @@ int main() {
     prefabFieldRegistersBindsByStableIdAndProtectsItsDefinitions();
     prefabFieldBindingSurvivesSerialization();
     referencesAreClonedPositionedAndStayLive();
+    reorderingBoundStepsPreservesPrefabFieldReferences();
+    copyingBoundPrefabFieldUsesCopiedDefinitionsAndPrefabs();
     overwriteAndClearUseOneOccupantPerTile();
     std::cout << "PrefabField placement and live fold tests passed\n";
     return 0;

@@ -8,6 +8,7 @@
 
 #include <core/DefinePrefabs.h>
 #include <core/DynamicWorldDataGenerator.h>
+#include <core/PrefabField.h>
 #include <core/RectanglePolygon.h>
 #include <core/SuperformulaPolygon.h>
 #include <core/World.h>
@@ -193,6 +194,89 @@ void prefabEditsAreUndoableAndRestoreStepQualifiedFocus() {
   require(secondStep->getSize() == 64.0f &&
               secondStep->getSelectedPrefab() == secondStep->getPrefab(0),
           "undo did not restore a Prefab tiling argument and focus");
+}
+
+void prefabFieldStepActionsUndoAndRedoWithoutLosingReferences() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs;
+  layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Door");
+  definitions->setSelectedPrefab(prefab);
+  layer->setActiveStep(1);
+  layer->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f));
+  definitions->clearSelectedPrefab();
+
+  auto requireBoundField = [&document] {
+    auto* restoredLayer = document.getWorld()->getActiveLayer();
+    auto* restoredDefinitions = static_cast<bw::core::DefinePrefabs*>(restoredLayer->getStep(1));
+    auto* restoredField = static_cast<bw::core::PrefabField*>(restoredLayer->getStep(2));
+    require(restoredField->getDefinePrefabs(*restoredLayer) == restoredDefinitions,
+            "undo history lost the PrefabField binding");
+    require(restoredDefinitions->getNumPrefabs() == 1,
+            "undo history lost the DefinePrefabs list");
+    require(restoredField->getInstance({3, -2}) &&
+                restoredField->getInstance({3, -2})->prefabId == restoredDefinitions->getPrefab(0)->getId(),
+            "undo history lost the PrefabField Tile map reference");
+    require(restoredLayer->getNumPrimitives() == 2,
+            "undo history did not rebuild the PrefabField instance");
+  };
+
+  editor::transactUndoableAction(&document, "Add bound PrefabField",
+      [layer, definitions, prefab](editor::Document*) {
+        auto* field = new bw::core::PrefabField;
+        layer->addStep(field);
+        field->bind(*layer, definitions);
+        field->setSelectedPrefab(*definitions, prefab);
+        return field->placeSelected(*layer, {3, -2});
+      });
+  requireBoundField();
+  editor::undo(&document);
+  require(document.getWorld()->getActiveLayer()->getNumSteps() == 2,
+          "undo did not remove an added bound PrefabField");
+  editor::redo(&document);
+  requireBoundField();
+
+  layer = document.getWorld()->getActiveLayer();
+  editor::transactUndoableAction(&document, "Remove bound PrefabField",
+      [layer](editor::Document*) {
+        layer->removeStep(2);
+        return true;
+      });
+  require(document.getWorld()->getActiveLayer()->getNumSteps() == 2,
+          "removing a PrefabField action did not remove the step");
+  editor::undo(&document);
+  requireBoundField();
+  editor::redo(&document);
+  require(document.getWorld()->getActiveLayer()->getNumSteps() == 2,
+          "redo did not remove the PrefabField step");
+  editor::undo(&document);
+  requireBoundField();
+
+  layer = document.getWorld()->getActiveLayer();
+  editor::transactUndoableAction(&document, "Move DefinePrefabs",
+      [layer](editor::Document*) {
+        layer->moveStep(1, 2);
+        return true;
+      });
+  layer = document.getWorld()->getActiveLayer();
+  auto* movedField = static_cast<bw::core::PrefabField*>(layer->getStep(1));
+  auto* movedDefinitions = static_cast<bw::core::DefinePrefabs*>(layer->getStep(2));
+  require(movedField->getDefinePrefabs(*layer) == movedDefinitions &&
+              movedField->getInstance({3, -2}) && layer->getNumPrimitives() == 2,
+          "moving DefinePrefabs broke the bound PrefabField");
+  editor::undo(&document);
+  requireBoundField();
+  editor::redo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  movedField = static_cast<bw::core::PrefabField*>(layer->getStep(1));
+  movedDefinitions = static_cast<bw::core::DefinePrefabs*>(layer->getStep(2));
+  require(movedField->getDefinePrefabs(*layer) == movedDefinitions &&
+              movedField->getInstance({3, -2}) && layer->getNumPrimitives() == 2,
+          "redo moving DefinePrefabs lost PrefabField references");
 }
 
 void abandonedAndCommittedActionsClearTransactionValues() {
@@ -384,6 +468,7 @@ int main() {
     undoAndRedoPreserveEachIntermediateSnapshot();
     undoAndRedoRestoreNonPrimitiveSelections();
     prefabEditsAreUndoableAndRestoreStepQualifiedFocus();
+    prefabFieldStepActionsUndoAndRedoWithoutLosingReferences();
     abandonedAndCommittedActionsClearTransactionValues();
     superformulaControlValueEditIsDirtyAndUndoable();
     runtimeFreeSnapshotPreservesEditorGenerationConfiguration();
