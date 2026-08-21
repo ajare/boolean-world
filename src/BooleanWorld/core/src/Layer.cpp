@@ -43,7 +43,7 @@ Layer::Layer()
 }
 
 Layer::Layer(uint32_t id, string const& name, float size, float gridSize)
-    : mId(id), mNextStepId(0), mName(name), mExtents(-size / 2, -size / 2, size, size), mActiveStepIndex(0), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
+    : mWorld(nullptr), mId(id), mNextStepId(0), mName(name), mExtents(-size / 2, -size / 2, size, size), mActiveStepIndex(0), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&Layer::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   seedFirstStep();
@@ -54,7 +54,7 @@ Layer::Layer(uint32_t id, string const& name, float size, float gridSize)
 }
 
 Layer::Layer(Layer const& other)
-    : mNextStepId(0), mActiveStepIndex(0), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
+    : mWorld(nullptr), mNextStepId(0), mActiveStepIndex(0), mPrimitiveLookupGrid(nullptr), mTriggerLookupGrid(nullptr), mFrameNumber(0) {
   mPrimitiveCellMetadataUpdater = bind(&Layer::updatePrimitiveCellMetadata, this, placeholders::_1);
 
   copyFrom(other);
@@ -92,9 +92,14 @@ void Layer::swapState(Layer& other) noexcept {
 
 void Layer::rebindOwnedState() {
   for (auto* primitive : mPrimitives) {
-    primitive->mWorld = nullptr;
+    primitive->mWorld = mWorld;
     primitive->mInputs.triggerLines = &mTriggerLines;
   }
+}
+
+void Layer::bindWorld(World* world) {
+  mWorld = world;
+  rebindOwnedState();
 }
 
 Layer::~Layer() {
@@ -738,6 +743,7 @@ uint32_t Layer::_appendBuiltPrimitive(Primitive* primitive, LayerBuildStep const
   mPrimitives.push_back(primitive);
   mPrimitiveSteps.push_back(owningStep);
 
+  primitive->mWorld = mWorld;
   primitive->setId(index);
   primitive->setInputs(wp::Vector2::ZERO, 0.0f, &mTriggerLines);
 

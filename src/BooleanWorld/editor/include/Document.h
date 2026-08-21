@@ -116,6 +116,11 @@ class Document {
 private:
   void reset();
 
+  // Writes the active editing proxy back to the authored MeshPrimitive.
+  // MeshPrimitive's polygon-update hook rebuilds downstream LayerBuildStep
+  // output and requests World regeneration.
+  void commitMeshPolygons(uint32_t primitiveIndex);
+
   std::shared_ptr<bw::core::World> createWorld(float size, float gridSize);
 
 public:

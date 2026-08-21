@@ -25,6 +25,8 @@ protected:
 
   std::vector<ComplexPolygon> generateVerticesImpl() override;
 
+  void polygonsUpdated() override;
+
 public:
   MeshPrimitive(Operation operation, FillRule fillType, std::vector<ComplexPolygon> const& polygons);
 

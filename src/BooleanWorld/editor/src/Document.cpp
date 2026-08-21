@@ -1227,15 +1227,18 @@ void Document::endMeshDrag() {
   mMeshDragLastValidDelta = {};
 }
 
+void Document::commitMeshPolygons(uint32_t primitiveIndex) {
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      mWorld->getPrimitive(primitiveIndex));
+  primitive->updateFromGeometryProxy(*mActiveMesh);
+}
+
 bool Document::commitMeshDrag() {
   if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) {
     return false;
   }
 
-  auto* primitive =
-      static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(mActiveMeshPrimitiveIndex));
-  primitive->updateFromGeometryProxy(*mActiveMesh);
-  primitive->updateVertexPositions();
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
   return true;
 }
 
@@ -1254,10 +1257,7 @@ bool Document::moveMeshVertexTo(uint32_t vertexIndex, wp::Vector2 const& positio
 
   mActiveMesh->moveVertex(vertexIndex, delta);
 
-  auto* primitive =
-      static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(mActiveMeshPrimitiveIndex));
-  primitive->updateFromGeometryProxy(*mActiveMesh);
-  primitive->updateVertexPositions();
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
   return true;
 }
 
@@ -1301,10 +1301,7 @@ uint32_t Document::deleteMeshSubObjects(
     candidate.compact();
     *mActiveMesh = candidate;
     clearMeshSelections();
-    auto* primitive =
-        static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(primitiveIndex));
-    primitive->updateFromGeometryProxy(*mActiveMesh);
-    primitive->updateVertexPositions();
+    commitMeshPolygons(primitiveIndex);
   }
 
   return removed;
@@ -1336,10 +1333,7 @@ uint32_t Document::splitMeshEdges(set<uint32_t> const& edgeIndices) {
   clearMeshSelections();
   mSelectedMeshEdgeIndices = resultingEdges;
 
-  auto* primitive =
-      static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(mActiveMeshPrimitiveIndex));
-  primitive->updateFromGeometryProxy(*mActiveMesh);
-  primitive->updateVertexPositions();
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
 
   return splitCount;
 }
@@ -1761,10 +1755,7 @@ bool Document::fillMeshHole(uint32_t holeRingIndex) {
     mActiveMesh->addHoleToPolygon(filledRingIndex, gapHoleIndex);
   }
 
-  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
-      mWorld->getPrimitive(mActiveMeshPrimitiveIndex));
-  primitive->updateFromGeometryProxy(*mActiveMesh);
-  primitive->updateVertexPositions();
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
   clearMeshSelections();
   mSelectedMeshRingIndices.insert(filledRingIndex);
   return true;
@@ -1803,10 +1794,9 @@ bw::core::Primitive* Document::closeMeshDrawRing() {
     if (mMeshDrawCreatesHole) {
       mActiveMesh->addHoleToPolygon(mMeshDrawContainingRingIndex, newRing);
     }
-    // Commit topology to the authored Primitive before the action requests
+    // Commit topology to the authored Primitive before requesting
     // asynchronous regeneration; the proxy alone is never generator input.
-    primitive->updateFromGeometryProxy(*mActiveMesh);
-    primitive->updateVertexPositions();
+    commitMeshPolygons(mMeshDrawContainingPrimitiveIndex);
     disarmMeshDrawTool();
     clearSelections();
     return primitive;
@@ -1841,8 +1831,7 @@ bool Document::recentreActiveMesh() {
       static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(mActiveMeshPrimitiveIndex));
   primitive->setPosition(centre);
   primitive->setSize(scale * 2.0f, scale * 2.0f);
-  primitive->updateFromGeometryProxy(*mActiveMesh);
-  primitive->updateVertexPositions();
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
   return true;
 }
 

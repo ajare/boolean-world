@@ -211,6 +211,11 @@ public:
 
   void primitiveChanged(Primitive const* primitive);
 
+  // MeshPrimitive authored polygons are inputs to the Layer recipe as well
+  // as the World fold. Rebuild derived step output before regenerating from
+  // the new topology.
+  void primitivePolygonsChanged(Primitive const* primitive);
+
   void getGridCellFrameNumber(uint32_t cellIndex, frame_number_type* frameNumber) const;
 
   [[nodiscard]] Primitive* getPrimitive(uint32_t index);

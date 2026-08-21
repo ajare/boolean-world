@@ -39,6 +39,7 @@ World::World()
 World::World(float size, float gridSize)
     : mExtents(-size / 2, -size / 2, size, size), mActiveLayerIndex(0), mNextLayerId(1), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(new DefaultWorldDataGenerator()), mPrevPlayerPosition{999999.0f, 999999.0f}, mLastPrimitiveUpdateFrameNumber(0) {
   mLayers.push_back(new Layer(0, "Layer 0", size, gridSize));
+  mLayers.back()->bindWorld(this);
 }
 
 World::World(World const& other)
@@ -83,10 +84,7 @@ void World::rebindOwnedState() {
   // line inputs to its own Layer; only the back-link to the World is ours.
   for (auto* layer : mLayers) {
     layer->_setFrameNumber(mFrameNumber);
-
-    for (auto* primitive : layer->getPrimitives()) {
-      primitive->mWorld = this;
-    }
+    layer->bindWorld(this);
   }
 
   if (mDataGenerator) {
@@ -329,10 +327,9 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   // just the active one: a generation may fold across any selected set.
   for (auto* layer : mLayers) {
     layer->_setFrameNumber(0);
+    layer->bindWorld(this);
 
     for (auto primitive : layer->getPrimitives()) {
-      primitive->mWorld = this;
-
       primitive->updateTime(0.0, {wp::Vector2::ZERO,
                                   BW_PLAYER_RADIUS,
                                   BW_PLAYER_FOV,
@@ -392,6 +389,7 @@ void World::clear() {
   // A World always owns at least one Layer, so a cleared World stays usable:
   // re-seed the default Layer, gridless, as the constructor would.
   mLayers.push_back(new Layer(0, "Layer 0", mExtents.getSize().x, -1.0f));
+  mLayers.back()->bindWorld(this);
   mActiveLayerIndex = 0;
   mNextLayerId = 1;
 }
@@ -474,6 +472,7 @@ Layer* World::addLayer(string const& name) {
   auto layer = new Layer(id, name, mExtents.getSize().x, getPrimitiveAccelerationGridSize());
 
   mLayers.push_back(layer);
+  layer->bindWorld(this);
 
   return layer;
 }
@@ -490,6 +489,7 @@ Layer* World::addLayer(Layer* layer) {
   mNextLayerId = max(mNextLayerId, layer->getId() + 1);
 
   mLayers.push_back(layer);
+  layer->bindWorld(this);
 
   return layer;
 }
@@ -753,6 +753,24 @@ void World::primitiveChanged(Primitive const* primitive) {
       layer->primitiveChanged(primitive);
       return;
     }
+  }
+
+  throw CoreException("Primitive not found in any Layer of this World.");
+}
+
+void World::primitivePolygonsChanged(Primitive const* primitive) {
+  for (auto* layer : mLayers) {
+    auto const& primitives = layer->getPrimitives();
+    if (find(primitives.begin(), primitives.end(), primitive) == primitives.end()) {
+      continue;
+    }
+
+    // Polygon storage is authored input to the Layer recipe. Rebuilding is
+    // required before generation so later steps such as PrefabField replace
+    // their cached copies with ones made from the updated source topology.
+    layer->rebuild();
+    generateClipping(true);
+    return;
   }
 
   throw CoreException("Primitive not found in any Layer of this World.");

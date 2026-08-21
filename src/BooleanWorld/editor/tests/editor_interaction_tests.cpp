@@ -22,20 +22,32 @@
 spdlog::logger* gLogger = spdlog::default_logger_raw();
 editor::Settings gEditorSettings;
 
-namespace {
-int generationRequests = 0;
-}
-
 namespace editor {
 void generateClipping(Document*, Settings const&, int) {
 }
 
 void regenerateWorldData(Document*) {
-  ++generationRequests;
 }
 }  // namespace editor
 
 namespace {
+
+class CountingWorldDataGenerator final : public bw::core::WorldDataGenerator {
+public:
+  uint32_t generationRequests{0};
+
+  bw::core::WorldDataGenerator* copy() override {
+    return new CountingWorldDataGenerator(*this);
+  }
+
+  bw::core::WorldDataPtr getWorldData(bw::core::World const*) override {
+    return nullptr;
+  }
+
+  void generate(bw::core::World const*, bool) override {
+    ++generationRequests;
+  }
+};
 
 void require(bool condition, std::string const& message) {
   if (!condition) {
@@ -893,19 +905,18 @@ void addingAMeshHoleInvalidatesTheParentTriangulation() {
               document.placeMeshDrawVertex(pointAt(0.7f, 0.7f), settings) &&
               document.placeMeshDrawVertex(pointAt(0.3f, 0.7f), settings),
           "the hole Ring rejected an interior vertex");
-  generationRequests = 0;
-  editor::EditorInteraction interaction;
-  auto close = pointerAt(pointAt(0.3f, 0.3f));
-  close.leftClicked = true;
-  interaction.updateSelection(&document, nullptr, settings, close);
+  auto* generator = new CountingWorldDataGenerator;
+  document.getWorld()->setWorldDataGenerator(generator);
+  require(document.closeMeshDrawRing() != nullptr,
+          "the hole Ring did not close");
 
   auto* authored = dynamic_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(meshIndex));
   require(authored && authored->getVertices().size() == 1 &&
               authored->getVertices().front().size() == 2,
           "closing the hole did not add its Ring to the MeshPrimitive");
-  require(generationRequests > 0,
-          "closing the hole did not request asynchronous world regeneration");
+  require(generator->generationRequests == 1,
+          "closing the hole did not request world regeneration from the polygon update");
 
   mesh = document.getActiveMesh();
   outer = mesh->getFirstPolygonIndex();
@@ -913,7 +924,88 @@ void addingAMeshHoleInvalidatesTheParentTriangulation() {
       mesh->getPolygon(outer).createBasicTriangulation().getNumTriangles();
   require(triangleCountAfter != triangleCountBefore,
           "adding a hole left the enclosing Ring's cached triangulation stale");
-  editor::undo(&document);
+}
+
+void meshPolygonCommitRebuildsPrefabFieldInstancesBeforeRegeneration() {
+  editor::Document document;
+  document.newDoc();
+  // Build the Layer before attaching it to the World, matching deserialization:
+  // an unselected Prefab source is not in the derived Primitive cache when
+  // World first binds the Layer.
+  auto* layer = new bw::core::Layer(42, "Prefab Layer", BW_WORLD_SIZE, 64.0f);
+  auto* definitions = new bw::core::DefinePrefabs;
+  auto defineIndex = layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Tile");
+  definitions->setSelectedPrefab(prefab);
+  layer->setActiveStep(defineIndex);
+  auto* source = new bw::core::MeshPrimitive(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::EvenOdd,
+      {{{{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}}}});
+  source->setSize(20.0f, 20.0f);
+  source->setPosition({0.0f, 0.0f});
+  source->updateVertexPositions();
+  layer->addPrimitive(source);
+
+  auto* field = new bw::core::PrefabField;
+  auto fieldIndex = layer->addStep(field);
+  field->bind(*layer, definitions);
+  field->setSelectedPrefab(*definitions, prefab);
+  require(field->placeSelected(*layer, {0, 0}),
+          "could not place the Mesh Prefab instance fixture");
+  definitions->clearSelectedPrefab();
+  layer->rebuild();
+
+  document.getWorld()->addLayer(layer);
+  document.getWorld()->setActiveLayer(layer);
+  definitions->setSelectedPrefab(prefab);
+  layer->setActiveStep(defineIndex);
+  layer->rebuild();
+  auto sourceIndex = prefab->getPrimitive(0)->getId();
+  require(document.activateMesh(sourceIndex),
+          "could not activate the Mesh Prefab source");
+
+  auto findBuiltInstance = [&]() -> bw::core::MeshPrimitive* {
+    for (uint32_t i = 0; i < layer->getNumPrimitives(); ++i) {
+      if (layer->getOwningStepIndex(layer->getPrimitive(i)) == fieldIndex) {
+        return dynamic_cast<bw::core::MeshPrimitive*>(layer->getPrimitive(i));
+      }
+    }
+    return nullptr;
+  };
+  auto* builtBefore = findBuiltInstance();
+  require(builtBefore && builtBefore->getVertices().size() == 1 &&
+              builtBefore->getVertices().front().size() == 1,
+          "the PrefabField fixture did not start with one solid Ring");
+
+  auto* mesh = document.getActiveMesh();
+  auto outer = mesh->getFirstPolygonIndex();
+  wp::Vector2 min, max;
+  mesh->getExtents(min, max);
+  auto pointAt = [&](float x, float y) {
+    return min + wp::Vector2{(max.x - min.x) * x, (max.y - min.y) * y};
+  };
+  auto settings = meshDrawSettings();
+  settings.meshVertexPickRadius = 0.1f;
+  require(document.armMeshDrawTool(settings) &&
+              document.placeMeshDrawVertex(pointAt(0.3f, 0.3f), settings) &&
+              document.getMeshDrawContainingRingIndex() == outer &&
+              document.meshDrawCreatesHole() &&
+              document.placeMeshDrawVertex(pointAt(0.7f, 0.3f), settings) &&
+              document.placeMeshDrawVertex(pointAt(0.7f, 0.7f), settings) &&
+              document.placeMeshDrawVertex(pointAt(0.3f, 0.7f), settings),
+          "could not draw a hole in the Mesh Prefab source");
+
+  auto* generator = new CountingWorldDataGenerator;
+  document.getWorld()->setWorldDataGenerator(generator);
+  require(document.closeMeshDrawRing() != nullptr,
+          "the Mesh Prefab hole did not close");
+  auto* builtAfter = findBuiltInstance();
+  require(builtAfter && builtAfter->getVertices().size() == 1 &&
+              builtAfter->getVertices().front().size() == 2,
+          "polygon commit regenerated from a stale PrefabField instance");
+  require(generator->generationRequests == 1,
+          "the rebuilt PrefabField output was not followed by world regeneration");
 }
 
 void meshDragSnapsToGridBeforeValidating() {
@@ -2194,6 +2286,7 @@ int main() {
     meshDragClampsAtLastValidPositionOnSelfIntersection();
     meshDragClampsAtLastValidPositionWhenAHoleWouldEscapeItsOuter();
     addingAMeshHoleInvalidatesTheParentTriangulation();
+    meshPolygonCommitRebuildsPrefabFieldInstancesBeforeRegeneration();
     meshDragSnapsToGridBeforeValidating();
     draggingADifferencePrimitiveDoesNotClearItsSelectionOnRelease();
     meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive();

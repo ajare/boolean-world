@@ -93,6 +93,13 @@ protected:
 
   void notifyWorldChanged() const override;
 
+  void notifyWorldPolygonsChanged() const;
+
+  // Called after authored polygon storage has been replaced. Most Primitive
+  // types need no extra work; MeshPrimitive uses it to rebuild downstream
+  // LayerBuildStep output and regenerate World geometry.
+  virtual void polygonsUpdated();
+
   void invalidatePostTransform(bool recalculateBounds, bool notifyWorld = true) const override;
 
   void copyFrom(Primitive const& other);

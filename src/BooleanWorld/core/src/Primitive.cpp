@@ -138,6 +138,15 @@ void Primitive::notifyWorldChanged() const {
   }
 }
 
+void Primitive::notifyWorldPolygonsChanged() const {
+  if (mWorld) {
+    mWorld->primitivePolygonsChanged(this);
+  }
+}
+
+void Primitive::polygonsUpdated() {
+}
+
 void Primitive::setId(uint32_t id) {
   VertexTransformerObject::setId(id);
 }
@@ -260,6 +269,7 @@ void Primitive::setVertices(vector<ComplexPolygon> const& polygons) {
   mPolygons = polygons;
   updateVertexPositions();
   invalidatePostTransform(true, true);
+  polygonsUpdated();
 }
 
 bool Primitive::childrenModified() const {

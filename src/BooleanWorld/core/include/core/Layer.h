@@ -21,6 +21,7 @@ namespace core {
 class LayerBuildContext;
 class LayerBuildStep;
 class PrimitiveField;
+class World;
 
 // A named collection of WorldTriggerLines and of the Primitives its ordered
 // LayerBuildSteps produce. A World holds an ordered set of Layers; a
@@ -36,6 +37,8 @@ class PrimitiveField;
 // removePrimitive/replacePrimitive look the Primitive up by identity across
 // every owning step regardless of which is active.
 class BW_API Layer : public Serializable {
+  friend class World;
+
   struct PrimitiveCellMetadata {
     frame_number_type lastUpdatedFrameNumber{0};
   };
@@ -43,6 +46,10 @@ class BW_API Layer : public Serializable {
   typedef wp::ExtendedAccelerationGrid<PrimitiveCellMetadata> PrimitiveAccelerationGrid;
 
 private:
+  // Non-owning backlink used to bind every Primitive produced by a recipe
+  // rebuild. Null only while a Layer exists outside a World.
+  World* mWorld;
+
   uint32_t mId;
   uint32_t mNextStepId;
 
@@ -87,6 +94,8 @@ private:
   void teardown();
 
   void seedFirstStep();
+
+  void bindWorld(World* world);
 
   void assignStepId(LayerBuildStep* step);
 

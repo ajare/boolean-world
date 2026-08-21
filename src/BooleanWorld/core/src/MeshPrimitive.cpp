@@ -239,6 +239,10 @@ unique_ptr<wp::geometry::Mesh> MeshPrimitive::createGeometryProxy() const {
   return mesh;
 }
 
+void MeshPrimitive::polygonsUpdated() {
+  notifyWorldPolygonsChanged();
+}
+
 void MeshPrimitive::updateFromGeometryProxy(wp::geometry::Mesh const& mesh) {
   // The rest-pose transform is affine. Sampling its origin and basis avoids
   // duplicating VertexTransformer's orientation/animation composition here.
