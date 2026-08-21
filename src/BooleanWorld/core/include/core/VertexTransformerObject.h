@@ -107,6 +107,8 @@ public:
 
   void setParent(VertexTransformerObject* parent);
 
+  [[nodiscard]] VertexTransformerObject* getParent() const;
+
   void setPosition(wp::Vector2 const& position);
 
   wp::Vector2 const& getPosition() const;

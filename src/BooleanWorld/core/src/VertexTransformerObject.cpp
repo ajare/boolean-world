@@ -156,6 +156,10 @@ void VertexTransformerObject::setParent(VertexTransformerObject* parent) {
   invalidatePostTransform(true, true);
 }
 
+VertexTransformerObject* VertexTransformerObject::getParent() const {
+  return mParent;
+}
+
 void VertexTransformerObject::setPosition(wp::Vector2 const& position) {
   mPosition = position;
   InvalidateWorldPositionCaches();

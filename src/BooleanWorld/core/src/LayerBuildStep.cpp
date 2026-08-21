@@ -1,5 +1,6 @@
 #include "core/LayerBuildStep.h"
 
+#include "core/DefinePrefabs.h"
 #include "core/PrimitiveField.h"
 #include "core/Registry.h"
 
@@ -14,7 +15,9 @@ LayerBuildStep::LayerBuildStep()
 
 Registry<LayerBuildStep> const& LayerBuildStep::registry() {
   static const Registry<LayerBuildStep> stepRegistry(
-      "layer build step", {{"PrimitiveField", []() { return new PrimitiveField; }}});
+      "layer build step",
+      {{"DefinePrefabs", []() { return new DefinePrefabs; }},
+       {"PrimitiveField", []() { return new PrimitiveField; }}});
 
   return stepRegistry;
 }
