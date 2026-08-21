@@ -103,7 +103,7 @@ void StatePlayBooleanWorld::createCamera() {
   auto const& physicalStats = getPlayerPhysicalStats();
   auto camera = new ReactiveCamera(
       glm::vec3(physicalStats.position.x, BW_PLAYER_HEIGHT, physicalStats.position.y),
-      physicalStats.angle, physicalStats.pitch, BW_PLAYER_FOV, aspectRatio);
+      bw::app::cameraYaw(physicalStats.angle), physicalStats.pitch, BW_PLAYER_FOV, aspectRatio);
   camera->setClipDistances(0.1f, BW_PLAYER_VIEW_DISTANCE + 10);
 
   mCamera3d = shared_ptr<mpp::Camera>(camera);
@@ -556,7 +556,9 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   auto playerViewHeight = getPlayerFloorHeight() + BW_PLAYER_EYE_HEIGHT;
 
   static_cast<ReactiveCamera*>(mCamera3d.get())->setPosition({physicalStats.position.x, playerViewHeight, physicalStats.position.y});
-  static_cast<ReactiveCamera*>(mCamera3d.get())->yaw(physicalStats.angle - mPlayerPrevAngle);
+  // The renderer's camera yaw is clockwise from world -Y, while authored
+  // player angles are clockwise from world +Y.
+  static_cast<ReactiveCamera*>(mCamera3d.get())->yaw(mPlayerPrevAngle - physicalStats.angle);
   static_cast<ReactiveCamera*>(mCamera3d.get())->pitch(physicalStats.pitch - mPlayerPrevPitch);
 
   // World 3d

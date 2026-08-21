@@ -1,7 +1,10 @@
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <filesystem>
 #include <functional>
 #include <iostream>
+#include <mutex>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -11,6 +14,7 @@
 
 #include <core/LayerBuildStep.h>
 #include <core/DefinePrefabs.h>
+#include <core/DynamicWorldDataGenerator.h>
 #include <core/PrefabField.h>
 #include <core/MeshPrimitive.h>
 #include <core/PrimitiveField.h>
@@ -996,16 +1000,40 @@ void meshPolygonCommitRebuildsPrefabFieldInstancesBeforeRegeneration() {
               document.placeMeshDrawVertex(pointAt(0.3f, 0.7f), settings),
           "could not draw a hole in the Mesh Prefab source");
 
-  auto* generator = new CountingWorldDataGenerator;
-  document.getWorld()->setWorldDataGenerator(generator);
+  auto* generator = dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
+      document.getWorld()->getWorldDataGenerator());
+  require(generator != nullptr, "the editor fixture has no dynamic generator");
+  generator->setLayerSelection(bw::core::SelectLayer(layer->getId()));
+  std::mutex generationMutex;
+  std::condition_variable generationChanged;
+  uint32_t completedGenerations = 0;
+  auto callback = generator->registerGenerationCallback(
+      [&](bw::core::DynamicWorldDataGenerator::GenerationDetails const& details) {
+        if (details.state ==
+            bw::core::DynamicWorldDataGenerator::GenerationState::Generated) {
+          std::lock_guard lock(generationMutex);
+          ++completedGenerations;
+          generationChanged.notify_all();
+        }
+      });
+
   require(document.closeMeshDrawRing() != nullptr,
           "the Mesh Prefab hole did not close");
+  {
+    std::unique_lock lock(generationMutex);
+    require(generationChanged.wait_for(
+                lock, std::chrono::seconds(10),
+                [&] { return completedGenerations != 0; }),
+            "the Mesh polygon commit did not complete dynamic generation");
+  }
   auto* builtAfter = findBuiltInstance();
   require(builtAfter && builtAfter->getVertices().size() == 1 &&
               builtAfter->getVertices().front().size() == 2,
           "polygon commit regenerated from a stale PrefabField instance");
-  require(generator->generationRequests == 1,
-          "the rebuilt PrefabField output was not followed by world regeneration");
+  auto worldData = document.getWorld()->getWorldData();
+  require(worldData->getContainingFaceIndex({0.0f, 0.0f}) == ~0u,
+          "dynamic world data remained solid inside the committed Prefab hole");
+  generator->unregisterGenerationCallback(callback);
 }
 
 void meshDragSnapsToGridBeforeValidating() {

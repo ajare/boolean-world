@@ -31,8 +31,8 @@ public:
 int main() {
   {
     auto movement = bw::app::playerMovement({0.0f, 1.0f}, 0.0f);
-    if (!near(movement.x, 0.0f) || !near(movement.y, -1.0f)) {
-      return fail("forward input does not follow a zero-yaw camera");
+    if (!near(movement.x, 0.0f) || !near(movement.y, 1.0f)) {
+      return fail("zero-yaw forward input does not point along world +Y");
     }
   }
 
@@ -47,7 +47,7 @@ int main() {
     auto forward = bw::app::playerMovement({0.0f, 1.0f}, 90.0f);
     auto right = bw::app::playerMovement({1.0f, 0.0f}, 90.0f);
     if (!near(forward.x, 1.0f) || !near(forward.y, 0.0f) ||
-        !near(right.x, 0.0f) || !near(right.y, 1.0f)) {
+        !near(right.x, 0.0f) || !near(right.y, -1.0f)) {
       return fail("movement axes do not rotate with player yaw");
     }
   }
@@ -71,9 +71,14 @@ int main() {
     return fail("a sensitive mouse turns the view past the pitch limit");
   }
 
-  if (!near(bw::app::worldViewAngle(0.0f), 180.0f) ||
+  if (!near(bw::app::worldViewAngle(0.0f), 0.0f) ||
       !near(bw::app::worldViewAngle(90.0f), 90.0f)) {
-    return fail("core view angle does not match player camera yaw");
+    return fail("core view angle does not match authored player yaw");
+  }
+
+  if (!near(bw::app::cameraYaw(0.0f), 180.0f) ||
+      !near(bw::app::cameraYaw(90.0f), 90.0f)) {
+    return fail("renderer camera yaw does not match authored player yaw");
   }
 
   {
@@ -95,7 +100,7 @@ int main() {
 
   {
     auto player = bw::app::minimapPosition({10.0f, 20.0f}, {0.0f, 0.0f}, {1.0f, 1.0f});
-    auto forward = bw::app::minimapPosition({10.0f, 19.0f}, {0.0f, 0.0f}, {1.0f, 1.0f});
+    auto forward = bw::app::minimapPosition({10.0f, 21.0f}, {0.0f, 0.0f}, {1.0f, 1.0f});
     auto right = bw::app::minimapPosition({11.0f, 20.0f}, {0.0f, 0.0f}, {1.0f, 1.0f});
     if (!(forward.y < player.y) || !(right.x > player.x)) {
       return fail("minimap axes do not agree with camera forward and right");
@@ -103,16 +108,18 @@ int main() {
   }
 
   {
-    ReactiveCamera camera({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 75.0f, 1.0f);
+    ReactiveCamera camera(
+        {0.0f, 0.0f, 0.0f}, bw::app::cameraYaw(0.0f), 0.0f, 75.0f, 1.0f);
     auto const& direction = camera.getDirection();
     if (!near(direction.x, 0.0f) || !near(direction.y, 0.0f) ||
-        !near(direction.z, -1.0f)) {
-      return fail("zero-yaw camera does not look along world -Y");
+        !near(direction.z, 1.0f)) {
+      return fail("zero-yaw player camera does not look along world +Y");
     }
   }
 
   {
-    ReactiveCamera camera({0.0f, 0.0f, 0.0f}, 90.0f, 0.0f, 75.0f, 1.0f);
+    ReactiveCamera camera(
+        {0.0f, 0.0f, 0.0f}, bw::app::cameraYaw(90.0f), 0.0f, 75.0f, 1.0f);
     auto const& direction = camera.getDirection();
     if (!near(direction.x, 1.0f) || !near(direction.y, 0.0f) ||
         !near(direction.z, 0.0f)) {
