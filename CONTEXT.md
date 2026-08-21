@@ -9,7 +9,7 @@ An authored closed shape that contributes an operation, fill rule, priority, and
 _Avoid_: Path primitive, clip shape
 
 **Layer**:
-A named, owned collection of Primitives and WorldTriggerLines within a World. A generation selects a set of Layers to fold together; the World's active Layer is the one currently focused for authoring.
+A named, owned collection of Primitives and WorldTriggerLines within a World. A generation selects a set of Layers to fold together; the World's active Layer is the one currently focused for authoring. Ownership is permanent: neither a Primitive nor a WorldTriggerLine ever moves between Layers.
 _Avoid_: Layer tag, layer id (as a primitive attribute)
 
 **Contour**:
@@ -35,3 +35,15 @@ _Avoid_: LayerGenerationStep, generation step
 **PrimitiveField (step)**:
 The basic LayerBuildStep: an embedded, literal list of Primitive definitions that it adds verbatim. Unrelated to the existing Voronoi/Lloyd-relaxed `PrimitiveFieldLayout`/"Generate Primitive Field…" placement feature, which the name coincidentally echoes.
 _Avoid_: conflating with the Voronoi Primitive Field placement feature
+
+**Prefab**:
+A named, stably-identified collection of Primitives authored as a unit so that later LayerBuildSteps can place and manipulate copies of it. Holds Primitives only — never WorldTriggerLines, unlike the removed `addPrefabInstance` copy-paste grouping that once bore this name. A Prefab's Primitives never contribute world geometry; they exist to be authored and, later, instanced. A Prefab's pivot — the point its Primitives orbit when it is rotated — is the origin, not the centre of its contents.
+_Avoid_: prefab instance (the removed Primitive+TriggerLine clipboard grouping), group, template
+
+**DefinePrefabs (step)**:
+The LayerBuildStep that owns a set of Prefabs. It defines rather than places: outside an authoring session it contributes nothing to its Layer at all. Which Prefab is being edited is ephemeral editor focus — never serialized, and unselected after construction, copy, or load — mirroring a Layer's active step and a World's active Layer.
+_Avoid_: PrefabField, PlacePrefabs (a future, separate step type)
+
+**Tiling guide**:
+The single wireframe polygon a DefinePrefabs step draws, centred on the origin at the step's chosen PrefabTilingType and size. It is the frame a Prefab is authored against — the visible form of the Prefab's pivot — and is unrelated to the editor's snapping grid.
+_Avoid_: grid, prefab grid, tile (a tile is a cell a placing step later fills; the guide is one polygon at the origin)

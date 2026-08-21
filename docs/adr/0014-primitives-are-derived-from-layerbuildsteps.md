@@ -1,6 +1,6 @@
 # ADR-0014: A Layer's Primitives are derived from its LayerBuildSteps, never stored independently
 
-**Status:** Accepted
+**Status:** Accepted (amended by ADR-0019: Layer ownership is permanent)
 **Date:** 2026-08-19
 **Relates to:** ADR-0013 (Layer owns its Primitives and WorldTriggerLines)
 
@@ -43,7 +43,8 @@ The existing manual Create/Edit Primitive editor UI is preserved from the
 user's point of view, but now operates by mutating the target Layer's
 `PrimitiveField` step's embedded primitive list, then triggering a rebuild.
 Moving a Primitive to another Layer targets that Layer's first step, which
-is guaranteed to be a `PrimitiveField` step.
+is guaranteed to be a `PrimitiveField` step. (ADR-0019 removes moving between
+Layers entirely; this sentence no longer describes the system.)
 
 Breaking the save format is accepted; no migration path is provided for
 `.world`/`.layer` files saved before this change.
