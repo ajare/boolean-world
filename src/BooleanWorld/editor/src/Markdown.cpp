@@ -10,15 +10,24 @@
 
 #include "Markdown.h"
 
+#include <spdlog/spdlog.h>
+
+extern spdlog::logger* gLogger;
+
 using namespace std;
 
 static ImGui::MarkdownConfig mdConfig;
 
 void linkCallback(ImGui::MarkdownLinkCallbackData data) {
-  string url(data.link, data.linkLength);
-  if (!data.isImage) {
-    ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+  if (data.isImage) {
+    return;
   }
+  string url(data.link, data.linkLength);
+  if (!url.starts_with("http://") && !url.starts_with("https://")) {
+    gLogger->warn("Refusing to open a help link that is not http(s): {}", url);
+    return;
+  }
+  ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 inline ImGui::MarkdownImageData imageCallback(ImGui::MarkdownLinkCallbackData data) {
