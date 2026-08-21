@@ -510,7 +510,7 @@ void meshDragMovesAffectedSubObjectsAsARigidGroup() {
   }
 }
 
-void draggingAnOuterRingMovesItsHolesAsOneGroup() {
+void draggingAnOuterRingMovesItsFullNestedHierarchyAsOneGroup() {
   editor::Document document;
   editor::Settings settings;
   settings.mode = editor::Settings::Mode::Mesh;
@@ -523,6 +523,10 @@ void draggingAnOuterRingMovesItsHolesAsOneGroup() {
           {
               {{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}},
               {{{-0.5f, -0.5f}}, {{-0.5f, 0.5f}}, {{0.5f, 0.5f}}, {{0.5f, -0.5f}}},
+          },
+          {
+              {{{-0.25f, -0.25f}}, {{0.25f, -0.25f}}, {{0.25f, 0.25f}}, {{-0.25f, 0.25f}}},
+              {{{-0.1f, -0.1f}}, {{-0.1f, 0.1f}}, {{0.1f, 0.1f}}, {{0.1f, -0.1f}}},
           },
           {{{{3.0f, -1.0f}}, {{5.0f, -1.0f}}, {{5.0f, 1.0f}}, {{3.0f, 1.0f}}}},
       });
@@ -537,7 +541,15 @@ void draggingAnOuterRingMovesItsHolesAsOneGroup() {
   require(holes.size() == 1, "the drag fixture did not contain one hole");
   auto holeIndex = holes.front();
 
-  auto unrelatedIndex = mesh->getNextPolygonIndex(holeIndex);
+  auto islandIndex = mesh->getNextPolygonIndex(holeIndex);
+  require(!mesh->polygonIndexIterationFinished(islandIndex) &&
+              !mesh->getPolygon(islandIndex).isHole(),
+          "the drag fixture did not contain a filled island");
+  auto islandHoleIndex = mesh->getNextPolygonIndex(islandIndex);
+  require(!mesh->polygonIndexIterationFinished(islandHoleIndex) &&
+              mesh->getPolygon(islandHoleIndex).isHole(),
+          "the drag fixture did not contain the filled island's nested hole");
+  auto unrelatedIndex = mesh->getNextPolygonIndex(islandHoleIndex);
   require(!mesh->polygonIndexIterationFinished(unrelatedIndex) &&
               !mesh->getPolygon(unrelatedIndex).isHole(),
           "the drag fixture did not contain an unrelated top-level Ring");
@@ -547,6 +559,12 @@ void draggingAnOuterRingMovesItsHolesAsOneGroup() {
     starts[vertex] = mesh->getVertex(vertex).getPosition();
   }
   for (auto vertex : mesh->getPolygon(holeIndex).getVertexIndexSet()) {
+    starts[vertex] = mesh->getVertex(vertex).getPosition();
+  }
+  for (auto vertex : mesh->getPolygon(islandIndex).getVertexIndexSet()) {
+    starts[vertex] = mesh->getVertex(vertex).getPosition();
+  }
+  for (auto vertex : mesh->getPolygon(islandHoleIndex).getVertexIndexSet()) {
     starts[vertex] = mesh->getVertex(vertex).getPosition();
   }
   std::map<uint32_t, wp::Vector2> unrelatedStarts;
@@ -562,7 +580,7 @@ void draggingAnOuterRingMovesItsHolesAsOneGroup() {
           "the outer Ring and its hole did not accept a rigid-group move");
   for (auto const& [vertex, start] : starts) {
     require(mesh->getVertex(vertex).getPosition() == start + delta,
-            "a hole vertex did not move with its outer Ring");
+            "a nested hole or filled island did not move with its outer Ring");
   }
   for (auto const& [vertex, start] : unrelatedStarts) {
     require(mesh->getVertex(vertex).getPosition() == start,
@@ -1582,7 +1600,7 @@ int main() {
     meshSelectAllAndBoundsStayScopedToActiveMesh();
     undoRestoresMeshSubObjectSelection();
     meshDragMovesAffectedSubObjectsAsARigidGroup();
-    draggingAnOuterRingMovesItsHolesAsOneGroup();
+    draggingAnOuterRingMovesItsFullNestedHierarchyAsOneGroup();
     meshDragClampsAtLastValidPositionOnSelfIntersection();
     meshDragClampsAtLastValidPositionWhenAHoleWouldEscapeItsOuter();
     meshDragSnapsToGridBeforeValidating();

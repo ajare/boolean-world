@@ -616,13 +616,25 @@ set<uint32_t> affectedMeshVertices(
     for (auto polygonIndex : selection) {
       auto const& polygon = mesh.getPolygon(polygonIndex);
       includeRing(polygonIndex);
-      // An outer Ring and its holes form one ComplexPolygon. Moving only the
-      // outer would reshape it around stationary holes rather than moving the
-      // selected polygon as a rigid group. Filled islands remain independent
-      // top-level ComplexPolygons and are intentionally not included.
-      if (!polygon.isHole()) {
-        for (auto holeIndex : polygon.getHoleIndices()) {
-          includeRing(holeIndex);
+
+      // Storage explicitly links an outer Ring to its holes, while filled
+      // islands are deliberately top-level ComplexPolygons whose hierarchy is
+      // re-derived geometrically. Include every Ring contained by the selected
+      // Ring so the complete alternating hole/island hierarchy translates as
+      // one rigid group.
+      for (auto candidateIndex = mesh.getFirstPolygonIndex();
+           !mesh.polygonIndexIterationFinished(candidateIndex);
+           candidateIndex = mesh.getNextPolygonIndex(candidateIndex)) {
+        if (candidateIndex == polygonIndex) {
+          continue;
+        }
+        auto const& candidate = mesh.getPolygon(candidateIndex);
+        auto const orderedVertices = candidate.getOrderedVertexIndices();
+        if (!orderedVertices.empty() &&
+            pointInsideRing(
+                mesh, polygon,
+                mesh.getVertex(orderedVertices.front()).getPosition())) {
+          includeRing(candidateIndex);
         }
       }
     }
