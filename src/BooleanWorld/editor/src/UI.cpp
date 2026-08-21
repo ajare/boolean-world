@@ -3309,6 +3309,35 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
+  auto const& selectedEdges = doc->getSelectedMeshEdgeIndices();
+  if (selectedEdges.size() == 1) {
+    auto edgeIndex = *selectedEdges.begin();
+    auto indices = set<uint32_t>{edgeIndex};
+    ImGui::Text("Selected edge: %u", edgeIndex);
+    if (ImGui::Button("Split##SelectedMeshEdge")) {
+      transactUndoableAction(
+          doc, "Split Mesh Edge",
+          bind(splitMeshEdges, placeholders::_1, indices));
+    }
+    ImGui::SameLine();
+    auto canDelete =
+        doc->previewMeshSubObjectDeletionCount(
+            Settings::MeshSubMode::Edge, indices) > 0;
+    ImGui::BeginDisabled(!canDelete);
+    if (ImGui::Button(ICON_FA_TRASH "##DeleteSelectedMeshEdge")) {
+      transactUndoableAction(
+          doc, "Delete Mesh Edge",
+          bind(deleteMeshSubObjects, placeholders::_1,
+               Settings::MeshSubMode::Edge, indices));
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      ImGui::SetTooltip(canDelete
+                            ? "Delete selected edge"
+                            : "This Ring cannot contain fewer than three vertices");
+    }
+  }
+
   if (ImGui::Button("Recentre mesh")) {
     transactUndoableAction(doc, "Recentre Mesh", recentreActiveMesh);
   }
