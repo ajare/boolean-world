@@ -1379,6 +1379,53 @@ void drawingContextCreatesHolesAndFilledIslands() {
   require(topLevel == 2, "the reloaded proxy did not re-derive the filled island");
 }
 
+void drawingMultipleHolesKeepsThemOnTheSameComplexPolygon() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  settings.meshVertexPickRadius = 0.1f;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  require(document.activateMesh(meshIndex), "the multiple-hole Mesh did not activate");
+
+  wp::Vector2 min, max;
+  document.getActiveMesh()->getExtents(min, max);
+  auto pointAt = [&](float x, float y) {
+    return wp::Vector2{
+        min.x + (max.x - min.x) * x,
+        min.y + (max.y - min.y) * y};
+  };
+  auto drawHole = [&](wp::Vector2 first, wp::Vector2 second, wp::Vector2 third) {
+    require(document.armMeshDrawTool(settings), "the multiple-hole draw tool did not arm");
+    require(document.placeMeshDrawVertex(first, settings) && document.meshDrawCreatesHole(),
+            "a hole gesture did not capture the outer Ring context");
+    require(document.placeMeshDrawVertex(second, settings) &&
+                document.placeMeshDrawVertex(third, settings),
+            "a hole gesture rejected an interior vertex");
+    require(document.closeMeshDrawRing() != nullptr,
+            "a hole gesture did not close");
+  };
+
+  drawHole(pointAt(0.15f, 0.25f), pointAt(0.4f, 0.25f), pointAt(0.275f, 0.7f));
+  drawHole(pointAt(0.6f, 0.25f), pointAt(0.85f, 0.25f), pointAt(0.725f, 0.7f));
+
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  require(primitive->getVertices().size() == 1 &&
+              primitive->getVertices().front().size() == 3,
+          "the two holes were not stored on the same ComplexPolygon");
+
+  auto* mesh = document.getActiveMesh();
+  auto outerIndex = mesh->getFirstPolygonIndex();
+  auto const& holes = mesh->getPolygon(outerIndex).getHoleIndices();
+  require(holes.size() == 2, "the proxy did not retain both independent holes");
+  auto firstHole = holes.front();
+  auto secondHole = holes.back();
+  require(firstHole != secondHole &&
+              mesh->getPolygon(firstHole).isHole() &&
+              mesh->getPolygon(secondHole).isHole(),
+          "the two drawn holes were not retained as independent Rings");
+}
+
 void drawingContextRejectsEscapesAndSelfCrossings() {
   auto settings = meshDrawSettings();
 
@@ -1549,6 +1596,7 @@ int main() {
     switchingSubModeOrLeavingMeshModeDisarmsAndDiscards();
     closingADrawnRingCreatesAMeshPrimitiveWithCanonicalWinding();
     drawingContextCreatesHolesAndFilledIslands();
+    drawingMultipleHolesKeepsThemOnTheSameComplexPolygon();
     drawingContextRejectsEscapesAndSelfCrossings();
     theWholeDrawingGestureIsOneUndoEntry();
     std::cout << "Editor selection interactions passed\n";
