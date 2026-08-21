@@ -1514,13 +1514,22 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
               primitive->getVertices()[1].size() == islandBefore.size() &&
               primitive->getVertices()[1][0].size() == islandBefore[0].size() &&
               primitive->getVertices()[1][0][0].p == islandBefore[0][0].p &&
-              primitive->getVertices()[2].size() == 1,
-          "filling the hole did not create a top-level solid alongside its existing island");
+              primitive->getVertices()[2].size() == 2,
+          "filling the hole did not create only the gap around its existing island");
   require(document.getSelectedMeshRingIndices().size() == 1 &&
               !document.getActiveMesh()
                    ->getPolygon(*document.getSelectedMeshRingIndices().begin())
                    .isHole(),
           "the newly filled Ring was not selected as a solid polygon");
+
+  auto filledRing = *document.getSelectedMeshRingIndices().begin();
+  require(document.deleteMeshSubObjects(
+              editor::Settings::MeshSubMode::Polygon, {filledRing}) == 1 &&
+              primitive->getVertices().size() == 2 &&
+              primitive->getVertices()[0].size() == 2 &&
+              primitive->getVertices()[1].size() == islandBefore.size() &&
+              primitive->getVertices()[1][0][0].p == islandBefore[0][0].p,
+          "deleting the gap polygon did not restore the previous hole and island topology");
 }
 
 void drawingContextRejectsEscapesAndSelfCrossings() {

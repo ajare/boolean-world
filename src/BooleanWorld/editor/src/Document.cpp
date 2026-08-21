@@ -1546,6 +1546,40 @@ bool Document::fillMeshHole(uint32_t holeRingIndex) {
     return false;
   }
 
+  // Find the hole's immediate filled islands before adding anything. A
+  // deeper island belongs to the smallest hole containing it and is already
+  // excluded transitively by its ancestor island.
+  vector<uint32_t> immediateIslands;
+  for (auto candidateIndex = mActiveMesh->getFirstPolygonIndex();
+       !mActiveMesh->polygonIndexIterationFinished(candidateIndex);
+       candidateIndex = mActiveMesh->getNextPolygonIndex(candidateIndex)) {
+    auto const& candidate = mActiveMesh->getPolygon(candidateIndex);
+    if (candidate.isHole()) {
+      continue;
+    }
+    auto ordered = candidate.getOrderedVertexIndices();
+    if (ordered.empty()) {
+      continue;
+    }
+    auto sample = mActiveMesh->getVertex(ordered.front()).getPosition();
+    uint32_t smallestContainingHole = ~0u;
+    float smallestArea = numeric_limits<float>::max();
+    for (auto containingIndex = mActiveMesh->getFirstPolygonIndex();
+         !mActiveMesh->polygonIndexIterationFinished(containingIndex);
+         containingIndex = mActiveMesh->getNextPolygonIndex(containingIndex)) {
+      auto const& containing = mActiveMesh->getPolygon(containingIndex);
+      auto area = ringArea(*mActiveMesh, containingIndex);
+      if (containing.isHole() && area < smallestArea &&
+          pointInsideRing(*mActiveMesh, containing, sample)) {
+        smallestContainingHole = containingIndex;
+        smallestArea = area;
+      }
+    }
+    if (smallestContainingHole == holeRingIndex) {
+      immediateIslands.push_back(candidateIndex);
+    }
+  }
+
   auto points = ringPositions(*mActiveMesh, holeRingIndex);
   // The retained hole stays clockwise; its new, independent solid copy uses
   // canonical anticlockwise winding and its own vertices/edges.
@@ -1553,6 +1587,19 @@ bool Document::fillMeshHole(uint32_t holeRingIndex) {
     reverse(points.begin(), points.end());
   }
   auto filledRingIndex = addDrawnRing(*mActiveMesh, points);
+
+  // Fill only the gap. Existing islands remain independent top-level solids,
+  // while copies of their boundaries become holes on the new polygon. Thus
+  // the pieces meet without overlap, and deleting this polygon restores the
+  // exact previous hole/island topology.
+  for (auto islandIndex : immediateIslands) {
+    auto islandPoints = ringPositions(*mActiveMesh, islandIndex);
+    if (twiceSignedArea(islandPoints) < 0.0f) {
+      reverse(islandPoints.begin(), islandPoints.end());
+    }
+    auto gapHoleIndex = addDrawnRing(*mActiveMesh, islandPoints);
+    mActiveMesh->addHoleToPolygon(filledRingIndex, gapHoleIndex);
+  }
 
   auto* primitive = static_cast<bw::core::MeshPrimitive*>(
       mWorld->getPrimitive(mActiveMeshPrimitiveIndex));
