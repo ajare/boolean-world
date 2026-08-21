@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <format>
+#include <limits>
 
 #pragma warning(push)
 #pragma warning(disable : 4307)
@@ -13,8 +14,11 @@
 #include <yaml-cpp/yaml.h>
 
 #include <willpower/common/MathsUtils.h>
+#include <willpower/geometry/Edge.h>
 #include <willpower/geometry/MeshOperations.h>
 #include <willpower/geometry/MeshValidator.h>
+#include <willpower/geometry/Polygon.h>
+#include <willpower/geometry/Vertex.h>
 
 #include "core/BinarySerializer.h"
 #include "core/YamlSerializer.h"
@@ -1062,6 +1066,111 @@ float twiceSignedArea(vector<wp::Vector2> const& points) {
   return area;
 }
 
+float ringArea(wp::geometry::Mesh const& mesh, uint32_t polygonIndex) {
+  vector<wp::Vector2> points;
+  for (auto vertex : mesh.getPolygon(polygonIndex).getOrderedVertexIndices()) {
+    points.push_back(mesh.getVertex(vertex).getPosition());
+  }
+  return abs(twiceSignedArea(points));
+}
+
+uint32_t innermostRingAt(
+    wp::geometry::Mesh const& mesh, wp::Vector2 const& position) {
+  uint32_t result = ~0u;
+  float smallestArea = numeric_limits<float>::max();
+  for (auto index = mesh.getFirstPolygonIndex();
+       !mesh.polygonIndexIterationFinished(index);
+       index = mesh.getNextPolygonIndex(index)) {
+    auto area = ringArea(mesh, index);
+    if (area < smallestArea && pointInsideRing(mesh, mesh.getPolygon(index), position)) {
+      result = index;
+      smallestArea = area;
+    }
+  }
+  return result;
+}
+
+float orientation(wp::Vector2 const& a, wp::Vector2 const& b, wp::Vector2 const& c) {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+bool pointOnSegment(wp::Vector2 const& a, wp::Vector2 const& b, wp::Vector2 const& p) {
+  constexpr float epsilon = 0.0001f;
+  return abs(orientation(a, b, p)) <= epsilon &&
+         p.x >= min(a.x, b.x) - epsilon && p.x <= max(a.x, b.x) + epsilon &&
+         p.y >= min(a.y, b.y) - epsilon && p.y <= max(a.y, b.y) + epsilon;
+}
+
+bool segmentsIntersect(
+    wp::Vector2 const& a, wp::Vector2 const& b,
+    wp::Vector2 const& c, wp::Vector2 const& d) {
+  auto o1 = orientation(a, b, c);
+  auto o2 = orientation(a, b, d);
+  auto o3 = orientation(c, d, a);
+  auto o4 = orientation(c, d, b);
+  if (((o1 > 0.0f && o2 < 0.0f) || (o1 < 0.0f && o2 > 0.0f)) &&
+      ((o3 > 0.0f && o4 < 0.0f) || (o3 < 0.0f && o4 > 0.0f))) {
+    return true;
+  }
+  return pointOnSegment(a, b, c) || pointOnSegment(a, b, d) ||
+         pointOnSegment(c, d, a) || pointOnSegment(c, d, b);
+}
+
+bool segmentCrossesMesh(
+    wp::geometry::Mesh const& mesh,
+    wp::Vector2 const& first,
+    wp::Vector2 const& second) {
+  for (auto edgeIndex = mesh.getFirstEdgeIndex();
+       !mesh.edgeIndexIterationFinished(edgeIndex);
+       edgeIndex = mesh.getNextEdgeIndex(edgeIndex)) {
+    auto const& edge = mesh.getEdge(edgeIndex);
+    if (segmentsIntersect(
+            first, second,
+            mesh.getVertex(edge.getFirstVertex()).getPosition(),
+            mesh.getVertex(edge.getSecondVertex()).getPosition())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool segmentCrossesDrawnRing(
+    vector<wp::Vector2> const& points,
+    wp::Vector2 const& endpoint,
+    bool closing) {
+  if (points.size() < 2) {
+    return false;
+  }
+  auto const& start = points.back();
+  for (size_t i = 0; i + 1 < points.size(); ++i) {
+    // The candidate shares the last edge's start. A closing edge also shares
+    // its endpoint with the first edge; those two adjacency touches are sound.
+    if (i + 1 == points.size() - 1 || (closing && i == 0)) {
+      continue;
+    }
+    if (segmentsIntersect(start, endpoint, points[i], points[i + 1])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+uint32_t addDrawnRing(
+    wp::geometry::Mesh& mesh, vector<wp::Vector2> const& points) {
+  wp::geometry::IndexVector vertices;
+  wp::geometry::IndexVector edgeData;
+  for (auto const& point : points) {
+    vertices.push_back(mesh.addVertex(wp::geometry::Vertex(point)));
+  }
+  for (size_t i = 0; i < vertices.size(); ++i) {
+    auto first = vertices[i];
+    auto second = vertices[(i + 1) % vertices.size()];
+    auto edge = mesh.addEdge(wp::geometry::Edge(first, second));
+    edgeData.insert(edgeData.end(), {first, second, edge});
+  }
+  return mesh.addPolygon(wp::geometry::Polygon(edgeData));
+}
+
 }  // namespace
 
 string Document::meshDrawToolUnavailableReason(Settings const& settings) const {
@@ -1091,12 +1200,22 @@ bool Document::armMeshDrawTool(Settings const& settings) {
   }
   mMeshDrawToolArmed = true;
   mMeshDrawVertices.clear();
+  mMeshDrawContainingRingIndex = ~0u;
+  mMeshDrawContainingPrimitiveIndex = ~0u;
+  mMeshDrawCreatesHole = false;
+  mMeshDrawCreatesIsland = false;
+  mMeshDrawRejection.clear();
   return true;
 }
 
 void Document::disarmMeshDrawTool() {
   mMeshDrawToolArmed = false;
   mMeshDrawVertices.clear();
+  mMeshDrawContainingRingIndex = ~0u;
+  mMeshDrawContainingPrimitiveIndex = ~0u;
+  mMeshDrawCreatesHole = false;
+  mMeshDrawCreatesIsland = false;
+  mMeshDrawRejection.clear();
 }
 
 bool Document::meshDrawToolArmed() const {
@@ -1105,6 +1224,30 @@ bool Document::meshDrawToolArmed() const {
 
 vector<wp::Vector2> const& Document::getMeshDrawVertices() const {
   return mMeshDrawVertices;
+}
+
+uint32_t Document::getMeshDrawContainingRingIndex() const {
+  return mMeshDrawContainingRingIndex;
+}
+
+bool Document::meshDrawCreatesNewPrimitive() const {
+  return mMeshDrawContainingPrimitiveIndex == ~0u;
+}
+
+bool Document::meshDrawCreatesHole() const {
+  return mMeshDrawCreatesHole;
+}
+
+bool Document::meshDrawCreatesIsland() const {
+  return mMeshDrawCreatesIsland;
+}
+
+string const& Document::getMeshDrawRejection() const {
+  return mMeshDrawRejection;
+}
+
+wp::Vector2 const& Document::getMeshDrawRejectedPosition() const {
+  return mMeshDrawRejectedPosition;
 }
 
 wp::Vector2 Document::snapMeshDrawPosition(
@@ -1123,7 +1266,15 @@ bool Document::meshDrawClickWouldClose(
     return false;
   }
   auto radiusSq = settings.meshVertexPickRadius * settings.meshVertexPickRadius;
-  return mMeshDrawVertices.front().distanceToSq(position) <= radiusSq;
+  if (mMeshDrawVertices.front().distanceToSq(position) > radiusSq) {
+    return false;
+  }
+  auto const& endpoint = mMeshDrawVertices.front();
+  if (segmentCrossesDrawnRing(mMeshDrawVertices, endpoint, true)) {
+    return false;
+  }
+  return !mActiveMesh || mMeshDrawContainingRingIndex == ~0u ||
+         !segmentCrossesMesh(*mActiveMesh, mMeshDrawVertices.back(), endpoint);
 }
 
 bool Document::placeMeshDrawVertex(
@@ -1132,16 +1283,71 @@ bool Document::placeMeshDrawVertex(
     return false;
   }
 
-  // A click that lands on a vertex already placed is a close attempt, and one
-  // the caller has already found it cannot honour - stacking a second vertex
-  // on top of the first would bound no region.
+  auto reject = [&](string reason) {
+    mMeshDrawRejection = move(reason);
+    mMeshDrawRejectedPosition = position;
+    return false;
+  };
+
   auto radiusSq = settings.meshVertexPickRadius * settings.meshVertexPickRadius;
-  for (auto const& placed : mMeshDrawVertices) {
-    if (placed.distanceToSq(position) <= radiusSq) {
-      return false;
+  for (size_t i = 0; i < mMeshDrawVertices.size(); ++i) {
+    if (mMeshDrawVertices[i].distanceToSq(position) <= radiusSq) {
+      if (i == 0 && mMeshDrawVertices.size() >= 3) {
+        return reject("Rejected: the closing edge would cross the Ring or its containing boundary.");
+      }
+      return reject("Rejected: a vertex is already placed there.");
     }
   }
 
+  if (mMeshDrawVertices.empty()) {
+    // Exact picking finds filled regions. A point in a hole is not an exact
+    // hit, so make a second pass over MeshPrimitive Rings to recover that
+    // authoring context. The first geometrically-containing Primitive wins,
+    // matching the World's ordinary front-to-back index order.
+    auto primitiveIndex = getPrimitiveIndexAt(position);
+    if (primitiveIndex == ~0u) {
+      for (uint32_t i = 0; i < mWorld->getNumPrimitives(); ++i) {
+        auto* primitive = dynamic_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(i));
+        if (!primitive || primitive->hasFlag(BW_PRIMITIVE_GHOST_FLAG)) {
+          continue;
+        }
+        auto proxy = i == mActiveMeshPrimitiveIndex && mActiveMesh
+                         ? nullptr
+                         : primitive->createGeometryProxy();
+        auto const& candidate = proxy ? *proxy : *mActiveMesh;
+        if (innermostRingAt(candidate, position) != ~0u) {
+          primitiveIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (primitiveIndex != ~0u && meshIneligibilityReason(primitiveIndex).empty() &&
+        activateMesh(primitiveIndex)) {
+      auto ring = innermostRingAt(*mActiveMesh, position);
+      if (ring != ~0u) {
+        mMeshDrawContainingPrimitiveIndex = primitiveIndex;
+        mMeshDrawContainingRingIndex = ring;
+        mMeshDrawCreatesIsland = mActiveMesh->getPolygon(ring).isHole();
+        mMeshDrawCreatesHole = !mMeshDrawCreatesIsland;
+      }
+    } else {
+      clearActiveMesh();
+    }
+  } else {
+    if (segmentCrossesDrawnRing(mMeshDrawVertices, position, false)) {
+      return reject("Rejected: that edge would make the Ring cross itself.");
+    }
+    if (mMeshDrawContainingRingIndex != ~0u) {
+      if (!mActiveMesh ||
+          innermostRingAt(*mActiveMesh, position) != mMeshDrawContainingRingIndex ||
+          segmentCrossesMesh(*mActiveMesh, mMeshDrawVertices.back(), position)) {
+        return reject("Rejected: that vertex would leave the containing region.");
+      }
+    }
+  }
+
+  mMeshDrawRejection.clear();
   mMeshDrawVertices.push_back(position);
   return true;
 }
@@ -1151,6 +1357,13 @@ bool Document::removeLastMeshDrawVertex() {
     return false;
   }
   mMeshDrawVertices.pop_back();
+  mMeshDrawRejection.clear();
+  if (mMeshDrawVertices.empty()) {
+    mMeshDrawContainingRingIndex = ~0u;
+    mMeshDrawContainingPrimitiveIndex = ~0u;
+    mMeshDrawCreatesHole = false;
+    mMeshDrawCreatesIsland = false;
+  }
   return true;
 }
 
@@ -1160,6 +1373,11 @@ bool Document::escapeMeshDraw() {
   }
   if (!mMeshDrawVertices.empty()) {
     mMeshDrawVertices.clear();
+    mMeshDrawContainingRingIndex = ~0u;
+    mMeshDrawContainingPrimitiveIndex = ~0u;
+    mMeshDrawCreatesHole = false;
+    mMeshDrawCreatesIsland = false;
+    mMeshDrawRejection.clear();
     return true;
   }
   mMeshDrawToolArmed = false;
@@ -1192,6 +1410,20 @@ bw::core::Primitive* Document::closeMeshDrawRing() {
   // The Create Primitive panel is hidden in Mesh mode, so the ghost carries
   // the settings for what is about to be created and the Mesh panel writes
   // through to it.
+  if (mMeshDrawContainingPrimitiveIndex != ~0u && mActiveMesh) {
+    auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+        mWorld->getPrimitive(mMeshDrawContainingPrimitiveIndex));
+    auto newRing = addDrawnRing(*mActiveMesh, points);
+    if (mMeshDrawCreatesHole) {
+      mActiveMesh->addHoleToPolygon(mMeshDrawContainingRingIndex, newRing);
+    }
+    primitive->updateFromGeometryProxy(*mActiveMesh);
+    primitive->updateVertexPositions();
+    disarmMeshDrawTool();
+    clearSelections();
+    return primitive;
+  }
+
   auto* ghost = getGhost();
   auto* mesh = bw::core::MeshPrimitive::fromComplexPolygons(
       ghost->getOperation(), ghost->getFillRule(), {{ring}});

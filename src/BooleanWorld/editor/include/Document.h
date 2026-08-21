@@ -91,6 +91,12 @@ class Document {
   // single entry.
   bool mMeshDrawToolArmed{false};
   std::vector<wp::Vector2> mMeshDrawVertices;
+  uint32_t mMeshDrawContainingRingIndex{~0u};
+  uint32_t mMeshDrawContainingPrimitiveIndex{~0u};
+  bool mMeshDrawCreatesHole{false};
+  bool mMeshDrawCreatesIsland{false};
+  std::string mMeshDrawRejection;
+  wp::Vector2 mMeshDrawRejectedPosition;
 
   wp::Vector2 mPlayerOldProxyPosition, mPlayerProxyPosition;
 
@@ -245,6 +251,12 @@ public:
   void disarmMeshDrawTool();
   [[nodiscard]] bool meshDrawToolArmed() const;
   [[nodiscard]] std::vector<wp::Vector2> const& getMeshDrawVertices() const;
+  [[nodiscard]] uint32_t getMeshDrawContainingRingIndex() const;
+  [[nodiscard]] bool meshDrawCreatesNewPrimitive() const;
+  [[nodiscard]] bool meshDrawCreatesHole() const;
+  [[nodiscard]] bool meshDrawCreatesIsland() const;
+  [[nodiscard]] std::string const& getMeshDrawRejection() const;
+  [[nodiscard]] wp::Vector2 const& getMeshDrawRejectedPosition() const;
 
   // The position a draw click actually acts on: snapped to the grid while
   // the grid is shown, since close detection and placement both run on the

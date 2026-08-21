@@ -1,4 +1,5 @@
 #include <cmath>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <set>
@@ -10,6 +11,7 @@
 
 #include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
+#include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
 
 #include "Actions.h"
@@ -1244,6 +1246,129 @@ void closingADrawnRingCreatesAMeshPrimitiveWithCanonicalWinding() {
           "an anticlockwise-drawn Ring did not keep the canonical winding");
 }
 
+void drawingContextCreatesHolesAndFilledIslands() {
+  auto settings = meshDrawSettings();
+
+  editor::Document holeDocument;
+  holeDocument.newDoc();
+  auto holeMeshIndex = addMeshWithHole(holeDocument);
+  require(holeDocument.armMeshDrawTool(settings), "the hole draw tool did not arm");
+  auto placedHoleFirst = holeDocument.placeMeshDrawVertex({-8.0f, 92.0f}, settings);
+  require(placedHoleFirst &&
+              holeDocument.meshDrawCreatesHole() &&
+              holeDocument.getActiveMeshPrimitiveIndex() == holeMeshIndex,
+          "a first vertex in a filled region did not fix a hole context");
+  auto containingRing = holeDocument.getMeshDrawContainingRingIndex();
+  holeDocument.placeMeshDrawVertex({8.0f, 92.0f}, settings);
+  holeDocument.placeMeshDrawVertex({0.0f, 94.0f}, settings);
+  require(holeDocument.closeMeshDrawRing() != nullptr,
+          "a Ring inside a filled region did not close as a hole");
+  auto* holePrimitive = static_cast<bw::core::MeshPrimitive*>(
+      holeDocument.getWorld()->getPrimitive(holeMeshIndex));
+  require(holePrimitive->getVertices().size() == 1 &&
+              holePrimitive->getVertices().front().size() == 3,
+          "the drawn hole was not stored on its containing ComplexPolygon");
+
+  editor::Document islandDocument;
+  islandDocument.newDoc();
+  auto islandMeshIndex = addMeshWithHole(islandDocument);
+  require(islandDocument.armMeshDrawTool(settings), "the island draw tool did not arm");
+  require(islandDocument.placeMeshDrawVertex({-4.0f, 97.0f}, settings) &&
+              islandDocument.meshDrawCreatesIsland() &&
+              islandDocument.getMeshDrawContainingRingIndex() != containingRing,
+          "a first vertex in a hole did not fix a filled-island context");
+  islandDocument.placeMeshDrawVertex({4.0f, 97.0f}, settings);
+  islandDocument.placeMeshDrawVertex({0.0f, 104.0f}, settings);
+  require(islandDocument.closeMeshDrawRing() != nullptr,
+          "a Ring inside a hole did not close as a filled island");
+  auto* islandPrimitive = static_cast<bw::core::MeshPrimitive*>(
+      islandDocument.getWorld()->getPrimitive(islandMeshIndex));
+  require(islandPrimitive->getVertices().size() == 2 &&
+              islandPrimitive->getVertices()[1].size() == 1,
+          "the filled island was not stored as its own top-level ComplexPolygon");
+
+  auto path = std::filesystem::temp_directory_path() /
+              "boolean-world-ticket-184-island.world.yaml";
+  islandDocument.saveDocAs(path.string());
+  editor::Document reloaded;
+  require(reloaded.openDoc(path.string()), "the island test World did not reload");
+  std::filesystem::remove(path);
+  uint32_t reloadedMeshIndex = ~0u;
+  bw::core::MeshPrimitive* reloadedPrimitive = nullptr;
+  for (uint32_t i = 0; i < reloaded.getWorld()->getNumPrimitives(); ++i) {
+    auto* candidate = dynamic_cast<bw::core::MeshPrimitive*>(
+        reloaded.getWorld()->getPrimitive(i));
+    if (candidate && !candidate->hasFlag(BW_PRIMITIVE_GHOST_FLAG)) {
+      reloadedMeshIndex = i;
+      reloadedPrimitive = candidate;
+      break;
+    }
+  }
+  require(reloadedPrimitive && reloadedPrimitive->getVertices().size() == 2,
+          "the filled island did not survive save/reload as a top-level polygon");
+  require(reloaded.activateMesh(reloadedMeshIndex),
+          "the reloaded island MeshPrimitive did not rebuild its proxy");
+  uint32_t topLevel = 0;
+  for (auto index = reloaded.getActiveMesh()->getFirstPolygonIndex();
+       !reloaded.getActiveMesh()->polygonIndexIterationFinished(index);
+       index = reloaded.getActiveMesh()->getNextPolygonIndex(index)) {
+    if (!reloaded.getActiveMesh()->getPolygon(index).isHole()) {
+      ++topLevel;
+    }
+  }
+  require(topLevel == 2, "the reloaded proxy did not re-derive the filled island");
+}
+
+void drawingContextRejectsEscapesAndSelfCrossings() {
+  auto settings = meshDrawSettings();
+
+  editor::Document confined;
+  confined.newDoc();
+  addMeshWithHole(confined);
+  require(confined.armMeshDrawTool(settings), "the confined draw tool did not arm");
+  confined.placeMeshDrawVertex({-8.0f, 92.0f}, settings);
+  auto fixedBoundary = confined.getMeshDrawContainingRingIndex();
+  require(!confined.placeMeshDrawVertex({0.0f, 100.0f}, settings) &&
+              confined.getMeshDrawVertices().size() == 1 &&
+              confined.getMeshDrawContainingRingIndex() == fixedBoundary &&
+              confined.getMeshDrawRejection().find("containing region") != std::string::npos,
+          "an out-of-region click was not rejected with clear feedback");
+
+  editor::Document crossing;
+  crossing.newDoc();
+  require(crossing.armMeshDrawTool(settings), "the crossing draw tool did not arm");
+  crossing.placeMeshDrawVertex({0.0f, 0.0f}, settings);
+  crossing.placeMeshDrawVertex({100.0f, 100.0f}, settings);
+  crossing.placeMeshDrawVertex({0.0f, 100.0f}, settings);
+  require(!crossing.placeMeshDrawVertex({100.0f, 0.0f}, settings) &&
+              crossing.getMeshDrawVertices().size() == 3 &&
+              crossing.getMeshDrawRejection().find("cross itself") != std::string::npos,
+          "a self-crossing click was not rejected with clear feedback");
+
+  editor::Document ineligible;
+  ineligible.newDoc();
+  auto ineligibleMesh = addMesh(ineligible, {0.0f, 0.0f});
+  auto* ineligiblePrimitive = ineligible.getWorld()->getPrimitive(ineligibleMesh);
+  auto ineligibleCentre = ineligiblePrimitive->getBounds().getCentre();
+  auto* layer = ineligible.getWorld()->getActiveLayer();
+  layer->setActiveStep(layer->addStep(new bw::core::PrimitiveField()));
+  require(ineligible.armMeshDrawTool(settings), "the ineligible-mesh draw tool did not arm");
+  require(ineligible.placeMeshDrawVertex(ineligibleCentre, settings) &&
+              ineligible.meshDrawCreatesNewPrimitive() &&
+              ineligible.getMeshDrawContainingRingIndex() == ~0u,
+          "drawing inside an ineligible MeshPrimitive did not start an unconfined MeshPrimitive");
+
+  editor::Document nonMesh;
+  nonMesh.newDoc();
+  auto rectangle = addRectangle(nonMesh, {0.0f, 0.0f}, 20.0f);
+  auto rectangleCentre = nonMesh.getWorld()->getPrimitive(rectangle)->getBounds().getCentre();
+  require(nonMesh.armMeshDrawTool(settings), "the non-mesh-context draw tool did not arm");
+  require(nonMesh.placeMeshDrawVertex(rectangleCentre, settings) &&
+              nonMesh.meshDrawCreatesNewPrimitive() &&
+              nonMesh.getMeshDrawContainingRingIndex() == ~0u,
+          "drawing inside a non-mesh Primitive did not start an unconfined MeshPrimitive");
+}
+
 void theWholeDrawingGestureIsOneUndoEntry() {
   editor::Document document;
   auto settings = meshDrawSettings();
@@ -1362,6 +1487,8 @@ int main() {
     backspaceStepsBackAndEscapeIsTwoStage();
     switchingSubModeOrLeavingMeshModeDisarmsAndDiscards();
     closingADrawnRingCreatesAMeshPrimitiveWithCanonicalWinding();
+    drawingContextCreatesHolesAndFilledIslands();
+    drawingContextRejectsEscapesAndSelfCrossings();
     theWholeDrawingGestureIsOneUndoEntry();
     std::cout << "Editor selection interactions passed\n";
     return 0;

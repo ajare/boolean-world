@@ -3211,6 +3211,18 @@ void renderMeshDrawToolView(editor::Document* doc, editor::Settings& settings) {
     ImGui::TextWrapped("%s", reason.c_str());
   } else if (armed) {
     ImGui::Text("Drawing: %zu vertex(es) placed.", doc->getMeshDrawVertices().size());
+    if (!doc->getMeshDrawVertices().empty()) {
+      ImGui::TextUnformatted(doc->meshDrawCreatesHole()
+                                 ? "Context: hole in the highlighted filled region."
+                             : doc->meshDrawCreatesIsland()
+                                 ? "Context: filled island in the highlighted hole."
+                                 : "Context: new MeshPrimitive (unconfined).");
+    }
+    if (!doc->getMeshDrawRejection().empty()) {
+      ImGui::TextColored(
+          ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "%s",
+          doc->getMeshDrawRejection().c_str());
+    }
     ImGui::TextWrapped(
         "Click to place a vertex, and click the first vertex to close the shape "
         "(three vertices minimum).  Backspace steps back a vertex; Esc discards "

@@ -242,12 +242,15 @@ bool recentreActiveMesh(Document* doc) {
 }
 
 bool createMeshPrimitiveFromDrawnRing(Document* doc) {
+  auto createsNewPrimitive = doc->meshDrawCreatesNewPrimitive();
   auto* mesh = doc->closeMeshDrawRing();
   if (!mesh) {
     return false;
   }
 
-  setPrimitiveDefaultMaterials(mesh);
+  if (createsNewPrimitive) {
+    setPrimitiveDefaultMaterials(mesh);
+  }
   return true;
 }
 

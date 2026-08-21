@@ -98,8 +98,8 @@ void EditorInteraction::updateSelection(
         transactUndoableAction(
             doc, "Create Mesh Primitive", createMeshPrimitiveFromDrawnRing);
         settings.activeMeshPrimitiveIndex = doc->getActiveMeshPrimitiveIndex();
-      } else {
-        doc->placeMeshDrawVertex(position, settings);
+      } else if (doc->placeMeshDrawVertex(position, settings)) {
+        settings.activeMeshPrimitiveIndex = doc->getActiveMeshPrimitiveIndex();
       }
     }
     return;

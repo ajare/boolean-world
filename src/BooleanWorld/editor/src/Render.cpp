@@ -509,6 +509,12 @@ void renderWorld(
                               : (settings.meshSubMode == editor::Settings::MeshSubMode::Polygon && hovered(polygonIndex)
                                      ? settings.meshHoveredColour
                                      : settings.meshEdgeColour);
+            if (doc->meshDrawToolArmed() &&
+                doc->getMeshDrawContainingRingIndex() == polygonIndex) {
+              drawList->AddPolyline(points.data(), static_cast<int>(points.size()),
+                                    settings.meshSelectedColour,
+                                    ImDrawFlags_Closed, 5.5f);
+            }
             drawList->AddPolyline(points.data(), static_cast<int>(points.size()),
                                   colour, ImDrawFlags_Closed,
                                   selectedRings.contains(polygonIndex) ? 3.5f : 2.5f);
@@ -567,6 +573,21 @@ void renderWorld(
                 i == 0 && canClose ? settings.meshSelectedColour : settings.meshVertexColour,
                 16);
           }
+        }
+
+        // Keep a refused click visible until the next successful action. The
+        // red cross makes rejection distinct from a missed/unresponsive click.
+        if (doc->meshDrawToolArmed() && !doc->getMeshDrawRejection().empty()) {
+          auto centre = worldToScreen(doc->getMeshDrawRejectedPosition());
+          constexpr float radius = 8.0f;
+          drawList->AddLine(
+              {centre.x - radius, centre.y - radius},
+              {centre.x + radius, centre.y + radius},
+              settings.meshHoveredColour, 3.0f);
+          drawList->AddLine(
+              {centre.x - radius, centre.y + radius},
+              {centre.x + radius, centre.y - radius},
+              settings.meshHoveredColour, 3.0f);
         }
       }
 
