@@ -345,29 +345,37 @@ editor::MouseButtonStatus getMouseButtonStatus() {
   auto const& io = ImGui::GetIO();
 
   static ImVec2 frameDragDelta[2];
+  static bool ownedByWorld[2];
 
-  if (!io.WantCaptureMouse) {
-    for (int i = 0; i < 2; ++i) {
-      if (io.MouseClicked[i]) {
-        frameDragDelta[i] = ImGui::GetMouseDragDelta(i);
-        status.state[i] = editor::MouseButtonStatus::State::Clicked;
-      } else if (io.MouseDown[i]) {
-        status.state[i] = editor::MouseButtonStatus::State::Down;
-      } else if (io.MouseReleased[i]) {
-        status.state[i] = editor::MouseButtonStatus::State::Released;
-      }
+  for (int i = 0; i < 2; ++i) {
+    // A gesture that began in the world view (pressed while ImGui didn't
+    // want the mouse) owns the button until release, even if the cursor
+    // has since crossed onto a docked panel. Otherwise a release over a
+    // panel is never reported and the drag state never clears.
+    bool const trackThisFrame = ownedByWorld[i] || !io.WantCaptureMouse;
 
-      status.dragging[i] = ImGui::IsMouseDragging(i, 2);
-      status.dragDelta[i] = ImGui::GetMouseDragDelta(i) - frameDragDelta[i];
-
-      frameDragDelta[i] = ImGui::GetMouseDragDelta(i);
-    }
-  } else {
-    for (int i = 0; i < 2; ++i) {
+    if (!trackThisFrame) {
       status.state[i] = editor::MouseButtonStatus::State::Unavailable;
       status.dragging[i] = false;
       status.dragDelta[i] = {0, 0};
+      continue;
     }
+
+    if (io.MouseClicked[i]) {
+      frameDragDelta[i] = ImGui::GetMouseDragDelta(i);
+      status.state[i] = editor::MouseButtonStatus::State::Clicked;
+      ownedByWorld[i] = true;
+    } else if (io.MouseReleased[i]) {
+      status.state[i] = editor::MouseButtonStatus::State::Released;
+      ownedByWorld[i] = false;
+    } else if (io.MouseDown[i]) {
+      status.state[i] = editor::MouseButtonStatus::State::Down;
+    }
+
+    status.dragging[i] = ImGui::IsMouseDragging(i, 2);
+    status.dragDelta[i] = ImGui::GetMouseDragDelta(i) - frameDragDelta[i];
+
+    frameDragDelta[i] = ImGui::GetMouseDragDelta(i);
   }
 
   return status;
