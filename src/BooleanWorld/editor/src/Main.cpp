@@ -503,30 +503,24 @@ void handleWorldInteraction(
   gEditorInteraction.updateDrag(doc, gEditorSettings, input);
 }
 
-void handleContinuousKeyboardInput(uint64_t updateTimeMicros) {
-  const float MoveSpeed{500.0f};
-
-  auto const& io = ImGui::GetIO();
-
-  if (io.WantCaptureKeyboard) {
-    return;
-  }
-
+void clampViewToWorldBounds() {
   if (!editor::Document::instance()->isActive()) {
     return;
   }
 
-  float frameTime = updateTimeMicros / 1000000.0f;
-  float moveSpeed = MoveSpeed * frameTime * (io.KeyShift ? 4.0f : 1.0f);
-
-  // Clamp to world bounds
   auto const& worldBounds = editor::Document::instance()->getWorld()->getExtents();
   wp::Vector2 minExtent, maxExtent;
 
   worldBounds.getExtents(minExtent, maxExtent);
 
-  gViewOffset.x = clamp(gViewOffset.x, minExtent.x + gWorldViewSize.x * 0.5f, maxExtent.x - gWorldViewSize.x * 0.5f);
-  gViewOffset.y = clamp(gViewOffset.y, minExtent.y + gWorldViewSize.y * 0.5f, maxExtent.y - gWorldViewSize.y * 0.5f);
+  auto visibleHalf = gWorldViewSize / gViewZoom * 0.5f;
+
+  auto loX = minExtent.x + visibleHalf.x, hiX = maxExtent.x - visibleHalf.x;
+  auto loY = minExtent.y + visibleHalf.y, hiY = maxExtent.y - visibleHalf.y;
+
+  auto centre = worldBounds.getCentre();
+  gViewOffset.x = loX <= hiX ? clamp(gViewOffset.x, loX, hiX) : centre.x;
+  gViewOffset.y = loY <= hiY ? clamp(gViewOffset.y, loY, hiY) : centre.y;
 }
 
 void run() {
@@ -607,7 +601,7 @@ void run() {
       handleViewNavigation(doc);
     }
 
-    handleContinuousKeyboardInput(updateTimeMicros);
+    clampViewToWorldBounds();
 
     double globalTime = globalTimeMicros / 1'000'000.0;
     editor::renderWidgets(doc, gEditorSettings, worldDataPtr, globalTime);
