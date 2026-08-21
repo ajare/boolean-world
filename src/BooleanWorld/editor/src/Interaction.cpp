@@ -169,10 +169,13 @@ void EditorInteraction::updateSelection(
             mHover.indices.begin(), mHover.indices.end(),
             [&](uint32_t index) { return selection.contains(index); });
 
-        // Preserve a selected member of a stacked hit until the gesture is
-        // known to be a click. A drag must move the existing selection rather
-        // than cycling to another Ring under the cursor on mouse-down.
-        if (mHover.indices.size() > 1 && selectedHit) {
+        // For a plain gesture, preserve any selected hit until it is known to
+        // be a click. A drag must move the existing selection rather than
+        // reducing it to the one sub-object under the cursor. Stacked hits
+        // additionally retain their modifier and click-to-cycle behaviour on
+        // release.
+        if (selectedHit &&
+            ((!input.control && !input.shift) || mHover.indices.size() > 1)) {
           mPendingMeshSubObjectClick = mHover.indices;
         } else {
           applyMeshSubObjectClick(

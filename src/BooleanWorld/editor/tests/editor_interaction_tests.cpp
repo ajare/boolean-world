@@ -564,6 +564,51 @@ void meshRubberBandUsesContainmentAndModifierPolicies() {
           "Shift mesh rubber band did not add to the selection");
 }
 
+void draggingOneRubberBandSelectedVertexMovesTheWholeSelection() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshSubMode = editor::Settings::MeshSubMode::Vertex;
+  settings.meshVertexPickRadius = 0.25f;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  require(document.activateMesh(meshIndex), "the multi-vertex drag Mesh did not activate");
+
+  auto* mesh = document.getActiveMesh();
+  auto first = mesh->getFirstVertexIndex();
+  auto second = mesh->getNextVertexIndex(first);
+  auto firstStart = mesh->getVertex(first).getPosition();
+  auto secondStart = mesh->getVertex(second).getPosition();
+  document.setSelectedMeshSubObjectIndices(
+      settings.meshSubMode, {first, second});
+
+  editor::EditorInteraction interaction;
+  auto press = pointerAt(firstStart);
+  press.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, press);
+  interaction.updateDrag(&document, settings, press);
+  require(document.getSelectedMeshVertexIndices() ==
+              std::set<uint32_t>({first, second}),
+          "pressing one selected Vertex discarded the rest of the rubber-band selection");
+
+  wp::Vector2 delta{3.0f, 2.0f};
+  auto drag = pointerAt(firstStart + delta);
+  drag.leftDown = true;
+  drag.leftDragging = true;
+  drag.dragDelta = {delta.x, -delta.y};
+  interaction.updateSelection(&document, nullptr, settings, drag);
+  interaction.updateDrag(&document, settings, drag);
+  require(mesh->getVertex(first).getPosition() == firstStart + delta &&
+              mesh->getVertex(second).getPosition() == secondStart + delta,
+          "dragging one selected Vertex did not move the whole rubber-band selection");
+
+  auto release = pointerAt(firstStart + delta);
+  release.leftReleased = true;
+  interaction.updateSelection(&document, nullptr, settings, release);
+  interaction.updateDrag(&document, settings, release);
+}
+
 void meshSelectAllAndBoundsStayScopedToActiveMesh() {
   editor::Document document;
   editor::Settings settings;
@@ -1662,6 +1707,12 @@ void closingADrawnRingCreatesAMeshPrimitiveWithCanonicalWinding() {
 
   auto clockwiseRing = activeRingPositions(document);
   require(clockwiseRing.size() == 4, "the new MeshPrimitive did not carry the four drawn vertices");
+  std::vector<wp::Vector2> drawnPositions{
+      {0.0f, 0.0f}, {0.0f, 100.0f}, {100.0f, 100.0f}, {100.0f, 0.0f}};
+  for (auto const& drawn : drawnPositions) {
+    require(std::ranges::find(clockwiseRing, drawn) != clockwiseRing.end(),
+            "closing a drawn Ring shifted one of its vertices");
+  }
   require(twiceSignedArea(clockwiseRing) > 0.0f,
           "a clockwise-drawn Ring was not forced to the canonical winding");
 
@@ -1999,6 +2050,41 @@ void drawingMultipleHolesKeepsThemOnTheSameComplexPolygon() {
               mesh->getPolygon(firstHole).isHole() &&
               mesh->getPolygon(secondHole).isHole(),
           "the two drawn holes were not retained as independent Rings");
+}
+
+void drawingInsideAFilledHoleUsesTheCappedRegionAsItsParent() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  settings.meshVertexPickRadius = 0.1f;
+  document.newDoc();
+  auto meshIndex = addMeshWithHole(document);
+  require(document.activateMesh(meshIndex), "the capped-hole draw Mesh did not activate");
+
+  auto* mesh = document.getActiveMesh();
+  auto shell = mesh->getFirstPolygonIndex();
+  auto hole = mesh->getPolygon(shell).getHoleIndices().front();
+  auto holeVertices = mesh->getPolygon(hole).getOrderedVertexIndices();
+  wp::Vector2 centre{};
+  for (auto vertex : holeVertices) centre += mesh->getVertex(vertex).getPosition();
+  centre /= static_cast<float>(holeVertices.size());
+
+  require(document.fillMeshHole(hole), "the Hole could not be filled");
+  auto cappedRegion = *document.getSelectedMeshRingIndices().begin();
+  require(document.armMeshDrawTool(settings), "the capped-region draw tool did not arm");
+  require(document.placeMeshDrawVertex(centre + wp::Vector2{-2.0f, -2.0f}, settings) &&
+              document.getMeshDrawContainingRingIndex() == cappedRegion &&
+              document.meshDrawCreatesHole(),
+          "drawing inside the filled Hole did not choose the capped region as the parent");
+  require(document.placeMeshDrawVertex(centre + wp::Vector2{2.0f, -2.0f}, settings) &&
+              document.placeMeshDrawVertex(centre + wp::Vector2{0.0f, 2.0f}, settings),
+          "the capped-region Ring rejected an interior vertex");
+  require(document.closeMeshDrawRing() != nullptr,
+          "a Ring inside the filled Hole did not close");
+
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  require(primitive->getShells()[0].holes[0].islands[0].holes.size() == 1,
+          "the Ring inside the filled Hole was not attached to the capped region");
 }
 
 void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
@@ -2654,6 +2740,7 @@ int main() {
     meshSubObjectClicksSupportModifiersAndRingCycling();
     draggingASelectedNestedRingDoesNotCycleToItsShell();
     meshRubberBandUsesContainmentAndModifierPolicies();
+    draggingOneRubberBandSelectedVertexMovesTheWholeSelection();
     meshSelectAllAndBoundsStayScopedToActiveMesh();
     undoRestoresMeshSubObjectSelection();
     meshDragMovesAffectedSubObjectsAsARigidGroup();
@@ -2682,6 +2769,7 @@ int main() {
     drawingContextCreatesHolesAndFilledIslands();
     arbitraryDepthRingAuthoringManipulationAndHistoryStayAuthoritative();
     drawingMultipleHolesKeepsThemOnTheSameComplexPolygon();
+    drawingInsideAFilledHoleUsesTheCappedRegionAsItsParent();
     fillingASelectedHoleCreatesASolidAlongsideExistingIslands();
     decomposingAMeshCreatesFilledRegionPrimitives();
     deletingAWeldedVertexHealsTheHoleAndIsland();

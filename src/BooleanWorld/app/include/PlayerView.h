@@ -11,7 +11,10 @@ namespace bw::app {
 constexpr float PitchLimit = 85.0f;
 
 inline float applyMouseYaw(float yaw, float mouseDeltaX, float sensitivity) {
-  return core::clamp_angle(yaw + mouseDeltaX * sensitivity);
+  // Player yaw is clockwise in the 2D world, but the renderer views the X/Z
+  // plane with the opposite handedness. Rightward mouse motion must therefore
+  // reduce the authored yaw.
+  return core::clamp_angle(yaw - mouseDeltaX * sensitivity);
 }
 
 inline float applyMousePitch(float pitch, float mouseDeltaY, float sensitivity) {
@@ -19,7 +22,9 @@ inline float applyMousePitch(float pitch, float mouseDeltaY, float sensitivity) 
 }
 
 inline wp::Vector2 playerMovement(wp::Vector2 input, float yaw) {
-  // Player and core view angles are clockwise from world +Y.
+  // Mapping world (X,Y) to renderer (X,Z) reverses the camera's horizontal
+  // basis: at zero yaw its screen-right direction is world -X.
+  input.x = -input.x;
   input.rotateClockwise(yaw);
   return input;
 }
@@ -40,12 +45,14 @@ inline float minimapRadius(float worldRadius, wp::Vector2 const& viewScale) {
 inline wp::Vector2 minimapPosition(
     wp::Vector2 const& worldPosition,
     wp::Vector2 const& viewOffset,
+    wp::Vector2 const& viewSize,
     wp::Vector2 const& viewScale) {
-  // Screen Y points down, so negate world Y to keep camera-forward upward
-  // and camera-right rightward on the minimap at zero yaw.
+  // Screen Y points down. Reflect around the bottom of the viewport rather
+  // than merely negating Y: the latter places the entire overlay above the
+  // screen whenever viewOffset is its world-space lower-left corner.
   return {
       (worldPosition.x - viewOffset.x) * viewScale.x,
-      -(worldPosition.y - viewOffset.y) * viewScale.y};
+      viewSize.y - (worldPosition.y - viewOffset.y) * viewScale.y};
 }
 
 }  // namespace bw::app

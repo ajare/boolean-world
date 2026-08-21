@@ -1375,15 +1375,35 @@ float ringArea(wp::geometry::Mesh const& mesh, uint32_t polygonIndex) {
 }
 
 uint32_t innermostRingAt(
-    wp::geometry::Mesh const& mesh, wp::Vector2 const& position) {
+    wp::geometry::Mesh const& mesh,
+    vector<bw::core::MeshPrimitiveEditingProxy::NodeMapping> const& mappings,
+    wp::Vector2 const& position) {
+  auto depthOf = [&](uint32_t polygonIndex) {
+    uint32_t depth = 0;
+    for (;;) {
+      auto mapping = ranges::find_if(mappings, [&](auto const& candidate) {
+        return candidate.polygonIndex == polygonIndex;
+      });
+      if (mapping == mappings.end() || mapping->parentPolygonIndex == ~0u) {
+        return depth;
+      }
+      polygonIndex = mapping->parentPolygonIndex;
+      ++depth;
+    }
+  };
+
   uint32_t result = ~0u;
+  uint32_t deepest = 0;
   float smallestArea = numeric_limits<float>::max();
   for (auto index = mesh.getFirstPolygonIndex();
        !mesh.polygonIndexIterationFinished(index);
        index = mesh.getNextPolygonIndex(index)) {
     auto area = ringArea(mesh, index);
-    if (area < smallestArea && pointInsideRing(mesh, mesh.getPolygon(index), position)) {
+    auto depth = depthOf(index);
+    if (pointInsideRing(mesh, mesh.getPolygon(index), position) &&
+        (area < smallestArea || (area == smallestArea && depth > deepest))) {
       result = index;
+      deepest = depth;
       smallestArea = area;
     }
   }
@@ -1620,7 +1640,8 @@ bool Document::placeMeshDrawVertex(
                          ? nullptr
                          : primitive->createEditingProxy();
         auto const& candidate = proxy ? proxy->getMesh() : mActiveMesh->getMesh();
-        if (innermostRingAt(candidate, position) != ~0u) {
+        auto mappings = proxy ? proxy->getNodeMappings() : mActiveMesh->getNodeMappings();
+        if (innermostRingAt(candidate, mappings, position) != ~0u) {
           primitiveIndex = i;
           break;
         }
@@ -1629,7 +1650,8 @@ bool Document::placeMeshDrawVertex(
 
     if (primitiveIndex != ~0u && meshIneligibilityReason(primitiveIndex).empty() &&
         activateMesh(primitiveIndex)) {
-      auto ring = innermostRingAt(*mActiveMesh, position);
+      auto ring = innermostRingAt(
+          *mActiveMesh, mActiveMesh->getNodeMappings(), position);
       if (ring != ~0u) {
         mMeshDrawContainingPrimitiveIndex = primitiveIndex;
         mMeshDrawContainingRingIndex = ring;
@@ -1652,7 +1674,9 @@ bool Document::placeMeshDrawVertex(
     }
     if (mMeshDrawContainingRingIndex != ~0u) {
       if (!mActiveMesh ||
-          innermostRingAt(*mActiveMesh, position) != mMeshDrawContainingRingIndex ||
+          innermostRingAt(
+              *mActiveMesh, mActiveMesh->getNodeMappings(), position) !=
+              mMeshDrawContainingRingIndex ||
           segmentCrossesMesh(*mActiveMesh, mMeshDrawVertices.back(), position)) {
         return reject("Rejected: that vertex would leave the containing region.");
       }
@@ -1754,6 +1778,7 @@ bw::core::Primitive* Document::closeMeshDrawRing() {
       // untouched when the closing Ring overlaps a sibling or escapes its
       // fixed creation-time parent.
       mMeshDrawRejection = "Rejected: the Ring overlaps existing topology or leaves its parent.";
+      mMeshDrawRejectedPosition = mMeshDrawVertices.front();
       return nullptr;
     }
     if (newRing == ~0u) {
@@ -1768,8 +1793,12 @@ bw::core::Primitive* Document::closeMeshDrawRing() {
   }
 
   auto* ghost = getGhost();
-  auto* mesh = bw::core::MeshPrimitive::fromTree(
-      ghost->getOperation(), {{ring, {}}});
+  // New editor-authored meshes use the same static transform defaults as
+  // converted meshes. fromTree retains the generic Primitive animation
+  // defaults, including an orbit distance, which would move the Ring as soon
+  // as its editing proxy evaluates those animations.
+  auto* mesh = bw::core::MeshPrimitive::fromComplexPolygons(
+      ghost->getOperation(), {{ring}});
   mesh->setPriority(ghost->getPriority());
 
   disarmMeshDrawTool();

@@ -743,8 +743,7 @@ bool StatePlayBooleanWorld::_imGuiCapturesInput() const {
 }
 
 ImVec2 StatePlayBooleanWorld::wpVecToImVec2(wp::Vector2 const& v, wp::Vector2 const& offset, wp::Vector2 const& size, wp::Vector2 const& scale) {
-  VAR_UNUSED(size);
-  auto position = bw::app::minimapPosition(v, offset, scale);
+  auto position = bw::app::minimapPosition(v, offset, size, scale);
   return {position.x, position.y};
 }
 
