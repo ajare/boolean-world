@@ -40,6 +40,37 @@ bool containsPoint(ClosedPolygon const& ring, wp::Vector2 const& point) {
   return inside;
 }
 
+bool ringsCoincide(ClosedPolygon const& first, ClosedPolygon const& second) {
+  if (first.size() != second.size() || first.empty()) {
+    return false;
+  }
+  for (size_t start = 0; start < second.size(); ++start) {
+    if (first.front().p != second[start].p) {
+      continue;
+    }
+    bool forward = true;
+    bool reverse = true;
+    for (size_t i = 0; i < first.size(); ++i) {
+      forward &= first[i].p == second[(start + i) % second.size()].p;
+      reverse &= first[i].p ==
+                 second[(start + second.size() - i) % second.size()].p;
+    }
+    if (forward || reverse) {
+      return true;
+    }
+  }
+  return false;
+}
+
+uint32_t addRingSharingBoundary(
+    wp::geometry::Mesh& mesh, uint32_t sourcePolygonIndex) {
+  wp::geometry::IndexVector edgeData;
+  for (auto const& edge : mesh.getPolygon(sourcePolygonIndex).getEdges()) {
+    edgeData.insert(edgeData.end(), {edge.v0, edge.v1, edge.index});
+  }
+  return mesh.addPolygon(wp::geometry::Polygon(edgeData));
+}
+
 uint32_t addRing(wp::geometry::Mesh& mesh, ClosedPolygon const& ring) {
   wp::geometry::IndexVector vertices;
   wp::geometry::IndexVector edgeData;
@@ -150,8 +181,18 @@ unique_ptr<wp::geometry::Mesh> MeshPrimitive::createGeometryProxy() const {
       if (ringIndex == 0) {
         outerIndex = index;
       }
+      uint32_t coincidentRing = ~0u;
+      for (uint32_t candidate = 0; candidate < rings.size(); ++candidate) {
+        if (ringsCoincide(rings[candidate], ring)) {
+          coincidentRing = candidate;
+          break;
+        }
+      }
       rings.push_back(ring);
-      polygonIndices.push_back(addRing(*mesh, ring));
+      polygonIndices.push_back(
+          coincidentRing == ~0u
+              ? addRing(*mesh, ring)
+              : addRingSharingBoundary(*mesh, polygonIndices[coincidentRing]));
       explicitParents.push_back(ringIndex == 0 ? ~0u : outerIndex);
       outerRings.push_back(ringIndex == 0);
     }

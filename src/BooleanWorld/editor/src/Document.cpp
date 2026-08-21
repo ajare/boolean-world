@@ -1299,6 +1299,15 @@ bool segmentCrossesDrawnRing(
   return false;
 }
 
+uint32_t addRingSharingBoundary(
+    wp::geometry::Mesh& mesh, uint32_t sourcePolygonIndex) {
+  wp::geometry::IndexVector edgeData;
+  for (auto const& edge : mesh.getPolygon(sourcePolygonIndex).getEdges()) {
+    edgeData.insert(edgeData.end(), {edge.v0, edge.v1, edge.index});
+  }
+  return mesh.addPolygon(wp::geometry::Polygon(edgeData));
+}
+
 uint32_t addDrawnRing(
     wp::geometry::Mesh& mesh, vector<wp::Vector2> const& points) {
   wp::geometry::IndexVector vertices;
@@ -1580,24 +1589,16 @@ bool Document::fillMeshHole(uint32_t holeRingIndex) {
     }
   }
 
-  auto points = ringPositions(*mActiveMesh, holeRingIndex);
-  // The retained hole stays clockwise; its new, independent solid copy uses
-  // canonical anticlockwise winding and its own vertices/edges.
-  if (twiceSignedArea(points) < 0.0f) {
-    reverse(points.begin(), points.end());
-  }
-  auto filledRingIndex = addDrawnRing(*mActiveMesh, points);
+  // The gap is a new Polygon face bounded by the selected hole's existing
+  // edges, not a second coincident set of vertices and edges.
+  auto filledRingIndex = addRingSharingBoundary(*mActiveMesh, holeRingIndex);
 
   // Fill only the gap. Existing islands remain independent top-level solids,
-  // while copies of their boundaries become holes on the new polygon. Thus
+  // while new hole loops share their boundary edges with those islands. Thus
   // the pieces meet without overlap, and deleting this polygon restores the
   // exact previous hole/island topology.
   for (auto islandIndex : immediateIslands) {
-    auto islandPoints = ringPositions(*mActiveMesh, islandIndex);
-    if (twiceSignedArea(islandPoints) < 0.0f) {
-      reverse(islandPoints.begin(), islandPoints.end());
-    }
-    auto gapHoleIndex = addDrawnRing(*mActiveMesh, islandPoints);
+    auto gapHoleIndex = addRingSharingBoundary(*mActiveMesh, islandIndex);
     mActiveMesh->addHoleToPolygon(filledRingIndex, gapHoleIndex);
   }
 

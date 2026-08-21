@@ -1523,6 +1523,55 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
           "the newly filled Ring was not selected as a solid polygon");
 
   auto filledRing = *document.getSelectedMeshRingIndices().begin();
+  auto const& gapHoles = document.getActiveMesh()
+                             ->getPolygon(filledRing)
+                             .getHoleIndices();
+  require(document.getActiveMesh()->getPolygon(holeIndex).getEdgeIndexSet() ==
+                  document.getActiveMesh()->getPolygon(filledRing).getEdgeIndexSet() &&
+              gapHoles.size() == 1 &&
+              document.getActiveMesh()->getPolygon(gapHoles.front()).getEdgeIndexSet() ==
+                  document.getActiveMesh()
+                      ->getPolygon(document.getActiveMesh()
+                                       ->getNextPolygonIndex(holeIndex))
+                      .getEdgeIndexSet(),
+          "the gap duplicated boundaries instead of sharing the existing topology");
+
+  auto path = std::filesystem::temp_directory_path() /
+              "boolean-world-fill-hole-topology.world.yaml";
+  document.saveDocAs(path.string());
+  editor::Document reloaded;
+  require(reloaded.openDoc(path.string()), "the filled-hole World did not reload");
+  std::filesystem::remove(path);
+  uint32_t reloadedMeshIndex = ~0u;
+  for (uint32_t i = 0; i < reloaded.getWorld()->getNumPrimitives(); ++i) {
+    auto* candidate = dynamic_cast<bw::core::MeshPrimitive*>(
+        reloaded.getWorld()->getPrimitive(i));
+    if (candidate && !candidate->hasFlag(BW_PRIMITIVE_GHOST_FLAG)) {
+      reloadedMeshIndex = i;
+      break;
+    }
+  }
+  require(reloaded.activateMesh(reloadedMeshIndex),
+          "the reloaded filled-hole Mesh did not activate");
+  auto* reloadedMesh = reloaded.getActiveMesh();
+  auto reloadedOuter = reloadedMesh->getFirstPolygonIndex();
+  auto reloadedOriginalHole =
+      reloadedMesh->getPolygon(reloadedOuter).getHoleIndices().front();
+  uint32_t reloadedGap = ~0u;
+  for (auto polygon = reloadedMesh->getNextPolygonIndex(reloadedOriginalHole);
+       !reloadedMesh->polygonIndexIterationFinished(polygon);
+       polygon = reloadedMesh->getNextPolygonIndex(polygon)) {
+    if (!reloadedMesh->getPolygon(polygon).isHole() &&
+        reloadedMesh->getPolygon(polygon).getNumEdges() ==
+            reloadedMesh->getPolygon(reloadedOriginalHole).getNumEdges()) {
+      reloadedGap = polygon;
+    }
+  }
+  require(reloadedGap != ~0u &&
+              reloadedMesh->getPolygon(reloadedGap).getEdgeIndexSet() ==
+                  reloadedMesh->getPolygon(reloadedOriginalHole).getEdgeIndexSet(),
+          "save/reload did not re-derive the shared gap boundary");
+
   require(document.deleteMeshSubObjects(
               editor::Settings::MeshSubMode::Polygon, {filledRing}) == 1 &&
               primitive->getVertices().size() == 2 &&
