@@ -299,7 +299,9 @@ void renderWorld(
   }
 
   auto numPrimitives = (uint32_t)primitives.size();
-  bool renderPrimitiveStuff = numPrimitives > 0;
+  // Mesh mode filters its ghost from `primitives`. Keep the overlay pass alive
+  // while drawing so a new World's first Ring is still visible.
+  bool renderPrimitiveStuff = numPrimitives > 0 || doc->meshDrawToolArmed();
 
   // Render
   auto drawList = ImGui::GetWindowDrawList();
@@ -381,8 +383,9 @@ void renderWorld(
       }
     }
 
-    // Primitives
-    if (!primitives.empty()) {
+    // Primitives and Mesh drawing overlays. The latter must also run when the
+    // World has no visible Primitive yet.
+    if (!primitives.empty() || doc->meshDrawToolArmed()) {
       drawList->AddDrawCmd();
 
       // The ghost's contours, held back until every Primitive has been drawn
