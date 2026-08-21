@@ -41,6 +41,13 @@ extern wp::Vector2 gWorldViewSize;
 extern std::map<std::string, std::string> gHelpFiles;
 extern spdlog::logger* gLogger;
 
+namespace {
+constexpr nfdfilteritem_t kWorldFilters[] = {
+    {"YAML", "yaml"},
+    {"Binary world", "world"},
+};
+}  // namespace
+
 namespace editor {
 using namespace std;
 
@@ -50,58 +57,32 @@ void newDocument(editor::Document* doc) {
 }
 
 void openDocument(editor::Document* doc) {
-  vector<pair<string, string>> extensions = {
-      make_pair("YAML", "yaml"),
-      make_pair("Binary world", "world")};
-
-  auto numExtensions = extensions.size();
-
-  auto filters = new nfdfilteritem_t[numExtensions];
-  for (uint32_t i = 0; i < numExtensions; ++i) {
-    filters[i] = {extensions[i].first.c_str(), extensions[i].second.c_str()};
-  }
-
   nfdchar_t* outPath;
-  auto res = NFD_OpenDialog(&outPath, filters, (nfdfiltersize_t)numExtensions, nullptr);
+  auto res = NFD_OpenDialog(&outPath, kWorldFilters, (nfdfiltersize_t)std::size(kWorldFilters), nullptr);
 
   if (res == NFD_OKAY) {
     string filepath(outPath);
+    NFD_FreePath(outPath);
+
     getPrimitiveFieldPreview().close();
     bool ok = doc->openDoc(filepath);
-
-    NFD_FreePath(outPath);
 
     if (!ok) {
       ImGui::OpenPopup("Open file failed");
     }
   }
-
-  delete[] filters;
 }
 
 void saveDocumentAs(editor::Document* doc) {
-  vector<pair<string, string>> extensions = {
-      make_pair("YAML", "yaml"),
-      make_pair("Binary world", "world")};
-
-  auto numExtensions = extensions.size();
-
-  auto filters = new nfdfilteritem_t[numExtensions];
-  for (uint32_t i = 0; i < numExtensions; ++i) {
-    filters[i] = {extensions[i].first.c_str(), extensions[i].second.c_str()};
-  }
-
   nfdchar_t* outPath;
-  auto res = NFD_SaveDialog(&outPath, filters, (nfdfiltersize_t)numExtensions, nullptr, nullptr);
+  auto res = NFD_SaveDialog(&outPath, kWorldFilters, (nfdfiltersize_t)std::size(kWorldFilters), nullptr, nullptr);
 
   if (res == NFD_OKAY) {
     string filepath(outPath);
-    doc->saveDocAs(filepath);
-
     NFD_FreePath(outPath);
-  }
 
-  delete[] filters;
+    doc->saveDocAs(filepath);
+  }
 }
 
 void saveDocument(editor::Document* doc) {
