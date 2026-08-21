@@ -52,17 +52,19 @@ void EditorInteraction::applyPrimitiveClick(
 }
 
 void EditorInteraction::applyMeshSubObjectClick(
-    Document* doc, Settings::MeshSubMode subMode, bool control, bool shift) {
-  if (mHover.type != HoverableType::MeshSubObject || mHover.indices.empty()) {
+    Document* doc, Settings::MeshSubMode subMode,
+    vector<uint32_t> const& hoveredIndices,
+    bool control, bool shift) {
+  if (hoveredIndices.empty()) {
     return;
   }
-  if (mCycledPrimitiveIndices != mHover.indices) {
-    mCycledPrimitiveIndices = mHover.indices;
+  if (mCycledPrimitiveIndices != hoveredIndices) {
+    mCycledPrimitiveIndices = hoveredIndices;
     mCycledPrimitiveIndex = -1;
   }
   mCycledPrimitiveIndex =
-      (mCycledPrimitiveIndex + 1) % static_cast<int>(mHover.indices.size());
-  auto index = mHover.indices[mCycledPrimitiveIndex];
+      (mCycledPrimitiveIndex + 1) % static_cast<int>(hoveredIndices.size());
+  auto index = hoveredIndices[mCycledPrimitiveIndex];
   auto indices = set<uint32_t>{index};
   auto const& selection = doc->getSelectedMeshSubObjectIndices(subMode);
 
@@ -110,6 +112,7 @@ void EditorInteraction::updateSelection(
   }
 
   if (settings.mode == Settings::Mode::Mesh && doc->meshDrawToolArmed()) {
+    mPendingMeshSubObjectClick.clear();
     // An armed draw tool owns the left button outright: a click places a
     // vertex or closes the Ring, and nothing selects, cycles or rubber-bands
     // behind it. Nothing is hoverable while it is armed either.
@@ -142,7 +145,15 @@ void EditorInteraction::updateSelection(
     doc->setMeshHoverExplanation(
         input.cursorInWorldView ? doc->meshIneligibilityReason(rawIndex) : "");
 
+    if (mMovingMeshSelection) {
+      if (input.leftReleased) {
+        mPendingMeshSubObjectClick.clear();
+      }
+      return;
+    }
+
     if (input.leftClicked) {
+      mPendingMeshSubObjectClick.clear();
       if (mHover.type == HoverableType::Primitive && !mHover.indices.empty() &&
           doc->activateMesh(mHover.indices.front())) {
         settings.activeMeshPrimitiveIndex = mHover.indices.front();
@@ -152,12 +163,35 @@ void EditorInteraction::updateSelection(
       }
 
       if (mHover.type == HoverableType::MeshSubObject) {
-        applyMeshSubObjectClick(doc, settings.meshSubMode, input.control, input.shift);
+        auto const& selection =
+            doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);
+        auto selectedHit = any_of(
+            mHover.indices.begin(), mHover.indices.end(),
+            [&](uint32_t index) { return selection.contains(index); });
+
+        // Preserve a selected member of a stacked hit until the gesture is
+        // known to be a click. A drag must move the existing selection rather
+        // than cycling to another Ring under the cursor on mouse-down.
+        if (mHover.indices.size() > 1 && selectedHit) {
+          mPendingMeshSubObjectClick = mHover.indices;
+        } else {
+          applyMeshSubObjectClick(
+              doc, settings.meshSubMode, mHover.indices,
+              input.control, input.shift);
+        }
       } else if (!input.cursorInMiniMap) {
         mBoxSelectPending = true;
         mBoxSelectDragging = false;
         mBoxSelectStartScreen = input.screenPosition;
       }
+    }
+
+    if (input.leftReleased && !mPendingMeshSubObjectClick.empty()) {
+      auto pending = move(mPendingMeshSubObjectClick);
+      mPendingMeshSubObjectClick.clear();
+      applyMeshSubObjectClick(
+          doc, settings.meshSubMode, pending, input.control, input.shift);
+      return;
     }
 
     constexpr float meshBoxSelectDragThresholdSq = 4.0f;

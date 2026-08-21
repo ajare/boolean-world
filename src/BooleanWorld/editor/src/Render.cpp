@@ -794,10 +794,10 @@ void renderWorld(
             ? fadeColour(settings.playerProxyColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
             : settings.playerProxyColour);
 
-    // FOV - flip Y values
+    // FOV
     if (settings.renderPlayerView) {
       auto v0 = playerProxyPos;
-      auto [v1, v2] = bw::core::calculateFovTriangle(v0, playerProxyAngle - 180, BW_PLAYER_VIEW_DISTANCE, BW_PLAYER_FOV);
+      auto [v1, v2] = bw::core::calculateFovTriangle(v0, playerProxyAngle, BW_PLAYER_VIEW_DISTANCE, BW_PLAYER_FOV);
 
       drawList->AddTriangleFilled(
           worldToScreen(v0), worldToScreen(v1), worldToScreen(v2),

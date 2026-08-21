@@ -57,10 +57,13 @@ class EditorInteraction {
 
   bool mMovingMeshSelection{false};
   wp::Vector2 mMeshDragCumulativeDelta;
+  std::vector<uint32_t> mPendingMeshSubObjectClick;
 
   void applyPrimitiveClick(Document* doc, bool control, bool shift);
   void applyMeshSubObjectClick(
-      Document* doc, Settings::MeshSubMode subMode, bool control, bool shift);
+      Document* doc, Settings::MeshSubMode subMode,
+      std::vector<uint32_t> const& hoveredIndices,
+      bool control, bool shift);
 
 public:
   void updateSelection(

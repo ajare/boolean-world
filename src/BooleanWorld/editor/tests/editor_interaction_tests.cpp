@@ -383,6 +383,9 @@ void meshSubObjectClicksSupportModifiersAndRingCycling() {
   interaction.updateSelection(&document, nullptr, settings, click);
   auto firstRing = *document.getSelectedMeshRingIndices().begin();
   interaction.updateSelection(&document, nullptr, settings, click);
+  auto release = pointerAt(meshCentre);
+  release.leftReleased = true;
+  interaction.updateSelection(&document, nullptr, settings, release);
   auto secondRing = *document.getSelectedMeshRingIndices().begin();
   require(firstRing != secondRing,
           "repeated clicks did not cycle through stacked Rings");
@@ -409,6 +412,63 @@ void meshSubObjectClicksSupportModifiersAndRingCycling() {
   interaction.updateSelection(&document, nullptr, settings, click);
   require(document.getSelectedMeshRingIndices() == std::set<uint32_t>{holeRing},
           "clicking a hole edge in Polygon sub-mode did not select its hole Ring");
+}
+
+void draggingASelectedNestedRingDoesNotCycleToItsShell() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshSubMode = editor::Settings::MeshSubMode::Polygon;
+  settings.meshEdgeSelectionDistance = 0.25f;
+  document.newDoc();
+  auto meshIndex = addMeshWithHole(document);
+  require(document.activateMesh(meshIndex), "could not activate the nested-Ring drag fixture");
+
+  auto* mesh = document.getActiveMesh();
+  auto shell = mesh->getFirstPolygonIndex();
+  auto nested = mesh->getNextPolygonIndex(shell);
+  require(!mesh->polygonIndexIterationFinished(nested),
+          "the drag fixture did not contain a nested Ring");
+  wp::Vector2 meshMin, meshMax;
+  mesh->getExtents(meshMin, meshMax);
+  auto centre = (meshMin + meshMax) / 2.0f;
+  require(document.getHoveredMeshSubObjectIndices(centre, settings).size() > 1,
+          "the nested-Ring drag fixture did not produce stacked hits");
+
+  auto shellVertex = *mesh->getPolygon(shell).getVertexIndexSet().begin();
+  auto nestedVertex = *mesh->getPolygon(nested).getVertexIndexSet().begin();
+  auto shellStart = mesh->getVertex(shellVertex).getPosition();
+  auto nestedStart = mesh->getVertex(nestedVertex).getPosition();
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Polygon, {nested});
+
+  editor::EditorInteraction interaction;
+  auto press = pointerAt(centre);
+  press.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, press);
+  require(document.getSelectedMeshRingIndices() == std::set<uint32_t>{nested},
+          "pressing a selected nested Ring cycled the selection to its shell");
+
+  auto drag = pointerAt(centre + wp::Vector2{2.0f, 0.0f});
+  drag.leftDown = true;
+  drag.leftDragging = true;
+  drag.dragDelta = {2.0f, 0.0f};
+  interaction.updateSelection(&document, nullptr, settings, drag);
+  interaction.updateDrag(&document, settings, drag);
+
+  require(mesh->getVertex(nestedVertex).getPosition() ==
+              nestedStart + wp::Vector2{2.0f, 0.0f},
+          "dragging the selected nested Ring did not move it");
+  require(mesh->getVertex(shellVertex).getPosition() == shellStart,
+          "dragging the selected nested Ring moved its shell instead");
+
+  auto release = pointerAt(centre + wp::Vector2{2.0f, 0.0f});
+  release.leftReleased = true;
+  interaction.updateSelection(&document, nullptr, settings, release);
+  interaction.updateDrag(&document, settings, release);
+  require(document.getSelectedMeshRingIndices() == std::set<uint32_t>{nested},
+          "releasing a nested-Ring drag cycled the selection to its shell");
 }
 
 void meshRubberBandUsesContainmentAndModifierPolicies() {
@@ -2125,6 +2185,7 @@ int main() {
     meshClicksBuildAndSwitchTheActiveProxy();
     rubberBandSelectionSupportsPlainControlAndShiftPolicies();
     meshSubObjectClicksSupportModifiersAndRingCycling();
+    draggingASelectedNestedRingDoesNotCycleToItsShell();
     meshRubberBandUsesContainmentAndModifierPolicies();
     meshSelectAllAndBoundsStayScopedToActiveMesh();
     undoRestoresMeshSubObjectSelection();
