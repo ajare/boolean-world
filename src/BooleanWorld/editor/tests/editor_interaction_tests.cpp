@@ -2005,6 +2005,37 @@ void prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint() {
           "PrefabField shortcut remained active after its step lost focus");
 }
 
+void prefabFieldClickPlacesAMeshPrefabPrimitiveWithoutCrashing() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs;
+  auto defineIndex = layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Tile");
+
+  layer->setActiveStep(defineIndex);
+  definitions->setSelectedPrefab(prefab);
+  addMesh(document, {0.0f, 0.0f});
+  // Deliberately left selected, mirroring a user who finishes drawing and
+  // switches straight to the PrefabField step without deselecting.
+
+  auto* field = new bw::core::PrefabField;
+  auto fieldIndex = layer->addStep(field);
+  field->bind(*layer, definitions);
+  layer->setActiveStep(fieldIndex);
+  selectPrefabForField(&document, layer, field, prefab);
+
+  editor::EditorInteraction interaction;
+  auto click = pointerAt({70.0f, 0.0f});
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+
+  require(field->hasSelectedTile() && field->getInstance({1, 0}),
+          "PrefabField click with a Mesh Prefab primitive did not place an instance");
+}
+
 void prefabFieldArrowNavigationAndRotationAreActiveStepGated() {
   editor::Document document;
   document.newDoc();
@@ -2113,6 +2144,7 @@ int main() {
     drawingContextRejectsEscapesAndSelfCrossings();
     theWholeDrawingGestureIsOneUndoEntry();
     prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint();
+    prefabFieldClickPlacesAMeshPrefabPrimitiveWithoutCrashing();
     prefabFieldArrowNavigationAndRotationAreActiveStepGated();
     std::cout << "Editor selection interactions passed\n";
     return 0;

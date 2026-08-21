@@ -60,7 +60,12 @@ Primitive& Primitive::operator=(Primitive const& other) {
 void Primitive::copyFrom(Primitive const& other) {
   VertexTransformerObject::copyFrom(other);
 
-  mWorld = other.mWorld;
+  // A copy starts unregistered even when `other` is live in a World: it is
+  // not yet present in any Layer's Primitive list, so notifying that World
+  // of a mutation (e.g. the position/parent writes in
+  // PrefabField::execute()) would fail World::primitiveChanged's lookup.
+  // World::addPrimitive (or Layer::rebindOwnedState) binds mWorld once the
+  // copy actually joins a Layer.
   mFlags = other.mFlags;
   mTime = 0.0f;
   mTimeUpdateDistance = other.mTimeUpdateDistance;

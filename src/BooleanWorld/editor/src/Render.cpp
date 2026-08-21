@@ -72,7 +72,10 @@ void renderBounds(wp::BoundingBox const& bounds, editor::Settings const& setting
   drawList->AddRect(worldToScreen(minExtent), worldToScreen(maxExtent), colour);
 }
 
-void renderGrid(float gridSize, wp::BoundingBox const& viewBounds, ImColor const& colour, float width, shared_ptr<bw::core::World> world, ImDrawList* drawList) {
+// `phase` shifts every line by that many world units, so a grid whose cells
+// must be centred on multiples of gridSize (rather than bounded by them) can
+// pass gridSize/2 rather than duplicating the iteration.
+void renderGrid(float gridSize, wp::BoundingBox const& viewBounds, ImColor const& colour, float width, shared_ptr<bw::core::World> world, ImDrawList* drawList, float phase = 0.0f) {
   wp::Vector2 xMinMax, yMinMax;
   viewBounds.getExtents(xMinMax, yMinMax);
 
@@ -93,7 +96,7 @@ void renderGrid(float gridSize, wp::BoundingBox const& viewBounds, ImColor const
 
   // Iterating in world space (rather than pre-computing pixel positions)
   // keeps grid lines correctly spaced and clipped at any zoom level.
-  for (float x = ceilf(xMin / gridSize) * gridSize; x <= xMax; x += gridSize) {
+  for (float x = ceilf((xMin - phase) / gridSize) * gridSize + phase; x <= xMax; x += gridSize) {
     drawList->AddLine(
         worldToScreen({x, yMin}),
         worldToScreen({x, yMax}),
@@ -101,7 +104,7 @@ void renderGrid(float gridSize, wp::BoundingBox const& viewBounds, ImColor const
         width);
   }
 
-  for (float y = ceilf(yMin / gridSize) * gridSize; y <= yMax; y += gridSize) {
+  for (float y = ceilf((yMin - phase) / gridSize) * gridSize + phase; y <= yMax; y += gridSize) {
     drawList->AddLine(
         worldToScreen({xMin, y}),
         worldToScreen({xMax, y}),
@@ -331,20 +334,33 @@ void renderWorld(
   } else if (auto const* field = activeLayer
                                      ? dynamic_cast<bw::core::PrefabField const*>(
                                            activeLayer->getActiveStep())
-                                     : nullptr;
-             field && field->hasSelectedTile()) {
+                                     : nullptr) {
+    // While placing instances, the whole tile grid (not just the pivot
+    // frame) is what the user is aiming at, so it is drawn across the
+    // visible view - faded so it reads as a guide rather than content, with
+    // the selected Tile picked out at full strength as the placement cursor.
     auto const* definitions = field->getDefinePrefabs(*activeLayer);
     if (definitions) {
-      auto tile = field->getSelectedTile();
-      auto offset = wp::Vector2{tile.x * definitions->getSize(),
-                                tile.y * definitions->getSize()};
-      auto const outline = editor::prefabTilingOutline(
-          definitions->getTilingType(), definitions->getSize());
-      std::vector<ImVec2> screenOutline;
-      for (auto const& point : outline) screenOutline.push_back(worldToScreen(point + offset));
-      if (screenOutline.size() >= 3) {
-        drawList->AddPolyline(screenOutline.data(), static_cast<int>(screenOutline.size()),
-                              settings.prefabTilingGuideColour, ImDrawFlags_Closed, 2.5f);
+      // Instances are centred on their Tile (tileAt rounds to the nearest
+      // multiple of the tile size), so a Tile's boundary - and the grid line
+      // marking it - sits half a tile off that multiple, not on it.
+      renderGrid(
+          definitions->getSize(), viewBounds,
+          fadeColour(settings.prefabTilingGuideColour, 0.5f), 1.0f, nullptr,
+          drawList, definitions->getSize() * 0.5f);
+
+      if (field->hasSelectedTile()) {
+        auto tile = field->getSelectedTile();
+        auto offset = wp::Vector2{tile.x * definitions->getSize(),
+                                  tile.y * definitions->getSize()};
+        auto const outline = editor::prefabTilingOutline(
+            definitions->getTilingType(), definitions->getSize());
+        std::vector<ImVec2> screenOutline;
+        for (auto const& point : outline) screenOutline.push_back(worldToScreen(point + offset));
+        if (screenOutline.size() >= 3) {
+          drawList->AddPolyline(screenOutline.data(), static_cast<int>(screenOutline.size()),
+                                settings.prefabTilingGuideColour, ImDrawFlags_Closed, 2.5f);
+        }
       }
     }
   }

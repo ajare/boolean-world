@@ -47,15 +47,16 @@ bool primitiveVisibleForActiveStep(
     bw::core::Layer const& layer,
     bw::core::Primitive const* primitive,
     Settings const& settings) {
-  // The ghost is Primitive mode's authoring furniture. Mesh mode neither
-  // draws it nor lets anything touch it, and the fold must not see it there
-  // either: a Primitive hidden from the overlay while still contributing
-  // geometry would read as a phantom shape.
+  // The ghost previews what "Create Primitive" would add next, so it only
+  // makes sense while the active step can accept a new Primitive (ADR-0015):
+  // a DefinePrefabs step with no Prefab selected, and a PrefabField step
+  // (which never accepts one), both hide it the same way Mesh mode does.
+  // Mesh mode neither draws it nor lets anything touch it, and the fold must
+  // not see it there either: a Primitive hidden from the overlay while still
+  // contributing geometry would read as a phantom shape.
   if (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) {
-    auto const* definePrefabs = dynamic_cast<bw::core::DefinePrefabs const*>(
-        layer.getActiveStep());
     return settings.mode != Settings::Mode::Mesh &&
-           (!definePrefabs || definePrefabs->getSelectedPrefab());
+           layer.getActiveStep()->acceptsNewPrimitives();
   }
 
   auto owningStepIndex = layer.getOwningStepIndex(primitive);

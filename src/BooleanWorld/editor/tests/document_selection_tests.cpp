@@ -10,6 +10,7 @@
 #include <core/DefinePrefabs.h>
 #include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
+#include <core/PrefabField.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
 
@@ -288,6 +289,24 @@ void prefabPrimitivesAreVisibleAndFoldedInIsolationOnlyWhileTheirPrefabIsSelecte
           "a Prefab Primitive was folded while another step was active");
 }
 
+void theGhostIsHiddenWhileAPrefabFieldStepIsActive() {
+  editor::Document document;
+  editor::Settings settings;
+
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs();
+  layer->addStep(definitions);
+  auto* field = new bw::core::PrefabField();
+  auto fieldIndex = layer->addStep(field);
+  field->bind(*layer, definitions);
+
+  layer->setActiveStep(fieldIndex);
+  require(!editor::primitiveVisibleForActiveStep(*layer, document.getGhost(), settings),
+          "the authoring ghost was shown while a PrefabField step was active, "
+          "but PrefabField never accepts a new Primitive");
+}
+
 void refusingStepPrimitivesAreNotSelectableInPrimitiveMode() {
   editor::Document document;
   editor::Settings settings;
@@ -374,6 +393,7 @@ int main() {
     primitiveIndicesInBoundsFindsOverlappingPrimitivesAndIgnoresTheGhost();
     selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps();
     prefabPrimitivesAreVisibleAndFoldedInIsolationOnlyWhileTheirPrefabIsSelected();
+    theGhostIsHiddenWhileAPrefabFieldStepIsActive();
     refusingStepPrimitivesAreNotSelectableInPrimitiveMode();
     meshEligibilityRequiresTheSelectedDirectlyEditableStep();
     openingADocumentReplacesTheActiveDocument();
