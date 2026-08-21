@@ -160,6 +160,8 @@ bool selectTriggerLine(Document* doc, uint32_t triggerLineIndex);
 
 bool deleteTriggerLine(Document* doc, uint32_t triggerLineIndex);
 
+bool setTriggerLineSide(Document* doc, bw::core::WorldTriggerLine* triggerLine, bw::core::WorldTriggerLineSide side);
+
 bool selectPrimitive(Document* doc, uint32_t primitiveIndex);
 
 bool togglePrimitiveSelected(Document* doc, uint32_t primitiveIndex);
@@ -257,7 +259,11 @@ bool decreasePrimitivePriority(Document* doc, bw::core::Primitive* primitive);
 
 bool setPrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index, uint32_t eventType, bw::core::AnimatedPropertyEventTriggerType triggerType, float value);
 
+bool addPrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t eventType, bw::core::AnimatedPropertyEventTriggerType triggerType, float value);
+
 bool deletePrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index);
+
+bool setPrimitiveCaptureMode(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, bw::core::ValueCaptureMode mode);
 
 bool addAnimationKeyToPrimitive(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, float time, float value);
 

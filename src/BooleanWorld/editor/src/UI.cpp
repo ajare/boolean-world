@@ -1544,6 +1544,14 @@ void renderEditTorusPolygon(editor::Document* doc, bw::core::Primitive* primitiv
     torus->setThickness(thickness);
   }
 
+  if (ImGui::IsItemActivated()) {
+    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+  } else if (ImGui::IsItemDeactivatedAfterEdit()) {
+    commitUndoableAction(doc, format("Set Torus Thickness to {}", torus->getThickness()));
+  } else if (ImGui::IsItemDeactivated()) {
+    abandonUndoableAction(doc);
+  }
+
   widgets::HelpMarker("This value determines the number of sides in the torus polygon.");
   ImGui::SameLine();
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -1568,6 +1576,14 @@ void renderEditTorusSegmentPolygon(editor::Document* doc, bw::core::Primitive* p
   ImGui::SameLine();
   if (ImGui::SliderFloat("Thickness##CreateTorus", &thickness, 0.01f, 0.99f)) {
     torusSeg->setThickness(thickness);
+  }
+
+  if (ImGui::IsItemActivated()) {
+    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+  } else if (ImGui::IsItemDeactivatedAfterEdit()) {
+    commitUndoableAction(doc, format("Set Torus Segment Thickness to {}", torusSeg->getThickness()));
+  } else if (ImGui::IsItemDeactivated()) {
+    abandonUndoableAction(doc);
   }
 
   widgets::HelpMarker("Arc length in degrees.");
@@ -2166,7 +2182,7 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
   ImGui::PopID();
 
   if (pointToRemove != -1) {
-    removeKeyFromInterpolator(doc, lerperType, primitive, key, (uint32_t)pointToRemove);
+    transactUndoableAction(doc, format("Remove {} Point {}", lerperType, pointToRemove), bind(removeKeyFromInterpolator, placeholders::_1, lerperType, primitive, key, (uint32_t)pointToRemove));
   }
 }
 
@@ -2223,7 +2239,10 @@ void renderValueCapture(editor::Document* doc, bw::core::Primitive* primitive, b
 
   int selectedMode = (int)primitive->getCaptureMode(key);
   if (ImGui::Combo("Capture mode", &selectedMode, captureModesStr.c_str(), 6)) {
-    primitive->setCaptureMode(key, (bw::core::ValueCaptureMode)selectedMode);
+    auto mode = (bw::core::ValueCaptureMode)selectedMode;
+    transactUndoableAction(doc, "Set Capture Mode", [primitive, key, mode](editor::Document* doc) {
+      return setPrimitiveCaptureMode(doc, primitive, key, mode);
+    });
   }
 }
 
@@ -2234,10 +2253,9 @@ void renderAnimatedPropertyEvents(editor::Document* doc, bw::core::Primitive* pr
   ImGui::SameLine();
 
   if (ImGui::Button(ICON_FA_PLUS)) {
-    primitive->addAnimatedPropertyEvent(key,
-                                        1,
-                                        bw::core::AnimatedPropertyEventTriggerType::UpDown,
-                                        0.5f);
+    transactUndoableAction(doc, "Add Animated Property Event", [primitive, key](editor::Document* doc) {
+      return addPrimitiveAnimatedPropertyEvent(doc, primitive, key, 1, bw::core::AnimatedPropertyEventTriggerType::UpDown, 0.5f);
+    });
   }
 
   vector<string> triggerTypes = {
@@ -3140,7 +3158,10 @@ void renderEditTriggerLineView(editor::Document* doc, editor::Settings& settings
   ImGui::SetNextItemWidth(128);
 
   if (ImGui::Combo("Side##EditTriggerLine", &selectedSide, "Red\0Blue\0Both\0\0", 6)) {
-    triggerLine->setSide((bw::core::WorldTriggerLineSide)selectedSide);
+    auto side = (bw::core::WorldTriggerLineSide)selectedSide;
+    transactUndoableAction(doc, "Set Trigger Line Side", [triggerLine, side](editor::Document* doc) {
+      return setTriggerLineSide(doc, triggerLine, side);
+    });
   }
 }
 

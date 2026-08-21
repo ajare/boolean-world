@@ -12,6 +12,7 @@
 #include <core/PrefabField.h>
 #include <core/RectanglePolygon.h>
 #include <core/SuperformulaPolygon.h>
+#include <core/TorusPolygon.h>
 #include <core/World.h>
 #include <core/WorldDataGenerator.h>
 #include <core/WorldTriggerLine.h>
@@ -407,6 +408,102 @@ void superformulaControlValueEditIsDirtyAndUndoable() {
           "redo did not restore the superformula control value and contour");
 }
 
+void torusThicknessSliderDragIsDirtyAndUndoable() {
+  bw::core::World world(100.0f, 10.0f);
+  world.addPrimitive(new bw::core::TorusPolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      0.5f, 1.0f));
+
+  editor::Document document;
+  document.setWorld(world);
+  document.setModified(false);
+
+  auto getTorus = [&document]() {
+    return static_cast<bw::core::TorusPolygon*>(document.getWorld()->getPrimitive(0));
+  };
+  auto const originalThickness = getTorus()->getThickness();
+  auto const undoLevelsBeforeEdit = editor::getUndoLevels();
+
+  editor::beginUndoableAction(&document, "", [](editor::Document*) { return true; }, originalThickness);
+  getTorus()->setThickness(0.6f);
+  getTorus()->setThickness(0.75f);
+  editor::commitUndoableAction(&document, "Set Torus Thickness to 0.75");
+
+  require(document.isModified(),
+          "dragging the torus thickness slider did not mark the document modified");
+  require(editor::getUndoLevels() == undoLevelsBeforeEdit + 1,
+          "one torus thickness drag did not create exactly one history entry");
+  require(getTorus()->getThickness() == 0.75f,
+          "editing torus thickness did not apply the dragged value");
+
+  editor::undo(&document);
+  require(!document.isModified() && getTorus()->getThickness() == originalThickness,
+          "undo did not restore the torus thickness");
+
+  editor::redo(&document);
+  require(document.isModified() && getTorus()->getThickness() == 0.75f,
+          "redo did not restore the torus thickness");
+}
+
+void abandonedTorusThicknessSliderDragProducesNoHistoryEntry() {
+  bw::core::World world(100.0f, 10.0f);
+  world.addPrimitive(new bw::core::TorusPolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      0.5f, 1.0f));
+
+  editor::Document document;
+  document.setWorld(world);
+  document.setModified(false);
+
+  auto const undoLevelsBeforeEdit = editor::getUndoLevels();
+
+  editor::beginUndoableAction(&document, "", [](editor::Document*) { return true; }, 0.5f);
+  editor::abandonUndoableAction(&document);
+
+  require(!document.isModified(), "abandoning a torus thickness drag marked the document modified");
+  require(editor::getUndoLevels() == undoLevelsBeforeEdit,
+          "abandoning a torus thickness drag left a stray history entry");
+}
+
+void triggerLineSideEditIsDirtyAndUndoable() {
+  editor::Document document;
+  document.newDoc();
+  auto* world = document.getWorld().get();
+
+  auto triggerLineIndex = world->addTriggerLine(
+      new bw::core::WorldTriggerLine({0.0f, 0.0f}, {1.0f, 1.0f}));
+  auto* triggerLine = world->getTriggerLine(triggerLineIndex);
+  document.setModified(false);
+
+  auto const undoLevelsBeforeEdit = editor::getUndoLevels();
+
+  editor::transactUndoableAction(&document, "Set Trigger Line Side",
+      [triggerLine](editor::Document* doc) {
+        return editor::setTriggerLineSide(doc, triggerLine, bw::core::WorldTriggerLineSide::Blue);
+      });
+
+  require(document.isModified(),
+          "setting a trigger line's side did not mark the document modified");
+  require(editor::getUndoLevels() == undoLevelsBeforeEdit + 1,
+          "setting a trigger line's side did not create exactly one history entry");
+  require(triggerLine->getSide() == bw::core::WorldTriggerLineSide::Blue,
+          "setting a trigger line's side did not apply the new value");
+
+  editor::undo(&document);
+  auto* restoredTriggerLine = document.getWorld()->getTriggerLine(triggerLineIndex);
+  require(!document.isModified() &&
+              restoredTriggerLine->getSide() != bw::core::WorldTriggerLineSide::Blue,
+          "undo did not restore the trigger line's side");
+
+  editor::redo(&document);
+  restoredTriggerLine = document.getWorld()->getTriggerLine(triggerLineIndex);
+  require(document.isModified() &&
+              restoredTriggerLine->getSide() == bw::core::WorldTriggerLineSide::Blue,
+          "redo did not restore the trigger line's side");
+}
+
 void runtimeFreeSnapshotPreservesEditorGenerationConfiguration() {
   editor::Document document;
   document.newDoc();
@@ -570,6 +667,9 @@ int main() {
     deletingASelectedTriggerLineLeavesTheSelectionValidOrUnset();
     abandonedAndCommittedActionsClearTransactionValues();
     superformulaControlValueEditIsDirtyAndUndoable();
+    torusThicknessSliderDragIsDirtyAndUndoable();
+    abandonedTorusThicknessSliderDragProducesNoHistoryEntry();
+    triggerLineSideEditIsDirtyAndUndoable();
     runtimeFreeSnapshotPreservesEditorGenerationConfiguration();
     copiedDynamicGeneratorRetainsItsWorldAndSettings();
     undoHistoryRetainsConfiguredCapacity();

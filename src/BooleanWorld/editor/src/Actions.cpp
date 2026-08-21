@@ -257,6 +257,11 @@ bool deleteTriggerLine(Document* doc, uint32_t triggerLineIndex) {
   return true;
 }
 
+bool setTriggerLineSide(Document* doc, bw::core::WorldTriggerLine* triggerLine, bw::core::WorldTriggerLineSide side) {
+  triggerLine->setSide(side);
+  return true;
+}
+
 bool selectPrimitive(Document* doc, uint32_t primitiveIndex) {
   doc->setSelectedPrimitiveIndices({primitiveIndex});
   return false;
@@ -714,8 +719,18 @@ bool setPrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* primi
   return true;
 }
 
+bool addPrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t eventType, bw::core::AnimatedPropertyEventTriggerType triggerType, float value) {
+  primitive->addAnimatedPropertyEvent(key, eventType, triggerType, value);
+  return true;
+}
+
 bool deletePrimitiveAnimatedPropertyEvent(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t index) {
   primitive->removeAnimatedPropertyEvent(key, index);
+  return true;
+}
+
+bool setPrimitiveCaptureMode(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, bw::core::ValueCaptureMode mode) {
+  primitive->setCaptureMode(key, mode);
   return true;
 }
 
