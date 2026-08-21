@@ -578,8 +578,16 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
     ImGui::SameLine();
 
+    if (!world) {
+      widgets::PushDisabled();
+    }
+
     if (widgets::ToggleButton("ToggleGhost", ICON_FA_GHOST, &settings.ghostActive)) {
       enableGhost(doc, settings.ghostActive);
+    }
+
+    if (!world) {
+      widgets::PopDisabled();
     }
 
     ImGui::SameLine();
@@ -644,6 +652,10 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
     ImGui::SetNextItemWidth(64);
 
     // Active layer
+    if (!world) {
+      widgets::PushDisabled();
+    }
+
     int activeLayer = (int)settings.activeLayer;
     if (ImGui::InputInt("Lyr", &activeLayer, 1, 1)) {
       if (activeLayer >= 0 && activeLayer < 256) {
@@ -655,6 +667,10 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
         generateClipping(doc, settings, ED_CLIP_ON_ACTIVE_LAYER_CHANGE);
       }
+    }
+
+    if (!world) {
+      widgets::PopDisabled();
     }
 
     // Handle action

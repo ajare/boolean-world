@@ -310,6 +310,10 @@ void frameAllWorld(editor::Document* doc) {
 }
 
 void enableGhost(editor::Document* doc, bool enable) {
+  if (!doc->isActive()) {
+    return;
+  }
+
   auto ghost = doc->getGhost();
 
   if (enable) {
