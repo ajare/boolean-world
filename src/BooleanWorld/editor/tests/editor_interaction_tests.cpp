@@ -222,6 +222,19 @@ void plainControlAndShiftClicksApplyTheirSelectionPolicies() {
           "a Ctrl-click did not toggle the Primitive out of the selection");
 }
 
+void deletePrimitivesRefusesTheGhostEvenWhenHandedItsIndexDirectly() {
+  editor::Document document;
+  document.newDoc();
+  auto primitiveIndex = addRectangle(document, {50.0f, 50.0f});
+
+  editor::deletePrimitives(&document, {uint32_t(ED_GHOST_INDEX), primitiveIndex});
+
+  require(document.getGhost() != nullptr,
+          "deletePrimitives destroyed the ghost when handed its index directly");
+  require(document.getWorld()->getNumPrimitives() == 1,
+          "deletePrimitives did not delete the real Primitive alongside the refused ghost");
+}
+
 void repeatedClicksCycleThroughStackedPrimitives() {
   editor::Document document;
   editor::Settings settings;
@@ -2106,6 +2119,7 @@ void prefabFieldArrowNavigationAndRotationAreActiveStepGated() {
 int main() {
   try {
     plainControlAndShiftClicksApplyTheirSelectionPolicies();
+    deletePrimitivesRefusesTheGhostEvenWhenHandedItsIndexDirectly();
     repeatedClicksCycleThroughStackedPrimitives();
     modeAndSubModeChangesAreEditorPreferencesAndClearSelection();
     meshClicksBuildAndSwitchTheActiveProxy();

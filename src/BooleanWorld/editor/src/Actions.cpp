@@ -552,7 +552,14 @@ bool cloneRotatedPrimitive(Document* doc, uint32_t primitiveIndex, float angle) 
 }
 
 bool deletePrimitives(Document* doc, set<uint32_t> const& primitiveIndices) {
-  vector<uint32_t> vec(primitiveIndices.begin(), primitiveIndices.end());
+  // The ghost must never be deletable, even if some future selection path
+  // manages to hand its index in here directly.
+  vector<uint32_t> vec;
+  for (auto index : primitiveIndices) {
+    if (index != uint32_t(ED_GHOST_INDEX)) {
+      vec.push_back(index);
+    }
+  }
   doc->getWorld()->removePrimitives(vec);
   return true;
 }

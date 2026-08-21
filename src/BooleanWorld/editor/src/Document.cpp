@@ -1823,7 +1823,11 @@ vector<uint32_t> Document::getPrimitiveIndicesInBounds(wp::BoundingBox const& wo
     return {};
   }
 
+  // The ghost is authoring furniture, never a selectable object, so it is
+  // excluded here unconditionally rather than only when settings.ghostActive
+  // is off (which governs whether it is drawn and hoverable, not this).
   auto ignores = getIgnoredPrimitiveIndices(*mWorld, settings);
+  ignores.insert(uint32_t(ED_GHOST_INDEX));
 
   vector<uint32_t> result;
   auto numPrimitives = mWorld->getNumPrimitives();
@@ -1848,7 +1852,10 @@ vector<uint32_t> Document::getSelectablePrimitiveIndices(Settings const& setting
     return {};
   }
 
+  // See the equivalent comment in getPrimitiveIndicesInBounds: the ghost is
+  // excluded here unconditionally, not just when settings.ghostActive is off.
   auto ignores = getIgnoredPrimitiveIndices(*mWorld, settings);
+  ignores.insert(uint32_t(ED_GHOST_INDEX));
 
   vector<uint32_t> result;
   auto numPrimitives = mWorld->getNumPrimitives();

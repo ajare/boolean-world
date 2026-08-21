@@ -193,6 +193,34 @@ void primitiveIndicesInBoundsFindsOverlappingPrimitivesAndIgnoresTheGhost() {
           "a bounds query found a primitive outside its rectangle");
 }
 
+void selectAllAndABoundsQueryOverTheOriginExcludeTheGhostEvenWhileItIsActive() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = true;
+
+  document.newDoc();
+
+  // Lands on top of the ghost, which a new document seeds at the origin.
+  auto* primitive = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  document.getWorld()->addPrimitive(primitive);
+
+  auto selectable = document.getSelectablePrimitiveIndices(settings);
+  require(std::find(selectable.begin(), selectable.end(), uint32_t(ED_GHOST_INDEX)) == selectable.end(),
+          "Select All picked up the ghost while it was active");
+  require(std::find(selectable.begin(), selectable.end(), primitive->getId()) != selectable.end(),
+          "Select All dropped a real Primitive that overlaps the ghost");
+
+  auto overOrigin = document.getPrimitiveIndicesInBounds(
+      wp::BoundingBox({0.0f, 0.0f}, {20.0f, 20.0f}), settings);
+  require(std::find(overOrigin.begin(), overOrigin.end(), uint32_t(ED_GHOST_INDEX)) == overOrigin.end(),
+          "a rubber-band over the origin picked up the ghost while it was active");
+  require(std::find(overOrigin.begin(), overOrigin.end(), primitive->getId()) != overOrigin.end(),
+          "a rubber-band over the origin dropped a real Primitive that overlaps the ghost");
+}
+
 void selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps() {
   editor::Document document;
   editor::Settings settings;
@@ -391,6 +419,7 @@ int main() {
     theGhostIsHoveredFirstWhereItOverlapsAnotherPrimitive();
     theGhostIsHiddenFromTheViewAndTheFoldInMeshMode();
     primitiveIndicesInBoundsFindsOverlappingPrimitivesAndIgnoresTheGhost();
+    selectAllAndABoundsQueryOverTheOriginExcludeTheGhostEvenWhileItIsActive();
     selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps();
     prefabPrimitivesAreVisibleAndFoldedInIsolationOnlyWhileTheirPrefabIsSelected();
     theGhostIsHiddenWhileAPrefabFieldStepIsActive();
