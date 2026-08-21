@@ -294,6 +294,20 @@ void MeshPrimitive::updateFromGeometryProxy(wp::geometry::Mesh const& mesh) {
   setVertices(polygons);
 }
 
+bool MeshPrimitive::retainRing(
+    uint32_t complexPolygonIndex, uint32_t ringIndex) {
+  if (complexPolygonIndex >= mPolygons.size() ||
+      ringIndex >= mPolygons[complexPolygonIndex].size()) {
+    return false;
+  }
+  auto ring = mPolygons[complexPolygonIndex][ringIndex];
+  if (twiceArea(ring) < 0.0f) {
+    reverse(ring.begin(), ring.end());
+  }
+  setVertices({{move(ring)}});
+  return true;
+}
+
 void MeshPrimitive::copyFrom(MeshPrimitive const& other) {
   Primitive::copyFrom(other);
 }

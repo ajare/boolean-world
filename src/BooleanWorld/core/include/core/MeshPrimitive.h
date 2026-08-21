@@ -46,6 +46,10 @@ public:
   // topology represented by the validated editing type.
   void updateFromGeometryProxy(wp::geometry::Mesh const& mesh);
 
+  // Keeps one authored Ring and discards all others. The retained Ring is
+  // canonicalized as an outer boundary for an independently folded Primitive.
+  bool retainRing(uint32_t complexPolygonIndex, uint32_t ringIndex);
+
   Primitive* copy() const override;
 
   std::string getType() const override;

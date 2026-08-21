@@ -166,6 +166,10 @@ bool createPrimitiveFromGhost(Document* doc);
 
 bool clonePrimitive(Document* doc, uint32_t primitiveIndex);
 
+// Replaces a multi-Ring MeshPrimitive with one Primitive per Ring. Filled
+// Rings become Union operands and holes become Difference operands.
+bool decomposeMeshPrimitive(Document* doc, uint32_t primitiveIndex);
+
 bool cloneRotatedPrimitive(Document* doc, uint32_t primitiveIndex, float angle);
 
 bool deletePrimitives(Document* doc, std::set<uint32_t> const& primitiveIndices);

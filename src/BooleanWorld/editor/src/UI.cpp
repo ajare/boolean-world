@@ -1662,7 +1662,25 @@ void renderEditSuperformulaPolygon(editor::Document* doc, bw::core::Primitive* p
   }
 }
 
-void renderEditMeshPrimitive(editor::Document* doc, bw::core::Primitive* primitive, editor::Settings& settings) {
+bool renderEditMeshPrimitive(editor::Document* doc, bw::core::Primitive* primitive, editor::Settings& settings) {
+  auto* mesh = static_cast<bw::core::MeshPrimitive*>(primitive);
+  size_t ringCount = 0;
+  for (auto const& polygon : mesh->getVertices()) {
+    ringCount += polygon.size();
+  }
+  ImGui::BeginDisabled(ringCount <= 1);
+  auto decompose = ImGui::Button("Decompose");
+  ImGui::EndDisabled();
+  if (decompose) {
+    auto index = primitive->getId();
+    transactUndoableAction(
+        doc, "Decompose MeshPrimitive",
+        bind(decomposeMeshPrimitive, placeholders::_1, index));
+  }
+  widgets::HelpMarker(
+      "Replace this MeshPrimitive with one MeshPrimitive per Ring. Filled "
+      "Rings use Union, holes use Difference, and nesting depth increases priority.");
+  return decompose;
 }
 
 void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, vector<bw::core::tTransform> const& flow, bw::core::VertexTransformer::Key key, string const& keyName) {
@@ -2451,7 +2469,9 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   } else if (primitive->getType() == "Superformula") {
     renderEditSuperformulaPolygon(doc, primitive, settings);
   } else if (primitive->getType() == "Mesh") {
-    renderEditMeshPrimitive(doc, primitive, settings);
+    if (renderEditMeshPrimitive(doc, primitive, settings)) {
+      return;
+    }
   } else {
     throw EditorException("Unknown primitive type: " + primitive->getType());
   }

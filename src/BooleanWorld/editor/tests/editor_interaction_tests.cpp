@@ -1615,6 +1615,73 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
           "deleting the gap polygon did not restore the previous hole and island topology");
 }
 
+void decomposingAMeshCreatesOrderedRingPrimitives() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMeshWithHole(document);
+  require(document.activateMesh(meshIndex),
+          "the decomposition Mesh did not activate");
+  auto* proxy = document.getActiveMesh();
+  auto outerRing = proxy->getFirstPolygonIndex();
+  auto holeRing = proxy->getPolygon(outerRing).getHoleIndices().front();
+  wp::Vector2 holeCentre{};
+  auto holeVertices = proxy->getPolygon(holeRing).getOrderedVertexIndices();
+  for (auto vertex : holeVertices) {
+    holeCentre += proxy->getVertex(vertex).getPosition();
+  }
+  holeCentre /= float(holeVertices.size());
+  auto settings = meshDrawSettings();
+  settings.meshVertexPickRadius = 0.1f;
+  require(document.armMeshDrawTool(settings),
+          "the decomposition island draw tool did not arm");
+  document.placeMeshDrawVertex(holeCentre + wp::Vector2{-2.0f, -2.0f}, settings);
+  document.placeMeshDrawVertex(holeCentre + wp::Vector2{2.0f, -2.0f}, settings);
+  document.placeMeshDrawVertex(holeCentre + wp::Vector2{0.0f, 2.0f}, settings);
+  require(document.closeMeshDrawRing() != nullptr,
+          "the decomposition island did not close");
+
+  auto* source = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  source->setPriority(9);
+  auto properties = source->getProperties();
+  properties.floorZ = -12.0f;
+  properties.ceilingZ = 72.0f;
+  properties.floorMaterialIndex = 17;
+  source->setProperties(properties);
+
+  require(editor::decomposeMeshPrimitive(&document, meshIndex),
+          "the multi-Ring MeshPrimitive did not decompose");
+  auto const& selected = document.getSelectedPrimitiveIndices();
+  require(selected.size() == 3,
+          "decomposition did not select one Primitive per Ring");
+  auto selection = selected.begin();
+  auto* outer = dynamic_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(*selection++));
+  auto* hole = dynamic_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(*selection++));
+  auto* island = dynamic_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(*selection));
+  require(outer && hole && island && outer->getVertices().size() == 1 &&
+              outer->getVertices()[0].size() == 1 &&
+              hole->getVertices().size() == 1 &&
+              hole->getVertices()[0].size() == 1 &&
+              island->getVertices().size() == 1 &&
+              island->getVertices()[0].size() == 1,
+          "a decomposed Primitive retained more than one Ring");
+  require(outer->getOperation() == bw::core::Primitive::Operation::Union &&
+              hole->getOperation() == bw::core::Primitive::Operation::Difference &&
+              island->getOperation() == bw::core::Primitive::Operation::Union &&
+              outer->getPriority() == 9 && hole->getPriority() == 10 &&
+              island->getPriority() == 11,
+          "decomposed Rings did not receive containment-ordered operations and priorities");
+  require(outer->getProperties().floorZ == properties.floorZ &&
+              hole->getProperties().ceilingZ == properties.ceilingZ &&
+              outer->getProperties().floorMaterialIndex == 17 &&
+              hole->getProperties().floorMaterialIndex == 17 &&
+              island->getProperties().floorMaterialIndex == 17,
+          "decomposition did not preserve the source properties and materials");
+}
+
 void deletingAWeldedVertexHealsTheHoleAndIsland() {
   editor::Document document;
   document.newDoc();
@@ -1810,6 +1877,7 @@ int main() {
     drawingContextCreatesHolesAndFilledIslands();
     drawingMultipleHolesKeepsThemOnTheSameComplexPolygon();
     fillingASelectedHoleCreatesASolidAlongsideExistingIslands();
+    decomposingAMeshCreatesOrderedRingPrimitives();
     deletingAWeldedVertexHealsTheHoleAndIsland();
     drawingContextRejectsEscapesAndSelfCrossings();
     theWholeDrawingGestureIsOneUndoEntry();
