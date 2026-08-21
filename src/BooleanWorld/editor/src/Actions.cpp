@@ -11,6 +11,7 @@
 #include "Defines.h"
 #include "Actions.h"
 #include "EditorException.h"
+#include "UiHelpers.h"
 
 namespace editor {
 using namespace std;
@@ -247,6 +248,7 @@ bool recentreActiveMesh(Document* doc) {
 
 bool createMeshPrimitiveFromDrawnRing(Document* doc) {
   auto createsNewPrimitive = doc->meshDrawCreatesNewPrimitive();
+  auto createsHole = doc->meshDrawCreatesHole();
   auto* mesh = doc->closeMeshDrawRing();
   if (!mesh) {
     return false;
@@ -254,6 +256,14 @@ bool createMeshPrimitiveFromDrawnRing(Document* doc) {
 
   if (createsNewPrimitive) {
     setPrimitiveDefaultMaterials(mesh);
+  }
+  if (createsHole) {
+    // closeMeshDrawRing has committed the active geometry proxy back to the
+    // MeshPrimitive at this point. Request generation here, against that
+    // authored topology, rather than relying on subsequent proxy movement to
+    // emit a Primitive event. The transaction's normal request may coalesce
+    // with this one; both snapshot the completed hole.
+    regenerateWorldData(doc);
   }
   return true;
 }

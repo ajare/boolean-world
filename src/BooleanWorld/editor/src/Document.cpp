@@ -1715,6 +1715,8 @@ bw::core::Primitive* Document::closeMeshDrawRing() {
     if (mMeshDrawCreatesHole) {
       mActiveMesh->addHoleToPolygon(mMeshDrawContainingRingIndex, newRing);
     }
+    // Commit topology to the authored Primitive before the action requests
+    // asynchronous regeneration; the proxy alone is never generator input.
     primitive->updateFromGeometryProxy(*mActiveMesh);
     primitive->updateVertexPositions();
     disarmMeshDrawTool();

@@ -20,11 +20,16 @@
 spdlog::logger* gLogger = spdlog::default_logger_raw();
 editor::Settings gEditorSettings;
 
+namespace {
+int generationRequests = 0;
+}
+
 namespace editor {
 void generateClipping(Document*, Settings const&, int) {
 }
 
 void regenerateWorldData(Document*) {
+  ++generationRequests;
 }
 }  // namespace editor
 
@@ -792,9 +797,21 @@ void addingAMeshHoleInvalidatesTheParentTriangulation() {
           "the enclosing Ring did not initially triangulate");
   require(document.placeMeshDrawVertex(pointAt(0.7f, 0.3f), settings) &&
               document.placeMeshDrawVertex(pointAt(0.7f, 0.7f), settings) &&
-              document.placeMeshDrawVertex(pointAt(0.3f, 0.7f), settings) &&
-              document.closeMeshDrawRing() != nullptr,
-          "the hole Ring did not close");
+              document.placeMeshDrawVertex(pointAt(0.3f, 0.7f), settings),
+          "the hole Ring rejected an interior vertex");
+  generationRequests = 0;
+  editor::EditorInteraction interaction;
+  auto close = pointerAt(pointAt(0.3f, 0.3f));
+  close.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, close);
+
+  auto* authored = dynamic_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  require(authored && authored->getVertices().size() == 1 &&
+              authored->getVertices().front().size() == 2,
+          "closing the hole did not add its Ring to the MeshPrimitive");
+  require(generationRequests > 0,
+          "closing the hole did not request asynchronous world regeneration");
 
   mesh = document.getActiveMesh();
   outer = mesh->getFirstPolygonIndex();
@@ -802,6 +819,7 @@ void addingAMeshHoleInvalidatesTheParentTriangulation() {
       mesh->getPolygon(outer).createBasicTriangulation().getNumTriangles();
   require(triangleCountAfter != triangleCountBefore,
           "adding a hole left the enclosing Ring's cached triangulation stale");
+  editor::undo(&document);
 }
 
 void meshDragSnapsToGridBeforeValidating() {
