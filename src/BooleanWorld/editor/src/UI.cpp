@@ -2235,7 +2235,7 @@ void renderAnimatedPropertyEvents(editor::Document* doc, bw::core::Primitive* pr
 
   if (ImGui::Button(ICON_FA_PLUS)) {
     primitive->addAnimatedPropertyEvent(key,
-                                        0,
+                                        1,
                                         bw::core::AnimatedPropertyEventTriggerType::UpDown,
                                         0.5f);
   }
@@ -2290,10 +2290,10 @@ void renderAnimatedPropertyEvents(editor::Document* doc, bw::core::Primitive* pr
     widgets::HelpMarker("Event type.");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(128);
-    int eventType = (int)log2(event.eventType);
+    int eventType = (int)log2(event.eventType);  // eventType is a bitmask, not an index
 
     if (ImGui::Combo("Action", &eventType, eventTypesStr.c_str(), 6)) {
-      transactUndoableAction(doc, "Set Primitive Event Action", bind(setPrimitiveAnimatedPropertyEvent, placeholders::_1, primitive, key, i, 1 << event.eventType, event.triggerType, event.value));
+      transactUndoableAction(doc, "Set Primitive Event Action", bind(setPrimitiveAnimatedPropertyEvent, placeholders::_1, primitive, key, i, 1 << eventType, event.triggerType, event.value));
     }
 
     ImGui::SameLine();
@@ -2303,7 +2303,7 @@ void renderAnimatedPropertyEvents(editor::Document* doc, bw::core::Primitive* pr
     ImGui::SetNextItemWidth(64);
     float value = event.value;
     if (ImGui::InputFloat("Value", &value, 0.0f, 0.0f, "%.1f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-      transactUndoableAction(doc, "Set Primitive Event Value", bind(setPrimitiveAnimatedPropertyEvent, placeholders::_1, primitive, key, i, 1 << event.eventType, event.triggerType, value));
+      transactUndoableAction(doc, "Set Primitive Event Value", bind(setPrimitiveAnimatedPropertyEvent, placeholders::_1, primitive, key, i, event.eventType, event.triggerType, value));
     }
   }
 
