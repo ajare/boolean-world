@@ -21,15 +21,24 @@ namespace editor {
 // all. A Primitive belonging to no step in this Layer (getOwningStepIndex
 // returns ~0u) is always shown. The ghost is shown whatever the step rule
 // says in Primitive mode, and never in Mesh mode, where it is hidden and
-// inert.
+// inert. DefinePrefabs is the exception to show-all: its Primitives are shown
+// only while that exact step is active, because they have no world-space
+// relationship to neighbouring steps (ADR-0017).
 //
-// Both halves of "not shown" go through here - the world view's overlay
-// skips it, the world data generator's filter keeps it out of the fold so it
-// contributes no geometry either, and Document's own selection queries
-// (hover, rubber-band, Select All) exclude it from the current context. Pure
-// logic with no ImGui dependency, unlike the rest of UiHelpers - kept here so
-// Document (and its unit tests) can use it without linking ImGui.
+// The world overlay and Document's selection queries (hover, rubber-band,
+// Select All) use this predicate. The generator uses the stricter fold
+// predicate below, because a visible Prefab is authoring content and never
+// world geometry. Pure logic with no ImGui dependency, unlike the rest of
+// UiHelpers - kept here so Document (and its unit tests) can use it without
+// linking ImGui.
 bool primitiveVisibleForActiveStep(
+    bw::core::Layer const& layer,
+    bw::core::Primitive const* primitive,
+    Settings const& settings);
+
+// Applies the visibility rule and unconditionally excludes Primitives owned
+// by DefinePrefabs, including its currently visible selected Prefab.
+bool primitiveParticipatesInEditorFold(
     bw::core::Layer const& layer,
     bw::core::Primitive const* primitive,
     Settings const& settings);

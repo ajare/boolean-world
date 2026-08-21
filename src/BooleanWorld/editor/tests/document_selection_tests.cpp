@@ -7,6 +7,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <core/DefinePrefabs.h>
 #include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
 #include <core/PrimitiveField.h>
@@ -242,6 +243,42 @@ void selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps() {
           "showAllStepPrimitives did not restore a later step's Primitive to Select All");
 }
 
+void prefabPrimitivesAreVisibleOnlyForTheirActiveStepAndNeverFolded() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.showAllStepPrimitives = true;
+
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* step = new bw::core::DefinePrefabs();
+  auto stepIndex = layer->addStep(step);
+  auto* prefab = step->addPrefab("Visible");
+  layer->setActiveStep(stepIndex);
+  require(!editor::primitiveVisibleForActiveStep(
+              *layer, document.getGhost(), settings),
+          "an unselected DefinePrefabs step still showed the authoring ghost");
+  settings.mode = editor::Settings::Mode::Mesh;
+  require(document.meshDrawToolUnavailableReason(settings) ==
+              "Select a Prefab first.",
+          "the Mesh draw tool did not explain that a Prefab must be selected");
+  settings.mode = editor::Settings::Mode::Primitive;
+
+  step->setSelectedPrefab(prefab);
+  layer->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f));
+  auto* primitive = layer->getPrimitive(layer->getNumPrimitives() - 1);
+
+  require(editor::primitiveVisibleForActiveStep(*layer, primitive, settings),
+          "the selected Prefab was hidden while its DefinePrefabs step was active");
+  require(!editor::primitiveParticipatesInEditorFold(*layer, primitive, settings),
+          "a selected Prefab Primitive was admitted to the editor fold");
+
+  layer->setActiveStep(0);
+  require(!editor::primitiveVisibleForActiveStep(*layer, primitive, settings),
+          "showAllStepPrimitives exposed a Prefab while another step was active");
+}
+
 void refusingStepPrimitivesAreNotSelectableInPrimitiveMode() {
   editor::Document document;
   editor::Settings settings;
@@ -327,6 +364,7 @@ int main() {
     theGhostIsHiddenFromTheViewAndTheFoldInMeshMode();
     primitiveIndicesInBoundsFindsOverlappingPrimitivesAndIgnoresTheGhost();
     selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps();
+    prefabPrimitivesAreVisibleOnlyForTheirActiveStepAndNeverFolded();
     refusingStepPrimitivesAreNotSelectableInPrimitiveMode();
     meshEligibilityRequiresTheSelectedDirectlyEditableStep();
     openingADocumentReplacesTheActiveDocument();

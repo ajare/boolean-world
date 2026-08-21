@@ -143,7 +143,9 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_editor_undo_history_tests
         tests/undo_history_tests.cpp
+        src/Actions.cpp
         src/Document.cpp
+        src/PrimitiveDefaults.cpp
         src/Undo.cpp)
     target_include_directories(boolean_world_editor_undo_history_tests PRIVATE include)
     target_compile_definitions(boolean_world_editor_undo_history_tests PRIVATE

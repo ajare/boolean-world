@@ -21,6 +21,7 @@
 #include <willpower/geometry/Vertex.h>
 
 #include "core/BinarySerializer.h"
+#include "core/DefinePrefabs.h"
 #include "core/YamlSerializer.h"
 #include "core/RegularPolygon.h"
 #include "core/DynamicWorldDataGenerator.h"
@@ -51,16 +52,34 @@ bool primitiveVisibleForActiveStep(
   // either: a Primitive hidden from the overlay while still contributing
   // geometry would read as a phantom shape.
   if (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) {
-    return settings.mode != Settings::Mode::Mesh;
-  }
-
-  if (settings.showAllStepPrimitives) {
-    return true;
+    auto const* definePrefabs = dynamic_cast<bw::core::DefinePrefabs const*>(
+        layer.getActiveStep());
+    return settings.mode != Settings::Mode::Mesh &&
+           (!definePrefabs || definePrefabs->getSelectedPrefab());
   }
 
   auto owningStepIndex = layer.getOwningStepIndex(primitive);
+  if (owningStepIndex != ~0u &&
+      dynamic_cast<bw::core::DefinePrefabs const*>(
+          layer.getStep(owningStepIndex))) {
+    return owningStepIndex == layer.getActiveStepIndex();
+  }
 
-  return owningStepIndex == ~0u || owningStepIndex <= layer.getActiveStepIndex();
+  return settings.showAllStepPrimitives || owningStepIndex == ~0u ||
+         owningStepIndex <= layer.getActiveStepIndex();
+}
+
+bool primitiveParticipatesInEditorFold(
+    bw::core::Layer const& layer,
+    bw::core::Primitive const* primitive,
+    Settings const& settings) {
+  auto owningStepIndex = layer.getOwningStepIndex(primitive);
+  if (owningStepIndex != ~0u &&
+      dynamic_cast<bw::core::DefinePrefabs const*>(
+          layer.getStep(owningStepIndex))) {
+    return false;
+  }
+  return primitiveVisibleForActiveStep(layer, primitive, settings);
 }
 
 namespace {
@@ -1409,6 +1428,10 @@ string Document::meshDrawToolUnavailableReason(Settings const& settings) const {
   }
 
   auto* step = mWorld->getActiveLayer()->getActiveStep();
+  if (auto* definePrefabs = dynamic_cast<bw::core::DefinePrefabs*>(step);
+      definePrefabs && !definePrefabs->getSelectedPrefab()) {
+    return "Select a Prefab first.";
+  }
   if (!step->acceptsNewPrimitives()) {
     return "The selected LayerBuildStep does not accept new Primitives.";
   }

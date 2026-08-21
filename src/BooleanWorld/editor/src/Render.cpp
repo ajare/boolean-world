@@ -270,10 +270,10 @@ void renderWorld(
     triggerLines = world->findTriggerLines(viewBounds);
   }
 
-  // The same rule the world data generator folds by (see
-  // editor::primitiveVisibleForActiveStep) drops the overlay for a hidden
-  // Primitive here: the generator answers for the geometry, and the Layer's
-  // lookup grid - which this list comes from - knows nothing of either.
+  // The overlay visibility rule drops hidden Primitives here. The generator
+  // uses the related, stricter fold predicate: a selected Prefab is visible
+  // for authoring but never contributes geometry. The Layer's lookup grid -
+  // which this list comes from - knows nothing of either rule.
   auto* activeLayer = world ? world->getActiveLayer() : nullptr;
 
   auto inactiveStepPrimitives =
@@ -395,8 +395,8 @@ void renderWorld(
       vector<vector<ImVec2>> ghostBorderPolylines;
 
       for (auto primitive : primitives) {
-        // Mesh mode's ghost never reaches here: primitiveVisibleForActiveStep
-        // drops it from this list along with the fold.
+        // Mesh mode's ghost never reaches here:
+        // primitiveVisibleForActiveStep drops it from this list.
         bool isGhost = (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) != 0;
         if (isGhost && !settings.ghostActive) {
           continue;

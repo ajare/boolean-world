@@ -7,6 +7,7 @@
 #include <spdlog/spdlog.h>
 
 #include <core/CoreException.h>
+#include <core/DefinePrefabs.h>
 #include <core/LayerBuildStep.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
@@ -277,6 +278,36 @@ void movingAStepIsOneUndoableActionAndMovesIntoOrOutOfIndexZeroAreRejected() {
           "a rejected move disturbed the Layer's step list");
 }
 
+void prefabActionsCreateSelectRenameDeleteAndChangeTilingArguments() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto stepIndex = layer->addStep(new bw::core::DefinePrefabs());
+  layer->setActiveStep(stepIndex);
+  auto* step = static_cast<bw::core::DefinePrefabs*>(layer->getStep(stepIndex));
+
+  require(editor::createPrefab(&document, layer, step),
+          "Create Prefab action failed");
+  require(step->getNumPrefabs() == 1 &&
+              step->getPrefab(0)->getName() == "Prefab 1" &&
+              step->getSelectedPrefab() == step->getPrefab(0),
+          "Create Prefab did not generate a default name and select the result");
+
+  auto* prefab = step->getSelectedPrefab();
+  require(editor::renamePrefab(&document, layer, step, prefab, "Door") &&
+              prefab->getName() == "Door",
+          "Rename Prefab action failed");
+  require(editor::setPrefabSize(&document, layer, step, 96.0f) &&
+              step->getSize() == 96.0f,
+          "Set Prefab size action failed");
+  require(editor::setPrefabTilingType(
+              &document, layer, step, bw::core::PrefabTilingType::Square),
+          "Set Prefab tiling type action failed");
+  require(editor::deletePrefab(&document, layer, step, prefab) &&
+              step->getNumPrefabs() == 0 && step->getSelectedPrefab() == nullptr,
+          "Delete Prefab did not leave no Prefab selected");
+}
+
 void selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable() {
   editor::Document document;
   document.newDoc();
@@ -313,6 +344,7 @@ int main() {
     addingARegisteredStepTypeAsOneUndoableAction();
     removingANonFirstStepIsOneUndoableActionAndTheFirstStepIsRejected();
     movingAStepIsOneUndoableActionAndMovesIntoOrOutOfIndexZeroAreRejected();
+    prefabActionsCreateSelectRenameDeleteAndChangeTilingArguments();
     selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable();
     std::cout << "Layer build step enable/disable action tests passed\n";
     return 0;

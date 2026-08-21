@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include <core/DefinePrefabs.h>
+
 #include "Undo.h"
 #include "Document.h"
 
@@ -92,6 +94,26 @@ bool addLayerBuildStep(
 bool removeLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t stepIndex);
 
 bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromIndex, uint32_t toIndex);
+
+// Prefab selection is ephemeral focus and is called directly. The remaining
+// operations are authored edits intended to run through transactUndoableAction.
+bool selectPrefab(
+    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab);
+bool createPrefab(
+    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step);
+bool renamePrefab(
+    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab, std::string const& name);
+bool deletePrefab(
+    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab);
+bool setPrefabTilingType(
+    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
+    bw::core::PrefabTilingType type);
+bool setPrefabSize(
+    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
+    float size);
 
 bool setWorldDescription(Document* doc, std::string const& desc);
 

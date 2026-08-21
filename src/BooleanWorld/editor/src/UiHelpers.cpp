@@ -90,7 +90,7 @@ void regenerateWorldData(editor::Document* doc) {
 void applyStepVisibilityFilter(editor::Document* doc, Settings const& settings) {
   doc->setPrimitiveFilter(
       [&settings](bw::core::Layer const& layer, bw::core::Primitive const* primitive) {
-        return primitiveVisibleForActiveStep(layer, primitive, settings);
+        return primitiveParticipatesInEditorFold(layer, primitive, settings);
       });
 }
 

@@ -97,6 +97,68 @@ bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromInde
   return true;
 }
 
+namespace {
+
+void rebuildPrefabAuthoringContext(Document* doc, bw::core::Layer* layer) {
+  doc->disarmMeshDrawTool();
+  doc->clearActiveMesh();
+  doc->clearSelections();
+  layer->rebuild();
+}
+
+}  // namespace
+
+bool selectPrefab(
+    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab) {
+  step->setSelectedPrefab(prefab);
+  rebuildPrefabAuthoringContext(doc, layer);
+  return false;
+}
+
+bool createPrefab(
+    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step) {
+  uint32_t suffix = 1;
+  string name;
+  do {
+    name = format("Prefab {}", suffix++);
+  } while (any_of(
+      step->getPrefabs().begin(), step->getPrefabs().end(),
+      [&name](auto const* prefab) { return prefab->getName() == name; }));
+
+  step->setSelectedPrefab(step->addPrefab(name));
+  rebuildPrefabAuthoringContext(doc, layer);
+  return true;
+}
+
+bool renamePrefab(
+    Document*, bw::core::Layer*, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab, string const& name) {
+  step->setPrefabName(prefab, name);
+  return true;
+}
+
+bool deletePrefab(
+    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab) {
+  step->removePrefab(prefab);
+  rebuildPrefabAuthoringContext(doc, layer);
+  return true;
+}
+
+bool setPrefabTilingType(
+    Document*, bw::core::Layer*, bw::core::DefinePrefabs* step,
+    bw::core::PrefabTilingType type) {
+  step->setTilingType(type);
+  return true;
+}
+
+bool setPrefabSize(
+    Document*, bw::core::Layer*, bw::core::DefinePrefabs* step, float size) {
+  step->setSize(size);
+  return true;
+}
+
 bool setWorldDescription(Document* doc, string const& desc) {
   auto world = doc->getWorld();
 

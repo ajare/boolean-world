@@ -12,6 +12,7 @@
 
 #include <nfd/nfd.h>
 
+#include <core/DefinePrefabs.h>
 #include <core/LayerBuildStep.h>
 #include <core/WorldData.h>
 #include <core/RegularPolygon.h>
@@ -1427,10 +1428,15 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
     regenerateWorldData(doc);
   }
 
-  auto acceptsNewPrimitives = doc->getWorld()->getActiveLayer()->getActiveStep()->acceptsNewPrimitives();
+  auto* activeStep = doc->getWorld()->getActiveLayer()->getActiveStep();
+  auto acceptsNewPrimitives = activeStep->acceptsNewPrimitives();
+  auto* definePrefabs = dynamic_cast<bw::core::DefinePrefabs*>(activeStep);
+  auto unavailableReason = definePrefabs && !definePrefabs->getSelectedPrefab()
+                               ? "Select a Prefab first."
+                               : "The selected step does not accept new Primitives.";
   widgets::HelpMarker(acceptsNewPrimitives
                           ? "Create a Primitive in the active Layer's selected step."
-                          : "The selected step does not accept new Primitives.");
+                          : unavailableReason);
   ImGui::SameLine();
   ImGui::BeginDisabled(!acceptsNewPrimitives);
   if (ImGui::Button("Create##CreatePrimitive")) {
@@ -2875,9 +2881,12 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
     // ephemeral editor-authoring focus, never serialized.
     if (ImGui::RadioButton("##StepActive", i == activeStepIndex)) {
       layer->setActiveStep(i);
+      doc->disarmMeshDrawTool();
+      doc->clearActiveMesh();
+      doc->clearSelections();
 
       // The step filter is anchored on the active step, so moving it changes
-      // which Primitives reach the fold.
+      // which ordinary Primitives reach the fold when show-all is off.
       if (!settings.showAllStepPrimitives) {
         world->getWorldDataGenerator()->refreshPrimitiveFilter();
       }
@@ -2959,6 +2968,93 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
     transactUndoableAction(
         doc, "Add Layer Step",
         bind(addLayerBuildStep, placeholders::_1, layer, selectedStepType));
+  }
+}
+
+void renderPrefabsView(
+    editor::Document* doc, bw::core::DefinePrefabs* step) {
+  auto* layer = doc->getWorld()->getActiveLayer();
+  bool listChanged = false;
+
+  for (uint32_t i = 0; i < step->getNumPrefabs(); ++i) {
+    auto* prefab = step->getPrefab(i);
+    ImGui::PushID(prefab->getId());
+
+    if (ImGui::RadioButton(
+            prefab->getName().c_str(), step->getSelectedPrefab() == prefab)) {
+      selectPrefab(doc, layer, step, prefab);
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Rename")) {
+      ImGui::OpenPopup("Rename Prefab");
+    }
+    if (ImGui::BeginPopup("Rename Prefab")) {
+      static char name[256]{};
+      static bw::core::Prefab* editingPrefab = nullptr;
+      if (editingPrefab != prefab) {
+        snprintf(name, sizeof(name), "%s", prefab->getName().c_str());
+        editingPrefab = prefab;
+      }
+      ImGui::SetNextItemWidth(220.0f);
+      bool submitted = ImGui::InputText(
+          "Name", name, sizeof(name), ImGuiInputTextFlags_EnterReturnsTrue);
+      ImGui::SameLine();
+      submitted = ImGui::Button("Apply") || submitted;
+      if (submitted) {
+        transactUndoableAction(
+            doc, "Rename Prefab",
+            bind(renamePrefab, placeholders::_1, layer, step, prefab,
+                 string(name)));
+        editingPrefab = nullptr;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_TRASH)) {
+      transactUndoableAction(
+          doc, "Delete Prefab",
+          bind(deletePrefab, placeholders::_1, layer, step, prefab));
+      listChanged = true;
+    }
+
+    ImGui::PopID();
+    if (listChanged) {
+      break;
+    }
+  }
+
+  if (ImGui::Button("Create Prefab")) {
+    transactUndoableAction(
+        doc, "Create Prefab",
+        bind(createPrefab, placeholders::_1, layer, step));
+  }
+
+  ImGui::Separator();
+  ImGui::TextUnformatted("Tiling type");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(140.0f);
+  if (ImGui::BeginCombo("##PrefabTilingType", "Square")) {
+    bool selected = step->getTilingType() == bw::core::PrefabTilingType::Square;
+    if (ImGui::Selectable("Square", selected) && !selected) {
+      transactUndoableAction(
+          doc, "Set Prefab Tiling Type",
+          bind(setPrefabTilingType, placeholders::_1, layer, step,
+               bw::core::PrefabTilingType::Square));
+    }
+    ImGui::EndCombo();
+  }
+
+  float size = step->getSize();
+  ImGui::SetNextItemWidth(140.0f);
+  if (ImGui::InputFloat(
+          "Size##PrefabTilingSize", &size, 1.0f, 8.0f, "%.3f",
+          ImGuiInputTextFlags_EnterReturnsTrue)) {
+    transactUndoableAction(
+        doc, "Set Prefab Tiling Size",
+        bind(setPrefabSize, placeholders::_1, layer, step, max(size, 0.001f)));
   }
 }
 
@@ -3353,6 +3449,13 @@ void renderCombinedPanel(
 
     if (ImGui::CollapsingHeader("Layer", nullptr, windowFlags)) {
       renderLayerStepsView(doc, settings);
+    }
+
+    if (auto* definePrefabs = dynamic_cast<bw::core::DefinePrefabs*>(
+            doc->getWorld()->getActiveLayer()->getActiveStep())) {
+      if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {
+        renderPrefabsView(doc, definePrefabs);
+      }
     }
 
     if (settings.mode == Settings::Mode::Primitive) {

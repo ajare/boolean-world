@@ -4,6 +4,7 @@
 
 #include <common/BoundedDeque.h>
 
+#include <core/DefinePrefabs.h>
 #include <core/World.h>
 
 #include "Undo.h"
@@ -19,6 +20,12 @@ extern editor::Settings gEditorSettings;
 namespace editor {
 using namespace std;
 
+struct PrefabFocus {
+  uint32_t layerId{~0u};
+  uint32_t stepIndex{~0u};
+  uint32_t prefabId{~0u};
+};
+
 struct UndoData {
   WorldSnapshot world;
   set<uint32_t> selection;
@@ -28,6 +35,7 @@ struct UndoData {
   set<uint32_t> selectedMeshVertices;
   set<uint32_t> selectedMeshEdges;
   set<uint32_t> selectedMeshRings;
+  vector<PrefabFocus> prefabFocus;
   bool docModified{false};
 };
 
@@ -45,6 +53,20 @@ static wp::Vector2 gTransactionalInitialVectorValue = {numeric_limits<float>::qu
 static UndoableActionFunction gTransactionalFunc;
 
 UndoData captureUndoData(Document* doc) {
+  vector<PrefabFocus> prefabFocus;
+  if (doc->isActive()) {
+    for (auto const* layer : doc->getWorld()->getLayers()) {
+      for (uint32_t stepIndex = 0; stepIndex < layer->getNumSteps(); ++stepIndex) {
+        auto const* step = dynamic_cast<bw::core::DefinePrefabs const*>(
+            layer->getStep(stepIndex));
+        if (step && step->getSelectedPrefab()) {
+          prefabFocus.push_back(
+              {layer->getId(), stepIndex, step->getSelectedPrefab()->getId()});
+        }
+      }
+    }
+  }
+
   return {
       doc->captureWorldSnapshot(),
       doc->getSelectedPrimitiveIndices(),
@@ -54,11 +76,24 @@ UndoData captureUndoData(Document* doc) {
       doc->getSelectedMeshVertexIndices(),
       doc->getSelectedMeshEdgeIndices(),
       doc->getSelectedMeshRingIndices(),
+      move(prefabFocus),
       doc->isModified()};
 }
 
 void restoreUndoData(Document* doc, UndoData const& data) {
   doc->restoreWorldSnapshot(data.world);
+  for (auto const& focus : data.prefabFocus) {
+    auto* layer = doc->getWorld()->getLayer(focus.layerId);
+    if (!layer || focus.stepIndex >= layer->getNumSteps()) {
+      continue;
+    }
+    auto* step = dynamic_cast<bw::core::DefinePrefabs*>(
+        layer->getStep(focus.stepIndex));
+    if (step) {
+      step->setSelectedPrefab(step->findPrefabById(focus.prefabId));
+      layer->rebuild();
+    }
+  }
   doc->restoreMeshSelection(
       data.activeMeshPrimitive, data.selectedMeshVertices,
       data.selectedMeshEdges, data.selectedMeshRings);

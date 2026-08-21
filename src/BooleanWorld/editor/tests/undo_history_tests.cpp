@@ -6,12 +6,14 @@
 
 #include <spdlog/spdlog.h>
 
+#include <core/DefinePrefabs.h>
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/RectanglePolygon.h>
 #include <core/SuperformulaPolygon.h>
 #include <core/World.h>
 #include <core/WorldDataGenerator.h>
 
+#include "Actions.h"
 #include "Document.h"
 #include "Settings.h"
 #include "Undo.h"
@@ -117,6 +119,80 @@ void undoAndRedoRestoreNonPrimitiveSelections() {
   require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>{0} &&
               document.getSelectedTriggerLineIndex() == ~0u,
           "redo did not restore the corresponding primitive selection");
+}
+
+void prefabEditsAreUndoableAndRestoreStepQualifiedFocus() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto firstStepIndex = layer->addStep(new bw::core::DefinePrefabs());
+  auto secondStepIndex = layer->addStep(new bw::core::DefinePrefabs());
+  layer->setActiveStep(secondStepIndex);
+  auto* secondStep = static_cast<bw::core::DefinePrefabs*>(
+      layer->getStep(secondStepIndex));
+
+  editor::transactUndoableAction(
+      &document, "Create Prefab",
+      [layer, secondStep](editor::Document* doc) {
+        return editor::createPrefab(doc, layer, secondStep);
+      });
+  require(secondStep->getSelectedPrefab() != nullptr,
+          "creating a Prefab did not select it");
+
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  secondStep = static_cast<bw::core::DefinePrefabs*>(layer->getStep(secondStepIndex));
+  require(secondStep->getNumPrefabs() == 0,
+          "undo did not remove a created Prefab");
+
+  editor::redo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  auto* firstStep = static_cast<bw::core::DefinePrefabs*>(layer->getStep(firstStepIndex));
+  secondStep = static_cast<bw::core::DefinePrefabs*>(layer->getStep(secondStepIndex));
+  require(secondStep->getNumPrefabs() == 1 &&
+              secondStep->getSelectedPrefab() == secondStep->getPrefab(0) &&
+              firstStep->getSelectedPrefab() == nullptr,
+          "redo did not restore the selected Prefab on its owning DefinePrefabs step");
+
+  auto* prefab = secondStep->getSelectedPrefab();
+  editor::transactUndoableAction(
+      &document, "Rename Prefab",
+      [layer, secondStep, prefab](editor::Document* doc) {
+        return editor::renamePrefab(doc, layer, secondStep, prefab, "Arch");
+      });
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  secondStep = static_cast<bw::core::DefinePrefabs*>(layer->getStep(secondStepIndex));
+  require(secondStep->getPrefab(0)->getName() == "Prefab 1" &&
+              secondStep->getSelectedPrefab() == secondStep->getPrefab(0),
+          "undo did not restore a renamed Prefab and its focus");
+
+  auto* restoredPrefab = secondStep->getSelectedPrefab();
+  editor::transactUndoableAction(
+      &document, "Delete Prefab",
+      [layer, secondStep, restoredPrefab](editor::Document* doc) {
+        return editor::deletePrefab(doc, layer, secondStep, restoredPrefab);
+      });
+  require(secondStep->getSelectedPrefab() == nullptr,
+          "deleting the selected Prefab guessed another focus");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  secondStep = static_cast<bw::core::DefinePrefabs*>(layer->getStep(secondStepIndex));
+  require(secondStep->getNumPrefabs() == 1 &&
+              secondStep->getSelectedPrefab() == secondStep->getPrefab(0),
+          "undo did not restore a deleted Prefab and its focus");
+
+  editor::transactUndoableAction(
+      &document, "Set Prefab Size",
+      [layer, secondStep](editor::Document* doc) {
+        return editor::setPrefabSize(doc, layer, secondStep, 128.0f);
+      });
+  editor::undo(&document);
+  secondStep = static_cast<bw::core::DefinePrefabs*>(
+      document.getWorld()->getActiveLayer()->getStep(secondStepIndex));
+  require(secondStep->getSize() == 64.0f &&
+              secondStep->getSelectedPrefab() == secondStep->getPrefab(0),
+          "undo did not restore a Prefab tiling argument and focus");
 }
 
 void abandonedAndCommittedActionsClearTransactionValues() {
@@ -307,6 +383,7 @@ int main() {
   try {
     undoAndRedoPreserveEachIntermediateSnapshot();
     undoAndRedoRestoreNonPrimitiveSelections();
+    prefabEditsAreUndoableAndRestoreStepQualifiedFocus();
     abandonedAndCommittedActionsClearTransactionValues();
     superformulaControlValueEditIsDirtyAndUndoable();
     runtimeFreeSnapshotPreservesEditorGenerationConfiguration();
