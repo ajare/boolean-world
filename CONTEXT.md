@@ -37,13 +37,25 @@ The basic LayerBuildStep: an embedded, literal list of Primitive definitions tha
 _Avoid_: conflating with the Voronoi Primitive Field placement feature
 
 **Prefab**:
-A named, stably-identified collection of Primitives authored as a unit so that later LayerBuildSteps can place and manipulate copies of it. Holds Primitives only — never WorldTriggerLines, unlike the removed `addPrefabInstance` copy-paste grouping that once bore this name. A Prefab's Primitives never contribute world geometry; they exist to be authored and, later, instanced. A Prefab's pivot — the point its Primitives orbit when it is rotated — is the origin, not the centre of its contents.
-_Avoid_: prefab instance (the removed Primitive+TriggerLine clipboard grouping), group, template
+A named, stably-identified collection of Primitives authored as a unit so that a PrefabField can place and reference it. Holds Primitives only — never WorldTriggerLines, unlike the removed `addPrefabInstance` copy-paste grouping that once bore this name (see Prefab instance, its unrelated successor). A Prefab's Primitives never contribute world geometry directly; they exist to be authored and, later, referenced by Prefab instances. A Prefab's pivot — the point its Primitives orbit when it is rotated — is the origin, not the centre of its contents.
+_Avoid_: group, template
 
 **DefinePrefabs (step)**:
 The LayerBuildStep that owns a set of Prefabs. It defines rather than places: outside an authoring session it contributes nothing to its Layer at all. Which Prefab is being edited is ephemeral editor focus — never serialized, and unselected after construction, copy, or load — mirroring a Layer's active step and a World's active Layer.
-_Avoid_: PrefabField, PlacePrefabs (a future, separate step type)
+_Avoid_: PlacePrefabs (the rejected name for PrefabField)
 
 **Tiling guide**:
 The single wireframe polygon a DefinePrefabs step draws, centred on the origin at the step's chosen PrefabTilingType and size. It is the frame a Prefab is authored against — the visible form of the Prefab's pivot — and is unrelated to the editor's snapping grid.
-_Avoid_: grid, prefab grid, tile (a tile is a cell a placing step later fills; the guide is one polygon at the origin)
+_Avoid_: grid, prefab grid
+
+**Tile**:
+One cell of the infinite grid a PrefabField lays out over the whole World, addressed by integer coordinates and sized/shaped by its referenced DefinePrefabs step's PrefabTilingType and size, anchored the same way the tiling guide is (tile (0,0) is that same footprint at the origin). A tile holds at most one Prefab instance; most tiles hold none. Distinct from the tiling guide, which is one polygon a DefinePrefabs step draws at the origin — the tile grid is PrefabField's, not DefinePrefabs'.
+_Avoid_: cell, grid square
+
+**PrefabField (step)**:
+The LayerBuildStep that places Prefab instances across a Layer's tile grid, referencing exactly one DefinePrefabs step on the same Layer for its tiling settings and available Prefabs. Unlike DefinePrefabs, its Primitives always contribute to the main boolean fold, the same as any ordinary step's. Deleting a DefinePrefabs step or a Prefab that some PrefabField still references is refused, never silently unbound.
+_Avoid_: PlacePrefabs (rejected in favour of the PrimitiveField-echoing name)
+
+**Prefab instance**:
+One Tile's occupant: a reference to a Prefab plus a rotation, not a copy — editing the Prefab's Primitives changes every instance of it. Rotation is one of the referenced DefinePrefabs step's PrefabTilingType's allowed angles (four for Square: 0/90/180/270), not an arbitrary orientation. Reuses the name of the removed Primitive+TriggerLine clipboard grouping (`addPrefabInstance`), now fully gone from the codebase — the two are unrelated, and this is the concept the name refers to going forward.
+_Avoid_: prefab copy, instance (ambiguous alone — this codebase also has C++ class instances, animation-transform instances, etc.)
