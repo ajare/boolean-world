@@ -191,6 +191,20 @@ void EditorInteraction::updateSelection(
     return;
   }
 
+  // updateSelection runs before updateDrag. Once a Primitive drag is under
+  // way, its release belongs to that drag rather than to deferred click or
+  // box-selection processing. This especially matters for Difference
+  // Primitives: their interior is intentionally not a selectable solid face,
+  // so treating release as a background click would clear their selection.
+  if (mMovingSelectedPrimitives || mScalingSelectedPrimitives ||
+      mRotatingSelectedPrimitives) {
+    if (input.leftReleased) {
+      mBoxSelectPending = false;
+      mBoxSelectDragging = false;
+    }
+    return;
+  }
+
   // This chord belongs to view navigation, never object selection.
   if (input.shift && input.alt) {
     return;

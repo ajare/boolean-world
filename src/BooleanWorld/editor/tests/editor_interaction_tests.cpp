@@ -783,6 +783,39 @@ void meshDragSnapsToGridBeforeValidating() {
           "the validated position was not the snapped one");
 }
 
+void draggingADifferencePrimitiveDoesNotClearItsSelectionOnRelease() {
+  editor::Document document;
+  document.newDoc();
+  auto index = addRectangle(document, {50.0f, 50.0f});
+  auto* difference = document.getWorld()->getPrimitive(index);
+  difference->setOperation(bw::core::Primitive::Operation::Difference);
+  document.setSelectedPrimitiveIndices({index});
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Primitive;
+  editor::EditorInteraction interaction;
+
+  auto drag = pointerAt({500.0f, 500.0f});
+  drag.leftDown = true;
+  drag.leftDragging = true;
+  drag.screenPosition += wp::Vector2{5.0f, 0.0f};
+  drag.dragDelta = {5.0f, 0.0f};
+  interaction.updateDrag(&document, settings, drag);
+  require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>{index},
+          "Difference Primitive selection was cleared during drag");
+  auto release = drag;
+  release.leftDown = false;
+  release.leftDragging = false;
+  release.leftReleased = true;
+  interaction.updateSelection(&document, nullptr, settings, release);
+  require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>{index},
+          "Difference Primitive selection was cleared before drag commit");
+  interaction.updateDrag(&document, settings, release);
+
+  require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>{index},
+          "releasing a Difference Primitive drag cleared its selection");
+  editor::undo(&document);
+}
+
 void meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive() {
   editor::Document document;
   editor::Settings settings;
@@ -1859,6 +1892,7 @@ int main() {
     meshDragClampsAtLastValidPositionOnSelfIntersection();
     meshDragClampsAtLastValidPositionWhenAHoleWouldEscapeItsOuter();
     meshDragSnapsToGridBeforeValidating();
+    draggingADifferencePrimitiveDoesNotClearItsSelectionOnRelease();
     meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive();
     vertexDeletionHealsRingAndRefusesAtMinimumCount();
     edgeDeletionWeldsEndpointsAtMidpointAndRefusesAtMinimumCount();
