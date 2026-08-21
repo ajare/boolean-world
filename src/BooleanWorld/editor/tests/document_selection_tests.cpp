@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -421,6 +423,58 @@ void openingADocumentReplacesTheActiveDocument() {
   std::filesystem::remove(filepath);
 }
 
+void aFailedOpenLeavesTheDocumentInactiveAndWithoutAFilepath() {
+  auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-failure-test.yaml";
+
+  editor::Document document;
+  document.newDoc();
+
+  auto* root = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  auto* child = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f);
+  document.getWorld()->addPrimitive(root);
+  document.getWorld()->addPrimitive(child);
+  child->setParent(root);
+
+  document.saveDocAs(filepath.string());
+
+  // Corrupt root's parentId (the first "parentId:" entry after the ghost
+  // primitive's) to point at child, forming a root <-> child cycle that
+  // World::deserialize rejects without throwing.
+  std::ifstream in(filepath);
+  std::stringstream buffer;
+  buffer << in.rdbuf();
+  in.close();
+  auto yaml = buffer.str();
+
+  auto const marker = std::string("parentId: ");
+  auto position = yaml.find(marker);
+  require(position != std::string::npos, "saved world does not contain a parentId to corrupt");
+  position = yaml.find(marker, position + marker.size());
+  require(position != std::string::npos, "saved world does not contain root's parentId to corrupt");
+  position += marker.size();
+  auto const end = yaml.find('\n', position);
+  yaml.replace(position, end - position, std::to_string(child->getId()));
+
+  std::ofstream out(filepath);
+  out << yaml;
+  out.close();
+
+  document.newDoc();
+
+  require(!document.openDoc(filepath.string()),
+          "opening a document with a cyclic parent chain unexpectedly succeeded");
+  require(!document.isActive(), "a failed open left the document active");
+  require(!document.hasFilepath(), "a failed open left a filepath set");
+
+  std::filesystem::remove(filepath);
+}
+
 }  // namespace
 
 int main() {
@@ -437,6 +491,7 @@ int main() {
     refusingStepPrimitivesAreNotSelectableInPrimitiveMode();
     meshEligibilityRequiresTheSelectedDirectlyEditableStep();
     openingADocumentReplacesTheActiveDocument();
+    aFailedOpenLeavesTheDocumentInactiveAndWithoutAFilepath();
     std::cout << "Document selection and hover queries passed\n";
     return 0;
   } catch (std::exception const& error) {

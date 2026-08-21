@@ -2043,6 +2043,7 @@ bool Document::openDoc(string const& filepath) {
         }
       }
 
+      reset();
       return false;
     }
   } else {
