@@ -661,9 +661,15 @@ void meshDragClampsAtLastValidPositionWhenAHoleWouldEscapeItsOuter() {
       editor::Settings::MeshSubMode::Vertex, {vertexIndex});
   document.beginMeshDrag(editor::Settings::MeshSubMode::Vertex);
 
-  wp::Vector2 validDelta{0.1f, 0.1f};
+  wp::Vector2 holeCentre;
+  for (auto vertex : holeVertices) {
+    holeCentre += mesh->getVertex(vertex).getPosition();
+  }
+  holeCentre /= static_cast<float>(holeVertices.size());
+  auto validDelta = (start - holeCentre) * 0.1f;
   auto applied = document.updateMeshDrag(validDelta, false, 0.0f);
-  require(applied == validDelta, "a small valid hole-vertex move was not applied in full");
+  require(applied == validDelta,
+          "a hole vertex could not move outward while remaining inside its outer Ring");
 
   // Aim just past the midpoint of an edge that belongs to a different Ring
   // (the outer, since this mesh has only the two) - crossing it takes the

@@ -733,7 +733,26 @@ bool meshGroupMoveIsValid(
     fullyMoved.moveVertexTo(vertexIndex, startPosition);
     auto result = validator.validateVertexMove(vertexIndex, delta);
     fullyMoved.moveVertexTo(vertexIndex, finalPosition);
-    if (result != wp::geometry::MeshValidator::Valid) {
+
+    bool holeVertex = false;
+    for (auto polygonIndex = fullyMoved.getFirstPolygonIndex();
+         !fullyMoved.polygonIndexIterationFinished(polygonIndex);
+         polygonIndex = fullyMoved.getNextPolygonIndex(polygonIndex)) {
+      auto const& polygon = fullyMoved.getPolygon(polygonIndex);
+      if (polygon.isHole() && polygon.getVertexIndexSet().contains(vertexIndex)) {
+        holeVertex = true;
+        break;
+      }
+    }
+    // MeshValidator's containment query currently treats the hole's owning
+    // outer Polygon as an unrelated Polygon (see its TODO about polygons that
+    // contain polygonRef polygons as holes). That makes a valid outward move
+    // report VertexInPolygon merely because the vertex remains inside its
+    // outer. Edge crossing remains authoritative for attempts to escape.
+    auto onlyOwningOuterReported =
+        holeVertex && result == wp::geometry::MeshValidator::VertexInPolygon;
+    if (result != wp::geometry::MeshValidator::Valid &&
+        !onlyOwningOuterReported) {
       return false;
     }
   }
