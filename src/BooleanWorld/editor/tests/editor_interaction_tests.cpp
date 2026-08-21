@@ -347,6 +347,29 @@ void meshSubObjectClicksSupportModifiersAndRingCycling() {
   auto secondRing = *document.getSelectedMeshRingIndices().begin();
   require(firstRing != secondRing,
           "repeated clicks did not cycle through stacked Rings");
+
+  uint32_t holeRing = ~0u;
+  for (auto polygon = mesh->getFirstPolygonIndex();
+       !mesh->polygonIndexIterationFinished(polygon);
+       polygon = mesh->getNextPolygonIndex(polygon)) {
+    if (mesh->getPolygon(polygon).isHole()) {
+      holeRing = polygon;
+      break;
+    }
+  }
+  require(holeRing != ~0u, "the polygon-edge selection fixture had no hole");
+  auto holeEdge = *mesh->getPolygon(holeRing).getEdgeIndexSet().begin();
+  auto edgePosition = mesh->getEdge(holeEdge).getCentre();
+  settings.meshEdgeSelectionDistance = 0.25f;
+  require(document.getHoveredMeshSubObjectIndices(edgePosition, settings) ==
+              std::vector<uint32_t>{holeRing},
+          "hovering a hole edge in Polygon sub-mode did not resolve to its hole Ring");
+
+  click = pointerAt(edgePosition);
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  require(document.getSelectedMeshRingIndices() == std::set<uint32_t>{holeRing},
+          "clicking a hole edge in Polygon sub-mode did not select its hole Ring");
 }
 
 void meshRubberBandUsesContainmentAndModifierPolicies() {

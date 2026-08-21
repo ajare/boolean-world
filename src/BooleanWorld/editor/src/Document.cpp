@@ -469,6 +469,26 @@ vector<uint32_t> Document::getHoveredMeshSubObjectIndices(
       }
     }
   } else {
+    // A boundary hit is explicit: select the Ring which owns that edge before
+    // considering the potentially stacked Rings containing the cursor. This
+    // makes a hole directly selectable without relying on click cycling.
+    set<uint32_t> edgeOwners;
+    for (auto edgeIndex = mActiveMesh->getFirstEdgeIndex();
+         !mActiveMesh->edgeIndexIterationFinished(edgeIndex);
+         edgeIndex = mActiveMesh->getNextEdgeIndex(edgeIndex)) {
+      auto const& edge = mActiveMesh->getEdge(edgeIndex);
+      if (edge.getDistanceTo(worldPosition) <=
+          settings.meshEdgeSelectionDistance) {
+        edgeOwners.insert(
+            edge.getPolygonReferences().begin(),
+            edge.getPolygonReferences().end());
+      }
+    }
+    if (!edgeOwners.empty()) {
+      result.assign(edgeOwners.begin(), edgeOwners.end());
+      return result;
+    }
+
     for (auto index = mActiveMesh->getFirstPolygonIndex();
          !mActiveMesh->polygonIndexIterationFinished(index);
          index = mActiveMesh->getNextPolygonIndex(index)) {
