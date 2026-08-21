@@ -1,6 +1,7 @@
 #include <algorithm>
 
 #include "Actions.h"
+#include "UiHelpers.h"
 
 namespace editor {
 using namespace std;
@@ -95,9 +96,16 @@ void EditorInteraction::updateSelection(
           input.worldPosition, settings.showGrid, settings.gridSize);
 
       if (doc->meshDrawClickWouldClose(position, settings)) {
+        auto createsHole = doc->meshDrawCreatesHole();
         transactUndoableAction(
             doc, "Create Mesh Primitive", createMeshPrimitiveFromDrawnRing);
         settings.activeMeshPrimitiveIndex = doc->getActiveMeshPrimitiveIndex();
+        // A hole changes an existing Primitive's topology while its active
+        // Mesh proxy remains open. Re-request after that active-mesh state is
+        // finalized so the generated arrangement immediately sees the hole.
+        if (createsHole) {
+          regenerateWorldData(doc);
+        }
       } else if (doc->placeMeshDrawVertex(position, settings)) {
         settings.activeMeshPrimitiveIndex = doc->getActiveMeshPrimitiveIndex();
       }
