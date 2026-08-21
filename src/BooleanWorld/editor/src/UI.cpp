@@ -3899,7 +3899,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
   }
 
   if (ImGui::Shortcut(ImGuiKey_C, ImGuiInputFlags_RouteGlobal)) {
-    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() &&
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive() &&
         doc->getWorld()->getActiveLayer()->getActiveStep()->acceptsNewPrimitives()) {
       transactUndoableAction(doc, format("Create {} Primitive", doc->getGhost()->getType()), createPrimitiveFromGhost);
     }
