@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <core/DefinePrefabs.h>
+#include <core/PrefabField.h>
 
 #include "Undo.h"
 #include "Document.h"
@@ -73,6 +74,10 @@ public:
       Settings const& settings,
       PointerInput const& input);
 
+  // Keyboard routing for PrefabField authoring. Returns true when an active
+  // PrefabField consumed the key, including an intentional no-op.
+  bool applyPrefabShortcut(Document* doc, bool place, bool clear);
+
   DocumentHover const& getHover() const;
   bool boxSelectPending() const;
   bool boxSelectDragging() const;
@@ -119,6 +124,19 @@ bool setPrefabTilingType(
 bool setPrefabSize(
     Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
     float size);
+
+bool bindPrefabField(
+    Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::DefinePrefabs* definitions);
+bool selectPrefabForField(
+    Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::Prefab* prefab);
+bool placePrefabInstance(
+    Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::Tile tile);
+bool clearPrefabInstance(
+    Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::Tile tile);
 
 bool setWorldDescription(Document* doc, std::string const& desc);
 

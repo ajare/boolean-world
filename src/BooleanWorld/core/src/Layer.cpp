@@ -11,6 +11,7 @@
 #include "core/Defines.h"
 #include "core/LayerBuildStep.h"
 #include "core/PrimitiveField.h"
+#include "core/PrefabField.h"
 
 namespace bw {
 namespace core {
@@ -26,6 +27,10 @@ LayerBuildContext::LayerBuildContext(
 
 vector<Primitive*> const& LayerBuildContext::getBuildPrimitives() const {
   return mBuildPrimitives;
+}
+
+Layer& LayerBuildContext::getLayer() const {
+  return mLayer;
 }
 
 uint32_t LayerBuildContext::appendPrimitive(Primitive* primitive) {
@@ -562,6 +567,11 @@ LayerBuildStep* Layer::getStep(uint32_t index) const {
   return mSteps[index];
 }
 
+LayerBuildStep* Layer::getStepById(uint32_t id) const {
+  auto it = find_if(mSteps.begin(), mSteps.end(), [id](auto const* step) { return step->getId() == id; });
+  return it == mSteps.end() ? nullptr : *it;
+}
+
 PrimitiveField* Layer::getPrimitiveField() const {
   assert(!mSteps.empty() && "Layer::getPrimitiveField - the Layer has no first step");
 
@@ -618,6 +628,14 @@ void Layer::removeStep(uint32_t index) {
 
   if (index >= getNumSteps()) {
     throw CoreException(format("Cannot remove build step {} from a Layer with {} steps", index, getNumSteps()));
+  }
+
+  auto const removedId = mSteps[index]->getId();
+  if (any_of(mSteps.begin(), mSteps.end(), [removedId](auto const* candidate) {
+        auto const* field = dynamic_cast<PrefabField const*>(candidate);
+        return field && field->getDefinePrefabsStepId() == removedId;
+      })) {
+    throw CoreException("Cannot delete a DefinePrefabs step referenced by a PrefabField");
   }
 
   delete mSteps[index];

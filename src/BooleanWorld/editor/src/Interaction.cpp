@@ -84,6 +84,27 @@ void EditorInteraction::updateSelection(
     bw::core::WorldData const* worldData,
     Settings& settings,
     PointerInput const& input) {
+  auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
+  auto* prefabField = layer ? dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep()) : nullptr;
+  if (prefabField) {
+    mHover = {};
+    mBoxSelectPending = false;
+    mBoxSelectDragging = false;
+    if (!prefabField->getDefinePrefabs(*layer)) {
+      return;
+    }
+    if (input.leftClicked && input.cursorInWorldView && !input.cursorInMiniMap) {
+      auto tile = prefabField->tileAt(*layer, input.worldPosition);
+      prefabField->selectTile(tile);
+      if (prefabField->getSelectedPrefab(*layer)) {
+        transactUndoableActionAtomically(
+            doc, "Place Prefab Instance",
+            bind(placePrefabInstance, placeholders::_1, layer, prefabField, tile));
+      }
+    }
+    return;
+  }
+
   if (settings.mode == Settings::Mode::Mesh && doc->meshDrawToolArmed()) {
     // An armed draw tool owns the left button outright: a click places a
     // vertex or closes the Ring, and nothing selects, cycles or rubber-bands
@@ -292,6 +313,11 @@ void EditorInteraction::updateSelection(
 
 void EditorInteraction::updateDrag(
     Document* doc, Settings const& settings, PointerInput const& input) {
+  auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
+  if (layer && dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep())) {
+    return;
+  }
+
   // Shift and Alt are inert here by construction: unlike Primitive mode
   // below, nothing in this branch ever inspects them.
   if (settings.mode == Settings::Mode::Mesh) {
@@ -459,6 +485,25 @@ void EditorInteraction::updateDrag(
       }
     }
   }
+}
+
+bool EditorInteraction::applyPrefabShortcut(Document* doc, bool place, bool clear) {
+  auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
+  auto* field = layer ? dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep()) : nullptr;
+  if (!field) return false;
+  if (!field->hasSelectedTile()) return true;
+
+  auto tile = field->getSelectedTile();
+  if (place && field->getSelectedPrefab(*layer)) {
+    transactUndoableActionAtomically(
+        doc, "Place Prefab Instance",
+        bind(placePrefabInstance, placeholders::_1, layer, field, tile));
+  } else if (clear) {
+    transactUndoableActionAtomically(
+        doc, "Clear Prefab Instance",
+        bind(clearPrefabInstance, placeholders::_1, layer, field, tile));
+  }
+  return true;
 }
 
 DocumentHover const& EditorInteraction::getHover() const {

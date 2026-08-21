@@ -148,6 +148,13 @@ bool renamePrefab(
 bool deletePrefab(
     Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
     bw::core::Prefab* prefab) {
+  for (uint32_t i = 0; i < layer->getNumSteps(); ++i) {
+    auto const* field = dynamic_cast<bw::core::PrefabField const*>(layer->getStep(i));
+    if (field && field->getDefinePrefabsStepId() == step->getId() &&
+        field->referencesPrefab(prefab->getId())) {
+      throw bw::core::CoreException("Cannot delete a Prefab referenced by a PrefabField");
+    }
+  }
   step->removePrefab(prefab);
   rebuildPrefabAuthoringContext(doc, layer);
   return true;
@@ -164,6 +171,37 @@ bool setPrefabSize(
     Document*, bw::core::Layer*, bw::core::DefinePrefabs* step, float size) {
   step->setSize(size);
   return true;
+}
+
+bool bindPrefabField(
+    Document*, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::DefinePrefabs* definitions) {
+  field->bind(*layer, definitions);
+  layer->rebuild();
+  return true;
+}
+
+bool selectPrefabForField(
+    Document*, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::Prefab* prefab) {
+  auto* definitions = field->getDefinePrefabs(*layer);
+  if (!definitions) return false;
+  field->setSelectedPrefab(*definitions, prefab);
+  return false;
+}
+
+bool placePrefabInstance(
+    Document*, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::Tile tile) {
+  if (layer->getActiveStep() != field) return false;
+  return field->placeSelected(*layer, tile);
+}
+
+bool clearPrefabInstance(
+    Document*, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::Tile tile) {
+  if (layer->getActiveStep() != field) return false;
+  return field->clearInstance(*layer, tile);
 }
 
 bool setWorldDescription(Document* doc, string const& desc) {

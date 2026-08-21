@@ -10,6 +10,8 @@
 #include <spdlog/spdlog.h>
 
 #include <core/LayerBuildStep.h>
+#include <core/DefinePrefabs.h>
+#include <core/PrefabField.h>
 #include <core/MeshPrimitive.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
@@ -1962,6 +1964,47 @@ void rubberBandSelectionSupportsPlainControlAndShiftPolicies() {
           "Shift rubber-band selection did not add its hit");
 }
 
+void prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs;
+  auto defineIndex = layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Tile");
+  auto* field = new bw::core::PrefabField;
+  auto fieldIndex = layer->addStep(field);
+  field->bind(*layer, definitions);
+  field->setSelectedPrefab(*definitions, prefab);
+  layer->setActiveStep(fieldIndex);
+  editor::EditorInteraction interaction;
+
+  auto click = pointerAt({70.0f, 0.0f});
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  require(field->hasSelectedTile() && field->getSelectedTile() == bw::core::Tile{1, 0} &&
+              field->getInstance({1, 0}),
+          "PrefabField click did not select and place on the Tile");
+
+  auto drag = pointerAt({140.0f, 0.0f});
+  drag.leftDown = true;
+  drag.leftDragging = true;
+  interaction.updateSelection(&document, nullptr, settings, drag);
+  require(field->getInstances().size() == 1,
+          "dragging painted more Prefab instances after a discrete click");
+
+  field->selectTile({2, 0});
+  require(interaction.applyPrefabShortcut(&document, true, false) && field->getInstance({2, 0}),
+          "Space routing did not place the selected Prefab");
+  require(interaction.applyPrefabShortcut(&document, false, true) && !field->getInstance({2, 0}),
+          "Delete routing did not clear the selected Tile");
+
+  layer->setActiveStep(defineIndex);
+  require(!interaction.applyPrefabShortcut(&document, true, false),
+          "PrefabField shortcut remained active after its step lost focus");
+}
+
 }  // namespace
 
 int main() {
@@ -2004,6 +2047,7 @@ int main() {
     deletingAWeldedVertexHealsTheHoleAndIsland();
     drawingContextRejectsEscapesAndSelfCrossings();
     theWholeDrawingGestureIsOneUndoEntry();
+    prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint();
     std::cout << "Editor selection interactions passed\n";
     return 0;
   } catch (std::exception const& error) {

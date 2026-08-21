@@ -21,6 +21,7 @@ add_library(core STATIC
     src/Module.cpp
     src/Primitive.cpp
     src/PrimitiveField.cpp
+    src/PrefabField.cpp
     src/PrimitiveFieldLayout.cpp
     src/PrimitivePropertySet.cpp
     src/RectanglePolygon.cpp
@@ -569,6 +570,15 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_layer_tests)
     bw_deploy_runtime_dlls(boolean_world_layer_tests)
     add_test(NAME boolean_world_layer COMMAND boolean_world_layer_tests)
+
+    add_executable(boolean_world_prefab_field_tests
+        tests/prefab_field_tests.cpp)
+    target_link_libraries(boolean_world_prefab_field_tests PRIVATE core)
+    target_compile_features(boolean_world_prefab_field_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_prefab_field_tests)
+    bw_output_dirs(boolean_world_prefab_field_tests)
+    bw_deploy_runtime_dlls(boolean_world_prefab_field_tests)
+    add_test(NAME boolean_world_prefab_field COMMAND boolean_world_prefab_field_tests)
 
     add_executable(boolean_world_define_prefabs_tests
         tests/define_prefabs_tests.cpp)

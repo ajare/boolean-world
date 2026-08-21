@@ -3061,6 +3061,33 @@ void renderPrefabsView(
   }
 }
 
+void renderPrefabFieldView(editor::Document* doc, bw::core::PrefabField* field) {
+  auto* layer = doc->getWorld()->getActiveLayer();
+  auto* definitions = field->getDefinePrefabs(*layer);
+  if (!definitions) {
+    ImGui::TextUnformatted("DefinePrefabs step");
+    for (uint32_t i = 0; i < layer->getNumSteps(); ++i) {
+      auto* candidate = dynamic_cast<bw::core::DefinePrefabs*>(layer->getStep(i));
+      if (candidate && ImGui::Selectable(format("{} :: DefinePrefabs", i).c_str())) {
+        transactUndoableAction(doc, "Bind PrefabField",
+                               bind(bindPrefabField, placeholders::_1, layer, field, candidate));
+      }
+    }
+    return;
+  }
+
+  for (auto* prefab : definitions->getPrefabs()) {
+    ImGui::PushID(prefab->getId());
+    if (ImGui::RadioButton(prefab->getName().c_str(), field->getSelectedPrefab(*layer) == prefab)) {
+      selectPrefabForField(doc, layer, field, prefab);
+    }
+    ImGui::PopID();
+  }
+  if (field->getSelectedPrefab(*layer) && ImGui::Button("Clear palette selection")) {
+    selectPrefabForField(doc, layer, field, nullptr);
+  }
+}
+
 void renderCreateTriggerLineView(editor::Document* doc, editor::Settings& settings) {
   auto world = doc->getWorld();
 
@@ -3454,10 +3481,14 @@ void renderCombinedPanel(
       renderLayerStepsView(doc, settings);
     }
 
-    if (auto* definePrefabs = dynamic_cast<bw::core::DefinePrefabs*>(
-            doc->getWorld()->getActiveLayer()->getActiveStep())) {
+    auto* activeLayer = doc->getWorld()->getActiveLayer();
+    if (auto* definePrefabs = dynamic_cast<bw::core::DefinePrefabs*>(activeLayer->getActiveStep())) {
       if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {
         renderPrefabsView(doc, definePrefabs);
+      }
+    } else if (auto* prefabField = dynamic_cast<bw::core::PrefabField*>(activeLayer->getActiveStep())) {
+      if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {
+        renderPrefabFieldView(doc, prefabField);
       }
     }
 
@@ -3603,9 +3634,31 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
+  if (ImGui::Shortcut(ImGuiKey_Space, ImGuiInputFlags_RouteGlobal)) {
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive()) {
+      auto* layer = doc->getWorld()->getActiveLayer();
+      auto* field = dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep());
+      if (field && field->hasSelectedTile() && field->getSelectedPrefab(*layer)) {
+        auto tile = field->getSelectedTile();
+        transactUndoableActionAtomically(
+            doc, "Place Prefab Instance",
+            bind(placePrefabInstance, placeholders::_1, layer, field, tile));
+      }
+    }
+  }
+
   if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      if (settings.mode == Settings::Mode::Mesh) {
+      auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
+      auto* field = layer ? dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep()) : nullptr;
+      if (field) {
+        if (field->hasSelectedTile()) {
+          auto tile = field->getSelectedTile();
+          transactUndoableActionAtomically(
+              doc, "Clear Prefab Instance",
+              bind(clearPrefabInstance, placeholders::_1, layer, field, tile));
+        }
+      } else if (settings.mode == Settings::Mode::Mesh) {
         if (doc->getActiveMesh()) {
           auto const& indices = doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);
           if (!indices.empty()) {

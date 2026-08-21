@@ -181,6 +181,7 @@ public:
   [[nodiscard]] uint32_t getNumSteps() const;
 
   [[nodiscard]] LayerBuildStep* getStep(uint32_t index) const;
+  [[nodiscard]] LayerBuildStep* getStepById(uint32_t id) const;
 
   // The first step, always a PrimitiveField. Distinct from the active step
   // below, which is where addPrimitive actually writes.

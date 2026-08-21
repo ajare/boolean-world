@@ -2,6 +2,7 @@
 
 #include "core/DefinePrefabs.h"
 #include "core/PrimitiveField.h"
+#include "core/PrefabField.h"
 #include "core/Registry.h"
 
 namespace bw {
@@ -17,6 +18,7 @@ Registry<LayerBuildStep> const& LayerBuildStep::registry() {
   static const Registry<LayerBuildStep> stepRegistry(
       "layer build step",
       {{"DefinePrefabs", []() { return new DefinePrefabs; }},
+       {"PrefabField", []() { return new PrefabField; }},
        {"PrimitiveField", []() { return new PrimitiveField; }}});
 
   return stepRegistry;

@@ -13,6 +13,7 @@
 #include <core/Utils.h>
 #include <core/Layer.h>
 #include <core/DefinePrefabs.h>
+#include <core/PrefabField.h>
 #include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
 
@@ -326,6 +327,25 @@ void renderWorld(
       drawList->AddPolyline(
           screenOutline.data(), static_cast<int>(screenOutline.size()),
           settings.prefabTilingGuideColour, ImDrawFlags_Closed, 1.5f);
+    }
+  } else if (auto const* field = activeLayer
+                                     ? dynamic_cast<bw::core::PrefabField const*>(
+                                           activeLayer->getActiveStep())
+                                     : nullptr;
+             field && field->hasSelectedTile()) {
+    auto const* definitions = field->getDefinePrefabs(*activeLayer);
+    if (definitions) {
+      auto tile = field->getSelectedTile();
+      auto offset = wp::Vector2{tile.x * definitions->getSize(),
+                                tile.y * definitions->getSize()};
+      auto const outline = editor::prefabTilingOutline(
+          definitions->getTilingType(), definitions->getSize());
+      std::vector<ImVec2> screenOutline;
+      for (auto const& point : outline) screenOutline.push_back(worldToScreen(point + offset));
+      if (screenOutline.size() >= 3) {
+        drawList->AddPolyline(screenOutline.data(), static_cast<int>(screenOutline.size()),
+                              settings.prefabTilingGuideColour, ImDrawFlags_Closed, 2.5f);
+      }
     }
   }
 

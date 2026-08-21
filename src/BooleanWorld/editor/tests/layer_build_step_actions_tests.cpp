@@ -10,6 +10,7 @@
 #include <core/DefinePrefabs.h>
 #include <core/LayerBuildStep.h>
 #include <core/PrimitiveField.h>
+#include <core/PrefabField.h>
 #include <core/RectanglePolygon.h>
 #include <core/World.h>
 
@@ -308,6 +309,57 @@ void prefabActionsCreateSelectRenameDeleteAndChangeTilingArguments() {
           "Delete Prefab did not leave no Prefab selected");
 }
 
+void prefabInstanceActionsUndoAndRefuseDeletingReferencedPrefabs() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs;
+  layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Used");
+  auto* field = new bw::core::PrefabField;
+  auto fieldIndex = layer->addStep(field);
+  field->bind(*layer, definitions);
+  field->setSelectedPrefab(*definitions, prefab);
+  layer->setActiveStep(fieldIndex);
+
+  auto undoBefore = editor::getUndoLevels();
+  require(editor::transactUndoableActionAtomically(
+              &document, "Place Prefab Instance",
+              std::bind(editor::placePrefabInstance, std::placeholders::_1,
+                        layer, field, bw::core::Tile{1, 2})),
+          "place Prefab instance action failed");
+  require(editor::getUndoLevels() == undoBefore + 1 && field->getInstance({1, 2}),
+          "placing a Prefab instance was not exactly one undo entry");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  field = static_cast<bw::core::PrefabField*>(layer->getStep(fieldIndex));
+  require(!field->getInstance({1, 2}), "undo did not remove the placed Prefab instance");
+  editor::redo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  definitions = static_cast<bw::core::DefinePrefabs*>(layer->getStep(1));
+  field = static_cast<bw::core::PrefabField*>(layer->getStep(fieldIndex));
+  prefab = definitions->getPrefab(0);
+  require(field->getInstance({1, 2}), "redo did not restore the Prefab instance");
+
+  requireCoreException(
+      [&] { editor::deletePrefab(&document, layer, definitions, prefab); },
+      "deleting a referenced Prefab was not refused");
+
+  layer->setActiveStep(fieldIndex);
+  require(editor::transactUndoableActionAtomically(
+              &document, "Clear Prefab Instance",
+              std::bind(editor::clearPrefabInstance, std::placeholders::_1,
+                        layer, field, bw::core::Tile{1, 2})),
+          "clear Prefab instance action failed");
+  auto afterClear = editor::getUndoLevels();
+  require(!editor::transactUndoableActionAtomically(
+              &document, "Clear Prefab Instance",
+              std::bind(editor::clearPrefabInstance, std::placeholders::_1,
+                        layer, field, bw::core::Tile{1, 2})) &&
+              editor::getUndoLevels() == afterClear,
+          "clearing an empty Tile created an undo entry");
+}
+
 void selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable() {
   editor::Document document;
   document.newDoc();
@@ -345,6 +397,7 @@ int main() {
     removingANonFirstStepIsOneUndoableActionAndTheFirstStepIsRejected();
     movingAStepIsOneUndoableActionAndMovesIntoOrOutOfIndexZeroAreRejected();
     prefabActionsCreateSelectRenameDeleteAndChangeTilingArguments();
+    prefabInstanceActionsUndoAndRefuseDeletingReferencedPrefabs();
     selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable();
     std::cout << "Layer build step enable/disable action tests passed\n";
     return 0;

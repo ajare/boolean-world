@@ -5,6 +5,7 @@
 #include <common/BoundedDeque.h>
 
 #include <core/DefinePrefabs.h>
+#include <core/PrefabField.h>
 #include <core/World.h>
 
 #include "Undo.h"
@@ -26,6 +27,14 @@ struct PrefabFocus {
   uint32_t prefabId{~0u};
 };
 
+struct PrefabFieldFocus {
+  uint32_t layerId{~0u};
+  uint32_t stepIndex{~0u};
+  uint32_t prefabId{~0u};
+  bw::core::Tile tile{};
+  bool hasTile{false};
+};
+
 struct UndoData {
   WorldSnapshot world;
   set<uint32_t> selection;
@@ -36,6 +45,7 @@ struct UndoData {
   set<uint32_t> selectedMeshEdges;
   set<uint32_t> selectedMeshRings;
   vector<PrefabFocus> prefabFocus;
+  vector<PrefabFieldFocus> prefabFieldFocus;
   bool docModified{false};
 };
 
@@ -54,6 +64,7 @@ static UndoableActionFunction gTransactionalFunc;
 
 UndoData captureUndoData(Document* doc) {
   vector<PrefabFocus> prefabFocus;
+  vector<PrefabFieldFocus> prefabFieldFocus;
   if (doc->isActive()) {
     for (auto const* layer : doc->getWorld()->getLayers()) {
       for (uint32_t stepIndex = 0; stepIndex < layer->getNumSteps(); ++stepIndex) {
@@ -62,6 +73,15 @@ UndoData captureUndoData(Document* doc) {
         if (step && step->getSelectedPrefab()) {
           prefabFocus.push_back(
               {layer->getId(), stepIndex, step->getSelectedPrefab()->getId()});
+        }
+        auto const* field = dynamic_cast<bw::core::PrefabField const*>(
+            layer->getStep(stepIndex));
+        if (field) {
+          auto const* selected = field->getSelectedPrefab(*layer);
+          prefabFieldFocus.push_back(
+              {layer->getId(), stepIndex, selected ? selected->getId() : ~0u,
+               field->hasSelectedTile() ? field->getSelectedTile() : bw::core::Tile{},
+               field->hasSelectedTile()});
         }
       }
     }
@@ -77,6 +97,7 @@ UndoData captureUndoData(Document* doc) {
       doc->getSelectedMeshEdgeIndices(),
       doc->getSelectedMeshRingIndices(),
       move(prefabFocus),
+      move(prefabFieldFocus),
       doc->isModified()};
 }
 
@@ -93,6 +114,17 @@ void restoreUndoData(Document* doc, UndoData const& data) {
       step->setSelectedPrefab(step->findPrefabById(focus.prefabId));
       layer->rebuild();
     }
+  }
+  for (auto const& focus : data.prefabFieldFocus) {
+    auto* layer = doc->getWorld()->getLayer(focus.layerId);
+    if (!layer || focus.stepIndex >= layer->getNumSteps()) continue;
+    auto* field = dynamic_cast<bw::core::PrefabField*>(layer->getStep(focus.stepIndex));
+    if (!field) continue;
+    auto* definitions = field->getDefinePrefabs(*layer);
+    if (definitions && focus.prefabId != ~0u) {
+      field->setSelectedPrefab(*definitions, definitions->findPrefabById(focus.prefabId));
+    }
+    if (focus.hasTile) field->selectTile(focus.tile);
   }
   doc->restoreMeshSelection(
       data.activeMeshPrimitive, data.selectedMeshVertices,

@@ -37,6 +37,7 @@ private:
 
 public:
   [[nodiscard]] std::vector<Primitive*> const& getBuildPrimitives() const;
+  [[nodiscard]] Layer& getLayer() const;
 
   uint32_t appendPrimitive(Primitive* primitive);
 };
