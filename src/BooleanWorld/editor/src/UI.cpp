@@ -59,6 +59,7 @@ extern wp::Vector2 gWorldViewScreenOrigin;
 extern wp::Vector2 gWorldViewSize;
 extern editor::HoverableType gHoveredType;
 extern std::vector<uint32_t> gHoveredIndices;
+extern editor::EditorInteraction gEditorInteraction;
 
 namespace editor {
 using namespace std;
@@ -3676,92 +3677,61 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     }
   }
 
-  if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive()) {
-    auto* layer = doc->getWorld()->getActiveLayer();
-    auto* field = dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep());
-    if (field && field->hasSelectedTile()) {
-      auto tile = field->getSelectedTile();
-      if (ImGui::Shortcut(
-              ImGuiKey_LeftArrow | ImGuiMod_Shift,
-              ImGuiInputFlags_RouteGlobal)) {
-        if (field->getInstance(tile)) {
-          transactUndoableActionAtomically(
-              doc, "Rotate Prefab Instance",
-              bind(rotatePrefabInstance, placeholders::_1, layer, field, tile, false));
-        }
-      } else if (ImGui::Shortcut(
-                     ImGuiKey_RightArrow | ImGuiMod_Shift,
-                     ImGuiInputFlags_RouteGlobal)) {
-        if (field->getInstance(tile)) {
-          transactUndoableActionAtomically(
-              doc, "Rotate Prefab Instance",
-              bind(rotatePrefabInstance, placeholders::_1, layer, field, tile, true));
-        }
-      } else if (ImGui::GetIO().KeyMods == ImGuiMod_None) {
-        if (ImGui::Shortcut(ImGuiKey_LeftArrow, ImGuiInputFlags_RouteGlobal)) {
-          field->selectTile({tile.x - 1, tile.y});
-        } else if (ImGui::Shortcut(ImGuiKey_RightArrow, ImGuiInputFlags_RouteGlobal)) {
-          field->selectTile({tile.x + 1, tile.y});
-        } else if (ImGui::Shortcut(ImGuiKey_UpArrow, ImGuiInputFlags_RouteGlobal)) {
-          field->selectTile({tile.x, tile.y + 1});
-        } else if (ImGui::Shortcut(ImGuiKey_DownArrow, ImGuiInputFlags_RouteGlobal)) {
-          field->selectTile({tile.x, tile.y - 1});
-        }
+  if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+    if (ImGui::Shortcut(ImGuiKey_LeftArrow | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal)) {
+      gEditorInteraction.rotateSelectedPrefabInstance(doc, false);
+    } else if (ImGui::Shortcut(ImGuiKey_RightArrow | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal)) {
+      gEditorInteraction.rotateSelectedPrefabInstance(doc, true);
+    } else if (ImGui::GetIO().KeyMods == ImGuiMod_None) {
+      if (ImGui::Shortcut(ImGuiKey_LeftArrow, ImGuiInputFlags_RouteGlobal)) {
+        gEditorInteraction.movePrefabTileCursor(doc, -1, 0);
+      } else if (ImGui::Shortcut(ImGuiKey_RightArrow, ImGuiInputFlags_RouteGlobal)) {
+        gEditorInteraction.movePrefabTileCursor(doc, 1, 0);
+      } else if (ImGui::Shortcut(ImGuiKey_UpArrow, ImGuiInputFlags_RouteGlobal)) {
+        gEditorInteraction.movePrefabTileCursor(doc, 0, 1);
+      } else if (ImGui::Shortcut(ImGuiKey_DownArrow, ImGuiInputFlags_RouteGlobal)) {
+        gEditorInteraction.movePrefabTileCursor(doc, 0, -1);
       }
     }
   }
 
   if (ImGui::Shortcut(ImGuiKey_Space, ImGuiInputFlags_RouteGlobal)) {
-    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive()) {
-      auto* layer = doc->getWorld()->getActiveLayer();
-      auto* field = dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep());
-      if (field && field->hasSelectedTile() && field->getSelectedPrefab(*layer)) {
-        auto tile = field->getSelectedTile();
-        transactUndoableActionAtomically(
-            doc, "Place Prefab Instance",
-            bind(placePrefabInstance, placeholders::_1, layer, field, tile));
-      }
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+      gEditorInteraction.applyPrefabShortcut(doc, true, false);
     }
   }
 
   if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
-      auto* field = layer ? dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep()) : nullptr;
-      if (field) {
-        if (field->hasSelectedTile()) {
-          auto tile = field->getSelectedTile();
-          transactUndoableActionAtomically(
-              doc, "Clear Prefab Instance",
-              bind(clearPrefabInstance, placeholders::_1, layer, field, tile));
-        }
-      } else if (settings.mode == Settings::Mode::Mesh) {
-        if (doc->getActiveMesh()) {
-          auto const& indices = doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);
-          if (!indices.empty()) {
-            auto previewCount = doc->previewMeshSubObjectDeletionCount(settings.meshSubMode, indices);
-            if (previewCount > 0) {
-              char const* subObjectLabel =
-                  settings.meshSubMode == Settings::MeshSubMode::Vertex ? "Vertex(es)"
-                  : settings.meshSubMode == Settings::MeshSubMode::Edge ? "Edge(s)"
-                                                                        : "Polygon(s)";
-              transactUndoableAction(
-                  doc, format("Delete {} Mesh {}", previewCount, subObjectLabel),
-                  bind(deleteMeshSubObjects, placeholders::_1, settings.meshSubMode, indices));
+      if (!gEditorInteraction.applyPrefabShortcut(doc, false, true)) {
+        if (settings.mode == Settings::Mode::Mesh) {
+          if (doc->getActiveMesh()) {
+            auto const& indices = doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);
+            if (!indices.empty()) {
+              auto previewCount = doc->previewMeshSubObjectDeletionCount(settings.meshSubMode, indices);
+              if (previewCount > 0) {
+                char const* subObjectLabel =
+                    settings.meshSubMode == Settings::MeshSubMode::Vertex ? "Vertex(es)"
+                    : settings.meshSubMode == Settings::MeshSubMode::Edge ? "Edge(s)"
+                                                                          : "Polygon(s)";
+                transactUndoableAction(
+                    doc, format("Delete {} Mesh {}", previewCount, subObjectLabel),
+                    bind(deleteMeshSubObjects, placeholders::_1, settings.meshSubMode, indices));
+              }
             }
           }
-        }
-      } else if (doc->hasSelection()) {
-        auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
+        } else if (doc->hasSelection()) {
+          auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
 
-        if (!primitiveIndices.empty()) {
-          transactUndoableAction(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), bind(deletePrimitives, placeholders::_1, primitiveIndices));
-        }
+          if (!primitiveIndices.empty()) {
+            transactUndoableAction(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), bind(deletePrimitives, placeholders::_1, primitiveIndices));
+          }
 
-        auto triggerLineIndex = doc->getSelectedTriggerLineIndex();
+          auto triggerLineIndex = doc->getSelectedTriggerLineIndex();
 
-        if (triggerLineIndex != ~0u) {
-          transactUndoableAction(doc, "Delete TriggerLine", bind(deleteTriggerLine, placeholders::_1, triggerLineIndex));
+          if (triggerLineIndex != ~0u) {
+            transactUndoableAction(doc, "Delete TriggerLine", bind(deleteTriggerLine, placeholders::_1, triggerLineIndex));
+          }
         }
       }
     }
