@@ -7,6 +7,8 @@
 #include <willpower/common/BoundingCircle.h>
 #include <willpower/common/MathsUtils.h>
 
+#include "common/GameDefines.h"
+
 namespace bw::core {
 namespace {
 wp::Vector2 ToWorld(arr::FixedPointVertex const& vertex) {
@@ -85,9 +87,15 @@ ArrangementWorldData::ArrangementWorldData(
   for (uint32_t wallIndex = 0; wallIndex < uint32_t(mWalls.size());
        ++wallIndex) {
     auto const& wall = mWalls[wallIndex];
+    // A floor step taller than the authored threshold blocks, same as
+    // before; independently, whatever headroom the two faces actually share
+    // must fit the player regardless of which of floorZ/ceilingZ produced
+    // this wall - a low ceiling is just as impassable as a high step.
     auto blocks = wall.kind == arr::ArrangementWallKind::Border ||
                   (wall.kind == arr::ArrangementWallKind::FloorStep &&
-                   wall.maxZ - wall.minZ > stepThreshold);
+                   wall.maxZ - wall.minZ > stepThreshold) ||
+                  (wall.kind != arr::ArrangementWallKind::Border &&
+                   wall.clearance < BW_PLAYER_HEIGHT);
     if (!blocks) {
       continue;
     }

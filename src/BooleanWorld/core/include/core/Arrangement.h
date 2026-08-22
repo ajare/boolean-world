@@ -132,6 +132,10 @@ struct ArrangementWall {
   float maxZ;
   uint16_t paletteIndex;
   ArrangementWallKind kind;
+  // Vertical headroom actually available to cross this wall: the overlap of
+  // the two adjacent solid faces' floor/ceiling ranges (min ceilingZ minus
+  // max floorZ). Meaningless for Border, which always blocks regardless.
+  float clearance;
 };
 
 struct ArrangementPrimitive {

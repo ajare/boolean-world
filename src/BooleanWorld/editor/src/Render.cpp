@@ -229,22 +229,13 @@ vector<ImVec2> insetOutline(vector<ImVec2> const& points, float distance) {
   return inset;
 }
 
-// Which built Primitives should render faded, indexed by Primitive id. A
-// Primitive is faded when it is outside the active-step focus or its owning
-// step refuses direct editing. The ownership query and capability predicate
-// make this independent of the concrete step type.
+// Which built Primitives should render faded, indexed by Primitive id.
 vector<uint8_t> collectFadedStepPrimitives(bw::core::Layer const& layer) {
   vector<uint8_t> flags(layer.getNumPrimitives(), 0);
 
   for (uint32_t primitiveIndex = 0; primitiveIndex < layer.getNumPrimitives(); ++primitiveIndex) {
-    auto owningStepIndex = layer.getOwningStepIndex(layer.getPrimitive(primitiveIndex));
-    if (owningStepIndex == ~0u) {
-      continue;
-    }
-
-    auto const* step = layer.getStep(owningStepIndex);
-    flags[primitiveIndex] = owningStepIndex != layer.getActiveStepIndex() ||
-                            !step->permitsDirectPrimitiveEditing();
+    flags[primitiveIndex] = editor::primitiveFadedForActiveStep(
+        layer, layer.getPrimitive(primitiveIndex));
   }
 
   return flags;
@@ -658,6 +649,31 @@ void renderWorld(
             drawList->AddPolyline(
                 points.data(), (int)points.size(), settings.meshEdgeColour,
                 ImDrawFlags_None, 2.5f);
+          }
+
+          // Rubber-band the next prospective edge to the pointer. Use the
+          // same snapped position as placement so the preview is the edge a
+          // click would actually create, and keep it visually distinct from
+          // already-placed edges.
+          bool cursorInMiniMap = false;
+          auto mouseScreen = ImGui::GetMousePos();
+          if (settings.renderMiniMap) {
+            auto miniMapBounds = getMiniMapBounds(doc);
+            miniMapBounds.setPosition(
+                miniMapBounds.getMinExtent() + gWorldViewScreenOrigin);
+            cursorInMiniMap = miniMapBounds.pointInside(
+                mouseScreen.x, mouseScreen.y);
+          }
+          if (editor::mouseInteractingWithBackground() && !cursorInMiniMap) {
+            auto cursorPosition = editor::Document::snapMeshDrawPosition(
+                editor::getMouseWorldPosition(), settings.showGrid,
+                settings.gridSize);
+            if (doc->getMeshDrawPositionState(cursorPosition, settings) !=
+                editor::Document::MeshDrawPositionState::Invalid) {
+              drawList->AddLine(
+                  points.back(), worldToScreen(cursorPosition),
+                  settings.meshDrawPreviewColour, 2.0f);
+            }
           }
 
           bool canClose = drawnVertices.size() >= 3;

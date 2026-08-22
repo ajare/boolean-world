@@ -76,10 +76,11 @@ __declspec(dllexport) int dllSetInputOptions(float mouseSensitivity) {
 __declspec(dllexport) int dllSetVideoOptions(
     int renderScaleCode,
     int antiAliasingCode,
+    int ambientOcclusionCode,
     int renderTextureFilterCode) {
   return dllState.setVideoOptions(
-      renderScaleCode, antiAliasingCode, renderTextureFilterCode,
-      gVideoOptions);
+      renderScaleCode, antiAliasingCode, ambientOcclusionCode,
+      renderTextureFilterCode, gVideoOptions);
 }
 
 __declspec(dllexport) wp::application::StateFactory* dllGetNextStateFactory() {

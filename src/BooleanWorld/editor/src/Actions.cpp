@@ -7,6 +7,7 @@
 #include <core/SuperformulaPolygon.h>
 #include <core/MeshPrimitive.h>
 #include <core/LayerBuildStep.h>
+#include <core/DynamicWorldDataGenerator.h>
 
 #include "Defines.h"
 #include "Actions.h"
@@ -106,10 +107,18 @@ void rebuildPrefabAuthoringContext(Document* doc, bw::core::Layer* layer) {
   layer->rebuild();
 
   // The fold filter reads the selected Prefab live (Document.cpp), so which
-  // Primitives it admits has just changed - the generator needs telling, the
-  // same way switching the active step or editor mode does.
+  // Primitives it admits has just changed. Generate this small, isolated
+  // authoring fold synchronously: leaving the previous Prefab's committed
+  // fold in place while an asynchronous replacement runs renders its outline
+  // behind the newly selected Prefab.
   if (doc->isActive()) {
-    doc->getWorld()->getWorldDataGenerator()->refreshPrimitiveFilter();
+    auto* generator = doc->getWorld()->getWorldDataGenerator();
+    if (auto* dynamicGenerator =
+            dynamic_cast<bw::core::DynamicWorldDataGenerator*>(generator)) {
+      dynamicGenerator->generateBlocking();
+    } else {
+      generator->refreshPrimitiveFilter();
+    }
   }
 }
 

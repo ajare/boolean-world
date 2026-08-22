@@ -1311,7 +1311,8 @@ vector<ArrangementWall> BuildArrangementWalls(
            properties.floorZ,
            properties.ceilingZ,
            solidFace.paletteIndex,
-           ArrangementWallKind::Border});
+           ArrangementWallKind::Border,
+           properties.ceilingZ - properties.floorZ});
       continue;
     }
     if (!face0.solid) {
@@ -1320,6 +1321,12 @@ vector<ArrangementWall> BuildArrangementWalls(
 
     auto const& properties0 = arrangement.palette[face0.paletteIndex];
     auto const& properties1 = arrangement.palette[face1.paletteIndex];
+    // The headroom actually available to cross between these two solid
+    // faces - both a floor step too high and a ceiling dropping below the
+    // player's height block passage, regardless of which of floorZ/ceilingZ
+    // differs.
+    auto clearance = min(properties0.ceilingZ, properties1.ceilingZ) -
+                      max(properties0.floorZ, properties1.floorZ);
     if (properties0.floorZ != properties1.floorZ) {
       auto const& lowerFace =
           properties0.floorZ < properties1.floorZ ? face0 : face1;
@@ -1328,7 +1335,8 @@ vector<ArrangementWall> BuildArrangementWalls(
            min(properties0.floorZ, properties1.floorZ),
            max(properties0.floorZ, properties1.floorZ),
            lowerFace.paletteIndex,
-           ArrangementWallKind::FloorStep});
+           ArrangementWallKind::FloorStep,
+           clearance});
     }
     if (properties0.ceilingZ != properties1.ceilingZ) {
       auto const& higherFace =
@@ -1338,7 +1346,8 @@ vector<ArrangementWall> BuildArrangementWalls(
            min(properties0.ceilingZ, properties1.ceilingZ),
            max(properties0.ceilingZ, properties1.ceilingZ),
            higherFace.paletteIndex,
-           ArrangementWallKind::CeilingStep});
+           ArrangementWallKind::CeilingStep,
+           clearance});
     }
   }
   return walls;

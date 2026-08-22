@@ -747,6 +747,16 @@ uint32_t Layer::_appendBuiltPrimitive(Primitive* primitive, LayerBuildStep const
   primitive->setId(index);
   primitive->setInputs(wp::Vector2::ZERO, 0.0f, &mTriggerLines);
 
+  // A step can begin emitting authored storage that was not part of the
+  // derived collection when the World was deserialized. DefinePrefabs does
+  // exactly that when an editor selects a Prefab after load. Such a
+  // Primitive has authored polygons but no transformed vertices or bounds
+  // yet, so adding its default bounds to the lookup grid makes it impossible
+  // to pick. Initialise newly exposed storage before indexing it.
+  if (primitive->getNumVertices() > 0 && primitive->getVertices().empty()) {
+    primitive->updateVertexPositions();
+  }
+  primitive->invalidatePostTransform(true, false);
   addPrimitiveToLookupGrid(primitive);
 
   primitive->_invalidate();
@@ -783,6 +793,24 @@ uint32_t Layer::addPrimitive(Primitive* primitive) {
   }
 
   rebuild();
+
+  auto it = find(mPrimitives.begin(), mPrimitives.end(), primitive);
+  return (uint32_t)distance(mPrimitives.begin(), it);
+}
+
+uint32_t Layer::prependPrimitive(Primitive* primitive) {
+  if (getNumPrimitives() >= BW_WORLD_PRIMITIVE_COUNT_MAX) {
+    throw CoreException("Too many primitives added to the Layer");
+  }
+
+  auto* field = getPrimitiveField();
+  if (!field->isEnabled()) {
+    throw CoreException("Cannot prepend a Primitive while the PrimitiveField step is disabled");
+  }
+
+  field->prependPrimitive(primitive);
+  rebuild();
+  primitive->invalidatePostTransform(true, true);
 
   auto it = find(mPrimitives.begin(), mPrimitives.end(), primitive);
   return (uint32_t)distance(mPrimitives.begin(), it);

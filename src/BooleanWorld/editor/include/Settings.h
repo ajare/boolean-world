@@ -102,6 +102,7 @@ struct Settings {
   ImColor playerProxyColour{1.0f, 0.5f, 0.0f, 1.0f};
   ImColor meshVertexColour{0.8f, 0.5f, 0.0f, 1.0f};
   ImColor meshEdgeColour{1.0f, 0.7f, 0.2f, 1.0f};
+  ImColor meshDrawPreviewColour{0.2f, 0.9f, 0.75f, 1.0f};
   ImColor meshSelectedColour{1.0f, 1.0f, 0.0f, 1.0f};
   ImColor meshHoveredColour{1.0f, 0.1f, 0.1f, 1.0f};
 

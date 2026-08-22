@@ -111,13 +111,17 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
   auto renderScaleCode = bw::app::renderScaleCode(options.video.renderScale);
   auto antiAliasingCode =
       bw::app::antiAliasingCode(options.video.antiAliasing);
+  auto ambientOcclusionCode =
+      bw::app::ambientOcclusionCode(options.video.ambientOcclusion);
   auto renderTextureFilterCode =
       bw::app::renderTextureFilterCode(options.video.renderTextureFilter);
   if (mSetVideoOptionsFunction(
-          renderScaleCode, antiAliasingCode, renderTextureFilterCode) != 0) {
+          renderScaleCode, antiAliasingCode, ambientOcclusionCode,
+          renderTextureFilterCode) != 0) {
     string errMsg = format(
-        "Application rejected video options: RenderScale={}, AA={}, RenderTextureFilter={}",
-        renderScaleCode, antiAliasingCode, renderTextureFilterCode);
+        "Application rejected video options: RenderScale={}, AA={}, AmbientOcclusion={}, RenderTextureFilter={}",
+        renderScaleCode, antiAliasingCode, ambientOcclusionCode,
+        renderTextureFilterCode);
     throw exception(errMsg.c_str());
   }
 

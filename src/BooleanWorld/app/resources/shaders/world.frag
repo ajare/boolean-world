@@ -4,6 +4,7 @@
 @@Uniform(float VIEW_DISTANCE);
 @@Uniform(float GLOBAL_TIME);
 @@Uniform(float PIXEL_SIZE);
+@@Uniform(vec3 PLAYER_POSITION);
 
 // Per batch
 @@Uniform(int MATERIAL_INDEX);
@@ -472,9 +473,16 @@ void main()
 				break;
 		}
 
-		// Shading
-		vec3 normalDir = @In(NORMAL);
-		vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));	
+		// Shading. PLAYER_POSITION is supplied in the same X/elevation/Z
+		// coordinate system as FRAGPOSITION.
+		vec3 normalDir = normalize(@In(FRAGNORMAL));
+		vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));
+		vec3 toPlayer = @Uniform(PLAYER_POSITION) - @In(FRAGPOSITION);
+		float playerDistance = max(length(toPlayer), 0.0001);
+		vec3 playerLightDir = toPlayer / playerDistance;
+		float playerLight = max(dot(normalDir, playerLightDir), 0.0) /
+			(1.0 + playerDistance * playerDistance * 0.0008);
+		value *= 0.3 + playerLight * 1.7;
 	}
 	
 	@Out(vec4 COLOUR) = vec4(value, 1.0f) * shadedColour;

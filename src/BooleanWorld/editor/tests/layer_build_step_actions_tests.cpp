@@ -8,6 +8,7 @@
 
 #include <core/CoreException.h>
 #include <core/DefinePrefabs.h>
+#include <core/DynamicWorldDataGenerator.h>
 #include <core/LayerBuildStep.h>
 #include <core/PrimitiveField.h>
 #include <core/PrefabField.h>
@@ -309,6 +310,47 @@ void prefabActionsCreateSelectRenameDeleteAndChangeTilingArguments() {
           "Delete Prefab did not leave no Prefab selected");
 }
 
+void switchingPrefabsImmediatelyReplacesTheAuthoringFold() {
+  editor::Document document;
+  document.newDoc();
+  editor::Settings settings;
+  document.setPrimitiveFilter(
+      [&settings](bw::core::Layer const& candidateLayer,
+                  bw::core::Primitive const* primitive) {
+        return editor::primitiveParticipatesInEditorFold(
+            candidateLayer, primitive, settings);
+      });
+  auto* world = document.getWorld().get();
+  auto* layer = world->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs;
+  auto stepIndex = layer->addStep(definitions);
+  layer->setActiveStep(stepIndex);
+
+  auto* first = definitions->addPrefab("First");
+  definitions->setSelectedPrefab(first);
+  world->addPrimitive(makeRectangle(-100.0f));
+  auto* second = definitions->addPrefab("Second");
+  definitions->setSelectedPrefab(second);
+  layer->rebuild();
+  world->addPrimitive(makeRectangle(100.0f));
+
+  auto* generator = dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
+      world->getWorldDataGenerator());
+  require(generator, "the editor World did not use its DynamicWorldDataGenerator");
+
+  editor::selectPrefab(&document, layer, definitions, first);
+  generator->getWorldData(world);
+  auto firstFold = generator->getActiveClippingPrimitives();
+  require(firstFold.size() == 1 && firstFold.front().bounds.getCentre().x < 0.0f,
+          "selecting the first Prefab did not commit its isolated authoring fold");
+
+  editor::selectPrefab(&document, layer, definitions, second);
+  generator->getWorldData(world);
+  auto secondFold = generator->getActiveClippingPrimitives();
+  require(secondFold.size() == 1 && secondFold.front().bounds.getCentre().x > 0.0f,
+          "selecting the second Prefab left the first Prefab's authoring fold rendered");
+}
+
 void prefabInstanceActionsUndoAndRefuseDeletingReferencedPrefabs() {
   editor::Document document;
   document.newDoc();
@@ -421,6 +463,7 @@ int main() {
     removingANonFirstStepIsOneUndoableActionAndTheFirstStepIsRejected();
     movingAStepIsOneUndoableActionAndMovesIntoOrOutOfIndexZeroAreRejected();
     prefabActionsCreateSelectRenameDeleteAndChangeTilingArguments();
+    switchingPrefabsImmediatelyReplacesTheAuthoringFold();
     prefabInstanceActionsUndoAndRefuseDeletingReferencedPrefabs();
     prefabFieldBindingRefusesRemovingItsDefinitionsThroughActions();
     selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable();

@@ -61,6 +61,11 @@ public:
   // Compatibility spelling for direct users of PrimitiveField storage.
   uint32_t addPrimitive(Primitive* primitive);
 
+  // Takes ownership and inserts at the front of this step's authored order.
+  // The Layer must be rebuilt by the caller before its derived output is
+  // observed.
+  uint32_t prependPrimitive(Primitive* primitive);
+
   void removePrimitive(Primitive* primitive);
 
   // Destroys oldPrimitive and takes ownership of newPrimitive in its place.

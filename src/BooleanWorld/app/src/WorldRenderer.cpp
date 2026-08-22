@@ -179,7 +179,13 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
   }
 }
 
-void WorldRenderer::update(bw::core::World* world, bw::core::WorldData const& worldData, float frameTime) {
+void WorldRenderer::update(
+    bw::core::World* world,
+    bw::core::WorldData const& worldData,
+    glm::vec3 const& playerPosition,
+    int32_t materialIndexOverride,
+    float materialScale,
+    float frameTime) {
   BW_UNUSED(world);
 
   if (mWorldHasChanged) {
@@ -191,6 +197,7 @@ void WorldRenderer::update(bw::core::World* world, bw::core::WorldData const& wo
     auto& [renderer, dataProvider] = item;
 
     // Update renderer
-    renderer->update(frameTime);
+    renderer->update(
+        playerPosition, materialIndexOverride, materialScale, frameTime);
   }
 }

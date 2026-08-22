@@ -54,13 +54,21 @@ DisplayMessage::Level gDisplayMessageLevel = DisplayMessage::Level::Debug;
 const float gImGui_MouseSensitivityMin = 0.03f;
 const float gImGui_MouseSensitivityMax = 3.0f;
 
+// These indices are the MATERIAL_INDEX cases in world_pbr.frag.
+constexpr array<char const*, 30> gWorldMaterialNames{
+    "Marble", "Granite", "Slate", "Sandstone", "Limestone",
+    "Basalt", "Obsidian", "Quartz / crystal", "Ore",
+    "Rusted iron", "Galvanized steel", "Brushed metal",
+    "Hammered metal", "Patinated copper", "Damascene steel",
+    "Heat-treated metal", "Wood", "Bark", "Bone / ivory",
+    "Leather", "Flesh", "Chitin / shell", "Coral",
+    "Arcane crystal", "Energy stone", "Alien tissue",
+    "Magical metal", "Solid cloud", "Holographic", "Corruption"};
+
 // ImGui colours go here so they don't clutter up the header file
 const ImColor gImGui_MapBackgroundColour{0.2f, 0.2f, 0.8f};
 const ImColor gImGui_TriangulationLineColour{0.8f, 0.8f, 0.2f};
 const ImColor gImGui_MapBorderColour{1.0f, 1.0f, 0.7f};
-const ImColor gImGui_PrimitiveColour{0.8f, 0.2f, 0.2f};
-const ImColor gImGui_PrimitiveInSourceSetColour{0.8f, 0.8f, 0.2f, 0.5f};
-const ImColor gImGui_PrimitiveInViewColour{0.8f, 0.2f, 0.2f, 0.5f};
 const ImColor gImGui_CollisionLineSolidColour{0.8f, 0.8f, 0.2f};
 // Lighter than the solid lines: two-sided walls are there to be seen beside
 // the ones that stop the player, not mistaken for them.
@@ -143,16 +151,37 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   // MPP applies the selected AA stage through immutable render-pipeline output
   // options. MSAA resolves the external Presentation image; FXAA processes the
   // internal SceneLdr image, which this state copies after renderScene.
+  auto ambientOcclusionMethod = mpp::AmbientOcclusionMethod::None;
+  if (mDebugDisplay.ambientOcclusionEnabled) {
+    switch (mDebugDisplay.ambientOcclusion) {
+      case bw::app::AmbientOcclusion::Ssao:
+        ambientOcclusionMethod = mpp::AmbientOcclusionMethod::Ssao;
+        break;
+      case bw::app::AmbientOcclusion::Gtao:
+        ambientOcclusionMethod = mpp::AmbientOcclusionMethod::Gtao;
+        break;
+      case bw::app::AmbientOcclusion::None:
+        break;
+    }
+  }
+  auto ambientOcclusionEnabled =
+      ambientOcclusionMethod != mpp::AmbientOcclusionMethod::None;
+
   mpp::RenderPipelineOptions options;
   options.mode = mpp::RenderPipelineMode::GraphLegacyForward;
   mpp::RenderPipelineOutput output;
   output.name = "World";
   output.image = bw::app::antiAliasingIsFxaa(antiAliasing)
-                     ? "SceneLdr"
+                     ? (ambientOcclusionEnabled
+                            ? "AmbientOcclusionComposite"
+                            : "SceneLdr")
                      : "Presentation";
   output.antiAliasing.msaa = msaa;
   output.antiAliasing.fxaa = bw::app::antiAliasingIsFxaa(antiAliasing);
   options.outputs.push_back(output);
+  options.ambientOcclusion.method = ambientOcclusionMethod;
+  options.ambientOcclusion.ssao = mDebugDisplay.ssao;
+  options.ambientOcclusion.gtao = mDebugDisplay.gtao;
 
   pipeline = mwRenderSystem->getOrCreateRenderPipeline(pipelineName, options);
   pipeline->resize(target->getWidth(), target->getHeight());
@@ -160,6 +189,11 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
 }
 
 void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transitionData) {
+  auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
+  mDebugDisplay.ambientOcclusion = model->getAmbientOcclusion();
+  mDebugDisplay.ambientOcclusionEnabled =
+      mDebugDisplay.ambientOcclusion != bw::app::AmbientOcclusion::None;
+
   mwRenderer = static_cast<WorldRenderer*>(transitionData->userData);
   mwRenderer->create(mScene, getMap()->getWorld(), mwRenderSystem, mwRenderResourceMgr);
 
@@ -561,8 +595,19 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   static_cast<ReactiveCamera*>(mCamera3d.get())->yaw(mPlayerPrevAngle - physicalStats.angle);
   static_cast<ReactiveCamera*>(mCamera3d.get())->pitch(physicalStats.pitch - mPlayerPrevPitch);
 
-  // World 3d
-  mwRenderer->update(getMap()->getWorld(), *mWorldData, frameTime);
+  // World 3d. Its shader-space axes match rendered geometry: horizontal
+  // world X/Y become X/Z, while Y is elevation above the current floor.
+  constexpr float playerShaderHeightAboveFloor = 16.0f;
+  glm::vec3 playerShaderPosition{
+      physicalStats.position.x,
+      getPlayerFloorHeight() + playerShaderHeightAboveFloor,
+      physicalStats.position.y};
+  auto materialIndexOverride = mDebugDisplay.overrideWorldMaterial
+                                   ? mDebugDisplay.worldMaterialIndex
+                                   : -1;
+  mwRenderer->update(
+      getMap()->getWorld(), *mWorldData, playerShaderPosition,
+      materialIndexOverride, mDebugDisplay.worldMaterialScale, frameTime);
 }
 
 void StatePlayBooleanWorld::suspendImpl(void* args) {
@@ -664,9 +709,14 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   renderSystem->renderScene(
       mScene, mCamera3d, {0.0f, 0.0f}, pipeline->getName());
 
-  // FXAA is written back to SceneLdr (image 0); the other choices resolve into
-  // Presentation (image 2). Both scene/present passes write version 1.
-  auto outputImage = bw::app::antiAliasingIsFxaa(antiAliasing) ? 0u : 2u;
+  // Either AO method adds three images before Presentation. FXAA is written
+  // back to the final shaded scene image; other choices resolve Presentation.
+  auto ambientOcclusionEnabled =
+      mDebugDisplay.ambientOcclusionEnabled &&
+      mDebugDisplay.ambientOcclusion != bw::app::AmbientOcclusion::None;
+  auto outputImage = bw::app::antiAliasingIsFxaa(antiAliasing)
+                         ? (ambientOcclusionEnabled ? 4u : 0u)
+                         : (ambientOcclusionEnabled ? 5u : 2u);
   auto sceneTarget = pipeline->getGraphImageRenderTarget({outputImage, 1});
   assert(sceneTarget);
   auto sceneTexture = static_cast<mpp::RenderTexture*>(sceneTarget.get());
@@ -787,60 +837,6 @@ void StatePlayBooleanWorld::ImGui_renderArrangement(bw::core::ArrangementWorldDa
   }
 }
 
-void StatePlayBooleanWorld::ImGui_renderPrimitives(vector<wp::Vector2> const& viewVertices, vector<bw::core::Primitive*> const& primitives, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList) {
-  VAR_UNUSED(viewBounds);
-
-  auto dataGenerator = getWDG();
-  if (!dataGenerator) {
-    return;
-  }
-  auto clippingPrims = dataGenerator->getSourceClippingPrimitives();
-  set<uint32_t> clippingPrimIds;
-  for (auto const& primitive : clippingPrims) {
-    clippingPrimIds.insert(primitive.id);
-  }
-
-  if (!primitives.empty()) {
-    drawList->Flags |= ImDrawListFlags_AntiAliasedFill;
-
-    for (auto primitive : primitives) {
-      // Primitive borders
-      vector<ImVec2> ghostBorderPoints;
-
-      auto const& complexPolygons = primitive->getVertices();
-      wp::Vector2 boundsMin, boundsMax;
-      primitive->getBounds().getExtents(boundsMin, boundsMax);
-      auto const visible = wp::MathsUtils::boxIntersectsTriangle(
-          boundsMin,
-          boundsMax,
-          viewVertices[0],
-          viewVertices[1],
-          viewVertices[2]);
-
-      for (auto const& complexPolygon : complexPolygons) {
-        for (auto const& polygon : complexPolygon) {
-          auto numVertices = (int)polygon.size();
-          vector<ImVec2> imPoints(numVertices);
-
-          for (int i = 0; i < numVertices; ++i) {
-            imPoints[i] = wpVecToImVec2(polygon[i].p, viewOffset, viewSize, viewScale);
-          }
-
-          // Filled in polygon for those directly in view
-          if (visible) {
-            drawList->AddConcavePolyFilled(imPoints.data(), numVertices, gImGui_PrimitiveInViewColour);
-          } else if (clippingPrimIds.contains(primitive->getId())) {
-            drawList->AddConcavePolyFilled(imPoints.data(), numVertices, gImGui_PrimitiveInSourceSetColour);
-          }
-
-          // Border
-          drawList->AddPolyline(imPoints.data(), numVertices, gImGui_PrimitiveColour, ImDrawFlags_Closed, 1.f);
-        }
-      }
-    }
-  }
-}
-
 void StatePlayBooleanWorld::ImGui_renderView(vector<wp::Vector2> const& viewVertices, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList) {
   VAR_UNUSED(viewBounds);
 
@@ -870,18 +866,17 @@ void StatePlayBooleanWorld::debug_renderMinimap(wp::Vector2 const& viewSize, wp:
     return;
   }
 
-  // Shared objects
-  auto world = getMap()->getWorld();
   auto const& player = getPlayerPhysicalStats();
   auto viewAngle = bw::app::worldViewAngle(player.angle);
   auto const [v1, v2] = bw::core::calculateFovTriangle(
       player.position, viewAngle, BW_PLAYER_VIEW_DISTANCE, BW_PLAYER_FOV);
   vector<wp::Vector2> viewVertices{player.position, v1, v2};
 
-  auto primitives = world->findPrimitives(viewBounds);
-
+  // Draw only the folded arrangement. Authored Primitive contours can extend
+  // beyond the resulting level (especially after boolean operations), so
+  // overlaying them here makes the minimap look like it contains hulls or
+  // other geometry that is not actually playable.
   ImGui_renderArrangement(*mWorldData, viewBounds, viewOffset, viewSize, viewScale, drawList);
-  ImGui_renderPrimitives(viewVertices, primitives, viewBounds, viewOffset, viewSize, viewScale, drawList);
   ImGui_renderView(viewVertices, viewBounds, viewOffset, viewSize, viewScale, drawList);
 }
 
@@ -1292,6 +1287,135 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     }
 
     ImGui::TextDisabled("Not saved - set Video/AA to keep a value.");
+
+    ImGui::Separator();
+    auto configuredAmbientOcclusion = mDebugDisplay.ambientOcclusion;
+    auto ambientOcclusionConfigured =
+        configuredAmbientOcclusion != bw::app::AmbientOcclusion::None;
+    auto ambientOcclusionLabel = configuredAmbientOcclusion ==
+                                         bw::app::AmbientOcclusion::Gtao
+                                     ? "Enable GTAO"
+                                 : configuredAmbientOcclusion ==
+                                           bw::app::AmbientOcclusion::Ssao
+                                     ? "Enable SSAO"
+                                     : "Enable ambient occlusion";
+    ImGui::TextUnformatted(
+        configuredAmbientOcclusion == bw::app::AmbientOcclusion::Gtao
+            ? "Ambient occlusion (GTAO)"
+            : configuredAmbientOcclusion == bw::app::AmbientOcclusion::Ssao
+                  ? "Ambient occlusion (SSAO)"
+                  : "Ambient occlusion");
+    ImGui::BeginDisabled(!ambientOcclusionConfigured);
+    if (ImGui::Checkbox(
+            ambientOcclusionLabel,
+            &mDebugDisplay.ambientOcclusionEnabled)) {
+      // Toggling AO changes the generated graph topology and its named FXAA
+      // output. Evict every variant so it is recreated with matching options.
+      for (auto& row : mWorldRenderPipelines) {
+        for (auto& pipeline : row) {
+          if (pipeline) {
+            mwRenderSystem->removeRenderPipeline(pipeline->getName());
+            pipeline.reset();
+          }
+        }
+      }
+    }
+
+    bool ambientOcclusionChanged = false;
+    ImGui::BeginDisabled(!mDebugDisplay.ambientOcclusionEnabled);
+    if (configuredAmbientOcclusion == bw::app::AmbientOcclusion::Ssao) {
+      auto& ssao = mDebugDisplay.ssao;
+      ambientOcclusionChanged |= ImGui::SliderFloat(
+          "Radius##SSAO", &ssao.radius, 0.0f, 10.0f, "%.3f");
+      ambientOcclusionChanged |= ImGui::SliderFloat(
+          "Intensity##SSAO", &ssao.intensity, 0.0f, 5.0f, "%.2f");
+      ambientOcclusionChanged |= ImGui::SliderFloat(
+          "Bias##SSAO", &ssao.bias, 0.0f, 1.0f, "%.3f");
+      ambientOcclusionChanged |= ImGui::SliderFloat(
+          "Power##SSAO", &ssao.power, 0.1f, 8.0f, "%.2f");
+      ambientOcclusionChanged |= ImGui::SliderInt(
+          "Sample count##SSAO", &ssao.sampleCount, 1, 64);
+      ambientOcclusionChanged |= ImGui::SliderInt(
+          "Blur radius##SSAO", &ssao.blurRadius, 0, 8);
+    } else if (configuredAmbientOcclusion == bw::app::AmbientOcclusion::Gtao) {
+      auto& gtao = mDebugDisplay.gtao;
+      ambientOcclusionChanged |= ImGui::SliderFloat(
+          "Radius##GTAO", &gtao.radius, 0.0f, 10.0f, "%.3f");
+      ambientOcclusionChanged |= ImGui::SliderFloat(
+          "Intensity##GTAO", &gtao.intensity, 0.0f, 5.0f, "%.2f");
+      ambientOcclusionChanged |= ImGui::SliderFloat(
+          "Thickness##GTAO", &gtao.thickness, 0.0f, 5.0f, "%.3f");
+      ambientOcclusionChanged |= ImGui::SliderFloat(
+          "Horizon bias##GTAO", &gtao.horizonBias, 0.0f, 1.0f, "%.3f");
+      ambientOcclusionChanged |= ImGui::SliderFloat(
+          "Falloff start##GTAO", &gtao.falloffStart, 0.0f,
+          gtao.falloffEnd, "%.3f");
+      ambientOcclusionChanged |= ImGui::SliderFloat(
+          "Falloff end##GTAO", &gtao.falloffEnd,
+          gtao.falloffStart, 1.0f, "%.3f");
+      ambientOcclusionChanged |= ImGui::SliderInt(
+          "Slice count##GTAO", &gtao.sliceCount, 1, 16);
+      ambientOcclusionChanged |= ImGui::SliderInt(
+          "Steps per slice##GTAO", &gtao.stepsPerSlice, 1, 16);
+      ambientOcclusionChanged |= ImGui::SliderFloat(
+          "Power##GTAO", &gtao.power, 0.1f, 8.0f, "%.2f");
+      ambientOcclusionChanged |= ImGui::SliderInt(
+          "Blur radius##GTAO", &gtao.blurRadius, 0, 8);
+    }
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+
+    if (ambientOcclusionChanged) {
+      mpp::AmbientOcclusionOptions ambientOcclusion;
+      ambientOcclusion.method =
+          configuredAmbientOcclusion == bw::app::AmbientOcclusion::Gtao
+              ? mpp::AmbientOcclusionMethod::Gtao
+              : mpp::AmbientOcclusionMethod::Ssao;
+      ambientOcclusion.ssao = mDebugDisplay.ssao;
+      ambientOcclusion.gtao = mDebugDisplay.gtao;
+      for (auto const& row : mWorldRenderPipelines) {
+        for (auto const& pipeline : row) {
+          if (pipeline) {
+            pipeline->setAmbientOcclusionOptions(ambientOcclusion);
+          }
+        }
+      }
+    }
+    ImGui::TextDisabled(
+        ambientOcclusionConfigured
+            ? "Debug-only - set Video/AmbientOcclusion to choose the method."
+            : "Disabled by Video/AmbientOcclusion: none.");
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("World material");
+    ImGui::Checkbox(
+        "Override authored materials",
+        &mDebugDisplay.overrideWorldMaterial);
+
+    ImGui::BeginDisabled(!mDebugDisplay.overrideWorldMaterial);
+    auto materialIndex = std::clamp(
+        mDebugDisplay.worldMaterialIndex, 0,
+        static_cast<int>(gWorldMaterialNames.size()) - 1);
+    mDebugDisplay.worldMaterialIndex = materialIndex;
+    if (ImGui::BeginCombo(
+            "Material", gWorldMaterialNames[materialIndex])) {
+      for (int i = 0; i < static_cast<int>(gWorldMaterialNames.size()); ++i) {
+        auto selected = i == materialIndex;
+        if (ImGui::Selectable(gWorldMaterialNames[i], selected)) {
+          mDebugDisplay.worldMaterialIndex = i;
+        }
+        if (selected) {
+          ImGui::SetItemDefaultFocus();
+        }
+      }
+      ImGui::EndCombo();
+    }
+    ImGui::EndDisabled();
+    ImGui::SliderFloat(
+        "Material scale", &mDebugDisplay.worldMaterialScale,
+        0.1f, 64.0f, "%.1f");
+    ImGui::TextDisabled(
+        "Debug-only - overrides MATERIAL_INDEX and material scale for every world mesh.");
   }
 
   ImGui::End();

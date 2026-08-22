@@ -28,6 +28,7 @@
 #include "core/Vertex.h"
 #include "core/MeshPrimitive.h"
 #include "core/LayerBuildStep.h"
+#include "core/PrefabField.h"
 
 #include "common/GameDefines.h"
 
@@ -69,6 +70,27 @@ bool primitiveVisibleForActiveStep(
 
   return settings.showAllStepPrimitives || owningStepIndex == ~0u ||
          owningStepIndex <= layer.getActiveStepIndex();
+}
+
+bool primitiveFadedForActiveStep(
+    bw::core::Layer const& layer,
+    bw::core::Primitive const* primitive) {
+  auto owningStepIndex = layer.getOwningStepIndex(primitive);
+  if (owningStepIndex == ~0u) {
+    return false;
+  }
+
+  auto const* step = layer.getStep(owningStepIndex);
+  if (owningStepIndex != layer.getActiveStepIndex()) {
+    return true;
+  }
+
+  // PrefabField does not permit direct Primitive editing, but its instances
+  // are the active step's editable content: users author them through Tile
+  // placement. Keep that active content at the normal colour while retaining
+  // the faded treatment for other non-directly-editable procedural output.
+  return !dynamic_cast<bw::core::PrefabField const*>(step) &&
+         !step->permitsDirectPrimitiveEditing();
 }
 
 bool primitiveParticipatesInEditorFold(
@@ -114,6 +136,31 @@ bool pointInsideRing(
     }
   }
   return inside;
+}
+
+bw::core::Primitive* createEditorGhost() {
+  auto* ghost = new bw::core::RegularPolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      3);
+
+  ghost->setPriority(0);
+  ghost->setPosition(wp::Vector2::ZERO);
+  ghost->setFlags(ghost->getFlags() | BW_PRIMITIVE_GHOST_FLAG);
+
+  {
+    auto mutation = ghost->mutate();
+    mutation.animation(bw::core::VertexTransformer::Key::Scale).setPoints(
+        {{0.0f, 1.0f}, {1.0f, 1.0f}});
+    mutation.animation(bw::core::VertexTransformer::Key::Angle).setPoints(
+        {{0.0f, 0.0f}, {1.0f, 0.0f}});
+    mutation.animation(bw::core::VertexTransformer::Key::OrbitAngle).setPoints(
+        {{0.0f, 0.0f}, {1.0f, 0.0f}});
+    mutation.animation(bw::core::VertexTransformer::Key::OrbitDistance).setPoints(
+        {{0.0f, 0.0f}, {1.0f, 0.0f}});
+  }
+
+  return ghost;
 }
 
 set<uint32_t> getIgnoredPrimitiveIndices(bw::core::World const& world, Settings const& settings) {
@@ -1303,6 +1350,42 @@ uint32_t Document::deleteMeshSubObjects(
   return removed;
 }
 
+uint32_t Document::splitMeshEdgeAt(
+    uint32_t edgeIndex, wp::Vector2 const& worldPosition) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u ||
+      mActiveMesh->edgeIndexIterationFinished(edgeIndex)) {
+    return ~0u;
+  }
+
+  auto const& edge = mActiveMesh->getEdge(edgeIndex);
+  auto start = mActiveMesh->getVertex(edge.getFirstVertex()).getPosition();
+  auto end = mActiveMesh->getVertex(edge.getSecondVertex()).getPosition();
+  auto direction = end - start;
+  auto lengthSq = direction.lengthSq();
+  if (lengthSq <= 0.0f) {
+    return ~0u;
+  }
+
+  auto offset = worldPosition - start;
+  auto t = (offset.x * direction.x + offset.y * direction.y) / lengthSq;
+  if (t <= 0.0f || t >= 1.0f) {
+    return ~0u;
+  }
+
+  auto candidate = *mActiveMesh;
+  wp::geometry::SplitEdgeResult result;
+  if (!candidate.splitEdge(edgeIndex, t, &result) ||
+      result.newVertexIndices.empty()) {
+    return ~0u;
+  }
+
+  auto newVertexIndex = result.newVertexIndices.front();
+  *mActiveMesh = move(candidate);
+  clearMeshSelections();
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
+  return newVertexIndex;
+}
+
 uint32_t Document::splitMeshEdges(set<uint32_t> const& edgeIndices) {
   if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u || edgeIndices.empty()) {
     return 0;
@@ -1436,7 +1519,22 @@ bool segmentsIntersect(
          pointOnSegment(c, d, a) || pointOnSegment(c, d, b);
 }
 
-bool segmentCrossesMesh(
+// Unlike segmentsIntersect, a shared endpoint (including one that lands
+// exactly on an existing vertex) is not itself a crossing - only a segment
+// that strictly passes through another's interior is. This is what lets a
+// drawn edge legitimately touch an existing Ring's vertex.
+bool properSegmentsIntersect(
+    wp::Vector2 const& a, wp::Vector2 const& b,
+    wp::Vector2 const& c, wp::Vector2 const& d) {
+  auto o1 = orientation(a, b, c);
+  auto o2 = orientation(a, b, d);
+  auto o3 = orientation(c, d, a);
+  auto o4 = orientation(c, d, b);
+  return ((o1 > 0.0f && o2 < 0.0f) || (o1 < 0.0f && o2 > 0.0f)) &&
+         ((o3 > 0.0f && o4 < 0.0f) || (o3 < 0.0f && o4 > 0.0f));
+}
+
+bool segmentProperlyCrossesMesh(
     wp::geometry::Mesh const& mesh,
     wp::Vector2 const& first,
     wp::Vector2 const& second) {
@@ -1444,7 +1542,7 @@ bool segmentCrossesMesh(
        !mesh.edgeIndexIterationFinished(edgeIndex);
        edgeIndex = mesh.getNextEdgeIndex(edgeIndex)) {
     auto const& edge = mesh.getEdge(edgeIndex);
-    if (segmentsIntersect(
+    if (properSegmentsIntersect(
             first, second,
             mesh.getVertex(edge.getFirstVertex()).getPosition(),
             mesh.getVertex(edge.getSecondVertex()).getPosition())) {
@@ -1452,6 +1550,97 @@ bool segmentCrossesMesh(
     }
   }
   return false;
+}
+
+// The single Ring (Shell, Hole or Island) that owns this mesh vertex, or
+// ~0u. When a vertex is shared by more than one Ring (an existing Ring
+// already touching another there), the first match in getNodeMappings'
+// pre-order wins - a deliberate simplification for an already-uncommon case.
+uint32_t ringOwningVertex(
+    bw::core::MeshPrimitiveEditingProxy const& mesh, uint32_t vertexIndex) {
+  for (auto const& mapping : mesh.getNodeMappings()) {
+    if (mesh.getPolygon(mapping.polygonIndex).getVertexIndexSet().contains(vertexIndex)) {
+      return mapping.polygonIndex;
+    }
+  }
+  return ~0u;
+}
+
+// The existing mesh vertex within pick radius of position, or ~0u.
+uint32_t findMeshVertexNear(
+    bw::core::MeshPrimitiveEditingProxy const& mesh,
+    wp::Vector2 const& position,
+    float radiusSq) {
+  for (auto index = mesh.getFirstVertexIndex();
+       !mesh.vertexIndexIterationFinished(index);
+       index = mesh.getNextVertexIndex(index)) {
+    if (mesh.getVertex(index).getPosition().distanceToSq(position) <= radiusSq) {
+      return index;
+    }
+  }
+  return ~0u;
+}
+
+// Decides whether a Ring that shares vertices with connectionRingIndex (but
+// was not required to stay inside it while being drawn) should become that
+// Ring's child - a Hole/Island cut out of it - or its sibling at the same
+// hierarchical level, then performs the appropriate add*. Containment is
+// tested against the first drawn vertex that is not itself one of the
+// connection Ring's own vertices; a Ring that shares every vertex with its
+// connection Ring is degenerate and left to normalizeAndValidateTree's
+// rejection downstream.
+uint32_t resolveTouchedRingPlacement(
+    bw::core::MeshPrimitiveEditingProxy& mesh,
+    uint32_t connectionRingIndex,
+    bw::core::ClosedPolygon const& ring) {
+  auto mappings = mesh.getNodeMappings();
+  auto connection = ranges::find_if(mappings, [&](auto const& mapping) {
+    return mapping.polygonIndex == connectionRingIndex;
+  });
+  if (connection == mappings.end()) {
+    return ~0u;
+  }
+
+  vector<wp::Vector2> connectionPositions;
+  for (auto index : mesh.getPolygon(connectionRingIndex).getOrderedVertexIndices()) {
+    connectionPositions.push_back(mesh.getVertex(index).getPosition());
+  }
+  auto isSharedWithConnection = [&](wp::Vector2 const& point) {
+    return ranges::any_of(connectionPositions, [&](wp::Vector2 const& other) {
+      return point.distanceToSq(other) <= 1e-6f;
+    });
+  };
+
+  wp::Vector2 sample{};
+  bool haveSample = false;
+  for (auto const& vertex : ring) {
+    if (!isSharedWithConnection(vertex.p)) {
+      sample = vertex.p;
+      haveSample = true;
+      break;
+    }
+  }
+
+  using Role = bw::core::MeshPrimitiveEditingProxy::NodeRole;
+  bool internal = haveSample &&
+                  pointInsideRing(mesh.getMesh(), mesh.getPolygon(connectionRingIndex), sample);
+
+  if (internal) {
+    return connection->role == Role::Hole
+               ? mesh.addIsland(connectionRingIndex, ring)
+               : mesh.addHole(connectionRingIndex, ring);
+  }
+
+  auto parent = connection->parentPolygonIndex;
+  switch (connection->role) {
+    case Role::Shell:
+      return mesh.addShell(ring);
+    case Role::Hole:
+      return mesh.addHole(parent, ring);
+    case Role::Island:
+      return mesh.addIsland(parent, ring);
+  }
+  return ~0u;
 }
 
 bool segmentCrossesDrawnRing(
@@ -1473,6 +1662,40 @@ bool segmentCrossesDrawnRing(
     }
   }
   return false;
+}
+
+// Whether moving from `from` to `to` is a legal next step of the Ring in
+// progress, given how its containing/connection Ring was established.
+// Shared between the live placement call and the side-effect-free preview
+// helpers below so their notion of "valid" never diverges.
+bool meshDrawVertexAllowed(
+    bw::core::MeshPrimitiveEditingProxy const& mesh,
+    wp::Vector2 const& from,
+    wp::Vector2 const& to,
+    uint32_t containingRingIndex,
+    bool touchesRingBoundary,
+    float pickRadiusSq) {
+  // Touching the containing/connection Ring's own vertex is always
+  // permitted - reusing its vertices is the whole point of this feature -
+  // in either mode. Touching a *different* Ring's vertex is ambiguous and
+  // refused, whichever mode this is. Once either endpoint of this segment
+  // legitimately touches the containing Ring, only a *proper* crossing (not
+  // a shared endpoint) of any mesh edge is rejected - `from` itself may
+  // already be sitting on that Ring's boundary, coincident with two of its
+  // edges, from the previous step.
+  auto touchedVertex = findMeshVertexNear(mesh, to, pickRadiusSq);
+  if (touchedVertex != ~0u && ringOwningVertex(mesh, touchedVertex) != containingRingIndex) {
+    return false;
+  }
+  if (segmentProperlyCrossesMesh(mesh.getMesh(), from, to)) {
+    return false;
+  }
+  if (touchesRingBoundary || touchedVertex != ~0u) {
+    return true;
+  }
+  // An ordinary interior point - touching nothing - must still stay
+  // strictly within the containing Ring, exactly as before this feature.
+  return innermostRingAt(mesh, mesh.getNodeMappings(), to) == containingRingIndex;
 }
 
 uint32_t addDrawnRing(
@@ -1528,6 +1751,7 @@ bool Document::armMeshDrawTool(Settings const& settings) {
   mMeshDrawContainingPrimitiveIndex = ~0u;
   mMeshDrawCreatesHole = false;
   mMeshDrawCreatesIsland = false;
+  mMeshDrawTouchesRingBoundary = false;
   mMeshDrawRejection.clear();
   return true;
 }
@@ -1539,6 +1763,7 @@ void Document::disarmMeshDrawTool() {
   mMeshDrawContainingPrimitiveIndex = ~0u;
   mMeshDrawCreatesHole = false;
   mMeshDrawCreatesIsland = false;
+  mMeshDrawTouchesRingBoundary = false;
   mMeshDrawRejection.clear();
 }
 
@@ -1564,6 +1789,10 @@ bool Document::meshDrawCreatesHole() const {
 
 bool Document::meshDrawCreatesIsland() const {
   return mMeshDrawCreatesIsland;
+}
+
+bool Document::meshDrawTouchesRingBoundary() const {
+  return mMeshDrawTouchesRingBoundary;
 }
 
 string const& Document::getMeshDrawRejection() const {
@@ -1598,7 +1827,9 @@ bool Document::meshDrawClickWouldClose(
     return false;
   }
   return !mActiveMesh || mMeshDrawContainingRingIndex == ~0u ||
-         !segmentCrossesMesh(*mActiveMesh, mMeshDrawVertices.back(), endpoint);
+         meshDrawVertexAllowed(
+             *mActiveMesh, mMeshDrawVertices.back(), endpoint,
+             mMeshDrawContainingRingIndex, mMeshDrawTouchesRingBoundary, radiusSq);
 }
 
 Document::MeshDrawPositionState Document::getMeshDrawPositionState(
@@ -1623,10 +1854,9 @@ Document::MeshDrawPositionState Document::getMeshDrawPositionState(
     }
     if (mMeshDrawContainingRingIndex != ~0u &&
         (!mActiveMesh ||
-         innermostRingAt(
-             *mActiveMesh, mActiveMesh->getNodeMappings(), position) !=
-             mMeshDrawContainingRingIndex ||
-         segmentCrossesMesh(*mActiveMesh, mMeshDrawVertices.back(), position))) {
+         !meshDrawVertexAllowed(
+             *mActiveMesh, mMeshDrawVertices.back(), position,
+             mMeshDrawContainingRingIndex, mMeshDrawTouchesRingBoundary, radiusSq))) {
       return MeshDrawPositionState::Invalid;
     }
   }
@@ -1656,6 +1886,23 @@ bool Document::placeMeshDrawVertex(
     }
   }
 
+  // A point that lands within pick radius of an existing vertex of the
+  // active mesh is only ever snapped to it when that vertex belongs to the
+  // containing/connection Ring itself - reusing a Ring's own vertices is the
+  // point of this feature, but snapping onto unrelated topology would
+  // silently move the click. Every other placement keeps the exact clicked
+  // position untouched, exactly as before this feature.
+  auto snappedPosition = position;
+  uint32_t snappedVertexIndex = ~0u;
+  if (mActiveMesh) {
+    snappedVertexIndex = findMeshVertexNear(*mActiveMesh, position, radiusSq);
+    if (snappedVertexIndex != ~0u) {
+      snappedPosition = mActiveMesh->getVertex(snappedVertexIndex).getPosition();
+    }
+  }
+
+  auto placedPosition = position;
+
   if (mMeshDrawVertices.empty()) {
     auto previouslyActiveMeshIndex = mActiveMeshPrimitiveIndex;
     // Exact picking finds filled regions. A point in a hole is not an exact
@@ -1681,43 +1928,80 @@ bool Document::placeMeshDrawVertex(
       }
     }
 
-    if (primitiveIndex != ~0u && meshIneligibilityReason(primitiveIndex).empty() &&
-        activateMesh(primitiveIndex)) {
-      auto ring = innermostRingAt(
-          *mActiveMesh, mActiveMesh->getNodeMappings(), position);
+    // Establishes the Ring context for the primitive that just (re)became
+    // active: either the Ring whose interior contains the click, or - when
+    // the click instead snapped onto an existing vertex from outside every
+    // Ring - that vertex's own Ring as a connection point. The latter's
+    // Shell/Hole/Island placement is resolved once the whole Ring is known,
+    // at close time (see resolveTouchedRingPlacement).
+    auto attachToRingOrBoundary = [&] {
+      if (!mActiveMesh) {
+        return;
+      }
+      auto ring = innermostRingAt(*mActiveMesh, mActiveMesh->getNodeMappings(), position);
       if (ring != ~0u) {
-        mMeshDrawContainingPrimitiveIndex = primitiveIndex;
         mMeshDrawContainingRingIndex = ring;
         mMeshDrawCreatesIsland = mActiveMesh->getPolygon(ring).isHole();
         mMeshDrawCreatesHole = !mMeshDrawCreatesIsland;
+        mMeshDrawTouchesRingBoundary = false;
+        if (snappedVertexIndex != ~0u &&
+            ringOwningVertex(*mActiveMesh, snappedVertexIndex) == ring) {
+          placedPosition = snappedPosition;
+        }
+        return;
       }
+      if (snappedVertexIndex != ~0u) {
+        auto connectionRing = ringOwningVertex(*mActiveMesh, snappedVertexIndex);
+        if (connectionRing != ~0u) {
+          mMeshDrawContainingRingIndex = connectionRing;
+          mMeshDrawTouchesRingBoundary = true;
+          placedPosition = snappedPosition;
+        }
+      }
+    };
+
+    if (primitiveIndex != ~0u && meshIneligibilityReason(primitiveIndex).empty() &&
+        activateMesh(primitiveIndex)) {
+      mMeshDrawContainingPrimitiveIndex = primitiveIndex;
+      attachToRingOrBoundary();
     } else if (previouslyActiveMeshIndex != ~0u &&
                meshIneligibilityReason(previouslyActiveMeshIndex).empty() &&
                activateMesh(previouslyActiveMeshIndex)) {
       // No existing Ring contains the first point: author another root Shell
-      // on the active MeshPrimitive rather than silently switching authority
-      // to a new Primitive.
+      // on the active MeshPrimitive (or attach to a Ring it touches) rather
+      // than silently switching authority to a new Primitive.
       mMeshDrawContainingPrimitiveIndex = previouslyActiveMeshIndex;
+      attachToRingOrBoundary();
     } else {
       clearActiveMesh();
     }
   } else {
-    if (segmentCrossesDrawnRing(mMeshDrawVertices, position, false)) {
+    // A point only snaps onto an existing vertex when that vertex belongs
+    // to the containing/connection Ring itself; touching unrelated topology
+    // is left as an exact click (and, in the fixed-containing-Ring mode,
+    // rejected below exactly as before this feature).
+    if (snappedVertexIndex != ~0u && mActiveMesh &&
+        ringOwningVertex(*mActiveMesh, snappedVertexIndex) == mMeshDrawContainingRingIndex) {
+      placedPosition = snappedPosition;
+    }
+    if (segmentCrossesDrawnRing(mMeshDrawVertices, placedPosition, false)) {
       return reject("Rejected: that edge would make the Ring cross itself.");
     }
     if (mMeshDrawContainingRingIndex != ~0u) {
       if (!mActiveMesh ||
-          innermostRingAt(
-              *mActiveMesh, mActiveMesh->getNodeMappings(), position) !=
-              mMeshDrawContainingRingIndex ||
-          segmentCrossesMesh(*mActiveMesh, mMeshDrawVertices.back(), position)) {
-        return reject("Rejected: that vertex would leave the containing region.");
+          !meshDrawVertexAllowed(
+              *mActiveMesh, mMeshDrawVertices.back(), placedPosition,
+              mMeshDrawContainingRingIndex, mMeshDrawTouchesRingBoundary, radiusSq)) {
+        return reject(
+            mMeshDrawTouchesRingBoundary
+                ? "Rejected: that vertex belongs to a different Ring, or that edge would cross existing topology."
+                : "Rejected: that vertex would leave the containing region.");
       }
     }
   }
 
   mMeshDrawRejection.clear();
-  mMeshDrawVertices.push_back(position);
+  mMeshDrawVertices.push_back(placedPosition);
   return true;
 }
 
@@ -1732,6 +2016,7 @@ bool Document::removeLastMeshDrawVertex() {
     mMeshDrawContainingPrimitiveIndex = ~0u;
     mMeshDrawCreatesHole = false;
     mMeshDrawCreatesIsland = false;
+    mMeshDrawTouchesRingBoundary = false;
   }
   return true;
 }
@@ -1746,6 +2031,7 @@ bool Document::escapeMeshDraw() {
     mMeshDrawContainingPrimitiveIndex = ~0u;
     mMeshDrawCreatesHole = false;
     mMeshDrawCreatesIsland = false;
+    mMeshDrawTouchesRingBoundary = false;
     mMeshDrawRejection.clear();
     return true;
   }
@@ -1802,6 +2088,8 @@ bw::core::Primitive* Document::closeMeshDrawRing() {
     try {
       newRing = mMeshDrawContainingRingIndex == ~0u
                     ? mActiveMesh->addShell(ring)
+                : mMeshDrawTouchesRingBoundary
+                    ? resolveTouchedRingPlacement(*mActiveMesh, mMeshDrawContainingRingIndex, ring)
                 : mMeshDrawCreatesHole
                     ? mActiveMesh->addHole(mMeshDrawContainingRingIndex, ring)
                     : mActiveMesh->addIsland(mMeshDrawContainingRingIndex, ring);
@@ -2006,24 +2294,8 @@ std::shared_ptr<bw::core::World> Document::createWorld(float size, float gridSiz
   generator->setPrimitiveFilter(mPrimitiveFilter);
   world->setWorldDataGenerator(generator);
 
-  // Create ghost primitive as a preview for creating primitives
-  auto ghost = new bw::core::RegularPolygon(
-      bw::core::Primitive::Operation::Union,
-      bw::core::Primitive::FillRule::NonZero,
-      3);
-
-  ghost->setPriority(0);
-  ghost->setPosition(wp::Vector2::ZERO);
-
-  {
-    auto mutation = ghost->mutate();
-    mutation.animation(bw::core::VertexTransformer::Key::Scale).setPoints({{0.0f, 1.0f}, {1.0f, 1.0f}});
-    mutation.animation(bw::core::VertexTransformer::Key::Angle).setPoints({{0.0f, 0.0f}, {1.0f, 0.0f}});
-    mutation.animation(bw::core::VertexTransformer::Key::OrbitAngle).setPoints({{0.0f, 0.0f}, {1.0f, 0.0f}});
-    mutation.animation(bw::core::VertexTransformer::Key::OrbitDistance).setPoints({{0.0f, 0.0f}, {1.0f, 0.0f}});
-  }
-
-  updateGhost(world, ghost);
+  // Create ghost primitive as a preview for creating primitives.
+  updateGhost(world, createEditorGhost());
 
   return world;
 }
@@ -2073,8 +2345,18 @@ bool Document::openDoc(string const& filepath) {
         }
       }
 
-      // Add the ghost back into the grids after they have been recreated
-      mWorld->replacePrimitive(ED_GHOST_INDEX, mWorld->getPrimitive(ED_GHOST_INDEX), false);
+      // Saved Worlds omit the editor-only ghost. Restore it at the front of
+      // the first PrimitiveField's authored order so ED_GHOST_INDEX remains
+      // stable even when that field is empty and index 0 currently belongs to
+      // derived output from a later, non-editable step such as PrefabField.
+      auto* activeLayer = mWorld->getActiveLayer();
+      auto hasGhost = mWorld->getNumPrimitives() > 0 &&
+                      (mWorld->getPrimitive(ED_GHOST_INDEX)->getFlags() &
+                       BW_PRIMITIVE_GHOST_FLAG) != 0;
+      if (!hasGhost) {
+        auto* ghost = createEditorGhost();
+        activeLayer->prependPrimitive(ghost);
+      }
       return true;
     } else {
       auto const& errors = mWorld->getDeserializationErrors();

@@ -348,6 +348,41 @@ void theGhostIsHiddenWhileAPrefabFieldStepIsActive() {
           "but PrefabField never accepts a new Primitive");
 }
 
+void activePrefabFieldPrimitivesUseTheActiveStepColour() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs();
+  auto definitionsIndex = layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Visible instance");
+  definitions->setSelectedPrefab(prefab);
+  layer->setActiveStep(definitionsIndex);
+  document.getWorld()->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero,
+      1.0f));
+
+  auto* field = new bw::core::PrefabField();
+  auto fieldIndex = layer->addStep(field);
+  field->bind(*layer, definitions);
+  field->setSelectedPrefab(*definitions, prefab);
+  require(field->placeSelected(*layer, {0, 0}),
+          "the PrefabField colour fixture did not place its instance");
+  definitions->clearSelectedPrefab();
+  layer->setActiveStep(fieldIndex);
+  layer->rebuild();
+
+  auto* output = layer->getPrimitive(layer->getNumPrimitives() - 1);
+  require(layer->getOwningStepIndex(output) == fieldIndex,
+          "the PrefabField colour fixture did not produce its Primitive");
+  require(!editor::primitiveFadedForActiveStep(*layer, output),
+          "an active PrefabField Primitive used the inactive-step colour");
+
+  layer->setActiveStep(0);
+  require(editor::primitiveFadedForActiveStep(*layer, output),
+          "an inactive PrefabField Primitive retained the active-step colour");
+}
+
 void refusingStepPrimitivesAreNotSelectableInPrimitiveMode() {
   editor::Document document;
   editor::Settings settings;
@@ -421,6 +456,90 @@ void openingADocumentReplacesTheActiveDocument() {
   std::filesystem::remove(filepath);
 }
 
+void openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost() {
+  auto const filepath = std::filesystem::temp_directory_path() /
+                        "boolean-world-prefab-field-document-open-test.yaml";
+
+  editor::Document source;
+  source.newDoc();
+  auto* layer = source.getWorld()->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs();
+  auto definitionsIndex = layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Only output");
+  definitions->setSelectedPrefab(prefab);
+  layer->setActiveStep(definitionsIndex);
+  source.getWorld()->addPrimitive(bw::core::MeshPrimitive::fromComplexPolygons(
+      bw::core::Primitive::Operation::Union,
+      {{{{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}}}}));
+
+  auto* field = new bw::core::PrefabField();
+  auto fieldIndex = layer->addStep(field);
+  field->bind(*layer, definitions);
+  field->setSelectedPrefab(*definitions, prefab);
+  require(field->placeSelected(*layer, {0, 0}),
+          "the PrefabField open fixture did not place its instance");
+  definitions->clearSelectedPrefab();
+  layer->setActiveStep(fieldIndex);
+  source.saveDocAs(filepath.string());
+
+  editor::Document loaded;
+  require(loaded.openDoc(filepath.string()),
+          "opening a World whose first saved output came from PrefabField failed");
+  require((loaded.getGhost()->getFlags() & BW_PRIMITIVE_GHOST_FLAG) != 0 &&
+              loaded.getGhost()->getId() == ED_GHOST_INDEX,
+          "opening the PrefabField World did not restore the ghost at index 0");
+  require(loaded.getWorld()->getNumPrimitives() == 2,
+          "restoring the ghost lost or duplicated the PrefabField output");
+
+  auto* loadedLayer = loaded.getWorld()->getActiveLayer();
+  auto* loadedDefinitions =
+      dynamic_cast<bw::core::DefinePrefabs*>(loadedLayer->getStep(definitionsIndex));
+  require(loadedDefinitions && loadedDefinitions->getNumPrefabs() == 1,
+          "opening the PrefabField World lost its Prefab definition");
+  loadedLayer->setActiveStep(definitionsIndex);
+  loadedDefinitions->setSelectedPrefab(loadedDefinitions->getPrefab(0));
+  loadedLayer->rebuild();
+
+  editor::Settings settings;
+  settings.ghostActive = false;
+  auto hovered = loaded.getHoveredPrimitiveIndices({0.0f, 0.0f}, settings);
+  require(hovered.size() == 1 &&
+              loadedLayer->getOwningStepIndex(loaded.getWorld()->getPrimitive(hovered.front())) ==
+                  definitionsIndex,
+          "a loaded Prefab's MeshPrimitive was not hover-selectable in Primitive mode");
+
+  std::filesystem::remove(filepath);
+}
+
+void worldTestPrefabMeshPrimitivesAreHoverSelectable() {
+  auto const filepath = std::filesystem::path(__FILE__).parent_path() /
+                        "../../app/resources/world-test-1.yaml";
+
+  editor::Document document;
+  require(document.openDoc(filepath.lexically_normal().string()),
+          "world-test-1.yaml did not open for its Prefab selection regression");
+
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = dynamic_cast<bw::core::DefinePrefabs*>(layer->getStep(1));
+  require(definitions && definitions->getNumPrefabs() > 0,
+          "world-test-1.yaml no longer has its expected Prefab definition");
+  layer->setActiveStep(1);
+  definitions->setSelectedPrefab(definitions->getPrefab(0));
+  layer->rebuild();
+
+  editor::Settings settings;
+  settings.ghostActive = false;
+  auto firstHits = document.getHoveredPrimitiveIndices({48.0f, -77.0f}, settings);
+  auto secondHits = document.getHoveredPrimitiveIndices({-44.0f, -44.0f}, settings);
+  std::set<uint32_t> hits(firstHits.begin(), firstHits.end());
+  hits.insert(secondHits.begin(), secondHits.end());
+  require(hits.size() == 2 &&
+              std::all_of(hits.begin(), hits.end(), [&](uint32_t index) {
+                return layer->getOwningStepIndex(document.getWorld()->getPrimitive(index)) == 1;
+              }),
+          "world-test-1.yaml's Prefab MeshPrimitives were not hover-selectable in Primitive mode");
+}
+
 void aFailedOpenLeavesTheDocumentInactiveAndWithoutAFilepath() {
   auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-failure-test.yaml";
 
@@ -486,9 +605,12 @@ int main() {
     selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps();
     prefabPrimitivesAreVisibleAndFoldedInIsolationOnlyWhileTheirPrefabIsSelected();
     theGhostIsHiddenWhileAPrefabFieldStepIsActive();
+    activePrefabFieldPrimitivesUseTheActiveStepColour();
     refusingStepPrimitivesAreNotSelectableInPrimitiveMode();
     meshEligibilityRequiresTheSelectedDirectlyEditableStep();
     openingADocumentReplacesTheActiveDocument();
+    openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost();
+    worldTestPrefabMeshPrimitivesAreHoverSelectable();
     aFailedOpenLeavesTheDocumentInactiveAndWithoutAFilepath();
     std::cout << "Document selection and hover queries passed\n";
     return 0;

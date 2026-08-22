@@ -44,6 +44,12 @@ bool primitiveParticipatesInEditorFold(
     bw::core::Primitive const* primitive,
     Settings const& settings);
 
+// Whether an otherwise-visible Primitive should use the inactive-step colour
+// treatment in the world overlay.
+bool primitiveFadedForActiveStep(
+    bw::core::Layer const& layer,
+    bw::core::Primitive const* primitive);
+
 struct DocumentHover {
   HoverableType type{HoverableType::None};
   std::vector<uint32_t> indices;
@@ -105,6 +111,12 @@ class Document {
   uint32_t mMeshDrawContainingPrimitiveIndex{~0u};
   bool mMeshDrawCreatesHole{false};
   bool mMeshDrawCreatesIsland{false};
+  // True when mMeshDrawContainingRingIndex was established by a click
+  // snapping onto an existing Ring's vertex while itself outside every Ring,
+  // rather than by landing inside one. Its Shell/Hole/Island placement is
+  // then resolved once the whole Ring is known, at close time, instead of
+  // being fixed from the first click.
+  bool mMeshDrawTouchesRingBoundary{false};
   std::string mMeshDrawRejection;
   wp::Vector2 mMeshDrawRejectedPosition;
 
@@ -271,6 +283,10 @@ public:
   [[nodiscard]] bool meshDrawCreatesNewPrimitive() const;
   [[nodiscard]] bool meshDrawCreatesHole() const;
   [[nodiscard]] bool meshDrawCreatesIsland() const;
+  // True while the in-progress Ring is anchored to an existing Ring's vertex
+  // from outside it: its Shell/Hole/Island placement is not yet decided and
+  // is instead resolved by closeMeshDrawRing from the Ring's final shape.
+  [[nodiscard]] bool meshDrawTouchesRingBoundary() const;
   [[nodiscard]] std::string const& getMeshDrawRejection() const;
   [[nodiscard]] wp::Vector2 const& getMeshDrawRejectedPosition() const;
 
@@ -310,6 +326,10 @@ public:
   // ghost. Disarms the tool, makes the new mesh active with nothing
   // sub-selected. Returns the new Primitive, or nullptr if it refused.
   bw::core::Primitive* closeMeshDrawRing();
+
+  // Splits one Edge at the point projected onto it, commits the topology,
+  // and returns the newly-created Vertex index, or ~0u when no split occurs.
+  uint32_t splitMeshEdgeAt(uint32_t edgeIndex, wp::Vector2 const& worldPosition);
 
   // Splits every given edge at its (unsnapped) midpoint, leaving both
   // resulting half-edges selected so repeated splits subdivide further.

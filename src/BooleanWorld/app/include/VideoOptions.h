@@ -49,6 +49,21 @@ inline constexpr std::array<AntiAliasing, 5> allAntiAliasingOptions{
 inline constexpr std::size_t antiAliasingOptionCount =
     allAntiAliasingOptions.size();
 
+// Screen-space ambient-occlusion method used by the world render pipeline.
+enum class AmbientOcclusion : int {
+  None = 0,
+  Ssao = 1,
+  Gtao = 2,
+};
+
+inline constexpr std::array<AmbientOcclusion, 3> allAmbientOcclusionOptions{
+    AmbientOcclusion::None,
+    AmbientOcclusion::Ssao,
+    AmbientOcclusion::Gtao};
+
+inline constexpr std::size_t ambientOcclusionOptionCount =
+    allAmbientOcclusionOptions.size();
+
 // Sampling used when the resolved world target is stretched across the screen.
 enum class RenderTextureFilter : int {
   Linear = 0,
@@ -83,6 +98,7 @@ inline constexpr std::size_t renderScaleIndex(RenderScale scale) {
 struct VideoOptions {
   RenderScale renderScale{RenderScale::Full};
   AntiAliasing antiAliasing{AntiAliasing::Off};
+  AmbientOcclusion ambientOcclusion{AmbientOcclusion::Gtao};
   RenderTextureFilter renderTextureFilter{RenderTextureFilter::Linear};
 };
 
@@ -216,6 +232,45 @@ inline constexpr std::optional<AntiAliasing> antiAliasingFromName(
   for (auto antiAliasing : allAntiAliasingOptions) {
     if (antiAliasingName(antiAliasing) == name) {
       return antiAliasing;
+    }
+  }
+
+  return std::nullopt;
+}
+
+inline constexpr std::string_view ambientOcclusionName(
+    AmbientOcclusion ambientOcclusion) {
+  switch (ambientOcclusion) {
+    case AmbientOcclusion::Ssao:
+      return "ssao";
+    case AmbientOcclusion::Gtao:
+      return "gtao";
+    case AmbientOcclusion::None:
+      break;
+  }
+
+  return "none";
+}
+
+inline constexpr int ambientOcclusionCode(AmbientOcclusion ambientOcclusion) {
+  return static_cast<int>(ambientOcclusion);
+}
+
+inline constexpr std::optional<AmbientOcclusion> ambientOcclusionFromCode(
+    int code) {
+  if (code < 0 ||
+      static_cast<std::size_t>(code) >= ambientOcclusionOptionCount) {
+    return std::nullopt;
+  }
+
+  return allAmbientOcclusionOptions[static_cast<std::size_t>(code)];
+}
+
+inline constexpr std::optional<AmbientOcclusion> ambientOcclusionFromName(
+    std::string_view name) {
+  for (auto ambientOcclusion : allAmbientOcclusionOptions) {
+    if (ambientOcclusionName(ambientOcclusion) == name) {
+      return ambientOcclusion;
     }
   }
 

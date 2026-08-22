@@ -689,9 +689,15 @@ void MeshPrimitiveEditingProxy::moveRing(uint32_t polygonIndex, wp::Vector2 cons
 }
 
 bool MeshPrimitiveEditingProxy::splitEdge(
-    uint32_t edgeIndex, wp::geometry::SplitEdgeResult* result) {
-  wp::geometry::MeshOperations::splitEdge(&mImpl->mesh, edgeIndex, 0.5f, result);
+    uint32_t edgeIndex, float t,
+    wp::geometry::SplitEdgeResult* result) {
+  wp::geometry::MeshOperations::splitEdge(&mImpl->mesh, edgeIndex, t, result);
   return !result || !result->newEdgeIndices.empty();
+}
+
+bool MeshPrimitiveEditingProxy::splitEdge(
+    uint32_t edgeIndex, wp::geometry::SplitEdgeResult* result) {
+  return splitEdge(edgeIndex, 0.5f, result);
 }
 
 bool MeshPrimitiveEditingProxy::mutateRings(

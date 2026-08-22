@@ -238,6 +238,11 @@ public:
   // produces nothing.
   uint32_t addPrimitive(Primitive* primitive);
 
+  // Prepends to the first step's authored Primitive order, taking ownership
+  // and rebuilding the Layer. Intended for callers that require derived
+  // index 0 rather than active-step append semantics.
+  uint32_t prependPrimitive(Primitive* primitive);
+
   void removePrimitive(Primitive* primitive, bool failIfNotFound = true);
 
   void removePrimitive(uint32_t index);

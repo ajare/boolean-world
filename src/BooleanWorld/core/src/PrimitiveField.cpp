@@ -137,6 +137,12 @@ uint32_t PrimitiveField::addPrimitive(Primitive* primitive) {
   return adoptPrimitive(primitive);
 }
 
+uint32_t PrimitiveField::prependPrimitive(Primitive* primitive) {
+  mPrimitives.insert(mPrimitives.begin(), primitive);
+  modify();
+  return 0;
+}
+
 void PrimitiveField::removePrimitive(Primitive* primitive) {
   auto it = find(mPrimitives.begin(), mPrimitives.end(), primitive);
   if (it == mPrimitives.end()) {

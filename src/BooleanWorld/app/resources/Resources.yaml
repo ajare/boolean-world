@@ -352,7 +352,7 @@ Resources:
         location: "shaders/world.vert"
       - type: "Shader"
         name: "WorldFragmentShader"
-        location: "shaders/world.frag"
+        location: "shaders/world_pbr.frag"
         Definitions:
           Definition:
             textures: "1"

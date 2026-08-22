@@ -15,7 +15,8 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
                                          std::string const& inputSection = "",
                                          std::string const& renderScaleLine = "",
                                          std::string const& antiAliasingLine = "",
-                                         std::string const& renderTextureFilterLine = "") {
+                                         std::string const& renderTextureFilterLine = "",
+                                         std::string const& ambientOcclusionLine = "") {
   auto path = std::filesystem::temp_directory_path() / "boolean-world-program-options-test.yaml";
   std::ofstream stream(path);
   stream << "Configuration:\n"
@@ -27,6 +28,7 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
          << renderScaleLine
          << antiAliasingLine
          << renderTextureFilterLine
+         << ambientOcclusionLine
          << "  Audio:\n"
             "    Enabled: false\n"
             "    Channels: 32\n"
@@ -108,6 +110,20 @@ ProgramOptions parseWithRenderTextureFilter(std::string const& filterLine) {
   }
 }
 
+ProgramOptions parseWithAmbientOcclusion(
+    std::string const& ambientOcclusionLine) {
+  auto path = writeConfiguration(
+      "", "", "", "", "", ambientOcclusionLine);
+  try {
+    auto options = parseProgramOptions(path.string());
+    std::filesystem::remove(path);
+    return options;
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+}
+
 void requireInputRejected(std::string const& inputSection, std::string const& description) {
   try {
     (void)parseWithInput(inputSection);
@@ -149,6 +165,19 @@ void requireRenderTextureFilterRejected(
   } catch (std::exception const& error) {
     require(std::string(error.what()).find("RenderTextureFilter") != std::string::npos,
             "The render-texture filter error did not name the field.");
+    return;
+  }
+  throw std::runtime_error("Video configuration accepted " + description + ".");
+}
+
+void requireAmbientOcclusionRejected(
+    std::string const& ambientOcclusionLine,
+    std::string const& description) {
+  try {
+    (void)parseWithAmbientOcclusion(ambientOcclusionLine);
+  } catch (std::exception const& error) {
+    require(std::string(error.what()).find("AmbientOcclusion") != std::string::npos,
+            "The ambient-occlusion error did not name the field.");
     return;
   }
   throw std::runtime_error("Video configuration accepted " + description + ".");
@@ -202,6 +231,23 @@ int main() {
     requireAntiAliasingRejected("    AA: msaa-16x\n", "an unsupported MSAA sample count");
     requireAntiAliasingRejected("    AA: 4\n", "a numeric AA setting");
     requireAntiAliasingRejected("    AA:\n", "an empty AA setting");
+
+    require(parseWithAmbientOcclusion("").video.ambientOcclusion ==
+                bw::app::AmbientOcclusion::Gtao,
+            "A configuration without AmbientOcclusion did not default to GTAO.");
+    require(parseWithAmbientOcclusion("    AmbientOcclusion: SsAo\n")
+                    .video.ambientOcclusion == bw::app::AmbientOcclusion::Ssao,
+            "The configured SSAO method did not parse case-insensitively.");
+    require(parseWithAmbientOcclusion("    AmbientOcclusion: GTAO\n")
+                    .video.ambientOcclusion == bw::app::AmbientOcclusion::Gtao,
+            "The configured GTAO method did not parse case-insensitively.");
+    require(parseWithAmbientOcclusion("    AmbientOcclusion: none\n")
+                    .video.ambientOcclusion == bw::app::AmbientOcclusion::None,
+            "The configured disabled ambient occlusion did not parse.");
+    requireAmbientOcclusionRejected(
+        "    AmbientOcclusion: hbao\n", "an unknown ambient-occlusion method");
+    requireAmbientOcclusionRejected(
+        "    AmbientOcclusion:\n", "an empty ambient-occlusion method");
 
     require(parseWithRenderTextureFilter("").video.renderTextureFilter ==
                 bw::app::RenderTextureFilter::Linear,

@@ -162,6 +162,29 @@ void EditorInteraction::updateSelection(
                               : DocumentHover{HoverableType::MeshSubObject, move(hits)};
       }
 
+      if (input.control && input.shift &&
+          settings.meshSubMode == Settings::MeshSubMode::Edge &&
+          mHover.type == HoverableType::MeshSubObject &&
+          !mHover.indices.empty()) {
+        auto edgeIndex = mHover.indices.front();
+        auto splitPosition = input.worldPosition;
+        transactUndoableAction(
+            doc, "Split Mesh Edge At Pointer",
+            [&settings, edgeIndex, splitPosition](Document* actionDocument) {
+              auto vertexIndex = actionDocument->splitMeshEdgeAt(
+                  edgeIndex, splitPosition);
+              if (vertexIndex == ~0u) {
+                return false;
+              }
+              setMeshSubMode(
+                  actionDocument, settings, Settings::MeshSubMode::Vertex);
+              actionDocument->setSelectedMeshSubObjectIndices(
+                  Settings::MeshSubMode::Vertex, {vertexIndex});
+              return true;
+            });
+        return;
+      }
+
       if (mHover.type == HoverableType::MeshSubObject) {
         auto const& selection =
             doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);

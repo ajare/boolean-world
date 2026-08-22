@@ -5,6 +5,7 @@
 #include <deque>
 #include <mutex>
 
+#include <mpp/AmbientOcclusion.h>
 #include <mpp/AntiAliasing.h>
 #include <mpp/Camera.h>
 
@@ -36,6 +37,16 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     bool collisionSim{false};
     bool clipGeneration{false};
     bool options{false};
+
+    bw::app::AmbientOcclusion ambientOcclusion{
+        bw::app::AmbientOcclusion::Gtao};
+    bool ambientOcclusionEnabled{true};
+    mpp::SSAOOptions ssao;
+    mpp::GTAOOptions gtao;
+
+    bool overrideWorldMaterial{false};
+    int worldMaterialIndex{0};
+    float worldMaterialScale{1.0f};
 
     bool _renderTriangulationLines{false};
 
@@ -179,8 +190,6 @@ private:
   void debug_renderOptions();
 
   void ImGui_renderArrangement(bw::core::ArrangementWorldData const& worldData, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList);
-
-  void ImGui_renderPrimitives(std::vector<wp::Vector2> const& viewVertices, std::vector<bw::core::Primitive*> const& primitives, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList);
 
   void ImGui_renderView(std::vector<wp::Vector2> const& viewVertices, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList);
 

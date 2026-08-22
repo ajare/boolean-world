@@ -157,6 +157,9 @@ public:
   void moveVertices(wp::geometry::IndexVector const& vertexIndices, wp::Vector2 const& delta);
   void moveEdge(uint32_t edgeIndex, wp::Vector2 const& delta);
   void moveRing(uint32_t polygonIndex, wp::Vector2 const& delta);
+  bool splitEdge(
+      uint32_t edgeIndex, float t,
+      wp::geometry::SplitEdgeResult* result = nullptr);
   bool splitEdge(uint32_t edgeIndex, wp::geometry::SplitEdgeResult* result = nullptr);
   bool removeVertex(uint32_t vertexIndex);
   bool removeEdge(uint32_t edgeIndex);

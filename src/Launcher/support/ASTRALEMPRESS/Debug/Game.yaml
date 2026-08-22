@@ -4,8 +4,9 @@ Configuration:
     Height: 768
     Fullscreen: false
     VSync: true
-    RenderScale: full
+    RenderScale: eighth
     AA: off
+    AmbientOcclusion: gtao
     RenderTextureFilter: linear
   Audio:
     Enabled: false

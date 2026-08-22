@@ -433,6 +433,56 @@ void meshSubObjectClicksSupportModifiersAndRingCycling() {
           "clicking a hole edge in Polygon sub-mode did not select its hole Ring");
 }
 
+void controlShiftClickSplitsAnEdgeAtThePointerAndSelectsTheNewVertex() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshSubMode = editor::Settings::MeshSubMode::Edge;
+  settings.meshEdgeSelectionDistance = 0.25f;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {});
+  require(document.activateMesh(meshIndex),
+          "could not activate the edge split click fixture");
+
+  auto const* mesh = document.getActiveMesh();
+  auto edgeIndex = mesh->getFirstEdgeIndex();
+  auto const& edge = mesh->getEdge(edgeIndex);
+  auto start = mesh->getVertex(edge.getFirstVertex()).getPosition();
+  auto end = mesh->getVertex(edge.getSecondVertex()).getPosition();
+  auto splitPosition = start + (end - start) * 0.25f;
+  uint32_t vertexCountBefore = 0;
+  for (auto index = mesh->getFirstVertexIndex();
+       !mesh->vertexIndexIterationFinished(index);
+       index = mesh->getNextVertexIndex(index)) {
+    ++vertexCountBefore;
+  }
+
+  editor::EditorInteraction interaction;
+  auto click = pointerAt(splitPosition);
+  click.leftClicked = true;
+  click.control = true;
+  click.shift = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+
+  mesh = document.getActiveMesh();
+  uint32_t vertexCountAfter = 0;
+  for (auto index = mesh->getFirstVertexIndex();
+       !mesh->vertexIndexIterationFinished(index);
+       index = mesh->getNextVertexIndex(index)) {
+    ++vertexCountAfter;
+  }
+  require(vertexCountAfter == vertexCountBefore + 1,
+          "Ctrl+Shift+click did not split the hovered Edge");
+  require(settings.meshSubMode == editor::Settings::MeshSubMode::Vertex,
+          "Ctrl+Shift+click did not change from Edge to Vertex sub-mode");
+  require(document.getSelectedMeshVertexIndices().size() == 1,
+          "Ctrl+Shift+click did not select exactly the newly created Vertex");
+  auto newVertex = *document.getSelectedMeshVertexIndices().begin();
+  require(mesh->getVertex(newVertex).getPosition() == splitPosition,
+          "the new Vertex was not created at the clicked point");
+}
+
 void draggingASelectedNestedRingDoesNotCycleToItsShell() {
   editor::Document document;
   editor::Settings settings;
@@ -1742,6 +1792,9 @@ void closingADrawnRingCreatesAMeshPrimitiveWithCanonicalWinding() {
 
 void drawingContextCreatesHolesAndFilledIslands() {
   auto settings = meshDrawSettings();
+  // Small enough that the drawn points never accidentally snap onto the
+  // fixture's own Shell/Hole corners, which sit a few units away.
+  settings.meshVertexPickRadius = 0.1f;
 
   editor::Document holeDocument;
   holeDocument.newDoc();
@@ -2515,6 +2568,150 @@ void drawingContextRejectsEscapesAndSelfCrossings() {
           "drawing inside a non-mesh Primitive did not start an unconfined MeshPrimitive");
 }
 
+void drawingFromAnExistingVertexResolvesSiblingOrCutAtClose() {
+  auto settings = meshDrawSettings();
+  settings.meshVertexPickRadius = 0.5f;
+
+  // A Ring that touches the Shell's own vertex from outside it becomes a new
+  // sibling Shell.
+  editor::Document siblingDocument;
+  siblingDocument.newDoc();
+  auto meshIndex = addMeshWithHole(siblingDocument);
+  require(siblingDocument.activateMesh(meshIndex), "the sibling-Shell fixture did not activate");
+  auto* mesh = siblingDocument.getActiveMesh();
+  auto shellRing = mesh->getFirstPolygonIndex();
+  require(!mesh->getPolygon(shellRing).isHole(), "the fixture's first Ring was not its Shell");
+  auto shellVertices = mesh->getPolygon(shellRing).getOrderedVertexIndices();
+  auto touchPoint = mesh->getVertex(shellVertices.front()).getPosition();
+  wp::Vector2 shellCentre{};
+  for (auto index : shellVertices) shellCentre += mesh->getVertex(index).getPosition();
+  shellCentre /= float(shellVertices.size());
+  auto outward = touchPoint - shellCentre;
+  outward = outward * (1.0f / outward.length());
+  wp::Vector2 perpendicular{-outward.y, outward.x};
+
+  require(siblingDocument.armMeshDrawTool(settings), "the sibling-Shell draw tool did not arm");
+  require(siblingDocument.placeMeshDrawVertex(touchPoint, settings) &&
+              siblingDocument.meshDrawTouchesRingBoundary() &&
+              !siblingDocument.meshDrawCreatesHole() &&
+              !siblingDocument.meshDrawCreatesIsland(),
+          "touching the Shell's own vertex did not anchor an unresolved boundary context");
+  siblingDocument.placeMeshDrawVertex(touchPoint + outward * 3.0f + perpendicular * 1.0f, settings);
+  siblingDocument.placeMeshDrawVertex(touchPoint + outward * 3.0f - perpendicular * 1.0f, settings);
+  auto* siblingPrimitive = siblingDocument.closeMeshDrawRing();
+  require(siblingPrimitive != nullptr, "an external Ring touching a Shell vertex did not close");
+  auto* siblingMesh = static_cast<bw::core::MeshPrimitive*>(siblingPrimitive);
+  require(siblingMesh->getShells().size() == 2,
+          "an external Ring touching a Shell vertex was not authored as a sibling Shell");
+
+  // The same touch point, but with the other two vertices pulled inward
+  // instead, becomes a Hole cut into that Shell.
+  editor::Document holeDocument;
+  holeDocument.newDoc();
+  auto holeMeshIndex = addMeshWithHole(holeDocument);
+  require(holeDocument.activateMesh(holeMeshIndex), "the boundary-cut fixture did not activate");
+  auto* holeMesh = holeDocument.getActiveMesh();
+  auto holeShellRing = holeMesh->getFirstPolygonIndex();
+  auto holeShellVertices = holeMesh->getPolygon(holeShellRing).getOrderedVertexIndices();
+  auto holeTouchPoint = holeMesh->getVertex(holeShellVertices.front()).getPosition();
+  wp::Vector2 holeShellCentre{};
+  for (auto index : holeShellVertices) holeShellCentre += holeMesh->getVertex(index).getPosition();
+  holeShellCentre /= float(holeShellVertices.size());
+  auto inward = holeShellCentre - holeTouchPoint;
+  inward = inward * (1.0f / inward.length());
+  wp::Vector2 holePerpendicular{-inward.y, inward.x};
+
+  require(holeDocument.armMeshDrawTool(settings), "the boundary-cut draw tool did not arm");
+  require(holeDocument.placeMeshDrawVertex(holeTouchPoint, settings) &&
+              holeDocument.meshDrawTouchesRingBoundary(),
+          "touching the Shell's own vertex did not anchor an unresolved boundary context");
+  holeDocument.placeMeshDrawVertex(
+      holeTouchPoint + inward * 2.0f + holePerpendicular * 0.5f, settings);
+  holeDocument.placeMeshDrawVertex(
+      holeTouchPoint + inward * 2.0f - holePerpendicular * 0.5f, settings);
+  auto* holePrimitive = holeDocument.closeMeshDrawRing();
+  require(holePrimitive != nullptr, "an internal Ring touching a Shell vertex did not close");
+  auto* holeResultMesh = static_cast<bw::core::MeshPrimitive*>(holePrimitive);
+  require(holeResultMesh->getShells().size() == 1 &&
+              holeResultMesh->getShells().front().holes.size() == 2,
+          "an internal Ring touching a Shell vertex was not authored as a new Hole");
+
+  // Touching two different Rings in the same Ring is ambiguous and rejected.
+  editor::Document ambiguousDocument;
+  ambiguousDocument.newDoc();
+  auto ambiguousMeshIndex = addMeshWithHole(ambiguousDocument);
+  require(ambiguousDocument.activateMesh(ambiguousMeshIndex), "the ambiguous fixture did not activate");
+  auto* ambiguousMesh = ambiguousDocument.getActiveMesh();
+  auto outerRing = ambiguousMesh->getFirstPolygonIndex();
+  uint32_t innerHoleRing = ~0u;
+  for (auto index = ambiguousMesh->getFirstPolygonIndex();
+       !ambiguousMesh->polygonIndexIterationFinished(index);
+       index = ambiguousMesh->getNextPolygonIndex(index)) {
+    if (ambiguousMesh->getPolygon(index).isHole()) {
+      innerHoleRing = index;
+      break;
+    }
+  }
+  require(innerHoleRing != ~0u, "the ambiguous fixture had no Hole Ring");
+  auto outerVertex = ambiguousMesh->getVertex(
+      ambiguousMesh->getPolygon(outerRing).getOrderedVertexIndices().front());
+  auto holeVertex = ambiguousMesh->getVertex(
+      ambiguousMesh->getPolygon(innerHoleRing).getOrderedVertexIndices().front());
+
+  require(ambiguousDocument.armMeshDrawTool(settings), "the ambiguous draw tool did not arm");
+  require(ambiguousDocument.placeMeshDrawVertex(outerVertex.getPosition(), settings) &&
+              ambiguousDocument.meshDrawTouchesRingBoundary(),
+          "touching the outer Shell's vertex did not anchor a boundary context");
+  require(!ambiguousDocument.placeMeshDrawVertex(holeVertex.getPosition(), settings) &&
+              ambiguousDocument.getMeshDrawVertices().size() == 1 &&
+              ambiguousDocument.getMeshDrawRejection().find("different Ring") != std::string::npos,
+          "touching a second, different Ring's vertex was not rejected with clear feedback");
+}
+
+void anInternalRingCanTouchItsContainingRingsVertex() {
+  auto settings = meshDrawSettings();
+  settings.meshVertexPickRadius = 0.5f;
+
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMeshWithHole(document);
+  require(document.activateMesh(meshIndex), "the internal-touch fixture did not activate");
+  auto* mesh = document.getActiveMesh();
+  auto shellRing = mesh->getFirstPolygonIndex();
+  require(!mesh->getPolygon(shellRing).isHole(), "the fixture's first Ring was not its Shell");
+  auto shellVertices = mesh->getPolygon(shellRing).getOrderedVertexIndices();
+  auto touchPoint = mesh->getVertex(shellVertices.front()).getPosition();
+  wp::Vector2 shellCentre{};
+  for (auto index : shellVertices) shellCentre += mesh->getVertex(index).getPosition();
+  shellCentre /= float(shellVertices.size());
+  auto inward = shellCentre - touchPoint;
+  inward = inward * (1.0f / inward.length());
+  wp::Vector2 perpendicular{-inward.y, inward.x};
+
+  // Starts well inside the Shell, away from any vertex, so the containing
+  // Ring is fixed the ordinary way (mMeshDrawTouchesRingBoundary stays
+  // false) - then a later point touches that same Shell's own vertex.
+  auto interiorStart = touchPoint + inward * 1.0f + perpendicular * 0.5f;
+
+  require(document.armMeshDrawTool(settings), "the internal-touch draw tool did not arm");
+  require(document.placeMeshDrawVertex(interiorStart, settings) &&
+              !document.meshDrawTouchesRingBoundary() &&
+              document.meshDrawCreatesHole(),
+          "the first interior click did not fix an ordinary hole context");
+  require(document.placeMeshDrawVertex(touchPoint, settings),
+          "touching the containing Shell's own vertex from inside was rejected");
+  require(document.placeMeshDrawVertex(
+              touchPoint + inward * 1.0f - perpendicular * 0.5f, settings),
+          "leaving a touched Shell vertex back into the interior was rejected");
+  auto* primitive = document.closeMeshDrawRing();
+  require(primitive != nullptr,
+          "an internal Ring touching its containing Shell's vertex did not close");
+  auto* resultMesh = static_cast<bw::core::MeshPrimitive*>(primitive);
+  require(resultMesh->getShells().size() == 1 &&
+              resultMesh->getShells().front().holes.size() == 2,
+          "the internal Ring touching its Shell's vertex was not authored as a new Hole");
+}
+
 void theWholeDrawingGestureIsOneUndoEntry() {
   editor::Document document;
   auto settings = meshDrawSettings();
@@ -2749,6 +2946,7 @@ int main() {
     meshClicksBuildAndSwitchTheActiveProxy();
     rubberBandSelectionSupportsPlainControlAndShiftPolicies();
     meshSubObjectClicksSupportModifiersAndRingCycling();
+    controlShiftClickSplitsAnEdgeAtThePointerAndSelectsTheNewVertex();
     draggingASelectedNestedRingDoesNotCycleToItsShell();
     meshRubberBandUsesContainmentAndModifierPolicies();
     draggingOneRubberBandSelectedVertexMovesTheWholeSelection();
@@ -2785,6 +2983,8 @@ int main() {
     decomposingAMeshCreatesFilledRegionPrimitives();
     deletingAWeldedVertexHealsTheHoleAndIsland();
     drawingContextRejectsEscapesAndSelfCrossings();
+    drawingFromAnExistingVertexResolvesSiblingOrCutAtClose();
+    anInternalRingCanTouchItsContainingRingsVertex();
     theWholeDrawingGestureIsOneUndoEntry();
     prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint();
     prefabFieldClickPlacesAMeshPrefabPrimitiveWithoutCrashing();

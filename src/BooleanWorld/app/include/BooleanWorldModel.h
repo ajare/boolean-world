@@ -11,6 +11,8 @@ private:
 
   bw::app::AntiAliasing mActiveAntiAliasing;
 
+  bw::app::AmbientOcclusion mAmbientOcclusion;
+
   bw::app::RenderTextureFilter mRenderTextureFilter;
 
 public:
@@ -20,6 +22,7 @@ public:
       : applib::Model(handlerFactory, resourceMgr),
         mActiveRenderScale(videoOptions.renderScale),
         mActiveAntiAliasing(videoOptions.antiAliasing),
+        mAmbientOcclusion(videoOptions.ambientOcclusion),
         mRenderTextureFilter(videoOptions.renderTextureFilter) {
   }
 
@@ -37,6 +40,10 @@ public:
 
   void setActiveAntiAliasing(bw::app::AntiAliasing antiAliasing) {
     mActiveAntiAliasing = antiAliasing;
+  }
+
+  bw::app::AmbientOcclusion getAmbientOcclusion() const {
+    return mAmbientOcclusion;
   }
 
   bw::app::RenderTextureFilter getRenderTextureFilter() const {

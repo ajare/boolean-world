@@ -66,6 +66,15 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
   // Create uniforms for each material mesh.
   mUniforms.resize(worldBatch->getMaterialMeshCount(), nullptr);
+  mMaterialIndices.resize(worldBatch->getMaterialMeshCount(), 0);
+
+  auto initializeGlobalUniforms = [](mpp::UniformCollection& uniforms) {
+    uniforms.setUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
+    uniforms.setUniform("GLOBAL_TIME", 0.0f);
+    uniforms.setUniform("PIXEL_SIZE", 1.0f / 32);
+    uniforms.setUniform("PLAYER_POSITION", glm::vec3{});
+    uniforms.setUniform("MATERIAL_SCALE", 32.0f);
+  };
 
   auto numPrimitives = world->getNumPrimitives();
 
@@ -86,8 +95,11 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)properties.floorMaterialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, properties.floorMaterialDef.data.params.data());
+      initializeGlobalUniforms(*uniforms);
 
       mUniforms[meshIndex] = uniforms;
+      mMaterialIndices[meshIndex] =
+          static_cast<int32_t>(properties.floorMaterialIndex);
     }
 
     // Ceiling
@@ -103,8 +115,11 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)properties.ceilingMaterialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, properties.ceilingMaterialDef.data.params.data());
+      initializeGlobalUniforms(*uniforms);
 
       mUniforms[meshIndex] = uniforms;
+      mMaterialIndices[meshIndex] =
+          static_cast<int32_t>(properties.ceilingMaterialIndex);
     }
 
     // Wall
@@ -120,23 +135,36 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)properties.wallMaterialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, properties.wallMaterialDef.data.params.data());
+      initializeGlobalUniforms(*uniforms);
 
       mUniforms[meshIndex] = uniforms;
+      mMaterialIndices[meshIndex] =
+          static_cast<int32_t>(properties.wallMaterialIndex);
     }
   }
 }
 
-void WorldRenderer3d::update(float frameTime) {
+void WorldRenderer3d::update(
+    glm::vec3 const& playerPosition,
+    int32_t materialIndexOverride,
+    float materialScale,
+    float frameTime) {
   mGlobalTime += frameTime;
 
   // Globals
-  for (auto const& uc : mUniforms) {
+  for (size_t i = 0; i < mUniforms.size(); ++i) {
+    auto const& uc = mUniforms[i];
     if (uc == nullptr) {
       continue;
     }
-    uc->setUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
-    uc->setUniform("GLOBAL_TIME", mGlobalTime);
-    uc->setUniform("PIXEL_SIZE", 1.0f / 32);
+    uc->updateUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
+    uc->updateUniform("GLOBAL_TIME", mGlobalTime);
+    uc->updateUniform("PIXEL_SIZE", 1.0f / 32);
+    uc->updateUniform("PLAYER_POSITION", playerPosition);
+    uc->updateUniform("MATERIAL_SCALE", materialScale);
+    uc->updateUniform(
+        "MATERIAL_INDEX",
+        materialIndexOverride >= 0 ? materialIndexOverride : mMaterialIndices[i]);
   }
 
   mRenderer->update();

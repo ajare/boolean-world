@@ -22,7 +22,7 @@ bw_deploy_runtime_dlls(profiler)
 bw_deploy_vendor_dlls(profiler)
 add_custom_command(TARGET profiler POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/stress-test-1.yaml"
-            "$<TARGET_FILE_DIR:profiler>/stress-test-1.yaml"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/world-test-1.yaml"
+            "$<TARGET_FILE_DIR:profiler>/world-test-1.yaml"
     VERBATIM
     COMMENT "Staging the profiler's default world")

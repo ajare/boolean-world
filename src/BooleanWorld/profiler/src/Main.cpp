@@ -73,7 +73,7 @@ shared_ptr<bw::core::World> openWorld(string const& filepath) {
 int main(int argc, char** argv) {
   string filename;
   if (argc < 2) {
-    filename = "stress-test-1.yaml";
+    filename = "world-test-1.yaml";
   } else {
     filename = argv[1];
   }

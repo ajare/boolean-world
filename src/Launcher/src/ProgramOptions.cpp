@@ -44,7 +44,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
   auto audioNode = configuration.getChild("Audio");
   auto inputNode = configuration.getOptionalChild("Input");
 
-  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale", "AA", "RenderTextureFilter"});
+  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale", "AA", "AmbientOcclusion", "RenderTextureFilter"});
   gameNode->requireOnlyChildren({"DLL", "ResourceLocations", "Debug", "Arguments"});
 
   pOpts.screenWidth = utils::StringUtils::parseInt(videoNode->getChild("Width")->getValue());
@@ -79,6 +79,20 @@ ProgramOptions parseProgramOptions(string const& filename) {
     }
 
     pOpts.video.antiAliasing = *antiAliasing;
+  }
+
+  auto ambientOcclusionNode = videoNode->getOptionalChild("AmbientOcclusion");
+  if (ambientOcclusionNode) {
+    auto ambientOcclusionName =
+        utils::StringUtils::toLower(ambientOcclusionNode->getValue());
+    auto ambientOcclusion =
+        bw::app::ambientOcclusionFromName(ambientOcclusionName);
+    if (!ambientOcclusion) {
+      string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/AmbientOcclusion must be 'ssao', 'gtao' or 'none'.";
+      throw exception(errMsg.c_str());
+    }
+
+    pOpts.video.ambientOcclusion = *ambientOcclusion;
   }
 
   auto renderTextureFilterNode =
@@ -185,6 +199,9 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
   logger->info(std::format(
       "World anti-aliasing: {}",
       bw::app::antiAliasingName(options.video.antiAliasing)));
+  logger->info(std::format(
+      "World ambient occlusion: {}",
+      bw::app::ambientOcclusionName(options.video.ambientOcclusion)));
   logger->info(std::format(
       "World render texture filter: {}",
       bw::app::renderTextureFilterName(options.video.renderTextureFilter)));

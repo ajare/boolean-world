@@ -3,6 +3,8 @@
 #include <memory>
 #include <map>
 
+#include <glm/vec3.hpp>
+
 #include <mpp/RenderSystem.h>
 #include <mpp/ResourceManager.h>
 #include <mpp/UniformCollection.h>
@@ -22,6 +24,7 @@ class WorldRenderer3d {
   mpp::SceneModel3dPtr mSceneModel;
 
   std::vector<std::shared_ptr<mpp::UniformCollection>> mUniforms;
+  std::vector<int32_t> mMaterialIndices;
 
   float mGlobalTime;
 
@@ -46,5 +49,9 @@ public:
 
   void addToScene(mpp::ScenePtr scene, bw::core::World const* world);
 
-  void update(float frameTime);
+  void update(
+      glm::vec3 const& playerPosition,
+      int32_t materialIndexOverride,
+      float materialScale,
+      float frameTime);
 };

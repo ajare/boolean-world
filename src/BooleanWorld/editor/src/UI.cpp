@@ -3127,7 +3127,90 @@ void renderPrefabsView(
   }
 }
 
-void renderPrefabFieldView(editor::Document* doc, bw::core::PrefabField* field) {
+void renderPrefabThumbnail(
+    bw::core::Prefab* prefab,
+    ImVec2 const& topLeft,
+    float size,
+    bool selected,
+    editor::Settings const& settings) {
+  auto* drawList = ImGui::GetWindowDrawList();
+  auto const bottomRight = topLeft + ImVec2{size, size};
+  auto const hovered = ImGui::IsItemHovered();
+  drawList->AddRectFilled(
+      topLeft, bottomRight,
+      ImGui::GetColorU32(hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg),
+      ImGui::GetStyle().FrameRounding);
+
+  wp::Vector2 minExtent{numeric_limits<float>::max(), numeric_limits<float>::max()};
+  wp::Vector2 maxExtent{numeric_limits<float>::lowest(), numeric_limits<float>::lowest()};
+  bool hasGeometry = false;
+  for (auto* primitive : prefab->getPrimitives()) {
+    if (primitive->getNumVertices() > 0 && primitive->getVertices().empty()) {
+      primitive->updateVertexPositions();
+    }
+    for (auto const& complexPolygon : primitive->getVertices()) {
+      for (auto const& polygon : complexPolygon) {
+        for (auto const& vertex : polygon) {
+          minExtent.x = min(minExtent.x, vertex.p.x);
+          minExtent.y = min(minExtent.y, vertex.p.y);
+          maxExtent.x = max(maxExtent.x, vertex.p.x);
+          maxExtent.y = max(maxExtent.y, vertex.p.y);
+          hasGeometry = true;
+        }
+      }
+    }
+  }
+
+  if (hasGeometry) {
+    constexpr float padding = 8.0f;
+    auto extent = maxExtent - minExtent;
+    auto maxDimension = max(max(extent.x, extent.y), 0.001f);
+    auto scale = (size - padding * 2.0f) / maxDimension;
+    auto centre = (minExtent + maxExtent) * 0.5f;
+    auto screenCentre = topLeft + ImVec2{size * 0.5f, size * 0.5f};
+    auto toThumbnail = [&](wp::Vector2 const& point) {
+      return ImVec2{screenCentre.x + (point.x - centre.x) * scale,
+                    screenCentre.y - (point.y - centre.y) * scale};
+    };
+
+    drawList->PushClipRect(topLeft, bottomRight, true);
+    for (auto const* primitive : prefab->getPrimitives()) {
+      for (auto const& complexPolygon : primitive->getVertices()) {
+        for (auto const& polygon : complexPolygon) {
+          vector<ImVec2> points;
+          points.reserve(polygon.size());
+          for (auto const& vertex : polygon) {
+            points.push_back(toThumbnail(vertex.p));
+          }
+          if (points.size() >= 2) {
+            drawList->AddPolyline(
+                points.data(), static_cast<int>(points.size()),
+                settings.primitiveColour, ImDrawFlags_Closed, 1.5f);
+          }
+        }
+      }
+    }
+    drawList->PopClipRect();
+  } else {
+    auto const* emptyText = "Empty";
+    auto textSize = ImGui::CalcTextSize(emptyText);
+    drawList->AddText(
+        topLeft + ImVec2{(size - textSize.x) * 0.5f,
+                         (size - textSize.y) * 0.5f},
+        ImGui::GetColorU32(ImGuiCol_TextDisabled), emptyText);
+  }
+
+  drawList->AddRect(
+      topLeft, bottomRight,
+      selected ? static_cast<ImU32>(settings.selectedPrimitiveColour)
+               : ImGui::GetColorU32(ImGuiCol_Border),
+      ImGui::GetStyle().FrameRounding, 0, selected ? 3.0f : 1.0f);
+}
+
+void renderPrefabFieldView(
+    editor::Document* doc,
+    bw::core::PrefabField* field,
+    editor::Settings const& settings) {
   auto* layer = doc->getWorld()->getActiveLayer();
   auto* definitions = field->getDefinePrefabs(*layer);
   if (!definitions) {
@@ -3142,13 +3225,46 @@ void renderPrefabFieldView(editor::Document* doc, bw::core::PrefabField* field) 
     return;
   }
 
-  for (auto* prefab : definitions->getPrefabs()) {
-    ImGui::PushID(prefab->getId());
-    if (ImGui::RadioButton(prefab->getName().c_str(), field->getSelectedPrefab(*layer) == prefab)) {
-      selectPrefabForField(doc, layer, field, prefab);
+  constexpr float thumbnailSize = 88.0f;
+  auto const& style = ImGui::GetStyle();
+  auto availableWidth = ImGui::GetContentRegionAvail().x;
+  auto columnWidth = thumbnailSize + style.CellPadding.x * 2.0f;
+  auto columns = max(1, static_cast<int>(
+                            (availableWidth + style.ItemSpacing.x) /
+                            (columnWidth + style.ItemSpacing.x)));
+  auto selectedPrefab = field->getSelectedPrefab(*layer);
+
+  if (ImGui::BeginTable(
+          "##PrefabThumbnailGrid", columns,
+          ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_PadOuterX)) {
+    for (int column = 0; column < columns; ++column) {
+      ImGui::TableSetupColumn(nullptr, ImGuiTableColumnFlags_WidthFixed, columnWidth);
     }
-    ImGui::PopID();
+
+    for (auto* prefab : definitions->getPrefabs()) {
+      ImGui::TableNextColumn();
+      ImGui::PushID(prefab->getId());
+
+      auto topLeft = ImGui::GetCursorScreenPos();
+      if (ImGui::InvisibleButton(
+              "##Thumbnail", {thumbnailSize, thumbnailSize})) {
+        selectPrefabForField(doc, layer, field, prefab);
+      }
+      renderPrefabThumbnail(
+          prefab, topLeft, thumbnailSize, selectedPrefab == prefab, settings);
+
+      auto nameSize = ImGui::CalcTextSize(prefab->getName().c_str(), nullptr, false, thumbnailSize);
+      ImGui::SetCursorPosX(
+          ImGui::GetCursorPosX() + max(0.0f, (thumbnailSize - nameSize.x) * 0.5f));
+      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + thumbnailSize);
+      ImGui::TextWrapped("%s", prefab->getName().c_str());
+      ImGui::PopTextWrapPos();
+
+      ImGui::PopID();
+    }
+    ImGui::EndTable();
   }
+
   if (field->getSelectedPrefab(*layer) && ImGui::Button("Clear palette selection")) {
     selectPrefabForField(doc, layer, field, nullptr);
   }
@@ -3404,6 +3520,8 @@ void renderMeshDrawToolView(editor::Document* doc, editor::Settings& settings) {
                                  ? "Context: hole in the highlighted filled region."
                              : doc->meshDrawCreatesIsland()
                                  ? "Context: filled island in the highlighted hole."
+                             : doc->meshDrawTouchesRingBoundary()
+                                 ? "Context: touching an existing Ring; cut or sibling resolved on close."
                                  : "Context: new MeshPrimitive (unconfined).");
     }
     if (!doc->getMeshDrawRejection().empty()) {
@@ -3556,7 +3674,7 @@ void renderCombinedPanel(
       }
     } else if (auto* prefabField = dynamic_cast<bw::core::PrefabField*>(activeLayer->getActiveStep())) {
       if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {
-        renderPrefabFieldView(doc, prefabField);
+        renderPrefabFieldView(doc, prefabField, settings);
       }
     }
 

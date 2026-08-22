@@ -5,6 +5,8 @@
 #include <vector>
 #include <string>
 
+#include <glm/vec3.hpp>
+
 #include <mpp/Scene.h>
 #include <mpp/RenderSystem.h>
 #include <mpp/ResourceManager.h>
@@ -69,5 +71,11 @@ public:
   // threadable pre-work that tears the renderer itself down.
   RenderTargets detachRenderTargets();
 
-  void update(bw::core::World* world, bw::core::WorldData const& worldData, float frameTime);
+  void update(
+      bw::core::World* world,
+      bw::core::WorldData const& worldData,
+      glm::vec3 const& playerPosition,
+      int32_t materialIndexOverride,
+      float materialScale,
+      float frameTime);
 };

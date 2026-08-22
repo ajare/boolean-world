@@ -27,18 +27,22 @@ public:
   // Enum values cross the DLL boundary as integer codes. Apply only known
   // codes so a rejected update leaves the previously accepted options intact.
   int setVideoOptions(int renderScaleCode, int antiAliasingCode,
-                      int renderTextureFilterCode,
+                      int ambientOcclusionCode, int renderTextureFilterCode,
                       bw::app::VideoOptions& videoOptions) const {
     auto renderScale = bw::app::renderScaleFromCode(renderScaleCode);
     auto antiAliasing = bw::app::antiAliasingFromCode(antiAliasingCode);
+    auto ambientOcclusion =
+        bw::app::ambientOcclusionFromCode(ambientOcclusionCode);
     auto renderTextureFilter =
         bw::app::renderTextureFilterFromCode(renderTextureFilterCode);
-    if (!renderScale || !antiAliasing || !renderTextureFilter) {
+    if (!renderScale || !antiAliasing || !ambientOcclusion ||
+        !renderTextureFilter) {
       return 1;
     }
 
     videoOptions.renderScale = *renderScale;
     videoOptions.antiAliasing = *antiAliasing;
+    videoOptions.ambientOcclusion = *ambientOcclusion;
     videoOptions.renderTextureFilter = *renderTextureFilter;
     return 0;
   }
