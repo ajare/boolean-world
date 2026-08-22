@@ -1,7 +1,9 @@
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 #include <format>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <numeric>
@@ -700,6 +702,144 @@ bool MeshPrimitiveEditingProxy::splitEdge(
   return splitEdge(edgeIndex, 0.5f, result);
 }
 
+bool MeshPrimitiveEditingProxy::sliceFilledRing(
+    uint32_t polygonIndex, uint32_t firstVertexIndex,
+    uint32_t secondVertexIndex) {
+  if (firstVertexIndex == secondVertexIndex ||
+      mImpl->mesh.vertexIndexIterationFinished(firstVertexIndex) ||
+      mImpl->mesh.vertexIndexIterationFinished(secondVertexIndex) ||
+      mImpl->mesh.polygonIndexIterationFinished(polygonIndex)) {
+    return false;
+  }
+
+  auto mappings = getNodeMappings();
+  auto mapping = find_if(mappings.begin(), mappings.end(), [&](auto const& item) {
+    return item.polygonIndex == polygonIndex && item.role != NodeRole::Hole;
+  });
+  if (mapping == mappings.end()) return false;
+
+  auto const& polygon = mImpl->mesh.getPolygon(polygonIndex);
+  auto const& polygonVertices = polygon.getVertexIndexSet();
+  if (!polygonVertices.contains(firstVertexIndex) ||
+      !polygonVertices.contains(secondVertexIndex)) {
+    return false;
+  }
+  auto ordered = polygon.getOrderedVertexIndices();
+  auto first = find(ordered.begin(), ordered.end(), firstVertexIndex);
+  auto second = find(ordered.begin(), ordered.end(), secondVertexIndex);
+  if (first == ordered.end() || second == ordered.end()) return false;
+  auto firstOffset = static_cast<size_t>(first - ordered.begin());
+  auto secondOffset = static_cast<size_t>(second - ordered.begin());
+  auto distance = firstOffset > secondOffset ? firstOffset - secondOffset
+                                             : secondOffset - firstOffset;
+  if (distance == 1 || distance + 1 == ordered.size()) return false;
+
+  auto const& firstPosition = mImpl->mesh.getVertex(firstVertexIndex).getPosition();
+  auto const& secondPosition = mImpl->mesh.getVertex(secondVertexIndex).getPosition();
+  ClosedPolygon targetRing;
+  for (auto vertexIndex : ordered) {
+    targetRing.emplace_back(mImpl->mesh.getVertex(vertexIndex).getPosition());
+  }
+  if (!locatePoint(targetRing, (firstPosition + secondPosition) / 2.0f).inside) {
+    return false;
+  }
+
+  // Every contact with existing topology is refused except endpoint contacts
+  // with Rings in this filled region's containment family. This includes a
+  // Hole/Island boundary which shares only a Vertex (rather than a welded
+  // Edge) with the Ring being sliced.
+  auto relatedRing = [&](uint32_t polygonIndex) {
+    auto isAncestorOf = [&](uint32_t ancestor, uint32_t descendant) {
+      while (descendant != ~0u) {
+        if (descendant == ancestor) return true;
+        auto found = find_if(mappings.begin(), mappings.end(), [&](auto const& item) {
+          return item.polygonIndex == descendant;
+        });
+        if (found == mappings.end()) break;
+        descendant = found->parentPolygonIndex;
+      }
+      return false;
+    };
+    return isAncestorOf(mapping->polygonIndex, polygonIndex) ||
+           isAncestorOf(polygonIndex, mapping->polygonIndex);
+  };
+  for (auto edgeIndex = mImpl->mesh.getFirstEdgeIndex();
+       !mImpl->mesh.edgeIndexIterationFinished(edgeIndex);
+       edgeIndex = mImpl->mesh.getNextEdgeIndex(edgeIndex)) {
+    auto const& edge = mImpl->mesh.getEdge(edgeIndex);
+    bool touchesEndpoint = edge.getFirstVertex() == firstVertexIndex ||
+                           edge.getSecondVertex() == firstVertexIndex ||
+                           edge.getFirstVertex() == secondVertexIndex ||
+                           edge.getSecondVertex() == secondVertexIndex;
+    bool belongsOnlyToRelatedRings =
+        !edge.getPolygonReferences().empty() &&
+        all_of(
+            edge.getPolygonReferences().begin(),
+            edge.getPolygonReferences().end(), relatedRing);
+    if (touchesEndpoint && belongsOnlyToRelatedRings) continue;
+    if (segmentsIntersect(
+            firstPosition, secondPosition,
+            mImpl->mesh.getVertex(edge.getFirstVertex()).getPosition(),
+            mImpl->mesh.getVertex(edge.getSecondVertex()).getPosition())) {
+      return false;
+    }
+  }
+
+  auto makePath = [&](size_t from, size_t to) {
+    ClosedPolygon ring;
+    for (auto index = from;; index = (index + 1) % ordered.size()) {
+      ring.emplace_back(mImpl->mesh.getVertex(ordered[index]).getPosition());
+      if (index == to) break;
+    }
+    return ring;
+  };
+  MeshFilledRegion firstPart{makePath(firstOffset, secondOffset), {}};
+  MeshFilledRegion secondPart{makePath(secondOffset, firstOffset), {}};
+
+  auto candidate = mImpl->readTree();
+  vector<MeshFilledRegion>* siblings = nullptr;
+  size_t siblingIndex = 0;
+  auto locateFilled = [&](auto&& self, vector<MeshFilledRegion>& nodes,
+                          vector<Impl::Filled> const& nodeMappings) -> bool {
+    for (size_t i = 0; i < nodes.size(); ++i) {
+      if (nodeMappings[i].polygonIndex == mapping->polygonIndex) {
+        siblings = &nodes;
+        siblingIndex = i;
+        return true;
+      }
+      for (size_t hole = 0; hole < nodes[i].holes.size(); ++hole) {
+        if (self(self, nodes[i].holes[hole].islands,
+                 nodeMappings[i].holes[hole].islands)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  if (!locateFilled(locateFilled, candidate, mImpl->shells)) return false;
+
+  auto source = move((*siblings)[siblingIndex]);
+  for (auto& hole : source.holes) {
+    if (ringContainedBy(hole.ring, firstPart.ring)) {
+      firstPart.holes.push_back(move(hole));
+    } else if (ringContainedBy(hole.ring, secondPart.ring)) {
+      secondPart.holes.push_back(move(hole));
+    } else {
+      return false;
+    }
+  }
+
+  (*siblings)[siblingIndex] = move(firstPart);
+  siblings->insert(siblings->begin() + siblingIndex + 1, move(secondPart));
+  try {
+    normalizeAndValidateTree(candidate);
+  } catch (exception const&) {
+    return false;
+  }
+  mImpl->rebuild(candidate);
+  return true;
+}
+
 bool MeshPrimitiveEditingProxy::mutateRings(
     function<bool(ClosedPolygon&)> mutation) {
   auto candidate = mImpl->readTree();
@@ -726,9 +866,144 @@ bool MeshPrimitiveEditingProxy::removeVertex(uint32_t vertexIndex) {
 }
 
 bool MeshPrimitiveEditingProxy::removeEdge(uint32_t edgeIndex) {
+  if (mImpl->mesh.edgeIndexIterationFinished(edgeIndex)) return false;
   auto const& edge = mImpl->mesh.getEdge(edgeIndex);
   auto first = mImpl->mesh.getVertex(edge.getFirstVertex()).getPosition();
   auto second = mImpl->mesh.getVertex(edge.getSecondVertex()).getPosition();
+
+  if (edge.getPolygonReferences().size() == 2) {
+    auto references = vector<uint32_t>(
+        edge.getPolygonReferences().begin(), edge.getPolygonReferences().end());
+    auto mappings = getNodeMappings();
+    auto firstMapping = find_if(mappings.begin(), mappings.end(), [&](auto const& mapping) {
+      return mapping.polygonIndex == references[0];
+    });
+    auto secondMapping = find_if(mappings.begin(), mappings.end(), [&](auto const& mapping) {
+      return mapping.polygonIndex == references[1];
+    });
+    if (firstMapping == mappings.end() || secondMapping == mappings.end() ||
+        firstMapping->role != secondMapping->role ||
+        firstMapping->parentPolygonIndex != secondMapping->parentPolygonIndex) {
+      return false;
+    }
+
+    auto candidate = mImpl->readTree();
+    struct FilledLocation {
+      vector<MeshFilledRegion>* siblings{};
+      size_t index{};
+    };
+    struct HoleLocation {
+      vector<MeshHole>* siblings{};
+      size_t index{};
+    };
+    array<FilledLocation, 2> filledLocations{};
+    array<HoleLocation, 2> holeLocations{};
+    auto locate = [&](auto&& self, vector<MeshFilledRegion>& filled,
+                      vector<Impl::Filled> const& filledMappings) -> void {
+      for (size_t i = 0; i < filled.size(); ++i) {
+        for (size_t target = 0; target < references.size(); ++target) {
+          if (filledMappings[i].polygonIndex == references[target]) {
+            filledLocations[target] = {&filled, i};
+          }
+        }
+        for (size_t h = 0; h < filled[i].holes.size(); ++h) {
+          for (size_t target = 0; target < references.size(); ++target) {
+            if (filledMappings[i].holes[h].polygonIndex == references[target]) {
+              holeLocations[target] = {&filled[i].holes, h};
+            }
+          }
+          self(self, filled[i].holes[h].islands,
+               filledMappings[i].holes[h].islands);
+        }
+      }
+    };
+    locate(locate, candidate, mImpl->shells);
+
+    auto mergedBoundary = [&](ClosedPolygon const& firstRing,
+                              ClosedPolygon const& secondRing) {
+      auto alternatePath = [&](ClosedPolygon const& ring,
+                               wp::Vector2 const& from,
+                               wp::Vector2 const& to) {
+        ClosedPolygon path;
+        auto start = find_if(ring.begin(), ring.end(), [&](Vertex const& vertex) {
+          return vertex.p == from;
+        });
+        auto finish = find_if(ring.begin(), ring.end(), [&](Vertex const& vertex) {
+          return vertex.p == to;
+        });
+        if (start == ring.end() || finish == ring.end()) return path;
+        auto startIndex = static_cast<size_t>(start - ring.begin());
+        auto finishIndex = static_cast<size_t>(finish - ring.begin());
+        bool forwardIsShared = (startIndex + 1) % ring.size() == finishIndex;
+        auto index = startIndex;
+        for (;;) {
+          path.push_back(ring[index]);
+          if (index == finishIndex) break;
+          index = forwardIsShared
+                      ? (index + ring.size() - 1) % ring.size()
+                      : (index + 1) % ring.size();
+        }
+        return path;
+      };
+
+      auto firstPath = alternatePath(firstRing, first, second);
+      auto secondPath = alternatePath(secondRing, second, first);
+      if (firstPath.size() < 2 || secondPath.size() < 2) {
+        return ClosedPolygon{};
+      }
+      ClosedPolygon result = move(firstPath);
+      result.insert(
+          result.end(), next(secondPath.begin()), prev(secondPath.end()));
+      return result;
+    };
+
+    if (firstMapping->role == NodeRole::Hole) {
+      if (!holeLocations[0].siblings ||
+          holeLocations[0].siblings != holeLocations[1].siblings) {
+        return false;
+      }
+      auto& siblings = *holeLocations[0].siblings;
+      auto low = min(holeLocations[0].index, holeLocations[1].index);
+      auto high = max(holeLocations[0].index, holeLocations[1].index);
+      auto boundary = mergedBoundary(siblings[low].ring, siblings[high].ring);
+      if (boundary.empty()) return false;
+      auto merged = move(siblings[low]);
+      merged.ring = move(boundary);
+      merged.islands.insert(
+          merged.islands.end(),
+          make_move_iterator(siblings[high].islands.begin()),
+          make_move_iterator(siblings[high].islands.end()));
+      siblings[low] = move(merged);
+      siblings.erase(siblings.begin() + high);
+    } else {
+      if (!filledLocations[0].siblings ||
+          filledLocations[0].siblings != filledLocations[1].siblings) {
+        return false;
+      }
+      auto& siblings = *filledLocations[0].siblings;
+      auto low = min(filledLocations[0].index, filledLocations[1].index);
+      auto high = max(filledLocations[0].index, filledLocations[1].index);
+      auto boundary = mergedBoundary(siblings[low].ring, siblings[high].ring);
+      if (boundary.empty()) return false;
+      auto merged = move(siblings[low]);
+      merged.ring = move(boundary);
+      merged.holes.insert(
+          merged.holes.end(),
+          make_move_iterator(siblings[high].holes.begin()),
+          make_move_iterator(siblings[high].holes.end()));
+      siblings[low] = move(merged);
+      siblings.erase(siblings.begin() + high);
+    }
+
+    try {
+      normalizeAndValidateTree(candidate);
+    } catch (exception const&) {
+      return false;
+    }
+    mImpl->rebuild(candidate);
+    return true;
+  }
+
   auto midpoint = (first + second) / 2.0f;
   return mutateRings([&](ClosedPolygon& ring) {
     bool changed = false;

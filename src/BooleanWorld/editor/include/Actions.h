@@ -198,6 +198,9 @@ bool deleteMeshSubObjects(
 // (Document::splitMeshEdges). Returns true if any edge was split.
 bool splitMeshEdges(Document* doc, std::set<uint32_t> const& edgeIndices);
 
+// Completes the armed Slice tool at its second Vertex.
+bool sliceMesh(Document* doc, uint32_t secondVertexIndex);
+
 // Duplicates a hole Ring as a top-level filled polygon.
 bool fillMeshHole(Document* doc, uint32_t holeRingIndex);
 

@@ -1355,6 +1355,48 @@ void edgeDeletionWeldsEndpointsAtMidpointAndRefusesAtMinimumCount() {
           "a refused edge delete still changed the Ring");
 }
 
+void twoSidedEdgeDeletionMergesItsSiblingRings() {
+  editor::Document document;
+  document.newDoc();
+  bw::core::ClosedPolygon left{
+      {{-10, -10}}, {{0, -10}}, {{0, 10}}, {{-10, 10}}};
+  bw::core::ClosedPolygon right{
+      {{0, -10}}, {{10, -10}}, {{10, 10}}, {{0, 10}}};
+  bw::core::MeshFilledRegion leftRegion{left, {}};
+  bw::core::MeshFilledRegion rightRegion{right, {}};
+  auto* primitive = bw::core::MeshPrimitive::fromTree(
+      bw::core::Primitive::Operation::Union,
+      {leftRegion, rightRegion});
+  primitive->updateVertexPositions();
+  document.getWorld()->addPrimitive(primitive);
+  auto meshIndex = primitive->getId();
+  require(document.activateMesh(meshIndex),
+          "the two-sided Edge fixture did not activate");
+
+  auto const* mesh = document.getActiveMesh();
+  uint32_t sharedEdge = ~0u;
+  for (auto edge = mesh->getFirstEdgeIndex();
+       !mesh->edgeIndexIterationFinished(edge);
+       edge = mesh->getNextEdgeIndex(edge)) {
+    if (mesh->getEdge(edge).getPolygonReferences().size() == 2) {
+      sharedEdge = edge;
+      break;
+    }
+  }
+  require(sharedEdge != ~0u &&
+              document.previewMeshSubObjectDeletionCount(
+                  editor::Settings::MeshSubMode::Edge, {sharedEdge}) == 1,
+          "the two-sided Edge was not previewed as deletable");
+  require(document.deleteMeshSubObjects(
+              editor::Settings::MeshSubMode::Edge, {sharedEdge}) == 1,
+          "deleting the two-sided Edge was refused");
+  require(primitive->getShells().size() == 1 &&
+              document.getActiveMesh()->getPolygon(
+                                          document.getActiveMesh()->getFirstPolygonIndex())
+                      .getNumEdges() == 6,
+          "deleting the two-sided Edge did not merge its two Shells");
+}
+
 void ringDeletionRemovesJustTheHoleWhenOthersRemain() {
   editor::Document document;
   document.newDoc();
@@ -1491,6 +1533,143 @@ void meshSubObjectDeleteIsOneUndoEntry() {
                   .getVertexIndexSet()
                   .size() == 4,
           "undo did not restore the deleted vertex");
+}
+
+void sliceToolDividesAShellBetweenTwoSelectedVertices() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshSubMode = editor::Settings::MeshSubMode::Vertex;
+  settings.meshVertexPickRadius = 0.25f;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {});
+  require(document.activateMesh(meshIndex), "could not activate the Slice fixture");
+  require(document.armMeshSliceTool(settings), "Slice did not arm in Vertex sub-mode");
+
+  auto const* mesh = document.getActiveMesh();
+  auto ringIndex = mesh->getFirstPolygonIndex();
+  auto ordered = mesh->getPolygon(ringIndex).getOrderedVertexIndices();
+  auto firstPosition = mesh->getVertex(ordered[0]).getPosition();
+  auto adjacentPosition = mesh->getVertex(ordered[1]).getPosition();
+  auto oppositePosition = mesh->getVertex(ordered[2]).getPosition();
+  auto undoBefore = editor::getUndoLevels();
+
+  require(document.canSelectMeshSliceFirstVertex(ordered[0]),
+          "a Shell Vertex was not exposed as a valid first Slice target");
+  require(!document.canCompleteMeshSlice(ordered[2]),
+          "Slice exposed a completion target before selecting its first Vertex");
+
+  editor::EditorInteraction interaction;
+  auto click = pointerAt(firstPosition);
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  require(document.getMeshSliceFirstVertexIndex() == ordered[0] &&
+              document.getSelectedMeshVertexIndices() == std::set<uint32_t>{ordered[0]},
+          "Slice did not accept and display its first Shell Vertex");
+  require(!document.canCompleteMeshSlice(ordered[1]) &&
+              document.canCompleteMeshSlice(ordered[2]),
+          "Slice preview validity did not distinguish adjacent and opposite targets");
+
+  click = pointerAt(adjacentPosition);
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  require(document.meshSliceToolArmed() &&
+              document.getMeshSliceFirstVertexIndex() == ordered[0] &&
+              editor::getUndoLevels() == undoBefore,
+          "Slice accepted an adjacent Vertex or created history for its refusal");
+
+  click = pointerAt(oppositePosition);
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  auto mappings = static_cast<bw::core::MeshPrimitive*>(
+                      document.getWorld()->getPrimitive(meshIndex))
+                      ->createEditingProxy()
+                      ->getNodeMappings();
+  require(!document.meshSliceToolArmed() && mappings.size() == 2 &&
+              mappings[0].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Shell &&
+              mappings[1].role == bw::core::MeshPrimitiveEditingProxy::NodeRole::Shell,
+          "Slice did not divide the Shell into two Shells");
+  require(editor::getUndoLevels() == undoBefore + 1,
+          "completing Slice was not exactly one undo entry");
+
+  editor::undo(&document);
+  auto restored = static_cast<bw::core::MeshPrimitive*>(
+                      document.getWorld()->getPrimitive(meshIndex))
+                      ->createEditingProxy()
+                      ->getNodeMappings();
+  require(restored.size() == 1,
+          "undo did not restore the Shell before Slice");
+
+  // Stacked endpoint hits must resolve to the Vertex on the Ring established
+  // by the first click, not simply whichever coincident candidate has the
+  // lowest Mesh index.
+  editor::Document nestedDocument;
+  nestedDocument.newDoc();
+  bw::core::ClosedPolygon shell{
+      {{-20, -20}}, {{20, -20}}, {{20, 20}}, {{-20, 20}}};
+  bw::core::ClosedPolygon hole{
+      {{-10.2f, -10.2f}}, {{-10.2f, 10.2f}}, {{10.2f, 10.2f}}, {{10.2f, -10.2f}}};
+  bw::core::ClosedPolygon island{
+      {{-10, -10}}, {{10, -10}}, {{10, 10}}, {{-10, 10}}};
+  bw::core::MeshFilledRegion nestedIsland{island, {}};
+  bw::core::MeshFilledRegion nestedShell{
+      shell, {{hole, {nestedIsland}}}};
+  auto* nestedPrimitive = bw::core::MeshPrimitive::fromTree(
+      bw::core::Primitive::Operation::Union, {nestedShell});
+  nestedPrimitive->updateVertexPositions();
+  nestedDocument.getWorld()->addPrimitive(nestedPrimitive);
+  auto nestedIndex = nestedPrimitive->getId();
+  require(nestedDocument.activateMesh(nestedIndex),
+          "could not activate the stacked Slice fixture");
+  settings.meshVertexPickRadius = 1.0f;
+  require(nestedDocument.armMeshSliceTool(settings),
+          "Slice did not arm for stacked endpoint selection");
+  auto nestedMappings = nestedDocument.getActiveMesh()
+                            ? static_cast<bw::core::MeshPrimitive*>(
+                                  nestedDocument.getWorld()->getPrimitive(nestedIndex))
+                                  ->createEditingProxy()
+                                  ->getNodeMappings()
+                            : std::vector<bw::core::MeshPrimitiveEditingProxy::NodeMapping>{};
+  auto islandMapping = std::find_if(
+      nestedMappings.begin(), nestedMappings.end(), [](auto const& mapping) {
+        return mapping.role ==
+               bw::core::MeshPrimitiveEditingProxy::NodeRole::Island;
+      });
+  require(islandMapping != nestedMappings.end(),
+          "the stacked Slice fixture had no Island");
+  auto const* nestedMesh = nestedDocument.getActiveMesh();
+  auto islandVertices = nestedMesh->getPolygon(islandMapping->polygonIndex)
+                            .getOrderedVertexIndices();
+  auto first = islandVertices[0];
+  auto second = islandVertices[2];
+  auto firstClick = pointerAt(nestedMesh->getVertex(first).getPosition());
+  firstClick.leftClicked = true;
+  interaction.updateSelection(
+      &nestedDocument, nullptr, settings, firstClick);
+  require(nestedDocument.getMeshSliceRingIndex() == islandMapping->polygonIndex,
+          "the first stacked hit did not establish the Island Ring");
+  auto secondPosition = nestedMesh->getVertex(second).getPosition();
+  auto stackedHits = nestedDocument.getHoveredMeshSubObjectIndices(
+      secondPosition, settings);
+  require(stackedHits.size() >= 2 && stackedHits.front() != second,
+          "the stacked Slice fixture did not put another Ring's Vertex first");
+  auto secondClick = pointerAt(secondPosition);
+  secondClick.leftClicked = true;
+  interaction.updateSelection(
+      &nestedDocument, nullptr, settings, secondClick);
+  auto slicedMappings = static_cast<bw::core::MeshPrimitive*>(
+                            nestedDocument.getWorld()->getPrimitive(nestedIndex))
+                            ->createEditingProxy()
+                            ->getNodeMappings();
+  require(!nestedDocument.meshSliceToolArmed() &&
+              std::count_if(
+                  slicedMappings.begin(), slicedMappings.end(),
+                  [](auto const& mapping) {
+                    return mapping.role ==
+                           bw::core::MeshPrimitiveEditingProxy::NodeRole::Island;
+                  }) == 2,
+          "Slice did not choose the coincident Vertex on its established Ring");
 }
 
 void edgeSplitInsertsUnsnappedMidpointAndSelectsBothHalves() {
@@ -2963,10 +3142,12 @@ int main() {
     meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive();
     vertexDeletionHealsRingAndRefusesAtMinimumCount();
     edgeDeletionWeldsEndpointsAtMidpointAndRefusesAtMinimumCount();
+    twoSidedEdgeDeletionMergesItsSiblingRings();
     ringDeletionRemovesJustTheHoleWhenOthersRemain();
     ringDeletionOfTheLastRingDeletesTheMeshPrimitive();
     multiVertexDeleteProcessesAscendingAndReportsActualCount();
     meshSubObjectDeleteIsOneUndoEntry();
+    sliceToolDividesAShellBetweenTwoSelectedVertices();
     edgeSplitInsertsUnsnappedMidpointAndSelectsBothHalves();
     repeatedEdgeSplitSubdividesIntoFourSegments();
     edgeSplitIsOneUndoEntry();

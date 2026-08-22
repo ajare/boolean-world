@@ -546,9 +546,15 @@ void renderWorld(
           auto const& selectedEdges = doc->getSelectedMeshEdgeIndices();
           auto const& selectedRings = doc->getSelectedMeshRingIndices();
           auto hovered = [&](uint32_t index) {
-            return gHoveredType == editor::HoverableType::MeshSubObject &&
-                   find(gHoveredIndices.begin(), gHoveredIndices.end(), index) !=
-                       gHoveredIndices.end();
+            if (gHoveredType != editor::HoverableType::MeshSubObject ||
+                find(gHoveredIndices.begin(), gHoveredIndices.end(), index) ==
+                    gHoveredIndices.end()) {
+              return false;
+            }
+            if (!doc->meshSliceToolArmed()) return true;
+            return doc->getMeshSliceFirstVertexIndex() == ~0u
+                       ? doc->canSelectMeshSliceFirstVertex(index)
+                       : doc->canCompleteMeshSlice(index);
           };
           for (auto polygonIndex = mesh->getFirstPolygonIndex();
                !mesh->polygonIndexIterationFinished(polygonIndex);
@@ -628,6 +634,35 @@ void renderWorld(
             } else {
               drawList->AddCircleFilled(
                   position, settings.meshVertexPickRadius, colour, 16);
+            }
+          }
+
+          // Preview only a chord that a click can actually complete. Snapping
+          // to the hovered Vertex (rather than the raw pointer) keeps the line
+          // truthful and suppresses it over adjacent, foreign, or empty targets.
+          auto sliceFirst = doc->getMeshSliceFirstVertexIndex();
+          bool sliceCursorInMiniMap = false;
+          if (settings.renderMiniMap) {
+            auto miniMapBounds = getMiniMapBounds(doc);
+            miniMapBounds.setPosition(
+                miniMapBounds.getMinExtent() + gWorldViewScreenOrigin);
+            auto mouse = ImGui::GetMousePos();
+            sliceCursorInMiniMap = miniMapBounds.pointInside(mouse.x, mouse.y);
+          }
+          if (doc->meshSliceToolArmed() && sliceFirst != ~0u &&
+              editor::mouseInteractingWithBackground() &&
+              !sliceCursorInMiniMap &&
+              gHoveredType == editor::HoverableType::MeshSubObject) {
+            auto target = find_if(
+                gHoveredIndices.begin(), gHoveredIndices.end(),
+                [&](uint32_t vertexIndex) {
+                  return doc->canCompleteMeshSlice(vertexIndex);
+                });
+            if (target != gHoveredIndices.end()) {
+              drawList->AddLine(
+                  worldToScreen(mesh->getVertex(sliceFirst).getPosition()),
+                  worldToScreen(mesh->getVertex(*target).getPosition()),
+                  settings.meshDrawPreviewColour, 2.0f);
             }
           }
         }

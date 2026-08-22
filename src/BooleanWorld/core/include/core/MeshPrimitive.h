@@ -161,8 +161,23 @@ public:
       uint32_t edgeIndex, float t,
       wp::geometry::SplitEdgeResult* result = nullptr);
   bool splitEdge(uint32_t edgeIndex, wp::geometry::SplitEdgeResult* result = nullptr);
+
+  // Divides one Shell or Island along a chord between two of its
+  // non-adjacent vertices. The chord must not touch or cross any existing
+  // Edge except at its endpoints. Direct Holes remain with the side that
+  // contains them. Returns false without changing the proxy when refused.
+  bool sliceFilledRing(
+      uint32_t polygonIndex, uint32_t firstVertexIndex,
+      uint32_t secondVertexIndex);
+
   bool removeVertex(uint32_t vertexIndex);
+
+  // A one-sided Edge welds its endpoints as before. A two-sided Edge between
+  // sibling Rings removes their shared boundary and merges the Rings,
+  // retaining both sides' descendants. Structurally incompatible sides are
+  // refused.
   bool removeEdge(uint32_t edgeIndex);
+
   bool removeRing(uint32_t polygonIndex);
 
   [[nodiscard]] uint32_t addShell(ClosedPolygon ring);

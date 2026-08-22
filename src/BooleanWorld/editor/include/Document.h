@@ -120,6 +120,12 @@ class Document {
   std::string mMeshDrawRejection;
   wp::Vector2 mMeshDrawRejectedPosition;
 
+  // Slice tool state. The first endpoint is transient; only completing the
+  // chord changes authored topology and enters undo history.
+  bool mMeshSliceToolArmed{false};
+  uint32_t mMeshSliceFirstVertexIndex{~0u};
+  uint32_t mMeshSliceRingIndex{~0u};
+
   wp::Vector2 mPlayerOldProxyPosition, mPlayerProxyPosition;
 
   float mPlayerOldProxyAngle, mPlayerProxyAngle;
@@ -259,10 +265,10 @@ public:
   // ascending index order, refusing (and skipping) any item whose Ring
   // would drop to two vertices/edges, or whose Ring/hole containment
   // invariant would break. A vertex heals its Ring by joining its
-  // neighbours; an edge welds its two endpoints together at the edge's
-  // midpoint; a Ring is removed outright, and removing the last Ring
-  // deletes the whole MeshPrimitive. Returns the number of items actually
-  // removed.
+  // neighbours; a one-sided Edge welds its endpoints at their midpoint,
+  // while a two-sided Edge merges compatible sibling Rings; a Ring is
+  // removed outright, and removing the last Ring deletes the whole
+  // MeshPrimitive. Returns the number of items actually removed.
   uint32_t deleteMeshSubObjects(
       Settings::MeshSubMode subMode, std::set<uint32_t> const& indices);
 
@@ -340,6 +346,22 @@ public:
   // "N split" report before the real, undoable split runs.
   [[nodiscard]] uint32_t previewMeshEdgeSplitCount(
       std::set<uint32_t> const& edgeIndices) const;
+
+  // Slice tool (Ctrl+Shift+S in Vertex sub-mode). It accepts two
+  // non-adjacent vertices belonging to the same Shell or Island and divides
+  // that filled region along their unobstructed chord.
+  [[nodiscard]] std::string meshSliceToolUnavailableReason(
+      Settings const& settings) const;
+  bool armMeshSliceTool(Settings const& settings);
+  void disarmMeshSliceTool();
+  [[nodiscard]] bool meshSliceToolArmed() const;
+  [[nodiscard]] uint32_t getMeshSliceFirstVertexIndex() const;
+  [[nodiscard]] uint32_t getMeshSliceRingIndex() const;
+  [[nodiscard]] bool canSelectMeshSliceFirstVertex(uint32_t vertexIndex) const;
+  bool selectMeshSliceFirstVertex(uint32_t vertexIndex);
+  [[nodiscard]] bool canCompleteMeshSlice(uint32_t vertexIndex) const;
+  bool completeMeshSlice(uint32_t vertexIndex);
+  bool escapeMeshSlice();
 
   // Retains a selected Hole and fills it with a welded direct Island. Existing
   // immediate Islands are wrapped in matching Holes beneath the new Island.

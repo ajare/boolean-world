@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -327,6 +328,42 @@ void sharedMutationsCommitToEveryAuthoredRingAtomically() {
           "deleting a shared Vertex did not update every participating Ring");
 }
 
+void removingTwoSidedEdgeMergesSiblingRings() {
+  bw::core::MeshFilledRegion left{ring(-4, -3, 0, 3), {}};
+  bw::core::MeshFilledRegion right{ring(0, -3, 4, 3), {}};
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {left, right}));
+  auto proxy = primitive->createEditingProxy();
+  uint32_t sharedEdge = ~0u;
+  for (auto edge = proxy->getFirstEdgeIndex();
+       !proxy->edgeIndexIterationFinished(edge);
+       edge = proxy->getNextEdgeIndex(edge)) {
+    if (proxy->getEdge(edge).getPolygonReferences().size() == 2) {
+      sharedEdge = edge;
+      break;
+    }
+  }
+  require(sharedEdge != ~0u && proxy->removeEdge(sharedEdge),
+          "a two-sided Edge between sibling Shells was not removed");
+  proxy->commitTo(*primitive);
+  require(primitive->getShells().size() == 1 &&
+              primitive->getShells()[0].ring.size() == 6,
+          "removing a two-sided Edge did not merge its two open Shells");
+
+  auto shared = ring(-2, -2, 2, 2);
+  bw::core::MeshFilledRegion island{shared, {}};
+  bw::core::MeshFilledRegion shell{
+      ring(-5, -5, 5, 5), {{shared, {island}}}};
+  auto nestedPrimitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {shell}));
+  auto nested = nestedPrimitive->createEditingProxy();
+  auto mappings = nested->getNodeMappings();
+  auto hole = mappings[1].polygonIndex;
+  auto nestedSharedEdge = *nested->getPolygon(hole).getEdgeIndexSet().begin();
+  require(!nested->removeEdge(nestedSharedEdge),
+          "a two-sided Edge between a Hole and its Island was merged");
+}
+
 void fillHoleWrapsImmediateIslandsWithoutLosingDescendants() {
   bw::core::MeshFilledRegion descendant{ring(-6, -1, -5, 1), {}};
   bw::core::MeshFilledRegion left{
@@ -388,6 +425,124 @@ void fillHoleWrapsImmediateIslandsWithoutLosingDescendants() {
   }
   require(weldedPairs == 3,
           "reactivation did not retain all three created coincident boundaries");
+}
+
+void sliceDividesFilledRingsAndRetainsHoles() {
+  ClosedPolygon shell{
+      {{-10, -10}}, {{0, -10}}, {{10, -10}}, {{10, 10}}, {{0, 10}}, {{-10, 10}}};
+  bw::core::MeshFilledRegion source{
+      shell, {{ring(-8, -4, -2, 4), {}}, {ring(2, -4, 8, 4), {}}}};
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {source}));
+  auto proxy = primitive->createEditingProxy();
+  auto ordered = proxy->getPolygon(proxy->getFirstPolygonIndex())
+                     .getOrderedVertexIndices();
+  auto centreY = 0.0f;
+  for (auto index : ordered) centreY += proxy->getVertex(index).getPosition().y;
+  centreY /= static_cast<float>(ordered.size());
+  auto bottom = *std::find_if(ordered.begin(), ordered.end(), [&](uint32_t index) {
+    auto const& position = proxy->getVertex(index).getPosition();
+    return near(position.x, 0.0f) && position.y < centreY;
+  });
+  auto top = *std::find_if(ordered.begin(), ordered.end(), [&](uint32_t index) {
+    auto const& position = proxy->getVertex(index).getPosition();
+    return near(position.x, 0.0f) && position.y > centreY;
+  });
+  require(proxy->sliceFilledRing(proxy->getFirstPolygonIndex(), bottom, top),
+          "an unobstructed Shell chord was not sliced");
+  proxy->commitTo(*primitive);
+  require(primitive->getShells().size() == 2 &&
+              primitive->getShells()[0].holes.size() == 1 &&
+              primitive->getShells()[1].holes.size() == 1,
+          "Slice did not create two Shells or retain each direct Hole");
+
+  auto refused = primitive->createEditingProxy();
+  auto firstRing = refused->getNodeMappings().front().polygonIndex;
+  auto adjacent = refused->getPolygon(firstRing).getOrderedVertexIndices();
+  require(!refused->sliceFilledRing(firstRing, adjacent[0], adjacent[1]),
+          "Slice accepted adjacent Vertices");
+
+  ClosedPolygon crossingShell{
+      {{-10, -10}}, {{10, -10}}, {{10, 0}}, {{10, 10}}, {{-10, 10}}, {{-10, 0}}};
+  auto crossingPrimitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(
+          Primitive::Operation::Union,
+          {{crossingShell, {{ring(-2, -2, 2, 2), {}}}}}));
+  auto crossing = crossingPrimitive->createEditingProxy();
+  auto crossingOuter = crossing->getNodeMappings().front().polygonIndex;
+  auto crossingVertices = crossing->getPolygon(crossingOuter).getOrderedVertexIndices();
+  auto crossingCentreY = 0.0f;
+  for (auto index : crossingVertices) {
+    crossingCentreY += crossing->getVertex(index).getPosition().y;
+  }
+  crossingCentreY /= static_cast<float>(crossingVertices.size());
+  auto left = std::find_if(crossingVertices.begin(), crossingVertices.end(), [&](uint32_t index) {
+    auto const& position = crossing->getVertex(index).getPosition();
+    return position.x < 0.0f && near(position.y, crossingCentreY);
+  });
+  auto right = std::find_if(crossingVertices.begin(), crossingVertices.end(), [&](uint32_t index) {
+    auto const& position = crossing->getVertex(index).getPosition();
+    return position.x > 0.0f && near(position.y, crossingCentreY);
+  });
+  require(left != crossingVertices.end() && right != crossingVertices.end() &&
+              !crossing->sliceFilledRing(crossingOuter, *left, *right),
+          "Slice crossed a Hole boundary");
+  auto crossingMappings = crossing->getNodeMappings();
+  auto crossingHole = std::find_if(
+      crossingMappings.begin(), crossingMappings.end(), [](auto const& item) {
+        return item.role ==
+               bw::core::MeshPrimitiveEditingProxy::NodeRole::Hole;
+      });
+  require(crossingHole != crossingMappings.end(),
+          "the crossing fixture had no Hole");
+  auto holeOnlyVertex =
+      crossing->getPolygon(crossingHole->polygonIndex)
+          .getOrderedVertexIndices()
+          .front();
+  require(!crossing->sliceFilledRing(
+              crossingOuter, *left, holeOnlyVertex),
+          "Slice accepted an endpoint owned only by another Ring");
+
+  // A filled child may share just one proxy Vertex with its containing Hole.
+  // The parent's incident Edges touch the chord endpoint but do not obstruct
+  // slicing the Island: both authored vertices at that position remain a
+  // valid selection within the same containment family.
+  ClosedPolygon touchingIsland{
+      {{-8, -8}}, {{0, -6}}, {{0, 0}}, {{-6, 0}}};
+  bw::core::MeshFilledRegion island{touchingIsland, {}};
+  bw::core::MeshFilledRegion containingShell{
+      ring(-10, -10, 10, 10), {{ring(-8, -8, 8, 8), {island}}}};
+  auto touchingPrimitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(
+          Primitive::Operation::Union, {containingShell}));
+  auto touching = touchingPrimitive->createEditingProxy();
+  auto touchingMappings = touching->getNodeMappings();
+  auto islandMapping = std::find_if(
+      touchingMappings.begin(), touchingMappings.end(), [](auto const& item) {
+        return item.role ==
+               bw::core::MeshPrimitiveEditingProxy::NodeRole::Island;
+      });
+  require(islandMapping != touchingMappings.end(),
+          "the touching-Vertex fixture had no Island");
+  auto islandVertices =
+      touching->getPolygon(islandMapping->polygonIndex).getOrderedVertexIndices();
+  uint32_t shared = ~0u;
+  for (auto vertexIndex : islandVertices) {
+    if (touching->getVertex(vertexIndex).getEdgeReferences().size() > 2) {
+      shared = vertexIndex;
+      break;
+    }
+  }
+  require(shared != ~0u, "the touching Island did not share its Vertex");
+  auto sharedAt = std::find(islandVertices.begin(), islandVertices.end(), shared);
+  auto opposite = islandVertices[(static_cast<size_t>(sharedAt - islandVertices.begin()) + 2) %
+                                 islandVertices.size()];
+  require(touching->sliceFilledRing(
+              islandMapping->polygonIndex, shared, opposite),
+          "Slice rejected a Vertex shared with an owning Hole/Island family");
+  touching->commitTo(*touchingPrimitive);
+  require(touchingPrimitive->getShells()[0].holes[0].islands.size() == 2,
+          "slicing the touching Island did not create two sibling Islands");
 }
 
 void failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged() {
@@ -466,7 +621,9 @@ int main() {
     coincidentHoleAndIslandRemainIndependentAuthoredRings();
     hierarchyAwareProxyWeldsOnlyExactSharedTopology();
     sharedMutationsCommitToEveryAuthoredRingAtomically();
+    removingTwoSidedEdgeMergesSiblingRings();
     fillHoleWrapsImmediateIslandsWithoutLosingDescendants();
+    sliceDividesFilledRingsAndRetainsHoles();
     failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged();
     fillRuleIsFixedToEvenOddAndRejectsConflictingAssignment();
     shallowConversionRejectsCrossEntryNestingAndMalformedTrees();

@@ -280,7 +280,7 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
           transactUndoableAction(doc, "New Layer", bind(addLayer, placeholders::_1, layerName));
         }
 
-        if (ImGui::MenuItem("Regenerate world data", "P")) {
+        if (ImGui::MenuItem("Regenerate world data")) {
           regenerateWorldData(doc);
         }
       }
@@ -313,7 +313,7 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
         goHome(doc);
       }
 
-      ImGui::MenuItem("Minimap", "M", &settings.renderMiniMap);
+      ImGui::MenuItem("Minimap", nullptr, &settings.renderMiniMap);
       ImGui::MenuItem("Transform debug view", "F7", &settings.showDebugPanel);
       ImGui::MenuItem("Context help view", "F10", &settings.showContextSensitiveHelpPanel);
 
@@ -3562,6 +3562,26 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
   ImGui::Text("Edges selected: %zu", doc->getSelectedMeshEdgeIndices().size());
   ImGui::Text("Rings selected: %zu", doc->getSelectedMeshRingIndices().size());
   ImGui::TextUnformatted("Showing t=0 rest pose while active.");
+
+  auto sliceReason = doc->meshSliceToolUnavailableReason(settings);
+  auto sliceArmed = doc->meshSliceToolArmed();
+  ImGui::BeginDisabled(!sliceReason.empty() || sliceArmed);
+  if (ImGui::Button("Slice##MeshSlice")) {
+    doc->armMeshSliceTool(settings);
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  ImGui::TextUnformatted("Ctrl+Shift+S");
+  if (sliceArmed) {
+    ImGui::TextWrapped(
+        doc->getMeshSliceFirstVertexIndex() == ~0u
+            ? "Slice: select a Vertex on a Shell or Island."
+            : "Slice: select a non-adjacent Vertex on the same Ring. Esc cancels.");
+  } else if (!sliceReason.empty() &&
+             settings.meshSubMode == Settings::MeshSubMode::Vertex) {
+    ImGui::TextWrapped("%s", sliceReason.c_str());
+  }
+
   auto const& explanation = doc->getMeshHoverExplanation();
   if (!explanation.empty() && explanation != "Nothing under the cursor.") {
     ImGui::TextWrapped("Under cursor: %s", explanation.c_str());
@@ -3908,21 +3928,26 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   if (ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      doc->escapeMeshDraw();
+      if (!doc->escapeMeshSlice()) {
+        doc->escapeMeshDraw();
+      }
     }
   }
 
   if (ImGui::Shortcut(ImGuiKey_S | ImGuiMod_Ctrl | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      if (settings.mode == Settings::Mode::Mesh &&
-          settings.meshSubMode == Settings::MeshSubMode::Edge && doc->getActiveMesh()) {
-        auto const& indices = doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);
-        if (!indices.empty()) {
-          auto previewCount = doc->previewMeshEdgeSplitCount(indices);
-          if (previewCount > 0) {
-            transactUndoableAction(
-                doc, format("Split {} Mesh Edge(s)", previewCount),
-                bind(splitMeshEdges, placeholders::_1, indices));
+      if (settings.mode == Settings::Mode::Mesh && doc->getActiveMesh()) {
+        if (settings.meshSubMode == Settings::MeshSubMode::Vertex) {
+          doc->armMeshSliceTool(settings);
+        } else if (settings.meshSubMode == Settings::MeshSubMode::Edge) {
+          auto const& indices = doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);
+          if (!indices.empty()) {
+            auto previewCount = doc->previewMeshEdgeSplitCount(indices);
+            if (previewCount > 0) {
+              transactUndoableAction(
+                  doc, format("Split {} Mesh Edge(s)", previewCount),
+                  bind(splitMeshEdges, placeholders::_1, indices));
+            }
           }
         }
       }
@@ -3983,7 +4008,13 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   if (ImGui::Shortcut(ImGuiKey_M, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      settings.renderMiniMap = !settings.renderMiniMap;
+      setEditorMode(doc, settings, Settings::Mode::Mesh);
+    }
+  }
+
+  if (ImGui::Shortcut(ImGuiKey_P, ImGuiInputFlags_RouteGlobal)) {
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+      setEditorMode(doc, settings, Settings::Mode::Primitive);
     }
   }
 
@@ -4005,12 +4036,6 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
       if (!doc->getSelectedPrimitiveIndices().empty()) {
         goHome(doc);
       }
-    }
-  }
-
-  if (ImGui::Shortcut(ImGuiKey_P, ImGuiInputFlags_RouteGlobal)) {
-    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      regenerateWorldData(doc);
     }
   }
 

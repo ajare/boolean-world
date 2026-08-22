@@ -111,6 +111,42 @@ void EditorInteraction::updateSelection(
     return;
   }
 
+  if (settings.mode == Settings::Mode::Mesh && doc->meshSliceToolArmed()) {
+    mPendingMeshSubObjectClick.clear();
+    mBoxSelectPending = false;
+    mBoxSelectDragging = false;
+    mHover = input.cursorInWorldView
+                 ? doc->getHover(input.worldPosition, settings, worldData)
+                 : DocumentHover{};
+    doc->setMeshHoverExplanation("");
+
+    if (input.leftClicked && input.cursorInWorldView && !input.cursorInMiniMap &&
+        mHover.type == HoverableType::MeshSubObject && !mHover.indices.empty()) {
+      if (doc->getMeshSliceFirstVertexIndex() == ~0u) {
+        // Coincident vertices are separate candidates. Establish the Ring
+        // from the first candidate that belongs to a Shell or Island.
+        for (auto vertexIndex : mHover.indices) {
+          if (doc->selectMeshSliceFirstVertex(vertexIndex)) break;
+        }
+      } else {
+        // Once the first endpoint establishes the Ring, resolve a stacked
+        // hit to the candidate on that same Ring. Never fall through to a
+        // coincident Vertex owned only by another Ring.
+        auto matching = find_if(
+            mHover.indices.begin(), mHover.indices.end(),
+            [&](uint32_t vertexIndex) {
+              return doc->canCompleteMeshSlice(vertexIndex);
+            });
+        if (matching != mHover.indices.end()) {
+          transactUndoableAction(
+              doc, "Slice Mesh Ring",
+              bind(sliceMesh, placeholders::_1, *matching));
+        }
+      }
+    }
+    return;
+  }
+
   if (settings.mode == Settings::Mode::Mesh && doc->meshDrawToolArmed()) {
     mPendingMeshSubObjectClick.clear();
     // An armed draw tool owns the left button outright: a click places a

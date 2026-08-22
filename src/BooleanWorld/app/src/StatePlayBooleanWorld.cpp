@@ -124,8 +124,7 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
       static_cast<std::size_t>(bw::app::antiAliasingCode(antiAliasing));
   assert(antiAliasingIndex < bw::app::antiAliasingOptionCount);
 
-  auto& pipeline = mWorldRenderPipelines[
-      bw::app::renderScaleIndex(renderScale)][antiAliasingIndex];
+  auto& pipeline = mWorldRenderPipelines[bw::app::renderScaleIndex(renderScale)][antiAliasingIndex];
   if (pipeline) {
     return pipeline;
   }
@@ -361,6 +360,7 @@ vector<string> StatePlayBooleanWorld::getDebuggingText() const {
       STR_FORMAT("Mouse world: {:.2f},{:.2f}", mouseWorld.x, mouseWorld.y),
       STR_FORMAT("Player world: {:.2f},{:.2f}", physicalStats.position.x, physicalStats.position.y),
       STR_FORMAT("Player floor/ceil: {:.2f},{:.2f}", floorHeight, ceilingHeight),
+      STR_FORMAT("Player height/vZ: {:.2f},{:.2f}", physicalStats.floorZ, mPlayerVerticalVelocity),
       STR_FORMAT("Player angle: {:.2f}", physicalStats.angle),
       STR_FORMAT("Player poly: {}", mPlayerPolygonIndex),
       STR_FORMAT("Player prim: {}", playerPrimIndex),
@@ -446,6 +446,8 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
 
   mPlayerPrevAngle = 0;
   mPlayerPrevPitch = 0;
+  mPlayerVerticalVelocity = 0.0f;
+  mPlayerVerticalHeightInitialized = false;
 
   auto transitionData = static_cast<applib::StateTransitionData*>(args);
 
@@ -540,8 +542,47 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
     // ...
   }
 
+  updatePlayerVerticalPhysics(frameTime);
+
   if (mwAudioSystem) {
     updateAudio(frameTime);
+  }
+}
+
+void StatePlayBooleanWorld::updatePlayerVerticalPhysics(float frameTime) {
+  auto& physicalStats = getPlayerPhysicalStats();
+  auto targetFloor = getFloorHeightAt(physicalStats.position);
+
+  if (!mPlayerVerticalHeightInitialized) {
+    // Before mWorldData exists (very start of map load) the floor query
+    // falls back to 0; wait for a real reading before treating any
+    // difference as a fall.
+    if (!mWorldData) {
+      return;
+    }
+    physicalStats.floorZ = targetFloor;
+    mPlayerVerticalVelocity = 0.0f;
+    mPlayerVerticalHeightInitialized = true;
+    return;
+  }
+
+  if (targetFloor >= physicalStats.floorZ) {
+    // Horizontal collision already refused any step too tall to climb (see
+    // ArrangementWorldData's step-threshold/clearance rules), so any floor
+    // rise reaching here is a walkable step: climb it smoothly rather than
+    // snapping straight to it, and stay grounded (no carried fall speed).
+    mPlayerVerticalVelocity = 0.0f;
+    physicalStats.floorZ += std::min(
+        targetFloor - physicalStats.floorZ, BW_PLAYER_STEP_SPEED * frameTime);
+  } else {
+    // Walked past the edge of the floor beneath us: accelerate downward
+    // under gravity until the new, lower floor catches us.
+    mPlayerVerticalVelocity -= BW_PLAYER_GRAVITY * frameTime;
+    physicalStats.floorZ += mPlayerVerticalVelocity * frameTime;
+    if (physicalStats.floorZ <= targetFloor) {
+      physicalStats.floorZ = targetFloor;
+      mPlayerVerticalVelocity = 0.0f;
+    }
   }
 }
 
@@ -586,8 +627,11 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   // Set camera position
   auto const& physicalStats = getPlayerPhysicalStats();
 
-  // Camera position is player world Y offset plus player eye height
-  auto playerViewHeight = getPlayerFloorHeight() + BW_PLAYER_EYE_HEIGHT;
+  // Camera position is the player's current simulated height (see
+  // updatePlayerVerticalPhysics - smoothed onto steps, falling under
+  // gravity off ledges) plus player eye height, not the floor directly
+  // beneath them: those two only match once physics has caught up.
+  auto playerViewHeight = physicalStats.floorZ + BW_PLAYER_EYE_HEIGHT;
 
   static_cast<ReactiveCamera*>(mCamera3d.get())->setPosition({physicalStats.position.x, playerViewHeight, physicalStats.position.y});
   // The renderer's camera yaw is clockwise from world -Y, while authored
@@ -730,9 +774,8 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   renderSystem->clearScreen(mpp::Colour::Black);
   renderSystem->setProjection2dOrthographic();
   renderSystem->resetTransform();
-  renderSystem->scaleTransform2d({
-      static_cast<float>(worldTarget->getWidth()) / renderSystem->getWindowWidth(),
-      static_cast<float>(worldTarget->getHeight()) / renderSystem->getWindowHeight()});
+  renderSystem->scaleTransform2d({static_cast<float>(worldTarget->getWidth()) / renderSystem->getWindowWidth(),
+                                  static_cast<float>(worldTarget->getHeight()) / renderSystem->getWindowHeight()});
   renderSystem->renderFullscreenQuad(
       sceneTexture, mpp::BlendMode::One, mpp::BlendMode::Zero);
   renderSystem->popRenderTarget();
@@ -1296,15 +1339,15 @@ void StatePlayBooleanWorld::debug_renderOptions() {
                                          bw::app::AmbientOcclusion::Gtao
                                      ? "Enable GTAO"
                                  : configuredAmbientOcclusion ==
-                                           bw::app::AmbientOcclusion::Ssao
+                                         bw::app::AmbientOcclusion::Ssao
                                      ? "Enable SSAO"
                                      : "Enable ambient occlusion";
     ImGui::TextUnformatted(
         configuredAmbientOcclusion == bw::app::AmbientOcclusion::Gtao
             ? "Ambient occlusion (GTAO)"
-            : configuredAmbientOcclusion == bw::app::AmbientOcclusion::Ssao
-                  ? "Ambient occlusion (SSAO)"
-                  : "Ambient occlusion");
+        : configuredAmbientOcclusion == bw::app::AmbientOcclusion::Ssao
+            ? "Ambient occlusion (SSAO)"
+            : "Ambient occlusion");
     ImGui::BeginDisabled(!ambientOcclusionConfigured);
     if (ImGui::Checkbox(
             ambientOcclusionLabel,

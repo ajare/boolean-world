@@ -236,6 +236,7 @@ void Document::reset() {
   mSelectedPrimitiveIndices.clear();
   clearActiveMesh();
   disarmMeshDrawTool();
+  disarmMeshSliceTool();
   mMeshHoverExplanation.clear();
   mPlayerProxyPosition.set(0.0f, 0.0f);
   mPlayerProxyAngle = 0.0f;
@@ -520,6 +521,7 @@ bool Document::activateMesh(uint32_t primitiveIndex) {
     return true;
   }
   auto* primitive = static_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(primitiveIndex));
+  disarmMeshSliceTool();
   mActiveMesh = primitive->createEditingProxy();
   mActiveMeshPrimitiveIndex = primitiveIndex;
   clearMeshSelections();
@@ -527,6 +529,7 @@ bool Document::activateMesh(uint32_t primitiveIndex) {
 }
 
 void Document::clearActiveMesh() {
+  disarmMeshSliceTool();
   mActiveMesh.reset();
   mActiveMeshPrimitiveIndex = ~0u;
   clearMeshSelections();
@@ -1437,6 +1440,104 @@ uint32_t Document::previewMeshEdgeSplitCount(set<uint32_t> const& edgeIndices) c
   return splitCount;
 }
 
+string Document::meshSliceToolUnavailableReason(Settings const& settings) const {
+  if (!mActiveMesh) return "Select a MeshPrimitive first.";
+  if (settings.mode != Settings::Mode::Mesh ||
+      settings.meshSubMode != Settings::MeshSubMode::Vertex) {
+    return "Slice is only available in Mesh mode's Vertex sub-mode.";
+  }
+  return {};
+}
+
+bool Document::armMeshSliceTool(Settings const& settings) {
+  if (!meshSliceToolUnavailableReason(settings).empty()) return false;
+  disarmMeshDrawTool();
+  mMeshSliceToolArmed = true;
+  mMeshSliceFirstVertexIndex = ~0u;
+  mMeshSliceRingIndex = ~0u;
+  clearMeshSelections();
+  return true;
+}
+
+void Document::disarmMeshSliceTool() {
+  mMeshSliceToolArmed = false;
+  mMeshSliceFirstVertexIndex = ~0u;
+  mMeshSliceRingIndex = ~0u;
+}
+
+bool Document::meshSliceToolArmed() const { return mMeshSliceToolArmed; }
+uint32_t Document::getMeshSliceFirstVertexIndex() const {
+  return mMeshSliceFirstVertexIndex;
+}
+uint32_t Document::getMeshSliceRingIndex() const { return mMeshSliceRingIndex; }
+
+bool Document::canSelectMeshSliceFirstVertex(uint32_t vertexIndex) const {
+  if (!mMeshSliceToolArmed || !mActiveMesh ||
+      mActiveMesh->vertexIndexIterationFinished(vertexIndex)) {
+    return false;
+  }
+  return ranges::any_of(mActiveMesh->getNodeMappings(), [&](auto const& mapping) {
+    return mapping.role != bw::core::MeshPrimitiveEditingProxy::NodeRole::Hole &&
+           mActiveMesh->getPolygon(mapping.polygonIndex)
+               .getVertexIndexSet()
+               .contains(vertexIndex);
+  });
+}
+
+bool Document::selectMeshSliceFirstVertex(uint32_t vertexIndex) {
+  if (!canSelectMeshSliceFirstVertex(vertexIndex)) return false;
+  for (auto const& mapping : mActiveMesh->getNodeMappings()) {
+    if (mapping.role != bw::core::MeshPrimitiveEditingProxy::NodeRole::Hole &&
+        mActiveMesh->getPolygon(mapping.polygonIndex)
+            .getVertexIndexSet()
+            .contains(vertexIndex)) {
+      mMeshSliceFirstVertexIndex = vertexIndex;
+      mMeshSliceRingIndex = mapping.polygonIndex;
+      mSelectedMeshVertexIndices = {vertexIndex};
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Document::canCompleteMeshSlice(uint32_t vertexIndex) const {
+  if (!mMeshSliceToolArmed || !mActiveMesh ||
+      mMeshSliceFirstVertexIndex == ~0u ||
+      mActiveMesh->vertexIndexIterationFinished(vertexIndex) ||
+      !mActiveMesh->getPolygon(mMeshSliceRingIndex)
+           .getVertexIndexSet()
+           .contains(vertexIndex)) {
+    return false;
+  }
+  auto candidate = *mActiveMesh;
+  return candidate.sliceFilledRing(
+      mMeshSliceRingIndex, mMeshSliceFirstVertexIndex, vertexIndex);
+}
+
+bool Document::completeMeshSlice(uint32_t vertexIndex) {
+  if (!canCompleteMeshSlice(vertexIndex)) return false;
+  if (!mActiveMesh->sliceFilledRing(
+          mMeshSliceRingIndex, mMeshSliceFirstVertexIndex, vertexIndex)) {
+    return false;
+  }
+  clearMeshSelections();
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
+  disarmMeshSliceTool();
+  return true;
+}
+
+bool Document::escapeMeshSlice() {
+  if (!mMeshSliceToolArmed) return false;
+  if (mMeshSliceFirstVertexIndex != ~0u) {
+    mMeshSliceFirstVertexIndex = ~0u;
+    mMeshSliceRingIndex = ~0u;
+    clearMeshSelections();
+  } else {
+    disarmMeshSliceTool();
+  }
+  return true;
+}
+
 namespace {
 
 float twiceSignedArea(vector<wp::Vector2> const& points) {
@@ -1745,6 +1846,7 @@ bool Document::armMeshDrawTool(Settings const& settings) {
   if (!meshDrawToolUnavailableReason(settings).empty()) {
     return false;
   }
+  disarmMeshSliceTool();
   mMeshDrawToolArmed = true;
   mMeshDrawVertices.clear();
   mMeshDrawContainingRingIndex = ~0u;

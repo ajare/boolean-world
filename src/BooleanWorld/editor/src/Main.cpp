@@ -1,6 +1,7 @@
 #define NOMINMAX
 
 #include <Windows.h>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 
@@ -419,6 +420,32 @@ editor::PointerInput readPointerInput(
   return input;
 }
 
+void drawMeshAuthoringCursor(editor::PointerInput const& input, bool valid) {
+  // ImGui has no crosshair cursor. Draw one at the pointer so an armed mesh
+  // authoring tool is unmistakable; invalid targets use a red X.
+  ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+  auto drawList = ImGui::GetForegroundDrawList();
+  auto centre = ImVec2{input.screenPosition.x, input.screenPosition.y};
+  constexpr float radius = 7.0f;
+  if (!valid) {
+    auto colour = IM_COL32(255, 70, 70, 255);
+    drawList->AddLine(
+        {centre.x - radius, centre.y - radius},
+        {centre.x + radius, centre.y + radius}, colour, 2.5f);
+    drawList->AddLine(
+        {centre.x - radius, centre.y + radius},
+        {centre.x + radius, centre.y - radius}, colour, 2.5f);
+  } else {
+    auto colour = IM_COL32(220, 235, 255, 255);
+    drawList->AddLine(
+        {centre.x - radius, centre.y}, {centre.x + radius, centre.y},
+        colour, 2.0f);
+    drawList->AddLine(
+        {centre.x, centre.y - radius}, {centre.x, centre.y + radius},
+        colour, 2.0f);
+  }
+}
+
 void handleSelections(
     editor::Document* doc,
     bw::core::WorldData const* worldData,
@@ -448,30 +475,18 @@ void handleSelections(
     if (state == editor::Document::MeshDrawPositionState::CloseRing) {
       ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     } else {
-      // ImGui has no crosshair cursor. Draw one at the pointer so the armed
-      // authoring state is unmistakable; invalid positions use a red X.
-      ImGui::SetMouseCursor(ImGuiMouseCursor_None);
-      auto drawList = ImGui::GetForegroundDrawList();
-      auto centre = ImVec2{input.screenPosition.x, input.screenPosition.y};
-      constexpr float radius = 7.0f;
-      if (state == editor::Document::MeshDrawPositionState::Invalid) {
-        auto colour = IM_COL32(255, 70, 70, 255);
-        drawList->AddLine(
-            {centre.x - radius, centre.y - radius},
-            {centre.x + radius, centre.y + radius}, colour, 2.5f);
-        drawList->AddLine(
-            {centre.x - radius, centre.y + radius},
-            {centre.x + radius, centre.y - radius}, colour, 2.5f);
-      } else {
-        auto colour = IM_COL32(220, 235, 255, 255);
-        drawList->AddLine(
-            {centre.x - radius, centre.y}, {centre.x + radius, centre.y},
-            colour, 2.0f);
-        drawList->AddLine(
-            {centre.x, centre.y - radius}, {centre.x, centre.y + radius},
-            colour, 2.0f);
-      }
+      drawMeshAuthoringCursor(
+          input, state != editor::Document::MeshDrawPositionState::Invalid);
     }
+  } else if (input.cursorInWorldView && !input.cursorInMiniMap &&
+             doc->meshSliceToolArmed()) {
+    auto validTarget = hover.type == editor::HoverableType::MeshSubObject &&
+                       ranges::any_of(hover.indices, [&](uint32_t vertexIndex) {
+                         return doc->getMeshSliceFirstVertexIndex() == ~0u
+                                    ? doc->canSelectMeshSliceFirstVertex(vertexIndex)
+                                    : doc->canCompleteMeshSlice(vertexIndex);
+                       });
+    drawMeshAuthoringCursor(input, validTarget);
   } else if (hover.type != editor::HoverableType::None) {
     ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
   }

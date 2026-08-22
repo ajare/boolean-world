@@ -25,8 +25,9 @@ void setEditorMode(Document* doc, Settings& settings, Settings::Mode mode) {
     return;
   }
 
-  // A half-drawn Ring means nothing outside the context it was started in.
+  // In-progress Mesh tools mean nothing outside the context they started in.
   doc->disarmMeshDrawTool();
+  doc->disarmMeshSliceTool();
 
   if (mode == Settings::Mode::Mesh && doc->isActive()) {
     auto const& selection = doc->getSelectedPrimitiveIndices();
@@ -59,6 +60,7 @@ void setMeshSubMode(
   }
 
   doc->disarmMeshDrawTool();
+  doc->disarmMeshSliceTool();
   settings.meshSubMode = subMode;
   doc->clearSelections();
 }
@@ -354,6 +356,10 @@ bool deleteMeshSubObjects(
 
 bool splitMeshEdges(Document* doc, set<uint32_t> const& edgeIndices) {
   return doc->splitMeshEdges(edgeIndices) > 0;
+}
+
+bool sliceMesh(Document* doc, uint32_t secondVertexIndex) {
+  return doc->completeMeshSlice(secondVertexIndex);
 }
 
 bool fillMeshHole(Document* doc, uint32_t holeRingIndex) {

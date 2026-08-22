@@ -80,6 +80,16 @@ private:
 
   float mPlayerPrevAngle, mPlayerPrevPitch;
 
+  // Vertical physics (ticket: step-up/gravity). physicalStats.floorZ is the
+  // player's current simulated height; this is only its rate of change while
+  // falling - stepping up is a direct, velocity-free rise.
+  float mPlayerVerticalVelocity;
+
+  // True once physicalStats.floorZ has been snapped to the real floor at
+  // least once. Until mWorldData exists (early in map load) the floor query
+  // falls back to 0, so the very first valid reading is a snap, not a fall.
+  bool mPlayerVerticalHeightInitialized;
+
   bool mExitScheduled;
 
   // Created/managed in load states
@@ -133,6 +143,12 @@ private:
   void updatePreEntities(float frameTime) override;
 
   void updatePostEntities(float frameTime) override;
+
+  // Rises smoothly onto a taller floor and falls under gravity off a lower
+  // one, at the player's current (post-collision) position. Run after
+  // horizontal movement/collision has resolved that position, so the floor
+  // queried here is the one the player actually ends up standing over.
+  void updatePlayerVerticalPhysics(float frameTime);
 
   void updateAudio(float frameTime);
 
