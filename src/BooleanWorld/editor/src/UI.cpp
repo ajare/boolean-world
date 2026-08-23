@@ -1373,12 +1373,16 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
 
   // Priority
   int primitivePriority = (int)ghost->getPriority();
+  auto const* priorityStep = doc->getWorld()->getActiveLayer()->getActiveStep();
+  auto const priorityMax = dynamic_cast<bw::core::DefinePrefabs const*>(priorityStep)
+                               ? BW_PREFAB_SOURCE_PRIORITY_MAX_VALUE
+                               : BW_PRIORITY_MAX_VALUE;
 
-  widgets::HelpMarker("Priority determines the order in which primitives are folded.  Lower value means earlier in the order.  Allowed values are 0 to 255.");
+  widgets::HelpMarker("Priority determines fold order. Values 249-255 are reserved for PrefabField phases, but remain available inside Prefab definitions as relative ordering values.");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(128);
 
-  if (ImGui::SliderInt("Priority##CreatePrimitive", &primitivePriority, BW_PRIORITY_MIN_VALUE, BW_PRIORITY_MAX_VALUE)) {
+  if (ImGui::SliderInt("Priority##CreatePrimitive", &primitivePriority, BW_PRIORITY_MIN_VALUE, priorityMax)) {
     modified = true;
   }
 
@@ -2413,9 +2417,15 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
 
   // Priority
   int primitivePriority = (int)primitive->getPriority();
+  auto* activeLayer = doc->getWorld()->getActiveLayer();
+  auto const ownerIndex = activeLayer->getOwningStepIndex(primitive);
+  auto const priorityMax = dynamic_cast<bw::core::DefinePrefabs const*>(
+                               activeLayer->getStep(ownerIndex))
+                               ? BW_PREFAB_SOURCE_PRIORITY_MAX_VALUE
+                               : BW_PRIORITY_MAX_VALUE;
   ImGui::SetNextItemWidth(128);
 
-  if (ImGui::SliderInt("Priority##EditPrimitive", &primitivePriority, BW_PRIORITY_MIN_VALUE, BW_PRIORITY_MAX_VALUE)) {
+  if (ImGui::SliderInt("Priority##EditPrimitive", &primitivePriority, BW_PRIORITY_MIN_VALUE, priorityMax)) {
     primitive->setPriority((uint8_t)primitivePriority);
   }
 
@@ -3071,6 +3081,34 @@ void renderPrefabsView(
     }
 
     ImGui::SameLine();
+    ImGui::SetNextItemWidth(92.0f);
+    auto const currentSize = prefab->getTileSize();
+    auto const currentSide = bw::core::prefabTileSide(currentSize);
+    auto const currentSizeLabel = format("{}x{}", currentSide, currentSide);
+    if (ImGui::BeginCombo("##TileSize", currentSizeLabel.c_str())) {
+      for (auto size : bw::core::allPrefabTileSizes) {
+        auto const side = bw::core::prefabTileSide(size);
+        auto const label = format("{}x{}", side, side);
+        auto const reason = prefabSizeChangeBlockedReason(
+            layer, step, prefab, size);
+        ImGui::BeginDisabled(!reason.empty());
+        if (ImGui::Selectable(label.c_str(), size == currentSize) &&
+            size != currentSize) {
+          transactUndoableAction(
+              doc, "Set Prefab Tile Size",
+              bind(setPrefabTileSize, placeholders::_1, layer, step, prefab,
+                   size));
+        }
+        ImGui::EndDisabled();
+        if (!reason.empty() &&
+            ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+          ImGui::SetTooltip("%s", reason.c_str());
+        }
+      }
+      ImGui::EndCombo();
+    }
+
+    ImGui::SameLine();
     auto blockedReason = prefabDeletionBlockedReason(layer, step, prefab);
     ImGui::BeginDisabled(!blockedReason.empty());
     if (ImGui::Button(ICON_FA_TRASH)) {
@@ -3116,15 +3154,6 @@ void renderPrefabsView(
     ImGui::EndCombo();
   }
 
-  float size = step->getSize();
-  ImGui::SetNextItemWidth(140.0f);
-  if (ImGui::InputFloat(
-          "Size##PrefabTilingSize", &size, 1.0f, 8.0f, "%.3f",
-          ImGuiInputTextFlags_EnterReturnsTrue)) {
-    transactUndoableAction(
-        doc, "Set Prefab Tiling Size",
-        bind(setPrefabSize, placeholders::_1, layer, step, max(size, 0.001f)));
-  }
 }
 
 void renderPrefabThumbnail(
@@ -3267,6 +3296,21 @@ void renderPrefabFieldView(
 
   if (field->getSelectedPrefab(*layer) && ImGui::Button("Clear palette selection")) {
     selectPrefabForField(doc, layer, field, nullptr);
+  }
+
+  if (field->hasSelectedTile()) {
+    auto const tile = field->getSelectedTile();
+    auto const* instance = field->getInstance(tile);
+    if (instance && tile.size != bw::core::PrefabTileSize::Size256) {
+      bool add = instance->mode == bw::core::TileMode::Add;
+      if (ImGui::Checkbox("Add", &add)) {
+        transactUndoableAction(
+            doc, "Set Prefab Tile Mode",
+            bind(setPrefabInstanceMode, placeholders::_1, layer, field, tile,
+                 add ? bw::core::TileMode::Add
+                     : bw::core::TileMode::Replace));
+      }
+    }
   }
 }
 
@@ -3478,11 +3522,15 @@ void renderMeshDrawToolView(editor::Document* doc, editor::Settings& settings) {
   setOperationWidget(doc, ghost, 3);
 
   int priority = (int)ghost->getPriority();
-  widgets::HelpMarker("Priority the drawn MeshPrimitive is created with.  Lower value means earlier in the fold order.");
+  auto const priorityMax = dynamic_cast<bw::core::DefinePrefabs const*>(
+                               doc->getWorld()->getActiveLayer()->getActiveStep())
+                               ? BW_PREFAB_SOURCE_PRIORITY_MAX_VALUE
+                               : BW_PRIORITY_MAX_VALUE;
+  widgets::HelpMarker("Priority the drawn MeshPrimitive is created with. Lower values fold earlier; 249-255 are reserved outside Prefab definitions.");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(128);
 
-  if (ImGui::SliderInt("Priority##MeshDraw", &priority, BW_PRIORITY_MIN_VALUE, BW_PRIORITY_MAX_VALUE)) {
+  if (ImGui::SliderInt("Priority##MeshDraw", &priority, BW_PRIORITY_MIN_VALUE, priorityMax)) {
     ghost->setPriority((uint8_t)priority);
   }
 

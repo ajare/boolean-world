@@ -90,9 +90,8 @@ void prefabIdsNamesAndStepArgumentsBehaveAsAuthoredData() {
   bw::core::DefinePrefabs step;
   require(step.getSelectedPrefab() == nullptr,
           "a new DefinePrefabs step selected a Prefab");
-  require(step.getTilingType() == bw::core::PrefabTilingType::Square &&
-              step.getSize() == 64.0f,
-          "DefinePrefabs did not carry its square tiling arguments");
+  require(step.getTilingType() == bw::core::PrefabTilingType::Square,
+          "DefinePrefabs did not carry its square tiling type");
 
   auto* first = step.addPrefab("Duplicate");
   auto* deleted = step.addPrefab("Duplicate");
@@ -107,9 +106,33 @@ void prefabIdsNamesAndStepArgumentsBehaveAsAuthoredData() {
           "deleting the highest Prefab caused its id to be reused");
 
   step.setPrefabName(first, "Renamed");
-  step.setSize(128.0f);
-  require(first->getName() == "Renamed" && step.getSize() == 128.0f,
-          "Prefab name or per-step tiling size was not mutable");
+  require(first->getTileSize() == bw::core::PrefabTileSize::Size64,
+          "a new Prefab did not default to 64x64");
+  step.setPrefabTileSize(first, bw::core::PrefabTileSize::Size128);
+  require(first->getName() == "Renamed" &&
+              first->getTileSize() == bw::core::PrefabTileSize::Size128 &&
+              replacement->getTileSize() == bw::core::PrefabTileSize::Size64,
+          "Prefab name or per-Prefab tile size was not mutable");
+}
+
+void reservedPrioritiesAreRejectedOutsidePrefabDefinitions() {
+  bw::core::Layer layer(0, "Base", 256.0f, 16.0f);
+  auto* ordinary = makeRectangle(0.0f);
+  ordinary->setPriority(249);
+  requireCoreException(
+      [&] { layer.addPrimitive(ordinary); },
+      "an ordinary Primitive used a reserved PrefabField priority");
+
+  bw::core::Layer prefabLayer(1, "Prefabs", 256.0f, 16.0f);
+  auto* definitions = addDefinePrefabs(prefabLayer);
+  auto* prefab = definitions->addPrefab("High relative priority");
+  definitions->setSelectedPrefab(prefab);
+  prefabLayer.setActiveStep(prefabLayer.getNumSteps() - 1);
+  auto* source = makeRectangle(1.0f);
+  source->setPriority(255);
+  prefabLayer.addPrimitive(source);
+  require(prefab->getPrimitive(0)->getPriority() == 255,
+          "a Prefab source Primitive could not use the full relative priority range");
 }
 
 void selectionControlsOutputCapabilitiesAndLayerStorage() {
@@ -218,7 +241,8 @@ void serializationRoundTripsPrefabsCounterAndArgumentsButNotSelection() {
   sourceStep->removePrefab(deleted);
   auto* second = sourceStep->addPrefab("Same name");
   auto const expectedNextId = second->getId() + 1;
-  sourceStep->setSize(96.0f);
+  sourceStep->setPrefabTileSize(kept, bw::core::PrefabTileSize::Size128);
+  sourceStep->setPrefabTileSize(second, bw::core::PrefabTileSize::Size32);
   sourceStep->setSelectedPrefab(kept);
   source.setActiveStep(1);
   source.addPrimitive(makeRectangle(42.0f));
@@ -249,8 +273,11 @@ void serializationRoundTripsPrefabsCounterAndArgumentsButNotSelection() {
               loaded.getNumPrimitives() == 0,
           "Prefab selection survived deserialization or emitted geometry on load");
   require(loadedStep->getTilingType() == bw::core::PrefabTilingType::Square &&
-              loadedStep->getSize() == 96.0f,
-          "DefinePrefabs tiling arguments did not round-trip");
+              loadedStep->getPrefab(0)->getTileSize() ==
+                  bw::core::PrefabTileSize::Size128 &&
+              loadedStep->getPrefab(1)->getTileSize() ==
+                  bw::core::PrefabTileSize::Size32,
+          "DefinePrefabs tiling type or Prefab tile sizes did not round-trip");
   require(loadedStep->addPrefab("After load")->getId() == expectedNextId,
           "the serialized monotonic Prefab id counter was not restored");
 }
@@ -272,6 +299,7 @@ int main() {
     registryConstructsDefinePrefabsByTypeName();
     squareTilingHasTheCoreRotationAngleTable();
     prefabIdsNamesAndStepArgumentsBehaveAsAuthoredData();
+    reservedPrioritiesAreRejectedOutsidePrefabDefinitions();
     selectionControlsOutputCapabilitiesAndLayerStorage();
     laterStepsCannotObserveSelectedPrefabPrimitives();
     layerCopyClonesPrefabsRemapsParentsAndClearsSelection();

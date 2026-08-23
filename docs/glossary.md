@@ -43,8 +43,7 @@ authoritative authored topology.
 **Fill rule** — `NonZero` or `EvenOdd`. Reduces a primitive's signed winding
 number at a point to inside/outside. Per-primitive, applied *before* the fold.
 
-**Priority** — Authored `uint8_t`. Sets the order primitives are folded in.
-Not a z-order: it determines meaning, not just overlap.
+**Priority** — `uint8_t` ordering value for the global fold. Values 0–248 are authored for ordinary build Primitives; 249–255 are reserved, in order, for a PrefabField's seven generated grid phases. A Prefab definition's Primitives may still use the full 0–255 range because those values establish relative order inside one generated content phase rather than becoming the instances' final fold priorities. Not a z-order: it determines meaning, not just overlap.
 
 **Fold** — The evaluation model. Primitives are sorted by priority and combined
 left-to-right: `((P0 op P1) op P2) op P3 …`, where each `opN` is `PN`'s own

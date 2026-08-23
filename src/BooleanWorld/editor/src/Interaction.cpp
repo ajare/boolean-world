@@ -100,12 +100,14 @@ void EditorInteraction::updateSelection(
       return;
     }
     if (input.leftClicked && input.cursorInWorldView && !input.cursorInMiniMap) {
-      auto tile = prefabField->tileAt(*layer, input.worldPosition);
-      prefabField->selectTile(tile);
       if (prefabField->getSelectedPrefab(*layer)) {
-        transactUndoableActionAtomically(
+        auto tile = prefabField->tileAt(*layer, input.worldPosition);
+        prefabField->selectTile(tile);
+        (void)transactUndoableActionAtomically(
             doc, "Place Prefab Instance",
             bind(placePrefabInstance, placeholders::_1, layer, prefabField, tile));
+      } else {
+        (void)prefabField->selectOccupiedTileAt(input.worldPosition);
       }
     }
     return;
@@ -608,7 +610,7 @@ bool EditorInteraction::movePrefabTileCursor(Document* doc, int32_t x, int32_t y
   if (!field) return false;
   if (field->hasSelectedTile()) {
     auto tile = field->getSelectedTile();
-    field->selectTile({tile.x + x, tile.y + y});
+    field->selectTile({tile.size, tile.x + x, tile.y + y});
   }
   return true;
 }

@@ -289,8 +289,12 @@ void renderWorld(
     primitives.erase(
         remove_if(primitives.begin(), primitives.end(),
                   [&](bw::core::Primitive const* primitive) {
-                    return !editor::primitiveVisibleForActiveStep(
-                        *activeLayer, primitive, settings);
+                    auto const ownerIndex = activeLayer->getOwningStepIndex(primitive);
+                    auto const* field = dynamic_cast<bw::core::PrefabField const*>(
+                        activeLayer->getStep(ownerIndex));
+                    return (field && field->isHiddenGeneratedPrimitive(primitive)) ||
+                           !editor::primitiveVisibleForActiveStep(
+                               *activeLayer, primitive, settings);
                   }),
         primitives.end());
   }
@@ -310,17 +314,20 @@ void renderWorld(
                                       ? dynamic_cast<bw::core::DefinePrefabs const*>(
                                             activeLayer->getActiveStep())
                                       : nullptr) {
-    auto const outline = editor::prefabTilingOutline(
-        definePrefabs->getTilingType(), definePrefabs->getSize());
-    std::vector<ImVec2> screenOutline;
-    screenOutline.reserve(outline.size());
-    for (auto const& point : outline) {
-      screenOutline.push_back(worldToScreen(point));
-    }
-    if (screenOutline.size() >= 3) {
-      drawList->AddPolyline(
-          screenOutline.data(), static_cast<int>(screenOutline.size()),
-          settings.prefabTilingGuideColour, ImDrawFlags_Closed, 1.5f);
+    if (auto const* prefab = definePrefabs->getSelectedPrefab()) {
+      auto const outline = editor::prefabTilingOutline(
+          definePrefabs->getTilingType(),
+          static_cast<float>(bw::core::prefabTileSide(prefab->getTileSize())));
+      std::vector<ImVec2> screenOutline;
+      screenOutline.reserve(outline.size());
+      for (auto const& point : outline) {
+        screenOutline.push_back(worldToScreen(point));
+      }
+      if (screenOutline.size() >= 3) {
+        drawList->AddPolyline(
+            screenOutline.data(), static_cast<int>(screenOutline.size()),
+            settings.prefabTilingGuideColour, ImDrawFlags_Closed, 1.5f);
+      }
     }
   } else if (auto const* field = activeLayer
                                      ? dynamic_cast<bw::core::PrefabField const*>(
@@ -332,25 +339,33 @@ void renderWorld(
     // the selected Tile picked out at full strength as the placement cursor.
     auto const* definitions = field->getDefinePrefabs(*activeLayer);
     if (definitions) {
-      // Instances are centred on their Tile (tileAt rounds to the nearest
-      // multiple of the tile size), so a Tile's boundary - and the grid line
-      // marking it - sits half a tile off that multiple, not on it.
-      renderGrid(
-          definitions->getSize(), viewBounds,
-          fadeColour(settings.prefabTilingGuideColour, 0.5f), 1.0f, nullptr,
-          drawList, definitions->getSize() * 0.5f);
+      auto const* selectedPrefab = field->getSelectedPrefab(*activeLayer);
+      auto const hasGrid = selectedPrefab || field->hasSelectedTile();
+      auto const gridSize = selectedPrefab
+                                ? selectedPrefab->getTileSize()
+                                : field->getSelectedTile().size;
+      if (hasGrid) {
+        auto const side = static_cast<float>(bw::core::prefabTileSide(gridSize));
+        renderGrid(
+            side, viewBounds,
+            fadeColour(settings.prefabTilingGuideColour, 0.5f), 1.0f, nullptr,
+            drawList, 0.0f);
 
-      if (field->hasSelectedTile()) {
-        auto tile = field->getSelectedTile();
-        auto offset = wp::Vector2{tile.x * definitions->getSize(),
-                                  tile.y * definitions->getSize()};
-        auto const outline = editor::prefabTilingOutline(
-            definitions->getTilingType(), definitions->getSize());
-        std::vector<ImVec2> screenOutline;
-        for (auto const& point : outline) screenOutline.push_back(worldToScreen(point + offset));
-        if (screenOutline.size() >= 3) {
-          drawList->AddPolyline(screenOutline.data(), static_cast<int>(screenOutline.size()),
-                                settings.prefabTilingGuideColour, ImDrawFlags_Closed, 2.5f);
+        if (field->hasSelectedTile()) {
+          auto tile = field->getSelectedTile();
+          auto tileSide = static_cast<float>(bw::core::prefabTileSide(tile.size));
+          auto centre = wp::Vector2{(tile.x + 0.5f) * tileSide,
+                                    (tile.y + 0.5f) * tileSide};
+          auto const outline = editor::prefabTilingOutline(
+              definitions->getTilingType(), tileSide);
+          std::vector<ImVec2> screenOutline;
+          for (auto const& point : outline)
+            screenOutline.push_back(worldToScreen(point + centre));
+          if (screenOutline.size() >= 3) {
+            drawList->AddPolyline(
+                screenOutline.data(), static_cast<int>(screenOutline.size()),
+                settings.prefabTilingGuideColour, ImDrawFlags_Closed, 2.5f);
+          }
         }
       }
     }
@@ -817,7 +832,7 @@ void renderWorld(
     auto playerStartScreen = worldToScreen(playerStartPos);
     auto startLookScreen = worldToScreen(startLookPos);
 
-    drawList->AddCircle(playerStartScreen, (BW_PLAYER_RADIUS + 20) * gViewZoom, ImColor(0, 1, 0), BW_PLAYER_RADIUS * 2, 2);
+    drawList->AddCircle(playerStartScreen, (BW_PLAYER_RADIUS + 20) * gViewZoom, ImColor(0, 1, 0), static_cast<int>(BW_PLAYER_RADIUS * 2), 2);
 
     drawList->AddLine(playerStartScreen, startLookScreen, ImColor(0, 1, 0), 2);
 

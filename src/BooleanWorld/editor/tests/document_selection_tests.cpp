@@ -366,7 +366,8 @@ void activePrefabFieldPrimitivesUseTheActiveStepColour() {
   auto fieldIndex = layer->addStep(field);
   field->bind(*layer, definitions);
   field->setSelectedPrefab(*definitions, prefab);
-  require(field->placeSelected(*layer, {0, 0}),
+  require(field->placeSelected(
+              *layer, {bw::core::PrefabTileSize::Size64, 0, 0}),
           "the PrefabField colour fixture did not place its instance");
   definitions->clearSelectedPrefab();
   layer->setActiveStep(fieldIndex);
@@ -476,7 +477,8 @@ void openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost() {
   auto fieldIndex = layer->addStep(field);
   field->bind(*layer, definitions);
   field->setSelectedPrefab(*definitions, prefab);
-  require(field->placeSelected(*layer, {0, 0}),
+  require(field->placeSelected(
+              *layer, {bw::core::PrefabTileSize::Size64, 0, 0}),
           "the PrefabField open fixture did not place its instance");
   definitions->clearSelectedPrefab();
   layer->setActiveStep(fieldIndex);
@@ -488,7 +490,7 @@ void openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost() {
   require((loaded.getGhost()->getFlags() & BW_PRIMITIVE_GHOST_FLAG) != 0 &&
               loaded.getGhost()->getId() == ED_GHOST_INDEX,
           "opening the PrefabField World did not restore the ghost at index 0");
-  require(loaded.getWorld()->getNumPrimitives() == 2,
+  require(loaded.getWorld()->getNumPrimitives() == 3,
           "restoring the ghost lost or duplicated the PrefabField output");
 
   auto* loadedLayer = loaded.getWorld()->getActiveLayer();

@@ -39,8 +39,8 @@ span<float const> prefabTilingRotationAngles(PrefabTilingType type) {
   return it != prefabTilingRotationDefinitions.end() ? it->angles : span<float const>{};
 }
 
-Prefab::Prefab(uint32_t id, string const& name)
-    : mId(id), mName(name) {
+Prefab::Prefab(uint32_t id, string const& name, PrefabTileSize tileSize)
+    : mId(id), mName(name), mTileSize(tileSize) {
 }
 
 Prefab::~Prefab() {
@@ -49,7 +49,7 @@ Prefab::~Prefab() {
 
 Prefab* Prefab::copy(
     map<VertexTransformerObject const*, VertexTransformerObject*>& primitiveMap) const {
-  auto clone = unique_ptr<Prefab>(new Prefab(mId, mName));
+  auto clone = unique_ptr<Prefab>(new Prefab(mId, mName, mTileSize));
   clone->mPrimitives.reserve(mPrimitives.size());
   for (auto const* primitive : mPrimitives) {
     auto* clonedPrimitive = primitive->copy();
@@ -102,6 +102,10 @@ string const& Prefab::getName() const {
   return mName;
 }
 
+PrefabTileSize Prefab::getTileSize() const {
+  return mTileSize;
+}
+
 uint32_t Prefab::getNumPrimitives() const {
   return (uint32_t)mPrimitives.size();
 }
@@ -118,7 +122,6 @@ vector<Primitive*> const& Prefab::getPrimitives() const {
 DefinePrefabs::DefinePrefabs()
     : mNextPrefabId(0),
       mTilingType(PrefabTilingType::Square),
-      mSize(64.0f),
       mSelectedPrefab(nullptr) {
 }
 
@@ -140,7 +143,6 @@ LayerBuildStep* DefinePrefabs::copy(
   clone->copyFrom(*this);
   clone->mNextPrefabId = mNextPrefabId;
   clone->mTilingType = mTilingType;
-  clone->mSize = mSize;
   clone->mPrefabs.reserve(mPrefabs.size());
   for (auto const* prefab : mPrefabs) {
     clone->mPrefabs.push_back(prefab->copy(primitiveMap));
@@ -237,6 +239,19 @@ void DefinePrefabs::setPrefabName(Prefab* prefab, string const& name) {
   modify();
 }
 
+void DefinePrefabs::setPrefabTileSize(Prefab* prefab, PrefabTileSize size) {
+  auto it = find(mPrefabs.begin(), mPrefabs.end(), prefab);
+  if (it == mPrefabs.end()) {
+    throw CoreException("Prefab not found in this DefinePrefabs step");
+  }
+  if (!isPrefabTileSize(prefabTileSide(size))) {
+    throw CoreException("Unknown Prefab tile size");
+  }
+  if (prefab->mTileSize == size) return;
+  prefab->mTileSize = size;
+  modify();
+}
+
 uint32_t DefinePrefabs::getNumPrefabs() const {
   return (uint32_t)mPrefabs.size();
 }
@@ -299,18 +314,6 @@ PrefabTilingType DefinePrefabs::getTilingType() const {
   return mTilingType;
 }
 
-void DefinePrefabs::setSize(float size) {
-  if (mSize == size) {
-    return;
-  }
-  mSize = size;
-  modify();
-}
-
-float DefinePrefabs::getSize() const {
-  return mSize;
-}
-
 bool DefinePrefabs::childrenModified() const {
   for (auto const* prefab : mPrefabs) {
     if (any_of(prefab->mPrimitives.begin(), prefab->mPrimitives.end(),
@@ -325,7 +328,6 @@ void DefinePrefabs::serializeArgs(shared_ptr<Serializer> serializer,
                                   SerializationWorkData& workData) const {
   serializer->writeUint32("nextPrefabId", mNextPrefabId);
   serializer->writeUint32("tilingType", (uint32_t)mTilingType);
-  serializer->writeFloat("size", mSize);
   serializer->beginArray("prefabs");
   {
     for (auto const* prefab : mPrefabs) {
@@ -333,6 +335,7 @@ void DefinePrefabs::serializeArgs(shared_ptr<Serializer> serializer,
       {
         serializer->writeUint32("id", prefab->mId);
         serializer->writeString("name", prefab->mName);
+        serializer->writeUint32("tileSize", prefabTileSide(prefab->mTileSize));
         serializer->beginArray("primitives");
         {
           for (auto const* primitive : prefab->mPrimitives) {
@@ -360,7 +363,6 @@ bool DefinePrefabs::deserializeArgs(shared_ptr<Serializer> serializer,
                                     SerializationWorkData& workData) {
   auto const nextPrefabId = serializer->readUint32("nextPrefabId");
   auto const tilingType = (PrefabTilingType)serializer->readUint32("tilingType");
-  auto const size = serializer->readFloat("size");
   if (tilingType != PrefabTilingType::Square) {
     throw CoreException("Unknown Prefab tiling type in DefinePrefabs step");
   }
@@ -373,7 +375,13 @@ bool DefinePrefabs::deserializeArgs(shared_ptr<Serializer> serializer,
       serializer->beginMap("prefab");
       {
         auto const id = serializer->readUint32("id");
-        auto prefab = unique_ptr<Prefab>(new Prefab(id, serializer->readString("name")));
+        auto const name = serializer->readString("name");
+        auto const tileSizeValue = serializer->readUint32("tileSize");
+        if (!isPrefabTileSize(tileSizeValue)) {
+          throw CoreException("Unknown Prefab tile size in DefinePrefabs step");
+        }
+        auto prefab = unique_ptr<Prefab>(new Prefab(
+            id, name, static_cast<PrefabTileSize>(tileSizeValue)));
         if (!ids.insert(id).second || id >= nextPrefabId) {
           throw CoreException("Invalid or duplicate Prefab id in DefinePrefabs step");
         }
@@ -405,7 +413,6 @@ bool DefinePrefabs::deserializeArgs(shared_ptr<Serializer> serializer,
   clear();
   mNextPrefabId = nextPrefabId;
   mTilingType = tilingType;
-  mSize = size;
   mPrefabs.reserve(prefabs.size());
   for (auto& prefab : prefabs) {
     mPrefabs.push_back(prefab.release());

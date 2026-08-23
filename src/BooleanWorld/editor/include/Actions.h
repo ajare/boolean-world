@@ -131,9 +131,12 @@ std::string prefabDeletionBlockedReason(
 bool setPrefabTilingType(
     Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
     bw::core::PrefabTilingType type);
-bool setPrefabSize(
+std::string prefabSizeChangeBlockedReason(
+    bw::core::Layer const* layer, bw::core::DefinePrefabs const* step,
+    bw::core::Prefab const* prefab, bw::core::PrefabTileSize size);
+bool setPrefabTileSize(
     Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
-    float size);
+    bw::core::Prefab* prefab, bw::core::PrefabTileSize size);
 
 bool bindPrefabField(
     Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
@@ -150,6 +153,9 @@ bool clearPrefabInstance(
 bool rotatePrefabInstance(
     Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
     bw::core::Tile tile, bool next);
+bool setPrefabInstanceMode(
+    Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::Tile tile, bw::core::TileMode mode);
 
 bool setWorldDescription(Document* doc, std::string const& desc);
 

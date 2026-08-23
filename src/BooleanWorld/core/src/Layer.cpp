@@ -737,6 +737,12 @@ uint32_t Layer::_appendBuiltPrimitive(Primitive* primitive, LayerBuildStep const
   if (!mPrimitiveLookupGrid) {
     throw CoreException("AccelerationGrid for primitives not created.");
   }
+  if (owningStep->primitivesParticipateInBuild() &&
+      !dynamic_cast<PrefabField const*>(owningStep) &&
+      primitive->getPriority() > BW_PRIORITY_MAX_VALUE) {
+    throw CoreException(
+        "Ordinary Primitive priority is in the 249-255 PrefabField reservation");
+  }
 
   auto index = (uint32_t)mPrimitives.size();
 

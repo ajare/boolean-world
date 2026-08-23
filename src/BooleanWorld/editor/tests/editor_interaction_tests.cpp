@@ -64,6 +64,10 @@ void require(bool condition, std::string const& message) {
   }
 }
 
+bw::core::Tile tile(int x, int y) {
+  return {bw::core::PrefabTileSize::Size64, x, y};
+}
+
 uint32_t addRectangle(
     editor::Document& document,
     wp::Vector2 const& position,
@@ -1056,7 +1060,7 @@ void meshPolygonCommitRebuildsPrefabFieldInstancesBeforeRegeneration() {
   auto fieldIndex = layer->addStep(field);
   field->bind(*layer, definitions);
   field->setSelectedPrefab(*definitions, prefab);
-  require(field->placeSelected(*layer, {0, 0}),
+  require(field->placeSelected(*layer, tile(0, 0)),
           "could not place the Mesh Prefab instance fixture");
   definitions->clearSelectedPrefab();
   layer->rebuild();
@@ -1073,7 +1077,10 @@ void meshPolygonCommitRebuildsPrefabFieldInstancesBeforeRegeneration() {
   auto findBuiltInstance = [&]() -> bw::core::MeshPrimitive* {
     for (uint32_t i = 0; i < layer->getNumPrimitives(); ++i) {
       if (layer->getOwningStepIndex(layer->getPrimitive(i)) == fieldIndex) {
-        return dynamic_cast<bw::core::MeshPrimitive*>(layer->getPrimitive(i));
+        if (auto* mesh =
+                dynamic_cast<bw::core::MeshPrimitive*>(layer->getPrimitive(i))) {
+          return mesh;
+        }
       }
     }
     return nullptr;
@@ -2996,8 +3003,8 @@ void prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint() {
   auto click = pointerAt({70.0f, 0.0f});
   click.leftClicked = true;
   interaction.updateSelection(&document, nullptr, settings, click);
-  require(field->hasSelectedTile() && field->getSelectedTile() == bw::core::Tile{1, 0} &&
-              field->getInstance({1, 0}),
+  require(field->hasSelectedTile() && field->getSelectedTile() == tile(1, 0) &&
+              field->getInstance(tile(1, 0)),
           "PrefabField click did not select and place on the Tile");
 
   auto drag = pointerAt({140.0f, 0.0f});
@@ -3007,10 +3014,12 @@ void prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint() {
   require(field->getInstances().size() == 1,
           "dragging painted more Prefab instances after a discrete click");
 
-  field->selectTile({2, 0});
-  require(interaction.applyPrefabShortcut(&document, true, false) && field->getInstance({2, 0}),
+  field->selectTile(tile(2, 0));
+  require(interaction.applyPrefabShortcut(&document, true, false) &&
+              field->getInstance(tile(2, 0)),
           "Space routing did not place the selected Prefab");
-  require(interaction.applyPrefabShortcut(&document, false, true) && !field->getInstance({2, 0}),
+  require(interaction.applyPrefabShortcut(&document, false, true) &&
+              !field->getInstance(tile(2, 0)),
           "Delete routing did not clear the selected Tile");
 
   layer->setActiveStep(defineIndex);
@@ -3045,7 +3054,7 @@ void prefabFieldClickPlacesAMeshPrefabPrimitiveWithoutCrashing() {
   click.leftClicked = true;
   interaction.updateSelection(&document, nullptr, settings, click);
 
-  require(field->hasSelectedTile() && field->getInstance({1, 0}),
+  require(field->hasSelectedTile() && field->getInstance(tile(1, 0)),
           "PrefabField click with a Mesh Prefab primitive did not place an instance");
 }
 
@@ -3063,53 +3072,54 @@ void prefabFieldArrowNavigationAndRotationAreActiveStepGated() {
   field->bind(*layer, definitions);
   field->setSelectedPrefab(*definitions, prefab);
   layer->setActiveStep(fieldIndex);
-  field->selectTile({0, 0});
-  require(field->placeSelected(*layer, {0, 0}), "could not place the rotation fixture");
+  field->selectTile(tile(0, 0));
+  require(field->placeSelected(*layer, tile(0, 0)),
+          "could not place the rotation fixture");
   editor::EditorInteraction interaction;
 
   auto const instanceCountBefore = field->getInstances().size();
-  auto const rotationBeforeNavigation = field->getInstance({0, 0})->rotation;
+  auto const rotationBeforeNavigation = field->getInstance(tile(0, 0))->rotation;
   require(interaction.movePrefabTileCursor(&document, -1, 0) &&
-              field->getSelectedTile() == bw::core::Tile{-1, 0} &&
+              field->getSelectedTile() == tile(-1, 0) &&
               interaction.movePrefabTileCursor(&document, 1, 0) &&
-              field->getSelectedTile() == bw::core::Tile{0, 0} &&
+              field->getSelectedTile() == tile(0, 0) &&
               interaction.movePrefabTileCursor(&document, 0, 1) &&
-              field->getSelectedTile() == bw::core::Tile{0, 1} &&
+              field->getSelectedTile() == tile(0, 1) &&
               interaction.movePrefabTileCursor(&document, 0, -1) &&
-              field->getSelectedTile() == bw::core::Tile{0, 0},
+              field->getSelectedTile() == tile(0, 0),
           "arrow navigation did not move the selected Tile cursor one Tile in each direction");
   require(field->getInstances().size() == instanceCountBefore &&
-              field->getInstance({0, 0})->rotation == rotationBeforeNavigation,
+              field->getInstance(tile(0, 0))->rotation == rotationBeforeNavigation,
           "arrow navigation placed, cleared, or rotated a Prefab instance");
 
   auto const undoBeforeRotation = editor::getUndoLevels();
   require(interaction.rotateSelectedPrefabInstance(&document, false) &&
-              field->getInstance({0, 0})->rotation == 3 &&
+              field->getInstance(tile(0, 0))->rotation == 3 &&
               editor::getUndoLevels() == undoBeforeRotation + 1,
           "Shift+Left did not wrap to the previous allowed rotation in one undo entry");
   require(interaction.rotateSelectedPrefabInstance(&document, true) &&
-              field->getInstance({0, 0})->rotation == 0 &&
+              field->getInstance(tile(0, 0))->rotation == 0 &&
               editor::getUndoLevels() == undoBeforeRotation + 2,
           "Shift+Right did not wrap to the next allowed rotation in one undo entry");
   require(interaction.rotateSelectedPrefabInstance(&document, true) &&
-              field->getInstance({0, 0})->rotation == 1 &&
+              field->getInstance(tile(0, 0))->rotation == 1 &&
               editor::getUndoLevels() == undoBeforeRotation + 3,
           "Shift+Right did not advance through the allowed rotations");
 
-  field->selectTile({99, 99});
+  field->selectTile(tile(99, 99));
   auto const undoBeforeEmptyRotation = editor::getUndoLevels();
   require(interaction.rotateSelectedPrefabInstance(&document, true) &&
-              !field->getInstance({99, 99}) &&
+              !field->getInstance(tile(99, 99)) &&
               editor::getUndoLevels() == undoBeforeEmptyRotation,
           "rotating an empty Tile changed it or entered undo history");
 
   auto const selectedBeforeGate = field->getSelectedTile();
-  auto const rotationBeforeGate = field->getInstance({0, 0})->rotation;
+  auto const rotationBeforeGate = field->getInstance(tile(0, 0))->rotation;
   layer->setActiveStep(defineIndex);
   require(!interaction.movePrefabTileCursor(&document, 1, 0) &&
               !interaction.rotateSelectedPrefabInstance(&document, true) &&
               field->getSelectedTile() == selectedBeforeGate &&
-              field->getInstance({0, 0})->rotation == rotationBeforeGate &&
+              field->getInstance(tile(0, 0))->rotation == rotationBeforeGate &&
               editor::getUndoLevels() == undoBeforeEmptyRotation,
           "PrefabField arrow navigation or rotation remained active after its step lost focus");
 }

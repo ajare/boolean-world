@@ -188,9 +188,35 @@ bool setPrefabTilingType(
   return true;
 }
 
-bool setPrefabSize(
-    Document*, bw::core::Layer*, bw::core::DefinePrefabs* step, float size) {
-  step->setSize(size);
+string prefabSizeChangeBlockedReason(
+    bw::core::Layer const* layer, bw::core::DefinePrefabs const* step,
+    bw::core::Prefab const* prefab, bw::core::PrefabTileSize size) {
+  auto const oldSize = prefab->getTileSize();
+  for (uint32_t i = 0; i < layer->getNumSteps(); ++i) {
+    auto const* field = dynamic_cast<bw::core::PrefabField const*>(layer->getStep(i));
+    if (field && field->getDefinePrefabsStepId() == step->getId() &&
+        !field->canMigratePrefabSize(prefab->getId(), oldSize, size)) {
+      return "Changing size would collide with an occupied destination Tile";
+    }
+  }
+  return "";
+}
+
+bool setPrefabTileSize(
+    Document*, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab, bw::core::PrefabTileSize size) {
+  auto reason = prefabSizeChangeBlockedReason(layer, step, prefab, size);
+  if (!reason.empty()) throw bw::core::CoreException(reason);
+  auto const oldSize = prefab->getTileSize();
+  if (oldSize == size) return false;
+  for (uint32_t i = 0; i < layer->getNumSteps(); ++i) {
+    auto* field = dynamic_cast<bw::core::PrefabField*>(layer->getStep(i));
+    if (field && field->getDefinePrefabsStepId() == step->getId()) {
+      field->migratePrefabSize(prefab->getId(), oldSize, size);
+    }
+  }
+  step->setPrefabTileSize(prefab, size);
+  layer->rebuild();
   return true;
 }
 
@@ -230,6 +256,13 @@ bool rotatePrefabInstance(
     bw::core::Tile tile, bool next) {
   if (layer->getActiveStep() != field) return false;
   return field->rotateInstance(*layer, tile, next);
+}
+
+bool setPrefabInstanceMode(
+    Document*, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::Tile tile, bw::core::TileMode mode) {
+  if (layer->getActiveStep() != field) return false;
+  return field->setInstanceMode(*layer, tile, mode);
 }
 
 bool setWorldDescription(Document* doc, string const& desc) {
@@ -595,13 +628,29 @@ bool setPrimitiveFollowOrbitAngle(Document* doc, bw::core::Primitive* primitive,
 }
 
 bool setPrimitivePriority(Document* doc, bw::core::Primitive* primitive, uint8_t priority) {
+  auto* layer = doc->getWorld()->getActiveLayer();
+  auto const ownerIndex = layer->getOwningStepIndex(primitive);
+  auto const maximum = dynamic_cast<bw::core::DefinePrefabs const*>(
+                           layer->getStep(ownerIndex))
+                           ? BW_PREFAB_SOURCE_PRIORITY_MAX_VALUE
+                           : BW_PRIORITY_MAX_VALUE;
+  if (priority > maximum) {
+    throw bw::core::CoreException(
+        "Ordinary Primitive priority is in the 249-255 PrefabField reservation");
+  }
   primitive->setPriority(priority);
   return true;
 }
 
 bool increasePrimitivePriority(Document* doc, bw::core::Primitive* primitive) {
+  auto* layer = doc->getWorld()->getActiveLayer();
+  auto const ownerIndex = layer->getOwningStepIndex(primitive);
+  auto const maximum = dynamic_cast<bw::core::DefinePrefabs const*>(
+                           layer->getStep(ownerIndex))
+                           ? BW_PREFAB_SOURCE_PRIORITY_MAX_VALUE
+                           : BW_PRIORITY_MAX_VALUE;
   int priority = (int)primitive->getPriority();
-  int newPriority = min(255, priority + 1);
+  int newPriority = min(maximum, priority + 1);
 
   primitive->setPriority((uint8_t)newPriority);
   return true;

@@ -27,6 +27,7 @@ removed the dependency entirely. Geometry terms are defined in
 | [0018](0018-a-prefabs-pivot-is-the-origin.md) | A Prefab's pivot is the origin, not its bounds centre | Accepted |
 | [0019](0019-layer-ownership-is-permanent.md) | Layer ownership is permanent — nothing moves between Layers | Accepted |
 | [0020](0020-meshprimitive-stores-an-authoritative-containment-tree.md) | MeshPrimitive stores an authoritative containment tree | Accepted |
+| [0021](0021-prefabfields-own-reserved-global-fold-phases.md) | PrefabFields own reserved global fold phases | Accepted |
 
 ## World geometry rewrite scope
 

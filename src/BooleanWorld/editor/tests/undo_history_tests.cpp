@@ -197,15 +197,19 @@ void prefabEditsAreUndoableAndRestoreStepQualifiedFocus() {
               secondStep->getSelectedPrefab() == secondStep->getPrefab(0),
           "undo did not restore a deleted Prefab and its focus");
 
+  auto* sizePrefab = secondStep->getSelectedPrefab();
   editor::transactUndoableAction(
       &document, "Set Prefab Size",
-      [layer, secondStep](editor::Document* doc) {
-        return editor::setPrefabSize(doc, layer, secondStep, 128.0f);
+      [layer, secondStep, sizePrefab](editor::Document* doc) {
+        return editor::setPrefabTileSize(
+            doc, layer, secondStep, sizePrefab,
+            bw::core::PrefabTileSize::Size128);
       });
   editor::undo(&document);
   secondStep = static_cast<bw::core::DefinePrefabs*>(
       document.getWorld()->getActiveLayer()->getStep(secondStepIndex));
-  require(secondStep->getSize() == 64.0f &&
+  require(secondStep->getPrefab(0)->getTileSize() ==
+              bw::core::PrefabTileSize::Size64 &&
               secondStep->getSelectedPrefab() == secondStep->getPrefab(0),
           "undo did not restore a Prefab tiling argument and focus");
 }
@@ -224,7 +228,8 @@ void prefabFieldStepActionsUndoAndRedoWithoutLosingReferences() {
       bw::core::Primitive::FillRule::NonZero, 1.0f));
   definitions->clearSelectedPrefab();
 
-  auto requireBoundField = [&document] {
+  auto const tile = bw::core::Tile{bw::core::PrefabTileSize::Size64, 3, -2};
+  auto requireBoundField = [&document, tile] {
     auto* restoredLayer = document.getWorld()->getActiveLayer();
     auto* restoredDefinitions = static_cast<bw::core::DefinePrefabs*>(restoredLayer->getStep(1));
     auto* restoredField = static_cast<bw::core::PrefabField*>(restoredLayer->getStep(2));
@@ -232,20 +237,21 @@ void prefabFieldStepActionsUndoAndRedoWithoutLosingReferences() {
             "undo history lost the PrefabField binding");
     require(restoredDefinitions->getNumPrefabs() == 1,
             "undo history lost the DefinePrefabs list");
-    require(restoredField->getInstance({3, -2}) &&
-                restoredField->getInstance({3, -2})->prefabId == restoredDefinitions->getPrefab(0)->getId(),
+    require(restoredField->getInstance(tile) &&
+                restoredField->getInstance(tile)->prefabId ==
+                    restoredDefinitions->getPrefab(0)->getId(),
             "undo history lost the PrefabField Tile map reference");
-    require(restoredLayer->getNumPrimitives() == 2,
+    require(restoredLayer->getNumPrimitives() == 3,
             "undo history did not rebuild the PrefabField instance");
   };
 
   editor::transactUndoableAction(&document, "Add bound PrefabField",
-      [layer, definitions, prefab](editor::Document*) {
+      [layer, definitions, prefab, tile](editor::Document*) {
         auto* field = new bw::core::PrefabField;
         layer->addStep(field);
         field->bind(*layer, definitions);
         field->setSelectedPrefab(*definitions, prefab);
-        return field->placeSelected(*layer, {3, -2});
+        return field->placeSelected(*layer, tile);
       });
   requireBoundField();
   editor::undo(&document);
@@ -280,7 +286,7 @@ void prefabFieldStepActionsUndoAndRedoWithoutLosingReferences() {
   auto* movedField = static_cast<bw::core::PrefabField*>(layer->getStep(1));
   auto* movedDefinitions = static_cast<bw::core::DefinePrefabs*>(layer->getStep(2));
   require(movedField->getDefinePrefabs(*layer) == movedDefinitions &&
-              movedField->getInstance({3, -2}) && layer->getNumPrimitives() == 2,
+              movedField->getInstance(tile) && layer->getNumPrimitives() == 3,
           "moving DefinePrefabs broke the bound PrefabField");
   editor::undo(&document);
   requireBoundField();
@@ -289,7 +295,7 @@ void prefabFieldStepActionsUndoAndRedoWithoutLosingReferences() {
   movedField = static_cast<bw::core::PrefabField*>(layer->getStep(1));
   movedDefinitions = static_cast<bw::core::DefinePrefabs*>(layer->getStep(2));
   require(movedField->getDefinePrefabs(*layer) == movedDefinitions &&
-              movedField->getInstance({3, -2}) && layer->getNumPrimitives() == 2,
+              movedField->getInstance(tile) && layer->getNumPrimitives() == 3,
           "redo moving DefinePrefabs lost PrefabField references");
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -20,6 +21,27 @@ enum class PrefabTilingType : uint32_t {
   Square = 0,
 };
 
+enum class PrefabTileSize : uint32_t {
+  Size32 = 32,
+  Size64 = 64,
+  Size128 = 128,
+  Size256 = 256,
+};
+
+inline constexpr std::array allPrefabTileSizes{
+    PrefabTileSize::Size32,
+    PrefabTileSize::Size64,
+    PrefabTileSize::Size128,
+    PrefabTileSize::Size256};
+
+[[nodiscard]] constexpr uint32_t prefabTileSide(PrefabTileSize size) {
+  return static_cast<uint32_t>(size);
+}
+
+[[nodiscard]] constexpr bool isPrefabTileSize(uint32_t size) {
+  return size == 32 || size == 64 || size == 128 || size == 256;
+}
+
 // The ordered rotations a Prefab instance may use for this tiling type.
 // This core lookup deliberately does not depend on the editor-only tiling
 // guide definitions.
@@ -32,9 +54,11 @@ class BW_API Prefab {
 private:
   uint32_t mId;
   std::string mName;
+  PrefabTileSize mTileSize;
   std::vector<Primitive*> mPrimitives;
 
-  Prefab(uint32_t id, std::string const& name);
+  Prefab(uint32_t id, std::string const& name,
+         PrefabTileSize tileSize = PrefabTileSize::Size64);
 
   [[nodiscard]] Prefab* copy(
       std::map<VertexTransformerObject const*, VertexTransformerObject*>& primitiveMap) const;
@@ -53,6 +77,7 @@ public:
 
   [[nodiscard]] uint32_t getId() const;
   [[nodiscard]] std::string const& getName() const;
+  [[nodiscard]] PrefabTileSize getTileSize() const;
   [[nodiscard]] uint32_t getNumPrimitives() const;
   [[nodiscard]] Primitive* getPrimitive(uint32_t index) const;
   [[nodiscard]] std::vector<Primitive*> const& getPrimitives() const;
@@ -66,7 +91,6 @@ private:
   std::vector<Prefab*> mPrefabs;
   uint32_t mNextPrefabId;
   PrefabTilingType mTilingType;
-  float mSize;
   Prefab* mSelectedPrefab;
 
   bool childrenModified() const override;
@@ -98,6 +122,7 @@ public:
   void removePrefab(Prefab* prefab, bool failIfNotFound = true);
   void removePrefab(uint32_t index);
   void setPrefabName(Prefab* prefab, std::string const& name);
+  void setPrefabTileSize(Prefab* prefab, PrefabTileSize size);
 
   [[nodiscard]] uint32_t getNumPrefabs() const;
   [[nodiscard]] Prefab* getPrefab(uint32_t index) const;
@@ -113,8 +138,6 @@ public:
 
   void setTilingType(PrefabTilingType type);
   [[nodiscard]] PrefabTilingType getTilingType() const;
-  void setSize(float size);
-  [[nodiscard]] float getSize() const;
 };
 
 }  // namespace core

@@ -299,9 +299,11 @@ void prefabActionsCreateSelectRenameDeleteAndChangeTilingArguments() {
   require(editor::renamePrefab(&document, layer, step, prefab, "Door") &&
               prefab->getName() == "Door",
           "Rename Prefab action failed");
-  require(editor::setPrefabSize(&document, layer, step, 96.0f) &&
-              step->getSize() == 96.0f,
-          "Set Prefab size action failed");
+  require(editor::setPrefabTileSize(
+              &document, layer, step, prefab,
+              bw::core::PrefabTileSize::Size128) &&
+              prefab->getTileSize() == bw::core::PrefabTileSize::Size128,
+          "Set Prefab tile size action failed");
   require(editor::setPrefabTilingType(
               &document, layer, step, bw::core::PrefabTilingType::Square),
           "Set Prefab tiling type action failed");
@@ -364,24 +366,25 @@ void prefabInstanceActionsUndoAndRefuseDeletingReferencedPrefabs() {
   field->setSelectedPrefab(*definitions, prefab);
   layer->setActiveStep(fieldIndex);
 
+  auto const tile = bw::core::Tile{bw::core::PrefabTileSize::Size64, 1, 2};
   auto undoBefore = editor::getUndoLevels();
   require(editor::transactUndoableActionAtomically(
               &document, "Place Prefab Instance",
               std::bind(editor::placePrefabInstance, std::placeholders::_1,
-                        layer, field, bw::core::Tile{1, 2})),
+                        layer, field, tile)),
           "place Prefab instance action failed");
-  require(editor::getUndoLevels() == undoBefore + 1 && field->getInstance({1, 2}),
+  require(editor::getUndoLevels() == undoBefore + 1 && field->getInstance(tile),
           "placing a Prefab instance was not exactly one undo entry");
   editor::undo(&document);
   layer = document.getWorld()->getActiveLayer();
   field = static_cast<bw::core::PrefabField*>(layer->getStep(fieldIndex));
-  require(!field->getInstance({1, 2}), "undo did not remove the placed Prefab instance");
+  require(!field->getInstance(tile), "undo did not remove the placed Prefab instance");
   editor::redo(&document);
   layer = document.getWorld()->getActiveLayer();
   definitions = static_cast<bw::core::DefinePrefabs*>(layer->getStep(1));
   field = static_cast<bw::core::PrefabField*>(layer->getStep(fieldIndex));
   prefab = definitions->getPrefab(0);
-  require(field->getInstance({1, 2}), "redo did not restore the Prefab instance");
+  require(field->getInstance(tile), "redo did not restore the Prefab instance");
 
   requireCoreException(
       [&] { editor::deletePrefab(&document, layer, definitions, prefab); },
@@ -391,13 +394,13 @@ void prefabInstanceActionsUndoAndRefuseDeletingReferencedPrefabs() {
   require(editor::transactUndoableActionAtomically(
               &document, "Clear Prefab Instance",
               std::bind(editor::clearPrefabInstance, std::placeholders::_1,
-                        layer, field, bw::core::Tile{1, 2})),
+                        layer, field, tile)),
           "clear Prefab instance action failed");
   auto afterClear = editor::getUndoLevels();
   require(!editor::transactUndoableActionAtomically(
               &document, "Clear Prefab Instance",
               std::bind(editor::clearPrefabInstance, std::placeholders::_1,
-                        layer, field, bw::core::Tile{1, 2})) &&
+                        layer, field, tile)) &&
               editor::getUndoLevels() == afterClear,
           "clearing an empty Tile created an undo entry");
 }
