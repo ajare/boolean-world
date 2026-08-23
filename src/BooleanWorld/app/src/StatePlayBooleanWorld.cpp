@@ -669,13 +669,19 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
       playerPosition.x + lightOffset.x,
       playerPosition.y,
       playerPosition.z + lightOffset.y};
-  auto materialIndexOverride = mDebugDisplay.overrideWorldMaterial
-                                   ? mDebugDisplay.worldMaterialIndex
-                                   : -1;
+  auto horizontalMaterialIndexOverride =
+      mDebugDisplay.overrideWorldMaterial
+          ? mDebugDisplay.horizontalMaterialIndex
+          : -1;
+  auto wallMaterialIndexOverride =
+      mDebugDisplay.overrideWorldMaterial
+          ? mDebugDisplay.wallMaterialIndex
+          : -1;
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
-      materialIndexOverride, mDebugDisplay.worldMaterialScale,
-      mDebugDisplay.farGridSize, mDebugDisplay.floorPattern, frameTime);
+      horizontalMaterialIndexOverride, wallMaterialIndexOverride,
+      mDebugDisplay.worldMaterialScale, mDebugDisplay.farGridSize,
+      mDebugDisplay.floorPattern, frameTime);
 }
 
 void StatePlayBooleanWorld::suspendImpl(void* args) {
@@ -804,6 +810,18 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   // Apply BooleanWorld's data-driven vignette as the final world post-process.
   // HUD and debug UI are drawn later and therefore remain unaffected.
   mpp::UniformCollection vignetteParameters;
+  vignetteParameters.setUniform(
+      "VIGNETTE_COLOUR",
+      glm::vec3{
+          mDebugDisplay.vignetteColour[0],
+          mDebugDisplay.vignetteColour[1],
+          mDebugDisplay.vignetteColour[2]});
+  vignetteParameters.setUniform(
+      "VIGNETTE_STRENGTH", mDebugDisplay.vignetteStrength);
+  vignetteParameters.setUniform(
+      "VIGNETTE_INNER_RADIUS", mDebugDisplay.vignetteInnerRadius);
+  vignetteParameters.setUniform(
+      "VIGNETTE_FALLOFF_WIDTH", mDebugDisplay.vignetteFalloffWidth);
   renderSystem->renderGraphFullscreen(
       mVignetteProgram, {{"TEX1", sceneTexture}}, vignetteParameters);
   renderSystem->popRenderTarget();
@@ -1461,6 +1479,20 @@ void StatePlayBooleanWorld::debug_renderOptions() {
             : "Disabled by Video/AmbientOcclusion: none.");
 
     ImGui::Separator();
+    ImGui::TextUnformatted("Vignette");
+    ImGui::ColorEdit3(
+        "Colour", mDebugDisplay.vignetteColour.data());
+    ImGui::SliderFloat(
+        "Strength", &mDebugDisplay.vignetteStrength,
+        0.0f, 1.0f, "%.2f");
+    ImGui::SliderFloat(
+        "Inner radius", &mDebugDisplay.vignetteInnerRadius,
+        0.0f, 1.4f, "%.2f");
+    ImGui::SliderFloat(
+        "Falloff width", &mDebugDisplay.vignetteFalloffWidth,
+        0.01f, 1.4f, "%.2f");
+
+    ImGui::Separator();
     ImGui::TextUnformatted("Lighting");
     ImGui::SliderFloat(
         "Light source distance", &mDebugDisplay.lightDistance,
@@ -1473,23 +1505,27 @@ void StatePlayBooleanWorld::debug_renderOptions() {
         &mDebugDisplay.overrideWorldMaterial);
 
     ImGui::BeginDisabled(!mDebugDisplay.overrideWorldMaterial);
-    auto materialIndex = std::clamp(
-        mDebugDisplay.worldMaterialIndex, 0,
-        static_cast<int>(gWorldMaterialNames.size()) - 1);
-    mDebugDisplay.worldMaterialIndex = materialIndex;
-    if (ImGui::BeginCombo(
-            "Material", gWorldMaterialNames[materialIndex])) {
-      for (int i = 0; i < static_cast<int>(gWorldMaterialNames.size()); ++i) {
-        auto selected = i == materialIndex;
-        if (ImGui::Selectable(gWorldMaterialNames[i], selected)) {
-          mDebugDisplay.worldMaterialIndex = i;
+    auto materialCombo = [](char const* label, int& selectedIndex) {
+      selectedIndex = std::clamp(
+          selectedIndex, 0,
+          static_cast<int>(gWorldMaterialNames.size()) - 1);
+      if (ImGui::BeginCombo(label, gWorldMaterialNames[selectedIndex])) {
+        for (int i = 0;
+             i < static_cast<int>(gWorldMaterialNames.size()); ++i) {
+          auto selected = i == selectedIndex;
+          if (ImGui::Selectable(gWorldMaterialNames[i], selected)) {
+            selectedIndex = i;
+          }
+          if (selected) {
+            ImGui::SetItemDefaultFocus();
+          }
         }
-        if (selected) {
-          ImGui::SetItemDefaultFocus();
-        }
+        ImGui::EndCombo();
       }
-      ImGui::EndCombo();
-    }
+    };
+    materialCombo(
+        "Floor / ceiling material", mDebugDisplay.horizontalMaterialIndex);
+    materialCombo("Wall material", mDebugDisplay.wallMaterialIndex);
     ImGui::EndDisabled();
     ImGui::SliderFloat(
         "Material scale", &mDebugDisplay.worldMaterialScale,

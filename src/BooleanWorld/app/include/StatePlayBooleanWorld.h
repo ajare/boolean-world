@@ -44,8 +44,14 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     mpp::SSAOOptions ssao;
     mpp::GTAOOptions gtao;
 
+    std::array<float, 3> vignetteColour{0.0f, 0.0f, 0.0f};
+    float vignetteStrength{0.58f};
+    float vignetteInnerRadius{0.55f};
+    float vignetteFalloffWidth{0.65f};
+
     bool overrideWorldMaterial{false};
-    int worldMaterialIndex{0};
+    int horizontalMaterialIndex{0};
+    int wallMaterialIndex{0};
     float worldMaterialScale{1.0f};
     float farGridSize{0.5f};
     float lightDistance{0.0f};

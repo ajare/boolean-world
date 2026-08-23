@@ -201,7 +201,8 @@ void WorldRenderer::update(
     bw::core::WorldData const& worldData,
     glm::vec3 const& playerPosition,
     glm::vec3 const& lightPosition,
-    int32_t materialIndexOverride,
+    int32_t horizontalMaterialIndexOverride,
+    int32_t wallMaterialIndexOverride,
     float materialScale,
     float farGridSize,
     FloorPatternOptions const& floorPattern,
@@ -214,7 +215,10 @@ void WorldRenderer::update(
   }
 
   for (auto& item : mMaterialRenderers) {
-    // Update renderer
+    auto const materialIndexOverride =
+        item.surfaceSet == WorldSurfaceSet::Walls
+            ? wallMaterialIndexOverride
+            : horizontalMaterialIndexOverride;
     item.renderer->update(
         playerPosition, lightPosition, materialIndexOverride, materialScale,
         farGridSize, floorPattern, frameTime);
