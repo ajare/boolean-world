@@ -6,7 +6,7 @@ Configuration:
     VSync: true
     RenderScale: eighth
     AA: off
-    AmbientOcclusion: gtao
+    AmbientOcclusion: gtao-depth
     RenderTextureFilter: linear
     HorizontalMaterials: 2d
   Audio:

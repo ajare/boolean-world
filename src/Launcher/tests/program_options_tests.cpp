@@ -261,17 +261,24 @@ int main() {
     requireAntiAliasingRejected("    AA:\n", "an empty AA setting");
 
     require(parseWithAmbientOcclusion("").video.ambientOcclusion ==
-                bw::app::AmbientOcclusion::Gtao,
-            "A configuration without AmbientOcclusion did not default to GTAO.");
+                bw::app::AmbientOcclusion::GtaoDepth,
+            "A configuration without AmbientOcclusion did not default to depth-normal GTAO.");
     require(parseWithAmbientOcclusion("    AmbientOcclusion: SsAo\n")
                     .video.ambientOcclusion == bw::app::AmbientOcclusion::Ssao,
             "The configured SSAO method did not parse case-insensitively.");
-    require(parseWithAmbientOcclusion("    AmbientOcclusion: GTAO\n")
-                    .video.ambientOcclusion == bw::app::AmbientOcclusion::Gtao,
-            "The configured GTAO method did not parse case-insensitively.");
+    require(parseWithAmbientOcclusion("    AmbientOcclusion: GTAO-DEPTH\n")
+                    .video.ambientOcclusion ==
+                bw::app::AmbientOcclusion::GtaoDepth,
+            "The configured depth-normal GTAO method did not parse case-insensitively.");
+    require(parseWithAmbientOcclusion("    AmbientOcclusion: gtao-normals\n")
+                    .video.ambientOcclusion ==
+                bw::app::AmbientOcclusion::GtaoNormals,
+            "The configured MRT-normal GTAO method did not parse.");
     require(parseWithAmbientOcclusion("    AmbientOcclusion: none\n")
                     .video.ambientOcclusion == bw::app::AmbientOcclusion::None,
             "The configured disabled ambient occlusion did not parse.");
+    requireAmbientOcclusionRejected(
+        "    AmbientOcclusion: gtao\n", "the retired GTAO spelling");
     requireAmbientOcclusionRejected(
         "    AmbientOcclusion: hbao\n", "an unknown ambient-occlusion method");
     requireAmbientOcclusionRejected(

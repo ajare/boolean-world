@@ -39,7 +39,7 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     bool options{false};
 
     bw::app::AmbientOcclusion ambientOcclusion{
-        bw::app::AmbientOcclusion::Gtao};
+        bw::app::AmbientOcclusion::GtaoDepth};
     bool ambientOcclusionEnabled{true};
     mpp::SSAOOptions ssao;
     mpp::GTAOOptions gtao;

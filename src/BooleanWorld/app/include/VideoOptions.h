@@ -53,13 +53,15 @@ inline constexpr std::size_t antiAliasingOptionCount =
 enum class AmbientOcclusion : int {
   None = 0,
   Ssao = 1,
-  Gtao = 2,
+  GtaoDepth = 2,
+  GtaoNormals = 3,
 };
 
-inline constexpr std::array<AmbientOcclusion, 3> allAmbientOcclusionOptions{
+inline constexpr std::array<AmbientOcclusion, 4> allAmbientOcclusionOptions{
     AmbientOcclusion::None,
     AmbientOcclusion::Ssao,
-    AmbientOcclusion::Gtao};
+    AmbientOcclusion::GtaoDepth,
+    AmbientOcclusion::GtaoNormals};
 
 inline constexpr std::size_t ambientOcclusionOptionCount =
     allAmbientOcclusionOptions.size();
@@ -112,7 +114,7 @@ inline constexpr std::size_t renderScaleIndex(RenderScale scale) {
 struct VideoOptions {
   RenderScale renderScale{RenderScale::Full};
   AntiAliasing antiAliasing{AntiAliasing::Off};
-  AmbientOcclusion ambientOcclusion{AmbientOcclusion::Gtao};
+  AmbientOcclusion ambientOcclusion{AmbientOcclusion::GtaoDepth};
   RenderTextureFilter renderTextureFilter{RenderTextureFilter::Linear};
   HorizontalMaterials horizontalMaterials{HorizontalMaterials::TwoDimensional};
 };
@@ -285,8 +287,10 @@ inline constexpr std::string_view ambientOcclusionName(
   switch (ambientOcclusion) {
     case AmbientOcclusion::Ssao:
       return "ssao";
-    case AmbientOcclusion::Gtao:
-      return "gtao";
+    case AmbientOcclusion::GtaoDepth:
+      return "gtao-depth";
+    case AmbientOcclusion::GtaoNormals:
+      return "gtao-normals";
     case AmbientOcclusion::None:
       break;
   }

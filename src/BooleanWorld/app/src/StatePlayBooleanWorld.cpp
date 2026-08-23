@@ -151,15 +151,16 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   }
 
   // MPP applies the selected AA stage through immutable render-pipeline output
-  // options. MSAA resolves the external Presentation image; FXAA processes the
-  // internal SceneLdr image, which this state copies after renderScene.
+  // options. Keep every option's named output offscreen: Presentation is an
+  // external image backed by the screen, not the texture composited below.
   auto ambientOcclusionMethod = mpp::AmbientOcclusionMethod::None;
   if (mDebugDisplay.ambientOcclusionEnabled) {
     switch (mDebugDisplay.ambientOcclusion) {
       case bw::app::AmbientOcclusion::Ssao:
         ambientOcclusionMethod = mpp::AmbientOcclusionMethod::Ssao;
         break;
-      case bw::app::AmbientOcclusion::Gtao:
+      case bw::app::AmbientOcclusion::GtaoDepth:
+      case bw::app::AmbientOcclusion::GtaoNormals:
         ambientOcclusionMethod = mpp::AmbientOcclusionMethod::Gtao;
         break;
       case bw::app::AmbientOcclusion::None:
@@ -173,11 +174,9 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   options.mode = mpp::RenderPipelineMode::GraphLegacyForward;
   mpp::RenderPipelineOutput output;
   output.name = "World";
-  output.image = bw::app::antiAliasingIsFxaa(antiAliasing)
-                     ? (ambientOcclusionEnabled
-                            ? "AmbientOcclusionComposite"
-                            : "SceneLdr")
-                     : "Presentation";
+  output.image = ambientOcclusionEnabled
+                     ? "AmbientOcclusionComposite"
+                     : "SceneLdr";
   output.antiAliasing.msaa = msaa;
   output.antiAliasing.fxaa = bw::app::antiAliasingIsFxaa(antiAliasing);
   options.outputs.push_back(output);
@@ -195,6 +194,10 @@ void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transi
   mDebugDisplay.ambientOcclusion = model->getAmbientOcclusion();
   mDebugDisplay.ambientOcclusionEnabled =
       mDebugDisplay.ambientOcclusion != bw::app::AmbientOcclusion::None;
+  mDebugDisplay.gtao.normalSource =
+      mDebugDisplay.ambientOcclusion == bw::app::AmbientOcclusion::GtaoNormals
+          ? mpp::GTAONormalSource::Mrt
+          : mpp::GTAONormalSource::Depth;
 
   mwRenderer = static_cast<WorldRenderer*>(transitionData->userData);
   mwRenderer->create(mScene, getMap()->getWorld(), mwRenderSystem, mwRenderResourceMgr);
@@ -757,14 +760,15 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   renderSystem->renderScene(
       mScene, mCamera3d, {0.0f, 0.0f}, pipeline->getName());
 
-  // Either AO method adds three images before Presentation. FXAA is written
-  // back to the final shaded scene image; other choices resolve Presentation.
+  // The named output is always the final offscreen shaded image. AO adds three
+  // images before it; MRT-normal GTAO also inserts two scene attachments.
   auto ambientOcclusionEnabled =
       mDebugDisplay.ambientOcclusionEnabled &&
       mDebugDisplay.ambientOcclusion != bw::app::AmbientOcclusion::None;
-  auto outputImage = bw::app::antiAliasingIsFxaa(antiAliasing)
-                         ? (ambientOcclusionEnabled ? 4u : 0u)
-                         : (ambientOcclusionEnabled ? 5u : 2u);
+  auto usesMrtNormals =
+      ambientOcclusionEnabled &&
+      mDebugDisplay.ambientOcclusion == bw::app::AmbientOcclusion::GtaoNormals;
+  auto outputImage = ambientOcclusionEnabled ? (usesMrtNormals ? 6u : 4u) : 0u;
   auto sceneTarget = pipeline->getGraphImageRenderTarget({outputImage, 1});
   assert(sceneTarget);
   auto sceneTexture = static_cast<mpp::RenderTexture*>(sceneTarget.get());
@@ -1339,16 +1343,20 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     auto configuredAmbientOcclusion = mDebugDisplay.ambientOcclusion;
     auto ambientOcclusionConfigured =
         configuredAmbientOcclusion != bw::app::AmbientOcclusion::None;
-    auto ambientOcclusionLabel = configuredAmbientOcclusion ==
-                                         bw::app::AmbientOcclusion::Gtao
+    auto gtaoConfigured =
+        configuredAmbientOcclusion == bw::app::AmbientOcclusion::GtaoDepth ||
+        configuredAmbientOcclusion == bw::app::AmbientOcclusion::GtaoNormals;
+    auto ambientOcclusionLabel = gtaoConfigured
                                      ? "Enable GTAO"
                                  : configuredAmbientOcclusion ==
                                          bw::app::AmbientOcclusion::Ssao
                                      ? "Enable SSAO"
                                      : "Enable ambient occlusion";
     ImGui::TextUnformatted(
-        configuredAmbientOcclusion == bw::app::AmbientOcclusion::Gtao
-            ? "Ambient occlusion (GTAO)"
+        configuredAmbientOcclusion == bw::app::AmbientOcclusion::GtaoDepth
+            ? "Ambient occlusion (GTAO, depth normals)"
+        : configuredAmbientOcclusion == bw::app::AmbientOcclusion::GtaoNormals
+            ? "Ambient occlusion (GTAO, MRT normals)"
         : configuredAmbientOcclusion == bw::app::AmbientOcclusion::Ssao
             ? "Ambient occlusion (SSAO)"
             : "Ambient occlusion");
@@ -1384,7 +1392,7 @@ void StatePlayBooleanWorld::debug_renderOptions() {
           "Sample count##SSAO", &ssao.sampleCount, 1, 64);
       ambientOcclusionChanged |= ImGui::SliderInt(
           "Blur radius##SSAO", &ssao.blurRadius, 0, 8);
-    } else if (configuredAmbientOcclusion == bw::app::AmbientOcclusion::Gtao) {
+    } else if (gtaoConfigured) {
       auto& gtao = mDebugDisplay.gtao;
       ambientOcclusionChanged |= ImGui::SliderFloat(
           "Radius##GTAO", &gtao.radius, 0.0f, 10.0f, "%.3f");
@@ -1414,10 +1422,9 @@ void StatePlayBooleanWorld::debug_renderOptions() {
 
     if (ambientOcclusionChanged) {
       mpp::AmbientOcclusionOptions ambientOcclusion;
-      ambientOcclusion.method =
-          configuredAmbientOcclusion == bw::app::AmbientOcclusion::Gtao
-              ? mpp::AmbientOcclusionMethod::Gtao
-              : mpp::AmbientOcclusionMethod::Ssao;
+      ambientOcclusion.method = gtaoConfigured
+                                     ? mpp::AmbientOcclusionMethod::Gtao
+                                     : mpp::AmbientOcclusionMethod::Ssao;
       ambientOcclusion.ssao = mDebugDisplay.ssao;
       ambientOcclusion.gtao = mDebugDisplay.gtao;
       for (auto const& row : mWorldRenderPipelines) {

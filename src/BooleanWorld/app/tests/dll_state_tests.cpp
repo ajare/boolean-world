@@ -46,7 +46,7 @@ void acceptsAndValidatesRenderScaleCodes() {
   auto full = bw::app::renderScaleCode(bw::app::RenderScale::Full);
   auto msaa2x = bw::app::antiAliasingCode(bw::app::AntiAliasing::Msaa2x);
   auto gtao =
-      bw::app::ambientOcclusionCode(bw::app::AmbientOcclusion::Gtao);
+      bw::app::ambientOcclusionCode(bw::app::AmbientOcclusion::GtaoDepth);
   auto nearest = bw::app::renderTextureFilterCode(
       bw::app::RenderTextureFilter::Nearest);
   auto twoDimensional = bw::app::horizontalMaterialsCode(
@@ -61,7 +61,7 @@ void acceptsAndValidatesRenderScaleCodes() {
           "Valid render scale was not applied.");
   require(options.antiAliasing == bw::app::AntiAliasing::Fxaa,
           "Valid anti-aliasing setting was not applied.");
-  require(options.ambientOcclusion == bw::app::AmbientOcclusion::Gtao,
+  require(options.ambientOcclusion == bw::app::AmbientOcclusion::GtaoDepth,
           "Valid ambient-occlusion setting was not applied.");
   require(options.renderTextureFilter == bw::app::RenderTextureFilter::Nearest,
           "Valid render-texture filter was not applied.");
@@ -109,7 +109,8 @@ void acceptsAndValidatesRenderScaleCodes() {
           "Out-of-range horizontal-material mode was accepted.");
   require(options.renderScale == bw::app::RenderScale::Quarter &&
               options.antiAliasing == bw::app::AntiAliasing::Fxaa &&
-              options.ambientOcclusion == bw::app::AmbientOcclusion::Gtao &&
+              options.ambientOcclusion ==
+                  bw::app::AmbientOcclusion::GtaoDepth &&
               options.renderTextureFilter == bw::app::RenderTextureFilter::Nearest &&
               options.horizontalMaterials ==
                   bw::app::HorizontalMaterials::TwoDimensional,
@@ -140,6 +141,18 @@ void renderScaleVocabularyIsClosedAndSizesTargets() {
   }
   require(!bw::app::antiAliasingFromName("msaa-16x"),
           "Unknown anti-aliasing setting was accepted.");
+  for (auto ambientOcclusion : bw::app::allAmbientOcclusionOptions) {
+    auto fromName = bw::app::ambientOcclusionFromName(
+        bw::app::ambientOcclusionName(ambientOcclusion));
+    require(fromName && *fromName == ambientOcclusion,
+            "Ambient-occlusion setting did not round-trip through its name.");
+    auto fromCode = bw::app::ambientOcclusionFromCode(
+        bw::app::ambientOcclusionCode(ambientOcclusion));
+    require(fromCode && *fromCode == ambientOcclusion,
+            "Ambient-occlusion setting did not round-trip through its boundary code.");
+  }
+  require(!bw::app::ambientOcclusionFromName("gtao"),
+          "Retired ambient-occlusion setting was accepted.");
   for (auto filter : bw::app::allRenderTextureFilters) {
     auto fromName = bw::app::renderTextureFilterFromName(
         bw::app::renderTextureFilterName(filter));

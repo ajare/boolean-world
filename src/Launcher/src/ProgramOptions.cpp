@@ -88,7 +88,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
     auto ambientOcclusion =
         bw::app::ambientOcclusionFromName(ambientOcclusionName);
     if (!ambientOcclusion) {
-      string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/AmbientOcclusion must be 'ssao', 'gtao' or 'none'.";
+      string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/AmbientOcclusion must be 'ssao', 'gtao-depth', 'gtao-normals' or 'none'.";
       throw exception(errMsg.c_str());
     }
 

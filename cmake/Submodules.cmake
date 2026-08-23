@@ -62,15 +62,47 @@ function(bw_ensure_willpower)
     endforeach()
     list(REMOVE_DUPLICATES _bw_underlying_configs)
 
+    # Imported targets cannot express a build dependency on these standalone
+    # trees. Track their checked-out revisions so a submodule update invalidates
+    # otherwise-present prebuilt artifacts without rebuilding on every configure.
+    execute_process(
+        COMMAND git -C "${BW_WILLPOWER_SOURCE_DIR}" rev-parse HEAD
+        RESULT_VARIABLE willpower_revision_rc
+        OUTPUT_VARIABLE willpower_revision OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(
+        COMMAND git -C "${BW_MPP_SOURCE_DIR}" rev-parse HEAD
+        RESULT_VARIABLE mpp_revision_rc
+        OUTPUT_VARIABLE mpp_revision OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(willpower_revision_rc EQUAL 0 AND mpp_revision_rc EQUAL 0)
+        set(dependency_revision "${willpower_revision}\n${mpp_revision}\n")
+    else()
+        # A source export without Git metadata cannot prove that its artifacts
+        # are current, so conservatively ask the native build tool every time.
+        set(dependency_revision "")
+    endif()
+
     foreach(cfg ${_bw_underlying_configs})
         _bw_willpower_present("${cfg}" present)
-        if(present)
+        set(revision_file
+            "${BW_WILLPOWER_BUILD_DIR}/boolean-world-${cfg}-revision.txt")
+        set(revisions_match FALSE)
+        if(dependency_revision AND EXISTS "${revision_file}")
+            file(READ "${revision_file}" built_revision)
+            if(built_revision STREQUAL dependency_revision)
+                set(revisions_match TRUE)
+            endif()
+        endif()
+
+        if(NOT BW_BUILD_WILLPOWER)
+            if(NOT present)
+                message(FATAL_ERROR
+                    "Willpower libraries for ${cfg} are missing and "
+                    "BW_BUILD_WILLPOWER is OFF. Build ext/willpower yourself first.")
+            endif()
             continue()
         endif()
-        if(NOT BW_BUILD_WILLPOWER)
-            message(FATAL_ERROR
-                "Willpower libraries for ${cfg} are missing and "
-                "BW_BUILD_WILLPOWER is OFF. Build ext/willpower yourself first.")
+        if(present AND revisions_match)
+            continue()
         endif()
 
         if(NOT EXISTS "${BW_WILLPOWER_BUILD_DIR}/CMakeCache.txt")
@@ -88,7 +120,26 @@ function(bw_ensure_willpower)
             endif()
         endif()
 
-        message(STATUS "Building Willpower (${cfg}) - this may take several minutes")
+        message(STATUS "Updating Willpower dependencies (${cfg}) - this may take several minutes")
+
+        # Build MPP directly rather than relying on Willpower's ExternalProject
+        # stamp. That stamp records only that the external build once completed;
+        # it does not notice when the checked-out MPP submodule advances, which
+        # can otherwise leave current headers paired with stale runtime DLLs.
+        # MppAppSupport's dependencies include every MPP library BooleanWorld
+        # consumes directly.
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" --build "${BW_MPP_BUILD_DIR}"
+                    --config "${cfg}" --parallel --target MppAppSupport
+            RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE out)
+        if(NOT rc EQUAL 0)
+            message(FATAL_ERROR
+                "Failed to build MassivePolyPusher support (${cfg}):\n${out}")
+        endif()
+
+        # Always ask the standalone build to update too. The native build tool
+        # performs the incremental check, keeping its libraries in sync when
+        # the Willpower submodule itself advances.
         execute_process(
             COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
                     --config "${cfg}" --parallel
@@ -99,16 +150,8 @@ function(bw_ensure_willpower)
             message(FATAL_ERROR "Failed to build Willpower (${cfg}):\n${out}")
         endif()
 
-        # BooleanWorld also consumes MppAppSupport and SDL directly. They are
-        # outside Willpower's target dependency graph, so build them explicitly
-        # in the same standalone dependency tree.
-        execute_process(
-            COMMAND "${CMAKE_COMMAND}" --build "${BW_MPP_BUILD_DIR}"
-                    --config "${cfg}" --parallel --target MppAppSupport
-            RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE out)
-        if(NOT rc EQUAL 0)
-            message(FATAL_ERROR
-                "Failed to build MassivePolyPusher support (${cfg}):\n${out}")
+        if(dependency_revision)
+            file(WRITE "${revision_file}" "${dependency_revision}")
         endif()
     endforeach()
 endfunction()

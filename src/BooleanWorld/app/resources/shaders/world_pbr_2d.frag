@@ -21,6 +21,24 @@
 @@Texture(sampler2D TEX1);
 ##
 
+layout(std140, binding = 3) uniform CameraFrame
+{
+    mat4 VIEW_MATRIX;
+    mat4 PROJECTION_MATRIX;
+    mat4 INVERSE_PROJECTION_MATRIX;
+    vec4 VIEWPORT_SIZE;
+    vec4 NEAR_FAR_TIME;
+};
+
+vec2 encodeOctahedralNormal(vec3 normal)
+{
+    normal /= abs(normal.x) + abs(normal.y) + abs(normal.z);
+    vec2 oct = normal.xy;
+    if (normal.z < 0.0)
+        oct = (1.0 - abs(oct.yx)) * sign(oct.xy);
+    return oct * 0.5 + 0.5;
+}
+
 const float PI = 3.14159265359;
 
 struct Material
@@ -694,11 +712,12 @@ void main()
     float depth = gl_FragCoord.z / gl_FragCoord.w;
     depth = pow(clamp(1.0 - depth / @Uniform(VIEW_DISTANCE), 0.0, 1.0), 1.7);
     vec3 value = vec3(0.0);
+    vec3 shadingNormal = normalize(@In(FRAGNORMAL));
     if (depth > 0.05)
     {
         vec3 worldPos = @In(FRAGPOSITION);
         vec3 viewDir = normalize(@ViewPos - worldPos);
-        vec3 normal = normalize(@In(FRAGNORMAL));
+        vec3 normal = shadingNormal;
         vec2 texturePosition = worldPos.xz / @Uniform(MATERIAL_SCALE);
         int materialIndex = floorMaterialIndex(
             worldPos, clamp(@Uniform(MATERIAL_INDEX), 0, 29));
@@ -711,11 +730,15 @@ void main()
                 @Uniform(HEXAGON_DEPTH), @Uniform(FLOOR_PATTERN),
                 @Uniform(RUNNING_BOND_WIDTH_PERCENT),
                 @Uniform(RUNNING_BOND_OFFSET_PERCENT));
+        shadingNormal = material.normal;
         value = shadePbr(material, viewDir, worldPos, @Uniform(PLAYER_POSITION));
         value += supernaturalEmission(texturePosition, materialIndex);
         value = value / (value + vec3(1.0));
         value = pow(value, vec3(1.0 / 2.2));
     }
     @Out(vec4 COLOUR) = vec4(value, 1.0) * vec4(depth, depth, depth, 1.0);
+    @Out(vec4 BLOOM_MASK) = vec4(0.0);
+    @Out(vec2 SHADING_NORMAL) = encodeOctahedralNormal(
+        normalize(mat3(VIEW_MATRIX) * shadingNormal));
 ##
 }

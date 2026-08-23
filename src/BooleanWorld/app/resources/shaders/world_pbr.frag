@@ -23,6 +23,24 @@
 @@Texture(sampler2D TEX1);
 ##
 
+layout(std140, binding = 3) uniform CameraFrame
+{
+    mat4 VIEW_MATRIX;
+    mat4 PROJECTION_MATRIX;
+    mat4 INVERSE_PROJECTION_MATRIX;
+    vec4 VIEWPORT_SIZE;
+    vec4 NEAR_FAR_TIME;
+};
+
+vec2 encodeOctahedralNormal(vec3 normal)
+{
+    normal /= abs(normal.x) + abs(normal.y) + abs(normal.z);
+    vec2 oct = normal.xy;
+    if (normal.z < 0.0)
+        oct = (1.0 - abs(oct.yx)) * sign(oct.xy);
+    return oct * 0.5 + 0.5;
+}
+
 const float PI = 3.14159265359;
 
 vec3 snapToGrid(vec3 p, float gridSize)
@@ -1464,11 +1482,12 @@ void main()
 
     vec4 shadedColour = vec4(depth, depth, depth, 1.0);
     vec3 value = vec3(0.0);
+    vec3 shadingNormal = normalize(@In(FRAGNORMAL));
 
     if (depth > 0.05)
     {
         vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));
-        vec3 normalDir = normalize(@In(FRAGNORMAL));
+        vec3 normalDir = shadingNormal;
         vec3 texturePosition =
             @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE);
         int materialIndex = floorMaterialIndex(
@@ -1489,6 +1508,7 @@ void main()
 
         // Cook-Torrance PBR lighting with GGX distribution, Smith geometry
         // masking and Schlick Fresnel.
+        shadingNormal = material.normal;
         value = shadePbr(
             material, viewDir, @In(FRAGPOSITION),
             @Uniform(PLAYER_POSITION));
@@ -1498,5 +1518,8 @@ void main()
     }
 
     @Out(vec4 COLOUR) = vec4(value, 1.0) * shadedColour;
+    @Out(vec4 BLOOM_MASK) = vec4(0.0);
+    @Out(vec2 SHADING_NORMAL) = encodeOctahedralNormal(
+        normalize(mat3(VIEW_MATRIX) * shadingNormal));
 ##
 }
