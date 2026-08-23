@@ -56,7 +56,7 @@ public:
   void addToScene(mpp::ScenePtr scene, bw::core::World const* world);
 
   void update(
-      glm::vec3 const& playerPosition,
+      glm::vec3 const& lightPosition,
       int32_t materialIndexOverride,
       float materialScale,
       FloorPatternOptions const& floorPattern,

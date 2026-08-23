@@ -4,7 +4,7 @@
 @@Uniform(float VIEW_DISTANCE);
 @@Uniform(float GLOBAL_TIME);
 @@Uniform(float PIXEL_SIZE);
-@@Uniform(vec3 PLAYER_POSITION);
+@@Uniform(vec3 LIGHT_POSITION);
 @@Uniform(float MATERIAL_SCALE);
 @@Uniform(float HEXAGON_RADIUS);
 @@Uniform(float HEXAGON_DEPTH);
@@ -556,6 +556,15 @@ float geologyVoronoi(vec3 p)
     return nearest;
 }
 
+float naturalRockField(vec3 p)
+{
+    float fractured = fbm(p * 0.82);
+    float grains = noise(p * 7.5);
+    float cells = geologyVoronoi(p * 2.6);
+    return fractured * 0.58 + grains * 0.20 +
+           (1.0 - smoothstep(0.10, 0.42, cells)) * 0.22;
+}
+
 // Scalar surface fields shared by the geology materials below. The type is a
 // compile-time constant at each call site in practice, allowing drivers to
 // discard all unrelated branches after specializing the material switch.
@@ -609,12 +618,28 @@ float geologyField(vec3 p, int type)
         float growth = sin(dot(p, normalize(vec3(1.0, 0.7, -0.35))) * 13.0);
         return cells * 0.78 + (growth * 0.5 + 0.5) * 0.22;
     }
+    if (type == 7) // Ore: host rock crossed by folded metallic deposits.
+    {
+        float warp = fbm(p * 0.62) - 0.5;
+        float vein = abs(sin(
+            p.x * 4.5 + p.y * 1.1 - p.z * 0.8 + warp * 8.0));
+        float veinMask = 1.0 - smoothstep(0.06, 0.24, vein);
+        return fbm(p * 1.6) * 0.42 + veinMask * 0.58;
+    }
+    if (type == 8) // Banded gneiss: folded metamorphic mineral layers.
+    {
+        float warp = fbm(p * 0.48) - 0.5;
+        float bands = sin(dot(p, normalize(vec3(0.82, 0.24, -0.52))) *
+                          8.0 + warp * 7.0) * 0.5 + 0.5;
+        return bands * 0.72 + noise(p * 9.0) * 0.28;
+    }
+    if (type == 9) // Rock: fractured, coarse-grained stone.
+        return naturalRockField(p);
+    if (type == 10) // Mossy rock: stone softened by a fine organic layer.
+        return naturalRockField(p) * 0.82 + fbm(p * 2.1) * 0.18;
 
-    // Ore: host rock crossed by folded metallic deposits.
-    float warp = fbm(p * 0.62) - 0.5;
-    float vein = abs(sin(p.x * 4.5 + p.y * 1.1 - p.z * 0.8 + warp * 8.0));
-    float veinMask = 1.0 - smoothstep(0.06, 0.24, vein);
-    return fbm(p * 1.6) * 0.42 + veinMask * 0.58;
+    // Wet rock: eroded stone with shallow water-smoothed detail.
+    return naturalRockField(p) * 0.78 + fbm(p * 0.42) * 0.22;
 }
 
 vec3 geologyNormal(vec3 p, vec3 normal, int type, float field,
@@ -762,6 +787,79 @@ Material oreTexture(vec3 worldPos, vec3 normal)
     material.metallic = metal * (1.0 - oxidation * 0.65);
     material.roughness = clamp(mix(0.68, 0.20, metal) + oxidation * 0.25, 0.16, 0.78);
     material.normal = geologyNormal(p, normal, 7, surface, 0.06);
+    return material;
+}
+
+Material bandedGneissTexture(vec3 worldPos, vec3 normal)
+{
+    Material material;
+    vec3 p = worldPos * 0.68;
+    float surface = geologyField(p, 8);
+    float warp = fbm(p * 0.48) - 0.5;
+    float band = sin(dot(p, normalize(vec3(0.82, 0.24, -0.52))) *
+                     8.0 + warp * 7.0) * 0.5 + 0.5;
+    float garnet = smoothstep(0.91, 0.975, noise(p * 13.0 + vec3(7.0)));
+    material.albedo = mix(
+        vec3(0.075, 0.080, 0.085), vec3(0.66, 0.61, 0.54),
+        smoothstep(0.30, 0.70, band));
+    material.albedo = mix(material.albedo, vec3(0.30, 0.045, 0.055), garnet);
+    material.metallic = 0.02;
+    material.roughness = clamp(0.48 + (noise(p * 8.0) - 0.5) * 0.16,
+                               0.36, 0.62);
+    material.normal = geologyNormal(p, normal, 8, surface, 0.052);
+    return material;
+}
+
+Material rockTexture(vec3 worldPos, vec3 normal)
+{
+    Material material;
+    vec3 p = worldPos * 0.74;
+    float surface = geologyField(p, 9);
+    float mineral = noise(p * 7.5);
+    float weather = fbm(p * 0.55);
+    material.albedo = mix(
+        vec3(0.16, 0.15, 0.135), vec3(0.43, 0.41, 0.37), weather);
+    material.albedo *= mix(0.82, 1.10, mineral);
+    material.metallic = 0.0;
+    material.roughness = clamp(0.68 + (mineral - 0.5) * 0.16, 0.58, 0.82);
+    material.normal = geologyNormal(p, normal, 9, surface, 0.075);
+    return material;
+}
+
+Material mossyRockTexture(vec3 worldPos, vec3 normal)
+{
+    Material material;
+    vec3 p = worldPos * 0.72;
+    float surface = geologyField(p, 10);
+    float moisture = fbm(p * 0.82 + vec3(4.0, 9.0, 2.0));
+    float upward = max(normalize(normal).y, 0.0);
+    float moss = smoothstep(0.43, 0.68, moisture) * (0.42 + upward * 0.58);
+    float fineMoss = noise(p * 16.0);
+    vec3 stone = mix(vec3(0.13, 0.13, 0.115), vec3(0.38, 0.37, 0.32),
+                     fbm(p * 0.55));
+    vec3 mossColour = mix(
+        vec3(0.055, 0.105, 0.025), vec3(0.25, 0.34, 0.07), fineMoss);
+    material.albedo = mix(stone, mossColour, moss);
+    material.metallic = 0.0;
+    material.roughness = mix(0.72, 0.92, moss);
+    material.normal = geologyNormal(p, normal, 10, surface, 0.068);
+    return material;
+}
+
+Material wetRockTexture(vec3 worldPos, vec3 normal)
+{
+    Material material;
+    vec3 p = worldPos * 0.74;
+    float surface = geologyField(p, 11);
+    float wetness = smoothstep(
+        0.24, 0.76, fbm(p * 0.46 + vec3(12.0, 3.0, 8.0)));
+    vec3 dryStone = mix(vec3(0.14, 0.14, 0.135), vec3(0.39, 0.38, 0.35),
+                        fbm(p * 0.62));
+    material.albedo = dryStone * mix(0.72, 0.36, wetness);
+    material.metallic = 0.0;
+    material.roughness = mix(0.52, 0.075, wetness);
+    material.normal = geologyNormal(p, normal, 11, surface,
+                                    mix(0.062, 0.035, wetness));
     return material;
 }
 
@@ -1346,6 +1444,162 @@ vec3 supernaturalEmission(vec3 worldPos, int materialIndex)
     return vec3(0.0);
 }
 
+// Manufactured surfaces: frosted glass, brick masonry and circuit boards.
+// Brick and circuit board are inherently flat, axis-aligned patterns, so
+// they build a local tangent frame from the geometric normal rather than
+// reading world position along fixed axes. That keeps the coursing/etch
+// pattern aligned to whatever surface it lands on without needing
+// vertex-supplied UVs or tangents.
+void surfaceTangentBasis(vec3 normal, out vec3 tangent, out vec3 bitangent)
+{
+    vec3 reference = abs(normal.y) < 0.95 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    tangent = normalize(cross(reference, normal));
+    bitangent = cross(normal, tangent);
+}
+
+float frostedGlassField(vec3 p)
+{
+    // Overlapping etched facets: broad frosted cells crossed by fine
+    // directional scratches left by the sanding/etching process.
+    float facets = geologyVoronoi(p * 8.5);
+    float scratches = noise(vec3(p.x * 26.0, p.y * 3.0, p.z * 26.0));
+    return (1.0 - smoothstep(0.05, 0.34, facets)) * 0.65 + scratches * 0.35;
+}
+
+vec3 frostedGlassNormal(vec3 p, vec3 normal, float field, float strength)
+{
+    const float epsilon = 0.014;
+    vec3 gradient = vec3(
+        frostedGlassField(p + vec3(epsilon, 0.0, 0.0)) - field,
+        frostedGlassField(p + vec3(0.0, epsilon, 0.0)) - field,
+        frostedGlassField(p + vec3(0.0, 0.0, epsilon)) - field) / epsilon;
+    vec3 geometricNormal = normalize(normal);
+    gradient -= geometricNormal * dot(gradient, geometricNormal);
+    return normalize(geometricNormal - gradient * strength);
+}
+
+Material frostedGlassTexture(vec3 worldPos, vec3 normal)
+{
+    Material material;
+    vec3 p = worldPos * 1.4;
+    float surface = frostedGlassField(p);
+    float frostDensity = smoothstep(0.22, 0.82, surface);
+
+    // The renderer has no transmission channel, so the "seen through"
+    // quality is approximated with a pale, desaturated albedo whose
+    // roughness thins out wherever the etch is sparse.
+    vec3 clearTint = vec3(0.85, 0.91, 0.94);
+    material.albedo = clearTint * mix(0.78, 0.98, frostDensity);
+    material.metallic = 0.0;
+    material.roughness = clamp(mix(0.34, 0.80, frostDensity), 0.28, 0.86);
+    material.normal = frostedGlassNormal(p, normal, surface, 0.045);
+    return material;
+}
+
+float brickReliefField(vec2 uv)
+{
+    float brickWidth = 1.0;
+    float brickHeight = 0.42;
+    float mortarWidth = 0.05;
+    float row = floor(uv.y / brickHeight);
+    float rowOffset = mod(row, 2.0) * brickWidth * 0.5;
+    vec2 local = vec2(
+        mod(uv.x - rowOffset, brickWidth), mod(uv.y, brickHeight));
+    vec2 distanceToEdge = min(local, vec2(brickWidth, brickHeight) - local);
+    float mortar = min(distanceToEdge.x, distanceToEdge.y);
+    return 1.0 - smoothstep(0.0, mortarWidth, mortar);
+}
+
+Material brickTexture(vec3 worldPos, vec3 normal)
+{
+    Material material;
+    vec3 geometricNormal = normalize(normal);
+    vec3 tangent, bitangent;
+    surfaceTangentBasis(geometricNormal, tangent, bitangent);
+
+    vec3 p = worldPos * 0.95;
+    vec2 uv = vec2(dot(p, tangent), dot(p, bitangent));
+
+    float brickWidth = 1.0;
+    float brickHeight = 0.42;
+    float row = floor(uv.y / brickHeight);
+    float rowOffset = mod(row, 2.0) * brickWidth * 0.5;
+    vec2 cell = vec2(floor((uv.x - rowOffset) / brickWidth), row);
+
+    float mortarMask = brickReliefField(uv);
+    float shade = floorPatternHash(cell + vec2(4.0, 9.0));
+    float weather = noise(vec3(uv * 3.3, shade * 11.0));
+
+    vec3 fired = mix(vec3(0.36, 0.12, 0.075), vec3(0.66, 0.30, 0.16), shade);
+    fired *= mix(0.80, 1.12, weather);
+    vec3 mortarColour = mix(vec3(0.55, 0.53, 0.49), vec3(0.68, 0.66, 0.62), weather);
+
+    material.albedo = mix(fired, mortarColour, mortarMask);
+    material.metallic = 0.0;
+    material.roughness = clamp(
+        mix(0.58, 0.90, mortarMask) + (weather - 0.5) * 0.08, 0.55, 0.94);
+
+    const float epsilon = 0.01;
+    float gradientU = brickReliefField(uv + vec2(epsilon, 0.0)) - mortarMask;
+    float gradientV = brickReliefField(uv + vec2(0.0, epsilon)) - mortarMask;
+    vec3 bump = (tangent * gradientU + bitangent * gradientV) / epsilon;
+    material.normal = normalize(geometricNormal - bump * 0.045);
+
+    return material;
+}
+
+float circuitReliefField(vec2 uv)
+{
+    vec2 grid = uv * 9.0;
+    vec2 cell = floor(grid);
+    vec2 local = fract(grid) - 0.5;
+    float trace = 1.0 - smoothstep(0.045, 0.10, min(abs(local.x), abs(local.y)));
+    float traceActive = step(0.4, floorPatternHash(cell));
+    float pad = 1.0 - smoothstep(0.11, 0.17, length(local));
+    float padActive = step(0.82, floorPatternHash(cell + vec2(5.0, 2.0)));
+    return max(trace * traceActive, pad * padActive);
+}
+
+Material circuitBoardTexture(vec3 worldPos, vec3 normal)
+{
+    Material material;
+    vec3 geometricNormal = normalize(normal);
+    vec3 tangent, bitangent;
+    surfaceTangentBasis(geometricNormal, tangent, bitangent);
+
+    vec3 p = worldPos * 1.15;
+    vec2 uv = vec2(dot(p, tangent), dot(p, bitangent));
+
+    float coarseTraces = circuitReliefField(uv);
+    float fineTraces = circuitReliefField(uv * 2.2 + vec2(11.0, 4.0)) * 0.55;
+    float copperMask = clamp(max(coarseTraces, fineTraces), 0.0, 1.0);
+
+    vec2 padGrid = uv * 9.0;
+    vec2 padCell = floor(padGrid);
+    float padActive = step(0.82, floorPatternHash(padCell + vec2(5.0, 2.0)));
+    float padLocal = 1.0 - smoothstep(
+        0.11, 0.17, length(fract(padGrid) - 0.5));
+    float isPad = padActive * padLocal;
+
+    float fleck = step(0.985, noise(vec3(uv * 42.0, 3.0)));
+    vec3 solderMask = vec3(0.035, 0.16, 0.075) +
+        vec3(0.62, 0.62, 0.58) * fleck * 0.35;
+    vec3 copper = mix(
+        vec3(0.55, 0.32, 0.09), vec3(0.85, 0.72, 0.35), isPad);
+
+    material.albedo = mix(solderMask, copper, copperMask);
+    material.metallic = copperMask * 0.9;
+    material.roughness = clamp(mix(0.55, 0.16, copperMask), 0.14, 0.6);
+
+    const float epsilon = 0.01;
+    float gradientU = circuitReliefField(uv + vec2(epsilon, 0.0)) - coarseTraces;
+    float gradientV = circuitReliefField(uv + vec2(0.0, epsilon)) - coarseTraces;
+    vec3 bump = (tangent * gradientU + bitangent * gradientV) / epsilon;
+    material.normal = normalize(geometricNormal - bump * 0.02);
+
+    return material;
+}
+
 float distributionGGX(vec3 normal, vec3 halfway, float roughness)
 {
     float alpha = roughness * roughness;
@@ -1396,21 +1650,20 @@ vec3 evaluatePbrLight(Material material, vec3 viewDir, vec3 lightDir,
 }
 
 vec3 shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
-              vec3 playerPosition)
+              vec3 lightPosition)
 {
-    // PLAYER_POSITION is the player's eye in the same X/elevation/Z
-    // coordinate system as the interpolated world position. A point light
-    // emits equally in every direction; only distance and the receiving
-    // surface's angle affect its contribution.
-    vec3 toPlayer = playerPosition - worldPosition;
-    float playerDistance = max(length(toPlayer), 0.0001);
-    vec3 playerDirection = toPlayer / playerDistance;
-    float playerAttenuation =
-        1.0 / (1.0 + playerDistance * 0.04 +
-               playerDistance * playerDistance * 0.0015);
+    // LIGHT_POSITION uses the same X/elevation/Z coordinate system as the
+    // interpolated world position. A point light emits equally in every
+    // direction; only distance and the receiving surface's angle affect it.
+    vec3 toLight = lightPosition - worldPosition;
+    float lightDistance = max(length(toLight), 0.0001);
+    vec3 lightDirection = toLight / lightDistance;
+    float lightAttenuation =
+        1.0 / (1.0 + lightDistance * 0.04 +
+               lightDistance * lightDistance * 0.0015);
     vec3 direct = evaluatePbrLight(
-        material, viewDir, playerDirection,
-        vec3(14.0) * playerAttenuation);
+        material, viewDir, lightDirection,
+        vec3(14.0) * lightAttenuation);
 
     // Keep ambient illumination orientation-independent so opposite floor and
     // ceiling normals do not introduce a different colour cast.
@@ -1462,6 +1715,13 @@ Material evaluateMaterial(
         case 27: material = cloudSolidTexture(texturePosition, normalDir); break;
         case 28: material = holographicTexture(texturePosition, normalDir, viewDir); break;
         case 29: material = corruptionTexture(texturePosition, normalDir); break;
+        case 30: material = frostedGlassTexture(texturePosition, normalDir); break;
+        case 31: material = brickTexture(texturePosition, normalDir); break;
+        case 32: material = circuitBoardTexture(texturePosition, normalDir); break;
+        case 33: material = bandedGneissTexture(texturePosition, normalDir); break;
+        case 34: material = rockTexture(texturePosition, normalDir); break;
+        case 35: material = mossyRockTexture(texturePosition, normalDir); break;
+        case 36: material = wetRockTexture(texturePosition, normalDir); break;
         default:
             material.albedo = vec3(1.0, 0.0, 1.0);
             material.metallic = 0.0;
@@ -1474,11 +1734,11 @@ Material evaluateMaterial(
 
 void main()
 {
-    // Depth scaling factor
-    float depth = gl_FragCoord.z / gl_FragCoord.w;
-
-    depth /= @Uniform(VIEW_DISTANCE);
-    depth = pow(clamp(1.0 - depth, 0.0, 1.0), 1.7);
+    // Use radial point-light-to-fragment distance, not view-space depth.
+    float fragmentDistance = length(
+        @Uniform(LIGHT_POSITION) - @In(FRAGPOSITION));
+    float depth = pow(clamp(
+        1.0 - fragmentDistance / @Uniform(VIEW_DISTANCE), 0.0, 1.0), 1.7);
 
     vec4 shadedColour = vec4(depth, depth, depth, 1.0);
     vec3 value = vec3(0.0);
@@ -1491,8 +1751,8 @@ void main()
         vec3 texturePosition =
             @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE);
         int materialIndex = floorMaterialIndex(
-            @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 29));
-        materialIndex = clamp(materialIndex, 0, 29);
+            @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 36));
+        materialIndex = clamp(materialIndex, 0, 36);
         Material material = evaluateMaterial(
             texturePosition, normalDir, viewDir, materialIndex);
 
@@ -1511,7 +1771,7 @@ void main()
         shadingNormal = material.normal;
         value = shadePbr(
             material, viewDir, @In(FRAGPOSITION),
-            @Uniform(PLAYER_POSITION));
+            @Uniform(LIGHT_POSITION));
         value += supernaturalEmission(texturePosition, materialIndex);
         value = value / (value + vec3(1.0));
         value = pow(value, vec3(1.0 / 2.2));

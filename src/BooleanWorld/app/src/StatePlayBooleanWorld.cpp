@@ -54,8 +54,9 @@ DisplayMessage::Level gDisplayMessageLevel = DisplayMessage::Level::Debug;
 const float gImGui_MouseSensitivityMin = 0.03f;
 const float gImGui_MouseSensitivityMax = 3.0f;
 
-// These indices are the MATERIAL_INDEX cases in world_pbr.frag.
-constexpr array<char const*, 30> gWorldMaterialNames{
+// These indices are the MATERIAL_INDEX cases in world_pbr.frag and
+// world_pbr_2d.frag.
+constexpr array<char const*, 37> gWorldMaterialNames{
     "Marble", "Granite", "Slate", "Sandstone", "Limestone",
     "Basalt", "Obsidian", "Quartz / crystal", "Ore",
     "Rusted iron", "Galvanized steel", "Brushed metal",
@@ -63,7 +64,9 @@ constexpr array<char const*, 30> gWorldMaterialNames{
     "Heat-treated metal", "Wood", "Bark", "Bone / ivory",
     "Leather", "Flesh", "Chitin / shell", "Coral",
     "Arcane crystal", "Energy stone", "Alien tissue",
-    "Magical metal", "Solid cloud", "Holographic", "Corruption"};
+    "Magical metal", "Solid cloud", "Holographic", "Corruption",
+    "Frosted glass", "Brick", "Circuit board", "Banded gneiss",
+    "Rock", "Mossy rock", "Wet rock"};
 constexpr array<char const*, 6> gFloorPatternNames{
     "None", "Square", "Hexagon", "Running bond", "Modular opus",
     "Voronoi"};
@@ -646,17 +649,20 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   static_cast<ReactiveCamera*>(mCamera3d.get())->pitch(physicalStats.pitch - mPlayerPrevPitch);
 
   // World 3d. Its shader-space axes match rendered geometry: horizontal
-  // world X/Y become X/Z, while Y is elevation. Place the player light at
-  // the same simulated eye position as the camera.
-  glm::vec3 playerShaderPosition{
-      physicalStats.position.x,
+  // world X/Y become X/Z, while Y is elevation. Move the light horizontally
+  // from the player's eye along the current yaw; pitch does not affect it.
+  auto lightOffset = Vector2::fromAngle(
+      bw::app::worldViewAngle(physicalStats.angle), Clockwise) *
+      mDebugDisplay.lightDistance;
+  glm::vec3 lightPosition{
+      physicalStats.position.x + lightOffset.x,
       playerViewHeight,
-      physicalStats.position.y};
+      physicalStats.position.y + lightOffset.y};
   auto materialIndexOverride = mDebugDisplay.overrideWorldMaterial
                                    ? mDebugDisplay.worldMaterialIndex
                                    : -1;
   mwRenderer->update(
-      getMap()->getWorld(), *mWorldData, playerShaderPosition,
+      getMap()->getWorld(), *mWorldData, lightPosition,
       materialIndexOverride, mDebugDisplay.worldMaterialScale,
       mDebugDisplay.floorPattern, frameTime);
 }
@@ -1439,6 +1445,12 @@ void StatePlayBooleanWorld::debug_renderOptions() {
         ambientOcclusionConfigured
             ? "Debug-only - set Video/AmbientOcclusion to choose the method."
             : "Disabled by Video/AmbientOcclusion: none.");
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Lighting");
+    ImGui::SliderFloat(
+        "Light source distance", &mDebugDisplay.lightDistance,
+        0.0f, 256.0f, "%.1f");
 
     ImGui::Separator();
     ImGui::TextUnformatted("World material");

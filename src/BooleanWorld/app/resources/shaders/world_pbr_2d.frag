@@ -4,7 +4,7 @@
 @@Uniform(float VIEW_DISTANCE);
 @@Uniform(float GLOBAL_TIME);
 @@Uniform(float PIXEL_SIZE);
-@@Uniform(vec3 PLAYER_POSITION);
+@@Uniform(vec3 LIGHT_POSITION);
 @@Uniform(float MATERIAL_SCALE);
 @@Uniform(float HEXAGON_RADIUS);
 @@Uniform(float HEXAGON_DEPTH);
@@ -105,6 +105,59 @@ vec3 spectralPalette(float phase)
 {
     return 0.52 + 0.48 * cos(6.2831853 *
         (phase + vec3(0.0, 0.33, 0.67)));
+}
+
+float frostedGlassField(vec2 p)
+{
+    float facets = voronoi(p * 8.5);
+    float scratches = noise(vec2(p.x * 26.0, p.y * 3.0));
+    return (1.0 - smoothstep(0.05, 0.34, facets)) * 0.65 +
+           scratches * 0.35;
+}
+
+float brickReliefField(vec2 p)
+{
+    float brickWidth = 1.0;
+    float brickHeight = 0.42;
+    float mortarWidth = 0.05;
+    float row = floor(p.y / brickHeight);
+    float rowOffset = mod(row, 2.0) * brickWidth * 0.5;
+    vec2 local = vec2(
+        mod(p.x - rowOffset, brickWidth), mod(p.y, brickHeight));
+    vec2 distanceToEdge = min(
+        local, vec2(brickWidth, brickHeight) - local);
+    return 1.0 - smoothstep(
+        0.0, mortarWidth, min(distanceToEdge.x, distanceToEdge.y));
+}
+
+float circuitReliefField(vec2 p)
+{
+    vec2 grid = p * 9.0;
+    vec2 cell = floor(grid);
+    vec2 local = fract(grid) - 0.5;
+    float trace = 1.0 - smoothstep(
+        0.045, 0.10, min(abs(local.x), abs(local.y)));
+    float traceActive = step(0.4, hash(cell));
+    float pad = 1.0 - smoothstep(0.11, 0.17, length(local));
+    float padActive = step(0.82, hash(cell + vec2(5.0, 2.0)));
+    return max(trace * traceActive, pad * padActive);
+}
+
+float circuitBoardField(vec2 p)
+{
+    return clamp(max(
+        circuitReliefField(p),
+        circuitReliefField(p * 2.2 + vec2(11.0, 4.0)) * 0.55),
+        0.0, 1.0);
+}
+
+float naturalRockField(vec2 p)
+{
+    float fractured = fbm(p * 0.82);
+    float grains = noise(p * 7.5);
+    float cells = voronoi(p * 2.6);
+    return fractured * 0.58 + grains * 0.20 +
+           (1.0 - smoothstep(0.10, 0.42, cells)) * 0.22;
 }
 
 float materialField(vec2 p, int type)
@@ -226,6 +279,25 @@ float materialField(vec2 p, int type)
         return fbm(p * 0.72) * 0.72 + fbm(p * 2.8) * 0.28;
     if (type == 28)
         return (sin(p.y * 35.0 + @Uniform(GLOBAL_TIME) * 3.0) * 0.5 + 0.5) * 0.28 + noise(p * 9.0) * 0.12;
+    if (type == 30)
+        return frostedGlassField(p);
+    if (type == 31)
+        return brickReliefField(p);
+    if (type == 32)
+        return circuitBoardField(p);
+    if (type == 33)
+    {
+        float warp = fbm(p * 0.48) - 0.5;
+        float bands = sin(dot(p, normalize(vec2(0.82, -0.52))) * 8.0 +
+                          warp * 7.0) * 0.5 + 0.5;
+        return bands * 0.72 + noise(p * 9.0) * 0.28;
+    }
+    if (type == 34)
+        return naturalRockField(p);
+    if (type == 35)
+        return naturalRockField(p) * 0.82 + fbm(p * 2.1) * 0.18;
+    if (type == 36)
+        return naturalRockField(p) * 0.78 + fbm(p * 0.42) * 0.22;
 
     float spread = fbm(p * 0.58 + vec2(@Uniform(GLOBAL_TIME) * 0.025));
     float tendril = abs(sin(p.x * 3.4 + p.y * 2.6 + spread * 9.0));
@@ -248,15 +320,17 @@ vec3 perturbHorizontalNormal(
 Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
 {
     Material material;
-    float scales[30] = float[30](
+    float scales[37] = float[37](
         0.72, 0.82, 0.72, 0.58, 0.66, 0.85, 0.70, 0.62, 0.72, 0.72,
         0.66, 0.82, 0.72, 0.66, 0.72, 0.62, 0.54, 0.62, 0.68, 0.76,
-        0.60, 0.67, 0.66, 0.64, 0.68, 0.67, 0.72, 0.53, 0.75, 0.65);
-    float strengths[30] = float[30](
+        0.60, 0.67, 0.66, 0.64, 0.68, 0.67, 0.72, 0.53, 0.75, 0.65,
+        1.40, 0.95, 1.15, 0.68, 0.74, 0.72, 0.74);
+    float strengths[37] = float[37](
         0.11, 0.055, 0.045, 0.07, 0.065, 0.075, 0.018, 0.075, 0.06,
         0.065, 0.035, 0.012, 0.085, 0.04, 0.018, 0.014, 0.038, 0.095,
         0.045, 0.035, 0.022, 0.048, 0.085, 0.095, 0.065, 0.055, 0.026,
-        0.032, 0.008, 0.072);
+        0.032, 0.008, 0.072, 0.045, 0.045, 0.020, 0.052, 0.075, 0.068,
+        0.050);
     vec2 p = worldPos * scales[type];
     float field = materialField(p, type);
     float detail = noise(p * 7.0);
@@ -352,8 +426,90 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
     } else if (type == 28) {
         float fresnel = pow(1.0 - max(dot(normalize(normal), viewDir), 0.0), 2.2);
         material.albedo = mix(vec3(0.025, 0.12, 0.18), spectralPalette(fresnel * 0.72 + field * 0.18 + @Uniform(GLOBAL_TIME) * 0.035), 0.55 + fresnel * 0.4); material.metallic = 0.48; material.roughness = 0.10 + field * 0.12;
-    } else {
+    } else if (type == 29) {
         float spread = smoothstep(0.36, 0.68, broad); material.albedo = mix(vec3(0.025, 0.022, 0.020), vec3(0.20, 0.008, 0.24), spread); material.metallic = spread * 0.12; material.roughness = mix(0.82, 0.30, spread);
+    } else if (type == 30) {
+        float frostDensity = smoothstep(0.22, 0.82, field);
+        material.albedo = vec3(0.85, 0.91, 0.94) *
+                          mix(0.78, 0.98, frostDensity);
+        material.roughness = clamp(
+            mix(0.34, 0.80, frostDensity), 0.28, 0.86);
+    } else if (type == 31) {
+        float brickWidth = 1.0;
+        float brickHeight = 0.42;
+        float row = floor(p.y / brickHeight);
+        float rowOffset = mod(row, 2.0) * brickWidth * 0.5;
+        vec2 cell = vec2(floor((p.x - rowOffset) / brickWidth), row);
+        float shade = hash(cell + vec2(4.0, 9.0));
+        float weather = noise(p * 3.3 + vec2(shade * 11.0));
+        vec3 fired = mix(
+            vec3(0.36, 0.12, 0.075), vec3(0.66, 0.30, 0.16), shade);
+        fired *= mix(0.80, 1.12, weather);
+        vec3 mortar = mix(
+            vec3(0.55, 0.53, 0.49), vec3(0.68, 0.66, 0.62), weather);
+        material.albedo = mix(fired, mortar, field);
+        material.roughness = clamp(
+            mix(0.58, 0.90, field) + (weather - 0.5) * 0.08,
+            0.55, 0.94);
+    } else if (type == 32) {
+        vec2 padGrid = p * 9.0;
+        vec2 padCell = floor(padGrid);
+        float padActive = step(0.82, hash(padCell + vec2(5.0, 2.0)));
+        float padLocal = 1.0 - smoothstep(
+            0.11, 0.17, length(fract(padGrid) - 0.5));
+        float isPad = padActive * padLocal;
+        float fleck = step(0.985, noise(p * 42.0));
+        vec3 solderMask = vec3(0.035, 0.16, 0.075) +
+            vec3(0.62, 0.62, 0.58) * fleck * 0.35;
+        vec3 copper = mix(
+            vec3(0.55, 0.32, 0.09), vec3(0.85, 0.72, 0.35), isPad);
+        material.albedo = mix(solderMask, copper, field);
+        material.metallic = field * 0.9;
+        material.roughness = clamp(mix(0.55, 0.16, field), 0.14, 0.6);
+    } else if (type == 33) {
+        float warp = fbm(p * 0.48) - 0.5;
+        float band = sin(dot(p, normalize(vec2(0.82, -0.52))) * 8.0 +
+                         warp * 7.0) * 0.5 + 0.5;
+        float garnet = smoothstep(
+            0.91, 0.975, noise(p * 13.0 + vec2(7.0)));
+        material.albedo = mix(
+            vec3(0.075, 0.080, 0.085), vec3(0.66, 0.61, 0.54),
+            smoothstep(0.30, 0.70, band));
+        material.albedo = mix(
+            material.albedo, vec3(0.30, 0.045, 0.055), garnet);
+        material.metallic = 0.02;
+        material.roughness = clamp(
+            0.48 + (noise(p * 8.0) - 0.5) * 0.16, 0.36, 0.62);
+    } else if (type == 34) {
+        float mineral = noise(p * 7.5);
+        material.albedo = mix(
+            vec3(0.16, 0.15, 0.135), vec3(0.43, 0.41, 0.37),
+            fbm(p * 0.55));
+        material.albedo *= mix(0.82, 1.10, mineral);
+        material.roughness = clamp(
+            0.68 + (mineral - 0.5) * 0.16, 0.58, 0.82);
+    } else if (type == 35) {
+        float moisture = fbm(p * 0.82 + vec2(4.0, 9.0));
+        float upward = max(normalize(normal).y, 0.0);
+        float moss = smoothstep(0.43, 0.68, moisture) *
+                     (0.42 + upward * 0.58);
+        float fineMoss = noise(p * 16.0);
+        vec3 stone = mix(
+            vec3(0.13, 0.13, 0.115), vec3(0.38, 0.37, 0.32),
+            fbm(p * 0.55));
+        vec3 mossColour = mix(
+            vec3(0.055, 0.105, 0.025), vec3(0.25, 0.34, 0.07),
+            fineMoss);
+        material.albedo = mix(stone, mossColour, moss);
+        material.roughness = mix(0.72, 0.92, moss);
+    } else {
+        float wetness = smoothstep(
+            0.24, 0.76, fbm(p * 0.46 + vec2(12.0, 3.0)));
+        vec3 dryStone = mix(
+            vec3(0.14, 0.14, 0.135), vec3(0.39, 0.38, 0.35),
+            fbm(p * 0.62));
+        material.albedo = dryStone * mix(0.72, 0.36, wetness);
+        material.roughness = mix(0.52, 0.075, wetness);
     }
 
     material.roughness = clamp(material.roughness, 0.04, 1.0);
@@ -694,12 +850,12 @@ vec3 evaluatePbrLight(Material m, vec3 viewDir, vec3 lightDir, vec3 radiance)
     return (diffuseWeight * m.albedo / PI + specular) * radiance * nDotL;
 }
 
-vec3 shadePbr(Material m, vec3 viewDir, vec3 worldPos, vec3 playerPos)
+vec3 shadePbr(Material m, vec3 viewDir, vec3 worldPos, vec3 lightPos)
 {
-    vec3 toPlayer = playerPos - worldPos;
-    float distance = max(length(toPlayer), 0.0001);
+    vec3 toLight = lightPos - worldPos;
+    float distance = max(length(toLight), 0.0001);
     float attenuation = 1.0 / (1.0 + distance * 0.04 + distance * distance * 0.0015);
-    vec3 direct = evaluatePbrLight(m, viewDir, toPlayer / distance, vec3(14.0) * attenuation);
+    vec3 direct = evaluatePbrLight(m, viewDir, toLight / distance, vec3(14.0) * attenuation);
     vec3 ambient = vec3(0.12);
     vec3 f0 = mix(vec3(0.04), m.albedo, m.metallic);
     vec3 fresnel = fresnelSchlick(max(dot(m.normal, viewDir), 0.0), f0);
@@ -709,8 +865,11 @@ vec3 shadePbr(Material m, vec3 viewDir, vec3 worldPos, vec3 playerPos)
 
 void main()
 {
-    float depth = gl_FragCoord.z / gl_FragCoord.w;
-    depth = pow(clamp(1.0 - depth / @Uniform(VIEW_DISTANCE), 0.0, 1.0), 1.7);
+    // Use radial point-light-to-fragment distance, not view-space depth.
+    float fragmentDistance = length(
+        @Uniform(LIGHT_POSITION) - @In(FRAGPOSITION));
+    float depth = pow(clamp(
+        1.0 - fragmentDistance / @Uniform(VIEW_DISTANCE), 0.0, 1.0), 1.7);
     vec3 value = vec3(0.0);
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
     if (depth > 0.05)
@@ -720,8 +879,8 @@ void main()
         vec3 normal = shadingNormal;
         vec2 texturePosition = worldPos.xz / @Uniform(MATERIAL_SCALE);
         int materialIndex = floorMaterialIndex(
-            worldPos, clamp(@Uniform(MATERIAL_INDEX), 0, 29));
-        materialIndex = clamp(materialIndex, 0, 29);
+            worldPos, clamp(@Uniform(MATERIAL_INDEX), 0, 36));
+        materialIndex = clamp(materialIndex, 0, 36);
         Material material = material2d(
             texturePosition, normal, viewDir, materialIndex);
         if (@Uniform(FLOOR_PATTERN) != 0)
@@ -731,7 +890,7 @@ void main()
                 @Uniform(RUNNING_BOND_WIDTH_PERCENT),
                 @Uniform(RUNNING_BOND_OFFSET_PERCENT));
         shadingNormal = material.normal;
-        value = shadePbr(material, viewDir, worldPos, @Uniform(PLAYER_POSITION));
+        value = shadePbr(material, viewDir, worldPos, @Uniform(LIGHT_POSITION));
         value += supernaturalEmission(texturePosition, materialIndex);
         value = value / (value + vec3(1.0));
         value = pow(value, vec3(1.0 / 2.2));

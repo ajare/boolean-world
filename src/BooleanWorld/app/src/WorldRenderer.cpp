@@ -199,7 +199,7 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
 void WorldRenderer::update(
     bw::core::World* world,
     bw::core::WorldData const& worldData,
-    glm::vec3 const& playerPosition,
+    glm::vec3 const& lightPosition,
     int32_t materialIndexOverride,
     float materialScale,
     FloorPatternOptions const& floorPattern,
@@ -214,7 +214,7 @@ void WorldRenderer::update(
   for (auto& item : mMaterialRenderers) {
     // Update renderer
     item.renderer->update(
-        playerPosition, materialIndexOverride, materialScale, floorPattern,
+        lightPosition, materialIndexOverride, materialScale, floorPattern,
         frameTime);
   }
 }

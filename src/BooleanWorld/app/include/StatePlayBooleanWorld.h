@@ -47,6 +47,7 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     bool overrideWorldMaterial{false};
     int worldMaterialIndex{0};
     float worldMaterialScale{1.0f};
+    float lightDistance{0.0f};
     FloorPatternOptions floorPattern;
 
     bool _renderTriangulationLines{false};

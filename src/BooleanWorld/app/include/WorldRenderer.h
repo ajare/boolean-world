@@ -80,7 +80,7 @@ public:
   void update(
       bw::core::World* world,
       bw::core::WorldData const& worldData,
-      glm::vec3 const& playerPosition,
+      glm::vec3 const& lightPosition,
       int32_t materialIndexOverride,
       float materialScale,
       FloorPatternOptions const& floorPattern,
