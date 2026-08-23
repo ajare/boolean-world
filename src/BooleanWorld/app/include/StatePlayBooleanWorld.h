@@ -47,6 +47,7 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     bool overrideWorldMaterial{false};
     int worldMaterialIndex{0};
     float worldMaterialScale{1.0f};
+    float farGridSize{0.5f};
     float lightDistance{0.0f};
     FloorPatternOptions floorPattern;
 
@@ -64,6 +65,9 @@ private:
   double mGlobalTime;
 
   mpp::CameraPtr mCamera3d;
+
+  // Data-driven fullscreen program declared by World/Resources.yaml.
+  mpp::ResourcePtr mVignetteProgram;
 
   bw::core::WorldDataPtr mWorldData;
 

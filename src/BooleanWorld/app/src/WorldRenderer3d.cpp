@@ -83,6 +83,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
     uniforms.setUniform("GLOBAL_TIME", 0.0f);
     uniforms.setUniform("PIXEL_SIZE", 1.0f / 32);
+    uniforms.setUniform("FAR_GRID_SIZE", 0.5f);
+    uniforms.setUniform("PLAYER_POSITION", glm::vec3{});
     uniforms.setUniform("LIGHT_POSITION", glm::vec3{});
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
     uniforms.setUniform("HEXAGON_RADIUS", 16.0f);
@@ -172,9 +174,11 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 }
 
 void WorldRenderer3d::update(
+    glm::vec3 const& playerPosition,
     glm::vec3 const& lightPosition,
     int32_t materialIndexOverride,
     float materialScale,
+    float farGridSize,
     FloorPatternOptions const& floorPattern,
     float frameTime) {
   mGlobalTime += frameTime;
@@ -188,6 +192,8 @@ void WorldRenderer3d::update(
     uc->updateUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
     uc->updateUniform("GLOBAL_TIME", mGlobalTime);
     uc->updateUniform("PIXEL_SIZE", 1.0f / 32);
+    uc->updateUniform("FAR_GRID_SIZE", farGridSize);
+    uc->updateUniform("PLAYER_POSITION", playerPosition);
     uc->updateUniform("LIGHT_POSITION", lightPosition);
     uc->updateUniform("MATERIAL_SCALE", materialScale);
     uc->updateUniform("HEXAGON_RADIUS", floorPattern.radius);

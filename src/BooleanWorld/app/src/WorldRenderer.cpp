@@ -199,9 +199,11 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
 void WorldRenderer::update(
     bw::core::World* world,
     bw::core::WorldData const& worldData,
+    glm::vec3 const& playerPosition,
     glm::vec3 const& lightPosition,
     int32_t materialIndexOverride,
     float materialScale,
+    float farGridSize,
     FloorPatternOptions const& floorPattern,
     float frameTime) {
   BW_UNUSED(world);
@@ -214,7 +216,7 @@ void WorldRenderer::update(
   for (auto& item : mMaterialRenderers) {
     // Update renderer
     item.renderer->update(
-        lightPosition, materialIndexOverride, materialScale, floorPattern,
-        frameTime);
+        playerPosition, lightPosition, materialIndexOverride, materialScale,
+        farGridSize, floorPattern, frameTime);
   }
 }

@@ -362,6 +362,15 @@ Resources:
         Definitions:
           Definition:
             textures: "1"
+      - type: "Shader"
+        name: "VignetteVertexShader"
+        location: "shaders/vignette.vert"
+      - type: "Shader"
+        name: "VignetteFragmentShader"
+        location: "shaders/vignette.frag"
+        Definitions:
+          Definition:
+            textures: "1"
       - type: "Program"
         name: "WorldProgram"
         DependentResources:
@@ -424,6 +433,30 @@ Resources:
                         - data: "colour4"
                           type: "uint8"
                           normalised: "true"
+      - type: "Program"
+        name: "VignetteProgram"
+        DependentResources:
+          DependentResource:
+            - id: "Vertex"
+              ref: "VignetteVertexShader"
+            - id: "Fragment"
+              ref: "VignetteFragmentShader"
+        Definitions:
+          Definition:
+            Attribs:
+              textures: "1"
+            MeshSpecification:
+              primitive: "triangles"
+              indexed: "false"
+              storage: "static"
+              Buffers:
+                Buffer:
+                  Channels:
+                    Channel:
+                      - data: "position2"
+                        type: "float32"
+                      - data: "texcoord2"
+                        type: "float32"
       - type: "Material"
         name: "Material.Horizontal2d"
         DependentResources:

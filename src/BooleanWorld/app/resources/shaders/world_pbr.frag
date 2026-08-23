@@ -4,6 +4,8 @@
 @@Uniform(float VIEW_DISTANCE);
 @@Uniform(float GLOBAL_TIME);
 @@Uniform(float PIXEL_SIZE);
+@@Uniform(float FAR_GRID_SIZE);
+@@Uniform(vec3 PLAYER_POSITION);
 @@Uniform(vec3 LIGHT_POSITION);
 @@Uniform(float MATERIAL_SCALE);
 @@Uniform(float HEXAGON_RADIUS);
@@ -46,6 +48,33 @@ const float PI = 3.14159265359;
 vec3 snapToGrid(vec3 p, float gridSize)
 {
     return round(p / gridSize) * gridSize;
+}
+
+vec3 quantizeByPlayerDistance(vec3 p, float fragmentDistance)
+{
+    float distanceRatio = clamp(
+        fragmentDistance / max(@Uniform(VIEW_DISTANCE), 0.001), 0.0, 1.0);
+    const float levelCount = 4.0;
+    float level = smoothstep(0.12, 0.92, distanceRatio) * levelCount;
+    float baseGridSize = max(@Uniform(PIXEL_SIZE), 0.00001);
+    float farGridSize = max(@Uniform(FAR_GRID_SIZE), baseGridSize);
+    float gridRatio = farGridSize / baseGridSize;
+    float lowerLevel = floor(level);
+    float upperLevel = min(lowerLevel + 1.0, levelCount);
+    float lowerGridSize = baseGridSize *
+                          pow(gridRatio, lowerLevel / levelCount);
+    float upperGridSize = baseGridSize *
+                          pow(gridRatio, upperLevel / levelCount);
+
+    // Cross-fade adjacent grid levels with a quintic curve. Both ends
+    // have zero first and second derivatives, avoiding visible LOD pops while
+    // keeping both endpoints grid-quantized.
+    float transition = fract(level);
+    transition = transition * transition * transition *
+                 (transition * (transition * 6.0 - 15.0) + 10.0);
+    return mix(
+        snapToGrid(p, lowerGridSize),
+        snapToGrid(p, upperGridSize), transition);
 }
 
 float floorTileRandom(vec2 tileId)
@@ -1748,8 +1777,11 @@ void main()
     {
         vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));
         vec3 normalDir = shadingNormal;
-        vec3 texturePosition =
-            @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE);
+        float playerDistance = length(
+            @Uniform(PLAYER_POSITION) - @In(FRAGPOSITION));
+        vec3 texturePosition = quantizeByPlayerDistance(
+            @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE),
+            playerDistance);
         int materialIndex = floorMaterialIndex(
             @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 36));
         materialIndex = clamp(materialIndex, 0, 36);

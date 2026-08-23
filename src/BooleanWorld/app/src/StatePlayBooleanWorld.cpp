@@ -205,6 +205,12 @@ void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transi
   mwRenderer = static_cast<WorldRenderer*>(transitionData->userData);
   mwRenderer->create(mScene, getMap()->getWorld(), mwRenderSystem, mwRenderResourceMgr);
 
+  auto vignetteResource =
+      mwResourceMgr->getResource("VignetteProgram", "World");
+  assert(vignetteResource);
+  mVignetteProgram = vignetteResource->getMppResource();
+  assert(mVignetteProgram);
+
   // Keep the default path ready. Other supported sample counts are allocated
   // only if selected in the debug GUI.
   for (auto renderScale : bw::app::allRenderScales) {
@@ -329,6 +335,7 @@ void StatePlayBooleanWorld::destroyGameObjects() {
       }
     }
   }
+  mVignetteProgram.reset();
 }
 
 void StatePlayBooleanWorld::setupEntityFacades() {
@@ -654,17 +661,21 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   auto lightOffset = Vector2::fromAngle(
       bw::app::worldViewAngle(physicalStats.angle), Clockwise) *
       mDebugDisplay.lightDistance;
-  glm::vec3 lightPosition{
-      physicalStats.position.x + lightOffset.x,
+  glm::vec3 playerPosition{
+      physicalStats.position.x,
       playerViewHeight,
-      physicalStats.position.y + lightOffset.y};
+      physicalStats.position.y};
+  glm::vec3 lightPosition{
+      playerPosition.x + lightOffset.x,
+      playerPosition.y,
+      playerPosition.z + lightOffset.y};
   auto materialIndexOverride = mDebugDisplay.overrideWorldMaterial
                                    ? mDebugDisplay.worldMaterialIndex
                                    : -1;
   mwRenderer->update(
-      getMap()->getWorld(), *mWorldData, lightPosition,
+      getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
       materialIndexOverride, mDebugDisplay.worldMaterialScale,
-      mDebugDisplay.floorPattern, frameTime);
+      mDebugDisplay.farGridSize, mDebugDisplay.floorPattern, frameTime);
 }
 
 void StatePlayBooleanWorld::suspendImpl(void* args) {
@@ -790,8 +801,11 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   renderSystem->resetTransform();
   renderSystem->scaleTransform2d({static_cast<float>(worldTarget->getWidth()) / renderSystem->getWindowWidth(),
                                   static_cast<float>(worldTarget->getHeight()) / renderSystem->getWindowHeight()});
-  renderSystem->renderFullscreenQuad(
-      sceneTexture, mpp::BlendMode::One, mpp::BlendMode::Zero);
+  // Apply BooleanWorld's data-driven vignette as the final world post-process.
+  // HUD and debug UI are drawn later and therefore remain unaffected.
+  mpp::UniformCollection vignetteParameters;
+  renderSystem->renderGraphFullscreen(
+      mVignetteProgram, {{"TEX1", sceneTexture}}, vignetteParameters);
   renderSystem->popRenderTarget();
 
   // Composite the resolved world across the screen. The blend factors are set
@@ -1480,6 +1494,9 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     ImGui::SliderFloat(
         "Material scale", &mDebugDisplay.worldMaterialScale,
         0.1f, 64.0f, "%.1f");
+    ImGui::SliderFloat(
+        "Far grid size", &mDebugDisplay.farGridSize,
+        1.0f / 32.0f, 16.0f, "%.3f");
     auto& floorPattern = mDebugDisplay.floorPattern;
     auto patternIndex = std::clamp(
         static_cast<int>(floorPattern.pattern), 0,
