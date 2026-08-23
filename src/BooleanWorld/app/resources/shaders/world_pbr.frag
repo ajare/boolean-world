@@ -8,6 +8,12 @@
 @@Uniform(float MATERIAL_SCALE);
 @@Uniform(float HEXAGON_RADIUS);
 @@Uniform(float HEXAGON_DEPTH);
+@@Uniform(float TILE_DEPTH_VARIATION_FACTOR);
+@@Uniform(float RUNNING_BOND_WIDTH_PERCENT);
+@@Uniform(float RUNNING_BOND_OFFSET_PERCENT);
+@@Uniform(float VORONOI_ROUNDED_EDGE_FACTOR);
+@@Uniform(int SECONDARY_MATERIAL_INDEX);
+@@Uniform(int USE_SECONDARY_MATERIAL);
 @@Uniform(int FLOOR_PATTERN);
 
 // Per batch
@@ -22,6 +28,20 @@ const float PI = 3.14159265359;
 vec3 snapToGrid(vec3 p, float gridSize)
 {
     return round(p / gridSize) * gridSize;
+}
+
+float floorTileRandom(vec2 tileId)
+{
+    tileId = fract(tileId * vec2(0.3183099, 0.3678794) + 0.1);
+    tileId *= 17.0;
+    return fract(tileId.x * tileId.y * (tileId.x + tileId.y));
+}
+
+float floorTileDepthOffset(float depth, vec2 tileId)
+{
+    float factor = clamp(
+        @Uniform(TILE_DEPTH_VARIATION_FACTOR), 0.0, 1.0);
+    return -max(depth, 0.0) * factor * floorTileRandom(tileId);
 }
 
 vec2 nearestHexagonCenter(vec2 position, float radius)
@@ -68,7 +88,9 @@ float hexagonalTileHeight(vec2 position, float radius, float depth)
         max(abs(0.5 * local.x + 0.86602540378 * local.y),
             abs(-0.5 * local.x + 0.86602540378 * local.y)));
     float distanceToEdge = 0.86602540378 * safeRadius - distanceFromCenter;
-    return tileGrooveHeight(distanceToEdge, safeRadius, depth);
+    return floorTileDepthOffset(
+               depth, (position - local) / safeRadius) +
+        tileGrooveHeight(distanceToEdge, safeRadius, depth);
 }
 
 float squareTileHeight(vec2 position, float radius, float depth)
@@ -76,12 +98,205 @@ float squareTileHeight(vec2 position, float radius, float depth)
     float safeRadius = max(radius, 0.001);
     float tileSize = safeRadius * 2.0;
     vec2 local = abs(mod(position + safeRadius, tileSize) - safeRadius);
+    vec2 tileId = floor((position + vec2(safeRadius)) / tileSize);
     float distanceToEdge = safeRadius - max(local.x, local.y);
-    return tileGrooveHeight(distanceToEdge, safeRadius, depth);
+    return floorTileDepthOffset(depth, tileId) +
+        tileGrooveHeight(distanceToEdge, safeRadius, depth);
+}
+
+vec2 modularOpusLatticeCoordinates(vec2 position, float largeTileSize)
+{
+    float smallTileSize = largeTileSize * 0.5;
+    float determinant = largeTileSize * largeTileSize +
+        smallTileSize * smallTileSize;
+    return vec2(
+        (largeTileSize * position.x + smallTileSize * position.y) /
+            determinant,
+        (-smallTileSize * position.x + largeTileSize * position.y) /
+            determinant);
+}
+
+vec2 modularOpusLargeTileOrigin(vec2 lattice, float largeTileSize)
+{
+    float smallTileSize = largeTileSize * 0.5;
+    return lattice.x * vec2(largeTileSize, smallTileSize) +
+        lattice.y * vec2(-smallTileSize, largeTileSize);
+}
+
+float distanceToSquareBoundary(
+    vec2 position, vec2 origin, float tileSize)
+{
+    vec2 fromBox = abs(position - (origin + vec2(tileSize * 0.5))) -
+        vec2(tileSize * 0.5);
+    float signedDistance = length(max(fromBox, vec2(0.0))) +
+        min(max(fromBox.x, fromBox.y), 0.0);
+    return abs(signedDistance);
+}
+
+bool modularOpusPositionIsInLargeTile(
+    vec2 position, float largeTileSize)
+{
+    float size = max(largeTileSize, 0.001);
+    vec2 base = floor(modularOpusLatticeCoordinates(position, size));
+    for (int y = -1; y <= 1; ++y)
+    {
+        for (int x = -1; x <= 1; ++x)
+        {
+            vec2 origin = modularOpusLargeTileOrigin(
+                base + vec2(float(x), float(y)), size);
+            vec2 local = position - origin;
+            if (local.x >= 0.0 && local.y >= 0.0 &&
+                local.x <= size && local.y <= size)
+                return true;
+        }
+    }
+    return false;
+}
+
+float modularOpusTileHeight(vec2 position, float largeTileSize, float depth)
+{
+    float size = max(largeTileSize, 0.001);
+    vec2 base = floor(modularOpusLatticeCoordinates(position, size));
+    float smallTileSize = size * 0.5;
+    float distanceToEdge = size;
+    vec2 tileId = base;
+    bool foundTile = false;
+    for (int y = -1; y <= 1; ++y)
+    {
+        for (int x = -1; x <= 1; ++x)
+        {
+            vec2 lattice = base + vec2(float(x), float(y));
+            vec2 origin = modularOpusLargeTileOrigin(lattice, size);
+            distanceToEdge = min(
+                distanceToEdge,
+                distanceToSquareBoundary(position, origin, size));
+
+            vec2 largeLocal = position - origin;
+            if (!foundTile && largeLocal.x >= 0.0 &&
+                largeLocal.y >= 0.0 && largeLocal.x <= size &&
+                largeLocal.y <= size)
+            {
+                tileId = lattice;
+                foundTile = true;
+            }
+
+            vec2 smallOrigin = origin + vec2(size, 0.0);
+            vec2 smallLocal = position - smallOrigin;
+            if (!foundTile && smallLocal.x >= 0.0 &&
+                smallLocal.y >= 0.0 &&
+                smallLocal.x <= smallTileSize &&
+                smallLocal.y <= smallTileSize)
+            {
+                tileId = lattice + vec2(43.0, 17.0);
+                foundTile = true;
+            }
+        }
+    }
+    return floorTileDepthOffset(depth, tileId) +
+        tileGrooveHeight(distanceToEdge, size, depth);
+}
+
+float floorPatternHash(vec2 value)
+{
+    value = fract(value * vec2(0.3183099, 0.3678794) + 0.1);
+    value *= 17.0;
+    return fract(value.x * value.y * (value.x + value.y));
+}
+
+vec2 voronoiFeaturePoint(vec2 cell)
+{
+    return cell + vec2(
+        floorPatternHash(cell + vec2(17.0, 3.0)),
+        floorPatternHash(cell + vec2(5.0, 19.0)));
+}
+
+float roundedEdgeMinimum(float a, float b, float rounding)
+{
+    if (rounding <= 0.000001)
+        return min(a, b);
+    float blend = max(rounding - abs(a - b), 0.0) / rounding;
+    return min(a, b) - blend * blend * rounding * 0.25;
+}
+
+float voronoiTileHeight(vec2 position, float cellSize, float depth)
+{
+    float size = max(cellSize, 0.001);
+    vec2 scaledPosition = position / size;
+    vec2 base = floor(scaledPosition);
+    vec2 nearestSite = vec2(0.0);
+    vec2 nearestCell = base;
+    float nearestDistanceSquared = 100.0;
+
+    for (int y = -1; y <= 1; ++y)
+    {
+        for (int x = -1; x <= 1; ++x)
+        {
+            vec2 site = voronoiFeaturePoint(
+                base + vec2(float(x), float(y)));
+            float distanceSquared = dot(
+                site - scaledPosition, site - scaledPosition);
+            if (distanceSquared < nearestDistanceSquared)
+            {
+                nearestDistanceSquared = distanceSquared;
+                nearestSite = site;
+                nearestCell = base + vec2(float(x), float(y));
+            }
+        }
+    }
+
+    float distanceToEdge = 10.0;
+    float rounding = clamp(
+        @Uniform(VORONOI_ROUNDED_EDGE_FACTOR), 0.0, 1.0) * 0.25;
+    for (int y = -2; y <= 2; ++y)
+    {
+        for (int x = -2; x <= 2; ++x)
+        {
+            vec2 site = voronoiFeaturePoint(
+                base + vec2(float(x), float(y)));
+            vec2 betweenSites = site - nearestSite;
+            float siteSeparationSquared = dot(betweenSites, betweenSites);
+            if (siteSeparationSquared > 0.000001)
+            {
+                vec2 midpoint = (nearestSite + site) * 0.5;
+                float candidateDistance = dot(
+                    midpoint - scaledPosition,
+                    betweenSites / sqrt(siteSeparationSquared));
+                distanceToEdge = roundedEdgeMinimum(
+                    distanceToEdge, candidateDistance, rounding);
+            }
+        }
+    }
+
+    return floorTileDepthOffset(depth, nearestCell) +
+        tileGrooveHeight(
+            max(distanceToEdge, 0.0) * size, size, depth);
+}
+
+float runningBondTileHeight(
+    vec2 position, float length, float widthPercent,
+    float offsetPercent, float depth)
+{
+    float safeLength = max(length, 0.001);
+    float widthFactor = clamp(widthPercent * 0.01, 0.01, 1.0);
+    float tileWidth = safeLength * widthFactor;
+    float row = floor(position.y / tileWidth);
+    float rowOffset = mod(row, 2.0) * safeLength *
+        clamp(offsetPercent * 0.01, 0.0, 1.0);
+    float column = floor((position.x - rowOffset) / safeLength);
+    vec2 local = vec2(
+        mod(position.x - rowOffset, safeLength),
+        mod(position.y, tileWidth));
+    vec2 distanceToEdges = min(
+        local, vec2(safeLength, tileWidth) - local);
+    return floorTileDepthOffset(depth, vec2(column, row)) +
+        tileGrooveHeight(
+            min(distanceToEdges.x, distanceToEdges.y),
+            min(safeLength, tileWidth), depth);
 }
 
 float floorPatternHeight(
-    vec2 position, float radius, float depth, int pattern)
+    vec2 position, float radius, float depth, int pattern,
+    float runningBondWidthPercent, float runningBondOffsetPercent)
 {
     if (pattern == 1)
     {
@@ -91,22 +306,100 @@ float floorPatternHeight(
     {
         return hexagonalTileHeight(position, radius, depth);
     }
+    if (pattern == 3)
+    {
+        return runningBondTileHeight(
+            position, radius, runningBondWidthPercent,
+            runningBondOffsetPercent, depth);
+    }
+    if (pattern == 4)
+    {
+        return modularOpusTileHeight(position, radius, depth);
+    }
+    if (pattern == 5)
+    {
+        return voronoiTileHeight(position, radius, depth);
+    }
     return 0.0;
 }
 
+bool gridTileUsesSecondaryMaterial(vec2 position, float radius)
+{
+    float tileSize = max(radius, 0.001) * 2.0;
+    vec2 cell = floor((position + vec2(radius)) / tileSize);
+    return mod(cell.x + cell.y, 2.0) > 0.5;
+}
+
+bool hexagonTileUsesSecondaryMaterial(vec2 position, float radius)
+{
+    float safeRadius = max(radius, 0.001);
+    float q = (0.57735026919 * position.x - position.y / 3.0) /
+        safeRadius;
+    float r = (2.0 * position.y / 3.0) / safeRadius;
+    vec3 cube = vec3(q, -q - r, r);
+    vec3 roundedCube = round(cube);
+    vec3 error = abs(roundedCube - cube);
+    if (error.x > error.y && error.x > error.z)
+        roundedCube.x = -roundedCube.y - roundedCube.z;
+    else if (error.y > error.z)
+        roundedCube.y = -roundedCube.x - roundedCube.z;
+    else
+        roundedCube.z = -roundedCube.x - roundedCube.y;
+
+    // One of the three axial colour classes is primary. Every primary hexagon
+    // is therefore surrounded by a complete six-hexagon secondary ring.
+    return mod(roundedCube.x - roundedCube.z, 3.0) > 0.5;
+}
+
+bool modularOpusTileUsesSecondaryMaterial(
+    vec2 position, float largeTileSize)
+{
+    // Large squares use the primary material; the offset half-size squares
+    // filling the lattice gaps use the secondary material.
+    return !modularOpusPositionIsInLargeTile(position, largeTileSize);
+}
+
+int floorMaterialIndex(vec3 worldPosition, int primaryMaterialIndex)
+{
+    int secondaryMaterialIndex = @Uniform(SECONDARY_MATERIAL_INDEX);
+    if (@Uniform(USE_SECONDARY_MATERIAL) == 0 ||
+        secondaryMaterialIndex < 0 ||
+        secondaryMaterialIndex == primaryMaterialIndex)
+        return primaryMaterialIndex;
+
+    vec2 position = worldPosition.xz;
+    float radius = @Uniform(HEXAGON_RADIUS);
+    int pattern = @Uniform(FLOOR_PATTERN);
+    if (pattern == 1 &&
+        gridTileUsesSecondaryMaterial(position, radius))
+        return secondaryMaterialIndex;
+    if (pattern == 2 &&
+        hexagonTileUsesSecondaryMaterial(position, radius))
+        return secondaryMaterialIndex;
+    if (pattern == 4 &&
+        modularOpusTileUsesSecondaryMaterial(position, radius))
+        return secondaryMaterialIndex;
+    return primaryMaterialIndex;
+}
+
 vec3 embossFloorPattern(
-    vec3 normal, vec3 worldPosition, float radius, float depth, int pattern)
+    vec3 normal, vec3 worldPosition, float radius, float depth, int pattern,
+    float runningBondWidthPercent, float runningBondOffsetPercent)
 {
     float epsilon = max(radius * 0.01, 0.02);
     vec2 position = worldPosition.xz;
     float left = floorPatternHeight(
-        position - vec2(epsilon, 0.0), radius, depth, pattern);
+        position - vec2(epsilon, 0.0), radius, depth, pattern,
+        runningBondWidthPercent, runningBondOffsetPercent);
     float right = floorPatternHeight(
-        position + vec2(epsilon, 0.0), radius, depth, pattern);
+        position + vec2(epsilon, 0.0), radius, depth, pattern,
+        runningBondWidthPercent, runningBondOffsetPercent);
     float back = floorPatternHeight(
-        position - vec2(0.0, epsilon), radius, depth, pattern);
+        position - vec2(0.0, epsilon), radius, depth, pattern,
+        runningBondWidthPercent, runningBondOffsetPercent);
     float front = floorPatternHeight(
-        position + vec2(0.0, epsilon), radius, depth, pattern);
+        position + vec2(0.0, epsilon), radius, depth, pattern,
+        runningBondWidthPercent, runningBondOffsetPercent);
     vec2 gradient = vec2(right - left, front - back) / (2.0 * epsilon);
 
     return normalize(normal + vec3(-gradient.x, 0.0, -gradient.y));
@@ -1115,6 +1408,52 @@ vec3 shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
     return ambientDiffuse + ambientSpecular + direct;
 }
 
+Material evaluateMaterial(
+    vec3 texturePosition, vec3 normalDir, vec3 viewDir, int materialIndex)
+{
+    Material material;
+    switch (materialIndex)
+    {
+        case 0: material = marbleTexture(texturePosition, normalDir); break;
+        case 1: material = graniteTexture(texturePosition, normalDir); break;
+        case 2: material = slateTexture(texturePosition, normalDir); break;
+        case 3: material = sandstoneTexture(texturePosition, normalDir); break;
+        case 4: material = limestoneTexture(texturePosition, normalDir); break;
+        case 5: material = basaltTexture(texturePosition, normalDir); break;
+        case 6: material = obsidianTexture(texturePosition, normalDir); break;
+        case 7: material = quartzTexture(texturePosition, normalDir); break;
+        case 8: material = oreTexture(texturePosition, normalDir); break;
+        case 9: material = rustedIronTexture(texturePosition, normalDir); break;
+        case 10: material = galvanizedSteelTexture(texturePosition, normalDir); break;
+        case 11: material = brushedMetalTexture(texturePosition, normalDir); break;
+        case 12: material = hammeredMetalTexture(texturePosition, normalDir); break;
+        case 13: material = patinatedCopperTexture(texturePosition, normalDir); break;
+        case 14: material = damasceneSteelTexture(texturePosition, normalDir); break;
+        case 15: material = heatTreatedMetalTexture(texturePosition, normalDir); break;
+        case 16: material = woodTexture(texturePosition, normalDir); break;
+        case 17: material = barkTexture(texturePosition, normalDir); break;
+        case 18: material = boneTexture(texturePosition, normalDir); break;
+        case 19: material = leatherTexture(texturePosition, normalDir); break;
+        case 20: material = fleshTexture(texturePosition, normalDir); break;
+        case 21: material = chitinTexture(texturePosition, normalDir); break;
+        case 22: material = coralTexture(texturePosition, normalDir); break;
+        case 23: material = arcaneCrystalTexture(texturePosition, normalDir); break;
+        case 24: material = energyStoneTexture(texturePosition, normalDir); break;
+        case 25: material = alienTissueTexture(texturePosition, normalDir); break;
+        case 26: material = magicalMetalTexture(texturePosition, normalDir); break;
+        case 27: material = cloudSolidTexture(texturePosition, normalDir); break;
+        case 28: material = holographicTexture(texturePosition, normalDir, viewDir); break;
+        case 29: material = corruptionTexture(texturePosition, normalDir); break;
+        default:
+            material.albedo = vec3(1.0, 0.0, 1.0);
+            material.metallic = 0.0;
+            material.roughness = 0.7;
+            material.normal = normalDir;
+            break;
+    }
+    return material;
+}
+
 void main()
 {
     // Depth scaling factor
@@ -1132,116 +1471,20 @@ void main()
         vec3 normalDir = normalize(@In(FRAGNORMAL));
         vec3 texturePosition =
             @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE);
-        Material material;
-
-        int materialIndex = @Uniform(MATERIAL_INDEX);
-        switch (materialIndex)
-        {
-            case 0:
-                material = marbleTexture(texturePosition, normalDir);
-                break;
-            case 1:
-                material = graniteTexture(texturePosition, normalDir);
-                break;
-            case 2:
-                material = slateTexture(texturePosition, normalDir);
-                break;
-            case 3:
-                material = sandstoneTexture(texturePosition, normalDir);
-                break;
-            case 4:
-                material = limestoneTexture(texturePosition, normalDir);
-                break;
-            case 5:
-                material = basaltTexture(texturePosition, normalDir);
-                break;
-            case 6:
-                material = obsidianTexture(texturePosition, normalDir);
-                break;
-            case 7:
-                material = quartzTexture(texturePosition, normalDir);
-                break;
-            case 8:
-                material = oreTexture(texturePosition, normalDir);
-                break;
-            case 9:
-                material = rustedIronTexture(texturePosition, normalDir);
-                break;
-            case 10:
-                material = galvanizedSteelTexture(texturePosition, normalDir);
-                break;
-            case 11:
-                material = brushedMetalTexture(texturePosition, normalDir);
-                break;
-            case 12:
-                material = hammeredMetalTexture(texturePosition, normalDir);
-                break;
-            case 13:
-                material = patinatedCopperTexture(texturePosition, normalDir);
-                break;
-            case 14:
-                material = damasceneSteelTexture(texturePosition, normalDir);
-                break;
-            case 15:
-                material = heatTreatedMetalTexture(texturePosition, normalDir);
-                break;
-            case 16:
-                material = woodTexture(texturePosition, normalDir);
-                break;
-            case 17:
-                material = barkTexture(texturePosition, normalDir);
-                break;
-            case 18:
-                material = boneTexture(texturePosition, normalDir);
-                break;
-            case 19:
-                material = leatherTexture(texturePosition, normalDir);
-                break;
-            case 20:
-                material = fleshTexture(texturePosition, normalDir);
-                break;
-            case 21:
-                material = chitinTexture(texturePosition, normalDir);
-                break;
-            case 22:
-                material = coralTexture(texturePosition, normalDir);
-                break;
-            case 23:
-                material = arcaneCrystalTexture(texturePosition, normalDir);
-                break;
-            case 24:
-                material = energyStoneTexture(texturePosition, normalDir);
-                break;
-            case 25:
-                material = alienTissueTexture(texturePosition, normalDir);
-                break;
-            case 26:
-                material = magicalMetalTexture(texturePosition, normalDir);
-                break;
-            case 27:
-                material = cloudSolidTexture(texturePosition, normalDir);
-                break;
-            case 28:
-                material = holographicTexture(texturePosition, normalDir, viewDir);
-                break;
-            case 29:
-                material = corruptionTexture(texturePosition, normalDir);
-                break;
-
-            default:
-                material.albedo = vec3(1.0, 0.0, 1.0);
-                material.metallic = 0.0;
-                material.roughness = 0.7;
-                material.normal = normalDir;
-                break;
-        }
+        int materialIndex = floorMaterialIndex(
+            @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 29));
+        materialIndex = clamp(materialIndex, 0, 29);
+        Material material = evaluateMaterial(
+            texturePosition, normalDir, viewDir, materialIndex);
 
         if (@Uniform(FLOOR_PATTERN) != 0)
         {
             material.normal = embossFloorPattern(
                 material.normal, @In(FRAGPOSITION),
                 @Uniform(HEXAGON_RADIUS), @Uniform(HEXAGON_DEPTH),
-                @Uniform(FLOOR_PATTERN));
+                @Uniform(FLOOR_PATTERN),
+                @Uniform(RUNNING_BOND_WIDTH_PERCENT),
+                @Uniform(RUNNING_BOND_OFFSET_PERCENT));
         }
 
         // Cook-Torrance PBR lighting with GGX distribution, Smith geometry

@@ -87,7 +87,15 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
     uniforms.setUniform("HEXAGON_RADIUS", 16.0f);
     uniforms.setUniform("HEXAGON_DEPTH", 0.5f);
-    uniforms.setUniform("FLOOR_PATTERN", int32_t{floor ? 2 : 0});
+    uniforms.setUniform("TILE_DEPTH_VARIATION_FACTOR", 0.1f);
+    uniforms.setUniform("RUNNING_BOND_WIDTH_PERCENT", 50.0f);
+    uniforms.setUniform("RUNNING_BOND_OFFSET_PERCENT", 50.0f);
+    uniforms.setUniform("VORONOI_ROUNDED_EDGE_FACTOR", 0.25f);
+    uniforms.setUniform("SECONDARY_MATERIAL_INDEX", int32_t{-1});
+    uniforms.setUniform("USE_SECONDARY_MATERIAL", int32_t{0});
+    uniforms.setUniform(
+        "FLOOR_PATTERN",
+        int32_t{floor ? static_cast<int32_t>(FloorPattern::Hexagon) : 0});
   };
 
   auto numPrimitives = world->getNumPrimitives();
@@ -167,9 +175,7 @@ void WorldRenderer3d::update(
     glm::vec3 const& playerPosition,
     int32_t materialIndexOverride,
     float materialScale,
-    int floorPattern,
-    float hexagonRadius,
-    float hexagonDepth,
+    FloorPatternOptions const& floorPattern,
     float frameTime) {
   mGlobalTime += frameTime;
 
@@ -184,10 +190,30 @@ void WorldRenderer3d::update(
     uc->updateUniform("PIXEL_SIZE", 1.0f / 32);
     uc->updateUniform("PLAYER_POSITION", playerPosition);
     uc->updateUniform("MATERIAL_SCALE", materialScale);
-    uc->updateUniform("HEXAGON_RADIUS", hexagonRadius);
-    uc->updateUniform("HEXAGON_DEPTH", hexagonDepth);
+    uc->updateUniform("HEXAGON_RADIUS", floorPattern.radius);
+    uc->updateUniform("HEXAGON_DEPTH", floorPattern.depth);
     uc->updateUniform(
-        "FLOOR_PATTERN", int32_t{mFloorMeshes[i] ? floorPattern : 0});
+        "TILE_DEPTH_VARIATION_FACTOR",
+        floorPattern.tileDepthVariationFactor);
+    uc->updateUniform(
+        "RUNNING_BOND_WIDTH_PERCENT",
+        floorPattern.runningBondWidthPercent);
+    uc->updateUniform(
+        "RUNNING_BOND_OFFSET_PERCENT",
+        floorPattern.runningBondOffsetPercent);
+    uc->updateUniform(
+        "VORONOI_ROUNDED_EDGE_FACTOR",
+        floorPattern.voronoiRoundedEdgeFactor);
+    uc->updateUniform(
+        "SECONDARY_MATERIAL_INDEX", floorPattern.secondaryMaterialIndex);
+    uc->updateUniform(
+        "USE_SECONDARY_MATERIAL",
+        int32_t{floorPattern.usesSecondaryMaterial ? 1 : 0});
+    uc->updateUniform(
+        "FLOOR_PATTERN",
+        int32_t{mFloorMeshes[i]
+                    ? static_cast<int32_t>(floorPattern.pattern)
+                    : 0});
     uc->updateUniform(
         "MATERIAL_INDEX",
         materialIndexOverride >= 0 ? materialIndexOverride : mMaterialIndices[i]);

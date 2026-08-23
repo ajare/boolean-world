@@ -202,9 +202,7 @@ void WorldRenderer::update(
     glm::vec3 const& playerPosition,
     int32_t materialIndexOverride,
     float materialScale,
-    int floorPattern,
-    float hexagonRadius,
-    float hexagonDepth,
+    FloorPatternOptions const& floorPattern,
     float frameTime) {
   BW_UNUSED(world);
 
@@ -217,6 +215,6 @@ void WorldRenderer::update(
     // Update renderer
     item.renderer->update(
         playerPosition, materialIndexOverride, materialScale, floorPattern,
-        hexagonRadius, hexagonDepth, frameTime);
+        frameTime);
   }
 }

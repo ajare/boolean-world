@@ -15,6 +15,7 @@
 
 #include <core/World.h>
 
+#include "FloorPatternOptions.h"
 #include "VideoOptions.h"
 #include "WorldTriangle3dDataProvider.h"
 #include "WorldRenderer3d.h"
@@ -82,8 +83,6 @@ public:
       glm::vec3 const& playerPosition,
       int32_t materialIndexOverride,
       float materialScale,
-      int floorPattern,
-      float hexagonRadius,
-      float hexagonDepth,
+      FloorPatternOptions const& floorPattern,
       float frameTime);
 };

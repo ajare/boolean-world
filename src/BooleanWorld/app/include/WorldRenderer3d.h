@@ -13,6 +13,7 @@
 
 #include <willpower/common/Logger.h>
 
+#include "FloorPatternOptions.h"
 #include "WorldBatchRenderer.h"
 #include "WorldTriangle3dDataProvider.h"
 
@@ -58,8 +59,6 @@ public:
       glm::vec3 const& playerPosition,
       int32_t materialIndexOverride,
       float materialScale,
-      int floorPattern,
-      float hexagonRadius,
-      float hexagonDepth,
+      FloorPatternOptions const& floorPattern,
       float frameTime);
 };

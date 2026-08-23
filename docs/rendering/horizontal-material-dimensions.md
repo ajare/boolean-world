@@ -66,16 +66,40 @@ with either horizontal mode.
 
 ## Floor embossing
 
-Floor meshes support three `FLOOR_PATTERN` values:
+Floor meshes support six `FLOOR_PATTERN` values:
 
 - `0`: none;
 - `1`: square;
-- `2`: hexagon.
+- `2`: hexagon;
+- `3`: running bond;
+- `4`: modular opus;
+- `5`: Voronoi.
 
-`HEXAGON_RADIUS` and `HEXAGON_DEPTH` remain the shared radius and depth
-uniforms for both square and hexagon patterns. Despite their legacy names,
-they control either pattern. `WorldRenderer3d` sends a nonzero pattern only to
-meshes tagged as floors; ceilings and walls always receive `0`.
+`HEXAGON_RADIUS` and `HEXAGON_DEPTH` remain the shared size and depth uniforms
+for all patterns despite their legacy names. `TILE_DEPTH_VARIATION_FACTOR`
+adds a deterministic random downward offset to each tile, scaled by pattern
+depth; `0` keeps all tile surfaces level and `1` allows an offset up to the
+full configured depth. The size is a radius for square
+and hexagon patterns, the full tile length for running bond, and the large
+square tile size for modular opus, and the nominal cell size for Voronoi.
+`RUNNING_BOND_WIDTH_PERCENT` sets tile width as a percentage of length and
+`RUNNING_BOND_OFFSET_PERCENT` offsets alternate rows by a percentage of length.
+`VORONOI_ROUNDED_EDGE_FACTOR` smoothly rounds Voronoi cell junctions from `0`
+(sharp) to `1` (maximum rounding).
+`WorldRenderer3d` sends a nonzero pattern only to meshes tagged as floors;
+ceilings and walls always receive `0`.
+
+Square/grid, hexagon, and modular-opus patterns can optionally select a
+secondary procedural material through one enable setting. The active pattern
+chooses its secondary-material layout automatically; patterns that do not
+support a secondary material do not expose the setting. Voronoi does not
+support secondary materials. Grid tiles alternate
+as a checkerboard. Modular opus uses primary material for its offset large
+squares and secondary material for the half-size squares between them.
+Hexagons use
+an axial three-colour class: one class remains primary and every primary
+hexagon is surrounded by six secondary hexagons. A secondary index of `-1`
+means "same as primary" and is the default.
 
 ## Maintaining material parity
 
