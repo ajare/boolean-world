@@ -60,7 +60,7 @@ target_link_libraries(BooleanWorld PRIVATE
     Willpower.Application Willpower.Collide Willpower.Common
     WillPower.Viz
     ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils
-    ext::yaml-cpp)
+    ext::yaml-cpp opengl32)
 
 target_compile_features(BooleanWorld PRIVATE cxx_std_23)
 target_compile_options(BooleanWorld PRIVATE /W4)

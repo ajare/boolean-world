@@ -2,8 +2,16 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
+#include <filesystem>
+#include <iomanip>
+#include <sstream>
+
+#include <GL/glew.h>
 
 #include <mpp/helper/FreeCamera.h>
+
+#include <utils/Image.h>
 
 #include <willpower/application/StateExceptions.h>
 
@@ -240,6 +248,7 @@ void StatePlayBooleanWorld::registerInput() {
   registerInputState("Debug.ClipGen", {Key::F4}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("Debug.Options", {Key::F5}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("ToggleAllLayers", {Key::F9}, {}, {}, {}, {}, {}, false, false, 0, true);
+  registerInputState("Screenshot", {Key::F11}, {}, {}, {}, {}, {}, false, false, 0, false);
 }
 
 void StatePlayBooleanWorld::setupPlayerCollision() {
@@ -631,6 +640,8 @@ void StatePlayBooleanWorld::updateActions(vector<string> const& activeStates, fl
       mAllLayers = !mAllLayers;
       getMap()->getWorld()->getWorldDataGenerator()->setLayerSelection(
           layerSelection());
+    } else if (state == "Screenshot") {
+      mScreenshotRequested = true;
     }
   }
 
@@ -768,6 +779,70 @@ void StatePlayBooleanWorld::updateImpl(float frameTime) {
 // The scene is handed to an MPP render-graph pipeline, which applies the
 // selected MSAA or FXAA stage. This state copies the filtered output into the
 // selected world target and composites it to the actual screen.
+void StatePlayBooleanWorld::saveScreenshot(
+    mpp::RenderSystem* renderSystem) {
+  namespace fs = std::filesystem;
+  using namespace std::chrono;
+
+  auto const width = renderSystem->getWindowWidth();
+  auto const height = renderSystem->getWindowHeight();
+  if (width == 0 || height == 0) {
+    addDisplayMessage(
+        DisplayMessage::Level::Game,
+        "Could not save screenshot: the window has no drawable area.");
+    return;
+  }
+
+  try {
+    std::vector<uint8_t> pixels(width * height * 3);
+    GLint previousPackAlignment = 0;
+    glGetIntegerv(GL_PACK_ALIGNMENT, &previousPackAlignment);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(
+        0, 0, static_cast<GLsizei>(width), static_cast<GLsizei>(height),
+        GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+    glPixelStorei(GL_PACK_ALIGNMENT, previousPackAlignment);
+
+    auto const rowSize = width * 3;
+    for (size_t y = 0; y < height / 2; ++y) {
+      auto top = pixels.begin() + y * rowSize;
+      auto bottom = pixels.begin() + (height - y - 1) * rowSize;
+      std::swap_ranges(top, top + rowSize, bottom);
+    }
+
+    auto const now = system_clock::now();
+    auto const time = system_clock::to_time_t(now);
+    std::tm localTime{};
+#ifdef _WIN32
+    localtime_s(&localTime, &time);
+#else
+    localtime_r(&time, &localTime);
+#endif
+    auto const millisecondsPart =
+        duration_cast<milliseconds>(now.time_since_epoch()).count() % 1000;
+    std::ostringstream filename;
+    filename << "BooleanWorld_"
+             << std::put_time(&localTime, "%Y-%m-%d_%H-%M-%S-")
+             << std::setfill('0') << std::setw(3) << millisecondsPart
+             << ".png";
+
+    auto const shotsDirectory = fs::current_path() / "shots";
+    fs::create_directories(shotsDirectory);
+    auto const filepath = shotsDirectory / filename.str();
+
+    utils::Image image;
+    image.loadFromData(width, height, 24, pixels.data());
+    image.saveToFile(filepath.string());
+    addDisplayMessage(
+        DisplayMessage::Level::Game,
+        "Saved screenshot to " + filepath.string());
+  } catch (std::exception const& exception) {
+    addDisplayMessage(
+        DisplayMessage::Level::Game,
+        "Could not save screenshot: " + std::string(exception.what()));
+  }
+}
+
 void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSystem) {
   auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
   auto renderScale = model->getActiveRenderScale();
@@ -867,6 +942,12 @@ void StatePlayBooleanWorld::renderImpl(mpp::RenderSystem* renderSystem, mpp::Res
     renderSystem->renderText(format("{:.2f}", message.time), 0, y, colour);
     renderSystem->renderText(message.text, 100, y, colour);
     y += 16;
+  }
+
+  if (mScreenshotRequested) {
+    mScreenshotRequested = false;
+    renderSystem->flushVertexBuffers();
+    saveScreenshot(renderSystem);
   }
 }
 

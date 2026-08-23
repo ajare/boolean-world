@@ -104,6 +104,8 @@ private:
 
   bool mExitScheduled;
 
+  bool mScreenshotRequested{false};
+
   // Created/managed in load states
   WorldRenderer* mwRenderer;
 
@@ -205,6 +207,8 @@ private:
   float getPlayerCeilingHeight() const;
 
   void addDisplayMessage(DisplayMessage::Level level, std::string const& message);
+
+  void saveScreenshot(mpp::RenderSystem* renderSystem);
 
   void renderWorldThroughTarget(mpp::RenderSystem* renderSystem);
 
