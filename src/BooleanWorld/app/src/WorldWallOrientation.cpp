@@ -25,7 +25,7 @@ ArrangementWallOrientation orientArrangementWall(
   bool face0IsFront = false;
   switch (wall.kind) {
     case core::arr::ArrangementWallKind::Border:
-      face0IsFront = !face0.solid;
+      face0IsFront = face0.solid;
       break;
 
     case core::arr::ArrangementWallKind::FloorStep: {

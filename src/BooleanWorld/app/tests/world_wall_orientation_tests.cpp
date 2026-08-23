@@ -62,17 +62,15 @@ void requireFacesFace0Side(
 }
 
 void wallsFaceTheirIncidentFrontSide() {
-  // Border walls face the empty side, rather than the arbitrary sorted edge
-  // direction. The first case is the audited regression: the left face is
-  // solid, so its wall must face right.
+  // Border walls face the solid polygon rather than the empty exterior.
   requireFacesFace0Side(
       bw::core::arr::ArrangementWallKind::Border,
-      true, 0.0f, 0.0f, 2.0f, 2.0f, false,
-      "border wall with a solid left face did not face the empty right side");
+      true, 0.0f, 0.0f, 2.0f, 2.0f, true,
+      "border wall with a solid left face did not face the polygon");
   requireFacesFace0Side(
       bw::core::arr::ArrangementWallKind::Border,
-      false, 0.0f, 0.0f, 2.0f, 2.0f, true,
-      "border wall with an empty left face did not face left");
+      false, 0.0f, 0.0f, 2.0f, 2.0f, false,
+      "border wall with a solid right face did not face the polygon");
 
   // Floor steps face the lower floor side.
   requireFacesFace0Side(

@@ -996,31 +996,23 @@ vec3 evaluatePbrLight(Material material, vec3 viewDir, vec3 lightDir,
 vec3 shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
               vec3 playerPosition)
 {
-    // A cool key and warm fill provide stable world-space illumination while
-    // preserving the view-dependent GGX response of the marble polish.
-    vec3 keyDirection = normalize(vec3(-0.45, 0.82, 0.35));
-    vec3 fillDirection = normalize(vec3(0.70, 0.30, -0.62));
-    vec3 direct = evaluatePbrLight(
-        material, viewDir, keyDirection, vec3(3.8, 4.0, 4.4));
-    direct += evaluatePbrLight(
-        material, viewDir, fillDirection, vec3(0.85, 0.58, 0.42));
-
-    // PLAYER_POSITION uses the same X/elevation/Z coordinate system as the
-    // interpolated world position. Treat it as a local warm light so the PBR
-    // response follows the player through the world.
+    // PLAYER_POSITION is the player's eye in the same X/elevation/Z
+    // coordinate system as the interpolated world position. A point light
+    // emits equally in every direction; only distance and the receiving
+    // surface's angle affect its contribution.
     vec3 toPlayer = playerPosition - worldPosition;
     float playerDistance = max(length(toPlayer), 0.0001);
     vec3 playerDirection = toPlayer / playerDistance;
     float playerAttenuation =
         1.0 / (1.0 + playerDistance * 0.04 +
                playerDistance * playerDistance * 0.0015);
-    direct += evaluatePbrLight(
+    vec3 direct = evaluatePbrLight(
         material, viewDir, playerDirection,
-        vec3(18.0, 12.0, 8.0) * playerAttenuation);
+        vec3(14.0) * playerAttenuation);
 
-    float upward = material.normal.y * 0.5 + 0.5;
-    vec3 ambientIrradiance = mix(
-        vec3(0.035, 0.045, 0.065), vec3(0.20, 0.23, 0.27), upward);
+    // Keep ambient illumination orientation-independent so opposite floor and
+    // ceiling normals do not introduce a different colour cast.
+    vec3 ambientIrradiance = vec3(0.12);
     vec3 f0 = mix(vec3(0.04), material.albedo, material.metallic);
     float nDotV = max(dot(material.normal, viewDir), 0.0);
     vec3 ambientFresnel = fresnelSchlick(nDotV, f0);

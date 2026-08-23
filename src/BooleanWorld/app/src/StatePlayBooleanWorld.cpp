@@ -640,11 +640,11 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   static_cast<ReactiveCamera*>(mCamera3d.get())->pitch(physicalStats.pitch - mPlayerPrevPitch);
 
   // World 3d. Its shader-space axes match rendered geometry: horizontal
-  // world X/Y become X/Z, while Y is elevation above the current floor.
-  constexpr float playerShaderHeightAboveFloor = 16.0f;
+  // world X/Y become X/Z, while Y is elevation. Place the player light at
+  // the same simulated eye position as the camera.
   glm::vec3 playerShaderPosition{
       physicalStats.position.x,
-      getPlayerFloorHeight() + playerShaderHeightAboveFloor,
+      playerViewHeight,
       physicalStats.position.y};
   auto materialIndexOverride = mDebugDisplay.overrideWorldMaterial
                                    ? mDebugDisplay.worldMaterialIndex
