@@ -8,6 +8,7 @@ Configuration:
     AA: fxaa
     AmbientOcclusion: gtao
     RenderTextureFilter: linear
+    HorizontalMaterials: 2d
   Audio:
     Enabled: false
     Channels: 1024

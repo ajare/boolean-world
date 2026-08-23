@@ -44,7 +44,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
   auto audioNode = configuration.getChild("Audio");
   auto inputNode = configuration.getOptionalChild("Input");
 
-  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale", "AA", "AmbientOcclusion", "RenderTextureFilter"});
+  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale", "AA", "AmbientOcclusion", "RenderTextureFilter", "HorizontalMaterials"});
   gameNode->requireOnlyChildren({"DLL", "ResourceLocations", "Debug", "Arguments"});
 
   pOpts.screenWidth = utils::StringUtils::parseInt(videoNode->getChild("Width")->getValue());
@@ -93,6 +93,19 @@ ProgramOptions parseProgramOptions(string const& filename) {
     }
 
     pOpts.video.ambientOcclusion = *ambientOcclusion;
+  }
+
+  auto horizontalMaterialsNode =
+      videoNode->getOptionalChild("HorizontalMaterials");
+  if (horizontalMaterialsNode) {
+    auto materialsName =
+        utils::StringUtils::toLower(horizontalMaterialsNode->getValue());
+    auto materials = bw::app::horizontalMaterialsFromName(materialsName);
+    if (!materials) {
+      string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/HorizontalMaterials must be '2d' or '3d'.";
+      throw exception(errMsg.c_str());
+    }
+    pOpts.video.horizontalMaterials = *materials;
   }
 
   auto renderTextureFilterNode =
@@ -205,6 +218,9 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
   logger->info(std::format(
       "World render texture filter: {}",
       bw::app::renderTextureFilterName(options.video.renderTextureFilter)));
+  logger->info(std::format(
+      "Horizontal materials: {}",
+      bw::app::horizontalMaterialsName(options.video.horizontalMaterials)));
 
   logger->info(std::format("Audio enabled: {}", options.audioEnabled));
 

@@ -8,17 +8,28 @@ using namespace std;
 WorldRenderer::WorldRenderer(
     wp::application::resourcesystem::ResourceManager* resourceMgr,
     wp::Logger* logger,
-    bw::app::RenderTextureFilter renderTextureFilter)
+    bw::app::RenderTextureFilter renderTextureFilter,
+    bw::app::HorizontalMaterials horizontalMaterials)
     : mWorldHasChanged(true),
       mwLogger(logger),
       mRenderTextureFilter(renderTextureFilter) {
-  set<string> materialsFound;
+  auto material3d = resourceMgr->getResource("Material.Default", "World");
+  auto horizontalMaterial = horizontalMaterials ==
+                                    bw::app::HorizontalMaterials::TwoDimensional
+                                ? resourceMgr->getResource(
+                                      "Material.Horizontal2d", "World")
+                                : material3d;
 
-  auto defaultMaterial = resourceMgr->getResource("Material.Default", "World");
-  auto dataProvider = make_shared<WorldTriangle3dDataProvider>();
-  auto renderer = make_shared<WorldRenderer3d>(defaultMaterial, mwLogger);
-
-  mMaterialRenderers.push_back({renderer, dataProvider});
+  mMaterialRenderers.push_back(
+      {make_shared<WorldRenderer3d>(
+           horizontalMaterial, mwLogger, WorldSurfaceSet::Horizontal),
+       make_shared<WorldTriangle3dDataProvider>(),
+       WorldSurfaceSet::Horizontal});
+  mMaterialRenderers.push_back(
+      {make_shared<WorldRenderer3d>(
+           material3d, mwLogger, WorldSurfaceSet::Walls),
+       make_shared<WorldTriangle3dDataProvider>(),
+       WorldSurfaceSet::Walls});
 }
 
 WorldRenderer::~WorldRenderer() {
@@ -60,10 +71,9 @@ WorldRenderer::RenderTargets WorldRenderer::detachRenderTargets() {
 
 void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
   for (auto& item : mMaterialRenderers) {
-    auto& [renderer, dataProvider] = item;
-
-    renderer->create(dataProvider, world, renderSystem, resourceMgr);
-    renderer->addToScene(scene, world);
+    item.renderer->create(
+        item.dataProvider, world, renderSystem, resourceMgr);
+    item.renderer->addToScene(scene, world);
   }
 }
 
@@ -81,32 +91,24 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
   auto const& worldData = snapshot.getArrangement();
   auto const& triangles = snapshot.getTriangles();
   auto const& walls = snapshot.getWalls();
+  auto& horizontal = mMaterialRenderers[0];
+  auto& wallRenderer = mMaterialRenderers[1];
 
-  auto& matRenderer = mMaterialRenderers[0];
-  auto& dataProvider = matRenderer.second;
-  std::vector<uint32_t> numTrianglesPerMesh(dataProvider->getNumMeshes());
-
+  std::vector<uint32_t> horizontalCounts(
+      horizontal.dataProvider->getNumMeshes());
   for (auto const& triangle : triangles) {
-    auto const& face = worldData.faces[triangle.face];
-    auto const& properties = worldData.palette[face.paletteIndex];
+    auto const& properties = worldData.palette[
+        worldData.faces[triangle.face].paletteIndex];
     auto floorHash = properties.floorMaterialDef.data.hash(
         properties.floorMaterialIndex);
     auto ceilingHash = properties.ceilingMaterialDef.data.hash(
         properties.ceilingMaterialIndex);
-
-    ++numTrianglesPerMesh[matRenderer.first->getMeshIndexForMaterialHash(floorHash)];
-    ++numTrianglesPerMesh[matRenderer.first->getMeshIndexForMaterialHash(ceilingHash)];
+    ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
+        floorHash, true)];
+    ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
+        ceilingHash, false)];
   }
-
-  for (auto const& wall : walls) {
-    auto const& properties = worldData.palette[wall.paletteIndex];
-    auto wallHash = properties.wallMaterialDef.data.hash(
-        properties.wallMaterialIndex);
-
-    numTrianglesPerMesh[matRenderer.first->getMeshIndexForMaterialHash(wallHash)] += 2;
-  }
-
-  dataProvider->updateInternals(numTrianglesPerMesh);
+  horizontal.dataProvider->updateInternals(horizontalCounts);
 
   for (auto const& triangle : triangles) {
     auto const& face = worldData.faces[triangle.face];
@@ -119,63 +121,78 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
           bw::core::arr::ToWorldCoordinate(vertex.y)};
     }
 
-    auto floorColour = properties.floorMaterialDef.data.packedColour();
     auto floorHash = properties.floorMaterialDef.data.hash(
         properties.floorMaterialIndex);
-    auto floorMeshIndex =
-        matRenderer.first->getMeshIndexForMaterialHash(floorHash);
+    auto floorMesh = horizontal.renderer->getMeshIndexForMaterialHash(
+        floorHash, true);
     uint32_t floorIndices[3];
     for (int i = 0; i < 3; ++i) {
       auto uv = positions[i] / 64.0f;
       floorIndices[i] = addVertexToDataProvider(
-          dataProvider, floorMeshIndex,
-          positions[i].x, properties.floorZ, positions[i].y,
-          0, 1, 0, uv.x, uv.y, floorColour);
+          horizontal.dataProvider, floorMesh, positions[i].x,
+          properties.floorZ, positions[i].y, 0, 1, 0, uv.x, uv.y,
+          properties.floorMaterialDef.data.packedColour());
     }
-    dataProvider->addTriangle(
-        floorMeshIndex, floorIndices[0], floorIndices[1], floorIndices[2]);
+    horizontal.dataProvider->addTriangle(
+        floorMesh, floorIndices[0], floorIndices[1], floorIndices[2]);
 
-    auto ceilingColour = properties.ceilingMaterialDef.data.packedColour();
     auto ceilingHash = properties.ceilingMaterialDef.data.hash(
         properties.ceilingMaterialIndex);
-    auto ceilingMeshIndex =
-        matRenderer.first->getMeshIndexForMaterialHash(ceilingHash);
+    auto ceilingMesh = horizontal.renderer->getMeshIndexForMaterialHash(
+        ceilingHash, false);
     uint32_t ceilingIndices[3];
     for (int i = 2; i >= 0; --i) {
       auto uv = positions[i] / 64.0f;
       ceilingIndices[2 - i] = addVertexToDataProvider(
-          dataProvider, ceilingMeshIndex,
-          positions[i].x, properties.ceilingZ, positions[i].y,
-          0, -1, 0, uv.x, uv.y, ceilingColour);
+          horizontal.dataProvider, ceilingMesh, positions[i].x,
+          properties.ceilingZ, positions[i].y, 0, -1, 0, uv.x, uv.y,
+          properties.ceilingMaterialDef.data.packedColour());
     }
-    dataProvider->addTriangle(
-        ceilingMeshIndex, ceilingIndices[0], ceilingIndices[1], ceilingIndices[2]);
+    horizontal.dataProvider->addTriangle(
+        ceilingMesh, ceilingIndices[0], ceilingIndices[1], ceilingIndices[2]);
   }
+  horizontal.dataProvider->finalizeInternals();
+
+  std::vector<uint32_t> wallCounts(wallRenderer.dataProvider->getNumMeshes());
+  for (auto const& wall : walls) {
+    auto const& properties = worldData.palette[wall.paletteIndex];
+    auto hash = properties.wallMaterialDef.data.hash(
+        properties.wallMaterialIndex);
+    wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
+        hash, false)] += 2;
+  }
+  wallRenderer.dataProvider->updateInternals(wallCounts);
 
   for (auto const& wall : walls) {
-    auto const& orientation = bw::app::orientArrangementWall(worldData, wall);
+    auto const orientation = bw::app::orientArrangementWall(worldData, wall);
+    auto const& properties = worldData.palette[wall.paletteIndex];
+    auto hash = properties.wallMaterialDef.data.hash(
+        properties.wallMaterialIndex);
+    auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
+    auto colour = properties.wallMaterialDef.data.packedColour();
     auto const& v0 = orientation.v0;
     auto const& v1 = orientation.v1;
     auto const& normal = orientation.normal;
-    auto const& properties = worldData.palette[wall.paletteIndex];
-    auto wallColour = properties.wallMaterialDef.data.packedColour();
-    auto wallHash = properties.wallMaterialDef.data.hash(
-        properties.wallMaterialIndex);
-    auto wallMeshIndex =
-        matRenderer.first->getMeshIndexForMaterialHash(wallHash);
-    auto bottom0 = addVertexToDataProvider(dataProvider, wallMeshIndex, v0.x, wall.minZ, v0.y, normal.x, 0, normal.y, 0, 0, wallColour);
-    auto bottom1 = addVertexToDataProvider(dataProvider, wallMeshIndex, v1.x, wall.minZ, v1.y, normal.x, 0, normal.y, 1, 0, wallColour);
-    auto top1 = addVertexToDataProvider(dataProvider, wallMeshIndex, v1.x, wall.maxZ, v1.y, normal.x, 0, normal.y, 1, 1, wallColour);
-    auto top0 = addVertexToDataProvider(dataProvider, wallMeshIndex, v0.x, wall.maxZ, v0.y, normal.x, 0, normal.y, 0, 1, wallColour);
-    dataProvider->addTriangle(wallMeshIndex, bottom0, bottom1, top1);
-    dataProvider->addTriangle(wallMeshIndex, top1, top0, bottom0);
+    auto bottom0 = addVertexToDataProvider(
+        wallRenderer.dataProvider, mesh, v0.x, wall.minZ, v0.y,
+        normal.x, 0, normal.y, 0, 0, colour);
+    auto bottom1 = addVertexToDataProvider(
+        wallRenderer.dataProvider, mesh, v1.x, wall.minZ, v1.y,
+        normal.x, 0, normal.y, 1, 0, colour);
+    auto top1 = addVertexToDataProvider(
+        wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, v1.y,
+        normal.x, 0, normal.y, 1, 1, colour);
+    auto top0 = addVertexToDataProvider(
+        wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, v0.y,
+        normal.x, 0, normal.y, 0, 1, colour);
+    wallRenderer.dataProvider->addTriangle(mesh, bottom0, bottom1, top1);
+    wallRenderer.dataProvider->addTriangle(mesh, top1, top0, bottom0);
   }
-
-  dataProvider->finalizeInternals();
+  wallRenderer.dataProvider->finalizeInternals();
 
   for (auto& item : mMaterialRenderers) {
-    auto& [renderer, provider] = item;
-    provider->setNumPrimitives(provider->getNumTriangles());
+    item.dataProvider->setNumPrimitives(
+        item.dataProvider->getNumTriangles());
   }
 }
 
@@ -185,6 +202,9 @@ void WorldRenderer::update(
     glm::vec3 const& playerPosition,
     int32_t materialIndexOverride,
     float materialScale,
+    int floorPattern,
+    float hexagonRadius,
+    float hexagonDepth,
     float frameTime) {
   BW_UNUSED(world);
 
@@ -194,10 +214,9 @@ void WorldRenderer::update(
   }
 
   for (auto& item : mMaterialRenderers) {
-    auto& [renderer, dataProvider] = item;
-
     // Update renderer
-    renderer->update(
-        playerPosition, materialIndexOverride, materialScale, frameTime);
+    item.renderer->update(
+        playerPosition, materialIndexOverride, materialScale, floorPattern,
+        hexagonRadius, hexagonDepth, frameTime);
   }
 }

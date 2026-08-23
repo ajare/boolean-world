@@ -9,8 +9,13 @@
 using namespace std;
 using namespace wp::application::resourcesystem;
 
-WorldRenderer3d::WorldRenderer3d(ResourcePtr resource, wp::Logger* logger)
-    : mRenderer(nullptr), mMaterial(resource), mGlobalTime(0.0f), mwLogger(logger) {
+WorldRenderer3d::WorldRenderer3d(
+    ResourcePtr resource, wp::Logger* logger, WorldSurfaceSet surfaceSet)
+    : mRenderer(nullptr),
+      mMaterial(resource),
+      mSurfaceSet(surfaceSet),
+      mGlobalTime(0.0f),
+      mwLogger(logger) {
 }
 
 WorldRenderer3d::~WorldRenderer3d() {
@@ -31,10 +36,11 @@ WorldRenderer3d::~WorldRenderer3d() {
   delete mRenderer;
 }
 
-uint32_t WorldRenderer3d::getMeshIndexForMaterialHash(uint64_t hashValue) const {
+uint32_t WorldRenderer3d::getMeshIndexForMaterialHash(
+    uint64_t hashValue, bool floor) const {
   auto worldBatch = mRenderer->getWorldBatch();
 
-  return worldBatch->getMeshIndexForMaterialHash(hashValue);
+  return worldBatch->getMeshIndexForMaterialHash(hashValue, floor);
 }
 
 void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvider, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
@@ -44,12 +50,15 @@ void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvide
   auto materialName = mMaterial->getQualifiedName();
 
   mRenderer = new RendererType(
-      format("World3d_{}_", materialName),
+      format(
+          "World3d_{}_{}_", materialName,
+          mSurfaceSet == WorldSurfaceSet::Horizontal ? "Horizontal" : "Walls"),
       mDataProvider,
       resourceMgr->getResource(materialName),
       renderSystem,
       resourceMgr,
-      world);
+      world,
+      mSurfaceSet);
 
   mRenderer->create();
 
@@ -67,13 +76,18 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
   // Create uniforms for each material mesh.
   mUniforms.resize(worldBatch->getMaterialMeshCount(), nullptr);
   mMaterialIndices.resize(worldBatch->getMaterialMeshCount(), 0);
+  mFloorMeshes.resize(worldBatch->getMaterialMeshCount(), false);
 
-  auto initializeGlobalUniforms = [](mpp::UniformCollection& uniforms) {
+  auto initializeGlobalUniforms = [](
+      mpp::UniformCollection& uniforms, bool floor) {
     uniforms.setUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
     uniforms.setUniform("GLOBAL_TIME", 0.0f);
     uniforms.setUniform("PIXEL_SIZE", 1.0f / 32);
     uniforms.setUniform("PLAYER_POSITION", glm::vec3{});
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
+    uniforms.setUniform("HEXAGON_RADIUS", 16.0f);
+    uniforms.setUniform("HEXAGON_DEPTH", 0.5f);
+    uniforms.setUniform("FLOOR_PATTERN", int32_t{floor ? 2 : 0});
   };
 
   auto numPrimitives = world->getNumPrimitives();
@@ -82,65 +96,70 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     auto primitive = world->getPrimitive(i);
     auto const& properties = primitive->getProperties();
 
+    if (mSurfaceSet == WorldSurfaceSet::Walls) {
+      auto hashValue =
+          properties.wallMaterialDef.data.hash(properties.wallMaterialIndex);
+      auto meshIndex =
+          worldBatch->getMeshIndexForMaterialHash(hashValue, false);
+      if (mUniforms[meshIndex] == nullptr) {
+        auto uniforms = make_shared<mpp::UniformCollection>();
+        auto meshName = worldBatch->formatMeshName(hashValue, false);
+        params->setMeshUniforms(meshName, uniforms);
+        params->setMeshBlend(meshName, false);
+        uniforms->setUniform(
+            "MATERIAL_INDEX", (int32_t)properties.wallMaterialIndex);
+        uniforms->setUniform(
+            "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
+            properties.wallMaterialDef.data.params.data());
+        initializeGlobalUniforms(*uniforms, false);
+        mUniforms[meshIndex] = uniforms;
+        mMaterialIndices[meshIndex] =
+            static_cast<int32_t>(properties.wallMaterialIndex);
+      }
+      continue;
+    }
+
     // Floor
     auto hashValue = properties.floorMaterialDef.data.hash(properties.floorMaterialIndex);
-    auto meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue);
+    auto meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, true);
 
     if (mUniforms[meshIndex] == nullptr) {
       auto uniforms = make_shared<mpp::UniformCollection>();
-      auto meshName = worldBatch->formatMeshName(hashValue);
+      auto meshName = worldBatch->formatMeshName(hashValue, true);
 
       params->setMeshUniforms(meshName, uniforms);
       params->setMeshBlend(meshName, false);
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)properties.floorMaterialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, properties.floorMaterialDef.data.params.data());
-      initializeGlobalUniforms(*uniforms);
+      initializeGlobalUniforms(*uniforms, true);
 
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] =
           static_cast<int32_t>(properties.floorMaterialIndex);
+      mFloorMeshes[meshIndex] = true;
     }
 
     // Ceiling
     hashValue = properties.ceilingMaterialDef.data.hash(properties.ceilingMaterialIndex);
-    meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue);
+    meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, false);
 
     if (mUniforms[meshIndex] == nullptr) {
       auto uniforms = make_shared<mpp::UniformCollection>();
-      auto meshName = worldBatch->formatMeshName(hashValue);
+      auto meshName = worldBatch->formatMeshName(hashValue, false);
 
       params->setMeshUniforms(meshName, uniforms);
       params->setMeshBlend(meshName, false);
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)properties.ceilingMaterialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, properties.ceilingMaterialDef.data.params.data());
-      initializeGlobalUniforms(*uniforms);
+      initializeGlobalUniforms(*uniforms, false);
 
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] =
           static_cast<int32_t>(properties.ceilingMaterialIndex);
     }
 
-    // Wall
-    hashValue = properties.wallMaterialDef.data.hash(properties.wallMaterialIndex);
-    meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue);
-
-    if (mUniforms[meshIndex] == nullptr) {
-      auto uniforms = make_shared<mpp::UniformCollection>();
-      auto meshName = worldBatch->formatMeshName(hashValue);
-
-      params->setMeshUniforms(meshName, uniforms);
-      params->setMeshBlend(meshName, false);
-
-      uniforms->setUniform("MATERIAL_INDEX", (int32_t)properties.wallMaterialIndex);
-      uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, properties.wallMaterialDef.data.params.data());
-      initializeGlobalUniforms(*uniforms);
-
-      mUniforms[meshIndex] = uniforms;
-      mMaterialIndices[meshIndex] =
-          static_cast<int32_t>(properties.wallMaterialIndex);
-    }
   }
 }
 
@@ -148,6 +167,9 @@ void WorldRenderer3d::update(
     glm::vec3 const& playerPosition,
     int32_t materialIndexOverride,
     float materialScale,
+    int floorPattern,
+    float hexagonRadius,
+    float hexagonDepth,
     float frameTime) {
   mGlobalTime += frameTime;
 
@@ -162,6 +184,10 @@ void WorldRenderer3d::update(
     uc->updateUniform("PIXEL_SIZE", 1.0f / 32);
     uc->updateUniform("PLAYER_POSITION", playerPosition);
     uc->updateUniform("MATERIAL_SCALE", materialScale);
+    uc->updateUniform("HEXAGON_RADIUS", hexagonRadius);
+    uc->updateUniform("HEXAGON_DEPTH", hexagonDepth);
+    uc->updateUniform(
+        "FLOOR_PATTERN", int32_t{mFloorMeshes[i] ? floorPattern : 0});
     uc->updateUniform(
         "MATERIAL_INDEX",
         materialIndexOverride >= 0 ? materialIndexOverride : mMaterialIndices[i]);

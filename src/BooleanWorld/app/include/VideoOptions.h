@@ -77,6 +77,20 @@ inline constexpr std::array<RenderTextureFilter, 2> allRenderTextureFilters{
 inline constexpr std::size_t renderTextureFilterCount =
     allRenderTextureFilters.size();
 
+// Dimensionality used for procedural materials on horizontal world surfaces.
+// Walls always use the three-dimensional material shader.
+enum class HorizontalMaterials : int {
+  TwoDimensional = 0,
+  ThreeDimensional = 1,
+};
+
+inline constexpr std::array<HorizontalMaterials, 2> allHorizontalMaterials{
+    HorizontalMaterials::TwoDimensional,
+    HorizontalMaterials::ThreeDimensional};
+
+inline constexpr std::size_t horizontalMaterialsCount =
+    allHorizontalMaterials.size();
+
 inline constexpr int renderScaleCode(RenderScale scale) {
   return static_cast<int>(scale);
 }
@@ -100,6 +114,7 @@ struct VideoOptions {
   AntiAliasing antiAliasing{AntiAliasing::Off};
   AmbientOcclusion ambientOcclusion{AmbientOcclusion::Gtao};
   RenderTextureFilter renderTextureFilter{RenderTextureFilter::Linear};
+  HorizontalMaterials horizontalMaterials{HorizontalMaterials::TwoDimensional};
 };
 
 // The configuration's spelling of a scale, and the reverse. Both directions run
@@ -157,6 +172,33 @@ inline constexpr std::optional<RenderTextureFilter> renderTextureFilterFromName(
     }
   }
 
+  return std::nullopt;
+}
+
+inline constexpr std::string_view horizontalMaterialsName(
+    HorizontalMaterials materials) {
+  return materials == HorizontalMaterials::ThreeDimensional ? "3d" : "2d";
+}
+
+inline constexpr int horizontalMaterialsCode(HorizontalMaterials materials) {
+  return static_cast<int>(materials);
+}
+
+inline constexpr std::optional<HorizontalMaterials> horizontalMaterialsFromCode(
+    int code) {
+  if (code < 0 || static_cast<std::size_t>(code) >= horizontalMaterialsCount) {
+    return std::nullopt;
+  }
+  return allHorizontalMaterials[static_cast<std::size_t>(code)];
+}
+
+inline constexpr std::optional<HorizontalMaterials> horizontalMaterialsFromName(
+    std::string_view name) {
+  for (auto materials : allHorizontalMaterials) {
+    if (horizontalMaterialsName(materials) == name) {
+      return materials;
+    }
+  }
   return std::nullopt;
 }
 

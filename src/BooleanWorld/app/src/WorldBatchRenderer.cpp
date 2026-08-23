@@ -8,14 +8,16 @@ WorldBatchRenderer::WorldBatchRenderer(string const& name,
                                        mpp::ResourcePtr textureOrMaterial,
                                        mpp::RenderSystem* renderSystem,
                                        mpp::ResourceManager* resourceMgr,
-                                       bw::core::World const* world)
+                                       bw::core::World const* world,
+                                       WorldSurfaceSet surfaceSet)
     : BatchRenderer(), mRenderSystem(renderSystem), mResourceMgr(resourceMgr), mDataProvider(dataProvider) {
   mBatch = new WorldBatch(
       name,
       textureOrMaterial,
       renderSystem,
       resourceMgr,
-      world);
+      world,
+      surfaceSet);
 }
 
 WorldBatchRenderer::~WorldBatchRenderer() {

@@ -25,7 +25,8 @@ public:
                      mpp::ResourcePtr textureOrMaterial,
                      mpp::RenderSystem* renderSystem,
                      mpp::ResourceManager* resourceMgr,
-                     bw::core::World const* world);
+                     bw::core::World const* world,
+                     WorldSurfaceSet surfaceSet);
 
   virtual ~WorldBatchRenderer();
 

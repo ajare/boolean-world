@@ -64,6 +64,8 @@ constexpr array<char const*, 30> gWorldMaterialNames{
     "Leather", "Flesh", "Chitin / shell", "Coral",
     "Arcane crystal", "Energy stone", "Alien tissue",
     "Magical metal", "Solid cloud", "Holographic", "Corruption"};
+constexpr array<char const*, 3> gFloorPatternNames{
+    "None", "Square", "Hexagon"};
 
 // ImGui colours go here so they don't clutter up the header file
 const ImColor gImGui_MapBackgroundColour{0.2f, 0.2f, 0.8f};
@@ -651,7 +653,9 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
                                    : -1;
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerShaderPosition,
-      materialIndexOverride, mDebugDisplay.worldMaterialScale, frameTime);
+      materialIndexOverride, mDebugDisplay.worldMaterialScale,
+      mDebugDisplay.floorPattern, mDebugDisplay.floorPatternRadius,
+      mDebugDisplay.floorPatternDepth, frameTime);
 }
 
 void StatePlayBooleanWorld::suspendImpl(void* args) {
@@ -1457,8 +1461,31 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     ImGui::SliderFloat(
         "Material scale", &mDebugDisplay.worldMaterialScale,
         0.1f, 64.0f, "%.1f");
+    mDebugDisplay.floorPattern = std::clamp(
+        mDebugDisplay.floorPattern, 0,
+        static_cast<int>(gFloorPatternNames.size()) - 1);
+    if (ImGui::BeginCombo(
+            "Floor pattern",
+            gFloorPatternNames[mDebugDisplay.floorPattern])) {
+      for (int i = 0; i < static_cast<int>(gFloorPatternNames.size()); ++i) {
+        auto selected = i == mDebugDisplay.floorPattern;
+        if (ImGui::Selectable(gFloorPatternNames[i], selected)) {
+          mDebugDisplay.floorPattern = i;
+        }
+        if (selected) {
+          ImGui::SetItemDefaultFocus();
+        }
+      }
+      ImGui::EndCombo();
+    }
+    ImGui::SliderFloat(
+        "Floor pattern radius", &mDebugDisplay.floorPatternRadius,
+        1.0f, 128.0f, "%.1f");
+    ImGui::SliderFloat(
+        "Floor pattern depth", &mDebugDisplay.floorPatternDepth,
+        0.0f, 8.0f, "%.2f");
     ImGui::TextDisabled(
-        "Debug-only - overrides MATERIAL_INDEX and material scale for every world mesh.");
+        "Debug-only - overrides MATERIAL_INDEX and material scale for every world mesh; hexagons affect floors only.");
   }
 
   ImGui::End();

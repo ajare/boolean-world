@@ -356,6 +356,12 @@ Resources:
         Definitions:
           Definition:
             textures: "1"
+      - type: "Shader"
+        name: "WorldHorizontal2dFragmentShader"
+        location: "shaders/world_pbr_2d.frag"
+        Definitions:
+          Definition:
+            textures: "1"
       - type: "Program"
         name: "WorldProgram"
         DependentResources:
@@ -387,6 +393,52 @@ Resources:
                         - data: "colour4"
                           type: "uint8"
                           normalised: "true"
+      - type: "Program"
+        name: "WorldHorizontal2dProgram"
+        DependentResources:
+          DependentResource:
+            - id: "Vertex"
+              ref: "WorldVertexShader"
+            - id: "Fragment"
+              ref: "WorldHorizontal2dFragmentShader"
+        Definitions:
+          Definition:
+            Attribs:
+              textures: "1"
+            MeshSpecification:
+              primitive: "triangles"
+              indexed: "false"
+              storage: "dynamic"
+              Buffers:
+                Buffer:
+                  - Channels:
+                      Channel:
+                        - data: "position3"
+                          type: "float32"
+                        - data: "normal3"
+                          type: "float32"
+                  - Channels:
+                      Channel:
+                        - data: "texcoord2"
+                          type: "float32"
+                        - data: "colour4"
+                          type: "uint8"
+                          normalised: "true"
+      - type: "Material"
+        name: "Material.Horizontal2d"
+        DependentResources:
+          DependentResource:
+            - id: "Program"
+              ref: "WorldHorizontal2dProgram"
+            - id: "Texture"
+              ref: "/Floor5"
+        Definitions:
+          Definition:
+            Textures:
+              Texture:
+                sampler: "TEX1"
+                type: "resource"
+                value: "Texture"
       - type: "Material"
         name: "Material.Default"
         DependentResources:

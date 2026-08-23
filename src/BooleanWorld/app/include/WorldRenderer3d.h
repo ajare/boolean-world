@@ -18,6 +18,7 @@
 
 class WorldRenderer3d {
   wp::application::resourcesystem::ResourcePtr mMaterial;
+  WorldSurfaceSet mSurfaceSet;
 
   mpp::ScenePtr mScene;
 
@@ -25,6 +26,7 @@ class WorldRenderer3d {
 
   std::vector<std::shared_ptr<mpp::UniformCollection>> mUniforms;
   std::vector<int32_t> mMaterialIndices;
+  std::vector<bool> mFloorMeshes;
 
   float mGlobalTime;
 
@@ -39,11 +41,14 @@ private:
   std::shared_ptr<WorldTriangle3dDataProvider> mDataProvider;
 
 public:
-  WorldRenderer3d(wp::application::resourcesystem::ResourcePtr resource, wp::Logger* logger);
+  WorldRenderer3d(
+      wp::application::resourcesystem::ResourcePtr resource,
+      wp::Logger* logger,
+      WorldSurfaceSet surfaceSet);
 
   virtual ~WorldRenderer3d();
 
-  uint32_t getMeshIndexForMaterialHash(uint64_t hashValue) const;
+  uint32_t getMeshIndexForMaterialHash(uint64_t hashValue, bool floor) const;
 
   void create(std::shared_ptr<WorldTriangle3dDataProvider> dataProvider, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr);
 
@@ -53,5 +58,8 @@ public:
       glm::vec3 const& playerPosition,
       int32_t materialIndexOverride,
       float materialScale,
+      int floorPattern,
+      float hexagonRadius,
+      float hexagonDepth,
       float frameTime);
 };

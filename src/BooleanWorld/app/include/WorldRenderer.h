@@ -28,7 +28,11 @@ private:
 
   typedef std::shared_ptr<WorldRenderer3d> Renderer;
 
-  typedef std::pair<Renderer, DataProvider> MaterialRenderer;
+  struct MaterialRenderer {
+    Renderer renderer;
+    DataProvider dataProvider;
+    WorldSurfaceSet surfaceSet;
+  };
 
 private:
   std::vector<MaterialRenderer> mMaterialRenderers;
@@ -52,7 +56,8 @@ public:
   WorldRenderer(
       wp::application::resourcesystem::ResourceManager* resourceMgr,
       wp::Logger* logger,
-      bw::app::RenderTextureFilter renderTextureFilter);
+      bw::app::RenderTextureFilter renderTextureFilter,
+      bw::app::HorizontalMaterials horizontalMaterials);
 
   virtual ~WorldRenderer();
 
@@ -77,5 +82,8 @@ public:
       glm::vec3 const& playerPosition,
       int32_t materialIndexOverride,
       float materialScale,
+      int floorPattern,
+      float hexagonRadius,
+      float hexagonDepth,
       float frameTime);
 };

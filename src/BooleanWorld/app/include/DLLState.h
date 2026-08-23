@@ -28,6 +28,7 @@ public:
   // codes so a rejected update leaves the previously accepted options intact.
   int setVideoOptions(int renderScaleCode, int antiAliasingCode,
                       int ambientOcclusionCode, int renderTextureFilterCode,
+                      int horizontalMaterialsCode,
                       bw::app::VideoOptions& videoOptions) const {
     auto renderScale = bw::app::renderScaleFromCode(renderScaleCode);
     auto antiAliasing = bw::app::antiAliasingFromCode(antiAliasingCode);
@@ -35,8 +36,10 @@ public:
         bw::app::ambientOcclusionFromCode(ambientOcclusionCode);
     auto renderTextureFilter =
         bw::app::renderTextureFilterFromCode(renderTextureFilterCode);
+    auto horizontalMaterials =
+        bw::app::horizontalMaterialsFromCode(horizontalMaterialsCode);
     if (!renderScale || !antiAliasing || !ambientOcclusion ||
-        !renderTextureFilter) {
+        !renderTextureFilter || !horizontalMaterials) {
       return 1;
     }
 
@@ -44,6 +47,7 @@ public:
     videoOptions.antiAliasing = *antiAliasing;
     videoOptions.ambientOcclusion = *ambientOcclusion;
     videoOptions.renderTextureFilter = *renderTextureFilter;
+    videoOptions.horizontalMaterials = *horizontalMaterials;
     return 0;
   }
 

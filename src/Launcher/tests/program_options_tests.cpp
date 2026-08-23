@@ -16,7 +16,8 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
                                          std::string const& renderScaleLine = "",
                                          std::string const& antiAliasingLine = "",
                                          std::string const& renderTextureFilterLine = "",
-                                         std::string const& ambientOcclusionLine = "") {
+                                         std::string const& ambientOcclusionLine = "",
+                                         std::string const& horizontalMaterialsLine = "") {
   auto path = std::filesystem::temp_directory_path() / "boolean-world-program-options-test.yaml";
   std::ofstream stream(path);
   stream << "Configuration:\n"
@@ -29,6 +30,7 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
          << antiAliasingLine
          << renderTextureFilterLine
          << ambientOcclusionLine
+         << horizontalMaterialsLine
          << "  Audio:\n"
             "    Enabled: false\n"
             "    Channels: 32\n"
@@ -124,6 +126,18 @@ ProgramOptions parseWithAmbientOcclusion(
   }
 }
 
+ProgramOptions parseWithHorizontalMaterials(std::string const& line) {
+  auto path = writeConfiguration("", "", "", "", "", "", line);
+  try {
+    auto options = parseProgramOptions(path.string());
+    std::filesystem::remove(path);
+    return options;
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+}
+
 void requireInputRejected(std::string const& inputSection, std::string const& description) {
   try {
     (void)parseWithInput(inputSection);
@@ -168,6 +182,20 @@ void requireRenderTextureFilterRejected(
     return;
   }
   throw std::runtime_error("Video configuration accepted " + description + ".");
+}
+
+void requireHorizontalMaterialsRejected(
+    std::string const& line, std::string const& description) {
+  try {
+    (void)parseWithHorizontalMaterials(line);
+  } catch (std::exception const& error) {
+    require(std::string(error.what()).find("HorizontalMaterials") !=
+                std::string::npos,
+            "The horizontal-material error did not name the field.");
+    return;
+  }
+  throw std::runtime_error(
+      "Video configuration accepted " + description + ".");
 }
 
 void requireAmbientOcclusionRejected(
@@ -259,6 +287,18 @@ int main() {
         "    RenderTextureFilter: bilinear\n", "an unknown render-texture filter");
     requireRenderTextureFilterRejected(
         "    RenderTextureFilter:\n", "an empty render-texture filter");
+
+    require(parseWithHorizontalMaterials("").video.horizontalMaterials ==
+                bw::app::HorizontalMaterials::TwoDimensional,
+            "A configuration without HorizontalMaterials did not default to 2d.");
+    require(parseWithHorizontalMaterials("    HorizontalMaterials: 3D\n")
+                    .video.horizontalMaterials ==
+                bw::app::HorizontalMaterials::ThreeDimensional,
+            "The configured 3d horizontal materials did not parse case-insensitively.");
+    requireHorizontalMaterialsRejected(
+        "    HorizontalMaterials: planar\n", "an unknown horizontal-material mode");
+    requireHorizontalMaterialsRejected(
+        "    HorizontalMaterials:\n", "an empty horizontal-material mode");
 
     std::cout << "Program-options schema validation passed\n";
     return 0;

@@ -49,11 +49,13 @@ void acceptsAndValidatesRenderScaleCodes() {
       bw::app::ambientOcclusionCode(bw::app::AmbientOcclusion::Gtao);
   auto nearest = bw::app::renderTextureFilterCode(
       bw::app::RenderTextureFilter::Nearest);
+  auto twoDimensional = bw::app::horizontalMaterialsCode(
+      bw::app::HorizontalMaterials::TwoDimensional);
 
   require(state.setVideoOptions(
               bw::app::renderScaleCode(bw::app::RenderScale::Quarter),
               bw::app::antiAliasingCode(bw::app::AntiAliasing::Fxaa),
-              gtao, nearest, options) == 0,
+              gtao, nearest, twoDimensional, options) == 0,
           "Valid video options were rejected.");
   require(options.renderScale == bw::app::RenderScale::Quarter,
           "Valid render scale was not applied.");
@@ -63,37 +65,54 @@ void acceptsAndValidatesRenderScaleCodes() {
           "Valid ambient-occlusion setting was not applied.");
   require(options.renderTextureFilter == bw::app::RenderTextureFilter::Nearest,
           "Valid render-texture filter was not applied.");
+  require(options.horizontalMaterials ==
+              bw::app::HorizontalMaterials::TwoDimensional,
+          "Valid horizontal-material mode was not applied.");
 
-  require(state.setVideoOptions(-1, msaa2x, gtao, nearest, options) != 0,
+  require(state.setVideoOptions(
+              -1, msaa2x, gtao, nearest, twoDimensional, options) != 0,
           "Negative render scale code was accepted.");
   require(state.setVideoOptions(
               static_cast<int>(bw::app::renderScaleCount),
-              msaa2x, gtao, nearest, options) != 0,
+              msaa2x, gtao, nearest, twoDimensional, options) != 0,
           "Out-of-range render scale code was accepted.");
-  require(state.setVideoOptions(full, -1, gtao, nearest, options) != 0,
+  require(state.setVideoOptions(
+              full, -1, gtao, nearest, twoDimensional, options) != 0,
           "Negative anti-aliasing code was accepted.");
   require(state.setVideoOptions(
               full, static_cast<int>(bw::app::antiAliasingOptionCount),
-              gtao, nearest, options) != 0,
+              gtao, nearest, twoDimensional, options) != 0,
           "Out-of-range anti-aliasing code was accepted.");
-  require(state.setVideoOptions(full, msaa2x, -1, nearest, options) != 0,
+  require(state.setVideoOptions(
+              full, msaa2x, -1, nearest, twoDimensional, options) != 0,
           "Negative ambient-occlusion code was accepted.");
   require(state.setVideoOptions(
               full, msaa2x,
               static_cast<int>(bw::app::ambientOcclusionOptionCount),
-              nearest, options) != 0,
+              nearest, twoDimensional, options) != 0,
           "Out-of-range ambient-occlusion code was accepted.");
-  require(state.setVideoOptions(full, msaa2x, gtao, -1, options) != 0,
+  require(state.setVideoOptions(
+              full, msaa2x, gtao, -1, twoDimensional, options) != 0,
           "Negative render-texture filter code was accepted.");
   require(state.setVideoOptions(
               full, msaa2x, gtao,
               static_cast<int>(bw::app::renderTextureFilterCount),
-              options) != 0,
+              twoDimensional, options) != 0,
           "Out-of-range render-texture filter code was accepted.");
+  require(state.setVideoOptions(
+              full, msaa2x, gtao, nearest, -1, options) != 0,
+          "Negative horizontal-material mode was accepted.");
+  require(state.setVideoOptions(
+              full, msaa2x, gtao, nearest,
+              static_cast<int>(bw::app::horizontalMaterialsCount),
+              options) != 0,
+          "Out-of-range horizontal-material mode was accepted.");
   require(options.renderScale == bw::app::RenderScale::Quarter &&
               options.antiAliasing == bw::app::AntiAliasing::Fxaa &&
               options.ambientOcclusion == bw::app::AmbientOcclusion::Gtao &&
-              options.renderTextureFilter == bw::app::RenderTextureFilter::Nearest,
+              options.renderTextureFilter == bw::app::RenderTextureFilter::Nearest &&
+              options.horizontalMaterials ==
+                  bw::app::HorizontalMaterials::TwoDimensional,
           "Rejected video options changed configuration.");
 }
 

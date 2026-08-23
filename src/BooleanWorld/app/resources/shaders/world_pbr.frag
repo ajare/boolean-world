@@ -6,6 +6,9 @@
 @@Uniform(float PIXEL_SIZE);
 @@Uniform(vec3 PLAYER_POSITION);
 @@Uniform(float MATERIAL_SCALE);
+@@Uniform(float HEXAGON_RADIUS);
+@@Uniform(float HEXAGON_DEPTH);
+@@Uniform(int FLOOR_PATTERN);
 
 // Per batch
 @@Uniform(int MATERIAL_INDEX);
@@ -19,6 +22,94 @@ const float PI = 3.14159265359;
 vec3 snapToGrid(vec3 p, float gridSize)
 {
     return round(p / gridSize) * gridSize;
+}
+
+vec2 nearestHexagonCenter(vec2 position, float radius)
+{
+    float safeRadius = max(radius, 0.001);
+    float q = (0.57735026919 * position.x - position.y / 3.0) /
+        safeRadius;
+    float r = (2.0 * position.y / 3.0) / safeRadius;
+
+    vec3 cube = vec3(q, -q - r, r);
+    vec3 roundedCube = round(cube);
+    vec3 error = abs(roundedCube - cube);
+    if (error.x > error.y && error.x > error.z)
+    {
+        roundedCube.x = -roundedCube.y - roundedCube.z;
+    }
+    else if (error.y > error.z)
+    {
+        roundedCube.y = -roundedCube.x - roundedCube.z;
+    }
+    else
+    {
+        roundedCube.z = -roundedCube.x - roundedCube.y;
+    }
+
+    return safeRadius * vec2(
+        1.73205080757 * (roundedCube.x + roundedCube.z * 0.5),
+        1.5 * roundedCube.z);
+}
+
+float tileGrooveHeight(float distanceToEdge, float radius, float depth)
+{
+    float grooveWidth = max(radius, 0.001) * 0.075;
+    float groove = 1.0 - smoothstep(0.0, grooveWidth, distanceToEdge);
+    return -max(depth, 0.0) * groove;
+}
+
+float hexagonalTileHeight(vec2 position, float radius, float depth)
+{
+    float safeRadius = max(radius, 0.001);
+    vec2 local = position - nearestHexagonCenter(position, safeRadius);
+    float distanceFromCenter = max(
+        abs(local.x),
+        max(abs(0.5 * local.x + 0.86602540378 * local.y),
+            abs(-0.5 * local.x + 0.86602540378 * local.y)));
+    float distanceToEdge = 0.86602540378 * safeRadius - distanceFromCenter;
+    return tileGrooveHeight(distanceToEdge, safeRadius, depth);
+}
+
+float squareTileHeight(vec2 position, float radius, float depth)
+{
+    float safeRadius = max(radius, 0.001);
+    float tileSize = safeRadius * 2.0;
+    vec2 local = abs(mod(position + safeRadius, tileSize) - safeRadius);
+    float distanceToEdge = safeRadius - max(local.x, local.y);
+    return tileGrooveHeight(distanceToEdge, safeRadius, depth);
+}
+
+float floorPatternHeight(
+    vec2 position, float radius, float depth, int pattern)
+{
+    if (pattern == 1)
+    {
+        return squareTileHeight(position, radius, depth);
+    }
+    if (pattern == 2)
+    {
+        return hexagonalTileHeight(position, radius, depth);
+    }
+    return 0.0;
+}
+
+vec3 embossFloorPattern(
+    vec3 normal, vec3 worldPosition, float radius, float depth, int pattern)
+{
+    float epsilon = max(radius * 0.01, 0.02);
+    vec2 position = worldPosition.xz;
+    float left = floorPatternHeight(
+        position - vec2(epsilon, 0.0), radius, depth, pattern);
+    float right = floorPatternHeight(
+        position + vec2(epsilon, 0.0), radius, depth, pattern);
+    float back = floorPatternHeight(
+        position - vec2(0.0, epsilon), radius, depth, pattern);
+    float front = floorPatternHeight(
+        position + vec2(0.0, epsilon), radius, depth, pattern);
+    vec2 gradient = vec2(right - left, front - back) / (2.0 * epsilon);
+
+    return normalize(normal + vec3(-gradient.x, 0.0, -gradient.y));
 }
 
 struct Material
@@ -1143,6 +1234,14 @@ void main()
                 material.roughness = 0.7;
                 material.normal = normalDir;
                 break;
+        }
+
+        if (@Uniform(FLOOR_PATTERN) != 0)
+        {
+            material.normal = embossFloorPattern(
+                material.normal, @In(FRAGPOSITION),
+                @Uniform(HEXAGON_RADIUS), @Uniform(HEXAGON_DEPTH),
+                @Uniform(FLOOR_PATTERN));
         }
 
         // Cook-Torrance PBR lighting with GGX distribution, Smith geometry

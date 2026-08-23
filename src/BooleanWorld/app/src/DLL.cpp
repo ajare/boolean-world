@@ -77,10 +77,11 @@ __declspec(dllexport) int dllSetVideoOptions(
     int renderScaleCode,
     int antiAliasingCode,
     int ambientOcclusionCode,
-    int renderTextureFilterCode) {
+    int renderTextureFilterCode,
+    int horizontalMaterialsCode) {
   return dllState.setVideoOptions(
       renderScaleCode, antiAliasingCode, ambientOcclusionCode,
-      renderTextureFilterCode, gVideoOptions);
+      renderTextureFilterCode, horizontalMaterialsCode, gVideoOptions);
 }
 
 __declspec(dllexport) wp::application::StateFactory* dllGetNextStateFactory() {
