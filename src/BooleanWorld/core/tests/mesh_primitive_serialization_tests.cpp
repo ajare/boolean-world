@@ -274,6 +274,104 @@ void aggregateLimitsRejectOversizedInputBeforeCommit() {
           "aggregate limit failure was unclear or changed the target");
 }
 
+void authoredCollidesValuesRoundTripThroughSaveAndLoad() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
+  auto proxy = primitive->createEditingProxy();
+  auto edgeIndex = proxy->getFirstEdgeIndex();
+  require(proxy->setEdgeCollides(edgeIndex, false),
+          "could not author a non-default collides value before committing");
+  proxy->commitTo(*primitive);
+
+  auto const yaml = serializeYaml(*primitive);
+  auto loaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1.0f, -1.0f, 1.0f, 1.0f), {}}}));
+  require(deserializeYaml(yaml, *loaded), "authored MeshPrimitive did not deserialize");
+
+  auto loadedProxy = loaded->createEditingProxy();
+  size_t collidingCount = 0;
+  size_t nonCollidingCount = 0;
+  for (auto edge = loadedProxy->getFirstEdgeIndex();
+       !loadedProxy->edgeIndexIterationFinished(edge);
+       edge = loadedProxy->getNextEdgeIndex(edge)) {
+    if (loadedProxy->getEdgeCollides(edge)) {
+      ++collidingCount;
+    } else {
+      ++nonCollidingCount;
+    }
+  }
+  require(collidingCount == 3 && nonCollidingCount == 1,
+          "authored collides values did not round-trip through YAML save/load");
+
+  auto const binary = serializeBinary(*primitive);
+  auto binaryLoaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1.0f, -1.0f, 1.0f, 1.0f), {}}}));
+  require(deserializeBinary(binary, *binaryLoaded), "authored MeshPrimitive did not deserialize from binary");
+  auto binaryProxy = binaryLoaded->createEditingProxy();
+  collidingCount = 0;
+  nonCollidingCount = 0;
+  for (auto edge = binaryProxy->getFirstEdgeIndex();
+       !binaryProxy->edgeIndexIterationFinished(edge);
+       edge = binaryProxy->getNextEdgeIndex(edge)) {
+    if (binaryProxy->getEdgeCollides(edge)) {
+      ++collidingCount;
+    } else {
+      ++nonCollidingCount;
+    }
+  }
+  require(collidingCount == 3 && nonCollidingCount == 1,
+          "authored collides values did not round-trip through binary save/load");
+}
+
+void loadingPreFeatureDataDefaultsToCollidesTrue() {
+  auto source = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
+  auto yaml = serializeYaml(*source);
+
+  // Simulate a MeshPrimitive saved before this feature existed by stripping
+  // every per-vertex "flags" field (the one immediately following a "p:"
+  // line) while leaving the unrelated, required Primitive-level "flags"
+  // field (the common Primitive flag bitmask) untouched.
+  std::string stripped;
+  stripped.reserve(yaml.size());
+  size_t pos = 0;
+  bool previousLineWasVertexPosition = false;
+  size_t vertexFlagsStripped = 0;
+  while (pos < yaml.size()) {
+    auto lineEnd = yaml.find('\n', pos);
+    auto lineEndExclusive = lineEnd == std::string::npos ? yaml.size() : lineEnd;
+    auto line = yaml.substr(pos, lineEndExclusive - pos);
+    auto trimmed = line.substr(line.find_first_not_of(" -"));
+    bool isVertexFlagsLine =
+        previousLineWasVertexPosition && trimmed.rfind("flags:", 0) == 0;
+    if (isVertexFlagsLine) {
+      ++vertexFlagsStripped;
+    } else {
+      stripped += line;
+      stripped += '\n';
+    }
+    previousLineWasVertexPosition = trimmed.rfind("p:", 0) == 0;
+    pos = lineEnd == std::string::npos ? yaml.size() : lineEnd + 1;
+  }
+  require(vertexFlagsStripped == 4,
+          "the pre-feature simulation did not remove exactly the four square vertices' flags fields");
+  require(stripped.find("flags:") != std::string::npos,
+          "the pre-feature simulation also removed the unrelated, required Primitive flags field");
+
+  auto loaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1.0f, -1.0f, 1.0f, 1.0f), {}}}));
+  require(deserializeYaml(stripped, *loaded),
+          "MeshPrimitive input without a flags field failed to deserialize");
+
+  auto proxy = loaded->createEditingProxy();
+  for (auto edge = proxy->getFirstEdgeIndex();
+       !proxy->edgeIndexIterationFinished(edge);
+       edge = proxy->getNextEdgeIndex(edge)) {
+    require(proxy->getEdgeCollides(edge),
+            "an External edge loaded from pre-feature data did not default to collides = true");
+  }
+}
+
 void proceduralPrimitiveSchemaRemainsFlat() {
   bw::core::RectanglePolygon rectangle(
       Primitive::Operation::Union, Primitive::FillRule::NonZero, 2.0f);
@@ -310,6 +408,8 @@ int main() {
     hierarchyRoundTripsThroughYamlAndBinary();
     failedReadsLeaveTheTargetUnchangedAndRejectLegacyInput();
     aggregateLimitsRejectOversizedInputBeforeCommit();
+    authoredCollidesValuesRoundTripThroughSaveAndLoad();
+    loadingPreFeatureDataDefaultsToCollidesTrue();
     proceduralPrimitiveSchemaRemainsFlat();
     shippedMeshFixtureUsesTheTreeSchema();
     std::cout << "MeshPrimitive containment tree serialization tests passed\n";

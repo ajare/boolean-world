@@ -545,6 +545,138 @@ void sliceDividesFilledRingsAndRetainsHoles() {
           "slicing the touching Island did not create two sibling Islands");
 }
 
+void externalEdgesDefaultCollidesAndInternalEdgesCannotBeSet() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union,
+      {{ring(-2, -1, 0, 1), {}}, {ring(0, -1, 2, 1), {}}}));
+  auto proxy = primitive->createEditingProxy();
+
+  uint32_t internalEdge = ~0u;
+  uint32_t externalEdge = ~0u;
+  for (auto edge = proxy->getFirstEdgeIndex();
+       !proxy->edgeIndexIterationFinished(edge);
+       edge = proxy->getNextEdgeIndex(edge)) {
+    if (proxy->getEdge(edge).getPolygonReferences().size() == 2) {
+      internalEdge = edge;
+    } else {
+      externalEdge = edge;
+    }
+  }
+  require(internalEdge != ~0u && externalEdge != ~0u,
+          "the fixture did not produce both an Internal and an External edge");
+
+  require(proxy->getEdgeCollides(externalEdge),
+          "an External edge did not default to collides = true");
+  require(proxy->isEdgeCollisionEditable(externalEdge),
+          "an External edge was not reported as editable");
+  require(!proxy->getEdgeCollides(internalEdge),
+          "an Internal edge reported collides = true");
+  require(!proxy->isEdgeCollisionEditable(internalEdge),
+          "an Internal edge was reported as editable");
+
+  require(proxy->setEdgeCollides(externalEdge, false),
+          "setEdgeCollides was refused on an External edge");
+  require(!proxy->getEdgeCollides(externalEdge),
+          "setEdgeCollides(false) did not clear the effective value");
+  require(proxy->setEdgeCollides(externalEdge, true),
+          "setEdgeCollides was refused when re-enabling an External edge");
+  require(proxy->getEdgeCollides(externalEdge),
+          "setEdgeCollides(true) did not restore the effective value");
+
+  require(!proxy->setEdgeCollides(internalEdge, true),
+          "setEdgeCollides succeeded on an Internal edge");
+  require(!proxy->getEdgeCollides(internalEdge),
+          "an Internal edge became collidable after a refused setEdgeCollides");
+}
+
+void splitEdgeInheritsCollidesForBothHalves() {
+  for (bool sourceValue : {true, false}) {
+    auto primitive = std::unique_ptr<MeshPrimitive>(
+        MeshPrimitive::fromTree(Primitive::Operation::Union, {{ring(-2, -2, 2, 2), {}}}));
+    auto proxy = primitive->createEditingProxy();
+    auto edgeIndex = proxy->getFirstEdgeIndex();
+    require(proxy->setEdgeCollides(edgeIndex, sourceValue),
+            "could not author the source edge's collides value before splitting");
+
+    wp::geometry::SplitEdgeResult split;
+    require(proxy->splitEdge(edgeIndex, 0.5f, &split),
+            "splitting an External edge was refused");
+    require(split.newEdgeIndices.size() == 2,
+            "splitEdge did not report exactly two resulting edges");
+    require(proxy->getEdgeCollides(split.newEdgeIndices[0]) == sourceValue &&
+                proxy->getEdgeCollides(split.newEdgeIndices[1]) == sourceValue,
+            "splitEdge did not inherit the original edge's collides value on both halves");
+  }
+}
+
+// removeVertex is implemented by re-deriving the authored Ring vertex list,
+// mutating it, and fully rebuilding the proxy Mesh from scratch - so Mesh
+// vertex/edge indices are not stable across the call. Vertices are relocated
+// by position afterwards.
+uint32_t findVertexNear(wp::geometry::Mesh const& mesh, wp::Vector2 const& position) {
+  for (auto index = mesh.getFirstVertexIndex();
+       !mesh.vertexIndexIterationFinished(index);
+       index = mesh.getNextVertexIndex(index)) {
+    auto const& candidate = mesh.getVertex(index).getPosition();
+    if (near(candidate.x, position.x) && near(candidate.y, position.y)) {
+      return index;
+    }
+  }
+  return ~0u;
+}
+
+void checkRemoveVertexMerge(bool predecessorValue, bool successorValue) {
+  // A pentagon so the middle vertex being removed has distinct, unambiguous
+  // predecessor and successor edges.
+  ClosedPolygon pentagon{{{-2, 0}}, {{-1, -2}}, {{1, -2}}, {{2, 0}}, {{0, 2}}};
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {{pentagon, {}}}));
+  auto proxy = primitive->createEditingProxy();
+
+  auto ordered =
+      proxy->getPolygon(proxy->getFirstPolygonIndex()).getOrderedVertexIndices();
+  require(ordered.size() == 5, "the pentagon fixture did not retain five vertices");
+
+  // Middle vertex to remove, with its predecessor and successor.
+  auto removedVertex = ordered[1];
+  auto predecessorVertex = ordered[0];
+  auto successorVertex = ordered[2];
+  auto predecessorPosition = proxy->getVertex(predecessorVertex).getPosition();
+  auto successorPosition = proxy->getVertex(successorVertex).getPosition();
+
+  auto predecessorEdge = proxy->getMesh().getEdgeIndexByVertices(predecessorVertex, removedVertex);
+  auto successorEdge = proxy->getMesh().getEdgeIndexByVertices(removedVertex, successorVertex);
+  require(predecessorEdge >= 0 && successorEdge >= 0,
+          "could not locate the predecessor/successor edges around the removed vertex");
+
+  require(proxy->setEdgeCollides(static_cast<uint32_t>(predecessorEdge), predecessorValue),
+          "could not author the predecessor edge's collides value");
+  require(proxy->setEdgeCollides(static_cast<uint32_t>(successorEdge), successorValue),
+          "could not author the successor edge's collides value");
+
+  require(proxy->removeVertex(removedVertex), "removing the middle vertex was refused");
+
+  auto mergedOrdered =
+      proxy->getPolygon(proxy->getFirstPolygonIndex()).getOrderedVertexIndices();
+  require(mergedOrdered.size() == 4, "removing a vertex did not shrink the ring by one");
+
+  auto rebuiltPredecessor = findVertexNear(proxy->getMesh(), predecessorPosition);
+  auto rebuiltSuccessor = findVertexNear(proxy->getMesh(), successorPosition);
+  require(rebuiltPredecessor != ~0u && rebuiltSuccessor != ~0u,
+          "the predecessor/successor vertices did not survive removal");
+  auto mergedEdge =
+      proxy->getMesh().getEdgeIndexByVertices(rebuiltPredecessor, rebuiltSuccessor);
+  require(mergedEdge >= 0, "the merged edge between predecessor and successor was not found");
+  require(proxy->getEdgeCollides(static_cast<uint32_t>(mergedEdge)) == predecessorValue,
+          "the merged edge did not keep the predecessor edge's collides value, "
+          "unaffected by the successor edge's discarded value");
+}
+
+void removeVertexMergeKeepsThePredecessorEdgesValue() {
+  checkRemoveVertexMerge(true, false);
+  checkRemoveVertexMerge(false, true);
+}
+
 void failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged() {
   auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{{ring(-2, -2, 2, 2), {}}}}));
@@ -624,6 +756,9 @@ int main() {
     removingTwoSidedEdgeMergesSiblingRings();
     fillHoleWrapsImmediateIslandsWithoutLosingDescendants();
     sliceDividesFilledRingsAndRetainsHoles();
+    externalEdgesDefaultCollidesAndInternalEdgesCannotBeSet();
+    splitEdgeInheritsCollidesForBothHalves();
+    removeVertexMergeKeepsThePredecessorEdgesValue();
     failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged();
     fillRuleIsFixedToEvenOddAndRejectsConflictingAssignment();
     shallowConversionRejectsCrossEntryNestingAndMalformedTrees();

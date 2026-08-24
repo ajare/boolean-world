@@ -162,6 +162,19 @@ public:
       wp::geometry::SplitEdgeResult* result = nullptr);
   bool splitEdge(uint32_t edgeIndex, wp::geometry::SplitEdgeResult* result = nullptr);
 
+  // Effective collision override for a Mesh edge. Always gated by
+  // connectivity: only an External edge can read or be set true. Internal,
+  // Orphaned and Invalid edges read false regardless of stored state.
+  [[nodiscard]] bool getEdgeCollides(uint32_t edgeIndex) const;
+
+  // Whether this edge's collision flag is meaningfully settable, i.e. its
+  // connectivity is External.
+  [[nodiscard]] bool isEdgeCollisionEditable(uint32_t edgeIndex) const;
+
+  // Mutates the stored collides bit for this edge. No-op (returns false) when
+  // the edge's connectivity is not External.
+  bool setEdgeCollides(uint32_t edgeIndex, bool collides);
+
   // Divides one Shell or Island along a chord between two of its
   // non-adjacent vertices. The chord must not touch or cross any existing
   // Edge except at its endpoints. Direct Holes remain with the side that

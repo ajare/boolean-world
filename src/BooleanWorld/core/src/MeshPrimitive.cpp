@@ -9,6 +9,7 @@
 #include <numeric>
 #include <set>
 #include <stdexcept>
+#include <unordered_map>
 
 #include <willpower/geometry/Edge.h>
 #include <willpower/geometry/MeshOperations.h>
@@ -16,6 +17,7 @@
 #include <willpower/geometry/Vertex.h>
 
 #include "core/CoreException.h"
+#include "core/Defines.h"
 #include "core/MeshPrimitive.h"
 
 namespace bw {
@@ -369,6 +371,25 @@ struct MeshPrimitiveEditingProxy::Impl {
   wp::geometry::Mesh mesh;
   vector<Filled> shells;
 
+  // Per-edge flags, keyed by Mesh edge index. Populated whenever a Mesh edge
+  // is created (see Builder::addRing) by copying in the source Vertex's
+  // edgeFlags. Entries for edges that no longer exist are simply stale and
+  // are never queried again.
+  unordered_map<uint32_t, uint32_t> edgeFlags;
+
+  uint32_t rawEdgeFlags(uint32_t edgeIndex) const {
+    auto found = edgeFlags.find(edgeIndex);
+    return found != edgeFlags.end() ? found->second : uint32_t{1};
+  }
+
+  bool effectiveEdgeCollides(uint32_t edgeIndex) const {
+    if (mesh.edgeIndexIterationFinished(edgeIndex)) return false;
+    if (mesh.getEdge(edgeIndex).getConnectivity() != wp::geometry::Edge::External) {
+      return false;
+    }
+    return (rawEdgeFlags(edgeIndex) & BW_MESH_EDGE_COLLIDES_FLAG) != 0;
+  }
+
   struct ExactPointLess {
     bool operator()(wp::Vector2 const& left, wp::Vector2 const& right) const {
       auto bits = [](float value) {
@@ -401,6 +422,9 @@ struct MeshPrimitiveEditingProxy::Impl {
         auto [found, inserted] = edges.try_emplace(key, 0);
         if (inserted) {
           found->second = target.mesh.addEdge(wp::geometry::Edge(first, second));
+          // ring[i]'s outgoing edge is (first, second): the edge to the
+          // next vertex in this Ring. Copy its stored flags in.
+          target.edgeFlags[found->second] = ring[i].edgeFlags;
         }
         edgeData.insert(edgeData.end(), {first, second, found->second});
       }
@@ -426,6 +450,7 @@ struct MeshPrimitiveEditingProxy::Impl {
   void rebuild(vector<MeshFilledRegion> const& worldTree) {
     mesh.clear();
     shells.clear();
+    edgeFlags.clear();
     Builder builder{*this};
     for (auto const& shell : worldTree) shells.push_back(builder.addFilled(shell));
   }
@@ -441,6 +466,18 @@ struct MeshPrimitiveEditingProxy::Impl {
     for (auto vertex : ordered) result.emplace_back(source.getVertex(vertex).getPosition());
     if (twiceArea(result) < 0.0 && result.size() > 1) {
       reverse(next(result.begin()), result.end());
+      reverse(next(ordered.begin()), ordered.end());
+    }
+    // Write each vertex's outgoing-edge flags back from the Mesh-edge-keyed
+    // map, using the (possibly reversed) vertex-index ordering so structural
+    // edits, which operate on these Ring vertices, inherit the correct
+    // per-edge state.
+    for (size_t i = 0; i < ordered.size(); ++i) {
+      auto next = (i + 1) % ordered.size();
+      auto edgeIndex = source.getEdgeIndexByVertices(ordered[i], ordered[next]);
+      if (edgeIndex >= 0) {
+        result[i].edgeFlags = rawEdgeFlags(static_cast<uint32_t>(edgeIndex));
+      }
     }
     return result;
   }
@@ -693,13 +730,45 @@ void MeshPrimitiveEditingProxy::moveRing(uint32_t polygonIndex, wp::Vector2 cons
 bool MeshPrimitiveEditingProxy::splitEdge(
     uint32_t edgeIndex, float t,
     wp::geometry::SplitEdgeResult* result) {
-  wp::geometry::MeshOperations::splitEdge(&mImpl->mesh, edgeIndex, t, result);
-  return !result || !result->newEdgeIndices.empty();
+  auto originalFlags = mImpl->rawEdgeFlags(edgeIndex);
+  wp::geometry::SplitEdgeResult localResult;
+  auto* target = result ? result : &localResult;
+  wp::geometry::MeshOperations::splitEdge(&mImpl->mesh, edgeIndex, t, target);
+  // Both halves of a split edge inherit the original edge's flags. The
+  // underlying operation reuses the original edge index for one half
+  // (newEdgeIndices[0], already correct) and allocates a brand-new index for
+  // the other (newEdgeIndices[1]).
+  if (target->newEdgeIndices.size() == 2) {
+    mImpl->edgeFlags[target->newEdgeIndices[0]] = originalFlags;
+    mImpl->edgeFlags[target->newEdgeIndices[1]] = originalFlags;
+  }
+  return !target->newEdgeIndices.empty();
 }
 
 bool MeshPrimitiveEditingProxy::splitEdge(
     uint32_t edgeIndex, wp::geometry::SplitEdgeResult* result) {
   return splitEdge(edgeIndex, 0.5f, result);
+}
+
+bool MeshPrimitiveEditingProxy::getEdgeCollides(uint32_t edgeIndex) const {
+  return mImpl->effectiveEdgeCollides(edgeIndex);
+}
+
+bool MeshPrimitiveEditingProxy::isEdgeCollisionEditable(uint32_t edgeIndex) const {
+  if (mImpl->mesh.edgeIndexIterationFinished(edgeIndex)) return false;
+  return mImpl->mesh.getEdge(edgeIndex).getConnectivity() == wp::geometry::Edge::External;
+}
+
+bool MeshPrimitiveEditingProxy::setEdgeCollides(uint32_t edgeIndex, bool collides) {
+  if (!isEdgeCollisionEditable(edgeIndex)) return false;
+  auto flags = mImpl->rawEdgeFlags(edgeIndex);
+  if (collides) {
+    flags |= BW_MESH_EDGE_COLLIDES_FLAG;
+  } else {
+    flags &= ~static_cast<uint32_t>(BW_MESH_EDGE_COLLIDES_FLAG);
+  }
+  mImpl->edgeFlags[edgeIndex] = flags;
+  return true;
 }
 
 bool MeshPrimitiveEditingProxy::sliceFilledRing(
@@ -1217,6 +1286,7 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
     for (auto const& vertex : ring) {
       serializer->beginMap("vertex");
       serializer->writeVector2("p", vertex.p);
+      serializer->writeUint32("flags", vertex.edgeFlags);
       serializer->endMap();
     }
     serializer->endArray();
@@ -1322,6 +1392,10 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
         }
         serializer->beginMap("vertex");
         ring.emplace_back(serializer->readVector2("p"));
+        // Absent in files saved before this feature; the Vertex default (1,
+        // matching every current flag bit) preserves prior read semantics
+        // with no explicit migration.
+        ring.back().edgeFlags = serializer->readUint32("flags", true, 1);
         serializer->endMap();
       }
       serializer->endArray();

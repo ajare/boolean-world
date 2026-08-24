@@ -32,6 +32,10 @@ typedef int64_t frame_number_type;
 #define BW_PRIMITIVE_NO_TIME_UPDATE_IF_VISIBLE 0x0008     // Don't update Primitive time if visible to player
 #define BW_PRIMITIVE_EXACT_BOUNDS_FLAG 0x0010             // Calculate exact bounds using vertices
 
+// Per-edge flags stored on a MeshPrimitive Vertex, describing the edge FROM
+// that vertex TO THE NEXT vertex in its Ring (the "outgoing edge").
+#define BW_MESH_EDGE_COLLIDES_FLAG 0x0001  // This edge participates in wall collision, when External.
+
 // This is the maximum size that an interpolator for distance can take.  In particular this is used for influence zones.
 #define BW_INTERPOLATOR_MAX_DISTANCE 500.0f
 #define BW_INTERPOLATOR_MAX_SCALE 10.0f
