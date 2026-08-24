@@ -491,6 +491,7 @@ vector<ComplexPolygon> Primitive::generateTransformedVertices(wp::Vector2* minEx
         bool vChanged{false};
 
         vertices[i].p = transformVertex(polygon[i].p * mSize, &vChanged);
+        vertices[i].edgeFlags = polygon[i].edgeFlags;
         verticesChanged = verticesChanged || vChanged;
 
         if (minExtent) {

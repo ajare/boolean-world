@@ -87,11 +87,19 @@ ArrangementWorldData::ArrangementWorldData(
   for (uint32_t wallIndex = 0; wallIndex < uint32_t(mWalls.size());
        ++wallIndex) {
     auto const& wall = mWalls[wallIndex];
-    // A floor step taller than the authored threshold blocks, same as
-    // before; independently, whatever headroom the two faces actually share
-    // must fit the player regardless of which of floorZ/ceilingZ produced
-    // this wall - a low ceiling is just as impassable as a high step.
-    auto blocks = wall.kind == arr::ArrangementWallKind::Border ||
+    auto const& edge = mArrangement->edges[wall.edge];
+    // A per-edge collides override (#245, ADR-0022) - sourced from a
+    // MeshPrimitive's External edge flag - fully replaces the geometry-
+    // computed rule below for this wall segment when present.
+    //
+    // Otherwise: a floor step taller than the authored threshold blocks,
+    // same as before; independently, whatever headroom the two faces
+    // actually share must fit the player regardless of which of
+    // floorZ/ceilingZ produced this wall - a low ceiling is just as
+    // impassable as a high step.
+    auto blocks = edge.collidesOverride.has_value()
+        ? *edge.collidesOverride
+        : wall.kind == arr::ArrangementWallKind::Border ||
                   (wall.kind == arr::ArrangementWallKind::FloorStep &&
                    wall.maxZ - wall.minZ > stepThreshold) ||
                   (wall.kind != arr::ArrangementWallKind::Border &&
@@ -99,7 +107,6 @@ ArrangementWorldData::ArrangementWorldData(
     if (!blocks) {
       continue;
     }
-    auto const& edge = mArrangement->edges[wall.edge];
     auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
     auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
     wallBounds.push_back({{std::min(a.x, b.x), std::min(a.y, b.y)},

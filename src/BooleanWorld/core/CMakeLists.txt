@@ -205,6 +205,24 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_arrangement_wall_clearance_tests)
     add_test(NAME boolean_world_arrangement_wall_clearance COMMAND boolean_world_arrangement_wall_clearance_tests)
 
+    add_executable(boolean_world_arrangement_wall_collision_override_tests
+        tests/arrangement_wall_collision_override_tests.cpp)
+    target_link_libraries(boolean_world_arrangement_wall_collision_override_tests PRIVATE core)
+    target_compile_features(boolean_world_arrangement_wall_collision_override_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_arrangement_wall_collision_override_tests)
+    bw_output_dirs(boolean_world_arrangement_wall_collision_override_tests)
+    bw_deploy_runtime_dlls(boolean_world_arrangement_wall_collision_override_tests)
+    add_test(NAME boolean_world_arrangement_wall_collision_override COMMAND boolean_world_arrangement_wall_collision_override_tests)
+
+    add_executable(boolean_world_wall_collision_override_snapshot_tests
+        tests/wall_collision_override_snapshot_tests.cpp)
+    target_link_libraries(boolean_world_wall_collision_override_snapshot_tests PRIVATE core)
+    target_compile_features(boolean_world_wall_collision_override_snapshot_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_wall_collision_override_snapshot_tests)
+    bw_output_dirs(boolean_world_wall_collision_override_snapshot_tests)
+    bw_deploy_runtime_dlls(boolean_world_wall_collision_override_snapshot_tests)
+    add_test(NAME boolean_world_wall_collision_override_snapshot COMMAND boolean_world_wall_collision_override_snapshot_tests)
+
     add_executable(boolean_world_arrangement_hierarchy_tests
         tests/arrangement_hierarchy_tests.cpp)
     target_link_libraries(boolean_world_arrangement_hierarchy_tests PRIVATE core)

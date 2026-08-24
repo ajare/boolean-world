@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "core/Primitive.h"
@@ -44,6 +45,11 @@ struct Edge {
   // Left and right faces relative to vi[0] -> vi[1].
   int fi[2] = {-1, -1};
   std::vector<WindingDelta> windingDeltas;
+  // Wall collision override (#245): set from the first contributing
+  // MeshPrimitive-sourced segment that carries one. Non-Mesh segments never
+  // carry a value, so this naturally prefers a Mesh-sourced override over a
+  // coincident non-Mesh edge without needing to special-case primitive kind.
+  std::optional<bool> collidesOverride;
 
   bool doubleSided() const {
     return fi[0] >= 0 && fi[1] >= 0;
@@ -80,6 +86,11 @@ struct Face {
 struct ContourInput {
   Contour contour;
   uint32_t primitiveIndex{~0u};
+  // Per-edge wall collision override (#245), parallel to contour: index i is
+  // the override for the edge from contour[i] to contour[(i+1)%size()]. May
+  // be shorter than contour, or empty (meaning no overrides at all); any
+  // out-of-range index is treated as std::nullopt.
+  std::vector<std::optional<bool>> edgeOverrides{};
 };
 
 struct PSLG {
@@ -145,12 +156,23 @@ struct ArrangementPrimitive {
   uint8_t priority;
   uint32_t primitiveIndex;
   PrimitivePropertySet properties{};
+  // Per-contour, per-edge wall collision override (#245), parallel to
+  // contours: contourEdgeOverrides[c][i] is the override for the edge from
+  // contours[c][i] to contours[c][(i+1)%contours[c].size()]. May be shorter
+  // than contours, a contour's inner vector may be shorter than its vertex
+  // count, or the whole field may be empty (meaning no overrides at all);
+  // any out-of-range index is treated as std::nullopt. Trailing field with a
+  // default so existing aggregate-initializer call sites keep compiling.
+  std::vector<std::vector<std::optional<bool>>> contourEdgeOverrides{};
 };
 
 struct ArrangementEdge {
   uint32_t v[2];
   // Left and right faces relative to v[0] -> v[1].
   uint32_t face[2];
+  // Wall collision override (#245), propagated from the PSLG Edge that
+  // produced this arrangement edge.
+  std::optional<bool> collidesOverride;
 };
 
 struct ArrangementFace {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "core/Arrangement.h"
@@ -11,9 +12,21 @@ namespace bw::core {
 class Primitive;
 class World;
 
-// Converts authored floating-point polygons straight onto the topology grid.
-// Contour roles are deliberately not carried; the arrangement derives them.
-[[nodiscard]] BW_API std::vector<arr::Contour> ConvertPrimitiveToContours(
+// Result of converting one Primitive's authored floating-point polygons
+// straight onto the topology grid. Contour roles are deliberately not
+// carried; the arrangement derives them.
+struct PrimitiveContours {
+  std::vector<arr::Contour> contours;
+  // Per-contour, per-edge wall collision override (#245), parallel to
+  // contours: edgeOverrides[c][i] is the override for the edge from
+  // contours[c][i] to contours[c][(i+1)%contours[c].size()]. Populated only
+  // for MeshPrimitives, sourced from External edges' authored collides flag
+  // (see #244, ADR-0022); every other Primitive kind, and every non-External
+  // edge of a MeshPrimitive, leaves std::nullopt in place.
+  std::vector<std::vector<std::optional<bool>>> edgeOverrides;
+};
+
+[[nodiscard]] BW_API PrimitiveContours ConvertPrimitiveToContours(
     Primitive const& primitive);
 
 // Copies every generation input needed by the arrangement so worker execution

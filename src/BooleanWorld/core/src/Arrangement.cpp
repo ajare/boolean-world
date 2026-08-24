@@ -92,6 +92,7 @@ namespace {
 struct Segment {
   FixedPointVertex v[2];
   uint32_t primitiveIndex;
+  std::optional<bool> collidesOverride;
 };
 
 struct RationalPoint {
@@ -203,7 +204,9 @@ vector<Segment> ExtractSegments(vector<ContourInput> const& contours) {
       auto const& a = contour[i];
       auto const& b = contour[j];
       if (a != b) {
-        result.push_back({{a, b}, input.primitiveIndex});
+        std::optional<bool> collidesOverride =
+            i < input.edgeOverrides.size() ? input.edgeOverrides[i] : std::nullopt;
+        result.push_back({{a, b}, input.primitiveIndex, collidesOverride});
       }
     }
   }
@@ -782,6 +785,10 @@ PSLG BuildPSLG(
         } else {
           contribution->delta += delta;
         }
+
+        if (segments[i].collidesOverride.has_value() && !edge.collidesOverride.has_value()) {
+          edge.collidesOverride = segments[i].collidesOverride;
+        }
       }
     }
   }
@@ -957,8 +964,13 @@ ArrangementResultPtr BuildArrangement(
   vector<ContourInput> contours;
   for (uint32_t primitiveIndex = 0;
        primitiveIndex < uint32_t(primitives.size()); ++primitiveIndex) {
-    for (auto const& contour : primitives[primitiveIndex].contours) {
-      contours.push_back({contour, primitiveIndex});
+    auto const& primitive = primitives[primitiveIndex];
+    for (size_t contourIndex = 0; contourIndex < primitive.contours.size(); ++contourIndex) {
+      std::vector<std::optional<bool>> edgeOverrides;
+      if (contourIndex < primitive.contourEdgeOverrides.size()) {
+        edgeOverrides = primitive.contourEdgeOverrides[contourIndex];
+      }
+      contours.push_back({primitive.contours[contourIndex], primitiveIndex, std::move(edgeOverrides)});
     }
   }
 
@@ -1199,7 +1211,8 @@ ArrangementResultPtr BuildArrangement(
   for (auto const& edge : graph.es) {
     result->edges.push_back({{uint32_t(edge.vi[0]), uint32_t(edge.vi[1])},
                              {edge.fi[0] < 0 ? 0u : uint32_t(edge.fi[0] + 1),
-                              edge.fi[1] < 0 ? 0u : uint32_t(edge.fi[1] + 1)}});
+                              edge.fi[1] < 0 ? 0u : uint32_t(edge.fi[1] + 1)},
+                             edge.collidesOverride});
   }
 
   if (stats != nullptr) {
