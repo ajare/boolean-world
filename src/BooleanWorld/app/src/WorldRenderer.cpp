@@ -1,5 +1,8 @@
 #include <common/GameDefines.h>
 
+#include <core/Defines.h>
+#include <core/MaterialDefinition.h>
+
 #include "WorldRenderer.h"
 #include "WorldWallOrientation.h"
 
@@ -153,6 +156,14 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
   }
   horizontal.dataProvider->finalizeInternals();
 
+  // Walls render two-sided: the side the normal points toward keeps its
+  // authored material (as before), and the opposite side is always this
+  // reserved, plain-white material - see WorldBatch::createModelStream
+  // (which guarantees this mesh bucket exists) and BW_WALL_BACK_FACE_MATERIAL_INDEX.
+  auto backHash =
+      bw::core::MaterialDefinition{}.data.hash(BW_WALL_BACK_FACE_MATERIAL_INDEX);
+  constexpr uint32_t whitePackedColour = 0xffffffffu;
+
   std::vector<uint32_t> wallCounts(wallRenderer.dataProvider->getNumMeshes());
   for (auto const& wall : walls) {
     if (!wall.visible) {
@@ -163,6 +174,8 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
         properties.wallMaterialIndex);
     wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
         hash, false)] += 2;
+    wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
+        backHash, false)] += 2;
   }
   wallRenderer.dataProvider->updateInternals(wallCounts);
 
@@ -193,6 +206,26 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
         normal.x, 0, normal.y, 0, 1, colour);
     wallRenderer.dataProvider->addTriangle(mesh, bottom0, bottom1, top1);
     wallRenderer.dataProvider->addTriangle(mesh, top1, top0, bottom0);
+
+    // The back face: the same quad with its two long edges swapped (so its
+    // winding, and therefore its normal, is reversed) and always the
+    // reserved white material.
+    auto backMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
+    auto backNormal = -normal;
+    auto backBottom0 = addVertexToDataProvider(
+        wallRenderer.dataProvider, backMesh, v1.x, wall.minZ, v1.y,
+        backNormal.x, 0, backNormal.y, 0, 0, whitePackedColour);
+    auto backBottom1 = addVertexToDataProvider(
+        wallRenderer.dataProvider, backMesh, v0.x, wall.minZ, v0.y,
+        backNormal.x, 0, backNormal.y, 1, 0, whitePackedColour);
+    auto backTop1 = addVertexToDataProvider(
+        wallRenderer.dataProvider, backMesh, v0.x, wall.maxZ, v0.y,
+        backNormal.x, 0, backNormal.y, 1, 1, whitePackedColour);
+    auto backTop0 = addVertexToDataProvider(
+        wallRenderer.dataProvider, backMesh, v1.x, wall.maxZ, v1.y,
+        backNormal.x, 0, backNormal.y, 0, 1, whitePackedColour);
+    wallRenderer.dataProvider->addTriangle(backMesh, backBottom0, backBottom1, backTop1);
+    wallRenderer.dataProvider->addTriangle(backMesh, backTop1, backTop0, backBottom0);
   }
   wallRenderer.dataProvider->finalizeInternals();
 

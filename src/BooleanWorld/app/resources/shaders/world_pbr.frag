@@ -1751,6 +1751,13 @@ Material evaluateMaterial(
         case 34: material = rockTexture(texturePosition, normalDir); break;
         case 35: material = mossyRockTexture(texturePosition, normalDir); break;
         case 36: material = wetRockTexture(texturePosition, normalDir); break;
+        case 37: // BW_WALL_BACK_FACE_MATERIAL_INDEX (Defines.h): a plain
+                 // white matte surface for the unmapped side of a wall.
+            material.albedo = vec3(1.0, 1.0, 1.0);
+            material.metallic = 0.0;
+            material.roughness = 0.85;
+            material.normal = normalDir;
+            break;
         default:
             material.albedo = vec3(1.0, 0.0, 1.0);
             material.metallic = 0.0;
@@ -1783,8 +1790,8 @@ void main()
             @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE),
             playerDistance);
         int materialIndex = floorMaterialIndex(
-            @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 36));
-        materialIndex = clamp(materialIndex, 0, 36);
+            @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 37));
+        materialIndex = clamp(materialIndex, 0, 37);
         Material material = evaluateMaterial(
             texturePosition, normalDir, viewDir, materialIndex);
 

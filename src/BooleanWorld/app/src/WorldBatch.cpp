@@ -2,6 +2,8 @@
 
 #include <mpp/mesh/VertexTypeSpecification.h>
 
+#include <core/Defines.h>
+
 #include "WorldBatch.h"
 
 using namespace std;
@@ -73,6 +75,16 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
           properties.wallMaterialIndex, properties.wallMaterialDef, false,
           modelStream);
     }
+  }
+
+  // A wall's back face (the side its normal points away from) always
+  // renders as this reserved, plain-white material, regardless of any
+  // Primitive's authored wallMaterialIndex - so its mesh bucket needs to
+  // exist even for a World with no Primitives yet.
+  if (mSurfaceSet != WorldSurfaceSet::Horizontal) {
+    processMaterialDefinition(
+        BW_WALL_BACK_FACE_MATERIAL_INDEX, bw::core::MaterialDefinition{},
+        false, modelStream);
   }
 
   return modelStream;

@@ -1,5 +1,7 @@
 #include <mpp/ProgrammaticBasicMaterialStream.h>
 
+#include <core/Defines.h>
+#include <core/MaterialDefinition.h>
 #include <core/World.h>
 
 #include <common/GameDefines.h>
@@ -170,6 +172,31 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
           static_cast<int32_t>(properties.ceilingMaterialIndex);
     }
 
+  }
+
+  if (mSurfaceSet == WorldSurfaceSet::Walls) {
+    // The reserved, plain-white back-face material - see
+    // WorldBatch::createModelStream, which guarantees this mesh bucket
+    // exists regardless of any Primitive's authored material.
+    bw::core::MaterialDefinition backMaterialDef;
+    auto hashValue =
+        backMaterialDef.data.hash(BW_WALL_BACK_FACE_MATERIAL_INDEX);
+    auto meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, false);
+    if (mUniforms[meshIndex] == nullptr) {
+      auto uniforms = make_shared<mpp::UniformCollection>();
+      auto meshName = worldBatch->formatMeshName(hashValue, false);
+      params->setMeshUniforms(meshName, uniforms);
+      params->setMeshBlend(meshName, false);
+      uniforms->setUniform(
+          "MATERIAL_INDEX", (int32_t)BW_WALL_BACK_FACE_MATERIAL_INDEX);
+      uniforms->setUniform(
+          "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
+          backMaterialDef.data.params.data());
+      initializeGlobalUniforms(*uniforms, false);
+      mUniforms[meshIndex] = uniforms;
+      mMaterialIndices[meshIndex] =
+          static_cast<int32_t>(BW_WALL_BACK_FACE_MATERIAL_INDEX);
+    }
   }
 }
 

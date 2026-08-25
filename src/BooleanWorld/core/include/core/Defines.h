@@ -62,3 +62,10 @@ typedef int64_t frame_number_type;
 //
 #define BW_MATERIAL_COUNT 2
 #define BW_MATERIAL_PARAMS_MAX 8
+
+// Reserved MATERIAL_INDEX for a wall's back face (the side its normal points
+// away from): a flat, plain-white matte procedural material in
+// world_pbr.frag (still lit like any other material, just untextured),
+// never offered as an authorable material and never matched by a real
+// Primitive's wallMaterialIndex.
+#define BW_WALL_BACK_FACE_MATERIAL_INDEX 37

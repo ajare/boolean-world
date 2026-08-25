@@ -576,6 +576,17 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
 
 void StatePlayBooleanWorld::updatePlayerVerticalPhysics(float frameTime) {
   auto& physicalStats = getPlayerPhysicalStats();
+
+  if (!playerInWorld()) {
+    // Off the edge of the arrangement entirely (eg. walked through a
+    // non-colliding wall) - there is no face to read a floor height from,
+    // and getFloorHeightAt would return -infinity here. Freeze in place
+    // rather than free-falling forever, so re-entering the world resumes
+    // from the height last held while still on a face.
+    mPlayerVerticalVelocity = 0.0f;
+    return;
+  }
+
   auto targetFloor = getFloorHeightAt(physicalStats.position);
 
   if (!mPlayerVerticalHeightInitialized) {
