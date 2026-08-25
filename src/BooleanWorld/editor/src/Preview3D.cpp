@@ -294,10 +294,13 @@ void renderPreview3D() {
 
   auto* viewport = ImGui::GetMainViewport();
   constexpr float margin = 8.0f;
+  ImVec2 windowSize{
+      (viewport->Size.x - margin * 2.0f) * 0.5f,
+      (viewport->Size.y - margin * 2.0f) * 0.5f};
   ImGui::SetNextWindowPos(
-      {viewport->Pos.x + margin, viewport->Pos.y + margin});
-  ImGui::SetNextWindowSize(
-      {viewport->Size.x - margin * 2.0f, viewport->Size.y - margin * 2.0f});
+      {viewport->Pos.x + (viewport->Size.x - windowSize.x) * 0.5f,
+       viewport->Pos.y + (viewport->Size.y - windowSize.y) * 0.5f});
+  ImGui::SetNextWindowSize(windowSize);
   ImGui::SetNextWindowFocus();
   ImGui::SetNextFrameWantCaptureMouse(true);
   ImGui::SetNextFrameWantCaptureKeyboard(true);
