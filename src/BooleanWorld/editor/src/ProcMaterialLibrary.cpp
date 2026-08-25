@@ -1,5 +1,7 @@
 #include "ProcMaterialLibrary.h"
 
+#include <algorithm>
+#include <cctype>
 #include <map>
 #include <memory>
 #include <stdexcept>
@@ -22,6 +24,42 @@ string errors(bw::core::ProcMaterialData const& data) {
     result += error;
   }
   return result;
+}
+
+void validateValues(
+    bw::core::TechniqueSchema const* schema, vector<float> const& values,
+    array<float, 3> const& colour) {
+  if (!schema) throw invalid_argument("The selected Technique has no schema");
+  if (values.size() != schema->parameters.size()) {
+    throw invalid_argument("Sub-material parameter count does not match its Technique schema");
+  }
+  for (size_t i = 0; i < values.size(); ++i) {
+    if (values[i] < schema->parameters[i].minimum ||
+        values[i] > schema->parameters[i].maximum) {
+      throw invalid_argument("Sub-material parameter '" + schema->parameters[i].name +
+                             "' is outside its Technique schema bounds");
+    }
+  }
+  if (any_of(colour.begin(), colour.end(), [](float component) {
+        return component < 0.0f || component > 1.0f;
+      })) {
+    throw invalid_argument("Sub-material base colour components must be between 0 and 1");
+  }
+}
+
+string makeId(string const& name) {
+  string id;
+  bool separator{false};
+  for (unsigned char character : name) {
+    if (isalnum(character)) {
+      if (separator && !id.empty()) id += '_';
+      id += static_cast<char>(tolower(character));
+      separator = false;
+    } else {
+      separator = true;
+    }
+  }
+  return id.empty() ? "sub_material" : id;
 }
 
 bw::core::ProcMaterialData loadCatalog(fs::path const& path) {
@@ -100,6 +138,25 @@ void ProcMaterialLibrary::load(fs::path const& resourcesManifest) {
   }
 
   mCatalogs = move(loaded);
+  ++mRevision;
+}
+
+ProcMaterialCatalog& ProcMaterialLibrary::findCatalog(string const& resourceName) {
+  auto found = find_if(mCatalogs.begin(), mCatalogs.end(), [&](auto const& catalog) {
+    return catalog.resourceName == resourceName;
+  });
+  if (found == mCatalogs.end()) {
+    throw invalid_argument("Unknown ProcMaterial resource '" + resourceName + "'");
+  }
+  return *found;
+}
+
+void ProcMaterialLibrary::save(ProcMaterialCatalog const& catalog) const {
+  auto serializer = shared_ptr<bw::core::Serializer>(
+      bw::core::YamlSerializer::toFile(catalog.filepath.string()));
+  bw::core::SerializationWorkData workData;
+  catalog.data.serialize(serializer, workData);
+  serializer->serialize();
 }
 
 vector<ProcMaterialCatalog> const& ProcMaterialLibrary::catalogs() const {
@@ -124,6 +181,112 @@ bw::core::SubMaterial const* ProcMaterialLibrary::findSubMaterial(
     if (subMaterial.id == subMaterialId) return &subMaterial;
   }
   return nullptr;
+}
+
+string ProcMaterialLibrary::createSubMaterial(
+    string const& resourceName, string const& displayName,
+    uint32_t materialIndex, vector<float> const& paramValues,
+    array<float, 3> const& baseColour) {
+  if (displayName.empty()) throw invalid_argument("Sub-material name must not be empty");
+  auto& catalog = findCatalog(resourceName);
+  validateValues(catalog.data.findTechniqueSchema(materialIndex), paramValues, baseColour);
+
+  auto stem = makeId(displayName);
+  auto id = stem;
+  uint32_t suffix{2};
+  while (findSubMaterial(id)) id = stem + "_" + to_string(suffix++);
+
+  auto previous = catalog.data;
+  bw::core::SubMaterial created;
+  created.id = id;
+  created.displayName = displayName;
+  created.materialIndex = materialIndex;
+  created.paramValues = paramValues;
+  created.baseColour = baseColour;
+  catalog.data.subMaterials.push_back(move(created));
+  try {
+    save(catalog);
+  } catch (...) {
+    catalog.data = move(previous);
+    throw;
+  }
+  ++mRevision;
+  return id;
+}
+
+void ProcMaterialLibrary::renameSubMaterial(
+    string const& subMaterialId, string const& displayName) {
+  if (displayName.empty()) throw invalid_argument("Sub-material name must not be empty");
+  auto* owner = findCatalogForSubMaterial(subMaterialId);
+  if (!owner) throw invalid_argument("Unknown Sub-material id '" + subMaterialId + "'");
+  auto& catalog = findCatalog(owner->resourceName);
+  auto found = find_if(catalog.data.subMaterials.begin(), catalog.data.subMaterials.end(),
+                       [&](auto const& value) { return value.id == subMaterialId; });
+  auto previous = found->displayName;
+  found->displayName = displayName;
+  try {
+    save(catalog);
+  } catch (...) {
+    found->displayName = move(previous);
+    throw;
+  }
+  ++mRevision;
+}
+
+void ProcMaterialLibrary::editSubMaterial(
+    string const& subMaterialId, vector<float> const& paramValues,
+    array<float, 3> const& baseColour) {
+  auto* owner = findCatalogForSubMaterial(subMaterialId);
+  if (!owner) throw invalid_argument("Unknown Sub-material id '" + subMaterialId + "'");
+  auto& catalog = findCatalog(owner->resourceName);
+  auto found = find_if(catalog.data.subMaterials.begin(), catalog.data.subMaterials.end(),
+                       [&](auto const& value) { return value.id == subMaterialId; });
+  validateValues(catalog.data.findTechniqueSchema(found->materialIndex), paramValues, baseColour);
+  auto previousValues = found->paramValues;
+  auto previousColour = found->baseColour;
+  found->paramValues = paramValues;
+  found->baseColour = baseColour;
+  try {
+    save(catalog);
+  } catch (...) {
+    found->paramValues = move(previousValues);
+    found->baseColour = previousColour;
+    throw;
+  }
+  ++mRevision;
+}
+
+void ProcMaterialLibrary::deleteSubMaterial(string const& subMaterialId) {
+  auto* owner = findCatalogForSubMaterial(subMaterialId);
+  if (!owner) throw invalid_argument("Unknown Sub-material id '" + subMaterialId + "'");
+  auto& catalog = findCatalog(owner->resourceName);
+  auto previous = catalog.data;
+  erase_if(catalog.data.subMaterials,
+           [&](auto const& value) { return value.id == subMaterialId; });
+  try {
+    save(catalog);
+  } catch (...) {
+    catalog.data = move(previous);
+    throw;
+  }
+  ++mRevision;
+}
+
+ProcMaterialLibrarySnapshot ProcMaterialLibrary::captureSnapshot() const {
+  return {mCatalogs, mRevision};
+}
+
+void ProcMaterialLibrary::restoreSnapshot(ProcMaterialLibrarySnapshot const& snapshot) {
+  if (mRevision == snapshot.revision) return;
+  auto previous = mCatalogs;
+  mCatalogs = snapshot.catalogs;
+  try {
+    for (auto const& catalog : mCatalogs) save(catalog);
+  } catch (...) {
+    mCatalogs = move(previous);
+    throw;
+  }
+  mRevision = snapshot.revision;
 }
 
 ProcMaterialLibrary& procMaterialLibrary() {

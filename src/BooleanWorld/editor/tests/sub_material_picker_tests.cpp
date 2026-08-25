@@ -44,12 +44,20 @@ std::string catalogYaml(std::string const& id, std::string const& name) {
          "program2d: world2d\n"
          "techniqueSchemas:\n"
          "  - materialIndex: 0\n"
-         "    parameters: []\n"
+         "    parameters:\n"
+         "      - name: roughness\n"
+         "        min: 0.0\n"
+         "        max: 1.0\n"
+         "        default: 0.5\n"
          "subMaterials:\n"
-         "  - id: \"" + id + "\"\n"
-         "    name: \"" + name + "\"\n"
+         "  - id: \"" +
+         id +
+         "\"\n"
+         "    name: \"" +
+         name +
+         "\"\n"
          "    materialIndex: 0\n"
-         "    params: []\n"
+         "    params: [0.5]\n"
          "    baseColour: [0.1, 0.2, 0.3]\n";
 }
 
@@ -121,6 +129,121 @@ void libraryDiscoversTwoLevelsAndSelectionIsUndoable(fs::path const& root) {
                   std::array<float, 3>{0.1f, 0.2f, 0.3f},
           "editor preview did not resolve the selected Sub-material data");
 }
+
+void authoringActionsAreSavedUndoableAndProtectReferences(fs::path const& root) {
+  auto& library = editor::procMaterialLibrary();
+  library.load(root / "Resources.yaml");
+  editor::clearUndoHistory();
+
+  editor::Document document;
+  document.newDoc();
+  auto index = document.getWorld()->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f));
+  auto* primitive = document.getWorld()->getPrimitive(index);
+
+  std::string createdId;
+  editor::transactUndoableActionAtomically(
+      &document, "Create Sub-material", [&](editor::Document* actionDoc) {
+        return editor::createSubMaterial(
+            actionDoc, &library, "Stone Catalog", "Polished Stone", 0, {0.25f},
+            {0.2f, 0.3f, 0.4f}, &createdId);
+      });
+  require(createdId == "polished_stone" && library.findSubMaterial(createdId),
+          "create did not add a stably identified Sub-material");
+  editor::undo(&document);
+  require(!library.findSubMaterial(createdId),
+          "undo did not remove the created Sub-material");
+  editor::redo(&document);
+  require(library.findSubMaterial(createdId),
+          "redo did not restore the created Sub-material");
+  primitive = document.getWorld()->getPrimitive(index);
+
+  editor::transactUndoableActionAtomically(
+      &document, "Assign created Sub-material", [&](editor::Document* actionDoc) {
+        return editor::setPrimitiveSubMaterial(
+            actionDoc, primitive, editor::PrimitiveMaterialSurface::Wall, createdId);
+      });
+  primitive = document.getWorld()->getPrimitive(index);
+  editor::transactUndoableActionAtomically(
+      &document, "Rename Sub-material", [&](editor::Document* actionDoc) {
+        return editor::renameSubMaterial(
+            actionDoc, &library, createdId, "Mirror-polished Stone");
+      });
+  require(library.findSubMaterial(createdId)->displayName == "Mirror-polished Stone" &&
+              document.getWorld()->getPrimitive(index)->getProperties().wallMaterialId == createdId,
+          "rename changed the stable id referenced by a Primitive");
+  editor::undo(&document);
+  require(library.findSubMaterial(createdId)->displayName == "Polished Stone" &&
+              document.getWorld()->getPrimitive(index)->getProperties().wallMaterialId == createdId,
+          "undo did not restore the old name while preserving Primitive references");
+  editor::redo(&document);
+  require(library.findSubMaterial(createdId)->displayName == "Mirror-polished Stone",
+          "redo did not restore the renamed Sub-material");
+
+  editor::transactUndoableActionAtomically(
+      &document, "Edit Sub-material", [&](editor::Document* actionDoc) {
+        return editor::editSubMaterial(
+            actionDoc, &library, createdId, {0.8f}, {0.7f, 0.6f, 0.5f});
+      });
+  auto preview = editor::extrudePrimitiveForPreview(
+      *document.getWorld()->getPrimitive(index), &library);
+  require(preview.wallMaterial.definition.baseColour ==
+                  std::array<float, 3>{0.7f, 0.6f, 0.5f} &&
+              preview.wallMaterial.definition.params[0] == 0.8f,
+          "a referencing Primitive did not immediately reflect edited parameters/colour");
+  editor::undo(&document);
+  require(library.findSubMaterial(createdId)->paramValues[0] == 0.25f,
+          "undo did not restore the previous Sub-material parameters");
+  editor::redo(&document);
+  require(library.findSubMaterial(createdId)->paramValues[0] == 0.8f,
+          "redo did not restore edited Sub-material parameters");
+
+  bool rejectedOutOfBounds{false};
+  try {
+    editor::editSubMaterial(
+        &document, &library, createdId, {1.1f}, {0.7f, 0.6f, 0.5f});
+  } catch (std::invalid_argument const&) {
+    rejectedOutOfBounds = true;
+  }
+  require(rejectedOutOfBounds && library.findSubMaterial(createdId)->paramValues[0] == 0.8f,
+          "a parameter outside its Technique schema bounds was accepted");
+
+  std::string blocked;
+  auto undoBefore = editor::getUndoLevels();
+  auto deleted = editor::transactUndoableActionAtomically(
+      &document, "Delete referenced Sub-material", [&](editor::Document* actionDoc) {
+        return editor::deleteSubMaterial(actionDoc, &library, createdId, &blocked);
+      });
+  require(!deleted && blocked.find("Primitive") != std::string::npos &&
+              blocked.find("wall") != std::string::npos &&
+              editor::getUndoLevels() == undoBefore && library.findSubMaterial(createdId),
+          "referenced Sub-material deletion was not refused with a Primitive report");
+
+  primitive = document.getWorld()->getPrimitive(index);
+  editor::transactUndoableActionAtomically(
+      &document, "Clear Sub-material reference", [&](editor::Document* actionDoc) {
+        return editor::setPrimitiveSubMaterial(
+            actionDoc, primitive, editor::PrimitiveMaterialSurface::Wall, "");
+      });
+  editor::transactUndoableActionAtomically(
+      &document, "Delete unreferenced Sub-material", [&](editor::Document* actionDoc) {
+        return editor::deleteSubMaterial(actionDoc, &library, createdId);
+      });
+  require(!library.findSubMaterial(createdId),
+          "unreferenced Sub-material was not deleted");
+  editor::undo(&document);
+  require(library.findSubMaterial(createdId),
+          "undo did not restore the deleted Sub-material");
+  editor::redo(&document);
+  require(!library.findSubMaterial(createdId),
+          "redo did not delete the Sub-material again");
+
+  editor::ProcMaterialLibrary reloaded;
+  reloaded.load(root / "Resources.yaml");
+  require(!reloaded.findSubMaterial(createdId),
+          "authoring changes were not saved to the ProcMaterial YAML file");
+}
 }  // namespace
 
 int main() {
@@ -130,6 +253,7 @@ int main() {
   fs::create_directories(root);
   try {
     libraryDiscoversTwoLevelsAndSelectionIsUndoable(root);
+    authoringActionsAreSavedUndoableAndProtectReferences(root);
     fs::remove_all(root);
     std::cout << "Sub-material picker coverage passed\n";
     return 0;

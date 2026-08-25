@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <sstream>
 
 #include <core/RegularPolygon.h>
 #include <core/CirclePolygon.h>
@@ -12,6 +13,7 @@
 #include "Defines.h"
 #include "Actions.h"
 #include "EditorException.h"
+#include "ProcMaterialLibrary.h"
 
 namespace editor {
 using namespace std;
@@ -666,6 +668,67 @@ bool setPrimitiveSubMaterial(
       break;
   }
   primitive->setProperties(properties);
+  return true;
+}
+
+bool createSubMaterial(
+    Document*, ProcMaterialLibrary* library,
+    string const& resourceName, string const& displayName,
+    uint32_t materialIndex, vector<float> const& paramValues,
+    array<float, 3> const& baseColour, string* createdId) {
+  auto id = library->createSubMaterial(
+      resourceName, displayName, materialIndex, paramValues, baseColour);
+  if (createdId) *createdId = move(id);
+  return true;
+}
+
+bool renameSubMaterial(
+    Document*, ProcMaterialLibrary* library,
+    string const& subMaterialId, string const& displayName) {
+  library->renameSubMaterial(subMaterialId, displayName);
+  return true;
+}
+
+bool editSubMaterial(
+    Document*, ProcMaterialLibrary* library,
+    string const& subMaterialId, vector<float> const& paramValues,
+    array<float, 3> const& baseColour) {
+  library->editSubMaterial(subMaterialId, paramValues, baseColour);
+  return true;
+}
+
+string subMaterialDeletionBlockedReason(Document* doc, string const& subMaterialId) {
+  if (!doc || !doc->isActive()) return {};
+  ostringstream report;
+  uint32_t index{0};
+  for (auto const* primitive : doc->getWorld()->getPrimitives()) {
+    auto const& properties = primitive->getProperties();
+    vector<string> surfaces;
+    if (properties.floorMaterialId == subMaterialId) surfaces.push_back("floor");
+    if (properties.ceilingMaterialId == subMaterialId) surfaces.push_back("ceiling");
+    if (properties.wallMaterialId == subMaterialId) surfaces.push_back("wall");
+    if (!surfaces.empty()) {
+      if (report.tellp() > 0) report << "; ";
+      report << "Primitive " << index << " (";
+      for (size_t i = 0; i < surfaces.size(); ++i) {
+        if (i) report << ", ";
+        report << surfaces[i];
+      }
+      report << ')';
+    }
+    ++index;
+  }
+  if (report.tellp() == 0) return {};
+  return "Sub-material '" + subMaterialId + "' is still referenced by " + report.str();
+}
+
+bool deleteSubMaterial(
+    Document* doc, ProcMaterialLibrary* library,
+    string const& subMaterialId, string* blockedReason) {
+  auto reason = subMaterialDeletionBlockedReason(doc, subMaterialId);
+  if (blockedReason) *blockedReason = reason;
+  if (!reason.empty()) return false;
+  library->deleteSubMaterial(subMaterialId);
   return true;
 }
 

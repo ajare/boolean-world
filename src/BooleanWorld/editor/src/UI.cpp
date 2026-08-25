@@ -25,6 +25,7 @@
 #include <core/MeshPrimitive.h>
 #include <core/Defines.h>
 #include <core/DynamicWorldDataGenerator.h>
+#include <common/MaterialRegistry.h>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 
@@ -2648,6 +2649,69 @@ void renderEditPrimitiveSettings(editor::Document* doc, bw::core::Primitive* pri
   }
 }
 
+struct SubMaterialAuthoringState {
+  char name[256]{};
+  uint32_t materialIndex{0};
+  vector<float> params;
+  array<float, 3> colour{};
+  string editingId;
+  string deletionReport;
+};
+
+void setTechniqueDefaults(
+    SubMaterialAuthoringState& state,
+    bw::core::TechniqueSchema const& schema) {
+  state.materialIndex = schema.materialIndex;
+  state.params.clear();
+  for (auto const& parameter : schema.parameters) {
+    state.params.push_back(parameter.defaultValue);
+  }
+  if (schema.materialIndex < bw::common::MaterialNames.size()) {
+    state.colour = get<2>(bw::common::MaterialNames[schema.materialIndex]);
+  } else {
+    state.colour = {0.5f, 0.5f, 0.5f};
+  }
+}
+
+void renderSubMaterialFields(
+    SubMaterialAuthoringState& state,
+    bw::core::ProcMaterialData const& data, bool chooseTechnique) {
+  if (chooseTechnique) {
+    auto schema = find_if(data.techniqueSchemas.begin(), data.techniqueSchemas.end(),
+                          [&](auto const& value) {
+                            return value.materialIndex == state.materialIndex;
+                          });
+    string preview = "Technique " + to_string(state.materialIndex);
+    if (state.materialIndex < bw::common::MaterialNames.size()) {
+      preview = string(get<0>(bw::common::MaterialNames[state.materialIndex]));
+    }
+    if (ImGui::BeginCombo("Technique", preview.c_str())) {
+      for (auto const& candidate : data.techniqueSchemas) {
+        string name = "Technique " + to_string(candidate.materialIndex);
+        if (candidate.materialIndex < bw::common::MaterialNames.size()) {
+          name = string(get<0>(bw::common::MaterialNames[candidate.materialIndex]));
+        }
+        if (ImGui::Selectable(name.c_str(), candidate.materialIndex == state.materialIndex)) {
+          setTechniqueDefaults(state, candidate);
+        }
+      }
+      ImGui::EndCombo();
+    }
+    if (schema == data.techniqueSchemas.end()) return;
+  }
+
+  ImGui::InputText("Name", state.name, sizeof(state.name));
+  auto const* schema = data.findTechniqueSchema(state.materialIndex);
+  if (schema) {
+    for (size_t i = 0; i < schema->parameters.size() && i < state.params.size(); ++i) {
+      auto const& parameter = schema->parameters[i];
+      ImGui::SliderFloat(parameter.name.c_str(), &state.params[i],
+                         parameter.minimum, parameter.maximum);
+    }
+  }
+  ImGui::ColorEdit3("Base colour", state.colour.data());
+}
+
 bool renderSubMaterialPicker(
     char const* label, string* subMaterialId, editor::Document* doc,
     bw::core::Primitive* primitive, editor::PrimitiveMaterialSurface surface) {
@@ -2695,6 +2759,94 @@ bool renderSubMaterialPicker(
           return setPrimitiveSubMaterial(actionDoc, primitive, surface, id);
         });
     return true;
+  }
+
+  static map<string, SubMaterialAuthoringState> authoringStates;
+  auto& state = authoringStates[label];
+  auto newPopup = format("Create Sub-material##{}", label);
+  auto editPopup = format("Edit Sub-material##{}", label);
+
+  if (ImGui::Button(format("New##{}", label).c_str()) &&
+      !catalog.data.techniqueSchemas.empty()) {
+    state = {};
+    snprintf(state.name, sizeof(state.name), "New Sub-material");
+    setTechniqueDefaults(state, catalog.data.techniqueSchemas.front());
+    ImGui::OpenPopup(newPopup.c_str());
+  }
+  ImGui::SameLine();
+  bool hasSelection = selectedSubMaterial >= 0;
+  if (!hasSelection) ImGui::BeginDisabled();
+  if (ImGui::Button(format("Edit##{}", label).c_str())) {
+    auto const& selected = catalog.data.subMaterials[selectedSubMaterial];
+    state = {};
+    snprintf(state.name, sizeof(state.name), "%s", selected.displayName.c_str());
+    state.materialIndex = selected.materialIndex;
+    state.params = selected.paramValues;
+    state.colour = selected.baseColour;
+    state.editingId = selected.id;
+    ImGui::OpenPopup(editPopup.c_str());
+  }
+  ImGui::SameLine();
+  if (ImGui::Button(format("Delete##{}", label).c_str())) {
+    auto const id = catalog.data.subMaterials[selectedSubMaterial].id;
+    state.deletionReport = subMaterialDeletionBlockedReason(doc, id);
+    if (state.deletionReport.empty()) {
+      transactUndoableActionAtomically(
+          doc, "Delete Sub-material", [id](Document* actionDoc) {
+            return deleteSubMaterial(actionDoc, &procMaterialLibrary(), id);
+          });
+      if (*subMaterialId == id) subMaterialId->clear();
+    }
+  }
+  if (!hasSelection) ImGui::EndDisabled();
+  if (!state.deletionReport.empty()) {
+    ImGui::TextWrapped("%s", state.deletionReport.c_str());
+  }
+
+  if (ImGui::BeginPopupModal(newPopup.c_str(), nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    renderSubMaterialFields(state, catalog.data, true);
+    if (ImGui::Button("Create")) {
+      auto name = string(state.name);
+      auto params = state.params;
+      auto colour = state.colour;
+      auto resourceName = catalog.resourceName;
+      auto materialIndex = state.materialIndex;
+      string createdId;
+      transactUndoableActionAtomically(
+          doc, "Create Sub-material", [&](Document* actionDoc) {
+            if (!createSubMaterial(actionDoc, &procMaterialLibrary(), resourceName,
+                                   name, materialIndex, params, colour, &createdId)) {
+              return false;
+            }
+            return setPrimitiveSubMaterial(actionDoc, primitive, surface, createdId);
+          });
+      *subMaterialId = createdId;
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+  }
+
+  if (ImGui::BeginPopupModal(editPopup.c_str(), nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    renderSubMaterialFields(state, catalog.data, false);
+    if (ImGui::Button("Save")) {
+      auto id = state.editingId;
+      auto name = string(state.name);
+      auto params = state.params;
+      auto colour = state.colour;
+      transactUndoableActionAtomically(
+          doc, "Edit Sub-material", [&](Document* actionDoc) {
+            renameSubMaterial(actionDoc, &procMaterialLibrary(), id, name);
+            return editSubMaterial(actionDoc, &procMaterialLibrary(), id, params, colour);
+          });
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
   }
   return false;
 }

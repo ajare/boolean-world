@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <set>
 #include <string>
@@ -12,6 +13,8 @@
 #include "Document.h"
 
 namespace editor {
+
+class ProcMaterialLibrary;
 
 // Raw, toolkit-independent input consumed by EditorInteraction. Screen-space
 // values are retained because the existing transform gestures are measured in
@@ -281,6 +284,29 @@ enum class PrimitiveMaterialSurface {
 bool setPrimitiveSubMaterial(
     Document* doc, bw::core::Primitive* primitive,
     PrimitiveMaterialSurface surface, std::string const& subMaterialId);
+
+// ProcMaterial authoring actions save immediately through ProcMaterialLibrary's
+// bw::core::Serializer path. Rename deliberately changes only the display name;
+// the stable id held by Primitives never changes.
+bool createSubMaterial(
+    Document* doc, ProcMaterialLibrary* library,
+    std::string const& resourceName, std::string const& displayName,
+    uint32_t materialIndex, std::vector<float> const& paramValues,
+    std::array<float, 3> const& baseColour, std::string* createdId = nullptr);
+bool renameSubMaterial(
+    Document* doc, ProcMaterialLibrary* library,
+    std::string const& subMaterialId, std::string const& displayName);
+bool editSubMaterial(
+    Document* doc, ProcMaterialLibrary* library,
+    std::string const& subMaterialId, std::vector<float> const& paramValues,
+    std::array<float, 3> const& baseColour);
+// Empty means deletion is allowed. Otherwise lists every Primitive index and
+// referenced surface in the currently-open Document.
+std::string subMaterialDeletionBlockedReason(
+    Document* doc, std::string const& subMaterialId);
+bool deleteSubMaterial(
+    Document* doc, ProcMaterialLibrary* library,
+    std::string const& subMaterialId, std::string* blockedReason = nullptr);
 
 void setPrimitiveDefaultMaterials(bw::core::Primitive* prim);
 
