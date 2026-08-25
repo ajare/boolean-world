@@ -155,6 +155,9 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
 
   std::vector<uint32_t> wallCounts(wallRenderer.dataProvider->getNumMeshes());
   for (auto const& wall : walls) {
+    if (!wall.visible) {
+      continue;
+    }
     auto const& properties = worldData.palette[wall.paletteIndex];
     auto hash = properties.wallMaterialDef.data.hash(
         properties.wallMaterialIndex);
@@ -164,6 +167,9 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
   wallRenderer.dataProvider->updateInternals(wallCounts);
 
   for (auto const& wall : walls) {
+    if (!wall.visible) {
+      continue;
+    }
     auto const orientation = bw::app::orientArrangementWall(worldData, wall);
     auto const& properties = worldData.palette[wall.paletteIndex];
     auto hash = properties.wallMaterialDef.data.hash(

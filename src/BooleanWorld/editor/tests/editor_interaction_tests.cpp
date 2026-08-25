@@ -1860,6 +1860,69 @@ void meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly() {
           "undo did not restore the edge's default collides = true");
 }
 
+void meshEdgeVisibleTogglesAndCommitsToThePrimitive() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+  auto edgeIndex = mesh->getFirstEdgeIndex();
+
+  require(document.isActiveMeshEdgeVisibilityEditable(edgeIndex),
+          "a freshly authored mesh edge (used by exactly one polygon) was not reported as visibility-editable");
+  require(document.getActiveMeshEdgeVisible(edgeIndex),
+          "a freshly authored mesh edge did not default to visible = true");
+
+  require(document.setActiveMeshEdgeVisible(edgeIndex, false),
+          "setActiveMeshEdgeVisible was refused on an editable edge");
+  require(!document.getActiveMeshEdgeVisible(edgeIndex),
+          "setActiveMeshEdgeVisible(false) did not take effect");
+
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto committedProxy = primitive->createEditingProxy();
+  require(!committedProxy->getEdgeVisible(committedProxy->getFirstEdgeIndex()),
+          "the visible override did not commit back to the MeshPrimitive");
+}
+
+void meshEdgeVisibleToggleIsOneUndoEntryAndUndoesCleanly() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshSubMode = editor::Settings::MeshSubMode::Edge;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+  auto edgeIndex = mesh->getFirstEdgeIndex();
+  document.setModified(false);
+  auto const undoLevelsBefore = editor::getUndoLevels();
+
+  editor::transactUndoableAction(
+      &document, "Set Mesh Edge Visible",
+      std::bind(editor::setMeshEdgeVisible, std::placeholders::_1, edgeIndex, false));
+
+  require(editor::getUndoLevels() == undoLevelsBefore + 1,
+          "toggling a mesh edge's visible override produced more than one undo entry");
+  require(document.isModified(), "the toggle did not mark the Document modified");
+
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto committedProxy = primitive->createEditingProxy();
+  require(!committedProxy->getEdgeVisible(committedProxy->getFirstEdgeIndex()),
+          "the committed MeshPrimitive geometry did not reflect the toggle");
+
+  editor::undo(&document);
+  require(editor::getUndoLevels() == undoLevelsBefore,
+          "undo after a mesh edge visible toggle did not remove exactly one entry");
+
+  auto* undonePrimitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto undoneProxy = undonePrimitive->createEditingProxy();
+  require(undoneProxy->getEdgeVisible(undoneProxy->getFirstEdgeIndex()),
+          "undo did not restore the edge's default visible = true");
+}
+
 void drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep() {
   editor::Document document;
   auto settings = meshDrawSettings();
@@ -3226,6 +3289,8 @@ int main() {
     edgeSplitIsOneUndoEntry();
     meshEdgeCollidesTogglesAndCommitsToThePrimitive();
     meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly();
+    meshEdgeVisibleTogglesAndCommitsToThePrimitive();
+    meshEdgeVisibleToggleIsOneUndoEntryAndUndoesCleanly();
     drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep();
     drawClicksPlaceGridSnappedVerticesAndRefuseToCloseBelowThree();
     backspaceStepsBackAndEscapeIsTwoStage();

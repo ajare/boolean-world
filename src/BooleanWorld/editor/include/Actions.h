@@ -221,6 +221,10 @@ bool setMeshVertexPosition(Document* doc, uint32_t vertexIndex, wp::Vector2 cons
 // External - see #244/#245, ADR-0022.
 bool setMeshEdgeCollides(Document* doc, uint32_t edgeIndex, bool collides);
 
+// Sets the active mesh edge's wall-render override (Document::
+// setActiveMeshEdgeVisible). Same External-only gating as above.
+bool setMeshEdgeVisible(Document* doc, uint32_t edgeIndex, bool visible);
+
 // Restores the relationship between the active mesh's Primitive position
 // and size and its geometry ("Recentre mesh").
 bool recentreActiveMesh(Document* doc);

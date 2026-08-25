@@ -216,6 +216,12 @@ public:
   // Refused (returning false, leaving the mesh unchanged) on an edge whose
   // connectivity is not External.
   bool setActiveMeshEdgeCollides(uint32_t edgeIndex, bool collides);
+
+  // Same as the collides trio above, for the wall-render override.
+  [[nodiscard]] bool getActiveMeshEdgeVisible(uint32_t edgeIndex) const;
+  [[nodiscard]] bool isActiveMeshEdgeVisibilityEditable(uint32_t edgeIndex) const;
+  bool setActiveMeshEdgeVisible(uint32_t edgeIndex, bool visible);
+
   [[nodiscard]] std::vector<uint32_t> getHoveredMeshSubObjectIndices(
       wp::Vector2 const& worldPosition, Settings const& settings) const;
   [[nodiscard]] std::set<uint32_t> getMeshSubObjectIndicesInBounds(

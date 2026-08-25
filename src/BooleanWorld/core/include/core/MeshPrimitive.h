@@ -175,6 +175,12 @@ public:
   // the edge's connectivity is not External.
   bool setEdgeCollides(uint32_t edgeIndex, bool collides);
 
+  // Effective wall-render override for a Mesh edge. Same External-only
+  // gating as getEdgeCollides/isEdgeCollisionEditable/setEdgeCollides above.
+  [[nodiscard]] bool getEdgeVisible(uint32_t edgeIndex) const;
+  [[nodiscard]] bool isEdgeVisibilityEditable(uint32_t edgeIndex) const;
+  bool setEdgeVisible(uint32_t edgeIndex, bool visible);
+
   // Divides one Shell or Island along a chord between two of its
   // non-adjacent vertices. The chord must not touch or cross any existing
   // Edge except at its endpoints. Direct Holes remain with the side that

@@ -77,6 +77,7 @@ PrimitiveContours ConvertPrimitiveToContours(
   }
 
   result.edgeOverrides.resize(result.contours.size());
+  result.edgeVisibleOverrides.resize(result.contours.size());
   for (size_t c = 0; c < result.contours.size(); ++c) {
     auto const& contour = result.contours[c];
     auto n = contour.size();
@@ -84,12 +85,16 @@ PrimitiveContours ConvertPrimitiveToContours(
       continue;
     }
     result.edgeOverrides[c].resize(n);
+    result.edgeVisibleOverrides[c].resize(n);
     for (size_t i = 0; i < n; ++i) {
       auto j = (i + 1) % n;
       auto useCount = edgeUseCounts[MakeEdgeKey(contour[i], contour[j])];
       if (useCount == 1) {
+        auto rawFlags = rawEdgeFlagsPerContour[c][i];
         result.edgeOverrides[c][i] = std::optional<bool>(
-            (rawEdgeFlagsPerContour[c][i] & BW_MESH_EDGE_COLLIDES_FLAG) != 0);
+            (rawFlags & BW_MESH_EDGE_COLLIDES_FLAG) != 0);
+        result.edgeVisibleOverrides[c][i] = std::optional<bool>(
+            (rawFlags & BW_MESH_EDGE_INVISIBLE_FLAG) == 0);
       }
     }
   }
@@ -109,7 +114,8 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
                       primitive->getPriority(),
                       primitive->getId(),
                       primitive->getProperties(),
-                      std::move(contours.edgeOverrides)});
+                      std::move(contours.edgeOverrides),
+                      std::move(contours.edgeVisibleOverrides)});
   }
   return result;
 }

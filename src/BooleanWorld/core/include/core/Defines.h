@@ -35,6 +35,11 @@ typedef int64_t frame_number_type;
 // Per-edge flags stored on a MeshPrimitive Vertex, describing the edge FROM
 // that vertex TO THE NEXT vertex in its Ring (the "outgoing edge").
 #define BW_MESH_EDGE_COLLIDES_FLAG 0x0001  // This edge participates in wall collision, when External.
+// Deliberately inverted polarity (set = hidden): files serialized before
+// this bit existed have it clear, so they read as visible with no
+// migration needed, the same way files predating BW_MESH_EDGE_COLLIDES_FLAG
+// itself already read as colliding.
+#define BW_MESH_EDGE_INVISIBLE_FLAG 0x0002  // This edge's wall does not render, when External.
 
 // This is the maximum size that an interpolator for distance can take.  In particular this is used for influence zones.
 #define BW_INTERPOLATOR_MAX_DISTANCE 500.0f

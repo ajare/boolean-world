@@ -45,11 +45,13 @@ struct Edge {
   // Left and right faces relative to vi[0] -> vi[1].
   int fi[2] = {-1, -1};
   std::vector<WindingDelta> windingDeltas;
-  // Wall collision override (#245): set from the first contributing
-  // MeshPrimitive-sourced segment that carries one. Non-Mesh segments never
-  // carry a value, so this naturally prefers a Mesh-sourced override over a
-  // coincident non-Mesh edge without needing to special-case primitive kind.
+  // Wall collision/visibility overrides (#245, later extended to
+  // visibility): set from the first contributing MeshPrimitive-sourced
+  // segment that carries one. Non-Mesh segments never carry a value, so
+  // this naturally prefers a Mesh-sourced override over a coincident
+  // non-Mesh edge without needing to special-case primitive kind.
   std::optional<bool> collidesOverride;
+  std::optional<bool> visibleOverride;
 
   bool doubleSided() const {
     return fi[0] >= 0 && fi[1] >= 0;
@@ -86,11 +88,12 @@ struct Face {
 struct ContourInput {
   Contour contour;
   uint32_t primitiveIndex{~0u};
-  // Per-edge wall collision override (#245), parallel to contour: index i is
-  // the override for the edge from contour[i] to contour[(i+1)%size()]. May
-  // be shorter than contour, or empty (meaning no overrides at all); any
+  // Per-edge wall collision/visibility overrides, parallel to contour: index
+  // i is the override for the edge from contour[i] to contour[(i+1)%size()].
+  // May be shorter than contour, or empty (meaning no overrides at all); any
   // out-of-range index is treated as std::nullopt.
   std::vector<std::optional<bool>> edgeOverrides{};
+  std::vector<std::optional<bool>> edgeVisibleOverrides{};
 };
 
 struct PSLG {
@@ -147,6 +150,11 @@ struct ArrangementWall {
   // the two adjacent solid faces' floor/ceiling ranges (min ceilingZ minus
   // max floorZ). Meaningless for Border, which always blocks regardless.
   float clearance;
+  // Whether this wall renders. Resolved directly from the source edge's
+  // visibleOverride (defaulting true) - unlike collision, visibility needs
+  // no world-level parameter, so it is resolved here rather than deferred
+  // to ArrangementWorldData.
+  bool visible{true};
 };
 
 struct ArrangementPrimitive {
@@ -156,23 +164,25 @@ struct ArrangementPrimitive {
   uint8_t priority;
   uint32_t primitiveIndex;
   PrimitivePropertySet properties{};
-  // Per-contour, per-edge wall collision override (#245), parallel to
+  // Per-contour, per-edge wall collision/visibility overrides, parallel to
   // contours: contourEdgeOverrides[c][i] is the override for the edge from
   // contours[c][i] to contours[c][(i+1)%contours[c].size()]. May be shorter
   // than contours, a contour's inner vector may be shorter than its vertex
   // count, or the whole field may be empty (meaning no overrides at all);
-  // any out-of-range index is treated as std::nullopt. Trailing field with a
-  // default so existing aggregate-initializer call sites keep compiling.
+  // any out-of-range index is treated as std::nullopt. Trailing fields with
+  // defaults so existing aggregate-initializer call sites keep compiling.
   std::vector<std::vector<std::optional<bool>>> contourEdgeOverrides{};
+  std::vector<std::vector<std::optional<bool>>> contourEdgeVisibleOverrides{};
 };
 
 struct ArrangementEdge {
   uint32_t v[2];
   // Left and right faces relative to v[0] -> v[1].
   uint32_t face[2];
-  // Wall collision override (#245), propagated from the PSLG Edge that
+  // Wall collision/visibility overrides, propagated from the PSLG Edge that
   // produced this arrangement edge.
   std::optional<bool> collidesOverride;
+  std::optional<bool> visibleOverride;
 };
 
 struct ArrangementFace {

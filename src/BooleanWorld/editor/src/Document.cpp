@@ -562,6 +562,25 @@ bool Document::setActiveMeshEdgeCollides(uint32_t edgeIndex, bool collides) {
   return true;
 }
 
+bool Document::getActiveMeshEdgeVisible(uint32_t edgeIndex) const {
+  return mActiveMesh && mActiveMesh->getEdgeVisible(edgeIndex);
+}
+
+bool Document::isActiveMeshEdgeVisibilityEditable(uint32_t edgeIndex) const {
+  return mActiveMesh && mActiveMesh->isEdgeVisibilityEditable(edgeIndex);
+}
+
+bool Document::setActiveMeshEdgeVisible(uint32_t edgeIndex, bool visible) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) {
+    return false;
+  }
+  if (!mActiveMesh->setEdgeVisible(edgeIndex, visible)) {
+    return false;
+  }
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
+  return true;
+}
+
 vector<uint32_t> Document::getHoveredMeshSubObjectIndices(
     wp::Vector2 const& worldPosition, Settings const& settings) const {
   vector<uint32_t> result;

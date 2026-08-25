@@ -101,6 +101,45 @@ void meshExternalEdgeOverrideIsExtractedAtTheRightIndex() {
   }
 }
 
+void meshExternalEdgeVisibleOverrideIsExtractedAtTheRightIndex() {
+  for (bool authoredValue : {true, false}) {
+    auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromComplexPolygons(
+        Primitive::Operation::Union, {rectangle(0.0f, 0.0f, 10.0f, 10.0f)}));
+    auto proxy = primitive->createEditingProxy();
+    auto edgeIndex = proxy->getFirstEdgeIndex();
+    require(proxy->isEdgeVisibilityEditable(edgeIndex),
+            "the single-shell fixture's edge was not External/visibility-editable");
+    auto edge = proxy->getEdge(edgeIndex);
+    auto aPos = proxy->getVertex(edge.getFirstVertex()).getPosition();
+    auto bPos = proxy->getVertex(edge.getSecondVertex()).getPosition();
+
+    require(proxy->setEdgeVisible(edgeIndex, authoredValue),
+            "setEdgeVisible was refused on an External edge");
+    proxy->commitTo(*primitive);
+
+    auto converted = ConvertPrimitiveToContours(*primitive);
+    auto [c, i] = findEdge(converted.contours, aPos, bPos);
+    require(c != ~size_t(0), "the authored edge could not be located in the converted contours");
+    require(c < converted.edgeVisibleOverrides.size() && i < converted.edgeVisibleOverrides[c].size(),
+            "edgeVisibleOverrides did not cover the authored edge's index");
+    require(converted.edgeVisibleOverrides[c][i].has_value(),
+            "an External edge did not produce a visible override value");
+    require(*converted.edgeVisibleOverrides[c][i] == authoredValue,
+            "the extracted override did not match the authored visible value");
+
+    std::vector<Primitive*> primitives{primitive.get()};
+    auto snapshot = SnapshotPrimitives(primitives);
+    require(snapshot.size() == 1, "SnapshotPrimitives did not snapshot the primitive");
+    auto const& arrangementPrimitive = snapshot.front();
+    require(c < arrangementPrimitive.contourEdgeVisibleOverrides.size() &&
+                i < arrangementPrimitive.contourEdgeVisibleOverrides[c].size(),
+            "SnapshotPrimitives did not carry contourEdgeVisibleOverrides through");
+    require(arrangementPrimitive.contourEdgeVisibleOverrides[c][i].has_value() &&
+                *arrangementPrimitive.contourEdgeVisibleOverrides[c][i] == authoredValue,
+            "SnapshotPrimitives lost or altered the authored visible override value");
+  }
+}
+
 void meshInternalEdgeProducesNoOverride() {
   // Two Shells sharing a boundary weld into one Internal edge along x = 0,
   // per the #244 fixture (mesh_primitive_geometry_proxy_tests.cpp).
@@ -120,6 +159,10 @@ void meshInternalEdgeProducesNoOverride() {
                       i < converted.edgeOverrides[c].size() &&
                       converted.edgeOverrides[c][i].has_value();
   require(!hasOverride, "an Internal edge produced a collides override");
+  bool hasVisibleOverride = c < converted.edgeVisibleOverrides.size() &&
+                             i < converted.edgeVisibleOverrides[c].size() &&
+                             converted.edgeVisibleOverrides[c][i].has_value();
+  require(!hasVisibleOverride, "an Internal edge produced a visible override");
 
   // An outer (External) edge on the same primitive still gets one, sourced
   // from its default-true authored state.
@@ -129,6 +172,10 @@ void meshInternalEdgeProducesNoOverride() {
               converted.edgeOverrides[oc][oi].has_value() &&
               *converted.edgeOverrides[oc][oi] == true,
           "an untouched External edge did not default to a collides = true override");
+  require(oc < converted.edgeVisibleOverrides.size() && oi < converted.edgeVisibleOverrides[oc].size() &&
+              converted.edgeVisibleOverrides[oc][oi].has_value() &&
+              *converted.edgeVisibleOverrides[oc][oi] == true,
+          "an untouched External edge did not default to a visible = true override");
 }
 
 void nonMeshPrimitiveProducesNoOverridesRegardlessOfVertexData() {
@@ -141,11 +188,15 @@ void nonMeshPrimitiveProducesNoOverridesRegardlessOfVertexData() {
   require(!converted.contours.empty(), "the rectangle fixture produced no contours at all");
   require(converted.edgeOverrides.empty(),
           "a non-MeshPrimitive produced non-empty edgeOverrides");
+  require(converted.edgeVisibleOverrides.empty(),
+          "a non-MeshPrimitive produced non-empty edgeVisibleOverrides");
 
   std::vector<Primitive*> primitives{rectangle.get()};
   auto snapshot = SnapshotPrimitives(primitives);
   require(snapshot.size() == 1 && snapshot.front().contourEdgeOverrides.empty(),
           "SnapshotPrimitives produced overrides for a non-MeshPrimitive");
+  require(snapshot.front().contourEdgeVisibleOverrides.empty(),
+          "SnapshotPrimitives produced visible overrides for a non-MeshPrimitive");
 }
 
 }  // namespace
@@ -153,6 +204,7 @@ void nonMeshPrimitiveProducesNoOverridesRegardlessOfVertexData() {
 int main() {
   try {
     meshExternalEdgeOverrideIsExtractedAtTheRightIndex();
+    meshExternalEdgeVisibleOverrideIsExtractedAtTheRightIndex();
     meshInternalEdgeProducesNoOverride();
     nonMeshPrimitiveProducesNoOverridesRegardlessOfVertexData();
     std::cout << "ConvertPrimitiveToContours/SnapshotPrimitives extract the mesh wall collision override\n";

@@ -17,13 +17,15 @@ class World;
 // carried; the arrangement derives them.
 struct PrimitiveContours {
   std::vector<arr::Contour> contours;
-  // Per-contour, per-edge wall collision override (#245), parallel to
-  // contours: edgeOverrides[c][i] is the override for the edge from
-  // contours[c][i] to contours[c][(i+1)%contours[c].size()]. Populated only
-  // for MeshPrimitives, sourced from External edges' authored collides flag
-  // (see #244, ADR-0022); every other Primitive kind, and every non-External
-  // edge of a MeshPrimitive, leaves std::nullopt in place.
+  // Per-contour, per-edge wall collision/visibility overrides, parallel to
+  // contours: edgeOverrides[c][i]/edgeVisibleOverrides[c][i] is the override
+  // for the edge from contours[c][i] to contours[c][(i+1)%contours[c].size()].
+  // Populated only for MeshPrimitives, sourced from External edges' authored
+  // collides/visible flags (see #244/#246, ADR-0022); every other Primitive
+  // kind, and every non-External edge of a MeshPrimitive, leaves
+  // std::nullopt in place.
   std::vector<std::vector<std::optional<bool>>> edgeOverrides;
+  std::vector<std::vector<std::optional<bool>>> edgeVisibleOverrides;
 };
 
 [[nodiscard]] BW_API PrimitiveContours ConvertPrimitiveToContours(

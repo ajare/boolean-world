@@ -386,6 +386,10 @@ bool setMeshEdgeCollides(Document* doc, uint32_t edgeIndex, bool collides) {
   return doc->setActiveMeshEdgeCollides(edgeIndex, collides);
 }
 
+bool setMeshEdgeVisible(Document* doc, uint32_t edgeIndex, bool visible) {
+  return doc->setActiveMeshEdgeVisible(edgeIndex, visible);
+}
+
 bool deleteMeshSubObjects(
     Document* doc, Settings::MeshSubMode subMode, set<uint32_t> const& indices) {
   return doc->deleteMeshSubObjects(subMode, indices) > 0;

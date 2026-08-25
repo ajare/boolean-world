@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <core/BinarySerializer.h>
+#include <core/Defines.h>
 #include <core/MeshPrimitive.h>
 #include <core/RectanglePolygon.h>
 #include <core/SerializationWorkData.h>
@@ -323,6 +324,82 @@ void authoredCollidesValuesRoundTripThroughSaveAndLoad() {
           "authored collides values did not round-trip through binary save/load");
 }
 
+void authoredVisibleValuesRoundTripThroughSaveAndLoad() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
+  auto proxy = primitive->createEditingProxy();
+  auto edgeIndex = proxy->getFirstEdgeIndex();
+  require(proxy->setEdgeVisible(edgeIndex, false),
+          "could not author a non-default visible value before committing");
+  proxy->commitTo(*primitive);
+
+  auto const yaml = serializeYaml(*primitive);
+  auto loaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1.0f, -1.0f, 1.0f, 1.0f), {}}}));
+  require(deserializeYaml(yaml, *loaded), "authored MeshPrimitive did not deserialize");
+
+  auto loadedProxy = loaded->createEditingProxy();
+  size_t visibleCount = 0;
+  size_t hiddenCount = 0;
+  for (auto edge = loadedProxy->getFirstEdgeIndex();
+       !loadedProxy->edgeIndexIterationFinished(edge);
+       edge = loadedProxy->getNextEdgeIndex(edge)) {
+    if (loadedProxy->getEdgeVisible(edge)) {
+      ++visibleCount;
+    } else {
+      ++hiddenCount;
+    }
+  }
+  require(visibleCount == 3 && hiddenCount == 1,
+          "authored visible values did not round-trip through YAML save/load");
+
+  auto const binary = serializeBinary(*primitive);
+  auto binaryLoaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1.0f, -1.0f, 1.0f, 1.0f), {}}}));
+  require(deserializeBinary(binary, *binaryLoaded), "authored MeshPrimitive did not deserialize from binary");
+  auto binaryProxy = binaryLoaded->createEditingProxy();
+  visibleCount = 0;
+  hiddenCount = 0;
+  for (auto edge = binaryProxy->getFirstEdgeIndex();
+       !binaryProxy->edgeIndexIterationFinished(edge);
+       edge = binaryProxy->getNextEdgeIndex(edge)) {
+    if (binaryProxy->getEdgeVisible(edge)) {
+      ++visibleCount;
+    } else {
+      ++hiddenCount;
+    }
+  }
+  require(visibleCount == 3 && hiddenCount == 1,
+          "authored visible values did not round-trip through binary save/load");
+}
+
+// Regression test for the migration hazard this feature was specifically
+// designed to avoid: a MeshPrimitive saved by code that only knew about the
+// collides bit (#244/#245/#246) always wrote raw flags values of exactly 0
+// or 1 - the visible bit never existed, so it was never set. Because that
+// bit is stored with inverted polarity (see BW_MESH_EDGE_INVISIBLE_FLAG in
+// Defines.h), both possible legacy raw values must still read visible = true
+// today, with no explicit migration code and no data loss.
+void legacyCollidesOnlyRawFlagsValuesAlwaysReadAsVisible() {
+  for (uint32_t legacyRawFlags : {0u, 1u}) {
+    auto ring = square(-2.0f, -2.0f, 2.0f, 2.0f);
+    for (auto& vertex : ring) {
+      vertex.edgeFlags = legacyRawFlags;
+    }
+    auto primitive = std::unique_ptr<MeshPrimitive>(
+        MeshPrimitive::fromTree(Primitive::Operation::Union, {{ring, {}}}));
+    auto proxy = primitive->createEditingProxy();
+    for (auto edge = proxy->getFirstEdgeIndex();
+         !proxy->edgeIndexIterationFinished(edge);
+         edge = proxy->getNextEdgeIndex(edge)) {
+      require(proxy->getEdgeVisible(edge),
+              "a legacy collides-only raw flags value did not read as visible = true");
+      require(proxy->getEdgeCollides(edge) == ((legacyRawFlags & BW_MESH_EDGE_COLLIDES_FLAG) != 0),
+              "a legacy collides-only raw flags value's collides bit was not read correctly");
+    }
+  }
+}
+
 void loadingPreFeatureDataDefaultsToCollidesTrue() {
   auto source = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
@@ -409,6 +486,8 @@ int main() {
     failedReadsLeaveTheTargetUnchangedAndRejectLegacyInput();
     aggregateLimitsRejectOversizedInputBeforeCommit();
     authoredCollidesValuesRoundTripThroughSaveAndLoad();
+    authoredVisibleValuesRoundTripThroughSaveAndLoad();
+    legacyCollidesOnlyRawFlagsValuesAlwaysReadAsVisible();
     loadingPreFeatureDataDefaultsToCollidesTrue();
     proceduralPrimitiveSchemaRemainsFlat();
     shippedMeshFixtureUsesTheTreeSchema();

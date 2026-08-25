@@ -93,6 +93,7 @@ struct Segment {
   FixedPointVertex v[2];
   uint32_t primitiveIndex;
   std::optional<bool> collidesOverride;
+  std::optional<bool> visibleOverride;
 };
 
 struct RationalPoint {
@@ -206,7 +207,9 @@ vector<Segment> ExtractSegments(vector<ContourInput> const& contours) {
       if (a != b) {
         std::optional<bool> collidesOverride =
             i < input.edgeOverrides.size() ? input.edgeOverrides[i] : std::nullopt;
-        result.push_back({{a, b}, input.primitiveIndex, collidesOverride});
+        std::optional<bool> visibleOverride =
+            i < input.edgeVisibleOverrides.size() ? input.edgeVisibleOverrides[i] : std::nullopt;
+        result.push_back({{a, b}, input.primitiveIndex, collidesOverride, visibleOverride});
       }
     }
   }
@@ -789,6 +792,9 @@ PSLG BuildPSLG(
         if (segments[i].collidesOverride.has_value() && !edge.collidesOverride.has_value()) {
           edge.collidesOverride = segments[i].collidesOverride;
         }
+        if (segments[i].visibleOverride.has_value() && !edge.visibleOverride.has_value()) {
+          edge.visibleOverride = segments[i].visibleOverride;
+        }
       }
     }
   }
@@ -970,7 +976,13 @@ ArrangementResultPtr BuildArrangement(
       if (contourIndex < primitive.contourEdgeOverrides.size()) {
         edgeOverrides = primitive.contourEdgeOverrides[contourIndex];
       }
-      contours.push_back({primitive.contours[contourIndex], primitiveIndex, std::move(edgeOverrides)});
+      std::vector<std::optional<bool>> edgeVisibleOverrides;
+      if (contourIndex < primitive.contourEdgeVisibleOverrides.size()) {
+        edgeVisibleOverrides = primitive.contourEdgeVisibleOverrides[contourIndex];
+      }
+      contours.push_back(
+          {primitive.contours[contourIndex], primitiveIndex,
+           std::move(edgeOverrides), std::move(edgeVisibleOverrides)});
     }
   }
 
@@ -1212,7 +1224,8 @@ ArrangementResultPtr BuildArrangement(
     result->edges.push_back({{uint32_t(edge.vi[0]), uint32_t(edge.vi[1])},
                              {edge.fi[0] < 0 ? 0u : uint32_t(edge.fi[0] + 1),
                               edge.fi[1] < 0 ? 0u : uint32_t(edge.fi[1] + 1)},
-                             edge.collidesOverride});
+                             edge.collidesOverride,
+                             edge.visibleOverride});
   }
 
   if (stats != nullptr) {
@@ -1325,7 +1338,8 @@ vector<ArrangementWall> BuildArrangementWalls(
            properties.ceilingZ,
            solidFace.paletteIndex,
            ArrangementWallKind::Border,
-           properties.ceilingZ - properties.floorZ});
+           properties.ceilingZ - properties.floorZ,
+           edge.visibleOverride.value_or(true)});
       continue;
     }
     if (!face0.solid) {
@@ -1349,7 +1363,8 @@ vector<ArrangementWall> BuildArrangementWalls(
            max(properties0.floorZ, properties1.floorZ),
            lowerFace.paletteIndex,
            ArrangementWallKind::FloorStep,
-           clearance});
+           clearance,
+           edge.visibleOverride.value_or(true)});
     }
     if (properties0.ceilingZ != properties1.ceilingZ) {
       auto const& higherFace =
@@ -1360,7 +1375,8 @@ vector<ArrangementWall> BuildArrangementWalls(
            max(properties0.ceilingZ, properties1.ceilingZ),
            higherFace.paletteIndex,
            ArrangementWallKind::CeilingStep,
-           clearance});
+           clearance,
+           edge.visibleOverride.value_or(true)});
     }
   }
   return walls;

@@ -379,15 +379,22 @@ struct MeshPrimitiveEditingProxy::Impl {
 
   uint32_t rawEdgeFlags(uint32_t edgeIndex) const {
     auto found = edgeFlags.find(edgeIndex);
-    return found != edgeFlags.end() ? found->second : uint32_t{1};
+    return found != edgeFlags.end() ? found->second : uint32_t{BW_MESH_EDGE_COLLIDES_FLAG};
+  }
+
+  bool isEdgeExternal(uint32_t edgeIndex) const {
+    if (mesh.edgeIndexIterationFinished(edgeIndex)) return false;
+    return mesh.getEdge(edgeIndex).getConnectivity() == wp::geometry::Edge::External;
   }
 
   bool effectiveEdgeCollides(uint32_t edgeIndex) const {
-    if (mesh.edgeIndexIterationFinished(edgeIndex)) return false;
-    if (mesh.getEdge(edgeIndex).getConnectivity() != wp::geometry::Edge::External) {
-      return false;
-    }
+    if (!isEdgeExternal(edgeIndex)) return false;
     return (rawEdgeFlags(edgeIndex) & BW_MESH_EDGE_COLLIDES_FLAG) != 0;
+  }
+
+  bool effectiveEdgeVisible(uint32_t edgeIndex) const {
+    if (!isEdgeExternal(edgeIndex)) return false;
+    return (rawEdgeFlags(edgeIndex) & BW_MESH_EDGE_INVISIBLE_FLAG) == 0;
   }
 
   struct ExactPointLess {
@@ -755,8 +762,7 @@ bool MeshPrimitiveEditingProxy::getEdgeCollides(uint32_t edgeIndex) const {
 }
 
 bool MeshPrimitiveEditingProxy::isEdgeCollisionEditable(uint32_t edgeIndex) const {
-  if (mImpl->mesh.edgeIndexIterationFinished(edgeIndex)) return false;
-  return mImpl->mesh.getEdge(edgeIndex).getConnectivity() == wp::geometry::Edge::External;
+  return mImpl->isEdgeExternal(edgeIndex);
 }
 
 bool MeshPrimitiveEditingProxy::setEdgeCollides(uint32_t edgeIndex, bool collides) {
@@ -766,6 +772,26 @@ bool MeshPrimitiveEditingProxy::setEdgeCollides(uint32_t edgeIndex, bool collide
     flags |= BW_MESH_EDGE_COLLIDES_FLAG;
   } else {
     flags &= ~static_cast<uint32_t>(BW_MESH_EDGE_COLLIDES_FLAG);
+  }
+  mImpl->edgeFlags[edgeIndex] = flags;
+  return true;
+}
+
+bool MeshPrimitiveEditingProxy::getEdgeVisible(uint32_t edgeIndex) const {
+  return mImpl->effectiveEdgeVisible(edgeIndex);
+}
+
+bool MeshPrimitiveEditingProxy::isEdgeVisibilityEditable(uint32_t edgeIndex) const {
+  return mImpl->isEdgeExternal(edgeIndex);
+}
+
+bool MeshPrimitiveEditingProxy::setEdgeVisible(uint32_t edgeIndex, bool visible) {
+  if (!isEdgeVisibilityEditable(edgeIndex)) return false;
+  auto flags = mImpl->rawEdgeFlags(edgeIndex);
+  if (visible) {
+    flags &= ~static_cast<uint32_t>(BW_MESH_EDGE_INVISIBLE_FLAG);
+  } else {
+    flags |= BW_MESH_EDGE_INVISIBLE_FLAG;
   }
   mImpl->edgeFlags[edgeIndex] = flags;
   return true;
@@ -1392,10 +1418,11 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
         }
         serializer->beginMap("vertex");
         ring.emplace_back(serializer->readVector2("p"));
-        // Absent in files saved before this feature; the Vertex default (1,
-        // matching every current flag bit) preserves prior read semantics
-        // with no explicit migration.
-        ring.back().edgeFlags = serializer->readUint32("flags", true, 1);
+        // Absent in files saved before this feature; the Vertex default
+        // (colliding, and - since BW_MESH_EDGE_INVISIBLE_FLAG is clear -
+        // visible) preserves prior read semantics with no explicit
+        // migration, for files predating either bit.
+        ring.back().edgeFlags = serializer->readUint32("flags", true, BW_MESH_EDGE_COLLIDES_FLAG);
         serializer->endMap();
       }
       serializer->endArray();

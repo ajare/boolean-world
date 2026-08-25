@@ -677,6 +677,132 @@ void removeVertexMergeKeepsThePredecessorEdgesValue() {
   checkRemoveVertexMerge(false, true);
 }
 
+void externalEdgesDefaultVisibleAndInternalEdgesCannotBeSet() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union,
+      {{ring(-2, -1, 0, 1), {}}, {ring(0, -1, 2, 1), {}}}));
+  auto proxy = primitive->createEditingProxy();
+
+  uint32_t internalEdge = ~0u;
+  uint32_t externalEdge = ~0u;
+  for (auto edge = proxy->getFirstEdgeIndex();
+       !proxy->edgeIndexIterationFinished(edge);
+       edge = proxy->getNextEdgeIndex(edge)) {
+    if (proxy->getEdge(edge).getPolygonReferences().size() == 2) {
+      internalEdge = edge;
+    } else {
+      externalEdge = edge;
+    }
+  }
+  require(internalEdge != ~0u && externalEdge != ~0u,
+          "the fixture did not produce both an Internal and an External edge");
+
+  require(proxy->getEdgeVisible(externalEdge),
+          "an External edge did not default to visible = true");
+  require(proxy->isEdgeVisibilityEditable(externalEdge),
+          "an External edge was not reported as visibility-editable");
+  require(!proxy->getEdgeVisible(internalEdge),
+          "an Internal edge reported visible = true");
+  require(!proxy->isEdgeVisibilityEditable(internalEdge),
+          "an Internal edge was reported as visibility-editable");
+
+  require(proxy->setEdgeVisible(externalEdge, false),
+          "setEdgeVisible was refused on an External edge");
+  require(!proxy->getEdgeVisible(externalEdge),
+          "setEdgeVisible(false) did not clear the effective value");
+  require(proxy->setEdgeVisible(externalEdge, true),
+          "setEdgeVisible was refused when re-enabling an External edge");
+  require(proxy->getEdgeVisible(externalEdge),
+          "setEdgeVisible(true) did not restore the effective value");
+
+  require(!proxy->setEdgeVisible(internalEdge, true),
+          "setEdgeVisible succeeded on an Internal edge");
+  require(!proxy->getEdgeVisible(internalEdge),
+          "an Internal edge became visible after a refused setEdgeVisible");
+}
+
+void splitEdgeInheritsVisibleForBothHalves() {
+  for (bool sourceValue : {true, false}) {
+    auto primitive = std::unique_ptr<MeshPrimitive>(
+        MeshPrimitive::fromTree(Primitive::Operation::Union, {{ring(-2, -2, 2, 2), {}}}));
+    auto proxy = primitive->createEditingProxy();
+    auto edgeIndex = proxy->getFirstEdgeIndex();
+    require(proxy->setEdgeVisible(edgeIndex, sourceValue),
+            "could not author the source edge's visible value before splitting");
+
+    wp::geometry::SplitEdgeResult split;
+    require(proxy->splitEdge(edgeIndex, 0.5f, &split),
+            "splitting an External edge was refused");
+    require(split.newEdgeIndices.size() == 2,
+            "splitEdge did not report exactly two resulting edges");
+    require(proxy->getEdgeVisible(split.newEdgeIndices[0]) == sourceValue &&
+                proxy->getEdgeVisible(split.newEdgeIndices[1]) == sourceValue,
+            "splitEdge did not inherit the original edge's visible value on both halves");
+  }
+}
+
+void checkRemoveVertexVisibleMerge(bool predecessorValue, bool successorValue) {
+  ClosedPolygon pentagon{{{-2, 0}}, {{-1, -2}}, {{1, -2}}, {{2, 0}}, {{0, 2}}};
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {{pentagon, {}}}));
+  auto proxy = primitive->createEditingProxy();
+
+  auto ordered =
+      proxy->getPolygon(proxy->getFirstPolygonIndex()).getOrderedVertexIndices();
+  require(ordered.size() == 5, "the pentagon fixture did not retain five vertices");
+
+  auto removedVertex = ordered[1];
+  auto predecessorVertex = ordered[0];
+  auto successorVertex = ordered[2];
+  auto predecessorPosition = proxy->getVertex(predecessorVertex).getPosition();
+  auto successorPosition = proxy->getVertex(successorVertex).getPosition();
+
+  auto predecessorEdge = proxy->getMesh().getEdgeIndexByVertices(predecessorVertex, removedVertex);
+  auto successorEdge = proxy->getMesh().getEdgeIndexByVertices(removedVertex, successorVertex);
+  require(predecessorEdge >= 0 && successorEdge >= 0,
+          "could not locate the predecessor/successor edges around the removed vertex");
+
+  require(proxy->setEdgeVisible(static_cast<uint32_t>(predecessorEdge), predecessorValue),
+          "could not author the predecessor edge's visible value");
+  require(proxy->setEdgeVisible(static_cast<uint32_t>(successorEdge), successorValue),
+          "could not author the successor edge's visible value");
+
+  require(proxy->removeVertex(removedVertex), "removing the middle vertex was refused");
+
+  auto rebuiltPredecessor = findVertexNear(proxy->getMesh(), predecessorPosition);
+  auto rebuiltSuccessor = findVertexNear(proxy->getMesh(), successorPosition);
+  require(rebuiltPredecessor != ~0u && rebuiltSuccessor != ~0u,
+          "the predecessor/successor vertices did not survive removal");
+  auto mergedEdge =
+      proxy->getMesh().getEdgeIndexByVertices(rebuiltPredecessor, rebuiltSuccessor);
+  require(mergedEdge >= 0, "the merged edge between predecessor and successor was not found");
+  require(proxy->getEdgeVisible(static_cast<uint32_t>(mergedEdge)) == predecessorValue,
+          "the merged edge did not keep the predecessor edge's visible value, "
+          "unaffected by the successor edge's discarded value");
+}
+
+void removeVertexMergeKeepsThePredecessorEdgesVisibleValue() {
+  checkRemoveVertexVisibleMerge(true, false);
+  checkRemoveVertexVisibleMerge(false, true);
+}
+
+void collidesAndVisibleAreIndependentPerEdge() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {{ring(-2, -2, 2, 2), {}}}));
+  auto proxy = primitive->createEditingProxy();
+  auto edgeIndex = proxy->getFirstEdgeIndex();
+
+  require(proxy->setEdgeCollides(edgeIndex, false) && proxy->setEdgeVisible(edgeIndex, true),
+          "could not author collides = false, visible = true on the same edge");
+  require(!proxy->getEdgeCollides(edgeIndex) && proxy->getEdgeVisible(edgeIndex),
+          "setting collides false disturbed the independently-set visible value");
+
+  require(proxy->setEdgeCollides(edgeIndex, true) && proxy->setEdgeVisible(edgeIndex, false),
+          "could not author collides = true, visible = false on the same edge");
+  require(proxy->getEdgeCollides(edgeIndex) && !proxy->getEdgeVisible(edgeIndex),
+          "setting visible false disturbed the independently-set collides value");
+}
+
 void failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged() {
   auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{{ring(-2, -2, 2, 2), {}}}}));
@@ -759,6 +885,10 @@ int main() {
     externalEdgesDefaultCollidesAndInternalEdgesCannotBeSet();
     splitEdgeInheritsCollidesForBothHalves();
     removeVertexMergeKeepsThePredecessorEdgesValue();
+    externalEdgesDefaultVisibleAndInternalEdgesCannotBeSet();
+    splitEdgeInheritsVisibleForBothHalves();
+    removeVertexMergeKeepsThePredecessorEdgesVisibleValue();
+    collidesAndVisibleAreIndependentPerEdge();
     failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged();
     fillRuleIsFixedToEvenOddAndRejectsConflictingAssignment();
     shallowConversionRejectsCrossEntryNestingAndMalformedTrees();

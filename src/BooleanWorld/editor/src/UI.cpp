@@ -3692,6 +3692,14 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
             bind(setMeshEdgeCollides, placeholders::_1, edgeIndex, collides));
       }
     }
+    if (doc->isActiveMeshEdgeVisibilityEditable(edgeIndex)) {
+      auto visible = doc->getActiveMeshEdgeVisible(edgeIndex);
+      if (ImGui::Checkbox("Visible##SelectedMeshEdge", &visible)) {
+        transactUndoableAction(
+            doc, "Set Mesh Edge Visible",
+            bind(setMeshEdgeVisible, placeholders::_1, edgeIndex, visible));
+      }
+    }
     if (ImGui::Button("Split##SelectedMeshEdge")) {
       transactUndoableAction(
           doc, "Split Mesh Edge",
