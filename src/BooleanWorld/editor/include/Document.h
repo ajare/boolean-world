@@ -205,6 +205,17 @@ public:
   void clearActiveMesh();
   [[nodiscard]] uint32_t getActiveMeshPrimitiveIndex() const;
   [[nodiscard]] wp::geometry::Mesh const* getActiveMesh() const;
+
+  // Effective wall collision override for one edge of the active mesh (see
+  // #244/#245, ADR-0022). False, and not editable, with no active mesh.
+  [[nodiscard]] bool getActiveMeshEdgeCollides(uint32_t edgeIndex) const;
+  [[nodiscard]] bool isActiveMeshEdgeCollisionEditable(uint32_t edgeIndex) const;
+
+  // Sets the active mesh edge's collides override and commits the change
+  // back to its MeshPrimitive, the same as any other mesh-editing action.
+  // Refused (returning false, leaving the mesh unchanged) on an edge whose
+  // connectivity is not External.
+  bool setActiveMeshEdgeCollides(uint32_t edgeIndex, bool collides);
   [[nodiscard]] std::vector<uint32_t> getHoveredMeshSubObjectIndices(
       wp::Vector2 const& worldPosition, Settings const& settings) const;
   [[nodiscard]] std::set<uint32_t> getMeshSubObjectIndicesInBounds(

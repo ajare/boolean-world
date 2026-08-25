@@ -543,6 +543,25 @@ wp::geometry::Mesh const* Document::getActiveMesh() const {
   return mActiveMesh ? &mActiveMesh->getMesh() : nullptr;
 }
 
+bool Document::getActiveMeshEdgeCollides(uint32_t edgeIndex) const {
+  return mActiveMesh && mActiveMesh->getEdgeCollides(edgeIndex);
+}
+
+bool Document::isActiveMeshEdgeCollisionEditable(uint32_t edgeIndex) const {
+  return mActiveMesh && mActiveMesh->isEdgeCollisionEditable(edgeIndex);
+}
+
+bool Document::setActiveMeshEdgeCollides(uint32_t edgeIndex, bool collides) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) {
+    return false;
+  }
+  if (!mActiveMesh->setEdgeCollides(edgeIndex, collides)) {
+    return false;
+  }
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
+  return true;
+}
+
 vector<uint32_t> Document::getHoveredMeshSubObjectIndices(
     wp::Vector2 const& worldPosition, Settings const& settings) const {
   vector<uint32_t> result;

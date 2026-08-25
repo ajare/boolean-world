@@ -216,6 +216,11 @@ bool fillMeshHole(Document* doc, uint32_t holeRingIndex);
 // mesh unchanged) if it would break an invariant.
 bool setMeshVertexPosition(Document* doc, uint32_t vertexIndex, wp::Vector2 const& position);
 
+// Sets the active mesh edge's wall collision override (Document::
+// setActiveMeshEdgeCollides). Refused on an edge whose connectivity is not
+// External - see #244/#245, ADR-0022.
+bool setMeshEdgeCollides(Document* doc, uint32_t edgeIndex, bool collides);
+
 // Restores the relationship between the active mesh's Primitive position
 // and size and its geometry ("Recentre mesh").
 bool recentreActiveMesh(Document* doc);

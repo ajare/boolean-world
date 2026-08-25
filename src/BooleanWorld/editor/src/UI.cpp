@@ -3684,6 +3684,14 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     auto edgeIndex = *selectedEdges.begin();
     auto indices = set<uint32_t>{edgeIndex};
     ImGui::Text("Selected edge: %u", edgeIndex);
+    if (doc->isActiveMeshEdgeCollisionEditable(edgeIndex)) {
+      auto collides = doc->getActiveMeshEdgeCollides(edgeIndex);
+      if (ImGui::Checkbox("Collides##SelectedMeshEdge", &collides)) {
+        transactUndoableAction(
+            doc, "Set Mesh Edge Collides",
+            bind(setMeshEdgeCollides, placeholders::_1, edgeIndex, collides));
+      }
+    }
     if (ImGui::Button("Split##SelectedMeshEdge")) {
       transactUndoableAction(
           doc, "Split Mesh Edge",

@@ -382,6 +382,10 @@ bool setMeshVertexPosition(Document* doc, uint32_t vertexIndex, wp::Vector2 cons
   return doc->moveMeshVertexTo(vertexIndex, position);
 }
 
+bool setMeshEdgeCollides(Document* doc, uint32_t edgeIndex, bool collides) {
+  return doc->setActiveMeshEdgeCollides(edgeIndex, collides);
+}
+
 bool deleteMeshSubObjects(
     Document* doc, Settings::MeshSubMode subMode, set<uint32_t> const& indices) {
   return doc->deleteMeshSubObjects(subMode, indices) > 0;

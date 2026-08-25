@@ -1797,6 +1797,69 @@ void edgeSplitIsOneUndoEntry() {
           "undo did not restore the Ring to its unsplit edge count");
 }
 
+void meshEdgeCollidesTogglesAndCommitsToThePrimitive() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+  auto edgeIndex = mesh->getFirstEdgeIndex();
+
+  require(document.isActiveMeshEdgeCollisionEditable(edgeIndex),
+          "a freshly authored mesh edge (used by exactly one polygon) was not reported as collision-editable");
+  require(document.getActiveMeshEdgeCollides(edgeIndex),
+          "a freshly authored mesh edge did not default to collides = true");
+
+  require(document.setActiveMeshEdgeCollides(edgeIndex, false),
+          "setActiveMeshEdgeCollides was refused on an editable edge");
+  require(!document.getActiveMeshEdgeCollides(edgeIndex),
+          "setActiveMeshEdgeCollides(false) did not take effect");
+
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto committedProxy = primitive->createEditingProxy();
+  require(!committedProxy->getEdgeCollides(committedProxy->getFirstEdgeIndex()),
+          "the collides override did not commit back to the MeshPrimitive");
+}
+
+void meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshSubMode = editor::Settings::MeshSubMode::Edge;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  document.activateMesh(meshIndex);
+  auto* mesh = document.getActiveMesh();
+  auto edgeIndex = mesh->getFirstEdgeIndex();
+  document.setModified(false);
+  auto const undoLevelsBefore = editor::getUndoLevels();
+
+  editor::transactUndoableAction(
+      &document, "Set Mesh Edge Collides",
+      std::bind(editor::setMeshEdgeCollides, std::placeholders::_1, edgeIndex, false));
+
+  require(editor::getUndoLevels() == undoLevelsBefore + 1,
+          "toggling a mesh edge's collides override produced more than one undo entry");
+  require(document.isModified(), "the toggle did not mark the Document modified");
+
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto committedProxy = primitive->createEditingProxy();
+  require(!committedProxy->getEdgeCollides(committedProxy->getFirstEdgeIndex()),
+          "the committed MeshPrimitive geometry did not reflect the toggle");
+
+  editor::undo(&document);
+  require(editor::getUndoLevels() == undoLevelsBefore,
+          "undo after a mesh edge collides toggle did not remove exactly one entry");
+
+  auto* undonePrimitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto undoneProxy = undonePrimitive->createEditingProxy();
+  require(undoneProxy->getEdgeCollides(undoneProxy->getFirstEdgeIndex()),
+          "undo did not restore the edge's default collides = true");
+}
+
 void drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep() {
   editor::Document document;
   auto settings = meshDrawSettings();
@@ -3161,6 +3224,8 @@ int main() {
     edgeSplitInsertsUnsnappedMidpointAndSelectsBothHalves();
     repeatedEdgeSplitSubdividesIntoFourSegments();
     edgeSplitIsOneUndoEntry();
+    meshEdgeCollidesTogglesAndCommitsToThePrimitive();
+    meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly();
     drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep();
     drawClicksPlaceGridSnappedVerticesAndRefuseToCloseBelowThree();
     backspaceStepsBackAndEscapeIsTwoStage();
