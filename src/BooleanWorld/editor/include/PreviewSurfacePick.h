@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <string_view>
 #include <vector>
 
 #include "PrimitivePreviewGeometry.h"
@@ -57,5 +58,17 @@ struct PreviewScenePick {
     std::vector<PrimitivePreviewGeometry const*> const& geometries,
     std::array<float, 3> const& rayOrigin,
     std::array<float, 3> const& rayDirection);
+
+// The material a Primitive uses for one of its surfaces; null for None.
+[[nodiscard]] PreviewMaterial const* previewSurfaceMaterial(
+    PrimitivePreviewGeometry const& geometry, PreviewSurface surface);
+
+// How the surface reads in the editor: "Floor", "Ceiling" or "Wall".
+[[nodiscard]] std::string_view previewSurfaceName(PreviewSurface surface);
+
+// The registry name of a material index, for showing what a surface is made
+// of. Indices outside the registry answer "Unknown" rather than reading off
+// the end of it - a Primitive can carry an index the build no longer knows.
+[[nodiscard]] std::string_view previewMaterialName(uint32_t materialIndex);
 
 }  // namespace editor

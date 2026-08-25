@@ -37,6 +37,16 @@ struct PreviewPrimitive {
   PrimitivePreviewGeometry geometry;
 };
 
+// Whichever surface the centre of the view is pointing at, or which the user
+// has clicked to select. Primitives are held by index because the session's
+// list outlives any one frame.
+struct PreviewSurfaceRef {
+  bool valid{};
+  size_t primitiveIndex{};
+  PreviewSurface surface{PreviewSurface::None};
+  size_t wallIndex{};
+};
+
 struct PreviewSession {
   bool open{};
   wp::Vector2 position;
@@ -44,6 +54,14 @@ struct PreviewSession {
   float pitch{};
   float eyeZ{};
   float globalTime{};
+  // What the crosshair is on this frame, and what the user has selected.
+  // Selecting stops the crosshair search: the tint goes away, the pointer is
+  // handed back, and the camera turns only while dragging.
+  PreviewSurfaceRef lookedAt;
+  PreviewSurfaceRef selection;
+  // A left-drag that began inside the preview, so releasing the button over
+  // another window still ends the turn.
+  bool dragTurning{};
   // Mouse motion accumulated from SDL events since the last frame, in place
   // of ImGui's io.MouseDelta - see addPreview3DMouseMotion.
   float mouseMotionX{};
@@ -130,15 +148,8 @@ void appendWallQuads(
 }
 
 // Whichever surface the centre of the view is pointing at, nearest across
-// every previewed Primitive. Its geometry is null when the view centre meets
-// nothing at all.
-struct LookedAtSurface {
-  PrimitivePreviewGeometry const* geometry{};
-  PreviewSurface surface{PreviewSurface::None};
-  size_t wallIndex{};
-};
-
-LookedAtSurface lookedAtSurface() {
+// every previewed Primitive. Invalid when the view centre meets nothing.
+PreviewSurfaceRef lookedAtSurface() {
   auto position = session.camera->getPosition();
   auto direction = session.camera->getDirection();
   // PrimitivePreviewGeometry keeps height in z, where the renderer's 3D
@@ -158,8 +169,45 @@ LookedAtSurface lookedAtSurface() {
     return {};
   }
   return {
-      geometries[pick.primitiveIndex], pick.surfaceHit.surface,
+      true, pick.primitiveIndex, pick.surfaceHit.surface,
       pick.surfaceHit.wallIndex};
+}
+
+// A modeless window naming what the user selected. Closing it, by its own
+// close button, means the same thing as right-clicking the preview.
+void renderSelectedSurfaceWindow() {
+  if (!session.selection.valid) {
+    return;
+  }
+  auto const& geometry =
+      session.primitives[session.selection.primitiveIndex].geometry;
+  auto const* material =
+      previewSurfaceMaterial(geometry, session.selection.surface);
+  if (!material) {
+    return;
+  }
+
+  ImGui::SetNextWindowPos(
+      {session.viewportMin.x + 16.0f, session.viewportMin.y + 48.0f},
+      ImGuiCond_Appearing);
+  bool stayOpen = true;
+  if (ImGui::Begin(
+          "Selected surface", &stayOpen,
+          ImGuiWindowFlags_AlwaysAutoResize |
+              ImGuiWindowFlags_NoSavedSettings)) {
+    auto surfaceName = previewSurfaceName(session.selection.surface);
+    auto materialName = previewMaterialName(material->index);
+    ImGui::Text("%.*s material", (int)surfaceName.size(), surfaceName.data());
+    ImGui::Separator();
+    ImGui::TextUnformatted(
+        materialName.data(), materialName.data() + materialName.size());
+  }
+  ImGui::End();
+
+  if (!stayOpen) {
+    session.selection = {};
+    session.dragTurning = false;
+  }
 }
 
 // Single owner of the pointer grab. Enabling flushes pending mouse motion,
@@ -171,8 +219,32 @@ void syncRelativeMouseMode(bool enabled) {
   SDL_SetWindowRelativeMouseMode(gWindow, enabled);
 }
 
-void updateCameraFromInput() {
+// With nothing selected the pointer is grabbed and every scrap of motion
+// turns the camera. Once something is selected the pointer belongs to the
+// user again, so the camera only turns while they drag with the left button
+// from inside the preview.
+bool turningThisFrame(bool previewHovered) {
+  if (!session.selection.valid) {
+    return true;
+  }
+  if (previewHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    session.dragTurning = true;
+  }
+  if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+    session.dragTurning = false;
+  }
+  return session.dragTurning;
+}
+
+void updateCameraFromInput(bool previewHovered) {
   auto const& io = ImGui::GetIO();
+
+  // Motion accumulates from SDL whether or not it is wanted, so discard it
+  // when not turning; carrying it over would fling the view on the next drag.
+  if (!turningThisFrame(previewHovered)) {
+    session.mouseMotionX = 0.0f;
+    session.mouseMotionY = 0.0f;
+  }
 
   float previousAngle = session.angle;
   float previousPitch = session.pitch;
@@ -257,13 +329,16 @@ void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
       session.camera->getProjectionTransform(), cameraPosition,
       cameraPosition, session.globalTime);
 
-  auto lookedAt = lookedAtSurface();
+  // Decided during the UI pass, so the surface drawn as highlighted is the
+  // same one a click in that frame selected.
+  auto const& lookedAt = session.lookedAt;
 
   std::vector<PreviewGpuVertex> buffer;
-  for (auto const& primitive : session.primitives) {
-    auto const& geometry = primitive.geometry;
+  for (size_t index = 0; index < session.primitives.size(); ++index) {
+    auto const& geometry = session.primitives[index].geometry;
     auto tintOf = [&](PreviewSurface surface) {
-      return lookedAt.geometry == &geometry && lookedAt.surface == surface
+      return lookedAt.valid && lookedAt.primitiveIndex == index &&
+                     lookedAt.surface == surface
                  ? lookedAtTint
                  : untinted;
     };
@@ -284,7 +359,7 @@ void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
     materialProgram.draw(buffer);
 
     buffer.clear();
-    auto tintedWall = lookedAt.geometry == &geometry &&
+    auto tintedWall = lookedAt.valid && lookedAt.primitiveIndex == index &&
                               lookedAt.surface == PreviewSurface::Wall
                           ? lookedAt.wallIndex
                           : std::numeric_limits<size_t>::max();
@@ -360,7 +435,12 @@ void renderPreview3D() {
       {viewport->Pos.x + (viewport->Size.x - windowSize.x) * 0.5f,
        viewport->Pos.y + (viewport->Size.y - windowSize.y) * 0.5f});
   ImGui::SetNextWindowSize(windowSize);
-  ImGui::SetNextWindowFocus();
+  // Taking focus every frame would stop the selected-surface window from
+  // being clicked or dragged, so only insist on it while the preview owns
+  // the pointer outright.
+  if (!session.selection.valid) {
+    ImGui::SetNextWindowFocus();
+  }
   ImGui::SetNextFrameWantCaptureMouse(true);
   ImGui::SetNextFrameWantCaptureKeyboard(true);
 
@@ -374,22 +454,48 @@ void renderPreview3D() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
   bool visible = ImGui::Begin("##3D preview", nullptr, flags);
   if (visible) {
-    ImGui::SetWindowFocus();
+    if (!session.selection.valid) {
+      ImGui::SetWindowFocus();
+    }
     session.viewportMin = ImGui::GetWindowPos();
     session.viewportMax = {
         session.viewportMin.x + ImGui::GetWindowSize().x,
         session.viewportMin.y + ImGui::GetWindowSize().y};
+    // False when the selected-surface window sits over the pointer, which is
+    // what keeps dragging that window from turning the camera underneath it.
+    bool previewHovered = ImGui::IsWindowHovered();
 
     session.camera->setAspectRatio(
         std::max(ImGui::GetWindowSize().x / ImGui::GetWindowSize().y, 0.01f));
     bool closing = ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal);
     if (!closing) {
-      // Relative mode already hides the pointer; this stops the ImGui SDL3
-      // backend from calling SDL_ShowCursor() behind its back every frame.
-      // ImGui resets the cursor to the arrow each NewFrame, so it reappears
-      // on its own once the preview closes.
-      ImGui::SetMouseCursor(ImGuiMouseCursor_None);
-      updateCameraFromInput();
+      if (!session.selection.valid) {
+        // Relative mode already hides the pointer; this stops the ImGui SDL3
+        // backend from calling SDL_ShowCursor() behind its back every frame.
+        // ImGui resets the cursor to the arrow each NewFrame, so it comes
+        // back on its own once something is selected or the preview closes.
+        ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+      }
+      updateCameraFromInput(previewHovered);
+
+      // Only hunt for a surface while none is selected: selecting is what
+      // takes the tint away.
+      session.lookedAt =
+          session.selection.valid ? PreviewSurfaceRef{} : lookedAtSurface();
+
+      if (!session.selection.valid) {
+        // The pointer is grabbed and aiming is done with the whole window,
+        // so this deliberately does not ask where the cursor is.
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+            session.lookedAt.valid) {
+          session.selection = session.lookedAt;
+          session.lookedAt = {};
+        }
+      } else if (
+          previewHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        session.selection = {};
+        session.dragTurning = false;
+      }
     }
 
     auto* drawList = ImGui::GetWindowDrawList();
@@ -400,7 +506,11 @@ void renderPreview3D() {
 
     ImGui::SetCursorPos({12.0f, 12.0f});
     ImGui::TextUnformatted(
-        "WASD/Arrows to move, mouse to look, ESC to exit preview");
+        session.selection.valid
+            ? "WASD/Arrows to move, left-drag to look, right-click to "
+              "deselect, ESC to exit preview"
+            : "WASD/Arrows to move, mouse to look, click a surface to select, "
+              "ESC to exit preview");
 
     if (closing) {
       // Keep this frame's snapshotted geometry alive until ImGui executes the
@@ -411,11 +521,15 @@ void renderPreview3D() {
   ImGui::End();
   ImGui::PopStyleVar(2);
 
+  renderSelectedSurfaceWindow();
+
   // Relative mode keeps reporting motion past the window edge, so looking
   // around is never bounded by the screen. Requiring `visible` too means a
   // window ImGui declined to draw releases the pointer instead of holding
-  // it hostage with no way to reach the Escape shortcut.
-  syncRelativeMouseMode(session.open && visible);
+  // it hostage with no way to reach the Escape shortcut. A selection hands
+  // the pointer back so the user can reach the window naming it.
+  syncRelativeMouseMode(
+      session.open && visible && !session.selection.valid);
 }
 
 }  // namespace editor

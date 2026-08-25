@@ -179,6 +179,54 @@ void theNearestPrimitiveStillWinsWhenNotCoincident() {
       "the reported distance was not that of the nearest wall");
 }
 
+void eachSurfaceReportsItsOwnMaterial() {
+  auto room = makeRoom();
+  auto properties = room->getProperties();
+  // Distinct indices, so a surface reading the wrong one is visible here
+  // rather than hiding behind a shared default.
+  properties.floorMaterialIndex = 0;
+  properties.ceilingMaterialIndex = 1;
+  properties.wallMaterialIndex = 1;
+  room->setProperties(properties);
+  auto geometry = editor::extrudePrimitiveForPreview(*room);
+
+  auto const* floor =
+      editor::previewSurfaceMaterial(geometry, PreviewSurface::Floor);
+  auto const* ceiling =
+      editor::previewSurfaceMaterial(geometry, PreviewSurface::Ceiling);
+  auto const* wall =
+      editor::previewSurfaceMaterial(geometry, PreviewSurface::Wall);
+
+  require(floor && floor->index == 0, "the floor reported another material");
+  require(
+      ceiling && ceiling->index == 1, "the ceiling reported another material");
+  require(wall && wall->index == 1, "the wall reported another material");
+  require(
+      editor::previewSurfaceMaterial(geometry, PreviewSurface::None) == nullptr,
+      "an unpicked surface still reported a material");
+}
+
+void materialsAreNamedFromTheRegistry() {
+  require(
+      editor::previewMaterialName(0) == "Marble",
+      "material 0 was not named Marble");
+  require(
+      editor::previewMaterialName(1) == "Stone",
+      "material 1 was not named Stone");
+  // A Primitive can carry an index the build no longer knows about.
+  require(
+      editor::previewMaterialName(9999) == "Unknown",
+      "an out-of-range material index did not answer Unknown");
+}
+
+void surfacesAreNamedForDisplay() {
+  require(
+      editor::previewSurfaceName(PreviewSurface::Floor) == "Floor" &&
+          editor::previewSurfaceName(PreviewSurface::Ceiling) == "Ceiling" &&
+          editor::previewSurfaceName(PreviewSurface::Wall) == "Wall",
+      "a surface was not named as the editor labels it");
+}
+
 void anEmptySceneReportsNoHit() {
   std::vector<editor::PrimitivePreviewGeometry const*> scene;
   require(
@@ -200,6 +248,9 @@ int main() {
     coincidentWallsResolveToTheOneDrawnLast();
     theNearestPrimitiveStillWinsWhenNotCoincident();
     anEmptySceneReportsNoHit();
+    eachSurfaceReportsItsOwnMaterial();
+    materialsAreNamedFromTheRegistry();
+    surfacesAreNamedForDisplay();
     std::cout << "Preview surface pick tests passed\n";
     return 0;
   } catch (std::exception const& error) {

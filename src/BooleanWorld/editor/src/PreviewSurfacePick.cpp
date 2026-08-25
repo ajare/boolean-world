@@ -1,5 +1,11 @@
 #include <cmath>
 
+// MaterialRegistry sizes its tables with BW_MATERIAL_COUNT and
+// BW_MATERIAL_PARAMS_MAX, so core's defines have to land first.
+#include <core/Defines.h>
+
+#include <common/MaterialRegistry.h>
+
 #include "PreviewSurfacePick.h"
 
 namespace editor {
@@ -169,6 +175,42 @@ PreviewScenePick pickPreviewSceneSurface(
     nearest.surfaceHit = hit;
   }
   return nearest;
+}
+
+PreviewMaterial const* previewSurfaceMaterial(
+    PrimitivePreviewGeometry const& geometry, PreviewSurface surface) {
+  switch (surface) {
+    case PreviewSurface::Floor:
+      return &geometry.floorMaterial;
+    case PreviewSurface::Ceiling:
+      return &geometry.ceilingMaterial;
+    case PreviewSurface::Wall:
+      return &geometry.wallMaterial;
+    case PreviewSurface::None:
+      break;
+  }
+  return nullptr;
+}
+
+std::string_view previewSurfaceName(PreviewSurface surface) {
+  switch (surface) {
+    case PreviewSurface::Floor:
+      return "Floor";
+    case PreviewSurface::Ceiling:
+      return "Ceiling";
+    case PreviewSurface::Wall:
+      return "Wall";
+    case PreviewSurface::None:
+      break;
+  }
+  return "None";
+}
+
+std::string_view previewMaterialName(uint32_t materialIndex) {
+  if (materialIndex >= bw::common::MaterialNames.size()) {
+    return "Unknown";
+  }
+  return std::get<0>(bw::common::MaterialNames[materialIndex]);
 }
 
 }  // namespace editor
