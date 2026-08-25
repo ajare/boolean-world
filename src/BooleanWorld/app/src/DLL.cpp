@@ -34,6 +34,8 @@
 
 // Resources
 #include "Map.h"
+#include "ProcMaterial.h"
+#include "ProcMaterialResourceDefinitionFactory.h"
 #include "ProtoEntity.h"
 
 using namespace std;
@@ -147,12 +149,14 @@ __declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resou
   // Add resource factories
   resourceMgr->addResourceFactory(new MapResourceFactory(logger));
   resourceMgr->addResourceFactory(new ProtoEntityResourceFactory(model->entityHandler, model->animationDatabase));
+  resourceMgr->addResourceFactory(new ProcMaterialResourceFactory());
 
   // Add resource definition factories
   resourceMgr->addResourceDefinitionFactory(new MapBooleanWorldDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(new applib::MapTiledDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(new ProtoEntityDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(new applib::ImageSetTiledDefinitionFactory());
+  resourceMgr->addResourceDefinitionFactory(new ProcMaterialResourceDefinitionFactory());
 }
 
 __declspec(dllexport) void dllOnExit() {

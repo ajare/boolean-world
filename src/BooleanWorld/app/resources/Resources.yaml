@@ -335,6 +335,18 @@ Resources:
     - type: "AudioBank"
       name: "Bank.Themes"
       location: "audio/Themes/Build/Desktop/Themes.bank"
+    - type: "TextFile"
+      name: "ProcMaterialsFile"
+      location: "proc-materials-test-1.yaml"
+    - type: "ProcMaterial"
+      name: "ProcMaterials"
+      DependentResources:
+        DependentResource:
+          id: "Yaml"
+          ref: "ProcMaterialsFile"
+      Definitions:
+        Definition:
+          Resource: "Yaml"
     - type: "Image"
       name: "TestTexture"
       location: "images/test.png"

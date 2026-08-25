@@ -6,6 +6,8 @@ add_library(BooleanWorld SHARED
     src/Map.cpp
     src/MapBooleanWorldDefinitionFactory.cpp
     src/PlayerLocation.cpp
+    src/ProcMaterial.cpp
+    src/ProcMaterialResourceDefinitionFactory.cpp
     src/ProtoEntity.cpp
     src/ProtoEntityDefinitionFactory.cpp
     src/ReactiveCamera.cpp
@@ -225,4 +227,21 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_map_load_tests)
     bw_deploy_vendor_dlls(boolean_world_map_load_tests)
     add_test(NAME boolean_world_map_load COMMAND boolean_world_map_load_tests)
+
+    add_executable(boolean_world_proc_material_load_tests
+        tests/proc_material_load_tests.cpp
+        src/ProcMaterial.cpp
+        src/ProcMaterialResourceDefinitionFactory.cpp)
+    target_include_directories(boolean_world_proc_material_load_tests PRIVATE include)
+    target_link_libraries(boolean_world_proc_material_load_tests PRIVATE
+        core AppLib Willpower.Application Willpower.Common)
+    target_compile_features(boolean_world_proc_material_load_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_proc_material_load_tests)
+    bw_output_dirs(boolean_world_proc_material_load_tests)
+    bw_deploy_runtime_dlls(boolean_world_proc_material_load_tests)
+    bw_deploy_vendor_dlls(boolean_world_proc_material_load_tests)
+    add_test(NAME boolean_world_proc_material_load_fixture-load
+             COMMAND boolean_world_proc_material_load_tests fixture-load)
+    add_test(NAME boolean_world_proc_material_load_duplicate-id
+             COMMAND boolean_world_proc_material_load_tests duplicate-id)
 endif()
