@@ -865,49 +865,85 @@ Material limestoneTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+// Each geology material's two knobs, matching bw::common::MaterialParams for
+// its index. Same discipline as Slate/Sandstone/Limestone above: base_scale
+// is always slot 0, the second slot is a constant local to that material's
+// own *Texture function only - never inside geologyField/geologyNormal,
+// which every geology material calls for its own type but which none of
+// them may safely change the shared behaviour of.
+struct BasaltParams { float baseScale; float vesicleMix; };
+BasaltParams unpackBasaltParams() {
+    BasaltParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.vesicleMix = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material basaltTexture(vec3 worldPos, vec3 normal)
 {
+    BasaltParams params = unpackBasaltParams();
+
     Material material;
-    vec3 p = worldPos * 0.85;
+    vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 4);
     float grain = noise(p * 12.0);
     float vesicles = 1.0 - smoothstep(0.10, 0.32, geologyVoronoi(p * 3.8));
     material.albedo = mix(vec3(0.025, 0.027, 0.030),
                           vec3(0.12, 0.13, 0.14), grain);
-    material.albedo *= 1.0 - vesicles * 0.72;
+    material.albedo *= 1.0 - vesicles * params.vesicleMix;
     material.metallic = 0.03;
     material.roughness = clamp(0.58 + vesicles * 0.30, 0.48, 0.92);
     material.normal = geologyNormal(p, normal, 4, surface, 0.075);
     return material;
 }
 
+struct ObsidianParams { float baseScale; float inclusionMix; };
+ObsidianParams unpackObsidianParams() {
+    ObsidianParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.inclusionMix = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material obsidianTexture(vec3 worldPos, vec3 normal)
 {
+    ObsidianParams params = unpackObsidianParams();
+
     Material material;
-    vec3 p = worldPos * 0.70;
+    vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 5);
     float sheen = pow(surface, 4.0);
     float inclusions = smoothstep(0.84, 0.96, noise(p * 9.0));
     material.albedo = mix(vec3(0.006, 0.008, 0.012),
                           vec3(0.055, 0.025, 0.075), sheen);
-    material.albedo = mix(material.albedo, vec3(0.17, 0.09, 0.05), inclusions * 0.3);
+    material.albedo = mix(material.albedo, vec3(0.17, 0.09, 0.05), inclusions * params.inclusionMix);
     material.metallic = 0.0;
     material.roughness = clamp(0.075 + inclusions * 0.24 + sheen * 0.035, 0.055, 0.34);
     material.normal = geologyNormal(p, normal, 5, surface, 0.018);
     return material;
 }
 
+struct QuartzParams { float baseScale; float amethystMix; };
+QuartzParams unpackQuartzParams() {
+    QuartzParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.amethystMix = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material quartzTexture(vec3 worldPos, vec3 normal)
 {
+    QuartzParams params = unpackQuartzParams();
+
     Material material;
-    vec3 p = worldPos * 0.62;
+    vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 6);
     float cells = geologyVoronoi(p * 2.4);
     float amethyst = smoothstep(
         0.48, 0.88, fbm(p * 0.48 + vec3(17.0)));
     float edge = 1.0 - smoothstep(0.10, 0.30, cells);
     material.albedo = mix(vec3(0.72, 0.82, 0.88),
-                          vec3(0.34, 0.14, 0.52), amethyst * 0.72);
+                          vec3(0.34, 0.14, 0.52), amethyst * params.amethystMix);
     material.albedo = mix(material.albedo, vec3(0.92, 0.98, 1.0), edge * 0.55);
     material.metallic = 0.0;
     material.roughness = clamp(0.11 + cells * 0.20, 0.08, 0.34);
@@ -915,13 +951,23 @@ Material quartzTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct OreParams { float baseScale; float veinScale; };
+OreParams unpackOreParams() {
+    OreParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.veinScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material oreTexture(vec3 worldPos, vec3 normal)
 {
+    OreParams params = unpackOreParams();
+
     Material material;
-    vec3 p = worldPos * 0.72;
+    vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 7);
     float warp = fbm(p * 0.62) - 0.5;
-    float vein = abs(sin(p.x * 4.5 + p.y * 1.1 - p.z * 0.8 + warp * 8.0));
+    float vein = abs(sin(p.x * params.veinScale + p.y * 1.1 - p.z * 0.8 + warp * 8.0));
     float metal = 1.0 - smoothstep(0.06, 0.24, vein);
     float oxidation = smoothstep(
         0.62, 0.88, noise(p * 3.7 + vec3(31.0))) * metal;
@@ -934,15 +980,25 @@ Material oreTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct BandedGneissParams { float baseScale; float garnetScale; };
+BandedGneissParams unpackBandedGneissParams() {
+    BandedGneissParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.garnetScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material bandedGneissTexture(vec3 worldPos, vec3 normal)
 {
+    BandedGneissParams params = unpackBandedGneissParams();
+
     Material material;
-    vec3 p = worldPos * 0.68;
+    vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 8);
     float warp = fbm(p * 0.48) - 0.5;
     float band = sin(dot(p, normalize(vec3(0.82, 0.24, -0.52))) *
                      8.0 + warp * 7.0) * 0.5 + 0.5;
-    float garnet = smoothstep(0.91, 0.975, noise(p * 13.0 + vec3(7.0)));
+    float garnet = smoothstep(0.91, 0.975, noise(p * params.garnetScale + vec3(7.0)));
     material.albedo = mix(
         vec3(0.075, 0.080, 0.085), vec3(0.66, 0.61, 0.54),
         smoothstep(0.30, 0.70, band));
@@ -954,12 +1010,22 @@ Material bandedGneissTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct RockParams { float baseScale; float mineralScale; };
+RockParams unpackRockParams() {
+    RockParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.mineralScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material rockTexture(vec3 worldPos, vec3 normal)
 {
+    RockParams params = unpackRockParams();
+
     Material material;
-    vec3 p = worldPos * 0.74;
+    vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 9);
-    float mineral = noise(p * 7.5);
+    float mineral = noise(p * params.mineralScale);
     float weather = fbm(p * 0.55);
     material.albedo = mix(
         vec3(0.16, 0.15, 0.135), vec3(0.43, 0.41, 0.37), weather);
@@ -970,15 +1036,25 @@ Material rockTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct MossyRockParams { float baseScale; float mossScale; };
+MossyRockParams unpackMossyRockParams() {
+    MossyRockParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.mossScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material mossyRockTexture(vec3 worldPos, vec3 normal)
 {
+    MossyRockParams params = unpackMossyRockParams();
+
     Material material;
-    vec3 p = worldPos * 0.72;
+    vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 10);
     float moisture = fbm(p * 0.82 + vec3(4.0, 9.0, 2.0));
     float upward = max(normalize(normal).y, 0.0);
     float moss = smoothstep(0.43, 0.68, moisture) * (0.42 + upward * 0.58);
-    float fineMoss = noise(p * 16.0);
+    float fineMoss = noise(p * params.mossScale);
     vec3 stone = mix(vec3(0.13, 0.13, 0.115), vec3(0.38, 0.37, 0.32),
                      fbm(p * 0.55));
     vec3 mossColour = mix(
@@ -990,13 +1066,23 @@ Material mossyRockTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct WetRockParams { float baseScale; float wetnessThreshold; };
+WetRockParams unpackWetRockParams() {
+    WetRockParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.wetnessThreshold = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material wetRockTexture(vec3 worldPos, vec3 normal)
 {
+    WetRockParams params = unpackWetRockParams();
+
     Material material;
-    vec3 p = worldPos * 0.74;
+    vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 11);
     float wetness = smoothstep(
-        0.24, 0.76, fbm(p * 0.46 + vec3(12.0, 3.0, 8.0)));
+        params.wetnessThreshold, 0.76, fbm(p * 0.46 + vec3(12.0, 3.0, 8.0)));
     vec3 dryStone = mix(vec3(0.14, 0.14, 0.135), vec3(0.39, 0.38, 0.35),
                         fbm(p * 0.62));
     material.albedo = dryStone * mix(0.72, 0.36, wetness);
@@ -1064,16 +1150,30 @@ vec3 metalNormal(vec3 p, vec3 normal, int type, float field, float strength)
     return normalize(geometricNormal - gradient * strength);
 }
 
+// Each metal's two knobs, matching bw::common::MaterialParams for its
+// index - same "base_scale in slot 0, second slot local to this function
+// only" discipline as the geology materials above; none of these may safely
+// change metalField/metalNormal, which every metal calls.
+struct RustedIronParams { float baseScale; float rustScale; };
+RustedIronParams unpackRustedIronParams() {
+    RustedIronParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.rustScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material rustedIronTexture(vec3 worldPos, vec3 normal)
 {
+    RustedIronParams params = unpackRustedIronParams();
+
     Material material;
-    vec3 p = worldPos * 0.72;
+    vec3 p = worldPos * params.baseScale;
     float surface = metalField(p, 0);
     float corrosion = smoothstep(0.42, 0.72, fbm(p * 1.15));
     float pits = 1.0 - smoothstep(0.08, 0.25, geologyVoronoi(p * 6.0));
     vec3 iron = vec3(0.22, 0.23, 0.24);
     vec3 rust = mix(vec3(0.18, 0.045, 0.012),
-                    vec3(0.58, 0.19, 0.035), noise(p * 4.5));
+                    vec3(0.58, 0.19, 0.035), noise(p * params.rustScale));
     float rustMask = clamp(corrosion + pits * 0.45, 0.0, 1.0);
     material.albedo = mix(iron, rust, rustMask);
     material.metallic = mix(0.92, 0.0, rustMask);
@@ -1082,13 +1182,23 @@ Material rustedIronTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct GalvanizedSteelParams { float baseScale; float facetMix; };
+GalvanizedSteelParams unpackGalvanizedSteelParams() {
+    GalvanizedSteelParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.facetMix = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material galvanizedSteelTexture(vec3 worldPos, vec3 normal)
 {
+    GalvanizedSteelParams params = unpackGalvanizedSteelParams();
+
     Material material;
-    vec3 p = worldPos * 0.66;
+    vec3 p = worldPos * params.baseScale;
     float surface = metalField(p, 1);
     float crystals = geologyVoronoi(p * 3.6);
-    float facet = clamp(crystals * 1.45, 0.0, 1.0);
+    float facet = clamp(crystals * params.facetMix, 0.0, 1.0);
     material.albedo = mix(vec3(0.42, 0.45, 0.47),
                           vec3(0.74, 0.77, 0.78), facet);
     material.metallic = 0.94;
@@ -1097,27 +1207,47 @@ Material galvanizedSteelTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct BrushedMetalParams { float baseScale; float scratchMix; };
+BrushedMetalParams unpackBrushedMetalParams() {
+    BrushedMetalParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.scratchMix = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material brushedMetalTexture(vec3 worldPos, vec3 normal)
 {
+    BrushedMetalParams params = unpackBrushedMetalParams();
+
     Material material;
-    vec3 p = worldPos * 0.82;
+    vec3 p = worldPos * params.baseScale;
     float surface = metalField(p, 2);
     float scratch = smoothstep(0.58, 0.86, surface);
     material.albedo = mix(vec3(0.42, 0.44, 0.46),
                           vec3(0.68, 0.70, 0.72), surface);
-    material.albedo *= 1.0 - scratch * 0.18;
+    material.albedo *= 1.0 - scratch * params.scratchMix;
     material.metallic = 0.96;
     material.roughness = clamp(0.20 + scratch * 0.30, 0.18, 0.52);
     material.normal = metalNormal(p, normal, 2, surface, 0.012);
     return material;
 }
 
+struct HammeredMetalParams { float baseScale; float dentScale; };
+HammeredMetalParams unpackHammeredMetalParams() {
+    HammeredMetalParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.dentScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material hammeredMetalTexture(vec3 worldPos, vec3 normal)
 {
+    HammeredMetalParams params = unpackHammeredMetalParams();
+
     Material material;
-    vec3 p = worldPos * 0.72;
+    vec3 p = worldPos * params.baseScale;
     float surface = metalField(p, 3);
-    float dents = geologyVoronoi(p * 4.2);
+    float dents = geologyVoronoi(p * params.dentScale);
     material.albedo = mix(vec3(0.24, 0.25, 0.27),
                           vec3(0.52, 0.55, 0.58), smoothstep(0.1, 0.7, dents));
     material.metallic = 0.92;
@@ -1126,13 +1256,23 @@ Material hammeredMetalTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct PatinatedCopperParams { float baseScale; float exposedScale; };
+PatinatedCopperParams unpackPatinatedCopperParams() {
+    PatinatedCopperParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.exposedScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material patinatedCopperTexture(vec3 worldPos, vec3 normal)
 {
+    PatinatedCopperParams params = unpackPatinatedCopperParams();
+
     Material material;
-    vec3 p = worldPos * 0.66;
+    vec3 p = worldPos * params.baseScale;
     float surface = metalField(p, 4);
     float patina = smoothstep(0.43, 0.67, surface);
-    float exposed = smoothstep(0.66, 0.82, noise(p * 2.8 + vec3(13.0)));
+    float exposed = smoothstep(0.66, 0.82, noise(p * params.exposedScale + vec3(13.0)));
     patina *= 1.0 - exposed;
     vec3 copper = vec3(0.72, 0.27, 0.09);
     vec3 verdigris = mix(vec3(0.025, 0.20, 0.15),
@@ -1144,12 +1284,22 @@ Material patinatedCopperTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct DamasceneSteelParams { float baseScale; float layerThreshold; };
+DamasceneSteelParams unpackDamasceneSteelParams() {
+    DamasceneSteelParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.layerThreshold = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material damasceneSteelTexture(vec3 worldPos, vec3 normal)
 {
+    DamasceneSteelParams params = unpackDamasceneSteelParams();
+
     Material material;
-    vec3 p = worldPos * 0.72;
+    vec3 p = worldPos * params.baseScale;
     float surface = metalField(p, 5);
-    float layers = smoothstep(0.32, 0.68, surface);
+    float layers = smoothstep(params.layerThreshold, 0.68, surface);
     material.albedo = mix(vec3(0.12, 0.13, 0.15),
                           vec3(0.62, 0.65, 0.68), layers);
     material.metallic = 0.95;
@@ -1158,10 +1308,20 @@ Material damasceneSteelTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct HeatTreatedMetalParams { float baseScale; float oxideMix; };
+HeatTreatedMetalParams unpackHeatTreatedMetalParams() {
+    HeatTreatedMetalParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.oxideMix = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material heatTreatedMetalTexture(vec3 worldPos, vec3 normal)
 {
+    HeatTreatedMetalParams params = unpackHeatTreatedMetalParams();
+
     Material material;
-    vec3 p = worldPos * 0.62;
+    vec3 p = worldPos * params.baseScale;
     float surface = metalField(p, 6);
     float band = clamp(surface, 0.0, 1.0);
     vec3 straw = vec3(0.78, 0.38, 0.08);
@@ -1169,7 +1329,7 @@ Material heatTreatedMetalTexture(vec3 worldPos, vec3 normal)
     vec3 blue = vec3(0.035, 0.16, 0.48);
     vec3 oxideColour = mix(straw, violet, smoothstep(0.18, 0.58, band));
     oxideColour = mix(oxideColour, blue, smoothstep(0.55, 0.88, band));
-    material.albedo = mix(vec3(0.38, 0.40, 0.42), oxideColour, 0.72);
+    material.albedo = mix(vec3(0.38, 0.40, 0.42), oxideColour, params.oxideMix);
     material.metallic = 0.90;
     material.roughness = clamp(0.19 + noise(p * 6.0) * 0.13, 0.18, 0.34);
     material.normal = metalNormal(p, normal, 6, surface, 0.014);
@@ -1243,13 +1403,27 @@ vec3 organicNormal(vec3 p, vec3 normal, int type, float field,
     return normalize(geometricNormal - gradient * strength);
 }
 
+// Each organic material's two knobs, matching bw::common::MaterialParams for
+// its index - same discipline as the geology/metal materials above; none of
+// these may safely change organicField/organicNormal, which every organic
+// material calls.
+struct WoodParams { float baseScale; float ringScale; };
+WoodParams unpackWoodParams() {
+    WoodParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.ringScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material woodTexture(vec3 worldPos, vec3 normal)
 {
+    WoodParams params = unpackWoodParams();
+
     Material material;
-    vec3 p = worldPos * 0.54;
+    vec3 p = worldPos * params.baseScale;
     float surface = organicField(p, 0);
     float radius = length(p.xz);
-    float ring = sin(radius * 18.0 + fbm(p * 0.55) * 4.5) * 0.5 + 0.5;
+    float ring = sin(radius * params.ringScale + fbm(p * 0.55) * 4.5) * 0.5 + 0.5;
     float grain = noise(vec3(p.x * 4.0, p.y * 0.32, p.z * 4.0));
     float knot = 1.0 - smoothstep(0.08, 0.34, geologyVoronoi(p * 1.4));
     material.albedo = mix(vec3(0.16, 0.055, 0.018),
@@ -1261,10 +1435,20 @@ Material woodTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct BarkParams { float baseScale; float ridgeScale; };
+BarkParams unpackBarkParams() {
+    BarkParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.ridgeScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material barkTexture(vec3 worldPos, vec3 normal)
 {
+    BarkParams params = unpackBarkParams();
+
     Material material;
-    vec3 p = worldPos * 0.62;
+    vec3 p = worldPos * params.baseScale;
     float surface = organicField(p, 1);
     float high = smoothstep(0.20, 0.78, surface);
     float lichen = smoothstep(0.67, 0.88, fbm(p * 1.5 + vec3(9.0)));
@@ -1277,13 +1461,23 @@ Material barkTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct BoneParams { float baseScale; float poreScale; };
+BoneParams unpackBoneParams() {
+    BoneParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.poreScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material boneTexture(vec3 worldPos, vec3 normal)
 {
+    BoneParams params = unpackBoneParams();
+
     Material material;
-    vec3 p = worldPos * 0.68;
+    vec3 p = worldPos * params.baseScale;
     float surface = organicField(p, 2);
     float age = fbm(p * 0.48);
-    float pores = 1.0 - smoothstep(0.07, 0.23, geologyVoronoi(p * 7.0));
+    float pores = 1.0 - smoothstep(0.07, 0.23, geologyVoronoi(p * params.poreScale));
     material.albedo = mix(vec3(0.52, 0.43, 0.27),
                           vec3(0.91, 0.84, 0.65), age);
     material.albedo *= 1.0 - pores * 0.30;
@@ -1293,26 +1487,46 @@ Material boneTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct LeatherParams { float baseScale; float wearMix; };
+LeatherParams unpackLeatherParams() {
+    LeatherParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.wearMix = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material leatherTexture(vec3 worldPos, vec3 normal)
 {
+    LeatherParams params = unpackLeatherParams();
+
     Material material;
-    vec3 p = worldPos * 0.76;
+    vec3 p = worldPos * params.baseScale;
     float surface = organicField(p, 3);
     float cells = geologyVoronoi(p * 5.5);
     float wear = smoothstep(0.62, 0.86, fbm(p * 0.9 + vec3(5.0)));
     material.albedo = mix(vec3(0.09, 0.022, 0.012),
                           vec3(0.34, 0.095, 0.035), cells);
-    material.albedo = mix(material.albedo, vec3(0.47, 0.20, 0.08), wear * 0.42);
+    material.albedo = mix(material.albedo, vec3(0.47, 0.20, 0.08), wear * params.wearMix);
     material.metallic = 0.0;
     material.roughness = clamp(0.50 - wear * 0.16 + cells * 0.14, 0.32, 0.68);
     material.normal = organicNormal(p, normal, 3, surface, 0.035);
     return material;
 }
 
+struct FleshParams { float baseScale; float veinMix; };
+FleshParams unpackFleshParams() {
+    FleshParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.veinMix = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material fleshTexture(vec3 worldPos, vec3 normal)
 {
+    FleshParams params = unpackFleshParams();
+
     Material material;
-    vec3 p = worldPos * 0.60;
+    vec3 p = worldPos * params.baseScale;
     float surface = organicField(p, 4);
     float mottling = fbm(p * 0.72);
     float vein = abs(sin(p.x * 3.6 - p.y * 1.1 + p.z * 2.3 +
@@ -1320,19 +1534,29 @@ Material fleshTexture(vec3 worldPos, vec3 normal)
     float veins = 1.0 - smoothstep(0.035, 0.16, vein);
     material.albedo = mix(vec3(0.24, 0.025, 0.035),
                           vec3(0.69, 0.24, 0.20), mottling);
-    material.albedo = mix(material.albedo, vec3(0.07, 0.025, 0.12), veins * 0.72);
+    material.albedo = mix(material.albedo, vec3(0.07, 0.025, 0.12), veins * params.veinMix);
     material.metallic = 0.0;
     material.roughness = clamp(0.42 + (1.0 - mottling) * 0.14, 0.38, 0.6);
     material.normal = organicNormal(p, normal, 4, surface, 0.022);
     return material;
 }
 
+struct ChitinParams { float baseScale; float plateScale; };
+ChitinParams unpackChitinParams() {
+    ChitinParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.plateScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material chitinTexture(vec3 worldPos, vec3 normal)
 {
+    ChitinParams params = unpackChitinParams();
+
     Material material;
-    vec3 p = worldPos * 0.67;
+    vec3 p = worldPos * params.baseScale;
     float surface = organicField(p, 5);
-    float plate = smoothstep(0.12, 0.72, geologyVoronoi(p * 3.2));
+    float plate = smoothstep(0.12, 0.72, geologyVoronoi(p * params.plateScale));
     float band = sin(dot(p, normalize(vec3(0.7, 0.2, 0.65))) * 9.0 +
                      fbm(p * 0.65) * 3.0) *
                          0.5 +
@@ -1347,16 +1571,26 @@ Material chitinTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct CoralParams { float baseScale; float poreMix; };
+CoralParams unpackCoralParams() {
+    CoralParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.poreMix = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material coralTexture(vec3 worldPos, vec3 normal)
 {
+    CoralParams params = unpackCoralParams();
+
     Material material;
-    vec3 p = worldPos * 0.66;
+    vec3 p = worldPos * params.baseScale;
     float surface = organicField(p, 6);
     float pores = 1.0 - smoothstep(0.10, 0.31, geologyVoronoi(p * 5.2));
     float colonies = fbm(p * 1.1);
     material.albedo = mix(vec3(0.35, 0.055, 0.045),
                           vec3(0.92, 0.38, 0.24), colonies);
-    material.albedo = mix(material.albedo, vec3(0.055, 0.018, 0.012), pores * 0.80);
+    material.albedo = mix(material.albedo, vec3(0.055, 0.018, 0.012), pores * params.poreMix);
     material.metallic = 0.0;
     material.roughness = clamp(0.65 + pores * 0.27, 0.58, 0.94);
     material.normal = organicNormal(p, normal, 6, surface, 0.085);
@@ -1431,29 +1665,54 @@ vec3 spectralPalette(float phase)
         (phase + vec3(0.0, 0.33, 0.67)));
 }
 
+// Each supernatural material's two knobs, matching bw::common::MaterialParams
+// for its index - same discipline as every batch above. None of these may
+// safely change supernaturalField/supernaturalNormal, which every
+// supernatural material calls; time-driven animation constants
+// (GLOBAL_TIME's own coefficients) are left alone rather than made tunable.
+struct ArcaneCrystalParams { float baseScale; float coreMix; };
+ArcaneCrystalParams unpackArcaneCrystalParams() {
+    ArcaneCrystalParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.coreMix = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material arcaneCrystalTexture(vec3 worldPos, vec3 normal)
 {
+    ArcaneCrystalParams params = unpackArcaneCrystalParams();
+
     Material material;
-    vec3 p = worldPos * 0.64;
+    vec3 p = worldPos * params.baseScale;
     float surface = supernaturalField(p, 0);
     float cells = geologyVoronoi(p * 2.8);
     float core = 1.0 - smoothstep(0.08, 0.36, cells);
     float colourShift = fbm(p * 0.45) + @Uniform(GLOBAL_TIME) * 0.025;
     material.albedo = mix(vec3(0.035, 0.10, 0.24),
-                          spectralPalette(colourShift), core * 0.82);
+                          spectralPalette(colourShift), core * params.coreMix);
     material.metallic = 0.16;
     material.roughness = clamp(0.07 + cells * 0.18, 0.055, 0.28);
     material.normal = supernaturalNormal(p, normal, 0, surface, 0.095);
     return material;
 }
 
+struct EnergyStoneParams { float baseScale; float energyScale; };
+EnergyStoneParams unpackEnergyStoneParams() {
+    EnergyStoneParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.energyScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material energyStoneTexture(vec3 worldPos, vec3 normal)
 {
+    EnergyStoneParams params = unpackEnergyStoneParams();
+
     Material material;
-    vec3 p = worldPos * 0.68;
+    vec3 p = worldPos * params.baseScale;
     float surface = supernaturalField(p, 1);
     float warp = fbm(p * 0.55) - 0.5;
-    float seam = abs(sin(p.x * 4.2 - p.y * 1.4 + p.z * 2.0 + warp * 8.0));
+    float seam = abs(sin(p.x * params.energyScale - p.y * 1.4 + p.z * 2.0 + warp * 8.0));
     float energy = 1.0 - smoothstep(0.035, 0.18, seam);
     material.albedo = mix(vec3(0.018, 0.022, 0.030),
                           vec3(0.025, 0.32, 0.72), energy);
@@ -1463,12 +1722,22 @@ Material energyStoneTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct AlienTissueParams { float baseScale; float cellScale; };
+AlienTissueParams unpackAlienTissueParams() {
+    AlienTissueParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.cellScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material alienTissueTexture(vec3 worldPos, vec3 normal)
 {
+    AlienTissueParams params = unpackAlienTissueParams();
+
     Material material;
-    vec3 p = worldPos * 0.67;
+    vec3 p = worldPos * params.baseScale;
     float surface = supernaturalField(p, 2);
-    float cells = geologyVoronoi(p * 3.5);
+    float cells = geologyVoronoi(p * params.cellScale);
     float pulse = sin(@Uniform(GLOBAL_TIME) * 2.2 + fbm(p * 0.55) * 8.0) *
                       0.5 +
                   0.5;
@@ -1481,12 +1750,22 @@ Material alienTissueTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct MagicalMetalParams { float baseScale; float runeScale; };
+MagicalMetalParams unpackMagicalMetalParams() {
+    MagicalMetalParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.runeScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material magicalMetalTexture(vec3 worldPos, vec3 normal)
 {
+    MagicalMetalParams params = unpackMagicalMetalParams();
+
     Material material;
-    vec3 p = worldPos * 0.72;
+    vec3 p = worldPos * params.baseScale;
     float surface = supernaturalField(p, 3);
-    vec3 grid = abs(fract(p * 1.7) - 0.5);
+    vec3 grid = abs(fract(p * params.runeScale) - 0.5);
     float rune = 1.0 - smoothstep(0.035, 0.10, min(grid.x, min(grid.y, grid.z)));
     float flow = metalField(p, 5);
     material.albedo = mix(vec3(0.08, 0.045, 0.16),
@@ -1498,14 +1777,24 @@ Material magicalMetalTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct CloudSolidParams { float baseScale; float densityThreshold; };
+CloudSolidParams unpackCloudSolidParams() {
+    CloudSolidParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.densityThreshold = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material cloudSolidTexture(vec3 worldPos, vec3 normal)
 {
+    CloudSolidParams params = unpackCloudSolidParams();
+
     Material material;
-    vec3 p = worldPos * 0.53 +
+    vec3 p = worldPos * params.baseScale +
              vec3(@Uniform(GLOBAL_TIME) * 0.018, 0.0,
                   @Uniform(GLOBAL_TIME) * -0.012);
     float surface = supernaturalField(p, 4);
-    float density = smoothstep(0.30, 0.78, fbm(p * 0.72));
+    float density = smoothstep(params.densityThreshold, 0.78, fbm(p * 0.72));
     material.albedo = mix(vec3(0.18, 0.28, 0.46),
                           vec3(0.92, 0.96, 1.0), density);
     material.metallic = 0.0;
@@ -1514,13 +1803,23 @@ Material cloudSolidTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+struct HolographicParams { float baseScale; float scanScale; };
+HolographicParams unpackHolographicParams() {
+    HolographicParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.scanScale = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material holographicTexture(vec3 worldPos, vec3 normal, vec3 viewDir)
 {
+    HolographicParams params = unpackHolographicParams();
+
     Material material;
-    vec3 p = worldPos * 0.75;
+    vec3 p = worldPos * params.baseScale;
     float surface = supernaturalField(p, 5);
     float fresnel = pow(1.0 - max(dot(normalize(normal), viewDir), 0.0), 2.2);
-    float scan = sin(p.y * 35.0 + @Uniform(GLOBAL_TIME) * 3.0) * 0.5 + 0.5;
+    float scan = sin(p.y * params.scanScale + @Uniform(GLOBAL_TIME) * 3.0) * 0.5 + 0.5;
     vec3 spectrum = spectralPalette(fresnel * 0.72 + scan * 0.18 +
                                     @Uniform(GLOBAL_TIME) * 0.035);
     material.albedo = mix(vec3(0.025, 0.12, 0.18), spectrum, 0.55 + fresnel * 0.4);
@@ -1530,12 +1829,22 @@ Material holographicTexture(vec3 worldPos, vec3 normal, vec3 viewDir)
     return material;
 }
 
+struct CorruptionParams { float baseScale; float spreadThreshold; };
+CorruptionParams unpackCorruptionParams() {
+    CorruptionParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.spreadThreshold = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material corruptionTexture(vec3 worldPos, vec3 normal)
 {
+    CorruptionParams params = unpackCorruptionParams();
+
     Material material;
-    vec3 p = worldPos * 0.65;
+    vec3 p = worldPos * params.baseScale;
     float surface = supernaturalField(p, 6);
-    float spread = smoothstep(0.36, 0.68,
+    float spread = smoothstep(params.spreadThreshold, 0.68,
         fbm(p * 0.58 + vec3(@Uniform(GLOBAL_TIME) * 0.025)));
     float tendril = smoothstep(-0.18, 0.06, -surface);
     material.albedo = mix(vec3(0.025, 0.022, 0.020),
@@ -1622,12 +1931,28 @@ vec3 frostedGlassNormal(vec3 p, vec3 normal, float field, float strength)
     return normalize(geometricNormal - gradient * strength);
 }
 
+// Frosted glass's two knobs, matching bw::common::MaterialParams for its
+// index. frostedGlassField/frostedGlassNormal are only ever called from
+// here, so unlike the shared *Field helpers above there is no risk in
+// principle to changing them - they are left as-is anyway, so every bind
+// point here stays the same simple "local to this function" shape as the
+// rest of the file.
+struct FrostedGlassParams { float baseScale; float frostThreshold; };
+FrostedGlassParams unpackFrostedGlassParams() {
+    FrostedGlassParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.frostThreshold = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material frostedGlassTexture(vec3 worldPos, vec3 normal)
 {
+    FrostedGlassParams params = unpackFrostedGlassParams();
+
     Material material;
-    vec3 p = worldPos * 1.4;
+    vec3 p = worldPos * params.baseScale;
     float surface = frostedGlassField(p);
-    float frostDensity = smoothstep(0.22, 0.82, surface);
+    float frostDensity = smoothstep(params.frostThreshold, 0.82, surface);
 
     // The renderer has no transmission channel, so the "seen through"
     // quality is approximated with a pale, desaturated albedo whose
@@ -1640,10 +1965,14 @@ Material frostedGlassTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
-float brickReliefField(vec2 uv)
+// brickHeight is a parameter, not a hardcoded local, because brick_height
+// (MATERIAL_PARAMS[1]) has to reach both this and brickTexture's own copy of
+// the same layout math consistently. brickReliefField is only ever called
+// from brickTexture, so this stays exactly as safe as every function above
+// that instead reads MATERIAL_PARAMS directly.
+float brickReliefField(vec2 uv, float brickHeight)
 {
     float brickWidth = 1.0;
-    float brickHeight = 0.42;
     float mortarWidth = 0.05;
     float row = floor(uv.y / brickHeight);
     float rowOffset = mod(row, 2.0) * brickWidth * 0.5;
@@ -1654,23 +1983,32 @@ float brickReliefField(vec2 uv)
     return 1.0 - smoothstep(0.0, mortarWidth, mortar);
 }
 
+struct BrickParams { float baseScale; float brickHeight; };
+BrickParams unpackBrickParams() {
+    BrickParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.brickHeight = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material brickTexture(vec3 worldPos, vec3 normal)
 {
+    BrickParams params = unpackBrickParams();
+
     Material material;
     vec3 geometricNormal = normalize(normal);
     vec3 tangent, bitangent;
     surfaceTangentBasis(geometricNormal, tangent, bitangent);
 
-    vec3 p = worldPos * 0.95;
+    vec3 p = worldPos * params.baseScale;
     vec2 uv = vec2(dot(p, tangent), dot(p, bitangent));
 
     float brickWidth = 1.0;
-    float brickHeight = 0.42;
-    float row = floor(uv.y / brickHeight);
+    float row = floor(uv.y / params.brickHeight);
     float rowOffset = mod(row, 2.0) * brickWidth * 0.5;
     vec2 cell = vec2(floor((uv.x - rowOffset) / brickWidth), row);
 
-    float mortarMask = brickReliefField(uv);
+    float mortarMask = brickReliefField(uv, params.brickHeight);
     float shade = floorPatternHash(cell + vec2(4.0, 9.0));
     float weather = noise(vec3(uv * 3.3, shade * 11.0));
 
@@ -1684,8 +2022,8 @@ Material brickTexture(vec3 worldPos, vec3 normal)
         mix(0.58, 0.90, mortarMask) + (weather - 0.5) * 0.08, 0.55, 0.94);
 
     const float epsilon = 0.01;
-    float gradientU = brickReliefField(uv + vec2(epsilon, 0.0)) - mortarMask;
-    float gradientV = brickReliefField(uv + vec2(0.0, epsilon)) - mortarMask;
+    float gradientU = brickReliefField(uv + vec2(epsilon, 0.0), params.brickHeight) - mortarMask;
+    float gradientV = brickReliefField(uv + vec2(0.0, epsilon), params.brickHeight) - mortarMask;
     vec3 bump = (tangent * gradientU + bitangent * gradientV) / epsilon;
     material.normal = normalize(geometricNormal - bump * 0.045);
 
@@ -1704,18 +2042,28 @@ float circuitReliefField(vec2 uv)
     return max(trace * traceActive, pad * padActive);
 }
 
+struct CircuitBoardParams { float baseScale; float fineTraceMix; };
+CircuitBoardParams unpackCircuitBoardParams() {
+    CircuitBoardParams r;
+    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    r.fineTraceMix = @Uniform(MATERIAL_PARAMS[1]);
+    return r;
+}
+
 Material circuitBoardTexture(vec3 worldPos, vec3 normal)
 {
+    CircuitBoardParams params = unpackCircuitBoardParams();
+
     Material material;
     vec3 geometricNormal = normalize(normal);
     vec3 tangent, bitangent;
     surfaceTangentBasis(geometricNormal, tangent, bitangent);
 
-    vec3 p = worldPos * 1.15;
+    vec3 p = worldPos * params.baseScale;
     vec2 uv = vec2(dot(p, tangent), dot(p, bitangent));
 
     float coarseTraces = circuitReliefField(uv);
-    float fineTraces = circuitReliefField(uv * 2.2 + vec2(11.0, 4.0)) * 0.55;
+    float fineTraces = circuitReliefField(uv * 2.2 + vec2(11.0, 4.0)) * params.fineTraceMix;
     float copperMask = clamp(max(coarseTraces, fineTraces), 0.0, 1.0);
 
     vec2 padGrid = uv * 9.0;

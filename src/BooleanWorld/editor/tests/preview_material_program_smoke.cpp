@@ -304,6 +304,28 @@ int main() {
   auto sandstoneShift = stoneLikeShift(3, {0.58f, 18.0f});
   auto limestoneShift = stoneLikeShift(4, {0.66f, 0.38f});
 
+  // A spot check across the remaining 32 materials wired this batch - one
+  // from each family (geology, metal, organic, supernatural, standalone) -
+  // rather than all 32 individually. base_scale is uniformly bound for every
+  // material, so this is the one parameter guaranteed comparable across all
+  // of them.
+  auto basaltShift = stoneLikeShift(5, {0.85f, 0.72f});
+  auto rustedIronShift = stoneLikeShift(9, {0.72f, 4.5f});
+  auto woodShift = stoneLikeShift(16, {0.54f, 18.0f});
+  auto arcaneCrystalShift = stoneLikeShift(23, {0.64f, 0.82f});
+  auto frostedGlassShift = stoneLikeShift(30, {1.4f, 0.22f});
+  auto brickShift = stoneLikeShift(31, {0.95f, 0.42f});
+  auto bandedGneissShift = stoneLikeShift(33, {0.68f, 13.0f});
+  // Wet rock blends two close greys, so a 0.2x scale reads as unusually
+  // subtle from directly overhead; use a much larger multiplier to confirm
+  // it is wired at all rather than lowering the shared pass threshold.
+  auto wetRockDefaults = std::array<float, BW_MATERIAL_PARAMS_MAX>{0.74f, 0.24f};
+  auto wetRockBase = renderPixels(floorQuad(1.0f), 36, wetRockDefaults);
+  auto wetRockChanged = wetRockDefaults;
+  wetRockChanged[0] *= 8.0f;
+  auto wetRockShift = meanAbsoluteDifference(
+      wetRockBase, renderPixels(floorQuad(1.0f), 36, wetRockChanged));
+
   auto error = glGetError();
   if (error != GL_NO_ERROR) {
     printf("GL error after draw: 0x%x\n", error);
@@ -327,6 +349,12 @@ int main() {
   printf(
       "base_scale shifts: Slate %.1f, Sandstone %.1f, Limestone %.1f\n",
       slateShift, sandstoneShift, limestoneShift);
+  printf(
+      "base_scale shifts: Basalt %.1f, Rusted iron %.1f, Wood %.1f, "
+      "Arcane crystal %.1f, Frosted glass %.1f, Brick %.1f, "
+      "Banded gneiss %.1f, Wet rock %.1f\n",
+      basaltShift, rustedIronShift, woodShift, arcaneCrystalShift,
+      frostedGlassShift, brickShift, bandedGneissShift, wetRockShift);
 
   glBindVertexArray(0);
   glDeleteBuffers(1, &foreignBuffer);
@@ -386,6 +414,28 @@ int main() {
     printf(
         "FAILED: changing Limestone's base_scale did not change the image\n");
     return 1;
+  }
+  struct SpotCheck {
+    char const* name;
+    double shift;
+  };
+  SpotCheck spotChecks[] = {
+      {"Basalt", basaltShift},
+      {"Rusted iron", rustedIronShift},
+      {"Wood", woodShift},
+      {"Arcane crystal", arcaneCrystalShift},
+      {"Frosted glass", frostedGlassShift},
+      {"Brick", brickShift},
+      {"Banded gneiss", bandedGneissShift},
+      {"Wet rock", wetRockShift},
+  };
+  for (auto const& check : spotChecks) {
+    if (!(check.shift > 1.0)) {
+      printf(
+          "FAILED: changing %s's base_scale did not change the image\n",
+          check.name);
+      return 1;
+    }
   }
   printf(
       "PASSED: the material renders as authored, honours vertex tint, and "
