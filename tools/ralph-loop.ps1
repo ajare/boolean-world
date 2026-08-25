@@ -70,6 +70,19 @@ from the current checkout's origin remote.
 .PARAMETER ReadyLabel
 Label used to identify executable tickets. Defaults to ready-for-agent.
 
+.PARAMETER Labels
+Optional additional labels to filter tickets by, each given as its own array
+element (for example -Labels "feature:editor-3d-preview","difficulty:medium").
+A ticket must carry the ReadyLabel and every label listed here to be eligible.
+Defaults to none, i.e. no extra filtering.
+
+.PARAMETER UseBranch
+Branch to do all work on instead of whatever is currently checked out. If the
+branch does not already exist locally, it is created from master; if it does,
+it is checked out as-is so the loop can resume work already on it. The loop
+never checks out master or merges the branch back into it - the branch is
+left checked out with its commits in place when the loop finishes.
+
 .PARAMETER InitialRetryIntervalSeconds
 Initial delay after a retryable provider or server failure. Defaults to 30.
 
@@ -143,6 +156,17 @@ Shows the next eligible ticket in an explicit repository without claiming or
 running it.
 
 .EXAMPLE
+.\tools\ralph-loop.ps1 -Agent claude -Labels "feature:editor-3d-preview"
+
+Runs only ready tickets that also carry the feature:editor-3d-preview label.
+
+.EXAMPLE
+.\tools\ralph-loop.ps1 -Agent claude -UseBranch feature/editor-3d-preview
+
+Creates (or resumes) feature/editor-3d-preview off master, does all ticket
+work there, and never checks out or merges into master.
+
+.EXAMPLE
 .\tools\ralph-loop.ps1 -InitialRetryIntervalSeconds 15 -MaxRetryIntervalSeconds 300 -UsagePollSeconds 900
 
 Overrides provider-failure backoff and usage-limit polling intervals.
@@ -167,6 +191,8 @@ param(
 
     [string]$Repo = "",
     [string]$ReadyLabel = "ready-for-agent",
+    [string[]]$Labels = @(),
+    [string]$UseBranch = "",
     [int]$InitialRetryIntervalSeconds = 30,
     [int]$MaxRetryIntervalSeconds = 900,
     [int]$UsagePollSeconds = 600,
@@ -280,14 +306,20 @@ function Get-NextTicket {
     param(
         [Parameter(Mandatory = $true)][string]$Repository,
         [Parameter(Mandatory = $true)][string]$Label,
+        [string[]]$ExtraLabels = @(),
         [Parameter(Mandatory = $true)][string]$CurrentUser
     )
 
-    $json = Invoke-Gh @(
+    $listArguments = @(
         "issue", "list", "--repo", $Repository,
-        "--state", "open", "--label", $Label, "--limit", "100",
+        "--state", "open", "--limit", "100",
         "--json", "number,title,body,labels,assignees,url"
     )
+    foreach ($label in @($Label) + @($ExtraLabels)) {
+        $listArguments += @("--label", $label)
+    }
+
+    $json = Invoke-Gh $listArguments
     $issues = $json | ConvertFrom-Json
     if ($issues.Count -eq 0) {
         return $null
@@ -753,6 +785,32 @@ if ($initialTrackedChanges.Count -gt 0) {
     throw "The tracked worktree is not clean. Commit or restore tracked changes before starting the loop."
 }
 
+if ($UseBranch) {
+    $branchExists = $false
+    & git show-ref --verify --quiet "refs/heads/$UseBranch"
+    if ($LASTEXITCODE -eq 0) {
+        $branchExists = $true
+    }
+
+    if ($branchExists) {
+        & git checkout $UseBranch
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to check out existing branch '$UseBranch'."
+        }
+        Write-Status "Resuming work on existing branch '$UseBranch'."
+    } else {
+        & git checkout -b $UseBranch master
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to create branch '$UseBranch' off master."
+        }
+        Write-Status "Created branch '$UseBranch' off master."
+    }
+
+    # All work happens on $UseBranch for the rest of the loop. The loop never
+    # checks out master again or merges $UseBranch back into it - that is left
+    # to the caller.
+}
+
 if (-not $Repo) {
     $Repo = (Invoke-Gh @("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")).Trim()
 }
@@ -761,7 +819,7 @@ $logDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "$Agent-ralph-loop"
 New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
 
 while ($true) {
-    $ticket = Get-NextTicket -Repository $Repo -Label $ReadyLabel -CurrentUser $currentUser
+    $ticket = Get-NextTicket -Repository $Repo -Label $ReadyLabel -ExtraLabels $Labels -CurrentUser $currentUser
     if ($null -eq $ticket) {
         Write-Status "No unblocked, unclaimed '$ReadyLabel' tickets are available."
         break

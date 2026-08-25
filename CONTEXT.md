@@ -84,6 +84,10 @@ _Avoid_: wall property, collision flag (ambiguous with the runtime collision sys
 The same per-edge, External-only mechanism as Wall collision override, for a second independent flag: whether that edge's ArrangementWall renders. Also defaults on. Unlike collision, resolving it needs no world-level parameter (there is no threshold to fall back to), so it is settled directly when ArrangementWalls are built rather than deferred to ArrangementWorldData; like collision, it never creates a wall where the fold produces none — it can only hide a wall that already exists.
 _Avoid_: render flag, hidden flag
 
+**Player proxy**:
+A position and facing angle stored on the Document, representing where the in-game player currently would be. Independent of any Primitive or Layer; used to render the editor's player-view overlay and to seed a flythrough's starting pose.
+_Avoid_: player start, spawn point
+
 **Prefab instance**:
 One Tile's occupant: a reference to a same-sized Prefab plus a rotation and, where applicable, a Tile mode; it is not a copy — editing the Prefab's Primitives changes every instance of it. All Replace squares on one grid are applied before any Prefab instances on that grid. Rotation is one of the referenced DefinePrefabs step's PrefabTilingType's allowed angles (four for Square: 0/90/180/270), not an arbitrary orientation. Reuses the name of the removed Primitive+TriggerLine clipboard grouping (`addPrefabInstance`), now fully gone from the codebase — the two are unrelated, and this is the concept the name refers to going forward.
 _Avoid_: prefab copy, instance (ambiguous alone — this codebase also has C++ class instances, animation-transform instances, etc.)
