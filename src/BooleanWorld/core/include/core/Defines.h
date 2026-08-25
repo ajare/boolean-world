@@ -60,7 +60,7 @@ typedef int64_t frame_number_type;
 //
 // Material definitions
 //
-#define BW_MATERIAL_COUNT 2
+#define BW_MATERIAL_COUNT 37
 #define BW_MATERIAL_PARAMS_MAX 8
 
 // Reserved MATERIAL_INDEX for a wall's back face (the side its normal points

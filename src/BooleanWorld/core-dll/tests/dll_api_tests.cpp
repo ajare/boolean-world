@@ -126,10 +126,10 @@ int main(int argc, char** argv) {
   Expect("invalid fill rule fails", createRegular(0, UINT32_MAX, 3, 0) != 0);
   Expect("too few sides fail", createRegular(0, 0, 2, 0) != 0);
   Expect("too many sides fail", createRegular(0, 0, 1025, 0) != 0);
-  Expect("invalid material fails", createRegular(0, 0, 3, 2) != 0);
+  Expect("invalid material fails", createRegular(0, 0, 3, UINT32_MAX) != 0);
   Expect("invalid rectangle ratio fails", createRectangle(0, 0, 0.0f, 0) != 0);
   Expect("invalid torus count fails", createTorus(0, 0, 0.5f, 0.0f, 0) != 0);
-  Expect("invalid torus material fails", createTorus(0, 0, 0.5f, 1.0f, 2) != 0);
+  Expect("invalid torus material fails", createTorus(0, 0, 0.5f, 1.0f, UINT32_MAX) != 0);
 
   Expect("valid primitive succeeds", createRegular(0, 0, 3, 0) == 0);
   Expect("floor mutation reports success", setFloor(-1.0f) == 0);
