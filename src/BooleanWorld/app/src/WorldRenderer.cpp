@@ -90,12 +90,10 @@ uint32_t WorldRenderer::addVertexToDataProvider(DataProvider dataProvider, uint3
   return dataProvider->addVertex(meshIndex, vertex);
 }
 
-void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
+void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snapshot) {
   auto const& worldData = snapshot.getArrangement();
   auto const& triangles = snapshot.getTriangles();
-  auto const& walls = snapshot.getWalls();
   auto& horizontal = mMaterialRenderers[0];
-  auto& wallRenderer = mMaterialRenderers[1];
 
   std::vector<uint32_t> horizontalCounts(
       horizontal.dataProvider->getNumMeshes());
@@ -155,27 +153,51 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
         ceilingMesh, ceilingIndices[0], ceilingIndices[1], ceilingIndices[2]);
   }
   horizontal.dataProvider->finalizeInternals();
+  horizontal.dataProvider->setNumPrimitives(horizontal.dataProvider->getNumTriangles());
+}
 
-  // Walls render two-sided: the side the normal points toward keeps its
-  // authored material (as before), and the opposite side is always this
+void WorldRenderer::updateWallDataProvider(
+    bw::core::WorldData const& snapshot, glm::vec3 const& playerPosition) {
+  auto const& worldData = snapshot.getArrangement();
+  auto const& walls = snapshot.getWalls();
+  auto& wallRenderer = mMaterialRenderers[1];
+
+  // Walls render two-sided, but only ever as a single quad: whichever side
+  // currently faces the player keeps the wall's authored material: this
   // reserved, plain-white material - see WorldBatch::createModelStream
-  // (which guarantees this mesh bucket exists) and BW_WALL_BACK_FACE_MATERIAL_INDEX.
+  // (which guarantees this mesh bucket exists) and
+  // BW_WALL_BACK_FACE_MATERIAL_INDEX - renders on the far side instead.
+  // Emitting both sides' quads at once (an earlier version of this) put two
+  // coplanar, oppositely-wound quads in the same mesh's material bucket,
+  // which is exactly what backface culling exists to prevent overdraw of -
+  // so both ended up depth-fighting for the same pixels instead of only
+  // one ever being visible.
   auto backHash =
       bw::core::MaterialDefinition{}.data.hash(BW_WALL_BACK_FACE_MATERIAL_INDEX);
   constexpr uint32_t whitePackedColour = 0xffffffffu;
+  wp::Vector2 playerPositionXZ{playerPosition.x, playerPosition.z};
+
+  auto facesPlayer = [&](bw::app::ArrangementWallOrientation const& orientation) {
+    auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
+    return orientation.normal.dot(playerPositionXZ - midpoint) > 0.0f;
+  };
 
   std::vector<uint32_t> wallCounts(wallRenderer.dataProvider->getNumMeshes());
   for (auto const& wall : walls) {
     if (!wall.visible) {
       continue;
     }
-    auto const& properties = worldData.palette[wall.paletteIndex];
-    auto hash = properties.wallMaterialDef.data.hash(
-        properties.wallMaterialIndex);
-    wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
-        hash, false)] += 2;
-    wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
-        backHash, false)] += 2;
+    auto orientation = bw::app::orientArrangementWall(worldData, wall);
+    if (facesPlayer(orientation)) {
+      auto const& properties = worldData.palette[wall.paletteIndex];
+      auto hash = properties.wallMaterialDef.data.hash(
+          properties.wallMaterialIndex);
+      wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
+          hash, false)] += 2;
+    } else {
+      wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
+          backHash, false)] += 2;
+    }
   }
   wallRenderer.dataProvider->updateInternals(wallCounts);
 
@@ -183,56 +205,56 @@ void WorldRenderer::updateDataProviders(bw::core::WorldData const& snapshot) {
     if (!wall.visible) {
       continue;
     }
-    auto const orientation = bw::app::orientArrangementWall(worldData, wall);
-    auto const& properties = worldData.palette[wall.paletteIndex];
-    auto hash = properties.wallMaterialDef.data.hash(
-        properties.wallMaterialIndex);
-    auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
-    auto colour = properties.wallMaterialDef.data.packedColour();
+    auto orientation = bw::app::orientArrangementWall(worldData, wall);
     auto const& v0 = orientation.v0;
     auto const& v1 = orientation.v1;
-    auto const& normal = orientation.normal;
-    auto bottom0 = addVertexToDataProvider(
-        wallRenderer.dataProvider, mesh, v0.x, wall.minZ, v0.y,
-        normal.x, 0, normal.y, 0, 0, colour);
-    auto bottom1 = addVertexToDataProvider(
-        wallRenderer.dataProvider, mesh, v1.x, wall.minZ, v1.y,
-        normal.x, 0, normal.y, 1, 0, colour);
-    auto top1 = addVertexToDataProvider(
-        wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, v1.y,
-        normal.x, 0, normal.y, 1, 1, colour);
-    auto top0 = addVertexToDataProvider(
-        wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, v0.y,
-        normal.x, 0, normal.y, 0, 1, colour);
-    wallRenderer.dataProvider->addTriangle(mesh, bottom0, bottom1, top1);
-    wallRenderer.dataProvider->addTriangle(mesh, top1, top0, bottom0);
 
-    // The back face: the same quad with its two long edges swapped (so its
-    // winding, and therefore its normal, is reversed) and always the
-    // reserved white material.
-    auto backMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
-    auto backNormal = -normal;
-    auto backBottom0 = addVertexToDataProvider(
-        wallRenderer.dataProvider, backMesh, v1.x, wall.minZ, v1.y,
-        backNormal.x, 0, backNormal.y, 0, 0, whitePackedColour);
-    auto backBottom1 = addVertexToDataProvider(
-        wallRenderer.dataProvider, backMesh, v0.x, wall.minZ, v0.y,
-        backNormal.x, 0, backNormal.y, 1, 0, whitePackedColour);
-    auto backTop1 = addVertexToDataProvider(
-        wallRenderer.dataProvider, backMesh, v0.x, wall.maxZ, v0.y,
-        backNormal.x, 0, backNormal.y, 1, 1, whitePackedColour);
-    auto backTop0 = addVertexToDataProvider(
-        wallRenderer.dataProvider, backMesh, v1.x, wall.maxZ, v1.y,
-        backNormal.x, 0, backNormal.y, 0, 1, whitePackedColour);
-    wallRenderer.dataProvider->addTriangle(backMesh, backBottom0, backBottom1, backTop1);
-    wallRenderer.dataProvider->addTriangle(backMesh, backTop1, backTop0, backBottom0);
+    if (facesPlayer(orientation)) {
+      auto const& properties = worldData.palette[wall.paletteIndex];
+      auto hash = properties.wallMaterialDef.data.hash(
+          properties.wallMaterialIndex);
+      auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
+      auto colour = properties.wallMaterialDef.data.packedColour();
+      auto const& normal = orientation.normal;
+      auto bottom0 = addVertexToDataProvider(
+          wallRenderer.dataProvider, mesh, v0.x, wall.minZ, v0.y,
+          normal.x, 0, normal.y, 0, 0, colour);
+      auto bottom1 = addVertexToDataProvider(
+          wallRenderer.dataProvider, mesh, v1.x, wall.minZ, v1.y,
+          normal.x, 0, normal.y, 1, 0, colour);
+      auto top1 = addVertexToDataProvider(
+          wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, v1.y,
+          normal.x, 0, normal.y, 1, 1, colour);
+      auto top0 = addVertexToDataProvider(
+          wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, v0.y,
+          normal.x, 0, normal.y, 0, 1, colour);
+      wallRenderer.dataProvider->addTriangle(mesh, bottom0, bottom1, top1);
+      wallRenderer.dataProvider->addTriangle(mesh, top1, top0, bottom0);
+    } else {
+      // The same 4 corners and diagonal as the facesPlayer branch above,
+      // with each triangle's vertex order reversed - not a different
+      // diagonal - so the winding, and therefore which side it's visible
+      // from, is a true mirror image rather than an inconsistent one.
+      auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
+      auto backNormal = -orientation.normal;
+      auto bottom0 = addVertexToDataProvider(
+          wallRenderer.dataProvider, mesh, v0.x, wall.minZ, v0.y,
+          backNormal.x, 0, backNormal.y, 0, 0, whitePackedColour);
+      auto bottom1 = addVertexToDataProvider(
+          wallRenderer.dataProvider, mesh, v1.x, wall.minZ, v1.y,
+          backNormal.x, 0, backNormal.y, 1, 0, whitePackedColour);
+      auto top1 = addVertexToDataProvider(
+          wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, v1.y,
+          backNormal.x, 0, backNormal.y, 1, 1, whitePackedColour);
+      auto top0 = addVertexToDataProvider(
+          wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, v0.y,
+          backNormal.x, 0, backNormal.y, 0, 1, whitePackedColour);
+      wallRenderer.dataProvider->addTriangle(mesh, top1, bottom1, bottom0);
+      wallRenderer.dataProvider->addTriangle(mesh, bottom0, top0, top1);
+    }
   }
   wallRenderer.dataProvider->finalizeInternals();
-
-  for (auto& item : mMaterialRenderers) {
-    item.dataProvider->setNumPrimitives(
-        item.dataProvider->getNumTriangles());
-  }
+  wallRenderer.dataProvider->setNumPrimitives(wallRenderer.dataProvider->getNumTriangles());
 }
 
 void WorldRenderer::update(
@@ -249,9 +271,14 @@ void WorldRenderer::update(
   BW_UNUSED(world);
 
   if (mWorldHasChanged) {
-    updateDataProviders(worldData);
+    updateHorizontalDataProvider(worldData);
     mWorldHasChanged = false;
   }
+  // Unlike the horizontal provider, walls depend on playerPosition, so they
+  // need rebuilding on every call - the player moving is reason enough for
+  // a wall to flip which single quad it shows, even when nothing about the
+  // world itself changed.
+  updateWallDataProvider(worldData, playerPosition);
 
   for (auto& item : mMaterialRenderers) {
     auto const materialIndexOverride =

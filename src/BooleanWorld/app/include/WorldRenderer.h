@@ -49,7 +49,18 @@ private:
   RenderTargets mWorldTargets;
 
 private:
-  void updateDataProviders(bw::core::WorldData const& worldData);
+  // Floor/ceiling triangle geometry - unaffected by player position, so
+  // this stays gated by mWorldHasChanged like before.
+  void updateHorizontalDataProvider(bw::core::WorldData const& worldData);
+
+  // Wall quad geometry. Each wall picks, every call, whichever single quad
+  // currently faces the player: its authored material if the player is on
+  // the side its normal points toward, or the reserved plain-white
+  // material otherwise. Called every frame regardless of mWorldHasChanged,
+  // since the player moving is enough to flip that choice for a wall even
+  // when nothing about the world itself changed.
+  void updateWallDataProvider(
+      bw::core::WorldData const& worldData, glm::vec3 const& playerPosition);
 
   uint32_t addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c);
 
