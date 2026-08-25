@@ -57,7 +57,8 @@ model:
   difficulty:trivial            smaller model, medium effort
   difficulty:small (or :low)    smaller model, high effort
   difficulty:medium             larger model, medium effort
-  difficulty:large (or :high)   larger model, high effort
+  difficulty:large (or :high/:hard)
+                                larger model, high effort
 
 For pi the pair is GPT-5.6 Terra and Sol; for claude it is Sonnet and Opus.
 The script stops if an eligible ticket has no supported difficulty label or
@@ -71,17 +72,13 @@ from the current checkout's origin remote.
 Label used to identify executable tickets. Defaults to ready-for-agent.
 
 .PARAMETER Labels
-Optional additional labels to filter tickets by, each given as its own array
-element (for example -Labels "feature:editor-3d-preview","difficulty:medium").
-A ticket must carry the ReadyLabel and every label listed here to be eligible.
-Defaults to none, i.e. no extra filtering.
+Additional labels a ticket must carry, on top of ReadyLabel, to be eligible.
+Repeat the parameter or pass a comma-separated list.
 
 .PARAMETER UseBranch
-Branch to do all work on instead of whatever is currently checked out. If the
-branch does not already exist locally, it is created from master; if it does,
-it is checked out as-is so the loop can resume work already on it. The loop
-never checks out master or merges the branch back into it - the branch is
-left checked out with its commits in place when the loop finishes.
+Branch to run the loop against. If it exists locally or on the remote it is
+checked out; otherwise it is created from the current HEAD. When omitted, the
+loop runs on whatever branch is already checked out.
 
 .PARAMETER InitialRetryIntervalSeconds
 Initial delay after a retryable provider or server failure. Defaults to 30.
@@ -156,15 +153,11 @@ Shows the next eligible ticket in an explicit repository without claiming or
 running it.
 
 .EXAMPLE
-.\tools\ralph-loop.ps1 -Agent claude -Labels "feature:editor-3d-preview"
+.\tools\ralph-loop.ps1 -Agent pi -AdaptiveModelAndEffort -Labels "feature:editor-3d-preview" -UseBranch feature/editor-3d-preview
 
-Runs only ready tickets that also carry the feature:editor-3d-preview label.
-
-.EXAMPLE
-.\tools\ralph-loop.ps1 -Agent claude -UseBranch feature/editor-3d-preview
-
-Creates (or resumes) feature/editor-3d-preview off master, does all ticket
-work there, and never checks out or merges into master.
+Runs only tickets also labeled feature:editor-3d-preview, on the
+feature/editor-3d-preview branch (created from the current HEAD if it doesn't
+already exist).
 
 .EXAMPLE
 .\tools\ralph-loop.ps1 -InitialRetryIntervalSeconds 15 -MaxRetryIntervalSeconds 300 -UsagePollSeconds 900
@@ -269,13 +262,13 @@ function Get-AdaptiveModelAndEffort {
 
     $difficultyLabels = @($Labels | ForEach-Object {
         $name = ([string]$_.name).ToLowerInvariant().Trim()
-        if ($name -match '^difficulty:\s*(trivial|small|low|medium|large|high)$') {
+        if ($name -match '^difficulty:\s*(trivial|small|low|medium|large|high|hard)$') {
             $Matches[1]
         }
     } | Select-Object -Unique)
 
     if ($difficultyLabels.Count -eq 0) {
-        throw "Adaptive model and effort requires one of: difficulty:trivial, difficulty:small, difficulty:low, difficulty:medium, difficulty:large, or difficulty:high."
+        throw "Adaptive model and effort requires one of: difficulty:trivial, difficulty:small, difficulty:low, difficulty:medium, difficulty:large, difficulty:high, or difficulty:hard."
     }
     if ($difficultyLabels.Count -gt 1) {
         throw "Adaptive model and effort found conflicting difficulty labels: $($difficultyLabels -join ', ')."
@@ -293,7 +286,7 @@ function Get-AdaptiveModelAndEffort {
         "medium" {
             return [pscustomobject]@{ Difficulty = "medium"; Model = $models.Smaller; Effort = "medium" }
         }
-        { $_ -in @("large", "high") } {
+        { $_ -in @("large", "high", "hard") } {
             return [pscustomobject]@{ Difficulty = $_; Model = $models.Larger; Effort = "medium" }
         }
         default {
@@ -312,13 +305,15 @@ function Get-NextTicket {
 
     $listArguments = @(
         "issue", "list", "--repo", $Repository,
-        "--state", "open", "--limit", "100",
+        "--state", "open", "--label", $Label
+    )
+    foreach ($extraLabel in $ExtraLabels) {
+        $listArguments += @("--label", $extraLabel)
+    }
+    $listArguments += @(
+        "--limit", "100",
         "--json", "number,title,body,labels,assignees,url"
     )
-    foreach ($label in @($Label) + @($ExtraLabels)) {
-        $listArguments += @("--label", $label)
-    }
-
     $json = Invoke-Gh $listArguments
     $issues = $json | ConvertFrom-Json
     if ($issues.Count -eq 0) {
@@ -786,29 +781,24 @@ if ($initialTrackedChanges.Count -gt 0) {
 }
 
 if ($UseBranch) {
-    $branchExists = $false
-    & git show-ref --verify --quiet "refs/heads/$UseBranch"
-    if ($LASTEXITCODE -eq 0) {
-        $branchExists = $true
-    }
-
-    if ($branchExists) {
-        & git checkout $UseBranch
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to check out existing branch '$UseBranch'."
+    $currentBranch = (& git rev-parse --abbrev-ref HEAD).Trim()
+    if ($currentBranch -ne $UseBranch) {
+        & git rev-parse --verify --quiet "refs/heads/$UseBranch" *> $null
+        if ($LASTEXITCODE -eq 0) {
+            & git checkout $UseBranch 2>&1 | Out-Null
+        } else {
+            & git ls-remote --exit-code --heads origin $UseBranch *> $null
+            if ($LASTEXITCODE -eq 0) {
+                & git checkout -b $UseBranch --track "origin/$UseBranch" 2>&1 | Out-Null
+            } else {
+                & git checkout -b $UseBranch 2>&1 | Out-Null
+            }
         }
-        Write-Status "Resuming work on existing branch '$UseBranch'."
-    } else {
-        & git checkout -b $UseBranch master
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to create branch '$UseBranch' off master."
+            throw "Failed to check out branch '$UseBranch'."
         }
-        Write-Status "Created branch '$UseBranch' off master."
+        Write-Status "Switched to branch '$UseBranch'."
     }
-
-    # All work happens on $UseBranch for the rest of the loop. The loop never
-    # checks out master again or merges $UseBranch back into it - that is left
-    # to the caller.
 }
 
 if (-not $Repo) {
