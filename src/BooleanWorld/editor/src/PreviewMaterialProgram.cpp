@@ -124,12 +124,12 @@ bool PreviewMaterialProgram::compile() {
   for (auto const& warning : parser.getWarnings()) {
     gLogger->warn("3D preview material shader: {}", warning);
   }
-  auto const& errors = parser.getErrors();
-  if (!errors.empty()) {
-    for (auto const& error : errors) {
-      gLogger->error("3D preview material shader: {}", error);
-    }
-    return false;
+  // Reported but not treated as fatal. These shaders are authored for, and
+  // consumed by, the app module, whose pipeline never inspects this error
+  // list - so a shader the game renders fine must not black out the preview.
+  // The generated GLSL is the real arbiter, and it is compiled below.
+  for (auto const& error : parser.getErrors()) {
+    gLogger->error("3D preview material shader: {}", error);
   }
 
   auto vertexStage =

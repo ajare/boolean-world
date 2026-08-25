@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -20,7 +21,6 @@
 #include "imgui.h"
 #include "InputOptions.h"
 #include "PlayerView.h"
-#include "PreviewHighlight.h"
 #include "PreviewMaterialProgram.h"
 #include "PreviewSurfacePick.h"
 #include "PrimitivePreviewGeometry.h"
@@ -64,9 +64,26 @@ PreviewSession session;
 // preview window - see PreviewMaterialProgram and GitHub issue #256.
 PreviewMaterialProgram materialProgram;
 
+// Per-vertex tint. world_pbr.frag multiplies a surface's own colour by this
+// before lighting, so white renders the material exactly as authored.
+struct Tint {
+  float r{1.0f};
+  float g{1.0f};
+  float b{1.0f};
+};
+
+constexpr Tint untinted{};
+// Leaves red and green alone and holds back only blue, so the surface reads
+// as the same material seen under a warmer light rather than as a different
+// colour painted over it.
+constexpr Tint lookedAtTint{1.0f, 1.0f, 0.7f};
+
 // The game's 3D coordinates map its 2D world (X, Y) onto (X, Z).
-PreviewGpuVertex toGpuVertex(PreviewVertex3 const& vertex) {
+PreviewGpuVertex toGpuVertex(PreviewVertex3 const& vertex, Tint const& tint) {
   PreviewGpuVertex result;
+  result.r = tint.r;
+  result.g = tint.g;
+  result.b = tint.b;
   result.px = vertex.x;
   result.py = vertex.z;
   result.pz = vertex.y;
@@ -80,33 +97,46 @@ PreviewGpuVertex toGpuVertex(PreviewVertex3 const& vertex) {
 
 void appendTriangles(
     std::vector<PreviewGpuVertex>& buffer,
-    std::vector<PreviewTriangle> const& triangles) {
+    std::vector<PreviewTriangle> const& triangles,
+    Tint const& tint) {
   buffer.reserve(buffer.size() + triangles.size() * 3);
   for (auto const& triangle : triangles) {
     for (auto const& vertex : triangle.vertices) {
-      buffer.push_back(toGpuVertex(vertex));
+      buffer.push_back(toGpuVertex(vertex, tint));
     }
   }
 }
 
+// A wall is one lofted Ring edge, so tintedIndex marks the single quad the
+// viewer is looking at rather than every wall the Primitive owns.
 void appendWallQuads(
     std::vector<PreviewGpuVertex>& buffer,
-    std::vector<PreviewWallQuad> const& quads) {
+    std::vector<PreviewWallQuad> const& quads,
+    size_t tintedIndex,
+    Tint const& tint) {
   buffer.reserve(buffer.size() + quads.size() * 6);
-  for (auto const& quad : quads) {
-    buffer.push_back(toGpuVertex(quad.vertices[0]));
-    buffer.push_back(toGpuVertex(quad.vertices[1]));
-    buffer.push_back(toGpuVertex(quad.vertices[2]));
-    buffer.push_back(toGpuVertex(quad.vertices[2]));
-    buffer.push_back(toGpuVertex(quad.vertices[3]));
-    buffer.push_back(toGpuVertex(quad.vertices[0]));
+  for (size_t index = 0; index < quads.size(); ++index) {
+    auto const& quad = quads[index];
+    auto const& quadTint = index == tintedIndex ? tint : untinted;
+    buffer.push_back(toGpuVertex(quad.vertices[0], quadTint));
+    buffer.push_back(toGpuVertex(quad.vertices[1], quadTint));
+    buffer.push_back(toGpuVertex(quad.vertices[2], quadTint));
+    buffer.push_back(toGpuVertex(quad.vertices[2], quadTint));
+    buffer.push_back(toGpuVertex(quad.vertices[3], quadTint));
+    buffer.push_back(toGpuVertex(quad.vertices[0], quadTint));
   }
 }
 
-// The triangles outlining whichever surface the centre of the view is
-// pointing at, nearest first across every previewed Primitive. Empty when
-// the view centre meets nothing.
-std::vector<PreviewTriangle> lookedAtSurfaceTriangles() {
+// Whichever surface the centre of the view is pointing at, nearest across
+// every previewed Primitive. Its geometry is null when the view centre meets
+// nothing at all.
+struct LookedAtSurface {
+  PrimitivePreviewGeometry const* geometry{};
+  PreviewSurface surface{PreviewSurface::None};
+  size_t wallIndex{};
+};
+
+LookedAtSurface lookedAtSurface() {
   auto position = session.camera->getPosition();
   auto direction = session.camera->getDirection();
   // PrimitivePreviewGeometry keeps height in z, where the renderer's 3D
@@ -128,26 +158,7 @@ std::vector<PreviewTriangle> lookedAtSurfaceTriangles() {
   if (!nearest.hit()) {
     return {};
   }
-
-  switch (nearest.surface) {
-    case PreviewSurface::Floor:
-      return nearestGeometry->floorTriangles;
-    case PreviewSurface::Ceiling:
-      return nearestGeometry->ceilingTriangles;
-    case PreviewSurface::Wall: {
-      // A wall is one lofted Ring edge, so only that quad lights up rather
-      // than every wall the Primitive owns.
-      auto const& quad = nearestGeometry->wallQuads[nearest.wallIndex];
-      return {
-          PreviewTriangle{
-              {quad.vertices[0], quad.vertices[1], quad.vertices[2]}},
-          PreviewTriangle{
-              {quad.vertices[2], quad.vertices[3], quad.vertices[0]}}};
-    }
-    case PreviewSurface::None:
-      break;
-  }
-  return {};
+  return {nearestGeometry, nearest.surface, nearest.wallIndex};
 }
 
 // Single owner of the pointer grab. Enabling flushes pending mouse motion,
@@ -245,35 +256,44 @@ void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
       session.camera->getProjectionTransform(), cameraPosition,
       cameraPosition, session.globalTime);
 
+  auto lookedAt = lookedAtSurface();
+
   std::vector<PreviewGpuVertex> buffer;
   for (auto const& primitive : session.primitives) {
     auto const& geometry = primitive.geometry;
+    auto tintOf = [&](PreviewSurface surface) {
+      return lookedAt.geometry == &geometry && lookedAt.surface == surface
+                 ? lookedAtTint
+                 : untinted;
+    };
 
     buffer.clear();
-    appendTriangles(buffer, geometry.floorTriangles);
+    appendTriangles(
+        buffer, geometry.floorTriangles, tintOf(PreviewSurface::Floor));
     materialProgram.setMaterial(
         geometry.floorMaterial.index, geometry.floorMaterial.definition.params);
     materialProgram.draw(buffer);
 
     buffer.clear();
-    appendTriangles(buffer, geometry.ceilingTriangles);
+    appendTriangles(
+        buffer, geometry.ceilingTriangles, tintOf(PreviewSurface::Ceiling));
     materialProgram.setMaterial(
         geometry.ceilingMaterial.index,
         geometry.ceilingMaterial.definition.params);
     materialProgram.draw(buffer);
 
     buffer.clear();
-    appendWallQuads(buffer, geometry.wallQuads);
+    auto tintedWall = lookedAt.geometry == &geometry &&
+                              lookedAt.surface == PreviewSurface::Wall
+                          ? lookedAt.wallIndex
+                          : std::numeric_limits<size_t>::max();
+    appendWallQuads(buffer, geometry.wallQuads, tintedWall, lookedAtTint);
     materialProgram.setMaterial(
         geometry.wallMaterial.index, geometry.wallMaterial.definition.params);
     materialProgram.draw(buffer);
   }
 
   materialProgram.end();
-
-  drawPreviewHighlight(
-      lookedAtSurfaceTriangles(), session.camera->getViewTransform(),
-      session.camera->getProjectionTransform());
 
   glDisable(GL_DEPTH_TEST);
   glDepthFunc(GL_LESS);

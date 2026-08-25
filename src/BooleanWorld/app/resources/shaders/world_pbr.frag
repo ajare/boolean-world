@@ -1795,6 +1795,12 @@ void main()
         Material material = evaluateMaterial(
             texturePosition, normalDir, viewDir, materialIndex);
 
+        // Per-vertex tint, applied to the surface's own colour before any
+        // lighting so a tinted surface still shades exactly like an untinted
+        // one. White - what every caller passes unless it is deliberately
+        // marking a surface out - leaves the material untouched.
+        material.albedo *= @In(COLOUR).rgb;
+
         if (@Uniform(FLOOR_PATTERN) != 0)
         {
             material.normal = embossFloorPattern(

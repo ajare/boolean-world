@@ -2,6 +2,7 @@
 // PreviewMaterialProgram exactly as Preview3D.cpp does, and reads the pixels
 // back. Verifies the whole path actually puts colour on screen, rather than
 // only that the shader compiles: a black preview compiles perfectly well.
+#include <cmath>
 #include <cstdio>
 #include <memory>
 #include <vector>
@@ -19,7 +20,6 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
-#include "PreviewHighlight.h"
 #include "PreviewMaterialProgram.h"
 
 spdlog::logger* gLogger{nullptr};
@@ -31,8 +31,8 @@ constexpr int kHeight = 128;
 
 // A floor quad on the y=0 plane, normal pointing up, big enough to fill the
 // view from the camera position used below.
-std::vector<editor::PreviewGpuVertex> floorQuad() {
-  auto corner = [](float x, float z) {
+std::vector<editor::PreviewGpuVertex> floorQuad(float tintBlue) {
+  auto corner = [tintBlue](float x, float z) {
     editor::PreviewGpuVertex vertex;
     vertex.px = x;
     vertex.py = 0.0f;
@@ -40,6 +40,7 @@ std::vector<editor::PreviewGpuVertex> floorQuad() {
     vertex.ny = 1.0f;
     vertex.u = x;
     vertex.v = z;
+    vertex.b = tintBlue;
     return vertex;
   };
   auto a = corner(-100.0f, -100.0f);
@@ -49,24 +50,38 @@ std::vector<editor::PreviewGpuVertex> floorQuad() {
   return {a, b, c, c, d, a};
 }
 
-// The same quad in PrimitivePreviewGeometry's space, where height is z. A
-// smaller square, so its outline falls inside the rendered floor rather than
-// along the edge of the view.
-std::vector<editor::PreviewTriangle> highlightTriangles() {
-  auto corner = [](float x, float y) {
-    editor::PreviewVertex3 vertex;
-    vertex.x = x;
-    vertex.y = y;
-    vertex.z = 0.0f;
-    vertex.nz = 1.0f;
-    return vertex;
-  };
-  auto a = corner(-30.0f, -30.0f);
-  auto b = corner(30.0f, -30.0f);
-  auto c = corner(30.0f, 30.0f);
-  auto d = corner(-30.0f, 30.0f);
-  return {
-      editor::PreviewTriangle{{a, b, c}}, editor::PreviewTriangle{{c, d, a}}};
+struct FrameStats {
+  size_t litPixels{};
+  int maxChannel{};
+  double meanBlue{};
+  double meanRed{};
+};
+
+FrameStats measureFrame(int width, int height) {
+  std::vector<unsigned char> pixels((size_t)width * height * 4);
+  glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+  FrameStats stats;
+  double blueTotal = 0.0, redTotal = 0.0;
+  size_t counted = 0;
+  for (size_t i = 0; i < pixels.size(); i += 4) {
+    int r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+    int brightest = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    if (brightest > stats.maxChannel) {
+      stats.maxChannel = brightest;
+    }
+    if (brightest > 8) {
+      ++stats.litPixels;
+      blueTotal += b;
+      redTotal += r;
+      ++counted;
+    }
+  }
+  if (counted > 0) {
+    stats.meanBlue = blueTotal / (double)counted;
+    stats.meanRed = redTotal / (double)counted;
+  }
+  return stats;
 }
 
 }  // namespace
@@ -175,12 +190,19 @@ int main() {
   auto projection = glm::perspective(
       glm::radians(60.0f), (float)kWidth / (float)kHeight, 0.1f, 1000000.0f);
 
-  program.begin(view, projection, cameraPosition, cameraPosition, 0.0f);
-  program.setMaterial(0, {});
-  program.draw(floorQuad());
-  program.end();
+  auto renderFloor = [&](float tintBlue) {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    program.begin(view, projection, cameraPosition, cameraPosition, 0.0f);
+    program.setMaterial(0, {});
+    program.draw(floorQuad(tintBlue));
+    program.end();
+    return measureFrame(kWidth, kHeight);
+  };
 
-  editor::drawPreviewHighlight(highlightTriangles(), view, projection);
+  // White vertex colours must leave the material exactly as authored; a
+  // reduced blue channel must tint it without touching red.
+  auto untinted = renderFloor(1.0f);
+  auto tinted = renderFloor(0.7f);
 
   auto error = glGetError();
   if (error != GL_NO_ERROR) {
@@ -188,34 +210,13 @@ int main() {
     return 1;
   }
 
-  std::vector<unsigned char> pixels((size_t)kWidth * kHeight * 4);
-  glReadPixels(
-      0, 0, kWidth, kHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-
-  size_t litPixels = 0;
-  size_t yellowPixels = 0;
-  int maxChannel = 0;
-  for (size_t i = 0; i < pixels.size(); i += 4) {
-    int r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
-    int brightest = r > g ? (r > b ? r : b) : (g > b ? g : b);
-    if (brightest > maxChannel) {
-      maxChannel = brightest;
-    }
-    if (brightest > 8) {
-      ++litPixels;
-    }
-    // The highlight is drawn at full red and green with no blue, and nothing
-    // else in the scene is anywhere near that saturated.
-    if (r > 200 && g > 200 && b < 100) {
-      ++yellowPixels;
-    }
-  }
-
   auto total = (size_t)kWidth * kHeight;
   printf(
-      "lit pixels: %zu / %zu (brightest channel %d)\n", litPixels, total,
-      maxChannel);
-  printf("highlight pixels: %zu\n", yellowPixels);
+      "lit pixels: %zu / %zu (brightest channel %d)\n", untinted.litPixels,
+      total, untinted.maxChannel);
+  printf(
+      "untinted mean red %.1f blue %.1f; tinted mean red %.1f blue %.1f\n",
+      untinted.meanRed, untinted.meanBlue, tinted.meanRed, tinted.meanBlue);
 
   glBindVertexArray(0);
   glDeleteBuffers(1, &foreignBuffer);
@@ -232,16 +233,23 @@ int main() {
 
   // The quad covers a large part of the view; requiring a solid fraction of
   // the frame to be lit catches both "nothing drew" and "drew but black".
-  if (litPixels < total / 10) {
+  if (untinted.litPixels < total / 10) {
     printf("FAILED: the material shader rendered a black frame\n");
     return 1;
   }
-  // Thick lines around a square well inside the view, so a healthy outline is
-  // hundreds of pixels; anything near zero means it did not draw.
-  if (yellowPixels < 100) {
-    printf("FAILED: the surface highlight drew no visible outline\n");
+  // Holding back blue must visibly darken blue and leave red alone. Without
+  // the shader honouring vertex colour at all, the two frames are identical,
+  // so any real reduction proves the tint arrived. It lands well short of the
+  // 30% taken off the albedo because gamma compresses it and the specular
+  // terms are not tinted, which is why this asks only for a clear margin.
+  if (!(tinted.meanBlue < untinted.meanBlue * 0.97)) {
+    printf("FAILED: the vertex colour tint did not reduce blue\n");
     return 1;
   }
-  printf("PASSED: the material shader and surface highlight both rendered\n");
+  if (std::abs(tinted.meanRed - untinted.meanRed) > untinted.meanRed * 0.02) {
+    printf("FAILED: the tint disturbed red, which it should leave alone\n");
+    return 1;
+  }
+  printf("PASSED: the material renders as authored and honours vertex tint\n");
   return 0;
 }

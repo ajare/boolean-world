@@ -11,7 +11,6 @@ add_executable(editor WIN32
     src/PrimitivePreviewGeometry.cpp
     src/PrefabTilingGuide.cpp
     src/Preview3D.cpp
-    src/PreviewHighlight.cpp
     src/PreviewMaterialProgram.cpp
     src/PreviewSurfacePick.cpp
     ../app/src/ReactiveCamera.cpp
@@ -61,6 +60,9 @@ set_target_properties(editor PROPERTIES
 bw_deploy_runtime_dlls(editor)
 bw_deploy_vendor_dlls(editor)
 bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/resources")
+# The 3D preview compiles the game's own material shaders, so it stages them
+# from the app module rather than keeping a second copy that could drift.
+bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/shaders" "shaders")
 bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/../core/doc" "doc/core")
 bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/doc" "doc/editor")
 
@@ -97,7 +99,6 @@ if(BUILD_TESTING)
     # directly instead of a silently black 3D preview window.
     add_executable(boolean_world_editor_preview_material_program_smoke
         tests/preview_material_program_smoke.cpp
-        src/PreviewHighlight.cpp
         src/PreviewMaterialProgram.cpp)
     target_include_directories(boolean_world_editor_preview_material_program_smoke PRIVATE include)
     target_link_libraries(boolean_world_editor_preview_material_program_smoke PRIVATE
@@ -112,6 +113,8 @@ if(BUILD_TESTING)
     bw_deploy_vendor_dlls(boolean_world_editor_preview_material_program_smoke)
     bw_deploy_directory(boolean_world_editor_preview_material_program_smoke
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders" "shaders")
+    bw_deploy_directory(boolean_world_editor_preview_material_program_smoke
+        "${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/shaders" "shaders")
 
     add_executable(boolean_world_editor_primitive_field_preview_tests
         tests/primitive_field_preview_tests.cpp
