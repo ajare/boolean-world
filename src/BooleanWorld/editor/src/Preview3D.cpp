@@ -12,6 +12,7 @@
 #pragma warning(pop)
 
 #include <GL/glew.h>
+#include <SDL3/SDL.h>
 
 #include <common/GameDefines.h>
 
@@ -23,6 +24,8 @@
 #include "PrimitivePreviewGeometry.h"
 #include "Preview3D.h"
 #include "ReactiveCamera.h"
+
+extern SDL_Window* gWindow;
 
 namespace editor {
 namespace {
@@ -39,6 +42,10 @@ struct PreviewSession {
   float pitch{};
   float eyeZ{};
   float globalTime{};
+  // Mouse motion accumulated from SDL events since the last frame, in place
+  // of ImGui's io.MouseDelta - see addPreview3DMouseMotion.
+  float mouseMotionX{};
+  float mouseMotionY{};
   bw::app::InputOptions inputOptions;
   std::unique_ptr<ReactiveCamera> camera;
   // Grounding and rendering deliberately share this exact in-scope Primitive
@@ -94,15 +101,26 @@ void appendWallQuads(
   }
 }
 
+// Single owner of the pointer grab. Enabling flushes pending mouse motion,
+// so this only acts on an actual change of state - never once per frame.
+void syncRelativeMouseMode(bool enabled) {
+  if (!gWindow || SDL_GetWindowRelativeMouseMode(gWindow) == enabled) {
+    return;
+  }
+  SDL_SetWindowRelativeMouseMode(gWindow, enabled);
+}
+
 void updateCameraFromInput() {
   auto const& io = ImGui::GetIO();
 
   float previousAngle = session.angle;
   float previousPitch = session.pitch;
   session.angle = bw::app::applyMouseYaw(
-      previousAngle, io.MouseDelta.x, session.inputOptions.mouseSensitivity);
+      previousAngle, session.mouseMotionX, session.inputOptions.mouseSensitivity);
   session.pitch = bw::app::applyMousePitch(
-      previousPitch, io.MouseDelta.y, session.inputOptions.mouseSensitivity);
+      previousPitch, session.mouseMotionY, session.inputOptions.mouseSensitivity);
+  session.mouseMotionX = 0.0f;
+  session.mouseMotionY = 0.0f;
 
   // ReactiveCamera consumes turn deltas, just as the game's player camera
   // does. Keyboard movement stays in the world plane; there is no vertical
@@ -215,6 +233,14 @@ bool preview3DIsOpen() {
   return session.open;
 }
 
+void addPreview3DMouseMotion(float relativeX, float relativeY) {
+  if (!session.open) {
+    return;
+  }
+  session.mouseMotionX += relativeX;
+  session.mouseMotionY += relativeY;
+}
+
 void openPreview3D(
     std::vector<bw::core::Primitive const*> primitives,
     wp::Vector2 const& playerPosition,
@@ -284,10 +310,10 @@ void renderPreview3D() {
         std::max(ImGui::GetWindowSize().x / ImGui::GetWindowSize().y, 0.01f));
     bool closing = ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal);
     if (!closing) {
-      // The mouse drives the look direction rather than pointing at anything,
-      // so hide the cursor for the duration. ImGui resets the cursor to the
-      // arrow each NewFrame, so it reappears on its own once the preview
-      // closes - including on this frame's closing branch below.
+      // Relative mode already hides the pointer; this stops the ImGui SDL3
+      // backend from calling SDL_ShowCursor() behind its back every frame.
+      // ImGui resets the cursor to the arrow each NewFrame, so it reappears
+      // on its own once the preview closes.
       ImGui::SetMouseCursor(ImGuiMouseCursor_None);
       updateCameraFromInput();
     }
@@ -310,6 +336,12 @@ void renderPreview3D() {
   }
   ImGui::End();
   ImGui::PopStyleVar(2);
+
+  // Relative mode keeps reporting motion past the window edge, so looking
+  // around is never bounded by the screen. Requiring `visible` too means a
+  // window ImGui declined to draw releases the pointer instead of holding
+  // it hostage with no way to reach the Escape shortcut.
+  syncRelativeMouseMode(session.open && visible);
 }
 
 }  // namespace editor

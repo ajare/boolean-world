@@ -19,4 +19,10 @@ void openPreview3D(
 // state: all geometry and camera values are snapshotted when it opens.
 void renderPreview3D();
 
+// Feeds one SDL mouse-motion event's relative deltas to the preview. While
+// the preview is open the pointer is in SDL's relative mode, which stops
+// reporting absolute positions - so ImGui's io.MouseDelta reads zero and
+// cannot drive the look direction. The event loop must call this instead.
+void addPreview3DMouseMotion(float relativeX, float relativeY);
+
 }  // namespace editor

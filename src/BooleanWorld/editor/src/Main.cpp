@@ -330,6 +330,12 @@ bool processEvents(SDL_Window* window) {
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
     ImGui_ImplSDL3_ProcessEvent(&event);
+    if (event.type == SDL_EVENT_MOUSE_MOTION) {
+      // ImGui only sees absolute positions, which SDL's relative mode stops
+      // updating, so the preview needs the relative deltas straight from the
+      // event. Ignored unless the preview is open.
+      editor::addPreview3DMouseMotion(event.motion.xrel, event.motion.yrel);
+    }
     if (event.type == SDL_EVENT_QUIT) {
       done = true;
     }
