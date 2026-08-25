@@ -284,6 +284,11 @@ void renderPreview3D() {
         std::max(ImGui::GetWindowSize().x / ImGui::GetWindowSize().y, 0.01f));
     bool closing = ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal);
     if (!closing) {
+      // The mouse drives the look direction rather than pointing at anything,
+      // so hide the cursor for the duration. ImGui resets the cursor to the
+      // arrow each NewFrame, so it reappears on its own once the preview
+      // closes - including on this frame's closing branch below.
+      ImGui::SetMouseCursor(ImGuiMouseCursor_None);
       updateCameraFromInput();
     }
 
