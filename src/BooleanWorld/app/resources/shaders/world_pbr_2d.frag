@@ -390,7 +390,8 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
     // so nothing changes here until a Primitive's material is actually edited.
     if (type == 0) {
         p = worldPos * @Uniform(MATERIAL_PARAMS[7]);
-    } else if (type == 1) {
+    } else if (type == 1 || type == 2 || type == 3 || type == 4) {
+        // Stone/Slate/Sandstone/Limestone all keep base_scale in slot 0.
         p = worldPos * @Uniform(MATERIAL_PARAMS[0]);
     }
     float field = materialField(p, type);
@@ -416,14 +417,23 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
         material.metallic = smoothstep(0.90, 0.98, noise(p * 13.0)) * stoneMix;
         material.roughness = 0.58 - quartz * 0.16;
     } else if (type == 2) {
+        // Slate's rust_mix has no local bind point here the way it does in
+        // world_pbr.frag's slateTexture - this compressed branch has no
+        // separate rust blend at all, only the shared "field" - so it stays
+        // unbound in this shader, same as four of Marble's parameters above.
         material.albedo = mix(vec3(0.075, 0.095, 0.115), vec3(0.18, 0.21, 0.22), field);
         material.roughness = clamp(0.42 + field * 0.18, 0.34, 0.68);
     } else if (type == 3) {
+        // Sandstone's grain_scale would have to change the shared `detail`
+        // variable other types also read, so it stays unbound here too.
         material.albedo = mix(vec3(0.70, 0.43, 0.22), vec3(0.43, 0.16, 0.075), field) * mix(0.86, 1.08, detail);
         material.roughness = clamp(0.72 + (detail - 0.5) * 0.18, 0.58, 0.9);
     } else if (type == 4) {
+        // pore_mix (MATERIAL_PARAMS[1]) - same 0.38 default as
+        // limestoneTexture in world_pbr.frag.
+        float poreMix = @Uniform(MATERIAL_PARAMS[1]);
         float pores = 1.0 - smoothstep(0.08, 0.28, voronoi(p * 5.0));
-        material.albedo = mix(vec3(0.48, 0.45, 0.35), vec3(0.82, 0.79, 0.66), broad) * (1.0 - pores * 0.38);
+        material.albedo = mix(vec3(0.48, 0.45, 0.35), vec3(0.82, 0.79, 0.66), broad) * (1.0 - pores * poreMix);
         material.roughness = 0.62 + pores * 0.25;
     } else if (type == 5) {
         float pores = 1.0 - smoothstep(0.10, 0.32, voronoi(p * 3.8));

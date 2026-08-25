@@ -254,17 +254,18 @@ int main() {
       1.35f, 5.0f, 12.0f, 0.025f, 0.2f, 0.35f, 0.42f, 0.72f};
 
   auto renderPixels = [&](std::vector<editor::PreviewGpuVertex> const& vertices,
+                          uint32_t materialIndex,
                           std::array<float, BW_MATERIAL_PARAMS_MAX> const&
                               params) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     program.begin(view, projection, cameraPosition, cameraPosition, 0.0f);
-    program.setMaterial(0, params);
+    program.setMaterial(materialIndex, params);
     program.draw(vertices);
     program.end();
     return capturePixels(kWidth, kHeight);
   };
   auto render = [&](std::vector<editor::PreviewGpuVertex> const& vertices) {
-    return measureFrame(renderPixels(vertices, marbleDefaults));
+    return measureFrame(renderPixels(vertices, 0, marbleDefaults));
   };
 
   // White vertex colours must leave the material exactly as authored; a
@@ -278,14 +279,30 @@ int main() {
 
   // Moving one material parameter must change what is drawn, or the editor's
   // sliders would move with nothing happening in the preview behind them.
-  auto atDefaults = renderPixels(floorQuad(1.0f), marbleDefaults);
+  auto atDefaults = renderPixels(floorQuad(1.0f), 0, marbleDefaults);
   auto altered = marbleDefaults;
   // fbm_scale rescales the whole input coordinate, so it dominates every
   // downstream computation - the parameter least likely to hide in a subtle
   // blend and most likely to prove the wiring by its absence.
   altered[7] = 0.05f;  // fbm_scale, registry default 0.72
-  auto atAltered = renderPixels(floorQuad(1.0f), altered);
+  auto atAltered = renderPixels(floorQuad(1.0f), 0, altered);
   auto parameterShift = meanAbsoluteDifference(atDefaults, atAltered);
+
+  // Slate/Sandstone/Limestone (material indices 2/3/4), wired this batch.
+  // base_scale rescales their whole input coordinate the same way Marble's
+  // fbm_scale does, so it is the parameter most certain to prove the wiring.
+  auto stoneLikeShift = [&](uint32_t materialIndex,
+                             std::array<float, BW_MATERIAL_PARAMS_MAX> const&
+                                 defaults) {
+    auto base = renderPixels(floorQuad(1.0f), materialIndex, defaults);
+    auto changed = defaults;
+    changed[0] *= 0.2f;  // base_scale
+    auto shifted = renderPixels(floorQuad(1.0f), materialIndex, changed);
+    return meanAbsoluteDifference(base, shifted);
+  };
+  auto slateShift = stoneLikeShift(2, {0.72f, 0.35f});
+  auto sandstoneShift = stoneLikeShift(3, {0.58f, 18.0f});
+  auto limestoneShift = stoneLikeShift(4, {0.66f, 0.38f});
 
   auto error = glGetError();
   if (error != GL_NO_ERROR) {
@@ -307,6 +324,9 @@ int main() {
   printf(
       "fbm_scale 0.72 -> 0.05 shifts the image by %.1f per channel\n",
       parameterShift);
+  printf(
+      "base_scale shifts: Slate %.1f, Sandstone %.1f, Limestone %.1f\n",
+      slateShift, sandstoneShift, limestoneShift);
 
   glBindVertexArray(0);
   glDeleteBuffers(1, &foreignBuffer);
@@ -351,6 +371,20 @@ int main() {
   if (!(parameterShift > 1.0)) {
     printf(
         "FAILED: changing a material parameter did not change the image\n");
+    return 1;
+  }
+  if (!(slateShift > 1.0)) {
+    printf("FAILED: changing Slate's base_scale did not change the image\n");
+    return 1;
+  }
+  if (!(sandstoneShift > 1.0)) {
+    printf(
+        "FAILED: changing Sandstone's base_scale did not change the image\n");
+    return 1;
+  }
+  if (!(limestoneShift > 1.0)) {
+    printf(
+        "FAILED: changing Limestone's base_scale did not change the image\n");
     return 1;
   }
   printf(

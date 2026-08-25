@@ -763,29 +763,65 @@ Material graniteTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+// Slate's two knobs, matching bw::common::MaterialParams[2] in
+// MaterialRegistry.h. Each default is the literal this used to be hardcoded
+// to, same discipline as MarbleParams/StoneParams above.
+struct SlateParams
+{
+    float baseScale;  // 0: overall world-space pattern scale.
+    float rustMix;    // 1: how strongly the oxidised streaks blend in.
+};
+
+SlateParams unpackSlateParams()
+{
+    SlateParams result;
+    result.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    result.rustMix = @Uniform(MATERIAL_PARAMS[1]);
+    return result;
+}
+
 Material slateTexture(vec3 worldPos, vec3 normal)
 {
+    SlateParams params = unpackSlateParams();
+
     Material material;
-    vec3 p = worldPos * 0.72;
+    vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 1);
     float layer = sin(p.y * 8.0 + p.x * 0.7 + fbm(p * 0.8) * 3.2) * 0.5 + 0.5;
     float rust = smoothstep(0.73, 0.93, fbm(p * 1.9 + vec3(8.0)));
     material.albedo = mix(vec3(0.075, 0.095, 0.115),
                           vec3(0.18, 0.21, 0.22), layer);
-    material.albedo = mix(material.albedo, vec3(0.30, 0.13, 0.055), rust * 0.35);
+    material.albedo = mix(material.albedo, vec3(0.30, 0.13, 0.055), rust * params.rustMix);
     material.metallic = 0.0;
     material.roughness = clamp(0.42 + layer * 0.18, 0.34, 0.68);
     material.normal = geologyNormal(p, normal, 1, surface, 0.045);
     return material;
 }
 
+// Sandstone's two knobs, matching bw::common::MaterialParams[3].
+struct SandstoneParams
+{
+    float baseScale;   // 0: overall world-space pattern scale.
+    float grainScale;  // 1: fine grain noise frequency.
+};
+
+SandstoneParams unpackSandstoneParams()
+{
+    SandstoneParams result;
+    result.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    result.grainScale = @Uniform(MATERIAL_PARAMS[1]);
+    return result;
+}
+
 Material sandstoneTexture(vec3 worldPos, vec3 normal)
 {
+    SandstoneParams params = unpackSandstoneParams();
+
     Material material;
-    vec3 p = worldPos * 0.58;
+    vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 2);
     float band = sin(p.y * 5.5 + fbm(p * 0.45) * 4.0) * 0.5 + 0.5;
-    float grain = noise(p * 18.0);
+    float grain = noise(p * params.grainScale);
     vec3 pale = vec3(0.70, 0.43, 0.22);
     vec3 red = vec3(0.43, 0.16, 0.075);
     material.albedo = mix(pale, red, smoothstep(0.25, 0.8, band));
@@ -796,16 +832,33 @@ Material sandstoneTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+// Limestone's two knobs, matching bw::common::MaterialParams[4].
+struct LimestoneParams
+{
+    float baseScale;  // 0: overall world-space pattern scale.
+    float poreMix;    // 1: how strongly dissolved pores darken the surface.
+};
+
+LimestoneParams unpackLimestoneParams()
+{
+    LimestoneParams result;
+    result.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    result.poreMix = @Uniform(MATERIAL_PARAMS[1]);
+    return result;
+}
+
 Material limestoneTexture(vec3 worldPos, vec3 normal)
 {
+    LimestoneParams params = unpackLimestoneParams();
+
     Material material;
-    vec3 p = worldPos * 0.66;
+    vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 3);
     float deposits = fbm(p * 0.75);
     float pores = 1.0 - smoothstep(0.08, 0.28, geologyVoronoi(p * 5.0));
     material.albedo = mix(vec3(0.48, 0.45, 0.35),
                           vec3(0.82, 0.79, 0.66), deposits);
-    material.albedo *= 1.0 - pores * 0.38;
+    material.albedo *= 1.0 - pores * params.poreMix;
     material.metallic = 0.0;
     material.roughness = clamp(0.62 + pores * 0.25, 0.52, 0.9);
     material.normal = geologyNormal(p, normal, 3, surface, 0.065);
