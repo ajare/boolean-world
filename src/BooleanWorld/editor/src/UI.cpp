@@ -48,6 +48,7 @@
 #include "PrefabTilingGuide.h"
 #include "PrimitiveFieldPreview.h"
 #include "PrimitiveFieldPlacement.h"
+#include "Preview3D.h"
 #include "ExitApplicationException.h"
 #include "Render.h"
 #include "HoverableType.h"
@@ -575,7 +576,16 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
                   doc->getPlayerProxyPosition())
             : optional<float>{};
     ImGui::BeginDisabled(!previewGrounding.has_value());
-    ImGui::Button("3D preview");
+    if (ImGui::Button("3D preview") && previewGrounding) {
+      openPreview3D(
+          inScopePrimitives(
+              *world,
+              world->getWorldDataGenerator()->getLayerSelection(),
+              settings),
+          doc->getPlayerProxyPosition(),
+          doc->getPlayerProxyAngle(),
+          *previewGrounding);
+    }
     ImGui::EndDisabled();
     if (!previewGrounding &&
         ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -4627,11 +4637,21 @@ void renderWidgets(
     editor::Settings& settings,
     bw::core::WorldData const* worldData,
     double globalTime) {
+  if (preview3DIsOpen()) {
+    renderPreview3D();
+    return;
+  }
+
   handleShortcuts(doc, settings);
   handleMouseInteraction(doc, settings);
 
   renderMenu(doc, settings);
   renderToolbar(doc, settings);
+  if (preview3DIsOpen()) {
+    renderPreview3D();
+    return;
+  }
+
   auto dockspaceId = ImGui::DockSpaceOverViewport(
       0,
       ImGui::GetMainViewport(),

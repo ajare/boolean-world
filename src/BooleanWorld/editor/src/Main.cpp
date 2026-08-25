@@ -53,6 +53,7 @@
 #include "AppHelpers.h"
 #include "HoverableType.h"
 #include "PrimitiveFieldPreview.h"
+#include "Preview3D.h"
 
 wp::Vector2 gViewOffset{0.0f, 0.0f};
 
@@ -638,13 +639,16 @@ void run() {
 
       auto pointerInput = readPointerInput(doc, mouseButtonStatus);
 
-      // The main loop only samples input and delegates editor decisions.
-      if (!io.WantCaptureMouse) {
-        handleSelections(doc, worldDataPtr, gEditorSettings, pointerInput);
+      // The preview owns input exclusively. Do not merely rely on ImGui's
+      // WantCapture flags here: raw world dragging and navigation also run
+      // outside ImGui's normal widget routing.
+      if (!editor::preview3DIsOpen()) {
+        if (!io.WantCaptureMouse) {
+          handleSelections(doc, worldDataPtr, gEditorSettings, pointerInput);
+        }
+        handleWorldInteraction(doc, pointerInput);
+        handleViewNavigation(doc);
       }
-
-      handleWorldInteraction(doc, pointerInput);
-      handleViewNavigation(doc);
     }
 
     clampViewToWorldBounds();
@@ -652,11 +656,11 @@ void run() {
     double globalTime = globalTimeMicros / 1'000'000.0;
     editor::renderWidgets(doc, gEditorSettings, worldDataPtr, globalTime);
 
-    if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
+    if (!editor::preview3DIsOpen() && ImGui::IsKeyPressed(ImGuiKey_F10)) {
       showDemoWindow = !showDemoWindow;
     }
 
-    if (showDemoWindow) {
+    if (showDemoWindow && !editor::preview3DIsOpen()) {
       ImGui::SetNextWindowFocus();
       ImGui::ShowDemoWindow();
       // ImPlot::ShowDemoWindow();
