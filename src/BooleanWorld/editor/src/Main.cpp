@@ -26,6 +26,7 @@
 #endif
 
 
+#include <core/MaterialDefaultsFile.h>
 #include <core/WorldData.h>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
@@ -53,6 +54,7 @@
 #include "AppHelpers.h"
 #include "HoverableType.h"
 #include "PrimitiveFieldPreview.h"
+#include "Preview3D.h"
 
 wp::Vector2 gViewOffset{0.0f, 0.0f};
 
@@ -227,6 +229,15 @@ map<string, string> loadHelpFiles(string const& dir) {
 void initialise() {
   setupLogging();
 
+  // Material parameter min/max/default can be retuned in Game.yaml without a
+  // rebuild - see core/MaterialDefaultsFile.h. The editor is a standalone
+  // executable with no Launcher/ApplicationDLL boundary to receive it
+  // through, so it reads the same file the shipped game does directly,
+  // relative to its own build output directory. Silently keeps the
+  // compiled-in bw::common::MaterialParams values if it is not found there,
+  // e.g. a packaged editor build shipped without a sibling Launcher.
+  bw::core::loadMaterialDefaultsFile("../Launcher/Game.yaml");
+
   //
   // Set up SDL
   //
@@ -329,6 +340,12 @@ bool processEvents(SDL_Window* window) {
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
     ImGui_ImplSDL3_ProcessEvent(&event);
+    if (event.type == SDL_EVENT_MOUSE_MOTION) {
+      // ImGui only sees absolute positions, which SDL's relative mode stops
+      // updating, so the preview needs the relative deltas straight from the
+      // event. Ignored unless the preview is open.
+      editor::addPreview3DMouseMotion(event.motion.xrel, event.motion.yrel);
+    }
     if (event.type == SDL_EVENT_QUIT) {
       done = true;
     }
@@ -638,13 +655,16 @@ void run() {
 
       auto pointerInput = readPointerInput(doc, mouseButtonStatus);
 
-      // The main loop only samples input and delegates editor decisions.
-      if (!io.WantCaptureMouse) {
-        handleSelections(doc, worldDataPtr, gEditorSettings, pointerInput);
+      // The preview owns input exclusively. Do not merely rely on ImGui's
+      // WantCapture flags here: raw world dragging and navigation also run
+      // outside ImGui's normal widget routing.
+      if (!editor::preview3DIsOpen()) {
+        if (!io.WantCaptureMouse) {
+          handleSelections(doc, worldDataPtr, gEditorSettings, pointerInput);
+        }
+        handleWorldInteraction(doc, pointerInput);
+        handleViewNavigation(doc);
       }
-
-      handleWorldInteraction(doc, pointerInput);
-      handleViewNavigation(doc);
     }
 
     clampViewToWorldBounds();
@@ -652,11 +672,11 @@ void run() {
     double globalTime = globalTimeMicros / 1'000'000.0;
     editor::renderWidgets(doc, gEditorSettings, worldDataPtr, globalTime);
 
-    if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
+    if (!editor::preview3DIsOpen() && ImGui::IsKeyPressed(ImGuiKey_F10)) {
       showDemoWindow = !showDemoWindow;
     }
 
-    if (showDemoWindow) {
+    if (showDemoWindow && !editor::preview3DIsOpen()) {
       ImGui::SetNextWindowFocus();
       ImGui::ShowDemoWindow();
       // ImPlot::ShowDemoWindow();

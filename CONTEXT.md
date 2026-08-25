@@ -91,3 +91,19 @@ _Avoid_: player start, spawn point
 **Prefab instance**:
 One Tile's occupant: a reference to a same-sized Prefab plus a rotation and, where applicable, a Tile mode; it is not a copy — editing the Prefab's Primitives changes every instance of it. All Replace squares on one grid are applied before any Prefab instances on that grid. Rotation is one of the referenced DefinePrefabs step's PrefabTilingType's allowed angles (four for Square: 0/90/180/270), not an arbitrary orientation. Reuses the name of the removed Primitive+TriggerLine clipboard grouping (`addPrefabInstance`), now fully gone from the codebase — the two are unrelated, and this is the concept the name refers to going forward.
 _Avoid_: prefab copy, instance (ambiguous alone — this codebase also has C++ class instances, animation-transform instances, etc.)
+
+**ProcMaterial**:
+A Resource holding a curated catalog of Sub-materials, one Technique schema per Technique it uses, and the pair of 3D and 2D program references those Sub-materials render through. Replaces the compiled material registry and Game.yaml's `Materials:` override section as the sole source of procedural material data. Purely data — it names, bounds, and dispatches, but never loads a program itself.
+_Avoid_: material registry, material resource (ambiguous with willpower's own `MaterialResource`, which ProcMaterial deliberately does not subclass — see ADR-0023)
+
+**Technique**:
+One of the fixed procedural shader algorithms (Marble, Stone, Slate, …) a Sub-material selects by `material_index`. Its dispatch is a hand-maintained switch inside the 3D and 2D fragment shaders and cannot become data-driven without a shader-codegen effort; only a Technique's name, parameter bounds, and defaults move into ProcMaterial data. A Technique is never authored or assigned directly — only through a Sub-material.
+_Avoid_: material (too broad — see Sub-material), shader, material index (the field name, not the concept)
+
+**Sub-material**:
+A named, fully-parameterized instance of one Technique, defined inside a ProcMaterial resource: fixed parameter values, a fixed base colour, and a stable string id unique across every ProcMaterial resource. A wall, floor, or ceiling is assigned a Sub-material by that id alone — never a Technique directly, and never with per-instance parameter overrides.
+_Avoid_: material, material definition (the retired per-Primitive params+colour struct), procedural material
+
+**Technique schema**:
+The parameter names, count, and min/max/default bounds for one Technique, authored once inside a ProcMaterial resource and shared by every Sub-material that selects that Technique. Bounds a Sub-material's authored values; never itself assigned to a wall, floor, or ceiling.
+_Avoid_: material params, param definition

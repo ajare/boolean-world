@@ -116,6 +116,42 @@ bool primitiveParticipatesInEditorFold(
   return primitiveVisibleForActiveStep(layer, primitive, settings);
 }
 
+vector<bw::core::Primitive const*> inScopePrimitives(
+    bw::core::World const& world,
+    bw::core::LayerSelection const& layerSelection,
+    Settings const& settings) {
+  vector<bw::core::Primitive const*> primitives;
+  for (auto const* layer : world.getLayers()) {
+    if (!bw::core::IsLayerSelected(layerSelection, layer->getId())) {
+      continue;
+    }
+    for (auto const* primitive : layer->getPrimitives()) {
+      if (primitiveParticipatesInEditorFold(*layer, primitive, settings)) {
+        primitives.push_back(primitive);
+      }
+    }
+  }
+  return primitives;
+}
+
+optional<float> resolveGroundingFloorZ(
+    vector<bw::core::Primitive const*> const& primitives,
+    wp::Vector2 const& point) {
+  bw::core::Primitive const* groundedPrimitive = nullptr;
+  for (auto const* primitive : primitives) {
+    if (primitive && primitive->getPickingTriangulation().pointInside(point) &&
+        (!groundedPrimitive ||
+         primitive->getPriority() >= groundedPrimitive->getPriority())) {
+      groundedPrimitive = primitive;
+    }
+  }
+
+  if (!groundedPrimitive) {
+    return nullopt;
+  }
+  return groundedPrimitive->getProperties().floorZ;
+}
+
 namespace {
 
 bool pointInsideRing(

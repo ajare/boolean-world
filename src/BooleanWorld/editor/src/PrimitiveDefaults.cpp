@@ -5,6 +5,8 @@
 
 #include <common/MaterialRegistry.h>
 
+#include "core/MaterialDefaultsFile.h"
+
 void editor::_setPrimitiveParameters(
     bw::core::Primitive* prim,
     uint8_t priority,
@@ -38,7 +40,7 @@ void editor::setPrimitiveDefaultMaterial(
   auto numParams = static_cast<uint32_t>(std::get<1>(material));
   for (uint32_t i = 0; i < numParams; ++i) {
     materialDefinition->params[i] =
-        std::get<3>(bw::common::MaterialParams[materialIndex][i]);
+        bw::core::materialParamDefault(materialIndex, i);
   }
 
   auto const& defaultColour = std::get<2>(material);

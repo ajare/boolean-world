@@ -322,6 +322,10 @@ void prefabPrimitivesAreVisibleAndFoldedInIsolationOnlyWhileTheirPrefabIsSelecte
   require(!editor::primitiveParticipatesInEditorFold(*layer, earlierStepPrimitive, settings),
           "an earlier step's Primitive was folded alongside an active Prefab, "
           "which should clip in isolation");
+  auto prefabScope = editor::inScopePrimitives(
+      *document.getWorld(), bw::core::SelectLayer(layer->getId()), settings);
+  require(prefabScope.size() == 1 && prefabScope.front() == primitive,
+          "the in-scope Primitive list did not isolate the selected Prefab");
 
   layer->setActiveStep(0);
   require(!editor::primitiveVisibleForActiveStep(*layer, primitive, settings),
@@ -436,6 +440,70 @@ void meshEligibilityRequiresTheSelectedDirectlyEditableStep() {
   require(document.meshIneligibilityReason(editableIndex).empty() &&
               document.activateMesh(editableIndex) && document.getActiveMesh(),
           "an editable MeshPrimitive in the selected step was not eligible");
+}
+
+void inScopePrimitivesAndGroundingResolutionFollowFoldOrder() {
+  editor::Document document;
+  editor::Settings settings;
+  document.newDoc();
+
+  auto* world = document.getWorld().get();
+  auto* firstLayer = world->getActiveLayer();
+  auto makePrimitive = [&](float floorZ, uint8_t priority) {
+    auto* primitive = new bw::core::RectanglePolygon(
+        bw::core::Primitive::Operation::Union,
+        bw::core::Primitive::FillRule::NonZero, 1.0f);
+    primitive->setPosition({100.0f, 100.0f});
+    primitive->setPriority(priority);
+    auto properties = primitive->getProperties();
+    properties.floorZ = floorZ;
+    primitive->setProperties(properties);
+    world->addPrimitive(primitive);
+    return primitive;
+  };
+
+  auto* single = makePrimitive(12.0f, 1);
+  require(editor::resolveGroundingFloorZ({single}, {100.0f, 100.0f}) ==
+              std::optional<float>{12.0f},
+          "grounding did not return a single containing Primitive's floor");
+
+  auto* lowerPriority = makePrimitive(24.0f, 2);
+  auto* higherPriority = makePrimitive(36.0f, 3);
+  require(editor::resolveGroundingFloorZ(
+              {lowerPriority, higherPriority}, {100.0f, 100.0f}) ==
+              std::optional<float>{36.0f},
+          "grounding did not choose the highest-priority containing Primitive");
+
+  auto* equalPriorityEarlier = makePrimitive(48.0f, 4);
+  auto* equalPriorityLater = makePrimitive(60.0f, 4);
+  require(editor::resolveGroundingFloorZ(
+              {equalPriorityEarlier, equalPriorityLater}, {100.0f, 100.0f}) ==
+              std::optional<float>{60.0f},
+          "grounding did not choose the later Primitive at equal priority");
+  require(!editor::resolveGroundingFloorZ(
+              {single, lowerPriority, higherPriority}, {300.0f, 300.0f}),
+          "grounding found a Primitive outside the in-scope geometry");
+
+  auto* secondLayer = world->addLayer("Second");
+  world->setActiveLayer(secondLayer);
+  auto* secondLayerPrimitive = makePrimitive(72.0f, 5);
+  world->setActiveLayer(firstLayer);
+
+  auto firstLayerPrimitives = editor::inScopePrimitives(
+      *world, bw::core::SelectLayer(firstLayer->getId()), settings);
+  require(std::find(firstLayerPrimitives.begin(), firstLayerPrimitives.end(),
+                    single) != firstLayerPrimitives.end() &&
+              std::find(firstLayerPrimitives.begin(), firstLayerPrimitives.end(),
+                        secondLayerPrimitive) == firstLayerPrimitives.end(),
+          "in-scope Primitives did not compose the selected Layer's fold predicate");
+
+  auto secondLayerPrimitives = editor::inScopePrimitives(
+      *world, bw::core::SelectLayer(secondLayer->getId()), settings);
+  require(std::find(secondLayerPrimitives.begin(), secondLayerPrimitives.end(),
+                    secondLayerPrimitive) != secondLayerPrimitives.end() &&
+              std::find(secondLayerPrimitives.begin(), secondLayerPrimitives.end(),
+                        single) == secondLayerPrimitives.end(),
+          "in-scope Primitives included a Primitive outside layerSelection");
 }
 
 void openingADocumentReplacesTheActiveDocument() {
@@ -610,6 +678,7 @@ int main() {
     activePrefabFieldPrimitivesUseTheActiveStepColour();
     refusingStepPrimitivesAreNotSelectableInPrimitiveMode();
     meshEligibilityRequiresTheSelectedDirectlyEditableStep();
+    inScopePrimitivesAndGroundingResolutionFollowFoldOrder();
     openingADocumentReplacesTheActiveDocument();
     openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost();
     worldTestPrefabMeshPrimitivesAreHoverSelectable();

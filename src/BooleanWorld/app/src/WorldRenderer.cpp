@@ -8,6 +8,16 @@
 
 using namespace std;
 
+namespace {
+
+// world_pbr.frag multiplies a surface's own colour by its vertex colour
+// before lighting, so anything wanting the material rendered as authored
+// passes white. The editor's 3D preview is the one caller that does not,
+// tinting the surface the viewer is looking at.
+constexpr uint32_t untintedVertexColour = 0xffffffffu;
+
+}  // namespace
+
 WorldRenderer::WorldRenderer(
     wp::application::resourcesystem::ResourceManager* resourceMgr,
     wp::Logger* logger,
@@ -132,7 +142,7 @@ void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snap
       floorIndices[i] = addVertexToDataProvider(
           horizontal.dataProvider, floorMesh, positions[i].x,
           properties.floorZ, positions[i].y, 0, 1, 0, uv.x, uv.y,
-          properties.floorMaterialDef.data.packedColour());
+          untintedVertexColour);
     }
     horizontal.dataProvider->addTriangle(
         floorMesh, floorIndices[0], floorIndices[1], floorIndices[2]);
@@ -147,7 +157,7 @@ void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snap
       ceilingIndices[2 - i] = addVertexToDataProvider(
           horizontal.dataProvider, ceilingMesh, positions[i].x,
           properties.ceilingZ, positions[i].y, 0, -1, 0, uv.x, uv.y,
-          properties.ceilingMaterialDef.data.packedColour());
+          untintedVertexColour);
     }
     horizontal.dataProvider->addTriangle(
         ceilingMesh, ceilingIndices[0], ceilingIndices[1], ceilingIndices[2]);
@@ -174,7 +184,6 @@ void WorldRenderer::updateWallDataProvider(
   // one ever being visible.
   auto backHash =
       bw::core::MaterialDefinition{}.data.hash(BW_WALL_BACK_FACE_MATERIAL_INDEX);
-  constexpr uint32_t whitePackedColour = 0xffffffffu;
   wp::Vector2 playerPositionXZ{playerPosition.x, playerPosition.z};
 
   auto facesPlayer = [&](bw::app::ArrangementWallOrientation const& orientation) {
@@ -214,7 +223,7 @@ void WorldRenderer::updateWallDataProvider(
       auto hash = properties.wallMaterialDef.data.hash(
           properties.wallMaterialIndex);
       auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
-      auto colour = properties.wallMaterialDef.data.packedColour();
+      auto colour = untintedVertexColour;
       auto const& normal = orientation.normal;
       auto bottom0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.minZ, v0.y,
@@ -239,16 +248,16 @@ void WorldRenderer::updateWallDataProvider(
       auto backNormal = -orientation.normal;
       auto bottom0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.minZ, v0.y,
-          backNormal.x, 0, backNormal.y, 0, 0, whitePackedColour);
+          backNormal.x, 0, backNormal.y, 0, 0, untintedVertexColour);
       auto bottom1 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v1.x, wall.minZ, v1.y,
-          backNormal.x, 0, backNormal.y, 1, 0, whitePackedColour);
+          backNormal.x, 0, backNormal.y, 1, 0, untintedVertexColour);
       auto top1 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, v1.y,
-          backNormal.x, 0, backNormal.y, 1, 1, whitePackedColour);
+          backNormal.x, 0, backNormal.y, 1, 1, untintedVertexColour);
       auto top0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, v0.y,
-          backNormal.x, 0, backNormal.y, 0, 1, whitePackedColour);
+          backNormal.x, 0, backNormal.y, 0, 1, untintedVertexColour);
       wallRenderer.dataProvider->addTriangle(mesh, top1, bottom1, bottom0);
       wallRenderer.dataProvider->addTriangle(mesh, bottom0, top0, top1);
     }

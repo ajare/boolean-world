@@ -13,6 +13,7 @@
 #include <nfd/nfd.h>
 
 #include <core/DefinePrefabs.h>
+#include <core/MaterialDefaultsFile.h>
 #include <core/LayerBuildStep.h>
 #include <core/WorldData.h>
 #include <core/RegularPolygon.h>
@@ -48,6 +49,7 @@
 #include "PrefabTilingGuide.h"
 #include "PrimitiveFieldPreview.h"
 #include "PrimitiveFieldPlacement.h"
+#include "Preview3D.h"
 #include "ExitApplicationException.h"
 #include "Render.h"
 #include "HoverableType.h"
@@ -561,6 +563,52 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
     if (ImGui::Button(ICON_FA_HOME)) {
       goHome(doc);
+    }
+
+    ImGui::SameLine();
+
+    auto const* activeDefinePrefabs = world
+                                          ? dynamic_cast<bw::core::DefinePrefabs const*>(
+                                                world->getActiveLayer()->getActiveStep())
+                                          : nullptr;
+    bool const previewingPrefab =
+        activeDefinePrefabs && activeDefinePrefabs->getSelectedPrefab();
+    auto const primitives =
+        world && world->getWorldDataGenerator()
+            ? inScopePrimitives(
+                  *world,
+                  world->getWorldDataGenerator()->getLayerSelection(),
+                  settings)
+            : vector<bw::core::Primitive const*>{};
+    auto const previewGrounding =
+        world && world->getWorldDataGenerator() && !previewingPrefab
+            ? resolveGroundingFloorZ(primitives, doc->getPlayerProxyPosition())
+            : optional<float>{};
+    bool const previewEnabled = world && world->getWorldDataGenerator() &&
+                                (previewingPrefab || previewGrounding.has_value());
+    ImGui::BeginDisabled(!previewEnabled);
+    if (ImGui::Button("3D preview") && previewEnabled) {
+      // A Prefab is authored around its origin (ADR-0018), not around the
+      // Player proxy. It need not cover that pivot, so use the conventional
+      // zero-height starting floor until movement reaches authored coverage.
+      auto const startPosition = previewingPrefab
+                                     ? wp::Vector2{0.0f, 0.0f}
+                                     : doc->getPlayerProxyPosition();
+      auto const startAngle = previewingPrefab ? 0.0f : doc->getPlayerProxyAngle();
+      auto const startFloorZ = previewingPrefab
+                                   ? resolveGroundingFloorZ(primitives, startPosition)
+                                         .value_or(0.0f)
+                                   : *previewGrounding;
+      openPreview3D(primitives, startPosition, startAngle, startFloorZ);
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      if (activeDefinePrefabs && !previewingPrefab) {
+        ImGui::SetTooltip("Select a Prefab to preview in 3D.");
+      } else if (!previewGrounding) {
+        ImGui::SetTooltip(
+            "Move the Player proxy inside an in-scope Primitive to preview in 3D.");
+      }
     }
 
     ImGui::SameLine();
@@ -2634,8 +2682,8 @@ bool renderEditMaterialParameters(string const& name, uint32_t materialIndex, bw
   // Params
   for (uint32_t i = 0; i < numParams; ++i) {
     auto paramName = get<0>(bw::common::MaterialParams[materialIndex][i]);
-    auto paramMin = get<1>(bw::common::MaterialParams[materialIndex][i]);
-    auto paramMax = get<2>(bw::common::MaterialParams[materialIndex][i]);
+    auto paramMin = bw::core::materialParamMinimum(materialIndex, i);
+    auto paramMax = bw::core::materialParamMaximum(materialIndex, i);
     float* paramCur = &materialDefinition->params[i];
 
     ImGui::SetNextItemWidth(256);
@@ -3153,7 +3201,6 @@ void renderPrefabsView(
     }
     ImGui::EndCombo();
   }
-
 }
 
 void renderPrefabThumbnail(
@@ -4607,11 +4654,21 @@ void renderWidgets(
     editor::Settings& settings,
     bw::core::WorldData const* worldData,
     double globalTime) {
+  if (preview3DIsOpen()) {
+    renderPreview3D();
+    return;
+  }
+
   handleShortcuts(doc, settings);
   handleMouseInteraction(doc, settings);
 
   renderMenu(doc, settings);
   renderToolbar(doc, settings);
+  if (preview3DIsOpen()) {
+    renderPreview3D();
+    return;
+  }
+
   auto dockspaceId = ImGui::DockSpaceOverViewport(
       0,
       ImGui::GetMainViewport(),

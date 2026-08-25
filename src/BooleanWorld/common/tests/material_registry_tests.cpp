@@ -28,7 +28,9 @@ void materialTablesHaveOneDefinitionAcrossTranslationUnits() {
 void materialTablesPreserveTheirDefinitions() {
   require(std::get<0>(bw::common::MaterialNames[0]) == "Marble",
           "the Marble material definition changed");
-  require(std::get<3>(bw::common::MaterialParams[0][0]) == 1.1f,
+  // Pinned to what world_pbr.frag's marbleField now actually reads from
+  // MATERIAL_PARAMS[0] as its warp strength - see MarbleParams there.
+  require(std::get<3>(bw::common::MaterialParams[0][0]) == 1.35f,
           "the Marble warp scale default changed");
 }
 
