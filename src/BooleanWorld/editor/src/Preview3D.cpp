@@ -20,7 +20,9 @@
 #include "imgui.h"
 #include "InputOptions.h"
 #include "PlayerView.h"
+#include "PreviewHighlight.h"
 #include "PreviewMaterialProgram.h"
+#include "PreviewSurfacePick.h"
 #include "PrimitivePreviewGeometry.h"
 #include "Preview3D.h"
 #include "ReactiveCamera.h"
@@ -99,6 +101,53 @@ void appendWallQuads(
     buffer.push_back(toGpuVertex(quad.vertices[3]));
     buffer.push_back(toGpuVertex(quad.vertices[0]));
   }
+}
+
+// The triangles outlining whichever surface the centre of the view is
+// pointing at, nearest first across every previewed Primitive. Empty when
+// the view centre meets nothing.
+std::vector<PreviewTriangle> lookedAtSurfaceTriangles() {
+  auto position = session.camera->getPosition();
+  auto direction = session.camera->getDirection();
+  // PrimitivePreviewGeometry keeps height in z, where the renderer's 3D
+  // space keeps it in y.
+  std::array<float, 3> origin{position.x, position.z, position.y};
+  std::array<float, 3> ray{direction.x, direction.z, direction.y};
+
+  PreviewSurfaceHit nearest;
+  PrimitivePreviewGeometry const* nearestGeometry = nullptr;
+  for (auto const& primitive : session.primitives) {
+    auto hit = pickPreviewSurface(primitive.geometry, origin, ray);
+    if (!hit.hit() || (nearest.hit() && hit.distance >= nearest.distance)) {
+      continue;
+    }
+    nearest = hit;
+    nearestGeometry = &primitive.geometry;
+  }
+
+  if (!nearest.hit()) {
+    return {};
+  }
+
+  switch (nearest.surface) {
+    case PreviewSurface::Floor:
+      return nearestGeometry->floorTriangles;
+    case PreviewSurface::Ceiling:
+      return nearestGeometry->ceilingTriangles;
+    case PreviewSurface::Wall: {
+      // A wall is one lofted Ring edge, so only that quad lights up rather
+      // than every wall the Primitive owns.
+      auto const& quad = nearestGeometry->wallQuads[nearest.wallIndex];
+      return {
+          PreviewTriangle{
+              {quad.vertices[0], quad.vertices[1], quad.vertices[2]}},
+          PreviewTriangle{
+              {quad.vertices[2], quad.vertices[3], quad.vertices[0]}}};
+    }
+    case PreviewSurface::None:
+      break;
+  }
+  return {};
 }
 
 // Single owner of the pointer grab. Enabling flushes pending mouse motion,
@@ -221,6 +270,10 @@ void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
   }
 
   materialProgram.end();
+
+  drawPreviewHighlight(
+      lookedAtSurfaceTriangles(), session.camera->getViewTransform(),
+      session.camera->getProjectionTransform());
 
   glDisable(GL_DEPTH_TEST);
   glDepthFunc(GL_LESS);

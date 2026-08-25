@@ -19,6 +19,7 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+#include "PreviewHighlight.h"
 #include "PreviewMaterialProgram.h"
 
 spdlog::logger* gLogger{nullptr};
@@ -46,6 +47,26 @@ std::vector<editor::PreviewGpuVertex> floorQuad() {
   auto c = corner(100.0f, 100.0f);
   auto d = corner(-100.0f, 100.0f);
   return {a, b, c, c, d, a};
+}
+
+// The same quad in PrimitivePreviewGeometry's space, where height is z. A
+// smaller square, so its outline falls inside the rendered floor rather than
+// along the edge of the view.
+std::vector<editor::PreviewTriangle> highlightTriangles() {
+  auto corner = [](float x, float y) {
+    editor::PreviewVertex3 vertex;
+    vertex.x = x;
+    vertex.y = y;
+    vertex.z = 0.0f;
+    vertex.nz = 1.0f;
+    return vertex;
+  };
+  auto a = corner(-30.0f, -30.0f);
+  auto b = corner(30.0f, -30.0f);
+  auto c = corner(30.0f, 30.0f);
+  auto d = corner(-30.0f, 30.0f);
+  return {
+      editor::PreviewTriangle{{a, b, c}}, editor::PreviewTriangle{{c, d, a}}};
 }
 
 }  // namespace
@@ -159,6 +180,8 @@ int main() {
   program.draw(floorQuad());
   program.end();
 
+  editor::drawPreviewHighlight(highlightTriangles(), view, projection);
+
   auto error = glGetError();
   if (error != GL_NO_ERROR) {
     printf("GL error after draw: 0x%x\n", error);
@@ -170,6 +193,7 @@ int main() {
       0, 0, kWidth, kHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
   size_t litPixels = 0;
+  size_t yellowPixels = 0;
   int maxChannel = 0;
   for (size_t i = 0; i < pixels.size(); i += 4) {
     int r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
@@ -180,12 +204,18 @@ int main() {
     if (brightest > 8) {
       ++litPixels;
     }
+    // The highlight is drawn at full red and green with no blue, and nothing
+    // else in the scene is anywhere near that saturated.
+    if (r > 200 && g > 200 && b < 100) {
+      ++yellowPixels;
+    }
   }
 
   auto total = (size_t)kWidth * kHeight;
   printf(
       "lit pixels: %zu / %zu (brightest channel %d)\n", litPixels, total,
       maxChannel);
+  printf("highlight pixels: %zu\n", yellowPixels);
 
   glBindVertexArray(0);
   glDeleteBuffers(1, &foreignBuffer);
@@ -206,6 +236,12 @@ int main() {
     printf("FAILED: the material shader rendered a black frame\n");
     return 1;
   }
-  printf("PASSED: the material shader rendered visible colour\n");
+  // Thick lines around a square well inside the view, so a healthy outline is
+  // hundreds of pixels; anything near zero means it did not draw.
+  if (yellowPixels < 100) {
+    printf("FAILED: the surface highlight drew no visible outline\n");
+    return 1;
+  }
+  printf("PASSED: the material shader and surface highlight both rendered\n");
   return 0;
 }

@@ -11,7 +11,9 @@ add_executable(editor WIN32
     src/PrimitivePreviewGeometry.cpp
     src/PrefabTilingGuide.cpp
     src/Preview3D.cpp
+    src/PreviewHighlight.cpp
     src/PreviewMaterialProgram.cpp
+    src/PreviewSurfacePick.cpp
     ../app/src/ReactiveCamera.cpp
     src/Render.cpp
     src/UI.cpp
@@ -76,11 +78,26 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_editor_primitive_preview_geometry
              COMMAND boolean_world_editor_primitive_preview_geometry_tests)
 
+    add_executable(boolean_world_editor_preview_surface_pick_tests
+        tests/preview_surface_pick_tests.cpp
+        src/PreviewSurfacePick.cpp
+        src/PrimitivePreviewGeometry.cpp)
+    target_include_directories(boolean_world_editor_preview_surface_pick_tests PRIVATE include)
+    target_link_libraries(boolean_world_editor_preview_surface_pick_tests PRIVATE core)
+    target_compile_features(boolean_world_editor_preview_surface_pick_tests PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_preview_surface_pick_tests PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_preview_surface_pick_tests)
+    bw_output_dirs(boolean_world_editor_preview_surface_pick_tests)
+    bw_deploy_runtime_dlls(boolean_world_editor_preview_surface_pick_tests)
+    add_test(NAME boolean_world_editor_preview_surface_pick
+             COMMAND boolean_world_editor_preview_surface_pick_tests)
+
     # Not registered via add_test - needs a real GPU/driver. Build and run it
     # manually to see PreviewMaterialProgram's shader compile/link errors
     # directly instead of a silently black 3D preview window.
     add_executable(boolean_world_editor_preview_material_program_smoke
         tests/preview_material_program_smoke.cpp
+        src/PreviewHighlight.cpp
         src/PreviewMaterialProgram.cpp)
     target_include_directories(boolean_world_editor_preview_material_program_smoke PRIVATE include)
     target_link_libraries(boolean_world_editor_preview_material_program_smoke PRIVATE
