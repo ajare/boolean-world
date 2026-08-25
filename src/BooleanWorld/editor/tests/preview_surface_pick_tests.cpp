@@ -219,6 +219,65 @@ void materialsAreNamedFromTheRegistry() {
       "an out-of-range material index did not answer Unknown");
 }
 
+void materialParametersStopAtTheDeclaredCount() {
+  // Stone declares 3 parameters, but the registry sizes every material's
+  // table at BW_MATERIAL_PARAMS_MAX and leaves the rest zeroed. Reading the
+  // whole table would offer nameless controls over slots the shader ignores.
+  auto stone = editor::previewMaterialParameters(1);
+  require(stone.size() == 3, "Stone did not report exactly its 3 parameters");
+  require(
+      stone[0].name == "base_scale" && stone[1].name == "medium_scale" &&
+          stone[2].name == "stone_mix",
+      "Stone's parameters were not the ones the registry lists");
+
+  auto marble = editor::previewMaterialParameters(0);
+  require(marble.size() == 8, "Marble did not report all 8 parameters");
+  require(
+      marble[0].name == "warp_scale" && near(marble[0].minimum, 0.0f) &&
+          near(marble[0].maximum, 5.0f) && near(marble[0].defaultValue, 1.1f),
+      "Marble's first parameter did not match the registry");
+}
+
+void materialParametersAddressTheirOwnShaderSlot() {
+  for (uint32_t materialIndex = 0; materialIndex < 2; ++materialIndex) {
+    auto parameters = editor::previewMaterialParameters(materialIndex);
+    for (size_t i = 0; i < parameters.size(); ++i) {
+      require(
+          parameters[i].index == (uint32_t)i,
+          "a parameter did not address the slot it occupies");
+      require(
+          parameters[i].maximum > parameters[i].minimum,
+          "a parameter offered a range that cannot be moved through");
+      require(
+          !parameters[i].name.empty(),
+          "a parameter was offered without a name to label it");
+    }
+  }
+}
+
+void unknownMaterialsHaveNoParameters() {
+  require(
+      editor::previewMaterialParameters(9999).empty(),
+      "an out-of-range material offered parameters");
+}
+
+void aSurfaceMaterialCanBeEditedInPlace() {
+  auto room = makeRoom();
+  auto geometry = editor::extrudePrimitiveForPreview(*room);
+
+  auto* wall = editor::previewSurfaceMaterial(geometry, PreviewSurface::Wall);
+  require(wall != nullptr, "the wall material could not be addressed");
+  wall->definition.params[0] = 4.25f;
+
+  // The renderer reads the geometry, so an edit has to land there to show up.
+  require(
+      near(geometry.wallMaterial.definition.params[0], 4.25f),
+      "editing through the mutable lookup did not reach the geometry");
+  require(
+      near(geometry.floorMaterial.definition.params[0], 0.0f),
+      "editing the wall disturbed another surface's material");
+}
+
 void surfacesAreNamedForDisplay() {
   require(
       editor::previewSurfaceName(PreviewSurface::Floor) == "Floor" &&
@@ -251,6 +310,10 @@ int main() {
     eachSurfaceReportsItsOwnMaterial();
     materialsAreNamedFromTheRegistry();
     surfacesAreNamedForDisplay();
+    materialParametersStopAtTheDeclaredCount();
+    materialParametersAddressTheirOwnShaderSlot();
+    unknownMaterialsHaveNoParameters();
+    aSurfaceMaterialCanBeEditedInPlace();
     std::cout << "Preview surface pick tests passed\n";
     return 0;
   } catch (std::exception const& error) {

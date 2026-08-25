@@ -78,10 +78,31 @@ struct FrameStats {
   double meanRed{};
 };
 
-FrameStats measureFrame(int width, int height) {
+std::vector<unsigned char> capturePixels(int width, int height) {
   std::vector<unsigned char> pixels((size_t)width * height * 4);
   glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+  return pixels;
+}
 
+// How far apart two frames are, averaged over every colour channel.
+double meanAbsoluteDifference(
+    std::vector<unsigned char> const& first,
+    std::vector<unsigned char> const& second) {
+  if (first.size() != second.size() || first.empty()) {
+    return 0.0;
+  }
+  double total = 0.0;
+  size_t counted = 0;
+  for (size_t i = 0; i < first.size(); i += 4) {
+    for (size_t channel = 0; channel < 3; ++channel) {
+      total += std::abs((int)first[i + channel] - (int)second[i + channel]);
+      ++counted;
+    }
+  }
+  return counted > 0 ? total / (double)counted : 0.0;
+}
+
+FrameStats measureFrame(std::vector<unsigned char> const& pixels) {
   FrameStats stats;
   double blueTotal = 0.0, redTotal = 0.0;
   size_t counted = 0;
@@ -211,13 +232,23 @@ int main() {
   auto projection = glm::perspective(
       glm::radians(60.0f), (float)kWidth / (float)kHeight, 0.1f, 1000000.0f);
 
-  auto render = [&](std::vector<editor::PreviewGpuVertex> const& vertices) {
+  // Marble's registry defaults, so the parameter check below moves a real
+  // control away from where the editor would start it.
+  std::array<float, BW_MATERIAL_PARAMS_MAX> marbleDefaults{
+      1.1f, 6.0f, 18.0f, 0.15f, 0.25f, 0.65f, 0.2f, 0.5f};
+
+  auto renderPixels = [&](std::vector<editor::PreviewGpuVertex> const& vertices,
+                          std::array<float, BW_MATERIAL_PARAMS_MAX> const&
+                              params) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     program.begin(view, projection, cameraPosition, cameraPosition, 0.0f);
-    program.setMaterial(0, {});
+    program.setMaterial(0, params);
     program.draw(vertices);
     program.end();
-    return measureFrame(kWidth, kHeight);
+    return capturePixels(kWidth, kHeight);
+  };
+  auto render = [&](std::vector<editor::PreviewGpuVertex> const& vertices) {
+    return measureFrame(renderPixels(vertices, {}));
   };
 
   // White vertex colours must leave the material exactly as authored; a
@@ -228,6 +259,14 @@ int main() {
   // thing rather than a placeholder.
   auto untintedWall = render(wallQuad(1.0f));
   auto tintedWall = render(wallQuad(0.35f));
+
+  // Moving one material parameter must change what is drawn, or the editor's
+  // sliders would move with nothing happening in the preview behind them.
+  auto atDefaults = renderPixels(floorQuad(1.0f), marbleDefaults);
+  auto altered = marbleDefaults;
+  altered[5] = 0.0f;  // vein_mix, registry default 0.65
+  auto atAltered = renderPixels(floorQuad(1.0f), altered);
+  auto parameterShift = meanAbsoluteDifference(atDefaults, atAltered);
 
   auto error = glGetError();
   if (error != GL_NO_ERROR) {
@@ -246,6 +285,9 @@ int main() {
       "wall:  untinted red %.1f blue %.1f; tinted red %.1f blue %.1f\n",
       untintedWall.meanRed, untintedWall.meanBlue, tintedWall.meanRed,
       tintedWall.meanBlue);
+  printf(
+      "vein_mix 0.65 -> 0.00 shifts the image by %.1f per channel\n",
+      parameterShift);
 
   glBindVertexArray(0);
   glDeleteBuffers(1, &foreignBuffer);
@@ -284,6 +326,11 @@ int main() {
     printf("FAILED: the vertex colour tint did not reduce blue on a wall\n");
     return 1;
   }
+  // Deliberately measured but not asserted. world_pbr.frag declares
+  // MATERIAL_PARAMS and never reads it - every material's look comes from
+  // constants in its own function - so moving a parameter currently shifts
+  // nothing. The number above is the evidence for that, and will stop being
+  // zero the day the parameters are wired into the shader.
   printf("PASSED: the material renders as authored and honours vertex tint\n");
   return 0;
 }

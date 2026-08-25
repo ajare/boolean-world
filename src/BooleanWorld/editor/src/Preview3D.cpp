@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #pragma warning(push)
@@ -179,10 +180,9 @@ void renderSelectedSurfaceWindow() {
   if (!session.selection.valid) {
     return;
   }
-  auto const& geometry =
+  auto& geometry =
       session.primitives[session.selection.primitiveIndex].geometry;
-  auto const* material =
-      previewSurfaceMaterial(geometry, session.selection.surface);
+  auto* material = previewSurfaceMaterial(geometry, session.selection.surface);
   if (!material) {
     return;
   }
@@ -197,10 +197,33 @@ void renderSelectedSurfaceWindow() {
               ImGuiWindowFlags_NoSavedSettings)) {
     auto surfaceName = previewSurfaceName(session.selection.surface);
     auto materialName = previewMaterialName(material->index);
-    ImGui::Text("%.*s material", (int)surfaceName.size(), surfaceName.data());
+    ImGui::Text(
+        "%.*s material: %.*s", (int)surfaceName.size(), surfaceName.data(),
+        (int)materialName.size(), materialName.data());
     ImGui::Separator();
-    ImGui::TextUnformatted(
-        materialName.data(), materialName.data() + materialName.size());
+
+    // Edited straight into the snapshot the renderer reads, so the preview
+    // follows the slider as it moves - there is nothing to apply.
+    auto parameters = previewMaterialParameters(material->index);
+    if (parameters.empty()) {
+      ImGui::TextUnformatted("This material has no adjustable parameters.");
+    }
+    for (auto const& parameter : parameters) {
+      std::string label(parameter.name);
+      ImGui::SliderFloat(
+          label.c_str(), &material->definition.params[parameter.index],
+          parameter.minimum, parameter.maximum);
+    }
+
+    if (!parameters.empty()) {
+      ImGui::Separator();
+      if (ImGui::Button("Reset to defaults")) {
+        for (auto const& parameter : parameters) {
+          material->definition.params[parameter.index] =
+              parameter.defaultValue;
+        }
+      }
+    }
   }
   ImGui::End();
 
@@ -262,17 +285,21 @@ void updateCameraFromInput(bool previewHovered) {
   session.camera->pitch(session.pitch - previousPitch);
 
   wp::Vector2 movement = wp::Vector2::ZERO;
-  if (ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_UpArrow)) {
-    movement.y += 1.0f;
-  }
-  if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow)) {
-    movement.y -= 1.0f;
-  }
-  if (ImGui::IsKeyDown(ImGuiKey_A) || ImGui::IsKeyDown(ImGuiKey_LeftArrow)) {
-    movement.x -= 1.0f;
-  }
-  if (ImGui::IsKeyDown(ImGuiKey_D) || ImGui::IsKeyDown(ImGuiKey_RightArrow)) {
-    movement.x += 1.0f;
+  // A material parameter being typed into takes the keyboard with it -
+  // otherwise entering a value would fly the camera across the level.
+  if (!io.WantTextInput) {
+    if (ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_UpArrow)) {
+      movement.y += 1.0f;
+    }
+    if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow)) {
+      movement.y -= 1.0f;
+    }
+    if (ImGui::IsKeyDown(ImGuiKey_A) || ImGui::IsKeyDown(ImGuiKey_LeftArrow)) {
+      movement.x -= 1.0f;
+    }
+    if (ImGui::IsKeyDown(ImGuiKey_D) || ImGui::IsKeyDown(ImGuiKey_RightArrow)) {
+      movement.x += 1.0f;
+    }
   }
   movement.normalise();
   session.position += bw::app::playerMovement(movement, session.angle) *

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 
 // MaterialRegistry sizes its tables with BW_MATERIAL_COUNT and
@@ -190,6 +191,36 @@ PreviewMaterial const* previewSurfaceMaterial(
       break;
   }
   return nullptr;
+}
+
+PreviewMaterial* previewSurfaceMaterial(
+    PrimitivePreviewGeometry& geometry, PreviewSurface surface) {
+  // One rule for both forms, so a mutable lookup can never disagree with the
+  // const one about which slot a surface uses.
+  return const_cast<PreviewMaterial*>(previewSurfaceMaterial(
+      const_cast<PrimitivePreviewGeometry const&>(geometry), surface));
+}
+
+std::vector<PreviewMaterialParameter> previewMaterialParameters(
+    uint32_t materialIndex) {
+  if (materialIndex >= bw::common::MaterialNames.size() ||
+      materialIndex >= bw::common::MaterialParams.size()) {
+    return {};
+  }
+
+  auto declared = std::get<1>(bw::common::MaterialNames[materialIndex]);
+  auto const& table = bw::common::MaterialParams[materialIndex];
+  auto count = std::min<size_t>(declared, table.size());
+
+  std::vector<PreviewMaterialParameter> parameters;
+  parameters.reserve(count);
+  for (size_t index = 0; index < count; ++index) {
+    auto const& definition = table[index];
+    parameters.push_back(
+        {(uint32_t)index, std::get<0>(definition), std::get<1>(definition),
+         std::get<2>(definition), std::get<3>(definition)});
+  }
+  return parameters;
 }
 
 std::string_view previewSurfaceName(PreviewSurface surface) {
