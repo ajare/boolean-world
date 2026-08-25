@@ -2666,11 +2666,7 @@ void setTechniqueDefaults(
   for (auto const& parameter : schema.parameters) {
     state.params.push_back(parameter.defaultValue);
   }
-  if (schema.materialIndex < bw::common::MaterialNames.size()) {
-    state.colour = get<2>(bw::common::MaterialNames[schema.materialIndex]);
-  } else {
-    state.colour = {0.5f, 0.5f, 0.5f};
-  }
+  state.colour = {0.5f, 0.5f, 0.5f};
 }
 
 void renderSubMaterialFields(
@@ -2682,14 +2678,14 @@ void renderSubMaterialFields(
                             return value.materialIndex == state.materialIndex;
                           });
     string preview = "Technique " + to_string(state.materialIndex);
-    if (state.materialIndex < bw::common::MaterialNames.size()) {
-      preview = string(get<0>(bw::common::MaterialNames[state.materialIndex]));
+    if (state.materialIndex < bw::common::TechniqueNames.size()) {
+      preview = string(bw::common::TechniqueNames[state.materialIndex]);
     }
     if (ImGui::BeginCombo("Technique", preview.c_str())) {
       for (auto const& candidate : data.techniqueSchemas) {
         string name = "Technique " + to_string(candidate.materialIndex);
-        if (candidate.materialIndex < bw::common::MaterialNames.size()) {
-          name = string(get<0>(bw::common::MaterialNames[candidate.materialIndex]));
+        if (candidate.materialIndex < bw::common::TechniqueNames.size()) {
+          name = string(bw::common::TechniqueNames[candidate.materialIndex]);
         }
         if (ImGui::Selectable(name.c_str(), candidate.materialIndex == state.materialIndex)) {
           setTechniqueDefaults(state, candidate);

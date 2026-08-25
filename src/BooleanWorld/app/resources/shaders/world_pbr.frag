@@ -504,7 +504,7 @@ float fbm(vec3 p)
 
 // Marble's tunable knobs, unpacked once from the flat MATERIAL_PARAMS array
 // so the material's own code reads named fields rather than magic indices.
-// Slot order matches bw::common::MaterialParams[0] in MaterialRegistry.h -
+// Slot order matches the Marble Technique schema in ProcMaterial -
 // index 0 is warpScale, and so on - and each default below is the literal
 // constant this used to be hardcoded to, so a freshly authored Primitive
 // renders identically to before this was made tunable.
@@ -725,8 +725,8 @@ vec3 geologyNormal(vec3 p, vec3 normal, int type, float field,
     return normalize(geometricNormal - gradient * strength);
 }
 
-// Stone's tunable knobs. Slot order matches bw::common::MaterialParams[1] in
-// MaterialRegistry.h, and each default is the literal this used to be
+// Stone's tunable knobs. Slot order matches the Stone Technique schema in
+// ProcMaterial, and each default is the literal this used to be
 // hardcoded to - see the equivalent note on MarbleParams above.
 // medium_scale (MATERIAL_PARAMS[1]) is not here - see the note in
 // geologyField's granite branch above for why it is bound there instead.
@@ -763,8 +763,8 @@ Material graniteTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
-// Slate's two knobs, matching bw::common::MaterialParams[2] in
-// MaterialRegistry.h. Each default is the literal this used to be hardcoded
+// Slate's two knobs, matching the Slate Technique schema in
+// ProcMaterial. Each default is the literal this used to be hardcoded
 // to, same discipline as MarbleParams/StoneParams above.
 struct SlateParams
 {
@@ -798,7 +798,7 @@ Material slateTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
-// Sandstone's two knobs, matching bw::common::MaterialParams[3].
+// Sandstone's two knobs, matching its ProcMaterial Technique schema.
 struct SandstoneParams
 {
     float baseScale;   // 0: overall world-space pattern scale.
@@ -832,7 +832,7 @@ Material sandstoneTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
-// Limestone's two knobs, matching bw::common::MaterialParams[4].
+// Limestone's two knobs, matching its ProcMaterial Technique schema.
 struct LimestoneParams
 {
     float baseScale;  // 0: overall world-space pattern scale.
@@ -865,7 +865,7 @@ Material limestoneTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
-// Each geology material's two knobs, matching bw::common::MaterialParams for
+// Each geology material's two knobs, matching their ProcMaterial Technique schemas for
 // its index. Same discipline as Slate/Sandstone/Limestone above: base_scale
 // is always slot 0, the second slot is a constant local to that material's
 // own *Texture function only - never inside geologyField/geologyNormal,
@@ -1150,7 +1150,7 @@ vec3 metalNormal(vec3 p, vec3 normal, int type, float field, float strength)
     return normalize(geometricNormal - gradient * strength);
 }
 
-// Each metal's two knobs, matching bw::common::MaterialParams for its
+// Each metal's two knobs, matching their ProcMaterial Technique schemas for its
 // index - same "base_scale in slot 0, second slot local to this function
 // only" discipline as the geology materials above; none of these may safely
 // change metalField/metalNormal, which every metal calls.
@@ -1403,7 +1403,7 @@ vec3 organicNormal(vec3 p, vec3 normal, int type, float field,
     return normalize(geometricNormal - gradient * strength);
 }
 
-// Each organic material's two knobs, matching bw::common::MaterialParams for
+// Each organic material's two knobs, matching their ProcMaterial Technique schemas for
 // its index - same discipline as the geology/metal materials above; none of
 // these may safely change organicField/organicNormal, which every organic
 // material calls.
@@ -1665,8 +1665,8 @@ vec3 spectralPalette(float phase)
         (phase + vec3(0.0, 0.33, 0.67)));
 }
 
-// Each supernatural material's two knobs, matching bw::common::MaterialParams
-// for its index - same discipline as every batch above. None of these may
+// Each supernatural material's two knobs, matching its ProcMaterial Technique
+// schema - same discipline as every batch above. None of these may
 // safely change supernaturalField/supernaturalNormal, which every
 // supernatural material calls; time-driven animation constants
 // (GLOBAL_TIME's own coefficients) are left alone rather than made tunable.
@@ -1931,7 +1931,7 @@ vec3 frostedGlassNormal(vec3 p, vec3 normal, float field, float strength)
     return normalize(geometricNormal - gradient * strength);
 }
 
-// Frosted glass's two knobs, matching bw::common::MaterialParams for its
+// Frosted glass's two knobs, matching their ProcMaterial Technique schemas for its
 // index. frostedGlassField/frostedGlassNormal are only ever called from
 // here, so unlike the shared *Field helpers above there is no risk in
 // principle to changing them - they are left as-is anyway, so every bind

@@ -59,38 +59,7 @@ struct PreviewScenePick {
     std::array<float, 3> const& rayOrigin,
     std::array<float, 3> const& rayDirection);
 
-// The material a Primitive uses for one of its surfaces; null for None. The
-// mutable form is how the preview edits a material live: the renderer feeds
-// these same values to the shader every frame.
-[[nodiscard]] PreviewMaterial const* previewSurfaceMaterial(
-    PrimitivePreviewGeometry const& geometry, PreviewSurface surface);
-[[nodiscard]] PreviewMaterial* previewSurfaceMaterial(
-    PrimitivePreviewGeometry& geometry, PreviewSurface surface);
-
-// One tunable of a material, as the shader's MATERIAL_PARAMS slot it fills.
-struct PreviewMaterialParameter {
-  // Index into MaterialDefinitionData::params.
-  uint32_t index{};
-  std::string_view name;
-  float minimum{};
-  float maximum{};
-  float defaultValue{};
-};
-
-// The parameters a material actually uses, in slot order. The registry sizes
-// every material's table alike and leaves the unused tail zeroed, so this is
-// bounded by the material's declared count - reading the whole table would
-// offer nameless controls over slots the shader ignores. Unknown materials
-// have no parameters.
-[[nodiscard]] std::vector<PreviewMaterialParameter> previewMaterialParameters(
-    uint32_t materialIndex);
-
 // How the surface reads in the editor: "Floor", "Ceiling" or "Wall".
 [[nodiscard]] std::string_view previewSurfaceName(PreviewSurface surface);
-
-// The registry name of a material index, for showing what a surface is made
-// of. Indices outside the registry answer "Unknown" rather than reading off
-// the end of it - a Primitive can carry an index the build no longer knows.
-[[nodiscard]] std::string_view previewMaterialName(uint32_t materialIndex);
 
 }  // namespace editor

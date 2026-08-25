@@ -244,8 +244,8 @@ int main() {
   auto projection = glm::perspective(
       glm::radians(60.0f), (float)kWidth / (float)kHeight, 0.1f, 1000000.0f);
 
-  // Marble's registry defaults - matching MaterialRegistry.h's
-  // MaterialParams[0], each the literal world_pbr.frag's MarbleParams used
+  // Marble's ProcMaterial defaults, each matching its Technique schema and
+  // the literal world_pbr.frag MarbleParams value used before authoring.
   // to hardcode at that slot. Passing {} here instead would zero
   // fineDetailScale, which marbleTexture divides by - now that the shader
   // actually reads these, an all-zero params array is a NaN, not a neutral

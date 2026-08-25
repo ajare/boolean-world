@@ -25,8 +25,6 @@
 #include <SDL3/SDL_opengl.h>
 #endif
 
-
-#include <core/MaterialDefaultsFile.h>
 #include <core/WorldData.h>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
@@ -229,15 +227,6 @@ map<string, string> loadHelpFiles(string const& dir) {
 
 void initialise() {
   setupLogging();
-
-  // Material parameter min/max/default can be retuned in Game.yaml without a
-  // rebuild - see core/MaterialDefaultsFile.h. The editor is a standalone
-  // executable with no Launcher/ApplicationDLL boundary to receive it
-  // through, so it reads the same file the shipped game does directly,
-  // relative to its own build output directory. Silently keeps the
-  // compiled-in bw::common::MaterialParams values if it is not found there,
-  // e.g. a packaged editor build shipped without a sibling Launcher.
-  bw::core::loadMaterialDefaultsFile("../Launcher/Game.yaml");
 
   // ADR-0024: discover the manifest here, then parse each ProcMaterial YAML
   // directly through bw::core::Serializer (ProcMaterialLibrary), without a

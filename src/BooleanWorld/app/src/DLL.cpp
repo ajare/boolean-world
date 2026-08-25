@@ -13,8 +13,6 @@
 #include <applib/ProtoEntityDefaultDefinitionFactory.h>
 #include <applib/ImageSetTiledDefinitionFactory.h>
 
-#include <core/MaterialDefaultsFile.h>
-
 #include "DLLState.h"
 #include "InputOptions.h"
 #include "VideoOptions.h"
@@ -122,13 +120,6 @@ __declspec(dllexport) wp::application::StateFactory* dllGetNextStateFactory() {
 
 __declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
   dllState.resetStateFactoryEnumeration();
-
-  // Material parameter min/max/default can be retuned in Game.yaml without a
-  // rebuild - see core/MaterialDefaultsFile.h. This DLL shares the
-  // Launcher process's working directory, so the plain relative name it
-  // already loads Game.yaml from is enough; falls back silently to the
-  // compiled-in bw::common::MaterialParams values if the section is absent.
-  bw::core::loadMaterialDefaultsFile("Game.yaml");
 
   auto entityHandlerFactory = [](shared_ptr<applib::AnimationDatabase> animDatabase) {
     return new EntityHandlerBooleanWorld(animDatabase, gInputOptions);

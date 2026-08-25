@@ -181,13 +181,6 @@ void renderSelectedSurfaceWindow() {
   if (!session.selection.valid) {
     return;
   }
-  auto& geometry =
-      session.primitives[session.selection.primitiveIndex].geometry;
-  auto* material = previewSurfaceMaterial(geometry, session.selection.surface);
-  if (!material) {
-    return;
-  }
-
   ImGui::SetNextWindowPos(
       {session.viewportMin.x + 16.0f, session.viewportMin.y + 48.0f},
       ImGuiCond_Appearing);
@@ -197,34 +190,8 @@ void renderSelectedSurfaceWindow() {
           ImGuiWindowFlags_AlwaysAutoResize |
               ImGuiWindowFlags_NoSavedSettings)) {
     auto surfaceName = previewSurfaceName(session.selection.surface);
-    auto materialName = previewMaterialName(material->index);
-    ImGui::Text(
-        "%.*s material: %.*s", (int)surfaceName.size(), surfaceName.data(),
-        (int)materialName.size(), materialName.data());
-    ImGui::Separator();
-
-    // Edited straight into the snapshot the renderer reads, so the preview
-    // follows the slider as it moves - there is nothing to apply.
-    auto parameters = previewMaterialParameters(material->index);
-    if (parameters.empty()) {
-      ImGui::TextUnformatted("This material has no adjustable parameters.");
-    }
-    for (auto const& parameter : parameters) {
-      std::string label(parameter.name);
-      ImGui::SliderFloat(
-          label.c_str(), &material->definition.params[parameter.index],
-          parameter.minimum, parameter.maximum);
-    }
-
-    if (!parameters.empty()) {
-      ImGui::Separator();
-      if (ImGui::Button("Reset to defaults")) {
-        for (auto const& parameter : parameters) {
-          material->definition.params[parameter.index] =
-              parameter.defaultValue;
-        }
-      }
-    }
+    ImGui::Text("Selected %.*s", (int)surfaceName.size(), surfaceName.data());
+    ImGui::TextDisabled("Edit its Sub-material in the Primitive inspector.");
   }
   ImGui::End();
 

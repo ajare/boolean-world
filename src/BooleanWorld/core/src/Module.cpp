@@ -47,7 +47,7 @@ bool IsValidPrimitiveType(uint32_t operation, uint32_t fillType) {
 }
 
 bool IsValidMaterialIndex(uint32_t materialIndex) {
-  return materialIndex < bw::common::MaterialNames.size();
+  return materialIndex < bw::common::TechniqueNames.size();
 }
 
 bool IsValidTransformKey(uint32_t key) {

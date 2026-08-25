@@ -1,13 +1,4 @@
-#include <algorithm>
 #include <cmath>
-
-// MaterialRegistry sizes its tables with BW_MATERIAL_COUNT and
-// BW_MATERIAL_PARAMS_MAX, so core's defines have to land first.
-#include <core/Defines.h>
-
-#include <common/MaterialRegistry.h>
-
-#include "core/MaterialDefaultsFile.h"
 
 #include "PreviewSurfacePick.h"
 
@@ -180,55 +171,6 @@ PreviewScenePick pickPreviewSceneSurface(
   return nearest;
 }
 
-PreviewMaterial const* previewSurfaceMaterial(
-    PrimitivePreviewGeometry const& geometry, PreviewSurface surface) {
-  switch (surface) {
-    case PreviewSurface::Floor:
-      return &geometry.floorMaterial;
-    case PreviewSurface::Ceiling:
-      return &geometry.ceilingMaterial;
-    case PreviewSurface::Wall:
-      return &geometry.wallMaterial;
-    case PreviewSurface::None:
-      break;
-  }
-  return nullptr;
-}
-
-PreviewMaterial* previewSurfaceMaterial(
-    PrimitivePreviewGeometry& geometry, PreviewSurface surface) {
-  // One rule for both forms, so a mutable lookup can never disagree with the
-  // const one about which slot a surface uses.
-  return const_cast<PreviewMaterial*>(previewSurfaceMaterial(
-      const_cast<PrimitivePreviewGeometry const&>(geometry), surface));
-}
-
-std::vector<PreviewMaterialParameter> previewMaterialParameters(
-    uint32_t materialIndex) {
-  if (materialIndex >= bw::common::MaterialNames.size() ||
-      materialIndex >= bw::common::MaterialParams.size()) {
-    return {};
-  }
-
-  auto declared = std::get<1>(bw::common::MaterialNames[materialIndex]);
-  auto const& table = bw::common::MaterialParams[materialIndex];
-  auto count = std::min<size_t>(declared, table.size());
-
-  std::vector<PreviewMaterialParameter> parameters;
-  parameters.reserve(count);
-  for (size_t index = 0; index < count; ++index) {
-    // Names aren't retunable via Game.yaml (they're the identity a file
-    // matches an override against), but min/max/default are - see
-    // core/MaterialDefaultsFile.h.
-    parameters.push_back(
-        {(uint32_t)index, std::get<0>(table[index]),
-         bw::core::materialParamMinimum(materialIndex, (uint32_t)index),
-         bw::core::materialParamMaximum(materialIndex, (uint32_t)index),
-         bw::core::materialParamDefault(materialIndex, (uint32_t)index)});
-  }
-  return parameters;
-}
-
 std::string_view previewSurfaceName(PreviewSurface surface) {
   switch (surface) {
     case PreviewSurface::Floor:
@@ -241,13 +183,6 @@ std::string_view previewSurfaceName(PreviewSurface surface) {
       break;
   }
   return "None";
-}
-
-std::string_view previewMaterialName(uint32_t materialIndex) {
-  if (materialIndex >= bw::common::MaterialNames.size()) {
-    return "Unknown";
-  }
-  return std::get<0>(bw::common::MaterialNames[materialIndex]);
 }
 
 }  // namespace editor
