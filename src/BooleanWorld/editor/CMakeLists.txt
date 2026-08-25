@@ -76,6 +76,26 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_editor_primitive_preview_geometry
              COMMAND boolean_world_editor_primitive_preview_geometry_tests)
 
+    # Not registered via add_test - needs a real GPU/driver. Build and run it
+    # manually to see PreviewMaterialProgram's shader compile/link errors
+    # directly instead of a silently black 3D preview window.
+    add_executable(boolean_world_editor_preview_material_program_smoke
+        tests/preview_material_program_smoke.cpp
+        src/PreviewMaterialProgram.cpp)
+    target_include_directories(boolean_world_editor_preview_material_program_smoke PRIVATE include)
+    target_link_libraries(boolean_world_editor_preview_material_program_smoke PRIVATE
+        core vendor::opengl ext::glew
+        ext::mpp ext::mpp-data ext::mpp-helper ext::mpp-mesh ext::mpp-program ext::Utils
+        vendor::spdlog ext::sdl3)
+    target_compile_features(boolean_world_editor_preview_material_program_smoke PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_preview_material_program_smoke PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_preview_material_program_smoke)
+    bw_output_dirs(boolean_world_editor_preview_material_program_smoke)
+    bw_deploy_runtime_dlls(boolean_world_editor_preview_material_program_smoke)
+    bw_deploy_vendor_dlls(boolean_world_editor_preview_material_program_smoke)
+    bw_deploy_directory(boolean_world_editor_preview_material_program_smoke
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders" "shaders")
+
     add_executable(boolean_world_editor_primitive_field_preview_tests
         tests/primitive_field_preview_tests.cpp
         src/PrimitiveFieldPreview.cpp)
