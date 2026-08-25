@@ -26,7 +26,8 @@ public:
                      mpp::RenderSystem* renderSystem,
                      mpp::ResourceManager* resourceMgr,
                      bw::core::World const* world,
-                     WorldSurfaceSet surfaceSet);
+                     WorldSurfaceSet surfaceSet,
+                     SubMaterialResolver const* resolver);
 
   virtual ~WorldBatchRenderer();
 

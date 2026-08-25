@@ -12,10 +12,11 @@ using namespace std;
 using namespace wp::application::resourcesystem;
 
 WorldRenderer3d::WorldRenderer3d(
-    ResourcePtr resource, wp::Logger* logger, WorldSurfaceSet surfaceSet)
+    ResourcePtr resource, wp::Logger* logger, WorldSurfaceSet surfaceSet, SubMaterialResolver const* resolver)
     : mRenderer(nullptr),
       mMaterial(resource),
       mSurfaceSet(surfaceSet),
+      mwResolver(resolver),
       mGlobalTime(0.0f),
       mwLogger(logger) {
 }
@@ -60,7 +61,8 @@ void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvide
       renderSystem,
       resourceMgr,
       world,
-      mSurfaceSet);
+      mSurfaceSet,
+      mwResolver);
 
   mRenderer->create();
 
@@ -109,8 +111,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     auto const& properties = primitive->getProperties();
 
     if (mSurfaceSet == WorldSurfaceSet::Walls) {
-      auto hashValue =
-          properties.wallMaterialDef.data.hash(properties.wallMaterialIndex);
+      auto resolved = mwResolver->resolve(properties.wallMaterialId);
+      auto hashValue = resolved.def.hash(resolved.materialIndex);
       auto meshIndex =
           worldBatch->getMeshIndexForMaterialHash(hashValue, false);
       if (mUniforms[meshIndex] == nullptr) {
@@ -119,20 +121,21 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         params->setMeshUniforms(meshName, uniforms);
         params->setMeshBlend(meshName, false);
         uniforms->setUniform(
-            "MATERIAL_INDEX", (int32_t)properties.wallMaterialIndex);
+            "MATERIAL_INDEX", (int32_t)resolved.materialIndex);
         uniforms->setUniform(
             "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
-            properties.wallMaterialDef.data.params.data());
+            resolved.def.params.data());
         initializeGlobalUniforms(*uniforms, false);
         mUniforms[meshIndex] = uniforms;
         mMaterialIndices[meshIndex] =
-            static_cast<int32_t>(properties.wallMaterialIndex);
+            static_cast<int32_t>(resolved.materialIndex);
       }
       continue;
     }
 
     // Floor
-    auto hashValue = properties.floorMaterialDef.data.hash(properties.floorMaterialIndex);
+    auto floorResolved = mwResolver->resolve(properties.floorMaterialId);
+    auto hashValue = floorResolved.def.hash(floorResolved.materialIndex);
     auto meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, true);
 
     if (mUniforms[meshIndex] == nullptr) {
@@ -142,18 +145,19 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       params->setMeshUniforms(meshName, uniforms);
       params->setMeshBlend(meshName, false);
 
-      uniforms->setUniform("MATERIAL_INDEX", (int32_t)properties.floorMaterialIndex);
-      uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, properties.floorMaterialDef.data.params.data());
+      uniforms->setUniform("MATERIAL_INDEX", (int32_t)floorResolved.materialIndex);
+      uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, floorResolved.def.params.data());
       initializeGlobalUniforms(*uniforms, true);
 
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] =
-          static_cast<int32_t>(properties.floorMaterialIndex);
+          static_cast<int32_t>(floorResolved.materialIndex);
       mFloorMeshes[meshIndex] = true;
     }
 
     // Ceiling
-    hashValue = properties.ceilingMaterialDef.data.hash(properties.ceilingMaterialIndex);
+    auto ceilingResolved = mwResolver->resolve(properties.ceilingMaterialId);
+    hashValue = ceilingResolved.def.hash(ceilingResolved.materialIndex);
     meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, false);
 
     if (mUniforms[meshIndex] == nullptr) {
@@ -163,13 +167,13 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       params->setMeshUniforms(meshName, uniforms);
       params->setMeshBlend(meshName, false);
 
-      uniforms->setUniform("MATERIAL_INDEX", (int32_t)properties.ceilingMaterialIndex);
-      uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, properties.ceilingMaterialDef.data.params.data());
+      uniforms->setUniform("MATERIAL_INDEX", (int32_t)ceilingResolved.materialIndex);
+      uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, ceilingResolved.def.params.data());
       initializeGlobalUniforms(*uniforms, false);
 
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] =
-          static_cast<int32_t>(properties.ceilingMaterialIndex);
+          static_cast<int32_t>(ceilingResolved.materialIndex);
     }
 
   }

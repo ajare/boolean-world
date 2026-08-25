@@ -14,12 +14,15 @@
 #include <willpower/common/Logger.h>
 
 #include "FloorPatternOptions.h"
+#include "SubMaterialResolver.h"
 #include "WorldBatchRenderer.h"
 #include "WorldTriangle3dDataProvider.h"
 
 class WorldRenderer3d {
   wp::application::resourcesystem::ResourcePtr mMaterial;
   WorldSurfaceSet mSurfaceSet;
+
+  SubMaterialResolver const* mwResolver;
 
   mpp::ScenePtr mScene;
 
@@ -45,7 +48,8 @@ public:
   WorldRenderer3d(
       wp::application::resourcesystem::ResourcePtr resource,
       wp::Logger* logger,
-      WorldSurfaceSet surfaceSet);
+      WorldSurfaceSet surfaceSet,
+      SubMaterialResolver const* resolver);
 
   virtual ~WorldRenderer3d();
 

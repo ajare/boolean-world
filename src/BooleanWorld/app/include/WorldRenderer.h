@@ -16,6 +16,7 @@
 #include <core/World.h>
 
 #include "FloorPatternOptions.h"
+#include "SubMaterialResolver.h"
 #include "VideoOptions.h"
 #include "WorldTriangle3dDataProvider.h"
 #include "WorldRenderer3d.h"
@@ -36,6 +37,8 @@ private:
   };
 
 private:
+  SubMaterialResolver mSubMaterialResolver;
+
   std::vector<MaterialRenderer> mMaterialRenderers;
 
   bool mWorldHasChanged;

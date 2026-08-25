@@ -23,7 +23,8 @@ WorldRenderer::WorldRenderer(
     wp::Logger* logger,
     bw::app::RenderTextureFilter renderTextureFilter,
     bw::app::HorizontalMaterials horizontalMaterials)
-    : mWorldHasChanged(true),
+    : mSubMaterialResolver(resourceMgr),
+      mWorldHasChanged(true),
       mwLogger(logger),
       mRenderTextureFilter(renderTextureFilter) {
   auto material3d = resourceMgr->getResource("Material.Default", "World");
@@ -35,12 +36,14 @@ WorldRenderer::WorldRenderer(
 
   mMaterialRenderers.push_back(
       {make_shared<WorldRenderer3d>(
-           horizontalMaterial, mwLogger, WorldSurfaceSet::Horizontal),
+           horizontalMaterial, mwLogger, WorldSurfaceSet::Horizontal,
+           &mSubMaterialResolver),
        make_shared<WorldTriangle3dDataProvider>(),
        WorldSurfaceSet::Horizontal});
   mMaterialRenderers.push_back(
       {make_shared<WorldRenderer3d>(
-           material3d, mwLogger, WorldSurfaceSet::Walls),
+           material3d, mwLogger, WorldSurfaceSet::Walls,
+           &mSubMaterialResolver),
        make_shared<WorldTriangle3dDataProvider>(),
        WorldSurfaceSet::Walls});
 }
@@ -110,10 +113,10 @@ void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snap
   for (auto const& triangle : triangles) {
     auto const& properties = worldData.palette[
         worldData.faces[triangle.face].paletteIndex];
-    auto floorHash = properties.floorMaterialDef.data.hash(
-        properties.floorMaterialIndex);
-    auto ceilingHash = properties.ceilingMaterialDef.data.hash(
-        properties.ceilingMaterialIndex);
+    auto floorResolved = mSubMaterialResolver.resolve(properties.floorMaterialId);
+    auto floorHash = floorResolved.def.hash(floorResolved.materialIndex);
+    auto ceilingResolved = mSubMaterialResolver.resolve(properties.ceilingMaterialId);
+    auto ceilingHash = ceilingResolved.def.hash(ceilingResolved.materialIndex);
     ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
         floorHash, true)];
     ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
@@ -132,8 +135,8 @@ void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snap
           bw::core::arr::ToWorldCoordinate(vertex.y)};
     }
 
-    auto floorHash = properties.floorMaterialDef.data.hash(
-        properties.floorMaterialIndex);
+    auto floorResolved = mSubMaterialResolver.resolve(properties.floorMaterialId);
+    auto floorHash = floorResolved.def.hash(floorResolved.materialIndex);
     auto floorMesh = horizontal.renderer->getMeshIndexForMaterialHash(
         floorHash, true);
     uint32_t floorIndices[3];
@@ -147,8 +150,8 @@ void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snap
     horizontal.dataProvider->addTriangle(
         floorMesh, floorIndices[0], floorIndices[1], floorIndices[2]);
 
-    auto ceilingHash = properties.ceilingMaterialDef.data.hash(
-        properties.ceilingMaterialIndex);
+    auto ceilingResolved = mSubMaterialResolver.resolve(properties.ceilingMaterialId);
+    auto ceilingHash = ceilingResolved.def.hash(ceilingResolved.materialIndex);
     auto ceilingMesh = horizontal.renderer->getMeshIndexForMaterialHash(
         ceilingHash, false);
     uint32_t ceilingIndices[3];
@@ -199,8 +202,8 @@ void WorldRenderer::updateWallDataProvider(
     auto orientation = bw::app::orientArrangementWall(worldData, wall);
     if (facesPlayer(orientation)) {
       auto const& properties = worldData.palette[wall.paletteIndex];
-      auto hash = properties.wallMaterialDef.data.hash(
-          properties.wallMaterialIndex);
+      auto resolved = mSubMaterialResolver.resolve(properties.wallMaterialId);
+      auto hash = resolved.def.hash(resolved.materialIndex);
       wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
           hash, false)] += 2;
     } else {
@@ -220,8 +223,8 @@ void WorldRenderer::updateWallDataProvider(
 
     if (facesPlayer(orientation)) {
       auto const& properties = worldData.palette[wall.paletteIndex];
-      auto hash = properties.wallMaterialDef.data.hash(
-          properties.wallMaterialIndex);
+      auto resolved = mSubMaterialResolver.resolve(properties.wallMaterialId);
+      auto hash = resolved.def.hash(resolved.materialIndex);
       auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
       auto colour = untintedVertexColour;
       auto const& normal = orientation.normal;

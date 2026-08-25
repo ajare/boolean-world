@@ -69,3 +69,11 @@ typedef int64_t frame_number_type;
 // never offered as an authorable material and never matched by a real
 // Primitive's wallMaterialIndex.
 #define BW_WALL_BACK_FACE_MATERIAL_INDEX 37
+
+// A materialIndex a Sub-material id resolves to when the id doesn't name any
+// Sub-material in a loaded ProcMaterial catalog (missing/unknown/empty) -
+// see SubMaterialResolver (BooleanWorld/app). Deliberately outside every
+// real Technique's and BW_WALL_BACK_FACE_MATERIAL_INDEX's range, so it hits
+// world_pbr.frag/world_pbr_2d.frag's switch(materialIndex) default case (an
+// error material) rather than aliasing a real Technique.
+#define BW_MATERIAL_ERROR_INDEX 999

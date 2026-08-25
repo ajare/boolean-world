@@ -8,7 +8,7 @@
 
 using namespace std;
 
-WorldBatch::WorldBatch(string const& name, mpp::ResourcePtr textureOrMaterial, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr, bw::core::World const* world, WorldSurfaceSet surfaceSet)
+WorldBatch::WorldBatch(string const& name, mpp::ResourcePtr textureOrMaterial, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr, bw::core::World const* world, WorldSurfaceSet surfaceSet, SubMaterialResolver const* resolver)
     : TriangleBatch(name,
                     {mpp::TriangleBatchOptions::Dimension::P3D,
                      true,
@@ -23,7 +23,8 @@ WorldBatch::WorldBatch(string const& name, mpp::ResourcePtr textureOrMaterial, m
                     renderSystem,
                     resourceMgr),
       mWorld(world),
-      mSurfaceSet(surfaceSet) {
+      mSurfaceSet(surfaceSet),
+      mwResolver(resolver) {
 }
 
 void WorldBatch::processMaterialDefinition(
@@ -52,6 +53,17 @@ void WorldBatch::processMaterialDefinition(
   }
 }
 
+void WorldBatch::processSubMaterial(
+    string const& subMaterialId,
+    bool floor,
+    shared_ptr<mpp::ProgrammaticModelStream> modelStream) {
+  auto resolved = mwResolver->resolve(subMaterialId);
+  bw::core::MaterialDefinition def;
+  def.data = resolved.def;
+
+  processMaterialDefinition(resolved.materialIndex, def, floor, modelStream);
+}
+
 shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
   auto modelStream = make_shared<mpp::ProgrammaticModelStream>(mResourceMgr);
   modelStream->setCalculateBounds(false);
@@ -64,22 +76,16 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
     auto const& properties = primitive->getProperties();
 
     if (mSurfaceSet == WorldSurfaceSet::Horizontal) {
-      processMaterialDefinition(
-          properties.floorMaterialIndex, properties.floorMaterialDef, true,
-          modelStream);
-      processMaterialDefinition(
-          properties.ceilingMaterialIndex, properties.ceilingMaterialDef, false,
-          modelStream);
+      processSubMaterial(properties.floorMaterialId, true, modelStream);
+      processSubMaterial(properties.ceilingMaterialId, false, modelStream);
     } else {
-      processMaterialDefinition(
-          properties.wallMaterialIndex, properties.wallMaterialDef, false,
-          modelStream);
+      processSubMaterial(properties.wallMaterialId, false, modelStream);
     }
   }
 
   // A wall's back face (the side its normal points away from) always
   // renders as this reserved, plain-white material, regardless of any
-  // Primitive's authored wallMaterialIndex - so its mesh bucket needs to
+  // Primitive's authored wallMaterialId - so its mesh bucket needs to
   // exist even for a World with no Primitives yet.
   if (mSurfaceSet != WorldSurfaceSet::Horizontal) {
     processMaterialDefinition(

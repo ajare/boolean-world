@@ -11,6 +11,8 @@
 #include <core/World.h>
 #include <core/MaterialDefinition.h>
 
+#include "SubMaterialResolver.h"
+
 enum class WorldSurfaceSet {
   Horizontal,
   Walls,
@@ -19,6 +21,8 @@ enum class WorldSurfaceSet {
 class WorldBatch : public mpp::TriangleBatch {
   bw::core::World const* mWorld;
   WorldSurfaceSet mSurfaceSet;
+
+  SubMaterialResolver const* mwResolver;
 
   using MaterialMeshKey = std::pair<uint64_t, bool>;
 
@@ -31,8 +35,13 @@ private:
       bool floor,
       std::shared_ptr<mpp::ProgrammaticModelStream> modelStream);
 
+  void processSubMaterial(
+      std::string const& subMaterialId,
+      bool floor,
+      std::shared_ptr<mpp::ProgrammaticModelStream> modelStream);
+
 public:
-  WorldBatch(std::string const& name, mpp::ResourcePtr textureOrMaterial, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr, bw::core::World const* world, WorldSurfaceSet surfaceSet);
+  WorldBatch(std::string const& name, mpp::ResourcePtr textureOrMaterial, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr, bw::core::World const* world, WorldSurfaceSet surfaceSet, SubMaterialResolver const* resolver);
 
   std::shared_ptr<mpp::ModelStream> createModelStream() override;
 
