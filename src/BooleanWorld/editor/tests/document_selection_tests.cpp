@@ -322,6 +322,10 @@ void prefabPrimitivesAreVisibleAndFoldedInIsolationOnlyWhileTheirPrefabIsSelecte
   require(!editor::primitiveParticipatesInEditorFold(*layer, earlierStepPrimitive, settings),
           "an earlier step's Primitive was folded alongside an active Prefab, "
           "which should clip in isolation");
+  auto prefabScope = editor::inScopePrimitives(
+      *document.getWorld(), bw::core::SelectLayer(layer->getId()), settings);
+  require(prefabScope.size() == 1 && prefabScope.front() == primitive,
+          "the in-scope Primitive list did not isolate the selected Prefab");
 
   layer->setActiveStep(0);
   require(!editor::primitiveVisibleForActiveStep(*layer, primitive, settings),

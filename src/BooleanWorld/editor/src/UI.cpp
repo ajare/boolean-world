@@ -566,31 +566,48 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
     ImGui::SameLine();
 
-    auto const previewGrounding =
+    auto const* activeDefinePrefabs = world
+                                          ? dynamic_cast<bw::core::DefinePrefabs const*>(
+                                                world->getActiveLayer()->getActiveStep())
+                                          : nullptr;
+    bool const previewingPrefab =
+        activeDefinePrefabs && activeDefinePrefabs->getSelectedPrefab();
+    auto const primitives =
         world && world->getWorldDataGenerator()
-            ? resolveGroundingFloorZ(
-                  inScopePrimitives(
-                      *world,
-                      world->getWorldDataGenerator()->getLayerSelection(),
-                      settings),
-                  doc->getPlayerProxyPosition())
+            ? inScopePrimitives(
+                  *world,
+                  world->getWorldDataGenerator()->getLayerSelection(),
+                  settings)
+            : vector<bw::core::Primitive const*>{};
+    auto const previewGrounding =
+        world && world->getWorldDataGenerator() && !previewingPrefab
+            ? resolveGroundingFloorZ(primitives, doc->getPlayerProxyPosition())
             : optional<float>{};
-    ImGui::BeginDisabled(!previewGrounding.has_value());
-    if (ImGui::Button("3D preview") && previewGrounding) {
-      openPreview3D(
-          inScopePrimitives(
-              *world,
-              world->getWorldDataGenerator()->getLayerSelection(),
-              settings),
-          doc->getPlayerProxyPosition(),
-          doc->getPlayerProxyAngle(),
-          *previewGrounding);
+    bool const previewEnabled = world && world->getWorldDataGenerator() &&
+                                (previewingPrefab || previewGrounding.has_value());
+    ImGui::BeginDisabled(!previewEnabled);
+    if (ImGui::Button("3D preview") && previewEnabled) {
+      // A Prefab is authored around its origin (ADR-0018), not around the
+      // Player proxy. It need not cover that pivot, so use the conventional
+      // zero-height starting floor until movement reaches authored coverage.
+      auto const startPosition = previewingPrefab
+                                     ? wp::Vector2{0.0f, 0.0f}
+                                     : doc->getPlayerProxyPosition();
+      auto const startAngle = previewingPrefab ? 0.0f : doc->getPlayerProxyAngle();
+      auto const startFloorZ = previewingPrefab
+                                   ? resolveGroundingFloorZ(primitives, startPosition)
+                                         .value_or(0.0f)
+                                   : *previewGrounding;
+      openPreview3D(primitives, startPosition, startAngle, startFloorZ);
     }
     ImGui::EndDisabled();
-    if (!previewGrounding &&
-        ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-      ImGui::SetTooltip(
-          "Move the Player proxy inside an in-scope Primitive to preview in 3D.");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      if (activeDefinePrefabs && !previewingPrefab) {
+        ImGui::SetTooltip("Select a Prefab to preview in 3D.");
+      } else if (!previewGrounding) {
+        ImGui::SetTooltip(
+            "Move the Player proxy inside an in-scope Primitive to preview in 3D.");
+      }
     }
 
     ImGui::SameLine();
@@ -3183,7 +3200,6 @@ void renderPrefabsView(
     }
     ImGui::EndCombo();
   }
-
 }
 
 void renderPrefabThumbnail(
