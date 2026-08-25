@@ -337,7 +337,7 @@ Resources:
       location: "audio/Themes/Build/Desktop/Themes.bank"
     - type: "TextFile"
       name: "ProcMaterialsFile"
-      location: "proc-materials-test-1.yaml"
+      location: "proc-materials-built-in.yaml"
     - type: "ProcMaterial"
       name: "ProcMaterials"
       DependentResources:

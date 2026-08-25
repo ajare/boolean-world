@@ -274,21 +274,9 @@ world:
                 primitivePropertySet:
                   floorZ: 0
                   ceilingZ: 48
-                  floorMaterial:
-                    materialIndex: 0
-                    materialDef:
-                      params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
-                      baseColour: [0.18, 0.18, 0.2]
-                  ceilingMaterial:
-                    materialIndex: 0
-                    materialDef:
-                      params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
-                      baseColour: [0.18, 0.18, 0.2]
-                  wallMaterial:
-                    materialIndex: 0
-                    materialDef:
-                      params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
-                      baseColour: [0.18, 0.18, 0.2]
+                  floorMaterial: "migrated.marble.1"
+                  ceilingMaterial: "migrated.marble.1"
+                  wallMaterial: "migrated.marble.1"
                 complexPolygons:
                   - polygons:
                       - vertices:
@@ -564,21 +552,9 @@ world:
                     primitivePropertySet:
                       floorZ: 0
                       ceilingZ: 48
-                      floorMaterial:
-                        materialIndex: 0
-                        materialDef:
-                          params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
-                          baseColour: [0.18, 0.18, 0.2]
-                      ceilingMaterial:
-                        materialIndex: 0
-                        materialDef:
-                          params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
-                          baseColour: [0.18, 0.18, 0.2]
-                      wallMaterial:
-                        materialIndex: 0
-                        materialDef:
-                          params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
-                          baseColour: [0.18, 0.18, 0.2]
+                      floorMaterial: "migrated.marble.1"
+                      ceilingMaterial: "migrated.marble.1"
+                      wallMaterial: "migrated.marble.1"
                   meshPrimitive:
                     treeFormat: 1297371717
                     shells:
@@ -912,21 +888,9 @@ world:
                     primitivePropertySet:
                       floorZ: 0
                       ceilingZ: 48
-                      floorMaterial:
-                        materialIndex: 0
-                        materialDef:
-                          params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
-                          baseColour: [0.18, 0.18, 0.2]
-                      ceilingMaterial:
-                        materialIndex: 0
-                        materialDef:
-                          params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
-                          baseColour: [0.18, 0.18, 0.2]
-                      wallMaterial:
-                        materialIndex: 0
-                        materialDef:
-                          params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
-                          baseColour: [0.18, 0.18, 0.2]
+                      floorMaterial: "migrated.marble.1"
+                      ceilingMaterial: "migrated.marble.1"
+                      wallMaterial: "migrated.marble.1"
                   meshPrimitive:
                     treeFormat: 1297371717
                     shells:
