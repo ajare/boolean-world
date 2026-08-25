@@ -84,6 +84,12 @@ PreviewMaterialProgram::~PreviewMaterialProgram() {
   if (mCameraFrameUbo) {
     glDeleteBuffers(1, &mCameraFrameUbo);
   }
+  if (mVertexBuffer) {
+    glDeleteBuffers(1, &mVertexBuffer);
+  }
+  if (mVertexArray) {
+    glDeleteVertexArrays(1, &mVertexArray);
+  }
   if (mTexture) {
     glDeleteTextures(1, &mTexture);
   }
@@ -188,6 +194,32 @@ bool PreviewMaterialProgram::compile() {
       glGetUniformLocation(mProgram, "_mpp_u_modelCameraProjection_");
   mUniformNormalMatrix = glGetUniformLocation(mProgram, "_mpp_u_normal_");
 
+  // Own vertex array and buffer. The attribute layout is baked into the VAO
+  // once here, so drawing only has to bind it and upload.
+  glGenVertexArrays(1, &mVertexArray);
+  glGenBuffers(1, &mVertexBuffer);
+  glBindVertexArray(mVertexArray);
+  glBindBuffer(GL_ARRAY_BUFFER, mVertexBuffer);
+  auto stride = (GLsizei)sizeof(PreviewGpuVertex);
+  glEnableVertexAttribArray(kPositionAttrib);
+  glVertexAttribPointer(
+      kPositionAttrib, 3, GL_FLOAT, GL_FALSE, stride,
+      (void const*)offsetof(PreviewGpuVertex, px));
+  glEnableVertexAttribArray(kNormalAttrib);
+  glVertexAttribPointer(
+      kNormalAttrib, 3, GL_FLOAT, GL_FALSE, stride,
+      (void const*)offsetof(PreviewGpuVertex, nx));
+  glEnableVertexAttribArray(kTexCoordAttrib);
+  glVertexAttribPointer(
+      kTexCoordAttrib, 2, GL_FLOAT, GL_FALSE, stride,
+      (void const*)offsetof(PreviewGpuVertex, u));
+  glEnableVertexAttribArray(kColourAttrib);
+  glVertexAttribPointer(
+      kColourAttrib, 4, GL_FLOAT, GL_FALSE, stride,
+      (void const*)offsetof(PreviewGpuVertex, r));
+  glBindVertexArray(0);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
   glGenBuffers(1, &mCameraFrameUbo);
   glBindBuffer(GL_UNIFORM_BUFFER, mCameraFrameUbo);
   // mat4 VIEW_MATRIX, PROJECTION_MATRIX, INVERSE_PROJECTION_MATRIX (64 bytes
@@ -230,6 +262,7 @@ void PreviewMaterialProgram::begin(
     glm::vec3 const& lightPosition,
     float globalTime) {
   glUseProgram(mProgram);
+  glBindVertexArray(mVertexArray);
 
   struct CameraFrame {
     glm::mat4 view;
@@ -290,7 +323,21 @@ void PreviewMaterialProgram::setMaterial(
       mUniformMaterialParams, (GLsizei)params.size(), params.data());
 }
 
+void PreviewMaterialProgram::draw(std::vector<PreviewGpuVertex> const& vertices) {
+  if (vertices.empty()) {
+    return;
+  }
+  glBindBuffer(GL_ARRAY_BUFFER, mVertexBuffer);
+  glBufferData(
+      GL_ARRAY_BUFFER,
+      (GLsizeiptr)(vertices.size() * sizeof(PreviewGpuVertex)),
+      vertices.data(), GL_STREAM_DRAW);
+  glDrawArrays(GL_TRIANGLES, 0, (GLsizei)vertices.size());
+}
+
 void PreviewMaterialProgram::end() {
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindVertexArray(0);
   glBindTexture(GL_TEXTURE_2D, 0);
   glUseProgram(0);
 }

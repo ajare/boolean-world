@@ -55,18 +55,9 @@ PreviewSession session;
 // preview window - see PreviewMaterialProgram and GitHub issue #256.
 PreviewMaterialProgram materialProgram;
 
-// One interleaved vertex, matching PreviewMaterialProgram's mesh
-// specification (POSITION vec3, NORMAL vec3, TEXCOORDS vec2, COLOUR vec4).
-struct GpuVertex {
-  float px{}, py{}, pz{};
-  float nx{}, ny{}, nz{};
-  float u{}, v{};
-  float r{1.0f}, g{1.0f}, b{1.0f}, a{1.0f};
-};
-
 // The game's 3D coordinates map its 2D world (X, Y) onto (X, Z).
-GpuVertex toGpuVertex(PreviewVertex3 const& vertex) {
-  GpuVertex result;
+PreviewGpuVertex toGpuVertex(PreviewVertex3 const& vertex) {
+  PreviewGpuVertex result;
   result.px = vertex.x;
   result.py = vertex.z;
   result.pz = vertex.y;
@@ -79,7 +70,7 @@ GpuVertex toGpuVertex(PreviewVertex3 const& vertex) {
 }
 
 void appendTriangles(
-    std::vector<GpuVertex>& buffer,
+    std::vector<PreviewGpuVertex>& buffer,
     std::vector<PreviewTriangle> const& triangles) {
   buffer.reserve(buffer.size() + triangles.size() * 3);
   for (auto const& triangle : triangles) {
@@ -90,7 +81,7 @@ void appendTriangles(
 }
 
 void appendWallQuads(
-    std::vector<GpuVertex>& buffer,
+    std::vector<PreviewGpuVertex>& buffer,
     std::vector<PreviewWallQuad> const& quads) {
   buffer.reserve(buffer.size() + quads.size() * 6);
   for (auto const& quad : quads) {
@@ -101,38 +92,6 @@ void appendWallQuads(
     buffer.push_back(toGpuVertex(quad.vertices[3]));
     buffer.push_back(toGpuVertex(quad.vertices[0]));
   }
-}
-
-void drawGpuVertices(std::vector<GpuVertex> const& vertices) {
-  if (vertices.empty()) {
-    return;
-  }
-  auto const* base = reinterpret_cast<std::byte const*>(vertices.data());
-  auto stride = (GLsizei)sizeof(GpuVertex);
-
-  glEnableVertexAttribArray(PreviewMaterialProgram::kPositionAttrib);
-  glVertexAttribPointer(
-      PreviewMaterialProgram::kPositionAttrib, 3, GL_FLOAT, GL_FALSE, stride,
-      base + offsetof(GpuVertex, px));
-  glEnableVertexAttribArray(PreviewMaterialProgram::kNormalAttrib);
-  glVertexAttribPointer(
-      PreviewMaterialProgram::kNormalAttrib, 3, GL_FLOAT, GL_FALSE, stride,
-      base + offsetof(GpuVertex, nx));
-  glEnableVertexAttribArray(PreviewMaterialProgram::kTexCoordAttrib);
-  glVertexAttribPointer(
-      PreviewMaterialProgram::kTexCoordAttrib, 2, GL_FLOAT, GL_FALSE, stride,
-      base + offsetof(GpuVertex, u));
-  glEnableVertexAttribArray(PreviewMaterialProgram::kColourAttrib);
-  glVertexAttribPointer(
-      PreviewMaterialProgram::kColourAttrib, 4, GL_FLOAT, GL_FALSE, stride,
-      base + offsetof(GpuVertex, r));
-
-  glDrawArrays(GL_TRIANGLES, 0, (GLsizei)vertices.size());
-
-  glDisableVertexAttribArray(PreviewMaterialProgram::kPositionAttrib);
-  glDisableVertexAttribArray(PreviewMaterialProgram::kNormalAttrib);
-  glDisableVertexAttribArray(PreviewMaterialProgram::kTexCoordAttrib);
-  glDisableVertexAttribArray(PreviewMaterialProgram::kColourAttrib);
 }
 
 void updateCameraFromInput() {
@@ -219,7 +178,7 @@ void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
       session.camera->getProjectionTransform(), cameraPosition,
       cameraPosition, session.globalTime);
 
-  std::vector<GpuVertex> buffer;
+  std::vector<PreviewGpuVertex> buffer;
   for (auto const& primitive : session.primitives) {
     auto const& geometry = primitive.geometry;
 
@@ -227,20 +186,20 @@ void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
     appendTriangles(buffer, geometry.floorTriangles);
     materialProgram.setMaterial(
         geometry.floorMaterial.index, geometry.floorMaterial.definition.params);
-    drawGpuVertices(buffer);
+    materialProgram.draw(buffer);
 
     buffer.clear();
     appendTriangles(buffer, geometry.ceilingTriangles);
     materialProgram.setMaterial(
         geometry.ceilingMaterial.index,
         geometry.ceilingMaterial.definition.params);
-    drawGpuVertices(buffer);
+    materialProgram.draw(buffer);
 
     buffer.clear();
     appendWallQuads(buffer, geometry.wallQuads);
     materialProgram.setMaterial(
         geometry.wallMaterial.index, geometry.wallMaterial.definition.params);
-    drawGpuVertices(buffer);
+    materialProgram.draw(buffer);
   }
 
   materialProgram.end();

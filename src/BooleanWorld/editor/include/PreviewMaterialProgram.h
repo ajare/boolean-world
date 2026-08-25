@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 #pragma warning(push)
 #pragma warning(disable : 4201)
@@ -13,6 +14,16 @@
 #include <core/Defines.h>
 
 namespace editor {
+
+// One interleaved vertex, matching the mesh specification
+// PreviewMaterialProgram compiles the vertex stage against (POSITION vec3,
+// NORMAL vec3, TEXCOORDS vec2, COLOUR vec4).
+struct PreviewGpuVertex {
+  float px{}, py{}, pz{};
+  float nx{}, ny{}, nz{};
+  float u{}, v{};
+  float r{1.0f}, g{1.0f}, b{1.0f}, a{1.0f};
+};
 
 // Compiles and drives the game's real world_pbr material shader (copied
 // verbatim into editor/resources/shaders) for the 3D preview, bypassing the
@@ -48,6 +59,10 @@ class PreviewMaterialProgram {
       uint32_t materialIndex,
       std::array<float, BW_MATERIAL_PARAMS_MAX> const& params);
 
+  // Uploads into this object's own vertex buffer and draws. Must be called
+  // between begin() and end(), which bind and unbind the matching VAO.
+  void draw(std::vector<PreviewGpuVertex> const& vertices);
+
   void end();
 
  private:
@@ -57,6 +72,11 @@ class PreviewMaterialProgram {
   uint32_t mProgram{};
   uint32_t mCameraFrameUbo{};
   uint32_t mTexture{};
+  // This class owns its vertex array and buffer rather than pointing GL at
+  // client memory: ImGui binds its own VBO before running draw callbacks, so
+  // a client-side pointer would be read as an offset into ImGui's buffer.
+  uint32_t mVertexArray{};
+  uint32_t mVertexBuffer{};
 
   int mUniformViewDistance{-1};
   int mUniformGlobalTime{-1};
