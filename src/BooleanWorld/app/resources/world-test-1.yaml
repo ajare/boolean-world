@@ -309,7 +309,7 @@ world:
               primitives:
                 - type: Mesh
                   vertexTransformerObject:
-                    id: 1
+                    id: 2
                     parentId: -1
                     position: [-16, 0]
                     transformOffset: [0, 0]
@@ -584,38 +584,71 @@ world:
                     shells:
                       - vertices:
                           - p: [-0.125, 0.5]
+                            flags: 1
                           - p: [-0.375, 0.5]
+                            flags: 1
                           - p: [-0.375, 1]
+                            flags: 2
                           - p: [-0.625, 1]
+                            flags: 1
                           - p: [-0.625, 0.75]
+                            flags: 1
                           - p: [-0.875, 0.75]
+                            flags: 1
                           - p: [-0.875, 0.5]
+                            flags: 1
                           - p: [-0.625, 0.5]
+                            flags: 1
                           - p: [-0.625, -0.5]
+                            flags: 1
                           - p: [-0.875, -0.5]
+                            flags: 1
                           - p: [-0.875, -0.75]
+                            flags: 1
                           - p: [-0.375, -0.75]
-                          - p: [-0.375, -0]
+                            flags: 1
+                          - p: [-0.375, 0]
+                            flags: 1
                           - p: [-0.125, 0]
+                            flags: 1
                           - p: [-0.125, -0.75]
+                            flags: 1
                           - p: [0.125, -0.75]
+                            flags: 1
                           - p: [0.125, -1]
+                            flags: 1
                           - p: [0.375, -1]
+                            flags: 1
                           - p: [0.375, -0.5]
+                            flags: 1
                           - p: [0.125, -0.5]
+                            flags: 1
                           - p: [0.125, -0.25]
+                            flags: 1
                           - p: [0.875, -0.25]
+                            flags: 1
                           - p: [0.875, 0.75]
+                            flags: 1
                           - p: [0.375, 0.75]
+                            flags: 1
                           - p: [0.375, 1]
+                            flags: 2
                           - p: [0.125, 1]
+                            flags: 1
                           - p: [0.125, 0.75]
+                            flags: 1
                           - p: [0.125, 0.5]
+                            flags: 1
                           - p: [0.625, 0.5]
-                          - p: [0.625, -0]
+                            flags: 1
+                          - p: [0.625, 0]
+                            flags: 1
                           - p: [0.375, 0]
+                            flags: 1
                           - p: [0.375, 0.25]
+                            flags: 1
                           - p: [-0.125, 0.25]
+                            flags: 1
                         holes:
                           []
             - id: 1
@@ -899,13 +932,21 @@ world:
                     shells:
                       - vertices:
                           - p: [-0.5, -0.5]
+                            flags: 1
                           - p: [-1, -1]
+                            flags: 1
                           - p: [1, -1]
+                            flags: 1
                           - p: [0.5, -0.5]
+                            flags: 1
                           - p: [0.5, 0.5]
+                            flags: 1
                           - p: [1, 1]
+                            flags: 1
                           - p: [-1, 1]
+                            flags: 1
                           - p: [-0.5, 0.5]
+                            flags: 1
                         holes:
                           []
         - type: PrefabField
