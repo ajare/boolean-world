@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <vector>
 
 #include "PrimitivePreviewGeometry.h"
 
@@ -30,6 +31,30 @@ struct PreviewSurfaceHit {
 // so a Primitive is pickable from inside as well as outside.
 [[nodiscard]] PreviewSurfaceHit pickPreviewSurface(
     PrimitivePreviewGeometry const& geometry,
+    std::array<float, 3> const& rayOrigin,
+    std::array<float, 3> const& rayDirection);
+
+struct PreviewScenePick {
+  // Index into the geometries passed in; only meaningful when hit().
+  size_t primitiveIndex{};
+  PreviewSurfaceHit surfaceHit;
+
+  [[nodiscard]] bool hit() const {
+    return surfaceHit.hit();
+  }
+};
+
+// The surface the ray meets across a whole preview scene. Geometries must be
+// given in the order they are drawn - ascending Primitive priority - because
+// that is what decides the answer where two of them coincide.
+//
+// Primitives are extruded independently, so neighbours that share an edge
+// produce exactly coplanar walls. The renderer draws them in order with
+// GL_LEQUAL, so the last one drawn owns those pixels; this resolves such ties
+// the same way, and therefore always names a surface that is actually
+// visible rather than one buried behind its own duplicate.
+[[nodiscard]] PreviewScenePick pickPreviewSceneSurface(
+    std::vector<PrimitivePreviewGeometry const*> const& geometries,
     std::array<float, 3> const& rayOrigin,
     std::array<float, 3> const& rayDirection);
 

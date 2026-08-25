@@ -122,6 +122,70 @@ void ignoresDegenerateDirections() {
   require(!hit.hit(), "a zero-length direction reported a hit");
 }
 
+// A room occupying an arbitrary span, so two of them can be butted together
+// to share a wall plane exactly as neighbouring Primitives do.
+std::unique_ptr<MeshPrimitive> makeRoomSpanning(
+    float left, float bottom, float right, float top) {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union,
+      std::vector<MeshFilledRegion>{{square(left, bottom, right, top), {}}}));
+  auto properties = primitive->getProperties();
+  properties.floorZ = 0.0f;
+  properties.ceilingZ = 20.0f;
+  primitive->setProperties(properties);
+  return primitive;
+}
+
+// Primitives are extruded independently, so neighbours sharing an edge each
+// loft their own wall at that plane. The renderer draws them in order with
+// GL_LEQUAL, so the later one owns those pixels - and picking the earlier one
+// would mark a surface hidden behind its own duplicate.
+void coincidentWallsResolveToTheOneDrawnLast() {
+  auto left = makeRoomSpanning(-5, -5, 5, 5);
+  auto right = makeRoomSpanning(5, -5, 15, 5);
+  auto leftGeometry = editor::extrudePrimitiveForPreview(*left);
+  auto rightGeometry = editor::extrudePrimitiveForPreview(*right);
+
+  std::vector<editor::PrimitivePreviewGeometry const*> scene{
+      &leftGeometry, &rightGeometry};
+  auto pick = editor::pickPreviewSceneSurface(scene, {0, 0, 10}, {1, 0, 0});
+
+  require(pick.hit(), "the shared wall was not hit at all");
+  require(
+      pick.surfaceHit.surface == PreviewSurface::Wall,
+      "the shared wall was not picked as a wall");
+  require(
+      pick.primitiveIndex == 1,
+      "a wall coincident with a later Primitive's did not defer to it");
+}
+
+void theNearestPrimitiveStillWinsWhenNotCoincident() {
+  auto nearRoom = makeRoomSpanning(-5, -5, 5, 5);
+  auto farRoom = makeRoomSpanning(20, -5, 30, 5);
+  auto nearGeometry = editor::extrudePrimitiveForPreview(*nearRoom);
+  auto farGeometry = editor::extrudePrimitiveForPreview(*farRoom);
+
+  // The further Primitive is drawn last, so it must not win on order alone.
+  std::vector<editor::PrimitivePreviewGeometry const*> scene{
+      &nearGeometry, &farGeometry};
+  auto pick = editor::pickPreviewSceneSurface(scene, {0, 0, 10}, {1, 0, 0});
+
+  require(pick.hit(), "nothing was hit along the ray");
+  require(
+      pick.primitiveIndex == 0,
+      "a distant Primitive drawn later displaced the nearer one");
+  require(
+      near(pick.surfaceHit.distance, 5.0f),
+      "the reported distance was not that of the nearest wall");
+}
+
+void anEmptySceneReportsNoHit() {
+  std::vector<editor::PrimitivePreviewGeometry const*> scene;
+  require(
+      !editor::pickPreviewSceneSurface(scene, {0, 0, 10}, {1, 0, 0}).hit(),
+      "an empty scene reported a hit");
+}
+
 }  // namespace
 
 int main() {
@@ -133,6 +197,9 @@ int main() {
     reportsNoHitWhenAimedAway();
     reportsDistanceIndependentlyOfDirectionScale();
     ignoresDegenerateDirections();
+    coincidentWallsResolveToTheOneDrawnLast();
+    theNearestPrimitiveStillWinsWhenNotCoincident();
+    anEmptySceneReportsNoHit();
     std::cout << "Preview surface pick tests passed\n";
     return 0;
   } catch (std::exception const& error) {

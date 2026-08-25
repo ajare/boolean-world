@@ -75,8 +75,10 @@ struct Tint {
 constexpr Tint untinted{};
 // Leaves red and green alone and holds back only blue, so the surface reads
 // as the same material seen under a warmer light rather than as a different
-// colour painted over it.
-constexpr Tint lookedAtTint{1.0f, 1.0f, 0.7f};
+// colour painted over it. Gamma compresses this considerably and the
+// specular terms are not tinted at all, so the value has to be well under 1
+// to register on screen.
+constexpr Tint lookedAtTint{1.0f, 1.0f, 0.35f};
 
 // The game's 3D coordinates map its 2D world (X, Y) onto (X, Z).
 PreviewGpuVertex toGpuVertex(PreviewVertex3 const& vertex, Tint const& tint) {
@@ -144,21 +146,20 @@ LookedAtSurface lookedAtSurface() {
   std::array<float, 3> origin{position.x, position.z, position.y};
   std::array<float, 3> ray{direction.x, direction.z, direction.y};
 
-  PreviewSurfaceHit nearest;
-  PrimitivePreviewGeometry const* nearestGeometry = nullptr;
+  // In draw order, which is what settles coincident surfaces.
+  std::vector<PrimitivePreviewGeometry const*> geometries;
+  geometries.reserve(session.primitives.size());
   for (auto const& primitive : session.primitives) {
-    auto hit = pickPreviewSurface(primitive.geometry, origin, ray);
-    if (!hit.hit() || (nearest.hit() && hit.distance >= nearest.distance)) {
-      continue;
-    }
-    nearest = hit;
-    nearestGeometry = &primitive.geometry;
+    geometries.push_back(&primitive.geometry);
   }
 
-  if (!nearest.hit()) {
+  auto pick = pickPreviewSceneSurface(geometries, origin, ray);
+  if (!pick.hit()) {
     return {};
   }
-  return {nearestGeometry, nearest.surface, nearest.wallIndex};
+  return {
+      geometries[pick.primitiveIndex], pick.surfaceHit.surface,
+      pick.surfaceHit.wallIndex};
 }
 
 // Single owner of the pointer grab. Enabling flushes pending mouse motion,

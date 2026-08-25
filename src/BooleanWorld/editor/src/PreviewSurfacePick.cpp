@@ -140,4 +140,35 @@ PreviewSurfaceHit pickPreviewSurface(
   return nearest;
 }
 
+PreviewScenePick pickPreviewSceneSurface(
+    std::vector<PrimitivePreviewGeometry const*> const& geometries,
+    std::array<float, 3> const& rayOrigin,
+    std::array<float, 3> const& rayDirection) {
+  // Wide enough to catch coplanar duplicates through the accumulated float
+  // error of two separate extrusions, far tighter than any real surface
+  // separation in a level.
+  constexpr float coplanarEpsilon = 1e-3f;
+
+  PreviewScenePick nearest;
+  for (size_t index = 0; index < geometries.size(); ++index) {
+    if (!geometries[index]) {
+      continue;
+    }
+    auto hit = pickPreviewSurface(*geometries[index], rayOrigin, rayDirection);
+    if (!hit.hit()) {
+      continue;
+    }
+    // Anything meaningfully further away loses. Anything nearer, or level
+    // with the leader, takes over - so among coincident surfaces the last
+    // drawn wins, exactly as GL_LEQUAL resolves them on screen.
+    if (nearest.hit() &&
+        hit.distance > nearest.surfaceHit.distance + coplanarEpsilon) {
+      continue;
+    }
+    nearest.primitiveIndex = index;
+    nearest.surfaceHit = hit;
+  }
+  return nearest;
+}
+
 }  // namespace editor

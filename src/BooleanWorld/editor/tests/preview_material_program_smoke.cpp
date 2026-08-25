@@ -50,6 +50,27 @@ std::vector<editor::PreviewGpuVertex> floorQuad(float tintBlue) {
   return {a, b, c, c, d, a};
 }
 
+// A vertical wall quad standing on the z=0 plane and facing the camera, to
+// check the tint is not somehow particular to horizontal surfaces.
+std::vector<editor::PreviewGpuVertex> wallQuad(float tintBlue) {
+  auto corner = [tintBlue](float x, float height) {
+    editor::PreviewGpuVertex vertex;
+    vertex.px = x;
+    vertex.py = height;
+    vertex.pz = 0.0f;
+    vertex.nz = 1.0f;
+    vertex.u = x;
+    vertex.v = height;
+    vertex.b = tintBlue;
+    return vertex;
+  };
+  auto a = corner(-100.0f, 0.0f);
+  auto b = corner(100.0f, 0.0f);
+  auto c = corner(100.0f, 60.0f);
+  auto d = corner(-100.0f, 60.0f);
+  return {a, b, c, c, d, a};
+}
+
 struct FrameStats {
   size_t litPixels{};
   int maxChannel{};
@@ -190,19 +211,23 @@ int main() {
   auto projection = glm::perspective(
       glm::radians(60.0f), (float)kWidth / (float)kHeight, 0.1f, 1000000.0f);
 
-  auto renderFloor = [&](float tintBlue) {
+  auto render = [&](std::vector<editor::PreviewGpuVertex> const& vertices) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     program.begin(view, projection, cameraPosition, cameraPosition, 0.0f);
     program.setMaterial(0, {});
-    program.draw(floorQuad(tintBlue));
+    program.draw(vertices);
     program.end();
     return measureFrame(kWidth, kHeight);
   };
 
   // White vertex colours must leave the material exactly as authored; a
   // reduced blue channel must tint it without touching red.
-  auto untinted = renderFloor(1.0f);
-  auto tinted = renderFloor(0.7f);
+  auto untinted = render(floorQuad(1.0f));
+  auto tinted = render(floorQuad(0.35f));
+  // The value the preview actually tints with, so this measures the real
+  // thing rather than a placeholder.
+  auto untintedWall = render(wallQuad(1.0f));
+  auto tintedWall = render(wallQuad(0.35f));
 
   auto error = glGetError();
   if (error != GL_NO_ERROR) {
@@ -215,8 +240,12 @@ int main() {
       "lit pixels: %zu / %zu (brightest channel %d)\n", untinted.litPixels,
       total, untinted.maxChannel);
   printf(
-      "untinted mean red %.1f blue %.1f; tinted mean red %.1f blue %.1f\n",
+      "floor: untinted red %.1f blue %.1f; tinted red %.1f blue %.1f\n",
       untinted.meanRed, untinted.meanBlue, tinted.meanRed, tinted.meanBlue);
+  printf(
+      "wall:  untinted red %.1f blue %.1f; tinted red %.1f blue %.1f\n",
+      untintedWall.meanRed, untintedWall.meanBlue, tintedWall.meanRed,
+      tintedWall.meanBlue);
 
   glBindVertexArray(0);
   glDeleteBuffers(1, &foreignBuffer);
@@ -248,6 +277,11 @@ int main() {
   }
   if (std::abs(tinted.meanRed - untinted.meanRed) > untinted.meanRed * 0.02) {
     printf("FAILED: the tint disturbed red, which it should leave alone\n");
+    return 1;
+  }
+  // Vertical surfaces must tint as readily as horizontal ones.
+  if (!(tintedWall.meanBlue < untintedWall.meanBlue * 0.97)) {
+    printf("FAILED: the vertex colour tint did not reduce blue on a wall\n");
     return 1;
   }
   printf("PASSED: the material renders as authored and honours vertex tint\n");
