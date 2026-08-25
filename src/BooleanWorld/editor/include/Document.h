@@ -4,6 +4,8 @@
 #include <set>
 #include <map>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include <willpower/geometry/Mesh.h>
 
@@ -43,6 +45,21 @@ bool primitiveParticipatesInEditorFold(
     bw::core::Layer const& layer,
     bw::core::Primitive const* primitive,
     Settings const& settings);
+
+// Returns the selected Layers' Primitives that participate in the editor
+// fold. The order is the World Layer order followed by each Layer's authored
+// Primitive order, so equal-priority consumers retain ADR-0001's stable order.
+[[nodiscard]] std::vector<bw::core::Primitive const*> inScopePrimitives(
+    bw::core::World const& world,
+    bw::core::LayerSelection const& layerSelection,
+    Settings const& settings);
+
+// Resolves the floor beneath point from an in-scope Primitive list. For equal
+// priorities, the later Primitive in the list wins, matching the left-fold's
+// stable priority ordering (ADR-0001).
+[[nodiscard]] std::optional<float> resolveGroundingFloorZ(
+    std::vector<bw::core::Primitive const*> const& primitives,
+    wp::Vector2 const& point);
 
 // Whether an otherwise-visible Primitive should use the inactive-step colour
 // treatment in the world overlay.

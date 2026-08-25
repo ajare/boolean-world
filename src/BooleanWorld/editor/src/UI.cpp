@@ -565,6 +565,26 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
     ImGui::SameLine();
 
+    auto const previewGrounding =
+        world && world->getWorldDataGenerator()
+            ? resolveGroundingFloorZ(
+                  inScopePrimitives(
+                      *world,
+                      world->getWorldDataGenerator()->getLayerSelection(),
+                      settings),
+                  doc->getPlayerProxyPosition())
+            : optional<float>{};
+    ImGui::BeginDisabled(!previewGrounding.has_value());
+    ImGui::Button("3D preview");
+    ImGui::EndDisabled();
+    if (!previewGrounding &&
+        ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      ImGui::SetTooltip(
+          "Move the Player proxy inside an in-scope Primitive to preview in 3D.");
+    }
+
+    ImGui::SameLine();
+
     if (!world) {
       widgets::PushDisabled();
     }

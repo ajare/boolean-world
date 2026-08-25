@@ -80,8 +80,6 @@ protected:
 private:
   virtual std::vector<ComplexPolygon> generateTransformedVertices(wp::Vector2* minExtent = nullptr, wp::Vector2* maxExtent = nullptr) const;
 
-  Triangulation const& getPickingTriangulation() const;
-
   bool childrenModified() const override;
 
 protected:
@@ -196,6 +194,8 @@ public:
   PrimitivePropertySet const& getProperties() const;
 
   uint32_t getNumVertices() const;
+
+  [[nodiscard]] Triangulation const& getPickingTriangulation() const;
 
   virtual std::vector<ComplexPolygon> const& getVertices() const;
 
