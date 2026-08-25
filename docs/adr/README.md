@@ -28,6 +28,9 @@ removed the dependency entirely. Geometry terms are defined in
 | [0019](0019-layer-ownership-is-permanent.md) | Layer ownership is permanent — nothing moves between Layers | Accepted |
 | [0020](0020-meshprimitive-stores-an-authoritative-containment-tree.md) | MeshPrimitive stores an authoritative containment tree | Accepted |
 | [0021](0021-prefabfields-own-reserved-global-fold-phases.md) | PrefabFields own reserved global fold phases | Accepted |
+| [0022](0022-wall-collision-override-is-a-local-mesh-edge-flag.md) | Wall collision override is a local mesh-edge flag, not an arrangement concept | Accepted |
+| [0023](0023-procmaterial-subclasses-resource-not-materialresource.md) | ProcMaterial subclasses Resource directly, not MaterialResource | Accepted |
+| [0024](0024-editor-accesses-procmaterial-data-directly.md) | The editor reads and writes ProcMaterial data directly, not through ResourceManager | Accepted |
 
 ## World geometry rewrite scope
 
