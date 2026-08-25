@@ -11,6 +11,7 @@ add_executable(editor WIN32
     src/PrimitivePreviewGeometry.cpp
     src/PrefabTilingGuide.cpp
     src/Preview3D.cpp
+    ../app/src/ReactiveCamera.cpp
     src/Render.cpp
     src/UI.cpp
     src/UiHelpers.cpp
@@ -28,7 +29,7 @@ add_executable(editor WIN32
     src/implot.cpp
     src/implot_items.cpp)
 
-target_include_directories(editor PRIVATE include)
+target_include_directories(editor PRIVATE include ../app/include)
 bw_add_header_filter(editor)
 
 target_compile_definitions(editor PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
@@ -37,7 +38,9 @@ target_compile_definitions(editor PRIVATE YAML_CPP_STATIC_DEFINE)
 
 target_link_libraries(editor PRIVATE
     core Willpower.Geometry
-    vendor::opengl ext::glew vendor::spdlog vendor::nfd
+    vendor::opengl ext::glew
+    ext::mpp ext::mpp-data ext::mpp-helper ext::mpp-mesh ext::mpp-program ext::Utils
+    vendor::spdlog vendor::nfd
     ext::yaml-cpp ext::sdl3)
 
 target_compile_features(editor PRIVATE cxx_std_20)

@@ -2,16 +2,25 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
+#include <memory>
 #include <vector>
+
+#pragma warning(push)
+#pragma warning(disable : 4201)
+#include <glm/gtc/type_ptr.hpp>
+#pragma warning(pop)
 
 #include <GL/glew.h>
 
 #include <common/GameDefines.h>
 
+#include "Document.h"
 #include "imgui.h"
+#include "InputOptions.h"
+#include "PlayerView.h"
 #include "PrimitivePreviewGeometry.h"
 #include "Preview3D.h"
+#include "ReactiveCamera.h"
 
 namespace editor {
 namespace {
@@ -25,7 +34,13 @@ struct PreviewSession {
   bool open{};
   wp::Vector2 position;
   float angle{};
+  float pitch{};
   float eyeZ{};
+  bw::app::InputOptions inputOptions;
+  std::unique_ptr<ReactiveCamera> camera;
+  // Grounding and rendering deliberately share this exact in-scope Primitive
+  // list. It remains valid while the input-blocking preview is open.
+  std::vector<bw::core::Primitive const*> primitivesForGrounding;
   std::vector<PreviewPrimitive> primitives;
   ImVec2 viewportMin;
   ImVec2 viewportMax;
@@ -37,38 +52,65 @@ std::array<float, 3> materialColour(PreviewMaterial const& material) {
   return material.definition.baseColour;
 }
 
-void setProjection(float aspect) {
-  constexpr float nearPlane = 0.1f;
-  constexpr float farPlane = 1000000.0f;
-  constexpr float verticalFovDegrees = 75.0f;
-  float top = nearPlane * std::tan(verticalFovDegrees * 3.1415926535f / 360.0f);
-  float right = top * std::max(aspect, 0.01f);
-  glFrustum(-right, right, -top, top, nearPlane, farPlane);
-}
-
-void submitVertex(PreviewVertex3 const& vertex, float sine, float cosine) {
-  float dx = vertex.x - session.position.x;
-  float dy = vertex.y - session.position.y;
-  // Angle zero looks along world +Y. OpenGL's camera looks down -Z.
-  float cameraX = dx * cosine - dy * sine;
-  float depth = dx * sine + dy * cosine;
-  glVertex3f(cameraX, vertex.z - session.eyeZ, -depth);
+void submitVertex(PreviewVertex3 const& vertex) {
+  // The game's 3D coordinates map its 2D world (X, Y) onto (X, Z).
+  glVertex3f(vertex.x, vertex.z, vertex.y);
 }
 
 void renderTriangle(
     PreviewTriangle const& triangle,
     PreviewMaterial const& material,
-    float brightness,
-    float sine,
-    float cosine) {
+    float brightness) {
   auto colour = materialColour(material);
   glColor3f(
       colour[0] * brightness,
       colour[1] * brightness,
       colour[2] * brightness);
   for (auto const& vertex : triangle.vertices) {
-    submitVertex(vertex, sine, cosine);
+    submitVertex(vertex);
   }
+}
+
+void updateCameraFromInput() {
+  auto const& io = ImGui::GetIO();
+
+  float previousAngle = session.angle;
+  float previousPitch = session.pitch;
+  session.angle = bw::app::applyMouseYaw(
+      previousAngle, io.MouseDelta.x, session.inputOptions.mouseSensitivity);
+  session.pitch = bw::app::applyMousePitch(
+      previousPitch, io.MouseDelta.y, session.inputOptions.mouseSensitivity);
+
+  // ReactiveCamera consumes turn deltas, just as the game's player camera
+  // does. Keyboard movement stays in the world plane; there is no vertical
+  // input or physics in this preview.
+  session.camera->yaw(previousAngle - session.angle);
+  session.camera->pitch(session.pitch - previousPitch);
+
+  wp::Vector2 movement = wp::Vector2::ZERO;
+  if (ImGui::IsKeyDown(ImGuiKey_W)) {
+    movement.y += 1.0f;
+  }
+  if (ImGui::IsKeyDown(ImGuiKey_S)) {
+    movement.y -= 1.0f;
+  }
+  if (ImGui::IsKeyDown(ImGuiKey_A)) {
+    movement.x -= 1.0f;
+  }
+  if (ImGui::IsKeyDown(ImGuiKey_D)) {
+    movement.x += 1.0f;
+  }
+  movement.normalise();
+  session.position += bw::app::playerMovement(movement, session.angle) *
+                      BW_PLAYER_SPEED * io.DeltaTime;
+
+  if (auto floorZ = resolveGroundingFloorZ(
+          session.primitivesForGrounding, session.position)) {
+    session.eyeZ = *floorZ + BW_PLAYER_EYE_HEIGHT;
+  }
+  // Outside all in-scope Primitive coverage, retain the last grounded eye Z.
+  session.camera->setPosition(
+      {session.position.x, session.eyeZ, session.position.y});
 }
 
 void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
@@ -101,36 +143,29 @@ void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
 
   glMatrixMode(GL_PROJECTION);
   glPushMatrix();
-  glLoadIdentity();
-  setProjection(static_cast<float>(width) / static_cast<float>(height));
+  glLoadMatrixf(glm::value_ptr(session.camera->getProjectionTransform()));
   glMatrixMode(GL_MODELVIEW);
   glPushMatrix();
-  glLoadIdentity();
-
-  float radians = session.angle * 3.1415926535f / 180.0f;
-  float sine = std::sin(radians);
-  float cosine = std::cos(radians);
+  glLoadMatrixf(glm::value_ptr(session.camera->getViewTransform()));
 
   for (auto const& primitive : session.primitives) {
     auto const& geometry = primitive.geometry;
     glBegin(GL_TRIANGLES);
     for (auto const& triangle : geometry.floorTriangles) {
-      renderTriangle(
-          triangle, geometry.floorMaterial, 0.85f, sine, cosine);
+      renderTriangle(triangle, geometry.floorMaterial, 0.85f);
     }
     for (auto const& triangle : geometry.ceilingTriangles) {
-      renderTriangle(
-          triangle, geometry.ceilingMaterial, 0.65f, sine, cosine);
+      renderTriangle(triangle, geometry.ceilingMaterial, 0.65f);
     }
     auto wallColour = materialColour(geometry.wallMaterial);
     glColor3f(wallColour[0], wallColour[1], wallColour[2]);
     for (auto const& quad : geometry.wallQuads) {
-      submitVertex(quad.vertices[0], sine, cosine);
-      submitVertex(quad.vertices[1], sine, cosine);
-      submitVertex(quad.vertices[2], sine, cosine);
-      submitVertex(quad.vertices[2], sine, cosine);
-      submitVertex(quad.vertices[3], sine, cosine);
-      submitVertex(quad.vertices[0], sine, cosine);
+      submitVertex(quad.vertices[0]);
+      submitVertex(quad.vertices[1]);
+      submitVertex(quad.vertices[2]);
+      submitVertex(quad.vertices[2]);
+      submitVertex(quad.vertices[3]);
+      submitVertex(quad.vertices[0]);
     }
     glEnd();
   }
@@ -166,9 +201,15 @@ void openPreview3D(
   session.position = playerPosition;
   session.angle = playerAngle;
   session.eyeZ = floorZ + BW_PLAYER_EYE_HEIGHT;
+  session.camera = std::make_unique<ReactiveCamera>(
+      glm::vec3{playerPosition.x, session.eyeZ, playerPosition.y},
+      bw::app::cameraYaw(playerAngle), 0.0f, BW_PLAYER_FOV, 1.0f);
+  session.camera->setClipDistances(0.1f, 1000000.0f);
   session.primitives.reserve(primitives.size());
+  session.primitivesForGrounding.reserve(primitives.size());
   for (auto const* primitive : primitives) {
     if (primitive) {
+      session.primitivesForGrounding.push_back(primitive);
       session.primitives.push_back(
           {primitive->getPriority(), extrudePrimitiveForPreview(*primitive)});
     }
@@ -206,6 +247,13 @@ void renderPreview3D() {
         session.viewportMin.x + ImGui::GetWindowSize().x,
         session.viewportMin.y + ImGui::GetWindowSize().y};
 
+    session.camera->setAspectRatio(
+        std::max(ImGui::GetWindowSize().x / ImGui::GetWindowSize().y, 0.01f));
+    bool closing = ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal);
+    if (!closing) {
+      updateCameraFromInput();
+    }
+
     auto* drawList = ImGui::GetWindowDrawList();
     drawList->AddRectFilled(
         session.viewportMin, session.viewportMax, IM_COL32(0, 0, 0, 255));
@@ -215,7 +263,7 @@ void renderPreview3D() {
     ImGui::SetCursorPos({12.0f, 12.0f});
     ImGui::TextUnformatted("Press ESC to exit preview");
 
-    if (ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal)) {
+    if (closing) {
       // Keep this frame's snapshotted geometry alive until ImGui executes the
       // queued OpenGL callback later in the frame.
       session.open = false;
