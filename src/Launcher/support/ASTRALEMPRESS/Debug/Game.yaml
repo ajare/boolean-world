@@ -30,3 +30,57 @@ Configuration:
       Argument:
         name: ThreadedLoading
         value: false
+  # Overrides bw::common::MaterialParams' min/max/default (see
+  # core/MaterialDefaultsFile.h) - a material or parameter can be left out to
+  # keep its compiled-in value. Values below match world_pbr.frag/
+  # world_pbr_2d.frag's own defaults exactly, so this section changes nothing
+  # until a value here is actually edited.
+  Materials:
+    - name: Marble
+      params:
+        - name: warp_scale
+          min: 0.0
+          max: 5.0
+          default: 1.35
+        - name: veins_scale
+          min: 1.0
+          max: 10.0
+          default: 5.0
+        - name: veins_fine_scale
+          min: 5.0
+          max: 20.0
+          default: 12.0
+        - name: fine_detail_scale
+          min: 0.01
+          max: 1.0
+          default: 0.025
+        - name: light_warm_mix
+          min: 0.0
+          max: 1.0
+          default: 0.2
+        - name: vein_mix
+          min: 0.0
+          max: 1.0
+          default: 0.35
+        - name: cloudiness
+          min: 0.0
+          max: 1.0
+          default: 0.42
+        - name: fbm_scale
+          min: 0.01
+          max: 1.0
+          default: 0.72
+    - name: Stone
+      params:
+        - name: base_scale
+          min: 0.5
+          max: 3.0
+          default: 0.82
+        - name: medium_scale
+          min: 5.0
+          max: 10.0
+          default: 8.0
+        - name: stone_mix
+          min: 0.0
+          max: 1.0
+          default: 0.28

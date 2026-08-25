@@ -11,6 +11,7 @@
 #include "common/MaterialRegistry.h"
 
 #include "core/InputType.h"
+#include "core/MaterialDefaultsFile.h"
 #include "core/RectanglePolygon.h"
 #include "core/RegularPolygon.h"
 #include "core/TorusPolygon.h"
@@ -59,7 +60,8 @@ void SetPrimitiveMaterialDefault(uint32_t materialIndex, MaterialDefinitionData*
   auto const numParams = static_cast<uint32_t>(std::get<1>(material));
 
   for (uint32_t i = 0; i < numParams; ++i) {
-    materialDefinition->params[i] = std::get<3>(bw::common::MaterialParams[materialIndex][i]);
+    materialDefinition->params[i] =
+        bw::core::materialParamDefault(materialIndex, i);
   }
 
   auto const& defaultColour = std::get<2>(material);

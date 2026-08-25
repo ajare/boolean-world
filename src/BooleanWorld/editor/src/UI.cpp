@@ -13,6 +13,7 @@
 #include <nfd/nfd.h>
 
 #include <core/DefinePrefabs.h>
+#include <core/MaterialDefaultsFile.h>
 #include <core/LayerBuildStep.h>
 #include <core/WorldData.h>
 #include <core/RegularPolygon.h>
@@ -2681,8 +2682,8 @@ bool renderEditMaterialParameters(string const& name, uint32_t materialIndex, bw
   // Params
   for (uint32_t i = 0; i < numParams; ++i) {
     auto paramName = get<0>(bw::common::MaterialParams[materialIndex][i]);
-    auto paramMin = get<1>(bw::common::MaterialParams[materialIndex][i]);
-    auto paramMax = get<2>(bw::common::MaterialParams[materialIndex][i]);
+    auto paramMin = bw::core::materialParamMinimum(materialIndex, i);
+    auto paramMax = bw::core::materialParamMaximum(materialIndex, i);
     float* paramCur = &materialDefinition->params[i];
 
     ImGui::SetNextItemWidth(256);

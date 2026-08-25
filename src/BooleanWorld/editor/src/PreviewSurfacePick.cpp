@@ -7,6 +7,8 @@
 
 #include <common/MaterialRegistry.h>
 
+#include "core/MaterialDefaultsFile.h"
+
 #include "PreviewSurfacePick.h"
 
 namespace editor {
@@ -215,10 +217,14 @@ std::vector<PreviewMaterialParameter> previewMaterialParameters(
   std::vector<PreviewMaterialParameter> parameters;
   parameters.reserve(count);
   for (size_t index = 0; index < count; ++index) {
-    auto const& definition = table[index];
+    // Names aren't retunable via Game.yaml (they're the identity a file
+    // matches an override against), but min/max/default are - see
+    // core/MaterialDefaultsFile.h.
     parameters.push_back(
-        {(uint32_t)index, std::get<0>(definition), std::get<1>(definition),
-         std::get<2>(definition), std::get<3>(definition)});
+        {(uint32_t)index, std::get<0>(table[index]),
+         bw::core::materialParamMinimum(materialIndex, (uint32_t)index),
+         bw::core::materialParamMaximum(materialIndex, (uint32_t)index),
+         bw::core::materialParamDefault(materialIndex, (uint32_t)index)});
   }
   return parameters;
 }
