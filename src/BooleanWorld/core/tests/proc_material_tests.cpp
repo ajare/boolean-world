@@ -1,0 +1,334 @@
+#include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <string>
+
+#include <core/ProcMaterialData.h>
+#include <core/SerializationWorkData.h>
+#include <core/YamlSerializer.h>
+
+namespace {
+
+using bw::core::ProcMaterialData;
+using bw::core::SubMaterial;
+using bw::core::TechniqueParameterSchema;
+using bw::core::TechniqueSchema;
+
+void require(bool condition, std::string const& message) {
+  if (!condition) {
+    throw std::runtime_error(message);
+  }
+}
+
+bool near(float first, float second) {
+  return std::abs(first - second) < 0.0001f;
+}
+
+bool containsError(ProcMaterialData const& data, std::string const& expected) {
+  for (auto const& error : data.getDeserializationErrors()) {
+    if (error == expected) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Pinned-value fixture: Marble's real warp_scale/veins_scale bounds and
+// default, as MaterialRegistry.h defined them before ADR-0023 retired that
+// table - see common/tests/material_registry_tests.cpp's equivalent pin.
+// This is the "at least one hand-authored Technique schema + Sub-material"
+// fixture the ticket asks for.
+ProcMaterialData buildMarbleCatalog() {
+  ProcMaterialData data;
+  data.program3d = "world_pbr.frag";
+  data.program2d = "world_pbr_2d.frag";
+
+  TechniqueSchema marble;
+  marble.materialIndex = 0;
+  marble.parameters.push_back(TechniqueParameterSchema{"warp_scale", 0.0f, 5.0f, 1.35f});
+  marble.parameters.push_back(TechniqueParameterSchema{"veins_scale", 1.0f, 10.0f, 5.0f});
+  data.techniqueSchemas.push_back(marble);
+
+  SubMaterial weatheredSlate;
+  weatheredSlate.id = "weathered_slate";
+  weatheredSlate.displayName = "Weathered Slate";
+  weatheredSlate.materialIndex = 0;
+  weatheredSlate.paramValues = {1.35f, 5.0f};
+  weatheredSlate.baseColour = {0.18f, 0.18f, 0.20f};
+  data.subMaterials.push_back(weatheredSlate);
+
+  return data;
+}
+
+std::shared_ptr<bw::core::Serializer> yamlFrom(std::string const& text) {
+  auto serializer = std::shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromString(text));
+  serializer->deserialize();
+  return serializer;
+}
+
+void roundTripPreservesEveryField() {
+  auto original = buildMarbleCatalog();
+  bw::core::SerializationWorkData writeWorkData;
+
+  auto writer = std::shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toString());
+  original.serialize(writer, writeWorkData);
+  writer->serialize();
+  auto yaml = static_cast<bw::core::YamlSerializer*>(writer.get())->getSerializedString();
+
+  ProcMaterialData roundTripped;
+  bw::core::SerializationWorkData readWorkData;
+  auto reader = yamlFrom(yaml);
+  require(roundTripped.deserialize(reader, readWorkData),
+          "round-tripped catalog failed to deserialize: " +
+              (roundTripped.getDeserializationErrors().empty()
+                   ? std::string("<no error recorded>")
+                   : roundTripped.getDeserializationErrors().front()));
+
+  require(roundTripped.program3d == original.program3d, "program3d did not round-trip");
+  require(roundTripped.program2d == original.program2d, "program2d did not round-trip");
+
+  require(roundTripped.techniqueSchemas.size() == 1, "techniqueSchemas count did not round-trip");
+  auto const& schema = roundTripped.techniqueSchemas[0];
+  require(schema.materialIndex == 0, "TechniqueSchema materialIndex did not round-trip");
+  require(schema.parameters.size() == 2, "TechniqueSchema parameter count did not round-trip");
+  require(schema.parameters[0].name == "warp_scale", "TechniqueSchema parameter name did not round-trip");
+  require(near(schema.parameters[0].minimum, 0.0f) && near(schema.parameters[0].maximum, 5.0f) &&
+              near(schema.parameters[0].defaultValue, 1.35f),
+          "TechniqueSchema parameter bounds did not round-trip");
+
+  require(roundTripped.subMaterials.size() == 1, "subMaterials count did not round-trip");
+  auto const& subMaterial = roundTripped.subMaterials[0];
+  require(subMaterial.id == "weathered_slate", "SubMaterial id did not round-trip");
+  require(subMaterial.displayName == "Weathered Slate", "SubMaterial displayName did not round-trip");
+  require(subMaterial.materialIndex == 0, "SubMaterial materialIndex did not round-trip");
+  require(subMaterial.paramValues.size() == 2 && near(subMaterial.paramValues[0], 1.35f) &&
+              near(subMaterial.paramValues[1], 5.0f),
+          "SubMaterial paramValues did not round-trip");
+  require(near(subMaterial.baseColour[0], 0.18f) && near(subMaterial.baseColour[1], 0.18f) &&
+              near(subMaterial.baseColour[2], 0.20f),
+          "SubMaterial baseColour did not round-trip");
+}
+
+// The pinned-value regression the ticket asks for, in the spirit of
+// common/tests/material_registry_tests.cpp: a bad hand-edit to this fixture
+// (or a future change to how defaults are authored) breaks a very specific,
+// load-bearing assertion rather than a vague "something changed".
+void pinnedMarbleValuesSurviveDeserialization() {
+  std::string yaml =
+      "program3d: world_pbr.frag\n"
+      "program2d: world_pbr_2d.frag\n"
+      "techniqueSchemas:\n"
+      "  - materialIndex: 0\n"
+      "    parameters:\n"
+      "    - name: warp_scale\n"
+      "      min: 0.0\n"
+      "      max: 5.0\n"
+      "      default: 1.35\n"
+      "    - name: veins_scale\n"
+      "      min: 1.0\n"
+      "      max: 10.0\n"
+      "      default: 5.0\n"
+      "subMaterials:\n"
+      "  - id: weathered_slate\n"
+      "    name: Weathered Slate\n"
+      "    materialIndex: 0\n"
+      "    params: [1.35, 5.0]\n"
+      "    baseColour: [0.18, 0.18, 0.20]\n";
+
+  ProcMaterialData data;
+  bw::core::SerializationWorkData workData;
+  auto serializer = yamlFrom(yaml);
+  require(data.deserialize(serializer, workData), "the pinned Marble fixture failed to deserialize");
+
+  require(near(data.techniqueSchemas[0].parameters[0].defaultValue, 1.35f),
+          "the Marble warp_scale default changed");
+  require(near(data.subMaterials[0].paramValues[0], 1.35f),
+          "Weathered Slate's warp_scale value changed");
+}
+
+void outOfBoundsParameterValueIsRejected() {
+  std::string yaml =
+      "program3d: world_pbr.frag\n"
+      "program2d: world_pbr_2d.frag\n"
+      "techniqueSchemas:\n"
+      "  - materialIndex: 0\n"
+      "    parameters:\n"
+      "    - name: warp_scale\n"
+      "      min: 0.0\n"
+      "      max: 5.0\n"
+      "      default: 1.35\n"
+      "subMaterials:\n"
+      "  - id: broken\n"
+      "    name: Broken\n"
+      "    materialIndex: 0\n"
+      "    params: [99.0]\n"
+      "    baseColour: [0, 0, 0]\n";
+
+  ProcMaterialData data;
+  bw::core::SerializationWorkData workData;
+  auto serializer = yamlFrom(yaml);
+  require(!data.deserialize(serializer, workData), "an out-of-bounds parameter value was accepted");
+  require(containsError(data, "SubMaterial 'broken' parameter 'warp_scale' value is out of bounds."),
+          "an out-of-bounds parameter value did not report the expected error");
+}
+
+void malformedParameterArrayIsRejected() {
+  std::string yaml =
+      "program3d: world_pbr.frag\n"
+      "program2d: world_pbr_2d.frag\n"
+      "techniqueSchemas:\n"
+      "  - materialIndex: 0\n"
+      "    parameters:\n"
+      "    - name: warp_scale\n"
+      "      min: 0.0\n"
+      "      max: 5.0\n"
+      "      default: 1.35\n"
+      "subMaterials:\n"
+      "  - id: broken\n"
+      "    name: Broken\n"
+      "    materialIndex: 0\n"
+      "    params: [1.0, 2.0]\n"
+      "    baseColour: [0, 0, 0]\n";
+
+  ProcMaterialData data;
+  bw::core::SerializationWorkData workData;
+  auto serializer = yamlFrom(yaml);
+  require(!data.deserialize(serializer, workData), "a parameter count mismatch was accepted");
+  require(containsError(data, "SubMaterial 'broken' has 2 parameter value(s), expected 1 for materialIndex 0."),
+          "a parameter count mismatch did not report the expected error");
+}
+
+void subMaterialReferencingUnknownTechniqueIsRejected() {
+  std::string yaml =
+      "program3d: world_pbr.frag\n"
+      "program2d: world_pbr_2d.frag\n"
+      "techniqueSchemas: []\n"
+      "subMaterials:\n"
+      "  - id: broken\n"
+      "    name: Broken\n"
+      "    materialIndex: 0\n"
+      "    params: []\n"
+      "    baseColour: [0, 0, 0]\n";
+
+  ProcMaterialData data;
+  bw::core::SerializationWorkData workData;
+  auto serializer = yamlFrom(yaml);
+  require(!data.deserialize(serializer, workData), "a SubMaterial with no matching TechniqueSchema was accepted");
+  require(containsError(data, "SubMaterial 'broken' references materialIndex 0 with no TechniqueSchema."),
+          "an unknown TechniqueSchema reference did not report the expected error");
+}
+
+void duplicateSubMaterialIdIsRejected() {
+  std::string yaml =
+      "program3d: world_pbr.frag\n"
+      "program2d: world_pbr_2d.frag\n"
+      "techniqueSchemas:\n"
+      "  - materialIndex: 0\n"
+      "    parameters: []\n"
+      "subMaterials:\n"
+      "  - id: dup\n"
+      "    name: First\n"
+      "    materialIndex: 0\n"
+      "    params: []\n"
+      "    baseColour: [0, 0, 0]\n"
+      "  - id: dup\n"
+      "    name: Second\n"
+      "    materialIndex: 0\n"
+      "    params: []\n"
+      "    baseColour: [0, 0, 0]\n";
+
+  ProcMaterialData data;
+  bw::core::SerializationWorkData workData;
+  auto serializer = yamlFrom(yaml);
+  require(!data.deserialize(serializer, workData), "a duplicate SubMaterial id was accepted");
+  require(containsError(data, "Duplicate SubMaterial id 'dup'."),
+          "a duplicate SubMaterial id did not report the expected error");
+}
+
+void duplicateTechniqueSchemaIsRejected() {
+  std::string yaml =
+      "program3d: world_pbr.frag\n"
+      "program2d: world_pbr_2d.frag\n"
+      "techniqueSchemas:\n"
+      "  - materialIndex: 0\n"
+      "    parameters: []\n"
+      "  - materialIndex: 0\n"
+      "    parameters: []\n"
+      "subMaterials: []\n";
+
+  ProcMaterialData data;
+  bw::core::SerializationWorkData workData;
+  auto serializer = yamlFrom(yaml);
+  require(!data.deserialize(serializer, workData), "two TechniqueSchemas for the same materialIndex were accepted");
+  require(containsError(data, "Duplicate TechniqueSchema for materialIndex 0."),
+          "a duplicate TechniqueSchema did not report the expected error");
+}
+
+void tooManyTechniqueSchemaParametersIsRejected() {
+  std::string yaml =
+      "program3d: world_pbr.frag\n"
+      "program2d: world_pbr_2d.frag\n"
+      "techniqueSchemas:\n"
+      "  - materialIndex: 0\n"
+      "    parameters:\n"
+      "    - {name: p0, min: 0, max: 1, default: 0}\n"
+      "    - {name: p1, min: 0, max: 1, default: 0}\n"
+      "    - {name: p2, min: 0, max: 1, default: 0}\n"
+      "    - {name: p3, min: 0, max: 1, default: 0}\n"
+      "    - {name: p4, min: 0, max: 1, default: 0}\n"
+      "    - {name: p5, min: 0, max: 1, default: 0}\n"
+      "    - {name: p6, min: 0, max: 1, default: 0}\n"
+      "    - {name: p7, min: 0, max: 1, default: 0}\n"
+      "    - {name: p8, min: 0, max: 1, default: 0}\n"
+      "subMaterials: []\n";
+
+  ProcMaterialData data;
+  bw::core::SerializationWorkData workData;
+  auto serializer = yamlFrom(yaml);
+  require(!data.deserialize(serializer, workData), "a TechniqueSchema with too many parameters was accepted");
+  require(containsError(data, "Too many TechniqueSchema parameters."),
+          "too many TechniqueSchema parameters did not report the expected error");
+}
+
+void emptySubMaterialIdIsRejected() {
+  std::string yaml =
+      "program3d: world_pbr.frag\n"
+      "program2d: world_pbr_2d.frag\n"
+      "techniqueSchemas:\n"
+      "  - materialIndex: 0\n"
+      "    parameters: []\n"
+      "subMaterials:\n"
+      "  - id: ''\n"
+      "    name: Nameless\n"
+      "    materialIndex: 0\n"
+      "    params: []\n"
+      "    baseColour: [0, 0, 0]\n";
+
+  ProcMaterialData data;
+  bw::core::SerializationWorkData workData;
+  auto serializer = yamlFrom(yaml);
+  require(!data.deserialize(serializer, workData), "a SubMaterial with an empty id was accepted");
+  require(containsError(data, "SubMaterial id must not be empty."),
+          "an empty SubMaterial id did not report the expected error");
+}
+
+}  // namespace
+
+int main() {
+  try {
+    roundTripPreservesEveryField();
+    pinnedMarbleValuesSurviveDeserialization();
+    outOfBoundsParameterValueIsRejected();
+    malformedParameterArrayIsRejected();
+    subMaterialReferencingUnknownTechniqueIsRejected();
+    duplicateSubMaterialIdIsRejected();
+    duplicateTechniqueSchemaIsRejected();
+    tooManyTechniqueSchemaParametersIsRejected();
+    emptySubMaterialIdIsRejected();
+    std::cout << "ProcMaterial coverage passed\n";
+    return 0;
+  } catch (std::exception const& error) {
+    std::cerr << error.what() << '\n';
+    return 1;
+  }
+}

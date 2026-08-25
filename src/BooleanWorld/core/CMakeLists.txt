@@ -25,11 +25,14 @@ add_library(core STATIC
     src/PrefabField.cpp
     src/PrimitiveFieldLayout.cpp
     src/PrimitivePropertySet.cpp
+    src/ProcMaterialData.cpp
     src/RectanglePolygon.cpp
     src/RegularPolygon.cpp
     src/Serializable.cpp
     src/Serializer.cpp
+    src/SubMaterial.cpp
     src/SuperformulaPolygon.cpp
+    src/TechniqueSchema.cpp
     src/TorusPolygon.cpp
     src/TorusSegmentPolygon.cpp
     src/TransformFlow.cpp
@@ -87,6 +90,16 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_material_defaults_file_tests)
     add_test(NAME boolean_world_material_defaults_file
              COMMAND boolean_world_material_defaults_file_tests)
+
+    add_executable(boolean_world_proc_material_tests
+        tests/proc_material_tests.cpp)
+    target_link_libraries(boolean_world_proc_material_tests PRIVATE core)
+    target_compile_features(boolean_world_proc_material_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_proc_material_tests)
+    bw_output_dirs(boolean_world_proc_material_tests)
+    bw_deploy_runtime_dlls(boolean_world_proc_material_tests)
+    add_test(NAME boolean_world_proc_material
+             COMMAND boolean_world_proc_material_tests)
 
     add_executable(boolean_world_mesh_primitive_serialization_tests
         tests/mesh_primitive_serialization_tests.cpp)
