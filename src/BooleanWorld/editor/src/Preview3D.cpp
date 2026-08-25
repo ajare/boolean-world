@@ -2,12 +2,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <vector>
 
 #pragma warning(push)
 #pragma warning(disable : 4201)
-#include <glm/gtc/type_ptr.hpp>
+#include <glm/vec3.hpp>
 #pragma warning(pop)
 
 #include <GL/glew.h>
@@ -18,6 +19,7 @@
 #include "imgui.h"
 #include "InputOptions.h"
 #include "PlayerView.h"
+#include "PreviewMaterialProgram.h"
 #include "PrimitivePreviewGeometry.h"
 #include "Preview3D.h"
 #include "ReactiveCamera.h"
@@ -36,6 +38,7 @@ struct PreviewSession {
   float angle{};
   float pitch{};
   float eyeZ{};
+  float globalTime{};
   bw::app::InputOptions inputOptions;
   std::unique_ptr<ReactiveCamera> camera;
   // Grounding and rendering deliberately share this exact in-scope Primitive
@@ -48,27 +51,88 @@ struct PreviewSession {
 
 PreviewSession session;
 
-std::array<float, 3> materialColour(PreviewMaterial const& material) {
-  return material.definition.baseColour;
+// Compiled once for the process and reused across every open/close of the
+// preview window - see PreviewMaterialProgram and GitHub issue #256.
+PreviewMaterialProgram materialProgram;
+
+// One interleaved vertex, matching PreviewMaterialProgram's mesh
+// specification (POSITION vec3, NORMAL vec3, TEXCOORDS vec2, COLOUR vec4).
+struct GpuVertex {
+  float px{}, py{}, pz{};
+  float nx{}, ny{}, nz{};
+  float u{}, v{};
+  float r{1.0f}, g{1.0f}, b{1.0f}, a{1.0f};
+};
+
+// The game's 3D coordinates map its 2D world (X, Y) onto (X, Z).
+GpuVertex toGpuVertex(PreviewVertex3 const& vertex) {
+  GpuVertex result;
+  result.px = vertex.x;
+  result.py = vertex.z;
+  result.pz = vertex.y;
+  result.nx = vertex.nx;
+  result.ny = vertex.nz;
+  result.nz = vertex.ny;
+  result.u = vertex.u;
+  result.v = vertex.v;
+  return result;
 }
 
-void submitVertex(PreviewVertex3 const& vertex) {
-  // The game's 3D coordinates map its 2D world (X, Y) onto (X, Z).
-  glVertex3f(vertex.x, vertex.z, vertex.y);
-}
-
-void renderTriangle(
-    PreviewTriangle const& triangle,
-    PreviewMaterial const& material,
-    float brightness) {
-  auto colour = materialColour(material);
-  glColor3f(
-      colour[0] * brightness,
-      colour[1] * brightness,
-      colour[2] * brightness);
-  for (auto const& vertex : triangle.vertices) {
-    submitVertex(vertex);
+void appendTriangles(
+    std::vector<GpuVertex>& buffer,
+    std::vector<PreviewTriangle> const& triangles) {
+  buffer.reserve(buffer.size() + triangles.size() * 3);
+  for (auto const& triangle : triangles) {
+    for (auto const& vertex : triangle.vertices) {
+      buffer.push_back(toGpuVertex(vertex));
+    }
   }
+}
+
+void appendWallQuads(
+    std::vector<GpuVertex>& buffer,
+    std::vector<PreviewWallQuad> const& quads) {
+  buffer.reserve(buffer.size() + quads.size() * 6);
+  for (auto const& quad : quads) {
+    buffer.push_back(toGpuVertex(quad.vertices[0]));
+    buffer.push_back(toGpuVertex(quad.vertices[1]));
+    buffer.push_back(toGpuVertex(quad.vertices[2]));
+    buffer.push_back(toGpuVertex(quad.vertices[2]));
+    buffer.push_back(toGpuVertex(quad.vertices[3]));
+    buffer.push_back(toGpuVertex(quad.vertices[0]));
+  }
+}
+
+void drawGpuVertices(std::vector<GpuVertex> const& vertices) {
+  if (vertices.empty()) {
+    return;
+  }
+  auto const* base = reinterpret_cast<std::byte const*>(vertices.data());
+  auto stride = (GLsizei)sizeof(GpuVertex);
+
+  glEnableVertexAttribArray(PreviewMaterialProgram::kPositionAttrib);
+  glVertexAttribPointer(
+      PreviewMaterialProgram::kPositionAttrib, 3, GL_FLOAT, GL_FALSE, stride,
+      base + offsetof(GpuVertex, px));
+  glEnableVertexAttribArray(PreviewMaterialProgram::kNormalAttrib);
+  glVertexAttribPointer(
+      PreviewMaterialProgram::kNormalAttrib, 3, GL_FLOAT, GL_FALSE, stride,
+      base + offsetof(GpuVertex, nx));
+  glEnableVertexAttribArray(PreviewMaterialProgram::kTexCoordAttrib);
+  glVertexAttribPointer(
+      PreviewMaterialProgram::kTexCoordAttrib, 2, GL_FLOAT, GL_FALSE, stride,
+      base + offsetof(GpuVertex, u));
+  glEnableVertexAttribArray(PreviewMaterialProgram::kColourAttrib);
+  glVertexAttribPointer(
+      PreviewMaterialProgram::kColourAttrib, 4, GL_FLOAT, GL_FALSE, stride,
+      base + offsetof(GpuVertex, r));
+
+  glDrawArrays(GL_TRIANGLES, 0, (GLsizei)vertices.size());
+
+  glDisableVertexAttribArray(PreviewMaterialProgram::kPositionAttrib);
+  glDisableVertexAttribArray(PreviewMaterialProgram::kNormalAttrib);
+  glDisableVertexAttribArray(PreviewMaterialProgram::kTexCoordAttrib);
+  glDisableVertexAttribArray(PreviewMaterialProgram::kColourAttrib);
 }
 
 void updateCameraFromInput() {
@@ -88,16 +152,16 @@ void updateCameraFromInput() {
   session.camera->pitch(session.pitch - previousPitch);
 
   wp::Vector2 movement = wp::Vector2::ZERO;
-  if (ImGui::IsKeyDown(ImGuiKey_W)) {
+  if (ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_UpArrow)) {
     movement.y += 1.0f;
   }
-  if (ImGui::IsKeyDown(ImGuiKey_S)) {
+  if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow)) {
     movement.y -= 1.0f;
   }
-  if (ImGui::IsKeyDown(ImGuiKey_A)) {
+  if (ImGui::IsKeyDown(ImGuiKey_A) || ImGui::IsKeyDown(ImGuiKey_LeftArrow)) {
     movement.x -= 1.0f;
   }
-  if (ImGui::IsKeyDown(ImGuiKey_D)) {
+  if (ImGui::IsKeyDown(ImGuiKey_D) || ImGui::IsKeyDown(ImGuiKey_RightArrow)) {
     movement.x += 1.0f;
   }
   movement.normalise();
@@ -125,9 +189,8 @@ void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
   int y = framebufferHeight -
           static_cast<int>(session.viewportMax.y * scale.y);
 
-  // ImGui's renderer leaves its shader active. The compatibility-profile
-  // immediate-mode pass below intentionally uses the fixed-function matrices;
-  // the following ResetRenderState callback restores ImGui's shader and VAO.
+  // ImGui's renderer leaves its shader active; the following
+  // ResetRenderState callback restores ImGui's shader and vertex state.
   glUseProgram(0);
   glEnable(GL_SCISSOR_TEST);
   glScissor(x, y, width, height);
@@ -141,39 +204,47 @@ void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
   glDisable(GL_CULL_FACE);
   glDisable(GL_BLEND);
 
-  glMatrixMode(GL_PROJECTION);
-  glPushMatrix();
-  glLoadMatrixf(glm::value_ptr(session.camera->getProjectionTransform()));
-  glMatrixMode(GL_MODELVIEW);
-  glPushMatrix();
-  glLoadMatrixf(glm::value_ptr(session.camera->getViewTransform()));
-
-  for (auto const& primitive : session.primitives) {
-    auto const& geometry = primitive.geometry;
-    glBegin(GL_TRIANGLES);
-    for (auto const& triangle : geometry.floorTriangles) {
-      renderTriangle(triangle, geometry.floorMaterial, 0.85f);
-    }
-    for (auto const& triangle : geometry.ceilingTriangles) {
-      renderTriangle(triangle, geometry.ceilingMaterial, 0.65f);
-    }
-    auto wallColour = materialColour(geometry.wallMaterial);
-    glColor3f(wallColour[0], wallColour[1], wallColour[2]);
-    for (auto const& quad : geometry.wallQuads) {
-      submitVertex(quad.vertices[0]);
-      submitVertex(quad.vertices[1]);
-      submitVertex(quad.vertices[2]);
-      submitVertex(quad.vertices[2]);
-      submitVertex(quad.vertices[3]);
-      submitVertex(quad.vertices[0]);
-    }
-    glEnd();
+  if (!materialProgram.ensureReady()) {
+    glDisable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glEnable(GL_BLEND);
+    return;
   }
 
-  glPopMatrix();
-  glMatrixMode(GL_PROJECTION);
-  glPopMatrix();
-  glMatrixMode(GL_MODELVIEW);
+  session.globalTime += io.DeltaTime;
+
+  auto cameraPosition = session.camera->getPosition();
+  materialProgram.begin(
+      session.camera->getViewTransform(),
+      session.camera->getProjectionTransform(), cameraPosition,
+      cameraPosition, session.globalTime);
+
+  std::vector<GpuVertex> buffer;
+  for (auto const& primitive : session.primitives) {
+    auto const& geometry = primitive.geometry;
+
+    buffer.clear();
+    appendTriangles(buffer, geometry.floorTriangles);
+    materialProgram.setMaterial(
+        geometry.floorMaterial.index, geometry.floorMaterial.definition.params);
+    drawGpuVertices(buffer);
+
+    buffer.clear();
+    appendTriangles(buffer, geometry.ceilingTriangles);
+    materialProgram.setMaterial(
+        geometry.ceilingMaterial.index,
+        geometry.ceilingMaterial.definition.params);
+    drawGpuVertices(buffer);
+
+    buffer.clear();
+    appendWallQuads(buffer, geometry.wallQuads);
+    materialProgram.setMaterial(
+        geometry.wallMaterial.index, geometry.wallMaterial.definition.params);
+    drawGpuVertices(buffer);
+  }
+
+  materialProgram.end();
+
   glDisable(GL_DEPTH_TEST);
   glDepthFunc(GL_LESS);
   glEnable(GL_BLEND);
@@ -261,7 +332,8 @@ void renderPreview3D() {
     drawList->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
 
     ImGui::SetCursorPos({12.0f, 12.0f});
-    ImGui::TextUnformatted("Press ESC to exit preview");
+    ImGui::TextUnformatted(
+        "WASD/Arrows to move, mouse to look, ESC to exit preview");
 
     if (closing) {
       // Keep this frame's snapshotted geometry alive until ImGui executes the

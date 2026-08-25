@@ -109,6 +109,39 @@ void singleShellProducesFillsAndEveryBoundaryWall() {
               geometry.ceilingMaterial.index == 3 &&
               geometry.wallMaterial.index == 4,
           "extrusion did not preserve the Primitive materials");
+
+  for (auto const& triangle : geometry.floorTriangles) {
+    for (auto const& vertex : triangle.vertices) {
+      require(
+          near(vertex.nx, 0.0f) && near(vertex.ny, 0.0f) &&
+              near(vertex.nz, 1.0f),
+          "floor triangle normal did not point up");
+      require(
+          near(vertex.u, vertex.x) && near(vertex.v, vertex.y),
+          "floor triangle UV was not the world-space position");
+    }
+  }
+  for (auto const& triangle : geometry.ceilingTriangles) {
+    for (auto const& vertex : triangle.vertices) {
+      require(
+          near(vertex.nx, 0.0f) && near(vertex.ny, 0.0f) &&
+              near(vertex.nz, -1.0f),
+          "ceiling triangle normal did not point down");
+    }
+  }
+  for (auto const& wall : geometry.wallQuads) {
+    auto const& a = wall.vertices[0];
+    auto const& b = wall.vertices[1];
+    auto edgeLength = std::sqrt(
+        (b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
+    require(
+        near(a.nx * a.nx + a.ny * a.ny, 1.0f) && near(a.nz, 0.0f),
+        "wall quad normal was not a unit vector in the ground plane");
+    require(
+        near(a.u, 0.0f) && near(a.v, 0.0f) && near(b.u, edgeLength) &&
+            near(b.v, 0.0f),
+        "wall quad UV did not run along the edge and rise with height");
+  }
 }
 
 void holeIsExcludedFromFillsAndGetsItsOwnWalls() {

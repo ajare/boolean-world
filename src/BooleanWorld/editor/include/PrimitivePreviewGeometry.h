@@ -13,6 +13,14 @@ struct PreviewVertex3 {
   float x{};
   float y{};
   float z{};
+  // Face normal, in the same pre-swap (x, y-ground, z-height) space as the
+  // position - submitVertex()/the material shader's vertex stage convert
+  // both consistently.
+  float nx{};
+  float ny{};
+  float nz{1.0f};
+  float u{};
+  float v{};
 };
 
 struct PreviewTriangle {

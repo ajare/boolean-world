@@ -11,6 +11,7 @@ add_executable(editor WIN32
     src/PrimitivePreviewGeometry.cpp
     src/PrefabTilingGuide.cpp
     src/Preview3D.cpp
+    src/PreviewMaterialProgram.cpp
     ../app/src/ReactiveCamera.cpp
     src/Render.cpp
     src/UI.cpp
