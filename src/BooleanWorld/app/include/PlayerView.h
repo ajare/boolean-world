@@ -47,11 +47,15 @@ inline wp::Vector2 minimapPosition(
     wp::Vector2 const& viewOffset,
     wp::Vector2 const& viewSize,
     wp::Vector2 const& viewScale) {
-  // Screen Y points down. Reflect around the bottom of the viewport rather
-  // than merely negating Y: the latter places the entire overlay above the
-  // screen whenever viewOffset is its world-space lower-left corner.
+  // Screen Y points down. Reflect around the bottom/right of the viewport
+  // rather than merely negating, as the latter would place the whole overlay
+  // off-screen whenever viewOffset is its world-space lower-left corner.
+  //
+  // X is reflected too: the 3D camera's screen-right is world -X (see
+  // playerMovement's yaw handling), so a plain world-X-to-screen-X mapping
+  // here would make the minimap scroll opposite the player's actual view.
   return {
-      (worldPosition.x - viewOffset.x) * viewScale.x,
+      viewSize.x - (worldPosition.x - viewOffset.x) * viewScale.x,
       viewSize.y - (worldPosition.y - viewOffset.y) * viewScale.y};
 }
 

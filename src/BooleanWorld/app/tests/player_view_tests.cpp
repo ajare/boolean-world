@@ -108,7 +108,7 @@ int main() {
     auto right = bw::app::minimapPosition(
         {11.0f, 20.0f}, viewOffset, viewSize, {1.0f, 1.0f});
     if (!near(player.x, 50.0f) || !near(player.y, 40.0f) ||
-        !(forward.y < player.y) || !(right.x > player.x)) {
+        !(forward.y < player.y) || !(right.x < player.x)) {
       return fail("minimap is not centred or its axes disagree with the camera");
     }
   }
