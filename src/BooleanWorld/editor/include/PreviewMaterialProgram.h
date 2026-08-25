@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #pragma warning(push)
@@ -37,7 +38,11 @@ class PreviewMaterialProgram {
   static constexpr int kTexCoordAttrib = 2;
   static constexpr int kColourAttrib = 3;
 
-  PreviewMaterialProgram();
+  // fragmentShaderPath lets the shader smoke test also compile
+  // world_pbr_2d.frag through this same path, rather than only ever proving
+  // out the 3D preview's own shader.
+  explicit PreviewMaterialProgram(
+      std::string fragmentShaderPath = "shaders/world_pbr.frag");
   ~PreviewMaterialProgram();
 
   PreviewMaterialProgram(PreviewMaterialProgram const&) = delete;
@@ -66,6 +71,7 @@ class PreviewMaterialProgram {
   void end();
 
  private:
+  std::string mFragmentShaderPath;
   bool mInitAttempted{};
   bool mReady{};
 

@@ -194,23 +194,41 @@ float naturalRockField(vec2 p)
            (1.0 - smoothstep(0.10, 0.42, cells)) * 0.22;
 }
 
+// Marble (type 0) and Stone (type 1) read three of their eight/three
+// MATERIAL_PARAMS here - warpScale, veinsScale, veinsFineScale for Marble;
+// mediumScale for Stone - kept as direct @Uniform(MATERIAL_PARAMS[i]) reads
+// rather than a struct threaded through this signature, since materialField
+// is shared by all 37 material types and every other branch must stay
+// exactly as it was. See MarbleParams/StoneParams in world_pbr.frag for the
+// full parameter set and what each slot means; fbmScale/baseScale and
+// Marble's remaining four are applied by material2d below instead, at the
+// two places this compressed encoding still has a type-local bind point for
+// them - light_warm_mix, vein_mix, cloudiness and fine_detail_scale have no
+// such point without restructuring code every other material type shares,
+// so they are left unbound here and only take effect in the 3D pass.
 float materialField(vec2 p, int type)
 {
     if (type == 0)
     {
+        float warpScale = @Uniform(MATERIAL_PARAMS[0]);
+        float veinsScale = @Uniform(MATERIAL_PARAMS[1]);
+        float veinsFineScale = @Uniform(MATERIAL_PARAMS[2]);
         vec2 warp = vec2(
             noise(p * 0.65 + vec2(7.1, 1.7)),
             noise(p * 0.65 + vec2(2.8, 9.2))) - 0.5;
-        vec2 q = p + warp * 1.35;
+        vec2 q = p + warp * warpScale;
         float turbulence = fbm(q * 1.15) - 0.5;
-        float broad = abs(sin(q.x * 5.0 + q.y * 0.8 + turbulence * 7.0));
-        float fine = abs(sin(q.x * 12.0 + q.y * 2.1 + fbm(q * 2.4) * 5.0));
+        float broad = abs(sin(q.x * veinsScale + q.y * 0.8 + turbulence * 7.0));
+        float fine = abs(sin(q.x * veinsFineScale + q.y * 2.1 + fbm(q * 2.4) * 5.0));
         return max(1.0 - smoothstep(0.06, 0.30, broad),
                    (1.0 - smoothstep(0.025, 0.13, fine)) * 0.45);
     }
     if (type == 1)
-        return fbm(p * 0.65) * 0.45 + noise(p * 8.0) * 0.20 +
+    {
+        float mediumScale = @Uniform(MATERIAL_PARAMS[1]);
+        return fbm(p * 0.65) * 0.45 + noise(p * mediumScale) * 0.20 +
                (1.0 - smoothstep(0.12, 0.48, voronoi(p * 2.2))) * 0.35;
+    }
     if (type == 2)
     {
         float layers = sin(p.y * 8.0 + p.x * 0.7 + fbm(p * 0.8) * 3.2) * 0.5 + 0.5;
@@ -366,6 +384,15 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
         0.032, 0.008, 0.072, 0.045, 0.045, 0.020, 0.052, 0.075, 0.068,
         0.050);
     vec2 p = worldPos * scales[type];
+    // Marble's fbm_scale and Stone's base_scale (MATERIAL_PARAMS[7] and [0])
+    // override this shared per-type table for exactly the one type each
+    // belongs to; scales[0] and scales[1] are those parameters' own defaults,
+    // so nothing changes here until a Primitive's material is actually edited.
+    if (type == 0) {
+        p = worldPos * @Uniform(MATERIAL_PARAMS[7]);
+    } else if (type == 1) {
+        p = worldPos * @Uniform(MATERIAL_PARAMS[0]);
+    }
     float field = materialField(p, type);
     float detail = noise(p * 7.0);
     float cells = voronoi(p * 3.5);
@@ -380,9 +407,13 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
         material.albedo = mix(stone * mix(0.91, 1.06, detail), vec3(0.06, 0.04, 0.04), field);
         material.roughness = clamp(mix(0.32, 0.18, field) + (detail - 0.5) * 0.10, 0.12, 0.48);
     } else if (type == 1) {
+        // stone_mix (MATERIAL_PARAMS[2]) - same 0.28 default as graniteTexture
+        // in world_pbr.frag, and the same role: how strongly mica flecks read
+        // as metallic.
+        float stoneMix = @Uniform(MATERIAL_PARAMS[2]);
         float quartz = smoothstep(0.68, 0.88, detail);
         material.albedo = mix(vec3(0.16, 0.15, 0.15), vec3(0.72, 0.70, 0.66), quartz);
-        material.metallic = smoothstep(0.90, 0.98, noise(p * 13.0)) * 0.28;
+        material.metallic = smoothstep(0.90, 0.98, noise(p * 13.0)) * stoneMix;
         material.roughness = 0.58 - quartz * 0.16;
     } else if (type == 2) {
         material.albedo = mix(vec3(0.075, 0.095, 0.115), vec3(0.18, 0.21, 0.22), field);

@@ -171,6 +171,18 @@ int main() {
   }
   printf("PreviewMaterialProgram: ready\n");
 
+  // world_pbr_2d.frag is the game's other consumer of MATERIAL_PARAMS - the
+  // shader HorizontalMaterials: 2d selects. It only shares a vertex shader
+  // with the 3D one, not the fragment shader itself, so a syntax mistake
+  // there would otherwise go unnoticed until someone actually plays with
+  // that video setting on.
+  editor::PreviewMaterialProgram program2d("shaders/world_pbr_2d.frag");
+  if (!program2d.ensureReady()) {
+    printf("PreviewMaterialProgram (world_pbr_2d.frag): FAILED\n");
+    return 1;
+  }
+  printf("PreviewMaterialProgram (world_pbr_2d.frag): ready\n");
+
   // Render offscreen so the result does not depend on a visible window.
   GLuint colourTexture{}, depthBuffer{}, framebuffer{};
   glGenTextures(1, &colourTexture);
@@ -232,10 +244,14 @@ int main() {
   auto projection = glm::perspective(
       glm::radians(60.0f), (float)kWidth / (float)kHeight, 0.1f, 1000000.0f);
 
-  // Marble's registry defaults, so the parameter check below moves a real
-  // control away from where the editor would start it.
+  // Marble's registry defaults - matching MaterialRegistry.h's
+  // MaterialParams[0], each the literal world_pbr.frag's MarbleParams used
+  // to hardcode at that slot. Passing {} here instead would zero
+  // fineDetailScale, which marbleTexture divides by - now that the shader
+  // actually reads these, an all-zero params array is a NaN, not a neutral
+  // placeholder.
   std::array<float, BW_MATERIAL_PARAMS_MAX> marbleDefaults{
-      1.1f, 6.0f, 18.0f, 0.15f, 0.25f, 0.65f, 0.2f, 0.5f};
+      1.35f, 5.0f, 12.0f, 0.025f, 0.2f, 0.35f, 0.42f, 0.72f};
 
   auto renderPixels = [&](std::vector<editor::PreviewGpuVertex> const& vertices,
                           std::array<float, BW_MATERIAL_PARAMS_MAX> const&
@@ -248,7 +264,7 @@ int main() {
     return capturePixels(kWidth, kHeight);
   };
   auto render = [&](std::vector<editor::PreviewGpuVertex> const& vertices) {
-    return measureFrame(renderPixels(vertices, {}));
+    return measureFrame(renderPixels(vertices, marbleDefaults));
   };
 
   // White vertex colours must leave the material exactly as authored; a
@@ -264,7 +280,10 @@ int main() {
   // sliders would move with nothing happening in the preview behind them.
   auto atDefaults = renderPixels(floorQuad(1.0f), marbleDefaults);
   auto altered = marbleDefaults;
-  altered[5] = 0.0f;  // vein_mix, registry default 0.65
+  // fbm_scale rescales the whole input coordinate, so it dominates every
+  // downstream computation - the parameter least likely to hide in a subtle
+  // blend and most likely to prove the wiring by its absence.
+  altered[7] = 0.05f;  // fbm_scale, registry default 0.72
   auto atAltered = renderPixels(floorQuad(1.0f), altered);
   auto parameterShift = meanAbsoluteDifference(atDefaults, atAltered);
 
@@ -286,7 +305,7 @@ int main() {
       untintedWall.meanRed, untintedWall.meanBlue, tintedWall.meanRed,
       tintedWall.meanBlue);
   printf(
-      "vein_mix 0.65 -> 0.00 shifts the image by %.1f per channel\n",
+      "fbm_scale 0.72 -> 0.05 shifts the image by %.1f per channel\n",
       parameterShift);
 
   glBindVertexArray(0);
@@ -326,11 +345,16 @@ int main() {
     printf("FAILED: the vertex colour tint did not reduce blue on a wall\n");
     return 1;
   }
-  // Deliberately measured but not asserted. world_pbr.frag declares
-  // MATERIAL_PARAMS and never reads it - every material's look comes from
-  // constants in its own function - so moving a parameter currently shifts
-  // nothing. The number above is the evidence for that, and will stop being
-  // zero the day the parameters are wired into the shader.
-  printf("PASSED: the material renders as authored and honours vertex tint\n");
+  // world_pbr.frag now reads MATERIAL_PARAMS via MarbleParams, so moving a
+  // parameter must change the image - this is what the editor's sliders
+  // ultimately rely on actually doing anything.
+  if (!(parameterShift > 1.0)) {
+    printf(
+        "FAILED: changing a material parameter did not change the image\n");
+    return 1;
+  }
+  printf(
+      "PASSED: the material renders as authored, honours vertex tint, and "
+      "responds to its parameters\n");
   return 0;
 }

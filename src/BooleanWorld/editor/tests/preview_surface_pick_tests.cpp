@@ -234,7 +234,8 @@ void materialParametersStopAtTheDeclaredCount() {
   require(marble.size() == 8, "Marble did not report all 8 parameters");
   require(
       marble[0].name == "warp_scale" && near(marble[0].minimum, 0.0f) &&
-          near(marble[0].maximum, 5.0f) && near(marble[0].defaultValue, 1.1f),
+          near(marble[0].maximum, 5.0f) &&
+          near(marble[0].defaultValue, 1.35f),
       "Marble's first parameter did not match the registry");
 }
 

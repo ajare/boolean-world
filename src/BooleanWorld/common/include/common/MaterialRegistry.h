@@ -14,21 +14,27 @@ using MaterialParameterDefinition = std::tuple<std::string_view, float, float, f
 inline constexpr std::array<MaterialDefinition, BW_MATERIAL_COUNT> MaterialNames = {{{"Marble", 8, {0.18f, 0.18f, 0.20f}},
                                                                                      {"Stone", 3, {0.25f, 0.24f, 0.22f}}}};
 
-// Parameter name, min value, max value, default value
+// Parameter name, min value, max value, default value. Defaults are the
+// literal constants world_pbr.frag/world_pbr_2d.frag used to hardcode at
+// each parameter's bind point, so a freshly authored Primitive renders
+// identically to before these were made tunable - see MarbleParams and
+// StoneParams in world_pbr.frag for what each one actually controls. Two
+// ranges (veins_fine_scale, base_scale) were widened to fit that extracted
+// default; the rest were already wide enough.
 inline constexpr std::array MaterialParams{
     // Marble
-    std::array<MaterialParameterDefinition, BW_MATERIAL_PARAMS_MAX>{{{"warp_scale", 0.0f, 5.0f, 1.1f},
-                                                                     {"veins_scale", 1.0f, 10.0f, 6.0f},
-                                                                     {"veins_fine_scale", 15.0f, 20.0f, 18.0f},
-                                                                     {"fine_detail_scale", 0.01f, 1.0f, 0.15f},
-                                                                     {"light_warm_mix", 0.0f, 1.0f, 0.25f},
-                                                                     {"vein_mix", 0.0f, 1.0f, 0.65f},
-                                                                     {"cloudiness", 0.0f, 1.0f, 0.2f},
-                                                                     {"fbm_scale", 0.01f, 1.0f, 0.5f}}},
+    std::array<MaterialParameterDefinition, BW_MATERIAL_PARAMS_MAX>{{{"warp_scale", 0.0f, 5.0f, 1.35f},
+                                                                     {"veins_scale", 1.0f, 10.0f, 5.0f},
+                                                                     {"veins_fine_scale", 5.0f, 20.0f, 12.0f},
+                                                                     {"fine_detail_scale", 0.01f, 1.0f, 0.025f},
+                                                                     {"light_warm_mix", 0.0f, 1.0f, 0.2f},
+                                                                     {"vein_mix", 0.0f, 1.0f, 0.35f},
+                                                                     {"cloudiness", 0.0f, 1.0f, 0.42f},
+                                                                     {"fbm_scale", 0.01f, 1.0f, 0.72f}}},
     // Stone
-    std::array<MaterialParameterDefinition, BW_MATERIAL_PARAMS_MAX>{{{"base_scale", 1.0f, 3.0f, 2.0f},
+    std::array<MaterialParameterDefinition, BW_MATERIAL_PARAMS_MAX>{{{"base_scale", 0.5f, 3.0f, 0.82f},
                                                                      {"medium_scale", 5.0f, 10.0f, 8.0f},
-                                                                     {"stone_mix", 0.0f, 1.0f, 0.8f}}}};
+                                                                     {"stone_mix", 0.0f, 1.0f, 0.28f}}}};
 
 }  // namespace common
 }  // namespace bw

@@ -1,6 +1,7 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 #include <GL/glew.h>
 
@@ -75,7 +76,8 @@ uint32_t compileStage(GLenum stage, std::string const& source) {
 
 }  // namespace
 
-PreviewMaterialProgram::PreviewMaterialProgram() = default;
+PreviewMaterialProgram::PreviewMaterialProgram(std::string fragmentShaderPath)
+    : mFragmentShaderPath(std::move(fragmentShaderPath)) {}
 
 PreviewMaterialProgram::~PreviewMaterialProgram() {
   if (mProgram) {
@@ -113,7 +115,7 @@ bool PreviewMaterialProgram::ensureReady() {
 
 bool PreviewMaterialProgram::compile() {
   auto vertexSource = readTextFile("shaders/world.vert");
-  auto fragmentSource = readTextFile("shaders/world_pbr.frag");
+  auto fragmentSource = readTextFile(mFragmentShaderPath);
 
   mpp::program::Parser parser("PreviewMaterial");
   parser.setMeshSpecification(buildMeshSpecification());

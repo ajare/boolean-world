@@ -502,21 +502,53 @@ float fbm(vec3 p)
     return value;
 }
 
+// Marble's tunable knobs, unpacked once from the flat MATERIAL_PARAMS array
+// so the material's own code reads named fields rather than magic indices.
+// Slot order matches bw::common::MaterialParams[0] in MaterialRegistry.h -
+// index 0 is warpScale, and so on - and each default below is the literal
+// constant this used to be hardcoded to, so a freshly authored Primitive
+// renders identically to before this was made tunable.
+struct MarbleParams
+{
+    float warpScale;        // 0: how far the vein field warps off-grid.
+    float veinsScale;       // 1: primary (broad) vein frequency.
+    float veinsFineScale;   // 2: secondary (fine) vein frequency.
+    float fineDetailScale;  // 3: normal-map bump strength from the field.
+    float lightWarmMix;     // 4: cool/warm stone colour blend threshold.
+    float veinMix;          // 5: how warm the vein colour itself skews.
+    float cloudiness;       // 6: large-scale colour cloud frequency.
+    float fbmScale;         // 7: overall world-space pattern scale.
+};
+
+MarbleParams unpackMarbleParams()
+{
+    MarbleParams result;
+    result.warpScale = @Uniform(MATERIAL_PARAMS[0]);
+    result.veinsScale = @Uniform(MATERIAL_PARAMS[1]);
+    result.veinsFineScale = @Uniform(MATERIAL_PARAMS[2]);
+    result.fineDetailScale = @Uniform(MATERIAL_PARAMS[3]);
+    result.lightWarmMix = @Uniform(MATERIAL_PARAMS[4]);
+    result.veinMix = @Uniform(MATERIAL_PARAMS[5]);
+    result.cloudiness = @Uniform(MATERIAL_PARAMS[6]);
+    result.fbmScale = @Uniform(MATERIAL_PARAMS[7]);
+    return result;
+}
+
 // A continuous three-dimensional marble field. Because it is evaluated from
 // world position rather than UVs, veins continue naturally across floors,
 // walls and ceilings without seams or planar stretching.
-float marbleField(vec3 p)
+float marbleField(vec3 p, MarbleParams params)
 {
     vec3 warp = vec3(
         noise(p * 0.65 + vec3(7.1, 1.7, 4.3)),
         noise(p * 0.65 + vec3(2.8, 9.2, 5.6)),
         noise(p * 0.65 + vec3(5.4, 3.1, 8.7))) - 0.5;
-    vec3 q = p + warp * 1.35;
+    vec3 q = p + warp * params.warpScale;
 
     float turbulence = fbm(q * 1.15) - 0.5;
-    float broadVein = abs(sin(q.x * 5.0 + q.y * 1.15 + q.z * 0.8 +
+    float broadVein = abs(sin(q.x * params.veinsScale + q.y * 1.15 + q.z * 0.8 +
                               turbulence * 7.0));
-    float fineVein = abs(sin(q.x * 12.0 - q.y * 1.7 + q.z * 2.1 +
+    float fineVein = abs(sin(q.x * params.veinsFineScale - q.y * 1.7 + q.z * 2.1 +
                              fbm(q * 2.4) * 5.0));
 
     float broadMask = 1.0 - smoothstep(0.06, 0.30, broadVein);
@@ -526,19 +558,22 @@ float marbleField(vec3 p)
 
 Material marbleTexture(vec3 worldPos, vec3 normal)
 {
+    MarbleParams params = unpackMarbleParams();
+
     Material material;
-    vec3 p = worldPos * 0.72;
-    float veins = marbleField(p);
-    float cloud = fbm(p * 0.42);
+    vec3 p = worldPos * params.fbmScale;
+    float veins = marbleField(p, params);
+    float cloud = fbm(p * params.cloudiness);
     float grain = noise(p * 7.0);
 
     vec3 coolStone = vec3(0.72, 0.76, 0.81);
     vec3 warmStone = vec3(0.93, 0.89, 0.82);
-    vec3 stone = mix(coolStone, warmStone, smoothstep(0.2, 0.85, cloud));
+    vec3 stone = mix(coolStone, warmStone,
+                     smoothstep(params.lightWarmMix, 0.85, cloud));
     stone *= mix(0.91, 1.06, grain);
 
     vec3 veinColour = mix(vec3(0.025, 0.030, 0.040),
-                          vec3(0.20, 0.13, 0.10), cloud * 0.35);
+                          vec3(0.20, 0.13, 0.10), cloud * params.veinMix);
     material.albedo = mix(stone, veinColour, veins);
     material.metallic = 0.0;
     material.roughness = clamp(mix(0.32, 0.18, veins) +
@@ -547,11 +582,11 @@ Material marbleTexture(vec3 worldPos, vec3 normal)
     // Derive a small-scale normal from the same scalar field. Projecting its
     // gradient onto the geometric tangent plane keeps the perturbation valid
     // for every surface orientation without requiring tangents or UVs.
-    const float epsilon = 0.025;
+    float epsilon = params.fineDetailScale;
     vec3 gradient = vec3(
-        marbleField(p + vec3(epsilon, 0.0, 0.0)) - veins,
-        marbleField(p + vec3(0.0, epsilon, 0.0)) - veins,
-        marbleField(p + vec3(0.0, 0.0, epsilon)) - veins) / epsilon;
+        marbleField(p + vec3(epsilon, 0.0, 0.0), params) - veins,
+        marbleField(p + vec3(0.0, epsilon, 0.0), params) - veins,
+        marbleField(p + vec3(0.0, 0.0, epsilon), params) - veins) / epsilon;
     vec3 geometricNormal = normalize(normal);
     vec3 surfaceGradient = gradient - geometricNormal * dot(gradient, geometricNormal);
     material.normal = normalize(geometricNormal - surfaceGradient * 0.11);
@@ -601,8 +636,14 @@ float geologyField(vec3 p, int type)
 {
     if (type == 0) // Granite: interlocked mineral grains.
     {
+        // Stone's medium_scale (MATERIAL_PARAMS[1]) - bound here rather than
+        // in graniteTexture below because this exact expression is shared
+        // verbatim by world_pbr_2d.frag's materialField type 1, and binding
+        // it here keeps one default correct for both instead of two shaders
+        // disagreeing about which constant medium_scale actually is.
+        float mediumScale = @Uniform(MATERIAL_PARAMS[1]);
         float coarse = geologyVoronoi(p * 2.2);
-        return fbm(p * 0.65) * 0.45 + noise(p * 8.0) * 0.20 +
+        return fbm(p * 0.65) * 0.45 + noise(p * mediumScale) * 0.20 +
                (1.0 - smoothstep(0.12, 0.48, coarse)) * 0.35;
     }
     if (type == 1) // Slate: compressed layers and narrow fractures.
@@ -684,10 +725,31 @@ vec3 geologyNormal(vec3 p, vec3 normal, int type, float field,
     return normalize(geometricNormal - gradient * strength);
 }
 
+// Stone's tunable knobs. Slot order matches bw::common::MaterialParams[1] in
+// MaterialRegistry.h, and each default is the literal this used to be
+// hardcoded to - see the equivalent note on MarbleParams above.
+// medium_scale (MATERIAL_PARAMS[1]) is not here - see the note in
+// geologyField's granite branch above for why it is bound there instead.
+struct StoneParams
+{
+    float baseScale;  // 0: overall world-space pattern scale.
+    float stoneMix;   // 2: how strongly mica flecks read as metallic.
+};
+
+StoneParams unpackStoneParams()
+{
+    StoneParams result;
+    result.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    result.stoneMix = @Uniform(MATERIAL_PARAMS[2]);
+    return result;
+}
+
 Material graniteTexture(vec3 worldPos, vec3 normal)
 {
+    StoneParams params = unpackStoneParams();
+
     Material material;
-    vec3 p = worldPos * 0.82;
+    vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 0);
     float quartz = smoothstep(0.68, 0.88, noise(p * 7.3 + vec3(2.0)));
     float feldspar = smoothstep(0.52, 0.78, noise(p * 4.7 + vec3(11.0)));
@@ -695,7 +757,7 @@ Material graniteTexture(vec3 worldPos, vec3 normal)
     vec3 colour = mix(vec3(0.16, 0.15, 0.15), vec3(0.48, 0.42, 0.38), feldspar);
     colour = mix(colour, vec3(0.72, 0.70, 0.66), quartz);
     material.albedo = mix(colour, vec3(0.035), mica);
-    material.metallic = mica * 0.28;
+    material.metallic = mica * params.stoneMix;
     material.roughness = clamp(0.58 - quartz * 0.16 - mica * 0.20, 0.24, 0.68);
     material.normal = geologyNormal(p, normal, 0, surface, 0.055);
     return material;
