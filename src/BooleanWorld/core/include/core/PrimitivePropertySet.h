@@ -1,9 +1,9 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "core/Serializable.h"
-#include "core/MaterialDefinition.h"
 
 namespace bw {
 namespace core {
@@ -12,14 +12,12 @@ class Primitive;
 struct PrimitivePropertySet : public Serializable {
   float floorZ{0}, ceilingZ{48};
 
-  uint32_t floorMaterialIndex{0};
-  MaterialDefinition floorMaterialDef;
-
-  uint32_t ceilingMaterialIndex{0};
-  MaterialDefinition ceilingMaterialDef;
-
-  uint32_t wallMaterialIndex{0};
-  MaterialDefinition wallMaterialDef;
+  // Stable Sub-material id references - see SubMaterial.h. A missing or
+  // empty id is a valid, if unresolved, state; resolution against a loaded
+  // ProcMaterial catalog happens elsewhere.
+  std::string floorMaterialId;
+  std::string ceilingMaterialId;
+  std::string wallMaterialId;
 
 public:
   bool childrenModified() const override;

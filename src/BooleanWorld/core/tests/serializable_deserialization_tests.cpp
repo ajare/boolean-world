@@ -57,58 +57,50 @@ void failedDeserializationReturnsFailureIndependentlyOfModifiedState() {
           "deserialization result leaked into the modified state");
 }
 
-std::string propertySetWithTooManyMaterialValues(std::string const& invalidMaterial,
-                                                 bool tooManyBaseColour) {
-  std::string const validParameters = "[0, 0, 0, 0, 0, 0, 0, 0]";
-  std::string const tooManyParameters = "[0, 0, 0, 0, 0, 0, 0, 0, 0]";
-  std::string const validColour = "[0, 0, 0]";
-  std::string const tooManyColourComponents = "[0, 0, 0, 0]";
+void propertySetRoundTripsSubMaterialIds() {
+  bw::core::PrimitivePropertySet original;
+  original.floorZ = 0.0f;
+  original.ceilingZ = 48.0f;
+  original.floorMaterialId = "weathered_slate";
+  original.ceilingMaterialId = "polished_slate";
+  original.wallMaterialId = "";
 
-  std::string yaml = "floorZ: 0\nceilingZ: 48\n";
-  for (auto const* material : {"floorMaterial", "ceilingMaterial", "wallMaterial"}) {
-    bool const isInvalidMaterial = invalidMaterial == material;
-    yaml += std::string(material) + ":\n";
-    yaml += "  materialIndex: 0\n  materialDef:\n    params: ";
-    yaml += isInvalidMaterial && !tooManyBaseColour ? tooManyParameters : validParameters;
-    yaml += "\n    baseColour: ";
-    yaml += isInvalidMaterial && tooManyBaseColour ? tooManyColourComponents : validColour;
-    yaml += '\n';
-  }
-  return yaml;
+  bw::core::SerializationWorkData writeWorkData;
+  auto writer = std::shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toString());
+  original.serialize(writer, writeWorkData);
+  writer->serialize();
+  auto yaml = static_cast<bw::core::YamlSerializer*>(writer.get())->getSerializedString();
+
+  auto reader = std::shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromString(yaml));
+  reader->deserialize();
+
+  bw::core::PrimitivePropertySet roundTripped;
+  bw::core::SerializationWorkData readWorkData;
+  require(roundTripped.deserialize(reader, readWorkData),
+          "property set failed to round-trip Sub-material ids");
+  require(roundTripped.floorMaterialId == original.floorMaterialId,
+          "floor Sub-material id did not round-trip");
+  require(roundTripped.ceilingMaterialId == original.ceilingMaterialId,
+          "ceiling Sub-material id did not round-trip");
+  require(roundTripped.wallMaterialId == original.wallMaterialId,
+          "an empty wall Sub-material id did not round-trip as empty");
 }
 
-bool containsError(bw::core::PrimitivePropertySet const& properties,
-                   std::string const& expected) {
-  for (auto const& error : properties.getDeserializationErrors()) {
-    if (error == expected) {
-      return true;
-    }
-  }
-  return false;
-}
+void propertySetToleratesMissingSubMaterialIds() {
+  auto serializer = std::shared_ptr<bw::core::Serializer>(
+      bw::core::YamlSerializer::fromString("floorZ: 0\nceilingZ: 48\n"));
+  serializer->deserialize();
 
-void malformedMaterialDefinitionStopsPropertySetDeserialization() {
-  struct MalformedArray {
-    bool tooManyColourComponents;
-    char const* error;
-  };
-
-  for (auto const& malformed : {MalformedArray{false, "Too many MaterialDefinition parameters."},
-                                MalformedArray{true, "Too many colour components."}}) {
-    for (auto const* material : {"floorMaterial", "ceilingMaterial", "wallMaterial"}) {
-      auto serializer = std::shared_ptr<bw::core::Serializer>(
-          bw::core::YamlSerializer::fromString(
-              propertySetWithTooManyMaterialValues(material, malformed.tooManyColourComponents)));
-      serializer->deserialize();
-
-      bw::core::PrimitivePropertySet properties;
-      bw::core::SerializationWorkData workData;
-      require(!properties.deserialize(serializer, workData),
-              std::string("property set accepted malformed ") + material);
-      require(containsError(properties, malformed.error),
-              std::string("property set did not report malformed ") + material);
-    }
-  }
+  bw::core::PrimitivePropertySet properties;
+  bw::core::SerializationWorkData workData;
+  require(properties.deserialize(serializer, workData),
+          "property set treated missing Sub-material ids as a deserialization failure");
+  require(properties.floorMaterialId.empty(),
+          "a missing floor Sub-material id was not left empty");
+  require(properties.ceilingMaterialId.empty(),
+          "a missing ceiling Sub-material id was not left empty");
+  require(properties.wallMaterialId.empty(),
+          "a missing wall Sub-material id was not left empty");
 }
 
 }  // namespace
@@ -117,7 +109,8 @@ int main() {
   try {
     successfulDeserializationLeavesObjectUnmodified();
     failedDeserializationReturnsFailureIndependentlyOfModifiedState();
-    malformedMaterialDefinitionStopsPropertySetDeserialization();
+    propertySetRoundTripsSubMaterialIds();
+    propertySetToleratesMissingSubMaterialIds();
     std::cout << "Serializable deserialization coverage passed\n";
     return 0;
   } catch (std::exception const& error) {

@@ -6,7 +6,7 @@ namespace core {
 using namespace std;
 
 bool PrimitivePropertySet::childrenModified() const {
-  return floorMaterialDef.isModified() || ceilingMaterialDef.isModified() || wallMaterialDef.isModified();
+  return false;
 }
 
 void PrimitivePropertySet::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) const {
@@ -16,32 +16,10 @@ void PrimitivePropertySet::serializeImpl(shared_ptr<Serializer> serializer, Seri
     serializer->writeFloat("floorZ", floorZ);
     serializer->writeFloat("ceilingZ", ceilingZ);
 
-    // Floor material
-    serializer->beginMap("floorMaterial");
-    {
-      serializer->writeUint32("materialIndex", floorMaterialIndex);
-      floorMaterialDef.serialize(serializer, workData);
-
-      serializer->endMap();
-    }
-
-    // Ceiling material
-    serializer->beginMap("ceilingMaterial");
-    {
-      serializer->writeUint32("materialIndex", ceilingMaterialIndex);
-      ceilingMaterialDef.serialize(serializer, workData);
-
-      serializer->endMap();
-    }
-
-    // Wall material
-    serializer->beginMap("wallMaterial");
-    {
-      serializer->writeUint32("materialIndex", wallMaterialIndex);
-      wallMaterialDef.serialize(serializer, workData);
-
-      serializer->endMap();
-    }
+    // Sub-material id references
+    serializer->writeString("floorMaterial", floorMaterialId);
+    serializer->writeString("ceilingMaterial", ceilingMaterialId);
+    serializer->writeString("wallMaterial", wallMaterialId);
 
     serializer->endMap();  // primitivePropertySet
   }
@@ -50,14 +28,7 @@ void PrimitivePropertySet::serializeImpl(shared_ptr<Serializer> serializer, Seri
 bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) {
   float floorZ_{0}, ceilingZ_{40};
 
-  uint32_t floorMaterialIndex_{0};
-  MaterialDefinition floorMaterialDef_{};
-
-  uint32_t ceilingMaterialIndex_{0};
-  MaterialDefinition ceilingMaterialDef_{};
-
-  uint32_t wallMaterialIndex_{0};
-  MaterialDefinition wallMaterialDef_{};
+  string floorMaterialId_, ceilingMaterialId_, wallMaterialId_;
 
   try {
     serializer->beginMap("primitivePropertySet");
@@ -65,38 +36,9 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
       floorZ_ = serializer->readFloat("floorZ");
       ceilingZ_ = serializer->readFloat("ceilingZ");
 
-      serializer->beginMap("floorMaterial");
-      {
-        floorMaterialIndex_ = serializer->readUint32("materialIndex");
-        if (!floorMaterialDef_.deserialize(serializer, workData)) {
-          copyErrorsAndWarnings(&floorMaterialDef_, true, true);
-          return false;
-        }
-
-        serializer->endMap();
-      }
-
-      serializer->beginMap("ceilingMaterial");
-      {
-        ceilingMaterialIndex_ = serializer->readUint32("materialIndex");
-        if (!ceilingMaterialDef_.deserialize(serializer, workData)) {
-          copyErrorsAndWarnings(&ceilingMaterialDef_, true, true);
-          return false;
-        }
-
-        serializer->endMap();
-      }
-
-      serializer->beginMap("wallMaterial");
-      {
-        wallMaterialIndex_ = serializer->readUint32("materialIndex");
-        if (!wallMaterialDef_.deserialize(serializer, workData)) {
-          copyErrorsAndWarnings(&wallMaterialDef_, true, true);
-          return false;
-        }
-
-        serializer->endMap();
-      }
+      floorMaterialId_ = serializer->readString("floorMaterial", true, "");
+      ceilingMaterialId_ = serializer->readString("ceilingMaterial", true, "");
+      wallMaterialId_ = serializer->readString("wallMaterial", true, "");
 
       serializer->endMap();  // primitivePropertySet
     }
@@ -108,12 +50,9 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
   // Commit
   floorZ = floorZ_;
   ceilingZ = ceilingZ_;
-  floorMaterialIndex = floorMaterialIndex_;
-  floorMaterialDef = floorMaterialDef_;
-  ceilingMaterialIndex = ceilingMaterialIndex_;
-  ceilingMaterialDef = ceilingMaterialDef_;
-  wallMaterialIndex = wallMaterialIndex_;
-  wallMaterialDef = wallMaterialDef_;
+  floorMaterialId = floorMaterialId_;
+  ceilingMaterialId = ceilingMaterialId_;
+  wallMaterialId = wallMaterialId_;
 
   return true;
 }

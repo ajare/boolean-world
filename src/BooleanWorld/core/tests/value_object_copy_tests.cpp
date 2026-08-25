@@ -69,17 +69,6 @@ void requireContoursMatch(bw::core::Primitive const& actual,
   }
 }
 
-void requireMaterialDefinitionEqual(bw::core::MaterialDefinition const& actual,
-                                    bw::core::MaterialDefinition const& expected,
-                                    std::string const& name) {
-  require(actual.data.params == expected.data.params,
-          name + " parameters were not copied");
-  require(actual.data.baseColour == expected.data.baseColour,
-          name + " base colour was not copied");
-  require(actual.data.packedColour() == expected.data.packedColour(),
-          name + " packed base colour differs");
-}
-
 void generatedShapeCopiesRetainDefiningState() {
   using Primitive = bw::core::Primitive;
 
@@ -181,19 +170,19 @@ void bezierSplineCopiesRetainControlsAndSamples() {
   }
 }
 
-void primitivesInitializeMaterialIndices() {
+void primitivesInitializeMaterialIds() {
   bw::core::RectanglePolygon primitive(
       bw::core::Primitive::Operation::Union,
       bw::core::Primitive::FillRule::NonZero,
       1.0f);
   auto const& properties = primitive.getProperties();
 
-  require(properties.floorMaterialIndex == 0,
-          "a new primitive did not initialize its floor material index");
-  require(properties.ceilingMaterialIndex == 0,
-          "a new primitive did not initialize its ceiling material index");
-  require(properties.wallMaterialIndex == 0,
-          "a new primitive did not initialize its wall material index");
+  require(properties.floorMaterialId.empty(),
+          "a new primitive did not initialize its floor material id");
+  require(properties.ceilingMaterialId.empty(),
+          "a new primitive did not initialize its ceiling material id");
+  require(properties.wallMaterialId.empty(),
+          "a new primitive did not initialize its wall material id");
 }
 
 void primitiveCopiesItsPropertySet() {
@@ -204,12 +193,9 @@ void primitiveCopiesItsPropertySet() {
   bw::core::PrimitivePropertySet properties;
   properties.floorZ = -12.5f;
   properties.ceilingZ = 84.25f;
-  properties.floorMaterialIndex = 1;
-  properties.ceilingMaterialIndex = 2;
-  properties.wallMaterialIndex = 3;
-  properties.floorMaterialDef.data = {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}, {0.1f, 0.2f, 0.3f}};
-  properties.ceilingMaterialDef.data = {{9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f}, {0.4f, 0.5f, 0.6f}};
-  properties.wallMaterialDef.data = {{17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f}, {0.7f, 0.8f, 0.9f}};
+  properties.floorMaterialId = "floor-slate";
+  properties.ceilingMaterialId = "ceiling-plaster";
+  properties.wallMaterialId = "wall-brick";
   source.setProperties(properties);
 
   bw::core::RectanglePolygon copy(source);
@@ -217,18 +203,12 @@ void primitiveCopiesItsPropertySet() {
 
   requireNear(copiedProperties.floorZ, properties.floorZ, "floor height was not copied");
   requireNear(copiedProperties.ceilingZ, properties.ceilingZ, "ceiling height was not copied");
-  require(copiedProperties.floorMaterialIndex == properties.floorMaterialIndex,
-          "floor material index was not copied");
-  require(copiedProperties.ceilingMaterialIndex == properties.ceilingMaterialIndex,
-          "ceiling material index was not copied");
-  require(copiedProperties.wallMaterialIndex == properties.wallMaterialIndex,
-          "wall material index was not copied");
-  requireMaterialDefinitionEqual(copiedProperties.floorMaterialDef, properties.floorMaterialDef,
-                                 "floor material");
-  requireMaterialDefinitionEqual(copiedProperties.ceilingMaterialDef, properties.ceilingMaterialDef,
-                                 "ceiling material");
-  requireMaterialDefinitionEqual(copiedProperties.wallMaterialDef, properties.wallMaterialDef,
-                                 "wall material");
+  require(copiedProperties.floorMaterialId == properties.floorMaterialId,
+          "floor material id was not copied");
+  require(copiedProperties.ceilingMaterialId == properties.ceilingMaterialId,
+          "ceiling material id was not copied");
+  require(copiedProperties.wallMaterialId == properties.wallMaterialId,
+          "wall material id was not copied");
 }
 
 void animatedPropertyCopiesItsSerializedName() {
@@ -328,9 +308,9 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
   bw::core::PrimitivePropertySet properties;
   properties.floorZ = 12.5f;
   properties.ceilingZ = 63.0f;
-  properties.floorMaterialIndex = 4;
-  properties.ceilingMaterialIndex = 5;
-  properties.wallMaterialIndex = 6;
+  properties.floorMaterialId = "grandchild-floor";
+  properties.ceilingMaterialId = "grandchild-ceiling";
+  properties.wallMaterialId = "grandchild-wall";
   grandchild->setProperties(properties);
 
   auto* rootPtr = root.get();
@@ -392,9 +372,9 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
   auto const copiedProperties = copy->getPrimitive(2)->getProperties();
   require(copiedProperties.floorZ == properties.floorZ &&
               copiedProperties.ceilingZ == properties.ceilingZ &&
-              copiedProperties.floorMaterialIndex == properties.floorMaterialIndex &&
-              copiedProperties.ceilingMaterialIndex == properties.ceilingMaterialIndex &&
-              copiedProperties.wallMaterialIndex == properties.wallMaterialIndex,
+              copiedProperties.floorMaterialId == properties.floorMaterialId &&
+              copiedProperties.ceilingMaterialId == properties.ceilingMaterialId &&
+              copiedProperties.wallMaterialId == properties.wallMaterialId,
           "world copy lost primitive properties");
 
   auto const oldGrandchildVertex =
@@ -447,7 +427,7 @@ int main() {
   try {
     generatedShapeCopiesRetainDefiningState();
     bezierSplineCopiesRetainControlsAndSamples();
-    primitivesInitializeMaterialIndices();
+    primitivesInitializeMaterialIds();
     animatedPropertyCopiesItsSerializedName();
     influenceEyeCopiesItsArcLength();
     primitiveCopiesPreviousEntityInputs();

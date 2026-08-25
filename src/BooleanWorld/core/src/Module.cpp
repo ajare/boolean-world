@@ -11,7 +11,6 @@
 #include "common/MaterialRegistry.h"
 
 #include "core/InputType.h"
-#include "core/MaterialDefaultsFile.h"
 #include "core/RectanglePolygon.h"
 #include "core/RegularPolygon.h"
 #include "core/TorusPolygon.h"
@@ -55,33 +54,6 @@ bool IsValidTransformKey(uint32_t key) {
   return key < static_cast<uint32_t>(VertexTransformer::Key::COUNT);
 }
 
-void SetPrimitiveMaterialDefault(uint32_t materialIndex, MaterialDefinitionData* materialDefinition) {
-  auto const& material = bw::common::MaterialNames[materialIndex];
-  auto const numParams = static_cast<uint32_t>(std::get<1>(material));
-
-  for (uint32_t i = 0; i < numParams; ++i) {
-    materialDefinition->params[i] =
-        bw::core::materialParamDefault(materialIndex, i);
-  }
-
-  auto const& defaultColour = std::get<2>(material);
-  for (uint32_t i = 0; i < defaultColour.size(); ++i) {
-    materialDefinition->baseColour[i] = defaultColour[i];
-  }
-}
-
-void SetPrimitiveMaterials(Primitive* primitive, uint32_t materialIndex) {
-  auto properties = primitive->getProperties();
-  properties.floorMaterialIndex = materialIndex;
-  properties.ceilingMaterialIndex = materialIndex;
-  properties.wallMaterialIndex = materialIndex;
-
-  SetPrimitiveMaterialDefault(materialIndex, &properties.floorMaterialDef.data);
-  SetPrimitiveMaterialDefault(materialIndex, &properties.ceilingMaterialDef.data);
-  SetPrimitiveMaterialDefault(materialIndex, &properties.wallMaterialDef.data);
-  primitive->setProperties(properties);
-}
-
 template <typename Factory>
 int CreatePrimitive(uint32_t operation, uint32_t fillType, uint32_t materialIndex, Factory&& factory) {
   if (!gWorld || !IsValidPrimitiveType(operation, fillType) || !IsValidMaterialIndex(materialIndex)) {
@@ -91,7 +63,6 @@ int CreatePrimitive(uint32_t operation, uint32_t fillType, uint32_t materialInde
   auto primitive = std::forward<Factory>(factory)(
       static_cast<Primitive::Operation>(operation),
       static_cast<Primitive::FillRule>(fillType));
-  SetPrimitiveMaterials(primitive.get(), materialIndex);
   gWorld->addPrimitive(primitive.get());
   gPrimitive = primitive.release();
   return 0;
