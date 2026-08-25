@@ -1,12 +1,6 @@
 #include "Actions.h"
 #include "AppHelpers.h"
 
-#include <tuple>
-
-#include <common/MaterialRegistry.h>
-
-#include "core/MaterialDefaultsFile.h"
-
 void editor::_setPrimitiveParameters(
     bw::core::Primitive* prim,
     uint8_t priority,
@@ -29,33 +23,10 @@ void editor::_setPrimitiveParameters(
   mutation.animation(Key::OrbitDistance).setDefaultStructure({{0.0f, 0.0f}, {1.0f, 0.0f}}, {{bw::core::Easing::Linear}}, true);
 }
 
-void editor::setPrimitiveDefaultMaterial(
-    uint32_t materialIndex,
-    bw::core::MaterialDefinitionData* materialDefinition) {
-  if (materialIndex >= bw::common::MaterialNames.size()) {
-    return;
-  }
-
-  auto const& material = bw::common::MaterialNames[materialIndex];
-  auto numParams = static_cast<uint32_t>(std::get<1>(material));
-  for (uint32_t i = 0; i < numParams; ++i) {
-    materialDefinition->params[i] =
-        bw::core::materialParamDefault(materialIndex, i);
-  }
-
-  auto const& defaultColour = std::get<2>(material);
-  for (uint32_t i = 0; i < 3; ++i) {
-    materialDefinition->baseColour[i] = defaultColour[i];
-  }
-}
-
 void editor::setPrimitiveDefaultMaterials(bw::core::Primitive* prim) {
   auto properties = prim->getProperties();
-  setPrimitiveDefaultMaterial(
-      properties.floorMaterialIndex, &properties.floorMaterialDef.data);
-  setPrimitiveDefaultMaterial(
-      properties.ceilingMaterialIndex, &properties.ceilingMaterialDef.data);
-  setPrimitiveDefaultMaterial(
-      properties.wallMaterialIndex, &properties.wallMaterialDef.data);
+  properties.floorMaterialId = "builtin.marble";
+  properties.ceilingMaterialId = "builtin.marble";
+  properties.wallMaterialId = "builtin.marble";
   prim->setProperties(properties);
 }

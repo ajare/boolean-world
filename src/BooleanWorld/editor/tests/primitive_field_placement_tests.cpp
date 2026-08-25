@@ -49,23 +49,13 @@ void require(bool condition, std::string const& message) {
   }
 }
 
-bool sameMaterial(
-    bw::core::MaterialDefinitionData const& lhs,
-    bw::core::MaterialDefinitionData const& rhs) {
-  return lhs.params == rhs.params && lhs.baseColour == rhs.baseColour;
-}
-
 bool sameProperties(
     bw::core::PrimitivePropertySet const& lhs,
     bw::core::PrimitivePropertySet const& rhs) {
   return lhs.floorZ == rhs.floorZ && lhs.ceilingZ == rhs.ceilingZ &&
-         lhs.floorMaterialIndex == rhs.floorMaterialIndex &&
-         lhs.ceilingMaterialIndex == rhs.ceilingMaterialIndex &&
-         lhs.wallMaterialIndex == rhs.wallMaterialIndex &&
-         sameMaterial(lhs.floorMaterialDef.data, rhs.floorMaterialDef.data) &&
-         sameMaterial(lhs.ceilingMaterialDef.data,
-                      rhs.ceilingMaterialDef.data) &&
-         sameMaterial(lhs.wallMaterialDef.data, rhs.wallMaterialDef.data);
+         lhs.floorMaterialId == rhs.floorMaterialId &&
+         lhs.ceilingMaterialId == rhs.ceilingMaterialId &&
+         lhs.wallMaterialId == rhs.wallMaterialId;
 }
 
 bw::core::PrimitiveFieldLayout representativeLayout() {

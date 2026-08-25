@@ -270,7 +270,17 @@ bool setPrimitiveFollowOrbitAngle(Document* doc, bw::core::Primitive* primitive,
 
 bool setPrimitivePriority(Document* doc, bw::core::Primitive* primitive, uint8_t priority);
 
-void setPrimitiveDefaultMaterial(uint32_t materialIndex, bw::core::MaterialDefinitionData* materialDefinition);
+enum class PrimitiveMaterialSurface {
+  Floor,
+  Ceiling,
+  Wall
+};
+
+// Assigns one stable Sub-material id. Intended to be called through
+// transactUndoableAction by the material picker.
+bool setPrimitiveSubMaterial(
+    Document* doc, bw::core::Primitive* primitive,
+    PrimitiveMaterialSurface surface, std::string const& subMaterialId);
 
 void setPrimitiveDefaultMaterials(bw::core::Primitive* prim);
 

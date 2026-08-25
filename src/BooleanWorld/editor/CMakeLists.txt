@@ -9,6 +9,7 @@ add_executable(editor WIN32
     src/PrimitiveFieldPlacement.cpp
     src/PrimitiveFieldPreview.cpp
     src/PrimitivePreviewGeometry.cpp
+    src/ProcMaterialLibrary.cpp
     src/PrefabTilingGuide.cpp
     src/Preview3D.cpp
     src/PreviewMaterialProgram.cpp
@@ -34,7 +35,9 @@ add_executable(editor WIN32
 target_include_directories(editor PRIVATE include ../app/include)
 bw_add_header_filter(editor)
 
-target_compile_definitions(editor PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
+target_compile_definitions(editor PRIVATE
+    _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING
+    BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml")
 
 target_compile_definitions(editor PRIVATE YAML_CPP_STATIC_DEFINE)
 
@@ -69,9 +72,13 @@ bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/doc" "doc/editor")
 if(BUILD_TESTING)
     add_executable(boolean_world_editor_primitive_preview_geometry_tests
         tests/primitive_preview_geometry_tests.cpp
-        src/PrimitivePreviewGeometry.cpp)
+        src/PrimitivePreviewGeometry.cpp
+        src/ProcMaterialLibrary.cpp)
     target_include_directories(boolean_world_editor_primitive_preview_geometry_tests PRIVATE include)
-    target_link_libraries(boolean_world_editor_primitive_preview_geometry_tests PRIVATE core)
+    target_compile_definitions(boolean_world_editor_primitive_preview_geometry_tests PRIVATE
+        YAML_CPP_STATIC_DEFINE)
+    target_link_libraries(boolean_world_editor_primitive_preview_geometry_tests PRIVATE
+        core ext::yaml-cpp)
     target_compile_features(boolean_world_editor_primitive_preview_geometry_tests PRIVATE cxx_std_20)
     target_compile_options(boolean_world_editor_primitive_preview_geometry_tests PRIVATE /W3 /utf-8)
     bw_target_defaults(boolean_world_editor_primitive_preview_geometry_tests)
@@ -83,9 +90,13 @@ if(BUILD_TESTING)
     add_executable(boolean_world_editor_preview_surface_pick_tests
         tests/preview_surface_pick_tests.cpp
         src/PreviewSurfacePick.cpp
-        src/PrimitivePreviewGeometry.cpp)
+        src/PrimitivePreviewGeometry.cpp
+        src/ProcMaterialLibrary.cpp)
     target_include_directories(boolean_world_editor_preview_surface_pick_tests PRIVATE include)
-    target_link_libraries(boolean_world_editor_preview_surface_pick_tests PRIVATE core)
+    target_compile_definitions(boolean_world_editor_preview_surface_pick_tests PRIVATE
+        YAML_CPP_STATIC_DEFINE)
+    target_link_libraries(boolean_world_editor_preview_surface_pick_tests PRIVATE
+        core ext::yaml-cpp)
     target_compile_features(boolean_world_editor_preview_surface_pick_tests PRIVATE cxx_std_20)
     target_compile_options(boolean_world_editor_preview_surface_pick_tests PRIVATE /W3 /utf-8)
     bw_target_defaults(boolean_world_editor_preview_surface_pick_tests)
@@ -235,24 +246,26 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_editor_undo_history
              COMMAND boolean_world_editor_undo_history_tests)
 
-    add_executable(boolean_world_editor_material_colour_tests
-        tests/material_colour_tests.cpp
+    add_executable(boolean_world_editor_sub_material_picker_tests
+        tests/sub_material_picker_tests.cpp
         src/Actions.cpp
         src/Document.cpp
         src/PrimitiveDefaults.cpp
+        src/PrimitivePreviewGeometry.cpp
+        src/ProcMaterialLibrary.cpp
         src/Undo.cpp)
-    target_include_directories(boolean_world_editor_material_colour_tests PRIVATE include)
-    target_compile_definitions(boolean_world_editor_material_colour_tests PRIVATE
+    target_include_directories(boolean_world_editor_sub_material_picker_tests PRIVATE include)
+    target_compile_definitions(boolean_world_editor_sub_material_picker_tests PRIVATE
         YAML_CPP_STATIC_DEFINE)
-    target_link_libraries(boolean_world_editor_material_colour_tests PRIVATE
-        core vendor::spdlog ext::glew)
-    target_compile_features(boolean_world_editor_material_colour_tests PRIVATE cxx_std_20)
-    target_compile_options(boolean_world_editor_material_colour_tests PRIVATE /W3 /utf-8)
-    bw_target_defaults(boolean_world_editor_material_colour_tests)
-    bw_output_dirs(boolean_world_editor_material_colour_tests)
-    bw_deploy_runtime_dlls(boolean_world_editor_material_colour_tests)
-    add_test(NAME boolean_world_editor_material_colour
-             COMMAND boolean_world_editor_material_colour_tests)
+    target_link_libraries(boolean_world_editor_sub_material_picker_tests PRIVATE
+        core vendor::spdlog ext::glew ext::yaml-cpp)
+    target_compile_features(boolean_world_editor_sub_material_picker_tests PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_sub_material_picker_tests PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_sub_material_picker_tests)
+    bw_output_dirs(boolean_world_editor_sub_material_picker_tests)
+    bw_deploy_runtime_dlls(boolean_world_editor_sub_material_picker_tests)
+    add_test(NAME boolean_world_editor_sub_material_picker
+             COMMAND boolean_world_editor_sub_material_picker_tests)
 
     add_executable(boolean_world_editor_layer_build_step_actions_tests
         tests/layer_build_step_actions_tests.cpp

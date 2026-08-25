@@ -650,6 +650,25 @@ bool setPrimitivePriority(Document* doc, bw::core::Primitive* primitive, uint8_t
   return true;
 }
 
+bool setPrimitiveSubMaterial(
+    Document*, bw::core::Primitive* primitive,
+    PrimitiveMaterialSurface surface, string const& subMaterialId) {
+  auto properties = primitive->getProperties();
+  switch (surface) {
+    case PrimitiveMaterialSurface::Floor:
+      properties.floorMaterialId = subMaterialId;
+      break;
+    case PrimitiveMaterialSurface::Ceiling:
+      properties.ceilingMaterialId = subMaterialId;
+      break;
+    case PrimitiveMaterialSurface::Wall:
+      properties.wallMaterialId = subMaterialId;
+      break;
+  }
+  primitive->setProperties(properties);
+  return true;
+}
+
 bool increasePrimitivePriority(Document* doc, bw::core::Primitive* primitive) {
   auto* layer = doc->getWorld()->getActiveLayer();
   auto const ownerIndex = layer->getOwningStepIndex(primitive);

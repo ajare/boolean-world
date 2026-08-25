@@ -1,6 +1,7 @@
 #include <cmath>
 
 #include "PrimitivePreviewGeometry.h"
+#include "ProcMaterialLibrary.h"
 
 namespace editor {
 namespace {
@@ -16,15 +17,26 @@ PreviewVertex3 atHeight(
 }  // namespace
 
 PrimitivePreviewGeometry extrudePrimitiveForPreview(
-    bw::core::Primitive const& primitive) {
+    bw::core::Primitive const& primitive,
+    ProcMaterialLibrary const* materials) {
   PrimitivePreviewGeometry result;
   auto const& properties = primitive.getProperties();
-  result.floorMaterial = {
-      properties.floorMaterialIndex, properties.floorMaterialDef.data};
-  result.ceilingMaterial = {
-      properties.ceilingMaterialIndex, properties.ceilingMaterialDef.data};
-  result.wallMaterial = {
-      properties.wallMaterialIndex, properties.wallMaterialDef.data};
+  auto resolve = [materials](std::string const& id) {
+    PreviewMaterial material;
+    if (!materials) return material;
+    auto const* subMaterial = materials->findSubMaterial(id);
+    if (!subMaterial) return material;
+    material.index = subMaterial->materialIndex;
+    material.definition.params = {};
+    for (size_t i = 0; i < subMaterial->paramValues.size(); ++i) {
+      material.definition.params[i] = subMaterial->paramValues[i];
+    }
+    material.definition.baseColour = subMaterial->baseColour;
+    return material;
+  };
+  result.floorMaterial = resolve(properties.floorMaterialId);
+  result.ceilingMaterial = resolve(properties.ceilingMaterialId);
+  result.wallMaterial = resolve(properties.wallMaterialId);
 
   auto const& triangulation = primitive.getPickingTriangulation();
   result.floorTriangles.reserve(triangulation.tris.size());

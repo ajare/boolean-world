@@ -40,12 +40,9 @@ std::unique_ptr<MeshPrimitive> makePrimitive(
   auto properties = primitive->getProperties();
   properties.floorZ = floorZ;
   properties.ceilingZ = ceilingZ;
-  properties.floorMaterialIndex = 2;
-  properties.ceilingMaterialIndex = 3;
-  properties.wallMaterialIndex = 4;
-  properties.floorMaterialDef.data.baseColour = {0.1f, 0.2f, 0.3f};
-  properties.ceilingMaterialDef.data.baseColour = {0.4f, 0.5f, 0.6f};
-  properties.wallMaterialDef.data.baseColour = {0.7f, 0.8f, 0.9f};
+  properties.floorMaterialId = "test.floor";
+  properties.ceilingMaterialId = "test.ceiling";
+  properties.wallMaterialId = "test.wall";
   primitive->setProperties(properties);
   return primitive;
 }
@@ -105,11 +102,6 @@ void singleShellProducesFillsAndEveryBoundaryWall() {
                 near(wall.vertices[3].z, 27.0f),
             "wall quad did not span the Primitive floorZ to ceilingZ");
   }
-  require(geometry.floorMaterial.index == 2 &&
-              geometry.ceilingMaterial.index == 3 &&
-              geometry.wallMaterial.index == 4,
-          "extrusion did not preserve the Primitive materials");
-
   for (auto const& triangle : geometry.floorTriangles) {
     for (auto const& vertex : triangle.vertices) {
       require(

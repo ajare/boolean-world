@@ -188,14 +188,13 @@ void theNearestPrimitiveStillWinsWhenNotCoincident() {
 
 void eachSurfaceReportsItsOwnMaterial() {
   auto room = makeRoom();
-  auto properties = room->getProperties();
-  // Distinct indices, so a surface reading the wrong one is visible here
-  // rather than hiding behind a shared default.
-  properties.floorMaterialIndex = 0;
-  properties.ceilingMaterialIndex = 1;
-  properties.wallMaterialIndex = 1;
-  room->setProperties(properties);
   auto geometry = editor::extrudePrimitiveForPreview(*room);
+  // Distinct indices, so a surface reading the wrong slot is visible here
+  // rather than hiding behind a shared default. ProcMaterial resolution is
+  // covered at the picker-library seam.
+  geometry.floorMaterial.index = 0;
+  geometry.ceilingMaterial.index = 1;
+  geometry.wallMaterial.index = 1;
 
   auto const* floor =
       editor::previewSurfaceMaterial(geometry, PreviewSurface::Floor);

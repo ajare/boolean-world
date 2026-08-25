@@ -2757,7 +2757,7 @@ void decomposingAMeshCreatesFilledRegionPrimitives() {
   auto properties = source->getProperties();
   properties.floorZ = -12.0f;
   properties.ceilingZ = 72.0f;
-  properties.floorMaterialIndex = 17;
+  properties.floorMaterialId = "test.decomposition.floor";
   source->setProperties(properties);
 
   auto const undoBefore = editor::getUndoLevels();
@@ -2786,7 +2786,7 @@ void decomposingAMeshCreatesFilledRegionPrimitives() {
           "decomposed filled regions did not receive the source Union and priority");
   require(outer->getProperties().floorZ == properties.floorZ &&
               island->getProperties().ceilingZ == properties.ceilingZ &&
-              outer->getProperties().floorMaterialIndex == 17 &&
+              outer->getProperties().floorMaterialId == "test.decomposition.floor" &&
               island->getFlags() == 0x1234 && island->getMetadata() == 42 &&
               island->getTimeUpdateDistance() == 17.0f &&
               island->getTransformOffset() == wp::Vector2{3.0f, -4.0f},

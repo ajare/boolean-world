@@ -9,6 +9,8 @@
 
 namespace editor {
 
+class ProcMaterialLibrary;
+
 struct PreviewVertex3 {
   float x{};
   float y{};
@@ -48,6 +50,7 @@ struct PrimitivePreviewGeometry {
 };
 
 [[nodiscard]] PrimitivePreviewGeometry extrudePrimitiveForPreview(
-    bw::core::Primitive const& primitive);
+    bw::core::Primitive const& primitive,
+    ProcMaterialLibrary const* materials = nullptr);
 
 }  // namespace editor

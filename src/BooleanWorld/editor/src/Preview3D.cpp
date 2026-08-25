@@ -26,6 +26,7 @@
 #include "PreviewSurfacePick.h"
 #include "PrimitivePreviewGeometry.h"
 #include "Preview3D.h"
+#include "ProcMaterialLibrary.h"
 #include "ReactiveCamera.h"
 
 extern SDL_Window* gWindow;
@@ -443,7 +444,8 @@ void openPreview3D(
     if (primitive) {
       session.primitivesForGrounding.push_back(primitive);
       session.primitives.push_back(
-          {primitive->getPriority(), extrudePrimitiveForPreview(*primitive)});
+          {primitive->getPriority(), extrudePrimitiveForPreview(
+                                         *primitive, &procMaterialLibrary())});
     }
   }
 }

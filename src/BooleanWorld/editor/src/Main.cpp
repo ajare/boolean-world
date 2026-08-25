@@ -55,6 +55,7 @@
 #include "HoverableType.h"
 #include "PrimitiveFieldPreview.h"
 #include "Preview3D.h"
+#include "ProcMaterialLibrary.h"
 
 wp::Vector2 gViewOffset{0.0f, 0.0f};
 
@@ -237,6 +238,12 @@ void initialise() {
   // compiled-in bw::common::MaterialParams values if it is not found there,
   // e.g. a packaged editor build shipped without a sibling Launcher.
   bw::core::loadMaterialDefaultsFile("../Launcher/Game.yaml");
+
+  // ADR-0024: discover the manifest here, then parse each ProcMaterial YAML
+  // directly through bw::core::Serializer (ProcMaterialLibrary), without a
+  // ResourceManager or render-system dependency.
+  editor::procMaterialLibrary().load(BW_EDITOR_PROC_MATERIAL_MANIFEST);
+  gLogger->debug("ProcMaterial catalogs loaded");
 
   //
   // Set up SDL

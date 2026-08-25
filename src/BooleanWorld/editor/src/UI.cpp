@@ -13,7 +13,6 @@
 #include <nfd/nfd.h>
 
 #include <core/DefinePrefabs.h>
-#include <core/MaterialDefaultsFile.h>
 #include <core/LayerBuildStep.h>
 #include <core/WorldData.h>
 #include <core/RegularPolygon.h>
@@ -26,8 +25,6 @@
 #include <core/MeshPrimitive.h>
 #include <core/Defines.h>
 #include <core/DynamicWorldDataGenerator.h>
-
-#include <common/MaterialRegistry.h>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 
@@ -50,6 +47,7 @@
 #include "PrimitiveFieldPreview.h"
 #include "PrimitiveFieldPlacement.h"
 #include "Preview3D.h"
+#include "ProcMaterialLibrary.h"
 #include "ExitApplicationException.h"
 #include "Render.h"
 #include "HoverableType.h"
@@ -2650,55 +2648,77 @@ void renderEditPrimitiveSettings(editor::Document* doc, bw::core::Primitive* pri
   }
 }
 
-bool renderEditMaterialParameters(string const& name, uint32_t materialIndex, bw::core::MaterialDefinitionData* materialDefinition) {
-  bool update = false;
+bool renderSubMaterialPicker(
+    char const* label, string* subMaterialId, editor::Document* doc,
+    bw::core::Primitive* primitive, editor::PrimitiveMaterialSurface surface) {
+  auto const& catalogs = procMaterialLibrary().catalogs();
+  if (catalogs.empty()) {
+    ImGui::TextDisabled("%s material: no ProcMaterial resources", label);
+    return false;
+  }
 
-  ImGui::PushID(name.c_str());
+  static map<string, int> selectedCatalogs;
+  auto& selectedCatalog = selectedCatalogs[label];
+  if (auto const* owner = procMaterialLibrary().findCatalogForSubMaterial(*subMaterialId)) {
+    selectedCatalog = (int)distance(catalogs.data(), owner);
+  }
+  selectedCatalog = clamp(selectedCatalog, 0, (int)catalogs.size() - 1);
 
-  auto const& material = bw::common::MaterialNames[materialIndex];
-  auto numParams = (uint32_t)get<1>(material);
+  string catalogItems;
+  for (auto const& catalog : catalogs) {
+    catalogItems += catalog.resourceName;
+    catalogItems += '\0';
+  }
+  ImGui::SetNextItemWidth(256);
+  ImGui::Combo(format("{} ProcMaterial", label).c_str(), &selectedCatalog,
+               catalogItems.c_str(), 6);
 
-  // Colour
-  float colour[3] = {
-      materialDefinition->baseColour[0],
-      materialDefinition->baseColour[1],
-      materialDefinition->baseColour[2]};
+  auto const& catalog = catalogs[selectedCatalog];
+  int selectedSubMaterial{-1};
+  string subMaterialItems;
+  for (size_t i = 0; i < catalog.data.subMaterials.size(); ++i) {
+    auto const& subMaterial = catalog.data.subMaterials[i];
+    if (subMaterial.id == *subMaterialId) selectedSubMaterial = (int)i;
+    subMaterialItems += subMaterial.displayName;
+    subMaterialItems += '\0';
+  }
 
   ImGui::SetNextItemWidth(256);
-
-  if (ImGui::ColorEdit3("Base colour", colour)) {
-    materialDefinition->baseColour[0] = colour[0];
-    materialDefinition->baseColour[1] = colour[1];
-    materialDefinition->baseColour[2] = colour[2];
-
-    update = true;
+  if (!catalog.data.subMaterials.empty() &&
+      ImGui::Combo(format("{} Sub-material", label).c_str(),
+                   &selectedSubMaterial, subMaterialItems.c_str(), 8)) {
+    auto id = catalog.data.subMaterials[selectedSubMaterial].id;
+    *subMaterialId = id;
+    transactUndoableAction(
+        doc, format("Set {} Sub-material", label),
+        [primitive, surface, id](editor::Document* actionDoc) {
+          return setPrimitiveSubMaterial(actionDoc, primitive, surface, id);
+        });
+    return true;
   }
-
-  if (ImGui::Button("Load defaults")) {
-    setPrimitiveDefaultMaterial(materialIndex, materialDefinition);
-    update = true;
-  }
-
-  // Params
-  for (uint32_t i = 0; i < numParams; ++i) {
-    auto paramName = get<0>(bw::common::MaterialParams[materialIndex][i]);
-    auto paramMin = bw::core::materialParamMinimum(materialIndex, i);
-    auto paramMax = bw::core::materialParamMaximum(materialIndex, i);
-    float* paramCur = &materialDefinition->params[i];
-
-    ImGui::SetNextItemWidth(256);
-
-    if (ImGui::SliderFloat(format("{}##renderMaterialParams", paramName).c_str(), paramCur, paramMin, paramMax)) {
-      update = true;
-    }
-  }
-
-  ImGui::PopID();
-
-  return update;
+  return false;
 }
 
-bool renderPrimitivePropertySet(bw::core::PrimitivePropertySet* properties, bool editable, editor::Document* doc, editor::Settings& settings) {
+void renderSubMaterialValue(char const* label, string const& subMaterialId) {
+  auto const* catalog = procMaterialLibrary().findCatalogForSubMaterial(subMaterialId);
+  if (!catalog) {
+    ImGui::Text("%s material: %s", label,
+                subMaterialId.empty() ? "(unassigned)" : subMaterialId.c_str());
+    return;
+  }
+  auto const& subMaterials = catalog->data.subMaterials;
+  auto found = find_if(subMaterials.begin(), subMaterials.end(),
+                       [&subMaterialId](auto const& value) {
+                         return value.id == subMaterialId;
+                       });
+  ImGui::Text("%s material: %s / %s", label, catalog->resourceName.c_str(),
+              found->displayName.c_str());
+}
+
+bool renderPrimitivePropertySet(
+    bw::core::PrimitivePropertySet* properties, bool editable,
+    editor::Document* doc, editor::Settings&,
+    bw::core::Primitive* primitive = nullptr) {
   bool updateProperties{false};
 
   ImGui::SetNextItemWidth(128);
@@ -2717,66 +2737,20 @@ bool renderPrimitivePropertySet(bw::core::PrimitivePropertySet* properties, bool
     ImGui::Text("Ceiling Z: %2.1f", properties->ceilingZ);
   }
 
-  // Materials
-  string materialsStr;
-
-  for (auto const& material : bw::common::MaterialNames) {
-    materialsStr += get<0>(material);
-    materialsStr += '\0';
-  }
-
-  // Floor material
-  auto floorMaterialIndex = (int)properties->floorMaterialIndex;
-
-  ImGui::SetNextItemWidth(256);
-
   if (editable) {
-    if (ImGui::Combo("Floor material", &floorMaterialIndex, materialsStr.c_str(), 6)) {
-      properties->floorMaterialIndex = (uint32_t)floorMaterialIndex;
-      updateProperties = true;
-    }
+    renderSubMaterialPicker(
+        "Floor", &properties->floorMaterialId, doc, primitive,
+        PrimitiveMaterialSurface::Floor);
+    renderSubMaterialPicker(
+        "Ceiling", &properties->ceilingMaterialId, doc, primitive,
+        PrimitiveMaterialSurface::Ceiling);
+    renderSubMaterialPicker(
+        "Wall", &properties->wallMaterialId, doc, primitive,
+        PrimitiveMaterialSurface::Wall);
   } else {
-    ImGui::Text("Floor material: %s", get<0>(bw::common::MaterialNames[floorMaterialIndex]).data());
-  }
-
-  if (editable) {
-    updateProperties |= renderEditMaterialParameters("Floor", properties->floorMaterialIndex, &properties->floorMaterialDef.data);
-  }
-
-  // Ceiling material
-  auto ceilingMaterialIndex = (int)properties->ceilingMaterialIndex;
-
-  ImGui::SetNextItemWidth(256);
-
-  if (editable) {
-    if (ImGui::Combo("Ceiling material", &ceilingMaterialIndex, materialsStr.c_str(), 6)) {
-      properties->ceilingMaterialIndex = (uint32_t)ceilingMaterialIndex;
-      updateProperties = true;
-    }
-  } else {
-    ImGui::Text("Ceiling material: %s", get<0>(bw::common::MaterialNames[ceilingMaterialIndex]).data());
-  }
-
-  if (editable) {
-    updateProperties |= renderEditMaterialParameters("Ceiling", properties->ceilingMaterialIndex, &properties->ceilingMaterialDef.data);
-  }
-
-  // Wall material
-  auto wallMaterialIndex = (int)properties->wallMaterialIndex;
-
-  ImGui::SetNextItemWidth(256);
-
-  if (editable) {
-    if (ImGui::Combo("Wall material", &wallMaterialIndex, materialsStr.c_str(), 6)) {
-      properties->wallMaterialIndex = (uint32_t)wallMaterialIndex;
-      updateProperties = true;
-    }
-  } else {
-    ImGui::Text("Wall material: %s", get<0>(bw::common::MaterialNames[wallMaterialIndex]).data());
-  }
-
-  if (editable) {
-    updateProperties |= renderEditMaterialParameters("Walls", properties->wallMaterialIndex, &properties->wallMaterialDef.data);
+    renderSubMaterialValue("Floor", properties->floorMaterialId);
+    renderSubMaterialValue("Ceiling", properties->ceilingMaterialId);
+    renderSubMaterialValue("Wall", properties->wallMaterialId);
   }
 
   return updateProperties;
@@ -2785,7 +2759,8 @@ bool renderPrimitivePropertySet(bw::core::PrimitivePropertySet* properties, bool
 void renderEditPrimitiveProperties(editor::Document* doc, bw::core::Primitive* primitive, editor::Settings& settings) {
   // Properties
   auto properties = primitive->getProperties();
-  auto updateProperties = renderPrimitivePropertySet(&properties, true, doc, settings);
+  auto updateProperties = renderPrimitivePropertySet(
+      &properties, true, doc, settings, primitive);
 
   // Update
   if (updateProperties) {
