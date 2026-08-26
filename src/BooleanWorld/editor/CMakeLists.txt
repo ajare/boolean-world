@@ -12,6 +12,7 @@ add_executable(editor WIN32
     src/ProcMaterialLibrary.cpp
     src/PrefabTilingGuide.cpp
     src/Preview3D.cpp
+    src/PreviewOutlineRenderer.cpp
     src/PreviewRenderScene.cpp
     src/PreviewSurfacePick.cpp
     ../app/src/ReactiveCamera.cpp
@@ -95,6 +96,7 @@ if(BUILD_TESTING)
     add_executable(boolean_world_editor_world_renderer_smoke
         tests/world_renderer_smoke.cpp
         src/EditorRenderSystem.cpp
+        src/PreviewOutlineRenderer.cpp
         src/PreviewRenderScene.cpp
         ../app/src/ReactiveCamera.cpp)
     target_include_directories(boolean_world_editor_world_renderer_smoke PRIVATE
@@ -143,6 +145,7 @@ if(BUILD_TESTING)
     add_executable(boolean_world_editor_preview_render_stack_smoke
         tests/preview_render_stack_smoke.cpp
         src/EditorRenderSystem.cpp
+        src/PreviewOutlineRenderer.cpp
         src/PreviewRenderScene.cpp
         ../app/src/ReactiveCamera.cpp)
     target_include_directories(boolean_world_editor_preview_render_stack_smoke PRIVATE
@@ -286,6 +289,26 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_editor_undo_history_tests)
     add_test(NAME boolean_world_editor_undo_history
              COMMAND boolean_world_editor_undo_history_tests)
+
+    add_executable(boolean_world_editor_primitive_surface_z_tests
+        tests/primitive_surface_z_tests.cpp
+        src/Actions.cpp
+        src/Document.cpp
+        src/PrimitiveDefaults.cpp
+        src/ProcMaterialLibrary.cpp
+        src/Undo.cpp)
+    target_include_directories(boolean_world_editor_primitive_surface_z_tests PRIVATE include)
+    target_compile_definitions(boolean_world_editor_primitive_surface_z_tests PRIVATE
+        YAML_CPP_STATIC_DEFINE)
+    target_link_libraries(boolean_world_editor_primitive_surface_z_tests PRIVATE
+        core vendor::spdlog ext::glew ext::yaml-cpp)
+    target_compile_features(boolean_world_editor_primitive_surface_z_tests PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_primitive_surface_z_tests PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_primitive_surface_z_tests)
+    bw_output_dirs(boolean_world_editor_primitive_surface_z_tests)
+    bw_deploy_runtime_dlls(boolean_world_editor_primitive_surface_z_tests)
+    add_test(NAME boolean_world_editor_primitive_surface_z
+             COMMAND boolean_world_editor_primitive_surface_z_tests)
 
     add_executable(boolean_world_editor_sub_material_picker_tests
         tests/sub_material_picker_tests.cpp

@@ -326,7 +326,7 @@ void WorldRenderer::update(
     int32_t wallMaterialIndexOverride,
     float materialScale,
     float farGridSize,
-    FloorPatternOptions const& floorPattern,
+    SecondaryMaterialOptions const& secondaryMaterial,
     float frameTime,
     int32_t highlightedTriangle,
     bool highlightedCeiling,
@@ -357,6 +357,6 @@ void WorldRenderer::update(
             : horizontalMaterialIndexOverride;
     item.renderer->update(
         playerPosition, lightPosition, materialIndexOverride, materialScale,
-        farGridSize, floorPattern, frameTime);
+        farGridSize, secondaryMaterial, frameTime);
   }
 }

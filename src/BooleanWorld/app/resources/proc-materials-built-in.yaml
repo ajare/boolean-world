@@ -405,31 +405,79 @@ subMaterials:
     materialIndex: 0
     params: [1.35, 5, 12, 0.025, 0.2, 0.35, 0.42, 0.72]
     baseColour: [0.18, 0.18, 0.2]
+    emboss:
+      pattern: Hexagon
+      radius: 16
+      depth: 0.5
+      depthVariation: 0.1
+      runningBondWidth: 50
+      runningBondOffset: 50
+      voronoiRounding: 0.25
   - id: builtin.stone
     name: Stone
     materialIndex: 1
     params: [0.82, 8, 0.28]
     baseColour: [0.25, 0.24, 0.22]
+    emboss:
+      pattern: Square
+      radius: 12
+      depth: 0.6
+      depthVariation: 0.15
+      runningBondWidth: 50
+      runningBondOffset: 50
+      voronoiRounding: 0.25
   - id: builtin.slate
     name: Slate
     materialIndex: 2
     params: [0.72, 0.35]
     baseColour: [0.13, 0.16, 0.18]
+    emboss:
+      pattern: RunningBond
+      radius: 20
+      depth: 0.5
+      depthVariation: 0.12
+      runningBondWidth: 45
+      runningBondOffset: 50
+      voronoiRounding: 0.25
   - id: builtin.sandstone
     name: Sandstone
     materialIndex: 3
     params: [0.58, 18]
     baseColour: [0.55, 0.33, 0.17]
+    emboss:
+      pattern: ModularOpus
+      radius: 24
+      depth: 0.45
+      depthVariation: 0.1
+      runningBondWidth: 50
+      runningBondOffset: 50
+      voronoiRounding: 0.25
   - id: builtin.limestone
     name: Limestone
     materialIndex: 4
     params: [0.66, 0.38]
     baseColour: [0.65, 0.62, 0.51]
+    emboss:
+      pattern: Square
+      radius: 16
+      depth: 0.4
+      depthVariation: 0.1
+      runningBondWidth: 50
+      runningBondOffset: 50
+      voronoiRounding: 0.25
   - id: builtin.basalt
     name: Basalt
     materialIndex: 5
     params: [0.85, 0.72]
     baseColour: [0.06, 0.07, 0.08]
+    emboss:
+      pattern: Voronoi
+      radius: 10
+      depth: 0.9
+      depthVariation: 0.2
+      runningBondWidth: 50
+      runningBondOffset: 50
+      voronoiRounding: 0.2
   - id: builtin.obsidian
     name: Obsidian
     materialIndex: 6
@@ -455,6 +503,14 @@ subMaterials:
     materialIndex: 10
     params: [0.66, 1.45]
     baseColour: [0.55, 0.58, 0.6]
+    emboss:
+      pattern: Square
+      radius: 20
+      depth: 0.3
+      depthVariation: 0
+      runningBondWidth: 50
+      runningBondOffset: 50
+      voronoiRounding: 0.25
   - id: builtin.brushed.metal
     name: Brushed metal
     materialIndex: 11
@@ -560,6 +616,14 @@ subMaterials:
     materialIndex: 31
     params: [0.95, 0.42]
     baseColour: [0.48, 0.22, 0.13]
+    emboss:
+      pattern: RunningBond
+      radius: 8
+      depth: 0.35
+      depthVariation: 0.05
+      runningBondWidth: 40
+      runningBondOffset: 50
+      voronoiRounding: 0.25
   - id: builtin.circuit.board
     name: Circuit board
     materialIndex: 32

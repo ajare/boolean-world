@@ -8,17 +8,22 @@
 @@Uniform(vec3 PLAYER_POSITION);
 @@Uniform(vec3 LIGHT_POSITION);
 @@Uniform(float MATERIAL_SCALE);
-@@Uniform(float HEXAGON_RADIUS);
-@@Uniform(float HEXAGON_DEPTH);
-@@Uniform(float TILE_DEPTH_VARIATION_FACTOR);
-@@Uniform(float RUNNING_BOND_WIDTH_PERCENT);
-@@Uniform(float RUNNING_BOND_OFFSET_PERCENT);
-@@Uniform(float VORONOI_ROUNDED_EDGE_FACTOR);
 @@Uniform(int SECONDARY_MATERIAL_INDEX);
 @@Uniform(int USE_SECONDARY_MATERIAL);
-@@Uniform(int FLOOR_PATTERN);
+
+// Per batch. The emboss relief is part of the Sub-material (core/Emboss.h),
+// not a global render option, so it arrives with the batch exactly as the
+// Technique index and its parameters do. EMBOSS_PATTERN is EmbossPattern:
+// 0 none, 1 square, 2 hexagon, 3 running bond, 4 modular opus, 5 Voronoi.
 @@Uniform(int MATERIAL_INDEX);
 @@Uniform(float MATERIAL_PARAMS[8]);
+@@Uniform(int EMBOSS_PATTERN);
+@@Uniform(float EMBOSS_RADIUS);
+@@Uniform(float EMBOSS_DEPTH);
+@@Uniform(float EMBOSS_DEPTH_VARIATION);
+@@Uniform(float EMBOSS_RUNNING_BOND_WIDTH);
+@@Uniform(float EMBOSS_RUNNING_BOND_OFFSET);
+@@Uniform(float EMBOSS_VORONOI_ROUNDING);
 ## Texture
 @@Texture(sampler2D TEX1);
 ##
@@ -682,10 +687,10 @@ vec3 supernaturalEmission(vec2 worldPos, int materialIndex)
     return vec3(0.0);
 }
 
-float floorTileDepthOffset(float depth, vec2 tileId)
+float embossTileDepthOffset(float depth, vec2 tileId)
 {
     float factor = clamp(
-        @Uniform(TILE_DEPTH_VARIATION_FACTOR), 0.0, 1.0);
+        @Uniform(EMBOSS_DEPTH_VARIATION), 0.0, 1.0);
     return -max(depth, 0.0) * factor * hash(tileId);
 }
 
@@ -784,7 +789,7 @@ float modularOpusTileHeight(vec2 p, float largeTileSize, float depth)
             }
         }
     }
-    return floorTileDepthOffset(depth, tileId) +
+    return embossTileDepthOffset(depth, tileId) +
         tileGrooveHeight(distanceToEdge, size, depth);
 }
 
@@ -827,7 +832,7 @@ float voronoiTileHeight(vec2 p, float cellSize, float depth)
 
     float distanceToEdge = 10.0;
     float rounding = clamp(
-        @Uniform(VORONOI_ROUNDED_EDGE_FACTOR), 0.0, 1.0) * 0.25;
+        @Uniform(EMBOSS_VORONOI_ROUNDING), 0.0, 1.0) * 0.25;
     for (int y = -2; y <= 2; ++y) {
         for (int x = -2; x <= 2; ++x) {
             vec2 site = voronoiFeaturePoint(
@@ -844,12 +849,12 @@ float voronoiTileHeight(vec2 p, float cellSize, float depth)
             }
         }
     }
-    return floorTileDepthOffset(depth, nearestCell) +
+    return embossTileDepthOffset(depth, nearestCell) +
         tileGrooveHeight(
             max(distanceToEdge, 0.0) * size, size, depth);
 }
 
-float floorPatternHeight(
+float embossPatternHeight(
     vec2 p, float radius, float depth, int pattern,
     float runningBondWidthPercent, float runningBondOffsetPercent)
 {
@@ -858,14 +863,14 @@ float floorPatternHeight(
         vec2 local = abs(mod(p + safeRadius, safeRadius * 2.0) - safeRadius);
         vec2 tileId = floor(
             (p + vec2(safeRadius)) / (safeRadius * 2.0));
-        return floorTileDepthOffset(depth, tileId) +
+        return embossTileDepthOffset(depth, tileId) +
             tileGrooveHeight(
                 safeRadius - max(local.x, local.y), safeRadius, depth);
     }
     if (pattern == 2) {
         vec2 local = p - nearestHexagonCenter(p, safeRadius);
         float fromCenter = max(abs(local.x), max(abs(0.5 * local.x + 0.8660254 * local.y), abs(-0.5 * local.x + 0.8660254 * local.y)));
-        return floorTileDepthOffset(
+        return embossTileDepthOffset(
                    depth, (p - local) / safeRadius) +
             tileGrooveHeight(
                 0.8660254 * safeRadius - fromCenter, safeRadius, depth);
@@ -882,7 +887,7 @@ float floorPatternHeight(
             mod(p.x - rowOffset, safeRadius), mod(p.y, tileWidth));
         vec2 distanceToEdges = min(
             local, vec2(safeRadius, tileWidth) - local);
-        return floorTileDepthOffset(depth, vec2(column, row)) +
+        return embossTileDepthOffset(depth, vec2(column, row)) +
             tileGrooveHeight(
                 min(distanceToEdges.x, distanceToEdges.y),
                 min(safeRadius, tileWidth), depth);
@@ -931,8 +936,8 @@ int floorMaterialIndex(vec3 worldPos, int primaryMaterialIndex)
         secondaryMaterialIndex == primaryMaterialIndex)
         return primaryMaterialIndex;
     vec2 p = worldPos.xz;
-    float radius = @Uniform(HEXAGON_RADIUS);
-    int pattern = @Uniform(FLOOR_PATTERN);
+    float radius = @Uniform(EMBOSS_RADIUS);
+    int pattern = @Uniform(EMBOSS_PATTERN);
     if (pattern == 1 && gridTileUsesSecondaryMaterial(p, radius))
         return secondaryMaterialIndex;
     if (pattern == 2 && hexagonTileUsesSecondaryMaterial(p, radius))
@@ -943,16 +948,41 @@ int floorMaterialIndex(vec3 worldPos, int primaryMaterialIndex)
     return primaryMaterialIndex;
 }
 
-vec3 embossFloorPattern(
-    vec3 normal, vec3 worldPos, float radius, float depth, int pattern,
-    float runningBondWidthPercent, float runningBondOffsetPercent)
+// The plane a surface's relief is laid out in: the ground plane for anything
+// roughly horizontal, and the wall's own across/up axes for anything else.
+// Embossing used to be a floors-only effect and could assume world xz; now
+// that it belongs to the material, it has to work on whatever the material is
+// applied to, and a wall tiled through its ground-plane projection would read
+// as vertical streaks rather than tiles.
+void embossSurfaceAxes(vec3 normal, out vec3 axisU, out vec3 axisV)
 {
+    if (abs(normal.y) > 0.5)
+    {
+        axisU = vec3(1.0, 0.0, 0.0);
+        axisV = vec3(0.0, 0.0, 1.0);
+    }
+    else
+    {
+        axisU = normalize(cross(vec3(0.0, 1.0, 0.0), normal));
+        axisV = vec3(0.0, 1.0, 0.0);
+    }
+}
+
+vec3 embossSurface(
+    vec3 normal, vec3 worldPos, float radius, float depth, int pattern,
+    float runningBondWidth, float runningBondOffset)
+{
+    vec3 surfaceNormal = normalize(normal);
+    vec3 axisU;
+    vec3 axisV;
+    embossSurfaceAxes(surfaceNormal, axisU, axisV);
+
     float e = max(radius * 0.01, 0.02);
-    vec2 p = worldPos.xz;
+    vec2 p = vec2(dot(worldPos, axisU), dot(worldPos, axisV));
     vec2 gradient = vec2(
-        floorPatternHeight(p + vec2(e, 0.0), radius, depth, pattern, runningBondWidthPercent, runningBondOffsetPercent) - floorPatternHeight(p - vec2(e, 0.0), radius, depth, pattern, runningBondWidthPercent, runningBondOffsetPercent),
-        floorPatternHeight(p + vec2(0.0, e), radius, depth, pattern, runningBondWidthPercent, runningBondOffsetPercent) - floorPatternHeight(p - vec2(0.0, e), radius, depth, pattern, runningBondWidthPercent, runningBondOffsetPercent)) / (2.0 * e);
-    return normalize(normal + vec3(-gradient.x, 0.0, -gradient.y));
+        embossPatternHeight(p + vec2(e, 0.0), radius, depth, pattern, runningBondWidth, runningBondOffset) - embossPatternHeight(p - vec2(e, 0.0), radius, depth, pattern, runningBondWidth, runningBondOffset),
+        embossPatternHeight(p + vec2(0.0, e), radius, depth, pattern, runningBondWidth, runningBondOffset) - embossPatternHeight(p - vec2(0.0, e), radius, depth, pattern, runningBondWidth, runningBondOffset)) / (2.0 * e);
+    return normalize(surfaceNormal - axisU * gradient.x - axisV * gradient.y);
 }
 
 float distributionGGX(vec3 normal, vec3 halfway, float roughness)
@@ -1026,12 +1056,14 @@ void main()
         materialIndex = clamp(materialIndex, 0, 36);
         Material material = material2d(
             texturePosition, normal, viewDir, materialIndex);
-        if (@Uniform(FLOOR_PATTERN) != 0)
-            material.normal = embossFloorPattern(
-                material.normal, worldPos, @Uniform(HEXAGON_RADIUS),
-                @Uniform(HEXAGON_DEPTH), @Uniform(FLOOR_PATTERN),
-                @Uniform(RUNNING_BOND_WIDTH_PERCENT),
-                @Uniform(RUNNING_BOND_OFFSET_PERCENT));
+        // Whatever this material embosses, on whatever surface it was
+        // applied to - floor, ceiling or wall.
+        if (@Uniform(EMBOSS_PATTERN) != 0)
+            material.normal = embossSurface(
+                material.normal, worldPos, @Uniform(EMBOSS_RADIUS),
+                @Uniform(EMBOSS_DEPTH), @Uniform(EMBOSS_PATTERN),
+                @Uniform(EMBOSS_RUNNING_BOND_WIDTH),
+                @Uniform(EMBOSS_RUNNING_BOND_OFFSET));
         shadingNormal = material.normal;
         value = shadePbr(material, viewDir, worldPos, @Uniform(LIGHT_POSITION));
         value += supernaturalEmission(texturePosition, materialIndex);

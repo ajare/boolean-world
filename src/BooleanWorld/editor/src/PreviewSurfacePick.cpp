@@ -71,6 +71,36 @@ Vector3 horizontalVertex(
       bw::core::arr::ToWorldCoordinate(vertex.y), z};
 }
 
+// The polygon a wall belongs to. BuildArrangementWalls builds each wall from
+// one specific side of its edge - the side whose floor and ceiling gave the
+// wall its extent, and whose property set it carries - so that side is the
+// polygon whose Primitive owns the wall material. Choosing it by kind rather
+// than by matching palette indices keeps the two in step even where both
+// sides happen to share a palette entry.
+uint32_t wallFace(
+    bw::core::arr::ArrangementResult const& arrangement,
+    bw::core::arr::ArrangementWall const& wall) {
+  if (wall.edge >= arrangement.edges.size()) {
+    return ~0u;
+  }
+  auto const& edge = arrangement.edges[wall.edge];
+  auto const& face0 = arrangement.faces[edge.face[0]];
+  auto const& face1 = arrangement.faces[edge.face[1]];
+  auto const& properties0 = arrangement.palette[face0.paletteIndex];
+  auto const& properties1 = arrangement.palette[face1.paletteIndex];
+  switch (wall.kind) {
+    case bw::core::arr::ArrangementWallKind::Border:
+      return face0.solid ? edge.face[0] : edge.face[1];
+    case bw::core::arr::ArrangementWallKind::FloorStep:
+      return properties0.floorZ < properties1.floorZ ? edge.face[0]
+                                                     : edge.face[1];
+    case bw::core::arr::ArrangementWallKind::CeilingStep:
+      return properties0.ceilingZ > properties1.ceilingZ ? edge.face[0]
+                                                         : edge.face[1];
+  }
+  return ~0u;
+}
+
 }  // namespace
 
 PreviewScenePick pickPreviewSceneSurface(
@@ -137,6 +167,66 @@ PreviewScenePick pickPreviewSceneSurface(
   }
 
   return nearest;
+}
+
+PreviewSurfaceOwner resolvePreviewSurfaceOwner(
+    bw::core::ArrangementWorldData const& worldData,
+    PreviewScenePick const& pick) {
+  PreviewSurfaceOwner owner;
+  if (!pick.hit()) {
+    return owner;
+  }
+
+  auto const& arrangement = worldData.getArrangement();
+  auto faceIndex = ~0u;
+  if (pick.surfaceHit.surface == PreviewSurface::Wall) {
+    auto const& walls = worldData.getWalls();
+    if (pick.surfaceHit.wallIndex >= walls.size()) {
+      return owner;
+    }
+    faceIndex = wallFace(arrangement, walls[pick.surfaceHit.wallIndex]);
+  } else {
+    auto const& triangles = worldData.getTriangles();
+    if (pick.primitiveIndex >= triangles.size()) {
+      return owner;
+    }
+    faceIndex = triangles[pick.primitiveIndex].face;
+  }
+
+  if (faceIndex >= arrangement.faces.size()) {
+    return owner;
+  }
+  auto const& face = arrangement.faces[faceIndex];
+  owner.faceIndex = faceIndex;
+  owner.paletteIndex = face.paletteIndex;
+  // Palette entry zero is the exterior and the empty faces that no Primitive
+  // won; every other entry is one input Primitive, in input order.
+  owner.primitiveListIndex =
+      face.paletteIndex == 0 ? ~0u : uint32_t(face.paletteIndex - 1);
+  return owner;
+}
+
+std::string previewSurfaceSubMaterialId(
+    bw::core::ArrangementWorldData const& worldData,
+    PreviewScenePick const& pick) {
+  auto owner = resolvePreviewSurfaceOwner(worldData, pick);
+  auto const& arrangement = worldData.getArrangement();
+  if (!owner.valid() || owner.paletteIndex >= arrangement.palette.size()) {
+    return {};
+  }
+
+  auto const& properties = arrangement.palette[owner.paletteIndex];
+  switch (pick.surfaceHit.surface) {
+    case PreviewSurface::Floor:
+      return properties.floorMaterialId;
+    case PreviewSurface::Ceiling:
+      return properties.ceilingMaterialId;
+    case PreviewSurface::Wall:
+      return properties.wallMaterialId;
+    case PreviewSurface::None:
+      break;
+  }
+  return {};
 }
 
 std::string_view previewSurfaceName(PreviewSurface surface) {

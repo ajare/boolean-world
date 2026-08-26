@@ -131,5 +131,57 @@ bool InputTextMultiline(
       flags, InputTextResizeCallback, &cbUserData);
 }
 
+
+void EmbossFields(bw::core::EmbossData& emboss) {
+  if (ImGui::BeginCombo(
+          "Pattern", bw::core::EmbossPatternName(emboss.pattern))) {
+    for (int32_t i = 0; i < bw::core::EmbossPatternCount; ++i) {
+      auto pattern = static_cast<bw::core::EmbossPattern>(i);
+      auto selected = pattern == emboss.pattern;
+      if (ImGui::Selectable(bw::core::EmbossPatternName(pattern), selected)) {
+        emboss.pattern = pattern;
+      }
+      if (selected) {
+        ImGui::SetItemDefaultFocus();
+      }
+    }
+    ImGui::EndCombo();
+  }
+
+  if (emboss.pattern == bw::core::EmbossPattern::None) {
+    ImGui::TextDisabled("This Sub-material embosses nothing.");
+    return;
+  }
+
+  auto slider = [](char const* label, float* value,
+                   bw::core::EmbossParameterLimits const& limits,
+                   char const* format) {
+    ImGui::SliderFloat(label, value, limits.minimum, limits.maximum, format);
+  };
+
+  slider(
+      bw::core::EmbossRadiusName(emboss.pattern), &emboss.radius,
+      bw::core::EmbossRadiusLimits(), "%.1f");
+  slider("Groove depth", &emboss.depth, bw::core::EmbossDepthLimits(), "%.2f");
+  slider(
+      "Per-tile depth variation", &emboss.depthVariation,
+      bw::core::EmbossDepthVariationLimits(), "%.2f");
+
+  // The shader ignores what the selected pattern does not use, so showing
+  // those would be showing controls that do nothing.
+  if (bw::core::EmbossPatternUsesRunningBond(emboss.pattern)) {
+    slider(
+        "Tile width (% of length)", &emboss.runningBondWidth,
+        bw::core::EmbossRunningBondWidthLimits(), "%.0f%%");
+    slider(
+        "Row offset (% of length)", &emboss.runningBondOffset,
+        bw::core::EmbossRunningBondOffsetLimits(), "%.0f%%");
+  } else if (bw::core::EmbossPatternUsesVoronoiRounding(emboss.pattern)) {
+    slider(
+        "Rounded edge factor", &emboss.voronoiRounding,
+        bw::core::EmbossVoronoiRoundingLimits(), "%.2f");
+  }
+}
+
 }  // namespace widgets
 }  // namespace editor

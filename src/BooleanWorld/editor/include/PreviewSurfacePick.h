@@ -2,6 +2,8 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
+#include <string>
 #include <string_view>
 
 #include <core/ArrangementWorldData.h>
@@ -43,6 +45,52 @@ struct PreviewScenePick {
     bw::core::ArrangementWorldData const& worldData,
     std::array<float, 3> const& rayOrigin,
     std::array<float, 3> const& rayDirection);
+
+// A picked surface resolved back to the Arrangement polygon it belongs to,
+// and to the authored Primitive whose properties that polygon was given.
+//
+// Every rendered surface comes from a polygon of the boolean Arrangement, and
+// a polygon carries exactly one property set: the one contributed by the
+// Primitive that won the fold there (ADR-0001), which is where the floor,
+// ceiling and wall material ids it draws with come from. So "which Primitive
+// does editing this surface edit" always has one answer, however many
+// Primitives overlap the polygon - the winner, and no other.
+struct PreviewSurfaceOwner {
+  // Index into ArrangementResult::faces.
+  uint32_t faceIndex{~0u};
+  // That polygon's entry in ArrangementResult::palette.
+  uint16_t paletteIndex{0};
+  // Where the owner sits in the Primitive list the Arrangement was built
+  // from, which is what identifies it. ~0u when the polygon has no member
+  // Primitive at all, which only the unbounded exterior face has.
+  //
+  // Deliberately not ArrangementFace::primitiveIndex, which is the owner's
+  // Primitive::getId(): an id is a Primitive's index within its own Layer
+  // (Layer::_appendBuiltPrimitive), so in a World of several Layers the same
+  // id names one Primitive per Layer and cannot pick between them. The
+  // palette index can: it counts the Arrangement's own input list.
+  uint32_t primitiveListIndex{~0u};
+
+  [[nodiscard]] bool valid() const {
+    return faceIndex != ~0u;
+  }
+};
+
+// Resolves a pick from pickPreviewSceneSurface back to its owning polygon.
+// A floor or ceiling names its polygon through the triangle that was hit; a
+// wall names an edge, and belongs to the polygon on the side that gave it its
+// height and its material - the solid side of a border, the lower side of a
+// floor step, the higher side of a ceiling step, exactly as
+// BuildArrangementWalls chose them.
+[[nodiscard]] PreviewSurfaceOwner resolvePreviewSurfaceOwner(
+    bw::core::ArrangementWorldData const& worldData,
+    PreviewScenePick const& pick);
+
+// The Sub-material id the picked surface currently draws with: the owning
+// polygon's floor, ceiling or wall id, whichever the pick names.
+[[nodiscard]] std::string previewSurfaceSubMaterialId(
+    bw::core::ArrangementWorldData const& worldData,
+    PreviewScenePick const& pick);
 
 // How the surface reads in the editor: "Floor", "Ceiling" or "Wall".
 [[nodiscard]] std::string_view previewSurfaceName(PreviewSurface surface);

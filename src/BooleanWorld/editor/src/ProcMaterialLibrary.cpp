@@ -47,6 +47,16 @@ void validateValues(
   }
 }
 
+// Emboss values have no Technique schema to bound them - the pattern is
+// evaluated the same way for every Technique - so they are checked against
+// the authoring limits core publishes, which the editor's sliders use too.
+void validateEmboss(bw::core::EmbossData const& emboss) {
+  if (!bw::core::EmbossIsInRange(emboss)) {
+    throw invalid_argument(
+        "Sub-material emboss values are outside their authoring limits");
+  }
+}
+
 string makeId(string const& name) {
   string id;
   bool separator{false};
@@ -186,10 +196,11 @@ bw::core::SubMaterial const* ProcMaterialLibrary::findSubMaterial(
 string ProcMaterialLibrary::createSubMaterial(
     string const& resourceName, string const& displayName,
     uint32_t materialIndex, vector<float> const& paramValues,
-    array<float, 3> const& baseColour) {
+    array<float, 3> const& baseColour, bw::core::EmbossData const& emboss) {
   if (displayName.empty()) throw invalid_argument("Sub-material name must not be empty");
   auto& catalog = findCatalog(resourceName);
   validateValues(catalog.data.findTechniqueSchema(materialIndex), paramValues, baseColour);
+  validateEmboss(emboss);
 
   auto stem = makeId(displayName);
   auto id = stem;
@@ -203,6 +214,7 @@ string ProcMaterialLibrary::createSubMaterial(
   created.materialIndex = materialIndex;
   created.paramValues = paramValues;
   created.baseColour = baseColour;
+  created.emboss = emboss;
   catalog.data.subMaterials.push_back(move(created));
   try {
     save(catalog);
@@ -235,22 +247,26 @@ void ProcMaterialLibrary::renameSubMaterial(
 
 void ProcMaterialLibrary::editSubMaterial(
     string const& subMaterialId, vector<float> const& paramValues,
-    array<float, 3> const& baseColour) {
+    array<float, 3> const& baseColour, bw::core::EmbossData const& emboss) {
   auto* owner = findCatalogForSubMaterial(subMaterialId);
   if (!owner) throw invalid_argument("Unknown Sub-material id '" + subMaterialId + "'");
   auto& catalog = findCatalog(owner->resourceName);
   auto found = find_if(catalog.data.subMaterials.begin(), catalog.data.subMaterials.end(),
                        [&](auto const& value) { return value.id == subMaterialId; });
   validateValues(catalog.data.findTechniqueSchema(found->materialIndex), paramValues, baseColour);
+  validateEmboss(emboss);
   auto previousValues = found->paramValues;
   auto previousColour = found->baseColour;
+  auto previousEmboss = found->emboss;
   found->paramValues = paramValues;
   found->baseColour = baseColour;
+  found->emboss = emboss;
   try {
     save(catalog);
   } catch (...) {
     found->paramValues = move(previousValues);
     found->baseColour = previousColour;
+    found->emboss = previousEmboss;
     throw;
   }
   ++mRevision;

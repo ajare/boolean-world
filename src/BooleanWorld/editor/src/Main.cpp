@@ -48,6 +48,7 @@
 #include "Undo.h"
 #include "Actions.h"
 #include "EditorException.h"
+#include "EditorRenderSystem.h"
 #include "ExitApplicationException.h"
 #include "AppHelpers.h"
 #include "HoverableType.h"
@@ -246,6 +247,21 @@ void initialise() {
   }
 
   //
+  // Set up the render system the 3D preview draws through. Built here, once,
+  // against the context just made current: its shader/pipeline compilation
+  // and manifest scan are one-time costs, and only one instance may ever
+  // exist per process (see EditorRenderSystem.h). A failure is non-fatal -
+  // the editor runs on, and the preview viewport says why it is empty.
+  //
+  try {
+    editor::createEditorRenderSystem(ED_WINDOW_WIDTH, ED_WINDOW_HEIGHT);
+    gLogger->debug("Editor render system created");
+  } catch (std::exception const& exception) {
+    gLogger->error(
+        string("Editor render system could not be created: ") + exception.what());
+  }
+
+  //
   // Set up ImGui
   //
   setupImGui(gWindow, gContext);
@@ -299,9 +315,10 @@ void setup() {
 void shutdown() {
   editor::getPrimitiveFieldPreview().close();
 
-  // Before the GL context goes away below: the preview's render stack owns
-  // GPU resources built against it.
+  // Before the GL context goes away below: the preview's render stack and
+  // the render system underneath it own GPU resources built against it.
   editor::shutdownPreview3D();
+  editor::destroyEditorRenderSystem();
 
   // ImGui
   if (ImGui::GetCurrentContext()) {
@@ -655,9 +672,10 @@ void run() {
 
       auto pointerInput = readPointerInput(doc, mouseButtonStatus);
 
-      // The preview owns input exclusively. Do not merely rely on ImGui's
-      // WantCapture flags here: raw world dragging and navigation also run
-      // outside ImGui's normal widget routing.
+      // The preview takes over the world viewport, so the 2D canvas that
+      // these act on is not on screen at all while it is open. Do not merely
+      // rely on ImGui's WantCapture flags here: raw world dragging and
+      // navigation also run outside ImGui's normal widget routing.
       if (!editor::preview3DIsOpen()) {
         if (!io.WantCaptureMouse) {
           handleSelections(doc, worldDataPtr, gEditorSettings, pointerInput);

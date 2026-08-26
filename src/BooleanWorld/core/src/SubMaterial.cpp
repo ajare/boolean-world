@@ -36,6 +36,8 @@ void SubMaterial::serializeImpl(shared_ptr<Serializer> serializer, Serialization
       serializer->endArray();
     }
 
+    SerializeEmboss(serializer, "emboss", emboss);
+
     serializer->endMap();  // subMaterial
   }
 }
@@ -45,6 +47,7 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
   uint32_t materialIndex_{0};
   vector<float> paramValues_;
   array<float, 3> baseColour_{};
+  EmbossData emboss_;
 
   try {
     serializer->beginMap("subMaterial");
@@ -81,6 +84,10 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
         serializer->endArray();
       }
 
+      // Absent in a catalog written before embossing existed, and in one that
+      // simply embosses nothing: every field falls back to its default.
+      emboss_ = DeserializeEmboss(serializer, "emboss");
+
       serializer->endMap();  // subMaterial
     }
   } catch (exception& e) {
@@ -93,12 +100,19 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
     return false;
   }
 
+  if (!EmbossIsInRange(emboss_)) {
+    addDeserializationError(
+        "SubMaterial emboss values must fall within their authoring limits.");
+    return false;
+  }
+
   // Commit
   id = move(id_);
   displayName = move(displayName_);
   materialIndex = materialIndex_;
   paramValues = move(paramValues_);
   baseColour = baseColour_;
+  emboss = emboss_;
 
   return true;
 }

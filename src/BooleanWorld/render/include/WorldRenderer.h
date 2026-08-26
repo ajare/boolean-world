@@ -15,7 +15,7 @@
 
 #include <core/World.h>
 
-#include "FloorPatternOptions.h"
+#include "SecondaryMaterialOptions.h"
 #include "SubMaterialResolver.h"
 #include "VideoOptions.h"
 #include "WorldTriangle3dDataProvider.h"
@@ -123,7 +123,7 @@ public:
       int32_t wallMaterialIndexOverride,
       float materialScale,
       float farGridSize,
-      FloorPatternOptions const& floorPattern,
+      SecondaryMaterialOptions const& secondaryMaterial,
       float frameTime,
       int32_t highlightedTriangle = -1,
       bool highlightedCeiling = false,

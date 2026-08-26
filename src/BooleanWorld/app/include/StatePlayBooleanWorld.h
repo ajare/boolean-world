@@ -55,7 +55,7 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     float worldMaterialScale{1.0f};
     float farGridSize{0.5f};
     float lightDistance{0.0f};
-    FloorPatternOptions floorPattern;
+    SecondaryMaterialOptions secondaryMaterial;
 
     bool _renderTriangulationLines{false};
 

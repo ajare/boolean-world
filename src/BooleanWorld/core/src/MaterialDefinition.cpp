@@ -32,7 +32,8 @@ uint32_t MaterialDefinitionData::packedColour() const {
 }
 
 uint64_t MaterialDefinitionData::hash(uint32_t materialIndex) const {
-  array<uint32_t, 1 + BW_MATERIAL_PARAMS_MAX + 3> bits;
+  // Technique, parameters, colour, then the seven emboss fields.
+  array<uint32_t, 1 + BW_MATERIAL_PARAMS_MAX + 3 + 7> bits;
 
   bits[0] = materialIndex;
 
@@ -55,6 +56,22 @@ uint64_t MaterialDefinitionData::hash(uint32_t materialIndex) const {
     }
 
     bits[i + BW_MATERIAL_PARAMS_MAX + 1] = bit_cast<uint32_t>(p);
+  }
+
+  array<float, 6> embossValues{
+      emboss.radius,           emboss.depth,
+      emboss.depthVariation,   emboss.runningBondWidth,
+      emboss.runningBondOffset, emboss.voronoiRounding};
+  auto embossBase = BW_MATERIAL_PARAMS_MAX + 4;
+  bits[embossBase] = bit_cast<uint32_t>(static_cast<int32_t>(emboss.pattern));
+  for (size_t i = 0; i < embossValues.size(); ++i) {
+    auto p = embossValues[i];
+
+    if (p == 0.0f) {
+      p = 0.0f;
+    }
+
+    bits[embossBase + 1 + i] = bit_cast<uint32_t>(p);
   }
 
   return rapidhash(bits.data(), sizeof(bits));

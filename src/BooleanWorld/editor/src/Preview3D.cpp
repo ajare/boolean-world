@@ -4,15 +4,17 @@
 #include <array>
 #include <cstddef>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <limits>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #pragma warning(push)
 #pragma warning(disable : 4201)
+#include <glm/geometric.hpp>
+#include <glm/trigonometric.hpp>
 #include <glm/vec3.hpp>
 #pragma warning(pop)
 
@@ -24,6 +26,7 @@
 #include <core/ArrangementWorldData.h>
 #include <core/ArrangementWorldDataGenerator.h>
 #include <core/Defines.h>
+#include <core/Emboss.h>
 #include <core/Layer.h>
 #include <core/World.h>
 
@@ -40,9 +43,16 @@
 #include "ProcMaterialLibrary.h"
 #include "ReactiveCamera.h"
 #include "Undo.h"
+#include "WidgetHelpers.h"
 
 extern SDL_Window* gWindow;
 extern spdlog::logger* gLogger;
+
+// The screen-space rect of the editor's world viewport - the central region
+// the 2D level geometry is edited in, which the preview takes over while it
+// is open. Published by renderWidgets() each frame before it calls in here.
+extern wp::Vector2 gWorldViewScreenOrigin;
+extern wp::Vector2 gWorldViewSize;
 
 namespace editor {
 namespace {
@@ -73,6 +83,7 @@ struct PreviewMaterialEditorState {
   uint32_t materialIndex{};
   std::vector<float> params;
   std::array<float, 3> colour{};
+  bw::core::EmbossData emboss;
 };
 
 struct PreviewSession {
@@ -83,14 +94,13 @@ struct PreviewSession {
   float angle{};
   float pitch{};
   float eyeZ{};
-  // What the crosshair is on this frame, and what the user has selected.
-  // Selecting stops the crosshair search: the pointer is handed back, and the
-  // camera turns only while dragging. While searching, the looked-at resolved
-  // Arrangement surface is tinted by WorldRenderer.
+  // What the pointer is over this frame, and what the user has selected.
+  // The looked-at surface's border is drawn over the finished image as a
+  // yellow wireframe, so hovering shows what a click would select.
   PreviewSurfaceRef lookedAt;
   PreviewSurfaceRef selection;
   PreviewMaterialEditorState materialEditor;
-  // A left-drag that began inside the preview, so releasing the button over
+  // A right-drag that began inside the preview, so releasing the button over
   // another window still ends the turn.
   bool dragTurning{};
   // Mouse motion accumulated from SDL events since the last frame, in place
@@ -102,13 +112,12 @@ struct PreviewSession {
   // the camera by mpp::CameraPtr, exactly as StatePlayBooleanWorld does.
   std::shared_ptr<ReactiveCamera> camera;
   // Grounding and Arrangement generation deliberately share this exact
-  // in-scope Primitive list. It remains valid while the input-blocking preview
-  // is open.
+  // in-scope Primitive list. It stays valid for as long as the preview is
+  // open: the editor keeps the document's structure frozen meanwhile.
   std::vector<bw::core::Primitive const*> primitivesForGrounding;
+  // In the order they are handed to the Arrangement generator, which is how
+  // a picked surface names its owner - see sourcePrimitive.
   std::vector<PreviewPrimitive> primitives;
-  // Arrangement faces retain authored Primitive ids. Resolve those ids back
-  // to the session's source pointers without relying on fold/list ordering.
-  std::unordered_map<uint32_t, size_t> primitiveById;
   // Built once, synchronously, from that same scoped list when the preview
   // opens - see openPreview3D. This is what the WorldRenderer draws.
   bw::core::ArrangementWorldDataPtr worldData;
@@ -121,26 +130,44 @@ struct PreviewSession {
 
 PreviewSession session;
 
-// Bootstrapped on the first preview open and deliberately kept for the rest
-// of the process: at most one may ever exist, even sequentially, and its
-// shader compilation and manifest scan are one-time costs. See
-// EditorRenderSystem.h. Released by shutdownPreview3D, before the editor
-// tears down the GL context this was built against.
-std::unique_ptr<EditorRenderSystem> editorRenderSystem;
+// Whichever surface the pointer is over, nearest across every previewed
+// Primitive. Invalid when the pointer is outside the viewport or meets
+// nothing. Embedded in the world viewport the preview leaves the pointer
+// free, so aiming is done with the cursor rather than the centre of the view.
+PreviewSurfaceRef surfaceUnderCursor() {
+  if (!session.worldData) {
+    return {};
+  }
 
-// Whichever surface the centre of the view is pointing at, nearest across
-// every previewed Primitive. Invalid when the view centre meets nothing.
-PreviewSurfaceRef lookedAtSurface() {
+  ImVec2 size{
+      session.viewportMax.x - session.viewportMin.x,
+      session.viewportMax.y - session.viewportMin.y};
+  if (size.x <= 0.0f || size.y <= 0.0f) {
+    return {};
+  }
+  auto mouse = ImGui::GetIO().MousePos;
+  float ndcX = ((mouse.x - session.viewportMin.x) / size.x) * 2.0f - 1.0f;
+  float ndcY = 1.0f - ((mouse.y - session.viewportMin.y) / size.y) * 2.0f;
+  if (std::abs(ndcX) > 1.0f || std::abs(ndcY) > 1.0f) {
+    return {};
+  }
+
+  // The same perspective the camera's projection builds: a direction through
+  // the pointer's pixel on the near plane, in the camera's own basis.
   auto position = session.camera->getPosition();
-  auto direction = session.camera->getDirection();
+  auto forward = session.camera->getDirection();
+  auto up = session.camera->getUp();
+  auto right = glm::normalize(glm::cross(forward, up));
+  auto tanHalfFov = std::tan(glm::radians(session.camera->getFov() * 0.5f));
+  auto direction = glm::normalize(
+      forward +
+      right * (ndcX * tanHalfFov * session.camera->getAspectRatio()) +
+      up * (ndcY * tanHalfFov));
+
   // Arrangement geometry keeps height in z, where the renderer's 3D space
   // keeps it in y.
   std::array<float, 3> origin{position.x, position.z, position.y};
   std::array<float, 3> ray{direction.x, direction.z, direction.y};
-
-  if (!session.worldData) {
-    return {};
-  }
   auto pick = pickPreviewSceneSurface(*session.worldData, origin, ray);
   if (!pick.hit()) {
     return {};
@@ -164,23 +191,28 @@ void rebuildPreviewWorldData() {
       session.world->getStepThreshold());
 }
 
+// Defined below, with the render-scene lifecycle it belongs to.
+void rebuildPreviewForSurfaceEdit();
+
 void reconcileSavedProcMaterial(std::string const& resourceName) {
-  if (!session.renderScene || !editorRenderSystem) {
+  auto* renderSystem = editorRenderSystem();
+  if (!session.renderScene || !renderSystem) {
     return;
   }
   // The render ResourceManager caches a separate ProcMaterial view from the
   // authoring library. Reload its YAML and cheaply rebuild only the
   // resolver's hash map; the scene, pipeline, and mesh buckets stay live.
-  editorRenderSystem->reloadProcMaterial(resourceName);
+  renderSystem->reloadProcMaterial(resourceName);
   session.renderScene->reloadSubMaterialResolver(
-      editorRenderSystem->resourceManager());
+      renderSystem->resourceManager());
 }
 
 void applyMaterialDraft() {
   auto const& draft = session.materialEditor;
   if (draft.hasDraft && session.renderScene) {
     session.renderScene->updateMaterialDraft(
-        draft.editingId, draft.materialIndex, draft.params, draft.colour);
+        draft.editingId, draft.materialIndex, draft.params, draft.colour,
+        draft.emboss);
   }
 }
 
@@ -197,81 +229,39 @@ PrimitiveMaterialSurface materialSurface(PreviewSurface surface) {
   return PrimitiveMaterialSurface::Wall;
 }
 
-uint32_t surfaceFaceIndex(PreviewSurfaceRef const& surface) {
-  if (!session.worldData || !surface.valid) {
-    return ~0u;
+// The selection in the form the shared resolver takes: it is the same record
+// pickPreviewSceneSurface produced, minus the distance nothing downstream
+// wants.
+PreviewScenePick asPick(PreviewSurfaceRef const& surface) {
+  PreviewScenePick pick;
+  if (!surface.valid) {
+    return pick;
   }
-  auto const& arrangement = session.worldData->getArrangement();
-  if (surface.surface == PreviewSurface::Floor ||
-      surface.surface == PreviewSurface::Ceiling) {
-    auto const& triangles = session.worldData->getTriangles();
-    return surface.primitiveIndex < triangles.size()
-               ? triangles[surface.primitiveIndex].face
-               : ~0u;
-  }
-  if (surface.surface != PreviewSurface::Wall) {
-    return ~0u;
-  }
-  auto const& walls = session.worldData->getWalls();
-  if (surface.wallIndex >= walls.size()) {
-    return ~0u;
-  }
-  auto const& wall = walls[surface.wallIndex];
-  auto const& edge = arrangement.edges[wall.edge];
-  for (auto faceIndex : edge.face) {
-    if (faceIndex < arrangement.faces.size() &&
-        arrangement.faces[faceIndex].paletteIndex == wall.paletteIndex) {
-      return faceIndex;
-    }
-  }
-  return ~0u;
+  pick.primitiveIndex = surface.primitiveIndex;
+  pick.surfaceHit.surface = surface.surface;
+  pick.surfaceHit.wallIndex = surface.wallIndex;
+  return pick;
 }
 
+// The Primitive whose properties the picked surface draws with - the one an
+// edit to that surface's material has to reach.
 PreviewPrimitive* sourcePrimitive(PreviewSurfaceRef const& surface) {
-  auto faceIndex = surfaceFaceIndex(surface);
-  if (faceIndex == ~0u) {
+  if (!session.worldData) {
     return nullptr;
   }
-  auto primitiveId =
-      session.worldData->getArrangement().faces[faceIndex].primitiveIndex;
-  auto found = session.primitiveById.find(primitiveId);
-  return found != session.primitiveById.end() &&
-                 found->second < session.primitives.size()
-             ? &session.primitives[found->second]
+  auto owner = resolvePreviewSurfaceOwner(*session.worldData, asPick(surface));
+  // session.primitives holds the same Primitives, in the same order, as the
+  // list openPreview3D hands the Arrangement generator, so the owner's place
+  // in that list is its place here.
+  return owner.valid() && owner.primitiveListIndex < session.primitives.size()
+             ? &session.primitives[owner.primitiveListIndex]
              : nullptr;
 }
 
 std::string surfaceSubMaterialId(PreviewSurfaceRef const& surface) {
-  if (!session.worldData) {
-    return {};
-  }
-  auto const& arrangement = session.worldData->getArrangement();
-  uint16_t paletteIndex{};
-  if (surface.surface == PreviewSurface::Wall) {
-    auto const& walls = session.worldData->getWalls();
-    if (!surface.valid || surface.wallIndex >= walls.size()) {
-      return {};
-    }
-    paletteIndex = walls[surface.wallIndex].paletteIndex;
-  } else {
-    auto faceIndex = surfaceFaceIndex(surface);
-    if (faceIndex == ~0u) {
-      return {};
-    }
-    paletteIndex = arrangement.faces[faceIndex].paletteIndex;
-  }
-  auto const& properties = arrangement.palette[paletteIndex];
-  switch (surface.surface) {
-    case PreviewSurface::Floor:
-      return properties.floorMaterialId;
-    case PreviewSurface::Ceiling:
-      return properties.ceilingMaterialId;
-    case PreviewSurface::Wall:
-      return properties.wallMaterialId;
-    case PreviewSurface::None:
-      return {};
-  }
-  return {};
+  return session.worldData
+             ? previewSurfaceSubMaterialId(*session.worldData, asPick(surface))
+             : std::string{};
 }
 
 void loadMaterialDraft(std::string const& id) {
@@ -300,6 +290,23 @@ void loadMaterialDraft(std::string const& id) {
   state.materialIndex = material->materialIndex;
   state.params = material->paramValues;
   state.colour = material->baseColour;
+  state.emboss = material->emboss;
+}
+
+// The relief this Sub-material embosses into every surface it is applied to.
+// Authored here rather than as Technique parameters: it is evaluated the same
+// way whatever the Technique, so it has its own fields and its own limits -
+// and, unlike a parameter slider, the pattern is a named choice.
+void renderEmbossEditor(PreviewMaterialEditorState& state) {
+  if (!ImGui::CollapsingHeader("Embossing", ImGuiTreeNodeFlags_DefaultOpen)) {
+    return;
+  }
+
+  // Every change here is pushed straight into the live preview by
+  // applyMaterialDraft, so a pattern or a groove depth reads back on the
+  // surface under the pointer as it is dragged.
+  ImGui::SetNextItemWidth(280.0f);
+  widgets::EmbossFields(state.emboss);
 }
 
 void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
@@ -350,6 +357,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
               actionDoc, previewPrimitive.source,
               materialSurface(session.selection.surface), id);
         });
+    rebuildPreviewForSurfaceEdit();
     loadMaterialDraft(id);
   }
 
@@ -372,19 +380,25 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       }
     }
     ImGui::ColorEdit3("Base colour", state.colour.data());
+  }
 
+  renderEmbossEditor(state);
+
+  if (ImGui::CollapsingHeader("Save", ImGuiTreeNodeFlags_DefaultOpen)) {
     if (ImGui::Button("Save existing")) {
       auto id = state.editingId;
       auto name = std::string(state.name);
       auto params = state.params;
       auto colour = state.colour;
+      auto emboss = state.emboss;
       if (transactUndoableActionAtomically(
               session.document, "Save Sub-material",
               [&](Document* actionDoc) {
                 renameSubMaterial(
                     actionDoc, &procMaterialLibrary(), id, name);
                 return editSubMaterial(
-                    actionDoc, &procMaterialLibrary(), id, params, colour);
+                    actionDoc, &procMaterialLibrary(), id, params, colour,
+                    emboss);
               })) {
         reconcileSavedProcMaterial(catalog.resourceName);
         loadMaterialDraft(id);
@@ -395,6 +409,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       auto name = std::string(state.name);
       auto params = state.params;
       auto colour = state.colour;
+      auto emboss = state.emboss;
       auto materialIndex = state.materialIndex;
       auto resourceName = catalog.resourceName;
       std::string createdId;
@@ -403,7 +418,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
               [&](Document* actionDoc) {
                 if (!createSubMaterial(
                         actionDoc, &procMaterialLibrary(), resourceName, name,
-                        materialIndex, params, colour, &createdId)) {
+                        materialIndex, params, colour, emboss, &createdId)) {
                   return false;
                 }
                 return setPrimitiveSubMaterial(
@@ -411,6 +426,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
                     materialSurface(session.selection.surface), createdId);
               })) {
         reconcileSavedProcMaterial(resourceName);
+        rebuildPreviewForSurfaceEdit();
         loadMaterialDraft(createdId);
       }
     }
@@ -421,43 +437,10 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
   }
 }
 
-// A modeless authoring window for the clicked wall/floor/ceiling. Closing it,
-// by its own close button, means the same thing as right-clicking the preview.
-void renderSelectedSurfaceWindow() {
-  if (!session.selection.valid) {
-    return;
-  }
-  auto* previewPrimitive = sourcePrimitive(session.selection);
-  ImGui::SetNextWindowPos(
-      {session.viewportMin.x + 16.0f, session.viewportMin.y + 48.0f},
-      ImGuiCond_Appearing);
-  bool stayOpen = true;
-  if (ImGui::Begin(
-          "Selected surface", &stayOpen,
-          ImGuiWindowFlags_AlwaysAutoResize |
-              ImGuiWindowFlags_NoSavedSettings)) {
-    auto surfaceName = previewSurfaceName(session.selection.surface);
-    std::string label(surfaceName);
-    if (!label.empty()) {
-      label.front() = static_cast<char>(std::toupper(label.front()));
-    }
-    ImGui::Text("Selected %s", label.c_str());
-
-    if (!previewPrimitive || !previewPrimitive->editable ||
-        !previewPrimitive->source || !session.document) {
-      ImGui::TextDisabled(
-          "This surface is generated by a step that does not permit direct editing.");
-    } else {
-      renderPreviewMaterialEditor(*previewPrimitive);
-    }
-  }
-  ImGui::End();
-
-  if (!stayOpen) {
-    session.selection = {};
-    session.materialEditor = {};
-    session.dragTurning = false;
-  }
+void clearSelectedSurface() {
+  session.selection = {};
+  session.materialEditor = {};
+  session.dragTurning = false;
 }
 
 // Single owner of the pointer grab. Enabling flushes pending mouse motion,
@@ -469,24 +452,23 @@ void syncRelativeMouseMode(bool enabled) {
   SDL_SetWindowRelativeMouseMode(gWindow, enabled);
 }
 
-// With nothing selected the pointer is grabbed and every scrap of motion
-// turns the camera. Once something is selected the pointer belongs to the
-// user again, so the camera only turns while they drag with the left button
-// from inside the preview.
+// Right-drag turns the camera, which leaves the left button free to pick
+// surfaces and, more importantly, leaves the pointer usable everywhere else
+// in the editor - the preview shares the window with the panels around it
+// now, so it cannot hold the pointer for as long as it is open. A drag that
+// began inside the preview keeps turning until the button is released,
+// wherever the pointer ends up.
 bool turningThisFrame(bool previewHovered) {
-  if (!session.selection.valid) {
-    return true;
-  }
-  if (previewHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+  if (previewHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
     session.dragTurning = true;
   }
-  if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+  if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
     session.dragTurning = false;
   }
   return session.dragTurning;
 }
 
-void updateCameraFromInput(bool previewHovered) {
+void updateCameraFromInput(bool previewHovered, bool acceptKeyboard) {
   auto const& io = ImGui::GetIO();
 
   // Motion accumulates from SDL whether or not it is wanted, so discard it
@@ -512,19 +494,28 @@ void updateCameraFromInput(bool previewHovered) {
   session.camera->pitch(session.pitch - previousPitch);
 
   wp::Vector2 movement = wp::Vector2::ZERO;
-  // A material parameter being typed into takes the keyboard with it -
-  // otherwise entering a value would fly the camera across the level.
-  if (!io.WantTextInput) {
-    if (ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_UpArrow)) {
+  // Movement keys belong to the preview only while it has the pointer or the
+  // focus; otherwise WASD is whatever the rest of the editor makes of it. A
+  // material parameter being typed into takes the keyboard with it too -
+  // entering a value must not fly the camera across the level.
+  // Shift claims the arrows for the selected surface, so holding it must not
+  // also fly the camera. WASD is unaffected either way.
+  bool const arrowsMoveTheCamera = !io.KeyShift;
+  if (acceptKeyboard && !io.WantTextInput) {
+    if (ImGui::IsKeyDown(ImGuiKey_W) ||
+        (arrowsMoveTheCamera && ImGui::IsKeyDown(ImGuiKey_UpArrow))) {
       movement.y += 1.0f;
     }
-    if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow)) {
+    if (ImGui::IsKeyDown(ImGuiKey_S) ||
+        (arrowsMoveTheCamera && ImGui::IsKeyDown(ImGuiKey_DownArrow))) {
       movement.y -= 1.0f;
     }
-    if (ImGui::IsKeyDown(ImGuiKey_A) || ImGui::IsKeyDown(ImGuiKey_LeftArrow)) {
+    if (ImGui::IsKeyDown(ImGuiKey_A) ||
+        (arrowsMoveTheCamera && ImGui::IsKeyDown(ImGuiKey_LeftArrow))) {
       movement.x -= 1.0f;
     }
-    if (ImGui::IsKeyDown(ImGuiKey_D) || ImGui::IsKeyDown(ImGuiKey_RightArrow)) {
+    if (ImGui::IsKeyDown(ImGuiKey_D) ||
+        (arrowsMoveTheCamera && ImGui::IsKeyDown(ImGuiKey_RightArrow))) {
       movement.x += 1.0f;
     }
   }
@@ -541,6 +532,145 @@ void updateCameraFromInput(bool previewHovered) {
       {session.position.x, session.eyeZ, session.position.y});
 }
 
+// How far Shift+Up/Down moves the selected floor or ceiling, and how far the
+// same with Ctrl held moves it. Eight units is the step the 2D panel's
+// Floor Z field takes on a fast click, so the two agree; one unit is for
+// placing a surface exactly.
+constexpr float coarseSurfaceZStep = 8.0f;
+constexpr float fineSurfaceZStep = 1.0f;
+
+// Moves the selected floor or ceiling, on the same Primitive an edit to that
+// surface's material would reach - the one that owns the polygon it belongs
+// to. Walls are left alone: a wall has no height of its own, only the gap
+// between the two polygons it stands between, which moves when their floors
+// and ceilings do.
+void updateSelectedSurfaceFromInput(bool acceptKeyboard) {
+  auto const& io = ImGui::GetIO();
+  auto const surface = session.selection.surface;
+  if (!acceptKeyboard || io.WantTextInput || !io.KeyShift ||
+      !session.selection.valid ||
+      (surface != PreviewSurface::Floor && surface != PreviewSurface::Ceiling)) {
+    return;
+  }
+
+  // Repeating, so the surface keeps moving while the key is held.
+  auto const step = io.KeyCtrl ? fineSurfaceZStep : coarseSurfaceZStep;
+  float delta = 0.0f;
+  if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, true)) {
+    delta += step;
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true)) {
+    delta -= step;
+  }
+  if (delta == 0.0f) {
+    return;
+  }
+
+  auto* previewPrimitive = sourcePrimitive(session.selection);
+  if (!previewPrimitive || !previewPrimitive->editable ||
+      !previewPrimitive->source || !session.document) {
+    return;
+  }
+
+  auto* primitive = previewPrimitive->source;
+  auto const current = primitive->getProperties();
+  auto const moved =
+      movedSurfaceZ(current, materialSurface(surface), delta);
+  // A nudge into the opposing surface is clamped to nothing at all, and an
+  // action that changes nothing has no business on the undo stack.
+  if (moved.floorZ == current.floorZ && moved.ceilingZ == current.ceilingZ) {
+    return;
+  }
+
+  transactUndoableAction(
+      session.document, "Move preview surface",
+      [primitive, &moved](Document* actionDoc) {
+        return setPrimitiveProperties(actionDoc, primitive, moved);
+      });
+  rebuildPreviewForSurfaceEdit();
+}
+
+// Arrangement geometry keeps height in z and its ground plane in x/y; the
+// renderer's 3D space keeps height in y.
+glm::vec3 outlinePoint(
+    bw::core::arr::FixedPointVertex const& vertex, float z) {
+  return {
+      bw::core::arr::ToWorldCoordinate(vertex.x), z,
+      bw::core::arr::ToWorldCoordinate(vertex.y)};
+}
+
+// Red for the surface the user has selected, yellow for the one the pointer
+// is over: two colours nothing the world's own materials render comes close
+// to, so a border always reads as one.
+glm::vec4 const selectedOutlineColour{1.0f, 0.0f, 0.0f, 1.0f};
+glm::vec4 const hoveredOutlineColour{1.0f, 1.0f, 0.0f, 1.0f};
+
+// Whether two picks name the same resolved surface. A hover over the already
+// selected surface must not paint over its red border with a yellow one.
+bool sameSurface(PreviewSurfaceRef const& left, PreviewSurfaceRef const& right) {
+  if (!left.valid || !right.valid || left.surface != right.surface) {
+    return false;
+  }
+  return left.surface == PreviewSurface::Wall
+             ? left.wallIndex == right.wallIndex
+             : left.primitiveIndex == right.primitiveIndex;
+}
+
+// The border of one resolved surface, as endpoint pairs for a line list. A
+// wall is the quad the pick itself tested; a floor or ceiling is the
+// Arrangement face's own boundary - the outer ring plus every hole - which is
+// the clipped polygon the tessellation fills, not the one triangle of it the
+// ray happened to meet.
+std::vector<glm::vec3> surfaceOutline(PreviewSurfaceRef const& surface) {
+  std::vector<glm::vec3> segments;
+  if (!surface.valid || !session.worldData) {
+    return segments;
+  }
+  auto const& arrangement = session.worldData->getArrangement();
+
+  auto appendLoop = [&](std::vector<uint32_t> const& loop, float z) {
+    for (size_t index = 0; index < loop.size(); ++index) {
+      auto const& from = arrangement.vertices[loop[index]];
+      auto const& to = arrangement.vertices[loop[(index + 1) % loop.size()]];
+      segments.push_back(outlinePoint(from, z));
+      segments.push_back(outlinePoint(to, z));
+    }
+  };
+
+  if (surface.surface == PreviewSurface::Wall) {
+    auto const& walls = session.worldData->getWalls();
+    if (surface.wallIndex >= walls.size()) {
+      return segments;
+    }
+    auto const& wall = walls[surface.wallIndex];
+    auto const& edge = arrangement.edges[wall.edge];
+    std::array<glm::vec3, 4> quad{
+        outlinePoint(arrangement.vertices[edge.v[0]], wall.minZ),
+        outlinePoint(arrangement.vertices[edge.v[1]], wall.minZ),
+        outlinePoint(arrangement.vertices[edge.v[1]], wall.maxZ),
+        outlinePoint(arrangement.vertices[edge.v[0]], wall.maxZ)};
+    for (size_t index = 0; index < quad.size(); ++index) {
+      segments.push_back(quad[index]);
+      segments.push_back(quad[(index + 1) % quad.size()]);
+    }
+    return segments;
+  }
+
+  auto const& triangles = session.worldData->getTriangles();
+  if (surface.primitiveIndex >= triangles.size()) {
+    return segments;
+  }
+  auto const& face = arrangement.faces[triangles[surface.primitiveIndex].face];
+  auto const& properties = arrangement.palette[face.paletteIndex];
+  auto z = surface.surface == PreviewSurface::Ceiling ? properties.ceilingZ
+                                                      : properties.floorZ;
+  appendLoop(face.outerBoundaryVertices, z);
+  for (auto const& hole : face.innerBoundaryVertices) {
+    appendLoop(hole, z);
+  }
+  return segments;
+}
+
 // A size in framebuffer pixels, which is what the render graph's images are
 // sized against - the ImGui coordinates the window is laid out in are not the
 // same thing on a scaled display.
@@ -549,15 +679,16 @@ struct PreviewPixelSize {
   size_t height;
 };
 
-// Near-fullscreen within the main viewport, as the preview's input-blocking
-// overlay has always promised. Both the open and render paths size the
-// pipeline from this, so they cannot disagree.
-ImVec2 previewWindowSize() {
-  auto* viewport = ImGui::GetMainViewport();
-  constexpr float margin = 8.0f;
-  return {
-      viewport->Size.x - margin * 2.0f,
-      viewport->Size.y - margin * 2.0f};
+// The editor's world viewport - the central region where the 2D level
+// geometry is otherwise edited - which the preview takes over while it is
+// open. Both the open and render paths size the pipeline from this, so they
+// cannot disagree.
+ImVec2 previewViewportPos() {
+  return {gWorldViewScreenOrigin.x, gWorldViewScreenOrigin.y};
+}
+
+ImVec2 previewViewportSize() {
+  return {std::max(gWorldViewSize.x, 1.0f), std::max(gWorldViewSize.y, 1.0f)};
 }
 
 PreviewPixelSize previewPixelSize(ImVec2 const& windowSize) {
@@ -575,15 +706,20 @@ void createPreviewScene(ImVec2 const& windowSize) {
     return;
   }
 
-  try {
-    if (!editorRenderSystem) {
-      editorRenderSystem = std::make_unique<EditorRenderSystem>(
-          ED_WINDOW_WIDTH, ED_WINDOW_HEIGHT);
+  // Built once while the editor started up, so nothing here pays for it.
+  auto* renderSystem = editorRenderSystem();
+  if (!renderSystem) {
+    if (gLogger) {
+      gLogger->error(
+          "3D preview cannot be rendered: the editor render system was not created.");
     }
+    return;
+  }
 
+  try {
     auto size = previewPixelSize(windowSize);
     session.renderScene = std::make_unique<PreviewRenderScene>(
-        *editorRenderSystem, session.document->getWorld().get(), size.width,
+        *renderSystem, session.document->getWorld().get(), size.width,
         size.height);
   } catch (std::exception const& exception) {
     session.renderScene.reset();
@@ -614,18 +750,22 @@ void renderPreviewScene(ImVec2 const& windowSize) {
   // This is a uniform-only push on every preview frame, matching the game
   // renderer's update cadence and keeping slider drags free of re-tessellation.
   applyMaterialDraft();
-  auto const highlightedTriangle =
-      session.lookedAt.valid && session.lookedAt.surface != PreviewSurface::Wall
-          ? static_cast<int>(session.lookedAt.primitiveIndex)
-          : -1;
-  auto const highlightedWall =
-      session.lookedAt.valid && session.lookedAt.surface == PreviewSurface::Wall
-          ? static_cast<int>(session.lookedAt.wallIndex)
-          : -1;
+  // The selection keeps its border for as long as it is selected; the hover
+  // border is drawn after it, and so over it, when they are different
+  // surfaces.
+  std::vector<PreviewOutline> outlines;
+  if (session.selection.valid) {
+    outlines.push_back(
+        {surfaceOutline(session.selection), selectedOutlineColour});
+  }
+  if (session.lookedAt.valid &&
+      !sameSurface(session.lookedAt, session.selection)) {
+    outlines.push_back({surfaceOutline(session.lookedAt), hoveredOutlineColour});
+  }
+
   auto textureId = preview->render(
       session.document->getWorld().get(), *session.worldData, session.camera,
-      session.camera->getPosition(), io.DeltaTime, highlightedTriangle,
-      session.lookedAt.surface == PreviewSurface::Ceiling, highlightedWall);
+      session.camera->getPosition(), io.DeltaTime, outlines);
   if (textureId == 0) {
     return;
   }
@@ -637,6 +777,35 @@ void renderPreviewScene(ImVec2 const& windowSize) {
       {1.0f, 0.0f});
 }
 
+// Editing the selected surface - assigning it a Sub-material, or moving its
+// floor or ceiling - changes more than a uniform, so nothing the preview
+// built beforehand can be reused:
+//
+//   - which mesh bucket a triangle or wall lands in is decided by the
+//     Sub-material id in the Arrangement palette, and this session's
+//     Arrangement is a snapshot taken when the preview opened; and
+//   - the buckets themselves are baked in WorldBatch::createModelStream from
+//     the material ids every Primitive carried when the render scene was
+//     built, so a Sub-material that no Primitive was using then has no bucket
+//     at all - and getMeshIndexForMaterialHash answers a missing bucket with
+//     zero, which is a real, and wrong, mesh.
+//
+// A moved floor or ceiling is plainer still: the Arrangement's own geometry,
+// the walls it derives from the step between two polygons, and the triangles
+// the renderer draws all come out of that snapshot.
+//
+// So rebuild both, exactly as opening the preview does. This runs on an
+// explicit pick or nudge, never on a slider drag: parameter and colour edits
+// still go through the uniform-only draft path.
+void rebuildPreviewForSurfaceEdit() {
+  if (!session.world || !session.document || !session.document->isActive()) {
+    return;
+  }
+  rebuildPreviewWorldData();
+  session.renderScene.reset();
+  createPreviewScene(previewViewportSize());
+}
+
 }  // namespace
 
 bool preview3DIsOpen() {
@@ -644,8 +813,56 @@ bool preview3DIsOpen() {
 }
 
 void shutdownPreview3D() {
+  session.open = false;
   session.renderScene.reset();
-  editorRenderSystem.reset();
+}
+
+void closePreview3D() {
+  if (!session.open) {
+    return;
+  }
+  session.open = false;
+  session.renderScene.reset();
+  syncRelativeMouseMode(false);
+}
+
+void renderPreview3DSelectedSurface() {
+  if (!session.open) {
+    return;
+  }
+
+  if (!ImGui::CollapsingHeader(
+          "Selected surface", ImGuiTreeNodeFlags_DefaultOpen)) {
+    return;
+  }
+
+  if (!session.selection.valid) {
+    ImGui::TextDisabled("Click a surface in the preview to select it.");
+    return;
+  }
+
+  auto surfaceName = previewSurfaceName(session.selection.surface);
+  std::string label(surfaceName);
+  if (!label.empty()) {
+    label.front() = static_cast<char>(std::toupper(label.front()));
+  }
+  ImGui::Text("Selected %s", label.c_str());
+  ImGui::SameLine();
+  // What the window's close button used to do, and what clicking nothing in
+  // the preview still does.
+  if (ImGui::SmallButton("Deselect")) {
+    clearSelectedSurface();
+    return;
+  }
+
+  auto* previewPrimitive = sourcePrimitive(session.selection);
+  if (!previewPrimitive || !previewPrimitive->editable ||
+      !previewPrimitive->source || !session.document) {
+    ImGui::TextDisabled(
+        "This surface is generated by a step that does not permit direct editing.");
+    return;
+  }
+  renderPreviewMaterialEditor(*previewPrimitive);
 }
 
 void addPreview3DMouseMotion(float relativeX, float relativeY) {
@@ -697,7 +914,6 @@ void openPreview3D(
         }
       }
       session.primitivesForGrounding.push_back(primitive);
-      session.primitiveById[primitive->getId()] = session.primitives.size();
       session.primitives.push_back(
           {const_cast<bw::core::Primitive*>(primitive), editable});
     }
@@ -710,7 +926,7 @@ void openPreview3D(
   // Per preview-open, unlike the process-lifetime EditorRenderSystem it is
   // built on: the Scene, pipeline and WorldRenderer all belong to this one
   // session and go away with it.
-  createPreviewScene(previewWindowSize());
+  createPreviewScene(previewViewportSize());
 }
 
 void renderPreview3D() {
@@ -729,34 +945,24 @@ void renderPreview3D() {
     return;
   }
 
-  auto* viewport = ImGui::GetMainViewport();
-  auto windowSize = previewWindowSize();
-  ImGui::SetNextWindowPos(
-      {viewport->Pos.x + (viewport->Size.x - windowSize.x) * 0.5f,
-       viewport->Pos.y + (viewport->Size.y - windowSize.y) * 0.5f});
+  auto windowSize = previewViewportSize();
+  ImGui::SetNextWindowPos(previewViewportPos());
   ImGui::SetNextWindowSize(windowSize);
-  // Taking focus every frame would stop the selected-surface window from
-  // being clicked or dragged, so only insist on it while the preview owns
-  // the pointer outright.
-  if (!session.selection.valid) {
-    ImGui::SetNextWindowFocus();
-  }
-  ImGui::SetNextFrameWantCaptureMouse(true);
-  ImGui::SetNextFrameWantCaptureKeyboard(true);
 
+  // Chromeless and pinned to the world viewport's rect, exactly as the World
+  // window it stands in for is - but taking input, because this one is
+  // steered with the mouse and keyboard.
   constexpr ImGuiWindowFlags flags =
       ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
       ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
-      ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoSavedSettings;
+      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoDocking |
+      ImGuiWindowFlags_NoSavedSettings;
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.0f, 0.0f});
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
   bool visible = ImGui::Begin("##3D preview", nullptr, flags);
   if (visible) {
-    if (!session.selection.valid) {
-      ImGui::SetWindowFocus();
-    }
     session.viewportMin = ImGui::GetWindowPos();
     session.viewportMax = {
         session.viewportMin.x + ImGui::GetWindowSize().x,
@@ -764,39 +970,42 @@ void renderPreview3D() {
     // False when the selected-surface window sits over the pointer, which is
     // what keeps dragging that window from turning the camera underneath it.
     bool previewHovered = ImGui::IsWindowHovered();
+    bool previewFocused = ImGui::IsWindowFocused();
 
     session.camera->setAspectRatio(
         std::max(ImGui::GetWindowSize().x / ImGui::GetWindowSize().y, 0.01f));
-    bool closing = ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal);
+    // Escape belongs to the preview only while the pointer or the focus is
+    // in it: the rest of the editor is live around it now, so this must not
+    // be routed globally.
+    bool closing = (previewHovered || previewFocused) &&
+                   ImGui::IsKeyPressed(ImGuiKey_Escape);
     if (!closing) {
-      if (!session.selection.valid) {
+      if (session.dragTurning) {
         // Relative mode already hides the pointer; this stops the ImGui SDL3
         // backend from calling SDL_ShowCursor() behind its back every frame.
         // ImGui resets the cursor to the arrow each NewFrame, so it comes
-        // back on its own once something is selected or the preview closes.
+        // back on its own once the drag ends.
         ImGui::SetMouseCursor(ImGuiMouseCursor_None);
       }
-      updateCameraFromInput(previewHovered);
+      auto const acceptKeyboard = previewHovered || previewFocused;
+      updateCameraFromInput(previewHovered, acceptKeyboard);
+      // After the camera, so a nudge that rebuilds the Arrangement leaves the
+      // eye height regrounded against the surface it just moved.
+      updateSelectedSurfaceFromInput(acceptKeyboard);
 
-      // Only hunt for a surface while none is selected: selecting is what
-      // ends the search.
+      // Hovering outlines whichever surface a click would select - including
+      // while one is already selected, so the next pick is just as visible
+      // as the first.
       session.lookedAt =
-          session.selection.valid ? PreviewSurfaceRef{} : lookedAtSurface();
+          previewHovered && !session.dragTurning ? surfaceUnderCursor()
+                                                 : PreviewSurfaceRef{};
 
-      if (!session.selection.valid) {
-        // The pointer is grabbed and aiming is done with the whole window,
-        // so this deliberately does not ask where the cursor is.
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-            session.lookedAt.valid) {
-          session.selection = session.lookedAt;
-          session.materialEditor = {};
-          session.lookedAt = {};
-        }
-      } else if (
-          previewHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-        session.selection = {};
+      // Clicking empty space is how a selection is dropped; the
+      // selected-surface window's close button does the same thing.
+      if (previewHovered && !session.dragTurning &&
+          ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        session.selection = session.lookedAt;
         session.materialEditor = {};
-        session.dragTurning = false;
       }
     }
 
@@ -812,11 +1021,9 @@ void renderPreview3D() {
 
     ImGui::SetCursorPos({12.0f, 12.0f});
     ImGui::TextUnformatted(
-        session.selection.valid
-            ? "WASD/Arrows to move, left-drag to look, right-click to "
-              "deselect, ESC to exit preview"
-            : "WASD/Arrows to move, mouse to look, click a surface to select, "
-              "ESC to exit preview");
+        "WASD/Arrows to move, right-drag to look, click a surface to select, "
+        "shift+up/down to raise a floor or ceiling (+ctrl for one unit), "
+        "ESC to exit preview");
 
     if (closing) {
       session.open = false;
@@ -831,15 +1038,13 @@ void renderPreview3D() {
     session.renderScene.reset();
   }
 
-  renderSelectedSurfaceWindow();
-
   // Relative mode keeps reporting motion past the window edge, so looking
-  // around is never bounded by the screen. Requiring `visible` too means a
-  // window ImGui declined to draw releases the pointer instead of holding
-  // it hostage with no way to reach the Escape shortcut. A selection hands
-  // the pointer back so the user can reach the window naming it.
-  syncRelativeMouseMode(
-      session.open && visible && !session.selection.valid);
+  // around is never bounded by the viewport's edges. It lasts exactly as long
+  // as the drag that turns the camera: everything else in the editor needs
+  // the pointer back the instant the button comes up. Requiring `visible`
+  // too means a window ImGui declined to draw releases the pointer instead
+  // of holding it hostage.
+  syncRelativeMouseMode(session.open && visible && session.dragTurning);
 }
 
 }  // namespace editor

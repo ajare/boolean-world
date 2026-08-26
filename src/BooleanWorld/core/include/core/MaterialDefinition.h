@@ -3,6 +3,7 @@
 #include <array>
 
 #include "core/Defines.h"
+#include "core/Emboss.h"
 #include "core/Serializable.h"
 
 namespace bw {
@@ -10,11 +11,19 @@ namespace core {
 struct MaterialDefinitionData {
   std::array<float, BW_MATERIAL_PARAMS_MAX> params;
   std::array<float, 3> baseColour;
+  // Resolved from the Sub-material, and part of the hash below: two surfaces
+  // whose materials agree on everything but their relief still need their own
+  // mesh buckets, because the emboss uniforms are per bucket.
+  EmbossData emboss;
 
   uint32_t packedColour() const;
   uint64_t hash(uint32_t materialIndex) const;
 };
 
+// Note that emboss is deliberately absent from this type's serialization: a
+// MaterialDefinition is only ever built in memory now that Sub-materials own
+// the authored data (ADR-0023), and nothing reads or writes the old on-disk
+// shape, so there is nothing to migrate.
 struct MaterialDefinition : public Serializable {
   MaterialDefinitionData data;
 

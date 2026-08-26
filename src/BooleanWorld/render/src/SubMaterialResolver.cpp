@@ -13,6 +13,7 @@ SubMaterialResolver::SubMaterialResolver(wp::application::resourcesystem::Resour
       Resolved resolved;
       resolved.materialIndex = subMaterial.materialIndex;
       resolved.def.baseColour = subMaterial.baseColour;
+      resolved.def.emboss = subMaterial.emboss;
       resolved.def.params.fill(0.0f);
 
       for (size_t i = 0; i < subMaterial.paramValues.size() && i < resolved.def.params.size(); ++i) {
@@ -35,6 +36,7 @@ SubMaterialResolver::Resolved SubMaterialResolver::resolve(string const& subMate
 
   Resolved error;
   error.materialIndex = BW_MATERIAL_ERROR_INDEX;
+  error.def.emboss = {};
   error.def.params.fill(0.0f);
   error.def.baseColour = {1.0f, 0.0f, 1.0f};
   return error;

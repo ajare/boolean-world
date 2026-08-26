@@ -60,13 +60,18 @@ samples `worldPos.xz` only, so horizontal material appearance does not change
 with floor or ceiling elevation.
 
 Both shaders expose the same renderer-facing controls: material index and
-parameters, material scale, global time, player position, and floor-pattern
-settings. This keeps map material definitions and F5 material controls usable
+parameters, material scale, global time, player position, and the batch's
+embossing. This keeps map material definitions and F5 material controls usable
 with either horizontal mode.
 
-## Floor embossing
+## Embossing
 
-Floor meshes support six `FLOOR_PATTERN` values:
+Embossing is a property of the Sub-material (`core/Emboss.h`), not a global
+render option, so its uniforms arrive per batch alongside `MATERIAL_INDEX` and
+`MATERIAL_PARAMS` - and it applies to whatever surface the material was
+assigned to, floor, ceiling or wall alike.
+
+`EMBOSS_PATTERN` takes six values:
 
 - `0`: none;
 - `1`: square;
@@ -75,31 +80,32 @@ Floor meshes support six `FLOOR_PATTERN` values:
 - `4`: modular opus;
 - `5`: Voronoi.
 
-`HEXAGON_RADIUS` and `HEXAGON_DEPTH` remain the shared size and depth uniforms
-for all patterns despite their legacy names. `TILE_DEPTH_VARIATION_FACTOR`
-adds a deterministic random downward offset to each tile, scaled by pattern
-depth; `0` keeps all tile surfaces level and `1` allows an offset up to the
-full configured depth. The size is a radius for square
-and hexagon patterns, the full tile length for running bond, and the large
-square tile size for modular opus, and the nominal cell size for Voronoi.
-`RUNNING_BOND_WIDTH_PERCENT` sets tile width as a percentage of length and
-`RUNNING_BOND_OFFSET_PERCENT` offsets alternate rows by a percentage of length.
-`VORONOI_ROUNDED_EDGE_FACTOR` smoothly rounds Voronoi cell junctions from `0`
-(sharp) to `1` (maximum rounding).
-`WorldRenderer3d` sends a nonzero pattern only to meshes tagged as floors;
-ceilings and walls always receive `0`.
+`EMBOSS_RADIUS` and `EMBOSS_DEPTH` are the shared size and depth uniforms for
+all patterns. `EMBOSS_DEPTH_VARIATION` adds a deterministic random downward
+offset to each tile, scaled by pattern depth; `0` keeps all tile surfaces
+level and `1` allows an offset up to the full configured depth. The size is a
+radius for square and hexagon patterns, the full tile length for running bond,
+the large square tile size for modular opus, and the nominal cell size for
+Voronoi. `EMBOSS_RUNNING_BOND_WIDTH` sets tile width as a percentage of length
+and `EMBOSS_RUNNING_BOND_OFFSET` offsets alternate rows by a percentage of
+length. `EMBOSS_VORONOI_ROUNDING` smoothly rounds Voronoi cell junctions from
+`0` (sharp) to `1` (maximum rounding).
+
+The pattern is laid out in the plane of the surface being shaded, not in the
+world's ground plane: `embossSurfaceAxes` picks world x/z for anything roughly
+horizontal and the wall's own across/up axes otherwise, so a tiled wall reads
+as tiles rather than as vertical streaks.
 
 Square/grid, hexagon, and modular-opus patterns can optionally select a
-secondary procedural material through one enable setting. The active pattern
-chooses its secondary-material layout automatically; patterns that do not
-support a secondary material do not expose the setting. Voronoi does not
-support secondary materials. Grid tiles alternate
-as a checkerboard. Modular opus uses primary material for its offset large
-squares and secondary material for the half-size squares between them.
-Hexagons use
-an axial three-colour class: one class remains primary and every primary
-hexagon is surrounded by six secondary hexagons. A secondary index of `-1`
-means "same as primary" and is the default.
+secondary procedural material through one global debug enable setting
+(`USE_SECONDARY_MATERIAL`/`SECONDARY_MATERIAL_INDEX`); the pattern a material
+already embosses chooses the layout. Voronoi and running bond do not support
+secondary materials. Grid tiles alternate as a checkerboard. Modular opus uses
+primary material for its offset large squares and secondary material for the
+half-size squares between them. Hexagons use an axial three-colour class: one
+class remains primary and every primary hexagon is surrounded by six secondary
+hexagons. A secondary index of `-1` means "same as primary" and is the
+default.
 
 ## Maintaining material parity
 

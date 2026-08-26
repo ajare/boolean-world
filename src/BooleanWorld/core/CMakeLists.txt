@@ -12,6 +12,7 @@ add_library(core STATIC
     src/DefinePrefabs.cpp
     src/DynamicWorldDataGenerator.cpp
     src/Easing.cpp
+    src/Emboss.cpp
     src/InfluenceEye.cpp
     src/ImmutableAccelerationGrid.cpp
     src/Layer.cpp

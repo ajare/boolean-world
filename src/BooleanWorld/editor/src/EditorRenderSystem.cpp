@@ -2,6 +2,7 @@
 
 #include <array>
 #include <filesystem>
+#include <memory>
 #include <stdexcept>
 #include <utility>
 
@@ -124,6 +125,29 @@ void EditorRenderSystem::reloadProcMaterial(string const& resourceName) {
   // rereads the YAML the authoring library just saved.
   mResourceMgr->releaseResource(resource);
   mResourceMgr->loadResource(resource);
+}
+
+namespace {
+
+// The one instance the process may ever hold - see the header for why a
+// second one, even after this is destroyed, cannot be constructed.
+unique_ptr<EditorRenderSystem> instance;
+
+}  // namespace
+
+void createEditorRenderSystem(int width, int height) {
+  if (instance) {
+    return;
+  }
+  instance = make_unique<EditorRenderSystem>(width, height);
+}
+
+EditorRenderSystem* editorRenderSystem() {
+  return instance.get();
+}
+
+void destroyEditorRenderSystem() {
+  instance.reset();
 }
 
 EditorRenderSystem::~EditorRenderSystem() {

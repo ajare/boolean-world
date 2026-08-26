@@ -671,13 +671,40 @@ bool setPrimitiveSubMaterial(
   return true;
 }
 
+bw::core::PrimitivePropertySet movedSurfaceZ(
+    bw::core::PrimitivePropertySet properties,
+    PrimitiveMaterialSurface surface, float delta) {
+  switch (surface) {
+    case PrimitiveMaterialSurface::Floor:
+      properties.floorZ =
+          std::min(properties.floorZ + delta, properties.ceilingZ);
+      break;
+    case PrimitiveMaterialSurface::Ceiling:
+      properties.ceilingZ =
+          std::max(properties.ceilingZ + delta, properties.floorZ);
+      break;
+    case PrimitiveMaterialSurface::Wall:
+      break;
+  }
+  return properties;
+}
+
+bool setPrimitiveProperties(
+    Document*, bw::core::Primitive* primitive,
+    bw::core::PrimitivePropertySet const& properties) {
+  primitive->setProperties(properties);
+  return true;
+}
+
 bool createSubMaterial(
     Document*, ProcMaterialLibrary* library,
     string const& resourceName, string const& displayName,
     uint32_t materialIndex, vector<float> const& paramValues,
-    array<float, 3> const& baseColour, string* createdId) {
+    array<float, 3> const& baseColour, bw::core::EmbossData const& emboss,
+    string* createdId) {
   auto id = library->createSubMaterial(
-      resourceName, displayName, materialIndex, paramValues, baseColour);
+      resourceName, displayName, materialIndex, paramValues, baseColour,
+      emboss);
   if (createdId) *createdId = move(id);
   return true;
 }
@@ -692,8 +719,8 @@ bool renameSubMaterial(
 bool editSubMaterial(
     Document*, ProcMaterialLibrary* library,
     string const& subMaterialId, vector<float> const& paramValues,
-    array<float, 3> const& baseColour) {
-  library->editSubMaterial(subMaterialId, paramValues, baseColour);
+    array<float, 3> const& baseColour, bw::core::EmbossData const& emboss) {
+  library->editSubMaterial(subMaterialId, paramValues, baseColour, emboss);
   return true;
 }
 

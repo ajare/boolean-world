@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include <core/Emboss.h>
 #include <core/ProcMaterialData.h>
 
 namespace editor {
@@ -42,16 +43,20 @@ public:
       std::string const& subMaterialId) const;
 
   // Creates a globally unique stable id from displayName and returns it.
-  // Parameters and colour are validated against the selected Technique schema.
+  // Parameters and colour are validated against the selected Technique schema;
+  // the emboss relief is validated against its own authoring limits, which no
+  // schema bounds (see EmbossIsInRange).
   std::string createSubMaterial(
       std::string const& resourceName, std::string const& displayName,
       uint32_t materialIndex, std::vector<float> const& paramValues,
-      std::array<float, 3> const& baseColour);
+      std::array<float, 3> const& baseColour,
+      bw::core::EmbossData const& emboss = {});
   void renameSubMaterial(std::string const& subMaterialId,
                          std::string const& displayName);
   void editSubMaterial(std::string const& subMaterialId,
                        std::vector<float> const& paramValues,
-                       std::array<float, 3> const& baseColour);
+                       std::array<float, 3> const& baseColour,
+                       bw::core::EmbossData const& emboss = {});
   void deleteSubMaterial(std::string const& subMaterialId);
 
   [[nodiscard]] ProcMaterialLibrarySnapshot captureSnapshot() const;

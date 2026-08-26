@@ -13,7 +13,7 @@
 
 #include <willpower/common/Logger.h>
 
-#include "FloorPatternOptions.h"
+#include "SecondaryMaterialOptions.h"
 #include "SubMaterialResolver.h"
 #include "WorldBatchRenderer.h"
 #include "WorldTriangle3dDataProvider.h"
@@ -30,7 +30,6 @@ class WorldRenderer3d {
 
   std::vector<std::shared_ptr<mpp::UniformCollection>> mUniforms;
   std::vector<int32_t> mMaterialIndices;
-  std::vector<bool> mFloorMeshes;
 
   float mGlobalTime;
 
@@ -72,6 +71,6 @@ public:
       int32_t materialIndexOverride,
       float materialScale,
       float farGridSize,
-      FloorPatternOptions const& floorPattern,
+      SecondaryMaterialOptions const& secondaryMaterial,
       float frameTime);
 };

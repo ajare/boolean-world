@@ -417,6 +417,13 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
   if (ImGui::BeginViewportSideBar("Toolbar", viewport, ImGuiDir_Up, 35, windowFlags)) {
     auto world = doc->getWorld();
 
+    // The open preview draws an Arrangement built once from direct pointers
+    // into the open World's Primitives, so the document's structure must not
+    // change underneath it. Everything here is frozen while it is open bar
+    // the preview toggle itself, which is what closes it again.
+    bool const previewing = preview3DIsOpen();
+    ImGui::BeginDisabled(previewing);
+
     bool saveDisabled = !world || !doc->isModified();
     bool saveAsDisabled = !world;
     bool canUndoAction = canUndo();
@@ -585,23 +592,30 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
             : optional<float>{};
     bool const previewEnabled = world && world->getWorldDataGenerator() &&
                                 (previewingPrefab || previewGrounding.has_value());
-    ImGui::BeginDisabled(!previewEnabled);
-    if (ImGui::Button("3D preview") && previewEnabled) {
-      // A Prefab is authored around its origin (ADR-0018), not around the
-      // Player proxy. It need not cover that pivot, so use the conventional
-      // zero-height starting floor until movement reaches authored coverage.
-      auto const startPosition = previewingPrefab
-                                     ? wp::Vector2{0.0f, 0.0f}
-                                     : doc->getPlayerProxyPosition();
-      auto const startAngle = previewingPrefab ? 0.0f : doc->getPlayerProxyAngle();
-      auto const startFloorZ = previewingPrefab
-                                   ? resolveGroundingFloorZ(primitives, startPosition)
-                                         .value_or(0.0f)
-                                   : *previewGrounding;
-      openPreview3D(doc, primitives, startPosition, startAngle, startFloorZ);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(!previewing && !previewEnabled);
+    if (ImGui::Button(previewing ? "Exit 3D preview" : "3D preview")) {
+      if (previewing) {
+        closePreview3D();
+      } else if (previewEnabled) {
+        // A Prefab is authored around its origin (ADR-0018), not around the
+        // Player proxy. It need not cover that pivot, so use the conventional
+        // zero-height starting floor until movement reaches authored coverage.
+        auto const startPosition = previewingPrefab
+                                       ? wp::Vector2{0.0f, 0.0f}
+                                       : doc->getPlayerProxyPosition();
+        auto const startAngle =
+            previewingPrefab ? 0.0f : doc->getPlayerProxyAngle();
+        auto const startFloorZ =
+            previewingPrefab
+                ? resolveGroundingFloorZ(primitives, startPosition).value_or(0.0f)
+                : *previewGrounding;
+        openPreview3D(doc, primitives, startPosition, startAngle, startFloorZ);
+      }
     }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+    ImGui::BeginDisabled(previewing);
+    if (!previewing && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
       if (activeDefinePrefabs && !previewingPrefab) {
         ImGui::SetTooltip("Select a Prefab to preview in 3D.");
       } else if (!previewGrounding) {
@@ -720,6 +734,8 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
     if (!world) {
       widgets::PopDisabled();
     }
+
+    ImGui::EndDisabled();
 
     // Handle action
     handleModifiedDocument(doc, docAction, checkDocumentModified, docText, helperFunc);
@@ -2654,6 +2670,7 @@ struct SubMaterialAuthoringState {
   uint32_t materialIndex{0};
   vector<float> params;
   array<float, 3> colour{};
+  bw::core::EmbossData emboss;
   string editingId;
   string deletionReport;
 };
@@ -2667,6 +2684,9 @@ void setTechniqueDefaults(
     state.params.push_back(parameter.defaultValue);
   }
   state.colour = {0.5f, 0.5f, 0.5f};
+  // A Technique says nothing about relief: a new Sub-material embosses
+  // nothing until it is asked to.
+  state.emboss = {};
 }
 
 void renderSubMaterialFields(
@@ -2706,6 +2726,8 @@ void renderSubMaterialFields(
     }
   }
   ImGui::ColorEdit3("Base colour", state.colour.data());
+  ImGui::SeparatorText("Embossing");
+  widgets::EmbossFields(state.emboss);
 }
 
 bool renderSubMaterialPicker(
@@ -2779,6 +2801,7 @@ bool renderSubMaterialPicker(
     state.materialIndex = selected.materialIndex;
     state.params = selected.paramValues;
     state.colour = selected.baseColour;
+    state.emboss = selected.emboss;
     state.editingId = selected.id;
     ImGui::OpenPopup(editPopup.c_str());
   }
@@ -2806,13 +2829,15 @@ bool renderSubMaterialPicker(
       auto name = string(state.name);
       auto params = state.params;
       auto colour = state.colour;
+      auto emboss = state.emboss;
       auto resourceName = catalog.resourceName;
       auto materialIndex = state.materialIndex;
       string createdId;
       transactUndoableActionAtomically(
           doc, "Create Sub-material", [&](Document* actionDoc) {
             if (!createSubMaterial(actionDoc, &procMaterialLibrary(), resourceName,
-                                   name, materialIndex, params, colour, &createdId)) {
+                                   name, materialIndex, params, colour, emboss,
+                                   &createdId)) {
               return false;
             }
             return setPrimitiveSubMaterial(actionDoc, primitive, surface, createdId);
@@ -2833,10 +2858,12 @@ bool renderSubMaterialPicker(
       auto name = string(state.name);
       auto params = state.params;
       auto colour = state.colour;
+      auto emboss = state.emboss;
       transactUndoableActionAtomically(
           doc, "Edit Sub-material", [&](Document* actionDoc) {
             renameSubMaterial(actionDoc, &procMaterialLibrary(), id, name);
-            return editSubMaterial(actionDoc, &procMaterialLibrary(), id, params, colour);
+            return editSubMaterial(
+                actionDoc, &procMaterialLibrary(), id, params, colour, emboss);
           });
       ImGui::CloseCurrentPopup();
     }
@@ -3913,6 +3940,16 @@ void renderCombinedPanel(
   if (ImGui::Begin("Editing")) {
     auto windowFlags = 0;
 
+    // While the 3D preview holds the world viewport this panel carries its
+    // surface authoring and nothing else: every editing header below acts on
+    // structure the preview cannot see change, which is why they are frozen
+    // for as long as it is open. Showing them greyed out would be noise.
+    if (preview3DIsOpen()) {
+      renderPreview3DSelectedSurface();
+      ImGui::End();
+      return;
+    }
+
     if (ImGui::CollapsingHeader("World", nullptr, windowFlags)) {
       renderWorldView(doc, settings);
     }
@@ -4782,20 +4819,28 @@ void renderWidgets(
     editor::Settings& settings,
     bw::core::WorldData const* worldData,
     double globalTime) {
-  if (preview3DIsOpen()) {
-    renderPreview3D();
-    return;
+  // The preview takes over the world viewport rather than opening a window
+  // of its own, so the editor's chrome renders around it exactly as it does
+  // around the 2D world view. What it cannot survive is the document being
+  // restructured underneath the Arrangement and Primitive pointers it built
+  // when it opened, so the panels around it are visible but frozen; the
+  // preview's own surface and Sub-material authoring stays live.
+  bool previewing = preview3DIsOpen();
+  if (previewing && !doc->isActive()) {
+    closePreview3D();
+    previewing = false;
   }
 
-  handleShortcuts(doc, settings);
-  handleMouseInteraction(doc, settings);
+  if (!previewing) {
+    handleShortcuts(doc, settings);
+    handleMouseInteraction(doc, settings);
+  }
 
+  ImGui::BeginDisabled(previewing);
   renderMenu(doc, settings);
+  ImGui::EndDisabled();
+  // Freezes itself, bar the preview toggle that closes the preview again.
   renderToolbar(doc, settings);
-  if (preview3DIsOpen()) {
-    renderPreview3D();
-    return;
-  }
 
   auto dockspaceId = ImGui::DockSpaceOverViewport(
       0,
@@ -4803,7 +4848,12 @@ void renderWidgets(
       ImGuiDockNodeFlags_PassthruCentralNode);
 
   if (doc->isActive()) {
-    if (!settings.expertMode) {
+    if (previewing) {
+      // The preview's selected-surface authoring lives in this panel, so it
+      // is shown even in expert mode - which otherwise hides it - and stays
+      // live rather than being disabled with the rest of the editor.
+      renderCombinedPanel(doc, settings, worldData, globalTime);
+    } else if (!settings.expertMode) {
       renderCombinedPanel(doc, settings, worldData, globalTime);
 
       if (settings.showContextSensitiveHelpPanel) {
@@ -4811,6 +4861,8 @@ void renderWidgets(
       }
     }
   }
+
+  ImGui::BeginDisabled(previewing);
 
   // Create world data here
   bw::core::WorldDataPtr generatedWorldData;
@@ -4846,29 +4898,40 @@ void renderWidgets(
     gWorldViewScreenOrigin = {worldPos.x, worldPos.y};
     gWorldViewSize = {worldSize.x, worldSize.y};
 
-    ImGui::SetNextWindowPos(worldPos);
-    ImGui::SetNextWindowSize(worldSize);
+    if (previewing) {
+      // Stands in for the World window below, filling the same rect from the
+      // origin/size just published - the 3D view of the level replaces the 2D
+      // one in place, rather than covering the editor with a window.
+      ImGui::EndDisabled();
+      renderPreview3D();
+      ImGui::BeginDisabled(previewing);
+    } else {
+      ImGui::SetNextWindowPos(worldPos);
+      ImGui::SetNextWindowSize(worldSize);
 
-    // NoInputs keeps this window transparent to ImGui's own mouse handling
-    // (it won't set io.WantCaptureMouse), so the raw-mouse world interaction
-    // code below continues to see the canvas exactly as it did when this was
-    // drawn to the background draw list rather than a window.
-    constexpr ImGuiWindowFlags worldWindowFlags =
-        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
-        ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoDocking |
-        ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs;
+      // NoInputs keeps this window transparent to ImGui's own mouse handling
+      // (it won't set io.WantCaptureMouse), so the raw-mouse world interaction
+      // code below continues to see the canvas exactly as it did when this was
+      // drawn to the background draw list rather than a window.
+      constexpr ImGuiWindowFlags worldWindowFlags =
+          ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+          ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+          ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse |
+          ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoDocking |
+          ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs;
 
-    if (ImGui::Begin("World", nullptr, worldWindowFlags)) {
-      renderWorld(doc, settings, worldData, globalTime);
+      if (ImGui::Begin("World", nullptr, worldWindowFlags)) {
+        renderWorld(doc, settings, worldData, globalTime);
 
-      if (settings.renderMiniMap) {
-        renderMiniMap(doc, settings, worldData, globalTime);
+        if (settings.renderMiniMap) {
+          renderMiniMap(doc, settings, worldData, globalTime);
+        }
       }
+      ImGui::End();
     }
-    ImGui::End();
   }
+
+  ImGui::EndDisabled();
 
   checkModalPopups(doc, settings);
 }

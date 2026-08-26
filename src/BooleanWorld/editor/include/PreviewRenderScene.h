@@ -16,8 +16,11 @@
 #include <mpp/RenderPipeline.h>
 #include <mpp/Scene.h>
 
+#include <core/Emboss.h>
 #include <core/World.h>
 #include <core/WorldData.h>
+
+#include "PreviewOutlineRenderer.h"
 
 class WorldRenderer;
 
@@ -74,7 +77,8 @@ public:
   void updateMaterialDraft(
       std::string const& subMaterialId, std::uint32_t materialIndex,
       std::vector<float> const& params,
-      std::array<float, 3> const& baseColour);
+      std::array<float, 3> const& baseColour,
+      bw::core::EmbossData const& emboss);
 
   // Rebuilds the renderer's cached Sub-material resolver without rebuilding
   // its scene, pipeline, or mesh buckets.
@@ -87,21 +91,29 @@ public:
   //
   // The light is placed at the eye, which is what Launcher does too: the
   // game's own light offset (DebugDisplay::lightDistance) is zero by default.
+  //
+  // `outlines` are wireframe borders drawn once the world is finished with,
+  // over the top of it and with no depth testing - how the preview marks the
+  // selected surface and the one under the pointer. Later outlines win where
+  // two overlap. Empty draws nothing.
   [[nodiscard]] std::uint32_t render(
       bw::core::World* world,
       bw::core::WorldData const& worldData,
       mpp::CameraPtr const& camera,
       glm::vec3 const& cameraPosition,
       float frameTime,
-      int highlightedTriangle = -1,
-      bool highlightedCeiling = false,
-      int highlightedWall = -1);
+      std::vector<PreviewOutline> const& outlines = {});
 
 private:
   mpp::RenderSystem* mwRenderSystem{};
   mpp::ScenePtr mScene;
   mpp::RenderPipelinePtr mPipeline;
   std::unique_ptr<WorldRenderer> mRenderer;
+  // Built lazily on the first outline: a preview that is never hovered over
+  // pays nothing, and a driver that will not compile the program costs the
+  // outline rather than the whole preview.
+  std::unique_ptr<PreviewOutlineRenderer> mOutline;
+  bool mOutlineFailed{};
   std::size_t mWidth{};
   std::size_t mHeight{};
 };

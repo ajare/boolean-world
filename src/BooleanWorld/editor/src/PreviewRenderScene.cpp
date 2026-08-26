@@ -1,11 +1,12 @@
 #include "PreviewRenderScene.h"
 
+#include <exception>
+
 #include <mpp/AmbientOcclusion.h>
 #include <mpp/AntiAliasing.h>
 #include <mpp/RenderSystem.h>
 #include <mpp/RenderTexture.h>
 
-#include <FloorPatternOptions.h>
 #include <VideoOptions.h>
 #include <WorldRenderer.h>
 
@@ -27,11 +28,13 @@ constexpr char const* pipelineName = "Editor.Preview3D.World";
 constexpr std::uint32_t outputImageIndex = 4u;
 
 // Launcher's own defaults (StatePlayBooleanWorld::DebugDisplay), so the
-// preview lights and tiles the world exactly as the game does. Exposing these
-// as editor-side preview settings is deliberately a later ticket.
+// preview lights the world exactly as the game does. Exposing these as
+// editor-side preview settings is deliberately a later ticket. The relief a
+// surface embosses is not among them: that belongs to the Sub-material, and
+// reaches the renderer through it.
 constexpr float materialScale = 1.0f;
 constexpr float farGridSize = 0.5f;
-constexpr FloorPatternOptions floorPattern{};
+constexpr SecondaryMaterialOptions secondaryMaterial{};
 
 // Matches StatePlayBooleanWorld::getOrCreateWorldRenderPipeline, minus the
 // per-render-scale and anti-aliasing variants the preview has no settings
@@ -96,6 +99,10 @@ PreviewRenderScene::~PreviewRenderScene() {
   // released first, SceneModel3d releases the Model to 1 and the batch then
   // takes it to 0 and deletes it; with the renderer released first, the batch
   // releases to 1, skips the delete, and SceneModel3d only reaches 0 after.
+  // Its framebuffer must go while the pipeline's output texture it attaches
+  // is still a valid name, and before anything else here is released.
+  mOutline.reset();
+
   mPipeline.reset();
   mwRenderSystem->removeRenderPipeline(pipelineName);
 
@@ -120,13 +127,15 @@ void PreviewRenderScene::resize(std::size_t width, std::size_t height) {
 void PreviewRenderScene::updateMaterialDraft(
     std::string const& subMaterialId, std::uint32_t materialIndex,
     std::vector<float> const& params,
-    std::array<float, 3> const& baseColour) {
+    std::array<float, 3> const& baseColour,
+    bw::core::EmbossData const& emboss) {
   bw::core::MaterialDefinitionData definition;
   definition.params.fill(0.0f);
   for (std::size_t i = 0; i < params.size() && i < definition.params.size(); ++i) {
     definition.params[i] = params[i];
   }
   definition.baseColour = baseColour;
+  definition.emboss = emboss;
   mRenderer->updateSubMaterialDraft(
       subMaterialId, static_cast<int32_t>(materialIndex), definition);
 }
@@ -142,13 +151,12 @@ std::uint32_t PreviewRenderScene::render(
     mpp::CameraPtr const& camera,
     glm::vec3 const& cameraPosition,
     float frameTime,
-    int highlightedTriangle,
-    bool highlightedCeiling,
-    int highlightedWall) {
+    std::vector<PreviewOutline> const& outlines) {
+  // No highlighted triangle or wall: the preview marks the surface under the
+  // pointer by outlining it below, not by tinting the material.
   mRenderer->update(
       world, worldData, cameraPosition, cameraPosition, -1, -1, materialScale,
-      farGridSize, floorPattern, frameTime, highlightedTriangle,
-      highlightedCeiling, highlightedWall);
+      farGridSize, secondaryMaterial, frameTime);
 
   mScene->setViewport(0, 0, mWidth, mHeight);
   mwRenderSystem->renderScene(
@@ -159,7 +167,28 @@ std::uint32_t PreviewRenderScene::render(
     return 0;
   }
 
-  return static_cast<mpp::RenderTexture*>(target.get())->getId();
+  auto textureId = static_cast<mpp::RenderTexture*>(target.get())->getId();
+
+  // After every pass the pipeline runs, straight over the image it resolved.
+  if (!outlines.empty() && !mOutlineFailed) {
+    if (!mOutline) {
+      try {
+        mOutline = std::make_unique<PreviewOutlineRenderer>();
+      } catch (std::exception const&) {
+        // Nothing else here depends on it, so a preview without an outline is
+        // better than no preview at all.
+        mOutlineFailed = true;
+      }
+    }
+    if (mOutline) {
+      mOutline->render(
+          textureId, mWidth, mHeight,
+          camera->getProjectionTransform() * camera->getViewTransform(),
+          outlines);
+    }
+  }
+
+  return textureId;
 }
 
 }  // namespace editor

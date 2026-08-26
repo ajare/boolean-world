@@ -101,8 +101,12 @@ One of the fixed procedural shader algorithms (Marble, Stone, Slate, …) a Sub-
 _Avoid_: material (too broad — see Sub-material), shader, material index (the field name, not the concept)
 
 **Sub-material**:
-A named, fully-parameterized instance of one Technique, defined inside a ProcMaterial resource: fixed parameter values, a fixed base colour, and a stable string id unique across every ProcMaterial resource. A wall, floor, or ceiling is assigned a Sub-material by that id alone — never a Technique directly, and never with per-instance parameter overrides.
+A named, fully-parameterized instance of one Technique, defined inside a ProcMaterial resource: fixed parameter values, a fixed base colour, an Embossing block, and a stable string id unique across every ProcMaterial resource. A wall, floor, or ceiling is assigned a Sub-material by that id alone — never a Technique directly, and never with per-instance parameter overrides.
 _Avoid_: material, material definition (the retired per-Primitive params+colour struct), procedural material
+
+**Embossing**:
+The tiling relief a Sub-material lays over whatever surface it is applied to — a square, hexagon, running-bond, modular-opus or Voronoi pattern, plus the tile size, groove depth and per-tile depth variation that shape it. Evaluated in the plane of the surface itself, so a wall tiles across and up its own face rather than through a ground-plane projection, and applied as a normal-map perturbation only: it never changes geometry or collision. Authored per Sub-material and bounded by its own limits rather than by a Technique schema, because the same shader code evaluates it whatever the Technique. Was once a global floor-only render option.
+_Avoid_: floor pattern (it is not floor-only and not a render option), bump map, displacement (nothing is displaced)
 
 **Technique schema**:
 The parameter names, count, and min/max/default bounds for one Technique, authored once inside a ProcMaterial resource and shared by every Sub-material that selects that Technique. Bounds a Sub-material's authored values; never itself assigned to a wall, floor, or ceiling.

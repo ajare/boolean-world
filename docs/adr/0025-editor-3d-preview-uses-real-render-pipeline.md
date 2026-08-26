@@ -37,14 +37,64 @@ game uses.
 ## Decision
 
 The editor's 3D preview now builds a real `bw::core::ArrangementWorldData`
-once when the preview window opens (scoped to the same in-scope Primitive
+once when the preview opens (scoped to the same in-scope Primitive
 list already computed for the old preview), and renders it through the real
 `WorldRenderer`/`WorldRenderer3d`/`mpp::Scene`/`mpp::RenderPipeline` stack —
 the same code path Launcher.exe uses, including bloom, tonemap, and ambient
 occlusion. This requires the editor process to construct its own
 `mpp::RenderSystem`, `mpp::ResourceManager`, and
 `wp::application::resourcesystem::ResourceManager` against its existing SDL/GL
-context, long-lived for the editor process once first constructed.
+context. These are constructed once during editor startup, immediately after
+the GL context, and live for the rest of the process: only one instance may
+ever exist per process, and its shader compilation and manifest scan are
+one-time costs better paid before the first frame than as a stall on the
+first preview open.
+
+The preview renders into the editor's world viewport — the dockspace's
+central node, the same region the 2D level geometry is edited in — standing
+in for the `World` window rather than opening a near-fullscreen window of its
+own. It is therefore no longer input-blocking: the panels around it stay
+visible, and its own surface picking and Sub-material authoring stay live —
+the picked surface's editor is a `Selected surface` collapsible header in the
+left `Editing` panel, not a floating window. Because the preview still holds
+direct pointers into the open World's Primitives and draws an Arrangement
+built once when it opened, everything around it is frozen while it is open:
+the toolbar's preview toggle and that one header are the only live controls,
+and the panel's own editing headers are hidden rather than greyed out, so the
+document cannot be restructured underneath it. Sharing the window means
+sharing the pointer: right-drag turns the camera (grabbing the pointer
+only for the duration of the drag), left-click picks the surface under the
+cursor, and Escape closes the preview. Surfaces are marked by their own border
+— a wall's quad, or a floor/ceiling face's clipped polygon including its
+holes — drawn as a wireframe in a small raw-GL pass over the pipeline's
+finished image with depth testing off, rather than by tinting the material
+underneath: yellow for the surface under the pointer, red for the selected one,
+which keeps its border for as long as it stays selected.
+
+Assigning the selected surface a Sub-material writes to the Primitive that
+owns the Arrangement polygon the surface belongs to: the one that won the fold
+there, whose property set the polygon carries, whatever else overlaps it. A
+floor or ceiling names its polygon through the triangle that was picked; a
+wall names the side of its edge that gave it its extent � the solid side of a
+border, the lower side of a floor step, the higher side of a ceiling step.
+That owner is identified by its position in the Primitive list the Arrangement
+was built from, never by `Primitive::getId()`: an id is a Primitive's index
+within its own Layer, so in a World of several Layers the same id names one
+Primitive per Layer. Because the assignment moves the surface between mesh
+buckets � which are keyed by Sub-material id and baked when the scene is
+built � an explicit pick rebuilds both the Arrangement snapshot and the render
+scene, while parameter, colour and emboss edits keep the uniform-only draft
+path.
+
+A selected floor or ceiling can also be moved from inside the preview:
+Shift+Up/Down nudges it by eight units, Ctrl+Shift+Up/Down by one, on the
+Primitive resolved the same way, and Shift therefore takes the arrow keys away
+from the camera for as long as it is held. Neither surface may pass the other,
+so a nudge is clamped at the opposing surface and one with nowhere left to go
+opens no transaction at all. A moved surface changes the Arrangement's own
+geometry, so it rebuilds the snapshot and the scene exactly as an assignment
+does. Walls are not nudgeable: a wall has no height of its own, only the gap
+between the two polygons it stands between.
 
 `WorldRenderer`/`WorldRenderer3d`/`WorldBatch`/`WorldTriangle3dDataProvider`/
 `WorldWallOrientation`/`SubMaterialResolver`/`ProcMaterial` move into a shared
@@ -97,9 +147,16 @@ additional editor-side work, which was judged worth the larger surface area.
   for authoring, the manifest-driven `ResourceManager`/`SubMaterialResolver`
   for rendering) — a Sub-material save must explicitly reload the render
   side's cached copy, or the preview will show a stale value until reopened.
-- The 3D preview window displays via `ImGui::Image` from the render
-  pipeline's offscreen output texture, replacing the previous
-  scissor-rect-into-the-backbuffer approach — a better fit for ImGui hosting
-  as a side effect of this change, not its goal.
+- The 3D preview displays via `ImGui::Image` from the render pipeline's
+  offscreen output texture, replacing the previous
+  scissor-rect-into-the-backbuffer approach — which is what lets it sit in
+  the world viewport as ordinary window content.
+- Editor startup now pays the render system's shader compilation and manifest
+  scan (several seconds in a Debug build) before the first frame. A failure
+  there is non-fatal: the editor runs on, and the preview reports that it
+  cannot be rendered.
+- Live-reflecting edits made while the preview is open remains future work.
+  Until then the surrounding panels are disabled rather than the preview's
+  Arrangement being rebuilt per edit.
 - GitHub issue #256 is superseded by this ADR and closed once
   `PreviewMaterialProgram.*`/`PrimitivePreviewGeometry.*` are deleted.

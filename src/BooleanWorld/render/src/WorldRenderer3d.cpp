@@ -46,6 +46,37 @@ uint32_t WorldRenderer3d::getMeshIndexForMaterialHash(
   return worldBatch->getMeshIndexForMaterialHash(hashValue, floor);
 }
 
+namespace {
+
+// The relief uniforms every mesh bucket carries, set from the Sub-material
+// resolved into that bucket. Embossing used to be one global option applied to
+// floors; it is a material property now, so these travel with the bucket
+// exactly as MATERIAL_INDEX/MATERIAL_PARAMS do.
+void setEmbossUniforms(
+    mpp::UniformCollection& uniforms, bw::core::EmbossData const& emboss) {
+  uniforms.setUniform("EMBOSS_PATTERN", static_cast<int32_t>(emboss.pattern));
+  uniforms.setUniform("EMBOSS_RADIUS", emboss.radius);
+  uniforms.setUniform("EMBOSS_DEPTH", emboss.depth);
+  uniforms.setUniform("EMBOSS_DEPTH_VARIATION", emboss.depthVariation);
+  uniforms.setUniform("EMBOSS_RUNNING_BOND_WIDTH", emboss.runningBondWidth);
+  uniforms.setUniform("EMBOSS_RUNNING_BOND_OFFSET", emboss.runningBondOffset);
+  uniforms.setUniform("EMBOSS_VORONOI_ROUNDING", emboss.voronoiRounding);
+}
+
+void updateEmbossUniforms(
+    mpp::UniformCollection& uniforms, bw::core::EmbossData const& emboss) {
+  auto pattern = static_cast<int32_t>(emboss.pattern);
+  uniforms.updateUniform("EMBOSS_PATTERN", pattern);
+  uniforms.updateUniform("EMBOSS_RADIUS", emboss.radius);
+  uniforms.updateUniform("EMBOSS_DEPTH", emboss.depth);
+  uniforms.updateUniform("EMBOSS_DEPTH_VARIATION", emboss.depthVariation);
+  uniforms.updateUniform("EMBOSS_RUNNING_BOND_WIDTH", emboss.runningBondWidth);
+  uniforms.updateUniform("EMBOSS_RUNNING_BOND_OFFSET", emboss.runningBondOffset);
+  uniforms.updateUniform("EMBOSS_VORONOI_ROUNDING", emboss.voronoiRounding);
+}
+
+}  // namespace
+
 void WorldRenderer3d::updateMaterialUniforms(
     uint64_t bakedMaterialHash, bool floor, int32_t materialIndex,
     bw::core::MaterialDefinitionData const& definition) {
@@ -63,6 +94,10 @@ void WorldRenderer3d::updateMaterialUniforms(
   auto const& uniforms = mUniforms[meshIndex];
   uniforms->updateUniform("MATERIAL_INDEX", materialIndex);
   uniforms->updateUniform("MATERIAL_PARAMS", definition.params.data());
+  // A draft's relief lands here too, so dragging an emboss slider in the
+  // editor reads back immediately in the preview - the bucket keeps its baked
+  // hash, only its uniforms change.
+  updateEmbossUniforms(*uniforms, definition.emboss);
 }
 
 void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvider, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
@@ -99,10 +134,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
   // Create uniforms for each material mesh.
   mUniforms.resize(worldBatch->getMaterialMeshCount(), nullptr);
   mMaterialIndices.resize(worldBatch->getMaterialMeshCount(), 0);
-  mFloorMeshes.resize(worldBatch->getMaterialMeshCount(), false);
 
-  auto initializeGlobalUniforms = [](
-                                      mpp::UniformCollection& uniforms, bool floor) {
+  auto initializeGlobalUniforms = [](mpp::UniformCollection& uniforms) {
     uniforms.setUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
     uniforms.setUniform("GLOBAL_TIME", 0.0f);
     uniforms.setUniform("PIXEL_SIZE", 1.0f / 32);
@@ -110,17 +143,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("PLAYER_POSITION", glm::vec3{});
     uniforms.setUniform("LIGHT_POSITION", glm::vec3{});
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
-    uniforms.setUniform("HEXAGON_RADIUS", 16.0f);
-    uniforms.setUniform("HEXAGON_DEPTH", 0.5f);
-    uniforms.setUniform("TILE_DEPTH_VARIATION_FACTOR", 0.1f);
-    uniforms.setUniform("RUNNING_BOND_WIDTH_PERCENT", 50.0f);
-    uniforms.setUniform("RUNNING_BOND_OFFSET_PERCENT", 50.0f);
-    uniforms.setUniform("VORONOI_ROUNDED_EDGE_FACTOR", 0.25f);
     uniforms.setUniform("SECONDARY_MATERIAL_INDEX", int32_t{-1});
     uniforms.setUniform("USE_SECONDARY_MATERIAL", int32_t{0});
-    uniforms.setUniform(
-        "FLOOR_PATTERN",
-        int32_t{floor ? static_cast<int32_t>(FloorPattern::Hexagon) : 0});
   };
 
   auto numPrimitives = world->getNumPrimitives();
@@ -144,7 +168,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         uniforms->setUniform(
             "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
             resolved.def.params.data());
-        initializeGlobalUniforms(*uniforms, false);
+        setEmbossUniforms(*uniforms, resolved.def.emboss);
+        initializeGlobalUniforms(*uniforms);
         mUniforms[meshIndex] = uniforms;
         mMaterialIndices[meshIndex] =
             static_cast<int32_t>(resolved.materialIndex);
@@ -166,12 +191,12 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)floorResolved.materialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, floorResolved.def.params.data());
-      initializeGlobalUniforms(*uniforms, true);
+      setEmbossUniforms(*uniforms, floorResolved.def.emboss);
+      initializeGlobalUniforms(*uniforms);
 
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] =
           static_cast<int32_t>(floorResolved.materialIndex);
-      mFloorMeshes[meshIndex] = true;
     }
 
     // Ceiling
@@ -188,7 +213,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)ceilingResolved.materialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, ceilingResolved.def.params.data());
-      initializeGlobalUniforms(*uniforms, false);
+      setEmbossUniforms(*uniforms, ceilingResolved.def.emboss);
+      initializeGlobalUniforms(*uniforms);
 
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] =
@@ -214,7 +240,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       uniforms->setUniform(
           "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
           backMaterialDef.data.params.data());
-      initializeGlobalUniforms(*uniforms, false);
+      setEmbossUniforms(*uniforms, backMaterialDef.data.emboss);
+      initializeGlobalUniforms(*uniforms);
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] =
           static_cast<int32_t>(BW_WALL_BACK_FACE_MATERIAL_INDEX);
@@ -228,7 +255,7 @@ void WorldRenderer3d::update(
     int32_t materialIndexOverride,
     float materialScale,
     float farGridSize,
-    FloorPatternOptions const& floorPattern,
+    SecondaryMaterialOptions const& secondaryMaterial,
     float frameTime) {
   mGlobalTime += frameTime;
 
@@ -245,30 +272,12 @@ void WorldRenderer3d::update(
     uc->updateUniform("PLAYER_POSITION", playerPosition);
     uc->updateUniform("LIGHT_POSITION", lightPosition);
     uc->updateUniform("MATERIAL_SCALE", materialScale);
-    uc->updateUniform("HEXAGON_RADIUS", floorPattern.radius);
-    uc->updateUniform("HEXAGON_DEPTH", floorPattern.depth);
+    // The relief itself is per bucket and set once from the Sub-material that
+    // baked it; only the debug secondary-material choice is still global.
     uc->updateUniform(
-        "TILE_DEPTH_VARIATION_FACTOR",
-        floorPattern.tileDepthVariationFactor);
+        "SECONDARY_MATERIAL_INDEX", secondaryMaterial.materialIndex);
     uc->updateUniform(
-        "RUNNING_BOND_WIDTH_PERCENT",
-        floorPattern.runningBondWidthPercent);
-    uc->updateUniform(
-        "RUNNING_BOND_OFFSET_PERCENT",
-        floorPattern.runningBondOffsetPercent);
-    uc->updateUniform(
-        "VORONOI_ROUNDED_EDGE_FACTOR",
-        floorPattern.voronoiRoundedEdgeFactor);
-    uc->updateUniform(
-        "SECONDARY_MATERIAL_INDEX", floorPattern.secondaryMaterialIndex);
-    uc->updateUniform(
-        "USE_SECONDARY_MATERIAL",
-        int32_t{floorPattern.usesSecondaryMaterial ? 1 : 0});
-    uc->updateUniform(
-        "FLOOR_PATTERN",
-        int32_t{mFloorMeshes[i]
-                    ? static_cast<int32_t>(floorPattern.pattern)
-                    : 0});
+        "USE_SECONDARY_MATERIAL", int32_t{secondaryMaterial.enabled ? 1 : 0});
     uc->updateUniform(
         "MATERIAL_INDEX",
         materialIndexOverride >= 0 ? materialIndexOverride : mMaterialIndices[i]);

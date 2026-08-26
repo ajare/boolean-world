@@ -32,10 +32,10 @@ namespace editor {
 // ProcMaterial catalog), along with their dependencies. Nothing else in the
 // manifest is created or loaded.
 //
-// Meant to be lazily constructed on first 3D preview open and kept for the
-// rest of the editor process - createCoreResources()'s shader/pipeline
-// compilation and the manifest scan are one-time costs worth amortising,
-// not rebuilding per preview open/close.
+// Constructed once while the editor starts up and kept for the rest of the
+// process - createCoreResources()'s shader/pipeline compilation and the
+// manifest scan are one-time costs worth paying before the first frame
+// rather than stalling the first 3D preview open.
 //
 // At most one instance may exist per process, ever - even sequentially.
 // wp::application::resourcesystem::ResourceManager registers its default
@@ -76,5 +76,18 @@ private:
   mpp::ResourceManager* mRenderResourceMgr{};
   wp::application::resourcesystem::ResourceManager* mResourceMgr{};
 };
+
+// Constructs the process-wide instance against the already-current GL
+// context. Called once from the editor's startup, after the SDL/GL context
+// and GLEW are up. Throws what the constructor throws; the editor treats a
+// failure as non-fatal and runs on without a 3D preview.
+void createEditorRenderSystem(int width, int height);
+
+// Null until createEditorRenderSystem() has succeeded.
+[[nodiscard]] EditorRenderSystem* editorRenderSystem();
+
+// Must run while the editor's GL context is still current, so the editor's
+// shutdown calls this before destroying it.
+void destroyEditorRenderSystem();
 
 }  // namespace editor

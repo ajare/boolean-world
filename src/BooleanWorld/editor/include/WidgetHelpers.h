@@ -2,6 +2,8 @@
 
 #include <string>
 
+#include <core/Emboss.h>
+
 #include "imgui.h"
 
 namespace editor {
@@ -29,6 +31,14 @@ bool InputTextMultiline(
     const char* label, std::string* str, const ImVec2& size = ImVec2(0, 0),
     ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = nullptr,
     void* userData = nullptr);
+
+// The relief a Sub-material embosses into every surface it is applied to:
+// a pattern picker and the shape parameters that pattern actually uses, all
+// bounded by core's own authoring limits so what can be authored here is
+// exactly what will deserialize again. Shared by the Sub-material picker's
+// create/edit popups and the 3D preview's selected-surface editor, so neither
+// can silently drop what the other authored.
+void EmbossFields(bw::core::EmbossData& emboss);
 
 }  // namespace widgets
 

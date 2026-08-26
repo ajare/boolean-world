@@ -75,10 +75,6 @@ constexpr array<char const*, 37> gWorldMaterialNames{
     "Magical metal", "Solid cloud", "Holographic", "Corruption",
     "Frosted glass", "Brick", "Circuit board", "Banded gneiss",
     "Rock", "Mossy rock", "Wet rock"};
-constexpr array<char const*, 6> gFloorPatternNames{
-    "None", "Square", "Hexagon", "Running bond", "Modular opus",
-    "Voronoi"};
-
 // ImGui colours go here so they don't clutter up the header file
 const ImColor gImGui_MapBackgroundColour{0.2f, 0.2f, 0.8f};
 const ImColor gImGui_TriangulationLineColour{0.8f, 0.8f, 0.2f};
@@ -703,7 +699,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
       horizontalMaterialIndexOverride, wallMaterialIndexOverride,
       mDebugDisplay.worldMaterialScale, mDebugDisplay.farGridSize,
-      mDebugDisplay.floorPattern, frameTime);
+      mDebugDisplay.secondaryMaterial, frameTime);
 }
 
 void StatePlayBooleanWorld::suspendImpl(void* args) {
@@ -1625,101 +1621,45 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     ImGui::SliderFloat(
         "Far grid size", &mDebugDisplay.farGridSize,
         1.0f / 32.0f, 16.0f, "%.3f");
-    auto& floorPattern = mDebugDisplay.floorPattern;
-    auto patternIndex = std::clamp(
-        static_cast<int>(floorPattern.pattern), 0,
-        static_cast<int>(gFloorPatternNames.size()) - 1);
-    floorPattern.pattern = static_cast<FloorPattern>(patternIndex);
-    if (ImGui::BeginCombo(
-            "Floor pattern", gFloorPatternNames[patternIndex])) {
-      for (int i = 0; i < static_cast<int>(gFloorPatternNames.size()); ++i) {
-        auto selected = i == patternIndex;
-        if (ImGui::Selectable(gFloorPatternNames[i], selected)) {
-          floorPattern.pattern = static_cast<FloorPattern>(i);
+    // The tiling relief itself is authored per Sub-material now (core/
+    // Emboss.h) and edited in the editor's 3D preview, so there is nothing
+    // global left to tweak here - only which second material the pattern a
+    // material already carries lays into its alternate tiles.
+    auto& secondaryMaterial = mDebugDisplay.secondaryMaterial;
+    ImGui::SeparatorText("Secondary material");
+    ImGui::Checkbox("Enabled", &secondaryMaterial.enabled);
+
+    if (secondaryMaterial.enabled) {
+      auto secondaryIndex = std::clamp(
+          secondaryMaterial.materialIndex, -1,
+          static_cast<int>(gWorldMaterialNames.size()) - 1);
+      secondaryMaterial.materialIndex = secondaryIndex;
+      char const* secondaryName = secondaryIndex < 0
+                                      ? "Same as primary"
+                                      : gWorldMaterialNames[secondaryIndex];
+      if (ImGui::BeginCombo("Secondary material", secondaryName)) {
+        auto sameSelected = secondaryIndex < 0;
+        if (ImGui::Selectable("Same as primary", sameSelected)) {
+          secondaryMaterial.materialIndex = -1;
         }
-        if (selected) {
+        if (sameSelected) {
           ImGui::SetItemDefaultFocus();
         }
-      }
-      ImGui::EndCombo();
-    }
-
-    if (floorPattern.pattern != FloorPattern::None) {
-      char const* sizeLabel = "Square radius";
-      if (floorPattern.pattern == FloorPattern::Hexagon) {
-        sizeLabel = "Hexagon radius";
-      } else if (floorPattern.pattern == FloorPattern::RunningBond) {
-        sizeLabel = "Tile length";
-      } else if (floorPattern.pattern == FloorPattern::ModularOpus) {
-        sizeLabel = "Large tile size";
-      } else if (floorPattern.pattern == FloorPattern::Voronoi) {
-        sizeLabel = "Cell size";
-      }
-      ImGui::SliderFloat(
-          sizeLabel, &floorPattern.radius, 1.0f, 128.0f, "%.1f");
-      ImGui::SliderFloat(
-          "Floor pattern depth", &floorPattern.depth,
-          0.0f, 8.0f, "%.2f");
-      ImGui::SliderFloat(
-          "Per-tile depth variation factor",
-          &floorPattern.tileDepthVariationFactor,
-          0.0f, 1.0f, "%.2f");
-    }
-    if (floorPattern.pattern == FloorPattern::RunningBond) {
-      ImGui::SliderFloat(
-          "Tile width (% of length)",
-          &floorPattern.runningBondWidthPercent,
-          5.0f, 100.0f, "%.0f%%");
-      ImGui::SliderFloat(
-          "Row offset (% of length)",
-          &floorPattern.runningBondOffsetPercent,
-          0.0f, 100.0f, "%.0f%%");
-    } else if (floorPattern.pattern == FloorPattern::Voronoi) {
-      ImGui::SliderFloat(
-          "Rounded edge factor", &floorPattern.voronoiRoundedEdgeFactor,
-          0.0f, 1.0f, "%.2f");
-    }
-
-    auto supportsSecondaryMaterial =
-        floorPattern.pattern == FloorPattern::Square ||
-        floorPattern.pattern == FloorPattern::Hexagon ||
-        floorPattern.pattern == FloorPattern::ModularOpus;
-    if (supportsSecondaryMaterial) {
-      ImGui::SeparatorText("Secondary floor material");
-      ImGui::Checkbox("Enabled", &floorPattern.usesSecondaryMaterial);
-
-      if (floorPattern.usesSecondaryMaterial) {
-        auto secondaryIndex = std::clamp(
-            floorPattern.secondaryMaterialIndex, -1,
-            static_cast<int>(gWorldMaterialNames.size()) - 1);
-        floorPattern.secondaryMaterialIndex = secondaryIndex;
-        char const* secondaryName = secondaryIndex < 0
-                                        ? "Same as primary"
-                                        : gWorldMaterialNames[secondaryIndex];
-        if (ImGui::BeginCombo("Secondary material", secondaryName)) {
-          auto sameSelected = secondaryIndex < 0;
-          if (ImGui::Selectable("Same as primary", sameSelected)) {
-            floorPattern.secondaryMaterialIndex = -1;
+        for (int i = 0;
+             i < static_cast<int>(gWorldMaterialNames.size()); ++i) {
+          auto selected = i == secondaryIndex;
+          if (ImGui::Selectable(gWorldMaterialNames[i], selected)) {
+            secondaryMaterial.materialIndex = i;
           }
-          if (sameSelected) {
+          if (selected) {
             ImGui::SetItemDefaultFocus();
           }
-          for (int i = 0;
-               i < static_cast<int>(gWorldMaterialNames.size()); ++i) {
-            auto selected = i == secondaryIndex;
-            if (ImGui::Selectable(gWorldMaterialNames[i], selected)) {
-              floorPattern.secondaryMaterialIndex = i;
-            }
-            if (selected) {
-              ImGui::SetItemDefaultFocus();
-            }
-          }
-          ImGui::EndCombo();
         }
+        ImGui::EndCombo();
       }
     }
     ImGui::TextDisabled(
-        "Debug-only - material overrides affect every world mesh; floor patterns affect floors only.");
+        "Debug-only - material overrides affect every world mesh; the secondary material only replaces the alternate tiles of a material that embosses a square, hexagon or modular opus pattern.");
   }
 
   ImGui::End();

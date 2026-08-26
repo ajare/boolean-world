@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <core/DefinePrefabs.h>
+#include <core/Emboss.h>
 #include <core/PrefabField.h>
 
 #include "Undo.h"
@@ -285,6 +286,24 @@ bool setPrimitiveSubMaterial(
     Document* doc, bw::core::Primitive* primitive,
     PrimitiveMaterialSurface surface, std::string const& subMaterialId);
 
+// The properties a floor or ceiling nudge produces, clamped so that a floor
+// never rises past its own ceiling and a ceiling never drops below its own
+// floor - an inverted pair draws an inside-out room and gives the walls
+// between the two a negative height. A Wall is the gap between two polygons
+// and has no height of its own, so nudging one changes nothing.
+//
+// Pure, so a caller can see whether a nudge would move anything before it
+// opens a transaction for it.
+[[nodiscard]] bw::core::PrimitivePropertySet movedSurfaceZ(
+    bw::core::PrimitivePropertySet properties,
+    PrimitiveMaterialSurface surface, float delta);
+
+// Assigns a whole property set. Intended to be called through
+// transactUndoableAction.
+bool setPrimitiveProperties(
+    Document* doc, bw::core::Primitive* primitive,
+    bw::core::PrimitivePropertySet const& properties);
+
 // ProcMaterial authoring actions save immediately through ProcMaterialLibrary's
 // bw::core::Serializer path. Rename deliberately changes only the display name;
 // the stable id held by Primitives never changes.
@@ -292,14 +311,16 @@ bool createSubMaterial(
     Document* doc, ProcMaterialLibrary* library,
     std::string const& resourceName, std::string const& displayName,
     uint32_t materialIndex, std::vector<float> const& paramValues,
-    std::array<float, 3> const& baseColour, std::string* createdId = nullptr);
+    std::array<float, 3> const& baseColour,
+    bw::core::EmbossData const& emboss, std::string* createdId = nullptr);
 bool renameSubMaterial(
     Document* doc, ProcMaterialLibrary* library,
     std::string const& subMaterialId, std::string const& displayName);
 bool editSubMaterial(
     Document* doc, ProcMaterialLibrary* library,
     std::string const& subMaterialId, std::vector<float> const& paramValues,
-    std::array<float, 3> const& baseColour);
+    std::array<float, 3> const& baseColour,
+    bw::core::EmbossData const& emboss);
 // Empty means deletion is allowed. Otherwise lists every Primitive index and
 // referenced surface in the currently-open Document.
 std::string subMaterialDeletionBlockedReason(

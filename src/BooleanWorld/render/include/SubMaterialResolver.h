@@ -10,8 +10,8 @@
 
 // Resolves a Primitive surface's Sub-material id (PrimitivePropertySet::
 // floorMaterialId/ceilingMaterialId/wallMaterialId) to the Technique index,
-// parameters and base colour WorldRenderer/WorldRenderer3d bind as
-// MATERIAL_INDEX/MATERIAL_PARAMS uniforms - see issue #261 and ADR-0023.
+// parameters, base colour and emboss relief WorldRenderer/WorldRenderer3d
+// bind as MATERIAL_INDEX/MATERIAL_PARAMS/EMBOSS_* uniforms - see issue #261 and ADR-0023.
 // Built once from every "ProcMaterial" resource loaded in the given
 // ResourceManager; an id that names no Sub-material in any of them
 // (missing/unknown/empty) resolves to BW_MATERIAL_ERROR_INDEX instead of

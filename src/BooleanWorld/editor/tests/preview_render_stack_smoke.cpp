@@ -4,11 +4,18 @@
 // Arrangement built from world-test-1.yaml, rendered through the same
 // renderScene/getGraphImageRenderTarget path Preview3D.cpp uses.
 //
+// Every frame it renders also carries a hovered-surface outline, so the raw-GL
+// pass that draws one over the pipeline's finished image - a program, a
+// framebuffer of its own, and the state it must put back - is exercised here
+// rather than only when someone hovers a surface in the editor.
+//
 // It runs that build-render-destroy cycle repeatedly, which is what makes it
 // worth having: GitHub issue #270 asks for repeated preview open/close not to
 // leak GPU resources, and mpp::ResourceManager's own counts settling after
 // the first cycle is the evidence for that. See PreviewRenderScene.h for why
 // teardown order matters.
+#include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <exception>
@@ -20,6 +27,7 @@
 #include <GL/glew.h>
 #include <SDL3/SDL.h>
 
+#include <mpp/Camera.h>
 #include <mpp/ResourceManager.h>
 
 #include <core/ArrangementWorldData.h>
@@ -40,6 +48,78 @@ namespace {
 constexpr int kWidth = 640;
 constexpr int kHeight = 480;
 constexpr int kCycles = 20;
+
+// Two closed quads squarely in front of the camera, the inner one nested
+// inside the outer - the same shape and the same two colours Preview3D.cpp
+// hands over for a selected surface and a hovered one, placed where they are
+// certain to land in frame so the pixels they draw can be looked for.
+std::vector<editor::PreviewOutline> cameraFacingOutline(mpp::Camera& camera) {
+  auto origin = camera.getPosition() + camera.getDirection() * 5.0f;
+  auto up = camera.getUp();
+  auto right = glm::normalize(glm::cross(camera.getDirection(), up));
+  std::array<glm::vec3, 4> quad{
+      origin - right - up, origin + right - up, origin + right + up,
+      origin - right + up};
+
+  auto loop = [](std::array<glm::vec3, 4> const& corners) {
+    std::vector<glm::vec3> segments;
+    for (size_t index = 0; index < corners.size(); ++index) {
+      segments.push_back(corners[index]);
+      segments.push_back(corners[(index + 1) % corners.size()]);
+    }
+    return segments;
+  };
+
+  std::array<glm::vec3, 4> inner{
+      origin - right * 0.4f - up * 0.4f, origin + right * 0.4f - up * 0.4f,
+      origin + right * 0.4f + up * 0.4f, origin - right * 0.4f + up * 0.4f};
+
+  // Red for a selection, yellow for a hover, drawn in that order - exactly
+  // what the preview asks for when the pointer is over a second surface.
+  return {
+      {loop(quad), glm::vec4{1.0f, 0.0f, 0.0f, 1.0f}},
+      {loop(inner), glm::vec4{1.0f, 1.0f, 0.0f, 1.0f}}};
+}
+
+// How many pixels of the finished image are each outline colour. Nothing the
+// world's own materials render reaches saturated red or yellow with no blue at
+// all, so these counts are specific to the outline pass having drawn - one
+// per colour, which is what proves each outline kept its own.
+struct OutlinePixels {
+  size_t red{};
+  size_t yellow{};
+};
+
+OutlinePixels countOutlinePixels(uint32_t textureId) {
+  uint32_t frameBuffer{};
+  glGenFramebuffers(1, &frameBuffer);
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer);
+  glFramebufferTexture2D(
+      GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureId, 0);
+
+  OutlinePixels found;
+  if (glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+    std::vector<float> pixels(size_t(kWidth) * kHeight * 4);
+    glReadBuffer(GL_COLOR_ATTACHMENT0);
+    glReadPixels(0, 0, kWidth, kHeight, GL_RGBA, GL_FLOAT, pixels.data());
+    for (size_t index = 0; index + 3 < pixels.size(); index += 4) {
+      auto red = pixels[index];
+      auto green = pixels[index + 1];
+      auto blue = pixels[index + 2];
+      if (red > 0.75f && blue < 0.25f) {
+        if (green > 0.75f) {
+          ++found.yellow;
+        } else if (green < 0.25f) {
+          ++found.red;
+        }
+      }
+    }
+  }
+
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+  glDeleteFramebuffers(1, &frameBuffer);
+  return found;
+}
 
 struct ResourceCounts {
   uint32_t resources{}, declared{}, created{}, loaded{};
@@ -94,7 +174,127 @@ bw::core::ArrangementWorldDataPtr buildWorldData(bw::core::World* world) {
       world->getStepThreshold());
 }
 
+// The average colour of the finished image. Coarse on purpose: it is only
+// used to answer "did what the world draws actually change", which is the one
+// thing a material reassignment has to do.
+struct AverageColour {
+  float red{};
+  float green{};
+  float blue{};
+
+  float distanceTo(AverageColour const& other) const {
+    auto dr = red - other.red;
+    auto dg = green - other.green;
+    auto db = blue - other.blue;
+    return std::sqrt(dr * dr + dg * dg + db * db);
+  }
+};
+
+AverageColour averageColour(uint32_t textureId) {
+  uint32_t frameBuffer{};
+  glGenFramebuffers(1, &frameBuffer);
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer);
+  glFramebufferTexture2D(
+      GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureId, 0);
+
+  AverageColour average;
+  if (glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+    std::vector<float> pixels(size_t(kWidth) * kHeight * 4);
+    glReadBuffer(GL_COLOR_ATTACHMENT0);
+    glReadPixels(0, 0, kWidth, kHeight, GL_RGBA, GL_FLOAT, pixels.data());
+    double red{}, green{}, blue{};
+    for (size_t index = 0; index + 3 < pixels.size(); index += 4) {
+      red += pixels[index];
+      green += pixels[index + 1];
+      blue += pixels[index + 2];
+    }
+    auto count = double(kWidth) * kHeight;
+    average = {float(red / count), float(green / count), float(blue / count)};
+  }
+
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+  glDeleteFramebuffers(1, &frameBuffer);
+  return average;
+}
+
+// Assigns every surface in the world one Sub-material, the way the editor's
+// selected-surface panel assigns one surface a different Sub-material.
+void assignEverySurface(bw::core::World* world, std::string const& id) {
+  for (uint32_t i = 0; i < world->getNumPrimitives(); ++i) {
+    auto* primitive = world->getPrimitive(i);
+    auto properties = primitive->getProperties();
+    properties.floorMaterialId = id;
+    properties.ceilingMaterialId = id;
+    properties.wallMaterialId = id;
+    primitive->setProperties(properties);
+  }
+}
+
+// Renders `frames` frames of whatever the scene currently holds and answers
+// with the last one's average colour.
+AverageColour renderFrames(
+    editor::PreviewRenderScene& scene, bw::core::World* world,
+    bw::core::ArrangementWorldData const& worldData,
+    std::shared_ptr<ReactiveCamera> const& camera, int frames) {
+  uint32_t textureId = 0;
+  for (int frame = 0; frame < frames; ++frame) {
+    textureId = scene.render(
+        world, worldData, camera, camera->getPosition(), 1.0f / 60.0f);
+  }
+  return textureId == 0 ? AverageColour{} : averageColour(textureId);
+}
+
 }  // namespace
+
+// Reassigning a surface's Sub-material has to change what that surface draws.
+// It is not a uniform-only edit: the mesh bucket a triangle lands in is keyed
+// by the Sub-material id in the Arrangement palette, and the buckets are baked
+// from the World's material ids when the render scene is built - so the
+// snapshot and the scene both have to be rebuilt, which is exactly what
+// Preview3D::rebuildPreviewForSurfaceMaterialChange does. Reassigning without
+// rebuilding leaves the old material on screen; that was GitHub-less bug
+// "selecting a different Sub-material does not update the preview".
+int materialReassignmentRedrawsTheWorld(
+    editor::EditorRenderSystem& renderSystem, bw::core::World* world) {
+  auto camera = std::make_shared<ReactiveCamera>(
+      glm::vec3{0.0f, BW_PLAYER_EYE_HEIGHT, 0.0f}, bw::app::cameraYaw(0.0f),
+      0.0f, BW_PLAYER_FOV, kWidth / (float)kHeight);
+  camera->setClipDistances(0.1f, 1000000.0f);
+
+  auto worldData = buildWorldData(world);
+  AverageColour before;
+  {
+    editor::PreviewRenderScene scene(renderSystem, world, kWidth, kHeight);
+    before = renderFrames(scene, world, *worldData, camera, 3);
+  }
+
+  // Nothing in world-test-1.yaml uses this one, so before the fix its mesh
+  // bucket did not even exist: getMeshIndexForMaterialHash would have answered
+  // zero and drawn the world in some other material entirely.
+  assignEverySurface(world, "builtin.holographic");
+
+  // What the editor now does on a pick: rebuild the Arrangement snapshot, then
+  // the render scene built from it.
+  auto reassignedWorldData = buildWorldData(world);
+  AverageColour after;
+  {
+    editor::PreviewRenderScene scene(renderSystem, world, kWidth, kHeight);
+    after = renderFrames(scene, world, *reassignedWorldData, camera, 3);
+  }
+
+  auto distance = before.distanceTo(after);
+  printf(
+      "reassignment: before=[%.4f %.4f %.4f] after=[%.4f %.4f %.4f] distance=%.4f\n",
+      before.red, before.green, before.blue, after.red, after.green,
+      after.blue, distance);
+
+  if (distance < 0.01f) {
+    printf(
+        "FAILED: reassigning every surface's Sub-material did not change what the world draws\n");
+    return 1;
+  }
+  return 0;
+}
 
 int main() {
   // Unbuffered: a driver-level crash mid-cycle must not swallow the progress
@@ -154,10 +354,31 @@ int main() {
         // More than one frame, so the wall provider's per-frame rebuild is
         // exercised rather than only its first pass.
         uint32_t textureId = 0;
+        auto outline = cameraFacingOutline(*camera);
         for (int frame = 0; frame < 3; ++frame) {
           textureId = scene.render(
               world.get(), *worldData, camera, camera->getPosition(),
-              1.0f / 60.0f);
+              1.0f / 60.0f, outline);
+        }
+
+        if (auto error = glGetError(); error != GL_NO_ERROR) {
+          printf("FAILED: cycle %d left GL error 0x%04x\n", cycle, error);
+          result = 1;
+          break;
+        }
+
+        if (textureId != 0) {
+          auto outlinePixels = countOutlinePixels(textureId);
+          printf(
+              "cycle %d: outline pixels red=%zu yellow=%zu\n", cycle,
+              outlinePixels.red, outlinePixels.yellow);
+          if (outlinePixels.red == 0 || outlinePixels.yellow == 0) {
+            printf(
+                "FAILED: cycle %d did not draw both outlines over the image\n",
+                cycle);
+            result = 1;
+            break;
+          }
         }
 
         if (textureId == 0) {
@@ -188,6 +409,10 @@ int main() {
         result = 1;
         break;
       }
+    }
+
+    if (result == 0) {
+      result = materialReassignmentRedrawsTheWorld(renderSystem, world.get());
     }
   } catch (std::exception const& ex) {
     printf("FAILED: exception: %s\n", ex.what());
