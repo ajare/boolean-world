@@ -162,6 +162,40 @@ void refreshPreviewMaterials() {
   }
 }
 
+void rebuildPreviewWorldData() {
+  std::vector<bw::core::Primitive*> primitives;
+  primitives.reserve(session.primitivesForGrounding.size());
+  for (auto const* primitive : session.primitivesForGrounding) {
+    primitives.push_back(const_cast<bw::core::Primitive*>(primitive));
+  }
+  bw::core::ArrangementWorldDataGenerator generator;
+  generator.generate(primitives);
+  session.worldData = std::make_shared<bw::core::ArrangementWorldData>(
+      generator.getWorldData(), session.world->getExtents(),
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
+      session.world->getStepThreshold());
+}
+
+void reconcileSavedProcMaterial(std::string const& resourceName) {
+  if (!session.renderScene || !editorRenderSystem) {
+    return;
+  }
+  // The render ResourceManager caches a separate ProcMaterial view from the
+  // authoring library. Reload its YAML and cheaply rebuild only the
+  // resolver's hash map; the scene, pipeline, and mesh buckets stay live.
+  editorRenderSystem->reloadProcMaterial(resourceName);
+  session.renderScene->reloadSubMaterialResolver(
+      editorRenderSystem->resourceManager());
+}
+
+void applyMaterialDraft() {
+  auto const& draft = session.materialEditor;
+  if (draft.hasDraft && session.renderScene) {
+    session.renderScene->updateMaterialDraft(
+        draft.editingId, draft.materialIndex, draft.params, draft.colour);
+  }
+}
+
 PrimitiveMaterialSurface materialSurface(PreviewSurface surface) {
   switch (surface) {
     case PreviewSurface::Floor:
@@ -177,7 +211,21 @@ PrimitiveMaterialSurface materialSurface(PreviewSurface surface) {
 
 std::string surfaceSubMaterialId(
     bw::core::Primitive const& primitive, PreviewSurface surface) {
-  auto const& properties = primitive.getProperties();
+  if (!session.worldData) {
+    return {};
+  }
+  // The rendered WorldRenderer geometry is governed by the Arrangement
+  // palette, not the source Primitive's currently-live properties.
+  auto const& arrangement = session.worldData->getArrangement();
+  auto face = std::find_if(
+      arrangement.faces.begin(), arrangement.faces.end(),
+      [&](auto const& candidate) {
+        return candidate.primitiveIndex == primitive.getId();
+      });
+  if (face == arrangement.faces.end()) {
+    return {};
+  }
+  auto const& properties = arrangement.palette[face->paletteIndex];
   switch (surface) {
     case PreviewSurface::Floor:
       return properties.floorMaterialId;
@@ -280,12 +328,6 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
 
   if (ImGui::CollapsingHeader(
           "Material parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
-    // Dragging a slider no longer repaints the preview: the draft used to be
-    // pushed into the old raw-GL path's per-vertex materials, which no longer
-    // exist. Pushing it into the new mesh buckets' uniforms instead is the
-    // next ticket (GitHub issue #271); saving already works.
-    ImGui::TextDisabled(
-        "Unsaved parameter edits are not shown in the preview yet.");
     ImGui::InputText("Name", state.name, sizeof(state.name));
     if (auto const* schema =
             catalog.data.findTechniqueSchema(state.materialIndex)) {
@@ -313,6 +355,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
                     actionDoc, &procMaterialLibrary(), id, params, colour);
               })) {
         refreshPreviewMaterials();
+        reconcileSavedProcMaterial(catalog.resourceName);
         loadMaterialDraft(id);
       }
     }
@@ -337,6 +380,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
                     materialSurface(session.selection.surface), createdId);
               })) {
         refreshPreviewMaterials();
+        reconcileSavedProcMaterial(resourceName);
         loadMaterialDraft(createdId);
       }
     }
@@ -541,6 +585,9 @@ void renderPreviewScene(ImVec2 const& windowSize) {
   auto size = previewPixelSize(windowSize);
   preview->resize(size.width, size.height);
 
+  // This is a uniform-only push on every preview frame, matching the game
+  // renderer's update cadence and keeping slider drags free of re-tessellation.
+  applyMaterialDraft();
   auto textureId = preview->render(
       session.document->getWorld().get(), *session.worldData, session.camera,
       session.camera->getPosition(), io.DeltaTime);
@@ -599,20 +646,6 @@ void openPreview3D(
       glm::vec3{playerPosition.x, session.eyeZ, playerPosition.y},
       bw::app::cameraYaw(playerAngle), 0.0f, BW_PLAYER_FOV, 1.0f);
   session.camera->setClipDistances(0.1f, 1000000.0f);
-  if (session.world) {
-    std::vector<bw::core::Primitive*> mutablePrimitives;
-    mutablePrimitives.reserve(primitives.size());
-    for (auto const* primitive : primitives) {
-      mutablePrimitives.push_back(const_cast<bw::core::Primitive*>(primitive));
-    }
-    bw::core::ArrangementWorldDataGenerator generator;
-    generator.generate(mutablePrimitives);
-    session.worldData = std::make_shared<bw::core::ArrangementWorldData>(
-        generator.getWorldData(), session.world->getExtents(),
-        float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-        session.world->getStepThreshold());
-  }
-
   session.primitives.reserve(primitives.size());
   session.primitivesForGrounding.reserve(primitives.size());
   for (auto const* primitive : primitives) {
@@ -634,6 +667,10 @@ void openPreview3D(
            extrudePrimitiveForPreview(*primitive, &procMaterialLibrary()),
            const_cast<bw::core::Primitive*>(primitive), editable});
     }
+  }
+
+  if (session.world) {
+    rebuildPreviewWorldData();
   }
 
   // Per preview-open, unlike the process-lifetime EditorRenderSystem it is

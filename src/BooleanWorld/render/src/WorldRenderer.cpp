@@ -24,6 +24,7 @@ WorldRenderer::WorldRenderer(
     bw::app::RenderTextureFilter renderTextureFilter,
     bw::app::HorizontalMaterials horizontalMaterials)
     : mSubMaterialResolver(resourceMgr),
+      mBakedSubMaterialResolver(resourceMgr),
       mWorldHasChanged(true),
       mwLogger(logger),
       mRenderTextureFilter(renderTextureFilter) {
@@ -97,6 +98,32 @@ void WorldRenderer::setWorldChanged() {
   mWorldHasChanged = true;
 }
 
+void WorldRenderer::updateSubMaterialDraft(
+    string const& subMaterialId, int32_t materialIndex,
+    bw::core::MaterialDefinitionData const& definition) {
+  // The batch key is the definition resolved when this preview opened, not
+  // the draft's changing hash. Locate that baked key first, then replace only
+  // its shader uniforms. Each surface set owns independent buckets.
+  auto baked = mBakedSubMaterialResolver.resolve(subMaterialId);
+  auto bakedHash = baked.def.hash(baked.materialIndex);
+  for (auto const& item : mMaterialRenderers) {
+    if (item.surfaceSet == WorldSurfaceSet::Horizontal) {
+      item.renderer->updateMaterialUniforms(
+          bakedHash, true, materialIndex, definition);
+      item.renderer->updateMaterialUniforms(
+          bakedHash, false, materialIndex, definition);
+    } else {
+      item.renderer->updateMaterialUniforms(
+          bakedHash, false, materialIndex, definition);
+    }
+  }
+}
+
+void WorldRenderer::reloadSubMaterialResolver(
+    wp::application::resourcesystem::ResourceManager* resourceMgr) {
+  mSubMaterialResolver = SubMaterialResolver(resourceMgr);
+}
+
 uint32_t WorldRenderer::addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c) {
   WorldTriangle3dDataProvider::DrawVert vertex{
       {px, py, pz}, {nx, ny, nz}, {u, v}, c};
@@ -111,11 +138,10 @@ void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snap
   std::vector<uint32_t> horizontalCounts(
       horizontal.dataProvider->getNumMeshes());
   for (auto const& triangle : triangles) {
-    auto const& properties = worldData.palette[
-        worldData.faces[triangle.face].paletteIndex];
-    auto floorResolved = mSubMaterialResolver.resolve(properties.floorMaterialId);
+    auto const& properties = worldData.palette[worldData.faces[triangle.face].paletteIndex];
+    auto floorResolved = mBakedSubMaterialResolver.resolve(properties.floorMaterialId);
     auto floorHash = floorResolved.def.hash(floorResolved.materialIndex);
-    auto ceilingResolved = mSubMaterialResolver.resolve(properties.ceilingMaterialId);
+    auto ceilingResolved = mBakedSubMaterialResolver.resolve(properties.ceilingMaterialId);
     auto ceilingHash = ceilingResolved.def.hash(ceilingResolved.materialIndex);
     ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
         floorHash, true)];
@@ -135,7 +161,7 @@ void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snap
           bw::core::arr::ToWorldCoordinate(vertex.y)};
     }
 
-    auto floorResolved = mSubMaterialResolver.resolve(properties.floorMaterialId);
+    auto floorResolved = mBakedSubMaterialResolver.resolve(properties.floorMaterialId);
     auto floorHash = floorResolved.def.hash(floorResolved.materialIndex);
     auto floorMesh = horizontal.renderer->getMeshIndexForMaterialHash(
         floorHash, true);
@@ -150,7 +176,7 @@ void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snap
     horizontal.dataProvider->addTriangle(
         floorMesh, floorIndices[0], floorIndices[1], floorIndices[2]);
 
-    auto ceilingResolved = mSubMaterialResolver.resolve(properties.ceilingMaterialId);
+    auto ceilingResolved = mBakedSubMaterialResolver.resolve(properties.ceilingMaterialId);
     auto ceilingHash = ceilingResolved.def.hash(ceilingResolved.materialIndex);
     auto ceilingMesh = horizontal.renderer->getMeshIndexForMaterialHash(
         ceilingHash, false);
@@ -202,7 +228,7 @@ void WorldRenderer::updateWallDataProvider(
     auto orientation = bw::app::orientArrangementWall(worldData, wall);
     if (facesPlayer(orientation)) {
       auto const& properties = worldData.palette[wall.paletteIndex];
-      auto resolved = mSubMaterialResolver.resolve(properties.wallMaterialId);
+      auto resolved = mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
       auto hash = resolved.def.hash(resolved.materialIndex);
       wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
           hash, false)] += 2;
@@ -223,7 +249,7 @@ void WorldRenderer::updateWallDataProvider(
 
     if (facesPlayer(orientation)) {
       auto const& properties = worldData.palette[wall.paletteIndex];
-      auto resolved = mSubMaterialResolver.resolve(properties.wallMaterialId);
+      auto resolved = mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
       auto hash = resolved.def.hash(resolved.materialIndex);
       auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
       auto colour = untintedVertexColour;

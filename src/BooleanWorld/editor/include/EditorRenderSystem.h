@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 namespace mpp {
 class Logger;
 class RenderSystem;
@@ -45,7 +47,7 @@ namespace editor {
 // single-instance-for-the-process assumption, so this is an existing
 // library constraint, not something introduced here.
 class EditorRenderSystem {
- public:
+public:
   // width/height seed RenderSystem's initial viewport. They do not track
   // window resizes; nothing in this ticket's scope renders through them yet.
   EditorRenderSystem(int width, int height);
@@ -63,7 +65,11 @@ class EditorRenderSystem {
   }
   wp::Logger* logger() const { return mLogger; }
 
- private:
+  // Re-reads a ProcMaterial and its YAML dependency after editor authoring
+  // saves it directly to disk.
+  void reloadProcMaterial(std::string const& resourceName);
+
+private:
   mpp::Logger* mMppLogger{};
   wp::Logger* mLogger{};
   mpp::RenderSystem* mRenderSystem{};

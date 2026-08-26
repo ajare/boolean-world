@@ -55,6 +55,13 @@ public:
 
   uint32_t getMeshIndexForMaterialHash(uint64_t hashValue, bool floor) const;
 
+  // Pushes a Sub-material draft into the existing mesh bucket identified by
+  // its baked hash. This deliberately changes uniforms only: no geometry or
+  // batch allocation is needed while an editor slider is being dragged.
+  void updateMaterialUniforms(
+      uint64_t bakedMaterialHash, bool floor, int32_t materialIndex,
+      bw::core::MaterialDefinitionData const& definition);
+
   void create(std::shared_ptr<WorldTriangle3dDataProvider> dataProvider, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr);
 
   void addToScene(mpp::ScenePtr scene, bw::core::World const* world);

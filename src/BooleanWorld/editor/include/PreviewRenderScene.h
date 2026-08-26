@@ -1,8 +1,11 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
 #pragma warning(push)
 #pragma warning(disable : 4201)
@@ -17,6 +20,10 @@
 #include <core/WorldData.h>
 
 class WorldRenderer;
+
+namespace wp::application::resourcesystem {
+class ResourceManager;
+}
 
 namespace mpp {
 class RenderSystem;
@@ -39,7 +46,7 @@ class EditorRenderSystem;
 // never freed and the next open crashes over the stale one. The Scene must
 // then outlive the WorldRenderer that was added to it.
 class PreviewRenderScene {
- public:
+public:
   // Builds the whole stack against `renderSystem`, sized in framebuffer
   // pixels. Throws if any part of it fails.
   //
@@ -63,6 +70,17 @@ class PreviewRenderScene {
   // No-op when the size has not actually changed.
   void resize(std::size_t width, std::size_t height);
 
+  // Pushes an unsaved editor draft to every existing matching mesh bucket.
+  void updateMaterialDraft(
+      std::string const& subMaterialId, std::uint32_t materialIndex,
+      std::vector<float> const& params,
+      std::array<float, 3> const& baseColour);
+
+  // Rebuilds the renderer's cached Sub-material resolver without rebuilding
+  // its scene, pipeline, or mesh buckets.
+  void reloadSubMaterialResolver(
+      wp::application::resourcesystem::ResourceManager* resourceMgr);
+
   // Rebuilds this frame's world geometry and renders it into the pipeline's
   // offscreen images. Returns the OpenGL texture id of the resolved output
   // image, or zero if the pipeline produced no target.
@@ -76,7 +94,7 @@ class PreviewRenderScene {
       glm::vec3 const& cameraPosition,
       float frameTime);
 
- private:
+private:
   mpp::RenderSystem* mwRenderSystem{};
   mpp::ScenePtr mScene;
   mpp::RenderPipelinePtr mPipeline;

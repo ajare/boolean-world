@@ -117,6 +117,25 @@ void PreviewRenderScene::resize(std::size_t width, std::size_t height) {
   mHeight = height;
 }
 
+void PreviewRenderScene::updateMaterialDraft(
+    std::string const& subMaterialId, std::uint32_t materialIndex,
+    std::vector<float> const& params,
+    std::array<float, 3> const& baseColour) {
+  bw::core::MaterialDefinitionData definition;
+  definition.params.fill(0.0f);
+  for (std::size_t i = 0; i < params.size() && i < definition.params.size(); ++i) {
+    definition.params[i] = params[i];
+  }
+  definition.baseColour = baseColour;
+  mRenderer->updateSubMaterialDraft(
+      subMaterialId, static_cast<int32_t>(materialIndex), definition);
+}
+
+void PreviewRenderScene::reloadSubMaterialResolver(
+    wp::application::resourcesystem::ResourceManager* resourceMgr) {
+  mRenderer->reloadSubMaterialResolver(resourceMgr);
+}
+
 std::uint32_t PreviewRenderScene::render(
     bw::core::World* world,
     bw::core::WorldData const& worldData,

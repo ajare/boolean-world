@@ -46,6 +46,25 @@ uint32_t WorldRenderer3d::getMeshIndexForMaterialHash(
   return worldBatch->getMeshIndexForMaterialHash(hashValue, floor);
 }
 
+void WorldRenderer3d::updateMaterialUniforms(
+    uint64_t bakedMaterialHash, bool floor, int32_t materialIndex,
+    bw::core::MaterialDefinitionData const& definition) {
+  auto worldBatch = mRenderer->getWorldBatch();
+  // getMeshIndexForMaterialHash returns zero for a missing bucket, which is
+  // also a valid first mesh. Confirm it exists before touching that bucket.
+  if (!worldBatch->hasMeshForMaterialHash(bakedMaterialHash, floor)) {
+    return;
+  }
+  auto meshIndex = worldBatch->getMeshIndexForMaterialHash(bakedMaterialHash, floor);
+  if (meshIndex >= mUniforms.size() || !mUniforms[meshIndex]) {
+    return;
+  }
+
+  auto const& uniforms = mUniforms[meshIndex];
+  uniforms->updateUniform("MATERIAL_INDEX", materialIndex);
+  uniforms->updateUniform("MATERIAL_PARAMS", definition.params.data());
+}
+
 void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvider, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
   mDataProvider = dataProvider;
 
@@ -83,7 +102,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
   mFloorMeshes.resize(worldBatch->getMaterialMeshCount(), false);
 
   auto initializeGlobalUniforms = [](
-      mpp::UniformCollection& uniforms, bool floor) {
+                                      mpp::UniformCollection& uniforms, bool floor) {
     uniforms.setUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
     uniforms.setUniform("GLOBAL_TIME", 0.0f);
     uniforms.setUniform("PIXEL_SIZE", 1.0f / 32);
@@ -175,7 +194,6 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       mMaterialIndices[meshIndex] =
           static_cast<int32_t>(ceilingResolved.materialIndex);
     }
-
   }
 
   if (mSurfaceSet == WorldSurfaceSet::Walls) {

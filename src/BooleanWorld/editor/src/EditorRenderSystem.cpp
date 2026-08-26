@@ -31,7 +31,7 @@ namespace {
 // implementations purely to read the same manifest the game reads.
 class InertResourceFactory
     : public wp::application::resourcesystem::ResourceFactory {
- public:
+public:
   explicit InertResourceFactory(string const& type)
       : wp::application::resourcesystem::ResourceFactory(type) {
   }
@@ -115,6 +115,15 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
     mResourceMgr->createResource(resource);
     mResourceMgr->loadResource(resource);
   }
+}
+
+void EditorRenderSystem::reloadProcMaterial(string const& resourceName) {
+  auto resource = mResourceMgr->getResource(resourceName);
+  // The preview loaded this resource directly rather than acquiring it, so a
+  // release unloads it and its TextFile dependency. Loading it again then
+  // rereads the YAML the authoring library just saved.
+  mResourceMgr->releaseResource(resource);
+  mResourceMgr->loadResource(resource);
 }
 
 EditorRenderSystem::~EditorRenderSystem() {

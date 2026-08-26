@@ -37,7 +37,12 @@ private:
   };
 
 private:
+  // Current render-side ProcMaterial data, refreshed after an editor save.
   SubMaterialResolver mSubMaterialResolver;
+  // The definitions that named the already-created mesh buckets. Geometry
+  // remains in these buckets until the preview closes, even after a save
+  // changes a definition's hash.
+  SubMaterialResolver mBakedSubMaterialResolver;
 
   std::vector<MaterialRenderer> mMaterialRenderers;
 
@@ -77,6 +82,18 @@ public:
   virtual ~WorldRenderer();
 
   void setWorldChanged();
+
+  // Updates every existing floor, ceiling, and wall mesh bucket that was
+  // baked for this Sub-material. Used by the editor's unsaved draft; it does
+  // not rebuild arrangement geometry or batches.
+  void updateSubMaterialDraft(
+      std::string const& subMaterialId, int32_t materialIndex,
+      bw::core::MaterialDefinitionData const& definition);
+
+  // Rebuilds the read-only render-side Sub-material cache after the editor
+  // saves ProcMaterial YAML directly to disk.
+  void reloadSubMaterialResolver(
+      wp::application::resourcesystem::ResourceManager* resourceMgr);
 
   void create(mpp::ScenePtr scene, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr);
 

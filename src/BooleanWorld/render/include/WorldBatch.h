@@ -47,6 +47,8 @@ public:
 
   uint32_t getMeshIndexForMaterialHash(uint64_t hashValue, bool floor) const;
 
+  bool hasMeshForMaterialHash(uint64_t hashValue, bool floor) const;
+
   size_t getMaterialMeshCount() const;
 
   std::string formatMeshName(uint64_t hashValue, bool floor) const;

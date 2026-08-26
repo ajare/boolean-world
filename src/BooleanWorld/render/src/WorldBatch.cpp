@@ -103,6 +103,10 @@ uint32_t WorldBatch::getMeshIndexForMaterialHash(
   return it == mMaterialHashToMesh.end() ? 0u : it->second;
 }
 
+bool WorldBatch::hasMeshForMaterialHash(uint64_t hashValue, bool floor) const {
+  return mMaterialHashToMesh.contains({hashValue, floor});
+}
+
 size_t WorldBatch::getMaterialMeshCount() const {
   return mMaterialHashToMesh.size();
 }
