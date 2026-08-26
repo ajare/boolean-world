@@ -82,13 +82,20 @@ PreviewRenderScene::PreviewRenderScene(
 }
 
 PreviewRenderScene::~PreviewRenderScene() {
-  // The pipeline goes first, and RenderSystem's cached copy of it with it:
-  // it holds the SceneModel3d list from the frame it last rendered, and a
-  // SceneModel3d holds an acquire on the batch's Model resource. Destroy the
-  // WorldRenderer while that acquire is outstanding and Batch::~Batch finds a
-  // non-zero ref count, silently skips its deleteResource, and leaves the
-  // Model in mpp::ResourceManager's cache forever - after which the next open
-  // of the preview builds a second batch over the stale one and crashes.
+  // The pipeline goes first, and RenderSystem's cached copy of it with it.
+  // While it is alive, something it rendered with keeps a reference to the
+  // SceneModel3d alive past WorldRenderer3d's own remove3dModel/reset - and a
+  // SceneModel3d holds an mpp acquire() on the batch's Model resource. Destroy
+  // the WorldRenderer with that acquire still outstanding and Batch::~Batch
+  // sees a non-zero ref count, silently skips its deleteResource, and strands
+  // the Model in mpp::ResourceManager's cache; the next open then builds a
+  // second batch of the same name over the stale one and crashes.
+  //
+  // Confirmed in both orderings against mpp's own acquire/release log
+  // (mpp::enable_static_log("mpp-resources.log", true)): with the pipeline
+  // released first, SceneModel3d releases the Model to 1 and the batch then
+  // takes it to 0 and deletes it; with the renderer released first, the batch
+  // releases to 1, skips the delete, and SceneModel3d only reaches 0 after.
   mPipeline.reset();
   mwRenderSystem->removeRenderPipeline(pipelineName);
 
