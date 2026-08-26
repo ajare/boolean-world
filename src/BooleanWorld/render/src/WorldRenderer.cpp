@@ -15,6 +15,8 @@ namespace {
 // passes white. The editor's 3D preview is the one caller that does not,
 // tinting the surface the viewer is looking at.
 constexpr uint32_t untintedVertexColour = 0xffffffffu;
+// Full red/green, 35% blue: the preview's established looked-at tint.
+constexpr uint32_t lookedAtVertexColour = 0xff59ffffu;
 
 }  // namespace
 
@@ -130,9 +132,16 @@ uint32_t WorldRenderer::addVertexToDataProvider(DataProvider dataProvider, uint3
   return dataProvider->addVertex(meshIndex, vertex);
 }
 
-void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snapshot) {
+void WorldRenderer::updateHorizontalDataProvider(
+    bw::core::WorldData const& snapshot,
+    int32_t highlightedTriangle,
+    bool highlightedCeiling) {
   auto const& worldData = snapshot.getArrangement();
   auto const& triangles = snapshot.getTriangles();
+  auto const highlightedFace =
+      highlightedTriangle >= 0 && size_t(highlightedTriangle) < triangles.size()
+          ? triangles[highlightedTriangle].face
+          : ~0u;
   auto& horizontal = mMaterialRenderers[0];
 
   std::vector<uint32_t> horizontalCounts(
@@ -150,7 +159,9 @@ void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snap
   }
   horizontal.dataProvider->updateInternals(horizontalCounts);
 
-  for (auto const& triangle : triangles) {
+  for (size_t triangleIndex = 0; triangleIndex < triangles.size();
+       ++triangleIndex) {
+    auto const& triangle = triangles[triangleIndex];
     auto const& face = worldData.faces[triangle.face];
     auto const& properties = worldData.palette[face.paletteIndex];
     wp::Vector2 positions[3];
@@ -171,7 +182,9 @@ void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snap
       floorIndices[i] = addVertexToDataProvider(
           horizontal.dataProvider, floorMesh, positions[i].x,
           properties.floorZ, positions[i].y, 0, 1, 0, uv.x, uv.y,
-          untintedVertexColour);
+          triangle.face == highlightedFace && !highlightedCeiling
+              ? lookedAtVertexColour
+              : untintedVertexColour);
     }
     horizontal.dataProvider->addTriangle(
         floorMesh, floorIndices[0], floorIndices[1], floorIndices[2]);
@@ -186,7 +199,9 @@ void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snap
       ceilingIndices[2 - i] = addVertexToDataProvider(
           horizontal.dataProvider, ceilingMesh, positions[i].x,
           properties.ceilingZ, positions[i].y, 0, -1, 0, uv.x, uv.y,
-          untintedVertexColour);
+          triangle.face == highlightedFace && highlightedCeiling
+              ? lookedAtVertexColour
+              : untintedVertexColour);
     }
     horizontal.dataProvider->addTriangle(
         ceilingMesh, ceilingIndices[0], ceilingIndices[1], ceilingIndices[2]);
@@ -196,7 +211,8 @@ void WorldRenderer::updateHorizontalDataProvider(bw::core::WorldData const& snap
 }
 
 void WorldRenderer::updateWallDataProvider(
-    bw::core::WorldData const& snapshot, glm::vec3 const& playerPosition) {
+    bw::core::WorldData const& snapshot, glm::vec3 const& playerPosition,
+    int32_t highlightedWall) {
   auto const& worldData = snapshot.getArrangement();
   auto const& walls = snapshot.getWalls();
   auto& wallRenderer = mMaterialRenderers[1];
@@ -239,7 +255,8 @@ void WorldRenderer::updateWallDataProvider(
   }
   wallRenderer.dataProvider->updateInternals(wallCounts);
 
-  for (auto const& wall : walls) {
+  for (size_t wallIndex = 0; wallIndex < walls.size(); ++wallIndex) {
+    auto const& wall = walls[wallIndex];
     if (!wall.visible) {
       continue;
     }
@@ -252,7 +269,9 @@ void WorldRenderer::updateWallDataProvider(
       auto resolved = mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
       auto hash = resolved.def.hash(resolved.materialIndex);
       auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
-      auto colour = untintedVertexColour;
+      auto colour = int32_t(wallIndex) == highlightedWall
+                        ? lookedAtVertexColour
+                        : untintedVertexColour;
       auto const& normal = orientation.normal;
       auto bottom0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.minZ, v0.y,
@@ -275,18 +294,21 @@ void WorldRenderer::updateWallDataProvider(
       // from, is a true mirror image rather than an inconsistent one.
       auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
       auto backNormal = -orientation.normal;
+      auto colour = int32_t(wallIndex) == highlightedWall
+                        ? lookedAtVertexColour
+                        : untintedVertexColour;
       auto bottom0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.minZ, v0.y,
-          backNormal.x, 0, backNormal.y, 0, 0, untintedVertexColour);
+          backNormal.x, 0, backNormal.y, 0, 0, colour);
       auto bottom1 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v1.x, wall.minZ, v1.y,
-          backNormal.x, 0, backNormal.y, 1, 0, untintedVertexColour);
+          backNormal.x, 0, backNormal.y, 1, 0, colour);
       auto top1 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, v1.y,
-          backNormal.x, 0, backNormal.y, 1, 1, untintedVertexColour);
+          backNormal.x, 0, backNormal.y, 1, 1, colour);
       auto top0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, v0.y,
-          backNormal.x, 0, backNormal.y, 0, 1, untintedVertexColour);
+          backNormal.x, 0, backNormal.y, 0, 1, colour);
       wallRenderer.dataProvider->addTriangle(mesh, top1, bottom1, bottom0);
       wallRenderer.dataProvider->addTriangle(mesh, bottom0, top0, top1);
     }
@@ -305,18 +327,28 @@ void WorldRenderer::update(
     float materialScale,
     float farGridSize,
     FloorPatternOptions const& floorPattern,
-    float frameTime) {
+    float frameTime,
+    int32_t highlightedTriangle,
+    bool highlightedCeiling,
+    int32_t highlightedWall) {
   BW_UNUSED(world);
 
+  if (highlightedTriangle != mHighlightedTriangle ||
+      highlightedCeiling != mHighlightedCeiling) {
+    mWorldHasChanged = true;
+    mHighlightedTriangle = highlightedTriangle;
+    mHighlightedCeiling = highlightedCeiling;
+  }
   if (mWorldHasChanged) {
-    updateHorizontalDataProvider(worldData);
+    updateHorizontalDataProvider(
+        worldData, highlightedTriangle, highlightedCeiling);
     mWorldHasChanged = false;
   }
   // Unlike the horizontal provider, walls depend on playerPosition, so they
   // need rebuilding on every call - the player moving is reason enough for
   // a wall to flip which single quad it shows, even when nothing about the
   // world itself changed.
-  updateWallDataProvider(worldData, playerPosition);
+  updateWallDataProvider(worldData, playerPosition, highlightedWall);
 
   for (auto& item : mMaterialRenderers) {
     auto const materialIndexOverride =

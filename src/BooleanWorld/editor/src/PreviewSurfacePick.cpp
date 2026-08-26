@@ -7,10 +7,6 @@ namespace {
 
 using Vector3 = std::array<float, 3>;
 
-Vector3 toVector(PreviewVertex3 const& vertex) {
-  return {vertex.x, vertex.y, vertex.z};
-}
-
 Vector3 subtract(Vector3 const& left, Vector3 const& right) {
   return {left[0] - right[0], left[1] - right[1], left[2] - right[2]};
 }
@@ -31,23 +27,20 @@ float dot(Vector3 const& left, Vector3 const& right) {
 bool rayHitsTriangle(
     Vector3 const& origin,
     Vector3 const& direction,
-    PreviewTriangle const& triangle,
+    std::array<Vector3, 3> const& triangle,
     float& distance) {
   constexpr float epsilon = 1e-6f;
 
-  auto a = toVector(triangle.vertices[0]);
-  auto edge1 = subtract(toVector(triangle.vertices[1]), a);
-  auto edge2 = subtract(toVector(triangle.vertices[2]), a);
-
+  auto edge1 = subtract(triangle[1], triangle[0]);
+  auto edge2 = subtract(triangle[2], triangle[0]);
   auto pvec = cross(direction, edge2);
   auto determinant = dot(edge1, pvec);
-  // Parallel to, or degenerate in, the triangle's plane.
   if (std::abs(determinant) < epsilon) {
     return false;
   }
 
   auto inverseDeterminant = 1.0f / determinant;
-  auto tvec = subtract(origin, a);
+  auto tvec = subtract(origin, triangle[0]);
   auto u = dot(tvec, pvec) * inverseDeterminant;
   if (u < 0.0f || u > 1.0f) {
     return false;
@@ -60,8 +53,6 @@ bool rayHitsTriangle(
   }
 
   auto t = dot(edge2, qvec) * inverseDeterminant;
-  // Strictly in front of the origin, so a camera sitting exactly on a
-  // surface does not pick it.
   if (t <= epsilon) {
     return false;
   }
@@ -70,104 +61,81 @@ bool rayHitsTriangle(
   return true;
 }
 
-void considerTriangles(
-    Vector3 const& origin,
-    Vector3 const& direction,
-    std::vector<PreviewTriangle> const& triangles,
-    PreviewSurface surface,
-    PreviewSurfaceHit& nearest) {
-  for (auto const& triangle : triangles) {
-    float distance{};
-    if (!rayHitsTriangle(origin, direction, triangle, distance)) {
-      continue;
-    }
-    if (nearest.hit() && distance >= nearest.distance) {
-      continue;
-    }
-    nearest.surface = surface;
-    nearest.distance = distance;
-  }
+Vector3 horizontalVertex(
+    bw::core::arr::ArrangementResult const& arrangement,
+    uint32_t vertexIndex,
+    float z) {
+  auto const& vertex = arrangement.vertices[vertexIndex];
+  return {
+      bw::core::arr::ToWorldCoordinate(vertex.x),
+      bw::core::arr::ToWorldCoordinate(vertex.y), z};
 }
 
 }  // namespace
 
-PreviewSurfaceHit pickPreviewSurface(
-    PrimitivePreviewGeometry const& geometry,
+PreviewScenePick pickPreviewSceneSurface(
+    bw::core::ArrangementWorldData const& worldData,
     std::array<float, 3> const& rayOrigin,
     std::array<float, 3> const& rayDirection) {
-  PreviewSurfaceHit nearest;
-
+  PreviewScenePick nearest;
   auto length = std::sqrt(dot(rayDirection, rayDirection));
   if (!(length > 0.0f)) {
     return nearest;
   }
-  // Normalised, so the reported distance is a real distance and stays
-  // comparable between calls made with differently scaled directions.
   Vector3 direction{
       rayDirection[0] / length, rayDirection[1] / length,
       rayDirection[2] / length};
 
-  considerTriangles(
-      rayOrigin, direction, geometry.floorTriangles, PreviewSurface::Floor,
-      nearest);
-  considerTriangles(
-      rayOrigin, direction, geometry.ceilingTriangles, PreviewSurface::Ceiling,
-      nearest);
-
-  for (size_t index = 0; index < geometry.wallQuads.size(); ++index) {
-    auto const& quad = geometry.wallQuads[index];
-    // The same two triangles, in the same order, that the renderer lofts
-    // this quad into.
-    std::array<PreviewTriangle, 2> triangles{
-        PreviewTriangle{
-            {quad.vertices[0], quad.vertices[1], quad.vertices[2]}},
-        PreviewTriangle{
-            {quad.vertices[2], quad.vertices[3], quad.vertices[0]}}};
-    for (auto const& triangle : triangles) {
+  auto const& arrangement = worldData.getArrangement();
+  auto const& triangles = worldData.getTriangles();
+  for (size_t index = 0; index < triangles.size(); ++index) {
+    auto const& triangle = triangles[index];
+    auto const& properties =
+        arrangement.palette[arrangement.faces[triangle.face].paletteIndex];
+    for (auto const [surface, z] : {
+             std::pair{PreviewSurface::Floor, properties.floorZ},
+             std::pair{PreviewSurface::Ceiling, properties.ceilingZ}}) {
+      std::array<Vector3, 3> vertices{
+          horizontalVertex(arrangement, triangle.v[0], z),
+          horizontalVertex(arrangement, triangle.v[1], z),
+          horizontalVertex(arrangement, triangle.v[2], z)};
       float distance{};
-      if (!rayHitsTriangle(rayOrigin, direction, triangle, distance)) {
+      if (!rayHitsTriangle(rayOrigin, direction, vertices, distance) ||
+          (nearest.hit() && distance >= nearest.surfaceHit.distance)) {
         continue;
       }
-      if (nearest.hit() && distance >= nearest.distance) {
-        continue;
-      }
-      nearest.surface = PreviewSurface::Wall;
-      nearest.wallIndex = index;
-      nearest.distance = distance;
+      nearest.primitiveIndex = index;
+      nearest.surfaceHit.surface = surface;
+      nearest.surfaceHit.distance = distance;
     }
   }
 
-  return nearest;
-}
-
-PreviewScenePick pickPreviewSceneSurface(
-    std::vector<PrimitivePreviewGeometry const*> const& geometries,
-    std::array<float, 3> const& rayOrigin,
-    std::array<float, 3> const& rayDirection) {
-  // Wide enough to catch coplanar duplicates through the accumulated float
-  // error of two separate extrusions, far tighter than any real surface
-  // separation in a level.
-  constexpr float coplanarEpsilon = 1e-3f;
-
-  PreviewScenePick nearest;
-  for (size_t index = 0; index < geometries.size(); ++index) {
-    if (!geometries[index]) {
+  auto const& walls = worldData.getWalls();
+  for (size_t index = 0; index < walls.size(); ++index) {
+    auto const& wall = walls[index];
+    if (!wall.visible) {
       continue;
     }
-    auto hit = pickPreviewSurface(*geometries[index], rayOrigin, rayDirection);
-    if (!hit.hit()) {
-      continue;
+    auto const& edge = arrangement.edges[wall.edge];
+    auto bottom0 = horizontalVertex(arrangement, edge.v[0], wall.minZ);
+    auto bottom1 = horizontalVertex(arrangement, edge.v[1], wall.minZ);
+    auto top0 = horizontalVertex(arrangement, edge.v[0], wall.maxZ);
+    auto top1 = horizontalVertex(arrangement, edge.v[1], wall.maxZ);
+    std::array<std::array<Vector3, 3>, 2> wallTriangles{
+        std::array<Vector3, 3>{bottom0, bottom1, top1},
+        std::array<Vector3, 3>{top1, top0, bottom0}};
+    for (auto const& triangle : wallTriangles) {
+      float distance{};
+      if (!rayHitsTriangle(rayOrigin, direction, triangle, distance) ||
+          (nearest.hit() && distance >= nearest.surfaceHit.distance)) {
+        continue;
+      }
+      nearest.surfaceHit.surface = PreviewSurface::Wall;
+      nearest.surfaceHit.wallIndex = index;
+      nearest.surfaceHit.distance = distance;
     }
-    // Anything meaningfully further away loses. Anything nearer, or level
-    // with the leader, takes over - so among coincident surfaces the last
-    // drawn wins, exactly as GL_LEQUAL resolves them on screen.
-    if (nearest.hit() &&
-        hit.distance > nearest.surfaceHit.distance + coplanarEpsilon) {
-      continue;
-    }
-    nearest.primitiveIndex = index;
-    nearest.surfaceHit = hit;
   }
+
   return nearest;
 }
 

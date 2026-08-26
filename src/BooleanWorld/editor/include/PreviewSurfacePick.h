@@ -3,9 +3,8 @@
 #include <array>
 #include <cstddef>
 #include <string_view>
-#include <vector>
 
-#include "PrimitivePreviewGeometry.h"
+#include <core/ArrangementWorldData.h>
 
 namespace editor {
 
@@ -13,9 +12,9 @@ enum class PreviewSurface { None, Floor, Ceiling, Wall };
 
 struct PreviewSurfaceHit {
   PreviewSurface surface{PreviewSurface::None};
-  // Which wall Ring edge was hit; only meaningful for PreviewSurface::Wall.
+  // Index into ArrangementWorldData::getWalls(); only meaningful for Wall.
   size_t wallIndex{};
-  // Distance from the ray origin, in the same units as the geometry.
+  // Distance from the ray origin, in world units.
   float distance{};
 
   [[nodiscard]] bool hit() const {
@@ -23,20 +22,9 @@ struct PreviewSurfaceHit {
   }
 };
 
-// Finds the nearest surface of one extruded Primitive along a ray, for
-// "what is the player looking at" in the 3D preview. Works in the same
-// (x, y ground-plane, z height) space as PrimitivePreviewGeometry, not the
-// renderer's swapped 3D space, and is deliberately free of the graphics API.
-//
-// Surfaces are two-sided, matching the preview's disabled backface culling,
-// so a Primitive is pickable from inside as well as outside.
-[[nodiscard]] PreviewSurfaceHit pickPreviewSurface(
-    PrimitivePreviewGeometry const& geometry,
-    std::array<float, 3> const& rayOrigin,
-    std::array<float, 3> const& rayDirection);
-
 struct PreviewScenePick {
-  // Index into the geometries passed in; only meaningful when hit().
+  // Index into ArrangementWorldData::getTriangles(); only meaningful for a
+  // floor or ceiling hit. The legacy name is retained for call-site churn.
   size_t primitiveIndex{};
   PreviewSurfaceHit surfaceHit;
 
@@ -45,17 +33,14 @@ struct PreviewScenePick {
   }
 };
 
-// The surface the ray meets across a whole preview scene. Geometries must be
-// given in the order they are drawn - ascending Primitive priority - because
-// that is what decides the answer where two of them coincide.
-//
-// Primitives are extruded independently, so neighbours that share an edge
-// produce exactly coplanar walls. The renderer draws them in order with
-// GL_LEQUAL, so the last one drawn owns those pixels; this resolves such ties
-// the same way, and therefore always names a surface that is actually
-// visible rather than one buried behind its own duplicate.
+// Finds the nearest rendered Arrangement surface along a ray, for "what is
+// the player looking at" in the 3D preview. The input is the same resolved,
+// composited geometry WorldRenderer draws; no Primitive ordering or
+// draw-order tie breaking is involved. Coordinates are (x, y ground-plane,
+// z height), and the function is deliberately free of the graphics API.
+// Surfaces are two-sided, matching the rendered preview.
 [[nodiscard]] PreviewScenePick pickPreviewSceneSurface(
-    std::vector<PrimitivePreviewGeometry const*> const& geometries,
+    bw::core::ArrangementWorldData const& worldData,
     std::array<float, 3> const& rayOrigin,
     std::array<float, 3> const& rayDirection);
 

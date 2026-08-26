@@ -47,6 +47,8 @@ private:
   std::vector<MaterialRenderer> mMaterialRenderers;
 
   bool mWorldHasChanged;
+  int32_t mHighlightedTriangle{-1};
+  bool mHighlightedCeiling{};
 
   wp::Logger* mwLogger;
 
@@ -59,7 +61,10 @@ private:
 private:
   // Floor/ceiling triangle geometry - unaffected by player position, so
   // this stays gated by mWorldHasChanged like before.
-  void updateHorizontalDataProvider(bw::core::WorldData const& worldData);
+  void updateHorizontalDataProvider(
+      bw::core::WorldData const& worldData,
+      int32_t highlightedTriangle,
+      bool highlightedCeiling);
 
   // Wall quad geometry. Each wall picks, every call, whichever single quad
   // currently faces the player: its authored material if the player is on
@@ -68,7 +73,8 @@ private:
   // since the player moving is enough to flip that choice for a wall even
   // when nothing about the world itself changed.
   void updateWallDataProvider(
-      bw::core::WorldData const& worldData, glm::vec3 const& playerPosition);
+      bw::core::WorldData const& worldData, glm::vec3 const& playerPosition,
+      int32_t highlightedWall);
 
   uint32_t addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c);
 
@@ -118,5 +124,8 @@ public:
       float materialScale,
       float farGridSize,
       FloorPatternOptions const& floorPattern,
-      float frameTime);
+      float frameTime,
+      int32_t highlightedTriangle = -1,
+      bool highlightedCeiling = false,
+      int32_t highlightedWall = -1);
 };

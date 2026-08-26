@@ -95,14 +95,12 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_editor_preview_surface_pick_tests
         tests/preview_surface_pick_tests.cpp
-        src/PreviewSurfacePick.cpp
-        src/PrimitivePreviewGeometry.cpp
-        src/ProcMaterialLibrary.cpp)
+        src/PreviewSurfacePick.cpp)
     target_include_directories(boolean_world_editor_preview_surface_pick_tests PRIVATE include)
     target_compile_definitions(boolean_world_editor_preview_surface_pick_tests PRIVATE
         YAML_CPP_STATIC_DEFINE)
     target_link_libraries(boolean_world_editor_preview_surface_pick_tests PRIVATE
-        core ext::yaml-cpp)
+        core)
     target_compile_features(boolean_world_editor_preview_surface_pick_tests PRIVATE cxx_std_20)
     target_compile_options(boolean_world_editor_preview_surface_pick_tests PRIVATE /W3 /utf-8)
     bw_target_defaults(boolean_world_editor_preview_surface_pick_tests)

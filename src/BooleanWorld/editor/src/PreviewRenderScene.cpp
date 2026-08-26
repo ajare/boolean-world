@@ -141,10 +141,14 @@ std::uint32_t PreviewRenderScene::render(
     bw::core::WorldData const& worldData,
     mpp::CameraPtr const& camera,
     glm::vec3 const& cameraPosition,
-    float frameTime) {
+    float frameTime,
+    int highlightedTriangle,
+    bool highlightedCeiling,
+    int highlightedWall) {
   mRenderer->update(
       world, worldData, cameraPosition, cameraPosition, -1, -1, materialScale,
-      farGridSize, floorPattern, frameTime);
+      farGridSize, floorPattern, frameTime, highlightedTriangle,
+      highlightedCeiling, highlightedWall);
 
   mScene->setViewport(0, 0, mWidth, mHeight);
   mwRenderSystem->renderScene(

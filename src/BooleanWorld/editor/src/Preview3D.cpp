@@ -8,6 +8,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #pragma warning(push)
@@ -56,9 +57,9 @@ struct PreviewPrimitive {
   bool editable{};
 };
 
-// Whichever surface the centre of the view is pointing at, or which the user
-// has clicked to select. Primitives are held by index because the session's
-// list outlives any one frame.
+// Whichever resolved Arrangement surface the centre of the view is pointing
+// at, or which the user has clicked to select. primitiveIndex is the index in
+// getTriangles() for horizontal surfaces; wallIndex is the index in getWalls().
 struct PreviewSurfaceRef {
   bool valid{};
   size_t primitiveIndex{};
@@ -87,9 +88,8 @@ struct PreviewSession {
   float eyeZ{};
   // What the crosshair is on this frame, and what the user has selected.
   // Selecting stops the crosshair search: the pointer is handed back, and the
-  // camera turns only while dragging. The looked-at surface is no longer
-  // tinted - highlighting rendered geometry comes back with the picking
-  // retarget in GitHub issue #272.
+  // camera turns only while dragging. While searching, the looked-at resolved
+  // Arrangement surface is tinted by WorldRenderer.
   PreviewSurfaceRef lookedAt;
   PreviewSurfaceRef selection;
   PreviewMaterialEditorState materialEditor;
@@ -108,6 +108,9 @@ struct PreviewSession {
   // Primitive list. It remains valid while the input-blocking preview is open.
   std::vector<bw::core::Primitive const*> primitivesForGrounding;
   std::vector<PreviewPrimitive> primitives;
+  // Arrangement faces retain authored Primitive ids. Resolve those ids back
+  // to the session's source pointers without relying on fold/list ordering.
+  std::unordered_map<uint32_t, size_t> primitiveById;
   // Built once, synchronously, from that same scoped list when the preview
   // opens - see openPreview3D. This is what the WorldRenderer draws.
   bw::core::ArrangementWorldDataPtr worldData;
@@ -137,14 +140,10 @@ PreviewSurfaceRef lookedAtSurface() {
   std::array<float, 3> origin{position.x, position.z, position.y};
   std::array<float, 3> ray{direction.x, direction.z, direction.y};
 
-  // In draw order, which is what settles coincident surfaces.
-  std::vector<PrimitivePreviewGeometry const*> geometries;
-  geometries.reserve(session.primitives.size());
-  for (auto const& primitive : session.primitives) {
-    geometries.push_back(&primitive.geometry);
+  if (!session.worldData) {
+    return {};
   }
-
-  auto pick = pickPreviewSceneSurface(geometries, origin, ray);
+  auto pick = pickPreviewSceneSurface(*session.worldData, origin, ray);
   if (!pick.hit()) {
     return {};
   }
@@ -209,24 +208,71 @@ PrimitiveMaterialSurface materialSurface(PreviewSurface surface) {
   return PrimitiveMaterialSurface::Wall;
 }
 
-std::string surfaceSubMaterialId(
-    bw::core::Primitive const& primitive, PreviewSurface surface) {
+uint32_t surfaceFaceIndex(PreviewSurfaceRef const& surface) {
+  if (!session.worldData || !surface.valid) {
+    return ~0u;
+  }
+  auto const& arrangement = session.worldData->getArrangement();
+  if (surface.surface == PreviewSurface::Floor ||
+      surface.surface == PreviewSurface::Ceiling) {
+    auto const& triangles = session.worldData->getTriangles();
+    return surface.primitiveIndex < triangles.size()
+               ? triangles[surface.primitiveIndex].face
+               : ~0u;
+  }
+  if (surface.surface != PreviewSurface::Wall) {
+    return ~0u;
+  }
+  auto const& walls = session.worldData->getWalls();
+  if (surface.wallIndex >= walls.size()) {
+    return ~0u;
+  }
+  auto const& wall = walls[surface.wallIndex];
+  auto const& edge = arrangement.edges[wall.edge];
+  for (auto faceIndex : edge.face) {
+    if (faceIndex < arrangement.faces.size() &&
+        arrangement.faces[faceIndex].paletteIndex == wall.paletteIndex) {
+      return faceIndex;
+    }
+  }
+  return ~0u;
+}
+
+PreviewPrimitive* sourcePrimitive(PreviewSurfaceRef const& surface) {
+  auto faceIndex = surfaceFaceIndex(surface);
+  if (faceIndex == ~0u) {
+    return nullptr;
+  }
+  auto primitiveId =
+      session.worldData->getArrangement().faces[faceIndex].primitiveIndex;
+  auto found = session.primitiveById.find(primitiveId);
+  return found != session.primitiveById.end() &&
+                 found->second < session.primitives.size()
+             ? &session.primitives[found->second]
+             : nullptr;
+}
+
+std::string surfaceSubMaterialId(PreviewSurfaceRef const& surface) {
   if (!session.worldData) {
     return {};
   }
-  // The rendered WorldRenderer geometry is governed by the Arrangement
-  // palette, not the source Primitive's currently-live properties.
   auto const& arrangement = session.worldData->getArrangement();
-  auto face = std::find_if(
-      arrangement.faces.begin(), arrangement.faces.end(),
-      [&](auto const& candidate) {
-        return candidate.primitiveIndex == primitive.getId();
-      });
-  if (face == arrangement.faces.end()) {
-    return {};
+  uint16_t paletteIndex{};
+  if (surface.surface == PreviewSurface::Wall) {
+    auto const& walls = session.worldData->getWalls();
+    if (!surface.valid || surface.wallIndex >= walls.size()) {
+      return {};
+    }
+    paletteIndex = walls[surface.wallIndex].paletteIndex;
+  } else {
+    auto faceIndex = surfaceFaceIndex(surface);
+    if (faceIndex == ~0u) {
+      return {};
+    }
+    paletteIndex = arrangement.faces[faceIndex].paletteIndex;
   }
-  auto const& properties = arrangement.palette[face->paletteIndex];
-  switch (surface) {
+  auto const& properties = arrangement.palette[paletteIndex];
+  switch (surface.surface) {
     case PreviewSurface::Floor:
       return properties.floorMaterialId;
     case PreviewSurface::Ceiling:
@@ -276,8 +322,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
 
   auto& state = session.materialEditor;
   if (!state.initialized) {
-    loadMaterialDraft(surfaceSubMaterialId(
-        *previewPrimitive.source, session.selection.surface));
+    loadMaterialDraft(surfaceSubMaterialId(session.selection));
   }
   state.catalogIndex = std::clamp(
       state.catalogIndex, 0, static_cast<int>(catalogs.size()) - 1);
@@ -396,10 +441,10 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
 // A modeless authoring window for the clicked wall/floor/ceiling. Closing it,
 // by its own close button, means the same thing as right-clicking the preview.
 void renderSelectedSurfaceWindow() {
-  if (!session.selection.valid ||
-      session.selection.primitiveIndex >= session.primitives.size()) {
+  if (!session.selection.valid) {
     return;
   }
+  auto* previewPrimitive = sourcePrimitive(session.selection);
   ImGui::SetNextWindowPos(
       {session.viewportMin.x + 16.0f, session.viewportMin.y + 48.0f},
       ImGuiCond_Appearing);
@@ -415,14 +460,12 @@ void renderSelectedSurfaceWindow() {
     }
     ImGui::Text("Selected %s", label.c_str());
 
-    auto& previewPrimitive =
-        session.primitives[session.selection.primitiveIndex];
-    if (!previewPrimitive.editable || !previewPrimitive.source ||
-        !session.document) {
+    if (!previewPrimitive || !previewPrimitive->editable ||
+        !previewPrimitive->source || !session.document) {
       ImGui::TextDisabled(
           "This surface is generated by a step that does not permit direct editing.");
     } else {
-      renderPreviewMaterialEditor(previewPrimitive);
+      renderPreviewMaterialEditor(*previewPrimitive);
     }
   }
   ImGui::End();
@@ -588,9 +631,18 @@ void renderPreviewScene(ImVec2 const& windowSize) {
   // This is a uniform-only push on every preview frame, matching the game
   // renderer's update cadence and keeping slider drags free of re-tessellation.
   applyMaterialDraft();
+  auto const highlightedTriangle =
+      session.lookedAt.valid && session.lookedAt.surface != PreviewSurface::Wall
+          ? static_cast<int>(session.lookedAt.primitiveIndex)
+          : -1;
+  auto const highlightedWall =
+      session.lookedAt.valid && session.lookedAt.surface == PreviewSurface::Wall
+          ? static_cast<int>(session.lookedAt.wallIndex)
+          : -1;
   auto textureId = preview->render(
       session.document->getWorld().get(), *session.worldData, session.camera,
-      session.camera->getPosition(), io.DeltaTime);
+      session.camera->getPosition(), io.DeltaTime, highlightedTriangle,
+      session.lookedAt.surface == PreviewSurface::Ceiling, highlightedWall);
   if (textureId == 0) {
     return;
   }
@@ -662,6 +714,7 @@ void openPreview3D(
         }
       }
       session.primitivesForGrounding.push_back(primitive);
+      session.primitiveById[primitive->getId()] = session.primitives.size();
       session.primitives.push_back(
           {primitive->getPriority(),
            extrudePrimitiveForPreview(*primitive, &procMaterialLibrary()),

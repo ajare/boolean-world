@@ -92,7 +92,10 @@ public:
       bw::core::WorldData const& worldData,
       mpp::CameraPtr const& camera,
       glm::vec3 const& cameraPosition,
-      float frameTime);
+      float frameTime,
+      int highlightedTriangle = -1,
+      bool highlightedCeiling = false,
+      int highlightedWall = -1);
 
 private:
   mpp::RenderSystem* mwRenderSystem{};
