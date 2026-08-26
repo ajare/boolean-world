@@ -1,3 +1,4 @@
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -12,7 +13,6 @@
 #include "Actions.h"
 #include "Document.h"
 #include "ProcMaterialLibrary.h"
-#include "PrimitivePreviewGeometry.h"
 #include "Settings.h"
 #include "Undo.h"
 
@@ -122,12 +122,10 @@ void libraryDiscoversTwoLevelsAndSelectionIsUndoable(fs::path const& root) {
               "wood.oak",
           "redo did not restore the selected wall Sub-material id");
 
-  auto preview = editor::extrudePrimitiveForPreview(
-      *document.getWorld()->getPrimitive(index), &library);
-  require(preview.wallMaterial.resolved && preview.wallMaterial.index == 0 &&
-              preview.wallMaterial.definition.baseColour ==
-                  std::array<float, 3>{0.1f, 0.2f, 0.3f},
-          "editor preview did not resolve the selected Sub-material data");
+  auto const* selected = library.findSubMaterial("wood.oak");
+  require(selected && selected->materialIndex == 0 &&
+              selected->baseColour == std::array<float, 3>{0.1f, 0.2f, 0.3f},
+          "the selected Sub-material data was not available to the renderer");
 }
 
 void authoringActionsAreSavedUndoableAndProtectReferences(fs::path const& root) {
@@ -186,12 +184,11 @@ void authoringActionsAreSavedUndoableAndProtectReferences(fs::path const& root) 
         return editor::editSubMaterial(
             actionDoc, &library, createdId, {0.8f}, {0.7f, 0.6f, 0.5f});
       });
-  auto preview = editor::extrudePrimitiveForPreview(
-      *document.getWorld()->getPrimitive(index), &library);
-  require(preview.wallMaterial.definition.baseColour ==
-                  std::array<float, 3>{0.7f, 0.6f, 0.5f} &&
-              preview.wallMaterial.definition.params[0] == 0.8f,
-          "a referencing Primitive did not immediately reflect edited parameters/colour");
+  auto const* edited = library.findSubMaterial(createdId);
+  require(edited && edited->baseColour ==
+                        std::array<float, 3>{0.7f, 0.6f, 0.5f} &&
+              edited->paramValues[0] == 0.8f,
+          "edited Sub-material parameters/colour were not retained");
   editor::undo(&document);
   require(library.findSubMaterial(createdId)->paramValues[0] == 0.25f,
           "undo did not restore the previous Sub-material parameters");

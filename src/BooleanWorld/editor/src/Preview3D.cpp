@@ -36,7 +36,6 @@
 #include "PlayerView.h"
 #include "PreviewRenderScene.h"
 #include "PreviewSurfacePick.h"
-#include "PrimitivePreviewGeometry.h"
 #include "Preview3D.h"
 #include "ProcMaterialLibrary.h"
 #include "ReactiveCamera.h"
@@ -49,8 +48,6 @@ namespace editor {
 namespace {
 
 struct PreviewPrimitive {
-  uint8_t priority{};
-  PrimitivePreviewGeometry geometry;
   // The authored source remains owned by the open Document. Procedural step
   // output is previewable but deliberately not editable (ADR-0015).
   bw::core::Primitive* source{};
@@ -104,8 +101,9 @@ struct PreviewSession {
   // Shared rather than unique because mpp::RenderSystem::renderScene takes
   // the camera by mpp::CameraPtr, exactly as StatePlayBooleanWorld does.
   std::shared_ptr<ReactiveCamera> camera;
-  // Grounding and surface picking deliberately share this exact in-scope
-  // Primitive list. It remains valid while the input-blocking preview is open.
+  // Grounding and Arrangement generation deliberately share this exact
+  // in-scope Primitive list. It remains valid while the input-blocking preview
+  // is open.
   std::vector<bw::core::Primitive const*> primitivesForGrounding;
   std::vector<PreviewPrimitive> primitives;
   // Arrangement faces retain authored Primitive ids. Resolve those ids back
@@ -135,8 +133,8 @@ std::unique_ptr<EditorRenderSystem> editorRenderSystem;
 PreviewSurfaceRef lookedAtSurface() {
   auto position = session.camera->getPosition();
   auto direction = session.camera->getDirection();
-  // PrimitivePreviewGeometry keeps height in z, where the renderer's 3D
-  // space keeps it in y.
+  // Arrangement geometry keeps height in z, where the renderer's 3D space
+  // keeps it in y.
   std::array<float, 3> origin{position.x, position.z, position.y};
   std::array<float, 3> ray{direction.x, direction.z, direction.y};
 
@@ -150,15 +148,6 @@ PreviewSurfaceRef lookedAtSurface() {
   return {
       true, pick.primitiveIndex, pick.surfaceHit.surface,
       pick.surfaceHit.wallIndex};
-}
-
-void refreshPreviewMaterials() {
-  for (auto& primitive : session.primitives) {
-    if (primitive.source) {
-      primitive.geometry = extrudePrimitiveForPreview(
-          *primitive.source, &procMaterialLibrary());
-    }
-  }
 }
 
 void rebuildPreviewWorldData() {
@@ -335,7 +324,6 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
   ImGui::SetNextItemWidth(280.0f);
   if (ImGui::Combo(
           "ProcMaterial", &state.catalogIndex, catalogItems.c_str(), 6)) {
-    refreshPreviewMaterials();
     state.hasDraft = false;
     state.editingId.clear();
   }
@@ -362,7 +350,6 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
               actionDoc, previewPrimitive.source,
               materialSurface(session.selection.surface), id);
         });
-    refreshPreviewMaterials();
     loadMaterialDraft(id);
   }
 
@@ -399,7 +386,6 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
                 return editSubMaterial(
                     actionDoc, &procMaterialLibrary(), id, params, colour);
               })) {
-        refreshPreviewMaterials();
         reconcileSavedProcMaterial(catalog.resourceName);
         loadMaterialDraft(id);
       }
@@ -424,16 +410,13 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
                     actionDoc, previewPrimitive.source,
                     materialSurface(session.selection.surface), createdId);
               })) {
-        refreshPreviewMaterials();
         reconcileSavedProcMaterial(resourceName);
         loadMaterialDraft(createdId);
       }
     }
     ImGui::SameLine();
     if (ImGui::Button("Revert")) {
-      auto id = state.editingId;
-      refreshPreviewMaterials();
-      loadMaterialDraft(id);
+      loadMaterialDraft(state.editingId);
     }
   }
 }
@@ -471,7 +454,6 @@ void renderSelectedSurfaceWindow() {
   ImGui::End();
 
   if (!stayOpen) {
-    refreshPreviewMaterials();
     session.selection = {};
     session.materialEditor = {};
     session.dragTurning = false;
@@ -716,9 +698,7 @@ void openPreview3D(
       session.primitivesForGrounding.push_back(primitive);
       session.primitiveById[primitive->getId()] = session.primitives.size();
       session.primitives.push_back(
-          {primitive->getPriority(),
-           extrudePrimitiveForPreview(*primitive, &procMaterialLibrary()),
-           const_cast<bw::core::Primitive*>(primitive), editable});
+          {const_cast<bw::core::Primitive*>(primitive), editable});
     }
   }
 
@@ -813,7 +793,6 @@ void renderPreview3D() {
         }
       } else if (
           previewHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-        refreshPreviewMaterials();
         session.selection = {};
         session.materialEditor = {};
         session.dragTurning = false;

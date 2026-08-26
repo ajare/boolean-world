@@ -39,7 +39,7 @@ namespace {
 
 constexpr int kWidth = 640;
 constexpr int kHeight = 480;
-constexpr int kCycles = 10;
+constexpr int kCycles = 20;
 
 struct ResourceCounts {
   uint32_t resources{}, declared{}, created{}, loaded{};

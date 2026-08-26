@@ -9,11 +9,9 @@ add_executable(editor WIN32
     src/PrimitiveDefaults.cpp
     src/PrimitiveFieldPlacement.cpp
     src/PrimitiveFieldPreview.cpp
-    src/PrimitivePreviewGeometry.cpp
     src/ProcMaterialLibrary.cpp
     src/PrefabTilingGuide.cpp
     src/Preview3D.cpp
-    src/PreviewMaterialProgram.cpp
     src/PreviewRenderScene.cpp
     src/PreviewSurfacePick.cpp
     ../app/src/ReactiveCamera.cpp
@@ -47,8 +45,7 @@ target_link_libraries(editor PRIVATE
     core Willpower.Geometry
     BooleanWorldRender
     vendor::opengl ext::glew
-    # mpp-data and mpp-program are PreviewMaterialProgram's shader-text
-    # tooling only; mpp/mpp-helper/mpp-mesh/Utils are also pulled in
+    # mpp/mpp-data/mpp-helper/mpp-mesh/mpp-program/Utils are also pulled in
     # transitively via BooleanWorldRender's public link requirements.
     ext::mpp ext::mpp-data ext::mpp-helper ext::mpp-mesh ext::mpp-program ext::Utils
     vendor::spdlog vendor::nfd
@@ -76,23 +73,6 @@ bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/../core/doc" "doc/core")
 bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/doc" "doc/editor")
 
 if(BUILD_TESTING)
-    add_executable(boolean_world_editor_primitive_preview_geometry_tests
-        tests/primitive_preview_geometry_tests.cpp
-        src/PrimitivePreviewGeometry.cpp
-        src/ProcMaterialLibrary.cpp)
-    target_include_directories(boolean_world_editor_primitive_preview_geometry_tests PRIVATE include)
-    target_compile_definitions(boolean_world_editor_primitive_preview_geometry_tests PRIVATE
-        YAML_CPP_STATIC_DEFINE)
-    target_link_libraries(boolean_world_editor_primitive_preview_geometry_tests PRIVATE
-        core ext::yaml-cpp)
-    target_compile_features(boolean_world_editor_primitive_preview_geometry_tests PRIVATE cxx_std_20)
-    target_compile_options(boolean_world_editor_primitive_preview_geometry_tests PRIVATE /W3 /utf-8)
-    bw_target_defaults(boolean_world_editor_primitive_preview_geometry_tests)
-    bw_output_dirs(boolean_world_editor_primitive_preview_geometry_tests)
-    bw_deploy_runtime_dlls(boolean_world_editor_primitive_preview_geometry_tests)
-    add_test(NAME boolean_world_editor_primitive_preview_geometry
-             COMMAND boolean_world_editor_primitive_preview_geometry_tests)
-
     add_executable(boolean_world_editor_preview_surface_pick_tests
         tests/preview_surface_pick_tests.cpp
         src/PreviewSurfacePick.cpp)
@@ -109,27 +89,30 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_editor_preview_surface_pick
              COMMAND boolean_world_editor_preview_surface_pick_tests)
 
-    # Not registered via add_test - needs a real GPU/driver. Build and run it
-    # manually to see PreviewMaterialProgram's shader compile/link errors
-    # directly instead of a silently black 3D preview window.
-    add_executable(boolean_world_editor_preview_material_program_smoke
-        tests/preview_material_program_smoke.cpp
-        src/PreviewMaterialProgram.cpp)
-    target_include_directories(boolean_world_editor_preview_material_program_smoke PRIVATE include)
-    target_link_libraries(boolean_world_editor_preview_material_program_smoke PRIVATE
-        core vendor::opengl ext::glew
-        ext::mpp ext::mpp-data ext::mpp-helper ext::mpp-mesh ext::mpp-program ext::Utils
-        vendor::spdlog ext::sdl3)
-    target_compile_features(boolean_world_editor_preview_material_program_smoke PRIVATE cxx_std_20)
-    target_compile_options(boolean_world_editor_preview_material_program_smoke PRIVATE /W3 /utf-8)
-    bw_target_defaults(boolean_world_editor_preview_material_program_smoke)
-    bw_output_dirs(boolean_world_editor_preview_material_program_smoke)
-    bw_deploy_runtime_dlls(boolean_world_editor_preview_material_program_smoke)
-    bw_deploy_vendor_dlls(boolean_world_editor_preview_material_program_smoke)
-    bw_deploy_directory(boolean_world_editor_preview_material_program_smoke
-        "${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders" "shaders")
-    bw_deploy_directory(boolean_world_editor_preview_material_program_smoke
-        "${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/shaders" "shaders")
+    # Not registered via add_test - needs a real GPU/driver. This replaces the
+    # deleted PreviewMaterialProgram smoke with the WorldRenderer path now used
+    # by the editor preview.
+    add_executable(boolean_world_editor_world_renderer_smoke
+        tests/world_renderer_smoke.cpp
+        src/EditorRenderSystem.cpp
+        src/PreviewRenderScene.cpp
+        ../app/src/ReactiveCamera.cpp)
+    target_include_directories(boolean_world_editor_world_renderer_smoke PRIVATE
+        include ../app/include)
+    target_compile_definitions(boolean_world_editor_world_renderer_smoke PRIVATE
+        YAML_CPP_STATIC_DEFINE
+        BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml")
+    target_link_libraries(boolean_world_editor_world_renderer_smoke PRIVATE
+        core BooleanWorldRender Willpower.Application Willpower.Common
+        Willpower.Geometry vendor::opengl ext::glew
+        ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3
+        ext::yaml-cpp)
+    target_compile_features(boolean_world_editor_world_renderer_smoke PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_world_renderer_smoke PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_world_renderer_smoke)
+    bw_output_dirs(boolean_world_editor_world_renderer_smoke)
+    bw_deploy_runtime_dlls(boolean_world_editor_world_renderer_smoke)
+    bw_deploy_vendor_dlls(boolean_world_editor_world_renderer_smoke)
 
     # Not registered via add_test - needs a real GPU/driver. Build and run it
     # manually to see EditorRenderSystem's bootstrap/teardown work (or fail)
@@ -309,7 +292,6 @@ if(BUILD_TESTING)
         src/Actions.cpp
         src/Document.cpp
         src/PrimitiveDefaults.cpp
-        src/PrimitivePreviewGeometry.cpp
         src/ProcMaterialLibrary.cpp
         src/Undo.cpp)
     target_include_directories(boolean_world_editor_sub_material_picker_tests PRIVATE include)
