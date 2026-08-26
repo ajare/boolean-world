@@ -17,6 +17,7 @@
 
 #include <GL/glew.h>
 #include <SDL3/SDL.h>
+#include <spdlog/spdlog.h>
 
 #include <common/GameDefines.h>
 #include <core/ArrangementWorldData.h>
@@ -26,11 +27,13 @@
 #include <core/World.h>
 
 #include "Actions.h"
+#include "Defines.h"
 #include "Document.h"
+#include "EditorRenderSystem.h"
 #include "imgui.h"
 #include "InputOptions.h"
 #include "PlayerView.h"
-#include "PreviewMaterialProgram.h"
+#include "PreviewRenderScene.h"
 #include "PreviewSurfacePick.h"
 #include "PrimitivePreviewGeometry.h"
 #include "Preview3D.h"
@@ -39,6 +42,7 @@
 #include "Undo.h"
 
 extern SDL_Window* gWindow;
+extern spdlog::logger* gLogger;
 
 namespace editor {
 namespace {
@@ -81,10 +85,11 @@ struct PreviewSession {
   float angle{};
   float pitch{};
   float eyeZ{};
-  float globalTime{};
   // What the crosshair is on this frame, and what the user has selected.
-  // Selecting stops the crosshair search: the tint goes away, the pointer is
-  // handed back, and the camera turns only while dragging.
+  // Selecting stops the crosshair search: the pointer is handed back, and the
+  // camera turns only while dragging. The looked-at surface is no longer
+  // tinted - highlighting rendered geometry comes back with the picking
+  // retarget in GitHub issue #272.
   PreviewSurfaceRef lookedAt;
   PreviewSurfaceRef selection;
   PreviewMaterialEditorState materialEditor;
@@ -96,99 +101,31 @@ struct PreviewSession {
   float mouseMotionX{};
   float mouseMotionY{};
   bw::app::InputOptions inputOptions;
-  std::unique_ptr<ReactiveCamera> camera;
-  // Grounding and rendering deliberately share this exact in-scope Primitive
-  // list. It remains valid while the input-blocking preview is open.
+  // Shared rather than unique because mpp::RenderSystem::renderScene takes
+  // the camera by mpp::CameraPtr, exactly as StatePlayBooleanWorld does.
+  std::shared_ptr<ReactiveCamera> camera;
+  // Grounding and surface picking deliberately share this exact in-scope
+  // Primitive list. It remains valid while the input-blocking preview is open.
   std::vector<bw::core::Primitive const*> primitivesForGrounding;
   std::vector<PreviewPrimitive> primitives;
   // Built once, synchronously, from that same scoped list when the preview
-  // opens - see openPreview3D. Not yet consumed by the draw loop or picking;
-  // wired up in the ticket that switches WorldRenderer over to it.
+  // opens - see openPreview3D. This is what the WorldRenderer draws.
   bw::core::ArrangementWorldDataPtr worldData;
+  // Null when the render stack could not be stood up; the preview then shows
+  // an explanation rather than a black rectangle.
+  std::unique_ptr<PreviewRenderScene> renderScene;
   ImVec2 viewportMin;
   ImVec2 viewportMax;
 };
 
 PreviewSession session;
 
-// Compiled once for the process and reused across every open/close of the
-// preview window - see PreviewMaterialProgram and GitHub issue #256.
-PreviewMaterialProgram materialProgram;
-
-// Per-vertex tint. world_pbr.frag multiplies a surface's own colour by this
-// before lighting, so white renders the material exactly as authored.
-struct Tint {
-  float r{1.0f};
-  float g{1.0f};
-  float b{1.0f};
-};
-
-constexpr Tint untinted{};
-// Leaves red and green alone and holds back only blue, so the surface reads
-// as the same material seen under a warmer light rather than as a different
-// colour painted over it. Gamma compresses this considerably and the
-// specular terms are not tinted at all, so the value has to be well under 1
-// to register on screen.
-constexpr Tint lookedAtTint{1.0f, 1.0f, 0.35f};
-
-Tint materialTint(PreviewMaterial const& material, Tint const& tint = untinted) {
-  if (!material.resolved) return tint;
-  return {
-      material.definition.baseColour[0] * tint.r,
-      material.definition.baseColour[1] * tint.g,
-      material.definition.baseColour[2] * tint.b};
-}
-
-// The game's 3D coordinates map its 2D world (X, Y) onto (X, Z).
-PreviewGpuVertex toGpuVertex(PreviewVertex3 const& vertex, Tint const& tint) {
-  PreviewGpuVertex result;
-  result.r = tint.r;
-  result.g = tint.g;
-  result.b = tint.b;
-  result.px = vertex.x;
-  result.py = vertex.z;
-  result.pz = vertex.y;
-  result.nx = vertex.nx;
-  result.ny = vertex.nz;
-  result.nz = vertex.ny;
-  result.u = vertex.u;
-  result.v = vertex.v;
-  return result;
-}
-
-void appendTriangles(
-    std::vector<PreviewGpuVertex>& buffer,
-    std::vector<PreviewTriangle> const& triangles,
-    Tint const& tint) {
-  buffer.reserve(buffer.size() + triangles.size() * 3);
-  for (auto const& triangle : triangles) {
-    for (auto const& vertex : triangle.vertices) {
-      buffer.push_back(toGpuVertex(vertex, tint));
-    }
-  }
-}
-
-// A wall is one lofted Ring edge, so tintedIndex marks the single quad the
-// viewer is looking at rather than every wall the Primitive owns.
-void appendWallQuads(
-    std::vector<PreviewGpuVertex>& buffer,
-    std::vector<PreviewWallQuad> const& quads,
-    size_t tintedIndex,
-    Tint const& baseTint,
-    Tint const& highlightedTint) {
-  buffer.reserve(buffer.size() + quads.size() * 6);
-  for (size_t index = 0; index < quads.size(); ++index) {
-    auto const& quad = quads[index];
-    auto const& quadTint =
-        index == tintedIndex ? highlightedTint : baseTint;
-    buffer.push_back(toGpuVertex(quad.vertices[0], quadTint));
-    buffer.push_back(toGpuVertex(quad.vertices[1], quadTint));
-    buffer.push_back(toGpuVertex(quad.vertices[2], quadTint));
-    buffer.push_back(toGpuVertex(quad.vertices[2], quadTint));
-    buffer.push_back(toGpuVertex(quad.vertices[3], quadTint));
-    buffer.push_back(toGpuVertex(quad.vertices[0], quadTint));
-  }
-}
+// Bootstrapped on the first preview open and deliberately kept for the rest
+// of the process: at most one may ever exist, even sequentially, and its
+// shader compilation and manifest scan are one-time costs. See
+// EditorRenderSystem.h. Released by shutdownPreview3D, before the editor
+// tears down the GL context this was built against.
+std::unique_ptr<EditorRenderSystem> editorRenderSystem;
 
 // Whichever surface the centre of the view is pointing at, nearest across
 // every previewed Primitive. Invalid when the view centre meets nothing.
@@ -282,41 +219,6 @@ void loadMaterialDraft(std::string const& id) {
   state.colour = material->baseColour;
 }
 
-PreviewMaterial draftPreviewMaterial() {
-  PreviewMaterial result;
-  auto const& state = session.materialEditor;
-  result.index = state.materialIndex;
-  for (size_t i = 0;
-       i < state.params.size() && i < result.definition.params.size(); ++i) {
-    result.definition.params[i] = state.params[i];
-  }
-  result.definition.baseColour = state.colour;
-  result.resolved = true;
-  return result;
-}
-
-// Preview an unsaved shared Sub-material edit everywhere that stable id is
-// used. Saving as new changes editingId, so the draft then follows only the
-// selected surface's newly assigned id.
-void applyMaterialDraft() {
-  auto const& state = session.materialEditor;
-  if (!state.hasDraft || state.editingId.empty()) return;
-  auto draft = draftPreviewMaterial();
-  for (auto& primitive : session.primitives) {
-    if (!primitive.source) continue;
-    auto const& properties = primitive.source->getProperties();
-    if (properties.floorMaterialId == state.editingId) {
-      primitive.geometry.floorMaterial = draft;
-    }
-    if (properties.ceilingMaterialId == state.editingId) {
-      primitive.geometry.ceilingMaterial = draft;
-    }
-    if (properties.wallMaterialId == state.editingId) {
-      primitive.geometry.wallMaterial = draft;
-    }
-  }
-}
-
 void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
   auto const& catalogs = procMaterialLibrary().catalogs();
   if (catalogs.empty()) {
@@ -378,6 +280,12 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
 
   if (ImGui::CollapsingHeader(
           "Material parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
+    // Dragging a slider no longer repaints the preview: the draft used to be
+    // pushed into the old raw-GL path's per-vertex materials, which no longer
+    // exist. Pushing it into the new mesh buckets' uniforms instead is the
+    // next ticket (GitHub issue #271); saving already works.
+    ImGui::TextDisabled(
+        "Unsaved parameter edits are not shown in the preview yet.");
     ImGui::InputText("Name", state.name, sizeof(state.name));
     if (auto const* schema =
             catalog.data.findTechniqueSchema(state.materialIndex)) {
@@ -439,8 +347,6 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       loadMaterialDraft(id);
     }
   }
-
-  applyMaterialDraft();
 }
 
 // A modeless authoring window for the clicked wall/floor/ceiling. Closing it,
@@ -566,105 +472,98 @@ void updateCameraFromInput(bool previewHovered) {
       {session.position.x, session.eyeZ, session.position.y});
 }
 
-void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
-  auto const& io = ImGui::GetIO();
-  auto scale = io.DisplayFramebufferScale;
-  int x = static_cast<int>(session.viewportMin.x * scale.x);
-  int width = std::max(
-      1, static_cast<int>((session.viewportMax.x - session.viewportMin.x) * scale.x));
-  int height = std::max(
-      1, static_cast<int>((session.viewportMax.y - session.viewportMin.y) * scale.y));
-  int framebufferHeight = static_cast<int>(io.DisplaySize.y * scale.y);
-  int y = framebufferHeight -
-          static_cast<int>(session.viewportMax.y * scale.y);
+// A size in framebuffer pixels, which is what the render graph's images are
+// sized against - the ImGui coordinates the window is laid out in are not the
+// same thing on a scaled display.
+struct PreviewPixelSize {
+  size_t width;
+  size_t height;
+};
 
-  // ImGui's renderer leaves its shader active; the following
-  // ResetRenderState callback restores ImGui's shader and vertex state.
-  glUseProgram(0);
-  glEnable(GL_SCISSOR_TEST);
-  glScissor(x, y, width, height);
-  glViewport(x, y, width, height);
-  glClearDepth(1.0);
-  glClear(GL_DEPTH_BUFFER_BIT);
-  glEnable(GL_DEPTH_TEST);
-  // Later, higher-priority Primitives deterministically replace coplanar
-  // fragments emitted by earlier ones without changing raw geometry.
-  glDepthFunc(GL_LEQUAL);
-  glDisable(GL_CULL_FACE);
-  glDisable(GL_BLEND);
+// Centred, and half the main viewport in each dimension. Both the open and
+// the render path size the pipeline from this, so they cannot disagree.
+ImVec2 previewWindowSize() {
+  auto* viewport = ImGui::GetMainViewport();
+  constexpr float margin = 8.0f;
+  return {
+      (viewport->Size.x - margin * 2.0f) * 0.5f,
+      (viewport->Size.y - margin * 2.0f) * 0.5f};
+}
 
-  if (!materialProgram.ensureReady()) {
-    glDisable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LESS);
-    glEnable(GL_BLEND);
+PreviewPixelSize previewPixelSize(ImVec2 const& windowSize) {
+  auto scale = ImGui::GetIO().DisplayFramebufferScale;
+  return {
+      static_cast<size_t>(std::max(1.0f, windowSize.x * scale.x)),
+      static_cast<size_t>(std::max(1.0f, windowSize.y * scale.y))};
+}
+
+// Stands the whole render stack up for one open of the preview. Failure is
+// reported and left non-fatal: the editor keeps running, and the preview
+// window says why it is empty.
+void createPreviewScene(ImVec2 const& windowSize) {
+  if (!session.world || !session.worldData) {
     return;
   }
 
-  session.globalTime += io.DeltaTime;
+  try {
+    if (!editorRenderSystem) {
+      editorRenderSystem = std::make_unique<EditorRenderSystem>(
+          ED_WINDOW_WIDTH, ED_WINDOW_HEIGHT);
+    }
 
-  auto cameraPosition = session.camera->getPosition();
-  materialProgram.begin(
-      session.camera->getViewTransform(),
-      session.camera->getProjectionTransform(), cameraPosition,
-      cameraPosition, session.globalTime);
+    auto size = previewPixelSize(windowSize);
+    session.renderScene = std::make_unique<PreviewRenderScene>(
+        *editorRenderSystem, session.document->getWorld().get(), size.width,
+        size.height);
+  } catch (std::exception const& exception) {
+    session.renderScene.reset();
+    if (gLogger) {
+      gLogger->error(
+          std::string("3D preview render stack could not be created: ") +
+          exception.what());
+    }
+  }
+}
 
-  // Decided during the UI pass, so the surface drawn as highlighted is the
-  // same one a click in that frame selected.
-  auto const& lookedAt = session.lookedAt;
-
-  std::vector<PreviewGpuVertex> buffer;
-  for (size_t index = 0; index < session.primitives.size(); ++index) {
-    auto const& geometry = session.primitives[index].geometry;
-    auto tintOf = [&](PreviewSurface surface, PreviewMaterial const& material) {
-      auto highlight = lookedAt.valid && lookedAt.primitiveIndex == index &&
-                               lookedAt.surface == surface
-                           ? lookedAtTint
-                           : untinted;
-      return materialTint(material, highlight);
-    };
-
-    buffer.clear();
-    appendTriangles(
-        buffer, geometry.floorTriangles,
-        tintOf(PreviewSurface::Floor, geometry.floorMaterial));
-    materialProgram.setMaterial(
-        geometry.floorMaterial.index, geometry.floorMaterial.definition.params);
-    materialProgram.draw(buffer);
-
-    buffer.clear();
-    appendTriangles(
-        buffer, geometry.ceilingTriangles,
-        tintOf(PreviewSurface::Ceiling, geometry.ceilingMaterial));
-    materialProgram.setMaterial(
-        geometry.ceilingMaterial.index,
-        geometry.ceilingMaterial.definition.params);
-    materialProgram.draw(buffer);
-
-    buffer.clear();
-    auto tintedWall = lookedAt.valid && lookedAt.primitiveIndex == index &&
-                              lookedAt.surface == PreviewSurface::Wall
-                          ? lookedAt.wallIndex
-                          : std::numeric_limits<size_t>::max();
-    appendWallQuads(
-        buffer, geometry.wallQuads, tintedWall,
-        materialTint(geometry.wallMaterial),
-        materialTint(geometry.wallMaterial, lookedAtTint));
-    materialProgram.setMaterial(
-        geometry.wallMaterial.index, geometry.wallMaterial.definition.params);
-    materialProgram.draw(buffer);
+// Draws the world into the pipeline's offscreen images and hands ImGui the
+// resolved texture. Nothing here touches the backbuffer, so the preview is no
+// longer scissored into the window ImGui is itself drawing into.
+void renderPreviewScene(ImVec2 const& windowSize) {
+  auto* preview = session.renderScene.get();
+  if (!preview || !session.worldData) {
+    ImGui::SetCursorPos({12.0f, 36.0f});
+    ImGui::TextUnformatted(
+        "The 3D preview could not be rendered - see the editor log.");
+    return;
   }
 
-  materialProgram.end();
+  auto const& io = ImGui::GetIO();
+  auto size = previewPixelSize(windowSize);
+  preview->resize(size.width, size.height);
 
-  glDisable(GL_DEPTH_TEST);
-  glDepthFunc(GL_LESS);
-  glEnable(GL_BLEND);
+  auto textureId = preview->render(
+      session.document->getWorld().get(), *session.worldData, session.camera,
+      session.camera->getPosition(), io.DeltaTime);
+  if (textureId == 0) {
+    return;
+  }
+
+  // The texture's origin is bottom-left, ImGui's is top-left, so V is flipped.
+  ImGui::SetCursorPos({0.0f, 0.0f});
+  ImGui::Image(
+      static_cast<ImTextureID>(textureId), windowSize, {0.0f, 1.0f},
+      {1.0f, 0.0f});
 }
 
 }  // namespace
 
 bool preview3DIsOpen() {
   return session.open;
+}
+
+void shutdownPreview3D() {
+  session.renderScene.reset();
+  editorRenderSystem.reset();
 }
 
 void addPreview3DMouseMotion(float relativeX, float relativeY) {
@@ -696,7 +595,7 @@ void openPreview3D(
   session.position = playerPosition;
   session.angle = playerAngle;
   session.eyeZ = floorZ + BW_PLAYER_EYE_HEIGHT;
-  session.camera = std::make_unique<ReactiveCamera>(
+  session.camera = std::make_shared<ReactiveCamera>(
       glm::vec3{playerPosition.x, session.eyeZ, playerPosition.y},
       bw::app::cameraYaw(playerAngle), 0.0f, BW_PLAYER_FOV, 1.0f);
   session.camera->setClipDistances(0.1f, 1000000.0f);
@@ -736,6 +635,11 @@ void openPreview3D(
            const_cast<bw::core::Primitive*>(primitive), editable});
     }
   }
+
+  // Per preview-open, unlike the process-lifetime EditorRenderSystem it is
+  // built on: the Scene, pipeline and WorldRenderer all belong to this one
+  // session and go away with it.
+  createPreviewScene(previewWindowSize());
 }
 
 void renderPreview3D() {
@@ -749,15 +653,13 @@ void renderPreview3D() {
   if (!session.document || !session.document->isActive() ||
       session.document->getWorld().get() != session.world) {
     session.open = false;
+    session.renderScene.reset();
     syncRelativeMouseMode(false);
     return;
   }
 
   auto* viewport = ImGui::GetMainViewport();
-  constexpr float margin = 8.0f;
-  ImVec2 windowSize{
-      (viewport->Size.x - margin * 2.0f) * 0.5f,
-      (viewport->Size.y - margin * 2.0f) * 0.5f};
+  auto windowSize = previewWindowSize();
   ImGui::SetNextWindowPos(
       {viewport->Pos.x + (viewport->Size.x - windowSize.x) * 0.5f,
        viewport->Pos.y + (viewport->Size.y - windowSize.y) * 0.5f});
@@ -806,7 +708,7 @@ void renderPreview3D() {
       updateCameraFromInput(previewHovered);
 
       // Only hunt for a surface while none is selected: selecting is what
-      // takes the tint away.
+      // ends the search.
       session.lookedAt =
           session.selection.valid ? PreviewSurfaceRef{} : lookedAtSurface();
 
@@ -831,8 +733,12 @@ void renderPreview3D() {
     auto* drawList = ImGui::GetWindowDrawList();
     drawList->AddRectFilled(
         session.viewportMin, session.viewportMax, IM_COL32(0, 0, 0, 255));
-    drawList->AddCallback(renderOpenGL, nullptr);
-    drawList->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+
+    // Skipped on the closing frame: the pipeline's images are released below,
+    // before ImGui gets to render anything referring to them.
+    if (!closing) {
+      renderPreviewScene(ImGui::GetWindowSize());
+    }
 
     ImGui::SetCursorPos({12.0f, 12.0f});
     ImGui::TextUnformatted(
@@ -843,13 +749,17 @@ void renderPreview3D() {
               "ESC to exit preview");
 
     if (closing) {
-      // Keep this frame's snapshotted geometry alive until ImGui executes the
-      // queued OpenGL callback later in the frame.
       session.open = false;
     }
   }
   ImGui::End();
   ImGui::PopStyleVar(2);
+
+  // Every GPU resource this open of the preview built goes away with it. The
+  // process-lifetime EditorRenderSystem underneath is deliberately kept.
+  if (!session.open) {
+    session.renderScene.reset();
+  }
 
   renderSelectedSurfaceWindow();
 

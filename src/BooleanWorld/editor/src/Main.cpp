@@ -299,6 +299,10 @@ void setup() {
 void shutdown() {
   editor::getPrimitiveFieldPreview().close();
 
+  // Before the GL context goes away below: the preview's render stack owns
+  // GPU resources built against it.
+  editor::shutdownPreview3D();
+
   // ImGui
   if (ImGui::GetCurrentContext()) {
     ImGui_ImplOpenGL3_Shutdown();

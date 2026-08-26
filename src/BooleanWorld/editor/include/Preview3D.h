@@ -18,13 +18,18 @@ void openPreview3D(
     float playerAngle,
     float floorZ);
 
-// Renders the input-blocking preview window. Geometry is snapshotted when it
-// opens; material assignments and shared Sub-material data selected through
-// the surface editor are reflected immediately. This also applies to the
-// boolean Arrangement `openPreview3D` builds: it is built once, synchronously,
-// from the Primitive list passed to `openPreview3D`, so shape edits made
-// while the preview is open are not live-reflected until it is reopened.
+// Renders the input-blocking preview window through the game's own
+// WorldRenderer/mpp::Scene/RenderPipeline stack, so bloom, tonemapping and
+// ambient occlusion match Launcher.exe. The boolean Arrangement it draws is
+// built once, synchronously, from the Primitive list passed to
+// `openPreview3D`, so edits made while the preview is open are not
+// live-reflected until it is reopened.
 void renderPreview3D();
+
+// Releases the preview's render stack, including the process-lifetime
+// EditorRenderSystem. Must run while the editor's GL context is still
+// current, so the editor's shutdown calls this before destroying it.
+void shutdownPreview3D();
 
 // Feeds one SDL mouse-motion event's relative deltas to the preview. While
 // the preview is open the pointer is in SDL's relative mode, which stops

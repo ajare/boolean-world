@@ -25,6 +25,11 @@ namespace editor {
 // independent resource-manager view of the same on-disk ProcMaterial data
 // that ProcMaterialLibrary already loads directly.
 //
+// Construction also scans the manifest and loads exactly the resources the
+// preview's WorldRenderer looks up by name (the two world Materials and the
+// ProcMaterial catalog), along with their dependencies. Nothing else in the
+// manifest is created or loaded.
+//
 // Meant to be lazily constructed on first 3D preview open and kept for the
 // rest of the editor process - createCoreResources()'s shader/pipeline
 // compilation and the manifest scan are one-time costs worth amortising,
@@ -56,6 +61,7 @@ class EditorRenderSystem {
   wp::application::resourcesystem::ResourceManager* resourceManager() const {
     return mResourceMgr;
   }
+  wp::Logger* logger() const { return mLogger; }
 
  private:
   mpp::Logger* mMppLogger{};

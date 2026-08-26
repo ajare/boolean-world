@@ -14,6 +14,7 @@ add_executable(editor WIN32
     src/PrefabTilingGuide.cpp
     src/Preview3D.cpp
     src/PreviewMaterialProgram.cpp
+    src/PreviewRenderScene.cpp
     src/PreviewSurfacePick.cpp
     ../app/src/ReactiveCamera.cpp
     src/Render.cpp
@@ -141,16 +142,45 @@ if(BUILD_TESTING)
         src/EditorRenderSystem.cpp)
     target_include_directories(boolean_world_editor_render_system_smoke PRIVATE include)
     target_compile_definitions(boolean_world_editor_render_system_smoke PRIVATE
+        YAML_CPP_STATIC_DEFINE
         BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml")
     target_link_libraries(boolean_world_editor_render_system_smoke PRIVATE
-        core Willpower.Application Willpower.Common vendor::opengl ext::glew
-        ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3)
+        core BooleanWorldRender Willpower.Application Willpower.Common
+        vendor::opengl ext::glew
+        ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3
+        ext::yaml-cpp)
     target_compile_features(boolean_world_editor_render_system_smoke PRIVATE cxx_std_20)
     target_compile_options(boolean_world_editor_render_system_smoke PRIVATE /W3 /utf-8)
     bw_target_defaults(boolean_world_editor_render_system_smoke)
     bw_output_dirs(boolean_world_editor_render_system_smoke)
     bw_deploy_runtime_dlls(boolean_world_editor_render_system_smoke)
     bw_deploy_vendor_dlls(boolean_world_editor_render_system_smoke)
+
+    # Not registered via add_test - needs a real GPU/driver. Drives the whole
+    # 3D preview render stack headlessly, including the repeated open/close
+    # cycle GitHub issue #270 asks to be free of GPU resource leaks.
+    add_executable(boolean_world_editor_preview_render_stack_smoke
+        tests/preview_render_stack_smoke.cpp
+        src/EditorRenderSystem.cpp
+        src/PreviewRenderScene.cpp
+        ../app/src/ReactiveCamera.cpp)
+    target_include_directories(boolean_world_editor_preview_render_stack_smoke PRIVATE
+        include ../app/include)
+    target_compile_definitions(boolean_world_editor_preview_render_stack_smoke PRIVATE
+        YAML_CPP_STATIC_DEFINE
+        BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml"
+        BW_EDITOR_PREVIEW_TEST_WORLD="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/world-test-1.yaml")
+    target_link_libraries(boolean_world_editor_preview_render_stack_smoke PRIVATE
+        core BooleanWorldRender Willpower.Application Willpower.Common
+        Willpower.Geometry vendor::opengl ext::glew
+        ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3
+        ext::yaml-cpp)
+    target_compile_features(boolean_world_editor_preview_render_stack_smoke PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_preview_render_stack_smoke PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_preview_render_stack_smoke)
+    bw_output_dirs(boolean_world_editor_preview_render_stack_smoke)
+    bw_deploy_runtime_dlls(boolean_world_editor_preview_render_stack_smoke)
+    bw_deploy_vendor_dlls(boolean_world_editor_preview_render_stack_smoke)
 
     add_executable(boolean_world_editor_primitive_field_preview_tests
         tests/primitive_field_preview_tests.cpp

@@ -9,9 +9,9 @@
 // ResourceManager's destructor never clears; confirmed against this same
 // library by hitting "DefinitionFactory for resource type 'TextFile' ... is
 // already registered" on a second construct/destroy cycle while writing this
-// test). See GitHub issue #268 - this ticket does not yet construct a
-// WorldRenderer/Scene, so there is nothing to render; this only proves the
-// subsystem stands up and tears down cleanly.
+// test). See GitHub issue #268. This covers the subsystem on its own; the
+// preview's Scene/pipeline/WorldRenderer stack on top of it has its own smoke
+// test - preview_render_stack_smoke.cpp.
 #include <cstdint>
 #include <cstdio>
 #include <exception>
