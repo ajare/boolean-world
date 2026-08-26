@@ -549,14 +549,15 @@ struct PreviewPixelSize {
   size_t height;
 };
 
-// Centred, and half the main viewport in each dimension. Both the open and
-// the render path size the pipeline from this, so they cannot disagree.
+// Near-fullscreen within the main viewport, as the preview's input-blocking
+// overlay has always promised. Both the open and render paths size the
+// pipeline from this, so they cannot disagree.
 ImVec2 previewWindowSize() {
   auto* viewport = ImGui::GetMainViewport();
   constexpr float margin = 8.0f;
   return {
-      (viewport->Size.x - margin * 2.0f) * 0.5f,
-      (viewport->Size.y - margin * 2.0f) * 0.5f};
+      viewport->Size.x - margin * 2.0f,
+      viewport->Size.y - margin * 2.0f};
 }
 
 PreviewPixelSize previewPixelSize(ImVec2 const& windowSize) {
