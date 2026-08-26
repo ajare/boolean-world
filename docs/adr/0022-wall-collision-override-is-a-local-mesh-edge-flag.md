@@ -45,11 +45,17 @@ Arrangement's own cross-primitive Border classification.
 default is derived from connectivity rather than stored state.
 
 Where the edge — or any sub-segment it is split into by the fold intersecting
-another Primitive — still produces an `ArrangementWall`, `collides` is the
-sole determinant of that segment's collision, replacing the Border-always-
-blocks / step-threshold rule entirely for that segment. It never synthesizes
-a wall where the fold produces none: if a Union with another Primitive erases
-the wall geometrically, the flag has no effect there.
+another Primitive — still produces an `ArrangementWall`, `collides` replaces
+the Border-always-blocks and clearance rules for that segment. It does not
+override physical traversability: a `FloorStep` above the player's maximum
+step height blocks traversal from its lower face to its higher face, but the
+height limit never blocks traversal downward. A clipped shared boundary
+contributed by coincident Mesh edges from two different Primitives is internal
+to their combined authored geometry and has authored collision fixed off, even
+when both source flags are `true`; the directional maximum-step rule still
+applies to it. The flag never
+synthesizes a wall where the fold produces none: if a Union with another
+Primitive erases the wall geometrically, the flag has no effect there.
 
 ## Consequences
 

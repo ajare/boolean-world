@@ -887,7 +887,23 @@ bool MeshPrimitiveEditingProxy::sliceFilledRing(
   auto makePath = [&](size_t from, size_t to) {
     ClosedPolygon ring;
     for (auto index = from;; index = (index + 1) % ordered.size()) {
-      ring.emplace_back(mImpl->mesh.getVertex(ordered[index]).getPosition());
+      Vertex vertex(mImpl->mesh.getVertex(ordered[index]).getPosition());
+      if (index == to) {
+        // Closing this path creates the Slice chord. Although it is currently
+        // Internal (and therefore effectively non-colliding), store that
+        // intent too so it remains non-colliding if a later edit exposes it.
+        vertex.edgeFlags &=
+            ~static_cast<uint32_t>(BW_MESH_EDGE_COLLIDES_FLAG);
+      } else {
+        auto next = (index + 1) % ordered.size();
+        auto edgeIndex =
+            mImpl->mesh.getEdgeIndexByVertices(ordered[index], ordered[next]);
+        if (edgeIndex >= 0) {
+          vertex.edgeFlags =
+              mImpl->rawEdgeFlags(static_cast<uint32_t>(edgeIndex));
+        }
+      }
+      ring.push_back(vertex);
       if (index == to) break;
     }
     return ring;

@@ -789,8 +789,19 @@ PSLG BuildPSLG(
           contribution->delta += delta;
         }
 
-        if (segments[i].collidesOverride.has_value() && !edge.collidesOverride.has_value()) {
-          edge.collidesOverride = segments[i].collidesOverride;
+        if (segments[i].collidesOverride.has_value()) {
+          if (!edge.collidesOverridePrimitiveIndex.has_value()) {
+            edge.collidesOverride = segments[i].collidesOverride;
+            edge.collidesOverridePrimitiveIndex =
+                segments[i].primitiveIndex;
+          } else if (*edge.collidesOverridePrimitiveIndex !=
+                     segments[i].primitiveIndex) {
+            // Once clipping combines authored Mesh edges from two
+            // Primitives, their shared boundary is internal to that combined
+            // geometry. Its collision is fixed off even when both source
+            // edges were authored collides = true.
+            edge.collidesOverride = false;
+          }
         }
         if (segments[i].visibleOverride.has_value() && !edge.visibleOverride.has_value()) {
           edge.visibleOverride = segments[i].visibleOverride;

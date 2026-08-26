@@ -7,6 +7,7 @@
 
 #include <core/ArrangementWorldData.h>
 #include <core/ArrangementWorldDataGenerator.h>
+#include <core/Defines.h>
 #include <core/MeshPrimitive.h>
 
 namespace {
@@ -546,6 +547,47 @@ void sliceDividesFilledRingsAndRetainsHoles() {
           "slicing the touching Island did not create two sibling Islands");
 }
 
+void sliceMarksTheCreatedInternalEdgeNonColliding() {
+  ClosedPolygon shell{
+      {{-10, -10}}, {{0, -10}}, {{10, -10}}, {{10, 10}}, {{0, 10}}, {{-10, 10}}};
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{shell, {}}}));
+  auto proxy = primitive->createEditingProxy();
+  auto ordered = proxy->getPolygon(proxy->getFirstPolygonIndex())
+                     .getOrderedVertexIndices();
+  auto bottom = ordered[1];
+  auto top = ordered[4];
+
+  require(proxy->sliceFilledRing(
+              proxy->getFirstPolygonIndex(), bottom, top),
+          "the internal-edge collision fixture was not sliced");
+  proxy->commitTo(*primitive);
+
+  auto const& parts = primitive->getShells();
+  require(parts.size() == 2,
+          "the collision fixture Slice did not create two Rings");
+  size_t sharedEdgeCount = 0;
+  for (size_t first = 0; first < parts[0].ring.size(); ++first) {
+    auto const& firstVertex = parts[0].ring[first];
+    auto const& firstNext =
+        parts[0].ring[(first + 1) % parts[0].ring.size()];
+    for (size_t second = 0; second < parts[1].ring.size(); ++second) {
+      auto const& secondVertex = parts[1].ring[second];
+      auto const& secondNext =
+          parts[1].ring[(second + 1) % parts[1].ring.size()];
+      if (firstVertex.p == secondNext.p && firstNext.p == secondVertex.p) {
+        ++sharedEdgeCount;
+        require(
+            (firstVertex.edgeFlags & BW_MESH_EDGE_COLLIDES_FLAG) == 0 &&
+                (secondVertex.edgeFlags & BW_MESH_EDGE_COLLIDES_FLAG) == 0,
+            "Slice stored collides = true on its created Internal edge");
+      }
+    }
+  }
+  require(sharedEdgeCount == 1,
+          "the resulting Rings did not share exactly the Slice chord");
+}
+
 // The Vertices a chord divides a Ring at end up on both halves, joined by the
 // chord Edge. Slicing again from one of them is ordinary: the new chord meets
 // the old one at the Vertex they share, which is contact at an endpoint and
@@ -962,6 +1004,7 @@ int main() {
     removingTwoSidedEdgeMergesSiblingRings();
     fillHoleWrapsImmediateIslandsWithoutLosingDescendants();
     sliceDividesFilledRingsAndRetainsHoles();
+    sliceMarksTheCreatedInternalEdgeNonColliding();
     sliceAcceptsASecondChordFromAnEndpointOfTheFirst();
     externalEdgesDefaultCollidesAndInternalEdgesCannotBeSet();
     splitEdgeInheritsCollidesForBothHalves();

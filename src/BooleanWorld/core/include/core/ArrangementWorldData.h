@@ -18,6 +18,7 @@ class BW_API ArrangementWorldData {
   std::vector<arr::ArrangementTriangle> mTriangles;
   std::vector<arr::ArrangementWall> mWalls;
   std::vector<uint32_t> mCollisionWallIndices;
+  float mStepThreshold;
   std::unique_ptr<ImmutableAccelerationGrid> mTriangleGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mVertexGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mWallGrid;
@@ -56,6 +57,16 @@ public:
   [[nodiscard]] std::vector<uint32_t> getWallsNear(
       wp::Vector2 const& position,
       float radius) const;
+
+  // Filters nearby collision walls for movement beginning at sourcePosition.
+  // An over-threshold FloorStep blocks from its lower face but not from its
+  // upper face or while the actor is already descending; authored collision
+  // and clearance constraints still apply in both directions.
+  [[nodiscard]] std::vector<uint32_t> getWallsNearForTraversal(
+      wp::Vector2 const& position,
+      float radius,
+      wp::Vector2 const& sourcePosition,
+      bool descending = false) const;
 
   [[nodiscard]] int32_t circleIntersectsWall(
       wp::Vector2 const& position,

@@ -54,7 +54,8 @@ ArrangementWorldData::ArrangementWorldData(
     ArrangementStats* stats)
     : mArrangement(std::move(arrangement)),
       mTriangles(arr::BuildArrangementTriangles(*mArrangement)),
-      mWalls(arr::BuildArrangementWalls(*mArrangement)) {
+      mWalls(arr::BuildArrangementWalls(*mArrangement)),
+      mStepThreshold(stepThreshold) {
   if (stats != nullptr) {
     stats->triangleCount = uint32_t(mTriangles.size());
     stats->wallCount = uint32_t(mWalls.size());
@@ -88,22 +89,20 @@ ArrangementWorldData::ArrangementWorldData(
        ++wallIndex) {
     auto const& wall = mWalls[wallIndex];
     auto const& edge = mArrangement->edges[wall.edge];
-    // A per-edge collides override (#245, ADR-0022) - sourced from a
-    // MeshPrimitive's External edge flag - fully replaces the geometry-
-    // computed rule below for this wall segment when present.
-    //
-    // Otherwise: a floor step taller than the authored threshold blocks,
-    // same as before; independently, whatever headroom the two faces
-    // actually share must fit the player regardless of which of
-    // floorZ/ceilingZ produced this wall - a low ceiling is just as
-    // impassable as a high step.
-    auto blocks = edge.collidesOverride.has_value()
-        ? *edge.collidesOverride
-        : wall.kind == arr::ArrangementWallKind::Border ||
-                  (wall.kind == arr::ArrangementWallKind::FloorStep &&
-                   wall.maxZ - wall.minZ > stepThreshold) ||
-                  (wall.kind != arr::ArrangementWallKind::Border &&
-                   wall.clearance < BW_PLAYER_HEIGHT);
+    // A floor step above the player's maximum step height may block an
+    // ascent regardless of an authored collision override, so retain it as
+    // a candidate; traversal queries later remove it when approached from
+    // the higher face. For every other wall, a Mesh edge's override replaces
+    // the normal Border and clearance rules.
+    auto exceedsStepThreshold =
+        wall.kind == arr::ArrangementWallKind::FloorStep &&
+        wall.maxZ - wall.minZ > stepThreshold;
+    auto blocks = exceedsStepThreshold ||
+        (edge.collidesOverride.has_value()
+             ? *edge.collidesOverride
+             : wall.kind == arr::ArrangementWallKind::Border ||
+                   (wall.kind != arr::ArrangementWallKind::Border &&
+                    wall.clearance < BW_PLAYER_HEIGHT));
     if (!blocks) {
       continue;
     }
@@ -225,6 +224,51 @@ std::vector<uint32_t> ArrangementWorldData::getWallsNear(
   result.reserve(candidates.size());
   for (auto collisionWallIndex : candidates) {
     result.push_back(mCollisionWallIndices[collisionWallIndex]);
+  }
+  return result;
+}
+
+std::vector<uint32_t> ArrangementWorldData::getWallsNearForTraversal(
+    wp::Vector2 const& position,
+    float radius,
+    wp::Vector2 const& sourcePosition,
+    bool descending) const {
+  auto sourceFace = getContainingFaceIndex(sourcePosition);
+  auto candidates = getWallsNear(position, radius);
+  std::vector<uint32_t> result;
+  result.reserve(candidates.size());
+  for (auto wallIndex : candidates) {
+    auto const& wall = mWalls[wallIndex];
+    auto const& edge = mArrangement->edges[wall.edge];
+    auto blocksWithoutStepThreshold = edge.collidesOverride.has_value()
+        ? *edge.collidesOverride
+        : wall.kind == arr::ArrangementWallKind::Border ||
+              (wall.kind != arr::ArrangementWallKind::Border &&
+               wall.clearance < BW_PLAYER_HEIGHT);
+    if (blocksWithoutStepThreshold ||
+        wall.kind != arr::ArrangementWallKind::FloorStep ||
+        wall.maxZ - wall.minZ <= mStepThreshold) {
+      if (blocksWithoutStepThreshold) result.push_back(wallIndex);
+      continue;
+    }
+
+    // Once a fall has begun, the actor may already be horizontally over the
+    // lower face while still descending from the ledge. Do not reintroduce
+    // the step wall behind it and trap its collider there.
+    if (descending) continue;
+
+    // A tall FloorStep otherwise blocks only while approaching it from its
+    // lower face. If the source cannot be associated with either adjacent
+    // face, retain the wall conservatively rather than accidentally opening
+    // an ascent.
+    if (sourceFace != edge.face[0] && sourceFace != edge.face[1]) {
+      result.push_back(wallIndex);
+      continue;
+    }
+    auto sourceFloor =
+        mArrangement->palette[mArrangement->faces[sourceFace].paletteIndex]
+            .floorZ;
+    if (sourceFloor < wall.maxZ) result.push_back(wallIndex);
   }
   return result;
 }

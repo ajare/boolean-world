@@ -4,6 +4,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <core/Arrangement.h>
@@ -100,7 +101,58 @@ void falseOverrideOpensUpABorderWall() {
           "an edge without an override stopped blocking (test fixture broken)");
 }
 
-// 2. A collides = true override forces a Step wall to block even when its
+// 2. A collides = false override cannot make a floor step taller than the
+//    player's maximum step height traversable upward, but the same boundary
+//    remains traversable downward from the upper face.
+void maximumStepHeightAppliesOnlyWhenAscending() {
+  wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
+  constexpr float gridCellSize = 20.0f;
+  constexpr float stepThreshold = 8.0f;
+
+  std::vector<std::optional<bool>> overrides(4, std::nullopt);
+  overrides[1] = false;  // right edge of the lower square
+
+  ArrangementPrimitive lower{
+      {rectContour(0, 0, 10 * U, 10 * U)},
+      Primitive::Operation::Union,
+      Primitive::FillRule::EvenOdd,
+      0,
+      1,
+      propertiesWithHeights(0.0f, 48.0f),
+      {overrides}};
+  ArrangementPrimitive upper{
+      {rectContour(10 * U, 0, 20 * U, 10 * U)},
+      Primitive::Operation::Union,
+      Primitive::FillRule::EvenOdd,
+      0,
+      2,
+      propertiesWithHeights(12.0f, 48.0f)};
+
+  auto arrangement = bw::core::arr::BuildArrangement({lower, upper});
+  bw::core::ArrangementWorldData data(
+      arrangement, extents, gridCellSize, stepThreshold);
+  auto ascending = data.getWallsNearForTraversal(
+      {10.0f, 5.0f}, 0.5f, {5.0f, 5.0f});
+  auto descending = data.getWallsNearForTraversal(
+      {10.0f, 5.0f}, 0.5f, {15.0f, 5.0f});
+  auto fallingOverLowerFace = data.getWallsNearForTraversal(
+      {10.0f, 5.0f}, 0.5f, {5.0f, 5.0f}, true);
+  auto includesFloorStep = [&](std::vector<uint32_t> const& wallIndices) {
+    return std::any_of(
+        wallIndices.begin(), wallIndices.end(), [&](uint32_t wallIndex) {
+          return data.getWalls()[wallIndex].kind ==
+                 ArrangementWallKind::FloorStep;
+        });
+  };
+  require(includesFloorStep(ascending),
+          "collides = false bypassed the maximum step height while ascending");
+  require(!includesFloorStep(descending),
+          "the maximum step height blocked traversal from the upper floor");
+  require(!includesFloorStep(fallingOverLowerFace),
+          "a tall step wall trapped an actor already falling over its lower face");
+}
+
+// 3. A collides = true override forces a Step wall to block even when its
 //    height is below the world's step threshold and its clearance exceeds
 //    player height.
 void trueOverrideForcesAStepWallToBlock() {
@@ -149,7 +201,7 @@ void trueOverrideForcesAStepWallToBlock() {
           "a collides = true override did not force a below-threshold, ample-clearance Step wall to block");
 }
 
-// 3. An edge whose wall gets split into multiple arrangement sub-segments by
+// 4. An edge whose wall gets split into multiple arrangement sub-segments by
 //    another Primitive crossing it has every resulting sub-segment respect
 //    the override.
 void overrideSurvivesSplittingIntoSubSegments() {
@@ -212,7 +264,7 @@ void overrideSurvivesSplittingIntoSubSegments() {
           "an unrelated, unmodified edge stopped blocking (test fixture broken)");
 }
 
-// 4. Two Primitives' edges coinciding exactly - one carrying an override,
+// 5. Two Primitives' edges coinciding exactly - one carrying an override,
 //    one without - resolve to the override value regardless of ordering.
 void coincidingEdgesResolveToTheOverrideRegardlessOfOrder() {
   wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
@@ -258,7 +310,52 @@ void coincidingEdgesResolveToTheOverrideRegardlessOfOrder() {
   }
 }
 
-// 5. A collides = true override on an edge whose wall the fold completely
+// 6. Clipping two coincident Mesh edges makes their shared edge internal to
+//    the combined geometry. It must not collide even when both source edges
+//    were authored collides = true, and primitive order must not matter.
+void coincidentMeshEdgesBecomeNonCollidingWhenClipped() {
+  wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
+  constexpr float gridCellSize = 20.0f;
+  constexpr float stepThreshold = 8.0f;
+
+  for (auto authoredValues :
+       {std::pair{true, true}, std::pair{true, false}}) {
+    std::vector<std::optional<bool>> leftOverrides(4, std::nullopt);
+    leftOverrides[1] = authoredValues.first;  // right edge
+    std::vector<std::optional<bool>> rightOverrides(4, std::nullopt);
+    rightOverrides[3] = authoredValues.second;  // left edge
+
+    ArrangementPrimitive left{
+        {rectContour(0, 0, 10 * U, 10 * U)},
+        Primitive::Operation::Union,
+        Primitive::FillRule::EvenOdd,
+        0,
+        1,
+        propertiesWithHeights(3.0f, 48.0f),
+        {leftOverrides}};
+    ArrangementPrimitive right{
+        {rectContour(10 * U, 0, 20 * U, 10 * U)},
+        Primitive::Operation::Union,
+        Primitive::FillRule::EvenOdd,
+        0,
+        2,
+        propertiesWithHeights(6.0f, 48.0f),
+        {rightOverrides}};
+
+    for (bool leftFirst : {true, false}) {
+      std::vector<ArrangementPrimitive> primitives = leftFirst
+          ? std::vector<ArrangementPrimitive>{left, right}
+          : std::vector<ArrangementPrimitive>{right, left};
+      auto arrangement = bw::core::arr::BuildArrangement(primitives);
+      bw::core::ArrangementWorldData data(
+          arrangement, extents, gridCellSize, stepThreshold);
+      require(data.circleIntersectsWall({10.0f, 5.0f}, 0.5f) == -1,
+              "clipped coincident Mesh edges remained colliding");
+    }
+  }
+}
+
+// 7. A collides = true override on an edge whose wall the fold completely
 //    erases (two contours Unioned flat with matching floorZ/ceilingZ) has no
 //    effect: no wall is produced.
 void overrideHasNoEffectWhenTheFoldErasesTheWall() {
@@ -308,9 +405,11 @@ void overrideHasNoEffectWhenTheFoldErasesTheWall() {
 int main() {
   try {
     falseOverrideOpensUpABorderWall();
+    maximumStepHeightAppliesOnlyWhenAscending();
     trueOverrideForcesAStepWallToBlock();
     overrideSurvivesSplittingIntoSubSegments();
     coincidingEdgesResolveToTheOverrideRegardlessOfOrder();
+    coincidentMeshEdgesBecomeNonCollidingWhenClipped();
     overrideHasNoEffectWhenTheFoldErasesTheWall();
     std::cout << "The fold propagates the mesh edge collision override into wall collision\n";
     return 0;

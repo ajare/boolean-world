@@ -290,8 +290,10 @@ void StatePlayBooleanWorld::createWorldCollisions(
   auto const& arrangement = mWorldData->getArrangement();
   auto const& walls = mWorldData->getWalls();
   auto radius = BW_PLAYER_SPEED + BW_PLAYER_RADIUS;
-  for (auto wallIndex :
-       mWorldData->getWallsNear(predictedPosition, radius)) {
+  auto const& playerPosition = getPlayerPhysicalStats().position;
+  for (auto wallIndex : mWorldData->getWallsNearForTraversal(
+           predictedPosition, radius, playerPosition,
+           mPlayerVerticalVelocity < 0.0f)) {
     auto const& edge = arrangement.edges[walls[wallIndex].edge];
     auto const& fixed0 = arrangement.vertices[edge.v[0]];
     auto const& fixed1 = arrangement.vertices[edge.v[1]];

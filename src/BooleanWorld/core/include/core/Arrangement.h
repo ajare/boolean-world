@@ -46,11 +46,12 @@ struct Edge {
   int fi[2] = {-1, -1};
   std::vector<WindingDelta> windingDeltas;
   // Wall collision/visibility overrides (#245, later extended to
-  // visibility): set from the first contributing MeshPrimitive-sourced
-  // segment that carries one. Non-Mesh segments never carry a value, so
-  // this naturally prefers a Mesh-sourced override over a coincident
-  // non-Mesh edge without needing to special-case primitive kind.
+  // visibility). Non-Mesh segments never carry a value. Coincident Mesh
+  // contributors from different Primitives make the clipped collision edge
+  // non-colliding regardless of their authored values; visibility retains
+  // the first Mesh-sourced value.
   std::optional<bool> collidesOverride;
+  std::optional<uint32_t> collidesOverridePrimitiveIndex;
   std::optional<bool> visibleOverride;
 
   bool doubleSided() const {
