@@ -2,6 +2,7 @@ add_executable(editor WIN32
     src/Actions.cpp
     src/AppHelpers.cpp
     src/Document.cpp
+    src/EditorRenderSystem.cpp
     src/Interaction.cpp
     src/Main.cpp
     src/Markdown.cpp
@@ -130,6 +131,26 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders" "shaders")
     bw_deploy_directory(boolean_world_editor_preview_material_program_smoke
         "${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/shaders" "shaders")
+
+    # Not registered via add_test - needs a real GPU/driver. Build and run it
+    # manually to see EditorRenderSystem's bootstrap/teardown work (or fail)
+    # directly rather than only discovering it when the 3D preview is wired
+    # into it in a later ticket.
+    add_executable(boolean_world_editor_render_system_smoke
+        tests/editor_render_system_smoke.cpp
+        src/EditorRenderSystem.cpp)
+    target_include_directories(boolean_world_editor_render_system_smoke PRIVATE include)
+    target_compile_definitions(boolean_world_editor_render_system_smoke PRIVATE
+        BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml")
+    target_link_libraries(boolean_world_editor_render_system_smoke PRIVATE
+        core Willpower.Application Willpower.Common vendor::opengl ext::glew
+        ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3)
+    target_compile_features(boolean_world_editor_render_system_smoke PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_render_system_smoke PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_render_system_smoke)
+    bw_output_dirs(boolean_world_editor_render_system_smoke)
+    bw_deploy_runtime_dlls(boolean_world_editor_render_system_smoke)
+    bw_deploy_vendor_dlls(boolean_world_editor_render_system_smoke)
 
     add_executable(boolean_world_editor_primitive_field_preview_tests
         tests/primitive_field_preview_tests.cpp
