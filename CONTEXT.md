@@ -36,6 +36,10 @@ _Avoid_: negative polygon, Difference Ring
 A filled Ring directly contained by a Hole. An Island may itself contain Holes, acting as their containing filled region without becoming a root Shell.
 _Avoid_: inner shell, nested outer polygon
 
+**World plane**:
+The canonical authored coordinate system: +X is right and +Y is up. The editor, game view, controls, and map all preserve this orientation; elevation is a separate axis.
+_Avoid_: Treating the game view as a mirrored coordinate system
+
 **Fixed-point vertex**:
 An exact point on the world geometry grid. It is the canonical coordinate type for topology and arrangement output.
 _Avoid_: Clipper point, floating-point topology vertex

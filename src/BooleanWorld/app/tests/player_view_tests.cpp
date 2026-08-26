@@ -38,7 +38,7 @@ int main() {
 
   {
     auto movement = bw::app::playerMovement({1.0f, 0.0f}, 0.0f);
-    if (!near(movement.x, -1.0f) || !near(movement.y, 0.0f)) {
+    if (!near(movement.x, 1.0f) || !near(movement.y, 0.0f)) {
       return fail("right input does not follow a zero-yaw camera");
     }
   }
@@ -47,17 +47,17 @@ int main() {
     auto forward = bw::app::playerMovement({0.0f, 1.0f}, 90.0f);
     auto right = bw::app::playerMovement({1.0f, 0.0f}, 90.0f);
     if (!near(forward.x, 1.0f) || !near(forward.y, 0.0f) ||
-        !near(right.x, 0.0f) || !near(right.y, 1.0f)) {
+        !near(right.x, 0.0f) || !near(right.y, -1.0f)) {
       return fail("movement axes do not rotate with player yaw");
     }
   }
 
-  if (!near(bw::app::applyMouseYaw(10.0f, 20.0f, 1.0f), 350.0f)) {
-    return fail("rightward mouse input does not reduce player yaw");
+  if (!near(bw::app::applyMouseYaw(10.0f, 20.0f, 1.0f), 30.0f)) {
+    return fail("rightward mouse input does not increase player yaw");
   }
 
-  if (!near(bw::app::applyMouseYaw(0.0f, 20.0f, 2.0f), 320.0f) ||
-      !near(bw::app::applyMouseYaw(0.0f, 20.0f, 0.25f), 355.0f)) {
+  if (!near(bw::app::applyMouseYaw(0.0f, 20.0f, 2.0f), 40.0f) ||
+      !near(bw::app::applyMouseYaw(0.0f, 20.0f, 0.25f), 5.0f)) {
     return fail("mouse sensitivity does not scale player yaw");
   }
 
@@ -76,7 +76,7 @@ int main() {
     return fail("core view angle does not match authored player yaw");
   }
 
-  if (!near(bw::app::cameraYaw(0.0f), 180.0f) ||
+  if (!near(bw::app::cameraYaw(0.0f), 0.0f) ||
       !near(bw::app::cameraYaw(90.0f), 90.0f)) {
     return fail("renderer camera yaw does not match authored player yaw");
   }
@@ -108,7 +108,7 @@ int main() {
     auto right = bw::app::minimapPosition(
         {11.0f, 20.0f}, viewOffset, viewSize, {1.0f, 1.0f});
     if (!near(player.x, 50.0f) || !near(player.y, 40.0f) ||
-        !(forward.y < player.y) || !(right.x < player.x)) {
+        !(forward.y < player.y) || !(right.x > player.x)) {
       return fail("minimap is not centred or its axes disagree with the camera");
     }
   }
@@ -118,7 +118,7 @@ int main() {
         {0.0f, 0.0f, 0.0f}, bw::app::cameraYaw(0.0f), 0.0f, 75.0f, 1.0f);
     auto const& direction = camera.getDirection();
     if (!near(direction.x, 0.0f) || !near(direction.y, 0.0f) ||
-        !near(direction.z, 1.0f)) {
+        !near(direction.z, -1.0f)) {
       return fail("zero-yaw player camera does not look along world +Y");
     }
   }
@@ -138,9 +138,9 @@ int main() {
     ReactiveCamera camera(
         {0.0f, 0.0f, 0.0f}, bw::app::cameraYaw(playerYaw), 0.0f, 75.0f, 1.0f);
     auto const& direction = camera.getDirection();
-    if (!near(direction.x, -1.0f) || !near(direction.y, 0.0f) ||
+    if (!near(direction.x, 1.0f) || !near(direction.y, 0.0f) ||
         !near(direction.z, 0.0f)) {
-      return fail("rightward mouse motion turns the rendered camera left");
+      return fail("rightward mouse motion does not turn the rendered camera right");
     }
   }
 

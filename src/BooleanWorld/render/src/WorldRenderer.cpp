@@ -179,9 +179,11 @@ void WorldRenderer::updateHorizontalDataProvider(
     uint32_t floorIndices[3];
     for (int i = 0; i < 3; ++i) {
       auto uv = positions[i] / 64.0f;
-      floorIndices[i] = addVertexToDataProvider(
+      // Reflecting authored Y into renderer -Z reverses winding, so reverse
+      // the indices as well to preserve the floor's front face.
+      floorIndices[2 - i] = addVertexToDataProvider(
           horizontal.dataProvider, floorMesh, positions[i].x,
-          properties.floorZ, positions[i].y, 0, 1, 0, uv.x, uv.y,
+          properties.floorZ, -positions[i].y, 0, 1, 0, uv.x, uv.y,
           triangle.face == highlightedFace && !highlightedCeiling
               ? lookedAtVertexColour
               : untintedVertexColour);
@@ -196,9 +198,9 @@ void WorldRenderer::updateHorizontalDataProvider(
     uint32_t ceilingIndices[3];
     for (int i = 2; i >= 0; --i) {
       auto uv = positions[i] / 64.0f;
-      ceilingIndices[2 - i] = addVertexToDataProvider(
+      ceilingIndices[i] = addVertexToDataProvider(
           horizontal.dataProvider, ceilingMesh, positions[i].x,
-          properties.ceilingZ, positions[i].y, 0, -1, 0, uv.x, uv.y,
+          properties.ceilingZ, -positions[i].y, 0, -1, 0, uv.x, uv.y,
           triangle.face == highlightedFace && highlightedCeiling
               ? lookedAtVertexColour
               : untintedVertexColour);
@@ -229,7 +231,7 @@ void WorldRenderer::updateWallDataProvider(
   // one ever being visible.
   auto backHash =
       bw::core::MaterialDefinition{}.data.hash(BW_WALL_BACK_FACE_MATERIAL_INDEX);
-  wp::Vector2 playerPositionXZ{playerPosition.x, playerPosition.z};
+  wp::Vector2 playerPositionXZ{playerPosition.x, -playerPosition.z};
 
   auto facesPlayer = [&](bw::app::ArrangementWallOrientation const& orientation) {
     auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
@@ -274,19 +276,19 @@ void WorldRenderer::updateWallDataProvider(
                         : untintedVertexColour;
       auto const& normal = orientation.normal;
       auto bottom0 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v0.x, wall.minZ, v0.y,
-          normal.x, 0, normal.y, 0, 0, colour);
+          wallRenderer.dataProvider, mesh, v0.x, wall.minZ, -v0.y,
+          normal.x, 0, -normal.y, 0, 0, colour);
       auto bottom1 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v1.x, wall.minZ, v1.y,
-          normal.x, 0, normal.y, 1, 0, colour);
+          wallRenderer.dataProvider, mesh, v1.x, wall.minZ, -v1.y,
+          normal.x, 0, -normal.y, 1, 0, colour);
       auto top1 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, v1.y,
-          normal.x, 0, normal.y, 1, 1, colour);
+          wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, -v1.y,
+          normal.x, 0, -normal.y, 1, 1, colour);
       auto top0 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, v0.y,
-          normal.x, 0, normal.y, 0, 1, colour);
-      wallRenderer.dataProvider->addTriangle(mesh, bottom0, bottom1, top1);
-      wallRenderer.dataProvider->addTriangle(mesh, top1, top0, bottom0);
+          wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, -v0.y,
+          normal.x, 0, -normal.y, 0, 1, colour);
+      wallRenderer.dataProvider->addTriangle(mesh, top1, bottom1, bottom0);
+      wallRenderer.dataProvider->addTriangle(mesh, bottom0, top0, top1);
     } else {
       // The same 4 corners and diagonal as the facesPlayer branch above,
       // with each triangle's vertex order reversed - not a different
@@ -298,19 +300,19 @@ void WorldRenderer::updateWallDataProvider(
                         ? lookedAtVertexColour
                         : untintedVertexColour;
       auto bottom0 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v0.x, wall.minZ, v0.y,
-          backNormal.x, 0, backNormal.y, 0, 0, colour);
+          wallRenderer.dataProvider, mesh, v0.x, wall.minZ, -v0.y,
+          backNormal.x, 0, -backNormal.y, 0, 0, colour);
       auto bottom1 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v1.x, wall.minZ, v1.y,
-          backNormal.x, 0, backNormal.y, 1, 0, colour);
+          wallRenderer.dataProvider, mesh, v1.x, wall.minZ, -v1.y,
+          backNormal.x, 0, -backNormal.y, 1, 0, colour);
       auto top1 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, v1.y,
-          backNormal.x, 0, backNormal.y, 1, 1, colour);
+          wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, -v1.y,
+          backNormal.x, 0, -backNormal.y, 1, 1, colour);
       auto top0 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, v0.y,
-          backNormal.x, 0, backNormal.y, 0, 1, colour);
-      wallRenderer.dataProvider->addTriangle(mesh, top1, bottom1, bottom0);
-      wallRenderer.dataProvider->addTriangle(mesh, bottom0, top0, top1);
+          wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, -v0.y,
+          backNormal.x, 0, -backNormal.y, 0, 1, colour);
+      wallRenderer.dataProvider->addTriangle(mesh, bottom0, bottom1, top1);
+      wallRenderer.dataProvider->addTriangle(mesh, top1, top0, bottom0);
     }
   }
   wallRenderer.dataProvider->finalizeInternals();

@@ -164,10 +164,10 @@ PreviewSurfaceRef surfaceUnderCursor() {
       right * (ndcX * tanHalfFov * session.camera->getAspectRatio()) +
       up * (ndcY * tanHalfFov));
 
-  // Arrangement geometry keeps height in z, where the renderer's 3D space
-  // keeps it in y.
-  std::array<float, 3> origin{position.x, position.z, position.y};
-  std::array<float, 3> ray{direction.x, direction.z, direction.y};
+  // Arrangement geometry keeps height in z. Renderer space keeps height in y
+  // and maps authored world +Y to renderer -Z.
+  std::array<float, 3> origin{position.x, -position.z, position.y};
+  std::array<float, 3> ray{direction.x, -direction.z, direction.y};
   auto pick = pickPreviewSceneSurface(*session.worldData, origin, ray);
   if (!pick.hit()) {
     return {};
@@ -490,7 +490,7 @@ void updateCameraFromInput(bool previewHovered, bool acceptKeyboard) {
   // ReactiveCamera consumes turn deltas, just as the game's player camera
   // does. Keyboard movement stays in the world plane; there is no vertical
   // input or physics in this preview.
-  session.camera->yaw(previousAngle - session.angle);
+  session.camera->yaw(session.angle - previousAngle);
   session.camera->pitch(session.pitch - previousPitch);
 
   wp::Vector2 movement = wp::Vector2::ZERO;
@@ -529,7 +529,7 @@ void updateCameraFromInput(bool previewHovered, bool acceptKeyboard) {
   }
   // Outside all in-scope Primitive coverage, retain the last grounded eye Z.
   session.camera->setPosition(
-      {session.position.x, session.eyeZ, session.position.y});
+      {session.position.x, session.eyeZ, -session.position.y});
 }
 
 // How far Shift+Up/Down moves the selected floor or ceiling, and how far the
@@ -895,7 +895,7 @@ void openPreview3D(
   session.angle = playerAngle;
   session.eyeZ = floorZ + BW_PLAYER_EYE_HEIGHT;
   session.camera = std::make_shared<ReactiveCamera>(
-      glm::vec3{playerPosition.x, session.eyeZ, playerPosition.y},
+      glm::vec3{playerPosition.x, session.eyeZ, -playerPosition.y},
       bw::app::cameraYaw(playerAngle), 0.0f, BW_PLAYER_FOV, 1.0f);
   session.camera->setClipDistances(0.1f, 1000000.0f);
   session.primitives.reserve(primitives.size());

@@ -112,7 +112,9 @@ void StatePlayBooleanWorld::createCamera() {
 
   auto const& physicalStats = getPlayerPhysicalStats();
   auto camera = new ReactiveCamera(
-      glm::vec3(physicalStats.position.x, BW_PLAYER_HEIGHT, physicalStats.position.y),
+      glm::vec3(
+          physicalStats.position.x, BW_PLAYER_HEIGHT,
+          -physicalStats.position.y),
       bw::app::cameraYaw(physicalStats.angle), physicalStats.pitch, BW_PLAYER_FOV, aspectRatio);
   camera->setClipDistances(0.1f, BW_PLAYER_VIEW_DISTANCE + 10);
 
@@ -661,26 +663,27 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   // beneath them: those two only match once physics has caught up.
   auto playerViewHeight = physicalStats.floorZ + BW_PLAYER_EYE_HEIGHT;
 
-  static_cast<ReactiveCamera*>(mCamera3d.get())->setPosition({physicalStats.position.x, playerViewHeight, physicalStats.position.y});
-  // The renderer's camera yaw is clockwise from world -Y, while authored
-  // player angles are clockwise from world +Y.
-  static_cast<ReactiveCamera*>(mCamera3d.get())->yaw(mPlayerPrevAngle - physicalStats.angle);
+  static_cast<ReactiveCamera*>(mCamera3d.get())->setPosition(
+      {physicalStats.position.x, playerViewHeight, -physicalStats.position.y});
+  // Renderer and authored yaw now increase in the same direction.
+  static_cast<ReactiveCamera*>(mCamera3d.get())->yaw(
+      physicalStats.angle - mPlayerPrevAngle);
   static_cast<ReactiveCamera*>(mCamera3d.get())->pitch(physicalStats.pitch - mPlayerPrevPitch);
 
-  // World 3d. Its shader-space axes match rendered geometry: horizontal
-  // world X/Y become X/Z, while Y is elevation. Move the light horizontally
-  // from the player's eye along the current yaw; pitch does not affect it.
+  // World 3d uses the handedness-preserving mapping (X, elevation, -Y).
+  // Move the light horizontally from the player's eye along the current yaw;
+  // pitch does not affect it.
   auto lightOffset = Vector2::fromAngle(
       bw::app::worldViewAngle(physicalStats.angle), Clockwise) *
       mDebugDisplay.lightDistance;
   glm::vec3 playerPosition{
       physicalStats.position.x,
       playerViewHeight,
-      physicalStats.position.y};
+      -physicalStats.position.y};
   glm::vec3 lightPosition{
       playerPosition.x + lightOffset.x,
       playerPosition.y,
-      playerPosition.z + lightOffset.y};
+      playerPosition.z - lightOffset.y};
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
       gNoMaterialOverride, gNoMaterialOverride, gAuthoredMaterialScale,

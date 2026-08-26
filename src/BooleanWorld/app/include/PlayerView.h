@@ -11,10 +11,9 @@ namespace bw::app {
 constexpr float PitchLimit = 85.0f;
 
 inline float applyMouseYaw(float yaw, float mouseDeltaX, float sensitivity) {
-  // Player yaw is clockwise in the 2D world, but the renderer views the X/Z
-  // plane with the opposite handedness. Rightward mouse motion must therefore
-  // reduce the authored yaw.
-  return core::clamp_angle(yaw - mouseDeltaX * sensitivity);
+  // Authored yaw is clockwise in the world plane, matching rightward mouse
+  // motion now that world +Y maps to renderer -Z.
+  return core::clamp_angle(yaw + mouseDeltaX * sensitivity);
 }
 
 inline float applyMousePitch(float pitch, float mouseDeltaY, float sensitivity) {
@@ -22,9 +21,6 @@ inline float applyMousePitch(float pitch, float mouseDeltaY, float sensitivity) 
 }
 
 inline wp::Vector2 playerMovement(wp::Vector2 input, float yaw) {
-  // Mapping world (X,Y) to renderer (X,Z) reverses the camera's horizontal
-  // basis: at zero yaw its screen-right direction is world -X.
-  input.x = -input.x;
   input.rotateClockwise(yaw);
   return input;
 }
@@ -34,8 +30,8 @@ inline float worldViewAngle(float playerYaw) {
 }
 
 inline float cameraYaw(float playerYaw) {
-  // The renderer's camera yaw is clockwise from world -Y.
-  return core::clamp_angle(180.0f - playerYaw);
+  // Renderer yaw zero looks along -Z, which is authored world +Y.
+  return core::clamp_angle(playerYaw);
 }
 
 inline float minimapRadius(float worldRadius, wp::Vector2 const& viewScale) {
@@ -47,15 +43,14 @@ inline wp::Vector2 minimapPosition(
     wp::Vector2 const& viewOffset,
     wp::Vector2 const& viewSize,
     wp::Vector2 const& viewScale) {
-  // Screen Y points down. Reflect around the bottom/right of the viewport
-  // rather than merely negating, as the latter would place the whole overlay
+  // Screen Y points down. Reflect around the bottom of the viewport rather
+  // than merely negating, as the latter would place the whole overlay
   // off-screen whenever viewOffset is its world-space lower-left corner.
   //
-  // X is reflected too: the 3D camera's screen-right is world -X (see
-  // playerMovement's yaw handling), so a plain world-X-to-screen-X mapping
-  // here would make the minimap scroll opposite the player's actual view.
+  // World +X remains screen-right, matching the editor and the 3D renderer's
+  // handedness-preserving world +Y -> renderer -Z mapping.
   return {
-      viewSize.x - (worldPosition.x - viewOffset.x) * viewScale.x,
+      (worldPosition.x - viewOffset.x) * viewScale.x,
       viewSize.y - (worldPosition.y - viewOffset.y) * viewScale.y};
 }
 
