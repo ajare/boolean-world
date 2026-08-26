@@ -62,19 +62,11 @@ DisplayMessage::Level gDisplayMessageLevel = DisplayMessage::Level::Debug;
 const float gImGui_MouseSensitivityMin = 0.03f;
 const float gImGui_MouseSensitivityMax = 3.0f;
 
-// These indices are the MATERIAL_INDEX cases in world_pbr.frag and
-// world_pbr_2d.frag.
-constexpr array<char const*, 37> gWorldMaterialNames{
-    "Marble", "Granite", "Slate", "Sandstone", "Limestone",
-    "Basalt", "Obsidian", "Quartz / crystal", "Ore",
-    "Rusted iron", "Galvanized steel", "Brushed metal",
-    "Hammered metal", "Patinated copper", "Damascene steel",
-    "Heat-treated metal", "Wood", "Bark", "Bone / ivory",
-    "Leather", "Flesh", "Chitin / shell", "Coral",
-    "Arcane crystal", "Energy stone", "Alien tissue",
-    "Magical metal", "Solid cloud", "Holographic", "Corruption",
-    "Frosted glass", "Brick", "Circuit board", "Banded gneiss",
-    "Rock", "Mossy rock", "Wet rock"};
+constexpr int32_t gNoMaterialOverride = -1;
+constexpr float gAuthoredMaterialScale = 1.0f;
+constexpr float gDefaultFarGridSize = 0.5f;
+const SecondaryMaterialOptions gNoSecondaryMaterial{};
+
 // ImGui colours go here so they don't clutter up the header file
 const ImColor gImGui_MapBackgroundColour{0.2f, 0.2f, 0.8f};
 const ImColor gImGui_TriangulationLineColour{0.8f, 0.8f, 0.2f};
@@ -689,19 +681,10 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
       playerPosition.x + lightOffset.x,
       playerPosition.y,
       playerPosition.z + lightOffset.y};
-  auto horizontalMaterialIndexOverride =
-      mDebugDisplay.overrideWorldMaterial
-          ? mDebugDisplay.horizontalMaterialIndex
-          : -1;
-  auto wallMaterialIndexOverride =
-      mDebugDisplay.overrideWorldMaterial
-          ? mDebugDisplay.wallMaterialIndex
-          : -1;
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
-      horizontalMaterialIndexOverride, wallMaterialIndexOverride,
-      mDebugDisplay.worldMaterialScale, mDebugDisplay.farGridSize,
-      mDebugDisplay.secondaryMaterial, frameTime);
+      gNoMaterialOverride, gNoMaterialOverride, gAuthoredMaterialScale,
+      gDefaultFarGridSize, gNoSecondaryMaterial, frameTime);
 }
 
 void StatePlayBooleanWorld::suspendImpl(void* args) {
@@ -1587,81 +1570,6 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     ImGui::SliderFloat(
         "Light source distance", &mDebugDisplay.lightDistance,
         0.0f, 256.0f, "%.1f");
-
-    ImGui::Separator();
-    ImGui::TextUnformatted("World material");
-    ImGui::Checkbox(
-        "Override authored materials",
-        &mDebugDisplay.overrideWorldMaterial);
-
-    ImGui::BeginDisabled(!mDebugDisplay.overrideWorldMaterial);
-    auto materialCombo = [](char const* label, int& selectedIndex) {
-      selectedIndex = std::clamp(
-          selectedIndex, 0,
-          static_cast<int>(gWorldMaterialNames.size()) - 1);
-      if (ImGui::BeginCombo(label, gWorldMaterialNames[selectedIndex])) {
-        for (int i = 0;
-             i < static_cast<int>(gWorldMaterialNames.size()); ++i) {
-          auto selected = i == selectedIndex;
-          if (ImGui::Selectable(gWorldMaterialNames[i], selected)) {
-            selectedIndex = i;
-          }
-          if (selected) {
-            ImGui::SetItemDefaultFocus();
-          }
-        }
-        ImGui::EndCombo();
-      }
-    };
-    materialCombo(
-        "Floor / ceiling material", mDebugDisplay.horizontalMaterialIndex);
-    materialCombo("Wall material", mDebugDisplay.wallMaterialIndex);
-    ImGui::EndDisabled();
-    ImGui::SliderFloat(
-        "Material scale", &mDebugDisplay.worldMaterialScale,
-        0.1f, 64.0f, "%.1f");
-    ImGui::SliderFloat(
-        "Far grid size", &mDebugDisplay.farGridSize,
-        1.0f / 32.0f, 16.0f, "%.3f");
-    // The tiling relief itself is authored per Sub-material now (core/
-    // Emboss.h) and edited in the editor's 3D preview, so there is nothing
-    // global left to tweak here - only which second material the pattern a
-    // material already carries lays into its alternate tiles.
-    auto& secondaryMaterial = mDebugDisplay.secondaryMaterial;
-    ImGui::SeparatorText("Secondary material");
-    ImGui::Checkbox("Enabled", &secondaryMaterial.enabled);
-
-    if (secondaryMaterial.enabled) {
-      auto secondaryIndex = std::clamp(
-          secondaryMaterial.materialIndex, -1,
-          static_cast<int>(gWorldMaterialNames.size()) - 1);
-      secondaryMaterial.materialIndex = secondaryIndex;
-      char const* secondaryName = secondaryIndex < 0
-                                      ? "Same as primary"
-                                      : gWorldMaterialNames[secondaryIndex];
-      if (ImGui::BeginCombo("Secondary material", secondaryName)) {
-        auto sameSelected = secondaryIndex < 0;
-        if (ImGui::Selectable("Same as primary", sameSelected)) {
-          secondaryMaterial.materialIndex = -1;
-        }
-        if (sameSelected) {
-          ImGui::SetItemDefaultFocus();
-        }
-        for (int i = 0;
-             i < static_cast<int>(gWorldMaterialNames.size()); ++i) {
-          auto selected = i == secondaryIndex;
-          if (ImGui::Selectable(gWorldMaterialNames[i], selected)) {
-            secondaryMaterial.materialIndex = i;
-          }
-          if (selected) {
-            ImGui::SetItemDefaultFocus();
-          }
-        }
-        ImGui::EndCombo();
-      }
-    }
-    ImGui::TextDisabled(
-        "Debug-only - material overrides affect every world mesh; the secondary material only replaces the alternate tiles of a material that embosses a square, hexagon or modular opus pattern.");
   }
 
   ImGui::End();
