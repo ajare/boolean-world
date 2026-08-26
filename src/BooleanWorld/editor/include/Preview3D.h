@@ -20,7 +20,10 @@ void openPreview3D(
 
 // Renders the input-blocking preview window. Geometry is snapshotted when it
 // opens; material assignments and shared Sub-material data selected through
-// the surface editor are reflected immediately.
+// the surface editor are reflected immediately. This also applies to the
+// boolean Arrangement `openPreview3D` builds: it is built once, synchronously,
+// from the Primitive list passed to `openPreview3D`, so shape edits made
+// while the preview is open are not live-reflected until it is reopened.
 void renderPreview3D();
 
 // Feeds one SDL mouse-motion event's relative deltas to the preview. While

@@ -19,7 +19,11 @@
 #include <SDL3/SDL.h>
 
 #include <common/GameDefines.h>
+#include <core/ArrangementWorldData.h>
+#include <core/ArrangementWorldDataGenerator.h>
+#include <core/Defines.h>
 #include <core/Layer.h>
+#include <core/World.h>
 
 #include "Actions.h"
 #include "Document.h"
@@ -97,6 +101,10 @@ struct PreviewSession {
   // list. It remains valid while the input-blocking preview is open.
   std::vector<bw::core::Primitive const*> primitivesForGrounding;
   std::vector<PreviewPrimitive> primitives;
+  // Built once, synchronously, from that same scoped list when the preview
+  // opens - see openPreview3D. Not yet consumed by the draw loop or picking;
+  // wired up in the ticket that switches WorldRenderer over to it.
+  bw::core::ArrangementWorldDataPtr worldData;
   ImVec2 viewportMin;
   ImVec2 viewportMax;
 };
@@ -692,6 +700,20 @@ void openPreview3D(
       glm::vec3{playerPosition.x, session.eyeZ, playerPosition.y},
       bw::app::cameraYaw(playerAngle), 0.0f, BW_PLAYER_FOV, 1.0f);
   session.camera->setClipDistances(0.1f, 1000000.0f);
+  if (session.world) {
+    std::vector<bw::core::Primitive*> mutablePrimitives;
+    mutablePrimitives.reserve(primitives.size());
+    for (auto const* primitive : primitives) {
+      mutablePrimitives.push_back(const_cast<bw::core::Primitive*>(primitive));
+    }
+    bw::core::ArrangementWorldDataGenerator generator;
+    generator.generate(mutablePrimitives);
+    session.worldData = std::make_shared<bw::core::ArrangementWorldData>(
+        generator.getWorldData(), session.world->getExtents(),
+        float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
+        session.world->getStepThreshold());
+  }
+
   session.primitives.reserve(primitives.size());
   session.primitivesForGrounding.reserve(primitives.size());
   for (auto const* primitive : primitives) {

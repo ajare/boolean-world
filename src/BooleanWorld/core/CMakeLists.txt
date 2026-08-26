@@ -724,6 +724,15 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_world_multi_layer_serialization_tests)
     bw_deploy_runtime_dlls(boolean_world_world_multi_layer_serialization_tests)
     add_test(NAME boolean_world_world_multi_layer_serialization COMMAND boolean_world_world_multi_layer_serialization_tests)
+
+    add_executable(boolean_world_preview_arrangement_step_tests
+        tests/preview_arrangement_step_tests.cpp)
+    target_link_libraries(boolean_world_preview_arrangement_step_tests PRIVATE core)
+    target_compile_features(boolean_world_preview_arrangement_step_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_preview_arrangement_step_tests)
+    bw_output_dirs(boolean_world_preview_arrangement_step_tests)
+    bw_deploy_runtime_dlls(boolean_world_preview_arrangement_step_tests)
+    add_test(NAME boolean_world_preview_arrangement_step COMMAND boolean_world_preview_arrangement_step_tests)
 endif()
 
 
