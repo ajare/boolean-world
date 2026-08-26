@@ -1,8 +1,15 @@
 # The editor reads and writes ProcMaterial data directly, not through ResourceManager
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0025
 **Date:** 2026-08-25
 **Related:** ADR-0023 (ProcMaterial subclasses Resource, not MaterialResource)
+
+> **Note (ADR-0025):** only this ADR's stated *reason* — that the editor's 3D
+> preview deliberately does without `mpp::RenderSystem`/`ResourceManager` — is
+> superseded; ADR-0025 has the editor construct those for real-pipeline 3D
+> preview rendering. The *decision* below (ProcMaterial authoring goes through
+> `core::Serializer` directly, never through `ResourceManager`) is unchanged
+> and still in effect.
 
 The editor needs to both load ProcMaterial resources (for the wall/floor/
 ceiling material picker) and author them (create/rename/delete Sub-materials,

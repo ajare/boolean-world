@@ -30,7 +30,8 @@ removed the dependency entirely. Geometry terms are defined in
 | [0021](0021-prefabfields-own-reserved-global-fold-phases.md) | PrefabFields own reserved global fold phases | Accepted |
 | [0022](0022-wall-collision-override-is-a-local-mesh-edge-flag.md) | Wall collision override is a local mesh-edge flag, not an arrangement concept | Accepted |
 | [0023](0023-procmaterial-subclasses-resource-not-materialresource.md) | ProcMaterial subclasses Resource directly, not MaterialResource | Accepted |
-| [0024](0024-editor-accesses-procmaterial-data-directly.md) | The editor reads and writes ProcMaterial data directly, not through ResourceManager | Accepted |
+| [0024](0024-editor-accesses-procmaterial-data-directly.md) | The editor reads and writes ProcMaterial data directly, not through ResourceManager | Superseded by ADR-0025 |
+| [0025](0025-editor-3d-preview-uses-real-render-pipeline.md) | The editor's 3D preview renders through the real WorldRenderer3d/mpp::Scene pipeline | Accepted |
 
 ## World geometry rewrite scope
 
