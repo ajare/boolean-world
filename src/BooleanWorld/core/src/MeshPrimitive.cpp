@@ -839,43 +839,47 @@ bool MeshPrimitiveEditingProxy::sliceFilledRing(
     return false;
   }
 
-  // Every contact with existing topology is refused except endpoint contacts
-  // with Rings in this filled region's containment family. This includes a
-  // Hole/Island boundary which shares only a Vertex (rather than a welded
-  // Edge) with the Ring being sliced.
-  auto relatedRing = [&](uint32_t polygonIndex) {
-    auto isAncestorOf = [&](uint32_t ancestor, uint32_t descendant) {
-      while (descendant != ~0u) {
-        if (descendant == ancestor) return true;
-        auto found = find_if(mappings.begin(), mappings.end(), [&](auto const& item) {
-          return item.polygonIndex == descendant;
-        });
-        if (found == mappings.end()) break;
-        descendant = found->parentPolygonIndex;
-      }
-      return false;
-    };
-    return isAncestorOf(mapping->polygonIndex, polygonIndex) ||
-           isAncestorOf(polygonIndex, mapping->polygonIndex);
+  // Every contact with existing topology is refused except contact at the
+  // chord's own endpoints. An Edge incident to an endpoint meets the chord
+  // there by construction - that is what makes the Vertex an endpoint - and
+  // whatever else is welded at it is entitled to be: this Ring's Hole and
+  // Island family, a sibling Ring an earlier Slice made of it, another
+  // filled region joined at that Vertex. What such an Edge may not do is run
+  // *along* the chord, which is the one way it can meet it at more than the
+  // shared Vertex.
+  //
+  // A coincident Vertex belonging to a foreign Ring is a different Vertex,
+  // not a shared one, so its Edges are never exempt and still have to clear
+  // the crossing test below.
+  auto isEndpoint = [&](uint32_t vertexIndex) {
+    return vertexIndex == firstVertexIndex || vertexIndex == secondVertexIndex;
   };
   for (auto edgeIndex = mImpl->mesh.getFirstEdgeIndex();
        !mImpl->mesh.edgeIndexIterationFinished(edgeIndex);
        edgeIndex = mImpl->mesh.getNextEdgeIndex(edgeIndex)) {
     auto const& edge = mImpl->mesh.getEdge(edgeIndex);
-    bool touchesEndpoint = edge.getFirstVertex() == firstVertexIndex ||
-                           edge.getSecondVertex() == firstVertexIndex ||
-                           edge.getFirstVertex() == secondVertexIndex ||
-                           edge.getSecondVertex() == secondVertexIndex;
-    bool belongsOnlyToRelatedRings =
-        !edge.getPolygonReferences().empty() &&
-        all_of(
-            edge.getPolygonReferences().begin(),
-            edge.getPolygonReferences().end(), relatedRing);
-    if (touchesEndpoint && belongsOnlyToRelatedRings) continue;
+    auto const& edgeFirst =
+        mImpl->mesh.getVertex(edge.getFirstVertex()).getPosition();
+    auto const& edgeSecond =
+        mImpl->mesh.getVertex(edge.getSecondVertex()).getPosition();
+
+    if (isEndpoint(edge.getFirstVertex()) || isEndpoint(edge.getSecondVertex())) {
+      // The chord already exists as an Edge, or an incident Edge lies along
+      // it: either way the chord is not a new division of the Ring.
+      if (isEndpoint(edge.getFirstVertex()) &&
+          isEndpoint(edge.getSecondVertex())) {
+        return false;
+      }
+      auto const& other = isEndpoint(edge.getFirstVertex()) ? edgeSecond
+                                                            : edgeFirst;
+      if (pointOnSegment(other, firstPosition, secondPosition)) {
+        return false;
+      }
+      continue;
+    }
+
     if (segmentsIntersect(
-            firstPosition, secondPosition,
-            mImpl->mesh.getVertex(edge.getFirstVertex()).getPosition(),
-            mImpl->mesh.getVertex(edge.getSecondVertex()).getPosition())) {
+            firstPosition, secondPosition, edgeFirst, edgeSecond)) {
       return false;
     }
   }

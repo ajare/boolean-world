@@ -1528,7 +1528,7 @@ bool Document::armMeshSliceTool(Settings const& settings) {
   disarmMeshDrawTool();
   mMeshSliceToolArmed = true;
   mMeshSliceFirstVertexIndex = ~0u;
-  mMeshSliceRingIndex = ~0u;
+  mMeshSliceCandidateRingIndices.clear();
   clearMeshSelections();
   return true;
 }
@@ -1536,14 +1536,18 @@ bool Document::armMeshSliceTool(Settings const& settings) {
 void Document::disarmMeshSliceTool() {
   mMeshSliceToolArmed = false;
   mMeshSliceFirstVertexIndex = ~0u;
-  mMeshSliceRingIndex = ~0u;
+  mMeshSliceCandidateRingIndices.clear();
 }
 
 bool Document::meshSliceToolArmed() const { return mMeshSliceToolArmed; }
 uint32_t Document::getMeshSliceFirstVertexIndex() const {
   return mMeshSliceFirstVertexIndex;
 }
-uint32_t Document::getMeshSliceRingIndex() const { return mMeshSliceRingIndex; }
+uint32_t Document::getMeshSliceRingIndex() const {
+  return mMeshSliceCandidateRingIndices.size() == 1
+             ? mMeshSliceCandidateRingIndices.front()
+             : ~0u;
+}
 
 bool Document::canSelectMeshSliceFirstVertex(uint32_t vertexIndex) const {
   if (!mMeshSliceToolArmed || !mActiveMesh ||
@@ -1560,38 +1564,59 @@ bool Document::canSelectMeshSliceFirstVertex(uint32_t vertexIndex) const {
 
 bool Document::selectMeshSliceFirstVertex(uint32_t vertexIndex) {
   if (!canSelectMeshSliceFirstVertex(vertexIndex)) return false;
+  // Every Ring this Vertex belongs to is a candidate. A Vertex an earlier
+  // Slice used belongs to both halves that Slice made, and which of them the
+  // next chord divides is not knowable until its other endpoint is clicked -
+  // so keep them all rather than committing to whichever comes first.
+  mMeshSliceCandidateRingIndices.clear();
   for (auto const& mapping : mActiveMesh->getNodeMappings()) {
     if (mapping.role != bw::core::MeshPrimitiveEditingProxy::NodeRole::Hole &&
         mActiveMesh->getPolygon(mapping.polygonIndex)
             .getVertexIndexSet()
             .contains(vertexIndex)) {
-      mMeshSliceFirstVertexIndex = vertexIndex;
-      mMeshSliceRingIndex = mapping.polygonIndex;
-      mSelectedMeshVertexIndices = {vertexIndex};
-      return true;
+      mMeshSliceCandidateRingIndices.push_back(mapping.polygonIndex);
     }
   }
-  return false;
+  if (mMeshSliceCandidateRingIndices.empty()) return false;
+
+  mMeshSliceFirstVertexIndex = vertexIndex;
+  mSelectedMeshVertexIndices = {vertexIndex};
+  return true;
+}
+
+uint32_t Document::resolveMeshSliceRing(uint32_t vertexIndex) const {
+  if (!mMeshSliceToolArmed || !mActiveMesh ||
+      mMeshSliceFirstVertexIndex == ~0u ||
+      mActiveMesh->vertexIndexIterationFinished(vertexIndex)) {
+    return ~0u;
+  }
+  // Two candidate Rings share only the chord that divided them, so at most
+  // one of them holds a second endpoint that is not on that chord - the
+  // chord itself is an Edge in both, and an Edge is never a valid chord.
+  for (auto ringIndex : mMeshSliceCandidateRingIndices) {
+    if (!mActiveMesh->getPolygon(ringIndex)
+             .getVertexIndexSet()
+             .contains(vertexIndex)) {
+      continue;
+    }
+    auto candidate = *mActiveMesh;
+    if (candidate.sliceFilledRing(
+            ringIndex, mMeshSliceFirstVertexIndex, vertexIndex)) {
+      return ringIndex;
+    }
+  }
+  return ~0u;
 }
 
 bool Document::canCompleteMeshSlice(uint32_t vertexIndex) const {
-  if (!mMeshSliceToolArmed || !mActiveMesh ||
-      mMeshSliceFirstVertexIndex == ~0u ||
-      mActiveMesh->vertexIndexIterationFinished(vertexIndex) ||
-      !mActiveMesh->getPolygon(mMeshSliceRingIndex)
-           .getVertexIndexSet()
-           .contains(vertexIndex)) {
-    return false;
-  }
-  auto candidate = *mActiveMesh;
-  return candidate.sliceFilledRing(
-      mMeshSliceRingIndex, mMeshSliceFirstVertexIndex, vertexIndex);
+  return resolveMeshSliceRing(vertexIndex) != ~0u;
 }
 
 bool Document::completeMeshSlice(uint32_t vertexIndex) {
-  if (!canCompleteMeshSlice(vertexIndex)) return false;
+  auto ringIndex = resolveMeshSliceRing(vertexIndex);
+  if (ringIndex == ~0u) return false;
   if (!mActiveMesh->sliceFilledRing(
-          mMeshSliceRingIndex, mMeshSliceFirstVertexIndex, vertexIndex)) {
+          ringIndex, mMeshSliceFirstVertexIndex, vertexIndex)) {
     return false;
   }
   clearMeshSelections();
@@ -1604,7 +1629,7 @@ bool Document::escapeMeshSlice() {
   if (!mMeshSliceToolArmed) return false;
   if (mMeshSliceFirstVertexIndex != ~0u) {
     mMeshSliceFirstVertexIndex = ~0u;
-    mMeshSliceRingIndex = ~0u;
+    mMeshSliceCandidateRingIndices.clear();
     clearMeshSelections();
   } else {
     disarmMeshSliceTool();

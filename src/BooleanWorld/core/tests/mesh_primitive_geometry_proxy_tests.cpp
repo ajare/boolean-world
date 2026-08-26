@@ -14,6 +14,7 @@ namespace {
 using bw::core::ClosedPolygon;
 using bw::core::ComplexPolygon;
 using bw::core::MeshPrimitive;
+using bw::core::MeshPrimitiveEditingProxy;
 using bw::core::Primitive;
 
 void require(bool condition, std::string const& message) {
@@ -545,6 +546,85 @@ void sliceDividesFilledRingsAndRetainsHoles() {
           "slicing the touching Island did not create two sibling Islands");
 }
 
+// The Vertices a chord divides a Ring at end up on both halves, joined by the
+// chord Edge. Slicing again from one of them is ordinary: the new chord meets
+// the old one at the Vertex they share, which is contact at an endpoint and
+// not an obstruction. Refusing it left a Vertex unusable for good the moment
+// it was sliced through once.
+void sliceAcceptsASecondChordFromAnEndpointOfTheFirst() {
+  auto vertexAt = [](MeshPrimitiveEditingProxy const& proxy,
+                     wp::Vector2 const& position) {
+    for (auto ring = proxy.getFirstPolygonIndex();
+         !proxy.polygonIndexIterationFinished(ring);
+         ring = proxy.getNextPolygonIndex(ring)) {
+      for (auto vertexIndex : proxy.getPolygon(ring).getOrderedVertexIndices()) {
+        auto const& candidate = proxy.getVertex(vertexIndex).getPosition();
+        if (near(candidate.x, position.x) && near(candidate.y, position.y)) {
+          return vertexIndex;
+        }
+      }
+    }
+    return ~0u;
+  };
+  auto ringContaining = [](MeshPrimitiveEditingProxy const& proxy,
+                           uint32_t firstVertex, uint32_t secondVertex) {
+    for (auto const& mapping : proxy.getNodeMappings()) {
+      auto const& vertices =
+          proxy.getPolygon(mapping.polygonIndex).getVertexIndexSet();
+      if (vertices.contains(firstVertex) && vertices.contains(secondVertex)) {
+        return mapping.polygonIndex;
+      }
+    }
+    return ~0u;
+  };
+
+  ClosedPolygon hexagon{
+      {{10, 0}}, {{5, 9}}, {{-5, 9}}, {{-10, 0}}, {{-5, -9}}, {{5, -9}}};
+
+  // The first chord halves the hexagon between opposite corners. The second
+  // starts from one of those two corners, and has to be accepted whichever
+  // half it falls in - so run it once into each.
+  for (auto secondTarget : {size_t(2), size_t(4)}) {
+    auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+        Primitive::Operation::Union, {{hexagon, {}}}));
+    auto proxy = primitive->createEditingProxy();
+    auto ordered = proxy->getPolygon(proxy->getFirstPolygonIndex())
+                       .getOrderedVertexIndices();
+    require(ordered.size() == 6, "the hexagon fixture lost a corner");
+
+    // Positions rather than indices: the proxy is rebuilt by a Slice, and it
+    // is the corner in the world that is being clicked twice, not an index.
+    auto sharedPosition = proxy->getVertex(ordered[0]).getPosition();
+    auto oppositePosition = proxy->getVertex(ordered[3]).getPosition();
+    auto targetPosition = proxy->getVertex(ordered[secondTarget]).getPosition();
+
+    require(
+        proxy->sliceFilledRing(
+            proxy->getFirstPolygonIndex(), ordered[0], ordered[3]),
+        "the first chord across the hexagon was refused");
+
+    auto shared = vertexAt(*proxy, sharedPosition);
+    auto target = vertexAt(*proxy, targetPosition);
+    auto opposite = vertexAt(*proxy, oppositePosition);
+    require(
+        shared != ~0u && target != ~0u && opposite != ~0u,
+        "the halves did not keep the corners the chord divided them at");
+    require(
+        ringContaining(*proxy, shared, opposite) != ~0u,
+        "the chord's own endpoints did not stay on a shared Ring");
+
+    auto ring = ringContaining(*proxy, shared, target);
+    require(ring != ~0u, "the second chord's endpoints shared no Ring");
+    require(
+        proxy->sliceFilledRing(ring, shared, target),
+        "a second chord from an endpoint of the first was refused");
+    proxy->commitTo(*primitive);
+    require(
+        primitive->getShells().size() == 3,
+        "the second chord did not divide one of the halves");
+  }
+}
+
 void externalEdgesDefaultCollidesAndInternalEdgesCannotBeSet() {
   auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union,
@@ -882,6 +962,7 @@ int main() {
     removingTwoSidedEdgeMergesSiblingRings();
     fillHoleWrapsImmediateIslandsWithoutLosingDescendants();
     sliceDividesFilledRingsAndRetainsHoles();
+    sliceAcceptsASecondChordFromAnEndpointOfTheFirst();
     externalEdgesDefaultCollidesAndInternalEdgesCannotBeSet();
     splitEdgeInheritsCollidesForBothHalves();
     removeVertexMergeKeepsThePredecessorEdgesValue();

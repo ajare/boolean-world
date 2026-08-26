@@ -138,10 +138,13 @@ class Document {
   wp::Vector2 mMeshDrawRejectedPosition;
 
   // Slice tool state. The first endpoint is transient; only completing the
-  // chord changes authored topology and enters undo history.
+  // chord changes authored topology and enters undo history. A Vertex an
+  // earlier Slice used belongs to both Rings that Slice produced, so the
+  // first endpoint can leave more than one Ring possible; the second endpoint
+  // is what settles it.
   bool mMeshSliceToolArmed{false};
   uint32_t mMeshSliceFirstVertexIndex{~0u};
-  uint32_t mMeshSliceRingIndex{~0u};
+  std::vector<uint32_t> mMeshSliceCandidateRingIndices;
 
   wp::Vector2 mPlayerOldProxyPosition, mPlayerProxyPosition;
 
@@ -390,10 +393,16 @@ public:
   void disarmMeshSliceTool();
   [[nodiscard]] bool meshSliceToolArmed() const;
   [[nodiscard]] uint32_t getMeshSliceFirstVertexIndex() const;
+  // The Ring the chord will divide, once it is known: the one Ring the first
+  // endpoint belongs to, or ~0u while it belongs to several and the second
+  // endpoint has not yet chosen between them.
   [[nodiscard]] uint32_t getMeshSliceRingIndex() const;
   [[nodiscard]] bool canSelectMeshSliceFirstVertex(uint32_t vertexIndex) const;
   bool selectMeshSliceFirstVertex(uint32_t vertexIndex);
   [[nodiscard]] bool canCompleteMeshSlice(uint32_t vertexIndex) const;
+  // Which of the first endpoint's candidate Rings accepts a chord to this
+  // Vertex, or ~0u if none does.
+  [[nodiscard]] uint32_t resolveMeshSliceRing(uint32_t vertexIndex) const;
   bool completeMeshSlice(uint32_t vertexIndex);
   bool escapeMeshSlice();
 

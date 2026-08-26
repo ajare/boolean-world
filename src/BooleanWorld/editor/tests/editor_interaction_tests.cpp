@@ -1679,6 +1679,70 @@ void sliceToolDividesAShellBetweenTwoSelectedVertices() {
           "Slice did not choose the coincident Vertex on its established Ring");
 }
 
+// A Vertex an earlier Slice used is shared by both Rings that Slice produced,
+// so it is a legitimate starting point for a second Slice on either of them.
+// Establishing one Ring from the first click alone cannot tell which, and
+// choosing eagerly refuses every chord that lies on the other one.
+void sliceStartsAgainFromAVertexAnEarlierSliceUsed() {
+  editor::Settings settings;
+  settings.ghostActive = false;
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshSubMode = editor::Settings::MeshSubMode::Vertex;
+  settings.meshVertexPickRadius = 0.25f;
+
+  std::vector<wp::Vector2> const hexagon{
+      {10.0f, 0.0f}, {5.0f, 8.66f}, {-5.0f, 8.66f},
+      {-10.0f, 0.0f}, {-5.0f, -8.66f}, {5.0f, -8.66f}};
+
+  // The chord 0-3 halves the hexagon into 0,1,2,3 and 3,4,5,0. Vertex 0 now
+  // belongs to both, so a second chord from it must be able to reach 2 on one
+  // half and 4 on the other.
+  for (auto target : {size_t(2), size_t(4)}) {
+    editor::Document document;
+    document.newDoc();
+    auto meshIndex = addPolygonMesh(document, {0.0f, 0.0f}, hexagon);
+    require(document.activateMesh(meshIndex),
+            "could not activate the repeated-Slice fixture");
+    require(document.armMeshSliceTool(settings),
+            "Slice did not arm for the first chord");
+
+    auto const* mesh = document.getActiveMesh();
+    auto ordered =
+        mesh->getPolygon(mesh->getFirstPolygonIndex()).getOrderedVertexIndices();
+    std::vector<wp::Vector2> positions;
+    for (auto vertexIndex : ordered) {
+      positions.push_back(mesh->getVertex(vertexIndex).getPosition());
+    }
+
+    editor::EditorInteraction interaction;
+    auto slice = [&](wp::Vector2 const& from, wp::Vector2 const& to) {
+      auto click = pointerAt(from);
+      click.leftClicked = true;
+      interaction.updateSelection(&document, nullptr, settings, click);
+      click = pointerAt(to);
+      click.leftClicked = true;
+      interaction.updateSelection(&document, nullptr, settings, click);
+    };
+    auto ringCount = [&] {
+      return static_cast<bw::core::MeshPrimitive*>(
+                 document.getWorld()->getPrimitive(meshIndex))
+          ->createEditingProxy()
+          ->getNodeMappings()
+          .size();
+    };
+
+    slice(positions[0], positions[3]);
+    require(ringCount() == 2, "the first chord did not divide the hexagon");
+
+    require(document.armMeshSliceTool(settings),
+            "Slice did not arm for the second chord");
+    slice(positions[0], positions[target]);
+    require(
+        ringCount() == 3,
+        "a second Slice from a Vertex the first one used was refused");
+  }
+}
+
 void edgeSplitInsertsUnsnappedMidpointAndSelectsBothHalves() {
   editor::Document document;
   document.newDoc();
@@ -3284,6 +3348,7 @@ int main() {
     multiVertexDeleteProcessesAscendingAndReportsActualCount();
     meshSubObjectDeleteIsOneUndoEntry();
     sliceToolDividesAShellBetweenTwoSelectedVertices();
+    sliceStartsAgainFromAVertexAnEarlierSliceUsed();
     edgeSplitInsertsUnsnappedMidpointAndSelectsBothHalves();
     repeatedEdgeSplitSubdividesIntoFourSegments();
     edgeSplitIsOneUndoEntry();
