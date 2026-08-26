@@ -43,7 +43,11 @@ target_compile_definitions(editor PRIVATE YAML_CPP_STATIC_DEFINE)
 
 target_link_libraries(editor PRIVATE
     core Willpower.Geometry
+    BooleanWorldRender
     vendor::opengl ext::glew
+    # mpp-data and mpp-program are PreviewMaterialProgram's shader-text
+    # tooling only; mpp/mpp-helper/mpp-mesh/Utils are also pulled in
+    # transitively via BooleanWorldRender's public link requirements.
     ext::mpp ext::mpp-data ext::mpp-helper ext::mpp-mesh ext::mpp-program ext::Utils
     vendor::spdlog vendor::nfd
     ext::yaml-cpp ext::sdl3)

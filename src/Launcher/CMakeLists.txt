@@ -26,7 +26,7 @@ add_executable(Launcher WIN32
 target_include_directories(Launcher PRIVATE
     include
     include/imgui
-    ${BW_ROOT}/src/BooleanWorld/app/include)
+    ${BW_ROOT}/src/BooleanWorld/render/include)
 bw_add_header_filter(Launcher)
 
 target_link_libraries(Launcher PRIVATE
@@ -60,7 +60,7 @@ if(BUILD_TESTING)
         src/ProgramOptions.cpp)
     target_include_directories(launcher_program_options_tests PRIVATE
         include
-        ${BW_ROOT}/src/BooleanWorld/app/include)
+        ${BW_ROOT}/src/BooleanWorld/render/include)
     target_link_libraries(launcher_program_options_tests PRIVATE
         Willpower.Common Willpower.Application ext::Utils)
     target_compile_features(launcher_program_options_tests PRIVATE cxx_std_20)
@@ -83,7 +83,7 @@ if(BUILD_TESTING)
     target_include_directories(launcher_window_input_tests PRIVATE
         include
         include/imgui
-        ${BW_ROOT}/src/BooleanWorld/app/include)
+        ${BW_ROOT}/src/BooleanWorld/render/include)
     target_link_libraries(launcher_window_input_tests PRIVATE
         Willpower.Common Willpower.Application ext::mpp ext::Utils ext::sdl3)
     target_compile_features(launcher_window_input_tests PRIVATE cxx_std_20)

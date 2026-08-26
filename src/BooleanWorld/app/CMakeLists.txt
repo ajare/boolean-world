@@ -6,8 +6,6 @@ add_library(BooleanWorld SHARED
     src/Map.cpp
     src/MapBooleanWorldDefinitionFactory.cpp
     src/PlayerLocation.cpp
-    src/ProcMaterial.cpp
-    src/ProcMaterialResourceDefinitionFactory.cpp
     src/ProtoEntity.cpp
     src/ProtoEntityDefinitionFactory.cpp
     src/ReactiveCamera.cpp
@@ -16,14 +14,7 @@ add_library(BooleanWorld SHARED
     src/StateMapTransitionBooleanWorld.cpp
     src/StateMapUnloadBooleanWorld.cpp
     src/StatePlayBooleanWorld.cpp
-    src/SubMaterialResolver.cpp
-    src/WorldBatch.cpp
-    src/WorldBatchRenderer.cpp
     src/WorldCollisionSim.cpp
-    src/WorldRenderer.cpp
-    src/WorldRenderer3d.cpp
-    src/WorldWallOrientation.cpp
-    src/WorldTriangle3dDataProvider.cpp
     # Vendored ImGui + ImPlot. Each BooleanWorld app carries its own copy;
     # this one and Launcher's are a newer ImGui than editor's.
     src/imgui/imgui.cpp
@@ -59,7 +50,7 @@ target_compile_definitions(BooleanWorld PRIVATE
 target_compile_definitions(BooleanWorld PRIVATE YAML_CPP_STATIC_DEFINE)
 
 target_link_libraries(BooleanWorld PRIVATE
-    core AppLib
+    core AppLib BooleanWorldRender
     Willpower.Application Willpower.Collide Willpower.Common
     WillPower.Viz
     ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils
@@ -85,7 +76,7 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_dll_state_tests
         tests/dll_state_tests.cpp)
-    target_include_directories(boolean_world_dll_state_tests PRIVATE include)
+    target_include_directories(boolean_world_dll_state_tests PRIVATE include ../render/include)
     target_compile_features(boolean_world_dll_state_tests PRIVATE cxx_std_23)
     bw_target_defaults(boolean_world_dll_state_tests)
     bw_output_dirs(boolean_world_dll_state_tests)
@@ -168,8 +159,8 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_triangle_data_provider_benchmark
         tests/world_triangle_3d_data_provider_benchmark.cpp
-        src/WorldTriangle3dDataProvider.cpp)
-    target_include_directories(boolean_world_triangle_data_provider_benchmark PRIVATE include)
+        ../render/src/WorldTriangle3dDataProvider.cpp)
+    target_include_directories(boolean_world_triangle_data_provider_benchmark PRIVATE include ../render/include)
     target_link_libraries(boolean_world_triangle_data_provider_benchmark PRIVATE
         ext::mpp ext::mpp-data ext::mpp-helper ext::mpp-mesh ext::mpp-program
         ext::Utils)
@@ -180,8 +171,8 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_triangle_data_provider_tests
         tests/world_triangle_3d_data_provider_tests.cpp
-        src/WorldTriangle3dDataProvider.cpp)
-    target_include_directories(boolean_world_triangle_data_provider_tests PRIVATE include)
+        ../render/src/WorldTriangle3dDataProvider.cpp)
+    target_include_directories(boolean_world_triangle_data_provider_tests PRIVATE include ../render/include)
     target_link_libraries(boolean_world_triangle_data_provider_tests PRIVATE
         ext::mpp ext::mpp-data ext::mpp-helper ext::mpp-mesh ext::mpp-program
         ext::Utils)
@@ -203,8 +194,8 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_wall_orientation_tests
         tests/world_wall_orientation_tests.cpp
-        src/WorldWallOrientation.cpp)
-    target_include_directories(boolean_world_wall_orientation_tests PRIVATE include)
+        ../render/src/WorldWallOrientation.cpp)
+    target_include_directories(boolean_world_wall_orientation_tests PRIVATE include ../render/include)
     target_link_libraries(boolean_world_wall_orientation_tests PRIVATE
         core Willpower.Common)
     target_compile_features(boolean_world_wall_orientation_tests PRIVATE cxx_std_23)
@@ -231,9 +222,9 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_proc_material_load_tests
         tests/proc_material_load_tests.cpp
-        src/ProcMaterial.cpp
-        src/ProcMaterialResourceDefinitionFactory.cpp)
-    target_include_directories(boolean_world_proc_material_load_tests PRIVATE include)
+        ../render/src/ProcMaterial.cpp
+        ../render/src/ProcMaterialResourceDefinitionFactory.cpp)
+    target_include_directories(boolean_world_proc_material_load_tests PRIVATE include ../render/include)
     target_link_libraries(boolean_world_proc_material_load_tests PRIVATE
         core AppLib Willpower.Application Willpower.Common)
     target_compile_features(boolean_world_proc_material_load_tests PRIVATE cxx_std_23)
@@ -248,10 +239,10 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_sub_material_resolver_tests
         tests/sub_material_resolver_tests.cpp
-        src/ProcMaterial.cpp
-        src/ProcMaterialResourceDefinitionFactory.cpp
-        src/SubMaterialResolver.cpp)
-    target_include_directories(boolean_world_sub_material_resolver_tests PRIVATE include)
+        ../render/src/ProcMaterial.cpp
+        ../render/src/ProcMaterialResourceDefinitionFactory.cpp
+        ../render/src/SubMaterialResolver.cpp)
+    target_include_directories(boolean_world_sub_material_resolver_tests PRIVATE include ../render/include)
     target_link_libraries(boolean_world_sub_material_resolver_tests PRIVATE
         core AppLib Willpower.Application Willpower.Common)
     target_compile_features(boolean_world_sub_material_resolver_tests PRIVATE cxx_std_23)
