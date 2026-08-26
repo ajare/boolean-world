@@ -598,7 +598,7 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
                                    ? resolveGroundingFloorZ(primitives, startPosition)
                                          .value_or(0.0f)
                                    : *previewGrounding;
-      openPreview3D(primitives, startPosition, startAngle, startFloorZ);
+      openPreview3D(doc, primitives, startPosition, startAngle, startFloorZ);
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -3986,6 +3986,11 @@ void renderCombinedPanel(
 }
 
 void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
+  // The preview owns its camera and selected-surface editor. In particular,
+  // undo/new/open would replace the World and invalidate the preview's
+  // authored Primitive references while it is still rendering them.
+  if (preview3DIsOpen()) return;
+
   if (ImGui::Shortcut(ImGuiKey_N | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       handleModifiedDocument(doc, true, true, "New world", newDocument);

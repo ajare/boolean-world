@@ -7,16 +7,20 @@
 
 namespace editor {
 
+class Document;
+
 [[nodiscard]] bool preview3DIsOpen();
 
 void openPreview3D(
+    Document* document,
     std::vector<bw::core::Primitive const*> primitives,
     wp::Vector2 const& playerPosition,
     float playerAngle,
     float floorZ);
 
-// Renders the input-blocking preview window. The window owns no authored
-// state: all geometry and camera values are snapshotted when it opens.
+// Renders the input-blocking preview window. Geometry is snapshotted when it
+// opens; material assignments and shared Sub-material data selected through
+// the surface editor are reflected immediately.
 void renderPreview3D();
 
 // Feeds one SDL mouse-motion event's relative deltas to the preview. While

@@ -36,6 +36,7 @@ struct PreviewWallQuad {
 struct PreviewMaterial {
   uint32_t index{};
   bw::core::MaterialDefinitionData definition{};
+  bool resolved{};
 };
 
 // Render-ready extrusion of one raw Primitive. This type and its builder are

@@ -124,7 +124,7 @@ void libraryDiscoversTwoLevelsAndSelectionIsUndoable(fs::path const& root) {
 
   auto preview = editor::extrudePrimitiveForPreview(
       *document.getWorld()->getPrimitive(index), &library);
-  require(preview.wallMaterial.index == 0 &&
+  require(preview.wallMaterial.resolved && preview.wallMaterial.index == 0 &&
               preview.wallMaterial.definition.baseColour ==
                   std::array<float, 3>{0.1f, 0.2f, 0.3f},
           "editor preview did not resolve the selected Sub-material data");

@@ -32,6 +32,7 @@ PrimitivePreviewGeometry extrudePrimitiveForPreview(
       material.definition.params[i] = subMaterial->paramValues[i];
     }
     material.definition.baseColour = subMaterial->baseColour;
+    material.resolved = true;
     return material;
   };
   result.floorMaterial = resolve(properties.floorMaterialId);

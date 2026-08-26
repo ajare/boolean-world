@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cctype>
+#include <cstdio>
 #include <limits>
 #include <memory>
 #include <string>
@@ -17,7 +19,9 @@
 #include <SDL3/SDL.h>
 
 #include <common/GameDefines.h>
+#include <core/Layer.h>
 
+#include "Actions.h"
 #include "Document.h"
 #include "imgui.h"
 #include "InputOptions.h"
@@ -28,6 +32,7 @@
 #include "Preview3D.h"
 #include "ProcMaterialLibrary.h"
 #include "ReactiveCamera.h"
+#include "Undo.h"
 
 extern SDL_Window* gWindow;
 
@@ -37,6 +42,10 @@ namespace {
 struct PreviewPrimitive {
   uint8_t priority{};
   PrimitivePreviewGeometry geometry;
+  // The authored source remains owned by the open Document. Procedural step
+  // output is previewable but deliberately not editable (ADR-0015).
+  bw::core::Primitive* source{};
+  bool editable{};
 };
 
 // Whichever surface the centre of the view is pointing at, or which the user
@@ -49,8 +58,21 @@ struct PreviewSurfaceRef {
   size_t wallIndex{};
 };
 
+struct PreviewMaterialEditorState {
+  bool initialized{};
+  bool hasDraft{};
+  int catalogIndex{};
+  std::string editingId;
+  char name[256]{};
+  uint32_t materialIndex{};
+  std::vector<float> params;
+  std::array<float, 3> colour{};
+};
+
 struct PreviewSession {
   bool open{};
+  Document* document{};
+  bw::core::World const* world{};
   wp::Vector2 position;
   float angle{};
   float pitch{};
@@ -61,6 +83,7 @@ struct PreviewSession {
   // handed back, and the camera turns only while dragging.
   PreviewSurfaceRef lookedAt;
   PreviewSurfaceRef selection;
+  PreviewMaterialEditorState materialEditor;
   // A left-drag that began inside the preview, so releasing the button over
   // another window still ends the turn.
   bool dragTurning{};
@@ -100,6 +123,14 @@ constexpr Tint untinted{};
 // to register on screen.
 constexpr Tint lookedAtTint{1.0f, 1.0f, 0.35f};
 
+Tint materialTint(PreviewMaterial const& material, Tint const& tint = untinted) {
+  if (!material.resolved) return tint;
+  return {
+      material.definition.baseColour[0] * tint.r,
+      material.definition.baseColour[1] * tint.g,
+      material.definition.baseColour[2] * tint.b};
+}
+
 // The game's 3D coordinates map its 2D world (X, Y) onto (X, Z).
 PreviewGpuVertex toGpuVertex(PreviewVertex3 const& vertex, Tint const& tint) {
   PreviewGpuVertex result;
@@ -135,11 +166,13 @@ void appendWallQuads(
     std::vector<PreviewGpuVertex>& buffer,
     std::vector<PreviewWallQuad> const& quads,
     size_t tintedIndex,
-    Tint const& tint) {
+    Tint const& baseTint,
+    Tint const& highlightedTint) {
   buffer.reserve(buffer.size() + quads.size() * 6);
   for (size_t index = 0; index < quads.size(); ++index) {
     auto const& quad = quads[index];
-    auto const& quadTint = index == tintedIndex ? tint : untinted;
+    auto const& quadTint =
+        index == tintedIndex ? highlightedTint : baseTint;
     buffer.push_back(toGpuVertex(quad.vertices[0], quadTint));
     buffer.push_back(toGpuVertex(quad.vertices[1], quadTint));
     buffer.push_back(toGpuVertex(quad.vertices[2], quadTint));
@@ -175,10 +208,238 @@ PreviewSurfaceRef lookedAtSurface() {
       pick.surfaceHit.wallIndex};
 }
 
-// A modeless window naming what the user selected. Closing it, by its own
-// close button, means the same thing as right-clicking the preview.
+void refreshPreviewMaterials() {
+  for (auto& primitive : session.primitives) {
+    if (primitive.source) {
+      primitive.geometry = extrudePrimitiveForPreview(
+          *primitive.source, &procMaterialLibrary());
+    }
+  }
+}
+
+PrimitiveMaterialSurface materialSurface(PreviewSurface surface) {
+  switch (surface) {
+    case PreviewSurface::Floor:
+      return PrimitiveMaterialSurface::Floor;
+    case PreviewSurface::Ceiling:
+      return PrimitiveMaterialSurface::Ceiling;
+    case PreviewSurface::Wall:
+    case PreviewSurface::None:
+      return PrimitiveMaterialSurface::Wall;
+  }
+  return PrimitiveMaterialSurface::Wall;
+}
+
+std::string surfaceSubMaterialId(
+    bw::core::Primitive const& primitive, PreviewSurface surface) {
+  auto const& properties = primitive.getProperties();
+  switch (surface) {
+    case PreviewSurface::Floor:
+      return properties.floorMaterialId;
+    case PreviewSurface::Ceiling:
+      return properties.ceilingMaterialId;
+    case PreviewSurface::Wall:
+      return properties.wallMaterialId;
+    case PreviewSurface::None:
+      return {};
+  }
+  return {};
+}
+
+void loadMaterialDraft(std::string const& id) {
+  auto& state = session.materialEditor;
+  state.initialized = true;
+  state.hasDraft = false;
+  state.editingId.clear();
+
+  auto const& catalogs = procMaterialLibrary().catalogs();
+  auto const* owner = procMaterialLibrary().findCatalogForSubMaterial(id);
+  if (!owner) {
+    state.catalogIndex = catalogs.empty()
+                             ? 0
+                             : std::clamp(state.catalogIndex, 0,
+                                          static_cast<int>(catalogs.size()) - 1);
+    return;
+  }
+
+  state.catalogIndex = static_cast<int>(std::distance(catalogs.data(), owner));
+  auto const* material = procMaterialLibrary().findSubMaterial(id);
+  if (!material) return;
+
+  state.hasDraft = true;
+  state.editingId = id;
+  std::snprintf(state.name, sizeof(state.name), "%s", material->displayName.c_str());
+  state.materialIndex = material->materialIndex;
+  state.params = material->paramValues;
+  state.colour = material->baseColour;
+}
+
+PreviewMaterial draftPreviewMaterial() {
+  PreviewMaterial result;
+  auto const& state = session.materialEditor;
+  result.index = state.materialIndex;
+  for (size_t i = 0;
+       i < state.params.size() && i < result.definition.params.size(); ++i) {
+    result.definition.params[i] = state.params[i];
+  }
+  result.definition.baseColour = state.colour;
+  result.resolved = true;
+  return result;
+}
+
+// Preview an unsaved shared Sub-material edit everywhere that stable id is
+// used. Saving as new changes editingId, so the draft then follows only the
+// selected surface's newly assigned id.
+void applyMaterialDraft() {
+  auto const& state = session.materialEditor;
+  if (!state.hasDraft || state.editingId.empty()) return;
+  auto draft = draftPreviewMaterial();
+  for (auto& primitive : session.primitives) {
+    if (!primitive.source) continue;
+    auto const& properties = primitive.source->getProperties();
+    if (properties.floorMaterialId == state.editingId) {
+      primitive.geometry.floorMaterial = draft;
+    }
+    if (properties.ceilingMaterialId == state.editingId) {
+      primitive.geometry.ceilingMaterial = draft;
+    }
+    if (properties.wallMaterialId == state.editingId) {
+      primitive.geometry.wallMaterial = draft;
+    }
+  }
+}
+
+void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
+  auto const& catalogs = procMaterialLibrary().catalogs();
+  if (catalogs.empty()) {
+    ImGui::TextDisabled("No ProcMaterial resources are available.");
+    return;
+  }
+
+  auto& state = session.materialEditor;
+  if (!state.initialized) {
+    loadMaterialDraft(surfaceSubMaterialId(
+        *previewPrimitive.source, session.selection.surface));
+  }
+  state.catalogIndex = std::clamp(
+      state.catalogIndex, 0, static_cast<int>(catalogs.size()) - 1);
+
+  std::string catalogItems;
+  for (auto const& catalog : catalogs) {
+    catalogItems += catalog.resourceName;
+    catalogItems += '\0';
+  }
+  ImGui::SetNextItemWidth(280.0f);
+  if (ImGui::Combo(
+          "ProcMaterial", &state.catalogIndex, catalogItems.c_str(), 6)) {
+    refreshPreviewMaterials();
+    state.hasDraft = false;
+    state.editingId.clear();
+  }
+
+  auto const& catalog = catalogs[state.catalogIndex];
+  int selectedSubMaterial = -1;
+  std::string subMaterialItems;
+  for (size_t i = 0; i < catalog.data.subMaterials.size(); ++i) {
+    auto const& material = catalog.data.subMaterials[i];
+    if (material.id == state.editingId) selectedSubMaterial = static_cast<int>(i);
+    subMaterialItems += material.displayName;
+    subMaterialItems += '\0';
+  }
+  ImGui::SetNextItemWidth(280.0f);
+  if (!catalog.data.subMaterials.empty() &&
+      ImGui::Combo(
+          "Sub-material", &selectedSubMaterial,
+          subMaterialItems.c_str(), 8)) {
+    auto const id = catalog.data.subMaterials[selectedSubMaterial].id;
+    transactUndoableAction(
+        session.document, "Set preview surface Sub-material",
+        [&](Document* actionDoc) {
+          return setPrimitiveSubMaterial(
+              actionDoc, previewPrimitive.source,
+              materialSurface(session.selection.surface), id);
+        });
+    refreshPreviewMaterials();
+    loadMaterialDraft(id);
+  }
+
+  if (!state.hasDraft) {
+    ImGui::TextDisabled("Select a Sub-material to edit its parameters.");
+    return;
+  }
+
+  if (ImGui::CollapsingHeader(
+          "Material parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::InputText("Name", state.name, sizeof(state.name));
+    if (auto const* schema =
+            catalog.data.findTechniqueSchema(state.materialIndex)) {
+      for (size_t i = 0;
+           i < schema->parameters.size() && i < state.params.size(); ++i) {
+        auto const& parameter = schema->parameters[i];
+        ImGui::SliderFloat(
+            parameter.name.c_str(), &state.params[i],
+            parameter.minimum, parameter.maximum);
+      }
+    }
+    ImGui::ColorEdit3("Base colour", state.colour.data());
+
+    if (ImGui::Button("Save existing")) {
+      auto id = state.editingId;
+      auto name = std::string(state.name);
+      auto params = state.params;
+      auto colour = state.colour;
+      if (transactUndoableActionAtomically(
+              session.document, "Save Sub-material",
+              [&](Document* actionDoc) {
+                renameSubMaterial(
+                    actionDoc, &procMaterialLibrary(), id, name);
+                return editSubMaterial(
+                    actionDoc, &procMaterialLibrary(), id, params, colour);
+              })) {
+        refreshPreviewMaterials();
+        loadMaterialDraft(id);
+      }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Save as new Sub-material")) {
+      auto name = std::string(state.name);
+      auto params = state.params;
+      auto colour = state.colour;
+      auto materialIndex = state.materialIndex;
+      auto resourceName = catalog.resourceName;
+      std::string createdId;
+      if (transactUndoableActionAtomically(
+              session.document, "Save new Sub-material",
+              [&](Document* actionDoc) {
+                if (!createSubMaterial(
+                        actionDoc, &procMaterialLibrary(), resourceName, name,
+                        materialIndex, params, colour, &createdId)) {
+                  return false;
+                }
+                return setPrimitiveSubMaterial(
+                    actionDoc, previewPrimitive.source,
+                    materialSurface(session.selection.surface), createdId);
+              })) {
+        refreshPreviewMaterials();
+        loadMaterialDraft(createdId);
+      }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Revert")) {
+      auto id = state.editingId;
+      refreshPreviewMaterials();
+      loadMaterialDraft(id);
+    }
+  }
+
+  applyMaterialDraft();
+}
+
+// A modeless authoring window for the clicked wall/floor/ceiling. Closing it,
+// by its own close button, means the same thing as right-clicking the preview.
 void renderSelectedSurfaceWindow() {
-  if (!session.selection.valid) {
+  if (!session.selection.valid ||
+      session.selection.primitiveIndex >= session.primitives.size()) {
     return;
   }
   ImGui::SetNextWindowPos(
@@ -190,13 +451,28 @@ void renderSelectedSurfaceWindow() {
           ImGuiWindowFlags_AlwaysAutoResize |
               ImGuiWindowFlags_NoSavedSettings)) {
     auto surfaceName = previewSurfaceName(session.selection.surface);
-    ImGui::Text("Selected %.*s", (int)surfaceName.size(), surfaceName.data());
-    ImGui::TextDisabled("Edit its Sub-material in the Primitive inspector.");
+    std::string label(surfaceName);
+    if (!label.empty()) {
+      label.front() = static_cast<char>(std::toupper(label.front()));
+    }
+    ImGui::Text("Selected %s", label.c_str());
+
+    auto& previewPrimitive =
+        session.primitives[session.selection.primitiveIndex];
+    if (!previewPrimitive.editable || !previewPrimitive.source ||
+        !session.document) {
+      ImGui::TextDisabled(
+          "This surface is generated by a step that does not permit direct editing.");
+    } else {
+      renderPreviewMaterialEditor(previewPrimitive);
+    }
   }
   ImGui::End();
 
   if (!stayOpen) {
+    refreshPreviewMaterials();
     session.selection = {};
+    session.materialEditor = {};
     session.dragTurning = false;
   }
 }
@@ -331,23 +607,26 @@ void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
   std::vector<PreviewGpuVertex> buffer;
   for (size_t index = 0; index < session.primitives.size(); ++index) {
     auto const& geometry = session.primitives[index].geometry;
-    auto tintOf = [&](PreviewSurface surface) {
-      return lookedAt.valid && lookedAt.primitiveIndex == index &&
-                     lookedAt.surface == surface
-                 ? lookedAtTint
-                 : untinted;
+    auto tintOf = [&](PreviewSurface surface, PreviewMaterial const& material) {
+      auto highlight = lookedAt.valid && lookedAt.primitiveIndex == index &&
+                               lookedAt.surface == surface
+                           ? lookedAtTint
+                           : untinted;
+      return materialTint(material, highlight);
     };
 
     buffer.clear();
     appendTriangles(
-        buffer, geometry.floorTriangles, tintOf(PreviewSurface::Floor));
+        buffer, geometry.floorTriangles,
+        tintOf(PreviewSurface::Floor, geometry.floorMaterial));
     materialProgram.setMaterial(
         geometry.floorMaterial.index, geometry.floorMaterial.definition.params);
     materialProgram.draw(buffer);
 
     buffer.clear();
     appendTriangles(
-        buffer, geometry.ceilingTriangles, tintOf(PreviewSurface::Ceiling));
+        buffer, geometry.ceilingTriangles,
+        tintOf(PreviewSurface::Ceiling, geometry.ceilingMaterial));
     materialProgram.setMaterial(
         geometry.ceilingMaterial.index,
         geometry.ceilingMaterial.definition.params);
@@ -358,7 +637,10 @@ void renderOpenGL(ImDrawList const*, ImDrawCmd const*) {
                               lookedAt.surface == PreviewSurface::Wall
                           ? lookedAt.wallIndex
                           : std::numeric_limits<size_t>::max();
-    appendWallQuads(buffer, geometry.wallQuads, tintedWall, lookedAtTint);
+    appendWallQuads(
+        buffer, geometry.wallQuads, tintedWall,
+        materialTint(geometry.wallMaterial),
+        materialTint(geometry.wallMaterial, lookedAtTint));
     materialProgram.setMaterial(
         geometry.wallMaterial.index, geometry.wallMaterial.definition.params);
     materialProgram.draw(buffer);
@@ -386,6 +668,7 @@ void addPreview3DMouseMotion(float relativeX, float relativeY) {
 }
 
 void openPreview3D(
+    Document* document,
     std::vector<bw::core::Primitive const*> primitives,
     wp::Vector2 const& playerPosition,
     float playerAngle,
@@ -398,6 +681,10 @@ void openPreview3D(
 
   session = {};
   session.open = true;
+  session.document = document;
+  session.world = document && document->isActive()
+                      ? document->getWorld().get()
+                      : nullptr;
   session.position = playerPosition;
   session.angle = playerAngle;
   session.eyeZ = floorZ + BW_PLAYER_EYE_HEIGHT;
@@ -409,16 +696,38 @@ void openPreview3D(
   session.primitivesForGrounding.reserve(primitives.size());
   for (auto const* primitive : primitives) {
     if (primitive) {
+      bool editable = false;
+      if (document && document->isActive()) {
+        for (auto const* layer : document->getWorld()->getLayers()) {
+          auto ownerIndex = layer->getOwningStepIndex(primitive);
+          if (ownerIndex != ~0u) {
+            editable =
+                layer->getStep(ownerIndex)->permitsDirectPrimitiveEditing();
+            break;
+          }
+        }
+      }
       session.primitivesForGrounding.push_back(primitive);
       session.primitives.push_back(
-          {primitive->getPriority(), extrudePrimitiveForPreview(
-                                         *primitive, &procMaterialLibrary())});
+          {primitive->getPriority(),
+           extrudePrimitiveForPreview(*primitive, &procMaterialLibrary()),
+           const_cast<bw::core::Primitive*>(primitive), editable});
     }
   }
 }
 
 void renderPreview3D() {
   if (!session.open) {
+    return;
+  }
+  // Undo, New, and Open replace Document::mWorld wholesale. They can still
+  // be reached through an underlying menu while the selected-surface window
+  // owns the pointer, so never retain authored Primitive pointers across that
+  // replacement.
+  if (!session.document || !session.document->isActive() ||
+      session.document->getWorld().get() != session.world) {
+    session.open = false;
+    syncRelativeMouseMode(false);
     return;
   }
 
@@ -485,11 +794,14 @@ void renderPreview3D() {
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
             session.lookedAt.valid) {
           session.selection = session.lookedAt;
+          session.materialEditor = {};
           session.lookedAt = {};
         }
       } else if (
           previewHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        refreshPreviewMaterials();
         session.selection = {};
+        session.materialEditor = {};
         session.dragTurning = false;
       }
     }

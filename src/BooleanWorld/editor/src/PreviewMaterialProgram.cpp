@@ -287,7 +287,7 @@ void PreviewMaterialProgram::begin(
   glUniform1f(mUniformFarGridSize, 0.5f);
   glUniform3fv(mUniformPlayerPosition, 1, glm::value_ptr(cameraPosition));
   glUniform3fv(mUniformLightPosition, 1, glm::value_ptr(lightPosition));
-  glUniform1f(mUniformMaterialScale, 32.0f);
+  glUniform1f(mUniformMaterialScale, 1.0f);
   glUniform1f(mUniformHexagonRadius, 16.0f);
   glUniform1f(mUniformHexagonDepth, 0.5f);
   glUniform1f(mUniformTileDepthVariationFactor, 0.1f);
