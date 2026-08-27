@@ -758,7 +758,7 @@ subMaterials:
       probability: 0.0
       minimumCornerDistance: 1.0
       maximumCornerDistance: 3.0
-      cornerProbability: 1.0
+      cornerProbability: 0.0
       types: [Tapered, SteppedFracture, VShapedNotch, TrapezoidalSpall]
   - id: builtin.bark
     name: Bark
