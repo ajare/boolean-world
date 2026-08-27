@@ -708,6 +708,104 @@ void anInvisibleCeilingStepWallCarriesNoChip() {
           "the hidden wall's Arris still bit into the horizontal face");
 }
 
+// 13. The Arris-length clamp: a Chip on a short Arris shrinks its reach to
+//     the Arris's own length rather than running past either end.
+void aChipShrinksItsReachToFitAShortArris() {
+  std::vector<ArrangementPrimitive> primitives{
+      {{rectContour(-50, -50, 50, 50)},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       0,
+       0,
+       propertiesWithHeights(0.0f, 48.0f)},
+      {{rectContour(-5, -5, 5, 5)},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       1,
+       1,
+       propertiesWithHeights(12.0f, 48.0f)}};
+  auto snapshot = snapshotOf(primitives);
+  auto const& detail = snapshot.getDetail();
+
+  // The platform is 10x10, shorter than chipReach (24), so the south Arris
+  // running from (-5, -5) to (5, -5) must clamp its reach to its own length.
+  auto wallIndex =
+      findWall(snapshot, ArrangementWallKind::FloorStep, {0.0f, -5.0f});
+  require(wallIndex != ~0u, "the short platform's south FloorStep was not found");
+  auto replacements =
+      detail.replacementsFor(DetailSurfaceKind::Wall, wallIndex);
+  require(!replacements.empty(), "the short Arris carried no Chip at all");
+
+  // Tapering all the way to the Arris's own corners rather than chipReach's
+  // nominal half-length.
+  require(hasVertexAt(replacements, -5.0f, -5.0f, 12.0f) &&
+              hasVertexAt(replacements, 5.0f, -5.0f, 12.0f),
+          "the clamped Chip's reach did not shrink to exactly the Arris's own length");
+  require(!hasVertexAt(replacements, -chipReach * 0.5f, -5.0f, 12.0f),
+          "the clamped Chip still tapered at its nominal, unclamped reach");
+
+  // Depth is untouched: the platform is wide enough, and tall enough, that
+  // only the reach clamp applies.
+  require(hasVertexAt(replacements, 0.0f, -5.0f + chipDepth, 12.0f),
+          "the Arris-length clamp perturbed the Chip's depth");
+}
+
+// 14. The face-boundary clamp: a Chip on a narrow ledge shrinks its depth so
+//     it cannot break through to the far side.
+void aChipShrinksItsDepthToFitANarrowLedge() {
+  std::vector<ArrangementPrimitive> primitives{
+      {{rectContour(-50, -50, 50, 50)},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       0,
+       0,
+       propertiesWithHeights(0.0f, 48.0f)},
+      {{rectContour(-20, -1, 20, 1)},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       1,
+       1,
+       propertiesWithHeights(12.0f, 48.0f)}};
+  auto snapshot = snapshotOf(primitives);
+  auto const& detail = snapshot.getDetail();
+
+  // The ledge is only 2 world units deep (north-south), less than chipDepth
+  // (3), so the south Arris's Chip must clamp its depth to the distance to
+  // the ledge's north side rather than breaking through it.
+  auto wallIndex =
+      findWall(snapshot, ArrangementWallKind::FloorStep, {0.0f, -1.0f});
+  require(wallIndex != ~0u, "the narrow ledge's south FloorStep was not found");
+  auto replacements =
+      detail.replacementsFor(DetailSurfaceKind::Wall, wallIndex);
+  require(!replacements.empty(), "the narrow ledge carried no Chip at all");
+
+  for (auto const& triangle : replacements) {
+    for (auto const& vertex : triangle.v) {
+      require(vertex.position[1] <= 1.0f + 0.01f,
+              "a Chip on a narrow ledge broke through to its far side");
+    }
+  }
+  require(hasVertexAt(replacements, 0.0f, 1.0f, 12.0f),
+          "the clamped Chip did not reach exactly the ledge's far boundary");
+
+  // Reach is untouched: the ledge is long enough (40 units) that only the
+  // face-boundary clamp applies.
+  require(hasVertexAt(replacements, -chipReach * 0.5f, -1.0f, 12.0f) &&
+              hasVertexAt(replacements, chipReach * 0.5f, -1.0f, 12.0f),
+          "the face-boundary clamp perturbed the Chip's reach");
+}
+
+// 15. The minimum-size drop: a Chip clamped smaller than the minimum is not
+//     emitted at all, and the surface it would have bitten is left whole.
+void aChipBelowTheMinimumSizeIsDroppedEntirely() {
+  auto snapshot = snapshotOf(slabAndPlatform(0.001f));
+  auto const& detail = snapshot.getDetail();
+  require(detail.getChipCount() == 0,
+          "a step shallower than the minimum Chip size still carried Chips");
+  require(detail.getSuppressed().empty() && detail.getTriangles().empty(),
+          "a fully clamped-away Chip still published detail geometry");
+}
+
 // 7. The three existing outputs are untouched by the detail pass.
 void theUnchippedOutputsAreIdenticalEitherWay() {
   auto primitives = slabAndPlatform(12.0f);
@@ -766,6 +864,9 @@ int main() {
     theCeilingSideIsRebuiltWithTheFootprintSubtracted();
     aCeilingChipShrinksToFitItsWallsHeight();
     anInvisibleCeilingStepWallCarriesNoChip();
+    aChipShrinksItsReachToFitAShortArris();
+    aChipShrinksItsDepthToFitANarrowLedge();
+    aChipBelowTheMinimumSizeIsDroppedEntirely();
     std::cout << "Chips are cut into FloorStep top and CeilingStep bottom "
                  "Arrises and published in the snapshot's detail channel\n";
     return 0;

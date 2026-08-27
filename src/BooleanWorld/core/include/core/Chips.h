@@ -106,9 +106,12 @@ struct ChipSizes {
 // two faces. A FloorStep's bottom Arris, a CeilingStep's top, and both of a
 // Border wall's, are concave and never chip.
 //
-// Only the wall-height clamp is applied: a Chip's depth shrinks so it can
-// never eat through the bottom of its own step. Clamping against the
-// horizontal face's other boundaries is #280.
+// A Chip clamps to fit rather than breaking through the geometry it is cut
+// into: depth shrinks so it can never eat through the far side of its own
+// step nor break through to the horizontal face's nearest other boundary, and
+// reach shrinks so it never runs past either end of the Arris. Whichever
+// clamp is most restrictive wins; a Chip clamped below the minimum size is
+// dropped rather than emitted as a sliver.
 [[nodiscard]] DetailGeometry BuildChipDetail(
     ArrangementResult const& arrangement,
     std::vector<ArrangementWall> const& walls,

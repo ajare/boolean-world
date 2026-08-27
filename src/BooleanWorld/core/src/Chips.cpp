@@ -160,6 +160,60 @@ void AddWallRemainder(
   }
 }
 
+// How far a Chip may bite into `face` from `origin` (a point on `currentEdge`)
+// along `direction` before it would reach some *other* boundary of the face -
+// an opposite Arris, a hole, or a wall of the same footprint met at a corner.
+// Casts a ray rather than measuring edge-to-edge distance because a Chip's
+// deepest point is a single point on the Arris's own perpendicular bisector,
+// not the whole Arris; only that ray's first crossing can be broken through.
+// Returns a large sentinel when nothing else bounds the face in that
+// direction, so callers can std::min it in unconditionally.
+float FaceBoundaryDistance(
+    ArrangementResult const& arrangement,
+    ArrangementFace const& face,
+    uint32_t currentEdge,
+    wp::Vector2 const& origin,
+    wp::Vector2 const& direction) {
+  constexpr float NoBoundary = 1.0e9f;
+  auto nearest = NoBoundary;
+
+  auto castAgainstBoundary = [&](std::vector<uint32_t> const& boundary,
+                                 std::vector<uint32_t> const& boundaryVertices) {
+    auto count = boundaryVertices.size();
+    for (size_t i = 0; i < count; ++i) {
+      if (i < boundary.size() && boundary[i] == currentEdge) {
+        continue;
+      }
+      auto p0 = ToWorld(arrangement.vertices[boundaryVertices[i]]);
+      auto p1 =
+          ToWorld(arrangement.vertices[boundaryVertices[(i + 1) % count]]);
+
+      // origin + t*direction = p0 + s*(p1-p0); Cramer's rule on the 2x2
+      // system, direction and (p1-p0) as its columns.
+      auto edge = p1 - p0;
+      auto denom = direction.x * edge.y - direction.y * edge.x;
+      if (std::abs(denom) <= 1.0e-9f) {
+        continue;  // Parallel - a Chip's ray never runs along a boundary.
+      }
+      auto diff = p0 - origin;
+      auto t = (diff.x * edge.y - diff.y * edge.x) / denom;
+      auto s = (diff.x * direction.y - diff.y * direction.x) / denom;
+      if (t > MinimumChipSize && t < nearest && s >= 0.0f && s <= 1.0f) {
+        nearest = t;
+      }
+    }
+  };
+
+  castAgainstBoundary(face.outerBoundary, face.outerBoundaryVertices);
+  auto holes =
+      std::min(face.innerBoundaries.size(), face.innerBoundaryVertices.size());
+  for (size_t hole = 0; hole < holes; ++hole) {
+    castAgainstBoundary(face.innerBoundaries[hole], face.innerBoundaryVertices[hole]);
+  }
+
+  return nearest;
+}
+
 // Rebuilds one horizontal face's floor or ceiling with every Chip footprint
 // on it subtracted from its boundary polygon, rather than clipping the
 // individual triangles the unchipped face earcut to.
@@ -367,20 +421,28 @@ DetailGeometry BuildChipDetail(
     // the bitten face, always the other one, lies the other way.
     auto inward = -orientation.normal;
 
-    // The only clamp this ticket applies: a Chip shrinks to fit its wall's
-    // height so it can never eat through the far side of its own step. It is
-    // also held inside its own Arris, which is a condition of the geometry
-    // existing at all rather than a clamp.
-    auto depth = std::min(sizes.depth, wall.maxZ - wall.minZ);
+    // One Chip per Arris, at its centre, positioned from the Arris's own
+    // endpoints - never from the wall or edge index, which renumber on every
+    // unrelated edit (ADR-0027).
+    auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
+
+    // The three clamps, most restrictive winning: the wall's own height, so a
+    // Chip can never eat through the far side of its own step; the distance
+    // from the Arris to the horizontal face's nearest other boundary, so it
+    // can never break through a thin ledge; and the Arris's own length, so it
+    // never runs past either end into whatever geometry adjoins it. A Chip
+    // whose clamped size falls below the minimum is dropped rather than
+    // emitted as a sliver.
+    auto boundaryLimit = FaceBoundaryDistance(
+        arrangement, arrangement.faces[bittenFace], wall.edge, midpoint,
+        inward);
+    auto depth =
+        std::min({sizes.depth, wall.maxZ - wall.minZ, boundaryLimit});
     auto reach = std::min(sizes.reach, length);
     if (depth <= MinimumChipSize || reach <= MinimumChipSize) {
       continue;
     }
 
-    // One Chip per Arris, at its centre, positioned from the Arris's own
-    // endpoints - never from the wall or edge index, which renumber on every
-    // unrelated edit (ADR-0027).
-    auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
     auto half = direction * (reach * 0.5f);
     auto a = midpoint - half;
     auto b = midpoint + half;
