@@ -4,8 +4,6 @@
 
 #include <core/Arrangement.h>
 
-#include "WorldWallOrientation.h"
-
 namespace {
 
 constexpr float Epsilon = 0.0001f;
@@ -51,7 +49,7 @@ void requireFacesFace0Side(
       face0Solid,
       kind == bw::core::arr::ArrangementWallKind::Border ? !face0Solid : true,
       face0Floor, face1Floor, face0Ceiling, face1Ceiling);
-  auto orientation = bw::app::orientArrangementWall(
+  auto orientation = bw::core::arr::OrientArrangementWall(
       result, {0, 0.0f, 1.0f, 0, kind});
 
   // The edge is sorted left-to-right, so face 0 is north (the left side).

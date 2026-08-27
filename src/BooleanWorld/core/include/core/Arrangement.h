@@ -7,6 +7,8 @@
 #include <optional>
 #include <vector>
 
+#include <willpower/common/Vector2.h>
+
 #include "core/Primitive.h"
 #include "core/Stats.h"
 
@@ -209,6 +211,16 @@ struct ArrangementResult {
   std::vector<PrimitivePropertySet> palette;
 };
 
+// A wall's front face is the one its outward normal points away from: the
+// solid side for Border, the lower side for FloorStep, the higher side for
+// CeilingStep. v0/v1 are the wall's endpoints ordered so that walking from
+// v0 to v1 keeps the front face on the left, matching normal.
+struct ArrangementWallOrientation {
+  wp::Vector2 v0;
+  wp::Vector2 v1;
+  wp::Vector2 normal;
+};
+
 using ArrangementResultPtr = std::shared_ptr<ArrangementResult const>;
 using PrimitiveFoldOrder = std::vector<uint32_t>;
 
@@ -236,6 +248,10 @@ bool PointInFace(
 
 [[nodiscard]] std::vector<ArrangementWall> BuildArrangementWalls(
     ArrangementResult const& arrangement);
+
+[[nodiscard]] ArrangementWallOrientation OrientArrangementWall(
+    ArrangementResult const& arrangement,
+    ArrangementWall const& wall);
 
 PSLG BuildPSLG(
     std::vector<ContourInput> const& contours,

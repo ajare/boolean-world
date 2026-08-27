@@ -10,8 +10,7 @@ add_library(BooleanWorldRender STATIC
     src/WorldBatchRenderer.cpp
     src/WorldRenderer.cpp
     src/WorldRenderer3d.cpp
-    src/WorldTriangle3dDataProvider.cpp
-    src/WorldWallOrientation.cpp)
+    src/WorldTriangle3dDataProvider.cpp)
 
 target_include_directories(BooleanWorldRender PUBLIC include)
 bw_add_header_filter(BooleanWorldRender)

@@ -192,19 +192,6 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_triangle_data_provider
              COMMAND boolean_world_triangle_data_provider_tests)
 
-    add_executable(boolean_world_wall_orientation_tests
-        tests/world_wall_orientation_tests.cpp
-        ../render/src/WorldWallOrientation.cpp)
-    target_include_directories(boolean_world_wall_orientation_tests PRIVATE include ../render/include)
-    target_link_libraries(boolean_world_wall_orientation_tests PRIVATE
-        core Willpower.Common)
-    target_compile_features(boolean_world_wall_orientation_tests PRIVATE cxx_std_23)
-    bw_target_defaults(boolean_world_wall_orientation_tests)
-    bw_output_dirs(boolean_world_wall_orientation_tests)
-    bw_deploy_runtime_dlls(boolean_world_wall_orientation_tests)
-    add_test(NAME boolean_world_wall_orientation
-             COMMAND boolean_world_wall_orientation_tests)
-
     add_executable(boolean_world_map_load_tests
         tests/map_load_tests.cpp
         src/Map.cpp)

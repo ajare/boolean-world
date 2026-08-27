@@ -4,7 +4,6 @@
 #include <core/MaterialDefinition.h>
 
 #include "WorldRenderer.h"
-#include "WorldWallOrientation.h"
 
 using namespace std;
 
@@ -233,7 +232,7 @@ void WorldRenderer::updateWallDataProvider(
       bw::core::MaterialDefinition{}.data.hash(BW_WALL_BACK_FACE_MATERIAL_INDEX);
   wp::Vector2 playerPositionXZ{playerPosition.x, -playerPosition.z};
 
-  auto facesPlayer = [&](bw::app::ArrangementWallOrientation const& orientation) {
+  auto facesPlayer = [&](bw::core::arr::ArrangementWallOrientation const& orientation) {
     auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
     return orientation.normal.dot(playerPositionXZ - midpoint) > 0.0f;
   };
@@ -243,7 +242,7 @@ void WorldRenderer::updateWallDataProvider(
     if (!wall.visible) {
       continue;
     }
-    auto orientation = bw::app::orientArrangementWall(worldData, wall);
+    auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
     if (facesPlayer(orientation)) {
       auto const& properties = worldData.palette[wall.paletteIndex];
       auto resolved = mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
@@ -262,7 +261,7 @@ void WorldRenderer::updateWallDataProvider(
     if (!wall.visible) {
       continue;
     }
-    auto orientation = bw::app::orientArrangementWall(worldData, wall);
+    auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
     auto const& v0 = orientation.v0;
     auto const& v1 = orientation.v1;
 
