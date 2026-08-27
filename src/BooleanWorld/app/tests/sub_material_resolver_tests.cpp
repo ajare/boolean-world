@@ -60,6 +60,10 @@ subMaterials:
       maximumReach: 4
       minimumSpacing: 4.1
       probability: 0.65
+      minimumCornerDistance: 0.75
+      maximumCornerDistance: 2.75
+      cornerProbability: 0.4
+      types: [PrismaticNotch, MultiFacetSpall, VShapedNotch]
 )");
 
   writeFile(root / "Resources.yaml", R"(Resources:
@@ -99,7 +103,15 @@ subMaterials:
   require(resolved.def.baseColour == std::array<float, 3>{0.2f, 0.4f, 0.6f}, "Expected the authored base colour");
   require(resolved.chipParameters.maximumDepth == 2.5f &&
               resolved.chipParameters.maximumReach == 4.0f &&
-              resolved.chipParameters.probability == 0.65f,
+              resolved.chipParameters.probability == 0.65f &&
+              resolved.chipParameters.minimumCornerDistance == 0.75f &&
+              resolved.chipParameters.maximumCornerDistance == 2.75f &&
+              resolved.chipParameters.cornerProbability == 0.4f &&
+              resolved.chipParameters.types ==
+                  std::vector<bw::core::ChipType>{
+                      bw::core::ChipType::PrismaticNotch,
+                      bw::core::ChipType::MultiFacetSpall,
+                      bw::core::ChipType::VShapedNotch},
           "Expected the authored Chip generation parameters");
   auto chipResolver = resolver.chipParametersResolver();
   auto chip = chipResolver("TestStone");
@@ -129,7 +141,7 @@ void resolveFallsBackForAnUnknownId(fs::path const& root, wp::Logger& logger) {
   auto resolvedEmpty = resolver.resolve("");
   require(resolvedEmpty.materialIndex == BW_MATERIAL_ERROR_INDEX, "Expected the error index for an empty id");
   auto chip = resolver.chipParametersResolver()("NoSuchSubMaterial");
-  require(chip.probability == 0.0f,
+  require(chip.probability == 0.0f && chip.cornerProbability == 0.0f,
           "Expected an unknown Sub-material not to chip");
 }
 }  // namespace

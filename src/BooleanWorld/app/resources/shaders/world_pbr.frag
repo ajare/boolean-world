@@ -1436,6 +1436,142 @@ vec3 organicNormal(vec3 p, vec3 normal, int type, float field,
     return normalize(geometricNormal - gradient * strength);
 }
 
+// Port of "Procedural Wood texture" by dean_the_coder:
+// https://www.shadertoy.com/view/mdy3R1
+// Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported.
+// Function names are prefixed because this material intentionally retains the
+// source shader's own hash/noise stack rather than changing the other materials.
+float wood2Sum(vec2 value)
+{
+    return dot(value, vec2(1.0));
+}
+
+float wood2Hash31(vec3 p)
+{
+    p = fract(p * 0.1031);
+    p += dot(p, p.yzx + 333.3456);
+    return fract(wood2Sum(p.xy) * p.z);
+}
+
+float wood2Hash21(vec2 p)
+{
+    return wood2Hash31(p.xyx);
+}
+
+float wood2Noise31(vec3 p)
+{
+    const vec3 stepVector = vec3(7.0, 157.0, 113.0);
+    vec3 cell = floor(p);
+    p = fract(p);
+    p = p * p * (3.0 - 2.0 * p);
+    vec4 values = vec4(0.0, stepVector.yz, wood2Sum(stepVector.yz)) +
+                  dot(cell, stepVector);
+    values = mix(fract(sin(values) * 43758.545),
+                 fract(sin(values + stepVector.x) * 43758.545), p.x);
+    values.xy = mix(values.xz, values.yw, p.y);
+    return mix(values.x, values.y, p.z);
+}
+
+float wood2Fbm(vec3 p, int octaves, float roughness)
+{
+    float sum = 0.0;
+    float amplitude = 1.0;
+    float total = 0.0;
+    roughness = clamp(roughness, 0.0, 1.0);
+    for (int octave = 0; octave < octaves; ++octave)
+    {
+        sum += amplitude * wood2Noise31(p);
+        total += amplitude;
+        amplitude *= roughness;
+        p *= 2.0;
+    }
+    return sum / total;
+}
+
+vec3 wood2RandomPosition(float seed)
+{
+    vec4 seeds = vec4(seed, 0.0, 1.0, 2.0);
+    return vec3(wood2Hash21(seeds.xy), wood2Hash21(seeds.xz),
+                wood2Hash21(seeds.xw)) * 100.0 + 100.0;
+}
+
+float wood2DistortedFbm(vec3 p)
+{
+    p += (vec3(wood2Noise31(p + wood2RandomPosition(0.0)),
+               wood2Noise31(p + wood2RandomPosition(1.0)),
+               wood2Noise31(p + wood2RandomPosition(2.0))) * 2.0 - 1.0) *
+         1.12;
+    return wood2Fbm(p, 8, 0.5);
+}
+
+float wood2MusgraveFbm(
+    vec3 p, float octaves, float dimension, float lacunarity)
+{
+    float sum = 0.0;
+    float amplitude = 1.0;
+    float multiplier = pow(lacunarity, -dimension);
+    for (float octave = 0.0; octave < octaves; octave += 1.0)
+    {
+        sum += (wood2Noise31(p) * 2.0 - 1.0) * amplitude;
+        amplitude *= multiplier;
+        p *= lacunarity;
+    }
+    return sum;
+}
+
+vec3 wood2WaveFbmX(vec3 p)
+{
+    float wave = p.x * 20.0;
+    wave += 0.4 * wood2Fbm(p * 3.0, 3, 3.0);
+    return vec3(sin(wave) * 0.5 + 0.5, p.yz);
+}
+
+float wood2Remap01(float value, float minimumValue, float maximumValue)
+{
+    return clamp((value - minimumValue) /
+                 (maximumValue - minimumValue), 0.0, 1.0);
+}
+
+vec3 wood2Colour(vec3 p)
+{
+    float firstNoise = wood2DistortedFbm(p * vec3(7.8, 1.17, 1.17));
+    firstNoise = mix(firstNoise, 1.0, 0.2);
+    float wood = mix(
+        wood2MusgraveFbm(vec3(firstNoise * 4.6), 8.0, 0.0, 2.5),
+        firstNoise, 0.85);
+    float dirt = 1.0 - wood2MusgraveFbm(
+        wood2WaveFbmX(p * vec3(0.01, 0.15, 0.15)),
+        15.0, 0.26, 2.4) * 0.4;
+    float grain = 1.0 - smoothstep(
+        0.2, 1.0,
+        wood2MusgraveFbm(p * vec3(500.0, 6.0, 1.0),
+                         2.0, 2.0, 2.5)) * 0.2;
+    wood *= dirt * grain;
+    return mix(
+        mix(vec3(0.03, 0.012, 0.003), vec3(0.25, 0.11, 0.04),
+            wood2Remap01(wood, 0.19, 0.56)),
+        vec3(0.52, 0.32, 0.19), wood2Remap01(wood, 0.56, 1.0));
+}
+
+struct Wood2Params { float baseScale; };
+Wood2Params unpackWood2Params()
+{
+    Wood2Params result;
+    result.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    return result;
+}
+
+Material wood2Texture(vec3 worldPos, vec3 normal)
+{
+    Wood2Params params = unpackWood2Params();
+    Material material;
+    material.albedo = wood2Colour(worldPos * params.baseScale);
+    material.metallic = 0.0;
+    material.roughness = 0.56;
+    material.normal = normalize(normal);
+    return material;
+}
+
 // Each organic material's two knobs, matching their ProcMaterial Technique schemas for
 // its index - same discipline as the geology/metal materials above; none of
 // these may safely change organicField/organicNormal, which every organic
@@ -2247,7 +2383,8 @@ Material evaluateMaterial(
         case 34: material = rockTexture(texturePosition, normalDir); break;
         case 35: material = mossyRockTexture(texturePosition, normalDir); break;
         case 36: material = wetRockTexture(texturePosition, normalDir); break;
-        case 37: // BW_WALL_BACK_FACE_MATERIAL_INDEX (Defines.h): a plain
+        case 37: material = wood2Texture(texturePosition, normalDir); break;
+        case 38: // BW_WALL_BACK_FACE_MATERIAL_INDEX (Defines.h): a plain
                  // white matte surface for the unmapped side of a wall.
             material.albedo = vec3(1.0, 1.0, 1.0);
             material.metallic = 0.0;
@@ -2286,8 +2423,8 @@ void main()
             @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE),
             playerDistance);
         int materialIndex = floorMaterialIndex(
-            @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 37));
-        materialIndex = clamp(materialIndex, 0, 37);
+            @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 38));
+        materialIndex = clamp(materialIndex, 0, 38);
         Material material = evaluateMaterial(
             texturePosition, normalDir, viewDir, materialIndex);
 

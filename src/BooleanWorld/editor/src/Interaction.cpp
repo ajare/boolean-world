@@ -103,9 +103,17 @@ void EditorInteraction::updateSelection(
       if (prefabField->getSelectedPrefab(*layer)) {
         auto tile = prefabField->tileAt(*layer, input.worldPosition);
         prefabField->selectTile(tile);
-        (void)transactUndoableActionAtomically(
-            doc, "Place Prefab Instance",
-            bind(placePrefabInstance, placeholders::_1, layer, prefabField, tile));
+        if (input.shift) {
+          (void)transactUndoableActionAtomically(
+              doc, "Place Add Prefab Instance",
+              bind(placePrefabInstanceWithMode, placeholders::_1, layer,
+                   prefabField, tile, bw::core::TileMode::Add));
+        } else {
+          (void)transactUndoableActionAtomically(
+              doc, "Place Replace Prefab Instance",
+              bind(placePrefabInstanceWithMode, placeholders::_1, layer,
+                   prefabField, tile, bw::core::TileMode::Replace));
+        }
       } else {
         (void)prefabField->selectOccupiedTileAt(input.worldPosition);
       }
@@ -419,8 +427,15 @@ void EditorInteraction::updateDrag(
   // Shift and Alt are inert here by construction: unlike Primitive mode
   // below, nothing in this branch ever inspects them.
   if (settings.mode == Settings::Mode::Mesh) {
+    // Fine world-grid steps can be at or below ImGui's fixed two-pixel drag
+    // threshold when a Prefab is viewed zoomed out. Once the button is held,
+    // any actual per-frame pointer motion must be allowed to start a Mesh
+    // drag; snapping itself decides whether that motion changes a vertex.
+    auto pointerMovedWhileDown =
+        input.leftDown && input.dragDelta.lengthSq() > 0.0f;
     if (doc->meshDrawToolArmed() || mBoxSelectPending ||
-        (input.cursorInMiniMap && input.leftDragging)) {
+        (input.cursorInMiniMap &&
+         (input.leftDragging || pointerMovedWhileDown))) {
       return;
     }
 
@@ -440,7 +455,8 @@ void EditorInteraction::updateDrag(
       return;
     }
 
-    if (input.leftDragging && doc->getActiveMesh() && !selection.empty()) {
+    if ((input.leftDragging || pointerMovedWhileDown) &&
+        doc->getActiveMesh() && !selection.empty()) {
       if (!mMovingMeshSelection) {
         mMovingMeshSelection = true;
         mMeshDragCumulativeDelta = {};

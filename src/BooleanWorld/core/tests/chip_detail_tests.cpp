@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <iostream>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -43,6 +44,14 @@ float const chipReach = 3.0f;
 
 bw::core::ChipGenerationParameters fixedChip(float depth, float reach) {
   return {2.0f, depth, depth, reach, reach, 256.0f, 1.0f};
+}
+
+bw::core::ChipGenerationParameters fixedCornerChip(float distance) {
+  bw::core::ChipGenerationParameters parameters;
+  parameters.minimumCornerDistance = distance;
+  parameters.maximumCornerDistance = distance;
+  parameters.cornerProbability = 1.0f;
+  return parameters;
 }
 
 Contour rectContour(int64_t x0, int64_t y0, int64_t x1, int64_t y1) {
@@ -563,6 +572,8 @@ void anInvisibleWallCarriesNoChip() {
 void chipsStayPutAcrossRegenerationAndUnrelatedEdits() {
   bw::core::ChipGenerationParameters parameters{
       2.0f, 1.0f, 3.0f, 1.0f, 3.0f, 3.1f, 1.0f};
+  parameters.types.assign(
+      bw::core::AllChipTypes.begin(), bw::core::AllChipTypes.end());
   auto first = snapshotOf(slabAndPlatform(12.0f), parameters);
   auto again = snapshotOf(slabAndPlatform(12.0f), parameters);
   require(sortedPositions(first.getDetail()) ==
@@ -891,6 +902,162 @@ void aChipShrinksItsDepthToFitANarrowLedge() {
           "the face-boundary clamp perturbed the Chip's reach");
 }
 
+void cornerChipsTruncateFloorStepTrihedralVertices() {
+  auto snapshot = snapshotOf(slabAndPlatform(12.0f), fixedCornerChip(2.0f));
+  auto const& detail = snapshot.getDetail();
+  require(detail.getChipCount() == 4,
+          "the four FloorStep Corners did not each carry one Corner Chip");
+
+  DetailTriangle const* southWest = nullptr;
+  for (auto const& triangle : detail.getTriangles()) {
+    if (triangle.kind == DetailTriangleKind::CornerChipFacet &&
+        hasVertexAt(
+            std::span<DetailTriangle const>{&triangle, 1}, -18.0f, -20.0f,
+            12.0f) &&
+        hasVertexAt(
+            std::span<DetailTriangle const>{&triangle, 1}, -20.0f, -18.0f,
+            12.0f) &&
+        hasVertexAt(
+            std::span<DetailTriangle const>{&triangle, 1}, -20.0f, -20.0f,
+            10.0f)) {
+      southWest = &triangle;
+      break;
+    }
+  }
+  require(southWest != nullptr,
+          "a Corner Chip did not connect one point on each incident edge");
+  auto const& normal = southWest->v[0].normal;
+  require(
+      normal == southWest->v[1].normal &&
+          normal == southWest->v[2].normal,
+      "a Corner Chip facet did not carry one flat geometric face normal");
+  require(normal[0] < 0.0f && normal[1] < 0.0f && normal[2] > 0.0f,
+          "a FloorStep Corner Chip facet did not face out of the cut");
+  for (auto const& triangle : detail.getTriangles()) {
+    if (triangle.kind == DetailTriangleKind::SurfaceRemainder) {
+      require(
+          !hasVertexAt(
+              std::span<DetailTriangle const>{&triangle, 1}, -20.0f, -20.0f,
+              12.0f),
+          "a Corner Chip left the central vertex in an incident face");
+    }
+  }
+}
+
+void cornerChipsTruncateCeilingStepTrihedralVertices() {
+  auto snapshot = snapshotOf(slabAndBulkhead(36.0f), fixedCornerChip(2.0f));
+  require(snapshot.getDetail().getChipCount() == 4,
+          "the four CeilingStep Corners did not each carry one Corner Chip");
+  require(
+      hasVertexAt(
+          snapshot.getDetail().getTriangles(), -18.0f, -20.0f, 36.0f) &&
+          hasVertexAt(
+              snapshot.getDetail().getTriangles(), -20.0f, -18.0f, 36.0f) &&
+          hasVertexAt(
+              snapshot.getDetail().getTriangles(), -20.0f, -20.0f, 38.0f),
+      "a CeilingStep Corner Chip did not cut along all three incident edges");
+}
+
+void cornerChipMinimumDistanceMustFitEveryIncidentEdge() {
+  auto tooTall = snapshotOf(slabAndPlatform(1.5f), fixedCornerChip(2.0f));
+  require(tooTall.getDetail().getChipCount() == 0,
+          "a Corner Chip was placed when its minimum distance exceeded the vertical edge");
+
+  auto exactFit = snapshotOf(slabAndPlatform(2.0f), fixedCornerChip(2.0f));
+  require(exactFit.getDetail().getChipCount() == 4,
+          "a Corner Chip whose minimum distance exactly fit was rejected");
+}
+
+void cornerChipDistancesAreRandomDeterministicAndGeometrySeeded() {
+  auto parameters = fixedCornerChip(1.0f);
+  parameters.maximumCornerDistance = 3.0f;
+  auto first = snapshotOf(slabAndPlatform(12.0f), parameters);
+  auto repeated = snapshotOf(slabAndPlatform(12.0f), parameters);
+  auto renumbered = snapshotOf(slabAndPlatform(12.0f, {}, true), parameters);
+  require(sortedPositions(first.getDetail()) ==
+              sortedPositions(repeated.getDetail()),
+          "Corner Chip distances changed across identical generations");
+  require(sortedPositions(first.getDetail()) ==
+              sortedPositions(renumbered.getDetail()),
+          "Corner Chip distances depended on arrangement indices");
+
+  std::vector<float> distances;
+  for (auto const& triangle : first.getDetail().getTriangles()) {
+    if (triangle.kind != DetailTriangleKind::CornerChipFacet) {
+      continue;
+    }
+    for (auto const& vertex : triangle.v) {
+      if (near(vertex.position[1], -20.0f) && vertex.position[0] > -19.99f) {
+        distances.push_back(vertex.position[0] + 20.0f);
+      } else if (
+          near(vertex.position[0], -20.0f) &&
+          vertex.position[1] > -19.99f) {
+        distances.push_back(vertex.position[1] + 20.0f);
+      } else if (
+          near(vertex.position[0], -20.0f) &&
+          near(vertex.position[1], -20.0f)) {
+        distances.push_back(12.0f - vertex.position[2]);
+      }
+    }
+    if (distances.size() == 3) {
+      break;
+    }
+  }
+  require(distances.size() == 3,
+          "the three randomized Corner Chip distances were not emitted");
+  for (auto distance : distances) {
+    require(distance >= 1.0f - 0.01f && distance <= 3.0f + 0.01f,
+            "a Corner Chip distance fell outside its Sub-material range");
+  }
+  require(
+      !near(distances[0], distances[1], 0.001f) ||
+          !near(distances[1], distances[2], 0.001f),
+      "the three Corner Chip edge distances were not chosen independently");
+}
+
+void floorStepSubMaterialControlsCornerChips() {
+  auto enabled = fixedCornerChip(2.0f);
+  auto primitives = slabAndPlatform(12.0f);
+  primitives[0].chipParameters = enabled;
+  primitives[1].chipParameters = {};
+  ArrangementWorldData lowerEnabled(
+      bw::core::arr::BuildArrangement(primitives),
+      wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f, 8.0f);
+  require(lowerEnabled.getDetail().getChipCount() == 4,
+          "the FloorStep Sub-material did not enable its Corner Chips");
+
+  primitives[0].chipParameters = {};
+  primitives[1].chipParameters = enabled;
+  ArrangementWorldData upperEnabled(
+      bw::core::arr::BuildArrangement(primitives),
+      wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f, 8.0f);
+  require(upperEnabled.getDetail().getChipCount() == 0,
+          "the horizontal face Sub-material overrode the FloorStep Sub-material");
+}
+
+void cornerAndArrisChipsDoNotOverlap() {
+  auto parameters = fixedChip(2.0f, 2.0f);
+  parameters.minimumCornerDistance = 2.0f;
+  parameters.maximumCornerDistance = 2.0f;
+  parameters.cornerProbability = 1.0f;
+  auto snapshot = snapshotOf(slabAndPlatform(12.0f), parameters);
+  require(snapshot.getDetail().getChipCount() == 12,
+          "Corner endpoint reservations displaced an unexpected number of Arris Chips");
+  for (auto const& triangle : snapshot.getDetail().getTriangles()) {
+    auto const& a = triangle.v[0].position;
+    auto const& b = triangle.v[1].position;
+    auto const& c = triangle.v[2].position;
+    float u[3]{b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    float v[3]{c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+    auto areaSquared =
+        std::pow(u[1] * v[2] - u[2] * v[1], 2.0f) +
+        std::pow(u[2] * v[0] - u[0] * v[2], 2.0f) +
+        std::pow(u[0] * v[1] - u[1] * v[0], 2.0f);
+    require(areaSquared > 0.0001f,
+            "combined Corner and Arris cuts emitted degenerate geometry");
+  }
+}
+
 void frontSideAnglesInRangeChipAlongTheSharedEdge() {
   std::vector<ArrangementPrimitive> primitives{
       {{concaveContour()},
@@ -1118,6 +1285,103 @@ void probabilityAndMinimumArrisLengthControlEligibility() {
           "an Arris below the material's minimum length produced Chips");
 }
 
+void everyArrisChipTypeBuildsOnHorizontalAndVerticalEdges() {
+  std::set<std::vector<std::array<float, 3>>> signatures;
+  for (auto type : bw::core::AllChipTypes) {
+    auto parameters = fixedChip(2.0f, 2.0f);
+    parameters.types = {type};
+    auto snapshot = snapshotOf(slabAndPlatform(12.0f), parameters);
+    require(snapshot.getDetail().getChipCount() == 8,
+            "an Arris Chip type changed the number of eligible Chips");
+    bool horizontal = false;
+    bool vertical = false;
+    for (auto const& triangle : snapshot.getDetail().getTriangles()) {
+      if (triangle.kind != DetailTriangleKind::HorizontalChipFacet &&
+          triangle.kind != DetailTriangleKind::VerticalChipFacet) {
+        continue;
+      }
+      require(triangle.chipType == type,
+              "an Arris facet lost its randomly selected Chip type");
+      horizontal |= triangle.kind == DetailTriangleKind::HorizontalChipFacet;
+      vertical |= triangle.kind == DetailTriangleKind::VerticalChipFacet;
+      auto const& a = triangle.v[0].position;
+      auto const& b = triangle.v[1].position;
+      auto const& c = triangle.v[2].position;
+      float u[3]{b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+      float v[3]{c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+      auto areaSquared =
+          std::pow(u[1] * v[2] - u[2] * v[1], 2.0f) +
+          std::pow(u[2] * v[0] - u[0] * v[2], 2.0f) +
+          std::pow(u[0] * v[1] - u[1] * v[0], 2.0f);
+      require(areaSquared > 0.0001f,
+              "an Arris Chip type emitted a degenerate facet");
+    }
+    require(horizontal && vertical,
+            "an Arris Chip type was not built in both orientations");
+    signatures.insert(sortedPositions(snapshot.getDetail()));
+  }
+  require(signatures.size() == bw::core::AllChipTypes.size(),
+          "two named Arris Chip types produced identical geometry");
+}
+
+void eachArrisChipChoosesFromItsSubMaterialsTypeList() {
+  bw::core::ChipGenerationParameters parameters{
+      2.0f, 1.0f, 3.0f, 1.0f, 3.0f, 3.1f, 1.0f};
+  parameters.types.assign(
+      bw::core::AllChipTypes.begin(), bw::core::AllChipTypes.end());
+  auto first = snapshotOf(slabAndPlatform(12.0f), parameters);
+  auto repeated = snapshotOf(slabAndPlatform(12.0f), parameters);
+  require(sortedPositions(first.getDetail()) ==
+              sortedPositions(repeated.getDetail()),
+          "random Arris Chip type selection was not deterministic");
+  std::set<bw::core::ChipType> selected;
+  for (auto const& triangle : first.getDetail().getTriangles()) {
+    if (triangle.chipType) {
+      selected.insert(*triangle.chipType);
+    }
+  }
+  require(selected.size() == bw::core::AllChipTypes.size(),
+          "the authored Arris Chip type list was not sampled");
+
+  auto wallIndex =
+      findWall(first, ArrangementWallKind::FloorStep, {0.0f, -20.0f});
+  auto replacements = first.getDetail().replacementsFor(
+      DetailSurfaceKind::Wall, wallIndex);
+  std::vector<float> endpoints;
+  for (auto const& triangle : replacements) {
+    if (triangle.kind != DetailTriangleKind::HorizontalChipFacet) {
+      continue;
+    }
+    for (auto const& vertex : triangle.v) {
+      if (near(vertex.position[1], -20.0f) &&
+          near(vertex.position[2], 12.0f)) {
+        endpoints.push_back(vertex.position[0]);
+      }
+    }
+  }
+  std::sort(endpoints.begin(), endpoints.end());
+  endpoints.erase(
+      std::unique(
+          endpoints.begin(), endpoints.end(),
+          [](float a, float b) { return near(a, b); }),
+      endpoints.end());
+  require(endpoints.size() == 24,
+          "typed Arris Chips did not preserve their authored widths");
+  float previousEnd = -1.0e9f;
+  float previousCentre = -1.0e9f;
+  for (size_t i = 0; i < endpoints.size(); i += 2) {
+    auto reach = endpoints[i + 1] - endpoints[i];
+    auto centre = (endpoints[i + 1] + endpoints[i]) * 0.5f;
+    require(reach >= 1.0f - 0.01f && reach <= 3.0f + 0.01f,
+            "a typed Arris Chip did not respect its selected width");
+    require(endpoints[i] >= previousEnd - 0.01f &&
+                centre - previousCentre >= 3.1f - 0.01f,
+            "differently typed Arris Chips overlapped");
+    previousEnd = endpoints[i + 1];
+    previousCentre = centre;
+  }
+}
+
 void chipsUseRandomSizesAndNonOverlappingRandomPositions() {
   bw::core::ChipGenerationParameters parameters{
       2.0f, 1.0f, 3.0f, 1.0f, 3.0f, 3.1f, 1.0f};
@@ -1282,6 +1546,12 @@ int main() {
     anInvisibleCeilingStepWallCarriesNoChip();
     aChipShrinksItsReachToFitAShortArris();
     aChipShrinksItsDepthToFitANarrowLedge();
+    cornerChipsTruncateFloorStepTrihedralVertices();
+    cornerChipsTruncateCeilingStepTrihedralVertices();
+    cornerChipMinimumDistanceMustFitEveryIncidentEdge();
+    cornerChipDistancesAreRandomDeterministicAndGeometrySeeded();
+    floorStepSubMaterialControlsCornerChips();
+    cornerAndArrisChipsDoNotOverlap();
     frontSideAnglesInRangeChipAlongTheSharedEdge();
     ninetyDegreeFrontSideAnglesDoNotChip();
     acuteFrontSideAnglesDoNotChip();
@@ -1290,10 +1560,12 @@ int main() {
     wallsCanCarryHorizontalAndVerticalChipsTogether();
     verticalArrisesBetweenDifferentSubMaterialsDoNotChip();
     probabilityAndMinimumArrisLengthControlEligibility();
+    everyArrisChipTypeBuildsOnHorizontalAndVerticalEdges();
+    eachArrisChipChoosesFromItsSubMaterialsTypeList();
     chipsUseRandomSizesAndNonOverlappingRandomPositions();
     aDisabledMaterialDoesNotDisableOtherMaterialsChips();
     aChipBelowTheMinimumSizeIsDroppedEntirely();
-    std::cout << "Chips are cut into eligible horizontal and vertical Arrises "
+    std::cout << "Chips are cut into eligible Arrises and trihedral Corners "
                  "and published in the snapshot's detail channel\n";
     return 0;
   } catch (std::exception const& error) {

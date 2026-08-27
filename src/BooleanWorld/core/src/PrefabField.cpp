@@ -214,14 +214,19 @@ bool PrefabField::selectOccupiedTileAt(wp::Vector2 const& position) {
   return false;
 }
 bool PrefabField::placeSelected(Layer& layer, Tile tile) {
+  auto const it = mInstances.find(tile);
+  auto const mode = tile.size == PrefabTileSize::Size256
+                        ? TileMode::Add
+                    : it != mInstances.end() ? it->second.mode
+                                             : TileMode::Replace;
+  return placeSelected(layer, tile, mode);
+}
+bool PrefabField::placeSelected(Layer& layer, Tile tile, TileMode mode) {
   auto* selected = getSelectedPrefab(layer);
   if (!selected || selected->getTileSize() != tile.size) return false;
   selectTile(tile);
   auto it = mInstances.find(tile);
-  auto const mode = tile.size == PrefabTileSize::Size256
-                        ? TileMode::Add
-                        : it != mInstances.end() ? it->second.mode
-                                                 : TileMode::Replace;
+  if (tile.size == PrefabTileSize::Size256) mode = TileMode::Add;
   PrefabInstance replacement{mSelectedPrefabId, 0, mode};
   if (it != mInstances.end() && it->second.prefabId == replacement.prefabId &&
       it->second.rotation == 0 && it->second.mode == replacement.mode)
@@ -295,9 +300,9 @@ void PrefabField::migratePrefabSize(
       auto instance = it->second;
       instance.mode = to == PrefabTileSize::Size256
                           ? TileMode::Add
-                          : from == PrefabTileSize::Size256
-                                ? TileMode::Replace
-                                : instance.mode;
+                      : from == PrefabTileSize::Size256
+                          ? TileMode::Replace
+                          : instance.mode;
       moving.push_back({{to, it->first.x, it->first.y}, instance});
       it = mInstances.erase(it);
     } else {

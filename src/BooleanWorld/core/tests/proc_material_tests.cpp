@@ -431,7 +431,12 @@ void unknownEmbossPatternReadsAsNone() {
 void chipGenerationParametersRoundTripAndDefaultToDisabled() {
   auto original = buildMarbleCatalog();
   original.subMaterials[0].chip = {
-      2.0f, 1.5f, 2.5f, 2.0f, 4.0f, 4.1f, 0.65f};
+      2.0f, 1.5f, 2.5f, 2.0f, 4.0f, 4.1f, 0.65f,
+      0.75f, 2.75f, 0.4f};
+  original.subMaterials[0].chip.types = {
+      bw::core::ChipType::PrismaticNotch,
+      bw::core::ChipType::MultiFacetSpall,
+      bw::core::ChipType::VShapedNotch};
 
   bw::core::SerializationWorkData writeWorkData;
   auto writer = std::shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toString());
@@ -440,6 +445,10 @@ void chipGenerationParametersRoundTripAndDefaultToDisabled() {
   auto yaml = static_cast<bw::core::YamlSerializer*>(writer.get())->getSerializedString();
   require(yaml.find("chip:") != std::string::npos &&
               yaml.find("minimumArrisLength:") != std::string::npos &&
+              yaml.find("minimumCornerDistance:") != std::string::npos &&
+              yaml.find("cornerProbability:") != std::string::npos &&
+              yaml.find("types:") != std::string::npos &&
+              yaml.find("PrismaticNotch") != std::string::npos &&
               yaml.find("chipMinimumArrisLength:") == std::string::npos,
           "Chip settings were not serialized in their own YAML map");
 
@@ -473,14 +482,30 @@ void chipGenerationParametersRoundTripAndDefaultToDisabled() {
   auto legacyReader = yamlFrom(withoutChip);
   require(legacy.deserialize(legacyReader, legacyWorkData),
           "a catalog without Chip fields was rejected");
-  require(legacy.subMaterials[0].chip.probability == 0.0f,
-          "missing Chip fields did not default to disabled generation");
+  require(
+      legacy.subMaterials[0].chip.probability == 0.0f &&
+          legacy.subMaterials[0].chip.cornerProbability == 0.0f &&
+          legacy.subMaterials[0].chip.types ==
+              std::vector<bw::core::ChipType>{bw::core::ChipType::Tapered},
+      "missing Chip fields did not default to disabled generation");
 }
 
 void invalidChipGenerationParametersAreRejected() {
   require(!bw::core::ChipParametersAreValid(
               {2.01f, 1.0f, 3.0f, 1.0f, 4.01f, 4.11f, 0.5f}),
           "a Chip wider than the absolute two-unit cap was accepted");
+  require(!bw::core::ChipParametersAreValid(
+              {2.0f, 1.0f, 3.0f, 1.0f, 3.0f, 3.1f, 0.5f,
+               3.0f, 1.0f, 0.5f}),
+          "an inverted Corner Chip distance range was accepted");
+  auto noTypes = bw::core::ChipGenerationParameters{};
+  noTypes.types.clear();
+  require(!bw::core::ChipParametersAreValid(noTypes),
+          "an empty Arris Chip type list was accepted");
+  auto duplicateTypes = bw::core::ChipGenerationParameters{};
+  duplicateTypes.types.push_back(bw::core::ChipType::Tapered);
+  require(!bw::core::ChipParametersAreValid(duplicateTypes),
+          "duplicate Arris Chip types were accepted");
 
   std::string const yaml =
       "program3d: \"world_pbr.frag\"\n"

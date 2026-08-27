@@ -135,8 +135,8 @@ void chipParametersAreResolvedInSnapshotOrderOnTheCallingThread() {
         consulted.push_back(id);
         return id == "soft_stone"
                    ? bw::core::ChipGenerationParameters{
-                         2.0f, 4.0f, 4.0f, 3.0f, 4.0f, 4.1f, 1.0f}
-                   : bw::core::ChipGenerationParameters{1.5f, 1.0f, 1.0f, 2.0f, 3.0f, 3.1f, 1.0f};
+                         2.0f, 4.0f, 4.0f, 3.0f, 4.0f, 4.1f, 1.0f, 1.5f, 3.5f, 0.75f, {bw::core::ChipType::PrismaticNotch, bw::core::ChipType::SteppedFracture}}
+                   : bw::core::ChipGenerationParameters{1.5f, 1.0f, 1.0f, 2.0f, 3.0f, 3.1f, 1.0f, 0.5f, 2.5f, 0.25f, {bw::core::ChipType::MultiFacetSpall}};
       });
 
   require(consulted == std::vector<std::string>{"soft_stone", "hard_slate"},
@@ -146,14 +146,24 @@ void chipParametersAreResolvedInSnapshotOrderOnTheCallingThread() {
           "resolved Chip parameters did not stay parallel to the property palette");
   require(arrangement->chipParametersPalette[1].maximumDepth == 4.0f &&
               arrangement->chipParametersPalette[1].maximumReach == 4.0f &&
+              arrangement->chipParametersPalette[1].cornerProbability ==
+                  0.75f &&
+              arrangement->chipParametersPalette[1].types.size() == 2 &&
               arrangement->chipParametersPalette[2].maximumDepth == 1.0f &&
-              arrangement->chipParametersPalette[2].maximumReach == 3.0f,
+              arrangement->chipParametersPalette[2].maximumReach == 3.0f &&
+              arrangement->chipParametersPalette[2].cornerProbability ==
+                  0.25f &&
+              arrangement->chipParametersPalette[2].types ==
+                  std::vector<bw::core::ChipType>{
+                      bw::core::ChipType::MultiFacetSpall},
           "resolved Chip parameters landed in the wrong palette order");
 
   auto unresolved = bw::core::SnapshotPrimitives(primitives);
   for (auto const& primitive : unresolved) {
-    require(primitive.chipParameters.probability == 0.0f,
-            "an absent Chip resolver did not snapshot disabled generation");
+    require(
+        primitive.chipParameters.probability == 0.0f &&
+            primitive.chipParameters.cornerProbability == 0.0f,
+        "an absent Chip resolver did not snapshot disabled generation");
   }
   bw::core::ArrangementWorldData withoutResolver(
       bw::core::arr::BuildArrangement(unresolved),

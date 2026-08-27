@@ -23,6 +23,13 @@ public:
     return false;
   }
 
+  // Keyed serializers can test whether an optional structured value exists
+  // before entering its map or array. Positional serializers always have the
+  // next value by definition.
+  virtual bool hasField(std::string const&) const {
+    return true;
+  }
+
   // Serialization
   void writeBool(std::string const& name, bool value);
 

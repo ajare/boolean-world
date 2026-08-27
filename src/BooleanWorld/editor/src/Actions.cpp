@@ -246,6 +246,13 @@ bool placePrefabInstance(
   return field->placeSelected(*layer, tile);
 }
 
+bool placePrefabInstanceWithMode(
+    Document*, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::Tile tile, bw::core::TileMode mode) {
+  if (layer->getActiveStep() != field) return false;
+  return field->placeSelected(*layer, tile, mode);
+}
+
 bool clearPrefabInstance(
     Document*, bw::core::Layer* layer, bw::core::PrefabField* field,
     bw::core::Tile tile) {

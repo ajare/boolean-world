@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -46,7 +47,8 @@ struct DetailVertex {
 enum struct DetailTriangleKind : uint8_t {
   SurfaceRemainder,
   HorizontalChipFacet,
-  VerticalChipFacet
+  VerticalChipFacet,
+  CornerChipFacet
 };
 
 struct DetailTriangle {
@@ -59,6 +61,10 @@ struct DetailTriangle {
   // and must retain their face normal regardless of which side of the
   // adjoining vertical wall faces the player.
   bool followsWallFacing{false};
+
+  // Present on Arris Chip facets for diagnostics and tests. Surface
+  // remainders and fixed-shape Corner facets leave it empty.
+  std::optional<ChipType> chipType;
 };
 
 // The detail channel published alongside mTriangles/mWalls (ADR-0027): the
@@ -102,12 +108,16 @@ public:
 // visible CeilingStep's convex bottom. Eligible Vertical Arrises are the
 // overlapping upright edge of two visible, non-collinear walls whose shared
 // canonical-front-side angle is in [225°, 315°] and that use the same
-// Sub-material.
+// Sub-material. Eligible Corners are trihedral vertices where two such Step
+// walls and their bitten horizontal face meet; a Corner Chip truncates the
+// vertex with one independently randomized point on each incident edge.
 //
 // A Chip clamps to fit rather than breaking through the geometry it is cut
 // into. Horizontal Chips respect wall height and the horizontal face's next
-// boundary; Vertical Chips respect both walls' lengths. Reach never runs past
-// an Arris endpoint, and a Chip below the minimum resulting size is dropped.
+// boundary; Vertical Chips respect both walls' lengths. A Corner Chip is
+// skipped if its minimum distance does not fit any incident edge; each maximum
+// distance is otherwise clamped to its edge. Reach never runs past an Arris
+// endpoint, and a Chip below the minimum resulting size is dropped.
 [[nodiscard]] DetailGeometry BuildChipDetail(
     ArrangementResult const& arrangement,
     std::vector<ArrangementWall> const& walls);

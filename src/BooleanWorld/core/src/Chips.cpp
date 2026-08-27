@@ -4,6 +4,7 @@
 #include <bit>
 #include <cmath>
 #include <map>
+#include <optional>
 #include <utility>
 
 #include <mapbox/earcut.hpp>
@@ -52,19 +53,96 @@ uint64_t StableVerticalArrisSeed(
   return Mix(seed);
 }
 
+uint64_t StableCornerSeed(
+    FixedPointVertex const& vertex, float z, ArrangementWallKind kind) {
+  auto seed = Mix(static_cast<uint64_t>(vertex.x));
+  seed ^= Mix(static_cast<uint64_t>(vertex.y) + 0x243f6a8885a308d3ull);
+  seed ^= Mix(uint64_t{std::bit_cast<uint32_t>(z)} + 0x13198a2e03707344ull);
+  seed ^= Mix(static_cast<uint64_t>(kind) + 0xa4093822299f31d0ull);
+  return Mix(seed);
+}
+
 struct GeneratedChip {
   float centre;
   float depth;
   float reach;
+  ChipType type;
+  uint64_t variationSeed;
 };
+
+struct ChipProfileSample {
+  float t;
+  float sideA;
+  float sideB;
+};
+
+std::vector<ChipProfileSample> BuildChipProfile(GeneratedChip const& chip) {
+  switch (chip.type) {
+    case ChipType::Tapered:
+      return {{0.0f, 0.0f, 0.0f},
+              {0.5f, 1.0f, 1.0f},
+              {1.0f, 0.0f, 0.0f}};
+
+    case ChipType::PyramidalDivot:
+      return {{0.0f, 0.0f, 0.0f},
+              {0.5f, 0.65f, 0.65f},
+              {1.0f, 0.0f, 0.0f}};
+
+    case ChipType::VShapedNotch:
+      return {{0.0f, 0.0f, 0.0f},
+              {0.2f, 0.65f, 0.65f},
+              {0.8f, 0.65f, 0.65f},
+              {1.0f, 0.0f, 0.0f}};
+
+    case ChipType::PrismaticNotch:
+      return {{0.0f, 0.0f, 0.0f},
+              {0.0f, 1.0f, 1.0f},
+              {1.0f, 1.0f, 1.0f},
+              {1.0f, 0.0f, 0.0f}};
+
+    case ChipType::MultiFacetSpall: {
+      auto a0 = 0.55f + 0.4f * StableRandom01(chip.variationSeed, 1);
+      auto b0 = 0.55f + 0.4f * StableRandom01(chip.variationSeed, 2);
+      auto a1 = 0.55f + 0.4f * StableRandom01(chip.variationSeed, 3);
+      auto b1 = 0.55f + 0.4f * StableRandom01(chip.variationSeed, 4);
+      return {{0.0f, 0.0f, 0.0f},
+              {0.2f, a0, b0},
+              {0.48f, 1.0f, 0.8f},
+              {0.76f, a1, b1},
+              {1.0f, 0.0f, 0.0f}};
+    }
+
+    case ChipType::SteppedFracture:
+      return {{0.0f, 0.0f, 0.0f},
+              {0.14f, 0.45f, 0.45f},
+              {0.38f, 0.45f, 0.45f},
+              {0.38f, 1.0f, 1.0f},
+              {0.68f, 1.0f, 1.0f},
+              {0.68f, 0.45f, 0.45f},
+              {0.88f, 0.45f, 0.45f},
+              {1.0f, 0.0f, 0.0f}};
+
+    case ChipType::TrapezoidalSpall:
+      return {{0.0f, 0.0f, 0.0f},
+              {0.16f, 1.0f, 0.32f},
+              {0.5f, 1.0f, 1.0f},
+              {0.84f, 1.0f, 0.32f},
+              {1.0f, 0.0f, 0.0f}};
+  }
+  return {};
+}
 
 std::vector<GeneratedChip> GenerateChips(
     float length,
     ChipGenerationParameters const& parameters,
-    uint64_t seed) {
+    uint64_t seed,
+    float startClearance = 0.0f,
+    float endClearance = 0.0f) {
   std::vector<GeneratedChip> chips;
-  if (parameters.probability <= 0.0f ||
-      length < parameters.minimumArrisLength || length <= MinimumChipSize) {
+  auto availableLength = length - startClearance - endClearance;
+  if (parameters.probability <= 0.0f || parameters.types.empty() ||
+      length < parameters.minimumArrisLength ||
+      availableLength <= MinimumChipSize) {
     return chips;
   }
 
@@ -72,10 +150,11 @@ std::vector<GeneratedChip> GenerateChips(
       std::min(parameters.maximumReach, MaximumChipReach);
   auto authoredMinimumReach =
       std::min(parameters.minimumReach, authoredMaximumReach);
-  auto maximumReach = std::min(authoredMaximumReach, length);
+  auto maximumReach = std::min(authoredMaximumReach, availableLength);
   auto minimumSpacing =
       std::max(parameters.minimumSpacing, authoredMaximumReach + 0.1f);
-  auto usableForCentres = std::max(0.0f, length - maximumReach);
+  auto usableForCentres =
+      std::max(0.0f, availableLength - maximumReach);
   auto maximumCount =
       uint32_t(std::floor(usableForCentres / minimumSpacing)) + 1;
   uint32_t chipCount = 0;
@@ -100,15 +179,21 @@ std::vector<GeneratedChip> GenerateChips(
 
   chips.reserve(chipCount);
   for (uint32_t chip = 0; chip < chipCount; ++chip) {
-    auto centre = maximumReach * 0.5f + float(chip) * minimumSpacing +
-                  offsets[chip] * slack;
+    auto centre = startClearance + maximumReach * 0.5f +
+                  float(chip) * minimumSpacing + offsets[chip] * slack;
     auto depth = parameters.minimumDepth +
                  (parameters.maximumDepth - parameters.minimumDepth) *
                      StableRandom01(seed, 0x3000ull + chip);
     auto reach = authoredMinimumReach +
                  (authoredMaximumReach - authoredMinimumReach) *
                      StableRandom01(seed, 0x4000ull + chip);
-    chips.push_back({centre, depth, std::min(reach, length)});
+    auto typeIndex = std::min(
+        size_t(StableRandom01(seed, 0x5000ull + chip) *
+               float(parameters.types.size())),
+        parameters.types.size() - 1);
+    chips.push_back(
+        {centre, depth, std::min(reach, availableLength),
+         parameters.types[typeIndex], Mix(seed ^ uint64_t(chip))});
   }
   return chips;
 }
@@ -148,7 +233,8 @@ void AddTriangle(
     std::array<float, 2> const& uv1,
     std::array<float, 2> const& uv2,
     bool followsWallFacing = false,
-    DetailTriangleKind kind = DetailTriangleKind::SurfaceRemainder) {
+    DetailTriangleKind kind = DetailTriangleKind::SurfaceRemainder,
+    std::optional<ChipType> chipType = std::nullopt) {
   auto geometric = Cross(
       {p1.x - p0.x, p1.y - p0.y, p1.z - p0.z},
       {p2.x - p0.x, p2.y - p0.y, p2.z - p0.z});
@@ -170,7 +256,8 @@ void AddTriangle(
   if (facing < 0.0f) {
     std::swap(b, c);
   }
-  detail.addTriangle({source, {a, b, c}, kind, followsWallFacing});
+  detail.addTriangle(
+      {source, {a, b, c}, kind, followsWallFacing, chipType});
 }
 
 // One Chip's footprint on the horizontal face it bit into: the two points
@@ -180,14 +267,40 @@ struct Footprint {
   wp::Vector2 a;
   wp::Vector2 b;
   wp::Vector2 apex;
+  std::vector<wp::Vector2> profile;
+};
+
+// A trihedral Corner Chip replaces one horizontal boundary vertex with one
+// point on each of its incident arrangement edges.
+struct FaceCornerCut {
+  uint32_t vertexIndex;
+  uint32_t edgeA;
+  wp::Vector2 pointA;
+  uint32_t edgeB;
+  wp::Vector2 pointB;
+
+  [[nodiscard]] wp::Vector2 const& pointOn(uint32_t edge) const {
+    return edge == edgeA ? pointA : pointB;
+  }
 };
 
 // One triangular notch in a wall boundary. start/end run in increasing local
 // x for horizontal boundaries and increasing z for vertical boundaries.
+struct WallNotchProfilePoint {
+  float position;
+  float depth;
+};
+
 struct WallNotch {
   float start;
   float end;
   float depth;
+  std::vector<WallNotchProfilePoint> profile;
+};
+
+struct WallCornerCut {
+  float horizontalDistance;
+  float verticalDistance;
 };
 
 struct WallNotches {
@@ -195,11 +308,51 @@ struct WallNotches {
   std::vector<WallNotch> right;
   std::vector<WallNotch> top;
   std::vector<WallNotch> left;
+  std::optional<WallCornerCut> bottomLeft;
+  std::optional<WallCornerCut> bottomRight;
+  std::optional<WallCornerCut> topRight;
+  std::optional<WallCornerCut> topLeft;
 
   [[nodiscard]] bool empty() const {
-    return bottom.empty() && right.empty() && top.empty() && left.empty();
+    return bottom.empty() && right.empty() && top.empty() && left.empty() &&
+           !bottomLeft && !bottomRight && !topRight && !topLeft;
   }
 };
+
+struct IncidentWall {
+  uint32_t wallIndex;
+  bool atStart;
+  wp::Vector2 ray;
+  wp::Vector2 normal;
+  float length;
+};
+
+std::optional<float> SharedFrontSideAngle(
+    IncidentWall const& a, IncidentWall const& b) {
+  auto rayCross = a.ray.x * b.ray.y - a.ray.y * b.ray.x;
+  if (std::abs(rayCross) <= ConcavityEpsilon) {
+    return std::nullopt;
+  }
+  auto aFacesMinor = a.normal.dot(b.ray);
+  auto bFacesMinor = b.normal.dot(a.ray);
+  auto rayDot = std::clamp(a.ray.dot(b.ray), -1.0f, 1.0f);
+  auto minorAngle = std::acos(rayDot) * (180.0f / std::acos(-1.0f));
+  if (aFacesMinor > ConcavityEpsilon &&
+      bFacesMinor > ConcavityEpsilon) {
+    return minorAngle;
+  }
+  if (aFacesMinor < -ConcavityEpsilon &&
+      bFacesMinor < -ConcavityEpsilon) {
+    return 360.0f - minorAngle;
+  }
+  return std::nullopt;
+}
+
+bool IsEligibleVerticalAngle(IncidentWall const& a, IncidentWall const& b) {
+  auto angle = SharedFrontSideAngle(a, b);
+  return angle && *angle >= 225.0f - ConcavityEpsilon &&
+         *angle <= 315.0f + ConcavityEpsilon;
+}
 
 struct NotchBounds {
   float minX;
@@ -281,30 +434,75 @@ void AddWallRemainder(
   };
 
   // Counter-clockwise around the wall's local (distance, z) rectangle.
-  push(0.0f, minZ);
+  // A Corner Chip replaces a rectangle corner with the segment joining its
+  // independently chosen horizontal and vertical edge points.
+  push(notches.bottomLeft ? notches.bottomLeft->horizontalDistance : 0.0f,
+       minZ);
   for (auto const& notch : notches.bottom) {
-    push(notch.start, minZ);
-    push((notch.start + notch.end) * 0.5f, minZ + notch.depth);
-    push(notch.end, minZ);
+    if (notch.profile.empty()) {
+      push(notch.start, minZ);
+      push((notch.start + notch.end) * 0.5f, minZ + notch.depth);
+      push(notch.end, minZ);
+    } else {
+      for (auto const& point : notch.profile) {
+        push(point.position, minZ + point.depth);
+      }
+    }
   }
-  push(length, minZ);
+  push(notches.bottomRight
+           ? length - notches.bottomRight->horizontalDistance
+           : length,
+       minZ);
+  if (notches.bottomRight) {
+    push(length, minZ + notches.bottomRight->verticalDistance);
+  }
   for (auto const& notch : notches.right) {
-    push(length, notch.start);
-    push(length - notch.depth, (notch.start + notch.end) * 0.5f);
-    push(length, notch.end);
+    if (notch.profile.empty()) {
+      push(length, notch.start);
+      push(length - notch.depth, (notch.start + notch.end) * 0.5f);
+      push(length, notch.end);
+    } else {
+      for (auto const& point : notch.profile) {
+        push(length - point.depth, point.position);
+      }
+    }
   }
-  push(length, maxZ);
+  push(length,
+       notches.topRight ? maxZ - notches.topRight->verticalDistance : maxZ);
+  if (notches.topRight) {
+    push(length - notches.topRight->horizontalDistance, maxZ);
+  }
   for (auto it = notches.top.rbegin(); it != notches.top.rend(); ++it) {
-    push(it->end, maxZ);
-    push((it->start + it->end) * 0.5f, maxZ - it->depth);
-    push(it->start, maxZ);
+    if (it->profile.empty()) {
+      push(it->end, maxZ);
+      push((it->start + it->end) * 0.5f, maxZ - it->depth);
+      push(it->start, maxZ);
+    } else {
+      for (auto point = it->profile.rbegin(); point != it->profile.rend();
+           ++point) {
+        push(point->position, maxZ - point->depth);
+      }
+    }
   }
-  push(0.0f, maxZ);
+  push(notches.topLeft ? notches.topLeft->horizontalDistance : 0.0f, maxZ);
+  if (notches.topLeft) {
+    push(0.0f, maxZ - notches.topLeft->verticalDistance);
+  }
   for (auto it = notches.left.rbegin(); it != notches.left.rend(); ++it) {
-    push(0.0f, it->end);
-    push(it->depth, (it->start + it->end) * 0.5f);
-    push(0.0f, it->start);
+    if (it->profile.empty()) {
+      push(0.0f, it->end);
+      push(it->depth, (it->start + it->end) * 0.5f);
+      push(0.0f, it->start);
+    } else {
+      for (auto point = it->profile.rbegin(); point != it->profile.rend();
+           ++point) {
+        push(point->depth, point->position);
+      }
+    }
   }
+  push(0.0f,
+       notches.bottomLeft ? minZ + notches.bottomLeft->verticalDistance
+                          : minZ);
 
   auto indices = mapbox::earcut<uint32_t>(polygon);
   auto height = maxZ - minZ;
@@ -384,7 +582,8 @@ void AddRebuiltFaceHorizontal(
     DetailGeometry& detail,
     ArrangementResult const& arrangement,
     DetailSurfaceKey const& source,
-    std::vector<Footprint> const& footprints) {
+    std::vector<Footprint> const& footprints,
+    std::vector<FaceCornerCut> const& cornerCuts) {
   using EarcutPoint = std::array<double, 2>;
 
   auto const& face = arrangement.faces[source.index];
@@ -401,6 +600,13 @@ void AddRebuiltFaceHorizontal(
                          std::vector<uint32_t> const& boundaryVertices) {
     std::vector<EarcutPoint> polygon;
     auto push = [&](wp::Vector2 const& point) {
+      if (!polygon.empty()) {
+        auto const& previous = polygon.back();
+        if (std::abs(previous[0] - point.x) <= MinimumChipSize &&
+            std::abs(previous[1] - point.y) <= MinimumChipSize) {
+          return;
+        }
+      }
       polygon.push_back({double(point.x), double(point.y)});
       positions.push_back(point);
     };
@@ -419,10 +625,23 @@ void AddRebuiltFaceHorizontal(
 
     auto count = boundaryVertices.size();
     for (size_t i = 0; i < count; ++i) {
-      auto current = ToWorld(arrangement.vertices[boundaryVertices[i]]);
+      auto currentVertex = boundaryVertices[i];
+      auto current = ToWorld(arrangement.vertices[currentVertex]);
       auto next = ToWorld(
           arrangement.vertices[boundaryVertices[(i + 1) % count]]);
-      push(current);
+      auto cornerCut = std::find_if(
+          cornerCuts.begin(), cornerCuts.end(),
+          [&](FaceCornerCut const& cut) {
+            return cut.vertexIndex == currentVertex;
+          });
+      if (cornerCut != cornerCuts.end() && !boundary.empty()) {
+        auto previousEdge = boundary[(i + count - 1) % count];
+        auto nextEdge = boundary[i];
+        push(cornerCut->pointOn(previousEdge));
+        push(cornerCut->pointOn(nextEdge));
+      } else {
+        push(current);
+      }
       if (i >= boundary.size()) {
         continue;
       }
@@ -445,11 +664,22 @@ void AddRebuiltFaceHorizontal(
         // The boundary traversal may run either way along the Arris.
         auto aFirst = current.distanceTo(footprint->a) <=
                       current.distanceTo(footprint->b);
-        auto const& first = aFirst ? footprint->a : footprint->b;
-        auto const& second = aFirst ? footprint->b : footprint->a;
-        pushDistinct(first, current, next);
-        push(footprint->apex);
-        pushDistinct(second, current, next);
+        if (footprint->profile.empty()) {
+          auto const& first = aFirst ? footprint->a : footprint->b;
+          auto const& second = aFirst ? footprint->b : footprint->a;
+          pushDistinct(first, current, next);
+          push(footprint->apex);
+          pushDistinct(second, current, next);
+        } else if (aFirst) {
+          for (auto const& point : footprint->profile) {
+            pushDistinct(point, current, next);
+          }
+        } else {
+          for (auto point = footprint->profile.rbegin();
+               point != footprint->profile.rend(); ++point) {
+            pushDistinct(*point, current, next);
+          }
+        }
       }
     }
     polygons.push_back(std::move(polygon));
@@ -544,7 +774,199 @@ DetailGeometry BuildChipDetail(
     std::vector<ArrangementWall> const& walls) {
   DetailGeometry detail;
   std::map<DetailSurfaceKey, std::vector<Footprint>> footprintsByFace;
+  std::map<DetailSurfaceKey, std::vector<FaceCornerCut>> cornerCutsByFace;
   std::vector<WallNotches> wallNotches(walls.size());
+  std::vector<float> horizontalStartClearance(walls.size());
+  std::vector<float> horizontalEndClearance(walls.size());
+  std::map<std::pair<uint32_t, uint32_t>, float> verticalCornerClearance;
+
+  std::map<uint32_t, std::vector<IncidentWall>> wallsByVertex;
+  for (uint32_t wallIndex = 0; wallIndex < uint32_t(walls.size());
+       ++wallIndex) {
+    auto const& wall = walls[wallIndex];
+    if (!wall.visible) {
+      continue;
+    }
+    auto const& edge = arrangement.edges[wall.edge];
+    auto orientation = OrientArrangementWall(arrangement, wall);
+    auto along = orientation.v1 - orientation.v0;
+    auto length = along.length();
+    if (length <= MinimumChipSize) {
+      continue;
+    }
+    auto direction = along / length;
+    auto edgeV0 = ToWorld(arrangement.vertices[edge.v[0]]);
+    auto startVertex = orientation.v0.distanceTo(edgeV0) <= MinimumChipSize
+                           ? edge.v[0]
+                           : edge.v[1];
+    auto endVertex = startVertex == edge.v[0] ? edge.v[1] : edge.v[0];
+    wallsByVertex[startVertex].push_back(
+        {wallIndex, true, direction, orientation.normal, length});
+    wallsByVertex[endVertex].push_back(
+        {wallIndex, false, -direction, orientation.normal, length});
+  }
+
+  auto bittenFaceFor = [&](ArrangementWall const& wall)
+      -> std::optional<uint32_t> {
+    if (wall.kind != ArrangementWallKind::FloorStep &&
+        wall.kind != ArrangementWallKind::CeilingStep) {
+      return std::nullopt;
+    }
+    auto const& edge = arrangement.edges[wall.edge];
+    auto const& properties0 =
+        arrangement.palette[arrangement.faces[edge.face[0]].paletteIndex];
+    auto const& properties1 =
+        arrangement.palette[arrangement.faces[edge.face[1]].paletteIndex];
+    auto face = wall.kind == ArrangementWallKind::FloorStep
+                    ? (properties0.floorZ > properties1.floorZ ? edge.face[0]
+                                                               : edge.face[1])
+                    : (properties0.ceilingZ < properties1.ceilingZ
+                           ? edge.face[0]
+                           : edge.face[1]);
+    return arrangement.faces[face].solid ? std::optional<uint32_t>{face}
+                                         : std::nullopt;
+  };
+
+  // Corner Chips truncate a trihedral vertex where two walls and the top of
+  // one FloorStep, or the bottom of one CeilingStep, meet. Generate them
+  // first so ordinary Arris Chips can reserve the resulting endpoint cuts.
+  for (auto const& [vertexIndex, incident] : wallsByVertex) {
+    auto corner = ToWorld(arrangement.vertices[vertexIndex]);
+    for (size_t aIndex = 0; aIndex < incident.size(); ++aIndex) {
+      for (size_t bIndex = aIndex + 1; bIndex < incident.size(); ++bIndex) {
+        auto const* aPtr = &incident[aIndex];
+        auto const* bPtr = &incident[bIndex];
+        if (bPtr->ray.x < aPtr->ray.x ||
+            (bPtr->ray.x == aPtr->ray.x && bPtr->ray.y < aPtr->ray.y)) {
+          std::swap(aPtr, bPtr);
+        }
+        auto const& a = *aPtr;
+        auto const& b = *bPtr;
+        auto const& wallA = walls[a.wallIndex];
+        auto const& wallB = walls[b.wallIndex];
+        if (wallA.kind != wallB.kind ||
+            (wallA.kind != ArrangementWallKind::FloorStep &&
+             wallA.kind != ArrangementWallKind::CeilingStep) ||
+            !IsEligibleVerticalAngle(a, b)) {
+          continue;
+        }
+        auto faceA = bittenFaceFor(wallA);
+        auto faceB = bittenFaceFor(wallB);
+        if (!faceA || faceA != faceB) {
+          continue;
+        }
+        auto const& propertiesA = arrangement.palette[wallA.paletteIndex];
+        auto const& propertiesB = arrangement.palette[wallB.paletteIndex];
+        if (propertiesA.wallMaterialId != propertiesB.wallMaterialId) {
+          continue;
+        }
+
+        auto isFloorStep = wallA.kind == ArrangementWallKind::FloorStep;
+        auto zA = isFloorStep ? wallA.maxZ : wallA.minZ;
+        auto zB = isFloorStep ? wallB.maxZ : wallB.minZ;
+        if (std::abs(zA - zB) > MinimumChipSize) {
+          continue;
+        }
+        auto z = (zA + zB) * 0.5f;
+
+        // Exactly two wall polygons may touch this 3D point; together with
+        // the shared horizontal face they are the requested three polygons.
+        auto touchingWalls = std::count_if(
+            incident.begin(), incident.end(), [&](IncidentWall const& item) {
+              auto const& wall = walls[item.wallIndex];
+              return wall.minZ <= z + MinimumChipSize &&
+                     wall.maxZ >= z - MinimumChipSize;
+            });
+        if (touchingWalls != 2) {
+          continue;
+        }
+
+        auto const parameters =
+            wallA.paletteIndex < arrangement.chipParametersPalette.size()
+                ? arrangement.chipParametersPalette[wallA.paletteIndex]
+                : ChipGenerationParameters{};
+        if (parameters.cornerProbability <= 0.0f) {
+          continue;
+        }
+        auto verticalLimit =
+            isFloorStep
+                ? z - std::max(wallA.minZ, wallB.minZ)
+                : std::min(wallA.maxZ, wallB.maxZ) - z;
+        auto minimum = parameters.minimumCornerDistance;
+        if (minimum > a.length || minimum > b.length ||
+            minimum > verticalLimit) {
+          continue;
+        }
+
+        auto seed = StableCornerSeed(
+            arrangement.vertices[vertexIndex], z, wallA.kind);
+        if (StableRandom01(seed, 0x5000ull) >=
+            parameters.cornerProbability) {
+          continue;
+        }
+        auto chooseDistance = [&](float edgeLength, uint64_t stream) {
+          auto maximum =
+              std::min(parameters.maximumCornerDistance, edgeLength);
+          return minimum + (maximum - minimum) *
+                               StableRandom01(seed, stream);
+        };
+        auto distanceA = chooseDistance(a.length, 0x5001ull);
+        auto distanceB = chooseDistance(b.length, 0x5002ull);
+        auto verticalDistance = chooseDistance(verticalLimit, 0x5003ull);
+        auto pointA = corner + a.ray * distanceA;
+        auto pointB = corner + b.ray * distanceB;
+
+        auto setWallCorner = [&](IncidentWall const& item,
+                                 float horizontalDistance) {
+          auto& notches = wallNotches[item.wallIndex];
+          WallCornerCut cut{horizontalDistance, verticalDistance};
+          if (isFloorStep) {
+            (item.atStart ? notches.topLeft : notches.topRight) = cut;
+          } else {
+            (item.atStart ? notches.bottomLeft : notches.bottomRight) = cut;
+          }
+          (item.atStart ? horizontalStartClearance[item.wallIndex]
+                        : horizontalEndClearance[item.wallIndex]) =
+              horizontalDistance;
+        };
+        setWallCorner(a, distanceA);
+        setWallCorner(b, distanceB);
+        verticalCornerClearance[{vertexIndex, std::bit_cast<uint32_t>(z)}] =
+            verticalDistance;
+
+        auto faceKind = isFloorStep ? DetailSurfaceKind::FloorOfFace
+                                    : DetailSurfaceKind::CeilingOfFace;
+        DetailSurfaceKey faceSource{faceKind, *faceA};
+        cornerCutsByFace[faceSource].push_back(
+            {vertexIndex, wallA.edge, pointA, wallB.edge, pointB});
+
+        auto sourceWall = std::min(a.wallIndex, b.wallIndex);
+        DetailSurfaceKey source{DetailSurfaceKind::Wall, sourceWall};
+        Vertex3 onA{pointA.x, pointA.y, z};
+        Vertex3 onB{pointB.x, pointB.y, z};
+        Vertex3 onVertical{
+            corner.x, corner.y,
+            isFloorStep ? z - verticalDistance : z + verticalDistance};
+        Vertex3 reference{
+            a.normal.x + b.normal.x, a.normal.y + b.normal.y,
+            isFloorStep ? 1.0f : -1.0f};
+        std::array<float, 2> uvA{distanceA / a.length, 1.0f};
+        std::array<float, 2> uvB{distanceB / b.length, 1.0f};
+        std::array<float, 2> uvVertical{
+            0.0f,
+            isFloorStep ? 1.0f - verticalDistance /
+                                     (walls[sourceWall].maxZ -
+                                      walls[sourceWall].minZ)
+                        : verticalDistance /
+                              (walls[sourceWall].maxZ -
+                               walls[sourceWall].minZ)};
+        AddTriangle(
+            detail, source, onA, onB, onVertical, reference, uvA, uvB,
+            uvVertical, false, DetailTriangleKind::CornerChipFacet);
+        detail.countChip();
+      }
+    }
+  }
 
   for (uint32_t wallIndex = 0; wallIndex < uint32_t(walls.size());
        ++wallIndex) {
@@ -589,7 +1011,9 @@ DetailGeometry BuildChipDetail(
     auto generated = GenerateChips(
         length, parameters,
         StableArrisSeed(
-            arrangement.vertices[edge.v[0]], arrangement.vertices[edge.v[1]]));
+            arrangement.vertices[edge.v[0]], arrangement.vertices[edge.v[1]]),
+        horizontalStartClearance[wallIndex],
+        horizontalEndClearance[wallIndex]);
 
     auto faceKind = isFloorStep ? DetailSurfaceKind::FloorOfFace
                                 : DetailSurfaceKind::CeilingOfFace;
@@ -608,44 +1032,128 @@ DetailGeometry BuildChipDetail(
         continue;
       }
 
-      auto half = direction * (reach * 0.5f);
-      auto a = midpoint - half;
-      auto b = midpoint + half;
-      auto apex = midpoint + inward * depth;
-      footprintsByFace[{faceKind, bittenFace}].push_back(
-          {wall.edge, a, b, apex});
-
+      auto profile = BuildChipProfile(chip);
       auto notchStart = centreDistance - reach * 0.5f;
       auto notchEnd = centreDistance + reach * 0.5f;
-      auto& notches = isFloorStep ? wallNotches[wallIndex].top
-                                  : wallNotches[wallIndex].bottom;
-      notches.push_back({notchStart, notchEnd, depth});
+      for (auto const& sample : profile) {
+        if (sample.sideA <= 0.0f) {
+          continue;
+        }
+        auto distance = notchStart + sample.t * reach;
+        auto origin = orientation.v0 + direction * distance;
+        depth = std::min(
+            depth,
+            FaceBoundaryDistance(
+                arrangement, arrangement.faces[bittenFace], wall.edge, origin,
+                inward) /
+                sample.sideA);
+      }
+      if (depth <= MinimumChipSize) {
+        continue;
+      }
 
       auto arrisZ = isFloorStep ? wall.maxZ : wall.minZ;
-      auto wallZAtDepth =
-          isFloorStep ? wall.maxZ - depth : wall.minZ + depth;
-      Vertex3 onArrisA{a.x, a.y, arrisZ};
-      Vertex3 onArrisB{b.x, b.y, arrisZ};
-      Vertex3 onHorizontal{apex.x, apex.y, arrisZ};
-      Vertex3 onWall{midpoint.x, midpoint.y, wallZAtDepth};
+      auto verticalSign = isFloorStep ? -1.0f : 1.0f;
+      auto height = wall.maxZ - wall.minZ;
+      auto arrisV = (arrisZ - wall.minZ) / height;
+      std::vector<Vertex3> sideA;
+      std::vector<Vertex3> sideB;
+      std::vector<std::array<float, 2>> uvSideA;
+      std::vector<std::array<float, 2>> uvSideB;
+      std::vector<wp::Vector2> horizontalProfile;
+      std::vector<WallNotchProfilePoint> wallProfile;
+      for (auto const& sample : profile) {
+        auto distance = notchStart + sample.t * reach;
+        auto onArris = orientation.v0 + direction * distance;
+        auto onHorizontal = onArris + inward * (depth * sample.sideA);
+        auto wallZ = arrisZ + verticalSign * depth * sample.sideB;
+        sideA.push_back({onHorizontal.x, onHorizontal.y, arrisZ});
+        sideB.push_back({onArris.x, onArris.y, wallZ});
+        uvSideA.push_back({distance / length, arrisV});
+        uvSideB.push_back(
+            {distance / length, (wallZ - wall.minZ) / height});
+        horizontalProfile.push_back(onHorizontal);
+        wallProfile.push_back({distance, depth * sample.sideB});
+      }
+      auto edgeA = orientation.v0 + direction * notchStart;
+      auto edgeB = orientation.v0 + direction * notchEnd;
+      auto apex = midpoint + inward * depth;
+      footprintsByFace[{faceKind, bittenFace}].push_back(
+          {wall.edge, edgeA, edgeB, apex, std::move(horizontalProfile)});
+      auto& notches = isFloorStep ? wallNotches[wallIndex].top
+                                  : wallNotches[wallIndex].bottom;
+      notches.push_back(
+          {notchStart, notchEnd, depth, std::move(wallProfile)});
+
       Vertex3 facetReference{
           orientation.normal.x, orientation.normal.y,
           isFloorStep ? 1.0f : -1.0f};
-      auto height = wall.maxZ - wall.minZ;
-      auto arrisV = (arrisZ - wall.minZ) / height;
-      auto wallV = (wallZAtDepth - wall.minZ) / height;
-      std::array<float, 2> uvA{notchStart / length, arrisV};
-      std::array<float, 2> uvB{notchEnd / length, arrisV};
-      std::array<float, 2> uvHorizontal{centreDistance / length, arrisV};
-      std::array<float, 2> uvWall{centreDistance / length, wallV};
-      AddTriangle(
-          detail, source, onArrisA, onHorizontal, onWall, facetReference, uvA,
-          uvHorizontal, uvWall, false,
-          DetailTriangleKind::HorizontalChipFacet);
-      AddTriangle(
-          detail, source, onHorizontal, onArrisB, onWall, facetReference,
-          uvHorizontal, uvB, uvWall, false,
-          DetailTriangleKind::HorizontalChipFacet);
+      auto addFacet = [&](Vertex3 const& p0, Vertex3 const& p1,
+                          Vertex3 const& p2,
+                          std::array<float, 2> const& uv0,
+                          std::array<float, 2> const& uv1,
+                          std::array<float, 2> const& uv2) {
+        AddTriangle(
+            detail, source, p0, p1, p2, facetReference, uv0, uv1, uv2,
+            false, DetailTriangleKind::HorizontalChipFacet, chip.type);
+      };
+      if (chip.type == ChipType::PyramidalDivot) {
+        Vertex3 deepest{
+            apex.x, apex.y, arrisZ + verticalSign * depth};
+        std::array<float, 2> uvDeepest{
+            centreDistance / length,
+            (deepest.z - wall.minZ) / height};
+        std::vector<Vertex3> perimeter = sideA;
+        std::vector<std::array<float, 2>> perimeterUv = uvSideA;
+        for (size_t i = sideB.size(); i-- > 0;) {
+          perimeter.push_back(sideB[i]);
+          perimeterUv.push_back(uvSideB[i]);
+        }
+        for (size_t i = 0; i < perimeter.size(); ++i) {
+          auto next = (i + 1) % perimeter.size();
+          addFacet(
+              perimeter[i], perimeter[next], deepest, perimeterUv[i],
+              perimeterUv[next], uvDeepest);
+        }
+      } else if (chip.type == ChipType::VShapedNotch) {
+        std::vector<Vertex3> crease;
+        std::vector<std::array<float, 2>> uvCrease;
+        for (size_t i = 0; i < profile.size(); ++i) {
+          auto const& sample = profile[i];
+          auto distance = notchStart + sample.t * reach;
+          auto onArris = orientation.v0 + direction * distance;
+          auto point = onArris + inward * (depth * sample.sideA / 0.65f);
+          crease.push_back(
+              {point.x, point.y,
+               arrisZ + verticalSign * depth * sample.sideB / 0.65f});
+          uvCrease.push_back(
+              {distance / length,
+               (crease.back().z - wall.minZ) / height});
+        }
+        for (size_t i = 0; i + 1 < profile.size(); ++i) {
+          addFacet(
+              sideA[i], sideA[i + 1], crease[i + 1], uvSideA[i],
+              uvSideA[i + 1], uvCrease[i + 1]);
+          addFacet(
+              sideA[i], crease[i + 1], crease[i], uvSideA[i],
+              uvCrease[i + 1], uvCrease[i]);
+          addFacet(
+              crease[i], crease[i + 1], sideB[i + 1], uvCrease[i],
+              uvCrease[i + 1], uvSideB[i + 1]);
+          addFacet(
+              crease[i], sideB[i + 1], sideB[i], uvCrease[i],
+              uvSideB[i + 1], uvSideB[i]);
+        }
+      } else {
+        for (size_t i = 0; i + 1 < profile.size(); ++i) {
+          addFacet(
+              sideA[i], sideA[i + 1], sideB[i + 1], uvSideA[i],
+              uvSideA[i + 1], uvSideB[i + 1]);
+          addFacet(
+              sideA[i], sideB[i + 1], sideB[i], uvSideA[i],
+              uvSideB[i + 1], uvSideB[i]);
+        }
+      }
       detail.countChip();
     }
   }
@@ -653,47 +1161,18 @@ DetailGeometry BuildChipDetail(
   // Vertical Arrises: pairs of visible walls meeting in a concave angle as
   // seen from their common front (navigable) side. Both walls must use the
   // same Sub-material, leaving one unambiguous material/configuration.
-  struct IncidentWall {
-    uint32_t wallIndex;
-    bool atStart;
-    wp::Vector2 ray;
-    wp::Vector2 normal;
-    float length;
-  };
-  std::map<uint32_t, std::vector<IncidentWall>> wallsByVertex;
-  for (uint32_t wallIndex = 0; wallIndex < uint32_t(walls.size());
-       ++wallIndex) {
-    auto const& wall = walls[wallIndex];
-    if (!wall.visible) {
-      continue;
-    }
-    auto const& edge = arrangement.edges[wall.edge];
-    auto orientation = OrientArrangementWall(arrangement, wall);
-    auto along = orientation.v1 - orientation.v0;
-    auto length = along.length();
-    if (length <= MinimumChipSize) {
-      continue;
-    }
-    auto direction = along / length;
-    auto edgeV0 = ToWorld(arrangement.vertices[edge.v[0]]);
-    auto startVertex = orientation.v0.distanceTo(edgeV0) <= MinimumChipSize
-                           ? edge.v[0]
-                           : edge.v[1];
-    auto endVertex = startVertex == edge.v[0] ? edge.v[1] : edge.v[0];
-    // OrientArrangementWall already gives every wall its canonical front
-    // normal. In particular, a Border wall's normal faces toward its polygon.
-    wallsByVertex[startVertex].push_back(
-        {wallIndex, true, direction, orientation.normal, length});
-    wallsByVertex[endVertex].push_back(
-        {wallIndex, false, -direction, orientation.normal, length});
-  }
-
   for (auto const& [vertexIndex, incident] : wallsByVertex) {
     auto corner = ToWorld(arrangement.vertices[vertexIndex]);
     for (size_t aIndex = 0; aIndex < incident.size(); ++aIndex) {
       for (size_t bIndex = aIndex + 1; bIndex < incident.size(); ++bIndex) {
-        auto const& a = incident[aIndex];
-        auto const& b = incident[bIndex];
+        auto const* aPtr = &incident[aIndex];
+        auto const* bPtr = &incident[bIndex];
+        if (bPtr->ray.x < aPtr->ray.x ||
+            (bPtr->ray.x == aPtr->ray.x && bPtr->ray.y < aPtr->ray.y)) {
+          std::swap(aPtr, bPtr);
+        }
+        auto const& a = *aPtr;
+        auto const& b = *bPtr;
         auto const& wallA = walls[a.wallIndex];
         auto const& wallB = walls[b.wallIndex];
         auto const& propertiesA = arrangement.palette[wallA.paletteIndex];
@@ -701,34 +1180,7 @@ DetailGeometry BuildChipDetail(
         if (propertiesA.wallMaterialId != propertiesB.wallMaterialId) {
           continue;
         }
-        // Measure the angle on the canonical front side of both walls, not
-        // the unsigned angle between their normals. The latter cannot
-        // distinguish a 90° corner from the 270° re-entrant corner at
-        // world-test-1's (96, 96) edge. Each normal's sign against the other
-        // wall's ray identifies whether the common front side is the minor or
-        // major sector bounded by those rays.
-        auto rayCross = a.ray.x * b.ray.y - a.ray.y * b.ray.x;
-        if (std::abs(rayCross) <= ConcavityEpsilon) {
-          continue;
-        }
-        auto aFacesMinor = a.normal.dot(b.ray);
-        auto bFacesMinor = b.normal.dot(a.ray);
-        auto rayDot = std::clamp(a.ray.dot(b.ray), -1.0f, 1.0f);
-        auto minorAngle =
-            std::acos(rayDot) * (180.0f / std::acos(-1.0f));
-        float wallAngle;
-        if (aFacesMinor > ConcavityEpsilon &&
-            bFacesMinor > ConcavityEpsilon) {
-          wallAngle = minorAngle;
-        } else if (
-            aFacesMinor < -ConcavityEpsilon &&
-            bFacesMinor < -ConcavityEpsilon) {
-          wallAngle = 360.0f - minorAngle;
-        } else {
-          continue;
-        }
-        if (wallAngle < 225.0f - ConcavityEpsilon ||
-            wallAngle > 315.0f + ConcavityEpsilon) {
+        if (!IsEligibleVerticalAngle(a, b)) {
           continue;
         }
 
@@ -754,10 +1206,17 @@ DetailGeometry BuildChipDetail(
             wallA.paletteIndex < arrangement.chipParametersPalette.size()
                 ? arrangement.chipParametersPalette[wallA.paletteIndex]
                 : ChipGenerationParameters{};
+        auto clearanceAt = [&](float z) {
+          auto found = verticalCornerClearance.find(
+              {vertexIndex, std::bit_cast<uint32_t>(z)});
+          return found == verticalCornerClearance.end() ? 0.0f
+                                                        : found->second;
+        };
         auto generated = GenerateChips(
             maxZ - minZ, parameters,
             StableVerticalArrisSeed(
-                arrangement.vertices[vertexIndex], minZ, maxZ));
+                arrangement.vertices[vertexIndex], minZ, maxZ),
+            clearanceAt(minZ), clearanceAt(maxZ));
         for (auto const& chip : generated) {
           auto depth = std::min({chip.depth, a.length, b.length});
           if (depth <= MinimumChipSize || chip.reach <= MinimumChipSize) {
@@ -766,68 +1225,108 @@ DetailGeometry BuildChipDetail(
           auto centreZ = minZ + chip.centre;
           auto bottomZ = centreZ - chip.reach * 0.5f;
           auto topZ = centreZ + chip.reach * 0.5f;
-          WallNotch proposed{bottomZ, topZ, depth};
+          auto profile = BuildChipProfile(chip);
+          WallNotch proposedA{bottomZ, topZ, depth};
+          WallNotch proposedB{bottomZ, topZ, depth};
+          for (auto const& sample : profile) {
+            auto z = bottomZ + sample.t * chip.reach;
+            proposedA.profile.push_back({z, depth * sample.sideA});
+            proposedB.profile.push_back({z, depth * sample.sideB});
+          }
           if (!VerticalNotchFits(
-                  wallNotches[a.wallIndex], a.atStart, proposed, a.length,
+                  wallNotches[a.wallIndex], a.atStart, proposedA, a.length,
                   wallA.minZ, wallA.maxZ) ||
               !VerticalNotchFits(
-                  wallNotches[b.wallIndex], b.atStart, proposed, b.length,
+                  wallNotches[b.wallIndex], b.atStart, proposedB, b.length,
                   wallB.minZ, wallB.maxZ)) {
             continue;
           }
-          auto pointA = corner + a.ray * depth;
-          auto pointB = corner + b.ray * depth;
 
-          auto addWallNotch = [&](IncidentWall const& incidentWall) {
+          auto addWallNotch = [&](IncidentWall const& incidentWall,
+                                  WallNotch notch) {
             auto& notches = wallNotches[incidentWall.wallIndex];
             auto& side = incidentWall.atStart ? notches.left : notches.right;
-            side.push_back(proposed);
+            side.push_back(std::move(notch));
           };
-          addWallNotch(a);
-          addWallNotch(b);
+          addWallNotch(a, std::move(proposedA));
+          addWallNotch(b, std::move(proposedB));
 
           auto sourceWall = std::min(a.wallIndex, b.wallIndex);
           DetailSurfaceKey source{DetailSurfaceKind::Wall, sourceWall};
-          Vertex3 onBottom{corner.x, corner.y, bottomZ};
-          Vertex3 onTop{corner.x, corner.y, topZ};
-          Vertex3 onA{pointA.x, pointA.y, centreZ};
-          Vertex3 onB{pointB.x, pointB.y, centreZ};
           // Canonical wall normals point out of the wall material (a Border's
-          // point toward its polygon), so the material-side angle bisector is
-          // the opposite of their sum. This keeps the gouge centred on the
-          // shared edge while moving its deepest point into, never out of, the
-          // corner material.
+          // point toward its polygon), so their opposite bisector goes into
+          // the material and keeps every profile centred on the shared edge.
           auto intoMaterial = -(a.normal + b.normal).normalisedCopy();
-          auto deepest = corner + intoMaterial * depth;
-          Vertex3 atDepth{deepest.x, deepest.y, centreZ};
-          // The cavity opens from the deepest point back toward the original
-          // shared edge. Select that side of each geometric face normal.
           Vertex3 facetReference{
               -intoMaterial.x, -intoMaterial.y, 0.0f};
           auto const& sourceWallData = walls[sourceWall];
           auto sourceHeight = sourceWallData.maxZ - sourceWallData.minZ;
-          auto bottomV = (bottomZ - sourceWallData.minZ) / sourceHeight;
-          auto centreV = (centreZ - sourceWallData.minZ) / sourceHeight;
-          auto topV = (topZ - sourceWallData.minZ) / sourceHeight;
-          std::array<float, 2> uvBottom{0.0f, bottomV};
-          std::array<float, 2> uvA{depth / a.length, centreV};
-          std::array<float, 2> uvB{depth / b.length, centreV};
-          std::array<float, 2> uvTop{0.0f, topV};
-          std::array<float, 2> uvDepth{
-              (uvA[0] + uvB[0]) * 0.5f, centreV};
-          AddTriangle(
-              detail, source, onBottom, onA, atDepth, facetReference, uvBottom,
-              uvA, uvDepth, false, DetailTriangleKind::VerticalChipFacet);
-          AddTriangle(
-              detail, source, onA, onTop, atDepth, facetReference, uvA, uvTop,
-              uvDepth, false, DetailTriangleKind::VerticalChipFacet);
-          AddTriangle(
-              detail, source, onTop, onB, atDepth, facetReference, uvTop, uvB,
-              uvDepth, false, DetailTriangleKind::VerticalChipFacet);
-          AddTriangle(
-              detail, source, onB, onBottom, atDepth, facetReference, uvB,
-              uvBottom, uvDepth, false,
-              DetailTriangleKind::VerticalChipFacet);
+          std::vector<Vertex3> sideA;
+          std::vector<Vertex3> sideB;
+          std::vector<Vertex3> crease;
+          std::vector<std::array<float, 2>> uvA;
+          std::vector<std::array<float, 2>> uvB;
+          std::vector<std::array<float, 2>> uvCrease;
+          for (auto const& sample : profile) {
+            auto z = bottomZ + sample.t * chip.reach;
+            auto pointA = corner + a.ray * (depth * sample.sideA);
+            auto pointB = corner + b.ray * (depth * sample.sideB);
+            auto creaseFactor = std::max(sample.sideA, sample.sideB);
+            if (chip.type == ChipType::VShapedNotch) {
+              creaseFactor /= 0.65f;
+            }
+            auto centre = corner + intoMaterial * (depth * creaseFactor);
+            sideA.push_back({pointA.x, pointA.y, z});
+            sideB.push_back({pointB.x, pointB.y, z});
+            crease.push_back({centre.x, centre.y, z});
+            auto v = (z - sourceWallData.minZ) / sourceHeight;
+            uvA.push_back({depth * sample.sideA / a.length, v});
+            uvB.push_back({depth * sample.sideB / b.length, v});
+            uvCrease.push_back(
+                {(uvA.back()[0] + uvB.back()[0]) * 0.5f, v});
+          }
+          auto addFacet = [&](Vertex3 const& p0, Vertex3 const& p1,
+                              Vertex3 const& p2,
+                              std::array<float, 2> const& uv0,
+                              std::array<float, 2> const& uv1,
+                              std::array<float, 2> const& uv2) {
+            AddTriangle(
+                detail, source, p0, p1, p2, facetReference, uv0, uv1, uv2,
+                false, DetailTriangleKind::VerticalChipFacet, chip.type);
+          };
+          if (chip.type == ChipType::PyramidalDivot) {
+            auto centreSample = profile.size() / 2;
+            auto deepestPlan = corner + intoMaterial * depth;
+            Vertex3 deepest{deepestPlan.x, deepestPlan.y, centreZ};
+            auto deepestUv = uvCrease[centreSample];
+            std::vector<Vertex3> perimeter = sideA;
+            std::vector<std::array<float, 2>> perimeterUv = uvA;
+            for (size_t i = sideB.size(); i-- > 0;) {
+              perimeter.push_back(sideB[i]);
+              perimeterUv.push_back(uvB[i]);
+            }
+            for (size_t i = 0; i < perimeter.size(); ++i) {
+              auto next = (i + 1) % perimeter.size();
+              addFacet(
+                  perimeter[i], perimeter[next], deepest, perimeterUv[i],
+                  perimeterUv[next], deepestUv);
+            }
+          } else {
+            for (size_t i = 0; i + 1 < profile.size(); ++i) {
+              addFacet(
+                  sideA[i], sideA[i + 1], crease[i + 1], uvA[i], uvA[i + 1],
+                  uvCrease[i + 1]);
+              addFacet(
+                  sideA[i], crease[i + 1], crease[i], uvA[i],
+                  uvCrease[i + 1], uvCrease[i]);
+              addFacet(
+                  crease[i], crease[i + 1], sideB[i + 1], uvCrease[i],
+                  uvCrease[i + 1], uvB[i + 1]);
+              addFacet(
+                  crease[i], sideB[i + 1], sideB[i], uvCrease[i], uvB[i + 1],
+                  uvB[i]);
+            }
+          }
           detail.countChip();
         }
       }
@@ -854,7 +1353,14 @@ DetailGeometry BuildChipDetail(
   }
 
   for (auto const& [key, footprints] : footprintsByFace) {
-    AddRebuiltFaceHorizontal(detail, arrangement, key, footprints);
+    AddRebuiltFaceHorizontal(
+        detail, arrangement, key, footprints, cornerCutsByFace[key]);
+  }
+  for (auto const& [key, cornerCuts] : cornerCutsByFace) {
+    if (footprintsByFace.contains(key)) {
+      continue;
+    }
+    AddRebuiltFaceHorizontal(detail, arrangement, key, {}, cornerCuts);
   }
 
   detail.sort();

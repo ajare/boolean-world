@@ -1,5 +1,7 @@
 #include "core/SubMaterial.h"
 
+#include <algorithm>
+
 #include "core/Defines.h"
 #include "core/SerializationException.h"
 
@@ -17,6 +19,35 @@ bool inRange(float value, EmbossParameterLimits const& limits) {
 
 bool SubMaterial::childrenModified() const {
   return false;
+}
+
+string_view ChipTypeName(ChipType type) {
+  switch (type) {
+    case ChipType::Tapered:
+      return "Tapered";
+    case ChipType::PrismaticNotch:
+      return "PrismaticNotch";
+    case ChipType::PyramidalDivot:
+      return "PyramidalDivot";
+    case ChipType::MultiFacetSpall:
+      return "MultiFacetSpall";
+    case ChipType::SteppedFracture:
+      return "SteppedFracture";
+    case ChipType::VShapedNotch:
+      return "VShapedNotch";
+    case ChipType::TrapezoidalSpall:
+      return "TrapezoidalSpall";
+  }
+  return "Tapered";
+}
+
+optional<ChipType> ChipTypeFromName(string_view name) {
+  for (auto type : AllChipTypes) {
+    if (ChipTypeName(type) == name) {
+      return type;
+    }
+  }
+  return nullopt;
 }
 
 EmbossParameterLimits ChipArrisLengthLimits() {
@@ -40,6 +71,10 @@ EmbossParameterLimits ChipProbabilityLimits() {
   return {0.0f, 1.0f};
 }
 
+EmbossParameterLimits ChipCornerDistanceLimits() {
+  return {0.01f, 128.0f};
+}
+
 bool ChipParametersAreValid(ChipGenerationParameters const& parameters) {
   return inRange(parameters.minimumArrisLength, ChipArrisLengthLimits()) &&
          inRange(parameters.minimumDepth, ChipDepthLimits()) &&
@@ -48,10 +83,25 @@ bool ChipParametersAreValid(ChipGenerationParameters const& parameters) {
          inRange(parameters.maximumReach, ChipReachLimits()) &&
          inRange(parameters.minimumSpacing, ChipSpacingLimits()) &&
          inRange(parameters.probability, ChipProbabilityLimits()) &&
+         inRange(
+             parameters.minimumCornerDistance, ChipCornerDistanceLimits()) &&
+         inRange(
+             parameters.maximumCornerDistance, ChipCornerDistanceLimits()) &&
+         inRange(parameters.cornerProbability, ChipProbabilityLimits()) &&
          parameters.minimumDepth <= parameters.maximumDepth &&
          parameters.minimumReach <= parameters.maximumReach &&
+         parameters.minimumCornerDistance <=
+             parameters.maximumCornerDistance &&
          parameters.maximumReach * 0.5f <= parameters.minimumArrisLength &&
-         parameters.minimumSpacing >= parameters.maximumReach + 0.1f;
+         parameters.minimumSpacing >= parameters.maximumReach + 0.1f &&
+         !parameters.types.empty() &&
+         std::all_of(
+             parameters.types.begin(), parameters.types.end(),
+             [&](ChipType type) {
+               return std::count(
+                          parameters.types.begin(), parameters.types.end(),
+                          type) == 1;
+             });
 }
 
 void SubMaterial::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) const {
@@ -90,6 +140,18 @@ void SubMaterial::serializeImpl(shared_ptr<Serializer> serializer, Serialization
       serializer->writeFloat("maximumReach", chip.maximumReach);
       serializer->writeFloat("minimumSpacing", chip.minimumSpacing);
       serializer->writeFloat("probability", chip.probability);
+      serializer->writeFloat(
+          "minimumCornerDistance", chip.minimumCornerDistance);
+      serializer->writeFloat(
+          "maximumCornerDistance", chip.maximumCornerDistance);
+      serializer->writeFloat("cornerProbability", chip.cornerProbability);
+      serializer->beginArray("types", false);
+      {
+        for (auto type : chip.types) {
+          serializer->writeString("", string(ChipTypeName(type)));
+        }
+        serializer->endArray();
+      }
 
       serializer->endMap();
     }
@@ -165,6 +227,30 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
             "minimumSpacing", optional, chip_.minimumSpacing);
         chip_.probability = serializer->readFloat(
             "probability", optional, chip_.probability);
+        chip_.minimumCornerDistance = serializer->readFloat(
+            "minimumCornerDistance", optional,
+            chip_.minimumCornerDistance);
+        chip_.maximumCornerDistance = serializer->readFloat(
+            "maximumCornerDistance", optional,
+            chip_.maximumCornerDistance);
+        chip_.cornerProbability = serializer->readFloat(
+            "cornerProbability", optional, chip_.cornerProbability);
+        if (serializer->hasField("types")) {
+          vector<ChipType> parsedTypes;
+          serializer->beginArray("types");
+          {
+            while (serializer->nextArrayItem()) {
+              auto name = serializer->readString();
+              auto type = ChipTypeFromName(name);
+              if (!type) {
+                throw SerializationException("Unknown Chip type: " + name);
+              }
+              parsedTypes.push_back(*type);
+            }
+            serializer->endArray();
+          }
+          chip_.types = move(parsedTypes);
+        }
 
         serializer->endMap();
       }

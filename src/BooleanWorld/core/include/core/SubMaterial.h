@@ -55,10 +55,12 @@ protected:
 [[nodiscard]] EmbossParameterLimits ChipReachLimits();
 [[nodiscard]] EmbossParameterLimits ChipSpacingLimits();
 [[nodiscard]] EmbossParameterLimits ChipProbabilityLimits();
+[[nodiscard]] EmbossParameterLimits ChipCornerDistanceLimits();
 
-// In addition to scalar bounds: minima may not exceed maxima, maximum width
-// (half maximum reach) may not exceed the minimum eligible Arris length, and
-// centre spacing is at least maximumReach + 0.1 so Chips cannot overlap.
+// In addition to scalar bounds: each minimum may not exceed its maximum,
+// maximum width (half maximum reach) may not exceed the minimum eligible Arris
+// length, centre spacing is at least maximumReach + 0.1 so Arris Chips cannot
+// overlap, and the allowed Chip type list is non-empty and duplicate-free.
 [[nodiscard]] bool ChipParametersAreValid(
     ChipGenerationParameters const& parameters);
 

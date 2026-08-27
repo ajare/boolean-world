@@ -59,7 +59,7 @@ typedef int64_t frame_number_type;
 //
 // Material definitions
 //
-#define BW_MATERIAL_COUNT 37
+#define BW_MATERIAL_COUNT 38
 #define BW_MATERIAL_PARAMS_MAX 8
 
 // Reserved MATERIAL_INDEX for a wall's back face (the side its normal points
@@ -67,7 +67,7 @@ typedef int64_t frame_number_type;
 // world_pbr.frag (still lit like any other material, just untextured),
 // never offered as an authorable material and never matched by a real
 // Primitive's wallMaterialIndex.
-#define BW_WALL_BACK_FACE_MATERIAL_INDEX 37
+#define BW_WALL_BACK_FACE_MATERIAL_INDEX 38
 
 // A materialIndex a Sub-material id resolves to when the id doesn't name any
 // Sub-material in a loaded ProcMaterial catalog (missing/unknown/empty) -

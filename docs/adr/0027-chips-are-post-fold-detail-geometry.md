@@ -19,7 +19,8 @@ surface it abuts. A `FloorStep` wall's `maxZ` happens to equal the upper face's
 **Chip** — deliberately not "edge", which already means both an arrangement edge
 and a MeshPrimitive Ring edge, and deliberately not "corner", which implies a
 vertex joining three or more polygons rather than a dihedral edge joining
-exactly two.
+exactly two. A later extension adopts **Corner** precisely for the trihedral
+vertex where two Step walls and their horizontal face meet.
 
 Chips must be derived from the fold's output rather than authored: a World file
 holds no record of any Chip. That leaves the question of where the geometry
@@ -45,13 +46,22 @@ upward normal downward.
 
 ## Decision
 
-A Chip is a tapered chamfer cut into an eligible Arris: one flat facet, deepest
-near the Chip's centre and tapering to nothing at both ends, so it needs no end
-caps and degenerates gracefully to nothing when clamped. The bevel is 45° —
-depth bites equally into the horizontal face and down the wall. Each triangle
-carries its own flat geometric face normal; all three of its rendered vertices
-receive that same normal, so the facets are not smooth-shaded. An eligible
-Arris may carry multiple randomly positioned, non-overlapping Chips.
+An Arris Chip selects one material-approved profile: Tapered, Prismatic Notch,
+Pyramidal Divot, Multi-facet Spall, Stepped Fracture, V-shaped Notch, or
+Trapezoidal Spall. Every profile stays inside the Chip's selected reach, so the
+existing maximum-reach placement rule prevents differently shaped Chips from
+overlapping. Tapered has one peak across its reach; Prismatic Notch has a
+constant-depth span and end caps; Pyramidal Divot converges on one deepest
+point; Multi-facet Spall adds independently varied intermediate facets;
+Stepped Fracture changes depth in discrete plateaus; V-shaped Notch carries a
+deep longitudinal crease; and Trapezoidal Spall uses a broad footprint on one
+surface and a narrower one on the other. A Corner Chip instead truncates a
+trihedral Corner: one point is placed independently on each of its three
+incident edges and those points form one triangular cut face. Each triangle carries its own flat
+geometric face normal; all three of its rendered vertices receive that same
+normal, so the facets are not smooth-shaded. An eligible Arris may carry
+multiple randomly positioned, non-overlapping Chips; a Corner carries at most
+one.
 
 Eligible **Horizontal Arrises** are convex: a `FloorStep`'s top and a
 `CeilingStep`'s bottom. Eligible **Vertical Arrises** are the overlapping upright edge shared
@@ -66,6 +76,12 @@ use the same Sub-material, so
 there is one unambiguous generation configuration and facet material; a
 mixed-material corner is skipped. A wall whose ADR-0022 visibility override is
 off participates in neither kind of Arris.
+
+An eligible **Corner** is the endpoint shared by exactly two same-kind Step
+walls and the same bitten horizontal face: the top of two `FloorStep` walls or
+the bottom of two `CeilingStep` walls. The walls must satisfy the same
+225°–315° front-side-angle rule. The Step wall's Sub-material governs the
+Corner; the horizontal face's Sub-material does not override it.
 
 The geometry lives in a **detail channel**: a new member of
 `ArrangementWorldData`, built in its constructor alongside `mTriangles` and
@@ -84,18 +100,22 @@ normals. Canonical normals point out of wall material (a Border's points toward
 its polygon), so this material-side bisector centres the gouge on the shared
 edge and sends it inward rather than making it protrude.
 Four tapered facets connect that point to the two wall-footprint points and the
-two reach endpoints on the shared edge. A wall bitten on any combination of
-its four Arrises is suppressed and re-earcut once from the combined sawtooth
-boundary.
+two reach endpoints on the shared edge. A Corner Chip removes one triangle
+from each of its three incident surfaces and adds the triangular face joining
+its three edge points. A wall bitten on any combination of its four Arrises or
+Corners is suppressed and re-earcut once from the combined boundary.
 
 Chip generation is authored per Sub-material: minimum eligible Arris length,
-minimum/maximum depth, minimum/maximum reach, minimum centre spacing, and a
-probability. Reach is total length along the Arris and width is half-reach. The
+minimum/maximum depth, minimum/maximum reach, minimum centre spacing, an Arris
+probability, and a non-empty list of allowed Arris Chip types, plus
+minimum/maximum Corner distance and a separate Corner probability. Reach is
+total length along the Arris and width is half-reach. The
 maximum width may not exceed 2 world units or the minimum eligible Arris
 length, and minimum spacing is at least maximum reach plus 0.1, structurally
 preventing overlap.
-Depth and reach default to ranges of 1–3, minimum Arris length to 2, spacing to
-3.1, and probability to zero. The governing Sub-material is the **wall's**:
+Depth, reach, and Corner distance default to ranges of 1–3, minimum Arris
+length to 2, spacing to 3.1, and both probabilities to zero. The governing
+Sub-material is the **wall's**:
 `palette[wall.paletteIndex].wallMaterialId`, which
 `BuildArrangementWalls` already resolves to exactly one entry per wall (the
 lower face for a `FloorStep`, the higher for a `CeilingStep`), so no tie-break
@@ -118,15 +138,21 @@ For each eligible Arris, its length and minimum spacing determine a maximum
 slot count. Independent probability trials choose a count up to that maximum;
 that many centres are then placed irregularly while preserving minimum spacing
 and room for maximum-width Chips. Each Chip draws depth and reach independently
-from the authored ranges. All draws derive from a pure hash of the Arris's
+from the authored ranges and independently selects one entry from the governing
+Sub-material's type list. All profiles remain bounded by that reach. All draws
+derive from a pure hash of the Arris's
 fixed-point endpoints — never a sequence, an index, or a frame counter — so
-regeneration and unrelated edge renumbering cannot make Chips crawl.
+regeneration and unrelated edge renumbering cannot make Chips crawl. A Corner
+uses the same geometry-derived scheme, with independent draws for its three
+edge distances.
 
 Chips are clamped to fit rather than skipped. Horizontal depth and reach shrink
 to satisfy the Arris's length, the distance to the nearest other horizontal
 face boundary, and wall height. A Vertical Arris uses the walls' overlapping
-height as its length and clamps depth to both walls' horizontal lengths. A Chip
-is dropped below a minimum resulting size.
+height as its length and clamps depth to both walls' horizontal lengths. A
+Corner is skipped when its configured minimum distance exceeds any incident
+edge; otherwise each random maximum is clamped to that edge's length. A Chip is
+dropped below a minimum resulting size.
 
 Chips are visual only. Collision, `getFloorHeight`, `getContainingFaceIndex`,
 `pointInTriangle`, surface picking and the editor's 2D viewport all continue to

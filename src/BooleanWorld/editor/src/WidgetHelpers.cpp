@@ -219,7 +219,31 @@ void ChipFields(bw::core::ChipGenerationParameters& chip) {
 
   auto probabilityLimits = bw::core::ChipProbabilityLimits();
   ImGui::SliderFloat(
-      "Chip probability", &chip.probability,
+      "Arris Chip probability", &chip.probability,
+      probabilityLimits.minimum, probabilityLimits.maximum, "%.2f");
+  ImGui::TextUnformatted("Arris Chip types");
+  for (auto type : bw::core::AllChipTypes) {
+    auto found = std::find(chip.types.begin(), chip.types.end(), type);
+    bool selected = found != chip.types.end();
+    if (ImGui::Checkbox(
+            std::string(bw::core::ChipTypeName(type)).c_str(), &selected)) {
+      if (selected) {
+        chip.types.push_back(type);
+      } else if (chip.types.size() > 1) {
+        chip.types.erase(found);
+      }
+    }
+  }
+
+  auto cornerDistanceLimits = bw::core::ChipCornerDistanceLimits();
+  ImGui::SliderFloat(
+      "Minimum Corner Chip distance", &chip.minimumCornerDistance,
+      cornerDistanceLimits.minimum, chip.maximumCornerDistance, "%.2f");
+  ImGui::SliderFloat(
+      "Maximum Corner Chip distance", &chip.maximumCornerDistance,
+      chip.minimumCornerDistance, cornerDistanceLimits.maximum, "%.2f");
+  ImGui::SliderFloat(
+      "Corner Chip probability", &chip.cornerProbability,
       probabilityLimits.minimum, probabilityLimits.maximum, "%.2f");
 }
 

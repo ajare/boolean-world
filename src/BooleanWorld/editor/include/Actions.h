@@ -151,6 +151,9 @@ bool selectPrefabForField(
 bool placePrefabInstance(
     Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
     bw::core::Tile tile);
+bool placePrefabInstanceWithMode(
+    Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
+    bw::core::Tile tile, bw::core::TileMode mode);
 bool clearPrefabInstance(
     Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
     bw::core::Tile tile);

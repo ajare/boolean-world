@@ -76,6 +76,7 @@ public:
   [[nodiscard]] bool selectOccupiedTileAt(wp::Vector2 const& position);
 
   bool placeSelected(Layer& layer, Tile tile);
+  bool placeSelected(Layer& layer, Tile tile, TileMode mode);
   bool clearInstance(Layer& layer, Tile tile);
   bool rotateInstance(Layer& layer, Tile tile, bool next);
   bool setInstanceMode(Layer& layer, Tile tile, TileMode mode);

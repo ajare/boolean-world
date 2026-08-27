@@ -37,6 +37,14 @@ string YamlSerializer::getSerializedString() const {
   return mEmitter.c_str();
 }
 
+bool YamlSerializer::hasField(string const& name) const {
+  if (mSerializing) {
+    return false;
+  }
+  auto const node = mNodeStack.empty() ? mLoadedData : mNodeStack.top();
+  return node.IsMap() && node[name].IsDefined();
+}
+
 string YamlSerializer::getPath(string const& leaf) const {
   string path = "/";
 

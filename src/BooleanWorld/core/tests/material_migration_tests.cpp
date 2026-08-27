@@ -73,9 +73,10 @@ void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resource
           "Resources.yaml does not declare the generated built-in ProcMaterial");
 
   auto catalog = loadFile<ProcMaterialData>(resources / "proc-materials-built-in.yaml");
-  require(catalog.techniqueSchemas.size() == 37, "generated catalog does not contain all 37 Technique schemas");
-  require(catalog.subMaterials.size() == 38,
-          "generated catalog must contain 37 built-ins and one distinct level migration");
+  require(catalog.techniqueSchemas.size() == 38,
+          "generated catalog does not contain all 38 Technique schemas");
+  require(catalog.subMaterials.size() == 41,
+          "generated catalog must contain 38 built-ins and three distinct level migrations");
 
   auto const* marbleSchema = catalog.findTechniqueSchema(0);
   require(marbleSchema && marbleSchema->parameters.size() == 8 &&
@@ -89,15 +90,22 @@ void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resource
     return nullptr;
   };
   auto const* builtIn = find("builtin.marble");
-  require(builtIn && builtIn->paramValues.size() == 8 && near(builtIn->paramValues[0], 1.35f),
+  require(builtIn && builtIn->paramValues.size() == 8 &&
+              near(builtIn->paramValues[0], 1.35f),
           "built-in Marble did not preserve its default warp_scale");
+  auto const* wood2Schema = catalog.findTechniqueSchema(37);
+  auto const* wood2 = find("builtin.wood2");
+  require(wood2Schema && wood2Schema->parameters.size() == 1 && wood2 &&
+              wood2->materialIndex == 37 && wood2->paramValues.size() == 1 &&
+              near(wood2->paramValues[0], 0.65f),
+          "built-in Wood2 does not match its Technique schema");
   auto const* migrated = find("migrated.marble.1");
   require(migrated && migrated->paramValues.size() == 8 && near(migrated->paramValues[0], 1.1f) &&
               near(migrated->paramValues[2], 18.0f) && near(migrated->baseColour[2], 0.2f),
           "the hand-tuned level material combination was not preserved");
 
   auto reloaded = roundTrip(catalog);
-  require(reloaded.techniqueSchemas.size() == 37 && reloaded.subMaterials.size() == 38,
+  require(reloaded.techniqueSchemas.size() == 38 && reloaded.subMaterials.size() == 41,
           "generated catalog changed during round-trip");
 }
 

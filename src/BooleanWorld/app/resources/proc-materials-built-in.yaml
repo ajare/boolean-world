@@ -399,6 +399,12 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.24
+  - materialIndex: 37
+    parameters:
+      - name: base_scale
+        min: 0.1
+        max: 3
+        default: 0.65
 subMaterials:
   - id: builtin.marble
     name: Marble
@@ -412,7 +418,11 @@ subMaterials:
       minimumReach: 1.0
       maximumReach: 3.0
       minimumSpacing: 3.1
-      probability: 1
+      probability: 0.2
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, PyramidalDivot, MultiFacetSpall, TrapezoidalSpall]
   - id: builtin.stone
     name: Stone
     materialIndex: 1
@@ -425,7 +435,11 @@ subMaterials:
       minimumReach: 1.0
       maximumReach: 3.0
       minimumSpacing: 3.1
-      probability: 0.0
+      probability: 0.3
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, PyramidalDivot, MultiFacetSpall, SteppedFracture, VShapedNotch, TrapezoidalSpall]
     emboss:
       pattern: Square
       radius: 12
@@ -446,7 +460,11 @@ subMaterials:
       minimumReach: 1.0
       maximumReach: 3.0
       minimumSpacing: 3.1
-      probability: 0.0
+      probability: 0.2
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
     emboss:
       pattern: RunningBond
       radius: 20
@@ -467,7 +485,11 @@ subMaterials:
       minimumReach: 1.0
       maximumReach: 3.0
       minimumSpacing: 3.1
-      probability: 0.0
+      probability: 0.4
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
     emboss:
       pattern: ModularOpus
       radius: 24
@@ -488,7 +510,11 @@ subMaterials:
       minimumReach: 1.0
       maximumReach: 3.0
       minimumSpacing: 3.1
-      probability: 0.0
+      probability: 0.35
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
     emboss:
       pattern: Square
       radius: 16
@@ -509,7 +535,11 @@ subMaterials:
       minimumReach: 1.0
       maximumReach: 3.0
       minimumSpacing: 3.1
-      probability: 0.0
+      probability: 0.3
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, PrismaticNotch, PyramidalDivot, MultiFacetSpall, VShapedNotch]
     emboss:
       pattern: Voronoi
       radius: 10
@@ -530,7 +560,11 @@ subMaterials:
       minimumReach: 1.0
       maximumReach: 3.0
       minimumSpacing: 3.1
-      probability: 0.0
+      probability: 0.15
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PyramidalDivot, MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.quartz.crystal
     name: Quartz / crystal
     materialIndex: 7
@@ -543,7 +577,11 @@ subMaterials:
       minimumReach: 1.0
       maximumReach: 3.0
       minimumSpacing: 3.1
-      probability: 0.0
+      probability: 0.1
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PyramidalDivot, MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.ore
     name: Ore
     materialIndex: 8
@@ -557,6 +595,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, PyramidalDivot, MultiFacetSpall, SteppedFracture]
   - id: builtin.rusted.iron
     name: Rusted iron
     materialIndex: 9
@@ -570,6 +612,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, MultiFacetSpall, SteppedFracture, VShapedNotch, TrapezoidalSpall]
   - id: builtin.galvanized.steel
     name: Galvanized steel
     materialIndex: 10
@@ -583,6 +629,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, SteppedFracture, VShapedNotch]
     emboss:
       pattern: Square
       radius: 20
@@ -604,6 +654,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, SteppedFracture, VShapedNotch]
   - id: builtin.hammered.metal
     name: Hammered metal
     materialIndex: 12
@@ -617,6 +671,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, PyramidalDivot, MultiFacetSpall, VShapedNotch]
   - id: builtin.patinated.copper
     name: Patinated copper
     materialIndex: 13
@@ -630,6 +688,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.damascene.steel
     name: Damascene steel
     materialIndex: 14
@@ -643,6 +705,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, PyramidalDivot, SteppedFracture, VShapedNotch]
   - id: builtin.heat.treated.metal
     name: Heat-treated metal
     materialIndex: 15
@@ -656,6 +722,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, PyramidalDivot, SteppedFracture, VShapedNotch]
   - id: builtin.wood
     name: Wood
     materialIndex: 16
@@ -669,6 +739,27 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, SteppedFracture, VShapedNotch, TrapezoidalSpall]
+  - id: builtin.wood2
+    name: Wood2
+    materialIndex: 37
+    params: [0.65]
+    baseColour: [0.25, 0.11, 0.04]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, SteppedFracture, VShapedNotch, TrapezoidalSpall]
   - id: builtin.bark
     name: Bark
     materialIndex: 17
@@ -682,6 +773,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.bone.ivory
     name: Bone / ivory
     materialIndex: 18
@@ -695,6 +790,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, PyramidalDivot, MultiFacetSpall, VShapedNotch]
   - id: builtin.leather
     name: Leather
     materialIndex: 19
@@ -708,6 +807,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.flesh
     name: Flesh
     materialIndex: 20
@@ -721,6 +824,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PyramidalDivot, MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.chitin.shell
     name: Chitin / shell
     materialIndex: 21
@@ -734,6 +841,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PyramidalDivot, MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.coral
     name: Coral
     materialIndex: 22
@@ -747,6 +858,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PyramidalDivot, MultiFacetSpall, TrapezoidalSpall]
   - id: builtin.arcane.crystal
     name: Arcane crystal
     materialIndex: 23
@@ -760,6 +875,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, PyramidalDivot, MultiFacetSpall, VShapedNotch]
   - id: builtin.energy.stone
     name: Energy stone
     materialIndex: 24
@@ -773,6 +892,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, PyramidalDivot, MultiFacetSpall, VShapedNotch]
   - id: builtin.alien.tissue
     name: Alien tissue
     materialIndex: 25
@@ -786,6 +909,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PyramidalDivot, MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.magical.metal
     name: Magical metal
     materialIndex: 26
@@ -799,6 +926,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, PyramidalDivot, SteppedFracture, VShapedNotch]
   - id: builtin.solid.cloud
     name: Solid cloud
     materialIndex: 27
@@ -812,6 +943,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, PyramidalDivot, VShapedNotch]
   - id: builtin.holographic
     name: Holographic
     materialIndex: 28
@@ -825,6 +960,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, PyramidalDivot, SteppedFracture, VShapedNotch]
   - id: builtin.corruption
     name: Corruption
     materialIndex: 29
@@ -838,6 +977,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PyramidalDivot, MultiFacetSpall, SteppedFracture, VShapedNotch]
   - id: builtin.frosted.glass
     name: Frosted glass
     materialIndex: 30
@@ -851,6 +994,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PyramidalDivot, MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.brick
     name: Brick
     materialIndex: 31
@@ -864,6 +1011,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, PrismaticNotch, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
     emboss:
       pattern: RunningBond
       radius: 8
@@ -885,6 +1036,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [PrismaticNotch, SteppedFracture, VShapedNotch]
   - id: builtin.banded.gneiss
     name: Banded gneiss
     materialIndex: 33
@@ -898,6 +1053,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.rock
     name: Rock
     materialIndex: 34
@@ -911,6 +1070,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, PyramidalDivot, MultiFacetSpall, SteppedFracture, VShapedNotch, TrapezoidalSpall]
   - id: builtin.mossy.rock
     name: Mossy rock
     materialIndex: 35
@@ -924,6 +1087,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, PyramidalDivot, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.wet.rock
     name: Wet rock
     materialIndex: 36
@@ -937,6 +1104,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, PyramidalDivot, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: migrated.marble.1
     name: Migrated Marble 1
     materialIndex: 0
@@ -949,7 +1120,11 @@ subMaterials:
       minimumReach: 1.0
       maximumReach: 3.0
       minimumSpacing: 3.1
-      probability: 0.0
+      probability: 0.5
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, PyramidalDivot, MultiFacetSpall, TrapezoidalSpall]
   - id: migrated_marble_1
     name: Migrated Marble 1
     materialIndex: 0
@@ -963,6 +1138,10 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, PyramidalDivot, MultiFacetSpall, TrapezoidalSpall]
   - id: migrated_marble_2
     name: Migrated Marble 2
     materialIndex: 0
@@ -976,3 +1155,7 @@ subMaterials:
       maximumReach: 3.0
       minimumSpacing: 3.1
       probability: 0.0
+      minimumCornerDistance: 1.0
+      maximumCornerDistance: 3.0
+      cornerProbability: 1.0
+      types: [Tapered, PyramidalDivot, MultiFacetSpall, TrapezoidalSpall]

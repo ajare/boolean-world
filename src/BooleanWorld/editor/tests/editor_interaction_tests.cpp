@@ -1147,6 +1147,70 @@ void meshPolygonCommitRebuildsPrefabFieldInstancesBeforeRegeneration() {
   generator->unregisterGenerationCallback(callback);
 }
 
+void prefabMeshVerticesSnapToFineGridsBeforeToolkitDragThreshold() {
+  for (float gridSize : {2.0f, 4.0f}) {
+    editor::Document document;
+    editor::Settings settings;
+    settings.ghostActive = false;
+    settings.mode = editor::Settings::Mode::Mesh;
+    settings.meshSubMode = editor::Settings::MeshSubMode::Vertex;
+    settings.meshVertexPickRadius = 0.25f;
+    settings.showGrid = true;
+    settings.gridSize = gridSize;
+    document.newDoc();
+
+    auto* layer = document.getWorld()->getActiveLayer();
+    auto* definitions = new bw::core::DefinePrefabs;
+    auto stepIndex = layer->addStep(definitions);
+    auto* prefab = definitions->addPrefab("Fine Grid Tile");
+    definitions->setSelectedPrefab(prefab);
+    layer->setActiveStep(stepIndex);
+    auto* source = bw::core::MeshPrimitive::fromTree(
+        bw::core::Primitive::Operation::Union,
+        {{{{{-4.0f, -4.0f}}, {{4.0f, -4.0f}}, {{4.0f, 4.0f}}, {{-4.0f, 4.0f}}},
+          {}}});
+    source->updateVertexPositions();
+    layer->addPrimitive(source);
+    layer->rebuild();
+    require(prefab->getNumPrimitives() == 1,
+            "the fine-grid Prefab did not retain its MeshPrimitive");
+    auto sourceIndex = prefab->getPrimitive(0)->getId();
+    require(document.activateMesh(sourceIndex),
+            "the fine-grid Prefab Mesh did not activate");
+
+    auto* mesh = document.getActiveMesh();
+    auto vertex = mesh->getFirstVertexIndex();
+    auto start = mesh->getVertex(vertex).getPosition();
+    document.setSelectedMeshSubObjectIndices(settings.meshSubMode, {vertex});
+
+    editor::EditorInteraction interaction;
+    auto press = pointerAt(start);
+    press.leftClicked = true;
+    interaction.updateSelection(&document, nullptr, settings, press);
+    interaction.updateDrag(&document, settings, press);
+
+    constexpr float zoom = 0.5f;
+    auto drag = pointerAt(start + wp::Vector2{gridSize, 0.0f});
+    drag.leftDown = true;
+    drag.leftDragging = false;  // The movement is at/below ImGui's 2px threshold.
+    drag.zoom = zoom;
+    drag.dragDelta = {gridSize * zoom, 0.0f};
+    interaction.updateSelection(&document, nullptr, settings, drag);
+    interaction.updateDrag(&document, settings, drag);
+
+    require(mesh->getVertex(vertex).getPosition() ==
+                start + wp::Vector2{gridSize, 0.0f},
+            "a Prefab Mesh vertex did not snap to a fine grid before the toolkit drag threshold");
+
+    auto release = drag;
+    release.leftDown = false;
+    release.leftReleased = true;
+    release.dragDelta = {};
+    interaction.updateSelection(&document, nullptr, settings, release);
+    interaction.updateDrag(&document, settings, release);
+  }
+}
+
 void meshDragSnapsToGridBeforeValidating() {
   editor::Document document;
   editor::Settings settings;
@@ -1691,8 +1755,7 @@ void sliceStartsAgainFromAVertexAnEarlierSliceUsed() {
   settings.meshVertexPickRadius = 0.25f;
 
   std::vector<wp::Vector2> const hexagon{
-      {10.0f, 0.0f}, {5.0f, 8.66f}, {-5.0f, 8.66f},
-      {-10.0f, 0.0f}, {-5.0f, -8.66f}, {5.0f, -8.66f}};
+      {10.0f, 0.0f}, {5.0f, 8.66f}, {-5.0f, 8.66f}, {-10.0f, 0.0f}, {-5.0f, -8.66f}, {5.0f, -8.66f}};
 
   // The chord 0-3 halves the hexagon into 0,1,2,3 and 3,4,5,0. Vertex 0 now
   // belongs to both, so a second chord from it must be able to reach 2 on one
@@ -3194,8 +3257,21 @@ void prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint() {
   click.leftClicked = true;
   interaction.updateSelection(&document, nullptr, settings, click);
   require(field->hasSelectedTile() && field->getSelectedTile() == tile(1, 0) &&
-              field->getInstance(tile(1, 0)),
-          "PrefabField click did not select and place on the Tile");
+              field->getInstance(tile(1, 0)) &&
+              field->getInstance(tile(1, 0))->mode == bw::core::TileMode::Replace,
+          "PrefabField click did not select and place a Replace instance on the Tile");
+
+  auto shiftClick = click;
+  shiftClick.shift = true;
+  interaction.updateSelection(&document, nullptr, settings, shiftClick);
+  require(field->getInstance(tile(1, 0)) &&
+              field->getInstance(tile(1, 0))->mode == bw::core::TileMode::Add,
+          "Shift-click did not place the Prefab instance in Add mode");
+
+  interaction.updateSelection(&document, nullptr, settings, click);
+  require(field->getInstance(tile(1, 0)) &&
+              field->getInstance(tile(1, 0))->mode == bw::core::TileMode::Replace,
+          "a plain click did not restore the Prefab instance to Replace mode");
 
   auto drag = pointerAt({140.0f, 0.0f});
   drag.leftDown = true;
@@ -3337,6 +3413,7 @@ int main() {
     meshDragClampsAtLastValidPositionWhenAHoleWouldEscapeItsOuter();
     addingAMeshHoleInvalidatesTheParentTriangulation();
     meshPolygonCommitRebuildsPrefabFieldInstancesBeforeRegeneration();
+    prefabMeshVerticesSnapToFineGridsBeforeToolkitDragThreshold();
     meshDragSnapsToGridBeforeValidating();
     draggingADifferencePrimitiveDoesNotClearItsSelectionOnRelease();
     meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive();
