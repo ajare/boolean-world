@@ -3,6 +3,7 @@
 #include <string>
 
 #include <core/Emboss.h>
+#include <core/SubMaterial.h>
 
 #include "imgui.h"
 
@@ -39,6 +40,12 @@ bool InputTextMultiline(
 // create/edit popups and the 3D preview's selected-surface editor, so neither
 // can silently drop what the other authored.
 void EmbossFields(bw::core::EmbossData& emboss);
+
+// Chip depth and reach: independent of Embossing, and like it bounded by
+// their own authoring limits rather than by a Technique schema - see
+// bw::core::ChipDepthLimits/ChipReachLimits. Shared for the same reason
+// EmbossFields is.
+void ChipFields(float& chipDepth, float& chipReach);
 
 }  // namespace widgets
 

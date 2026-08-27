@@ -84,6 +84,8 @@ struct PreviewMaterialEditorState {
   std::vector<float> params;
   std::array<float, 3> colour{};
   bw::core::EmbossData emboss;
+  float chipDepth{0.0f};
+  float chipReach{0.0f};
 };
 
 struct PreviewSession {
@@ -291,6 +293,8 @@ void loadMaterialDraft(std::string const& id) {
   state.params = material->paramValues;
   state.colour = material->baseColour;
   state.emboss = material->emboss;
+  state.chipDepth = material->chipDepth;
+  state.chipReach = material->chipReach;
 }
 
 // The relief this Sub-material embosses into every surface it is applied to.
@@ -307,6 +311,19 @@ void renderEmbossEditor(PreviewMaterialEditorState& state) {
   // surface under the pointer as it is dragged.
   ImGui::SetNextItemWidth(280.0f);
   widgets::EmbossFields(state.emboss);
+}
+
+// How far a Chip bites into and reaches along this Sub-material - see
+// CONTEXT.md's "Chip" entry. Nothing consumes these values yet; authored and
+// pushed into the live draft purely so they round-trip like everything else
+// here.
+void renderChipEditor(PreviewMaterialEditorState& state) {
+  if (!ImGui::CollapsingHeader("Chipping", ImGuiTreeNodeFlags_DefaultOpen)) {
+    return;
+  }
+
+  ImGui::SetNextItemWidth(280.0f);
+  widgets::ChipFields(state.chipDepth, state.chipReach);
 }
 
 void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
@@ -383,6 +400,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
   }
 
   renderEmbossEditor(state);
+  renderChipEditor(state);
 
   if (ImGui::CollapsingHeader("Save", ImGuiTreeNodeFlags_DefaultOpen)) {
     if (ImGui::Button("Save existing")) {
@@ -391,6 +409,8 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       auto params = state.params;
       auto colour = state.colour;
       auto emboss = state.emboss;
+      auto chipDepth = state.chipDepth;
+      auto chipReach = state.chipReach;
       if (transactUndoableActionAtomically(
               session.document, "Save Sub-material",
               [&](Document* actionDoc) {
@@ -398,7 +418,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
                     actionDoc, &procMaterialLibrary(), id, name);
                 return editSubMaterial(
                     actionDoc, &procMaterialLibrary(), id, params, colour,
-                    emboss);
+                    emboss, chipDepth, chipReach);
               })) {
         reconcileSavedProcMaterial(catalog.resourceName);
         loadMaterialDraft(id);
@@ -410,6 +430,8 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       auto params = state.params;
       auto colour = state.colour;
       auto emboss = state.emboss;
+      auto chipDepth = state.chipDepth;
+      auto chipReach = state.chipReach;
       auto materialIndex = state.materialIndex;
       auto resourceName = catalog.resourceName;
       std::string createdId;
@@ -418,7 +440,8 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
               [&](Document* actionDoc) {
                 if (!createSubMaterial(
                         actionDoc, &procMaterialLibrary(), resourceName, name,
-                        materialIndex, params, colour, emboss, &createdId)) {
+                        materialIndex, params, colour, emboss, chipDepth,
+                        chipReach, &createdId)) {
                   return false;
                 }
                 return setPrimitiveSubMaterial(

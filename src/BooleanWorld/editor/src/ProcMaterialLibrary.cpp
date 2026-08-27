@@ -57,6 +57,15 @@ void validateEmboss(bw::core::EmbossData const& emboss) {
   }
 }
 
+// Chip depth/reach have no Technique schema either, for the same reason as
+// Embossing above.
+void validateChip(float chipDepth, float chipReach) {
+  if (!bw::core::ChipIsInRange(chipDepth, chipReach)) {
+    throw invalid_argument(
+        "Sub-material chip depth/reach are outside their authoring limits");
+  }
+}
+
 string makeId(string const& name) {
   string id;
   bool separator{false};
@@ -196,11 +205,13 @@ bw::core::SubMaterial const* ProcMaterialLibrary::findSubMaterial(
 string ProcMaterialLibrary::createSubMaterial(
     string const& resourceName, string const& displayName,
     uint32_t materialIndex, vector<float> const& paramValues,
-    array<float, 3> const& baseColour, bw::core::EmbossData const& emboss) {
+    array<float, 3> const& baseColour, bw::core::EmbossData const& emboss,
+    float chipDepth, float chipReach) {
   if (displayName.empty()) throw invalid_argument("Sub-material name must not be empty");
   auto& catalog = findCatalog(resourceName);
   validateValues(catalog.data.findTechniqueSchema(materialIndex), paramValues, baseColour);
   validateEmboss(emboss);
+  validateChip(chipDepth, chipReach);
 
   auto stem = makeId(displayName);
   auto id = stem;
@@ -215,6 +226,8 @@ string ProcMaterialLibrary::createSubMaterial(
   created.paramValues = paramValues;
   created.baseColour = baseColour;
   created.emboss = emboss;
+  created.chipDepth = chipDepth;
+  created.chipReach = chipReach;
   catalog.data.subMaterials.push_back(move(created));
   try {
     save(catalog);
@@ -247,7 +260,8 @@ void ProcMaterialLibrary::renameSubMaterial(
 
 void ProcMaterialLibrary::editSubMaterial(
     string const& subMaterialId, vector<float> const& paramValues,
-    array<float, 3> const& baseColour, bw::core::EmbossData const& emboss) {
+    array<float, 3> const& baseColour, bw::core::EmbossData const& emboss,
+    float chipDepth, float chipReach) {
   auto* owner = findCatalogForSubMaterial(subMaterialId);
   if (!owner) throw invalid_argument("Unknown Sub-material id '" + subMaterialId + "'");
   auto& catalog = findCatalog(owner->resourceName);
@@ -255,18 +269,25 @@ void ProcMaterialLibrary::editSubMaterial(
                        [&](auto const& value) { return value.id == subMaterialId; });
   validateValues(catalog.data.findTechniqueSchema(found->materialIndex), paramValues, baseColour);
   validateEmboss(emboss);
+  validateChip(chipDepth, chipReach);
   auto previousValues = found->paramValues;
   auto previousColour = found->baseColour;
   auto previousEmboss = found->emboss;
+  auto previousChipDepth = found->chipDepth;
+  auto previousChipReach = found->chipReach;
   found->paramValues = paramValues;
   found->baseColour = baseColour;
   found->emboss = emboss;
+  found->chipDepth = chipDepth;
+  found->chipReach = chipReach;
   try {
     save(catalog);
   } catch (...) {
     found->paramValues = move(previousValues);
     found->baseColour = previousColour;
     found->emboss = previousEmboss;
+    found->chipDepth = previousChipDepth;
+    found->chipReach = previousChipReach;
     throw;
   }
   ++mRevision;

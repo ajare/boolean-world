@@ -2684,6 +2684,8 @@ struct SubMaterialAuthoringState {
   vector<float> params;
   array<float, 3> colour{};
   bw::core::EmbossData emboss;
+  float chipDepth{0.0f};
+  float chipReach{0.0f};
   string editingId;
   string deletionReport;
 };
@@ -2698,8 +2700,10 @@ void setTechniqueDefaults(
   }
   state.colour = {0.5f, 0.5f, 0.5f};
   // A Technique says nothing about relief: a new Sub-material embosses
-  // nothing until it is asked to.
+  // nothing until it is asked to. Same for chipping.
   state.emboss = {};
+  state.chipDepth = 0.0f;
+  state.chipReach = 0.0f;
 }
 
 void renderSubMaterialFields(
@@ -2741,6 +2745,8 @@ void renderSubMaterialFields(
   ImGui::ColorEdit3("Base colour", state.colour.data());
   ImGui::SeparatorText("Embossing");
   widgets::EmbossFields(state.emboss);
+  ImGui::SeparatorText("Chipping");
+  widgets::ChipFields(state.chipDepth, state.chipReach);
 }
 
 bool renderSubMaterialPicker(
@@ -2815,6 +2821,8 @@ bool renderSubMaterialPicker(
     state.params = selected.paramValues;
     state.colour = selected.baseColour;
     state.emboss = selected.emboss;
+    state.chipDepth = selected.chipDepth;
+    state.chipReach = selected.chipReach;
     state.editingId = selected.id;
     ImGui::OpenPopup(editPopup.c_str());
   }
@@ -2843,6 +2851,8 @@ bool renderSubMaterialPicker(
       auto params = state.params;
       auto colour = state.colour;
       auto emboss = state.emboss;
+      auto chipDepth = state.chipDepth;
+      auto chipReach = state.chipReach;
       auto resourceName = catalog.resourceName;
       auto materialIndex = state.materialIndex;
       string createdId;
@@ -2850,7 +2860,7 @@ bool renderSubMaterialPicker(
           doc, "Create Sub-material", [&](Document* actionDoc) {
             if (!createSubMaterial(actionDoc, &procMaterialLibrary(), resourceName,
                                    name, materialIndex, params, colour, emboss,
-                                   &createdId)) {
+                                   chipDepth, chipReach, &createdId)) {
               return false;
             }
             return setPrimitiveSubMaterial(actionDoc, primitive, surface, createdId);
@@ -2872,11 +2882,14 @@ bool renderSubMaterialPicker(
       auto params = state.params;
       auto colour = state.colour;
       auto emboss = state.emboss;
+      auto chipDepth = state.chipDepth;
+      auto chipReach = state.chipReach;
       transactUndoableActionAtomically(
           doc, "Edit Sub-material", [&](Document* actionDoc) {
             renameSubMaterial(actionDoc, &procMaterialLibrary(), id, name);
             return editSubMaterial(
-                actionDoc, &procMaterialLibrary(), id, params, colour, emboss);
+                actionDoc, &procMaterialLibrary(), id, params, colour, emboss,
+                chipDepth, chipReach);
           });
       ImGui::CloseCurrentPopup();
     }

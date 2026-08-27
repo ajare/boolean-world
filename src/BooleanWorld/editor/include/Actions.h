@@ -312,7 +312,8 @@ bool createSubMaterial(
     std::string const& resourceName, std::string const& displayName,
     uint32_t materialIndex, std::vector<float> const& paramValues,
     std::array<float, 3> const& baseColour,
-    bw::core::EmbossData const& emboss, std::string* createdId = nullptr);
+    bw::core::EmbossData const& emboss, float chipDepth, float chipReach,
+    std::string* createdId = nullptr);
 bool renameSubMaterial(
     Document* doc, ProcMaterialLibrary* library,
     std::string const& subMaterialId, std::string const& displayName);
@@ -320,7 +321,7 @@ bool editSubMaterial(
     Document* doc, ProcMaterialLibrary* library,
     std::string const& subMaterialId, std::vector<float> const& paramValues,
     std::array<float, 3> const& baseColour,
-    bw::core::EmbossData const& emboss);
+    bw::core::EmbossData const& emboss, float chipDepth, float chipReach);
 // Empty means deletion is allowed. Otherwise lists every Primitive index and
 // referenced surface in the currently-open Document.
 std::string subMaterialDeletionBlockedReason(

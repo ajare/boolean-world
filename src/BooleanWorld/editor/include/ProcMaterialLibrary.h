@@ -44,19 +44,22 @@ public:
 
   // Creates a globally unique stable id from displayName and returns it.
   // Parameters and colour are validated against the selected Technique schema;
-  // the emboss relief is validated against its own authoring limits, which no
-  // schema bounds (see EmbossIsInRange).
+  // the emboss relief and the chip depth/reach are validated against their own
+  // authoring limits, which no schema bounds (see EmbossIsInRange,
+  // bw::core::ChipIsInRange).
   std::string createSubMaterial(
       std::string const& resourceName, std::string const& displayName,
       uint32_t materialIndex, std::vector<float> const& paramValues,
       std::array<float, 3> const& baseColour,
-      bw::core::EmbossData const& emboss = {});
+      bw::core::EmbossData const& emboss = {}, float chipDepth = 0.0f,
+      float chipReach = 0.0f);
   void renameSubMaterial(std::string const& subMaterialId,
                          std::string const& displayName);
   void editSubMaterial(std::string const& subMaterialId,
                        std::vector<float> const& paramValues,
                        std::array<float, 3> const& baseColour,
-                       bw::core::EmbossData const& emboss = {});
+                       bw::core::EmbossData const& emboss = {},
+                       float chipDepth = 0.0f, float chipReach = 0.0f);
   void deleteSubMaterial(std::string const& subMaterialId);
 
   [[nodiscard]] ProcMaterialLibrarySnapshot captureSnapshot() const;

@@ -183,5 +183,12 @@ void EmbossFields(bw::core::EmbossData& emboss) {
   }
 }
 
+void ChipFields(float& chipDepth, float& chipReach) {
+  auto limits = bw::core::ChipDepthLimits();
+  ImGui::SliderFloat("Chip depth", &chipDepth, limits.minimum, limits.maximum, "%.2f");
+  limits = bw::core::ChipReachLimits();
+  ImGui::SliderFloat("Chip reach", &chipReach, limits.minimum, limits.maximum, "%.2f");
+}
+
 }  // namespace widgets
 }  // namespace editor

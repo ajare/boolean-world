@@ -33,6 +33,16 @@ struct SubMaterial : public Serializable {
   // EmbossIsInRange.
   EmbossData emboss;
 
+  // How far a Chip bites into this Sub-material, and how far it reaches along
+  // the Arris it chips - see CONTEXT.md's "Chip" entry and ADR-0027. Neither
+  // is bounded by the Technique schema, exactly like emboss above: the same
+  // treatment, for the same reason. Zero means this Sub-material does not
+  // chip at all, which is the default - nothing consumes these values yet,
+  // so a fresh Sub-material must not appear to promise chipping it cannot
+  // yet show.
+  float chipDepth{0.0f};
+  float chipReach{0.0f};
+
 private:
   bool childrenModified() const override;
 
@@ -41,6 +51,16 @@ protected:
 
   bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 };
+
+// Authoring bounds for chipDepth/chipReach, shared by the editor's sliders and
+// deserialization's validation exactly as EmbossParameterLimits is - see
+// EmbossParameterLimits.
+[[nodiscard]] EmbossParameterLimits ChipDepthLimits();
+[[nodiscard]] EmbossParameterLimits ChipReachLimits();
+
+// Both fields within their own limits. Deserialization reports a violation
+// rather than clamping, matching EmbossIsInRange.
+[[nodiscard]] bool ChipIsInRange(float chipDepth, float chipReach);
 
 }  // namespace core
 }  // namespace bw

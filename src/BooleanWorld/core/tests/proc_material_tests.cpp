@@ -426,6 +426,89 @@ void unknownEmbossPatternReadsAsNone() {
           "an unknown emboss pattern did not read back as None");
 }
 
+// Chip depth/reach are authored per Sub-material and bounded by their own
+// limits rather than a Technique schema, exactly like Embossing above - see
+// bw::core::ChipIsInRange.
+void chipDepthAndReachRoundTripAndDefaultToZero() {
+  auto original = buildMarbleCatalog();
+  original.subMaterials[0].chipDepth = 2.5f;
+  original.subMaterials[0].chipReach = 40.0f;
+
+  bw::core::SerializationWorkData writeWorkData;
+  auto writer = std::shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toString());
+  original.serialize(writer, writeWorkData);
+  writer->serialize();
+  auto yaml = static_cast<bw::core::YamlSerializer*>(writer.get())->getSerializedString();
+
+  ProcMaterialData roundTripped;
+  bw::core::SerializationWorkData readWorkData;
+  auto reader = yamlFrom(yaml);
+  require(roundTripped.deserialize(reader, readWorkData),
+          "catalog with chip depth/reach failed to deserialize");
+  require(near(roundTripped.subMaterials[0].chipDepth, 2.5f) &&
+              near(roundTripped.subMaterials[0].chipReach, 40.0f),
+          "SubMaterial chip depth/reach did not round-trip");
+
+  // A catalog written before chipping existed has neither field, and must
+  // still load - as a Sub-material that does not chip at all.
+  std::string const withoutChip =
+      "program3d: \"world_pbr.frag\"\n"
+      "program2d: \"world_pbr_2d.frag\"\n"
+      "techniqueSchemas:\n"
+      "  - materialIndex: 0\n"
+      "    parameters:\n"
+      "      - name: warp_scale\n"
+      "        min: 0\n"
+      "        max: 5\n"
+      "        default: 1.35\n"
+      "subMaterials:\n"
+      "  - id: weathered_slate\n"
+      "    name: Weathered Slate\n"
+      "    materialIndex: 0\n"
+      "    params: [1.35]\n"
+      "    baseColour: [0, 0, 0]\n";
+
+  ProcMaterialData legacy;
+  bw::core::SerializationWorkData legacyWorkData;
+  auto legacyReader = yamlFrom(withoutChip);
+  require(legacy.deserialize(legacyReader, legacyWorkData),
+          "a catalog without chip fields was rejected");
+  require(near(legacy.subMaterials[0].chipDepth, 0.0f) &&
+              near(legacy.subMaterials[0].chipReach, 0.0f),
+          "missing chip fields did not fall back to not chipping at all");
+}
+
+void outOfRangeChipIsRejected() {
+  std::string const yaml =
+      "program3d: \"world_pbr.frag\"\n"
+      "program2d: \"world_pbr_2d.frag\"\n"
+      "techniqueSchemas:\n"
+      "  - materialIndex: 0\n"
+      "    parameters:\n"
+      "      - name: warp_scale\n"
+      "        min: 0\n"
+      "        max: 5\n"
+      "        default: 1.35\n"
+      "subMaterials:\n"
+      "  - id: weathered_slate\n"
+      "    name: Weathered Slate\n"
+      "    materialIndex: 0\n"
+      "    params: [1.35]\n"
+      "    baseColour: [0, 0, 0]\n"
+      "    chipDepth: 4096\n"
+      "    chipReach: 0\n";
+
+  ProcMaterialData data;
+  bw::core::SerializationWorkData workData;
+  auto serializer = yamlFrom(yaml);
+  require(!data.deserialize(serializer, workData),
+          "an out-of-range chip depth was accepted");
+  require(containsError(
+              data,
+              "SubMaterial chip depth/reach must fall within their authoring limits."),
+          "an out-of-range chip depth did not report the expected error");
+}
+
 }  // namespace
 
 int main() {
@@ -442,6 +525,8 @@ int main() {
     embossRoundTripsAndDefaultsToNothing();
     outOfRangeEmbossIsRejected();
     unknownEmbossPatternReadsAsNone();
+    chipDepthAndReachRoundTripAndDefaultToZero();
+    outOfRangeChipIsRejected();
     std::cout << "ProcMaterial coverage passed\n";
     return 0;
   } catch (std::exception const& error) {
