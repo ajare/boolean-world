@@ -379,7 +379,7 @@ struct MeshPrimitiveEditingProxy::Impl {
 
   uint32_t rawEdgeFlags(uint32_t edgeIndex) const {
     auto found = edgeFlags.find(edgeIndex);
-    return found != edgeFlags.end() ? found->second : uint32_t{BW_MESH_EDGE_COLLIDES_FLAG};
+    return found != edgeFlags.end() ? found->second : uint32_t{0};
   }
 
   bool isEdgeExternal(uint32_t edgeIndex) const {
@@ -387,9 +387,11 @@ struct MeshPrimitiveEditingProxy::Impl {
     return mesh.getEdge(edgeIndex).getConnectivity() == wp::geometry::Edge::External;
   }
 
-  bool effectiveEdgeCollides(uint32_t edgeIndex) const {
-    if (!isEdgeExternal(edgeIndex)) return false;
-    return (rawEdgeFlags(edgeIndex) & BW_MESH_EDGE_COLLIDES_FLAG) != 0;
+  optional<bool> edgeCollisionOverride(uint32_t edgeIndex) const {
+    if (!isEdgeExternal(edgeIndex)) return nullopt;
+    auto flags = rawEdgeFlags(edgeIndex);
+    if ((flags & BW_MESH_EDGE_COLLISION_OVERRIDE_FLAG) == 0) return nullopt;
+    return (flags & BW_MESH_EDGE_COLLIDES_FLAG) != 0;
   }
 
   bool effectiveEdgeVisible(uint32_t edgeIndex) const {
@@ -757,24 +759,32 @@ bool MeshPrimitiveEditingProxy::splitEdge(
   return splitEdge(edgeIndex, 0.5f, result);
 }
 
-bool MeshPrimitiveEditingProxy::getEdgeCollides(uint32_t edgeIndex) const {
-  return mImpl->effectiveEdgeCollides(edgeIndex);
+optional<bool> MeshPrimitiveEditingProxy::getEdgeCollisionOverride(
+    uint32_t edgeIndex) const {
+  return mImpl->edgeCollisionOverride(edgeIndex);
+}
+
+bool MeshPrimitiveEditingProxy::setEdgeCollisionOverride(
+    uint32_t edgeIndex, optional<bool> collides) {
+  if (!isEdgeCollisionEditable(edgeIndex)) return false;
+  auto flags = mImpl->rawEdgeFlags(edgeIndex);
+  if (!collides.has_value()) {
+    flags &= ~static_cast<uint32_t>(
+        BW_MESH_EDGE_COLLISION_OVERRIDE_FLAG | BW_MESH_EDGE_COLLIDES_FLAG);
+  } else {
+    flags |= BW_MESH_EDGE_COLLISION_OVERRIDE_FLAG;
+    if (*collides) {
+      flags |= BW_MESH_EDGE_COLLIDES_FLAG;
+    } else {
+      flags &= ~static_cast<uint32_t>(BW_MESH_EDGE_COLLIDES_FLAG);
+    }
+  }
+  mImpl->edgeFlags[edgeIndex] = flags;
+  return true;
 }
 
 bool MeshPrimitiveEditingProxy::isEdgeCollisionEditable(uint32_t edgeIndex) const {
   return mImpl->isEdgeExternal(edgeIndex);
-}
-
-bool MeshPrimitiveEditingProxy::setEdgeCollides(uint32_t edgeIndex, bool collides) {
-  if (!isEdgeCollisionEditable(edgeIndex)) return false;
-  auto flags = mImpl->rawEdgeFlags(edgeIndex);
-  if (collides) {
-    flags |= BW_MESH_EDGE_COLLIDES_FLAG;
-  } else {
-    flags &= ~static_cast<uint32_t>(BW_MESH_EDGE_COLLIDES_FLAG);
-  }
-  mImpl->edgeFlags[edgeIndex] = flags;
-  return true;
 }
 
 bool MeshPrimitiveEditingProxy::getEdgeVisible(uint32_t edgeIndex) const {
@@ -889,11 +899,12 @@ bool MeshPrimitiveEditingProxy::sliceFilledRing(
     for (auto index = from;; index = (index + 1) % ordered.size()) {
       Vertex vertex(mImpl->mesh.getVertex(ordered[index]).getPosition());
       if (index == to) {
-        // Closing this path creates the Slice chord. Although it is currently
-        // Internal (and therefore effectively non-colliding), store that
-        // intent too so it remains non-colliding if a later edit exposes it.
-        vertex.edgeFlags &=
-            ~static_cast<uint32_t>(BW_MESH_EDGE_COLLIDES_FLAG);
+        // Closing this path creates an Internal Slice chord. Leave collision
+        // unset; if a later edit exposes it, generation determines collision
+        // until the user authors an override.
+        vertex.edgeFlags &= ~static_cast<uint32_t>(
+            BW_MESH_EDGE_COLLISION_OVERRIDE_FLAG |
+            BW_MESH_EDGE_COLLIDES_FLAG);
       } else {
         auto next = (index + 1) % ordered.size();
         auto edgeIndex =
@@ -1350,6 +1361,7 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
 
   serializer->beginMap("meshPrimitive");
   serializer->writeUint32("treeFormat", TreeFormatMagic);
+  serializer->writeUint32("collisionOverrideFormat", 1);
   serializer->beginArray("shells");
   vector<Event> events;
   for (auto shell = mShells.rbegin(); shell != mShells.rend(); ++shell) {
@@ -1422,6 +1434,11 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
       throw CoreException(
           "Legacy or unsupported MeshPrimitive input has no recognized containment tree.");
     }
+    auto collisionOverrideFormat =
+        serializer->readUint32("collisionOverrideFormat", true, 0);
+    if (collisionOverrideFormat > 1) {
+      throw CoreException("Unsupported MeshPrimitive collision override format.");
+    }
 
     auto readRing = [&]() {
       if (++ringCount > MaxTreeRings) {
@@ -1438,11 +1455,20 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
         }
         serializer->beginMap("vertex");
         ring.emplace_back(serializer->readVector2("p"));
-        // Absent in files saved before this feature; the Vertex default
-        // (colliding, and - since BW_MESH_EDGE_INVISIBLE_FLAG is clear -
-        // visible) preserves prior read semantics with no explicit
-        // migration, for files predating either bit.
-        ring.back().edgeFlags = serializer->readUint32("flags", true, BW_MESH_EDGE_COLLIDES_FLAG);
+        auto flags = serializer->readUint32(
+            "flags", true, BW_MESH_EDGE_COLLIDES_FLAG);
+        if (collisionOverrideFormat == 0) {
+          // Legacy true was also the untouched default, so it becomes unset.
+          // Legacy false was necessarily authored and remains explicit.
+          if ((flags & BW_MESH_EDGE_COLLIDES_FLAG) != 0) {
+            flags &= ~static_cast<uint32_t>(
+                BW_MESH_EDGE_COLLISION_OVERRIDE_FLAG |
+                BW_MESH_EDGE_COLLIDES_FLAG);
+          } else {
+            flags |= BW_MESH_EDGE_COLLISION_OVERRIDE_FLAG;
+          }
+        }
+        ring.back().edgeFlags = flags;
         serializer->endMap();
       }
       serializer->endArray();
@@ -1515,6 +1541,10 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
 }
 
 float MeshPrimitive::getRadius() const { return 1.0f; }
+
+wp::BoundingBox MeshPrimitive::calculateBounds() const {
+  return calculateExactBounds();
+}
 
 }  // namespace core
 }  // namespace bw

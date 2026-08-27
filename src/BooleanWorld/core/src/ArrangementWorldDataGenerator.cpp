@@ -30,7 +30,7 @@ PrimitiveContours ConvertPrimitiveToContours(
   PrimitiveContours result;
   // Per-contour raw edgeFlags, parallel to result.contours, collected only
   // when the primitive is a MeshPrimitive (the sole source of a real
-  // per-edge override - see ADR-0022).
+  // per-edge override - see ADR-0028).
   std::vector<std::vector<uint32_t>> rawEdgeFlagsPerContour;
   auto const* meshPrimitive = dynamic_cast<MeshPrimitive const*>(&primitive);
 
@@ -93,8 +93,10 @@ PrimitiveContours ConvertPrimitiveToContours(
       auto useCount = edgeUseCounts[MakeEdgeKey(contour[i], contour[j])];
       if (useCount == 1) {
         auto rawFlags = rawEdgeFlagsPerContour[c][i];
-        result.edgeOverrides[c][i] = std::optional<bool>(
-            (rawFlags & BW_MESH_EDGE_COLLIDES_FLAG) != 0);
+        if ((rawFlags & BW_MESH_EDGE_COLLISION_OVERRIDE_FLAG) != 0) {
+          result.edgeOverrides[c][i] = std::optional<bool>(
+              (rawFlags & BW_MESH_EDGE_COLLIDES_FLAG) != 0);
+        }
         result.edgeVisibleOverrides[c][i] = std::optional<bool>(
             (rawFlags & BW_MESH_EDGE_INVISIBLE_FLAG) == 0);
       }
@@ -133,7 +135,9 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
                       properties,
                       std::move(contours.edgeOverrides),
                       std::move(contours.edgeVisibleOverrides),
-                      chipParameters});
+                      chipParameters,
+                      primitive->getPropertyContribution() ==
+                          Primitive::PropertyContribution::Contributing});
   }
   return result;
 }

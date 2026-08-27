@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include <willpower/geometry/Mesh.h>
@@ -100,6 +101,10 @@ public:
   std::string getType() const override;
   std::string getName() const override;
   float getRadius() const override;
+
+  // Rings are authored at arbitrary local coordinates, so the procedural
+  // Primitive radius estimate cannot safely bound them for picking.
+  wp::BoundingBox calculateBounds() const override;
 };
 
 class BW_API MeshPrimitiveEditingProxy {
@@ -162,21 +167,19 @@ public:
       wp::geometry::SplitEdgeResult* result = nullptr);
   bool splitEdge(uint32_t edgeIndex, wp::geometry::SplitEdgeResult* result = nullptr);
 
-  // Effective collision override for a Mesh edge. Always gated by
-  // connectivity: only an External edge can read or be set true. Internal,
-  // Orphaned and Invalid edges read false regardless of stored state.
-  [[nodiscard]] bool getEdgeCollides(uint32_t edgeIndex) const;
+  // Authored tri-state collision override. External edges default to unset;
+  // non-External edges always read unset and cannot be edited.
+  [[nodiscard]] std::optional<bool> getEdgeCollisionOverride(
+      uint32_t edgeIndex) const;
+  bool setEdgeCollisionOverride(
+      uint32_t edgeIndex, std::optional<bool> collides);
 
-  // Whether this edge's collision flag is meaningfully settable, i.e. its
+  // Whether this edge's collision override is meaningfully settable, i.e. its
   // connectivity is External.
   [[nodiscard]] bool isEdgeCollisionEditable(uint32_t edgeIndex) const;
 
-  // Mutates the stored collides bit for this edge. No-op (returns false) when
-  // the edge's connectivity is not External.
-  bool setEdgeCollides(uint32_t edgeIndex, bool collides);
-
   // Effective wall-render override for a Mesh edge. Same External-only
-  // gating as getEdgeCollides/isEdgeCollisionEditable/setEdgeCollides above.
+  // gating as the collision override API above.
   [[nodiscard]] bool getEdgeVisible(uint32_t edgeIndex) const;
   [[nodiscard]] bool isEdgeVisibilityEditable(uint32_t edgeIndex) const;
   bool setEdgeVisible(uint32_t edgeIndex, bool visible);

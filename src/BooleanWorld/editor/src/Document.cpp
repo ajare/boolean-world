@@ -588,19 +588,22 @@ wp::geometry::Mesh const* Document::getActiveMesh() const {
   return mActiveMesh ? &mActiveMesh->getMesh() : nullptr;
 }
 
-bool Document::getActiveMeshEdgeCollides(uint32_t edgeIndex) const {
-  return mActiveMesh && mActiveMesh->getEdgeCollides(edgeIndex);
+optional<bool> Document::getActiveMeshEdgeCollisionOverride(
+    uint32_t edgeIndex) const {
+  return mActiveMesh ? mActiveMesh->getEdgeCollisionOverride(edgeIndex)
+                     : nullopt;
 }
 
 bool Document::isActiveMeshEdgeCollisionEditable(uint32_t edgeIndex) const {
   return mActiveMesh && mActiveMesh->isEdgeCollisionEditable(edgeIndex);
 }
 
-bool Document::setActiveMeshEdgeCollides(uint32_t edgeIndex, bool collides) {
+bool Document::setActiveMeshEdgeCollisionOverride(
+    uint32_t edgeIndex, optional<bool> collides) {
   if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) {
     return false;
   }
-  if (!mActiveMesh->setEdgeCollides(edgeIndex, collides)) {
+  if (!mActiveMesh->setEdgeCollisionOverride(edgeIndex, collides)) {
     return false;
   }
   commitMeshPolygons(mActiveMeshPrimitiveIndex);

@@ -19,18 +19,19 @@ void beginTransform(Document* doc, string const& name) {
 }  // namespace
 
 void EditorInteraction::applyPrimitiveClick(
-    Document* doc, bool control, bool shift) {
-  if (mHover.type != HoverableType::Primitive || mHover.indices.empty()) {
+    Document* doc, vector<uint32_t> const& hoveredIndices,
+    bool control, bool shift) {
+  if (hoveredIndices.empty()) {
     return;
   }
 
-  if (mCycledPrimitiveIndices != mHover.indices) {
-    mCycledPrimitiveIndices = mHover.indices;
+  if (mCycledPrimitiveIndices != hoveredIndices) {
+    mCycledPrimitiveIndices = hoveredIndices;
     mCycledPrimitiveIndex = -1;
   }
   mCycledPrimitiveIndex =
-      (mCycledPrimitiveIndex + 1) % static_cast<int>(mHover.indices.size());
-  auto hoveredIndex = mHover.indices[mCycledPrimitiveIndex];
+      (mCycledPrimitiveIndex + 1) % static_cast<int>(hoveredIndices.size());
+  auto hoveredIndex = hoveredIndices[mCycledPrimitiveIndex];
   auto const& selection = doc->getSelectedPrimitiveIndices();
 
   if (control) {
@@ -91,6 +92,9 @@ void EditorInteraction::updateSelection(
     Settings& settings,
     PointerInput const& input) {
   auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
+  if (input.leftClicked) {
+    mPendingPrimitiveClick.clear();
+  }
   auto* prefabField = layer ? dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep()) : nullptr;
   if (prefabField) {
     mHover = {};
@@ -323,6 +327,7 @@ void EditorInteraction::updateSelection(
   if (mMovingSelectedPrimitives || mScalingSelectedPrimitives ||
       mRotatingSelectedPrimitives) {
     if (input.leftReleased) {
+      mPendingPrimitiveClick.clear();
       mBoxSelectPending = false;
       mBoxSelectDragging = false;
     }
@@ -341,7 +346,10 @@ void EditorInteraction::updateSelection(
         // hit, or a wholly new stack, acts on press as before.
         if (mHover.indices.size() == 1 ||
             !doc->anyPrimitiveIndicesSelected(mHover.indices)) {
-          applyPrimitiveClick(doc, input.control, input.shift);
+          applyPrimitiveClick(
+              doc, mHover.indices, input.control, input.shift);
+        } else {
+          mPendingPrimitiveClick = mHover.indices;
         }
         break;
 
@@ -412,8 +420,10 @@ void EditorInteraction::updateSelection(
     } else if (!input.control && !input.shift) {
       transactUndoableAction(doc, "Clear selection", clearSelections);
     }
-  } else {
-    applyPrimitiveClick(doc, input.control, input.shift);
+  } else if (!mPendingPrimitiveClick.empty()) {
+    auto pending = move(mPendingPrimitiveClick);
+    mPendingPrimitiveClick.clear();
+    applyPrimitiveClick(doc, pending, input.control, input.shift);
   }
 }
 

@@ -48,13 +48,11 @@ struct Edge {
   // Left and right faces relative to vi[0] -> vi[1].
   int fi[2] = {-1, -1};
   std::vector<WindingDelta> windingDeltas;
-  // Wall collision/visibility overrides (#245, later extended to
-  // visibility). Non-Mesh segments never carry a value. Coincident Mesh
-  // contributors from different Primitives make the clipped collision edge
-  // non-colliding regardless of their authored values; visibility retains
-  // the first Mesh-sourced value.
+  // Wall collision/visibility overrides. Non-Mesh segments never carry a
+  // value. For coincident Mesh contributors, an authored collision false
+  // dominates true while unset contributes nothing; visibility retains the
+  // first Mesh-sourced value.
   std::optional<bool> collidesOverride;
-  std::optional<uint32_t> collidesOverridePrimitiveIndex;
   std::optional<bool> visibleOverride;
 
   bool doubleSided() const {
@@ -178,6 +176,9 @@ struct ArrangementPrimitive {
   std::vector<std::vector<std::optional<bool>>> contourEdgeOverrides{};
   std::vector<std::vector<std::optional<bool>>> contourEdgeVisibleOverrides{};
   ChipGenerationParameters chipParameters{};
+  // False for structural fold Primitives, such as PrefabField Replace
+  // squares, which affect solidity but never own generated surface properties.
+  bool contributesProperties{true};
 };
 
 struct ArrangementEdge {
@@ -204,6 +205,10 @@ struct ArrangementFace {
   bool solid{false};
   uint16_t paletteIndex{0};
   uint32_t primitiveIndex{~0u};
+  // Operation of the Primitive selected into paletteIndex. Empty faces retain
+  // this so a Difference can own the Border walls created by its cut.
+  Primitive::Operation operation{Primitive::Operation::Union};
+  bool contributesProperties{false};
 };
 
 struct ArrangementResult {

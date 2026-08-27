@@ -22,8 +22,8 @@ struct PrimitiveContours {
   // contours: edgeOverrides[c][i]/edgeVisibleOverrides[c][i] is the override
   // for the edge from contours[c][i] to contours[c][(i+1)%contours[c].size()].
   // Populated only for MeshPrimitives, sourced from External edges' authored
-  // collides/visible flags (see #244/#246, ADR-0022); every other Primitive
-  // kind, and every non-External edge of a MeshPrimitive, leaves
+  // collision tri-state and visibility flag (ADR-0028); every other Primitive
+  // kind, every non-External Mesh edge, and an unset collision override leave
   // std::nullopt in place.
   std::vector<std::vector<std::optional<bool>>> edgeOverrides;
   std::vector<std::vector<std::optional<bool>>> edgeVisibleOverrides;

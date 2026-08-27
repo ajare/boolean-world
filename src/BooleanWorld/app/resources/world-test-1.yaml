@@ -557,14 +557,15 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
+                    collisionOverrideFormat: 1
                     shells:
                       - vertices:
                           - p: [0.125, -0.75]
-                            flags: 1
+                            flags: 0
                           - p: [0.125, -1]
-                            flags: 1
+                            flags: 0
                           - p: [0.25, -1]
-                            flags: 1
+                            flags: 0
                         holes:
                           []
                 - type: Mesh
@@ -829,10 +830,11 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
+                    collisionOverrideFormat: 1
                     shells:
                       - vertices:
                           - p: [0.25, -1]
-                            flags: 1
+                            flags: 0
                           - p: [0.375, -1]
                             flags: 0
                           - p: [0.125, -0.75]
@@ -1101,14 +1103,15 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
+                    collisionOverrideFormat: 1
                     shells:
                       - vertices:
                           - p: [0.125, -0.75]
-                            flags: 1
+                            flags: 0
                           - p: [0.375, -1]
-                            flags: 1
+                            flags: 0
                           - p: [0.375, -0.875]
-                            flags: 1
+                            flags: 0
                         holes:
                           []
                 - type: Mesh
@@ -1373,10 +1376,11 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
+                    collisionOverrideFormat: 1
                     shells:
                       - vertices:
                           - p: [0.375, -0.875]
-                            flags: 1
+                            flags: 0
                           - p: [0.375, -0.75]
                             flags: 0
                           - p: [0.125, -0.75]
@@ -1645,70 +1649,71 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
+                    collisionOverrideFormat: 1
                     shells:
                       - vertices:
                           - p: [0.375, -0.75]
-                            flags: 1
+                            flags: 0
                           - p: [0.375, -0.5]
-                            flags: 1
+                            flags: 0
                           - p: [0.125, -0.5]
-                            flags: 1
+                            flags: 0
                           - p: [0.125, -0.25]
-                            flags: 1
+                            flags: 0
                           - p: [0.875, -0.25]
-                            flags: 1
+                            flags: 0
                           - p: [0.875, 0.75]
-                            flags: 1
+                            flags: 0
                           - p: [0.375, 0.75]
-                            flags: 1
+                            flags: 0
                           - p: [0.375, 1]
-                            flags: 1
+                            flags: 0
                           - p: [0.125, 1]
-                            flags: 1
+                            flags: 0
                           - p: [0.125, 0.75]
-                            flags: 1
+                            flags: 0
                           - p: [0.125, 0.5]
-                            flags: 1
+                            flags: 0
                           - p: [0.625, 0.5]
-                            flags: 1
+                            flags: 0
                           - p: [0.625, 0]
-                            flags: 1
+                            flags: 0
                           - p: [0.375, 0]
-                            flags: 1
+                            flags: 0
                           - p: [0.375, 0.25]
-                            flags: 1
+                            flags: 0
                           - p: [-0.125, 0.25]
-                            flags: 1
+                            flags: 0
                           - p: [-0.125, 0.5]
-                            flags: 1
+                            flags: 0
                           - p: [-0.375, 0.5]
-                            flags: 1
+                            flags: 0
                           - p: [-0.375, 1]
-                            flags: 1
+                            flags: 0
                           - p: [-0.625, 1]
-                            flags: 1
+                            flags: 0
                           - p: [-0.625, 0.75]
-                            flags: 1
+                            flags: 0
                           - p: [-0.875, 0.75]
-                            flags: 1
+                            flags: 0
                           - p: [-0.875, 0.5]
-                            flags: 1
+                            flags: 0
                           - p: [-0.625, 0.5]
-                            flags: 1
+                            flags: 0
                           - p: [-0.625, -0.5]
-                            flags: 1
+                            flags: 0
                           - p: [-0.875, -0.5]
-                            flags: 1
+                            flags: 0
                           - p: [-0.875, -0.75]
-                            flags: 1
+                            flags: 0
                           - p: [-0.375, -0.75]
-                            flags: 1
+                            flags: 0
                           - p: [-0.375, 0]
-                            flags: 1
+                            flags: 0
                           - p: [-0.125, 0]
-                            flags: 1
+                            flags: 0
                           - p: [-0.125, -0.75]
-                            flags: 1
+                            flags: 0
                           - p: [0.125, -0.75]
                             flags: 0
                         holes:
@@ -1979,24 +1984,25 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
+                    collisionOverrideFormat: 1
                     shells:
                       - vertices:
                           - p: [-0.5, -0.5]
-                            flags: 1
+                            flags: 0
                           - p: [-1, -1]
-                            flags: 1
+                            flags: 0
                           - p: [1, -1]
-                            flags: 1
+                            flags: 0
                           - p: [0.5, -0.5]
-                            flags: 1
+                            flags: 0
                           - p: [0.5, 0.5]
-                            flags: 1
+                            flags: 0
                           - p: [1, 1]
-                            flags: 1
+                            flags: 0
                           - p: [-1, 1]
-                            flags: 1
+                            flags: 0
                           - p: [-0.5, 0.5]
-                            flags: 1
+                            flags: 0
                         holes:
                           []
             - id: 2
@@ -2265,16 +2271,17 @@ world:
                       wallMaterial: builtin.marble
                   meshPrimitive:
                     treeFormat: 1297371717
+                    collisionOverrideFormat: 1
                     shells:
                       - vertices:
                           - p: [-1, -1]
-                            flags: 1
+                            flags: 0
                           - p: [1, -1]
-                            flags: 1
+                            flags: 0
                           - p: [1, 1]
-                            flags: 1
+                            flags: 0
                           - p: [-1, 1]
-                            flags: 1
+                            flags: 0
                         holes:
                           []
             - id: 3
@@ -2543,16 +2550,17 @@ world:
                       wallMaterial: builtin.marble
                   meshPrimitive:
                     treeFormat: 1297371717
+                    collisionOverrideFormat: 1
                     shells:
                       - vertices:
                           - p: [-1, 0]
-                            flags: 1
+                            flags: 0
                           - p: [1, 0]
-                            flags: 1
+                            flags: 0
                           - p: [1, 0.5]
-                            flags: 1
+                            flags: 0
                           - p: [-1, 0.5]
-                            flags: 1
+                            flags: 0
                         holes:
                           []
             - id: 4
@@ -2809,46 +2817,311 @@ world:
                     flags: 1
                     timeUpdateDistance: 3.4028235e+38
                     metadata: 0
-                    operation: 0
+                    operation: 2
                     fillRule: 1
-                    priority: 0
+                    priority: 14
                     size: [8, 8]
                     primitivePropertySet:
                       floorZ: 0
                       ceilingZ: 48
-                      floorMaterial: builtin.marble
-                      ceilingMaterial: builtin.marble
-                      wallMaterial: builtin.marble
+                      floorMaterial: builtin.wood2
+                      ceilingMaterial: builtin.wood2
+                      wallMaterial: builtin.wood2
                   meshPrimitive:
                     treeFormat: 1297371717
+                    collisionOverrideFormat: 1
                     shells:
                       - vertices:
-                          - p: [-2, -1]
-                            flags: 1
-                          - p: [0, -1]
-                            flags: 1
-                          - p: [0, 1]
-                            flags: 1
-                          - p: [-2, 1]
-                            flags: 1
+                          - p: [-1.5, -1]
+                            flags: 0
+                          - p: [-0.5, -1]
+                            flags: 0
+                          - p: [-0.5, 1]
+                            flags: 0
+                          - p: [-1.5, 1]
+                            flags: 0
                         holes:
                           []
-                      - vertices:
-                          - p: [6, -1]
-                            flags: 1
-                          - p: [8, -1]
-                            flags: 1
-                          - p: [8, 1]
-                            flags: 1
-                          - p: [6, 1]
-                            flags: 1
-                        holes:
-                          []
-                - type: Rectangle
+                - type: Mesh
                   vertexTransformerObject:
                     id: 3
                     parentId: -1
-                    position: [0, 0]
+                    position: [-12, 0]
+                    transformOffset: [0, 0]
+                    orientation: 0
+                    vertexTransformer:
+                      followOrbitAngle: 0
+                      animators:
+                        - animatedProperty:
+                            name: Scale
+                            transformFlow:
+                              transforms:
+                                - operand0: 0
+                                  operand1: 1
+                                  constant0: 0
+                                  constant1: 1
+                                  fnMultiplier0: 1
+                                  fnMultiplier1: 1
+                                  index0: 4294967295
+                                  index1: 4294967295
+                                  input0: 0
+                                  input1: 0
+                                  operation: 1
+                            animationInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 1]
+                              scaleMax: [1, 10]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 1
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 1
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            influenceInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [500, 1]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            captureMode: 0
+                            events:
+                              []
+                        - animatedProperty:
+                            name: Angle
+                            transformFlow:
+                              transforms:
+                                - operand0: 0
+                                  operand1: 1
+                                  constant0: 0
+                                  constant1: 1
+                                  fnMultiplier0: 1
+                                  fnMultiplier1: 1
+                                  index0: 4294967295
+                                  index1: 4294967295
+                                  input0: 0
+                                  input1: 0
+                                  operation: 1
+                            animationInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [1, 360]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                            influenceInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [500, 1]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            captureMode: 0
+                            events:
+                              []
+                        - animatedProperty:
+                            name: OrbitAngle
+                            transformFlow:
+                              transforms:
+                                - operand0: 0
+                                  operand1: 1
+                                  constant0: 0
+                                  constant1: 1
+                                  fnMultiplier0: 1
+                                  fnMultiplier1: 1
+                                  index0: 4294967295
+                                  index1: 4294967295
+                                  input0: 0
+                                  input1: 0
+                                  operation: 1
+                            animationInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [1, 360]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                            influenceInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [500, 1]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            captureMode: 0
+                            events:
+                              []
+                        - animatedProperty:
+                            name: OrbitDistance
+                            transformFlow:
+                              transforms:
+                                - operand0: 0
+                                  operand1: 1
+                                  constant0: 0
+                                  constant1: 1
+                                  fnMultiplier0: 1
+                                  fnMultiplier1: 1
+                                  index0: 4294967295
+                                  index1: 4294967295
+                                  input0: 0
+                                  input1: 0
+                                  operation: 1
+                            animationInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [1, 500]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                            influenceInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [500, 1]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            captureMode: 0
+                            events:
+                              []
+                    influenceEye:
+                      originOffset: [0, 0]
+                      angleOffset: 0
+                      arcLength: 360
+                  primitive:
+                    flags: 1
+                    timeUpdateDistance: 3.4028235e+38
+                    metadata: 0
+                    operation: 2
+                    fillRule: 1
+                    priority: 14
+                    size: [8, 8]
+                    primitivePropertySet:
+                      floorZ: 0
+                      ceilingZ: 48
+                      floorMaterial: builtin.wood2
+                      ceilingMaterial: builtin.wood2
+                      wallMaterial: builtin.wood2
+                  meshPrimitive:
+                    treeFormat: 1297371717
+                    collisionOverrideFormat: 1
+                    shells:
+                      - vertices:
+                          - p: [6.5, -1]
+                            flags: 0
+                          - p: [7.5, -1]
+                            flags: 0
+                          - p: [7.5, 1]
+                            flags: 0
+                          - p: [6.5, 1]
+                            flags: 0
+                        holes:
+                          []
+                - type: Mesh
+                  vertexTransformerObject:
+                    id: 4
+                    parentId: -1
+                    position: [-12, 0]
                     transformOffset: [0, 0]
                     orientation: 0
                     vertexTransformer:
@@ -3095,24 +3368,30 @@ world:
                     timeUpdateDistance: 3.4028235e+38
                     metadata: 0
                     operation: 0
-                    fillRule: 0
-                    priority: 0
-                    size: [24, 24]
+                    fillRule: 1
+                    priority: 11
+                    size: [8, 8]
                     primitivePropertySet:
-                      floorZ: 4
-                      ceilingZ: 44
-                      floorMaterial: builtin.wood
-                      ceilingMaterial: builtin.wood
-                      wallMaterial: builtin.wood
-                    complexPolygons:
-                      - polygons:
-                          - vertices:
-                              - p: [1, 0.33333343]
-                              - p: [-1, 0.33333343]
-                              - p: [-1, -0.33333343]
-                              - p: [1, -0.33333343]
-                  rectanglePolygon:
-                    xyRatio: 2.999999
+                      floorZ: 2
+                      ceilingZ: 46
+                      floorMaterial: builtin.wood2
+                      ceilingMaterial: builtin.wood2
+                      wallMaterial: builtin.wood2
+                  meshPrimitive:
+                    treeFormat: 1297371717
+                    collisionOverrideFormat: 1
+                    shells:
+                      - vertices:
+                          - p: [-0.5, -1]
+                            flags: 0
+                          - p: [6.5, -1]
+                            flags: 0
+                          - p: [6.5, 1]
+                            flags: 0
+                          - p: [-0.5, 1]
+                            flags: 0
+                        holes:
+                          []
             - id: 5
               name: Prefab 2
               tileSize: 64
@@ -3363,7 +3642,7 @@ world:
           primitives:
             - type: Regular
               vertexTransformerObject:
-                id: 83
+                id: 95
                 parentId: -1
                 position: [133.45758, -135.71318]
                 transformOffset: [0, 0]
@@ -3631,7 +3910,7 @@ world:
                 numSides: 3
             - type: Regular
               vertexTransformerObject:
-                id: 84
+                id: 96
                 parentId: -1
                 position: [0, 0]
                 transformOffset: [0, 0]
@@ -3899,7 +4178,7 @@ world:
                 numSides: 3
             - type: Regular
               vertexTransformerObject:
-                id: 85
+                id: 97
                 parentId: -1
                 position: [0, 0]
                 transformOffset: [0, 0]
@@ -4167,7 +4446,7 @@ world:
                 numSides: 3
             - type: Regular
               vertexTransformerObject:
-                id: 86
+                id: 98
                 parentId: -1
                 position: [0, 0]
                 transformOffset: [0, 0]
@@ -4435,7 +4714,7 @@ world:
                 numSides: 3
             - type: Regular
               vertexTransformerObject:
-                id: 87
+                id: 99
                 parentId: -1
                 position: [0.092898786, -0.46462357]
                 transformOffset: [0, 0]

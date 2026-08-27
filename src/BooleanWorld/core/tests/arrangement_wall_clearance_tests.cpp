@@ -126,6 +126,30 @@ void wallClearanceReflectsTheSharedHeadroomBetweenBothFaces() {
   }
 }
 
+void stepWallsUseMaterialFromTheOccludingFace() {
+  auto discProperties = propertiesWithHeights(12.0f, 24.0f);
+  discProperties.wallMaterialId = "disc.wall";
+  auto arrangement = bw::core::arr::BuildArrangement(
+      annulusAndDisc(discProperties));
+  auto walls = bw::core::arr::BuildArrangementWalls(*arrangement);
+
+  bool sawFloorStep = false;
+  bool sawCeilingStep = false;
+  for (auto const& wall : walls) {
+    if (wall.kind != ArrangementWallKind::FloorStep &&
+        wall.kind != ArrangementWallKind::CeilingStep) {
+      continue;
+    }
+    require(arrangement->palette[wall.paletteIndex].wallMaterialId ==
+                "disc.wall",
+            "a step wall did not use the occluding face's wall material");
+    sawFloorStep |= wall.kind == ArrangementWallKind::FloorStep;
+    sawCeilingStep |= wall.kind == ArrangementWallKind::CeilingStep;
+  }
+  require(sawFloorStep && sawCeilingStep,
+          "the material fixture did not produce both step wall kinds");
+}
+
 void insufficientClearanceBlocksMovementRegardlessOfWallKind() {
   wp::BoundingBox extents({-150.0f, -150.0f}, {300.0f, 300.0f});
   constexpr float gridCellSize = 20.0f;
@@ -171,6 +195,7 @@ void insufficientClearanceBlocksMovementRegardlessOfWallKind() {
 int main() {
   try {
     wallClearanceReflectsTheSharedHeadroomBetweenBothFaces();
+    stepWallsUseMaterialFromTheOccludingFace();
     insufficientClearanceBlocksMovementRegardlessOfWallKind();
     std::cout << "Arrangement walls block on insufficient shared clearance, not just wall kind\n";
     return 0;

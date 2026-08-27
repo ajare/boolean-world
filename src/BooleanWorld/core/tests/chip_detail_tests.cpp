@@ -1018,21 +1018,21 @@ void cornerChipDistancesAreRandomDeterministicAndGeometrySeeded() {
 void floorStepSubMaterialControlsCornerChips() {
   auto enabled = fixedCornerChip(2.0f);
   auto primitives = slabAndPlatform(12.0f);
-  primitives[0].chipParameters = enabled;
-  primitives[1].chipParameters = {};
-  ArrangementWorldData lowerEnabled(
-      bw::core::arr::BuildArrangement(primitives),
-      wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f, 8.0f);
-  require(lowerEnabled.getDetail().getChipCount() == 4,
-          "the FloorStep Sub-material did not enable its Corner Chips");
-
   primitives[0].chipParameters = {};
   primitives[1].chipParameters = enabled;
-  ArrangementWorldData upperEnabled(
+  ArrangementWorldData higherFloorEnabled(
       bw::core::arr::BuildArrangement(primitives),
       wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f, 8.0f);
-  require(upperEnabled.getDetail().getChipCount() == 0,
-          "the horizontal face Sub-material overrode the FloorStep Sub-material");
+  require(higherFloorEnabled.getDetail().getChipCount() == 4,
+          "the higher-floor Sub-material did not enable its FloorStep Corner Chips");
+
+  primitives[0].chipParameters = enabled;
+  primitives[1].chipParameters = {};
+  ArrangementWorldData lowerFloorEnabled(
+      bw::core::arr::BuildArrangement(primitives),
+      wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f, 8.0f);
+  require(lowerFloorEnabled.getDetail().getChipCount() == 0,
+          "the lower-floor Sub-material overrode the FloorStep Sub-material");
 }
 
 void cornerAndArrisChipsDoNotOverlap() {

@@ -1,6 +1,6 @@
 # ADR-0022: Wall collision override is a local mesh-edge flag, not an arrangement concept
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0028
 **Date:** 2026-08-25
 
 ## Context

@@ -19,10 +19,12 @@ namespace bw {
 namespace core {
 class World;
 class Layer;
+class PrefabField;
 
 class BW_API Primitive : public VertexTransformerObject {
   friend class World;
   friend class Layer;
+  friend class PrefabField;
 
 public:
   enum struct Operation {
@@ -35,6 +37,13 @@ public:
   enum struct FillRule {
     NonZero,
     EvenOdd
+  };
+
+  // Whether this Primitive may supply properties to generated surfaces.
+  // Transparent Primitives still participate fully in the boolean fold.
+  enum struct PropertyContribution {
+    Contributing,
+    Transparent
   };
 
 protected:
@@ -61,6 +70,10 @@ private:
   FillRule mFillRule;
 
   uint8_t mPriority;
+
+  PropertyContribution mPropertyContribution;
+
+  void setPropertyContribution(PropertyContribution contribution);
 
   // Derived by the owning Layer from LayerBuildStep order. This is never
   // serialized: mPriority remains the authored, step-local priority.
@@ -185,6 +198,8 @@ public:
 
   uint8_t getPriority() const;
 
+  [[nodiscard]] PropertyContribution getPropertyContribution() const;
+
   [[nodiscard]] uint64_t getGeneratedPriority() const;
 
   virtual float getRadius() const = 0;
@@ -207,7 +222,7 @@ public:
 
   wp::BoundingBox const& getBounds() const;
 
-  wp::BoundingBox calculateBounds() const;
+  virtual wp::BoundingBox calculateBounds() const;
 
   wp::BoundingBox calculateExactBounds() const;
 

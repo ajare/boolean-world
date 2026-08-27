@@ -97,17 +97,18 @@ ArrangementWorldData::ArrangementWorldData(
     // A floor step above the player's maximum step height may block an
     // ascent regardless of an authored collision override, so retain it as
     // a candidate; traversal queries later remove it when approached from
-    // the higher face. For every other wall, a Mesh edge's override replaces
-    // the normal Border and clearance rules.
+    // the higher face. An authored override replaces the generated
+    // Border/Step default, while Step clearance remains a physical limit.
     auto exceedsStepThreshold =
         wall.kind == arr::ArrangementWallKind::FloorStep &&
         wall.maxZ - wall.minZ > stepThreshold;
-    auto blocks = exceedsStepThreshold ||
-        (edge.collidesOverride.has_value()
-             ? *edge.collidesOverride
-             : wall.kind == arr::ArrangementWallKind::Border ||
-                   (wall.kind != arr::ArrangementWallKind::Border &&
-                    wall.clearance < BW_PLAYER_HEIGHT));
+    auto authoredCollision = edge.collidesOverride.value_or(
+        wall.kind == arr::ArrangementWallKind::Border);
+    auto hasInsufficientClearance =
+        wall.kind != arr::ArrangementWallKind::Border &&
+        wall.clearance < BW_PLAYER_HEIGHT;
+    auto blocks = authoredCollision || exceedsStepThreshold ||
+                  hasInsufficientClearance;
     if (!blocks) {
       continue;
     }
@@ -249,11 +250,12 @@ std::vector<uint32_t> ArrangementWorldData::getWallsNearForTraversal(
   for (auto wallIndex : candidates) {
     auto const& wall = mWalls[wallIndex];
     auto const& edge = mArrangement->edges[wall.edge];
-    auto blocksWithoutStepThreshold = edge.collidesOverride.has_value()
-        ? *edge.collidesOverride
-        : wall.kind == arr::ArrangementWallKind::Border ||
-              (wall.kind != arr::ArrangementWallKind::Border &&
-               wall.clearance < BW_PLAYER_HEIGHT);
+    auto authoredCollision = edge.collidesOverride.value_or(
+        wall.kind == arr::ArrangementWallKind::Border);
+    auto blocksWithoutStepThreshold =
+        authoredCollision ||
+        (wall.kind != arr::ArrangementWallKind::Border &&
+         wall.clearance < BW_PLAYER_HEIGHT);
     if (blocksWithoutStepThreshold ||
         wall.kind != arr::ArrangementWallKind::FloorStep ||
         wall.maxZ - wall.minZ <= mStepThreshold) {

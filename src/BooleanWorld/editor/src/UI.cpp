@@ -3913,11 +3913,21 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     auto indices = set<uint32_t>{edgeIndex};
     ImGui::Text("Selected edge: %u", edgeIndex);
     if (doc->isActiveMeshEdgeCollisionEditable(edgeIndex)) {
-      auto collides = doc->getActiveMeshEdgeCollides(edgeIndex);
-      if (ImGui::Checkbox("Collides##SelectedMeshEdge", &collides)) {
+      auto collisionOverride =
+          doc->getActiveMeshEdgeCollisionOverride(edgeIndex);
+      int collisionOption = !collisionOverride.has_value()
+          ? 0
+          : (*collisionOverride ? 1 : 2);
+      if (ImGui::Combo(
+              "Collision##SelectedMeshEdge", &collisionOption,
+              "Not set\0Collides\0Doesn't collide\0")) {
+        optional<bool> value = collisionOption == 0
+            ? nullopt
+            : optional<bool>{collisionOption == 1};
         transactUndoableAction(
-            doc, "Set Mesh Edge Collides",
-            bind(setMeshEdgeCollides, placeholders::_1, edgeIndex, collides));
+            doc, "Set Mesh Edge Collision Override",
+            bind(setMeshEdgeCollisionOverride, placeholders::_1,
+                 edgeIndex, value));
       }
     }
     if (doc->isActiveMeshEdgeVisibilityEditable(edgeIndex)) {

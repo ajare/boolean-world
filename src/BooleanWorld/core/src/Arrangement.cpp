@@ -791,18 +791,12 @@ PSLG BuildPSLG(
         }
 
         if (segments[i].collidesOverride.has_value()) {
-          if (!edge.collidesOverridePrimitiveIndex.has_value()) {
-            edge.collidesOverride = segments[i].collidesOverride;
-            edge.collidesOverridePrimitiveIndex =
-                segments[i].primitiveIndex;
-          } else if (*edge.collidesOverridePrimitiveIndex !=
-                     segments[i].primitiveIndex) {
-            // Once clipping combines authored Mesh edges from two
-            // Primitives, their shared boundary is internal to that combined
-            // geometry. Its collision is fixed off even when both source
-            // edges were authored collides = true.
-            edge.collidesOverride = false;
-          }
+          // Unset contributors have no effect; among authored overrides,
+          // "doesn't collide" dominates "collides" independent of source
+          // Primitive or contribution order.
+          edge.collidesOverride = edge.collidesOverride.has_value()
+              ? *edge.collidesOverride && *segments[i].collidesOverride
+              : segments[i].collidesOverride;
         }
         if (segments[i].visibleOverride.has_value() && !edge.visibleOverride.has_value()) {
           edge.visibleOverride = segments[i].visibleOverride;
@@ -1229,6 +1223,9 @@ ArrangementResultPtr BuildArrangement(
       outputFace.paletteIndex = uint16_t(winningPrimitive + 1);
       outputFace.primitiveIndex =
           primitives[winningPrimitive].primitiveIndex;
+      outputFace.operation = primitives[winningPrimitive].operation;
+      outputFace.contributesProperties =
+          primitives[winningPrimitive].contributesProperties;
     }
     outputFace.membership = move(face.membership);
     result->faces.push_back(move(outputFace));
@@ -1344,13 +1341,23 @@ vector<ArrangementWall> BuildArrangementWalls(
 
     if (face0.solid != face1.solid) {
       auto const& solidFace = face0.solid ? face0 : face1;
+      auto const& emptyFace = face0.solid ? face1 : face0;
       auto const& properties =
           arrangement.palette[solidFace.paletteIndex];
+      // An authored Difference contributes no solid Face of its own, but its
+      // boundary creates the newly exposed wall. Property-transparent
+      // structural Differences instead leave ownership with the surviving
+      // solid Face. In either case that Face supplies the vertical span.
+      auto paletteIndex =
+          emptyFace.operation == bw::core::Primitive::Operation::Difference &&
+                  emptyFace.contributesProperties
+              ? emptyFace.paletteIndex
+              : solidFace.paletteIndex;
       walls.push_back(
           {edgeIndex,
            properties.floorZ,
            properties.ceilingZ,
-           solidFace.paletteIndex,
+           paletteIndex,
            ArrangementWallKind::Border,
            properties.ceilingZ - properties.floorZ,
            edge.visibleOverride.value_or(true)});
@@ -1369,25 +1376,25 @@ vector<ArrangementWall> BuildArrangementWalls(
     auto clearance = min(properties0.ceilingZ, properties1.ceilingZ) -
                      max(properties0.floorZ, properties1.floorZ);
     if (properties0.floorZ != properties1.floorZ) {
-      auto const& lowerFace =
-          properties0.floorZ < properties1.floorZ ? face0 : face1;
+      auto const& higherFloorFace =
+          properties0.floorZ > properties1.floorZ ? face0 : face1;
       walls.push_back(
           {edgeIndex,
            min(properties0.floorZ, properties1.floorZ),
            max(properties0.floorZ, properties1.floorZ),
-           lowerFace.paletteIndex,
+           higherFloorFace.paletteIndex,
            ArrangementWallKind::FloorStep,
            clearance,
            edge.visibleOverride.value_or(true)});
     }
     if (properties0.ceilingZ != properties1.ceilingZ) {
-      auto const& higherFace =
-          properties0.ceilingZ > properties1.ceilingZ ? face0 : face1;
+      auto const& lowerCeilingFace =
+          properties0.ceilingZ < properties1.ceilingZ ? face0 : face1;
       walls.push_back(
           {edgeIndex,
            min(properties0.ceilingZ, properties1.ceilingZ),
            max(properties0.ceilingZ, properties1.ceilingZ),
-           higherFace.paletteIndex,
+           lowerCeilingFace.paletteIndex,
            ArrangementWallKind::CeilingStep,
            clearance,
            edge.visibleOverride.value_or(true)});

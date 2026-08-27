@@ -391,8 +391,9 @@ bool setMeshVertexPosition(Document* doc, uint32_t vertexIndex, wp::Vector2 cons
   return doc->moveMeshVertexTo(vertexIndex, position);
 }
 
-bool setMeshEdgeCollides(Document* doc, uint32_t edgeIndex, bool collides) {
-  return doc->setActiveMeshEdgeCollides(edgeIndex, collides);
+bool setMeshEdgeCollisionOverride(
+    Document* doc, uint32_t edgeIndex, optional<bool> collides) {
+  return doc->setActiveMeshEdgeCollisionOverride(edgeIndex, collides);
 }
 
 bool setMeshEdgeVisible(Document* doc, uint32_t edgeIndex, bool visible) {

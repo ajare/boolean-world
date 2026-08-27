@@ -78,6 +78,8 @@ void PrefabField::execute(LayerBuildContext& context) const {
           Primitive::Operation::Difference, Primitive::FillRule::NonZero, 1.0f);
       square->setSize(side, side);
       square->setPosition(tileCentre(tile));
+      square->setPropertyContribution(
+          Primitive::PropertyContribution::Transparent);
       auto* raw = square.get();
       mHiddenPrimitives.push_back(raw);
       mBuiltPrimitives.push_back(move(square));

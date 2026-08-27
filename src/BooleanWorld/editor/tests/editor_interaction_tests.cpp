@@ -97,6 +97,22 @@ uint32_t addMesh(editor::Document& document, wp::Vector2 const& position) {
   return mesh->getId();
 }
 
+uint32_t addDisconnectedMesh(editor::Document& document) {
+  auto rectangle = [](float minX, float maxX) {
+    return bw::core::ClosedPolygon{
+        {{minX, -1.0f}}, {{maxX, -1.0f}},
+        {{maxX, 1.0f}}, {{minX, 1.0f}}};
+  };
+  auto* mesh = bw::core::MeshPrimitive::fromTree(
+      bw::core::Primitive::Operation::Union,
+      {{rectangle(-2.0f, 0.0f), {}}, {rectangle(6.0f, 8.0f), {}}});
+  mesh->setSize(8.0f, 8.0f);
+  mesh->setPosition({-12.0f, 0.0f});
+  mesh->updateVertexPositions();
+  document.getWorld()->addPrimitive(mesh);
+  return mesh->getId();
+}
+
 uint32_t addMeshWithHole(editor::Document& document) {
   bw::core::ClosedPolygon outer{
       {{-10.0f, -10.0f}}, {{10.0f, -10.0f}}, {{10.0f, 10.0f}}, {{-10.0f, 10.0f}}};
@@ -277,14 +293,39 @@ void repeatedClicksCycleThroughStackedPrimitives() {
   auto release = pointerAt({50.0f, 50.0f});
   release.leftReleased = true;
   interaction.updateSelection(&document, nullptr, settings, release);
+  require(*document.getSelectedPrimitiveIndices().begin() == firstSelected,
+          "one click advanced twice through stacked Primitives");
+
+  interaction.updateSelection(&document, nullptr, settings, press);
+  interaction.updateSelection(&document, nullptr, settings, release);
   auto secondSelected = *document.getSelectedPrimitiveIndices().begin();
   require(secondSelected != firstSelected,
-          "the click cycle did not advance through stacked Primitives");
+          "the next click did not advance through stacked Primitives");
 
   interaction.updateSelection(&document, nullptr, settings, press);
   interaction.updateSelection(&document, nullptr, settings, release);
   require(*document.getSelectedPrimitiveIndices().begin() == firstSelected,
           "the click cycle did not wrap to the first stacked Primitive");
+}
+
+void oneClickSelectsTheFirstMeshPrimitiveInAnOverlap() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  document.newDoc();
+  auto mesh = addMesh(document, {50.0f, 50.0f});
+  addRectangle(document, {50.0f, 50.0f});
+  editor::EditorInteraction interaction;
+
+  auto press = pointerAt({50.0f, 50.0f});
+  press.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, press);
+  auto release = pointerAt({50.0f, 50.0f});
+  release.leftReleased = true;
+  interaction.updateSelection(&document, nullptr, settings, release);
+
+  require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>{mesh},
+          "one click skipped the first MeshPrimitive in an overlapping stack");
 }
 
 void modeAndSubModeChangesAreEditorPreferencesAndClearSelection() {
@@ -1924,7 +1965,7 @@ void edgeSplitIsOneUndoEntry() {
           "undo did not restore the Ring to its unsplit edge count");
 }
 
-void meshEdgeCollidesTogglesAndCommitsToThePrimitive() {
+void meshEdgeCollisionOverrideCyclesAndCommitsToThePrimitive() {
   editor::Document document;
   document.newDoc();
   auto meshIndex = addMesh(document, {0.0f, 0.0f});
@@ -1934,19 +1975,30 @@ void meshEdgeCollidesTogglesAndCommitsToThePrimitive() {
 
   require(document.isActiveMeshEdgeCollisionEditable(edgeIndex),
           "a freshly authored mesh edge (used by exactly one polygon) was not reported as collision-editable");
-  require(document.getActiveMeshEdgeCollides(edgeIndex),
-          "a freshly authored mesh edge did not default to collides = true");
+  require(!document.getActiveMeshEdgeCollisionOverride(edgeIndex).has_value(),
+          "a freshly authored mesh edge did not default to unset");
 
-  require(document.setActiveMeshEdgeCollides(edgeIndex, false),
-          "setActiveMeshEdgeCollides was refused on an editable edge");
-  require(!document.getActiveMeshEdgeCollides(edgeIndex),
-          "setActiveMeshEdgeCollides(false) did not take effect");
+  require(document.setActiveMeshEdgeCollisionOverride(edgeIndex, false),
+          "setting doesn't-collide was refused on an editable edge");
+  require(document.getActiveMeshEdgeCollisionOverride(edgeIndex) == false,
+          "the doesn't-collide state did not take effect");
+  require(document.setActiveMeshEdgeCollisionOverride(edgeIndex, true),
+          "setting collides was refused on an editable edge");
+  require(document.getActiveMeshEdgeCollisionOverride(edgeIndex) == true,
+          "the collides state did not take effect");
+  require(document.setActiveMeshEdgeCollisionOverride(edgeIndex, std::nullopt),
+          "clearing the collision override was refused");
+  require(!document.getActiveMeshEdgeCollisionOverride(edgeIndex).has_value(),
+          "clearing the collision override did not restore unset");
+  require(document.setActiveMeshEdgeCollisionOverride(edgeIndex, true),
+          "restoring collides was refused");
 
   auto* primitive = static_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(meshIndex));
   auto committedProxy = primitive->createEditingProxy();
-  require(!committedProxy->getEdgeCollides(committedProxy->getFirstEdgeIndex()),
-          "the collides override did not commit back to the MeshPrimitive");
+  require(committedProxy->getEdgeCollisionOverride(
+              committedProxy->getFirstEdgeIndex()) == true,
+          "the collision override did not commit back to the MeshPrimitive");
 }
 
 void meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly() {
@@ -1964,7 +2016,8 @@ void meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly() {
 
   editor::transactUndoableAction(
       &document, "Set Mesh Edge Collides",
-      std::bind(editor::setMeshEdgeCollides, std::placeholders::_1, edgeIndex, false));
+      std::bind(editor::setMeshEdgeCollisionOverride, std::placeholders::_1,
+                edgeIndex, std::optional<bool>{false}));
 
   require(editor::getUndoLevels() == undoLevelsBefore + 1,
           "toggling a mesh edge's collides override produced more than one undo entry");
@@ -1973,8 +2026,9 @@ void meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly() {
   auto* primitive = static_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(meshIndex));
   auto committedProxy = primitive->createEditingProxy();
-  require(!committedProxy->getEdgeCollides(committedProxy->getFirstEdgeIndex()),
-          "the committed MeshPrimitive geometry did not reflect the toggle");
+  require(committedProxy->getEdgeCollisionOverride(
+              committedProxy->getFirstEdgeIndex()) == false,
+          "the committed MeshPrimitive did not reflect the override");
 
   editor::undo(&document);
   require(editor::getUndoLevels() == undoLevelsBefore,
@@ -1983,8 +2037,9 @@ void meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly() {
   auto* undonePrimitive = static_cast<bw::core::MeshPrimitive*>(
       document.getWorld()->getPrimitive(meshIndex));
   auto undoneProxy = undonePrimitive->createEditingProxy();
-  require(undoneProxy->getEdgeCollides(undoneProxy->getFirstEdgeIndex()),
-          "undo did not restore the edge's default collides = true");
+  require(!undoneProxy->getEdgeCollisionOverride(
+               undoneProxy->getFirstEdgeIndex()).has_value(),
+          "undo did not restore the edge's unset collision override");
 }
 
 void meshEdgeVisibleTogglesAndCommitsToThePrimitive() {
@@ -2845,6 +2900,45 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
           "deleting an Island did not delete its complete subtree");
 }
 
+void decomposedPrimitivesCanBeSelectedIndividually() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs;
+  auto defineIndex = layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Disconnected");
+  definitions->setSelectedPrefab(prefab);
+  layer->setActiveStep(defineIndex);
+  layer->rebuild();
+  auto source = addDisconnectedMesh(document);
+  require(editor::decomposeMeshPrimitive(&document, source),
+          "the disconnected MeshPrimitive did not decompose");
+  auto selected = document.getSelectedPrimitiveIndices();
+  require(selected.size() == 2,
+          "decomposition did not create and select two Primitives");
+  auto first = *selected.begin();
+  auto second = *std::next(selected.begin());
+  editor::EditorInteraction interaction;
+
+  auto click = [&](wp::Vector2 position) {
+    auto press = pointerAt(position);
+    press.leftClicked = true;
+    interaction.updateSelection(&document, nullptr, settings, press);
+    auto release = pointerAt(position);
+    release.leftReleased = true;
+    interaction.updateSelection(&document, nullptr, settings, release);
+  };
+
+  click(document.getWorld()->getPrimitive(first)->getBounds().getCentre());
+  require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>{first},
+          "the first decomposed Primitive could not be selected individually");
+  click(document.getWorld()->getPrimitive(second)->getBounds().getCentre());
+  require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>{second},
+          "the second decomposed Primitive could not be selected individually");
+}
+
 void decomposingAMeshCreatesFilledRegionPrimitives() {
   editor::Document document;
   document.newDoc();
@@ -3397,6 +3491,7 @@ int main() {
     plainControlAndShiftClicksApplyTheirSelectionPolicies();
     deletePrimitivesRefusesTheGhostEvenWhenHandedItsIndexDirectly();
     repeatedClicksCycleThroughStackedPrimitives();
+    oneClickSelectsTheFirstMeshPrimitiveInAnOverlap();
     modeAndSubModeChangesAreEditorPreferencesAndClearSelection();
     meshClicksBuildAndSwitchTheActiveProxy();
     rubberBandSelectionSupportsPlainControlAndShiftPolicies();
@@ -3429,7 +3524,7 @@ int main() {
     edgeSplitInsertsUnsnappedMidpointAndSelectsBothHalves();
     repeatedEdgeSplitSubdividesIntoFourSegments();
     edgeSplitIsOneUndoEntry();
-    meshEdgeCollidesTogglesAndCommitsToThePrimitive();
+    meshEdgeCollisionOverrideCyclesAndCommitsToThePrimitive();
     meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly();
     meshEdgeVisibleTogglesAndCommitsToThePrimitive();
     meshEdgeVisibleToggleIsOneUndoEntryAndUndoesCleanly();
@@ -3443,6 +3538,7 @@ int main() {
     drawingMultipleHolesKeepsThemOnTheSameComplexPolygon();
     drawingInsideAFilledHoleUsesTheCappedRegionAsItsParent();
     fillingASelectedHoleCreatesASolidAlongsideExistingIslands();
+    decomposedPrimitivesCanBeSelectedIndividually();
     decomposingAMeshCreatesFilledRegionPrimitives();
     deletingAWeldedVertexHealsTheHoleAndIsland();
     drawingContextRejectsEscapesAndSelfCrossings();

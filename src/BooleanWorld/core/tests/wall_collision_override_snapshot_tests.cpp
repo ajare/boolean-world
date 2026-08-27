@@ -72,8 +72,8 @@ void meshExternalEdgeOverrideIsExtractedAtTheRightIndex() {
     auto aPos = proxy->getVertex(edge.getFirstVertex()).getPosition();
     auto bPos = proxy->getVertex(edge.getSecondVertex()).getPosition();
 
-    require(proxy->setEdgeCollides(edgeIndex, authoredValue),
-            "setEdgeCollides was refused on an External edge");
+    require(proxy->setEdgeCollisionOverride(edgeIndex, authoredValue),
+            "setting a collision override was refused on an External edge");
     proxy->commitTo(*primitive);
 
     auto converted = ConvertPrimitiveToContours(*primitive);
@@ -164,14 +164,14 @@ void meshInternalEdgeProducesNoOverride() {
                              converted.edgeVisibleOverrides[c][i].has_value();
   require(!hasVisibleOverride, "an Internal edge produced a visible override");
 
-  // An outer (External) edge on the same primitive still gets one, sourced
-  // from its default-true authored state.
+  // An untouched outer (External) edge leaves collision unset so generation
+  // can derive collision from the wall kind and physical constraints.
   auto [oc, oi] = findEdge(converted.contours, {-2.0f, -1.0f}, {0.0f, -1.0f});
   require(oc != ~size_t(0), "an outer External edge could not be located");
-  require(oc < converted.edgeOverrides.size() && oi < converted.edgeOverrides[oc].size() &&
-              converted.edgeOverrides[oc][oi].has_value() &&
-              *converted.edgeOverrides[oc][oi] == true,
-          "an untouched External edge did not default to a collides = true override");
+  require(oc < converted.edgeOverrides.size() &&
+              oi < converted.edgeOverrides[oc].size() &&
+              !converted.edgeOverrides[oc][oi].has_value(),
+          "an untouched External edge produced a collision override");
   require(oc < converted.edgeVisibleOverrides.size() && oi < converted.edgeVisibleOverrides[oc].size() &&
               converted.edgeVisibleOverrides[oc][oi].has_value() &&
               *converted.edgeVisibleOverrides[oc][oi] == true,

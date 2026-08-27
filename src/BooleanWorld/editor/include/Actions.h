@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -48,6 +49,7 @@ class EditorInteraction {
   DocumentHover mHover;
   std::vector<uint32_t> mCycledPrimitiveIndices;
   int mCycledPrimitiveIndex{-1};
+  std::vector<uint32_t> mPendingPrimitiveClick;
 
   bool mBoxSelectPending{false};
   bool mBoxSelectDragging{false};
@@ -63,7 +65,9 @@ class EditorInteraction {
   wp::Vector2 mMeshDragCumulativeDelta;
   std::vector<uint32_t> mPendingMeshSubObjectClick;
 
-  void applyPrimitiveClick(Document* doc, bool control, bool shift);
+  void applyPrimitiveClick(
+      Document* doc, std::vector<uint32_t> const& hoveredIndices,
+      bool control, bool shift);
   void applyMeshSubObjectClick(
       Document* doc, Settings::MeshSubMode subMode,
       std::vector<uint32_t> const& hoveredIndices,
@@ -223,10 +227,10 @@ bool fillMeshHole(Document* doc, uint32_t holeRingIndex);
 // mesh unchanged) if it would break an invariant.
 bool setMeshVertexPosition(Document* doc, uint32_t vertexIndex, wp::Vector2 const& position);
 
-// Sets the active mesh edge's wall collision override (Document::
-// setActiveMeshEdgeCollides). Refused on an edge whose connectivity is not
-// External - see #244/#245, ADR-0022.
-bool setMeshEdgeCollides(Document* doc, uint32_t edgeIndex, bool collides);
+// Sets or clears the active mesh edge's wall collision override. Refused on
+// an edge whose connectivity is not External.
+bool setMeshEdgeCollisionOverride(
+    Document* doc, uint32_t edgeIndex, std::optional<bool> collides);
 
 // Sets the active mesh edge's wall-render override (Document::
 // setActiveMeshEdgeVisible). Same External-only gating as above.

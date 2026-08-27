@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -577,10 +578,11 @@ void sliceMarksTheCreatedInternalEdgeNonColliding() {
           parts[1].ring[(second + 1) % parts[1].ring.size()];
       if (firstVertex.p == secondNext.p && firstNext.p == secondVertex.p) {
         ++sharedEdgeCount;
-        require(
-            (firstVertex.edgeFlags & BW_MESH_EDGE_COLLIDES_FLAG) == 0 &&
-                (secondVertex.edgeFlags & BW_MESH_EDGE_COLLIDES_FLAG) == 0,
-            "Slice stored collides = true on its created Internal edge");
+        auto collisionBits =
+            BW_MESH_EDGE_COLLISION_OVERRIDE_FLAG | BW_MESH_EDGE_COLLIDES_FLAG;
+        require((firstVertex.edgeFlags & collisionBits) == 0 &&
+                    (secondVertex.edgeFlags & collisionBits) == 0,
+                "Slice authored a collision override on its Internal edge");
       }
     }
   }
@@ -667,7 +669,7 @@ void sliceAcceptsASecondChordFromAnEndpointOfTheFirst() {
   }
 }
 
-void externalEdgesDefaultCollidesAndInternalEdgesCannotBeSet() {
+void externalEdgesHaveTriStateCollisionOverrides() {
   auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union,
       {{ring(-2, -1, 0, 1), {}}, {ring(0, -1, 2, 1), {}}}));
@@ -687,37 +689,42 @@ void externalEdgesDefaultCollidesAndInternalEdgesCannotBeSet() {
   require(internalEdge != ~0u && externalEdge != ~0u,
           "the fixture did not produce both an Internal and an External edge");
 
-  require(proxy->getEdgeCollides(externalEdge),
-          "an External edge did not default to collides = true");
+  require(!proxy->getEdgeCollisionOverride(externalEdge).has_value(),
+          "an External edge did not default to an unset collision override");
   require(proxy->isEdgeCollisionEditable(externalEdge),
           "an External edge was not reported as editable");
-  require(!proxy->getEdgeCollides(internalEdge),
-          "an Internal edge reported collides = true");
+  require(!proxy->getEdgeCollisionOverride(internalEdge).has_value(),
+          "an Internal edge reported a collision override");
   require(!proxy->isEdgeCollisionEditable(internalEdge),
           "an Internal edge was reported as editable");
 
-  require(proxy->setEdgeCollides(externalEdge, false),
-          "setEdgeCollides was refused on an External edge");
-  require(!proxy->getEdgeCollides(externalEdge),
-          "setEdgeCollides(false) did not clear the effective value");
-  require(proxy->setEdgeCollides(externalEdge, true),
-          "setEdgeCollides was refused when re-enabling an External edge");
-  require(proxy->getEdgeCollides(externalEdge),
-          "setEdgeCollides(true) did not restore the effective value");
+  require(proxy->setEdgeCollisionOverride(externalEdge, false),
+          "setting doesn't-collide was refused on an External edge");
+  require(proxy->getEdgeCollisionOverride(externalEdge) == false,
+          "the doesn't-collide override was not retained");
+  require(proxy->setEdgeCollisionOverride(externalEdge, true),
+          "setting collides was refused on an External edge");
+  require(proxy->getEdgeCollisionOverride(externalEdge) == true,
+          "the collides override was not retained");
+  require(proxy->setEdgeCollisionOverride(externalEdge, std::nullopt),
+          "clearing the collision override was refused");
+  require(!proxy->getEdgeCollisionOverride(externalEdge).has_value(),
+          "clearing the collision override did not restore unset");
 
-  require(!proxy->setEdgeCollides(internalEdge, true),
-          "setEdgeCollides succeeded on an Internal edge");
-  require(!proxy->getEdgeCollides(internalEdge),
-          "an Internal edge became collidable after a refused setEdgeCollides");
+  require(!proxy->setEdgeCollisionOverride(internalEdge, true),
+          "setting a collision override succeeded on an Internal edge");
+  require(!proxy->getEdgeCollisionOverride(internalEdge).has_value(),
+          "an Internal edge gained an override after a refused edit");
 }
 
-void splitEdgeInheritsCollidesForBothHalves() {
-  for (bool sourceValue : {true, false}) {
+void splitEdgeInheritsCollisionOverrideForBothHalves() {
+  for (std::optional<bool> sourceValue : std::array<std::optional<bool>, 3>{
+           true, false, std::nullopt}) {
     auto primitive = std::unique_ptr<MeshPrimitive>(
         MeshPrimitive::fromTree(Primitive::Operation::Union, {{ring(-2, -2, 2, 2), {}}}));
     auto proxy = primitive->createEditingProxy();
     auto edgeIndex = proxy->getFirstEdgeIndex();
-    require(proxy->setEdgeCollides(edgeIndex, sourceValue),
+    require(proxy->setEdgeCollisionOverride(edgeIndex, sourceValue),
             "could not author the source edge's collides value before splitting");
 
     wp::geometry::SplitEdgeResult split;
@@ -725,8 +732,8 @@ void splitEdgeInheritsCollidesForBothHalves() {
             "splitting an External edge was refused");
     require(split.newEdgeIndices.size() == 2,
             "splitEdge did not report exactly two resulting edges");
-    require(proxy->getEdgeCollides(split.newEdgeIndices[0]) == sourceValue &&
-                proxy->getEdgeCollides(split.newEdgeIndices[1]) == sourceValue,
+    require(proxy->getEdgeCollisionOverride(split.newEdgeIndices[0]) == sourceValue &&
+                proxy->getEdgeCollisionOverride(split.newEdgeIndices[1]) == sourceValue,
             "splitEdge did not inherit the original edge's collides value on both halves");
   }
 }
@@ -771,9 +778,9 @@ void checkRemoveVertexMerge(bool predecessorValue, bool successorValue) {
   require(predecessorEdge >= 0 && successorEdge >= 0,
           "could not locate the predecessor/successor edges around the removed vertex");
 
-  require(proxy->setEdgeCollides(static_cast<uint32_t>(predecessorEdge), predecessorValue),
+  require(proxy->setEdgeCollisionOverride(static_cast<uint32_t>(predecessorEdge), predecessorValue),
           "could not author the predecessor edge's collides value");
-  require(proxy->setEdgeCollides(static_cast<uint32_t>(successorEdge), successorValue),
+  require(proxy->setEdgeCollisionOverride(static_cast<uint32_t>(successorEdge), successorValue),
           "could not author the successor edge's collides value");
 
   require(proxy->removeVertex(removedVertex), "removing the middle vertex was refused");
@@ -789,7 +796,7 @@ void checkRemoveVertexMerge(bool predecessorValue, bool successorValue) {
   auto mergedEdge =
       proxy->getMesh().getEdgeIndexByVertices(rebuiltPredecessor, rebuiltSuccessor);
   require(mergedEdge >= 0, "the merged edge between predecessor and successor was not found");
-  require(proxy->getEdgeCollides(static_cast<uint32_t>(mergedEdge)) == predecessorValue,
+  require(proxy->getEdgeCollisionOverride(static_cast<uint32_t>(mergedEdge)) == predecessorValue,
           "the merged edge did not keep the predecessor edge's collides value, "
           "unaffected by the successor edge's discarded value");
 }
@@ -914,14 +921,14 @@ void collidesAndVisibleAreIndependentPerEdge() {
   auto proxy = primitive->createEditingProxy();
   auto edgeIndex = proxy->getFirstEdgeIndex();
 
-  require(proxy->setEdgeCollides(edgeIndex, false) && proxy->setEdgeVisible(edgeIndex, true),
+  require(proxy->setEdgeCollisionOverride(edgeIndex, false) && proxy->setEdgeVisible(edgeIndex, true),
           "could not author collides = false, visible = true on the same edge");
-  require(!proxy->getEdgeCollides(edgeIndex) && proxy->getEdgeVisible(edgeIndex),
+  require(proxy->getEdgeCollisionOverride(edgeIndex) == false && proxy->getEdgeVisible(edgeIndex),
           "setting collides false disturbed the independently-set visible value");
 
-  require(proxy->setEdgeCollides(edgeIndex, true) && proxy->setEdgeVisible(edgeIndex, false),
+  require(proxy->setEdgeCollisionOverride(edgeIndex, true) && proxy->setEdgeVisible(edgeIndex, false),
           "could not author collides = true, visible = false on the same edge");
-  require(proxy->getEdgeCollides(edgeIndex) && !proxy->getEdgeVisible(edgeIndex),
+  require(proxy->getEdgeCollisionOverride(edgeIndex) == true && !proxy->getEdgeVisible(edgeIndex),
           "setting visible false disturbed the independently-set collides value");
 }
 
@@ -1006,8 +1013,8 @@ int main() {
     sliceDividesFilledRingsAndRetainsHoles();
     sliceMarksTheCreatedInternalEdgeNonColliding();
     sliceAcceptsASecondChordFromAnEndpointOfTheFirst();
-    externalEdgesDefaultCollidesAndInternalEdgesCannotBeSet();
-    splitEdgeInheritsCollidesForBothHalves();
+    externalEdgesHaveTriStateCollisionOverrides();
+    splitEdgeInheritsCollisionOverrideForBothHalves();
     removeVertexMergeKeepsThePredecessorEdgesValue();
     externalEdgesDefaultVisibleAndInternalEdgesCannotBeSet();
     splitEdgeInheritsVisibleForBothHalves();

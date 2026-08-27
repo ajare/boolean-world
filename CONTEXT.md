@@ -8,6 +8,10 @@ Boolean World Geometry turns authored two-dimensional shapes into the regions an
 An authored closed shape that contributes an operation, fill rule, step-local priority, and regional properties to a world. Owned by exactly one Layer. Its priority orders it among Primitives produced by the same LayerBuildStep; Layer and LayerBuildStep order take precedence.
 _Avoid_: Path primitive, clip shape
 
+**Property-transparent Primitive**:
+A structural Primitive that participates fully in the boolean fold but can never supply properties to a generated surface. PrefabField Replace squares are property-transparent: they erase earlier geometry so replacement content can be folded in, but any exposed wall retains the surviving solid region's properties. Authored Primitives are property-contributing by default.
+_Avoid_: material-less Primitive (an authored Primitive with a missing material is still property-contributing), invisible Primitive (property transparency does not affect geometry or visibility)
+
 **Layer**:
 A named, owned collection of Primitives and WorldTriggerLines within a World. A generation selects a set of Layers and folds them in World order; the World's active Layer is the one currently focused for authoring. Ownership is permanent: neither a Primitive nor a WorldTriggerLine ever moves between Layers.
 _Avoid_: Layer tag, layer id (as a primitive attribute)
@@ -81,7 +85,7 @@ How an occupied Tile on the 32×32, 64×64, or 128×128 grid composes into the g
 _Avoid_: blend mode, cell operation
 
 **Wall collision override**:
-A per-edge flag on a MeshPrimitive's Ring, editable in the editor's Edge sub-mode only for an edge used by exactly one polygon in that Primitive's own mesh topology (Willpower's `External` edge connectivity — an edge used by two polygons, or by zero/more than two, is fixed off and not editable). Defaults on for an eligible edge. Where that edge, or any sub-segment it is split into during the fold, produces an ArrangementWall (Border or Step), the flag determines that wall segment's authored collision — replacing the geometry-computed Border and clearance rules — unless clipping combines coincident Mesh edges from different Primitives, in which case their shared boundary is fixed non-colliding regardless of either flag. A FloorStep above the player's maximum step height blocks approach from its lower floor even when its authored collision is off; that height limit never blocks movement from the higher floor down to the lower one. The flag never creates a wall where the fold produces none.
+A per-edge tri-state on a MeshPrimitive's Ring: Unset, Collides, or Doesn't collide. It is editable in the editor's Edge sub-mode only for an edge used by exactly one polygon in that Primitive's own mesh topology (Willpower's `External` edge connectivity). Unset delegates to generated collision: Border walls collide and Step walls do not unless their floor step is too tall or their clearance is insufficient. Collides additionally blocks a wall; Doesn't collide can open a Border but cannot bypass a Step wall's physical height or clearance constraints. When collinear authored edges contribute to one generated edge, Doesn't collide dominates Collides and Unset contributes nothing. An override never creates a wall where the fold produces none.
 _Avoid_: wall property, collision flag (ambiguous with the runtime collision system), border flag (border here is local mesh-topology "one polygon", not the Arrangement's cross-primitive Border edge — the two usually but not always coincide)
 
 **Wall visibility override**:

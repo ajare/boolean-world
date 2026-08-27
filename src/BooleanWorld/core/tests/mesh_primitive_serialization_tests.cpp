@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <memory>
@@ -280,8 +281,10 @@ void authoredCollidesValuesRoundTripThroughSaveAndLoad() {
       Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
   auto proxy = primitive->createEditingProxy();
   auto edgeIndex = proxy->getFirstEdgeIndex();
-  require(proxy->setEdgeCollides(edgeIndex, false),
-          "could not author a non-default collides value before committing");
+  auto secondEdgeIndex = proxy->getNextEdgeIndex(edgeIndex);
+  require(proxy->setEdgeCollisionOverride(edgeIndex, false) &&
+              proxy->setEdgeCollisionOverride(secondEdgeIndex, true),
+          "could not author both collision override values before committing");
   proxy->commitTo(*primitive);
 
   auto const yaml = serializeYaml(*primitive);
@@ -290,38 +293,28 @@ void authoredCollidesValuesRoundTripThroughSaveAndLoad() {
   require(deserializeYaml(yaml, *loaded), "authored MeshPrimitive did not deserialize");
 
   auto loadedProxy = loaded->createEditingProxy();
-  size_t collidingCount = 0;
-  size_t nonCollidingCount = 0;
-  for (auto edge = loadedProxy->getFirstEdgeIndex();
-       !loadedProxy->edgeIndexIterationFinished(edge);
-       edge = loadedProxy->getNextEdgeIndex(edge)) {
-    if (loadedProxy->getEdgeCollides(edge)) {
-      ++collidingCount;
-    } else {
-      ++nonCollidingCount;
+  auto countOverrides = [](auto const& editingProxy) {
+    size_t unsetCount = 0, collidingCount = 0, nonCollidingCount = 0;
+    for (auto edge = editingProxy->getFirstEdgeIndex();
+         !editingProxy->edgeIndexIterationFinished(edge);
+         edge = editingProxy->getNextEdgeIndex(edge)) {
+      auto value = editingProxy->getEdgeCollisionOverride(edge);
+      if (!value.has_value()) ++unsetCount;
+      else if (*value) ++collidingCount;
+      else ++nonCollidingCount;
     }
-  }
-  require(collidingCount == 3 && nonCollidingCount == 1,
-          "authored collides values did not round-trip through YAML save/load");
+    return std::array{unsetCount, collidingCount, nonCollidingCount};
+  };
+  require(countOverrides(loadedProxy) == std::array<size_t, 3>{2, 1, 1},
+          "collision override states did not round-trip through YAML save/load");
 
   auto const binary = serializeBinary(*primitive);
   auto binaryLoaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-1.0f, -1.0f, 1.0f, 1.0f), {}}}));
   require(deserializeBinary(binary, *binaryLoaded), "authored MeshPrimitive did not deserialize from binary");
   auto binaryProxy = binaryLoaded->createEditingProxy();
-  collidingCount = 0;
-  nonCollidingCount = 0;
-  for (auto edge = binaryProxy->getFirstEdgeIndex();
-       !binaryProxy->edgeIndexIterationFinished(edge);
-       edge = binaryProxy->getNextEdgeIndex(edge)) {
-    if (binaryProxy->getEdgeCollides(edge)) {
-      ++collidingCount;
-    } else {
-      ++nonCollidingCount;
-    }
-  }
-  require(collidingCount == 3 && nonCollidingCount == 1,
-          "authored collides values did not round-trip through binary save/load");
+  require(countOverrides(binaryProxy) == std::array<size_t, 3>{2, 1, 1},
+          "collision override states did not round-trip through binary save/load");
 }
 
 void authoredVisibleValuesRoundTripThroughSaveAndLoad() {
@@ -373,37 +366,59 @@ void authoredVisibleValuesRoundTripThroughSaveAndLoad() {
           "authored visible values did not round-trip through binary save/load");
 }
 
-// Regression test for the migration hazard this feature was specifically
-// designed to avoid: a MeshPrimitive saved by code that only knew about the
-// collides bit (#244/#245/#246) always wrote raw flags values of exactly 0
-// or 1 - the visible bit never existed, so it was never set. Because that
-// bit is stored with inverted polarity (see BW_MESH_EDGE_INVISIBLE_FLAG in
-// Defines.h), both possible legacy raw values must still read visible = true
-// today, with no explicit migration code and no data loss.
-void legacyCollidesOnlyRawFlagsValuesAlwaysReadAsVisible() {
-  for (uint32_t legacyRawFlags : {0u, 1u}) {
-    auto ring = square(-2.0f, -2.0f, 2.0f, 2.0f);
-    for (auto& vertex : ring) {
-      vertex.edgeFlags = legacyRawFlags;
-    }
-    auto primitive = std::unique_ptr<MeshPrimitive>(
-        MeshPrimitive::fromTree(Primitive::Operation::Union, {{ring, {}}}));
-    auto proxy = primitive->createEditingProxy();
-    for (auto edge = proxy->getFirstEdgeIndex();
-         !proxy->edgeIndexIterationFinished(edge);
-         edge = proxy->getNextEdgeIndex(edge)) {
-      require(proxy->getEdgeVisible(edge),
-              "a legacy collides-only raw flags value did not read as visible = true");
-      require(proxy->getEdgeCollides(edge) == ((legacyRawFlags & BW_MESH_EDGE_COLLIDES_FLAG) != 0),
-              "a legacy collides-only raw flags value's collides bit was not read correctly");
-    }
-  }
-}
-
-void loadingPreFeatureDataDefaultsToCollidesTrue() {
+void legacyCollisionFlagsMigrateToTriStateOverrides() {
   auto source = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
   auto yaml = serializeYaml(*source);
+
+  auto marker = yaml.find("collisionOverrideFormat: 1");
+  require(marker != std::string::npos,
+          "serialized MeshPrimitive had no collision override format marker");
+  auto markerLineStart = yaml.rfind('\n', marker) + 1;
+  auto markerLineEnd = yaml.find('\n', marker);
+  yaml.erase(markerLineStart, markerLineEnd - markerLineStart + 1);
+
+  size_t position = 0;
+  size_t vertexFlagIndex = 0;
+  while ((position = yaml.find("        flags: 0", position)) != std::string::npos) {
+    if ((vertexFlagIndex++ % 2) != 0) {
+      yaml.replace(position, std::string("        flags: 0").size(),
+                   "        flags: 1");
+    }
+    ++position;
+  }
+  require(vertexFlagIndex == 4,
+          "the legacy migration fixture did not rewrite four vertex flags");
+
+  auto loaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1.0f, -1.0f, 1.0f, 1.0f), {}}}));
+  require(deserializeYaml(yaml, *loaded),
+          "legacy collision flags did not deserialize");
+  auto proxy = loaded->createEditingProxy();
+  size_t unsetCount = 0, falseCount = 0;
+  for (auto edge = proxy->getFirstEdgeIndex();
+       !proxy->edgeIndexIterationFinished(edge);
+       edge = proxy->getNextEdgeIndex(edge)) {
+    auto value = proxy->getEdgeCollisionOverride(edge);
+    unsetCount += !value.has_value();
+    falseCount += value.has_value() && !*value;
+    require(proxy->getEdgeVisible(edge),
+            "legacy collision migration changed edge visibility");
+  }
+  require(unsetCount == 2 && falseCount == 2,
+          "legacy flags 1/0 did not migrate to unset/doesn't-collide");
+}
+
+void loadingPreFeatureDataDefaultsToUnsetCollisionOverride() {
+  auto source = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
+  auto yaml = serializeYaml(*source);
+  auto marker = yaml.find("collisionOverrideFormat: 1");
+  require(marker != std::string::npos,
+          "serialized MeshPrimitive had no collision override format marker");
+  auto markerLineStart = yaml.rfind('\n', marker) + 1;
+  auto markerLineEnd = yaml.find('\n', marker);
+  yaml.erase(markerLineStart, markerLineEnd - markerLineStart + 1);
 
   // Simulate a MeshPrimitive saved before this feature existed by stripping
   // every per-vertex "flags" field (the one immediately following a "p:"
@@ -444,8 +459,8 @@ void loadingPreFeatureDataDefaultsToCollidesTrue() {
   for (auto edge = proxy->getFirstEdgeIndex();
        !proxy->edgeIndexIterationFinished(edge);
        edge = proxy->getNextEdgeIndex(edge)) {
-    require(proxy->getEdgeCollides(edge),
-            "an External edge loaded from pre-feature data did not default to collides = true");
+    require(!proxy->getEdgeCollisionOverride(edge).has_value(),
+            "an External edge loaded from pre-feature data did not default to unset");
   }
 }
 
@@ -487,8 +502,8 @@ int main() {
     aggregateLimitsRejectOversizedInputBeforeCommit();
     authoredCollidesValuesRoundTripThroughSaveAndLoad();
     authoredVisibleValuesRoundTripThroughSaveAndLoad();
-    legacyCollidesOnlyRawFlagsValuesAlwaysReadAsVisible();
-    loadingPreFeatureDataDefaultsToCollidesTrue();
+    legacyCollisionFlagsMigrateToTriStateOverrides();
+    loadingPreFeatureDataDefaultsToUnsetCollisionOverride();
     proceduralPrimitiveSchemaRemainsFlat();
     shippedMeshFixtureUsesTheTreeSchema();
     std::cout << "MeshPrimitive containment tree serialization tests passed\n";

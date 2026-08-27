@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include <core/MeshPrimitive.h>
 #include <core/SuperformulaPolygon.h>
 #include <core/TorusPolygon.h>
 #include <core/TorusSegmentPolygon.h>
@@ -63,6 +64,22 @@ std::vector<std::unique_ptr<bw::core::Primitive>> makePrimitives() {
   return primitives;
 }
 
+void meshBoundsContainArbitraryAuthoredCoordinates() {
+  bw::core::ClosedPolygon remoteRing{
+      {{6.0f, -1.0f}}, {{8.0f, -1.0f}},
+      {{8.0f, 1.0f}}, {{6.0f, 1.0f}}};
+  auto mesh = std::unique_ptr<bw::core::MeshPrimitive>(
+      bw::core::MeshPrimitive::fromTree(
+          bw::core::Primitive::Operation::Union,
+          {{remoteRing, {}}}));
+  mesh->setSize(8.0f, 8.0f);
+  mesh->setPosition({-12.0f, 0.0f});
+  mesh->setFlags(BW_PRIMITIVE_INTERACTS_FLAG);
+  mesh->updateVertexPositions();
+
+  requireBoundsContainVertices(*mesh);
+}
+
 void primitiveBoundsSurviveAllPrimitivePaths() {
   auto primitives = makePrimitives();
 
@@ -114,6 +131,7 @@ void primitiveBoundsSurviveAllPrimitivePaths() {
 
 int main() {
   try {
+    meshBoundsContainArbitraryAuthoredCoordinates();
     primitiveBoundsSurviveAllPrimitivePaths();
     std::cout << "Generated primitive bounds cover construction, copying, and serialization\n";
     return 0;

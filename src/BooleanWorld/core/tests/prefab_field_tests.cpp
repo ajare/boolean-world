@@ -314,6 +314,8 @@ void gridsGenerateInStepLocalPhases() {
   require(mediumSquare->getOperation() == bw::core::Primitive::Operation::Difference &&
               mediumSquare->getSize() == wp::Vector2{128.0f, 128.0f} &&
               mediumSquare->getPosition() == wp::Vector2{64.0f, 64.0f} &&
+              mediumSquare->getPropertyContribution() ==
+                  bw::core::Primitive::PropertyContribution::Transparent &&
               field->isHiddenGeneratedPrimitive(mediumSquare),
           "Replace did not emit an exact hidden Tile-sized Difference square");
   require(layer.getPrimitive(5)->getPosition().x == 18.0f &&
