@@ -405,19 +405,27 @@ subMaterials:
     materialIndex: 0
     params: [1.35, 5, 12, 0.025, 0.2, 0.35, 0.42, 0.72]
     baseColour: [0.18, 0.18, 0.2]
-    emboss:
-      pattern: Hexagon
-      radius: 16
-      depth: 0.5
-      depthVariation: 0.1
-      runningBondWidth: 50
-      runningBondOffset: 50
-      voronoiRounding: 0.25
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 1
   - id: builtin.stone
     name: Stone
     materialIndex: 1
     params: [0.82, 8, 0.28]
     baseColour: [0.25, 0.24, 0.22]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
     emboss:
       pattern: Square
       radius: 12
@@ -431,6 +439,14 @@ subMaterials:
     materialIndex: 2
     params: [0.72, 0.35]
     baseColour: [0.13, 0.16, 0.18]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
     emboss:
       pattern: RunningBond
       radius: 20
@@ -444,6 +460,14 @@ subMaterials:
     materialIndex: 3
     params: [0.58, 18]
     baseColour: [0.55, 0.33, 0.17]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
     emboss:
       pattern: ModularOpus
       radius: 24
@@ -457,6 +481,14 @@ subMaterials:
     materialIndex: 4
     params: [0.66, 0.38]
     baseColour: [0.65, 0.62, 0.51]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
     emboss:
       pattern: Square
       radius: 16
@@ -470,6 +502,14 @@ subMaterials:
     materialIndex: 5
     params: [0.85, 0.72]
     baseColour: [0.06, 0.07, 0.08]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
     emboss:
       pattern: Voronoi
       radius: 10
@@ -483,26 +523,66 @@ subMaterials:
     materialIndex: 6
     params: [0.7, 0.3]
     baseColour: [0.03, 0.02, 0.04]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.quartz.crystal
     name: Quartz / crystal
     materialIndex: 7
     params: [0.62, 0.72]
     baseColour: [0.72, 0.82, 0.88]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.ore
     name: Ore
     materialIndex: 8
     params: [0.72, 4.5]
     baseColour: [0.3, 0.28, 0.24]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.rusted.iron
     name: Rusted iron
     materialIndex: 9
     params: [0.72, 4.5]
     baseColour: [0.35, 0.15, 0.05]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.galvanized.steel
     name: Galvanized steel
     materialIndex: 10
     params: [0.66, 1.45]
     baseColour: [0.55, 0.58, 0.6]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
     emboss:
       pattern: Square
       radius: 20
@@ -516,106 +596,274 @@ subMaterials:
     materialIndex: 11
     params: [0.82, 0.18]
     baseColour: [0.55, 0.57, 0.59]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.hammered.metal
     name: Hammered metal
     materialIndex: 12
     params: [0.72, 4.2]
     baseColour: [0.38, 0.4, 0.43]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.patinated.copper
     name: Patinated copper
     materialIndex: 13
     params: [0.66, 2.8]
     baseColour: [0.3, 0.45, 0.35]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.damascene.steel
     name: Damascene steel
     materialIndex: 14
     params: [0.72, 0.32]
     baseColour: [0.35, 0.37, 0.4]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.heat.treated.metal
     name: Heat-treated metal
     materialIndex: 15
     params: [0.62, 0.72]
     baseColour: [0.4, 0.3, 0.35]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.wood
     name: Wood
     materialIndex: 16
     params: [0.54, 18]
     baseColour: [0.38, 0.19, 0.07]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.bark
     name: Bark
     materialIndex: 17
     params: [0.62, 7]
     baseColour: [0.15, 0.07, 0.03]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.bone.ivory
     name: Bone / ivory
     materialIndex: 18
     params: [0.68, 7]
     baseColour: [0.72, 0.64, 0.47]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.leather
     name: Leather
     materialIndex: 19
     params: [0.76, 0.42]
     baseColour: [0.25, 0.1, 0.05]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.flesh
     name: Flesh
     materialIndex: 20
     params: [0.6, 0.72]
     baseColour: [0.45, 0.15, 0.13]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.chitin.shell
     name: Chitin / shell
     materialIndex: 21
     params: [0.67, 3.2]
     baseColour: [0.08, 0.05, 0.11]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.coral
     name: Coral
     materialIndex: 22
     params: [0.66, 0.8]
     baseColour: [0.65, 0.22, 0.15]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.arcane.crystal
     name: Arcane crystal
     materialIndex: 23
     params: [0.64, 0.82]
     baseColour: [0.1, 0.2, 0.45]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.energy.stone
     name: Energy stone
     materialIndex: 24
     params: [0.68, 4.2]
     baseColour: [0.1, 0.25, 0.55]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.alien.tissue
     name: Alien tissue
     materialIndex: 25
     params: [0.67, 3.5]
     baseColour: [0.2, 0.3, 0.15]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.magical.metal
     name: Magical metal
     materialIndex: 26
     params: [0.72, 1.7]
     baseColour: [0.35, 0.3, 0.55]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.solid.cloud
     name: Solid cloud
     materialIndex: 27
     params: [0.53, 0.3]
     baseColour: [0.55, 0.65, 0.8]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.holographic
     name: Holographic
     materialIndex: 28
     params: [0.75, 35]
     baseColour: [0.35, 0.4, 0.5]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.corruption
     name: Corruption
     materialIndex: 29
     params: [0.65, 0.36]
     baseColour: [0.2, 0.05, 0.2]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.frosted.glass
     name: Frosted glass
     materialIndex: 30
     params: [1.4, 0.22]
     baseColour: [0.82, 0.88, 0.9]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.brick
     name: Brick
     materialIndex: 31
     params: [0.95, 0.42]
     baseColour: [0.48, 0.22, 0.13]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
     emboss:
       pattern: RunningBond
       radius: 8
@@ -629,38 +877,102 @@ subMaterials:
     materialIndex: 32
     params: [1.15, 0.55]
     baseColour: [0.1, 0.2, 0.12]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.banded.gneiss
     name: Banded gneiss
     materialIndex: 33
     params: [0.68, 13]
     baseColour: [0.35, 0.32, 0.28]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.rock
     name: Rock
     materialIndex: 34
     params: [0.74, 7.5]
     baseColour: [0.3, 0.29, 0.26]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.mossy.rock
     name: Mossy rock
     materialIndex: 35
     params: [0.72, 16]
     baseColour: [0.2, 0.24, 0.15]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: builtin.wet.rock
     name: Wet rock
     materialIndex: 36
     params: [0.74, 0.24]
     baseColour: [0.2, 0.2, 0.19]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: migrated.marble.1
     name: Migrated Marble 1
     materialIndex: 0
     params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
     baseColour: [0.18, 0.18, 0.2]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: migrated_marble_1
     name: Migrated Marble 1
     materialIndex: 0
     params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
     baseColour: [0.18, 0.18, 0.2]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0
   - id: migrated_marble_2
     name: Migrated Marble 2
     materialIndex: 0
     params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
     baseColour: [0.18, 0.18, 0.2]
+    chip:
+      minimumArrisLength: 2.0
+      minimumDepth: 1.0
+      maximumDepth: 3.0
+      minimumReach: 1.0
+      maximumReach: 3.0
+      minimumSpacing: 3.1
+      probability: 0.0

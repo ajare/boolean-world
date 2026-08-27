@@ -1131,8 +1131,10 @@ ArrangementResultPtr BuildArrangement(
   auto result = make_shared<ArrangementResult>();
   result->vertices = graph.vs;
   result->palette.emplace_back();  // Exterior and empty faces.
+  result->chipParametersPalette.emplace_back();
   for (auto const& primitive : primitives) {
     result->palette.push_back(primitive.properties);
+    result->chipParametersPalette.push_back(primitive.chipParameters);
   }
 
   // Face zero is the unbounded exterior, allowing every edge to name two
@@ -1365,7 +1367,7 @@ vector<ArrangementWall> BuildArrangementWalls(
     // player's height block passage, regardless of which of floorZ/ceilingZ
     // differs.
     auto clearance = min(properties0.ceilingZ, properties1.ceilingZ) -
-                      max(properties0.floorZ, properties1.floorZ);
+                     max(properties0.floorZ, properties1.floorZ);
     if (properties0.floorZ != properties1.floorZ) {
       auto const& lowerFace =
           properties0.floorZ < properties1.floorZ ? face0 : face1;

@@ -275,8 +275,8 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
   primStats.updateVertexCount = 0;
 
   auto updatedPrimitives = preparePrimitives(primitives, &primStats);
-  auto arrangementPrimitives =
-      SnapshotPrimitives(primitives, generatedPriorities);
+  auto arrangementPrimitives = SnapshotPrimitives(
+      primitives, generatedPriorities, getChipParametersResolver());
   auto sourcePrimitives = snapshotPrimitiveMetadata(primitives);
   auto layerSelection = getLayerSelection();
 
@@ -540,6 +540,12 @@ void DynamicWorldDataGenerator::handleLayerSelectionChanged() {
 void DynamicWorldDataGenerator::handlePrimitiveFilterChanged() {
   // Which Primitives enter the fold has changed, so the committed clipping is
   // stale for exactly the same reason a Layer selection change makes it so.
+  if (mWorld && mNumGenerationsComplete > 0) {
+    generate(true);
+  }
+}
+
+void DynamicWorldDataGenerator::handleChipParametersResolverChanged() {
   if (mWorld && mNumGenerationsComplete > 0) {
     generate(true);
   }

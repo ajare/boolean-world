@@ -60,7 +60,7 @@ mpp::RenderPipelineOptions pipelineOptions() {
 
 PreviewRenderScene::PreviewRenderScene(
     EditorRenderSystem& renderSystem,
-    bw::core::World const* world,
+    bw::core::World* world,
     std::size_t width,
     std::size_t height)
     : mwRenderSystem(renderSystem.renderSystem()),
@@ -143,6 +143,10 @@ void PreviewRenderScene::updateMaterialDraft(
 void PreviewRenderScene::reloadSubMaterialResolver(
     wp::application::resourcesystem::ResourceManager* resourceMgr) {
   mRenderer->reloadSubMaterialResolver(resourceMgr);
+}
+
+void PreviewRenderScene::worldGeometryChanged() {
+  mRenderer->setWorldChanged();
 }
 
 std::uint32_t PreviewRenderScene::render(

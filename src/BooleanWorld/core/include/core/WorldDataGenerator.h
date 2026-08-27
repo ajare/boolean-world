@@ -2,6 +2,7 @@
 
 #include <array>
 #include <functional>
+#include <string>
 #include <vector>
 
 #include "core/LayerSelection.h"
@@ -21,6 +22,12 @@ class World;
 // Layer-level fact the Primitive itself cannot answer.
 using PrimitiveFilter =
     std::function<bool(Layer const& layer, Primitive const* primitive)>;
+
+// Resolves a wall Sub-material id to derived geometry parameters. The callback
+// is invoked while generation input is snapshotted on the calling thread;
+// workers receive only the returned numbers.
+using ChipParametersResolver =
+    std::function<ChipGenerationParameters(std::string const& subMaterialId)>;
 
 struct OrderedPrimitive {
   Primitive* primitive;
@@ -53,6 +60,7 @@ private:
   LayerSelection mLayerSelection{SelectLayer(0)};
 
   PrimitiveFilter mPrimitiveFilter;
+  ChipParametersResolver mChipParametersResolver;
 
 protected:
   std::array<wp::Vector2, 3> mViewTriangle;
@@ -61,6 +69,7 @@ private:
   virtual void handleEvents(uint32_t events);
   virtual void handleLayerSelectionChanged();
   virtual void handlePrimitiveFilterChanged();
+  virtual void handleChipParametersResolverChanged();
 
 protected:
   void copyFrom(WorldDataGenerator const& other);
@@ -85,6 +94,9 @@ public:
   void setPrimitiveFilter(PrimitiveFilter filter);
   [[nodiscard]] PrimitiveFilter const& getPrimitiveFilter() const;
   void refreshPrimitiveFilter();
+
+  void setChipParametersResolver(ChipParametersResolver resolver);
+  [[nodiscard]] ChipParametersResolver const& getChipParametersResolver() const;
 
   void setActiveLayer(uint32_t layerId);
 

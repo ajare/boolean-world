@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "IconsFontAwesome5.h"
@@ -131,7 +133,6 @@ bool InputTextMultiline(
       flags, InputTextResizeCallback, &cbUserData);
 }
 
-
 void EmbossFields(bw::core::EmbossData& emboss) {
   if (ImGui::BeginCombo(
           "Pattern", bw::core::EmbossPatternName(emboss.pattern))) {
@@ -183,11 +184,43 @@ void EmbossFields(bw::core::EmbossData& emboss) {
   }
 }
 
-void ChipFields(float& chipDepth, float& chipReach) {
-  auto limits = bw::core::ChipDepthLimits();
-  ImGui::SliderFloat("Chip depth", &chipDepth, limits.minimum, limits.maximum, "%.2f");
-  limits = bw::core::ChipReachLimits();
-  ImGui::SliderFloat("Chip reach", &chipReach, limits.minimum, limits.maximum, "%.2f");
+void ChipFields(bw::core::ChipGenerationParameters& chip) {
+  auto arrisLimits = bw::core::ChipArrisLengthLimits();
+  ImGui::SliderFloat(
+      "Minimum Arris length", &chip.minimumArrisLength,
+      arrisLimits.minimum, arrisLimits.maximum, "%.2f");
+
+  auto depthLimits = bw::core::ChipDepthLimits();
+  ImGui::SliderFloat(
+      "Minimum Chip depth", &chip.minimumDepth,
+      depthLimits.minimum, chip.maximumDepth, "%.2f");
+  ImGui::SliderFloat(
+      "Maximum Chip depth", &chip.maximumDepth,
+      chip.minimumDepth, depthLimits.maximum, "%.2f");
+
+  auto reachLimits = bw::core::ChipReachLimits();
+  auto maximumReach = std::min(
+      reachLimits.maximum, chip.minimumArrisLength * 2.0f);
+  chip.maximumReach = std::min(chip.maximumReach, maximumReach);
+  chip.minimumReach = std::min(chip.minimumReach, chip.maximumReach);
+  ImGui::SliderFloat(
+      "Minimum Chip reach", &chip.minimumReach,
+      reachLimits.minimum, chip.maximumReach, "%.2f");
+  ImGui::SliderFloat(
+      "Maximum Chip reach", &chip.maximumReach,
+      chip.minimumReach, maximumReach, "%.2f");
+
+  auto spacingLimits = bw::core::ChipSpacingLimits();
+  auto minimumSpacing = chip.maximumReach + 0.1f;
+  chip.minimumSpacing = std::max(chip.minimumSpacing, minimumSpacing);
+  ImGui::SliderFloat(
+      "Minimum Chip spacing", &chip.minimumSpacing,
+      minimumSpacing, spacingLimits.maximum, "%.2f");
+
+  auto probabilityLimits = bw::core::ChipProbabilityLimits();
+  ImGui::SliderFloat(
+      "Chip probability", &chip.probability,
+      probabilityLimits.minimum, probabilityLimits.maximum, "%.2f");
 }
 
 }  // namespace widgets

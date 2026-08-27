@@ -36,9 +36,13 @@ bool near(float a, float b, float tolerance = 0.01f) {
 // Fixed-point units are 1000 per world unit (Arrangement.h).
 constexpr int64_t U = 1000;
 
-// The compiled-in sizes every Chip is cut at for now (#278).
-float const chipDepth = bw::core::arr::DefaultChipSizes().depth;
-float const chipReach = bw::core::arr::DefaultChipSizes().reach;
+// Fixture Sub-material dimensions, resolved before arrangement construction.
+float const chipDepth = 3.0f;
+float const chipReach = 3.0f;
+
+bw::core::ChipGenerationParameters fixedChip(float depth, float reach) {
+  return {2.0f, depth, depth, reach, reach, 256.0f, 1.0f};
+}
 
 Contour rectContour(int64_t x0, int64_t y0, int64_t x1, int64_t y1) {
   return {{x0 * U, y0 * U}, {x1 * U, y0 * U}, {x1 * U, y1 * U}, {x0 * U, y1 * U}};
@@ -142,9 +146,15 @@ std::vector<ArrangementPrimitive> slabAndBulkhead(
 }
 
 ArrangementWorldData snapshotOf(
-    std::vector<ArrangementPrimitive> const& primitives) {
+    std::vector<ArrangementPrimitive> const& primitives,
+    bw::core::ChipGenerationParameters const& chip =
+        fixedChip(chipDepth, chipReach)) {
+  auto resolved = primitives;
+  for (auto& primitive : resolved) {
+    primitive.chipParameters = chip;
+  }
   return ArrangementWorldData(
-      bw::core::arr::BuildArrangement(primitives),
+      bw::core::arr::BuildArrangement(resolved),
       wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}),
       64.0f,
       8.0f);
@@ -189,7 +199,7 @@ float triangleArea2d(
     std::array<float, 3> const& c) {
   return std::abs(
              (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])) *
-      0.5f;
+         0.5f;
 }
 
 bool hasVertexAt(
@@ -298,8 +308,8 @@ void theChamferIsATaperedFortyFiveDegreeFacet() {
               triangle.v.begin(), triangle.v.end(),
               [](auto const& vertex) {
                 return near(vertex.position[0], 0.0f) &&
-                    near(vertex.position[1], -20.0f) &&
-                    near(vertex.position[2], 12.0f - chipDepth);
+                       near(vertex.position[1], -20.0f) &&
+                       near(vertex.position[2], 12.0f - chipDepth);
               }),
           "a chamfer triangle did not meet the Chip's deepest cross-section");
       continue;
@@ -366,10 +376,9 @@ void theFloorSideIsRebuiltWithTheFootprintSubtracted() {
           "the rebuilt face's area was not its boundary less the four Chip footprints");
 }
 
-// 3b. Every replacement triangle carries a unit normal facing out of the
-//     solid and is wound anticlockwise about it, which is the whole of the
-//     channel's orientation contract - the renderer reads the normal for
-//     shading and maps the winding straight through.
+// 3b. Every replacement triangle carries one flat face normal calculated from
+//     its geometry, shared by all three vertices, facing out of the solid and
+//     with compatible anticlockwise winding.
 void replacementTrianglesCarryAnOutwardNormalTheyAreWoundAbout() {
   auto snapshot = snapshotOf(slabAndPlatform(12.0f));
   auto const& detail = snapshot.getDetail();
@@ -390,11 +399,22 @@ void replacementTrianglesCarryAnOutwardNormalTheyAreWoundAbout() {
     // when the winding is anticlockwise seen from the normal's side.
     float u[3]{b[0] - a[0], b[1] - a[1], b[2] - a[2]};
     float v[3]{c[0] - a[0], c[1] - a[1], c[2] - a[2]};
-    auto facing = (u[1] * v[2] - u[2] * v[1]) * n[0] +
-        (u[2] * v[0] - u[0] * v[2]) * n[1] +
-        (u[0] * v[1] - u[1] * v[0]) * n[2];
+    float geometric[3]{
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0]};
+    auto geometricLength = std::sqrt(
+        geometric[0] * geometric[0] + geometric[1] * geometric[1] +
+        geometric[2] * geometric[2]);
+    auto facing = geometric[0] * n[0] + geometric[1] * n[1] +
+                  geometric[2] * n[2];
     require(facing > 0.0f,
             "a replacement triangle was not wound anticlockwise about its normal");
+    require(
+        near(n[0], geometric[0] / geometricLength) &&
+            near(n[1], geometric[1] / geometricLength) &&
+            near(n[2], geometric[2] / geometricLength),
+        "a replacement triangle did not carry its geometric face normal");
   }
 
   for (auto const& triangle :
@@ -402,6 +422,49 @@ void replacementTrianglesCarryAnOutwardNormalTheyAreWoundAbout() {
     require(near(triangle.v[0].normal[2], 1.0f),
             "a rebuilt floor triangle's normal did not point straight up");
   }
+
+  auto verifyWallAndFacetNormals = [](
+                                       ArrangementWorldData const& worldData,
+                                       ArrangementWallKind kind,
+                                       wp::Vector2 const& midpoint,
+                                       float expectedFacetZSign) {
+    auto wallIndex = findWall(worldData, kind, midpoint);
+    require(wallIndex != ~0u, "the wall used to verify normals was not found");
+    auto const& wall = worldData.getWalls()[wallIndex];
+    auto orientation = bw::core::arr::OrientArrangementWall(
+        worldData.getArrangement(), wall);
+    uint32_t facetCount = 0;
+    for (auto const& triangle : worldData.getDetail().replacementsFor(
+             DetailSurfaceKind::Wall, wallIndex)) {
+      auto const& normal = triangle.v[0].normal;
+      auto outward = normal[0] * orientation.normal.x +
+                     normal[1] * orientation.normal.y;
+      if (std::abs(normal[2]) <= 0.01f) {
+        require(near(normal[0], orientation.normal.x) &&
+                    near(normal[1], orientation.normal.y),
+                "a wall-remainder normal did not face out of the solid");
+        require(triangle.followsWallFacing,
+                "a wall remainder was not marked to follow wall facing");
+      } else {
+        ++facetCount;
+        require(outward > 0.0f,
+                "a Chip facet normal pointed through the wall into the solid");
+        require(normal[2] * expectedFacetZSign > 0.0f,
+                "a Chip facet normal pointed into the horizontal solid");
+        require(!triangle.followsWallFacing,
+                "a Chip facet was marked for wall-normal mirroring");
+      }
+    }
+    require(facetCount == 2,
+            "the normal check did not inspect both facets of one Chip");
+  };
+
+  verifyWallAndFacetNormals(
+      snapshot, ArrangementWallKind::FloorStep, {0.0f, -20.0f}, 1.0f);
+  auto ceilingSnapshot = snapshotOf(slabAndBulkhead(12.0f));
+  verifyWallAndFacetNormals(
+      ceilingSnapshot, ArrangementWallKind::CeilingStep, {0.0f, -20.0f},
+      -1.0f);
 }
 
 // 4. The wall-height clamp: a Chip shrinks to fit rather than eating through
@@ -467,13 +530,15 @@ void anInvisibleWallCarriesNoChip() {
 
 // 6. Chips are seeded from the Arris's own endpoints, so they stay put.
 void chipsStayPutAcrossRegenerationAndUnrelatedEdits() {
-  auto first = snapshotOf(slabAndPlatform(12.0f));
-  auto again = snapshotOf(slabAndPlatform(12.0f));
+  bw::core::ChipGenerationParameters parameters{
+      2.0f, 1.0f, 3.0f, 1.0f, 3.0f, 3.1f, 1.0f};
+  auto first = snapshotOf(slabAndPlatform(12.0f), parameters);
+  auto again = snapshotOf(slabAndPlatform(12.0f), parameters);
   require(sortedPositions(first.getDetail()) ==
               sortedPositions(again.getDetail()),
           "regenerating an unchanged world moved its Chips");
 
-  auto edited = snapshotOf(slabAndPlatform(12.0f, {}, true));
+  auto edited = snapshotOf(slabAndPlatform(12.0f, {}, true), parameters);
   require(edited.getArrangement().edges.size() >
               first.getArrangement().edges.size(),
           "the unrelated edit did not add arrangement edges (fixture broken)");
@@ -575,8 +640,8 @@ void theCeilingChamferIsATaperedFortyFiveDegreeFacet() {
               triangle.v.begin(), triangle.v.end(),
               [](auto const& vertex) {
                 return near(vertex.position[0], 0.0f) &&
-                    near(vertex.position[1], -20.0f) &&
-                    near(vertex.position[2], 12.0f + chipDepth);
+                       near(vertex.position[1], -20.0f) &&
+                       near(vertex.position[2], 12.0f + chipDepth);
               }),
           "a chamfer triangle did not meet the Chip's deepest cross-section");
       continue;
@@ -718,7 +783,7 @@ void aChipShrinksItsReachToFitAShortArris() {
        0,
        0,
        propertiesWithHeights(0.0f, 48.0f)},
-      {{rectContour(-5, -5, 5, 5)},
+      {{rectContour(-1, -20, 1, 20)},
        Primitive::Operation::Union,
        Primitive::FillRule::EvenOdd,
        1,
@@ -727,10 +792,10 @@ void aChipShrinksItsReachToFitAShortArris() {
   auto snapshot = snapshotOf(primitives);
   auto const& detail = snapshot.getDetail();
 
-  // The platform is 10x10, shorter than chipReach (24), so the south Arris
-  // running from (-5, -5) to (5, -5) must clamp its reach to its own length.
+  // The platform's 2-unit Arris is shorter than the nominal reach (3), so it
+  // must clamp its reach to its own length.
   auto wallIndex =
-      findWall(snapshot, ArrangementWallKind::FloorStep, {0.0f, -5.0f});
+      findWall(snapshot, ArrangementWallKind::FloorStep, {0.0f, -20.0f});
   require(wallIndex != ~0u, "the short platform's south FloorStep was not found");
   auto replacements =
       detail.replacementsFor(DetailSurfaceKind::Wall, wallIndex);
@@ -738,15 +803,15 @@ void aChipShrinksItsReachToFitAShortArris() {
 
   // Tapering all the way to the Arris's own corners rather than chipReach's
   // nominal half-length.
-  require(hasVertexAt(replacements, -5.0f, -5.0f, 12.0f) &&
-              hasVertexAt(replacements, 5.0f, -5.0f, 12.0f),
+  require(hasVertexAt(replacements, -1.0f, -20.0f, 12.0f) &&
+              hasVertexAt(replacements, 1.0f, -20.0f, 12.0f),
           "the clamped Chip's reach did not shrink to exactly the Arris's own length");
-  require(!hasVertexAt(replacements, -chipReach * 0.5f, -5.0f, 12.0f),
+  require(!hasVertexAt(replacements, -chipReach * 0.5f, -20.0f, 12.0f),
           "the clamped Chip still tapered at its nominal, unclamped reach");
 
   // Depth is untouched: the platform is wide enough, and tall enough, that
   // only the reach clamp applies.
-  require(hasVertexAt(replacements, 0.0f, -5.0f + chipDepth, 12.0f),
+  require(hasVertexAt(replacements, 0.0f, -20.0f + chipDepth, 12.0f),
           "the Arris-length clamp perturbed the Chip's depth");
 }
 
@@ -795,6 +860,109 @@ void aChipShrinksItsDepthToFitANarrowLedge() {
           "the face-boundary clamp perturbed the Chip's reach");
 }
 
+void probabilityAndMinimumArrisLengthControlEligibility() {
+  auto disabled = snapshotOf(
+      slabAndPlatform(12.0f), bw::core::ChipGenerationParameters{});
+  require(disabled.getDetail().getChipCount() == 0,
+          "the default zero probability still produced Chips");
+
+  bw::core::ChipGenerationParameters tooShort{
+      41.0f, 1.0f, 3.0f, 1.0f, 3.0f, 3.1f, 1.0f};
+  auto shortArrises = snapshotOf(slabAndPlatform(12.0f), tooShort);
+  require(shortArrises.getDetail().getChipCount() == 0,
+          "an Arris below the material's minimum length produced Chips");
+}
+
+void chipsUseRandomSizesAndNonOverlappingRandomPositions() {
+  bw::core::ChipGenerationParameters parameters{
+      2.0f, 1.0f, 3.0f, 1.0f, 3.0f, 3.1f, 1.0f};
+  auto snapshot = snapshotOf(slabAndPlatform(12.0f), parameters);
+  auto const& detail = snapshot.getDetail();
+  // floor((40 - maxReach) / spacing) + 1 = 12 per Arris, four Arrises.
+  require(detail.getChipCount() == 48,
+          "probability one did not fill every possible Chip slot");
+
+  auto wallIndex =
+      findWall(snapshot, ArrangementWallKind::FloorStep, {0.0f, -20.0f});
+  auto replacements =
+      detail.replacementsFor(DetailSurfaceKind::Wall, wallIndex);
+  std::vector<float> arrisPoints;
+  std::vector<float> depths;
+  for (auto const& triangle : replacements) {
+    if (triangle.v[0].normal[2] <= 0.1f) {
+      continue;  // Wall remainder, not a chamfer facet.
+    }
+    for (auto const& vertex : triangle.v) {
+      if (near(vertex.position[1], -20.0f) &&
+          near(vertex.position[2], 12.0f)) {
+        arrisPoints.push_back(vertex.position[0]);
+      }
+      if (near(vertex.position[1], -20.0f) && vertex.position[2] < 11.99f) {
+        depths.push_back(12.0f - vertex.position[2]);
+      }
+    }
+  }
+  auto uniqueSorted = [](std::vector<float> values) {
+    std::sort(values.begin(), values.end());
+    values.erase(
+        std::unique(values.begin(), values.end(),
+                    [](float a, float b) { return near(a, b); }),
+        values.end());
+    return values;
+  };
+  arrisPoints = uniqueSorted(std::move(arrisPoints));
+  depths = uniqueSorted(std::move(depths));
+  require(arrisPoints.size() == 24 && depths.size() == 12,
+          "the expected randomized chamfer geometry was not emitted");
+
+  std::vector<float> centres;
+  for (size_t i = 0; i < arrisPoints.size(); i += 2) {
+    auto reach = arrisPoints[i + 1] - arrisPoints[i];
+    require(reach >= 1.0f - 0.01f && reach <= 3.0f + 0.01f,
+            "a randomized Chip reach fell outside its authored range");
+    centres.push_back((arrisPoints[i] + arrisPoints[i + 1]) * 0.5f);
+  }
+  bool irregular = false;
+  for (size_t i = 1; i < centres.size(); ++i) {
+    auto spacing = centres[i] - centres[i - 1];
+    require(spacing >= 3.1f - 0.01f,
+            "randomly placed Chips violated minimum spacing");
+    if (i > 1 && !near(
+                     spacing, centres[i - 1] - centres[i - 2], 0.05f)) {
+      irregular = true;
+    }
+  }
+  require(irregular, "multiple Chips were spaced evenly rather than randomly");
+  for (auto depth : depths) {
+    require(depth >= 1.0f - 0.01f && depth <= 3.0f + 0.01f,
+            "a randomized Chip depth fell outside its authored range");
+  }
+}
+
+// Resolved dimensions belong to each wall's own Sub-material palette entry:
+// a disabled material can coexist with one that chips.
+void aDisabledMaterialDoesNotDisableOtherMaterialsChips() {
+  std::vector<ArrangementPrimitive> primitives;
+  auto add = [&](Contour contour, float floorZ,
+                 bw::core::ChipGenerationParameters parameters) {
+    auto properties = propertiesWithHeights(floorZ, 48.0f);
+    primitives.push_back(
+        {{std::move(contour)}, Primitive::Operation::Union, Primitive::FillRule::EvenOdd, uint64_t(primitives.size() + 1), uint32_t(primitives.size()), properties, {}, {}, parameters});
+  };
+  add(rectContour(-50, -20, -10, 20), 0.0f, {});
+  add(rectContour(-40, -10, -20, 10), 12.0f, {});
+  add(rectContour(10, -20, 50, 20), 0.0f,
+      fixedChip(chipDepth, chipReach));
+  add(rectContour(20, -10, 40, 10), 12.0f,
+      fixedChip(chipDepth, chipReach));
+
+  ArrangementWorldData snapshot(
+      bw::core::arr::BuildArrangement(primitives),
+      wp::BoundingBox({-64.0f, -64.0f}, {128.0f, 128.0f}), 32.0f, 8.0f);
+  require(snapshot.getDetail().getChipCount() == 4,
+          "a disabled wall material chipped or disabled the other material");
+}
+
 // 15. The minimum-size drop: a Chip clamped smaller than the minimum is not
 //     emitted at all, and the surface it would have bitten is left whole.
 void aChipBelowTheMinimumSizeIsDroppedEntirely() {
@@ -809,6 +977,9 @@ void aChipBelowTheMinimumSizeIsDroppedEntirely() {
 // 7. The three existing outputs are untouched by the detail pass.
 void theUnchippedOutputsAreIdenticalEitherWay() {
   auto primitives = slabAndPlatform(12.0f);
+  for (auto& primitive : primitives) {
+    primitive.chipParameters = fixedChip(chipDepth, chipReach);
+  }
   auto arrangement = bw::core::arr::BuildArrangement(primitives);
   auto expectedTriangles = bw::core::arr::BuildArrangementTriangles(*arrangement);
   auto expectedWalls = bw::core::arr::BuildArrangementWalls(*arrangement);
@@ -866,6 +1037,9 @@ int main() {
     anInvisibleCeilingStepWallCarriesNoChip();
     aChipShrinksItsReachToFitAShortArris();
     aChipShrinksItsDepthToFitANarrowLedge();
+    probabilityAndMinimumArrisLengthControlEligibility();
+    chipsUseRandomSizesAndNonOverlappingRandomPositions();
+    aDisabledMaterialDoesNotDisableOtherMaterialsChips();
     aChipBelowTheMinimumSizeIsDroppedEntirely();
     std::cout << "Chips are cut into FloorStep top and CeilingStep bottom "
                  "Arrises and published in the snapshot's detail channel\n";

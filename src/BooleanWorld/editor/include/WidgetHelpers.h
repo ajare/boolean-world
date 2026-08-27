@@ -41,11 +41,9 @@ bool InputTextMultiline(
 // can silently drop what the other authored.
 void EmbossFields(bw::core::EmbossData& emboss);
 
-// Chip depth and reach: independent of Embossing, and like it bounded by
-// their own authoring limits rather than by a Technique schema - see
-// bw::core::ChipDepthLimits/ChipReachLimits. Shared for the same reason
-// EmbossFields is.
-void ChipFields(float& chipDepth, float& chipReach);
+// Procedural Chip eligibility, count, spacing, and size variation. Shared by
+// both Sub-material authoring surfaces so neither silently drops a field.
+void ChipFields(bw::core::ChipGenerationParameters& chip);
 
 }  // namespace widgets
 

@@ -426,31 +426,31 @@ void unknownEmbossPatternReadsAsNone() {
           "an unknown emboss pattern did not read back as None");
 }
 
-// Chip depth/reach are authored per Sub-material and bounded by their own
-// limits rather than a Technique schema, exactly like Embossing above - see
-// bw::core::ChipIsInRange.
-void chipDepthAndReachRoundTripAndDefaultToZero() {
+// Chip generation is authored per Sub-material and bounded independently of a
+// Technique schema, with relational constraints preventing overlap.
+void chipGenerationParametersRoundTripAndDefaultToDisabled() {
   auto original = buildMarbleCatalog();
-  original.subMaterials[0].chipDepth = 2.5f;
-  original.subMaterials[0].chipReach = 40.0f;
+  original.subMaterials[0].chip = {
+      2.0f, 1.5f, 2.5f, 2.0f, 4.0f, 4.1f, 0.65f};
 
   bw::core::SerializationWorkData writeWorkData;
   auto writer = std::shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toString());
   original.serialize(writer, writeWorkData);
   writer->serialize();
   auto yaml = static_cast<bw::core::YamlSerializer*>(writer.get())->getSerializedString();
+  require(yaml.find("chip:") != std::string::npos &&
+              yaml.find("minimumArrisLength:") != std::string::npos &&
+              yaml.find("chipMinimumArrisLength:") == std::string::npos,
+          "Chip settings were not serialized in their own YAML map");
 
   ProcMaterialData roundTripped;
   bw::core::SerializationWorkData readWorkData;
   auto reader = yamlFrom(yaml);
   require(roundTripped.deserialize(reader, readWorkData),
-          "catalog with chip depth/reach failed to deserialize");
-  require(near(roundTripped.subMaterials[0].chipDepth, 2.5f) &&
-              near(roundTripped.subMaterials[0].chipReach, 40.0f),
-          "SubMaterial chip depth/reach did not round-trip");
+          "catalog with Chip generation parameters failed to deserialize");
+  require(roundTripped.subMaterials[0].chip == original.subMaterials[0].chip,
+          "SubMaterial Chip generation parameters did not round-trip");
 
-  // A catalog written before chipping existed has neither field, and must
-  // still load - as a Sub-material that does not chip at all.
   std::string const withoutChip =
       "program3d: \"world_pbr.frag\"\n"
       "program2d: \"world_pbr_2d.frag\"\n"
@@ -472,13 +472,16 @@ void chipDepthAndReachRoundTripAndDefaultToZero() {
   bw::core::SerializationWorkData legacyWorkData;
   auto legacyReader = yamlFrom(withoutChip);
   require(legacy.deserialize(legacyReader, legacyWorkData),
-          "a catalog without chip fields was rejected");
-  require(near(legacy.subMaterials[0].chipDepth, 0.0f) &&
-              near(legacy.subMaterials[0].chipReach, 0.0f),
-          "missing chip fields did not fall back to not chipping at all");
+          "a catalog without Chip fields was rejected");
+  require(legacy.subMaterials[0].chip.probability == 0.0f,
+          "missing Chip fields did not default to disabled generation");
 }
 
-void outOfRangeChipIsRejected() {
+void invalidChipGenerationParametersAreRejected() {
+  require(!bw::core::ChipParametersAreValid(
+              {2.01f, 1.0f, 3.0f, 1.0f, 4.01f, 4.11f, 0.5f}),
+          "a Chip wider than the absolute two-unit cap was accepted");
+
   std::string const yaml =
       "program3d: \"world_pbr.frag\"\n"
       "program2d: \"world_pbr_2d.frag\"\n"
@@ -495,18 +498,23 @@ void outOfRangeChipIsRejected() {
       "    materialIndex: 0\n"
       "    params: [1.35]\n"
       "    baseColour: [0, 0, 0]\n"
-      "    chipDepth: 4096\n"
-      "    chipReach: 0\n";
+      "    chip:\n"
+      "      minimumArrisLength: 2\n"
+      "      minimumDepth: 1\n"
+      "      maximumDepth: 3\n"
+      "      minimumReach: 1\n"
+      "      maximumReach: 3\n"
+      "      minimumSpacing: 3\n"
+      "      probability: 0.5\n";
 
   ProcMaterialData data;
   bw::core::SerializationWorkData workData;
   auto serializer = yamlFrom(yaml);
   require(!data.deserialize(serializer, workData),
-          "an out-of-range chip depth was accepted");
+          "overlapping Chip spacing was accepted");
   require(containsError(
-              data,
-              "SubMaterial chip depth/reach must fall within their authoring limits."),
-          "an out-of-range chip depth did not report the expected error");
+              data, "SubMaterial Chip generation parameters are invalid."),
+          "invalid Chip parameters did not report the expected error");
 }
 
 }  // namespace
@@ -525,8 +533,8 @@ int main() {
     embossRoundTripsAndDefaultsToNothing();
     outOfRangeEmbossIsRejected();
     unknownEmbossPatternReadsAsNone();
-    chipDepthAndReachRoundTripAndDefaultToZero();
-    outOfRangeChipIsRejected();
+    chipGenerationParametersRoundTripAndDefaultToDisabled();
+    invalidChipGenerationParametersAreRejected();
     std::cout << "ProcMaterial coverage passed\n";
     return 0;
   } catch (std::exception const& error) {

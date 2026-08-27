@@ -44,6 +44,7 @@ void DefaultWorldDataGenerator::generate(
     priorities.push_back(entry.priority);
   }
   ArrangementWorldDataGenerator generator;
+  generator.setChipParametersResolver(getChipParametersResolver());
   generator.generateOrdered(primitives, priorities);
   mWorldData = std::make_shared<ArrangementWorldData>(
       generator.getWorldData(),

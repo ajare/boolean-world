@@ -52,6 +52,14 @@ subMaterials:
     materialIndex: 5
     params: [0.75]
     baseColour: [0.2, 0.4, 0.6]
+    chip:
+      minimumArrisLength: 4
+      minimumDepth: 1.5
+      maximumDepth: 2.5
+      minimumReach: 2
+      maximumReach: 4
+      minimumSpacing: 4.1
+      probability: 0.65
 )");
 
   writeFile(root / "Resources.yaml", R"(Resources:
@@ -89,6 +97,14 @@ subMaterials:
   require(resolved.def.params[0] == 0.75f, "Expected the authored parameter value");
   require(resolved.def.params[1] == 0.0f, "Expected unauthored parameter slots to be zeroed");
   require(resolved.def.baseColour == std::array<float, 3>{0.2f, 0.4f, 0.6f}, "Expected the authored base colour");
+  require(resolved.chipParameters.maximumDepth == 2.5f &&
+              resolved.chipParameters.maximumReach == 4.0f &&
+              resolved.chipParameters.probability == 0.65f,
+          "Expected the authored Chip generation parameters");
+  auto chipResolver = resolver.chipParametersResolver();
+  auto chip = chipResolver("TestStone");
+  require(chip == resolved.chipParameters,
+          "Expected the generator callback to carry Chip parameters");
 }
 
 // An id that names no Sub-material in any loaded ProcMaterial - missing,
@@ -112,6 +128,9 @@ void resolveFallsBackForAnUnknownId(fs::path const& root, wp::Logger& logger) {
 
   auto resolvedEmpty = resolver.resolve("");
   require(resolvedEmpty.materialIndex == BW_MATERIAL_ERROR_INDEX, "Expected the error index for an empty id");
+  auto chip = resolver.chipParametersResolver()("NoSuchSubMaterial");
+  require(chip.probability == 0.0f,
+          "Expected an unknown Sub-material not to chip");
 }
 }  // namespace
 

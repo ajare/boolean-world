@@ -106,7 +106,8 @@ PrimitiveContours ConvertPrimitiveToContours(
 
 std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
     std::vector<Primitive*> const& primitives,
-    std::vector<uint64_t> const& generatedPriorities) {
+    std::vector<uint64_t> const& generatedPriorities,
+    ChipParametersResolver const& chipParametersResolver) {
   if (!generatedPriorities.empty() &&
       generatedPriorities.size() != primitives.size()) {
     throw std::invalid_argument(
@@ -118,6 +119,10 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
   for (size_t index = 0; index < primitives.size(); ++index) {
     auto* primitive = primitives[index];
     auto contours = ConvertPrimitiveToContours(*primitive);
+    auto const properties = primitive->getProperties();
+    auto const chipParameters = chipParametersResolver
+                                    ? chipParametersResolver(properties.wallMaterialId)
+                                    : ChipGenerationParameters{};
     result.push_back({std::move(contours.contours),
                       primitive->getOperation(),
                       primitive->getFillRule(),
@@ -125,15 +130,21 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
                           ? primitive->getPriority()
                           : generatedPriorities[index],
                       primitive->getId(),
-                      primitive->getProperties(),
+                      properties,
                       std::move(contours.edgeOverrides),
-                      std::move(contours.edgeVisibleOverrides)});
+                      std::move(contours.edgeVisibleOverrides),
+                      chipParameters});
   }
   return result;
 }
 
 ArrangementWorldDataGenerator::ArrangementWorldDataGenerator()
     : mWorldData(arr::BuildArrangement({})) {
+}
+
+void ArrangementWorldDataGenerator::setChipParametersResolver(
+    ChipParametersResolver resolver) {
+  mChipParametersResolver = std::move(resolver);
 }
 
 void ArrangementWorldDataGenerator::generate(
@@ -158,14 +169,15 @@ void ArrangementWorldDataGenerator::generate(
       [](Primitive const* left, Primitive const* right) {
         return left->getPriority() < right->getPriority();
       });
-  mWorldData = arr::BuildArrangement(SnapshotPrimitives(ordered));
+  mWorldData = arr::BuildArrangement(
+      SnapshotPrimitives(ordered, {}, mChipParametersResolver));
 }
 
 void ArrangementWorldDataGenerator::generateOrdered(
     std::vector<Primitive*> const& primitives,
     std::vector<uint64_t> const& generatedPriorities) {
   mWorldData = arr::BuildArrangement(
-      SnapshotPrimitives(primitives, generatedPriorities));
+      SnapshotPrimitives(primitives, generatedPriorities, mChipParametersResolver));
 }
 
 arr::ArrangementResultPtr ArrangementWorldDataGenerator::getWorldData() const {

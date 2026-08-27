@@ -7,6 +7,7 @@
 #include "core/Arrangement.h"
 #include "core/LayerSelection.h"
 #include "core/Platform.h"
+#include "core/WorldDataGenerator.h"
 
 namespace bw::core {
 class Primitive;
@@ -35,13 +36,17 @@ struct PrimitiveContours {
 // never has to reach back into live authored primitives.
 [[nodiscard]] BW_API std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
     std::vector<Primitive*> const& primitives,
-    std::vector<uint64_t> const& generatedPriorities = {});
+    std::vector<uint64_t> const& generatedPriorities = {},
+    ChipParametersResolver const& chipParametersResolver = {});
 
 class BW_API ArrangementWorldDataGenerator {
   arr::ArrangementResultPtr mWorldData;
+  ChipParametersResolver mChipParametersResolver;
 
 public:
   ArrangementWorldDataGenerator();
+
+  void setChipParametersResolver(ChipParametersResolver resolver);
 
   void generate(
       World const* world,

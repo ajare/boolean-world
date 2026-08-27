@@ -2,6 +2,7 @@
 
 #include <core/Defines.h>
 #include <core/MaterialDefinition.h>
+#include <core/World.h>
 
 #include "WorldRenderer.h"
 
@@ -87,16 +88,33 @@ WorldRenderer::RenderTargets WorldRenderer::detachRenderTargets() {
   return std::move(mWorldTargets);
 }
 
-void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
+void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
+  mwWorld = world;
+  // Material lookup stays outside core geometry. Capture an immutable resolver
+  // snapshot so generation workers see only plain dimensions and never a
+  // ProcMaterial catalog or render-side object.
+  world->getWorldDataGenerator()->setChipParametersResolver(
+      mSubMaterialResolver.chipParametersResolver());
   for (auto& item : mMaterialRenderers) {
     item.renderer->create(
         item.dataProvider, world, renderSystem, resourceMgr);
     item.renderer->addToScene(scene, world);
+    item.renderer->setWireframe(mWireframe);
   }
 }
 
 void WorldRenderer::setWorldChanged() {
   mWorldHasChanged = true;
+}
+
+void WorldRenderer::setWireframe(bool wireframe) {
+  if (wireframe == mWireframe) {
+    return;
+  }
+  mWireframe = wireframe;
+  for (auto const& item : mMaterialRenderers) {
+    item.renderer->setWireframe(wireframe);
+  }
 }
 
 void WorldRenderer::updateSubMaterialDraft(
@@ -123,6 +141,10 @@ void WorldRenderer::updateSubMaterialDraft(
 void WorldRenderer::reloadSubMaterialResolver(
     wp::application::resourcesystem::ResourceManager* resourceMgr) {
   mSubMaterialResolver = SubMaterialResolver(resourceMgr);
+  if (mwWorld) {
+    mwWorld->getWorldDataGenerator()->setChipParametersResolver(
+        mSubMaterialResolver.chipParametersResolver());
+  }
 }
 
 uint32_t WorldRenderer::addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c) {
@@ -143,8 +165,9 @@ void WorldRenderer::addDetailTriangleToDataProvider(
   // counter-clockwise about the mapped normal here and the indices pass
   // through in order. The world draws unculled either way (which is why each
   // wall picks one quad per frame rather than emitting both sides); what
-  // carries the surface is the explicit normal, so mirroring a chipped wall
-  // for its back face has to flip that as well as the winding.
+  // carries the surface is the explicit normal, so mirroring a wall remainder
+  // for its back face has to flip that as well as the winding. Chip facets are
+  // never passed here as mirrored surfaces.
   auto sign = mirrored ? -1.0f : 1.0f;
   uint32_t indices[3];
   for (int i = 0; i < 3; ++i) {
@@ -276,8 +299,8 @@ void WorldRenderer::updateHorizontalDataProvider(
       continue;
     }
     auto highlighted = replacement.source.index == highlightedFace &&
-        highlightedCeiling ==
-            (replacement.source.kind == DetailSurfaceKind::CeilingOfFace);
+                       highlightedCeiling ==
+                           (replacement.source.kind == DetailSurfaceKind::CeilingOfFace);
     addDetailTriangleToDataProvider(
         horizontal.dataProvider, horizontalMeshFor(replacement.source),
         replacement, false,
@@ -313,10 +336,11 @@ void WorldRenderer::updateWallDataProvider(
     return orientation.normal.dot(playerPositionXZ - midpoint) > 0.0f;
   };
 
-  // A chipped wall draws its remainder plus the chamfer facet instead of its
-  // plain quad. Those replacements stay keyed to the wall, so they follow it
-  // into whichever material the test above picks this frame rather than
-  // having one baked in at generation time.
+  // A chipped wall draws its remainder plus the chamfer facets instead of its
+  // plain quad. Only the coplanar wall remainder follows the player-facing
+  // material decision above. A facet is an outward-facing surface in its own
+  // right: mirroring it with the vertical wall would invert its face normal
+  // when viewed from the horizontal side and make overhead lighting black.
   auto const& detail = snapshot.getDetail();
   using bw::core::arr::DetailSurfaceKind;
 
@@ -328,20 +352,27 @@ void WorldRenderer::updateWallDataProvider(
       continue;
     }
     auto suppressed = detail.isSuppressed(DetailSurfaceKind::Wall, wallIndex);
-    auto triangleCount = suppressed
-        ? uint32_t(
-              detail.replacementsFor(DetailSurfaceKind::Wall, wallIndex).size())
-        : 2u;
+    auto replacements =
+        suppressed
+            ? detail.replacementsFor(DetailSurfaceKind::Wall, wallIndex)
+            : std::span<bw::core::arr::DetailTriangle const>{};
+    auto const& properties = worldData.palette[wall.paletteIndex];
+    auto resolved = mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
+    auto hash = resolved.def.hash(resolved.materialIndex);
+    auto authoredMesh =
+        wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
+    auto backMesh =
+        wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
     auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
     if (facesPlayer(orientation)) {
-      auto const& properties = worldData.palette[wall.paletteIndex];
-      auto resolved = mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
-      auto hash = resolved.def.hash(resolved.materialIndex);
-      wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
-          hash, false)] += triangleCount;
+      wallCounts[authoredMesh] +=
+          suppressed ? uint32_t(replacements.size()) : 2u;
+    } else if (suppressed) {
+      for (auto const& replacement : replacements) {
+        ++wallCounts[replacement.followsWallFacing ? backMesh : authoredMesh];
+      }
     } else {
-      wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
-          backHash, false)] += triangleCount;
+      wallCounts[backMesh] += 2u;
     }
   }
   wallRenderer.dataProvider->updateInternals(wallCounts);
@@ -401,11 +432,20 @@ void WorldRenderer::updateWallDataProvider(
                         ? lookedAtVertexColour
                         : untintedVertexColour;
       if (!replacements.empty()) {
-        // The chamfer mirrors with the rest of the wall, so the back face
-        // stays a true mirror image rather than an inconsistent one.
+        auto const& properties = worldData.palette[wall.paletteIndex];
+        auto resolved =
+            mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
+        auto hash = resolved.def.hash(resolved.materialIndex);
+        auto authoredMesh =
+            wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
         for (auto const& replacement : replacements) {
+          auto followsWall = replacement.followsWallFacing;
           addDetailTriangleToDataProvider(
-              wallRenderer.dataProvider, mesh, replacement, true, colour);
+              wallRenderer.dataProvider,
+              followsWall ? mesh : authoredMesh,
+              replacement,
+              followsWall,
+              colour);
         }
         continue;
       }

@@ -692,10 +692,10 @@ bool createSubMaterial(
     string const& resourceName, string const& displayName,
     uint32_t materialIndex, vector<float> const& paramValues,
     array<float, 3> const& baseColour, bw::core::EmbossData const& emboss,
-    float chipDepth, float chipReach, string* createdId) {
+    bw::core::ChipGenerationParameters const& chip, string* createdId) {
   auto id = library->createSubMaterial(
       resourceName, displayName, materialIndex, paramValues, baseColour,
-      emboss, chipDepth, chipReach);
+      emboss, chip);
   if (createdId) *createdId = move(id);
   return true;
 }
@@ -711,9 +711,9 @@ bool editSubMaterial(
     Document*, ProcMaterialLibrary* library,
     string const& subMaterialId, vector<float> const& paramValues,
     array<float, 3> const& baseColour, bw::core::EmbossData const& emboss,
-    float chipDepth, float chipReach) {
+    bw::core::ChipGenerationParameters const& chip) {
   library->editSubMaterial(
-      subMaterialId, paramValues, baseColour, emboss, chipDepth, chipReach);
+      subMaterialId, paramValues, baseColour, emboss, chip);
   return true;
 }
 

@@ -663,19 +663,17 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   // beneath them: those two only match once physics has caught up.
   auto playerViewHeight = physicalStats.floorZ + BW_PLAYER_EYE_HEIGHT;
 
-  static_cast<ReactiveCamera*>(mCamera3d.get())->setPosition(
-      {physicalStats.position.x, playerViewHeight, -physicalStats.position.y});
+  static_cast<ReactiveCamera*>(mCamera3d.get())->setPosition({physicalStats.position.x, playerViewHeight, -physicalStats.position.y});
   // Renderer and authored yaw now increase in the same direction.
-  static_cast<ReactiveCamera*>(mCamera3d.get())->yaw(
-      physicalStats.angle - mPlayerPrevAngle);
+  static_cast<ReactiveCamera*>(mCamera3d.get())->yaw(physicalStats.angle - mPlayerPrevAngle);
   static_cast<ReactiveCamera*>(mCamera3d.get())->pitch(physicalStats.pitch - mPlayerPrevPitch);
 
   // World 3d uses the handedness-preserving mapping (X, elevation, -Y).
   // Move the light horizontally from the player's eye along the current yaw;
   // pitch does not affect it.
   auto lightOffset = Vector2::fromAngle(
-      bw::app::worldViewAngle(physicalStats.angle), Clockwise) *
-      mDebugDisplay.lightDistance;
+                         bw::app::worldViewAngle(physicalStats.angle), Clockwise) *
+                     mDebugDisplay.lightDistance;
   glm::vec3 playerPosition{
       physicalStats.position.x,
       playerViewHeight,
@@ -845,6 +843,11 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   auto const& worldTarget = mwRenderer->getRenderTarget(renderScale);
   auto const& pipeline =
       getOrCreateWorldRenderPipeline(renderScale, antiAliasing);
+
+  // This only changes the world's two scene models; entities and debug UI
+  // remain filled. Applying it here also carries an enabled debug option onto
+  // a newly created map renderer.
+  mwRenderer->setWireframe(mDebugDisplay.wireframe);
 
   // The graph pipeline renders at the target's dimensions and applies its
   // selected AA stage. The camera retains the window aspect ratio, and
@@ -1455,6 +1458,9 @@ void StatePlayBooleanWorld::debug_renderOptions() {
 
     ImGui::TextDisabled("Not saved - set Video/AA to keep a value.");
 
+    ImGui::Checkbox("Wireframe world", &mDebugDisplay.wireframe);
+    ImGui::TextDisabled("Debug-only - renders world surfaces as polygon lines.");
+
     ImGui::Separator();
     auto configuredAmbientOcclusion = mDebugDisplay.ambientOcclusion;
     auto ambientOcclusionConfigured =
@@ -1539,8 +1545,8 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     if (ambientOcclusionChanged) {
       mpp::AmbientOcclusionOptions ambientOcclusion;
       ambientOcclusion.method = gtaoConfigured
-                                     ? mpp::AmbientOcclusionMethod::Gtao
-                                     : mpp::AmbientOcclusionMethod::Ssao;
+                                    ? mpp::AmbientOcclusionMethod::Gtao
+                                    : mpp::AmbientOcclusionMethod::Ssao;
       ambientOcclusion.ssao = mDebugDisplay.ssao;
       ambientOcclusion.gtao = mDebugDisplay.gtao;
       for (auto const& row : mWorldRenderPipelines) {

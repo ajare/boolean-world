@@ -46,6 +46,12 @@ struct DetailVertex {
 struct DetailTriangle {
   DetailSurfaceKey source;
   std::array<DetailVertex, 3> v;
+
+  // Wall remainder triangles follow the wall's player-facing side and may be
+  // mirrored by the renderer. Chip facets are real outward-facing surfaces
+  // and must retain their face normal regardless of which side of the
+  // adjoining vertical wall faces the player.
+  bool followsWallFacing{false};
 };
 
 // The detail channel published alongside mTriangles/mWalls (ADR-0027): the
@@ -82,21 +88,6 @@ public:
   [[nodiscard]] uint32_t getChipCount() const;
 };
 
-// How far a Chip bites into the horizontal face and, at 45 degrees, equally
-// far down the wall (depth), and its total length along the Arris (reach).
-// Both in world units.
-struct ChipSizes {
-  float depth{0.0f};
-  float reach{0.0f};
-};
-
-// The one size every Chip is cut at for now. ADR-0027 authors depth and
-// reach per Sub-material; until that is wired through generation (#281) this
-// compiled-in pair stands in for it. Kept inside SubMaterial's authoring
-// limits (ChipDepthLimits/ChipReachLimits) so nothing has to change when the
-// authored values arrive.
-[[nodiscard]] ChipSizes DefaultChipSizes();
-
 // Cuts one Chip into the centre of every eligible convex Arris and returns
 // the detail channel that replaces the surfaces they bit into.
 //
@@ -114,6 +105,5 @@ struct ChipSizes {
 // dropped rather than emitted as a sliver.
 [[nodiscard]] DetailGeometry BuildChipDetail(
     ArrangementResult const& arrangement,
-    std::vector<ArrangementWall> const& walls,
-    ChipSizes const& sizes = DefaultChipSizes());
+    std::vector<ArrangementWall> const& walls);
 }  // namespace bw::core::arr

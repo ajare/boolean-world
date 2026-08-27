@@ -38,15 +38,20 @@ actually shape the contract:
 - `WorldRenderer::updateWallDataProvider` re-picks, **every frame**, whether a
   wall shows its authored material or the reserved white back-face material,
   from the player's position. Generation has no player position, so replacement
-  wall geometry cannot bake that choice in.
+  wall geometry cannot bake that choice in. This mirroring applies only to the
+coplanar wall remainder, however: a Chip facet is an outward-facing surface in
+its own right, and flipping it when the player crosses the wall would turn its
+upward normal downward.
 
 ## Decision
 
-A Chip is a tapered chamfer cut into a convex Arris: one flat facet, at its
-deepest in the Arris's centre and tapering to nothing at both ends, so it needs
-no end caps and degenerates gracefully to nothing when clamped. The bevel is
-45° — depth bites equally into the horizontal face and down the wall. One Chip
-per eligible Arris, at its centre.
+A Chip is a tapered chamfer cut into a convex Arris: one flat facet, deepest
+near the Chip's centre and tapering to nothing at both ends, so it needs no end
+caps and degenerates gracefully to nothing when clamped. The bevel is 45° —
+depth bites equally into the horizontal face and down the wall. Each triangle
+carries its own flat geometric face normal; all three of its rendered vertices
+receive that same normal, so the facets are not smooth-shaded. An eligible
+Arris may carry multiple randomly positioned, non-overlapping Chips.
 
 Only **convex** Arrises are eligible: a `FloorStep`'s top and a `CeilingStep`'s
 bottom. A concave Arris is an inside corner, and chipping one would carve into
@@ -67,37 +72,44 @@ where they already live, in the renderer. Horizontal replacements are produced
 by subtracting the Chip's footprint from the face's boundary polygon and
 re-running earcut for that face, rather than by clipping individual triangles.
 
-The Chip's two dimensions — depth into the material, and reach along the Arris —
-are authored per Sub-material, bounded by its own limits in the manner of
-Embossing rather than by a Technique schema. The governing Sub-material is the
-**wall's**: `palette[wall.paletteIndex].wallMaterialId`, which
+Chip generation is authored per Sub-material: minimum eligible Arris length,
+minimum/maximum depth, minimum/maximum reach, minimum centre spacing, and a
+probability. Reach is total length along the Arris and width is half-reach. The
+maximum width may not exceed 2 world units or the minimum eligible Arris
+length, and minimum spacing is at least maximum reach plus 0.1, structurally
+preventing overlap.
+Depth and reach default to ranges of 1–3, minimum Arris length to 2, spacing to
+3.1, and probability to zero. The governing Sub-material is the **wall's**:
+`palette[wall.paletteIndex].wallMaterialId`, which
 `BuildArrangementWalls` already resolves to exactly one entry per wall (the
 lower face for a `FloorStep`, the higher for a `CeilingStep`), so no tie-break
 rule is needed. That same Sub-material supplies the new facet's own material,
 which means Chip triangles batch into a mesh bucket that already exists and the
 feature adds no buckets anywhere in the world.
 
-Those sizes are **pre-resolved into a parallel array on `ArrangementResult`**,
+Those parameters are **pre-resolved into a parallel array on `ArrangementResult`**,
 fed from a transient field on `arr::ArrangementPrimitive`. They are explicitly
 not stored on `PrimitivePropertySet`, which is `Serializable` and would write
 them into the World file. Resolution runs at snapshot time through a
-`setChipSizeResolver` callback on `WorldDataGenerator`, mirroring the existing
-`setPrimitiveFilter`/`refreshPrimitiveFilter` pattern;
+`setChipParametersResolver` callback on `WorldDataGenerator`, mirroring the
+existing `setPrimitiveFilter`/`refreshPrimitiveFilter` pattern;
 `ArrangementWorldDataGenerator` carries the same hook for `Preview3D`.
 `snapshotGenerationInput` runs on the calling thread rather than the worker, so
 that callback is main-thread and may consult the editor's `ProcMaterialLibrary`
 directly.
 
-Chips are clamped to fit rather than skipped: depth and reach shrink to satisfy
-all three of the Arris's length, the distance from the Arris to the nearest
-other boundary of the horizontal face, and the wall's height. A Chip is dropped
-below a minimum size.
+For each eligible Arris, its length and minimum spacing determine a maximum
+slot count. Independent probability trials choose a count up to that maximum;
+that many centres are then placed irregularly while preserving minimum spacing
+and room for maximum-width Chips. Each Chip draws depth and reach independently
+from the authored ranges. All draws derive from a pure hash of the Arris's
+fixed-point endpoints — never a sequence, an index, or a frame counter — so
+regeneration and unrelated edge renumbering cannot make Chips crawl.
 
-Any future per-Chip variation must derive from a pure hash of the Arris's
-fixed-point endpoints — never a sequence, an index, or a frame counter.
-Arrangement edges renumber whenever anything in the world changes, and the game
-regenerates on a five-second schedule, so an index- or sequence-seeded Chip
-would visibly crawl.
+Chips are clamped to fit rather than skipped: depth and reach shrink to satisfy
+the Arris's length, the distance from the Arris to the nearest other boundary
+of the horizontal face, and the wall's height. A Chip is dropped below a
+minimum resulting size.
 
 Chips are visual only. Collision, `getFloorHeight`, `getContainingFaceIndex`,
 `pointInTriangle`, surface picking and the editor's 2D viewport all continue to
@@ -178,9 +190,9 @@ material data.
   point, so it can taper to nothing at one end only and would need an end cap
   at the other; the cut surface has to hinge at the deepest cross-section to
   close on itself at both. Implemented in `BuildChipDetail` (#278).
-- The 45° bevel and the one-Chip-per-Arris-at-centre placement are fixed in
-  code. Both are additive to change: a bevel-angle field, or a count and density
-  field, extends the Sub-material block without disturbing anything here.
-- An unrelated edit that splits an Arris into two arrangement edges yields two
-  Chips where there was one, each centred on its own edge. This follows from
-  seeding on edge endpoints, and is accepted.
+- The 45° bevel remains fixed in code. Count, placement, depth and reach now
+  vary deterministically from each Arris's endpoints under the governing
+  Sub-material's constraints.
+- An unrelated edit that splits an Arris into two arrangement edges gives each
+  resulting Arris its own endpoint-derived count and placements. This follows
+  from endpoint seeding and is accepted.

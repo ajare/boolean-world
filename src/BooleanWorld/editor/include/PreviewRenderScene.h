@@ -59,7 +59,7 @@ public:
   // out-of-scope Primitives is harmless.
   PreviewRenderScene(
       EditorRenderSystem& renderSystem,
-      bw::core::World const* world,
+      bw::core::World* world,
       std::size_t width,
       std::size_t height);
   ~PreviewRenderScene();
@@ -84,6 +84,7 @@ public:
   // its scene, pipeline, or mesh buckets.
   void reloadSubMaterialResolver(
       wp::application::resourcesystem::ResourceManager* resourceMgr);
+  void worldGeometryChanged();
 
   // Rebuilds this frame's world geometry and renders it into the pipeline's
   // offscreen images. Returns the OpenGL texture id of the resolved output

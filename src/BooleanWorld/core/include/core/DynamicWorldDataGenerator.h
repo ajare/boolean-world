@@ -145,6 +145,8 @@ private:
 
   void handlePrimitiveFilterChanged() override;
 
+  void handleChipParametersResolverChanged() override;
+
   void checkCommitPendingClipping();
 
   void generateOnInterval();

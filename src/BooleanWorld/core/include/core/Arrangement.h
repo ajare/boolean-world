@@ -9,6 +9,7 @@
 
 #include <willpower/common/Vector2.h>
 
+#include "core/ChipGenerationParameters.h"
 #include "core/Primitive.h"
 #include "core/Stats.h"
 
@@ -176,6 +177,7 @@ struct ArrangementPrimitive {
   // defaults so existing aggregate-initializer call sites keep compiling.
   std::vector<std::vector<std::optional<bool>>> contourEdgeOverrides{};
   std::vector<std::vector<std::optional<bool>>> contourEdgeVisibleOverrides{};
+  ChipGenerationParameters chipParameters{};
 };
 
 struct ArrangementEdge {
@@ -209,6 +211,9 @@ struct ArrangementResult {
   std::vector<ArrangementEdge> edges;
   std::vector<ArrangementFace> faces;
   std::vector<PrimitivePropertySet> palette;
+  // Parallel to palette: the wall Sub-material's dimensions resolved on the
+  // calling thread before arrangement construction reaches a worker.
+  std::vector<ChipGenerationParameters> chipParametersPalette;
 };
 
 // A wall's front face is the one its outward normal points away from: the

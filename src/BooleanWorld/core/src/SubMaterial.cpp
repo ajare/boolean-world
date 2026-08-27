@@ -19,17 +19,39 @@ bool SubMaterial::childrenModified() const {
   return false;
 }
 
+EmbossParameterLimits ChipArrisLengthLimits() {
+  return {0.01f, 128.0f};
+}
+
 EmbossParameterLimits ChipDepthLimits() {
-  return {0.0f, 8.0f};
+  return {0.01f, 8.0f};
 }
 
 EmbossParameterLimits ChipReachLimits() {
-  return {0.0f, 128.0f};
+  // Width is half-reach and may never exceed two world units.
+  return {0.01f, 4.0f};
 }
 
-bool ChipIsInRange(float chipDepth, float chipReach) {
-  return inRange(chipDepth, ChipDepthLimits()) &&
-         inRange(chipReach, ChipReachLimits());
+EmbossParameterLimits ChipSpacingLimits() {
+  return {0.1f, 256.0f};
+}
+
+EmbossParameterLimits ChipProbabilityLimits() {
+  return {0.0f, 1.0f};
+}
+
+bool ChipParametersAreValid(ChipGenerationParameters const& parameters) {
+  return inRange(parameters.minimumArrisLength, ChipArrisLengthLimits()) &&
+         inRange(parameters.minimumDepth, ChipDepthLimits()) &&
+         inRange(parameters.maximumDepth, ChipDepthLimits()) &&
+         inRange(parameters.minimumReach, ChipReachLimits()) &&
+         inRange(parameters.maximumReach, ChipReachLimits()) &&
+         inRange(parameters.minimumSpacing, ChipSpacingLimits()) &&
+         inRange(parameters.probability, ChipProbabilityLimits()) &&
+         parameters.minimumDepth <= parameters.maximumDepth &&
+         parameters.minimumReach <= parameters.maximumReach &&
+         parameters.maximumReach * 0.5f <= parameters.minimumArrisLength &&
+         parameters.minimumSpacing >= parameters.maximumReach + 0.1f;
 }
 
 void SubMaterial::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) const {
@@ -59,8 +81,18 @@ void SubMaterial::serializeImpl(shared_ptr<Serializer> serializer, Serialization
 
     SerializeEmboss(serializer, "emboss", emboss);
 
-    serializer->writeFloat("chipDepth", chipDepth);
-    serializer->writeFloat("chipReach", chipReach);
+    serializer->beginMap("chip");
+    {
+      serializer->writeFloat("minimumArrisLength", chip.minimumArrisLength);
+      serializer->writeFloat("minimumDepth", chip.minimumDepth);
+      serializer->writeFloat("maximumDepth", chip.maximumDepth);
+      serializer->writeFloat("minimumReach", chip.minimumReach);
+      serializer->writeFloat("maximumReach", chip.maximumReach);
+      serializer->writeFloat("minimumSpacing", chip.minimumSpacing);
+      serializer->writeFloat("probability", chip.probability);
+
+      serializer->endMap();
+    }
 
     serializer->endMap();  // subMaterial
   }
@@ -72,8 +104,7 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
   vector<float> paramValues_;
   array<float, 3> baseColour_{};
   EmbossData emboss_;
-  float chipDepth_{0.0f};
-  float chipReach_{0.0f};
+  ChipGenerationParameters chip_;
 
   try {
     serializer->beginMap("subMaterial");
@@ -114,11 +145,29 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
       // simply embosses nothing: every field falls back to its default.
       emboss_ = DeserializeEmboss(serializer, "emboss");
 
-      // Absent in a catalog written before chipping existed: falls back to
-      // not chipping at all, exactly like a missing emboss block.
+      // Absent fields retain the non-chipping defaults. ProcMaterial catalogs
+      // are map-based YAML resources, so this also migrates catalogs written
+      // before randomized multi-Chip generation existed.
       auto optional = !serializer->isPositional();
-      chipDepth_ = serializer->readFloat("chipDepth", optional, chipDepth_);
-      chipReach_ = serializer->readFloat("chipReach", optional, chipReach_);
+      serializer->beginMap("chip");
+      {
+        chip_.minimumArrisLength = serializer->readFloat(
+            "minimumArrisLength", optional, chip_.minimumArrisLength);
+        chip_.minimumDepth = serializer->readFloat(
+            "minimumDepth", optional, chip_.minimumDepth);
+        chip_.maximumDepth = serializer->readFloat(
+            "maximumDepth", optional, chip_.maximumDepth);
+        chip_.minimumReach = serializer->readFloat(
+            "minimumReach", optional, chip_.minimumReach);
+        chip_.maximumReach = serializer->readFloat(
+            "maximumReach", optional, chip_.maximumReach);
+        chip_.minimumSpacing = serializer->readFloat(
+            "minimumSpacing", optional, chip_.minimumSpacing);
+        chip_.probability = serializer->readFloat(
+            "probability", optional, chip_.probability);
+
+        serializer->endMap();
+      }
 
       serializer->endMap();  // subMaterial
     }
@@ -138,9 +187,9 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
     return false;
   }
 
-  if (!ChipIsInRange(chipDepth_, chipReach_)) {
+  if (!ChipParametersAreValid(chip_)) {
     addDeserializationError(
-        "SubMaterial chip depth/reach must fall within their authoring limits.");
+        "SubMaterial Chip generation parameters are invalid.");
     return false;
   }
 
@@ -151,8 +200,7 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
   paramValues = move(paramValues_);
   baseColour = baseColour_;
   emboss = emboss_;
-  chipDepth = chipDepth_;
-  chipReach = chipReach_;
+  chip = chip_;
 
   return true;
 }

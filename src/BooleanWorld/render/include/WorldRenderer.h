@@ -48,10 +48,12 @@ private:
   std::vector<MaterialRenderer> mMaterialRenderers;
 
   bool mWorldHasChanged;
+  bool mWireframe{false};
   int32_t mHighlightedTriangle{-1};
   bool mHighlightedCeiling{};
 
   wp::Logger* mwLogger;
+  bw::core::World* mwWorld{nullptr};
 
   bw::app::RenderTextureFilter mRenderTextureFilter;
 
@@ -100,6 +102,9 @@ public:
 
   void setWorldChanged();
 
+  // Toggles line polygon mode for the world's horizontal and wall meshes.
+  void setWireframe(bool wireframe);
+
   // Updates every existing floor, ceiling, and wall mesh bucket that was
   // baked for this Sub-material. Used by the editor's unsaved draft; it does
   // not rebuild arrangement geometry or batches.
@@ -112,7 +117,7 @@ public:
   void reloadSubMaterialResolver(
       wp::application::resourcesystem::ResourceManager* resourceMgr);
 
-  void create(mpp::ScenePtr scene, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr);
+  void create(mpp::ScenePtr scene, bw::core::World* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr);
 
   // Builds all offscreen targets the world can be composited from. This talks
   // to OpenGL, so it belongs on the main thread - the map load post-work step.

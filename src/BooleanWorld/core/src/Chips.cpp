@@ -12,10 +12,34 @@ namespace {
 // Below this, in world units, a Chip has nothing left to cut and is dropped
 // rather than emitted as a sliver.
 constexpr float MinimumChipSize = 0.01f;
+constexpr float MaximumChipReach = 4.0f;  // Width is half-reach, capped at 2.
 
 // Matches BuildArrangementTriangles' floor/ceiling UV scale, so a rebuilt
 // face's texture keeps running through it unbroken.
 constexpr float HorizontalUvScale = 64.0f;
+
+uint64_t Mix(uint64_t value) {
+  value += 0x9e3779b97f4a7c15ull;
+  value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ull;
+  value = (value ^ (value >> 27)) * 0x94d049bb133111ebull;
+  return value ^ (value >> 31);
+}
+
+uint64_t StableArrisSeed(FixedPointVertex a, FixedPointVertex b) {
+  if (b.x < a.x || (b.x == a.x && b.y < a.y)) {
+    std::swap(a, b);
+  }
+  auto seed = Mix(static_cast<uint64_t>(a.x));
+  seed ^= Mix(static_cast<uint64_t>(a.y) + 0x243f6a8885a308d3ull);
+  seed ^= Mix(static_cast<uint64_t>(b.x) + 0x13198a2e03707344ull);
+  seed ^= Mix(static_cast<uint64_t>(b.y) + 0xa4093822299f31d0ull);
+  return Mix(seed);
+}
+
+float StableRandom01(uint64_t seed, uint64_t stream) {
+  auto value = Mix(seed ^ Mix(stream));
+  return float(value >> 40) / float(uint64_t{1} << 24);
+}
 
 struct Vertex3 {
   float x, y, z;
@@ -36,11 +60,11 @@ float Dot(Vertex3 const& a, Vertex3 const& b) {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
-// Emits one replacement triangle, taking its normal from its own geometry and
-// ordering its vertices counter-clockwise about that normal. `reference` only
-// picks which of the two opposed normals faces out of the solid, so no
-// emitter here - the chamfer facet, the wall remainder, or the re-earcut face
-// - has to carry winding bookkeeping of its own.
+// Emits one replacement triangle with a flat face normal calculated from its
+// geometry, ordering its vertices counter-clockwise about that normal.
+// `reference` only picks which of the two opposed normals faces out of the
+// solid. Every vertex receives the same normal: these are face normals carried
+// through a vertex-attribute rendering API, not smoothed vertex normals.
 void AddTriangle(
     DetailGeometry& detail,
     DetailSurfaceKey const& source,
@@ -50,7 +74,8 @@ void AddTriangle(
     Vertex3 const& reference,
     std::array<float, 2> const& uv0,
     std::array<float, 2> const& uv1,
-    std::array<float, 2> const& uv2) {
+    std::array<float, 2> const& uv2,
+    bool followsWallFacing = false) {
   auto geometric = Cross(
       {p1.x - p0.x, p1.y - p0.y, p1.z - p0.z},
       {p2.x - p0.x, p2.y - p0.y, p2.z - p0.z});
@@ -72,7 +97,7 @@ void AddTriangle(
   if (facing < 0.0f) {
     std::swap(b, c);
   }
-  detail.addTriangle({source, {a, b, c}});
+  detail.addTriangle({source, {a, b, c}, followsWallFacing});
 }
 
 // One Chip's footprint on the horizontal face it bit into: the two points
@@ -84,11 +109,16 @@ struct Footprint {
   wp::Vector2 apex;
 };
 
-// The wall's remainder once the Chip's triangular notch is taken out of its
-// Arris edge, expressed in the wall's own (distance along, height) frame and
-// cut into the fewest pieces that leaves no seam. The Arris sits at the
-// wall's top for a FloorStep and its bottom for a CeilingStep; `notchAtTop`
-// mirrors the whole cut between the two.
+// One notch in the wall's own distance-along frame.
+struct WallNotch {
+  float start;
+  float end;
+  float depth;
+};
+
+// Rebuilds the wall quad with every non-overlapping triangular notch removed
+// from its convex Arris. Earcut handles the variable-depth sawtooth boundary
+// as one polygon, avoiding overlapping wall remainder triangles.
 void AddWallRemainder(
     DetailGeometry& detail,
     DetailSurfaceKey const& source,
@@ -98,65 +128,57 @@ void AddWallRemainder(
     float length,
     float minZ,
     float maxZ,
-    float notchStart,
-    float notchEnd,
-    float notchDepth,
+    std::vector<WallNotch> const& notches,
     bool notchAtTop) {
-  auto height = maxZ - minZ;
-  auto notchMiddle = (notchStart + notchEnd) * 0.5f;
-  auto notchZ = notchAtTop ? maxZ - notchDepth : minZ + notchDepth;
-
-  auto at = [&](float s, float z) {
-    auto position = v0 + direction * s;
-    return Vertex3{position.x, position.y, z};
-  };
-  auto uv = [&](float s, float z) {
-    return std::array<float, 2>{s / length, (z - minZ) / height};
-  };
-  auto quad = [&](float s0, float s1, float z0, float z1) {
-    if (s1 - s0 <= MinimumChipSize || z1 - z0 <= MinimumChipSize) {
+  using EarcutPoint = std::array<double, 2>;
+  std::vector<std::vector<EarcutPoint>> polygon(1);
+  std::vector<std::array<float, 2>> localPositions;
+  auto push = [&](float distance, float z) {
+    if (!localPositions.empty() &&
+        std::abs(localPositions.back()[0] - distance) <= MinimumChipSize &&
+        std::abs(localPositions.back()[1] - z) <= MinimumChipSize) {
       return;
     }
-    AddTriangle(
-        detail, source, at(s0, z0), at(s1, z0), at(s1, z1), reference,
-        uv(s0, z0), uv(s1, z0), uv(s1, z1));
-    AddTriangle(
-        detail, source, at(s0, z0), at(s1, z1), at(s0, z1), reference,
-        uv(s0, z0), uv(s1, z1), uv(s0, z1));
+    polygon.front().push_back({double(distance), double(z)});
+    localPositions.push_back({distance, z});
   };
 
   if (notchAtTop) {
-    // Everything below the notch's deepest point, then the band the notch
-    // sits in, split either side of it.
-    quad(0.0f, length, minZ, notchZ);
-    quad(0.0f, notchStart, notchZ, maxZ);
-    quad(notchEnd, length, notchZ, maxZ);
-
-    // The two corners the notch's sloping sides leave behind inside that
-    // band.
-    AddTriangle(
-        detail, source, at(notchStart, notchZ), at(notchMiddle, notchZ),
-        at(notchStart, maxZ), reference, uv(notchStart, notchZ),
-        uv(notchMiddle, notchZ), uv(notchStart, maxZ));
-    AddTriangle(
-        detail, source, at(notchMiddle, notchZ), at(notchEnd, notchZ),
-        at(notchEnd, maxZ), reference, uv(notchMiddle, notchZ),
-        uv(notchEnd, notchZ), uv(notchEnd, maxZ));
+    push(0.0f, minZ);
+    push(length, minZ);
+    push(length, maxZ);
+    for (auto it = notches.rbegin(); it != notches.rend(); ++it) {
+      push(it->end, maxZ);
+      push((it->start + it->end) * 0.5f, maxZ - it->depth);
+      push(it->start, maxZ);
+    }
+    push(0.0f, maxZ);
   } else {
-    // The mirror image: everything above the notch's deepest point, then the
-    // band the notch sits in, split either side of it.
-    quad(0.0f, length, notchZ, maxZ);
-    quad(0.0f, notchStart, minZ, notchZ);
-    quad(notchEnd, length, minZ, notchZ);
+    push(0.0f, minZ);
+    for (auto const& notch : notches) {
+      push(notch.start, minZ);
+      push((notch.start + notch.end) * 0.5f, minZ + notch.depth);
+      push(notch.end, minZ);
+    }
+    push(length, minZ);
+    push(length, maxZ);
+    push(0.0f, maxZ);
+  }
 
+  auto indices = mapbox::earcut<uint32_t>(polygon);
+  auto height = maxZ - minZ;
+  for (size_t i = 0; i + 2 < indices.size(); i += 3) {
+    Vertex3 vertices[3];
+    std::array<float, 2> uv[3];
+    for (int corner = 0; corner < 3; ++corner) {
+      auto const& local = localPositions[indices[i + corner]];
+      auto position = v0 + direction * local[0];
+      vertices[corner] = {position.x, position.y, local[1]};
+      uv[corner] = {local[0] / length, (local[1] - minZ) / height};
+    }
     AddTriangle(
-        detail, source, at(notchStart, minZ), at(notchStart, notchZ),
-        at(notchMiddle, notchZ), reference, uv(notchStart, minZ),
-        uv(notchStart, notchZ), uv(notchMiddle, notchZ));
-    AddTriangle(
-        detail, source, at(notchMiddle, notchZ), at(notchEnd, notchZ),
-        at(notchEnd, minZ), reference, uv(notchMiddle, notchZ),
-        uv(notchEnd, notchZ), uv(notchEnd, minZ));
+        detail, source, vertices[0], vertices[1], vertices[2], reference,
+        uv[0], uv[1], uv[2], true);
   }
 }
 
@@ -263,17 +285,29 @@ void AddRebuiltFaceHorizontal(
       if (i >= boundary.size()) {
         continue;
       }
+      std::vector<Footprint const*> edgeFootprints;
       for (auto const& footprint : footprints) {
-        if (footprint.edgeIndex != boundary[i]) {
-          continue;
+        if (footprint.edgeIndex == boundary[i]) {
+          edgeFootprints.push_back(&footprint);
         }
+      }
+      std::sort(
+          edgeFootprints.begin(), edgeFootprints.end(),
+          [&](Footprint const* a, Footprint const* b) {
+            auto aDistance = std::min(
+                current.distanceTo(a->a), current.distanceTo(a->b));
+            auto bDistance = std::min(
+                current.distanceTo(b->a), current.distanceTo(b->b));
+            return aDistance < bDistance;
+          });
+      for (auto const* footprint : edgeFootprints) {
         // The boundary traversal may run either way along the Arris.
-        auto aFirst = current.distanceTo(footprint.a) <=
-            current.distanceTo(footprint.b);
-        auto const& first = aFirst ? footprint.a : footprint.b;
-        auto const& second = aFirst ? footprint.b : footprint.a;
+        auto aFirst = current.distanceTo(footprint->a) <=
+                      current.distanceTo(footprint->b);
+        auto const& first = aFirst ? footprint->a : footprint->b;
+        auto const& second = aFirst ? footprint->b : footprint->a;
         pushDistinct(first, current, next);
-        push(footprint.apex);
+        push(footprint->apex);
         pushDistinct(second, current, next);
       }
     }
@@ -364,28 +398,25 @@ uint32_t DetailGeometry::getChipCount() const {
   return mChipCount;
 }
 
-ChipSizes DefaultChipSizes() {
-  return {3.0f, 24.0f};
-}
-
 DetailGeometry BuildChipDetail(
     ArrangementResult const& arrangement,
-    std::vector<ArrangementWall> const& walls,
-    ChipSizes const& sizes) {
+    std::vector<ArrangementWall> const& walls) {
   DetailGeometry detail;
-  if (sizes.depth <= MinimumChipSize || sizes.reach <= MinimumChipSize) {
-    return detail;
-  }
-
   std::map<DetailSurfaceKey, std::vector<Footprint>> footprintsByFace;
 
   for (uint32_t wallIndex = 0; wallIndex < uint32_t(walls.size());
        ++wallIndex) {
     auto const& wall = walls[wallIndex];
+    auto const parameters =
+        wall.paletteIndex < arrangement.chipParametersPalette.size()
+            ? arrangement.chipParametersPalette[wall.paletteIndex]
+            : ChipGenerationParameters{};
+    if (parameters.probability <= 0.0f) {
+      continue;
+    }
+
     // A FloorStep's top Arris and a CeilingStep's bottom are the only convex
-    // ones. A wall whose visibility override is off is skipped outright
-    // rather than having its horizontal face bitten to expose a facet
-    // nothing would draw.
+    // ones. Invisible walls carry no damage on either adjoining surface.
     auto isFloorStep = wall.kind == ArrangementWallKind::FloorStep;
     if ((!isFloorStep && wall.kind != ArrangementWallKind::CeilingStep) ||
         !wall.visible) {
@@ -397,14 +428,13 @@ DetailGeometry BuildChipDetail(
         arrangement.palette[arrangement.faces[edge.face[0]].paletteIndex];
     auto const& properties1 =
         arrangement.palette[arrangement.faces[edge.face[1]].paletteIndex];
-    // The Arris runs along the top of a FloorStep wall, which is the floor
-    // of the higher of its two faces, or the bottom of a CeilingStep wall,
-    // which is the ceiling of the lower of its two faces.
     auto bittenFace = isFloorStep
-        ? (properties0.floorZ > properties1.floorZ ? edge.face[0]
-                                                     : edge.face[1])
-        : (properties0.ceilingZ < properties1.ceilingZ ? edge.face[0]
-                                                         : edge.face[1]);
+                          ? (properties0.floorZ > properties1.floorZ
+                                 ? edge.face[0]
+                                 : edge.face[1])
+                          : (properties0.ceilingZ < properties1.ceilingZ
+                                 ? edge.face[0]
+                                 : edge.face[1]);
     if (!arrangement.faces[bittenFace].solid) {
       continue;
     }
@@ -412,92 +442,125 @@ DetailGeometry BuildChipDetail(
     auto orientation = OrientArrangementWall(arrangement, wall);
     auto along = orientation.v1 - orientation.v0;
     auto length = along.length();
-    if (length <= MinimumChipSize) {
+    if (length < parameters.minimumArrisLength ||
+        length <= MinimumChipSize) {
       continue;
     }
     auto direction = along / length;
-    // A wall's normal always points at its front face - the lower face for a
-    // FloorStep, the higher for a CeilingStep (OrientArrangementWall) - so
-    // the bitten face, always the other one, lies the other way.
     auto inward = -orientation.normal;
 
-    // One Chip per Arris, at its centre, positioned from the Arris's own
-    // endpoints - never from the wall or edge index, which renumber on every
-    // unrelated edit (ADR-0027).
-    auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
-
-    // The three clamps, most restrictive winning: the wall's own height, so a
-    // Chip can never eat through the far side of its own step; the distance
-    // from the Arris to the horizontal face's nearest other boundary, so it
-    // can never break through a thin ledge; and the Arris's own length, so it
-    // never runs past either end into whatever geometry adjoins it. A Chip
-    // whose clamped size falls below the minimum is dropped rather than
-    // emitted as a sliver.
-    auto boundaryLimit = FaceBoundaryDistance(
-        arrangement, arrangement.faces[bittenFace], wall.edge, midpoint,
-        inward);
-    auto depth =
-        std::min({sizes.depth, wall.maxZ - wall.minZ, boundaryLimit});
-    auto reach = std::min(sizes.reach, length);
-    if (depth <= MinimumChipSize || reach <= MinimumChipSize) {
+    // Count is a deterministic binomial draw over the maximum number of
+    // maximum-width Chips that can fit. Randomness is endpoint-seeded, never
+    // index-seeded, so regeneration and unrelated edge renumbering are stable.
+    auto authoredMaximumReach =
+        std::min(parameters.maximumReach, MaximumChipReach);
+    auto authoredMinimumReach =
+        std::min(parameters.minimumReach, authoredMaximumReach);
+    auto maximumReach = std::min(authoredMaximumReach, length);
+    auto minimumSpacing =
+        std::max(parameters.minimumSpacing, authoredMaximumReach + 0.1f);
+    auto usableForCentres = std::max(0.0f, length - maximumReach);
+    auto maximumCount =
+        uint32_t(std::floor(usableForCentres / minimumSpacing)) + 1;
+    auto seed = StableArrisSeed(
+        arrangement.vertices[edge.v[0]], arrangement.vertices[edge.v[1]]);
+    uint32_t chipCount = 0;
+    for (uint32_t slot = 0; slot < maximumCount; ++slot) {
+      if (StableRandom01(seed, 0x1000ull + slot) < parameters.probability) {
+        ++chipCount;
+      }
+    }
+    if (chipCount == 0) {
       continue;
     }
 
-    auto half = direction * (reach * 0.5f);
-    auto a = midpoint - half;
-    auto b = midpoint + half;
-    auto apex = midpoint + inward * depth;
+    // Random ordered slack produces irregular centres while guaranteeing at
+    // least minimumSpacing between them. Reserving maximumReach/2 at both ends
+    // means every randomly-sized Chip fits without crossing an Arris endpoint.
+    auto slack =
+        usableForCentres - float(chipCount - 1) * minimumSpacing;
+    std::vector<float> offsets;
+    offsets.reserve(chipCount);
+    for (uint32_t chip = 0; chip < chipCount; ++chip) {
+      offsets.push_back(
+          chipCount == 1 ? 0.5f
+                         : StableRandom01(seed, 0x2000ull + chip));
+    }
+    std::sort(offsets.begin(), offsets.end());
 
     auto faceKind = isFloorStep ? DetailSurfaceKind::FloorOfFace
-                                 : DetailSurfaceKind::CeilingOfFace;
-    footprintsByFace[{faceKind, bittenFace}].push_back(
-        {wall.edge, a, b, apex});
-
+                                : DetailSurfaceKind::CeilingOfFace;
     DetailSurfaceKey source{DetailSurfaceKind::Wall, wallIndex};
-    detail.addSuppressed(source);
+    std::vector<WallNotch> notches;
+    notches.reserve(chipCount);
 
-    auto notchStart = (length - reach) * 0.5f;
-    auto notchEnd = notchStart + reach;
+    for (uint32_t chip = 0; chip < chipCount; ++chip) {
+      auto centreDistance = maximumReach * 0.5f +
+                            float(chip) * minimumSpacing +
+                            offsets[chip] * slack;
+      auto midpoint = orientation.v0 + direction * centreDistance;
+      auto nominalDepth = parameters.minimumDepth +
+                          (parameters.maximumDepth - parameters.minimumDepth) *
+                              StableRandom01(seed, 0x3000ull + chip);
+      auto nominalReach = authoredMinimumReach +
+                          (authoredMaximumReach - authoredMinimumReach) *
+                              StableRandom01(seed, 0x4000ull + chip);
+
+      auto boundaryLimit = FaceBoundaryDistance(
+          arrangement, arrangement.faces[bittenFace], wall.edge, midpoint,
+          inward);
+      auto depth = std::min(
+          {nominalDepth, wall.maxZ - wall.minZ, boundaryLimit});
+      auto reach = std::min(nominalReach, length);
+      if (depth <= MinimumChipSize || reach <= MinimumChipSize) {
+        continue;
+      }
+
+      auto half = direction * (reach * 0.5f);
+      auto a = midpoint - half;
+      auto b = midpoint + half;
+      auto apex = midpoint + inward * depth;
+      footprintsByFace[{faceKind, bittenFace}].push_back(
+          {wall.edge, a, b, apex});
+
+      auto notchStart = centreDistance - reach * 0.5f;
+      auto notchEnd = centreDistance + reach * 0.5f;
+      notches.push_back({notchStart, notchEnd, depth});
+
+      auto arrisZ = isFloorStep ? wall.maxZ : wall.minZ;
+      auto wallZAtDepth =
+          isFloorStep ? wall.maxZ - depth : wall.minZ + depth;
+      Vertex3 onArrisA{a.x, a.y, arrisZ};
+      Vertex3 onArrisB{b.x, b.y, arrisZ};
+      Vertex3 onHorizontal{apex.x, apex.y, arrisZ};
+      Vertex3 onWall{midpoint.x, midpoint.y, wallZAtDepth};
+      Vertex3 facetReference{
+          orientation.normal.x, orientation.normal.y,
+          isFloorStep ? 1.0f : -1.0f};
+      auto height = wall.maxZ - wall.minZ;
+      auto arrisV = (arrisZ - wall.minZ) / height;
+      auto wallV = (wallZAtDepth - wall.minZ) / height;
+      std::array<float, 2> uvA{notchStart / length, arrisV};
+      std::array<float, 2> uvB{notchEnd / length, arrisV};
+      std::array<float, 2> uvHorizontal{centreDistance / length, arrisV};
+      std::array<float, 2> uvWall{centreDistance / length, wallV};
+      AddTriangle(
+          detail, source, onArrisA, onHorizontal, onWall, facetReference, uvA,
+          uvHorizontal, uvWall);
+      AddTriangle(
+          detail, source, onHorizontal, onArrisB, onWall, facetReference,
+          uvHorizontal, uvB, uvWall);
+      detail.countChip();
+    }
+
+    if (notches.empty()) {
+      continue;
+    }
+    detail.addSuppressed(source);
     Vertex3 wallReference{orientation.normal.x, orientation.normal.y, 0.0f};
     AddWallRemainder(
         detail, source, orientation.v0, direction, wallReference, length,
-        wall.minZ, wall.maxZ, notchStart, notchEnd, depth, isFloorStep);
-
-    // The chamfer itself. The wedge a Chip removes is a tetrahedron: two of
-    // its corners sit on the Arris, one on the horizontal face and one along
-    // the wall, both a `depth` away, which is what makes the bevel 45
-    // degrees. Its cut surface is therefore two flat triangles meeting along
-    // the deepest cross-section, each tapering to a point on the Arris - so
-    // the Chip closes on itself and needs no end caps. Both carry the wall's
-    // own key, so they follow it into whichever material it draws with this
-    // frame, authored or reserved back face, and add no mesh bucket
-    // anywhere.
-    auto arrisZ = isFloorStep ? wall.maxZ : wall.minZ;
-    auto wallZAtDepth = isFloorStep ? wall.maxZ - depth : wall.minZ + depth;
-    Vertex3 onArrisA{a.x, a.y, arrisZ};
-    Vertex3 onArrisB{b.x, b.y, arrisZ};
-    Vertex3 onHorizontal{apex.x, apex.y, arrisZ};
-    Vertex3 onWall{midpoint.x, midpoint.y, wallZAtDepth};
-    // The facet faces up-and-out toward the floor above for a FloorStep, and
-    // down-and-out toward the ceiling below for a CeilingStep.
-    Vertex3 facetReference{
-        orientation.normal.x, orientation.normal.y,
-        isFloorStep ? 1.0f : -1.0f};
-    auto height = wall.maxZ - wall.minZ;
-    auto arrisV = (arrisZ - wall.minZ) / height;
-    auto wallV = (wallZAtDepth - wall.minZ) / height;
-    std::array<float, 2> uvA{notchStart / length, arrisV};
-    std::array<float, 2> uvB{notchEnd / length, arrisV};
-    std::array<float, 2> uvHorizontal{0.5f, arrisV};
-    std::array<float, 2> uvWall{0.5f, wallV};
-    AddTriangle(
-        detail, source, onArrisA, onHorizontal, onWall, facetReference, uvA,
-        uvHorizontal, uvWall);
-    AddTriangle(
-        detail, source, onHorizontal, onArrisB, onWall, facetReference,
-        uvHorizontal, uvB, uvWall);
-
-    detail.countChip();
+        wall.minZ, wall.maxZ, notches, isFloorStep);
   }
 
   for (auto const& [key, footprints] : footprintsByFace) {

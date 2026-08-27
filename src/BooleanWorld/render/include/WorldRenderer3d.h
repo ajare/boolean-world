@@ -65,6 +65,10 @@ public:
 
   void addToScene(mpp::ScenePtr scene, bw::core::World const* world);
 
+  // Applies MPP's line polygon mode to every material mesh in this world
+  // surface set while preserving each mesh's other render flags.
+  void setWireframe(bool wireframe);
+
   void update(
       glm::vec3 const& playerPosition,
       glm::vec3 const& lightPosition,

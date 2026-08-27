@@ -37,6 +37,7 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     bool collisionSim{false};
     bool clipGeneration{false};
     bool options{false};
+    bool wireframe{false};
 
     bw::app::AmbientOcclusion ambientOcclusion{
         bw::app::AmbientOcclusion::GtaoDepth};

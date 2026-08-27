@@ -249,6 +249,25 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
   }
 }
 
+void WorldRenderer3d::setWireframe(bool wireframe) {
+  if (!mSceneModel) {
+    return;
+  }
+  auto params = mSceneModel->getParams();
+  vector<pair<string, uint32_t>> meshFlags;
+  for (auto const& [meshName, meshParams] : params->getMeshParams()) {
+    if (!meshName.empty()) {
+      meshFlags.emplace_back(meshName, meshParams.flags);
+    }
+  }
+  for (auto const& [meshName, flags] : meshFlags) {
+    auto updatedFlags = wireframe
+                            ? flags | mpp::ModelRenderParams::Flag_Wireframe
+                            : flags & ~mpp::ModelRenderParams::Flag_Wireframe;
+    params->setMeshFlags(meshName, updatedFlags);
+  }
+}
+
 void WorldRenderer3d::update(
     glm::vec3 const& playerPosition,
     glm::vec3 const& lightPosition,

@@ -84,8 +84,7 @@ struct PreviewMaterialEditorState {
   std::vector<float> params;
   std::array<float, 3> colour{};
   bw::core::EmbossData emboss;
-  float chipDepth{0.0f};
-  float chipReach{0.0f};
+  bw::core::ChipGenerationParameters chip;
 };
 
 struct PreviewSession {
@@ -186,6 +185,11 @@ void rebuildPreviewWorldData() {
     primitives.push_back(const_cast<bw::core::Primitive*>(primitive));
   }
   bw::core::ArrangementWorldDataGenerator generator;
+  generator.setChipParametersResolver([](std::string const& subMaterialId) {
+    auto const* material = procMaterialLibrary().findSubMaterial(subMaterialId);
+    return material ? material->chip
+                    : bw::core::ChipGenerationParameters{};
+  });
   generator.generate(primitives);
   session.worldData = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), session.world->getExtents(),
@@ -207,6 +211,10 @@ void reconcileSavedProcMaterial(std::string const& resourceName) {
   renderSystem->reloadProcMaterial(resourceName);
   session.renderScene->reloadSubMaterialResolver(
       renderSystem->resourceManager());
+  // Chip parameters affect snapshot geometry rather than shader uniforms.
+  // Resolve the newly saved values through the same authoring library hook.
+  rebuildPreviewWorldData();
+  session.renderScene->worldGeometryChanged();
 }
 
 void applyMaterialDraft() {
@@ -293,8 +301,7 @@ void loadMaterialDraft(std::string const& id) {
   state.params = material->paramValues;
   state.colour = material->baseColour;
   state.emboss = material->emboss;
-  state.chipDepth = material->chipDepth;
-  state.chipReach = material->chipReach;
+  state.chip = material->chip;
 }
 
 // The relief this Sub-material embosses into every surface it is applied to.
@@ -314,16 +321,15 @@ void renderEmbossEditor(PreviewMaterialEditorState& state) {
 }
 
 // How far a Chip bites into and reaches along this Sub-material - see
-// CONTEXT.md's "Chip" entry. Nothing consumes these values yet; authored and
-// pushed into the live draft purely so they round-trip like everything else
-// here.
+// CONTEXT.md's "Chip" entry. Saving rebuilds detail geometry; an unsaved drag
+// remains editor state because these values cannot be changed by uniforms.
 void renderChipEditor(PreviewMaterialEditorState& state) {
   if (!ImGui::CollapsingHeader("Chipping", ImGuiTreeNodeFlags_DefaultOpen)) {
     return;
   }
 
   ImGui::SetNextItemWidth(280.0f);
-  widgets::ChipFields(state.chipDepth, state.chipReach);
+  widgets::ChipFields(state.chip);
 }
 
 void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
@@ -409,8 +415,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       auto params = state.params;
       auto colour = state.colour;
       auto emboss = state.emboss;
-      auto chipDepth = state.chipDepth;
-      auto chipReach = state.chipReach;
+      auto chip = state.chip;
       if (transactUndoableActionAtomically(
               session.document, "Save Sub-material",
               [&](Document* actionDoc) {
@@ -418,7 +423,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
                     actionDoc, &procMaterialLibrary(), id, name);
                 return editSubMaterial(
                     actionDoc, &procMaterialLibrary(), id, params, colour,
-                    emboss, chipDepth, chipReach);
+                    emboss, chip);
               })) {
         reconcileSavedProcMaterial(catalog.resourceName);
         loadMaterialDraft(id);
@@ -430,8 +435,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       auto params = state.params;
       auto colour = state.colour;
       auto emboss = state.emboss;
-      auto chipDepth = state.chipDepth;
-      auto chipReach = state.chipReach;
+      auto chip = state.chip;
       auto materialIndex = state.materialIndex;
       auto resourceName = catalog.resourceName;
       std::string createdId;
@@ -440,8 +444,8 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
               [&](Document* actionDoc) {
                 if (!createSubMaterial(
                         actionDoc, &procMaterialLibrary(), resourceName, name,
-                        materialIndex, params, colour, emboss, chipDepth,
-                        chipReach, &createdId)) {
+                        materialIndex, params, colour, emboss, chip,
+                        &createdId)) {
                   return false;
                 }
                 return setPrimitiveSubMaterial(

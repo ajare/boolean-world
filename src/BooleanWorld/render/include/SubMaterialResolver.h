@@ -7,6 +7,7 @@
 #include <willpower/application/resourcesystem/ResourceManager.h>
 
 #include <core/MaterialDefinition.h>
+#include <core/WorldDataGenerator.h>
 
 // Resolves a Primitive surface's Sub-material id (PrimitivePropertySet::
 // floorMaterialId/ceilingMaterialId/wallMaterialId) to the Technique index,
@@ -21,6 +22,7 @@ public:
   struct Resolved {
     uint32_t materialIndex;
     bw::core::MaterialDefinitionData def;
+    bw::core::ChipGenerationParameters chipParameters;
   };
 
 private:
@@ -30,4 +32,8 @@ public:
   explicit SubMaterialResolver(wp::application::resourcesystem::ResourceManager* resourceMgr);
 
   Resolved resolve(std::string const& subMaterialId) const;
+
+  // Returns a self-contained callback safe to retain on a generator after
+  // this resolver is destroyed.
+  bw::core::ChipParametersResolver chipParametersResolver() const;
 };

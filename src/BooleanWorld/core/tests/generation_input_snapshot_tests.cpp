@@ -2,8 +2,13 @@
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
+#include <memory>
 #include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
 
+#include <core/ArrangementWorldDataGenerator.h>
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/MeshPrimitive.h>
 #include <core/World.h>
@@ -103,6 +108,58 @@ void generationWorkerUsesCapturedPrimitiveSnapshot() {
   require(
       arrangement.palette[face.paletteIndex].floorZ == 3.0f,
       "worker observed primitive properties changed after dispatch");
+}
+
+void chipParametersAreResolvedInSnapshotOrderOnTheCallingThread() {
+  std::unique_ptr<MeshPrimitive> first(MeshPrimitive::fromComplexPolygons(
+      Primitive::Operation::Union,
+      {rectangle(0.0f, 0.0f, 20.0f, 20.0f)}));
+  std::unique_ptr<MeshPrimitive> second(MeshPrimitive::fromComplexPolygons(
+      Primitive::Operation::Union,
+      {rectangle(5.0f, 5.0f, 15.0f, 15.0f)}));
+  auto firstProperties = first->getProperties();
+  firstProperties.wallMaterialId = "soft_stone";
+  first->setProperties(firstProperties);
+  auto secondProperties = second->getProperties();
+  secondProperties.floorZ = 10.0f;
+  secondProperties.wallMaterialId = "hard_slate";
+  second->setProperties(secondProperties);
+
+  std::vector<Primitive*> primitives{first.get(), second.get()};
+  std::vector<std::string> consulted;
+  auto const callingThread = std::this_thread::get_id();
+  auto snapshots = bw::core::SnapshotPrimitives(
+      primitives, {}, [&](std::string const& id) {
+        require(std::this_thread::get_id() == callingThread,
+                "chip resolver left the snapshot calling thread");
+        consulted.push_back(id);
+        return id == "soft_stone"
+                   ? bw::core::ChipGenerationParameters{
+                         2.0f, 4.0f, 4.0f, 3.0f, 4.0f, 4.1f, 1.0f}
+                   : bw::core::ChipGenerationParameters{1.5f, 1.0f, 1.0f, 2.0f, 3.0f, 3.1f, 1.0f};
+      });
+
+  require(consulted == std::vector<std::string>{"soft_stone", "hard_slate"},
+          "chip resolver was not consulted in property-palette order");
+  auto arrangement = bw::core::arr::BuildArrangement(snapshots);
+  require(arrangement->chipParametersPalette.size() == arrangement->palette.size(),
+          "resolved Chip parameters did not stay parallel to the property palette");
+  require(arrangement->chipParametersPalette[1].maximumDepth == 4.0f &&
+              arrangement->chipParametersPalette[1].maximumReach == 4.0f &&
+              arrangement->chipParametersPalette[2].maximumDepth == 1.0f &&
+              arrangement->chipParametersPalette[2].maximumReach == 3.0f,
+          "resolved Chip parameters landed in the wrong palette order");
+
+  auto unresolved = bw::core::SnapshotPrimitives(primitives);
+  for (auto const& primitive : unresolved) {
+    require(primitive.chipParameters.probability == 0.0f,
+            "an absent Chip resolver did not snapshot disabled generation");
+  }
+  bw::core::ArrangementWorldData withoutResolver(
+      bw::core::arr::BuildArrangement(unresolved),
+      wp::BoundingBox({-10.0f, -10.0f}, {40.0f, 40.0f}), 8.0f, 2.0f);
+  require(withoutResolver.getDetail().getChipCount() == 0,
+          "an absent chip resolver still produced Chips");
 }
 
 void primitiveRemovalBeforeCompletionAndCommitIsSafe() {
@@ -226,6 +283,7 @@ void primitiveRemovalBeforeCompletionAndCommitIsSafe() {
 int main() {
   try {
     generationWorkerUsesCapturedPrimitiveSnapshot();
+    chipParametersAreResolvedInSnapshotOrderOnTheCallingThread();
     primitiveRemovalBeforeCompletionAndCommitIsSafe();
     std::cout << "Generation workers and metadata use lifetime-safe snapshots\n";
     return 0;

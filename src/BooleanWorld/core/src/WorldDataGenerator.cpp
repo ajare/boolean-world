@@ -75,6 +75,7 @@ WorldDataGenerator& WorldDataGenerator::operator=(
 void WorldDataGenerator::copyFrom(WorldDataGenerator const& other) {
   mLayerSelection = other.mLayerSelection;
   mPrimitiveFilter = other.mPrimitiveFilter;
+  mChipParametersResolver = other.mChipParametersResolver;
   mViewTriangle = other.mViewTriangle;
 }
 
@@ -115,6 +116,15 @@ void WorldDataGenerator::refreshPrimitiveFilter() {
   handlePrimitiveFilterChanged();
 }
 
+void WorldDataGenerator::setChipParametersResolver(ChipParametersResolver resolver) {
+  mChipParametersResolver = move(resolver);
+  handleChipParametersResolverChanged();
+}
+
+ChipParametersResolver const& WorldDataGenerator::getChipParametersResolver() const {
+  return mChipParametersResolver;
+}
+
 void WorldDataGenerator::setActiveLayer(uint32_t layerId) {
   setLayerSelection(SelectLayer(layerId));
 }
@@ -135,6 +145,9 @@ void WorldDataGenerator::handleLayerSelectionChanged() {
 }
 
 void WorldDataGenerator::handlePrimitiveFilterChanged() {
+}
+
+void WorldDataGenerator::handleChipParametersResolverChanged() {
 }
 
 void WorldDataGenerator::update(

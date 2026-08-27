@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "core/ChipGenerationParameters.h"
 #include "core/Emboss.h"
 #include "core/Serializable.h"
 
@@ -33,15 +34,10 @@ struct SubMaterial : public Serializable {
   // EmbossIsInRange.
   EmbossData emboss;
 
-  // How far a Chip bites into this Sub-material, and how far it reaches along
-  // the Arris it chips - see CONTEXT.md's "Chip" entry and ADR-0027. Neither
-  // is bounded by the Technique schema, exactly like emboss above: the same
-  // treatment, for the same reason. Zero means this Sub-material does not
-  // chip at all, which is the default - nothing consumes these values yet,
-  // so a fresh Sub-material must not appear to promise chipping it cannot
-  // yet show.
-  float chipDepth{0.0f};
-  float chipReach{0.0f};
+  // Eligibility, count, spacing, and size variation for Chips cut into this
+  // Sub-material - see CONTEXT.md's "Chip" entry and ADR-0027. These are
+  // independent of the Technique schema, exactly like emboss above.
+  ChipGenerationParameters chip;
 
 private:
   bool childrenModified() const override;
@@ -52,15 +48,19 @@ protected:
   bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 };
 
-// Authoring bounds for chipDepth/chipReach, shared by the editor's sliders and
-// deserialization's validation exactly as EmbossParameterLimits is - see
-// EmbossParameterLimits.
+// Authoring bounds shared by the editor and deserialization. Relational
+// constraints are checked by ChipParametersAreValid.
+[[nodiscard]] EmbossParameterLimits ChipArrisLengthLimits();
 [[nodiscard]] EmbossParameterLimits ChipDepthLimits();
 [[nodiscard]] EmbossParameterLimits ChipReachLimits();
+[[nodiscard]] EmbossParameterLimits ChipSpacingLimits();
+[[nodiscard]] EmbossParameterLimits ChipProbabilityLimits();
 
-// Both fields within their own limits. Deserialization reports a violation
-// rather than clamping, matching EmbossIsInRange.
-[[nodiscard]] bool ChipIsInRange(float chipDepth, float chipReach);
+// In addition to scalar bounds: minima may not exceed maxima, maximum width
+// (half maximum reach) may not exceed the minimum eligible Arris length, and
+// centre spacing is at least maximumReach + 0.1 so Chips cannot overlap.
+[[nodiscard]] bool ChipParametersAreValid(
+    ChipGenerationParameters const& parameters);
 
 }  // namespace core
 }  // namespace bw

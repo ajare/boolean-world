@@ -14,6 +14,7 @@ SubMaterialResolver::SubMaterialResolver(wp::application::resourcesystem::Resour
       resolved.materialIndex = subMaterial.materialIndex;
       resolved.def.baseColour = subMaterial.baseColour;
       resolved.def.emboss = subMaterial.emboss;
+      resolved.chipParameters = subMaterial.chip;
       resolved.def.params.fill(0.0f);
 
       for (size_t i = 0; i < subMaterial.paramValues.size() && i < resolved.def.params.size(); ++i) {
@@ -39,5 +40,15 @@ SubMaterialResolver::Resolved SubMaterialResolver::resolve(string const& subMate
   error.def.emboss = {};
   error.def.params.fill(0.0f);
   error.def.baseColour = {1.0f, 0.0f, 1.0f};
+  error.chipParameters = {};
   return error;
+}
+
+bw::core::ChipParametersResolver SubMaterialResolver::chipParametersResolver() const {
+  auto snapshot = mSubMaterials;
+  return [snapshot = std::move(snapshot)](string const& subMaterialId) {
+    auto const found = snapshot.find(subMaterialId);
+    return found == snapshot.end() ? bw::core::ChipGenerationParameters{}
+                                   : found->second.chipParameters;
+  };
 }
