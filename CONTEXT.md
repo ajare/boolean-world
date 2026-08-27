@@ -96,6 +96,10 @@ _Avoid_: render flag, hidden flag
 A position and facing angle stored on the Document, representing where the in-game player currently would be. Independent of any Primitive or Layer; used to render the editor's player-view overlay and to seed a flythrough's starting pose.
 _Avoid_: player start, spawn point
 
+**Player Torch**:
+The permanently equipped point light carried by the player. It supplies the World's direct illumination and casts shadows in every direction; in player-view previews, the Player proxy stands in for the player carrying it.
+_Avoid_: light source (too broad), shadow light (an implementation input rather than the game concept)
+
 **Prefab instance**:
 One Tile's occupant: a reference to a same-sized Prefab plus a rotation and, where applicable, a Tile mode; it is not a copy — editing the Prefab's Primitives changes every instance of it. All Replace squares on one grid are applied before any Prefab instances on that grid. Rotation is one of the referenced DefinePrefabs step's PrefabTilingType's allowed angles (four for Square: 0/90/180/270), not an arbitrary orientation. Reuses the name of the removed Primitive+TriggerLine clipboard grouping (`addPrefabInstance`), now fully gone from the codebase — the two are unrelated, and this is the concept the name refers to going forward.
 _Avoid_: prefab copy, instance (ambiguous alone — this codebase also has C++ class instances, animation-transform instances, etc.)
