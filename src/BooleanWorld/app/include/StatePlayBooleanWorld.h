@@ -30,6 +30,7 @@
 #include "Map.h"
 #include "DisplayMessage.h"
 #include "ClippingRecord.h"
+#include "PlayerTorchShadows.h"
 
 class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
   struct DebugDisplay {
@@ -51,6 +52,10 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     float vignetteFalloffWidth{0.65f};
 
     float lightDistance{0.0f};
+
+    // A live diagnostic copy; it is intentionally not the model's configured
+    // VideoOptions and is discarded with this play session.
+    bw::app::PlayerTorchShadowSessionOptions playerTorchShadows;
 
     bool _renderTriangulationLines{false};
 
@@ -100,6 +105,11 @@ private:
   bool mExitScheduled;
 
   bool mScreenshotRequested{false};
+
+  // Once MPP has disabled a requested domain after unsupported hardware or a
+  // failed allocation, a session override must not retry around that fallback.
+  bool mPlayerTorchShadowHardwareFallback{false};
+  bool mPlayerTorchShadowRequestedEnabled{false};
 
   // Created/managed in load states
   WorldRenderer* mwRenderer;

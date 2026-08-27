@@ -40,6 +40,37 @@ void transfersConfigurationToMpp() {
           "Configured shadow fields were truncated or reordered for MPP.");
 }
 
+void sessionOverrideIsTemporaryAndHonoursFallback() {
+  bw::app::ShadowOptions configured;
+  configured.enabled = false;
+  configured.faceResolution = 1537;
+  auto session = bw::app::playerTorchShadowSessionOptions(configured);
+
+  require(!bw::app::playerTorchShadowsEnabled(
+              session.options, session.enabledOverride),
+          "The configured disabled state was not used without an override.");
+  session.enabledOverride = true;
+  require(bw::app::playerTorchShadowsEnabled(
+              session.options, session.enabledOverride),
+          "The enable override did not temporarily enable the domain.");
+  session.enabledOverride = false;
+  require(!bw::app::playerTorchShadowsEnabled(
+              session.options, session.enabledOverride),
+          "The disable override did not temporarily disable the domain.");
+  require(!configured.enabled && configured.faceResolution == 1537,
+          "Session controls changed the configured shadow options.");
+
+  require(!bw::app::playerTorchShadowHardwareFallbackDetected(
+              false, true, false),
+          "The first configured-off override attempt was mistaken for a fallback.");
+  require(bw::app::playerTorchShadowHardwareFallbackDetected(
+              true, true, false),
+          "A failed enabled request did not retain the hardware fallback.");
+  require(!bw::app::playerTorchShadowHardwareFallbackDetected(
+              true, false, false),
+          "An intentional disable was mistaken for a hardware fallback.");
+}
+
 void everyPipelineVariantSharesOneDomain() {
   for (auto scale : bw::app::allRenderScales) {
     (void)scale;
@@ -65,15 +96,36 @@ void releaseShadersReceiveOnlyDirectTorchVisibility() {
     auto ambient = shader.find("ambient", direct);
     require(direct != std::string::npos && ambient != std::string::npos,
             std::string(name) + " does not apply visibility before its independent ambient term.");
+    require(shader.find("vec4(value, @In(COLOUR).a)") != std::string::npos,
+            std::string(name) + " loses alpha for a blended receiving surface.");
   }
+}
+
+void f1ExposesSessionOnlyDiagnostics() {
+  auto appRoot = std::filesystem::path(BW_APP_RESOURCE_DIR).parent_path();
+  auto state = read(appRoot / "src" / "StatePlayBooleanWorld.cpp");
+  for (auto label : {"{Key::F1}", "Enable override",
+                     "Range##PlayerTorch", "Constant bias##PlayerTorch",
+                     "Normal bias##PlayerTorch", "Filter##PlayerTorch",
+                     "PCF radius##PlayerTorch", "Fade start##PlayerTorch",
+                     "Cubemap resolution (configured)"}) {
+    require(state.find(label) != std::string::npos,
+            std::string("F1 diagnostics are missing ") + label + ".");
+  }
+  require(state.find("faceResolution") == std::string::npos ||
+              state.find("&sessionShadows.options.faceResolution") ==
+                  std::string::npos,
+          "F1 exposes a mutable cubemap-resolution control.");
 }
 }  // namespace
 
 int main() {
   try {
     transfersConfigurationToMpp();
+    sessionOverrideIsTemporaryAndHonoursFallback();
     everyPipelineVariantSharesOneDomain();
     releaseShadersReceiveOnlyDirectTorchVisibility();
+    f1ExposesSessionOnlyDiagnostics();
     std::cout << "Player Torch shadow integration tests passed\n";
     return 0;
   } catch (std::exception const& error) {

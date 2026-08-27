@@ -2516,7 +2516,9 @@ void main()
         value = pow(value, vec3(1.0 / 2.2));
     }
 
-    @Out(vec4 COLOUR) = vec4(value, 1.0) * shadedColour;
+    // Preserve vertex alpha for a blended receiver. Visibility was applied to
+    // the direct term above, before this final opacity is composited.
+    @Out(vec4 COLOUR) = vec4(value, @In(COLOUR).a) * shadedColour;
     @Out(vec4 BLOOM_MASK) = vec4(0.0);
     @Out(vec2 SHADING_NORMAL) = encodeOctahedralNormal(
         normalize(mat3(VIEW_MATRIX) * shadingNormal));

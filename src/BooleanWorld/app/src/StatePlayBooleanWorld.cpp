@@ -210,6 +210,11 @@ void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transi
 
   // Configure before constructing any participating pipeline. The first frame
   // will update this from the same computed light position used by materials.
+  // Keep a separate diagnostic copy: F1 never changes the launch configuration.
+  mDebugDisplay.playerTorchShadows = bw::app::playerTorchShadowSessionOptions(
+      model->getShadowOptions());
+  mPlayerTorchShadowHardwareFallback = false;
+  mPlayerTorchShadowRequestedEnabled = model->getShadowOptions().enabled;
   auto const& physicalStats = getPlayerPhysicalStats();
   auto initialPosition = glm::vec3{
       physicalStats.position.x,
@@ -253,7 +258,7 @@ void StatePlayBooleanWorld::registerInput() {
   registerInputState("Debug.Minimap", {Key::F2}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("Debug.CollisionSim", {Key::F3}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("Debug.ClipGen", {Key::F4}, {}, {}, {}, {}, {}, false, false, 0, false);
-  registerInputState("Debug.Options", {Key::F5}, {}, {}, {}, {}, {}, false, false, 0, false);
+  registerInputState("Debug.Options", {Key::F1}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("ToggleAllLayers", {Key::F9}, {}, {}, {}, {}, {}, false, false, 0, true);
   registerInputState("Screenshot", {Key::F11}, {}, {}, {}, {}, {}, false, false, 0, false);
 }
@@ -699,22 +704,24 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
       playerPosition.x + lightOffset.x,
       playerPosition.y,
       playerPosition.z - lightOffset.y};
-  auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
   auto const domainName = std::string(bw::app::playerTorchShadowDomain);
-  auto const& configuredShadows = model->getShadowOptions();
-  // MPP turns enabled off after logging a hardware/allocation fallback. Do not
-  // overwrite that result every frame and repeatedly retry the unavailable
-  // cubemap; the material's LIGHT_POSITION still updates below, preserving
-  // the Player Torch's direct illumination.
-  auto const hardwareFallback =
-      configuredShadows.enabled && mwRenderSystem->hasShadowDomain(domainName) &&
-      !mwRenderSystem->getShadowDomainOptions(domainName).enabled;
-  if (!hardwareFallback) {
-    mwRenderSystem->configureShadowDomain(
-        domainName,
-        bw::app::playerTorchMppShadowOptions(
-            configuredShadows, lightPosition));
+  auto const& sessionShadows = mDebugDisplay.playerTorchShadows;
+  auto desiredOptions = bw::app::playerTorchMppShadowOptions(
+      sessionShadows.options, lightPosition, sessionShadows.enabledOverride);
+  // MPP turns enabled off after logging a hardware/allocation fallback. Detect
+  // that only after a previously enabled request, so forcing on a configured-
+  // off domain still gets its first hardware attempt. Once detected, neither
+  // the configured value nor F1's override may retry around that fallback.
+  if (mwRenderSystem->hasShadowDomain(domainName) &&
+      bw::app::playerTorchShadowHardwareFallbackDetected(
+          mPlayerTorchShadowRequestedEnabled, desiredOptions.enabled,
+          mwRenderSystem->getShadowDomainOptions(domainName).enabled)) {
+    mPlayerTorchShadowHardwareFallback = true;
   }
+  if (!mPlayerTorchShadowHardwareFallback) {
+    mwRenderSystem->configureShadowDomain(domainName, desiredOptions);
+  }
+  mPlayerTorchShadowRequestedEnabled = desiredOptions.enabled;
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
       gNoMaterialOverride, gNoMaterialOverride, gAuthoredMaterialScale,
@@ -1602,6 +1609,48 @@ void StatePlayBooleanWorld::debug_renderOptions() {
         ambientOcclusionConfigured
             ? "Debug-only - set Video/AmbientOcclusion to choose the method."
             : "Disabled by Video/AmbientOcclusion: none.");
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Player Torch shadows (F1 session-only)");
+    auto& sessionShadows = mDebugDisplay.playerTorchShadows;
+    auto const& configuredShadows = model->getShadowOptions();
+    char const* enableLabels[] = {
+        "Configured", "Force enabled", "Force disabled"};
+    auto enableSelection = sessionShadows.enabledOverride
+                               ? (*sessionShadows.enabledOverride ? 1 : 2)
+                               : 0;
+    if (ImGui::Combo("Enable override", &enableSelection, enableLabels, 3)) {
+      sessionShadows.enabledOverride = enableSelection == 0
+                                           ? std::nullopt
+                                           : std::optional<bool>{enableSelection == 1};
+    }
+    ImGui::Text("Cubemap resolution (configured): %zu", configuredShadows.faceResolution);
+    ImGui::TextDisabled("Resolution is read-only during play; no live cubemap reallocation.");
+    ImGui::SliderFloat(
+        "Range##PlayerTorch", &sessionShadows.options.range,
+        sessionShadows.options.nearPlane + 0.01f,
+        max(1024.0f, sessionShadows.options.nearPlane + 0.01f), "%.2f");
+    ImGui::SliderFloat("Constant bias##PlayerTorch",
+                       &sessionShadows.options.constantBias, 0.0f, 0.02f, "%.5f");
+    ImGui::SliderFloat("Normal bias##PlayerTorch",
+                       &sessionShadows.options.normalBias, 0.0f, 0.02f, "%.5f");
+    auto filterSelection =
+        sessionShadows.options.filter == bw::app::ShadowFilter::Hard ? 0 : 1;
+    char const* filterLabels[] = {"Hard", "PCF 3x3"};
+    if (ImGui::Combo("Filter##PlayerTorch", &filterSelection, filterLabels, 2)) {
+      sessionShadows.options.filter = filterSelection == 0
+                                          ? bw::app::ShadowFilter::Hard
+                                          : bw::app::ShadowFilter::Pcf;
+    }
+    ImGui::SliderFloat("PCF radius##PlayerTorch",
+                       &sessionShadows.options.filterRadius, 0.0f, 8.0f, "%.2f");
+    ImGui::SliderFloat("Fade start##PlayerTorch",
+                       &sessionShadows.options.fadeStart, 0.0f, 1.0f, "%.3f");
+    if (mPlayerTorchShadowHardwareFallback) {
+      ImGui::TextDisabled("Unavailable after hardware/allocation fallback.");
+    } else {
+      ImGui::TextDisabled("Not saved - set Video/Shadows to keep these values.");
+    }
 
     ImGui::Separator();
     ImGui::TextUnformatted("Vignette");
