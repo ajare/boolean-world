@@ -22,6 +22,8 @@ struct ArrangementStats {
   uint32_t faceCount{0};
   uint32_t triangleCount{0};
   uint32_t wallCount{0};
+  // Chips cut into convex Arrises by the detail pass (ADR-0027).
+  uint32_t chipCount{0};
   uint64_t buildPSLGTimeNs{0};
   uint64_t classificationTimeNs{0};
 };

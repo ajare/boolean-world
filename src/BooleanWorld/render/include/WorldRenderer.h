@@ -2,6 +2,7 @@
 
 #include <array>
 #include <map>
+#include <span>
 #include <vector>
 #include <string>
 
@@ -77,6 +78,16 @@ private:
       int32_t highlightedWall);
 
   uint32_t addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c);
+
+  // Emits one Chip detail triangle, mapping it out of arrangement space
+  // (Z up) into renderer space. `mirrored` flips it for a wall drawn from
+  // behind, exactly as the wall quad itself is flipped there.
+  void addDetailTriangleToDataProvider(
+      DataProvider dataProvider,
+      uint32_t meshIndex,
+      bw::core::arr::DetailTriangle const& triangle,
+      bool mirrored,
+      uint32_t colour);
 
 public:
   WorldRenderer(

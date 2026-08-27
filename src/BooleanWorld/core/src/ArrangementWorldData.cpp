@@ -55,10 +55,15 @@ ArrangementWorldData::ArrangementWorldData(
     : mArrangement(std::move(arrangement)),
       mTriangles(arr::BuildArrangementTriangles(*mArrangement)),
       mWalls(arr::BuildArrangementWalls(*mArrangement)),
+      // Built here, on whichever thread constructs the snapshot - the
+      // generation worker in game - and immutable from then on, exactly like
+      // the two outputs above. Neither of those is altered by its presence.
+      mDetail(arr::BuildChipDetail(*mArrangement, mWalls)),
       mStepThreshold(stepThreshold) {
   if (stats != nullptr) {
     stats->triangleCount = uint32_t(mTriangles.size());
     stats->wallCount = uint32_t(mWalls.size());
+    stats->chipCount = mDetail.getChipCount();
   }
 
   std::vector<ImmutableAccelerationGrid::ItemBounds> triangleBounds;
@@ -126,6 +131,10 @@ ArrangementWorldData::getTriangles() const {
 
 std::vector<arr::ArrangementWall> const& ArrangementWorldData::getWalls() const {
   return mWalls;
+}
+
+arr::DetailGeometry const& ArrangementWorldData::getDetail() const {
+  return mDetail;
 }
 
 int32_t ArrangementWorldData::pointInTriangle(

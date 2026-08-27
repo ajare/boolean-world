@@ -8,6 +8,7 @@
 #include <willpower/common/Vector2.h>
 
 #include "core/Arrangement.h"
+#include "core/Chips.h"
 #include "core/ImmutableAccelerationGrid.h"
 #include "core/Platform.h"
 #include "core/Stats.h"
@@ -17,6 +18,10 @@ class BW_API ArrangementWorldData {
   arr::ArrangementResultPtr mArrangement;
   std::vector<arr::ArrangementTriangle> mTriangles;
   std::vector<arr::ArrangementWall> mWalls;
+  // Render-only detail geometry (ADR-0027). Deliberately not read by any
+  // query below: collision, floor height, face containment and surface
+  // picking all continue to see the unchipped world.
+  arr::DetailGeometry mDetail;
   std::vector<uint32_t> mCollisionWallIndices;
   float mStepThreshold;
   std::unique_ptr<ImmutableAccelerationGrid> mTriangleGrid;
@@ -37,6 +42,10 @@ public:
   getTriangles() const;
 
   [[nodiscard]] std::vector<arr::ArrangementWall> const& getWalls() const;
+
+  // The Chip detail channel: which surfaces a renderer must skip, and the
+  // triangles standing in for them. Renderers only.
+  [[nodiscard]] arr::DetailGeometry const& getDetail() const;
 
   [[nodiscard]] int32_t pointInTriangle(wp::Vector2 const& position) const;
 

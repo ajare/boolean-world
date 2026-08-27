@@ -1241,7 +1241,7 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
         ImGuiTableFlags_BordersV |
         ImGuiTableFlags_ContextMenuInBody;
 
-    if (ImGui::BeginTable("Generation", 16, flags)) {
+    if (ImGui::BeginTable("Generation", 17, flags)) {
       ImGui::TableSetupColumn("Id", ImGuiTableColumnFlags_WidthFixed, 128);
       ImGui::TableSetupColumn("Gen 0", ImGuiTableColumnFlags_WidthFixed, 128);
       ImGui::TableSetupColumn("Gen 1", ImGuiTableColumnFlags_WidthFixed, 128);
@@ -1256,6 +1256,7 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
       ImGui::TableSetupColumn("Faces");
       ImGui::TableSetupColumn("Tris");
       ImGui::TableSetupColumn("Walls");
+      ImGui::TableSetupColumn("Chips");
       ImGui::TableSetupColumn("PSLG (us)");
       ImGui::TableSetupColumn("Classify (us)");
       ImGui::TableHeadersRow();
@@ -1366,8 +1367,9 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
         showArrangementStat(11, arrangement.faceCount);
         showArrangementStat(12, arrangement.triangleCount);
         showArrangementStat(13, arrangement.wallCount);
-        showArrangementTime(14, arrangement.buildPSLGTimeNs);
-        showArrangementTime(15, arrangement.classificationTimeNs);
+        showArrangementStat(14, arrangement.chipCount);
+        showArrangementTime(15, arrangement.buildPSLGTimeNs);
+        showArrangementTime(16, arrangement.classificationTimeNs);
       }
 
       ImGui::EndTable();

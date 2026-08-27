@@ -131,6 +131,36 @@ uint32_t WorldRenderer::addVertexToDataProvider(DataProvider dataProvider, uint3
   return dataProvider->addVertex(meshIndex, vertex);
 }
 
+void WorldRenderer::addDetailTriangleToDataProvider(
+    DataProvider dataProvider,
+    uint32_t meshIndex,
+    bw::core::arr::DetailTriangle const& triangle,
+    bool mirrored,
+    uint32_t colour) {
+  // Arrangement space keeps height in z and renderer space keeps it in y,
+  // mapping (x, y, z) to (x, z, -y) - a rotation, not a reflection, so a
+  // triangle wound counter-clockwise about its normal there stays wound
+  // counter-clockwise about the mapped normal here and the indices pass
+  // through in order. The world draws unculled either way (which is why each
+  // wall picks one quad per frame rather than emitting both sides); what
+  // carries the surface is the explicit normal, so mirroring a chipped wall
+  // for its back face has to flip that as well as the winding.
+  auto sign = mirrored ? -1.0f : 1.0f;
+  uint32_t indices[3];
+  for (int i = 0; i < 3; ++i) {
+    auto const& vertex = triangle.v[i];
+    indices[i] = addVertexToDataProvider(
+        dataProvider, meshIndex, vertex.position[0], vertex.position[2],
+        -vertex.position[1], sign * vertex.normal[0], sign * vertex.normal[2],
+        -sign * vertex.normal[1], vertex.uv[0], vertex.uv[1], colour);
+  }
+  if (mirrored) {
+    dataProvider->addTriangle(meshIndex, indices[2], indices[1], indices[0]);
+  } else {
+    dataProvider->addTriangle(meshIndex, indices[0], indices[1], indices[2]);
+  }
+}
+
 void WorldRenderer::updateHorizontalDataProvider(
     bw::core::WorldData const& snapshot,
     int32_t highlightedTriangle,
@@ -142,6 +172,23 @@ void WorldRenderer::updateHorizontalDataProvider(
           ? triangles[highlightedTriangle].face
           : ~0u;
   auto& horizontal = mMaterialRenderers[0];
+  // A Chip bites into one side of a face only, so the detail channel names
+  // the side (ADR-0027): skipping the whole ArrangementTriangle would punch
+  // a matching hole in the surface overhead.
+  auto const& detail = snapshot.getDetail();
+  using bw::core::arr::DetailSurfaceKind;
+
+  // A rebuilt face's replacements resolve exactly the Sub-material the face
+  // itself would have, so they land in mesh buckets that already exist.
+  auto horizontalMeshFor = [&](bw::core::arr::DetailSurfaceKey const& key) {
+    auto const& properties =
+        worldData.palette[worldData.faces[key.index].paletteIndex];
+    auto isFloor = key.kind == DetailSurfaceKind::FloorOfFace;
+    auto resolved = mBakedSubMaterialResolver.resolve(
+        isFloor ? properties.floorMaterialId : properties.ceilingMaterialId);
+    return horizontal.renderer->getMeshIndexForMaterialHash(
+        resolved.def.hash(resolved.materialIndex), isFloor);
+  };
 
   std::vector<uint32_t> horizontalCounts(
       horizontal.dataProvider->getNumMeshes());
@@ -151,10 +198,21 @@ void WorldRenderer::updateHorizontalDataProvider(
     auto floorHash = floorResolved.def.hash(floorResolved.materialIndex);
     auto ceilingResolved = mBakedSubMaterialResolver.resolve(properties.ceilingMaterialId);
     auto ceilingHash = ceilingResolved.def.hash(ceilingResolved.materialIndex);
-    ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
-        floorHash, true)];
-    ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
-        ceilingHash, false)];
+    if (!detail.isSuppressed(DetailSurfaceKind::FloorOfFace, triangle.face)) {
+      ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
+          floorHash, true)];
+    }
+    if (!detail.isSuppressed(
+            DetailSurfaceKind::CeilingOfFace, triangle.face)) {
+      ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
+          ceilingHash, false)];
+    }
+  }
+  for (auto const& replacement : detail.getTriangles()) {
+    if (replacement.source.kind == DetailSurfaceKind::Wall) {
+      continue;
+    }
+    ++horizontalCounts[horizontalMeshFor(replacement.source)];
   }
   horizontal.dataProvider->updateInternals(horizontalCounts);
 
@@ -171,25 +229,30 @@ void WorldRenderer::updateHorizontalDataProvider(
           bw::core::arr::ToWorldCoordinate(vertex.y)};
     }
 
-    auto floorResolved = mBakedSubMaterialResolver.resolve(properties.floorMaterialId);
-    auto floorHash = floorResolved.def.hash(floorResolved.materialIndex);
-    auto floorMesh = horizontal.renderer->getMeshIndexForMaterialHash(
-        floorHash, true);
-    uint32_t floorIndices[3];
-    for (int i = 0; i < 3; ++i) {
-      auto uv = positions[i] / 64.0f;
-      // Reflecting authored Y into renderer -Z reverses winding, so reverse
-      // the indices as well to preserve the floor's front face.
-      floorIndices[2 - i] = addVertexToDataProvider(
-          horizontal.dataProvider, floorMesh, positions[i].x,
-          properties.floorZ, -positions[i].y, 0, 1, 0, uv.x, uv.y,
-          triangle.face == highlightedFace && !highlightedCeiling
-              ? lookedAtVertexColour
-              : untintedVertexColour);
+    if (!detail.isSuppressed(DetailSurfaceKind::FloorOfFace, triangle.face)) {
+      auto floorResolved = mBakedSubMaterialResolver.resolve(properties.floorMaterialId);
+      auto floorHash = floorResolved.def.hash(floorResolved.materialIndex);
+      auto floorMesh = horizontal.renderer->getMeshIndexForMaterialHash(
+          floorHash, true);
+      uint32_t floorIndices[3];
+      for (int i = 0; i < 3; ++i) {
+        auto uv = positions[i] / 64.0f;
+        // Reflecting authored Y into renderer -Z reverses winding, so reverse
+        // the indices as well to preserve the floor's front face.
+        floorIndices[2 - i] = addVertexToDataProvider(
+            horizontal.dataProvider, floorMesh, positions[i].x,
+            properties.floorZ, -positions[i].y, 0, 1, 0, uv.x, uv.y,
+            triangle.face == highlightedFace && !highlightedCeiling
+                ? lookedAtVertexColour
+                : untintedVertexColour);
+      }
+      horizontal.dataProvider->addTriangle(
+          floorMesh, floorIndices[0], floorIndices[1], floorIndices[2]);
     }
-    horizontal.dataProvider->addTriangle(
-        floorMesh, floorIndices[0], floorIndices[1], floorIndices[2]);
 
+    if (detail.isSuppressed(DetailSurfaceKind::CeilingOfFace, triangle.face)) {
+      continue;
+    }
     auto ceilingResolved = mBakedSubMaterialResolver.resolve(properties.ceilingMaterialId);
     auto ceilingHash = ceilingResolved.def.hash(ceilingResolved.materialIndex);
     auto ceilingMesh = horizontal.renderer->getMeshIndexForMaterialHash(
@@ -206,6 +269,19 @@ void WorldRenderer::updateHorizontalDataProvider(
     }
     horizontal.dataProvider->addTriangle(
         ceilingMesh, ceilingIndices[0], ceilingIndices[1], ceilingIndices[2]);
+  }
+
+  for (auto const& replacement : detail.getTriangles()) {
+    if (replacement.source.kind == DetailSurfaceKind::Wall) {
+      continue;
+    }
+    auto highlighted = replacement.source.index == highlightedFace &&
+        highlightedCeiling ==
+            (replacement.source.kind == DetailSurfaceKind::CeilingOfFace);
+    addDetailTriangleToDataProvider(
+        horizontal.dataProvider, horizontalMeshFor(replacement.source),
+        replacement, false,
+        highlighted ? lookedAtVertexColour : untintedVertexColour);
   }
   horizontal.dataProvider->finalizeInternals();
   horizontal.dataProvider->setNumPrimitives(horizontal.dataProvider->getNumTriangles());
@@ -237,21 +313,35 @@ void WorldRenderer::updateWallDataProvider(
     return orientation.normal.dot(playerPositionXZ - midpoint) > 0.0f;
   };
 
+  // A chipped wall draws its remainder plus the chamfer facet instead of its
+  // plain quad. Those replacements stay keyed to the wall, so they follow it
+  // into whichever material the test above picks this frame rather than
+  // having one baked in at generation time.
+  auto const& detail = snapshot.getDetail();
+  using bw::core::arr::DetailSurfaceKind;
+
   std::vector<uint32_t> wallCounts(wallRenderer.dataProvider->getNumMeshes());
-  for (auto const& wall : walls) {
+  for (uint32_t wallIndex = 0; wallIndex < uint32_t(walls.size());
+       ++wallIndex) {
+    auto const& wall = walls[wallIndex];
     if (!wall.visible) {
       continue;
     }
+    auto suppressed = detail.isSuppressed(DetailSurfaceKind::Wall, wallIndex);
+    auto triangleCount = suppressed
+        ? uint32_t(
+              detail.replacementsFor(DetailSurfaceKind::Wall, wallIndex).size())
+        : 2u;
     auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
     if (facesPlayer(orientation)) {
       auto const& properties = worldData.palette[wall.paletteIndex];
       auto resolved = mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
       auto hash = resolved.def.hash(resolved.materialIndex);
       wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
-          hash, false)] += 2;
+          hash, false)] += triangleCount;
     } else {
       wallCounts[wallRenderer.renderer->getMeshIndexForMaterialHash(
-          backHash, false)] += 2;
+          backHash, false)] += triangleCount;
     }
   }
   wallRenderer.dataProvider->updateInternals(wallCounts);
@@ -264,6 +354,11 @@ void WorldRenderer::updateWallDataProvider(
     auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
     auto const& v0 = orientation.v0;
     auto const& v1 = orientation.v1;
+    auto replacements =
+        detail.isSuppressed(DetailSurfaceKind::Wall, uint32_t(wallIndex))
+            ? detail.replacementsFor(
+                  DetailSurfaceKind::Wall, uint32_t(wallIndex))
+            : std::span<bw::core::arr::DetailTriangle const>{};
 
     if (facesPlayer(orientation)) {
       auto const& properties = worldData.palette[wall.paletteIndex];
@@ -273,6 +368,13 @@ void WorldRenderer::updateWallDataProvider(
       auto colour = int32_t(wallIndex) == highlightedWall
                         ? lookedAtVertexColour
                         : untintedVertexColour;
+      if (!replacements.empty()) {
+        for (auto const& replacement : replacements) {
+          addDetailTriangleToDataProvider(
+              wallRenderer.dataProvider, mesh, replacement, false, colour);
+        }
+        continue;
+      }
       auto const& normal = orientation.normal;
       auto bottom0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.minZ, -v0.y,
@@ -298,6 +400,15 @@ void WorldRenderer::updateWallDataProvider(
       auto colour = int32_t(wallIndex) == highlightedWall
                         ? lookedAtVertexColour
                         : untintedVertexColour;
+      if (!replacements.empty()) {
+        // The chamfer mirrors with the rest of the wall, so the back face
+        // stays a true mirror image rather than an inconsistent one.
+        for (auto const& replacement : replacements) {
+          addDetailTriangleToDataProvider(
+              wallRenderer.dataProvider, mesh, replacement, true, colour);
+        }
+        continue;
+      }
       auto bottom0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.minZ, -v0.y,
           backNormal.x, 0, -backNormal.y, 0, 0, colour);

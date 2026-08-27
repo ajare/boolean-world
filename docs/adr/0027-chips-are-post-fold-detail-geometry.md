@@ -170,6 +170,14 @@ material data.
   generation gains a pass over all walls with a face-boundary distance query per
   candidate Chip. That runs every five seconds in game, and on every undoable
   action in the editor.
+- "One flat facet" above is one facet in the sense that matters — flat rather
+  than rounded, and cut at a single angle — but it is two triangles, and this
+  is forced rather than chosen. The wedge a Chip removes is a tetrahedron:
+  two corners on the Arris, one on the horizontal face and one down the wall.
+  A single plane cutting a dihedral edge meets that edge in exactly one
+  point, so it can taper to nothing at one end only and would need an end cap
+  at the other; the cut surface has to hinge at the deepest cross-section to
+  close on itself at both. Implemented in `BuildChipDetail` (#278).
 - The 45° bevel and the one-Chip-per-Arris-at-centre placement are fixed in
   code. Both are additive to change: a bevel-angle field, or a count and density
   field, extends the Sub-material block without disturbing anything here.
