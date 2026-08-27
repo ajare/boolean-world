@@ -1,5 +1,6 @@
 #include <stack>
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <format>
 #include <memory>
@@ -30,6 +31,94 @@ StructuredData importStructuredData(utils::StructuredData const& source) {
   }
   return result;
 }
+
+[[noreturn]] void shadowValueError(
+    string const& filename, string const& field, string const& requirement) {
+  auto message = "Could not load '" + filename +
+                 "'.  Value of /Configuration/Video/Shadows/" + field +
+                 " " + requirement + ".";
+  throw exception(message.c_str());
+}
+
+float parseShadowFloat(
+    string const& filename, DataNode* shadows, string const& field,
+    float defaultValue) {
+  auto node = shadows->getOptionalChild(field);
+  if (!node) return defaultValue;
+  auto const& text = node->getValue();
+  float value{};
+  auto [end, error] = from_chars(text.data(), text.data() + text.size(), value);
+  if (error != errc{} || end != text.data() + text.size() || !isfinite(value)) {
+    shadowValueError(filename, field, "must be a finite number");
+  }
+  return value;
+}
+
+void parseShadowOptions(
+    string const& filename, DataNode* shadows,
+    bw::app::ShadowOptions& options) {
+  shadows->requireOnlyChildren(
+      {"Enabled", "FaceResolution", "Range", "NearPlane", "ConstantBias",
+       "NormalBias", "Filter", "FilterRadius", "FadeStart"});
+
+  if (auto node = shadows->getOptionalChild("Enabled")) {
+    auto value = utils::StringUtils::toLower(node->getValue());
+    if (value != "true" && value != "false") {
+      shadowValueError(filename, "Enabled", "must be 'true' or 'false'");
+    }
+    options.enabled = value == "true";
+  }
+
+  if (auto node = shadows->getOptionalChild("FaceResolution")) {
+    auto const& text = node->getValue();
+    size_t value{};
+    auto [end, error] = from_chars(text.data(), text.data() + text.size(), value);
+    if (error != errc{} || end != text.data() + text.size() || value == 0) {
+      shadowValueError(filename, "FaceResolution", "must be a positive integer");
+    }
+    options.faceResolution = value;
+  }
+
+  options.range = parseShadowFloat(filename, shadows, "Range", options.range);
+  options.nearPlane =
+      parseShadowFloat(filename, shadows, "NearPlane", options.nearPlane);
+  options.constantBias = parseShadowFloat(
+      filename, shadows, "ConstantBias", options.constantBias);
+  options.normalBias =
+      parseShadowFloat(filename, shadows, "NormalBias", options.normalBias);
+  options.filterRadius = parseShadowFloat(
+      filename, shadows, "FilterRadius", options.filterRadius);
+  options.fadeStart =
+      parseShadowFloat(filename, shadows, "FadeStart", options.fadeStart);
+
+  if (options.nearPlane <= 0.0f) {
+    shadowValueError(filename, "NearPlane", "must be greater than zero");
+  }
+  if (options.range <= options.nearPlane) {
+    shadowValueError(filename, "Range", "must be greater than NearPlane");
+  }
+  if (options.constantBias < 0.0f) {
+    shadowValueError(filename, "ConstantBias", "must be non-negative");
+  }
+  if (options.normalBias < 0.0f) {
+    shadowValueError(filename, "NormalBias", "must be non-negative");
+  }
+  if (options.filterRadius < 0.0f) {
+    shadowValueError(filename, "FilterRadius", "must be non-negative");
+  }
+  if (options.fadeStart < 0.0f || options.fadeStart > 1.0f) {
+    shadowValueError(filename, "FadeStart", "must be between zero and one");
+  }
+
+  if (auto node = shadows->getOptionalChild("Filter")) {
+    auto name = utils::StringUtils::toLower(node->getValue());
+    auto filter = bw::app::shadowFilterFromName(name);
+    if (!filter) {
+      shadowValueError(filename, "Filter", "must be 'hard' or 'pcf'");
+    }
+    options.filter = *filter;
+  }
+}
 }  // namespace
 
 ProgramOptions parseProgramOptions(string const& filename) {
@@ -44,7 +133,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
   auto audioNode = configuration.getChild("Audio");
   auto inputNode = configuration.getOptionalChild("Input");
 
-  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale", "AA", "AmbientOcclusion", "RenderTextureFilter", "HorizontalMaterials"});
+  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale", "AA", "AmbientOcclusion", "RenderTextureFilter", "HorizontalMaterials", "Shadows"});
   gameNode->requireOnlyChildren({"DLL", "ResourceLocations", "Debug", "Arguments"});
 
   pOpts.screenWidth = utils::StringUtils::parseInt(videoNode->getChild("Width")->getValue());
@@ -106,6 +195,10 @@ ProgramOptions parseProgramOptions(string const& filename) {
       throw exception(errMsg.c_str());
     }
     pOpts.video.horizontalMaterials = *materials;
+  }
+
+  if (auto shadowsNode = videoNode->getOptionalChild("Shadows")) {
+    parseShadowOptions(filename, shadowsNode, pOpts.video.shadows);
   }
 
   auto renderTextureFilterNode =
@@ -221,6 +314,13 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
   logger->info(std::format(
       "Horizontal materials: {}",
       bw::app::horizontalMaterialsName(options.video.horizontalMaterials)));
+  auto const& shadows = options.video.shadows;
+  logger->info(std::format(
+      "Player Torch shadows: {}, {}px faces, range {}, near {}, biases {}/{}, {} radius {}, fade {}",
+      shadows.enabled ? "enabled" : "disabled", shadows.faceResolution,
+      shadows.range, shadows.nearPlane, shadows.constantBias,
+      shadows.normalBias, bw::app::shadowFilterName(shadows.filter),
+      shadows.filterRadius, shadows.fadeStart));
 
   logger->info(std::format("Audio enabled: {}", options.audioEnabled));
 

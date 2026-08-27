@@ -17,7 +17,8 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
                                          std::string const& antiAliasingLine = "",
                                          std::string const& renderTextureFilterLine = "",
                                          std::string const& ambientOcclusionLine = "",
-                                         std::string const& horizontalMaterialsLine = "") {
+                                         std::string const& horizontalMaterialsLine = "",
+                                         std::string const& shadowsSection = "") {
   auto path = std::filesystem::temp_directory_path() / "boolean-world-program-options-test.yaml";
   std::ofstream stream(path);
   stream << "Configuration:\n"
@@ -31,6 +32,7 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
          << renderTextureFilterLine
          << ambientOcclusionLine
          << horizontalMaterialsLine
+         << shadowsSection
          << "  Audio:\n"
             "    Enabled: false\n"
             "    Channels: 32\n"
@@ -136,6 +138,30 @@ ProgramOptions parseWithHorizontalMaterials(std::string const& line) {
     std::filesystem::remove(path);
     throw;
   }
+}
+
+ProgramOptions parseWithShadows(std::string const& section) {
+  auto path = writeConfiguration("", "", "", "", "", "", "", section);
+  try {
+    auto options = parseProgramOptions(path.string());
+    std::filesystem::remove(path);
+    return options;
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+}
+
+void requireShadowsRejected(
+    std::string const& section, std::string const& field) {
+  try {
+    (void)parseWithShadows(section);
+  } catch (std::exception const& error) {
+    require(std::string(error.what()).find(field) != std::string::npos,
+            "The shadow error did not identify '" + field + "'.");
+    return;
+  }
+  throw std::runtime_error("Video configuration accepted invalid Shadows/" + field + ".");
 }
 
 void requireInputRejected(std::string const& inputSection, std::string const& description) {
@@ -306,6 +332,47 @@ int main() {
         "    HorizontalMaterials: planar\n", "an unknown horizontal-material mode");
     requireHorizontalMaterialsRejected(
         "    HorizontalMaterials:\n", "an empty horizontal-material mode");
+
+    auto defaultShadows = parseWithShadows("").video.shadows;
+    require(defaultShadows.enabled && defaultShadows.faceResolution == 1024 &&
+                defaultShadows.nearPlane == 0.25f &&
+                defaultShadows.range == 192.0f &&
+                defaultShadows.filter == bw::app::ShadowFilter::Pcf &&
+                defaultShadows.filterRadius == 1.0f &&
+                defaultShadows.fadeStart == 0.9f,
+            "A missing Shadows block did not use Player Torch defaults.");
+    auto shadows = parseWithShadows(
+                       "    Shadows:\n"
+                       "      Enabled: false\n"
+                       "      FaceResolution: 1537\n"
+                       "      Range: 88.5\n"
+                       "      NearPlane: 0.75\n"
+                       "      ConstantBias: 0.00125\n"
+                       "      NormalBias: 0.0045\n"
+                       "      Filter: HaRd\n"
+                       "      FilterRadius: 2.25\n"
+                       "      FadeStart: 0.625\n")
+                       .video.shadows;
+    require(!shadows.enabled && shadows.faceResolution == 1537 &&
+                shadows.range == 88.5f && shadows.nearPlane == 0.75f &&
+                shadows.constantBias == 0.00125f &&
+                shadows.normalBias == 0.0045f &&
+                shadows.filter == bw::app::ShadowFilter::Hard &&
+                shadows.filterRadius == 2.25f && shadows.fadeStart == 0.625f,
+            "Configured Player Torch shadows were not parsed intact.");
+
+    requireShadowsRejected("    Shadows:\n      Unknown: 1\n", "Unknown");
+    requireShadowsRejected("    Shadows:\n      Enabled: 1\n", "Enabled");
+    requireShadowsRejected("    Shadows:\n      FaceResolution: 1.5\n", "FaceResolution");
+    requireShadowsRejected("    Shadows:\n      FaceResolution: 0\n", "FaceResolution");
+    requireShadowsRejected("    Shadows:\n      Range: nan\n", "Range");
+    requireShadowsRejected("    Shadows:\n      NearPlane: 0\n", "NearPlane");
+    requireShadowsRejected("    Shadows:\n      Range: 1\n      NearPlane: 1\n", "Range");
+    requireShadowsRejected("    Shadows:\n      ConstantBias: -0.1\n", "ConstantBias");
+    requireShadowsRejected("    Shadows:\n      NormalBias: inf\n", "NormalBias");
+    requireShadowsRejected("    Shadows:\n      Filter: soft\n", "Filter");
+    requireShadowsRejected("    Shadows:\n      FilterRadius: -1\n", "FilterRadius");
+    requireShadowsRejected("    Shadows:\n      FadeStart: 1.01\n", "FadeStart");
 
     std::cout << "Program-options schema validation passed\n";
     return 0;

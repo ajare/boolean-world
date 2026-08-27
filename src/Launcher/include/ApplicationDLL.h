@@ -6,6 +6,7 @@
 #include <Windows.h>
 #endif
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -33,8 +34,11 @@ class ApplicationDLL {
   // struct layout part of the DLL ABI.
   typedef int (*DllSetInputOptionsFunction)(float);
 
-  // Video enums cross as their stable integer code so the ABI remains plain.
-  typedef int (*DllSetVideoOptionsFunction)(int, int, int, int, int);
+  // Video enums cross as stable integer codes and shadow values as ordered
+  // scalars, keeping the ABI plain and independent of C++ struct layout.
+  typedef int (*DllSetVideoOptionsFunction)(
+      int, int, int, int, int,
+      int, std::uint64_t, float, float, float, float, int, float, float);
 
 private:
 #if APP_PLATFORM == APP_PLATFORM_WINDOWS

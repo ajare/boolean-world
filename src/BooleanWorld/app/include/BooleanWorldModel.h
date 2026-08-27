@@ -17,6 +17,8 @@ private:
 
   bw::app::HorizontalMaterials mHorizontalMaterials;
 
+  bw::app::ShadowOptions mShadowOptions;
+
 public:
   BooleanWorldModel(applib::EntityHandlerFactoryFunction handlerFactory,
                     wp::application::resourcesystem::ResourceManager* resourceMgr,
@@ -26,7 +28,8 @@ public:
         mActiveAntiAliasing(videoOptions.antiAliasing),
         mAmbientOcclusion(videoOptions.ambientOcclusion),
         mRenderTextureFilter(videoOptions.renderTextureFilter),
-        mHorizontalMaterials(videoOptions.horizontalMaterials) {
+        mHorizontalMaterials(videoOptions.horizontalMaterials),
+        mShadowOptions(videoOptions.shadows) {
   }
 
   bw::app::RenderScale getActiveRenderScale() const {
@@ -55,5 +58,9 @@ public:
 
   bw::app::HorizontalMaterials getHorizontalMaterials() const {
     return mHorizontalMaterials;
+  }
+
+  bw::app::ShadowOptions const& getShadowOptions() const {
+    return mShadowOptions;
   }
 };

@@ -117,6 +117,61 @@ void acceptsAndValidatesRenderScaleCodes() {
           "Rejected video options changed configuration.");
 }
 
+void transfersShadowOptionsTransactionally() {
+  DLLState state;
+  bw::app::VideoOptions options;
+  auto result = state.setVideoOptions(
+      bw::app::renderScaleCode(bw::app::RenderScale::Half),
+      bw::app::antiAliasingCode(bw::app::AntiAliasing::Msaa8x),
+      bw::app::ambientOcclusionCode(bw::app::AmbientOcclusion::Ssao),
+      bw::app::renderTextureFilterCode(bw::app::RenderTextureFilter::Linear),
+      bw::app::horizontalMaterialsCode(
+          bw::app::HorizontalMaterials::ThreeDimensional),
+      0, 1537, 87.25f, 0.625f, 0.00125f, 0.00475f,
+      bw::app::shadowFilterCode(bw::app::ShadowFilter::Hard), 2.5f, 0.675f,
+      options);
+  require(result == 0, "Valid shadow boundary values were rejected.");
+  auto const accepted = options;
+  require(!options.shadows.enabled && options.shadows.faceResolution == 1537 &&
+              options.shadows.range == 87.25f &&
+              options.shadows.nearPlane == 0.625f &&
+              options.shadows.constantBias == 0.00125f &&
+              options.shadows.normalBias == 0.00475f &&
+              options.shadows.filter == bw::app::ShadowFilter::Hard &&
+              options.shadows.filterRadius == 2.5f &&
+              options.shadows.fadeStart == 0.675f,
+          "Shadow fields were truncated or reordered across the boundary.");
+
+  result = state.setVideoOptions(
+      bw::app::renderScaleCode(bw::app::RenderScale::Quarter),
+      bw::app::antiAliasingCode(bw::app::AntiAliasing::Off),
+      bw::app::ambientOcclusionCode(bw::app::AmbientOcclusion::None),
+      bw::app::renderTextureFilterCode(bw::app::RenderTextureFilter::Nearest),
+      bw::app::horizontalMaterialsCode(
+          bw::app::HorizontalMaterials::TwoDimensional),
+      1, 2048, 50.0f, 0.5f, 0.0f, 0.0f, 99, 1.0f, 0.9f, options);
+  require(result != 0, "An invalid shadow filter boundary code was accepted.");
+  require(options.renderScale == accepted.renderScale &&
+              options.antiAliasing == accepted.antiAliasing &&
+              options.shadows.faceResolution == accepted.shadows.faceResolution &&
+              options.shadows.range == accepted.shadows.range &&
+              options.shadows.filter == accepted.shadows.filter,
+          "A rejected shadow update partially changed video options.");
+
+  result = state.setVideoOptions(
+      bw::app::renderScaleCode(bw::app::RenderScale::Full),
+      bw::app::antiAliasingCode(bw::app::AntiAliasing::Off),
+      bw::app::ambientOcclusionCode(bw::app::AmbientOcclusion::None),
+      bw::app::renderTextureFilterCode(bw::app::RenderTextureFilter::Linear),
+      bw::app::horizontalMaterialsCode(
+          bw::app::HorizontalMaterials::TwoDimensional),
+      1, 1024, 0.25f, 0.25f, 0.0f, 0.0f,
+      bw::app::shadowFilterCode(bw::app::ShadowFilter::Pcf), 1.0f, 0.9f,
+      options);
+  require(result != 0 && options.shadows.range == accepted.shadows.range,
+          "A degenerate shadow range was accepted or applied.");
+}
+
 void renderScaleVocabularyIsClosedAndSizesTargets() {
   for (auto scale : bw::app::allRenderScales) {
     auto fromName = bw::app::renderScaleFromName(bw::app::renderScaleName(scale));
@@ -200,6 +255,7 @@ int main() {
     rejectsUnknownArguments();
     rejectsUnusableMouseSensitivities();
     acceptsAndValidatesRenderScaleCodes();
+    transfersShadowOptionsTransactionally();
     renderScaleVocabularyIsClosedAndSizesTargets();
     resetsStateFactoryEnumerationOnEntry();
     std::cout << "DLL state regression tests passed\n";

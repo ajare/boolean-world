@@ -27,6 +27,17 @@
 ## Texture
 @@Texture(sampler2D TEX1);
 ##
+@@Texture(sampler2DShadow SHADOW_MAP);
+@@Texture(samplerCubeShadow POINT_SHADOW_MAP);
+
+layout(std140, binding = 2) uniform ShadowFrame
+{
+    mat4 LIGHT_VIEW_PROJECTION;
+    vec4 MAP_TEXEL_SIZE_AND_RADIUS;
+    vec4 BIAS_AND_ENABLED;
+    vec4 POINT_POSITION_AND_RANGE;
+    vec4 SHADOW_TYPE_AND_LIGHT_INDEX;
+};
 
 layout(std140, binding = 3) uniform CameraFrame
 {
@@ -1131,12 +1142,58 @@ vec3 evaluatePbrLight(Material m, vec3 viewDir, vec3 lightDir, vec3 radiance)
     return (diffuseWeight * m.albedo / PI + specular) * radiance * nDotL;
 }
 
+float playerTorchVisibility(vec3 worldPosition, vec3 normal, vec3 lightDirection)
+{
+    if (BIAS_AND_ENABLED.z < 0.5 || SHADOW_TYPE_AND_LIGHT_INDEX.x < 0.5)
+        return 1.0;
+    vec3 lightToFragment = worldPosition - POINT_POSITION_AND_RANGE.xyz;
+    float range = POINT_POSITION_AND_RANGE.w;
+    float distanceToLight = length(lightToFragment);
+    if (distanceToLight >= range) return 1.0;
+    float bias = BIAS_AND_ENABLED.x + BIAS_AND_ENABLED.y *
+        (1.0 - max(dot(normal, lightDirection), 0.0));
+    float compareDepth = distanceToLight / range - bias;
+    float visibility;
+    if (MAP_TEXEL_SIZE_AND_RADIUS.w < 0.5)
+    {
+        visibility = texture(@Texture(POINT_SHADOW_MAP),
+            vec4(lightToFragment, compareDepth));
+    }
+    else
+    {
+        vec3 direction = lightToFragment / max(distanceToLight, 0.00001);
+        vec3 reference = abs(direction.z) < 0.999
+            ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+        vec3 tangent = normalize(cross(reference, direction));
+        vec3 bitangent = cross(direction, tangent);
+        float radius = 2.0 * MAP_TEXEL_SIZE_AND_RADIUS.x *
+            MAP_TEXEL_SIZE_AND_RADIUS.z;
+        visibility = 0.0;
+        for (int y = -1; y <= 1; ++y)
+            for (int x = -1; x <= 1; ++x)
+            {
+                vec3 tapDirection = normalize(direction +
+                    tangent * (float(x) * radius) +
+                    bitangent * (float(y) * radius));
+                visibility += texture(@Texture(POINT_SHADOW_MAP),
+                    vec4(tapDirection, compareDepth));
+            }
+        visibility /= 9.0;
+    }
+    float fade = clamp((distanceToLight / range - BIAS_AND_ENABLED.w) /
+        max(1.0 - BIAS_AND_ENABLED.w, 0.00001), 0.0, 1.0);
+    fade = fade * fade * (3.0 - 2.0 * fade);
+    return mix(visibility, 1.0, fade);
+}
+
 vec3 shadePbr(Material m, vec3 viewDir, vec3 worldPos, vec3 lightPos)
 {
     vec3 toLight = lightPos - worldPos;
     float distance = max(length(toLight), 0.0001);
+    vec3 lightDirection = toLight / distance;
     float attenuation = 1.0 / (1.0 + distance * 0.04 + distance * distance * 0.0015);
-    vec3 direct = evaluatePbrLight(m, viewDir, toLight / distance, vec3(14.0) * attenuation);
+    vec3 direct = evaluatePbrLight(m, viewDir, lightDirection, vec3(14.0) * attenuation);
+    direct *= playerTorchVisibility(worldPos, m.normal, lightDirection);
     vec3 ambient = vec3(0.12);
     vec3 f0 = mix(vec3(0.04), m.albedo, m.metallic);
     vec3 fresnel = fresnelSchlick(max(dot(m.normal, viewDir), 0.0), f0);

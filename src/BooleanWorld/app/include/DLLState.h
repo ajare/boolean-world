@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cmath>
+#include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 
 #include "InputOptions.h"
@@ -28,7 +30,11 @@ public:
   // codes so a rejected update leaves the previously accepted options intact.
   int setVideoOptions(int renderScaleCode, int antiAliasingCode,
                       int ambientOcclusionCode, int renderTextureFilterCode,
-                      int horizontalMaterialsCode,
+                      int horizontalMaterialsCode, int shadowsEnabledCode,
+                      std::uint64_t shadowFaceResolution, float shadowRange,
+                      float shadowNearPlane, float shadowConstantBias,
+                      float shadowNormalBias, int shadowFilterCode,
+                      float shadowFilterRadius, float shadowFadeStart,
                       bw::app::VideoOptions& videoOptions) const {
     auto renderScale = bw::app::renderScaleFromCode(renderScaleCode);
     auto antiAliasing = bw::app::antiAliasingFromCode(antiAliasingCode);
@@ -38,17 +44,58 @@ public:
         bw::app::renderTextureFilterFromCode(renderTextureFilterCode);
     auto horizontalMaterials =
         bw::app::horizontalMaterialsFromCode(horizontalMaterialsCode);
+    auto shadowFilter = bw::app::shadowFilterFromCode(shadowFilterCode);
+    auto finite = [](float value) { return std::isfinite(value); };
     if (!renderScale || !antiAliasing || !ambientOcclusion ||
-        !renderTextureFilter || !horizontalMaterials) {
+        !renderTextureFilter || !horizontalMaterials || !shadowFilter ||
+        (shadowsEnabledCode != 0 && shadowsEnabledCode != 1) ||
+        shadowFaceResolution == 0 ||
+        shadowFaceResolution > std::numeric_limits<std::size_t>::max() ||
+        !finite(shadowRange) || !finite(shadowNearPlane) ||
+        !finite(shadowConstantBias) || !finite(shadowNormalBias) ||
+        !finite(shadowFilterRadius) || !finite(shadowFadeStart) ||
+        shadowNearPlane <= 0.0f || shadowRange <= shadowNearPlane ||
+        shadowConstantBias < 0.0f || shadowNormalBias < 0.0f ||
+        shadowFilterRadius < 0.0f || shadowFadeStart < 0.0f ||
+        shadowFadeStart > 1.0f) {
       return 1;
     }
 
-    videoOptions.renderScale = *renderScale;
-    videoOptions.antiAliasing = *antiAliasing;
-    videoOptions.ambientOcclusion = *ambientOcclusion;
-    videoOptions.renderTextureFilter = *renderTextureFilter;
-    videoOptions.horizontalMaterials = *horizontalMaterials;
+    // Construct the complete candidate first. A failure above therefore cannot
+    // apply a valid prefix of a rejected boundary call.
+    auto candidate = videoOptions;
+    candidate.renderScale = *renderScale;
+    candidate.antiAliasing = *antiAliasing;
+    candidate.ambientOcclusion = *ambientOcclusion;
+    candidate.renderTextureFilter = *renderTextureFilter;
+    candidate.horizontalMaterials = *horizontalMaterials;
+    candidate.shadows = {
+        shadowsEnabledCode != 0,
+        static_cast<std::size_t>(shadowFaceResolution),
+        shadowRange,
+        shadowNearPlane,
+        shadowConstantBias,
+        shadowNormalBias,
+        *shadowFilter,
+        shadowFilterRadius,
+        shadowFadeStart};
+    videoOptions = candidate;
     return 0;
+  }
+
+  // Convenience for callers that are testing only the non-shadow vocabulary.
+  int setVideoOptions(int renderScaleCode, int antiAliasingCode,
+                      int ambientOcclusionCode, int renderTextureFilterCode,
+                      int horizontalMaterialsCode,
+                      bw::app::VideoOptions& videoOptions) const {
+    auto const& shadows = videoOptions.shadows;
+    return setVideoOptions(
+        renderScaleCode, antiAliasingCode, ambientOcclusionCode,
+        renderTextureFilterCode, horizontalMaterialsCode,
+        shadows.enabled ? 1 : 0, shadows.faceResolution, shadows.range,
+        shadows.nearPlane, shadows.constantBias, shadows.normalBias,
+        bw::app::shadowFilterCode(shadows.filter), shadows.filterRadius,
+        shadows.fadeStart, videoOptions);
   }
 
   int setArgument(char const* arg, char const* value, bool& threadedLoading) const {

@@ -1,3 +1,5 @@
+#include <cstdint>
+
 #include <willpower/common/Logger.h>
 
 #include <willpower/application/StateFactory.h>
@@ -80,10 +82,22 @@ __declspec(dllexport) int dllSetVideoOptions(
     int antiAliasingCode,
     int ambientOcclusionCode,
     int renderTextureFilterCode,
-    int horizontalMaterialsCode) {
+    int horizontalMaterialsCode,
+    int shadowsEnabledCode,
+    std::uint64_t shadowFaceResolution,
+    float shadowRange,
+    float shadowNearPlane,
+    float shadowConstantBias,
+    float shadowNormalBias,
+    int shadowFilterCode,
+    float shadowFilterRadius,
+    float shadowFadeStart) {
   return dllState.setVideoOptions(
       renderScaleCode, antiAliasingCode, ambientOcclusionCode,
-      renderTextureFilterCode, horizontalMaterialsCode, gVideoOptions);
+      renderTextureFilterCode, horizontalMaterialsCode, shadowsEnabledCode,
+      shadowFaceResolution, shadowRange, shadowNearPlane, shadowConstantBias,
+      shadowNormalBias, shadowFilterCode, shadowFilterRadius, shadowFadeStart,
+      gVideoOptions);
 }
 
 __declspec(dllexport) wp::application::StateFactory* dllGetNextStateFactory() {

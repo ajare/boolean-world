@@ -27,6 +27,17 @@
 ## Texture
 @@Texture(sampler2D TEX1);
 ##
+@@Texture(sampler2DShadow SHADOW_MAP);
+@@Texture(samplerCubeShadow POINT_SHADOW_MAP);
+
+layout(std140, binding = 2) uniform ShadowFrame
+{
+    mat4 LIGHT_VIEW_PROJECTION;
+    vec4 MAP_TEXEL_SIZE_AND_RADIUS;
+    vec4 BIAS_AND_ENABLED;
+    vec4 POINT_POSITION_AND_RANGE;
+    vec4 SHADOW_TYPE_AND_LIGHT_INDEX;
+};
 
 layout(std140, binding = 3) uniform CameraFrame
 {
@@ -2310,6 +2321,50 @@ vec3 evaluatePbrLight(Material material, vec3 viewDir, vec3 lightDir,
         radiance * nDotL;
 }
 
+float playerTorchVisibility(vec3 worldPosition, vec3 normal, vec3 lightDirection)
+{
+    if (BIAS_AND_ENABLED.z < 0.5 || SHADOW_TYPE_AND_LIGHT_INDEX.x < 0.5)
+        return 1.0;
+    vec3 lightToFragment = worldPosition - POINT_POSITION_AND_RANGE.xyz;
+    float range = POINT_POSITION_AND_RANGE.w;
+    float distanceToLight = length(lightToFragment);
+    if (distanceToLight >= range) return 1.0;
+    float bias = BIAS_AND_ENABLED.x + BIAS_AND_ENABLED.y *
+        (1.0 - max(dot(normal, lightDirection), 0.0));
+    float compareDepth = distanceToLight / range - bias;
+    float visibility;
+    if (MAP_TEXEL_SIZE_AND_RADIUS.w < 0.5)
+    {
+        visibility = texture(@Texture(POINT_SHADOW_MAP),
+            vec4(lightToFragment, compareDepth));
+    }
+    else
+    {
+        vec3 direction = lightToFragment / max(distanceToLight, 0.00001);
+        vec3 reference = abs(direction.z) < 0.999
+            ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+        vec3 tangent = normalize(cross(reference, direction));
+        vec3 bitangent = cross(direction, tangent);
+        float radius = 2.0 * MAP_TEXEL_SIZE_AND_RADIUS.x *
+            MAP_TEXEL_SIZE_AND_RADIUS.z;
+        visibility = 0.0;
+        for (int y = -1; y <= 1; ++y)
+            for (int x = -1; x <= 1; ++x)
+            {
+                vec3 tapDirection = normalize(direction +
+                    tangent * (float(x) * radius) +
+                    bitangent * (float(y) * radius));
+                visibility += texture(@Texture(POINT_SHADOW_MAP),
+                    vec4(tapDirection, compareDepth));
+            }
+        visibility /= 9.0;
+    }
+    float fade = clamp((distanceToLight / range - BIAS_AND_ENABLED.w) /
+        max(1.0 - BIAS_AND_ENABLED.w, 0.00001), 0.0, 1.0);
+    fade = fade * fade * (3.0 - 2.0 * fade);
+    return mix(visibility, 1.0, fade);
+}
+
 vec3 shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
               vec3 lightPosition)
 {
@@ -2325,6 +2380,10 @@ vec3 shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
     vec3 direct = evaluatePbrLight(
         material, viewDir, lightDirection,
         vec3(14.0) * lightAttenuation);
+    // Visibility belongs only to the permanently lit Player Torch's direct
+    // term. Ambient illumination below remains present in occluded regions.
+    direct *= playerTorchVisibility(
+        worldPosition, material.normal, lightDirection);
 
     // Keep ambient illumination orientation-independent so opposite floor and
     // ceiling normals do not introduce a different colour cast.

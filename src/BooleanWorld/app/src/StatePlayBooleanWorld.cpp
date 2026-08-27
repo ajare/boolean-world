@@ -36,6 +36,8 @@
 #include "imgui/implot.h"
 
 #include "StatePlayBooleanWorld.h"
+
+#include "PlayerTorchShadows.h"
 #include "BooleanWorldModel.h"
 #include "EntityHandlerBooleanWorld.h"
 #include "EntityType.h"
@@ -184,6 +186,9 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   options.ambientOcclusion.method = ambientOcclusionMethod;
   options.ambientOcclusion.ssao = mDebugDisplay.ssao;
   options.ambientOcclusion.gtao = mDebugDisplay.gtao;
+  // Scale and AA variants all participate in this one render-system domain;
+  // switching pipelines never allocates or renders a second cubemap.
+  bw::app::joinPlayerTorchShadowDomain(options);
 
   pipeline = mwRenderSystem->getOrCreateRenderPipeline(pipelineName, options);
   pipeline->resize(target->getWidth(), target->getHeight());
@@ -202,6 +207,18 @@ void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transi
 
   mwRenderer = static_cast<WorldRenderer*>(transitionData->userData);
   mwRenderer->create(mScene, getMap()->getWorld(), mwRenderSystem, mwRenderResourceMgr);
+
+  // Configure before constructing any participating pipeline. The first frame
+  // will update this from the same computed light position used by materials.
+  auto const& physicalStats = getPlayerPhysicalStats();
+  auto initialPosition = glm::vec3{
+      physicalStats.position.x,
+      physicalStats.floorZ + BW_PLAYER_EYE_HEIGHT,
+      -physicalStats.position.y};
+  mwRenderSystem->configureShadowDomain(
+      std::string(bw::app::playerTorchShadowDomain),
+      bw::app::playerTorchMppShadowOptions(
+          model->getShadowOptions(), initialPosition));
 
   auto vignetteResource =
       mwResourceMgr->getResource("VignetteProgram", "World");
@@ -682,6 +699,22 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
       playerPosition.x + lightOffset.x,
       playerPosition.y,
       playerPosition.z - lightOffset.y};
+  auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
+  auto const domainName = std::string(bw::app::playerTorchShadowDomain);
+  auto const& configuredShadows = model->getShadowOptions();
+  // MPP turns enabled off after logging a hardware/allocation fallback. Do not
+  // overwrite that result every frame and repeatedly retry the unavailable
+  // cubemap; the material's LIGHT_POSITION still updates below, preserving
+  // the Player Torch's direct illumination.
+  auto const hardwareFallback =
+      configuredShadows.enabled && mwRenderSystem->hasShadowDomain(domainName) &&
+      !mwRenderSystem->getShadowDomainOptions(domainName).enabled;
+  if (!hardwareFallback) {
+    mwRenderSystem->configureShadowDomain(
+        domainName,
+        bw::app::playerTorchMppShadowOptions(
+            configuredShadows, lightPosition));
+  }
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
       gNoMaterialOverride, gNoMaterialOverride, gAuthoredMaterialScale,
@@ -715,6 +748,14 @@ void StatePlayBooleanWorld::handleClippingUpdate(bw::core::DynamicWorldDataGener
 
     case bw::core::DynamicWorldDataGenerator::GenerationState::Committed:
       mwRenderer->setWorldChanged();
+      // World models use dynamic providers, so MPP cannot observe their
+      // vertex/index writes through model revisions. A committed generation is
+      // the explicit shadow-relevant geometry boundary.
+      if (mwRenderSystem->hasShadowDomain(
+              std::string(bw::app::playerTorchShadowDomain))) {
+        mwRenderSystem->invalidateShadowDomain(
+            std::string(bw::app::playerTorchShadowDomain));
+      }
       addDisplayMessage(
           DisplayMessage::Level::Debug,
           format(

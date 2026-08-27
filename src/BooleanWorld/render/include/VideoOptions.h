@@ -93,6 +93,53 @@ inline constexpr std::array<HorizontalMaterials, 2> allHorizontalMaterials{
 inline constexpr std::size_t horizontalMaterialsCount =
     allHorizontalMaterials.size();
 
+// Filtering for the Player Torch's point-shadow cubemap. These values have
+// stable boundary codes; the launcher never passes an MPP enum through the
+// application DLL ABI.
+enum class ShadowFilter : int {
+  Hard = 0,
+  Pcf = 1,
+};
+
+inline constexpr std::array<ShadowFilter, 2> allShadowFilters{
+    ShadowFilter::Hard, ShadowFilter::Pcf};
+inline constexpr std::size_t shadowFilterCount = allShadowFilters.size();
+
+inline constexpr std::string_view shadowFilterName(ShadowFilter filter) {
+  return filter == ShadowFilter::Hard ? "hard" : "pcf";
+}
+
+inline constexpr int shadowFilterCode(ShadowFilter filter) {
+  return static_cast<int>(filter);
+}
+
+inline constexpr std::optional<ShadowFilter> shadowFilterFromCode(int code) {
+  if (code < 0 || static_cast<std::size_t>(code) >= shadowFilterCount) {
+    return std::nullopt;
+  }
+  return allShadowFilters[static_cast<std::size_t>(code)];
+}
+
+inline constexpr std::optional<ShadowFilter> shadowFilterFromName(
+    std::string_view name) {
+  for (auto filter : allShadowFilters) {
+    if (shadowFilterName(filter) == name) return filter;
+  }
+  return std::nullopt;
+}
+
+struct ShadowOptions {
+  bool enabled{true};
+  std::size_t faceResolution{1024};
+  float range{192.0f};
+  float nearPlane{0.25f};
+  float constantBias{0.0008f};
+  float normalBias{0.0025f};
+  ShadowFilter filter{ShadowFilter::Pcf};
+  float filterRadius{1.0f};
+  float fadeStart{0.9f};
+};
+
 inline constexpr int renderScaleCode(RenderScale scale) {
   return static_cast<int>(scale);
 }
@@ -117,6 +164,7 @@ struct VideoOptions {
   AmbientOcclusion ambientOcclusion{AmbientOcclusion::GtaoDepth};
   RenderTextureFilter renderTextureFilter{RenderTextureFilter::Linear};
   HorizontalMaterials horizontalMaterials{HorizontalMaterials::TwoDimensional};
+  ShadowOptions shadows;
 };
 
 // The configuration's spelling of a scale, and the reverse. Both directions run
