@@ -22,6 +22,7 @@ using bw::core::arr::Contour;
 using bw::core::arr::DetailGeometry;
 using bw::core::arr::DetailSurfaceKind;
 using bw::core::arr::DetailTriangle;
+using bw::core::arr::DetailTriangleKind;
 
 void require(bool condition, std::string const& message) {
   if (!condition) {
@@ -48,11 +49,31 @@ Contour rectContour(int64_t x0, int64_t y0, int64_t x1, int64_t y1) {
   return {{x0 * U, y0 * U}, {x1 * U, y0 * U}, {x1 * U, y1 * U}, {x0 * U, y1 * U}};
 }
 
+// One re-entrant boundary vertex at (0, 0), whose navigable angle is 270°.
+Contour concaveContour() {
+  return {
+      {-20 * U, -20 * U}, {0, -20 * U}, {0, 0}, {20 * U, 0}, {20 * U, 20 * U}, {-20 * U, 20 * U}};
+}
+
+Contour reentrant225Contour() {
+  return {
+      {-20 * U, -20 * U}, {0, 0}, {20 * U, 0}, {20 * U, 20 * U}, {-20 * U, 20 * U}};
+}
+
+Contour reentrant315Contour() {
+  return {
+      {-20 * U, -20 * U}, {0, -20 * U}, {0, 0}, {20 * U, -20 * U}, {20 * U, 20 * U}, {-20 * U, 20 * U}};
+}
+
 PrimitivePropertySet propertiesWithHeights(float floorZ, float ceilingZ) {
   PrimitivePropertySet properties;
   properties.floorZ = floorZ;
   properties.ceilingZ = ceilingZ;
   return properties;
+}
+
+std::vector<std::vector<std::optional<bool>>> hiddenContour() {
+  return {{false, false, false, false}};
 }
 
 // A 100x100 ground slab at floorZ 0 with a 40x40 platform raised to
@@ -75,7 +96,9 @@ std::vector<ArrangementPrimitive> slabAndPlatform(
          Primitive::FillRule::EvenOdd,
          0,
          uint32_t(primitives.size()),
-         propertiesWithHeights(0.0f, 48.0f)});
+         propertiesWithHeights(0.0f, 48.0f),
+         {},
+         hiddenContour()});
   }
   primitives.push_back(
       {{rectContour(-50, -50, 50, 50)},
@@ -83,7 +106,9 @@ std::vector<ArrangementPrimitive> slabAndPlatform(
        Primitive::FillRule::EvenOdd,
        1,
        uint32_t(primitives.size()),
-       propertiesWithHeights(0.0f, 48.0f)});
+       propertiesWithHeights(0.0f, 48.0f),
+       {},
+       hiddenContour()});
   primitives.push_back(
       {{rectContour(-20, -20, 20, 20)},
        Primitive::Operation::Union,
@@ -121,7 +146,9 @@ std::vector<ArrangementPrimitive> slabAndBulkhead(
          Primitive::FillRule::EvenOdd,
          0,
          uint32_t(primitives.size()),
-         propertiesWithHeights(0.0f, 48.0f)});
+         propertiesWithHeights(0.0f, 48.0f),
+         {},
+         hiddenContour()});
   }
   primitives.push_back(
       {{rectContour(-50, -50, 50, 50)},
@@ -129,7 +156,9 @@ std::vector<ArrangementPrimitive> slabAndBulkhead(
        Primitive::FillRule::EvenOdd,
        1,
        uint32_t(primitives.size()),
-       propertiesWithHeights(0.0f, 48.0f)});
+       propertiesWithHeights(0.0f, 48.0f),
+       {},
+       hiddenContour()});
   primitives.push_back(
       {{rectContour(-20, -20, 20, 20)},
        Primitive::Operation::Union,
@@ -241,8 +270,8 @@ void everyFloorStepTopArrisCarriesOneChipAndNoBorderDoes() {
   auto floorSteps = countWalls(snapshot, ArrangementWallKind::FloorStep);
   require(floorSteps == 4,
           "the slab/platform fixture did not produce four FloorStep walls");
-  require(detail.getChipCount() == floorSteps,
-          "the number of Chips did not match the number of eligible Arrises");
+  require(detail.getChipCount() == floorSteps * 2,
+          "the number of Chips did not match the Horizontal and Vertical Arrises");
   require(countWalls(snapshot, ArrangementWallKind::CeilingStep) == 0,
           "the fixture produced a CeilingStep it was not meant to");
 
@@ -297,11 +326,7 @@ void theChamferIsATaperedFortyFiveDegreeFacet() {
   uint32_t facetTriangles = 0;
   float wallPlaneArea = 0.0f;
   for (auto const& triangle : replacements) {
-    auto offFacet = std::any_of(
-        triangle.v.begin(), triangle.v.end(), [](auto const& vertex) {
-          return !near(vertex.position[1], -20.0f);
-        });
-    if (offFacet) {
+    if (triangle.kind == DetailTriangleKind::HorizontalChipFacet) {
       ++facetTriangles;
       require(
           std::any_of(
@@ -312,6 +337,9 @@ void theChamferIsATaperedFortyFiveDegreeFacet() {
                        near(vertex.position[2], 12.0f - chipDepth);
               }),
           "a chamfer triangle did not meet the Chip's deepest cross-section");
+      continue;
+    }
+    if (triangle.kind == DetailTriangleKind::VerticalChipFacet) {
       continue;
     }
     // Wall-plane geometry measures in (distance along, height).
@@ -329,7 +357,8 @@ void theChamferIsATaperedFortyFiveDegreeFacet() {
 
   // What is left of the wall is its quad less the Chip's triangular notch -
   // exactly, so the remainder leaves no seam and no overlap.
-  auto expectedWallArea = 40.0f * 12.0f - chipReach * chipDepth * 0.5f;
+  auto expectedWallArea =
+      40.0f * 12.0f - 3.0f * chipReach * chipDepth * 0.5f;
   require(near(wallPlaneArea, expectedWallArea, 0.05f),
           "the chipped wall's remaining area was not its quad less the Chip's notch");
 }
@@ -439,13 +468,15 @@ void replacementTrianglesCarryAnOutwardNormalTheyAreWoundAbout() {
       auto const& normal = triangle.v[0].normal;
       auto outward = normal[0] * orientation.normal.x +
                      normal[1] * orientation.normal.y;
-      if (std::abs(normal[2]) <= 0.01f) {
+      if (triangle.kind == DetailTriangleKind::SurfaceRemainder) {
         require(near(normal[0], orientation.normal.x) &&
-                    near(normal[1], orientation.normal.y),
+                    near(normal[1], orientation.normal.y) &&
+                    near(normal[2], 0.0f),
                 "a wall-remainder normal did not face out of the solid");
         require(triangle.followsWallFacing,
                 "a wall remainder was not marked to follow wall facing");
-      } else {
+      } else if (triangle.kind ==
+                 DetailTriangleKind::HorizontalChipFacet) {
         ++facetCount;
         require(outward > 0.0f,
                 "a Chip facet normal pointed through the wall into the solid");
@@ -512,8 +543,8 @@ void anInvisibleWallCarriesNoChip() {
   southHidden[0] = false;
   auto snapshot = snapshotOf(slabAndPlatform(12.0f, southHidden));
   auto const& detail = snapshot.getDetail();
-  require(detail.getChipCount() == 3,
-          "hiding one of four walls did not leave exactly three Chips");
+  require(detail.getChipCount() == 5,
+          "hiding one wall did not remove its Horizontal and two Vertical Chips");
 
   auto platformFace = snapshot.getContainingFaceIndex({0.0f, 0.0f});
   float rebuiltArea = 0.0f;
@@ -570,8 +601,8 @@ void everyCeilingStepBottomArrisCarriesOneChipAndNoBorderOrTopDoes() {
   require(
       ceilingSteps == 4,
       "the slab/bulkhead fixture did not produce four CeilingStep walls");
-  require(detail.getChipCount() == ceilingSteps,
-          "the number of Chips did not match the number of eligible Arrises");
+  require(detail.getChipCount() == ceilingSteps * 2,
+          "the number of Chips did not match the Horizontal and Vertical Arrises");
   require(countWalls(snapshot, ArrangementWallKind::FloorStep) == 0,
           "the fixture produced a FloorStep it was not meant to");
 
@@ -629,11 +660,7 @@ void theCeilingChamferIsATaperedFortyFiveDegreeFacet() {
   uint32_t facetTriangles = 0;
   float wallPlaneArea = 0.0f;
   for (auto const& triangle : replacements) {
-    auto offFacet = std::any_of(
-        triangle.v.begin(), triangle.v.end(), [](auto const& vertex) {
-          return !near(vertex.position[1], -20.0f);
-        });
-    if (offFacet) {
+    if (triangle.kind == DetailTriangleKind::HorizontalChipFacet) {
       ++facetTriangles;
       require(
           std::any_of(
@@ -644,6 +671,9 @@ void theCeilingChamferIsATaperedFortyFiveDegreeFacet() {
                        near(vertex.position[2], 12.0f + chipDepth);
               }),
           "a chamfer triangle did not meet the Chip's deepest cross-section");
+      continue;
+    }
+    if (triangle.kind == DetailTriangleKind::VerticalChipFacet) {
       continue;
     }
     std::array<float, 3> flattened[3];
@@ -659,7 +689,8 @@ void theCeilingChamferIsATaperedFortyFiveDegreeFacet() {
           "chamfer cuts");
 
   auto expectedWallArea =
-      40.0f * (wall.maxZ - wall.minZ) - chipReach * chipDepth * 0.5f;
+      40.0f * (wall.maxZ - wall.minZ) -
+      3.0f * chipReach * chipDepth * 0.5f;
   require(near(wallPlaneArea, expectedWallArea, 0.05f),
           "the chipped wall's remaining area was not its quad less the "
           "Chip's notch");
@@ -757,8 +788,8 @@ void anInvisibleCeilingStepWallCarriesNoChip() {
   southHidden[0] = false;
   auto snapshot = snapshotOf(slabAndBulkhead(12.0f, southHidden));
   auto const& detail = snapshot.getDetail();
-  require(detail.getChipCount() == 3,
-          "hiding one of four walls did not leave exactly three Chips");
+  require(detail.getChipCount() == 5,
+          "hiding one wall did not remove its Horizontal and two Vertical Chips");
 
   auto bulkheadFace = snapshot.getContainingFaceIndex({0.0f, 0.0f});
   float rebuiltArea = 0.0f;
@@ -860,6 +891,220 @@ void aChipShrinksItsDepthToFitANarrowLedge() {
           "the face-boundary clamp perturbed the Chip's reach");
 }
 
+void frontSideAnglesInRangeChipAlongTheSharedEdge() {
+  std::vector<ArrangementPrimitive> primitives{
+      {{concaveContour()},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       0,
+       0,
+       propertiesWithHeights(0.0f, 48.0f)}};
+  auto snapshot = snapshotOf(primitives);
+  auto const& detail = snapshot.getDetail();
+  require(detail.getChipCount() == 1,
+          "the 270-degree front-side wall angle did not carry one Vertical Chip");
+
+  auto const& triangles = detail.getTriangles();
+  require(
+      hasVertexAt(triangles, 0.0f, 0.0f, 22.5f) &&
+          hasVertexAt(triangles, 0.0f, 0.0f, 25.5f),
+      "a Vertical Chip was not centred on the edge shared by its walls");
+  require(
+      hasVertexAt(triangles, 3.0f, 0.0f, 24.0f) &&
+          hasVertexAt(triangles, 0.0f, -3.0f, 24.0f),
+      "a Vertical Chip did not remove its footprint from both walls");
+  constexpr float DiagonalDepth = 2.12132034f;  // 3 / sqrt(2)
+  require(
+      hasVertexAt(triangles, DiagonalDepth, -DiagonalDepth, 24.0f),
+      "a Vertical Chip's deepest point did not go into the edge material");
+
+  uint32_t edgeFacets = 0;
+  bool facesUp = false;
+  bool facesDown = false;
+  for (auto const& triangle : triangles) {
+    auto oneTriangle = std::span<DetailTriangle const>{&triangle, 1};
+    if (triangle.kind != DetailTriangleKind::VerticalChipFacet ||
+        (!hasVertexAt(oneTriangle, 0.0f, 0.0f, 22.5f) &&
+         !hasVertexAt(oneTriangle, 0.0f, 0.0f, 25.5f))) {
+      continue;
+    }
+    ++edgeFacets;
+    auto const& normal = triangle.v[0].normal;
+    require(-normal[0] + normal[1] > 0.0f,
+            "a Vertical Chip face normal did not point out of its cavity");
+    facesUp |= normal[2] > 0.0f;
+    facesDown |= normal[2] < 0.0f;
+  }
+  require(edgeFacets == 4 && facesUp && facesDown,
+          "the shared wall edge did not emit four inward-gouge facets");
+}
+
+void ninetyDegreeFrontSideAnglesDoNotChip() {
+  std::vector<ArrangementPrimitive> primitives{
+      {{rectContour(-20, -20, 20, 20)},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       0,
+       0,
+       propertiesWithHeights(0.0f, 48.0f)}};
+  auto snapshot = snapshotOf(primitives);
+  require(snapshot.getDetail().getChipCount() == 0,
+          "a 90-degree front-side wall angle carried a Vertical Chip");
+}
+
+void acuteFrontSideAnglesDoNotChip() {
+  Contour acuteTriangle{
+      {-20 * U, -10 * U}, {20 * U, -10 * U}, {0, 25 * U}};
+  std::vector<ArrangementPrimitive> primitives{
+      {{acuteTriangle},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       0,
+       0,
+       propertiesWithHeights(0.0f, 48.0f)}};
+  auto snapshot = snapshotOf(primitives);
+  require(snapshot.getDetail().getChipCount() == 0,
+          "an acute front-side wall angle carried a Vertical Chip");
+}
+
+void verticalArrisAngleRangeIncludesBothEndpoints() {
+  auto chipCountFor = [](Contour contour) {
+    std::vector<ArrangementPrimitive> primitives{
+        {{std::move(contour)},
+         Primitive::Operation::Union,
+         Primitive::FillRule::EvenOdd,
+         0,
+         0,
+         propertiesWithHeights(0.0f, 48.0f)}};
+    return snapshotOf(primitives).getDetail().getChipCount();
+  };
+  require(chipCountFor(reentrant225Contour()) == 1,
+          "the inclusive 225-degree Vertical Arris did not chip");
+  require(chipCountFor(reentrant315Contour()) == 1,
+          "the inclusive 315-degree Vertical Arris did not chip");
+}
+
+void verticalArrisesUseTheSameRandomCountAndSpacingConfiguration() {
+  std::vector<ArrangementPrimitive> primitives{
+      {{concaveContour()},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       0,
+       0,
+       propertiesWithHeights(0.0f, 48.0f)}};
+  bw::core::ChipGenerationParameters parameters{
+      2.0f, 1.0f, 3.0f, 1.0f, 3.0f, 3.1f, 1.0f};
+  auto snapshot = snapshotOf(primitives, parameters);
+  // floor((48 - 3) / 3.1) + 1 = 15 on the one eligible Vertical Arris.
+  require(snapshot.getDetail().getChipCount() == 15,
+          "the Vertical Arris did not use the configured Chip count rule");
+
+  std::vector<float> arrisPoints;
+  for (auto const& triangle : snapshot.getDetail().getTriangles()) {
+    if (triangle.followsWallFacing) {
+      continue;
+    }
+    for (auto const& vertex : triangle.v) {
+      if (near(vertex.position[0], 0.0f) &&
+          near(vertex.position[1], 0.0f)) {
+        arrisPoints.push_back(vertex.position[2]);
+      }
+    }
+  }
+  std::sort(arrisPoints.begin(), arrisPoints.end());
+  arrisPoints.erase(
+      std::unique(
+          arrisPoints.begin(), arrisPoints.end(),
+          [](float a, float b) { return near(a, b); }),
+      arrisPoints.end());
+  require(arrisPoints.size() == 30,
+          "the expected Vertical Chip endpoints were not emitted");
+  std::vector<float> centres;
+  for (size_t i = 0; i < arrisPoints.size(); i += 2) {
+    auto reach = arrisPoints[i + 1] - arrisPoints[i];
+    require(reach >= 1.0f - 0.01f && reach <= 3.0f + 0.01f,
+            "a Vertical Chip reach fell outside its configured range");
+    centres.push_back((arrisPoints[i] + arrisPoints[i + 1]) * 0.5f);
+  }
+  for (size_t i = 1; i < centres.size(); ++i) {
+    require(centres[i] - centres[i - 1] >= 3.1f - 0.01f,
+            "Vertical Chips violated configured minimum spacing");
+  }
+}
+
+void wallsCanCarryHorizontalAndVerticalChipsTogether() {
+  std::vector<ArrangementPrimitive> primitives{
+      {{rectContour(-50, -50, 50, 50)},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       0,
+       0,
+       propertiesWithHeights(0.0f, 48.0f),
+       {},
+       hiddenContour()},
+      {{concaveContour()},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       1,
+       1,
+       propertiesWithHeights(12.0f, 48.0f)}};
+  auto snapshot = snapshotOf(primitives);
+  require(snapshot.getDetail().getChipCount() == 11,
+          "the platform did not carry six Horizontal and five Vertical Chips");
+
+  for (auto const& triangle : snapshot.getDetail().getTriangles()) {
+    auto const& a = triangle.v[0].position;
+    auto const& b = triangle.v[1].position;
+    auto const& c = triangle.v[2].position;
+    float u[3]{b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    float v[3]{c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+    auto areaSquared =
+        std::pow(u[1] * v[2] - u[2] * v[1], 2.0f) +
+        std::pow(u[2] * v[0] - u[0] * v[2], 2.0f) +
+        std::pow(u[0] * v[1] - u[1] * v[0], 2.0f);
+    require(areaSquared > 0.0001f,
+            "combined Arris notches emitted degenerate wall geometry");
+  }
+}
+
+uint32_t verticalChipCount(DetailGeometry const& detail) {
+  return uint32_t(std::count_if(
+             detail.getTriangles().begin(), detail.getTriangles().end(),
+             [](DetailTriangle const& triangle) {
+               return triangle.kind == DetailTriangleKind::VerticalChipFacet;
+             })) /
+         4;
+}
+
+void verticalArrisesBetweenDifferentSubMaterialsDoNotChip() {
+  auto propertiesA = propertiesWithHeights(0.0f, 48.0f);
+  propertiesA.wallMaterialId = "stone_a";
+  auto propertiesB = propertiesWithHeights(0.0f, 48.0f);
+  propertiesB.wallMaterialId = "stone_b";
+  std::vector<ArrangementPrimitive> primitives{
+      {{rectContour(-20, -20, 0, 20)},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       0,
+       0,
+       propertiesA},
+      {{rectContour(0, 0, 20, 20)},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       1,
+       1,
+       propertiesB}};
+
+  auto differentMaterials = snapshotOf(primitives);
+  require(verticalChipCount(differentMaterials.getDetail()) == 0,
+          "a Vertical Arris between different Sub-materials chipped");
+
+  primitives[1].properties.wallMaterialId = "stone_a";
+  auto sameMaterial = snapshotOf(primitives);
+  require(verticalChipCount(sameMaterial.getDetail()) == 1,
+          "the same-material control Vertical Arris did not chip");
+}
+
 void probabilityAndMinimumArrisLengthControlEligibility() {
   auto disabled = snapshotOf(
       slabAndPlatform(12.0f), bw::core::ChipGenerationParameters{});
@@ -879,8 +1124,8 @@ void chipsUseRandomSizesAndNonOverlappingRandomPositions() {
   auto snapshot = snapshotOf(slabAndPlatform(12.0f), parameters);
   auto const& detail = snapshot.getDetail();
   // floor((40 - maxReach) / spacing) + 1 = 12 per Arris, four Arrises.
-  require(detail.getChipCount() == 48,
-          "probability one did not fill every possible Chip slot");
+  require(detail.getChipCount() >= 48 && detail.getChipCount() <= 60,
+          "probability one did not fill every non-overlapping Chip slot");
 
   auto wallIndex =
       findWall(snapshot, ArrangementWallKind::FloorStep, {0.0f, -20.0f});
@@ -889,8 +1134,8 @@ void chipsUseRandomSizesAndNonOverlappingRandomPositions() {
   std::vector<float> arrisPoints;
   std::vector<float> depths;
   for (auto const& triangle : replacements) {
-    if (triangle.v[0].normal[2] <= 0.1f) {
-      continue;  // Wall remainder, not a chamfer facet.
+    if (triangle.kind != DetailTriangleKind::HorizontalChipFacet) {
+      continue;
     }
     for (auto const& vertex : triangle.v) {
       if (near(vertex.position[1], -20.0f) &&
@@ -959,7 +1204,7 @@ void aDisabledMaterialDoesNotDisableOtherMaterialsChips() {
   ArrangementWorldData snapshot(
       bw::core::arr::BuildArrangement(primitives),
       wp::BoundingBox({-64.0f, -64.0f}, {128.0f, 128.0f}), 32.0f, 8.0f);
-  require(snapshot.getDetail().getChipCount() == 4,
+  require(snapshot.getDetail().getChipCount() == 8,
           "a disabled wall material chipped or disabled the other material");
 }
 
@@ -1037,12 +1282,19 @@ int main() {
     anInvisibleCeilingStepWallCarriesNoChip();
     aChipShrinksItsReachToFitAShortArris();
     aChipShrinksItsDepthToFitANarrowLedge();
+    frontSideAnglesInRangeChipAlongTheSharedEdge();
+    ninetyDegreeFrontSideAnglesDoNotChip();
+    acuteFrontSideAnglesDoNotChip();
+    verticalArrisAngleRangeIncludesBothEndpoints();
+    verticalArrisesUseTheSameRandomCountAndSpacingConfiguration();
+    wallsCanCarryHorizontalAndVerticalChipsTogether();
+    verticalArrisesBetweenDifferentSubMaterialsDoNotChip();
     probabilityAndMinimumArrisLengthControlEligibility();
     chipsUseRandomSizesAndNonOverlappingRandomPositions();
     aDisabledMaterialDoesNotDisableOtherMaterialsChips();
     aChipBelowTheMinimumSizeIsDroppedEntirely();
-    std::cout << "Chips are cut into FloorStep top and CeilingStep bottom "
-                 "Arrises and published in the snapshot's detail channel\n";
+    std::cout << "Chips are cut into eligible horizontal and vertical Arrises "
+                 "and published in the snapshot's detail channel\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';

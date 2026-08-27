@@ -43,9 +43,16 @@ struct DetailVertex {
 
 // Vertices are ordered counter-clockwise about `normal` in arrangement space
 // (right-handed, Z up).
+enum struct DetailTriangleKind : uint8_t {
+  SurfaceRemainder,
+  HorizontalChipFacet,
+  VerticalChipFacet
+};
+
 struct DetailTriangle {
   DetailSurfaceKey source;
   std::array<DetailVertex, 3> v;
+  DetailTriangleKind kind{DetailTriangleKind::SurfaceRemainder};
 
   // Wall remainder triangles follow the wall's player-facing side and may be
   // mirrored by the renderer. Chip facets are real outward-facing surfaces
@@ -88,21 +95,19 @@ public:
   [[nodiscard]] uint32_t getChipCount() const;
 };
 
-// Cuts one Chip into the centre of every eligible convex Arris and returns
-// the detail channel that replaces the surfaces they bit into.
+// Generates deterministic Chips along every eligible Arris and returns the
+// detail channel that replaces the surfaces they bite into.
 //
-// Eligible here means a visible wall's convex Arris: a FloorStep's top,
-// where the wall meets the floor of the higher of its two faces, or a
-// CeilingStep's bottom, where the wall meets the ceiling of the lower of its
-// two faces. A FloorStep's bottom Arris, a CeilingStep's top, and both of a
-// Border wall's, are concave and never chip.
+// Eligible Horizontal Arrises are a visible FloorStep's convex top and a
+// visible CeilingStep's convex bottom. Eligible Vertical Arrises are the
+// overlapping upright edge of two visible, non-collinear walls whose shared
+// canonical-front-side angle is in [225°, 315°] and that use the same
+// Sub-material.
 //
 // A Chip clamps to fit rather than breaking through the geometry it is cut
-// into: depth shrinks so it can never eat through the far side of its own
-// step nor break through to the horizontal face's nearest other boundary, and
-// reach shrinks so it never runs past either end of the Arris. Whichever
-// clamp is most restrictive wins; a Chip clamped below the minimum size is
-// dropped rather than emitted as a sliver.
+// into. Horizontal Chips respect wall height and the horizontal face's next
+// boundary; Vertical Chips respect both walls' lengths. Reach never runs past
+// an Arris endpoint, and a Chip below the minimum resulting size is dropped.
 [[nodiscard]] DetailGeometry BuildChipDetail(
     ArrangementResult const& arrangement,
     std::vector<ArrangementWall> const& walls);

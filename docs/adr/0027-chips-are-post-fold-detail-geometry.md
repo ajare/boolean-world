@@ -45,7 +45,7 @@ upward normal downward.
 
 ## Decision
 
-A Chip is a tapered chamfer cut into a convex Arris: one flat facet, deepest
+A Chip is a tapered chamfer cut into an eligible Arris: one flat facet, deepest
 near the Chip's centre and tapering to nothing at both ends, so it needs no end
 caps and degenerates gracefully to nothing when clamped. The bevel is 45° —
 depth bites equally into the horizontal face and down the wall. Each triangle
@@ -53,12 +53,19 @@ carries its own flat geometric face normal; all three of its rendered vertices
 receive that same normal, so the facets are not smooth-shaded. An eligible
 Arris may carry multiple randomly positioned, non-overlapping Chips.
 
-Only **convex** Arrises are eligible: a `FloorStep`'s top and a `CeilingStep`'s
-bottom. A concave Arris is an inside corner, and chipping one would carve into
-solid material rather than remove a wedge from it — a different and much larger
-feature. `Border` walls have two concave Arrises and therefore never chip. A
-wall whose ADR-0022 visibility override is off is skipped entirely, rather than
-having its floor bitten to expose a facet nothing draws.
+Eligible **Horizontal Arrises** are convex: a `FloorStep`'s top and a
+`CeilingStep`'s bottom. Eligible **Vertical Arrises** are the overlapping upright edge shared
+by two walls whose angle on their shared canonical front side is between 225°
+and 315°, inclusive. `OrientArrangementWall` remains the authority for each
+wall's normal; in particular, a `Border` wall faces toward its polygon. The
+sign of each normal against the other wall's ray selects the minor or major
+sector. This is necessary because an unsigned normal angle reports 90° for
+both a 90° corner and the 270° front-side corner at `world-test-1.yaml`'s world
+XZ coordinate `(96, 96)`. Collinear walls do not form an Arris. Both walls must
+use the same Sub-material, so
+there is one unambiguous generation configuration and facet material; a
+mixed-material corner is skipped. A wall whose ADR-0022 visibility override is
+off participates in neither kind of Arris.
 
 The geometry lives in a **detail channel**: a new member of
 `ArrangementWorldData`, built in its constructor alongside `mTriangles` and
@@ -71,6 +78,15 @@ which leaves the floor/ceiling rule and the per-frame `facesPlayer` rule exactly
 where they already live, in the renderer. Horizontal replacements are produced
 by subtracting the Chip's footprint from the face's boundary polygon and
 re-running earcut for that face, rather than by clipping individual triangles.
+A Vertical Chip removes one triangular footprint from each incident wall. Its
+deepest point lies opposite the normalized sum of the two canonical wall
+normals. Canonical normals point out of wall material (a Border's points toward
+its polygon), so this material-side bisector centres the gouge on the shared
+edge and sends it inward rather than making it protrude.
+Four tapered facets connect that point to the two wall-footprint points and the
+two reach endpoints on the shared edge. A wall bitten on any combination of
+its four Arrises is suppressed and re-earcut once from the combined sawtooth
+boundary.
 
 Chip generation is authored per Sub-material: minimum eligible Arris length,
 minimum/maximum depth, minimum/maximum reach, minimum centre spacing, and a
@@ -106,10 +122,11 @@ from the authored ranges. All draws derive from a pure hash of the Arris's
 fixed-point endpoints — never a sequence, an index, or a frame counter — so
 regeneration and unrelated edge renumbering cannot make Chips crawl.
 
-Chips are clamped to fit rather than skipped: depth and reach shrink to satisfy
-the Arris's length, the distance from the Arris to the nearest other boundary
-of the horizontal face, and the wall's height. A Chip is dropped below a
-minimum resulting size.
+Chips are clamped to fit rather than skipped. Horizontal depth and reach shrink
+to satisfy the Arris's length, the distance to the nearest other horizontal
+face boundary, and wall height. A Vertical Arris uses the walls' overlapping
+height as its length and clamps depth to both walls' horizontal lengths. A Chip
+is dropped below a minimum resulting size.
 
 Chips are visual only. Collision, `getFloorHeight`, `getContainingFaceIndex`,
 `pointInTriangle`, surface picking and the editor's 2D viewport all continue to
@@ -174,10 +191,9 @@ material data.
   its collision and containment queries read. The snapshot remains immutable and
   the two sets remain distinct, but `ArrangementWorldData` is no longer purely a
   query structure.
-- Because `Border` walls have no convex Arris, and are the majority of walls in
-  most worlds, the feature is far less visible than its description suggests.
-  This is correct — the base of a wall has no wedge to lose — but it is worth
-  seeing on real geometry before building further on it.
+- `Border` walls still have no eligible Horizontal Arris, but pairs of them can
+  form eligible Vertical Arrises at concave corners. This makes Chips visible
+  even in worlds without floor or ceiling steps.
 - Every renderer surface emission gains a suppression check, and every
   generation gains a pass over all walls with a face-boundary distance query per
   candidate Chip. That runs every five seconds in game, and on every undoable
@@ -188,8 +204,9 @@ material data.
   two corners on the Arris, one on the horizontal face and one down the wall.
   A single plane cutting a dihedral edge meets that edge in exactly one
   point, so it can taper to nothing at one end only and would need an end cap
-  at the other; the cut surface has to hinge at the deepest cross-section to
-  close on itself at both. Implemented in `BuildChipDetail` (#278).
+  at the other; a Horizontal Chip's cut surface therefore hinges at its
+  deepest cross-section. A Vertical Chip instead has four facets meeting at
+  its deepest bisector point. Implemented in `BuildChipDetail` (#278).
 - The 45° bevel remains fixed in code. Count, placement, depth and reach now
   vary deterministically from each Arris's endpoints under the governing
   Sub-material's constraints.
