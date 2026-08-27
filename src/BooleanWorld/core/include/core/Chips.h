@@ -100,10 +100,11 @@ struct ChipSizes {
 // Cuts one Chip into the centre of every eligible convex Arris and returns
 // the detail channel that replaces the surfaces they bit into.
 //
-// Eligible here means a visible FloorStep wall's top Arris, where the wall
-// meets the floor of the higher of its two faces. A FloorStep's bottom Arris
-// and both of a Border wall's are concave, and a CeilingStep's bottom Arris
-// is convex but not yet handled (#279).
+// Eligible here means a visible wall's convex Arris: a FloorStep's top,
+// where the wall meets the floor of the higher of its two faces, or a
+// CeilingStep's bottom, where the wall meets the ceiling of the lower of its
+// two faces. A FloorStep's bottom Arris, a CeilingStep's top, and both of a
+// Border wall's, are concave and never chip.
 //
 // Only the wall-height clamp is applied: a Chip's depth shrinks so it can
 // never eat through the bottom of its own step. Clamping against the

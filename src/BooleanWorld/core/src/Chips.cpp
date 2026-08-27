@@ -85,8 +85,10 @@ struct Footprint {
 };
 
 // The wall's remainder once the Chip's triangular notch is taken out of its
-// top edge, expressed in the wall's own (distance along, height) frame and
-// cut into the fewest pieces that leaves no seam.
+// Arris edge, expressed in the wall's own (distance along, height) frame and
+// cut into the fewest pieces that leaves no seam. The Arris sits at the
+// wall's top for a FloorStep and its bottom for a CeilingStep; `notchAtTop`
+// mirrors the whole cut between the two.
 void AddWallRemainder(
     DetailGeometry& detail,
     DetailSurfaceKey const& source,
@@ -98,10 +100,11 @@ void AddWallRemainder(
     float maxZ,
     float notchStart,
     float notchEnd,
-    float notchDepth) {
+    float notchDepth,
+    bool notchAtTop) {
   auto height = maxZ - minZ;
   auto notchMiddle = (notchStart + notchEnd) * 0.5f;
-  auto notchZ = maxZ - notchDepth;
+  auto notchZ = notchAtTop ? maxZ - notchDepth : minZ + notchDepth;
 
   auto at = [&](float s, float z) {
     auto position = v0 + direction * s;
@@ -122,36 +125,55 @@ void AddWallRemainder(
         uv(s0, z0), uv(s1, z1), uv(s0, z1));
   };
 
-  // Everything below the notch's deepest point, then the band the notch sits
-  // in, split either side of it.
-  quad(0.0f, length, minZ, notchZ);
-  quad(0.0f, notchStart, notchZ, maxZ);
-  quad(notchEnd, length, notchZ, maxZ);
+  if (notchAtTop) {
+    // Everything below the notch's deepest point, then the band the notch
+    // sits in, split either side of it.
+    quad(0.0f, length, minZ, notchZ);
+    quad(0.0f, notchStart, notchZ, maxZ);
+    quad(notchEnd, length, notchZ, maxZ);
 
-  // The two corners the notch's sloping sides leave behind inside that band.
-  AddTriangle(
-      detail, source, at(notchStart, notchZ), at(notchMiddle, notchZ),
-      at(notchStart, maxZ), reference, uv(notchStart, notchZ),
-      uv(notchMiddle, notchZ), uv(notchStart, maxZ));
-  AddTriangle(
-      detail, source, at(notchMiddle, notchZ), at(notchEnd, notchZ),
-      at(notchEnd, maxZ), reference, uv(notchMiddle, notchZ),
-      uv(notchEnd, notchZ), uv(notchEnd, maxZ));
+    // The two corners the notch's sloping sides leave behind inside that
+    // band.
+    AddTriangle(
+        detail, source, at(notchStart, notchZ), at(notchMiddle, notchZ),
+        at(notchStart, maxZ), reference, uv(notchStart, notchZ),
+        uv(notchMiddle, notchZ), uv(notchStart, maxZ));
+    AddTriangle(
+        detail, source, at(notchMiddle, notchZ), at(notchEnd, notchZ),
+        at(notchEnd, maxZ), reference, uv(notchMiddle, notchZ),
+        uv(notchEnd, notchZ), uv(notchEnd, maxZ));
+  } else {
+    // The mirror image: everything above the notch's deepest point, then the
+    // band the notch sits in, split either side of it.
+    quad(0.0f, length, notchZ, maxZ);
+    quad(0.0f, notchStart, minZ, notchZ);
+    quad(notchEnd, length, minZ, notchZ);
+
+    AddTriangle(
+        detail, source, at(notchStart, minZ), at(notchStart, notchZ),
+        at(notchMiddle, notchZ), reference, uv(notchStart, minZ),
+        uv(notchStart, notchZ), uv(notchMiddle, notchZ));
+    AddTriangle(
+        detail, source, at(notchMiddle, notchZ), at(notchEnd, notchZ),
+        at(notchEnd, minZ), reference, uv(notchMiddle, notchZ),
+        uv(notchEnd, notchZ), uv(notchEnd, minZ));
+  }
 }
 
-// Rebuilds one horizontal face's floor with every Chip footprint on it
-// subtracted from its boundary polygon, rather than clipping the individual
-// triangles the unchipped face earcut to.
-void AddRebuiltFaceFloor(
+// Rebuilds one horizontal face's floor or ceiling with every Chip footprint
+// on it subtracted from its boundary polygon, rather than clipping the
+// individual triangles the unchipped face earcut to.
+void AddRebuiltFaceHorizontal(
     DetailGeometry& detail,
     ArrangementResult const& arrangement,
-    uint32_t faceIndex,
+    DetailSurfaceKey const& source,
     std::vector<Footprint> const& footprints) {
   using EarcutPoint = std::array<double, 2>;
 
-  auto const& face = arrangement.faces[faceIndex];
-  auto floorZ = arrangement.palette[face.paletteIndex].floorZ;
-  DetailSurfaceKey source{DetailSurfaceKind::FloorOfFace, faceIndex};
+  auto const& face = arrangement.faces[source.index];
+  auto isFloor = source.kind == DetailSurfaceKind::FloorOfFace;
+  auto const& properties = arrangement.palette[face.paletteIndex];
+  auto z = isFloor ? properties.floorZ : properties.ceilingZ;
 
   std::vector<std::vector<EarcutPoint>> polygons;
   // Parallel to earcut's own index space, which runs across every ring in
@@ -213,18 +235,18 @@ void AddRebuiltFaceFloor(
 
   detail.addSuppressed(source);
 
-  Vertex3 up{0.0f, 0.0f, 1.0f};
+  Vertex3 normal{0.0f, 0.0f, isFloor ? 1.0f : -1.0f};
   auto indices = mapbox::earcut<uint32_t>(polygons);
   for (size_t i = 0; i + 2 < indices.size(); i += 3) {
     Vertex3 p[3];
     std::array<float, 2> uv[3];
     for (int corner = 0; corner < 3; ++corner) {
       auto const& position = positions[indices[i + corner]];
-      p[corner] = {position.x, position.y, floorZ};
+      p[corner] = {position.x, position.y, z};
       uv[corner] = {
           position.x / HorizontalUvScale, position.y / HorizontalUvScale};
     }
-    AddTriangle(detail, source, p[0], p[1], p[2], up, uv[0], uv[1], uv[2]);
+    AddTriangle(detail, source, p[0], p[1], p[2], normal, uv[0], uv[1], uv[2]);
   }
 }
 }  // namespace
@@ -301,15 +323,18 @@ DetailGeometry BuildChipDetail(
     return detail;
   }
 
-  std::map<uint32_t, std::vector<Footprint>> footprintsByFace;
+  std::map<DetailSurfaceKey, std::vector<Footprint>> footprintsByFace;
 
   for (uint32_t wallIndex = 0; wallIndex < uint32_t(walls.size());
        ++wallIndex) {
     auto const& wall = walls[wallIndex];
-    // Only a FloorStep's top Arris is both convex and in scope here. A wall
-    // whose visibility override is off is skipped outright rather than
-    // having its floor bitten to expose a facet nothing would draw.
-    if (wall.kind != ArrangementWallKind::FloorStep || !wall.visible) {
+    // A FloorStep's top Arris and a CeilingStep's bottom are the only convex
+    // ones. A wall whose visibility override is off is skipped outright
+    // rather than having its horizontal face bitten to expose a facet
+    // nothing would draw.
+    auto isFloorStep = wall.kind == ArrangementWallKind::FloorStep;
+    if ((!isFloorStep && wall.kind != ArrangementWallKind::CeilingStep) ||
+        !wall.visible) {
       continue;
     }
 
@@ -318,11 +343,15 @@ DetailGeometry BuildChipDetail(
         arrangement.palette[arrangement.faces[edge.face[0]].paletteIndex];
     auto const& properties1 =
         arrangement.palette[arrangement.faces[edge.face[1]].paletteIndex];
-    // The Arris runs along the top of the wall, which is the floor of the
-    // higher of its two faces.
-    auto upperFace =
-        properties0.floorZ > properties1.floorZ ? edge.face[0] : edge.face[1];
-    if (!arrangement.faces[upperFace].solid) {
+    // The Arris runs along the top of a FloorStep wall, which is the floor
+    // of the higher of its two faces, or the bottom of a CeilingStep wall,
+    // which is the ceiling of the lower of its two faces.
+    auto bittenFace = isFloorStep
+        ? (properties0.floorZ > properties1.floorZ ? edge.face[0]
+                                                     : edge.face[1])
+        : (properties0.ceilingZ < properties1.ceilingZ ? edge.face[0]
+                                                         : edge.face[1]);
+    if (!arrangement.faces[bittenFace].solid) {
       continue;
     }
 
@@ -333,12 +362,13 @@ DetailGeometry BuildChipDetail(
       continue;
     }
     auto direction = along / length;
-    // A FloorStep's normal points at its lower face, so the upper face - the
-    // one the Chip bites into - lies the other way.
+    // A wall's normal always points at its front face - the lower face for a
+    // FloorStep, the higher for a CeilingStep (OrientArrangementWall) - so
+    // the bitten face, always the other one, lies the other way.
     auto inward = -orientation.normal;
 
     // The only clamp this ticket applies: a Chip shrinks to fit its wall's
-    // height so it can never eat through the bottom of its own step. It is
+    // height so it can never eat through the far side of its own step. It is
     // also held inside its own Arris, which is a condition of the geometry
     // existing at all rather than a clamp.
     auto depth = std::min(sizes.depth, wall.maxZ - wall.minZ);
@@ -356,7 +386,10 @@ DetailGeometry BuildChipDetail(
     auto b = midpoint + half;
     auto apex = midpoint + inward * depth;
 
-    footprintsByFace[upperFace].push_back({wall.edge, a, b, apex});
+    auto faceKind = isFloorStep ? DetailSurfaceKind::FloorOfFace
+                                 : DetailSurfaceKind::CeilingOfFace;
+    footprintsByFace[{faceKind, bittenFace}].push_back(
+        {wall.edge, a, b, apex});
 
     DetailSurfaceKey source{DetailSurfaceKind::Wall, wallIndex};
     detail.addSuppressed(source);
@@ -366,38 +399,47 @@ DetailGeometry BuildChipDetail(
     Vertex3 wallReference{orientation.normal.x, orientation.normal.y, 0.0f};
     AddWallRemainder(
         detail, source, orientation.v0, direction, wallReference, length,
-        wall.minZ, wall.maxZ, notchStart, notchEnd, depth);
+        wall.minZ, wall.maxZ, notchStart, notchEnd, depth, isFloorStep);
 
     // The chamfer itself. The wedge a Chip removes is a tetrahedron: two of
-    // its corners sit on the Arris, one on the floor and one down the wall,
-    // both a `depth` away, which is what makes the bevel 45 degrees. Its cut
-    // surface is therefore two flat triangles meeting along the deepest
-    // cross-section, each tapering to a point on the Arris - so the Chip
-    // closes on itself and needs no end caps. Both carry the wall's own key,
-    // so they follow it into whichever material it draws with this frame,
-    // authored or reserved back face, and add no mesh bucket anywhere.
-    Vertex3 onArrisA{a.x, a.y, wall.maxZ};
-    Vertex3 onArrisB{b.x, b.y, wall.maxZ};
-    Vertex3 onFloor{apex.x, apex.y, wall.maxZ};
-    Vertex3 onWall{midpoint.x, midpoint.y, wall.maxZ - depth};
-    Vertex3 facetReference{orientation.normal.x, orientation.normal.y, 1.0f};
+    // its corners sit on the Arris, one on the horizontal face and one along
+    // the wall, both a `depth` away, which is what makes the bevel 45
+    // degrees. Its cut surface is therefore two flat triangles meeting along
+    // the deepest cross-section, each tapering to a point on the Arris - so
+    // the Chip closes on itself and needs no end caps. Both carry the wall's
+    // own key, so they follow it into whichever material it draws with this
+    // frame, authored or reserved back face, and add no mesh bucket
+    // anywhere.
+    auto arrisZ = isFloorStep ? wall.maxZ : wall.minZ;
+    auto wallZAtDepth = isFloorStep ? wall.maxZ - depth : wall.minZ + depth;
+    Vertex3 onArrisA{a.x, a.y, arrisZ};
+    Vertex3 onArrisB{b.x, b.y, arrisZ};
+    Vertex3 onHorizontal{apex.x, apex.y, arrisZ};
+    Vertex3 onWall{midpoint.x, midpoint.y, wallZAtDepth};
+    // The facet faces up-and-out toward the floor above for a FloorStep, and
+    // down-and-out toward the ceiling below for a CeilingStep.
+    Vertex3 facetReference{
+        orientation.normal.x, orientation.normal.y,
+        isFloorStep ? 1.0f : -1.0f};
     auto height = wall.maxZ - wall.minZ;
-    std::array<float, 2> uvA{notchStart / length, 1.0f};
-    std::array<float, 2> uvB{notchEnd / length, 1.0f};
-    std::array<float, 2> uvFloor{0.5f, 1.0f};
-    std::array<float, 2> uvWall{0.5f, (height - depth) / height};
+    auto arrisV = (arrisZ - wall.minZ) / height;
+    auto wallV = (wallZAtDepth - wall.minZ) / height;
+    std::array<float, 2> uvA{notchStart / length, arrisV};
+    std::array<float, 2> uvB{notchEnd / length, arrisV};
+    std::array<float, 2> uvHorizontal{0.5f, arrisV};
+    std::array<float, 2> uvWall{0.5f, wallV};
     AddTriangle(
-        detail, source, onArrisA, onFloor, onWall, facetReference, uvA,
-        uvFloor, uvWall);
+        detail, source, onArrisA, onHorizontal, onWall, facetReference, uvA,
+        uvHorizontal, uvWall);
     AddTriangle(
-        detail, source, onFloor, onArrisB, onWall, facetReference, uvFloor,
-        uvB, uvWall);
+        detail, source, onHorizontal, onArrisB, onWall, facetReference,
+        uvHorizontal, uvB, uvWall);
 
     detail.countChip();
   }
 
-  for (auto const& [faceIndex, footprints] : footprintsByFace) {
-    AddRebuiltFaceFloor(detail, arrangement, faceIndex, footprints);
+  for (auto const& [key, footprints] : footprintsByFace) {
+    AddRebuiltFaceHorizontal(detail, arrangement, key, footprints);
   }
 
   detail.sort();

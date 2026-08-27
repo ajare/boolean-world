@@ -95,6 +95,52 @@ std::vector<ArrangementPrimitive> slabAndPlatform(
   return primitives;
 }
 
+// The mirror image of slabAndPlatform: a 100x100 ground slab at floorZ 0,
+// ceilingZ 48, with a 40x40 bulkhead in the middle whose own ceiling drops to
+// bulkheadCeilingZ. The bulkhead's four sides are the only CeilingStep walls
+// in the fixture; the slab's four sides are Borders. Reuses the platform's
+// footprint so every numeric expectation below the Arris (which sits at
+// bulkheadCeilingZ, exactly where the platform's Arris sat at
+// platformFloorZ) carries over unchanged.
+//
+// `bulkheadVisibleOverrides` is indexed the same way as
+// `platformVisibleOverrides` above.
+std::vector<ArrangementPrimitive> slabAndBulkhead(
+    float bulkheadCeilingZ,
+    std::vector<std::optional<bool>> const& bulkheadVisibleOverrides = {},
+    bool withDistantSlab = false) {
+  std::vector<ArrangementPrimitive> primitives;
+  if (withDistantSlab) {
+    primitives.push_back(
+        {{rectContour(200, 200, 240, 240)},
+         Primitive::Operation::Union,
+         Primitive::FillRule::EvenOdd,
+         0,
+         uint32_t(primitives.size()),
+         propertiesWithHeights(0.0f, 48.0f)});
+  }
+  primitives.push_back(
+      {{rectContour(-50, -50, 50, 50)},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       1,
+       uint32_t(primitives.size()),
+       propertiesWithHeights(0.0f, 48.0f)});
+  primitives.push_back(
+      {{rectContour(-20, -20, 20, 20)},
+       Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd,
+       2,
+       uint32_t(primitives.size()),
+       propertiesWithHeights(0.0f, bulkheadCeilingZ),
+       {},
+       bulkheadVisibleOverrides.empty()
+           ? std::vector<std::vector<std::optional<bool>>>{}
+           : std::vector<std::vector<std::optional<bool>>>{
+                 bulkheadVisibleOverrides}});
+  return primitives;
+}
+
 ArrangementWorldData snapshotOf(
     std::vector<ArrangementPrimitive> const& primitives) {
   return ArrangementWorldData(
@@ -448,6 +494,220 @@ void chipsStayPutAcrossRegenerationAndUnrelatedEdits() {
           "an unrelated edit elsewhere moved the Chips it did not touch");
 }
 
+// 8. The mirror image of 1: exactly one Chip per CeilingStep's bottom Arris,
+//    and none of a CeilingStep's own top - the wall's other end - or a
+//    Border's.
+void everyCeilingStepBottomArrisCarriesOneChipAndNoBorderOrTopDoes() {
+  auto snapshot = snapshotOf(slabAndBulkhead(12.0f));
+  auto const& detail = snapshot.getDetail();
+
+  auto ceilingSteps = countWalls(snapshot, ArrangementWallKind::CeilingStep);
+  require(
+      ceilingSteps == 4,
+      "the slab/bulkhead fixture did not produce four CeilingStep walls");
+  require(detail.getChipCount() == ceilingSteps,
+          "the number of Chips did not match the number of eligible Arrises");
+  require(countWalls(snapshot, ArrangementWallKind::FloorStep) == 0,
+          "the fixture produced a FloorStep it was not meant to");
+
+  auto const& walls = snapshot.getWalls();
+  for (uint32_t i = 0; i < uint32_t(walls.size()); ++i) {
+    auto suppressed = detail.isSuppressed(DetailSurfaceKind::Wall, i);
+    if (walls[i].kind == ArrangementWallKind::CeilingStep) {
+      require(suppressed, "a CeilingStep wall's bottom Arris carried no Chip");
+    } else {
+      require(!suppressed,
+              "a wall with no convex Arris - a Border - carried a Chip");
+    }
+  }
+}
+
+// 9. The mirror image of 2: the chamfer bites equally into the bulkhead's
+//    ceiling and up the wall, at 45 degrees, tapering to nothing at both
+//    ends.
+void theCeilingChamferIsATaperedFortyFiveDegreeFacet() {
+  auto snapshot = snapshotOf(slabAndBulkhead(12.0f));
+  auto const& detail = snapshot.getDetail();
+
+  // The bulkhead's south side: the Arris runs from (-20, -20) to (20, -20)
+  // at z = 12, and the bulkhead - the lower-ceiling face - lies to the
+  // north.
+  auto wallIndex =
+      findWall(snapshot, ArrangementWallKind::CeilingStep, {0.0f, -20.0f});
+  require(wallIndex != ~0u, "the bulkhead's south CeilingStep was not found");
+  auto const& wall = snapshot.getWalls()[wallIndex];
+  require(near(wall.minZ, 12.0f) && near(wall.maxZ, 48.0f),
+          "the bulkhead's south CeilingStep did not span the expected "
+          "heights");
+
+  auto replacements =
+      detail.replacementsFor(DetailSurfaceKind::Wall, wallIndex);
+  require(!replacements.empty(),
+          "a chipped wall published no replacement geometry");
+
+  // Deepest at the Arris's centre: one point `chipDepth` into the bulkhead
+  // ceiling, and one the same distance up the wall - the 45 degree bevel.
+  require(hasVertexAt(replacements, 0.0f, -20.0f + chipDepth, 12.0f),
+          "the Chip did not bite chipDepth into the horizontal face at the "
+          "Arris's centre");
+  require(hasVertexAt(replacements, 0.0f, -20.0f, 12.0f + chipDepth),
+          "the Chip did not bite chipDepth up the wall at the Arris's "
+          "centre");
+
+  // Tapering to nothing at both ends: the facet meets the Arris again a half
+  // reach either side of centre, at the Arris's own height and with no bite
+  // at all.
+  require(hasVertexAt(replacements, -chipReach * 0.5f, -20.0f, 12.0f) &&
+              hasVertexAt(replacements, chipReach * 0.5f, -20.0f, 12.0f),
+          "the Chip did not taper back to the Arris at both ends");
+
+  uint32_t facetTriangles = 0;
+  float wallPlaneArea = 0.0f;
+  for (auto const& triangle : replacements) {
+    auto offFacet = std::any_of(
+        triangle.v.begin(), triangle.v.end(), [](auto const& vertex) {
+          return !near(vertex.position[1], -20.0f);
+        });
+    if (offFacet) {
+      ++facetTriangles;
+      require(
+          std::any_of(
+              triangle.v.begin(), triangle.v.end(),
+              [](auto const& vertex) {
+                return near(vertex.position[0], 0.0f) &&
+                    near(vertex.position[1], -20.0f) &&
+                    near(vertex.position[2], 12.0f + chipDepth);
+              }),
+          "a chamfer triangle did not meet the Chip's deepest cross-section");
+      continue;
+    }
+    std::array<float, 3> flattened[3];
+    for (int i = 0; i < 3; ++i) {
+      flattened[i] = {
+          triangle.v[i].position[0], triangle.v[i].position[2], 0.0f};
+    }
+    wallPlaneArea +=
+        triangleArea2d(flattened[0], flattened[1], flattened[2]);
+  }
+  require(facetTriangles == 2,
+          "the chamfer was not the two flat triangles a tapered 45 degree "
+          "chamfer cuts");
+
+  auto expectedWallArea =
+      40.0f * (wall.maxZ - wall.minZ) - chipReach * chipDepth * 0.5f;
+  require(near(wallPlaneArea, expectedWallArea, 0.05f),
+          "the chipped wall's remaining area was not its quad less the "
+          "Chip's notch");
+}
+
+// 10. The mirror image of 3: the ceiling side of the bulkhead face is
+//     rebuilt with the footprint subtracted, leaving its floor side (and the
+//     surrounding slab) untouched, and every rebuilt triangle faces down.
+void theCeilingSideIsRebuiltWithTheFootprintSubtracted() {
+  auto snapshot = snapshotOf(slabAndBulkhead(12.0f));
+  auto const& arrangement = snapshot.getArrangement();
+  auto const& detail = snapshot.getDetail();
+
+  auto bulkheadFace = snapshot.getContainingFaceIndex({0.0f, 0.0f});
+  require(bulkheadFace != ~0u, "the bulkhead face was not found");
+  require(
+      near(arrangement.palette[arrangement.faces[bulkheadFace].paletteIndex]
+               .ceilingZ,
+           12.0f),
+      "the located face was not the lowered bulkhead");
+
+  require(
+      detail.isSuppressed(DetailSurfaceKind::CeilingOfFace, bulkheadFace),
+      "the bitten face's ceiling side was not suppressed");
+  require(
+      !detail.isSuppressed(DetailSurfaceKind::FloorOfFace, bulkheadFace),
+      "suppressing the ceiling side also suppressed the floor underfoot");
+
+  auto slabFace = snapshot.getContainingFaceIndex({0.0f, 35.0f});
+  require(slabFace != ~0u && slabFace != bulkheadFace,
+          "the surrounding slab face was not found");
+  require(!detail.isSuppressed(DetailSurfaceKind::CeilingOfFace, slabFace),
+          "a face no Chip bit into had its ceiling suppressed");
+
+  float rebuiltArea = 0.0f;
+  for (auto const& triangle : detail.replacementsFor(
+           DetailSurfaceKind::CeilingOfFace, bulkheadFace)) {
+    for (auto const& vertex : triangle.v) {
+      require(near(vertex.position[2], 12.0f),
+              "a rebuilt ceiling triangle left the face's ceiling plane");
+      require(near(vertex.normal[2], -1.0f),
+              "a rebuilt ceiling triangle did not face down");
+    }
+    rebuiltArea +=
+        triangleArea2d(triangle.v[0].position, triangle.v[1].position,
+                       triangle.v[2].position);
+  }
+  auto expectedArea = 40.0f * 40.0f - 4.0f * chipReach * chipDepth * 0.5f;
+  require(near(rebuiltArea, expectedArea, 0.1f),
+          "the rebuilt face's area was not its boundary less the four Chip "
+          "footprints");
+}
+
+// 11. The mirror image of 4: the wall-height clamp shrinks a Chip rather
+//     than letting it eat through the top of its own bulkhead.
+void aCeilingChipShrinksToFitItsWallsHeight() {
+  auto stepHeight = chipDepth * 0.5f;
+  auto snapshot = snapshotOf(slabAndBulkhead(48.0f - stepHeight));
+  auto const& detail = snapshot.getDetail();
+
+  auto wallIndex =
+      findWall(snapshot, ArrangementWallKind::CeilingStep, {0.0f, -20.0f});
+  require(wallIndex != ~0u,
+          "the shallow bulkhead's south CeilingStep was not found");
+  auto replacements =
+      detail.replacementsFor(DetailSurfaceKind::Wall, wallIndex);
+  require(!replacements.empty(), "the shallow bulkhead carried no Chip at all");
+
+  for (auto const& triangle : replacements) {
+    for (auto const& vertex : triangle.v) {
+      require(vertex.position[2] <= 48.01f,
+              "a Chip ate through the top of its own bulkhead");
+    }
+  }
+  require(hasVertexAt(replacements, 0.0f, -20.0f, 48.0f),
+          "the clamped Chip did not reach exactly the top of its bulkhead");
+  require(hasVertexAt(
+              replacements, 0.0f, -20.0f + stepHeight, 48.0f - stepHeight),
+          "the clamped Chip's bite into the ceiling did not shrink to "
+          "match");
+}
+
+// 12. The mirror image of 5: a wall turned off carries no Chip, and its
+//     ceiling is not bitten either.
+void anInvisibleCeilingStepWallCarriesNoChip() {
+  std::vector<std::optional<bool>> allHidden(4, false);
+  auto hidden = snapshotOf(slabAndBulkhead(12.0f, allHidden));
+  require(hidden.getDetail().getChipCount() == 0,
+          "walls whose visibility override is off still carried Chips");
+  require(hidden.getDetail().getSuppressed().empty() &&
+              hidden.getDetail().getTriangles().empty(),
+          "an all-hidden bulkhead still published detail geometry");
+
+  std::vector<std::optional<bool>> southHidden(4, std::nullopt);
+  southHidden[0] = false;
+  auto snapshot = snapshotOf(slabAndBulkhead(12.0f, southHidden));
+  auto const& detail = snapshot.getDetail();
+  require(detail.getChipCount() == 3,
+          "hiding one of four walls did not leave exactly three Chips");
+
+  auto bulkheadFace = snapshot.getContainingFaceIndex({0.0f, 0.0f});
+  float rebuiltArea = 0.0f;
+  for (auto const& triangle : detail.replacementsFor(
+           DetailSurfaceKind::CeilingOfFace, bulkheadFace)) {
+    rebuiltArea +=
+        triangleArea2d(triangle.v[0].position, triangle.v[1].position,
+                       triangle.v[2].position);
+  }
+  auto expectedArea = 40.0f * 40.0f - 3.0f * chipReach * chipDepth * 0.5f;
+  require(near(rebuiltArea, expectedArea, 0.1f),
+          "the hidden wall's Arris still bit into the horizontal face");
+}
+
 // 7. The three existing outputs are untouched by the detail pass.
 void theUnchippedOutputsAreIdenticalEitherWay() {
   auto primitives = slabAndPlatform(12.0f);
@@ -501,8 +761,13 @@ int main() {
     anInvisibleWallCarriesNoChip();
     chipsStayPutAcrossRegenerationAndUnrelatedEdits();
     theUnchippedOutputsAreIdenticalEitherWay();
-    std::cout << "Chips are cut into FloorStep top Arrises and published in "
-                 "the snapshot's detail channel\n";
+    everyCeilingStepBottomArrisCarriesOneChipAndNoBorderOrTopDoes();
+    theCeilingChamferIsATaperedFortyFiveDegreeFacet();
+    theCeilingSideIsRebuiltWithTheFootprintSubtracted();
+    aCeilingChipShrinksToFitItsWallsHeight();
+    anInvisibleCeilingStepWallCarriesNoChip();
+    std::cout << "Chips are cut into FloorStep top and CeilingStep bottom "
+                 "Arrises and published in the snapshot's detail channel\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';
