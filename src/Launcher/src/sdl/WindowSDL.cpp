@@ -157,16 +157,13 @@ bool WindowSDL::isActive() const {
 void WindowSDL::create() {
   gLogger->info(format("Creating window at {}x{}", mWidth, mHeight));
 
-  // Use OpenGL 3.2.
-  //
-  // Deliberately no SDL_GL_CONTEXT_PROFILE_MASK, which leaves the driver's
-  // default (compatibility on Windows).
-  //
-  // MassivePolyPusher draws text as point sprites whenever the driver reports a
-  // max point size of 16 or more, and that path enables GL_POINT_SPRITE - an
-  // enum removed in the core profile. Under a core context every 2D projection
-  // change raises GL_INVALID_ENUM, which Release silently queues but Debug turns
-  // into a throw via the engine's GL_CHECK.
+  // Use an OpenGL 3.2 core context. MassivePolyPusher's point-based text path
+  // relies on core point-sprite behaviour; a compatibility context requires
+  // GL_POINT_SPRITE to be enabled and otherwise produces transparent glyphs.
+  if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE)) {
+    string err = SDL_GetError();
+    throw exception(("Could not set OpenGL attribute: " + err).c_str());
+  }
 
   if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3)) {
     string err = SDL_GetError();
