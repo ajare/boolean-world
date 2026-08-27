@@ -6,6 +6,7 @@
 #include <core/ArrangementWorldDataGenerator.h>
 #include <core/LayerSelection.h>
 #include <core/MeshPrimitive.h>
+#include <core/PrimitiveField.h>
 #include <core/World.h>
 #include <core/WorldDataGenerator.h>
 
@@ -66,12 +67,46 @@ void ordersPrioritiesStablyAcrossTheFold() {
   auto const selection = bw::core::SelectLayer(0);
   auto selected = bw::core::selectAndOrderPrimitives(world, selection);
   require(selected == std::vector<Primitive*>{base, restore, cut},
-          "folded primitives were not globally priority-ordered stably");
+          "one step's primitives were not locally priority-ordered stably");
 
   bw::core::ArrangementWorldDataGenerator generator;
   generator.generate(&world, selection);
   require(!isSolidAt(*generator.getWorldData(), 5.0f, 5.0f),
           "the arrangement generator did not use the stable priority fold");
+}
+
+void layerAndStepOrderDominateLocalPriority() {
+  bw::core::World world(20.0f, 2.0f);
+  auto* firstLayer = world.getActiveLayer();
+  auto base = makeRectangle(
+      Primitive::Operation::Union, 0.0f, 0.0f, 10.0f, 10.0f);
+  base->setPriority(255);
+  world.addPrimitive(base);
+
+  auto* laterStep = new bw::core::PrimitiveField;
+  auto laterStepIndex = firstLayer->addStep(laterStep);
+  firstLayer->setActiveStep(laterStepIndex);
+  auto cut = makeRectangle(
+      Primitive::Operation::Difference, 4.0f, 0.0f, 6.0f, 10.0f);
+  cut->setPriority(0);
+  world.addPrimitive(cut);
+
+  auto* secondLayer = world.addLayer("Later");
+  world.setActiveLayer(secondLayer);
+  auto restore = makeRectangle(
+      Primitive::Operation::Union, 4.0f, 0.0f, 6.0f, 10.0f);
+  restore->setPriority(0);
+  world.addPrimitive(restore);
+
+  auto selected = bw::core::selectAndOrderPrimitives(
+      world, bw::core::SelectAllLayers());
+  require(selected == std::vector<Primitive*>{base, cut, restore},
+          "Layer or LayerBuildStep order did not dominate local priority");
+
+  bw::core::ArrangementWorldDataGenerator generator;
+  generator.generate(&world, bw::core::SelectAllLayers());
+  require(isSolidAt(*generator.getWorldData(), 5.0f, 5.0f),
+          "a later Layer did not fold after every step of an earlier Layer");
 }
 
 void bakingPreservesArrangementContainmentWithoutInference() {
@@ -135,6 +170,7 @@ void preservesListOrderForEqualPriorities() {
 int main() {
   try {
     ordersPrioritiesStablyAcrossTheFold();
+    layerAndStepOrderDominateLocalPriority();
     bakingPreservesArrangementContainmentWithoutInference();
     preservesListOrderForEqualPriorities();
     std::cout << "Priority folds retain stable order\n";

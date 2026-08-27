@@ -84,11 +84,11 @@ void theFoldGathersOnlyTheSelectedLayersPrimitives() {
           "an unselected Layer lost its primitive");
 }
 
-void thePriorityFoldStaysNonLocalAcrossLayerBoundaries() {
+void selectedLayersFoldInWorldOrderBeforeLocalPriority() {
   bw::core::World world(100.0f, 10.0f);
 
-  // Authored so that ordering by Layer would disagree with ordering by
-  // priority: the later Layer holds the lower priority.
+  // Authored so that Layer order disagrees with local priority: Layer order
+  // is the major fold order.
   auto* late = makeRectangle(7);
   world.addPrimitive(late);
   Primitive* early{nullptr};
@@ -102,8 +102,8 @@ void thePriorityFoldStaysNonLocalAcrossLayerBoundaries() {
 
   auto const folded = bw::core::selectAndOrderPrimitives(world, selection);
 
-  require(folded == std::vector<Primitive*>{early, middle, late},
-          "priority ordering did not run across the whole selected set");
+  require(folded == std::vector<Primitive*>{late, early, middle},
+          "selected Layers did not fold in World order");
 }
 
 void aPrimitiveFilterKeepsRejectedPrimitivesOutOfTheFold() {
@@ -256,7 +256,7 @@ void loadingAWorldRescopesTheSelectionToTheActiveLayer() {
 int main() {
   try {
     theFoldGathersOnlyTheSelectedLayersPrimitives();
-    thePriorityFoldStaysNonLocalAcrossLayerBoundaries();
+    selectedLayersFoldInWorldOrderBeforeLocalPriority();
     aPrimitiveFilterKeepsRejectedPrimitivesOutOfTheFold();
     aPrimitiveFilterSeesTheLayerThatOwnsEachPrimitive();
     triggerLinesUseTheSameLayerIdSelection();

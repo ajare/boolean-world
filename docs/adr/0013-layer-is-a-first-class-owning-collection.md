@@ -34,13 +34,12 @@ exported/imported standalone as `.layer` (binary) or `.layer.yaml`, distinct
 extensions from `.world`/`.yaml` so `Document::openDoc` stays pure
 extension-dispatch.
 
-ADR-0009's actual generation model is **kept**: a generation still folds
-across a *selected set* of layers via a mask (now a set of stable Layer ids
-rather than tag values), spanning them in one non-local fold. Layers still
-filter; they still do not group or nest. Only the ownership question that
-ADR-0009 declined is reopened here. The active-layer index is purely an
-editor authoring-focus concept and does not constrain what a generation
-selects.
+ADR-0009's selection model is **kept**: a generation still selects a set of
+Layers via a mask (now a set of stable Layer ids rather than tag values). Only
+the ownership question that ADR-0009 declined is reopened here. ADR-0026 later
+made World Layer order the major fold order. The active-layer index remains
+purely an editor authoring-focus concept and does not constrain what a
+generation selects.
 
 Breaking the save format is accepted; no migration path is provided for
 existing `.world`/`.yaml` files.

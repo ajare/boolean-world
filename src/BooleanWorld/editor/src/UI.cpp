@@ -65,6 +65,19 @@ extern editor::EditorInteraction gEditorInteraction;
 namespace editor {
 using namespace std;
 
+constexpr int minGridSizeExponent = 1;  // 2 world units
+constexpr int maxGridSizeExponent = 6;  // 64 world units
+
+void cycleGridSize(Settings& settings) {
+  auto exponent = std::clamp(
+      static_cast<int>(std::lround(std::log2(settings.gridSize))),
+      minGridSizeExponent, maxGridSizeExponent);
+  exponent = exponent == maxGridSizeExponent
+                 ? minGridSizeExponent
+                 : exponent + 1;
+  settings.gridSize = static_cast<float>(1 << exponent);
+}
+
 enum struct ActionType {
   None,
   Generic,
@@ -290,7 +303,7 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
         widgets::PushDisabled();
       }
 
-      if (ImGui::MenuItem("Select & home on Ghost", "Shift+G")) {
+      if (ImGui::MenuItem("Select & home on Ghost")) {
         selectAndHomeGhost(doc);
       }
 
@@ -319,6 +332,9 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
       ImGui::MenuItem("Context help view", "F10", &settings.showContextSensitiveHelpPanel);
 
       ImGui::MenuItem("Grid", "G", &settings.showGrid);
+      if (ImGui::MenuItem("Cycle grid size", "Shift+G")) {
+        cycleGridSize(settings);
+      }
 
       ImGui::MenuItem("Animated primitives", 0, &settings.renderAnimatedPrimitives);
       ImGui::MenuItem("Triangulation border", 0, &settings.renderWorldBorder);
@@ -704,10 +720,15 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
     ImGui::SetNextItemWidth(80);
 
-    static int gridSize = (int)(log((float)settings.gridSize) / log(2.0f)) - 3;
-    string gridSizeText = format("{}", (int)settings.gridSize);
-    if (ImGui::SliderInt("Size##GridSize", &gridSize, 0, 3, gridSizeText.c_str())) {
-      settings.gridSize = (float)(1 << (gridSize + 3));
+    int gridSizeExponent = std::clamp(
+        static_cast<int>(std::lround(std::log2(settings.gridSize))),
+        minGridSizeExponent, maxGridSizeExponent);
+    string gridSizeText = format("{}", 1 << gridSizeExponent);
+    if (ImGui::SliderInt(
+            "Size##GridSize", &gridSizeExponent,
+            minGridSizeExponent, maxGridSizeExponent,
+            gridSizeText.c_str())) {
+      settings.gridSize = static_cast<float>(1 << gridSizeExponent);
     }
 
     ImGui::SameLine();
@@ -1436,16 +1457,12 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
 
   // Priority
   int primitivePriority = (int)ghost->getPriority();
-  auto const* priorityStep = doc->getWorld()->getActiveLayer()->getActiveStep();
-  auto const priorityMax = dynamic_cast<bw::core::DefinePrefabs const*>(priorityStep)
-                               ? BW_PREFAB_SOURCE_PRIORITY_MAX_VALUE
-                               : BW_PRIORITY_MAX_VALUE;
-
-  widgets::HelpMarker("Priority determines fold order. Values 249-255 are reserved for PrefabField phases, but remain available inside Prefab definitions as relative ordering values.");
+  widgets::HelpMarker(
+      "Priority determines fold order within this LayerBuildStep. Layer and step order take precedence.");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(128);
 
-  if (ImGui::SliderInt("Priority##CreatePrimitive", &primitivePriority, BW_PRIORITY_MIN_VALUE, priorityMax)) {
+  if (ImGui::SliderInt("Priority##CreatePrimitive", &primitivePriority, BW_PRIORITY_MIN_VALUE, BW_PRIORITY_MAX_VALUE)) {
     modified = true;
   }
 
@@ -2480,15 +2497,11 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
 
   // Priority
   int primitivePriority = (int)primitive->getPriority();
-  auto* activeLayer = doc->getWorld()->getActiveLayer();
-  auto const ownerIndex = activeLayer->getOwningStepIndex(primitive);
-  auto const priorityMax = dynamic_cast<bw::core::DefinePrefabs const*>(
-                               activeLayer->getStep(ownerIndex))
-                               ? BW_PREFAB_SOURCE_PRIORITY_MAX_VALUE
-                               : BW_PRIORITY_MAX_VALUE;
   ImGui::SetNextItemWidth(128);
 
-  if (ImGui::SliderInt("Priority##EditPrimitive", &primitivePriority, BW_PRIORITY_MIN_VALUE, priorityMax)) {
+  if (ImGui::SliderInt(
+          "Priority##EditPrimitive", &primitivePriority,
+          BW_PRIORITY_MIN_VALUE, BW_PRIORITY_MAX_VALUE)) {
     primitive->setPriority((uint8_t)primitivePriority);
   }
 
@@ -3029,7 +3042,20 @@ void renderEditPrimitiveView(editor::Document* doc, editor::Settings& settings, 
 
 void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings) {
   auto const& selection = doc->getSelectedPrimitiveIndices();
-  auto primitives = doc->getWorld()->getPrimitivesByPriority();
+  auto world = doc->getWorld();
+  auto* activeLayer = world->getActiveLayer();
+  auto const activeStepIndex = activeLayer->getActiveStepIndex();
+  auto primitives = world->getPrimitivesByPriority();
+  primitives.erase(
+      remove_if(primitives.begin(), primitives.end(),
+                [&](auto const* primitive) {
+                  auto const isGhost =
+                      primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG;
+                  return !isGhost &&
+                         activeLayer->getOwningStepIndex(primitive) !=
+                             activeStepIndex;
+                }),
+      primitives.end());
   auto numPrimitives = (uint32_t)primitives.size();
 
   for (uint32_t i = 0; i < numPrimitives; ++i) {
@@ -3054,7 +3080,8 @@ void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings)
     }
 
     int primitivePriority = (int)primitive->getPriority();
-    ImGui::Text("%s :: Priority %d", primitive->getName().c_str(), primitivePriority);
+    auto const* label = isGhost ? "Ghost Primitive" : primitive->getName().c_str();
+    ImGui::Text("%s :: Priority %d", label, primitivePriority);
 
     if (!isGhost) {
       int counter = 0;
@@ -3123,7 +3150,7 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
 
   widgets::HelpMarker("Disabling a step and rebuilding removes its Primitives from this Layer; re-enabling restores them. The first step can be disabled but never removed, retyped, or reordered. The active step (radio button) is where Create/Edit Primitive writes.");
 
-  widgets::HelpMarker("When off, the world view only shows Primitives from the active step and earlier ones; Primitives from later steps are hidden, and contribute no geometry. Either way, Primitives outside the active step render faded.");
+  widgets::HelpMarker("When off, the world view only shows Primitives from the active step; Primitives from every other step are hidden and contribute no geometry. When on, Primitives outside the active step render faded.");
   ImGui::SameLine();
   if (ImGui::Checkbox("Show all steps' Primitives##Layer", &settings.showAllStepPrimitives)) {
     // The filter reads the setting live, so what changed here is only which
@@ -3719,15 +3746,12 @@ void renderMeshDrawToolView(editor::Document* doc, editor::Settings& settings) {
   setOperationWidget(doc, ghost, 3);
 
   int priority = (int)ghost->getPriority();
-  auto const priorityMax = dynamic_cast<bw::core::DefinePrefabs const*>(
-                               doc->getWorld()->getActiveLayer()->getActiveStep())
-                               ? BW_PREFAB_SOURCE_PRIORITY_MAX_VALUE
-                               : BW_PRIORITY_MAX_VALUE;
-  widgets::HelpMarker("Priority the drawn MeshPrimitive is created with. Lower values fold earlier; 249-255 are reserved outside Prefab definitions.");
+  widgets::HelpMarker(
+      "Priority the drawn MeshPrimitive receives within this LayerBuildStep. Lower values fold earlier inside the step.");
   ImGui::SameLine();
   ImGui::SetNextItemWidth(128);
 
-  if (ImGui::SliderInt("Priority##MeshDraw", &priority, BW_PRIORITY_MIN_VALUE, priorityMax)) {
+  if (ImGui::SliderInt("Priority##MeshDraw", &priority, BW_PRIORITY_MIN_VALUE, BW_PRIORITY_MAX_VALUE)) {
     ghost->setPriority((uint8_t)priority);
   }
 
@@ -4302,8 +4326,8 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
   }
 
   if (ImGui::Shortcut(ImGuiKey_G | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal)) {
-    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive()) {
-      selectAndHomeGhost(doc);
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+      cycleGridSize(settings);
     }
   }
 

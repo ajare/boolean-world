@@ -234,7 +234,7 @@ void selectAllAndABoundsQueryOverTheOriginExcludeTheGhostEvenWhileItIsActive() {
           "a rubber-band over the origin dropped a real Primitive that overlaps the ghost");
 }
 
-void selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps() {
+void selectionQueriesIncludeOnlyTheActiveLayerBuildStep() {
   editor::Document document;
   editor::Settings settings;
   settings.showAllStepPrimitives = false;
@@ -262,9 +262,18 @@ void selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps() {
   laterStepPrimitive->setPosition({100.0f, 100.0f});
   document.getWorld()->addPrimitive(laterStepPrimitive);
 
-  // Back to step 0 as the authoring/selection context: the later step's
-  // primitive is out of context and should drop out of every selection
-  // query, even though it geometrically coincides with the one that stays.
+  // While the later step is active, the earlier Primitive is out of context
+  // even though it geometrically coincides with the one that stays.
+  auto laterSelectable = document.getSelectablePrimitiveIndices(settings);
+  require(std::find(laterSelectable.begin(), laterSelectable.end(), laterStepPrimitive->getId()) != laterSelectable.end(),
+          "Select All dropped a Primitive that belongs to the active later step");
+  require(std::find(laterSelectable.begin(), laterSelectable.end(), earlyStepPrimitive->getId()) == laterSelectable.end(),
+          "Select All picked up a Primitive from a step earlier than the active one");
+  require(!editor::primitiveVisibleForActiveStep(*layer, earlyStepPrimitive, settings),
+          "the world view showed a Primitive from a step earlier than the active one");
+
+  // Back to step 0 as the authoring/selection context: now the later step's
+  // Primitive is out of context and should drop out of every selection query.
   layer->setActiveStep(0);
 
   auto selectable = document.getSelectablePrimitiveIndices(settings);
@@ -317,6 +326,12 @@ void prefabPrimitivesAreVisibleAndFoldedInIsolationOnlyWhileTheirPrefabIsSelecte
 
   require(editor::primitiveVisibleForActiveStep(*layer, primitive, settings),
           "the selected Prefab was hidden while its DefinePrefabs step was active");
+  require(editor::primitiveVisibleForActiveStep(
+              *layer, document.getGhost(), settings),
+          "the authoring ghost was hidden while editing a selected Prefab");
+  require(!editor::primitiveVisibleForActiveStep(
+              *layer, earlierStepPrimitive, settings),
+          "show-all rendered another Primitive while editing a selected Prefab");
   require(editor::primitiveParticipatesInEditorFold(*layer, primitive, settings),
           "a selected Prefab's own Primitive was withheld from the editor fold while it was active");
   require(!editor::primitiveParticipatesInEditorFold(*layer, earlierStepPrimitive, settings),
@@ -672,7 +687,7 @@ int main() {
     theGhostIsHiddenFromTheViewAndTheFoldInMeshMode();
     primitiveIndicesInBoundsFindsOverlappingPrimitivesAndIgnoresTheGhost();
     selectAllAndABoundsQueryOverTheOriginExcludeTheGhostEvenWhileItIsActive();
-    selectionQueriesExcludePrimitivesFromLaterLayerBuildSteps();
+    selectionQueriesIncludeOnlyTheActiveLayerBuildStep();
     prefabPrimitivesAreVisibleAndFoldedInIsolationOnlyWhileTheirPrefabIsSelected();
     theGhostIsHiddenWhileAPrefabFieldStepIsActive();
     activePrefabFieldPrimitivesUseTheActiveStepColour();

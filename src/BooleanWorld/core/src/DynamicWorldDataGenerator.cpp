@@ -259,15 +259,24 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
 
   // Culling is no longer part of generation, so selecting the current layer set
   // is cheap and avoids retaining a live primitive list between generations.
-  auto primitives = selectAndOrderPrimitives(
+  auto orderedEntries = selectAndOrderPrimitiveEntries(
       *world, getLayerSelection(), getPrimitiveFilter());
+  vector<Primitive*> primitives;
+  vector<uint64_t> generatedPriorities;
+  primitives.reserve(orderedEntries.size());
+  generatedPriorities.reserve(orderedEntries.size());
+  for (auto const& entry : orderedEntries) {
+    primitives.push_back(entry.primitive);
+    generatedPriorities.push_back(entry.priority);
+  }
   auto primStats = mNextClipping.stats.prim;
   primStats.candidateCount = uint32_t(primitives.size());
   primStats.visibleCount = 0;
   primStats.updateVertexCount = 0;
 
   auto updatedPrimitives = preparePrimitives(primitives, &primStats);
-  auto arrangementPrimitives = SnapshotPrimitives(primitives);
+  auto arrangementPrimitives =
+      SnapshotPrimitives(primitives, generatedPriorities);
   auto sourcePrimitives = snapshotPrimitiveMetadata(primitives);
   auto layerSelection = getLayerSelection();
 

@@ -61,6 +61,15 @@ bool primitiveVisibleForActiveStep(
            layer.getActiveStep()->acceptsNewPrimitives();
   }
 
+  // A selected Prefab is edited in its own coordinate space. Isolate that
+  // authoring view from every other Primitive even when show-all is enabled;
+  // the ghost was handled above and remains available for adding to it.
+  auto const* activeDefinePrefabs =
+      dynamic_cast<bw::core::DefinePrefabs const*>(layer.getActiveStep());
+  if (activeDefinePrefabs && activeDefinePrefabs->getSelectedPrefab()) {
+    return activeDefinePrefabs->ownsPrimitive(primitive);
+  }
+
   auto owningStepIndex = layer.getOwningStepIndex(primitive);
   if (owningStepIndex != ~0u &&
       dynamic_cast<bw::core::DefinePrefabs const*>(
@@ -68,8 +77,8 @@ bool primitiveVisibleForActiveStep(
     return owningStepIndex == layer.getActiveStepIndex();
   }
 
-  return settings.showAllStepPrimitives || owningStepIndex == ~0u ||
-         owningStepIndex <= layer.getActiveStepIndex();
+  return settings.showAllStepPrimitives ||
+         owningStepIndex == layer.getActiveStepIndex();
 }
 
 bool primitiveFadedForActiveStep(

@@ -1,6 +1,8 @@
 #include "core/ArrangementWorldDataGenerator.h"
 
+#include <algorithm>
 #include <map>
+#include <stdexcept>
 #include <utility>
 
 #include "core/Defines.h"
@@ -103,15 +105,25 @@ PrimitiveContours ConvertPrimitiveToContours(
 }
 
 std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
-    std::vector<Primitive*> const& primitives) {
+    std::vector<Primitive*> const& primitives,
+    std::vector<uint64_t> const& generatedPriorities) {
+  if (!generatedPriorities.empty() &&
+      generatedPriorities.size() != primitives.size()) {
+    throw std::invalid_argument(
+        "generated priority count must match Primitive count");
+  }
+
   std::vector<arr::ArrangementPrimitive> result;
   result.reserve(primitives.size());
-  for (auto primitive : primitives) {
+  for (size_t index = 0; index < primitives.size(); ++index) {
+    auto* primitive = primitives[index];
     auto contours = ConvertPrimitiveToContours(*primitive);
     result.push_back({std::move(contours.contours),
                       primitive->getOperation(),
                       primitive->getFillRule(),
-                      primitive->getPriority(),
+                      generatedPriorities.empty()
+                          ? primitive->getPriority()
+                          : generatedPriorities[index],
                       primitive->getId(),
                       primitive->getProperties(),
                       std::move(contours.edgeOverrides),
@@ -126,12 +138,34 @@ ArrangementWorldDataGenerator::ArrangementWorldDataGenerator()
 
 void ArrangementWorldDataGenerator::generate(
     World const* world, LayerSelection const& selection) {
-  generate(selectAndOrderPrimitives(*world, selection));
+  auto entries = selectAndOrderPrimitiveEntries(*world, selection);
+  std::vector<Primitive*> primitives;
+  std::vector<uint64_t> priorities;
+  primitives.reserve(entries.size());
+  priorities.reserve(entries.size());
+  for (auto const& entry : entries) {
+    primitives.push_back(entry.primitive);
+    priorities.push_back(entry.priority);
+  }
+  generateOrdered(primitives, priorities);
 }
 
 void ArrangementWorldDataGenerator::generate(
     std::vector<Primitive*> const& primitives) {
-  mWorldData = arr::BuildArrangement(SnapshotPrimitives(primitives));
+  auto ordered = primitives;
+  std::stable_sort(
+      ordered.begin(), ordered.end(),
+      [](Primitive const* left, Primitive const* right) {
+        return left->getPriority() < right->getPriority();
+      });
+  mWorldData = arr::BuildArrangement(SnapshotPrimitives(ordered));
+}
+
+void ArrangementWorldDataGenerator::generateOrdered(
+    std::vector<Primitive*> const& primitives,
+    std::vector<uint64_t> const& generatedPriorities) {
+  mWorldData = arr::BuildArrangement(
+      SnapshotPrimitives(primitives, generatedPriorities));
 }
 
 arr::ArrangementResultPtr ArrangementWorldDataGenerator::getWorldData() const {

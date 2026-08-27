@@ -162,7 +162,7 @@ struct ArrangementPrimitive {
   std::vector<Contour> contours;
   Primitive::Operation operation;
   Primitive::FillRule fillRule;
-  uint8_t priority;
+  uint64_t priority;
   uint32_t primitiveIndex;
   PrimitivePropertySet properties{};
   // Per-contour, per-edge wall collision/visibility overrides, parallel to
@@ -212,8 +212,8 @@ struct ArrangementResult {
 using ArrangementResultPtr = std::shared_ptr<ArrangementResult const>;
 using PrimitiveFoldOrder = std::vector<uint32_t>;
 
-// Orders primitive-list indices by ascending priority. stable_sort preserves
-// authored list order for equal priorities, as required by ADR-0001.
+// Orders primitive-list indices by ascending generated priority. stable_sort
+// preserves source order for equal priorities (ADR-0026).
 [[nodiscard]] PrimitiveFoldOrder BuildPrimitiveFoldOrder(
     std::vector<ArrangementPrimitive> const& primitives);
 

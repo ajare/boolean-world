@@ -51,7 +51,7 @@ struct PreviewScenePick {
 //
 // Every rendered surface comes from a polygon of the boolean Arrangement, and
 // a polygon carries exactly one property set: the one contributed by the
-// Primitive that won the fold there (ADR-0001), which is where the floor,
+// Primitive that won the fold there (ADR-0026), which is where the floor,
 // ceiling and wall material ids it draws with come from. So "which Primitive
 // does editing this surface edit" always has one answer, however many
 // Primitives overlap the polygon - the winner, and no other.

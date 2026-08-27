@@ -45,7 +45,7 @@ Primitive::Primitive(Operation operation, FillRule fillType)
 }
 
 Primitive::Primitive(Operation operation, FillRule fillType, vector<ComplexPolygon> const& complexPolygons)
-    : mWorld(nullptr), mFlags(BW_PRIMITIVE_INTERACTS_FLAG), mTime(0.0), mTimeUpdateDistance(numeric_limits<float>::max()), mMetadata(0), mOperation(operation), mFillRule(fillType), mPriority(0), mSize(100.0f, 100.0f), mProperties{}, mFrameNumber(0), mPolygons(complexPolygons) {
+    : mWorld(nullptr), mFlags(BW_PRIMITIVE_INTERACTS_FLAG), mTime(0.0), mTimeUpdateDistance(numeric_limits<float>::max()), mMetadata(0), mOperation(operation), mFillRule(fillType), mPriority(0), mGeneratedPriority(0), mSize(100.0f, 100.0f), mProperties{}, mFrameNumber(0), mPolygons(complexPolygons) {
 }
 
 Primitive::Primitive(Primitive const& other) {
@@ -73,6 +73,7 @@ void Primitive::copyFrom(Primitive const& other) {
   mOperation = other.mOperation;
   mFillRule = other.mFillRule;
   mPriority = other.mPriority;
+  mGeneratedPriority = other.mGeneratedPriority;
   mSize = other.mSize;
   mProperties = other.mProperties;
   mBounds = other.mBounds;
@@ -217,11 +218,16 @@ Primitive::FillRule Primitive::getFillRule() const {
 
 void Primitive::setPriority(uint8_t priority) {
   mPriority = priority;
+  mGeneratedPriority = (mGeneratedPriority & ~uint64_t{0xff}) | priority;
   notifyWorldChanged();
 }
 
 uint8_t Primitive::getPriority() const {
   return mPriority;
+}
+
+uint64_t Primitive::getGeneratedPriority() const {
+  return mGeneratedPriority;
 }
 
 void Primitive::setSize(wp::Vector2 const& size) {

@@ -13,30 +13,30 @@ namespace bw::core {
 using namespace std;
 
 namespace {
-constexpr uint8_t priority256Content = 249;
-constexpr uint8_t priority128Difference = 250;
-constexpr uint8_t priority128Content = 251;
-constexpr uint8_t priority64Difference = 252;
-constexpr uint8_t priority64Content = 253;
-constexpr uint8_t priority32Difference = 254;
-constexpr uint8_t priority32Content = 255;
+constexpr uint8_t phase256Content = 0;
+constexpr uint8_t phase128Difference = 1;
+constexpr uint8_t phase128Content = 2;
+constexpr uint8_t phase64Difference = 3;
+constexpr uint8_t phase64Content = 4;
+constexpr uint8_t phase32Difference = 5;
+constexpr uint8_t phase32Content = 6;
 
-uint8_t differencePriority(PrefabTileSize size) {
+uint8_t differencePhase(PrefabTileSize size) {
   switch (size) {
-    case PrefabTileSize::Size128: return priority128Difference;
-    case PrefabTileSize::Size64: return priority64Difference;
-    case PrefabTileSize::Size32: return priority32Difference;
+    case PrefabTileSize::Size128: return phase128Difference;
+    case PrefabTileSize::Size64: return phase64Difference;
+    case PrefabTileSize::Size32: return phase32Difference;
     case PrefabTileSize::Size256: break;
   }
   throw CoreException("The 256 Prefab grid has no Replace phase");
 }
 
-uint8_t contentPriority(PrefabTileSize size) {
+uint8_t contentPhase(PrefabTileSize size) {
   switch (size) {
-    case PrefabTileSize::Size256: return priority256Content;
-    case PrefabTileSize::Size128: return priority128Content;
-    case PrefabTileSize::Size64: return priority64Content;
-    case PrefabTileSize::Size32: return priority32Content;
+    case PrefabTileSize::Size256: return phase256Content;
+    case PrefabTileSize::Size128: return phase128Content;
+    case PrefabTileSize::Size64: return phase64Content;
+    case PrefabTileSize::Size32: return phase32Content;
   }
   throw CoreException("Unknown Prefab tile size");
 }
@@ -78,11 +78,10 @@ void PrefabField::execute(LayerBuildContext& context) const {
           Primitive::Operation::Difference, Primitive::FillRule::NonZero, 1.0f);
       square->setSize(side, side);
       square->setPosition(tileCentre(tile));
-      square->setPriority(differencePriority(size));
       auto* raw = square.get();
       mHiddenPrimitives.push_back(raw);
       mBuiltPrimitives.push_back(move(square));
-      context.appendPrimitive(raw);
+      context.appendPrimitive(raw, differencePhase(size), 0);
     }
   };
 
@@ -111,7 +110,6 @@ void PrefabField::execute(LayerBuildContext& context) const {
       for (auto const* source : prefab->getPrimitives()) {
         unique_ptr<Primitive> clone(source->rotatedCopy(angle));
         clone->setPosition(clone->getPosition() + tileCentre(tile));
-        clone->setPriority(contentPriority(size));
         instanceClones[source] = clone.get();
         instanceOutput.push_back({source->getPriority(), sequence++, move(clone)});
       }
@@ -131,7 +129,8 @@ void PrefabField::execute(LayerBuildContext& context) const {
     for (auto& clone : clones) {
       auto* raw = clone.primitive.get();
       mBuiltPrimitives.push_back(move(clone.primitive));
-      context.appendPrimitive(raw);
+      context.appendPrimitive(
+          raw, contentPhase(size), clone.sourcePriority);
     }
   };
 

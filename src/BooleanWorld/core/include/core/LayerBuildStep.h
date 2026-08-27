@@ -26,11 +26,13 @@ class BW_API LayerBuildContext {
 private:
   Layer& mLayer;
   LayerBuildStep const* mStep;
+  uint32_t mStepIndex;
   std::vector<Primitive*> const& mBuildPrimitives;
 
   LayerBuildContext(
       Layer& layer,
       LayerBuildStep const* step,
+      uint32_t stepIndex,
       std::vector<Primitive*> const& buildPrimitives);
 
   friend class Layer;
@@ -39,7 +41,12 @@ public:
   [[nodiscard]] std::vector<Primitive*> const& getBuildPrimitives() const;
   [[nodiscard]] Layer& getLayer() const;
 
+  // The default ordering is one phase using the Primitive's authored
+  // priority. Composite steps may provide local phases while retaining that
+  // priority as the ordering within a phase.
   uint32_t appendPrimitive(Primitive* primitive);
+  uint32_t appendPrimitive(
+      Primitive* primitive, uint8_t phase, uint8_t relativePriority);
 };
 
 // One step in a Layer's ordered, serialized recipe for producing its

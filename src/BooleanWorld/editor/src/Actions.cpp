@@ -637,17 +637,8 @@ bool setPrimitiveFollowOrbitAngle(Document* doc, bw::core::Primitive* primitive,
   return true;
 }
 
-bool setPrimitivePriority(Document* doc, bw::core::Primitive* primitive, uint8_t priority) {
-  auto* layer = doc->getWorld()->getActiveLayer();
-  auto const ownerIndex = layer->getOwningStepIndex(primitive);
-  auto const maximum = dynamic_cast<bw::core::DefinePrefabs const*>(
-                           layer->getStep(ownerIndex))
-                           ? BW_PREFAB_SOURCE_PRIORITY_MAX_VALUE
-                           : BW_PRIORITY_MAX_VALUE;
-  if (priority > maximum) {
-    throw bw::core::CoreException(
-        "Ordinary Primitive priority is in the 249-255 PrefabField reservation");
-  }
+bool setPrimitivePriority(
+    Document*, bw::core::Primitive* primitive, uint8_t priority) {
   primitive->setPriority(priority);
   return true;
 }
@@ -759,15 +750,9 @@ bool deleteSubMaterial(
   return true;
 }
 
-bool increasePrimitivePriority(Document* doc, bw::core::Primitive* primitive) {
-  auto* layer = doc->getWorld()->getActiveLayer();
-  auto const ownerIndex = layer->getOwningStepIndex(primitive);
-  auto const maximum = dynamic_cast<bw::core::DefinePrefabs const*>(
-                           layer->getStep(ownerIndex))
-                           ? BW_PREFAB_SOURCE_PRIORITY_MAX_VALUE
-                           : BW_PRIORITY_MAX_VALUE;
+bool increasePrimitivePriority(Document*, bw::core::Primitive* primitive) {
   int priority = (int)primitive->getPriority();
-  int newPriority = min(maximum, priority + 1);
+  int newPriority = min(BW_PRIORITY_MAX_VALUE, priority + 1);
 
   primitive->setPriority((uint8_t)newPriority);
   return true;

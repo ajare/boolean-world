@@ -115,13 +115,13 @@ void prefabIdsNamesAndStepArgumentsBehaveAsAuthoredData() {
           "Prefab name or per-Prefab tile size was not mutable");
 }
 
-void reservedPrioritiesAreRejectedOutsidePrefabDefinitions() {
+void ordinaryAndPrefabSourcePrioritiesUseTheFullRange() {
   bw::core::Layer layer(0, "Base", 256.0f, 16.0f);
   auto* ordinary = makeRectangle(0.0f);
-  ordinary->setPriority(249);
-  requireCoreException(
-      [&] { layer.addPrimitive(ordinary); },
-      "an ordinary Primitive used a reserved PrefabField priority");
+  ordinary->setPriority(255);
+  layer.addPrimitive(ordinary);
+  require(layer.getPrimitive(0)->getPriority() == 255,
+          "an ordinary Primitive could not use the full step-local priority range");
 
   bw::core::Layer prefabLayer(1, "Prefabs", 256.0f, 16.0f);
   auto* definitions = addDefinePrefabs(prefabLayer);
@@ -299,7 +299,7 @@ int main() {
     registryConstructsDefinePrefabsByTypeName();
     squareTilingHasTheCoreRotationAngleTable();
     prefabIdsNamesAndStepArgumentsBehaveAsAuthoredData();
-    reservedPrioritiesAreRejectedOutsidePrefabDefinitions();
+    ordinaryAndPrefabSourcePrioritiesUseTheFullRange();
     selectionControlsOutputCapabilitiesAndLayerStorage();
     laterStepsCannotObserveSelectedPrefabPrimitives();
     layerCopyClonesPrefabsRemapsParentsAndClearsSelection();

@@ -34,14 +34,14 @@ disappears — but it changes the serialised world format for no benefit the
 requirement asks for. Revisit only if authors need primitives on arbitrary
 layer subsets.
 
-Priority ordering for the fold (ADR-0001) runs across the **whole selected
-set**, spanning layers. Layers filter; they do not group or nest.
+This ADR originally made priority ordering span the whole selected set. That
+ordering detail is superseded by ADR-0026: selected Layers now fold in World
+order, while this ADR's per-generation selection model remains.
 
 ## Consequences
 
-- Selecting a different layer set produces a different fold, and because the
-  fold is non-local (ADR-0001) the result differs *globally*, not only where
-  the added or removed primitives sit. This is the intended mechanism for
+- Selecting a different layer set produces a different fold, and the result
+  may differ *globally*, not only where the added or removed primitives sit. This is the intended mechanism for
   changing world state, but it means a layer-set change is a whole-world
   change, and one that cannot be made incremental later without care.
 - The layer set is an input to generation, so it belongs in the generation

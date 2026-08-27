@@ -61,9 +61,9 @@ struct Settings {
   bool renderArrangementVertices{false};
 
   // When false, the world view only renders Primitives from the active
-  // Layer's active LayerBuildStep and earlier ones; later steps' Primitives
-  // are hidden entirely. Either way, non-active-step Primitives among those
-  // shown render faded (see Render.cpp).
+  // Layer's active LayerBuildStep. Primitives from every other step are
+  // hidden entirely. When true, non-active-step Primitives render faded
+  // (see Render.cpp).
   bool showAllStepPrimitives{true};
 
   bool ghostActive{true};

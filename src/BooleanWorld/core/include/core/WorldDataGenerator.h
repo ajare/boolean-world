@@ -22,7 +22,20 @@ class World;
 using PrimitiveFilter =
     std::function<bool(Layer const& layer, Primitive const* primitive)>;
 
-// An empty filter admits every Primitive the selection owns.
+struct OrderedPrimitive {
+  Primitive* primitive;
+  uint64_t priority;
+};
+
+// An empty filter admits every Primitive the selection owns. Layer order and
+// LayerBuildStep order are major; a step's generated phase and authored
+// Primitive priority order only that step's output.
+[[nodiscard]] BW_API std::vector<OrderedPrimitive>
+selectAndOrderPrimitiveEntries(
+    World const& world,
+    LayerSelection const& selection,
+    PrimitiveFilter const& filter = {});
+
 [[nodiscard]] BW_API std::vector<Primitive*> selectAndOrderPrimitives(
     World const& world,
     LayerSelection const& selection,
@@ -30,9 +43,9 @@ using PrimitiveFilter =
 
 class WorldDataGenerator {
 public:
-  struct SortPrimitivesByPriority {
+  struct SortPrimitivesByGeneratedPriority {
     bool operator()(Primitive const* a, Primitive const* b) const {
-      return a->getPriority() < b->getPriority();
+      return a->getGeneratedPriority() < b->getGeneratedPriority();
     }
   };
 

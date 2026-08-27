@@ -10,39 +10,49 @@
 namespace bw::core {
 using namespace std;
 
+vector<OrderedPrimitive> selectAndOrderPrimitiveEntries(
+    World const& world,
+    LayerSelection const& selection,
+    PrimitiveFilter const& filter) {
+  vector<OrderedPrimitive> result;
+  uint64_t layerOrdinal = 0;
+
+  for (auto const* layer : world.getLayers()) {
+    if (!IsLayerSelected(selection, layer->getId())) {
+      ++layerOrdinal;
+      continue;
+    }
+
+    vector<Primitive*> layerPrimitives;
+    for (auto* primitive : layer->getPrimitives()) {
+      if (!filter || filter(*layer, primitive)) {
+        layerPrimitives.push_back(primitive);
+      }
+    }
+    stable_sort(
+        layerPrimitives.begin(), layerPrimitives.end(),
+        WorldDataGenerator::SortPrimitivesByGeneratedPriority());
+
+    auto const layerPriority = layerOrdinal << 56;
+    for (auto* primitive : layerPrimitives) {
+      result.push_back(
+          {primitive, layerPriority | primitive->getGeneratedPriority()});
+    }
+    ++layerOrdinal;
+  }
+  return result;
+}
+
 vector<Primitive*> selectAndOrderPrimitives(
     World const& world,
     LayerSelection const& selection,
     PrimitiveFilter const& filter) {
-  // Layers filter which content enters the fold; they do not group, scope or
-  // nest it (ADR-0009, ADR-0013). Everything the selected Layers own is
-  // gathered first and then priority-ordered as one set, so the fold stays
-  // non-local across Layer boundaries.
+  auto entries = selectAndOrderPrimitiveEntries(world, selection, filter);
   vector<Primitive*> primitives;
-
-  for (auto const* layer : world.getLayers()) {
-    if (!IsLayerSelected(selection, layer->getId())) {
-      continue;
-    }
-
-    auto const& layerPrimitives = layer->getPrimitives();
-
-    if (!filter) {
-      primitives.insert(
-          primitives.end(), layerPrimitives.begin(), layerPrimitives.end());
-      continue;
-    }
-
-    for (auto* primitive : layerPrimitives) {
-      if (filter(*layer, primitive)) {
-        primitives.push_back(primitive);
-      }
-    }
-  }
-
-  stable_sort(
-      primitives.begin(), primitives.end(),
-      WorldDataGenerator::SortPrimitivesByPriority());
+  primitives.reserve(entries.size());
+  transform(
+      entries.begin(), entries.end(), back_inserter(primitives),
+      [](OrderedPrimitive const& entry) { return entry.primitive; });
   return primitives;
 }
 

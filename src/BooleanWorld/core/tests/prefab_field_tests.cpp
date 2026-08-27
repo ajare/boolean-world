@@ -7,6 +7,7 @@
 #include <core/DefinePrefabs.h>
 #include <core/Layer.h>
 #include <core/PrefabField.h>
+#include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
 #include <core/SerializationWorkData.h>
 #include <core/YamlSerializer.h>
@@ -246,7 +247,7 @@ void copyingBoundPrefabFieldUsesCopiedDefinitionsAndPrefabs() {
           "a copied PrefabField depended on destroyed source Prefabs");
 }
 
-void gridsGenerateInReservedGlobalPhases() {
+void gridsGenerateInStepLocalPhases() {
   bw::core::Layer layer(0, "test", 1024.0f, 16.0f);
   auto* definitions = new bw::core::DefinePrefabs;
   layer.addStep(definitions);
@@ -295,10 +296,19 @@ void gridsGenerateInReservedGlobalPhases() {
 
   require(layer.getNumPrimitives() == 7,
           "PrefabField did not emit the expected content and Replace squares");
-  uint8_t const expectedPriorities[]{249, 250, 251, 253, 254, 255, 255};
+  auto const base = uint64_t{2} << 16;
+  uint64_t const expectedPriorities[]{
+      base + 200,
+      base + (uint64_t{1} << 8),
+      base + (uint64_t{2} << 8) + 1,
+      base + (uint64_t{4} << 8) + 1,
+      base + (uint64_t{5} << 8),
+      base + (uint64_t{6} << 8) + 2,
+      base + (uint64_t{6} << 8) + 9};
   for (uint32_t i = 0; i < layer.getNumPrimitives(); ++i) {
-    require(layer.getPrimitive(i)->getPriority() == expectedPriorities[i],
-            "PrefabField output did not use its reserved phase priority");
+    require(
+        layer.getPrimitive(i)->getGeneratedPriority() == expectedPriorities[i],
+        "PrefabField output did not use its step-local phase priority");
   }
   auto* mediumSquare = layer.getPrimitive(1);
   require(mediumSquare->getOperation() == bw::core::Primitive::Operation::Difference &&
@@ -365,6 +375,64 @@ void alignedTilesAndSizeMigrationAreUnambiguous() {
           "migrating a Prefab from 256 did not default to Replace mode");
 }
 
+void orderedPrefabFieldsAndLaterStepsReceiveIncreasingPriorities() {
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* definitions = new bw::core::DefinePrefabs;
+  auto definitionsIndex = layer.addStep(definitions);
+  auto* prefab = definitions->addPrefab("Ordered");
+  definitions->setSelectedPrefab(prefab);
+  layer.setActiveStep(definitionsIndex);
+  auto* source = rectangle(0.0f);
+  source->setPriority(255);
+  layer.addPrimitive(source);
+  definitions->clearSelectedPrefab();
+
+  auto addField = [&] {
+    auto* field = new bw::core::PrefabField;
+    auto index = layer.addStep(field);
+    field->bind(layer, definitions);
+    field->setSelectedPrefab(*definitions, prefab);
+    auto tile = bw::core::Tile{bw::core::PrefabTileSize::Size64, 0, 0};
+    require(field->placeSelected(layer, tile), "ordered field placement failed");
+    require(field->setInstanceMode(layer, tile, bw::core::TileMode::Add),
+            "ordered field could not use Add mode");
+    return index;
+  };
+  auto firstFieldIndex = addField();
+
+  auto* middle = new bw::core::PrimitiveField;
+  auto middleIndex = layer.addStep(middle);
+  layer.setActiveStep(middleIndex);
+  auto* middlePrimitive = rectangle(10.0f);
+  middlePrimitive->setPriority(0);
+  layer.addPrimitive(middlePrimitive);
+
+  auto secondFieldIndex = addField();
+  auto* tail = new bw::core::PrimitiveField;
+  auto tailIndex = layer.addStep(tail);
+  layer.setActiveStep(tailIndex);
+  auto* tailPrimitive = rectangle(20.0f);
+  tailPrimitive->setPriority(0);
+  layer.addPrimitive(tailPrimitive);
+
+  auto findStepPrimitive = [&](uint32_t stepIndex) {
+    for (auto* primitive : layer.getPrimitives()) {
+      if (layer.getOwningStepIndex(primitive) == stepIndex) return primitive;
+    }
+    return static_cast<bw::core::Primitive*>(nullptr);
+  };
+  auto* firstFieldPrimitive = findStepPrimitive(firstFieldIndex);
+  auto* secondFieldPrimitive = findStepPrimitive(secondFieldIndex);
+  require(firstFieldPrimitive && secondFieldPrimitive &&
+              firstFieldPrimitive->getGeneratedPriority() <
+                  middlePrimitive->getGeneratedPriority() &&
+              middlePrimitive->getGeneratedPriority() <
+                  secondFieldPrimitive->getGeneratedPriority() &&
+              secondFieldPrimitive->getGeneratedPriority() <
+                  tailPrimitive->getGeneratedPriority(),
+          "LayerBuildStep order did not dominate step-local Primitive priorities");
+}
+
 void overwriteAndClearUseOneOccupantPerTile() {
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
   auto* definitions = new bw::core::DefinePrefabs;
@@ -399,7 +467,8 @@ int main() {
     referencesAreClonedPositionedAndStayLive();
     reorderingBoundStepsPreservesPrefabFieldReferences();
     copyingBoundPrefabFieldUsesCopiedDefinitionsAndPrefabs();
-    gridsGenerateInReservedGlobalPhases();
+    gridsGenerateInStepLocalPhases();
+    orderedPrefabFieldsAndLaterStepsReceiveIncreasingPriorities();
     alignedTilesAndSizeMigrationAreUnambiguous();
     overwriteAndClearUseOneOccupantPerTile();
     std::cout << "PrefabField placement and live fold tests passed\n";

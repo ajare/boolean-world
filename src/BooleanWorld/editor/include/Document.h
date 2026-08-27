@@ -19,13 +19,12 @@
 
 namespace editor {
 
-// The rule behind Settings::showAllStepPrimitives: with it off, a Primitive
-// produced by a LayerBuildStep after its Layer's active step is not shown at
-// all. A Primitive belonging to no step in this Layer (getOwningStepIndex
-// returns ~0u) is always shown. The ghost is shown whatever the step rule
-// says in Primitive mode, and never in Mesh mode, where it is hidden and
-// inert. DefinePrefabs is the exception to show-all: its Primitives are shown
-// only while that exact step is active, because they have no world-space
+// The rule behind Settings::showAllStepPrimitives: with it off, only
+// Primitives produced by the Layer's active LayerBuildStep are shown. The
+// ghost is shown whatever the step rule says in Primitive mode, and never in
+// Mesh mode, where it is hidden and inert. DefinePrefabs is the exception to
+// show-all: while one of its Prefabs is selected, only that Prefab's
+// Primitives and the ghost are shown, because they have no world-space
 // relationship to neighbouring steps (ADR-0017).
 //
 // The world overlay and Document's selection queries (hover, rubber-band,
@@ -48,7 +47,7 @@ bool primitiveParticipatesInEditorFold(
 
 // Returns the selected Layers' Primitives that participate in the editor
 // fold. The order is the World Layer order followed by each Layer's authored
-// Primitive order, so equal-priority consumers retain ADR-0001's stable order.
+// Primitive order, so equal-priority consumers retain ADR-0026's stable order.
 [[nodiscard]] std::vector<bw::core::Primitive const*> inScopePrimitives(
     bw::core::World const& world,
     bw::core::LayerSelection const& layerSelection,
@@ -56,7 +55,7 @@ bool primitiveParticipatesInEditorFold(
 
 // Resolves the floor beneath point from an in-scope Primitive list. For equal
 // priorities, the later Primitive in the list wins, matching the left-fold's
-// stable priority ordering (ADR-0001).
+// stable step-local priority ordering (ADR-0026).
 [[nodiscard]] std::optional<float> resolveGroundingFloorZ(
     std::vector<bw::core::Primitive const*> const& primitives,
     wp::Vector2 const& point);
@@ -212,8 +211,7 @@ public:
   std::vector<uint32_t> getPrimitiveIndicesInBounds(wp::BoundingBox const& worldBounds, Settings const& settings) const;
 
   // Every Primitive in the current context - the active Layer, filtered to
-  // its active step (and earlier) unless showAllStepPrimitives opts out -
-  // for Select All.
+  // its active step unless showAllStepPrimitives opts out - for Select All.
   std::vector<uint32_t> getSelectablePrimitiveIndices(Settings const& settings) const;
 
   // Mesh-mode eligibility is deliberately stricter than ordinary Primitive

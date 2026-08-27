@@ -230,7 +230,12 @@ public:
   // Called by LayerBuildStep::execute during a rebuild; the Layer does not
   // take ownership. owningStep records the step's capabilities alongside its
   // derived Primitive.
-  uint32_t _appendBuiltPrimitive(Primitive* primitive, LayerBuildStep const* owningStep);
+  uint32_t _appendBuiltPrimitive(
+      Primitive* primitive,
+      LayerBuildStep const* owningStep,
+      uint32_t stepIndex,
+      uint8_t phase,
+      uint8_t relativePriority);
 
   // Adds primitive to this Layer's active step and rebuilds, taking
   // ownership of it. Rejected when that step does not accept new Primitives

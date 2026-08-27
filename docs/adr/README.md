@@ -7,7 +7,7 @@ removed the dependency entirely. Geometry terms are defined in
 
 | # | Decision | Status |
 | --- | --- | --- |
-| [0001](0001-preserve-priority-ordered-fold.md) | Preserve the priority-ordered left-fold exactly | Accepted |
+| [0001](0001-preserve-priority-ordered-fold.md) | Preserve the priority-ordered left-fold exactly | Superseded by ADR-0026 |
 | [0002](0002-single-arrangement-replaces-sequential-booleans.md) | One planar arrangement replaces the sequence of boolean operations | Accepted |
 | [0003](0003-exact-integer-topology.md) | Exact integer topology, fixed-point coordinates, snap-rounding | Accepted |
 | [0004](0004-new-output-contract.md) | New output contract; remove `WorldVertexData` | Accepted |
@@ -27,11 +27,13 @@ removed the dependency entirely. Geometry terms are defined in
 | [0018](0018-a-prefabs-pivot-is-the-origin.md) | A Prefab's pivot is the origin, not its bounds centre | Accepted |
 | [0019](0019-layer-ownership-is-permanent.md) | Layer ownership is permanent — nothing moves between Layers | Accepted |
 | [0020](0020-meshprimitive-stores-an-authoritative-containment-tree.md) | MeshPrimitive stores an authoritative containment tree | Accepted |
-| [0021](0021-prefabfields-own-reserved-global-fold-phases.md) | PrefabFields own reserved global fold phases | Accepted |
+| [0021](0021-prefabfields-own-reserved-global-fold-phases.md) | PrefabFields own reserved global fold phases | Superseded by ADR-0026 |
 | [0022](0022-wall-collision-override-is-a-local-mesh-edge-flag.md) | Wall collision override is a local mesh-edge flag, not an arrangement concept | Accepted |
 | [0023](0023-procmaterial-subclasses-resource-not-materialresource.md) | ProcMaterial subclasses Resource directly, not MaterialResource | Accepted |
 | [0024](0024-editor-accesses-procmaterial-data-directly.md) | The editor reads and writes ProcMaterial data directly, not through ResourceManager | Superseded by ADR-0025 |
 | [0025](0025-editor-3d-preview-uses-real-render-pipeline.md) | The editor's 3D preview renders through the real WorldRenderer3d/mpp::Scene pipeline | Accepted |
+| [0026](0026-layer-and-build-step-order-scope-primitive-priority.md) | Layer and build-step order scope Primitive priority | Accepted |
+| [0027](0027-chips-are-post-fold-detail-geometry.md) | Chips are post-fold detail geometry in a side channel on the world snapshot | Accepted |
 
 ## World geometry rewrite scope
 

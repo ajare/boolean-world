@@ -1,6 +1,6 @@
 # ADR-0001: Preserve the priority-ordered left-fold exactly
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0026
 **Date:** 2026-08-16
 
 ## Context

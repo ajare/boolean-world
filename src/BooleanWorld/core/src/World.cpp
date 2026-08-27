@@ -685,9 +685,16 @@ Primitive* World::createMeshPrimitive(vector<Primitive*> const& fold) const {
   auto selected = fold;
   stable_sort(
       selected.begin(), selected.end(),
-      WorldDataGenerator::SortPrimitivesByPriority());
+      WorldDataGenerator::SortPrimitivesByGeneratedPriority());
+  vector<uint64_t> generatedPriorities;
+  generatedPriorities.reserve(selected.size());
+  transform(
+      selected.begin(), selected.end(), back_inserter(generatedPriorities),
+      [](Primitive const* primitive) {
+        return primitive->getGeneratedPriority();
+      });
   ArrangementWorldDataGenerator generator;
-  generator.generate(selected);
+  generator.generateOrdered(selected, generatedPriorities);
   auto arrangement = generator.getWorldData();
 
   auto boundaryVertices = [&](vector<uint32_t> const& vertexIndices) {
@@ -854,7 +861,7 @@ vector<Primitive*> World::getPrimitivesByPriority() const {
 
   stable_sort(
       sorted.begin(), sorted.end(),
-      WorldDataGenerator::SortPrimitivesByPriority());
+      WorldDataGenerator::SortPrimitivesByGeneratedPriority());
 
   return sorted;
 }
@@ -1053,7 +1060,7 @@ vector<Primitive*> World::sortPrimitiveIndicesByPriority(vector<uint32_t> const&
 
   stable_sort(
       primitives.begin(), primitives.end(),
-      WorldDataGenerator::SortPrimitivesByPriority());
+      WorldDataGenerator::SortPrimitivesByGeneratedPriority());
 
   return primitives;
 }

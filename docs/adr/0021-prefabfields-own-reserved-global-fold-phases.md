@@ -1,6 +1,6 @@
 # ADR-0021: PrefabFields own reserved global fold phases
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0026
 **Date:** 2026-08-23
 **Relates to:** ADR-0001 (preserve the priority-ordered fold exactly), ADR-0017 (prefab Primitives are derived but excluded from the build), ADR-0018 (a Prefab's pivot is the origin)
 

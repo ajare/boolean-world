@@ -33,10 +33,18 @@ void DefaultWorldDataGenerator::generate(
     World const* world,
     bool regetPrimitives) {
   BW_UNUSED(regetPrimitives);
-  auto primitives = selectAndOrderPrimitives(
+  auto entries = selectAndOrderPrimitiveEntries(
       *world, getLayerSelection(), getPrimitiveFilter());
+  std::vector<Primitive*> primitives;
+  std::vector<uint64_t> priorities;
+  primitives.reserve(entries.size());
+  priorities.reserve(entries.size());
+  for (auto const& entry : entries) {
+    primitives.push_back(entry.primitive);
+    priorities.push_back(entry.priority);
+  }
   ArrangementWorldDataGenerator generator;
-  generator.generate(primitives);
+  generator.generateOrdered(primitives, priorities);
   mWorldData = std::make_shared<ArrangementWorldData>(
       generator.getWorldData(),
       world->getExtents(),

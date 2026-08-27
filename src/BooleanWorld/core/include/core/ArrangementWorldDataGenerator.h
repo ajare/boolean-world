@@ -34,7 +34,8 @@ struct PrimitiveContours {
 // Copies every generation input needed by the arrangement so worker execution
 // never has to reach back into live authored primitives.
 [[nodiscard]] BW_API std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
-    std::vector<Primitive*> const& primitives);
+    std::vector<Primitive*> const& primitives,
+    std::vector<uint64_t> const& generatedPriorities = {});
 
 class BW_API ArrangementWorldDataGenerator {
   arr::ArrangementResultPtr mWorldData;
@@ -46,9 +47,15 @@ public:
       World const* world,
       LayerSelection const& selection = SelectLayer(0));
 
-  // Comparison and migration consumers can provide the exact generation-local
-  // primitive ordering used by the legacy generator.
+  // Comparison and migration consumers can provide authored Primitives;
+  // this overload retains their traditional authored-priority ordering.
   void generate(std::vector<Primitive*> const& primitives);
+
+  // Generates an already ordered step-aware list with its effective
+  // generation priorities.
+  void generateOrdered(
+      std::vector<Primitive*> const& primitives,
+      std::vector<uint64_t> const& generatedPriorities);
 
   [[nodiscard]] arr::ArrangementResultPtr getWorldData() const;
 };

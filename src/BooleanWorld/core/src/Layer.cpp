@@ -22,8 +22,12 @@ using namespace std;
 LayerBuildContext::LayerBuildContext(
     Layer& layer,
     LayerBuildStep const* step,
+    uint32_t stepIndex,
     vector<Primitive*> const& buildPrimitives)
-    : mLayer(layer), mStep(step), mBuildPrimitives(buildPrimitives) {
+    : mLayer(layer),
+      mStep(step),
+      mStepIndex(stepIndex),
+      mBuildPrimitives(buildPrimitives) {
 }
 
 vector<Primitive*> const& LayerBuildContext::getBuildPrimitives() const {
@@ -35,7 +39,15 @@ Layer& LayerBuildContext::getLayer() const {
 }
 
 uint32_t LayerBuildContext::appendPrimitive(Primitive* primitive) {
-  return mLayer._appendBuiltPrimitive(primitive, mStep);
+  return appendPrimitive(primitive, 0, primitive->getPriority());
+}
+
+uint32_t LayerBuildContext::appendPrimitive(
+    Primitive* primitive,
+    uint8_t phase,
+    uint8_t relativePriority) {
+  return mLayer._appendBuiltPrimitive(
+      primitive, mStep, mStepIndex, phase, relativePriority);
 }
 
 Layer::Layer()
@@ -547,7 +559,8 @@ void Layer::rebuild() {
   mPrimitives.clear();
   mPrimitiveSteps.clear();
 
-  for (auto const* step : mSteps) {
+  for (uint32_t stepIndex = 0; stepIndex < mSteps.size(); ++stepIndex) {
+    auto const* step = mSteps[stepIndex];
     if (step->isEnabled()) {
       vector<Primitive*> buildPrimitives;
       buildPrimitives.reserve(mPrimitives.size());
@@ -557,7 +570,7 @@ void Layer::rebuild() {
         }
       }
 
-      LayerBuildContext context(*this, step, buildPrimitives);
+      LayerBuildContext context(*this, step, stepIndex, buildPrimitives);
       step->execute(context);
     }
   }
@@ -731,18 +744,20 @@ uint32_t Layer::getOwningStepIndex(Primitive const* primitive) const {
   return step != mSteps.end() ? (uint32_t)distance(mSteps.begin(), step) : ~0u;
 }
 
-uint32_t Layer::_appendBuiltPrimitive(Primitive* primitive, LayerBuildStep const* owningStep) {
+uint32_t Layer::_appendBuiltPrimitive(
+    Primitive* primitive,
+    LayerBuildStep const* owningStep,
+    uint32_t stepIndex,
+    uint8_t phase,
+    uint8_t relativePriority) {
   assert(owningStep && "Layer::_appendBuiltPrimitive requires the producing step");
 
   if (!mPrimitiveLookupGrid) {
     throw CoreException("AccelerationGrid for primitives not created.");
   }
-  if (owningStep->primitivesParticipateInBuild() &&
-      !dynamic_cast<PrefabField const*>(owningStep) &&
-      primitive->getPriority() > BW_PRIORITY_MAX_VALUE) {
-    throw CoreException(
-        "Ordinary Primitive priority is in the 249-255 PrefabField reservation");
-  }
+  primitive->mGeneratedPriority =
+      (static_cast<uint64_t>(stepIndex) << 16) |
+      (static_cast<uint64_t>(phase) << 8) | relativePriority;
 
   auto index = (uint32_t)mPrimitives.size();
 
@@ -795,7 +810,9 @@ uint32_t Layer::addPrimitive(Primitive* primitive) {
   if (isLastEnabledStep(activeStep)) {
     assert(hasContiguousTailOutput(activeStep) &&
            "in-place add requires the active step's output to be a contiguous tail");
-    return _appendBuiltPrimitive(primitive, activeStep);
+    return _appendBuiltPrimitive(
+        primitive, activeStep, mActiveStepIndex, 0,
+        primitive->getPriority());
   }
 
   rebuild();

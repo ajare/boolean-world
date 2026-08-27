@@ -76,8 +76,10 @@ void Triangulator::_triangulate(
         auto curTriangleIndex = it->second;
         auto& triangle = mTriangulation.tris[curTriangleIndex];
 
-        auto curPriority = mwWorld->getPrimitive(triangle.primitiveIndex)->getPriority();
-        auto newPriority = mwWorld->getPrimitive(primitiveIndex)->getPriority();
+        auto curPriority = mwWorld->getPrimitive(
+            triangle.primitiveIndex)->getGeneratedPriority();
+        auto newPriority = mwWorld->getPrimitive(
+            primitiveIndex)->getGeneratedPriority();
 
         if (newPriority > curPriority) {
           triangle.primitiveIndex = primitiveIndex;

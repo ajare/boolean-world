@@ -23,8 +23,7 @@ typedef int64_t frame_number_type;
 #define BW_WORLD_PRIMITIVE_COUNT_MAX ((1 << 14) - 1)
 
 #define BW_PRIORITY_MIN_VALUE 0
-#define BW_PRIORITY_MAX_VALUE 248
-#define BW_PREFAB_SOURCE_PRIORITY_MAX_VALUE 255
+#define BW_PRIORITY_MAX_VALUE 255
 
 #define BW_PRIMITIVE_INTERACTS_FLAG 0x0001                // Does this primitive participate in triangulation?
 #define BW_PRIMITIVE_GHOST_FLAG 0x0002                    // For the editor: indicates this should not be loaded into a game.

@@ -5,11 +5,11 @@ Boolean World Geometry turns authored two-dimensional shapes into the regions an
 ## Language
 
 **Primitive**:
-An authored closed shape that contributes an operation, fill rule, priority, and regional properties to a world. Owned by exactly one Layer.
+An authored closed shape that contributes an operation, fill rule, step-local priority, and regional properties to a world. Owned by exactly one Layer. Its priority orders it among Primitives produced by the same LayerBuildStep; Layer and LayerBuildStep order take precedence.
 _Avoid_: Path primitive, clip shape
 
 **Layer**:
-A named, owned collection of Primitives and WorldTriggerLines within a World. A generation selects a set of Layers to fold together; the World's active Layer is the one currently focused for authoring. Ownership is permanent: neither a Primitive nor a WorldTriggerLine ever moves between Layers.
+A named, owned collection of Primitives and WorldTriggerLines within a World. A generation selects a set of Layers and folds them in World order; the World's active Layer is the one currently focused for authoring. Ownership is permanent: neither a Primitive nor a WorldTriggerLine ever moves between Layers.
 _Avoid_: Layer tag, layer id (as a primitive attribute)
 
 **Contour**:
@@ -49,7 +49,7 @@ The planar subdivision induced by all selected primitive contours. Its faces are
 _Avoid_: Clip result
 
 **LayerBuildStep**:
-One step in a Layer's ordered, serialized recipe for producing its Primitives. Each step's `execute()` reads the Layer as built so far and may only add new Primitives to it; a Layer's Primitives are always derived by re-running its enabled steps in order, never authored or stored independently. A step's type is fixed once created — changing it means deleting the step and adding a new one, never an in-place type change. The first step of a Layer is always a PrimitiveField step and its type cannot be changed (it can only be disabled, never deleted). Deliberately not called "LayerGenerationStep" — "Generation" already names the unrelated boolean-fold pipeline that turns selected Layers' Primitives into world geometry (see `docs/glossary.md`).
+One step in a Layer's ordered, serialized recipe for producing its Primitives. Each step's `execute()` reads the Layer as built so far and may only add new Primitives to it; a Layer's Primitives are always derived by re-running its enabled steps in order, never authored or stored independently. The same recipe order is the major order of the boolean fold, with Primitive priority ordering only the output inside one step. A step's type is fixed once created — changing it means deleting the step and adding a new one, never an in-place type change. The first step of a Layer is always a PrimitiveField step and its type cannot be changed (it can only be disabled, never deleted). Deliberately not called "LayerGenerationStep" — "Generation" already names the unrelated boolean-fold pipeline that turns selected Layers' Primitives into world geometry (see `docs/glossary.md`).
 _Avoid_: LayerGenerationStep, generation step
 
 **PrimitiveField (step)**:
@@ -73,7 +73,7 @@ One cell of one of the infinite, size-specific grids a PrefabField lays out over
 _Avoid_: cell, grid square
 
 **PrefabField (step)**:
-The LayerBuildStep that places Prefab instances across four nested Tile grids, one for each standard Prefab tile size, referencing exactly one DefinePrefabs step on the same Layer for its shared tiling type and available Prefabs. It applies the grids from largest to smallest so smaller-grid Prefab instances overrule larger-grid output. Its seven generated phases use reserved global priorities 249–255: 256 content, then a Difference-square and content phase for each of 128, 64, and 32. Within a content phase, a Prefab's authored Primitive priorities retain their relative order but are replaced by that phase's generated priority. Unlike DefinePrefabs, its Primitives always contribute to the main boolean fold, the same as any ordinary step's. Deleting a DefinePrefabs step or a Prefab that some PrefabField still references is refused, never silently unbound.
+The LayerBuildStep that places Prefab instances across four nested Tile grids, one for each standard Prefab tile size, referencing exactly one DefinePrefabs step on the same Layer for its shared tiling type and available Prefabs. It applies seven phases from largest to smallest — 256 content, then a Difference-square and content phase for each of 128, 64, and 32 — so smaller-grid Prefab instances overrule larger-grid output within that field. Those phases belong only to that PrefabField's place in its Layer recipe: earlier steps feed it and later steps fold after it, allowing multiple ordered PrefabFields. Within a content phase, a Prefab's authored Primitive priorities retain their relative order. Unlike DefinePrefabs, its Primitives always contribute to the main boolean fold, the same as any ordinary step's. Deleting a DefinePrefabs step or a Prefab that some PrefabField still references is refused, never silently unbound.
 _Avoid_: PlacePrefabs (rejected in favour of the PrimitiveField-echoing name)
 
 **Tile mode**:
@@ -115,3 +115,11 @@ _Avoid_: floor pattern (it is not floor-only and not a render option), bump map,
 **Technique schema**:
 The parameter names, count, and min/max/default bounds for one Technique, authored once inside a ProcMaterial resource and shared by every Sub-material that selects that Technique. Bounds a Sub-material's authored values; never itself assigned to a wall, floor, or ceiling.
 _Avoid_: material params, param definition
+
+**Arris**:
+The dihedral edge where an ArrangementWall meets an adjoining floor or ceiling — a wall's top or bottom rim. It joins exactly two polygons, the wall quad and one horizontal face; it is never a vertex, and a point where three or more polygons meet is not an Arris. Convex or concave according to its dihedral angle measured through the solid. Purely implied by the generated geometry: no arrangement vertex, edge, or face records it, and nothing is authored against it. Distinct from both senses of "edge" already in use: an Arrangement's 2D edge between two faces, and a MeshPrimitive Ring's authored edge that carries the wall collision and visibility overrides.
+_Avoid_: edge (ambiguous — taken twice already), corner (implies a vertex joining three or more polygons), seam, rim
+
+**Chip**:
+A tapered chamfer cut into a convex Arris: a wedge of material removed at its deepest in the Arris's centre, tapering to nothing at both ends. Derived after the boolean fold from the Arrangement alone — never authored, and never written to a World file, which holds no record of any Chip. Purely visual: collision, floor height, face containment and surface picking all continue to see the unchipped world. Its depth and along-Arris reach are read from the Sub-material of the wall whose Arris carries it, which also supplies the new facet's own material. Only convex Arrises are eligible — a FloorStep's top or a CeilingStep's bottom — because a concave one would have to carve into solid material rather than remove a wedge from it.
+_Avoid_: crack (a fissure removes no material — a separate, deferred idea, closer to Embossing than to geometry), damage, wear, chamfer (names the shape, not the feature)

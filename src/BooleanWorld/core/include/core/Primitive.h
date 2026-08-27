@@ -62,6 +62,10 @@ private:
 
   uint8_t mPriority;
 
+  // Derived by the owning Layer from LayerBuildStep order. This is never
+  // serialized: mPriority remains the authored, step-local priority.
+  uint64_t mGeneratedPriority;
+
   wp::Vector2 mSize;
 
   PrimitivePropertySet mProperties;
@@ -180,6 +184,8 @@ public:
   void setPriority(uint8_t priority);
 
   uint8_t getPriority() const;
+
+  [[nodiscard]] uint64_t getGeneratedPriority() const;
 
   virtual float getRadius() const = 0;
 
