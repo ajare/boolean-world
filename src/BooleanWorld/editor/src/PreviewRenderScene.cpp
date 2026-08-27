@@ -7,6 +7,7 @@
 #include <mpp/RenderSystem.h>
 #include <mpp/RenderTexture.h>
 
+#include <PlayerTorchShadows.h>
 #include <VideoOptions.h>
 #include <WorldRenderer.h>
 
@@ -53,6 +54,9 @@ mpp::RenderPipelineOptions pipelineOptions() {
 
   options.ambientOcclusion.method = mpp::AmbientOcclusionMethod::Gtao;
   options.ambientOcclusion.gtao.normalSource = mpp::GTAONormalSource::Depth;
+  // This render system is separate from Launcher’s, but its single preview
+  // pipeline joins the same Player Torch domain contract.
+  bw::app::joinPlayerTorchShadowDomain(options);
   return options;
 }
 
@@ -62,12 +66,22 @@ PreviewRenderScene::PreviewRenderScene(
     EditorRenderSystem& renderSystem,
     bw::core::World* world,
     std::size_t width,
-    std::size_t height)
+    std::size_t height,
+    bw::app::HorizontalMaterials horizontalMaterials,
+    bw::app::ShadowOptions shadowOptions)
     : mwRenderSystem(renderSystem.renderSystem()),
+      mShadowOptions(shadowOptions),
       mWidth(width),
       mHeight(height) {
   mScene = mwRenderSystem->createScene("Default");
   mScene->load();
+
+  // A pipeline resolves its domain imports while it is constructed, so seed
+  // the proxy Torch before creating the participating pipeline. render()
+  // replaces this origin with the current camera/proxy position each frame.
+  mwRenderSystem->configureShadowDomain(
+      std::string(bw::app::playerTorchShadowDomain),
+      bw::app::playerTorchMppShadowOptions(mShadowOptions, glm::vec3{}));
 
   mPipeline =
       mwRenderSystem->getOrCreateRenderPipeline(pipelineName, pipelineOptions());
@@ -78,8 +92,7 @@ PreviewRenderScene::PreviewRenderScene(
   // reads the ProcMaterial catalogs EditorRenderSystem loaded.
   mRenderer = std::make_unique<WorldRenderer>(
       renderSystem.resourceManager(), renderSystem.logger(),
-      bw::app::RenderTextureFilter::Linear,
-      bw::app::HorizontalMaterials::TwoDimensional);
+      bw::app::RenderTextureFilter::Linear, horizontalMaterials);
   mRenderer->create(
       mScene, world, mwRenderSystem, renderSystem.renderResourceManager());
 }
@@ -138,6 +151,11 @@ void PreviewRenderScene::updateMaterialDraft(
   definition.emboss = emboss;
   mRenderer->updateSubMaterialDraft(
       subMaterialId, static_cast<int32_t>(materialIndex), definition);
+  // A draft can alter the shader/material used by an opaque caster. The
+  // domain's state key catches rebuilt models, but this direct uniform path
+  // has no new model resource to compare.
+  mwRenderSystem->invalidateShadowDomain(
+      std::string(bw::app::playerTorchShadowDomain));
 }
 
 void PreviewRenderScene::reloadSubMaterialResolver(
@@ -147,6 +165,10 @@ void PreviewRenderScene::reloadSubMaterialResolver(
 
 void PreviewRenderScene::worldGeometryChanged() {
   mRenderer->setWorldChanged();
+  // WorldRenderer rebuilds model resources lazily. Mark the domain as well so
+  // the point-shadow cache cannot reuse a cubemap from the prior snapshot.
+  mwRenderSystem->invalidateShadowDomain(
+      std::string(bw::app::playerTorchShadowDomain));
 }
 
 std::uint32_t PreviewRenderScene::render(
@@ -156,6 +178,13 @@ std::uint32_t PreviewRenderScene::render(
     glm::vec3 const& cameraPosition,
     float frameTime,
     std::vector<PreviewOutline> const& outlines) {
+  // The Player proxy is represented by the preview camera. Keep the Torch at
+  // that eye position, as the game does, and use the shared release defaults
+  // (range, near plane, biases, PCF filtering, and fade semantics).
+  mwRenderSystem->configureShadowDomain(
+      std::string(bw::app::playerTorchShadowDomain),
+      bw::app::playerTorchMppShadowOptions(mShadowOptions, cameraPosition));
+
   // No highlighted triangle or wall: the preview marks the surface under the
   // pointer by outlining it below, not by tinting the material.
   mRenderer->update(

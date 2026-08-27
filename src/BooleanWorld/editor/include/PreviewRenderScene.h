@@ -16,6 +16,7 @@
 #include <mpp/RenderPipeline.h>
 #include <mpp/Scene.h>
 
+#include <VideoOptions.h>
 #include <core/Emboss.h>
 #include <core/World.h>
 #include <core/WorldData.h>
@@ -61,7 +62,10 @@ public:
       EditorRenderSystem& renderSystem,
       bw::core::World* world,
       std::size_t width,
-      std::size_t height);
+      std::size_t height,
+      bw::app::HorizontalMaterials horizontalMaterials =
+          bw::app::HorizontalMaterials::TwoDimensional,
+      bw::app::ShadowOptions shadowOptions = {});
   ~PreviewRenderScene();
 
   PreviewRenderScene(PreviewRenderScene const&) = delete;
@@ -114,6 +118,7 @@ private:
   // pays nothing, and a driver that will not compile the program costs the
   // outline rather than the whole preview.
   std::unique_ptr<PreviewOutlineRenderer> mOutline;
+  bw::app::ShadowOptions mShadowOptions;
   bool mOutlineFailed{};
   std::size_t mWidth{};
   std::size_t mHeight{};
