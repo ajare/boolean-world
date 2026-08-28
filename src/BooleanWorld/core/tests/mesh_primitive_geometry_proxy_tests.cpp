@@ -884,6 +884,108 @@ void normalMapsAreExternalOnlyAndSplitsInheritThem() {
   }
 }
 
+void normalMapStatesSurviveSplitAndProxyRoundTrip() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {{ring(-2, -2, 2, 2), {}}}));
+  auto proxy = primitive->createEditingProxy();
+  std::array values{
+      bw::core::WallNormalMapOverride::unset(),
+      bw::core::WallNormalMapOverride::disabled(),
+      bw::core::WallNormalMapOverride::image("normal/split.png", 6.0f, 0.5f)};
+  for (auto value : values) {
+    auto edge = proxy->getFirstEdgeIndex();
+    require(proxy->setEdgeNormalMapOverride(edge, value),
+            "could not author a normal-map state before splitting");
+    require(proxy->setEdgeCollisionOverride(edge, false) &&
+                proxy->setEdgeVisible(edge, false),
+            "could not establish independent edge overrides before splitting");
+    wp::geometry::SplitEdgeResult split;
+    require(proxy->splitEdge(edge, 0.5f, &split) && split.newEdgeIndices.size() == 2,
+            "an External edge did not split");
+    for (auto splitEdge : split.newEdgeIndices) {
+      require(proxy->getEdgeNormalMapOverride(splitEdge) == value &&
+                  proxy->getEdgeCollisionOverride(splitEdge) == false &&
+                  !proxy->getEdgeVisible(splitEdge),
+              "splitting disturbed a complete wall-edge override state");
+    }
+    proxy->commitTo(*primitive);
+    proxy = primitive->createEditingProxy();
+  }
+}
+
+void normalMapMergeRefusesDifferentValuesAndPreservesEqualValues() {
+  auto makeProxy = [] {
+    ClosedPolygon pentagon{{{-2, 0}}, {{-1, -2}}, {{1, -2}}, {{2, 0}}, {{0, 2}}};
+    auto primitive = std::unique_ptr<MeshPrimitive>(
+        MeshPrimitive::fromTree(Primitive::Operation::Union, {{pentagon, {}}}));
+    auto proxy = primitive->createEditingProxy();
+    return std::pair{std::move(primitive), std::move(proxy)};
+  };
+  auto image = bw::core::WallNormalMapOverride::image("normal/merge.png", 4.0f, 1.0f);
+
+  {
+    auto [primitive, proxy] = makeProxy();
+    auto ordered = proxy->getPolygon(proxy->getFirstPolygonIndex()).getOrderedVertexIndices();
+    auto incoming = proxy->getMesh().getEdgeIndexByVertices(ordered[0], ordered[1]);
+    auto outgoing = proxy->getMesh().getEdgeIndexByVertices(ordered[1], ordered[2]);
+    require(incoming >= 0 && outgoing >= 0 &&
+                proxy->setEdgeNormalMapOverride(static_cast<uint32_t>(incoming), image) &&
+                proxy->setEdgeNormalMapOverride(static_cast<uint32_t>(outgoing), image),
+            "could not author equal normal-map values before merging");
+    auto firstPosition = proxy->getVertex(ordered[0]).getPosition();
+    auto secondPosition = proxy->getVertex(ordered[2]).getPosition();
+    require(proxy->removeVertex(ordered[1]),
+            "equal normal-map values should permit an edge merge");
+    auto merged = proxy->getMesh().getEdgeIndexByVertices(
+        findVertexNear(proxy->getMesh(), firstPosition),
+        findVertexNear(proxy->getMesh(), secondPosition));
+    require(merged >= 0 &&
+                proxy->getEdgeNormalMapOverride(static_cast<uint32_t>(merged)) == image,
+            "an equal normal-map merge did not preserve its value");
+  }
+  {
+    auto [primitive, proxy] = makeProxy();
+    auto ordered = proxy->getPolygon(proxy->getFirstPolygonIndex()).getOrderedVertexIndices();
+    auto incoming = proxy->getMesh().getEdgeIndexByVertices(ordered[0], ordered[1]);
+    auto outgoing = proxy->getMesh().getEdgeIndexByVertices(ordered[1], ordered[2]);
+    auto before = proxy->getPolygon(proxy->getFirstPolygonIndex()).getOrderedVertexIndices();
+    require(incoming >= 0 && outgoing >= 0 &&
+                proxy->setEdgeNormalMapOverride(static_cast<uint32_t>(incoming), image) &&
+                proxy->setEdgeNormalMapOverride(
+                    static_cast<uint32_t>(outgoing),
+                    bw::core::WallNormalMapOverride::disabled()),
+            "could not author conflicting normal-map values before merging");
+    require(!proxy->removeVertex(ordered[1]),
+            "a merge with conflicting normal-map values was not refused");
+    require(proxy->getPolygon(proxy->getFirstPolygonIndex()).getOrderedVertexIndices() == before &&
+                proxy->getEdgeNormalMapOverride(static_cast<uint32_t>(incoming)) == image &&
+                proxy->getEdgeNormalMapOverride(static_cast<uint32_t>(outgoing)) ==
+                    bw::core::WallNormalMapOverride::disabled(),
+            "a refused normal-map merge changed geometry or authored values");
+  }
+}
+
+void windingNormalizationKeepsNormalMapsOnTheirGeometricEdges() {
+  auto image = bw::core::WallNormalMapOverride::image("normal/winding.png", 2.0f, 0.75f);
+  ClosedPolygon clockwise{{{-2, -2}}, {{-2, 2}}, {{2, 2}}, {{2, -2}}};
+  clockwise[0].edgeNormalMap = image;  // geometric segment (-2,-2) to (-2,2)
+  clockwise[1].edgeNormalMap = bw::core::WallNormalMapOverride::disabled();
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {{clockwise, {}}}));
+  auto proxy = primitive->createEditingProxy();
+  auto const& normalized = primitive->getShells()[0].ring;
+  require(normalized[2].edgeNormalMap == image,
+          "winding normalization moved a normal map off its geometric edge");
+  size_t mappedEdges = 0;
+  for (auto edge = proxy->getFirstEdgeIndex();
+       !proxy->edgeIndexIterationFinished(edge);
+       edge = proxy->getNextEdgeIndex(edge)) {
+    mappedEdges += proxy->getEdgeNormalMapOverride(edge) == image;
+  }
+  require(mappedEdges == 1,
+          "the normalized geometric edge did not reach the editing proxy");
+}
+
 void splitEdgeInheritsVisibleForBothHalves() {
   for (bool sourceValue : {true, false}) {
     auto primitive = std::unique_ptr<MeshPrimitive>(
@@ -1052,6 +1154,9 @@ int main() {
     removeVertexMergeKeepsThePredecessorEdgesValue();
     externalEdgesDefaultVisibleAndInternalEdgesCannotBeSet();
     normalMapsAreExternalOnlyAndSplitsInheritThem();
+    normalMapStatesSurviveSplitAndProxyRoundTrip();
+    normalMapMergeRefusesDifferentValuesAndPreservesEqualValues();
+    windingNormalizationKeepsNormalMapsOnTheirGeometricEdges();
     splitEdgeInheritsVisibleForBothHalves();
     removeVertexMergeKeepsThePredecessorEdgesVisibleValue();
     collidesAndVisibleAreIndependentPerEdge();

@@ -160,7 +160,17 @@ void validateRing(ClosedPolygon& ring, size_t& ringCount, size_t& vertexCount) {
     throw CoreException("A MeshPrimitive Ring must have non-zero area.");
   }
   if (area < 0.0) {
+    // Vertex metadata belongs to its outgoing geometric edge. Reversing a
+    // Ring reverses every outgoing direction, so each new outgoing edge is
+    // the old incoming edge at that vertex. Preserve the metadata on that
+    // same segment rather than merely reversing it with its endpoint.
+    auto original = ring;
     reverse(ring.begin(), ring.end());
+    for (size_t i = 0; i < ring.size(); ++i) {
+      auto source = (ring.size() + ring.size() - 2 - i) % ring.size();
+      ring[i].edgeFlags = original[source].edgeFlags;
+      ring[i].edgeNormalMap = original[source].edgeNormalMap;
+    }
   }
 }
 
@@ -945,8 +955,9 @@ bool MeshPrimitiveEditingProxy::sliceFilledRing(
         auto edgeIndex =
             mImpl->mesh.getEdgeIndexByVertices(ordered[index], ordered[next]);
         if (edgeIndex >= 0) {
-          vertex.edgeFlags =
-              mImpl->rawEdgeFlags(static_cast<uint32_t>(edgeIndex));
+          auto index = static_cast<uint32_t>(edgeIndex);
+          vertex.edgeFlags = mImpl->rawEdgeFlags(index);
+          vertex.edgeNormalMap = mImpl->edgeNormalMap(index);
         }
       }
       ring.push_back(vertex);
@@ -1019,6 +1030,31 @@ bool MeshPrimitiveEditingProxy::mutateRings(
 
 bool MeshPrimitiveEditingProxy::removeVertex(uint32_t vertexIndex) {
   auto const position = mImpl->mesh.getVertex(vertexIndex).getPosition();
+
+  // Removing a vertex coalesces its incoming and outgoing edges. Unlike the
+  // older boolean edge flags, Image normal-map values are not safely
+  // lossy-mergeable: accepting two distinct values would silently choose one
+  // wall surface. Refuse the whole candidate before touching any welded Ring.
+  for (auto polygon = mImpl->mesh.getFirstPolygonIndex();
+       !mImpl->mesh.polygonIndexIterationFinished(polygon);
+       polygon = mImpl->mesh.getNextPolygonIndex(polygon)) {
+    auto ordered = mImpl->mesh.getPolygon(polygon).getOrderedVertexIndices();
+    auto found = find_if(ordered.begin(), ordered.end(), [&](uint32_t index) {
+      return mImpl->mesh.getVertex(index).getPosition() == position;
+    });
+    if (found == ordered.end()) continue;
+    auto offset = static_cast<size_t>(found - ordered.begin());
+    auto previous = ordered[(offset + ordered.size() - 1) % ordered.size()];
+    auto next = ordered[(offset + 1) % ordered.size()];
+    auto incoming = mImpl->mesh.getEdgeIndexByVertices(previous, *found);
+    auto outgoing = mImpl->mesh.getEdgeIndexByVertices(*found, next);
+    if (incoming >= 0 && outgoing >= 0 &&
+        mImpl->edgeNormalMap(static_cast<uint32_t>(incoming)) !=
+            mImpl->edgeNormalMap(static_cast<uint32_t>(outgoing))) {
+      return false;
+    }
+  }
+
   return mutateRings([&](ClosedPolygon& ring) {
     auto oldSize = ring.size();
     erase_if(ring, [&](Vertex const& vertex) { return vertex.p == position; });
