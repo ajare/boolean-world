@@ -30,6 +30,22 @@ bw_output_dirs(BooleanWorldRender)
 set_target_properties(BooleanWorldRender PROPERTIES FOLDER BooleanWorld)
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_wall_normal_map_render_data_tests
+        tests/wall_normal_map_render_data_tests.cpp)
+    target_link_libraries(boolean_world_wall_normal_map_render_data_tests PRIVATE
+        BooleanWorldRender)
+    target_compile_definitions(boolean_world_wall_normal_map_render_data_tests PRIVATE
+        BW_WORLD_PBR_SHADER="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/shaders/world_pbr.frag")
+    target_compile_features(boolean_world_wall_normal_map_render_data_tests PRIVATE cxx_std_23)
+    target_compile_options(boolean_world_wall_normal_map_render_data_tests PRIVATE /W4)
+    bw_target_defaults(boolean_world_wall_normal_map_render_data_tests)
+    bw_output_dirs(boolean_world_wall_normal_map_render_data_tests)
+    bw_deploy_runtime_dlls(boolean_world_wall_normal_map_render_data_tests)
+    add_test(NAME boolean_world_wall_normal_map_render_data
+             COMMAND boolean_world_wall_normal_map_render_data_tests)
+    set_target_properties(boolean_world_wall_normal_map_render_data_tests PROPERTIES
+        FOLDER BooleanWorld)
+
     # Requires a real OpenGL driver, so this is intentionally a manual smoke
     # test rather than a CTest entry.
     add_executable(boolean_world_normal_map_resource_set_smoke

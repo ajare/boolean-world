@@ -8,6 +8,7 @@
 
 #include "Platform.h"
 #include "core/Defines.h"
+#include "core/WallNormalMapOverride.h"
 
 namespace bw {
 namespace core {
@@ -19,6 +20,7 @@ struct Vertex {
   // "outgoing edge"). See the BW_MESH_EDGE_* flags in Defines.h. All bits
   // clear means collision is not overridden and the wall is visible.
   uint32_t edgeFlags{0};
+  WallNormalMapOverride edgeNormalMap{};
 
   Vertex() = default;
   Vertex(wp::Vector2 const& position)

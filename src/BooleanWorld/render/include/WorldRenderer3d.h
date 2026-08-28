@@ -69,6 +69,9 @@ public:
       uint64_t bakedMaterialHash, bool floor, int32_t materialIndex,
       bw::core::MaterialDefinitionData const& definition);
 
+  void setWallRenderSurfaces(
+      std::vector<WallRenderSurface> wallRenderSurfaces);
+
   void create(std::shared_ptr<WorldTriangle3dDataProvider> dataProvider, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr);
 
   void addToScene(mpp::ScenePtr scene, bw::core::World const* world);

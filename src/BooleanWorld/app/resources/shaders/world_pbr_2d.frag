@@ -26,6 +26,8 @@
 @@Uniform(float EMBOSS_RUNNING_BOND_WIDTH);
 @@Uniform(float EMBOSS_RUNNING_BOND_OFFSET);
 @@Uniform(float EMBOSS_VORONOI_ROUNDING);
+@@Uniform(int WALL_NORMAL_MAP_ENABLED);
+@@Uniform(float WALL_NORMAL_MAP_STRENGTH);
 ## Texture
 @@Texture(sampler2D TEX1);
 ##

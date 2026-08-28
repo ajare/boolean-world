@@ -195,14 +195,10 @@ bw::core::Primitive* createEditorGhost() {
 
   {
     auto mutation = ghost->mutate();
-    mutation.animation(bw::core::VertexTransformer::Key::Scale).setPoints(
-        {{0.0f, 1.0f}, {1.0f, 1.0f}});
-    mutation.animation(bw::core::VertexTransformer::Key::Angle).setPoints(
-        {{0.0f, 0.0f}, {1.0f, 0.0f}});
-    mutation.animation(bw::core::VertexTransformer::Key::OrbitAngle).setPoints(
-        {{0.0f, 0.0f}, {1.0f, 0.0f}});
-    mutation.animation(bw::core::VertexTransformer::Key::OrbitDistance).setPoints(
-        {{0.0f, 0.0f}, {1.0f, 0.0f}});
+    mutation.animation(bw::core::VertexTransformer::Key::Scale).setPoints({{0.0f, 1.0f}, {1.0f, 1.0f}});
+    mutation.animation(bw::core::VertexTransformer::Key::Angle).setPoints({{0.0f, 0.0f}, {1.0f, 0.0f}});
+    mutation.animation(bw::core::VertexTransformer::Key::OrbitAngle).setPoints({{0.0f, 0.0f}, {1.0f, 0.0f}});
+    mutation.animation(bw::core::VertexTransformer::Key::OrbitDistance).setPoints({{0.0f, 0.0f}, {1.0f, 0.0f}});
   }
 
   return ghost;
@@ -623,6 +619,28 @@ bool Document::setActiveMeshEdgeVisible(uint32_t edgeIndex, bool visible) {
     return false;
   }
   if (!mActiveMesh->setEdgeVisible(edgeIndex, visible)) {
+    return false;
+  }
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
+  return true;
+}
+
+bw::core::WallNormalMapOverride
+Document::getActiveMeshEdgeNormalMapOverride(uint32_t edgeIndex) const {
+  return mActiveMesh
+             ? mActiveMesh->getEdgeNormalMapOverride(edgeIndex)
+             : bw::core::WallNormalMapOverride::unset();
+}
+
+bool Document::isActiveMeshEdgeNormalMapEditable(uint32_t edgeIndex) const {
+  return mActiveMesh && mActiveMesh->isEdgeNormalMapEditable(edgeIndex);
+}
+
+bool Document::setActiveMeshEdgeNormalMapOverride(
+    uint32_t edgeIndex,
+    bw::core::WallNormalMapOverride const& overrideValue) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u ||
+      !mActiveMesh->setEdgeNormalMapOverride(edgeIndex, overrideValue)) {
     return false;
   }
   commitMeshPolygons(mActiveMeshPrimitiveIndex);

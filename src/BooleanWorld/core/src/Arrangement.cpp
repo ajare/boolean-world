@@ -95,6 +95,7 @@ struct Segment {
   uint32_t primitiveIndex;
   std::optional<bool> collidesOverride;
   std::optional<bool> visibleOverride;
+  std::optional<WallNormalMapOverride> normalMapOverride;
 };
 
 struct RationalPoint {
@@ -210,7 +211,11 @@ vector<Segment> ExtractSegments(vector<ContourInput> const& contours) {
             i < input.edgeOverrides.size() ? input.edgeOverrides[i] : std::nullopt;
         std::optional<bool> visibleOverride =
             i < input.edgeVisibleOverrides.size() ? input.edgeVisibleOverrides[i] : std::nullopt;
-        result.push_back({{a, b}, input.primitiveIndex, collidesOverride, visibleOverride});
+        std::optional<WallNormalMapOverride> normalMapOverride =
+            i < input.edgeNormalMapOverrides.size()
+                ? input.edgeNormalMapOverrides[i]
+                : std::nullopt;
+        result.push_back({{a, b}, input.primitiveIndex, collidesOverride, visibleOverride, normalMapOverride});
       }
     }
   }
@@ -795,11 +800,16 @@ PSLG BuildPSLG(
           // "doesn't collide" dominates "collides" independent of source
           // Primitive or contribution order.
           edge.collidesOverride = edge.collidesOverride.has_value()
-              ? *edge.collidesOverride && *segments[i].collidesOverride
-              : segments[i].collidesOverride;
+                                      ? *edge.collidesOverride && *segments[i].collidesOverride
+                                      : segments[i].collidesOverride;
         }
         if (segments[i].visibleOverride.has_value() && !edge.visibleOverride.has_value()) {
           edge.visibleOverride = segments[i].visibleOverride;
+        }
+        // Inputs are in fold order; every explicit later contributor has
+        // higher precedence. Unset never enters the optional at all.
+        if (segments[i].normalMapOverride.has_value()) {
+          edge.normalMapOverride = segments[i].normalMapOverride;
         }
       }
     }
@@ -974,8 +984,7 @@ ArrangementResultPtr BuildArrangement(
   auto foldOrder = BuildPrimitiveFoldOrder(primitives);
 
   vector<ContourInput> contours;
-  for (uint32_t primitiveIndex = 0;
-       primitiveIndex < uint32_t(primitives.size()); ++primitiveIndex) {
+  for (auto primitiveIndex : foldOrder) {
     auto const& primitive = primitives[primitiveIndex];
     for (size_t contourIndex = 0; contourIndex < primitive.contours.size(); ++contourIndex) {
       std::vector<std::optional<bool>> edgeOverrides;
@@ -986,9 +995,15 @@ ArrangementResultPtr BuildArrangement(
       if (contourIndex < primitive.contourEdgeVisibleOverrides.size()) {
         edgeVisibleOverrides = primitive.contourEdgeVisibleOverrides[contourIndex];
       }
+      std::vector<std::optional<WallNormalMapOverride>> edgeNormalMapOverrides;
+      if (contourIndex < primitive.contourEdgeNormalMapOverrides.size()) {
+        edgeNormalMapOverrides =
+            primitive.contourEdgeNormalMapOverrides[contourIndex];
+      }
       contours.push_back(
           {primitive.contours[contourIndex], primitiveIndex,
-           std::move(edgeOverrides), std::move(edgeVisibleOverrides)});
+           std::move(edgeOverrides), std::move(edgeVisibleOverrides),
+           std::move(edgeNormalMapOverrides)});
     }
   }
 
@@ -1236,7 +1251,8 @@ ArrangementResultPtr BuildArrangement(
                              {edge.fi[0] < 0 ? 0u : uint32_t(edge.fi[0] + 1),
                               edge.fi[1] < 0 ? 0u : uint32_t(edge.fi[1] + 1)},
                              edge.collidesOverride,
-                             edge.visibleOverride});
+                             edge.visibleOverride,
+                             edge.normalMapOverride});
   }
 
   if (stats != nullptr) {
@@ -1360,7 +1376,8 @@ vector<ArrangementWall> BuildArrangementWalls(
            paletteIndex,
            ArrangementWallKind::Border,
            properties.ceilingZ - properties.floorZ,
-           edge.visibleOverride.value_or(true)});
+           edge.visibleOverride.value_or(true),
+           edge.normalMapOverride.value_or(WallNormalMapOverride::unset())});
       continue;
     }
     if (!face0.solid) {

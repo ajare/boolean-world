@@ -3908,6 +3908,15 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
   }
 
   auto const& selectedEdges = doc->getSelectedMeshEdgeIndices();
+  if (settings.meshSubMode != Settings::MeshSubMode::Edge) {
+    ImGui::TextDisabled("Wall normal map: unavailable in this Mesh sub-mode.");
+  } else if (selectedEdges.empty()) {
+    ImGui::TextDisabled("Wall normal map: select exactly one External edge.");
+  } else if (selectedEdges.size() != 1) {
+    ImGui::TextDisabled("Wall normal map: multiple edges are selected; select exactly one External edge.");
+  } else if (!doc->isActiveMeshEdgeNormalMapEditable(*selectedEdges.begin())) {
+    ImGui::TextDisabled("Wall normal map: the selected edge is Internal; only External edges are editable.");
+  }
   if (selectedEdges.size() == 1) {
     auto edgeIndex = *selectedEdges.begin();
     auto indices = set<uint32_t>{edgeIndex};
@@ -3916,14 +3925,14 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
       auto collisionOverride =
           doc->getActiveMeshEdgeCollisionOverride(edgeIndex);
       int collisionOption = !collisionOverride.has_value()
-          ? 0
-          : (*collisionOverride ? 1 : 2);
+                                ? 0
+                                : (*collisionOverride ? 1 : 2);
       if (ImGui::Combo(
               "Collision##SelectedMeshEdge", &collisionOption,
               "Not set\0Collides\0Doesn't collide\0")) {
         optional<bool> value = collisionOption == 0
-            ? nullopt
-            : optional<bool>{collisionOption == 1};
+                                   ? nullopt
+                                   : optional<bool>{collisionOption == 1};
         transactUndoableAction(
             doc, "Set Mesh Edge Collision Override",
             bind(setMeshEdgeCollisionOverride, placeholders::_1,
@@ -3938,6 +3947,62 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
             bind(setMeshEdgeVisible, placeholders::_1, edgeIndex, visible));
       }
     }
+
+    static uint32_t normalMapDraftEdge = ~0u;
+    static int normalMapState = 0;
+    static char normalMapPath[512]{};
+    static float normalMapUnitsPerRepeat = 32.0f;
+    static float normalMapStrength = 1.0f;
+    static string normalMapError;
+    if (normalMapDraftEdge != edgeIndex) {
+      normalMapDraftEdge = edgeIndex;
+      normalMapError.clear();
+      auto value = doc->getActiveMeshEdgeNormalMapOverride(edgeIndex);
+      normalMapState = static_cast<int>(value.state());
+      normalMapPath[0] = '\0';
+      if (auto image = value.imageData()) {
+        strncpy_s(normalMapPath, image->resourcePath.c_str(), _TRUNCATE);
+        normalMapUnitsPerRepeat = image->unitsPerRepeat;
+        normalMapStrength = image->strength;
+      }
+    }
+    auto normalMapEditable =
+        settings.meshSubMode == Settings::MeshSubMode::Edge &&
+        doc->isActiveMeshEdgeNormalMapEditable(edgeIndex);
+    ImGui::BeginDisabled(!normalMapEditable);
+    ImGui::Combo("Normal map##SelectedMeshEdge", &normalMapState,
+                 "Not set\0Disabled\0Image\0");
+    if (normalMapState == static_cast<int>(
+                              bw::core::WallNormalMapOverride::State::Image)) {
+      ImGui::InputText("Resource path##WallNormalMap", normalMapPath,
+                       sizeof(normalMapPath));
+      ImGui::InputFloat("Units per repeat##WallNormalMap",
+                        &normalMapUnitsPerRepeat);
+      ImGui::InputFloat("Strength##WallNormalMap", &normalMapStrength);
+    }
+    if (ImGui::Button("Apply wall normal map##SelectedMeshEdge")) {
+      try {
+        auto value = normalMapState == 0
+                         ? bw::core::WallNormalMapOverride::unset()
+                     : normalMapState == 1
+                         ? bw::core::WallNormalMapOverride::disabled()
+                         : bw::core::WallNormalMapOverride::image(
+                               normalMapPath, normalMapUnitsPerRepeat,
+                               normalMapStrength);
+        transactUndoableAction(
+            doc, "Set Mesh Edge Wall Normal Map",
+            bind(setMeshEdgeNormalMapOverride, placeholders::_1, edgeIndex,
+                 value));
+        normalMapError.clear();
+      } catch (exception const& error) {
+        normalMapError = error.what();
+      }
+    }
+    ImGui::EndDisabled();
+    if (!normalMapError.empty()) {
+      ImGui::TextWrapped("%s", normalMapError.c_str());
+    }
+
     if (ImGui::Button("Split##SelectedMeshEdge")) {
       transactUndoableAction(
           doc, "Split Mesh Edge",

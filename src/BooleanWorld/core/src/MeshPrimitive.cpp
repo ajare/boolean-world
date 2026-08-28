@@ -376,6 +376,7 @@ struct MeshPrimitiveEditingProxy::Impl {
   // edgeFlags. Entries for edges that no longer exist are simply stale and
   // are never queried again.
   unordered_map<uint32_t, uint32_t> edgeFlags;
+  unordered_map<uint32_t, WallNormalMapOverride> edgeNormalMaps;
 
   uint32_t rawEdgeFlags(uint32_t edgeIndex) const {
     auto found = edgeFlags.find(edgeIndex);
@@ -397,6 +398,13 @@ struct MeshPrimitiveEditingProxy::Impl {
   bool effectiveEdgeVisible(uint32_t edgeIndex) const {
     if (!isEdgeExternal(edgeIndex)) return false;
     return (rawEdgeFlags(edgeIndex) & BW_MESH_EDGE_INVISIBLE_FLAG) == 0;
+  }
+
+  WallNormalMapOverride edgeNormalMap(uint32_t edgeIndex) const {
+    if (!isEdgeExternal(edgeIndex)) return WallNormalMapOverride::unset();
+    auto found = edgeNormalMaps.find(edgeIndex);
+    return found == edgeNormalMaps.end() ? WallNormalMapOverride::unset()
+                                         : found->second;
   }
 
   struct ExactPointLess {
@@ -434,6 +442,7 @@ struct MeshPrimitiveEditingProxy::Impl {
           // ring[i]'s outgoing edge is (first, second): the edge to the
           // next vertex in this Ring. Copy its stored flags in.
           target.edgeFlags[found->second] = ring[i].edgeFlags;
+          target.edgeNormalMaps[found->second] = ring[i].edgeNormalMap;
         }
         edgeData.insert(edgeData.end(), {first, second, found->second});
       }
@@ -460,6 +469,7 @@ struct MeshPrimitiveEditingProxy::Impl {
     mesh.clear();
     shells.clear();
     edgeFlags.clear();
+    edgeNormalMaps.clear();
     Builder builder{*this};
     for (auto const& shell : worldTree) shells.push_back(builder.addFilled(shell));
   }
@@ -485,7 +495,12 @@ struct MeshPrimitiveEditingProxy::Impl {
       auto next = (i + 1) % ordered.size();
       auto edgeIndex = source.getEdgeIndexByVertices(ordered[i], ordered[next]);
       if (edgeIndex >= 0) {
-        result[i].edgeFlags = rawEdgeFlags(static_cast<uint32_t>(edgeIndex));
+        auto index = static_cast<uint32_t>(edgeIndex);
+        result[i].edgeFlags = rawEdgeFlags(index);
+        auto normalMap = edgeNormalMaps.find(index);
+        if (normalMap != edgeNormalMaps.end()) {
+          result[i].edgeNormalMap = normalMap->second;
+        }
       }
     }
     return result;
@@ -740,6 +755,7 @@ bool MeshPrimitiveEditingProxy::splitEdge(
     uint32_t edgeIndex, float t,
     wp::geometry::SplitEdgeResult* result) {
   auto originalFlags = mImpl->rawEdgeFlags(edgeIndex);
+  auto originalNormalMap = mImpl->edgeNormalMap(edgeIndex);
   wp::geometry::SplitEdgeResult localResult;
   auto* target = result ? result : &localResult;
   wp::geometry::MeshOperations::splitEdge(&mImpl->mesh, edgeIndex, t, target);
@@ -750,6 +766,8 @@ bool MeshPrimitiveEditingProxy::splitEdge(
   if (target->newEdgeIndices.size() == 2) {
     mImpl->edgeFlags[target->newEdgeIndices[0]] = originalFlags;
     mImpl->edgeFlags[target->newEdgeIndices[1]] = originalFlags;
+    mImpl->edgeNormalMaps[target->newEdgeIndices[0]] = originalNormalMap;
+    mImpl->edgeNormalMaps[target->newEdgeIndices[1]] = originalNormalMap;
   }
   return !target->newEdgeIndices.empty();
 }
@@ -804,6 +822,23 @@ bool MeshPrimitiveEditingProxy::setEdgeVisible(uint32_t edgeIndex, bool visible)
     flags |= BW_MESH_EDGE_INVISIBLE_FLAG;
   }
   mImpl->edgeFlags[edgeIndex] = flags;
+  return true;
+}
+
+WallNormalMapOverride MeshPrimitiveEditingProxy::getEdgeNormalMapOverride(
+    uint32_t edgeIndex) const {
+  return mImpl->edgeNormalMap(edgeIndex);
+}
+
+bool MeshPrimitiveEditingProxy::isEdgeNormalMapEditable(
+    uint32_t edgeIndex) const {
+  return mImpl->isEdgeExternal(edgeIndex);
+}
+
+bool MeshPrimitiveEditingProxy::setEdgeNormalMapOverride(
+    uint32_t edgeIndex, WallNormalMapOverride const& overrideValue) {
+  if (!isEdgeNormalMapEditable(edgeIndex)) return false;
+  mImpl->edgeNormalMaps[edgeIndex] = overrideValue;
   return true;
 }
 
@@ -1344,6 +1379,13 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
       serializer->beginMap("vertex");
       serializer->writeVector2("p", vertex.p);
       serializer->writeUint32("flags", vertex.edgeFlags);
+      serializer->writeUint8(
+          "normalMapState", static_cast<uint8_t>(vertex.edgeNormalMap.state()));
+      if (auto image = vertex.edgeNormalMap.imageData()) {
+        serializer->writeString("normalMapPath", image->resourcePath);
+        serializer->writeFloat("normalMapUnitsPerRepeat", image->unitsPerRepeat);
+        serializer->writeFloat("normalMapStrength", image->strength);
+      }
       serializer->endMap();
     }
     serializer->endArray();
@@ -1361,7 +1403,7 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
 
   serializer->beginMap("meshPrimitive");
   serializer->writeUint32("treeFormat", TreeFormatMagic);
-  serializer->writeUint32("collisionOverrideFormat", 1);
+  serializer->writeUint32("edgeOverrideFormat", 2);
   serializer->beginArray("shells");
   vector<Event> events;
   for (auto shell = mShells.rbegin(); shell != mShells.rend(); ++shell) {
@@ -1434,10 +1476,17 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
       throw CoreException(
           "Legacy or unsupported MeshPrimitive input has no recognized containment tree.");
     }
-    auto collisionOverrideFormat =
-        serializer->readUint32("collisionOverrideFormat", true, 0);
-    if (collisionOverrideFormat > 1) {
-      throw CoreException("Unsupported MeshPrimitive collision override format.");
+    uint32_t edgeOverrideFormat;
+    if (serializer->isPositional()) {
+      edgeOverrideFormat = serializer->readUint32("edgeOverrideFormat");
+    } else if (serializer->hasField("edgeOverrideFormat")) {
+      edgeOverrideFormat = serializer->readUint32("edgeOverrideFormat");
+    } else {
+      edgeOverrideFormat =
+          serializer->readUint32("collisionOverrideFormat", true, 0);
+    }
+    if (edgeOverrideFormat > 2) {
+      throw CoreException("Unsupported MeshPrimitive edge override format version.");
     }
 
     auto readRing = [&]() {
@@ -1457,7 +1506,7 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
         ring.emplace_back(serializer->readVector2("p"));
         auto flags = serializer->readUint32(
             "flags", true, BW_MESH_EDGE_COLLIDES_FLAG);
-        if (collisionOverrideFormat == 0) {
+        if (edgeOverrideFormat == 0) {
           // Legacy true was also the untouched default, so it becomes unset.
           // Legacy false was necessarily authored and remains explicit.
           if ((flags & BW_MESH_EDGE_COLLIDES_FLAG) != 0) {
@@ -1469,6 +1518,30 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
           }
         }
         ring.back().edgeFlags = flags;
+        if (edgeOverrideFormat >= 2) {
+          auto state = serializer->readUint8("normalMapState");
+          switch (static_cast<WallNormalMapOverride::State>(state)) {
+            case WallNormalMapOverride::State::Unset:
+              ring.back().edgeNormalMap = WallNormalMapOverride::unset();
+              break;
+            case WallNormalMapOverride::State::Disabled:
+              ring.back().edgeNormalMap = WallNormalMapOverride::disabled();
+              break;
+            case WallNormalMapOverride::State::Image: {
+              // Positional serializers require explicit sequencing; C++ does
+              // not define function-argument evaluation order.
+              auto path = serializer->readString("normalMapPath");
+              auto unitsPerRepeat =
+                  serializer->readFloat("normalMapUnitsPerRepeat");
+              auto strength = serializer->readFloat("normalMapStrength");
+              ring.back().edgeNormalMap = WallNormalMapOverride::image(
+                  std::move(path), unitsPerRepeat, strength);
+              break;
+            }
+            default:
+              throw CoreException("Unsupported wall normal-map override state.");
+          }
+        }
         serializer->endMap();
       }
       serializer->endArray();

@@ -850,6 +850,40 @@ void externalEdgesDefaultVisibleAndInternalEdgesCannotBeSet() {
           "an Internal edge became visible after a refused setEdgeVisible");
 }
 
+void normalMapsAreExternalOnlyAndSplitsInheritThem() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union,
+      {{ring(-2, -1, 0, 1), {}}, {ring(0, -1, 2, 1), {}}}));
+  auto proxy = primitive->createEditingProxy();
+  uint32_t internalEdge = ~0u, externalEdge = ~0u;
+  for (auto edge = proxy->getFirstEdgeIndex();
+       !proxy->edgeIndexIterationFinished(edge);
+       edge = proxy->getNextEdgeIndex(edge)) {
+    (proxy->getEdge(edge).getConnectivity() == wp::geometry::Edge::Internal
+         ? internalEdge
+         : externalEdge) = edge;
+  }
+  auto image = bw::core::WallNormalMapOverride::image(
+      "normal/directional.png", 8.0f, 1.25f);
+  require(proxy->getEdgeNormalMapOverride(internalEdge).state() ==
+                  bw::core::WallNormalMapOverride::State::Unset &&
+              !proxy->isEdgeNormalMapEditable(internalEdge) &&
+              !proxy->setEdgeNormalMapOverride(internalEdge, image),
+          "an Internal edge accepted or exposed authored normal-map state");
+  require(proxy->isEdgeNormalMapEditable(externalEdge) &&
+              proxy->setEdgeNormalMapOverride(externalEdge, image),
+          "an External edge rejected an Image normal-map state");
+
+  wp::geometry::SplitEdgeResult split;
+  require(proxy->splitEdge(externalEdge, 0.5f, &split) &&
+              split.newEdgeIndices.size() == 2,
+          "mapped External edge did not split");
+  for (auto edge : split.newEdgeIndices) {
+    require(proxy->getEdgeNormalMapOverride(edge) == image,
+            "mapped edge split did not inherit the complete Image state");
+  }
+}
+
 void splitEdgeInheritsVisibleForBothHalves() {
   for (bool sourceValue : {true, false}) {
     auto primitive = std::unique_ptr<MeshPrimitive>(
@@ -1017,6 +1051,7 @@ int main() {
     splitEdgeInheritsCollisionOverrideForBothHalves();
     removeVertexMergeKeepsThePredecessorEdgesValue();
     externalEdgesDefaultVisibleAndInternalEdgesCannotBeSet();
+    normalMapsAreExternalOnlyAndSplitsInheritThem();
     splitEdgeInheritsVisibleForBothHalves();
     removeVertexMergeKeepsThePredecessorEdgesVisibleValue();
     collidesAndVisibleAreIndependentPerEdge();

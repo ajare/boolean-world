@@ -26,6 +26,8 @@
 @@Uniform(float EMBOSS_RUNNING_BOND_WIDTH);
 @@Uniform(float EMBOSS_RUNNING_BOND_OFFSET);
 @@Uniform(float EMBOSS_VORONOI_ROUNDING);
+@@Uniform(int WALL_NORMAL_MAP_ENABLED);
+@@Uniform(float WALL_NORMAL_MAP_STRENGTH);
 ## Texture
 @@Texture(sampler2D TEX1);
 ##
@@ -2490,6 +2492,21 @@ void main()
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
     vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));
     vec3 normalDir = shadingNormal;
+    if (@Uniform(WALL_NORMAL_MAP_ENABLED) != 0)
+    {
+        // Linear OpenGL tangent space: +X follows the canonical wall tangent
+        // and +Y follows increasing world elevation.
+        vec3 tangentNormal = texture(
+            @Texture(TEX1), @In(TEXCOORDS)).rgb * 2.0 - 1.0;
+        tangentNormal.xy *= max(@Uniform(WALL_NORMAL_MAP_STRENGTH), 0.0);
+        tangentNormal = normalize(tangentNormal);
+        vec3 wallTangent = normalize(
+            cross(shadingNormal, vec3(0.0, 1.0, 0.0)));
+        normalDir = normalize(
+            wallTangent * tangentNormal.x +
+            vec3(0.0, 1.0, 0.0) * tangentNormal.y +
+            shadingNormal * tangentNormal.z);
+    }
     float playerDistance = length(
         @Uniform(PLAYER_POSITION) - @In(FRAGPOSITION));
     vec3 texturePosition = quantizeByPlayerDistance(

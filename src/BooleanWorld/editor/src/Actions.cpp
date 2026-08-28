@@ -400,6 +400,12 @@ bool setMeshEdgeVisible(Document* doc, uint32_t edgeIndex, bool visible) {
   return doc->setActiveMeshEdgeVisible(edgeIndex, visible);
 }
 
+bool setMeshEdgeNormalMapOverride(
+    Document* doc, uint32_t edgeIndex,
+    bw::core::WallNormalMapOverride const& overrideValue) {
+  return doc->setActiveMeshEdgeNormalMapOverride(edgeIndex, overrideValue);
+}
+
 bool deleteMeshSubObjects(
     Document* doc, Settings::MeshSubMode subMode, set<uint32_t> const& indices) {
   return doc->deleteMeshSubObjects(subMode, indices) > 0;

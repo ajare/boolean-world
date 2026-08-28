@@ -299,9 +299,12 @@ void authoredCollidesValuesRoundTripThroughSaveAndLoad() {
          !editingProxy->edgeIndexIterationFinished(edge);
          edge = editingProxy->getNextEdgeIndex(edge)) {
       auto value = editingProxy->getEdgeCollisionOverride(edge);
-      if (!value.has_value()) ++unsetCount;
-      else if (*value) ++collidingCount;
-      else ++nonCollidingCount;
+      if (!value.has_value())
+        ++unsetCount;
+      else if (*value)
+        ++collidingCount;
+      else
+        ++nonCollidingCount;
     }
     return std::array{unsetCount, collidingCount, nonCollidingCount};
   };
@@ -366,17 +369,99 @@ void authoredVisibleValuesRoundTripThroughSaveAndLoad() {
           "authored visible values did not round-trip through binary save/load");
 }
 
+void authoredNormalMapValuesRoundTripAndRejectFutureVersions() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
+  auto proxy = primitive->createEditingProxy();
+  auto imageEdge = proxy->getFirstEdgeIndex();
+  auto disabledEdge = proxy->getNextEdgeIndex(imageEdge);
+  require(proxy->setEdgeNormalMapOverride(
+              imageEdge, bw::core::WallNormalMapOverride::image(
+                             "normal/directional.png", 12.5f, 0.75f)) &&
+              proxy->setEdgeNormalMapOverride(
+                  disabledEdge,
+                  bw::core::WallNormalMapOverride::disabled()),
+          "could not author Wall normal-map states");
+  proxy->commitTo(*primitive);
+
+  auto verify = [](MeshPrimitive& loaded) {
+    auto editing = loaded.createEditingProxy();
+    size_t unset = 0, disabled = 0, image = 0;
+    for (auto edge = editing->getFirstEdgeIndex();
+         !editing->edgeIndexIterationFinished(edge);
+         edge = editing->getNextEdgeIndex(edge)) {
+      auto value = editing->getEdgeNormalMapOverride(edge);
+      unset += value.state() == bw::core::WallNormalMapOverride::State::Unset;
+      disabled += value.state() == bw::core::WallNormalMapOverride::State::Disabled;
+      if (auto payload = value.imageData()) {
+        ++image;
+        require(payload->resourcePath == "normal/directional.png" &&
+                    payload->unitsPerRepeat == 12.5f &&
+                    payload->strength == 0.75f,
+                "Image normal-map payload changed on reload");
+      } else {
+        require(value.state() != bw::core::WallNormalMapOverride::State::Image,
+                "inactive normal-map state retained hidden Image payload");
+      }
+    }
+    require(unset == 2 && disabled == 1 && image == 1,
+            "Wall normal-map states changed on reload");
+  };
+
+  auto yaml = serializeYaml(*primitive);
+  auto yamlLoaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
+  require(deserializeYaml(yaml, *yamlLoaded), "normal maps did not load from YAML");
+  verify(*yamlLoaded);
+
+  auto binaryLoaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
+  auto binaryOk = deserializeBinary(serializeBinary(*primitive), *binaryLoaded);
+  std::string binaryErrors;
+  for (auto const& error : binaryLoaded->getDeserializationErrors())
+    binaryErrors += error + "; ";
+  require(binaryOk, "normal maps did not load from binary: " + binaryErrors);
+  verify(*binaryLoaded);
+
+  auto marker = yaml.find("edgeOverrideFormat: 2");
+  require(marker != std::string::npos, "normal-map format is not versioned");
+  yaml.replace(marker, std::string("edgeOverrideFormat: 2").size(),
+               "edgeOverrideFormat: 99");
+  auto rejected = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
+  require(!deserializeYaml(yaml, *rejected) &&
+              containsMessage(rejected->getDeserializationErrors(),
+                              "Unsupported MeshPrimitive edge override format version"),
+          "future Wall normal-map format did not fail clearly");
+}
+
+std::string asLegacyCollisionYaml(std::string yaml, bool retainFormat) {
+  auto marker = yaml.find("edgeOverrideFormat: 2");
+  require(marker != std::string::npos,
+          "serialized MeshPrimitive had no edge override format marker");
+  auto markerLineStart = yaml.rfind('\n', marker) + 1;
+  auto markerLineEnd = yaml.find('\n', marker);
+  if (retainFormat) {
+    yaml.replace(markerLineStart, markerLineEnd - markerLineStart,
+                 "  collisionOverrideFormat: 1");
+  } else {
+  yaml.erase(markerLineStart, markerLineEnd - markerLineStart + 1);
+  }
+  for (size_t position = 0;
+       (position = yaml.find("normalMapState:", position)) !=
+       std::string::npos;) {
+    auto lineStart = yaml.rfind('\n', position) + 1;
+    auto end = yaml.find('\n', position);
+    yaml.erase(lineStart, end - lineStart + 1);
+    position = lineStart;
+  }
+  return yaml;
+}
+
 void legacyCollisionFlagsMigrateToTriStateOverrides() {
   auto source = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
-  auto yaml = serializeYaml(*source);
-
-  auto marker = yaml.find("collisionOverrideFormat: 1");
-  require(marker != std::string::npos,
-          "serialized MeshPrimitive had no collision override format marker");
-  auto markerLineStart = yaml.rfind('\n', marker) + 1;
-  auto markerLineEnd = yaml.find('\n', marker);
-  yaml.erase(markerLineStart, markerLineEnd - markerLineStart + 1);
+  auto yaml = asLegacyCollisionYaml(serializeYaml(*source), false);
 
   size_t position = 0;
   size_t vertexFlagIndex = 0;
@@ -412,13 +497,7 @@ void legacyCollisionFlagsMigrateToTriStateOverrides() {
 void loadingPreFeatureDataDefaultsToUnsetCollisionOverride() {
   auto source = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
-  auto yaml = serializeYaml(*source);
-  auto marker = yaml.find("collisionOverrideFormat: 1");
-  require(marker != std::string::npos,
-          "serialized MeshPrimitive had no collision override format marker");
-  auto markerLineStart = yaml.rfind('\n', marker) + 1;
-  auto markerLineEnd = yaml.find('\n', marker);
-  yaml.erase(markerLineStart, markerLineEnd - markerLineStart + 1);
+  auto yaml = asLegacyCollisionYaml(serializeYaml(*source), false);
 
   // Simulate a MeshPrimitive saved before this feature existed by stripping
   // every per-vertex "flags" field (the one immediately following a "p:"
@@ -502,6 +581,7 @@ int main() {
     aggregateLimitsRejectOversizedInputBeforeCommit();
     authoredCollidesValuesRoundTripThroughSaveAndLoad();
     authoredVisibleValuesRoundTripThroughSaveAndLoad();
+    authoredNormalMapValuesRoundTripAndRejectFutureVersions();
     legacyCollisionFlagsMigrateToTriStateOverrides();
     loadingPreFeatureDataDefaultsToUnsetCollisionOverride();
     proceduralPrimitiveSchemaRemainsFlat();

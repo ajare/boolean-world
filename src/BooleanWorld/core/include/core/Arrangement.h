@@ -54,6 +54,7 @@ struct Edge {
   // first Mesh-sourced value.
   std::optional<bool> collidesOverride;
   std::optional<bool> visibleOverride;
+  std::optional<WallNormalMapOverride> normalMapOverride;
 
   bool doubleSided() const {
     return fi[0] >= 0 && fi[1] >= 0;
@@ -96,6 +97,7 @@ struct ContourInput {
   // out-of-range index is treated as std::nullopt.
   std::vector<std::optional<bool>> edgeOverrides{};
   std::vector<std::optional<bool>> edgeVisibleOverrides{};
+  std::vector<std::optional<WallNormalMapOverride>> edgeNormalMapOverrides{};
 };
 
 struct PSLG {
@@ -157,6 +159,7 @@ struct ArrangementWall {
   // no world-level parameter, so it is resolved here rather than deferred
   // to ArrangementWorldData.
   bool visible{true};
+  WallNormalMapOverride normalMapOverride{};
 };
 
 struct ArrangementPrimitive {
@@ -179,6 +182,8 @@ struct ArrangementPrimitive {
   // False for structural fold Primitives, such as PrefabField Replace
   // squares, which affect solidity but never own generated surface properties.
   bool contributesProperties{true};
+  std::vector<std::vector<std::optional<WallNormalMapOverride>>>
+      contourEdgeNormalMapOverrides{};
 };
 
 struct ArrangementEdge {
@@ -189,6 +194,7 @@ struct ArrangementEdge {
   // produced this arrangement edge.
   std::optional<bool> collidesOverride;
   std::optional<bool> visibleOverride;
+  std::optional<WallNormalMapOverride> normalMapOverride;
 };
 
 struct ArrangementFace {

@@ -140,6 +140,39 @@ void meshExternalEdgeVisibleOverrideIsExtractedAtTheRightIndex() {
   }
 }
 
+void imageNormalMapPropagatesToItsSurvivingBorderWall() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromComplexPolygons(
+      Primitive::Operation::Union, {rectangle(0, 0, 10, 10)}));
+  auto proxy = primitive->createEditingProxy();
+  auto edgeIndex = proxy->getFirstEdgeIndex();
+  auto image = bw::core::WallNormalMapOverride::image(
+      "normal/directional.png", 4.0f, 0.6f);
+  require(proxy->setEdgeNormalMapOverride(edgeIndex, image),
+          "External edge refused its Image normal map");
+  proxy->commitTo(*primitive);
+
+  std::vector<Primitive*> primitives{primitive.get()};
+  auto snapshot = SnapshotPrimitives(primitives);
+  bool snapshotCarriesImage = false;
+  for (auto const& contour : snapshot.front().contourEdgeNormalMapOverrides) {
+    for (auto const& value : contour) {
+      snapshotCarriesImage |= value.has_value() && *value == image;
+    }
+  }
+  require(snapshotCarriesImage,
+          "SnapshotPrimitives lost the authored Image normal map");
+
+  auto arrangement = bw::core::arr::BuildArrangement(snapshot);
+  auto walls = bw::core::arr::BuildArrangementWalls(*arrangement);
+  size_t mappedBorders = 0;
+  for (auto const& wall : walls) {
+    mappedBorders += wall.kind == bw::core::arr::ArrangementWallKind::Border &&
+                     wall.normalMapOverride == image;
+  }
+  require(mappedBorders == 1,
+          "the selected edge's Image did not reach exactly one surviving Border ArrangementWall");
+}
+
 void meshInternalEdgeProducesNoOverride() {
   // Two Shells sharing a boundary weld into one Internal edge along x = 0,
   // per the #244 fixture (mesh_primitive_geometry_proxy_tests.cpp).
@@ -156,13 +189,17 @@ void meshInternalEdgeProducesNoOverride() {
   auto [c, i] = findEdge(converted.contours, {0.0f, -1.0f}, {0.0f, 1.0f});
   require(c != ~size_t(0), "the shared internal edge could not be located");
   bool hasOverride = c < converted.edgeOverrides.size() &&
-                      i < converted.edgeOverrides[c].size() &&
-                      converted.edgeOverrides[c][i].has_value();
+                     i < converted.edgeOverrides[c].size() &&
+                     converted.edgeOverrides[c][i].has_value();
   require(!hasOverride, "an Internal edge produced a collides override");
   bool hasVisibleOverride = c < converted.edgeVisibleOverrides.size() &&
-                             i < converted.edgeVisibleOverrides[c].size() &&
-                             converted.edgeVisibleOverrides[c][i].has_value();
+                            i < converted.edgeVisibleOverrides[c].size() &&
+                            converted.edgeVisibleOverrides[c][i].has_value();
   require(!hasVisibleOverride, "an Internal edge produced a visible override");
+  bool hasNormalMap = c < converted.edgeNormalMapOverrides.size() &&
+                      i < converted.edgeNormalMapOverrides[c].size() &&
+                      converted.edgeNormalMapOverrides[c][i].has_value();
+  require(!hasNormalMap, "an Internal edge produced a normal-map override");
 
   // An untouched outer (External) edge leaves collision unset so generation
   // can derive collision from the wall kind and physical constraints.
@@ -190,6 +227,8 @@ void nonMeshPrimitiveProducesNoOverridesRegardlessOfVertexData() {
           "a non-MeshPrimitive produced non-empty edgeOverrides");
   require(converted.edgeVisibleOverrides.empty(),
           "a non-MeshPrimitive produced non-empty edgeVisibleOverrides");
+  require(converted.edgeNormalMapOverrides.empty(),
+          "a non-MeshPrimitive produced normal-map overrides");
 
   std::vector<Primitive*> primitives{rectangle.get()};
   auto snapshot = SnapshotPrimitives(primitives);
@@ -205,6 +244,7 @@ int main() {
   try {
     meshExternalEdgeOverrideIsExtractedAtTheRightIndex();
     meshExternalEdgeVisibleOverrideIsExtractedAtTheRightIndex();
+    imageNormalMapPropagatesToItsSurvivingBorderWall();
     meshInternalEdgeProducesNoOverride();
     nonMeshPrimitiveProducesNoOverridesRegardlessOfVertexData();
     std::cout << "ConvertPrimitiveToContours/SnapshotPrimitives extract the mesh wall collision override\n";

@@ -32,6 +32,7 @@ PrimitiveContours ConvertPrimitiveToContours(
   // when the primitive is a MeshPrimitive (the sole source of a real
   // per-edge override - see ADR-0028).
   std::vector<std::vector<uint32_t>> rawEdgeFlagsPerContour;
+  std::vector<std::vector<WallNormalMapOverride>> rawNormalMapsPerContour;
   auto const* meshPrimitive = dynamic_cast<MeshPrimitive const*>(&primitive);
 
   for (auto const& complexPolygon : primitive.getVertices()) {
@@ -39,8 +40,10 @@ PrimitiveContours ConvertPrimitiveToContours(
       arr::Contour contour;
       contour.reserve(polygon.size());
       std::vector<uint32_t> rawEdgeFlags;
+      std::vector<WallNormalMapOverride> rawNormalMaps;
       if (meshPrimitive != nullptr) {
         rawEdgeFlags.reserve(polygon.size());
+        rawNormalMaps.reserve(polygon.size());
       }
       for (auto const& vertex : polygon) {
         contour.push_back(
@@ -48,11 +51,13 @@ PrimitiveContours ConvertPrimitiveToContours(
              arr::ToFixedPointCoordinate(vertex.p.y)});
         if (meshPrimitive != nullptr) {
           rawEdgeFlags.push_back(vertex.edgeFlags);
+          rawNormalMaps.push_back(vertex.edgeNormalMap);
         }
       }
       result.contours.push_back(std::move(contour));
       if (meshPrimitive != nullptr) {
         rawEdgeFlagsPerContour.push_back(std::move(rawEdgeFlags));
+        rawNormalMapsPerContour.push_back(std::move(rawNormalMaps));
       }
     }
   }
@@ -80,6 +85,7 @@ PrimitiveContours ConvertPrimitiveToContours(
 
   result.edgeOverrides.resize(result.contours.size());
   result.edgeVisibleOverrides.resize(result.contours.size());
+  result.edgeNormalMapOverrides.resize(result.contours.size());
   for (size_t c = 0; c < result.contours.size(); ++c) {
     auto const& contour = result.contours[c];
     auto n = contour.size();
@@ -88,6 +94,7 @@ PrimitiveContours ConvertPrimitiveToContours(
     }
     result.edgeOverrides[c].resize(n);
     result.edgeVisibleOverrides[c].resize(n);
+    result.edgeNormalMapOverrides[c].resize(n);
     for (size_t i = 0; i < n; ++i) {
       auto j = (i + 1) % n;
       auto useCount = edgeUseCounts[MakeEdgeKey(contour[i], contour[j])];
@@ -99,6 +106,10 @@ PrimitiveContours ConvertPrimitiveToContours(
         }
         result.edgeVisibleOverrides[c][i] = std::optional<bool>(
             (rawFlags & BW_MESH_EDGE_INVISIBLE_FLAG) == 0);
+        auto const& normalMap = rawNormalMapsPerContour[c][i];
+        if (normalMap.state() != WallNormalMapOverride::State::Unset) {
+          result.edgeNormalMapOverrides[c][i] = normalMap;
+        }
       }
     }
   }
@@ -137,7 +148,8 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
                       std::move(contours.edgeVisibleOverrides),
                       chipParameters,
                       primitive->getPropertyContribution() ==
-                          Primitive::PropertyContribution::Contributing});
+                          Primitive::PropertyContribution::Contributing,
+                      std::move(contours.edgeNormalMapOverrides)});
   }
   return result;
 }

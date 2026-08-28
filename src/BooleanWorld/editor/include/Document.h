@@ -240,6 +240,13 @@ public:
   [[nodiscard]] bool isActiveMeshEdgeVisibilityEditable(uint32_t edgeIndex) const;
   bool setActiveMeshEdgeVisible(uint32_t edgeIndex, bool visible);
 
+  [[nodiscard]] bw::core::WallNormalMapOverride
+  getActiveMeshEdgeNormalMapOverride(uint32_t edgeIndex) const;
+  [[nodiscard]] bool isActiveMeshEdgeNormalMapEditable(uint32_t edgeIndex) const;
+  bool setActiveMeshEdgeNormalMapOverride(
+      uint32_t edgeIndex,
+      bw::core::WallNormalMapOverride const& overrideValue);
+
   [[nodiscard]] std::vector<uint32_t> getHoveredMeshSubObjectIndices(
       wp::Vector2 const& worldPosition, Settings const& settings) const;
   [[nodiscard]] std::set<uint32_t> getMeshSubObjectIndicesInBounds(
@@ -344,7 +351,9 @@ public:
   [[nodiscard]] bool meshDrawClickWouldClose(
       wp::Vector2 const& position, Settings const& settings) const;
 
-  enum class MeshDrawPositionState { PlaceVertex, CloseRing, Invalid };
+  enum class MeshDrawPositionState { PlaceVertex,
+                                     CloseRing,
+                                     Invalid };
 
   // Side-effect-free preview used by the viewport cursor. The position must
   // already be snapped in exactly the same way as a real draw click.

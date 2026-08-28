@@ -236,6 +236,11 @@ bool setMeshEdgeCollisionOverride(
 // setActiveMeshEdgeVisible). Same External-only gating as above.
 bool setMeshEdgeVisible(Document* doc, uint32_t edgeIndex, bool visible);
 
+// Commits the complete Wall normal-map value in one undoable editor action.
+bool setMeshEdgeNormalMapOverride(
+    Document* doc, uint32_t edgeIndex,
+    bw::core::WallNormalMapOverride const& overrideValue);
+
 // Restores the relationship between the active mesh's Primitive position
 // and size and its geometry ("Recentre mesh").
 bool recentreActiveMesh(Document* doc);

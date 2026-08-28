@@ -1,3 +1,8 @@
+#include <bit>
+#include <iomanip>
+#include <set>
+#include <sstream>
+
 #include <common/GameDefines.h>
 
 #include <core/Defines.h>
@@ -5,6 +10,7 @@
 #include <core/World.h>
 
 #include "WorldRenderer.h"
+#include "WallNormalMapRenderData.h"
 
 using namespace std;
 
@@ -18,6 +24,18 @@ constexpr uint32_t untintedVertexColour = 0xffffffffu;
 // Full red/green, 35% blue: the preview's established looked-at tint.
 constexpr uint32_t lookedAtVertexColour = 0xff59ffffu;
 
+string normalMapIdentity(bw::core::WallNormalMapOverride::ImageData const& image) {
+  ostringstream result;
+  result << "normal-map-v1-";
+  for (auto byte : image.resourcePath) {
+    result << hex << setw(2) << setfill('0')
+           << static_cast<unsigned>(static_cast<unsigned char>(byte));
+  }
+  result << '-' << hex << bit_cast<uint32_t>(image.unitsPerRepeat) << '-'
+         << bit_cast<uint32_t>(image.strength);
+  return result.str();
+}
+
 }  // namespace
 
 WorldRenderer::WorldRenderer(
@@ -26,9 +44,11 @@ WorldRenderer::WorldRenderer(
     bw::app::RenderTextureFilter renderTextureFilter,
     bw::app::HorizontalMaterials horizontalMaterials,
     vector<WallRenderSurface> wallRenderSurfaces,
-    WallRenderVariantResolver wallRenderVariantResolver)
+    WallRenderVariantResolver wallRenderVariantResolver,
+    filesystem::path normalMapResourceRoot)
     : mSubMaterialResolver(resourceMgr),
       mBakedSubMaterialResolver(resourceMgr),
+      mNormalMapResourceRoot(move(normalMapResourceRoot)),
       mWallRenderSurfaces(move(wallRenderSurfaces)),
       mWallRenderVariantResolver(move(wallRenderVariantResolver)),
       mWorldHasChanged(true),
@@ -99,6 +119,56 @@ WorldRenderer::RenderTargets WorldRenderer::detachRenderTargets() {
 
 void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
   mwWorld = world;
+
+  // Turn authored Image values into stable variant buckets before the wall
+  // batch is created. Disabled and Unset intentionally seed nothing.
+  mNormalMapResourceSet =
+      make_unique<NormalMapResourceSet>(mNormalMapResourceRoot, *resourceMgr);
+  set<pair<string, string>> seeded;
+  for (uint32_t primitiveIndex = 0;
+       primitiveIndex < world->getNumPrimitives(); ++primitiveIndex) {
+    auto* primitive = world->getPrimitive(primitiveIndex);
+    auto const& subMaterialId = primitive->getProperties().wallMaterialId;
+    for (auto const& polygon : primitive->getVertices()) {
+      for (auto const& ring : polygon) {
+        for (auto const& vertex : ring) {
+          auto image = vertex.edgeNormalMap.imageData();
+          if (!image) continue;
+          auto identity = normalMapIdentity(*image);
+          if (!mNormalMapVariants.contains(identity)) {
+            auto resource = mNormalMapResourceSet->acquire(image->resourcePath);
+            WallRenderVariant variant;
+            variant.identity = identity;
+            variant.textureIndex = 0;
+            variant.texture = resource->texture();
+            auto strength = image->strength;
+            variant.setUniforms = [strength](mpp::UniformCollection& uniforms) {
+              uniforms.updateUniform("WALL_NORMAL_MAP_ENABLED", int32_t{1});
+              uniforms.updateUniform("WALL_NORMAL_MAP_STRENGTH", strength);
+            };
+            mNormalMapVariants.emplace(identity, move(variant));
+          }
+          if (seeded.emplace(subMaterialId, identity).second) {
+            mWallRenderSurfaces.push_back(
+                {subMaterialId, mNormalMapVariants.at(identity)});
+          }
+        }
+      }
+    }
+  }
+  auto fallbackResolver = move(mWallRenderVariantResolver);
+  mWallRenderVariantResolver =
+      [this, fallbackResolver = move(fallbackResolver)](
+          bw::core::arr::ArrangementWall const& wall)
+      -> optional<WallRenderVariant> {
+    if (auto image = wall.normalMapOverride.imageData()) {
+      auto found = mNormalMapVariants.find(normalMapIdentity(*image));
+      if (found != mNormalMapVariants.end()) return found->second;
+    }
+    return fallbackResolver ? fallbackResolver(wall)
+                            : optional<WallRenderVariant>{};
+  };
+  mMaterialRenderers[1].renderer->setWallRenderSurfaces(mWallRenderSurfaces);
   // Material lookup stays outside core geometry. Capture an immutable resolver
   // snapshot so generation workers see only plain dimensions and never a
   // ProcMaterial catalog or render-side object.
@@ -386,15 +456,26 @@ void WorldRenderer::updateWallDataProvider(
     auto variant = variantFor(wall);
     auto authoredMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
         hash, false, variant);
+    auto unmappedAuthoredMesh =
+        wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
     auto backMesh =
         wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
     auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
     if (facesPlayer(orientation)) {
-      wallCounts[authoredMesh] +=
-          suppressed ? uint32_t(replacements.size()) : 2u;
+      if (suppressed) {
+        for (auto const& replacement : replacements) {
+          ++wallCounts[replacement.kind ==
+                               bw::core::arr::DetailTriangleKind::SurfaceRemainder
+                           ? authoredMesh
+                           : unmappedAuthoredMesh];
+        }
+      } else {
+        wallCounts[authoredMesh] += 2u;
+      }
     } else if (suppressed) {
       for (auto const& replacement : replacements) {
-        ++wallCounts[replacement.followsWallFacing ? backMesh : authoredMesh];
+        ++wallCounts[replacement.followsWallFacing ? backMesh
+                                                   : unmappedAuthoredMesh];
       }
     } else {
       wallCounts[backMesh] += 2u;
@@ -422,29 +503,37 @@ void WorldRenderer::updateWallDataProvider(
       auto hash = resolved.def.hash(resolved.materialIndex);
       auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
           hash, false, variantFor(wall));
+      auto unmappedMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
+          hash, false);
       auto colour = int32_t(wallIndex) == highlightedWall
                         ? lookedAtVertexColour
                         : untintedVertexColour;
       if (!replacements.empty()) {
         for (auto const& replacement : replacements) {
           addDetailTriangleToDataProvider(
-              wallRenderer.dataProvider, mesh, replacement, false, colour);
+              wallRenderer.dataProvider,
+              replacement.kind ==
+                      bw::core::arr::DetailTriangleKind::SurfaceRemainder
+                  ? mesh
+                  : unmappedMesh,
+              replacement, false, colour);
         }
         continue;
       }
       auto const& normal = orientation.normal;
+      auto uv = CalculateWallPhysicalUv(orientation, wall);
       auto bottom0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.minZ, -v0.y,
-          normal.x, 0, -normal.y, 0, 0, colour);
+          normal.x, 0, -normal.y, uv.u0, uv.minV, colour);
       auto bottom1 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v1.x, wall.minZ, -v1.y,
-          normal.x, 0, -normal.y, 1, 0, colour);
+          normal.x, 0, -normal.y, uv.u1, uv.minV, colour);
       auto top1 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, -v1.y,
-          normal.x, 0, -normal.y, 1, 1, colour);
+          normal.x, 0, -normal.y, uv.u1, uv.maxV, colour);
       auto top0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, -v0.y,
-          normal.x, 0, -normal.y, 0, 1, colour);
+          normal.x, 0, -normal.y, uv.u0, uv.maxV, colour);
       wallRenderer.dataProvider->addTriangle(mesh, top1, bottom1, bottom0);
       wallRenderer.dataProvider->addTriangle(mesh, bottom0, top0, top1);
     } else {
@@ -462,8 +551,10 @@ void WorldRenderer::updateWallDataProvider(
         auto resolved =
             mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
         auto hash = resolved.def.hash(resolved.materialIndex);
+        // Chip facets expose a new surface and do not inherit the authored
+        // edge's Image. The coplanar remainder is back-facing in this branch.
         auto authoredMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
-            hash, false, variantFor(wall));
+            hash, false);
         for (auto const& replacement : replacements) {
           auto followsWall = replacement.followsWallFacing;
           addDetailTriangleToDataProvider(

@@ -184,6 +184,14 @@ public:
   [[nodiscard]] bool isEdgeVisibilityEditable(uint32_t edgeIndex) const;
   bool setEdgeVisible(uint32_t edgeIndex, bool visible);
 
+  // Versioned Wall normal-map override. Internal edges always read Unset and
+  // reject mutation, matching the other authored wall-edge controls.
+  [[nodiscard]] WallNormalMapOverride getEdgeNormalMapOverride(
+      uint32_t edgeIndex) const;
+  [[nodiscard]] bool isEdgeNormalMapEditable(uint32_t edgeIndex) const;
+  bool setEdgeNormalMapOverride(
+      uint32_t edgeIndex, WallNormalMapOverride const& overrideValue);
+
   // Divides one Shell or Island along a chord between two of its
   // non-adjacent vertices. The chord must not touch or cross any existing
   // Edge except at its endpoints. Direct Holes remain with the side that

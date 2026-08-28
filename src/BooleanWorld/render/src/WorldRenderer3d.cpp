@@ -109,6 +109,14 @@ void WorldRenderer3d::updateMaterialUniforms(
   updateEmbossUniforms(*uniforms, definition.emboss);
 }
 
+void WorldRenderer3d::setWallRenderSurfaces(
+    vector<WallRenderSurface> wallRenderSurfaces) {
+  if (mRenderer != nullptr) {
+    throw logic_error("Wall render surfaces must be configured before create().");
+  }
+  mWallRenderSurfaces = move(wallRenderSurfaces);
+}
+
 void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvider, bw::core::World const* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
   mDataProvider = dataProvider;
 
@@ -157,6 +165,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
     uniforms.setUniform("SECONDARY_MATERIAL_INDEX", int32_t{-1});
     uniforms.setUniform("USE_SECONDARY_MATERIAL", int32_t{0});
+    uniforms.setUniform("WALL_NORMAL_MAP_ENABLED", int32_t{0});
+    uniforms.setUniform("WALL_NORMAL_MAP_STRENGTH", 1.0f);
   };
 
   auto numPrimitives = world->getNumPrimitives();
@@ -259,10 +269,10 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
           "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
           resolved.def.params.data());
       setEmbossUniforms(*uniforms, resolved.def.emboss);
+      initializeGlobalUniforms(*uniforms);
       if (variant.setUniforms) {
         variant.setUniforms(*uniforms);
       }
-      initializeGlobalUniforms(*uniforms);
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] = static_cast<int32_t>(resolved.materialIndex);
     }

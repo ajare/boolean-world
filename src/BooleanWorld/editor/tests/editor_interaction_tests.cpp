@@ -100,8 +100,7 @@ uint32_t addMesh(editor::Document& document, wp::Vector2 const& position) {
 uint32_t addDisconnectedMesh(editor::Document& document) {
   auto rectangle = [](float minX, float maxX) {
     return bw::core::ClosedPolygon{
-        {{minX, -1.0f}}, {{maxX, -1.0f}},
-        {{maxX, 1.0f}}, {{minX, 1.0f}}};
+        {{minX, -1.0f}}, {{maxX, -1.0f}}, {{maxX, 1.0f}}, {{minX, 1.0f}}};
   };
   auto* mesh = bw::core::MeshPrimitive::fromTree(
       bw::core::Primitive::Operation::Union,
@@ -2038,8 +2037,42 @@ void meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly() {
       document.getWorld()->getPrimitive(meshIndex));
   auto undoneProxy = undonePrimitive->createEditingProxy();
   require(!undoneProxy->getEdgeCollisionOverride(
-               undoneProxy->getFirstEdgeIndex()).has_value(),
+                          undoneProxy->getFirstEdgeIndex())
+               .has_value(),
           "undo did not restore the edge's unset collision override");
+}
+
+void meshEdgeNormalMapImageIsOneUndoEntryAndUndoesCleanly() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  document.activateMesh(meshIndex);
+  auto edgeIndex = document.getActiveMesh()->getFirstEdgeIndex();
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Edge, {edgeIndex});
+  document.setModified(false);
+  auto const undoLevelsBefore = editor::getUndoLevels();
+  auto image = bw::core::WallNormalMapOverride::image(
+      "normal/directional.png", 16.0f, 0.8f);
+
+  editor::transactUndoableAction(
+      &document, "Set Mesh Edge Wall Normal Map",
+      std::bind(editor::setMeshEdgeNormalMapOverride,
+                std::placeholders::_1, edgeIndex, image));
+  require(editor::getUndoLevels() == undoLevelsBefore + 1,
+          "path, repeat scale, and strength did not commit as one undo entry");
+  require(document.getActiveMeshEdgeNormalMapOverride(edgeIndex) == image,
+          "the complete Image state did not commit through the editor action");
+
+  editor::undo(&document);
+  require(editor::getUndoLevels() == undoLevelsBefore,
+          "undo did not remove the normal-map action's one history entry");
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto proxy = primitive->createEditingProxy();
+  require(proxy->getEdgeNormalMapOverride(proxy->getFirstEdgeIndex()).state() ==
+              bw::core::WallNormalMapOverride::State::Unset,
+          "undo did not restore the edge's Unset normal-map state");
 }
 
 void meshEdgeVisibleTogglesAndCommitsToThePrimitive() {
@@ -3526,6 +3559,7 @@ int main() {
     edgeSplitIsOneUndoEntry();
     meshEdgeCollisionOverrideCyclesAndCommitsToThePrimitive();
     meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly();
+    meshEdgeNormalMapImageIsOneUndoEntryAndUndoesCleanly();
     meshEdgeVisibleTogglesAndCommitsToThePrimitive();
     meshEdgeVisibleToggleIsOneUndoEntryAndUndoesCleanly();
     drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep();
