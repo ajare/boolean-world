@@ -35,6 +35,31 @@ void physicalUvsUseCanonicalProjectionAndWorldElevation() {
           "Unset wall changed the legacy UV data");
 }
 
+void physicalUvsRemainContinuousAcrossSplitsAndResetAtCorners() {
+  auto mapped = bw::core::WallNormalMapOverride::image(
+      "normal/directional.png", 4.0f, 1.0f);
+  bw::core::arr::ArrangementWall wall{
+      0, -8.0f, 8.0f, 0,
+      bw::core::arr::ArrangementWallKind::Border, 16.0f, true, mapped};
+  auto first = CalculateWallPhysicalUv(
+      bw::core::arr::ArrangementWallOrientation{
+          {-12.0f, -4.0f}, {-4.0f, -4.0f}, {0.0f, 1.0f}},
+      wall);
+  auto second = CalculateWallPhysicalUv(
+      bw::core::arr::ArrangementWallOrientation{
+          {-4.0f, -4.0f}, {8.0f, -4.0f}, {0.0f, 1.0f}},
+      wall);
+  require(near(first.u1, second.u0) && near(first.minV, -2.0f),
+          "physical UVs discontinuously restarted on a negative-coordinate split");
+
+  auto corner = CalculateWallPhysicalUv(
+      bw::core::arr::ArrangementWallOrientation{
+          {-4.0f, -4.0f}, {-4.0f, 8.0f}, {-1.0f, 0.0f}},
+      wall);
+  require(near(corner.u0, -1.0f) && near(corner.u1, 2.0f),
+          "a corner did not establish its own canonical tangent frame");
+}
+
 void shaderComposesImageBeforeProceduralMaterialAndEmbossing() {
   std::ifstream input(BW_WORLD_PBR_SHADER);
   std::string shader((std::istreambuf_iterator<char>(input)), {});
@@ -51,17 +76,22 @@ void shaderComposesImageBeforeProceduralMaterialAndEmbossing() {
 
 void mappedAndUnmappedSurfacesHaveDistinctBucketIdentity() {
   WallRenderSurface unmapped{"same.sub-material", std::nullopt};
+  WallRenderSurface disabled{"same.sub-material", std::nullopt};
   WallRenderVariant mappedVariant{"normal-map-v1-directional"};
+  WallRenderVariant differentMappedVariant{"normal-map-v1-other-scale"};
   WallRenderSurface mapped{"same.sub-material", mappedVariant};
-  require(!unmapped.variant && mapped.variant &&
-              mapped.variant->identity != std::string{},
-          "mapped and unmapped walls cannot select distinct variant buckets");
+  WallRenderSurface differentlyMapped{"same.sub-material", differentMappedVariant};
+  require(!unmapped.variant && !disabled.variant && mapped.variant &&
+              differentlyMapped.variant &&
+              mapped.variant->identity != differentlyMapped.variant->identity,
+          "different Images cannot select distinct buckets or no-map states cannot batch");
 }
 }  // namespace
 
 int main() {
   try {
     physicalUvsUseCanonicalProjectionAndWorldElevation();
+    physicalUvsRemainContinuousAcrossSplitsAndResetAtCorners();
     shaderComposesImageBeforeProceduralMaterialAndEmbossing();
     mappedAndUnmappedSurfacesHaveDistinctBucketIdentity();
     std::cout << "Wall normal-map render-data tests passed\n";

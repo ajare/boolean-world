@@ -259,6 +259,15 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_arrangement_wall_visibility_override_tests)
     add_test(NAME boolean_world_arrangement_wall_visibility_override COMMAND boolean_world_arrangement_wall_visibility_override_tests)
 
+    add_executable(boolean_world_arrangement_wall_normal_map_override_tests
+        tests/arrangement_wall_normal_map_override_tests.cpp)
+    target_link_libraries(boolean_world_arrangement_wall_normal_map_override_tests PRIVATE core)
+    target_compile_features(boolean_world_arrangement_wall_normal_map_override_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_arrangement_wall_normal_map_override_tests)
+    bw_output_dirs(boolean_world_arrangement_wall_normal_map_override_tests)
+    bw_deploy_runtime_dlls(boolean_world_arrangement_wall_normal_map_override_tests)
+    add_test(NAME boolean_world_arrangement_wall_normal_map_override COMMAND boolean_world_arrangement_wall_normal_map_override_tests)
+
     add_executable(boolean_world_chip_detail_tests
         tests/chip_detail_tests.cpp)
     target_link_libraries(boolean_world_chip_detail_tests PRIVATE core)

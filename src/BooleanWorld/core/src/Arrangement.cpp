@@ -96,6 +96,7 @@ struct Segment {
   std::optional<bool> collidesOverride;
   std::optional<bool> visibleOverride;
   std::optional<WallNormalMapOverride> normalMapOverride;
+  bool contributesProperties;
 };
 
 struct RationalPoint {
@@ -215,7 +216,8 @@ vector<Segment> ExtractSegments(vector<ContourInput> const& contours) {
             i < input.edgeNormalMapOverrides.size()
                 ? input.edgeNormalMapOverrides[i]
                 : std::nullopt;
-        result.push_back({{a, b}, input.primitiveIndex, collidesOverride, visibleOverride, normalMapOverride});
+        result.push_back(
+            {{a, b}, input.primitiveIndex, collidesOverride, visibleOverride, normalMapOverride, input.contributesProperties});
       }
     }
   }
@@ -806,9 +808,13 @@ PSLG BuildPSLG(
         if (segments[i].visibleOverride.has_value() && !edge.visibleOverride.has_value()) {
           edge.visibleOverride = segments[i].visibleOverride;
         }
-        // Inputs are in fold order; every explicit later contributor has
-        // higher precedence. Unset never enters the optional at all.
-        if (segments[i].normalMapOverride.has_value()) {
+        // Inputs are in fold order, so every explicit later property-
+        // contributing Primitive has higher precedence. An Unset value is not
+        // a choice: it must leave a lower Image or Disabled value intact.
+        if (segments[i].contributesProperties &&
+            segments[i].normalMapOverride.has_value() &&
+            segments[i].normalMapOverride->state() !=
+                WallNormalMapOverride::State::Unset) {
           edge.normalMapOverride = segments[i].normalMapOverride;
         }
       }
@@ -1003,7 +1009,7 @@ ArrangementResultPtr BuildArrangement(
       contours.push_back(
           {primitive.contours[contourIndex], primitiveIndex,
            std::move(edgeOverrides), std::move(edgeVisibleOverrides),
-           std::move(edgeNormalMapOverrides)});
+           std::move(edgeNormalMapOverrides), primitive.contributesProperties});
     }
   }
 
@@ -1402,7 +1408,8 @@ vector<ArrangementWall> BuildArrangementWalls(
            higherFloorFace.paletteIndex,
            ArrangementWallKind::FloorStep,
            clearance,
-           edge.visibleOverride.value_or(true)});
+           edge.visibleOverride.value_or(true),
+           edge.normalMapOverride.value_or(WallNormalMapOverride::unset())});
     }
     if (properties0.ceilingZ != properties1.ceilingZ) {
       auto const& lowerCeilingFace =
@@ -1414,7 +1421,8 @@ vector<ArrangementWall> BuildArrangementWalls(
            lowerCeilingFace.paletteIndex,
            ArrangementWallKind::CeilingStep,
            clearance,
-           edge.visibleOverride.value_or(true)});
+           edge.visibleOverride.value_or(true),
+           edge.normalMapOverride.value_or(WallNormalMapOverride::unset())});
     }
   }
   return walls;

@@ -124,11 +124,11 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
   // batch is created. Disabled and Unset intentionally seed nothing.
   mNormalMapResourceSet =
       make_unique<NormalMapResourceSet>(mNormalMapResourceRoot, *resourceMgr);
-  set<pair<string, string>> seeded;
+  set<string> wallSubMaterials;
   for (uint32_t primitiveIndex = 0;
        primitiveIndex < world->getNumPrimitives(); ++primitiveIndex) {
     auto* primitive = world->getPrimitive(primitiveIndex);
-    auto const& subMaterialId = primitive->getProperties().wallMaterialId;
+    wallSubMaterials.insert(primitive->getProperties().wallMaterialId);
     for (auto const& polygon : primitive->getVertices()) {
       for (auto const& ring : polygon) {
         for (auto const& vertex : ring) {
@@ -148,11 +148,19 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
             };
             mNormalMapVariants.emplace(identity, move(variant));
           }
-          if (seeded.emplace(subMaterialId, identity).second) {
-            mWallRenderSurfaces.push_back(
-                {subMaterialId, mNormalMapVariants.at(identity)});
-          }
         }
+      }
+    }
+  }
+  // The winning override and the wall's Sub-material can come from different
+  // Primitives in the fold.  Predeclare their complete cross-product so a
+  // resolved Image always has a bucket; Unset and Disabled intentionally use
+  // the single existing unmapped bucket.
+  set<pair<string, string>> seeded;
+  for (auto const& subMaterialId : wallSubMaterials) {
+    for (auto const& [identity, variant] : mNormalMapVariants) {
+      if (seeded.emplace(subMaterialId, identity).second) {
+        mWallRenderSurfaces.push_back({subMaterialId, variant});
       }
     }
   }

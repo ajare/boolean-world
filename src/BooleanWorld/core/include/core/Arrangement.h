@@ -98,6 +98,9 @@ struct ContourInput {
   std::vector<std::optional<bool>> edgeOverrides{};
   std::vector<std::optional<bool>> edgeVisibleOverrides{};
   std::vector<std::optional<WallNormalMapOverride>> edgeNormalMapOverrides{};
+  // Structural primitives participate in the fold but cannot select a wall
+  // normal-map value.
+  bool contributesProperties{true};
 };
 
 struct PSLG {
