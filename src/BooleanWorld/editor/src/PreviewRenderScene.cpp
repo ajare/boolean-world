@@ -178,7 +178,9 @@ std::uint32_t PreviewRenderScene::render(
     mpp::CameraPtr const& camera,
     glm::vec3 const& cameraPosition,
     float frameTime,
-    std::vector<PreviewOutline> const& outlines) {
+    std::vector<PreviewOutline> const& outlines,
+    std::int32_t horizontalMaterialIndexOverride,
+    std::int32_t wallMaterialIndexOverride) {
   // The Player proxy is represented by the preview camera. Keep the Torch at
   // that eye position, as the game does, and use the shared release defaults
   // (range, near plane, biases, PCF filtering, and fade semantics).
@@ -190,7 +192,8 @@ std::uint32_t PreviewRenderScene::render(
   // pointer by outlining it below, not by tinting the material.
   mRenderer->update(
       world, worldData, cameraPosition, cameraPosition,
-      bw::app::PlayerTorchOptions{}, false, -1, -1, materialScale,
+      bw::app::PlayerTorchOptions{}, false, horizontalMaterialIndexOverride,
+      wallMaterialIndexOverride, materialScale,
       farGridSize, secondaryMaterial, frameTime);
 
   mScene->setViewport(0, 0, mWidth, mHeight);
@@ -199,7 +202,8 @@ std::uint32_t PreviewRenderScene::render(
 
   auto activeShadowImage =
       mwRenderSystem->getShadowDomainOptions(
-          std::string(bw::app::playerTorchShadowDomain)).enabled;
+                        std::string(bw::app::playerTorchShadowDomain))
+          .enabled;
   auto target = mPipeline->getGraphImageRenderTarget(
       {outputImageIndex + (activeShadowImage ? 1u : 0u), 1});
   if (!target) {

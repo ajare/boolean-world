@@ -100,14 +100,18 @@ public:
   // `outlines` are wireframe borders drawn once the world is finished with,
   // over the top of it and with no depth testing - how the preview marks the
   // selected surface and the one under the pointer. Later outlines win where
-  // two overlap. Empty draws nothing.
+  // two overlap. Empty draws nothing. Optional material-index overrides use
+  // the renderer's diagnostic Technique path without replacing independently
+  // authored wall normal-map state.
   [[nodiscard]] std::uint32_t render(
       bw::core::World* world,
       bw::core::WorldData const& worldData,
       mpp::CameraPtr const& camera,
       glm::vec3 const& cameraPosition,
       float frameTime,
-      std::vector<PreviewOutline> const& outlines = {});
+      std::vector<PreviewOutline> const& outlines = {},
+      std::int32_t horizontalMaterialIndexOverride = -1,
+      std::int32_t wallMaterialIndexOverride = -1);
 
 private:
   mpp::RenderSystem* mwRenderSystem{};

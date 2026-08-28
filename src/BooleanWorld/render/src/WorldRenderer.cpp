@@ -518,13 +518,15 @@ void WorldRenderer::updateWallDataProvider(
                         : untintedVertexColour;
       if (!replacements.empty()) {
         for (auto const& replacement : replacements) {
+          auto rendered = replacement;
+          ApplyWallPhysicalUvToRemainder(orientation, wall, rendered);
           addDetailTriangleToDataProvider(
               wallRenderer.dataProvider,
               replacement.kind ==
                       bw::core::arr::DetailTriangleKind::SurfaceRemainder
                   ? mesh
                   : unmappedMesh,
-              replacement, false, colour);
+              rendered, false, colour);
         }
         continue;
       }

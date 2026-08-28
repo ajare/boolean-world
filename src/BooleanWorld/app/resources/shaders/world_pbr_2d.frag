@@ -1222,6 +1222,28 @@ vec3 shadePbr(Material m, vec3 viewDir, vec3 worldPos, vec3 lightPos)
            fresnel * mix(vec3(0.10), ambient, 1.0 - m.roughness) + direct;
 }
 
+// Shared with world_pbr.frag. Wall normal maps currently have no horizontal
+// authoring owner, so every 2D horizontal batch binds the enable flag to zero;
+// retaining the full implementation keeps both PBR programs contract-compatible.
+vec3 applyWallNormalMap(vec3 geometricNormal)
+{
+    vec3 surfaceNormal = normalize(geometricNormal);
+    if (@Uniform(WALL_NORMAL_MAP_ENABLED) == 0)
+        return surfaceNormal;
+
+    vec3 sampled = texture(
+        @Texture(TEX1), @In(TEXCOORDS)).rgb * 2.0 - 1.0;
+    float strength = max(@Uniform(WALL_NORMAL_MAP_STRENGTH), 0.0);
+    if (strength == 0.0)
+        sampled = vec3(0.0, 0.0, 1.0);
+    else
+        sampled = normalize(vec3(sampled.xy * strength, sampled.z));
+    vec3 tangent = normalize(cross(vec3(0.0, 1.0, 0.0), surfaceNormal));
+    return normalize(
+        tangent * sampled.x + vec3(0.0, 1.0, 0.0) * sampled.y +
+        surfaceNormal * sampled.z);
+}
+
 void main()
 {
     // Fade every contribution to black at the world-view boundary. This is
@@ -1235,7 +1257,7 @@ void main()
     vec3 worldPos = @In(FRAGPOSITION);
     vec3 viewDir = normalize(@ViewPos - worldPos);
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
-    vec3 normal = shadingNormal;
+    vec3 normal = applyWallNormalMap(shadingNormal);
     float playerDistance = length(
         @Uniform(PLAYER_POSITION) - worldPos);
     vec2 texturePosition = quantizeByPlayerDistance(

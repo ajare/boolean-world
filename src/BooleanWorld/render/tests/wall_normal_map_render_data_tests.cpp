@@ -60,18 +60,83 @@ void physicalUvsRemainContinuousAcrossSplitsAndResetAtCorners() {
           "a corner did not establish its own canonical tangent frame");
 }
 
-void shaderComposesImageBeforeProceduralMaterialAndEmbossing() {
-  std::ifstream input(BW_WORLD_PBR_SHADER);
-  std::string shader((std::istreambuf_iterator<char>(input)), {});
-  auto sample = shader.find("vec3 tangentNormal = texture");
-  auto evaluate = shader.find("Material material = evaluateMaterial");
-  auto emboss = shader.find("material.normal = embossSurface", evaluate);
+void chippedWallRemainderKeepsPhysicalUvAnchoring() {
+  auto mapped = bw::core::WallNormalMapOverride::image(
+      "normal/directional.png", 4.0f, 1.0f);
+  bw::core::arr::ArrangementWall wall{
+      0, -8.0f, 8.0f, 0,
+      bw::core::arr::ArrangementWallKind::Border, 16.0f, true, mapped};
+  bw::core::arr::ArrangementWallOrientation orientation{
+      {-12.0f, -4.0f}, {8.0f, -4.0f}, {0.0f, 1.0f}};
+  bw::core::arr::DetailTriangle remainder;
+  remainder.kind = bw::core::arr::DetailTriangleKind::SurfaceRemainder;
+  remainder.v[0].position = {-8.0f, -4.0f, -4.0f};
+  remainder.v[1].position = {4.0f, -4.0f, 6.0f};
+  remainder.v[2].position = {0.0f, -4.0f, 8.0f};
+  ApplyWallPhysicalUvToRemainder(orientation, wall, remainder);
+  require(near(remainder.v[0].uv[0], -2.0f) &&
+              near(remainder.v[0].uv[1], -1.0f) &&
+              near(remainder.v[1].uv[0], 1.0f) &&
+              near(remainder.v[1].uv[1], 1.5f),
+          "a Chip's coplanar wall remainder lost absolute physical UV anchoring");
+
+  auto facet = remainder;
+  facet.kind = bw::core::arr::DetailTriangleKind::HorizontalChipFacet;
+  facet.v[0].uv = {0.25f, 0.75f};
+  ApplyWallPhysicalUvToRemainder(orientation, wall, facet);
+  require(near(facet.v[0].uv[0], 0.25f) && near(facet.v[0].uv[1], 0.75f),
+          "a newly exposed Chip facet inherited wall normal-map UVs");
+}
+
+std::string readShader(char const* path) {
+  std::ifstream input(path);
+  return {(std::istreambuf_iterator<char>(input)), {}};
+}
+
+void shadersShareCompositionContract() {
+  auto shader3d = readShader(BW_WORLD_PBR_SHADER);
+  auto shader2d = readShader(BW_WORLD_PBR_2D_SHADER);
+  for (auto const* shader : {&shader3d, &shader2d}) {
+    require(shader->find("vec3 applyWallNormalMap") != std::string::npos &&
+                shader->find("@Texture(TEX1), @In(TEXCOORDS)") !=
+                    std::string::npos &&
+                shader->find("if (strength == 0.0)") != std::string::npos &&
+                shader->find(
+                    "cross(vec3(0.0, 1.0, 0.0), surfaceNormal)") !=
+                    std::string::npos,
+            "a world PBR shader lost the compatible normal-map/strength/tangent contract");
+  }
+
+  auto sample = shader3d.find("vec3 normalDir = applyWallNormalMap");
+  auto evaluate = shader3d.find("Material material = evaluateMaterial");
+  auto emboss = shader3d.find("material.normal = embossSurface", evaluate);
   require(sample != std::string::npos && sample < evaluate && evaluate < emboss,
-          "3D shader does not compose the sampled base normal before material evaluation and Embossing");
-  require(shader.find("tangentNormal.xy *=") != std::string::npos &&
-              shader.find("cross(shadingNormal, vec3(0.0, 1.0, 0.0))") !=
-                  std::string::npos,
-          "3D shader lost tangent-plane strength or the canonical wall frame");
+          "3D shader does not compose Image before Technique and Embossing");
+
+  auto horizontalApply = shader2d.find(
+      "vec3 normal = applyWallNormalMap(shadingNormal)");
+  auto horizontalEvaluate = shader2d.find("Material material = material2d");
+  require(horizontalApply != std::string::npos &&
+              horizontalApply < horizontalEvaluate,
+          "2D shader does not bind the compatible dormant map contract");
+}
+
+void strengthScalesTangentPlaneBeforeRenormalization() {
+  auto tangentInfluence = [](float strength) {
+    constexpr float x = 0.6f;
+    constexpr float y = 0.2f;
+    constexpr float z = 0.7745967f;
+    if (strength == 0.0f) return 0.0f;
+    auto scaledX = x * strength;
+    auto scaledY = y * strength;
+    auto length = std::sqrt(
+        scaledX * scaledX + scaledY * scaledY + z * z);
+    return std::sqrt(scaledX * scaledX + scaledY * scaledY) / length;
+  };
+  require(near(tangentInfluence(0.0f), 0.0f),
+          "strength zero was not flat");
+  require(tangentInfluence(2.0f) > tangentInfluence(1.0f),
+          "higher valid strength did not increase renormalized tangent-plane influence");
 }
 
 void mappedAndUnmappedSurfacesHaveDistinctBucketIdentity() {
@@ -92,7 +157,9 @@ int main() {
   try {
     physicalUvsUseCanonicalProjectionAndWorldElevation();
     physicalUvsRemainContinuousAcrossSplitsAndResetAtCorners();
-    shaderComposesImageBeforeProceduralMaterialAndEmbossing();
+    chippedWallRemainderKeepsPhysicalUvAnchoring();
+    shadersShareCompositionContract();
+    strengthScalesTangentPlaneBeforeRenormalization();
     mappedAndUnmappedSurfacesHaveDistinctBucketIdentity();
     std::cout << "Wall normal-map render-data tests passed\n";
     return 0;

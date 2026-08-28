@@ -1,7 +1,6 @@
-// Manual/opt-in smoke test: requires a real OpenGL driver. It replaces the
-// deleted PreviewMaterialProgram smoke test with the render path the editor
-// now uses: EditorRenderSystem + PreviewRenderScene/WorldRenderer over a
-// small hand-built Arrangement.
+// Manual/opt-in integration test: requires a real OpenGL driver. It drives the
+// same EditorRenderSystem + PreviewRenderScene + WorldRenderer stack used by
+// the editor, and compares broad rendered regions rather than exact pixels.
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -11,6 +10,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include <GL/glew.h>
@@ -22,6 +22,7 @@
 #include <core/Defines.h>
 #include <core/MeshPrimitive.h>
 #include <core/World.h>
+#include <mpp/ResourceManager.h>
 
 #include "EditorRenderSystem.h"
 #include "PlayerView.h"
@@ -29,13 +30,41 @@
 #include "ReactiveCamera.h"
 
 namespace {
-
 constexpr int kWidth = 320;
 constexpr int kHeight = 240;
-
 constexpr char const* kDirectionalNormal = "directional-normal.png";
 
+enum class MapFixture { Unset,
+                        Disabled,
+                        Image,
+                        MixedSharedImage };
+
+struct RenderFixture {
+  MapFixture map{MapFixture::Unset};
+  float strength{1.0f};
+  float unitsPerRepeat{8.0f};
+  bw::app::HorizontalMaterials horizontal{
+      bw::app::HorizontalMaterials::ThreeDimensional};
+  int32_t debugWallTechnique{-1};
+  bool emboss{};
+};
+
+struct ResourceCounts {
+  uint32_t resources{}, declared{}, created{}, loaded{};
+  bool operator==(ResourceCounts const&) const = default;
+};
+
+ResourceCounts resourceCounts(mpp::ResourceManager* manager) {
+  ResourceCounts result;
+  manager->getResourceCounts(
+      result.resources, result.declared, result.created, result.loaded);
+  return result;
+}
+
 void writeDirectionalNormal() {
+  // A tiny RGB positive-green OpenGL normal image. Keeping the fixture local
+  // also proves dynamic application-relative references, rather than a
+  // manifest-enumerated colour texture.
   constexpr std::array<unsigned char, 73> png{
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00,
       0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
@@ -49,34 +78,38 @@ void writeDirectionalNormal() {
 }
 
 bw::core::ArrangementWorldDataPtr buildWorldData(
-    bw::core::World& world, bool mapped) {
+    bw::core::World& world, RenderFixture const& fixture) {
   world.createAccelerationGrids(16.0f);
   bw::core::ClosedPolygon ring{
       {{-16, -16}}, {{16, -16}}, {{16, 16}}, {{-16, 16}}};
   auto* primitive = bw::core::MeshPrimitive::fromTree(
       bw::core::Primitive::Operation::Union, {{{ring, {}}}});
-  if (mapped) {
+
+  if (fixture.map != MapFixture::Unset) {
     auto proxy = primitive->createEditingProxy();
-    auto image = bw::core::WallNormalMapOverride::image(
-        kDirectionalNormal, 8.0f, 1.0f);
-    auto mappedEdge = proxy->getFirstEdgeIndex();
-    float highestMidpoint = -std::numeric_limits<float>::infinity();
+    size_t ordinal = 0;
     for (auto edge = proxy->getFirstEdgeIndex();
          !proxy->edgeIndexIterationFinished(edge);
-         edge = proxy->getNextEdgeIndex(edge)) {
-      auto const& value = proxy->getEdge(edge);
-      auto midpoint =
-          (proxy->getVertex(value.getFirstVertex()).getPosition() +
-           proxy->getVertex(value.getSecondVertex()).getPosition()) /
-          2.0f;
-      if (midpoint.y > highestMidpoint) {
-        highestMidpoint = midpoint.y;
-        mappedEdge = edge;
+         edge = proxy->getNextEdgeIndex(edge), ++ordinal) {
+      auto image = bw::core::WallNormalMapOverride::image(
+          kDirectionalNormal,
+          fixture.map == MapFixture::MixedSharedImage && ordinal == 1
+              ? fixture.unitsPerRepeat * 2.0f
+              : fixture.unitsPerRepeat,
+          fixture.map == MapFixture::MixedSharedImage && ordinal == 2
+              ? 2.0f
+              : fixture.strength);
+      if (fixture.map == MapFixture::Disabled ||
+          (fixture.map == MapFixture::MixedSharedImage && ordinal == 3)) {
+        proxy->setEdgeNormalMapOverride(
+            edge, bw::core::WallNormalMapOverride::disabled());
+      } else {
+        proxy->setEdgeNormalMapOverride(edge, image);
       }
     }
-    proxy->setEdgeNormalMapOverride(mappedEdge, image);
     proxy->commitTo(*primitive);
   }
+
   auto properties = primitive->getProperties();
   properties.floorZ = 0.0f;
   properties.ceilingZ = 48.0f;
@@ -109,6 +142,60 @@ std::vector<float> readColour(uint32_t texture) {
   return pixels;
 }
 
+// Compare the broad non-black union of both images. This tolerates
+// driver-dependent edge coverage and post-processing while still requiring a
+// material-sized region to change.
+double regionDifference(
+    std::vector<float> const& first, std::vector<float> const& second) {
+  double difference = 0.0;
+  size_t regionPixels = 0;
+  for (size_t i = 0; i + 3 < first.size(); i += 4) {
+    auto firstEnergy = first[i] + first[i + 1] + first[i + 2];
+    auto secondEnergy = second[i] + second[i + 1] + second[i + 2];
+    if (std::max(firstEnergy, secondEnergy) < 0.015f) continue;
+    difference += std::abs(first[i] - second[i]) +
+                  std::abs(first[i + 1] - second[i + 1]) +
+                  std::abs(first[i + 2] - second[i + 2]);
+    ++regionPixels;
+  }
+  return regionPixels == 0 ? 0.0 : difference / double(regionPixels);
+}
+
+std::vector<float> render(
+    editor::EditorRenderSystem& renderSystem, RenderFixture const& fixture) {
+  bw::core::World world(1.0f, -1.0f);
+  auto worldData = buildWorldData(world, fixture);
+  editor::PreviewRenderScene scene(
+      renderSystem, &world, kWidth, kHeight, fixture.horizontal);
+  if (fixture.emboss) {
+    bw::core::EmbossData emboss;
+    emboss.pattern = bw::core::EmbossPattern::Square;
+    emboss.radius = 4.0f;
+    emboss.depth = 1.0f;
+    scene.updateMaterialDraft(
+        "migrated.marble.1", 0,
+        {1.1f, 6.0f, 18.0f, 0.15f, 0.25f, 0.65f, 0.2f, 0.5f},
+        {0.18f, 0.18f, 0.2f}, emboss);
+  }
+  auto camera = std::make_shared<ReactiveCamera>(
+      glm::vec3{0.0f, BW_PLAYER_EYE_HEIGHT, 0.0f},
+      bw::app::cameraYaw(0.0f), 0.0f, BW_PLAYER_FOV,
+      kWidth / float(kHeight));
+  camera->setClipDistances(0.1f, 1000000.0f);
+  uint32_t texture{};
+  for (int frame = 0; frame < 3; ++frame) {
+    texture = scene.render(
+        &world, *worldData, camera, camera->getPosition(), 1.0f / 60.0f, {},
+        -1, fixture.debugWallTechnique);
+  }
+  if (texture == 0)
+    throw std::runtime_error("WorldRenderer produced no render texture");
+  return readColour(texture);
+}
+
+void require(bool condition, char const* message) {
+  if (!condition) throw std::runtime_error(message);
+}
 }  // namespace
 
 int main() {
@@ -142,36 +229,93 @@ int main() {
     try {
       writeDirectionalNormal();
       editor::EditorRenderSystem renderSystem(kWidth, kHeight);
-      auto render = [&](bool mapped) {
-        bw::core::World world(1.0f, -1.0f);
-        auto worldData = buildWorldData(world, mapped);
-        editor::PreviewRenderScene scene(
-            renderSystem, &world, kWidth, kHeight,
-            bw::app::HorizontalMaterials::ThreeDimensional);
-        auto camera = std::make_shared<ReactiveCamera>(
-            glm::vec3{0.0f, BW_PLAYER_EYE_HEIGHT, 0.0f},
-            bw::app::cameraYaw(0.0f), 0.0f, BW_PLAYER_FOV,
-            kWidth / float(kHeight));
-        camera->setClipDistances(0.1f, 1000000.0f);
-        auto texture = scene.render(
-            &world, *worldData, camera, camera->getPosition(), 1.0f / 60.0f);
-        if (texture == 0)
-          throw std::runtime_error("WorldRenderer produced no render texture");
-        return readColour(texture);
-      };
-      auto unmapped = render(false);
-      auto mapped = render(true);
-      double difference = 0.0;
-      for (size_t i = 0; i < mapped.size(); i += 4) {
-        difference += std::abs(mapped[i] - unmapped[i]) +
-                      std::abs(mapped[i + 1] - unmapped[i + 1]) +
-                      std::abs(mapped[i + 2] - unmapped[i + 2]);
+
+      auto unset = render(renderSystem, {});
+      auto disabled = render(
+          renderSystem, {.map = MapFixture::Disabled});
+      auto flat = render(
+          renderSystem, {.map = MapFixture::Image, .strength = 0.0f});
+      auto authored = render(
+          renderSystem, {.map = MapFixture::Image, .strength = 1.0f});
+      auto stronger = render(
+          renderSystem, {.map = MapFixture::Image, .strength = 2.0f});
+
+      auto disabledDifference = regionDifference(unset, disabled);
+      auto flatDifference = regionDifference(unset, flat);
+      auto authoredDifference = regionDifference(unset, authored);
+      auto strongerDifference = regionDifference(unset, stronger);
+      std::printf(
+          "regions: disabled=%.6f flat=%.6f authored=%.6f stronger=%.6f\n",
+          disabledDifference, flatDifference, authoredDifference,
+          strongerDifference);
+      require(disabledDifference < 0.0005,
+              "Disabled did not render through the ordinary unmapped path");
+      require(flatDifference < 0.0005,
+              "strength zero did not produce a flat image contribution");
+      require(authoredDifference > 0.0005,
+              "authored-strength normal map did not visibly affect the wall");
+      require(strongerDifference > 0.0005 &&
+                  regionDifference(authored, stronger) > 0.0005,
+              "higher strength did not visibly change the renormalized map");
+
+      // A global material-index/Technique diagnostic changes only procedural
+      // evaluation. The independently authored wall image must remain active.
+      auto debugUnset = render(
+          renderSystem, {.debugWallTechnique = 3});
+      auto debugMapped = render(
+          renderSystem,
+          {.map = MapFixture::Image, .debugWallTechnique = 3});
+      require(regionDifference(debugUnset, debugMapped) > 0.0005,
+              "debug Technique override suppressed the wall normal map");
+
+      // Marble contributes its own procedural normal. Add material Embossing
+      // through the preview's real draft path and prove that both the earlier
+      // image contribution and the later relief remain observable.
+      auto embossedUnset = render(
+          renderSystem, {.emboss = true});
+      auto embossedMapped = render(
+          renderSystem, {.map = MapFixture::Image, .emboss = true});
+      auto embossedImageDifference =
+          regionDifference(embossedUnset, embossedMapped);
+      auto embossDifference = regionDifference(authored, embossedMapped);
+      std::printf(
+          "composition: image=%.6f emboss=%.6f\n", embossedImageDifference,
+          embossDifference);
+      require(embossedImageDifference > 0.0005,
+              "Technique or Embossing replaced the earlier Image normal");
+      require(embossDifference > 0.000001,
+              "Image normal replaced the later Embossing contribution");
+
+      // Compiles/renders the parallel 2D horizontal PBR program while mapped
+      // walls continue through the 3D program. Horizontal buckets always bind
+      // the compatible map contract disabled.
+      auto horizontal2d = render(
+          renderSystem,
+          {.map = MapFixture::MixedSharedImage,
+           .horizontal = bw::app::HorizontalMaterials::TwoDimensional});
+      require(!horizontal2d.empty(),
+              "2D horizontal mode did not render with the shared contract");
+
+      // Four walls share one Sub-material and one image reference while using
+      // distinct scale/strength/Disabled configurations. Repeated real preview
+      // teardown must return all CPU/GPU-facing mpp resources to one baseline.
+      std::optional<ResourceCounts> baseline;
+      for (int cycle = 0; cycle < 4; ++cycle) {
+        (void)render(
+            renderSystem,
+            {.map = MapFixture::MixedSharedImage,
+             .horizontal = cycle % 2 == 0
+                               ? bw::app::HorizontalMaterials::ThreeDimensional
+                               : bw::app::HorizontalMaterials::TwoDimensional});
+        auto counts = resourceCounts(renderSystem.renderResourceManager());
+        if (!baseline) {
+          baseline = counts;
+        } else {
+          require(counts == *baseline,
+                  "preview teardown leaked normal-map CPU/GPU resources");
+        }
       }
-      difference /= double(kWidth) * kHeight;
-      if (difference < 0.0001) {
-        std::printf("FAILED: directional mapped wall did not visibly differ from Unset\n");
-        result = 1;
-      }
+
       std::filesystem::remove(kDirectionalNormal);
     } catch (std::exception const& error) {
       std::printf("FAILED: %s\n", error.what());
@@ -182,8 +326,6 @@ int main() {
   SDL_GL_DestroyContext(context);
   SDL_DestroyWindow(window);
   SDL_Quit();
-  if (result == 0) {
-    std::printf("WorldRenderer smoke test passed\n");
-  }
+  if (result == 0) std::printf("WorldRenderer smoke test passed\n");
   return result;
 }

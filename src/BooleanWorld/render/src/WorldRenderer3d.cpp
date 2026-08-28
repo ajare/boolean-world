@@ -90,23 +90,41 @@ void WorldRenderer3d::updateMaterialUniforms(
     uint64_t bakedMaterialHash, bool floor, int32_t materialIndex,
     bw::core::MaterialDefinitionData const& definition) {
   auto worldBatch = mRenderer->getWorldBatch();
-  // getMeshIndexForMaterialHash returns zero for a missing bucket, which is
-  // also a valid first mesh. Confirm it exists before touching that bucket.
-  if (!worldBatch->hasMeshForMaterialHash(bakedMaterialHash, floor)) {
-    return;
-  }
-  auto meshIndex = worldBatch->getMeshIndexForMaterialHash(bakedMaterialHash, floor);
-  if (meshIndex >= mUniforms.size() || !mUniforms[meshIndex]) {
-    return;
-  }
+  auto updateMesh = [&](std::optional<WallRenderVariant> const& variant) {
+    // getMeshIndexForMaterialHash returns zero for a missing bucket, which is
+    // also a valid first mesh. Confirm it exists before touching that bucket.
+    if (!worldBatch->hasMeshForMaterialHash(
+            bakedMaterialHash, floor, variant)) {
+      return;
+    }
+    auto meshIndex = worldBatch->getMeshIndexForMaterialHash(
+        bakedMaterialHash, floor, variant);
+    if (meshIndex >= mUniforms.size() || !mUniforms[meshIndex]) {
+      return;
+    }
 
-  auto const& uniforms = mUniforms[meshIndex];
-  uniforms->updateUniform("MATERIAL_INDEX", materialIndex);
-  uniforms->updateUniform("MATERIAL_PARAMS", definition.params.data());
-  // A draft's relief lands here too, so dragging an emboss slider in the
-  // editor reads back immediately in the preview - the bucket keeps its baked
-  // hash, only its uniforms change.
-  updateEmbossUniforms(*uniforms, definition.emboss);
+    auto const& uniforms = mUniforms[meshIndex];
+    uniforms->updateUniform("MATERIAL_INDEX", materialIndex);
+    uniforms->updateUniform("MATERIAL_PARAMS", definition.params.data());
+    // A draft's relief lands here too, so dragging an emboss slider in the
+    // editor reads back immediately in the preview - the bucket keeps its
+    // baked hash, only its uniforms change.
+    updateEmbossUniforms(*uniforms, definition.emboss);
+  };
+
+  updateMesh(std::nullopt);
+  if (mSurfaceSet != WorldSurfaceSet::Walls || floor) return;
+
+  // Wall normal maps decorate a Sub-material bucket; they do not fork its
+  // Technique or Embossing state. A preview draft must therefore reach every
+  // mapped variant as well as the ordinary bucket, without touching the
+  // variant's independently bound image uniforms and texture.
+  for (auto const& surface : mWallRenderSurfaces) {
+    auto resolved = mwResolver->resolve(surface.subMaterialId);
+    if (resolved.def.hash(resolved.materialIndex) == bakedMaterialHash) {
+      updateMesh(surface.variant);
+    }
+  }
 }
 
 void WorldRenderer3d::setWallRenderSurfaces(

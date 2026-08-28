@@ -2479,6 +2479,31 @@ Material evaluateMaterial(
     return material;
 }
 
+// Shared by the 3D and horizontal PBR programs. Horizontal batches always
+// bind WALL_NORMAL_MAP_ENABLED=0; keeping the complete contract here and in
+// world_pbr_2d.frag prevents the two world pipelines from drifting.
+vec3 applyWallNormalMap(vec3 geometricNormal)
+{
+    vec3 surfaceNormal = normalize(geometricNormal);
+    if (@Uniform(WALL_NORMAL_MAP_ENABLED) == 0)
+        return surfaceNormal;
+
+    // Linear OpenGL tangent space: +X follows cross(worldUp, wallNormal),
+    // exactly the canonical direction used to generate physical wall U, and
+    // +Y follows increasing world elevation.
+    vec3 sampled = texture(
+        @Texture(TEX1), @In(TEXCOORDS)).rgb * 2.0 - 1.0;
+    float strength = max(@Uniform(WALL_NORMAL_MAP_STRENGTH), 0.0);
+    if (strength == 0.0)
+        sampled = vec3(0.0, 0.0, 1.0);
+    else
+        sampled = normalize(vec3(sampled.xy * strength, sampled.z));
+    vec3 tangent = normalize(cross(vec3(0.0, 1.0, 0.0), surfaceNormal));
+    return normalize(
+        tangent * sampled.x + vec3(0.0, 1.0, 0.0) * sampled.y +
+        surfaceNormal * sampled.z);
+}
+
 void main()
 {
     // Fade every contribution to black at the world-view boundary. This is
@@ -2491,22 +2516,7 @@ void main()
 
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
     vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));
-    vec3 normalDir = shadingNormal;
-    if (@Uniform(WALL_NORMAL_MAP_ENABLED) != 0)
-    {
-        // Linear OpenGL tangent space: +X follows the canonical wall tangent
-        // and +Y follows increasing world elevation.
-        vec3 tangentNormal = texture(
-            @Texture(TEX1), @In(TEXCOORDS)).rgb * 2.0 - 1.0;
-        tangentNormal.xy *= max(@Uniform(WALL_NORMAL_MAP_STRENGTH), 0.0);
-        tangentNormal = normalize(tangentNormal);
-        vec3 wallTangent = normalize(
-            cross(shadingNormal, vec3(0.0, 1.0, 0.0)));
-        normalDir = normalize(
-            wallTangent * tangentNormal.x +
-            vec3(0.0, 1.0, 0.0) * tangentNormal.y +
-            shadingNormal * tangentNormal.z);
-    }
+    vec3 normalDir = applyWallNormalMap(shadingNormal);
     float playerDistance = length(
         @Uniform(PLAYER_POSITION) - @In(FRAGPOSITION));
     vec3 texturePosition = quantizeByPlayerDistance(
