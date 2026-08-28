@@ -317,13 +317,16 @@ bool PointInFace(
     ArrangementResult const& arrangement);
 
 // Each non-solid face's finished water depth, parallel to arrangement.faces.
-// The undistributed seed volumes above are settled across Wet components -
-// maximal sets of faces joined by water-adjacency once the rising surface
-// tops the sill between them - so that every face in one component shares a
-// single surface elevation, each face's depth is capped at its own ceiling,
-// and a component reaching the unbounded exterior face drains to zero
-// throughout. A sealed component holding more than its total capacity fills
-// every member face to its ceiling and discards the excess.
+// The undistributed seed volumes above settle into pools, each a set of faces
+// at one shared surface elevation. Two pools joined by water-adjacency become
+// one once that shared surface would stand at or above the sill between them
+// (the higher of their two floors); below it they stay two, and the higher
+// pool spills only what stands above the sill into the lower, ending exactly
+// brim-full at the sill. One connected region can therefore finish holding
+// several pools at several elevations. Each face's depth is then capped at
+// its own ceiling - a sealed pool holding more than its total capacity fills
+// every member face to the ceiling and discards the excess - and any pool
+// reaching the unbounded exterior face drains to zero throughout.
 [[nodiscard]] std::vector<float> ComputeWaterLevels(
     ArrangementResult const& arrangement);
 

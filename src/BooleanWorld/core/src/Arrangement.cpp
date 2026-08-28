@@ -1693,13 +1693,27 @@ vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
   });
 
   // Rising-level fill: repeatedly take the lowest sill whose water has
-  // actually risen high enough to cross it and merge the two pools, exactly
-  // as two separate ponds become one body of water the moment the rising
-  // surface tops the saddle between them. Every pass either merges two
-  // distinct groups - which can happen at most faceCount - 1 times - or ends
-  // the fill, so this is a union-find walk, not a convergence loop.
-  for (auto merging = true; merging;) {
-    merging = false;
+  // actually risen high enough to cross it, and resolve what crossing it
+  // means. Two outcomes, and which one applies is decided by asking what
+  // elevation the two pools would settle at as a single body of water:
+  //
+  //  - At or above the sill, the sill is submerged and they really are one
+  //    body - two separate ponds becoming one lake the moment the rising
+  //    surface tops the saddle between them. Merge them.
+  //  - Below the sill, they are not: the higher pool is pouring over a saddle
+  //    into somewhere lower and drier, and once its own surface falls back to
+  //    the saddle the pouring stops. Only the water standing above the sill
+  //    crosses, leaving the donor exactly brim-full at the sill and the two
+  //    still separate.
+  //
+  // Every pass either merges two distinct groups - at most faceCount - 1
+  // times - or leaves a donor standing exactly at a sill, which cannot spill
+  // over that sill again until something else pours into it, and can only
+  // ever be poured into from strictly higher up. So this is a union-find walk
+  // over water flowing downhill, not a convergence loop: there is no epsilon
+  // and no iteration count anywhere in it.
+  for (auto flowing = true; flowing;) {
+    flowing = false;
     for (auto const& link : links) {
       auto root0 = findRoot(link.face0);
       auto root1 = findRoot(link.face1);
@@ -1708,21 +1722,55 @@ vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
         continue;
       }
 
-      // Merging changes both pools' surface elevation, so restart from the
-      // lowest sill rather than continuing down a stale ordering.
-      parent[root1] = root0;
-      members[root0].insert(
-          members[root0].end(), members[root1].begin(), members[root1].end());
-      members[root1].clear();
-      groupVolume[root0] += groupVolume[root1];
-      groupDrained[root0] = groupDrained[root0] || groupDrained[root1];
+      auto drained = groupDrained[root0] || groupDrained[root1];
+      auto combinedVolume = groupVolume[root0] + groupVolume[root1];
+      auto combined = members[root0];
+      combined.insert(
+          combined.end(), members[root1].begin(), members[root1].end());
       // A pool that reaches the exterior empties completely, and so does
       // anything that later spills into it.
-      groupLevel[root0] =
-          groupDrained[root0] || groupVolume[root0] <= 0.0
+      auto combinedLevel =
+          drained || combinedVolume <= 0.0
               ? -numeric_limits<double>::infinity()
-              : SolveWaterLevel(water, members[root0], groupVolume[root0]);
-      merging = true;
+              : SolveWaterLevel(water, combined, combinedVolume);
+
+      if (drained || combinedLevel >= link.sill) {
+        // One body of water. Merging changes its surface elevation, so
+        // restart from the lowest sill rather than continuing down a stale
+        // ordering.
+        parent[root1] = root0;
+        members[root0] = std::move(combined);
+        members[root1].clear();
+        groupVolume[root0] = combinedVolume;
+        groupDrained[root0] = drained;
+        groupLevel[root0] = combinedLevel;
+        flowing = true;
+        break;
+      }
+
+      // Not one body of water: a directed spill from the pool standing above
+      // the sill into the one below it. Both pools survive, at their own two
+      // elevations, with the donor left exactly at the sill.
+      auto donor = groupLevel[root0] >= groupLevel[root1] ? root0 : root1;
+      auto recipient = donor == root0 ? root1 : root0;
+      auto retained = WaterCapacityBelow(water, members[donor], link.sill);
+      auto spilled = groupVolume[donor] - retained;
+      if (spilled <= 0.0) {
+        // Already brim-full at this sill and holding nothing back. Re-running
+        // WaterCapacityBelow over an unchanged member list and an unchanged
+        // sill reproduces the retained volume exactly, so this subtracts to
+        // exactly zero rather than dribbling.
+        continue;
+      }
+      groupVolume[donor] = retained;
+      groupLevel[donor] = link.sill;
+      groupVolume[recipient] += spilled;
+      groupLevel[recipient] =
+          groupVolume[recipient] > 0.0
+              ? SolveWaterLevel(
+                    water, members[recipient], groupVolume[recipient])
+              : -numeric_limits<double>::infinity();
+      flowing = true;
       break;
     }
   }

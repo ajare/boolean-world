@@ -149,7 +149,7 @@ An authored, per-Primitive scalar defaulting to zero, meaningful only on a Primi
 _Avoid_: water depth (the derived per-face quantity), fill level
 
 **Water depth**:
-The finished depth of standing water in one Arrangement face, derived after the fold from Wet component equilibrium and clamped between zero and that face's own floor-to-ceiling clearance. Zero means dry.
+The finished depth of standing water in one Arrangement face, derived after the fold from the equilibrium of the Pool that face belongs to and clamped between zero and that face's own floor-to-ceiling clearance. Zero means dry.
 _Avoid_: water level (the authored per-Primitive quantity), water height, water elevation
 
 **Water-adjacency**:
@@ -157,5 +157,13 @@ The relation between two non-solid Arrangement faces across which water can equi
 _Avoid_: face adjacency (two faces sharing an edge are not water-adjacent when the wall between them has zero clearance)
 
 **Wet component**:
-A maximal set of Arrangement faces connected by water-adjacency that share one common equilibrium water surface elevation. Two Wet components merge into one the moment rising water would connect them across a saddle point; a face unreachable from any seed water stays dry regardless of its own floor height.
-_Avoid_: lake, basin, pond
+A maximal set of Arrangement faces connected by water-adjacency. Its water settles as one or more Pools, not necessarily at one shared elevation: a face unreachable from any seed water stays dry regardless of its own floor height, and a face standing above every surface around it stays dry while its neighbours hold water.
+_Avoid_: lake, basin, pond, Pool (a Wet component may hold several)
+
+**Pool**:
+One set of faces within a Wet component holding water at a single shared surface elevation. Two Pools become one the moment that shared surface would stand at or above the Sill between them; below it they stay two, and the higher one spills only what stands above the Sill into the lower, ending exactly brim-full at the Sill rather than emptying into it.
+_Avoid_: Wet component (the connectivity, not the body of water), lake, pond
+
+**Sill**:
+The elevation water must reach to cross one water-adjacency: the higher of the two faces' floors, since water only reaches the higher face once it tops that face's floor. Against the exterior drain, whose floor is negative infinity, the Sill is the bordering face's own floor.
+_Avoid_: saddle, spill point, threshold, wall clearance (which decides whether the adjacency exists at all, not what water must reach to cross it)
