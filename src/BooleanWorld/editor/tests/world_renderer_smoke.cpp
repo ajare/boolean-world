@@ -139,8 +139,10 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
     primitives.push_back(platform);
   }
   if (fixture.wedges) {
-    world.setWedgeGenerationParameters(
-        {true, 8.0f, 8.0f, 8.0f, 8.0f, 8.0f, 8.0f});
+    auto wedgeSettings = bw::core::WedgeGenerationParameters{
+        true, 8.0f, 8.0f, 8.0f, 8.0f, 8.0f, 8.0f};
+    wedgeSettings.quality = 1;
+    world.setWedgeGenerationParameters(wedgeSettings);
   }
 
   bw::core::ArrangementWorldDataGenerator generator;

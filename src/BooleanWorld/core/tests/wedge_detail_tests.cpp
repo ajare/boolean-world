@@ -724,6 +724,70 @@ void wedgeGenerationDoesNotPerturbChips() {
           "Wedge fitting changed existing Chip geometry, counts, or suppression");
 }
 
+void qualityRecursivelyTessellatesWithDeterministicVariation() {
+  auto baseSettings = fixedWedge();
+  baseSettings.quality = 0;
+  auto base = snapshot({room()}, baseSettings);
+  auto countFacets = [](ArrangementWorldData const& data) {
+    return std::count_if(
+        data.getDetail().getTriangles().begin(),
+        data.getDetail().getTriangles().end(), [](auto const& triangle) {
+          return triangle.kind == DetailTriangleKind::WedgeFacet;
+        });
+  };
+
+  auto qualityOneSettings = baseSettings;
+  qualityOneSettings.quality = 1;
+  auto qualityOne = snapshot({room()}, qualityOneSettings);
+  auto repeatedQualityOne = snapshot({room()}, qualityOneSettings);
+  auto qualityTwoSettings = baseSettings;
+  qualityTwoSettings.quality = 2;
+  auto qualityTwo = snapshot({room()}, qualityTwoSettings);
+  auto baseFacetCount = countFacets(base);
+  require(countFacets(qualityOne) == baseFacetCount * 3 &&
+              countFacets(qualityTwo) == baseFacetCount * 9 &&
+              qualityOne.getDetail().getWedgeCount() ==
+                  base.getDetail().getWedgeCount() &&
+              wedgePositions(qualityOne) == wedgePositions(repeatedQualityOne) &&
+              qualityOne.getFloorHeight({0.0f, -6.785185f}) > 0.0f,
+          "Wedge quality did not recursively and deterministically subdivide each facet");
+
+  bool foundDisplacedCentroid = false;
+  for (auto const& triangle : base.getDetail().getTriangles()) {
+    if (triangle.kind != DetailTriangleKind::WedgeFacet) continue;
+    std::array<float, 3> centroid{};
+    for (auto const& vertex : triangle.v) {
+      for (size_t axis = 0; axis < 3; ++axis) {
+        centroid[axis] += vertex.position[axis] / 3.0f;
+      }
+    }
+    auto distance = [&](std::array<float, 3> const& position) {
+      auto sum = 0.0f;
+      for (size_t axis = 0; axis < 3; ++axis) {
+        auto delta = position[axis] - centroid[axis];
+        sum += delta * delta;
+      }
+      return std::sqrt(sum);
+    };
+    auto nearest = std::numeric_limits<float>::max();
+    for (auto const& subdivided : qualityOne.getDetail().getTriangles()) {
+      if (subdivided.kind != DetailTriangleKind::WedgeFacet ||
+          subdivided.source != triangle.source) {
+        continue;
+      }
+      for (auto const& vertex : subdivided.v) {
+        nearest = std::min(nearest, distance(vertex.position));
+      }
+    }
+    if (nearest > 0.0001f) {
+      foundDisplacedCentroid = true;
+      break;
+    }
+  }
+  require(foundDisplacedCentroid,
+          "tessellation centre points were not displaced from their source facets");
+}
+
 void worldFrequencyControlsEdgeAndCornerAttempts() {
   auto settings = fixedWedge();
   settings.floorWedgesPerUnitDistance = 0.0f;
@@ -805,6 +869,7 @@ int main() {
     cornerChipReservationsConstrainWedges();
     verticalChipWallNotchesConstrainWedges();
     wedgeGenerationDoesNotPerturbChips();
+    qualityRecursivelyTessellatesWithDeterministicVariation();
     worldFrequencyControlsEdgeAndCornerAttempts();
     floorWedgesJoinCollisionWithoutChangingOtherQueries();
     std::cout << "Wedges are deterministic additive Border-wall detail\n";

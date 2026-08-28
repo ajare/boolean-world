@@ -290,6 +290,67 @@ void AddTriangle(
       {source, {a, b, c}, kind, followsWallFacing, chipType});
 }
 
+// Recursively subdivides a Wedge facet through a displaced centroid. Each
+// level replaces one triangle with three; boundary edges remain untouched, so
+// independently tessellated facets cannot crack apart.
+void AddWedgeTriangle(
+    DetailGeometry& detail,
+    DetailSurfaceKey const& source,
+    Vertex3 const& p0,
+    Vertex3 const& p1,
+    Vertex3 const& p2,
+    Vertex3 const& reference,
+    std::array<float, 2> const& uv0,
+    std::array<float, 2> const& uv1,
+    std::array<float, 2> const& uv2,
+    uint32_t quality,
+    uint64_t seed,
+    uint64_t stream) {
+  if (quality == 0) {
+    AddTriangle(
+        detail, source, p0, p1, p2, reference, uv0, uv1, uv2, false,
+        DetailTriangleKind::WedgeFacet);
+    return;
+  }
+
+  auto edge01 = Vertex3{p1.x - p0.x, p1.y - p0.y, p1.z - p0.z};
+  auto edge02 = Vertex3{p2.x - p0.x, p2.y - p0.y, p2.z - p0.z};
+  auto geometric = Cross(edge01, edge02);
+  auto normalLength = std::sqrt(Dot(geometric, geometric));
+  if (normalLength <= 0.0f) return;
+  auto sign = Dot(geometric, reference) < 0.0f ? -1.0f : 1.0f;
+  auto normal = Vertex3{
+      sign * geometric.x / normalLength,
+      sign * geometric.y / normalLength,
+      sign * geometric.z / normalLength};
+  auto edgeLength = [](Vertex3 const& a, Vertex3 const& b) {
+    auto delta = Vertex3{b.x - a.x, b.y - a.y, b.z - a.z};
+    return std::sqrt(Dot(delta, delta));
+  };
+  auto averageEdgeLength =
+      (edgeLength(p0, p1) + edgeLength(p1, p2) + edgeLength(p2, p0)) /
+      3.0f;
+  auto displacement =
+      StableRandom01(seed, stream) * averageEdgeLength * 0.05f;
+  auto centre = Vertex3{
+      (p0.x + p1.x + p2.x) / 3.0f + normal.x * displacement,
+      (p0.y + p1.y + p2.y) / 3.0f + normal.y * displacement,
+      (p0.z + p1.z + p2.z) / 3.0f + normal.z * displacement};
+  auto centreUv = std::array<float, 2>{
+      (uv0[0] + uv1[0] + uv2[0]) / 3.0f,
+      (uv0[1] + uv1[1] + uv2[1]) / 3.0f};
+  auto nextQuality = quality - 1;
+  AddWedgeTriangle(
+      detail, source, p0, p1, centre, reference, uv0, uv1, centreUv,
+      nextQuality, seed, Mix(stream ^ 0x91ull));
+  AddWedgeTriangle(
+      detail, source, p1, p2, centre, reference, uv1, uv2, centreUv,
+      nextQuality, seed, Mix(stream ^ 0xa3ull));
+  AddWedgeTriangle(
+      detail, source, p2, p0, centre, reference, uv2, uv0, centreUv,
+      nextQuality, seed, Mix(stream ^ 0xb5ull));
+}
+
 // One Chip's footprint on the horizontal face it bit into: the two points
 // where it meets the Arris, and the apex it reaches to inside the face.
 struct Footprint {
@@ -1975,16 +2036,16 @@ DetailGeometry BuildChipDetail(
             direction.x + orientation.normal.x,
             direction.y + orientation.normal.y, verticalNormal};
         for (size_t segment = 0; segment + 1 < central.size(); ++segment) {
-          AddTriangle(
+          AddWedgeTriangle(
               detail, source, a, central[segment], central[segment + 1],
               referenceA, horizontalUv(a), horizontalUv(central[segment]),
-              horizontalUv(central[segment + 1]), false,
-              DetailTriangleKind::WedgeFacet);
-          AddTriangle(
+              horizontalUv(central[segment + 1]), wedgeParameters.quality,
+              candidateSeed, 0x7100ull + segment * 2);
+          AddWedgeTriangle(
               detail, source, central[segment], b, central[segment + 1],
               referenceB, horizontalUv(central[segment]), horizontalUv(b),
-              horizontalUv(central[segment + 1]), false,
-              DetailTriangleKind::WedgeFacet);
+              horizontalUv(central[segment + 1]), wedgeParameters.quality,
+              candidateSeed, 0x7101ull + segment * 2);
         }
         detail.countWedge();
       };
@@ -2176,11 +2237,11 @@ DetailGeometry BuildChipDetail(
                   vertex.x / HorizontalUvScale,
                   vertex.y / HorizontalUvScale};
             };
-            AddTriangle(
+            AddWedgeTriangle(
                 detail, source, exposedA, exposedB, exposedVertical,
                 reference, horizontalUv(exposedA), horizontalUv(exposedB),
-                horizontalUv(exposedVertical), false,
-                DetailTriangleKind::WedgeFacet);
+                horizontalUv(exposedVertical), wedgeParameters.quality, seed,
+                0x8100ull);
             detail.countWedge();
           };
 

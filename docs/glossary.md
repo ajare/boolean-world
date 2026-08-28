@@ -110,7 +110,9 @@ snapshot's detail channel and never changes collision or spatial queries
 **Wedge** — Additive faceted detail controlled by World settings and surfaced
 with the adjoining floor or ceiling Sub-material. Independent floor and ceiling
 averages per unit distance control Edge Wedge frequency; a probability controls
-each Corner Wedge candidate. An Edge Wedge is centred on
+each Corner Wedge candidate. Quality recursively tessellates each exposed
+triangle around a deterministically displaced centroid; zero means no
+subdivision. An Edge Wedge is centred on
 one visible Border wall's horizontal Arris and has a convex, three-segment
 centre line. A Corner Wedge joins independently sized points on the two
 horizontal Arrises and shared vertical Arris of two connected visible Border

@@ -8,6 +8,7 @@ world:
   stepThreshold: 8
   wedgeGeneration:
     enabled: 1
+    quality: 0
     floorWedgesPerUnitDistance: 0.05
     ceilingWedgesPerUnitDistance: 0.05
     cornerWedgeProbability: 1

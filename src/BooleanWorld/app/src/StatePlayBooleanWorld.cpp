@@ -248,7 +248,10 @@ void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transi
           : mpp::GTAONormalSource::Depth;
 
   mwRenderer = static_cast<WorldRenderer*>(transitionData->userData);
-  mwRenderer->create(mScene, getMap()->getWorld(), mwRenderSystem, mwRenderResourceMgr);
+  auto world = getMap()->getWorld();
+  mwRenderer->create(mScene, world, mwRenderSystem, mwRenderResourceMgr);
+  mDebugDisplay.wedgeQuality =
+      int(world->getWedgeGenerationParameters().quality);
   createPlayerTorchMarker();
 
   // Configure before constructing any participating pipeline. The first frame
@@ -1612,6 +1615,21 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     }
 
     ImGui::TextDisabled("Not saved - set Input/MouseSensitivity to keep a value.");
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("World (F5 session-only)");
+    if (ImGui::SliderInt(
+            "Wedge quality", &mDebugDisplay.wedgeQuality, 0, 3)) {
+      auto world = getMap()->getWorld();
+      auto wedgeSettings = world->getWedgeGenerationParameters();
+      wedgeSettings.quality = uint32_t(mDebugDisplay.wedgeQuality);
+      world->setWedgeGenerationParameters(wedgeSettings);
+      if (auto generator = getWDG()) {
+        generator->generate();
+      }
+    }
+    ImGui::TextDisabled(
+        "Regenerates Wedges for this play session; does not save the World.");
 
     ImGui::Separator();
     ImGui::TextUnformatted("Video");

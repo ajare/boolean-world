@@ -960,6 +960,13 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
   ImGui::TextUnformatted("Border Wedges");
   wedgeDraftModified |=
       ImGui::Checkbox("Enabled##WorldWedges", &wedgeDraft.enabled);
+  auto wedgeQuality = int(wedgeDraft.quality);
+  if (ImGui::InputInt("Quality##WorldWedges", &wedgeQuality, 1, 1)) {
+    wedgeDraft.quality =
+        wedgeQuality < 0 ? std::numeric_limits<uint32_t>::max()
+                         : uint32_t(wedgeQuality);
+    wedgeDraftModified = true;
+  }
   wedgeDraftModified |= ImGui::InputFloat(
       "Floor average number per unit distance##WorldWedges",
       &wedgeDraft.floorWedgesPerUnitDistance);
@@ -1022,7 +1029,7 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
       wedgeSettingsError.clear();
     } else {
       wedgeSettingsError =
-          "Wedge dimensions must be finite, positive, and ordered; frequencies and probability must be between zero and one.";
+          "Wedge dimensions must be finite, positive, and ordered; frequencies and probability must be between zero and one, and quality must be between zero and three.";
     }
   }
   ImGui::EndDisabled();

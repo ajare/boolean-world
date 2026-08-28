@@ -3488,6 +3488,7 @@ void worldWedgeSettingsAreAtomicUndoableAndRegenerate() {
   configured.floorWedgesPerUnitDistance = 0.125f;
   configured.ceilingWedgesPerUnitDistance = 0.25f;
   configured.cornerWedgeProbability = 0.625f;
+  configured.quality = 2;
   configured.minimumReach = 5.0f;
   configured.maximumReach = 9.0f;
   configured.minimumDropDownHeight = 2.5f;
@@ -3524,7 +3525,7 @@ void worldWedgeSettingsAreAtomicUndoableAndRegenerate() {
           "Undo and Redo did not each request preview regeneration");
 
   auto invalid = configured;
-  invalid.cornerWedgeProbability = 1.1f;
+  invalid.quality = bw::core::MaximumWedgeQuality + 1;
   auto const undoBeforeInvalid = editor::getUndoLevels();
   auto const regenerationBeforeInvalid = gRegenerateWorldDataRequests;
   require(!editor::transactUndoableActionAtomically(

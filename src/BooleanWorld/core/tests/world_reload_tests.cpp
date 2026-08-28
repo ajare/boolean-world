@@ -231,6 +231,7 @@ void wedgeGenerationSettingsValidateAndRoundTripTransactionally() {
   configured.floorWedgesPerUnitDistance = 0.125f;
   configured.ceilingWedgesPerUnitDistance = 0.25f;
   configured.cornerWedgeProbability = 0.625f;
+  configured.quality = 2;
   configured.minimumReach = 5.0f;
   configured.maximumReach = 9.0f;
   configured.minimumDropDownHeight = 2.5f;
@@ -288,6 +289,13 @@ void wedgeGenerationSettingsValidateAndRoundTripTransactionally() {
                   frequencyLegacyExpected,
           "a World without Wedge frequency controls did not use defaults");
 
+  auto qualityLegacyExpected = configured;
+  qualityLegacyExpected.quality = expectedDefaults.quality;
+  auto qualityLegacyYaml = withoutWedgeScalars(yaml, {"quality"});
+  require(deserializeWorld(qualityLegacyYaml, &loaded) &&
+              loaded.getWedgeGenerationParameters() == qualityLegacyExpected,
+          "a World without Wedge quality did not use its default");
+
   require(deserializeWorld(withoutWedgeGeneration(yaml), &loaded) &&
               loaded.getWedgeGenerationParameters() == expectedDefaults,
           "a missing Wedge generation block did not restore disabled defaults");
@@ -314,6 +322,10 @@ void wedgeGenerationSettingsValidateAndRoundTripTransactionally() {
   require(!deserializeWorld(invalidYaml, &loaded) &&
               loaded.getWedgeGenerationParameters() == configured,
           "an invalid Corner Wedge probability changed the target World");
+  invalidYaml = withWedgeScalar(yaml, "quality", "4");
+  require(!deserializeWorld(invalidYaml, &loaded) &&
+              loaded.getWedgeGenerationParameters() == configured,
+          "an unsupported Wedge quality changed the target World");
 
   auto invalid = configured;
   invalid.maximumCornerVerticalExtent =

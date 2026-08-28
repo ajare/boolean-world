@@ -210,6 +210,8 @@ void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
       serializer->writeFloat(
           "cornerWedgeProbability",
           mWedgeGenerationParameters.cornerWedgeProbability);
+      serializer->writeUint32(
+          "quality", mWedgeGenerationParameters.quality);
       serializer->endMap();
 
       // Every Layer this World owns is written inline, each self-contained
@@ -311,6 +313,9 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
               serializer->readFloat(
                   "cornerWedgeProbability", optionalFrequencyControls,
                   wedgeGenerationParameters.cornerWedgeProbability);
+          wedgeGenerationParameters.quality = serializer->readUint32(
+              "quality", !serializer->isPositional(),
+              wedgeGenerationParameters.quality);
           serializer->endMap();
         }
 
@@ -351,7 +356,7 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
 
   if (!WedgeGenerationParametersAreValid(wedgeGenerationParameters)) {
     addDeserializationError(
-        "World Wedge dimensions must be finite, positive, and ordered; frequencies and probability must be in [0, 1].");
+        "World Wedge dimensions must be finite, positive, and ordered; frequencies and probability must be in [0, 1], and quality must be supported.");
     return false;
   }
 
@@ -682,7 +687,7 @@ void World::setWedgeGenerationParameters(
     WedgeGenerationParameters const& parameters) {
   if (!WedgeGenerationParametersAreValid(parameters)) {
     throw invalid_argument(
-        "Wedge dimensions must be finite, positive, and ordered; frequencies and probability must be in [0, 1].");
+        "Wedge dimensions must be finite, positive, and ordered; frequencies and probability must be in [0, 1], and quality must be supported.");
   }
   mWedgeGenerationParameters = parameters;
 }

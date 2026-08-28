@@ -1,13 +1,18 @@
 #pragma once
 
 #include <cmath>
+#include <cstdint>
 
 namespace bw::core {
+
+inline constexpr uint32_t MaximumWedgeQuality = 3;
 
 // World-owned controls for additive post-fold Wedges (ADR-0031). Floor and
 // ceiling frequencies are average Edge Wedge counts per world-unit Arris
 // distance; Corner probability applies independently to each floor/ceiling
-// Corner candidate. Reach is the total extent along a Border wall's floor or
+// Corner candidate. Quality is the number of recursive centroid subdivisions;
+// zero preserves the six-facet Edge and one-facet Corner geometry. Reach is
+// the total extent along a Border wall's floor or
 // ceiling Arris; width is half-reach. Drop-down height is the serialized name
 // of the vertical extent, mirrored upward for floor Wedges. Corner reach is measured independently
 // away from a Corner along each incident wall Arris; Corner vertical extent
@@ -27,6 +32,7 @@ struct WedgeGenerationParameters {
   float floorWedgesPerUnitDistance{0.05f};
   float ceilingWedgesPerUnitDistance{0.05f};
   float cornerWedgeProbability{1.0f};
+  uint32_t quality{0};
 
   bool operator==(WedgeGenerationParameters const&) const = default;
 };
@@ -40,7 +46,8 @@ struct WedgeGenerationParameters {
   auto validFrequency = [](float frequency) {
     return std::isfinite(frequency) && frequency >= 0.0f && frequency <= 1.0f;
   };
-  return validFrequency(parameters.floorWedgesPerUnitDistance) &&
+  return parameters.quality <= MaximumWedgeQuality &&
+         validFrequency(parameters.floorWedgesPerUnitDistance) &&
          validFrequency(parameters.ceilingWedgesPerUnitDistance) &&
          std::isfinite(parameters.cornerWedgeProbability) &&
          parameters.cornerWedgeProbability >= 0.0f &&

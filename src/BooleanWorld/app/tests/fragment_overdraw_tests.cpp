@@ -60,6 +60,18 @@ void appOffersDepthPrepassToggle() {
           "enabled and disabled depth pre-pass modes do not use distinct pipelines");
 }
 
+void appOffersLiveWedgeQuality() {
+  auto appRoot = std::filesystem::path(BW_APP_RESOURCE_DIR).parent_path();
+  auto header = read(appRoot / "include" / "StatePlayBooleanWorld.h");
+  auto state = read(appRoot / "src" / "StatePlayBooleanWorld.cpp");
+  require(header.find("int wedgeQuality{0}") != std::string::npos &&
+              state.find("\"Wedge quality\", &mDebugDisplay.wedgeQuality, 0, 3") !=
+                  std::string::npos &&
+              state.find("wedgeSettings.quality =") != std::string::npos &&
+              state.find("generator->generate()") != std::string::npos,
+          "F5 Wedge quality does not regenerate session geometry in range 0-3");
+}
+
 void appUsesAPostProcessFreeDebugPath() {
   auto appRoot = std::filesystem::path(BW_APP_RESOURCE_DIR).parent_path();
   auto state = read(appRoot / "src" / "StatePlayBooleanWorld.cpp");
@@ -106,6 +118,7 @@ int main() {
   try {
     shaderHasNoMaterialOrLightingWork();
     appOffersDepthPrepassToggle();
+    appOffersLiveWedgeQuality();
     appUsesAPostProcessFreeDebugPath();
     std::cout << "Fragment overdraw debug rendering contract passed\n";
     return 0;
