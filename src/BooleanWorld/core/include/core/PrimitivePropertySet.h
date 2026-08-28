@@ -12,6 +12,11 @@ class Primitive;
 struct PrimitivePropertySet : public Serializable {
   float floorZ{0}, ceilingZ{48};
 
+  // Authored water volume scalar, meaningful only on a Primitive whose
+  // operation is Union - see ComputeWaterLevels. Inert (but still stored) on
+  // any other operation.
+  float waterLevel{0};
+
   // Stable Sub-material id references - see SubMaterial.h. A missing or
   // empty id is a valid, if unresolved, state; resolution against a loaded
   // ProcMaterial catalog happens elsewhere.

@@ -61,6 +61,7 @@ void propertySetRoundTripsSubMaterialIds() {
   bw::core::PrimitivePropertySet original;
   original.floorZ = 0.0f;
   original.ceilingZ = 48.0f;
+  original.waterLevel = 12.5f;
   original.floorMaterialId = "weathered_slate";
   original.ceilingMaterialId = "polished_slate";
   original.wallMaterialId = "";
@@ -84,6 +85,8 @@ void propertySetRoundTripsSubMaterialIds() {
           "ceiling Sub-material id did not round-trip");
   require(roundTripped.wallMaterialId == original.wallMaterialId,
           "an empty wall Sub-material id did not round-trip as empty");
+  require(roundTripped.waterLevel == original.waterLevel,
+          "water level did not round-trip the same way floorZ/ceilingZ do");
 }
 
 void propertySetToleratesMissingSubMaterialIds() {
@@ -101,6 +104,8 @@ void propertySetToleratesMissingSubMaterialIds() {
           "a missing ceiling Sub-material id was not left empty");
   require(properties.wallMaterialId.empty(),
           "a missing wall Sub-material id was not left empty");
+  require(properties.waterLevel == 0.0f,
+          "a missing water level was not left at its zero default");
 }
 
 }  // namespace

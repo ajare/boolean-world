@@ -1151,6 +1151,8 @@ ArrangementResultPtr BuildArrangement(
   for (auto const& primitive : primitives) {
     result->palette.push_back(primitive.properties);
     result->chipParametersPalette.push_back(primitive.chipParameters);
+    result->primitiveOperations.push_back(primitive.operation);
+    result->primitiveRawAreas.push_back(primitive.rawArea);
   }
 
   // Face zero is the unbounded exterior, allowing every edge to name two
@@ -1497,6 +1499,49 @@ vector<WaterAdjacency> BuildWaterAdjacency(ArrangementResult const& arrangement)
           }),
       result.end());
   return result;
+}
+
+vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
+  vector<float> depths(arrangement.faces.size(), 0.0f);
+  auto primitiveCount = arrangement.primitiveOperations.size();
+
+  for (uint32_t faceIndex = 0; faceIndex < uint32_t(arrangement.faces.size());
+       ++faceIndex) {
+    auto const& face = arrangement.faces[faceIndex];
+    if (face.solid) {
+      continue;
+    }
+
+    auto faceArea = FaceArea(face, arrangement);
+    if (faceArea <= 0.0) {
+      continue;
+    }
+
+    double depth = 0.0;
+    for (size_t primitiveIndex = 0; primitiveIndex < primitiveCount;
+         ++primitiveIndex) {
+      if (arrangement.primitiveOperations[primitiveIndex] !=
+              bw::core::Primitive::Operation::Union ||
+          !face.membership.contains(primitiveIndex)) {
+        continue;
+      }
+      auto rawArea = arrangement.primitiveRawAreas[primitiveIndex];
+      if (rawArea <= 0.0) {
+        continue;
+      }
+      auto waterLevel = arrangement.palette[primitiveIndex + 1].waterLevel;
+      depth += double(waterLevel) * faceArea / rawArea;
+    }
+    if (depth <= 0.0) {
+      continue;
+    }
+
+    auto const& properties = arrangement.palette[face.paletteIndex];
+    auto capacity =
+        max(0.0, double(properties.ceilingZ) - double(properties.floorZ));
+    depths[faceIndex] = float(min(depth, capacity));
+  }
+  return depths;
 }
 
 ArrangementWallOrientation OrientArrangementWall(

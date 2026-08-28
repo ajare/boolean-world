@@ -143,3 +143,19 @@ _Avoid_: crack (a fissure removes no material — a separate, deferred idea, clo
 **Wedge**:
 Additive geometric detail governed by the World and surfaced with the adjoining horizontal surface's Sub-material. An Edge Wedge is centred beneath the ceiling Arris or above the floor Arris of one visible Border wall; its two sides meet along a subtly convex, three-segment centre line that arches inward toward the wall. A Corner Wedge fills the trihedral Corner where a floor or ceiling meets two connected visible Border walls, joining one independently sized point on each horizontal Arris to one point on their shared vertical Arris. Both are derived after the boolean fold in the same detail channel as Chips. World-level floor and ceiling averages per unit distance control Edge Wedge frequency; a World-level probability independently controls each Corner Wedge candidate. World-level quality recursively replaces every exposed triangle with three triangles meeting at a deterministically displaced centroid; quality zero retains the base geometry. A floor Wedge raises floor collision to its exposed facets, while a ceiling Wedge remains render-only; neither changes wall collision, face containment, surface picking, the editor's 2D geometry, or authored geometry.
 _Avoid_: Chip (subtractive detail), Arrangement geometry, authored Primitive
+
+**Water level**:
+An authored, per-Primitive scalar defaulting to zero, meaningful only on a Primitive whose operation is Union — other operations store it but it has no effect. A Primitive's total water volume is this value times its own raw area, as though the Primitive existed alone; a Union Primitive later carved away by other operations loses the corresponding share of that volume.
+_Avoid_: water depth (the derived per-face quantity), fill level
+
+**Water depth**:
+The finished depth of standing water in one Arrangement face, derived after the fold from Wet component equilibrium and clamped between zero and that face's own floor-to-ceiling clearance. Zero means dry.
+_Avoid_: water level (the authored per-Primitive quantity), water height, water elevation
+
+**Water-adjacency**:
+The relation between two non-solid Arrangement faces across which water can equilibrate: both faces must be non-solid and their shared edge's wall clearance must be nonzero. The Arrangement's outer, unbounded face is water-adjacent to every face bordering it, with an effective floor of negative infinity, acting as a permanent drain.
+_Avoid_: face adjacency (two faces sharing an edge are not water-adjacent when the wall between them has zero clearance)
+
+**Wet component**:
+A maximal set of Arrangement faces connected by water-adjacency that share one common equilibrium water surface elevation. Two Wet components merge into one the moment rising water would connect them across a saddle point; a face unreachable from any seed water stays dry regardless of its own floor height.
+_Avoid_: lake, basin, pond

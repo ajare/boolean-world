@@ -194,6 +194,9 @@ struct ArrangementPrimitive {
   bool contributesProperties{true};
   std::vector<std::vector<std::optional<WallNormalMapOverride>>>
       contourEdgeNormalMapOverrides{};
+  // This Primitive's own raw area (Primitive::getArea()), independent of the
+  // fold - see ComputeWaterLevels, which is the only consumer.
+  double rawArea{0};
 };
 
 struct ArrangementEdge {
@@ -247,6 +250,11 @@ struct ArrangementResult {
   // Parallel to palette: the wall Sub-material's dimensions resolved on the
   // calling thread before arrangement construction reaches a worker.
   std::vector<ChipGenerationParameters> chipParametersPalette;
+  // Indexed directly by primitiveIndex (unlike palette, which is offset by
+  // one for the unused placeholder entry) - one entry per source Primitive,
+  // for ComputeWaterLevels to walk a face's membership bitset with.
+  std::vector<Primitive::Operation> primitiveOperations;
+  std::vector<double> primitiveRawAreas;
 };
 
 // A wall's front face is the one its outward normal points away from: the
@@ -296,6 +304,15 @@ bool PointInFace(
 // per unordered pair, for the later watershed equilibrium pass to consume.
 // This computes no water depth itself.
 [[nodiscard]] std::vector<WaterAdjacency> BuildWaterAdjacency(
+    ArrangementResult const& arrangement);
+
+// Each non-solid face's undistributed water depth: the area-weighted sum,
+// over every Union-operation Primitive in that face's membership, of
+// primitiveWaterLevel * faceArea / primitiveRawArea, clamped to the face's
+// own [0, ceilingZ - floorZ]. Models no flow between faces - see the
+// watershed equilibrium pass for that. Parallel to arrangement.faces; solid
+// faces (and the unbounded exterior face) are always zero.
+[[nodiscard]] std::vector<float> ComputeWaterLevels(
     ArrangementResult const& arrangement);
 
 [[nodiscard]] ArrangementWallOrientation OrientArrangementWall(

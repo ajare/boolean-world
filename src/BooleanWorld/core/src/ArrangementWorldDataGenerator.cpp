@@ -149,7 +149,8 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
                       chipParameters,
                       primitive->getPropertyContribution() ==
                           Primitive::PropertyContribution::Contributing,
-                      std::move(contours.edgeNormalMapOverrides)});
+                      std::move(contours.edgeNormalMapOverrides),
+                      primitive->getArea()});
   }
   return result;
 }

@@ -86,6 +86,7 @@ ArrangementWorldData::ArrangementWorldData(
       // the two outputs above. Neither of those is altered by its presence.
       mDetail(arr::BuildChipDetail(
           *mArrangement, mWalls, wedgeGenerationParameters)),
+      mWaterDepths(arr::ComputeWaterLevels(*mArrangement)),
       mStepThreshold(stepThreshold),
       mWedgeGenerationParameters(wedgeGenerationParameters) {
   if (stats != nullptr) {
@@ -292,6 +293,22 @@ float ArrangementWorldData::getCeilingHeight(
              ? std::numeric_limits<float>::infinity()
              : mArrangement->palette[mArrangement->faces[faceIndex].paletteIndex]
                    .ceilingZ;
+}
+
+float ArrangementWorldData::getWaterDepth(wp::Vector2 const& position) const {
+  // Water pools in non-solid faces, which the solid-only triangle grid behind
+  // getContainingFaceIndex cannot locate, so this falls back to a direct,
+  // unaccelerated boundary test over every face.
+  arr::FixedPointVertex fixed{
+      arr::ToFixedPointCoordinate(position.x),
+      arr::ToFixedPointCoordinate(position.y)};
+  for (uint32_t faceIndex = 1; faceIndex < uint32_t(mArrangement->faces.size());
+       ++faceIndex) {
+    if (arr::PointInFace(fixed, mArrangement->faces[faceIndex], *mArrangement)) {
+      return mWaterDepths[faceIndex];
+    }
+  }
+  return 0.0f;
 }
 
 std::vector<uint32_t> ArrangementWorldData::getWallsNear(
