@@ -1501,7 +1501,8 @@ vector<WaterAdjacency> BuildWaterAdjacency(ArrangementResult const& arrangement)
   return result;
 }
 
-vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
+vector<float> ComputeUndistributedWaterDepths(
+    ArrangementResult const& arrangement) {
   vector<float> depths(arrangement.faces.size(), 0.0f);
   auto primitiveCount = arrangement.primitiveOperations.size();
 
@@ -1536,10 +1537,204 @@ vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
       continue;
     }
 
+    // Deliberately unclamped: capping here would destroy volume that the
+    // equilibrium pass needs to spread into neighbouring faces.
+    depths[faceIndex] = float(depth);
+  }
+  return depths;
+}
+
+namespace {
+// One face's hydrology inputs, gathered once so the fill below never has to
+// go back to the palette or recompute an area.
+struct FaceWater {
+  double floorZ{0};
+  double ceilingZ{0};
+  double area{0};
+};
+
+// Volume held by these faces if the water surface sat at elevation z. Each
+// face holds area * (z - floorZ), never below zero and never past its own
+// ceiling, so this is continuous, non-decreasing and piecewise linear in z.
+double WaterCapacityBelow(
+    vector<FaceWater> const& water,
+    vector<uint32_t> const& faces,
+    double z) {
+  double total = 0.0;
+  for (auto faceIndex : faces) {
+    auto const& face = water[faceIndex];
+    auto clearance = max(0.0, face.ceilingZ - face.floorZ);
+    total += face.area * clamp(z - face.floorZ, 0.0, clearance);
+  }
+  return total;
+}
+
+// The elevation at which `volume` settles across these faces, found exactly:
+// WaterCapacityBelow bends only at a floor or a ceiling, so the answer is the
+// linear interpolation inside the single segment between consecutive
+// breakpoints that brackets the volume - no epsilon, no iteration. A volume
+// exceeding every face's combined capacity settles at the highest ceiling,
+// which caps each member face and silently discards the excess.
+double SolveWaterLevel(
+    vector<FaceWater> const& water,
+    vector<uint32_t> const& faces,
+    double volume) {
+  vector<double> breakpoints;
+  breakpoints.reserve(faces.size() * 2);
+  for (auto faceIndex : faces) {
+    auto const& face = water[faceIndex];
+    breakpoints.push_back(face.floorZ);
+    breakpoints.push_back(max(face.floorZ, face.ceilingZ));
+  }
+  sort(breakpoints.begin(), breakpoints.end());
+  breakpoints.erase(
+      unique(breakpoints.begin(), breakpoints.end()), breakpoints.end());
+  if (breakpoints.empty()) {
+    return -numeric_limits<double>::infinity();
+  }
+
+  auto lowerCapacity = 0.0;
+  for (size_t i = 1; i < breakpoints.size(); ++i) {
+    auto upperCapacity = WaterCapacityBelow(water, faces, breakpoints[i]);
+    if (upperCapacity >= volume) {
+      auto slope = (upperCapacity - lowerCapacity) /
+                   (breakpoints[i] - breakpoints[i - 1]);
+      if (slope > 0.0) {
+        return breakpoints[i - 1] + (volume - lowerCapacity) / slope;
+      }
+    }
+    lowerCapacity = upperCapacity;
+  }
+  return breakpoints.back();
+}
+
+// One water-adjacency resolved into the elevation water has to reach before
+// it can cross: the higher of the two floors, since the lower face's water
+// only reaches the higher face once it is deep enough to top that face's
+// floor. The exterior drain's floor is negative infinity, so a drain link's
+// sill is simply the bordering face's own floor.
+struct WaterLink {
+  double sill{0};
+  uint32_t face0{0};
+  uint32_t face1{0};
+};
+}  // namespace
+
+vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
+  auto faceCount = uint32_t(arrangement.faces.size());
+  vector<float> depths(faceCount, 0.0f);
+  if (faceCount == 0) {
+    return depths;
+  }
+
+  auto undistributed = ComputeUndistributedWaterDepths(arrangement);
+
+  // Face zero, the unbounded exterior, is the permanent drain: it never holds
+  // water and its entry stays zeroed.
+  vector<FaceWater> water(faceCount);
+  vector<double> volumes(faceCount, 0.0);
+  for (uint32_t faceIndex = 1; faceIndex < faceCount; ++faceIndex) {
+    auto const& face = arrangement.faces[faceIndex];
+    if (face.solid) {
+      continue;
+    }
     auto const& properties = arrangement.palette[face.paletteIndex];
-    auto capacity =
-        max(0.0, double(properties.ceilingZ) - double(properties.floorZ));
-    depths[faceIndex] = float(min(depth, capacity));
+    water[faceIndex] = {
+        double(properties.floorZ), double(properties.ceilingZ),
+        max(0.0, FaceArea(face, arrangement))};
+    volumes[faceIndex] = double(undistributed[faceIndex]) * water[faceIndex].area;
+  }
+
+  // Union-find over faces. Each group is a pool: the faces sharing one
+  // surface elevation, the volume they hold between them, and whether that
+  // pool has reached the exterior and emptied.
+  vector<uint32_t> parent(faceCount);
+  vector<vector<uint32_t>> members(faceCount);
+  vector<double> groupVolume(faceCount, 0.0);
+  vector<double> groupLevel(faceCount, -numeric_limits<double>::infinity());
+  vector<bool> groupDrained(faceCount, false);
+  for (uint32_t faceIndex = 0; faceIndex < faceCount; ++faceIndex) {
+    parent[faceIndex] = faceIndex;
+    if (faceIndex == 0) {
+      groupDrained[0] = true;
+      continue;
+    }
+    if (arrangement.faces[faceIndex].solid) {
+      continue;
+    }
+    members[faceIndex].push_back(faceIndex);
+    groupVolume[faceIndex] = volumes[faceIndex];
+    if (volumes[faceIndex] > 0.0) {
+      groupLevel[faceIndex] =
+          SolveWaterLevel(water, members[faceIndex], volumes[faceIndex]);
+    }
+  }
+
+  auto findRoot = [&parent](uint32_t faceIndex) {
+    while (parent[faceIndex] != faceIndex) {
+      parent[faceIndex] = parent[parent[faceIndex]];
+      faceIndex = parent[faceIndex];
+    }
+    return faceIndex;
+  };
+
+  vector<WaterLink> links;
+  for (auto const& adjacency : BuildWaterAdjacency(arrangement)) {
+    auto sill = adjacency.drain
+                    ? water[adjacency.face0 == 0 ? adjacency.face1
+                                                 : adjacency.face0]
+                          .floorZ
+                    : max(water[adjacency.face0].floorZ,
+                          water[adjacency.face1].floorZ);
+    links.push_back({sill, adjacency.face0, adjacency.face1});
+  }
+  sort(links.begin(), links.end(), [](auto const& a, auto const& b) {
+    return tie(a.sill, a.face0, a.face1) < tie(b.sill, b.face0, b.face1);
+  });
+
+  // Rising-level fill: repeatedly take the lowest sill whose water has
+  // actually risen high enough to cross it and merge the two pools, exactly
+  // as two separate ponds become one body of water the moment the rising
+  // surface tops the saddle between them. Every pass either merges two
+  // distinct groups - which can happen at most faceCount - 1 times - or ends
+  // the fill, so this is a union-find walk, not a convergence loop.
+  for (auto merging = true; merging;) {
+    merging = false;
+    for (auto const& link : links) {
+      auto root0 = findRoot(link.face0);
+      auto root1 = findRoot(link.face1);
+      if (root0 == root1 ||
+          max(groupLevel[root0], groupLevel[root1]) < link.sill) {
+        continue;
+      }
+
+      // Merging changes both pools' surface elevation, so restart from the
+      // lowest sill rather than continuing down a stale ordering.
+      parent[root1] = root0;
+      members[root0].insert(
+          members[root0].end(), members[root1].begin(), members[root1].end());
+      members[root1].clear();
+      groupVolume[root0] += groupVolume[root1];
+      groupDrained[root0] = groupDrained[root0] || groupDrained[root1];
+      // A pool that reaches the exterior empties completely, and so does
+      // anything that later spills into it.
+      groupLevel[root0] =
+          groupDrained[root0] || groupVolume[root0] <= 0.0
+              ? -numeric_limits<double>::infinity()
+              : SolveWaterLevel(water, members[root0], groupVolume[root0]);
+      merging = true;
+      break;
+    }
+  }
+
+  for (uint32_t faceIndex = 1; faceIndex < faceCount; ++faceIndex) {
+    if (arrangement.faces[faceIndex].solid) {
+      continue;
+    }
+    auto level = groupLevel[findRoot(faceIndex)];
+    auto const& face = water[faceIndex];
+    auto clearance = max(0.0, face.ceilingZ - face.floorZ);
+    depths[faceIndex] = float(clamp(level - face.floorZ, 0.0, clearance));
   }
   return depths;
 }

@@ -195,7 +195,7 @@ struct ArrangementPrimitive {
   std::vector<std::vector<std::optional<WallNormalMapOverride>>>
       contourEdgeNormalMapOverrides{};
   // This Primitive's own raw area (Primitive::getArea()), independent of the
-  // fold - see ComputeWaterLevels, which is the only consumer.
+  // fold - see ComputeUndistributedWaterDepths, which is the only consumer.
   double rawArea{0};
 };
 
@@ -252,7 +252,8 @@ struct ArrangementResult {
   std::vector<ChipGenerationParameters> chipParametersPalette;
   // Indexed directly by primitiveIndex (unlike palette, which is offset by
   // one for the unused placeholder entry) - one entry per source Primitive,
-  // for ComputeWaterLevels to walk a face's membership bitset with.
+  // for ComputeUndistributedWaterDepths to walk a face's membership bitset
+  // with.
   std::vector<Primitive::Operation> primitiveOperations;
   std::vector<double> primitiveRawAreas;
 };
@@ -308,10 +309,21 @@ bool PointInFace(
 
 // Each non-solid face's undistributed water depth: the area-weighted sum,
 // over every Union-operation Primitive in that face's membership, of
-// primitiveWaterLevel * faceArea / primitiveRawArea, clamped to the face's
-// own [0, ceilingZ - floorZ]. Models no flow between faces - see the
-// watershed equilibrium pass for that. Parallel to arrangement.faces; solid
-// faces (and the unbounded exterior face) are always zero.
+// primitiveWaterLevel * faceArea / primitiveRawArea. Deliberately uncapped by
+// the face's own clearance, and modelling no flow between faces - this is the
+// seed volume ComputeWaterLevels then settles. Parallel to arrangement.faces;
+// solid faces (and the unbounded exterior face) are always zero.
+[[nodiscard]] std::vector<float> ComputeUndistributedWaterDepths(
+    ArrangementResult const& arrangement);
+
+// Each non-solid face's finished water depth, parallel to arrangement.faces.
+// The undistributed seed volumes above are settled across Wet components -
+// maximal sets of faces joined by water-adjacency once the rising surface
+// tops the sill between them - so that every face in one component shares a
+// single surface elevation, each face's depth is capped at its own ceiling,
+// and a component reaching the unbounded exterior face drains to zero
+// throughout. A sealed component holding more than its total capacity fills
+// every member face to its ceiling and discards the excess.
 [[nodiscard]] std::vector<float> ComputeWaterLevels(
     ArrangementResult const& arrangement);
 

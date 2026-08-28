@@ -29,6 +29,8 @@ The finished value stored per face is water **depth** (`clamp(equilibriumElevati
 - `ArrangementFace` gains a derived water-depth field, populated by the new pass rather than during `BuildArrangement`.
 - A public area computation is introduced for the first time (raw Primitive area and face area, both shoelace-based and hole-aware), since no such API existed before this feature needed one.
 - This design introduces the codebase's first iterative/graph-equilibrium solver; nothing else in the fold pipeline follows this shape yet.
+- Because a merged component resolves to exactly one surface elevation, a full pool that spills over a saddle into a lower, drier basin equalizes with it completely rather than draining down only as far as the saddle and stopping there. Retaining water up to the saddle would need a directed, partial volume transfer between pools instead of a union — a strictly larger algorithm than "one component, one elevation," and it is not what this decision buys.
+- The seed step (`ComputeUndistributedWaterDepths`) deliberately leaves each face's depth uncapped by its own clearance; capping there would destroy volume that has to flow onward, so the ceiling cap applies only once, to the settled surface.
 - Rendering or meshing a water surface, and any animated/time-stepped flow, are explicitly out of scope for this decision.
 
 ## Considered alternatives

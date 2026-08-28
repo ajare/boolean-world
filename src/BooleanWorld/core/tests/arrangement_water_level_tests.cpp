@@ -90,7 +90,7 @@ void aUnionPrimitivesWaterLevelFillsTheRoomItCovers() {
   // so its authored water level passes straight through as depth.
   auto arrangement = bw::core::arr::BuildArrangement(
       openRoom(0, 0, 100, 100, properties(0.0f, 48.0f, 20.0f)));
-  auto depths = bw::core::arr::ComputeWaterLevels(*arrangement);
+  auto depths = bw::core::arr::ComputeUndistributedWaterDepths(*arrangement);
 
   auto faceIndex = soleRoomFace(*arrangement);
   requireNear(depths[faceIndex], 20.0,
@@ -100,7 +100,7 @@ void aUnionPrimitivesWaterLevelFillsTheRoomItCovers() {
 void anUnsetWaterLevelProducesZeroDepth() {
   auto arrangement = bw::core::arr::BuildArrangement(
       openRoom(0, 0, 100, 100, properties(0.0f, 48.0f, 0.0f)));
-  auto depths = bw::core::arr::ComputeWaterLevels(*arrangement);
+  auto depths = bw::core::arr::ComputeUndistributedWaterDepths(*arrangement);
 
   auto faceIndex = soleRoomFace(*arrangement);
   requireNear(depths[faceIndex], 0.0,
@@ -122,7 +122,7 @@ void aSinglePrimitiveSplitAcrossFacesDistributesProportionally() {
       properties(0.0f, 100.0f, 0.0f), 12000.0);
 
   auto arrangement = bw::core::arr::BuildArrangement({base, roomA, roomB});
-  auto depths = bw::core::arr::ComputeWaterLevels(*arrangement);
+  auto depths = bw::core::arr::ComputeUndistributedWaterDepths(*arrangement);
 
   int roomAFace = -1, roomBFace = -1;
   for (uint32_t i = 1; i < uint32_t(arrangement->faces.size()); ++i) {
@@ -154,7 +154,7 @@ void aPartlyCarvedPrimitiveContributesProportionallyLessVolume() {
       properties(0.0f, 48.0f, 0.0f), 5000.0);
 
   auto arrangement = bw::core::arr::BuildArrangement({base, room});
-  auto depths = bw::core::arr::ComputeWaterLevels(*arrangement);
+  auto depths = bw::core::arr::ComputeUndistributedWaterDepths(*arrangement);
 
   bool sawSolidRemainder = false;
   int roomFace = -1;
@@ -183,27 +183,42 @@ void aWaterLevelOnANonUnionPrimitiveHasNoEffect() {
       properties(0.0f, 48.0f, 30.0f), 10000.0);
 
   auto arrangement = bw::core::arr::BuildArrangement({base, room});
-  auto depths = bw::core::arr::ComputeWaterLevels(*arrangement);
+  auto depths = bw::core::arr::ComputeUndistributedWaterDepths(*arrangement);
 
   auto faceIndex = soleRoomFace(*arrangement);
   requireNear(depths[faceIndex], 0.0,
               "a water level authored on a non-Union primitive must have no effect on any face's depth");
 }
 
-void aFacesDepthIsCappedAtItsOwnClearance() {
+// The undistributed depth is the seed volume the equilibrium pass spreads
+// between faces, so it deliberately overshoots its own face's clearance
+// rather than destroying the volume that has to flow onward.
+void anUndistributedDepthIsNotCappedAtTheFacesClearance() {
   auto arrangement = bw::core::arr::BuildArrangement(
       openRoom(0, 0, 100, 100, properties(10.0f, 34.0f, 1000.0f)));
-  auto depths = bw::core::arr::ComputeWaterLevels(*arrangement);
+  auto depths = bw::core::arr::ComputeUndistributedWaterDepths(*arrangement);
 
   auto faceIndex = soleRoomFace(*arrangement);
-  requireNear(depths[faceIndex], 24.0,
-              "a face's depth should be capped at its own ceilingZ - floorZ clearance");
+  requireNear(depths[faceIndex], 1000.0,
+              "the undistributed depth should carry the whole authored volume, "
+              "leaving the ceiling cap to the equilibrium pass");
 }
 
 void getWaterDepthQueriesTheContainingFace() {
+  // A room carved inside a larger slab, so that its rim of solid material
+  // seals it off from the exterior face rather than draining it.
+  auto slab = rectanglePrimitive(
+      rectangle(-10, -10, 110, 110), Primitive::Operation::Union, 0, 1,
+      properties(0.0f, 48.0f, 0.0f), 14400.0);
+  auto source = rectanglePrimitive(
+      rectangle(0, 0, 100, 100), Primitive::Operation::Union, 1, 2,
+      properties(0.0f, 48.0f, 18.0f), 10000.0);
+  auto room = rectanglePrimitive(
+      rectangle(0, 0, 100, 100), Primitive::Operation::Difference, 2, 3,
+      properties(0.0f, 48.0f, 0.0f), 10000.0);
+
   ArrangementWorldData worldData(
-      bw::core::arr::BuildArrangement(
-          openRoom(0, 0, 100, 100, properties(0.0f, 48.0f, 18.0f))),
+      bw::core::arr::BuildArrangement({slab, source, room}),
       wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f, 8.0f);
 
   requireNear(worldData.getWaterDepth({50.0f, 50.0f}), 18.0,
@@ -221,9 +236,9 @@ int main() {
     aSinglePrimitiveSplitAcrossFacesDistributesProportionally();
     aPartlyCarvedPrimitiveContributesProportionallyLessVolume();
     aWaterLevelOnANonUnionPrimitiveHasNoEffect();
-    aFacesDepthIsCappedAtItsOwnClearance();
+    anUndistributedDepthIsNotCappedAtTheFacesClearance();
     getWaterDepthQueriesTheContainingFace();
-    std::cout << "ComputeWaterLevels distributes authored water level across covered faces\n";
+    std::cout << "ComputeUndistributedWaterDepths distributes authored water level across covered faces\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';
