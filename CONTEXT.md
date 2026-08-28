@@ -92,6 +92,10 @@ _Avoid_: wall property, collision flag (ambiguous with the runtime collision sys
 The same per-edge, External-only mechanism as Wall collision override, for a second independent flag: whether that edge's ArrangementWall renders. Also defaults on. Unlike collision, resolving it needs no world-level parameter (there is no threshold to fall back to), so it is settled directly when ArrangementWalls are built rather than deferred to ArrangementWorldData; like collision, it never creates a wall where the fold produces none — it can only hide a wall that already exists.
 _Avoid_: render flag, hidden flag
 
+**Wall normal-map override**:
+A per-External-edge choice that is Unset, Disabled, or an image normal map, inherited by the uncut ArrangementWall surface that edge contributes to; Chip facets expose new surfaces and do not inherit it. Higher-precedence explicit choices dominate lower contributors; it varies wall-surface detail independently of the wall's Sub-material and never changes geometry or collision.
+_Avoid_: Sub-material normal map, Primitive normal map, wall texture
+
 **Player proxy**:
 A position and facing angle stored on the Document, representing where the in-game player currently would be. Independent of any Primitive or Layer; used to render the editor's player-view overlay and to seed a flythrough's starting pose.
 _Avoid_: player start, spawn point

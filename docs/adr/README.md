@@ -36,6 +36,7 @@ removed the dependency entirely. Geometry terms are defined in
 | [0027](0027-chips-are-post-fold-detail-geometry.md) | Chips are post-fold detail geometry in a side channel on the world snapshot | Accepted |
 | [0028](0028-wall-collision-overrides-are-tristate.md) | Wall collision overrides are tri-state | Accepted |
 | [0029](0029-structural-primitives-are-property-transparent.md) | Structural Primitives are property-transparent | Accepted |
+| [0030](0030-wall-normal-map-overrides-belong-to-authored-external-edges.md) | Wall normal-map overrides belong to authored External edges | Accepted |
 
 ## World geometry rewrite scope
 
