@@ -799,7 +799,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   mPlayerTorchShadowRequestedEnabled = desiredOptions.enabled;
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
-      mDebugDisplay.playerTorch,
+      mDebugDisplay.playerTorch, mDebugDisplay.sortGeometryFrontToBack,
       gNoMaterialOverride, gNoMaterialOverride, gAuthoredMaterialScale,
       gDefaultFarGridSize, gNoSecondaryMaterial, frameTime);
 }
@@ -972,6 +972,11 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   // remain filled. Applying it here also carries an enabled debug option onto
   // a newly created map renderer.
   mwRenderer->setWireframe(mDebugDisplay.wireframe);
+  // MPP orders every 3D draw command while WorldRenderer orders the triangles
+  // inside each material command. Together these exercise the complete
+  // closest-first diagnostic path for this scene.
+  renderSystem->setSortGeometryFrontToBack(
+      mDebugDisplay.sortGeometryFrontToBack);
 
   // The graph pipeline renders at the target's dimensions and applies its
   // selected AA stage. The camera retains the window aspect ratio, and
@@ -1594,6 +1599,11 @@ void StatePlayBooleanWorld::debug_renderOptions() {
 
     ImGui::Checkbox("Wireframe world", &mDebugDisplay.wireframe);
     ImGui::TextDisabled("Debug-only - renders world surfaces as polygon lines.");
+    ImGui::Checkbox(
+        "Sort geometry closest first",
+        &mDebugDisplay.sortGeometryFrontToBack);
+    ImGui::TextDisabled(
+        "Debug-only - sorts 3D draws and world triangles by view distance.");
 
     ImGui::Separator();
     auto configuredAmbientOcclusion = mDebugDisplay.ambientOcclusion;

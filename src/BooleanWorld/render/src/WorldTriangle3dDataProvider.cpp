@@ -1,7 +1,10 @@
 #include "WorldTriangle3dDataProvider.h"
 
+#include <algorithm>
 #include <bit>
 #include <cstring>
+
+#include <glm/geometric.hpp>
 
 static_assert(sizeof(WorldTriangle3dDataProvider::DrawVert) == 9 * sizeof(uint32_t));
 
@@ -37,6 +40,7 @@ void WorldTriangle3dDataProvider::clear() {
 void WorldTriangle3dDataProvider::setMeshCount(uint32_t numMeshes) {
   mMeshData.resize(numMeshes);
   mVertexIndices.resize(numMeshes);
+  mAuthoredIndices.resize(numMeshes);
 }
 
 uint32_t WorldTriangle3dDataProvider::getNumMeshes() const {
@@ -169,6 +173,7 @@ void WorldTriangle3dDataProvider::updateInternals(
 }
 
 void WorldTriangle3dDataProvider::finalizeInternals() {
+  mTriangleOrderIsViewSorted = false;
   for (uint32_t meshIndex = 0; meshIndex < mMeshData.size(); ++meshIndex) {
     auto& meshData = mMeshData[meshIndex];
     auto usedSize = meshData.numVertices * mVertexStride;
@@ -183,9 +188,76 @@ void WorldTriangle3dDataProvider::finalizeInternals() {
       meshData._workVert = usedSize == 0 ? nullptr : reinterpret_cast<DrawVert*>(meshData.vertexData + usedSize);
     }
 
+    // Capture authored indices only if the optional ordering path is used.
+    mAuthoredIndices[meshIndex].clear();
+
     // Vertex lookup is generation-only working state, not part of the
     // persistent renderer representation.
     mVertexIndices[meshIndex].clear();
     mVertexIndices[meshIndex].rehash(0);
   }
+}
+
+void WorldTriangle3dDataProvider::orderTrianglesForView(
+    glm::vec3 const& viewPosition, bool closestFirst) {
+  // Keep the established path allocation- and copy-free until the diagnostic
+  // mode has actually changed an index buffer.
+  if (!closestFirst && !mTriangleOrderIsViewSorted) {
+    return;
+  }
+
+  for (uint32_t meshIndex = 0; meshIndex < mMeshData.size(); ++meshIndex) {
+    auto& mesh = mMeshData[meshIndex];
+    auto& authored = mAuthoredIndices[meshIndex];
+    auto indexCount = mesh.numTriangles * 3;
+    if (indexCount == 0) {
+      continue;
+    }
+    if (closestFirst && authored.size() != indexCount) {
+      authored.assign(mesh.indexData, mesh.indexData + indexCount);
+    }
+    if (authored.size() != indexCount) {
+      continue;
+    }
+
+    std::copy(authored.begin(), authored.end(), mesh.indexData);
+    if (!closestFirst || mesh.numTriangles < 2) {
+      continue;
+    }
+
+    struct TriangleDistance {
+      uint32_t triangle;
+      float squared;
+    };
+    std::vector<TriangleDistance> triangleOrder;
+    triangleOrder.reserve(mesh.numTriangles);
+    auto const* vertices = reinterpret_cast<DrawVert const*>(mesh.vertexData);
+    for (uint32_t triangle = 0; triangle < mesh.numTriangles; ++triangle) {
+      auto index = triangle * 3;
+      auto const& p0 = vertices[authored[index]].pos;
+      auto const& p1 = vertices[authored[index + 1]].pos;
+      auto const& p2 = vertices[authored[index + 2]].pos;
+      // Dividing both centroid sums by three cannot change their ordering.
+      auto delta = glm::vec3{
+                       p0[0] + p1[0] + p2[0],
+                       p0[1] + p1[1] + p2[1],
+                       p0[2] + p1[2] + p2[2]} -
+                   viewPosition * 3.0f;
+      triangleOrder.push_back({triangle, glm::dot(delta, delta)});
+    }
+    std::stable_sort(
+        triangleOrder.begin(), triangleOrder.end(),
+        [](TriangleDistance const& left, TriangleDistance const& right) {
+          return left.squared < right.squared;
+        });
+
+    auto* destination = mesh.indexData;
+    for (auto const& triangle : triangleOrder) {
+      auto source = triangle.triangle * 3;
+      *destination++ = authored[source];
+      *destination++ = authored[source + 1];
+      *destination++ = authored[source + 2];
+    }
+  }
+  mTriangleOrderIsViewSorted = closestFirst;
 }

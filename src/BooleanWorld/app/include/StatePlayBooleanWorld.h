@@ -40,6 +40,7 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     bool clipGeneration{false};
     bool options{false};
     bool wireframe{false};
+    bool sortGeometryFrontToBack{false};
 
     bw::app::AmbientOcclusion ambientOcclusion{
         bw::app::AmbientOcclusion::GtaoDepth};

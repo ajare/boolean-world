@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <glm/vec3.hpp>
+
 #include <mpp/helper/TriangleBatchDataProvider.h>
 
 class WorldTriangle3dDataProvider : public mpp::helper::TriangleBatch3DBufferDataProvider<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte> {
@@ -39,6 +41,11 @@ private:
 
   std::vector<MeshData> mMeshData;
   std::vector<std::unordered_map<VertexKey, uint32_t, VertexKeyHash>> mVertexIndices;
+  // Authored order retained lazily while the diagnostic sort is in use, so
+  // disabling it restores the normal renderer path without charging the
+  // default path a second full index allocation.
+  std::vector<std::vector<uint32_t>> mAuthoredIndices;
+  bool mTriangleOrderIsViewSorted{false};
 
 public:
   WorldTriangle3dDataProvider();
@@ -62,6 +69,10 @@ public:
   void updateInternals(std::vector<uint32_t> const& numTrianglesPerMesh);
 
   void finalizeInternals();
+
+  // Restores authored triangle order, then optionally sorts every material
+  // mesh closest-first by triangle-centroid distance from the view.
+  void orderTrianglesForView(glm::vec3 const& viewPosition, bool closestFirst);
 
   void addTriangle(uint32_t meshIndex, uint32_t v0, uint32_t v1, uint32_t v2);
 

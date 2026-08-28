@@ -274,6 +274,7 @@ void WorldRenderer3d::update(
     glm::vec3 const& playerPosition,
     glm::vec3 const& lightPosition,
     bw::app::PlayerTorchOptions const& playerTorch,
+    bool sortGeometryFrontToBack,
     int32_t materialIndexOverride,
     float materialScale,
     float farGridSize,
@@ -309,5 +310,7 @@ void WorldRenderer3d::update(
         materialIndexOverride >= 0 ? materialIndexOverride : mMaterialIndices[i]);
   }
 
+  mDataProvider->orderTrianglesForView(
+      playerPosition, sortGeometryFrontToBack);
   mRenderer->update();
 }

@@ -74,6 +74,7 @@ public:
       glm::vec3 const& playerPosition,
       glm::vec3 const& lightPosition,
       bw::app::PlayerTorchOptions const& playerTorch,
+      bool sortGeometryFrontToBack,
       int32_t materialIndexOverride,
       float materialScale,
       float farGridSize,

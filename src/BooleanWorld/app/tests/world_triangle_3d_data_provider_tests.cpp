@@ -118,6 +118,42 @@ void safelyReusesVerticesWithinEachMaterialMesh() {
           "final renderer allocation retained duplicate-vertex capacity");
 }
 
+void trianglesCanBeOrderedClosestFirstAndRestored() {
+  WorldTriangle3dDataProvider provider;
+  provider.setMeshCount(1);
+  provider.updateInternals({3});
+
+  auto addTriangleAt = [&](float x) {
+    auto first = provider.addVertex(
+        0, vertex(x, 0, 0, 0, 1, 0, 0, 0, 0xffffffff));
+    auto second = provider.addVertex(
+        0, vertex(x, 1, 0, 0, 1, 0, 0, 1, 0xffffffff));
+    auto third = provider.addVertex(
+        0, vertex(x, 0, 1, 0, 1, 0, 1, 0, 0xffffffff));
+    provider.addTriangle(0, first, second, third);
+    return first;
+  };
+
+  auto farTriangle = addTriangleAt(30.0f);
+  auto nearTriangle = addTriangleAt(1.0f);
+  auto middleTriangle = addTriangleAt(10.0f);
+  provider.finalizeInternals();
+
+  provider.orderTrianglesForView({0, 0, 0}, true);
+  auto const& sorted = provider.getMeshData(0);
+  require(sorted.indexData[0] == nearTriangle &&
+              sorted.indexData[3] == middleTriangle &&
+              sorted.indexData[6] == farTriangle,
+          "renderer triangles were not sorted closest-first");
+
+  provider.orderTrianglesForView({0, 0, 0}, false);
+  auto const& restored = provider.getMeshData(0);
+  require(restored.indexData[0] == farTriangle &&
+              restored.indexData[3] == nearTriangle &&
+              restored.indexData[6] == middleTriangle,
+          "disabling view sorting did not restore authored triangle order");
+}
+
 void indicesRemainValidBeyondSixteenBits() {
   constexpr uint32_t triangleCount = 21'846;
   constexpr uint32_t vertexCount = triangleCount * 3;
@@ -152,6 +188,7 @@ int main() {
     destructorReleasesArrayBuffers();
     buffersAreSizedPerMesh();
     safelyReusesVerticesWithinEachMaterialMesh();
+    trianglesCanBeOrderedClosestFirstAndRestored();
     indicesRemainValidBeyondSixteenBits();
     std::cout << "World triangle data provider safely reuses material vertices with 32-bit indices\n";
     return 0;
