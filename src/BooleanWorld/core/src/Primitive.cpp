@@ -4,6 +4,7 @@
 #include <willpower/common/MathsUtils.h>
 
 #include "core/Primitive.h"
+#include "core/Arrangement.h"
 #include "core/CirclePolygon.h"
 #include "core/CircleSegmentPolygon.h"
 #include "core/CoreException.h"
@@ -543,6 +544,29 @@ vector<ComplexPolygon> Primitive::generateTransformedVertices(wp::Vector2* minEx
 
 vector<ComplexPolygon> const& Primitive::getVertices() const {
   return mVertices;
+}
+
+double Primitive::getArea() const {
+  double area = 0.0;
+  for (auto const& complexPolygon : getVertices()) {
+    bool shell = true;
+    for (auto const& contour : complexPolygon) {
+      int64_t area2 = 0;
+      for (size_t i = 0; i < contour.size(); ++i) {
+        auto const& a = contour[i].p;
+        auto const& b = contour[(i + 1) % contour.size()].p;
+        auto ax = arr::ToFixedPointCoordinate(a.x);
+        auto ay = arr::ToFixedPointCoordinate(a.y);
+        auto bx = arr::ToFixedPointCoordinate(b.x);
+        auto by = arr::ToFixedPointCoordinate(b.y);
+        area2 += ax * by - ay * bx;
+      }
+      auto contourArea = arr::ToWorldArea(area2 < 0 ? -area2 : area2);
+      area += shell ? contourArea : -contourArea;
+      shell = false;
+    }
+  }
+  return area;
 }
 
 wp::BoundingBox Primitive::calculateExactBounds() const {

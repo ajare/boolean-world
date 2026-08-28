@@ -25,6 +25,13 @@ inline constexpr int64_t FixedPointUnitsPerWorldUnit = 1000;
   return float(double(coordinate) / double(FixedPointUnitsPerWorldUnit));
 }
 
+// Converts a doubled, signed fixed-point shoelace area (as produced by
+// Cycle::area or FaceArea2's convention) into a world-space area.
+[[nodiscard]] inline double ToWorldArea(int64_t area2) {
+  return double(area2) /
+      (2.0 * double(FixedPointUnitsPerWorldUnit) * double(FixedPointUnitsPerWorldUnit));
+}
+
 struct FixedPointVertex {
   int64_t x, y;
 
@@ -261,6 +268,11 @@ bool PointInFace(
     FixedPointVertex const& v,
     ArrangementFace const& face,
     ArrangementResult const& arrangement);
+
+// The face's outer boundary area minus the area of each of its inner
+// boundaries (holes), in world units. Zero for the unbounded exterior face.
+[[nodiscard]] double FaceArea(
+    ArrangementFace const& face, ArrangementResult const& arrangement);
 
 [[nodiscard]] std::vector<ArrangementTriangle> BuildArrangementTriangles(
     ArrangementResult const& arrangement);

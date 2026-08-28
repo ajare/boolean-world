@@ -220,6 +220,14 @@ public:
 
   virtual std::vector<ComplexPolygon> const& getVertices() const;
 
+  // This Primitive's own raw area, from its own contours alone, as though it
+  // existed in isolation - independent of any other Primitive or the
+  // arrangement fold. Each ComplexPolygon's first contour is its shell; every
+  // following contour in that same ComplexPolygon is a hole subtracted from
+  // it, mirroring the fixed-point shoelace convention used elsewhere in the
+  // arrangement code.
+  [[nodiscard]] double getArea() const;
+
   wp::BoundingBox const& getBounds() const;
 
   virtual wp::BoundingBox calculateBounds() const;

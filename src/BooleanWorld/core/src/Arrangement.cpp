@@ -1309,6 +1309,30 @@ bool PointInFace(
   return true;
 }
 
+static int64_t BoundaryArea2(
+    vector<uint32_t> const& boundaryVertices,
+    ArrangementResult const& arrangement) {
+  int64_t area = 0;
+  for (size_t i = 0; i < boundaryVertices.size(); ++i) {
+    auto const& a = arrangement.vertices[boundaryVertices[i]];
+    auto const& b =
+        arrangement.vertices[boundaryVertices[(i + 1) % boundaryVertices.size()]];
+    area += a.x * b.y - a.y * b.x;
+  }
+  return area;
+}
+
+double FaceArea(ArrangementFace const& face, ArrangementResult const& arrangement) {
+  if (face.outerBoundaryVertices.empty()) {
+    return 0.0;
+  }
+  auto area2 = BoundaryArea2(face.outerBoundaryVertices, arrangement);
+  for (auto const& hole : face.innerBoundaryVertices) {
+    area2 -= BoundaryArea2(hole, arrangement);
+  }
+  return ToWorldArea(area2);
+}
+
 vector<ArrangementTriangle> BuildArrangementTriangles(
     ArrangementResult const& arrangement) {
   using EarcutPoint = array<double, 2>;
