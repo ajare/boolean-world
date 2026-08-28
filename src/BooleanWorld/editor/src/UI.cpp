@@ -3041,6 +3041,22 @@ bool renderPrimitivePropertySet(
     ImGui::Text("Ceiling Z: %2.1f", properties->ceilingZ);
   }
 
+  // Water level is inert on any operation but Union, so it is only offered
+  // where it means something. The face inspector passes no Primitive and so
+  // cannot tell, and shows nothing.
+  if (primitive && primitive->getOperation() == bw::core::Primitive::Operation::Union) {
+    ImGui::SetNextItemWidth(128);
+
+    if (editable) {
+      if (ImGui::InputFloat("Water Level", &properties->waterLevel, 1, 8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        properties->waterLevel = std::max(0.0f, properties->waterLevel);
+        updateProperties = true;
+      }
+    } else {
+      ImGui::Text("Water Level: %2.1f", properties->waterLevel);
+    }
+  }
+
   if (editable) {
     renderSubMaterialPicker(
         "Floor", &properties->floorMaterialId, doc, primitive,
