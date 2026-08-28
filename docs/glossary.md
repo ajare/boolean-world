@@ -107,10 +107,16 @@ trihedral Corner after the boolean fold. It is derived into the World
 snapshot's detail channel and never changes collision or spatial queries
 (ADR-0027).
 
-**Wedge** — Additive, visual-only tetrahedral detail attached beneath the top
-Arris of a visible Border wall. Its generation is controlled by World settings,
-its facets use the adjoining ceiling Sub-material, and it shares the post-fold
-detail channel without changing collision or spatial queries (ADR-0031).
+**Wedge** — Additive faceted detail controlled by World settings and surfaced
+with the adjoining floor or ceiling Sub-material. Independent floor and ceiling
+averages per unit distance control Edge Wedge frequency; a probability controls
+each Corner Wedge candidate. An Edge Wedge is centred on
+one visible Border wall's horizontal Arris and has a convex, three-segment
+centre line. A Corner Wedge joins independently sized points on the two
+horizontal Arrises and shared vertical Arris of two connected visible Border
+walls. Both share the post-fold detail channel. Floor Wedges raise floor
+collision to their exposed facets; ceiling Wedges remain render-only
+(ADR-0031).
 
 ## Geometry — before the rewrite (removed)
 

@@ -74,7 +74,7 @@ struct DetailTriangle {
 // replacements and unsuppressed additive Wedge facets. Every triangle is
 // tagged with a source surface for material routing: wall replacements inherit
 // the wall's per-frame material decision, while Wedges select their adjoining
-// ceiling face.
+// floor or ceiling face.
 class BW_API DetailGeometry {
   // Both sorted by key, so the queries below can binary-search them.
   std::vector<DetailSurfaceKey> mSuppressed;
@@ -108,8 +108,9 @@ public:
   [[nodiscard]] uint32_t getWedgeCount() const;
 };
 
-// Generates deterministic Chips along eligible Arrises and additive Wedges
-// beneath eligible Border-wall top Arrises.
+// Generates deterministic Chips along eligible Arrises, centred Edge Wedges
+// above and below Border-wall floor and ceiling Arrises, and Corner Wedges at
+// trihedral floor/ceiling meetings of two connected Border walls.
 //
 // Eligible Horizontal Arrises are a visible FloorStep's convex top and a
 // visible CeilingStep's convex bottom. Eligible Vertical Arrises are the
@@ -125,6 +126,11 @@ public:
 // skipped if its minimum distance does not fit any incident edge; each maximum
 // distance is otherwise clamped to its edge. Reach never runs past an Arris
 // endpoint, and a Chip below the minimum resulting size is dropped.
+//
+// Wedges are evaluated only after all Chip reservations are complete. Edge
+// and Corner attachment footprints shrink within their configured ranges to
+// avoid exact Horizontal, Vertical, and Corner Chip cuts; a Wedge is skipped
+// when any configured minimum cannot remain clear.
 [[nodiscard]] DetailGeometry BuildChipDetail(
     ArrangementResult const& arrangement,
     std::vector<ArrangementWall> const& walls,

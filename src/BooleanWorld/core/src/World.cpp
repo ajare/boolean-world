@@ -189,6 +189,27 @@ void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
       serializer->writeFloat(
           "maximumProjectionDepth",
           mWedgeGenerationParameters.maximumProjectionDepth);
+      serializer->writeFloat(
+          "minimumCornerReach",
+          mWedgeGenerationParameters.minimumCornerReach);
+      serializer->writeFloat(
+          "maximumCornerReach",
+          mWedgeGenerationParameters.maximumCornerReach);
+      serializer->writeFloat(
+          "minimumCornerVerticalExtent",
+          mWedgeGenerationParameters.minimumCornerVerticalExtent);
+      serializer->writeFloat(
+          "maximumCornerVerticalExtent",
+          mWedgeGenerationParameters.maximumCornerVerticalExtent);
+      serializer->writeFloat(
+          "floorWedgesPerUnitDistance",
+          mWedgeGenerationParameters.floorWedgesPerUnitDistance);
+      serializer->writeFloat(
+          "ceilingWedgesPerUnitDistance",
+          mWedgeGenerationParameters.ceilingWedgesPerUnitDistance);
+      serializer->writeFloat(
+          "cornerWedgeProbability",
+          mWedgeGenerationParameters.cornerWedgeProbability);
       serializer->endMap();
 
       // Every Layer this World owns is written inline, each self-contained
@@ -262,6 +283,34 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
               serializer->readFloat("minimumProjectionDepth");
           wedgeGenerationParameters.maximumProjectionDepth =
               serializer->readFloat("maximumProjectionDepth");
+          auto optionalCornerRanges = !serializer->isPositional();
+          wedgeGenerationParameters.minimumCornerReach = serializer->readFloat(
+              "minimumCornerReach", optionalCornerRanges,
+              wedgeGenerationParameters.minimumCornerReach);
+          wedgeGenerationParameters.maximumCornerReach = serializer->readFloat(
+              "maximumCornerReach", optionalCornerRanges,
+              wedgeGenerationParameters.maximumCornerReach);
+          wedgeGenerationParameters.minimumCornerVerticalExtent =
+              serializer->readFloat(
+                  "minimumCornerVerticalExtent", optionalCornerRanges,
+                  wedgeGenerationParameters.minimumCornerVerticalExtent);
+          wedgeGenerationParameters.maximumCornerVerticalExtent =
+              serializer->readFloat(
+                  "maximumCornerVerticalExtent", optionalCornerRanges,
+                  wedgeGenerationParameters.maximumCornerVerticalExtent);
+          auto optionalFrequencyControls = !serializer->isPositional();
+          wedgeGenerationParameters.floorWedgesPerUnitDistance =
+              serializer->readFloat(
+                  "floorWedgesPerUnitDistance", optionalFrequencyControls,
+                  wedgeGenerationParameters.floorWedgesPerUnitDistance);
+          wedgeGenerationParameters.ceilingWedgesPerUnitDistance =
+              serializer->readFloat(
+                  "ceilingWedgesPerUnitDistance", optionalFrequencyControls,
+                  wedgeGenerationParameters.ceilingWedgesPerUnitDistance);
+          wedgeGenerationParameters.cornerWedgeProbability =
+              serializer->readFloat(
+                  "cornerWedgeProbability", optionalFrequencyControls,
+                  wedgeGenerationParameters.cornerWedgeProbability);
           serializer->endMap();
         }
 
@@ -302,7 +351,7 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
 
   if (!WedgeGenerationParametersAreValid(wedgeGenerationParameters)) {
     addDeserializationError(
-        "World Wedge generation ranges must be finite, positive, and ordered.");
+        "World Wedge dimensions must be finite, positive, and ordered; frequencies and probability must be in [0, 1].");
     return false;
   }
 
@@ -633,7 +682,7 @@ void World::setWedgeGenerationParameters(
     WedgeGenerationParameters const& parameters) {
   if (!WedgeGenerationParametersAreValid(parameters)) {
     throw invalid_argument(
-        "Wedge generation ranges must be finite, positive, and ordered.");
+        "Wedge dimensions must be finite, positive, and ordered; frequencies and probability must be in [0, 1].");
   }
   mWedgeGenerationParameters = parameters;
 }

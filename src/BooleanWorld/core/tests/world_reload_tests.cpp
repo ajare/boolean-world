@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <iostream>
+#include <initializer_list>
 #include <memory>
 #include <limits>
 #include <stdexcept>
@@ -59,6 +60,18 @@ std::string withoutWedgeGeneration(std::string yaml) {
   require(end != std::string::npos,
           "serialized Wedge generation settings have no following layers");
   yaml.erase(marker, end - marker + 1);
+  return yaml;
+}
+
+std::string withoutWedgeScalars(
+    std::string yaml, std::initializer_list<std::string> keys) {
+  for (auto const& key : keys) {
+    auto const marker = yaml.find("    " + key + ": ");
+    require(marker != std::string::npos,
+            "serialized world does not contain the Wedge setting to remove");
+    auto const end = yaml.find('\n', marker);
+    yaml.erase(marker, end - marker + 1);
+  }
   return yaml;
 }
 
@@ -215,12 +228,19 @@ void wedgeGenerationSettingsValidateAndRoundTripTransactionally() {
 
   auto configured = expectedDefaults;
   configured.enabled = true;
+  configured.floorWedgesPerUnitDistance = 0.125f;
+  configured.ceilingWedgesPerUnitDistance = 0.25f;
+  configured.cornerWedgeProbability = 0.625f;
   configured.minimumReach = 5.0f;
   configured.maximumReach = 9.0f;
   configured.minimumDropDownHeight = 2.5f;
   configured.maximumDropDownHeight = 4.5f;
   configured.minimumProjectionDepth = 3.0f;
   configured.maximumProjectionDepth = 6.0f;
+  configured.minimumCornerReach = 4.0f;
+  configured.maximumCornerReach = 7.0f;
+  configured.minimumCornerVerticalExtent = 1.5f;
+  configured.maximumCornerVerticalExtent = 5.5f;
   defaults.setWedgeGenerationParameters(configured);
   defaults.addPrimitive(makeRectangle());
 
@@ -236,6 +256,37 @@ void wedgeGenerationSettingsValidateAndRoundTripTransactionally() {
   require(deserializeWorld(yaml, &loaded) &&
               loaded.getWedgeGenerationParameters() == configured,
           "valid Wedge generation settings did not round-trip");
+
+  auto legacyExpected = configured;
+  legacyExpected.minimumCornerReach = expectedDefaults.minimumCornerReach;
+  legacyExpected.maximumCornerReach = expectedDefaults.maximumCornerReach;
+  legacyExpected.minimumCornerVerticalExtent =
+      expectedDefaults.minimumCornerVerticalExtent;
+  legacyExpected.maximumCornerVerticalExtent =
+      expectedDefaults.maximumCornerVerticalExtent;
+  auto legacyYaml = withoutWedgeScalars(
+      yaml,
+      {"minimumCornerReach", "maximumCornerReach",
+       "minimumCornerVerticalExtent", "maximumCornerVerticalExtent"});
+  require(deserializeWorld(legacyYaml, &loaded) &&
+              loaded.getWedgeGenerationParameters() == legacyExpected,
+          "a World without Corner Wedge ranges did not use their defaults");
+
+  auto frequencyLegacyExpected = configured;
+  frequencyLegacyExpected.floorWedgesPerUnitDistance =
+      expectedDefaults.floorWedgesPerUnitDistance;
+  frequencyLegacyExpected.ceilingWedgesPerUnitDistance =
+      expectedDefaults.ceilingWedgesPerUnitDistance;
+  frequencyLegacyExpected.cornerWedgeProbability =
+      expectedDefaults.cornerWedgeProbability;
+  auto frequencyLegacyYaml = withoutWedgeScalars(
+      yaml,
+      {"floorWedgesPerUnitDistance", "ceilingWedgesPerUnitDistance",
+       "cornerWedgeProbability"});
+  require(deserializeWorld(frequencyLegacyYaml, &loaded) &&
+              loaded.getWedgeGenerationParameters() ==
+                  frequencyLegacyExpected,
+          "a World without Wedge frequency controls did not use defaults");
 
   require(deserializeWorld(withoutWedgeGeneration(yaml), &loaded) &&
               loaded.getWedgeGenerationParameters() == expectedDefaults,
@@ -255,9 +306,17 @@ void wedgeGenerationSettingsValidateAndRoundTripTransactionally() {
   require(!deserializeWorld(invalidYaml, &loaded) &&
               loaded.getWedgeGenerationParameters() == configured,
           "an inverted Wedge range deserialized or changed the target World");
+  invalidYaml = withWedgeScalar(yaml, "minimumCornerReach", "20");
+  require(!deserializeWorld(invalidYaml, &loaded) &&
+              loaded.getWedgeGenerationParameters() == configured,
+          "an inverted Corner Wedge range changed the target World");
+  invalidYaml = withWedgeScalar(yaml, "cornerWedgeProbability", "1.1");
+  require(!deserializeWorld(invalidYaml, &loaded) &&
+              loaded.getWedgeGenerationParameters() == configured,
+          "an invalid Corner Wedge probability changed the target World");
 
   auto invalid = configured;
-  invalid.maximumProjectionDepth =
+  invalid.maximumCornerVerticalExtent =
       std::numeric_limits<float>::infinity();
   bool rejected = false;
   try {

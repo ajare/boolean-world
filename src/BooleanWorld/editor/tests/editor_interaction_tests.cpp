@@ -3485,12 +3485,19 @@ void worldWedgeSettingsAreAtomicUndoableAndRegenerate() {
       document.getWorld()->getWedgeGenerationParameters();
   auto configured = defaults;
   configured.enabled = true;
+  configured.floorWedgesPerUnitDistance = 0.125f;
+  configured.ceilingWedgesPerUnitDistance = 0.25f;
+  configured.cornerWedgeProbability = 0.625f;
   configured.minimumReach = 5.0f;
   configured.maximumReach = 9.0f;
   configured.minimumDropDownHeight = 2.5f;
   configured.maximumDropDownHeight = 4.5f;
   configured.minimumProjectionDepth = 3.0f;
   configured.maximumProjectionDepth = 6.0f;
+  configured.minimumCornerReach = 4.0f;
+  configured.maximumCornerReach = 7.0f;
+  configured.minimumCornerVerticalExtent = 1.5f;
+  configured.maximumCornerVerticalExtent = 5.5f;
 
   auto const undoBefore = editor::getUndoLevels();
   auto const regenerationBefore = gRegenerateWorldDataRequests;
@@ -3517,7 +3524,7 @@ void worldWedgeSettingsAreAtomicUndoableAndRegenerate() {
           "Undo and Redo did not each request preview regeneration");
 
   auto invalid = configured;
-  invalid.minimumReach = 0.0f;
+  invalid.cornerWedgeProbability = 1.1f;
   auto const undoBeforeInvalid = editor::getUndoLevels();
   auto const regenerationBeforeInvalid = gRegenerateWorldDataRequests;
   require(!editor::transactUndoableActionAtomically(

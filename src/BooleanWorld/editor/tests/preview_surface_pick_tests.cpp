@@ -165,11 +165,11 @@ void wedgesRemainAbsentFromSurfacePicking() {
   auto direction = Vector3{1, 0, 0};
   auto before = editor::pickPreviewSceneSurface(*ordinary, origin, direction);
   auto after = editor::pickPreviewSceneSurface(*wedged, origin, direction);
-  require(wedged->getDetail().getWedgeCount() == 4 &&
+  require(wedged->getDetail().getWedgeCount() == 16 &&
               before.surfaceHit.surface == after.surfaceHit.surface &&
               before.surfaceHit.wallIndex == after.surfaceHit.wallIndex &&
               near(before.surfaceHit.distance, after.surfaceHit.distance),
-          "visual Wedges changed editor surface picking");
+          "Wedge collision participation changed editor surface picking");
 }
 
 void reportsNoHitWhenAimedAway() {

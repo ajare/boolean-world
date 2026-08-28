@@ -19,14 +19,15 @@ class BW_API ArrangementWorldData {
   arr::ArrangementResultPtr mArrangement;
   std::vector<arr::ArrangementTriangle> mTriangles;
   std::vector<arr::ArrangementWall> mWalls;
-  // Render-only detail geometry (ADR-0027). Deliberately not read by any
-  // query below: collision, floor height, face containment and surface
-  // picking all continue to see the unchipped world.
+  // Post-fold detail geometry. Chips and ceiling Wedges remain render-only;
+  // floor Wedge facets additionally contribute to floor collision height.
   arr::DetailGeometry mDetail;
+  std::vector<uint32_t> mFloorWedgeTriangleIndices;
   std::vector<uint32_t> mCollisionWallIndices;
   float mStepThreshold;
   WedgeGenerationParameters mWedgeGenerationParameters;
   std::unique_ptr<ImmutableAccelerationGrid> mTriangleGrid;
+  std::unique_ptr<ImmutableAccelerationGrid> mFloorWedgeGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mVertexGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mWallGrid;
 
@@ -46,8 +47,8 @@ public:
 
   [[nodiscard]] std::vector<arr::ArrangementWall> const& getWalls() const;
 
-  // Post-fold visual detail: Chip replacements and additive Wedge facets.
-  // Renderers only.
+  // Post-fold detail: Chip replacements and additive Wedge facets. Renderers
+  // consume all entries; floor-height collision also consumes floor Wedges.
   [[nodiscard]] arr::DetailGeometry const& getDetail() const;
 
   [[nodiscard]] WedgeGenerationParameters const&
@@ -65,6 +66,8 @@ public:
       wp::Vector2 const& position,
       float radius) const;
 
+  // Returns the planar face floor raised to the highest containing floor
+  // Wedge facet, which is the vertical collision surface used by gameplay.
   [[nodiscard]] float getFloorHeight(wp::Vector2 const& position) const;
 
   [[nodiscard]] float getCeilingHeight(wp::Vector2 const& position) const;

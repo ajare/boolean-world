@@ -68,9 +68,14 @@ void establishedWorldEnablesAndRoundTripsWedges() {
       bw::core::YamlSerializer::toString());
   bw::core::SerializationWorkData workData;
   map.getWorld()->serialize(writer, workData);
+  auto const& yaml = writer->getSerializedString();
+  require(yaml.find("WedgeFacet") == std::string::npos &&
+              yaml.find("detailGeometry") == std::string::npos &&
+              yaml.find("wedgeCount") == std::string::npos,
+          "generated Wedge detail leaked into serialized World data");
   Map roundTripped("map", "", "", {}, nullptr, &logger);
   roundTripped.loadWorldFromYaml(
-      makeWorldResource(writer->getSerializedString()));
+      makeWorldResource(yaml));
   require(roundTripped.getWorld()->getWedgeGenerationParameters() == expected,
           "established test World's Wedge settings did not round-trip");
 }

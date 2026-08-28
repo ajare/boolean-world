@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 
 #include <willpower/common/BoundingCircle.h>
 #include <willpower/common/MathsUtils.h>
@@ -26,6 +27,30 @@ std::unique_ptr<ImmutableAccelerationGrid> CreateGrid(
   auto dimensionsY = std::max(1, int(size.y / targetCellSize));
   return std::make_unique<ImmutableAccelerationGrid>(
       extents.getMinExtent(), size, dimensionsX, dimensionsY, itemBounds);
+}
+
+std::optional<float> TriangleHeightAt(
+    arr::DetailTriangle const& triangle,
+    wp::Vector2 const& position) {
+  auto const& a = triangle.v[0].position;
+  auto const& b = triangle.v[1].position;
+  auto const& c = triangle.v[2].position;
+  auto denominator =
+      (b[1] - c[1]) * (a[0] - c[0]) +
+      (c[0] - b[0]) * (a[1] - c[1]);
+  if (std::abs(denominator) <= 1.0e-8f) return std::nullopt;
+  auto u = ((b[1] - c[1]) * (position.x - c[0]) +
+            (c[0] - b[0]) * (position.y - c[1])) /
+           denominator;
+  auto v = ((c[1] - a[1]) * (position.x - c[0]) +
+            (a[0] - c[0]) * (position.y - c[1])) /
+           denominator;
+  auto w = 1.0f - u - v;
+  constexpr float Epsilon = 0.0001f;
+  if (u < -Epsilon || v < -Epsilon || w < -Epsilon) {
+    return std::nullopt;
+  }
+  return u * a[2] + v * b[2] + w * c[2];
 }
 
 wp::BoundingBox VertexGridExtents(
@@ -80,6 +105,24 @@ ArrangementWorldData::ArrangementWorldData(
                               {std::max({a.x, b.x, c.x}), std::max({a.y, b.y, c.y})}});
   }
   mTriangleGrid = CreateGrid(extents, gridCellSize, triangleBounds);
+
+  std::vector<ImmutableAccelerationGrid::ItemBounds> floorWedgeBounds;
+  for (uint32_t detailIndex = 0;
+       detailIndex < uint32_t(mDetail.getTriangles().size()); ++detailIndex) {
+    auto const& triangle = mDetail.getTriangles()[detailIndex];
+    if (triangle.kind != arr::DetailTriangleKind::WedgeFacet ||
+        triangle.source.kind != arr::DetailSurfaceKind::FloorOfFace) {
+      continue;
+    }
+    auto const& a = triangle.v[0].position;
+    auto const& b = triangle.v[1].position;
+    auto const& c = triangle.v[2].position;
+    floorWedgeBounds.push_back({
+        {std::min({a[0], b[0], c[0]}), std::min({a[1], b[1], c[1]})},
+        {std::max({a[0], b[0], c[0]}), std::max({a[1], b[1], c[1]})}});
+    mFloorWedgeTriangleIndices.push_back(detailIndex);
+  }
+  mFloorWedgeGrid = CreateGrid(extents, gridCellSize, floorWedgeBounds);
 
   std::vector<ImmutableAccelerationGrid::ItemBounds> vertexBounds;
   vertexBounds.reserve(mArrangement->vertices.size());
@@ -218,10 +261,28 @@ int32_t ArrangementWorldData::getNearestVertexIndex(
 float ArrangementWorldData::getFloorHeight(
     wp::Vector2 const& position) const {
   auto faceIndex = getContainingFaceIndex(position);
-  return faceIndex == ~0u
-             ? -std::numeric_limits<float>::infinity()
-             : mArrangement->palette[mArrangement->faces[faceIndex].paletteIndex]
-                   .floorZ;
+  if (faceIndex == ~0u) {
+    return -std::numeric_limits<float>::infinity();
+  }
+  auto height =
+      mArrangement->palette[mArrangement->faces[faceIndex].paletteIndex]
+          .floorZ;
+
+  int cellX, cellY;
+  mFloorWedgeGrid->getContainingCell(
+      true, position.x, position.y, cellX, cellY);
+  if (cellX < 0 || cellY < 0) return height;
+  for (auto floorWedgeIndex :
+       mFloorWedgeGrid->getCellItems(cellX, cellY)) {
+    auto detailIndex = mFloorWedgeTriangleIndices[floorWedgeIndex];
+    auto const& triangle = mDetail.getTriangles()[detailIndex];
+    // A floor Wedge can only raise collision above its source face. Taking the
+    // maximum also resolves shared fan edges and intentional Wedge overlap.
+    if (auto wedgeHeight = TriangleHeightAt(triangle, position)) {
+      height = std::max(height, *wedgeHeight);
+    }
+  }
+  return height;
 }
 
 float ArrangementWorldData::getCeilingHeight(

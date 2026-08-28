@@ -957,9 +957,18 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
   }
 
   ImGui::Separator();
-  ImGui::TextUnformatted("Ceiling Wedges");
+  ImGui::TextUnformatted("Border Wedges");
   wedgeDraftModified |=
       ImGui::Checkbox("Enabled##WorldWedges", &wedgeDraft.enabled);
+  wedgeDraftModified |= ImGui::InputFloat(
+      "Floor average number per unit distance##WorldWedges",
+      &wedgeDraft.floorWedgesPerUnitDistance);
+  wedgeDraftModified |= ImGui::InputFloat(
+      "Ceiling average number per unit distance##WorldWedges",
+      &wedgeDraft.ceilingWedgesPerUnitDistance);
+  wedgeDraftModified |= ImGui::InputFloat(
+      "Corner probability##WorldWedges",
+      &wedgeDraft.cornerWedgeProbability);
   float reach[2]{wedgeDraft.minimumReach, wedgeDraft.maximumReach};
   if (ImGui::InputFloat2("Reach min/max##WorldWedges", reach)) {
     wedgeDraft.minimumReach = reach[0];
@@ -969,7 +978,7 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
   float dropDown[2]{
       wedgeDraft.minimumDropDownHeight,
       wedgeDraft.maximumDropDownHeight};
-  if (ImGui::InputFloat2("Drop-down min/max##WorldWedges", dropDown)) {
+  if (ImGui::InputFloat2("Vertical extent min/max##WorldWedges", dropDown)) {
     wedgeDraft.minimumDropDownHeight = dropDown[0];
     wedgeDraft.maximumDropDownHeight = dropDown[1];
     wedgeDraftModified = true;
@@ -980,6 +989,24 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
   if (ImGui::InputFloat2("Projection min/max##WorldWedges", projection)) {
     wedgeDraft.minimumProjectionDepth = projection[0];
     wedgeDraft.maximumProjectionDepth = projection[1];
+    wedgeDraftModified = true;
+  }
+  float cornerReach[2]{
+      wedgeDraft.minimumCornerReach,
+      wedgeDraft.maximumCornerReach};
+  if (ImGui::InputFloat2(
+          "Corner reach min/max##WorldWedges", cornerReach)) {
+    wedgeDraft.minimumCornerReach = cornerReach[0];
+    wedgeDraft.maximumCornerReach = cornerReach[1];
+    wedgeDraftModified = true;
+  }
+  float cornerVertical[2]{
+      wedgeDraft.minimumCornerVerticalExtent,
+      wedgeDraft.maximumCornerVerticalExtent};
+  if (ImGui::InputFloat2(
+          "Corner vertical min/max##WorldWedges", cornerVertical)) {
+    wedgeDraft.minimumCornerVerticalExtent = cornerVertical[0];
+    wedgeDraft.maximumCornerVerticalExtent = cornerVertical[1];
     wedgeDraftModified = true;
   }
   ImGui::BeginDisabled(!wedgeDraftModified);
@@ -995,7 +1022,7 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
       wedgeSettingsError.clear();
     } else {
       wedgeSettingsError =
-          "Every Wedge dimension must be finite and positive, with minimum no greater than maximum.";
+          "Wedge dimensions must be finite, positive, and ordered; frequencies and probability must be between zero and one.";
     }
   }
   ImGui::EndDisabled();
