@@ -145,7 +145,7 @@ Additive geometric detail governed by the World and surfaced with the adjoining 
 _Avoid_: Chip (subtractive detail), Arrangement geometry, authored Primitive
 
 **Liquid level**:
-An authored, per-Primitive scalar defaulting to zero, meaningful only on a Primitive whose operation is Union — other operations store it but it has no effect. A Primitive's total liquid volume is this value times its own raw area, as though the Primitive existed alone; a Union Primitive later carved away by other operations loses the corresponding share of that volume.
+An authored, per-Primitive scalar defaulting to zero, meaningful only on a Primitive whose operation is Union — other operations store it but it has no effect. A Primitive's total liquid volume is this value times its own raw area, as though the Primitive existed alone. That volume is conserved through the fold: however the fold subdivides the Primitive's footprint across faces, or carves part of it away, whatever area survives holds the whole volume at one uniform seeded depth — so on an uncarved Primitive the authored value is literally the depth of liquid standing on it before any flow.
 _Avoid_: liquid depth (the derived per-face quantity), fill level
 
 **Liquid depth**:
@@ -153,7 +153,7 @@ The finished depth of standing liquid in one Arrangement face, derived after the
 _Avoid_: liquid level (the authored per-Primitive quantity), liquid height, liquid elevation
 
 **Liquid-adjacency**:
-The relation between two non-solid Arrangement faces across which liquid can equilibrate: both faces must be non-solid and their shared edge's wall clearance must be nonzero. The Arrangement's outer, unbounded face is liquid-adjacent to every face bordering it, with an effective floor of negative infinity, acting as a permanent drain.
+The relation between two solid Arrangement faces (the same faces that render and that the player walks on) across which liquid can equilibrate: both faces must be solid and their shared edge's wall clearance must be nonzero. The Arrangement's outer, unbounded face is liquid-adjacent to every solid face bordering it, with an effective floor of negative infinity, acting as a permanent drain.
 _Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when the wall between them has zero clearance)
 
 **Wet component**:

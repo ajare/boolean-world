@@ -186,6 +186,10 @@ arr::DetailGeometry const& ArrangementWorldData::getDetail() const {
   return mDetail;
 }
 
+std::vector<float> const& ArrangementWorldData::getLiquidDepths() const {
+  return mLiquidDepths;
+}
+
 WedgeGenerationParameters const&
 ArrangementWorldData::getWedgeGenerationParameters() const {
   return mWedgeGenerationParameters;
@@ -296,19 +300,12 @@ float ArrangementWorldData::getCeilingHeight(
 }
 
 float ArrangementWorldData::getLiquidDepth(wp::Vector2 const& position) const {
-  // Liquid pools in non-solid faces, which the solid-only triangle grid behind
-  // getContainingFaceIndex cannot locate, so this falls back to a direct,
-  // unaccelerated boundary test over every face.
-  arr::FixedPointVertex fixed{
-      arr::ToFixedPointCoordinate(position.x),
-      arr::ToFixedPointCoordinate(position.y)};
-  for (uint32_t faceIndex = 1; faceIndex < uint32_t(mArrangement->faces.size());
-       ++faceIndex) {
-    if (arr::PointInFace(fixed, mArrangement->faces[faceIndex], *mArrangement)) {
-      return mLiquidDepths[faceIndex];
-    }
-  }
-  return 0.0f;
+  // Liquid pools in solid faces (the same ones the triangle grid behind
+  // getContainingFaceIndex indexes, and BuildArrangementTriangles renders),
+  // so the same accelerated lookup floor/ceiling height queries use applies
+  // here too.
+  auto faceIndex = getContainingFaceIndex(position);
+  return faceIndex == ~0u ? 0.0f : mLiquidDepths[faceIndex];
 }
 
 std::vector<uint32_t> ArrangementWorldData::getWallsNear(

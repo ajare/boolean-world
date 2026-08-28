@@ -78,6 +78,11 @@ public:
   // outside the arrangement or wherever no liquid reaches.
   [[nodiscard]] float getLiquidDepth(wp::Vector2 const& position) const;
 
+  // One settled liquid depth per face, parallel to arr::Arrangement's faces
+  // and directly indexable by an ArrangementTriangle's face - see
+  // arr::ComputeLiquidLevels. Zero means dry.
+  [[nodiscard]] std::vector<float> const& getLiquidDepths() const;
+
   [[nodiscard]] std::vector<uint32_t> getWallsNear(
       wp::Vector2 const& position,
       float radius) const;

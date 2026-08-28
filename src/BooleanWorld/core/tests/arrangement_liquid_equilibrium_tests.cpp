@@ -58,61 +58,61 @@ ArrangementPrimitive rectanglePrimitive(
   return result;
 }
 
-// A slab of solid mass wide enough to leave a sealed rim around every room
-// carved out of it below, so no room touches the Arrangement's outer boundary
-// and drains.
-ArrangementPrimitive slab(double minX, double minY, double maxX, double maxY) {
-  return rectanglePrimitive(
-      rectangle(minX, minY, maxX, maxY), Primitive::Operation::Union, 0, 1,
-      properties(0.0f, 48.0f, 0.0f), (maxX - minX) * (maxY - minY));
-}
-
-// A Union primitive that adds no material of its own - it sits inside the
-// slab already there - but pours the given liquid level into exactly the
-// footprint one room will later be carved from. Its rawArea is that same
-// footprint, so the room it covers receives the liquid level undiluted.
-ArrangementPrimitive liquidSource(
-    double minX, double minY, double maxX, double maxY, uint8_t priority,
-    uint32_t primitiveIndex, float liquidLevel) {
-  return rectanglePrimitive(
-      rectangle(minX, minY, maxX, maxY), Primitive::Operation::Union, priority,
-      primitiveIndex, properties(0.0f, 48.0f, liquidLevel),
-      (maxX - minX) * (maxY - minY));
-}
-
-// One open room carved out of the slab, at its own floor and ceiling.
+// An ordinary solid room - just a Union primitive, the same as any room in an
+// authored World - optionally carrying its own authored liquid level.
 ArrangementPrimitive room(
     double minX, double minY, double maxX, double maxY, uint8_t priority,
-    uint32_t primitiveIndex, float floorZ, float ceilingZ) {
+    uint32_t primitiveIndex, float floorZ, float ceilingZ, float liquidLevel) {
   return rectanglePrimitive(
-      rectangle(minX, minY, maxX, maxY), Primitive::Operation::Difference,
-      priority, primitiveIndex, properties(floorZ, ceilingZ, 0.0f),
+      rectangle(minX, minY, maxX, maxY), Primitive::Operation::Union,
+      priority, primitiveIndex, properties(floorZ, ceilingZ, liquidLevel),
       (maxX - minX) * (maxY - minY));
 }
 
-// The non-solid face carved by the room primitive that was given this
+// A thin solid collar pinned so its own floor equals its ceiling, at a
+// room's own ceiling: zero clearance against that room (and any other room
+// sharing the same ceiling), sealing it off from whatever lies beyond the
+// collar - typically the Arrangement's own unbounded exterior face - without
+// joining that room's own connected pool of liquid.
+ArrangementPrimitive collar(
+    double minX, double minY, double maxX, double maxY, float ceiling,
+    uint8_t priority, uint32_t primitiveIndex) {
+  return rectanglePrimitive(
+      rectangle(minX, minY, maxX, maxY), Primitive::Operation::Union,
+      priority, primitiveIndex, properties(ceiling, ceiling, 0.0f),
+      (maxX - minX) * (maxY - minY));
+}
+
+// The solid face built by the room primitive that was given this
 // primitiveIndex.
 uint32_t roomFace(ArrangementResult const& arrangement, uint32_t primitiveIndex) {
   for (uint32_t i = 1; i < uint32_t(arrangement.faces.size()); ++i) {
     auto const& face = arrangement.faces[i];
-    if (!face.solid && face.primitiveIndex == primitiveIndex) {
+    if (face.solid && face.primitiveIndex == primitiveIndex) {
       return i;
     }
   }
   throw std::runtime_error(
-      "no non-solid face was carved by primitive " +
-      std::to_string(primitiveIndex));
+      "no solid face was found for primitive " + std::to_string(primitiveIndex));
 }
 
-// Two rooms side by side inside a sealed slab, sharing the boundary at x=100.
-// Liquid is poured only into the left room.
+// Two rooms side by side, sharing the boundary at x=100, each sealed off
+// from the Arrangement's own unbounded exterior face by its own collar (the
+// two rooms may have different ceilings, so each gets its own top, bottom,
+// and outward-side collar rather than one shared ring). Liquid is poured
+// only into the left room.
 std::vector<ArrangementPrimitive> twoRooms(
     float liquidLevel, float ceilingA, float floorB, float ceilingB) {
   return {
-      slab(-10, -10, 210, 110),
-      liquidSource(0, 0, 100, 100, 1, 2, liquidLevel),
-      room(0, 0, 100, 100, 2, 3, 0.0f, ceilingA),
-      room(100, 0, 200, 100, 3, 4, floorB, ceilingB)};
+      room(0, 0, 100, 100, 0, 1, 0.0f, ceilingA, liquidLevel),
+      room(100, 0, 200, 100, 0, 2, floorB, ceilingB, 0.0f),
+      collar(0, 100, 100, 110, ceilingA, 1, 101),
+      collar(0, -10, 100, 0, ceilingA, 1, 102),
+      collar(-10, -10, 0, 110, ceilingA, 1, 103),
+      collar(100, 100, 200, 110, ceilingB, 1, 104),
+      collar(100, -10, 200, 0, ceilingB, 1, 105),
+      collar(200, -10, 210, 110, ceilingB, 1, 106),
+  };
 }
 
 void twoConnectedRoomsSettleAtOneSharedElevation() {
@@ -122,9 +122,9 @@ void twoConnectedRoomsSettleAtOneSharedElevation() {
       twoRooms(20.0f, 48.0f, 0.0f, 48.0f));
   auto depths = bw::core::arr::ComputeLiquidLevels(*arrangement);
 
-  requireNear(depths[roomFace(*arrangement, 3)], 10.0,
+  requireNear(depths[roomFace(*arrangement, 1)], 10.0,
               "the room the liquid was poured into should have levelled off at the shared elevation");
-  requireNear(depths[roomFace(*arrangement, 4)], 10.0,
+  requireNear(depths[roomFace(*arrangement, 2)], 10.0,
               "a room with no authored liquid of its own should fill from its wetter neighbour");
 }
 
@@ -136,24 +136,27 @@ void aZeroClearanceWallBlocksFlow() {
       twoRooms(20.0f, 24.0f, 24.0f, 48.0f));
   auto depths = bw::core::arr::ComputeLiquidLevels(*arrangement);
 
-  requireNear(depths[roomFace(*arrangement, 3)], 20.0,
+  requireNear(depths[roomFace(*arrangement, 1)], 20.0,
               "liquid must stay put in its own room when the shared wall has no clearance");
-  requireNear(depths[roomFace(*arrangement, 4)], 0.0,
+  requireNear(depths[roomFace(*arrangement, 2)], 0.0,
               "a room sealed off by a zero-clearance wall must stay dry");
 }
 
-// Two pools at either end of a sealed slab, separated by a passage whose
-// floor sits at elevation 10. Below that the pools are two separate bodies of
-// liquid; above it they are one.
+// Two pools at either end of a sealed row, separated by a passage whose floor
+// sits at elevation 10. Below that the pools are two separate bodies of
+// liquid; above it they are one. All three rooms share one ceiling, so one
+// collar strip seals the whole row.
 std::vector<ArrangementPrimitive> twoPoolsOverASaddle(
     float liquidLevelA, float liquidLevelB) {
   return {
-      slab(-10, -10, 230, 110),
-      liquidSource(0, 0, 100, 100, 1, 2, liquidLevelA),
-      liquidSource(120, 0, 220, 100, 2, 3, liquidLevelB),
-      room(0, 0, 100, 100, 3, 4, 0.0f, 48.0f),
-      room(100, 0, 120, 100, 4, 5, 10.0f, 48.0f),
-      room(120, 0, 220, 100, 5, 6, 0.0f, 48.0f)};
+      room(0, 0, 100, 100, 0, 1, 0.0f, 48.0f, liquidLevelA),
+      room(100, 0, 120, 100, 0, 2, 10.0f, 48.0f, 0.0f),
+      room(120, 0, 220, 100, 0, 3, 0.0f, 48.0f, liquidLevelB),
+      collar(0, 100, 220, 110, 48.0f, 1, 101),
+      collar(0, -10, 220, 0, 48.0f, 1, 102),
+      collar(-10, -10, 0, 110, 48.0f, 1, 103),
+      collar(220, -10, 230, 110, 48.0f, 1, 104),
+  };
 }
 
 void poolsBelowTheSaddleStaySeparate() {
@@ -161,11 +164,11 @@ void poolsBelowTheSaddleStaySeparate() {
       bw::core::arr::BuildArrangement(twoPoolsOverASaddle(6.0f, 2.0f));
   auto depths = bw::core::arr::ComputeLiquidLevels(*arrangement);
 
-  requireNear(depths[roomFace(*arrangement, 4)], 6.0,
+  requireNear(depths[roomFace(*arrangement, 1)], 6.0,
               "a pool that never rises to the passage floor should keep its own level");
-  requireNear(depths[roomFace(*arrangement, 6)], 2.0,
+  requireNear(depths[roomFace(*arrangement, 3)], 2.0,
               "the second pool should keep its own, different level while the two are unconnected");
-  requireNear(depths[roomFace(*arrangement, 5)], 0.0,
+  requireNear(depths[roomFace(*arrangement, 2)], 0.0,
               "the passage above both pools should be dry");
 }
 
@@ -179,26 +182,29 @@ void poolsRisingPastTheSaddleMergeIntoOneLevel() {
   auto depths = bw::core::arr::ComputeLiquidLevels(*arrangement);
 
   auto expected = 10.0 + 160000.0 / 22000.0;
-  requireNear(depths[roomFace(*arrangement, 4)], expected,
+  requireNear(depths[roomFace(*arrangement, 1)], expected,
               "the fuller pool should have dropped to the merged equilibrium level");
-  requireNear(depths[roomFace(*arrangement, 6)], expected,
+  requireNear(depths[roomFace(*arrangement, 3)], expected,
               "the emptier pool should have risen to the same merged equilibrium level");
-  requireNear(depths[roomFace(*arrangement, 5)], expected - 10.0,
+  requireNear(depths[roomFace(*arrangement, 2)], expected - 10.0,
               "the passage should hold the merged surface less its own higher floor");
 }
 
 // A high room at floor 20, a passage over its rim at floor 30, and a deep
 // room at floor 0 beyond. Liquid poured into the high room can only reach the
-// deep one by topping the passage floor at 30.
+// deep one by topping the passage floor at 30. All three rooms share one
+// ceiling, so one collar strip seals the whole row.
 std::vector<ArrangementPrimitive> aRimAboveALowerRoom(
     float liquidLevelHigh, float liquidLevelLow) {
   return {
-      slab(-10, -10, 230, 110),
-      liquidSource(0, 0, 100, 100, 1, 2, liquidLevelHigh),
-      liquidSource(120, 0, 220, 100, 2, 3, liquidLevelLow),
-      room(0, 0, 100, 100, 3, 4, 20.0f, 60.0f),
-      room(100, 0, 120, 100, 4, 5, 30.0f, 60.0f),
-      room(120, 0, 220, 100, 5, 6, 0.0f, 60.0f)};
+      room(0, 0, 100, 100, 0, 1, 20.0f, 60.0f, liquidLevelHigh),
+      room(100, 0, 120, 100, 0, 2, 30.0f, 60.0f, 0.0f),
+      room(120, 0, 220, 100, 0, 3, 0.0f, 60.0f, liquidLevelLow),
+      collar(0, 100, 220, 110, 60.0f, 1, 101),
+      collar(0, -10, 220, 0, 60.0f, 1, 102),
+      collar(-10, -10, 0, 110, 60.0f, 1, 103),
+      collar(220, -10, 230, 110, 60.0f, 1, 104),
+  };
 }
 
 // Pouring over a saddle is a directed spill, not an equalization: only the
@@ -211,9 +217,9 @@ void aPoolSpillingOverASaddleKeepsWhatStandsBelowIt() {
       bw::core::arr::BuildArrangement(aRimAboveALowerRoom(20.0f, 0.0f));
   auto depths = bw::core::arr::ComputeLiquidLevels(*arrangement);
 
-  auto high = depths[roomFace(*arrangement, 4)];
-  auto passage = depths[roomFace(*arrangement, 5)];
-  auto low = depths[roomFace(*arrangement, 6)];
+  auto high = depths[roomFace(*arrangement, 1)];
+  auto passage = depths[roomFace(*arrangement, 2)];
+  auto low = depths[roomFace(*arrangement, 3)];
 
   requireNear(high, 10.0,
               "the spilling room should keep the liquid standing below its rim at 30 rather than draining past it");
@@ -236,11 +242,11 @@ void aSaddleSubmergedByBothPoolsStillMergesIntoOneSurface() {
   // 550000 in total: 400000 fits below the passage floor at 30, and the rest
   // rises over the combined 22000 area above it.
   auto surface = 30.0 + 150000.0 / 22000.0;
-  requireNear(depths[roomFace(*arrangement, 4)], surface - 20.0,
+  requireNear(depths[roomFace(*arrangement, 1)], surface - 20.0,
               "the high room should share the merged surface once the saddle is submerged");
-  requireNear(depths[roomFace(*arrangement, 5)], surface - 30.0,
+  requireNear(depths[roomFace(*arrangement, 2)], surface - 30.0,
               "the passage should share the merged surface once it is submerged");
-  requireNear(depths[roomFace(*arrangement, 6)], surface,
+  requireNear(depths[roomFace(*arrangement, 3)], surface,
               "the low room should share the merged surface once the saddle is submerged");
 }
 
@@ -251,40 +257,46 @@ void aSealedOverfullComponentCapsEveryFaceAtItsCeiling() {
       twoRooms(1000.0f, 20.0f, 0.0f, 30.0f));
   auto depths = bw::core::arr::ComputeLiquidLevels(*arrangement);
 
-  requireNear(depths[roomFace(*arrangement, 3)], 20.0,
+  requireNear(depths[roomFace(*arrangement, 1)], 20.0,
               "an overfull component's lower-ceilinged room should fill to its own ceiling, not the shared surface");
-  requireNear(depths[roomFace(*arrangement, 4)], 30.0,
+  requireNear(depths[roomFace(*arrangement, 2)], 30.0,
               "an overfull component's higher-ceilinged room should fill to its own ceiling");
 }
 
 void aComponentTouchingTheExteriorDrainsThroughout() {
   // Sealed first, so the drained result below can only be the opening's
-  // doing: the same two rooms hold the same liquid perfectly well when the
-  // left one stops short of the slab's edge.
+  // doing: the same two rooms hold the same liquid perfectly well when both
+  // stay behind their collars.
   auto sealed = bw::core::arr::BuildArrangement({
-      slab(-10, -10, 210, 110),
-      liquidSource(100, 0, 200, 100, 1, 2, 20.0f),
-      room(0, 0, 100, 100, 2, 3, 0.0f, 48.0f),
-      room(100, 0, 200, 100, 3, 4, 0.0f, 48.0f)});
+      room(0, 0, 100, 100, 0, 1, 0.0f, 48.0f, 0.0f),
+      room(100, 0, 200, 100, 0, 2, 0.0f, 48.0f, 20.0f),
+      collar(0, 100, 200, 110, 48.0f, 1, 101),
+      collar(0, -10, 200, 0, 48.0f, 1, 102),
+      collar(-10, -10, 0, 110, 48.0f, 1, 103),
+      collar(200, -10, 210, 110, 48.0f, 1, 104),
+  });
   auto sealedDepths = bw::core::arr::ComputeLiquidLevels(*sealed);
-  requireNear(sealedDepths[roomFace(*sealed, 3)], 10.0,
+  requireNear(sealedDepths[roomFace(*sealed, 1)], 10.0,
               "the sealed control case should hold its liquid");
-  requireNear(sealedDepths[roomFace(*sealed, 4)], 10.0,
+  requireNear(sealedDepths[roomFace(*sealed, 2)], 10.0,
               "the sealed control case should hold its liquid");
 
-  // The left room is now carved clean through the slab's left edge, so it
-  // borders the Arrangement's unbounded exterior face. The liquid is still
+  // The left room now extends past where its collar would be, so it borders
+  // the Arrangement's unbounded exterior face directly on its top, bottom,
+  // and left sides (deliberately left uncollared here). The liquid is still
   // authored in the right room, which only reaches the outside through it.
   auto arrangement = bw::core::arr::BuildArrangement({
-      slab(-10, -10, 210, 110),
-      liquidSource(100, 0, 200, 100, 1, 2, 20.0f),
-      room(-20, 0, 100, 100, 2, 3, 0.0f, 48.0f),
-      room(100, 0, 200, 100, 3, 4, 0.0f, 48.0f)});
+      room(-20, 0, 100, 100, 0, 1, 0.0f, 48.0f, 0.0f),
+      room(100, 0, 200, 100, 0, 2, 0.0f, 48.0f, 20.0f),
+      collar(100, 100, 200, 110, 48.0f, 1, 103),
+      collar(100, -10, 200, 0, 48.0f, 1, 104),
+      collar(200, -10, 210, 110, 48.0f, 1, 105),
+  });
   auto depths = bw::core::arr::ComputeLiquidLevels(*arrangement);
 
-  requireNear(depths[roomFace(*arrangement, 4)], 0.0,
+  requireNear(depths[roomFace(*arrangement, 2)], 0.0,
               "liquid in a component that reaches the outer boundary should drain away entirely");
-  requireNear(depths[roomFace(*arrangement, 3)], 0.0,
+  requireNear(depths[roomFace(*arrangement, 1)], 0.0,
               "the room that opens onto the outer boundary should be dry too");
 }
 

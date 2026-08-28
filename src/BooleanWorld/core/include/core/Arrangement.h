@@ -230,8 +230,9 @@ struct ArrangementFace {
   bool contributesProperties{false};
 };
 
-// One direct liquid-adjacency between two non-solid Arrangement faces: either
-// they share a wall whose vertical clearance (the same headroom computation
+// One direct liquid-adjacency between two solid Arrangement faces (the same
+// faces BuildArrangementTriangles renders and the player walks): either they
+// share a wall whose vertical clearance (the same headroom computation
 // BuildArrangementWalls uses for player movement) is nonzero, or one side is
 // the Arrangement's unbounded exterior face (index 0), which acts as a
 // permanent drain with an effectively negative-infinite floor rather than an
@@ -301,22 +302,27 @@ bool PointInFace(
 [[nodiscard]] std::vector<ArrangementWall> BuildArrangementWalls(
     ArrangementResult const& arrangement);
 
-// The liquid-adjacency relation over every pair of non-solid faces, one entry
+// The liquid-adjacency relation over every pair of solid faces, one entry
 // per unordered pair, for the later watershed equilibrium pass to consume.
 // This computes no liquid depth itself.
 [[nodiscard]] std::vector<LiquidAdjacency> BuildLiquidAdjacency(
     ArrangementResult const& arrangement);
 
-// Each non-solid face's undistributed liquid depth: the area-weighted sum,
-// over every Union-operation Primitive in that face's membership, of
-// primitiveLiquidLevel * faceArea / primitiveRawArea. Deliberately uncapped by
-// the face's own clearance, and modelling no flow between faces - this is the
-// seed volume ComputeLiquidLevels then settles. Parallel to arrangement.faces;
-// solid faces (and the unbounded exterior face) are always zero.
+// Each solid face's undistributed liquid depth: the sum, over every
+// Union-operation Primitive in that face's membership, of
+// primitiveLiquidLevel * primitiveRawArea / primitiveSurvivingArea - that
+// Primitive's whole authored volume spread at one uniform depth over however
+// much of its footprint survived the fold. Volume is conserved exactly:
+// subdividing a Primitive across several faces seeds every piece at the same
+// depth, and carving part of it away leaves the rest correspondingly deeper.
+// Deliberately uncapped by the face's own clearance, and modelling no flow
+// between faces - this is the seed volume ComputeLiquidLevels then settles.
+// Parallel to arrangement.faces; non-solid faces (and the unbounded exterior
+// face) are always zero.
 [[nodiscard]] std::vector<float> ComputeUndistributedLiquidDepths(
     ArrangementResult const& arrangement);
 
-// Each non-solid face's finished liquid depth, parallel to arrangement.faces.
+// Each solid face's finished liquid depth, parallel to arrangement.faces.
 // The undistributed seed volumes above settle into pools, each a set of faces
 // at one shared surface elevation. Two pools joined by liquid-adjacency become
 // one once that shared surface would stand at or above the sill between them

@@ -23,6 +23,9 @@ namespace {
 constexpr uint32_t untintedVertexColour = 0xffffffffu;
 // Full red/green, 35% blue: the preview's established looked-at tint.
 constexpr uint32_t lookedAtVertexColour = 0xff59ffffu;
+// Untinted (the liquid material's own albedo already carries its colour),
+// 60% opaque: the fixed translucency of a rendered liquid surface.
+constexpr uint32_t waterVertexColour = 0x99ffffffu;
 
 string normalMapIdentity(bw::core::WallNormalMapOverride::ImageData const& image) {
   ostringstream result;
@@ -303,6 +306,7 @@ void WorldRenderer::updateHorizontalDataProvider(
   // a matching hole in the surface overhead.
   auto const& detail = snapshot.getDetail();
   using bw::core::arr::DetailSurfaceKind;
+  auto const& liquidDepths = snapshot.getLiquidDepths();
 
   // A rebuilt face's replacements resolve exactly the Sub-material the face
   // itself would have, so they land in mesh buckets that already exist.
@@ -315,6 +319,13 @@ void WorldRenderer::updateHorizontalDataProvider(
     return horizontal.renderer->getMeshIndexForMaterialHash(
         resolved.def.hash(resolved.materialIndex), isFloor);
   };
+
+  // Every liquid surface renders as this reserved, translucent-blue material
+  // regardless of the face's own floor material - see
+  // WorldBatch::createModelStream (which guarantees this mesh bucket exists)
+  // and BW_WATER_MATERIAL_INDEX.
+  auto waterHash =
+      bw::core::MaterialDefinition{}.data.hash(BW_WATER_MATERIAL_INDEX);
 
   std::vector<uint32_t> horizontalCounts(
       horizontal.dataProvider->getNumMeshes());
@@ -332,6 +343,10 @@ void WorldRenderer::updateHorizontalDataProvider(
             DetailSurfaceKind::CeilingOfFace, triangle.face)) {
       ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
           ceilingHash, false)];
+    }
+    if (liquidDepths[triangle.face] > 0.0f) {
+      ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
+          waterHash, true)];
     }
   }
   for (auto const& replacement : detail.getTriangles()) {
@@ -374,6 +389,21 @@ void WorldRenderer::updateHorizontalDataProvider(
       }
       horizontal.dataProvider->addTriangle(
           floorMesh, floorIndices[0], floorIndices[1], floorIndices[2]);
+    }
+
+    if (auto liquidDepth = liquidDepths[triangle.face]; liquidDepth > 0.0f) {
+      auto waterMesh = horizontal.renderer->getMeshIndexForMaterialHash(
+          waterHash, true);
+      auto liquidZ = properties.floorZ + liquidDepth;
+      uint32_t waterIndices[3];
+      for (int i = 0; i < 3; ++i) {
+        auto uv = positions[i] / 64.0f;
+        waterIndices[2 - i] = addVertexToDataProvider(
+            horizontal.dataProvider, waterMesh, positions[i].x, liquidZ,
+            -positions[i].y, 0, 1, 0, uv.x, uv.y, waterVertexColour);
+      }
+      horizontal.dataProvider->addTriangle(
+          waterMesh, waterIndices[0], waterIndices[1], waterIndices[2]);
     }
 
     if (detail.isSuppressed(DetailSurfaceKind::CeilingOfFace, triangle.face)) {

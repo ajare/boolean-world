@@ -1465,13 +1465,21 @@ vector<LiquidAdjacency> BuildLiquidAdjacency(ArrangementResult const& arrangemen
     }
     auto const& face0 = arrangement.faces[f0];
     auto const& face1 = arrangement.faces[f1];
-    if (face0.solid || face1.solid) {
+
+    // The unbounded exterior face (index 0) is never solid itself and is a
+    // permanent drain for a bordering room, regardless of clearance; any
+    // other pair must both be real rooms (solid, per BuildArrangementTriangles'
+    // same convention) to equilibrate together.
+    auto drain = f0 == 0 || f1 == 0;
+    if (drain) {
+      auto const& roomFace = f0 == 0 ? face1 : face0;
+      if (!roomFace.solid) {
+        continue;
+      }
+    } else if (!face0.solid || !face1.solid) {
       continue;
     }
 
-    // The unbounded exterior face (index 0) is a permanent drain: adjacent to
-    // every bordering face regardless of clearance.
-    auto drain = f0 == 0 || f1 == 0;
     if (!drain) {
       auto const& properties0 = arrangement.palette[face0.paletteIndex];
       auto const& properties1 = arrangement.palette[face1.paletteIndex];
@@ -1503,20 +1511,48 @@ vector<LiquidAdjacency> BuildLiquidAdjacency(ArrangementResult const& arrangemen
 
 vector<float> ComputeUndistributedLiquidDepths(
     ArrangementResult const& arrangement) {
-  vector<float> depths(arrangement.faces.size(), 0.0f);
+  auto faceCount = uint32_t(arrangement.faces.size());
+  vector<float> depths(faceCount, 0.0f);
   auto primitiveCount = arrangement.primitiveOperations.size();
 
-  for (uint32_t faceIndex = 0; faceIndex < uint32_t(arrangement.faces.size());
-       ++faceIndex) {
-    auto const& face = arrangement.faces[faceIndex];
-    if (face.solid) {
+  // Shared by both passes below, since a face's area is needed once to total
+  // up each Primitive's surviving footprint and again to seed that face.
+  vector<double> faceAreas(faceCount, 0.0);
+  for (uint32_t faceIndex = 0; faceIndex < faceCount; ++faceIndex) {
+    if (!arrangement.faces[faceIndex].solid) {
       continue;
     }
+    faceAreas[faceIndex] =
+        max(0.0, FaceArea(arrangement.faces[faceIndex], arrangement));
+  }
 
-    auto faceArea = FaceArea(face, arrangement);
-    if (faceArea <= 0.0) {
+  // How much of each Union Primitive's footprint survived the fold. The fold
+  // routinely splits one Primitive across several faces without removing any
+  // of it - any other Primitive's edge crossing it does that - so this total,
+  // not the area of whichever single face is being seeded, is what the
+  // authored volume has to spread over. Depth therefore cannot be decided
+  // from one face alone, which is why this is a separate pass.
+  vector<double> survivingAreas(primitiveCount, 0.0);
+  for (uint32_t faceIndex = 0; faceIndex < faceCount; ++faceIndex) {
+    if (faceAreas[faceIndex] <= 0.0) {
       continue;
     }
+    auto const& face = arrangement.faces[faceIndex];
+    for (size_t primitiveIndex = 0; primitiveIndex < primitiveCount;
+         ++primitiveIndex) {
+      if (arrangement.primitiveOperations[primitiveIndex] ==
+              bw::core::Primitive::Operation::Union &&
+          face.membership.contains(primitiveIndex)) {
+        survivingAreas[primitiveIndex] += faceAreas[faceIndex];
+      }
+    }
+  }
+
+  for (uint32_t faceIndex = 0; faceIndex < faceCount; ++faceIndex) {
+    if (faceAreas[faceIndex] <= 0.0) {
+      continue;
+    }
+    auto const& face = arrangement.faces[faceIndex];
 
     double depth = 0.0;
     for (size_t primitiveIndex = 0; primitiveIndex < primitiveCount;
@@ -1526,12 +1562,18 @@ vector<float> ComputeUndistributedLiquidDepths(
           !face.membership.contains(primitiveIndex)) {
         continue;
       }
-      auto rawArea = arrangement.primitiveRawAreas[primitiveIndex];
-      if (rawArea <= 0.0) {
+      auto survivingArea = survivingAreas[primitiveIndex];
+      if (survivingArea <= 0.0) {
         continue;
       }
+      // liquidLevel * rawArea is the authored volume; spreading it at one
+      // uniform depth over the surviving footprint conserves it exactly,
+      // whether the fold merely subdivided that footprint (every piece seeds
+      // at the same depth) or carved part of it away (what is left stands
+      // correspondingly deeper).
       auto liquidLevel = arrangement.palette[primitiveIndex + 1].liquidLevel;
-      depth += double(liquidLevel) * faceArea / rawArea;
+      depth += double(liquidLevel) *
+               arrangement.primitiveRawAreas[primitiveIndex] / survivingArea;
     }
     if (depth <= 0.0) {
       continue;
@@ -1635,7 +1677,7 @@ vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
   vector<double> volumes(faceCount, 0.0);
   for (uint32_t faceIndex = 1; faceIndex < faceCount; ++faceIndex) {
     auto const& face = arrangement.faces[faceIndex];
-    if (face.solid) {
+    if (!face.solid) {
       continue;
     }
     auto const& properties = arrangement.palette[face.paletteIndex];
@@ -1659,7 +1701,7 @@ vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
       groupDrained[0] = true;
       continue;
     }
-    if (arrangement.faces[faceIndex].solid) {
+    if (!arrangement.faces[faceIndex].solid) {
       continue;
     }
     members[faceIndex].push_back(faceIndex);
@@ -1776,7 +1818,7 @@ vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
   }
 
   for (uint32_t faceIndex = 1; faceIndex < faceCount; ++faceIndex) {
-    if (arrangement.faces[faceIndex].solid) {
+    if (!arrangement.faces[faceIndex].solid) {
       continue;
     }
     auto level = groupLevel[findRoot(faceIndex)];

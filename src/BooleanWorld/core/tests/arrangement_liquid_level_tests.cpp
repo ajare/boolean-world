@@ -55,137 +55,158 @@ ArrangementPrimitive rectanglePrimitive(
   return result;
 }
 
-// A lone Union primitive is solid mass, not an open room - carving the exact
-// same footprint back out with a Difference is what makes it one open,
-// non-solid room, the same as every other test in this file's family.
-std::vector<ArrangementPrimitive> openRoom(
+// A lone Union primitive is a solid room by itself - the same, ordinary way
+// every room in an authored World is built (see world-test-1.yaml). Liquid
+// physics operates over these solid faces: the ones BuildArrangementTriangles
+// renders and the player walks on.
+ArrangementPrimitive room(
     double minX, double minY, double maxX, double maxY,
     PrimitivePropertySet const& props) {
-  auto area = (maxX - minX) * (maxY - minY);
-  return {
-      rectanglePrimitive(
-          rectangle(minX, minY, maxX, maxY), Primitive::Operation::Union, 0, 1,
-          props, area),
-      rectanglePrimitive(
-          rectangle(minX, minY, maxX, maxY), Primitive::Operation::Difference, 1,
-          2, properties(props.floorZ, props.ceilingZ, 0.0f), area)};
+  return rectanglePrimitive(
+      rectangle(minX, minY, maxX, maxY), Primitive::Operation::Union, 0, 1,
+      props, (maxX - minX) * (maxY - minY));
 }
 
-// Locates the sole non-solid, non-exterior face, for tests whose arrangement
-// has exactly one room of interest.
-uint32_t soleRoomFace(bw::core::arr::ArrangementResult const& arrangement) {
+// Locates the sole solid, non-exterior face, for tests whose arrangement has
+// exactly one room of interest.
+uint32_t soleSolidFace(bw::core::arr::ArrangementResult const& arrangement) {
   int found = -1;
   for (uint32_t i = 1; i < uint32_t(arrangement.faces.size()); ++i) {
-    if (!arrangement.faces[i].solid) {
-      require(found < 0, "expected exactly one non-solid room face");
+    if (arrangement.faces[i].solid) {
+      require(found < 0, "expected exactly one solid room face");
       found = int(i);
     }
   }
-  require(found >= 0, "no non-solid room face was found");
+  require(found >= 0, "no solid room face was found");
   return uint32_t(found);
+}
+
+// Locates whichever face contains a given point, solid or not - for tests
+// with more than one room to tell apart by position rather than by which
+// primitive happens to own each one's properties.
+uint32_t faceAt(
+    bw::core::arr::ArrangementResult const& arrangement, double x, double y) {
+  bw::core::arr::FixedPointVertex fixed{
+      ToFixedPointCoordinate(x), ToFixedPointCoordinate(y)};
+  for (uint32_t i = 1; i < uint32_t(arrangement.faces.size()); ++i) {
+    if (bw::core::arr::PointInFace(fixed, arrangement.faces[i], arrangement)) {
+      return i;
+    }
+  }
+  require(false, "no face contains the given point");
+  return ~0u;
 }
 
 void aUnionPrimitivesLiquidLevelFillsTheRoomItCovers() {
   // The room's rawArea equals its faceArea (nothing else carves it further),
   // so its authored liquid level passes straight through as depth.
   auto arrangement = bw::core::arr::BuildArrangement(
-      openRoom(0, 0, 100, 100, properties(0.0f, 48.0f, 20.0f)));
+      {room(0, 0, 100, 100, properties(0.0f, 48.0f, 20.0f))});
   auto depths = bw::core::arr::ComputeUndistributedLiquidDepths(*arrangement);
 
-  auto faceIndex = soleRoomFace(*arrangement);
+  auto faceIndex = soleSolidFace(*arrangement);
   requireNear(depths[faceIndex], 20.0,
               "a Union primitive's liquid level should pass through to the room it alone covers");
 }
 
 void anUnsetLiquidLevelProducesZeroDepth() {
   auto arrangement = bw::core::arr::BuildArrangement(
-      openRoom(0, 0, 100, 100, properties(0.0f, 48.0f, 0.0f)));
+      {room(0, 0, 100, 100, properties(0.0f, 48.0f, 0.0f))});
   auto depths = bw::core::arr::ComputeUndistributedLiquidDepths(*arrangement);
 
-  auto faceIndex = soleRoomFace(*arrangement);
+  auto faceIndex = soleSolidFace(*arrangement);
   requireNear(depths[faceIndex], 0.0,
               "a default, unset liquid level should produce zero depth");
 }
 
-// A base slab holds one Union primitive whose footprint is later split into
-// two open rooms by a solid wall left standing between them (a strip of the
-// base never carved by either Difference).
-void aSinglePrimitiveSplitAcrossFacesDistributesProportionally() {
+// Total seeded volume: every solid face's depth times its own area.
+double seededVolume(
+    bw::core::arr::ArrangementResult const& arrangement,
+    std::vector<float> const& depths) {
+  double total = 0.0;
+  for (uint32_t i = 1; i < uint32_t(arrangement.faces.size()); ++i) {
+    if (!arrangement.faces[i].solid) continue;
+    total += depths[i] * bw::core::arr::FaceArea(arrangement.faces[i], arrangement);
+  }
+  return total;
+}
+
+// Nothing is carved here: a second, higher-priority Union primitive covers
+// part of the first, so the fold splits the first primitive's footprint into
+// two solid faces of 6000 and 14000 without removing any of it. Subdividing a
+// primitive must not change how much liquid it holds or how deep that liquid
+// stands - and an author does not choose this split, any unrelated primitive
+// whose edge crosses this one causes it. Seeding each face at
+// liquidLevel * faceArea / rawArea (the original formula) made a face's
+// volume scale with the square of its area, quietly destroying most of the
+// liquid: here it would have yielded depths of 12 and 28 totalling 464000 of
+// the authored 800000.
+void subdividingAPrimitiveChangesNeitherItsDepthNorItsVolume() {
   auto base = rectanglePrimitive(
       rectangle(0, 0, 200, 100), Primitive::Operation::Union, 0, 1,
       properties(0.0f, 100.0f, 40.0f), 20000.0);
-  auto roomA = rectanglePrimitive(
-      rectangle(0, 0, 60, 100), Primitive::Operation::Difference, 1, 2,
+  auto overlay = rectanglePrimitive(
+      rectangle(0, 0, 60, 100), Primitive::Operation::Union, 1, 2,
       properties(0.0f, 100.0f, 0.0f), 6000.0);
-  auto roomB = rectanglePrimitive(
-      rectangle(80, 0, 200, 100), Primitive::Operation::Difference, 2, 3,
-      properties(0.0f, 100.0f, 0.0f), 12000.0);
 
-  auto arrangement = bw::core::arr::BuildArrangement({base, roomA, roomB});
+  auto arrangement = bw::core::arr::BuildArrangement({base, overlay});
   auto depths = bw::core::arr::ComputeUndistributedLiquidDepths(*arrangement);
 
-  int roomAFace = -1, roomBFace = -1;
-  for (uint32_t i = 1; i < uint32_t(arrangement->faces.size()); ++i) {
-    auto const& face = arrangement->faces[i];
-    if (face.solid) continue;
-    if (face.primitiveIndex == 2) roomAFace = int(i);
-    if (face.primitiveIndex == 3) roomBFace = int(i);
-  }
-  require(roomAFace >= 0 && roomBFace >= 0, "both carved rooms should be present as their own faces");
+  auto smallFace = faceAt(*arrangement, 30, 50);
+  auto largeFace = faceAt(*arrangement, 140, 50);
+  require(smallFace != largeFace,
+          "the overlay should have split the base primitive into two faces");
+  require(arrangement->faces[smallFace].solid && arrangement->faces[largeFace].solid,
+          "both halves of the subdivided base primitive should remain solid");
 
-  // base's rawArea is 200*100 = 20000; roomA is 60*100 = 6000, roomB is
-  // 120*100 = 12000, so each should get its proportional share of 40.
-  requireNear(depths[roomAFace], 40.0 * 6000.0 / 20000.0,
-              "the smaller room did not receive its proportional share of the split primitive's liquid level");
-  requireNear(depths[roomBFace], 40.0 * 12000.0 / 20000.0,
-              "the larger room did not receive its proportional share of the split primitive's liquid level");
+  requireNear(depths[smallFace], 40.0,
+              "a subdivided primitive's smaller face should still seed at the authored depth");
+  requireNear(depths[largeFace], 40.0,
+              "a subdivided primitive's larger face should still seed at the authored depth");
+  requireNear(seededVolume(*arrangement, depths), 40.0 * 20000.0,
+              "subdividing a primitive must not change its total liquid volume");
 }
 
-// Only half of the base primitive's footprint is ever carved open; the other
-// half remains an untouched, solid wall. The open room's depth must reflect
-// base's full raw area as the denominator, not just the open half's area -
-// so it gets half of the authored liquid level, not all of it.
-void aPartlyCarvedPrimitiveContributesProportionallyLessVolume() {
+// Only half of the base primitive's footprint remains after a Difference
+// carves the other half away. The authored volume is conserved rather than
+// losing the carved share, so what is left stands correspondingly deeper -
+// a pillar sunk into a flooded room displaces liquid rather than deleting it.
+void aPartlyCarvedPrimitiveKeepsItsVolumeAndStandsDeeper() {
   auto base = rectanglePrimitive(
       rectangle(0, 0, 100, 100), Primitive::Operation::Union, 0, 1,
-      properties(0.0f, 48.0f, 40.0f), 10000.0);
-  auto room = rectanglePrimitive(
+      properties(0.0f, 480.0f, 40.0f), 10000.0);
+  auto cut = rectanglePrimitive(
       rectangle(0, 0, 50, 100), Primitive::Operation::Difference, 1, 2,
-      properties(0.0f, 48.0f, 0.0f), 5000.0);
+      properties(0.0f, 480.0f, 0.0f), 5000.0);
 
-  auto arrangement = bw::core::arr::BuildArrangement({base, room});
+  auto arrangement = bw::core::arr::BuildArrangement({base, cut});
   auto depths = bw::core::arr::ComputeUndistributedLiquidDepths(*arrangement);
 
-  bool sawSolidRemainder = false;
-  int roomFace = -1;
-  for (uint32_t i = 1; i < uint32_t(arrangement->faces.size()); ++i) {
-    auto const& face = arrangement->faces[i];
-    if (face.solid) {
-      sawSolidRemainder = true;
-      continue;
-    }
-    if (face.primitiveIndex == 2) roomFace = int(i);
-  }
-  require(sawSolidRemainder, "the uncarved half of the base slab should remain solid");
-  require(roomFace >= 0, "the carved half should be present as its own non-solid face");
+  auto roomFace = faceAt(*arrangement, 75, 50);
+  require(arrangement->faces[roomFace].solid,
+          "the uncarved half of the base slab should remain solid");
 
-  requireNear(depths[roomFace], 20.0,
-              "an only-partly-carved Union primitive should contribute half its liquid level to the open half, "
-              "using its full raw area as the denominator rather than only the open area");
+  requireNear(depths[roomFace], 80.0,
+              "a half-carved Union primitive should stand twice as deep over the half that survives");
+  requireNear(seededVolume(*arrangement, depths), 40.0 * 10000.0,
+              "carving a primitive must not change its total liquid volume");
 }
 
+// A second, fully-overlapping primitive with a non-Union operation leaves the
+// room solid (its membership still covers the same face) but must not
+// contribute its own liquid level to that face's depth.
 void aLiquidLevelOnANonUnionPrimitiveHasNoEffect() {
   auto base = rectanglePrimitive(
       rectangle(0, 0, 100, 100), Primitive::Operation::Union, 0, 1,
       properties(0.0f, 48.0f, 0.0f), 10000.0);
-  auto room = rectanglePrimitive(
-      rectangle(0, 0, 100, 100), Primitive::Operation::Difference, 1, 2,
+  auto overlay = rectanglePrimitive(
+      rectangle(0, 0, 100, 100), Primitive::Operation::Intersection, 1, 2,
       properties(0.0f, 48.0f, 30.0f), 10000.0);
 
-  auto arrangement = bw::core::arr::BuildArrangement({base, room});
+  auto arrangement = bw::core::arr::BuildArrangement({base, overlay});
   auto depths = bw::core::arr::ComputeUndistributedLiquidDepths(*arrangement);
 
-  auto faceIndex = soleRoomFace(*arrangement);
+  auto faceIndex = soleSolidFace(*arrangement);
   requireNear(depths[faceIndex], 0.0,
               "a liquid level authored on a non-Union primitive must have no effect on any face's depth");
 }
@@ -195,30 +216,29 @@ void aLiquidLevelOnANonUnionPrimitiveHasNoEffect() {
 // rather than destroying the volume that has to flow onward.
 void anUndistributedDepthIsNotCappedAtTheFacesClearance() {
   auto arrangement = bw::core::arr::BuildArrangement(
-      openRoom(0, 0, 100, 100, properties(10.0f, 34.0f, 1000.0f)));
+      {room(0, 0, 100, 100, properties(10.0f, 34.0f, 1000.0f))});
   auto depths = bw::core::arr::ComputeUndistributedLiquidDepths(*arrangement);
 
-  auto faceIndex = soleRoomFace(*arrangement);
+  auto faceIndex = soleSolidFace(*arrangement);
   requireNear(depths[faceIndex], 1000.0,
               "the undistributed depth should carry the whole authored volume, "
               "leaving the ceiling cap to the equilibrium pass");
 }
 
 void getLiquidDepthQueriesTheContainingFace() {
-  // A room carved inside a larger slab, so that its rim of solid material
-  // seals it off from the exterior face rather than draining it.
-  auto slab = rectanglePrimitive(
+  // A thin solid rim around the room, its floor pinned exactly to the room's
+  // ceiling so the shared clearance is zero - a real wall the room cannot
+  // equilibrate across - so the room stays sealed off from the exterior
+  // drain rather than settling at zero.
+  auto rim = rectanglePrimitive(
       rectangle(-10, -10, 110, 110), Primitive::Operation::Union, 0, 1,
-      properties(0.0f, 48.0f, 0.0f), 14400.0);
+      properties(48.0f, 48.0f, 0.0f), 14400.0);
   auto source = rectanglePrimitive(
       rectangle(0, 0, 100, 100), Primitive::Operation::Union, 1, 2,
       properties(0.0f, 48.0f, 18.0f), 10000.0);
-  auto room = rectanglePrimitive(
-      rectangle(0, 0, 100, 100), Primitive::Operation::Difference, 2, 3,
-      properties(0.0f, 48.0f, 0.0f), 10000.0);
 
   ArrangementWorldData worldData(
-      bw::core::arr::BuildArrangement({slab, source, room}),
+      bw::core::arr::BuildArrangement({rim, source}),
       wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f, 8.0f);
 
   requireNear(worldData.getLiquidDepth({50.0f, 50.0f}), 18.0,
@@ -233,8 +253,8 @@ int main() {
   try {
     aUnionPrimitivesLiquidLevelFillsTheRoomItCovers();
     anUnsetLiquidLevelProducesZeroDepth();
-    aSinglePrimitiveSplitAcrossFacesDistributesProportionally();
-    aPartlyCarvedPrimitiveContributesProportionallyLessVolume();
+    subdividingAPrimitiveChangesNeitherItsDepthNorItsVolume();
+    aPartlyCarvedPrimitiveKeepsItsVolumeAndStandsDeeper();
     aLiquidLevelOnANonUnionPrimitiveHasNoEffect();
     anUndistributedDepthIsNotCappedAtTheFacesClearance();
     getLiquidDepthQueriesTheContainingFace();

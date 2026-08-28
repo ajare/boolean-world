@@ -316,7 +316,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     // The reserved, plain-white back-face material - see
     // WorldBatch::createModelStream, which guarantees this mesh bucket
     // exists regardless of any Primitive's authored material.
-    bw::core::MaterialDefinition backMaterialDef;
+    bw::core::MaterialDefinition backMaterialDef{};
     auto hashValue =
         backMaterialDef.data.hash(BW_WALL_BACK_FACE_MATERIAL_INDEX);
     auto meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, false);
@@ -335,6 +335,29 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] =
           static_cast<int32_t>(BW_WALL_BACK_FACE_MATERIAL_INDEX);
+    }
+  } else if (mSurfaceSet == WorldSurfaceSet::Horizontal) {
+    // The reserved, translucent-blue liquid material - see
+    // WorldBatch::createModelStream, which guarantees this mesh bucket
+    // exists regardless of any Primitive's authored material.
+    bw::core::MaterialDefinition waterMaterialDef{};
+    auto hashValue = waterMaterialDef.data.hash(BW_WATER_MATERIAL_INDEX);
+    auto meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, true);
+    if (mUniforms[meshIndex] == nullptr) {
+      auto uniforms = make_shared<mpp::UniformCollection>();
+      auto meshName = worldBatch->formatMeshName(hashValue, true);
+      params->setMeshUniforms(meshName, uniforms);
+      params->setMeshBlend(meshName, true);
+      uniforms->setUniform(
+          "MATERIAL_INDEX", (int32_t)BW_WATER_MATERIAL_INDEX);
+      uniforms->setUniform(
+          "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
+          waterMaterialDef.data.params.data());
+      setEmbossUniforms(*uniforms, waterMaterialDef.data.emboss);
+      initializeGlobalUniforms(*uniforms);
+      mUniforms[meshIndex] = uniforms;
+      mMaterialIndices[meshIndex] =
+          static_cast<int32_t>(BW_WATER_MATERIAL_INDEX);
     }
   }
 }

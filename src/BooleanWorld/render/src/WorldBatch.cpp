@@ -126,6 +126,15 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
         false, nullopt, modelStream);
   }
 
+  // A liquid surface always renders as this reserved, translucent-blue
+  // material, regardless of any Primitive's authored floorMaterialId - so
+  // its mesh bucket needs to exist even for a World with no Primitives yet.
+  if (mSurfaceSet == WorldSurfaceSet::Horizontal) {
+    processMaterialDefinition(
+        BW_WATER_MATERIAL_INDEX, bw::core::MaterialDefinition{},
+        true, nullopt, modelStream);
+  }
+
   return modelStream;
 }
 

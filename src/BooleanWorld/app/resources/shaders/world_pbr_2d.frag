@@ -547,12 +547,24 @@ Material plainGreyMaterial2d(vec3 normal)
     return material;
 }
 
+Material waterMaterial2d(vec3 normal)
+{
+    Material material;
+    material.albedo = vec3(0.1, 0.35, 0.6);
+    material.metallic = 0.0;
+    material.roughness = 0.0;
+    material.normal = normalize(normal);
+    return material;
+}
+
 Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
 {
     if (type == 37)
         return wood2Material2d(worldPos, normal);
     if (type == 38)
         return plainGreyMaterial2d(normal);
+    if (type == 40)
+        return waterMaterial2d(normal);
 
     Material material;
     float scales[37] = float[37](
@@ -1278,8 +1290,8 @@ void main()
     vec2 texturePosition = quantizeByPlayerDistance(
         worldPos.xz / @Uniform(MATERIAL_SCALE), playerDistance);
     int materialIndex = floorMaterialIndex(
-        worldPos, clamp(@Uniform(MATERIAL_INDEX), 0, 38));
-    materialIndex = clamp(materialIndex, 0, 38);
+        worldPos, clamp(@Uniform(MATERIAL_INDEX), 0, 40));
+    materialIndex = clamp(materialIndex, 0, 40);
     Material material = material2d(
         texturePosition, normal, viewDir, materialIndex);
     // Whatever this material embosses, on whatever surface it was
