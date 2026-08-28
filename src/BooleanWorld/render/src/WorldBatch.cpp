@@ -3,6 +3,7 @@
 #include <mpp/mesh/VertexTypeSpecification.h>
 
 #include <core/Defines.h>
+#include <core/LiquidType.h>
 
 #include "WorldBatch.h"
 
@@ -126,13 +127,16 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
         false, nullopt, modelStream);
   }
 
-  // A liquid surface always renders as this reserved, translucent-blue
-  // material, regardless of any Primitive's authored floorMaterialId - so
-  // its mesh bucket needs to exist even for a World with no Primitives yet.
+  // A liquid surface always renders as one of these reserved materials,
+  // regardless of any Primitive's authored floorMaterialId - so every liquid
+  // type's mesh bucket needs to exist even for a World with no Primitives
+  // yet, since which type wets a given face isn't known until then.
   if (mSurfaceSet == WorldSurfaceSet::Horizontal) {
-    processMaterialDefinition(
-        BW_WATER_MATERIAL_INDEX, bw::core::MaterialDefinition{},
-        true, nullopt, modelStream);
+    for (int32_t i = 0; i < bw::core::LiquidTypeCount; ++i) {
+      processMaterialDefinition(
+          bw::core::LiquidMaterialIndex(static_cast<bw::core::LiquidType>(i)),
+          bw::core::MaterialDefinition{}, true, nullopt, modelStream);
+    }
   }
 
   return modelStream;

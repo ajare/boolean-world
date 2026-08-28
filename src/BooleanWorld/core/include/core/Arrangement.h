@@ -234,9 +234,13 @@ struct ArrangementFace {
 // faces BuildArrangementTriangles renders and the player walks): either they
 // share a wall whose vertical clearance (the same headroom computation
 // BuildArrangementWalls uses for player movement) is nonzero, or one side is
-// the Arrangement's unbounded exterior face (index 0), which acts as a
-// permanent drain with an effectively negative-infinite floor rather than an
-// ordinary clearance-limited neighbor.
+// the Arrangement's unbounded exterior face (index 0) and the Border wall
+// between them is explicitly authored not to collide - a solid wall there
+// blocks liquid exactly as it blocks the player, so an ordinary outer wall
+// is not an opening just because nothing is authored beyond it. Where it is
+// open, drain is true and the exterior acts as a permanent drain with an
+// effectively negative-infinite floor rather than an ordinary
+// clearance-limited neighbor.
 struct LiquidAdjacency {
   uint32_t face0;
   uint32_t face1;

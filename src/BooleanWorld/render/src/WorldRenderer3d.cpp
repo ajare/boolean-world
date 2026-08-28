@@ -3,6 +3,7 @@
 #include <mpp/ProgrammaticBasicMaterialStream.h>
 
 #include <core/Defines.h>
+#include <core/LiquidType.h>
 #include <core/MaterialDefinition.h>
 #include <core/World.h>
 
@@ -337,27 +338,30 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
           static_cast<int32_t>(BW_WALL_BACK_FACE_MATERIAL_INDEX);
     }
   } else if (mSurfaceSet == WorldSurfaceSet::Horizontal) {
-    // The reserved, translucent-blue liquid material - see
-    // WorldBatch::createModelStream, which guarantees this mesh bucket
-    // exists regardless of any Primitive's authored material.
-    bw::core::MaterialDefinition waterMaterialDef{};
-    auto hashValue = waterMaterialDef.data.hash(BW_WATER_MATERIAL_INDEX);
-    auto meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, true);
-    if (mUniforms[meshIndex] == nullptr) {
-      auto uniforms = make_shared<mpp::UniformCollection>();
-      auto meshName = worldBatch->formatMeshName(hashValue, true);
-      params->setMeshUniforms(meshName, uniforms);
-      params->setMeshBlend(meshName, true);
-      uniforms->setUniform(
-          "MATERIAL_INDEX", (int32_t)BW_WATER_MATERIAL_INDEX);
-      uniforms->setUniform(
-          "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
-          waterMaterialDef.data.params.data());
-      setEmbossUniforms(*uniforms, waterMaterialDef.data.emboss);
-      initializeGlobalUniforms(*uniforms);
-      mUniforms[meshIndex] = uniforms;
-      mMaterialIndices[meshIndex] =
-          static_cast<int32_t>(BW_WATER_MATERIAL_INDEX);
+    // Every liquid type's reserved material - see WorldBatch::createModel
+    // Stream, which guarantees each one's mesh bucket exists regardless of
+    // any Primitive's authored material.
+    for (int32_t i = 0; i < bw::core::LiquidTypeCount; ++i) {
+      auto materialIndex =
+          bw::core::LiquidMaterialIndex(static_cast<bw::core::LiquidType>(i));
+      bw::core::MaterialDefinition liquidMaterialDef{};
+      auto hashValue = liquidMaterialDef.data.hash(materialIndex);
+      auto meshIndex =
+          worldBatch->getMeshIndexForMaterialHash(hashValue, true);
+      if (mUniforms[meshIndex] == nullptr) {
+        auto uniforms = make_shared<mpp::UniformCollection>();
+        auto meshName = worldBatch->formatMeshName(hashValue, true);
+        params->setMeshUniforms(meshName, uniforms);
+        params->setMeshBlend(meshName, true);
+        uniforms->setUniform("MATERIAL_INDEX", (int32_t)materialIndex);
+        uniforms->setUniform(
+            "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
+            liquidMaterialDef.data.params.data());
+        setEmbossUniforms(*uniforms, liquidMaterialDef.data.emboss);
+        initializeGlobalUniforms(*uniforms);
+        mUniforms[meshIndex] = uniforms;
+        mMaterialIndices[meshIndex] = static_cast<int32_t>(materialIndex);
+      }
     }
   }
 }

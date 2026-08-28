@@ -16,6 +16,7 @@ void PrimitivePropertySet::serializeImpl(shared_ptr<Serializer> serializer, Seri
     serializer->writeFloat("floorZ", floorZ);
     serializer->writeFloat("ceilingZ", ceilingZ);
     serializer->writeFloat("liquidLevel", liquidLevel);
+    serializer->writeString("liquidType", LiquidTypeName(liquidType));
 
     // Sub-material id references
     serializer->writeString("floorMaterial", floorMaterialId);
@@ -29,6 +30,7 @@ void PrimitivePropertySet::serializeImpl(shared_ptr<Serializer> serializer, Seri
 bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) {
   float floorZ_{0}, ceilingZ_{40};
   float liquidLevel_{0};
+  LiquidType liquidType_{LiquidType::Water};
 
   string floorMaterialId_, ceilingMaterialId_, wallMaterialId_;
 
@@ -38,6 +40,8 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
       floorZ_ = serializer->readFloat("floorZ");
       ceilingZ_ = serializer->readFloat("ceilingZ");
       liquidLevel_ = serializer->readFloat("liquidLevel", true, 0.0f);
+      liquidType_ = LiquidTypeFromName(
+          serializer->readString("liquidType", true, "Water"));
 
       floorMaterialId_ = serializer->readString("floorMaterial", true, "");
       ceilingMaterialId_ = serializer->readString("ceilingMaterial", true, "");
@@ -54,6 +58,7 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
   floorZ = floorZ_;
   ceilingZ = ceilingZ_;
   liquidLevel = liquidLevel_;
+  liquidType = liquidType_;
   floorMaterialId = floorMaterialId_;
   ceilingMaterialId = ceilingMaterialId_;
   wallMaterialId = wallMaterialId_;

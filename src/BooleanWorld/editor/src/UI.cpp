@@ -25,6 +25,7 @@
 #include <core/MeshPrimitive.h>
 #include <core/Defines.h>
 #include <core/DynamicWorldDataGenerator.h>
+#include <core/LiquidType.h>
 #include <common/MaterialRegistry.h>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
@@ -3041,9 +3042,9 @@ bool renderPrimitivePropertySet(
     ImGui::Text("Ceiling Z: %2.1f", properties->ceilingZ);
   }
 
-  // Liquid level is inert on any operation but Union, so it is only offered
-  // where it means something. The face inspector passes no Primitive and so
-  // cannot tell, and shows nothing.
+  // Liquid level and type are inert on any operation but Union, so they are
+  // only offered where they mean something. The face inspector passes no
+  // Primitive and so cannot tell, and shows nothing.
   if (primitive && primitive->getOperation() == bw::core::Primitive::Operation::Union) {
     ImGui::SetNextItemWidth(128);
 
@@ -3054,6 +3055,28 @@ bool renderPrimitivePropertySet(
       }
     } else {
       ImGui::Text("Liquid Level: %2.1f", properties->liquidLevel);
+    }
+
+    ImGui::SetNextItemWidth(128);
+
+    if (editable) {
+      if (ImGui::BeginCombo(
+              "Liquid Type", bw::core::LiquidTypeName(properties->liquidType))) {
+        for (int32_t i = 0; i < bw::core::LiquidTypeCount; ++i) {
+          auto liquidType = static_cast<bw::core::LiquidType>(i);
+          auto selected = liquidType == properties->liquidType;
+          if (ImGui::Selectable(bw::core::LiquidTypeName(liquidType), selected)) {
+            properties->liquidType = liquidType;
+            updateProperties = true;
+          }
+          if (selected) {
+            ImGui::SetItemDefaultFocus();
+          }
+        }
+        ImGui::EndCombo();
+      }
+    } else {
+      ImGui::Text("Liquid Type: %s", bw::core::LiquidTypeName(properties->liquidType));
     }
   }
 

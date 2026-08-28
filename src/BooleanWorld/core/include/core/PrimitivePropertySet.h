@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "core/LiquidType.h"
 #include "core/Serializable.h"
 
 namespace bw {
@@ -16,6 +17,11 @@ struct PrimitivePropertySet : public Serializable {
   // operation is Union - see ComputeLiquidLevels. Inert (but still stored) on
   // any other operation.
   float liquidLevel{0};
+
+  // Which kind of liquid liquidLevel pours, and so which render material a
+  // face wet from this Primitive uses - see LiquidMaterialIndex. Inert (but
+  // still stored) wherever liquidLevel itself is.
+  LiquidType liquidType{LiquidType::Water};
 
   // Stable Sub-material id references - see SubMaterial.h. A missing or
   // empty id is a valid, if unresolved, state; resolution against a loaded

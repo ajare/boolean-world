@@ -281,12 +281,16 @@ void aComponentTouchingTheExteriorDrainsThroughout() {
   requireNear(sealedDepths[roomFace(*sealed, 2)], 10.0,
               "the sealed control case should hold its liquid");
 
-  // The left room now extends past where its collar would be, so it borders
-  // the Arrangement's unbounded exterior face directly on its top, bottom,
-  // and left sides (deliberately left uncollared here). The liquid is still
-  // authored in the right room, which only reaches the outside through it.
+  // The left room is left uncollared, but bordering the Arrangement's own
+  // unbounded exterior face is not by itself an opening - those edges are
+  // ordinary Border walls, solid by default like any authored room wall
+  // (see ArrangementWorldData's authoredCollision and the liquid-adjacency
+  // tests). Only its bottom edge is explicitly authored not to collide - a
+  // genuine gap, the same as an open window - and that is what drains it.
+  auto leftRoom = room(-20, 0, 100, 100, 0, 1, 0.0f, 48.0f, 0.0f);
+  leftRoom.contourEdgeOverrides = {{false}};
   auto arrangement = bw::core::arr::BuildArrangement({
-      room(-20, 0, 100, 100, 0, 1, 0.0f, 48.0f, 0.0f),
+      leftRoom,
       room(100, 0, 200, 100, 0, 2, 0.0f, 48.0f, 20.0f),
       collar(100, 100, 200, 110, 48.0f, 1, 103),
       collar(100, -10, 200, 0, 48.0f, 1, 104),

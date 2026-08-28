@@ -6,6 +6,7 @@
 #include <common/GameDefines.h>
 
 #include <core/Defines.h>
+#include <core/LiquidType.h>
 #include <core/MaterialDefinition.h>
 #include <core/World.h>
 
@@ -320,12 +321,16 @@ void WorldRenderer::updateHorizontalDataProvider(
         resolved.def.hash(resolved.materialIndex), isFloor);
   };
 
-  // Every liquid surface renders as this reserved, translucent-blue material
-  // regardless of the face's own floor material - see
-  // WorldBatch::createModelStream (which guarantees this mesh bucket exists)
-  // and BW_WATER_MATERIAL_INDEX.
-  auto waterHash =
-      bw::core::MaterialDefinition{}.data.hash(BW_WATER_MATERIAL_INDEX);
+  // Every liquid surface renders as one of these reserved, per-type
+  // materials, regardless of the face's own floor material - see
+  // WorldBatch::createModelStream (which guarantees each type's mesh bucket
+  // exists) and LiquidMaterialIndex. Which type wets a face is whichever
+  // Primitive's own properties won that face, the same source floorMaterialId
+  // comes from.
+  auto liquidHashFor = [](bw::core::LiquidType liquidType) {
+    return bw::core::MaterialDefinition{}.data.hash(
+        bw::core::LiquidMaterialIndex(liquidType));
+  };
 
   std::vector<uint32_t> horizontalCounts(
       horizontal.dataProvider->getNumMeshes());
@@ -346,7 +351,7 @@ void WorldRenderer::updateHorizontalDataProvider(
     }
     if (liquidDepths[triangle.face] > 0.0f) {
       ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
-          waterHash, true)];
+          liquidHashFor(properties.liquidType), true)];
     }
   }
   for (auto const& replacement : detail.getTriangles()) {
@@ -392,18 +397,18 @@ void WorldRenderer::updateHorizontalDataProvider(
     }
 
     if (auto liquidDepth = liquidDepths[triangle.face]; liquidDepth > 0.0f) {
-      auto waterMesh = horizontal.renderer->getMeshIndexForMaterialHash(
-          waterHash, true);
+      auto liquidMesh = horizontal.renderer->getMeshIndexForMaterialHash(
+          liquidHashFor(properties.liquidType), true);
       auto liquidZ = properties.floorZ + liquidDepth;
-      uint32_t waterIndices[3];
+      uint32_t liquidIndices[3];
       for (int i = 0; i < 3; ++i) {
         auto uv = positions[i] / 64.0f;
-        waterIndices[2 - i] = addVertexToDataProvider(
-            horizontal.dataProvider, waterMesh, positions[i].x, liquidZ,
+        liquidIndices[2 - i] = addVertexToDataProvider(
+            horizontal.dataProvider, liquidMesh, positions[i].x, liquidZ,
             -positions[i].y, 0, 1, 0, uv.x, uv.y, waterVertexColour);
       }
       horizontal.dataProvider->addTriangle(
-          waterMesh, waterIndices[0], waterIndices[1], waterIndices[2]);
+          liquidMesh, liquidIndices[0], liquidIndices[1], liquidIndices[2]);
     }
 
     if (detail.isSuppressed(DetailSurfaceKind::CeilingOfFace, triangle.face)) {

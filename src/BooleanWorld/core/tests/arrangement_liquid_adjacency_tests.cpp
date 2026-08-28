@@ -114,10 +114,12 @@ void zeroClearanceRoomsAreNotLiquidAdjacent() {
 }
 
 // A lone solid room with nothing surrounding it shares its whole boundary
-// directly with the Arrangement's own unbounded exterior face - there is no
-// solid material beyond it at all - so it must be reported as adjacent to
-// that face, distinguishable as the permanent drain.
-void roomsTouchingTheOuterBoundaryDrainToTheExteriorFace() {
+// with the Arrangement's own unbounded exterior face, but every one of those
+// edges is an ordinary Border wall - solid and colliding by default, exactly
+// like any authored room wall (see ArrangementWorldData's authoredCollision).
+// A solid wall that already blocks the player blocks liquid the same way, so
+// nothing being authored beyond a wall must not by itself make it a drain.
+void anOrdinaryRoomTouchingTheOuterBoundaryDoesNotDrain() {
   auto room = ArrangementPrimitive{
       {rectangle(0, 0, 100, 100)}, Primitive::Operation::Union,
       Primitive::FillRule::NonZero, 0, 1, heights(0.0f, 48.0f)};
@@ -133,8 +135,33 @@ void roomsTouchingTheOuterBoundaryDrainToTheExteriorFace() {
 
   auto adjacency = bw::core::arr::BuildLiquidAdjacency(*arrangement);
   require(
+      !isAdjacent(adjacency, 0, uint32_t(roomFace)),
+      "an ordinary, fully walled room must not be liquid-adjacent to the exterior");
+}
+
+// The same room, but with one edge explicitly authored not to collide - an
+// open window or similar deliberate gap in the wall. Only that edge makes
+// the room a drain, distinguishable as the permanent one.
+void anExplicitlyOpenEdgeDrainsToTheExteriorFace() {
+  auto room = ArrangementPrimitive{
+      {rectangle(0, 0, 100, 100)}, Primitive::Operation::Union,
+      Primitive::FillRule::NonZero, 0, 1, heights(0.0f, 48.0f)};
+  // Edge 0 of the sole contour is (0,0) -> (100,0), the bottom edge.
+  room.contourEdgeOverrides = {{false}};
+
+  auto arrangement = bw::core::arr::BuildArrangement({room});
+
+  int roomFace = -1;
+  for (uint32_t i = 1; i < arrangement->faces.size(); ++i) {
+    auto const& face = arrangement->faces[i];
+    if (face.primitiveIndex == 1 && face.solid) roomFace = int(i);
+  }
+  require(roomFace >= 0, "the room should be present as its own solid face");
+
+  auto adjacency = bw::core::arr::BuildLiquidAdjacency(*arrangement);
+  require(
       isAdjacent(adjacency, 0, uint32_t(roomFace)),
-      "a room bordering the Arrangement's own outer boundary must be liquid-adjacent to the exterior face");
+      "a room with one explicitly non-colliding edge must be liquid-adjacent to the exterior");
   require(
       isDrain(adjacency, 0, uint32_t(roomFace)),
       "an exterior adjacency must be reported as the permanent drain");
@@ -146,7 +173,8 @@ int main() {
   try {
     openDoorwayFacesAreLiquidAdjacent();
     zeroClearanceRoomsAreNotLiquidAdjacent();
-    roomsTouchingTheOuterBoundaryDrainToTheExteriorFace();
+    anOrdinaryRoomTouchingTheOuterBoundaryDoesNotDrain();
+    anExplicitlyOpenEdgeDrainsToTheExteriorFace();
     std::cout << "The liquid-adjacency relation reflects clearance and the exterior drain\n";
     return 0;
   } catch (std::exception const& error) {

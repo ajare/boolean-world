@@ -152,8 +152,12 @@ _Avoid_: liquid depth (the derived per-face quantity), fill level
 The finished depth of standing liquid in one Arrangement face, derived after the fold from the equilibrium of the Pool that face belongs to and clamped between zero and that face's own floor-to-ceiling clearance. Zero means dry.
 _Avoid_: liquid level (the authored per-Primitive quantity), liquid height, liquid elevation
 
+**Liquid type**:
+An authored, per-Primitive enum (`core::LiquidType`) alongside Liquid level, meaningful under the same Union-only condition. Selects the reserved render material a face wet from that Primitive uses (see `LiquidMaterialIndex`). A single value, Water, exists today; a face's own type is whichever Primitive's properties won that face, the same source its floor/ceiling materials come from.
+_Avoid_: liquid material (the render-side index it selects, not the authored choice itself)
+
 **Liquid-adjacency**:
-The relation between two solid Arrangement faces (the same faces that render and that the player walks on) across which liquid can equilibrate: both faces must be solid and their shared edge's wall clearance must be nonzero. The Arrangement's outer, unbounded face is liquid-adjacent to every solid face bordering it, with an effective floor of negative infinity, acting as a permanent drain.
+The relation between two solid Arrangement faces (the same faces that render and that the player walks on) across which liquid can equilibrate: both faces must be solid and their shared edge's wall clearance must be nonzero. The Arrangement's outer, unbounded face is liquid-adjacent to a bordering solid face, with an effective floor of negative infinity, only where the Border wall between them is explicitly authored not to collide — a solid wall there blocks liquid exactly as it blocks the player, so an ordinary outer wall is not an opening just because nothing is authored beyond it. Where it is open, it acts as a permanent drain.
 _Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when the wall between them has zero clearance)
 
 **Wet component**:

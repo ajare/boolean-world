@@ -18,6 +18,7 @@ add_library(core STATIC
     src/ImmutableAccelerationGrid.cpp
     src/Layer.cpp
     src/LayerBuildStep.cpp
+    src/LiquidType.cpp
     src/MaterialDefinition.cpp
     src/MeshPrimitive.cpp
     src/Module.cpp

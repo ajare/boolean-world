@@ -1466,14 +1466,20 @@ vector<LiquidAdjacency> BuildLiquidAdjacency(ArrangementResult const& arrangemen
     auto const& face0 = arrangement.faces[f0];
     auto const& face1 = arrangement.faces[f1];
 
-    // The unbounded exterior face (index 0) is never solid itself and is a
-    // permanent drain for a bordering room, regardless of clearance; any
-    // other pair must both be real rooms (solid, per BuildArrangementTriangles'
+    // The unbounded exterior face (index 0) is never solid itself; any other
+    // pair must both be real rooms (solid, per BuildArrangementTriangles'
     // same convention) to equilibrate together.
     auto drain = f0 == 0 || f1 == 0;
     if (drain) {
       auto const& roomFace = f0 == 0 ? face1 : face0;
-      if (!roomFace.solid) {
+      // This edge is exactly the Border wall BuildArrangementWalls would
+      // build here, and that wall collides by default - the same as any
+      // other Border wall - unless explicitly authored not to. A solid wall
+      // that already blocks the player blocks liquid the same way, so only
+      // an edge explicitly marked non-colliding is actually open to the
+      // Arrangement's unbounded exterior; an ordinary outer wall is not a
+      // drain just because nothing is authored beyond it.
+      if (!roomFace.solid || edge.collidesOverride.value_or(true)) {
         continue;
       }
     } else if (!face0.solid || !face1.solid) {
