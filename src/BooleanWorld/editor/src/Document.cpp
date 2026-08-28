@@ -640,8 +640,21 @@ bool Document::isActiveMeshEdgeNormalMapEditable(uint32_t edgeIndex) const {
 bool Document::setActiveMeshEdgeNormalMapOverride(
     uint32_t edgeIndex,
     bw::core::WallNormalMapOverride const& overrideValue) {
-  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u ||
-      !mActiveMesh->setEdgeNormalMapOverride(edgeIndex, overrideValue)) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) {
+    return false;
+  }
+  if (auto image = overrideValue.imageData()) {
+    try {
+#ifdef BW_EDITOR_RESOURCE_ROOT
+      validateNormalMapImage(BW_EDITOR_RESOURCE_ROOT, image->resourcePath);
+#else
+      validateNormalMapImage(filesystem::current_path(), image->resourcePath);
+#endif
+    } catch (exception const&) {
+      return false;
+    }
+  }
+  if (!mActiveMesh->setEdgeNormalMapOverride(edgeIndex, overrideValue)) {
     return false;
   }
   commitMeshPolygons(mActiveMeshPrimitiveIndex);

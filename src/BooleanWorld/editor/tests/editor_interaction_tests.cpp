@@ -2053,7 +2053,7 @@ void meshEdgeNormalMapImageIsOneUndoEntryAndUndoesCleanly() {
   document.setModified(false);
   auto const undoLevelsBefore = editor::getUndoLevels();
   auto image = bw::core::WallNormalMapOverride::image(
-      "normal/directional.png", 16.0f, 0.8f);
+      "images/jaguar_tangent_space_normal_map.png", 16.0f, 0.8f);
 
   editor::transactUndoableAction(
       &document, "Set Mesh Edge Wall Normal Map",
@@ -2073,6 +2073,28 @@ void meshEdgeNormalMapImageIsOneUndoEntryAndUndoesCleanly() {
   require(proxy->getEdgeNormalMapOverride(proxy->getFirstEdgeIndex()).state() ==
               bw::core::WallNormalMapOverride::State::Unset,
           "undo did not restore the edge's Unset normal-map state");
+}
+
+void invalidMeshEdgeNormalMapImageIsAtomic() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  document.activateMesh(meshIndex);
+  auto edgeIndex = document.getActiveMesh()->getFirstEdgeIndex();
+  auto const previous = document.getActiveMeshEdgeNormalMapOverride(edgeIndex);
+  auto const undoLevelsBefore = editor::getUndoLevels();
+  auto invalid = bw::core::WallNormalMapOverride::image(
+      "images/missing-normal-map.png", 64.0f, 1.0f);
+
+  require(!editor::transactUndoableActionAtomically(
+              &document, "Set invalid Mesh Edge Wall Normal Map",
+              std::bind(editor::setMeshEdgeNormalMapOverride,
+                        std::placeholders::_1, edgeIndex, invalid)),
+          "a missing normal-map image committed through the editor action");
+  require(editor::getUndoLevels() == undoLevelsBefore,
+          "a rejected normal-map image created an undo entry");
+  require(document.getActiveMeshEdgeNormalMapOverride(edgeIndex) == previous,
+          "a rejected normal-map image changed the authored edge");
 }
 
 void meshEdgeVisibleTogglesAndCommitsToThePrimitive() {
@@ -3560,6 +3582,7 @@ int main() {
     meshEdgeCollisionOverrideCyclesAndCommitsToThePrimitive();
     meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly();
     meshEdgeNormalMapImageIsOneUndoEntryAndUndoesCleanly();
+    invalidMeshEdgeNormalMapImageIsAtomic();
     meshEdgeVisibleTogglesAndCommitsToThePrimitive();
     meshEdgeVisibleToggleIsOneUndoEntryAndUndoesCleanly();
     drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep();

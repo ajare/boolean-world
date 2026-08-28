@@ -47,7 +47,7 @@ void playMapsUseDynamicWorldDataGenerators() {
 
   wp::Logger logger;
   Map map("map", "", "", {}, nullptr, &logger);
-  map.loadWorldFromYaml(makeWorldResource(readFixture("basic-test.yaml")));
+  map.loadWorldFromYaml(makeWorldResource(readFixture("world-test-1.yaml")));
 
   require(dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
               map.getWorld()->getWorldDataGenerator()) != nullptr,
@@ -57,7 +57,7 @@ void playMapsUseDynamicWorldDataGenerators() {
 void failedLoadRetainsThePreviousWorld() {
   wp::Logger logger;
   Map map("map", "", "", {}, nullptr, &logger);
-  auto resource = makeWorldResource(readFixture("basic-test.yaml"));
+  auto resource = makeWorldResource(readFixture("world-test-1.yaml"));
 
   map.loadWorldFromYaml(resource);
   require(map.getWorld() != nullptr, "Valid world did not load");

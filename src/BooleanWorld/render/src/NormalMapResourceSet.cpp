@@ -185,7 +185,6 @@ void NormalMapResourceSet::decode(NormalMapImage& image) {
   ::decode(mResourceRoot, image);
 }
 
-
 void NormalMapResourceSet::createTexture(NormalMapImage& image) {
   auto stream = new mpp::ProgrammaticTextureStream(mResourceManager);
   stream->setTarget(mpp::TextureTarget::Texture2D);

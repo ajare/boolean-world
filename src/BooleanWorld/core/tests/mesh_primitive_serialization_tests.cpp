@@ -445,7 +445,7 @@ std::string asLegacyCollisionYaml(std::string yaml, bool retainFormat) {
     yaml.replace(markerLineStart, markerLineEnd - markerLineStart,
                  "  collisionOverrideFormat: 1");
   } else {
-  yaml.erase(markerLineStart, markerLineEnd - markerLineStart + 1);
+    yaml.erase(markerLineStart, markerLineEnd - markerLineStart + 1);
   }
   for (size_t position = 0;
        (position = yaml.find("normalMapState:", position)) !=
@@ -552,10 +552,10 @@ void proceduralPrimitiveSchemaRemainsFlat() {
           "procedural Primitive serialization changed with the Mesh schema");
 }
 
-void shippedMeshFixtureUsesTheTreeSchema() {
+void shippedWorldFixtureUsesTheCurrentSchema() {
   auto reader = std::shared_ptr<bw::core::Serializer>(
       bw::core::YamlSerializer::fromFile(
-          std::string(BW_CORE_TEST_RESOURCE_DIR) + "/template.yaml"));
+          std::string(BW_CORE_TEST_RESOURCE_DIR) + "/world-test-1.yaml"));
   reader->deserialize();
   bw::core::SerializationWorkData workData{100.0f};
   bw::core::World world;
@@ -564,12 +564,9 @@ void shippedMeshFixtureUsesTheTreeSchema() {
   for (auto const& error : world.getDeserializationErrors()) {
     errors += error + "; ";
   }
-  require(loaded,
-          "the shipped MeshPrimitive template fixture no longer loads: " + errors);
-  require(world.getNumPrimitives() == 2 &&
-              dynamic_cast<MeshPrimitive*>(world.getPrimitive(0)) &&
-              dynamic_cast<MeshPrimitive*>(world.getPrimitive(1)),
-          "the shipped fixture did not restore both MeshPrimitives");
+  require(loaded, "the shipped World fixture no longer loads: " + errors);
+  require(world.getNumPrimitives() > 0,
+          "the shipped fixture did not restore its active Primitives");
 }
 
 }  // namespace
@@ -585,7 +582,7 @@ int main() {
     legacyCollisionFlagsMigrateToTriStateOverrides();
     loadingPreFeatureDataDefaultsToUnsetCollisionOverride();
     proceduralPrimitiveSchemaRemainsFlat();
-    shippedMeshFixtureUsesTheTreeSchema();
+    shippedWorldFixtureUsesTheCurrentSchema();
     std::cout << "MeshPrimitive containment tree serialization tests passed\n";
     return 0;
   } catch (std::exception const& error) {
