@@ -6171,7 +6171,7 @@ world:
                 primitivePropertySet:
                   floorZ: -24
                   ceilingZ: 48
-                  liquidLevel: 4
+                  liquidLevel: 10
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
