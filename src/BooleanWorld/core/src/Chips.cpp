@@ -521,6 +521,163 @@ void AddWallRemainder(
   }
 }
 
+constexpr float FootprintEpsilon = 0.0001f;
+
+float Cross2d(
+    wp::Vector2 const& a,
+    wp::Vector2 const& b,
+    wp::Vector2 const& c) {
+  return (b.x - a.x) * (c.y - a.y) -
+         (b.y - a.y) * (c.x - a.x);
+}
+
+bool PointOnSegment(
+    wp::Vector2 const& point,
+    wp::Vector2 const& a,
+    wp::Vector2 const& b) {
+  if (std::abs(Cross2d(a, b, point)) > FootprintEpsilon) return false;
+  return point.x >= std::min(a.x, b.x) - FootprintEpsilon &&
+         point.x <= std::max(a.x, b.x) + FootprintEpsilon &&
+         point.y >= std::min(a.y, b.y) - FootprintEpsilon &&
+         point.y <= std::max(a.y, b.y) + FootprintEpsilon;
+}
+
+enum struct RingPointLocation { Outside, Inside, Boundary };
+
+RingPointLocation PointInRing(
+    ArrangementResult const& arrangement,
+    std::vector<uint32_t> const& vertices,
+    wp::Vector2 const& point) {
+  bool inside = false;
+  for (size_t i = 0; i < vertices.size(); ++i) {
+    auto a = ToWorld(arrangement.vertices[vertices[i]]);
+    auto b = ToWorld(
+        arrangement.vertices[vertices[(i + 1) % vertices.size()]]);
+    if (PointOnSegment(point, a, b)) return RingPointLocation::Boundary;
+    if ((a.y > point.y) != (b.y > point.y)) {
+      auto crossingX =
+          a.x + (point.y - a.y) * (b.x - a.x) / (b.y - a.y);
+      if (crossingX > point.x) inside = !inside;
+    }
+  }
+  return inside ? RingPointLocation::Inside : RingPointLocation::Outside;
+}
+
+bool PointInFaceClosure(
+    ArrangementResult const& arrangement,
+    ArrangementFace const& face,
+    wp::Vector2 const& point) {
+  auto outer = PointInRing(arrangement, face.outerBoundaryVertices, point);
+  if (outer == RingPointLocation::Boundary) return true;
+  if (outer != RingPointLocation::Inside) return false;
+  for (auto const& hole : face.innerBoundaryVertices) {
+    auto location = PointInRing(arrangement, hole, point);
+    if (location == RingPointLocation::Boundary) return true;
+    if (location == RingPointLocation::Inside) return false;
+  }
+  return true;
+}
+
+bool PointStrictlyInTriangle(
+    wp::Vector2 const& point,
+    std::array<wp::Vector2, 3> const& triangle) {
+  auto a = Cross2d(triangle[0], triangle[1], point);
+  auto b = Cross2d(triangle[1], triangle[2], point);
+  auto c = Cross2d(triangle[2], triangle[0], point);
+  return (a > FootprintEpsilon && b > FootprintEpsilon &&
+          c > FootprintEpsilon) ||
+         (a < -FootprintEpsilon && b < -FootprintEpsilon &&
+          c < -FootprintEpsilon);
+}
+
+bool SegmentEntersTriangleInterior(
+    wp::Vector2 const& a,
+    wp::Vector2 const& b,
+    std::array<wp::Vector2, 3> const& triangle) {
+  if (PointStrictlyInTriangle(a, triangle) ||
+      PointStrictlyInTriangle(b, triangle)) {
+    return true;
+  }
+
+  // Split the boundary segment wherever it meets a triangle side, then test
+  // each open interval. This also catches a segment that enters exactly at a
+  // triangle vertex, which a strict proper-intersection test would miss.
+  std::vector<float> parameters{0.0f, 1.0f};
+  auto segment = b - a;
+  for (size_t side = 0; side < triangle.size(); ++side) {
+    auto c = triangle[side];
+    auto edge = triangle[(side + 1) % triangle.size()] - c;
+    auto denominator = segment.x * edge.y - segment.y * edge.x;
+    if (std::abs(denominator) <= FootprintEpsilon) continue;
+    auto offset = c - a;
+    auto t = (offset.x * edge.y - offset.y * edge.x) / denominator;
+    auto u = (offset.x * segment.y - offset.y * segment.x) / denominator;
+    if (t >= -FootprintEpsilon && t <= 1.0f + FootprintEpsilon &&
+        u >= -FootprintEpsilon && u <= 1.0f + FootprintEpsilon) {
+      parameters.push_back(std::clamp(t, 0.0f, 1.0f));
+    }
+  }
+  std::sort(parameters.begin(), parameters.end());
+  for (size_t i = 0; i + 1 < parameters.size(); ++i) {
+    if (parameters[i + 1] - parameters[i] <= FootprintEpsilon) continue;
+    auto t = (parameters[i] + parameters[i + 1]) * 0.5f;
+    if (PointStrictlyInTriangle(a + segment * t, triangle)) return true;
+  }
+  return false;
+}
+
+// A footprint is valid only when its complete closed triangle lies in the
+// face. Besides checking its vertices, inspect every outer/hole boundary for
+// a segment entering the triangle's interior. This catches crossings,
+// re-entrant notches, and holes wholly contained by a large footprint.
+bool WedgeFootprintFits(
+    ArrangementResult const& arrangement,
+    ArrangementFace const& face,
+    std::array<wp::Vector2, 3> const& triangle) {
+  for (auto const& point : triangle) {
+    if (!PointInFaceClosure(arrangement, face, point)) return false;
+  }
+
+  auto boundaryFits = [&](std::vector<uint32_t> const& vertices) {
+    for (size_t i = 0; i < vertices.size(); ++i) {
+      auto a = ToWorld(arrangement.vertices[vertices[i]]);
+      auto b = ToWorld(
+          arrangement.vertices[vertices[(i + 1) % vertices.size()]]);
+      if (SegmentEntersTriangleInterior(a, b, triangle)) return false;
+    }
+    return true;
+  };
+
+  if (!boundaryFits(face.outerBoundaryVertices)) {
+    return false;
+  }
+  auto holes = std::min(
+      face.innerBoundaries.size(), face.innerBoundaryVertices.size());
+  for (size_t hole = 0; hole < holes; ++hole) {
+    if (!boundaryFits(face.innerBoundaryVertices[hole])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+template <typename Predicate>
+std::optional<float> CapMonotonicRange(
+    float minimum,
+    float maximum,
+    Predicate&& fits) {
+  if (!fits(minimum)) return std::nullopt;
+  if (fits(maximum)) return maximum;
+  auto low = minimum;
+  auto high = maximum;
+  for (int iteration = 0; iteration < 32; ++iteration) {
+    auto midpoint = (low + high) * 0.5f;
+    if (fits(midpoint)) low = midpoint;
+    else high = midpoint;
+  }
+  return low;
+}
+
 // How far a Chip may bite into `face` from `origin` (a point on `currentEdge`)
 // along `direction` before it would reach some *other* boundary of the face -
 // an opposite Arris, a hole, or a wall of the same footprint met at a corner.
@@ -1388,36 +1545,68 @@ DetailGeometry BuildChipDetail(
       auto along = orientation.v1 - orientation.v0;
       auto availableReach = along.length();
       auto availableHeight = wall.maxZ - wall.minZ;
-      if (availableReach < wedgeParameters.minimumReach ||
-          availableHeight < wedgeParameters.minimumDropDownHeight) {
+      if (availableReach + FootprintEpsilon <
+              wedgeParameters.minimumReach ||
+          availableHeight + FootprintEpsilon <
+              wedgeParameters.minimumDropDownHeight) {
         continue;
       }
       auto direction = along / availableReach;
       auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
-      auto availableDepth = FaceBoundaryDistance(
+      auto centreRayDepth = FaceBoundaryDistance(
           arrangement, arrangement.faces[solidFace], wall.edge, midpoint,
           orientation.normal);
-      if (availableDepth < wedgeParameters.minimumProjectionDepth) {
+      if (centreRayDepth + FootprintEpsilon <
+          wedgeParameters.minimumProjectionDepth) {
         continue;
       }
 
+      auto footprint = [&](float reach, float depth) {
+        return std::array<wp::Vector2, 3>{
+            midpoint - direction * (reach * 0.5f),
+            midpoint + direction * (reach * 0.5f),
+            midpoint + orientation.normal * depth};
+      };
+      auto reachMaximum = std::min(
+          wedgeParameters.maximumReach, availableReach);
+      auto fittedReachMaximum = CapMonotonicRange(
+          wedgeParameters.minimumReach, reachMaximum, [&](float reach) {
+            return WedgeFootprintFits(
+                arrangement, arrangement.faces[solidFace],
+                footprint(reach, wedgeParameters.minimumProjectionDepth));
+          });
+      if (!fittedReachMaximum) continue;
+
+      // Use the widest fitted footprint when capping projection. The two
+      // resulting authored ranges are therefore established before any draw,
+      // and every independently selected reach/depth pair is guaranteed to
+      // fit. A narrower random reach may have had more room, but does not
+      // perturb the independent projection stream or its fitted range.
+      auto depthMaximum = std::min(
+          wedgeParameters.maximumProjectionDepth, centreRayDepth);
+      auto fittedDepthMaximum = CapMonotonicRange(
+          wedgeParameters.minimumProjectionDepth, depthMaximum,
+          [&](float depth) {
+            return WedgeFootprintFits(
+                arrangement, arrangement.faces[solidFace],
+                footprint(*fittedReachMaximum, depth));
+          });
+      if (!fittedDepthMaximum) continue;
+
+      auto dropMaximum = std::min(
+          wedgeParameters.maximumDropDownHeight, availableHeight);
       auto seed = StableArrisSeed(
           arrangement.vertices[edge.v[0]], arrangement.vertices[edge.v[1]]);
-      auto draw = [&](float minimum, float maximum, float available,
-                      uint64_t stream) {
-        auto cappedMaximum = std::min(maximum, available);
-        return minimum + (cappedMaximum - minimum) *
-                             StableRandom01(seed, stream);
+      auto draw = [&](float minimum, float maximum, uint64_t stream) {
+        return minimum + (maximum - minimum) * StableRandom01(seed, stream);
       };
       auto reach = draw(
-          wedgeParameters.minimumReach, wedgeParameters.maximumReach,
-          availableReach, 0x7001ull);
+          wedgeParameters.minimumReach, *fittedReachMaximum, 0x7001ull);
       auto drop = draw(
-          wedgeParameters.minimumDropDownHeight,
-          wedgeParameters.maximumDropDownHeight, availableHeight, 0x7002ull);
+          wedgeParameters.minimumDropDownHeight, dropMaximum, 0x7002ull);
       auto depth = draw(
-          wedgeParameters.minimumProjectionDepth,
-          wedgeParameters.maximumProjectionDepth, availableDepth, 0x7003ull);
+          wedgeParameters.minimumProjectionDepth, *fittedDepthMaximum,
+          0x7003ull);
 
       auto endpointA = midpoint - direction * (reach * 0.5f);
       auto endpointB = midpoint + direction * (reach * 0.5f);

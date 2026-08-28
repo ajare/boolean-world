@@ -42,18 +42,24 @@ Contour rectangle(
           {x1 * U, y1 * U}, {x0 * U, y1 * U}};
 }
 
-ArrangementPrimitive room(
-    Contour contour = rectangle(),
+ArrangementPrimitive region(
+    std::vector<Contour> contours,
     std::vector<std::optional<bool>> visibility = {}) {
   bw::core::PrimitivePropertySet properties;
   properties.floorZ = 0.0f;
   properties.ceilingZ = 10.0f;
   properties.ceilingMaterialId = "ceiling.fixture";
-  return {{std::move(contour)}, Primitive::Operation::Union,
+  return {std::move(contours), Primitive::Operation::Union,
           Primitive::FillRule::EvenOdd, 1, 0, properties, {},
           visibility.empty()
               ? std::vector<std::vector<std::optional<bool>>>{}
               : std::vector<std::vector<std::optional<bool>>>{visibility}};
+}
+
+ArrangementPrimitive room(
+    Contour contour = rectangle(),
+    std::vector<std::optional<bool>> visibility = {}) {
+  return region({std::move(contour)}, std::move(visibility));
 }
 
 WedgeGenerationParameters fixedWedge(
@@ -85,6 +91,21 @@ struct Dimensions {
   float drop{};
   float depth{};
 };
+
+bool hasWedgeAt(
+    ArrangementWorldData const& data, wp::Vector2 const& midpoint) {
+  for (auto const& triangle : data.getDetail().getTriangles()) {
+    if (triangle.kind != DetailTriangleKind::WedgeFacet) continue;
+    for (auto const& vertex : triangle.v) {
+      if (near(vertex.position[0], midpoint.x) &&
+          near(vertex.position[1], midpoint.y) &&
+          vertex.position[2] < 9.99f) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 Dimensions dimensionsAt(
     ArrangementWorldData const& data, wp::Vector2 const& midpoint) {
@@ -242,6 +263,99 @@ void fittingAndStableIndependentStreams() {
           "reach authoring perturbed another Wedge random stream");
 }
 
+void completeFootprintsRespectHolesAndNonConvexBoundaries() {
+  auto settings = WedgeGenerationParameters{
+      true, 8.0f, 8.0f, 2.0f, 2.0f, 2.0f, 20.0f};
+  auto control = snapshot(
+      {room(rectangle(-20, -20, 20, 20))}, settings);
+  auto controlDimensions = dimensionsAt(control, {0.0f, -20.0f});
+
+  // The centre ray misses this offset hole. The complete footprint's right
+  // edge reaches its near-left corner at depth 10, so apex-only fitting would
+  // incorrectly retain the much larger control depth.
+  auto withHole = snapshot(
+      {region({rectangle(-20, -20, 20, 20),
+               rectangle(2, -15, 5, -10)})},
+      settings);
+  auto holeDimensions = dimensionsAt(withHole, {0.0f, -20.0f});
+  auto repeatedHole = snapshot(
+      {region({rectangle(-20, -20, 20, 20),
+               rectangle(2, -15, 5, -10)})},
+      settings);
+  auto expectedConstrainedDraw =
+      2.0f + (controlDimensions.depth - 2.0f) * (8.0f / 18.0f);
+  require(near(holeDimensions.depth, expectedConstrainedDraw, 0.02f) &&
+              holeDimensions.depth < controlDimensions.depth &&
+              near(holeDimensions.reach, controlDimensions.reach) &&
+              near(holeDimensions.drop, controlDimensions.drop) &&
+              wedgePositions(withHole) == wedgePositions(repeatedHole),
+          "an offset ceiling hole did not constrain only projection depth");
+
+  Contour nonConvex{
+      {-20 * U, -20 * U}, {20 * U, -20 * U},
+      {20 * U, -15 * U},  {2 * U, -15 * U},
+      {2 * U, -10 * U},   {20 * U, -10 * U},
+      {20 * U, 20 * U},   {-20 * U, 20 * U}};
+  auto cutOut = snapshot({room(nonConvex)}, settings);
+  auto cutOutDimensions = dimensionsAt(cutOut, {0.0f, -20.0f});
+  require(near(cutOutDimensions.depth, expectedConstrainedDraw, 0.02f) &&
+              near(cutOutDimensions.reach, controlDimensions.reach) &&
+              near(cutOutDimensions.drop, controlDimensions.drop),
+          "a non-convex ceiling cut-out was crossed by a Wedge footprint");
+
+  auto reachSettings = WedgeGenerationParameters{
+      true, 2.0f, 8.0f, 2.0f, 2.0f, 4.0f, 4.0f};
+  Contour nearHole{{1500, -18 * U}, {3000, -18 * U},
+                   {3000, -16 * U}, {1500, -16 * U}};
+  auto reachControl = dimensionsAt(
+      snapshot({room(rectangle(-20, -20, 20, 20))}, reachSettings),
+      {0.0f, -20.0f});
+  auto reachConstrained = dimensionsAt(
+      snapshot(
+          {region({rectangle(-20, -20, 20, 20), nearHole})},
+          reachSettings),
+      {0.0f, -20.0f});
+  auto expectedReachDraw =
+      2.0f + (reachControl.reach - 2.0f) * (4.0f / 6.0f);
+  require(near(reachConstrained.reach, expectedReachDraw, 0.02f) &&
+              near(reachConstrained.depth, reachControl.depth) &&
+              near(reachConstrained.drop, reachControl.drop),
+          "complete footprint fitting did not constrain only reach");
+
+  auto tooDeep = settings;
+  tooDeep.minimumProjectionDepth = 10.1f;
+  require(!hasWedgeAt(
+              snapshot(
+                  {region({rectangle(-20, -20, 20, 20),
+                           rectangle(2, -15, 5, -10)})},
+                  tooDeep),
+              {0.0f, -20.0f}) &&
+              !hasWedgeAt(snapshot({room(nonConvex)}, tooDeep),
+                          {0.0f, -20.0f}),
+          "a footprint that could not fit its minimum was moved or retained");
+}
+
+void exactFitsAndIndependentOverlapAreAccepted() {
+  auto exact = snapshot(
+      {room(rectangle(-2, -4, 2, 4))},
+      fixedWedge(4.0f, 10.0f, 8.0f));
+  auto exactDimensions = dimensionsAt(exact, {0.0f, -4.0f});
+  require(near(exactDimensions.reach, 4.0f) &&
+              near(exactDimensions.depth, 8.0f) &&
+              near(exactDimensions.drop, 10.0f),
+          "an exact-minimum boundary or wall-height fit was rejected");
+
+  auto overlapping = snapshot(
+      {room(rectangle(-10, -2, 10, 2))},
+      fixedWedge(4.0f, 2.0f, 3.0f));
+  require(overlapping.getDetail().getWedgeCount() == 4 &&
+              hasWedgeAt(overlapping, {0.0f, -2.0f}) &&
+              hasWedgeAt(overlapping, {0.0f, 2.0f}) &&
+              near(dimensionsAt(overlapping, {0.0f, -2.0f}).depth, 3.0f) &&
+              near(dimensionsAt(overlapping, {0.0f, 2.0f}).depth, 3.0f),
+          "opposite overlapping Wedges were resolved against one another");
+}
+
 void gameplayQueriesAndDiagnosticsRemainSeparate() {
   bw::core::ArrangementStats stats;
   auto arrangement = bw::core::arr::BuildArrangement({room()});
@@ -272,6 +386,8 @@ int main() {
     disabledAndEligibilityContract();
     geometryNormalsUvsAndMaterialRouting();
     fittingAndStableIndependentStreams();
+    completeFootprintsRespectHolesAndNonConvexBoundaries();
+    exactFitsAndIndependentOverlapAreAccepted();
     gameplayQueriesAndDiagnosticsRemainSeparate();
     std::cout << "Wedges are deterministic additive Border-wall detail\n";
     return 0;
