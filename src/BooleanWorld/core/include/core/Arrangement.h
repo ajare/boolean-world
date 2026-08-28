@@ -195,7 +195,7 @@ struct ArrangementPrimitive {
   std::vector<std::vector<std::optional<WallNormalMapOverride>>>
       contourEdgeNormalMapOverrides{};
   // This Primitive's own raw area (Primitive::getArea()), independent of the
-  // fold - see ComputeUndistributedWaterDepths, which is the only consumer.
+  // fold - see ComputeUndistributedLiquidDepths, which is the only consumer.
   double rawArea{0};
 };
 
@@ -230,13 +230,13 @@ struct ArrangementFace {
   bool contributesProperties{false};
 };
 
-// One direct water-adjacency between two non-solid Arrangement faces: either
+// One direct liquid-adjacency between two non-solid Arrangement faces: either
 // they share a wall whose vertical clearance (the same headroom computation
 // BuildArrangementWalls uses for player movement) is nonzero, or one side is
 // the Arrangement's unbounded exterior face (index 0), which acts as a
 // permanent drain with an effectively negative-infinite floor rather than an
 // ordinary clearance-limited neighbor.
-struct WaterAdjacency {
+struct LiquidAdjacency {
   uint32_t face0;
   uint32_t face1;
   bool drain{false};
@@ -252,7 +252,7 @@ struct ArrangementResult {
   std::vector<ChipGenerationParameters> chipParametersPalette;
   // Indexed directly by primitiveIndex (unlike palette, which is offset by
   // one for the unused placeholder entry) - one entry per source Primitive,
-  // for ComputeUndistributedWaterDepths to walk a face's membership bitset
+  // for ComputeUndistributedLiquidDepths to walk a face's membership bitset
   // with.
   std::vector<Primitive::Operation> primitiveOperations;
   std::vector<double> primitiveRawAreas;
@@ -301,24 +301,24 @@ bool PointInFace(
 [[nodiscard]] std::vector<ArrangementWall> BuildArrangementWalls(
     ArrangementResult const& arrangement);
 
-// The water-adjacency relation over every pair of non-solid faces, one entry
+// The liquid-adjacency relation over every pair of non-solid faces, one entry
 // per unordered pair, for the later watershed equilibrium pass to consume.
-// This computes no water depth itself.
-[[nodiscard]] std::vector<WaterAdjacency> BuildWaterAdjacency(
+// This computes no liquid depth itself.
+[[nodiscard]] std::vector<LiquidAdjacency> BuildLiquidAdjacency(
     ArrangementResult const& arrangement);
 
-// Each non-solid face's undistributed water depth: the area-weighted sum,
+// Each non-solid face's undistributed liquid depth: the area-weighted sum,
 // over every Union-operation Primitive in that face's membership, of
-// primitiveWaterLevel * faceArea / primitiveRawArea. Deliberately uncapped by
+// primitiveLiquidLevel * faceArea / primitiveRawArea. Deliberately uncapped by
 // the face's own clearance, and modelling no flow between faces - this is the
-// seed volume ComputeWaterLevels then settles. Parallel to arrangement.faces;
+// seed volume ComputeLiquidLevels then settles. Parallel to arrangement.faces;
 // solid faces (and the unbounded exterior face) are always zero.
-[[nodiscard]] std::vector<float> ComputeUndistributedWaterDepths(
+[[nodiscard]] std::vector<float> ComputeUndistributedLiquidDepths(
     ArrangementResult const& arrangement);
 
-// Each non-solid face's finished water depth, parallel to arrangement.faces.
+// Each non-solid face's finished liquid depth, parallel to arrangement.faces.
 // The undistributed seed volumes above settle into pools, each a set of faces
-// at one shared surface elevation. Two pools joined by water-adjacency become
+// at one shared surface elevation. Two pools joined by liquid-adjacency become
 // one once that shared surface would stand at or above the sill between them
 // (the higher of their two floors); below it they stay two, and the higher
 // pool spills only what stands above the sill into the lower, ending exactly
@@ -327,7 +327,7 @@ bool PointInFace(
 // its own ceiling - a sealed pool holding more than its total capacity fills
 // every member face to the ceiling and discards the excess - and any pool
 // reaching the unbounded exterior face drains to zero throughout.
-[[nodiscard]] std::vector<float> ComputeWaterLevels(
+[[nodiscard]] std::vector<float> ComputeLiquidLevels(
     ArrangementResult const& arrangement);
 
 [[nodiscard]] ArrangementWallOrientation OrientArrangementWall(

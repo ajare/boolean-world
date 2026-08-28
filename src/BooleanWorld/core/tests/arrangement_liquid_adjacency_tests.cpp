@@ -13,7 +13,7 @@ using bw::core::PrimitivePropertySet;
 using bw::core::arr::ArrangementPrimitive;
 using bw::core::arr::Contour;
 using bw::core::arr::ToFixedPointCoordinate;
-using bw::core::arr::WaterAdjacency;
+using bw::core::arr::LiquidAdjacency;
 
 void require(bool condition, std::string const& message) {
   if (!condition) {
@@ -35,7 +35,7 @@ PrimitivePropertySet heights(float floorZ, float ceilingZ) {
 }
 
 bool isAdjacent(
-    std::vector<WaterAdjacency> const& adjacency, uint32_t a, uint32_t b) {
+    std::vector<LiquidAdjacency> const& adjacency, uint32_t a, uint32_t b) {
   auto lo = std::min(a, b);
   auto hi = std::max(a, b);
   return std::ranges::any_of(adjacency, [&](auto const& pair) {
@@ -44,7 +44,7 @@ bool isAdjacent(
 }
 
 bool isDrain(
-    std::vector<WaterAdjacency> const& adjacency, uint32_t a, uint32_t b) {
+    std::vector<LiquidAdjacency> const& adjacency, uint32_t a, uint32_t b) {
   auto lo = std::min(a, b);
   auto hi = std::max(a, b);
   for (auto const& pair : adjacency) {
@@ -57,7 +57,7 @@ bool isDrain(
 
 // A base slab with two rooms carved side by side and nothing left between
 // them - an open doorway with no remaining wall.
-void openDoorwayFacesAreWaterAdjacent() {
+void openDoorwayFacesAreLiquidAdjacent() {
   auto base = ArrangementPrimitive{
       {rectangle(0, 0, 200, 100)}, Primitive::Operation::Union,
       Primitive::FillRule::NonZero, 0, 1, heights(0.0f, 48.0f)};
@@ -79,10 +79,10 @@ void openDoorwayFacesAreWaterAdjacent() {
   }
   require(roomAFace >= 0 && roomBFace >= 0, "both carved rooms should be present as their own faces");
 
-  auto adjacency = bw::core::arr::BuildWaterAdjacency(*arrangement);
+  auto adjacency = bw::core::arr::BuildLiquidAdjacency(*arrangement);
   require(
       isAdjacent(adjacency, uint32_t(roomAFace), uint32_t(roomBFace)),
-      "two open, same-height rooms sharing a boundary should be water-adjacent");
+      "two open, same-height rooms sharing a boundary should be liquid-adjacent");
   require(
       !isDrain(adjacency, uint32_t(roomAFace), uint32_t(roomBFace)),
       "an ordinary interior adjacency must not be reported as the exterior drain");
@@ -91,7 +91,7 @@ void openDoorwayFacesAreWaterAdjacent() {
 // Same footprint, but the two rooms sit at different heights with zero
 // shared headroom - a sealed boundary despite having no solid material
 // between them.
-void zeroClearanceRoomsAreNotWaterAdjacent() {
+void zeroClearanceRoomsAreNotLiquidAdjacent() {
   auto base = ArrangementPrimitive{
       {rectangle(0, 0, 200, 100)}, Primitive::Operation::Union,
       Primitive::FillRule::NonZero, 0, 1, heights(0.0f, 48.0f)};
@@ -112,10 +112,10 @@ void zeroClearanceRoomsAreNotWaterAdjacent() {
   }
   require(roomAFace >= 0 && roomBFace >= 0, "both carved rooms should be present as their own faces");
 
-  auto adjacency = bw::core::arr::BuildWaterAdjacency(*arrangement);
+  auto adjacency = bw::core::arr::BuildLiquidAdjacency(*arrangement);
   require(
       !isAdjacent(adjacency, uint32_t(roomAFace), uint32_t(roomBFace)),
-      "rooms whose shared boundary has zero clearance must not be water-adjacent");
+      "rooms whose shared boundary has zero clearance must not be liquid-adjacent");
 }
 
 // A room carved from the bottom half of the base slab shares its bottom and
@@ -142,10 +142,10 @@ void roomsTouchingTheOuterBoundaryDrainToTheExteriorFace() {
   require(roomFace >= 0, "the carved room should be present as its own non-solid face");
   require(sawResidualSolid, "the untouched top half of the base slab should remain solid");
 
-  auto adjacency = bw::core::arr::BuildWaterAdjacency(*arrangement);
+  auto adjacency = bw::core::arr::BuildLiquidAdjacency(*arrangement);
   require(
       isAdjacent(adjacency, 0, uint32_t(roomFace)),
-      "a room bordering the Arrangement's own outer boundary must be water-adjacent to the exterior face");
+      "a room bordering the Arrangement's own outer boundary must be liquid-adjacent to the exterior face");
   require(
       isDrain(adjacency, 0, uint32_t(roomFace)),
       "an exterior adjacency must be reported as the permanent drain");
@@ -155,10 +155,10 @@ void roomsTouchingTheOuterBoundaryDrainToTheExteriorFace() {
 
 int main() {
   try {
-    openDoorwayFacesAreWaterAdjacent();
-    zeroClearanceRoomsAreNotWaterAdjacent();
+    openDoorwayFacesAreLiquidAdjacent();
+    zeroClearanceRoomsAreNotLiquidAdjacent();
     roomsTouchingTheOuterBoundaryDrainToTheExteriorFace();
-    std::cout << "The water-adjacency relation reflects clearance and the exterior drain\n";
+    std::cout << "The liquid-adjacency relation reflects clearance and the exterior drain\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';

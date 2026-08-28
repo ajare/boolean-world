@@ -1455,8 +1455,8 @@ vector<ArrangementWall> BuildArrangementWalls(
   return walls;
 }
 
-vector<WaterAdjacency> BuildWaterAdjacency(ArrangementResult const& arrangement) {
-  vector<WaterAdjacency> result;
+vector<LiquidAdjacency> BuildLiquidAdjacency(ArrangementResult const& arrangement) {
+  vector<LiquidAdjacency> result;
   for (auto const& edge : arrangement.edges) {
     auto f0 = edge.face[0];
     auto f1 = edge.face[1];
@@ -1501,7 +1501,7 @@ vector<WaterAdjacency> BuildWaterAdjacency(ArrangementResult const& arrangement)
   return result;
 }
 
-vector<float> ComputeUndistributedWaterDepths(
+vector<float> ComputeUndistributedLiquidDepths(
     ArrangementResult const& arrangement) {
   vector<float> depths(arrangement.faces.size(), 0.0f);
   auto primitiveCount = arrangement.primitiveOperations.size();
@@ -1530,8 +1530,8 @@ vector<float> ComputeUndistributedWaterDepths(
       if (rawArea <= 0.0) {
         continue;
       }
-      auto waterLevel = arrangement.palette[primitiveIndex + 1].waterLevel;
-      depth += double(waterLevel) * faceArea / rawArea;
+      auto liquidLevel = arrangement.palette[primitiveIndex + 1].liquidLevel;
+      depth += double(liquidLevel) * faceArea / rawArea;
     }
     if (depth <= 0.0) {
       continue;
@@ -1547,22 +1547,22 @@ vector<float> ComputeUndistributedWaterDepths(
 namespace {
 // One face's hydrology inputs, gathered once so the fill below never has to
 // go back to the palette or recompute an area.
-struct FaceWater {
+struct FaceLiquid {
   double floorZ{0};
   double ceilingZ{0};
   double area{0};
 };
 
-// Volume held by these faces if the water surface sat at elevation z. Each
+// Volume held by these faces if the liquid surface sat at elevation z. Each
 // face holds area * (z - floorZ), never below zero and never past its own
 // ceiling, so this is continuous, non-decreasing and piecewise linear in z.
-double WaterCapacityBelow(
-    vector<FaceWater> const& water,
+double LiquidCapacityBelow(
+    vector<FaceLiquid> const& liquid,
     vector<uint32_t> const& faces,
     double z) {
   double total = 0.0;
   for (auto faceIndex : faces) {
-    auto const& face = water[faceIndex];
+    auto const& face = liquid[faceIndex];
     auto clearance = max(0.0, face.ceilingZ - face.floorZ);
     total += face.area * clamp(z - face.floorZ, 0.0, clearance);
   }
@@ -1570,19 +1570,19 @@ double WaterCapacityBelow(
 }
 
 // The elevation at which `volume` settles across these faces, found exactly:
-// WaterCapacityBelow bends only at a floor or a ceiling, so the answer is the
+// LiquidCapacityBelow bends only at a floor or a ceiling, so the answer is the
 // linear interpolation inside the single segment between consecutive
 // breakpoints that brackets the volume - no epsilon, no iteration. A volume
 // exceeding every face's combined capacity settles at the highest ceiling,
 // which caps each member face and silently discards the excess.
-double SolveWaterLevel(
-    vector<FaceWater> const& water,
+double SolveLiquidLevel(
+    vector<FaceLiquid> const& liquid,
     vector<uint32_t> const& faces,
     double volume) {
   vector<double> breakpoints;
   breakpoints.reserve(faces.size() * 2);
   for (auto faceIndex : faces) {
-    auto const& face = water[faceIndex];
+    auto const& face = liquid[faceIndex];
     breakpoints.push_back(face.floorZ);
     breakpoints.push_back(max(face.floorZ, face.ceilingZ));
   }
@@ -1595,7 +1595,7 @@ double SolveWaterLevel(
 
   auto lowerCapacity = 0.0;
   for (size_t i = 1; i < breakpoints.size(); ++i) {
-    auto upperCapacity = WaterCapacityBelow(water, faces, breakpoints[i]);
+    auto upperCapacity = LiquidCapacityBelow(liquid, faces, breakpoints[i]);
     if (upperCapacity >= volume) {
       auto slope = (upperCapacity - lowerCapacity) /
                    (breakpoints[i] - breakpoints[i - 1]);
@@ -1608,30 +1608,30 @@ double SolveWaterLevel(
   return breakpoints.back();
 }
 
-// One water-adjacency resolved into the elevation water has to reach before
-// it can cross: the higher of the two floors, since the lower face's water
+// One liquid-adjacency resolved into the elevation liquid has to reach before
+// it can cross: the higher of the two floors, since the lower face's liquid
 // only reaches the higher face once it is deep enough to top that face's
 // floor. The exterior drain's floor is negative infinity, so a drain link's
 // sill is simply the bordering face's own floor.
-struct WaterLink {
+struct LiquidLink {
   double sill{0};
   uint32_t face0{0};
   uint32_t face1{0};
 };
 }  // namespace
 
-vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
+vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
   auto faceCount = uint32_t(arrangement.faces.size());
   vector<float> depths(faceCount, 0.0f);
   if (faceCount == 0) {
     return depths;
   }
 
-  auto undistributed = ComputeUndistributedWaterDepths(arrangement);
+  auto undistributed = ComputeUndistributedLiquidDepths(arrangement);
 
   // Face zero, the unbounded exterior, is the permanent drain: it never holds
-  // water and its entry stays zeroed.
-  vector<FaceWater> water(faceCount);
+  // liquid and its entry stays zeroed.
+  vector<FaceLiquid> liquid(faceCount);
   vector<double> volumes(faceCount, 0.0);
   for (uint32_t faceIndex = 1; faceIndex < faceCount; ++faceIndex) {
     auto const& face = arrangement.faces[faceIndex];
@@ -1639,10 +1639,10 @@ vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
       continue;
     }
     auto const& properties = arrangement.palette[face.paletteIndex];
-    water[faceIndex] = {
+    liquid[faceIndex] = {
         double(properties.floorZ), double(properties.ceilingZ),
         max(0.0, FaceArea(face, arrangement))};
-    volumes[faceIndex] = double(undistributed[faceIndex]) * water[faceIndex].area;
+    volumes[faceIndex] = double(undistributed[faceIndex]) * liquid[faceIndex].area;
   }
 
   // Union-find over faces. Each group is a pool: the faces sharing one
@@ -1666,7 +1666,7 @@ vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
     groupVolume[faceIndex] = volumes[faceIndex];
     if (volumes[faceIndex] > 0.0) {
       groupLevel[faceIndex] =
-          SolveWaterLevel(water, members[faceIndex], volumes[faceIndex]);
+          SolveLiquidLevel(liquid, members[faceIndex], volumes[faceIndex]);
     }
   }
 
@@ -1678,31 +1678,31 @@ vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
     return faceIndex;
   };
 
-  vector<WaterLink> links;
-  for (auto const& adjacency : BuildWaterAdjacency(arrangement)) {
+  vector<LiquidLink> links;
+  for (auto const& adjacency : BuildLiquidAdjacency(arrangement)) {
     auto sill = adjacency.drain
-                    ? water[adjacency.face0 == 0 ? adjacency.face1
+                    ? liquid[adjacency.face0 == 0 ? adjacency.face1
                                                  : adjacency.face0]
                           .floorZ
-                    : max(water[adjacency.face0].floorZ,
-                          water[adjacency.face1].floorZ);
+                    : max(liquid[adjacency.face0].floorZ,
+                          liquid[adjacency.face1].floorZ);
     links.push_back({sill, adjacency.face0, adjacency.face1});
   }
   sort(links.begin(), links.end(), [](auto const& a, auto const& b) {
     return tie(a.sill, a.face0, a.face1) < tie(b.sill, b.face0, b.face1);
   });
 
-  // Rising-level fill: repeatedly take the lowest sill whose water has
+  // Rising-level fill: repeatedly take the lowest sill whose liquid has
   // actually risen high enough to cross it, and resolve what crossing it
   // means. Two outcomes, and which one applies is decided by asking what
-  // elevation the two pools would settle at as a single body of water:
+  // elevation the two pools would settle at as a single body of liquid:
   //
   //  - At or above the sill, the sill is submerged and they really are one
   //    body - two separate ponds becoming one lake the moment the rising
   //    surface tops the saddle between them. Merge them.
   //  - Below the sill, they are not: the higher pool is pouring over a saddle
   //    into somewhere lower and drier, and once its own surface falls back to
-  //    the saddle the pouring stops. Only the water standing above the sill
+  //    the saddle the pouring stops. Only the liquid standing above the sill
   //    crosses, leaving the donor exactly brim-full at the sill and the two
   //    still separate.
   //
@@ -1710,7 +1710,7 @@ vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
   // times - or leaves a donor standing exactly at a sill, which cannot spill
   // over that sill again until something else pours into it, and can only
   // ever be poured into from strictly higher up. So this is a union-find walk
-  // over water flowing downhill, not a convergence loop: there is no epsilon
+  // over liquid flowing downhill, not a convergence loop: there is no epsilon
   // and no iteration count anywhere in it.
   for (auto flowing = true; flowing;) {
     flowing = false;
@@ -1732,10 +1732,10 @@ vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
       auto combinedLevel =
           drained || combinedVolume <= 0.0
               ? -numeric_limits<double>::infinity()
-              : SolveWaterLevel(water, combined, combinedVolume);
+              : SolveLiquidLevel(liquid, combined, combinedVolume);
 
       if (drained || combinedLevel >= link.sill) {
-        // One body of water. Merging changes its surface elevation, so
+        // One body of liquid. Merging changes its surface elevation, so
         // restart from the lowest sill rather than continuing down a stale
         // ordering.
         parent[root1] = root0;
@@ -1748,16 +1748,16 @@ vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
         break;
       }
 
-      // Not one body of water: a directed spill from the pool standing above
+      // Not one body of liquid: a directed spill from the pool standing above
       // the sill into the one below it. Both pools survive, at their own two
       // elevations, with the donor left exactly at the sill.
       auto donor = groupLevel[root0] >= groupLevel[root1] ? root0 : root1;
       auto recipient = donor == root0 ? root1 : root0;
-      auto retained = WaterCapacityBelow(water, members[donor], link.sill);
+      auto retained = LiquidCapacityBelow(liquid, members[donor], link.sill);
       auto spilled = groupVolume[donor] - retained;
       if (spilled <= 0.0) {
         // Already brim-full at this sill and holding nothing back. Re-running
-        // WaterCapacityBelow over an unchanged member list and an unchanged
+        // LiquidCapacityBelow over an unchanged member list and an unchanged
         // sill reproduces the retained volume exactly, so this subtracts to
         // exactly zero rather than dribbling.
         continue;
@@ -1767,8 +1767,8 @@ vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
       groupVolume[recipient] += spilled;
       groupLevel[recipient] =
           groupVolume[recipient] > 0.0
-              ? SolveWaterLevel(
-                    water, members[recipient], groupVolume[recipient])
+              ? SolveLiquidLevel(
+                    liquid, members[recipient], groupVolume[recipient])
               : -numeric_limits<double>::infinity();
       flowing = true;
       break;
@@ -1780,7 +1780,7 @@ vector<float> ComputeWaterLevels(ArrangementResult const& arrangement) {
       continue;
     }
     auto level = groupLevel[findRoot(faceIndex)];
-    auto const& face = water[faceIndex];
+    auto const& face = liquid[faceIndex];
     auto clearance = max(0.0, face.ceilingZ - face.floorZ);
     depths[faceIndex] = float(clamp(level - face.floorZ, 0.0, clearance));
   }

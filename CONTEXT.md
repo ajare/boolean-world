@@ -144,26 +144,26 @@ _Avoid_: crack (a fissure removes no material — a separate, deferred idea, clo
 Additive geometric detail governed by the World and surfaced with the adjoining horizontal surface's Sub-material. An Edge Wedge is centred beneath the ceiling Arris or above the floor Arris of one visible Border wall; its two sides meet along a subtly convex, three-segment centre line that arches inward toward the wall. A Corner Wedge fills the trihedral Corner where a floor or ceiling meets two connected visible Border walls, joining one independently sized point on each horizontal Arris to one point on their shared vertical Arris. Both are derived after the boolean fold in the same detail channel as Chips. World-level floor and ceiling averages per unit distance control Edge Wedge frequency; a World-level probability independently controls each Corner Wedge candidate. World-level quality recursively replaces every exposed triangle with three triangles meeting at a deterministically displaced centroid; quality zero retains the base geometry. A floor Wedge raises floor collision to its exposed facets, while a ceiling Wedge remains render-only; neither changes wall collision, face containment, surface picking, the editor's 2D geometry, or authored geometry.
 _Avoid_: Chip (subtractive detail), Arrangement geometry, authored Primitive
 
-**Water level**:
-An authored, per-Primitive scalar defaulting to zero, meaningful only on a Primitive whose operation is Union — other operations store it but it has no effect. A Primitive's total water volume is this value times its own raw area, as though the Primitive existed alone; a Union Primitive later carved away by other operations loses the corresponding share of that volume.
-_Avoid_: water depth (the derived per-face quantity), fill level
+**Liquid level**:
+An authored, per-Primitive scalar defaulting to zero, meaningful only on a Primitive whose operation is Union — other operations store it but it has no effect. A Primitive's total liquid volume is this value times its own raw area, as though the Primitive existed alone; a Union Primitive later carved away by other operations loses the corresponding share of that volume.
+_Avoid_: liquid depth (the derived per-face quantity), fill level
 
-**Water depth**:
-The finished depth of standing water in one Arrangement face, derived after the fold from the equilibrium of the Pool that face belongs to and clamped between zero and that face's own floor-to-ceiling clearance. Zero means dry.
-_Avoid_: water level (the authored per-Primitive quantity), water height, water elevation
+**Liquid depth**:
+The finished depth of standing liquid in one Arrangement face, derived after the fold from the equilibrium of the Pool that face belongs to and clamped between zero and that face's own floor-to-ceiling clearance. Zero means dry.
+_Avoid_: liquid level (the authored per-Primitive quantity), liquid height, liquid elevation
 
-**Water-adjacency**:
-The relation between two non-solid Arrangement faces across which water can equilibrate: both faces must be non-solid and their shared edge's wall clearance must be nonzero. The Arrangement's outer, unbounded face is water-adjacent to every face bordering it, with an effective floor of negative infinity, acting as a permanent drain.
-_Avoid_: face adjacency (two faces sharing an edge are not water-adjacent when the wall between them has zero clearance)
+**Liquid-adjacency**:
+The relation between two non-solid Arrangement faces across which liquid can equilibrate: both faces must be non-solid and their shared edge's wall clearance must be nonzero. The Arrangement's outer, unbounded face is liquid-adjacent to every face bordering it, with an effective floor of negative infinity, acting as a permanent drain.
+_Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when the wall between them has zero clearance)
 
 **Wet component**:
-A maximal set of Arrangement faces connected by water-adjacency. Its water settles as one or more Pools, not necessarily at one shared elevation: a face unreachable from any seed water stays dry regardless of its own floor height, and a face standing above every surface around it stays dry while its neighbours hold water.
+A maximal set of Arrangement faces connected by liquid-adjacency. Its liquid settles as one or more Pools, not necessarily at one shared elevation: a face unreachable from any seed liquid stays dry regardless of its own floor height, and a face standing above every surface around it stays dry while its neighbours hold liquid.
 _Avoid_: lake, basin, pond, Pool (a Wet component may hold several)
 
 **Pool**:
-One set of faces within a Wet component holding water at a single shared surface elevation. Two Pools become one the moment that shared surface would stand at or above the Sill between them; below it they stay two, and the higher one spills only what stands above the Sill into the lower, ending exactly brim-full at the Sill rather than emptying into it.
-_Avoid_: Wet component (the connectivity, not the body of water), lake, pond
+One set of faces within a Wet component holding liquid at a single shared surface elevation. Two Pools become one the moment that shared surface would stand at or above the Sill between them; below it they stay two, and the higher one spills only what stands above the Sill into the lower, ending exactly brim-full at the Sill rather than emptying into it.
+_Avoid_: Wet component (the connectivity, not the body of liquid), lake, pond
 
 **Sill**:
-The elevation water must reach to cross one water-adjacency: the higher of the two faces' floors, since water only reaches the higher face once it tops that face's floor. Against the exterior drain, whose floor is negative infinity, the Sill is the bordering face's own floor.
-_Avoid_: saddle, spill point, threshold, wall clearance (which decides whether the adjacency exists at all, not what water must reach to cross it)
+The elevation liquid must reach to cross one liquid-adjacency: the higher of the two faces' floors, since liquid only reaches the higher face once it tops that face's floor. Against the exterior drain, whose floor is negative infinity, the Sill is the bordering face's own floor.
+_Avoid_: saddle, spill point, threshold, wall clearance (which decides whether the adjacency exists at all, not what liquid must reach to cross it)

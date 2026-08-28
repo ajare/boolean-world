@@ -313,32 +313,32 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_arrangement_face_area_tests)
     add_test(NAME boolean_world_arrangement_face_area COMMAND boolean_world_arrangement_face_area_tests)
 
-    add_executable(boolean_world_arrangement_water_adjacency_tests
-        tests/arrangement_water_adjacency_tests.cpp)
-    target_link_libraries(boolean_world_arrangement_water_adjacency_tests PRIVATE core)
-    target_compile_features(boolean_world_arrangement_water_adjacency_tests PRIVATE cxx_std_23)
-    bw_target_defaults(boolean_world_arrangement_water_adjacency_tests)
-    bw_output_dirs(boolean_world_arrangement_water_adjacency_tests)
-    bw_deploy_runtime_dlls(boolean_world_arrangement_water_adjacency_tests)
-    add_test(NAME boolean_world_arrangement_water_adjacency COMMAND boolean_world_arrangement_water_adjacency_tests)
+    add_executable(boolean_world_arrangement_liquid_adjacency_tests
+        tests/arrangement_liquid_adjacency_tests.cpp)
+    target_link_libraries(boolean_world_arrangement_liquid_adjacency_tests PRIVATE core)
+    target_compile_features(boolean_world_arrangement_liquid_adjacency_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_arrangement_liquid_adjacency_tests)
+    bw_output_dirs(boolean_world_arrangement_liquid_adjacency_tests)
+    bw_deploy_runtime_dlls(boolean_world_arrangement_liquid_adjacency_tests)
+    add_test(NAME boolean_world_arrangement_liquid_adjacency COMMAND boolean_world_arrangement_liquid_adjacency_tests)
 
-    add_executable(boolean_world_arrangement_water_level_tests
-        tests/arrangement_water_level_tests.cpp)
-    target_link_libraries(boolean_world_arrangement_water_level_tests PRIVATE core)
-    target_compile_features(boolean_world_arrangement_water_level_tests PRIVATE cxx_std_23)
-    bw_target_defaults(boolean_world_arrangement_water_level_tests)
-    bw_output_dirs(boolean_world_arrangement_water_level_tests)
-    bw_deploy_runtime_dlls(boolean_world_arrangement_water_level_tests)
-    add_test(NAME boolean_world_arrangement_water_level COMMAND boolean_world_arrangement_water_level_tests)
+    add_executable(boolean_world_arrangement_liquid_level_tests
+        tests/arrangement_liquid_level_tests.cpp)
+    target_link_libraries(boolean_world_arrangement_liquid_level_tests PRIVATE core)
+    target_compile_features(boolean_world_arrangement_liquid_level_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_arrangement_liquid_level_tests)
+    bw_output_dirs(boolean_world_arrangement_liquid_level_tests)
+    bw_deploy_runtime_dlls(boolean_world_arrangement_liquid_level_tests)
+    add_test(NAME boolean_world_arrangement_liquid_level COMMAND boolean_world_arrangement_liquid_level_tests)
 
-    add_executable(boolean_world_arrangement_water_equilibrium_tests
-        tests/arrangement_water_equilibrium_tests.cpp)
-    target_link_libraries(boolean_world_arrangement_water_equilibrium_tests PRIVATE core)
-    target_compile_features(boolean_world_arrangement_water_equilibrium_tests PRIVATE cxx_std_23)
-    bw_target_defaults(boolean_world_arrangement_water_equilibrium_tests)
-    bw_output_dirs(boolean_world_arrangement_water_equilibrium_tests)
-    bw_deploy_runtime_dlls(boolean_world_arrangement_water_equilibrium_tests)
-    add_test(NAME boolean_world_arrangement_water_equilibrium COMMAND boolean_world_arrangement_water_equilibrium_tests)
+    add_executable(boolean_world_arrangement_liquid_equilibrium_tests
+        tests/arrangement_liquid_equilibrium_tests.cpp)
+    target_link_libraries(boolean_world_arrangement_liquid_equilibrium_tests PRIVATE core)
+    target_compile_features(boolean_world_arrangement_liquid_equilibrium_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_arrangement_liquid_equilibrium_tests)
+    bw_output_dirs(boolean_world_arrangement_liquid_equilibrium_tests)
+    bw_deploy_runtime_dlls(boolean_world_arrangement_liquid_equilibrium_tests)
+    add_test(NAME boolean_world_arrangement_liquid_equilibrium COMMAND boolean_world_arrangement_liquid_equilibrium_tests)
 
     add_executable(boolean_world_arrangement_sample_point_tests
         tests/arrangement_sample_point_tests.cpp)

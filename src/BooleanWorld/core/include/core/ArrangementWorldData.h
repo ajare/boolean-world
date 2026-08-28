@@ -22,8 +22,8 @@ class BW_API ArrangementWorldData {
   // Post-fold detail geometry. Chips and ceiling Wedges remain render-only;
   // floor Wedge facets additionally contribute to floor collision height.
   arr::DetailGeometry mDetail;
-  // One settled water depth per face - see arr::ComputeWaterLevels.
-  std::vector<float> mWaterDepths;
+  // One settled liquid depth per face - see arr::ComputeLiquidLevels.
+  std::vector<float> mLiquidDepths;
   std::vector<uint32_t> mFloorWedgeTriangleIndices;
   std::vector<uint32_t> mCollisionWallIndices;
   float mStepThreshold;
@@ -74,9 +74,9 @@ public:
 
   [[nodiscard]] float getCeilingHeight(wp::Vector2 const& position) const;
 
-  // The settled water depth at position - see arr::ComputeWaterLevels. Zero
-  // outside the arrangement or wherever no water reaches.
-  [[nodiscard]] float getWaterDepth(wp::Vector2 const& position) const;
+  // The settled liquid depth at position - see arr::ComputeLiquidLevels. Zero
+  // outside the arrangement or wherever no liquid reaches.
+  [[nodiscard]] float getLiquidDepth(wp::Vector2 const& position) const;
 
   [[nodiscard]] std::vector<uint32_t> getWallsNear(
       wp::Vector2 const& position,
