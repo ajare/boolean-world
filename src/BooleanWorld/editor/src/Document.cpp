@@ -27,6 +27,7 @@
 #include "core/DynamicWorldDataGenerator.h"
 #include "core/Vertex.h"
 #include "core/MeshPrimitive.h"
+#include "NormalMapResourceSet.h"
 #include "core/LayerBuildStep.h"
 #include "core/PrefabField.h"
 
@@ -2543,18 +2544,14 @@ void Document::closeDoc() {
 }
 
 bool Document::openDoc(string const& filepath) {
-  reset();
-
-  mFilepath = filepath;
-
-  auto path = filesystem::path(mFilepath);
+  auto path = filesystem::path(filepath);
   auto ext = path.extension().string();
   transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
   if (ext == ".yaml" || ext == ".world") {
     shared_ptr<bw::core::Serializer> ser = ext == ".yaml"
-                                               ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(mFilepath))
-                                               : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(mFilepath));
+                                               ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(filepath))
+                                               : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(filepath));
 
     try {
       ser->deserialize();
@@ -2563,12 +2560,22 @@ bool Document::openDoc(string const& filepath) {
       return false;
     }
 
-    mWorld = createWorld(ED_DEFAULT_WORLD_SIZE, ED_DEFAULT_WORLD_ACCEL_GRID_SIZE);
+    auto candidate = createWorld(ED_DEFAULT_WORLD_SIZE, ED_DEFAULT_WORLD_ACCEL_GRID_SIZE);
 
     auto workData = bw::core::SerializationWorkData{};
 
-    if (mWorld->deserialize(ser, workData)) {
-      auto const& warnings = mWorld->getDeserializationWarnings();
+    if (candidate->deserialize(ser, workData)) {
+      try {
+#ifdef BW_EDITOR_RESOURCE_ROOT
+        validateWorldNormalMaps(*candidate, BW_EDITOR_RESOURCE_ROOT);
+#else
+        validateWorldNormalMaps(*candidate, filesystem::current_path());
+#endif
+      } catch (exception const& error) {
+        gLogger->error(error.what());
+        return false;
+      }
+      auto const& warnings = candidate->getDeserializationWarnings();
 
       if (!warnings.empty()) {
         for (auto const& warning : warnings) {
@@ -2580,17 +2587,20 @@ bool Document::openDoc(string const& filepath) {
       // the first PrimitiveField's authored order so ED_GHOST_INDEX remains
       // stable even when that field is empty and index 0 currently belongs to
       // derived output from a later, non-editable step such as PrefabField.
-      auto* activeLayer = mWorld->getActiveLayer();
-      auto hasGhost = mWorld->getNumPrimitives() > 0 &&
-                      (mWorld->getPrimitive(ED_GHOST_INDEX)->getFlags() &
+      auto* activeLayer = candidate->getActiveLayer();
+      auto hasGhost = candidate->getNumPrimitives() > 0 &&
+                      (candidate->getPrimitive(ED_GHOST_INDEX)->getFlags() &
                        BW_PRIMITIVE_GHOST_FLAG) != 0;
       if (!hasGhost) {
         auto* ghost = createEditorGhost();
         activeLayer->prependPrimitive(ghost);
       }
+      reset();
+      mFilepath = filepath;
+      mWorld = move(candidate);
       return true;
     } else {
-      auto const& errors = mWorld->getDeserializationErrors();
+      auto const& errors = candidate->getDeserializationErrors();
 
       if (!errors.empty()) {
         for (auto const& error : errors) {
@@ -2598,11 +2608,10 @@ bool Document::openDoc(string const& filepath) {
         }
       }
 
-      reset();
       return false;
     }
   } else {
-    throw EditorException(format("Could not open {} (filetype not supported)", mFilepath));
+    throw EditorException(format("Could not open {} (filetype not supported)", filepath));
   }
 }
 

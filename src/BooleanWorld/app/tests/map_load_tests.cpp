@@ -54,7 +54,7 @@ void playMapsUseDynamicWorldDataGenerators() {
           "Loaded play map did not install a dynamic world data generator");
 }
 
-void failedLoadReleasesThePreviousWorld() {
+void failedLoadRetainsThePreviousWorld() {
   wp::Logger logger;
   Map map("map", "", "", {}, nullptr, &logger);
   auto resource = makeWorldResource(readFixture("basic-test.yaml"));
@@ -71,8 +71,8 @@ void failedLoadReleasesThePreviousWorld() {
   }
 
   require(threw, "Malformed world did not fail to load");
-  require(map.getWorld() == nullptr,
-          "Failed world load retained a dangling World pointer");
+  require(map.getWorld() != nullptr,
+          "Failed world load replaced the previous valid World");
 }
 
 std::string serializeBinaryWorldWithOnePrimitive() {
@@ -122,7 +122,7 @@ void resourcesWithoutAWorldExtensionAreParsedAsYaml() {
 int main() {
   try {
     playMapsUseDynamicWorldDataGenerators();
-    failedLoadReleasesThePreviousWorld();
+    failedLoadRetainsThePreviousWorld();
     resourcesWithAWorldExtensionLoadAsBinary();
     resourcesWithoutAWorldExtensionAreParsedAsYaml();
     std::cout << "Map failed-load ownership regression passed\n";

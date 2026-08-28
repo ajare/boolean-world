@@ -70,6 +70,7 @@ bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/resources")
 # The 3D preview compiles the game's own material shaders, so it stages them
 # from the app module rather than keeping a second copy that could drift.
 bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/shaders" "shaders")
+bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/images" "images")
 bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/../core/doc" "doc/core")
 bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/doc" "doc/editor")
 
@@ -241,9 +242,10 @@ if(BUILD_TESTING)
         src/ProcMaterialLibrary.cpp)
     target_include_directories(boolean_world_editor_interaction_tests PRIVATE include)
     target_compile_definitions(boolean_world_editor_interaction_tests PRIVATE
-        YAML_CPP_STATIC_DEFINE)
+        YAML_CPP_STATIC_DEFINE
+        BW_EDITOR_RESOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources")
     target_link_libraries(boolean_world_editor_interaction_tests PRIVATE
-        core vendor::spdlog ext::glew ext::yaml-cpp)
+        core BooleanWorldRender vendor::spdlog ext::glew ext::yaml-cpp)
     target_compile_features(boolean_world_editor_interaction_tests PRIVATE cxx_std_20)
     target_compile_options(boolean_world_editor_interaction_tests PRIVATE /W3 /utf-8)
     bw_target_defaults(boolean_world_editor_interaction_tests)
@@ -349,4 +351,17 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_editor_layer_build_step_actions_tests)
     add_test(NAME boolean_world_editor_layer_build_step_actions
              COMMAND boolean_world_editor_layer_build_step_actions_tests)
+
+    # Document validates candidate Worlds through the shared render-side image
+    # decoder, so every lightweight Document test needs that implementation.
+    foreach(target
+            boolean_world_editor_primitive_field_placement_tests
+            boolean_world_editor_document_selection_tests
+            boolean_world_editor_document_layer_import_export_tests
+            boolean_world_editor_undo_history_tests
+            boolean_world_editor_primitive_surface_z_tests
+            boolean_world_editor_sub_material_picker_tests
+            boolean_world_editor_layer_build_step_actions_tests)
+        target_link_libraries(${target} PRIVATE BooleanWorldRender)
+    endforeach()
 endif()

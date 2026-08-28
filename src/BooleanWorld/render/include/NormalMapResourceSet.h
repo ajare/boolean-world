@@ -13,6 +13,17 @@ namespace mpp {
 class ResourceManager;
 }
 
+namespace bw::core {
+class World;
+}
+
+// These checks deliberately decode from disk without creating a GPU resource.
+// Authoring and World activation use them before replacing their active state.
+void validateNormalMapImage(std::filesystem::path const& resourceRoot,
+                            std::filesystem::path const& resourceRelativePath);
+void validateWorldNormalMaps(bw::core::World const& world,
+                             std::filesystem::path const& resourceRoot);
+
 // A reusable, application-resource-relative normal-map asset.  This is kept
 // separate from ImageResource because normal maps are vector data: their
 // decoding and sampler contract must not depend on generic image tags.
@@ -24,9 +35,7 @@ public:
   [[nodiscard]] uint32_t channels() const noexcept;
   [[nodiscard]] mpp::ResourcePtr const& texture() const noexcept;
 
-private:
-  friend class NormalMapResourceSet;
-
+public:  // Decoder staging data; only NormalMapResourceSet exposes it to callers.
   std::filesystem::path mPath;
   uint32_t mWidth{};
   uint32_t mHeight{};
@@ -47,6 +56,10 @@ public:
 
   NormalMapResourceSet(NormalMapResourceSet const&) = delete;
   NormalMapResourceSet& operator=(NormalMapResourceSet const&) = delete;
+
+  // Re-reads and decodes a candidate without creating a texture or caching it.
+  static void validateImage(std::filesystem::path const& resourceRoot,
+                            std::filesystem::path const& resourceRelativePath);
 
   [[nodiscard]] std::shared_ptr<NormalMapImage const> acquire(
       std::filesystem::path const& resourceRelativePath);

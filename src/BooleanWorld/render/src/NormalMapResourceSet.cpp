@@ -16,6 +16,8 @@
 
 #include "NormalMapResourceSet.h"
 
+#include <core/World.h>
+
 namespace {
 constexpr uint32_t kMaximumDimension = 8192;
 constexpr uint64_t kMaximumPixels = uint64_t{kMaximumDimension} * kMaximumDimension;
@@ -32,48 +34,35 @@ bool isBelow(std::filesystem::path const& path, std::filesystem::path const& roo
   }
   return true;
 }
-}  // namespace
 
-std::filesystem::path const& NormalMapImage::path() const noexcept { return mPath; }
-uint32_t NormalMapImage::width() const noexcept { return mWidth; }
-uint32_t NormalMapImage::height() const noexcept { return mHeight; }
-uint32_t NormalMapImage::channels() const noexcept { return mChannels; }
-mpp::ResourcePtr const& NormalMapImage::texture() const noexcept { return mTexture; }
-
-NormalMapResourceSet::NormalMapResourceSet(
-    std::filesystem::path resourceRoot, mpp::ResourceManager& resourceManager)
-    : mResourceManager(&resourceManager) {
+std::filesystem::path canonicalResourceRoot(std::filesystem::path const& resourceRoot) {
   std::error_code error;
-  mResourceRoot = std::filesystem::canonical(resourceRoot, error);
-  if (error || !std::filesystem::is_directory(mResourceRoot, error)) {
+  auto root = std::filesystem::canonical(resourceRoot, error);
+  if (error || !std::filesystem::is_directory(root, error)) {
     throw std::runtime_error("Normal-map resource root '" + resourceRoot.generic_string() +
                              "' is not a readable directory.");
   }
+  return root;
 }
 
-NormalMapResourceSet::~NormalMapResourceSet() {
-  for (auto& [path, image] : mImages) destroyTexture(*image);
-}
-
-std::filesystem::path NormalMapResourceSet::normalize(
-    std::filesystem::path const& reference) const {
+std::filesystem::path normalize(std::filesystem::path const& resourceRoot,
+                                std::filesystem::path const& reference) {
   if (reference.empty()) fail(reference, "path is empty.");
   if (reference.is_absolute() || reference.has_root_name()) {
     fail(reference, "path must be relative to the application resource root.");
   }
-
   std::error_code error;
   auto resolved = std::filesystem::weakly_canonical(
-      mResourceRoot / reference.lexically_normal(), error);
+      resourceRoot / reference.lexically_normal(), error);
   if (error) fail(reference, "could not canonicalize path: " + error.message());
-  if (!isBelow(resolved, mResourceRoot)) {
+  if (!isBelow(resolved, resourceRoot)) {
     fail(reference, "path escapes the application resource root.");
   }
-  return resolved.lexically_relative(mResourceRoot);
+  return resolved.lexically_relative(resourceRoot);
 }
 
-void NormalMapResourceSet::decode(NormalMapImage& image) {
-  auto absolutePath = mResourceRoot / image.mPath;
+void decode(std::filesystem::path const& resourceRoot, NormalMapImage& image) {
+  auto absolutePath = resourceRoot / image.mPath;
   std::error_code error;
   if (!std::filesystem::is_regular_file(absolutePath, error)) {
     fail(image.mPath, error ? "file cannot be read: " + error.message() : "file does not exist or is not a regular file.");
@@ -117,9 +106,6 @@ void NormalMapResourceSet::decode(NormalMapImage& image) {
   auto sourceRowBytes = size_t(width) * size_t(channels);
   auto rowBytes = size_t(width) * 3;
   image.mPixels.resize(rowBytes * size_t(height));
-  // MPP's texture path, like ImageResource, uses a bottom-to-top pixel layout.
-  // Normal maps are vectors, so an RGBA source's alpha is intentionally not
-  // retained in the uploaded data.
   for (int y = 0; y < height; ++y) {
     auto const* source = pixels.get() + size_t(height - y - 1) * sourceRowBytes;
     auto* destination = image.mPixels.data() + size_t(y) * rowBytes;
@@ -131,6 +117,74 @@ void NormalMapResourceSet::decode(NormalMapImage& image) {
   image.mHeight = static_cast<uint32_t>(height);
   image.mChannels = 3;
 }
+}  // namespace
+
+void NormalMapResourceSet::validateImage(
+    std::filesystem::path const& resourceRoot,
+    std::filesystem::path const& resourceRelativePath) {
+  auto root = canonicalResourceRoot(resourceRoot);
+  NormalMapImage image;
+  image.mPath = ::normalize(root, resourceRelativePath);
+  ::decode(root, image);
+}
+
+void validateNormalMapImage(std::filesystem::path const& resourceRoot,
+                            std::filesystem::path const& resourceRelativePath) {
+  NormalMapResourceSet::validateImage(resourceRoot, resourceRelativePath);
+}
+
+void validateWorldNormalMaps(bw::core::World const& world,
+                             std::filesystem::path const& resourceRoot) {
+  for (uint32_t primitiveIndex = 0; primitiveIndex < world.getNumPrimitives();
+       ++primitiveIndex) {
+    auto const* primitive = world.getPrimitive(primitiveIndex);
+    auto const& polygons = primitive->getVertices();
+    for (size_t polygonIndex = 0; polygonIndex < polygons.size(); ++polygonIndex) {
+      for (size_t ringIndex = 0; ringIndex < polygons[polygonIndex].size(); ++ringIndex) {
+        auto const& ring = polygons[polygonIndex][ringIndex];
+        for (size_t edgeIndex = 0; edgeIndex < ring.size(); ++edgeIndex) {
+          auto image = ring[edgeIndex].edgeNormalMap.imageData();
+          if (!image) continue;
+          try {
+            validateNormalMapImage(resourceRoot, image->resourcePath);
+          } catch (std::exception const& error) {
+            throw std::runtime_error(
+                "Wall normal-map Image at Primitive " + std::to_string(primitiveIndex) +
+                ", polygon " + std::to_string(polygonIndex) + ", Ring " +
+                std::to_string(ringIndex) + ", edge " + std::to_string(edgeIndex) +
+                " ('" + image->resourcePath + "'): " + error.what());
+          }
+        }
+      }
+    }
+  }
+}
+
+std::filesystem::path const& NormalMapImage::path() const noexcept { return mPath; }
+uint32_t NormalMapImage::width() const noexcept { return mWidth; }
+uint32_t NormalMapImage::height() const noexcept { return mHeight; }
+uint32_t NormalMapImage::channels() const noexcept { return mChannels; }
+mpp::ResourcePtr const& NormalMapImage::texture() const noexcept { return mTexture; }
+
+NormalMapResourceSet::NormalMapResourceSet(
+    std::filesystem::path resourceRoot, mpp::ResourceManager& resourceManager)
+    : mResourceManager(&resourceManager) {
+  mResourceRoot = canonicalResourceRoot(resourceRoot);
+}
+
+NormalMapResourceSet::~NormalMapResourceSet() {
+  for (auto& [path, image] : mImages) destroyTexture(*image);
+}
+
+std::filesystem::path NormalMapResourceSet::normalize(
+    std::filesystem::path const& reference) const {
+  return ::normalize(mResourceRoot, reference);
+}
+
+void NormalMapResourceSet::decode(NormalMapImage& image) {
+  ::decode(mResourceRoot, image);
+}
+
 
 void NormalMapResourceSet::createTexture(NormalMapImage& image) {
   auto stream = new mpp::ProgrammaticTextureStream(mResourceManager);

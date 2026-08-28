@@ -8,6 +8,8 @@
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/YamlSerializer.h>
 
+#include "NormalMapResourceSet.h"
+
 #include "Map.h"
 
 using namespace std;
@@ -36,9 +38,6 @@ bw::core::World const* Map::getWorld() const {
 }
 
 void Map::loadWorldFromYaml(wp::application::resourcesystem::ResourcePtr resource) {
-  delete mWorld;
-  mWorld = nullptr;
-
   auto res = static_cast<wp::application::resourcesystem::TextFileResource*>(resource.get());
   string text = res->getText();
 
@@ -50,18 +49,25 @@ void Map::loadWorldFromYaml(wp::application::resourcesystem::ResourcePtr resourc
   transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
   shared_ptr<bw::core::Serializer> ser = ext == ".world"
-      ? shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromString(text))
-      : shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromString(text));
+                                             ? shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromString(text))
+                                             : shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromString(text));
 
   ser->deserialize();
 
-  mWorld = new bw::core::World(1.0f, -1.0f);
+  auto candidate = std::make_unique<bw::core::World>(1.0f, -1.0f);
 
   // Create grid with cell size 512
   auto workData = bw::core::SerializationWorkData{512.0f};
 
-  if (mWorld->deserialize(ser, workData)) {
-    auto const& warnings = mWorld->getDeserializationWarnings();
+  if (candidate->deserialize(ser, workData)) {
+    try {
+      validateWorldNormalMaps(*candidate, filesystem::current_path());
+    } catch (std::exception const& error) {
+      mwLogger->error(error.what());
+      throw wp::application::resourcesystem::ResourceException(
+          resource.get(), "Could not load World normal maps: " + std::string(error.what()));
+    }
+    auto const& warnings = candidate->getDeserializationWarnings();
 
     if (!warnings.empty()) {
       for (auto const& warning : warnings) {
@@ -69,9 +75,12 @@ void Map::loadWorldFromYaml(wp::application::resourcesystem::ResourcePtr resourc
       }
     }
 
-    mWorld->setWorldDataGenerator(new bw::core::DynamicWorldDataGenerator(mWorld));
+    candidate->setWorldDataGenerator(
+        new bw::core::DynamicWorldDataGenerator(candidate.get()));
+    delete mWorld;
+    mWorld = candidate.release();
   } else {
-    auto const& errors = mWorld->getDeserializationErrors();
+    auto const& errors = candidate->getDeserializationErrors();
 
     if (!errors.empty()) {
       for (auto const& error : errors) {

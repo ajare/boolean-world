@@ -36,6 +36,7 @@
 #include "IconsFontAwesome5.h"
 
 #include "UI.h"
+#include "NormalMapResourceSet.h"
 #include "UiHelpers.h"
 #include "WidgetHelpers.h"
 #include "AppHelpers.h"
@@ -3951,7 +3952,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     static uint32_t normalMapDraftEdge = ~0u;
     static int normalMapState = 0;
     static char normalMapPath[512]{};
-    static float normalMapUnitsPerRepeat = 32.0f;
+    static float normalMapUnitsPerRepeat = 64.0f;
     static float normalMapStrength = 1.0f;
     static string normalMapError;
     if (normalMapDraftEdge != edgeIndex) {
@@ -3989,11 +3990,17 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
                          : bw::core::WallNormalMapOverride::image(
                                normalMapPath, normalMapUnitsPerRepeat,
                                normalMapStrength);
-        transactUndoableAction(
-            doc, "Set Mesh Edge Wall Normal Map",
-            bind(setMeshEdgeNormalMapOverride, placeholders::_1, edgeIndex,
-                 value));
-        normalMapError.clear();
+        if (auto image = value.imageData()) {
+          validateNormalMapImage(filesystem::current_path(), image->resourcePath);
+        }
+        if (!transactUndoableActionAtomically(
+                doc, "Set Mesh Edge Wall Normal Map",
+                bind(setMeshEdgeNormalMapOverride, placeholders::_1, edgeIndex,
+                     value))) {
+          normalMapError = "The selected edge cannot accept a wall normal map.";
+        } else {
+          normalMapError.clear();
+        }
       } catch (exception const& error) {
         normalMapError = error.what();
       }

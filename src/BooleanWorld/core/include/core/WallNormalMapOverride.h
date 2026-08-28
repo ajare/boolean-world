@@ -23,7 +23,7 @@ public:
                                 Image };
   struct ImageData {
     std::string resourcePath;
-    float unitsPerRepeat{1.0f};
+    float unitsPerRepeat{64.0f};
     float strength{1.0f};
     bool operator==(ImageData const&) const = default;
   };
@@ -42,7 +42,8 @@ public:
         normalized, [](auto const& component) { return component == ".."; });
     if (resourcePath.empty() || path.is_absolute() || normalized.empty() ||
         escapesResourceRoot || !std::isfinite(unitsPerRepeat) ||
-        unitsPerRepeat <= 0.0f || !std::isfinite(strength) || strength < 0.0f) {
+        unitsPerRepeat < 0.01f || unitsPerRepeat > 4096.0f ||
+        !std::isfinite(strength) || strength < 0.0f || strength > 2.0f) {
       throw std::invalid_argument("Invalid wall normal-map Image override.");
     }
     return WallNormalMapOverride(
