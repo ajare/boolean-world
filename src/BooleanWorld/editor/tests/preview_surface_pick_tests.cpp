@@ -97,12 +97,13 @@ void setSurfaceMaterial(
 }
 
 std::shared_ptr<bw::core::ArrangementWorldData> buildData(
-    std::vector<Primitive*> primitives) {
+    std::vector<Primitive*> primitives,
+    bw::core::WedgeGenerationParameters const& wedgeSettings = {}) {
   bw::core::ArrangementWorldDataGenerator generator;
   generator.generate(primitives);
   return std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), wp::BoundingBox{{-200, -200}, {400, 400}},
-      16.0f, 1.0f);
+      16.0f, 1.0f, nullptr, wedgeSettings);
 }
 
 void looksAtTheFloorWhenAimedDown() {
@@ -152,6 +153,23 @@ void picksTheNearestOfSeveralCandidates() {
   require(
       pick.hit() && pick.surfaceHit.surface == PreviewSurface::Floor,
       "the nearer floor lost to a wall further along the ray");
+}
+
+void wedgesRemainAbsentFromSurfacePicking() {
+  auto room = makeRoom();
+  auto settings = bw::core::WedgeGenerationParameters{
+      true, 4.0f, 4.0f, 2.0f, 2.0f, 2.0f, 2.0f};
+  auto ordinary = buildData({room.get()});
+  auto wedged = buildData({room.get()}, settings);
+  auto origin = Vector3{0, 0, 10};
+  auto direction = Vector3{1, 0, 0};
+  auto before = editor::pickPreviewSceneSurface(*ordinary, origin, direction);
+  auto after = editor::pickPreviewSceneSurface(*wedged, origin, direction);
+  require(wedged->getDetail().getWedgeCount() == 4 &&
+              before.surfaceHit.surface == after.surfaceHit.surface &&
+              before.surfaceHit.wallIndex == after.surfaceHit.wallIndex &&
+              near(before.surfaceHit.distance, after.surfaceHit.distance),
+          "visual Wedges changed editor surface picking");
 }
 
 void reportsNoHitWhenAimedAway() {
@@ -414,6 +432,7 @@ int main() {
     looksAtTheCeilingWhenAimedUp();
     looksAtTheWallAheadRatherThanTheOneBehind();
     picksTheNearestOfSeveralCandidates();
+    wedgesRemainAbsentFromSurfacePicking();
     reportsNoHitWhenAimedAway();
     reportsDistanceIndependentlyOfDirectionScale();
     ignoresDegenerateDirections();

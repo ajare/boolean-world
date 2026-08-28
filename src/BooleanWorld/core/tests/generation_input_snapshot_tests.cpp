@@ -40,6 +40,11 @@ void generationWorkerUsesCapturedPrimitiveSnapshot() {
   properties.floorZ = 3.0f;
   primitive->setProperties(properties);
   world.addPrimitive(primitive);
+  auto wedgeSettings = bw::core::WedgeGenerationParameters{};
+  wedgeSettings.enabled = true;
+  wedgeSettings.minimumReach = 5.0f;
+  wedgeSettings.maximumReach = 7.0f;
+  world.setWedgeGenerationParameters(wedgeSettings);
 
   DynamicWorldDataGenerator generator(&world);
   generator.setAllowCommitIfVisible(true);
@@ -83,6 +88,11 @@ void generationWorkerUsesCapturedPrimitiveSnapshot() {
   primitive->updateVertexPositions();
   properties.floorZ = 99.0f;
   primitive->setProperties(properties);
+  auto changedWedgeSettings = wedgeSettings;
+  changedWedgeSettings.enabled = false;
+  changedWedgeSettings.minimumReach = 11.0f;
+  changedWedgeSettings.maximumReach = 12.0f;
+  world.setWedgeGenerationParameters(changedWedgeSettings);
 
   {
     std::lock_guard lock(mutex);
@@ -108,6 +118,9 @@ void generationWorkerUsesCapturedPrimitiveSnapshot() {
   require(
       arrangement.palette[face.paletteIndex].floorZ == 3.0f,
       "worker observed primitive properties changed after dispatch");
+  require(
+      worldData->getWedgeGenerationParameters() == wedgeSettings,
+      "worker observed Wedge settings changed after dispatch");
 }
 
 void chipParametersAreResolvedInSnapshotOrderOnTheCallingThread() {
@@ -288,6 +301,22 @@ void primitiveRemovalBeforeCompletionAndCommitIsSafe() {
   generator.unregisterGenerationCallback(token);
 }
 
+void directGenerationCapturesWorldWedgeSettings() {
+  bw::core::World world(20.0f, 2.0f);
+  world.addPrimitive(MeshPrimitive::fromComplexPolygons(
+      Primitive::Operation::Union,
+      {rectangle(0.0f, 0.0f, 10.0f, 10.0f)}));
+  auto settings = bw::core::WedgeGenerationParameters{};
+  settings.enabled = true;
+  settings.minimumProjectionDepth = 3.0f;
+  settings.maximumProjectionDepth = 5.0f;
+  world.setWedgeGenerationParameters(settings);
+
+  auto snapshot = world.getWorldData();
+  require(snapshot && snapshot->getWedgeGenerationParameters() == settings,
+          "direct generation did not capture the World's Wedge settings");
+}
+
 }  // namespace
 
 int main() {
@@ -295,6 +324,7 @@ int main() {
     generationWorkerUsesCapturedPrimitiveSnapshot();
     chipParametersAreResolvedInSnapshotOrderOnTheCallingThread();
     primitiveRemovalBeforeCompletionAndCommitIsSafe();
+    directGenerationCapturesWorldWedgeSettings();
     std::cout << "Generation workers and metadata use lifetime-safe snapshots\n";
     return 0;
   } catch (std::exception const& error) {

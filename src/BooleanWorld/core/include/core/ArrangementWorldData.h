@@ -12,6 +12,7 @@
 #include "core/ImmutableAccelerationGrid.h"
 #include "core/Platform.h"
 #include "core/Stats.h"
+#include "core/WedgeGenerationParameters.h"
 
 namespace bw::core {
 class BW_API ArrangementWorldData {
@@ -24,6 +25,7 @@ class BW_API ArrangementWorldData {
   arr::DetailGeometry mDetail;
   std::vector<uint32_t> mCollisionWallIndices;
   float mStepThreshold;
+  WedgeGenerationParameters mWedgeGenerationParameters;
   std::unique_ptr<ImmutableAccelerationGrid> mTriangleGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mVertexGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mWallGrid;
@@ -34,7 +36,8 @@ public:
       wp::BoundingBox const& extents,
       float gridCellSize,
       float stepThreshold,
-      ArrangementStats* stats = nullptr);
+      ArrangementStats* stats = nullptr,
+      WedgeGenerationParameters const& wedgeGenerationParameters = {});
 
   [[nodiscard]] arr::ArrangementResult const& getArrangement() const;
 
@@ -43,9 +46,12 @@ public:
 
   [[nodiscard]] std::vector<arr::ArrangementWall> const& getWalls() const;
 
-  // The Chip detail channel: which surfaces a renderer must skip, and the
-  // triangles standing in for them. Renderers only.
+  // Post-fold visual detail: Chip replacements and additive Wedge facets.
+  // Renderers only.
   [[nodiscard]] arr::DetailGeometry const& getDetail() const;
+
+  [[nodiscard]] WedgeGenerationParameters const&
+  getWedgeGenerationParameters() const;
 
   [[nodiscard]] int32_t pointInTriangle(wp::Vector2 const& position) const;
 

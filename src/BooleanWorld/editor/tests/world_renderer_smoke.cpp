@@ -47,6 +47,8 @@ struct RenderFixture {
       bw::app::HorizontalMaterials::ThreeDimensional};
   int32_t debugWallTechnique{-1};
   bool emboss{};
+  bool wedges{};
+  bool lookAtWedges{};
 };
 
 struct ResourceCounts {
@@ -118,14 +120,24 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   properties.wallMaterialId = "migrated.marble.1";
   primitive->setProperties(properties);
   world.addPrimitive(primitive);
+  if (fixture.wedges) {
+    world.setWedgeGenerationParameters(
+        {true, 8.0f, 8.0f, 8.0f, 8.0f, 8.0f, 8.0f});
+  }
 
   std::vector<bw::core::Primitive*> primitives{primitive};
   bw::core::ArrangementWorldDataGenerator generator;
   generator.generate(primitives);
-  return std::make_shared<bw::core::ArrangementWorldData>(
+  auto result = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), world.getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      world.getStepThreshold());
+      world.getStepThreshold(), nullptr,
+      world.getWedgeGenerationParameters());
+  if (fixture.wedges && result->getDetail().getWedgeCount() != 4) {
+    throw std::runtime_error(
+        "renderer fixture did not generate four Border-wall Wedges");
+  }
+  return result;
 }
 
 std::vector<float> readColour(uint32_t texture) {
@@ -178,7 +190,8 @@ std::vector<float> render(
         {0.18f, 0.18f, 0.2f}, emboss);
   }
   auto camera = std::make_shared<ReactiveCamera>(
-      glm::vec3{0.0f, BW_PLAYER_EYE_HEIGHT, 0.0f},
+      glm::vec3{
+          0.0f, fixture.lookAtWedges ? 40.0f : BW_PLAYER_EYE_HEIGHT, 0.0f},
       bw::app::cameraYaw(0.0f), 0.0f, BW_PLAYER_FOV,
       kWidth / float(kHeight));
   camera->setClipDistances(0.1f, 1000000.0f);
@@ -239,6 +252,9 @@ int main() {
           renderSystem, {.map = MapFixture::Image, .strength = 1.0f});
       auto stronger = render(
           renderSystem, {.map = MapFixture::Image, .strength = 2.0f});
+      auto wedgeBaseline = render(renderSystem, {.lookAtWedges = true});
+      auto wedges = render(
+          renderSystem, {.wedges = true, .lookAtWedges = true});
 
       auto disabledDifference = regionDifference(unset, disabled);
       auto flatDifference = regionDifference(unset, flat);
@@ -257,6 +273,8 @@ int main() {
       require(strongerDifference > 0.0005 &&
                   regionDifference(authored, stronger) > 0.0005,
               "higher strength did not visibly change the renormalized map");
+      require(regionDifference(wedgeBaseline, wedges) > 0.0005,
+              "Wedges did not reach the ordinary lit renderer path");
 
       // A global material-index/Technique diagnostic changes only procedural
       // evaluation. The independently authored wall image must remain active.

@@ -21,7 +21,8 @@ DynamicWorldDataGenerator::DynamicWorldDataGenerator(World const* world)
       generator.getWorldData(),
       world->getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      world->getStepThreshold());
+      world->getStepThreshold(), nullptr,
+      world->getWedgeGenerationParameters());
 }
 
 DynamicWorldDataGenerator::~DynamicWorldDataGenerator() {
@@ -292,7 +293,8 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
           primStats,
           world->getExtents(),
           float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-          world->getStepThreshold()};
+          world->getStepThreshold(),
+          world->getWedgeGenerationParameters()};
 }
 
 void DynamicWorldDataGenerator::generateWorldData(
@@ -321,7 +323,8 @@ void DynamicWorldDataGenerator::generateWorldData(
       input.worldExtents,
       input.gridCellSize,
       input.stepThreshold,
-      &stats.arrangement);
+      &stats.arrangement,
+      input.wedgeGenerationParameters);
 
   mLastGenTime = timer.elapsedNanoseconds();
   stats.generationRequests.coalescedRequestCount =

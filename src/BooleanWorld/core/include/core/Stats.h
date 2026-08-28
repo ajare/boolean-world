@@ -24,6 +24,8 @@ struct ArrangementStats {
   uint32_t wallCount{0};
   // Chips cut into eligible Arrises and trihedral Corners (ADR-0027).
   uint32_t chipCount{0};
+  // Additive ceiling Wedges attached to Border-wall top Arrises (ADR-0031).
+  uint32_t wedgeCount{0};
   uint64_t buildPSLGTimeNs{0};
   uint64_t classificationTimeNs{0};
 };

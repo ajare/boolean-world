@@ -722,6 +722,10 @@ void DetailGeometry::countChip() {
   ++mChipCount;
 }
 
+void DetailGeometry::countWedge() {
+  ++mWedgeCount;
+}
+
 void DetailGeometry::sort() {
   std::sort(mSuppressed.begin(), mSuppressed.end());
   std::stable_sort(
@@ -769,9 +773,14 @@ uint32_t DetailGeometry::getChipCount() const {
   return mChipCount;
 }
 
+uint32_t DetailGeometry::getWedgeCount() const {
+  return mWedgeCount;
+}
+
 DetailGeometry BuildChipDetail(
     ArrangementResult const& arrangement,
-    std::vector<ArrangementWall> const& walls) {
+    std::vector<ArrangementWall> const& walls,
+    WedgeGenerationParameters const& wedgeParameters) {
   DetailGeometry detail;
   std::map<DetailSurfaceKey, std::vector<Footprint>> footprintsByFace;
   std::map<DetailSurfaceKey, std::vector<FaceCornerCut>> cornerCutsByFace;
@@ -1361,6 +1370,82 @@ DetailGeometry BuildChipDetail(
       continue;
     }
     AddRebuiltFaceHorizontal(detail, arrangement, key, {}, cornerCuts);
+  }
+
+  // Wedges are additive: unlike Chips they suppress neither attachment
+  // surface. Each eligible Border wall contributes only its two exposed
+  // tetrahedron facets, routed through the adjoining ceiling face.
+  if (wedgeParameters.enabled) {
+    for (auto const& wall : walls) {
+      if (!wall.visible || wall.kind != ArrangementWallKind::Border) {
+        continue;
+      }
+      auto const& edge = arrangement.edges[wall.edge];
+      auto solidFace = arrangement.faces[edge.face[0]].solid
+                           ? edge.face[0]
+                           : edge.face[1];
+      auto orientation = OrientArrangementWall(arrangement, wall);
+      auto along = orientation.v1 - orientation.v0;
+      auto availableReach = along.length();
+      auto availableHeight = wall.maxZ - wall.minZ;
+      if (availableReach < wedgeParameters.minimumReach ||
+          availableHeight < wedgeParameters.minimumDropDownHeight) {
+        continue;
+      }
+      auto direction = along / availableReach;
+      auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
+      auto availableDepth = FaceBoundaryDistance(
+          arrangement, arrangement.faces[solidFace], wall.edge, midpoint,
+          orientation.normal);
+      if (availableDepth < wedgeParameters.minimumProjectionDepth) {
+        continue;
+      }
+
+      auto seed = StableArrisSeed(
+          arrangement.vertices[edge.v[0]], arrangement.vertices[edge.v[1]]);
+      auto draw = [&](float minimum, float maximum, float available,
+                      uint64_t stream) {
+        auto cappedMaximum = std::min(maximum, available);
+        return minimum + (cappedMaximum - minimum) *
+                             StableRandom01(seed, stream);
+      };
+      auto reach = draw(
+          wedgeParameters.minimumReach, wedgeParameters.maximumReach,
+          availableReach, 0x7001ull);
+      auto drop = draw(
+          wedgeParameters.minimumDropDownHeight,
+          wedgeParameters.maximumDropDownHeight, availableHeight, 0x7002ull);
+      auto depth = draw(
+          wedgeParameters.minimumProjectionDepth,
+          wedgeParameters.maximumProjectionDepth, availableDepth, 0x7003ull);
+
+      auto endpointA = midpoint - direction * (reach * 0.5f);
+      auto endpointB = midpoint + direction * (reach * 0.5f);
+      auto projected = midpoint + orientation.normal * depth;
+      Vertex3 a{endpointA.x, endpointA.y, wall.maxZ};
+      Vertex3 b{endpointB.x, endpointB.y, wall.maxZ};
+      Vertex3 c{projected.x, projected.y, wall.maxZ};
+      Vertex3 d{midpoint.x, midpoint.y, wall.maxZ - drop};
+      auto ceilingUv = [](Vertex3 const& vertex) {
+        return std::array<float, 2>{
+            vertex.x / HorizontalUvScale, vertex.y / HorizontalUvScale};
+      };
+      DetailSurfaceKey source{
+          DetailSurfaceKind::CeilingOfFace, solidFace};
+      Vertex3 referenceA{
+          -direction.x + orientation.normal.x,
+          -direction.y + orientation.normal.y, -1.0f};
+      Vertex3 referenceB{
+          direction.x + orientation.normal.x,
+          direction.y + orientation.normal.y, -1.0f};
+      AddTriangle(
+          detail, source, a, c, d, referenceA, ceilingUv(a), ceilingUv(c),
+          ceilingUv(d), false, DetailTriangleKind::WedgeFacet);
+      AddTriangle(
+          detail, source, c, b, d, referenceB, ceilingUv(c), ceilingUv(b),
+          ceilingUv(d), false, DetailTriangleKind::WedgeFacet);
+      detail.countWedge();
+    }
   }
 
   detail.sort();

@@ -30,12 +30,16 @@
 
 spdlog::logger* gLogger = spdlog::default_logger_raw();
 editor::Settings gEditorSettings;
+uint32_t gGenerateClippingRequests = 0;
+uint32_t gRegenerateWorldDataRequests = 0;
 
 namespace editor {
 void generateClipping(Document*, Settings const&, int) {
+  ++gGenerateClippingRequests;
 }
 
 void regenerateWorldData(Document*) {
+  ++gRegenerateWorldDataRequests;
 }
 }  // namespace editor
 
@@ -3473,6 +3477,61 @@ void prefabFieldClickPlacesAMeshPrefabPrimitiveWithoutCrashing() {
           "PrefabField click with a Mesh Prefab primitive did not place an instance");
 }
 
+void worldWedgeSettingsAreAtomicUndoableAndRegenerate() {
+  editor::clearUndoHistory();
+  editor::Document document;
+  document.newDoc();
+  auto const defaults =
+      document.getWorld()->getWedgeGenerationParameters();
+  auto configured = defaults;
+  configured.enabled = true;
+  configured.minimumReach = 5.0f;
+  configured.maximumReach = 9.0f;
+  configured.minimumDropDownHeight = 2.5f;
+  configured.maximumDropDownHeight = 4.5f;
+  configured.minimumProjectionDepth = 3.0f;
+  configured.maximumProjectionDepth = 6.0f;
+
+  auto const undoBefore = editor::getUndoLevels();
+  auto const regenerationBefore = gRegenerateWorldDataRequests;
+  require(editor::transactUndoableActionAtomically(
+              &document, "Set World Wedge settings",
+              std::bind(
+                  editor::setWorldWedgeGenerationParameters,
+                  std::placeholders::_1, configured)),
+          "valid World Wedge settings were rejected");
+  require(document.getWorld()->getWedgeGenerationParameters() == configured &&
+              editor::getUndoLevels() == undoBefore + 1,
+          "World Wedge settings were not applied in one Undo entry");
+  require(gRegenerateWorldDataRequests == regenerationBefore + 1,
+          "applying World Wedge settings did not request regeneration");
+
+  auto const clippingBefore = gGenerateClippingRequests;
+  editor::undo(&document);
+  require(document.getWorld()->getWedgeGenerationParameters() == defaults,
+          "Undo did not restore all World Wedge settings");
+  editor::redo(&document);
+  require(document.getWorld()->getWedgeGenerationParameters() == configured,
+          "Redo did not restore all World Wedge settings");
+  require(gGenerateClippingRequests == clippingBefore + 2,
+          "Undo and Redo did not each request preview regeneration");
+
+  auto invalid = configured;
+  invalid.minimumReach = 0.0f;
+  auto const undoBeforeInvalid = editor::getUndoLevels();
+  auto const regenerationBeforeInvalid = gRegenerateWorldDataRequests;
+  require(!editor::transactUndoableActionAtomically(
+              &document, "Set invalid World Wedge settings",
+              std::bind(
+                  editor::setWorldWedgeGenerationParameters,
+                  std::placeholders::_1, invalid)),
+          "invalid World Wedge settings were accepted");
+  require(document.getWorld()->getWedgeGenerationParameters() == configured &&
+              editor::getUndoLevels() == undoBeforeInvalid &&
+              gRegenerateWorldDataRequests == regenerationBeforeInvalid,
+          "an invalid Wedge edit partially changed the World, history, or regeneration state");
+}
+
 void prefabFieldArrowNavigationAndRotationAreActiveStepGated() {
   editor::Document document;
   document.newDoc();
@@ -3604,6 +3663,7 @@ int main() {
     theWholeDrawingGestureIsOneUndoEntry();
     prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint();
     prefabFieldClickPlacesAMeshPrefabPrimitiveWithoutCrashing();
+    worldWedgeSettingsAreAtomicUndoableAndRegenerate();
     prefabFieldArrowNavigationAndRotationAreActiveStepGated();
     std::cout << "Editor selection interactions passed\n";
     return 0;

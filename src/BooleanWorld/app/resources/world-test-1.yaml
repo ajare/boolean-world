@@ -6,6 +6,14 @@ world:
   playerStartPosition: [0, 0]
   playerStartAngle: 0
   stepThreshold: 8
+  wedgeGeneration:
+    enabled: 1
+    minimumReach: 4
+    maximumReach: 8
+    minimumDropDownHeight: 2
+    maximumDropDownHeight: 4
+    minimumProjectionDepth: 2
+    maximumProjectionDepth: 4
   layers:
     - id: 0
       name: Layer 0

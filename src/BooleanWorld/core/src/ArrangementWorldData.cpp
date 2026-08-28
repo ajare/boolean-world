@@ -51,19 +51,23 @@ ArrangementWorldData::ArrangementWorldData(
     wp::BoundingBox const& extents,
     float gridCellSize,
     float stepThreshold,
-    ArrangementStats* stats)
+    ArrangementStats* stats,
+    WedgeGenerationParameters const& wedgeGenerationParameters)
     : mArrangement(std::move(arrangement)),
       mTriangles(arr::BuildArrangementTriangles(*mArrangement)),
       mWalls(arr::BuildArrangementWalls(*mArrangement)),
       // Built here, on whichever thread constructs the snapshot - the
       // generation worker in game - and immutable from then on, exactly like
       // the two outputs above. Neither of those is altered by its presence.
-      mDetail(arr::BuildChipDetail(*mArrangement, mWalls)),
-      mStepThreshold(stepThreshold) {
+      mDetail(arr::BuildChipDetail(
+          *mArrangement, mWalls, wedgeGenerationParameters)),
+      mStepThreshold(stepThreshold),
+      mWedgeGenerationParameters(wedgeGenerationParameters) {
   if (stats != nullptr) {
     stats->triangleCount = uint32_t(mTriangles.size());
     stats->wallCount = uint32_t(mWalls.size());
     stats->chipCount = mDetail.getChipCount();
+    stats->wedgeCount = mDetail.getWedgeCount();
   }
 
   std::vector<ImmutableAccelerationGrid::ItemBounds> triangleBounds;
@@ -136,6 +140,11 @@ std::vector<arr::ArrangementWall> const& ArrangementWorldData::getWalls() const 
 
 arr::DetailGeometry const& ArrangementWorldData::getDetail() const {
   return mDetail;
+}
+
+WedgeGenerationParameters const&
+ArrangementWorldData::getWedgeGenerationParameters() const {
+  return mWedgeGenerationParameters;
 }
 
 int32_t ArrangementWorldData::pointInTriangle(

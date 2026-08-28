@@ -97,6 +97,21 @@ canonical coordinate type for topology, contours, and arrangement output.
 so that all output topology is exactly representable and vertex identity is an
 integer comparison rather than a float comparison (ADR-0003).
 
+**Arris** — A dihedral line where exactly two generated world surfaces meet. A
+Horizontal Arris joins an ArrangementWall to a floor or ceiling; a Vertical
+Arris joins two ArrangementWalls. It is implied by generated geometry rather
+than represented by an Arrangement edge of its own.
+
+**Chip** — Subtractive, visual-only detail cut into an eligible Arris or
+trihedral Corner after the boolean fold. It is derived into the World
+snapshot's detail channel and never changes collision or spatial queries
+(ADR-0027).
+
+**Wedge** — Additive, visual-only tetrahedral detail attached beneath the top
+Arris of a visible Border wall. Its generation is controlled by World settings,
+its facets use the adjoining ceiling Sub-material, and it shares the post-fold
+detail channel without changing collision or spatial queries (ADR-0031).
+
 ## Geometry — before the rewrite (removed)
 
 **ClippedPolygon** — A single contour plus an `isHole` flag. Holes are

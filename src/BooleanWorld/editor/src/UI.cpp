@@ -940,6 +940,70 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
                            bind(setPlayerStartPosition, placeholders::_1, position));
   }
 
+  // Wedges
+  static bw::core::World* wedgeDraftWorld = nullptr;
+  static bw::core::WedgeGenerationParameters wedgeDraft;
+  static bw::core::WedgeGenerationParameters wedgeSource;
+  static bool wedgeDraftModified = false;
+  static string wedgeSettingsError;
+  auto const& currentWedgeSettings = world->getWedgeGenerationParameters();
+  if (wedgeDraftWorld != world.get() ||
+      (!wedgeDraftModified && currentWedgeSettings != wedgeSource)) {
+    wedgeDraftWorld = world.get();
+    wedgeDraft = currentWedgeSettings;
+    wedgeSource = currentWedgeSettings;
+    wedgeDraftModified = false;
+    wedgeSettingsError.clear();
+  }
+
+  ImGui::Separator();
+  ImGui::TextUnformatted("Ceiling Wedges");
+  wedgeDraftModified |=
+      ImGui::Checkbox("Enabled##WorldWedges", &wedgeDraft.enabled);
+  float reach[2]{wedgeDraft.minimumReach, wedgeDraft.maximumReach};
+  if (ImGui::InputFloat2("Reach min/max##WorldWedges", reach)) {
+    wedgeDraft.minimumReach = reach[0];
+    wedgeDraft.maximumReach = reach[1];
+    wedgeDraftModified = true;
+  }
+  float dropDown[2]{
+      wedgeDraft.minimumDropDownHeight,
+      wedgeDraft.maximumDropDownHeight};
+  if (ImGui::InputFloat2("Drop-down min/max##WorldWedges", dropDown)) {
+    wedgeDraft.minimumDropDownHeight = dropDown[0];
+    wedgeDraft.maximumDropDownHeight = dropDown[1];
+    wedgeDraftModified = true;
+  }
+  float projection[2]{
+      wedgeDraft.minimumProjectionDepth,
+      wedgeDraft.maximumProjectionDepth};
+  if (ImGui::InputFloat2("Projection min/max##WorldWedges", projection)) {
+    wedgeDraft.minimumProjectionDepth = projection[0];
+    wedgeDraft.maximumProjectionDepth = projection[1];
+    wedgeDraftModified = true;
+  }
+  ImGui::BeginDisabled(!wedgeDraftModified);
+  if (ImGui::Button("Apply Wedge settings##WorldWedges")) {
+    if (transactUndoableActionAtomically(
+            doc, "Set World Wedge settings",
+            bind(
+                setWorldWedgeGenerationParameters, placeholders::_1,
+                wedgeDraft))) {
+      wedgeSource = world->getWedgeGenerationParameters();
+      wedgeDraft = wedgeSource;
+      wedgeDraftModified = false;
+      wedgeSettingsError.clear();
+    } else {
+      wedgeSettingsError =
+          "Every Wedge dimension must be finite and positive, with minimum no greater than maximum.";
+    }
+  }
+  ImGui::EndDisabled();
+  if (!wedgeSettingsError.empty()) {
+    ImGui::TextColored(ImVec4(1, 0.35f, 0.35f, 1), "%s",
+                       wedgeSettingsError.c_str());
+  }
+
   // Layers
   ImGui::Separator();
   widgets::HelpMarker("Selecting a Layer here also makes it the active Layer, so Create/Edit Primitive writes into it.");

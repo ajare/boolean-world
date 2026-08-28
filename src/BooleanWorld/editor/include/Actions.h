@@ -107,6 +107,10 @@ void setMeshSubMode(Document* doc, Settings& settings, Settings::MeshSubMode sub
 
 bool setWorldName(Document* doc, std::string const& name);
 
+bool setWorldWedgeGenerationParameters(
+    Document* doc,
+    bw::core::WedgeGenerationParameters const& parameters);
+
 bool addLayer(Document* doc, std::string const& name);
 
 bool setLayerBuildStepEnabled(Document* doc, bw::core::Layer* layer, uint32_t stepIndex, bool enabled);
