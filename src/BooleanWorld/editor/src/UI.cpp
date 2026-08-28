@@ -69,6 +69,16 @@ using namespace std;
 constexpr int minGridSizeExponent = 1;  // 2 world units
 constexpr int maxGridSizeExponent = 6;  // 64 world units
 
+filesystem::path editorResourceRoot() {
+#ifdef BW_EDITOR_RESOURCE_ROOT
+  // NFD's Windows backend rejects initial directories containing unresolved
+  // parent components (the CMake path reaches app/resources via "../").
+  return filesystem::path(BW_EDITOR_RESOURCE_ROOT).lexically_normal();
+#else
+  return filesystem::current_path();
+#endif
+}
+
 void cycleGridSize(Settings& settings) {
   auto exponent = std::clamp(
       static_cast<int>(std::lround(std::log2(settings.gridSize))),
@@ -3952,7 +3962,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     static uint32_t normalMapDraftEdge = ~0u;
     static int normalMapState = 0;
     static char normalMapPath[512]{};
-    static float normalMapUnitsPerRepeat = 64.0f;
+    static float normalMapRepeat = 1.0f;
     static float normalMapStrength = 1.0f;
     static string normalMapError;
     if (normalMapDraftEdge != edgeIndex) {
@@ -3963,7 +3973,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
       normalMapPath[0] = '\0';
       if (auto image = value.imageData()) {
         strncpy_s(normalMapPath, image->resourcePath.c_str(), _TRUNCATE);
-        normalMapUnitsPerRepeat = image->unitsPerRepeat;
+        normalMapRepeat = image->repeat;
         normalMapStrength = image->strength;
       }
     }
@@ -3975,10 +3985,52 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
                  "Not set\0Disabled\0Image\0");
     if (normalMapState == static_cast<int>(
                               bw::core::WallNormalMapOverride::State::Image)) {
-      ImGui::InputText("Resource path##WallNormalMap", normalMapPath,
-                       sizeof(normalMapPath));
-      ImGui::InputFloat("Units per repeat##WallNormalMap",
-                        &normalMapUnitsPerRepeat);
+      if (ImGui::Button("Resource Path...##WallNormalMap")) {
+        constexpr nfdfilteritem_t imageFilters[] = {
+            {"Images", "png,jpg,jpeg,bmp,tga"},
+        };
+        nfdchar_t* selectedPath = nullptr;
+        auto resourceRoot = editorResourceRoot();
+        auto defaultPath = resourceRoot.string();
+        auto result = NFD_OpenDialog(
+            &selectedPath, imageFilters,
+            static_cast<nfdfiltersize_t>(size(imageFilters)),
+            defaultPath.c_str());
+        if (result == NFD_OKAY) {
+          auto absolutePath = filesystem::path(selectedPath);
+          NFD_FreePath(selectedPath);
+
+          error_code error;
+          auto relativePath = filesystem::relative(
+              absolutePath, resourceRoot, error);
+          if (error) {
+            normalMapError =
+                "Could not make the selected image relative to the resource directory: " +
+                error.message();
+          } else {
+            try {
+              validateNormalMapImage(resourceRoot, relativePath);
+              auto path = relativePath.generic_string();
+              if (path.size() >= sizeof(normalMapPath)) {
+                normalMapError = "The selected image path is too long.";
+              } else {
+                strncpy_s(normalMapPath, path.c_str(), _TRUNCATE);
+                normalMapError.clear();
+              }
+            } catch (exception const& error) {
+              normalMapError = error.what();
+            }
+          }
+        } else if (result == NFD_ERROR) {
+          auto error = NFD_GetError();
+          normalMapError =
+              string("Could not open the image picker: ") +
+              (error ? error : "unknown error");
+        }
+      }
+      ImGui::SameLine();
+      ImGui::TextUnformatted(normalMapPath[0] ? normalMapPath : "No image selected");
+      ImGui::InputFloat("Repeat##WallNormalMap", &normalMapRepeat);
       ImGui::InputFloat("Strength##WallNormalMap", &normalMapStrength);
     }
     if (ImGui::Button("Apply wall normal map##SelectedMeshEdge")) {
@@ -3988,10 +4040,10 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
                      : normalMapState == 1
                          ? bw::core::WallNormalMapOverride::disabled()
                          : bw::core::WallNormalMapOverride::image(
-                               normalMapPath, normalMapUnitsPerRepeat,
+                               normalMapPath, normalMapRepeat,
                                normalMapStrength);
         if (auto image = value.imageData()) {
-          validateNormalMapImage(filesystem::current_path(), image->resourcePath);
+          validateNormalMapImage(editorResourceRoot(), image->resourcePath);
         }
         if (!transactUndoableActionAtomically(
                 doc, "Set Mesh Edge Wall Normal Map",

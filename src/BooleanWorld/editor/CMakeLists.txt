@@ -38,7 +38,8 @@ bw_add_header_filter(editor)
 
 target_compile_definitions(editor PRIVATE
     _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING
-    BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml")
+    BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml"
+    BW_EDITOR_RESOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources")
 
 target_compile_definitions(editor PRIVATE YAML_CPP_STATIC_DEFINE)
 

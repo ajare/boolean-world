@@ -21,6 +21,14 @@ namespace {
 // pipeline cache again.
 constexpr char const* pipelineName = "Editor.Preview3D.World";
 
+std::filesystem::path normalMapResourceRoot() {
+#ifdef BW_EDITOR_RESOURCE_ROOT
+  return BW_EDITOR_RESOURCE_ROOT;
+#else
+  return std::filesystem::current_path();
+#endif
+}
+
 // The named output is always the final offscreen shaded image, and ambient
 // occlusion adds three graph images ahead of it - see
 // StatePlayBooleanWorld::renderWorldThroughTarget, which derives the same
@@ -93,7 +101,9 @@ PreviewRenderScene::PreviewRenderScene(
   // reads the ProcMaterial catalogs EditorRenderSystem loaded.
   mRenderer = std::make_unique<WorldRenderer>(
       renderSystem.resourceManager(), renderSystem.logger(),
-      bw::app::RenderTextureFilter::Linear, horizontalMaterials);
+      bw::app::RenderTextureFilter::Linear, horizontalMaterials,
+      std::vector<WallRenderSurface>{},
+      WorldRenderer::WallRenderVariantResolver{}, normalMapResourceRoot());
   mRenderer->create(
       mScene, world, mwRenderSystem, renderSystem.renderResourceManager());
 }

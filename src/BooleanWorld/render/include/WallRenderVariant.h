@@ -15,7 +15,10 @@
 // neither GPU textures nor shader uniforms.
 struct WallRenderVariant {
   std::string identity;
-  uint32_t textureIndex{};
+  // Sampler reflection order changes with shader specialization (for example,
+  // enabling point shadows places POINT_SHADOW_MAP before TEX1). Bind by the
+  // declared sampler name rather than assuming a fixed texture unit.
+  std::string textureSampler;
   mpp::ResourcePtr texture;
   std::function<void(mpp::UniformCollection&)> setUniforms;
 

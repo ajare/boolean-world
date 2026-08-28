@@ -42,7 +42,7 @@ enum class MapFixture { Unset,
 struct RenderFixture {
   MapFixture map{MapFixture::Unset};
   float strength{1.0f};
-  float unitsPerRepeat{8.0f};
+  float repeat{1.0f};
   bw::app::HorizontalMaterials horizontal{
       bw::app::HorizontalMaterials::ThreeDimensional};
   int32_t debugWallTechnique{-1};
@@ -94,8 +94,8 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
       auto image = bw::core::WallNormalMapOverride::image(
           kDirectionalNormal,
           fixture.map == MapFixture::MixedSharedImage && ordinal == 1
-              ? fixture.unitsPerRepeat * 2.0f
-              : fixture.unitsPerRepeat,
+              ? fixture.repeat * 2.0f
+              : fixture.repeat,
           fixture.map == MapFixture::MixedSharedImage && ordinal == 2
               ? 2.0f
               : fixture.strength);

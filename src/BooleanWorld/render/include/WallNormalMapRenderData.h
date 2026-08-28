@@ -11,18 +11,20 @@ struct WallPhysicalUv {
 };
 
 // Physical wall UVs are independent of procedural Sub-material coordinates.
-// U is the absolute projection onto the canonical wall tangent; V is absolute
-// world elevation. Only mapped walls consume them.
+// Each ArrangementWall starts at (0, 0), preventing world-position phase from
+// shifting an image partway across the surface. `repeat` is the horizontal
+// image count across this wall. V is measured in the same world-space scale;
+// the shader then applies the decoded image aspect ratio.
 [[nodiscard]] inline WallPhysicalUv CalculateWallPhysicalUv(
     bw::core::arr::ArrangementWallOrientation const& orientation,
     bw::core::arr::ArrangementWall const& wall) {
   auto image = wall.normalMapOverride.imageData();
   if (!image) return {};
-  auto tangent = (orientation.v1 - orientation.v0).normalisedCopy();
-  return {orientation.v0.dot(tangent) / image->unitsPerRepeat,
-          orientation.v1.dot(tangent) / image->unitsPerRepeat,
-          wall.minZ / image->unitsPerRepeat,
-          wall.maxZ / image->unitsPerRepeat};
+  auto length = orientation.v0.distanceTo(orientation.v1);
+  if (length <= 0.0f) return {};
+  auto verticalRepeat =
+      (wall.maxZ - wall.minZ) * image->repeat / length;
+  return {0.0f, image->repeat, 0.0f, verticalRepeat};
 }
 
 // Chip generation triangulates a bitten wall in its own normalized UV space.
@@ -39,10 +41,13 @@ inline void ApplyWallPhysicalUvToRemainder(
       triangle.kind != bw::core::arr::DetailTriangleKind::SurfaceRemainder) {
     return;
   }
-  auto tangent = (orientation.v1 - orientation.v0).normalisedCopy();
+  auto tangent = orientation.v1 - orientation.v0;
+  auto length = static_cast<float>(tangent.normalise());
+  if (length <= 0.0f) return;
   for (auto& vertex : triangle.v) {
     wp::Vector2 position{vertex.position[0], vertex.position[1]};
-    vertex.uv = {position.dot(tangent) / image->unitsPerRepeat,
-                 vertex.position[2] / image->unitsPerRepeat};
+    vertex.uv = {
+        (position - orientation.v0).dot(tangent) * image->repeat / length,
+        (vertex.position[2] - wall.minZ) * image->repeat / length};
   }
 }

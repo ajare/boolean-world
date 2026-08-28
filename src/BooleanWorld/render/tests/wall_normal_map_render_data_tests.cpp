@@ -15,7 +15,7 @@ void require(bool condition, std::string const& message) {
 }
 bool near(float a, float b) { return std::abs(a - b) < 0.0001f; }
 
-void physicalUvsUseCanonicalProjectionAndWorldElevation() {
+void physicalUvsUseWallLocalRepeatCount() {
   bw::core::arr::ArrangementWall wall{
       0, 6.0f, 14.0f, 0,
       bw::core::arr::ArrangementWallKind::Border, 8.0f, true,
@@ -24,9 +24,9 @@ void physicalUvsUseCanonicalProjectionAndWorldElevation() {
   bw::core::arr::ArrangementWallOrientation orientation{
       {3.0f, 4.0f}, {6.0f, 8.0f}, {-0.8f, 0.6f}};
   auto uv = CalculateWallPhysicalUv(orientation, wall);
-  require(near(uv.u0, 1.25f) && near(uv.u1, 2.5f) &&
-              near(uv.minV, 1.5f) && near(uv.maxV, 3.5f),
-          "mapped wall UVs were not physical canonical-tangent/elevation projections");
+  require(near(uv.u0, 0.0f) && near(uv.u1, 4.0f) &&
+              near(uv.minV, 0.0f) && near(uv.maxV, 6.4f),
+          "mapped wall UVs did not use wall-local horizontal repeat count");
 
   wall.normalMapOverride = bw::core::WallNormalMapOverride::unset();
   uv = CalculateWallPhysicalUv(orientation, wall);
@@ -35,7 +35,7 @@ void physicalUvsUseCanonicalProjectionAndWorldElevation() {
           "Unset wall changed the legacy UV data");
 }
 
-void physicalUvsRemainContinuousAcrossSplitsAndResetAtCorners() {
+void physicalUvsAlignToEachWallWithoutWorldPhase() {
   auto mapped = bw::core::WallNormalMapOverride::image(
       "normal/directional.png", 4.0f, 1.0f);
   bw::core::arr::ArrangementWall wall{
@@ -49,18 +49,20 @@ void physicalUvsRemainContinuousAcrossSplitsAndResetAtCorners() {
       bw::core::arr::ArrangementWallOrientation{
           {-4.0f, -4.0f}, {8.0f, -4.0f}, {0.0f, 1.0f}},
       wall);
-  require(near(first.u1, second.u0) && near(first.minV, -2.0f),
-          "physical UVs discontinuously restarted on a negative-coordinate split");
+  require(near(first.u0, 0.0f) && near(first.u1, 4.0f) &&
+              near(second.u0, 0.0f) && near(second.u1, 4.0f) &&
+              near(first.minV, 0.0f),
+          "wall-local UVs retained a world-position phase offset");
 
   auto corner = CalculateWallPhysicalUv(
       bw::core::arr::ArrangementWallOrientation{
           {-4.0f, -4.0f}, {-4.0f, 8.0f}, {-1.0f, 0.0f}},
       wall);
-  require(near(corner.u0, -1.0f) && near(corner.u1, 2.0f),
-          "a corner did not establish its own canonical tangent frame");
+  require(near(corner.u0, 0.0f) && near(corner.u1, 4.0f),
+          "a corner did not establish its own wall-local repeat range");
 }
 
-void chippedWallRemainderKeepsPhysicalUvAnchoring() {
+void chippedWallRemainderKeepsWallLocalUvAnchoring() {
   auto mapped = bw::core::WallNormalMapOverride::image(
       "normal/directional.png", 4.0f, 1.0f);
   bw::core::arr::ArrangementWall wall{
@@ -74,11 +76,11 @@ void chippedWallRemainderKeepsPhysicalUvAnchoring() {
   remainder.v[1].position = {4.0f, -4.0f, 6.0f};
   remainder.v[2].position = {0.0f, -4.0f, 8.0f};
   ApplyWallPhysicalUvToRemainder(orientation, wall, remainder);
-  require(near(remainder.v[0].uv[0], -2.0f) &&
-              near(remainder.v[0].uv[1], -1.0f) &&
-              near(remainder.v[1].uv[0], 1.0f) &&
-              near(remainder.v[1].uv[1], 1.5f),
-          "a Chip's coplanar wall remainder lost absolute physical UV anchoring");
+  require(near(remainder.v[0].uv[0], 0.8f) &&
+              near(remainder.v[0].uv[1], 0.8f) &&
+              near(remainder.v[1].uv[0], 3.2f) &&
+              near(remainder.v[1].uv[1], 2.8f),
+          "a Chip's coplanar wall remainder lost wall-local UV anchoring");
 
   auto facet = remainder;
   facet.kind = bw::core::arr::DetailTriangleKind::HorizontalChipFacet;
@@ -98,13 +100,23 @@ void shadersShareCompositionContract() {
   auto shader2d = readShader(BW_WORLD_PBR_2D_SHADER);
   for (auto const* shader : {&shader3d, &shader2d}) {
     require(shader->find("vec3 applyWallNormalMap") != std::string::npos &&
-                shader->find("@Texture(TEX1), @In(TEXCOORDS)") !=
+                shader->find("@Texture(TEX1), normalMapUv") !=
+                    std::string::npos &&
+                shader->find(
+                    "normalMapUv.y *= @Uniform(WALL_NORMAL_MAP_ASPECT_RATIO)") !=
                     std::string::npos &&
                 shader->find("if (strength == 0.0)") != std::string::npos &&
                 shader->find(
-                    "cross(vec3(0.0, 1.0, 0.0), surfaceNormal)") !=
+                    "cross(surfaceNormal, vec3(0.0, 1.0, 0.0))") !=
                     std::string::npos,
             "a world PBR shader lost the compatible normal-map/strength/tangent contract");
+    require(shader->find("material.albedo = vec3(0.5, 0.5, 0.5)") !=
+                    std::string::npos &&
+                shader->find("material.metallic = 0.0") !=
+                    std::string::npos &&
+                shader->find("material.roughness = 0.0") !=
+                    std::string::npos,
+            "a world PBR shader lost the parameterless Plain grey Technique");
   }
 
   auto sample = shader3d.find("vec3 normalDir = applyWallNormalMap");
@@ -155,9 +167,9 @@ void mappedAndUnmappedSurfacesHaveDistinctBucketIdentity() {
 
 int main() {
   try {
-    physicalUvsUseCanonicalProjectionAndWorldElevation();
-    physicalUvsRemainContinuousAcrossSplitsAndResetAtCorners();
-    chippedWallRemainderKeepsPhysicalUvAnchoring();
+    physicalUvsUseWallLocalRepeatCount();
+    physicalUvsAlignToEachWallWithoutWorldPhase();
+    chippedWallRemainderKeepsWallLocalUvAnchoring();
     shadersShareCompositionContract();
     strengthScalesTangentPlaneBeforeRenormalization();
     mappedAndUnmappedSurfacesHaveDistinctBucketIdentity();

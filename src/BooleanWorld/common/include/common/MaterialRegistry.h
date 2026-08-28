@@ -48,6 +48,7 @@ inline constexpr std::array<std::string_view, BW_MATERIAL_COUNT> TechniqueNames{
     "Mossy rock",
     "Wet rock",
     "Wood2",
+    "Plain grey",
 }};
 
 }  // namespace common

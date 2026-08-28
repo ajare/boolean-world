@@ -28,6 +28,7 @@
 @@Uniform(float EMBOSS_VORONOI_ROUNDING);
 @@Uniform(int WALL_NORMAL_MAP_ENABLED);
 @@Uniform(float WALL_NORMAL_MAP_STRENGTH);
+@@Uniform(float WALL_NORMAL_MAP_ASPECT_RATIO);
 ## Texture
 @@Texture(sampler2D TEX1);
 ##
@@ -2418,6 +2419,16 @@ vec3 shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
     return ambientDiffuse + ambientSpecular + direct;
 }
 
+Material plainGreyMaterial(vec3 normal)
+{
+    Material material;
+    material.albedo = vec3(0.5, 0.5, 0.5);
+    material.metallic = 0.0;
+    material.roughness = 0.0;
+    material.normal = normalize(normal);
+    return material;
+}
+
 Material evaluateMaterial(
     vec3 texturePosition, vec3 normalDir, vec3 viewDir, int materialIndex)
 {
@@ -2462,7 +2473,8 @@ Material evaluateMaterial(
         case 35: material = mossyRockTexture(texturePosition, normalDir); break;
         case 36: material = wetRockTexture(texturePosition, normalDir); break;
         case 37: material = wood2Texture(texturePosition, normalDir); break;
-        case 38: // BW_WALL_BACK_FACE_MATERIAL_INDEX (Defines.h): a plain
+        case 38: material = plainGreyMaterial(normalDir); break;
+        case 39: // BW_WALL_BACK_FACE_MATERIAL_INDEX (Defines.h): a plain
                  // white matte surface for the unmapped side of a wall.
             material.albedo = vec3(1.0, 1.0, 1.0);
             material.metallic = 0.0;
@@ -2488,17 +2500,22 @@ vec3 applyWallNormalMap(vec3 geometricNormal)
     if (@Uniform(WALL_NORMAL_MAP_ENABLED) == 0)
         return surfaceNormal;
 
-    // Linear OpenGL tangent space: +X follows cross(worldUp, wallNormal),
-    // exactly the canonical direction used to generate physical wall U, and
-    // +Y follows increasing world elevation.
+    // Linear tangent space: +X follows increasing physical wall U
+    // (orientation.v0 to orientation.v1), +Y follows increasing world
+    // elevation, and +Z points outward. In renderer coordinates that U axis
+    // is cross(wallNormal, worldUp), not the opposite cross product.
+    vec2 normalMapUv = @In(TEXCOORDS);
+    // Units per repeat specifies the image's world-space width. Preserve the
+    // source image's natural proportions when deriving its world-space height.
+    normalMapUv.y *= @Uniform(WALL_NORMAL_MAP_ASPECT_RATIO);
     vec3 sampled = texture(
-        @Texture(TEX1), @In(TEXCOORDS)).rgb * 2.0 - 1.0;
+        @Texture(TEX1), normalMapUv).rgb * 2.0 - 1.0;
     float strength = max(@Uniform(WALL_NORMAL_MAP_STRENGTH), 0.0);
     if (strength == 0.0)
         sampled = vec3(0.0, 0.0, 1.0);
     else
         sampled = normalize(vec3(sampled.xy * strength, sampled.z));
-    vec3 tangent = normalize(cross(vec3(0.0, 1.0, 0.0), surfaceNormal));
+    vec3 tangent = normalize(cross(surfaceNormal, vec3(0.0, 1.0, 0.0)));
     return normalize(
         tangent * sampled.x + vec3(0.0, 1.0, 0.0) * sampled.y +
         surfaceNormal * sampled.z);
@@ -2523,8 +2540,8 @@ void main()
         @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE),
         playerDistance);
     int materialIndex = floorMaterialIndex(
-        @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 38));
-    materialIndex = clamp(materialIndex, 0, 38);
+        @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 39));
+    materialIndex = clamp(materialIndex, 0, 39);
     Material material = evaluateMaterial(
         texturePosition, normalDir, viewDir, materialIndex);
 

@@ -1,3 +1,5 @@
+#include <mpp/Material.h>
+#include <mpp/Program.h>
 #include <mpp/ProgrammaticBasicMaterialStream.h>
 
 #include <core/Defines.h>
@@ -185,6 +187,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("USE_SECONDARY_MATERIAL", int32_t{0});
     uniforms.setUniform("WALL_NORMAL_MAP_ENABLED", int32_t{0});
     uniforms.setUniform("WALL_NORMAL_MAP_STRENGTH", 1.0f);
+    uniforms.setUniform("WALL_NORMAL_MAP_ASPECT_RATIO", 1.0f);
   };
 
   auto numPrimitives = world->getNumPrimitives();
@@ -280,7 +283,22 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       params->setMeshUniforms(meshName, uniforms);
       params->setMeshBlend(meshName, false);
       if (variant.texture) {
-        params->setMeshTexture(meshName, variant.textureIndex, variant.texture);
+        auto material = dynamic_pointer_cast<mpp::Material>(
+            mMaterial->getMppResource());
+        auto program = material
+                           ? dynamic_pointer_cast<mpp::Program>(
+                                 material->getProgram())
+                           : nullptr;
+        auto textureUnit = program
+                               ? program->getSamplerUnit(variant.textureSampler)
+                               : -1;
+        if (textureUnit < 0) {
+          throw logic_error(
+              "Wall render variant texture sampler is unavailable: " +
+              variant.textureSampler);
+        }
+        params->setMeshTexture(
+            meshName, static_cast<uint32_t>(textureUnit), variant.texture);
       }
       uniforms->setUniform("MATERIAL_INDEX", static_cast<int32_t>(resolved.materialIndex));
       uniforms->setUniform(

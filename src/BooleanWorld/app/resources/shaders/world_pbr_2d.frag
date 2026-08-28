@@ -28,6 +28,7 @@
 @@Uniform(float EMBOSS_VORONOI_ROUNDING);
 @@Uniform(int WALL_NORMAL_MAP_ENABLED);
 @@Uniform(float WALL_NORMAL_MAP_STRENGTH);
+@@Uniform(float WALL_NORMAL_MAP_ASPECT_RATIO);
 ## Texture
 @@Texture(sampler2D TEX1);
 ##
@@ -536,10 +537,22 @@ Material wood2Material2d(vec2 worldPos, vec3 normal)
     return material;
 }
 
+Material plainGreyMaterial2d(vec3 normal)
+{
+    Material material;
+    material.albedo = vec3(0.5, 0.5, 0.5);
+    material.metallic = 0.0;
+    material.roughness = 0.0;
+    material.normal = normalize(normal);
+    return material;
+}
+
 Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
 {
     if (type == 37)
         return wood2Material2d(worldPos, normal);
+    if (type == 38)
+        return plainGreyMaterial2d(normal);
 
     Material material;
     float scales[37] = float[37](
@@ -1231,14 +1244,16 @@ vec3 applyWallNormalMap(vec3 geometricNormal)
     if (@Uniform(WALL_NORMAL_MAP_ENABLED) == 0)
         return surfaceNormal;
 
+    vec2 normalMapUv = @In(TEXCOORDS);
+    normalMapUv.y *= @Uniform(WALL_NORMAL_MAP_ASPECT_RATIO);
     vec3 sampled = texture(
-        @Texture(TEX1), @In(TEXCOORDS)).rgb * 2.0 - 1.0;
+        @Texture(TEX1), normalMapUv).rgb * 2.0 - 1.0;
     float strength = max(@Uniform(WALL_NORMAL_MAP_STRENGTH), 0.0);
     if (strength == 0.0)
         sampled = vec3(0.0, 0.0, 1.0);
     else
         sampled = normalize(vec3(sampled.xy * strength, sampled.z));
-    vec3 tangent = normalize(cross(vec3(0.0, 1.0, 0.0), surfaceNormal));
+    vec3 tangent = normalize(cross(surfaceNormal, vec3(0.0, 1.0, 0.0)));
     return normalize(
         tangent * sampled.x + vec3(0.0, 1.0, 0.0) * sampled.y +
         surfaceNormal * sampled.z);
@@ -1263,8 +1278,8 @@ void main()
     vec2 texturePosition = quantizeByPlayerDistance(
         worldPos.xz / @Uniform(MATERIAL_SCALE), playerDistance);
     int materialIndex = floorMaterialIndex(
-        worldPos, clamp(@Uniform(MATERIAL_INDEX), 0, 37));
-    materialIndex = clamp(materialIndex, 0, 37);
+        worldPos, clamp(@Uniform(MATERIAL_INDEX), 0, 38));
+    materialIndex = clamp(materialIndex, 0, 38);
     Material material = material2d(
         texturePosition, normal, viewDir, materialIndex);
     // Whatever this material embosses, on whatever surface it was

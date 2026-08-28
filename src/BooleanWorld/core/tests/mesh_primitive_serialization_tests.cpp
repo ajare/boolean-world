@@ -396,7 +396,7 @@ void authoredNormalMapValuesRoundTripAndRejectFutureVersions() {
       if (auto payload = value.imageData()) {
         ++image;
         require(payload->resourcePath == "normal/directional.png" &&
-                    payload->unitsPerRepeat == 12.5f &&
+                    payload->repeat == 12.5f &&
                     payload->strength == 0.75f,
                 "Image normal-map payload changed on reload");
       } else {
@@ -423,9 +423,9 @@ void authoredNormalMapValuesRoundTripAndRejectFutureVersions() {
   require(binaryOk, "normal maps did not load from binary: " + binaryErrors);
   verify(*binaryLoaded);
 
-  auto marker = yaml.find("edgeOverrideFormat: 2");
+  auto marker = yaml.find("edgeOverrideFormat: 3");
   require(marker != std::string::npos, "normal-map format is not versioned");
-  yaml.replace(marker, std::string("edgeOverrideFormat: 2").size(),
+  yaml.replace(marker, std::string("edgeOverrideFormat: 3").size(),
                "edgeOverrideFormat: 99");
   auto rejected = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
@@ -436,7 +436,7 @@ void authoredNormalMapValuesRoundTripAndRejectFutureVersions() {
 }
 
 std::string asLegacyCollisionYaml(std::string yaml, bool retainFormat) {
-  auto marker = yaml.find("edgeOverrideFormat: 2");
+  auto marker = yaml.find("edgeOverrideFormat: 3");
   require(marker != std::string::npos,
           "serialized MeshPrimitive had no edge override format marker");
   auto markerLineStart = yaml.rfind('\n', marker) + 1;

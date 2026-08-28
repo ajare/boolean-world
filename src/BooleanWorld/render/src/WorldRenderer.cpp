@@ -31,7 +31,7 @@ string normalMapIdentity(bw::core::WallNormalMapOverride::ImageData const& image
     result << hex << setw(2) << setfill('0')
            << static_cast<unsigned>(static_cast<unsigned char>(byte));
   }
-  result << '-' << hex << bit_cast<uint32_t>(image.unitsPerRepeat) << '-'
+  result << '-' << hex << bit_cast<uint32_t>(image.repeat) << '-'
          << bit_cast<uint32_t>(image.strength);
   return result.str();
 }
@@ -139,13 +139,18 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
             auto resource = mNormalMapResourceSet->acquire(image->resourcePath);
             WallRenderVariant variant;
             variant.identity = identity;
-            variant.textureIndex = 0;
+            variant.textureSampler = "TEX1";
             variant.texture = resource->texture();
             auto strength = image->strength;
-            variant.setUniforms = [strength](mpp::UniformCollection& uniforms) {
-              uniforms.updateUniform("WALL_NORMAL_MAP_ENABLED", int32_t{1});
-              uniforms.updateUniform("WALL_NORMAL_MAP_STRENGTH", strength);
-            };
+            auto aspectRatio =
+                static_cast<float>(resource->width()) / resource->height();
+            variant.setUniforms =
+                [strength, aspectRatio](mpp::UniformCollection& uniforms) {
+                  uniforms.updateUniform("WALL_NORMAL_MAP_ENABLED", int32_t{1});
+                  uniforms.updateUniform("WALL_NORMAL_MAP_STRENGTH", strength);
+                  uniforms.updateUniform(
+                      "WALL_NORMAL_MAP_ASPECT_RATIO", aspectRatio);
+                };
             mNormalMapVariants.emplace(identity, move(variant));
           }
         }

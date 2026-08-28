@@ -124,6 +124,10 @@ add_dependencies(Launcher BooleanWorld)
 
 bw_deploy_runtime_dlls(Launcher)
 bw_deploy_vendor_dlls(Launcher)
+# Wall normal maps are authored as paths relative to the application's runtime
+# resource root. Unlike manifest resources, NormalMapResourceSet decodes them
+# directly from disk, so stage the image tree beside Launcher.exe.
+bw_deploy_directory(Launcher "${BW_ROOT}/src/BooleanWorld/app/resources/images" "images")
 
 # Per-machine support files:
 #   support/<COMPUTERNAME>/<CONFIG>/*  ->  output directory

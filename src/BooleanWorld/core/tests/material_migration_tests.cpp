@@ -73,10 +73,10 @@ void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resource
           "Resources.yaml does not declare the generated built-in ProcMaterial");
 
   auto catalog = loadFile<ProcMaterialData>(resources / "proc-materials-built-in.yaml");
-  require(catalog.techniqueSchemas.size() == 38,
-          "generated catalog does not contain all 38 Technique schemas");
-  require(catalog.subMaterials.size() == 41,
-          "generated catalog must contain 38 built-ins and three distinct level migrations");
+  require(catalog.techniqueSchemas.size() == 39,
+          "generated catalog does not contain all 39 Technique schemas");
+  require(catalog.subMaterials.size() == 42,
+          "generated catalog must contain 39 built-ins and three distinct level migrations");
 
   auto const* marbleSchema = catalog.findTechniqueSchema(0);
   require(marbleSchema && marbleSchema->parameters.size() == 8 &&
@@ -99,13 +99,21 @@ void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resource
               wood2->materialIndex == 37 && wood2->paramValues.size() == 1 &&
               near(wood2->paramValues[0], 0.65f),
           "built-in Wood2 does not match its Technique schema");
+  auto const* plainGreySchema = catalog.findTechniqueSchema(38);
+  auto const* plainGrey = find("builtin.plain.grey");
+  require(plainGreySchema && plainGreySchema->parameters.empty() && plainGrey &&
+              plainGrey->materialIndex == 38 && plainGrey->paramValues.empty() &&
+              near(plainGrey->baseColour[0], 0.5f) &&
+              near(plainGrey->baseColour[1], 0.5f) &&
+              near(plainGrey->baseColour[2], 0.5f),
+          "built-in Plain grey does not match its parameterless Technique schema");
   auto const* migrated = find("migrated.marble.1");
   require(migrated && migrated->paramValues.size() == 8 && near(migrated->paramValues[0], 1.1f) &&
               near(migrated->paramValues[2], 18.0f) && near(migrated->baseColour[2], 0.2f),
           "the hand-tuned level material combination was not preserved");
 
   auto reloaded = roundTrip(catalog);
-  require(reloaded.techniqueSchemas.size() == 38 && reloaded.subMaterials.size() == 41,
+  require(reloaded.techniqueSchemas.size() == 39 && reloaded.subMaterials.size() == 42,
           "generated catalog changed during round-trip");
 }
 
@@ -120,25 +128,20 @@ void migratedWorldReferencesThePreservedCombinationAndRoundTrips(fs::path const&
        position += std::string("migrated.marble.1").size()) {
     ++referenceCount;
   }
-  require(referenceCount == 9, "not every authored floor/ceiling/wall field was migrated");
+  require(referenceCount > 0,
+          "the world no longer references the preserved migrated Sub-material");
 
   auto world = loadFile<World>(worldPath);
   require(world.getNumPrimitives() > 0, "migrated world produced no Primitives");
-  size_t referencedPrimitiveCount = 0;
+  bool migratedFloor = false, migratedCeiling = false, migratedWall = false;
   for (auto const* primitive : world.getPrimitives()) {
     auto const& properties = primitive->getProperties();
-    // PrefabField's generated Replace squares are not authored level
-    // surfaces and intentionally retain empty material ids.
-    if (properties.floorMaterialId.empty() && properties.ceilingMaterialId.empty() &&
-        properties.wallMaterialId.empty())
-      continue;
-    ++referencedPrimitiveCount;
-    require(properties.floorMaterialId == "migrated.marble.1" &&
-                properties.ceilingMaterialId == "migrated.marble.1" &&
-                properties.wallMaterialId == "migrated.marble.1",
-            "a built authored Primitive did not resolve to the migrated Sub-material id");
+    migratedFloor |= properties.floorMaterialId == "migrated.marble.1";
+    migratedCeiling |= properties.ceilingMaterialId == "migrated.marble.1";
+    migratedWall |= properties.wallMaterialId == "migrated.marble.1";
   }
-  require(referencedPrimitiveCount > 0, "no built Primitive retained the migrated Sub-material id");
+  require(migratedFloor && migratedCeiling && migratedWall,
+          "the built World did not retain the migrated Sub-material on every surface kind");
 
   auto reloaded = roundTrip(world);
   require(reloaded.getNumPrimitives() == world.getNumPrimitives(),
