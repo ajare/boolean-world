@@ -6,6 +6,21 @@ world:
   playerStartPosition: [0, 0]
   playerStartAngle: 0
   stepThreshold: 8
+  wedgeGeneration:
+    enabled: 1
+    floorWedgesPerUnitDistance: 0.05
+    ceilingWedgesPerUnitDistance: 0.05
+    cornerWedgeProbability: 1
+    minimumReach: 12
+    maximumReach: 24
+    minimumDropDownHeight: 6
+    maximumDropDownHeight: 12
+    minimumProjectionDepth: 6
+    maximumProjectionDepth: 12
+    minimumCornerReach: 6
+    maximumCornerReach: 12
+    minimumCornerVerticalExtent: 6
+    maximumCornerVerticalExtent: 12
   layers:
     - id: 0
       name: Layer 0

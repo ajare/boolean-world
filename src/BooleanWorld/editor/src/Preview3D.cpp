@@ -194,7 +194,8 @@ void rebuildPreviewWorldData() {
   session.worldData = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), session.world->getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      session.world->getStepThreshold());
+      session.world->getStepThreshold(), nullptr,
+      session.world->getWedgeGenerationParameters());
 }
 
 // Defined below, with the render-scene lifecycle it belongs to.

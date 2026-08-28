@@ -8,6 +8,7 @@
 
 #include "core/Arrangement.h"
 #include "core/Platform.h"
+#include "core/WedgeGenerationParameters.h"
 
 namespace bw::core::arr {
 // Which single rendered surface a detail entry refers to.
@@ -48,7 +49,8 @@ enum struct DetailTriangleKind : uint8_t {
   SurfaceRemainder,
   HorizontalChipFacet,
   VerticalChipFacet,
-  CornerChipFacet
+  CornerChipFacet,
+  WedgeFacet
 };
 
 struct DetailTriangle {
@@ -67,21 +69,24 @@ struct DetailTriangle {
   std::optional<ChipType> chipType;
 };
 
-// The detail channel published alongside mTriangles/mWalls (ADR-0027): the
-// surfaces a renderer must not draw, and the triangles that stand in for
-// them. A replacement triangle is tagged with the surface it replaces, so a
-// wall's replacements inherit that wall's per-frame authored/back-face
-// material decision instead of baking one in at generation time.
+// The post-fold visual-detail channel published alongside mTriangles/mWalls
+// (ADR-0027 and ADR-0031). It carries both suppressed surfaces with their Chip
+// replacements and unsuppressed additive Wedge facets. Every triangle is
+// tagged with a source surface for material routing: wall replacements inherit
+// the wall's per-frame material decision, while Wedges select their adjoining
+// floor or ceiling face.
 class BW_API DetailGeometry {
   // Both sorted by key, so the queries below can binary-search them.
   std::vector<DetailSurfaceKey> mSuppressed;
   std::vector<DetailTriangle> mTriangles;
   uint32_t mChipCount{0};
+  uint32_t mWedgeCount{0};
 
 public:
   void addSuppressed(DetailSurfaceKey const& key);
   void addTriangle(DetailTriangle const& triangle);
   void countChip();
+  void countWedge();
   // Restores the sorted-by-key invariant the queries rely on. Called once,
   // by the builder, after every entry has been added.
   void sort();
@@ -99,10 +104,13 @@ public:
   [[nodiscard]] std::vector<DetailTriangle> const& getTriangles() const;
 
   [[nodiscard]] uint32_t getChipCount() const;
+
+  [[nodiscard]] uint32_t getWedgeCount() const;
 };
 
-// Generates deterministic Chips along every eligible Arris and returns the
-// detail channel that replaces the surfaces they bite into.
+// Generates deterministic Chips along eligible Arrises, centred Edge Wedges
+// above and below Border-wall floor and ceiling Arrises, and Corner Wedges at
+// trihedral floor/ceiling meetings of two connected Border walls.
 //
 // Eligible Horizontal Arrises are a visible FloorStep's convex top and a
 // visible CeilingStep's convex bottom. Eligible Vertical Arrises are the
@@ -118,7 +126,13 @@ public:
 // skipped if its minimum distance does not fit any incident edge; each maximum
 // distance is otherwise clamped to its edge. Reach never runs past an Arris
 // endpoint, and a Chip below the minimum resulting size is dropped.
+//
+// Wedges are evaluated only after all Chip reservations are complete. Edge
+// and Corner attachment footprints shrink within their configured ranges to
+// avoid exact Horizontal, Vertical, and Corner Chip cuts; a Wedge is skipped
+// when any configured minimum cannot remain clear.
 [[nodiscard]] DetailGeometry BuildChipDetail(
     ArrangementResult const& arrangement,
-    std::vector<ArrangementWall> const& walls);
+    std::vector<ArrangementWall> const& walls,
+    WedgeGenerationParameters const& wedgeParameters = {});
 }  // namespace bw::core::arr

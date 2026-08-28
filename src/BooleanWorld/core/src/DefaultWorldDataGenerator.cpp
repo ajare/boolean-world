@@ -50,6 +50,7 @@ void DefaultWorldDataGenerator::generate(
       generator.getWorldData(),
       world->getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      world->getStepThreshold());
+      world->getStepThreshold(), nullptr,
+      world->getWedgeGenerationParameters());
 }
 }  // namespace bw::core

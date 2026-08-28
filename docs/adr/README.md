@@ -37,6 +37,7 @@ removed the dependency entirely. Geometry terms are defined in
 | [0028](0028-wall-collision-overrides-are-tristate.md) | Wall collision overrides are tri-state | Accepted |
 | [0029](0029-structural-primitives-are-property-transparent.md) | Structural Primitives are property-transparent | Accepted |
 | [0030](0030-wall-normal-map-overrides-belong-to-authored-external-edges.md) | Wall normal-map overrides belong to authored External edges | Accepted |
+| [0031](0031-wedges-are-world-configured-additive-detail-geometry.md) | Wedges are World-configured additive post-fold detail geometry | Accepted |
 
 ## World geometry rewrite scope
 

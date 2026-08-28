@@ -74,6 +74,16 @@ bool setWorldName(Document* doc, string const& name) {
   return true;
 }
 
+bool setWorldWedgeGenerationParameters(
+    Document* doc,
+    bw::core::WedgeGenerationParameters const& parameters) {
+  if (!bw::core::WedgeGenerationParametersAreValid(parameters)) {
+    return false;
+  }
+  doc->getWorld()->setWedgeGenerationParameters(parameters);
+  return true;
+}
+
 bool addLayer(Document* doc, string const& name) {
   auto world = doc->getWorld();
 

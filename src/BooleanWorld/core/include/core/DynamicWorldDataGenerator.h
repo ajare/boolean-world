@@ -21,6 +21,7 @@
 #include "core/WorldDataGenerator.h"
 #include "core/Stats.h"
 #include "core/ThreadSafeQueue.h"
+#include "core/WedgeGenerationParameters.h"
 
 namespace bw {
 namespace core {
@@ -78,6 +79,7 @@ private:
     wp::BoundingBox worldExtents;
     float gridCellSize;
     float stepThreshold;
+    WedgeGenerationParameters wedgeGenerationParameters;
   };
 
   std::atomic_uint32_t mClippingIdGenerator;

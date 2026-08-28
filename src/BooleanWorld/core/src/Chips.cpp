@@ -20,6 +20,7 @@ constexpr float MaximumChipReach = 4.0f;  // Width is half-reach, capped at 2.
 // Matches BuildArrangementTriangles' floor/ceiling UV scale, so a rebuilt
 // face's texture keeps running through it unbroken.
 constexpr float HorizontalUvScale = 64.0f;
+constexpr float WedgeCentralLineConvexity = 0.1f;
 
 uint64_t Mix(uint64_t value) {
   value += 0x9e3779b97f4a7c15ull;
@@ -196,6 +197,35 @@ std::vector<GeneratedChip> GenerateChips(
          parameters.types[typeIndex], Mix(seed ^ uint64_t(chip))});
   }
   return chips;
+}
+
+std::vector<float> GenerateWedgeCentres(
+    float length,
+    float minimumReach,
+    float averagePerUnitDistance,
+    uint64_t seed,
+    uint64_t stream) {
+  std::vector<float> centres;
+  if (averagePerUnitDistance <= 0.0f || length < minimumReach) {
+    return centres;
+  }
+  auto expectedCount = length * averagePerUnitDistance;
+  auto count = uint32_t(std::floor(expectedCount + 0.5f));
+  if (count == 0) return centres;
+
+  auto margin = minimumReach * 0.5f;
+  auto usable = length - minimumReach;
+  centres.reserve(count);
+  if (count == 1) {
+    centres.push_back(length * 0.5f);
+    return centres;
+  }
+  for (uint32_t candidate = 0; candidate < count; ++candidate) {
+    auto offset = StableRandom01(seed, stream + 1 + candidate);
+    centres.push_back(
+        margin + (float(candidate) + offset) * usable / float(count));
+  }
+  return centres;
 }
 
 struct Vertex3 {
@@ -521,6 +551,419 @@ void AddWallRemainder(
   }
 }
 
+constexpr float FootprintEpsilon = 0.0001f;
+
+float Cross2d(
+    wp::Vector2 const& a,
+    wp::Vector2 const& b,
+    wp::Vector2 const& c) {
+  return (b.x - a.x) * (c.y - a.y) -
+         (b.y - a.y) * (c.x - a.x);
+}
+
+bool PointOnSegment(
+    wp::Vector2 const& point,
+    wp::Vector2 const& a,
+    wp::Vector2 const& b) {
+  if (std::abs(Cross2d(a, b, point)) > FootprintEpsilon) return false;
+  return point.x >= std::min(a.x, b.x) - FootprintEpsilon &&
+         point.x <= std::max(a.x, b.x) + FootprintEpsilon &&
+         point.y >= std::min(a.y, b.y) - FootprintEpsilon &&
+         point.y <= std::max(a.y, b.y) + FootprintEpsilon;
+}
+
+enum struct RingPointLocation { Outside, Inside, Boundary };
+
+RingPointLocation PointInRing(
+    ArrangementResult const& arrangement,
+    std::vector<uint32_t> const& vertices,
+    wp::Vector2 const& point) {
+  bool inside = false;
+  for (size_t i = 0; i < vertices.size(); ++i) {
+    auto a = ToWorld(arrangement.vertices[vertices[i]]);
+    auto b = ToWorld(
+        arrangement.vertices[vertices[(i + 1) % vertices.size()]]);
+    if (PointOnSegment(point, a, b)) return RingPointLocation::Boundary;
+    if ((a.y > point.y) != (b.y > point.y)) {
+      auto crossingX =
+          a.x + (point.y - a.y) * (b.x - a.x) / (b.y - a.y);
+      if (crossingX > point.x) inside = !inside;
+    }
+  }
+  return inside ? RingPointLocation::Inside : RingPointLocation::Outside;
+}
+
+bool PointInFaceClosure(
+    ArrangementResult const& arrangement,
+    ArrangementFace const& face,
+    wp::Vector2 const& point) {
+  auto outer = PointInRing(arrangement, face.outerBoundaryVertices, point);
+  if (outer == RingPointLocation::Boundary) return true;
+  if (outer != RingPointLocation::Inside) return false;
+  for (auto const& hole : face.innerBoundaryVertices) {
+    auto location = PointInRing(arrangement, hole, point);
+    if (location == RingPointLocation::Boundary) return true;
+    if (location == RingPointLocation::Inside) return false;
+  }
+  return true;
+}
+
+bool PointStrictlyInTriangle(
+    wp::Vector2 const& point,
+    std::array<wp::Vector2, 3> const& triangle) {
+  auto a = Cross2d(triangle[0], triangle[1], point);
+  auto b = Cross2d(triangle[1], triangle[2], point);
+  auto c = Cross2d(triangle[2], triangle[0], point);
+  return (a > FootprintEpsilon && b > FootprintEpsilon &&
+          c > FootprintEpsilon) ||
+         (a < -FootprintEpsilon && b < -FootprintEpsilon &&
+          c < -FootprintEpsilon);
+}
+
+bool SegmentEntersTriangleInterior(
+    wp::Vector2 const& a,
+    wp::Vector2 const& b,
+    std::array<wp::Vector2, 3> const& triangle);
+
+bool PointStrictlyInPolygon(
+    wp::Vector2 const& point,
+    std::vector<wp::Vector2> const& polygon) {
+  bool inside = false;
+  for (size_t i = 0; i < polygon.size(); ++i) {
+    auto const& a = polygon[i];
+    auto const& b = polygon[(i + 1) % polygon.size()];
+    if (PointOnSegment(point, a, b)) return false;
+    if ((a.y > point.y) != (b.y > point.y)) {
+      auto crossingX =
+          a.x + (point.y - a.y) * (b.x - a.x) / (b.y - a.y);
+      if (crossingX > point.x) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+bool PolygonInteriorsOverlap(
+    std::array<wp::Vector2, 3> const& triangle,
+    std::vector<wp::Vector2> const& polygon) {
+  if (polygon.size() < 3) return false;
+  for (auto const& point : triangle) {
+    if (PointStrictlyInPolygon(point, polygon)) return true;
+  }
+  for (auto const& point : polygon) {
+    if (PointStrictlyInTriangle(point, triangle)) return true;
+  }
+  for (size_t edge = 0; edge < polygon.size(); ++edge) {
+    if (SegmentEntersTriangleInterior(
+            polygon[edge], polygon[(edge + 1) % polygon.size()], triangle)) {
+      return true;
+    }
+  }
+
+  // Coincident polygons need an interior sample: every edge lies on the
+  // candidate boundary, so no boundary segment enters its strict interior.
+  auto triangleCentre =
+      (triangle[0] + triangle[1] + triangle[2]) * (1.0f / 3.0f);
+  return PointStrictlyInPolygon(triangleCentre, polygon);
+}
+
+bool SegmentEntersTriangleInterior(
+    wp::Vector2 const& a,
+    wp::Vector2 const& b,
+    std::array<wp::Vector2, 3> const& triangle) {
+  if (PointStrictlyInTriangle(a, triangle) ||
+      PointStrictlyInTriangle(b, triangle)) {
+    return true;
+  }
+
+  // Split the boundary segment wherever it meets a triangle side, then test
+  // each open interval. This also catches a segment that enters exactly at a
+  // triangle vertex, which a strict proper-intersection test would miss.
+  std::vector<float> parameters{0.0f, 1.0f};
+  auto segment = b - a;
+  for (size_t side = 0; side < triangle.size(); ++side) {
+    auto c = triangle[side];
+    auto edge = triangle[(side + 1) % triangle.size()] - c;
+    auto denominator = segment.x * edge.y - segment.y * edge.x;
+    if (std::abs(denominator) <= FootprintEpsilon) continue;
+    auto offset = c - a;
+    auto t = (offset.x * edge.y - offset.y * edge.x) / denominator;
+    auto u = (offset.x * segment.y - offset.y * segment.x) / denominator;
+    if (t >= -FootprintEpsilon && t <= 1.0f + FootprintEpsilon &&
+        u >= -FootprintEpsilon && u <= 1.0f + FootprintEpsilon) {
+      parameters.push_back(std::clamp(t, 0.0f, 1.0f));
+    }
+  }
+  std::sort(parameters.begin(), parameters.end());
+  for (size_t i = 0; i + 1 < parameters.size(); ++i) {
+    if (parameters[i + 1] - parameters[i] <= FootprintEpsilon) continue;
+    auto t = (parameters[i] + parameters[i + 1]) * 0.5f;
+    if (PointStrictlyInTriangle(a + segment * t, triangle)) return true;
+  }
+  return false;
+}
+
+// A footprint is valid only when its complete closed triangle lies in the
+// face. Besides checking its vertices, inspect every outer/hole boundary for
+// a segment entering the triangle's interior. This catches crossings,
+// re-entrant notches, and holes wholly contained by a large footprint.
+bool WedgeFootprintFits(
+    ArrangementResult const& arrangement,
+    ArrangementFace const& face,
+    std::array<wp::Vector2, 3> const& triangle) {
+  for (auto const& point : triangle) {
+    if (!PointInFaceClosure(arrangement, face, point)) return false;
+  }
+
+  auto boundaryFits = [&](std::vector<uint32_t> const& vertices) {
+    for (size_t i = 0; i < vertices.size(); ++i) {
+      auto a = ToWorld(arrangement.vertices[vertices[i]]);
+      auto b = ToWorld(
+          arrangement.vertices[vertices[(i + 1) % vertices.size()]]);
+      if (SegmentEntersTriangleInterior(a, b, triangle)) return false;
+    }
+    return true;
+  };
+
+  if (!boundaryFits(face.outerBoundaryVertices)) {
+    return false;
+  }
+  auto holes = std::min(
+      face.innerBoundaries.size(), face.innerBoundaryVertices.size());
+  for (size_t hole = 0; hole < holes; ++hole) {
+    if (!boundaryFits(face.innerBoundaryVertices[hole])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ArrisIntervalsOverlap(
+    wp::Vector2 const& wedgeA,
+    wp::Vector2 const& wedgeB,
+    wp::Vector2 const& reservationA,
+    wp::Vector2 const& reservationB) {
+  auto direction = (wedgeB - wedgeA).normalisedCopy();
+  auto wedgeLength = wedgeA.distanceTo(wedgeB);
+  auto start = (reservationA - wedgeA).dot(direction);
+  auto end = (reservationB - wedgeA).dot(direction);
+  return std::min(std::max(start, end), wedgeLength) -
+             std::max(std::min(start, end), 0.0f) >
+         FootprintEpsilon;
+}
+
+bool WedgeHorizontalSurfaceAvoidsChips(
+    ArrangementResult const& arrangement,
+    uint32_t wallEdge,
+    std::array<wp::Vector2, 3> const& triangle,
+    std::vector<Footprint> const& footprints,
+    std::vector<FaceCornerCut> const& cornerCuts) {
+  auto const& wedgeA = triangle[0];
+  auto const& wedgeB = triangle[1];
+  for (auto const& footprint : footprints) {
+    if (footprint.edgeIndex == wallEdge &&
+        ArrisIntervalsOverlap(
+            wedgeA, wedgeB, footprint.a, footprint.b)) {
+      return false;
+    }
+    auto reservation = footprint.profile.empty()
+                           ? std::vector<wp::Vector2>{
+                                 footprint.a, footprint.apex, footprint.b}
+                           : footprint.profile;
+    if (PolygonInteriorsOverlap(triangle, reservation)) return false;
+  }
+  for (auto const& cut : cornerCuts) {
+    auto corner = ToWorld(arrangement.vertices[cut.vertexIndex]);
+    if (PolygonInteriorsOverlap(
+            triangle, {corner, cut.pointA, cut.pointB})) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CornerWedgeHorizontalSurfaceAvoidsChips(
+    ArrangementResult const& arrangement,
+    uint32_t edgeA,
+    uint32_t edgeB,
+    std::array<wp::Vector2, 3> const& triangle,
+    std::vector<Footprint> const& footprints,
+    std::vector<FaceCornerCut> const& cornerCuts) {
+  for (auto const& footprint : footprints) {
+    auto overlapsA = footprint.edgeIndex == edgeA &&
+                     ArrisIntervalsOverlap(
+                         triangle[0], triangle[1], footprint.a, footprint.b);
+    auto overlapsB = footprint.edgeIndex == edgeB &&
+                     ArrisIntervalsOverlap(
+                         triangle[0], triangle[2], footprint.a, footprint.b);
+    if (overlapsA || overlapsB) return false;
+    auto reservation = footprint.profile.empty()
+                           ? std::vector<wp::Vector2>{
+                                 footprint.a, footprint.apex, footprint.b}
+                           : footprint.profile;
+    if (PolygonInteriorsOverlap(triangle, reservation)) return false;
+  }
+  for (auto const& cut : cornerCuts) {
+    auto corner = ToWorld(arrangement.vertices[cut.vertexIndex]);
+    if (PolygonInteriorsOverlap(
+            triangle, {corner, cut.pointA, cut.pointB})) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::vector<std::vector<wp::Vector2>> WallChipReservations(
+    WallNotches const& notches,
+    float length,
+    float minZ,
+    float maxZ) {
+  std::vector<std::vector<wp::Vector2>> reservations;
+  auto height = maxZ - minZ;
+  for (auto const& notch : notches.bottom) {
+    std::vector<wp::Vector2> polygon;
+    if (notch.profile.empty()) {
+      polygon = {{notch.start, height},
+                 {(notch.start + notch.end) * 0.5f,
+                  height - notch.depth},
+                 {notch.end, height}};
+    } else {
+      for (auto const& point : notch.profile) {
+        polygon.push_back({point.position, height - point.depth});
+      }
+    }
+    reservations.push_back(std::move(polygon));
+  }
+  for (auto const& notch : notches.top) {
+    std::vector<wp::Vector2> polygon;
+    if (notch.profile.empty()) {
+      polygon = {{notch.start, 0.0f},
+                 {(notch.start + notch.end) * 0.5f, notch.depth},
+                 {notch.end, 0.0f}};
+    } else {
+      for (auto const& point : notch.profile) {
+        polygon.push_back({point.position, point.depth});
+      }
+    }
+    reservations.push_back(std::move(polygon));
+  }
+  for (auto const& notch : notches.left) {
+    std::vector<wp::Vector2> polygon;
+    if (notch.profile.empty()) {
+      polygon = {{0.0f, maxZ - notch.start},
+                 {notch.depth,
+                  maxZ - (notch.start + notch.end) * 0.5f},
+                 {0.0f, maxZ - notch.end}};
+    } else {
+      for (auto const& point : notch.profile) {
+        polygon.push_back({point.depth, maxZ - point.position});
+      }
+    }
+    reservations.push_back(std::move(polygon));
+  }
+  for (auto const& notch : notches.right) {
+    std::vector<wp::Vector2> polygon;
+    if (notch.profile.empty()) {
+      polygon = {{length, maxZ - notch.start},
+                 {length - notch.depth,
+                  maxZ - (notch.start + notch.end) * 0.5f},
+                 {length, maxZ - notch.end}};
+    } else {
+      for (auto const& point : notch.profile) {
+        polygon.push_back({length - point.depth, maxZ - point.position});
+      }
+    }
+    reservations.push_back(std::move(polygon));
+  }
+  auto addCorner = [&](std::optional<WallCornerCut> const& cut,
+                       float x,
+                       float y,
+                       float horizontalSign,
+                       float verticalSign) {
+    if (!cut) return;
+    reservations.push_back({
+        {x, y},
+        {x + horizontalSign * cut->horizontalDistance, y},
+        {x, y + verticalSign * cut->verticalDistance}});
+  };
+  addCorner(notches.topLeft, 0.0f, 0.0f, 1.0f, 1.0f);
+  addCorner(notches.topRight, length, 0.0f, -1.0f, 1.0f);
+  addCorner(notches.bottomLeft, 0.0f, height, 1.0f, -1.0f);
+  addCorner(notches.bottomRight, length, height, -1.0f, -1.0f);
+  return reservations;
+}
+
+bool WedgeWallAttachmentAvoidsChips(
+    float arrisStart,
+    float arrisEnd,
+    std::array<wp::Vector2, 3> const& attachment,
+    float length,
+    bool atTop,
+    WallNotches const& notches,
+    std::vector<std::vector<wp::Vector2>> const& reservations) {
+  auto start = std::min(arrisStart, arrisEnd);
+  auto end = std::max(arrisStart, arrisEnd);
+  auto const& arrisNotches = atTop ? notches.top : notches.bottom;
+  for (auto const& notch : arrisNotches) {
+    if (std::min(end, notch.end) - std::max(start, notch.start) >
+        FootprintEpsilon) {
+      return false;
+    }
+  }
+  auto const& startCorner = atTop ? notches.topLeft : notches.bottomLeft;
+  auto const& endCorner = atTop ? notches.topRight : notches.bottomRight;
+  if (startCorner &&
+      std::min(end, startCorner->horizontalDistance) - start >
+          FootprintEpsilon) {
+    return false;
+  }
+  if (endCorner &&
+      end - std::max(start, length - endCorner->horizontalDistance) >
+          FootprintEpsilon) {
+    return false;
+  }
+  return std::none_of(
+      reservations.begin(), reservations.end(), [&](auto const& reservation) {
+        return PolygonInteriorsOverlap(attachment, reservation);
+      });
+}
+
+bool WedgeWallAvoidsChips(
+    float centre,
+    float reach,
+    float verticalExtent,
+    float length,
+    float height,
+    bool atTop,
+    WallNotches const& notches,
+    std::vector<std::vector<wp::Vector2>> const& reservations) {
+  auto start = centre - reach * 0.5f;
+  auto end = centre + reach * 0.5f;
+  auto arrisY = atTop ? 0.0f : height;
+  auto apexY = atTop ? verticalExtent : height - verticalExtent;
+  std::array<wp::Vector2, 3> attachment{
+      wp::Vector2{start, arrisY}, wp::Vector2{end, arrisY},
+      wp::Vector2{centre, apexY}};
+  return WedgeWallAttachmentAvoidsChips(
+      start, end, attachment, length, atTop, notches, reservations);
+}
+
+template <typename Predicate>
+std::optional<float> CapMonotonicRange(
+    float minimum,
+    float maximum,
+    Predicate&& fits) {
+  if (!fits(minimum)) return std::nullopt;
+  if (fits(maximum)) return maximum;
+  auto low = minimum;
+  auto high = maximum;
+  for (int iteration = 0; iteration < 32; ++iteration) {
+    auto midpoint = (low + high) * 0.5f;
+    if (fits(midpoint)) low = midpoint;
+    else high = midpoint;
+  }
+  return low;
+}
+
 // How far a Chip may bite into `face` from `origin` (a point on `currentEdge`)
 // along `direction` before it would reach some *other* boundary of the face -
 // an opposite Arris, a hole, or a wall of the same footprint met at a corner.
@@ -722,6 +1165,10 @@ void DetailGeometry::countChip() {
   ++mChipCount;
 }
 
+void DetailGeometry::countWedge() {
+  ++mWedgeCount;
+}
+
 void DetailGeometry::sort() {
   std::sort(mSuppressed.begin(), mSuppressed.end());
   std::stable_sort(
@@ -769,9 +1216,14 @@ uint32_t DetailGeometry::getChipCount() const {
   return mChipCount;
 }
 
+uint32_t DetailGeometry::getWedgeCount() const {
+  return mWedgeCount;
+}
+
 DetailGeometry BuildChipDetail(
     ArrangementResult const& arrangement,
-    std::vector<ArrangementWall> const& walls) {
+    std::vector<ArrangementWall> const& walls,
+    WedgeGenerationParameters const& wedgeParameters) {
   DetailGeometry detail;
   std::map<DetailSurfaceKey, std::vector<Footprint>> footprintsByFace;
   std::map<DetailSurfaceKey, std::vector<FaceCornerCut>> cornerCutsByFace;
@@ -1361,6 +1813,382 @@ DetailGeometry BuildChipDetail(
       continue;
     }
     AddRebuiltFaceHorizontal(detail, arrangement, key, {}, cornerCuts);
+  }
+
+  // Wedges are additive: unlike Chips they suppress neither attachment
+  // surface. Each eligible Border wall contributes two three-triangle fans
+  // around a subtly convex central line arched toward the wall, routed
+  // through the adjoining ceiling or floor face.
+  if (wedgeParameters.enabled) {
+    static std::vector<Footprint> const noFootprints;
+    static std::vector<FaceCornerCut> const noCornerCuts;
+    for (uint32_t wallIndex = 0; wallIndex < uint32_t(walls.size());
+         ++wallIndex) {
+      auto const& wall = walls[wallIndex];
+      if (!wall.visible || wall.kind != ArrangementWallKind::Border) {
+        continue;
+      }
+      auto const& edge = arrangement.edges[wall.edge];
+      auto solidFace = arrangement.faces[edge.face[0]].solid
+                           ? edge.face[0]
+                           : edge.face[1];
+      auto orientation = OrientArrangementWall(arrangement, wall);
+      auto along = orientation.v1 - orientation.v0;
+      auto availableReach = along.length();
+      auto availableHeight = wall.maxZ - wall.minZ;
+      if (availableReach + FootprintEpsilon <
+              wedgeParameters.minimumReach ||
+          availableHeight + FootprintEpsilon <
+              wedgeParameters.minimumDropDownHeight) {
+        continue;
+      }
+      auto direction = along / availableReach;
+      auto wallReservations = WallChipReservations(
+          wallNotches[wallIndex], availableReach, wall.minZ, wall.maxZ);
+      auto seed = StableArrisSeed(
+          arrangement.vertices[edge.v[0]], arrangement.vertices[edge.v[1]]);
+
+      auto addWedge =
+          [&](bool atTop, float centreDistance, uint32_t candidateIndex) {
+        auto midpoint = orientation.v0 + direction * centreDistance;
+        auto centredReach =
+            2.0f * std::min(centreDistance, availableReach - centreDistance);
+        auto centreRayDepth = FaceBoundaryDistance(
+            arrangement, arrangement.faces[solidFace], wall.edge, midpoint,
+            orientation.normal);
+        if (centreRayDepth + FootprintEpsilon <
+            wedgeParameters.minimumProjectionDepth) {
+          return;
+        }
+        auto footprint = [&](float reach, float depth) {
+          return std::array<wp::Vector2, 3>{
+              midpoint - direction * (reach * 0.5f),
+              midpoint + direction * (reach * 0.5f),
+              midpoint + orientation.normal * depth};
+        };
+        auto candidateSeed = Mix(
+            seed ^ Mix((atTop ? 0xf1000000ull : 0xf2000000ull) +
+                       candidateIndex));
+        DetailSurfaceKey source{
+            atTop ? DetailSurfaceKind::CeilingOfFace
+                  : DetailSurfaceKind::FloorOfFace,
+            solidFace};
+        auto footprintEntry = footprintsByFace.find(source);
+        auto const& chipFootprints =
+            footprintEntry == footprintsByFace.end() ? noFootprints
+                                                     : footprintEntry->second;
+        auto cornerEntry = cornerCutsByFace.find(source);
+        auto const& chipCornerCuts =
+            cornerEntry == cornerCutsByFace.end() ? noCornerCuts
+                                                 : cornerEntry->second;
+        auto horizontalFits = [&](float reach, float depth) {
+          auto candidate = footprint(reach, depth);
+          return WedgeFootprintFits(
+                     arrangement, arrangement.faces[solidFace], candidate) &&
+                 WedgeHorizontalSurfaceAvoidsChips(
+                     arrangement, wall.edge, candidate, chipFootprints,
+                     chipCornerCuts);
+        };
+        auto wallFits = [&](float reach, float verticalExtent) {
+          return WedgeWallAvoidsChips(
+              centreDistance, reach, verticalExtent, availableReach,
+              availableHeight, atTop, wallNotches[wallIndex], wallReservations);
+        };
+        auto reachMaximum = std::min(
+            wedgeParameters.maximumReach, centredReach);
+        auto fittedReachMaximum = CapMonotonicRange(
+            wedgeParameters.minimumReach, reachMaximum, [&](float reach) {
+              return horizontalFits(
+                         reach, wedgeParameters.minimumProjectionDepth) &&
+                     wallFits(
+                         reach, wedgeParameters.minimumDropDownHeight);
+            });
+        if (!fittedReachMaximum) return;
+
+        // Use the widest fitted footprint when capping the other dimensions,
+        // so every independently selected combination remains valid.
+        auto depthMaximum = std::min(
+            wedgeParameters.maximumProjectionDepth, centreRayDepth);
+        auto fittedDepthMaximum = CapMonotonicRange(
+            wedgeParameters.minimumProjectionDepth, depthMaximum,
+            [&](float depth) {
+              return horizontalFits(*fittedReachMaximum, depth);
+            });
+        if (!fittedDepthMaximum) return;
+
+        auto verticalMaximum = std::min(
+            wedgeParameters.maximumDropDownHeight, availableHeight);
+        auto fittedVerticalMaximum = CapMonotonicRange(
+            wedgeParameters.minimumDropDownHeight, verticalMaximum,
+            [&](float extent) {
+              return wallFits(*fittedReachMaximum, extent);
+            });
+        if (!fittedVerticalMaximum) return;
+
+        auto draw = [&](float minimum, float maximum, uint64_t stream) {
+          return minimum +
+                 (maximum - minimum) * StableRandom01(candidateSeed, stream);
+        };
+        auto reach = draw(
+            wedgeParameters.minimumReach, *fittedReachMaximum, 0x7001ull);
+        auto verticalExtent = draw(
+            wedgeParameters.minimumDropDownHeight, *fittedVerticalMaximum,
+            0x7002ull);
+        auto depth = draw(
+            wedgeParameters.minimumProjectionDepth, *fittedDepthMaximum,
+            0x7003ull);
+
+        auto endpointA = midpoint - direction * (reach * 0.5f);
+        auto endpointB = midpoint + direction * (reach * 0.5f);
+        auto projected = midpoint + orientation.normal * depth;
+        auto arrisZ = atTop ? wall.maxZ : wall.minZ;
+        auto wallPointZ =
+            arrisZ + (atTop ? -verticalExtent : verticalExtent);
+        Vertex3 a{endpointA.x, endpointA.y, arrisZ};
+        Vertex3 b{endpointB.x, endpointB.y, arrisZ};
+        Vertex3 c{projected.x, projected.y, arrisZ};
+        Vertex3 d{midpoint.x, midpoint.y, wallPointZ};
+        Vertex3 attachment{midpoint.x, midpoint.y, arrisZ};
+        auto centralPoint = [&](float t) {
+          Vertex3 straight{
+              c.x + (d.x - c.x) * t,
+              c.y + (d.y - c.y) * t,
+              c.z + (d.z - c.z) * t};
+          auto offset =
+              WedgeCentralLineConvexity * 4.0f * t * (1.0f - t);
+          return Vertex3{
+              straight.x + (attachment.x - straight.x) * offset,
+              straight.y + (attachment.y - straight.y) * offset,
+              straight.z};
+        };
+        std::array<Vertex3, 4> central{
+            c, centralPoint(1.0f / 3.0f), centralPoint(2.0f / 3.0f), d};
+        auto horizontalUv = [](Vertex3 const& vertex) {
+          return std::array<float, 2>{
+              vertex.x / HorizontalUvScale, vertex.y / HorizontalUvScale};
+        };
+        auto verticalNormal = atTop ? -1.0f : 1.0f;
+        Vertex3 referenceA{
+            -direction.x + orientation.normal.x,
+            -direction.y + orientation.normal.y, verticalNormal};
+        Vertex3 referenceB{
+            direction.x + orientation.normal.x,
+            direction.y + orientation.normal.y, verticalNormal};
+        for (size_t segment = 0; segment + 1 < central.size(); ++segment) {
+          AddTriangle(
+              detail, source, a, central[segment], central[segment + 1],
+              referenceA, horizontalUv(a), horizontalUv(central[segment]),
+              horizontalUv(central[segment + 1]), false,
+              DetailTriangleKind::WedgeFacet);
+          AddTriangle(
+              detail, source, central[segment], b, central[segment + 1],
+              referenceB, horizontalUv(central[segment]), horizontalUv(b),
+              horizontalUv(central[segment + 1]), false,
+              DetailTriangleKind::WedgeFacet);
+        }
+        detail.countWedge();
+      };
+
+      auto ceilingCentres = GenerateWedgeCentres(
+          availableReach, wedgeParameters.minimumReach,
+          wedgeParameters.ceilingWedgesPerUnitDistance, seed, 0xf100ull);
+      for (uint32_t candidate = 0;
+           candidate < uint32_t(ceilingCentres.size()); ++candidate) {
+        addWedge(true, ceilingCentres[candidate], candidate);
+      }
+      auto floorCentres = GenerateWedgeCentres(
+          availableReach, wedgeParameters.minimumReach,
+          wedgeParameters.floorWedgesPerUnitDistance, seed, 0xf200ull);
+      for (uint32_t candidate = 0;
+           candidate < uint32_t(floorCentres.size()); ++candidate) {
+        addWedge(false, floorCentres[candidate], candidate);
+      }
+    }
+
+    // A Corner Wedge fills the trihedral meeting of one horizontal surface
+    // and two connected visible Border walls. Its hidden attachment faces lie
+    // on those three source surfaces; only the triangular exposed face is
+    // emitted. Concave/hole corners naturally fail the complete footprint
+    // test rather than projecting into unavailable space.
+    for (auto const& [vertexIndex, incident] : wallsByVertex) {
+      auto corner = ToWorld(arrangement.vertices[vertexIndex]);
+      for (size_t aIndex = 0; aIndex < incident.size(); ++aIndex) {
+        for (size_t bIndex = aIndex + 1; bIndex < incident.size(); ++bIndex) {
+          auto const* aPtr = &incident[aIndex];
+          auto const* bPtr = &incident[bIndex];
+          if (bPtr->ray.x < aPtr->ray.x ||
+              (bPtr->ray.x == aPtr->ray.x && bPtr->ray.y < aPtr->ray.y)) {
+            std::swap(aPtr, bPtr);
+          }
+          auto const& a = *aPtr;
+          auto const& b = *bPtr;
+          auto const& wallA = walls[a.wallIndex];
+          auto const& wallB = walls[b.wallIndex];
+          if (wallA.kind != ArrangementWallKind::Border ||
+              wallB.kind != ArrangementWallKind::Border ||
+              std::abs(a.ray.x * b.ray.y - a.ray.y * b.ray.x) <=
+                  ConcavityEpsilon) {
+            continue;
+          }
+          auto solidFaceFor = [&](ArrangementWall const& wall) {
+            auto const& edge = arrangement.edges[wall.edge];
+            return arrangement.faces[edge.face[0]].solid ? edge.face[0]
+                                                         : edge.face[1];
+          };
+          auto solidFace = solidFaceFor(wallA);
+          if (solidFaceFor(wallB) != solidFace) continue;
+          auto const& edgeA = arrangement.edges[wallA.edge];
+          auto const& edgeB = arrangement.edges[wallB.edge];
+          auto wallReservationsA = WallChipReservations(
+              wallNotches[a.wallIndex], a.length, wallA.minZ, wallA.maxZ);
+          auto wallReservationsB = WallChipReservations(
+              wallNotches[b.wallIndex], b.length, wallB.minZ, wallB.maxZ);
+          auto availableHeight = std::min(
+              wallA.maxZ - wallA.minZ, wallB.maxZ - wallB.minZ);
+          if (a.length + FootprintEpsilon <
+                  wedgeParameters.minimumCornerReach ||
+              b.length + FootprintEpsilon <
+                  wedgeParameters.minimumCornerReach ||
+              availableHeight + FootprintEpsilon <
+                  wedgeParameters.minimumCornerVerticalExtent) {
+            continue;
+          }
+
+          auto addCornerWedge = [&](bool atTop) {
+            auto arrisZ = atTop ? wallA.maxZ : wallA.minZ;
+            auto seed = StableCornerSeed(
+                arrangement.vertices[vertexIndex], arrisZ,
+                ArrangementWallKind::Border);
+            if (StableRandom01(seed, 0x8000ull) >=
+                wedgeParameters.cornerWedgeProbability) {
+              return;
+            }
+            DetailSurfaceKey source{
+                atTop ? DetailSurfaceKind::CeilingOfFace
+                      : DetailSurfaceKind::FloorOfFace,
+                solidFace};
+            auto footprintEntry = footprintsByFace.find(source);
+            auto const& chipFootprints =
+                footprintEntry == footprintsByFace.end() ? noFootprints
+                                                         : footprintEntry->second;
+            auto cornerEntry = cornerCutsByFace.find(source);
+            auto const& chipCornerCuts =
+                cornerEntry == cornerCutsByFace.end() ? noCornerCuts
+                                                     : cornerEntry->second;
+            auto footprint = [&](float reachA, float reachB) {
+              return std::array<wp::Vector2, 3>{
+                  corner, corner + a.ray * reachA,
+                  corner + b.ray * reachB};
+            };
+            auto horizontalFits = [&](float reachA, float reachB) {
+              auto candidate = footprint(reachA, reachB);
+              return WedgeFootprintFits(
+                         arrangement, arrangement.faces[solidFace], candidate) &&
+                     CornerWedgeHorizontalSurfaceAvoidsChips(
+                         arrangement, wallA.edge, wallB.edge, candidate,
+                         chipFootprints, chipCornerCuts);
+            };
+            auto wallFits = [&](IncidentWall const& item,
+                                ArrangementWall const& wall,
+                                float reach,
+                                float verticalExtent,
+                                auto const& reservations) {
+              auto length = item.length;
+              auto height = wall.maxZ - wall.minZ;
+              auto cornerX = item.atStart ? 0.0f : length;
+              auto reachX = item.atStart ? reach : length - reach;
+              auto arrisY = atTop ? 0.0f : height;
+              auto verticalY =
+                  atTop ? verticalExtent : height - verticalExtent;
+              std::array<wp::Vector2, 3> attachment{
+                  wp::Vector2{cornerX, arrisY},
+                  wp::Vector2{reachX, arrisY},
+                  wp::Vector2{cornerX, verticalY}};
+              return WedgeWallAttachmentAvoidsChips(
+                  cornerX, reachX, attachment, length, atTop,
+                  wallNotches[item.wallIndex], reservations);
+            };
+
+            auto maximumA =
+                std::min(wedgeParameters.maximumCornerReach, a.length);
+            auto fittedA = CapMonotonicRange(
+                wedgeParameters.minimumCornerReach, maximumA,
+                [&](float reachA) {
+                  return horizontalFits(
+                             reachA, wedgeParameters.minimumCornerReach) &&
+                         wallFits(
+                             a, wallA, reachA,
+                             wedgeParameters.minimumCornerVerticalExtent,
+                             wallReservationsA);
+                });
+            if (!fittedA) return;
+            auto maximumB =
+                std::min(wedgeParameters.maximumCornerReach, b.length);
+            auto fittedB = CapMonotonicRange(
+                wedgeParameters.minimumCornerReach, maximumB,
+                [&](float reachB) {
+                  return horizontalFits(*fittedA, reachB) &&
+                         wallFits(
+                             b, wallB, reachB,
+                             wedgeParameters.minimumCornerVerticalExtent,
+                             wallReservationsB);
+                });
+            if (!fittedB) return;
+            auto verticalMaximum = std::min(
+                wedgeParameters.maximumCornerVerticalExtent,
+                availableHeight);
+            auto fittedVertical = CapMonotonicRange(
+                wedgeParameters.minimumCornerVerticalExtent,
+                verticalMaximum, [&](float extent) {
+                  return wallFits(
+                             a, wallA, *fittedA, extent,
+                             wallReservationsA) &&
+                         wallFits(
+                             b, wallB, *fittedB, extent,
+                             wallReservationsB);
+                });
+            if (!fittedVertical) return;
+
+            auto draw = [&](float minimum, float maximum, uint64_t stream) {
+              return minimum +
+                     (maximum - minimum) * StableRandom01(seed, stream);
+            };
+            auto reachA = draw(
+                wedgeParameters.minimumCornerReach, *fittedA, 0x8001ull);
+            auto reachB = draw(
+                wedgeParameters.minimumCornerReach, *fittedB, 0x8002ull);
+            auto verticalExtent = draw(
+                wedgeParameters.minimumCornerVerticalExtent,
+                *fittedVertical, 0x8003ull);
+            auto pointA = corner + a.ray * reachA;
+            auto pointB = corner + b.ray * reachB;
+            auto verticalZ =
+                arrisZ + (atTop ? -verticalExtent : verticalExtent);
+            Vertex3 exposedA{pointA.x, pointA.y, arrisZ};
+            Vertex3 exposedB{pointB.x, pointB.y, arrisZ};
+            Vertex3 exposedVertical{corner.x, corner.y, verticalZ};
+            Vertex3 reference{
+                a.normal.x + b.normal.x,
+                a.normal.y + b.normal.y,
+                atTop ? -1.0f : 1.0f};
+            auto horizontalUv = [](Vertex3 const& vertex) {
+              return std::array<float, 2>{
+                  vertex.x / HorizontalUvScale,
+                  vertex.y / HorizontalUvScale};
+            };
+            AddTriangle(
+                detail, source, exposedA, exposedB, exposedVertical,
+                reference, horizontalUv(exposedA), horizontalUv(exposedB),
+                horizontalUv(exposedVertical), false,
+                DetailTriangleKind::WedgeFacet);
+            detail.countWedge();
+          };
+
+          addCornerWedge(true);
+          addCornerWedge(false);
+        }
+      }
+    }
   }
 
   detail.sort();

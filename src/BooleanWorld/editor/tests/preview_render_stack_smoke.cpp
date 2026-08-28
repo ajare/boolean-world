@@ -168,10 +168,19 @@ bw::core::ArrangementWorldDataPtr buildWorldData(bw::core::World* world) {
 
   bw::core::ArrangementWorldDataGenerator generator;
   generator.generate(primitives);
-  return std::make_shared<bw::core::ArrangementWorldData>(
+  auto result = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), world->getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      world->getStepThreshold());
+      world->getStepThreshold(), nullptr,
+      world->getWedgeGenerationParameters());
+  if (result->getWedgeGenerationParameters() !=
+      world->getWedgeGenerationParameters() ||
+      (world->getWedgeGenerationParameters().enabled &&
+       result->getDetail().getWedgeCount() == 0)) {
+    throw std::runtime_error(
+        "editor preview did not capture or generate the World's Wedges");
+  }
+  return result;
 }
 
 // The average colour of the finished image. Coarse on purpose: it is only
@@ -332,6 +341,11 @@ int main() {
   int result = 0;
   try {
     auto world = loadWorld(BW_EDITOR_PREVIEW_TEST_WORLD);
+    auto wedgeSettings = world->getWedgeGenerationParameters();
+    wedgeSettings.enabled = true;
+    wedgeSettings.minimumReach = 5.0f;
+    wedgeSettings.maximumReach = 7.0f;
+    world->setWedgeGenerationParameters(wedgeSettings);
     auto worldData = buildWorldData(world.get());
     printf(
         "world: %u primitives, %zu triangles, %zu walls\n",

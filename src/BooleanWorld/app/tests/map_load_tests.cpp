@@ -15,6 +15,7 @@
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/RectanglePolygon.h>
 #include <core/World.h>
+#include <core/YamlSerializer.h>
 
 #include "Map.h"
 
@@ -52,6 +53,31 @@ void playMapsUseDynamicWorldDataGenerators() {
   require(dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
               map.getWorld()->getWorldDataGenerator()) != nullptr,
           "Loaded play map did not install a dynamic world data generator");
+}
+
+void establishedWorldEnablesAndRoundTripsWedges() {
+  wp::Logger logger;
+  Map map("map", "", "", {}, nullptr, &logger);
+  map.loadWorldFromYaml(makeWorldResource(readFixture("world-test-1.yaml")));
+  auto expected = bw::core::WedgeGenerationParameters{};
+  expected.enabled = true;
+  require(map.getWorld()->getWedgeGenerationParameters() == expected,
+          "established test World did not enable the default Wedge ranges");
+
+  auto writer = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::toString());
+  bw::core::SerializationWorkData workData;
+  map.getWorld()->serialize(writer, workData);
+  auto const& yaml = writer->getSerializedString();
+  require(yaml.find("WedgeFacet") == std::string::npos &&
+              yaml.find("detailGeometry") == std::string::npos &&
+              yaml.find("wedgeCount") == std::string::npos,
+          "generated Wedge detail leaked into serialized World data");
+  Map roundTripped("map", "", "", {}, nullptr, &logger);
+  roundTripped.loadWorldFromYaml(
+      makeWorldResource(yaml));
+  require(roundTripped.getWorld()->getWedgeGenerationParameters() == expected,
+          "established test World's Wedge settings did not round-trip");
 }
 
 void failedLoadRetainsThePreviousWorld() {
@@ -122,6 +148,7 @@ void resourcesWithoutAWorldExtensionAreParsedAsYaml() {
 int main() {
   try {
     playMapsUseDynamicWorldDataGenerators();
+    establishedWorldEnablesAndRoundTripsWedges();
     failedLoadRetainsThePreviousWorld();
     resourcesWithAWorldExtensionLoadAsBinary();
     resourcesWithoutAWorldExtensionAreParsedAsYaml();

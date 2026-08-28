@@ -4,6 +4,7 @@
 #include <memory>
 #include <functional>
 #include <cassert>
+#include <stdexcept>
 
 #include <mapbox/earcut.hpp>
 
@@ -73,6 +74,7 @@ void World::swapState(World& other) noexcept {
   swap(mPlayerStartAngle, other.mPlayerStartAngle);
   swap(mAlwaysUpdateVertices, other.mAlwaysUpdateVertices);
   swap(mStepThreshold, other.mStepThreshold);
+  swap(mWedgeGenerationParameters, other.mWedgeGenerationParameters);
   swap(mFrameNumber, other.mFrameNumber);
   swap(mDataGenerator, other.mDataGenerator);
   swap(mLastPrimitiveUpdateFrameNumber, other.mLastPrimitiveUpdateFrameNumber);
@@ -117,6 +119,7 @@ void World::copyFrom(World const& other) {
   mPlayerStartAngle = other.mPlayerStartAngle;
   mAlwaysUpdateVertices = other.mAlwaysUpdateVertices;
   mStepThreshold = other.mStepThreshold;
+  mWedgeGenerationParameters = other.mWedgeGenerationParameters;
   mFrameNumber = other.mFrameNumber;
   mPrevPlayerPosition = other.mPrevPlayerPosition;
   mLastPrimitiveUpdateFrameNumber = other.mLastPrimitiveUpdateFrameNumber;
@@ -168,6 +171,46 @@ void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
       serializer->writeVector2("playerStartPosition", mPlayerStartPosition);
       serializer->writeFloat("playerStartAngle", mPlayerStartAngle);
       serializer->writeFloat("stepThreshold", mStepThreshold);
+      serializer->beginMap("wedgeGeneration");
+      serializer->writeBool("enabled", mWedgeGenerationParameters.enabled);
+      serializer->writeFloat(
+          "minimumReach", mWedgeGenerationParameters.minimumReach);
+      serializer->writeFloat(
+          "maximumReach", mWedgeGenerationParameters.maximumReach);
+      serializer->writeFloat(
+          "minimumDropDownHeight",
+          mWedgeGenerationParameters.minimumDropDownHeight);
+      serializer->writeFloat(
+          "maximumDropDownHeight",
+          mWedgeGenerationParameters.maximumDropDownHeight);
+      serializer->writeFloat(
+          "minimumProjectionDepth",
+          mWedgeGenerationParameters.minimumProjectionDepth);
+      serializer->writeFloat(
+          "maximumProjectionDepth",
+          mWedgeGenerationParameters.maximumProjectionDepth);
+      serializer->writeFloat(
+          "minimumCornerReach",
+          mWedgeGenerationParameters.minimumCornerReach);
+      serializer->writeFloat(
+          "maximumCornerReach",
+          mWedgeGenerationParameters.maximumCornerReach);
+      serializer->writeFloat(
+          "minimumCornerVerticalExtent",
+          mWedgeGenerationParameters.minimumCornerVerticalExtent);
+      serializer->writeFloat(
+          "maximumCornerVerticalExtent",
+          mWedgeGenerationParameters.maximumCornerVerticalExtent);
+      serializer->writeFloat(
+          "floorWedgesPerUnitDistance",
+          mWedgeGenerationParameters.floorWedgesPerUnitDistance);
+      serializer->writeFloat(
+          "ceilingWedgesPerUnitDistance",
+          mWedgeGenerationParameters.ceilingWedgesPerUnitDistance);
+      serializer->writeFloat(
+          "cornerWedgeProbability",
+          mWedgeGenerationParameters.cornerWedgeProbability);
+      serializer->endMap();
 
       // Every Layer this World owns is written inline, each self-contained
       // (id, name, extents, its own Primitives/WorldTriggerLines), in order.
@@ -207,6 +250,7 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   wp::Vector2 playerStartPosition;
   float playerStartAngle;
   float stepThreshold;
+  WedgeGenerationParameters wedgeGenerationParameters;
   vector<unique_ptr<Layer>> layers;
 
   try {
@@ -222,6 +266,53 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
         playerStartAngle = serializer->readFloat("playerStartAngle");
         stepThreshold = serializer->readFloat(
             "stepThreshold", true, numeric_limits<float>::infinity());
+        if (serializer->isPositional() ||
+            serializer->hasField("wedgeGeneration")) {
+          serializer->beginMap("wedgeGeneration");
+          wedgeGenerationParameters.enabled =
+              serializer->readBool("enabled");
+          wedgeGenerationParameters.minimumReach =
+              serializer->readFloat("minimumReach");
+          wedgeGenerationParameters.maximumReach =
+              serializer->readFloat("maximumReach");
+          wedgeGenerationParameters.minimumDropDownHeight =
+              serializer->readFloat("minimumDropDownHeight");
+          wedgeGenerationParameters.maximumDropDownHeight =
+              serializer->readFloat("maximumDropDownHeight");
+          wedgeGenerationParameters.minimumProjectionDepth =
+              serializer->readFloat("minimumProjectionDepth");
+          wedgeGenerationParameters.maximumProjectionDepth =
+              serializer->readFloat("maximumProjectionDepth");
+          auto optionalCornerRanges = !serializer->isPositional();
+          wedgeGenerationParameters.minimumCornerReach = serializer->readFloat(
+              "minimumCornerReach", optionalCornerRanges,
+              wedgeGenerationParameters.minimumCornerReach);
+          wedgeGenerationParameters.maximumCornerReach = serializer->readFloat(
+              "maximumCornerReach", optionalCornerRanges,
+              wedgeGenerationParameters.maximumCornerReach);
+          wedgeGenerationParameters.minimumCornerVerticalExtent =
+              serializer->readFloat(
+                  "minimumCornerVerticalExtent", optionalCornerRanges,
+                  wedgeGenerationParameters.minimumCornerVerticalExtent);
+          wedgeGenerationParameters.maximumCornerVerticalExtent =
+              serializer->readFloat(
+                  "maximumCornerVerticalExtent", optionalCornerRanges,
+                  wedgeGenerationParameters.maximumCornerVerticalExtent);
+          auto optionalFrequencyControls = !serializer->isPositional();
+          wedgeGenerationParameters.floorWedgesPerUnitDistance =
+              serializer->readFloat(
+                  "floorWedgesPerUnitDistance", optionalFrequencyControls,
+                  wedgeGenerationParameters.floorWedgesPerUnitDistance);
+          wedgeGenerationParameters.ceilingWedgesPerUnitDistance =
+              serializer->readFloat(
+                  "ceilingWedgesPerUnitDistance", optionalFrequencyControls,
+                  wedgeGenerationParameters.ceilingWedgesPerUnitDistance);
+          wedgeGenerationParameters.cornerWedgeProbability =
+              serializer->readFloat(
+                  "cornerWedgeProbability", optionalFrequencyControls,
+                  wedgeGenerationParameters.cornerWedgeProbability);
+          serializer->endMap();
+        }
 
         // Each Layer parses and validates its own Primitives/
         // WorldTriggerLines - including its own parent-chain cycle check -
@@ -255,6 +346,12 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     serializer->endMap();  // root
   } catch (exception& e) {
     addDeserializationError(e.what());
+    return false;
+  }
+
+  if (!WedgeGenerationParametersAreValid(wedgeGenerationParameters)) {
+    addDeserializationError(
+        "World Wedge dimensions must be finite, positive, and ordered; frequencies and probability must be in [0, 1].");
     return false;
   }
 
@@ -294,6 +391,7 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mPlayerStartPosition = playerStartPosition;
   mPlayerStartAngle = playerStartAngle;
   mStepThreshold = stepThreshold;
+  mWedgeGenerationParameters = wedgeGenerationParameters;
 
   for (auto layer : mLayers) {
     delete layer;
@@ -578,6 +676,19 @@ void World::setStepThreshold(float threshold) {
 
 float World::getStepThreshold() const {
   return mStepThreshold;
+}
+
+void World::setWedgeGenerationParameters(
+    WedgeGenerationParameters const& parameters) {
+  if (!WedgeGenerationParametersAreValid(parameters)) {
+    throw invalid_argument(
+        "Wedge dimensions must be finite, positive, and ordered; frequencies and probability must be in [0, 1].");
+  }
+  mWedgeGenerationParameters = parameters;
+}
+
+WedgeGenerationParameters const& World::getWedgeGenerationParameters() const {
+  return mWedgeGenerationParameters;
 }
 
 frame_number_type World::getFrameNumber() const {

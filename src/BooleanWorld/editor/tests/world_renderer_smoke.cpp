@@ -47,6 +47,9 @@ struct RenderFixture {
       bw::app::HorizontalMaterials::ThreeDimensional};
   int32_t debugWallTechnique{-1};
   bool emboss{};
+  bool chips{};
+  bool wedges{};
+  bool lookAtWedges{};
 };
 
 struct ResourceCounts {
@@ -118,14 +121,49 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   properties.wallMaterialId = "migrated.marble.1";
   primitive->setProperties(properties);
   world.addPrimitive(primitive);
-
   std::vector<bw::core::Primitive*> primitives{primitive};
+  if (fixture.chips) {
+    bw::core::ClosedPolygon platformRing{
+        {{-8, -8}}, {{8, -8}}, {{8, 8}}, {{-8, 8}}};
+    auto* platform = bw::core::MeshPrimitive::fromTree(
+        bw::core::Primitive::Operation::Union, {{{platformRing, {}}}});
+    auto platformProperties = platform->getProperties();
+    platformProperties.floorZ = 8.0f;
+    platformProperties.ceilingZ = 48.0f;
+    platformProperties.floorMaterialId = "migrated.marble.1";
+    platformProperties.ceilingMaterialId = "migrated.marble.1";
+    platformProperties.wallMaterialId = "migrated.marble.1";
+    platform->setProperties(platformProperties);
+    platform->setPriority(1);
+    world.addPrimitive(platform);
+    primitives.push_back(platform);
+  }
+  if (fixture.wedges) {
+    world.setWedgeGenerationParameters(
+        {true, 8.0f, 8.0f, 8.0f, 8.0f, 8.0f, 8.0f});
+  }
+
   bw::core::ArrangementWorldDataGenerator generator;
+  if (fixture.chips) {
+    generator.setChipParametersResolver([](std::string const&) {
+      return bw::core::ChipGenerationParameters{
+          2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 256.0f, 1.0f};
+    });
+  }
   generator.generate(primitives);
-  return std::make_shared<bw::core::ArrangementWorldData>(
+  auto result = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), world.getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      world.getStepThreshold());
+      world.getStepThreshold(), nullptr,
+      world.getWedgeGenerationParameters());
+  if (fixture.chips && result->getDetail().getChipCount() == 0) {
+    throw std::runtime_error("renderer fixture generated no Chips");
+  }
+  if (fixture.wedges && result->getDetail().getWedgeCount() != 24) {
+    throw std::runtime_error(
+        "renderer fixture did not generate edge and Corner Border-wall Wedges");
+  }
+  return result;
 }
 
 std::vector<float> readColour(uint32_t texture) {
@@ -178,7 +216,8 @@ std::vector<float> render(
         {0.18f, 0.18f, 0.2f}, emboss);
   }
   auto camera = std::make_shared<ReactiveCamera>(
-      glm::vec3{0.0f, BW_PLAYER_EYE_HEIGHT, 0.0f},
+      glm::vec3{
+          0.0f, fixture.lookAtWedges ? 40.0f : BW_PLAYER_EYE_HEIGHT, 0.0f},
       bw::app::cameraYaw(0.0f), 0.0f, BW_PLAYER_FOV,
       kWidth / float(kHeight));
   camera->setClipDistances(0.1f, 1000000.0f);
@@ -239,6 +278,13 @@ int main() {
           renderSystem, {.map = MapFixture::Image, .strength = 1.0f});
       auto stronger = render(
           renderSystem, {.map = MapFixture::Image, .strength = 2.0f});
+      // Chips and Wedges share the real opaque mesh consumed by both the lit
+      // and point-shadow passes. Compare otherwise-identical chipped scenes.
+      auto wedgeBaseline = render(
+          renderSystem, {.chips = true, .lookAtWedges = true});
+      auto wedges = render(
+          renderSystem,
+          {.chips = true, .wedges = true, .lookAtWedges = true});
 
       auto disabledDifference = regionDifference(unset, disabled);
       auto flatDifference = regionDifference(unset, flat);
@@ -257,6 +303,8 @@ int main() {
       require(strongerDifference > 0.0005 &&
                   regionDifference(authored, stronger) > 0.0005,
               "higher strength did not visibly change the renormalized map");
+      require(regionDifference(wedgeBaseline, wedges) > 0.0005,
+              "Wedges did not reach the ordinary lit renderer path");
 
       // A global material-index/Technique diagnostic changes only procedural
       // evaluation. The independently authored wall image must remain active.

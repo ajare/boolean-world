@@ -19,6 +19,7 @@
 #include "core/Defines.h"
 #include "core/WorldUpdateData.h"
 #include "core/WorldTriggerLine.h"
+#include "core/WedgeGenerationParameters.h"
 
 namespace bw {
 namespace core {
@@ -54,6 +55,8 @@ private:
   bool mAlwaysUpdateVertices;
 
   float mStepThreshold;
+
+  WedgeGenerationParameters mWedgeGenerationParameters;
 
   // Runtime
   frame_number_type mFrameNumber;
@@ -169,6 +172,12 @@ public:
   void setStepThreshold(float threshold);
 
   [[nodiscard]] float getStepThreshold() const;
+
+  void setWedgeGenerationParameters(
+      WedgeGenerationParameters const& parameters);
+
+  [[nodiscard]] WedgeGenerationParameters const&
+  getWedgeGenerationParameters() const;
 
   [[nodiscard]] frame_number_type getFrameNumber() const;
 
