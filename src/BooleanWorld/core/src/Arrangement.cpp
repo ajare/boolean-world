@@ -5,6 +5,7 @@
 #include <limits>
 #include <map>
 #include <stdexcept>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -1450,6 +1451,52 @@ vector<ArrangementWall> BuildArrangementWalls(
     }
   }
   return walls;
+}
+
+vector<WaterAdjacency> BuildWaterAdjacency(ArrangementResult const& arrangement) {
+  vector<WaterAdjacency> result;
+  for (auto const& edge : arrangement.edges) {
+    auto f0 = edge.face[0];
+    auto f1 = edge.face[1];
+    if (f0 == f1) {
+      continue;
+    }
+    auto const& face0 = arrangement.faces[f0];
+    auto const& face1 = arrangement.faces[f1];
+    if (face0.solid || face1.solid) {
+      continue;
+    }
+
+    // The unbounded exterior face (index 0) is a permanent drain: adjacent to
+    // every bordering face regardless of clearance.
+    auto drain = f0 == 0 || f1 == 0;
+    if (!drain) {
+      auto const& properties0 = arrangement.palette[face0.paletteIndex];
+      auto const& properties1 = arrangement.palette[face1.paletteIndex];
+      // Same headroom computation BuildArrangementWalls uses for player
+      // movement, rather than a second connectivity notion.
+      auto clearance = min(properties0.ceilingZ, properties1.ceilingZ) -
+                       max(properties0.floorZ, properties1.floorZ);
+      if (clearance == 0.0f) {
+        continue;
+      }
+    }
+
+    result.push_back(
+        {min(f0, f1), max(f0, f1), drain});
+  }
+
+  sort(result.begin(), result.end(), [](auto const& a, auto const& b) {
+    return tie(a.face0, a.face1) < tie(b.face0, b.face1);
+  });
+  result.erase(
+      unique(
+          result.begin(), result.end(),
+          [](auto const& a, auto const& b) {
+            return a.face0 == b.face0 && a.face1 == b.face1;
+          }),
+      result.end());
+  return result;
 }
 
 ArrangementWallOrientation OrientArrangementWall(

@@ -227,6 +227,18 @@ struct ArrangementFace {
   bool contributesProperties{false};
 };
 
+// One direct water-adjacency between two non-solid Arrangement faces: either
+// they share a wall whose vertical clearance (the same headroom computation
+// BuildArrangementWalls uses for player movement) is nonzero, or one side is
+// the Arrangement's unbounded exterior face (index 0), which acts as a
+// permanent drain with an effectively negative-infinite floor rather than an
+// ordinary clearance-limited neighbor.
+struct WaterAdjacency {
+  uint32_t face0;
+  uint32_t face1;
+  bool drain{false};
+};
+
 struct ArrangementResult {
   std::vector<FixedPointVertex> vertices;
   std::vector<ArrangementEdge> edges;
@@ -278,6 +290,12 @@ bool PointInFace(
     ArrangementResult const& arrangement);
 
 [[nodiscard]] std::vector<ArrangementWall> BuildArrangementWalls(
+    ArrangementResult const& arrangement);
+
+// The water-adjacency relation over every pair of non-solid faces, one entry
+// per unordered pair, for the later watershed equilibrium pass to consume.
+// This computes no water depth itself.
+[[nodiscard]] std::vector<WaterAdjacency> BuildWaterAdjacency(
     ArrangementResult const& arrangement);
 
 [[nodiscard]] ArrangementWallOrientation OrientArrangementWall(
