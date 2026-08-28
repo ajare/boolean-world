@@ -54,6 +54,47 @@ float parseShadowFloat(
   return value;
 }
 
+[[noreturn]] void playerTorchValueError(
+    string const& filename, string const& field, string const& requirement) {
+  auto message = "Could not load '" + filename +
+                 "'.  Value of /Configuration/Video/PlayerTorch/" + field +
+                 " " + requirement + ".";
+  throw exception(message.c_str());
+}
+
+void parsePlayerTorchOptions(
+    string const& filename, DataNode* playerTorch,
+    bw::app::PlayerTorchOptions& options) {
+  playerTorch->requireOnlyChildren({"Radius", "Falloff"});
+
+  auto parseFloat = [&](string const& field, float defaultValue) {
+    auto node = playerTorch->getOptionalChild(field);
+    if (!node) return defaultValue;
+    auto const& text = node->getValue();
+    float value{};
+    auto [end, error] =
+        from_chars(text.data(), text.data() + text.size(), value);
+    if (error != errc{} || end != text.data() + text.size() ||
+        !isfinite(value)) {
+      playerTorchValueError(filename, field, "must be a finite number");
+    }
+    return value;
+  };
+
+  options.attenuationRadius =
+      parseFloat("Radius", options.attenuationRadius);
+  options.attenuationFalloff =
+      parseFloat("Falloff", options.attenuationFalloff);
+  if (options.attenuationRadius <= 0.0f) {
+    playerTorchValueError(filename, "Radius", "must be greater than zero");
+  }
+  if (options.attenuationFalloff < 0.0f ||
+      options.attenuationFalloff > options.attenuationRadius) {
+    playerTorchValueError(
+        filename, "Falloff", "must be between zero and Radius");
+  }
+}
+
 void parseShadowOptions(
     string const& filename, DataNode* shadows,
     bw::app::ShadowOptions& options) {
@@ -133,7 +174,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
   auto audioNode = configuration.getChild("Audio");
   auto inputNode = configuration.getOptionalChild("Input");
 
-  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale", "AA", "AmbientOcclusion", "RenderTextureFilter", "HorizontalMaterials", "Shadows"});
+  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale", "AA", "AmbientOcclusion", "RenderTextureFilter", "HorizontalMaterials", "PlayerTorch", "Shadows"});
   gameNode->requireOnlyChildren({"DLL", "ResourceLocations", "Debug", "Arguments"});
 
   pOpts.screenWidth = utils::StringUtils::parseInt(videoNode->getChild("Width")->getValue());
@@ -195,6 +236,11 @@ ProgramOptions parseProgramOptions(string const& filename) {
       throw exception(errMsg.c_str());
     }
     pOpts.video.horizontalMaterials = *materials;
+  }
+
+  if (auto playerTorchNode = videoNode->getOptionalChild("PlayerTorch")) {
+    parsePlayerTorchOptions(
+        filename, playerTorchNode, pOpts.video.playerTorch);
   }
 
   if (auto shadowsNode = videoNode->getOptionalChild("Shadows")) {
@@ -314,6 +360,10 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
   logger->info(std::format(
       "Horizontal materials: {}",
       bw::app::horizontalMaterialsName(options.video.horizontalMaterials)));
+  auto const& playerTorch = options.video.playerTorch;
+  logger->info(std::format(
+      "Player Torch attenuation: radius {}, falloff {}",
+      playerTorch.attenuationRadius, playerTorch.attenuationFalloff));
   auto const& shadows = options.video.shadows;
   logger->info(std::format(
       "Player Torch shadows: {}, {}px faces, range {}, near {}, biases {}/{}, {} radius {}, fade {}",

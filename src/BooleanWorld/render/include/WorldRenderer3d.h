@@ -14,6 +14,7 @@
 #include <willpower/common/Logger.h>
 
 #include "SecondaryMaterialOptions.h"
+#include "VideoOptions.h"
 #include "SubMaterialResolver.h"
 #include "WorldBatchRenderer.h"
 #include "WorldTriangle3dDataProvider.h"
@@ -72,6 +73,7 @@ public:
   void update(
       glm::vec3 const& playerPosition,
       glm::vec3 const& lightPosition,
+      bw::app::PlayerTorchOptions const& playerTorch,
       int32_t materialIndexOverride,
       float materialScale,
       float farGridSize,

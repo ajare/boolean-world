@@ -135,6 +135,7 @@ public:
       bw::core::WorldData const& worldData,
       glm::vec3 const& playerPosition,
       glm::vec3 const& lightPosition,
+      bw::app::PlayerTorchOptions const& playerTorch,
       int32_t horizontalMaterialIndexOverride,
       int32_t wallMaterialIndexOverride,
       float materialScale,

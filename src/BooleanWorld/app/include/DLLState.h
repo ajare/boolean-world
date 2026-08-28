@@ -30,7 +30,10 @@ public:
   // codes so a rejected update leaves the previously accepted options intact.
   int setVideoOptions(int renderScaleCode, int antiAliasingCode,
                       int ambientOcclusionCode, int renderTextureFilterCode,
-                      int horizontalMaterialsCode, int shadowsEnabledCode,
+                      int horizontalMaterialsCode,
+                      float playerTorchAttenuationRadius,
+                      float playerTorchAttenuationFalloff,
+                      int shadowsEnabledCode,
                       std::uint64_t shadowFaceResolution, float shadowRange,
                       float shadowNearPlane, float shadowConstantBias,
                       float shadowNormalBias, int shadowFilterCode,
@@ -48,6 +51,11 @@ public:
     auto finite = [](float value) { return std::isfinite(value); };
     if (!renderScale || !antiAliasing || !ambientOcclusion ||
         !renderTextureFilter || !horizontalMaterials || !shadowFilter ||
+        !finite(playerTorchAttenuationRadius) ||
+        !finite(playerTorchAttenuationFalloff) ||
+        playerTorchAttenuationRadius <= 0.0f ||
+        playerTorchAttenuationFalloff < 0.0f ||
+        playerTorchAttenuationFalloff > playerTorchAttenuationRadius ||
         (shadowsEnabledCode != 0 && shadowsEnabledCode != 1) ||
         shadowFaceResolution == 0 ||
         shadowFaceResolution > std::numeric_limits<std::size_t>::max() ||
@@ -69,6 +77,8 @@ public:
     candidate.ambientOcclusion = *ambientOcclusion;
     candidate.renderTextureFilter = *renderTextureFilter;
     candidate.horizontalMaterials = *horizontalMaterials;
+    candidate.playerTorch = {
+        playerTorchAttenuationRadius, playerTorchAttenuationFalloff};
     candidate.shadows = {
         shadowsEnabledCode != 0,
         static_cast<std::size_t>(shadowFaceResolution),
@@ -92,6 +102,8 @@ public:
     return setVideoOptions(
         renderScaleCode, antiAliasingCode, ambientOcclusionCode,
         renderTextureFilterCode, horizontalMaterialsCode,
+        videoOptions.playerTorch.attenuationRadius,
+        videoOptions.playerTorch.attenuationFalloff,
         shadows.enabled ? 1 : 0, shadows.faceResolution, shadows.range,
         shadows.nearPlane, shadows.constantBias, shadows.normalBias,
         bw::app::shadowFilterCode(shadows.filter), shadows.filterRadius,

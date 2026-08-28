@@ -17,6 +17,8 @@ private:
 
   bw::app::HorizontalMaterials mHorizontalMaterials;
 
+  bw::app::PlayerTorchOptions mPlayerTorchOptions;
+
   bw::app::ShadowOptions mShadowOptions;
 
 public:
@@ -29,6 +31,7 @@ public:
         mAmbientOcclusion(videoOptions.ambientOcclusion),
         mRenderTextureFilter(videoOptions.renderTextureFilter),
         mHorizontalMaterials(videoOptions.horizontalMaterials),
+        mPlayerTorchOptions(videoOptions.playerTorch),
         mShadowOptions(videoOptions.shadows) {
   }
 
@@ -58,6 +61,10 @@ public:
 
   bw::app::HorizontalMaterials getHorizontalMaterials() const {
     return mHorizontalMaterials;
+  }
+
+  bw::app::PlayerTorchOptions const& getPlayerTorchOptions() const {
+    return mPlayerTorchOptions;
   }
 
   bw::app::ShadowOptions const& getShadowOptions() const {

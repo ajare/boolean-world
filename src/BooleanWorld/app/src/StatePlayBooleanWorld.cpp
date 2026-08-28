@@ -9,6 +9,9 @@
 
 #include <GL/glew.h>
 
+#include <mpp/BoxModelStream.h>
+#include <mpp/ModelRenderParams.h>
+#include <mpp/ResourceManager.h>
 #include <mpp/helper/FreeCamera.h>
 
 #include <utils/Image.h>
@@ -67,6 +70,9 @@ const float gImGui_MouseSensitivityMax = 3.0f;
 constexpr int32_t gNoMaterialOverride = -1;
 constexpr float gAuthoredMaterialScale = 1.0f;
 constexpr float gDefaultFarGridSize = 0.5f;
+constexpr float gPlayerTorchMarkerSize = 2.0f;
+constexpr char gPlayerTorchMarkerModelName[] =
+    "BooleanWorld.PlayerTorchMarker.Model";
 const SecondaryMaterialOptions gNoSecondaryMaterial{};
 
 // ImGui colours go here so they don't clutter up the header file
@@ -207,10 +213,12 @@ void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transi
 
   mwRenderer = static_cast<WorldRenderer*>(transitionData->userData);
   mwRenderer->create(mScene, getMap()->getWorld(), mwRenderSystem, mwRenderResourceMgr);
+  createPlayerTorchMarker();
 
   // Configure before constructing any participating pipeline. The first frame
   // will update this from the same computed light position used by materials.
   // Keep a separate diagnostic copy: F1 never changes the launch configuration.
+  mDebugDisplay.playerTorch = model->getPlayerTorchOptions();
   mDebugDisplay.playerTorchShadows = bw::app::playerTorchShadowSessionOptions(
       model->getShadowOptions());
   mPlayerTorchShadowHardwareFallback = false;
@@ -237,6 +245,70 @@ void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transi
     getOrCreateWorldRenderPipeline(
         renderScale, bw::app::AntiAliasing::Off);
   }
+}
+
+void StatePlayBooleanWorld::createPlayerTorchMarker() {
+  auto materialResource =
+      mwResourceMgr->getResource("Material.PlayerTorchMarker", "World");
+  assert(materialResource);
+  auto material = materialResource->getMppResource();
+  assert(material);
+
+  mpp::mesh::MeshSpecification meshSpec{
+      mpp::mesh::Primitive::Type::Triangles,
+      mpp::mesh::VertexBufferStorageType::Static};
+  meshSpec.setIndexedVertices(true);
+  auto layout = meshSpec.createVertexBufferAttributeLayout(true);
+  layout->createAttribute(
+      mpp::mesh::Vertex::Component::Position3,
+      mpp::mesh::Vertex::DataType::Float, false);
+
+  auto modelStream = make_shared<mpp::BoxModelStream>(
+      mwRenderResourceMgr, meshSpec, material->getName(),
+      gPlayerTorchMarkerSize, gPlayerTorchMarkerSize,
+      gPlayerTorchMarkerSize);
+  mPlayerTorchMarkerModel = mwRenderResourceMgr
+                                ->declareResource(
+                                    gPlayerTorchMarkerModelName, modelStream)
+                                .first;
+  mPlayerTorchMarker = mScene->add3dModel(mPlayerTorchMarkerModel);
+  // The marker identifies the light but must not occlude that light.
+  mPlayerTorchMarker->getParams()->setModelFlags(0);
+  mPlayerTorchMarkerPositionValid = false;
+}
+
+void StatePlayBooleanWorld::destroyPlayerTorchMarker() {
+  if (mPlayerTorchMarker) {
+    mScene->remove3dModel(mPlayerTorchMarker);
+    mPlayerTorchMarker.reset();
+  }
+  // Render submissions can retain the SceneModel3d until their pipeline is
+  // retired later in teardown. Leave the now-unreferenced model resource to
+  // ResourceManager rather than deleting it while that submission is alive.
+  mPlayerTorchMarkerModel.reset();
+  mPlayerTorchMarkerPositionValid = false;
+}
+
+void StatePlayBooleanWorld::updatePlayerTorchMarker(
+    glm::vec3 const& lightPosition) {
+  if (!mPlayerTorchMarker) {
+    return;
+  }
+
+  if (!mPlayerTorchMarkerPositionValid ||
+      mPlayerTorchMarkerPosition.x != lightPosition.x ||
+      mPlayerTorchMarkerPosition.y != lightPosition.y ||
+      mPlayerTorchMarkerPosition.z != lightPosition.z) {
+    mPlayerTorchMarker->resetTransform();
+    mPlayerTorchMarker->translate(lightPosition);
+    mPlayerTorchMarkerPosition = lightPosition;
+    mPlayerTorchMarkerPositionValid = true;
+  }
+
+  auto flags = mDebugDisplay.lightDistance > 0.0f
+                   ? mpp::ModelRenderParams::Flag_Visible
+                   : 0;
+  mPlayerTorchMarker->getParams()->setModelFlags(flags);
 }
 
 map<string, tuple<wp::viz::Renderer*, int, bool>> StatePlayBooleanWorld::createAdditionalRenderers(mpp::ResourceManager* renderResourceMgr) {
@@ -344,6 +416,8 @@ void StatePlayBooleanWorld::destroyGameObjects() {
   delete mWorldCollisionSim;
   mWorldCollisionSim = nullptr;
   mPlayerCollider = nullptr;
+
+  destroyPlayerTorchMarker();
 
   // RenderSystem keeps its own reference to each named pipeline (see
   // getOrCreateWorldRenderPipeline), so resetting mWorldRenderPipelines
@@ -704,6 +778,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
       playerPosition.x + lightOffset.x,
       playerPosition.y,
       playerPosition.z - lightOffset.y};
+  updatePlayerTorchMarker(lightPosition);
   auto const domainName = std::string(bw::app::playerTorchShadowDomain);
   auto const& sessionShadows = mDebugDisplay.playerTorchShadows;
   auto desiredOptions = bw::app::playerTorchMppShadowOptions(
@@ -724,6 +799,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   mPlayerTorchShadowRequestedEnabled = desiredOptions.enabled;
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
+      mDebugDisplay.playerTorch,
       gNoMaterialOverride, gNoMaterialOverride, gAuthoredMaterialScale,
       gDefaultFarGridSize, gNoSecondaryMaterial, frameTime);
 }
@@ -905,14 +981,24 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
       mScene, mCamera3d, {0.0f, 0.0f}, pipeline->getName());
 
   // The named output is always the final offscreen shaded image. AO adds three
-  // images before it; MRT-normal GTAO also inserts two scene attachments.
+  // images before it; MRT-normal GTAO also inserts two scene attachments. An
+  // active shadow domain inserts its imported depth image between the scene
+  // depth and AO images, so account for it rather than presenting AO's white
+  // visibility texture as the world colour.
   auto ambientOcclusionEnabled =
       mDebugDisplay.ambientOcclusionEnabled &&
       mDebugDisplay.ambientOcclusion != bw::app::AmbientOcclusion::None;
   auto usesMrtNormals =
       ambientOcclusionEnabled &&
       mDebugDisplay.ambientOcclusion == bw::app::AmbientOcclusion::GtaoNormals;
-  auto outputImage = ambientOcclusionEnabled ? (usesMrtNormals ? 6u : 4u) : 0u;
+  auto activeShadowImage =
+      ambientOcclusionEnabled &&
+      renderSystem->getShadowDomainOptions(
+          std::string(bw::app::playerTorchShadowDomain)).enabled;
+  auto outputImage = ambientOcclusionEnabled
+                         ? (usesMrtNormals ? 6u : 4u) +
+                               (activeShadowImage ? 1u : 0u)
+                         : 0u;
   auto sceneTarget = pipeline->getGraphImageRenderTarget({outputImage, 1});
   assert(sceneTarget);
   auto sceneTexture = static_cast<mpp::RenderTexture*>(sceneTarget.get());
@@ -1611,7 +1697,25 @@ void StatePlayBooleanWorld::debug_renderOptions() {
             : "Disabled by Video/AmbientOcclusion: none.");
 
     ImGui::Separator();
-    ImGui::TextUnformatted("Player Torch shadows (F1 session-only)");
+    ImGui::TextUnformatted("Player Torch (F1 session-only)");
+    ImGui::SliderFloat(
+        "Distance ahead of player##PlayerTorch", &mDebugDisplay.lightDistance,
+        0.0f, 256.0f, "%.1f");
+    ImGui::TextDisabled(
+        "Moves the Torch from the player's eye along the current facing direction.");
+    ImGui::SliderFloat(
+        "Attenuation radius##PlayerTorch",
+        &mDebugDisplay.playerTorch.attenuationRadius,
+        0.01f, 1024.0f, "%.2f");
+    mDebugDisplay.playerTorch.attenuationFalloff = min(
+        mDebugDisplay.playerTorch.attenuationFalloff,
+        mDebugDisplay.playerTorch.attenuationRadius);
+    ImGui::SliderFloat(
+        "Falloff width##PlayerTorch",
+        &mDebugDisplay.playerTorch.attenuationFalloff,
+        0.0f, mDebugDisplay.playerTorch.attenuationRadius, "%.2f");
+    ImGui::TextDisabled(
+        "Not saved - set Video/PlayerTorch to keep attenuation values.");
     auto& sessionShadows = mDebugDisplay.playerTorchShadows;
     auto const& configuredShadows = model->getShadowOptions();
     char const* enableLabels[] = {
@@ -1665,12 +1769,6 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     ImGui::SliderFloat(
         "Falloff width", &mDebugDisplay.vignetteFalloffWidth,
         0.01f, 1.4f, "%.2f");
-
-    ImGui::Separator();
-    ImGui::TextUnformatted("Lighting");
-    ImGui::SliderFloat(
-        "Light source distance", &mDebugDisplay.lightDistance,
-        0.0f, 256.0f, "%.1f");
   }
 
   ImGui::End();

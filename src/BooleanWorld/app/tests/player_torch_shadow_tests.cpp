@@ -96,16 +96,60 @@ void releaseShadersReceiveOnlyDirectTorchVisibility() {
     auto ambient = shader.find("ambient", direct);
     require(direct != std::string::npos && ambient != std::string::npos,
             std::string(name) + " does not apply visibility before its independent ambient term.");
-    require(shader.find("vec4(value, @In(COLOUR).a)") != std::string::npos,
-            std::string(name) + " loses alpha for a blended receiving surface.");
+    require(shader.find(
+                "vec4(value * fadeToBlack, @In(COLOUR).a)") !=
+                std::string::npos,
+            std::string(name) +
+                " does not fade RGB to black while preserving receiver alpha.");
+    require(shader.find("LIGHT_ATTENUATION_RADIUS") != std::string::npos &&
+                shader.find("LIGHT_ATTENUATION_FALLOFF") != std::string::npos &&
+                shader.find("lightDistance >= radius") != std::string::npos &&
+                shader.find("smoothstep(radius - falloff, radius") !=
+                    std::string::npos,
+            std::string(name) +
+                " does not enforce the configured finite-radius falloff.");
+    require(shader.find("float fragmentDistance = length") !=
+                std::string::npos &&
+                shader.find("float fadeToBlack = pow(clamp") !=
+                    std::string::npos &&
+                shader.find("if (depth > 0.05)") == std::string::npos,
+            std::string(name) +
+                " does not apply the fade-to-black clamp without a hard branch.");
   }
+}
+
+void offsetTorchHasAWorldSpaceMarker() {
+  auto appRoot = std::filesystem::path(BW_APP_RESOURCE_DIR).parent_path();
+  auto state = read(appRoot / "src" / "StatePlayBooleanWorld.cpp");
+  require(state.find("mpp::BoxModelStream") != std::string::npos &&
+              state.find("updatePlayerTorchMarker(lightPosition)") !=
+                  std::string::npos,
+          "The Player Torch marker is not a cube at the computed light position.");
+  require(state.find("mDebugDisplay.lightDistance > 0.0f") !=
+              std::string::npos &&
+              state.find("mpp::ModelRenderParams::Flag_Visible") !=
+                  std::string::npos,
+          "The Player Torch marker is not restricted to a positive offset.");
+
+  auto resources = read(std::filesystem::path(BW_APP_RESOURCE_DIR) /
+                        "Resources.yaml");
+  auto fragment = read(std::filesystem::path(BW_APP_RESOURCE_DIR) /
+                       "shaders" / "player_torch_marker.frag");
+  require(resources.find("Material.PlayerTorchMarker") != std::string::npos &&
+              resources.find("PlayerTorchMarkerProgram") != std::string::npos &&
+              fragment.find("vec4(1.0, 1.0, 0.0, 1.0)") !=
+                  std::string::npos,
+          "The Player Torch marker does not use an unlit yellow material.");
 }
 
 void f1ExposesSessionOnlyDiagnostics() {
   auto appRoot = std::filesystem::path(BW_APP_RESOURCE_DIR).parent_path();
   auto state = read(appRoot / "src" / "StatePlayBooleanWorld.cpp");
-  for (auto label : {"{Key::F1}", "Enable override",
-                     "Range##PlayerTorch", "Constant bias##PlayerTorch",
+  for (auto label : {"{Key::F1}", "Distance ahead of player##PlayerTorch",
+                     "Attenuation radius##PlayerTorch",
+                     "Falloff width##PlayerTorch",
+                     "Enable override", "Range##PlayerTorch",
+                     "Constant bias##PlayerTorch",
                      "Normal bias##PlayerTorch", "Filter##PlayerTorch",
                      "PCF radius##PlayerTorch", "Fade start##PlayerTorch",
                      "Cubemap resolution (configured)"}) {
@@ -125,6 +169,7 @@ int main() {
     sessionOverrideIsTemporaryAndHonoursFallback();
     everyPipelineVariantSharesOneDomain();
     releaseShadersReceiveOnlyDirectTorchVisibility();
+    offsetTorchHasAWorldSpaceMarker();
     f1ExposesSessionOnlyDiagnostics();
     std::cout << "Player Torch shadow integration tests passed\n";
     return 0;

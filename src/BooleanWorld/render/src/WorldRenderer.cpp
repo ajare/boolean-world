@@ -474,6 +474,7 @@ void WorldRenderer::update(
     bw::core::WorldData const& worldData,
     glm::vec3 const& playerPosition,
     glm::vec3 const& lightPosition,
+    bw::app::PlayerTorchOptions const& playerTorch,
     int32_t horizontalMaterialIndexOverride,
     int32_t wallMaterialIndexOverride,
     float materialScale,
@@ -508,7 +509,7 @@ void WorldRenderer::update(
             ? wallMaterialIndexOverride
             : horizontalMaterialIndexOverride;
     item.renderer->update(
-        playerPosition, lightPosition, materialIndexOverride, materialScale,
-        farGridSize, secondaryMaterial, frameTime);
+        playerPosition, lightPosition, playerTorch, materialIndexOverride,
+        materialScale, farGridSize, secondaryMaterial, frameTime);
   }
 }

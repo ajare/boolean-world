@@ -18,7 +18,8 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
                                          std::string const& renderTextureFilterLine = "",
                                          std::string const& ambientOcclusionLine = "",
                                          std::string const& horizontalMaterialsLine = "",
-                                         std::string const& shadowsSection = "") {
+                                         std::string const& shadowsSection = "",
+                                         std::string const& playerTorchSection = "") {
   auto path = std::filesystem::temp_directory_path() / "boolean-world-program-options-test.yaml";
   std::ofstream stream(path);
   stream << "Configuration:\n"
@@ -32,6 +33,7 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
          << renderTextureFilterLine
          << ambientOcclusionLine
          << horizontalMaterialsLine
+         << playerTorchSection
          << shadowsSection
          << "  Audio:\n"
             "    Enabled: false\n"
@@ -140,6 +142,18 @@ ProgramOptions parseWithHorizontalMaterials(std::string const& line) {
   }
 }
 
+ProgramOptions parseWithPlayerTorch(std::string const& section) {
+  auto path = writeConfiguration("", "", "", "", "", "", "", "", section);
+  try {
+    auto options = parseProgramOptions(path.string());
+    std::filesystem::remove(path);
+    return options;
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+}
+
 ProgramOptions parseWithShadows(std::string const& section) {
   auto path = writeConfiguration("", "", "", "", "", "", "", section);
   try {
@@ -150,6 +164,19 @@ ProgramOptions parseWithShadows(std::string const& section) {
     std::filesystem::remove(path);
     throw;
   }
+}
+
+void requirePlayerTorchRejected(
+    std::string const& section, std::string const& field) {
+  try {
+    (void)parseWithPlayerTorch(section);
+  } catch (std::exception const& error) {
+    require(std::string(error.what()).find(field) != std::string::npos,
+            "The Player Torch error did not identify '" + field + "'.");
+    return;
+  }
+  throw std::runtime_error(
+      "Video configuration accepted invalid PlayerTorch/" + field + ".");
 }
 
 void requireShadowsRejected(
@@ -332,6 +359,29 @@ int main() {
         "    HorizontalMaterials: planar\n", "an unknown horizontal-material mode");
     requireHorizontalMaterialsRejected(
         "    HorizontalMaterials:\n", "an empty horizontal-material mode");
+
+    auto defaultPlayerTorch = parseWithPlayerTorch("").video.playerTorch;
+    require(defaultPlayerTorch.attenuationRadius == 192.0f &&
+                defaultPlayerTorch.attenuationFalloff == 64.0f,
+            "A missing PlayerTorch block did not use attenuation defaults.");
+    auto playerTorch = parseWithPlayerTorch(
+                           "    PlayerTorch:\n"
+                           "      Radius: 88.5\n"
+                           "      Falloff: 22.25\n")
+                           .video.playerTorch;
+    require(playerTorch.attenuationRadius == 88.5f &&
+                playerTorch.attenuationFalloff == 22.25f,
+            "Configured Player Torch attenuation was not parsed intact.");
+    requirePlayerTorchRejected(
+        "    PlayerTorch:\n      Unknown: 1\n", "Unknown");
+    requirePlayerTorchRejected(
+        "    PlayerTorch:\n      Radius: 0\n", "Radius");
+    requirePlayerTorchRejected(
+        "    PlayerTorch:\n      Radius: nan\n", "Radius");
+    requirePlayerTorchRejected(
+        "    PlayerTorch:\n      Falloff: -1\n", "Falloff");
+    requirePlayerTorchRejected(
+        "    PlayerTorch:\n      Radius: 10\n      Falloff: 11\n", "Falloff");
 
     auto defaultShadows = parseWithShadows("").video.shadows;
     require(defaultShadows.enabled && defaultShadows.faceResolution == 1024 &&

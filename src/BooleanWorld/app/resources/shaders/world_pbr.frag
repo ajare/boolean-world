@@ -7,6 +7,8 @@
 @@Uniform(float FAR_GRID_SIZE);
 @@Uniform(vec3 PLAYER_POSITION);
 @@Uniform(vec3 LIGHT_POSITION);
+@@Uniform(float LIGHT_ATTENUATION_RADIUS);
+@@Uniform(float LIGHT_ATTENUATION_FALLOFF);
 @@Uniform(float MATERIAL_SCALE);
 @@Uniform(int SECONDARY_MATERIAL_INDEX);
 @@Uniform(int USE_SECONDARY_MATERIAL);
@@ -2365,6 +2367,23 @@ float playerTorchVisibility(vec3 worldPosition, vec3 normal, vec3 lightDirection
     return mix(visibility, 1.0, fade);
 }
 
+float playerTorchAttenuation(float lightDistance)
+{
+    float radius = max(@Uniform(LIGHT_ATTENUATION_RADIUS), 0.0);
+    if (radius <= 0.0 || lightDistance >= radius)
+        return 0.0;
+
+    float falloff = clamp(
+        @Uniform(LIGHT_ATTENUATION_FALLOFF), 0.0, radius);
+    float edgeAttenuation = falloff > 0.0
+        ? 1.0 - smoothstep(radius - falloff, radius, lightDistance)
+        : 1.0;
+    float physicalAttenuation =
+        1.0 / (1.0 + lightDistance * 0.04 +
+               lightDistance * lightDistance * 0.0015);
+    return physicalAttenuation * edgeAttenuation;
+}
+
 vec3 shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
               vec3 lightPosition)
 {
@@ -2374,9 +2393,7 @@ vec3 shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
     vec3 toLight = lightPosition - worldPosition;
     float lightDistance = max(length(toLight), 0.0001);
     vec3 lightDirection = toLight / lightDistance;
-    float lightAttenuation =
-        1.0 / (1.0 + lightDistance * 0.04 +
-               lightDistance * lightDistance * 0.0015);
+    float lightAttenuation = playerTorchAttenuation(lightDistance);
     vec3 direct = evaluatePbrLight(
         material, viewDir, lightDirection,
         vec3(14.0) * lightAttenuation);
@@ -2462,63 +2479,59 @@ Material evaluateMaterial(
 
 void main()
 {
-    // Use radial point-light-to-fragment distance, not view-space depth.
+    // Fade every contribution to black at the world-view boundary. This is
+    // intentionally separate from the Torch's configurable direct-light
+    // attenuation: ambient and emissive terms must disappear there too.
     float fragmentDistance = length(
         @Uniform(LIGHT_POSITION) - @In(FRAGPOSITION));
-    float depth = pow(clamp(
+    float fadeToBlack = pow(clamp(
         1.0 - fragmentDistance / @Uniform(VIEW_DISTANCE), 0.0, 1.0), 1.7);
 
-    vec4 shadedColour = vec4(depth, depth, depth, 1.0);
-    vec3 value = vec3(0.0);
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
+    vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));
+    vec3 normalDir = shadingNormal;
+    float playerDistance = length(
+        @Uniform(PLAYER_POSITION) - @In(FRAGPOSITION));
+    vec3 texturePosition = quantizeByPlayerDistance(
+        @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE),
+        playerDistance);
+    int materialIndex = floorMaterialIndex(
+        @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 38));
+    materialIndex = clamp(materialIndex, 0, 38);
+    Material material = evaluateMaterial(
+        texturePosition, normalDir, viewDir, materialIndex);
 
-    if (depth > 0.05)
+    // Per-vertex tint, applied to the surface's own colour before any
+    // lighting so a tinted surface still shades exactly like an untinted
+    // one. White - what every caller passes unless it is deliberately
+    // marking a surface out - leaves the material untouched.
+    material.albedo *= @In(COLOUR).rgb;
+
+    // Whatever this material embosses, on whatever surface it was
+    // applied to - floor, ceiling or wall.
+    if (@Uniform(EMBOSS_PATTERN) != 0)
     {
-        vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));
-        vec3 normalDir = shadingNormal;
-        float playerDistance = length(
-            @Uniform(PLAYER_POSITION) - @In(FRAGPOSITION));
-        vec3 texturePosition = quantizeByPlayerDistance(
-            @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE),
-            playerDistance);
-        int materialIndex = floorMaterialIndex(
-            @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 38));
-        materialIndex = clamp(materialIndex, 0, 38);
-        Material material = evaluateMaterial(
-            texturePosition, normalDir, viewDir, materialIndex);
-
-        // Per-vertex tint, applied to the surface's own colour before any
-        // lighting so a tinted surface still shades exactly like an untinted
-        // one. White - what every caller passes unless it is deliberately
-        // marking a surface out - leaves the material untouched.
-        material.albedo *= @In(COLOUR).rgb;
-
-        // Whatever this material embosses, on whatever surface it was
-        // applied to - floor, ceiling or wall.
-        if (@Uniform(EMBOSS_PATTERN) != 0)
-        {
-            material.normal = embossSurface(
-                material.normal, @In(FRAGPOSITION),
-                @Uniform(EMBOSS_RADIUS), @Uniform(EMBOSS_DEPTH),
-                @Uniform(EMBOSS_PATTERN),
-                @Uniform(EMBOSS_RUNNING_BOND_WIDTH),
-                @Uniform(EMBOSS_RUNNING_BOND_OFFSET));
-        }
-
-        // Cook-Torrance PBR lighting with GGX distribution, Smith geometry
-        // masking and Schlick Fresnel.
-        shadingNormal = material.normal;
-        value = shadePbr(
-            material, viewDir, @In(FRAGPOSITION),
-            @Uniform(LIGHT_POSITION));
-        value += supernaturalEmission(texturePosition, materialIndex);
-        value = value / (value + vec3(1.0));
-        value = pow(value, vec3(1.0 / 2.2));
+        material.normal = embossSurface(
+            material.normal, @In(FRAGPOSITION),
+            @Uniform(EMBOSS_RADIUS), @Uniform(EMBOSS_DEPTH),
+            @Uniform(EMBOSS_PATTERN),
+            @Uniform(EMBOSS_RUNNING_BOND_WIDTH),
+            @Uniform(EMBOSS_RUNNING_BOND_OFFSET));
     }
+
+    // Cook-Torrance PBR lighting with GGX distribution, Smith geometry
+    // masking and Schlick Fresnel.
+    shadingNormal = material.normal;
+    vec3 value = shadePbr(
+        material, viewDir, @In(FRAGPOSITION),
+        @Uniform(LIGHT_POSITION));
+    value += supernaturalEmission(texturePosition, materialIndex);
+    value = value / (value + vec3(1.0));
+    value = pow(value, vec3(1.0 / 2.2));
 
     // Preserve vertex alpha for a blended receiver. Visibility was applied to
     // the direct term above, before this final opacity is composited.
-    @Out(vec4 COLOUR) = vec4(value, @In(COLOUR).a) * shadedColour;
+    @Out(vec4 COLOUR) = vec4(value * fadeToBlack, @In(COLOUR).a);
     @Out(vec4 BLOOM_MASK) = vec4(0.0);
     @Out(vec2 SHADING_NORMAL) = encodeOctahedralNormal(
         normalize(mat3(VIEW_MATRIX) * shadingNormal));

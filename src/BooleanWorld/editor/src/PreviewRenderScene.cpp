@@ -26,6 +26,7 @@ constexpr char const* pipelineName = "Editor.Preview3D.World";
 // StatePlayBooleanWorld::renderWorldThroughTarget, which derives the same
 // index from the options it built. GTAO from depth adds no scene attachments
 // of its own, so the MRT-normal variant's higher index does not apply here.
+// An active shadow domain inserts one imported graph image before AO output.
 constexpr std::uint32_t outputImageIndex = 4u;
 
 // Launcher's own defaults (StatePlayBooleanWorld::DebugDisplay), so the
@@ -188,14 +189,19 @@ std::uint32_t PreviewRenderScene::render(
   // No highlighted triangle or wall: the preview marks the surface under the
   // pointer by outlining it below, not by tinting the material.
   mRenderer->update(
-      world, worldData, cameraPosition, cameraPosition, -1, -1, materialScale,
+      world, worldData, cameraPosition, cameraPosition,
+      bw::app::PlayerTorchOptions{}, -1, -1, materialScale,
       farGridSize, secondaryMaterial, frameTime);
 
   mScene->setViewport(0, 0, mWidth, mHeight);
   mwRenderSystem->renderScene(
       mScene, camera, {0.0f, 0.0f}, mPipeline->getName());
 
-  auto target = mPipeline->getGraphImageRenderTarget({outputImageIndex, 1});
+  auto activeShadowImage =
+      mwRenderSystem->getShadowDomainOptions(
+          std::string(bw::app::playerTorchShadowDomain)).enabled;
+  auto target = mPipeline->getGraphImageRenderTarget(
+      {outputImageIndex + (activeShadowImage ? 1u : 0u), 1});
   if (!target) {
     return 0;
   }

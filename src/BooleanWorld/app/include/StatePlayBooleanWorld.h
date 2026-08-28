@@ -8,6 +8,7 @@
 #include <mpp/AmbientOcclusion.h>
 #include <mpp/AntiAliasing.h>
 #include <mpp/Camera.h>
+#include <mpp/SceneModel3d.h>
 
 #include <willpower/application/StateFactory.h>
 
@@ -52,6 +53,7 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     float vignetteFalloffWidth{0.65f};
 
     float lightDistance{0.0f};
+    bw::app::PlayerTorchOptions playerTorch;
 
     // A live diagnostic copy; it is intentionally not the model's configured
     // VideoOptions and is discarded with this play session.
@@ -111,6 +113,13 @@ private:
   bool mPlayerTorchShadowHardwareFallback{false};
   bool mPlayerTorchShadowRequestedEnabled{false};
 
+  // A world-space marker for an offset Player Torch. It never casts shadows
+  // and is hidden while the light remains at the player's eye.
+  mpp::ResourcePtr mPlayerTorchMarkerModel;
+  mpp::SceneModel3dPtr mPlayerTorchMarker;
+  glm::vec3 mPlayerTorchMarkerPosition{0.0f};
+  bool mPlayerTorchMarkerPositionValid{false};
+
   // Created/managed in load states
   WorldRenderer* mwRenderer;
 
@@ -144,6 +153,12 @@ private:
       bw::app::AntiAliasing antiAliasing);
 
   void setupMapRenderer(applib::StateTransitionData* transitionData) override;
+
+  void createPlayerTorchMarker();
+
+  void destroyPlayerTorchMarker();
+
+  void updatePlayerTorchMarker(glm::vec3 const& lightPosition);
 
   std::map<std::string, std::tuple<wp::viz::Renderer*, int, bool>> createAdditionalRenderers(mpp::ResourceManager* renderResourceMgr) override;
 

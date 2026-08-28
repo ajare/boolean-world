@@ -83,6 +83,8 @@ __declspec(dllexport) int dllSetVideoOptions(
     int ambientOcclusionCode,
     int renderTextureFilterCode,
     int horizontalMaterialsCode,
+    float playerTorchAttenuationRadius,
+    float playerTorchAttenuationFalloff,
     int shadowsEnabledCode,
     std::uint64_t shadowFaceResolution,
     float shadowRange,
@@ -94,9 +96,11 @@ __declspec(dllexport) int dllSetVideoOptions(
     float shadowFadeStart) {
   return dllState.setVideoOptions(
       renderScaleCode, antiAliasingCode, ambientOcclusionCode,
-      renderTextureFilterCode, horizontalMaterialsCode, shadowsEnabledCode,
-      shadowFaceResolution, shadowRange, shadowNearPlane, shadowConstantBias,
-      shadowNormalBias, shadowFilterCode, shadowFilterRadius, shadowFadeStart,
+      renderTextureFilterCode, horizontalMaterialsCode,
+      playerTorchAttenuationRadius, playerTorchAttenuationFalloff,
+      shadowsEnabledCode, shadowFaceResolution, shadowRange, shadowNearPlane,
+      shadowConstantBias, shadowNormalBias, shadowFilterCode,
+      shadowFilterRadius, shadowFadeStart,
       gVideoOptions);
 }
 

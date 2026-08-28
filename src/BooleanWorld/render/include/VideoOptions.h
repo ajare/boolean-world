@@ -128,6 +128,13 @@ inline constexpr std::optional<ShadowFilter> shadowFilterFromName(
   return std::nullopt;
 }
 
+// Finite-range lighting controls for the Player Torch. Falloff is the width
+// of the smooth fade at the edge of the radius; zero selects a hard cutoff.
+struct PlayerTorchOptions {
+  float attenuationRadius{192.0f};
+  float attenuationFalloff{64.0f};
+};
+
 struct ShadowOptions {
   bool enabled{true};
   std::size_t faceResolution{1024};
@@ -164,6 +171,7 @@ struct VideoOptions {
   AmbientOcclusion ambientOcclusion{AmbientOcclusion::GtaoDepth};
   RenderTextureFilter renderTextureFilter{RenderTextureFilter::Linear};
   HorizontalMaterials horizontalMaterials{HorizontalMaterials::TwoDimensional};
+  PlayerTorchOptions playerTorch;
   ShadowOptions shadows;
 };
 

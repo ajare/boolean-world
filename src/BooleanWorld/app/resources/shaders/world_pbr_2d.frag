@@ -7,6 +7,8 @@
 @@Uniform(float FAR_GRID_SIZE);
 @@Uniform(vec3 PLAYER_POSITION);
 @@Uniform(vec3 LIGHT_POSITION);
+@@Uniform(float LIGHT_ATTENUATION_RADIUS);
+@@Uniform(float LIGHT_ATTENUATION_FALLOFF);
 @@Uniform(float MATERIAL_SCALE);
 @@Uniform(int SECONDARY_MATERIAL_INDEX);
 @@Uniform(int USE_SECONDARY_MATERIAL);
@@ -1186,12 +1188,29 @@ float playerTorchVisibility(vec3 worldPosition, vec3 normal, vec3 lightDirection
     return mix(visibility, 1.0, fade);
 }
 
+float playerTorchAttenuation(float lightDistance)
+{
+    float radius = max(@Uniform(LIGHT_ATTENUATION_RADIUS), 0.0);
+    if (radius <= 0.0 || lightDistance >= radius)
+        return 0.0;
+
+    float falloff = clamp(
+        @Uniform(LIGHT_ATTENUATION_FALLOFF), 0.0, radius);
+    float edgeAttenuation = falloff > 0.0
+        ? 1.0 - smoothstep(radius - falloff, radius, lightDistance)
+        : 1.0;
+    float physicalAttenuation =
+        1.0 / (1.0 + lightDistance * 0.04 +
+               lightDistance * lightDistance * 0.0015);
+    return physicalAttenuation * edgeAttenuation;
+}
+
 vec3 shadePbr(Material m, vec3 viewDir, vec3 worldPos, vec3 lightPos)
 {
     vec3 toLight = lightPos - worldPos;
     float distance = max(length(toLight), 0.0001);
     vec3 lightDirection = toLight / distance;
-    float attenuation = 1.0 / (1.0 + distance * 0.04 + distance * distance * 0.0015);
+    float attenuation = playerTorchAttenuation(distance);
     vec3 direct = evaluatePbrLight(m, viewDir, lightDirection, vec3(14.0) * attenuation);
     direct *= playerTorchVisibility(worldPos, m.normal, lightDirection);
     vec3 ambient = vec3(0.12);
@@ -1203,45 +1222,45 @@ vec3 shadePbr(Material m, vec3 viewDir, vec3 worldPos, vec3 lightPos)
 
 void main()
 {
-    // Use radial point-light-to-fragment distance, not view-space depth.
+    // Fade every contribution to black at the world-view boundary. This is
+    // intentionally separate from the Torch's configurable direct-light
+    // attenuation: ambient and emissive terms must disappear there too.
     float fragmentDistance = length(
         @Uniform(LIGHT_POSITION) - @In(FRAGPOSITION));
-    float depth = pow(clamp(
+    float fadeToBlack = pow(clamp(
         1.0 - fragmentDistance / @Uniform(VIEW_DISTANCE), 0.0, 1.0), 1.7);
-    vec3 value = vec3(0.0);
+
+    vec3 worldPos = @In(FRAGPOSITION);
+    vec3 viewDir = normalize(@ViewPos - worldPos);
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
-    if (depth > 0.05)
-    {
-        vec3 worldPos = @In(FRAGPOSITION);
-        vec3 viewDir = normalize(@ViewPos - worldPos);
-        vec3 normal = shadingNormal;
-        float playerDistance = length(
-            @Uniform(PLAYER_POSITION) - worldPos);
-        vec2 texturePosition = quantizeByPlayerDistance(
-            worldPos.xz / @Uniform(MATERIAL_SCALE), playerDistance);
-        int materialIndex = floorMaterialIndex(
-            worldPos, clamp(@Uniform(MATERIAL_INDEX), 0, 37));
-        materialIndex = clamp(materialIndex, 0, 37);
-        Material material = material2d(
-            texturePosition, normal, viewDir, materialIndex);
-        // Whatever this material embosses, on whatever surface it was
-        // applied to - floor, ceiling or wall.
-        if (@Uniform(EMBOSS_PATTERN) != 0)
-            material.normal = embossSurface(
-                material.normal, worldPos, @Uniform(EMBOSS_RADIUS),
-                @Uniform(EMBOSS_DEPTH), @Uniform(EMBOSS_PATTERN),
-                @Uniform(EMBOSS_RUNNING_BOND_WIDTH),
-                @Uniform(EMBOSS_RUNNING_BOND_OFFSET));
-        shadingNormal = material.normal;
-        value = shadePbr(material, viewDir, worldPos, @Uniform(LIGHT_POSITION));
-        value += supernaturalEmission(texturePosition, materialIndex);
-        value = value / (value + vec3(1.0));
-        value = pow(value, vec3(1.0 / 2.2));
-    }
+    vec3 normal = shadingNormal;
+    float playerDistance = length(
+        @Uniform(PLAYER_POSITION) - worldPos);
+    vec2 texturePosition = quantizeByPlayerDistance(
+        worldPos.xz / @Uniform(MATERIAL_SCALE), playerDistance);
+    int materialIndex = floorMaterialIndex(
+        worldPos, clamp(@Uniform(MATERIAL_INDEX), 0, 37));
+    materialIndex = clamp(materialIndex, 0, 37);
+    Material material = material2d(
+        texturePosition, normal, viewDir, materialIndex);
+    // Whatever this material embosses, on whatever surface it was
+    // applied to - floor, ceiling or wall.
+    if (@Uniform(EMBOSS_PATTERN) != 0)
+        material.normal = embossSurface(
+            material.normal, worldPos, @Uniform(EMBOSS_RADIUS),
+            @Uniform(EMBOSS_DEPTH), @Uniform(EMBOSS_PATTERN),
+            @Uniform(EMBOSS_RUNNING_BOND_WIDTH),
+            @Uniform(EMBOSS_RUNNING_BOND_OFFSET));
+    shadingNormal = material.normal;
+    vec3 value = shadePbr(
+        material, viewDir, worldPos, @Uniform(LIGHT_POSITION));
+    value += supernaturalEmission(texturePosition, materialIndex);
+    value = value / (value + vec3(1.0));
+    value = pow(value, vec3(1.0 / 2.2));
+
     // Preserve vertex alpha for a blended receiver. Visibility was applied to
     // the direct term above, before this final opacity is composited.
-    @Out(vec4 COLOUR) = vec4(value, @In(COLOUR).a) *
-        vec4(depth, depth, depth, 1.0);
+    @Out(vec4 COLOUR) = vec4(value * fadeToBlack, @In(COLOUR).a);
     @Out(vec4 BLOOM_MASK) = vec4(0.0);
     @Out(vec2 SHADING_NORMAL) = encodeOctahedralNormal(
         normalize(mat3(VIEW_MATRIX) * shadingNormal));

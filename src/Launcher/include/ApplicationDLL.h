@@ -34,10 +34,10 @@ class ApplicationDLL {
   // struct layout part of the DLL ABI.
   typedef int (*DllSetInputOptionsFunction)(float);
 
-  // Video enums cross as stable integer codes and shadow values as ordered
+  // Video enums cross as stable integer codes and Torch values as ordered
   // scalars, keeping the ABI plain and independent of C++ struct layout.
   typedef int (*DllSetVideoOptionsFunction)(
-      int, int, int, int, int,
+      int, int, int, int, int, float, float,
       int, std::uint64_t, float, float, float, float, int, float, float);
 
 private:

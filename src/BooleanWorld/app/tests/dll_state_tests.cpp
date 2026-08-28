@@ -127,12 +127,15 @@ void transfersShadowOptionsTransactionally() {
       bw::app::renderTextureFilterCode(bw::app::RenderTextureFilter::Linear),
       bw::app::horizontalMaterialsCode(
           bw::app::HorizontalMaterials::ThreeDimensional),
+      90.0f, 20.0f,
       0, 1537, 87.25f, 0.625f, 0.00125f, 0.00475f,
       bw::app::shadowFilterCode(bw::app::ShadowFilter::Hard), 2.5f, 0.675f,
       options);
   require(result == 0, "Valid shadow boundary values were rejected.");
   auto const accepted = options;
-  require(!options.shadows.enabled && options.shadows.faceResolution == 1537 &&
+  require(options.playerTorch.attenuationRadius == 90.0f &&
+              options.playerTorch.attenuationFalloff == 20.0f &&
+              !options.shadows.enabled && options.shadows.faceResolution == 1537 &&
               options.shadows.range == 87.25f &&
               options.shadows.nearPlane == 0.625f &&
               options.shadows.constantBias == 0.00125f &&
@@ -149,6 +152,7 @@ void transfersShadowOptionsTransactionally() {
       bw::app::renderTextureFilterCode(bw::app::RenderTextureFilter::Nearest),
       bw::app::horizontalMaterialsCode(
           bw::app::HorizontalMaterials::TwoDimensional),
+      192.0f, 64.0f,
       1, 2048, 50.0f, 0.5f, 0.0f, 0.0f, 99, 1.0f, 0.9f, options);
   require(result != 0, "An invalid shadow filter boundary code was accepted.");
   require(options.renderScale == accepted.renderScale &&
@@ -165,11 +169,30 @@ void transfersShadowOptionsTransactionally() {
       bw::app::renderTextureFilterCode(bw::app::RenderTextureFilter::Linear),
       bw::app::horizontalMaterialsCode(
           bw::app::HorizontalMaterials::TwoDimensional),
+      192.0f, 64.0f,
       1, 1024, 0.25f, 0.25f, 0.0f, 0.0f,
       bw::app::shadowFilterCode(bw::app::ShadowFilter::Pcf), 1.0f, 0.9f,
       options);
   require(result != 0 && options.shadows.range == accepted.shadows.range,
           "A degenerate shadow range was accepted or applied.");
+
+  result = state.setVideoOptions(
+      bw::app::renderScaleCode(bw::app::RenderScale::Full),
+      bw::app::antiAliasingCode(bw::app::AntiAliasing::Off),
+      bw::app::ambientOcclusionCode(bw::app::AmbientOcclusion::None),
+      bw::app::renderTextureFilterCode(bw::app::RenderTextureFilter::Linear),
+      bw::app::horizontalMaterialsCode(
+          bw::app::HorizontalMaterials::TwoDimensional),
+      32.0f, 33.0f,
+      1, 1024, 192.0f, 0.25f, 0.0f, 0.0f,
+      bw::app::shadowFilterCode(bw::app::ShadowFilter::Pcf), 1.0f, 0.9f,
+      options);
+  require(result != 0 &&
+              options.playerTorch.attenuationRadius ==
+                  accepted.playerTorch.attenuationRadius &&
+              options.playerTorch.attenuationFalloff ==
+                  accepted.playerTorch.attenuationFalloff,
+          "A falloff wider than the attenuation radius was accepted or applied.");
 }
 
 void renderScaleVocabularyIsClosedAndSizesTargets() {

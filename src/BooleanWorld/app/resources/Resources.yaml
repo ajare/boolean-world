@@ -375,6 +375,12 @@ Resources:
           Definition:
             textures: "1"
       - type: "Shader"
+        name: "PlayerTorchMarkerVertexShader"
+        location: "shaders/player_torch_marker.vert"
+      - type: "Shader"
+        name: "PlayerTorchMarkerFragmentShader"
+        location: "shaders/player_torch_marker.frag"
+      - type: "Shader"
         name: "VignetteVertexShader"
         location: "shaders/vignette.vert"
       - type: "Shader"
@@ -446,6 +452,27 @@ Resources:
                           type: "uint8"
                           normalised: "true"
       - type: "Program"
+        name: "PlayerTorchMarkerProgram"
+        DependentResources:
+          DependentResource:
+            - id: "Vertex"
+              ref: "PlayerTorchMarkerVertexShader"
+            - id: "Fragment"
+              ref: "PlayerTorchMarkerFragmentShader"
+        Definitions:
+          Definition:
+            Attribs: {}
+            MeshSpecification:
+              primitive: "triangles"
+              indexed: "true"
+              storage: "static"
+              Buffers:
+                Buffer:
+                  Channels:
+                    Channel:
+                      data: "position3"
+                      type: "float32"
+      - type: "Program"
         name: "VignetteProgram"
         DependentResources:
           DependentResource:
@@ -469,6 +496,15 @@ Resources:
                         type: "float32"
                       - data: "texcoord2"
                         type: "float32"
+      - type: "Material"
+        name: "Material.PlayerTorchMarker"
+        DependentResources:
+          DependentResource:
+            id: "Program"
+            ref: "PlayerTorchMarkerProgram"
+        Definitions:
+          Definition:
+            Textures: {}
       - type: "Material"
         name: "Material.Horizontal2d"
         DependentResources:

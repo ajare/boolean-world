@@ -142,6 +142,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("FAR_GRID_SIZE", 0.5f);
     uniforms.setUniform("PLAYER_POSITION", glm::vec3{});
     uniforms.setUniform("LIGHT_POSITION", glm::vec3{});
+    uniforms.setUniform("LIGHT_ATTENUATION_RADIUS", 192.0f);
+    uniforms.setUniform("LIGHT_ATTENUATION_FALLOFF", 64.0f);
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
     uniforms.setUniform("SECONDARY_MATERIAL_INDEX", int32_t{-1});
     uniforms.setUniform("USE_SECONDARY_MATERIAL", int32_t{0});
@@ -271,6 +273,7 @@ void WorldRenderer3d::setWireframe(bool wireframe) {
 void WorldRenderer3d::update(
     glm::vec3 const& playerPosition,
     glm::vec3 const& lightPosition,
+    bw::app::PlayerTorchOptions const& playerTorch,
     int32_t materialIndexOverride,
     float materialScale,
     float farGridSize,
@@ -290,6 +293,10 @@ void WorldRenderer3d::update(
     uc->updateUniform("FAR_GRID_SIZE", farGridSize);
     uc->updateUniform("PLAYER_POSITION", playerPosition);
     uc->updateUniform("LIGHT_POSITION", lightPosition);
+    uc->updateUniform(
+        "LIGHT_ATTENUATION_RADIUS", playerTorch.attenuationRadius);
+    uc->updateUniform(
+        "LIGHT_ATTENUATION_FALLOFF", playerTorch.attenuationFalloff);
     uc->updateUniform("MATERIAL_SCALE", materialScale);
     // The relief itself is per bucket and set once from the Sub-material that
     // baked it; only the debug secondary-material choice is still global.
