@@ -1,7 +1,9 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <map>
+#include <optional>
 #include <span>
 #include <vector>
 #include <string>
@@ -21,10 +23,13 @@
 #include "VideoOptions.h"
 #include "WorldTriangle3dDataProvider.h"
 #include "WorldRenderer3d.h"
+#include "WallRenderVariant.h"
 
 class WorldRenderer {
 public:
   using RenderTargets = std::array<mpp::RenderTargetPtr, bw::app::renderScaleCount>;
+  using WallRenderVariantResolver = std::function<std::optional<WallRenderVariant>(
+      bw::core::arr::ArrangementWall const&)>;
 
 private:
   typedef std::shared_ptr<WorldTriangle3dDataProvider> DataProvider;
@@ -46,6 +51,8 @@ private:
   SubMaterialResolver mBakedSubMaterialResolver;
 
   std::vector<MaterialRenderer> mMaterialRenderers;
+  std::vector<WallRenderSurface> mWallRenderSurfaces;
+  WallRenderVariantResolver mWallRenderVariantResolver;
 
   bool mWorldHasChanged;
   bool mWireframe{false};
@@ -97,7 +104,9 @@ public:
       wp::application::resourcesystem::ResourceManager* resourceMgr,
       wp::Logger* logger,
       bw::app::RenderTextureFilter renderTextureFilter,
-      bw::app::HorizontalMaterials horizontalMaterials);
+      bw::app::HorizontalMaterials horizontalMaterials,
+      std::vector<WallRenderSurface> wallRenderSurfaces = {},
+      WallRenderVariantResolver wallRenderVariantResolver = {});
 
   virtual ~WorldRenderer();
 

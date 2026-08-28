@@ -14,12 +14,14 @@ using namespace wp::application::resourcesystem;
 WorldRenderer3d::WorldRenderer3d(
     ResourcePtr resource, ResourcePtr fragmentOverdrawMaterial,
     wp::Logger* logger, WorldSurfaceSet surfaceSet,
-    SubMaterialResolver const* resolver)
+    SubMaterialResolver const* resolver,
+    vector<WallRenderSurface> wallRenderSurfaces)
     : mRenderer(nullptr),
       mMaterial(resource),
       mFragmentOverdrawMaterial(fragmentOverdrawMaterial),
       mSurfaceSet(surfaceSet),
       mwResolver(resolver),
+      mWallRenderSurfaces(move(wallRenderSurfaces)),
       mGlobalTime(0.0f),
       mwLogger(logger) {
 }
@@ -43,10 +45,14 @@ WorldRenderer3d::~WorldRenderer3d() {
 }
 
 uint32_t WorldRenderer3d::getMeshIndexForMaterialHash(
-    uint64_t hashValue, bool floor) const {
+    uint64_t hashValue, bool floor,
+    optional<WallRenderVariant> const& variant) const {
   auto worldBatch = mRenderer->getWorldBatch();
-
-  return worldBatch->getMeshIndexForMaterialHash(hashValue, floor);
+  if (variant && !worldBatch->hasMeshForMaterialHash(hashValue, floor, variant)) {
+    throw logic_error(
+        "Wall render variant was used for geometry without a seeded mesh bucket.");
+  }
+  return worldBatch->getMeshIndexForMaterialHash(hashValue, floor, variant);
 }
 
 namespace {
@@ -119,7 +125,8 @@ void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvide
       resourceMgr,
       world,
       mSurfaceSet,
-      mwResolver);
+      mwResolver,
+      mWallRenderSurfaces);
 
   mRenderer->create();
 
@@ -228,6 +235,38 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
   }
 
   if (mSurfaceSet == WorldSurfaceSet::Walls) {
+    // Variants decorate only their own wall bucket.  Keeping this binding at
+    // the mesh seam means one Sub-material can still back several textures or
+    // uniform configurations without texture arrays or bindless state.
+    for (auto const& surface : mWallRenderSurfaces) {
+      auto const& variant = *surface.variant;
+      auto resolved = mwResolver->resolve(surface.subMaterialId);
+      auto hashValue = resolved.def.hash(resolved.materialIndex);
+      auto meshIndex = worldBatch->getMeshIndexForMaterialHash(
+          hashValue, false, variant);
+      if (mUniforms[meshIndex] != nullptr) {
+        continue;
+      }
+      auto uniforms = make_shared<mpp::UniformCollection>();
+      auto meshName = worldBatch->formatMeshName(hashValue, false, variant);
+      params->setMeshUniforms(meshName, uniforms);
+      params->setMeshBlend(meshName, false);
+      if (variant.texture) {
+        params->setMeshTexture(meshName, variant.textureIndex, variant.texture);
+      }
+      uniforms->setUniform("MATERIAL_INDEX", static_cast<int32_t>(resolved.materialIndex));
+      uniforms->setUniform(
+          "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
+          resolved.def.params.data());
+      setEmbossUniforms(*uniforms, resolved.def.emboss);
+      if (variant.setUniforms) {
+        variant.setUniforms(*uniforms);
+      }
+      initializeGlobalUniforms(*uniforms);
+      mUniforms[meshIndex] = uniforms;
+      mMaterialIndices[meshIndex] = static_cast<int32_t>(resolved.materialIndex);
+    }
+
     // The reserved, plain-white back-face material - see
     // WorldBatch::createModelStream, which guarantees this mesh bucket
     // exists regardless of any Primitive's authored material.

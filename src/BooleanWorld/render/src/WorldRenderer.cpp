@@ -24,9 +24,13 @@ WorldRenderer::WorldRenderer(
     wp::application::resourcesystem::ResourceManager* resourceMgr,
     wp::Logger* logger,
     bw::app::RenderTextureFilter renderTextureFilter,
-    bw::app::HorizontalMaterials horizontalMaterials)
+    bw::app::HorizontalMaterials horizontalMaterials,
+    vector<WallRenderSurface> wallRenderSurfaces,
+    WallRenderVariantResolver wallRenderVariantResolver)
     : mSubMaterialResolver(resourceMgr),
       mBakedSubMaterialResolver(resourceMgr),
+      mWallRenderSurfaces(move(wallRenderSurfaces)),
+      mWallRenderVariantResolver(move(wallRenderVariantResolver)),
       mWorldHasChanged(true),
       mwLogger(logger),
       mRenderTextureFilter(renderTextureFilter) {
@@ -50,7 +54,8 @@ WorldRenderer::WorldRenderer(
       {make_shared<WorldRenderer3d>(
            material3d, fragmentOverdrawMaterial, mwLogger,
            WorldSurfaceSet::Walls,
-           &mSubMaterialResolver),
+           &mSubMaterialResolver,
+           mWallRenderSurfaces),
        make_shared<WorldTriangle3dDataProvider>(),
        WorldSurfaceSet::Walls});
 }
@@ -350,6 +355,10 @@ void WorldRenderer::updateWallDataProvider(
     auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
     return orientation.normal.dot(playerPositionXZ - midpoint) > 0.0f;
   };
+  auto variantFor = [&](bw::core::arr::ArrangementWall const& wall) {
+    return mWallRenderVariantResolver ? mWallRenderVariantResolver(wall)
+                                      : optional<WallRenderVariant>{};
+  };
 
   // A chipped wall draws its remainder plus the chamfer facets instead of its
   // plain quad. Only the coplanar wall remainder follows the player-facing
@@ -374,8 +383,9 @@ void WorldRenderer::updateWallDataProvider(
     auto const& properties = worldData.palette[wall.paletteIndex];
     auto resolved = mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
     auto hash = resolved.def.hash(resolved.materialIndex);
-    auto authoredMesh =
-        wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
+    auto variant = variantFor(wall);
+    auto authoredMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
+        hash, false, variant);
     auto backMesh =
         wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
     auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
@@ -410,7 +420,8 @@ void WorldRenderer::updateWallDataProvider(
       auto const& properties = worldData.palette[wall.paletteIndex];
       auto resolved = mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
       auto hash = resolved.def.hash(resolved.materialIndex);
-      auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
+      auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
+          hash, false, variantFor(wall));
       auto colour = int32_t(wallIndex) == highlightedWall
                         ? lookedAtVertexColour
                         : untintedVertexColour;
@@ -451,8 +462,8 @@ void WorldRenderer::updateWallDataProvider(
         auto resolved =
             mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
         auto hash = resolved.def.hash(resolved.materialIndex);
-        auto authoredMesh =
-            wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
+        auto authoredMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
+            hash, false, variantFor(wall));
         for (auto const& replacement : replacements) {
           auto followsWall = replacement.followsWallFacing;
           addDetailTriangleToDataProvider(

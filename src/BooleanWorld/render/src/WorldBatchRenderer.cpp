@@ -10,7 +10,8 @@ WorldBatchRenderer::WorldBatchRenderer(string const& name,
                                        mpp::ResourceManager* resourceMgr,
                                        bw::core::World const* world,
                                        WorldSurfaceSet surfaceSet,
-                                       SubMaterialResolver const* resolver)
+                                       SubMaterialResolver const* resolver,
+                                       vector<WallRenderSurface> wallRenderSurfaces)
     : BatchRenderer(), mRenderSystem(renderSystem), mResourceMgr(resourceMgr), mDataProvider(dataProvider) {
   mBatch = new WorldBatch(
       name,
@@ -19,7 +20,8 @@ WorldBatchRenderer::WorldBatchRenderer(string const& name,
       resourceMgr,
       world,
       surfaceSet,
-      resolver);
+      resolver,
+      move(wallRenderSurfaces));
 }
 
 WorldBatchRenderer::~WorldBatchRenderer() {

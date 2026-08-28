@@ -18,6 +18,7 @@
 #include "SubMaterialResolver.h"
 #include "WorldBatchRenderer.h"
 #include "WorldTriangle3dDataProvider.h"
+#include "WallRenderVariant.h"
 
 class WorldRenderer3d {
   wp::application::resourcesystem::ResourcePtr mMaterial;
@@ -25,6 +26,7 @@ class WorldRenderer3d {
   WorldSurfaceSet mSurfaceSet;
 
   SubMaterialResolver const* mwResolver;
+  std::vector<WallRenderSurface> mWallRenderSurfaces;
 
   mpp::ScenePtr mScene;
 
@@ -51,11 +53,14 @@ public:
       wp::application::resourcesystem::ResourcePtr fragmentOverdrawMaterial,
       wp::Logger* logger,
       WorldSurfaceSet surfaceSet,
-      SubMaterialResolver const* resolver);
+      SubMaterialResolver const* resolver,
+      std::vector<WallRenderSurface> wallRenderSurfaces = {});
 
   virtual ~WorldRenderer3d();
 
-  uint32_t getMeshIndexForMaterialHash(uint64_t hashValue, bool floor) const;
+  uint32_t getMeshIndexForMaterialHash(
+      uint64_t hashValue, bool floor,
+      std::optional<WallRenderVariant> const& variant = std::nullopt) const;
 
   // Pushes a Sub-material draft into the existing mesh bucket identified by
   // its baked hash. This deliberately changes uniforms only: no geometry or

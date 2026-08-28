@@ -8,7 +8,16 @@
 
 using namespace std;
 
-WorldBatch::WorldBatch(string const& name, mpp::ResourcePtr textureOrMaterial, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr, bw::core::World const* world, WorldSurfaceSet surfaceSet, SubMaterialResolver const* resolver)
+namespace {
+string variantIdentity(optional<WallRenderVariant> const& variant) {
+  if (variant && variant->identity.empty()) {
+    throw invalid_argument("Wall render variants must have a non-empty identity.");
+  }
+  return variant ? variant->identity : string{};
+}
+}  // namespace
+
+WorldBatch::WorldBatch(string const& name, mpp::ResourcePtr textureOrMaterial, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr, bw::core::World const* world, WorldSurfaceSet surfaceSet, SubMaterialResolver const* resolver, vector<WallRenderSurface> wallRenderSurfaces)
     : TriangleBatch(name,
                     {mpp::TriangleBatchOptions::Dimension::P3D,
                      true,
@@ -24,21 +33,34 @@ WorldBatch::WorldBatch(string const& name, mpp::ResourcePtr textureOrMaterial, m
                     resourceMgr),
       mWorld(world),
       mSurfaceSet(surfaceSet),
-      mwResolver(resolver) {
+      mwResolver(resolver),
+      mWallRenderSurfaces(move(wallRenderSurfaces)) {
+  for (auto const& surface : mWallRenderSurfaces) {
+    if (!surface.variant) {
+      throw invalid_argument("Wall render surface catalog entries must carry a variant.");
+    }
+    (void)variantIdentity(surface.variant);
+  }
 }
 
 void WorldBatch::processMaterialDefinition(
     uint32_t index,
     bw::core::MaterialDefinition const& def,
     bool floor,
+    optional<WallRenderVariant> const& variant,
     shared_ptr<mpp::ProgrammaticModelStream> modelStream) {
+  if (floor && variant) {
+    throw invalid_argument("Wall render variants cannot be used by horizontal surfaces.");
+  }
   auto hashValue = def.data.hash(index);
-  MaterialMeshKey key{hashValue, floor};
+  MaterialMeshKey key{hashValue, floor, variantIdentity(variant)};
 
   if (mMaterialHashToMesh.find(key) == mMaterialHashToMesh.end()) {
     auto const& spec = getSpecification();
 
-    auto meshIndex = modelStream->createMesh(formatMeshName(hashValue, floor), spec, getMaterial()->getName(), getIndexWidth(), getPointSize());
+    auto meshIndex = modelStream->createMesh(
+        formatMeshName(hashValue, floor, variant), spec,
+        getMaterial()->getName(), getIndexWidth(), getPointSize());
     auto numVertices = getVertexCount(mInitialCapacity);
 
     if (numVertices > 0) {
@@ -56,12 +78,13 @@ void WorldBatch::processMaterialDefinition(
 void WorldBatch::processSubMaterial(
     string const& subMaterialId,
     bool floor,
+    optional<WallRenderVariant> const& variant,
     shared_ptr<mpp::ProgrammaticModelStream> modelStream) {
   auto resolved = mwResolver->resolve(subMaterialId);
   bw::core::MaterialDefinition def;
   def.data = resolved.def;
 
-  processMaterialDefinition(resolved.materialIndex, def, floor, modelStream);
+  processMaterialDefinition(resolved.materialIndex, def, floor, variant, modelStream);
 }
 
 shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
@@ -76,10 +99,20 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
     auto const& properties = primitive->getProperties();
 
     if (mSurfaceSet == WorldSurfaceSet::Horizontal) {
-      processSubMaterial(properties.floorMaterialId, true, modelStream);
-      processSubMaterial(properties.ceilingMaterialId, false, modelStream);
+      processSubMaterial(properties.floorMaterialId, true, nullopt, modelStream);
+      processSubMaterial(properties.ceilingMaterialId, false, nullopt, modelStream);
     } else {
-      processSubMaterial(properties.wallMaterialId, false, modelStream);
+      processSubMaterial(properties.wallMaterialId, false, nullopt, modelStream);
+    }
+  }
+
+  // Seed the extra wall buckets independently of their Sub-material. This
+  // lets distinct surface variants bind distinct state without making a
+  // Sub-material itself wall-specific.
+  if (mSurfaceSet == WorldSurfaceSet::Walls) {
+    for (auto const& surface : mWallRenderSurfaces) {
+      processSubMaterial(
+          surface.subMaterialId, false, surface.variant, modelStream);
     }
   }
 
@@ -90,31 +123,39 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
   if (mSurfaceSet != WorldSurfaceSet::Horizontal) {
     processMaterialDefinition(
         BW_WALL_BACK_FACE_MATERIAL_INDEX, bw::core::MaterialDefinition{},
-        false, modelStream);
+        false, nullopt, modelStream);
   }
 
   return modelStream;
 }
 
 uint32_t WorldBatch::getMeshIndexForMaterialHash(
-    uint64_t hashValue, bool floor) const {
-  auto it = mMaterialHashToMesh.find({hashValue, floor});
+    uint64_t hashValue, bool floor,
+    optional<WallRenderVariant> const& variant) const {
+  auto it = mMaterialHashToMesh.find(
+      {hashValue, floor, variantIdentity(variant)});
 
   return it == mMaterialHashToMesh.end() ? 0u : it->second;
 }
 
-bool WorldBatch::hasMeshForMaterialHash(uint64_t hashValue, bool floor) const {
-  return mMaterialHashToMesh.contains({hashValue, floor});
+bool WorldBatch::hasMeshForMaterialHash(
+    uint64_t hashValue, bool floor,
+    optional<WallRenderVariant> const& variant) const {
+  return mMaterialHashToMesh.contains(
+      {hashValue, floor, variantIdentity(variant)});
 }
 
 size_t WorldBatch::getMaterialMeshCount() const {
   return mMaterialHashToMesh.size();
 }
 
-string WorldBatch::formatMeshName(uint64_t hashValue, bool floor) const {
+string WorldBatch::formatMeshName(
+    uint64_t hashValue, bool floor,
+    optional<WallRenderVariant> const& variant) const {
   return format(
-      "WorldMaterial-{}-{}_Batch_Mesh", hashValue,
-      floor ? "Floor" : "NonFloor");
+      "WorldMaterial-{}-{}{}{}_Batch_Mesh", hashValue,
+      floor ? "Floor" : "NonFloor",
+      variant ? "-Variant-" : "", variant ? variant->identity : "");
 }
 
 void WorldBatch::finishUpdate(uint32_t meshIndex, uint32_t numTriangles, size_t numVertices, bool updateFixedBuffers) {
