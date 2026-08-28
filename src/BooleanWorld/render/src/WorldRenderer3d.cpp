@@ -12,9 +12,12 @@ using namespace std;
 using namespace wp::application::resourcesystem;
 
 WorldRenderer3d::WorldRenderer3d(
-    ResourcePtr resource, wp::Logger* logger, WorldSurfaceSet surfaceSet, SubMaterialResolver const* resolver)
+    ResourcePtr resource, ResourcePtr fragmentOverdrawMaterial,
+    wp::Logger* logger, WorldSurfaceSet surfaceSet,
+    SubMaterialResolver const* resolver)
     : mRenderer(nullptr),
       mMaterial(resource),
+      mFragmentOverdrawMaterial(fragmentOverdrawMaterial),
       mSurfaceSet(surfaceSet),
       mwResolver(resolver),
       mGlobalTime(0.0f),
@@ -267,6 +270,30 @@ void WorldRenderer3d::setWireframe(bool wireframe) {
                             ? flags | mpp::ModelRenderParams::Flag_Wireframe
                             : flags & ~mpp::ModelRenderParams::Flag_Wireframe;
     params->setMeshFlags(meshName, updatedFlags);
+  }
+}
+
+void WorldRenderer3d::setFragmentOverdraw(bool enabled) {
+  if (!mSceneModel) {
+    return;
+  }
+  auto params = mSceneModel->getParams();
+  auto material = enabled ? mFragmentOverdrawMaterial->getMppResource()
+                          : mpp::ResourcePtr{};
+  std::vector<std::string> meshNames;
+  for (auto const& [meshName, meshParams] : params->getMeshParams()) {
+    if (!meshName.empty()) {
+      meshNames.push_back(meshName);
+    }
+  }
+  for (auto const& meshName : meshNames) {
+    params->setMeshMaterial(meshName, material);
+    params->setMeshBlend(meshName, enabled);
+    // The diagnostic material blends to accumulate fragments, but the source
+    // world surface is opaque and must still populate an enabled depth prepass.
+    // Clearing the override restores normal opaque/blended classification.
+    params->setMeshDepthPrepass(
+        meshName, enabled ? std::optional<bool>{true} : std::nullopt);
   }
 }
 

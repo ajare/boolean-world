@@ -36,16 +36,20 @@ WorldRenderer::WorldRenderer(
                                 ? resourceMgr->getResource(
                                       "Material.Horizontal2d", "World")
                                 : material3d;
+  auto fragmentOverdrawMaterial =
+      resourceMgr->getResource("Material.FragmentOverdraw", "World");
 
   mMaterialRenderers.push_back(
       {make_shared<WorldRenderer3d>(
-           horizontalMaterial, mwLogger, WorldSurfaceSet::Horizontal,
+           horizontalMaterial, fragmentOverdrawMaterial, mwLogger,
+           WorldSurfaceSet::Horizontal,
            &mSubMaterialResolver),
        make_shared<WorldTriangle3dDataProvider>(),
        WorldSurfaceSet::Horizontal});
   mMaterialRenderers.push_back(
       {make_shared<WorldRenderer3d>(
-           material3d, mwLogger, WorldSurfaceSet::Walls,
+           material3d, fragmentOverdrawMaterial, mwLogger,
+           WorldSurfaceSet::Walls,
            &mSubMaterialResolver),
        make_shared<WorldTriangle3dDataProvider>(),
        WorldSurfaceSet::Walls});
@@ -100,6 +104,7 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
         item.dataProvider, world, renderSystem, resourceMgr);
     item.renderer->addToScene(scene, world);
     item.renderer->setWireframe(mWireframe);
+    item.renderer->setFragmentOverdraw(mFragmentOverdraw);
   }
 }
 
@@ -114,6 +119,16 @@ void WorldRenderer::setWireframe(bool wireframe) {
   mWireframe = wireframe;
   for (auto const& item : mMaterialRenderers) {
     item.renderer->setWireframe(wireframe);
+  }
+}
+
+void WorldRenderer::setFragmentOverdraw(bool enabled) {
+  if (enabled == mFragmentOverdraw) {
+    return;
+  }
+  mFragmentOverdraw = enabled;
+  for (auto const& item : mMaterialRenderers) {
+    item.renderer->setFragmentOverdraw(enabled);
   }
 }
 

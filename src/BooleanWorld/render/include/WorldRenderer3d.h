@@ -21,6 +21,7 @@
 
 class WorldRenderer3d {
   wp::application::resourcesystem::ResourcePtr mMaterial;
+  wp::application::resourcesystem::ResourcePtr mFragmentOverdrawMaterial;
   WorldSurfaceSet mSurfaceSet;
 
   SubMaterialResolver const* mwResolver;
@@ -47,6 +48,7 @@ private:
 public:
   WorldRenderer3d(
       wp::application::resourcesystem::ResourcePtr resource,
+      wp::application::resourcesystem::ResourcePtr fragmentOverdrawMaterial,
       wp::Logger* logger,
       WorldSurfaceSet surfaceSet,
       SubMaterialResolver const* resolver);
@@ -69,6 +71,10 @@ public:
   // Applies MPP's line polygon mode to every material mesh in this world
   // surface set while preserving each mesh's other render flags.
   void setWireframe(bool wireframe);
+
+  // Replaces every material bucket with the fixed-cost overdraw material and
+  // enables blending so repeated fragments accumulate in the scene target.
+  void setFragmentOverdraw(bool enabled);
 
   void update(
       glm::vec3 const& playerPosition,

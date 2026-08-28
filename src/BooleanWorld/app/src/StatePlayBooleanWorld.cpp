@@ -136,7 +136,12 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
       static_cast<std::size_t>(bw::app::antiAliasingCode(antiAliasing));
   assert(antiAliasingIndex < bw::app::antiAliasingOptionCount);
 
-  auto& pipeline = mWorldRenderPipelines[bw::app::renderScaleIndex(renderScale)][antiAliasingIndex];
+  auto depthPrepassIndex = mDebugDisplay.depthPrepass ? std::size_t{1}
+                                                     : std::size_t{0};
+  auto& pipeline =
+      mWorldRenderPipelines[depthPrepassIndex]
+                           [bw::app::renderScaleIndex(renderScale)]
+                           [antiAliasingIndex];
   if (pipeline) {
     return pipeline;
   }
@@ -144,7 +149,9 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   auto const& target = mwRenderer->getRenderTarget(renderScale);
   auto pipelineName = getName() + ".World." +
                       std::string(bw::app::renderScaleName(renderScale)) + ".aa-" +
-                      std::string(bw::app::antiAliasingName(antiAliasing));
+                      std::string(bw::app::antiAliasingName(antiAliasing)) +
+                      (mDebugDisplay.depthPrepass ? ".depth-prepass"
+                                                  : ".no-depth-prepass");
 
   mpp::AntiAliasingSamples msaa = mpp::AntiAliasingSamples::Off;
   switch (bw::app::antiAliasingMsaaSamples(antiAliasing)) {
@@ -189,6 +196,7 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   output.antiAliasing.msaa = msaa;
   output.antiAliasing.fxaa = bw::app::antiAliasingIsFxaa(antiAliasing);
   options.outputs.push_back(output);
+  options.depthPrepass = mDebugDisplay.depthPrepass;
   options.ambientOcclusion.method = ambientOcclusionMethod;
   options.ambientOcclusion.ssao = mDebugDisplay.ssao;
   options.ambientOcclusion.gtao = mDebugDisplay.gtao;
@@ -197,6 +205,34 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   bw::app::joinPlayerTorchShadowDomain(options);
 
   pipeline = mwRenderSystem->getOrCreateRenderPipeline(pipelineName, options);
+  pipeline->resize(target->getWidth(), target->getHeight());
+  return pipeline;
+}
+
+mpp::RenderPipelinePtr const&
+StatePlayBooleanWorld::getOrCreateFragmentOverdrawPipeline(
+    bw::app::RenderScale renderScale) {
+  auto const& target = mwRenderer->getRenderTarget(renderScale);
+  auto depthPrepassIndex = mDebugDisplay.depthPrepass ? std::size_t{1}
+                                                     : std::size_t{0};
+  auto& pipeline = mFragmentOverdrawPipelines[depthPrepassIndex];
+  if (!pipeline) {
+    mpp::RenderPipelineOptions options;
+    options.mode = mpp::RenderPipelineMode::GraphLegacyForward;
+    mpp::RenderPipelineOutput output;
+    output.name = "FragmentOverdraw";
+    output.image = "SceneLdr";
+    options.outputs.push_back(output);
+    options.depthPrepass = mDebugDisplay.depthPrepass;
+    // Deliberately omit ambient occlusion, anti-aliasing, and the Player Torch
+    // shadow domain. Apart from the optional depth prepass, this graph consists
+    // only of the scene render and resolve.
+    pipeline = mwRenderSystem->getOrCreateRenderPipeline(
+        getName() + ".World.FragmentOverdraw." +
+            (mDebugDisplay.depthPrepass ? "depth-prepass"
+                                        : "no-depth-prepass"),
+        options);
+  }
   pipeline->resize(target->getWidth(), target->getHeight());
   return pipeline;
 }
@@ -217,7 +253,7 @@ void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transi
 
   // Configure before constructing any participating pipeline. The first frame
   // will update this from the same computed light position used by materials.
-  // Keep a separate diagnostic copy: F1 never changes the launch configuration.
+  // Keep a separate diagnostic copy: F5 never changes the launch configuration.
   mDebugDisplay.playerTorch = model->getPlayerTorchOptions();
   mDebugDisplay.playerTorchShadows = bw::app::playerTorchShadowSessionOptions(
       model->getShadowOptions());
@@ -238,6 +274,13 @@ void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transi
   assert(vignetteResource);
   mVignetteProgram = vignetteResource->getMppResource();
   assert(mVignetteProgram);
+
+  auto fragmentOverdrawResolveResource =
+      mwResourceMgr->getResource("FragmentOverdrawResolveProgram", "World");
+  assert(fragmentOverdrawResolveResource);
+  mFragmentOverdrawResolveProgram =
+      fragmentOverdrawResolveResource->getMppResource();
+  assert(mFragmentOverdrawResolveProgram);
 
   // Keep the default path ready. Other supported sample counts are allocated
   // only if selected in the debug GUI.
@@ -305,7 +348,8 @@ void StatePlayBooleanWorld::updatePlayerTorchMarker(
     mPlayerTorchMarkerPositionValid = true;
   }
 
-  auto flags = mDebugDisplay.lightDistance > 0.0f
+  auto flags = mDebugDisplay.lightDistance > 0.0f &&
+                       !mDebugDisplay.fragmentOverdraw
                    ? mpp::ModelRenderParams::Flag_Visible
                    : 0;
   mPlayerTorchMarker->getParams()->setModelFlags(flags);
@@ -330,7 +374,7 @@ void StatePlayBooleanWorld::registerInput() {
   registerInputState("Debug.Minimap", {Key::F2}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("Debug.CollisionSim", {Key::F3}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("Debug.ClipGen", {Key::F4}, {}, {}, {}, {}, {}, false, false, 0, false);
-  registerInputState("Debug.Options", {Key::F1}, {}, {}, {}, {}, {}, false, false, 0, false);
+  registerInputState("Debug.Options", {Key::F5}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("ToggleAllLayers", {Key::F9}, {}, {}, {}, {}, {}, false, false, 0, true);
   registerInputState("Screenshot", {Key::F11}, {}, {}, {}, {}, {}, false, false, 0, false);
 }
@@ -424,14 +468,23 @@ void StatePlayBooleanWorld::destroyGameObjects() {
   // alone would not destroy them. Evict them here, while BooleanWorld.dll
   // is still loaded, instead of leaving that to RenderSystem's own
   // teardown - which runs after this DLL has already been unloaded.
-  for (auto& row : mWorldRenderPipelines) {
-    for (auto& pipeline : row) {
-      if (pipeline) {
-        mwRenderSystem->removeRenderPipeline(pipeline->getName());
-        pipeline.reset();
+  for (auto& depthPrepassPipelines : mWorldRenderPipelines) {
+    for (auto& row : depthPrepassPipelines) {
+      for (auto& pipeline : row) {
+        if (pipeline) {
+          mwRenderSystem->removeRenderPipeline(pipeline->getName());
+          pipeline.reset();
+        }
       }
     }
   }
+  for (auto& pipeline : mFragmentOverdrawPipelines) {
+    if (pipeline) {
+      mwRenderSystem->removeRenderPipeline(pipeline->getName());
+      pipeline.reset();
+    }
+  }
+  mFragmentOverdrawResolveProgram.reset();
   mVignetteProgram.reset();
 }
 
@@ -786,7 +839,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   // MPP turns enabled off after logging a hardware/allocation fallback. Detect
   // that only after a previously enabled request, so forcing on a configured-
   // off domain still gets its first hardware attempt. Once detected, neither
-  // the configured value nor F1's override may retry around that fallback.
+  // the configured value nor F5's override may retry around that fallback.
   if (mwRenderSystem->hasShadowDomain(domainName) &&
       bw::app::playerTorchShadowHardwareFallbackDetected(
           mPlayerTorchShadowRequestedEnabled, desiredOptions.enabled,
@@ -965,13 +1018,16 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   auto renderScale = model->getActiveRenderScale();
   auto antiAliasing = model->getActiveAntiAliasing();
   auto const& worldTarget = mwRenderer->getRenderTarget(renderScale);
-  auto const& pipeline =
-      getOrCreateWorldRenderPipeline(renderScale, antiAliasing);
+  auto const& pipeline = mDebugDisplay.fragmentOverdraw
+                             ? getOrCreateFragmentOverdrawPipeline(renderScale)
+                             : getOrCreateWorldRenderPipeline(
+                                   renderScale, antiAliasing);
 
-  // This only changes the world's two scene models; entities and debug UI
+  // These only change the world's two scene models; entities and debug UI
   // remain filled. Applying it here also carries an enabled debug option onto
   // a newly created map renderer.
   mwRenderer->setWireframe(mDebugDisplay.wireframe);
+  mwRenderer->setFragmentOverdraw(mDebugDisplay.fragmentOverdraw);
   // MPP orders every 3D draw command while WorldRenderer orders the triangles
   // inside each material command. Together these exercise the complete
   // closest-first diagnostic path for this scene.
@@ -991,6 +1047,7 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   // depth and AO images, so account for it rather than presenting AO's white
   // visibility texture as the world colour.
   auto ambientOcclusionEnabled =
+      !mDebugDisplay.fragmentOverdraw &&
       mDebugDisplay.ambientOcclusionEnabled &&
       mDebugDisplay.ambientOcclusion != bw::app::AmbientOcclusion::None;
   auto usesMrtNormals =
@@ -1019,23 +1076,30 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   renderSystem->resetTransform();
   renderSystem->scaleTransform2d({static_cast<float>(worldTarget->getWidth()) / renderSystem->getWindowWidth(),
                                   static_cast<float>(worldTarget->getHeight()) / renderSystem->getWindowHeight()});
-  // Apply BooleanWorld's data-driven vignette as the final world post-process.
-  // HUD and debug UI are drawn later and therefore remain unaffected.
-  mpp::UniformCollection vignetteParameters;
-  vignetteParameters.setUniform(
-      "VIGNETTE_COLOUR",
-      glm::vec3{
-          mDebugDisplay.vignetteColour[0],
-          mDebugDisplay.vignetteColour[1],
-          mDebugDisplay.vignetteColour[2]});
-  vignetteParameters.setUniform(
-      "VIGNETTE_STRENGTH", mDebugDisplay.vignetteStrength);
-  vignetteParameters.setUniform(
-      "VIGNETTE_INNER_RADIUS", mDebugDisplay.vignetteInnerRadius);
-  vignetteParameters.setUniform(
-      "VIGNETTE_FALLOFF_WIDTH", mDebugDisplay.vignetteFalloffWidth);
-  renderSystem->renderGraphFullscreen(
-      mVignetteProgram, {{"TEX1", sceneTexture}}, vignetteParameters);
+  if (mDebugDisplay.fragmentOverdraw) {
+    // Remove the one-fragment baseline while resolving: only additional
+    // fragments are overdraw, so a successful depth prepass resolves black.
+    renderSystem->renderGraphFullscreen(
+        mFragmentOverdrawResolveProgram, {{"TEX1", sceneTexture}}, {});
+  } else {
+    // Apply BooleanWorld's data-driven vignette as the final world post-process.
+    // HUD and debug UI are drawn later and therefore remain unaffected.
+    mpp::UniformCollection vignetteParameters;
+    vignetteParameters.setUniform(
+        "VIGNETTE_COLOUR",
+        glm::vec3{
+            mDebugDisplay.vignetteColour[0],
+            mDebugDisplay.vignetteColour[1],
+            mDebugDisplay.vignetteColour[2]});
+    vignetteParameters.setUniform(
+        "VIGNETTE_STRENGTH", mDebugDisplay.vignetteStrength);
+    vignetteParameters.setUniform(
+        "VIGNETTE_INNER_RADIUS", mDebugDisplay.vignetteInnerRadius);
+    vignetteParameters.setUniform(
+        "VIGNETTE_FALLOFF_WIDTH", mDebugDisplay.vignetteFalloffWidth);
+    renderSystem->renderGraphFullscreen(
+        mVignetteProgram, {{"TEX1", sceneTexture}}, vignetteParameters);
+  }
   renderSystem->popRenderTarget();
 
   // Composite the resolved world across the screen. The blend factors are set
@@ -1599,11 +1663,19 @@ void StatePlayBooleanWorld::debug_renderOptions() {
 
     ImGui::Checkbox("Wireframe world", &mDebugDisplay.wireframe);
     ImGui::TextDisabled("Debug-only - renders world surfaces as polygon lines.");
+    ImGui::Checkbox("Depth pre-pass", &mDebugDisplay.depthPrepass);
+    ImGui::TextDisabled(
+        "Debug-only - fills depth first, then shades with a less-equal depth test.");
     ImGui::Checkbox(
         "Sort geometry closest first",
         &mDebugDisplay.sortGeometryFrontToBack);
     ImGui::TextDisabled(
         "Debug-only - sorts 3D draws and world triangles by view distance.");
+    ImGui::Checkbox(
+        "Visualize fragment overdraw",
+        &mDebugDisplay.fragmentOverdraw);
+    ImGui::TextDisabled(
+        "Debug-only - accumulates world fragments without lighting or post-processing.");
 
     ImGui::Separator();
     auto configuredAmbientOcclusion = mDebugDisplay.ambientOcclusion;
@@ -1632,11 +1704,13 @@ void StatePlayBooleanWorld::debug_renderOptions() {
             &mDebugDisplay.ambientOcclusionEnabled)) {
       // Toggling AO changes the generated graph topology and its named FXAA
       // output. Evict every variant so it is recreated with matching options.
-      for (auto& row : mWorldRenderPipelines) {
-        for (auto& pipeline : row) {
-          if (pipeline) {
-            mwRenderSystem->removeRenderPipeline(pipeline->getName());
-            pipeline.reset();
+      for (auto& depthPrepassPipelines : mWorldRenderPipelines) {
+        for (auto& row : depthPrepassPipelines) {
+          for (auto& pipeline : row) {
+            if (pipeline) {
+              mwRenderSystem->removeRenderPipeline(pipeline->getName());
+              pipeline.reset();
+            }
           }
         }
       }
@@ -1693,10 +1767,12 @@ void StatePlayBooleanWorld::debug_renderOptions() {
                                     : mpp::AmbientOcclusionMethod::Ssao;
       ambientOcclusion.ssao = mDebugDisplay.ssao;
       ambientOcclusion.gtao = mDebugDisplay.gtao;
-      for (auto const& row : mWorldRenderPipelines) {
-        for (auto const& pipeline : row) {
-          if (pipeline) {
-            pipeline->setAmbientOcclusionOptions(ambientOcclusion);
+      for (auto const& depthPrepassPipelines : mWorldRenderPipelines) {
+        for (auto const& row : depthPrepassPipelines) {
+          for (auto const& pipeline : row) {
+            if (pipeline) {
+              pipeline->setAmbientOcclusionOptions(ambientOcclusion);
+            }
           }
         }
       }
@@ -1707,7 +1783,7 @@ void StatePlayBooleanWorld::debug_renderOptions() {
             : "Disabled by Video/AmbientOcclusion: none.");
 
     ImGui::Separator();
-    ImGui::TextUnformatted("Player Torch (F1 session-only)");
+    ImGui::TextUnformatted("Player Torch (F5 session-only)");
     ImGui::SliderFloat(
         "Distance ahead of player##PlayerTorch", &mDebugDisplay.lightDistance,
         0.0f, 256.0f, "%.1f");

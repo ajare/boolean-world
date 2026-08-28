@@ -49,6 +49,7 @@ private:
 
   bool mWorldHasChanged;
   bool mWireframe{false};
+  bool mFragmentOverdraw{false};
   int32_t mHighlightedTriangle{-1};
   bool mHighlightedCeiling{};
 
@@ -104,6 +105,10 @@ public:
 
   // Toggles line polygon mode for the world's horizontal and wall meshes.
   void setWireframe(bool wireframe);
+
+  // Replaces normal world materials with the low-cost accumulating fragment
+  // overdraw shader. This affects world geometry only.
+  void setFragmentOverdraw(bool enabled);
 
   // Updates every existing floor, ceiling, and wall mesh bucket that was
   // baked for this Sub-material. Used by the editor's unsaved draft; it does

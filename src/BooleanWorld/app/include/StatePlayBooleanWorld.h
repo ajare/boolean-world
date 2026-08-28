@@ -40,7 +40,9 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     bool clipGeneration{false};
     bool options{false};
     bool wireframe{false};
+    bool depthPrepass{true};
     bool sortGeometryFrontToBack{false};
+    bool fragmentOverdraw{false};
 
     bw::app::AmbientOcclusion ambientOcclusion{
         bw::app::AmbientOcclusion::GtaoDepth};
@@ -75,8 +77,9 @@ private:
 
   mpp::CameraPtr mCamera3d;
 
-  // Data-driven fullscreen program declared by World/Resources.yaml.
+  // Data-driven fullscreen programs declared by World/Resources.yaml.
   mpp::ResourcePtr mVignetteProgram;
+  mpp::ResourcePtr mFragmentOverdrawResolveProgram;
 
   bw::core::WorldDataPtr mWorldData;
 
@@ -124,13 +127,21 @@ private:
   // Created/managed in load states
   WorldRenderer* mwRenderer;
 
-  // Pipeline options are immutable, so each render scale/AA pair has its own
-  // pipeline. Entries are created lazily; unsupported MSAA sample counts remain
-  // empty and are disabled in the options panel.
+  // Pipeline options are immutable, so depth-prepass mode and each render
+  // scale/AA pair have distinct pipelines. Entries are created lazily;
+  // unsupported MSAA sample counts remain empty and are disabled in the
+  // options panel.
   std::array<
-      std::array<mpp::RenderPipelinePtr, bw::app::antiAliasingOptionCount>,
-      bw::app::renderScaleCount>
+      std::array<
+          std::array<mpp::RenderPipelinePtr, bw::app::antiAliasingOptionCount>,
+          bw::app::renderScaleCount>,
+      2>
       mWorldRenderPipelines;
+
+  // Separate post-process-free pipelines retain the immutable enabled and
+  // disabled depth-prepass modes. Each is resized to the selected world target
+  // before use.
+  std::array<mpp::RenderPipelinePtr, 2> mFragmentOverdrawPipelines;
 
   // ImGui view
   DebugDisplay mDebugDisplay;
@@ -152,6 +163,9 @@ private:
   mpp::RenderPipelinePtr const& getOrCreateWorldRenderPipeline(
       bw::app::RenderScale renderScale,
       bw::app::AntiAliasing antiAliasing);
+
+  mpp::RenderPipelinePtr const& getOrCreateFragmentOverdrawPipeline(
+      bw::app::RenderScale renderScale);
 
   void setupMapRenderer(applib::StateTransitionData* transitionData) override;
 

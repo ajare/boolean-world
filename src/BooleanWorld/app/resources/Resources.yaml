@@ -375,6 +375,15 @@ Resources:
           Definition:
             textures: "1"
       - type: "Shader"
+        name: "FragmentOverdrawShader"
+        location: "shaders/fragment_overdraw.frag"
+      - type: "Shader"
+        name: "FragmentOverdrawResolveShader"
+        location: "shaders/fragment_overdraw_resolve.frag"
+        Definitions:
+          Definition:
+            textures: "1"
+      - type: "Shader"
         name: "PlayerTorchMarkerVertexShader"
         location: "shaders/player_torch_marker.vert"
       - type: "Shader"
@@ -452,6 +461,60 @@ Resources:
                           type: "uint8"
                           normalised: "true"
       - type: "Program"
+        name: "FragmentOverdrawProgram"
+        DependentResources:
+          DependentResource:
+            - id: "Vertex"
+              ref: "WorldVertexShader"
+            - id: "Fragment"
+              ref: "FragmentOverdrawShader"
+        Definitions:
+          Definition:
+            Attribs: {}
+            MeshSpecification:
+              primitive: "triangles"
+              indexed: "false"
+              storage: "dynamic"
+              Buffers:
+                Buffer:
+                  - Channels:
+                      Channel:
+                        - data: "position3"
+                          type: "float32"
+                        - data: "normal3"
+                          type: "float32"
+                  - Channels:
+                      Channel:
+                        - data: "texcoord2"
+                          type: "float32"
+                        - data: "colour4"
+                          type: "uint8"
+                          normalised: "true"
+      - type: "Program"
+        name: "FragmentOverdrawResolveProgram"
+        DependentResources:
+          DependentResource:
+            - id: "Vertex"
+              ref: "VignetteVertexShader"
+            - id: "Fragment"
+              ref: "FragmentOverdrawResolveShader"
+        Definitions:
+          Definition:
+            Attribs:
+              textures: "1"
+            MeshSpecification:
+              primitive: "triangles"
+              indexed: "false"
+              storage: "static"
+              Buffers:
+                Buffer:
+                  Channels:
+                    Channel:
+                      - data: "position2"
+                        type: "float32"
+                      - data: "texcoord2"
+                        type: "float32"
+      - type: "Program"
         name: "PlayerTorchMarkerProgram"
         DependentResources:
           DependentResource:
@@ -502,6 +565,15 @@ Resources:
           DependentResource:
             id: "Program"
             ref: "PlayerTorchMarkerProgram"
+        Definitions:
+          Definition:
+            Textures: {}
+      - type: "Material"
+        name: "Material.FragmentOverdraw"
+        DependentResources:
+          DependentResource:
+            id: "Program"
+            ref: "FragmentOverdrawProgram"
         Definitions:
           Definition:
             Textures: {}
