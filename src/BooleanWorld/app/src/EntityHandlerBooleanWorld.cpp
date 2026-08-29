@@ -1,3 +1,6 @@
+#include <cmath>
+#include <numbers>
+
 #include <willpower/common/Vector2.h>
 
 #include <core/Utils.h>
@@ -30,6 +33,14 @@ void EntityHandlerBooleanWorld::setInputOptions(bw::app::InputOptions const& inp
   mInputOptions = inputOptions;
 }
 
+void EntityHandlerBooleanWorld::setSpeedMultiplier(float multiplier) {
+  mSpeedMultiplier = multiplier;
+}
+
+void EntityHandlerBooleanWorld::setSwimming(bool swimming) {
+  mSwimming = swimming;
+}
+
 void EntityHandlerBooleanWorld::enableInput(bool enable) {
   mInputEnabled = enable;
 }
@@ -60,9 +71,12 @@ bool EntityHandlerBooleanWorld::updateImpl(Entity* entity, bool inputControlled,
   if (inputControlled) {
     if (mInputEnabled) {
       wp::Vector2 curPosition, newPosition, velocity;
-      float curAngle, newAngle, curPitch, newPitch;
+      float curAngle, newAngle, curPitch, newPitch, verticalEffort;
 
-      peekInput(*entity, &curPosition, &newPosition, &curAngle, &newAngle, &curPitch, &newPitch, &velocity, frameTime);
+      // Vertical (swimming) movement is applied separately by
+      // StatePlayBooleanWorld's own peekInput call, against physicalStats.floorZ
+      // rather than this collider - so the vertical effort here is unused.
+      peekInput(*entity, &curPosition, &newPosition, &curAngle, &newAngle, &curPitch, &newPitch, &velocity, &verticalEffort, frameTime);
 
       mwPlayerCollider->setMovement(velocity);
       mwSimulation->update(frameTime);
@@ -132,9 +146,9 @@ void EntityHandlerBooleanWorld::updateVisual(Entity* entity, float frameTime) {
   }
 }
 
-void EntityHandlerBooleanWorld::peekInput(applib::Entity const& entity, wp::Vector2* curPosition, wp::Vector2* newPosition, float* curAngle, float* newAngle, float* curPitch, float* newPitch, wp::Vector2* velocity, float frameTime) const {
+void EntityHandlerBooleanWorld::peekInput(applib::Entity const& entity, wp::Vector2* curPosition, wp::Vector2* newPosition, float* curAngle, float* newAngle, float* curPitch, float* newPitch, wp::Vector2* velocity, float* verticalEffort, float frameTime) const {
   auto vel = Vector2::ZERO;
-  float playerSpeed = BW_PLAYER_SPEED;
+  float playerSpeed = BW_PLAYER_SPEED * mSpeedMultiplier;
 
   for (auto const& state : mActiveInputStates) {
     if (state == "Up") {
@@ -160,6 +174,28 @@ void EntityHandlerBooleanWorld::peekInput(applib::Entity const& entity, wp::Vect
 
   // Get desired movement
   vel.normalise();
+
+  *verticalEffort = 0.0f;
+  if (mSwimming) {
+    // Fly controls: forward/back also rises/dives based on view pitch. This
+    // is additive on top of full horizontal speed, not reallocated from it -
+    // otherwise looking straight down/up while swimming (exactly what a
+    // player does diving into water) would collapse cos(pitch) toward zero
+    // and leave forward/back input with almost no horizontal effect at all,
+    // making the player feel stuck in place vertically. Pitch is degrees,
+    // positive looking down (see FpsCamera::updateAngles), so the view
+    // direction's vertical component is -sin(pitch); strafing stays level,
+    // matching a conventional fly camera.
+    //
+    // Reported as bare effort, not a speed: what it achieves depends on the
+    // liquid being swum through, which is StatePlayBooleanWorld's business,
+    // not this handler's. It is also untouched by mSpeedMultiplier, which
+    // models buoyancy stealing the traction between feet and floor and so has
+    // no bearing on a swimmer kicking up or down.
+    auto pitchRadians = *newPitch * (std::numbers::pi_v<float> / 180.0f);
+    *verticalEffort = -vel.y * std::sin(pitchRadians);
+  }
+
   vel = bw::app::playerMovement(vel, *newAngle);
   vel *= playerSpeed;
 

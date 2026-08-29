@@ -21,6 +21,7 @@
 #include <applib/StatePlay.h>
 
 #include <core/ArrangementWorldData.h>
+#include <core/LiquidProperties.h>
 #include <core/DynamicWorldDataGenerator.h>
 
 #include "imgui/imgui.h"
@@ -108,6 +109,13 @@ private:
   // least once. Until mWorldData exists (early in map load) the floor query
   // falls back to 0, so the very first valid reading is a snap, not a fall.
   bool mPlayerVerticalHeightInitialized;
+
+  // Captured from this frame's peekInput call (see getWorldInput) and
+  // consumed by updatePlayerVerticalPhysics - how hard fly controls are asking
+  // the player to swim up or down, in -1 to 1. Effort rather than speed: what
+  // it achieves depends on the liquid being swum through. Zero whenever the
+  // player isn't swimming.
+  float mPlayerSwimEffort{0.0f};
 
   bool mExitScheduled;
 
@@ -218,7 +226,7 @@ private:
 
   bool playerIntersectsWorldBorders() const;
 
-  void getWorldInput(wp::Vector2* curPosition, wp::Vector2* newPosition, float* curAngle, float* newAngle, float frameTime) const;
+  void getWorldInput(wp::Vector2* curPosition, wp::Vector2* newPosition, float* curAngle, float* newAngle, float* verticalEffort, float frameTime) const;
 
   void setupPlayerCollision();
 
@@ -241,6 +249,44 @@ private:
   float getPlayerFloorHeight() const;
 
   float getPlayerCeilingHeight() const;
+
+  // How deep the player cylinder (base at physicalStats.floorZ, extending up
+  // BW_PLAYER_HEIGHT) is submerged below the settled liquid surface at their
+  // position, clamped to [0, BW_PLAYER_HEIGHT]. Zero wherever there is no
+  // liquid, or the player stands above its surface.
+  float getPlayerLiquidSubmersionDepth() const;
+
+  // Fraction of BW_PLAYER_SPEED available to the player given their current
+  // submersion - see buoyantEquilibriumFraction. 1.0 wherever they are
+  // dry.
+  float getPlayerSwimSpeedMultiplier() const;
+
+  // True where the liquid at the player's position is deep enough, measured
+  // against the real floor beneath them, to require swimming rather than
+  // wading - see BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION.
+  bool isPlayerSwimming() const;
+
+  // The properties of the liquid at pos - water's wherever there is none, so
+  // callers that have already established there is liquid need not re-check.
+  bw::core::LiquidProperties const& getLiquidPropertiesAt(
+      wp::Vector2 const& pos) const;
+
+  // The fraction of the player's height that sits below the surface when they
+  // float at rest in the given liquid: their own density over the liquid's.
+  // Above 1 in a liquid thinner than the player, who then sinks rather than
+  // floating. Also the submersion at which the liquid has taken all of the
+  // player's weight off the floor - see getPlayerSwimSpeedMultiplier.
+  static float buoyantEquilibriumFraction(
+      bw::core::LiquidProperties const& liquid);
+
+  // Lifts the player out of the liquid onto an adjacent floor when they are
+  // floating as high as swimming allows, pressed against the edge shared with
+  // that floor, looking up over it, and it sits no more than
+  // BW_PLAYER_MAX_CLIMB_OUT_HEIGHT above the surface with room to stand.
+  // Moves them the shortest distance that puts them clear on the far side, or
+  // leaves them where they are if no edge qualifies. Returns whether it moved
+  // them.
+  bool tryClimbOutOfLiquid();
 
   void addDisplayMessage(DisplayMessage::Level level, std::string const& message);
 

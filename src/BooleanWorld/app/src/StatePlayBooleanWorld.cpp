@@ -31,6 +31,7 @@
 
 #include <core/Utils.h>
 #include <core/DynamicWorldDataGenerator.h>
+#include <core/LiquidType.h>
 
 #include <common/BoundedDeque.h>
 #include <common/GameDefines.h>
@@ -406,13 +407,13 @@ bool StatePlayBooleanWorld::playerIntersectsWorldBorders() const {
   return mPlayerBorderIntersectIndex >= 0;
 }
 
-void StatePlayBooleanWorld::getWorldInput(wp::Vector2* curPosition, wp::Vector2* newPosition, float* curAngle, float* newAngle, float frameTime) const {
+void StatePlayBooleanWorld::getWorldInput(wp::Vector2* curPosition, wp::Vector2* newPosition, float* curAngle, float* newAngle, float* verticalEffort, float frameTime) const {
   auto const& player = mEntityMgr->getPlayerEntity();
   auto entityHandler = static_cast<EntityHandlerBooleanWorld*>(applib::ModelInstance::get()->entityHandler.get());
 
   wp::Vector2 velocity;
   float curPitch, newPitch;
-  entityHandler->peekInput(player, curPosition, newPosition, curAngle, newAngle, &curPitch, &newPitch, &velocity, frameTime);
+  entityHandler->peekInput(player, curPosition, newPosition, curAngle, newAngle, &curPitch, &newPitch, &velocity, verticalEffort, frameTime);
 }
 
 void StatePlayBooleanWorld::createWorldCollisions(
@@ -429,7 +430,8 @@ void StatePlayBooleanWorld::createWorldCollisions(
   for (auto wallIndex : mWorldData->getWallsNearForTraversal(
            predictedPosition, radius, playerPosition,
            mPlayerVerticalVelocity < 0.0f)) {
-    auto const& edge = arrangement.edges[walls[wallIndex].edge];
+    auto const& wall = walls[wallIndex];
+    auto const& edge = arrangement.edges[wall.edge];
     auto const& fixed0 = arrangement.vertices[edge.v[0]];
     auto const& fixed1 = arrangement.vertices[edge.v[1]];
     wp::Vector2 v0{
@@ -438,6 +440,25 @@ void StatePlayBooleanWorld::createWorldCollisions(
     wp::Vector2 v1{
         bw::core::arr::ToWorldCoordinate(fixed1.x),
         bw::core::arr::ToWorldCoordinate(fixed1.y)};
+
+    // A tall FloorStep is withheld while the player crosses over it - falling
+    // off the ledge, or swimming above the pool floor it encloses - so by the
+    // time the traversal rules admit it again the player may already be
+    // standing inside it. Reinstating it there does not block an approach; it
+    // wedges the collider against a wall it is behind, and the sliding
+    // response then strips the inward component of every direction at once,
+    // freezing the player in place. Only walls blocking purely by the
+    // step-height rule are skipped this way - authored collision, Borders and
+    // clearance limits stay solid regardless.
+    auto blocksOnlyByStepHeight =
+        wall.kind == bw::core::arr::ArrangementWallKind::FloorStep &&
+        !edge.collidesOverride.value_or(false) &&
+        wall.clearance >= BW_PLAYER_HEIGHT;
+    if (blocksOnlyByStepHeight &&
+        playerPosition.distanceToLine(v0, v1) < BW_PLAYER_RADIUS) {
+      continue;
+    }
+
     mWorldCollisionSim->addLine(v0, v1, wallIndex);
   }
 }
@@ -523,8 +544,9 @@ vector<string> StatePlayBooleanWorld::getDebuggingText() const {
   auto playerPrimIndex = getPlayerPrimitive();
   auto floorHeight = getPlayerFloorHeight();
   auto ceilingHeight = getPlayerCeilingHeight();
+  auto liquidSubmersionDepth = getPlayerLiquidSubmersionDepth();
 
-  return {
+  vector<string> lines{
       STR_FORMAT("Mouse screen: {:.0f},{:.0f}", mouseScreen.x, mouseScreen.y),
       STR_FORMAT("Mouse world: {:.2f},{:.2f}", mouseWorld.x, mouseWorld.y),
       STR_FORMAT("Player world: {:.2f},{:.2f}", physicalStats.position.x, physicalStats.position.y),
@@ -536,6 +558,15 @@ vector<string> StatePlayBooleanWorld::getDebuggingText() const {
       STR_FORMAT("Collision count: {}", mCollisionsProcessed)
 
   };
+
+  if (liquidSubmersionDepth > 0.0f) {
+    auto liquidType = mWorldData->getLiquidType(physicalStats.position);
+    lines.push_back(STR_FORMAT(
+        "Player submerged: {:.2f} ({})", liquidSubmersionDepth,
+        bw::core::LiquidTypeName(liquidType)));
+  }
+
+  return lines;
 }
 
 uint32_t StatePlayBooleanWorld::getPrimitiveAtPosition(wp::Vector2 const& pos) const {
@@ -574,6 +605,191 @@ float StatePlayBooleanWorld::getPlayerCeilingHeight() const {
   auto const& playerStats = getPlayerPhysicalStats();
 
   return getCeilingHeightAt(playerStats.position);
+}
+
+float StatePlayBooleanWorld::getPlayerLiquidSubmersionDepth() const {
+  if (!mWorldData) {
+    return 0.0f;
+  }
+
+  auto const& playerStats = getPlayerPhysicalStats();
+  auto liquidSurface = mWorldData->getLiquidSurfaceHeight(playerStats.position);
+  if (!std::isfinite(liquidSurface)) {
+    return 0.0f;
+  }
+
+  auto submersion = liquidSurface - playerStats.floorZ;
+  return std::clamp(submersion, 0.0f, float(BW_PLAYER_HEIGHT));
+}
+
+bw::core::LiquidProperties const& StatePlayBooleanWorld::getLiquidPropertiesAt(
+    wp::Vector2 const& pos) const {
+  return bw::core::GetLiquidProperties(
+      mWorldData ? mWorldData->getLiquidType(pos) : bw::core::LiquidType::Water);
+}
+
+float StatePlayBooleanWorld::buoyantEquilibriumFraction(
+    bw::core::LiquidProperties const& liquid) {
+  // A body floats with its own density over the liquid's of itself submerged.
+  // A liquid with no density carries nothing, so the player is never held up
+  // by it at any depth.
+  if (liquid.density <= 0.0f) {
+    return std::numeric_limits<float>::infinity();
+  }
+  return BW_PLAYER_DENSITY / liquid.density;
+}
+
+float StatePlayBooleanWorld::getPlayerSwimSpeedMultiplier() const {
+  auto const& playerStats = getPlayerPhysicalStats();
+  auto submersionFraction =
+      getPlayerLiquidSubmersionDepth() / float(BW_PLAYER_HEIGHT);
+
+  // Buoyant force offsets weight in proportion to submerged volume - here
+  // approximated by submerged height fraction, since the player's cylinder
+  // has a uniform cross-section - reducing the normal force, and so the
+  // traction, between feet and floor. Their weight is entirely carried at the
+  // submersion the same liquid floats them at, which is exactly where wading
+  // gives way to swimming.
+  auto tractionFraction =
+      1.0f -
+      submersionFraction / buoyantEquilibriumFraction(
+                               getLiquidPropertiesAt(playerStats.position));
+  return std::clamp(
+      tractionFraction, float(BW_PLAYER_MIN_SWIM_SPEED_FACTOR), 1.0f);
+}
+
+bool StatePlayBooleanWorld::isPlayerSwimming() const {
+  if (!mWorldData) {
+    return false;
+  }
+
+  // Measured against where the player actually is, not the floor far below
+  // them: stepping over the edge of a deep pool leaves them briefly in mid-air
+  // above its surface, still falling and not yet swimming. Testing the floor
+  // instead would flip swimming on at the boundary and snap them down to the
+  // surface without a fall.
+  return getPlayerLiquidSubmersionDepth() >=
+         BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION * float(BW_PLAYER_HEIGHT);
+}
+
+bool StatePlayBooleanWorld::tryClimbOutOfLiquid() {
+  if (!mWorldData || !mPlayerCollider || !isPlayerSwimming()) {
+    return false;
+  }
+
+  auto& physicalStats = getPlayerPhysicalStats();
+  auto const& position = physicalStats.position;
+
+  auto liquidSurface = mWorldData->getLiquidSurfaceHeight(position);
+  if (!std::isfinite(liquidSurface)) {
+    return false;
+  }
+
+  // Only from the top of the swimmer's reach - the same height the vertical
+  // clamp in updatePlayerVerticalPhysics holds them at once they stop rising.
+  auto floatHeight = liquidSurface - BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION *
+                                         float(BW_PLAYER_HEIGHT);
+  if (physicalStats.floorZ < floatHeight - 0.01f) {
+    return false;
+  }
+
+  // Pitch is degrees, positive looking down (see FpsCamera::updateAngles), so
+  // looking up over the ledge is a negative pitch.
+  if (physicalStats.pitch >= 0.0f) {
+    return false;
+  }
+
+  auto currentFace = mWorldData->getContainingFaceIndex(position);
+  if (currentFace == ~0u) {
+    return false;
+  }
+
+  auto forward = bw::app::playerMovement({0.0f, 1.0f}, physicalStats.angle);
+  auto const& arrangement = mWorldData->getArrangement();
+  auto const& walls = mWorldData->getWalls();
+
+  // Pressed against the edge: the collider comes to rest a hair over its own
+  // radius from a wall it has run into, so allow a little slack past that.
+  auto const contactDistance = float(BW_PLAYER_RADIUS) + 1.0f;
+
+  for (auto wallIndex : mWorldData->getWallsNear(position, contactDistance)) {
+    auto const& wall = walls[wallIndex];
+    auto const& edge = arrangement.edges[wall.edge];
+
+    auto targetFace = edge.face[0] == currentFace   ? edge.face[1]
+                      : edge.face[1] == currentFace ? edge.face[0]
+                                                    : ~0u;
+    if (targetFace == ~0u || targetFace >= arrangement.faces.size()) {
+      continue;
+    }
+
+    auto toWorld = [](auto const& vertex) {
+      return wp::Vector2{bw::core::arr::ToWorldCoordinate(vertex.x),
+                         bw::core::arr::ToWorldCoordinate(vertex.y)};
+    };
+    auto v0 = toWorld(arrangement.vertices[edge.v[0]]);
+    auto v1 = toWorld(arrangement.vertices[edge.v[1]]);
+    if (position.distanceToLine(v0, v1) > contactDistance) {
+      continue;
+    }
+
+    auto closestPoint = position.closestPointOnLine(v0, v1);
+    auto outward = closestPoint - position;
+    if (outward.normalise() <= 1e-4f) {
+      // Standing exactly on the edge leaves no direction to climb towards.
+      continue;
+    }
+
+    // Facing the floor they mean to climb onto, rather than merely drifting
+    // against some other edge of the pool.
+    if (forward.dot(outward) <= 0.0f) {
+      continue;
+    }
+
+    auto const& targetProperties =
+        arrangement.palette[arrangement.faces[targetFace].paletteIndex];
+    // Climbing out is a lift onto something above the swimmer. A floor at or
+    // below their float height is just more of the pool - reachable by
+    // swimming, and nothing to haul themselves onto.
+    if (targetProperties.floorZ <= physicalStats.floorZ) {
+      continue;
+    }
+    if (targetProperties.floorZ - liquidSurface >
+        BW_PLAYER_MAX_CLIMB_OUT_HEIGHT) {
+      continue;
+    }
+    if (targetProperties.ceilingZ - targetProperties.floorZ <
+        BW_PLAYER_HEIGHT) {
+      continue;
+    }
+
+    // The shortest move that puts the whole collider past the edge.
+    auto destination =
+        closestPoint +
+        outward * (float(BW_PLAYER_RADIUS) + BW_PLAYER_CLIMB_OUT_MARGIN);
+
+    // Room to stand there: on the face we meant, and clear of every wall
+    // around it - otherwise the climb would end wedged in geometry.
+    if (mWorldData->getContainingFaceIndex(destination) != targetFace ||
+        mWorldData->circleIntersectsWall(destination, BW_PLAYER_RADIUS) >= 0) {
+      continue;
+    }
+
+    // Only the horizontal move happens here. Leaving floorZ down at the
+    // swimmer's float height hands the rise to the ordinary step-up branch of
+    // updatePlayerVerticalPhysics, which climbs towards the new floor at
+    // BW_PLAYER_STEP_SPEED from the next frame on - so the eye rises out of
+    // the liquid over several frames instead of snapping to the bank. The
+    // player is no longer over liquid, so nothing re-enters the swim branch
+    // while that plays out.
+    physicalStats.position = destination;
+    mPlayerCollider->_setPosition(destination);
+    mPlayerVerticalVelocity = 0.0f;
+    mPlayerSwimEffort = 0.0f;
+    return true;
+  }
+
+  return false;
 }
 
 bw::core::DynamicWorldDataGenerator* StatePlayBooleanWorld::getWDG() {
@@ -668,11 +884,21 @@ void StatePlayBooleanWorld::updatePreInput(float frameTime) {
 }
 
 void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
+  // Uses last frame's settled position/floorZ - this frame's movement (below)
+  // has not been computed yet - which is exactly the submersion state that
+  // should govern how fast, and by which controls, that movement happens.
+  auto entityHandler = static_cast<EntityHandlerBooleanWorld*>(
+      applib::ModelInstance::get()->entityHandler.get());
+  entityHandler->setSpeedMultiplier(getPlayerSwimSpeedMultiplier());
+  entityHandler->setSwimming(isPlayerSwimming());
+
   // Get input
   wp::Vector2 curPosition, newPosition;
   float curAngle, newAngle;
 
-  getWorldInput(&curPosition, &newPosition, &curAngle, &newAngle, frameTime);
+  getWorldInput(
+      &curPosition, &newPosition, &curAngle, &newAngle,
+      &mPlayerSwimEffort, frameTime);
 
   bool playerMoved = newPosition != curPosition;
   bool playerTurned = newAngle != curAngle;
@@ -713,6 +939,17 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
 
   updatePlayerVerticalPhysics(frameTime);
 
+  // After the vertical step, so a swimmer rising toward the surface is tested
+  // at the float height it has just settled them at rather than one frame
+  // behind it. A successful climb teleports the player onto another face, so
+  // the location read above no longer describes where they are.
+  if (tryClimbOutOfLiquid()) {
+    auto climbedLocation = bw::app::evaluatePlayerLocation(
+        *mWorldData, getPlayerPhysicalStats().position, BW_PLAYER_RADIUS);
+    mPlayerPolygonIndex = climbedLocation.faceIndex;
+    mPlayerBorderIntersectIndex = climbedLocation.intersectingWallIndex;
+  }
+
   if (mwAudioSystem) {
     updateAudio(frameTime);
   }
@@ -746,11 +983,95 @@ void StatePlayBooleanWorld::updatePlayerVerticalPhysics(float frameTime) {
     return;
   }
 
+  auto liquidSurface = mWorldData->getLiquidSurfaceHeight(physicalStats.position);
+  // The height a floating player settles at. Liquid shallower than the
+  // swimming threshold puts this below its own floor, in which case the floor
+  // wins and the player wades rather than floats.
+  auto floatZ = liquidSurface - BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION *
+                                    float(BW_PLAYER_HEIGHT);
+  // Submersion is measured at the player's own height, so walking off the edge
+  // of a deep pool is an ordinary fall until they actually reach the water.
+  // Liquid carries part of the player's weight either where it is deep enough
+  // to lift them off the bottom, or while they are still dropping through it
+  // after a fall - in both cases gravity alone no longer describes the motion.
+  // Standing on the bottom of a shallow pool is neither, and falls through to
+  // the ordinary ground logic so wading and steps keep working.
+  auto const& liquid = getLiquidPropertiesAt(physicalStats.position);
+  auto equilibriumFraction = buoyantEquilibriumFraction(liquid);
+  auto equilibriumZ =
+      liquidSurface - equilibriumFraction * float(BW_PLAYER_HEIGHT);
+  auto inLiquid =
+      std::isfinite(liquidSurface) && liquidSurface > physicalStats.floorZ &&
+      (equilibriumZ > targetFloor || physicalStats.floorZ > targetFloor);
+  if (inLiquid) {
+    // Archimedes: the upward force goes with the submerged volume, which for a
+    // uniform cylinder is just the submerged fraction of its height. Balanced
+    // against weight at the fraction the player floats at, so a resting player
+    // feels no net force, a fully submerged one rises, and one barely dipped
+    // still falls at close to full gravity.
+    auto submergedFraction = std::clamp(
+        (liquidSurface - physicalStats.floorZ) / float(BW_PLAYER_HEIGHT), 0.0f,
+        1.0f);
+    auto buoyantAcceleration =
+        BW_PLAYER_GRAVITY * (submergedFraction / equilibriumFraction - 1.0f);
+
+    // Swim input (fly controls, see EntityHandlerBooleanWorld::peekInput) is a
+    // force worked against the liquid like any other, not a rate the player is
+    // moved at, so the drag below governs it too - a kick builds speed over a
+    // few frames and bleeds away again when released, rather than snapping
+    // straight to full speed and stopping dead, and the speed it reaches falls
+    // out of the liquid's viscosity rather than being stated separately.
+    auto swimAcceleration = mPlayerSwimEffort * BW_PLAYER_SWIM_ACCELERATION;
+
+    // Entry speed is carried in rather than discarded: whatever gravity built
+    // up on the way down is still here on the first submerged frame, so a
+    // plunge from a height drives the player deep before buoyancy returns them
+    // to the surface, while stepping in from the bank barely dips them.
+    mPlayerVerticalVelocity +=
+        (buoyantAcceleration + swimAcceleration) * frameTime;
+
+    // Liquid resists motion through it - what arrests a plunge, holds the rise
+    // back to a wallow, and stops the player oscillating about their float
+    // height once buoyancy has caught them. Only the submerged part of the
+    // player meets that resistance, so the drag eases as they near the surface
+    // and the last of a rise accelerates as they break out of the liquid;
+    // going the other way, someone dropping in meets little resistance until
+    // they are properly under.
+    mPlayerVerticalVelocity -=
+        mPlayerVerticalVelocity *
+        std::min(1.0f, liquid.viscosity * submergedFraction * frameTime);
+
+    auto previousFloorZ = physicalStats.floorZ;
+    physicalStats.floorZ += mPlayerVerticalVelocity * frameTime;
+
+    if (physicalStats.floorZ <= targetFloor) {
+      // Reached the bottom - a hard stop, but any upward swim input still
+      // lifts off again.
+      physicalStats.floorZ = targetFloor;
+      mPlayerVerticalVelocity = std::max(mPlayerVerticalVelocity, 0.0f);
+    }
+
+    // A barrier the player cannot rise through, rather than a ceiling that
+    // pulls them down to it: buoyancy and swim input together carry them no
+    // higher than their float height (see
+    // BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION), but someone dropping in from
+    // above starts above that height and must be left to sink past it under
+    // their own momentum.
+    auto maxFloorZ = std::max(targetFloor, floatZ);
+    if (previousFloorZ <= maxFloorZ && physicalStats.floorZ > maxFloorZ) {
+      physicalStats.floorZ = maxFloorZ;
+      mPlayerVerticalVelocity = std::min(mPlayerVerticalVelocity, 0.0f);
+    }
+    return;
+  }
+
   if (targetFloor >= physicalStats.floorZ) {
     // Horizontal collision already refused any step too tall to climb (see
     // ArrangementWorldData's step-threshold/clearance rules), so any floor
     // rise reaching here is a walkable step: climb it smoothly rather than
     // snapping straight to it, and stay grounded (no carried fall speed).
+    // tryClimbOutOfLiquid deliberately routes through here too, leaving the
+    // player below their new bank so this smooths the haul out of the liquid.
     mPlayerVerticalVelocity = 0.0f;
     physicalStats.floorZ += std::min(
         targetFloor - physicalStats.floorZ, BW_PLAYER_STEP_SPEED * frameTime);

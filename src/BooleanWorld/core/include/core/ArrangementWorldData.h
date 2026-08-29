@@ -10,6 +10,7 @@
 #include "core/Arrangement.h"
 #include "core/Chips.h"
 #include "core/ImmutableAccelerationGrid.h"
+#include "core/LiquidType.h"
 #include "core/Platform.h"
 #include "core/Stats.h"
 #include "core/WedgeGenerationParameters.h"
@@ -82,6 +83,17 @@ public:
   // and directly indexable by an ArrangementTriangle's face - see
   // arr::ComputeLiquidLevels. Zero means dry.
   [[nodiscard]] std::vector<float> const& getLiquidDepths() const;
+
+  // The world-space height of the settled liquid surface at position - the
+  // containing face's own (un-Wedge-raised) floorZ plus its liquid depth,
+  // matching the surface WorldRenderer draws. Negative infinity outside the
+  // arrangement or wherever no liquid reaches.
+  [[nodiscard]] float getLiquidSurfaceHeight(wp::Vector2 const& position) const;
+
+  // The LiquidType of whichever Primitive's properties won the containing
+  // face - see PrimitivePropertySet::liquidType. Meaningful only where
+  // getLiquidDepth is greater than zero.
+  [[nodiscard]] LiquidType getLiquidType(wp::Vector2 const& position) const;
 
   [[nodiscard]] std::vector<uint32_t> getWallsNear(
       wp::Vector2 const& position,

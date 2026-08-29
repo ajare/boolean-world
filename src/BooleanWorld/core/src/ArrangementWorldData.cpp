@@ -308,6 +308,32 @@ float ArrangementWorldData::getLiquidDepth(wp::Vector2 const& position) const {
   return faceIndex == ~0u ? 0.0f : mLiquidDepths[faceIndex];
 }
 
+float ArrangementWorldData::getLiquidSurfaceHeight(
+    wp::Vector2 const& position) const {
+  auto faceIndex = getContainingFaceIndex(position);
+  if (faceIndex == ~0u) {
+    return -std::numeric_limits<float>::infinity();
+  }
+  auto liquidDepth = mLiquidDepths[faceIndex];
+  if (liquidDepth <= 0.0f) {
+    return -std::numeric_limits<float>::infinity();
+  }
+  auto floorZ =
+      mArrangement->palette[mArrangement->faces[faceIndex].paletteIndex]
+          .floorZ;
+  return floorZ + liquidDepth;
+}
+
+LiquidType ArrangementWorldData::getLiquidType(
+    wp::Vector2 const& position) const {
+  auto faceIndex = getContainingFaceIndex(position);
+  if (faceIndex == ~0u) {
+    return LiquidType::Water;
+  }
+  return mArrangement->palette[mArrangement->faces[faceIndex].paletteIndex]
+      .liquidType;
+}
+
 std::vector<uint32_t> ArrangementWorldData::getWallsNear(
     wp::Vector2 const& position,
     float radius) const {

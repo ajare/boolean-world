@@ -1284,6 +1284,15 @@ void main()
     vec3 worldPos = @In(FRAGPOSITION);
     vec3 viewDir = normalize(@ViewPos - worldPos);
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
+    // Every horizontal surface here is single-sided geometry rendered without
+    // backface culling (liquid surfaces are seen from below when a player is
+    // submerged). Without this, dot(normal, viewDir) goes negative and clamps
+    // to 0 in shadePbr's Fresnel term, which fresnelSchlick reads as grazing
+    // incidence (cosTheta = 0) and returns ~1 - drowning the albedo term in
+    // flat grey ambient regardless of the material's actual colour.
+    if (dot(shadingNormal, viewDir) < 0.0) {
+        shadingNormal = -shadingNormal;
+    }
     vec3 normal = applyWallNormalMap(shadingNormal);
     float playerDistance = length(
         @Uniform(PLAYER_POSITION) - worldPos);

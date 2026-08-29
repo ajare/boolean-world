@@ -17,5 +17,51 @@
 
 #define BW_PLAYER_SPEED 60.0f
 
+// The player's own mass per unit volume, on the same scale as a liquid's
+// LiquidProperties::density (core/LiquidProperties.h), where water is 1. The
+// two divide out: the player floats with this over the liquid's density of
+// their height submerged, so in water they rest 85% under with their head
+// just clear, and a denser liquid floats them higher. Being lighter than
+// water is what makes them float at all - at a density above the liquid's
+// they would sink instead.
+//
+// This governs the whole of buoyancy, including how much of their weight the
+// liquid carries off their feet: traction against the floor runs out at the
+// same submersion this floats them at, which is when they stop wading and
+// start swimming.
+#define BW_PLAYER_DENSITY 0.85f
+
+// Floor on how slow buoyancy can make the player: even weightless and fully
+// submerged, swimming still makes some headway.
+#define BW_PLAYER_MIN_SWIM_SPEED_FACTOR 0.35f
+
+// How hard the player swims vertically, as an acceleration rather than a
+// speed: it is worked against the liquid's viscosity, so the speed it
+// achieves is this over that viscosity (about 30 units per second while fully
+// submerged in water), and thicker liquid is harder to swim through without
+// needing its own player constant. Applying it as a force also means a kick
+// takes a few frames to build and bleeds away when released, rather than
+// snapping to full speed and stopping dead. It has to beat the buoyant force
+// pushing the player back up or they could never dive.
+#define BW_PLAYER_SWIM_ACCELERATION 360.0f
+
+// Water deep enough to submerge at least this fraction of the player's
+// height (standing on the real floor) is deep enough to swim in rather than
+// wade through: fly controls take over, and this is also the floor on how
+// far the player can rise toward the surface under their own power - they
+// can dive as deep as the floor allows, but not climb out on top of the
+// water via vertical swim input alone.
+#define BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION 0.7f
+
+// How far above the liquid surface an adjacent floor may sit and still be
+// climbed out onto from the water. Above this the ledge is out of reach and
+// the swimmer stays in the liquid. Deliberately larger than
+// BW_PLAYER_STEP_HEIGHT: hauling yourself out of water uses your arms, and
+// buoyancy has already lifted most of your weight.
+#define BW_PLAYER_MAX_CLIMB_OUT_HEIGHT 12.0f
+// Clear of the crossed edge by this much on landing, so the climb never ends
+// with the collider resting exactly on a wall it must then be pushed off.
+#define BW_PLAYER_CLIMB_OUT_MARGIN 0.25f
+
 #define BW_WORLD_FLOOR_HEIGHT_MIN -200.0f
 #define BW_WORLD_CEILING_HEIGHT_MAX 200.0f
