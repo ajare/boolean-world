@@ -728,15 +728,17 @@ void WorldRenderer::update(
 
   auto liquidEyeSurfaceHeight =
       worldData.getLiquidSurfaceHeight({playerPosition.x, -playerPosition.z});
-  glm::vec3 liquidExtinction{};
-  glm::vec3 liquidTint{};
-  if (std::isfinite(liquidEyeSurfaceHeight)) {
-    auto const& liquid = bw::core::GetLiquidProperties(
-        worldData.getLiquidType({playerPosition.x, -playerPosition.z}));
-    auto const extinction = bw::core::CalculateLiquidExtinction(liquid);
-    liquidExtinction = {extinction[0], extinction[1], extinction[2]};
-    liquidTint = {liquid.tint[0], liquid.tint[1], liquid.tint[2]};
-  } else {
+  // A dry position resolves to Water, which is also the only currently
+  // authored LiquidType. Keep its optical properties available so a dry eye
+  // can absorb a wet far endpoint; the dry surface sentinel still makes every
+  // dry-to-dry path exactly zero.
+  auto const& liquid = bw::core::GetLiquidProperties(
+      worldData.getLiquidType({playerPosition.x, -playerPosition.z}));
+  auto const extinction = bw::core::CalculateLiquidExtinction(liquid);
+  glm::vec3 liquidExtinction{
+      extinction[0], extinction[1], extinction[2]};
+  glm::vec3 liquidTint{liquid.tint[0], liquid.tint[1], liquid.tint[2]};
+  if (!std::isfinite(liquidEyeSurfaceHeight)) {
     liquidEyeSurfaceHeight =
         WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
   }

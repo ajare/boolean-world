@@ -1274,10 +1274,38 @@ vec3 applyWallNormalMap(vec3 geometricNormal)
         surfaceNormal * sampled.z);
 }
 
+// This is a GLSL transliteration of core::CalculateLiquidPathLength, which is
+// normative and covered by liquid_path_length_tests.cpp. Change both
+// expressions in the same commit. Keep this helper identical in
+// world_pbr.frag and world_pbr_2d.frag so walls and horizontals cannot drift.
+vec3 applyLiquidAbsorption(
+    vec3 colour, vec3 eyePosition, vec3 pointPosition,
+    float eyeSurfaceHeight, float pointSurfaceHeight)
+{
+    bool eyeIsWet = eyeSurfaceHeight > eyePosition.y;
+    bool pointIsWet = pointSurfaceHeight > pointPosition.y;
+    float surfaceHeight = eyeIsWet ? eyeSurfaceHeight : pointSurfaceHeight;
+
+    float low = min(eyePosition.y, pointPosition.y);
+    float high = max(eyePosition.y, pointPosition.y);
+    float verticalSpan = high - low;
+    float submergedFraction = verticalSpan > 0.001
+        ? clamp((min(high, surfaceHeight) - low) / verticalSpan, 0.0, 1.0)
+        : (0.5 * (low + high) <= surfaceHeight ? 1.0 : 0.0);
+    vec3 delta = pointPosition - eyePosition;
+    float chordLength = sqrt(
+        delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+
+    float pathLength = pointIsWet
+        ? chordLength * submergedFraction
+        : max(surfaceHeight - eyePosition.y, 0.0);
+    vec3 transmittance = exp(-@Uniform(LIQUID_EXTINCTION) * pathLength);
+    return colour * transmittance +
+        (vec3(1.0) - transmittance) * @Uniform(LIQUID_TINT);
+}
+
 void main()
 {
-    // Carried for the shared liquid-absorption helper. This path does not
-    // consume it yet.
     float liquidSurfaceHeight = @In(LIQUID_SURFACE_HEIGHT);
 
     // Fade every contribution to black at the world-view boundary. This is
@@ -1322,6 +1350,12 @@ void main()
     vec3 value = shadePbr(
         material, viewDir, worldPos, @Uniform(LIGHT_POSITION));
     value += supernaturalEmission(texturePosition, materialIndex);
+    // Absorption attenuates all radiance in linear space. It therefore follows
+    // emission but precedes tone mapping, gamma, and the stylistic distance
+    // fade applied at output.
+    value = applyLiquidAbsorption(
+        value, @ViewPos, @In(FRAGPOSITION),
+        @Uniform(LIQUID_EYE_SURFACE_Z), liquidSurfaceHeight);
     value = value / (value + vec3(1.0));
     value = pow(value, vec3(1.0 / 2.2));
 
