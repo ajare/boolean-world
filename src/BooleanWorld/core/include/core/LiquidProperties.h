@@ -26,11 +26,28 @@ struct LiquidProperties {
   // (roughly entry speed over this), and what speed a given swimming effort
   // achieves (that effort over this).
   float viscosity;
+
+  // The fraction of light absorbed over referenceDepth world units. Zero is
+  // perfectly clear at every depth; values at or above one are clamped short
+  // of one when converted to extinction so that coefficient stays finite.
+  float opacity;
+  float referenceDepth;
+
+  // The colour left by absorption. It also biases extinction toward the
+  // colours the liquid is not: a blue tint absorbs red faster than blue.
+  std::array<float, 3> tint;
 };
 
 // The properties of the given liquid. Unknown values read back as Water
 // rather than throwing, matching LiquidTypeFromName.
 [[nodiscard]] LiquidProperties const& GetLiquidProperties(LiquidType type);
+
+// Converts authored opacity at its reference depth to Beer-Lambert extinction
+// coefficients. A neutral tint of {0.5, 0.5, 0.5} preserves the authored
+// opacity in every channel; other tints bias absorption toward their missing
+// colours.
+[[nodiscard]] std::array<float, 3> CalculateLiquidExtinction(
+    LiquidProperties const& properties);
 
 // Returns the length of the eye-to-point segment that lies in liquid. Positions
 // are x, y, z with y vertical. A surface height at or below its endpoint means

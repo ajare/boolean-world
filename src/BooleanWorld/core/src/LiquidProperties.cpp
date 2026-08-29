@@ -20,8 +20,10 @@ constexpr array<LiquidProperties, LiquidTypeCount> liquidProperties{{
     // against the player: it leaves an unmoving swimmer drifting back up to
     // the surface at a wallow rather than a bob, while still letting a fall
     // from a height drive them well under, and gives a swimming player about
-    // 30 units per second of vertical speed while fully submerged.
-    {1.0f, 12.0f},
+    // 30 units per second of vertical speed while fully submerged. Its optical
+    // values preserve the former liquid-material albedo and approximately its
+    // apparent opacity over a typical 40-unit pool depth.
+    {1.0f, 12.0f, 0.55f, 40.0f, {0.10f, 0.35f, 0.60f}},
 }};
 
 }  // namespace
@@ -32,6 +34,28 @@ LiquidProperties const& GetLiquidProperties(LiquidType type) {
     return liquidProperties[0];
   }
   return liquidProperties[static_cast<size_t>(index)];
+}
+
+array<float, 3> CalculateLiquidExtinction(
+    LiquidProperties const& properties) {
+  // A reference depth at or below zero cannot express an attenuation distance.
+  // Treat it as the smallest positive depth rather than divide by zero.
+  constexpr float minimumReferenceDepth = 0.001f;
+  constexpr float maximumOpacity = 0.999f;
+  auto opacity = clamp(properties.opacity, 0.0f, maximumOpacity);
+  auto baseExtinction = -log(1.0f - opacity) /
+                        max(properties.referenceDepth, minimumReferenceDepth);
+
+  array<float, 3> extinction;
+  for (size_t channel = 0; channel < extinction.size(); ++channel) {
+    // A neutral midpoint tint leaves the scalar authored opacity unchanged.
+    // Brighter tint channels are retained more readily, while darker channels
+    // are absorbed more strongly.
+    extinction[channel] = baseExtinction *
+                          (2.0f * (1.0f - clamp(properties.tint[channel],
+                                                 0.0f, 1.0f)));
+  }
+  return extinction;
 }
 
 float CalculateLiquidPathLength(
