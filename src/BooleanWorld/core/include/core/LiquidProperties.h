@@ -27,6 +27,14 @@ struct LiquidProperties {
   // achieves (that effort over this).
   float viscosity;
 
+  // Grades this Liquid type's entire Fresnel reflection contribution. Zero
+  // suppresses reflection; one preserves the response implied by f0.
+  float reflectance;
+
+  // Fresnel reflectance at normal incidence. Together with reflectance this
+  // controls the Liquid interface, independently of volume absorption.
+  float f0;
+
   // The fraction of light absorbed over referenceDepth world units. Zero is
   // perfectly clear at every depth; values at or above one are clamped short
   // of one when converted to extinction so that coefficient stays finite.
@@ -41,6 +49,12 @@ struct LiquidProperties {
 // The properties of the given liquid. Unknown values read back as Water
 // rather than throwing, matching LiquidTypeFromName.
 [[nodiscard]] LiquidProperties const& GetLiquidProperties(LiquidType type);
+
+// The Liquid interface's reflected alpha: clamp(reflectance, 0, 1) times
+// Schlick(clamp(f0, 0, 1), clamp(nDotV, 0, 1)). This is deliberately pure so
+// render paths share one normative optical calculation.
+[[nodiscard]] float CalculateLiquidAmbientReflectance(
+    LiquidProperties const& properties, float nDotV);
 
 // Converts authored opacity at its reference depth to Beer-Lambert extinction
 // coefficients. A neutral tint of {0.5, 0.5, 0.5} preserves the authored

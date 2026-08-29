@@ -10,6 +10,9 @@
 @@Uniform(float LIQUID_EYE_SURFACE_Z);
 @@Uniform(vec3 LIQUID_EXTINCTION);
 @@Uniform(vec3 LIQUID_TINT);
+@@Uniform(float LIQUID_REFLECTANCE);
+@@Uniform(float LIQUID_F0);
+@@Uniform(vec3 LIQUID_AMBIENT_TINT);
 @@Uniform(float LIGHT_ATTENUATION_RADIUS);
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
 @@Uniform(float MATERIAL_SCALE);
@@ -2572,6 +2575,38 @@ vec3 applyLiquidAbsorption(
 void main()
 {
     float liquidSurfaceHeight = @In(LIQUID_SURFACE_HEIGHT);
+    int bucketMaterialIndex = clamp(@Uniform(MATERIAL_INDEX), 0, 40);
+
+    // Liquid is an interface, not another lit volume. Its viewer-facing
+    // normal gives the same Schlick response above and below the surface;
+    // the already-rendered submerged geometry owns absorption.
+    if (bucketMaterialIndex == 40)
+    {
+        vec3 worldPos = @In(FRAGPOSITION);
+        vec3 viewDir = normalize(@ViewPos - worldPos);
+        vec3 interfaceNormal = normalize(@In(FRAGNORMAL));
+        if (dot(interfaceNormal, viewDir) < 0.0)
+            interfaceNormal = -interfaceNormal;
+        float nDotV = clamp(dot(interfaceNormal, viewDir), 0.0, 1.0);
+        float f0 = clamp(@Uniform(LIQUID_F0), 0.0, 1.0);
+        float schlick = f0 + (1.0 - f0) * pow(1.0 - nDotV, 5.0);
+        float alpha = clamp(@Uniform(LIQUID_REFLECTANCE), 0.0, 1.0) * schlick;
+        float fragmentDistance = length(@Uniform(LIGHT_POSITION) - worldPos);
+        float fadeToBlack = pow(clamp(
+            1.0 - fragmentDistance / @Uniform(VIEW_DISTANCE), 0.0, 1.0),
+            1.7);
+
+        // Fixed-function alpha blending overlays only this type's tinted
+        // ambient fallback over the absorption already in the framebuffer.
+        // Do not shade a second Player Torch term or absorb this path again.
+        @Out(vec4 COLOUR) = vec4(
+            vec3(0.12) * @Uniform(LIQUID_AMBIENT_TINT) * fadeToBlack, alpha);
+        @Out(vec4 BLOOM_MASK) = vec4(0.0);
+        @Out(vec2 SHADING_NORMAL) = encodeOctahedralNormal(
+            normalize(mat3(VIEW_MATRIX) * interfaceNormal));
+        @Out(float LIQUID_RETENTION) = 1.0;
+        return;
+    }
 
     // Fade every contribution to black at the world-view boundary. This is
     // intentionally separate from the Torch's configurable direct-light

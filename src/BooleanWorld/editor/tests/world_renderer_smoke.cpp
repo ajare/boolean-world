@@ -291,8 +291,8 @@ int main() {
                   wetSurfaceTriangles[1] != 0 &&
                   drySurfaceTriangles[2] == wetSurfaceTriangles[2],
               "wet and dry Worlds did not partition Horizontal, Liquid, and Walls");
-      require(regionDifference(unset, wet) < 0.0005,
-              "separating Liquid changed the transparent-interface appearance");
+      require(regionDifference(unset, wet) > 0.0005,
+              "Liquid's Fresnel ambient interface did not visibly affect the preview");
 
       auto disabled = render(
           renderSystem, {.map = MapFixture::Disabled});

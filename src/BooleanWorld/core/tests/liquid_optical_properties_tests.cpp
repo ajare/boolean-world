@@ -7,6 +7,7 @@
 #include <core/LiquidProperties.h>
 
 namespace {
+using bw::core::CalculateLiquidAmbientReflectance;
 using bw::core::CalculateLiquidExtinction;
 using bw::core::GetLiquidProperties;
 using bw::core::LiquidProperties;
@@ -28,6 +29,9 @@ void requireNear(float actual, float expected, std::string const& message) {
 
 void waterOpticsAreAuthoredPerLiquidType() {
   auto const& water = GetLiquidProperties(LiquidType::Water);
+  requireNear(water.reflectance, 1.0f,
+              "Water Liquid reflectance changed unexpectedly");
+  requireNear(water.f0, 0.02f, "Water Liquid F0 changed unexpectedly");
   requireNear(water.opacity, 0.55f, "Water opacity changed unexpectedly");
   requireNear(water.referenceDepth, 40.0f,
               "Water reference depth changed unexpectedly");
@@ -36,8 +40,31 @@ void waterOpticsAreAuthoredPerLiquidType() {
   requireNear(water.tint[2], 0.60f, "Water blue tint changed unexpectedly");
 }
 
+void liquidAmbientReflectanceFollowsSchlick() {
+  LiquidProperties liquid{1.0f, 1.0f, 1.0f, 0.02f, 0.5f, 8.0f, {0.5f, 0.5f, 0.5f}};
+  requireNear(CalculateLiquidAmbientReflectance(liquid, 1.0f), 0.02f,
+              "normal incidence must return Liquid F0");
+  requireNear(CalculateLiquidAmbientReflectance(liquid, 0.5f),
+              0.02f + 0.98f / 32.0f,
+              "intermediate incidence must follow Schlick");
+  requireNear(CalculateLiquidAmbientReflectance(liquid, 0.0f), 1.0f,
+              "grazing incidence must fully reflect");
+
+  liquid.reflectance = 0.0f;
+  requireNear(CalculateLiquidAmbientReflectance(liquid, 0.5f), 0.0f,
+              "zero Liquid reflectance must suppress the interface");
+
+  liquid.reflectance = 2.0f;
+  liquid.f0 = -1.0f;
+  requireNear(CalculateLiquidAmbientReflectance(liquid, 2.0f), 0.0f,
+              "out-of-range authored values must clamp at normal incidence");
+  liquid.f0 = 2.0f;
+  requireNear(CalculateLiquidAmbientReflectance(liquid, -1.0f), 1.0f,
+              "out-of-range authored values must clamp at grazing incidence");
+}
+
 void clearLiquidHasNoExtinction() {
-  LiquidProperties liquid{1.0f, 1.0f, 0.0f, 10.0f, {0.1f, 0.5f, 0.9f}};
+  LiquidProperties liquid{1.0f, 1.0f, 1.0f, 0.02f, 0.0f, 10.0f, {0.1f, 0.5f, 0.9f}};
   for (auto coefficient : CalculateLiquidExtinction(liquid)) {
     requireNear(coefficient, 0.0f,
                 "zero opacity must be perfectly clear in every channel");
@@ -45,7 +72,7 @@ void clearLiquidHasNoExtinction() {
 }
 
 void fullyOpaqueLiquidStaysFinite() {
-  LiquidProperties liquid{1.0f, 1.0f, 1.0f, 10.0f, {0.5f, 0.5f, 0.5f}};
+  LiquidProperties liquid{1.0f, 1.0f, 1.0f, 0.02f, 1.0f, 10.0f, {0.5f, 0.5f, 0.5f}};
   for (auto coefficient : CalculateLiquidExtinction(liquid)) {
     require(std::isfinite(coefficient),
             "fully opaque authored liquid must produce finite extinction");
@@ -55,7 +82,7 @@ void fullyOpaqueLiquidStaysFinite() {
 }
 
 void opacityMatchesTransmittanceAtReferenceDepth() {
-  LiquidProperties liquid{1.0f, 1.0f, 0.5f, 8.0f, {0.5f, 0.5f, 0.5f}};
+  LiquidProperties liquid{1.0f, 1.0f, 1.0f, 0.02f, 0.5f, 8.0f, {0.5f, 0.5f, 0.5f}};
   for (auto coefficient : CalculateLiquidExtinction(liquid)) {
     requireNear(std::exp(-coefficient * liquid.referenceDepth),
                 1.0f - liquid.opacity,
@@ -64,12 +91,12 @@ void opacityMatchesTransmittanceAtReferenceDepth() {
 }
 
 void tintBiasesAbsorptionPerChannel() {
-  LiquidProperties blue{1.0f, 1.0f, 0.5f, 8.0f, {0.1f, 0.35f, 0.6f}};
+  LiquidProperties blue{1.0f, 1.0f, 1.0f, 0.02f, 0.5f, 8.0f, {0.1f, 0.35f, 0.6f}};
   auto blueExtinction = CalculateLiquidExtinction(blue);
   require(blueExtinction[0] > blueExtinction[2],
           "a blue tint must absorb red faster than blue");
 
-  LiquidProperties grey{1.0f, 1.0f, 0.5f, 8.0f, {0.5f, 0.5f, 0.5f}};
+  LiquidProperties grey{1.0f, 1.0f, 1.0f, 0.02f, 0.5f, 8.0f, {0.5f, 0.5f, 0.5f}};
   auto greyExtinction = CalculateLiquidExtinction(grey);
   requireNear(greyExtinction[0], greyExtinction[1],
               "a neutral tint must not bias red against green");
@@ -82,6 +109,7 @@ void tintBiasesAbsorptionPerChannel() {
 int main() {
   try {
     waterOpticsAreAuthoredPerLiquidType();
+    liquidAmbientReflectanceFollowsSchlick();
     clearLiquidHasNoExtinction();
     fullyOpaqueLiquidStaysFinite();
     opacityMatchesTransmittanceAtReferenceDepth();

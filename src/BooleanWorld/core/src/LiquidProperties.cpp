@@ -22,8 +22,10 @@ constexpr array<LiquidProperties, LiquidTypeCount> liquidProperties{{
     // from a height drive them well under, and gives a swimming player about
     // 30 units per second of vertical speed while fully submerged. Its optical
     // values preserve the former liquid-material albedo and approximately its
-    // apparent opacity over a typical 40-unit pool depth.
-    {1.0f, 12.0f, 0.55f, 40.0f, {0.10f, 0.35f, 0.60f}},
+    // apparent opacity over a typical 40-unit pool depth. Its complete
+    // interface is physical-strength reflection with water's F0.
+    {1.0f, 12.0f, 1.0f, 0.02f, 0.55f, 40.0f, {0.10f, 0.35f, 0.60f}},
+
 }};
 
 }  // namespace
@@ -34,6 +36,15 @@ LiquidProperties const& GetLiquidProperties(LiquidType type) {
     return liquidProperties[0];
   }
   return liquidProperties[static_cast<size_t>(index)];
+}
+
+float CalculateLiquidAmbientReflectance(
+    LiquidProperties const& properties, float nDotV) {
+  auto reflectance = clamp(properties.reflectance, 0.0f, 1.0f);
+  auto f0 = clamp(properties.f0, 0.0f, 1.0f);
+  auto cosine = clamp(nDotV, 0.0f, 1.0f);
+  auto schlick = f0 + (1.0f - f0) * pow(1.0f - cosine, 5.0f);
+  return reflectance * schlick;
 }
 
 array<float, 3> CalculateLiquidExtinction(
@@ -53,7 +64,7 @@ array<float, 3> CalculateLiquidExtinction(
     // are absorbed more strongly.
     extinction[channel] = baseExtinction *
                           (2.0f * (1.0f - clamp(properties.tint[channel],
-                                                 0.0f, 1.0f)));
+                                                0.0f, 1.0f)));
   }
   return extinction;
 }

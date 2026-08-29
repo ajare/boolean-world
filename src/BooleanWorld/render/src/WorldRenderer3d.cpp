@@ -3,6 +3,7 @@
 #include <mpp/ProgrammaticBasicMaterialStream.h>
 
 #include <core/Defines.h>
+#include <core/LiquidProperties.h>
 #include <core/LiquidType.h>
 #include <core/MaterialDefinition.h>
 #include <core/World.h>
@@ -199,6 +200,9 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         WorldTriangle3dDataProvider::dryLiquidSurfaceHeight);
     uniforms.setUniform("LIQUID_EXTINCTION", glm::vec3{});
     uniforms.setUniform("LIQUID_TINT", glm::vec3{});
+    uniforms.setUniform("LIQUID_REFLECTANCE", 0.0f);
+    uniforms.setUniform("LIQUID_F0", 0.0f);
+    uniforms.setUniform("LIQUID_AMBIENT_TINT", glm::vec3{});
     uniforms.setUniform("LIGHT_ATTENUATION_RADIUS", 192.0f);
     uniforms.setUniform("LIGHT_ATTENUATION_FALLOFF", 64.0f);
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
@@ -378,6 +382,13 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
             liquidMaterialDef.data.params.data());
         setEmbossUniforms(*uniforms, liquidMaterialDef.data.emboss);
         initializeGlobalUniforms(*uniforms);
+        auto const& liquid = bw::core::GetLiquidProperties(
+            static_cast<bw::core::LiquidType>(i));
+        uniforms->setUniform("LIQUID_REFLECTANCE", liquid.reflectance);
+        uniforms->setUniform("LIQUID_F0", liquid.f0);
+        uniforms->setUniform(
+            "LIQUID_AMBIENT_TINT",
+            glm::vec3{liquid.tint[0], liquid.tint[1], liquid.tint[2]});
         mUniforms[meshIndex] = uniforms;
         mMaterialIndices[meshIndex] = static_cast<int32_t>(materialIndex);
       }
