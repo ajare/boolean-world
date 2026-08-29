@@ -26,7 +26,9 @@ uint64_t uploadBytes(WorldTriangle3dDataProvider const& provider) {
 }
 
 WorldTriangle3dDataProvider::DrawVert floorVertex(float x, float y) {
-  return {{x, 0.0f, y}, {0.0f, 1.0f, 0.0f}, {x / 64.0f, y / 64.0f}, 0xffffffffu};
+  return {{x, 0.0f, y}, {0.0f, 1.0f, 0.0f},
+          {x / 64.0f, y / 64.0f}, 0xffffffffu,
+          WorldTriangle3dDataProvider::dryLiquidSurfaceHeight};
 }
 
 }  // namespace

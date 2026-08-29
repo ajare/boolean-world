@@ -12,6 +12,7 @@ void main()
     @Out(vec3 FRAGNORMAL) = normalize(@NormalMatrix * @Vec3(@In(NORMAL)));
     @Out(vec2 TEXCOORDS) = @In(TEXCOORDS);
     @Out(vec4 COLOUR) = @In(COLOUR);
+    @Out(float LIQUID_SURFACE_HEIGHT) = @In(LIQUID_SURFACE_HEIGHT);
 
     gl_Position = @MCPMatrix * @Vec4(@In(POSITION));
 }

@@ -18,6 +18,15 @@ string variantIdentity(optional<WallRenderVariant> const& variant) {
 }
 }  // namespace
 
+mpp::mesh::MeshSpecification WorldBatch::createMeshSpecification(
+    mpp::mesh::Primitive::Type primitiveType) {
+  auto specification = TriangleBatch::createMeshSpecification(primitiveType);
+  specification.getVertexBufferAttributeLayout(0).createAttribute(
+      mpp::mesh::Vertex::Component::UserDefined1, "LIQUID_SURFACE_HEIGHT",
+      mpp::mesh::Vertex::DataType::Float, false);
+  return specification;
+}
+
 WorldBatch::WorldBatch(string const& name, mpp::ResourcePtr textureOrMaterial, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr, bw::core::World const* world, WorldSurfaceSet surfaceSet, SubMaterialResolver const* resolver, vector<WallRenderSurface> wallRenderSurfaces)
     : TriangleBatch(name,
                     {mpp::TriangleBatchOptions::Dimension::P3D,

@@ -1273,6 +1273,10 @@ vec3 applyWallNormalMap(vec3 geometricNormal)
 
 void main()
 {
+    // Carried for the shared liquid-absorption helper. This path does not
+    // consume it yet.
+    float liquidSurfaceHeight = @In(LIQUID_SURFACE_HEIGHT);
+
     // Fade every contribution to black at the world-view boundary. This is
     // intentionally separate from the Torch's configurable direct-light
     // attenuation: ambient and emissive terms must disappear there too.

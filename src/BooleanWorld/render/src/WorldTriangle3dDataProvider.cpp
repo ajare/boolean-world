@@ -6,7 +6,7 @@
 
 #include <glm/geometric.hpp>
 
-static_assert(sizeof(WorldTriangle3dDataProvider::DrawVert) == 9 * sizeof(uint32_t));
+static_assert(sizeof(WorldTriangle3dDataProvider::DrawVert) == 10 * sizeof(uint32_t));
 
 size_t WorldTriangle3dDataProvider::VertexKeyHash::operator()(
     VertexKey const& key) const noexcept {
@@ -18,7 +18,7 @@ size_t WorldTriangle3dDataProvider::VertexKeyHash::operator()(
 }
 
 WorldTriangle3dDataProvider::WorldTriangle3dDataProvider()
-    : mVertexStride(sizeof(float) * 8 + sizeof(uint8_t) * 4) {
+    : mVertexStride(sizeof(DrawVert)) {
 }
 
 WorldTriangle3dDataProvider::~WorldTriangle3dDataProvider() {

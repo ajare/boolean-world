@@ -92,7 +92,11 @@ private:
       bw::core::WorldData const& worldData, glm::vec3 const& playerPosition,
       int32_t highlightedWall);
 
-  uint32_t addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c);
+  uint32_t addVertexToDataProvider(
+      DataProvider dataProvider, uint32_t meshIndex, float px, float py,
+      float pz, float nx, float ny, float nz, float u, float v, uint32_t c,
+      float liquidSurfaceHeight =
+          WorldTriangle3dDataProvider::dryLiquidSurfaceHeight);
 
   // Emits one Chip detail triangle, mapping it out of arrangement space
   // (Z up) into renderer space. `mirrored` flips it for a wall drawn from
@@ -102,7 +106,9 @@ private:
       uint32_t meshIndex,
       bw::core::arr::DetailTriangle const& triangle,
       bool mirrored,
-      uint32_t colour);
+      uint32_t colour,
+      float liquidSurfaceHeight =
+          WorldTriangle3dDataProvider::dryLiquidSurfaceHeight);
 
 public:
   WorldRenderer(

@@ -12,11 +12,16 @@ class WorldTriangle3dDataProvider : public mpp::helper::TriangleBatch3DBufferDat
   friend class WorldRenderer;
 
 public:
+  // A finite value rather than negative infinity keeps the dry marker valid
+  // for every vertex format and safely below every playable world position.
+  static constexpr float dryLiquidSurfaceHeight = -1e10f;
+
   struct DrawVert {
     float pos[3];
     float nor[3];
     float tex[2];
     uint32_t col;
+    float liquidSurfaceHeight;
   };
 
   struct MeshData {
@@ -31,7 +36,7 @@ public:
   };
 
 private:
-  using VertexKey = std::array<uint32_t, 9>;
+  using VertexKey = std::array<uint32_t, 10>;
 
   struct VertexKeyHash {
     size_t operator()(VertexKey const& key) const noexcept;

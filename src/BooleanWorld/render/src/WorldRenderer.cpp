@@ -254,9 +254,12 @@ void WorldRenderer::reloadSubMaterialResolver(
   }
 }
 
-uint32_t WorldRenderer::addVertexToDataProvider(DataProvider dataProvider, uint32_t meshIndex, float px, float py, float pz, float nx, float ny, float nz, float u, float v, uint32_t c) {
+uint32_t WorldRenderer::addVertexToDataProvider(
+    DataProvider dataProvider, uint32_t meshIndex, float px, float py,
+    float pz, float nx, float ny, float nz, float u, float v, uint32_t c,
+    float liquidSurfaceHeight) {
   WorldTriangle3dDataProvider::DrawVert vertex{
-      {px, py, pz}, {nx, ny, nz}, {u, v}, c};
+      {px, py, pz}, {nx, ny, nz}, {u, v}, c, liquidSurfaceHeight};
   return dataProvider->addVertex(meshIndex, vertex);
 }
 
@@ -265,7 +268,8 @@ void WorldRenderer::addDetailTriangleToDataProvider(
     uint32_t meshIndex,
     bw::core::arr::DetailTriangle const& triangle,
     bool mirrored,
-    uint32_t colour) {
+    uint32_t colour,
+    float liquidSurfaceHeight) {
   // Arrangement space keeps height in z and renderer space keeps it in y,
   // mapping (x, y, z) to (x, z, -y) - a rotation, not a reflection, so a
   // triangle wound counter-clockwise about its normal there stays wound
@@ -282,7 +286,8 @@ void WorldRenderer::addDetailTriangleToDataProvider(
     indices[i] = addVertexToDataProvider(
         dataProvider, meshIndex, vertex.position[0], vertex.position[2],
         -vertex.position[1], sign * vertex.normal[0], sign * vertex.normal[2],
-        -sign * vertex.normal[1], vertex.uv[0], vertex.uv[1], colour);
+        -sign * vertex.normal[1], vertex.uv[0], vertex.uv[1], colour,
+        liquidSurfaceHeight);
   }
   if (mirrored) {
     dataProvider->addTriangle(meshIndex, indices[2], indices[1], indices[0]);
@@ -308,6 +313,16 @@ void WorldRenderer::updateHorizontalDataProvider(
   auto const& detail = snapshot.getDetail();
   using bw::core::arr::DetailSurfaceKind;
   auto const& liquidDepths = snapshot.getLiquidDepths();
+  auto liquidSurfaceHeightFor =
+      [&](bw::core::arr::DetailSurfaceKey const& source) {
+        if (source.kind == DetailSurfaceKind::Wall ||
+            liquidDepths[source.index] <= 0.0f) {
+          return WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
+        }
+        auto const& sourceProperties =
+            worldData.palette[worldData.faces[source.index].paletteIndex];
+        return sourceProperties.floorZ + liquidDepths[source.index];
+      };
 
   // A rebuilt face's replacements resolve exactly the Sub-material the face
   // itself would have, so they land in mesh buckets that already exist.
@@ -375,6 +390,11 @@ void WorldRenderer::updateHorizontalDataProvider(
           bw::core::arr::ToWorldCoordinate(vertex.y)};
     }
 
+    auto liquidSurfaceHeight =
+        liquidDepths[triangle.face] > 0.0f
+            ? properties.floorZ + liquidDepths[triangle.face]
+            : WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
+
     if (!detail.isSuppressed(DetailSurfaceKind::FloorOfFace, triangle.face)) {
       auto floorResolved = mBakedSubMaterialResolver.resolve(properties.floorMaterialId);
       auto floorHash = floorResolved.def.hash(floorResolved.materialIndex);
@@ -390,7 +410,8 @@ void WorldRenderer::updateHorizontalDataProvider(
             properties.floorZ, -positions[i].y, 0, 1, 0, uv.x, uv.y,
             triangle.face == highlightedFace && !highlightedCeiling
                 ? lookedAtVertexColour
-                : untintedVertexColour);
+                : untintedVertexColour,
+            liquidSurfaceHeight);
       }
       horizontal.dataProvider->addTriangle(
           floorMesh, floorIndices[0], floorIndices[1], floorIndices[2]);
@@ -405,7 +426,8 @@ void WorldRenderer::updateHorizontalDataProvider(
         auto uv = positions[i] / 64.0f;
         liquidIndices[2 - i] = addVertexToDataProvider(
             horizontal.dataProvider, liquidMesh, positions[i].x, liquidZ,
-            -positions[i].y, 0, 1, 0, uv.x, uv.y, waterVertexColour);
+            -positions[i].y, 0, 1, 0, uv.x, uv.y, waterVertexColour,
+            liquidSurfaceHeight);
       }
       horizontal.dataProvider->addTriangle(
           liquidMesh, liquidIndices[0], liquidIndices[1], liquidIndices[2]);
@@ -426,7 +448,8 @@ void WorldRenderer::updateHorizontalDataProvider(
           properties.ceilingZ, -positions[i].y, 0, -1, 0, uv.x, uv.y,
           triangle.face == highlightedFace && highlightedCeiling
               ? lookedAtVertexColour
-              : untintedVertexColour);
+              : untintedVertexColour,
+          liquidSurfaceHeight);
     }
     horizontal.dataProvider->addTriangle(
         ceilingMesh, ceilingIndices[0], ceilingIndices[1], ceilingIndices[2]);
@@ -442,7 +465,8 @@ void WorldRenderer::updateHorizontalDataProvider(
     addDetailTriangleToDataProvider(
         horizontal.dataProvider, horizontalMeshFor(replacement.source),
         replacement, false,
-        highlighted ? lookedAtVertexColour : untintedVertexColour);
+        highlighted ? lookedAtVertexColour : untintedVertexColour,
+        liquidSurfaceHeightFor(replacement.source));
   }
   horizontal.dataProvider->finalizeInternals();
   horizontal.dataProvider->setNumPrimitives(horizontal.dataProvider->getNumTriangles());

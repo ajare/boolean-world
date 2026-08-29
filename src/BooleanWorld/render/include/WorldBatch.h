@@ -31,6 +31,10 @@ class WorldBatch : public mpp::TriangleBatch {
   std::map<MaterialMeshKey, uint32_t> mMaterialHashToMesh;
   std::vector<WallRenderSurface> mWallRenderSurfaces;
 
+protected:
+  mpp::mesh::MeshSpecification createMeshSpecification(
+      mpp::mesh::Primitive::Type primitiveType) override;
+
 private:
   void processMaterialDefinition(
       uint32_t index,

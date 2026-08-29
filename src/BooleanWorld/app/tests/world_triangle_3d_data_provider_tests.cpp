@@ -54,7 +54,8 @@ void buffersAreSizedPerMesh() {
 WorldTriangle3dDataProvider::DrawVert vertex(
     float x, float y, float z, float nx, float ny, float nz,
     float u, float v, uint32_t colour) {
-  return {{x, y, z}, {nx, ny, nz}, {u, v}, colour};
+  return {{x, y, z}, {nx, ny, nz}, {u, v}, colour,
+          WorldTriangle3dDataProvider::dryLiquidSurfaceHeight};
 }
 
 void safelyReusesVerticesWithinEachMaterialMesh() {
