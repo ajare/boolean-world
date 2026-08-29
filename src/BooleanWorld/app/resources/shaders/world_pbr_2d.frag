@@ -10,6 +10,7 @@
 @@Uniform(float LIQUID_EYE_SURFACE_Z);
 @@Uniform(vec3 LIQUID_EXTINCTION);
 @@Uniform(vec3 LIQUID_TINT);
+@@Uniform(int MPP_VIRTUAL_CAMERA);
 @@Uniform(float LIGHT_ATTENUATION_RADIUS);
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
 @@Uniform(float MATERIAL_SCALE);
@@ -1292,6 +1293,15 @@ vec3 applyLiquidAbsorption(
     vec3 direct, vec3 ambient, vec3 eyePosition, vec3 pointPosition,
     float eyeSurfaceHeight, float pointSurfaceHeight, out vec3 outTransmittance)
 {
+    // A Planar reflected-scene pass uses a mirrored virtual eye. Applying the
+    // ordinary camera-to-surface path to that eye would invent absorption through
+    // Liquid that the reflected radiance never traversed.
+    if (@Uniform(MPP_VIRTUAL_CAMERA) != 0)
+    {
+        outTransmittance = vec3(1.0);
+        return direct + ambient;
+    }
+
     bool eyeIsWet = eyeSurfaceHeight > eyePosition.y;
     bool pointIsWet = pointSurfaceHeight > pointPosition.y;
     float surfaceHeight = eyeIsWet ? eyeSurfaceHeight : pointSurfaceHeight;

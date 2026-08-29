@@ -120,6 +120,20 @@ void liquidShaderPreservesTheSsrContract() {
               shader.find("vec4(reflectionColour, alpha)") !=
                   std::string::npos,
           "Liquid reflection is not runtime-tunable or Fresnel-composited over absorption");
+
+  auto horizontalShader = read(
+      std::filesystem::path(BW_APP_RESOURCE_DIR) / "shaders" /
+      "world_pbr_2d.frag");
+  for (auto const* source : {&shader, &horizontalShader}) {
+    require(source->find("@@Uniform(int MPP_VIRTUAL_CAMERA)") !=
+                    std::string::npos &&
+                source->find("if (@Uniform(MPP_VIRTUAL_CAMERA) != 0)") !=
+                    std::string::npos &&
+                source->find("outTransmittance = vec3(1.0)") !=
+                    std::string::npos &&
+                source->find("return direct + ambient") != std::string::npos,
+            "a reflected virtual camera can still invent ordinary Liquid absorption");
+  }
 }
 
 }  // namespace
