@@ -2539,7 +2539,7 @@ vec3 applyWallNormalMap(vec3 geometricNormal)
 // world_pbr.frag and world_pbr_2d.frag so walls and horizontals cannot drift.
 vec3 applyLiquidAbsorption(
     vec3 direct, vec3 ambient, vec3 eyePosition, vec3 pointPosition,
-    float eyeSurfaceHeight, float pointSurfaceHeight)
+    float eyeSurfaceHeight, float pointSurfaceHeight, out vec3 outTransmittance)
 {
     bool eyeIsWet = eyeSurfaceHeight > eyePosition.y;
     bool pointIsWet = pointSurfaceHeight > pointPosition.y;
@@ -2559,6 +2559,7 @@ vec3 applyLiquidAbsorption(
         ? chordLength * submergedFraction
         : max(surfaceHeight - eyePosition.y, 0.0);
     vec3 transmittance = exp(-@Uniform(LIQUID_EXTINCTION) * pathLength);
+    outTransmittance = transmittance;
     // The head-mounted Player Torch's outbound path nearly coincides with the
     // point-to-eye path. Pre-attenuating its direct contribution once, then
     // attenuating all radiance over the view path, gives direct the round trip
@@ -2625,9 +2626,10 @@ void main()
     // fade applied at output. The Player Torch's direct term takes its nearly
     // coincident outbound and view paths; ambient and emission take only the
     // view path.
+    vec3 outTransmittance;
     vec3 value = applyLiquidAbsorption(
         lighting.direct, ambientAndEmission, @ViewPos, @In(FRAGPOSITION),
-        @Uniform(LIQUID_EYE_SURFACE_Z), liquidSurfaceHeight);
+        @Uniform(LIQUID_EYE_SURFACE_Z), liquidSurfaceHeight, outTransmittance);
     value = value / (value + vec3(1.0));
     value = pow(value, vec3(1.0 / 2.2));
 
@@ -2637,5 +2639,6 @@ void main()
     @Out(vec4 BLOOM_MASK) = vec4(0.0);
     @Out(vec2 SHADING_NORMAL) = encodeOctahedralNormal(
         normalize(mat3(VIEW_MATRIX) * shadingNormal));
+    @Out(float LIQUID_RETENTION) = dot(outTransmittance, vec3(1.0 / 3.0));
 ##
 }
