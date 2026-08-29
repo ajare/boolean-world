@@ -13,6 +13,7 @@
 @@Uniform(float LIQUID_REFLECTANCE);
 @@Uniform(float LIQUID_F0);
 @@Uniform(vec3 LIQUID_AMBIENT_TINT);
+@@Uniform(int LIQUID_SSR_ENABLED);
 @@Uniform(float LIGHT_ATTENUATION_RADIUS);
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
 @@Uniform(float MATERIAL_SCALE);
@@ -38,6 +39,8 @@
 ## Texture
 @@Texture(sampler2D TEX1);
 ##
+@@Texture(sampler2D PBR_SCENE_COLOUR_RESOLVED);
+@@Texture(sampler2D PBR_SCENE_DEPTH);
 @@Texture(sampler2DShadow SHADOW_MAP);
 @@Texture(samplerCubeShadow POINT_SHADOW_MAP);
 
@@ -58,6 +61,147 @@ layout(std140, binding = 3) uniform CameraFrame
     vec4 VIEWPORT_SIZE;
     vec4 NEAR_FAR_TIME;
 };
+
+// Liquid uses MPP's proven fixed-step SSR contract, with renderer-owned fixed
+// tuning rather than per-Liquid-type quality controls.
+float liquidViewDepth(vec2 uv, float depth)
+{
+    vec4 view = INVERSE_PROJECTION_MATRIX *
+        vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    return view.z / view.w;
+}
+
+float liquidSceneDepth(vec2 uv)
+{
+    ivec2 size = textureSize(@Texture(PBR_SCENE_DEPTH), 0);
+    ivec2 texel = clamp(
+        ivec2(uv * vec2(size)), ivec2(0), size - ivec2(1));
+    return texelFetch(@Texture(PBR_SCENE_DEPTH), texel, 0).r;
+}
+
+vec2 liquidProject(vec3 viewPosition, out float valid)
+{
+    vec4 clip = PROJECTION_MATRIX * vec4(viewPosition, 1.0);
+    valid = clip.w > 0.0001 ? 1.0 : 0.0;
+    return (clip.xy / max(clip.w, 0.0001)) * 0.5 + 0.5;
+}
+
+float liquidHitStability(vec2 uv, float hitZ, float thickness)
+{
+    ivec2 size = textureSize(@Texture(PBR_SCENE_DEPTH), 0);
+    ivec2 texel = clamp(
+        ivec2(uv * vec2(size)), ivec2(1),
+        max(size - ivec2(2), ivec2(1)));
+    float left = liquidViewDepth(
+        uv, texelFetch(@Texture(PBR_SCENE_DEPTH),
+                       texel + ivec2(-1, 0), 0).r);
+    float right = liquidViewDepth(
+        uv, texelFetch(@Texture(PBR_SCENE_DEPTH),
+                       texel + ivec2(1, 0), 0).r);
+    float down = liquidViewDepth(
+        uv, texelFetch(@Texture(PBR_SCENE_DEPTH),
+                       texel + ivec2(0, -1), 0).r);
+    float up = liquidViewDepth(
+        uv, texelFetch(@Texture(PBR_SCENE_DEPTH),
+                       texel + ivec2(0, 1), 0).r);
+    float spread = max(
+        max(abs(left - hitZ), abs(right - hitZ)),
+        max(abs(down - hitZ), abs(up - hitZ)));
+    return 1.0 - smoothstep(thickness, thickness * 3.0, spread);
+}
+
+float liquidDither(vec2 pixel)
+{
+    return fract(52.9829189 *
+                 fract(dot(pixel, vec2(0.06711056, 0.00583715))));
+}
+
+float liquidMarch(vec3 origin, vec3 direction, out vec2 hitUv)
+{
+    const int steps = 32;
+    const float maxDistance = 40.0;
+    const float thickness = 0.5;
+    const float stepSize = maxDistance / float(steps);
+    hitUv = vec2(0.0);
+
+    float originValid;
+    vec2 originUv = liquidProject(origin, originValid);
+    bool armed = originValid > 0.5 &&
+        origin.z >= liquidViewDepth(originUv, liquidSceneDepth(originUv));
+    float jitter = liquidDither(gl_FragCoord.xy);
+    vec3 previous = origin;
+    for (int i = 0; i < steps; ++i)
+    {
+        vec3 marchPoint = origin + direction *
+            (stepSize * (float(i) + jitter));
+        float valid;
+        vec2 uv = liquidProject(marchPoint, valid);
+        if (valid < 0.5 || uv.x < 0.0 || uv.x > 1.0 ||
+            uv.y < 0.0 || uv.y > 1.0)
+            break;
+
+        float sceneZ = liquidViewDepth(uv, liquidSceneDepth(uv));
+        bool behind = marchPoint.z < sceneZ;
+        if (!behind)
+        {
+            armed = true;
+        }
+        else if (armed)
+        {
+            vec3 closer = previous;
+            vec3 further = marchPoint;
+            for (int refine = 0; refine < 5; ++refine)
+            {
+                vec3 middle = (closer + further) * 0.5;
+                float middleValid;
+                vec2 middleUv = liquidProject(middle, middleValid);
+                float middleSceneZ = liquidViewDepth(
+                    middleUv, liquidSceneDepth(middleUv));
+                if (middle.z < middleSceneZ)
+                {
+                    further = middle;
+                    uv = middleUv;
+                }
+                else
+                {
+                    closer = middle;
+                }
+            }
+
+            // Thickness is deliberately tested only after sign-change
+            // refinement; doing it in the coarse loop extrudes silhouettes.
+            float hitSceneZ = liquidViewDepth(uv, liquidSceneDepth(uv));
+            float confidence =
+                (1.0 - smoothstep(
+                    thickness * 0.5, thickness, hitSceneZ - further.z)) *
+                liquidHitStability(uv, hitSceneZ, thickness);
+            if (confidence > 0.0)
+            {
+                hitUv = uv;
+                return confidence;
+            }
+            armed = false;
+        }
+        previous = marchPoint;
+    }
+    return 0.0;
+}
+
+vec3 liquidRippleNormal(vec3 worldPosition, vec3 viewerFacingNormal)
+{
+    // Two fixed, low-amplitude travelling wave octaves beat against one
+    // another without introducing a Liquid-type authoring surface.
+    vec2 p = worldPosition.xz;
+    vec2 directionA = normalize(vec2(1.0, 0.63));
+    vec2 directionB = normalize(vec2(-0.41, 1.0));
+    float phaseA = dot(p, directionA) * 0.34 + @Uniform(GLOBAL_TIME) * 0.72;
+    float phaseB = dot(p, directionB) * 0.79 - @Uniform(GLOBAL_TIME) * 0.47;
+    vec2 gradient = directionA * (cos(phaseA) * 0.034) +
+                    directionB * (cos(phaseB) * 0.018);
+    float side = viewerFacingNormal.y < 0.0 ? -1.0 : 1.0;
+    return normalize(
+        viewerFacingNormal + side * vec3(-gradient.x, 0.0, -gradient.y));
+}
 
 vec2 encodeOctahedralNormal(vec3 normal)
 {
@@ -2577,33 +2721,64 @@ void main()
     float liquidSurfaceHeight = @In(LIQUID_SURFACE_HEIGHT);
     int bucketMaterialIndex = clamp(@Uniform(MATERIAL_INDEX), 0, 40);
 
-    // Liquid is an interface, not another lit volume. Its viewer-facing
-    // normal gives the same Schlick response above and below the surface;
-    // the already-rendered submerged geometry owns absorption.
+    // Liquid is an interface, not another lit volume. The water pass has no
+    // depth attachment, so reject interfaces hidden by the sampled opaque
+    // depth before marching that same point-sampled buffer.
     if (bucketMaterialIndex == 40)
     {
+        vec2 screenUv = gl_FragCoord.xy * VIEWPORT_SIZE.zw;
+        bool hasWaterPass = @Uniform(LIQUID_SSR_ENABLED) != 0;
+        if (hasWaterPass && gl_FragCoord.z > liquidSceneDepth(screenUv))
+            discard;
+
         vec3 worldPos = @In(FRAGPOSITION);
         vec3 viewDir = normalize(@ViewPos - worldPos);
         vec3 interfaceNormal = normalize(@In(FRAGNORMAL));
         if (dot(interfaceNormal, viewDir) < 0.0)
             interfaceNormal = -interfaceNormal;
+        interfaceNormal = liquidRippleNormal(worldPos, interfaceNormal);
+
+        // The same distorted, viewer-facing normal drives both the reflected
+        // ray and the two-sided Schlick response.
         float nDotV = clamp(dot(interfaceNormal, viewDir), 0.0, 1.0);
         float f0 = clamp(@Uniform(LIQUID_F0), 0.0, 1.0);
         float schlick = f0 + (1.0 - f0) * pow(1.0 - nDotV, 5.0);
         float alpha = clamp(@Uniform(LIQUID_REFLECTANCE), 0.0, 1.0) * schlick;
+
+        vec3 viewPosition = vec3(VIEW_MATRIX * vec4(worldPos, 1.0));
+        vec3 viewNormal = normalize(mat3(VIEW_MATRIX) * interfaceNormal);
+        vec3 reflectionDirection = normalize(
+            reflect(normalize(viewPosition), viewNormal));
+        vec2 hitUv;
+        float confidence = hasWaterPass
+            ? liquidMarch(viewPosition, reflectionDirection, hitUv)
+            : 0.0;
+
+        // Trust dies continuously at unstable silhouettes, screen exits, and
+        // grazing angles. Every miss therefore reaches the tinted ambient
+        // fallback rather than sampling an invalid/black reflection texel.
+        vec2 edgeDistance = min(hitUv, vec2(1.0) - hitUv);
+        confidence *= clamp(
+            min(edgeDistance.x, edgeDistance.y) / 0.1, 0.0, 1.0);
+        confidence *= smoothstep(0.1, 0.35, nDotV);
+        confidence = clamp(confidence, 0.0, 1.0);
+
         float fragmentDistance = length(@Uniform(LIGHT_POSITION) - worldPos);
         float fadeToBlack = pow(clamp(
             1.0 - fragmentDistance / @Uniform(VIEW_DISTANCE), 0.0, 1.0),
             1.7);
+        vec3 fallback = vec3(0.12) *
+            @Uniform(LIQUID_AMBIENT_TINT) * fadeToBlack;
+        vec3 hitColour = textureLod(
+            @Texture(PBR_SCENE_COLOUR_RESOLVED), hitUv, 0.65).rgb;
+        vec3 reflectionColour = mix(fallback, hitColour, confidence);
 
-        // Fixed-function alpha blending overlays only this type's tinted
-        // ambient fallback over the absorption already in the framebuffer.
-        // Do not shade a second Player Torch term or absorb this path again.
-        @Out(vec4 COLOUR) = vec4(
-            vec3(0.12) * @Uniform(LIQUID_AMBIENT_TINT) * fadeToBlack, alpha);
+        // Fixed-function alpha blending overlays reflection over the absorption
+        // already in WaterComposite. Do not light or absorb this interface a
+        // second time: alpha is exactly reflectance × Schlick(F0, N·V).
+        @Out(vec4 COLOUR) = vec4(reflectionColour, alpha);
         @Out(vec4 BLOOM_MASK) = vec4(0.0);
-        @Out(vec2 SHADING_NORMAL) = encodeOctahedralNormal(
-            normalize(mat3(VIEW_MATRIX) * interfaceNormal));
+        @Out(vec2 SHADING_NORMAL) = encodeOctahedralNormal(viewNormal);
         @Out(float LIQUID_RETENTION) = 1.0;
         return;
     }
@@ -2670,10 +2845,10 @@ void main()
 
     // Preserve vertex alpha for a blended receiver. Visibility was applied to
     // the direct term above, before this final opacity is composited.
-    @Out(vec4 COLOUR) = vec4(value * fadeToBlack, @In(COLOUR).a);
-    @Out(vec4 BLOOM_MASK) = vec4(0.0);
-    @Out(vec2 SHADING_NORMAL) = encodeOctahedralNormal(
+    @Out(COLOUR) = vec4(value * fadeToBlack, @In(COLOUR).a);
+    @Out(BLOOM_MASK) = vec4(0.0);
+    @Out(SHADING_NORMAL) = encodeOctahedralNormal(
         normalize(mat3(VIEW_MATRIX) * shadingNormal));
-    @Out(float LIQUID_RETENTION) = dot(outTransmittance, vec3(1.0 / 3.0));
+    @Out(LIQUID_RETENTION) = dot(outTransmittance, vec3(1.0 / 3.0));
 ##
 }

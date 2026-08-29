@@ -53,7 +53,8 @@ WorldRenderer::WorldRenderer(
     bw::app::HorizontalMaterials horizontalMaterials,
     vector<WallRenderSurface> wallRenderSurfaces,
     WallRenderVariantResolver wallRenderVariantResolver,
-    string worldResourceNamespace)
+    string worldResourceNamespace,
+    bool deferLiquidToWaterPass)
     : mSubMaterialResolver(resourceMgr),
       mBakedSubMaterialResolver(resourceMgr),
       mResourceMgr(resourceMgr),
@@ -83,7 +84,8 @@ WorldRenderer::WorldRenderer(
       {make_shared<WorldRenderer3d>(
            material3d, fragmentOverdrawMaterial, mwLogger,
            WorldSurfaceSet::Liquid,
-           &mSubMaterialResolver),
+           &mSubMaterialResolver, vector<WallRenderSurface>{},
+           deferLiquidToWaterPass),
        make_shared<WorldTriangle3dDataProvider>(),
        WorldSurfaceSet::Liquid});
   mMaterialRenderers.push_back(

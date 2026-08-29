@@ -33,11 +33,13 @@ WorldRenderer3d::WorldRenderer3d(
     ResourcePtr resource, ResourcePtr fragmentOverdrawMaterial,
     wp::Logger* logger, WorldSurfaceSet surfaceSet,
     SubMaterialResolver const* resolver,
-    vector<WallRenderSurface> wallRenderSurfaces)
+    vector<WallRenderSurface> wallRenderSurfaces,
+    bool deferToWaterPass)
     : mRenderer(nullptr),
       mMaterial(resource),
       mFragmentOverdrawMaterial(fragmentOverdrawMaterial),
       mSurfaceSet(surfaceSet),
+      mDeferToWaterPass(deferToWaterPass),
       mwResolver(resolver),
       mWallRenderSurfaces(move(wallRenderSurfaces)),
       mGlobalTime(0.0f),
@@ -179,6 +181,12 @@ void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvide
 void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* world) {
   mScene = scene;
   mSceneModel = scene->add3dModel(mRenderer->getModel());
+  // MPP's generated water graph defers whole scene models. Liquid is isolated
+  // in its own renderer specifically so floors, ceilings, and walls remain in
+  // the opaque scene while only this interface enters WaterScene.
+  if (mSurfaceSet == WorldSurfaceSet::Liquid && mDeferToWaterPass) {
+    mSceneModel->setDeferToWaterPass(true);
+  }
 
   auto params = mSceneModel->getParams();
 
@@ -203,6 +211,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("LIQUID_REFLECTANCE", 0.0f);
     uniforms.setUniform("LIQUID_F0", 0.0f);
     uniforms.setUniform("LIQUID_AMBIENT_TINT", glm::vec3{});
+    uniforms.setUniform("LIQUID_SSR_ENABLED", int32_t{0});
     uniforms.setUniform("LIGHT_ATTENUATION_RADIUS", 192.0f);
     uniforms.setUniform("LIGHT_ATTENUATION_FALLOFF", 64.0f);
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
@@ -389,6 +398,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         uniforms->setUniform(
             "LIQUID_AMBIENT_TINT",
             glm::vec3{liquid.tint[0], liquid.tint[1], liquid.tint[2]});
+        uniforms->updateUniform(
+            "LIQUID_SSR_ENABLED", int32_t{mDeferToWaterPass ? 1 : 0});
         mUniforms[meshIndex] = uniforms;
         mMaterialIndices[meshIndex] = static_cast<int32_t>(materialIndex);
       }

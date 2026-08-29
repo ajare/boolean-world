@@ -228,12 +228,14 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   options.mode = mpp::RenderPipelineMode::GraphLegacyForward;
   mpp::RenderPipelineOutput output;
   output.name = "World";
-  output.image = ambientOcclusionEnabled
-                     ? "AmbientOcclusionComposite"
-                     : "SceneLdr";
+  // Generated water always follows the final opaque shading stage (including
+  // AO when enabled), so the named gameplay world is the distinct post-water
+  // image in both graph variants.
+  output.image = "WaterComposite";
   output.antiAliasing.msaa = msaa;
   output.antiAliasing.fxaa = bw::app::antiAliasingIsFxaa(antiAliasing);
   options.outputs.push_back(output);
+  options.generatedWater = true;
   options.depthPrepass = mDebugDisplay.depthPrepass;
   options.ambientOcclusion.method = ambientOcclusionMethod;
   options.ambientOcclusion.ssao = mDebugDisplay.ssao;
@@ -1420,7 +1422,8 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
 
   // The named output is always the final offscreen shaded image, addressed by
   // its position among the pipeline's graph images. Every image MPP creates
-  // ahead of it shifts that position: AO adds three, MRT-normal GTAO also
+  // ahead of it shifts that position: generated water appends the resolved
+  // scene copy and WaterComposite, AO adds three, MRT-normal GTAO also
   // inserts two scene attachments, an active shadow domain inserts its
   // imported depth image between the scene depth and the AO images, and the
   // scene extra outputs are created before all of those. Miscounting does not
@@ -1444,10 +1447,14 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
           ? static_cast<std::uint32_t>(
                 worldSceneExtraOutputs(usesMrtNormals).size())
           : 0u;
-  auto outputImage = ambientOcclusionEnabled
-                         ? (usesMrtNormals ? 6u : 4u) + sceneExtraOutputCount +
-                               (activeShadowImage ? 1u : 0u)
-                         : 0u;
+  auto preWaterOutputImage = ambientOcclusionEnabled
+                                 ? (usesMrtNormals ? 6u : 4u) +
+                                       sceneExtraOutputCount +
+                                       (activeShadowImage ? 1u : 0u)
+                                 : 0u;
+  auto outputImage = mDebugDisplay.fragmentOverdraw
+                         ? preWaterOutputImage
+                         : preWaterOutputImage + 2u;
   auto sceneTarget = pipeline->getGraphImageRenderTarget({outputImage, 1});
   assert(sceneTarget);
   auto sceneTexture = static_cast<mpp::RenderTexture*>(sceneTarget.get());

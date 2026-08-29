@@ -120,7 +120,8 @@ public:
       bw::app::HorizontalMaterials horizontalMaterials,
       std::vector<WallRenderSurface> wallRenderSurfaces = {},
       WallRenderVariantResolver wallRenderVariantResolver = {},
-      std::string worldResourceNamespace = "World");
+      std::string worldResourceNamespace = "World",
+      bool deferLiquidToWaterPass = false);
 
   virtual ~WorldRenderer();
 

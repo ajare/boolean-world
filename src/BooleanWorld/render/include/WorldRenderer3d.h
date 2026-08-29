@@ -26,6 +26,7 @@ class WorldRenderer3d {
   wp::application::resourcesystem::ResourcePtr mMaterial;
   wp::application::resourcesystem::ResourcePtr mFragmentOverdrawMaterial;
   WorldSurfaceSet mSurfaceSet;
+  bool mDeferToWaterPass;
 
   SubMaterialResolver const* mwResolver;
   std::vector<WallRenderSurface> mWallRenderSurfaces;
@@ -63,7 +64,8 @@ public:
       wp::Logger* logger,
       WorldSurfaceSet surfaceSet,
       SubMaterialResolver const* resolver,
-      std::vector<WallRenderSurface> wallRenderSurfaces = {});
+      std::vector<WallRenderSurface> wallRenderSurfaces = {},
+      bool deferToWaterPass = false);
 
   virtual ~WorldRenderer3d();
 

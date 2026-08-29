@@ -57,7 +57,7 @@ void StateMapLoadBooleanWorld::loadResources(wp::application::resourcesystem::Re
     auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
     auto worldRenderer = new WorldRenderer(
         resourceMgr, this->mwLogger, model->getRenderTextureFilter(),
-        model->getHorizontalMaterials());
+        model->getHorizontalMaterials(), {}, {}, "World", true);
 
     // The world is composited from an offscreen target rather than drawn
     // straight to the back buffer (ADR 0012). Post-work runs on the main
