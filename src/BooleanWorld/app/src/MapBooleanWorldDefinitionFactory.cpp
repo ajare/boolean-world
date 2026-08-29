@@ -9,7 +9,6 @@ MapBooleanWorldDefinitionFactory::MapBooleanWorldDefinitionFactory()
 }
 
 void MapBooleanWorldDefinitionFactory::create(wp::application::resourcesystem::Resource* resource, wp::application::resourcesystem::ResourceManager* resourceMgr, wp::DataNode* node) {
-  VAR_UNUSED(resourceMgr);
   VAR_UNUSED(node);
 
   auto mapRes = static_cast<Map*>(resource);
@@ -20,6 +19,6 @@ void MapBooleanWorldDefinitionFactory::create(wp::application::resourcesystem::R
   auto depResource = mapRes->getDependentResource(resourceName);
 
   if (resourceName == "Yaml") {
-    mapRes->loadWorldFromYaml(depResource);
+    mapRes->loadWorldFromYaml(depResource, resourceMgr);
   }
 }

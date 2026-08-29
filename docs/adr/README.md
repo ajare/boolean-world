@@ -38,6 +38,8 @@ removed the dependency entirely. Geometry terms are defined in
 | [0029](0029-structural-primitives-are-property-transparent.md) | Structural Primitives are property-transparent | Accepted |
 | [0030](0030-wall-normal-map-overrides-belong-to-authored-external-edges.md) | Wall normal-map overrides belong to authored External edges | Accepted |
 | [0031](0031-wedges-are-world-configured-additive-detail-geometry.md) | Wedges are World-configured additive post-fold detail geometry | Accepted |
+| [0032](0032-liquid-equilibrium-is-a-deterministic-post-arrangement-watershed-pass.md) | Liquid equilibrium is a deterministic post-arrangement watershed pass | Accepted |
+| [0033](0033-world-resources-are-host-resolved-before-deserialization.md) | World resources are host-resolved before deserialization | Accepted |
 
 ## World geometry rewrite scope
 

@@ -55,6 +55,11 @@ meaning of every primitive above it. Preserved exactly by the rewrite
 ceiling / wall material indices and definitions. The renderable attributes of
 a region.
 
+**World dependent resource** — A named Willpower Resource referenced by
+authored World content and required before that World can be deserialized and
+activated. The serialized list is the exact, sorted projection of all such
+references, including disabled LayerBuildSteps and Prefab definitions.
+
 ## Geometry — after the rewrite
 
 **Arrangement** — The planar subdivision induced by *all* primitive edges at

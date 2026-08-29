@@ -27,7 +27,6 @@
 #include "core/DynamicWorldDataGenerator.h"
 #include "core/Vertex.h"
 #include "core/MeshPrimitive.h"
-#include "NormalMapResourceSet.h"
 #include "core/LayerBuildStep.h"
 #include "core/PrefabField.h"
 
@@ -363,6 +362,12 @@ void Document::restoreWorldSnapshot(WorldSnapshot const& snapshot) {
     dynamicGenerator->setScheduledGenerationInterval(snapshot.scheduledGenerationInterval);
   }
 
+  if (mWorldDependencyLoader) {
+    string error;
+    if (!mWorldDependencyLoader(world->getDependentResourceNames(), &error)) {
+      throw EditorException("Could not restore World dependencies: " + error);
+    }
+  }
   mWorld = move(world);
 }
 
@@ -642,17 +647,6 @@ bool Document::setActiveMeshEdgeNormalMapOverride(
     bw::core::WallNormalMapOverride const& overrideValue) {
   if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) {
     return false;
-  }
-  if (auto image = overrideValue.imageData()) {
-    try {
-#ifdef BW_EDITOR_RESOURCE_ROOT
-      validateNormalMapImage(BW_EDITOR_RESOURCE_ROOT, image->resourcePath);
-#else
-      validateNormalMapImage(filesystem::current_path(), image->resourcePath);
-#endif
-    } catch (exception const&) {
-      return false;
-    }
   }
   if (!mActiveMesh->setEdgeNormalMapOverride(edgeIndex, overrideValue)) {
     return false;
@@ -2547,6 +2541,10 @@ std::shared_ptr<bw::core::World> Document::createWorld(float size, float gridSiz
 
 void Document::newDoc() {
   reset();
+  if (mWorldDependencyLoader) {
+    string ignored;
+    mWorldDependencyLoader({}, &ignored);
+  }
 
   mWorld = createWorld(ED_DEFAULT_WORLD_SIZE, ED_DEFAULT_WORLD_ACCEL_GRID_SIZE);
   mModified = false;
@@ -2554,6 +2552,15 @@ void Document::newDoc() {
 
 void Document::closeDoc() {
   reset();
+  if (mWorldDependencyLoader) {
+    string ignored;
+    mWorldDependencyLoader({}, &ignored);
+  }
+}
+
+void Document::setWorldDependencyLoader(
+    function<bool(vector<string> const&, string*)> loader) {
+  mWorldDependencyLoader = move(loader);
 }
 
 bool Document::openDoc(string const& filepath) {
@@ -2573,21 +2580,42 @@ bool Document::openDoc(string const& filepath) {
       return false;
     }
 
+    auto previousDependencies = mWorld
+                                    ? mWorld->getDependentResourceNames()
+                                    : vector<string>{};
+    if (mWorldDependencyLoader) {
+      try {
+        auto dependencyReader = ext == ".yaml"
+                                    ? shared_ptr<bw::core::Serializer>(
+                                          bw::core::YamlSerializer::fromFile(filepath))
+                                    : shared_ptr<bw::core::Serializer>(
+                                          bw::core::BinarySerializer::fromFile(filepath));
+        dependencyReader->deserialize();
+        string error;
+        if (!mWorldDependencyLoader(
+                bw::core::World::readDependentResourceNames(dependencyReader),
+                &error)) {
+          gLogger->error(error);
+          return false;
+        }
+      } catch (exception const& error) {
+        gLogger->error(error.what());
+        return false;
+      }
+    }
+
+    auto restoreDependencies = [&] {
+      if (mWorldDependencyLoader) {
+        string ignored;
+        mWorldDependencyLoader(previousDependencies, &ignored);
+      }
+    };
+
     auto candidate = createWorld(ED_DEFAULT_WORLD_SIZE, ED_DEFAULT_WORLD_ACCEL_GRID_SIZE);
 
     auto workData = bw::core::SerializationWorkData{};
 
     if (candidate->deserialize(ser, workData)) {
-      try {
-#ifdef BW_EDITOR_RESOURCE_ROOT
-        validateWorldNormalMaps(*candidate, BW_EDITOR_RESOURCE_ROOT);
-#else
-        validateWorldNormalMaps(*candidate, filesystem::current_path());
-#endif
-      } catch (exception const& error) {
-        gLogger->error(error.what());
-        return false;
-      }
       auto const& warnings = candidate->getDeserializationWarnings();
 
       if (!warnings.empty()) {
@@ -2621,6 +2649,7 @@ bool Document::openDoc(string const& filepath) {
         }
       }
 
+      restoreDependencies();
       return false;
     }
   } else {

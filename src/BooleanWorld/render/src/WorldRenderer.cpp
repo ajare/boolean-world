@@ -12,6 +12,8 @@
 #include <core/MaterialDefinition.h>
 #include <core/World.h>
 
+#include <willpower/application/resourcesystem/ImageResource.h>
+
 #include "WorldRenderer.h"
 #include "WallNormalMapRenderData.h"
 
@@ -33,7 +35,7 @@ constexpr uint32_t transparentVertexColour = 0x00ffffffu;
 string normalMapIdentity(bw::core::WallNormalMapOverride::ImageData const& image) {
   ostringstream result;
   result << "normal-map-v1-";
-  for (auto byte : image.resourcePath) {
+  for (auto byte : image.resourceName) {
     result << hex << setw(2) << setfill('0')
            << static_cast<unsigned>(static_cast<unsigned char>(byte));
   }
@@ -51,10 +53,11 @@ WorldRenderer::WorldRenderer(
     bw::app::HorizontalMaterials horizontalMaterials,
     vector<WallRenderSurface> wallRenderSurfaces,
     WallRenderVariantResolver wallRenderVariantResolver,
-    filesystem::path normalMapResourceRoot)
+    string worldResourceNamespace)
     : mSubMaterialResolver(resourceMgr),
       mBakedSubMaterialResolver(resourceMgr),
-      mNormalMapResourceRoot(move(normalMapResourceRoot)),
+      mResourceMgr(resourceMgr),
+      mWorldResourceNamespace(move(worldResourceNamespace)),
       mWallRenderSurfaces(move(wallRenderSurfaces)),
       mWallRenderVariantResolver(move(wallRenderVariantResolver)),
       mWorldHasChanged(true),
@@ -126,10 +129,8 @@ WorldRenderer::RenderTargets WorldRenderer::detachRenderTargets() {
 void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
   mwWorld = world;
 
-  // Turn authored Image values into stable variant buckets before the wall
-  // batch is created. Disabled and Unset intentionally seed nothing.
-  mNormalMapResourceSet =
-      make_unique<NormalMapResourceSet>(mNormalMapResourceRoot, *resourceMgr);
+  // Turn authored ImageResource references into stable variant buckets before
+  // the wall batch is created. Disabled and Unset intentionally seed nothing.
   set<string> wallSubMaterials;
   for (uint32_t primitiveIndex = 0;
        primitiveIndex < world->getNumPrimitives(); ++primitiveIndex) {
@@ -142,14 +143,35 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
           if (!image) continue;
           auto identity = normalMapIdentity(*image);
           if (!mNormalMapVariants.contains(identity)) {
-            auto resource = mNormalMapResourceSet->acquire(image->resourcePath);
+            string namesp;
+            string name;
+            wp::application::resourcesystem::Resource::splitName(
+                image->resourceName, mWorldResourceNamespace, &namesp, &name);
+            auto resource = mResourceMgr->getResource(name, namesp);
+            auto imageResource = dynamic_pointer_cast<
+                wp::application::resourcesystem::ImageResource>(resource);
+            if (!imageResource || !mResourceMgr->isResourceLoaded(resource)) {
+              throw runtime_error("Wall normal-map resource '" +
+                                  image->resourceName +
+                                  "' is not a loaded ImageResource.");
+            }
+            if (imageResource->getWidth() <= 0 ||
+                imageResource->getHeight() <= 0 ||
+                imageResource->getWidth() > 8192 ||
+                imageResource->getHeight() > 8192 ||
+                (imageResource->getNumChannels() != 3 &&
+                 imageResource->getNumChannels() != 4)) {
+              throw runtime_error("Wall normal-map ImageResource '" +
+                                  image->resourceName +
+                                  "' has unsupported dimensions or channels.");
+            }
             WallRenderVariant variant;
             variant.identity = identity;
             variant.textureSampler = "TEX1";
-            variant.texture = resource->texture();
+            variant.texture = imageResource->getMppResource();
             auto strength = image->strength;
-            auto aspectRatio =
-                static_cast<float>(resource->width()) / resource->height();
+            auto aspectRatio = static_cast<float>(imageResource->getWidth()) /
+                               imageResource->getHeight();
             variant.setUniforms =
                 [strength, aspectRatio](mpp::UniformCollection& uniforms) {
                   uniforms.updateUniform("WALL_NORMAL_MAP_ENABLED", int32_t{1});

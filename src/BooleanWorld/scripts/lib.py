@@ -66,7 +66,8 @@ def load_library():
     repo_root = os.path.abspath(os.path.join(script_dir, '..', '..', '..'))
     build_dir = os.environ.get('BOOLEANWORLD_BUILD_DIR',
                                os.path.join(repo_root, 'build-cmake'))
-    candidates = [
+    explicit_dll = os.environ.get('BOOLEANWORLD_CORE_DLL')
+    candidates = ([explicit_dll] if explicit_dll else []) + [
         os.path.join(build_dir, 'bin', 'Release', 'core-dll', lib_names[0]),
         os.path.join(build_dir, 'bin', 'Debug', 'core-dll', lib_names[1]),
     ]

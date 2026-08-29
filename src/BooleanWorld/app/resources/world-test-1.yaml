@@ -1,4 +1,6 @@
 world:
+  dependentResources:
+    - JaguarTangentSpaceNormalMap
   name: ""
   description: ""
   minExtent: [-4096, -4096]
@@ -577,7 +579,7 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 3
+                    edgeOverrideFormat: 4
                     shells:
                       - vertices:
                           - p: [0.125, -0.75]
@@ -855,7 +857,7 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 3
+                    edgeOverrideFormat: 4
                     shells:
                       - vertices:
                           - p: [0.25, -1]
@@ -1133,7 +1135,7 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 3
+                    edgeOverrideFormat: 4
                     shells:
                       - vertices:
                           - p: [0.125, -0.75]
@@ -1411,7 +1413,7 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 3
+                    edgeOverrideFormat: 4
                     shells:
                       - vertices:
                           - p: [0.375, -0.875]
@@ -1689,7 +1691,7 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 3
+                    edgeOverrideFormat: 4
                     shells:
                       - vertices:
                           - p: [0.375, -0.75]
@@ -2060,7 +2062,7 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 3
+                    edgeOverrideFormat: 4
                     shells:
                       - vertices:
                           - p: [0.625, 0.3125]
@@ -2069,7 +2071,7 @@ world:
                           - p: [0.62109375, 0.3125]
                             flags: 0
                             normalMapState: 2
-                            normalMapPath: images/jaguar_tangent_space_normal_map.png
+                            normalMapResource: JaguarTangentSpaceNormalMap
                             normalMapRepeat: 1
                             normalMapStrength: 1.5
                           - p: [0.62109375, 0.1875]
@@ -2348,7 +2350,7 @@ world:
                       wallMaterial: migrated.marble.1
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 3
+                    edgeOverrideFormat: 4
                     shells:
                       - vertices:
                           - p: [-0.5, -0.5]
@@ -2645,7 +2647,7 @@ world:
                       wallMaterial: builtin.marble
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 3
+                    edgeOverrideFormat: 4
                     shells:
                       - vertices:
                           - p: [-1, -1]
@@ -2930,7 +2932,7 @@ world:
                       wallMaterial: builtin.marble
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 3
+                    edgeOverrideFormat: 4
                     shells:
                       - vertices:
                           - p: [-1, 0]
@@ -3215,7 +3217,7 @@ world:
                       wallMaterial: builtin.wood2
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 3
+                    edgeOverrideFormat: 4
                     shells:
                       - vertices:
                           - p: [-1.5, -1]
@@ -3496,7 +3498,7 @@ world:
                       wallMaterial: builtin.wood2
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 3
+                    edgeOverrideFormat: 4
                     shells:
                       - vertices:
                           - p: [6.5, -1]
@@ -3777,7 +3779,7 @@ world:
                       wallMaterial: builtin.wood2
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 3
+                    edgeOverrideFormat: 4
                     shells:
                       - vertices:
                           - p: [-0.5, -1]
@@ -6463,7 +6465,7 @@ world:
                   wallMaterial: builtin.marble
               meshPrimitive:
                 treeFormat: 1297371717
-                edgeOverrideFormat: 3
+                edgeOverrideFormat: 4
                 shells:
                   - vertices:
                       - p: [-0.68, 0.2]
@@ -6744,7 +6746,7 @@ world:
                   wallMaterial: builtin.marble
               meshPrimitive:
                 treeFormat: 1297371717
-                edgeOverrideFormat: 3
+                edgeOverrideFormat: 4
                 shells:
                   - vertices:
                       - p: [-0.04, 0.2]
@@ -7025,7 +7027,7 @@ world:
                   wallMaterial: builtin.marble
               meshPrimitive:
                 treeFormat: 1297371717
-                edgeOverrideFormat: 3
+                edgeOverrideFormat: 4
                 shells:
                   - vertices:
                       - p: [1, -0.72]
@@ -7306,7 +7308,7 @@ world:
                   wallMaterial: builtin.marble
               meshPrimitive:
                 treeFormat: 1297371717
-                edgeOverrideFormat: 3
+                edgeOverrideFormat: 4
                 shells:
                   - vertices:
                       - p: [0.12, 0.2]
@@ -7587,7 +7589,7 @@ world:
                   wallMaterial: builtin.marble
               meshPrimitive:
                 treeFormat: 1297371717
-                edgeOverrideFormat: 3
+                edgeOverrideFormat: 4
                 shells:
                   - vertices:
                       - p: [0.12, -0.2]

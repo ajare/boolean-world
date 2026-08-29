@@ -1,4 +1,5 @@
 world:
+  dependentResources: []
   name: Profiling1
   minExtent: [-4096, -4096]
   maxExtent: [4096, 4096]

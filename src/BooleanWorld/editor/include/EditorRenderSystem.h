@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string>
+#include <vector>
+#include <memory>
 
 namespace mpp {
 class Logger;
@@ -13,6 +15,7 @@ class Logger;
 namespace application {
 namespace resourcesystem {
 class ResourceManager;
+class Resource;
 }  // namespace resourcesystem
 }  // namespace application
 }  // namespace wp
@@ -69,12 +72,19 @@ public:
   // saves it directly to disk.
   void reloadProcMaterial(std::string const& resourceName);
 
+  // Atomically replaces the resources retained for the active World.
+  bool loadWorldDependencies(std::vector<std::string> const& resourceNames,
+                             std::string const& currentNamespace,
+                             std::string* error = nullptr);
+
 private:
   mpp::Logger* mMppLogger{};
   wp::Logger* mLogger{};
   mpp::RenderSystem* mRenderSystem{};
   mpp::ResourceManager* mRenderResourceMgr{};
   wp::application::resourcesystem::ResourceManager* mResourceMgr{};
+  std::vector<std::shared_ptr<
+      wp::application::resourcesystem::Resource>> mWorldDependencies;
 };
 
 // Constructs the process-wide instance against the already-current GL

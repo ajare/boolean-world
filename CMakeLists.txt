@@ -86,7 +86,63 @@ include(CTest)   # must be at top level for ctest to find tests in subdirectorie
 include(Submodules)
 bw_ensure_willpower()
 
+# Keep an explicit build-time target for updating every buildable dependency in
+# dependency order for the active configuration. MppAppSupport recursively
+# builds MPP's own SDL/GLEW/yaml-cpp dependencies; the Willpower modules are
+# then built from foundational to dependent. MemCheck consumes Debug dependency
+# binaries, matching CMAKE_MAP_IMPORTED_CONFIG_MEMCHECK above.
+set(BW_DEPENDENCY_CONFIG
+    "$<IF:$<CONFIG:MemCheck>,Debug,$<CONFIG>>")
+add_custom_target(BuildAllDependencies
+    COMMAND "${CMAKE_COMMAND}" --build "${BW_MPP_BUILD_DIR}"
+            --config "${BW_DEPENDENCY_CONFIG}" --parallel
+            --target MppAppSupport
+    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
+            --config "${BW_DEPENDENCY_CONFIG}" --parallel
+            --target Willpower.Common
+    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
+            --config "${BW_DEPENDENCY_CONFIG}" --parallel
+            --target Willpower.Geometry
+    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
+            --config "${BW_DEPENDENCY_CONFIG}" --parallel
+            --target Willpower.Collide
+    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
+            --config "${BW_DEPENDENCY_CONFIG}" --parallel
+            --target Willpower.Application
+    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
+            --config "${BW_DEPENDENCY_CONFIG}" --parallel
+            --target WillPower.Viz
+    COMMENT "Build all dependencies in correct recursive order"
+    USES_TERMINAL
+    VERBATIM)
+set_property(TARGET BuildAllDependencies PROPERTY FOLDER "Dependencies")
+
 include(Prebuilt)
+
+# Imported and interface targets forward add_dependencies() transitively to
+# their consumers. Attaching the recursive build here makes every BooleanWorld
+# target wait for current external libraries instead of merely placing a
+# sibling project in ALL_BUILD, which Visual Studio could build in parallel and
+# then link against stale import libraries.
+foreach(dependency_target
+        ext::Utils
+        ext::mpp
+        ext::mpp-mesh
+        ext::mpp-helper
+        ext::mpp-program
+        ext::mpp-data
+        ext::mpp-app-support
+        ext::sdl3
+        ext::glew
+        ext::yaml-cpp
+        Willpower.Common
+        Willpower.Geometry
+        Willpower.Collide
+        Willpower.Application
+        WillPower.Viz)
+    add_dependencies(${dependency_target} BuildAllDependencies)
+endforeach()
+
 include(Helpers)
 
 add_subdirectory(src/AppLib)

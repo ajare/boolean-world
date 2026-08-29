@@ -81,6 +81,8 @@ private:
 
   void handleEvents(uint32_t events);
 
+  [[nodiscard]] std::vector<std::string> collectDependentResourceNames() const;
+
 protected:
   void copyFrom(World const& other);
 
@@ -100,6 +102,14 @@ public:
   World& operator=(World const& other);
 
   virtual ~World();
+
+  // Reads the required dependency header from an already-deserialized
+  // serializer without constructing Layers or other World content.
+  [[nodiscard]] static std::vector<std::string> readDependentResourceNames(
+      std::shared_ptr<Serializer> serializer);
+
+  // Exact, sorted projection of resource references in all authored content.
+  [[nodiscard]] std::vector<std::string> getDependentResourceNames() const;
 
   // Takes ownership of generator.
   void setWorldDataGenerator(WorldDataGenerator* generator);

@@ -21,14 +21,6 @@ namespace {
 // pipeline cache again.
 constexpr char const* pipelineName = "Editor.Preview3D.World";
 
-std::filesystem::path normalMapResourceRoot() {
-#ifdef BW_EDITOR_RESOURCE_ROOT
-  return BW_EDITOR_RESOURCE_ROOT;
-#else
-  return std::filesystem::current_path();
-#endif
-}
-
 // The named output is always the final offscreen shaded image, and ambient
 // occlusion adds three graph images ahead of it - see
 // StatePlayBooleanWorld::renderWorldThroughTarget, which derives the same
@@ -96,6 +88,13 @@ PreviewRenderScene::PreviewRenderScene(
       mwRenderSystem->getOrCreateRenderPipeline(pipelineName, pipelineOptions());
   mPipeline->resize(mWidth, mHeight);
 
+  std::string dependencyError;
+  if (!renderSystem.loadWorldDependencies(
+          world->getDependentResourceNames(), "World", &dependencyError)) {
+    throw std::runtime_error("Could not load World dependencies: " +
+                             dependencyError);
+  }
+
   // The same renderer the game uses, not a slimmer copy of it: it already
   // owns one WorldRenderer3d per surface set, and its SubMaterialResolver
   // reads the ProcMaterial catalogs EditorRenderSystem loaded.
@@ -103,7 +102,7 @@ PreviewRenderScene::PreviewRenderScene(
       renderSystem.resourceManager(), renderSystem.logger(),
       bw::app::RenderTextureFilter::Linear, horizontalMaterials,
       std::vector<WallRenderSurface>{},
-      WorldRenderer::WallRenderVariantResolver{}, normalMapResourceRoot());
+      WorldRenderer::WallRenderVariantResolver{}, "World");
   mRenderer->create(
       mScene, world, mwRenderSystem, renderSystem.renderResourceManager());
 }

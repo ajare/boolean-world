@@ -42,6 +42,7 @@ void generateWorld(
                                   .parent_path()
                                   .parent_path();
   _putenv_s("BOOLEANWORLD_BUILD_DIR", buildDirectory.string().c_str());
+  _putenv_s("BOOLEANWORLD_CORE_DLL", coreDll.string().c_str());
 
   auto command = quote(python) + " " + quote(generator) + " " + quote(output);
   STARTUPINFOA startupInfo{};

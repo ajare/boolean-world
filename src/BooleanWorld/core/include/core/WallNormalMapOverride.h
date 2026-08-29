@@ -1,9 +1,7 @@
 #pragma once
 
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <filesystem>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -22,7 +20,7 @@ public:
                                 Disabled,
                                 Image };
   struct ImageData {
-    std::string resourcePath;
+    std::string resourceName;
     float repeat{1.0f};
     float strength{1.0f};
     bool operator==(ImageData const&) const = default;
@@ -35,20 +33,15 @@ public:
     return WallNormalMapOverride(State::Disabled, std::nullopt);
   }
   [[nodiscard]] static WallNormalMapOverride image(
-      std::string resourcePath, float repeat, float strength) {
-    std::filesystem::path path(resourcePath);
-    auto normalized = path.lexically_normal();
-    auto escapesResourceRoot = std::ranges::any_of(
-        normalized, [](auto const& component) { return component == ".."; });
-    if (resourcePath.empty() || path.is_absolute() || normalized.empty() ||
-        escapesResourceRoot || !std::isfinite(repeat) ||
+      std::string resourceName, float repeat, float strength) {
+    if (resourceName.empty() || !std::isfinite(repeat) ||
         repeat < 0.01f || repeat > 4096.0f ||
         !std::isfinite(strength) || strength < 0.0f || strength > 2.0f) {
       throw std::invalid_argument("Invalid wall normal-map Image override.");
     }
     return WallNormalMapOverride(
         State::Image,
-        ImageData{normalized.generic_string(), repeat, strength});
+        ImageData{std::move(resourceName), repeat, strength});
   }
 
   [[nodiscard]] State state() const noexcept { return mState; }

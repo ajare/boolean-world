@@ -3,7 +3,6 @@
 # code instead of two independently drifting copies.
 
 add_library(BooleanWorldRender STATIC
-    src/NormalMapResourceSet.cpp
     src/ProcMaterial.cpp
     src/ProcMaterialResourceDefinitionFactory.cpp
     src/SubMaterialResolver.cpp
@@ -45,20 +44,5 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_wall_normal_map_render_data
              COMMAND boolean_world_wall_normal_map_render_data_tests)
     set_target_properties(boolean_world_wall_normal_map_render_data_tests PROPERTIES
-        FOLDER BooleanWorld)
-
-    # Requires a real OpenGL driver, so this is intentionally a manual smoke
-    # test rather than a CTest entry.
-    add_executable(boolean_world_normal_map_resource_set_smoke
-        tests/normal_map_resource_set_smoke.cpp)
-    target_link_libraries(boolean_world_normal_map_resource_set_smoke PRIVATE
-        BooleanWorldRender vendor::opengl ext::glew ext::sdl3)
-    target_compile_features(boolean_world_normal_map_resource_set_smoke PRIVATE cxx_std_23)
-    target_compile_options(boolean_world_normal_map_resource_set_smoke PRIVATE /W4)
-    bw_target_defaults(boolean_world_normal_map_resource_set_smoke)
-    bw_output_dirs(boolean_world_normal_map_resource_set_smoke)
-    bw_deploy_runtime_dlls(boolean_world_normal_map_resource_set_smoke)
-    bw_deploy_vendor_dlls(boolean_world_normal_map_resource_set_smoke)
-    set_target_properties(boolean_world_normal_map_resource_set_smoke PROPERTIES
         FOLDER BooleanWorld)
 endif()

@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <vector>
+#include <functional>
 
 #include <willpower/geometry/Mesh.h>
 
@@ -93,6 +94,9 @@ class Document {
   // builds - new, opened, or restored from an undo snapshot - generates
   // through the same filter.
   bw::core::PrimitiveFilter mPrimitiveFilter;
+
+  std::function<bool(std::vector<std::string> const&, std::string*)>
+      mWorldDependencyLoader;
 
   std::set<uint32_t> mSelectedPrimitiveIndices;
 
@@ -476,6 +480,9 @@ public:
   void closeDoc();
 
   bool openDoc(std::string const& filepath);
+
+  void setWorldDependencyLoader(
+      std::function<bool(std::vector<std::string> const&, std::string*)> loader);
 
   void saveDoc();
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <filesystem>
 #include <functional>
 #include <map>
 #include <optional>
@@ -19,7 +18,6 @@
 
 #include <core/World.h>
 
-#include "NormalMapResourceSet.h"
 #include "SecondaryMaterialOptions.h"
 #include "SubMaterialResolver.h"
 #include "VideoOptions.h"
@@ -52,8 +50,8 @@ private:
   // changes a definition's hash.
   SubMaterialResolver mBakedSubMaterialResolver;
 
-  std::unique_ptr<NormalMapResourceSet> mNormalMapResourceSet;
-  std::filesystem::path mNormalMapResourceRoot;
+  wp::application::resourcesystem::ResourceManager* mResourceMgr{};
+  std::string mWorldResourceNamespace;
   std::map<std::string, WallRenderVariant> mNormalMapVariants;
   std::vector<MaterialRenderer> mMaterialRenderers;
   std::vector<WallRenderSurface> mWallRenderSurfaces;
@@ -118,8 +116,7 @@ public:
       bw::app::HorizontalMaterials horizontalMaterials,
       std::vector<WallRenderSurface> wallRenderSurfaces = {},
       WallRenderVariantResolver wallRenderVariantResolver = {},
-      std::filesystem::path normalMapResourceRoot =
-          std::filesystem::current_path());
+      std::string worldResourceNamespace = "World");
 
   virtual ~WorldRenderer();
 

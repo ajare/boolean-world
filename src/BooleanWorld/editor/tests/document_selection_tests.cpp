@@ -614,18 +614,23 @@ void worldTestPrefabMeshPrimitivesAreHoverSelectable() {
 
   editor::Settings settings;
   settings.ghostActive = false;
-  auto firstHits = document.getHoveredPrimitiveIndices({48.0f, -77.0f}, settings);
-  auto secondHits = document.getHoveredPrimitiveIndices({-44.0f, -44.0f}, settings);
-  std::set<uint32_t> hits(firstHits.begin(), firstHits.end());
-  hits.insert(secondHits.begin(), secondHits.end());
-  require(hits.size() == 2 &&
-              std::all_of(hits.begin(), hits.end(), [&](uint32_t index) {
-                return layer->getOwningStepIndex(document.getWorld()->getPrimitive(index)) == 1;
-              }),
+  size_t authored = 0;
+  size_t selectable = 0;
+  for (uint32_t index = 0; index < document.getWorld()->getNumPrimitives();
+       ++index) {
+    auto* primitive = document.getWorld()->getPrimitive(index);
+    if (layer->getOwningStepIndex(primitive) != 1) continue;
+    ++authored;
+    auto hovered = document.getHoveredPrimitiveIndices(
+        primitive->getBounds().getCentre(), settings);
+    selectable += std::find(hovered.begin(), hovered.end(), index) !=
+                  hovered.end();
+  }
+  require(authored > 0 && selectable == authored,
           "world-test-1.yaml's Prefab MeshPrimitives were not hover-selectable in Primitive mode");
 }
 
-void aFailedOpenLeavesTheDocumentInactiveAndWithoutAFilepath() {
+void aFailedOpenPreservesTheActiveDocument() {
   auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-failure-test.yaml";
 
   editor::Document document;
@@ -668,10 +673,12 @@ void aFailedOpenLeavesTheDocumentInactiveAndWithoutAFilepath() {
   out.close();
 
   document.newDoc();
+  auto const previousWorld = document.getWorld();
 
   require(!document.openDoc(filepath.string()),
           "opening a document with a cyclic parent chain unexpectedly succeeded");
-  require(!document.isActive(), "a failed open left the document active");
+  require(document.isActive() && document.getWorld() == previousWorld,
+          "a failed open replaced the active World");
   require(!document.hasFilepath(), "a failed open left a filepath set");
 
   std::filesystem::remove(filepath);
@@ -697,7 +704,7 @@ int main() {
     openingADocumentReplacesTheActiveDocument();
     openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost();
     worldTestPrefabMeshPrimitivesAreHoverSelectable();
-    aFailedOpenLeavesTheDocumentInactiveAndWithoutAFilepath();
+    aFailedOpenPreservesTheActiveDocument();
     std::cout << "Document selection and hover queries passed\n";
     return 0;
   } catch (std::exception const& error) {

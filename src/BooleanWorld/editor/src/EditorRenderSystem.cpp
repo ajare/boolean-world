@@ -118,6 +118,41 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
   }
 }
 
+bool EditorRenderSystem::loadWorldDependencies(
+    vector<string> const& resourceNames, string const& currentNamespace,
+    string* error) {
+  vector<wp::application::resourcesystem::ResourcePtr> candidate;
+  try {
+    for (auto const& reference : resourceNames) {
+      string namesp;
+      string name;
+      wp::application::resourcesystem::Resource::splitName(
+          reference, currentNamespace, &namesp, &name);
+      auto resource = mResourceMgr->acquireResource(name, namesp);
+      try {
+        mResourceMgr->createResource(resource);
+        mResourceMgr->loadResource(resource);
+      } catch (...) {
+        mResourceMgr->releaseResource(resource);
+        throw;
+      }
+      candidate.push_back(move(resource));
+    }
+  } catch (exception const& exception) {
+    for (auto const& resource : candidate) {
+      mResourceMgr->releaseResource(resource);
+    }
+    if (error) *error = exception.what();
+    return false;
+  }
+
+  for (auto const& resource : mWorldDependencies) {
+    mResourceMgr->releaseResource(resource);
+  }
+  mWorldDependencies = move(candidate);
+  return true;
+}
+
 void EditorRenderSystem::reloadProcMaterial(string const& resourceName) {
   auto resource = mResourceMgr->getResource(resourceName);
   // The preview loaded this resource directly rather than acquiring it, so a
@@ -151,6 +186,11 @@ void destroyEditorRenderSystem() {
 }
 
 EditorRenderSystem::~EditorRenderSystem() {
+  for (auto const& resource : mWorldDependencies) {
+    mResourceMgr->releaseResource(resource);
+  }
+  mWorldDependencies.clear();
+
   delete mResourceMgr;
   mResourceMgr = nullptr;
 

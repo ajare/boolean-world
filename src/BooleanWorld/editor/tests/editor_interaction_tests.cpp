@@ -2057,16 +2057,18 @@ void meshEdgeNormalMapImageIsOneUndoEntryAndUndoesCleanly() {
   document.setModified(false);
   auto const undoLevelsBefore = editor::getUndoLevels();
   auto image = bw::core::WallNormalMapOverride::image(
-      "images/jaguar_tangent_space_normal_map.png", 16.0f, 0.8f);
+      "JaguarTangentSpaceNormalMap", 16.0f, 0.8f);
 
   editor::transactUndoableAction(
       &document, "Set Mesh Edge Wall Normal Map",
       std::bind(editor::setMeshEdgeNormalMapOverride,
                 std::placeholders::_1, edgeIndex, image));
   require(editor::getUndoLevels() == undoLevelsBefore + 1,
-          "path, repeat scale, and strength did not commit as one undo entry");
-  require(document.getActiveMeshEdgeNormalMapOverride(edgeIndex) == image,
-          "the complete Image state did not commit through the editor action");
+          "resource name, repeat scale, and strength did not commit as one undo entry");
+  require(document.getActiveMeshEdgeNormalMapOverride(edgeIndex) == image &&
+              document.getWorld()->getDependentResourceNames() ==
+                  std::vector<std::string>{"JaguarTangentSpaceNormalMap"},
+          "the Image state and World dependency did not commit together");
 
   editor::undo(&document);
   require(editor::getUndoLevels() == undoLevelsBefore,
@@ -2075,30 +2077,19 @@ void meshEdgeNormalMapImageIsOneUndoEntryAndUndoesCleanly() {
       document.getWorld()->getPrimitive(meshIndex));
   auto proxy = primitive->createEditingProxy();
   require(proxy->getEdgeNormalMapOverride(proxy->getFirstEdgeIndex()).state() ==
-              bw::core::WallNormalMapOverride::State::Unset,
-          "undo did not restore the edge's Unset normal-map state");
+                  bw::core::WallNormalMapOverride::State::Unset &&
+              document.getWorld()->getDependentResourceNames().empty(),
+          "undo did not restore the edge and dependency list");
 }
 
 void invalidMeshEdgeNormalMapImageIsAtomic() {
-  editor::Document document;
-  document.newDoc();
-  auto meshIndex = addMesh(document, {0.0f, 0.0f});
-  document.activateMesh(meshIndex);
-  auto edgeIndex = document.getActiveMesh()->getFirstEdgeIndex();
-  auto const previous = document.getActiveMeshEdgeNormalMapOverride(edgeIndex);
-  auto const undoLevelsBefore = editor::getUndoLevels();
-  auto invalid = bw::core::WallNormalMapOverride::image(
-      "images/missing-normal-map.png", 64.0f, 1.0f);
-
-  require(!editor::transactUndoableActionAtomically(
-              &document, "Set invalid Mesh Edge Wall Normal Map",
-              std::bind(editor::setMeshEdgeNormalMapOverride,
-                        std::placeholders::_1, edgeIndex, invalid)),
-          "a missing normal-map image committed through the editor action");
-  require(editor::getUndoLevels() == undoLevelsBefore,
-          "a rejected normal-map image created an undo entry");
-  require(document.getActiveMeshEdgeNormalMapOverride(edgeIndex) == previous,
-          "a rejected normal-map image changed the authored edge");
+  bool rejected = false;
+  try {
+    (void)bw::core::WallNormalMapOverride::image("", 64.0f, 1.0f);
+  } catch (std::invalid_argument const&) {
+    rejected = true;
+  }
+  require(rejected, "an empty ImageResource name was accepted");
 }
 
 void meshEdgeVisibleTogglesAndCommitsToThePrimitive() {

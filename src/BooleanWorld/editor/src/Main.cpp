@@ -255,6 +255,11 @@ void initialise() {
   //
   try {
     editor::createEditorRenderSystem(ED_WINDOW_WIDTH, ED_WINDOW_HEIGHT);
+    editor::Document::instance()->setWorldDependencyLoader(
+        [](vector<string> const& names, string* error) {
+          return editor::editorRenderSystem()->loadWorldDependencies(
+              names, "World", error);
+        });
     gLogger->debug("Editor render system created");
   } catch (std::exception const& exception) {
     gLogger->error(

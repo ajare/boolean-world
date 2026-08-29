@@ -395,7 +395,7 @@ void authoredNormalMapValuesRoundTripAndRejectFutureVersions() {
       disabled += value.state() == bw::core::WallNormalMapOverride::State::Disabled;
       if (auto payload = value.imageData()) {
         ++image;
-        require(payload->resourcePath == "normal/directional.png" &&
+        require(payload->resourceName == "normal/directional.png" &&
                     payload->repeat == 12.5f &&
                     payload->strength == 0.75f,
                 "Image normal-map payload changed on reload");
@@ -423,9 +423,9 @@ void authoredNormalMapValuesRoundTripAndRejectFutureVersions() {
   require(binaryOk, "normal maps did not load from binary: " + binaryErrors);
   verify(*binaryLoaded);
 
-  auto marker = yaml.find("edgeOverrideFormat: 3");
+  auto marker = yaml.find("edgeOverrideFormat: 4");
   require(marker != std::string::npos, "normal-map format is not versioned");
-  yaml.replace(marker, std::string("edgeOverrideFormat: 3").size(),
+  yaml.replace(marker, std::string("edgeOverrideFormat: 4").size(),
                "edgeOverrideFormat: 99");
   auto rejected = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
@@ -436,7 +436,7 @@ void authoredNormalMapValuesRoundTripAndRejectFutureVersions() {
 }
 
 std::string asLegacyCollisionYaml(std::string yaml, bool retainFormat) {
-  auto marker = yaml.find("edgeOverrideFormat: 3");
+  auto marker = yaml.find("edgeOverrideFormat: 4");
   require(marker != std::string::npos,
           "serialized MeshPrimitive had no edge override format marker");
   auto markerLineStart = yaml.rfind('\n', marker) + 1;
@@ -458,7 +458,7 @@ std::string asLegacyCollisionYaml(std::string yaml, bool retainFormat) {
   return yaml;
 }
 
-void legacyCollisionFlagsMigrateToTriStateOverrides() {
+void legacyEdgeOverrideFormatsAreRejected() {
   auto source = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
   auto yaml = asLegacyCollisionYaml(serializeYaml(*source), false);
@@ -477,24 +477,13 @@ void legacyCollisionFlagsMigrateToTriStateOverrides() {
 
   auto loaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-1.0f, -1.0f, 1.0f, 1.0f), {}}}));
-  require(deserializeYaml(yaml, *loaded),
-          "legacy collision flags did not deserialize");
-  auto proxy = loaded->createEditingProxy();
-  size_t unsetCount = 0, falseCount = 0;
-  for (auto edge = proxy->getFirstEdgeIndex();
-       !proxy->edgeIndexIterationFinished(edge);
-       edge = proxy->getNextEdgeIndex(edge)) {
-    auto value = proxy->getEdgeCollisionOverride(edge);
-    unsetCount += !value.has_value();
-    falseCount += value.has_value() && !*value;
-    require(proxy->getEdgeVisible(edge),
-            "legacy collision migration changed edge visibility");
-  }
-  require(unsetCount == 2 && falseCount == 2,
-          "legacy flags 1/0 did not migrate to unset/doesn't-collide");
+  require(!deserializeYaml(yaml, *loaded) &&
+              containsMessage(loaded->getDeserializationErrors(),
+                              "Unsupported MeshPrimitive edge override format version"),
+          "legacy edge override format did not fail cleanly");
 }
 
-void loadingPreFeatureDataDefaultsToUnsetCollisionOverride() {
+void preFeatureEdgeDataIsRejected() {
   auto source = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
   auto yaml = asLegacyCollisionYaml(serializeYaml(*source), false);
@@ -531,16 +520,10 @@ void loadingPreFeatureDataDefaultsToUnsetCollisionOverride() {
 
   auto loaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-1.0f, -1.0f, 1.0f, 1.0f), {}}}));
-  require(deserializeYaml(stripped, *loaded),
-          "MeshPrimitive input without a flags field failed to deserialize");
-
-  auto proxy = loaded->createEditingProxy();
-  for (auto edge = proxy->getFirstEdgeIndex();
-       !proxy->edgeIndexIterationFinished(edge);
-       edge = proxy->getNextEdgeIndex(edge)) {
-    require(!proxy->getEdgeCollisionOverride(edge).has_value(),
-            "an External edge loaded from pre-feature data did not default to unset");
-  }
+  require(!deserializeYaml(stripped, *loaded) &&
+              containsMessage(loaded->getDeserializationErrors(),
+                              "Unsupported MeshPrimitive edge override format version"),
+          "pre-feature edge data did not fail cleanly");
 }
 
 void proceduralPrimitiveSchemaRemainsFlat() {
@@ -567,6 +550,9 @@ void shippedWorldFixtureUsesTheCurrentSchema() {
   require(loaded, "the shipped World fixture no longer loads: " + errors);
   require(world.getNumPrimitives() > 0,
           "the shipped fixture did not restore its active Primitives");
+  require(world.getDependentResourceNames() ==
+              std::vector<std::string>{"JaguarTangentSpaceNormalMap"},
+          "the shipped fixture did not retain its ImageResource dependency");
 }
 
 }  // namespace
@@ -579,8 +565,8 @@ int main() {
     authoredCollidesValuesRoundTripThroughSaveAndLoad();
     authoredVisibleValuesRoundTripThroughSaveAndLoad();
     authoredNormalMapValuesRoundTripAndRejectFutureVersions();
-    legacyCollisionFlagsMigrateToTriStateOverrides();
-    loadingPreFeatureDataDefaultsToUnsetCollisionOverride();
+    legacyEdgeOverrideFormatsAreRejected();
+    preFeatureEdgeDataIsRejected();
     proceduralPrimitiveSchemaRemainsFlat();
     shippedWorldFixtureUsesTheCurrentSchema();
     std::cout << "MeshPrimitive containment tree serialization tests passed\n";

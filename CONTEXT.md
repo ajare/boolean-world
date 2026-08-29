@@ -93,8 +93,12 @@ The same per-edge, External-only mechanism as Wall collision override, for a sec
 _Avoid_: render flag, hidden flag
 
 **Wall normal-map override**:
-A per-External-edge choice that is Unset, Disabled, or an image normal map, inherited by the uncut ArrangementWall surface that edge contributes to; Chip facets expose new surfaces and do not inherit it. Higher-precedence explicit choices dominate lower contributors; it varies wall-surface detail independently of the wall's Sub-material and never changes geometry or collision.
-_Avoid_: Sub-material normal map, Primitive normal map, wall texture
+A per-External-edge choice that is Unset, Disabled, or an ImageResource normal map, inherited by the uncut ArrangementWall surface that edge contributes to; Chip facets expose new surfaces and do not inherit it. Higher-precedence explicit choices dominate lower contributors; it varies wall-surface detail independently of the wall's Sub-material and never changes geometry or collision.
+_Avoid_: Sub-material normal map, Primitive normal map, wall texture, image filepath
+
+**World dependent resource**:
+A named Willpower Resource referenced by authored World content and required before that World can be deserialized and activated. A World's serialized list is the exact, sorted projection of all such references, including references in disabled LayerBuildSteps and Prefab definitions.
+_Avoid_: asset path, normal-map dependency
 
 **Player proxy**:
 A position and facing angle stored on the Document, representing where the in-game player currently would be. Independent of any Primitive or Layer; used to render the editor's player-view overlay and to seed a flythrough's starting pose.

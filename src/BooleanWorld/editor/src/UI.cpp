@@ -27,6 +27,8 @@
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/LiquidType.h>
 #include <common/MaterialRegistry.h>
+#include <willpower/application/resourcesystem/ImageResource.h>
+#include <willpower/application/resourcesystem/ResourceManager.h>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 
@@ -37,7 +39,6 @@
 #include "IconsFontAwesome5.h"
 
 #include "UI.h"
-#include "NormalMapResourceSet.h"
 #include "UiHelpers.h"
 #include "WidgetHelpers.h"
 #include "AppHelpers.h"
@@ -52,6 +53,7 @@
 #include "Preview3D.h"
 #include "ProcMaterialLibrary.h"
 #include "ExitApplicationException.h"
+#include "EditorRenderSystem.h"
 #include "Render.h"
 #include "HoverableType.h"
 
@@ -4098,7 +4100,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
 
     static uint32_t normalMapDraftEdge = ~0u;
     static int normalMapState = 0;
-    static char normalMapPath[512]{};
+    static char normalMapResource[512]{};
     static float normalMapRepeat = 1.0f;
     static float normalMapStrength = 1.0f;
     static string normalMapError;
@@ -4107,9 +4109,9 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
       normalMapError.clear();
       auto value = doc->getActiveMeshEdgeNormalMapOverride(edgeIndex);
       normalMapState = static_cast<int>(value.state());
-      normalMapPath[0] = '\0';
+      normalMapResource[0] = '\0';
       if (auto image = value.imageData()) {
-        strncpy_s(normalMapPath, image->resourcePath.c_str(), _TRUNCATE);
+        strncpy_s(normalMapResource, image->resourceName.c_str(), _TRUNCATE);
         normalMapRepeat = image->repeat;
         normalMapStrength = image->strength;
       }
@@ -4122,51 +4124,8 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
                  "Not set\0Disabled\0Image\0");
     if (normalMapState == static_cast<int>(
                               bw::core::WallNormalMapOverride::State::Image)) {
-      if (ImGui::Button("Resource Path...##WallNormalMap")) {
-        constexpr nfdfilteritem_t imageFilters[] = {
-            {"Images", "png,jpg,jpeg,bmp,tga"},
-        };
-        nfdchar_t* selectedPath = nullptr;
-        auto resourceRoot = editorResourceRoot();
-        auto defaultPath = resourceRoot.string();
-        auto result = NFD_OpenDialog(
-            &selectedPath, imageFilters,
-            static_cast<nfdfiltersize_t>(size(imageFilters)),
-            defaultPath.c_str());
-        if (result == NFD_OKAY) {
-          auto absolutePath = filesystem::path(selectedPath);
-          NFD_FreePath(selectedPath);
-
-          error_code error;
-          auto relativePath = filesystem::relative(
-              absolutePath, resourceRoot, error);
-          if (error) {
-            normalMapError =
-                "Could not make the selected image relative to the resource directory: " +
-                error.message();
-          } else {
-            try {
-              validateNormalMapImage(resourceRoot, relativePath);
-              auto path = relativePath.generic_string();
-              if (path.size() >= sizeof(normalMapPath)) {
-                normalMapError = "The selected image path is too long.";
-              } else {
-                strncpy_s(normalMapPath, path.c_str(), _TRUNCATE);
-                normalMapError.clear();
-              }
-            } catch (exception const& error) {
-              normalMapError = error.what();
-            }
-          }
-        } else if (result == NFD_ERROR) {
-          auto error = NFD_GetError();
-          normalMapError =
-              string("Could not open the image picker: ") +
-              (error ? error : "unknown error");
-        }
-      }
-      ImGui::SameLine();
-      ImGui::TextUnformatted(normalMapPath[0] ? normalMapPath : "No image selected");
+      ImGui::InputText("Image resource##WallNormalMap", normalMapResource,
+                       sizeof(normalMapResource));
       ImGui::InputFloat("Repeat##WallNormalMap", &normalMapRepeat);
       ImGui::InputFloat("Strength##WallNormalMap", &normalMapStrength);
     }
@@ -4177,10 +4136,25 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
                      : normalMapState == 1
                          ? bw::core::WallNormalMapOverride::disabled()
                          : bw::core::WallNormalMapOverride::image(
-                               normalMapPath, normalMapRepeat,
+                               normalMapResource, normalMapRepeat,
                                normalMapStrength);
         if (auto image = value.imageData()) {
-          validateNormalMapImage(editorResourceRoot(), image->resourcePath);
+          auto* renderSystem = editorRenderSystem();
+          if (!renderSystem) {
+            throw runtime_error("The editor resource system is unavailable.");
+          }
+          auto* manager = renderSystem->resourceManager();
+          string namesp;
+          string name;
+          wp::application::resourcesystem::Resource::splitName(
+              image->resourceName, "World", &namesp, &name);
+          auto resource = manager->getResource(name, namesp);
+          if (!dynamic_pointer_cast<
+                  wp::application::resourcesystem::ImageResource>(resource)) {
+            throw runtime_error("The named resource is not an ImageResource.");
+          }
+          manager->createResource(resource);
+          manager->loadResource(resource);
         }
         if (!transactUndoableActionAtomically(
                 doc, "Set Mesh Edge Wall Normal Map",
@@ -4188,6 +4162,12 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
                      value))) {
           normalMapError = "The selected edge cannot accept a wall normal map.";
         } else {
+          string dependencyError;
+          if (!editorRenderSystem()->loadWorldDependencies(
+                  doc->getWorld()->getDependentResourceNames(), "World",
+                  &dependencyError)) {
+            throw runtime_error(dependencyError);
+          }
           normalMapError.clear();
         }
       } catch (exception const& error) {

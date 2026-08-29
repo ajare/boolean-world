@@ -359,6 +359,16 @@ Resources:
   Namespace:
     name: "World"
     Resource:
+      - type: "Image"
+        name: "JaguarTangentSpaceNormalMap"
+        location: "images/jaguar_tangent_space_normal_map.png"
+        Option:
+          - name: "colour-space"
+            value: "linear"
+          - name: "wrapping"
+            value: "repeat"
+          - name: "mipmaps"
+            value: "true"
       - type: "Shader"
         name: "WorldVertexShader"
         location: "shaders/world.vert"

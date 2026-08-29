@@ -1418,7 +1418,7 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
       serializer->writeUint8(
           "normalMapState", static_cast<uint8_t>(vertex.edgeNormalMap.state()));
       if (auto image = vertex.edgeNormalMap.imageData()) {
-        serializer->writeString("normalMapPath", image->resourcePath);
+        serializer->writeString("normalMapResource", image->resourceName);
         serializer->writeFloat("normalMapRepeat", image->repeat);
         serializer->writeFloat("normalMapStrength", image->strength);
       }
@@ -1439,7 +1439,7 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
 
   serializer->beginMap("meshPrimitive");
   serializer->writeUint32("treeFormat", TreeFormatMagic);
-  serializer->writeUint32("edgeOverrideFormat", 3);
+  serializer->writeUint32("edgeOverrideFormat", 4);
   serializer->beginArray("shells");
   vector<Event> events;
   for (auto shell = mShells.rbegin(); shell != mShells.rend(); ++shell) {
@@ -1521,7 +1521,7 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
       edgeOverrideFormat =
           serializer->readUint32("collisionOverrideFormat", true, 0);
     }
-    if (edgeOverrideFormat > 3) {
+    if (edgeOverrideFormat != 4) {
       throw CoreException("Unsupported MeshPrimitive edge override format version.");
     }
 
@@ -1566,14 +1566,12 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
             case WallNormalMapOverride::State::Image: {
               // Positional serializers require explicit sequencing; C++ does
               // not define function-argument evaluation order.
-              auto path = serializer->readString("normalMapPath");
-              auto repeat = edgeOverrideFormat >= 3
-                                ? serializer->readFloat("normalMapRepeat")
-                                : serializer->readFloat(
-                                      "normalMapUnitsPerRepeat");
+              auto resourceName =
+                  serializer->readString("normalMapResource");
+              auto repeat = serializer->readFloat("normalMapRepeat");
               auto strength = serializer->readFloat("normalMapStrength");
               ring.back().edgeNormalMap = WallNormalMapOverride::image(
-                  std::move(path), repeat, strength);
+                  std::move(resourceName), repeat, strength);
               break;
             }
             default:

@@ -30,7 +30,9 @@ public:
 
   bw::core::World const* getWorld() const;
 
-  void loadWorldFromYaml(wp::application::resourcesystem::ResourcePtr resource);
+  void loadWorldFromYaml(
+      wp::application::resourcesystem::ResourcePtr resource,
+      wp::application::resourcesystem::ResourceManager* resourceMgr = nullptr);
 };
 
 class MapResourceFactory : public wp::application::resourcesystem::ResourceFactory {

@@ -23,6 +23,8 @@
 #include "core/TorusSegmentPolygon.h"
 #include "core/SuperformulaPolygon.h"
 #include "core/MeshPrimitive.h"
+#include "core/PrimitiveField.h"
+#include "core/DefinePrefabs.h"
 #include "core/ArrangementWorldDataGenerator.h"
 #include "core/DefaultWorldDataGenerator.h"
 
@@ -158,11 +160,84 @@ void World::preSerialization(SerializationWorkData& workData) const {
   BW_UNUSED(workData);
 }
 
+vector<string> World::readDependentResourceNames(
+    shared_ptr<Serializer> serializer) {
+  vector<string> names;
+  serializer->beginMap("root");
+  serializer->beginMap("world");
+  if (!serializer->isPositional() &&
+      !serializer->hasField("dependentResources")) {
+    throw CoreException("World dependentResources section is required.");
+  }
+  serializer->beginArray("dependentResources");
+  while (serializer->nextArrayItem()) {
+    auto name = serializer->readString();
+    if (name.empty()) {
+      throw CoreException("World dependent resource names may not be empty.");
+    }
+    names.push_back(move(name));
+  }
+  serializer->endArray();
+  serializer->endMap();
+  serializer->endMap();
+
+  if (!is_sorted(names.begin(), names.end()) ||
+      adjacent_find(names.begin(), names.end()) != names.end()) {
+    throw CoreException(
+        "World dependent resource names must be sorted and unique.");
+  }
+  return names;
+}
+
+vector<string> World::collectDependentResourceNames() const {
+  set<string> names;
+  auto collectPrimitive = [&](Primitive const* primitive) {
+    for (auto const& polygon : primitive->getVertices()) {
+      for (auto const& ring : polygon) {
+        for (auto const& vertex : ring) {
+          if (auto image = vertex.edgeNormalMap.imageData()) {
+            names.insert(image->resourceName);
+          }
+        }
+      }
+    }
+  };
+
+  for (auto const* layer : mLayers) {
+    for (uint32_t stepIndex = 0; stepIndex < layer->getNumSteps(); ++stepIndex) {
+      auto const* step = layer->getStep(stepIndex);
+      if (auto const* field = dynamic_cast<PrimitiveField const*>(step)) {
+        for (auto const* primitive : field->getPrimitives()) {
+          collectPrimitive(primitive);
+        }
+      } else if (auto const* definitions =
+                     dynamic_cast<DefinePrefabs const*>(step)) {
+        for (auto const* prefab : definitions->getPrefabs()) {
+          for (auto const* primitive : prefab->getPrimitives()) {
+            collectPrimitive(primitive);
+          }
+        }
+      }
+    }
+  }
+  return {names.begin(), names.end()};
+}
+
+vector<string> World::getDependentResourceNames() const {
+  return collectDependentResourceNames();
+}
+
 void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) const {
   serializer->beginMap("root");
   {
     serializer->beginMap("world");
     {
+      serializer->beginArray("dependentResources");
+      for (auto const& name : collectDependentResourceNames()) {
+        serializer->writeString("", name);
+      }
+      serializer->endArray();
+
       serializer->writeString("name", getName());
       serializer->writeString("description", getDescription());
 
@@ -248,6 +323,7 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
 
   // Read in to temporary objects
   string worldName, description;
+  vector<string> declaredDependentResources;
   wp::Vector2 minExtent, maxExtent;
   wp::Vector2 playerStartPosition;
   float playerStartAngle;
@@ -260,6 +336,29 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     {
       serializer->beginMap("world");
       {
+        if (!serializer->isPositional() &&
+            !serializer->hasField("dependentResources")) {
+          throw CoreException("World dependentResources section is required.");
+        }
+        serializer->beginArray("dependentResources");
+        while (serializer->nextArrayItem()) {
+          auto name = serializer->readString();
+          if (name.empty()) {
+            throw CoreException(
+                "World dependent resource names may not be empty.");
+          }
+          declaredDependentResources.push_back(move(name));
+        }
+        serializer->endArray();
+        if (!is_sorted(declaredDependentResources.begin(),
+                       declaredDependentResources.end()) ||
+            adjacent_find(declaredDependentResources.begin(),
+                          declaredDependentResources.end()) !=
+                declaredDependentResources.end()) {
+          throw CoreException(
+              "World dependent resource names must be sorted and unique.");
+        }
+
         worldName = serializer->readString("name");
         description = serializer->readString("description", true);
         minExtent = serializer->readVector2("minExtent");
@@ -351,6 +450,18 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     serializer->endMap();  // root
   } catch (exception& e) {
     addDeserializationError(e.what());
+    return false;
+  }
+
+  World dependencyCandidate;
+  dependencyCandidate.releaseOwnedState();
+  for (auto const& layer : layers) {
+    dependencyCandidate.mLayers.push_back(new Layer(*layer));
+  }
+  if (declaredDependentResources !=
+      dependencyCandidate.collectDependentResourceNames()) {
+    addDeserializationError(
+        "World dependent resources do not exactly match its authored resource references.");
     return false;
   }
 
