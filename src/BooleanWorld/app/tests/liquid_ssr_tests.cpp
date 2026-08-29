@@ -16,7 +16,7 @@ void require(bool condition, char const* message) {
   if (!condition) throw std::runtime_error(message);
 }
 
-void gameplayUsesThePostWaterWorld() {
+void everyWorldPathUsesThePostWaterWorld() {
   auto app = std::filesystem::path(BW_APP_RESOURCE_DIR).parent_path();
   auto state = read(app / "src" / "StatePlayBooleanWorld.cpp");
   require(state.find("output.image = \"WaterComposite\"") != std::string::npos,
@@ -25,6 +25,22 @@ void gameplayUsesThePostWaterWorld() {
           "gameplay does not opt into generated water topology");
   require(state.find("preWaterOutputImage + 2u") != std::string::npos,
           "gameplay does not address the post-water graph image");
+  require(state.find("mDebugDisplay.fragmentOverdraw") != std::string::npos &&
+              state.find("? preWaterOutputImage") != std::string::npos,
+          "fragment-overdraw diagnostics no longer retain their pre-water output");
+
+  auto preview = read(app.parent_path() / "editor" / "src" /
+                      "PreviewRenderScene.cpp");
+  require(preview.find("output.image = \"WaterComposite\"") !=
+                  std::string::npos &&
+              preview.find("options.generatedWater = true") !=
+                  std::string::npos &&
+              preview.find("constexpr std::uint32_t outputImageIndex = 6u") !=
+                  std::string::npos,
+          "editor preview does not select the generated post-water output");
+  require(preview.find("WorldRenderer::WallRenderVariantResolver{}, \"World\", true") !=
+              std::string::npos,
+          "editor preview does not defer Liquid into WaterScene");
 
   auto renderer = read(
       app.parent_path() / "render" / "src" / "WorldRenderer3d.cpp");
@@ -75,7 +91,7 @@ void liquidShaderPreservesTheSsrContract() {
 
 int main() {
   try {
-    gameplayUsesThePostWaterWorld();
+    everyWorldPathUsesThePostWaterWorld();
     liquidShaderPreservesTheSsrContract();
     std::cout << "Gameplay Liquid SSR contract passed\n";
     return 0;

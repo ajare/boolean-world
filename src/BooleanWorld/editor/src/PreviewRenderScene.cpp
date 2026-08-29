@@ -21,13 +21,14 @@ namespace {
 // pipeline cache again.
 constexpr char const* pipelineName = "Editor.Preview3D.World";
 
-// The named output is always the final offscreen shaded image, and ambient
-// occlusion adds three graph images ahead of it - see
+// The named output is always the final offscreen shaded image. Ambient
+// occlusion adds three graph images ahead of its composite; generated water
+// then appends SceneColourResolved and WaterComposite. See
 // StatePlayBooleanWorld::renderWorldThroughTarget, which derives the same
-// index from the options it built. GTAO from depth adds no scene attachments
-// of its own, so the MRT-normal variant's higher index does not apply here.
-// An active shadow domain inserts one imported graph image before AO output.
-constexpr std::uint32_t outputImageIndex = 4u;
+// layout for gameplay. GTAO from depth adds no scene attachments of its own,
+// so the MRT-normal variant's higher index does not apply here. An active
+// shadow domain inserts one imported graph image before AO output.
+constexpr std::uint32_t outputImageIndex = 6u;
 
 // Launcher's own defaults (StatePlayBooleanWorld::DebugDisplay), so the
 // preview lights the world exactly as the game does. Exposing these as
@@ -48,10 +49,14 @@ mpp::RenderPipelineOptions pipelineOptions() {
 
   mpp::RenderPipelineOutput output;
   output.name = "World";
-  output.image = "AmbientOcclusionComposite";
+  // Liquid is deferred into MPP's post-AO WaterScene, just as it is in
+  // gameplay, so the preview presents WaterComposite rather than the opaque
+  // AO image it reflects.
+  output.image = "WaterComposite";
   output.antiAliasing.msaa = mpp::AntiAliasingSamples::Off;
   output.antiAliasing.fxaa = false;
   options.outputs.push_back(output);
+  options.generatedWater = true;
 
   options.ambientOcclusion.method = mpp::AmbientOcclusionMethod::Gtao;
   options.ambientOcclusion.gtao.normalSource = mpp::GTAONormalSource::Depth;
@@ -102,7 +107,7 @@ PreviewRenderScene::PreviewRenderScene(
       renderSystem.resourceManager(), renderSystem.logger(),
       bw::app::RenderTextureFilter::Linear, horizontalMaterials,
       std::vector<WallRenderSurface>{},
-      WorldRenderer::WallRenderVariantResolver{}, "World");
+      WorldRenderer::WallRenderVariantResolver{}, "World", true);
   mRenderer->create(
       mScene, world, mwRenderSystem, renderSystem.renderResourceManager());
 }
