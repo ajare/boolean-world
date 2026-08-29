@@ -1,6 +1,8 @@
 #include "core/LiquidProperties.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 
@@ -30,6 +32,36 @@ LiquidProperties const& GetLiquidProperties(LiquidType type) {
     return liquidProperties[0];
   }
   return liquidProperties[static_cast<size_t>(index)];
+}
+
+float CalculateLiquidPathLength(
+    std::array<float, 3> const& eyePosition,
+    std::array<float, 3> const& pointPosition,
+    float eyeSurfaceHeight,
+    float pointSurfaceHeight) {
+  auto eyeIsWet = eyeSurfaceHeight > eyePosition[1];
+  auto pointIsWet = pointSurfaceHeight > pointPosition[1];
+  auto surfaceHeight = eyeIsWet ? eyeSurfaceHeight : pointSurfaceHeight;
+
+  auto low = std::min(eyePosition[1], pointPosition[1]);
+  auto high = std::max(eyePosition[1], pointPosition[1]);
+  auto verticalSpan = high - low;
+  auto submergedFraction = verticalSpan > 0.001f
+                               ? std::clamp((std::min(high, surfaceHeight) - low) /
+                                                verticalSpan,
+                                            0.0f, 1.0f)
+                               : (0.5f * (low + high) <= surfaceHeight ? 1.0f
+                                                                       : 0.0f);
+  auto deltaX = pointPosition[0] - eyePosition[0];
+  auto deltaY = pointPosition[1] - eyePosition[1];
+  auto deltaZ = pointPosition[2] - eyePosition[2];
+  auto chordLength = std::sqrt(
+      deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
+
+  if (pointIsWet) {
+    return chordLength * submergedFraction;
+  }
+  return std::max(surfaceHeight - eyePosition[1], 0.0f);
 }
 
 }  // namespace core

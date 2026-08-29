@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "core/LiquidType.h"
 
 namespace bw {
@@ -29,6 +31,18 @@ struct LiquidProperties {
 // The properties of the given liquid. Unknown values read back as Water
 // rather than throwing, matching LiquidTypeFromName.
 [[nodiscard]] LiquidProperties const& GetLiquidProperties(LiquidType type);
+
+// Returns the length of the eye-to-point segment that lies in liquid. Positions
+// are x, y, z with y vertical. A surface height at or below its endpoint means
+// that endpoint is dry; callers use negative infinity for the dry sentinel. A
+// submerged eye supplies the
+// governing liquid surface, while the point's own surface still decides
+// whether the far end is wet.
+[[nodiscard]] float CalculateLiquidPathLength(
+    std::array<float, 3> const& eyePosition,
+    std::array<float, 3> const& pointPosition,
+    float eyeSurfaceHeight,
+    float pointSurfaceHeight);
 
 }  // namespace core
 }  // namespace bw
