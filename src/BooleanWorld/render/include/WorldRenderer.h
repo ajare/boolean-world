@@ -80,6 +80,10 @@ private:
       int32_t highlightedTriangle,
       bool highlightedCeiling);
 
+  // Liquid has its own blended scene model so it can be deferred without
+  // changing the opaque floor and ceiling model.
+  void updateLiquidDataProvider(bw::core::WorldData const& worldData);
+
   // Wall quad geometry. Each wall picks, every call, whichever single quad
   // currently faces the player: its authored material if the player is on
   // the side its normal points toward, or the reserved plain-white
@@ -121,6 +125,11 @@ public:
   virtual ~WorldRenderer();
 
   void setWorldChanged();
+
+  // The current geometry count for one independently submitted surface set.
+  // This is useful to renderer integrations that need to inspect a snapshot
+  // without conflating opaque and blended scene models.
+  [[nodiscard]] uint32_t getSurfaceTriangleCount(WorldSurfaceSet surfaceSet) const;
 
   // Toggles line polygon mode for the world's horizontal and wall meshes.
   void setWireframe(bool wireframe);

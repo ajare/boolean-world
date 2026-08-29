@@ -54,8 +54,7 @@ void buffersAreSizedPerMesh() {
 WorldTriangle3dDataProvider::DrawVert vertex(
     float x, float y, float z, float nx, float ny, float nz,
     float u, float v, uint32_t colour) {
-  return {{x, y, z}, {nx, ny, nz}, {u, v}, colour,
-          WorldTriangle3dDataProvider::dryLiquidSurfaceHeight};
+  return {{x, y, z}, {nx, ny, nz}, {u, v}, colour, WorldTriangle3dDataProvider::dryLiquidSurfaceHeight};
 }
 
 void safelyReusesVerticesWithinEachMaterialMesh() {
@@ -140,14 +139,26 @@ void trianglesCanBeOrderedClosestFirstAndRestored() {
   auto middleTriangle = addTriangleAt(10.0f);
   provider.finalizeInternals();
 
-  provider.orderTrianglesForView({0, 0, 0}, true);
+  provider.orderTrianglesForView(
+      {0, 0, 0},
+      WorldTriangle3dDataProvider::TriangleOrder::FrontToBack);
   auto const& sorted = provider.getMeshData(0);
   require(sorted.indexData[0] == nearTriangle &&
               sorted.indexData[3] == middleTriangle &&
               sorted.indexData[6] == farTriangle,
           "renderer triangles were not sorted closest-first");
 
-  provider.orderTrianglesForView({0, 0, 0}, false);
+  provider.orderTrianglesForView(
+      {0, 0, 0},
+      WorldTriangle3dDataProvider::TriangleOrder::BackToFront);
+  auto const& backToFront = provider.getMeshData(0);
+  require(backToFront.indexData[0] == farTriangle &&
+              backToFront.indexData[3] == middleTriangle &&
+              backToFront.indexData[6] == nearTriangle,
+          "blended renderer triangles were not sorted back-to-front");
+
+  provider.orderTrianglesForView(
+      {0, 0, 0}, WorldTriangle3dDataProvider::TriangleOrder::Authored);
   auto const& restored = provider.getMeshData(0);
   require(restored.indexData[0] == farTriangle &&
               restored.indexData[3] == nearTriangle &&

@@ -173,7 +173,7 @@ void WorldTriangle3dDataProvider::updateInternals(
 }
 
 void WorldTriangle3dDataProvider::finalizeInternals() {
-  mTriangleOrderIsViewSorted = false;
+  mTriangleOrder = TriangleOrder::Authored;
   for (uint32_t meshIndex = 0; meshIndex < mMeshData.size(); ++meshIndex) {
     auto& meshData = mMeshData[meshIndex];
     auto usedSize = meshData.numVertices * mVertexStride;
@@ -199,10 +199,11 @@ void WorldTriangle3dDataProvider::finalizeInternals() {
 }
 
 void WorldTriangle3dDataProvider::orderTrianglesForView(
-    glm::vec3 const& viewPosition, bool closestFirst) {
-  // Keep the established path allocation- and copy-free until the diagnostic
-  // mode has actually changed an index buffer.
-  if (!closestFirst && !mTriangleOrderIsViewSorted) {
+    glm::vec3 const& viewPosition, TriangleOrder order) {
+  // Keep the established path allocation- and copy-free until a sort has
+  // actually changed an index buffer.
+  if (order == TriangleOrder::Authored &&
+      mTriangleOrder == TriangleOrder::Authored) {
     return;
   }
 
@@ -213,7 +214,7 @@ void WorldTriangle3dDataProvider::orderTrianglesForView(
     if (indexCount == 0) {
       continue;
     }
-    if (closestFirst && authored.size() != indexCount) {
+    if (order != TriangleOrder::Authored && authored.size() != indexCount) {
       authored.assign(mesh.indexData, mesh.indexData + indexCount);
     }
     if (authored.size() != indexCount) {
@@ -221,7 +222,7 @@ void WorldTriangle3dDataProvider::orderTrianglesForView(
     }
 
     std::copy(authored.begin(), authored.end(), mesh.indexData);
-    if (!closestFirst || mesh.numTriangles < 2) {
+    if (order == TriangleOrder::Authored || mesh.numTriangles < 2) {
       continue;
     }
 
@@ -247,8 +248,10 @@ void WorldTriangle3dDataProvider::orderTrianglesForView(
     }
     std::stable_sort(
         triangleOrder.begin(), triangleOrder.end(),
-        [](TriangleDistance const& left, TriangleDistance const& right) {
-          return left.squared < right.squared;
+        [order](TriangleDistance const& left, TriangleDistance const& right) {
+          return order == TriangleOrder::FrontToBack
+                     ? left.squared < right.squared
+                     : left.squared > right.squared;
         });
 
     auto* destination = mesh.indexData;
@@ -259,5 +262,5 @@ void WorldTriangle3dDataProvider::orderTrianglesForView(
       *destination++ = authored[source + 2];
     }
   }
-  mTriangleOrderIsViewSorted = closestFirst;
+  mTriangleOrder = order;
 }

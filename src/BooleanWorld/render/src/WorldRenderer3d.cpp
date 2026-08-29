@@ -14,6 +14,20 @@
 using namespace std;
 using namespace wp::application::resourcesystem;
 
+namespace {
+char const* surfaceSetName(WorldSurfaceSet surfaceSet) {
+  switch (surfaceSet) {
+    case WorldSurfaceSet::Horizontal:
+      return "Horizontal";
+    case WorldSurfaceSet::Liquid:
+      return "Liquid";
+    case WorldSurfaceSet::Walls:
+      return "Walls";
+  }
+  return "Unknown";
+}
+}  // namespace
+
 WorldRenderer3d::WorldRenderer3d(
     ResourcePtr resource, ResourcePtr fragmentOverdrawMaterial,
     wp::Logger* logger, WorldSurfaceSet surfaceSet,
@@ -146,8 +160,7 @@ void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvide
 
   mRenderer = new RendererType(
       format(
-          "World3d_{}_{}_", materialName,
-          mSurfaceSet == WorldSurfaceSet::Horizontal ? "Horizontal" : "Walls"),
+          "World3d_{}_{}_", materialName, surfaceSetName(mSurfaceSet)),
       mDataProvider,
       resourceMgr->getResource(materialName),
       renderSystem,
@@ -342,7 +355,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       mMaterialIndices[meshIndex] =
           static_cast<int32_t>(BW_WALL_BACK_FACE_MATERIAL_INDEX);
     }
-  } else if (mSurfaceSet == WorldSurfaceSet::Horizontal) {
+  } else if (mSurfaceSet == WorldSurfaceSet::Liquid) {
     // Every liquid type's reserved material - see WorldBatch::createModel
     // Stream, which guarantees each one's mesh bucket exists regardless of
     // any Primitive's authored material.
@@ -467,6 +480,11 @@ void WorldRenderer3d::update(
   }
 
   mDataProvider->orderTrianglesForView(
-      playerPosition, sortGeometryFrontToBack);
+      playerPosition,
+      mSurfaceSet == WorldSurfaceSet::Liquid
+          ? WorldTriangle3dDataProvider::TriangleOrder::BackToFront
+      : sortGeometryFrontToBack
+          ? WorldTriangle3dDataProvider::TriangleOrder::FrontToBack
+          : WorldTriangle3dDataProvider::TriangleOrder::Authored);
   mRenderer->update();
 }

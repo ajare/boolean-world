@@ -24,6 +24,7 @@
 #include "PreviewOutlineRenderer.h"
 
 class WorldRenderer;
+enum class WorldSurfaceSet;
 
 namespace wp::application::resourcesystem {
 class ResourceManager;
@@ -89,6 +90,9 @@ public:
   void reloadSubMaterialResolver(
       wp::application::resourcesystem::ResourceManager* resourceMgr);
   void worldGeometryChanged();
+
+  [[nodiscard]] std::uint32_t worldSurfaceTriangleCount(
+      WorldSurfaceSet surfaceSet) const;
 
   // Rebuilds this frame's world geometry and renders it into the pipeline's
   // offscreen images. Returns the OpenGL texture id of the resolved output

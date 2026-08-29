@@ -111,7 +111,7 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
     if (mSurfaceSet == WorldSurfaceSet::Horizontal) {
       processSubMaterial(properties.floorMaterialId, true, nullopt, modelStream);
       processSubMaterial(properties.ceilingMaterialId, false, nullopt, modelStream);
-    } else {
+    } else if (mSurfaceSet == WorldSurfaceSet::Walls) {
       processSubMaterial(properties.wallMaterialId, false, nullopt, modelStream);
     }
   }
@@ -130,7 +130,7 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
   // renders as this reserved, plain-white material, regardless of any
   // Primitive's authored wallMaterialId - so its mesh bucket needs to
   // exist even for a World with no Primitives yet.
-  if (mSurfaceSet != WorldSurfaceSet::Horizontal) {
+  if (mSurfaceSet == WorldSurfaceSet::Walls) {
     processMaterialDefinition(
         BW_WALL_BACK_FACE_MATERIAL_INDEX, bw::core::MaterialDefinition{},
         false, nullopt, modelStream);
@@ -140,7 +140,7 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
   // regardless of any Primitive's authored floorMaterialId - so every liquid
   // type's mesh bucket needs to exist even for a World with no Primitives
   // yet, since which type wets a given face isn't known until then.
-  if (mSurfaceSet == WorldSurfaceSet::Horizontal) {
+  if (mSurfaceSet == WorldSurfaceSet::Liquid) {
     for (int32_t i = 0; i < bw::core::LiquidTypeCount; ++i) {
       processMaterialDefinition(
           bw::core::LiquidMaterialIndex(static_cast<bw::core::LiquidType>(i)),

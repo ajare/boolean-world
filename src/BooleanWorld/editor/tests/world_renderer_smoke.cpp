@@ -24,6 +24,8 @@
 #include <core/World.h>
 #include <mpp/ResourceManager.h>
 
+#include <WorldBatch.h>
+
 #include "EditorRenderSystem.h"
 #include "PlayerView.h"
 #include "PreviewRenderScene.h"
@@ -50,6 +52,7 @@ struct RenderFixture {
   bool chips{};
   bool wedges{};
   bool lookAtWedges{};
+  bool wet{};
 };
 
 struct ResourceCounts {
@@ -119,6 +122,7 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   properties.floorMaterialId = "migrated.marble.1";
   properties.ceilingMaterialId = "migrated.marble.1";
   properties.wallMaterialId = "migrated.marble.1";
+  properties.liquidLevel = fixture.wet ? 8.0f : 0.0f;
   primitive->setProperties(properties);
   world.addPrimitive(primitive);
   std::vector<bw::core::Primitive*> primitives{primitive};
@@ -202,7 +206,8 @@ double regionDifference(
 }
 
 std::vector<float> render(
-    editor::EditorRenderSystem& renderSystem, RenderFixture const& fixture) {
+    editor::EditorRenderSystem& renderSystem, RenderFixture const& fixture,
+    std::array<uint32_t, 3>* surfaceTriangles = nullptr) {
   bw::core::World world(1.0f, -1.0f);
   auto worldData = buildWorldData(world, fixture);
   editor::PreviewRenderScene scene(
@@ -231,6 +236,12 @@ std::vector<float> render(
   }
   if (texture == 0)
     throw std::runtime_error("WorldRenderer produced no render texture");
+  if (surfaceTriangles) {
+    *surfaceTriangles = {
+        scene.worldSurfaceTriangleCount(WorldSurfaceSet::Horizontal),
+        scene.worldSurfaceTriangleCount(WorldSurfaceSet::Liquid),
+        scene.worldSurfaceTriangleCount(WorldSurfaceSet::Walls)};
+  }
   return readColour(texture);
 }
 
@@ -271,7 +282,18 @@ int main() {
       writeDirectionalNormal();
       editor::EditorRenderSystem renderSystem(kWidth, kHeight);
 
-      auto unset = render(renderSystem, {});
+      std::array<uint32_t, 3> drySurfaceTriangles;
+      auto unset = render(renderSystem, {}, &drySurfaceTriangles);
+      std::array<uint32_t, 3> wetSurfaceTriangles;
+      auto wet = render(renderSystem, {.wet = true}, &wetSurfaceTriangles);
+      require(drySurfaceTriangles[0] == wetSurfaceTriangles[0] &&
+                  drySurfaceTriangles[1] == 0 &&
+                  wetSurfaceTriangles[1] != 0 &&
+                  drySurfaceTriangles[2] == wetSurfaceTriangles[2],
+              "wet and dry Worlds did not partition Horizontal, Liquid, and Walls");
+      require(regionDifference(unset, wet) < 0.0005,
+              "separating Liquid changed the transparent-interface appearance");
+
       auto disabled = render(
           renderSystem, {.map = MapFixture::Disabled});
       auto flat = render(

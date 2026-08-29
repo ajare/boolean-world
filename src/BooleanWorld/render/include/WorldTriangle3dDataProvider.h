@@ -12,6 +12,10 @@ class WorldTriangle3dDataProvider : public mpp::helper::TriangleBatch3DBufferDat
   friend class WorldRenderer;
 
 public:
+  enum class TriangleOrder { Authored,
+                             FrontToBack,
+                             BackToFront };
+
   // A finite value rather than negative infinity keeps the dry marker valid
   // for every vertex format and safely below every playable world position.
   static constexpr float dryLiquidSurfaceHeight = -1e10f;
@@ -50,7 +54,7 @@ private:
   // disabling it restores the normal renderer path without charging the
   // default path a second full index allocation.
   std::vector<std::vector<uint32_t>> mAuthoredIndices;
-  bool mTriangleOrderIsViewSorted{false};
+  TriangleOrder mTriangleOrder{TriangleOrder::Authored};
 
 public:
   WorldTriangle3dDataProvider();
@@ -75,9 +79,10 @@ public:
 
   void finalizeInternals();
 
-  // Restores authored triangle order, then optionally sorts every material
-  // mesh closest-first by triangle-centroid distance from the view.
-  void orderTrianglesForView(glm::vec3 const& viewPosition, bool closestFirst);
+  // Restores authored triangle order or sorts every material mesh by
+  // triangle-centroid distance from the view. Blended liquid uses
+  // BackToFront independently of opaque diagnostic ordering.
+  void orderTrianglesForView(glm::vec3 const& viewPosition, TriangleOrder order);
 
   void addTriangle(uint32_t meshIndex, uint32_t v0, uint32_t v1, uint32_t v2);
 

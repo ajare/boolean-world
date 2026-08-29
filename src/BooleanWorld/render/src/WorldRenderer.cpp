@@ -82,6 +82,13 @@ WorldRenderer::WorldRenderer(
   mMaterialRenderers.push_back(
       {make_shared<WorldRenderer3d>(
            material3d, fragmentOverdrawMaterial, mwLogger,
+           WorldSurfaceSet::Liquid,
+           &mSubMaterialResolver),
+       make_shared<WorldTriangle3dDataProvider>(),
+       WorldSurfaceSet::Liquid});
+  mMaterialRenderers.push_back(
+      {make_shared<WorldRenderer3d>(
+           material3d, fragmentOverdrawMaterial, mwLogger,
            WorldSurfaceSet::Walls,
            &mSubMaterialResolver,
            mWallRenderSurfaces),
@@ -209,7 +216,7 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
     return fallbackResolver ? fallbackResolver(wall)
                             : optional<WallRenderVariant>{};
   };
-  mMaterialRenderers[1].renderer->setWallRenderSurfaces(mWallRenderSurfaces);
+  mMaterialRenderers[2].renderer->setWallRenderSurfaces(mWallRenderSurfaces);
   // Material lookup stays outside core geometry. Capture an immutable resolver
   // snapshot so generation workers see only plain dimensions and never a
   // ProcMaterial catalog or render-side object.
@@ -226,6 +233,16 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
 
 void WorldRenderer::setWorldChanged() {
   mWorldHasChanged = true;
+}
+
+uint32_t WorldRenderer::getSurfaceTriangleCount(
+    WorldSurfaceSet surfaceSet) const {
+  for (auto const& item : mMaterialRenderers) {
+    if (item.surfaceSet == surfaceSet) {
+      return item.dataProvider->getNumTriangles();
+    }
+  }
+  return 0;
 }
 
 void WorldRenderer::setWireframe(bool wireframe) {
@@ -360,17 +377,6 @@ void WorldRenderer::updateHorizontalDataProvider(
         resolved.def.hash(resolved.materialIndex), isFloor);
   };
 
-  // Every liquid surface renders as one of these reserved, per-type
-  // materials, regardless of the face's own floor material - see
-  // WorldBatch::createModelStream (which guarantees each type's mesh bucket
-  // exists) and LiquidMaterialIndex. Which type wets a face is whichever
-  // Primitive's own properties won that face, the same source floorMaterialId
-  // comes from.
-  auto liquidHashFor = [](bw::core::LiquidType liquidType) {
-    return bw::core::MaterialDefinition{}.data.hash(
-        bw::core::LiquidMaterialIndex(liquidType));
-  };
-
   std::vector<uint32_t> horizontalCounts(
       horizontal.dataProvider->getNumMeshes());
   for (auto const& triangle : triangles) {
@@ -387,10 +393,6 @@ void WorldRenderer::updateHorizontalDataProvider(
             DetailSurfaceKind::CeilingOfFace, triangle.face)) {
       ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
           ceilingHash, false)];
-    }
-    if (liquidDepths[triangle.face] > 0.0f) {
-      ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
-          liquidHashFor(properties.liquidType), true)];
     }
   }
   for (auto const& replacement : detail.getTriangles()) {
@@ -441,22 +443,6 @@ void WorldRenderer::updateHorizontalDataProvider(
           floorMesh, floorIndices[0], floorIndices[1], floorIndices[2]);
     }
 
-    if (auto liquidDepth = liquidDepths[triangle.face]; liquidDepth > 0.0f) {
-      auto liquidMesh = horizontal.renderer->getMeshIndexForMaterialHash(
-          liquidHashFor(properties.liquidType), true);
-      auto liquidZ = properties.floorZ + liquidDepth;
-      uint32_t liquidIndices[3];
-      for (int i = 0; i < 3; ++i) {
-        auto uv = positions[i] / 64.0f;
-        liquidIndices[2 - i] = addVertexToDataProvider(
-            horizontal.dataProvider, liquidMesh, positions[i].x, liquidZ,
-            -positions[i].y, 0, 1, 0, uv.x, uv.y, transparentVertexColour,
-            liquidSurfaceHeight);
-      }
-      horizontal.dataProvider->addTriangle(
-          liquidMesh, liquidIndices[0], liquidIndices[1], liquidIndices[2]);
-    }
-
     if (detail.isSuppressed(DetailSurfaceKind::CeilingOfFace, triangle.face)) {
       continue;
     }
@@ -496,12 +482,59 @@ void WorldRenderer::updateHorizontalDataProvider(
   horizontal.dataProvider->setNumPrimitives(horizontal.dataProvider->getNumTriangles());
 }
 
+void WorldRenderer::updateLiquidDataProvider(
+    bw::core::WorldData const& snapshot) {
+  auto const& worldData = snapshot.getArrangement();
+  auto const& triangles = snapshot.getTriangles();
+  auto const& liquidDepths = snapshot.getLiquidDepths();
+  auto& liquid = mMaterialRenderers[1];
+  auto liquidHashFor = [](bw::core::LiquidType liquidType) {
+    return bw::core::MaterialDefinition{}.data.hash(
+        bw::core::LiquidMaterialIndex(liquidType));
+  };
+
+  std::vector<uint32_t> counts(liquid.dataProvider->getNumMeshes());
+  for (auto const& triangle : triangles) {
+    if (liquidDepths[triangle.face] <= 0.0f) continue;
+    auto const& properties =
+        worldData.palette[worldData.faces[triangle.face].paletteIndex];
+    ++counts[liquid.renderer->getMeshIndexForMaterialHash(
+        liquidHashFor(properties.liquidType), true)];
+  }
+  liquid.dataProvider->updateInternals(counts);
+
+  for (auto const& triangle : triangles) {
+    auto liquidDepth = liquidDepths[triangle.face];
+    if (liquidDepth <= 0.0f) continue;
+    auto const& properties =
+        worldData.palette[worldData.faces[triangle.face].paletteIndex];
+    auto mesh = liquid.renderer->getMeshIndexForMaterialHash(
+        liquidHashFor(properties.liquidType), true);
+    auto liquidZ = properties.floorZ + liquidDepth;
+    uint32_t indices[3];
+    for (int i = 0; i < 3; ++i) {
+      auto const& vertex = worldData.vertices[triangle.v[i]];
+      wp::Vector2 position{
+          bw::core::arr::ToWorldCoordinate(vertex.x),
+          bw::core::arr::ToWorldCoordinate(vertex.y)};
+      auto uv = position / 64.0f;
+      // Reflecting authored Y into renderer -Z reverses winding.
+      indices[2 - i] = addVertexToDataProvider(
+          liquid.dataProvider, mesh, position.x, liquidZ, -position.y,
+          0, 1, 0, uv.x, uv.y, transparentVertexColour, liquidZ);
+    }
+    liquid.dataProvider->addTriangle(mesh, indices[0], indices[1], indices[2]);
+  }
+  liquid.dataProvider->finalizeInternals();
+  liquid.dataProvider->setNumPrimitives(liquid.dataProvider->getNumTriangles());
+}
+
 void WorldRenderer::updateWallDataProvider(
     bw::core::WorldData const& snapshot, glm::vec3 const& playerPosition,
     int32_t highlightedWall) {
   auto const& worldData = snapshot.getArrangement();
   auto const& walls = snapshot.getWalls();
-  auto& wallRenderer = mMaterialRenderers[1];
+  auto& wallRenderer = mMaterialRenderers[2];
 
   // Walls render two-sided, but only ever as a single quad: whichever side
   // currently faces the player keeps the wall's authored material: this
@@ -742,6 +775,7 @@ void WorldRenderer::update(
   if (mWorldHasChanged) {
     updateHorizontalDataProvider(
         worldData, highlightedTriangle, highlightedCeiling);
+    updateLiquidDataProvider(worldData);
     mWorldHasChanged = false;
   }
   // Unlike the horizontal provider, walls depend on playerPosition, so they

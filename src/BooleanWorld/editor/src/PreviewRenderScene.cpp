@@ -173,6 +173,11 @@ void PreviewRenderScene::reloadSubMaterialResolver(
   mRenderer->reloadSubMaterialResolver(resourceMgr);
 }
 
+std::uint32_t PreviewRenderScene::worldSurfaceTriangleCount(
+    WorldSurfaceSet surfaceSet) const {
+  return mRenderer->getSurfaceTriangleCount(surfaceSet);
+}
+
 void PreviewRenderScene::worldGeometryChanged() {
   mRenderer->setWorldChanged();
   // WorldRenderer rebuilds model resources lazily. Mark the domain as well so
