@@ -201,7 +201,23 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   options.ambientOcclusion.method = ambientOcclusionMethod;
   options.ambientOcclusion.ssao = mDebugDisplay.ssao;
   options.ambientOcclusion.gtao = mDebugDisplay.gtao;
-  if (ambientOcclusionEnabled) {
+  // world_pbr.frag/world_pbr_2d.frag always declare @Out(COLOUR),
+  // @Out(BLOOM_MASK), @Out(SHADING_NORMAL) and @Out(LIQUID_RETENTION), in
+  // that order, unconditionally - mpp has no mechanism to drop an output
+  // from compilation based on which MRT slots a given pipeline variant
+  // actually wants, so those four always compile to fixed locations 0-3.
+  // The render graph, on the other hand, only reserves real framebuffer
+  // attachments for locations 1 and 2 (BLOOM_MASK/SHADING_NORMAL) when GTAO
+  // is sourcing normals from that MRT slot; for SSAO or GTAO-from-depth (the
+  // default) those attachments don't exist, so a declared sceneExtraOutput
+  // lands on whatever attachment slot is next free - location 1 - and
+  // silently captures BLOOM_MASK's constant output instead of
+  // LIQUID_RETENTION's. Only wire the modulation input when GTAO's MRT
+  // normal source keeps locations 1-3 reserved and therefore aligned with
+  // the shader's fixed layout; other AO configurations fall back to
+  // unmodulated AO, as before this feature existed.
+  if (ambientOcclusionEnabled && ambientOcclusionMethod == mpp::AmbientOcclusionMethod::Gtao &&
+      mDebugDisplay.gtao.normalSource == mpp::GTAONormalSource::Mrt) {
     // Fade AO darkening out on submerged geometry as whatever's covering it
     // gets deeper/more opaque, rather than applying the same geometric AO
     // regardless of what's absorbing the light on the way to the eye.
