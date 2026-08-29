@@ -142,10 +142,10 @@ void offsetTorchHasAWorldSpaceMarker() {
           "The Player Torch marker does not use an unlit yellow material.");
 }
 
-void f1ExposesSessionOnlyDiagnostics() {
+void f5ExposesSessionOnlyDiagnostics() {
   auto appRoot = std::filesystem::path(BW_APP_RESOURCE_DIR).parent_path();
   auto state = read(appRoot / "src" / "StatePlayBooleanWorld.cpp");
-  for (auto label : {"{Key::F1}", "Distance ahead of player##PlayerTorch",
+  for (auto label : {"{Key::F5}", "Distance ahead of player##PlayerTorch",
                      "Attenuation radius##PlayerTorch",
                      "Falloff width##PlayerTorch",
                      "Enable override", "Range##PlayerTorch",
@@ -154,12 +154,12 @@ void f1ExposesSessionOnlyDiagnostics() {
                      "PCF radius##PlayerTorch", "Fade start##PlayerTorch",
                      "Cubemap resolution (configured)"}) {
     require(state.find(label) != std::string::npos,
-            std::string("F1 diagnostics are missing ") + label + ".");
+            std::string("F5 diagnostics are missing ") + label + ".");
   }
   require(state.find("faceResolution") == std::string::npos ||
               state.find("&sessionShadows.options.faceResolution") ==
                   std::string::npos,
-          "F1 exposes a mutable cubemap-resolution control.");
+          "F5 exposes a mutable cubemap-resolution control.");
 }
 }  // namespace
 
@@ -170,7 +170,7 @@ int main() {
     everyPipelineVariantSharesOneDomain();
     releaseShadersReceiveOnlyDirectTorchVisibility();
     offsetTorchHasAWorldSpaceMarker();
-    f1ExposesSessionOnlyDiagnostics();
+    f5ExposesSessionOnlyDiagnostics();
     std::cout << "Player Torch shadow integration tests passed\n";
     return 0;
   } catch (std::exception const& error) {

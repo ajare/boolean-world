@@ -1,5 +1,4 @@
 #include <cmath>
-#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -10,8 +9,9 @@
 
 #include <core/ArrangementWorldData.h>
 #include <core/ArrangementWorldDataGenerator.h>
+#include <core/RectanglePolygon.h>
+#include <core/RegularPolygon.h>
 #include <core/World.h>
-#include <core/YamlSerializer.h>
 
 #include "PlayerLocation.h"
 #include "WorldCollisionSim.h"
@@ -23,18 +23,21 @@ struct CollisionWall {
   wp::Vector2 playableNormal;
 };
 
-std::shared_ptr<bw::core::ArrangementWorldData> loadWorldData(
-    std::string const& filename) {
-  auto path = std::filesystem::path(BW_COLLISION_TEST_RESOURCE_DIR) / filename;
-  auto serializer = std::shared_ptr<bw::core::YamlSerializer>(
-      bw::core::YamlSerializer::fromFile(path.string()));
-  serializer->deserialize();
+std::shared_ptr<bw::core::ArrangementWorldData> makeRegressionWorldData() {
+  using bw::core::Primitive;
 
   bw::core::World world(8192.0f, 8192.0f);
-  bw::core::SerializationWorkData workData;
-  if (!world.deserialize(serializer, workData)) {
-    throw std::runtime_error("Could not deserialize collision fixture " + filename);
-  }
+  auto rectangle = new bw::core::RectanglePolygon(
+      Primitive::Operation::Union, Primitive::FillRule::NonZero, 1.0f);
+  rectangle->setSize(100.0f, 100.0f);
+  world.addPrimitive(rectangle);
+
+  auto triangle = new bw::core::RegularPolygon(
+      Primitive::Operation::Difference, Primitive::FillRule::NonZero, 3);
+  triangle->setPosition({0.0f, -70.0f});
+  triangle->setSize(100.0f, 100.0f);
+  triangle->setPriority(1);
+  world.addPrimitive(triangle);
 
   bw::core::ArrangementWorldDataGenerator generator;
   generator.generate(&world);
@@ -42,8 +45,8 @@ std::shared_ptr<bw::core::ArrangementWorldData> loadWorldData(
       generator.getWorldData(), world.getExtents(), 64.0f, 8.0f);
 }
 
-std::vector<CollisionWall> loadCollisionWalls(std::string const& filename) {
-  auto data = loadWorldData(filename);
+std::vector<CollisionWall> makeRegressionCollisionWalls() {
+  auto data = makeRegressionWorldData();
   auto const& arrangement = data->getArrangement();
   std::vector<CollisionWall> result;
   for (auto const& wall : data->getWalls()) {
@@ -81,7 +84,7 @@ void requireNear(float actual, float expected, float tolerance, std::string cons
 }
 
 void playerLocationUsesResolvedPosition() {
-  auto data = loadWorldData("collision-issue-repro.yaml");
+  auto data = makeRegressionWorldData();
   wp::Vector2 const preMovementPosition{4000.0f, 4000.0f};
   wp::Vector2 const resolvedPosition{0.0f, 0.0f};
 
@@ -102,7 +105,7 @@ void playerLocationUsesResolvedPosition() {
 
 void generatedWallsSlideFromThePlayableSide() {
   constexpr float radius = 6.0f;
-  auto walls = loadCollisionWalls("collision-issue-repro.yaml");
+  auto walls = makeRegressionCollisionWalls();
   require(walls.size() == 7, "Unexpected collision fixture topology");
 
   for (uint32_t wallIndex = 0; wallIndex < walls.size(); ++wallIndex) {

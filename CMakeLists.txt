@@ -149,4 +149,38 @@ add_subdirectory(src/AppLib)
 add_subdirectory(src/BooleanWorld)
 add_subdirectory(src/Launcher)
 
+if(BUILD_TESTING)
+    add_custom_target(RunAllTests
+        COMMAND "${CMAKE_CTEST_COMMAND}"
+                --build-config "$<CONFIG>"
+                --output-on-failure
+                --parallel
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        COMMENT "Run all tests for $<CONFIG>"
+        USES_TERMINAL
+        VERBATIM)
+    set_property(TARGET RunAllTests PROPERTY FOLDER "Tests")
+
+    # Building RunAllTests from Visual Studio must first bring every test
+    # executable up to date. Test targets consistently use the _tests suffix;
+    # GPU-dependent smoke executables intentionally do not, because they are
+    # manual tests and are not registered with CTest.
+    function(bw_add_test_target_dependencies directory)
+        get_property(directory_targets DIRECTORY "${directory}"
+                     PROPERTY BUILDSYSTEM_TARGETS)
+        foreach(target IN LISTS directory_targets)
+            if(target MATCHES "_tests$")
+                add_dependencies(RunAllTests "${target}")
+            endif()
+        endforeach()
+
+        get_property(subdirectories DIRECTORY "${directory}"
+                     PROPERTY SUBDIRECTORIES)
+        foreach(subdirectory IN LISTS subdirectories)
+            bw_add_test_target_dependencies("${subdirectory}")
+        endforeach()
+    endfunction()
+    bw_add_test_target_dependencies("${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
+
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Launcher)
