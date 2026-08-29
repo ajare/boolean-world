@@ -239,6 +239,8 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   output.antiAliasing.fxaa = bw::app::antiAliasingIsFxaa(antiAliasing);
   options.outputs.push_back(output);
   options.generatedWater = true;
+  options.waterReflections.technique =
+      mpp::WaterReflectionTechnique::ScreenSpace;
   options.depthPrepass = mDebugDisplay.depthPrepass;
   options.ambientOcclusion.method = ambientOcclusionMethod;
   options.ambientOcclusion.ssao = mDebugDisplay.ssao;

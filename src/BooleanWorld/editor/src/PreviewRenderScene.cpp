@@ -57,6 +57,10 @@ mpp::RenderPipelineOptions pipelineOptions() {
   output.antiAliasing.fxaa = false;
   options.outputs.push_back(output);
   options.generatedWater = true;
+  // The editor has no Launcher video configuration and deliberately keeps the
+  // established Screen-space reflection source explicit.
+  options.waterReflections.technique =
+      mpp::WaterReflectionTechnique::ScreenSpace;
 
   options.ambientOcclusion.method = mpp::AmbientOcclusionMethod::Gtao;
   options.ambientOcclusion.gtao.normalSource = mpp::GTAONormalSource::Depth;

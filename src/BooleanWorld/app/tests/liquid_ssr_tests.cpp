@@ -21,8 +21,10 @@ void everyWorldPathUsesThePostWaterWorld() {
   auto state = read(app / "src" / "StatePlayBooleanWorld.cpp");
   require(state.find("output.image = \"WaterComposite\"") != std::string::npos,
           "gameplay does not select WaterComposite");
-  require(state.find("options.generatedWater = true") != std::string::npos,
-          "gameplay does not opt into generated water topology");
+  require(state.find("options.generatedWater = true") != std::string::npos &&
+              state.find("WaterReflectionTechnique::ScreenSpace") !=
+                  std::string::npos,
+          "gameplay does not explicitly select Screen-space generated water");
   require(state.find("preWaterOutputImage + 2u") != std::string::npos &&
               state.find("3u + (activeShadowImage ? 1u : 0u)") !=
                   std::string::npos,
@@ -46,6 +48,8 @@ void everyWorldPathUsesThePostWaterWorld() {
   require(preview.find("output.image = \"WaterComposite\"") !=
                   std::string::npos &&
               preview.find("options.generatedWater = true") !=
+                  std::string::npos &&
+              preview.find("WaterReflectionTechnique::ScreenSpace") !=
                   std::string::npos &&
               preview.find("constexpr std::uint32_t outputImageIndex = 6u") !=
                   std::string::npos,
