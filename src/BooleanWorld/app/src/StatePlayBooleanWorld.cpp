@@ -76,6 +76,42 @@ constexpr char gPlayerTorchMarkerModelName[] =
     "BooleanWorld.PlayerTorchMarker.Model";
 const SecondaryMaterialOptions gNoSecondaryMaterial{};
 
+// The graph image backing the world shaders' LIQUID_RETENTION output. MPP
+// registers every RenderPipelineOptions::sceneExtraOutputs entry under a
+// "SceneExtra." prefix, so this is the name the ambient-occlusion composite
+// has to be pointed at - not the bare output name.
+constexpr char gLiquidRetentionImageName[] = "SceneExtra.LIQUID_RETENTION";
+
+// The extra scene-pass outputs the world pipeline declares when ambient
+// occlusion is on.
+//
+// Every scene program declares @Out(COLOUR), @Out(BLOOM_MASK),
+// @Out(SHADING_NORMAL) and @Out(LIQUID_RETENTION) in that order, and MPP
+// compiles fragment outputs to fixed locations from declaration order - it has
+// no mechanism to drop one for a pipeline variant that does not want it. The
+// graph only reserves built-in attachments for locations 1 and 2 when GTAO
+// sources its normals from that MRT slot, and appends these extras after
+// whichever built-ins are in play. So outside that one mode the extras begin
+// at location 1, and declaring LIQUID_RETENTION alone would bind it there and
+// capture BLOOM_MASK's constant 0 - ambient occlusion at full strength
+// everywhere, submerged or not. Naming the intervening outputs keeps
+// LIQUID_RETENTION on location 3 in every mode; nothing samples their
+// contents, hence the cheapest format.
+//
+// This is also the count that shifts every later graph image along, so
+// renderWorldThroughTarget resolves its output index through this same
+// function rather than hard-coding a second copy of the total.
+std::vector<mpp::RenderPipelineSceneExtraOutput> worldSceneExtraOutputs(
+    bool reservesMrtNormalSlots) {
+  std::vector<mpp::RenderPipelineSceneExtraOutput> outputs;
+  if (!reservesMrtNormalSlots) {
+    outputs.push_back({"BLOOM_MASK", mpp::GraphImageFormat::R8});
+    outputs.push_back({"SHADING_NORMAL", mpp::GraphImageFormat::R8});
+  }
+  outputs.push_back({"LIQUID_RETENTION", mpp::GraphImageFormat::R8});
+  return outputs;
+}
+
 // ImGui colours go here so they don't clutter up the header file
 const ImColor gImGui_MapBackgroundColour{0.2f, 0.2f, 0.8f};
 const ImColor gImGui_TriangulationLineColour{0.8f, 0.8f, 0.2f};
@@ -201,29 +237,16 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   options.ambientOcclusion.method = ambientOcclusionMethod;
   options.ambientOcclusion.ssao = mDebugDisplay.ssao;
   options.ambientOcclusion.gtao = mDebugDisplay.gtao;
-  // world_pbr.frag/world_pbr_2d.frag always declare @Out(COLOUR),
-  // @Out(BLOOM_MASK), @Out(SHADING_NORMAL) and @Out(LIQUID_RETENTION), in
-  // that order, unconditionally - mpp has no mechanism to drop an output
-  // from compilation based on which MRT slots a given pipeline variant
-  // actually wants, so those four always compile to fixed locations 0-3.
-  // The render graph, on the other hand, only reserves real framebuffer
-  // attachments for locations 1 and 2 (BLOOM_MASK/SHADING_NORMAL) when GTAO
-  // is sourcing normals from that MRT slot; for SSAO or GTAO-from-depth (the
-  // default) those attachments don't exist, so a declared sceneExtraOutput
-  // lands on whatever attachment slot is next free - location 1 - and
-  // silently captures BLOOM_MASK's constant output instead of
-  // LIQUID_RETENTION's. Only wire the modulation input when GTAO's MRT
-  // normal source keeps locations 1-3 reserved and therefore aligned with
-  // the shader's fixed layout; other AO configurations fall back to
-  // unmodulated AO, as before this feature existed.
-  if (ambientOcclusionEnabled && ambientOcclusionMethod == mpp::AmbientOcclusionMethod::Gtao &&
-      mDebugDisplay.gtao.normalSource == mpp::GTAONormalSource::Mrt) {
+  if (ambientOcclusionEnabled) {
     // Fade AO darkening out on submerged geometry as whatever's covering it
     // gets deeper/more opaque, rather than applying the same geometric AO
-    // regardless of what's absorbing the light on the way to the eye.
-    options.sceneExtraOutputs = {
-        {"LIQUID_RETENTION", mpp::GraphImageFormat::R8}};
-    options.ambientOcclusion.modulationInput = "SceneExtra.LIQUID_RETENTION";
+    // regardless of what's absorbing the light on the way to the eye. See
+    // worldSceneExtraOutputs for why the other outputs are named here too.
+    auto reservesMrtNormalSlots =
+        ambientOcclusionMethod == mpp::AmbientOcclusionMethod::Gtao &&
+        mDebugDisplay.gtao.normalSource == mpp::GTAONormalSource::Mrt;
+    options.sceneExtraOutputs = worldSceneExtraOutputs(reservesMrtNormalSlots);
+    options.ambientOcclusion.modulationInput = gLiquidRetentionImageName;
   }
   // Scale and AA variants all participate in this one render-system domain;
   // switching pipelines never allocates or renders a second cubemap.
@@ -1389,11 +1412,16 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   renderSystem->renderScene(
       mScene, mCamera3d, {0.0f, 0.0f}, pipeline->getName());
 
-  // The named output is always the final offscreen shaded image. AO adds three
-  // images before it; MRT-normal GTAO also inserts two scene attachments. An
-  // active shadow domain inserts its imported depth image between the scene
-  // depth and AO images, so account for it rather than presenting AO's white
-  // visibility texture as the world colour.
+  // The named output is always the final offscreen shaded image, addressed by
+  // its position among the pipeline's graph images. Every image MPP creates
+  // ahead of it shifts that position: AO adds three, MRT-normal GTAO also
+  // inserts two scene attachments, an active shadow domain inserts its
+  // imported depth image between the scene depth and the AO images, and the
+  // scene extra outputs are created before all of those. Miscounting does not
+  // fail cleanly - it silently addresses a different image, and presenting one
+  // with no colour attachment (the imported shadow cube) crashes in
+  // Texture::bind on an empty texture list. Derive the extras count from the
+  // same function the pipeline is built from rather than restating it.
   auto ambientOcclusionEnabled =
       !mDebugDisplay.fragmentOverdraw &&
       mDebugDisplay.ambientOcclusionEnabled &&
@@ -1405,8 +1433,13 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
       ambientOcclusionEnabled &&
       renderSystem->getShadowDomainOptions(
           std::string(bw::app::playerTorchShadowDomain)).enabled;
+  auto sceneExtraOutputCount =
+      ambientOcclusionEnabled
+          ? static_cast<std::uint32_t>(
+                worldSceneExtraOutputs(usesMrtNormals).size())
+          : 0u;
   auto outputImage = ambientOcclusionEnabled
-                         ? (usesMrtNormals ? 6u : 4u) +
+                         ? (usesMrtNormals ? 6u : 4u) + sceneExtraOutputCount +
                                (activeShadowImage ? 1u : 0u)
                          : 0u;
   auto sceneTarget = pipeline->getGraphImageRenderTarget({outputImage, 1});
@@ -2132,6 +2165,12 @@ void StatePlayBooleanWorld::debug_renderOptions() {
                                     : mpp::AmbientOcclusionMethod::Ssao;
       ambientOcclusion.ssao = mDebugDisplay.ssao;
       ambientOcclusion.gtao = mDebugDisplay.gtao;
+      // setAmbientOcclusionOptions replaces the pipeline's whole options
+      // struct, so the liquid modulation input has to be restated here or
+      // dragging any tuning slider would silently drop it and put ambient
+      // occlusion back to full strength under liquid. These pipelines were
+      // built with ambient occlusion on, so their extra outputs are declared.
+      ambientOcclusion.modulationInput = gLiquidRetentionImageName;
       for (auto const& depthPrepassPipelines : mWorldRenderPipelines) {
         for (auto const& row : depthPrepassPipelines) {
           for (auto const& pipeline : row) {
