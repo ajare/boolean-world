@@ -31,7 +31,7 @@ void waterOpticsAreAuthoredPerLiquidType() {
   auto const& water = GetLiquidProperties(LiquidType::Water);
   requireNear(water.reflectance, 1.0f,
               "Water Liquid reflectance changed unexpectedly");
-  requireNear(water.f0, 0.02f, "Water Liquid F0 changed unexpectedly");
+  requireNear(water.f0, 0.045f, "Water Liquid F0 changed unexpectedly");
   requireNear(water.opacity, 0.55f, "Water opacity changed unexpectedly");
   requireNear(water.referenceDepth, 40.0f,
               "Water reference depth changed unexpectedly");

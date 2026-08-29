@@ -22,6 +22,8 @@
 #include "WorldTriangle3dDataProvider.h"
 #include "WallRenderVariant.h"
 
+inline constexpr float defaultLiquidReflectionMipLevel = 0.65f;
+
 class WorldRenderer3d {
   wp::application::resourcesystem::ResourcePtr mMaterial;
   wp::application::resourcesystem::ResourcePtr mFragmentOverdrawMaterial;
@@ -101,6 +103,10 @@ public:
       float liquidEyeSurfaceHeight,
       glm::vec3 const& liquidExtinction,
       glm::vec3 const& liquidTint,
+      std::optional<float> liquidReflectanceOverride,
+      std::optional<float> liquidF0Override,
+      float liquidReflectionMipLevel,
+      bool liquidSsrEnabled,
       bw::app::PlayerTorchOptions const& playerTorch,
       bool sortGeometryFrontToBack,
       int32_t materialIndexOverride,

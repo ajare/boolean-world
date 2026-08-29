@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 
@@ -12,6 +14,7 @@
 #include <mpp/BoxModelStream.h>
 #include <mpp/ModelRenderParams.h>
 #include <mpp/ResourceManager.h>
+#include <mpp/RenderGraphExecutor.h>
 #include <mpp/helper/FreeCamera.h>
 
 #include <utils/Image.h>
@@ -430,6 +433,7 @@ void StatePlayBooleanWorld::registerInput() {
   registerInputState("Debug.ClipGen", {Key::F4}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("Debug.Options", {Key::F5}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("ToggleAllLayers", {Key::F9}, {}, {}, {}, {}, {}, false, false, 0, true);
+  registerInputState("RenderGraphCapture", {Key::F10}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("Screenshot", {Key::F11}, {}, {}, {}, {}, {}, false, false, 0, false);
 }
 
@@ -1170,6 +1174,8 @@ void StatePlayBooleanWorld::updateActions(vector<string> const& activeStates, fl
       mAllLayers = !mAllLayers;
       getMap()->getWorld()->getWorldDataGenerator()->setLayerSelection(
           layerSelection());
+    } else if (state == "RenderGraphCapture") {
+      mRenderGraphCaptureRequested = true;
     } else if (state == "Screenshot") {
       mScreenshotRequested = true;
     }
@@ -1231,8 +1237,12 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
       mDebugDisplay.playerTorch, mDebugDisplay.liquidOpacityOverride,
-      mDebugDisplay.liquidTintOverride, mDebugDisplay.sortGeometryFrontToBack,
-      gNoMaterialOverride, gNoMaterialOverride, gAuthoredMaterialScale,
+      mDebugDisplay.liquidTintOverride,
+      mDebugDisplay.liquidReflectanceOverride,
+      mDebugDisplay.liquidF0Override,
+      mDebugDisplay.liquidReflectionMipLevel, mDebugDisplay.liquidSsrEnabled,
+      mDebugDisplay.sortGeometryFrontToBack, gNoMaterialOverride,
+      gNoMaterialOverride, gAuthoredMaterialScale,
       gDefaultFarGridSize, gNoSecondaryMaterial, frameTime);
 }
 
@@ -1392,6 +1402,84 @@ void StatePlayBooleanWorld::saveScreenshot(
   }
 }
 
+void StatePlayBooleanWorld::saveRenderGraphImages(
+    std::vector<mpp::GraphImageCapture> const& captures,
+    std::vector<mpp::GraphPassExecutionStats> const& passStats) {
+  namespace fs = std::filesystem;
+  using namespace std::chrono;
+
+  try {
+    auto const now = system_clock::now();
+    auto const time = system_clock::to_time_t(now);
+    std::tm localTime{};
+#ifdef _WIN32
+    localtime_s(&localTime, &time);
+#else
+    localtime_r(&time, &localTime);
+#endif
+    auto const millisecondsPart =
+        duration_cast<milliseconds>(now.time_since_epoch()).count() % 1000;
+    std::ostringstream directoryName;
+    directoryName << std::put_time(&localTime, "%Y-%m-%d_%H-%M-%S-")
+                  << std::setfill('0') << std::setw(3) << millisecondsPart;
+    auto const directory = fs::current_path() / "shots" / directoryName.str();
+    fs::create_directories(directory);
+
+    std::map<std::string, size_t> passOutputCounts;
+    for (auto const& capture : captures) {
+      ++passOutputCounts[capture.passName];
+    }
+    auto sanitize = [](std::string name) {
+      for (auto& character : name) {
+        auto const value = static_cast<unsigned char>(character);
+        if (!std::isalnum(value) && character != '-' && character != '_') {
+          character = '_';
+        }
+      }
+      return name;
+    };
+    {
+      std::ofstream manifest(directory / "render-graph.txt");
+      for (auto const& stats : passStats) {
+        manifest << stats.name << ": triangles=" << stats.trianglesSubmitted
+                 << ", primitives=" << stats.primitivesSubmitted
+                 << ", fullscreen-quads=" << stats.fullscreenQuads << '\n';
+      }
+    }
+    for (size_t index = 0; index < captures.size(); ++index) {
+      auto const& capture = captures[index];
+      if (capture.width == 0 || capture.height == 0 ||
+          capture.pixels.empty()) {
+        continue;
+      }
+      std::ostringstream filename;
+      filename << std::setfill('0') << std::setw(2) << index << '_'
+               << sanitize(capture.passName);
+      if (passOutputCounts[capture.passName] > 1) {
+        filename << "--" << sanitize(capture.imageName);
+      }
+      if (capture.cubeFace != mpp::GraphNoCubeFace) {
+        filename << "--face-" << capture.cubeFace;
+      }
+      filename << ".png";
+
+      utils::Image image;
+      image.loadFromData(
+          capture.width, capture.height, 24, capture.pixels.data());
+      image.saveToFile((directory / filename.str()).string());
+    }
+    addDisplayMessage(
+        DisplayMessage::Level::Game,
+        "Saved " + std::to_string(captures.size()) +
+            " render-graph images to " + directory.string());
+  } catch (std::exception const& exception) {
+    addDisplayMessage(
+        DisplayMessage::Level::Game,
+        "Could not save render-graph images: " +
+            std::string(exception.what()));
+  }
+}
+
 void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSystem) {
   auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
   auto renderScale = model->getActiveRenderScale();
@@ -1417,8 +1505,18 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   // selected AA stage. The camera retains the window aspect ratio, and
   // the final composite stretches this target over that same window.
   mScene->setViewport(0, 0, worldTarget->getWidth(), worldTarget->getHeight());
+  auto const captureRenderGraph = mRenderGraphCaptureRequested;
+  mRenderGraphCaptureRequested = false;
+  if (captureRenderGraph) {
+    pipeline->requestGraphImageCapture();
+  }
   renderSystem->renderScene(
       mScene, mCamera3d, {0.0f, 0.0f}, pipeline->getName());
+  if (captureRenderGraph) {
+    saveRenderGraphImages(
+        pipeline->takeGraphImageCaptures(),
+        pipeline->getLastGraphExecutionStats());
+  }
 
   // The named output is always the final offscreen shaded image, addressed by
   // its position among the pipeline's graph images. Every image MPP creates
@@ -1439,9 +1537,9 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
       ambientOcclusionEnabled &&
       mDebugDisplay.ambientOcclusion == bw::app::AmbientOcclusion::GtaoNormals;
   auto activeShadowImage =
-      ambientOcclusionEnabled &&
-      renderSystem->getShadowDomainOptions(
-          std::string(bw::app::playerTorchShadowDomain)).enabled;
+      !mDebugDisplay.fragmentOverdraw &&
+      renderSystem->getShadowDomainDepthTarget(
+          std::string(bw::app::playerTorchShadowDomain)) != nullptr;
   auto sceneExtraOutputCount =
       ambientOcclusionEnabled
           ? static_cast<std::uint32_t>(
@@ -1452,9 +1550,15 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
                                        sceneExtraOutputCount +
                                        (activeShadowImage ? 1u : 0u)
                                  : 0u;
+  // Without AO, SceneDepth (and optionally the shadow import) sits between
+  // SceneLdr and the two generated-water images. With AO, those earlier images
+  // are already included in preWaterOutputImage, so only the two water images
+  // remain to be added.
   auto outputImage = mDebugDisplay.fragmentOverdraw
                          ? preWaterOutputImage
-                         : preWaterOutputImage + 2u;
+                     : ambientOcclusionEnabled
+                         ? preWaterOutputImage + 2u
+                         : 3u + (activeShadowImage ? 1u : 0u);
   auto sceneTarget = pipeline->getGraphImageRenderTarget({outputImage, 1});
   assert(sceneTarget);
   auto sceneTexture = static_cast<mpp::RenderTexture*>(sceneTarget.get());
@@ -2057,9 +2161,50 @@ void StatePlayBooleanWorld::debug_renderOptions() {
         mDebugDisplay.liquidTintOverride = tint;
       }
       ImGui::EndDisabled();
+
+      auto reflectanceOverrideEnabled =
+          mDebugDisplay.liquidReflectanceOverride.has_value();
+      if (ImGui::Checkbox(
+              "Override liquid reflectance", &reflectanceOverrideEnabled)) {
+        mDebugDisplay.liquidReflectanceOverride = reflectanceOverrideEnabled
+            ? std::optional<float>{getLiquidPropertiesAt(
+                                        getPlayerPosition())
+                                        .reflectance}
+            : std::nullopt;
+      }
+      ImGui::BeginDisabled(!reflectanceOverrideEnabled);
+      auto reflectance =
+          mDebugDisplay.liquidReflectanceOverride.value_or(0.0f);
+      if (ImGui::SliderFloat(
+              "Reflectance##Liquid", &reflectance, 0.0f, 1.0f, "%.3f")) {
+        mDebugDisplay.liquidReflectanceOverride = reflectance;
+      }
+      ImGui::EndDisabled();
+
+      auto f0OverrideEnabled = mDebugDisplay.liquidF0Override.has_value();
+      if (ImGui::Checkbox("Override liquid F0", &f0OverrideEnabled)) {
+        mDebugDisplay.liquidF0Override = f0OverrideEnabled
+            ? std::optional<float>{getLiquidPropertiesAt(
+                                        getPlayerPosition())
+                                        .f0}
+            : std::nullopt;
+      }
+      ImGui::BeginDisabled(!f0OverrideEnabled);
+      auto f0 = mDebugDisplay.liquidF0Override.value_or(0.0f);
+      if (ImGui::SliderFloat("F0##Liquid", &f0, 0.0f, 1.0f, "%.3f")) {
+        mDebugDisplay.liquidF0Override = f0;
+      }
+      ImGui::EndDisabled();
+
+      ImGui::Checkbox("Enable water SSR", &mDebugDisplay.liquidSsrEnabled);
+      ImGui::BeginDisabled(!mDebugDisplay.liquidSsrEnabled);
+      ImGui::SliderFloat(
+          "Reflection mip level##Liquid",
+          &mDebugDisplay.liquidReflectionMipLevel, 0.0f, 4.0f, "%.2f");
+      ImGui::EndDisabled();
       ImGui::TextDisabled(
-          "Debug-only - overrides LiquidProperties::opacity/tint for this "
-          "play session.");
+          "Debug-only - overrides LiquidProperties::opacity/tint/reflectance/F0 "
+          "and SSR reflection sampling for this play session.");
     }
 
     ImGui::Separator();

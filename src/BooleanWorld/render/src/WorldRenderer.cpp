@@ -756,6 +756,10 @@ void WorldRenderer::update(
     bw::app::PlayerTorchOptions const& playerTorch,
     std::optional<float> liquidOpacityOverride,
     std::optional<std::array<float, 3>> const& liquidTintOverride,
+    std::optional<float> liquidReflectanceOverride,
+    std::optional<float> liquidF0Override,
+    float liquidReflectionMipLevel,
+    bool liquidSsrEnabled,
     bool sortGeometryFrontToBack,
     int32_t horizontalMaterialIndexOverride,
     int32_t wallMaterialIndexOverride,
@@ -792,7 +796,7 @@ void WorldRenderer::update(
   // authored LiquidType. Keep its optical properties available so a dry eye
   // can absorb a wet far endpoint; the dry surface sentinel still makes every
   // dry-to-dry path exactly zero.
-  // F5's session-only overrides stand in for the authored opacity/tint alone;
+  // F5's session-only overrides stand in for authored optical tuning alone;
   // density, viscosity, and referenceDepth stay as authored.
   auto liquid = bw::core::GetLiquidProperties(
       worldData.getLiquidType({playerPosition.x, -playerPosition.z}));
@@ -818,7 +822,10 @@ void WorldRenderer::update(
             : horizontalMaterialIndexOverride;
     item.renderer->update(
         playerPosition, lightPosition, liquidEyeSurfaceHeight, liquidExtinction,
-        liquidTint, playerTorch, sortGeometryFrontToBack, materialIndexOverride,
-        materialScale, farGridSize, secondaryMaterial, frameTime);
+        liquidTint, liquidReflectanceOverride, liquidF0Override,
+        liquidReflectionMipLevel,
+        liquidSsrEnabled, playerTorch, sortGeometryFrontToBack,
+        materialIndexOverride, materialScale,
+        farGridSize, secondaryMaterial, frameTime);
   }
 }

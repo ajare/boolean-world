@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include <mpp/Material.h>
 #include <mpp/Program.h>
 #include <mpp/ProgrammaticBasicMaterialStream.h>
@@ -210,7 +212,10 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("LIQUID_TINT", glm::vec3{});
     uniforms.setUniform("LIQUID_REFLECTANCE", 0.0f);
     uniforms.setUniform("LIQUID_F0", 0.0f);
+    uniforms.setUniform(
+        "LIQUID_REFLECTION_MIP_LEVEL", defaultLiquidReflectionMipLevel);
     uniforms.setUniform("LIQUID_AMBIENT_TINT", glm::vec3{});
+    uniforms.setUniform("LIQUID_WATER_PASS_ENABLED", int32_t{0});
     uniforms.setUniform("LIQUID_SSR_ENABLED", int32_t{0});
     uniforms.setUniform("LIGHT_ATTENUATION_RADIUS", 192.0f);
     uniforms.setUniform("LIGHT_ATTENUATION_FALLOFF", 64.0f);
@@ -249,6 +254,13 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         mMaterialIndices[meshIndex] =
             static_cast<int32_t>(resolved.materialIndex);
       }
+      continue;
+    }
+    // Liquid has only its reserved interface-material buckets, initialized
+    // below. Looking authored floor/ceiling materials up in that model returns
+    // the fallback mesh index and would poison the water bucket with ordinary
+    // surface uniforms before its real initialization.
+    if (mSurfaceSet == WorldSurfaceSet::Liquid) {
       continue;
     }
 
@@ -393,11 +405,19 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         initializeGlobalUniforms(*uniforms);
         auto const& liquid = bw::core::GetLiquidProperties(
             static_cast<bw::core::LiquidType>(i));
-        uniforms->setUniform("LIQUID_REFLECTANCE", liquid.reflectance);
-        uniforms->setUniform("LIQUID_F0", liquid.f0);
-        uniforms->setUniform(
+        // initializeGlobalUniforms created these entries with inert defaults;
+        // update them rather than calling setUniform again (which deliberately
+        // does not replace an existing UniformCollection entry).
+        uniforms->updateUniform("LIQUID_REFLECTANCE", liquid.reflectance);
+        uniforms->updateUniform("LIQUID_F0", liquid.f0);
+        uniforms->updateUniform(
+            "LIQUID_REFLECTION_MIP_LEVEL", defaultLiquidReflectionMipLevel);
+        uniforms->updateUniform(
             "LIQUID_AMBIENT_TINT",
             glm::vec3{liquid.tint[0], liquid.tint[1], liquid.tint[2]});
+        uniforms->updateUniform(
+            "LIQUID_WATER_PASS_ENABLED",
+            int32_t{mDeferToWaterPass ? 1 : 0});
         uniforms->updateUniform(
             "LIQUID_SSR_ENABLED", int32_t{mDeferToWaterPass ? 1 : 0});
         mUniforms[meshIndex] = uniforms;
@@ -461,6 +481,10 @@ void WorldRenderer3d::update(
     float liquidEyeSurfaceHeight,
     glm::vec3 const& liquidExtinction,
     glm::vec3 const& liquidTint,
+    std::optional<float> liquidReflectanceOverride,
+    std::optional<float> liquidF0Override,
+    float liquidReflectionMipLevel,
+    bool liquidSsrEnabled,
     bw::app::PlayerTorchOptions const& playerTorch,
     bool sortGeometryFrontToBack,
     int32_t materialIndexOverride,
@@ -485,6 +509,29 @@ void WorldRenderer3d::update(
     uc->updateUniform("LIQUID_EYE_SURFACE_Z", liquidEyeSurfaceHeight);
     uc->updateUniform("LIQUID_EXTINCTION", liquidExtinction);
     uc->updateUniform("LIQUID_TINT", liquidTint);
+    if (mSurfaceSet == WorldSurfaceSet::Liquid) {
+      uc->updateUniform(
+          "LIQUID_REFLECTION_MIP_LEVEL",
+          clamp(liquidReflectionMipLevel, 0.0f, 4.0f));
+      uc->updateUniform(
+          "LIQUID_SSR_ENABLED",
+          int32_t{mDeferToWaterPass && liquidSsrEnabled ? 1 : 0});
+      for (int32_t liquidIndex = 0;
+           liquidIndex < bw::core::LiquidTypeCount; ++liquidIndex) {
+        auto liquidType = static_cast<bw::core::LiquidType>(liquidIndex);
+        if (mMaterialIndices[i] !=
+            static_cast<int32_t>(bw::core::LiquidMaterialIndex(liquidType))) {
+          continue;
+        }
+        auto const& properties = bw::core::GetLiquidProperties(liquidType);
+        uc->updateUniform(
+            "LIQUID_REFLECTANCE",
+            liquidReflectanceOverride.value_or(properties.reflectance));
+        uc->updateUniform(
+            "LIQUID_F0", liquidF0Override.value_or(properties.f0));
+        break;
+      }
+    }
     uc->updateUniform(
         "LIGHT_ATTENUATION_RADIUS", playerTorch.attenuationRadius);
     uc->updateUniform(

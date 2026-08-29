@@ -35,6 +35,11 @@
 #include "ClippingRecord.h"
 #include "PlayerTorchShadows.h"
 
+namespace mpp {
+struct GraphImageCapture;
+struct GraphPassExecutionStats;
+}
+
 class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
   struct DebugDisplay {
     bool minimap{false};
@@ -58,11 +63,15 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     float vignetteInnerRadius{0.55f};
     float vignetteFalloffWidth{0.65f};
 
-    // F5 session-only overrides for the liquid at the player's position - see
-    // core/LiquidProperties.h. Unset leaves the authored LiquidProperties
-    // untouched.
+    // F5 session-only optical overrides for Liquid at the player's position.
+    // Unset property overrides leave core/LiquidProperties.h untouched; the
+    // reflection mip level controls only SSR sampling blur.
     std::optional<float> liquidOpacityOverride;
     std::optional<std::array<float, 3>> liquidTintOverride;
+    std::optional<float> liquidReflectanceOverride;
+    std::optional<float> liquidF0Override;
+    float liquidReflectionMipLevel{defaultLiquidReflectionMipLevel};
+    bool liquidSsrEnabled{true};
 
     float lightDistance{0.0f};
     bw::app::PlayerTorchOptions playerTorch;
@@ -127,6 +136,7 @@ private:
   bool mExitScheduled;
 
   bool mScreenshotRequested{false};
+  bool mRenderGraphCaptureRequested{false};
 
   // Once MPP has disabled a requested domain after unsupported hardware or a
   // failed allocation, a session override must not retry around that fallback.
@@ -298,6 +308,9 @@ private:
   void addDisplayMessage(DisplayMessage::Level level, std::string const& message);
 
   void saveScreenshot(mpp::RenderSystem* renderSystem);
+  void saveRenderGraphImages(
+      std::vector<mpp::GraphImageCapture> const& captures,
+      std::vector<mpp::GraphPassExecutionStats> const& passStats);
 
   void renderWorldThroughTarget(mpp::RenderSystem* renderSystem);
 

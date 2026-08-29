@@ -12,7 +12,9 @@
 @@Uniform(vec3 LIQUID_TINT);
 @@Uniform(float LIQUID_REFLECTANCE);
 @@Uniform(float LIQUID_F0);
+@@Uniform(float LIQUID_REFLECTION_MIP_LEVEL);
 @@Uniform(vec3 LIQUID_AMBIENT_TINT);
+@@Uniform(int LIQUID_WATER_PASS_ENABLED);
 @@Uniform(int LIQUID_SSR_ENABLED);
 @@Uniform(float LIGHT_ATTENUATION_RADIUS);
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
@@ -2727,7 +2729,8 @@ void main()
     if (bucketMaterialIndex == 40)
     {
         vec2 screenUv = gl_FragCoord.xy * VIEWPORT_SIZE.zw;
-        bool hasWaterPass = @Uniform(LIQUID_SSR_ENABLED) != 0;
+        bool hasWaterPass = @Uniform(LIQUID_WATER_PASS_ENABLED) != 0;
+        bool ssrEnabled = hasWaterPass && @Uniform(LIQUID_SSR_ENABLED) != 0;
         if (hasWaterPass && gl_FragCoord.z > liquidSceneDepth(screenUv))
             discard;
 
@@ -2743,14 +2746,19 @@ void main()
         float nDotV = clamp(dot(interfaceNormal, viewDir), 0.0, 1.0);
         float f0 = clamp(@Uniform(LIQUID_F0), 0.0, 1.0);
         float schlick = f0 + (1.0 - f0) * pow(1.0 - nDotV, 5.0);
-        float alpha = clamp(@Uniform(LIQUID_REFLECTANCE), 0.0, 1.0) * schlick;
+        // F5's SSR toggle is a visual comparison control: disabling it removes
+        // the reflected interface, including the miss fallback, while leaving
+        // water-pass depth rejection and the absorbed scene underneath intact.
+        float alpha = ssrEnabled
+            ? clamp(@Uniform(LIQUID_REFLECTANCE), 0.0, 1.0) * schlick
+            : 0.0;
 
         vec3 viewPosition = vec3(VIEW_MATRIX * vec4(worldPos, 1.0));
         vec3 viewNormal = normalize(mat3(VIEW_MATRIX) * interfaceNormal);
         vec3 reflectionDirection = normalize(
             reflect(normalize(viewPosition), viewNormal));
         vec2 hitUv;
-        float confidence = hasWaterPass
+        float confidence = ssrEnabled
             ? liquidMarch(viewPosition, reflectionDirection, hitUv)
             : 0.0;
 
@@ -2770,7 +2778,8 @@ void main()
         vec3 fallback = vec3(0.12) *
             @Uniform(LIQUID_AMBIENT_TINT) * fadeToBlack;
         vec3 hitColour = textureLod(
-            @Texture(PBR_SCENE_COLOUR_RESOLVED), hitUv, 0.65).rgb;
+            @Texture(PBR_SCENE_COLOUR_RESOLVED), hitUv,
+            clamp(@Uniform(LIQUID_REFLECTION_MIP_LEVEL), 0.0, 4.0)).rgb;
         vec3 reflectionColour = mix(fallback, hitColour, confidence);
 
         // Fixed-function alpha blending overlays reflection over the absorption

@@ -24,7 +24,7 @@ constexpr array<LiquidProperties, LiquidTypeCount> liquidProperties{{
     // values preserve the former liquid-material albedo and approximately its
     // apparent opacity over a typical 40-unit pool depth. Its complete
     // interface is physical-strength reflection with water's F0.
-    {1.0f, 12.0f, 1.0f, 0.02f, 0.55f, 40.0f, {0.10f, 0.35f, 0.60f}},
+    {1.0f, 12.0f, 1.0f, 0.045f, 0.55f, 40.0f, {0.10f, 0.35f, 0.60f}},
 
 }};
 
