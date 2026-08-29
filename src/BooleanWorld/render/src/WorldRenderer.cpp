@@ -7,6 +7,7 @@
 #include <common/GameDefines.h>
 
 #include <core/Defines.h>
+#include <core/LiquidProperties.h>
 #include <core/LiquidType.h>
 #include <core/MaterialDefinition.h>
 #include <core/World.h>
@@ -725,14 +726,29 @@ void WorldRenderer::update(
   // world itself changed.
   updateWallDataProvider(worldData, playerPosition, highlightedWall);
 
+  auto liquidEyeSurfaceHeight =
+      worldData.getLiquidSurfaceHeight({playerPosition.x, -playerPosition.z});
+  glm::vec3 liquidExtinction{};
+  glm::vec3 liquidTint{};
+  if (std::isfinite(liquidEyeSurfaceHeight)) {
+    auto const& liquid = bw::core::GetLiquidProperties(
+        worldData.getLiquidType({playerPosition.x, -playerPosition.z}));
+    auto const extinction = bw::core::CalculateLiquidExtinction(liquid);
+    liquidExtinction = {extinction[0], extinction[1], extinction[2]};
+    liquidTint = {liquid.tint[0], liquid.tint[1], liquid.tint[2]};
+  } else {
+    liquidEyeSurfaceHeight =
+        WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
+  }
+
   for (auto& item : mMaterialRenderers) {
     auto const materialIndexOverride =
         item.surfaceSet == WorldSurfaceSet::Walls
             ? wallMaterialIndexOverride
             : horizontalMaterialIndexOverride;
     item.renderer->update(
-        playerPosition, lightPosition, playerTorch, sortGeometryFrontToBack,
-        materialIndexOverride, materialScale, farGridSize, secondaryMaterial,
-        frameTime);
+        playerPosition, lightPosition, liquidEyeSurfaceHeight, liquidExtinction,
+        liquidTint, playerTorch, sortGeometryFrontToBack, materialIndexOverride,
+        materialScale, farGridSize, secondaryMaterial, frameTime);
   }
 }

@@ -7,6 +7,9 @@
 @@Uniform(float FAR_GRID_SIZE);
 @@Uniform(vec3 PLAYER_POSITION);
 @@Uniform(vec3 LIGHT_POSITION);
+@@Uniform(float LIQUID_EYE_SURFACE_Z);
+@@Uniform(vec3 LIQUID_EXTINCTION);
+@@Uniform(vec3 LIQUID_TINT);
 @@Uniform(float LIGHT_ATTENUATION_RADIUS);
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
 @@Uniform(float MATERIAL_SCALE);

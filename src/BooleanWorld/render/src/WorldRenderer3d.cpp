@@ -181,6 +181,11 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("FAR_GRID_SIZE", 0.5f);
     uniforms.setUniform("PLAYER_POSITION", glm::vec3{});
     uniforms.setUniform("LIGHT_POSITION", glm::vec3{});
+    uniforms.setUniform(
+        "LIQUID_EYE_SURFACE_Z",
+        WorldTriangle3dDataProvider::dryLiquidSurfaceHeight);
+    uniforms.setUniform("LIQUID_EXTINCTION", glm::vec3{});
+    uniforms.setUniform("LIQUID_TINT", glm::vec3{});
     uniforms.setUniform("LIGHT_ATTENUATION_RADIUS", 192.0f);
     uniforms.setUniform("LIGHT_ATTENUATION_FALLOFF", 64.0f);
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
@@ -412,6 +417,9 @@ void WorldRenderer3d::setFragmentOverdraw(bool enabled) {
 void WorldRenderer3d::update(
     glm::vec3 const& playerPosition,
     glm::vec3 const& lightPosition,
+    float liquidEyeSurfaceHeight,
+    glm::vec3 const& liquidExtinction,
+    glm::vec3 const& liquidTint,
     bw::app::PlayerTorchOptions const& playerTorch,
     bool sortGeometryFrontToBack,
     int32_t materialIndexOverride,
@@ -433,6 +441,9 @@ void WorldRenderer3d::update(
     uc->updateUniform("FAR_GRID_SIZE", farGridSize);
     uc->updateUniform("PLAYER_POSITION", playerPosition);
     uc->updateUniform("LIGHT_POSITION", lightPosition);
+    uc->updateUniform("LIQUID_EYE_SURFACE_Z", liquidEyeSurfaceHeight);
+    uc->updateUniform("LIQUID_EXTINCTION", liquidExtinction);
+    uc->updateUniform("LIQUID_TINT", liquidTint);
     uc->updateUniform(
         "LIGHT_ATTENUATION_RADIUS", playerTorch.attenuationRadius);
     uc->updateUniform(

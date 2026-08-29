@@ -87,6 +87,9 @@ public:
   void update(
       glm::vec3 const& playerPosition,
       glm::vec3 const& lightPosition,
+      float liquidEyeSurfaceHeight,
+      glm::vec3 const& liquidExtinction,
+      glm::vec3 const& liquidTint,
       bw::app::PlayerTorchOptions const& playerTorch,
       bool sortGeometryFrontToBack,
       int32_t materialIndexOverride,
