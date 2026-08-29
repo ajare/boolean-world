@@ -26,9 +26,9 @@ namespace {
 constexpr uint32_t untintedVertexColour = 0xffffffffu;
 // Full red/green, 35% blue: the preview's established looked-at tint.
 constexpr uint32_t lookedAtVertexColour = 0xff59ffffu;
-// Untinted (the liquid material's own albedo already carries its colour),
-// 60% opaque: the fixed translucency of a rendered liquid surface.
-constexpr uint32_t waterVertexColour = 0x99ffffffu;
+// Phase 1 has no liquid-interface contribution; absorption belongs to the
+// submerged surface behind it. The liquid mesh remains for reflection later.
+constexpr uint32_t transparentVertexColour = 0x00ffffffu;
 
 string normalMapIdentity(bw::core::WallNormalMapOverride::ImageData const& image) {
   ostringstream result;
@@ -428,7 +428,7 @@ void WorldRenderer::updateHorizontalDataProvider(
         auto uv = positions[i] / 64.0f;
         liquidIndices[2 - i] = addVertexToDataProvider(
             horizontal.dataProvider, liquidMesh, positions[i].x, liquidZ,
-            -positions[i].y, 0, 1, 0, uv.x, uv.y, waterVertexColour,
+            -positions[i].y, 0, 1, 0, uv.x, uv.y, transparentVertexColour,
             liquidSurfaceHeight);
       }
       horizontal.dataProvider->addTriangle(
