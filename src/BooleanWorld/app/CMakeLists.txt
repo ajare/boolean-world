@@ -169,6 +169,19 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_collision_tests)
     add_test(NAME boolean_world_collision COMMAND boolean_world_collision_tests)
 
+    add_executable(boolean_world_player_liquid_traversal_tests
+        tests/player_liquid_traversal_tests.cpp)
+    target_include_directories(boolean_world_player_liquid_traversal_tests PRIVATE
+        include)
+    target_link_libraries(boolean_world_player_liquid_traversal_tests PRIVATE
+        core)
+    target_compile_features(boolean_world_player_liquid_traversal_tests PRIVATE
+        cxx_std_23)
+    bw_target_defaults(boolean_world_player_liquid_traversal_tests)
+    bw_output_dirs(boolean_world_player_liquid_traversal_tests)
+    add_test(NAME boolean_world_player_liquid_traversal
+             COMMAND boolean_world_player_liquid_traversal_tests)
+
     add_executable(boolean_world_player_view_tests
         tests/player_view_tests.cpp
         src/ReactiveCamera.cpp)

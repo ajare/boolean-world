@@ -4,6 +4,7 @@
 #include <vector>
 #include <deque>
 #include <mutex>
+#include <optional>
 
 #include <mpp/AmbientOcclusion.h>
 #include <mpp/AntiAliasing.h>
@@ -56,6 +57,12 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     float vignetteStrength{0.58f};
     float vignetteInnerRadius{0.55f};
     float vignetteFalloffWidth{0.65f};
+
+    // F5 session-only overrides for the liquid at the player's position - see
+    // core/LiquidProperties.h. Unset leaves the authored LiquidProperties
+    // untouched.
+    std::optional<float> liquidOpacityOverride;
+    std::optional<std::array<float, 3>> liquidTintOverride;
 
     float lightDistance{0.0f};
     bw::app::PlayerTorchOptions playerTorch;
@@ -281,8 +288,8 @@ private:
 
   // Lifts the player out of the liquid onto an adjacent floor when they are
   // floating as high as swimming allows, pressed against the edge shared with
-  // that floor, looking up over it, and it sits no more than
-  // BW_PLAYER_MAX_CLIMB_OUT_HEIGHT above the surface with room to stand.
+  // that floor, looking up over it, and its elevation is within
+  // BW_PLAYER_MAX_CLIMB_OUT_HEIGHT of their eye level with room to stand.
   // Moves them the shortest distance that puts them clear on the far side, or
   // leaves them where they are if no edge qualifies. Returns whether it moved
   // them.

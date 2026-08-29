@@ -41,6 +41,7 @@
 
 #include "StatePlayBooleanWorld.h"
 
+#include "PlayerLiquidTraversal.h"
 #include "PlayerTorchShadows.h"
 #include "BooleanWorldModel.h"
 #include "EntityHandlerBooleanWorld.h"
@@ -474,9 +475,13 @@ void StatePlayBooleanWorld::createWorldCollisions(
   auto const& walls = mWorldData->getWalls();
   auto radius = BW_PLAYER_SPEED + BW_PLAYER_RADIUS;
   auto const& playerPosition = getPlayerPhysicalStats().position;
+  auto swimming = isPlayerSwimming();
+  auto descendingForTraversal =
+      bw::app::isDescendingForTallStepTraversal(
+          swimming, mPlayerVerticalVelocity);
   for (auto wallIndex : mWorldData->getWallsNearForTraversal(
            predictedPosition, radius, playerPosition,
-           mPlayerVerticalVelocity < 0.0f)) {
+           descendingForTraversal)) {
     auto const& wall = walls[wallIndex];
     auto const& edge = arrangement.edges[wall.edge];
     auto const& fixed0 = arrangement.vertices[edge.v[0]];
@@ -496,12 +501,16 @@ void StatePlayBooleanWorld::createWorldCollisions(
     // response then strips the inward component of every direction at once,
     // freezing the player in place. Only walls blocking purely by the
     // step-height rule are skipped this way - authored collision, Borders and
-    // clearance limits stay solid regardless.
+    // clearance limits stay solid regardless. Never suppress this wall for a
+    // swimmer: the deliberate climb-out action moves their whole collider
+    // clear of the edge after checking view pitch, facing and reach. Letting
+    // horizontal collision cross here would bypass those checks.
     auto blocksOnlyByStepHeight =
         wall.kind == bw::core::arr::ArrangementWallKind::FloorStep &&
         !edge.collidesOverride.value_or(false) &&
         wall.clearance >= BW_PLAYER_HEIGHT;
     if (blocksOnlyByStepHeight &&
+        bw::app::maySuppressOverlappingTallStep(swimming) &&
         playerPosition.distanceToLine(v0, v1) < BW_PLAYER_RADIUS) {
       continue;
     }
@@ -740,9 +749,7 @@ bool StatePlayBooleanWorld::tryClimbOutOfLiquid() {
     return false;
   }
 
-  // Pitch is degrees, positive looking down (see FpsCamera::updateAngles), so
-  // looking up over the ledge is a negative pitch.
-  if (physicalStats.pitch >= 0.0f) {
+  if (!bw::app::isLookingUpForLiquidClimb(physicalStats.pitch)) {
     return false;
   }
 
@@ -789,7 +796,7 @@ bool StatePlayBooleanWorld::tryClimbOutOfLiquid() {
 
     // Facing the floor they mean to climb onto, rather than merely drifting
     // against some other edge of the pool.
-    if (forward.dot(outward) <= 0.0f) {
+    if (!bw::app::isFacingLiquidClimbTarget(forward.dot(outward))) {
       continue;
     }
 
@@ -797,12 +804,10 @@ bool StatePlayBooleanWorld::tryClimbOutOfLiquid() {
         arrangement.palette[arrangement.faces[targetFace].paletteIndex];
     // Climbing out is a lift onto something above the swimmer. A floor at or
     // below their float height is just more of the pool - reachable by
-    // swimming, and nothing to haul themselves onto.
-    if (targetProperties.floorZ <= physicalStats.floorZ) {
-      continue;
-    }
-    if (targetProperties.floorZ - liquidSurface >
-        BW_PLAYER_MAX_CLIMB_OUT_HEIGHT) {
+    // swimming, and nothing to haul themselves onto. The ledge itself must
+    // also be within arm's reach of their eye level.
+    if (!bw::app::canClimbOutOfLiquidToFloor(
+            physicalStats.floorZ, targetProperties.floorZ)) {
       continue;
     }
     if (targetProperties.ceilingZ - targetProperties.floorZ <
@@ -1223,7 +1228,8 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   mPlayerTorchShadowRequestedEnabled = desiredOptions.enabled;
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
-      mDebugDisplay.playerTorch, mDebugDisplay.sortGeometryFrontToBack,
+      mDebugDisplay.playerTorch, mDebugDisplay.liquidOpacityOverride,
+      mDebugDisplay.liquidTintOverride, mDebugDisplay.sortGeometryFrontToBack,
       gNoMaterialOverride, gNoMaterialOverride, gAuthoredMaterialScale,
       gDefaultFarGridSize, gNoSecondaryMaterial, frameTime);
 }
@@ -2008,6 +2014,46 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     }
     ImGui::TextDisabled(
         "Regenerates Wedges for this play session; does not save the World.");
+
+    {
+      auto opacityOverrideEnabled =
+          mDebugDisplay.liquidOpacityOverride.has_value();
+      if (ImGui::Checkbox(
+              "Override liquid opacity", &opacityOverrideEnabled)) {
+        mDebugDisplay.liquidOpacityOverride = opacityOverrideEnabled
+            ? std::optional<float>{getLiquidPropertiesAt(
+                                        getPlayerPosition())
+                                        .opacity}
+            : std::nullopt;
+      }
+      ImGui::BeginDisabled(!opacityOverrideEnabled);
+      auto opacity = mDebugDisplay.liquidOpacityOverride.value_or(0.0f);
+      if (ImGui::SliderFloat(
+              "Opacity##Liquid", &opacity, 0.0f, 0.999f, "%.3f")) {
+        mDebugDisplay.liquidOpacityOverride = opacity;
+      }
+      ImGui::EndDisabled();
+
+      auto tintOverrideEnabled =
+          mDebugDisplay.liquidTintOverride.has_value();
+      if (ImGui::Checkbox("Override liquid colour", &tintOverrideEnabled)) {
+        mDebugDisplay.liquidTintOverride = tintOverrideEnabled
+            ? std::optional<std::array<float, 3>>{getLiquidPropertiesAt(
+                                                        getPlayerPosition())
+                                                        .tint}
+            : std::nullopt;
+      }
+      ImGui::BeginDisabled(!tintOverrideEnabled);
+      auto tint = mDebugDisplay.liquidTintOverride.value_or(
+          std::array<float, 3>{0.5f, 0.5f, 0.5f});
+      if (ImGui::ColorEdit3("Colour##Liquid", tint.data())) {
+        mDebugDisplay.liquidTintOverride = tint;
+      }
+      ImGui::EndDisabled();
+      ImGui::TextDisabled(
+          "Debug-only - overrides LiquidProperties::opacity/tint for this "
+          "play session.");
+    }
 
     ImGui::Separator();
     ImGui::TextUnformatted("Video");

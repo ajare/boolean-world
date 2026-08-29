@@ -202,7 +202,8 @@ std::uint32_t PreviewRenderScene::render(
   // pointer by outlining it below, not by tinting the material.
   mRenderer->update(
       world, worldData, cameraPosition, cameraPosition,
-      bw::app::PlayerTorchOptions{}, false, horizontalMaterialIndexOverride,
+      bw::app::PlayerTorchOptions{}, std::nullopt, std::nullopt, false,
+      horizontalMaterialIndexOverride,
       wallMaterialIndexOverride, materialScale,
       farGridSize, secondaryMaterial, frameTime);
 

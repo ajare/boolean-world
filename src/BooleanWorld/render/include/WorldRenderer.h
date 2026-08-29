@@ -163,6 +163,8 @@ public:
       glm::vec3 const& playerPosition,
       glm::vec3 const& lightPosition,
       bw::app::PlayerTorchOptions const& playerTorch,
+      std::optional<float> liquidOpacityOverride,
+      std::optional<std::array<float, 3>> const& liquidTintOverride,
       bool sortGeometryFrontToBack,
       int32_t horizontalMaterialIndexOverride,
       int32_t wallMaterialIndexOverride,

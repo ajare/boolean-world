@@ -429,6 +429,8 @@ Resources:
                         - data: "colour4"
                           type: "uint8"
                           normalised: "true"
+                        - data: "user1"
+                          type: "float32"
       - type: "Program"
         name: "WorldHorizontal2dProgram"
         DependentResources:
@@ -460,6 +462,8 @@ Resources:
                         - data: "colour4"
                           type: "uint8"
                           normalised: "true"
+                        - data: "user1"
+                          type: "float32"
       - type: "Program"
         name: "FragmentOverdrawProgram"
         DependentResources:
@@ -490,6 +494,8 @@ Resources:
                         - data: "colour4"
                           type: "uint8"
                           normalised: "true"
+                        - data: "user1"
+                          type: "float32"
       - type: "Program"
         name: "FragmentOverdrawResolveProgram"
         DependentResources:

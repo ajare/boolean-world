@@ -107,9 +107,16 @@ void appUsesAPostProcessFreeDebugPath() {
 
   auto renderer = read(appRoot.parent_path() / "render" / "src" / "WorldRenderer3d.cpp");
   require(renderer.find("setMeshMaterial(meshName, material)") != std::string::npos &&
-              renderer.find("setMeshBlend(meshName, enabled)") != std::string::npos &&
+              renderer.find("enabled || mBlendedMeshNames.count(meshName)") !=
+                  std::string::npos &&
               renderer.find("setMeshDepthPrepass(") != std::string::npos,
           "world meshes do not accumulate overdraw or participate in its depth prepass");
+
+  // Turning the diagnostic off restores each mesh's own blend classification.
+  // Forcing every mesh opaque discards the alpha a liquid surface writes, and
+  // the liquid then hides the absorbed geometry it exists to be seen through.
+  require(renderer.find("mBlendedMeshNames.insert(meshName)") != std::string::npos,
+          "liquid surfaces are not recorded as blended in their own right");
 }
 
 }  // namespace

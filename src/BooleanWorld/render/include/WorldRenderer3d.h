@@ -2,6 +2,8 @@
 
 #include <memory>
 #include <map>
+#include <set>
+#include <string>
 
 #include <glm/vec3.hpp>
 
@@ -34,6 +36,13 @@ class WorldRenderer3d {
 
   std::vector<std::shared_ptr<mpp::UniformCollection>> mUniforms;
   std::vector<int32_t> mMaterialIndices;
+
+  // The material meshes this surface set draws blended in its own right -
+  // currently the liquid surfaces, whose alpha is what lets the absorbed
+  // geometry behind them show through. Every other mesh is opaque. The
+  // diagnostic overdraw material blends every mesh; turning it off has to
+  // restore this classification rather than making the whole world opaque.
+  std::set<std::string> mBlendedMeshNames;
 
   float mGlobalTime;
 

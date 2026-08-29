@@ -358,6 +358,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         auto meshName = worldBatch->formatMeshName(hashValue, true);
         params->setMeshUniforms(meshName, uniforms);
         params->setMeshBlend(meshName, true);
+        mBlendedMeshNames.insert(meshName);
         uniforms->setUniform("MATERIAL_INDEX", (int32_t)materialIndex);
         uniforms->setUniform(
             "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
@@ -405,7 +406,12 @@ void WorldRenderer3d::setFragmentOverdraw(bool enabled) {
   }
   for (auto const& meshName : meshNames) {
     params->setMeshMaterial(meshName, material);
-    params->setMeshBlend(meshName, enabled);
+    // Turning the diagnostic off restores each mesh's own classification. A
+    // liquid surface blends in its own right - forcing it opaque here drops
+    // the alpha the world programs write and hides everything the liquid is
+    // supposed to be seen through.
+    params->setMeshBlend(
+        meshName, enabled || mBlendedMeshNames.count(meshName) != 0);
     // The diagnostic material blends to accumulate fragments, but the source
     // world surface is opaque and must still populate an enabled depth prepass.
     // Clearing the override restores normal opaque/blended classification.

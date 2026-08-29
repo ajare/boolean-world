@@ -697,6 +697,8 @@ void WorldRenderer::update(
     glm::vec3 const& playerPosition,
     glm::vec3 const& lightPosition,
     bw::app::PlayerTorchOptions const& playerTorch,
+    std::optional<float> liquidOpacityOverride,
+    std::optional<std::array<float, 3>> const& liquidTintOverride,
     bool sortGeometryFrontToBack,
     int32_t horizontalMaterialIndexOverride,
     int32_t wallMaterialIndexOverride,
@@ -732,8 +734,16 @@ void WorldRenderer::update(
   // authored LiquidType. Keep its optical properties available so a dry eye
   // can absorb a wet far endpoint; the dry surface sentinel still makes every
   // dry-to-dry path exactly zero.
-  auto const& liquid = bw::core::GetLiquidProperties(
+  // F5's session-only overrides stand in for the authored opacity/tint alone;
+  // density, viscosity, and referenceDepth stay as authored.
+  auto liquid = bw::core::GetLiquidProperties(
       worldData.getLiquidType({playerPosition.x, -playerPosition.z}));
+  if (liquidOpacityOverride) {
+    liquid.opacity = *liquidOpacityOverride;
+  }
+  if (liquidTintOverride) {
+    liquid.tint = *liquidTintOverride;
+  }
   auto const extinction = bw::core::CalculateLiquidExtinction(liquid);
   glm::vec3 liquidExtinction{
       extinction[0], extinction[1], extinction[2]};
