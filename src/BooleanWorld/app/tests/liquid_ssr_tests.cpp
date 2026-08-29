@@ -19,24 +19,34 @@ void require(bool condition, char const* message) {
 void everyWorldPathUsesThePostWaterWorld() {
   auto app = std::filesystem::path(BW_APP_RESOURCE_DIR).parent_path();
   auto state = read(app / "src" / "StatePlayBooleanWorld.cpp");
-  require(state.find("output.image = \"WaterComposite\"") != std::string::npos,
+  require(state.find(": \"WaterComposite\"") != std::string::npos,
           "gameplay does not select WaterComposite");
   require(state.find("options.generatedWater = true") != std::string::npos &&
               state.find("WaterReflectionTechnique::ScreenSpace") !=
+                  std::string::npos &&
+              state.find("WaterReflectionTechnique::Planar") !=
+                  std::string::npos &&
+              state.find("discoverDominantLiquidReflectionPlane") !=
                   std::string::npos,
-          "gameplay does not explicitly select Screen-space generated water");
-  require(state.find("preWaterOutputImage + 2u") != std::string::npos &&
-              state.find("3u + (activeShadowImage ? 1u : 0u)") !=
+          "gameplay does not select generated Water technique and Planar plane");
+  require(state.find("planarWater ? 3u : screenSpaceWater ? 2u : 0u") !=
+                  std::string::npos &&
+              state.find("4u + (activeShadowImage ? 1u : 0u)") !=
                   std::string::npos,
-          "gameplay does not address the post-water graph image with AO on and off");
-  require(state.find("mDebugDisplay.fragmentOverdraw") != std::string::npos &&
-              state.find("? preWaterOutputImage") != std::string::npos,
+          "gameplay does not address Screen-space, Planar, and dry graph outputs");
+  require(state.find("if (mDebugDisplay.fragmentOverdraw) {") !=
+                  std::string::npos &&
+              state.find("outputImage = preWaterOutputImage") !=
+                  std::string::npos,
           "fragment-overdraw diagnostics no longer retain their pre-water output");
   require(state.find("Override liquid reflectance") != std::string::npos &&
               state.find("Override liquid F0") != std::string::npos &&
-              state.find("Enable water SSR") != std::string::npos &&
+              state.find("Enable water reflections") != std::string::npos &&
+              state.find("Water reflection technique") != std::string::npos &&
+              state.find("Planar reflection resolution") !=
+                  std::string::npos &&
               state.find("Reflection mip level##Liquid") != std::string::npos,
-          "gameplay F5 options do not expose Liquid SSR reflectance, F0, toggle, and blur");
+          "gameplay F5 options do not expose generic Water reflection controls");
   require(state.find("RenderGraphCapture\", {Key::F10}") !=
                   std::string::npos &&
               state.find("requestGraphImageCapture") != std::string::npos &&
@@ -63,10 +73,12 @@ void everyWorldPathUsesThePostWaterWorld() {
   require(renderer.find("mSurfaceSet == WorldSurfaceSet::Liquid && "
                         "mDeferToWaterPass") != std::string::npos,
           "the dedicated Liquid scene model is not deferred to WaterScene");
-  require(renderer.find("mDeferToWaterPass && liquidSsrEnabled") !=
+  require(renderer.find("mDeferToWaterPass && liquidReflectionEnabled") !=
                   std::string::npos &&
-              renderer.find("LIQUID_WATER_PASS_ENABLED") != std::string::npos,
-          "the Liquid SSR toggle is not independent from water-pass compositing");
+              renderer.find("LIQUID_WATER_PASS_ENABLED") != std::string::npos &&
+              renderer.find("LIQUID_REFLECTION_ENABLED") !=
+                  std::string::npos,
+          "the generic Liquid reflection toggle is not independent from compositing");
   require(renderer.find(
               "if (mSurfaceSet == WorldSurfaceSet::Liquid) {\n      continue;") !=
                   std::string::npos,
@@ -86,9 +98,11 @@ void liquidShaderPreservesTheSsrContract() {
       "world_pbr.frag");
   require(shader.find("PBR_SCENE_COLOUR_RESOLVED") != std::string::npos &&
               shader.find("PBR_SCENE_DEPTH") != std::string::npos &&
+              shader.find("PBR_PLANAR_REFLECTION_0") != std::string::npos &&
               shader.find("LIQUID_WATER_PASS_ENABLED") != std::string::npos &&
-              shader.find("float alpha = ssrEnabled") != std::string::npos,
-          "Liquid does not independently gate water-pass occlusion and its SSR interface");
+              shader.find("float alpha = reflectionEnabled") !=
+                  std::string::npos,
+          "Liquid does not independently gate compositing and reflection technique");
   require(shader.find("gl_FragCoord.z > liquidSceneDepth") !=
               std::string::npos,
           "Liquid does not reject opaque-depth occlusion");
@@ -111,8 +125,12 @@ void liquidShaderPreservesTheSsrContract() {
   require(shader.find("mix(fallback, hitColour, confidence)") !=
                   std::string::npos &&
               shader.find("smoothstep(0.1, 0.35, nDotV)") !=
+                  std::string::npos &&
+              shader.find("planarSample.a * edgeFade") !=
+                  std::string::npos &&
+              shader.find("MPP_PLANAR_REFLECTION_VIEW_PROJECTION_0") !=
                   std::string::npos,
-          "Liquid misses do not fade through confidence to ambient fallback");
+          "Liquid reflection misses or Planar image edges do not use ambient fallback");
   require(shader.find("@Uniform(LIQUID_REFLECTANCE)") != std::string::npos &&
               shader.find("@Uniform(LIQUID_F0)") != std::string::npos &&
               shader.find("@Uniform(LIQUID_REFLECTION_MIP_LEVEL)") !=

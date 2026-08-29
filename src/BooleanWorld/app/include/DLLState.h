@@ -31,6 +31,8 @@ public:
   int setVideoOptions(int renderScaleCode, int antiAliasingCode,
                       int ambientOcclusionCode, int renderTextureFilterCode,
                       int horizontalMaterialsCode,
+                      int waterReflectionTechniqueCode,
+                      int planarReflectionResolutionCode,
                       float playerTorchAttenuationRadius,
                       float playerTorchAttenuationFalloff,
                       int shadowsEnabledCode,
@@ -47,10 +49,18 @@ public:
         bw::app::renderTextureFilterFromCode(renderTextureFilterCode);
     auto horizontalMaterials =
         bw::app::horizontalMaterialsFromCode(horizontalMaterialsCode);
+    auto waterReflectionTechnique =
+        bw::app::waterReflectionTechniqueFromCode(
+            waterReflectionTechniqueCode);
+    auto planarReflectionResolution =
+        bw::app::planarReflectionResolutionFromCode(
+            planarReflectionResolutionCode);
     auto shadowFilter = bw::app::shadowFilterFromCode(shadowFilterCode);
     auto finite = [](float value) { return std::isfinite(value); };
     if (!renderScale || !antiAliasing || !ambientOcclusion ||
-        !renderTextureFilter || !horizontalMaterials || !shadowFilter ||
+        !renderTextureFilter || !horizontalMaterials ||
+        !waterReflectionTechnique || !planarReflectionResolution ||
+        !shadowFilter ||
         !finite(playerTorchAttenuationRadius) ||
         !finite(playerTorchAttenuationFalloff) ||
         playerTorchAttenuationRadius <= 0.0f ||
@@ -77,6 +87,8 @@ public:
     candidate.ambientOcclusion = *ambientOcclusion;
     candidate.renderTextureFilter = *renderTextureFilter;
     candidate.horizontalMaterials = *horizontalMaterials;
+    candidate.waterReflections = {
+        *waterReflectionTechnique, *planarReflectionResolution};
     candidate.playerTorch = {
         playerTorchAttenuationRadius, playerTorchAttenuationFalloff};
     candidate.shadows = {
@@ -93,21 +105,38 @@ public:
     return 0;
   }
 
-  // Convenience for callers that are testing only the non-shadow vocabulary.
+  // Convenience for callers that are testing only the named enum vocabulary.
   int setVideoOptions(int renderScaleCode, int antiAliasingCode,
                       int ambientOcclusionCode, int renderTextureFilterCode,
                       int horizontalMaterialsCode,
+                      int waterReflectionTechniqueCode,
+                      int planarReflectionResolutionCode,
                       bw::app::VideoOptions& videoOptions) const {
     auto const& shadows = videoOptions.shadows;
     return setVideoOptions(
         renderScaleCode, antiAliasingCode, ambientOcclusionCode,
         renderTextureFilterCode, horizontalMaterialsCode,
+        waterReflectionTechniqueCode, planarReflectionResolutionCode,
         videoOptions.playerTorch.attenuationRadius,
         videoOptions.playerTorch.attenuationFalloff,
         shadows.enabled ? 1 : 0, shadows.faceResolution, shadows.range,
         shadows.nearPlane, shadows.constantBias, shadows.normalBias,
         bw::app::shadowFilterCode(shadows.filter), shadows.filterRadius,
         shadows.fadeStart, videoOptions);
+  }
+
+  int setVideoOptions(int renderScaleCode, int antiAliasingCode,
+                      int ambientOcclusionCode, int renderTextureFilterCode,
+                      int horizontalMaterialsCode,
+                      bw::app::VideoOptions& videoOptions) const {
+    return setVideoOptions(
+        renderScaleCode, antiAliasingCode, ambientOcclusionCode,
+        renderTextureFilterCode, horizontalMaterialsCode,
+        bw::app::waterReflectionTechniqueCode(
+            videoOptions.waterReflections.technique),
+        bw::app::planarReflectionResolutionCode(
+            videoOptions.waterReflections.planarResolution),
+        videoOptions);
   }
 
   int setArgument(char const* arg, char const* value, bool& threadedLoading) const {

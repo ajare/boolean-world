@@ -175,7 +175,7 @@ public:
       std::optional<float> liquidReflectanceOverride,
       std::optional<float> liquidF0Override,
       float liquidReflectionMipLevel,
-      bool liquidSsrEnabled,
+      bool liquidReflectionEnabled,
       bool sortGeometryFrontToBack,
       int32_t horizontalMaterialIndexOverride,
       int32_t wallMaterialIndexOverride,

@@ -95,6 +95,34 @@ void parsePlayerTorchOptions(
   }
 }
 
+void parseWaterReflectionOptions(
+    string const& filename, DataNode* waterReflections,
+    bw::app::WaterReflectionOptions& options) {
+  waterReflections->requireOnlyChildren({"Technique", "PlanarResolution"});
+
+  if (auto node = waterReflections->getOptionalChild("Technique")) {
+    auto name = utils::StringUtils::toLower(node->getValue());
+    auto technique = bw::app::waterReflectionTechniqueFromName(name);
+    if (!technique) {
+      auto message = "Could not load '" + filename +
+                     "'.  Value of /Configuration/Video/WaterReflections/Technique must be 'screen-space' or 'planar'.";
+      throw exception(message.c_str());
+    }
+    options.technique = *technique;
+  }
+
+  if (auto node = waterReflections->getOptionalChild("PlanarResolution")) {
+    auto name = utils::StringUtils::toLower(node->getValue());
+    auto resolution = bw::app::planarReflectionResolutionFromName(name);
+    if (!resolution) {
+      auto message = "Could not load '" + filename +
+                     "'.  Value of /Configuration/Video/WaterReflections/PlanarResolution must be 'full', 'half' or 'quarter'.";
+      throw exception(message.c_str());
+    }
+    options.planarResolution = *resolution;
+  }
+}
+
 void parseShadowOptions(
     string const& filename, DataNode* shadows,
     bw::app::ShadowOptions& options) {
@@ -174,7 +202,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
   auto audioNode = configuration.getChild("Audio");
   auto inputNode = configuration.getOptionalChild("Input");
 
-  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale", "AA", "AmbientOcclusion", "RenderTextureFilter", "HorizontalMaterials", "PlayerTorch", "Shadows"});
+  videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale", "AA", "AmbientOcclusion", "RenderTextureFilter", "HorizontalMaterials", "WaterReflections", "PlayerTorch", "Shadows"});
   gameNode->requireOnlyChildren({"DLL", "ResourceLocations", "Debug", "Arguments"});
 
   pOpts.screenWidth = utils::StringUtils::parseInt(videoNode->getChild("Width")->getValue());
@@ -236,6 +264,12 @@ ProgramOptions parseProgramOptions(string const& filename) {
       throw exception(errMsg.c_str());
     }
     pOpts.video.horizontalMaterials = *materials;
+  }
+
+  if (auto waterReflectionsNode =
+          videoNode->getOptionalChild("WaterReflections")) {
+    parseWaterReflectionOptions(
+        filename, waterReflectionsNode, pOpts.video.waterReflections);
   }
 
   if (auto playerTorchNode = videoNode->getOptionalChild("PlayerTorch")) {
@@ -360,6 +394,12 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
   logger->info(std::format(
       "Horizontal materials: {}",
       bw::app::horizontalMaterialsName(options.video.horizontalMaterials)));
+  logger->info(std::format(
+      "Water reflections: {}, Planar resolution {}",
+      bw::app::waterReflectionTechniqueName(
+          options.video.waterReflections.technique),
+      bw::app::planarReflectionResolutionName(
+          options.video.waterReflections.planarResolution)));
   auto const& playerTorch = options.video.playerTorch;
   logger->info(std::format(
       "Player Torch attenuation: radius {}, falloff {}",

@@ -759,7 +759,7 @@ void WorldRenderer::update(
     std::optional<float> liquidReflectanceOverride,
     std::optional<float> liquidF0Override,
     float liquidReflectionMipLevel,
-    bool liquidSsrEnabled,
+    bool liquidReflectionEnabled,
     bool sortGeometryFrontToBack,
     int32_t horizontalMaterialIndexOverride,
     int32_t wallMaterialIndexOverride,
@@ -824,7 +824,7 @@ void WorldRenderer::update(
         playerPosition, lightPosition, liquidEyeSurfaceHeight, liquidExtinction,
         liquidTint, liquidReflectanceOverride, liquidF0Override,
         liquidReflectionMipLevel,
-        liquidSsrEnabled, playerTorch, sortGeometryFrontToBack,
+        liquidReflectionEnabled, playerTorch, sortGeometryFrontToBack,
         materialIndexOverride, materialScale,
         farGridSize, secondaryMaterial, frameTime);
   }

@@ -17,6 +17,10 @@ private:
 
   bw::app::HorizontalMaterials mHorizontalMaterials;
 
+  bw::app::WaterReflectionTechnique mWaterReflectionTechnique;
+
+  bw::app::PlanarReflectionResolution mPlanarReflectionResolution;
+
   bw::app::PlayerTorchOptions mPlayerTorchOptions;
 
   bw::app::ShadowOptions mShadowOptions;
@@ -31,6 +35,9 @@ public:
         mAmbientOcclusion(videoOptions.ambientOcclusion),
         mRenderTextureFilter(videoOptions.renderTextureFilter),
         mHorizontalMaterials(videoOptions.horizontalMaterials),
+        mWaterReflectionTechnique(videoOptions.waterReflections.technique),
+        mPlanarReflectionResolution(
+            videoOptions.waterReflections.planarResolution),
         mPlayerTorchOptions(videoOptions.playerTorch),
         mShadowOptions(videoOptions.shadows) {
   }
@@ -61,6 +68,24 @@ public:
 
   bw::app::HorizontalMaterials getHorizontalMaterials() const {
     return mHorizontalMaterials;
+  }
+
+  bw::app::WaterReflectionTechnique getWaterReflectionTechnique() const {
+    return mWaterReflectionTechnique;
+  }
+
+  void setWaterReflectionTechnique(
+      bw::app::WaterReflectionTechnique technique) {
+    mWaterReflectionTechnique = technique;
+  }
+
+  bw::app::PlanarReflectionResolution getPlanarReflectionResolution() const {
+    return mPlanarReflectionResolution;
+  }
+
+  void setPlanarReflectionResolution(
+      bw::app::PlanarReflectionResolution resolution) {
+    mPlanarReflectionResolution = resolution;
   }
 
   bw::app::PlayerTorchOptions const& getPlayerTorchOptions() const {

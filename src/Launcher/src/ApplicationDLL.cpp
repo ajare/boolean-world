@@ -117,11 +117,18 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
       bw::app::renderTextureFilterCode(options.video.renderTextureFilter);
   auto horizontalMaterialsCode =
       bw::app::horizontalMaterialsCode(options.video.horizontalMaterials);
+  auto waterReflectionTechniqueCode =
+      bw::app::waterReflectionTechniqueCode(
+          options.video.waterReflections.technique);
+  auto planarReflectionResolutionCode =
+      bw::app::planarReflectionResolutionCode(
+          options.video.waterReflections.planarResolution);
   auto const& playerTorch = options.video.playerTorch;
   auto const& shadows = options.video.shadows;
   if (mSetVideoOptionsFunction(
           renderScaleCode, antiAliasingCode, ambientOcclusionCode,
           renderTextureFilterCode, horizontalMaterialsCode,
+          waterReflectionTechniqueCode, planarReflectionResolutionCode,
           playerTorch.attenuationRadius, playerTorch.attenuationFalloff,
           shadows.enabled ? 1 : 0,
           static_cast<uint64_t>(shadows.faceResolution), shadows.range,
@@ -129,9 +136,10 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
           bw::app::shadowFilterCode(shadows.filter), shadows.filterRadius,
           shadows.fadeStart) != 0) {
     string errMsg = format(
-        "Application rejected video options: RenderScale={}, AA={}, AmbientOcclusion={}, RenderTextureFilter={}, HorizontalMaterials={}, PlayerTorch={}/{}, Shadows={}/{}/{}/{}/{}/{}/{}/{}/{}",
+        "Application rejected video options: RenderScale={}, AA={}, AmbientOcclusion={}, RenderTextureFilter={}, HorizontalMaterials={}, WaterReflections={}/{}, PlayerTorch={}/{}, Shadows={}/{}/{}/{}/{}/{}/{}/{}/{}",
         renderScaleCode, antiAliasingCode, ambientOcclusionCode,
         renderTextureFilterCode, horizontalMaterialsCode,
+        waterReflectionTechniqueCode, planarReflectionResolutionCode,
         playerTorch.attenuationRadius, playerTorch.attenuationFalloff,
         shadows.enabled,
         shadows.faceResolution, shadows.range, shadows.nearPlane,

@@ -93,6 +93,41 @@ inline constexpr std::array<HorizontalMaterials, 2> allHorizontalMaterials{
 inline constexpr std::size_t horizontalMaterialsCount =
     allHorizontalMaterials.size();
 
+// Mutually exclusive reflected-radiance source for generated Water.
+enum class WaterReflectionTechnique : int {
+  ScreenSpace = 0,
+  Planar = 1,
+};
+
+inline constexpr std::array<WaterReflectionTechnique, 2>
+    allWaterReflectionTechniques{
+        WaterReflectionTechnique::ScreenSpace,
+        WaterReflectionTechnique::Planar};
+inline constexpr std::size_t waterReflectionTechniqueCount =
+    allWaterReflectionTechniques.size();
+
+// Per-dimension fraction of the active 3D world target used by Planar
+// reflection images. This is independent of RenderScale.
+enum class PlanarReflectionResolution : int {
+  Full = 0,
+  Half = 1,
+  Quarter = 2,
+};
+
+inline constexpr std::array<PlanarReflectionResolution, 3>
+    allPlanarReflectionResolutions{
+        PlanarReflectionResolution::Full,
+        PlanarReflectionResolution::Half,
+        PlanarReflectionResolution::Quarter};
+inline constexpr std::size_t planarReflectionResolutionCount =
+    allPlanarReflectionResolutions.size();
+
+struct WaterReflectionOptions {
+  WaterReflectionTechnique technique{WaterReflectionTechnique::ScreenSpace};
+  PlanarReflectionResolution planarResolution{
+      PlanarReflectionResolution::Half};
+};
+
 // Filtering for the Player Torch's point-shadow cubemap. These values have
 // stable boundary codes; the launcher never passes an MPP enum through the
 // application DLL ABI.
@@ -171,6 +206,7 @@ struct VideoOptions {
   AmbientOcclusion ambientOcclusion{AmbientOcclusion::GtaoDepth};
   RenderTextureFilter renderTextureFilter{RenderTextureFilter::Linear};
   HorizontalMaterials horizontalMaterials{HorizontalMaterials::TwoDimensional};
+  WaterReflectionOptions waterReflections;
   PlayerTorchOptions playerTorch;
   ShadowOptions shadows;
 };
@@ -230,6 +266,69 @@ inline constexpr std::optional<RenderTextureFilter> renderTextureFilterFromName(
     }
   }
 
+  return std::nullopt;
+}
+
+inline constexpr std::string_view waterReflectionTechniqueName(
+    WaterReflectionTechnique technique) {
+  return technique == WaterReflectionTechnique::Planar ? "planar"
+                                                        : "screen-space";
+}
+
+inline constexpr int waterReflectionTechniqueCode(
+    WaterReflectionTechnique technique) {
+  return static_cast<int>(technique);
+}
+
+inline constexpr std::optional<WaterReflectionTechnique>
+waterReflectionTechniqueFromCode(int code) {
+  if (code < 0 ||
+      static_cast<std::size_t>(code) >= waterReflectionTechniqueCount) {
+    return std::nullopt;
+  }
+  return allWaterReflectionTechniques[static_cast<std::size_t>(code)];
+}
+
+inline constexpr std::optional<WaterReflectionTechnique>
+waterReflectionTechniqueFromName(std::string_view name) {
+  for (auto technique : allWaterReflectionTechniques) {
+    if (waterReflectionTechniqueName(technique) == name) return technique;
+  }
+  return std::nullopt;
+}
+
+inline constexpr std::string_view planarReflectionResolutionName(
+    PlanarReflectionResolution resolution) {
+  switch (resolution) {
+    case PlanarReflectionResolution::Full:
+      return "full";
+    case PlanarReflectionResolution::Quarter:
+      return "quarter";
+    case PlanarReflectionResolution::Half:
+      break;
+  }
+  return "half";
+}
+
+inline constexpr int planarReflectionResolutionCode(
+    PlanarReflectionResolution resolution) {
+  return static_cast<int>(resolution);
+}
+
+inline constexpr std::optional<PlanarReflectionResolution>
+planarReflectionResolutionFromCode(int code) {
+  if (code < 0 ||
+      static_cast<std::size_t>(code) >= planarReflectionResolutionCount) {
+    return std::nullopt;
+  }
+  return allPlanarReflectionResolutions[static_cast<std::size_t>(code)];
+}
+
+inline constexpr std::optional<PlanarReflectionResolution>
+planarReflectionResolutionFromName(std::string_view name) {
+  for (auto resolution : allPlanarReflectionResolutions) {
+    if (planarReflectionResolutionName(resolution) == name) return resolution;
+  }
   return std::nullopt;
 }
 

@@ -83,6 +83,8 @@ __declspec(dllexport) int dllSetVideoOptions(
     int ambientOcclusionCode,
     int renderTextureFilterCode,
     int horizontalMaterialsCode,
+    int waterReflectionTechniqueCode,
+    int planarReflectionResolutionCode,
     float playerTorchAttenuationRadius,
     float playerTorchAttenuationFalloff,
     int shadowsEnabledCode,
@@ -97,6 +99,7 @@ __declspec(dllexport) int dllSetVideoOptions(
   return dllState.setVideoOptions(
       renderScaleCode, antiAliasingCode, ambientOcclusionCode,
       renderTextureFilterCode, horizontalMaterialsCode,
+      waterReflectionTechniqueCode, planarReflectionResolutionCode,
       playerTorchAttenuationRadius, playerTorchAttenuationFalloff,
       shadowsEnabledCode, shadowFaceResolution, shadowRange, shadowNearPlane,
       shadowConstantBias, shadowNormalBias, shadowFilterCode,

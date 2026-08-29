@@ -106,7 +106,7 @@ public:
       std::optional<float> liquidReflectanceOverride,
       std::optional<float> liquidF0Override,
       float liquidReflectionMipLevel,
-      bool liquidSsrEnabled,
+      bool liquidReflectionEnabled,
       bw::app::PlayerTorchOptions const& playerTorch,
       bool sortGeometryFrontToBack,
       int32_t materialIndexOverride,

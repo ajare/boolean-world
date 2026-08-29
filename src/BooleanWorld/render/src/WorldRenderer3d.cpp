@@ -216,7 +216,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         "LIQUID_REFLECTION_MIP_LEVEL", defaultLiquidReflectionMipLevel);
     uniforms.setUniform("LIQUID_AMBIENT_TINT", glm::vec3{});
     uniforms.setUniform("LIQUID_WATER_PASS_ENABLED", int32_t{0});
-    uniforms.setUniform("LIQUID_SSR_ENABLED", int32_t{0});
+    uniforms.setUniform("LIQUID_REFLECTION_ENABLED", int32_t{0});
     uniforms.setUniform("LIGHT_ATTENUATION_RADIUS", 192.0f);
     uniforms.setUniform("LIGHT_ATTENUATION_FALLOFF", 64.0f);
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
@@ -419,7 +419,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
             "LIQUID_WATER_PASS_ENABLED",
             int32_t{mDeferToWaterPass ? 1 : 0});
         uniforms->updateUniform(
-            "LIQUID_SSR_ENABLED", int32_t{mDeferToWaterPass ? 1 : 0});
+            "LIQUID_REFLECTION_ENABLED", int32_t{mDeferToWaterPass ? 1 : 0});
         mUniforms[meshIndex] = uniforms;
         mMaterialIndices[meshIndex] = static_cast<int32_t>(materialIndex);
       }
@@ -484,7 +484,7 @@ void WorldRenderer3d::update(
     std::optional<float> liquidReflectanceOverride,
     std::optional<float> liquidF0Override,
     float liquidReflectionMipLevel,
-    bool liquidSsrEnabled,
+    bool liquidReflectionEnabled,
     bw::app::PlayerTorchOptions const& playerTorch,
     bool sortGeometryFrontToBack,
     int32_t materialIndexOverride,
@@ -514,8 +514,8 @@ void WorldRenderer3d::update(
           "LIQUID_REFLECTION_MIP_LEVEL",
           clamp(liquidReflectionMipLevel, 0.0f, 4.0f));
       uc->updateUniform(
-          "LIQUID_SSR_ENABLED",
-          int32_t{mDeferToWaterPass && liquidSsrEnabled ? 1 : 0});
+          "LIQUID_REFLECTION_ENABLED",
+          int32_t{mDeferToWaterPass && liquidReflectionEnabled ? 1 : 0});
       for (int32_t liquidIndex = 0;
            liquidIndex < bw::core::LiquidTypeCount; ++liquidIndex) {
         auto liquidType = static_cast<bw::core::LiquidType>(liquidIndex);

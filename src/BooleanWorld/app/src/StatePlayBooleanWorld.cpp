@@ -1,6 +1,7 @@
 #define NOMINMAX
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <cctype>
 #include <chrono>
@@ -57,6 +58,7 @@
 #include "ReactiveCamera.h"
 #include "GameException.h"
 #include "ImGuiDllBoundaryState.h"
+#include "LiquidReflectionSelection.h"
 
 #define CLIPPING_RECORD_COUNT_MAX 10
 #define DISPLAY_MESSAGE_COUNT_MAX 128
@@ -85,6 +87,41 @@ const SecondaryMaterialOptions gNoSecondaryMaterial{};
 // "SceneExtra." prefix, so this is the name the ambient-occlusion composite
 // has to be pointed at - not the bare output name.
 constexpr char gLiquidRetentionImageName[] = "SceneExtra.LIQUID_RETENTION";
+
+std::optional<mpp::PlanarReflectionPlaneDescriptor>
+discoverDominantLiquidReflectionPlane(
+    bw::core::WorldData const& snapshot, mpp::Camera& camera) {
+  auto const& arrangement = snapshot.getArrangement();
+  auto const& liquidDepths = snapshot.getLiquidDepths();
+  std::vector<bw::app::LiquidSurfaceTriangle> surfaces;
+  surfaces.reserve(snapshot.getTriangles().size());
+  for (auto const& triangle : snapshot.getTriangles()) {
+    auto depth = liquidDepths[triangle.face];
+    if (depth <= 0.0f) continue;
+    auto const& properties =
+        arrangement.palette[arrangement.faces[triangle.face].paletteIndex];
+    auto elevation = properties.floorZ + depth;
+    bw::app::LiquidSurfaceTriangle surface;
+    surface.elevation = elevation;
+    for (int index = 0; index < 3; ++index) {
+      auto const& vertex = arrangement.vertices[triangle.v[index]];
+      surface.vertices[index] = {
+          bw::core::arr::ToWorldCoordinate(vertex.x), elevation,
+          -bw::core::arr::ToWorldCoordinate(vertex.y)};
+    }
+    surfaces.push_back(surface);
+  }
+
+  auto selected = bw::app::selectDominantLiquidSurface(
+      surfaces,
+      camera.getProjectionTransform() * camera.getViewTransform(),
+      camera.getPosition());
+  if (!selected) return std::nullopt;
+  return mpp::PlanarReflectionPlaneDescriptor{
+      selected->elevation,
+      selected->viewerAbove ? mpp::ReflectionPlaneSide::Above
+                            : mpp::ReflectionPlaneSide::Below};
+}
 
 // The extra scene-pass outputs the world pipeline declares when ambient
 // occlusion is on.
@@ -172,27 +209,35 @@ void StatePlayBooleanWorld::createCamera() {
 
 mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipeline(
     bw::app::RenderScale renderScale,
-    bw::app::AntiAliasing antiAliasing) {
-  auto antiAliasingIndex =
-      static_cast<std::size_t>(bw::app::antiAliasingCode(antiAliasing));
-  assert(antiAliasingIndex < bw::app::antiAliasingOptionCount);
-
-  auto depthPrepassIndex = mDebugDisplay.depthPrepass ? std::size_t{1}
-                                                     : std::size_t{0};
-  auto& pipeline =
-      mWorldRenderPipelines[depthPrepassIndex]
-                           [bw::app::renderScaleIndex(renderScale)]
-                           [antiAliasingIndex];
-  if (pipeline) {
-    return pipeline;
+    bw::app::AntiAliasing antiAliasing,
+    std::optional<mpp::PlanarReflectionPlaneDescriptor> const& planarPlane) {
+  auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
+  auto technique = model->getWaterReflectionTechnique();
+  auto planarResolution = model->getPlanarReflectionResolution();
+  auto key = std::string(bw::app::renderScaleName(renderScale)) + ".aa-" +
+             std::string(bw::app::antiAliasingName(antiAliasing)) +
+             (mDebugDisplay.depthPrepass ? ".depth-prepass"
+                                         : ".no-depth-prepass") +
+             "." +
+             std::string(bw::app::waterReflectionTechniqueName(technique)) +
+             "." + std::string(
+                 bw::app::planarReflectionResolutionName(planarResolution));
+  if (technique == bw::app::WaterReflectionTechnique::Planar) {
+    if (planarPlane) {
+      key += ".plane-" + std::to_string(
+          std::bit_cast<std::uint32_t>(planarPlane->elevation)) +
+             (planarPlane->viewerSide == mpp::ReflectionPlaneSide::Above
+                  ? ".above"
+                  : ".below");
+    } else {
+      key += ".dry";
+    }
   }
+  auto& pipeline = mWorldRenderPipelines[key];
+  if (pipeline) return pipeline;
 
   auto const& target = mwRenderer->getRenderTarget(renderScale);
-  auto pipelineName = getName() + ".World." +
-                      std::string(bw::app::renderScaleName(renderScale)) + ".aa-" +
-                      std::string(bw::app::antiAliasingName(antiAliasing)) +
-                      (mDebugDisplay.depthPrepass ? ".depth-prepass"
-                                                  : ".no-depth-prepass");
+  auto pipelineName = getName() + ".World." + key;
 
   mpp::AntiAliasingSamples msaa = mpp::AntiAliasingSamples::Off;
   switch (bw::app::antiAliasingMsaaSamples(antiAliasing)) {
@@ -231,16 +276,41 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   options.mode = mpp::RenderPipelineMode::GraphLegacyForward;
   mpp::RenderPipelineOutput output;
   output.name = "World";
-  // Generated water always follows the final opaque shading stage (including
-  // AO when enabled), so the named gameplay world is the distinct post-water
-  // image in both graph variants.
-  output.image = "WaterComposite";
+  // A dry Planar view has no Water or Planar pass by contract, so its named
+  // output is the final opaque/AO image. Every branch with a reflection source
+  // uses the distinct post-water image.
+  auto planarWithoutVisibleLiquid =
+      technique == bw::app::WaterReflectionTechnique::Planar && !planarPlane;
+  output.image = planarWithoutVisibleLiquid
+                     ? (ambientOcclusionEnabled
+                            ? "AmbientOcclusionComposite"
+                            : "SceneLdr")
+                     : "WaterComposite";
   output.antiAliasing.msaa = msaa;
   output.antiAliasing.fxaa = bw::app::antiAliasingIsFxaa(antiAliasing);
   options.outputs.push_back(output);
   options.generatedWater = true;
   options.waterReflections.technique =
-      mpp::WaterReflectionTechnique::ScreenSpace;
+      technique == bw::app::WaterReflectionTechnique::Planar
+          ? mpp::WaterReflectionTechnique::Planar
+          : mpp::WaterReflectionTechnique::ScreenSpace;
+  switch (planarResolution) {
+    case bw::app::PlanarReflectionResolution::Full:
+      options.waterReflections.planarResolution =
+          mpp::PlanarReflectionResolution::Full;
+      break;
+    case bw::app::PlanarReflectionResolution::Quarter:
+      options.waterReflections.planarResolution =
+          mpp::PlanarReflectionResolution::Quarter;
+      break;
+    case bw::app::PlanarReflectionResolution::Half:
+      options.waterReflections.planarResolution =
+          mpp::PlanarReflectionResolution::Half;
+      break;
+  }
+  if (planarPlane) {
+    options.waterReflections.planarPlanes.push_back(*planarPlane);
+  }
   options.depthPrepass = mDebugDisplay.depthPrepass;
   options.ambientOcclusion.method = ambientOcclusionMethod;
   options.ambientOcclusion.ssao = mDebugDisplay.ssao;
@@ -345,7 +415,7 @@ void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transi
   // only if selected in the debug GUI.
   for (auto renderScale : bw::app::allRenderScales) {
     getOrCreateWorldRenderPipeline(
-        renderScale, bw::app::AntiAliasing::Off);
+        renderScale, bw::app::AntiAliasing::Off, std::nullopt);
   }
 }
 
@@ -556,16 +626,13 @@ void StatePlayBooleanWorld::destroyGameObjects() {
   // alone would not destroy them. Evict them here, while BooleanWorld.dll
   // is still loaded, instead of leaving that to RenderSystem's own
   // teardown - which runs after this DLL has already been unloaded.
-  for (auto& depthPrepassPipelines : mWorldRenderPipelines) {
-    for (auto& row : depthPrepassPipelines) {
-      for (auto& pipeline : row) {
-        if (pipeline) {
-          mwRenderSystem->removeRenderPipeline(pipeline->getName());
-          pipeline.reset();
-        }
-      }
+  for (auto& [key, pipeline] : mWorldRenderPipelines) {
+    if (pipeline) {
+      mwRenderSystem->removeRenderPipeline(pipeline->getName());
+      pipeline.reset();
     }
   }
+  mWorldRenderPipelines.clear();
   for (auto& pipeline : mFragmentOverdrawPipelines) {
     if (pipeline) {
       mwRenderSystem->removeRenderPipeline(pipeline->getName());
@@ -1242,7 +1309,8 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
       mDebugDisplay.liquidTintOverride,
       mDebugDisplay.liquidReflectanceOverride,
       mDebugDisplay.liquidF0Override,
-      mDebugDisplay.liquidReflectionMipLevel, mDebugDisplay.liquidSsrEnabled,
+      mDebugDisplay.liquidReflectionMipLevel,
+      mDebugDisplay.liquidReflectionEnabled,
       mDebugDisplay.sortGeometryFrontToBack, gNoMaterialOverride,
       gNoMaterialOverride, gAuthoredMaterialScale,
       gDefaultFarGridSize, gNoSecondaryMaterial, frameTime);
@@ -1487,10 +1555,17 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   auto renderScale = model->getActiveRenderScale();
   auto antiAliasing = model->getActiveAntiAliasing();
   auto const& worldTarget = mwRenderer->getRenderTarget(renderScale);
+  std::optional<mpp::PlanarReflectionPlaneDescriptor> planarPlane;
+  if (!mDebugDisplay.fragmentOverdraw && mWorldData &&
+      model->getWaterReflectionTechnique() ==
+          bw::app::WaterReflectionTechnique::Planar) {
+    planarPlane = discoverDominantLiquidReflectionPlane(
+        *mWorldData, *mCamera3d);
+  }
   auto const& pipeline = mDebugDisplay.fragmentOverdraw
                              ? getOrCreateFragmentOverdrawPipeline(renderScale)
                              : getOrCreateWorldRenderPipeline(
-                                   renderScale, antiAliasing);
+                                   renderScale, antiAliasing, planarPlane);
 
   // These only change the world's two scene models; entities and debug UI
   // remain filled. Applying it here also carries an enabled debug option onto
@@ -1556,11 +1631,26 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   // SceneLdr and the two generated-water images. With AO, those earlier images
   // are already included in preWaterOutputImage, so only the two water images
   // remain to be added.
-  auto outputImage = mDebugDisplay.fragmentOverdraw
-                         ? preWaterOutputImage
-                     : ambientOcclusionEnabled
-                         ? preWaterOutputImage + 2u
-                         : 3u + (activeShadowImage ? 1u : 0u);
+  auto technique = model->getWaterReflectionTechnique();
+  auto screenSpaceWater =
+      technique == bw::app::WaterReflectionTechnique::ScreenSpace;
+  auto planarWater =
+      technique == bw::app::WaterReflectionTechnique::Planar && planarPlane;
+  auto outputImage = preWaterOutputImage;
+  if (mDebugDisplay.fragmentOverdraw) {
+    outputImage = preWaterOutputImage;
+  } else if (ambientOcclusionEnabled) {
+    // Each Planar plane declares its colour and depth images before the opaque
+    // and AO images, then WaterComposite follows the final AO image.
+    outputImage = preWaterOutputImage +
+                  (planarWater ? 3u : screenSpaceWater ? 2u : 0u);
+  } else if (screenSpaceWater) {
+    outputImage = 3u + (activeShadowImage ? 1u : 0u);
+  } else if (planarWater) {
+    outputImage = 4u + (activeShadowImage ? 1u : 0u);
+  } else {
+    outputImage = 0u;
+  }
   auto sceneTarget = pipeline->getGraphImageRenderTarget({outputImage, 1});
   assert(sceneTarget);
   auto sceneTexture = static_cast<mpp::RenderTexture*>(sceneTarget.get());
@@ -2198,15 +2288,61 @@ void StatePlayBooleanWorld::debug_renderOptions() {
       }
       ImGui::EndDisabled();
 
-      ImGui::Checkbox("Enable water SSR", &mDebugDisplay.liquidSsrEnabled);
-      ImGui::BeginDisabled(!mDebugDisplay.liquidSsrEnabled);
-      ImGui::SliderFloat(
-          "Reflection mip level##Liquid",
-          &mDebugDisplay.liquidReflectionMipLevel, 0.0f, 4.0f, "%.2f");
+      auto model =
+          static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
+      ImGui::Checkbox(
+          "Enable water reflections",
+          &mDebugDisplay.liquidReflectionEnabled);
+
+      auto activeTechnique = model->getWaterReflectionTechnique();
+      if (ImGui::BeginCombo(
+              "Water reflection technique",
+              bw::app::waterReflectionTechniqueName(activeTechnique).data())) {
+        for (auto technique : bw::app::allWaterReflectionTechniques) {
+          auto selected = technique == activeTechnique;
+          if (ImGui::Selectable(
+                  bw::app::waterReflectionTechniqueName(technique).data(),
+                  selected)) {
+            model->setWaterReflectionTechnique(technique);
+            activeTechnique = technique;
+          }
+          if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+      }
+
+      ImGui::BeginDisabled(
+          !mDebugDisplay.liquidReflectionEnabled ||
+          activeTechnique != bw::app::WaterReflectionTechnique::Planar);
+      auto activePlanarResolution = model->getPlanarReflectionResolution();
+      if (ImGui::BeginCombo(
+              "Planar reflection resolution",
+              bw::app::planarReflectionResolutionName(
+                  activePlanarResolution).data())) {
+        for (auto resolution : bw::app::allPlanarReflectionResolutions) {
+          auto selected = resolution == activePlanarResolution;
+          if (ImGui::Selectable(
+                  bw::app::planarReflectionResolutionName(resolution).data(),
+                  selected)) {
+            model->setPlanarReflectionResolution(resolution);
+          }
+          if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+      }
       ImGui::EndDisabled();
+
+      if (activeTechnique ==
+          bw::app::WaterReflectionTechnique::ScreenSpace) {
+        ImGui::BeginDisabled(!mDebugDisplay.liquidReflectionEnabled);
+        ImGui::SliderFloat(
+            "Reflection mip level##Liquid",
+            &mDebugDisplay.liquidReflectionMipLevel, 0.0f, 4.0f, "%.2f");
+        ImGui::EndDisabled();
+      }
       ImGui::TextDisabled(
-          "Debug-only - overrides LiquidProperties::opacity/tint/reflectance/F0 "
-          "and SSR reflection sampling for this play session.");
+          "Debug-only - optical overrides and reflection controls are not "
+          "saved to Game.yaml.");
     }
 
     ImGui::Separator();
@@ -2302,16 +2438,13 @@ void StatePlayBooleanWorld::debug_renderOptions() {
             &mDebugDisplay.ambientOcclusionEnabled)) {
       // Toggling AO changes the generated graph topology and its named FXAA
       // output. Evict every variant so it is recreated with matching options.
-      for (auto& depthPrepassPipelines : mWorldRenderPipelines) {
-        for (auto& row : depthPrepassPipelines) {
-          for (auto& pipeline : row) {
-            if (pipeline) {
-              mwRenderSystem->removeRenderPipeline(pipeline->getName());
-              pipeline.reset();
-            }
-          }
+      for (auto& [key, pipeline] : mWorldRenderPipelines) {
+        if (pipeline) {
+          mwRenderSystem->removeRenderPipeline(pipeline->getName());
+          pipeline.reset();
         }
       }
+      mWorldRenderPipelines.clear();
     }
 
     bool ambientOcclusionChanged = false;
@@ -2371,13 +2504,9 @@ void StatePlayBooleanWorld::debug_renderOptions() {
       // occlusion back to full strength under liquid. These pipelines were
       // built with ambient occlusion on, so their extra outputs are declared.
       ambientOcclusion.modulationInput = gLiquidRetentionImageName;
-      for (auto const& depthPrepassPipelines : mWorldRenderPipelines) {
-        for (auto const& row : depthPrepassPipelines) {
-          for (auto const& pipeline : row) {
-            if (pipeline) {
-              pipeline->setAmbientOcclusionOptions(ambientOcclusion);
-            }
-          }
+      for (auto const& [key, pipeline] : mWorldRenderPipelines) {
+        if (pipeline) {
+          pipeline->setAmbientOcclusionOptions(ambientOcclusion);
         }
       }
     }

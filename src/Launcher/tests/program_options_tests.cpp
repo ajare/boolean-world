@@ -19,7 +19,8 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
                                          std::string const& ambientOcclusionLine = "",
                                          std::string const& horizontalMaterialsLine = "",
                                          std::string const& shadowsSection = "",
-                                         std::string const& playerTorchSection = "") {
+                                         std::string const& playerTorchSection = "",
+                                         std::string const& waterReflectionsSection = "") {
   auto path = std::filesystem::temp_directory_path() / "boolean-world-program-options-test.yaml";
   std::ofstream stream(path);
   stream << "Configuration:\n"
@@ -33,6 +34,7 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
          << renderTextureFilterLine
          << ambientOcclusionLine
          << horizontalMaterialsLine
+         << waterReflectionsSection
          << playerTorchSection
          << shadowsSection
          << "  Audio:\n"
@@ -142,6 +144,19 @@ ProgramOptions parseWithHorizontalMaterials(std::string const& line) {
   }
 }
 
+ProgramOptions parseWithWaterReflections(std::string const& section) {
+  auto path = writeConfiguration(
+      "", "", "", "", "", "", "", "", "", section);
+  try {
+    auto options = parseProgramOptions(path.string());
+    std::filesystem::remove(path);
+    return options;
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+}
+
 ProgramOptions parseWithPlayerTorch(std::string const& section) {
   auto path = writeConfiguration("", "", "", "", "", "", "", "", section);
   try {
@@ -164,6 +179,19 @@ ProgramOptions parseWithShadows(std::string const& section) {
     std::filesystem::remove(path);
     throw;
   }
+}
+
+void requireWaterReflectionsRejected(
+    std::string const& section, std::string const& field) {
+  try {
+    (void)parseWithWaterReflections(section);
+  } catch (std::exception const& error) {
+    require(std::string(error.what()).find(field) != std::string::npos,
+            "The Water reflections error did not identify '" + field + "'.");
+    return;
+  }
+  throw std::runtime_error(
+      "Video configuration accepted invalid WaterReflections/" + field + ".");
 }
 
 void requirePlayerTorchRejected(
@@ -359,6 +387,41 @@ int main() {
         "    HorizontalMaterials: planar\n", "an unknown horizontal-material mode");
     requireHorizontalMaterialsRejected(
         "    HorizontalMaterials:\n", "an empty horizontal-material mode");
+
+    auto defaultWaterReflections =
+        parseWithWaterReflections("").video.waterReflections;
+    require(defaultWaterReflections.technique ==
+                bw::app::WaterReflectionTechnique::ScreenSpace &&
+                defaultWaterReflections.planarResolution ==
+                    bw::app::PlanarReflectionResolution::Half,
+            "Missing WaterReflections did not default to Screen-space and Half.");
+    auto waterReflections = parseWithWaterReflections(
+                                "    WaterReflections:\n"
+                                "      Technique: PlAnAr\n"
+                                "      PlanarResolution: QuArTeR\n")
+                                .video.waterReflections;
+    require(waterReflections.technique ==
+                bw::app::WaterReflectionTechnique::Planar &&
+                waterReflections.planarResolution ==
+                    bw::app::PlanarReflectionResolution::Quarter,
+            "Named Water reflection values did not parse case-insensitively.");
+    requireWaterReflectionsRejected(
+        "    WaterReflections:\n      Technique: hybrid\n", "Technique");
+    requireWaterReflectionsRejected(
+        "    WaterReflections:\n      Technique: 1\n", "Technique");
+    requireWaterReflectionsRejected(
+        "    WaterReflections:\n      Technique:\n", "Technique");
+    requireWaterReflectionsRejected(
+        "    WaterReflections:\n      PlanarResolution: eighth\n",
+        "PlanarResolution");
+    requireWaterReflectionsRejected(
+        "    WaterReflections:\n      PlanarResolution: 2\n",
+        "PlanarResolution");
+    requireWaterReflectionsRejected(
+        "    WaterReflections:\n      PlanarResolution:\n",
+        "PlanarResolution");
+    requireWaterReflectionsRejected(
+        "    WaterReflections:\n      Resolution: half\n", "Resolution");
 
     auto defaultPlayerTorch = parseWithPlayerTorch("").video.playerTorch;
     require(defaultPlayerTorch.attenuationRadius == 192.0f &&

@@ -44,7 +44,9 @@ void acceptsAndValidatesRenderScaleCodes() {
   DLLState state;
   bw::app::VideoOptions options;
   auto full = bw::app::renderScaleCode(bw::app::RenderScale::Full);
+  auto quarter = bw::app::renderScaleCode(bw::app::RenderScale::Quarter);
   auto msaa2x = bw::app::antiAliasingCode(bw::app::AntiAliasing::Msaa2x);
+  auto fxaa = bw::app::antiAliasingCode(bw::app::AntiAliasing::Fxaa);
   auto gtao =
       bw::app::ambientOcclusionCode(bw::app::AmbientOcclusion::GtaoDepth);
   auto nearest = bw::app::renderTextureFilterCode(
@@ -53,8 +55,7 @@ void acceptsAndValidatesRenderScaleCodes() {
       bw::app::HorizontalMaterials::TwoDimensional);
 
   require(state.setVideoOptions(
-              bw::app::renderScaleCode(bw::app::RenderScale::Quarter),
-              bw::app::antiAliasingCode(bw::app::AntiAliasing::Fxaa),
+              quarter, fxaa,
               gtao, nearest, twoDimensional, options) == 0,
           "Valid video options were rejected.");
   require(options.renderScale == bw::app::RenderScale::Quarter,
@@ -68,6 +69,36 @@ void acceptsAndValidatesRenderScaleCodes() {
   require(options.horizontalMaterials ==
               bw::app::HorizontalMaterials::TwoDimensional,
           "Valid horizontal-material mode was not applied.");
+  require(state.setVideoOptions(
+              quarter, fxaa, gtao, nearest, twoDimensional,
+              bw::app::waterReflectionTechniqueCode(
+                  bw::app::WaterReflectionTechnique::Planar),
+              bw::app::planarReflectionResolutionCode(
+                  bw::app::PlanarReflectionResolution::Quarter),
+              options) == 0 &&
+              options.waterReflections.technique ==
+                  bw::app::WaterReflectionTechnique::Planar &&
+              options.waterReflections.planarResolution ==
+                  bw::app::PlanarReflectionResolution::Quarter,
+          "Valid Water reflection boundary codes did not round-trip.");
+  auto acceptedWaterReflections = options.waterReflections;
+  require(state.setVideoOptions(
+              full, msaa2x, gtao, nearest, twoDimensional, -1,
+              bw::app::planarReflectionResolutionCode(
+                  bw::app::PlanarReflectionResolution::Half),
+              options) != 0 &&
+              options.waterReflections.technique ==
+                  acceptedWaterReflections.technique,
+          "An invalid Water reflection technique code was accepted or applied.");
+  require(state.setVideoOptions(
+              full, msaa2x, gtao, nearest, twoDimensional,
+              bw::app::waterReflectionTechniqueCode(
+                  bw::app::WaterReflectionTechnique::ScreenSpace),
+              static_cast<int>(bw::app::planarReflectionResolutionCount),
+              options) != 0 &&
+              options.waterReflections.planarResolution ==
+                  acceptedWaterReflections.planarResolution,
+          "An invalid Planar reflection resolution code was accepted or applied.");
 
   require(state.setVideoOptions(
               -1, msaa2x, gtao, nearest, twoDimensional, options) != 0,
@@ -113,7 +144,11 @@ void acceptsAndValidatesRenderScaleCodes() {
                   bw::app::AmbientOcclusion::GtaoDepth &&
               options.renderTextureFilter == bw::app::RenderTextureFilter::Nearest &&
               options.horizontalMaterials ==
-                  bw::app::HorizontalMaterials::TwoDimensional,
+                  bw::app::HorizontalMaterials::TwoDimensional &&
+              options.waterReflections.technique ==
+                  bw::app::WaterReflectionTechnique::Planar &&
+              options.waterReflections.planarResolution ==
+                  bw::app::PlanarReflectionResolution::Quarter,
           "Rejected video options changed configuration.");
 }
 
@@ -127,6 +162,10 @@ void transfersShadowOptionsTransactionally() {
       bw::app::renderTextureFilterCode(bw::app::RenderTextureFilter::Linear),
       bw::app::horizontalMaterialsCode(
           bw::app::HorizontalMaterials::ThreeDimensional),
+      bw::app::waterReflectionTechniqueCode(
+          bw::app::WaterReflectionTechnique::Planar),
+      bw::app::planarReflectionResolutionCode(
+          bw::app::PlanarReflectionResolution::Quarter),
       90.0f, 20.0f,
       0, 1537, 87.25f, 0.625f, 0.00125f, 0.00475f,
       bw::app::shadowFilterCode(bw::app::ShadowFilter::Hard), 2.5f, 0.675f,
@@ -141,6 +180,10 @@ void transfersShadowOptionsTransactionally() {
               options.shadows.constantBias == 0.00125f &&
               options.shadows.normalBias == 0.00475f &&
               options.shadows.filter == bw::app::ShadowFilter::Hard &&
+              options.waterReflections.technique ==
+                  bw::app::WaterReflectionTechnique::Planar &&
+              options.waterReflections.planarResolution ==
+                  bw::app::PlanarReflectionResolution::Quarter &&
               options.shadows.filterRadius == 2.5f &&
               options.shadows.fadeStart == 0.675f,
           "Shadow fields were truncated or reordered across the boundary.");
@@ -152,6 +195,10 @@ void transfersShadowOptionsTransactionally() {
       bw::app::renderTextureFilterCode(bw::app::RenderTextureFilter::Nearest),
       bw::app::horizontalMaterialsCode(
           bw::app::HorizontalMaterials::TwoDimensional),
+      bw::app::waterReflectionTechniqueCode(
+          bw::app::WaterReflectionTechnique::ScreenSpace),
+      bw::app::planarReflectionResolutionCode(
+          bw::app::PlanarReflectionResolution::Half),
       192.0f, 64.0f,
       1, 2048, 50.0f, 0.5f, 0.0f, 0.0f, 99, 1.0f, 0.9f, options);
   require(result != 0, "An invalid shadow filter boundary code was accepted.");
@@ -169,6 +216,10 @@ void transfersShadowOptionsTransactionally() {
       bw::app::renderTextureFilterCode(bw::app::RenderTextureFilter::Linear),
       bw::app::horizontalMaterialsCode(
           bw::app::HorizontalMaterials::TwoDimensional),
+      bw::app::waterReflectionTechniqueCode(
+          bw::app::WaterReflectionTechnique::ScreenSpace),
+      bw::app::planarReflectionResolutionCode(
+          bw::app::PlanarReflectionResolution::Half),
       192.0f, 64.0f,
       1, 1024, 0.25f, 0.25f, 0.0f, 0.0f,
       bw::app::shadowFilterCode(bw::app::ShadowFilter::Pcf), 1.0f, 0.9f,
@@ -183,6 +234,10 @@ void transfersShadowOptionsTransactionally() {
       bw::app::renderTextureFilterCode(bw::app::RenderTextureFilter::Linear),
       bw::app::horizontalMaterialsCode(
           bw::app::HorizontalMaterials::TwoDimensional),
+      bw::app::waterReflectionTechniqueCode(
+          bw::app::WaterReflectionTechnique::ScreenSpace),
+      bw::app::planarReflectionResolutionCode(
+          bw::app::PlanarReflectionResolution::Half),
       32.0f, 33.0f,
       1, 1024, 192.0f, 0.25f, 0.0f, 0.0f,
       bw::app::shadowFilterCode(bw::app::ShadowFilter::Pcf), 1.0f, 0.9f,
@@ -243,6 +298,24 @@ void renderScaleVocabularyIsClosedAndSizesTargets() {
   }
   require(!bw::app::renderTextureFilterFromName("bilinear"),
           "Unknown render-texture filter was accepted.");
+  for (auto technique : bw::app::allWaterReflectionTechniques) {
+    require(bw::app::waterReflectionTechniqueFromName(
+                bw::app::waterReflectionTechniqueName(technique)) ==
+                technique &&
+                bw::app::waterReflectionTechniqueFromCode(
+                    bw::app::waterReflectionTechniqueCode(technique)) ==
+                    technique,
+            "Water reflection technique did not round-trip.");
+  }
+  for (auto resolution : bw::app::allPlanarReflectionResolutions) {
+    require(bw::app::planarReflectionResolutionFromName(
+                bw::app::planarReflectionResolutionName(resolution)) ==
+                resolution &&
+                bw::app::planarReflectionResolutionFromCode(
+                    bw::app::planarReflectionResolutionCode(resolution)) ==
+                    resolution,
+            "Planar reflection resolution did not round-trip.");
+  }
   auto exact = bw::app::renderTargetSize(1024, 768, bw::app::RenderScale::Half);
   require(exact.width == 512 && exact.height == 384,
           "Evenly divisible target dimensions were incorrect.");

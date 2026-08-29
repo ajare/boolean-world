@@ -55,7 +55,7 @@ void appOffersDepthPrepassToggle() {
           "F5 depth pre-pass option is not connected to pipeline creation");
   require(state.find(".depth-prepass") != std::string::npos &&
               state.find(".no-depth-prepass") != std::string::npos &&
-              state.find("mWorldRenderPipelines[depthPrepassIndex]") !=
+              state.find("mWorldRenderPipelines[key]") !=
                   std::string::npos,
           "enabled and disabled depth pre-pass modes do not use distinct pipelines");
 }

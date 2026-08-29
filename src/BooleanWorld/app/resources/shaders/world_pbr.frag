@@ -15,8 +15,12 @@
 @@Uniform(float LIQUID_REFLECTION_MIP_LEVEL);
 @@Uniform(vec3 LIQUID_AMBIENT_TINT);
 @@Uniform(int LIQUID_WATER_PASS_ENABLED);
-@@Uniform(int LIQUID_SSR_ENABLED);
+@@Uniform(int LIQUID_REFLECTION_ENABLED);
 @@Uniform(int MPP_VIRTUAL_CAMERA);
+@@Uniform(int MPP_WATER_REFLECTION_TECHNIQUE);
+@@Uniform(int MPP_PLANAR_REFLECTION_COUNT);
+@@Uniform(mat4 MPP_PLANAR_REFLECTION_VIEW_PROJECTION_0);
+@@Uniform(float MPP_PLANAR_REFLECTION_ELEVATION_0);
 @@Uniform(float LIGHT_ATTENUATION_RADIUS);
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
 @@Uniform(float MATERIAL_SCALE);
@@ -43,6 +47,7 @@
 @@Texture(sampler2D TEX1);
 ##
 @@Texture(sampler2D PBR_SCENE_COLOUR_RESOLVED);
+@@Texture(sampler2D PBR_PLANAR_REFLECTION_0);
 @@Texture(sampler2D PBR_SCENE_DEPTH);
 @@Texture(sampler2DShadow SHADOW_MAP);
 @@Texture(samplerCubeShadow POINT_SHADOW_MAP);
@@ -2740,7 +2745,10 @@ void main()
     {
         vec2 screenUv = gl_FragCoord.xy * VIEWPORT_SIZE.zw;
         bool hasWaterPass = @Uniform(LIQUID_WATER_PASS_ENABLED) != 0;
-        bool ssrEnabled = hasWaterPass && @Uniform(LIQUID_SSR_ENABLED) != 0;
+        bool reflectionEnabled = hasWaterPass &&
+            @Uniform(LIQUID_REFLECTION_ENABLED) != 0;
+        bool planarReflection =
+            @Uniform(MPP_WATER_REFLECTION_TECHNIQUE) != 0;
         if (hasWaterPass && gl_FragCoord.z > liquidSceneDepth(screenUv))
             discard;
 
@@ -2756,30 +2764,63 @@ void main()
         float nDotV = clamp(dot(interfaceNormal, viewDir), 0.0, 1.0);
         float f0 = clamp(@Uniform(LIQUID_F0), 0.0, 1.0);
         float schlick = f0 + (1.0 - f0) * pow(1.0 - nDotV, 5.0);
-        // F5's SSR toggle is a visual comparison control: disabling it removes
-        // the reflected interface, including the miss fallback, while leaving
-        // water-pass depth rejection and the absorbed scene underneath intact.
-        float alpha = ssrEnabled
+        // F5's generic toggle removes the reflected interface, including the
+        // miss fallback, while leaving depth rejection and absorbed scene
+        // colour beneath the interface intact under either technique.
+        float alpha = reflectionEnabled
             ? clamp(@Uniform(LIQUID_REFLECTANCE), 0.0, 1.0) * schlick
             : 0.0;
 
         vec3 viewPosition = vec3(VIEW_MATRIX * vec4(worldPos, 1.0));
         vec3 viewNormal = normalize(mat3(VIEW_MATRIX) * interfaceNormal);
-        vec3 reflectionDirection = normalize(
-            reflect(normalize(viewPosition), viewNormal));
-        vec2 hitUv;
-        float confidence = ssrEnabled
-            ? liquidMarch(viewPosition, reflectionDirection, hitUv)
-            : 0.0;
+        vec3 hitColour = vec3(0.0);
+        float confidence = 0.0;
+        if (reflectionEnabled && planarReflection)
+        {
+            vec4 reflectedClip =
+                @Uniform(MPP_PLANAR_REFLECTION_VIEW_PROJECTION_0) *
+                vec4(worldPos, 1.0);
+            bool selectedElevation =
+                @Uniform(MPP_PLANAR_REFLECTION_COUNT) > 0 &&
+                abs(liquidSurfaceHeight -
+                    @Uniform(MPP_PLANAR_REFLECTION_ELEVATION_0)) <= 0.01;
+            bool validProjection = selectedElevation && reflectedClip.w > 0.0 &&
+                reflectedClip.z >= -reflectedClip.w &&
+                reflectedClip.z <= reflectedClip.w;
+            vec2 hitUv = reflectedClip.xy / max(reflectedClip.w, 0.00001) *
+                0.5 + 0.5;
+            // The same ripple normal that perturbs the Fresnel response and SSR
+            // ray bends the projected Planar lookup across the interface.
+            hitUv += interfaceNormal.xz * 0.025;
+            vec4 planarSample =
+                texture(@Texture(PBR_PLANAR_REFLECTION_0), hitUv);
+            vec2 edgeDistance = min(hitUv, vec2(1.0) - hitUv);
+            float edgeFade = clamp(
+                min(edgeDistance.x, edgeDistance.y) / 0.04, 0.0, 1.0);
+            confidence = validProjection
+                ? clamp(planarSample.a * edgeFade, 0.0, 1.0)
+                : 0.0;
+            hitColour = planarSample.rgb;
+        }
+        else if (reflectionEnabled)
+        {
+            vec3 reflectionDirection = normalize(
+                reflect(normalize(viewPosition), viewNormal));
+            vec2 hitUv;
+            confidence = liquidMarch(
+                viewPosition, reflectionDirection, hitUv);
 
-        // Trust dies continuously at unstable silhouettes, screen exits, and
-        // grazing angles. Every miss therefore reaches the tinted ambient
-        // fallback rather than sampling an invalid/black reflection texel.
-        vec2 edgeDistance = min(hitUv, vec2(1.0) - hitUv);
-        confidence *= clamp(
-            min(edgeDistance.x, edgeDistance.y) / 0.1, 0.0, 1.0);
-        confidence *= smoothstep(0.1, 0.35, nDotV);
-        confidence = clamp(confidence, 0.0, 1.0);
+            // Trust dies continuously at unstable silhouettes, screen exits,
+            // and grazing angles. Every miss reaches ambient fallback.
+            vec2 edgeDistance = min(hitUv, vec2(1.0) - hitUv);
+            confidence *= clamp(
+                min(edgeDistance.x, edgeDistance.y) / 0.1, 0.0, 1.0);
+            confidence *= smoothstep(0.1, 0.35, nDotV);
+            confidence = clamp(confidence, 0.0, 1.0);
+            hitColour = textureLod(
+                @Texture(PBR_SCENE_COLOUR_RESOLVED), hitUv,
+                clamp(@Uniform(LIQUID_REFLECTION_MIP_LEVEL), 0.0, 4.0)).rgb;
+        }
 
         float fragmentDistance = length(@Uniform(LIGHT_POSITION) - worldPos);
         float fadeToBlack = pow(clamp(
@@ -2787,9 +2828,6 @@ void main()
             1.7);
         vec3 fallback = vec3(0.12) *
             @Uniform(LIQUID_AMBIENT_TINT) * fadeToBlack;
-        vec3 hitColour = textureLod(
-            @Texture(PBR_SCENE_COLOUR_RESOLVED), hitUv,
-            clamp(@Uniform(LIQUID_REFLECTION_MIP_LEVEL), 0.0, 4.0)).rgb;
         vec3 reflectionColour = mix(fallback, hitColour, confidence);
 
         // Fixed-function alpha blending overlays reflection over the absorption

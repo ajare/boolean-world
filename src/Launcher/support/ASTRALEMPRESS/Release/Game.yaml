@@ -9,6 +9,9 @@ Configuration:
     AmbientOcclusion: gtao-depth
     RenderTextureFilter: linear
     HorizontalMaterials: 2d
+    WaterReflections:
+      Technique: planar
+      PlanarResolution: half
     PlayerTorch:
       Radius: 192
       Falloff: 64

@@ -1,10 +1,12 @@
 #pragma once
 
 #include <array>
-#include <vector>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include <mpp/AmbientOcclusion.h>
 #include <mpp/AntiAliasing.h>
@@ -65,13 +67,13 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
 
     // F5 session-only optical overrides for Liquid at the player's position.
     // Unset property overrides leave core/LiquidProperties.h untouched; the
-    // reflection mip level controls only SSR sampling blur.
+    // Reflection mip level controls only Screen-space sampling blur.
     std::optional<float> liquidOpacityOverride;
     std::optional<std::array<float, 3>> liquidTintOverride;
     std::optional<float> liquidReflectanceOverride;
     std::optional<float> liquidF0Override;
     float liquidReflectionMipLevel{defaultLiquidReflectionMipLevel};
-    bool liquidSsrEnabled{true};
+    bool liquidReflectionEnabled{true};
 
     float lightDistance{0.0f};
     bw::app::PlayerTorchOptions playerTorch;
@@ -153,16 +155,10 @@ private:
   // Created/managed in load states
   WorldRenderer* mwRenderer;
 
-  // Pipeline options are immutable, so depth-prepass mode and each render
-  // scale/AA pair have distinct pipelines. Entries are created lazily;
-  // unsupported MSAA sample counts remain empty and are disabled in the
-  // options panel.
-  std::array<
-      std::array<
-          std::array<mpp::RenderPipelinePtr, bw::app::antiAliasingOptionCount>,
-          bw::app::renderScaleCount>,
-      2>
-      mWorldRenderPipelines;
+  // Generated graph topology depends on the F5 technique, Planar resolution,
+  // and selected Liquid elevation as well as render scale, AA, and depth
+  // pre-pass. Stable string keys retain only variants actually encountered.
+  std::map<std::string, mpp::RenderPipelinePtr> mWorldRenderPipelines;
 
   // Separate post-process-free pipelines retain the immutable enabled and
   // disabled depth-prepass modes. Each is resized to the selected world target
@@ -188,7 +184,8 @@ private:
 
   mpp::RenderPipelinePtr const& getOrCreateWorldRenderPipeline(
       bw::app::RenderScale renderScale,
-      bw::app::AntiAliasing antiAliasing);
+      bw::app::AntiAliasing antiAliasing,
+      std::optional<mpp::PlanarReflectionPlaneDescriptor> const& planarPlane);
 
   mpp::RenderPipelinePtr const& getOrCreateFragmentOverdrawPipeline(
       bw::app::RenderScale renderScale);
