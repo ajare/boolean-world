@@ -201,6 +201,14 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   options.ambientOcclusion.method = ambientOcclusionMethod;
   options.ambientOcclusion.ssao = mDebugDisplay.ssao;
   options.ambientOcclusion.gtao = mDebugDisplay.gtao;
+  if (ambientOcclusionEnabled) {
+    // Fade AO darkening out on submerged geometry as whatever's covering it
+    // gets deeper/more opaque, rather than applying the same geometric AO
+    // regardless of what's absorbing the light on the way to the eye.
+    options.sceneExtraOutputs = {
+        {"LIQUID_RETENTION", mpp::GraphImageFormat::R8}};
+    options.ambientOcclusion.modulationInput = "SceneExtra.LIQUID_RETENTION";
+  }
   // Scale and AA variants all participate in this one render-system domain;
   // switching pipelines never allocates or renders a second cubemap.
   bw::app::joinPlayerTorchShadowDomain(options);
