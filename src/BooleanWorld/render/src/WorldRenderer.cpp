@@ -1,4 +1,5 @@
 #include <bit>
+#include <cmath>
 #include <iomanip>
 #include <set>
 #include <sstream>
@@ -501,6 +502,22 @@ void WorldRenderer::updateWallDataProvider(
     return mWallRenderVariantResolver ? mWallRenderVariantResolver(wall)
                                       : optional<WallRenderVariant>{};
   };
+  auto liquidSurfaceHeightFor =
+      [&](bw::core::arr::ArrangementWallOrientation const& orientation,
+          bool drawsNormalSide) {
+        // This follows the per-frame facing decision: a wall can bound wet
+        // and dry faces, so only the side currently being drawn contributes
+        // its liquid surface to the wall vertices.
+        auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
+        auto position = midpoint +
+                        (drawsNormalSide ? orientation.normal
+                                         : -orientation.normal) *
+                            0.01f;
+        auto height = snapshot.getLiquidSurfaceHeight(position);
+        return std::isfinite(height)
+                   ? height
+                   : WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
+      };
 
   // A chipped wall draws its remainder plus the chamfer facets instead of its
   // plain quad. Only the coplanar wall remainder follows the player-facing
@@ -569,7 +586,11 @@ void WorldRenderer::updateWallDataProvider(
                   DetailSurfaceKind::Wall, uint32_t(wallIndex))
             : std::span<bw::core::arr::DetailTriangle const>{};
 
-    if (facesPlayer(orientation)) {
+    auto drawsNormalSide = facesPlayer(orientation);
+    auto liquidSurfaceHeight =
+        liquidSurfaceHeightFor(orientation, drawsNormalSide);
+
+    if (drawsNormalSide) {
       auto const& properties = worldData.palette[wall.paletteIndex];
       auto resolved = mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
       auto hash = resolved.def.hash(resolved.materialIndex);
@@ -590,7 +611,7 @@ void WorldRenderer::updateWallDataProvider(
                       bw::core::arr::DetailTriangleKind::SurfaceRemainder
                   ? mesh
                   : unmappedMesh,
-              rendered, false, colour);
+              rendered, false, colour, liquidSurfaceHeight);
         }
         continue;
       }
@@ -598,16 +619,20 @@ void WorldRenderer::updateWallDataProvider(
       auto uv = CalculateWallPhysicalUv(orientation, wall);
       auto bottom0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.minZ, -v0.y,
-          normal.x, 0, -normal.y, uv.u0, uv.minV, colour);
+          normal.x, 0, -normal.y, uv.u0, uv.minV, colour,
+          liquidSurfaceHeight);
       auto bottom1 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v1.x, wall.minZ, -v1.y,
-          normal.x, 0, -normal.y, uv.u1, uv.minV, colour);
+          normal.x, 0, -normal.y, uv.u1, uv.minV, colour,
+          liquidSurfaceHeight);
       auto top1 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, -v1.y,
-          normal.x, 0, -normal.y, uv.u1, uv.maxV, colour);
+          normal.x, 0, -normal.y, uv.u1, uv.maxV, colour,
+          liquidSurfaceHeight);
       auto top0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, -v0.y,
-          normal.x, 0, -normal.y, uv.u0, uv.maxV, colour);
+          normal.x, 0, -normal.y, uv.u0, uv.maxV, colour,
+          liquidSurfaceHeight);
       wallRenderer.dataProvider->addTriangle(mesh, top1, bottom1, bottom0);
       wallRenderer.dataProvider->addTriangle(mesh, bottom0, top0, top1);
     } else {
@@ -636,22 +661,27 @@ void WorldRenderer::updateWallDataProvider(
               followsWall ? mesh : authoredMesh,
               replacement,
               followsWall,
-              colour);
+              colour,
+              liquidSurfaceHeight);
         }
         continue;
       }
       auto bottom0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.minZ, -v0.y,
-          backNormal.x, 0, -backNormal.y, 0, 0, colour);
+          backNormal.x, 0, -backNormal.y, 0, 0, colour,
+          liquidSurfaceHeight);
       auto bottom1 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v1.x, wall.minZ, -v1.y,
-          backNormal.x, 0, -backNormal.y, 1, 0, colour);
+          backNormal.x, 0, -backNormal.y, 1, 0, colour,
+          liquidSurfaceHeight);
       auto top1 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, -v1.y,
-          backNormal.x, 0, -backNormal.y, 1, 1, colour);
+          backNormal.x, 0, -backNormal.y, 1, 1, colour,
+          liquidSurfaceHeight);
       auto top0 = addVertexToDataProvider(
           wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, -v0.y,
-          backNormal.x, 0, -backNormal.y, 0, 1, colour);
+          backNormal.x, 0, -backNormal.y, 0, 1, colour,
+          liquidSurfaceHeight);
       wallRenderer.dataProvider->addTriangle(mesh, bottom0, bottom1, top1);
       wallRenderer.dataProvider->addTriangle(mesh, top1, top0, bottom0);
     }
