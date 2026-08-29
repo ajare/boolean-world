@@ -2390,8 +2390,14 @@ float playerTorchAttenuation(float lightDistance)
     return physicalAttenuation * edgeAttenuation;
 }
 
-vec3 shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
-              vec3 lightPosition)
+struct PbrLighting
+{
+    vec3 direct;
+    vec3 ambient;
+};
+
+PbrLighting shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
+                     vec3 lightPosition)
 {
     // LIGHT_POSITION uses the same X/elevation/Z coordinate system as the
     // interpolated world position. A point light emits equally in every
@@ -2419,7 +2425,10 @@ vec3 shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
     vec3 ambientSpecular = ambientFresnel *
         mix(vec3(0.10), ambientIrradiance, 1.0 - material.roughness);
 
-    return ambientDiffuse + ambientSpecular + direct;
+    PbrLighting lighting;
+    lighting.direct = direct;
+    lighting.ambient = ambientDiffuse + ambientSpecular;
+    return lighting;
 }
 
 Material plainGreyMaterial(vec3 normal)
@@ -2529,7 +2538,7 @@ vec3 applyWallNormalMap(vec3 geometricNormal)
 // expressions in the same commit. Keep this helper identical in
 // world_pbr.frag and world_pbr_2d.frag so walls and horizontals cannot drift.
 vec3 applyLiquidAbsorption(
-    vec3 colour, vec3 eyePosition, vec3 pointPosition,
+    vec3 direct, vec3 ambient, vec3 eyePosition, vec3 pointPosition,
     float eyeSurfaceHeight, float pointSurfaceHeight)
 {
     bool eyeIsWet = eyeSurfaceHeight > eyePosition.y;
@@ -2550,6 +2559,11 @@ vec3 applyLiquidAbsorption(
         ? chordLength * submergedFraction
         : max(surfaceHeight - eyePosition.y, 0.0);
     vec3 transmittance = exp(-@Uniform(LIQUID_EXTINCTION) * pathLength);
+    // The head-mounted Player Torch's outbound path nearly coincides with the
+    // point-to-eye path. Pre-attenuating its direct contribution once, then
+    // attenuating all radiance over the view path, gives direct the round trip
+    // while ambient (and emission grouped with it) travels that path once.
+    vec3 colour = ambient + direct * transmittance;
     return colour * transmittance +
         (vec3(1.0) - transmittance) * @Uniform(LIQUID_TINT);
 }
@@ -2601,15 +2615,18 @@ void main()
     // Cook-Torrance PBR lighting with GGX distribution, Smith geometry
     // masking and Schlick Fresnel.
     shadingNormal = material.normal;
-    vec3 value = shadePbr(
+    PbrLighting lighting = shadePbr(
         material, viewDir, @In(FRAGPOSITION),
         @Uniform(LIGHT_POSITION));
-    value += supernaturalEmission(texturePosition, materialIndex);
+    vec3 ambientAndEmission = lighting.ambient +
+        supernaturalEmission(texturePosition, materialIndex);
     // Absorption attenuates all radiance in linear space. It therefore follows
     // emission but precedes tone mapping, gamma, and the stylistic distance
-    // fade applied at output.
-    value = applyLiquidAbsorption(
-        value, @ViewPos, @In(FRAGPOSITION),
+    // fade applied at output. The Player Torch's direct term takes its nearly
+    // coincident outbound and view paths; ambient and emission take only the
+    // view path.
+    vec3 value = applyLiquidAbsorption(
+        lighting.direct, ambientAndEmission, @ViewPos, @In(FRAGPOSITION),
         @Uniform(LIQUID_EYE_SURFACE_Z), liquidSurfaceHeight);
     value = value / (value + vec3(1.0));
     value = pow(value, vec3(1.0 / 2.2));
