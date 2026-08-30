@@ -986,6 +986,72 @@ void windingNormalizationKeepsNormalMapsOnTheirGeometricEdges() {
           "the normalized geometric edge did not reach the editing proxy");
 }
 
+void wallMasksAreExternalOnlyAndSplitsInheritThem() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union,
+      {{ring(-2, -1, 0, 1), {}}, {ring(0, -1, 2, 1), {}}}));
+  auto proxy = primitive->createEditingProxy();
+  uint32_t internalEdge = ~0u, externalEdge = ~0u;
+  for (auto edge = proxy->getFirstEdgeIndex();
+       !proxy->edgeIndexIterationFinished(edge);
+       edge = proxy->getNextEdgeIndex(edge)) {
+    (proxy->getEdge(edge).getConnectivity() == wp::geometry::Edge::Internal
+         ? internalEdge
+         : externalEdge) = edge;
+  }
+  auto mask = bw::core::WallMaskOverride::image(
+      "mask/directional.png", 1,
+      {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f});
+  require(proxy->getEdgeWallMaskOverride(internalEdge).state() ==
+                  bw::core::WallMaskOverride::State::Unset &&
+              !proxy->isEdgeWallMaskEditable(internalEdge) &&
+              !proxy->setEdgeWallMaskOverride(internalEdge, mask),
+          "an Internal edge accepted or exposed authored Wall-mask state");
+  require(proxy->isEdgeWallMaskEditable(externalEdge) &&
+              proxy->setEdgeWallMaskOverride(externalEdge, mask),
+          "an External edge rejected an Image Wall-mask state");
+
+  wp::geometry::SplitEdgeResult split;
+  require(proxy->splitEdge(externalEdge, 0.5f, &split) &&
+              split.newEdgeIndices.size() == 2,
+          "masked External edge did not split");
+  for (auto edge : split.newEdgeIndices) {
+    require(proxy->getEdgeWallMaskOverride(edge) == mask,
+            "masked edge split did not inherit the complete Image state");
+  }
+}
+
+void wallMaskStatesSurviveSplitAndProxyRoundTrip() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(
+      MeshPrimitive::fromTree(Primitive::Operation::Union, {{ring(-2, -2, 2, 2), {}}}));
+  auto proxy = primitive->createEditingProxy();
+  auto const blend = bw::core::WallMaskOverride::BlendParameters{
+      0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
+  std::array values{
+      bw::core::WallMaskOverride::unset(),
+      bw::core::WallMaskOverride::disabled(),
+      bw::core::WallMaskOverride::image("mask/split.png", 3, blend)};
+  for (auto value : values) {
+    auto edge = proxy->getFirstEdgeIndex();
+    require(proxy->setEdgeWallMaskOverride(edge, value),
+            "could not author a Wall-mask state before splitting");
+    require(proxy->setEdgeCollisionOverride(edge, false) &&
+                proxy->setEdgeVisible(edge, false),
+            "could not establish independent edge overrides before splitting");
+    wp::geometry::SplitEdgeResult split;
+    require(proxy->splitEdge(edge, 0.5f, &split) && split.newEdgeIndices.size() == 2,
+            "an External edge did not split");
+    for (auto splitEdge : split.newEdgeIndices) {
+      require(proxy->getEdgeWallMaskOverride(splitEdge) == value &&
+                  proxy->getEdgeCollisionOverride(splitEdge) == false &&
+                  !proxy->getEdgeVisible(splitEdge),
+              "splitting disturbed a complete wall-edge override state");
+    }
+    proxy->commitTo(*primitive);
+    proxy = primitive->createEditingProxy();
+  }
+}
+
 void splitEdgeInheritsVisibleForBothHalves() {
   for (bool sourceValue : {true, false}) {
     auto primitive = std::unique_ptr<MeshPrimitive>(
@@ -1157,6 +1223,8 @@ int main() {
     normalMapStatesSurviveSplitAndProxyRoundTrip();
     normalMapMergeRefusesDifferentValuesAndPreservesEqualValues();
     windingNormalizationKeepsNormalMapsOnTheirGeometricEdges();
+    wallMasksAreExternalOnlyAndSplitsInheritThem();
+    wallMaskStatesSurviveSplitAndProxyRoundTrip();
     splitEdgeInheritsVisibleForBothHalves();
     removeVertexMergeKeepsThePredecessorEdgesVisibleValue();
     collidesAndVisibleAreIndependentPerEdge();

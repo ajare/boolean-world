@@ -29,6 +29,8 @@ struct PrimitiveContours {
   std::vector<std::vector<std::optional<bool>>> edgeVisibleOverrides;
   std::vector<std::vector<std::optional<WallNormalMapOverride>>>
       edgeNormalMapOverrides;
+  std::vector<std::vector<std::optional<WallMaskOverride>>>
+      edgeWallMaskOverrides;
 };
 
 [[nodiscard]] BW_API PrimitiveContours ConvertPrimitiveToContours(

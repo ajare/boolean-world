@@ -192,6 +192,15 @@ public:
   bool setEdgeNormalMapOverride(
       uint32_t edgeIndex, WallNormalMapOverride const& overrideValue);
 
+  // Versioned Wall mask override, sibling to the Wall normal-map override.
+  // Internal edges always read Unset and reject mutation, matching the other
+  // authored wall-edge controls.
+  [[nodiscard]] WallMaskOverride getEdgeWallMaskOverride(
+      uint32_t edgeIndex) const;
+  [[nodiscard]] bool isEdgeWallMaskEditable(uint32_t edgeIndex) const;
+  bool setEdgeWallMaskOverride(
+      uint32_t edgeIndex, WallMaskOverride const& overrideValue);
+
   // Divides one Shell or Island along a chord between two of its
   // non-adjacent vertices. The chord must not touch or cross any existing
   // Edge except at its endpoints. Direct Holes remain with the side that

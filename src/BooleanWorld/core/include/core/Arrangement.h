@@ -12,6 +12,8 @@
 #include "core/ChipGenerationParameters.h"
 #include "core/Primitive.h"
 #include "core/Stats.h"
+#include "core/WallMaskOverride.h"
+#include "core/WallNormalMapOverride.h"
 
 namespace bw::core::arr {
 inline constexpr int64_t FixedPointUnitsPerWorldUnit = 1000;
@@ -62,6 +64,7 @@ struct Edge {
   std::optional<bool> collidesOverride;
   std::optional<bool> visibleOverride;
   std::optional<WallNormalMapOverride> normalMapOverride;
+  std::optional<WallMaskOverride> wallMaskOverride;
 
   bool doubleSided() const {
     return fi[0] >= 0 && fi[1] >= 0;
@@ -105,8 +108,9 @@ struct ContourInput {
   std::vector<std::optional<bool>> edgeOverrides{};
   std::vector<std::optional<bool>> edgeVisibleOverrides{};
   std::vector<std::optional<WallNormalMapOverride>> edgeNormalMapOverrides{};
+  std::vector<std::optional<WallMaskOverride>> edgeWallMaskOverrides{};
   // Structural primitives participate in the fold but cannot select a wall
-  // normal-map value.
+  // normal-map or wall-mask value.
   bool contributesProperties{true};
 };
 
@@ -170,6 +174,7 @@ struct ArrangementWall {
   // to ArrangementWorldData.
   bool visible{true};
   WallNormalMapOverride normalMapOverride{};
+  WallMaskOverride wallMaskOverride{};
 };
 
 struct ArrangementPrimitive {
@@ -194,6 +199,8 @@ struct ArrangementPrimitive {
   bool contributesProperties{true};
   std::vector<std::vector<std::optional<WallNormalMapOverride>>>
       contourEdgeNormalMapOverrides{};
+  std::vector<std::vector<std::optional<WallMaskOverride>>>
+      contourEdgeWallMaskOverrides{};
   // This Primitive's own raw area (Primitive::getArea()), independent of the
   // fold - see ComputeUndistributedLiquidDepths, which is the only consumer.
   double rawArea{0};
@@ -208,6 +215,7 @@ struct ArrangementEdge {
   std::optional<bool> collidesOverride;
   std::optional<bool> visibleOverride;
   std::optional<WallNormalMapOverride> normalMapOverride;
+  std::optional<WallMaskOverride> wallMaskOverride;
 };
 
 struct ArrangementFace {

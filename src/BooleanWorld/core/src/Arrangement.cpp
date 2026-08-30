@@ -97,6 +97,7 @@ struct Segment {
   std::optional<bool> collidesOverride;
   std::optional<bool> visibleOverride;
   std::optional<WallNormalMapOverride> normalMapOverride;
+  std::optional<WallMaskOverride> wallMaskOverride;
   bool contributesProperties;
 };
 
@@ -217,8 +218,12 @@ vector<Segment> ExtractSegments(vector<ContourInput> const& contours) {
             i < input.edgeNormalMapOverrides.size()
                 ? input.edgeNormalMapOverrides[i]
                 : std::nullopt;
+        std::optional<WallMaskOverride> wallMaskOverride =
+            i < input.edgeWallMaskOverrides.size()
+                ? input.edgeWallMaskOverrides[i]
+                : std::nullopt;
         result.push_back(
-            {{a, b}, input.primitiveIndex, collidesOverride, visibleOverride, normalMapOverride, input.contributesProperties});
+            {{a, b}, input.primitiveIndex, collidesOverride, visibleOverride, normalMapOverride, wallMaskOverride, input.contributesProperties});
       }
     }
   }
@@ -818,6 +823,15 @@ PSLG BuildPSLG(
                 WallNormalMapOverride::State::Unset) {
           edge.normalMapOverride = segments[i].normalMapOverride;
         }
+        // The Wall mask resolves with the exact same precedence as the Wall
+        // normal map: Disabled dominates lower contributors, Unset is inert,
+        // and the highest-precedence Image wins as one complete value.
+        if (segments[i].contributesProperties &&
+            segments[i].wallMaskOverride.has_value() &&
+            segments[i].wallMaskOverride->state() !=
+                WallMaskOverride::State::Unset) {
+          edge.wallMaskOverride = segments[i].wallMaskOverride;
+        }
       }
     }
   }
@@ -1007,10 +1021,16 @@ ArrangementResultPtr BuildArrangement(
         edgeNormalMapOverrides =
             primitive.contourEdgeNormalMapOverrides[contourIndex];
       }
+      std::vector<std::optional<WallMaskOverride>> edgeWallMaskOverrides;
+      if (contourIndex < primitive.contourEdgeWallMaskOverrides.size()) {
+        edgeWallMaskOverrides =
+            primitive.contourEdgeWallMaskOverrides[contourIndex];
+      }
       contours.push_back(
           {primitive.contours[contourIndex], primitiveIndex,
            std::move(edgeOverrides), std::move(edgeVisibleOverrides),
-           std::move(edgeNormalMapOverrides), primitive.contributesProperties});
+           std::move(edgeNormalMapOverrides), std::move(edgeWallMaskOverrides),
+           primitive.contributesProperties});
     }
   }
 
@@ -1261,7 +1281,8 @@ ArrangementResultPtr BuildArrangement(
                               edge.fi[1] < 0 ? 0u : uint32_t(edge.fi[1] + 1)},
                              edge.collidesOverride,
                              edge.visibleOverride,
-                             edge.normalMapOverride});
+                             edge.normalMapOverride,
+                             edge.wallMaskOverride});
   }
 
   if (stats != nullptr) {
@@ -1410,7 +1431,8 @@ vector<ArrangementWall> BuildArrangementWalls(
            ArrangementWallKind::Border,
            properties.ceilingZ - properties.floorZ,
            edge.visibleOverride.value_or(true),
-           edge.normalMapOverride.value_or(WallNormalMapOverride::unset())});
+           edge.normalMapOverride.value_or(WallNormalMapOverride::unset()),
+           edge.wallMaskOverride.value_or(WallMaskOverride::unset())});
       continue;
     }
     if (!face0.solid) {
@@ -1436,7 +1458,8 @@ vector<ArrangementWall> BuildArrangementWalls(
            ArrangementWallKind::FloorStep,
            clearance,
            edge.visibleOverride.value_or(true),
-           edge.normalMapOverride.value_or(WallNormalMapOverride::unset())});
+           edge.normalMapOverride.value_or(WallNormalMapOverride::unset()),
+           edge.wallMaskOverride.value_or(WallMaskOverride::unset())});
     }
     if (properties0.ceilingZ != properties1.ceilingZ) {
       auto const& lowerCeilingFace =
@@ -1449,7 +1472,8 @@ vector<ArrangementWall> BuildArrangementWalls(
            ArrangementWallKind::CeilingStep,
            clearance,
            edge.visibleOverride.value_or(true),
-           edge.normalMapOverride.value_or(WallNormalMapOverride::unset())});
+           edge.normalMapOverride.value_or(WallNormalMapOverride::unset()),
+           edge.wallMaskOverride.value_or(WallMaskOverride::unset())});
     }
   }
   return walls;

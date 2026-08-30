@@ -170,6 +170,7 @@ void validateRing(ClosedPolygon& ring, size_t& ringCount, size_t& vertexCount) {
       auto source = (ring.size() + ring.size() - 2 - i) % ring.size();
       ring[i].edgeFlags = original[source].edgeFlags;
       ring[i].edgeNormalMap = original[source].edgeNormalMap;
+      ring[i].edgeWallMask = original[source].edgeWallMask;
     }
   }
 }
@@ -387,6 +388,7 @@ struct MeshPrimitiveEditingProxy::Impl {
   // are never queried again.
   unordered_map<uint32_t, uint32_t> edgeFlags;
   unordered_map<uint32_t, WallNormalMapOverride> edgeNormalMaps;
+  unordered_map<uint32_t, WallMaskOverride> edgeWallMasks;
 
   uint32_t rawEdgeFlags(uint32_t edgeIndex) const {
     auto found = edgeFlags.find(edgeIndex);
@@ -415,6 +417,13 @@ struct MeshPrimitiveEditingProxy::Impl {
     auto found = edgeNormalMaps.find(edgeIndex);
     return found == edgeNormalMaps.end() ? WallNormalMapOverride::unset()
                                          : found->second;
+  }
+
+  WallMaskOverride edgeWallMask(uint32_t edgeIndex) const {
+    if (!isEdgeExternal(edgeIndex)) return WallMaskOverride::unset();
+    auto found = edgeWallMasks.find(edgeIndex);
+    return found == edgeWallMasks.end() ? WallMaskOverride::unset()
+                                        : found->second;
   }
 
   struct ExactPointLess {
@@ -453,6 +462,7 @@ struct MeshPrimitiveEditingProxy::Impl {
           // next vertex in this Ring. Copy its stored flags in.
           target.edgeFlags[found->second] = ring[i].edgeFlags;
           target.edgeNormalMaps[found->second] = ring[i].edgeNormalMap;
+          target.edgeWallMasks[found->second] = ring[i].edgeWallMask;
         }
         edgeData.insert(edgeData.end(), {first, second, found->second});
       }
@@ -480,6 +490,7 @@ struct MeshPrimitiveEditingProxy::Impl {
     shells.clear();
     edgeFlags.clear();
     edgeNormalMaps.clear();
+    edgeWallMasks.clear();
     Builder builder{*this};
     for (auto const& shell : worldTree) shells.push_back(builder.addFilled(shell));
   }
@@ -510,6 +521,10 @@ struct MeshPrimitiveEditingProxy::Impl {
         auto normalMap = edgeNormalMaps.find(index);
         if (normalMap != edgeNormalMaps.end()) {
           result[i].edgeNormalMap = normalMap->second;
+        }
+        auto wallMask = edgeWallMasks.find(index);
+        if (wallMask != edgeWallMasks.end()) {
+          result[i].edgeWallMask = wallMask->second;
         }
       }
     }
@@ -766,6 +781,7 @@ bool MeshPrimitiveEditingProxy::splitEdge(
     wp::geometry::SplitEdgeResult* result) {
   auto originalFlags = mImpl->rawEdgeFlags(edgeIndex);
   auto originalNormalMap = mImpl->edgeNormalMap(edgeIndex);
+  auto originalWallMask = mImpl->edgeWallMask(edgeIndex);
   wp::geometry::SplitEdgeResult localResult;
   auto* target = result ? result : &localResult;
   wp::geometry::MeshOperations::splitEdge(&mImpl->mesh, edgeIndex, t, target);
@@ -778,6 +794,8 @@ bool MeshPrimitiveEditingProxy::splitEdge(
     mImpl->edgeFlags[target->newEdgeIndices[1]] = originalFlags;
     mImpl->edgeNormalMaps[target->newEdgeIndices[0]] = originalNormalMap;
     mImpl->edgeNormalMaps[target->newEdgeIndices[1]] = originalNormalMap;
+    mImpl->edgeWallMasks[target->newEdgeIndices[0]] = originalWallMask;
+    mImpl->edgeWallMasks[target->newEdgeIndices[1]] = originalWallMask;
   }
   return !target->newEdgeIndices.empty();
 }
@@ -849,6 +867,23 @@ bool MeshPrimitiveEditingProxy::setEdgeNormalMapOverride(
     uint32_t edgeIndex, WallNormalMapOverride const& overrideValue) {
   if (!isEdgeNormalMapEditable(edgeIndex)) return false;
   mImpl->edgeNormalMaps[edgeIndex] = overrideValue;
+  return true;
+}
+
+WallMaskOverride MeshPrimitiveEditingProxy::getEdgeWallMaskOverride(
+    uint32_t edgeIndex) const {
+  return mImpl->edgeWallMask(edgeIndex);
+}
+
+bool MeshPrimitiveEditingProxy::isEdgeWallMaskEditable(
+    uint32_t edgeIndex) const {
+  return mImpl->isEdgeExternal(edgeIndex);
+}
+
+bool MeshPrimitiveEditingProxy::setEdgeWallMaskOverride(
+    uint32_t edgeIndex, WallMaskOverride const& overrideValue) {
+  if (!isEdgeWallMaskEditable(edgeIndex)) return false;
+  mImpl->edgeWallMasks[edgeIndex] = overrideValue;
   return true;
 }
 
@@ -958,6 +993,7 @@ bool MeshPrimitiveEditingProxy::sliceFilledRing(
           auto index = static_cast<uint32_t>(edgeIndex);
           vertex.edgeFlags = mImpl->rawEdgeFlags(index);
           vertex.edgeNormalMap = mImpl->edgeNormalMap(index);
+          vertex.edgeWallMask = mImpl->edgeWallMask(index);
         }
       }
       ring.push_back(vertex);
@@ -1049,8 +1085,10 @@ bool MeshPrimitiveEditingProxy::removeVertex(uint32_t vertexIndex) {
     auto incoming = mImpl->mesh.getEdgeIndexByVertices(previous, *found);
     auto outgoing = mImpl->mesh.getEdgeIndexByVertices(*found, next);
     if (incoming >= 0 && outgoing >= 0 &&
-        mImpl->edgeNormalMap(static_cast<uint32_t>(incoming)) !=
-            mImpl->edgeNormalMap(static_cast<uint32_t>(outgoing))) {
+        (mImpl->edgeNormalMap(static_cast<uint32_t>(incoming)) !=
+             mImpl->edgeNormalMap(static_cast<uint32_t>(outgoing)) ||
+         mImpl->edgeWallMask(static_cast<uint32_t>(incoming)) !=
+             mImpl->edgeWallMask(static_cast<uint32_t>(outgoing)))) {
       return false;
     }
   }
@@ -1422,6 +1460,17 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
         serializer->writeFloat("normalMapRepeat", image->repeat);
         serializer->writeFloat("normalMapStrength", image->strength);
       }
+      serializer->writeUint8(
+          "wallMaskState", static_cast<uint8_t>(vertex.edgeWallMask.state()));
+      if (auto mask = vertex.edgeWallMask.imageData()) {
+        serializer->writeString("wallMaskResource", mask->resourceName);
+        serializer->writeUint8("wallMaskChannel", mask->channel);
+        serializer->beginArray("wallMaskBlendParameters", false);
+        for (float parameter : mask->blendParameters) {
+          serializer->writeFloat("", parameter);
+        }
+        serializer->endArray();
+      }
       serializer->endMap();
     }
     serializer->endArray();
@@ -1439,7 +1488,7 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
 
   serializer->beginMap("meshPrimitive");
   serializer->writeUint32("treeFormat", TreeFormatMagic);
-  serializer->writeUint32("edgeOverrideFormat", 4);
+  serializer->writeUint32("edgeOverrideFormat", 5);
   serializer->beginArray("shells");
   vector<Event> events;
   for (auto shell = mShells.rbegin(); shell != mShells.rend(); ++shell) {
@@ -1521,7 +1570,7 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
       edgeOverrideFormat =
           serializer->readUint32("collisionOverrideFormat", true, 0);
     }
-    if (edgeOverrideFormat != 4) {
+    if (edgeOverrideFormat < 4 || edgeOverrideFormat > 5) {
       throw CoreException("Unsupported MeshPrimitive edge override format version.");
     }
 
@@ -1576,6 +1625,44 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
             }
             default:
               throw CoreException("Unsupported wall normal-map override state.");
+          }
+        }
+        if (edgeOverrideFormat >= 5) {
+          auto maskState = serializer->readUint8("wallMaskState");
+          switch (static_cast<WallMaskOverride::State>(maskState)) {
+            case WallMaskOverride::State::Unset:
+              ring.back().edgeWallMask = WallMaskOverride::unset();
+              break;
+            case WallMaskOverride::State::Disabled:
+              ring.back().edgeWallMask = WallMaskOverride::disabled();
+              break;
+            case WallMaskOverride::State::Image: {
+              // Positional serializers require explicit sequencing; C++ does
+              // not define function-argument evaluation order.
+              auto resourceName =
+                  serializer->readString("wallMaskResource");
+              auto channel = serializer->readUint8("wallMaskChannel");
+              WallMaskOverride::BlendParameters blendParameters{};
+              serializer->beginArray("wallMaskBlendParameters");
+              size_t index = 0;
+              while (serializer->nextArrayItem()) {
+                if (index >= blendParameters.size()) {
+                  throw CoreException(
+                      "Wall mask blend parameters exceed the fixed array width.");
+                }
+                blendParameters[index++] = serializer->readFloat();
+              }
+              serializer->endArray();
+              if (index != blendParameters.size()) {
+                throw CoreException(
+                    "Wall mask blend parameters must hold exactly eight values.");
+              }
+              ring.back().edgeWallMask = WallMaskOverride::image(
+                  std::move(resourceName), channel, blendParameters);
+              break;
+            }
+            default:
+              throw CoreException("Unsupported wall mask override state.");
           }
         }
         serializer->endMap();

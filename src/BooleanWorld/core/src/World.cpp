@@ -198,6 +198,9 @@ vector<string> World::collectDependentResourceNames() const {
           if (auto image = vertex.edgeNormalMap.imageData()) {
             names.insert(image->resourceName);
           }
+          if (auto mask = vertex.edgeWallMask.imageData()) {
+            names.insert(mask->resourceName);
+          }
         }
       }
     }

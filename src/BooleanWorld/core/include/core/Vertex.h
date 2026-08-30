@@ -8,6 +8,7 @@
 
 #include "Platform.h"
 #include "core/Defines.h"
+#include "core/WallMaskOverride.h"
 #include "core/WallNormalMapOverride.h"
 
 namespace bw {
@@ -21,6 +22,7 @@ struct Vertex {
   // clear means collision is not overridden and the wall is visible.
   uint32_t edgeFlags{0};
   WallNormalMapOverride edgeNormalMap{};
+  WallMaskOverride edgeWallMask{};
 
   Vertex() = default;
   Vertex(wp::Vector2 const& position)

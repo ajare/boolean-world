@@ -2,6 +2,7 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -423,9 +424,9 @@ void authoredNormalMapValuesRoundTripAndRejectFutureVersions() {
   require(binaryOk, "normal maps did not load from binary: " + binaryErrors);
   verify(*binaryLoaded);
 
-  auto marker = yaml.find("edgeOverrideFormat: 4");
+  auto marker = yaml.find("edgeOverrideFormat: 5");
   require(marker != std::string::npos, "normal-map format is not versioned");
-  yaml.replace(marker, std::string("edgeOverrideFormat: 4").size(),
+  yaml.replace(marker, std::string("edgeOverrideFormat: 5").size(),
                "edgeOverrideFormat: 99");
   auto rejected = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
@@ -435,8 +436,151 @@ void authoredNormalMapValuesRoundTripAndRejectFutureVersions() {
           "future Wall normal-map format did not fail clearly");
 }
 
+void wallMaskValueValidation() {
+  using bw::core::WallMaskOverride;
+  using Blend = WallMaskOverride::BlendParameters;
+
+  require(WallMaskOverride::unset().state() == WallMaskOverride::State::Unset &&
+              WallMaskOverride::unset().imageData() == nullptr,
+          "Unset Wall mask should carry no image payload");
+  require(WallMaskOverride::disabled().state() ==
+                  WallMaskOverride::State::Disabled &&
+              WallMaskOverride::disabled().imageData() == nullptr,
+          "Disabled Wall mask should carry no image payload");
+
+  auto const blend = Blend{0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
+  auto image = WallMaskOverride::image("mask/wear.png", 3, blend);
+  require(image.state() == WallMaskOverride::State::Image &&
+              image.imageData() != nullptr &&
+              image.imageData()->resourceName == "mask/wear.png" &&
+              image.imageData()->channel == 3 &&
+              image.imageData()->blendParameters == blend,
+          "a valid Wall mask Image did not survive construction");
+
+  auto rejected = [](auto&& build) {
+    try {
+      (void)build();
+      return false;
+    } catch (std::invalid_argument const&) {
+      return true;
+    }
+  };
+  require(rejected([] { return WallMaskOverride::image("", 0, Blend{}); }),
+          "an empty Wall mask resource name was accepted");
+  require(rejected([] { return WallMaskOverride::image("mask.png", 4, Blend{}); }),
+          "an out-of-range Wall mask channel was accepted");
+  auto nonFinite = Blend{};
+  nonFinite[4] = std::numeric_limits<float>::infinity();
+  require(rejected([&] { return WallMaskOverride::image("mask.png", 0, nonFinite); }),
+          "a non-finite Wall mask blend parameter was accepted");
+  auto nanBlend = Blend{};
+  nanBlend[0] = std::numeric_limits<float>::quiet_NaN();
+  require(rejected([&] { return WallMaskOverride::image("mask.png", 0, nanBlend); }),
+          "a NaN Wall mask blend parameter was accepted");
+}
+
+void authoredWallMaskValuesRoundTripAndRejectFutureVersions() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
+  auto proxy = primitive->createEditingProxy();
+  auto imageEdge = proxy->getFirstEdgeIndex();
+  auto disabledEdge = proxy->getNextEdgeIndex(imageEdge);
+  auto const blend = bw::core::WallMaskOverride::BlendParameters{
+      0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
+  require(proxy->setEdgeWallMaskOverride(
+              imageEdge, bw::core::WallMaskOverride::image(
+                             "mask/wear.png", 2, blend)) &&
+              proxy->setEdgeWallMaskOverride(
+                  disabledEdge, bw::core::WallMaskOverride::disabled()),
+          "could not author Wall mask states");
+  proxy->commitTo(*primitive);
+
+  auto verify = [&](MeshPrimitive& loaded) {
+    auto editing = loaded.createEditingProxy();
+    size_t unset = 0, disabled = 0, image = 0;
+    for (auto edge = editing->getFirstEdgeIndex();
+         !editing->edgeIndexIterationFinished(edge);
+         edge = editing->getNextEdgeIndex(edge)) {
+      auto value = editing->getEdgeWallMaskOverride(edge);
+      unset += value.state() == bw::core::WallMaskOverride::State::Unset;
+      disabled += value.state() == bw::core::WallMaskOverride::State::Disabled;
+      if (auto payload = value.imageData()) {
+        ++image;
+        require(payload->resourceName == "mask/wear.png" &&
+                    payload->channel == 2 &&
+                    payload->blendParameters == blend,
+                "Image Wall mask payload changed on reload");
+      } else {
+        require(value.state() != bw::core::WallMaskOverride::State::Image,
+                "inactive Wall mask state retained a hidden Image payload");
+      }
+    }
+    require(unset == 2 && disabled == 1 && image == 1,
+            "Wall mask states changed on reload");
+  };
+
+  auto yaml = serializeYaml(*primitive);
+  auto yamlLoaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
+  require(deserializeYaml(yaml, *yamlLoaded), "Wall masks did not load from YAML");
+  verify(*yamlLoaded);
+
+  auto binaryLoaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
+  auto binaryOk = deserializeBinary(serializeBinary(*primitive), *binaryLoaded);
+  std::string binaryErrors;
+  for (auto const& error : binaryLoaded->getDeserializationErrors())
+    binaryErrors += error + "; ";
+  require(binaryOk, "Wall masks did not load from binary: " + binaryErrors);
+  verify(*binaryLoaded);
+
+  auto marker = yaml.find("edgeOverrideFormat: 5");
+  require(marker != std::string::npos, "Wall-mask format is not versioned");
+  yaml.replace(marker, std::string("edgeOverrideFormat: 5").size(),
+               "edgeOverrideFormat: 99");
+  auto rejected = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
+  require(!deserializeYaml(yaml, *rejected) &&
+              containsMessage(rejected->getDeserializationErrors(),
+                              "Unsupported MeshPrimitive edge override format version"),
+          "future Wall-mask format did not fail clearly");
+}
+
+void format4LoadsWallMaskUnsetWithZeroBlendParameters() {
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
+  auto proxy = primitive->createEditingProxy();
+  auto imageEdge = proxy->getFirstEdgeIndex();
+  auto const blend = bw::core::WallMaskOverride::BlendParameters{
+      0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
+  require(proxy->setEdgeWallMaskOverride(
+              imageEdge, bw::core::WallMaskOverride::image(
+                             "mask/wear.png", 1, blend)),
+          "could not author a Wall mask before downgrading");
+  proxy->commitTo(*primitive);
+
+  auto yaml = serializeYaml(*primitive);
+  auto marker = yaml.find("edgeOverrideFormat: 5");
+  require(marker != std::string::npos, "Wall-mask format is not versioned");
+  yaml.replace(marker, std::string("edgeOverrideFormat: 5").size(),
+               "edgeOverrideFormat: 4");
+
+  auto loaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
+  require(deserializeYaml(yaml, *loaded), "a format-4 MeshPrimitive did not load");
+  auto editing = loaded->createEditingProxy();
+  for (auto edge = editing->getFirstEdgeIndex();
+       !editing->edgeIndexIterationFinished(edge);
+       edge = editing->getNextEdgeIndex(edge)) {
+    auto value = editing->getEdgeWallMaskOverride(edge);
+    require(value.state() == bw::core::WallMaskOverride::State::Unset &&
+                value.imageData() == nullptr,
+            "a format-4 file loaded a Wall mask other than Unset");
+  }
+}
+
 std::string asLegacyCollisionYaml(std::string yaml, bool retainFormat) {
-  auto marker = yaml.find("edgeOverrideFormat: 4");
+  auto marker = yaml.find("edgeOverrideFormat: 5");
   require(marker != std::string::npos,
           "serialized MeshPrimitive had no edge override format marker");
   auto markerLineStart = yaml.rfind('\n', marker) + 1;
@@ -535,6 +679,29 @@ void proceduralPrimitiveSchemaRemainsFlat() {
           "procedural Primitive serialization changed with the Mesh schema");
 }
 
+void wallMaskImageIsCollectedAsWorldDependentResource() {
+  bw::core::World world(100.0f, 10.0f);
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
+  auto proxy = primitive->createEditingProxy();
+  auto maskEdge = proxy->getFirstEdgeIndex();
+  auto normalEdge = proxy->getNextEdgeIndex(maskEdge);
+  require(proxy->setEdgeWallMaskOverride(
+              maskEdge, bw::core::WallMaskOverride::image(
+                            "mask/wear.png", 0,
+                            {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f})) &&
+              proxy->setEdgeNormalMapOverride(
+                  normalEdge, bw::core::WallNormalMapOverride::image(
+                                  "normal/wear.png", 2.0f, 1.0f)),
+          "could not author a Wall mask and normal map on the fixture primitive");
+  proxy->commitTo(*primitive);
+
+  world.addPrimitive(primitive.release());
+  require(world.getDependentResourceNames() ==
+              std::vector<std::string>{"mask/wear.png", "normal/wear.png"},
+          "the mask image was not collected as a World dependent resource");
+}
+
 void shippedWorldFixtureUsesTheCurrentSchema() {
   auto reader = std::shared_ptr<bw::core::Serializer>(
       bw::core::YamlSerializer::fromFile(
@@ -565,9 +732,13 @@ int main() {
     authoredCollidesValuesRoundTripThroughSaveAndLoad();
     authoredVisibleValuesRoundTripThroughSaveAndLoad();
     authoredNormalMapValuesRoundTripAndRejectFutureVersions();
+    wallMaskValueValidation();
+    authoredWallMaskValuesRoundTripAndRejectFutureVersions();
+    format4LoadsWallMaskUnsetWithZeroBlendParameters();
     legacyEdgeOverrideFormatsAreRejected();
     preFeatureEdgeDataIsRejected();
     proceduralPrimitiveSchemaRemainsFlat();
+    wallMaskImageIsCollectedAsWorldDependentResource();
     shippedWorldFixtureUsesTheCurrentSchema();
     std::cout << "MeshPrimitive containment tree serialization tests passed\n";
     return 0;
