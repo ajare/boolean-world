@@ -163,6 +163,21 @@ endforeach()
 
 include(Helpers)
 
+# concurrencpp is built from its pinned source submodule, rather than linked
+# from vendor/. EXCLUDE_FROM_ALL keeps it out of unrelated builds; targets that
+# link concurrencpp::concurrencpp bring it in transitively.
+if(NOT EXISTS "${BW_ROOT}/ext/concurrencpp/CMakeLists.txt")
+    message(FATAL_ERROR
+        "concurrencpp is empty. Run: git submodule update --init --recursive")
+endif()
+add_subdirectory(ext/concurrencpp EXCLUDE_FROM_ALL)
+# concurrencpp 0.1.7 relies on <thread> and <semaphore> transitively including
+# <string> and <chrono>; MSVC 14.51 no longer provides those transitive
+# includes. Supply them through the target's private PCH without patching the
+# pinned upstream source.
+target_precompile_headers(concurrencpp PRIVATE <chrono> <string>)
+set_target_properties(concurrencpp PROPERTIES FOLDER "Dependencies")
+
 add_subdirectory(src/AppLib)
 add_subdirectory(src/BooleanWorld)
 add_subdirectory(src/Launcher)

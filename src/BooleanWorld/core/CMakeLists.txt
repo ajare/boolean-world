@@ -66,7 +66,7 @@ target_compile_definitions(core PRIVATE YAML_CPP_STATIC_DEFINE _CONSOLE)
 
 target_link_libraries(core PUBLIC
     bw-common Willpower.Common Willpower.Geometry
-    vendor::concurrencpp ext::yaml-cpp)
+    concurrencpp::concurrencpp ext::yaml-cpp)
 
 target_compile_features(core PRIVATE cxx_std_23)
 target_compile_options(core PRIVATE /W3)
