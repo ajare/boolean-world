@@ -1,0 +1,157 @@
+// GPU smoke test for the Selected surface Sub-material thumbnail grid.
+#include <cstdio>
+#include <exception>
+#include <memory>
+#include <vector>
+
+#include <GL/glew.h>
+#include <SDL3/SDL.h>
+
+#include <mpp/Camera.h>
+
+#include <core/ArrangementWorldData.h>
+#include <core/ArrangementWorldDataGenerator.h>
+#include <core/Defines.h>
+#include <core/MeshPrimitive.h>
+#include <core/World.h>
+
+#include "EditorRenderSystem.h"
+#include "PreviewRenderScene.h"
+#include "ProcMaterialLibrary.h"
+#include "SubMaterialThumbnailRenderer.h"
+
+namespace {
+
+float averageBrightness(std::uint32_t texture) {
+  std::uint32_t framebuffer{};
+  glGenFramebuffers(1, &framebuffer);
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+  glFramebufferTexture2D(
+      GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+  std::vector<float> pixels(128u * 128u * 4u);
+  glReadBuffer(GL_COLOR_ATTACHMENT0);
+  glReadPixels(0, 0, 128, 128, GL_RGBA, GL_FLOAT, pixels.data());
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+  glDeleteFramebuffers(1, &framebuffer);
+  double total{};
+  for (std::size_t i = 0; i < pixels.size(); i += 4) {
+    total += pixels[i] + pixels[i + 1] + pixels[i + 2];
+  }
+  return static_cast<float>(total / (128.0 * 128.0 * 3.0));
+}
+
+}  // namespace
+
+int main() {
+  if (!SDL_Init(SDL_INIT_VIDEO)) return 1;
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 4);
+  SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+  auto* window = SDL_CreateWindow(
+      "thumbnail smoke", 128, 128,
+      static_cast<SDL_WindowFlags>(SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN));
+  if (!window) return 1;
+  auto context = SDL_GL_CreateContext(window);
+  SDL_GL_MakeCurrent(window, context);
+  glewExperimental = GL_TRUE;
+  if (glewInit() != GLEW_OK) return 1;
+
+  int result{};
+  try {
+    editor::procMaterialLibrary().load(BW_EDITOR_PROC_MATERIAL_MANIFEST);
+    editor::EditorRenderSystem renderSystem(128, 128);
+    {
+      editor::SubMaterialThumbnailRenderer thumbnails(renderSystem);
+      std::size_t rendered{};
+      for (auto const& catalog : editor::procMaterialLibrary().catalogs()) {
+        for (auto const& material : catalog.data.subMaterials) {
+          auto texture = thumbnails.texture(material.id);
+          if (!texture || !glIsTexture(texture)) {
+            std::printf("FAILED: no thumbnail for %s\n", material.id.c_str());
+            result = 1;
+            break;
+          }
+          ++rendered;
+        }
+      }
+      if (!rendered) {
+        std::printf("FAILED: no Sub-materials were rendered\n");
+        result = 1;
+      } else {
+        std::printf("rendered=%zu\n", rendered);
+      }
+
+      // The thumbnail scene stays alive beside the actual preview. Exercise
+      // that coexistence: their unique pipeline and batch names must prevent
+      // either renderer from reusing the other's resources.
+      auto const& first =
+          editor::procMaterialLibrary().catalogs().front().data.subMaterials.front();
+      bw::core::World world(1.0f, -1.0f);
+      world.createAccelerationGrids(16.0f);
+      bw::core::ClosedPolygon ring{
+          {{-6.0f, -6.0f}}, {{6.0f, -6.0f}},
+          {{6.0f, 6.0f}}, {{-6.0f, 6.0f}}};
+      auto* primitive = bw::core::MeshPrimitive::fromTree(
+          bw::core::Primitive::Operation::Union, {{{ring, {}}}});
+      auto properties = primitive->getProperties();
+      properties.floorMaterialId = first.id;
+      properties.ceilingMaterialId = first.id;
+      properties.wallMaterialId = first.id;
+      primitive->setProperties(properties);
+      world.addPrimitive(primitive);
+      std::vector<bw::core::Primitive*> primitives{primitive};
+      bw::core::ArrangementWorldDataGenerator generator;
+      generator.generate(primitives);
+      bw::core::ArrangementWorldData worldData(
+          generator.getWorldData(), world.getExtents(),
+          float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
+          world.getStepThreshold(), nullptr,
+          world.getWedgeGenerationParameters());
+      auto camera = std::make_shared<mpp::Camera>(
+          glm::vec3{0.0f, 16.0f, 0.0f}, 0.0f, 0.0f, 0.0f, 45.0f, 1.0f);
+      camera->setLookAt({0.0f, 16.0f, 0.0f}, {0.0f, 0.0f, 0.0f},
+                        {0.0f, 0.0f, -1.0f});
+      camera->setClipDistances(0.1f, 1000.0f);
+      auto renderLivePreview = [&](bw::core::ArrangementWorldData const& data) {
+        editor::PreviewRenderScene preview(renderSystem, &world, 128, 128);
+        auto texture = preview.render(
+            &world, data, camera, camera->getPosition(), 1.0f / 60.0f);
+        return texture ? averageBrightness(texture) : 0.0f;
+      };
+      auto brightness = renderLivePreview(worldData);
+      std::printf("live preview brightness=%.4f\n", brightness);
+      if (brightness < 0.01f) {
+        std::printf("FAILED: live preview could not coexist with thumbnails\n");
+        result = 1;
+      }
+
+      auto const& second =
+          editor::procMaterialLibrary().catalogs().front().data.subMaterials[1];
+      properties.floorMaterialId = second.id;
+      properties.ceilingMaterialId = second.id;
+      properties.wallMaterialId = second.id;
+      primitive->setProperties(properties);
+      bw::core::ArrangementWorldDataGenerator changedGenerator;
+      changedGenerator.generate(primitives);
+      bw::core::ArrangementWorldData changedWorldData(
+          changedGenerator.getWorldData(), world.getExtents(),
+          float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
+          world.getStepThreshold(), nullptr,
+          world.getWedgeGenerationParameters());
+      auto rebuiltBrightness = renderLivePreview(changedWorldData);
+      std::printf("rebuilt live preview brightness=%.4f\n", rebuiltBrightness);
+      if (rebuiltBrightness < 0.01f) {
+        std::printf("FAILED: rebuilt live preview is black\n");
+        result = 1;
+      }
+    }
+  } catch (std::exception const& exception) {
+    std::printf("FAILED: %s\n", exception.what());
+    result = 1;
+  }
+
+  SDL_GL_DestroyContext(context);
+  SDL_DestroyWindow(window);
+  SDL_Quit();
+  return result;
+}

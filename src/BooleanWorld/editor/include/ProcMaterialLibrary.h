@@ -36,6 +36,7 @@ public:
   void load(std::filesystem::path const& resourcesManifest);
 
   [[nodiscard]] std::vector<ProcMaterialCatalog> const& catalogs() const;
+  [[nodiscard]] uint64_t revision() const { return mRevision; }
   [[nodiscard]] ProcMaterialCatalog const* findCatalogForSubMaterial(
       std::string const& subMaterialId) const;
   [[nodiscard]] bw::core::SubMaterial const* findSubMaterial(

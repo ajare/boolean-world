@@ -43,6 +43,7 @@
 #include "Preview3D.h"
 #include "ProcMaterialLibrary.h"
 #include "ReactiveCamera.h"
+#include "SubMaterialThumbnailRenderer.h"
 #include "Undo.h"
 #include "WidgetHelpers.h"
 
@@ -134,6 +135,7 @@ struct PreviewSession {
   // Null when the render stack could not be stood up; the preview then shows
   // an explanation rather than a black rectangle.
   std::unique_ptr<PreviewRenderScene> renderScene;
+  std::unique_ptr<SubMaterialThumbnailRenderer> materialThumbnails;
   ImVec2 viewportMin;
   ImVec2 viewportMax;
 };
@@ -475,29 +477,63 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
   }
 
   auto const& catalog = catalogs[state.catalogIndex];
-  int selectedSubMaterial = -1;
-  std::string subMaterialItems;
+  if (!session.materialThumbnails) {
+    if (auto* renderSystem = editorRenderSystem()) {
+      session.materialThumbnails =
+          std::make_unique<SubMaterialThumbnailRenderer>(*renderSystem);
+    }
+  }
+
+  constexpr float thumbnailSize =
+      static_cast<float>(SubMaterialThumbnailRenderer::size);
+  constexpr float tileWidth = thumbnailSize + 12.0f;
+  auto columns = std::max(
+      1, static_cast<int>(ImGui::GetContentRegionAvail().x / tileWidth));
   for (size_t i = 0; i < catalog.data.subMaterials.size(); ++i) {
     auto const& material = catalog.data.subMaterials[i];
-    if (material.id == state.editingId) selectedSubMaterial = static_cast<int>(i);
-    subMaterialItems += material.displayName;
-    subMaterialItems += '\0';
-  }
-  ImGui::SetNextItemWidth(280.0f);
-  if (!catalog.data.subMaterials.empty() &&
-      ImGui::Combo(
-          "Sub-material", &selectedSubMaterial,
-          subMaterialItems.c_str(), 8)) {
-    auto const id = catalog.data.subMaterials[selectedSubMaterial].id;
-    transactUndoableAction(
-        session.document, "Set preview surface Sub-material",
-        [&](Document* actionDoc) {
-          return setPrimitiveSubMaterial(
-              actionDoc, previewPrimitive.source,
-              materialSurface(session.selection.surface), id);
-        });
-    rebuildPreviewForSurfaceEdit();
-    loadMaterialDraft(id);
+    ImGui::PushID(material.id.c_str());
+    ImGui::BeginGroup();
+    auto texture = session.materialThumbnails
+                       ? session.materialThumbnails->texture(material.id)
+                       : 0u;
+    bool const selected = material.id == state.editingId;
+    if (selected) {
+      ImGui::PushStyleColor(
+          ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+      ImGui::PushStyleColor(
+          ImGuiCol_ButtonHovered,
+          ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
+    }
+    bool clicked = texture
+                       ? ImGui::ImageButton(
+                             "thumbnail", static_cast<ImTextureID>(texture),
+                             {thumbnailSize, thumbnailSize}, {0.0f, 1.0f},
+                             {1.0f, 0.0f})
+                       : ImGui::Button(
+                             "Unavailable", {thumbnailSize, thumbnailSize});
+    if (selected) ImGui::PopStyleColor(2);
+    auto textWidth = ImGui::CalcTextSize(material.displayName.c_str()).x;
+    ImGui::SetCursorPosX(
+        ImGui::GetCursorPosX() + std::max(0.0f, (thumbnailSize - textWidth) * 0.5f));
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + thumbnailSize);
+    ImGui::TextWrapped("%s", material.displayName.c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::EndGroup();
+    ImGui::PopID();
+
+    if (clicked && !selected) {
+      auto const id = material.id;
+      transactUndoableAction(
+          session.document, "Set preview surface Sub-material",
+          [&](Document* actionDoc) {
+            return setPrimitiveSubMaterial(
+                actionDoc, previewPrimitive.source,
+                materialSurface(session.selection.surface), id);
+          });
+      rebuildPreviewForSurfaceEdit();
+      loadMaterialDraft(id);
+    }
+    if ((static_cast<int>(i) + 1) % columns != 0) ImGui::SameLine();
   }
 
   if (!state.hasDraft) {
@@ -958,6 +994,7 @@ bool preview3DIsOpen() {
 void shutdownPreview3D() {
   session.open = false;
   session.renderScene.reset();
+  session.materialThumbnails.reset();
 }
 
 void closePreview3D() {
@@ -966,6 +1003,7 @@ void closePreview3D() {
   }
   session.open = false;
   session.renderScene.reset();
+  session.materialThumbnails.reset();
   syncRelativeMouseMode(false);
 }
 
@@ -1084,6 +1122,7 @@ void renderPreview3D() {
       session.document->getWorld().get() != session.world) {
     session.open = false;
     session.renderScene.reset();
+    session.materialThumbnails.reset();
     syncRelativeMouseMode(false);
     return;
   }
@@ -1180,6 +1219,7 @@ void renderPreview3D() {
   // process-lifetime EditorRenderSystem underneath is deliberately kept.
   if (!session.open) {
     session.renderScene.reset();
+    session.materialThumbnails.reset();
   }
 
   // Relative mode keeps reporting motion past the window edge, so looking

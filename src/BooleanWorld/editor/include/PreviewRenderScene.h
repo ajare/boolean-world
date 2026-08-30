@@ -58,7 +58,9 @@ public:
   // `world` is the full World rather than the preview's scoped Primitive
   // list: WorldRenderer3d::addToScene walks every Primitive to seed one
   // uniform collection per material mesh bucket, and seeding buckets for
-  // out-of-scope Primitives is harmless.
+  // out-of-scope Primitives is harmless. Internal synthetic scenes set
+  // `loadWorldDependencies` false so they cannot replace the dependencies
+  // retained for the editor's active World.
   PreviewRenderScene(
       EditorRenderSystem& renderSystem,
       bw::core::World* world,
@@ -66,7 +68,9 @@ public:
       std::size_t height,
       bw::app::HorizontalMaterials horizontalMaterials =
           bw::app::HorizontalMaterials::TwoDimensional,
-      bw::app::ShadowOptions shadowOptions = {});
+      bw::app::ShadowOptions shadowOptions = {},
+      std::string instanceName = "Preview3D",
+      bool loadWorldDependencies = true);
   ~PreviewRenderScene();
 
   PreviewRenderScene(PreviewRenderScene const&) = delete;
@@ -129,6 +133,7 @@ private:
   // outline rather than the whole preview.
   std::unique_ptr<PreviewOutlineRenderer> mOutline;
   bw::app::ShadowOptions mShadowOptions;
+  std::string mPipelineName;
   bool mOutlineFailed{};
   std::size_t mWidth{};
   std::size_t mHeight{};

@@ -54,11 +54,13 @@ WorldRenderer::WorldRenderer(
     vector<WallRenderSurface> wallRenderSurfaces,
     WallRenderVariantResolver wallRenderVariantResolver,
     string worldResourceNamespace,
-    bool deferLiquidToWaterPass)
+    bool deferLiquidToWaterPass,
+    string batchNamePrefix)
     : mSubMaterialResolver(resourceMgr),
       mBakedSubMaterialResolver(resourceMgr),
       mResourceMgr(resourceMgr),
       mWorldResourceNamespace(move(worldResourceNamespace)),
+      mBatchNamePrefix(move(batchNamePrefix)),
       mWallRenderSurfaces(move(wallRenderSurfaces)),
       mWallRenderVariantResolver(move(wallRenderVariantResolver)),
       mWorldHasChanged(true),
@@ -77,7 +79,8 @@ WorldRenderer::WorldRenderer(
       {make_shared<WorldRenderer3d>(
            horizontalMaterial, fragmentOverdrawMaterial, mwLogger,
            WorldSurfaceSet::Horizontal,
-           &mSubMaterialResolver),
+           &mSubMaterialResolver, vector<WallRenderSurface>{}, false,
+           mBatchNamePrefix),
        make_shared<WorldTriangle3dDataProvider>(),
        WorldSurfaceSet::Horizontal});
   mMaterialRenderers.push_back(
@@ -85,7 +88,7 @@ WorldRenderer::WorldRenderer(
            material3d, fragmentOverdrawMaterial, mwLogger,
            WorldSurfaceSet::Liquid,
            &mSubMaterialResolver, vector<WallRenderSurface>{},
-           deferLiquidToWaterPass),
+           deferLiquidToWaterPass, mBatchNamePrefix),
        make_shared<WorldTriangle3dDataProvider>(),
        WorldSurfaceSet::Liquid});
   mMaterialRenderers.push_back(
@@ -93,7 +96,7 @@ WorldRenderer::WorldRenderer(
            material3d, fragmentOverdrawMaterial, mwLogger,
            WorldSurfaceSet::Walls,
            &mSubMaterialResolver,
-           mWallRenderSurfaces),
+           mWallRenderSurfaces, false, mBatchNamePrefix),
        make_shared<WorldTriangle3dDataProvider>(),
        WorldSurfaceSet::Walls});
 }

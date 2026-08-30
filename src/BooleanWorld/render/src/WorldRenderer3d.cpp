@@ -93,12 +93,14 @@ WorldRenderer3d::WorldRenderer3d(
     wp::Logger* logger, WorldSurfaceSet surfaceSet,
     SubMaterialResolver const* resolver,
     vector<WallRenderSurface> wallRenderSurfaces,
-    bool deferToWaterPass)
+    bool deferToWaterPass,
+    string batchNamePrefix)
     : mRenderer(nullptr),
       mMaterial(resource),
       mFragmentOverdrawMaterial(fragmentOverdrawMaterial),
       mSurfaceSet(surfaceSet),
       mDeferToWaterPass(deferToWaterPass),
+      mBatchNamePrefix(move(batchNamePrefix)),
       mwResolver(resolver),
       mWallRenderSurfaces(move(wallRenderSurfaces)),
       mGlobalTime(0.0f),
@@ -223,7 +225,8 @@ void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvide
 
   mRenderer = new RendererType(
       format(
-          "World3d_{}_{}_", materialName, surfaceSetName(mSurfaceSet)),
+          "{}_{}_{}_", mBatchNamePrefix, materialName,
+          surfaceSetName(mSurfaceSet)),
       mDataProvider,
       resourceMgr->getResource(materialName),
       renderSystem,

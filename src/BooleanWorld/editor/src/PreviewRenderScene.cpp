@@ -16,11 +16,6 @@
 namespace editor {
 namespace {
 
-// One pipeline name is enough: only one preview can be open at a time, and
-// destroying a PreviewRenderScene evicts this name from RenderSystem's own
-// pipeline cache again.
-constexpr char const* pipelineName = "Editor.Preview3D.World";
-
 // The named output is always the final offscreen shaded image. Ambient
 // occlusion adds three graph images ahead of its composite; generated water
 // then appends SceneColourResolved and WaterComposite. See
@@ -76,9 +71,12 @@ PreviewRenderScene::PreviewRenderScene(
     std::size_t width,
     std::size_t height,
     bw::app::HorizontalMaterials horizontalMaterials,
-    bw::app::ShadowOptions shadowOptions)
+    bw::app::ShadowOptions shadowOptions,
+    std::string instanceName,
+    bool loadWorldDependencies)
     : mwRenderSystem(renderSystem.renderSystem()),
       mShadowOptions(shadowOptions),
+      mPipelineName("Editor." + instanceName + ".World"),
       mWidth(width),
       mHeight(height) {
   mScene = mwRenderSystem->createScene("Default");
@@ -92,14 +90,16 @@ PreviewRenderScene::PreviewRenderScene(
       bw::app::playerTorchMppShadowOptions(mShadowOptions, glm::vec3{}));
 
   mPipeline =
-      mwRenderSystem->getOrCreateRenderPipeline(pipelineName, pipelineOptions());
+      mwRenderSystem->getOrCreateRenderPipeline(mPipelineName, pipelineOptions());
   mPipeline->resize(mWidth, mHeight);
 
-  std::string dependencyError;
-  if (!renderSystem.loadWorldDependencies(
-          world->getDependentResourceNames(), "World", &dependencyError)) {
-    throw std::runtime_error("Could not load World dependencies: " +
-                             dependencyError);
+  if (loadWorldDependencies) {
+    std::string dependencyError;
+    if (!renderSystem.loadWorldDependencies(
+            world->getDependentResourceNames(), "World", &dependencyError)) {
+      throw std::runtime_error("Could not load World dependencies: " +
+                               dependencyError);
+    }
   }
 
   // The same renderer the game uses, not a slimmer copy of it: it already
@@ -109,7 +109,8 @@ PreviewRenderScene::PreviewRenderScene(
       renderSystem.resourceManager(), renderSystem.logger(),
       bw::app::RenderTextureFilter::Linear, horizontalMaterials,
       std::vector<WallRenderSurface>{},
-      WorldRenderer::WallRenderVariantResolver{}, "World", true);
+      WorldRenderer::WallRenderVariantResolver{}, "World", true,
+      "World3d." + instanceName);
   mRenderer->create(
       mScene, world, mwRenderSystem, renderSystem.renderResourceManager());
 }
@@ -134,7 +135,7 @@ PreviewRenderScene::~PreviewRenderScene() {
   mOutline.reset();
 
   mPipeline.reset();
-  mwRenderSystem->removeRenderPipeline(pipelineName);
+  mwRenderSystem->removeRenderPipeline(mPipelineName);
 
   mRenderer.reset();
 

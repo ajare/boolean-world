@@ -41,7 +41,9 @@
 #include "EditorRenderSystem.h"
 #include "PlayerView.h"
 #include "PreviewRenderScene.h"
+#include "ProcMaterialLibrary.h"
 #include "ReactiveCamera.h"
+#include "SubMaterialThumbnailRenderer.h"
 
 namespace {
 
@@ -352,6 +354,7 @@ int main() {
         world->getNumPrimitives(), worldData->getTriangles().size(),
         worldData->getWalls().size());
 
+    editor::procMaterialLibrary().load(BW_EDITOR_PROC_MATERIAL_MANIFEST);
     editor::EditorRenderSystem renderSystem(kWidth, kHeight);
 
     ResourceCounts baseline;
@@ -426,7 +429,19 @@ int main() {
     }
 
     if (result == 0) {
-      result = materialReassignmentRedrawsTheWorld(renderSystem, world.get());
+      editor::SubMaterialThumbnailRenderer thumbnails(renderSystem);
+      for (auto const& catalog : editor::procMaterialLibrary().catalogs()) {
+        for (auto const& material : catalog.data.subMaterials) {
+          if (!thumbnails.texture(material.id)) {
+            printf("FAILED: could not render thumbnail %s\n", material.id.c_str());
+            result = 1;
+            break;
+          }
+        }
+      }
+      if (result == 0) {
+        result = materialReassignmentRedrawsTheWorld(renderSystem, world.get());
+      }
     }
   } catch (std::exception const& ex) {
     printf("FAILED: exception: %s\n", ex.what());

@@ -11,6 +11,7 @@ add_executable(editor WIN32
     src/PrimitiveFieldPlacement.cpp
     src/PrimitiveFieldPreview.cpp
     src/ProcMaterialLibrary.cpp
+    src/SubMaterialThumbnailRenderer.cpp
     src/PrefabTilingGuide.cpp
     src/Preview3D.cpp
     src/PreviewOutlineRenderer.cpp
@@ -150,6 +151,8 @@ if(BUILD_TESTING)
         src/EditorRenderSystem.cpp
         src/PreviewOutlineRenderer.cpp
         src/PreviewRenderScene.cpp
+        src/ProcMaterialLibrary.cpp
+        src/SubMaterialThumbnailRenderer.cpp
         ../app/src/ReactiveCamera.cpp)
     target_include_directories(boolean_world_editor_preview_render_stack_smoke PRIVATE
         include ../app/include)
@@ -168,6 +171,32 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_editor_preview_render_stack_smoke)
     bw_deploy_runtime_dlls(boolean_world_editor_preview_render_stack_smoke)
     bw_deploy_vendor_dlls(boolean_world_editor_preview_render_stack_smoke)
+
+    # Not registered via add_test - renders every catalog Sub-material through
+    # the real world material shaders and therefore needs a real GPU/driver.
+    add_executable(boolean_world_editor_sub_material_thumbnail_smoke
+        tests/sub_material_thumbnail_smoke.cpp
+        src/EditorRenderSystem.cpp
+        src/PreviewOutlineRenderer.cpp
+        src/PreviewRenderScene.cpp
+        src/ProcMaterialLibrary.cpp
+        src/SubMaterialThumbnailRenderer.cpp)
+    target_include_directories(boolean_world_editor_sub_material_thumbnail_smoke PRIVATE
+        include ../app/include)
+    target_compile_definitions(boolean_world_editor_sub_material_thumbnail_smoke PRIVATE
+        YAML_CPP_STATIC_DEFINE
+        BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml")
+    target_link_libraries(boolean_world_editor_sub_material_thumbnail_smoke PRIVATE
+        core BooleanWorldRender Willpower.Application Willpower.Common
+        Willpower.Geometry vendor::opengl ext::glew
+        ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3
+        ext::yaml-cpp)
+    target_compile_features(boolean_world_editor_sub_material_thumbnail_smoke PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_sub_material_thumbnail_smoke PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_sub_material_thumbnail_smoke)
+    bw_output_dirs(boolean_world_editor_sub_material_thumbnail_smoke)
+    bw_deploy_runtime_dlls(boolean_world_editor_sub_material_thumbnail_smoke)
+    bw_deploy_vendor_dlls(boolean_world_editor_sub_material_thumbnail_smoke)
 
     add_executable(boolean_world_editor_primitive_field_preview_tests
         tests/primitive_field_preview_tests.cpp

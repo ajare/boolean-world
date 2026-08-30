@@ -52,6 +52,7 @@ private:
 
   wp::application::resourcesystem::ResourceManager* mResourceMgr{};
   std::string mWorldResourceNamespace;
+  std::string mBatchNamePrefix;
   std::map<std::string, WallRenderVariant> mNormalMapVariants;
   std::vector<MaterialRenderer> mMaterialRenderers;
   std::vector<WallRenderSurface> mWallRenderSurfaces;
@@ -121,7 +122,8 @@ public:
       std::vector<WallRenderSurface> wallRenderSurfaces = {},
       WallRenderVariantResolver wallRenderVariantResolver = {},
       std::string worldResourceNamespace = "World",
-      bool deferLiquidToWaterPass = false);
+      bool deferLiquidToWaterPass = false,
+      std::string batchNamePrefix = "World3d");
 
   virtual ~WorldRenderer();
 

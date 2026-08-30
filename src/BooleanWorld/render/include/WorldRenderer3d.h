@@ -50,6 +50,7 @@ class WorldRenderer3d {
   // BooleanWorldRender-owned solid-magenta Debug material.
   mpp::ResourcePtr mDebugMaterial;
   std::set<std::string> mDebugMeshNames;
+  std::string mBatchNamePrefix;
 
   float mGlobalTime;
 
@@ -71,7 +72,8 @@ public:
       WorldSurfaceSet surfaceSet,
       SubMaterialResolver const* resolver,
       std::vector<WallRenderSurface> wallRenderSurfaces = {},
-      bool deferToWaterPass = false);
+      bool deferToWaterPass = false,
+      std::string batchNamePrefix = "World3d");
 
   virtual ~WorldRenderer3d();
 
