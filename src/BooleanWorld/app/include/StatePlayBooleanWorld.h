@@ -156,7 +156,7 @@ private:
   WorldRenderer* mwRenderer;
 
   // Generated graph topology depends on the F5 technique, Planar resolution,
-  // and selected Liquid elevation as well as render scale, AA, and depth
+  // and selected Liquid elevations as well as render scale, AA, and depth
   // pre-pass. Stable string keys retain only variants actually encountered.
   std::map<std::string, mpp::RenderPipelinePtr> mWorldRenderPipelines;
 
@@ -185,7 +185,7 @@ private:
   mpp::RenderPipelinePtr const& getOrCreateWorldRenderPipeline(
       bw::app::RenderScale renderScale,
       bw::app::AntiAliasing antiAliasing,
-      std::optional<mpp::PlanarReflectionPlaneDescriptor> const& planarPlane);
+      std::vector<mpp::PlanarReflectionPlaneDescriptor> const& planarPlanes);
 
   mpp::RenderPipelinePtr const& getOrCreateFragmentOverdrawPipeline(
       bw::app::RenderScale renderScale);

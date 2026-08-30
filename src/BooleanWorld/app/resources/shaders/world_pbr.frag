@@ -21,6 +21,20 @@
 @@Uniform(int MPP_PLANAR_REFLECTION_COUNT);
 @@Uniform(mat4 MPP_PLANAR_REFLECTION_VIEW_PROJECTION_0);
 @@Uniform(float MPP_PLANAR_REFLECTION_ELEVATION_0);
+@@Uniform(float MPP_PLANAR_REFLECTION_MINIMUM_ELEVATION_0);
+@@Uniform(float MPP_PLANAR_REFLECTION_MAXIMUM_ELEVATION_0);
+@@Uniform(mat4 MPP_PLANAR_REFLECTION_VIEW_PROJECTION_1);
+@@Uniform(float MPP_PLANAR_REFLECTION_ELEVATION_1);
+@@Uniform(float MPP_PLANAR_REFLECTION_MINIMUM_ELEVATION_1);
+@@Uniform(float MPP_PLANAR_REFLECTION_MAXIMUM_ELEVATION_1);
+@@Uniform(mat4 MPP_PLANAR_REFLECTION_VIEW_PROJECTION_2);
+@@Uniform(float MPP_PLANAR_REFLECTION_ELEVATION_2);
+@@Uniform(float MPP_PLANAR_REFLECTION_MINIMUM_ELEVATION_2);
+@@Uniform(float MPP_PLANAR_REFLECTION_MAXIMUM_ELEVATION_2);
+@@Uniform(mat4 MPP_PLANAR_REFLECTION_VIEW_PROJECTION_3);
+@@Uniform(float MPP_PLANAR_REFLECTION_ELEVATION_3);
+@@Uniform(float MPP_PLANAR_REFLECTION_MINIMUM_ELEVATION_3);
+@@Uniform(float MPP_PLANAR_REFLECTION_MAXIMUM_ELEVATION_3);
 @@Uniform(float LIGHT_ATTENUATION_RADIUS);
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
 @@Uniform(float MATERIAL_SCALE);
@@ -48,6 +62,9 @@
 ##
 @@Texture(sampler2D PBR_SCENE_COLOUR_RESOLVED);
 @@Texture(sampler2D PBR_PLANAR_REFLECTION_0);
+@@Texture(sampler2D PBR_PLANAR_REFLECTION_1);
+@@Texture(sampler2D PBR_PLANAR_REFLECTION_2);
+@@Texture(sampler2D PBR_PLANAR_REFLECTION_3);
 @@Texture(sampler2D PBR_SCENE_DEPTH);
 @@Texture(sampler2DShadow SHADOW_MAP);
 @@Texture(samplerCubeShadow POINT_SHADOW_MAP);
@@ -2777,13 +2794,53 @@ void main()
         float confidence = 0.0;
         if (reflectionEnabled && planarReflection)
         {
-            vec4 reflectedClip =
-                @Uniform(MPP_PLANAR_REFLECTION_VIEW_PROJECTION_0) *
+            int planarIndex = -1;
+            mat4 reflectedViewProjection = mat4(1.0);
+            int planarCount = @Uniform(MPP_PLANAR_REFLECTION_COUNT);
+            if (planarCount > 0 &&
+                liquidSurfaceHeight >=
+                    @Uniform(MPP_PLANAR_REFLECTION_MINIMUM_ELEVATION_0) &&
+                liquidSurfaceHeight <=
+                    @Uniform(MPP_PLANAR_REFLECTION_MAXIMUM_ELEVATION_0))
+            {
+                planarIndex = 0;
+                reflectedViewProjection =
+                    @Uniform(MPP_PLANAR_REFLECTION_VIEW_PROJECTION_0);
+            }
+            else if (planarCount > 1 &&
+                liquidSurfaceHeight >=
+                    @Uniform(MPP_PLANAR_REFLECTION_MINIMUM_ELEVATION_1) &&
+                liquidSurfaceHeight <=
+                    @Uniform(MPP_PLANAR_REFLECTION_MAXIMUM_ELEVATION_1))
+            {
+                planarIndex = 1;
+                reflectedViewProjection =
+                    @Uniform(MPP_PLANAR_REFLECTION_VIEW_PROJECTION_1);
+            }
+            else if (planarCount > 2 &&
+                liquidSurfaceHeight >=
+                    @Uniform(MPP_PLANAR_REFLECTION_MINIMUM_ELEVATION_2) &&
+                liquidSurfaceHeight <=
+                    @Uniform(MPP_PLANAR_REFLECTION_MAXIMUM_ELEVATION_2))
+            {
+                planarIndex = 2;
+                reflectedViewProjection =
+                    @Uniform(MPP_PLANAR_REFLECTION_VIEW_PROJECTION_2);
+            }
+            else if (planarCount > 3 &&
+                liquidSurfaceHeight >=
+                    @Uniform(MPP_PLANAR_REFLECTION_MINIMUM_ELEVATION_3) &&
+                liquidSurfaceHeight <=
+                    @Uniform(MPP_PLANAR_REFLECTION_MAXIMUM_ELEVATION_3))
+            {
+                planarIndex = 3;
+                reflectedViewProjection =
+                    @Uniform(MPP_PLANAR_REFLECTION_VIEW_PROJECTION_3);
+            }
+
+            vec4 reflectedClip = reflectedViewProjection *
                 vec4(worldPos, 1.0);
-            bool selectedElevation =
-                @Uniform(MPP_PLANAR_REFLECTION_COUNT) > 0 &&
-                abs(liquidSurfaceHeight -
-                    @Uniform(MPP_PLANAR_REFLECTION_ELEVATION_0)) <= 0.01;
+            bool selectedElevation = planarIndex >= 0;
             bool validProjection = selectedElevation && reflectedClip.w > 0.0 &&
                 reflectedClip.z >= -reflectedClip.w &&
                 reflectedClip.z <= reflectedClip.w;
@@ -2792,8 +2849,15 @@ void main()
             // The same ripple normal that perturbs the Fresnel response and SSR
             // ray bends the projected Planar lookup across the interface.
             hitUv += interfaceNormal.xz * 0.025;
-            vec4 planarSample =
-                texture(@Texture(PBR_PLANAR_REFLECTION_0), hitUv);
+            vec4 planarSample = vec4(0.0);
+            if (planarIndex == 0)
+                planarSample = texture(@Texture(PBR_PLANAR_REFLECTION_0), hitUv);
+            else if (planarIndex == 1)
+                planarSample = texture(@Texture(PBR_PLANAR_REFLECTION_1), hitUv);
+            else if (planarIndex == 2)
+                planarSample = texture(@Texture(PBR_PLANAR_REFLECTION_2), hitUv);
+            else if (planarIndex == 3)
+                planarSample = texture(@Texture(PBR_PLANAR_REFLECTION_3), hitUv);
             vec2 edgeDistance = min(hitUv, vec2(1.0) - hitUv);
             float edgeFade = clamp(
                 min(edgeDistance.x, edgeDistance.y) / 0.04, 0.0, 1.0);

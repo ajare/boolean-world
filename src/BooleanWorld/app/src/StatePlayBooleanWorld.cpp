@@ -88,8 +88,12 @@ const SecondaryMaterialOptions gNoSecondaryMaterial{};
 // has to be pointed at - not the bare output name.
 constexpr char gLiquidRetentionImageName[] = "SceneExtra.LIQUID_RETENTION";
 
-std::optional<mpp::PlanarReflectionPlaneDescriptor>
-discoverDominantLiquidReflectionPlane(
+static_assert(
+    bw::app::maximumPlanarLiquidSurfaces ==
+    mpp::WaterReflectionOptions::MaxPlanarPlanes);
+
+std::vector<mpp::PlanarReflectionPlaneDescriptor>
+discoverLiquidReflectionPlanes(
     bw::core::WorldData const& snapshot, mpp::Camera& camera) {
   auto const& arrangement = snapshot.getArrangement();
   auto const& liquidDepths = snapshot.getLiquidDepths();
@@ -112,15 +116,19 @@ discoverDominantLiquidReflectionPlane(
     surfaces.push_back(surface);
   }
 
-  auto selected = bw::app::selectDominantLiquidSurface(
+  auto selected = bw::app::selectLiquidSurfaces(
       surfaces,
       camera.getProjectionTransform() * camera.getViewTransform(),
       camera.getPosition());
-  if (!selected) return std::nullopt;
-  return mpp::PlanarReflectionPlaneDescriptor{
-      selected->elevation,
-      selected->viewerAbove ? mpp::ReflectionPlaneSide::Above
-                            : mpp::ReflectionPlaneSide::Below};
+  std::vector<mpp::PlanarReflectionPlaneDescriptor> planes;
+  planes.reserve(selected.size());
+  for (auto const& surface : selected) {
+    planes.push_back({surface.elevation,
+                      surface.viewerAbove ? mpp::ReflectionPlaneSide::Above
+                                          : mpp::ReflectionPlaneSide::Below,
+                      surface.minimumElevation, surface.maximumElevation});
+  }
+  return planes;
 }
 
 // The extra scene-pass outputs the world pipeline declares when ambient
@@ -210,7 +218,7 @@ void StatePlayBooleanWorld::createCamera() {
 mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipeline(
     bw::app::RenderScale renderScale,
     bw::app::AntiAliasing antiAliasing,
-    std::optional<mpp::PlanarReflectionPlaneDescriptor> const& planarPlane) {
+    std::vector<mpp::PlanarReflectionPlaneDescriptor> const& planarPlanes) {
   auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
   auto technique = model->getWaterReflectionTechnique();
   auto planarResolution = model->getPlanarReflectionResolution();
@@ -223,14 +231,17 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
              "." + std::string(
                  bw::app::planarReflectionResolutionName(planarResolution));
   if (technique == bw::app::WaterReflectionTechnique::Planar) {
-    if (planarPlane) {
-      key += ".plane-" + std::to_string(
-          std::bit_cast<std::uint32_t>(planarPlane->elevation)) +
-             (planarPlane->viewerSide == mpp::ReflectionPlaneSide::Above
+    key += ".planes-" + std::to_string(planarPlanes.size());
+    for (auto const& plane : planarPlanes) {
+      key += "." +
+             std::to_string(std::bit_cast<std::uint32_t>(plane.elevation)) +
+             (plane.viewerSide == mpp::ReflectionPlaneSide::Above
                   ? ".above"
-                  : ".below");
-    } else {
-      key += ".dry";
+                  : ".below") +
+             "." + std::to_string(std::bit_cast<std::uint32_t>(
+                       plane.minimumMatchingElevation)) +
+             "." + std::to_string(std::bit_cast<std::uint32_t>(
+                       plane.maximumMatchingElevation));
     }
   }
   auto& pipeline = mWorldRenderPipelines[key];
@@ -280,7 +291,8 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   // output is the final opaque/AO image. Every branch with a reflection source
   // uses the distinct post-water image.
   auto planarWithoutVisibleLiquid =
-      technique == bw::app::WaterReflectionTechnique::Planar && !planarPlane;
+      technique == bw::app::WaterReflectionTechnique::Planar &&
+      planarPlanes.empty();
   output.image = planarWithoutVisibleLiquid
                      ? (ambientOcclusionEnabled
                             ? "AmbientOcclusionComposite"
@@ -308,9 +320,7 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
           mpp::PlanarReflectionResolution::Half;
       break;
   }
-  if (planarPlane) {
-    options.waterReflections.planarPlanes.push_back(*planarPlane);
-  }
+  options.waterReflections.planarPlanes = planarPlanes;
   options.depthPrepass = mDebugDisplay.depthPrepass;
   options.ambientOcclusion.method = ambientOcclusionMethod;
   options.ambientOcclusion.ssao = mDebugDisplay.ssao;
@@ -415,7 +425,7 @@ void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transi
   // only if selected in the debug GUI.
   for (auto renderScale : bw::app::allRenderScales) {
     getOrCreateWorldRenderPipeline(
-        renderScale, bw::app::AntiAliasing::Off, std::nullopt);
+        renderScale, bw::app::AntiAliasing::Off, {});
   }
 }
 
@@ -1555,17 +1565,16 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   auto renderScale = model->getActiveRenderScale();
   auto antiAliasing = model->getActiveAntiAliasing();
   auto const& worldTarget = mwRenderer->getRenderTarget(renderScale);
-  std::optional<mpp::PlanarReflectionPlaneDescriptor> planarPlane;
+  std::vector<mpp::PlanarReflectionPlaneDescriptor> planarPlanes;
   if (!mDebugDisplay.fragmentOverdraw && mWorldData &&
       model->getWaterReflectionTechnique() ==
           bw::app::WaterReflectionTechnique::Planar) {
-    planarPlane = discoverDominantLiquidReflectionPlane(
-        *mWorldData, *mCamera3d);
+    planarPlanes = discoverLiquidReflectionPlanes(*mWorldData, *mCamera3d);
   }
   auto const& pipeline = mDebugDisplay.fragmentOverdraw
                              ? getOrCreateFragmentOverdrawPipeline(renderScale)
                              : getOrCreateWorldRenderPipeline(
-                                   renderScale, antiAliasing, planarPlane);
+                                   renderScale, antiAliasing, planarPlanes);
 
   // These only change the world's two scene models; entities and debug UI
   // remain filled. Applying it here also carries an enabled debug option onto
@@ -1628,26 +1637,32 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
                                        (activeShadowImage ? 1u : 0u)
                                  : 0u;
   // Without AO, SceneDepth (and optionally the shadow import) sits between
-  // SceneLdr and the two generated-water images. With AO, those earlier images
-  // are already included in preWaterOutputImage, so only the two water images
-  // remain to be added.
+  // SceneLdr and the generated-water images. With AO, those earlier images are
+  // already included in preWaterOutputImage, so only the technique-specific
+  // reflection images and WaterComposite remain to be added.
   auto technique = model->getWaterReflectionTechnique();
   auto screenSpaceWater =
       technique == bw::app::WaterReflectionTechnique::ScreenSpace;
   auto planarWater =
-      technique == bw::app::WaterReflectionTechnique::Planar && planarPlane;
+      technique == bw::app::WaterReflectionTechnique::Planar &&
+      !planarPlanes.empty();
   auto outputImage = preWaterOutputImage;
   if (mDebugDisplay.fragmentOverdraw) {
     outputImage = preWaterOutputImage;
   } else if (ambientOcclusionEnabled) {
     // Each Planar plane declares its colour and depth images before the opaque
     // and AO images, then WaterComposite follows the final AO image.
-    outputImage = preWaterOutputImage +
-                  (planarWater ? 3u : screenSpaceWater ? 2u : 0u);
+    outputImage =
+        preWaterOutputImage +
+        (planarWater        ? 2u * static_cast<std::uint32_t>(planarPlanes.size()) + 1u
+         : screenSpaceWater ? 2u
+                            : 0u);
   } else if (screenSpaceWater) {
     outputImage = 3u + (activeShadowImage ? 1u : 0u);
   } else if (planarWater) {
-    outputImage = 4u + (activeShadowImage ? 1u : 0u);
+    outputImage = 2u +
+                  2u * static_cast<std::uint32_t>(planarPlanes.size()) +
+                  (activeShadowImage ? 1u : 0u);
   } else {
     outputImage = 0u;
   }

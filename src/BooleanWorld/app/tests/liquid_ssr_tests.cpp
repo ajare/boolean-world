@@ -26,14 +26,13 @@ void everyWorldPathUsesThePostWaterWorld() {
                   std::string::npos &&
               state.find("WaterReflectionTechnique::Planar") !=
                   std::string::npos &&
-              state.find("discoverDominantLiquidReflectionPlane") !=
+              state.find("discoverLiquidReflectionPlanes") !=
                   std::string::npos,
-          "gameplay does not select generated Water technique and Planar plane");
-  require(state.find("planarWater ? 3u : screenSpaceWater ? 2u : 0u") !=
-                  std::string::npos &&
-              state.find("4u + (activeShadowImage ? 1u : 0u)") !=
+          "gameplay does not select generated Water technique and Planar planes");
+  require(state.find("planarPlanes.size()) + 1u") != std::string::npos &&
+              state.find("2u * static_cast<std::uint32_t>(planarPlanes.size())") !=
                   std::string::npos,
-          "gameplay does not address Screen-space, Planar, and dry graph outputs");
+          "gameplay does not address zero-through-four Planar graph outputs");
   require(state.find("if (mDebugDisplay.fragmentOverdraw) {") !=
                   std::string::npos &&
               state.find("outputImage = preWaterOutputImage") !=
@@ -99,6 +98,7 @@ void liquidShaderPreservesTheSsrContract() {
   require(shader.find("PBR_SCENE_COLOUR_RESOLVED") != std::string::npos &&
               shader.find("PBR_SCENE_DEPTH") != std::string::npos &&
               shader.find("PBR_PLANAR_REFLECTION_0") != std::string::npos &&
+              shader.find("PBR_PLANAR_REFLECTION_3") != std::string::npos &&
               shader.find("LIQUID_WATER_PASS_ENABLED") != std::string::npos &&
               shader.find("float alpha = reflectionEnabled") !=
                   std::string::npos,
@@ -129,8 +129,13 @@ void liquidShaderPreservesTheSsrContract() {
               shader.find("planarSample.a * edgeFade") !=
                   std::string::npos &&
               shader.find("MPP_PLANAR_REFLECTION_VIEW_PROJECTION_0") !=
-                  std::string::npos,
-          "Liquid reflection misses or Planar image edges do not use ambient fallback");
+                  std::string::npos &&
+              shader.find("MPP_PLANAR_REFLECTION_VIEW_PROJECTION_3") !=
+                  std::string::npos &&
+              shader.find("MPP_PLANAR_REFLECTION_MINIMUM_ELEVATION_3") !=
+                  std::string::npos &&
+              shader.find("planarIndex == 3") != std::string::npos,
+          "Liquid reflection misses, image edges, or grouped Planar elevations do not select the matching fallback-aware image");
   require(shader.find("@Uniform(LIQUID_REFLECTANCE)") != std::string::npos &&
               shader.find("@Uniform(LIQUID_F0)") != std::string::npos &&
               shader.find("@Uniform(LIQUID_REFLECTION_MIP_LEVEL)") !=

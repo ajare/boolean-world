@@ -10,7 +10,6 @@
 
 namespace bw::app {
 namespace {
-constexpr float elevationGroupingTolerance = 0.01f;
 constexpr float minimumProjectedArea = 1e-8f;
 
 using ClipPolygon = std::vector<glm::vec4>;
@@ -90,14 +89,15 @@ struct VisibleTriangle {
 };
 
 struct ElevationGroup {
-  float firstElevation;
+  float minimumElevation;
+  float maximumElevation;
   float weightedElevation;
   float coverage;
   float distance;
 };
 }  // namespace
 
-std::optional<DominantLiquidSurface> selectDominantLiquidSurface(
+std::vector<SelectedLiquidSurface> selectLiquidSurfaces(
     std::span<LiquidSurfaceTriangle const> triangles,
     glm::mat4 const& viewProjection,
     glm::vec3 const& cameraPosition) {
@@ -112,10 +112,10 @@ std::optional<DominantLiquidSurface> selectDominantLiquidSurface(
     auto centre =
         (triangle.vertices[0] + triangle.vertices[1] + triangle.vertices[2]) /
         3.0f;
-    visible.push_back(
-        {triangle.elevation, coverage, glm::distance(cameraPosition, centre)});
+    auto distance = glm::distance(cameraPosition, centre);
+    if (!std::isfinite(distance)) continue;
+    visible.push_back({triangle.elevation, coverage, distance});
   }
-  if (visible.empty()) return std::nullopt;
 
   std::ranges::sort(
       visible, {}, [](VisibleTriangle const& triangle) {
@@ -125,34 +125,45 @@ std::optional<DominantLiquidSurface> selectDominantLiquidSurface(
   std::vector<ElevationGroup> groups;
   for (auto const& triangle : visible) {
     if (groups.empty() ||
-        triangle.elevation - groups.back().firstElevation >
-            elevationGroupingTolerance) {
+        triangle.elevation - groups.back().minimumElevation >
+            liquidElevationGroupingTolerance) {
       groups.push_back(
-          {triangle.elevation, triangle.elevation * triangle.coverage,
-           triangle.coverage, triangle.distance});
+          {triangle.elevation, triangle.elevation,
+           triangle.elevation * triangle.coverage, triangle.coverage,
+           triangle.distance});
       continue;
     }
     auto& group = groups.back();
+    group.maximumElevation = triangle.elevation;
     group.weightedElevation += triangle.elevation * triangle.coverage;
     group.coverage += triangle.coverage;
     group.distance = std::min(group.distance, triangle.distance);
   }
 
-  auto better = [](ElevationGroup const& left, ElevationGroup const& right) {
-    constexpr float tieTolerance = 1e-7f;
-    if (left.coverage > right.coverage + tieTolerance) return true;
-    if (right.coverage > left.coverage + tieTolerance) return false;
-    if (left.distance < right.distance - tieTolerance) return true;
-    if (right.distance < left.distance - tieTolerance) return false;
-    return left.firstElevation < right.firstElevation;
-  };
-  // min_element replaces its result when the current group is better, which
-  // gives us the best group without inverting every tie-break comparison.
-  auto selected = std::ranges::min_element(groups, better);
-  auto elevation = selected->weightedElevation / selected->coverage;
-  return DominantLiquidSurface{
-      elevation, selected->coverage, selected->distance,
-      cameraPosition.y >= elevation};
+  std::ranges::sort(groups, [](ElevationGroup const& left,
+                               ElevationGroup const& right) {
+    if (left.coverage != right.coverage) {
+      return left.coverage > right.coverage;
+    }
+    if (left.distance != right.distance) {
+      return left.distance < right.distance;
+    }
+    return left.minimumElevation < right.minimumElevation;
+  });
+
+  if (groups.size() > maximumPlanarLiquidSurfaces) {
+    groups.resize(maximumPlanarLiquidSurfaces);
+  }
+
+  std::vector<SelectedLiquidSurface> selected;
+  selected.reserve(groups.size());
+  for (auto const& group : groups) {
+    auto elevation = group.weightedElevation / group.coverage;
+    selected.push_back(
+        {elevation, group.minimumElevation, group.maximumElevation,
+         group.coverage, group.distance, cameraPosition.y >= elevation});
+  }
+  return selected;
 }
 
 }  // namespace bw::app
