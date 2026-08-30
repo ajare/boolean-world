@@ -538,7 +538,7 @@ void proceduralPrimitiveSchemaRemainsFlat() {
 void shippedWorldFixtureUsesTheCurrentSchema() {
   auto reader = std::shared_ptr<bw::core::Serializer>(
       bw::core::YamlSerializer::fromFile(
-          std::string(BW_CORE_TEST_RESOURCE_DIR) + "/world-test-1.yaml"));
+          std::string(BW_CORE_TEST_RESOURCE_DIR) + "/world-test-1.world.yaml"));
   reader->deserialize();
   bw::core::SerializationWorkData workData{100.0f};
   bw::core::World world;

@@ -521,8 +521,36 @@ void inScopePrimitivesAndGroundingResolutionFollowFoldOrder() {
           "in-scope Primitives included a Primitive outside layerSelection");
 }
 
+void worldYamlSerializationRequiresTheWorldYamlExtension() {
+  auto const invalidPath = std::filesystem::temp_directory_path() /
+                           "boolean-world-invalid-extension.yaml";
+
+  editor::Document document;
+  document.newDoc();
+
+  bool saveThrew = false;
+  try {
+    document.saveDocAs(invalidPath.string());
+  } catch (std::exception const&) {
+    saveThrew = true;
+  }
+  require(saveThrew, "saving a YAML World without .world.yaml did not throw");
+  require(!std::filesystem::exists(invalidPath),
+          "saving a YAML World with an invalid extension wrote a file");
+  require(!document.hasFilepath(),
+          "a rejected YAML World save retained the invalid filepath");
+
+  bool openThrew = false;
+  try {
+    document.openDoc(invalidPath.string());
+  } catch (std::exception const&) {
+    openThrew = true;
+  }
+  require(openThrew, "opening a YAML World without .world.yaml did not throw");
+}
+
 void openingADocumentReplacesTheActiveDocument() {
-  auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-test.yaml";
+  auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-test.world.yaml";
 
   editor::Document document;
   document.newDoc();
@@ -542,7 +570,7 @@ void openingADocumentReplacesTheActiveDocument() {
 
 void openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost() {
   auto const filepath = std::filesystem::temp_directory_path() /
-                        "boolean-world-prefab-field-document-open-test.yaml";
+                        "boolean-world-prefab-field-document-open-test.world.yaml";
 
   editor::Document source;
   source.newDoc();
@@ -598,16 +626,16 @@ void openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost() {
 
 void worldTestPrefabMeshPrimitivesAreHoverSelectable() {
   auto const filepath = std::filesystem::path(__FILE__).parent_path() /
-                        "../../app/resources/world-test-1.yaml";
+                        "../../app/resources/world-test-1.world.yaml";
 
   editor::Document document;
   require(document.openDoc(filepath.lexically_normal().string()),
-          "world-test-1.yaml did not open for its Prefab selection regression");
+          "world-test-1.world.yaml did not open for its Prefab selection regression");
 
   auto* layer = document.getWorld()->getActiveLayer();
   auto* definitions = dynamic_cast<bw::core::DefinePrefabs*>(layer->getStep(1));
   require(definitions && definitions->getNumPrefabs() > 0,
-          "world-test-1.yaml no longer has its expected Prefab definition");
+          "world-test-1.world.yaml no longer has its expected Prefab definition");
   layer->setActiveStep(1);
   definitions->setSelectedPrefab(definitions->getPrefab(0));
   layer->rebuild();
@@ -627,11 +655,11 @@ void worldTestPrefabMeshPrimitivesAreHoverSelectable() {
                   hovered.end();
   }
   require(authored > 0 && selectable == authored,
-          "world-test-1.yaml's Prefab MeshPrimitives were not hover-selectable in Primitive mode");
+          "world-test-1.world.yaml's Prefab MeshPrimitives were not hover-selectable in Primitive mode");
 }
 
 void aFailedOpenPreservesTheActiveDocument() {
-  auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-failure-test.yaml";
+  auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-failure-test.world.yaml";
 
   editor::Document document;
   document.newDoc();
@@ -701,6 +729,7 @@ int main() {
     refusingStepPrimitivesAreNotSelectableInPrimitiveMode();
     meshEligibilityRequiresTheSelectedDirectlyEditableStep();
     inScopePrimitivesAndGroundingResolutionFollowFoldOrder();
+    worldYamlSerializationRequiresTheWorldYamlExtension();
     openingADocumentReplacesTheActiveDocument();
     openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost();
     worldTestPrefabMeshPrimitivesAreHoverSelectable();

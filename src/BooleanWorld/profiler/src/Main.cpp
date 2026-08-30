@@ -23,13 +23,12 @@ shared_ptr<bw::core::World> createWorld(float size, float gridSize) {
 }
 
 shared_ptr<bw::core::World> openWorld(string const& filepath) {
-  auto path = filesystem::path(filepath);
-  auto ext = path.extension().string();
-  transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+  auto lowercasePath = filepath;
+  transform(lowercasePath.begin(), lowercasePath.end(), lowercasePath.begin(), ::tolower);
 
   shared_ptr<bw::core::World> world;
 
-  if (ext == ".yaml") {
+  if (lowercasePath.ends_with(".world.yaml")) {
     auto ser = shared_ptr<bw::core::YamlSerializer>(bw::core::YamlSerializer::fromFile(filepath));
 
     try {
@@ -73,7 +72,7 @@ shared_ptr<bw::core::World> openWorld(string const& filepath) {
 int main(int argc, char** argv) {
   string filename;
   if (argc < 2) {
-    filename = "world-test-1.yaml";
+    filename = "world-test-1.world.yaml";
   } else {
     filename = argv[1];
   }

@@ -535,12 +535,16 @@ Material waterMaterial2d(vec3 normal)
 
 Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
 {
-    if (type == 37)
-        return wood2Material2d(worldPos, normal);
-    if (type == 38)
+    if (type == 0)
         return plainGreyMaterial2d(normal);
+    if (type == 38)
+        return wood2Material2d(worldPos, normal);
     if (type == 40)
         return waterMaterial2d(normal);
+
+    // Plain grey occupies material index 0. Procedural Techniques are shifted
+    // up by one externally, then mapped back to their compact table indices.
+    type -= 1;
 
     Material material;
     float scales[37] = float[37](
@@ -794,22 +798,22 @@ vec3 supernaturalEmission(vec2 worldPos, int materialIndex)
 {
     vec2 p = worldPos * 0.68;
     float pulse = sin(@Uniform(GLOBAL_TIME) * 2.4) * 0.5 + 0.5;
-    if (materialIndex == 23) {
+    if (materialIndex == 24) {
         float core = 1.0 - smoothstep(0.07, 0.28, voronoi(p * 2.8));
         return spectralPalette(fbm(p * 0.4) + @Uniform(GLOBAL_TIME) * 0.03) * core * (0.45 + pulse * 0.35);
     }
-    if (materialIndex == 24)
-        return vec3(0.01, 0.42, 1.25) * smoothstep(-0.35, 0.05, -materialField(p, 24)) * (0.65 + pulse * 0.55);
     if (materialIndex == 25)
+        return vec3(0.01, 0.42, 1.25) * smoothstep(-0.35, 0.05, -materialField(p, 24)) * (0.65 + pulse * 0.55);
+    if (materialIndex == 26)
         return vec3(0.55, 0.03, 0.34) * (1.0 - smoothstep(0.08, 0.30, voronoi(p * 3.5))) * pulse * 0.75;
-    if (materialIndex == 26) {
+    if (materialIndex == 27) {
         vec2 grid = abs(fract(p * 1.7) - 0.5);
         float rune = 1.0 - smoothstep(0.035, 0.10, min(grid.x, grid.y));
         return vec3(0.02, 0.62, 1.0) * rune * (0.5 + pulse * 0.5);
     }
-    if (materialIndex == 28)
-        return spectralPalette(p.y * 0.12 + @Uniform(GLOBAL_TIME) * 0.04) * 0.12;
     if (materialIndex == 29)
+        return spectralPalette(p.y * 0.12 + @Uniform(GLOBAL_TIME) * 0.04) * 0.12;
+    if (materialIndex == 30)
         return vec3(0.72, 0.01, 0.46) * smoothstep(-0.16, 0.04, -materialField(p, 29)) * (0.35 + pulse * 0.65);
     return vec3(0.0);
 }

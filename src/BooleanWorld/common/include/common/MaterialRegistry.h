@@ -10,6 +10,7 @@ namespace common {
 // table is its matching display-name map; ProcMaterial owns all authorable
 // Technique schemas and Sub-material data.
 inline constexpr std::array<std::string_view, BW_MATERIAL_COUNT> TechniqueNames{{
+    "Plain grey",
     "Marble",
     "Stone",
     "Slate",
@@ -48,7 +49,6 @@ inline constexpr std::array<std::string_view, BW_MATERIAL_COUNT> TechniqueNames{
     "Mossy rock",
     "Wet rock",
     "Wood2",
-    "Plain grey",
 }};
 
 }  // namespace common

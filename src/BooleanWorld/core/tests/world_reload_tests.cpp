@@ -112,7 +112,7 @@ bool containsMessage(std::vector<std::string> const& messages,
 }
 
 void reloadRecreatesAccelerationGrids() {
-  std::string const path = "world_reload_tests.yaml";
+  std::string const path = "world_reload_tests.world.yaml";
 
   bw::core::World source(100.0f, 10.0f);
   source.addPrimitive(makeRectangle());

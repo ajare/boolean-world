@@ -3,9 +3,9 @@
 #undef NOMINMAX
 
 #include <algorithm>
+#include <cctype>
 #include <format>
 #include <limits>
-#include <filesystem>
 #include <nfd/nfd.h>
 
 #pragma warning(push)
@@ -43,9 +43,21 @@ extern spdlog::logger* gLogger;
 
 namespace {
 constexpr nfdfilteritem_t kWorldFilters[] = {
-    {"YAML", "yaml"},
+    {"YAML world", "world.yaml"},
     {"Binary world", "world"},
 };
+
+bool hasExtension(std::string const& filepath, std::string const& extension) {
+  if (filepath.size() < extension.size()) {
+    return false;
+  }
+
+  auto const tail = filepath.substr(filepath.size() - extension.size());
+  return std::equal(tail.begin(), tail.end(), extension.begin(), [](char a, char b) {
+    return std::tolower(static_cast<unsigned char>(a)) ==
+           std::tolower(static_cast<unsigned char>(b));
+  });
+}
 }  // namespace
 
 namespace editor {
@@ -184,14 +196,13 @@ void renderHelp() {
 }
 
 bw::core::World* loadWorld(string const& filepath) {
-  auto path = filesystem::path(filepath);
-  auto ext = path.extension().string();
-  transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+  auto const yaml = hasExtension(filepath, ".world.yaml");
+  auto const binary = hasExtension(filepath, ".world") && !yaml;
 
   bw::core::World* world{nullptr};
 
-  if (ext == ".yaml" || ext == ".world") {
-    shared_ptr<bw::core::Serializer> ser = ext == ".yaml"
+  if (yaml || binary) {
+    shared_ptr<bw::core::Serializer> ser = yaml
                                                ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(filepath))
                                                : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(filepath));
 

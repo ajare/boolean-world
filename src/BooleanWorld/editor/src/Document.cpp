@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <exception>
 #include <filesystem>
@@ -42,6 +43,19 @@ extern spdlog::logger* gLogger;
 
 namespace editor {
 using namespace std;
+
+namespace {
+bool hasExtension(string const& filepath, string const& extension) {
+  if (filepath.size() < extension.size()) {
+    return false;
+  }
+
+  auto const tail = filepath.substr(filepath.size() - extension.size());
+  return equal(tail.begin(), tail.end(), extension.begin(), [](char a, char b) {
+    return tolower(static_cast<unsigned char>(a)) == tolower(static_cast<unsigned char>(b));
+  });
+}
+}  // namespace
 
 Document* Document::msInstance = nullptr;
 
@@ -2564,12 +2578,11 @@ void Document::setWorldDependencyLoader(
 }
 
 bool Document::openDoc(string const& filepath) {
-  auto path = filesystem::path(filepath);
-  auto ext = path.extension().string();
-  transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+  auto const yaml = hasExtension(filepath, ".world.yaml");
+  auto const binary = hasExtension(filepath, ".world") && !yaml;
 
-  if (ext == ".yaml" || ext == ".world") {
-    shared_ptr<bw::core::Serializer> ser = ext == ".yaml"
+  if (yaml || binary) {
+    shared_ptr<bw::core::Serializer> ser = yaml
                                                ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(filepath))
                                                : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(filepath));
 
@@ -2585,7 +2598,7 @@ bool Document::openDoc(string const& filepath) {
                                     : vector<string>{};
     if (mWorldDependencyLoader) {
       try {
-        auto dependencyReader = ext == ".yaml"
+        auto dependencyReader = yaml
                                     ? shared_ptr<bw::core::Serializer>(
                                           bw::core::YamlSerializer::fromFile(filepath))
                                     : shared_ptr<bw::core::Serializer>(
@@ -2662,12 +2675,11 @@ void Document::saveDoc() {
     throw EditorException("Document has no filepath set.");
   }
 
-  auto path = std::filesystem::path(mFilepath);
-  auto ext = path.extension().string();
-  std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+  auto const yaml = hasExtension(mFilepath, ".world.yaml");
+  auto const binary = hasExtension(mFilepath, ".world") && !yaml;
 
-  if (ext == ".yaml" || ext == ".world") {
-    shared_ptr<bw::core::Serializer> ser = ext == ".yaml"
+  if (yaml || binary) {
+    shared_ptr<bw::core::Serializer> ser = yaml
                                                ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toFile(mFilepath))
                                                : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::toFile(mFilepath));
     auto workData = bw::core::SerializationWorkData{};
@@ -2682,25 +2694,15 @@ void Document::saveDoc() {
 }
 
 void Document::saveDocAs(string const& filepath) {
+  auto const yaml = hasExtension(filepath, ".world.yaml");
+  auto const binary = hasExtension(filepath, ".world") && !yaml;
+  if (!yaml && !binary) {
+    throw EditorException(format("Could not save {} (filetype not supported)", filepath));
+  }
+
   mFilepath = filepath;
   saveDoc();
 }
-
-namespace {
-// ".layer.yaml" is a distinct extension from ".yaml" - own weight, own
-// dispatch here - not filesystem::path::extension(), which only ever sees
-// the last dot-segment and would report ".yaml" for both.
-bool hasExtension(string const& filepath, string const& extension) {
-  if (filepath.size() < extension.size()) {
-    return false;
-  }
-
-  auto const tail = filepath.substr(filepath.size() - extension.size());
-  return equal(tail.begin(), tail.end(), extension.begin(), [](char a, char b) {
-    return tolower(static_cast<unsigned char>(a)) == tolower(static_cast<unsigned char>(b));
-  });
-}
-}  // namespace
 
 void Document::exportLayer(bw::core::Layer const* layer, string const& filepath) const {
   shared_ptr<bw::core::Serializer> ser;

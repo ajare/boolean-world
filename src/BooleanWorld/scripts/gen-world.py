@@ -77,7 +77,7 @@ if __name__ == "__main__":
         print(f"Created {len(points)} primitives")
         """ 
         # Save
-        filename = f"{worldName}.yaml"
+        filename = f"{worldName}.world.yaml"
         
         print(f"Writing to {filename}")
         l.serialize_world(filename.encode("utf-8"))

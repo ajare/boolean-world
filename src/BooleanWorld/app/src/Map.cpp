@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <filesystem>
+#include <cctype>
 
 #include <willpower/application/resourcesystem/TextFileResource.h>
 #include <willpower/application/resourcesystem/ResourceExceptions.h>
@@ -14,6 +14,18 @@
 using namespace std;
 using namespace wp;
 using namespace wp::geometry;
+
+namespace {
+bool hasExtension(string const& filepath, string const& extension) {
+  if (filepath.size() < extension.size()) return false;
+
+  auto const tail = filepath.substr(filepath.size() - extension.size());
+  return equal(tail.begin(), tail.end(), extension.begin(), [](char a, char b) {
+    return tolower(static_cast<unsigned char>(a)) ==
+           tolower(static_cast<unsigned char>(b));
+  });
+}
+}  // namespace
 
 Map::Map(string const& name,
          string const& namesp,
@@ -42,20 +54,23 @@ void Map::loadWorldFromYaml(
   auto res = static_cast<wp::application::resourcesystem::TextFileResource*>(resource.get());
   string text = res->getText();
 
-  // The resource's source carries the original filename (e.g. "world.world" or
-  // "world.yaml"), so use its extension to pick the matching Serializer. Worlds
-  // exported from the editor as .world files are binary, not YAML, and parsing
-  // one as YAML text either fails outright or silently misreads the data.
-  auto ext = filesystem::path(resource->getSource()).extension().string();
-  transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+  // The resource's source carries the original filename. YAML Worlds require
+  // the compound .world.yaml extension; binary Worlds retain .world.
+  auto const& source = resource->getSource();
+  auto const yaml = hasExtension(source, ".world.yaml");
+  auto const binary = hasExtension(source, ".world") && !yaml;
+  if (!yaml && !binary) {
+    throw wp::application::resourcesystem::ResourceException(
+        resource.get(), "World files must end in .world.yaml or .world.");
+  }
 
-  shared_ptr<bw::core::Serializer> ser = ext == ".world"
+  shared_ptr<bw::core::Serializer> ser = binary
                                              ? shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromString(text))
                                              : shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromString(text));
 
   ser->deserialize();
 
-  auto dependencySerializer = ext == ".world"
+  auto dependencySerializer = binary
                                   ? shared_ptr<bw::core::Serializer>(
                                         bw::core::BinarySerializer::fromString(text))
                                   : shared_ptr<bw::core::Serializer>(

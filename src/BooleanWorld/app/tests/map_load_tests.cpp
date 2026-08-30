@@ -33,7 +33,7 @@ std::string readFixture(std::string const& filename) {
 }
 
 std::shared_ptr<wp::application::resourcesystem::TextFileResource> makeWorldResource(
-    std::string const& text, std::string const& source = "") {
+    std::string const& text, std::string const& source = "test.world.yaml") {
   auto resource = std::make_shared<wp::application::resourcesystem::TextFileResource>(
       "world", "", source, std::map<std::string, std::string>{}, nullptr);
   resource->mText = text;
@@ -48,7 +48,7 @@ void playMapsUseDynamicWorldDataGenerators() {
 
   wp::Logger logger;
   Map map("map", "", "", {}, nullptr, &logger);
-  map.loadWorldFromYaml(makeWorldResource(readFixture("world-test-1.yaml")));
+  map.loadWorldFromYaml(makeWorldResource(readFixture("world-test-1.world.yaml")));
 
   require(dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
               map.getWorld()->getWorldDataGenerator()) != nullptr,
@@ -58,7 +58,7 @@ void playMapsUseDynamicWorldDataGenerators() {
 void establishedWorldEnablesAndRoundTripsWedges() {
   wp::Logger logger;
   Map map("map", "", "", {}, nullptr, &logger);
-  map.loadWorldFromYaml(makeWorldResource(readFixture("world-test-1.yaml")));
+  map.loadWorldFromYaml(makeWorldResource(readFixture("world-test-1.world.yaml")));
   auto expected = bw::core::WedgeGenerationParameters{};
   expected.enabled = true;
   require(map.getWorld()->getWedgeGenerationParameters() == expected,
@@ -83,7 +83,7 @@ void establishedWorldEnablesAndRoundTripsWedges() {
 void failedLoadRetainsThePreviousWorld() {
   wp::Logger logger;
   Map map("map", "", "", {}, nullptr, &logger);
-  auto resource = makeWorldResource(readFixture("world-test-1.yaml"));
+  auto resource = makeWorldResource(readFixture("world-test-1.world.yaml"));
 
   map.loadWorldFromYaml(resource);
   require(map.getWorld() != nullptr, "Valid world did not load");
@@ -126,22 +126,20 @@ void resourcesWithAWorldExtensionLoadAsBinary() {
           "Binary .world resource did not preserve its primitives");
 }
 
-void resourcesWithoutAWorldExtensionAreParsedAsYaml() {
-  auto data = serializeBinaryWorldWithOnePrimitive();
+void yamlWorldsWithoutTheWorldYamlExtensionAreRejected() {
+  auto const yaml = readFixture("world-test-1.world.yaml");
 
   wp::Logger logger;
   Map map("map", "", "", {}, nullptr, &logger);
 
   bool threw = false;
   try {
-    // Binary bytes are not valid YAML, so a resource whose source doesn't
-    // end in .world must still be parsed as YAML and should fail to load.
-    map.loadWorldFromYaml(makeWorldResource(data, "stress-test.yaml"));
+    map.loadWorldFromYaml(makeWorldResource(yaml, "stress-test.yaml"));
   } catch (std::exception const&) {
     threw = true;
   }
 
-  require(threw, "Binary content sourced as .yaml was not rejected");
+  require(threw, "a YAML World without the .world.yaml extension was accepted");
 }
 }  // namespace
 
@@ -151,7 +149,7 @@ int main() {
     establishedWorldEnablesAndRoundTripsWedges();
     failedLoadRetainsThePreviousWorld();
     resourcesWithAWorldExtensionLoadAsBinary();
-    resourcesWithoutAWorldExtensionAreParsedAsYaml();
+    yamlWorldsWithoutTheWorldYamlExtensionAreRejected();
     std::cout << "Map failed-load ownership regression passed\n";
     return 0;
   } catch (std::exception const& error) {

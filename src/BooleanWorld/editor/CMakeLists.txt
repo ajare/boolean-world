@@ -161,7 +161,7 @@ if(BUILD_TESTING)
     target_compile_definitions(boolean_world_editor_preview_render_stack_smoke PRIVATE
         YAML_CPP_STATIC_DEFINE
         BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml"
-        BW_EDITOR_PREVIEW_TEST_WORLD="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/world-test-1.yaml")
+        BW_EDITOR_PREVIEW_TEST_WORLD="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/world-test-1.world.yaml")
     target_link_libraries(boolean_world_editor_preview_render_stack_smoke PRIVATE
         core BooleanWorldRender Willpower.Application Willpower.Common
         Willpower.Geometry vendor::opengl ext::glew

@@ -1,7 +1,7 @@
 // Not a unit test - creates a real GL context and drives the 3D preview's
 // whole render stack headlessly: EditorRenderSystem, then a PreviewRenderScene
 // (mpp::Scene + RenderPipeline + the game's WorldRenderer) over a real
-// Arrangement built from world-test-1.yaml, rendered through the same
+// Arrangement built from world-test-1.world.yaml, rendered through the same
 // renderScene/getGraphImageRenderTarget path Preview3D.cpp uses.
 //
 // Every frame it renders also carries a hovered-surface outline, so the raw-GL
@@ -279,7 +279,7 @@ int materialReassignmentRedrawsTheWorld(
     before = renderFrames(scene, world, *worldData, camera, 3);
   }
 
-  // Nothing in world-test-1.yaml uses this one, so before the fix its mesh
+  // Nothing in world-test-1.world.yaml uses this one, so before the fix its mesh
   // bucket did not even exist: getMeshIndexForMaterialHash would have answered
   // zero and drawn the world in some other material entirely.
   assignEverySurface(world, "builtin.holographic");

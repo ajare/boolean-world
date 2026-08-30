@@ -121,6 +121,8 @@ int main(int argc, char** argv) {
   Expect("valid world succeeds", createWorld(512.0f) == 0);
   Expect("null world name fails", setWorldName(nullptr) != 0);
   Expect("null serialization filename fails", serializeWorld(nullptr) != 0);
+  Expect("plain .yaml serialization filename fails",
+         serializeWorld("invalid-world.yaml") != 0);
 
   Expect("invalid operation fails", createRegular(UINT32_MAX, 0, 3, 0) != 0);
   Expect("invalid fill rule fails", createRegular(0, UINT32_MAX, 3, 0) != 0);

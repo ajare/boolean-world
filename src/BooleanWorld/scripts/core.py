@@ -26,8 +26,8 @@ InfluenceScales = [
 ]
 
 # Materials
-Mat_Marble = 0
-Mat_Stone = 1
+Mat_Marble = 1
+Mat_Stone = 2
 
 
 #

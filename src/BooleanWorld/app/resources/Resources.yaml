@@ -637,7 +637,7 @@ Resources:
                 value: "Texture"
       - type: "TextFile"
         name: "WorldFile"
-        location: "world-test-1.yaml"
+        location: "world-test-1.world.yaml"
       - type: "Map"
         name: "World"
         DependentResources:

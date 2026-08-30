@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <string>
 
+#include <core/Defines.h>
+#include <common/MaterialRegistry.h>
 #include <core/EmbossingCatalogData.h>
 #include <core/ProcMaterialData.h>
 #include <core/SerializationWorkData.h>
@@ -69,6 +71,10 @@ T roundTrip(T const& source) {
 }
 
 void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resources) {
+  require(bw::common::TechniqueNames[0] == "Plain grey" &&
+              bw::common::TechniqueNames[1] == "Marble",
+          "compiled Technique names do not match the shifted shader indices");
+
   auto manifest = readFile(resources / "Resources.yaml");
   require(manifest.find("location: \"proc-materials-built-in.yaml\"") != std::string::npos &&
               manifest.find("type: \"ProcMaterial\"") != std::string::npos,
@@ -80,7 +86,7 @@ void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resource
   require(catalog.subMaterials.size() == 42,
           "generated catalog must contain 39 built-ins and three distinct level migrations");
 
-  auto const* marbleSchema = catalog.findTechniqueSchema(0);
+  auto const* marbleSchema = catalog.findTechniqueSchema(1);
   require(marbleSchema && marbleSchema->parameters.size() == 8 &&
               marbleSchema->parameters[0].name == "warp_scale" &&
               near(marbleSchema->parameters[0].defaultValue, 1.35f),
@@ -95,22 +101,23 @@ void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resource
   require(builtIn && builtIn->paramValues.size() == 8 &&
               near(builtIn->paramValues[0], 1.35f),
           "built-in Marble did not preserve its default warp_scale");
-  auto const* wood2Schema = catalog.findTechniqueSchema(37);
+  auto const* wood2Schema = catalog.findTechniqueSchema(38);
   auto const* wood2 = find("builtin.wood2");
   require(wood2Schema && wood2Schema->parameters.size() == 1 && wood2 &&
-              wood2->materialIndex == 37 && wood2->paramValues.size() == 1 &&
+              wood2->materialIndex == 38 && wood2->paramValues.size() == 1 &&
               near(wood2->paramValues[0], 0.65f),
           "built-in Wood2 does not match its Technique schema");
-  auto const* plainGreySchema = catalog.findTechniqueSchema(38);
+  auto const* plainGreySchema = catalog.findTechniqueSchema(0);
   auto const* plainGrey = find("builtin.plain.grey");
   require(plainGreySchema && plainGreySchema->parameters.empty() && plainGrey &&
-              plainGrey->materialIndex == 38 && plainGrey->paramValues.empty() &&
+              plainGrey->materialIndex == 0 && plainGrey->paramValues.empty() &&
               near(plainGrey->baseColour[0], 0.5f) &&
               near(plainGrey->baseColour[1], 0.5f) &&
               near(plainGrey->baseColour[2], 0.5f),
           "built-in Plain grey does not match its parameterless Technique schema");
   auto const* migrated = find("migrated.marble.1");
-  require(migrated && migrated->paramValues.size() == 8 && near(migrated->paramValues[0], 1.1f) &&
+  require(migrated && migrated->materialIndex == 1 &&
+              migrated->paramValues.size() == 8 && near(migrated->paramValues[0], 1.1f) &&
               near(migrated->paramValues[2], 18.0f) && near(migrated->baseColour[2], 0.2f),
           "the hand-tuned level material combination was not preserved");
 
@@ -144,14 +151,14 @@ void globalEmbossingCatalogPreservesBuiltInRelief(fs::path const& resources) {
 }
 
 void migratedWorldReferencesThePreservedCombinationAndRoundTrips(fs::path const& resources) {
-  auto worldPath = resources / "world-test-1.yaml";
+  auto worldPath = resources / "world-test-1.world.yaml";
   auto text = readFile(worldPath);
   require(text.find("materialIndex:") == std::string::npos && text.find("materialDef:") == std::string::npos,
-          "world-test-1.yaml still contains legacy material data");
+          "world-test-1.world.yaml still contains legacy material data");
   require(text.find("floorEmbossPreset:") != std::string::npos &&
               text.find("ceilingEmbossPreset:") != std::string::npos &&
               text.find("wallEmbossPreset:") != std::string::npos,
-          "world-test-1.yaml lacks explicit per-surface Emboss-preset references");
+          "world-test-1.world.yaml lacks explicit per-surface Emboss-preset references");
 
   size_t referenceCount = 0;
   for (size_t position = 0; (position = text.find("migrated.marble.1", position)) != std::string::npos;

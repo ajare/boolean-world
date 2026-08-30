@@ -2205,35 +2205,35 @@ vec3 supernaturalEmission(vec3 worldPos, int materialIndex)
     vec3 p = worldPos * 0.68;
     float pulse = sin(@Uniform(GLOBAL_TIME) * 2.4) * 0.5 + 0.5;
 
-    if (materialIndex == 23)
+    if (materialIndex == 24)
     {
         float core = 1.0 - smoothstep(0.07, 0.28, geologyVoronoi(p * 2.8));
         return spectralPalette(fbm(p * 0.4) + @Uniform(GLOBAL_TIME) * 0.03) *
                core * (0.45 + pulse * 0.35);
     }
-    if (materialIndex == 24)
+    if (materialIndex == 25)
     {
         float warp = fbm(p * 0.55) - 0.5;
         float seam = abs(sin(p.x * 4.2 - p.y * 1.4 + p.z * 2.0 + warp * 8.0));
         float energy = 1.0 - smoothstep(0.035, 0.18, seam);
         return vec3(0.01, 0.42, 1.25) * energy * (0.65 + pulse * 0.55);
     }
-    if (materialIndex == 25)
+    if (materialIndex == 26)
     {
         float cells = 1.0 - smoothstep(0.08, 0.30, geologyVoronoi(p * 3.5));
         return vec3(0.55, 0.03, 0.34) * cells * pulse * 0.75;
     }
-    if (materialIndex == 26)
+    if (materialIndex == 27)
     {
         vec3 grid = abs(fract(p * 1.7) - 0.5);
         float rune = 1.0 - smoothstep(0.035, 0.10, min(grid.x, min(grid.y, grid.z)));
         return vec3(0.02, 0.62, 1.0) * rune * (0.5 + pulse * 0.5);
     }
-    if (materialIndex == 28)
+    if (materialIndex == 29)
     {
         return spectralPalette(p.y * 0.12 + @Uniform(GLOBAL_TIME) * 0.04) * 0.12;
     }
-    if (materialIndex == 29)
+    if (materialIndex == 30)
     {
         float channel = smoothstep(-0.16, 0.04, -supernaturalField(p, 6));
         return vec3(0.72, 0.01, 0.46) * channel * (0.35 + pulse * 0.65);
@@ -2603,45 +2603,45 @@ Material evaluateMaterial(
     Material material;
     switch (materialIndex)
     {
-        case 0: material = marbleTexture(texturePosition, normalDir); break;
-        case 1: material = graniteTexture(texturePosition, normalDir); break;
-        case 2: material = slateTexture(texturePosition, normalDir); break;
-        case 3: material = sandstoneTexture(texturePosition, normalDir); break;
-        case 4: material = limestoneTexture(texturePosition, normalDir); break;
-        case 5: material = basaltTexture(texturePosition, normalDir); break;
-        case 6: material = obsidianTexture(texturePosition, normalDir); break;
-        case 7: material = quartzTexture(texturePosition, normalDir); break;
-        case 8: material = oreTexture(texturePosition, normalDir); break;
-        case 9: material = rustedIronTexture(texturePosition, normalDir); break;
-        case 10: material = galvanizedSteelTexture(texturePosition, normalDir); break;
-        case 11: material = brushedMetalTexture(texturePosition, normalDir); break;
-        case 12: material = hammeredMetalTexture(texturePosition, normalDir); break;
-        case 13: material = patinatedCopperTexture(texturePosition, normalDir); break;
-        case 14: material = damasceneSteelTexture(texturePosition, normalDir); break;
-        case 15: material = heatTreatedMetalTexture(texturePosition, normalDir); break;
-        case 16: material = woodTexture(texturePosition, normalDir); break;
-        case 17: material = barkTexture(texturePosition, normalDir); break;
-        case 18: material = boneTexture(texturePosition, normalDir); break;
-        case 19: material = leatherTexture(texturePosition, normalDir); break;
-        case 20: material = fleshTexture(texturePosition, normalDir); break;
-        case 21: material = chitinTexture(texturePosition, normalDir); break;
-        case 22: material = coralTexture(texturePosition, normalDir); break;
-        case 23: material = arcaneCrystalTexture(texturePosition, normalDir); break;
-        case 24: material = energyStoneTexture(texturePosition, normalDir); break;
-        case 25: material = alienTissueTexture(texturePosition, normalDir); break;
-        case 26: material = magicalMetalTexture(texturePosition, normalDir); break;
-        case 27: material = cloudSolidTexture(texturePosition, normalDir); break;
-        case 28: material = holographicTexture(texturePosition, normalDir, viewDir); break;
-        case 29: material = corruptionTexture(texturePosition, normalDir); break;
-        case 30: material = frostedGlassTexture(texturePosition, normalDir); break;
-        case 31: material = brickTexture(texturePosition, normalDir); break;
-        case 32: material = circuitBoardTexture(texturePosition, normalDir); break;
-        case 33: material = bandedGneissTexture(texturePosition, normalDir); break;
-        case 34: material = rockTexture(texturePosition, normalDir); break;
-        case 35: material = mossyRockTexture(texturePosition, normalDir); break;
-        case 36: material = wetRockTexture(texturePosition, normalDir); break;
-        case 37: material = wood2Texture(texturePosition, normalDir); break;
-        case 38: material = plainGreyMaterial(normalDir); break;
+        case 1: material = marbleTexture(texturePosition, normalDir); break;
+        case 2: material = graniteTexture(texturePosition, normalDir); break;
+        case 3: material = slateTexture(texturePosition, normalDir); break;
+        case 4: material = sandstoneTexture(texturePosition, normalDir); break;
+        case 5: material = limestoneTexture(texturePosition, normalDir); break;
+        case 6: material = basaltTexture(texturePosition, normalDir); break;
+        case 7: material = obsidianTexture(texturePosition, normalDir); break;
+        case 8: material = quartzTexture(texturePosition, normalDir); break;
+        case 9: material = oreTexture(texturePosition, normalDir); break;
+        case 10: material = rustedIronTexture(texturePosition, normalDir); break;
+        case 11: material = galvanizedSteelTexture(texturePosition, normalDir); break;
+        case 12: material = brushedMetalTexture(texturePosition, normalDir); break;
+        case 13: material = hammeredMetalTexture(texturePosition, normalDir); break;
+        case 14: material = patinatedCopperTexture(texturePosition, normalDir); break;
+        case 15: material = damasceneSteelTexture(texturePosition, normalDir); break;
+        case 16: material = heatTreatedMetalTexture(texturePosition, normalDir); break;
+        case 17: material = woodTexture(texturePosition, normalDir); break;
+        case 18: material = barkTexture(texturePosition, normalDir); break;
+        case 19: material = boneTexture(texturePosition, normalDir); break;
+        case 20: material = leatherTexture(texturePosition, normalDir); break;
+        case 21: material = fleshTexture(texturePosition, normalDir); break;
+        case 22: material = chitinTexture(texturePosition, normalDir); break;
+        case 23: material = coralTexture(texturePosition, normalDir); break;
+        case 24: material = arcaneCrystalTexture(texturePosition, normalDir); break;
+        case 25: material = energyStoneTexture(texturePosition, normalDir); break;
+        case 26: material = alienTissueTexture(texturePosition, normalDir); break;
+        case 27: material = magicalMetalTexture(texturePosition, normalDir); break;
+        case 28: material = cloudSolidTexture(texturePosition, normalDir); break;
+        case 29: material = holographicTexture(texturePosition, normalDir, viewDir); break;
+        case 30: material = corruptionTexture(texturePosition, normalDir); break;
+        case 31: material = frostedGlassTexture(texturePosition, normalDir); break;
+        case 32: material = brickTexture(texturePosition, normalDir); break;
+        case 33: material = circuitBoardTexture(texturePosition, normalDir); break;
+        case 34: material = bandedGneissTexture(texturePosition, normalDir); break;
+        case 35: material = rockTexture(texturePosition, normalDir); break;
+        case 36: material = mossyRockTexture(texturePosition, normalDir); break;
+        case 37: material = wetRockTexture(texturePosition, normalDir); break;
+        case 38: material = wood2Texture(texturePosition, normalDir); break;
+        case 0: material = plainGreyMaterial(normalDir); break;
         case 39: // BW_WALL_BACK_FACE_MATERIAL_INDEX (Defines.h): a plain
                  // white matte surface for the unmapped side of a wall.
             material.albedo = vec3(1.0, 1.0, 1.0);

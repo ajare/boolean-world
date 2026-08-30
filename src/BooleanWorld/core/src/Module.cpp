@@ -1,7 +1,11 @@
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <exception>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -13,6 +17,7 @@
 #include "core/InputType.h"
 #include "core/RectanglePolygon.h"
 #include "core/RegularPolygon.h"
+#include "core/SerializationException.h"
 #include "core/TorusPolygon.h"
 #include "core/World.h"
 #include "core/YamlSerializer.h"
@@ -23,6 +28,17 @@ using namespace bw::core;
 
 World* gWorld{nullptr};
 Primitive* gPrimitive{nullptr};
+
+bool HasWorldYamlExtension(std::string const& filepath) {
+  constexpr std::string_view extension = ".world.yaml";
+  if (filepath.size() < extension.size()) return false;
+
+  auto const tail = std::string_view(filepath).substr(filepath.size() - extension.size());
+  return std::equal(tail.begin(), tail.end(), extension.begin(), [](char a, char b) {
+    return std::tolower(static_cast<unsigned char>(a)) ==
+           std::tolower(static_cast<unsigned char>(b));
+  });
+}
 
 template <typename Function>
 int InvokeApi(Function&& function) {
@@ -110,6 +126,9 @@ int mod_serialize_world(char const* filename) {
   return InvokeApi([&]() {
     if (!gWorld || !filename || filename[0] == '\0') {
       return 1;
+    }
+    if (!HasWorldYamlExtension(filename)) {
+      throw SerializationException("YAML World files must end in .world.yaml.");
     }
 
     auto serializer = std::shared_ptr<YamlSerializer>(YamlSerializer::toFile(filename));

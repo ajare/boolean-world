@@ -42,5 +42,5 @@ if(BUILD_TESTING)
                      "${Python3_EXECUTABLE}"
                      "${CMAKE_CURRENT_SOURCE_DIR}/tests/generate_world_for_test.py"
                      "$<TARGET_FILE:core-dll>"
-                     "$<TARGET_FILE_DIR:boolean_world_python_world_generation_tests>/python_generated_world.yaml")
+                     "$<TARGET_FILE_DIR:boolean_world_python_world_generation_tests>/python_generated_world.world.yaml")
 endif()

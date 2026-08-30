@@ -56,7 +56,7 @@ ArrangementPrimitive rectanglePrimitive(
 }
 
 // A lone Union primitive is a solid room by itself - the same, ordinary way
-// every room in an authored World is built (see world-test-1.yaml). Liquid
+// every room in an authored World is built (see world-test-1.world.yaml). Liquid
 // physics operates over these solid faces: the ones BuildArrangementTriangles
 // renders and the player walks on.
 ArrangementPrimitive room(
