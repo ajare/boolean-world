@@ -24,13 +24,30 @@ if(CMAKE_SIZEOF_VOID_P AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "Only x64 is supported (vendor/lib is x64-only). Configure with -A x64.")
 endif()
 
-# Debug and Release, as the original solutions had, plus MemCheck: a Debug
-# build instrumented with AddressSanitizer for finding memory errors and
-# leaks. Mirrors the ASan setup already used by
+# Debug and Release, as the original solutions had; Shipping is a fully
+# optimised Release-derived configuration; and MemCheck is a Debug build
+# instrumented with AddressSanitizer for finding memory errors and leaks.
+# MemCheck mirrors the ASan setup already used by
 # launcher_zip_resource_location_tests (see src/Launcher/CMakeLists.txt).
 if(CMAKE_CONFIGURATION_TYPES)
-    set(CMAKE_CONFIGURATION_TYPES "Debug;Release;MemCheck" CACHE STRING "" FORCE)
+    set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Shipping;MemCheck" CACHE STRING "" FORCE)
 endif()
+
+# Shipping keeps Release's speed-oriented optimisation and adds whole-program
+# optimisation. Do not use floating-point or CPU-specific switches here: those
+# change the program's semantics or minimum hardware requirement.
+set(CMAKE_CXX_FLAGS_SHIPPING
+    "/O2 /Ob2 /Oi /Ot /Oy /GF /Gy /GL /DNDEBUG"
+    CACHE STRING "" FORCE)
+set(CMAKE_C_FLAGS_SHIPPING "${CMAKE_CXX_FLAGS_SHIPPING}" CACHE STRING "" FORCE)
+set(CMAKE_EXE_LINKER_FLAGS_SHIPPING
+    "/LTCG /OPT:REF /OPT:ICF /INCREMENTAL:NO" CACHE STRING "" FORCE)
+set(CMAKE_SHARED_LINKER_FLAGS_SHIPPING
+    "${CMAKE_EXE_LINKER_FLAGS_SHIPPING}" CACHE STRING "" FORCE)
+
+# External dependencies only provide Debug and Release binaries. Shipping uses
+# their Release variants while this project is built with the flags above.
+set(CMAKE_MAP_IMPORTED_CONFIG_SHIPPING "Release" CACHE STRING "" FORCE)
 
 # Willpower/MassivePolyPusher/vendor are prebuilt without ASan, so their
 # objects carry the MSVC STL's container-overflow annotation markers at 0
@@ -89,10 +106,11 @@ bw_ensure_willpower()
 # Keep an explicit build-time target for updating every buildable dependency in
 # dependency order for the active configuration. MppAppSupport recursively
 # builds MPP's own SDL/GLEW/yaml-cpp dependencies; the Willpower modules are
-# then built from foundational to dependent. MemCheck consumes Debug dependency
-# binaries, matching CMAKE_MAP_IMPORTED_CONFIG_MEMCHECK above.
+# then built from foundational to dependent. MemCheck consumes Debug and
+# Shipping consumes Release dependency binaries, matching the imported-target
+# configuration mappings above.
 set(BW_DEPENDENCY_CONFIG
-    "$<IF:$<CONFIG:MemCheck>,Debug,$<CONFIG>>")
+    "$<IF:$<CONFIG:MemCheck>,Debug,$<IF:$<CONFIG:Shipping>,Release,$<CONFIG>>>")
 add_custom_target(BuildAllDependencies
     COMMAND "${CMAKE_COMMAND}" --build "${BW_MPP_BUILD_DIR}"
             --config "${BW_DEPENDENCY_CONFIG}" --parallel
@@ -159,7 +177,7 @@ if(BUILD_TESTING)
         COMMENT "Run all tests for $<CONFIG>"
         USES_TERMINAL
         VERBATIM)
-    set_property(TARGET RunAllTests PROPERTY FOLDER "Tests")
+    set_property(TARGET RunAllTests PROPERTY FOLDER "TestCases")
 
     # Building RunAllTests from Visual Studio must first bring every test
     # executable up to date. Test targets consistently use the _tests suffix;
@@ -169,6 +187,13 @@ if(BUILD_TESTING)
         get_property(directory_targets DIRECTORY "${directory}"
                      PROPERTY BUILDSYSTEM_TARGETS)
         foreach(target IN LISTS directory_targets)
+            # Unit/integration tests use the _tests suffix; GPU-dependent
+            # smoke tests are manual but are test projects too.
+            if(target MATCHES "(_tests|_smoke)$")
+                set_property(TARGET "${target}" PROPERTY FOLDER "TestCases")
+            elseif(target MATCHES "_benchmark$")
+                set_property(TARGET "${target}" PROPERTY FOLDER "Benchmarks")
+            endif()
             if(target MATCHES "_tests$")
                 add_dependencies(RunAllTests "${target}")
             endif()

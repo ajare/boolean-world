@@ -124,10 +124,23 @@ add_dependencies(Launcher BooleanWorld)
 
 bw_deploy_runtime_dlls(Launcher)
 bw_deploy_vendor_dlls(Launcher)
-# Wall normal maps are authored as paths relative to the application's runtime
-# resource root. Unlike manifest resources, NormalMapResourceSet decodes them
-# directly from disk, so stage the image tree beside Launcher.exe.
-bw_deploy_directory(Launcher "${BW_ROOT}/src/BooleanWorld/app/resources/images" "images")
+
+# Shipping is self-contained: copy the game DLL that normally sits in its
+# sibling output directory, its configuration, and the complete resource root
+# the configuration names. The conditional command is omitted in all other
+# configurations.
+add_custom_command(TARGET Launcher POST_BUILD
+    COMMAND "$<$<CONFIG:Shipping>:${CMAKE_COMMAND}>" -E copy_if_different
+            "$<TARGET_FILE:BooleanWorld>"
+            "$<TARGET_FILE_DIR:Launcher>/BooleanWorld.dll"
+    COMMAND "$<$<CONFIG:Shipping>:${CMAKE_COMMAND}>" -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/resources/Shipping/Game.yaml"
+            "$<TARGET_FILE_DIR:Launcher>/Game.yaml"
+    COMMAND "$<$<CONFIG:Shipping>:${CMAKE_COMMAND}>" -E copy_directory
+            "${BW_ROOT}/src/BooleanWorld/app/resources"
+            "$<TARGET_FILE_DIR:Launcher>/resources"
+    VERBATIM
+    COMMENT "$<$<CONFIG:Shipping>:Staging self-contained Shipping Launcher>")
 
 # Per-machine support files:
 #   support/<COMPUTERNAME>/<CONFIG>/*  ->  output directory

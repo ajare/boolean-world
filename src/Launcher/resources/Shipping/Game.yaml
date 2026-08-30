@@ -1,0 +1,48 @@
+Configuration:
+  Video:
+    Width: 2048
+    Height: 1280
+    Fullscreen: false
+    VSync: true
+    RenderScale: quarter
+    AA: fxaa
+    AmbientOcclusion: gtao-depth
+    RenderTextureFilter: linear
+    HorizontalMaterials: 2d
+    WaterReflections:
+      Technique: planar
+      PlanarResolution: half
+    PlayerTorch:
+      Radius: 192
+      Falloff: 64
+    Shadows:
+      Enabled: true
+      FaceResolution: 1024
+      Range: 192
+      NearPlane: 0.25
+      ConstantBias: 0.0008
+      NormalBias: 0.0025
+      Filter: pcf
+      FilterRadius: 1
+      FadeStart: 0.9
+  Audio:
+    Enabled: false
+    Channels: 1024
+    Sync: false
+  Input:
+    MouseSensitivity: 0.6
+  Game:
+    DLL:
+      path: BooleanWorld.dll
+    ResourceLocations:
+      ResourceLocation:
+        type: Directory
+        path: resources/
+        definition: Resources.yaml
+    Debug:
+      InGame: enabled
+    Arguments:
+      # Leave blank (or leave out) for default engine value
+      Argument:
+        name: ThreadedLoading
+        value: false
