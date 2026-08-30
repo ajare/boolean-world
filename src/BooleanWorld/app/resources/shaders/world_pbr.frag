@@ -228,6 +228,15 @@ vec3 liquidRippleNormal(vec3 worldPosition, vec3 viewerFacingNormal)
         viewerFacingNormal + side * vec3(-gradient.x, 0.0, -gradient.y));
 }
 
+vec2 liquidPlanarRippleOffset(vec3 rippleNormal)
+{
+    // Planar projection has no ray travel to magnify the perturbed normal the
+    // way SSR does. Convert the normal to a surface slope and apply enough
+    // normalized-image displacement to remain visible at Quarter resolution.
+    vec2 slope = rippleNormal.xz / max(abs(rippleNormal.y), 0.2);
+    return slope * 0.12;
+}
+
 vec2 encodeOctahedralNormal(vec3 normal)
 {
     normal /= abs(normal.x) + abs(normal.y) + abs(normal.z);
@@ -2848,7 +2857,7 @@ void main()
                 0.5 + 0.5;
             // The same ripple normal that perturbs the Fresnel response and SSR
             // ray bends the projected Planar lookup across the interface.
-            hitUv += interfaceNormal.xz * 0.025;
+            hitUv += liquidPlanarRippleOffset(interfaceNormal);
             vec4 planarSample = vec4(0.0);
             if (planarIndex == 0)
                 planarSample = texture(@Texture(PBR_PLANAR_REFLECTION_0), hitUv);

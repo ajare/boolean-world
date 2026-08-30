@@ -146,6 +146,8 @@ void liquidShaderPreservesTheSsrContract() {
                   std::string::npos &&
               shader.find("planarSample.a * edgeFade") !=
                   std::string::npos &&
+              shader.find("liquidPlanarRippleOffset(interfaceNormal)") !=
+                  std::string::npos &&
               shader.find("MPP_PLANAR_REFLECTION_VIEW_PROJECTION_0") !=
                   std::string::npos &&
               shader.find("MPP_PLANAR_REFLECTION_VIEW_PROJECTION_3") !=
