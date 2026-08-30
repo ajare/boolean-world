@@ -19,6 +19,7 @@ struct EmbossingCatalogSnapshot {
 // written through the shared core serializer.
 class EmbossingCatalogLibrary {
   std::filesystem::path mFilepath;
+  std::string mResourceName;
   bw::core::EmbossingCatalogData mData;
   uint64_t mRevision{0};
 
@@ -28,6 +29,7 @@ public:
   void load(std::filesystem::path const& resourcesManifest);
 
   [[nodiscard]] bw::core::EmbossingCatalogData const& data() const;
+  [[nodiscard]] std::string const& resourceName() const;
   [[nodiscard]] bw::core::EmbossPreset const* findPreset(
       std::string const& presetId) const;
 

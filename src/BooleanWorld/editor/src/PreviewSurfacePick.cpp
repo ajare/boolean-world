@@ -229,6 +229,29 @@ std::string previewSurfaceSubMaterialId(
   return {};
 }
 
+std::string previewSurfaceEmbossPresetId(
+    bw::core::ArrangementWorldData const& worldData,
+    PreviewScenePick const& pick) {
+  auto owner = resolvePreviewSurfaceOwner(worldData, pick);
+  auto const& arrangement = worldData.getArrangement();
+  if (!owner.valid() || owner.paletteIndex >= arrangement.palette.size()) {
+    return {};
+  }
+
+  auto const& properties = arrangement.palette[owner.paletteIndex];
+  switch (pick.surfaceHit.surface) {
+    case PreviewSurface::Floor:
+      return properties.floorEmbossPresetId;
+    case PreviewSurface::Ceiling:
+      return properties.ceilingEmbossPresetId;
+    case PreviewSurface::Wall:
+      return properties.wallEmbossPresetId;
+    case PreviewSurface::None:
+      break;
+  }
+  return {};
+}
+
 std::string_view previewSurfaceName(PreviewSurface surface) {
   switch (surface) {
     case PreviewSurface::Floor:

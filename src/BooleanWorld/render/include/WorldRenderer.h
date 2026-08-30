@@ -146,6 +146,12 @@ public:
       std::string const& subMaterialId, int32_t materialIndex,
       bw::core::MaterialDefinitionData const& definition);
 
+  // Applies an unsaved global-preset draft to every existing bucket using
+  // that preset while preserving each bucket's Sub-material definition.
+  void updateEmbossPresetDraft(
+      std::string const& embossPresetId,
+      bw::core::EmbossData const& emboss);
+
   // Rebuilds the read-only render-side Sub-material cache after the editor
   // saves ProcMaterial YAML directly to disk.
   void reloadSubMaterialResolver(

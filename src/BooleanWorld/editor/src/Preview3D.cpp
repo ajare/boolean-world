@@ -34,6 +34,7 @@
 #include "Defines.h"
 #include "Document.h"
 #include "EditorRenderSystem.h"
+#include "EmbossingCatalogLibrary.h"
 #include "imgui.h"
 #include "InputOptions.h"
 #include "PlayerView.h"
@@ -87,6 +88,14 @@ struct PreviewMaterialEditorState {
   bw::core::ChipGenerationParameters chip;
 };
 
+struct PreviewEmbossEditorState {
+  bool initialized{};
+  bool hasDraft{};
+  std::string editingId;
+  char name[256]{};
+  bw::core::EmbossData emboss;
+};
+
 struct PreviewSession {
   bool open{};
   Document* document{};
@@ -101,6 +110,7 @@ struct PreviewSession {
   PreviewSurfaceRef lookedAt;
   PreviewSurfaceRef selection;
   PreviewMaterialEditorState materialEditor;
+  PreviewEmbossEditorState embossEditor;
   // A right-drag that began inside the preview, so releasing the button over
   // another window still ends the turn.
   bool dragTurning{};
@@ -218,12 +228,29 @@ void reconcileSavedProcMaterial(std::string const& resourceName) {
   session.renderScene->worldGeometryChanged();
 }
 
+void reconcileSavedEmbossingCatalog() {
+  auto* renderSystem = editorRenderSystem();
+  if (!session.renderScene || !renderSystem) return;
+  renderSystem->reloadEmbossingCatalog(
+      embossingCatalogLibrary().resourceName());
+  session.renderScene->reloadSubMaterialResolver(
+      renderSystem->resourceManager());
+}
+
 void applyMaterialDraft() {
   auto const& draft = session.materialEditor;
   if (draft.hasDraft && session.renderScene) {
     session.renderScene->updateMaterialDraft(
         draft.editingId, draft.materialIndex, draft.params, draft.colour,
         draft.emboss);
+  }
+}
+
+void applyEmbossDraft() {
+  auto const& draft = session.embossEditor;
+  if (draft.hasDraft && session.renderScene) {
+    session.renderScene->updateEmbossPresetDraft(
+        draft.editingId, draft.emboss);
   }
 }
 
@@ -275,6 +302,12 @@ std::string surfaceSubMaterialId(PreviewSurfaceRef const& surface) {
              : std::string{};
 }
 
+std::string surfaceEmbossPresetId(PreviewSurfaceRef const& surface) {
+  return session.worldData
+             ? previewSurfaceEmbossPresetId(*session.worldData, asPick(surface))
+             : std::string{};
+}
+
 void loadMaterialDraft(std::string const& id) {
   auto& state = session.materialEditor;
   state.initialized = true;
@@ -305,20 +338,105 @@ void loadMaterialDraft(std::string const& id) {
   state.chip = material->chip;
 }
 
-// The relief this Sub-material embosses into every surface it is applied to.
-// Authored here rather than as Technique parameters: it is evaluated the same
-// way whatever the Technique, so it has its own fields and its own limits -
-// and, unlike a parameter slider, the pattern is a named choice.
-void renderEmbossEditor(PreviewMaterialEditorState& state) {
-  if (!ImGui::CollapsingHeader("Embossing", ImGuiTreeNodeFlags_DefaultOpen)) {
+void loadEmbossDraft(std::string const& id) {
+  auto& state = session.embossEditor;
+  state.initialized = true;
+  state.hasDraft = false;
+  state.editingId.clear();
+  auto const* preset = embossingCatalogLibrary().findPreset(id);
+  if (!preset) return;
+  state.hasDraft = true;
+  state.editingId = id;
+  std::snprintf(
+      state.name, sizeof(state.name), "%s", preset->displayName.c_str());
+  state.emboss = preset->emboss;
+}
+
+void renderEmbossEditor(PreviewPrimitive& previewPrimitive) {
+  if (!ImGui::CollapsingHeader(
+          "Embossing", ImGuiTreeNodeFlags_DefaultOpen)) {
     return;
   }
 
-  // Every change here is pushed straight into the live preview by
-  // applyMaterialDraft, so a pattern or a groove depth reads back on the
-  // surface under the pointer as it is dragged.
+  auto& state = session.embossEditor;
+  if (!state.initialized) {
+    loadEmbossDraft(surfaceEmbossPresetId(session.selection));
+  }
+
+  auto const& presets = embossingCatalogLibrary().data().presets;
+  int selected = 0;
+  std::string items = "None";
+  items += '\0';
+  for (size_t i = 0; i < presets.size(); ++i) {
+    if (presets[i].id == state.editingId) selected = static_cast<int>(i + 1);
+    items += presets[i].displayName;
+    items += '\0';
+  }
+  ImGui::SetNextItemWidth(280.0f);
+  if (ImGui::Combo("Emboss preset", &selected, items.c_str(), 8)) {
+    auto id = selected == 0 ? std::string{} : presets[selected - 1].id;
+    transactUndoableAction(
+        session.document, "Set preview surface Emboss preset",
+        [&](Document* actionDoc) {
+          return setPrimitiveEmbossPreset(
+              actionDoc, previewPrimitive.source,
+              materialSurface(session.selection.surface), id);
+        });
+    rebuildPreviewForSurfaceEdit();
+    loadEmbossDraft(id);
+  }
+
+  if (!state.hasDraft) {
+    ImGui::TextDisabled("Select an Emboss preset to edit it.");
+    return;
+  }
+
+  ImGui::InputText("Preset name", state.name, sizeof(state.name));
   ImGui::SetNextItemWidth(280.0f);
   widgets::EmbossFields(state.emboss);
+
+  if (ImGui::Button("Save existing##Emboss")) {
+    auto id = state.editingId;
+    auto name = std::string(state.name);
+    auto emboss = state.emboss;
+    if (transactUndoableActionAtomically(
+            session.document, "Save Emboss preset",
+            [&](Document* actionDoc) {
+              renameEmbossPreset(
+                  actionDoc, &embossingCatalogLibrary(), id, name);
+              return editEmbossPreset(
+                  actionDoc, &embossingCatalogLibrary(), id, emboss);
+            })) {
+      reconcileSavedEmbossingCatalog();
+      loadEmbossDraft(id);
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Save as new Emboss preset")) {
+    auto name = std::string(state.name);
+    auto emboss = state.emboss;
+    std::string createdId;
+    if (transactUndoableActionAtomically(
+            session.document, "Save new Emboss preset",
+            [&](Document* actionDoc) {
+              if (!createEmbossPreset(
+                      actionDoc, &embossingCatalogLibrary(), name, emboss,
+                      &createdId)) {
+                return false;
+              }
+              return setPrimitiveEmbossPreset(
+                  actionDoc, previewPrimitive.source,
+                  materialSurface(session.selection.surface), createdId);
+            })) {
+      reconcileSavedEmbossingCatalog();
+      rebuildPreviewForSurfaceEdit();
+      loadEmbossDraft(createdId);
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Revert##Emboss")) {
+    loadEmbossDraft(state.editingId);
+  }
 }
 
 // How far a Chip bites into and reaches along this Sub-material - see
@@ -387,6 +505,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
 
   if (!state.hasDraft) {
     ImGui::TextDisabled("Select a Sub-material to edit its parameters.");
+    renderEmbossEditor(previewPrimitive);
     return;
   }
 
@@ -406,7 +525,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
     ImGui::ColorEdit3("Base colour", state.colour.data());
   }
 
-  renderEmbossEditor(state);
+  renderEmbossEditor(previewPrimitive);
   renderChipEditor(state);
 
   if (ImGui::CollapsingHeader("Save", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -468,6 +587,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
 void clearSelectedSurface() {
   session.selection = {};
   session.materialEditor = {};
+  session.embossEditor = {};
   session.dragTurning = false;
 }
 
@@ -778,6 +898,7 @@ void renderPreviewScene(ImVec2 const& windowSize) {
   // This is a uniform-only push on every preview frame, matching the game
   // renderer's update cadence and keeping slider drags free of re-tessellation.
   applyMaterialDraft();
+  applyEmbossDraft();
   // The selection keeps its border for as long as it is selected; the hover
   // border is drawn after it, and so over it, when they are different
   // surfaces.
@@ -1034,6 +1155,7 @@ void renderPreview3D() {
           ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         session.selection = session.lookedAt;
         session.materialEditor = {};
+        session.embossEditor = {};
       }
     }
 

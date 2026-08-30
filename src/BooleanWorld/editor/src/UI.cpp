@@ -54,6 +54,7 @@
 #include "ProcMaterialLibrary.h"
 #include "ExitApplicationException.h"
 #include "EditorRenderSystem.h"
+#include "EmbossingCatalogLibrary.h"
 #include "Render.h"
 #include "HoverableType.h"
 
@@ -2852,8 +2853,6 @@ void renderSubMaterialFields(
     }
   }
   ImGui::ColorEdit3("Base colour", state.colour.data());
-  ImGui::SeparatorText("Embossing");
-  widgets::EmbossFields(state.emboss);
   ImGui::SeparatorText("Chipping");
   widgets::ChipFields(state.chip);
 }
@@ -3022,6 +3021,122 @@ void renderSubMaterialValue(char const* label, string const& subMaterialId) {
               found->displayName.c_str());
 }
 
+struct EmbossPresetPanelState {
+  string editingId;
+  char name[256]{};
+  bw::core::EmbossData emboss;
+};
+
+void loadEmbossPresetPanel(
+    EmbossPresetPanelState& state, string const& presetId) {
+  state = {};
+  auto const* preset = embossingCatalogLibrary().findPreset(presetId);
+  if (!preset) return;
+  state.editingId = presetId;
+  snprintf(state.name, sizeof(state.name), "%s", preset->displayName.c_str());
+  state.emboss = preset->emboss;
+}
+
+void reloadAuthoredEmbossingCatalog() {
+  auto* renderSystem = editorRenderSystem();
+  if (!renderSystem) return;
+  renderSystem->reloadEmbossingCatalog(
+      embossingCatalogLibrary().resourceName());
+}
+
+void renderEmbossPresetPanel(
+    char const* label, string* presetId, Document* doc,
+    bw::core::Primitive* primitive, PrimitiveMaterialSurface surface) {
+  auto header = format("{} Embossing", label);
+  if (!ImGui::CollapsingHeader(header.c_str())) return;
+
+  static map<string, EmbossPresetPanelState> states;
+  auto& state = states[label];
+  if (state.editingId != *presetId) loadEmbossPresetPanel(state, *presetId);
+
+  auto const& presets = embossingCatalogLibrary().data().presets;
+  int selected = 0;
+  string items = "None";
+  items += '\0';
+  for (size_t i = 0; i < presets.size(); ++i) {
+    if (presets[i].id == *presetId) selected = static_cast<int>(i + 1);
+    items += presets[i].displayName;
+    items += '\0';
+  }
+  ImGui::SetNextItemWidth(256);
+  if (ImGui::Combo(
+          format("Preset##{}", label).c_str(), &selected, items.c_str(), 8)) {
+    auto id = selected == 0 ? string{} : presets[selected - 1].id;
+    *presetId = id;
+    transactUndoableAction(
+        doc, format("Set {} Emboss preset", label),
+        [primitive, surface, id](Document* actionDoc) {
+          return setPrimitiveEmbossPreset(
+              actionDoc, primitive, surface, id);
+        });
+    loadEmbossPresetPanel(state, id);
+  }
+
+  if (state.editingId.empty()) {
+    ImGui::TextDisabled("No Emboss preset assigned.");
+    return;
+  }
+
+  ImGui::InputText(
+      format("Name##{} Emboss", label).c_str(), state.name,
+      sizeof(state.name));
+  widgets::EmbossFields(state.emboss);
+
+  if (ImGui::Button(format("Save existing##{} Emboss", label).c_str())) {
+    auto id = state.editingId;
+    auto name = string(state.name);
+    auto emboss = state.emboss;
+    if (transactUndoableActionAtomically(
+            doc, "Save Emboss preset", [&](Document* actionDoc) {
+              renameEmbossPreset(
+                  actionDoc, &embossingCatalogLibrary(), id, name);
+              return editEmbossPreset(
+                  actionDoc, &embossingCatalogLibrary(), id, emboss);
+            })) {
+      reloadAuthoredEmbossingCatalog();
+      loadEmbossPresetPanel(state, id);
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::Button(
+          format("Save as new Emboss preset##{}", label).c_str())) {
+    auto name = string(state.name);
+    auto emboss = state.emboss;
+    string createdId;
+    if (transactUndoableActionAtomically(
+            doc, "Save new Emboss preset", [&](Document* actionDoc) {
+              if (!createEmbossPreset(
+                      actionDoc, &embossingCatalogLibrary(), name, emboss,
+                      &createdId)) {
+                return false;
+              }
+              return setPrimitiveEmbossPreset(
+                  actionDoc, primitive, surface, createdId);
+            })) {
+      *presetId = createdId;
+      reloadAuthoredEmbossingCatalog();
+      loadEmbossPresetPanel(state, createdId);
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::Button(format("Revert##{} Emboss", label).c_str())) {
+    loadEmbossPresetPanel(state, state.editingId);
+  }
+}
+
+void renderEmbossPresetValue(char const* label, string const& presetId) {
+  auto const* preset = embossingCatalogLibrary().findPreset(presetId);
+  ImGui::Text(
+      "%s Embossing: %s", label,
+      preset ? preset->displayName.c_str()
+             : (presetId.empty() ? "None" : presetId.c_str()));
+}
+
 bool renderPrimitivePropertySet(
     bw::core::PrimitivePropertySet* properties, bool editable,
     editor::Document* doc, editor::Settings&,
@@ -3092,10 +3207,22 @@ bool renderPrimitivePropertySet(
     renderSubMaterialPicker(
         "Wall", &properties->wallMaterialId, doc, primitive,
         PrimitiveMaterialSurface::Wall);
+    renderEmbossPresetPanel(
+        "Floor", &properties->floorEmbossPresetId, doc, primitive,
+        PrimitiveMaterialSurface::Floor);
+    renderEmbossPresetPanel(
+        "Ceiling", &properties->ceilingEmbossPresetId, doc, primitive,
+        PrimitiveMaterialSurface::Ceiling);
+    renderEmbossPresetPanel(
+        "Wall", &properties->wallEmbossPresetId, doc, primitive,
+        PrimitiveMaterialSurface::Wall);
   } else {
     renderSubMaterialValue("Floor", properties->floorMaterialId);
     renderSubMaterialValue("Ceiling", properties->ceilingMaterialId);
     renderSubMaterialValue("Wall", properties->wallMaterialId);
+    renderEmbossPresetValue("Floor", properties->floorEmbossPresetId);
+    renderEmbossPresetValue("Ceiling", properties->ceilingEmbossPresetId);
+    renderEmbossPresetValue("Wall", properties->wallEmbossPresetId);
   }
 
   return updateProperties;

@@ -689,6 +689,25 @@ bool setPrimitiveSubMaterial(
   return true;
 }
 
+bool setPrimitiveEmbossPreset(
+    Document*, bw::core::Primitive* primitive,
+    PrimitiveMaterialSurface surface, string const& embossPresetId) {
+  auto properties = primitive->getProperties();
+  switch (surface) {
+    case PrimitiveMaterialSurface::Floor:
+      properties.floorEmbossPresetId = embossPresetId;
+      break;
+    case PrimitiveMaterialSurface::Ceiling:
+      properties.ceilingEmbossPresetId = embossPresetId;
+      break;
+    case PrimitiveMaterialSurface::Wall:
+      properties.wallEmbossPresetId = embossPresetId;
+      break;
+  }
+  primitive->setProperties(properties);
+  return true;
+}
+
 bw::core::PrimitivePropertySet movedSurfaceZ(
     bw::core::PrimitivePropertySet properties,
     PrimitiveMaterialSurface surface, float delta) {

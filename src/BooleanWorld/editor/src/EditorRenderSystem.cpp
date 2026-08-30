@@ -51,14 +51,14 @@ public:
 };
 
 // What the preview's WorldRenderer looks up by name once it is constructed:
-// the two world materials and the ProcMaterial catalog SubMaterialResolver
-// reads. Creating and loading each of these pulls in its own dependencies -
-// shaders, programs, textures, the catalog's TextFile - so nothing else in
-// the manifest has to be created or loaded at all.
-constexpr array<pair<char const*, char const*>, 3> previewResources{{
+// the two world materials plus the ProcMaterial and global Embossing catalogs
+// SubMaterialResolver reads. Creating and loading each pulls in its own
+// dependencies, so nothing else in the manifest has to be loaded.
+constexpr array<pair<char const*, char const*>, 4> previewResources{{
     {"Material.Default", "World"},
     {"Material.Horizontal2d", "World"},
     {"ProcMaterials", ""},
+    {"Embossing", ""},
 }};
 
 }  // namespace
@@ -163,6 +163,12 @@ void EditorRenderSystem::reloadProcMaterial(string const& resourceName) {
   // The preview loaded this resource directly rather than acquiring it, so a
   // release unloads it and its TextFile dependency. Loading it again then
   // rereads the YAML the authoring library just saved.
+  mResourceMgr->releaseResource(resource);
+  mResourceMgr->loadResource(resource);
+}
+
+void EditorRenderSystem::reloadEmbossingCatalog(string const& resourceName) {
+  auto resource = mResourceMgr->getResource(resourceName);
   mResourceMgr->releaseResource(resource);
   mResourceMgr->loadResource(resource);
 }

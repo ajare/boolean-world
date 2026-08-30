@@ -177,6 +177,14 @@ void PreviewRenderScene::updateMaterialDraft(
       std::string(bw::app::playerTorchShadowDomain));
 }
 
+void PreviewRenderScene::updateEmbossPresetDraft(
+    std::string const& embossPresetId,
+    bw::core::EmbossData const& emboss) {
+  mRenderer->updateEmbossPresetDraft(embossPresetId, emboss);
+  mwRenderSystem->invalidateShadowDomain(
+      std::string(bw::app::playerTorchShadowDomain));
+}
+
 void PreviewRenderScene::reloadSubMaterialResolver(
     wp::application::resourcesystem::ResourceManager* resourceMgr) {
   mRenderer->reloadSubMaterialResolver(resourceMgr);

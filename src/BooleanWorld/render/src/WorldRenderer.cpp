@@ -304,6 +304,38 @@ void WorldRenderer::updateSubMaterialDraft(
   }
 }
 
+void WorldRenderer::updateEmbossPresetDraft(
+    string const& embossPresetId, bw::core::EmbossData const& emboss) {
+  if (!mwWorld || embossPresetId.empty()) return;
+
+  set<tuple<string, bool>> surfaces;
+  for (uint32_t i = 0; i < mwWorld->getNumPrimitives(); ++i) {
+    auto const& properties = mwWorld->getPrimitive(i)->getProperties();
+    if (properties.floorEmbossPresetId == embossPresetId)
+      surfaces.emplace(properties.floorMaterialId, true);
+    if (properties.ceilingEmbossPresetId == embossPresetId)
+      surfaces.emplace(properties.ceilingMaterialId, false);
+    if (properties.wallEmbossPresetId == embossPresetId)
+      surfaces.emplace(properties.wallMaterialId, false);
+  }
+
+  for (auto const& [subMaterialId, floor] : surfaces) {
+    auto baked = mBakedSubMaterialResolver.resolve(
+        subMaterialId, embossPresetId);
+    auto composed = mSubMaterialResolver.resolve(
+        subMaterialId, embossPresetId);
+    composed.def.emboss = emboss;
+    auto bakedHash = baked.def.hash(baked.materialIndex);
+    for (auto const& item : mMaterialRenderers) {
+      if ((floor && item.surfaceSet == WorldSurfaceSet::Horizontal) ||
+          (!floor && item.surfaceSet != WorldSurfaceSet::Liquid)) {
+        item.renderer->updateMaterialUniforms(
+            bakedHash, floor, composed.materialIndex, composed.def);
+      }
+    }
+  }
+}
+
 void WorldRenderer::reloadSubMaterialResolver(
     wp::application::resourcesystem::ResourceManager* resourceMgr) {
   mSubMaterialResolver = SubMaterialResolver(resourceMgr);

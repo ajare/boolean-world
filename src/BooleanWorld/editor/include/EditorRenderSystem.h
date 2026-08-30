@@ -71,6 +71,8 @@ public:
   // Re-reads a ProcMaterial and its YAML dependency after editor authoring
   // saves it directly to disk.
   void reloadProcMaterial(std::string const& resourceName);
+  // Re-reads the sole global Embossing catalog after an editor save.
+  void reloadEmbossingCatalog(std::string const& resourceName);
 
   // Atomically replaces the resources retained for the active World.
   bool loadWorldDependencies(std::vector<std::string> const& resourceNames,

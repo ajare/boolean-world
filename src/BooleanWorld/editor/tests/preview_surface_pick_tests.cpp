@@ -60,6 +60,9 @@ std::unique_ptr<MeshPrimitive> makeRoomSpanning(
   properties.floorMaterialId = "floor." + std::to_string(id);
   properties.ceilingMaterialId = "ceiling." + std::to_string(id);
   properties.wallMaterialId = "wall." + std::to_string(id);
+  properties.floorEmbossPresetId = "floor.emboss." + std::to_string(id);
+  properties.ceilingEmbossPresetId = "ceiling.emboss." + std::to_string(id);
+  properties.wallEmbossPresetId = "wall.emboss." + std::to_string(id);
   primitive->setProperties(properties);
   primitive->setPriority(priority);
   primitive->setId(id);
@@ -258,6 +261,10 @@ void overlappingFloorResolvesToTheWinningPrimitive() {
   require(
       editor::previewSurfaceSubMaterialId(*data, overlap) == "floor.2",
       "the overlapped floor did not report the winning Primitive's material");
+  require(
+      editor::previewSurfaceEmbossPresetId(*data, overlap) ==
+          "floor.emboss.2",
+      "the overlapped floor did not report its independent Emboss preset");
 
   auto outside = editor::pickPreviewSceneSurface(*data, {-3, 0, 10}, {0, 0, -1});
   require(

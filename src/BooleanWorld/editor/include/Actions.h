@@ -303,6 +303,11 @@ bool setPrimitiveSubMaterial(
     Document* doc, bw::core::Primitive* primitive,
     PrimitiveMaterialSurface surface, std::string const& subMaterialId);
 
+// Assigns one optional global Emboss-preset id to exactly one surface.
+bool setPrimitiveEmbossPreset(
+    Document* doc, bw::core::Primitive* primitive,
+    PrimitiveMaterialSurface surface, std::string const& embossPresetId);
+
 // The properties a floor or ceiling nudge produces, clamped so that a floor
 // never rises past its own ceiling and a ceiling never drops below its own
 // floor - an inverted pair draws an inside-out room and gives the walls

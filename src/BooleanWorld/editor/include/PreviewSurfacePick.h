@@ -92,6 +92,12 @@ struct PreviewSurfaceOwner {
     bw::core::ArrangementWorldData const& worldData,
     PreviewScenePick const& pick);
 
+// The independently assigned Emboss-preset id for the picked surface. Empty
+// is the canonical no-relief assignment.
+[[nodiscard]] std::string previewSurfaceEmbossPresetId(
+    bw::core::ArrangementWorldData const& worldData,
+    PreviewScenePick const& pick);
+
 // How the surface reads in the editor: "Floor", "Ceiling" or "Wall".
 [[nodiscard]] std::string_view previewSurfaceName(PreviewSurface surface);
 

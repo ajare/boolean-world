@@ -129,6 +129,7 @@ void EmbossingCatalogLibrary::load(fs::path const& resourcesManifest) {
 
   auto loaded = loadCatalog(catalogPath);
   mFilepath = move(catalogPath);
+  mResourceName = move(catalogName);
   mData = move(loaded);
   ++mRevision;
 }
@@ -146,6 +147,10 @@ void EmbossingCatalogLibrary::save() const {
 
 bw::core::EmbossingCatalogData const& EmbossingCatalogLibrary::data() const {
   return mData;
+}
+
+string const& EmbossingCatalogLibrary::resourceName() const {
+  return mResourceName;
 }
 
 bw::core::EmbossPreset const* EmbossingCatalogLibrary::findPreset(

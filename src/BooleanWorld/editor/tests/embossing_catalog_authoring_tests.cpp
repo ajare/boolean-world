@@ -91,9 +91,36 @@ void authoringPersistsAndIsUndoable(fs::path const& root) {
   require(library.findPreset(createdId), "redo did not restore the created preset");
 
   auto* primitive = document.getWorld()->getPrimitive(index);
+  editor::transactUndoableAction(
+      &document, "Assign floor Emboss preset",
+      [&](editor::Document* actionDoc) {
+        return editor::setPrimitiveEmbossPreset(
+            actionDoc, primitive,
+            editor::PrimitiveMaterialSurface::Floor, createdId);
+      });
+  require(
+      primitive->getProperties().floorEmbossPresetId == createdId &&
+          primitive->getProperties().ceilingEmbossPresetId.empty() &&
+          primitive->getProperties().wallEmbossPresetId.empty(),
+      "assignment changed more than the selected Primitive surface");
+  editor::undo(&document);
+  require(document.getWorld()->getPrimitive(index)->getProperties()
+                  .floorEmbossPresetId.empty(),
+          "undo did not restore the selected surface assignment");
+  editor::redo(&document);
+  primitive = document.getWorld()->getPrimitive(index);
+  require(primitive->getProperties().floorEmbossPresetId == createdId,
+          "redo did not restore the selected surface assignment");
+
+  editor::transactUndoableAction(
+      &document, "Assign wall Emboss preset",
+      [&](editor::Document* actionDoc) {
+        return editor::setPrimitiveEmbossPreset(
+            actionDoc, primitive,
+            editor::PrimitiveMaterialSurface::Wall, createdId);
+      });
+  primitive = document.getWorld()->getPrimitive(index);
   auto properties = primitive->getProperties();
-  properties.wallEmbossPresetId = createdId;
-  primitive->setProperties(properties);
   editor::clearUndoHistory();
 
   editor::transactUndoableActionAtomically(
@@ -152,6 +179,7 @@ void authoringPersistsAndIsUndoable(fs::path const& root) {
   document.getWorld()->getActiveLayer()->setStepEnabled(0, true);
   primitive = document.getWorld()->getPrimitive(index);
   properties = primitive->getProperties();
+  properties.floorEmbossPresetId.clear();
   properties.wallEmbossPresetId.clear();
   primitive->setProperties(properties);
   editor::transactUndoableActionAtomically(

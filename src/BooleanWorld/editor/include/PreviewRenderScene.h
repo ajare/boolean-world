@@ -84,6 +84,9 @@ public:
       std::vector<float> const& params,
       std::array<float, 3> const& baseColour,
       bw::core::EmbossData const& emboss);
+  void updateEmbossPresetDraft(
+      std::string const& embossPresetId,
+      bw::core::EmbossData const& emboss);
 
   // Rebuilds the renderer's cached Sub-material resolver without rebuilding
   // its scene, pipeline, or mesh buckets.
