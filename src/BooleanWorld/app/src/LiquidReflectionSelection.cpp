@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <vector>
 
 #include <glm/geometric.hpp>
@@ -97,7 +98,8 @@ struct ElevationGroup {
 };
 }  // namespace
 
-std::vector<SelectedLiquidSurface> selectLiquidSurfaces(
+namespace {
+std::vector<SelectedLiquidSurface> rankedVisibleLiquidSurfaces(
     std::span<LiquidSurfaceTriangle const> triangles,
     glm::mat4 const& viewProjection,
     glm::vec3 const& cameraPosition) {
@@ -151,19 +153,140 @@ std::vector<SelectedLiquidSurface> selectLiquidSurfaces(
     return left.minimumElevation < right.minimumElevation;
   });
 
-  if (groups.size() > maximumPlanarLiquidSurfaces) {
-    groups.resize(maximumPlanarLiquidSurfaces);
-  }
-
-  std::vector<SelectedLiquidSurface> selected;
-  selected.reserve(groups.size());
+  std::vector<SelectedLiquidSurface> ranked;
+  ranked.reserve(groups.size());
   for (auto const& group : groups) {
     auto elevation = group.weightedElevation / group.coverage;
-    selected.push_back(
+    ranked.push_back(
         {elevation, group.minimumElevation, group.maximumElevation,
          group.coverage, group.distance, cameraPosition.y >= elevation});
   }
-  return selected;
+  return ranked;
+}
+
+bool sameElevationGroup(
+    SelectedLiquidSurface const& previous,
+    SelectedLiquidSurface const& candidate) {
+  return candidate.minimumElevation <=
+             previous.maximumElevation + liquidElevationGroupingTolerance &&
+         previous.minimumElevation <=
+             candidate.maximumElevation + liquidElevationGroupingTolerance;
+}
+
+bool weakerCandidate(
+    SelectedLiquidSurface const& left,
+    SelectedLiquidSurface const& right) {
+  if (left.projectedCoverage != right.projectedCoverage) {
+    return left.projectedCoverage < right.projectedCoverage;
+  }
+  if (left.cameraDistance != right.cameraDistance) {
+    return left.cameraDistance > right.cameraDistance;
+  }
+  return left.minimumElevation > right.minimumElevation;
+}
+
+void retainViewerSide(
+    SelectedLiquidSurface& candidate,
+    SelectedLiquidSurface const& previous,
+    float cameraElevation) {
+  candidate.viewerAbove = previous.viewerAbove;
+  if (previous.viewerAbove &&
+      cameraElevation <= candidate.elevation - liquidReflectionSideHysteresis) {
+    candidate.viewerAbove = false;
+  } else if (!previous.viewerAbove &&
+             cameraElevation >=
+                 candidate.elevation + liquidReflectionSideHysteresis) {
+    candidate.viewerAbove = true;
+  }
+}
+}  // namespace
+
+std::vector<SelectedLiquidSurface> LiquidReflectionSelectionPolicy::select(
+    std::span<LiquidSurfaceTriangle const> triangles,
+    glm::mat4 const& viewProjection,
+    glm::vec3 const& cameraPosition) {
+  auto candidates = rankedVisibleLiquidSurfaces(
+      triangles, viewProjection, cameraPosition);
+  std::vector<bool> used(candidates.size(), false);
+  std::vector<std::optional<SelectedLiquidSurface>> slots(mSelected.size());
+
+  // Match old slots before considering rank so stable planes retain their
+  // image assignment while their current geometry remains visible.
+  for (std::size_t slot = 0; slot < mSelected.size(); ++slot) {
+    std::optional<std::size_t> bestMatch;
+    float bestDifference = std::numeric_limits<float>::infinity();
+    for (std::size_t index = 0; index < candidates.size(); ++index) {
+      if (used[index] || !sameElevationGroup(mSelected[slot], candidates[index])) {
+        continue;
+      }
+      auto difference =
+          std::abs(mSelected[slot].elevation - candidates[index].elevation);
+      if (difference < bestDifference) {
+        bestDifference = difference;
+        bestMatch = index;
+      }
+    }
+    if (!bestMatch) continue;
+    auto retained = candidates[*bestMatch];
+    // Keep the descriptor itself immutable while this logical plane survives.
+    // Coverage and distance are current ranking evidence, but changing a
+    // weighted elevation or visible-subset bounds would needlessly create a
+    // distinct render graph and move the plane's image projection.
+    retained.elevation = mSelected[slot].elevation;
+    retained.minimumElevation = mSelected[slot].minimumElevation;
+    retained.maximumElevation = mSelected[slot].maximumElevation;
+    retainViewerSide(retained, mSelected[slot], cameraPosition.y);
+    slots[slot] = retained;
+    used[*bestMatch] = true;
+  }
+
+  // Departures leave a reusable image slot. Fill those slots first, then add
+  // slots up to the fixed maximum in deterministic current-rank order.
+  for (std::size_t index = 0; index < candidates.size(); ++index) {
+    if (used[index]) continue;
+    auto vacancy = std::ranges::find_if(
+        slots, [](auto const& slot) { return !slot.has_value(); });
+    if (vacancy != slots.end()) {
+      *vacancy = candidates[index];
+      used[index] = true;
+    } else if (slots.size() < maximumPlanarLiquidSurfaces) {
+      slots.push_back(candidates[index]);
+      used[index] = true;
+    }
+  }
+
+  // Once every slot is occupied, only a challenger at least 20% larger than
+  // the weakest incumbent may take that incumbent's slot.
+  for (std::size_t index = 0; index < candidates.size(); ++index) {
+    if (used[index] || slots.empty()) continue;
+    auto weakest = slots.begin();
+    for (auto current = slots.begin() + 1; current != slots.end(); ++current) {
+      if (weakerCandidate(**current, **weakest)) weakest = current;
+    }
+    if (candidates[index].projectedCoverage >=
+        (*weakest)->projectedCoverage *
+            liquidReflectionChallengerCoverageRatio) {
+      *weakest = candidates[index];
+      used[index] = true;
+    }
+  }
+
+  mSelected.clear();
+  mSelected.reserve(slots.size());
+  for (auto const& slot : slots) {
+    if (slot) mSelected.push_back(*slot);
+  }
+  return mSelected;
+}
+
+void LiquidReflectionSelectionPolicy::reset() { mSelected.clear(); }
+
+std::vector<SelectedLiquidSurface> selectLiquidSurfaces(
+    std::span<LiquidSurfaceTriangle const> triangles,
+    glm::mat4 const& viewProjection,
+    glm::vec3 const& cameraPosition) {
+  LiquidReflectionSelectionPolicy policy;
+  return policy.select(triangles, viewProjection, cameraPosition);
 }
 
 }  // namespace bw::app

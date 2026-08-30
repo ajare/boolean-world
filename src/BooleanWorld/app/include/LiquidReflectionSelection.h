@@ -11,6 +11,8 @@
 namespace bw::app {
 
 inline constexpr float liquidElevationGroupingTolerance = 0.01f;
+inline constexpr float liquidReflectionChallengerCoverageRatio = 1.2f;
+inline constexpr float liquidReflectionSideHysteresis = 0.05f;
 inline constexpr std::size_t maximumPlanarLiquidSurfaces = 4;
 
 // One generated Liquid surface triangle in renderer world space.
@@ -31,9 +33,25 @@ struct SelectedLiquidSurface {
   bool viewerAbove;
 };
 
-// Groups frustum-visible Liquid elevations within 0.01 world units, ranks the
-// groups by projected coverage, camera distance, then lowest elevation, and
-// returns at most four candidates in rank order.
+// Stateful selection policy. Visible selections keep their slots until a
+// challenger has at least 20% more projected coverage. Their viewer side also
+// remains stable until the camera is 0.05 world units through the plane.
+class LiquidReflectionSelectionPolicy {
+public:
+  [[nodiscard]] std::vector<SelectedLiquidSurface> select(
+      std::span<LiquidSurfaceTriangle const> triangles,
+      glm::mat4 const& viewProjection,
+      glm::vec3 const& cameraPosition);
+
+  void reset();
+
+private:
+  std::vector<SelectedLiquidSurface> mSelected;
+};
+
+// Stateless convenience used where selection history is deliberately absent.
+// Groups frustum-visible elevations, ranks them by coverage, distance, then
+// elevation, and returns at most four candidates.
 [[nodiscard]] std::vector<SelectedLiquidSurface> selectLiquidSurfaces(
     std::span<LiquidSurfaceTriangle const> triangles,
     glm::mat4 const& viewProjection,

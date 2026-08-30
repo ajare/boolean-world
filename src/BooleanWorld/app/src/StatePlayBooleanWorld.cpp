@@ -94,7 +94,8 @@ static_assert(
 
 std::vector<mpp::PlanarReflectionPlaneDescriptor>
 discoverLiquidReflectionPlanes(
-    bw::core::WorldData const& snapshot, mpp::Camera& camera) {
+    bw::core::WorldData const& snapshot, mpp::Camera& camera,
+    bw::app::LiquidReflectionSelectionPolicy& selectionPolicy) {
   auto const& arrangement = snapshot.getArrangement();
   auto const& liquidDepths = snapshot.getLiquidDepths();
   std::vector<bw::app::LiquidSurfaceTriangle> surfaces;
@@ -116,7 +117,7 @@ discoverLiquidReflectionPlanes(
     surfaces.push_back(surface);
   }
 
-  auto selected = bw::app::selectLiquidSurfaces(
+  auto selected = selectionPolicy.select(
       surfaces,
       camera.getProjectionTransform() * camera.getViewTransform(),
       camera.getPosition());
@@ -374,6 +375,8 @@ StatePlayBooleanWorld::getOrCreateFragmentOverdrawPipeline(
 }
 
 void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transitionData) {
+  mLiquidReflectionSelection.reset();
+  mLiquidReflectionSelectionTechnique.reset();
   auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
   mDebugDisplay.ambientOcclusion = model->getAmbientOcclusion();
   mDebugDisplay.ambientOcclusionEnabled =
@@ -617,6 +620,8 @@ void StatePlayBooleanWorld::createGameObjects(application::resourcesystem::Resou
 }
 
 void StatePlayBooleanWorld::destroyGameObjects() {
+  mLiquidReflectionSelection.reset();
+  mLiquidReflectionSelectionTechnique.reset();
   if (auto dataGenerator = getWDG()) {
     dataGenerator->stopGenerationSchedule();
     dataGenerator->unregisterGenerationCallback(mGenerationCallbackToken);
@@ -1565,11 +1570,17 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   auto renderScale = model->getActiveRenderScale();
   auto antiAliasing = model->getActiveAntiAliasing();
   auto const& worldTarget = mwRenderer->getRenderTarget(renderScale);
+  auto technique = model->getWaterReflectionTechnique();
+  if (!mLiquidReflectionSelectionTechnique ||
+      *mLiquidReflectionSelectionTechnique != technique) {
+    mLiquidReflectionSelection.reset();
+    mLiquidReflectionSelectionTechnique = technique;
+  }
   std::vector<mpp::PlanarReflectionPlaneDescriptor> planarPlanes;
   if (!mDebugDisplay.fragmentOverdraw && mWorldData &&
-      model->getWaterReflectionTechnique() ==
-          bw::app::WaterReflectionTechnique::Planar) {
-    planarPlanes = discoverLiquidReflectionPlanes(*mWorldData, *mCamera3d);
+      technique == bw::app::WaterReflectionTechnique::Planar) {
+    planarPlanes = discoverLiquidReflectionPlanes(
+        *mWorldData, *mCamera3d, mLiquidReflectionSelection);
   }
   auto const& pipeline = mDebugDisplay.fragmentOverdraw
                              ? getOrCreateFragmentOverdrawPipeline(renderScale)
@@ -1640,7 +1651,6 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   // SceneLdr and the generated-water images. With AO, those earlier images are
   // already included in preWaterOutputImage, so only the technique-specific
   // reflection images and WaterComposite remain to be added.
-  auto technique = model->getWaterReflectionTechnique();
   auto screenSpaceWater =
       technique == bw::app::WaterReflectionTechnique::ScreenSpace;
   auto planarWater =

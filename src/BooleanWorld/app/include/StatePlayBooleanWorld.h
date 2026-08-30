@@ -36,6 +36,8 @@
 #include "DisplayMessage.h"
 #include "ClippingRecord.h"
 #include "PlayerTorchShadows.h"
+#include "LiquidReflectionSelection.h"
+#include "VideoOptions.h"
 
 namespace mpp {
 struct GraphImageCapture;
@@ -159,6 +161,12 @@ private:
   // and selected Liquid elevations as well as render scale, AA, and depth
   // pre-pass. Stable string keys retain only variants actually encountered.
   std::map<std::string, mpp::RenderPipelinePtr> mWorldRenderPipelines;
+
+  // Camera-motion hysteresis belongs to the active World and Planar technique.
+  // Neither selection nor viewer-side history crosses those boundaries.
+  bw::app::LiquidReflectionSelectionPolicy mLiquidReflectionSelection;
+  std::optional<bw::app::WaterReflectionTechnique>
+      mLiquidReflectionSelectionTechnique;
 
   // Separate post-process-free pipelines retain the immutable enabled and
   // disabled depth-prepass modes. Each is resized to the selected world target
