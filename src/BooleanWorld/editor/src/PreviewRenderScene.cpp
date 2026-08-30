@@ -32,9 +32,7 @@ constexpr std::uint32_t outputImageIndex = 6u;
 
 // Launcher's own defaults (StatePlayBooleanWorld::DebugDisplay), so the
 // preview lights the world exactly as the game does. Exposing these as
-// editor-side preview settings is deliberately a later ticket. The relief a
-// surface embosses is not among them: that belongs to the Sub-material, and
-// reaches the renderer through it.
+// editor-side preview settings is deliberately a later ticket.
 constexpr float materialScale = 1.0f;
 constexpr float farGridSize = 0.5f;
 constexpr SecondaryMaterialOptions secondaryMaterial{};
@@ -159,15 +157,13 @@ void PreviewRenderScene::resize(std::size_t width, std::size_t height) {
 void PreviewRenderScene::updateMaterialDraft(
     std::string const& subMaterialId, std::uint32_t materialIndex,
     std::vector<float> const& params,
-    std::array<float, 3> const& baseColour,
-    bw::core::EmbossData const& emboss) {
+    std::array<float, 3> const& baseColour) {
   bw::core::MaterialDefinitionData definition;
   definition.params.fill(0.0f);
   for (std::size_t i = 0; i < params.size() && i < definition.params.size(); ++i) {
     definition.params[i] = params[i];
   }
   definition.baseColour = baseColour;
-  definition.emboss = emboss;
   mRenderer->updateSubMaterialDraft(
       subMaterialId, static_cast<int32_t>(materialIndex), definition);
   // A draft can alter the shader/material used by an opaque caster. The

@@ -2796,7 +2796,6 @@ struct SubMaterialAuthoringState {
   uint32_t materialIndex{0};
   vector<float> params;
   array<float, 3> colour{};
-  bw::core::EmbossData emboss;
   bw::core::ChipGenerationParameters chip;
   string editingId;
   string deletionReport;
@@ -2811,8 +2810,7 @@ void setTechniqueDefaults(
     state.params.push_back(parameter.defaultValue);
   }
   state.colour = {0.5f, 0.5f, 0.5f};
-  // A Technique says nothing about relief or chipping.
-  state.emboss = {};
+  // A Technique says nothing about Chip generation.
   state.chip = {};
 }
 
@@ -2928,7 +2926,6 @@ bool renderSubMaterialPicker(
     state.materialIndex = selected.materialIndex;
     state.params = selected.paramValues;
     state.colour = selected.baseColour;
-    state.emboss = selected.emboss;
     state.chip = selected.chip;
     state.editingId = selected.id;
     ImGui::OpenPopup(editPopup.c_str());
@@ -2957,7 +2954,6 @@ bool renderSubMaterialPicker(
       auto name = string(state.name);
       auto params = state.params;
       auto colour = state.colour;
-      auto emboss = state.emboss;
       auto chip = state.chip;
       auto resourceName = catalog.resourceName;
       auto materialIndex = state.materialIndex;
@@ -2965,8 +2961,8 @@ bool renderSubMaterialPicker(
       transactUndoableActionAtomically(
           doc, "Create Sub-material", [&](Document* actionDoc) {
             if (!createSubMaterial(actionDoc, &procMaterialLibrary(), resourceName,
-                                   name, materialIndex, params, colour, emboss,
-                                   chip, &createdId)) {
+                                   name, materialIndex, params, colour, chip,
+                                   &createdId)) {
               return false;
             }
             return setPrimitiveSubMaterial(actionDoc, primitive, surface, createdId);
@@ -2987,14 +2983,12 @@ bool renderSubMaterialPicker(
       auto name = string(state.name);
       auto params = state.params;
       auto colour = state.colour;
-      auto emboss = state.emboss;
       auto chip = state.chip;
       transactUndoableActionAtomically(
           doc, "Edit Sub-material", [&](Document* actionDoc) {
             renameSubMaterial(actionDoc, &procMaterialLibrary(), id, name);
             return editSubMaterial(
-                actionDoc, &procMaterialLibrary(), id, params, colour, emboss,
-                chip);
+                actionDoc, &procMaterialLibrary(), id, params, colour, chip);
           });
       ImGui::CloseCurrentPopup();
     }

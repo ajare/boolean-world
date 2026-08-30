@@ -150,7 +150,7 @@ void EmbossFields(bw::core::EmbossData& emboss) {
   }
 
   if (emboss.pattern == bw::core::EmbossPattern::None) {
-    ImGui::TextDisabled("This Sub-material embosses nothing.");
+    ImGui::TextDisabled("This Emboss preset applies no relief.");
     return;
   }
 

@@ -18,7 +18,7 @@
 class SubMaterialResolver {
 public:
   struct Resolved {
-    uint32_t materialIndex;
+    int32_t materialIndex;
     bw::core::MaterialDefinitionData def;
     bw::core::ChipGenerationParameters chipParameters;
   };

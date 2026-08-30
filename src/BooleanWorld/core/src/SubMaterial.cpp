@@ -129,8 +129,6 @@ void SubMaterial::serializeImpl(shared_ptr<Serializer> serializer, Serialization
       serializer->endArray();
     }
 
-    SerializeEmboss(serializer, "emboss", emboss);
-
     serializer->beginMap("chip");
     {
       serializer->writeFloat("minimumArrisLength", chip.minimumArrisLength);
@@ -165,7 +163,6 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
   uint32_t materialIndex_{0};
   vector<float> paramValues_;
   array<float, 3> baseColour_{};
-  EmbossData emboss_;
   ChipGenerationParameters chip_;
 
   try {
@@ -202,10 +199,6 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
 
         serializer->endArray();
       }
-
-      // Absent in a catalog written before embossing existed, and in one that
-      // simply embosses nothing: every field falls back to its default.
-      emboss_ = DeserializeEmboss(serializer, "emboss");
 
       // Absent fields retain the non-chipping defaults. ProcMaterial catalogs
       // are map-based YAML resources, so this also migrates catalogs written
@@ -267,12 +260,6 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
     return false;
   }
 
-  if (!EmbossIsInRange(emboss_)) {
-    addDeserializationError(
-        "SubMaterial emboss values must fall within their authoring limits.");
-    return false;
-  }
-
   if (!ChipParametersAreValid(chip_)) {
     addDeserializationError(
         "SubMaterial Chip generation parameters are invalid.");
@@ -285,7 +272,6 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
   materialIndex = materialIndex_;
   paramValues = move(paramValues_);
   baseColour = baseColour_;
-  emboss = emboss_;
   chip = chip_;
 
   return true;

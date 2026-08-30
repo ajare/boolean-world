@@ -380,6 +380,7 @@ if(BUILD_TESTING)
     # global Embossing-catalog implementation to each one as well.
     foreach(target
             boolean_world_editor_primitive_field_placement_tests
+            boolean_world_editor_interaction_tests
             boolean_world_editor_document_selection_tests
             boolean_world_editor_document_layer_import_export_tests
             boolean_world_editor_undo_history_tests
@@ -393,6 +394,7 @@ if(BUILD_TESTING)
     # decoder, so every lightweight Document test needs that implementation.
     foreach(target
             boolean_world_editor_primitive_field_placement_tests
+            boolean_world_editor_interaction_tests
             boolean_world_editor_document_selection_tests
             boolean_world_editor_document_layer_import_export_tests
             boolean_world_editor_undo_history_tests

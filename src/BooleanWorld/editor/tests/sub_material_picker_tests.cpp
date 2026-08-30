@@ -145,7 +145,7 @@ void authoringActionsAreSavedUndoableAndProtectReferences(fs::path const& root) 
       &document, "Create Sub-material", [&](editor::Document* actionDoc) {
         return editor::createSubMaterial(
             actionDoc, &library, "Stone Catalog", "Polished Stone", 0, {0.25f},
-            {0.2f, 0.3f, 0.4f}, {}, {}, &createdId);
+            {0.2f, 0.3f, 0.4f}, {}, &createdId);
       });
   require(createdId == "polished_stone" && library.findSubMaterial(createdId),
           "create did not add a stably identified Sub-material");
@@ -182,7 +182,7 @@ void authoringActionsAreSavedUndoableAndProtectReferences(fs::path const& root) 
   editor::transactUndoableActionAtomically(
       &document, "Edit Sub-material", [&](editor::Document* actionDoc) {
         return editor::editSubMaterial(
-            actionDoc, &library, createdId, {0.8f}, {0.7f, 0.6f, 0.5f}, {},
+            actionDoc, &library, createdId, {0.8f}, {0.7f, 0.6f, 0.5f},
             {});
       });
   auto const* edited = library.findSubMaterial(createdId);
@@ -199,7 +199,7 @@ void authoringActionsAreSavedUndoableAndProtectReferences(fs::path const& root) 
   bool rejectedOutOfBounds{false};
   try {
     editor::editSubMaterial(
-        &document, &library, createdId, {1.1f}, {0.7f, 0.6f, 0.5f}, {}, {});
+        &document, &library, createdId, {1.1f}, {0.7f, 0.6f, 0.5f}, {});
   } catch (std::invalid_argument const&) {
     rejectedOutOfBounds = true;
   }

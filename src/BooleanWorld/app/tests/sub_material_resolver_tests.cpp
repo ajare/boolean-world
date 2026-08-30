@@ -54,10 +54,6 @@ subMaterials:
     materialIndex: 5
     params: [0.75]
     baseColour: [0.2, 0.4, 0.6]
-    emboss:
-      pattern: "Hexagon"
-      radius: 31
-      depth: 3
     chip:
       minimumArrisLength: 4
       minimumDepth: 1.5
@@ -176,8 +172,8 @@ subMaterials:
 }
 
 // An id that names no Sub-material in any loaded ProcMaterial - missing,
-// unknown, or an empty/unresolved slot - falls back to a clearly
-// out-of-range error index rather than aliasing a real Technique.
+// unknown, or an empty/unresolved slot - falls back to the negative Debug
+// material index rather than aliasing a real Technique.
 void resolveFallsBackForAnUnknownId(fs::path const& root, wp::Logger& logger) {
   writeFile(root / "Resources.yaml", "Resources:\n");
 
@@ -192,10 +188,14 @@ void resolveFallsBackForAnUnknownId(fs::path const& root, wp::Logger& logger) {
   SubMaterialResolver resolver(&manager);
 
   auto resolved = resolver.resolve("NoSuchSubMaterial");
-  require(resolved.materialIndex == BW_MATERIAL_ERROR_INDEX, "Expected the error index for an unknown id");
+  require(resolved.materialIndex == BW_MATERIAL_ERROR_INDEX &&
+              resolved.materialIndex < 0,
+          "Expected the negative Debug material index for an unknown id");
 
   auto resolvedEmpty = resolver.resolve("");
-  require(resolvedEmpty.materialIndex == BW_MATERIAL_ERROR_INDEX, "Expected the error index for an empty id");
+  require(resolvedEmpty.materialIndex == BW_MATERIAL_ERROR_INDEX &&
+              resolvedEmpty.materialIndex < 0,
+          "Expected the negative Debug material index for an empty id");
   auto chip = resolver.chipParametersResolver()("NoSuchSubMaterial");
   require(chip.probability == 0.0f && chip.cornerProbability == 0.0f,
           "Expected an unknown Sub-material not to chip");

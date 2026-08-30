@@ -313,119 +313,6 @@ void emptySubMaterialIdIsRejected() {
           "an empty SubMaterial id did not report the expected error");
 }
 
-// Embossing is authored per Sub-material and bounded by its own limits rather
-// than by a Technique schema, so it needs its own round-trip and its own
-// rejection: EmbossIsInRange is the only thing standing between a hand-edited
-// catalog and a relief the editor's sliders could never have produced.
-void embossRoundTripsAndDefaultsToNothing() {
-  auto original = buildMarbleCatalog();
-  original.subMaterials[0].emboss = {
-      bw::core::EmbossPattern::RunningBond, 12.0f, 0.75f, 0.2f,
-      45.0f, 30.0f, 0.6f};
-
-  bw::core::SerializationWorkData writeWorkData;
-  auto writer = std::shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toString());
-  original.serialize(writer, writeWorkData);
-  writer->serialize();
-  auto yaml = static_cast<bw::core::YamlSerializer*>(writer.get())->getSerializedString();
-
-  ProcMaterialData roundTripped;
-  bw::core::SerializationWorkData readWorkData;
-  auto reader = yamlFrom(yaml);
-  require(roundTripped.deserialize(reader, readWorkData),
-          "catalog with an emboss block failed to deserialize");
-  require(roundTripped.subMaterials[0].emboss == original.subMaterials[0].emboss,
-          "SubMaterial emboss did not round-trip");
-
-  // A catalog written before embossing existed has no block at all, and must
-  // still load - as a Sub-material that embosses nothing.
-  std::string const withoutEmboss =
-      "program3d: \"world_pbr.frag\"\n"
-      "program2d: \"world_pbr_2d.frag\"\n"
-      "techniqueSchemas:\n"
-      "  - materialIndex: 0\n"
-      "    parameters:\n"
-      "      - name: warp_scale\n"
-      "        min: 0\n"
-      "        max: 5\n"
-      "        default: 1.35\n"
-      "subMaterials:\n"
-      "  - id: weathered_slate\n"
-      "    name: Weathered Slate\n"
-      "    materialIndex: 0\n"
-      "    params: [1.35]\n"
-      "    baseColour: [0, 0, 0]\n";
-
-  ProcMaterialData legacy;
-  bw::core::SerializationWorkData legacyWorkData;
-  auto legacyReader = yamlFrom(withoutEmboss);
-  require(legacy.deserialize(legacyReader, legacyWorkData),
-          "a catalog without emboss blocks was rejected");
-  require(legacy.subMaterials[0].emboss == bw::core::EmbossData{},
-          "a missing emboss block did not fall back to embossing nothing");
-}
-
-void outOfRangeEmbossIsRejected() {
-  std::string const yaml =
-      "program3d: \"world_pbr.frag\"\n"
-      "program2d: \"world_pbr_2d.frag\"\n"
-      "techniqueSchemas:\n"
-      "  - materialIndex: 0\n"
-      "    parameters:\n"
-      "      - name: warp_scale\n"
-      "        min: 0\n"
-      "        max: 5\n"
-      "        default: 1.35\n"
-      "subMaterials:\n"
-      "  - id: weathered_slate\n"
-      "    name: Weathered Slate\n"
-      "    materialIndex: 0\n"
-      "    params: [1.35]\n"
-      "    baseColour: [0, 0, 0]\n"
-      "    emboss:\n"
-      "      pattern: Hexagon\n"
-      "      radius: 4096\n";
-
-  ProcMaterialData data;
-  bw::core::SerializationWorkData workData;
-  auto serializer = yamlFrom(yaml);
-  require(!data.deserialize(serializer, workData),
-          "an out-of-range emboss radius was accepted");
-  require(containsError(
-              data,
-              "SubMaterial emboss values must fall within their authoring limits."),
-          "an out-of-range emboss radius did not report the expected error");
-}
-
-void unknownEmbossPatternReadsAsNone() {
-  std::string const yaml =
-      "program3d: \"world_pbr.frag\"\n"
-      "program2d: \"world_pbr_2d.frag\"\n"
-      "techniqueSchemas:\n"
-      "  - materialIndex: 0\n"
-      "    parameters:\n"
-      "      - name: warp_scale\n"
-      "        min: 0\n"
-      "        max: 5\n"
-      "        default: 1.35\n"
-      "subMaterials:\n"
-      "  - id: weathered_slate\n"
-      "    name: Weathered Slate\n"
-      "    materialIndex: 0\n"
-      "    params: [1.35]\n"
-      "    baseColour: [0, 0, 0]\n"
-      "    emboss:\n"
-      "      pattern: Herringbone\n";
-
-  ProcMaterialData data;
-  bw::core::SerializationWorkData workData;
-  auto serializer = yamlFrom(yaml);
-  require(data.deserialize(serializer, workData),
-          "a catalog naming an unknown emboss pattern was rejected outright");
-  require(data.subMaterials[0].emboss.pattern == bw::core::EmbossPattern::None,
-          "an unknown emboss pattern did not read back as None");
-}
-
 // Chip generation is authored per Sub-material and bounded independently of a
 // Technique schema, with relational constraints preventing overlap.
 void chipGenerationParametersRoundTripAndDefaultToDisabled() {
@@ -449,8 +336,9 @@ void chipGenerationParametersRoundTripAndDefaultToDisabled() {
               yaml.find("cornerProbability:") != std::string::npos &&
               yaml.find("types:") != std::string::npos &&
               yaml.find("PrismaticNotch") != std::string::npos &&
-              yaml.find("chipMinimumArrisLength:") == std::string::npos,
-          "Chip settings were not serialized in their own YAML map");
+              yaml.find("chipMinimumArrisLength:") == std::string::npos &&
+              yaml.find("emboss:") == std::string::npos,
+          "Chip settings did not serialize independently of Emboss presets");
 
   ProcMaterialData roundTripped;
   bw::core::SerializationWorkData readWorkData;
@@ -555,9 +443,6 @@ int main() {
     duplicateTechniqueSchemaIsRejected();
     tooManyTechniqueSchemaParametersIsRejected();
     emptySubMaterialIdIsRejected();
-    embossRoundTripsAndDefaultsToNothing();
-    outOfRangeEmbossIsRejected();
-    unknownEmbossPatternReadsAsNone();
     chipGenerationParametersRoundTripAndDefaultToDisabled();
     invalidChipGenerationParametersAreRejected();
     std::cout << "ProcMaterial coverage passed\n";

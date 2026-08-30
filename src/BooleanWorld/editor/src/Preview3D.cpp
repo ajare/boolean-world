@@ -84,7 +84,6 @@ struct PreviewMaterialEditorState {
   uint32_t materialIndex{};
   std::vector<float> params;
   std::array<float, 3> colour{};
-  bw::core::EmbossData emboss;
   bw::core::ChipGenerationParameters chip;
 };
 
@@ -241,8 +240,7 @@ void applyMaterialDraft() {
   auto const& draft = session.materialEditor;
   if (draft.hasDraft && session.renderScene) {
     session.renderScene->updateMaterialDraft(
-        draft.editingId, draft.materialIndex, draft.params, draft.colour,
-        draft.emboss);
+        draft.editingId, draft.materialIndex, draft.params, draft.colour);
   }
 }
 
@@ -334,7 +332,6 @@ void loadMaterialDraft(std::string const& id) {
   state.materialIndex = material->materialIndex;
   state.params = material->paramValues;
   state.colour = material->baseColour;
-  state.emboss = material->emboss;
   state.chip = material->chip;
 }
 
@@ -534,7 +531,6 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       auto name = std::string(state.name);
       auto params = state.params;
       auto colour = state.colour;
-      auto emboss = state.emboss;
       auto chip = state.chip;
       if (transactUndoableActionAtomically(
               session.document, "Save Sub-material",
@@ -543,7 +539,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
                     actionDoc, &procMaterialLibrary(), id, name);
                 return editSubMaterial(
                     actionDoc, &procMaterialLibrary(), id, params, colour,
-                    emboss, chip);
+                    chip);
               })) {
         reconcileSavedProcMaterial(catalog.resourceName);
         loadMaterialDraft(id);
@@ -554,7 +550,6 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       auto name = std::string(state.name);
       auto params = state.params;
       auto colour = state.colour;
-      auto emboss = state.emboss;
       auto chip = state.chip;
       auto materialIndex = state.materialIndex;
       auto resourceName = catalog.resourceName;
@@ -564,8 +559,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
               [&](Document* actionDoc) {
                 if (!createSubMaterial(
                         actionDoc, &procMaterialLibrary(), resourceName, name,
-                        materialIndex, params, colour, emboss, chip,
-                        &createdId)) {
+                        materialIndex, params, colour, chip, &createdId)) {
                   return false;
                 }
                 return setPrimitiveSubMaterial(

@@ -79,10 +79,8 @@ typedef int64_t frame_number_type;
 #define BW_WATER_MATERIAL_INDEX 40
 
 // A materialIndex a Sub-material id resolves to when the id doesn't name any
-// Sub-material in a loaded ProcMaterial catalog (missing/unknown/empty) -
-// see SubMaterialResolver (BooleanWorld/app). Deliberately outside every
-// real Technique's, BW_WALL_BACK_FACE_MATERIAL_INDEX's, and
-// BW_WATER_MATERIAL_INDEX's range, so it hits
-// world_pbr.frag/world_pbr_2d.frag's switch(materialIndex) default case (an
-// error material) rather than aliasing a real Technique.
-#define BW_MATERIAL_ERROR_INDEX 999
+// Sub-material in a loaded ProcMaterial catalog (missing/unknown/empty). Every
+// negative material index is the built-in Debug material, a solid-magenta
+// non-PBR shader owned by BooleanWorldRender rather than any ProcMaterial
+// catalog.
+#define BW_MATERIAL_ERROR_INDEX -1

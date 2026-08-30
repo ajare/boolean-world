@@ -33,12 +33,10 @@ bool InputTextMultiline(
     ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = nullptr,
     void* userData = nullptr);
 
-// The relief a Sub-material embosses into every surface it is applied to:
-// a pattern picker and the shape parameters that pattern actually uses, all
+// A pattern picker and the shape parameters that pattern actually uses, all
 // bounded by core's own authoring limits so what can be authored here is
-// exactly what will deserialize again. Shared by the Sub-material picker's
-// create/edit popups and the 3D preview's selected-surface editor, so neither
-// can silently drop what the other authored.
+// exactly what will deserialize again. Shared by global Emboss-preset
+// authoring panels.
 void EmbossFields(bw::core::EmbossData& emboss);
 
 // Procedural Chip eligibility, count, spacing, and size variation. Shared by

@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "core/ChipGenerationParameters.h"
-#include "core/Emboss.h"
+#include "core/Emboss.h"  // EmbossParameterLimits used by Chip bounds.
 #include "core/Serializable.h"
 
 namespace bw {
@@ -27,16 +27,9 @@ struct SubMaterial : public Serializable {
   std::vector<float> paramValues;
   std::array<float, 3> baseColour{};
 
-  // The relief this Sub-material embosses into every surface it is applied
-  // to. Unlike paramValues it is not bounded by the Technique schema: the
-  // pattern is evaluated in world space by shared shader code, the same way
-  // for every Technique, so its bounds live with the data - see
-  // EmbossIsInRange.
-  EmbossData emboss;
-
   // Eligibility, count, spacing, and size variation for Chips cut into this
   // Sub-material - see CONTEXT.md's "Chip" entry and ADR-0027. These are
-  // independent of the Technique schema, exactly like emboss above.
+  // independent of the Technique schema.
   ChipGenerationParameters chip;
 
 private:

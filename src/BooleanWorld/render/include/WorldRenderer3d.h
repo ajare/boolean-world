@@ -46,6 +46,10 @@ class WorldRenderer3d {
   // diagnostic overdraw material blends every mesh; turning it off has to
   // restore this classification rather than making the whole world opaque.
   std::set<std::string> mBlendedMeshNames;
+  // Meshes whose resolved material index is negative draw through the one
+  // BooleanWorldRender-owned solid-magenta Debug material.
+  mpp::ResourcePtr mDebugMaterial;
+  std::set<std::string> mDebugMeshNames;
 
   float mGlobalTime;
 

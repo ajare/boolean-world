@@ -82,8 +82,7 @@ public:
   void updateMaterialDraft(
       std::string const& subMaterialId, std::uint32_t materialIndex,
       std::vector<float> const& params,
-      std::array<float, 3> const& baseColour,
-      bw::core::EmbossData const& emboss);
+      std::array<float, 3> const& baseColour);
   void updateEmbossPresetDraft(
       std::string const& embossPresetId,
       bw::core::EmbossData const& emboss);

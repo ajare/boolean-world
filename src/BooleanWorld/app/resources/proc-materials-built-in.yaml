@@ -442,14 +442,6 @@ subMaterials:
       maximumCornerDistance: 3.0
       cornerProbability: 1.0
       types: [Tapered, PyramidalDivot, MultiFacetSpall, SteppedFracture, VShapedNotch, TrapezoidalSpall]
-    emboss:
-      pattern: Square
-      radius: 12
-      depth: 0.6
-      depthVariation: 0.15
-      runningBondWidth: 50
-      runningBondOffset: 50
-      voronoiRounding: 0.25
   - id: builtin.slate
     name: Slate
     materialIndex: 2
@@ -467,14 +459,6 @@ subMaterials:
       maximumCornerDistance: 3.0
       cornerProbability: 1.0
       types: [Tapered, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
-    emboss:
-      pattern: RunningBond
-      radius: 20
-      depth: 0.5
-      depthVariation: 0.12
-      runningBondWidth: 45
-      runningBondOffset: 50
-      voronoiRounding: 0.25
   - id: builtin.sandstone
     name: Sandstone
     materialIndex: 3
@@ -492,14 +476,6 @@ subMaterials:
       maximumCornerDistance: 3.0
       cornerProbability: 1.0
       types: [Tapered, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
-    emboss:
-      pattern: ModularOpus
-      radius: 24
-      depth: 0.45
-      depthVariation: 0.1
-      runningBondWidth: 50
-      runningBondOffset: 50
-      voronoiRounding: 0.25
   - id: builtin.limestone
     name: Limestone
     materialIndex: 4
@@ -517,14 +493,6 @@ subMaterials:
       maximumCornerDistance: 3.0
       cornerProbability: 1.0
       types: [Tapered, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
-    emboss:
-      pattern: Square
-      radius: 16
-      depth: 0.4
-      depthVariation: 0.1
-      runningBondWidth: 50
-      runningBondOffset: 50
-      voronoiRounding: 0.25
   - id: builtin.basalt
     name: Basalt
     materialIndex: 5
@@ -542,14 +510,6 @@ subMaterials:
       maximumCornerDistance: 3.0
       cornerProbability: 1.0
       types: [Tapered, PrismaticNotch, PyramidalDivot, MultiFacetSpall, VShapedNotch]
-    emboss:
-      pattern: Voronoi
-      radius: 10
-      depth: 0.9
-      depthVariation: 0.2
-      runningBondWidth: 50
-      runningBondOffset: 50
-      voronoiRounding: 0.2
   - id: builtin.obsidian
     name: Obsidian
     materialIndex: 6
@@ -635,14 +595,6 @@ subMaterials:
       maximumCornerDistance: 3.0
       cornerProbability: 1.0
       types: [PrismaticNotch, SteppedFracture, VShapedNotch]
-    emboss:
-      pattern: Square
-      radius: 20
-      depth: 0.3
-      depthVariation: 0
-      runningBondWidth: 50
-      runningBondOffset: 50
-      voronoiRounding: 0.25
   - id: builtin.brushed.metal
     name: Brushed metal
     materialIndex: 11
@@ -1017,14 +969,6 @@ subMaterials:
       maximumCornerDistance: 3.0
       cornerProbability: 1.0
       types: [Tapered, PrismaticNotch, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
-    emboss:
-      pattern: RunningBond
-      radius: 8
-      depth: 0.35
-      depthVariation: 0.05
-      runningBondWidth: 40
-      runningBondOffset: 50
-      voronoiRounding: 0.25
   - id: builtin.circuit.board
     name: Circuit board
     materialIndex: 32

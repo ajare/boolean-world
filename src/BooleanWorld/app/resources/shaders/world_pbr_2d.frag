@@ -17,7 +17,7 @@
 @@Uniform(int SECONDARY_MATERIAL_INDEX);
 @@Uniform(int USE_SECONDARY_MATERIAL);
 
-// Per batch. The emboss relief is part of the Sub-material (core/Emboss.h),
+// Per batch. The emboss relief resolves from the surface's Emboss preset,
 // not a global render option, so it arrives with the batch exactly as the
 // Technique index and its parameters do. EMBOSS_PATTERN is EmbossPattern:
 // 0 none, 1 square, 2 hexagon, 3 running bond, 4 modular opus, 5 Voronoi.

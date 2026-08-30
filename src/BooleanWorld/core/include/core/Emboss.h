@@ -10,7 +10,7 @@ namespace core {
 
 class Serializer;
 
-// The tiling pattern a Sub-material's embossing lays over a surface. The
+// The tiling pattern an Emboss preset lays over an assigned surface. The
 // values are the ones world_pbr.frag/world_pbr_2d.frag switch on for
 // EMBOSS_PATTERN, so they are part of the shader contract and must not be
 // renumbered without changing both shaders.
@@ -41,15 +41,13 @@ inline constexpr int32_t EmbossPatternCount = 6;
 // and so on. One source of truth for the editor's slider label.
 [[nodiscard]] char const* EmbossRadiusName(EmbossPattern pattern);
 
-// The relief a Sub-material embosses into whatever surface it is applied to:
-// a tiling pattern turned into a normal-map perturbation by the fragment
-// shader, with no effect on geometry or collision. Part of the material, so
-// two Sub-materials differing only here are different materials and get their
-// own mesh bucket - see MaterialDefinitionData::hash.
+// The relief an Emboss preset applies to its assigned surface: a tiling
+// pattern turned into a normal-map perturbation by the fragment shader, with
+// no effect on geometry or collision. It is resolved into the material
+// definition, so surfaces with different presets get their own mesh buckets
+// - see MaterialDefinitionData::hash.
 //
-// The defaults describe the relief that used to be applied globally to every
-// floor before embossing became a material property, minus the pattern
-// itself: a Sub-material embosses nothing until it is given a pattern.
+// Defaults represent the canonical no-relief preset value.
 struct EmbossData {
   EmbossPattern pattern{EmbossPattern::None};
   // Tile size in world units - a hexagon's radius, a square's half-size, a
@@ -84,19 +82,17 @@ struct EmbossParameterLimits {
 [[nodiscard]] EmbossParameterLimits EmbossVoronoiRoundingLimits();
 
 // Every field within its own limits. Deserialization reports a violation
-// rather than clamping, matching how Sub-material parameter values are
-// checked against their Technique schema.
+// rather than clamping.
 [[nodiscard]] bool EmbossIsInRange(EmbossData const& emboss);
 
-// Writes the block under `name`. Always written, so a saved catalog states
-// every Sub-material's relief explicitly rather than relying on defaults.
+// Writes the block under `name`. Always written, so a saved Emboss preset
+// states its complete relief explicitly rather than relying on defaults.
 void SerializeEmboss(
     std::shared_ptr<Serializer> const& serializer, std::string const& name,
     EmbossData const& emboss);
 
-// Reads the block under `name`, field by field, each optional: a catalog
-// written before embossing existed - or one that simply leaves the block out -
-// reads back as the defaults above, which emboss nothing.
+// Reads the block under `name`, field by field, each optional. An omitted
+// block reads back as the canonical no-relief value.
 [[nodiscard]] EmbossData DeserializeEmboss(
     std::shared_ptr<Serializer> const& serializer, std::string const& name);
 

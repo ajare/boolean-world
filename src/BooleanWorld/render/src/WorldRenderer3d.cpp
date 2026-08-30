@@ -3,6 +3,8 @@
 #include <mpp/Material.h>
 #include <mpp/Program.h>
 #include <mpp/ProgrammaticBasicMaterialStream.h>
+#include <mpp/ProgrammaticProgramStream.h>
+#include <mpp/program/Parser.h>
 
 #include <core/Defines.h>
 #include <core/LiquidProperties.h>
@@ -18,6 +20,61 @@ using namespace std;
 using namespace wp::application::resourcesystem;
 
 namespace {
+constexpr char const* debugProgramName = "BooleanWorldRender.DebugMaterial.Program";
+constexpr char const* debugMaterialName = "BooleanWorldRender.DebugMaterial";
+
+// This material deliberately lives outside Resources.yaml and every
+// ProcMaterial catalog. It shares the world's mesh contract but has no PBR
+// controls: a negative material index is always an unlit solid magenta.
+constexpr char const* debugVertexShader = R"(@@Version
+void main()
+{
+    // The unlit fallback only needs position. Avoid forwarding world-specific
+    // attributes because their semantic names differ between surface batches.
+    gl_Position = @MCPMatrix * @Vec4(@In(POSITION));
+}
+)";
+constexpr char const* debugFragmentShader = R"(@@Version
+void main()
+{
+    // The forward graph may bind colour, bloom, GTAO normal, and liquid
+    // retention attachments together. Keep all four locations active even
+    // though this non-PBR fallback needs only its solid-magenta colour.
+    @Out(vec4 COLOUR) = vec4(1.0, 0.0, 1.0, 1.0);
+    @Out(vec4 BLOOM_MASK) = vec4(0.0);
+    @Out(vec2 SHADING_NORMAL) = vec2(0.0);
+    @Out(float LIQUID_RETENTION) = 0.0;
+}
+)";
+
+mpp::ResourcePtr getOrCreateDebugMaterial(
+    mpp::ResourceManager* resourceMgr,
+    mpp::mesh::MeshSpecification const& specification) {
+  auto program = resourceMgr->getResource(debugProgramName, true);
+  if (!program) {
+    auto parser = std::make_shared<mpp::program::Parser>();
+    parser->setMeshSpecification(specification);
+    parser->setVertexSource(debugVertexShader);
+    parser->setFragmentSource(debugFragmentShader);
+    auto stream = std::make_shared<mpp::ProgrammaticProgramStream>(resourceMgr);
+    stream->setParser(parser);
+    program = resourceMgr->declareResource(debugProgramName, stream).first;
+  }
+
+  auto material = resourceMgr->getResource(debugMaterialName, true);
+  if (!material) {
+    auto stream = std::make_shared<mpp::ProgrammaticBasicMaterialStream>(resourceMgr);
+    stream->setProgram(debugProgramName);
+    material = resourceMgr->declareResource(debugMaterialName, stream).first;
+  }
+
+  // Mesh parameter overrides do not acquire/create their material resource.
+  // Unlike catalog materials, this internal resource has no application-level
+  // Resource wrapper to do that for it, so make its program ready explicitly.
+  material->create();
+  return material;
+}
+
 char const* surfaceSetName(WorldSurfaceSet surfaceSet) {
   switch (surfaceSet) {
     case WorldSurfaceSet::Horizontal:
@@ -178,6 +235,12 @@ void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvide
 
   mRenderer->create();
 
+  // WorldBatch owns the exact vertex contract the generated model uses, so
+  // the internal Debug program is compiled against that contract rather than
+  // against any catalog or application-resource declaration.
+  mDebugMaterial = getOrCreateDebugMaterial(
+      resourceMgr, mRenderer->getWorldBatch()->getSpecification());
+
   mDataProvider->setMeshCount(static_pointer_cast<mpp::Model>(mRenderer->getModel())->getNumMeshes());
 }
 
@@ -194,6 +257,12 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
   auto params = mSceneModel->getParams();
 
   auto worldBatch = mRenderer->getWorldBatch();
+  auto useDebugMaterialFor =
+      [&](std::string const& meshName, uint32_t materialIndex) {
+        if (static_cast<int32_t>(materialIndex) >= 0) return;
+        params->setMeshMaterial(meshName, mDebugMaterial);
+        mDebugMeshNames.insert(meshName);
+      };
 
   // Create uniforms for each material mesh.
   mUniforms.resize(worldBatch->getMaterialMeshCount(), nullptr);
@@ -245,6 +314,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         auto meshName = worldBatch->formatMeshName(hashValue, false);
         params->setMeshUniforms(meshName, uniforms);
         params->setMeshBlend(meshName, false);
+        useDebugMaterialFor(meshName, resolved.materialIndex);
         uniforms->setUniform(
             "MATERIAL_INDEX", (int32_t)resolved.materialIndex);
         uniforms->setUniform(
@@ -278,6 +348,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
       params->setMeshUniforms(meshName, uniforms);
       params->setMeshBlend(meshName, false);
+      useDebugMaterialFor(meshName, floorResolved.materialIndex);
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)floorResolved.materialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, floorResolved.def.params.data());
@@ -301,6 +372,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
       params->setMeshUniforms(meshName, uniforms);
       params->setMeshBlend(meshName, false);
+      useDebugMaterialFor(meshName, ceilingResolved.materialIndex);
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)ceilingResolved.materialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, ceilingResolved.def.params.data());
@@ -331,6 +403,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       auto meshName = worldBatch->formatMeshName(hashValue, false, variant);
       params->setMeshUniforms(meshName, uniforms);
       params->setMeshBlend(meshName, false);
+      useDebugMaterialFor(meshName, resolved.materialIndex);
       if (variant.texture) {
         auto material = dynamic_pointer_cast<mpp::Material>(
             mMaterial->getMppResource());
@@ -465,7 +538,11 @@ void WorldRenderer3d::setFragmentOverdraw(bool enabled) {
     }
   }
   for (auto const& meshName : meshNames) {
-    params->setMeshMaterial(meshName, material);
+    params->setMeshMaterial(
+        meshName, enabled ? material
+                          : (mDebugMeshNames.contains(meshName)
+                                 ? mDebugMaterial
+                                 : mpp::ResourcePtr{}));
     // Turning the diagnostic off restores each mesh's own classification. A
     // liquid surface blends in its own right - forcing it opaque here drops
     // the alpha the world programs write and hides everything the liquid is
