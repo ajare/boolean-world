@@ -1003,6 +1003,44 @@ void renderWorld(
     renderGrid(settings.gridSize, viewBounds, settings.gridColour, 1.0f, renderWorldStuff ? world : nullptr, drawList);
   }
 
+  // PrefabField hovered-tile highlight. With a Prefab selected for placement,
+  // the cell under the pointer previews where the next instance would land.
+  // It is drawn on the selected Prefab's own size grid - not the editor's
+  // generic snapping grid - so the quad is exactly the tile footprint a click
+  // would place. The low-alpha yellow fill sits over the shaded world without
+  // hiding it.
+  if (activeLayer) {
+    if (auto const* field = dynamic_cast<bw::core::PrefabField const*>(
+            activeLayer->getActiveStep())) {
+      if (auto const* selectedPrefab = field->getSelectedPrefab(*activeLayer)) {
+        bool cursorInMiniMap = false;
+        if (settings.renderMiniMap) {
+          auto miniMapBounds = getMiniMapBounds(doc);
+          miniMapBounds.setPosition(
+              miniMapBounds.getMinExtent() + gWorldViewScreenOrigin);
+          auto mouse = ImGui::GetMousePos();
+          cursorInMiniMap = miniMapBounds.pointInside(mouse.x, mouse.y);
+        }
+        if (editor::mouseInteractingWithBackground() && !cursorInMiniMap) {
+          auto const tileSize = selectedPrefab->getTileSize();
+          auto const side =
+              static_cast<float>(bw::core::prefabTileSide(tileSize));
+          auto const tile =
+              field->tileAt(tileSize, editor::getMouseWorldPosition());
+          auto const tileMin = wp::Vector2{
+              static_cast<float>(tile.x) * side,
+              static_cast<float>(tile.y) * side};
+          auto const tileMax = wp::Vector2{
+              static_cast<float>(tile.x + 1) * side,
+              static_cast<float>(tile.y + 1) * side};
+          drawList->AddRectFilled(
+              worldToScreen(tileMin), worldToScreen(tileMax),
+              ImColor(1.0f, 1.0f, 0.0f, 0.2f));
+        }
+      }
+    }
+  }
+
   // Primitive-field layout preview. This editor-only overlay is deliberately
   // rendered after authored geometry and is never added to World.
   auto const& primitiveFieldPreview = editor::getPrimitiveFieldPreview();
