@@ -190,6 +190,16 @@ bw::core::SubMaterial const* ProcMaterialLibrary::findSubMaterial(
   return nullptr;
 }
 
+bw::core::SubMaterial const* ProcMaterialLibrary::findSubMaterialByMaterialIndex(
+    uint32_t materialIndex) const {
+  for (auto const& catalog : mCatalogs) {
+    for (auto const& subMaterial : catalog.data.subMaterials) {
+      if (subMaterial.materialIndex == materialIndex) return &subMaterial;
+    }
+  }
+  return nullptr;
+}
+
 string ProcMaterialLibrary::createSubMaterial(
     string const& resourceName, string const& displayName,
     uint32_t materialIndex, vector<float> const& paramValues,

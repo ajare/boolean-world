@@ -41,6 +41,11 @@ public:
       std::string const& subMaterialId) const;
   [[nodiscard]] bw::core::SubMaterial const* findSubMaterial(
       std::string const& subMaterialId) const;
+  // The first Sub-material across the loaded catalogs whose materialIndex
+  // names this Technique, or nullptr when none does. Resolves defaults that
+  // must name a Technique rather than a catalog position.
+  [[nodiscard]] bw::core::SubMaterial const* findSubMaterialByMaterialIndex(
+      uint32_t materialIndex) const;
 
   // Creates a globally unique stable id from displayName and returns it.
   // Parameters and colour are validated against the selected Technique schema;
