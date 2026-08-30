@@ -1010,6 +1010,20 @@ void openPreview3D(
     wp::Vector2 const& playerPosition,
     float playerAngle,
     float floorZ) {
+  // The ghost is authoring furniture, never world geometry: it previews what
+  // "Create Primitive" would add next, so world generation here must not fold
+  // it in as if it were already part of the level. Drop it before anything
+  // else - sorting, grounding, and the Arrangement build all consume this
+  // list.
+  primitives.erase(
+      std::remove_if(
+          primitives.begin(), primitives.end(),
+          [](bw::core::Primitive const* primitive) {
+            return primitive &&
+                   (primitive->getFlags() & BW_PRIMITIVE_GHOST_FLAG) != 0;
+          }),
+      primitives.end());
+
   std::stable_sort(
       primitives.begin(), primitives.end(),
       [](auto const* left, auto const* right) {
