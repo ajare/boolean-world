@@ -3,6 +3,7 @@ add_executable(editor WIN32
     src/AppHelpers.cpp
     src/Document.cpp
     src/EditorRenderSystem.cpp
+    src/EmbossingCatalogLibrary.cpp
     src/Interaction.cpp
     src/Main.cpp
     src/Markdown.cpp
@@ -333,6 +334,27 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_editor_sub_material_picker
              COMMAND boolean_world_editor_sub_material_picker_tests)
 
+    add_executable(boolean_world_editor_embossing_catalog_authoring_tests
+        tests/embossing_catalog_authoring_tests.cpp
+        src/Actions.cpp
+        src/Document.cpp
+        src/EmbossingCatalogLibrary.cpp
+        src/PrimitiveDefaults.cpp
+        src/ProcMaterialLibrary.cpp
+        src/Undo.cpp)
+    target_include_directories(boolean_world_editor_embossing_catalog_authoring_tests PRIVATE include)
+    target_compile_definitions(boolean_world_editor_embossing_catalog_authoring_tests PRIVATE
+        YAML_CPP_STATIC_DEFINE)
+    target_link_libraries(boolean_world_editor_embossing_catalog_authoring_tests PRIVATE
+        core vendor::spdlog ext::glew ext::yaml-cpp BooleanWorldRender)
+    target_compile_features(boolean_world_editor_embossing_catalog_authoring_tests PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_embossing_catalog_authoring_tests PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_embossing_catalog_authoring_tests)
+    bw_output_dirs(boolean_world_editor_embossing_catalog_authoring_tests)
+    bw_deploy_runtime_dlls(boolean_world_editor_embossing_catalog_authoring_tests)
+    add_test(NAME boolean_world_editor_embossing_catalog_authoring
+             COMMAND boolean_world_editor_embossing_catalog_authoring_tests)
+
     add_executable(boolean_world_editor_layer_build_step_actions_tests
         tests/layer_build_step_actions_tests.cpp
         src/Actions.cpp
@@ -352,6 +374,20 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_editor_layer_build_step_actions_tests)
     add_test(NAME boolean_world_editor_layer_build_step_actions
              COMMAND boolean_world_editor_layer_build_step_actions_tests)
+
+    # Undo snapshots include both directly-authored resource libraries. Every
+    # lightweight action/Document test above compiles Undo.cpp, so provide the
+    # global Embossing-catalog implementation to each one as well.
+    foreach(target
+            boolean_world_editor_primitive_field_placement_tests
+            boolean_world_editor_document_selection_tests
+            boolean_world_editor_document_layer_import_export_tests
+            boolean_world_editor_undo_history_tests
+            boolean_world_editor_primitive_surface_z_tests
+            boolean_world_editor_sub_material_picker_tests
+            boolean_world_editor_layer_build_step_actions_tests)
+        target_sources(${target} PRIVATE src/EmbossingCatalogLibrary.cpp)
+    endforeach()
 
     # Document validates candidate Worlds through the shared render-side image
     # decoder, so every lightweight Document test needs that implementation.

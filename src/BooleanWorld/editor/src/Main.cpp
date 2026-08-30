@@ -54,6 +54,7 @@
 #include "HoverableType.h"
 #include "PrimitiveFieldPreview.h"
 #include "Preview3D.h"
+#include "EmbossingCatalogLibrary.h"
 #include "ProcMaterialLibrary.h"
 
 wp::Vector2 gViewOffset{0.0f, 0.0f};
@@ -234,6 +235,8 @@ void initialise() {
   // ResourceManager or render-system dependency.
   editor::procMaterialLibrary().load(BW_EDITOR_PROC_MATERIAL_MANIFEST);
   gLogger->debug("ProcMaterial catalogs loaded");
+  editor::embossingCatalogLibrary().load(BW_EDITOR_PROC_MATERIAL_MANIFEST);
+  gLogger->debug("Global Embossing catalog loaded");
 
   //
   // Set up SDL

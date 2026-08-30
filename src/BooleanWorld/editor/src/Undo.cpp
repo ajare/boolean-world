@@ -11,6 +11,7 @@
 #include "Undo.h"
 #include "Document.h"
 #include "EditorException.h"
+#include "EmbossingCatalogLibrary.h"
 #include "ProcMaterialLibrary.h"
 #include "UiHelpers.h"
 #include "Settings.h"
@@ -48,6 +49,7 @@ struct UndoData {
   vector<PrefabFocus> prefabFocus;
   vector<PrefabFieldFocus> prefabFieldFocus;
   ProcMaterialLibrarySnapshot procMaterials;
+  EmbossingCatalogSnapshot embossingCatalog;
   bool docModified{false};
 };
 
@@ -101,12 +103,14 @@ UndoData captureUndoData(Document* doc) {
       move(prefabFocus),
       move(prefabFieldFocus),
       procMaterialLibrary().captureSnapshot(),
+      embossingCatalogLibrary().captureSnapshot(),
       doc->isModified()};
 }
 
 void restoreUndoData(Document* doc, UndoData const& data) {
   doc->restoreWorldSnapshot(data.world);
   procMaterialLibrary().restoreSnapshot(data.procMaterials);
+  embossingCatalogLibrary().restoreSnapshot(data.embossingCatalog);
   for (auto const& focus : data.prefabFocus) {
     auto* layer = doc->getWorld()->getLayer(focus.layerId);
     if (!layer || focus.stepIndex >= layer->getNumSteps()) {

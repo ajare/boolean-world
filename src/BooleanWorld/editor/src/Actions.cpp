@@ -9,10 +9,13 @@
 #include <core/MeshPrimitive.h>
 #include <core/LayerBuildStep.h>
 #include <core/DynamicWorldDataGenerator.h>
+#include <core/DefinePrefabs.h>
+#include <core/PrimitiveField.h>
 
 #include "Defines.h"
 #include "Actions.h"
 #include "EditorException.h"
+#include "EmbossingCatalogLibrary.h"
 #include "ProcMaterialLibrary.h"
 
 namespace editor {
@@ -773,6 +776,94 @@ bool deleteSubMaterial(
   if (blockedReason) *blockedReason = reason;
   if (!reason.empty()) return false;
   library->deleteSubMaterial(subMaterialId);
+  return true;
+}
+
+bool createEmbossPreset(
+    Document*, EmbossingCatalogLibrary* library,
+    string const& displayName, bw::core::EmbossData const& emboss,
+    string* createdId) {
+  auto id = library->createPreset(displayName, emboss);
+  if (createdId) *createdId = move(id);
+  return true;
+}
+
+bool renameEmbossPreset(
+    Document*, EmbossingCatalogLibrary* library,
+    string const& presetId, string const& displayName) {
+  library->renamePreset(presetId, displayName);
+  return true;
+}
+
+bool editEmbossPreset(
+    Document*, EmbossingCatalogLibrary* library,
+    string const& presetId, bw::core::EmbossData const& emboss) {
+  library->editPreset(presetId, emboss);
+  return true;
+}
+
+namespace {
+
+void reportEmbossReferences(
+    ostringstream& report, bw::core::Primitive const* primitive,
+    string const& location, string const& presetId) {
+  auto const& properties = primitive->getProperties();
+  vector<string> surfaces;
+  if (properties.floorEmbossPresetId == presetId) surfaces.push_back("floor");
+  if (properties.ceilingEmbossPresetId == presetId) surfaces.push_back("ceiling");
+  if (properties.wallEmbossPresetId == presetId) surfaces.push_back("wall");
+  if (surfaces.empty()) return;
+  if (report.tellp() > 0) report << "; ";
+  report << location << " (";
+  for (size_t i = 0; i < surfaces.size(); ++i) {
+    if (i) report << ", ";
+    report << surfaces[i];
+  }
+  report << ')';
+}
+
+}  // namespace
+
+string embossPresetDeletionBlockedReason(Document* doc, string const& presetId) {
+  if (!doc || !doc->isActive()) return {};
+  ostringstream report;
+  for (auto const* layer : doc->getWorld()->getLayers()) {
+    for (uint32_t stepIndex = 0; stepIndex < layer->getNumSteps(); ++stepIndex) {
+      auto const* step = layer->getStep(stepIndex);
+      if (auto const* field = dynamic_cast<bw::core::PrimitiveField const*>(step)) {
+        for (uint32_t i = 0; i < field->getNumPrimitives(); ++i) {
+          reportEmbossReferences(
+              report, field->getPrimitive(i),
+              "Layer " + to_string(layer->getId()) + ", step " +
+                  to_string(stepIndex) + ", Primitive " + to_string(i),
+              presetId);
+        }
+      } else if (auto const* definitions =
+                     dynamic_cast<bw::core::DefinePrefabs const*>(step)) {
+        for (auto const* prefab : definitions->getPrefabs()) {
+          for (uint32_t i = 0; i < prefab->getNumPrimitives(); ++i) {
+            reportEmbossReferences(
+                report, prefab->getPrimitive(i),
+                "Layer " + to_string(layer->getId()) + ", step " +
+                    to_string(stepIndex) + ", Prefab '" + prefab->getName() +
+                    "', Primitive " + to_string(i),
+                presetId);
+          }
+        }
+      }
+    }
+  }
+  if (report.tellp() == 0) return {};
+  return "Emboss preset '" + presetId + "' is still referenced by " + report.str();
+}
+
+bool deleteEmbossPreset(
+    Document* doc, EmbossingCatalogLibrary* library,
+    string const& presetId, string* blockedReason) {
+  auto reason = embossPresetDeletionBlockedReason(doc, presetId);
+  if (blockedReason) *blockedReason = reason;
+  if (!reason.empty()) return false;
+  library->deletePreset(presetId);
   return true;
 }
 

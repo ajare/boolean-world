@@ -16,6 +16,7 @@
 
 namespace editor {
 
+class EmbossingCatalogLibrary;
 class ProcMaterialLibrary;
 
 // Raw, toolkit-independent input consumed by EditorInteraction. Screen-space
@@ -347,6 +348,28 @@ std::string subMaterialDeletionBlockedReason(
 bool deleteSubMaterial(
     Document* doc, ProcMaterialLibrary* library,
     std::string const& subMaterialId, std::string* blockedReason = nullptr);
+
+// Global Embossing-catalog authoring. All mutations persist immediately;
+// callers use transactUndoableActionAtomically so failed validation or a
+// blocked deletion does not alter history.
+bool createEmbossPreset(
+    Document* doc, EmbossingCatalogLibrary* library,
+    std::string const& displayName, bw::core::EmbossData const& emboss,
+    std::string* createdId = nullptr);
+bool renameEmbossPreset(
+    Document* doc, EmbossingCatalogLibrary* library,
+    std::string const& presetId, std::string const& displayName);
+bool editEmbossPreset(
+    Document* doc, EmbossingCatalogLibrary* library,
+    std::string const& presetId, bw::core::EmbossData const& emboss);
+// Empty means deletion is allowed. Otherwise identifies every authored
+// Primitive surface retaining the preset, including disabled steps and
+// Prefab definitions.
+std::string embossPresetDeletionBlockedReason(
+    Document* doc, std::string const& presetId);
+bool deleteEmbossPreset(
+    Document* doc, EmbossingCatalogLibrary* library,
+    std::string const& presetId, std::string* blockedReason = nullptr);
 
 void setPrimitiveDefaultMaterials(bw::core::Primitive* prim);
 
