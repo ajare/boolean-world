@@ -3499,7 +3499,7 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
 
       ImGui::PopButtonRepeat();
 
-      if (!listChanged && ImGui::Button(ICON_FA_TRASH)) {
+      if (!listChanged && ImGui::Button(ICON_FA_TRASH "##RemoveLayerStep")) {
         transactUndoableAction(doc, format("Remove Layer Step {}", i), bind(removeLayerBuildStep, placeholders::_1, layer, i));
         listChanged = true;
       }
@@ -3614,7 +3614,7 @@ void renderPrefabsView(
     ImGui::SameLine();
     auto blockedReason = prefabDeletionBlockedReason(layer, step, prefab);
     ImGui::BeginDisabled(!blockedReason.empty());
-    if (ImGui::Button(ICON_FA_TRASH)) {
+    if (ImGui::Button(ICON_FA_TRASH "##DeletePrefab")) {
       transactUndoableAction(
           doc, "Delete Prefab",
           bind(deletePrefab, placeholders::_1, layer, step, prefab));
