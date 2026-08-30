@@ -79,9 +79,9 @@ uint32_t WorldRenderer3d::getMeshIndexForMaterialHash(
 
 namespace {
 
-// The relief uniforms every mesh bucket carries, set from the Sub-material
-// resolved into that bucket. Embossing used to be one global option applied to
-// floors; it is a material property now, so these travel with the bucket
+// The relief uniforms every mesh bucket carries, set from the Emboss preset
+// resolved for that surface. Embossing varies independently of Sub-material,
+// so these travel with the composed pair's bucket
 // exactly as MATERIAL_INDEX/MATERIAL_PARAMS do.
 void setEmbossUniforms(
     mpp::UniformCollection& uniforms, bw::core::EmbossData const& emboss) {
@@ -142,7 +142,8 @@ void WorldRenderer3d::updateMaterialUniforms(
   // mapped variant as well as the ordinary bucket, without touching the
   // variant's independently bound image uniforms and texture.
   for (auto const& surface : mWallRenderSurfaces) {
-    auto resolved = mwResolver->resolve(surface.subMaterialId);
+    auto resolved = mwResolver->resolve(
+        surface.subMaterialId, surface.embossPresetId);
     if (resolved.def.hash(resolved.materialIndex) == bakedMaterialHash) {
       updateMesh(surface.variant);
     }
@@ -234,7 +235,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     auto const& properties = primitive->getProperties();
 
     if (mSurfaceSet == WorldSurfaceSet::Walls) {
-      auto resolved = mwResolver->resolve(properties.wallMaterialId);
+      auto resolved = mwResolver->resolve(
+          properties.wallMaterialId, properties.wallEmbossPresetId);
       auto hashValue = resolved.def.hash(resolved.materialIndex);
       auto meshIndex =
           worldBatch->getMeshIndexForMaterialHash(hashValue, false);
@@ -265,7 +267,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     }
 
     // Floor
-    auto floorResolved = mwResolver->resolve(properties.floorMaterialId);
+    auto floorResolved = mwResolver->resolve(
+        properties.floorMaterialId, properties.floorEmbossPresetId);
     auto hashValue = floorResolved.def.hash(floorResolved.materialIndex);
     auto meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, true);
 
@@ -287,7 +290,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     }
 
     // Ceiling
-    auto ceilingResolved = mwResolver->resolve(properties.ceilingMaterialId);
+    auto ceilingResolved = mwResolver->resolve(
+        properties.ceilingMaterialId, properties.ceilingEmbossPresetId);
     hashValue = ceilingResolved.def.hash(ceilingResolved.materialIndex);
     meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, false);
 
@@ -315,7 +319,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     // uniform configurations without texture arrays or bindless state.
     for (auto const& surface : mWallRenderSurfaces) {
       auto const& variant = *surface.variant;
-      auto resolved = mwResolver->resolve(surface.subMaterialId);
+      auto resolved = mwResolver->resolve(
+          surface.subMaterialId, surface.embossPresetId);
       auto hashValue = resolved.def.hash(resolved.materialIndex);
       auto meshIndex = worldBatch->getMeshIndexForMaterialHash(
           hashValue, false, variant);
@@ -537,8 +542,8 @@ void WorldRenderer3d::update(
     uc->updateUniform(
         "LIGHT_ATTENUATION_FALLOFF", playerTorch.attenuationFalloff);
     uc->updateUniform("MATERIAL_SCALE", materialScale);
-    // The relief itself is per bucket and set once from the Sub-material that
-    // baked it; only the debug secondary-material choice is still global.
+    // Relief is per composed surface bucket and set once from its preset;
+    // only the debug secondary-material choice is still global.
     uc->updateUniform(
         "SECONDARY_MATERIAL_INDEX", secondaryMaterial.materialIndex);
     uc->updateUniform(

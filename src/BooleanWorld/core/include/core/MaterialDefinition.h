@@ -11,9 +11,9 @@ namespace core {
 struct MaterialDefinitionData {
   std::array<float, BW_MATERIAL_PARAMS_MAX> params;
   std::array<float, 3> baseColour;
-  // Resolved from the Sub-material, and part of the hash below: two surfaces
-  // whose materials agree on everything but their relief still need their own
-  // mesh buckets, because the emboss uniforms are per bucket.
+  // Resolved from a surface's optional Emboss preset, and part of the hash
+  // below: two surfaces whose Sub-materials agree but whose presets differ
+  // still need their own mesh buckets, because emboss uniforms are per bucket.
   EmbossData emboss;
 
   uint32_t packedColour() const;
@@ -21,9 +21,9 @@ struct MaterialDefinitionData {
 };
 
 // Note that emboss is deliberately absent from this type's serialization: a
-// MaterialDefinition is only ever built in memory now that Sub-materials own
-// the authored data (ADR-0023), and nothing reads or writes the old on-disk
-// shape, so there is nothing to migrate.
+// MaterialDefinition is only ever built in memory from a Sub-material and an
+// optional Emboss preset. Nothing reads or writes the old on-disk shape, so
+// there is nothing to migrate.
 struct MaterialDefinition : public Serializable {
   MaterialDefinitionData data;
 

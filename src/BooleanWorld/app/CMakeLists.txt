@@ -292,6 +292,8 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_sub_material_resolver_tests
         tests/sub_material_resolver_tests.cpp
+        ../render/src/EmbossingCatalog.cpp
+        ../render/src/EmbossingCatalogResourceDefinitionFactory.cpp
         ../render/src/ProcMaterial.cpp
         ../render/src/ProcMaterialResourceDefinitionFactory.cpp
         ../render/src/SubMaterialResolver.cpp)

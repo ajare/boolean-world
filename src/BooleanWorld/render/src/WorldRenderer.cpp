@@ -140,11 +140,13 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
 
   // Turn authored ImageResource references into stable variant buckets before
   // the wall batch is created. Disabled and Unset intentionally seed nothing.
-  set<string> wallSubMaterials;
+  set<pair<string, string>> wallSurfaceMaterials;
   for (uint32_t primitiveIndex = 0;
        primitiveIndex < world->getNumPrimitives(); ++primitiveIndex) {
     auto* primitive = world->getPrimitive(primitiveIndex);
-    wallSubMaterials.insert(primitive->getProperties().wallMaterialId);
+    auto const& properties = primitive->getProperties();
+    wallSurfaceMaterials.emplace(
+        properties.wallMaterialId, properties.wallEmbossPresetId);
     for (auto const& polygon : primitive->getVertices()) {
       for (auto const& ring : polygon) {
         for (auto const& vertex : ring) {
@@ -198,11 +200,12 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
   // Primitives in the fold.  Predeclare their complete cross-product so a
   // resolved Image always has a bucket; Unset and Disabled intentionally use
   // the single existing unmapped bucket.
-  set<pair<string, string>> seeded;
-  for (auto const& subMaterialId : wallSubMaterials) {
+  set<tuple<string, string, string>> seeded;
+  for (auto const& [subMaterialId, embossPresetId] : wallSurfaceMaterials) {
     for (auto const& [identity, variant] : mNormalMapVariants) {
-      if (seeded.emplace(subMaterialId, identity).second) {
-        mWallRenderSurfaces.push_back({subMaterialId, variant});
+      if (seeded.emplace(subMaterialId, embossPresetId, identity).second) {
+        mWallRenderSurfaces.push_back(
+            {subMaterialId, variant, embossPresetId});
       }
     }
   }
@@ -270,20 +273,33 @@ void WorldRenderer::setFragmentOverdraw(bool enabled) {
 void WorldRenderer::updateSubMaterialDraft(
     string const& subMaterialId, int32_t materialIndex,
     bw::core::MaterialDefinitionData const& definition) {
-  // The batch key is the definition resolved when this preview opened, not
-  // the draft's changing hash. Locate that baked key first, then replace only
-  // its shader uniforms. Each surface set owns independent buckets.
-  auto baked = mBakedSubMaterialResolver.resolve(subMaterialId);
-  auto bakedHash = baked.def.hash(baked.materialIndex);
-  for (auto const& item : mMaterialRenderers) {
-    if (item.surfaceSet == WorldSurfaceSet::Horizontal) {
-      item.renderer->updateMaterialUniforms(
-          bakedHash, true, materialIndex, definition);
-      item.renderer->updateMaterialUniforms(
-          bakedHash, false, materialIndex, definition);
-    } else {
-      item.renderer->updateMaterialUniforms(
-          bakedHash, false, materialIndex, definition);
+  // One Sub-material can back several preset-specific buckets. Update each
+  // baked pair while preserving the Embossing resolved from that pair: a
+  // Sub-material draft must not become an alternate source of relief.
+  if (!mwWorld) return;
+  set<tuple<string, bool>> surfaces;
+  for (uint32_t i = 0; i < mwWorld->getNumPrimitives(); ++i) {
+    auto const& properties = mwWorld->getPrimitive(i)->getProperties();
+    if (properties.floorMaterialId == subMaterialId)
+      surfaces.emplace(properties.floorEmbossPresetId, true);
+    if (properties.ceilingMaterialId == subMaterialId)
+      surfaces.emplace(properties.ceilingEmbossPresetId, false);
+    if (properties.wallMaterialId == subMaterialId)
+      surfaces.emplace(properties.wallEmbossPresetId, false);
+  }
+  for (auto const& [presetId, floor] : surfaces) {
+    auto baked = mBakedSubMaterialResolver.resolve(subMaterialId, presetId);
+    auto composed = definition;
+    composed.emboss = mSubMaterialResolver.resolve(
+                                              subMaterialId, presetId)
+                          .def.emboss;
+    auto bakedHash = baked.def.hash(baked.materialIndex);
+    for (auto const& item : mMaterialRenderers) {
+      if ((floor && item.surfaceSet == WorldSurfaceSet::Horizontal) ||
+          (!floor && item.surfaceSet != WorldSurfaceSet::Liquid)) {
+        item.renderer->updateMaterialUniforms(
+            bakedHash, floor, materialIndex, composed);
+      }
     }
   }
 }
@@ -374,7 +390,9 @@ void WorldRenderer::updateHorizontalDataProvider(
         worldData.palette[worldData.faces[key.index].paletteIndex];
     auto isFloor = key.kind == DetailSurfaceKind::FloorOfFace;
     auto resolved = mBakedSubMaterialResolver.resolve(
-        isFloor ? properties.floorMaterialId : properties.ceilingMaterialId);
+        isFloor ? properties.floorMaterialId : properties.ceilingMaterialId,
+        isFloor ? properties.floorEmbossPresetId
+                : properties.ceilingEmbossPresetId);
     return horizontal.renderer->getMeshIndexForMaterialHash(
         resolved.def.hash(resolved.materialIndex), isFloor);
   };
@@ -383,9 +401,11 @@ void WorldRenderer::updateHorizontalDataProvider(
       horizontal.dataProvider->getNumMeshes());
   for (auto const& triangle : triangles) {
     auto const& properties = worldData.palette[worldData.faces[triangle.face].paletteIndex];
-    auto floorResolved = mBakedSubMaterialResolver.resolve(properties.floorMaterialId);
+    auto floorResolved = mBakedSubMaterialResolver.resolve(
+        properties.floorMaterialId, properties.floorEmbossPresetId);
     auto floorHash = floorResolved.def.hash(floorResolved.materialIndex);
-    auto ceilingResolved = mBakedSubMaterialResolver.resolve(properties.ceilingMaterialId);
+    auto ceilingResolved = mBakedSubMaterialResolver.resolve(
+        properties.ceilingMaterialId, properties.ceilingEmbossPresetId);
     auto ceilingHash = ceilingResolved.def.hash(ceilingResolved.materialIndex);
     if (!detail.isSuppressed(DetailSurfaceKind::FloorOfFace, triangle.face)) {
       ++horizontalCounts[horizontal.renderer->getMeshIndexForMaterialHash(
@@ -424,7 +444,8 @@ void WorldRenderer::updateHorizontalDataProvider(
             : WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
 
     if (!detail.isSuppressed(DetailSurfaceKind::FloorOfFace, triangle.face)) {
-      auto floorResolved = mBakedSubMaterialResolver.resolve(properties.floorMaterialId);
+      auto floorResolved = mBakedSubMaterialResolver.resolve(
+          properties.floorMaterialId, properties.floorEmbossPresetId);
       auto floorHash = floorResolved.def.hash(floorResolved.materialIndex);
       auto floorMesh = horizontal.renderer->getMeshIndexForMaterialHash(
           floorHash, true);
@@ -448,7 +469,8 @@ void WorldRenderer::updateHorizontalDataProvider(
     if (detail.isSuppressed(DetailSurfaceKind::CeilingOfFace, triangle.face)) {
       continue;
     }
-    auto ceilingResolved = mBakedSubMaterialResolver.resolve(properties.ceilingMaterialId);
+    auto ceilingResolved = mBakedSubMaterialResolver.resolve(
+        properties.ceilingMaterialId, properties.ceilingEmbossPresetId);
     auto ceilingHash = ceilingResolved.def.hash(ceilingResolved.materialIndex);
     auto ceilingMesh = horizontal.renderer->getMeshIndexForMaterialHash(
         ceilingHash, false);
@@ -598,7 +620,8 @@ void WorldRenderer::updateWallDataProvider(
             ? detail.replacementsFor(DetailSurfaceKind::Wall, wallIndex)
             : std::span<bw::core::arr::DetailTriangle const>{};
     auto const& properties = worldData.palette[wall.paletteIndex];
-    auto resolved = mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
+    auto resolved = mBakedSubMaterialResolver.resolve(
+        properties.wallMaterialId, properties.wallEmbossPresetId);
     auto hash = resolved.def.hash(resolved.materialIndex);
     auto variant = variantFor(wall);
     auto authoredMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
@@ -650,7 +673,8 @@ void WorldRenderer::updateWallDataProvider(
 
     if (drawsNormalSide) {
       auto const& properties = worldData.palette[wall.paletteIndex];
-      auto resolved = mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
+      auto resolved = mBakedSubMaterialResolver.resolve(
+          properties.wallMaterialId, properties.wallEmbossPresetId);
       auto hash = resolved.def.hash(resolved.materialIndex);
       auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
           hash, false, variantFor(wall));
@@ -705,8 +729,8 @@ void WorldRenderer::updateWallDataProvider(
                         : untintedVertexColour;
       if (!replacements.empty()) {
         auto const& properties = worldData.palette[wall.paletteIndex];
-        auto resolved =
-            mBakedSubMaterialResolver.resolve(properties.wallMaterialId);
+        auto resolved = mBakedSubMaterialResolver.resolve(
+            properties.wallMaterialId, properties.wallEmbossPresetId);
         auto hash = resolved.def.hash(resolved.materialIndex);
         // Chip facets expose a new surface and do not inherit the authored
         // edge's Image. The coplanar remainder is back-facing in this branch.

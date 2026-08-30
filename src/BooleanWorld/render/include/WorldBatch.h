@@ -44,8 +44,9 @@ private:
       std::optional<WallRenderVariant> const& variant,
       std::shared_ptr<mpp::ProgrammaticModelStream> modelStream);
 
-  void processSubMaterial(
+  void processSurfaceMaterial(
       std::string const& subMaterialId,
+      std::string const& embossPresetId,
       bool floor,
       std::optional<WallRenderVariant> const& variant,
       std::shared_ptr<mpp::ProgrammaticModelStream> modelStream);

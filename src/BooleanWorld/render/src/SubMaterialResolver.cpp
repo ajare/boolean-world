@@ -1,6 +1,7 @@
 #include <core/Defines.h>
 
 #include "SubMaterialResolver.h"
+#include "EmbossingCatalog.h"
 #include "ProcMaterial.h"
 
 using namespace std;
@@ -13,7 +14,9 @@ SubMaterialResolver::SubMaterialResolver(wp::application::resourcesystem::Resour
       Resolved resolved;
       resolved.materialIndex = subMaterial.materialIndex;
       resolved.def.baseColour = subMaterial.baseColour;
-      resolved.def.emboss = subMaterial.emboss;
+      // Embossing is composed per surface by resolve(); embedded legacy
+      // Sub-material relief must never leak into a rendered definition.
+      resolved.def.emboss = {};
       resolved.chipParameters = subMaterial.chip;
       resolved.def.params.fill(0.0f);
 
@@ -27,21 +30,34 @@ SubMaterialResolver::SubMaterialResolver(wp::application::resourcesystem::Resour
       mSubMaterials[subMaterial.id] = resolved;
     }
   }
+
+  for (auto const& resource :
+       resourceMgr->getResourcesByType("EmbossingCatalog")) {
+    auto catalog = static_cast<EmbossingCatalog*>(resource.get());
+    for (auto const& preset : catalog->getData().presets) {
+      mEmbossPresets[preset.id] = preset.emboss;
+    }
+  }
 }
 
-SubMaterialResolver::Resolved SubMaterialResolver::resolve(string const& subMaterialId) const {
-  auto it = mSubMaterials.find(subMaterialId);
-  if (it != mSubMaterials.end()) {
-    return it->second;
+SubMaterialResolver::Resolved SubMaterialResolver::resolve(
+    string const& subMaterialId, string const& embossPresetId) const {
+  Resolved resolved;
+  auto material = mSubMaterials.find(subMaterialId);
+  if (material != mSubMaterials.end()) {
+    resolved = material->second;
+  } else {
+    resolved.materialIndex = BW_MATERIAL_ERROR_INDEX;
+    resolved.def.params.fill(0.0f);
+    resolved.def.baseColour = {1.0f, 0.0f, 1.0f};
+    resolved.chipParameters = {};
   }
 
-  Resolved error;
-  error.materialIndex = BW_MATERIAL_ERROR_INDEX;
-  error.def.emboss = {};
-  error.def.params.fill(0.0f);
-  error.def.baseColour = {1.0f, 0.0f, 1.0f};
-  error.chipParameters = {};
-  return error;
+  auto emboss = mEmbossPresets.find(embossPresetId);
+  resolved.def.emboss = emboss == mEmbossPresets.end()
+                            ? bw::core::EmbossData{}
+                            : emboss->second;
+  return resolved;
 }
 
 bw::core::ChipParametersResolver SubMaterialResolver::chipParametersResolver() const {

@@ -85,12 +85,13 @@ void WorldBatch::processMaterialDefinition(
   }
 }
 
-void WorldBatch::processSubMaterial(
+void WorldBatch::processSurfaceMaterial(
     string const& subMaterialId,
+    string const& embossPresetId,
     bool floor,
     optional<WallRenderVariant> const& variant,
     shared_ptr<mpp::ProgrammaticModelStream> modelStream) {
-  auto resolved = mwResolver->resolve(subMaterialId);
+  auto resolved = mwResolver->resolve(subMaterialId, embossPresetId);
   bw::core::MaterialDefinition def;
   def.data = resolved.def;
 
@@ -109,10 +110,16 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
     auto const& properties = primitive->getProperties();
 
     if (mSurfaceSet == WorldSurfaceSet::Horizontal) {
-      processSubMaterial(properties.floorMaterialId, true, nullopt, modelStream);
-      processSubMaterial(properties.ceilingMaterialId, false, nullopt, modelStream);
+      processSurfaceMaterial(
+          properties.floorMaterialId, properties.floorEmbossPresetId, true,
+          nullopt, modelStream);
+      processSurfaceMaterial(
+          properties.ceilingMaterialId, properties.ceilingEmbossPresetId,
+          false, nullopt, modelStream);
     } else if (mSurfaceSet == WorldSurfaceSet::Walls) {
-      processSubMaterial(properties.wallMaterialId, false, nullopt, modelStream);
+      processSurfaceMaterial(
+          properties.wallMaterialId, properties.wallEmbossPresetId, false,
+          nullopt, modelStream);
     }
   }
 
@@ -121,8 +128,9 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
   // Sub-material itself wall-specific.
   if (mSurfaceSet == WorldSurfaceSet::Walls) {
     for (auto const& surface : mWallRenderSurfaces) {
-      processSubMaterial(
-          surface.subMaterialId, false, surface.variant, modelStream);
+      processSurfaceMaterial(
+          surface.subMaterialId, surface.embossPresetId, false,
+          surface.variant, modelStream);
     }
   }
 

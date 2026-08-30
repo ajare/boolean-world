@@ -33,4 +33,5 @@ struct WallRenderVariant {
 struct WallRenderSurface {
   std::string subMaterialId;
   std::optional<WallRenderVariant> variant;
+  std::string embossPresetId;
 };

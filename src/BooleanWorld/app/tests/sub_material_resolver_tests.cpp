@@ -11,6 +11,8 @@
 
 #include <core/Defines.h>
 
+#include "EmbossingCatalog.h"
+#include "EmbossingCatalogResourceDefinitionFactory.h"
 #include "ProcMaterial.h"
 #include "ProcMaterialResourceDefinitionFactory.h"
 #include "SubMaterialResolver.h"
@@ -52,6 +54,10 @@ subMaterials:
     materialIndex: 5
     params: [0.75]
     baseColour: [0.2, 0.4, 0.6]
+    emboss:
+      pattern: "Hexagon"
+      radius: 31
+      depth: 3
     chip:
       minimumArrisLength: 4
       minimumDepth: 1.5
@@ -66,17 +72,44 @@ subMaterials:
       types: [PrismaticNotch, MultiFacetSpall, VShapedNotch]
 )");
 
+  writeFile(root / "embossing.yaml", R"(presets:
+  - id: "fine_blocks"
+    name: "Fine blocks"
+    emboss:
+      pattern: "Square"
+      radius: 6
+      depth: 0.5
+  - id: "wide_bricks"
+    name: "Wide bricks"
+    emboss:
+      pattern: "RunningBond"
+      radius: 12
+      depth: 1
+)");
+
   writeFile(root / "Resources.yaml", R"(Resources:
   Resource:
     - type: "TextFile"
       name: "ProcMaterialsFile"
       location: "proc-materials.yaml"
+    - type: "TextFile"
+      name: "EmbossingFile"
+      location: "embossing.yaml"
     - type: "ProcMaterial"
       name: "ProcMaterials"
       DependentResources:
         DependentResource:
           id: "Yaml"
           ref: "ProcMaterialsFile"
+      Definitions:
+        Definition:
+          Resource: "Yaml"
+    - type: "EmbossingCatalog"
+      name: "Embossing"
+      DependentResources:
+        DependentResource:
+          id: "Yaml"
+          ref: "EmbossingFile"
       Definitions:
         Definition:
           Resource: "Yaml"
@@ -88,7 +121,10 @@ subMaterials:
         return new DirectoryResourceLocation(&logger, path, definition);
       });
   manager.addResourceFactory(new ProcMaterialResourceFactory());
+  manager.addResourceFactory(new EmbossingCatalogResourceFactory());
   manager.addResourceDefinitionFactory(new ProcMaterialResourceDefinitionFactory());
+  manager.addResourceDefinitionFactory(
+      new EmbossingCatalogResourceDefinitionFactory());
   manager.addResourceLocation("Directory", root.string(), "Resources.yaml");
   manager.scanLocations();
   manager.createAllResources();
@@ -96,11 +132,31 @@ subMaterials:
 
   SubMaterialResolver resolver(&manager);
 
-  auto resolved = resolver.resolve("TestStone");
+  auto resolved = resolver.resolve("TestStone", "fine_blocks");
   require(resolved.materialIndex == 5, "Expected the authored materialIndex");
   require(resolved.def.params[0] == 0.75f, "Expected the authored parameter value");
   require(resolved.def.params[1] == 0.0f, "Expected unauthored parameter slots to be zeroed");
   require(resolved.def.baseColour == std::array<float, 3>{0.2f, 0.4f, 0.6f}, "Expected the authored base colour");
+  require(resolved.def.emboss.pattern == bw::core::EmbossPattern::Square &&
+              resolved.def.emboss.radius == 6.0f &&
+              resolved.def.emboss.depth == 0.5f,
+          "Expected Embossing to come from the selected global preset");
+  auto differentlyEmbossed = resolver.resolve("TestStone", "wide_bricks");
+  require(differentlyEmbossed.materialIndex == resolved.materialIndex &&
+              differentlyEmbossed.def.params == resolved.def.params &&
+              differentlyEmbossed.def.baseColour == resolved.def.baseColour &&
+              differentlyEmbossed.chipParameters == resolved.chipParameters,
+          "An Emboss preset changed Sub-material-owned values");
+  require(differentlyEmbossed.def.emboss.pattern ==
+                  bw::core::EmbossPattern::RunningBond &&
+              differentlyEmbossed.def.hash(differentlyEmbossed.materialIndex) !=
+                  resolved.def.hash(resolved.materialIndex),
+          "Different presets did not produce distinct material definitions");
+  require(resolver.resolve("TestStone", "missing").def.emboss ==
+                  bw::core::EmbossData{} &&
+              resolver.resolve("TestStone", "").def.emboss ==
+                  bw::core::EmbossData{},
+          "Empty or unknown preset ids did not resolve to flat surfaces");
   require(resolved.chipParameters.maximumDepth == 2.5f &&
               resolved.chipParameters.maximumReach == 4.0f &&
               resolved.chipParameters.probability == 0.65f &&

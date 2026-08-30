@@ -122,6 +122,11 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   properties.floorMaterialId = "migrated.marble.1";
   properties.ceilingMaterialId = "migrated.marble.1";
   properties.wallMaterialId = "migrated.marble.1";
+  if (fixture.emboss) {
+    properties.floorEmbossPresetId = "builtin.emboss.stone";
+    properties.ceilingEmbossPresetId = "builtin.emboss.stone";
+    properties.wallEmbossPresetId = "builtin.emboss.stone";
+  }
   properties.liquidLevel = fixture.wet ? 8.0f : 0.0f;
   primitive->setProperties(properties);
   world.addPrimitive(primitive);
@@ -212,16 +217,6 @@ std::vector<float> render(
   auto worldData = buildWorldData(world, fixture);
   editor::PreviewRenderScene scene(
       renderSystem, &world, kWidth, kHeight, fixture.horizontal);
-  if (fixture.emboss) {
-    bw::core::EmbossData emboss;
-    emboss.pattern = bw::core::EmbossPattern::Square;
-    emboss.radius = 4.0f;
-    emboss.depth = 1.0f;
-    scene.updateMaterialDraft(
-        "migrated.marble.1", 0,
-        {1.1f, 6.0f, 18.0f, 0.15f, 0.25f, 0.65f, 0.2f, 0.5f},
-        {0.18f, 0.18f, 0.2f}, emboss);
-  }
   auto camera = std::make_shared<ReactiveCamera>(
       glm::vec3{
           0.0f, fixture.lookAtWedges ? 40.0f : BW_PLAYER_EYE_HEIGHT, 0.0f},
@@ -342,9 +337,9 @@ int main() {
       require(regionDifference(debugUnset, debugMapped) > 0.0005,
               "debug Technique override suppressed the wall normal map");
 
-      // Marble contributes its own procedural normal. Add material Embossing
-      // through the preview's real draft path and prove that both the earlier
-      // image contribution and the later relief remain observable.
+      // Marble contributes its own procedural normal. Add preset Embossing
+      // and prove that both the earlier image contribution and the later
+      // relief remain observable.
       auto embossedUnset = render(
           renderSystem, {.emboss = true});
       auto embossedMapped = render(
