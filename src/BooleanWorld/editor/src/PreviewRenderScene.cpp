@@ -29,7 +29,7 @@ constexpr std::uint32_t outputImageIndex = 6u;
 // preview lights the world exactly as the game does. Exposing these as
 // editor-side preview settings is deliberately a later ticket.
 constexpr float materialScale = 1.0f;
-constexpr float farGridSize = 0.5f;
+constexpr float pixelSize = 1.0f / 32.0f;
 constexpr SecondaryMaterialOptions secondaryMaterial{};
 
 // Matches StatePlayBooleanWorld::getOrCreateWorldRenderPipeline, minus the
@@ -224,7 +224,7 @@ std::uint32_t PreviewRenderScene::render(
       std::nullopt, defaultLiquidReflectionMipLevel, true, false,
       horizontalMaterialIndexOverride,
       wallMaterialIndexOverride, materialScale,
-      farGridSize, secondaryMaterial, frameTime);
+      pixelSize, secondaryMaterial, frameTime);
 
   mScene->setViewport(0, 0, mWidth, mHeight);
   mwRenderSystem->renderScene(

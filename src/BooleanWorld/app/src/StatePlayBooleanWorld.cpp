@@ -76,7 +76,6 @@ const float gImGui_MouseSensitivityMax = 3.0f;
 
 constexpr int32_t gNoMaterialOverride = -1;
 constexpr float gAuthoredMaterialScale = 1.0f;
-constexpr float gDefaultFarGridSize = 0.5f;
 constexpr float gPlayerTorchMarkerSize = 2.0f;
 constexpr char gPlayerTorchMarkerModelName[] =
     "BooleanWorld.PlayerTorchMarker.Model";
@@ -1334,7 +1333,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
       mDebugDisplay.liquidReflectionEnabled,
       mDebugDisplay.sortGeometryFrontToBack, gNoMaterialOverride,
       gNoMaterialOverride, gAuthoredMaterialScale,
-      gDefaultFarGridSize, gNoSecondaryMaterial, frameTime);
+      mDebugDisplay.pixelSize, gNoSecondaryMaterial, frameTime);
 }
 
 void StatePlayBooleanWorld::suspendImpl(void* args) {
@@ -2256,6 +2255,9 @@ void StatePlayBooleanWorld::debug_renderOptions() {
 
     ImGui::Separator();
     ImGui::TextUnformatted("World (F5 session-only)");
+    ImGui::SliderFloat(
+        "Pixel size", &mDebugDisplay.pixelSize, 1.0f / 32.0f, 1.0f,
+        "%.5f");
     if (ImGui::SliderInt(
             "Wedge quality", &mDebugDisplay.wedgeQuality, 0, 3)) {
       auto world = getMap()->getWorld();

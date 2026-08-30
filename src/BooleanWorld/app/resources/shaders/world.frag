@@ -4,7 +4,6 @@
 @@Uniform(float VIEW_DISTANCE);
 @@Uniform(float GLOBAL_TIME);
 @@Uniform(float PIXEL_SIZE);
-@@Uniform(float FAR_GRID_SIZE);
 @@Uniform(vec3 PLAYER_POSITION);
 @@Uniform(vec3 LIGHT_POSITION);
 
@@ -438,33 +437,6 @@ vec3 snapToGrid(vec3 p, float gridSize)
 	return round(p / gridSize) * gridSize;
 }
 
-vec3 quantizeByPlayerDistance(vec3 p, float fragmentDistance)
-{
-	float distanceRatio = clamp(
-		fragmentDistance / max(@Uniform(VIEW_DISTANCE), 0.001), 0.0, 1.0);
-	const float levelCount = 4.0;
-	float level = smoothstep(0.12, 0.92, distanceRatio) * levelCount;
-	float baseGridSize = max(@Uniform(PIXEL_SIZE), 0.00001);
-	float farGridSize = max(@Uniform(FAR_GRID_SIZE), baseGridSize);
-	float gridRatio = farGridSize / baseGridSize;
-	float lowerLevel = floor(level);
-	float upperLevel = min(lowerLevel + 1.0, levelCount);
-	float lowerGridSize = baseGridSize *
-		pow(gridRatio, lowerLevel / levelCount);
-	float upperGridSize = baseGridSize *
-		pow(gridRatio, upperLevel / levelCount);
-
-	// Cross-fade adjacent grid levels with a quintic curve. Both ends
-	// have zero first and second derivatives, avoiding visible LOD pops while
-	// keeping both endpoints grid-quantized.
-	float transition = fract(level);
-	transition = transition * transition * transition *
-		(transition * (transition * 6.0 - 15.0) + 10.0);
-	return mix(
-		snapToGrid(p, lowerGridSize),
-		snapToGrid(p, upperGridSize), transition);
-}
-
 void main()
 {
 	// Use radial point-light-to-fragment distance, not view-space depth.
@@ -478,12 +450,8 @@ void main()
 	
 	if (depth > 0.05)
 	{
-		// Calculate material value. Quantisation uses player distance rather
-		// than light distance so moving the debug light does not move the LODs.
-		float playerDistance = length(
-			@Uniform(PLAYER_POSITION) - @In(FRAGPOSITION));
-		vec3 clamped = quantizeByPlayerDistance(
-			@In(FRAGPOSITION) / 32.0, playerDistance);
+		vec3 clamped = snapToGrid(
+			@In(FRAGPOSITION) / 32.0, @Uniform(PIXEL_SIZE));
 				
 		switch (@Uniform(MATERIAL_INDEX)) 
 		{

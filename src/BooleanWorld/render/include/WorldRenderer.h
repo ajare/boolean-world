@@ -188,7 +188,7 @@ public:
       int32_t horizontalMaterialIndexOverride,
       int32_t wallMaterialIndexOverride,
       float materialScale,
-      float farGridSize,
+      float pixelSize,
       SecondaryMaterialOptions const& secondaryMaterial,
       float frameTime,
       int32_t highlightedTriangle = -1,

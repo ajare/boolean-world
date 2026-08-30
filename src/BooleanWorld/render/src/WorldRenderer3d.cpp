@@ -275,7 +275,6 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
     uniforms.setUniform("GLOBAL_TIME", 0.0f);
     uniforms.setUniform("PIXEL_SIZE", 1.0f / 32);
-    uniforms.setUniform("FAR_GRID_SIZE", 0.5f);
     uniforms.setUniform("PLAYER_POSITION", glm::vec3{});
     uniforms.setUniform("LIGHT_POSITION", glm::vec3{});
     uniforms.setUniform(
@@ -574,7 +573,7 @@ void WorldRenderer3d::update(
     bool sortGeometryFrontToBack,
     int32_t materialIndexOverride,
     float materialScale,
-    float farGridSize,
+    float pixelSize,
     SecondaryMaterialOptions const& secondaryMaterial,
     float frameTime) {
   mGlobalTime += frameTime;
@@ -587,8 +586,7 @@ void WorldRenderer3d::update(
     }
     uc->updateUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
     uc->updateUniform("GLOBAL_TIME", mGlobalTime);
-    uc->updateUniform("PIXEL_SIZE", 1.0f / 32);
-    uc->updateUniform("FAR_GRID_SIZE", farGridSize);
+    uc->updateUniform("PIXEL_SIZE", pixelSize);
     uc->updateUniform("PLAYER_POSITION", playerPosition);
     uc->updateUniform("LIGHT_POSITION", lightPosition);
     uc->updateUniform("LIQUID_EYE_SURFACE_Z", liquidEyeSurfaceHeight);

@@ -117,7 +117,7 @@ public:
       bool sortGeometryFrontToBack,
       int32_t materialIndexOverride,
       float materialScale,
-      float farGridSize,
+      float pixelSize,
       SecondaryMaterialOptions const& secondaryMaterial,
       float frameTime);
 };

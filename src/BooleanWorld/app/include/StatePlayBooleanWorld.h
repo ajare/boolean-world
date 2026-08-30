@@ -55,6 +55,7 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     bool sortGeometryFrontToBack{false};
     bool fragmentOverdraw{false};
     int wedgeQuality{0};
+    float pixelSize{1.0f / 32.0f};
 
     bw::app::AmbientOcclusion ambientOcclusion{
         bw::app::AmbientOcclusion::GtaoDepth};
