@@ -16,6 +16,7 @@ add_executable(editor WIN32
     src/Preview3D.cpp
     src/PreviewOutlineRenderer.cpp
     src/PreviewRenderScene.cpp
+    src/PreviewSurfaceOutline.cpp
     src/PreviewSurfacePick.cpp
     ../app/src/ReactiveCamera.cpp
     src/Render.cpp
@@ -80,6 +81,7 @@ bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/doc" "doc/editor")
 if(BUILD_TESTING)
     add_executable(boolean_world_editor_preview_surface_pick_tests
         tests/preview_surface_pick_tests.cpp
+        src/PreviewSurfaceOutline.cpp
         src/PreviewSurfacePick.cpp)
     target_include_directories(boolean_world_editor_preview_surface_pick_tests PRIVATE include)
     target_compile_definitions(boolean_world_editor_preview_surface_pick_tests PRIVATE

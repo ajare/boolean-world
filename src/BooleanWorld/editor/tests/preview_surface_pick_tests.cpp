@@ -11,6 +11,7 @@
 #include <core/ArrangementWorldDataGenerator.h>
 #include <core/MeshPrimitive.h>
 
+#include "PreviewSurfaceOutline.h"
 #include "PreviewSurfacePick.h"
 
 namespace {
@@ -421,6 +422,34 @@ void movingTheResolvedOwnerRaisesOnlyThatPolygon() {
       "the step the nudge created did not resolve to the lower polygon");
 }
 
+void outlinesUseTheRenderersReflectedGroundPlane() {
+  auto room = makeRoomSpanning(10.0f, 30.0f, 20.0f, 40.0f);
+  auto data = buildData({room.get()});
+  auto floor = editor::pickPreviewSceneSurface(
+      *data, {15.0f, 35.0f, 10.0f}, {0.0f, 0.0f, -1.0f});
+  auto floorOutline = editor::previewSurfaceOutline(*data, floor);
+  require(!floorOutline.empty(), "the asymmetric floor produced no outline");
+  for (auto const& point : floorOutline) {
+    require(
+        point[0] >= 9.99f && point[0] <= 20.01f && near(point[1], 0.0f) &&
+            point[2] <= -29.99f && point[2] >= -40.01f,
+        "the floor outline did not map Arrangement (x,y,z) to renderer (x,z,-y)");
+  }
+
+  auto wall = editor::pickPreviewSceneSurface(
+      *data, {5.0f, 35.0f, 10.0f}, {1.0f, 0.0f, 0.0f});
+  auto wallOutline = editor::previewSurfaceOutline(*data, wall);
+  require(
+      wall.surfaceHit.surface == PreviewSurface::Wall && wallOutline.size() == 8,
+      "the hovered wall did not produce its complete four-edge outline");
+  for (auto const& point : wallOutline) {
+    require(
+        near(point[0], 10.0f) && point[1] >= -0.01f && point[1] <= 20.01f &&
+            point[2] <= -29.99f && point[2] >= -40.01f,
+        "the wall outline did not coincide with WorldRenderer wall geometry");
+  }
+}
+
 void unpickedSurfacesResolveToNothing() {
   auto room = makeRoom();
   auto data = buildData({room.get()});
@@ -452,6 +481,7 @@ int main() {
     wallsResolveToThePolygonTheyBound();
     primitivesSharingAnIdAcrossLayersStillResolveApart();
     movingTheResolvedOwnerRaisesOnlyThatPolygon();
+    outlinesUseTheRenderersReflectedGroundPlane();
     unpickedSurfacesResolveToNothing();
     std::cout << "Preview surface pick tests passed\n";
     return 0;

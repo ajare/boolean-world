@@ -39,6 +39,7 @@
 #include "InputOptions.h"
 #include "PlayerView.h"
 #include "PreviewRenderScene.h"
+#include "PreviewSurfaceOutline.h"
 #include "PreviewSurfacePick.h"
 #include "Preview3D.h"
 #include "ProcMaterialLibrary.h"
@@ -768,13 +769,16 @@ void updateSelectedSurfaceFromInput(bool acceptKeyboard) {
   rebuildPreviewForSurfaceEdit();
 }
 
-// Arrangement geometry keeps height in z and its ground plane in x/y; the
-// renderer's 3D space keeps height in y.
-glm::vec3 outlinePoint(
-    bw::core::arr::FixedPointVertex const& vertex, float z) {
-  return {
-      bw::core::arr::ToWorldCoordinate(vertex.x), z,
-      bw::core::arr::ToWorldCoordinate(vertex.y)};
+std::vector<glm::vec3> rendererSurfaceOutline(
+    PreviewSurfaceRef const& surface) {
+  std::vector<glm::vec3> result;
+  if (!session.worldData) return result;
+  auto points = previewSurfaceOutline(*session.worldData, asPick(surface));
+  result.reserve(points.size());
+  for (auto const& point : points) {
+    result.emplace_back(point[0], point[1], point[2]);
+  }
+  return result;
 }
 
 // Red for the surface the user has selected, yellow for the one the pointer
@@ -792,61 +796,6 @@ bool sameSurface(PreviewSurfaceRef const& left, PreviewSurfaceRef const& right) 
   return left.surface == PreviewSurface::Wall
              ? left.wallIndex == right.wallIndex
              : left.primitiveIndex == right.primitiveIndex;
-}
-
-// The border of one resolved surface, as endpoint pairs for a line list. A
-// wall is the quad the pick itself tested; a floor or ceiling is the
-// Arrangement face's own boundary - the outer ring plus every hole - which is
-// the clipped polygon the tessellation fills, not the one triangle of it the
-// ray happened to meet.
-std::vector<glm::vec3> surfaceOutline(PreviewSurfaceRef const& surface) {
-  std::vector<glm::vec3> segments;
-  if (!surface.valid || !session.worldData) {
-    return segments;
-  }
-  auto const& arrangement = session.worldData->getArrangement();
-
-  auto appendLoop = [&](std::vector<uint32_t> const& loop, float z) {
-    for (size_t index = 0; index < loop.size(); ++index) {
-      auto const& from = arrangement.vertices[loop[index]];
-      auto const& to = arrangement.vertices[loop[(index + 1) % loop.size()]];
-      segments.push_back(outlinePoint(from, z));
-      segments.push_back(outlinePoint(to, z));
-    }
-  };
-
-  if (surface.surface == PreviewSurface::Wall) {
-    auto const& walls = session.worldData->getWalls();
-    if (surface.wallIndex >= walls.size()) {
-      return segments;
-    }
-    auto const& wall = walls[surface.wallIndex];
-    auto const& edge = arrangement.edges[wall.edge];
-    std::array<glm::vec3, 4> quad{
-        outlinePoint(arrangement.vertices[edge.v[0]], wall.minZ),
-        outlinePoint(arrangement.vertices[edge.v[1]], wall.minZ),
-        outlinePoint(arrangement.vertices[edge.v[1]], wall.maxZ),
-        outlinePoint(arrangement.vertices[edge.v[0]], wall.maxZ)};
-    for (size_t index = 0; index < quad.size(); ++index) {
-      segments.push_back(quad[index]);
-      segments.push_back(quad[(index + 1) % quad.size()]);
-    }
-    return segments;
-  }
-
-  auto const& triangles = session.worldData->getTriangles();
-  if (surface.primitiveIndex >= triangles.size()) {
-    return segments;
-  }
-  auto const& face = arrangement.faces[triangles[surface.primitiveIndex].face];
-  auto const& properties = arrangement.palette[face.paletteIndex];
-  auto z = surface.surface == PreviewSurface::Ceiling ? properties.ceilingZ
-                                                      : properties.floorZ;
-  appendLoop(face.outerBoundaryVertices, z);
-  for (auto const& hole : face.innerBoundaryVertices) {
-    appendLoop(hole, z);
-  }
-  return segments;
 }
 
 // A size in framebuffer pixels, which is what the render graph's images are
@@ -935,11 +884,12 @@ void renderPreviewScene(ImVec2 const& windowSize) {
   std::vector<PreviewOutline> outlines;
   if (session.selection.valid) {
     outlines.push_back(
-        {surfaceOutline(session.selection), selectedOutlineColour});
+        {rendererSurfaceOutline(session.selection), selectedOutlineColour});
   }
   if (session.lookedAt.valid &&
       !sameSurface(session.lookedAt, session.selection)) {
-    outlines.push_back({surfaceOutline(session.lookedAt), hoveredOutlineColour});
+    outlines.push_back(
+        {rendererSurfaceOutline(session.lookedAt), hoveredOutlineColour});
   }
 
   auto textureId = preview->render(
