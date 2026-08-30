@@ -121,6 +121,22 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
     mResourceMgr->createResource(resource);
     mResourceMgr->loadResource(resource);
   }
+
+  // Preload every ImageResource so the wall normal-map and mask pickers can
+  // show thumbnails without paying a per-selection decode/upload cost. Each
+  // is acquired so World dependency churn cannot unload it; a bad image is
+  // skipped rather than taking the whole render system down with it.
+  for (auto const& resource : mResourceMgr->getResourcesByType("Image")) {
+    try {
+      mResourceMgr->createResource(resource);
+      mResourceMgr->loadResource(resource);
+      mResourceMgr->acquireResource(resource);
+      mPreloadedImages.push_back(resource);
+    } catch (std::exception const& exception) {
+      mLogger->warn(std::string("Could not preload ImageResource ") +
+                    resource->getQualifiedName() + ": " + exception.what());
+    }
+  }
 }
 
 bool EditorRenderSystem::loadWorldDependencies(
@@ -201,6 +217,11 @@ EditorRenderSystem::~EditorRenderSystem() {
     mResourceMgr->releaseResource(resource);
   }
   mWorldDependencies.clear();
+
+  for (auto const& resource : mPreloadedImages) {
+    mResourceMgr->releaseResource(resource);
+  }
+  mPreloadedImages.clear();
 
   delete mResourceMgr;
   mResourceMgr = nullptr;

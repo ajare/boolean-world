@@ -46,6 +46,7 @@
 // 0 none, 1 square, 2 hexagon, 3 running bond, 4 modular opus, 5 Voronoi.
 @@Uniform(int MATERIAL_INDEX);
 @@Uniform(float MATERIAL_PARAMS[8]);
+@@Uniform(vec3 MATERIAL_COLOUR);
 @@Uniform(int EMBOSS_PATTERN);
 @@Uniform(float EMBOSS_RADIUS);
 @@Uniform(float EMBOSS_DEPTH);
@@ -56,8 +57,20 @@
 @@Uniform(int WALL_NORMAL_MAP_ENABLED);
 @@Uniform(float WALL_NORMAL_MAP_STRENGTH);
 @@Uniform(float WALL_NORMAL_MAP_ASPECT_RATIO);
+@@Uniform(int WALL_MASK_ENABLED);
+@@Uniform(int WALL_MASK_CHANNEL);
+@@Uniform(float WALL_MASK_BLEND_PARAMS[8]);
+@@Uniform(vec3 WALL_MASK_BLEND_COLOUR);
+
+// The wall mask interpolates the primary parameters and base colour toward
+// their blend sets before the single material evaluation in main(). Every
+// technique function below reads these instead of the raw uniforms, so the
+// blend changes the primary's authored knobs without a second evaluation.
+float blendedMaterialParams[8];
+vec3 blendedMaterialColour;
 ## Texture
 @@Texture(sampler2D TEX1);
+@@Texture(sampler2D TEX2);
 ##
 @@Texture(sampler2D PBR_SCENE_COLOUR_RESOLVED);
 @@Texture(sampler2D PBR_PLANAR_REFLECTION_0);
@@ -731,14 +744,14 @@ struct MarbleParams
 MarbleParams unpackMarbleParams()
 {
     MarbleParams result;
-    result.warpScale = @Uniform(MATERIAL_PARAMS[0]);
-    result.veinsScale = @Uniform(MATERIAL_PARAMS[1]);
-    result.veinsFineScale = @Uniform(MATERIAL_PARAMS[2]);
-    result.fineDetailScale = @Uniform(MATERIAL_PARAMS[3]);
-    result.lightWarmMix = @Uniform(MATERIAL_PARAMS[4]);
-    result.veinMix = @Uniform(MATERIAL_PARAMS[5]);
-    result.cloudiness = @Uniform(MATERIAL_PARAMS[6]);
-    result.fbmScale = @Uniform(MATERIAL_PARAMS[7]);
+    result.warpScale = blendedMaterialParams[0];
+    result.veinsScale = blendedMaterialParams[1];
+    result.veinsFineScale = blendedMaterialParams[2];
+    result.fineDetailScale = blendedMaterialParams[3];
+    result.lightWarmMix = blendedMaterialParams[4];
+    result.veinMix = blendedMaterialParams[5];
+    result.cloudiness = blendedMaterialParams[6];
+    result.fbmScale = blendedMaterialParams[7];
     return result;
 }
 
@@ -849,7 +862,7 @@ float geologyField(vec3 p, int type)
         // verbatim by world_pbr_2d.frag's materialField type 1, and binding
         // it here keeps one default correct for both instead of two shaders
         // disagreeing about which constant medium_scale actually is.
-        float mediumScale = @Uniform(MATERIAL_PARAMS[1]);
+        float mediumScale = blendedMaterialParams[1];
         float coarse = geologyVoronoi(p * 2.2);
         return fbm(p * 0.65) * 0.45 + noise(p * mediumScale) * 0.20 +
                (1.0 - smoothstep(0.12, 0.48, coarse)) * 0.35;
@@ -947,8 +960,8 @@ struct StoneParams
 StoneParams unpackStoneParams()
 {
     StoneParams result;
-    result.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    result.stoneMix = @Uniform(MATERIAL_PARAMS[2]);
+    result.baseScale = blendedMaterialParams[0];
+    result.stoneMix = blendedMaterialParams[2];
     return result;
 }
 
@@ -983,8 +996,8 @@ struct SlateParams
 SlateParams unpackSlateParams()
 {
     SlateParams result;
-    result.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    result.rustMix = @Uniform(MATERIAL_PARAMS[1]);
+    result.baseScale = blendedMaterialParams[0];
+    result.rustMix = blendedMaterialParams[1];
     return result;
 }
 
@@ -1016,8 +1029,8 @@ struct SandstoneParams
 SandstoneParams unpackSandstoneParams()
 {
     SandstoneParams result;
-    result.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    result.grainScale = @Uniform(MATERIAL_PARAMS[1]);
+    result.baseScale = blendedMaterialParams[0];
+    result.grainScale = blendedMaterialParams[1];
     return result;
 }
 
@@ -1050,8 +1063,8 @@ struct LimestoneParams
 LimestoneParams unpackLimestoneParams()
 {
     LimestoneParams result;
-    result.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    result.poreMix = @Uniform(MATERIAL_PARAMS[1]);
+    result.baseScale = blendedMaterialParams[0];
+    result.poreMix = blendedMaterialParams[1];
     return result;
 }
 
@@ -1082,8 +1095,8 @@ Material limestoneTexture(vec3 worldPos, vec3 normal)
 struct BasaltParams { float baseScale; float vesicleMix; };
 BasaltParams unpackBasaltParams() {
     BasaltParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.vesicleMix = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.vesicleMix = blendedMaterialParams[1];
     return r;
 }
 
@@ -1108,8 +1121,8 @@ Material basaltTexture(vec3 worldPos, vec3 normal)
 struct ObsidianParams { float baseScale; float inclusionMix; };
 ObsidianParams unpackObsidianParams() {
     ObsidianParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.inclusionMix = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.inclusionMix = blendedMaterialParams[1];
     return r;
 }
 
@@ -1134,8 +1147,8 @@ Material obsidianTexture(vec3 worldPos, vec3 normal)
 struct QuartzParams { float baseScale; float amethystMix; };
 QuartzParams unpackQuartzParams() {
     QuartzParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.amethystMix = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.amethystMix = blendedMaterialParams[1];
     return r;
 }
 
@@ -1162,8 +1175,8 @@ Material quartzTexture(vec3 worldPos, vec3 normal)
 struct OreParams { float baseScale; float veinScale; };
 OreParams unpackOreParams() {
     OreParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.veinScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.veinScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -1191,8 +1204,8 @@ Material oreTexture(vec3 worldPos, vec3 normal)
 struct BandedGneissParams { float baseScale; float garnetScale; };
 BandedGneissParams unpackBandedGneissParams() {
     BandedGneissParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.garnetScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.garnetScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -1221,8 +1234,8 @@ Material bandedGneissTexture(vec3 worldPos, vec3 normal)
 struct RockParams { float baseScale; float mineralScale; };
 RockParams unpackRockParams() {
     RockParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.mineralScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.mineralScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -1247,8 +1260,8 @@ Material rockTexture(vec3 worldPos, vec3 normal)
 struct MossyRockParams { float baseScale; float mossScale; };
 MossyRockParams unpackMossyRockParams() {
     MossyRockParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.mossScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.mossScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -1277,8 +1290,8 @@ Material mossyRockTexture(vec3 worldPos, vec3 normal)
 struct WetRockParams { float baseScale; float wetnessThreshold; };
 WetRockParams unpackWetRockParams() {
     WetRockParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.wetnessThreshold = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.wetnessThreshold = blendedMaterialParams[1];
     return r;
 }
 
@@ -1365,8 +1378,8 @@ vec3 metalNormal(vec3 p, vec3 normal, int type, float field, float strength)
 struct RustedIronParams { float baseScale; float rustScale; };
 RustedIronParams unpackRustedIronParams() {
     RustedIronParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.rustScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.rustScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -1393,8 +1406,8 @@ Material rustedIronTexture(vec3 worldPos, vec3 normal)
 struct GalvanizedSteelParams { float baseScale; float facetMix; };
 GalvanizedSteelParams unpackGalvanizedSteelParams() {
     GalvanizedSteelParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.facetMix = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.facetMix = blendedMaterialParams[1];
     return r;
 }
 
@@ -1418,8 +1431,8 @@ Material galvanizedSteelTexture(vec3 worldPos, vec3 normal)
 struct BrushedMetalParams { float baseScale; float scratchMix; };
 BrushedMetalParams unpackBrushedMetalParams() {
     BrushedMetalParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.scratchMix = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.scratchMix = blendedMaterialParams[1];
     return r;
 }
 
@@ -1443,8 +1456,8 @@ Material brushedMetalTexture(vec3 worldPos, vec3 normal)
 struct HammeredMetalParams { float baseScale; float dentScale; };
 HammeredMetalParams unpackHammeredMetalParams() {
     HammeredMetalParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.dentScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.dentScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -1467,8 +1480,8 @@ Material hammeredMetalTexture(vec3 worldPos, vec3 normal)
 struct PatinatedCopperParams { float baseScale; float exposedScale; };
 PatinatedCopperParams unpackPatinatedCopperParams() {
     PatinatedCopperParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.exposedScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.exposedScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -1495,8 +1508,8 @@ Material patinatedCopperTexture(vec3 worldPos, vec3 normal)
 struct DamasceneSteelParams { float baseScale; float layerThreshold; };
 DamasceneSteelParams unpackDamasceneSteelParams() {
     DamasceneSteelParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.layerThreshold = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.layerThreshold = blendedMaterialParams[1];
     return r;
 }
 
@@ -1519,8 +1532,8 @@ Material damasceneSteelTexture(vec3 worldPos, vec3 normal)
 struct HeatTreatedMetalParams { float baseScale; float oxideMix; };
 HeatTreatedMetalParams unpackHeatTreatedMetalParams() {
     HeatTreatedMetalParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.oxideMix = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.oxideMix = blendedMaterialParams[1];
     return r;
 }
 
@@ -1732,7 +1745,7 @@ struct Wood2Params { float baseScale; };
 Wood2Params unpackWood2Params()
 {
     Wood2Params result;
-    result.baseScale = @Uniform(MATERIAL_PARAMS[0]);
+    result.baseScale = blendedMaterialParams[0];
     return result;
 }
 
@@ -1754,8 +1767,8 @@ Material wood2Texture(vec3 worldPos, vec3 normal)
 struct WoodParams { float baseScale; float ringScale; };
 WoodParams unpackWoodParams() {
     WoodParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.ringScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.ringScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -1782,8 +1795,8 @@ Material woodTexture(vec3 worldPos, vec3 normal)
 struct BarkParams { float baseScale; float ridgeScale; };
 BarkParams unpackBarkParams() {
     BarkParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.ridgeScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.ridgeScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -1808,8 +1821,8 @@ Material barkTexture(vec3 worldPos, vec3 normal)
 struct BoneParams { float baseScale; float poreScale; };
 BoneParams unpackBoneParams() {
     BoneParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.poreScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.poreScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -1834,8 +1847,8 @@ Material boneTexture(vec3 worldPos, vec3 normal)
 struct LeatherParams { float baseScale; float wearMix; };
 LeatherParams unpackLeatherParams() {
     LeatherParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.wearMix = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.wearMix = blendedMaterialParams[1];
     return r;
 }
 
@@ -1860,8 +1873,8 @@ Material leatherTexture(vec3 worldPos, vec3 normal)
 struct FleshParams { float baseScale; float veinMix; };
 FleshParams unpackFleshParams() {
     FleshParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.veinMix = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.veinMix = blendedMaterialParams[1];
     return r;
 }
 
@@ -1888,8 +1901,8 @@ Material fleshTexture(vec3 worldPos, vec3 normal)
 struct ChitinParams { float baseScale; float plateScale; };
 ChitinParams unpackChitinParams() {
     ChitinParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.plateScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.plateScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -1918,8 +1931,8 @@ Material chitinTexture(vec3 worldPos, vec3 normal)
 struct CoralParams { float baseScale; float poreMix; };
 CoralParams unpackCoralParams() {
     CoralParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.poreMix = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.poreMix = blendedMaterialParams[1];
     return r;
 }
 
@@ -2017,8 +2030,8 @@ vec3 spectralPalette(float phase)
 struct ArcaneCrystalParams { float baseScale; float coreMix; };
 ArcaneCrystalParams unpackArcaneCrystalParams() {
     ArcaneCrystalParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.coreMix = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.coreMix = blendedMaterialParams[1];
     return r;
 }
 
@@ -2043,8 +2056,8 @@ Material arcaneCrystalTexture(vec3 worldPos, vec3 normal)
 struct EnergyStoneParams { float baseScale; float energyScale; };
 EnergyStoneParams unpackEnergyStoneParams() {
     EnergyStoneParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.energyScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.energyScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -2069,8 +2082,8 @@ Material energyStoneTexture(vec3 worldPos, vec3 normal)
 struct AlienTissueParams { float baseScale; float cellScale; };
 AlienTissueParams unpackAlienTissueParams() {
     AlienTissueParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.cellScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.cellScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -2097,8 +2110,8 @@ Material alienTissueTexture(vec3 worldPos, vec3 normal)
 struct MagicalMetalParams { float baseScale; float runeScale; };
 MagicalMetalParams unpackMagicalMetalParams() {
     MagicalMetalParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.runeScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.runeScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -2124,8 +2137,8 @@ Material magicalMetalTexture(vec3 worldPos, vec3 normal)
 struct CloudSolidParams { float baseScale; float densityThreshold; };
 CloudSolidParams unpackCloudSolidParams() {
     CloudSolidParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.densityThreshold = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.densityThreshold = blendedMaterialParams[1];
     return r;
 }
 
@@ -2150,8 +2163,8 @@ Material cloudSolidTexture(vec3 worldPos, vec3 normal)
 struct HolographicParams { float baseScale; float scanScale; };
 HolographicParams unpackHolographicParams() {
     HolographicParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.scanScale = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.scanScale = blendedMaterialParams[1];
     return r;
 }
 
@@ -2176,8 +2189,8 @@ Material holographicTexture(vec3 worldPos, vec3 normal, vec3 viewDir)
 struct CorruptionParams { float baseScale; float spreadThreshold; };
 CorruptionParams unpackCorruptionParams() {
     CorruptionParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.spreadThreshold = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.spreadThreshold = blendedMaterialParams[1];
     return r;
 }
 
@@ -2284,8 +2297,8 @@ vec3 frostedGlassNormal(vec3 p, vec3 normal, float field, float strength)
 struct FrostedGlassParams { float baseScale; float frostThreshold; };
 FrostedGlassParams unpackFrostedGlassParams() {
     FrostedGlassParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.frostThreshold = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.frostThreshold = blendedMaterialParams[1];
     return r;
 }
 
@@ -2330,8 +2343,8 @@ float brickReliefField(vec2 uv, float brickHeight)
 struct BrickParams { float baseScale; float brickHeight; };
 BrickParams unpackBrickParams() {
     BrickParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.brickHeight = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.brickHeight = blendedMaterialParams[1];
     return r;
 }
 
@@ -2389,8 +2402,8 @@ float circuitReliefField(vec2 uv)
 struct CircuitBoardParams { float baseScale; float fineTraceMix; };
 CircuitBoardParams unpackCircuitBoardParams() {
     CircuitBoardParams r;
-    r.baseScale = @Uniform(MATERIAL_PARAMS[0]);
-    r.fineTraceMix = @Uniform(MATERIAL_PARAMS[1]);
+    r.baseScale = blendedMaterialParams[0];
+    r.fineTraceMix = blendedMaterialParams[1];
     return r;
 }
 
@@ -2662,22 +2675,29 @@ Material evaluateMaterial(
 // Shared by the 3D and horizontal PBR programs. Horizontal batches always
 // bind WALL_NORMAL_MAP_ENABLED=0; keeping the complete contract here and in
 // world_pbr_2d.frag prevents the two world pipelines from drifting.
+vec2 wallImageUv()
+{
+    // Linear tangent space: +X follows increasing physical wall U
+    // (orientation.v0 to orientation.v1), +Y follows increasing world
+    // elevation, and +Z points outward. In renderer coordinates that U axis
+    // is cross(wallNormal, worldUp), not the opposite cross product.
+    vec2 uv = @In(TEXCOORDS);
+    // Units per repeat specifies the image's world-space width. Preserve the
+    // source image's natural proportions when deriving its world-space height.
+    // The wall mask deliberately receives these same scaled UVs - it has no
+    // aspect-ratio correction of its own.
+    uv.y *= @Uniform(WALL_NORMAL_MAP_ASPECT_RATIO);
+    return uv;
+}
+
 vec3 applyWallNormalMap(vec3 geometricNormal)
 {
     vec3 surfaceNormal = normalize(geometricNormal);
     if (@Uniform(WALL_NORMAL_MAP_ENABLED) == 0)
         return surfaceNormal;
 
-    // Linear tangent space: +X follows increasing physical wall U
-    // (orientation.v0 to orientation.v1), +Y follows increasing world
-    // elevation, and +Z points outward. In renderer coordinates that U axis
-    // is cross(wallNormal, worldUp), not the opposite cross product.
-    vec2 normalMapUv = @In(TEXCOORDS);
-    // Units per repeat specifies the image's world-space width. Preserve the
-    // source image's natural proportions when deriving its world-space height.
-    normalMapUv.y *= @Uniform(WALL_NORMAL_MAP_ASPECT_RATIO);
     vec3 sampled = texture(
-        @Texture(TEX1), normalMapUv).rgb * 2.0 - 1.0;
+        @Texture(TEX1), wallImageUv()).rgb * 2.0 - 1.0;
     float strength = max(@Uniform(WALL_NORMAL_MAP_STRENGTH), 0.0);
     if (strength == 0.0)
         sampled = vec3(0.0, 0.0, 1.0);
@@ -2687,6 +2707,40 @@ vec3 applyWallNormalMap(vec3 geometricNormal)
     return normalize(
         tangent * sampled.x + vec3(0.0, 1.0, 0.0) * sampled.y +
         surfaceNormal * sampled.z);
+}
+
+// One channel of the mask image, sampled with the shared wall image UVs,
+// drives the blend weight. Unmasked walls bind a 1x1 zero mask texture and
+// pass the primary parameters as the blend set, so this path never branches
+// on mask availability: the enabled flag and the zero texture both drive the
+// weight to zero for a wall without a mask.
+float wallMaskWeight()
+{
+    vec4 maskSample = texture(@Texture(TEX2), wallImageUv());
+    int channel = clamp(@Uniform(WALL_MASK_CHANNEL), 0, 3);
+    float value = channel == 0 ? maskSample.r
+                : channel == 1 ? maskSample.g
+                : channel == 2 ? maskSample.b
+                : maskSample.a;
+    return value * float(@Uniform(WALL_MASK_ENABLED));
+}
+
+// Interpolate MATERIAL_PARAMS toward WALL_MASK_BLEND_PARAMS per fragment,
+// before the single material evaluation in main().
+void blendMaterialParams()
+{
+    float weight = wallMaskWeight();
+    for (int i = 0; i < 8; ++i)
+    {
+        blendedMaterialParams[i] = mix(
+            @Uniform(MATERIAL_PARAMS[i]),
+            @Uniform(WALL_MASK_BLEND_PARAMS[i]),
+            weight);
+    }
+    blendedMaterialColour = mix(
+        @Uniform(MATERIAL_COLOUR),
+        @Uniform(WALL_MASK_BLEND_COLOUR),
+        weight);
 }
 
 // This is a GLSL transliteration of core::CalculateLiquidPathLength, which is
@@ -2905,14 +2959,15 @@ void main()
     int materialIndex = floorMaterialIndex(
         @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 39));
     materialIndex = clamp(materialIndex, 0, 39);
+    blendMaterialParams();
     Material material = evaluateMaterial(
         texturePosition, normalDir, viewDir, materialIndex);
 
-    // Per-vertex tint, applied to the surface's own colour before any
-    // lighting so a tinted surface still shades exactly like an untinted
-    // one. White - what every caller passes unless it is deliberately
-    // marking a surface out - leaves the material untouched.
-    material.albedo *= @In(COLOUR).rgb;
+    // The blended base colour tints the surface's own colour before any
+    // lighting; the per-vertex tint (white unless the editor is marking a
+    // surface out) is applied on top and leaves the material untouched when
+    // white.
+    material.albedo *= blendedMaterialColour * @In(COLOUR).rgb;
 
     // Whatever this material embosses, on whatever surface it was
     // applied to - floor, ceiling or wall.

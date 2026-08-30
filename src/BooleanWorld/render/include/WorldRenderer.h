@@ -53,7 +53,7 @@ private:
   wp::application::resourcesystem::ResourceManager* mResourceMgr{};
   std::string mWorldResourceNamespace;
   std::string mBatchNamePrefix;
-  std::map<std::string, WallRenderVariant> mNormalMapVariants;
+  std::map<std::string, WallRenderVariant> mWallImageVariants;
   std::vector<MaterialRenderer> mMaterialRenderers;
   std::vector<WallRenderSurface> mWallRenderSurfaces;
   WallRenderVariantResolver mWallRenderVariantResolver;

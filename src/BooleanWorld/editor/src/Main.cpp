@@ -326,6 +326,8 @@ void shutdown() {
   // Before the GL context goes away below: the preview's render stack and
   // the render system underneath it own GPU resources built against it.
   editor::shutdownPreview3D();
+  editor::shutdownMaterialPickerThumbnails();
+  editor::shutdownImageResourceThumbnails();
   editor::destroyEditorRenderSystem();
 
   // ImGui

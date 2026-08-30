@@ -32,11 +32,13 @@ public:
 
   static constexpr size_t BlendParameterCount = 8;
   using BlendParameters = std::array<float, BlendParameterCount>;
+  using BlendColour = std::array<float, 3>;
 
   struct ImageData {
     std::string resourceName;
     uint8_t channel{0};
     BlendParameters blendParameters{};
+    BlendColour blendColour{1.0f, 1.0f, 1.0f};
     bool operator==(ImageData const&) const = default;
   };
 
@@ -48,16 +50,22 @@ public:
   }
   [[nodiscard]] static WallMaskOverride image(
       std::string resourceName, uint8_t channel,
-      BlendParameters blendParameters) {
+      BlendParameters blendParameters,
+      BlendColour blendColour = {1.0f, 1.0f, 1.0f}) {
     auto finite = std::all_of(
         blendParameters.begin(), blendParameters.end(),
         [](float value) { return std::isfinite(value); });
-    if (resourceName.empty() || channel > 3 || !finite) {
+    auto colourValid = std::all_of(
+        blendColour.begin(), blendColour.end(), [](float value) {
+          return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
+        });
+    if (resourceName.empty() || channel > 3 || !finite || !colourValid) {
       throw std::invalid_argument("Invalid Wall mask Image override.");
     }
     return WallMaskOverride(
         State::Image,
-        ImageData{std::move(resourceName), channel, blendParameters});
+        ImageData{std::move(resourceName), channel, blendParameters,
+                  blendColour});
   }
 
   [[nodiscard]] State state() const noexcept { return mState; }

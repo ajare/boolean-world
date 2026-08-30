@@ -37,4 +37,13 @@ void renderWidgets(
     bw::core::WorldData const* worldData,
     double globalTime);
 
+// Releases the Sub-material picker modal's thumbnail renderer, which owns GPU
+// resources built against the editor's GL context. Must run while that context
+// is still current, before it is destroyed.
+void shutdownMaterialPickerThumbnails();
+
+// Releases the ImageResource picker modal's thumbnail textures, likewise owned
+// by the editor's GL context. Must run while that context is still current.
+void shutdownImageResourceThumbnails();
+
 }  // namespace editor

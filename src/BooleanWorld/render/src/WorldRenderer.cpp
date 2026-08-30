@@ -15,6 +15,7 @@
 #include <willpower/application/resourcesystem/ImageResource.h>
 
 #include "WorldRenderer.h"
+#include "WallMaskRenderData.h"
 #include "WallNormalMapRenderData.h"
 
 using namespace std;
@@ -43,6 +44,23 @@ string normalMapIdentity(bw::core::WallNormalMapOverride::ImageData const& image
          << bit_cast<uint32_t>(image.strength);
   return result.str();
 }
+
+// The resolved texture plus its authored tuning for one wall image. These are
+// shared, keyed payloads: a normal map (and a mask, when present) may back
+// several Sub-material buckets without duplicating the GPU texture.
+struct NormalMapPayload {
+  mpp::ResourcePtr texture;
+  float strength{1.0f};
+  float aspectRatio{1.0f};
+};
+
+struct MaskPayload {
+  mpp::ResourcePtr texture;
+  uint8_t channel{0};
+  bw::core::WallMaskOverride::BlendParameters blendParameters{};
+  bw::core::WallMaskOverride::BlendColour blendColour{1.0f, 1.0f, 1.0f};
+  float aspectRatio{1.0f};
+};
 
 }  // namespace
 
@@ -143,7 +161,38 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
 
   // Turn authored ImageResource references into stable variant buckets before
   // the wall batch is created. Disabled and Unset intentionally seed nothing.
+  // A mask shares the normal map's repeat and UVs when one is present; a mask
+  // without a normal map owns a single-tile repeat of its own.
+  auto loadWallImage = [&](std::string const& resourceName,
+                           char const* kind) {
+    string namesp;
+    string name;
+    wp::application::resourcesystem::Resource::splitName(
+        resourceName, mWorldResourceNamespace, &namesp, &name);
+    auto resource = mResourceMgr->getResource(name, namesp);
+    auto imageResource = dynamic_pointer_cast<
+        wp::application::resourcesystem::ImageResource>(resource);
+    if (!imageResource || !mResourceMgr->isResourceLoaded(resource)) {
+      throw runtime_error(string{"Wall "} + kind + " resource '" +
+                          resourceName + "' is not a loaded ImageResource.");
+    }
+    if (imageResource->getWidth() <= 0 ||
+        imageResource->getHeight() <= 0 ||
+        imageResource->getWidth() > 8192 ||
+        imageResource->getHeight() > 8192 ||
+        (imageResource->getNumChannels() != 3 &&
+         imageResource->getNumChannels() != 4)) {
+      throw runtime_error(string{"Wall "} + kind +
+                          " ImageResource '" + resourceName +
+                          "' has unsupported dimensions or channels.");
+    }
+    return imageResource;
+  };
+
   set<pair<string, string>> wallSurfaceMaterials;
+  map<string, NormalMapPayload> normalMapPayloads;
+  map<string, MaskPayload> maskPayloads;
+  set<pair<string, string>> imageCombinations;  // (normal map, mask or empty)
   for (uint32_t primitiveIndex = 0;
        primitiveIndex < world->getNumPrimitives(); ++primitiveIndex) {
     auto* primitive = world->getPrimitive(primitiveIndex);
@@ -153,59 +202,113 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
     for (auto const& polygon : primitive->getVertices()) {
       for (auto const& ring : polygon) {
         for (auto const& vertex : ring) {
-          auto image = vertex.edgeNormalMap.imageData();
-          if (!image) continue;
-          auto identity = normalMapIdentity(*image);
-          if (!mNormalMapVariants.contains(identity)) {
-            string namesp;
-            string name;
-            wp::application::resourcesystem::Resource::splitName(
-                image->resourceName, mWorldResourceNamespace, &namesp, &name);
-            auto resource = mResourceMgr->getResource(name, namesp);
-            auto imageResource = dynamic_pointer_cast<
-                wp::application::resourcesystem::ImageResource>(resource);
-            if (!imageResource || !mResourceMgr->isResourceLoaded(resource)) {
-              throw runtime_error("Wall normal-map resource '" +
-                                  image->resourceName +
-                                  "' is not a loaded ImageResource.");
+          auto normalMap = vertex.edgeNormalMap.imageData();
+          auto mask = vertex.edgeWallMask.imageData();
+          if (!normalMap && !mask) continue;
+
+          auto normalMapId = string{};
+          if (normalMap) {
+            normalMapId = normalMapIdentity(*normalMap);
+            if (!normalMapPayloads.contains(normalMapId)) {
+              auto imageResource =
+                  loadWallImage(normalMap->resourceName, "normal-map");
+              normalMapPayloads.emplace(
+                  normalMapId,
+                  NormalMapPayload{
+                      imageResource->getMppResource(), normalMap->strength,
+                      static_cast<float>(imageResource->getWidth()) /
+                          imageResource->getHeight()});
             }
-            if (imageResource->getWidth() <= 0 ||
-                imageResource->getHeight() <= 0 ||
-                imageResource->getWidth() > 8192 ||
-                imageResource->getHeight() > 8192 ||
-                (imageResource->getNumChannels() != 3 &&
-                 imageResource->getNumChannels() != 4)) {
-              throw runtime_error("Wall normal-map ImageResource '" +
-                                  image->resourceName +
-                                  "' has unsupported dimensions or channels.");
-            }
-            WallRenderVariant variant;
-            variant.identity = identity;
-            variant.textureSampler = "TEX1";
-            variant.texture = imageResource->getMppResource();
-            auto strength = image->strength;
-            auto aspectRatio = static_cast<float>(imageResource->getWidth()) /
-                               imageResource->getHeight();
-            variant.setUniforms =
-                [strength, aspectRatio](mpp::UniformCollection& uniforms) {
-                  uniforms.updateUniform("WALL_NORMAL_MAP_ENABLED", int32_t{1});
-                  uniforms.updateUniform("WALL_NORMAL_MAP_STRENGTH", strength);
-                  uniforms.updateUniform(
-                      "WALL_NORMAL_MAP_ASPECT_RATIO", aspectRatio);
-                };
-            mNormalMapVariants.emplace(identity, move(variant));
           }
+
+          auto maskId = string{};
+          if (mask) {
+            maskId = maskIdentity(*mask);
+            if (!maskPayloads.contains(maskId)) {
+              auto imageResource = loadWallImage(mask->resourceName, "mask");
+              if (mask->channel == 3 &&  // Alpha needs a fourth channel.
+                  imageResource->getNumChannels() != 4) {
+                throw runtime_error(
+                    "Wall mask ImageResource '" + mask->resourceName +
+                    "' has no alpha channel for the selected Alpha mask channel.");
+              }
+              maskPayloads.emplace(
+                  maskId,
+                  MaskPayload{
+                      imageResource->getMppResource(), mask->channel,
+                      mask->blendParameters, mask->blendColour,
+                      static_cast<float>(imageResource->getWidth()) /
+                          imageResource->getHeight()});
+            }
+          }
+          imageCombinations.emplace(normalMapId, maskId);
         }
       }
     }
   }
+
+  // Build the combined variants. The mask identity is concatenated onto the
+  // normal map's (a mask without a normal map contributes just the mask
+  // identity), so walls differing in either image resolve to distinct buckets.
+  for (auto const& [normalMapId, maskId] : imageCombinations) {
+    auto identity = normalMapId + maskId;
+    WallRenderVariant variant;
+    variant.identity = identity;
+
+    if (!normalMapId.empty()) {
+      auto const& normalMap = normalMapPayloads.at(normalMapId);
+      variant.textureSampler = "TEX1";
+      variant.texture = normalMap.texture;
+      auto strength = normalMap.strength;
+      auto aspectRatio = normalMap.aspectRatio;
+      variant.setUniforms =
+          [strength, aspectRatio](mpp::UniformCollection& uniforms) {
+            uniforms.updateUniform("WALL_NORMAL_MAP_ENABLED", int32_t{1});
+            uniforms.updateUniform("WALL_NORMAL_MAP_STRENGTH", strength);
+            uniforms.updateUniform(
+                "WALL_NORMAL_MAP_ASPECT_RATIO", aspectRatio);
+          };
+    }
+
+    if (!maskId.empty()) {
+      auto const& mask = maskPayloads.at(maskId);
+      variant.maskTextureSampler = "TEX2";
+      variant.maskTexture = mask.texture;
+      auto channel = static_cast<int32_t>(mask.channel);
+      auto blendParameters = mask.blendParameters;
+      auto blendColour = mask.blendColour;
+      auto maskAspectRatio = mask.aspectRatio;
+      auto hasNormalMap = !normalMapId.empty();
+      variant.setMaskUniforms =
+          [channel, blendParameters, blendColour, maskAspectRatio,
+           hasNormalMap](mpp::UniformCollection& uniforms) {
+            uniforms.updateUniform("WALL_MASK_ENABLED", int32_t{1});
+            uniforms.updateUniform("WALL_MASK_CHANNEL", channel);
+            uniforms.updateUniform(
+                "WALL_MASK_BLEND_PARAMS", blendParameters.data());
+            uniforms.updateUniform(
+                "WALL_MASK_BLEND_COLOUR",
+                glm::vec3{blendColour[0], blendColour[1], blendColour[2]});
+            // A mask without a normal map owns the wall-image aspect ratio
+            // the shared UVs are corrected by; the normal map stays off.
+            if (!hasNormalMap) {
+              uniforms.updateUniform(
+                  "WALL_NORMAL_MAP_ENABLED", int32_t{0});
+              uniforms.updateUniform(
+                  "WALL_NORMAL_MAP_ASPECT_RATIO", maskAspectRatio);
+            }
+          };
+    }
+    mWallImageVariants.emplace(identity, move(variant));
+  }
+
   // The winning override and the wall's Sub-material can come from different
-  // Primitives in the fold.  Predeclare their complete cross-product so a
+  // Primitives in the fold. Predeclare their complete cross-product so a
   // resolved Image always has a bucket; Unset and Disabled intentionally use
   // the single existing unmapped bucket.
   set<tuple<string, string, string>> seeded;
   for (auto const& [subMaterialId, embossPresetId] : wallSurfaceMaterials) {
-    for (auto const& [identity, variant] : mNormalMapVariants) {
+    for (auto const& [identity, variant] : mWallImageVariants) {
       if (seeded.emplace(subMaterialId, embossPresetId, identity).second) {
         mWallRenderSurfaces.push_back(
             {subMaterialId, variant, embossPresetId});
@@ -217,10 +320,17 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
       [this, fallbackResolver = move(fallbackResolver)](
           bw::core::arr::ArrangementWall const& wall)
       -> optional<WallRenderVariant> {
-    if (auto image = wall.normalMapOverride.imageData()) {
-      auto found = mNormalMapVariants.find(normalMapIdentity(*image));
-      if (found != mNormalMapVariants.end()) return found->second;
+    auto normalMap = wall.normalMapOverride.imageData();
+    auto mask = wall.wallMaskOverride.imageData();
+    if (!normalMap && !mask) {
+      return fallbackResolver ? fallbackResolver(wall)
+                              : optional<WallRenderVariant>{};
     }
+    auto identity =
+        (normalMap ? normalMapIdentity(*normalMap) : string{}) +
+        (mask ? maskIdentity(*mask) : string{});
+    auto found = mWallImageVariants.find(identity);
+    if (found != mWallImageVariants.end()) return found->second;
     return fallbackResolver ? fallbackResolver(wall)
                             : optional<WallRenderVariant>{};
   };

@@ -14,40 +14,48 @@ struct WallPhysicalUv {
 // Each ArrangementWall starts at (0, 0), preventing world-position phase from
 // shifting an image partway across the surface. `repeat` is the horizontal
 // image count across this wall. V is measured in the same world-space scale;
-// the shader then applies the decoded image aspect ratio.
+// the shader then applies the decoded image aspect ratio. A normal map carries
+// its own repeat; a mask without a normal map owns a single-tile repeat.
+[[nodiscard]] inline float WallImageRepeat(
+    bw::core::arr::ArrangementWall const& wall) {
+  if (auto image = wall.normalMapOverride.imageData()) {
+    return image->repeat;
+  }
+  return wall.wallMaskOverride.imageData() ? 1.0f : 0.0f;
+}
+
 [[nodiscard]] inline WallPhysicalUv CalculateWallPhysicalUv(
     bw::core::arr::ArrangementWallOrientation const& orientation,
     bw::core::arr::ArrangementWall const& wall) {
-  auto image = wall.normalMapOverride.imageData();
-  if (!image) return {};
+  auto repeat = WallImageRepeat(wall);
+  if (repeat <= 0.0f) return {};
   auto length = orientation.v0.distanceTo(orientation.v1);
   if (length <= 0.0f) return {};
-  auto verticalRepeat =
-      (wall.maxZ - wall.minZ) * image->repeat / length;
-  return {0.0f, image->repeat, 0.0f, verticalRepeat};
+  auto verticalRepeat = (wall.maxZ - wall.minZ) * repeat / length;
+  return {0.0f, repeat, 0.0f, verticalRepeat};
 }
 
 // Chip generation triangulates a bitten wall in its own normalized UV space.
 // Its coplanar SurfaceRemainder is still the authored wall surface, however,
 // so restore the same absolute physical anchoring used by an uncut wall.
 // Newly exposed Chip facets deliberately keep their supplied UVs and render
-// without the wall normal-map variant.
+// without the wall image variant.
 inline void ApplyWallPhysicalUvToRemainder(
     bw::core::arr::ArrangementWallOrientation const& orientation,
     bw::core::arr::ArrangementWall const& wall,
     bw::core::arr::DetailTriangle& triangle) {
-  auto image = wall.normalMapOverride.imageData();
-  if (!image ||
-      triangle.kind != bw::core::arr::DetailTriangleKind::SurfaceRemainder) {
+  if (triangle.kind != bw::core::arr::DetailTriangleKind::SurfaceRemainder) {
     return;
   }
+  auto repeat = WallImageRepeat(wall);
+  if (repeat <= 0.0f) return;
   auto tangent = orientation.v1 - orientation.v0;
   auto length = static_cast<float>(tangent.normalise());
   if (length <= 0.0f) return;
   for (auto& vertex : triangle.v) {
     wp::Vector2 position{vertex.position[0], vertex.position[1]};
     vertex.uv = {
-        (position - orientation.v0).dot(tangent) * image->repeat / length,
-        (vertex.position[2] - wall.minZ) * image->repeat / length};
+        (position - orientation.v0).dot(tangent) * repeat / length,
+        (vertex.position[2] - wall.minZ) * repeat / length};
   }
 }

@@ -1470,6 +1470,11 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
           serializer->writeFloat("", parameter);
         }
         serializer->endArray();
+        serializer->beginArray("wallMaskBlendColour", false);
+        for (float component : mask->blendColour) {
+          serializer->writeFloat("", component);
+        }
+        serializer->endArray();
       }
       serializer->endMap();
     }
@@ -1657,8 +1662,26 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
                 throw CoreException(
                     "Wall mask blend parameters must hold exactly eight values.");
               }
+              WallMaskOverride::BlendColour blendColour{1.0f, 1.0f, 1.0f};
+              if (serializer->hasField("wallMaskBlendColour")) {
+                serializer->beginArray("wallMaskBlendColour");
+                size_t colourIndex = 0;
+                while (serializer->nextArrayItem()) {
+                  if (colourIndex >= blendColour.size()) {
+                    throw CoreException(
+                        "Wall mask blend colour exceeds three components.");
+                  }
+                  blendColour[colourIndex++] = serializer->readFloat();
+                }
+                serializer->endArray();
+                if (colourIndex != blendColour.size()) {
+                  throw CoreException(
+                      "Wall mask blend colour must hold exactly three values.");
+                }
+              }
               ring.back().edgeWallMask = WallMaskOverride::image(
-                  std::move(resourceName), channel, blendParameters);
+                  std::move(resourceName), channel, blendParameters,
+                  blendColour);
               break;
             }
             default:

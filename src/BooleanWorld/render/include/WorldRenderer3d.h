@@ -50,6 +50,9 @@ class WorldRenderer3d {
   // BooleanWorldRender-owned solid-magenta Debug material.
   mpp::ResourcePtr mDebugMaterial;
   std::set<std::string> mDebugMeshNames;
+  // The renderer-owned 1x1 zero mask texture bound to TEX2 for every wall
+  // mesh without a mask, keeping the shader's mask contract uniform.
+  mpp::ResourcePtr mWallMaskZeroTexture;
   std::string mBatchNamePrefix;
 
   float mGlobalTime;

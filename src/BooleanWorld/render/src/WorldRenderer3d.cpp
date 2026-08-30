@@ -1,9 +1,12 @@
 #include <algorithm>
 
+#include <GL/glew.h>
+
 #include <mpp/Material.h>
 #include <mpp/Program.h>
 #include <mpp/ProgrammaticBasicMaterialStream.h>
 #include <mpp/ProgrammaticProgramStream.h>
+#include <mpp/ProgrammaticTextureStream.h>
 #include <mpp/program/Parser.h>
 
 #include <core/Defines.h>
@@ -22,6 +25,11 @@ using namespace wp::application::resourcesystem;
 namespace {
 constexpr char const* debugProgramName = "BooleanWorldRender.DebugMaterial.Program";
 constexpr char const* debugMaterialName = "BooleanWorldRender.DebugMaterial";
+
+// The neutral mask blend set bound before a mesh's primary parameters are
+// known. Wall meshes overwrite it with their primary parameters; masked
+// variants overwrite it with the authored blend parameters.
+constexpr float zeroWallMaskBlendParams[BW_MATERIAL_PARAMS_MAX]{};
 
 // This material deliberately lives outside Resources.yaml and every
 // ProcMaterial catalog. It shares the world's mesh contract but has no PBR
@@ -73,6 +81,35 @@ mpp::ResourcePtr getOrCreateDebugMaterial(
   // Resource wrapper to do that for it, so make its program ready explicitly.
   material->create();
   return material;
+}
+
+// Every wall mesh without a mask still samples the mask sampler: the shader
+// multiplies the sampled channel by WALL_MASK_ENABLED, which those meshes
+// bind to zero. A 1x1 single-channel zero texture is the neutral bound value,
+// so the mask contract never needs a per-mesh branch on mask availability.
+mpp::ResourcePtr getOrCreateWallMaskZeroTexture(
+    mpp::ResourceManager* resourceMgr) {
+  constexpr char const* name = "BooleanWorld.WallMaskZero";
+  auto texture = resourceMgr->getResource(name, true);
+  if (texture) return texture;
+
+  auto stream = std::make_shared<mpp::ProgrammaticTextureStream>(resourceMgr);
+  stream->setTarget(mpp::TextureTarget::Texture2D);
+  stream->setColourSpace(mpp::TextureColourSpace::Linear);
+  stream->setData([](std::string const&) {
+    mpp::TextureData data;
+    data.width = 1;
+    data.height = 1;
+    data.bitsPerPixel = 8;
+    data.dataType = GL_UNSIGNED_BYTE;
+    data.pixelFormat = GL_RED;
+    data.data = new uint8_t[1]{0};
+    return data;
+  });
+  stream->setFiltering(
+      mpp::TextureParams::MinFilter::Nearest,
+      mpp::TextureParams::MagFilter::Nearest);
+  return resourceMgr->declareResource(name, stream).first;
 }
 
 char const* surfaceSetName(WorldSurfaceSet surfaceSet) {
@@ -165,6 +202,21 @@ void updateEmbossUniforms(
   uniforms.updateUniform("EMBOSS_VORONOI_ROUNDING", emboss.voronoiRounding);
 }
 
+// The base colour every mesh bucket carries, set from the resolved
+// Sub-material. The wall mask interpolates this toward its own blend colour
+// per fragment, exactly as it interpolates MATERIAL_PARAMS.
+void setMaterialColour(
+    mpp::UniformCollection& uniforms,
+    std::array<float, 3> const& colour) {
+  uniforms.setUniform("MATERIAL_COLOUR", glm::vec3{colour[0], colour[1], colour[2]});
+}
+
+void updateMaterialColour(
+    mpp::UniformCollection& uniforms,
+    std::array<float, 3> const& colour) {
+  uniforms.updateUniform("MATERIAL_COLOUR", glm::vec3{colour[0], colour[1], colour[2]});
+}
+
 }  // namespace
 
 void WorldRenderer3d::updateMaterialUniforms(
@@ -187,10 +239,25 @@ void WorldRenderer3d::updateMaterialUniforms(
     auto const& uniforms = mUniforms[meshIndex];
     uniforms->updateUniform("MATERIAL_INDEX", materialIndex);
     uniforms->updateUniform("MATERIAL_PARAMS", definition.params.data());
+    uniforms->updateUniform(
+        "MATERIAL_COLOUR",
+        glm::vec3{definition.baseColour[0], definition.baseColour[1],
+                  definition.baseColour[2]});
     // A draft's relief lands here too, so dragging an emboss slider in the
     // editor reads back immediately in the preview - the bucket keeps its
     // baked hash, only its uniforms change.
     updateEmbossUniforms(*uniforms, definition.emboss);
+    // An unmasked wall keeps the primary parameters and colour as its blend
+    // set; a masked wall's blend set is authored independently and must not
+    // follow the primary draft.
+    if (!variant || !variant->setMaskUniforms) {
+      uniforms->updateUniform(
+          "WALL_MASK_BLEND_PARAMS", definition.params.data());
+      uniforms->updateUniform(
+          "WALL_MASK_BLEND_COLOUR",
+          glm::vec3{definition.baseColour[0], definition.baseColour[1],
+                    definition.baseColour[2]});
+    }
   };
 
   updateMesh(std::nullopt);
@@ -244,6 +311,11 @@ void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvide
   mDebugMaterial = getOrCreateDebugMaterial(
       resourceMgr, mRenderer->getWorldBatch()->getSpecification());
 
+  // Only the wall batch needs the mask sampler, and only walls can be masked.
+  if (mSurfaceSet == WorldSurfaceSet::Walls) {
+    mWallMaskZeroTexture = getOrCreateWallMaskZeroTexture(resourceMgr);
+  }
+
   mDataProvider->setMeshCount(static_pointer_cast<mpp::Model>(mRenderer->getModel())->getNumMeshes());
 }
 
@@ -265,6 +337,24 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         if (static_cast<int32_t>(materialIndex) >= 0) return;
         params->setMeshMaterial(meshName, mDebugMaterial);
         mDebugMeshNames.insert(meshName);
+      };
+
+  // Wall batches bind the mask sampler on every mesh: the authored mask image
+  // for a masked wall, or the renderer-owned 1x1 zero texture otherwise.
+  auto bindWallMaskTexture =
+      [&](std::string const& meshName, mpp::ResourcePtr texture) {
+        auto material = dynamic_pointer_cast<mpp::Material>(
+            mMaterial->getMppResource());
+        auto program = material
+                           ? dynamic_pointer_cast<mpp::Program>(
+                                 material->getProgram())
+                           : nullptr;
+        auto textureUnit = program ? program->getSamplerUnit("TEX2") : -1;
+        if (textureUnit < 0) {
+          throw logic_error("Wall mask texture sampler TEX2 is unavailable.");
+        }
+        params->setMeshTexture(
+            meshName, static_cast<uint32_t>(textureUnit), texture);
       };
 
   // Create uniforms for each material mesh.
@@ -294,9 +384,16 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
     uniforms.setUniform("SECONDARY_MATERIAL_INDEX", int32_t{-1});
     uniforms.setUniform("USE_SECONDARY_MATERIAL", int32_t{0});
+    uniforms.setUniform("MATERIAL_COLOUR", glm::vec3{1.0f});
     uniforms.setUniform("WALL_NORMAL_MAP_ENABLED", int32_t{0});
     uniforms.setUniform("WALL_NORMAL_MAP_STRENGTH", 1.0f);
     uniforms.setUniform("WALL_NORMAL_MAP_ASPECT_RATIO", 1.0f);
+    uniforms.setUniform("WALL_MASK_ENABLED", int32_t{0});
+    uniforms.setUniform("WALL_MASK_CHANNEL", int32_t{0});
+    uniforms.setUniform("WALL_MASK_BLEND_COLOUR", glm::vec3{1.0f});
+    uniforms.setUniform(
+        "WALL_MASK_BLEND_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
+        zeroWallMaskBlendParams);
   };
 
   auto numPrimitives = world->getNumPrimitives();
@@ -322,8 +419,15 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         uniforms->setUniform(
             "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
             resolved.def.params.data());
+        setMaterialColour(*uniforms, resolved.def.baseColour);
         setEmbossUniforms(*uniforms, resolved.def.emboss);
         initializeGlobalUniforms(*uniforms);
+        // Unmasked wall buckets pass the primary parameters as the blend set
+        // and sample the 1x1 zero mask texture, keeping the mask contract
+        // uniform with masked buckets.
+        uniforms->updateUniform(
+            "WALL_MASK_BLEND_PARAMS", resolved.def.params.data());
+        bindWallMaskTexture(meshName, mWallMaskZeroTexture);
         mUniforms[meshIndex] = uniforms;
         mMaterialIndices[meshIndex] =
             static_cast<int32_t>(resolved.materialIndex);
@@ -354,6 +458,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)floorResolved.materialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, floorResolved.def.params.data());
+      setMaterialColour(*uniforms, floorResolved.def.baseColour);
       setEmbossUniforms(*uniforms, floorResolved.def.emboss);
       initializeGlobalUniforms(*uniforms);
 
@@ -378,6 +483,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
       uniforms->setUniform("MATERIAL_INDEX", (int32_t)ceilingResolved.materialIndex);
       uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, ceilingResolved.def.params.data());
+      setMaterialColour(*uniforms, ceilingResolved.def.baseColour);
       setEmbossUniforms(*uniforms, ceilingResolved.def.emboss);
       initializeGlobalUniforms(*uniforms);
 
@@ -428,10 +534,21 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       uniforms->setUniform(
           "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
           resolved.def.params.data());
+      setMaterialColour(*uniforms, resolved.def.baseColour);
       setEmbossUniforms(*uniforms, resolved.def.emboss);
       initializeGlobalUniforms(*uniforms);
       if (variant.setUniforms) {
         variant.setUniforms(*uniforms);
+      }
+      if (variant.setMaskUniforms) {
+        variant.setMaskUniforms(*uniforms);
+        bindWallMaskTexture(meshName, variant.maskTexture);
+      } else {
+        // A normal-map-only variant is still an unmasked wall: primary
+        // parameters as the blend set and the zero mask texture.
+        uniforms->updateUniform(
+            "WALL_MASK_BLEND_PARAMS", resolved.def.params.data());
+        bindWallMaskTexture(meshName, mWallMaskZeroTexture);
       }
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] = static_cast<int32_t>(resolved.materialIndex);
@@ -454,8 +571,12 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       uniforms->setUniform(
           "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
           backMaterialDef.data.params.data());
+      setMaterialColour(*uniforms, std::array<float, 3>{1.0f, 1.0f, 1.0f});
       setEmbossUniforms(*uniforms, backMaterialDef.data.emboss);
       initializeGlobalUniforms(*uniforms);
+      uniforms->updateUniform(
+          "WALL_MASK_BLEND_PARAMS", backMaterialDef.data.params.data());
+      bindWallMaskTexture(meshName, mWallMaskZeroTexture);
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] =
           static_cast<int32_t>(BW_WALL_BACK_FACE_MATERIAL_INDEX);
@@ -481,6 +602,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         uniforms->setUniform(
             "MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1,
             liquidMaterialDef.data.params.data());
+        setMaterialColour(*uniforms, std::array<float, 3>{1.0f, 1.0f, 1.0f});
         setEmbossUniforms(*uniforms, liquidMaterialDef.data.emboss);
         initializeGlobalUniforms(*uniforms);
         auto const& liquid = bw::core::GetLiquidProperties(

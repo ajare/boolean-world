@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <format>
 #include <limits>
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -30,6 +31,8 @@
 #include <willpower/application/resourcesystem/ImageResource.h>
 #include <willpower/application/resourcesystem/ResourceManager.h>
 
+#include <GL/glew.h>
+
 #define IMGUI_DEFINE_MATH_OPERATORS
 
 #include "imgui.h"
@@ -52,6 +55,7 @@
 #include "PrimitiveFieldPlacement.h"
 #include "Preview3D.h"
 #include "ProcMaterialLibrary.h"
+#include "SubMaterialThumbnailRenderer.h"
 #include "ExitApplicationException.h"
 #include "EditorRenderSystem.h"
 #include "EmbossingCatalogLibrary.h"
@@ -2801,6 +2805,21 @@ struct SubMaterialAuthoringState {
   string deletionReport;
 };
 
+struct SubMaterialPickerState {
+  // The Sub-material id selected inside the open picker modal, distinct from
+  // the Primitive's committed id until OK (or a double-click) applies it.
+  string pendingId;
+};
+
+// Owns the thumbnail renderer backing the Sub-material picker modal. It is
+// process-lifetime like EditorRenderSystem, but must be released while the GL
+// context is still current - see shutdownMaterialPickerThumbnails().
+std::unique_ptr<SubMaterialThumbnailRenderer> gMaterialPickerThumbnails;
+
+void shutdownMaterialPickerThumbnails() {
+  gMaterialPickerThumbnails.reset();
+}
+
 void setTechniqueDefaults(
     SubMaterialAuthoringState& state,
     bw::core::TechniqueSchema const& schema) {
@@ -2882,26 +2901,125 @@ bool renderSubMaterialPicker(
 
   auto const& catalog = catalogs[selectedCatalog];
   int selectedSubMaterial{-1};
-  string subMaterialItems;
   for (size_t i = 0; i < catalog.data.subMaterials.size(); ++i) {
     auto const& subMaterial = catalog.data.subMaterials[i];
     if (subMaterial.id == *subMaterialId) selectedSubMaterial = (int)i;
-    subMaterialItems += subMaterial.displayName;
-    subMaterialItems += '\0';
   }
 
-  ImGui::SetNextItemWidth(256);
-  if (!catalog.data.subMaterials.empty() &&
-      ImGui::Combo(format("{} Sub-material", label).c_str(),
-                   &selectedSubMaterial, subMaterialItems.c_str(), 8)) {
-    auto id = catalog.data.subMaterials[selectedSubMaterial].id;
-    *subMaterialId = id;
-    transactUndoableAction(
-        doc, format("Set {} Sub-material", label),
-        [primitive, surface, id](editor::Document* actionDoc) {
-          return setPrimitiveSubMaterial(actionDoc, primitive, surface, id);
-        });
-    return true;
+  static map<string, SubMaterialPickerState> pickerStates;
+  auto& pickerState = pickerStates[label];
+  auto pickPopup = format("Select {} Sub-material", label);
+
+  string currentName = "(unassigned)";
+  if (selectedSubMaterial >= 0) {
+    currentName = catalog.data.subMaterials[selectedSubMaterial].displayName;
+  }
+  if (ImGui::Button(
+          format("{} Sub-material: {}##{}-select", label, currentName, label)
+              .c_str())) {
+    pickerState.pendingId = *subMaterialId;
+    ImGui::OpenPopup(pickPopup.c_str());
+  }
+
+  constexpr float thumbnailSize =
+      static_cast<float>(SubMaterialThumbnailRenderer::size);
+  constexpr float tileWidth = thumbnailSize + 12.0f;
+  constexpr int pickerColumns = 6;
+
+  if (ImGui::BeginPopupModal(pickPopup.c_str(), nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::Text("Choose a Sub-material from %s.", catalog.resourceName.c_str());
+
+    if (catalog.data.subMaterials.empty()) {
+      ImGui::TextDisabled("This ProcMaterial has no Sub-materials.");
+    } else {
+      if (!gMaterialPickerThumbnails) {
+        if (auto* renderSystem = editorRenderSystem()) {
+          gMaterialPickerThumbnails =
+              make_unique<SubMaterialThumbnailRenderer>(*renderSystem);
+        }
+      }
+
+      bool applyPicker = false;
+      // The grid is laid out in a fixed-width child so the columns do
+      // not chase the modal's AutoResize width, and so a large catalog
+      // scrolls instead of growing past the bottom of the screen.
+      ImGui::BeginChild(
+          "thumbnails",
+          ImVec2{pickerColumns * tileWidth + ImGui::GetStyle().ScrollbarSize,
+                 420.0f});
+
+      for (size_t i = 0; i < catalog.data.subMaterials.size(); ++i) {
+        auto const& material = catalog.data.subMaterials[i];
+        ImGui::PushID(material.id.c_str());
+        ImGui::BeginGroup();
+        auto texture = gMaterialPickerThumbnails
+                           ? gMaterialPickerThumbnails->texture(material.id)
+                           : 0u;
+        bool const selected = material.id == pickerState.pendingId;
+        if (selected) {
+          ImGui::PushStyleColor(
+              ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+          ImGui::PushStyleColor(
+              ImGuiCol_ButtonHovered,
+              ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
+        }
+        bool clicked =
+            texture
+                ? ImGui::ImageButton(
+                      "thumbnail", static_cast<ImTextureID>(texture),
+                      {thumbnailSize, thumbnailSize}, {0.0f, 1.0f},
+                      {1.0f, 0.0f})
+                : ImGui::Button("Unavailable", {thumbnailSize, thumbnailSize});
+        if (selected) ImGui::PopStyleColor(2);
+        auto textWidth = ImGui::CalcTextSize(material.displayName.c_str()).x;
+        ImGui::SetCursorPosX(
+            ImGui::GetCursorPosX() +
+            max(0.0f, (thumbnailSize - textWidth) * 0.5f));
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + thumbnailSize);
+        ImGui::TextWrapped("%s", material.displayName.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::EndGroup();
+        ImGui::PopID();
+
+        if (clicked) {
+          pickerState.pendingId = material.id;
+          if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            applyPicker = true;
+          }
+        }
+        if ((static_cast<int>(i) + 1) % pickerColumns != 0) {
+          ImGui::SameLine();
+        }
+      }
+      ImGui::EndChild();
+
+      bool canApply = !pickerState.pendingId.empty() &&
+                      any_of(catalog.data.subMaterials.begin(),
+                             catalog.data.subMaterials.end(),
+                             [&](auto const& material) {
+                               return material.id == pickerState.pendingId;
+                             });
+      if (!canApply) ImGui::BeginDisabled();
+      if (ImGui::Button("OK")) applyPicker = true;
+      if (!canApply) ImGui::EndDisabled();
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+
+      if (applyPicker && canApply) {
+        auto const id = pickerState.pendingId;
+        if (id != *subMaterialId) {
+          *subMaterialId = id;
+          transactUndoableAction(
+              doc, format("Set {} Sub-material", label),
+              [primitive, surface, id](editor::Document* actionDoc) {
+                return setPrimitiveSubMaterial(actionDoc, primitive, surface, id);
+              });
+        }
+        ImGui::CloseCurrentPopup();
+      }
+    }
+    ImGui::EndPopup();
   }
 
   static map<string, SubMaterialAuthoringState> authoringStates;
@@ -3013,6 +3131,237 @@ void renderSubMaterialValue(char const* label, string const& subMaterialId) {
                        });
   ImGui::Text("%s material: %s / %s", label, catalog->resourceName.c_str(),
               found->displayName.c_str());
+}
+
+// Thumbnail textures for loaded ImageResources, keyed by qualified name.
+// Built lazily from the decoded pixels; deleted at shutdown while the GL
+// context is still current (see shutdownImageResourceThumbnails).
+map<string, uint32_t> gImageResourceThumbnails;
+
+uint32_t imageResourceThumbnail(
+    wp::application::resourcesystem::ImageResource const& image) {
+  auto key = image.getQualifiedName();
+  if (auto found = gImageResourceThumbnails.find(key);
+      found != gImageResourceThumbnails.end()) {
+    return found->second;
+  }
+
+  auto const* data = image.getData();
+  auto width = image.getWidth();
+  auto height = image.getHeight();
+  auto channels = image.getNumChannels();
+  if (!data || width <= 0 || height <= 0 || (channels != 3 && channels != 4)) {
+    gImageResourceThumbnails[key] = 0u;
+    return 0u;
+  }
+
+  GLuint texture = 0;
+  glGenTextures(1, &texture);
+  glBindTexture(GL_TEXTURE_2D, texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  glTexImage2D(
+      GL_TEXTURE_2D, 0, channels == 4 ? GL_RGBA8 : GL_RGB8, width, height, 0,
+      channels == 4 ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, data);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  gImageResourceThumbnails[key] = texture;
+  return texture;
+}
+
+void shutdownImageResourceThumbnails() {
+  for (auto const& [key, texture] : gImageResourceThumbnails) {
+    (void)key;
+    if (texture) glDeleteTextures(1, &texture);
+  }
+  gImageResourceThumbnails.clear();
+}
+
+// The name a wall normal-map or mask override stores so that
+// Resource::splitName with the "World" namespace resolves it back to this
+// exact ImageResource: unqualified for World-namespace images, "/name" for
+// the default namespace, qualified otherwise.
+string worldImageReference(
+    wp::application::resourcesystem::Resource const& resource) {
+  if (resource.getNamespace() == "World") return resource.getName();
+  if (resource.getNamespace().empty()) return "/" + resource.getName();
+  return resource.getQualifiedName();
+}
+
+// Resolves a stored override reference (as produced by worldImageReference) to
+// the ImageResource it names, or nullptr when it does not name one.
+wp::application::resourcesystem::ImageResource const* imageResourceForReference(
+    string const& reference) {
+  auto* renderSystem = editorRenderSystem();
+  auto* manager = renderSystem ? renderSystem->resourceManager() : nullptr;
+  if (!manager || reference.empty()) return nullptr;
+
+  string namesp;
+  string name;
+  wp::application::resourcesystem::Resource::splitName(
+      reference, "World", &namesp, &name);
+  try {
+    auto resource = manager->getResource(name, namesp);
+    return dynamic_pointer_cast<
+        wp::application::resourcesystem::ImageResource>(resource).get();
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+// The number of channel options a wall-mask image offers. ImageResource only
+// decodes RGB or RGBA, so an unresolved or unexpected image falls back to the
+// pre-existing four-option list; Apply still validates the chosen channel.
+int wallMaskChannelCount(char const* reference) {
+  if (auto const* image = imageResourceForReference(reference)) {
+    if (image->getNumChannels() == 3 || image->getNumChannels() == 4) {
+      return image->getNumChannels();
+    }
+  }
+  return 4;
+}
+
+struct ImageResourcePickerState {
+  string pendingReference;
+};
+
+bool renderImageResourcePicker(
+    char const* label, char* reference, size_t referenceCapacity) {
+  auto* renderSystem = editorRenderSystem();
+  auto* manager = renderSystem ? renderSystem->resourceManager() : nullptr;
+  if (!manager) {
+    ImGui::TextDisabled("%s: no ImageResources available.", label);
+    return false;
+  }
+
+  auto resources = manager->getResourcesByType("Image");
+  vector<wp::application::resourcesystem::ImageResource const*> images;
+  images.reserve(resources.size());
+  for (auto const& resource : resources) {
+    if (auto image = dynamic_pointer_cast<
+            wp::application::resourcesystem::ImageResource>(resource)) {
+      images.push_back(image.get());
+    }
+  }
+  sort(images.begin(), images.end(), [](auto* left, auto* right) {
+    return left->getQualifiedName() < right->getQualifiedName();
+  });
+
+  static map<string, ImageResourcePickerState> pickerStates;
+  auto& pickerState = pickerStates[label];
+  auto popup = format("Select {} ImageResource", label);
+
+  string current(reference);
+  // A stored override may be qualified ("World/OreMask") or bare for the
+  // default namespace ("Floor5"); canonicalise it so the dialog highlights
+  // the same resource it will write back on OK.
+  auto canonicalReference = [&](string const& candidate) {
+    for (auto const* image : images) {
+      if (worldImageReference(*image) == candidate ||
+          image->getQualifiedName() == candidate) {
+        return worldImageReference(*image);
+      }
+    }
+    return candidate;
+  };
+
+  auto currentCanonical = canonicalReference(current);
+  string currentDisplay = currentCanonical.empty() ? "(none)" : currentCanonical;
+  for (auto const* image : images) {
+    if (worldImageReference(*image) == currentCanonical) {
+      currentDisplay = image->getName();
+      break;
+    }
+  }
+
+  if (ImGui::Button(
+          format("{} Image: {}##{}-select", label, currentDisplay, label)
+              .c_str())) {
+    pickerState.pendingReference = currentCanonical;
+    ImGui::OpenPopup(popup.c_str());
+  }
+
+  constexpr float thumbnailSize = 96.0f;
+  constexpr float tileWidth = thumbnailSize + 12.0f;
+  constexpr int pickerColumns = 6;
+
+  if (ImGui::BeginPopupModal(popup.c_str(), nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::Text("Choose an ImageResource.");
+
+    if (images.empty()) {
+      ImGui::TextDisabled("No ImageResources are available.");
+    } else {
+      bool applyPicker = false;
+      ImGui::BeginChild(
+          "thumbnails",
+          ImVec2{pickerColumns * tileWidth + ImGui::GetStyle().ScrollbarSize,
+                 360.0f});
+
+      for (size_t i = 0; i < images.size(); ++i) {
+        auto const* image = images[i];
+        auto key = image->getQualifiedName();
+        auto imageReference = worldImageReference(*image);
+        ImGui::PushID(key.c_str());
+        ImGui::BeginGroup();
+        auto texture = imageResourceThumbnail(*image);
+        bool const selected = imageReference == pickerState.pendingReference;
+        if (selected) {
+          ImGui::PushStyleColor(
+              ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+          ImGui::PushStyleColor(
+              ImGuiCol_ButtonHovered,
+              ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
+        }
+        bool clicked =
+            texture
+                ? ImGui::ImageButton(
+                      "thumbnail", static_cast<ImTextureID>(texture),
+                      {thumbnailSize, thumbnailSize}, {0.0f, 1.0f},
+                      {1.0f, 0.0f})
+                : ImGui::Button("Unavailable", {thumbnailSize, thumbnailSize});
+        if (selected) ImGui::PopStyleColor(2);
+        auto textWidth = ImGui::CalcTextSize(image->getName().c_str()).x;
+        ImGui::SetCursorPosX(
+            ImGui::GetCursorPosX() +
+            max(0.0f, (thumbnailSize - textWidth) * 0.5f));
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + thumbnailSize);
+        ImGui::TextWrapped("%s", image->getName().c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::EndGroup();
+        ImGui::PopID();
+
+        if (clicked) {
+          pickerState.pendingReference = imageReference;
+          if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            applyPicker = true;
+          }
+        }
+        if ((static_cast<int>(i) + 1) % pickerColumns != 0) {
+          ImGui::SameLine();
+        }
+      }
+      ImGui::EndChild();
+
+      bool canApply = !pickerState.pendingReference.empty();
+      if (!canApply) ImGui::BeginDisabled();
+      if (ImGui::Button("OK")) applyPicker = true;
+      if (!canApply) ImGui::EndDisabled();
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+
+      if (applyPicker && canApply) {
+        strncpy_s(reference, referenceCapacity,
+                  pickerState.pendingReference.c_str(), _TRUNCATE);
+        ImGui::CloseCurrentPopup();
+      }
+    }
+    ImGui::EndPopup();
+  }
+  return false;
 }
 
 struct EmbossPresetPanelState {
@@ -4254,8 +4603,8 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
                  "Not set\0Disabled\0Image\0");
     if (normalMapState == static_cast<int>(
                               bw::core::WallNormalMapOverride::State::Image)) {
-      ImGui::InputText("Image resource##WallNormalMap", normalMapResource,
-                       sizeof(normalMapResource));
+      renderImageResourcePicker("Wall normal map", normalMapResource,
+                                sizeof(normalMapResource));
       ImGui::InputFloat("Repeat##WallNormalMap", &normalMapRepeat);
       ImGui::InputFloat("Strength##WallNormalMap", &normalMapStrength);
     }
@@ -4314,6 +4663,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     static char wallMaskResource[512]{};
     static int wallMaskChannel = 0;
     static bw::core::WallMaskOverride::BlendParameters wallMaskBlend{};
+    static bw::core::WallMaskOverride::BlendColour wallMaskBlendColour{};
     static string wallMaskError;
 
     // The blend sliders share the primary wall Sub-material's Technique
@@ -4343,18 +4693,21 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
       wallMaskResource[0] = '\0';
       wallMaskChannel = 0;
       wallMaskBlend.fill(0.0f);
+      wallMaskBlendColour = {1.0f, 1.0f, 1.0f};
       if (auto image = value.imageData()) {
         strncpy_s(wallMaskResource, image->resourceName.c_str(), _TRUNCATE);
         wallMaskChannel = image->channel;
         wallMaskBlend = image->blendParameters;
+        wallMaskBlendColour = image->blendColour;
       } else if (primaryWall) {
         // First enable defaults to a copy of the primary's current
-        // parameters, so the mask starts as a visible no-op.
+        // parameters and base colour, so the mask starts as a visible no-op.
         for (size_t i = 0;
              i < primaryWall->paramValues.size() && i < wallMaskBlend.size();
              ++i) {
           wallMaskBlend[i] = primaryWall->paramValues[i];
         }
+        wallMaskBlendColour = primaryWall->baseColour;
       }
     }
     auto wallMaskEditable =
@@ -4365,10 +4718,22 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
                  "Not set\0Disabled\0Image\0");
     if (wallMaskState ==
         static_cast<int>(bw::core::WallMaskOverride::State::Image)) {
-      ImGui::InputText("Image resource##WallMask", wallMaskResource,
-                       sizeof(wallMaskResource));
+      renderImageResourcePicker("Wall mask", wallMaskResource,
+                                sizeof(wallMaskResource));
+      auto channelCount = wallMaskChannelCount(wallMaskResource);
+      wallMaskChannel = clamp(wallMaskChannel, 0, channelCount - 1);
+      string channelItems;
+      auto addChannel = [&](char const* name) {
+        channelItems += name;
+        channelItems += '\0';
+      };
+      addChannel("Red");
+      addChannel("Green");
+      addChannel("Blue");
+      if (channelCount >= 4) addChannel("Alpha");
       ImGui::Combo("Channel##WallMask", &wallMaskChannel,
-                   "Red\0Green\0Blue\0Alpha\0");
+                   channelItems.c_str());
+      ImGui::ColorEdit3("Blend colour##WallMask", wallMaskBlendColour.data());
       if (wallSchema) {
         for (size_t i = 0;
              i < wallSchema->parameters.size() && i < wallMaskBlend.size();
@@ -4391,7 +4756,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
                          : bw::core::WallMaskOverride::image(
                                wallMaskResource,
                                static_cast<uint8_t>(wallMaskChannel),
-                               wallMaskBlend);
+                               wallMaskBlend, wallMaskBlendColour);
         if (auto image = value.imageData()) {
           auto* renderSystem = editorRenderSystem();
           if (!renderSystem) {

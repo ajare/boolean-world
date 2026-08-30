@@ -100,10 +100,11 @@ void shadersShareCompositionContract() {
   auto shader2d = readShader(BW_WORLD_PBR_2D_SHADER);
   for (auto const* shader : {&shader3d, &shader2d}) {
     require(shader->find("vec3 applyWallNormalMap") != std::string::npos &&
-                shader->find("@Texture(TEX1), normalMapUv") !=
-                    std::string::npos &&
+                shader->find("vec2 wallImageUv()") != std::string::npos &&
                 shader->find(
-                    "normalMapUv.y *= @Uniform(WALL_NORMAL_MAP_ASPECT_RATIO)") !=
+                    "uv.y *= @Uniform(WALL_NORMAL_MAP_ASPECT_RATIO)") !=
+                    std::string::npos &&
+                shader->find("@Texture(TEX1), wallImageUv()") !=
                     std::string::npos &&
                 shader->find("if (strength == 0.0)") != std::string::npos &&
                 shader->find(

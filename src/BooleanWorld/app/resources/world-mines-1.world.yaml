@@ -1,6 +1,6 @@
 world:
   dependentResources:
-    []
+    - OreMask
   name: ""
   description: ""
   minExtent: [-4096, -4096]
@@ -849,7 +849,7 @@ world:
                     size: [160, 160]
                     primitivePropertySet:
                       floorZ: 0
-                      ceilingZ: 48
+                      ceilingZ: 32
                       liquidLevel: 0
                       liquidType: Water
                       floorMaterial: builtin.ore
@@ -860,141 +860,195 @@ world:
                       wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 4
+                    edgeOverrideFormat: 5
                     shells:
                       - vertices:
                           - p: [0.6, 0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.2, 0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.2, 1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.2, 1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.2, 0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.6, 0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.6, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.2, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.2, -0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.2, -0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.2, -0.6]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.6, -0.6]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 2
+                            wallMaskResource: OreMask
+                            wallMaskChannel: 0
+                            wallMaskBlendParameters: [0.72, 4.5, 0, 0, 0, 0, 0, 0]
+                            wallMaskBlendColour: [1, 1, 1]
                         holes:
                           []
                       - vertices:
                           - p: [1.8, -0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.8, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.4, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.4, -2.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.8, -2.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.8, -1.4]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [2.2, -1.4]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [2.2, -0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [2.6, -0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [2.6, 0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [2.2, 0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [2.2, 1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.8, 1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.8, 0.6]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.4, 0.6]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.4, 0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1, 0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1, -0.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                         holes:
                           []
                       - vertices:
                           - p: [0.2, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.2, -1.4]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.6, -1.4]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.6, -2.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.2, -2.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.2, -1.8]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.2, -1.8]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.2, -2.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.6, -2.2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.6, -1.8]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1, -1.8]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 2
+                            wallMaskResource: OreMask
+                            wallMaskChannel: 0
+                            wallMaskBlendParameters: [3, 10, 0, 0, 0, 0, 0, 0]
+                            wallMaskBlendColour: [0.28627452, 0.64705884, 0.98039216]
                           - p: [1, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 2
+                            wallMaskResource: OreMask
+                            wallMaskChannel: 0
+                            wallMaskBlendParameters: [0.72, 4.5, 0, 0, 0, 0, 0, 0]
+                            wallMaskBlendColour: [1, 1, 1]
                         holes:
                           []
             - id: 1
@@ -1268,165 +1322,213 @@ world:
                       wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 4
+                    edgeOverrideFormat: 5
                     shells:
                       - vertices:
                           - p: [0.5, -0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.5, 0]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1, 0]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1, 0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0, 0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.5, 0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1, 0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1, 0]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.5, 0]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.5, -0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0, -0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                         holes:
                           []
                       - vertices:
                           - p: [-0.5, 0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0, 0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0, 1.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.5, 1.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.5, 2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1.5, 2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1.5, 1.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-2, 1.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-2, 1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.5, 1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                         holes:
                           []
                       - vertices:
                           - p: [-0.5, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1, -1.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.5, -1.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.5, -2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.5, -2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.5, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0, -0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.5, -0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                         holes:
                           []
                       - vertices:
                           - p: [1, 1.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1, 0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1, 0]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [2, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [2, 0]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.5, -0]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.5, 0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [2, 0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [2, 1.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                         holes:
                           []
                       - vertices:
                           - p: [-1, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1, -0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-2, -0.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-2, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1.5, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1.5, -1.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1, -1.5]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                         holes:
                           []
             - id: 2
@@ -1700,96 +1802,124 @@ world:
                       wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
-                    edgeOverrideFormat: 4
+                    edgeOverrideFormat: 5
                     shells:
                       - vertices:
                           - p: [0, 0.33333334]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0, -0.33333334]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.33333334, -0.33333334]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.33333334, -0.6666667]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.6666667, -0.6666667]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.6666667, 0]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1, 0]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1, 0.33333334]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.33333334, 0.33333334]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.33333334, 0.6666667]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1, 0.6666667]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1, 0.33333334]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                         holes:
                           []
                       - vertices:
                           - p: [-0.6666667, -0.6666667]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1, -0.6666667]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-1, -1.3333334]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.6666667, -1.3333334]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.6666667, -2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.33333334, -2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.33333334, -1.3333334]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1, -1.3333334]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1, -2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.3333334, -2]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.3333334, -1.3333334]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.6666666, -1.3333334]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [1.6666666, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.33333334, -1]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.33333334, 0]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                           - p: [-0.6666667, 0]
                             flags: 0
                             normalMapState: 0
+                            wallMaskState: 0
                         holes:
                           []
         - type: PrefabField

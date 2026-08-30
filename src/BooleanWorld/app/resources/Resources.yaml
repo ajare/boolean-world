@@ -381,6 +381,16 @@ Resources:
             value: "repeat"
           - name: "mipmaps"
             value: "true"
+      - type: "Image"
+        name: "OreMask"
+        location: "images/mask1.png"
+        Option:
+          - name: "colour-space"
+            value: "linear"
+          - name: "wrapping"
+            value: "repeat"
+          - name: "mipmaps"
+            value: "true"
       - type: "Shader"
         name: "WorldVertexShader"
         location: "shaders/world.vert"
@@ -617,9 +627,12 @@ Resources:
           Definition:
             Textures:
               Texture:
-                sampler: "TEX1"
-                type: "resource"
-                value: "Texture"
+                - sampler: "TEX1"
+                  type: "resource"
+                  value: "Texture"
+                - sampler: "TEX2"
+                  type: "resource"
+                  value: "Texture"
       - type: "Material"
         name: "Material.Default"
         DependentResources:
@@ -632,9 +645,12 @@ Resources:
           Definition:
             Textures:
               Texture:
-                sampler: "TEX1"
-                type: "resource"
-                value: "Texture"
+                - sampler: "TEX1"
+                  type: "resource"
+                  value: "Texture"
+                - sampler: "TEX2"
+                  type: "resource"
+                  value: "Texture"
       - type: "TextFile"
         name: "WorldFile"
         location: "world-mines-1.world.yaml"

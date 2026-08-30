@@ -22,6 +22,7 @@
 // 0 none, 1 square, 2 hexagon, 3 running bond, 4 modular opus, 5 Voronoi.
 @@Uniform(int MATERIAL_INDEX);
 @@Uniform(float MATERIAL_PARAMS[8]);
+@@Uniform(vec3 MATERIAL_COLOUR);
 @@Uniform(int EMBOSS_PATTERN);
 @@Uniform(float EMBOSS_RADIUS);
 @@Uniform(float EMBOSS_DEPTH);
@@ -32,8 +33,21 @@
 @@Uniform(int WALL_NORMAL_MAP_ENABLED);
 @@Uniform(float WALL_NORMAL_MAP_STRENGTH);
 @@Uniform(float WALL_NORMAL_MAP_ASPECT_RATIO);
+@@Uniform(int WALL_MASK_ENABLED);
+@@Uniform(int WALL_MASK_CHANNEL);
+@@Uniform(float WALL_MASK_BLEND_PARAMS[8]);
+@@Uniform(vec3 WALL_MASK_BLEND_COLOUR);
+
+// Kept contract-compatible with world_pbr.frag: the wall mask interpolates
+// the primary parameters and base colour toward their blend sets before the
+// single material evaluation. Horizontal batches bind WALL_MASK_ENABLED=0,
+// so the blend is a no-op, but every material field reads these exactly as
+// the 3D shader does to keep the two pipelines from drifting.
+float blendedMaterialParams[8];
+vec3 blendedMaterialColour;
 ## Texture
 @@Texture(sampler2D TEX1);
+@@Texture(sampler2D TEX2);
 ##
 @@Texture(sampler2DShadow SHADOW_MAP);
 @@Texture(samplerCubeShadow POINT_SHADOW_MAP);
@@ -198,7 +212,7 @@ float naturalRockField(vec2 p)
 
 // Marble (type 0) and Stone (type 1) read three of their eight/three
 // MATERIAL_PARAMS here - warpScale, veinsScale, veinsFineScale for Marble;
-// mediumScale for Stone - kept as direct @Uniform(MATERIAL_PARAMS[i]) reads
+// mediumScale for Stone - kept as direct blendedMaterialParams[i]) reads
 // rather than a struct threaded through this signature, since materialField
 // is shared by all 37 material types and every other branch must stay
 // exactly as it was. See MarbleParams/StoneParams in world_pbr.frag for the
@@ -220,9 +234,9 @@ float materialField(vec2 p, int type)
 {
     if (type == 0)
     {
-        float warpScale = @Uniform(MATERIAL_PARAMS[0]);
-        float veinsScale = @Uniform(MATERIAL_PARAMS[1]);
-        float veinsFineScale = @Uniform(MATERIAL_PARAMS[2]);
+        float warpScale = blendedMaterialParams[0];
+        float veinsScale = blendedMaterialParams[1];
+        float veinsFineScale = blendedMaterialParams[2];
         vec2 warp = vec2(
             noise(p * 0.65 + vec2(7.1, 1.7)),
             noise(p * 0.65 + vec2(2.8, 9.2))) - 0.5;
@@ -235,7 +249,7 @@ float materialField(vec2 p, int type)
     }
     if (type == 1)
     {
-        float mediumScale = @Uniform(MATERIAL_PARAMS[1]);
+        float mediumScale = blendedMaterialParams[1];
         return fbm(p * 0.65) * 0.45 + noise(p * mediumScale) * 0.20 +
                (1.0 - smoothstep(0.12, 0.48, voronoi(p * 2.2))) * 0.35;
     }
@@ -266,7 +280,7 @@ float materialField(vec2 p, int type)
     if (type == 8)
     {
         // vein_scale (MATERIAL_PARAMS[1]) - same 4.5 default as oreTexture.
-        float veinScale = @Uniform(MATERIAL_PARAMS[1]);
+        float veinScale = blendedMaterialParams[1];
         float warp = fbm(p * 0.62) - 0.5;
         float vein = abs(sin(p.x * veinScale - p.y * 0.8 + warp * 8.0));
         return fbm(p * 1.6) * 0.42 + (1.0 - smoothstep(0.06, 0.24, vein)) * 0.58;
@@ -282,7 +296,7 @@ float materialField(vec2 p, int type)
     if (type == 12)
         // dent_scale (MATERIAL_PARAMS[1]) - same 4.2 default as
         // hammeredMetalTexture.
-        return smoothstep(0.08, 0.72, voronoi(p * @Uniform(MATERIAL_PARAMS[1])));
+        return smoothstep(0.08, 0.72, voronoi(p * blendedMaterialParams[1]));
     if (type == 13)
         return fbm(p * 0.82) * 0.72 + noise(vec2(p.x * 2.0, p.y * 0.35)) * 0.28;
     if (type == 14)
@@ -292,14 +306,14 @@ float materialField(vec2 p, int type)
     if (type == 16)
     {
         // ring_scale (MATERIAL_PARAMS[1]) - same 18.0 default as woodTexture.
-        float ringScale = @Uniform(MATERIAL_PARAMS[1]);
+        float ringScale = blendedMaterialParams[1];
         float rings = sin(length(p) * ringScale + fbm(p * 0.55) * 4.5) * 0.5 + 0.5;
         return rings * 0.68 + noise(vec2(p.x * 4.0, p.y * 0.32)) * 0.32;
     }
     if (type == 17)
     {
         // ridge_scale (MATERIAL_PARAMS[1]) - same 7.0 default as barkTexture.
-        float ridgeScale = @Uniform(MATERIAL_PARAMS[1]);
+        float ridgeScale = blendedMaterialParams[1];
         float ridges = abs(sin(p.x * ridgeScale + p.y * 5.0 + fbm(p * 0.48) * 3.0));
         float cracks = 1.0 - smoothstep(0.025, 0.14,
             abs(noise(vec2(p.x * 2.2, p.y * 0.35)) - 0.5));
@@ -308,7 +322,7 @@ float materialField(vec2 p, int type)
     if (type == 18)
         // pore_scale (MATERIAL_PARAMS[1]) - same 7.0 default as boneTexture.
         return fbm(p * 0.82) * 0.70 -
-               (1.0 - smoothstep(0.07, 0.23, voronoi(p * @Uniform(MATERIAL_PARAMS[1])))) * 0.30;
+               (1.0 - smoothstep(0.07, 0.23, voronoi(p * blendedMaterialParams[1]))) * 0.30;
     if (type == 19)
     {
         float cells = voronoi(p * 5.5);
@@ -324,7 +338,7 @@ float materialField(vec2 p, int type)
     if (type == 21)
         // plate_scale (MATERIAL_PARAMS[1]) - same 3.2 default as
         // chitinTexture.
-        return voronoi(p * @Uniform(MATERIAL_PARAMS[1])) * 0.55 +
+        return voronoi(p * blendedMaterialParams[1]) * 0.55 +
                (sin(dot(p, normalize(vec2(0.7, 0.65))) * 9.0 + fbm(p * 0.65) * 3.0) * 0.5 + 0.5) * 0.45;
     if (type == 22)
         return fbm(p * 1.1) * 0.48 -
@@ -336,21 +350,21 @@ float materialField(vec2 p, int type)
     {
         // energy_scale (MATERIAL_PARAMS[1]) - same 4.2 default as
         // energyStoneTexture.
-        float energyScale = @Uniform(MATERIAL_PARAMS[1]);
+        float energyScale = blendedMaterialParams[1];
         float seam = abs(sin(p.x * energyScale + p.y * 2.0 + (fbm(p * 0.55) - 0.5) * 8.0));
         return fbm(p * 1.45) * 0.62 - (1.0 - smoothstep(0.035, 0.18, seam)) * 0.72;
     }
     if (type == 25)
         // cell_scale (MATERIAL_PARAMS[1]) - same 3.5 default as
         // alienTissueTexture.
-        return voronoi(p * @Uniform(MATERIAL_PARAMS[1])) * 0.52 +
+        return voronoi(p * blendedMaterialParams[1]) * 0.52 +
                abs(sin(p.x * 3.0 - p.y * 2.7 + fbm(p * 0.7) * 5.0)) * 0.48;
     if (type == 26)
     {
         // rune_scale (MATERIAL_PARAMS[1]) - same 1.7 default as
         // magicalMetalTexture. material2d's own type-26 branch recomputes
         // this same grid for its albedo blend and reads the same slot.
-        float runeScale = @Uniform(MATERIAL_PARAMS[1]);
+        float runeScale = blendedMaterialParams[1];
         vec2 grid = abs(fract(p * runeScale) - 0.5);
         float rune = 1.0 - smoothstep(0.035, 0.10, min(grid.x, grid.y));
         float warp = fbm(p * 0.65) - 0.5;
@@ -362,17 +376,17 @@ float materialField(vec2 p, int type)
     if (type == 28)
         // scan_scale (MATERIAL_PARAMS[1]) - same 35.0 default as
         // holographicTexture.
-        return (sin(p.y * @Uniform(MATERIAL_PARAMS[1]) + @Uniform(GLOBAL_TIME) * 3.0) * 0.5 + 0.5) * 0.28 + noise(p * 9.0) * 0.12;
+        return (sin(p.y * blendedMaterialParams[1] + @Uniform(GLOBAL_TIME) * 3.0) * 0.5 + 0.5) * 0.28 + noise(p * 9.0) * 0.12;
     if (type == 30)
         return frostedGlassField(p);
     if (type == 31)
         // brick_height (MATERIAL_PARAMS[1]) - same 0.42 default as
         // brickTexture.
-        return brickReliefField(p, @Uniform(MATERIAL_PARAMS[1]));
+        return brickReliefField(p, blendedMaterialParams[1]);
     if (type == 32)
         // fine_trace_mix (MATERIAL_PARAMS[1]) - same 0.55 default as
         // circuitBoardTexture.
-        return circuitBoardField(p, @Uniform(MATERIAL_PARAMS[1]));
+        return circuitBoardField(p, blendedMaterialParams[1]);
     if (type == 33)
     {
         float warp = fbm(p * 0.48) - 0.5;
@@ -505,7 +519,7 @@ Material wood2Material2d(vec2 worldPos, vec3 normal)
 {
     Material material;
     vec3 p = vec3(worldPos.x, 0.0, worldPos.y) *
-             @Uniform(MATERIAL_PARAMS[0]);
+             blendedMaterialParams[0];
     material.albedo = wood2Colour(p);
     material.metallic = 0.0;
     material.roughness = 0.56;
@@ -566,9 +580,9 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
     if (type == 0) {
         // Marble alone keeps its scale in slot 7 (fbm_scale) - every other
         // material's base_scale is slot 0.
-        p = worldPos * @Uniform(MATERIAL_PARAMS[7]);
+        p = worldPos * blendedMaterialParams[7];
     } else {
-        p = worldPos * @Uniform(MATERIAL_PARAMS[0]);
+        p = worldPos * blendedMaterialParams[0];
     }
     float field = materialField(p, type);
     float detail = noise(p * 7.0);
@@ -587,7 +601,7 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
         // stone_mix (MATERIAL_PARAMS[2]) - same 0.28 default as graniteTexture
         // in world_pbr.frag, and the same role: how strongly mica flecks read
         // as metallic.
-        float stoneMix = @Uniform(MATERIAL_PARAMS[2]);
+        float stoneMix = blendedMaterialParams[2];
         float quartz = smoothstep(0.68, 0.88, detail);
         material.albedo = mix(vec3(0.16, 0.15, 0.15), vec3(0.72, 0.70, 0.66), quartz);
         material.metallic = smoothstep(0.90, 0.98, noise(p * 13.0)) * stoneMix;
@@ -607,14 +621,14 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
     } else if (type == 4) {
         // pore_mix (MATERIAL_PARAMS[1]) - same 0.38 default as
         // limestoneTexture in world_pbr.frag.
-        float poreMix = @Uniform(MATERIAL_PARAMS[1]);
+        float poreMix = blendedMaterialParams[1];
         float pores = 1.0 - smoothstep(0.08, 0.28, voronoi(p * 5.0));
         material.albedo = mix(vec3(0.48, 0.45, 0.35), vec3(0.82, 0.79, 0.66), broad) * (1.0 - pores * poreMix);
         material.roughness = 0.62 + pores * 0.25;
     } else if (type == 5) {
         // vesicle_mix (MATERIAL_PARAMS[1]) - same 0.72 default as
         // basaltTexture.
-        float vesicleMix = @Uniform(MATERIAL_PARAMS[1]);
+        float vesicleMix = blendedMaterialParams[1];
         float pores = 1.0 - smoothstep(0.10, 0.32, voronoi(p * 3.8));
         material.albedo = mix(vec3(0.025), vec3(0.13), detail) * (1.0 - pores * vesicleMix);
         material.metallic = 0.03; material.roughness = 0.58 + pores * 0.30;
@@ -624,7 +638,7 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
     } else if (type == 7) {
         // amethyst_mix (MATERIAL_PARAMS[1]) - same 0.72 default as
         // quartzTexture.
-        material.albedo = mix(vec3(0.72, 0.82, 0.88), vec3(0.34, 0.14, 0.52), broad * @Uniform(MATERIAL_PARAMS[1]));
+        material.albedo = mix(vec3(0.72, 0.82, 0.88), vec3(0.34, 0.14, 0.52), broad * blendedMaterialParams[1]);
         material.roughness = clamp(0.11 + cells * 0.20, 0.08, 0.34);
     } else if (type == 8) {
         float metal = smoothstep(0.48, 0.70, field);
@@ -651,7 +665,7 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
         // oxide_mix (MATERIAL_PARAMS[1]) - same 0.72 default as
         // heatTreatedMetalTexture.
         vec3 oxide = mix(vec3(0.78, 0.38, 0.08), vec3(0.035, 0.16, 0.48), field);
-        material.albedo = mix(vec3(0.40), oxide, @Uniform(MATERIAL_PARAMS[1])); material.metallic = 0.90; material.roughness = 0.19 + detail * 0.13;
+        material.albedo = mix(vec3(0.40), oxide, blendedMaterialParams[1]); material.metallic = 0.90; material.roughness = 0.19 + detail * 0.13;
     } else if (type == 16) {
         material.albedo = mix(vec3(0.16, 0.055, 0.018), vec3(0.58, 0.29, 0.095), field) * mix(0.76, 1.12, detail);
         material.roughness = 0.48 + detail * 0.18;
@@ -680,30 +694,30 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
         // rune_scale (MATERIAL_PARAMS[1]) - same slot materialField's own
         // type-26 branch reads; kept in sync rather than duplicated as a
         // second independent constant.
-        vec2 grid = abs(fract(p * @Uniform(MATERIAL_PARAMS[1])) - 0.5); float rune = 1.0 - smoothstep(0.035, 0.10, min(grid.x, grid.y));
+        vec2 grid = abs(fract(p * blendedMaterialParams[1]) - 0.5); float rune = 1.0 - smoothstep(0.035, 0.10, min(grid.x, grid.y));
         material.albedo = mix(vec3(0.08, 0.045, 0.16), vec3(0.58, 0.44, 0.82), field); material.albedo = mix(material.albedo, vec3(0.04, 0.75, 0.92), rune); material.metallic = mix(0.96, 0.35, rune); material.roughness = mix(0.20, 0.11, rune);
     } else if (type == 27) {
         // density_threshold (MATERIAL_PARAMS[1]) - same 0.30 default as
         // cloudSolidTexture.
-        float density = smoothstep(@Uniform(MATERIAL_PARAMS[1]), 0.78, broad); material.albedo = mix(vec3(0.18, 0.28, 0.46), vec3(0.92, 0.96, 1.0), density); material.roughness = 0.82 - density * 0.26;
+        float density = smoothstep(blendedMaterialParams[1], 0.78, broad); material.albedo = mix(vec3(0.18, 0.28, 0.46), vec3(0.92, 0.96, 1.0), density); material.roughness = 0.82 - density * 0.26;
     } else if (type == 28) {
         float fresnel = pow(1.0 - max(dot(normalize(normal), viewDir), 0.0), 2.2);
         material.albedo = mix(vec3(0.025, 0.12, 0.18), spectralPalette(fresnel * 0.72 + field * 0.18 + @Uniform(GLOBAL_TIME) * 0.035), 0.55 + fresnel * 0.4); material.metallic = 0.48; material.roughness = 0.10 + field * 0.12;
     } else if (type == 29) {
         // spread_threshold (MATERIAL_PARAMS[1]) - same 0.36 default as
         // corruptionTexture.
-        float spread = smoothstep(@Uniform(MATERIAL_PARAMS[1]), 0.68, broad); material.albedo = mix(vec3(0.025, 0.022, 0.020), vec3(0.20, 0.008, 0.24), spread); material.metallic = spread * 0.12; material.roughness = mix(0.82, 0.30, spread);
+        float spread = smoothstep(blendedMaterialParams[1], 0.68, broad); material.albedo = mix(vec3(0.025, 0.022, 0.020), vec3(0.20, 0.008, 0.24), spread); material.metallic = spread * 0.12; material.roughness = mix(0.82, 0.30, spread);
     } else if (type == 30) {
         // frost_threshold (MATERIAL_PARAMS[1]) - same 0.22 default as
         // frostedGlassTexture.
-        float frostDensity = smoothstep(@Uniform(MATERIAL_PARAMS[1]), 0.82, field);
+        float frostDensity = smoothstep(blendedMaterialParams[1], 0.82, field);
         material.albedo = vec3(0.85, 0.91, 0.94) *
                           mix(0.78, 0.98, frostDensity);
         material.roughness = clamp(
             mix(0.34, 0.80, frostDensity), 0.28, 0.86);
     } else if (type == 31) {
         float brickWidth = 1.0;
-        float brickHeight = @Uniform(MATERIAL_PARAMS[1]);
+        float brickHeight = blendedMaterialParams[1];
         float row = floor(p.y / brickHeight);
         float rowOffset = mod(row, 2.0) * brickWidth * 0.5;
         vec2 cell = vec2(floor((p.x - rowOffset) / brickWidth), row);
@@ -736,7 +750,7 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
     } else if (type == 33) {
         // garnet_scale (MATERIAL_PARAMS[1]) - same 13.0 default as
         // bandedGneissTexture.
-        float garnetScale = @Uniform(MATERIAL_PARAMS[1]);
+        float garnetScale = blendedMaterialParams[1];
         float warp = fbm(p * 0.48) - 0.5;
         float band = sin(dot(p, normalize(vec2(0.82, -0.52))) * 8.0 +
                          warp * 7.0) * 0.5 + 0.5;
@@ -753,7 +767,7 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
     } else if (type == 34) {
         // mineral_scale (MATERIAL_PARAMS[1]) - same 7.5 default as
         // rockTexture.
-        float mineral = noise(p * @Uniform(MATERIAL_PARAMS[1]));
+        float mineral = noise(p * blendedMaterialParams[1]);
         material.albedo = mix(
             vec3(0.16, 0.15, 0.135), vec3(0.43, 0.41, 0.37),
             fbm(p * 0.55));
@@ -767,7 +781,7 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
         float upward = max(normalize(normal).y, 0.0);
         float moss = smoothstep(0.43, 0.68, moisture) *
                      (0.42 + upward * 0.58);
-        float fineMoss = noise(p * @Uniform(MATERIAL_PARAMS[1]));
+        float fineMoss = noise(p * blendedMaterialParams[1]);
         vec3 stone = mix(
             vec3(0.13, 0.13, 0.115), vec3(0.38, 0.37, 0.32),
             fbm(p * 0.55));
@@ -780,7 +794,7 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
         // wetness_threshold (MATERIAL_PARAMS[1]) - same 0.24 default as
         // wetRockTexture.
         float wetness = smoothstep(
-            @Uniform(MATERIAL_PARAMS[1]), 0.76, fbm(p * 0.46 + vec2(12.0, 3.0)));
+            blendedMaterialParams[1], 0.76, fbm(p * 0.46 + vec2(12.0, 3.0)));
         vec3 dryStone = mix(
             vec3(0.14, 0.14, 0.135), vec3(0.39, 0.38, 0.35),
             fbm(p * 0.62));
@@ -1244,16 +1258,21 @@ PbrLighting shadePbr(Material m, vec3 viewDir, vec3 worldPos, vec3 lightPos)
 // Shared with world_pbr.frag. Wall normal maps currently have no horizontal
 // authoring owner, so every 2D horizontal batch binds the enable flag to zero;
 // retaining the full implementation keeps both PBR programs contract-compatible.
+vec2 wallImageUv()
+{
+    vec2 uv = @In(TEXCOORDS);
+    uv.y *= @Uniform(WALL_NORMAL_MAP_ASPECT_RATIO);
+    return uv;
+}
+
 vec3 applyWallNormalMap(vec3 geometricNormal)
 {
     vec3 surfaceNormal = normalize(geometricNormal);
     if (@Uniform(WALL_NORMAL_MAP_ENABLED) == 0)
         return surfaceNormal;
 
-    vec2 normalMapUv = @In(TEXCOORDS);
-    normalMapUv.y *= @Uniform(WALL_NORMAL_MAP_ASPECT_RATIO);
     vec3 sampled = texture(
-        @Texture(TEX1), normalMapUv).rgb * 2.0 - 1.0;
+        @Texture(TEX1), wallImageUv()).rgb * 2.0 - 1.0;
     float strength = max(@Uniform(WALL_NORMAL_MAP_STRENGTH), 0.0);
     if (strength == 0.0)
         sampled = vec3(0.0, 0.0, 1.0);
@@ -1263,6 +1282,39 @@ vec3 applyWallNormalMap(vec3 geometricNormal)
     return normalize(
         tangent * sampled.x + vec3(0.0, 1.0, 0.0) * sampled.y +
         surfaceNormal * sampled.z);
+}
+
+// One channel of the mask image, sampled with the shared wall image UVs,
+// drives the blend weight. Horizontal batches bind WALL_MASK_ENABLED=0, so
+// the weight is zero; the full implementation stays here for contract parity
+// with world_pbr.frag.
+float wallMaskWeight()
+{
+    vec4 maskSample = texture(@Texture(TEX2), wallImageUv());
+    int channel = clamp(@Uniform(WALL_MASK_CHANNEL), 0, 3);
+    float value = channel == 0 ? maskSample.r
+                : channel == 1 ? maskSample.g
+                : channel == 2 ? maskSample.b
+                : maskSample.a;
+    return value * float(@Uniform(WALL_MASK_ENABLED));
+}
+
+// Interpolate MATERIAL_PARAMS toward WALL_MASK_BLEND_PARAMS per fragment,
+// before the single material evaluation in main().
+void blendMaterialParams()
+{
+    float weight = wallMaskWeight();
+    for (int i = 0; i < 8; ++i)
+    {
+        blendedMaterialParams[i] = mix(
+            @Uniform(MATERIAL_PARAMS[i]),
+            @Uniform(WALL_MASK_BLEND_PARAMS[i]),
+            weight);
+    }
+    blendedMaterialColour = mix(
+        @Uniform(MATERIAL_COLOUR),
+        @Uniform(WALL_MASK_BLEND_COLOUR),
+        weight);
 }
 
 // This is a GLSL transliteration of core::CalculateLiquidPathLength, which is
@@ -1341,8 +1393,11 @@ void main()
     int materialIndex = floorMaterialIndex(
         worldPos, clamp(@Uniform(MATERIAL_INDEX), 0, 40));
     materialIndex = clamp(materialIndex, 0, 40);
+    blendMaterialParams();
     Material material = material2d(
         texturePosition, normal, viewDir, materialIndex);
+    // The blended base colour tints the surface's own colour before lighting.
+    material.albedo *= blendedMaterialColour;
     // Whatever this material embosses, on whatever surface it was
     // applied to - floor, ceiling or wall.
     if (@Uniform(EMBOSS_PATTERN) != 0)

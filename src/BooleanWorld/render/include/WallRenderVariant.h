@@ -22,6 +22,14 @@ struct WallRenderVariant {
   mpp::ResourcePtr texture;
   std::function<void(mpp::UniformCollection&)> setUniforms;
 
+  // The wall mask's second sampler (TEX2) and its per-batch uniforms. A
+  // wall without a mask leaves these empty: the renderer binds its owned
+  // 1x1 zero mask texture and passes the primary parameters as the blend
+  // set so the shader contract stays uniform.
+  std::string maskTextureSampler;
+  mpp::ResourcePtr maskTexture;
+  std::function<void(mpp::UniformCollection&)> setMaskUniforms;
+
   [[nodiscard]] bool operator==(WallRenderVariant const& other) const {
     return identity == other.identity;
   }

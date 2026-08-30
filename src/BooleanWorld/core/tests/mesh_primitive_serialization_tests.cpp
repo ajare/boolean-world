@@ -449,12 +449,14 @@ void wallMaskValueValidation() {
           "Disabled Wall mask should carry no image payload");
 
   auto const blend = Blend{0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
-  auto image = WallMaskOverride::image("mask/wear.png", 3, blend);
+  auto const colour = bw::core::WallMaskOverride::BlendColour{0.25f, 0.5f, 0.75f};
+  auto image = WallMaskOverride::image("mask/wear.png", 3, blend, colour);
   require(image.state() == WallMaskOverride::State::Image &&
               image.imageData() != nullptr &&
               image.imageData()->resourceName == "mask/wear.png" &&
               image.imageData()->channel == 3 &&
-              image.imageData()->blendParameters == blend,
+              image.imageData()->blendParameters == blend &&
+              image.imageData()->blendColour == colour,
           "a valid Wall mask Image did not survive construction");
 
   auto rejected = [](auto&& build) {
@@ -477,6 +479,13 @@ void wallMaskValueValidation() {
   nanBlend[0] = std::numeric_limits<float>::quiet_NaN();
   require(rejected([&] { return WallMaskOverride::image("mask.png", 0, nanBlend); }),
           "a NaN Wall mask blend parameter was accepted");
+  auto outOfRangeColour =
+      bw::core::WallMaskOverride::BlendColour{0.5f, -0.1f, 0.5f};
+  require(rejected([&] {
+            return WallMaskOverride::image(
+                "mask.png", 0, Blend{}, outOfRangeColour);
+          }),
+          "an out-of-range Wall mask blend colour was accepted");
 }
 
 void authoredWallMaskValuesRoundTripAndRejectFutureVersions() {
@@ -487,9 +496,10 @@ void authoredWallMaskValuesRoundTripAndRejectFutureVersions() {
   auto disabledEdge = proxy->getNextEdgeIndex(imageEdge);
   auto const blend = bw::core::WallMaskOverride::BlendParameters{
       0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
+  auto const colour = bw::core::WallMaskOverride::BlendColour{0.25f, 0.5f, 0.75f};
   require(proxy->setEdgeWallMaskOverride(
               imageEdge, bw::core::WallMaskOverride::image(
-                             "mask/wear.png", 2, blend)) &&
+                             "mask/wear.png", 2, blend, colour)) &&
               proxy->setEdgeWallMaskOverride(
                   disabledEdge, bw::core::WallMaskOverride::disabled()),
           "could not author Wall mask states");
@@ -508,7 +518,8 @@ void authoredWallMaskValuesRoundTripAndRejectFutureVersions() {
         ++image;
         require(payload->resourceName == "mask/wear.png" &&
                     payload->channel == 2 &&
-                    payload->blendParameters == blend,
+                    payload->blendParameters == blend &&
+                    payload->blendColour == colour,
                 "Image Wall mask payload changed on reload");
       } else {
         require(value.state() != bw::core::WallMaskOverride::State::Image,
