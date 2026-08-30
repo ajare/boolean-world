@@ -74,6 +74,17 @@ void everyWorldPathUsesThePostWaterWorld() {
               std::string::npos,
           "editor preview does not defer Liquid into WaterScene");
 
+  auto repo = app.parent_path().parent_path().parent_path();
+  for (auto const* materialSource : {"BasicMaterial.cpp", "PbrMaterial.cpp"}) {
+    auto material = read(repo / "ext" / "willpower" / "ext" /
+                         "massive-poly-pusher" / "mpp" / "src" /
+                         materialSource);
+    require(material.find("PBR_PLANAR_REFLECTION_1") != std::string::npos &&
+                material.find("PBR_PLANAR_REFLECTION_2") != std::string::npos &&
+                material.find("PBR_PLANAR_REFLECTION_3") != std::string::npos,
+            "an MPP material path cannot supply neutral bindings for every bounded Planar sampler");
+  }
+
   auto renderer = read(
       app.parent_path() / "render" / "src" / "WorldRenderer3d.cpp");
   require(renderer.find("mSurfaceSet == WorldSurfaceSet::Liquid && "
