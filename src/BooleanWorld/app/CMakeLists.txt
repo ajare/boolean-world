@@ -271,6 +271,8 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_proc_material_load_tests
         tests/proc_material_load_tests.cpp
+        ../render/src/EmbossingCatalog.cpp
+        ../render/src/EmbossingCatalogResourceDefinitionFactory.cpp
         ../render/src/ProcMaterial.cpp
         ../render/src/ProcMaterialResourceDefinitionFactory.cpp)
     target_include_directories(boolean_world_proc_material_load_tests PRIVATE include ../render/include)
@@ -285,6 +287,8 @@ if(BUILD_TESTING)
              COMMAND boolean_world_proc_material_load_tests fixture-load)
     add_test(NAME boolean_world_proc_material_load_duplicate-id
              COMMAND boolean_world_proc_material_load_tests duplicate-id)
+    add_test(NAME boolean_world_embossing_catalog_load_singleton
+             COMMAND boolean_world_proc_material_load_tests emboss-singleton)
 
     add_executable(boolean_world_sub_material_resolver_tests
         tests/sub_material_resolver_tests.cpp

@@ -336,6 +336,18 @@ Resources:
       name: "Bank.Themes"
       location: "audio/Themes/Build/Desktop/Themes.bank"
     - type: "TextFile"
+      name: "EmbossingCatalogFile"
+      location: "embossing-built-in.yaml"
+    - type: "EmbossingCatalog"
+      name: "Embossing"
+      DependentResources:
+        DependentResource:
+          id: "Yaml"
+          ref: "EmbossingCatalogFile"
+      Definitions:
+        Definition:
+          Resource: "Yaml"
+    - type: "TextFile"
       name: "ProcMaterialsFile"
       location: "proc-materials-built-in.yaml"
     - type: "ProcMaterial"

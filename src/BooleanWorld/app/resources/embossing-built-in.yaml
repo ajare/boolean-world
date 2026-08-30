@@ -1,0 +1,71 @@
+presets:
+  - id: builtin.emboss.stone
+    name: Stone blocks
+    emboss:
+      pattern: Square
+      radius: 12
+      depth: 0.6
+      depthVariation: 0.15
+      runningBondWidth: 50
+      runningBondOffset: 50
+      voronoiRounding: 0.25
+  - id: builtin.emboss.slate
+    name: Slate running bond
+    emboss:
+      pattern: RunningBond
+      radius: 20
+      depth: 0.5
+      depthVariation: 0.12
+      runningBondWidth: 45
+      runningBondOffset: 50
+      voronoiRounding: 0.25
+  - id: builtin.emboss.sandstone
+    name: Sandstone opus
+    emboss:
+      pattern: ModularOpus
+      radius: 24
+      depth: 0.45
+      depthVariation: 0.1
+      runningBondWidth: 50
+      runningBondOffset: 50
+      voronoiRounding: 0.25
+  - id: builtin.emboss.limestone
+    name: Limestone blocks
+    emboss:
+      pattern: Square
+      radius: 16
+      depth: 0.4
+      depthVariation: 0.1
+      runningBondWidth: 50
+      runningBondOffset: 50
+      voronoiRounding: 0.25
+  - id: builtin.emboss.basalt
+    name: Basalt cells
+    emboss:
+      pattern: Voronoi
+      radius: 10
+      depth: 0.9
+      depthVariation: 0.2
+      runningBondWidth: 50
+      runningBondOffset: 50
+      voronoiRounding: 0.2
+  - id: builtin.emboss.galvanized-steel
+    name: Galvanized steel panels
+    emboss:
+      pattern: Square
+      radius: 20
+      depth: 0.3
+      depthVariation: 0
+      runningBondWidth: 50
+      runningBondOffset: 50
+      voronoiRounding: 0.25
+  - id: builtin.emboss.brick
+    name: Brick running bond
+    emboss:
+      pattern: RunningBond
+      radius: 8
+      depth: 0.35
+      depthVariation: 0.05
+      runningBondWidth: 40
+      runningBondOffset: 50
+      voronoiRounding: 0.25

@@ -30,6 +30,12 @@ struct PrimitivePropertySet : public Serializable {
   std::string ceilingMaterialId;
   std::string wallMaterialId;
 
+  // Optional stable references into the sole global Embossing catalog. An
+  // empty id explicitly means that this surface has no Embossing.
+  std::string floorEmbossPresetId;
+  std::string ceilingEmbossPresetId;
+  std::string wallEmbossPresetId;
+
 public:
   bool childrenModified() const override;
 

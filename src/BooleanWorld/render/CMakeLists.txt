@@ -3,6 +3,8 @@
 # code instead of two independently drifting copies.
 
 add_library(BooleanWorldRender STATIC
+    src/EmbossingCatalog.cpp
+    src/EmbossingCatalogResourceDefinitionFactory.cpp
     src/ProcMaterial.cpp
     src/ProcMaterialResourceDefinitionFactory.cpp
     src/SubMaterialResolver.cpp

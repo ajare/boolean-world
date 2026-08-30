@@ -23,6 +23,12 @@ void PrimitivePropertySet::serializeImpl(shared_ptr<Serializer> serializer, Seri
     serializer->writeString("ceilingMaterial", ceilingMaterialId);
     serializer->writeString("wallMaterial", wallMaterialId);
 
+    // Emboss-preset id references are always explicit, including the empty
+    // no-relief state. This is the format marker for the ownership break.
+    serializer->writeString("floorEmbossPreset", floorEmbossPresetId);
+    serializer->writeString("ceilingEmbossPreset", ceilingEmbossPresetId);
+    serializer->writeString("wallEmbossPreset", wallEmbossPresetId);
+
     serializer->endMap();  // primitivePropertySet
   }
 }
@@ -33,6 +39,7 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
   LiquidType liquidType_{LiquidType::Water};
 
   string floorMaterialId_, ceilingMaterialId_, wallMaterialId_;
+  string floorEmbossPresetId_, ceilingEmbossPresetId_, wallEmbossPresetId_;
 
   try {
     serializer->beginMap("primitivePropertySet");
@@ -46,6 +53,12 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
       floorMaterialId_ = serializer->readString("floorMaterial", true, "");
       ceilingMaterialId_ = serializer->readString("ceilingMaterial", true, "");
       wallMaterialId_ = serializer->readString("wallMaterial", true, "");
+
+      // Required in YAML and positional binary data: there is deliberately no
+      // compatibility path for the old Primitive property shape.
+      floorEmbossPresetId_ = serializer->readString("floorEmbossPreset");
+      ceilingEmbossPresetId_ = serializer->readString("ceilingEmbossPreset");
+      wallEmbossPresetId_ = serializer->readString("wallEmbossPreset");
 
       serializer->endMap();  // primitivePropertySet
     }
@@ -62,6 +75,9 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
   floorMaterialId = floorMaterialId_;
   ceilingMaterialId = ceilingMaterialId_;
   wallMaterialId = wallMaterialId_;
+  floorEmbossPresetId = floorEmbossPresetId_;
+  ceilingEmbossPresetId = ceilingEmbossPresetId_;
+  wallEmbossPresetId = wallEmbossPresetId_;
 
   return true;
 }

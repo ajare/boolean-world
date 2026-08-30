@@ -6,12 +6,14 @@
 #include <stdexcept>
 #include <string>
 
+#include <core/EmbossingCatalogData.h>
 #include <core/ProcMaterialData.h>
 #include <core/SerializationWorkData.h>
 #include <core/World.h>
 #include <core/YamlSerializer.h>
 
 namespace {
+using bw::core::EmbossingCatalogData;
 using bw::core::ProcMaterialData;
 using bw::core::Serializable;
 using bw::core::SerializationWorkData;
@@ -117,11 +119,39 @@ void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resource
           "generated catalog changed during round-trip");
 }
 
+void globalEmbossingCatalogPreservesBuiltInRelief(fs::path const& resources) {
+  auto manifest = readFile(resources / "Resources.yaml");
+  require(manifest.find("location: \"embossing-built-in.yaml\"") != std::string::npos &&
+              manifest.find("type: \"EmbossingCatalog\"") != std::string::npos,
+          "Resources.yaml does not declare the global Embossing catalog");
+
+  auto catalog = loadFile<EmbossingCatalogData>(
+      resources / "embossing-built-in.yaml");
+  require(catalog.presets.size() == 7,
+          "global catalog did not preserve every built-in relief definition");
+  auto const* stone = catalog.findPreset("builtin.emboss.stone");
+  auto const* brick = catalog.findPreset("builtin.emboss.brick");
+  require(stone && stone->emboss.pattern == bw::core::EmbossPattern::Square &&
+              near(stone->emboss.radius, 12.0f) &&
+              near(stone->emboss.depth, 0.6f),
+          "Stone Embossing was not preserved in its preset");
+  require(brick && brick->emboss.pattern == bw::core::EmbossPattern::RunningBond &&
+              near(brick->emboss.radius, 8.0f) &&
+              near(brick->emboss.runningBondWidth, 40.0f),
+          "Brick Embossing was not preserved in its preset");
+  require(roundTrip(catalog).presets.size() == catalog.presets.size(),
+          "global Embossing catalog changed during round-trip");
+}
+
 void migratedWorldReferencesThePreservedCombinationAndRoundTrips(fs::path const& resources) {
   auto worldPath = resources / "world-test-1.yaml";
   auto text = readFile(worldPath);
   require(text.find("materialIndex:") == std::string::npos && text.find("materialDef:") == std::string::npos,
           "world-test-1.yaml still contains legacy material data");
+  require(text.find("floorEmbossPreset:") != std::string::npos &&
+              text.find("ceilingEmbossPreset:") != std::string::npos &&
+              text.find("wallEmbossPreset:") != std::string::npos,
+          "world-test-1.yaml lacks explicit per-surface Emboss-preset references");
 
   size_t referenceCount = 0;
   for (size_t position = 0; (position = text.find("migrated.marble.1", position)) != std::string::npos;
@@ -139,6 +169,10 @@ void migratedWorldReferencesThePreservedCombinationAndRoundTrips(fs::path const&
     migratedFloor |= properties.floorMaterialId == "migrated.marble.1";
     migratedCeiling |= properties.ceilingMaterialId == "migrated.marble.1";
     migratedWall |= properties.wallMaterialId == "migrated.marble.1";
+    require(properties.floorEmbossPresetId.empty() &&
+                properties.ceilingEmbossPresetId.empty() &&
+                properties.wallEmbossPresetId.empty(),
+            "fixture acquired relief that its old Sub-material did not have");
   }
   require(migratedFloor && migratedCeiling && migratedWall,
           "the built World did not retain the migrated Sub-material on every surface kind");
@@ -153,6 +187,7 @@ int main() {
   try {
     fs::path resources = BW_MATERIAL_MIGRATION_RESOURCE_DIR;
     generatedCatalogPreservesPinnedValuesAndRoundTrips(resources);
+    globalEmbossingCatalogPreservesBuiltInRelief(resources);
     migratedWorldReferencesThePreservedCombinationAndRoundTrips(resources);
     std::cout << "ProcMaterial content migration coverage passed\n";
     return 0;

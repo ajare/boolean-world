@@ -14,6 +14,8 @@ add_library(core STATIC
     src/DynamicWorldDataGenerator.cpp
     src/Easing.cpp
     src/Emboss.cpp
+    src/EmbossPreset.cpp
+    src/EmbossingCatalogData.cpp
     src/InfluenceEye.cpp
     src/ImmutableAccelerationGrid.cpp
     src/Layer.cpp
@@ -83,6 +85,16 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_mesh_primitive_geometry_proxy_tests)
     add_test(NAME boolean_world_mesh_primitive_geometry_proxy
              COMMAND boolean_world_mesh_primitive_geometry_proxy_tests)
+
+    add_executable(boolean_world_embossing_catalog_tests
+        tests/embossing_catalog_tests.cpp)
+    target_link_libraries(boolean_world_embossing_catalog_tests PRIVATE core)
+    target_compile_features(boolean_world_embossing_catalog_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_embossing_catalog_tests)
+    bw_output_dirs(boolean_world_embossing_catalog_tests)
+    bw_deploy_runtime_dlls(boolean_world_embossing_catalog_tests)
+    add_test(NAME boolean_world_embossing_catalog
+             COMMAND boolean_world_embossing_catalog_tests)
 
     add_executable(boolean_world_proc_material_tests
         tests/proc_material_tests.cpp)

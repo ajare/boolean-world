@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <string>
 
+#include <core/BinarySerializer.h>
 #include <core/PrimitivePropertySet.h>
 #include <core/Serializable.h>
 #include <core/YamlSerializer.h>
@@ -57,7 +58,7 @@ void failedDeserializationReturnsFailureIndependentlyOfModifiedState() {
           "deserialization result leaked into the modified state");
 }
 
-void propertySetRoundTripsSubMaterialIds() {
+void propertySetRoundTripsSurfaceResourceIds() {
   bw::core::PrimitivePropertySet original;
   original.floorZ = 0.0f;
   original.ceilingZ = 48.0f;
@@ -66,6 +67,9 @@ void propertySetRoundTripsSubMaterialIds() {
   original.floorMaterialId = "weathered_slate";
   original.ceilingMaterialId = "polished_slate";
   original.wallMaterialId = "";
+  original.floorEmbossPresetId = "weathered_blocks";
+  original.ceilingEmbossPresetId = "";
+  original.wallEmbossPresetId = "chiselled_edges";
 
   bw::core::SerializationWorkData writeWorkData;
   auto writer = std::shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toString());
@@ -86,31 +90,54 @@ void propertySetRoundTripsSubMaterialIds() {
           "ceiling Sub-material id did not round-trip");
   require(roundTripped.wallMaterialId == original.wallMaterialId,
           "an empty wall Sub-material id did not round-trip as empty");
+  require(roundTripped.floorEmbossPresetId == original.floorEmbossPresetId,
+          "floor Emboss-preset id did not round-trip");
+  require(roundTripped.ceilingEmbossPresetId == original.ceilingEmbossPresetId,
+          "empty ceiling Emboss-preset id did not round-trip");
+  require(roundTripped.wallEmbossPresetId == original.wallEmbossPresetId,
+          "wall Emboss-preset id did not round-trip");
   require(roundTripped.liquidLevel == original.liquidLevel,
           "liquid level did not round-trip the same way floorZ/ceilingZ do");
   require(roundTripped.liquidType == original.liquidType,
           "liquid type did not round-trip the same way liquid level does");
 }
 
-void propertySetToleratesMissingSubMaterialIds() {
+void propertySetRoundTripsEmbossPresetIdsInBinary() {
+  bw::core::PrimitivePropertySet original;
+  original.floorEmbossPresetId = "floor_relief";
+  original.ceilingEmbossPresetId = "";
+  original.wallEmbossPresetId = "wall_relief";
+
+  auto writer = std::shared_ptr<bw::core::Serializer>(
+      bw::core::BinarySerializer::toString());
+  bw::core::SerializationWorkData writeWorkData;
+  original.serialize(writer, writeWorkData);
+  auto bytes = static_cast<bw::core::BinarySerializer*>(writer.get())
+                   ->getSerializedString();
+
+  auto reader = std::shared_ptr<bw::core::Serializer>(
+      bw::core::BinarySerializer::fromString(bytes));
+  reader->deserialize();
+  bw::core::PrimitivePropertySet copy;
+  bw::core::SerializationWorkData readWorkData;
+  require(copy.deserialize(reader, readWorkData) &&
+              copy.floorEmbossPresetId == "floor_relief" &&
+              copy.ceilingEmbossPresetId.empty() &&
+              copy.wallEmbossPresetId == "wall_relief",
+          "per-surface Emboss-preset ids did not round-trip in binary data");
+}
+
+void propertySetRejectsLegacyShapeWithoutEmbossPresetIds() {
   auto serializer = std::shared_ptr<bw::core::Serializer>(
-      bw::core::YamlSerializer::fromString("floorZ: 0\nceilingZ: 48\n"));
+      bw::core::YamlSerializer::fromString(
+          "floorZ: 0\nceilingZ: 48\n"
+          "floorMaterial: ''\nceilingMaterial: ''\nwallMaterial: ''\n"));
   serializer->deserialize();
 
   bw::core::PrimitivePropertySet properties;
   bw::core::SerializationWorkData workData;
-  require(properties.deserialize(serializer, workData),
-          "property set treated missing Sub-material ids as a deserialization failure");
-  require(properties.floorMaterialId.empty(),
-          "a missing floor Sub-material id was not left empty");
-  require(properties.ceilingMaterialId.empty(),
-          "a missing ceiling Sub-material id was not left empty");
-  require(properties.wallMaterialId.empty(),
-          "a missing wall Sub-material id was not left empty");
-  require(properties.liquidLevel == 0.0f,
-          "a missing liquid level was not left at its zero default");
-  require(properties.liquidType == bw::core::LiquidType::Water,
-          "a missing liquid type was not left at its Water default");
+  require(!properties.deserialize(serializer, workData),
+          "legacy property data without explicit Emboss-preset ids was accepted");
 }
 
 }  // namespace
@@ -119,8 +146,9 @@ int main() {
   try {
     successfulDeserializationLeavesObjectUnmodified();
     failedDeserializationReturnsFailureIndependentlyOfModifiedState();
-    propertySetRoundTripsSubMaterialIds();
-    propertySetToleratesMissingSubMaterialIds();
+    propertySetRoundTripsSurfaceResourceIds();
+    propertySetRoundTripsEmbossPresetIdsInBinary();
+    propertySetRejectsLegacyShapeWithoutEmbossPresetIds();
     std::cout << "Serializable deserialization coverage passed\n";
     return 0;
   } catch (std::exception const& error) {

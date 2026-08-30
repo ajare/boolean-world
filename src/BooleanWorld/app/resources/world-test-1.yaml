@@ -297,6 +297,9 @@ world:
                   floorMaterial: migrated.marble.1
                   ceilingMaterial: migrated.marble.1
                   wallMaterial: migrated.marble.1
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
                 complexPolygons:
                   - polygons:
                       - vertices:
@@ -577,6 +580,9 @@ world:
                       floorMaterial: migrated.marble.1
                       ceilingMaterial: migrated.marble.1
                       wallMaterial: migrated.marble.1
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
                     edgeOverrideFormat: 4
@@ -855,6 +861,9 @@ world:
                       floorMaterial: migrated.marble.1
                       ceilingMaterial: migrated.marble.1
                       wallMaterial: migrated.marble.1
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
                     edgeOverrideFormat: 4
@@ -1133,6 +1142,9 @@ world:
                       floorMaterial: migrated.marble.1
                       ceilingMaterial: migrated.marble.1
                       wallMaterial: migrated.marble.1
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
                     edgeOverrideFormat: 4
@@ -1411,6 +1423,9 @@ world:
                       floorMaterial: migrated.marble.1
                       ceilingMaterial: migrated.marble.1
                       wallMaterial: migrated.marble.1
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
                     edgeOverrideFormat: 4
@@ -1689,6 +1704,9 @@ world:
                       floorMaterial: migrated.marble.1
                       ceilingMaterial: migrated.marble.1
                       wallMaterial: migrated.marble.1
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
                     edgeOverrideFormat: 4
@@ -2060,6 +2078,9 @@ world:
                       floorMaterial: migrated.marble.1
                       ceilingMaterial: migrated.marble.1
                       wallMaterial: migrated.marble.1
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
                     edgeOverrideFormat: 4
@@ -2348,6 +2369,9 @@ world:
                       floorMaterial: migrated.marble.1
                       ceilingMaterial: migrated.marble.1
                       wallMaterial: migrated.marble.1
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
                     edgeOverrideFormat: 4
@@ -2645,6 +2669,9 @@ world:
                       floorMaterial: builtin.marble
                       ceilingMaterial: builtin.marble
                       wallMaterial: builtin.marble
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
                     edgeOverrideFormat: 4
@@ -2930,6 +2957,9 @@ world:
                       floorMaterial: builtin.marble
                       ceilingMaterial: builtin.marble
                       wallMaterial: builtin.marble
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
                     edgeOverrideFormat: 4
@@ -3215,6 +3245,9 @@ world:
                       floorMaterial: builtin.wood2
                       ceilingMaterial: builtin.wood2
                       wallMaterial: builtin.wood2
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
                     edgeOverrideFormat: 4
@@ -3496,6 +3529,9 @@ world:
                       floorMaterial: builtin.wood2
                       ceilingMaterial: builtin.wood2
                       wallMaterial: builtin.wood2
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
                     edgeOverrideFormat: 4
@@ -3777,6 +3813,9 @@ world:
                       floorMaterial: builtin.wood2
                       ceilingMaterial: builtin.wood2
                       wallMaterial: builtin.wood2
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
                   meshPrimitive:
                     treeFormat: 1297371717
                     edgeOverrideFormat: 4
@@ -4300,6 +4339,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
                 complexPolygons:
                   - polygons:
                       - vertices:
@@ -4570,6 +4612,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
                 complexPolygons:
                   - polygons:
                       - vertices:
@@ -4840,6 +4885,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
                 complexPolygons:
                   - polygons:
                       - vertices:
@@ -5110,6 +5158,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
                 complexPolygons:
                   - polygons:
                       - vertices:
@@ -5380,6 +5431,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
                 complexPolygons:
                   - polygons:
                       - vertices:
@@ -5650,6 +5704,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
                 complexPolygons:
                   - polygons:
                       - vertices:
@@ -5921,6 +5978,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
                 complexPolygons:
                   - polygons:
                       - vertices:
@@ -6192,6 +6252,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
                 complexPolygons:
                   - polygons:
                       - vertices:
@@ -6463,6 +6526,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
               meshPrimitive:
                 treeFormat: 1297371717
                 edgeOverrideFormat: 4
@@ -6744,6 +6810,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
               meshPrimitive:
                 treeFormat: 1297371717
                 edgeOverrideFormat: 4
@@ -7025,6 +7094,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
               meshPrimitive:
                 treeFormat: 1297371717
                 edgeOverrideFormat: 4
@@ -7306,6 +7378,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
               meshPrimitive:
                 treeFormat: 1297371717
                 edgeOverrideFormat: 4
@@ -7587,6 +7662,9 @@ world:
                   floorMaterial: builtin.marble
                   ceilingMaterial: builtin.marble
                   wallMaterial: builtin.marble
+                  floorEmbossPreset: ""
+                  ceilingEmbossPreset: ""
+                  wallEmbossPreset: ""
               meshPrimitive:
                 treeFormat: 1297371717
                 edgeOverrideFormat: 4

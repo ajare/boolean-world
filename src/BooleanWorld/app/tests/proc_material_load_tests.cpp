@@ -10,6 +10,8 @@
 #include <willpower/application/resourcesystem/ResourceExceptions.h>
 #include <willpower/application/resourcesystem/ResourceManager.h>
 
+#include "EmbossingCatalog.h"
+#include "EmbossingCatalogResourceDefinitionFactory.h"
 #include "ProcMaterial.h"
 #include "ProcMaterialResourceDefinitionFactory.h"
 
@@ -42,6 +44,9 @@ std::unique_ptr<ResourceManager> makeManager(fs::path const& root, wp::Logger& l
 
   manager->addResourceFactory(new ProcMaterialResourceFactory());
   manager->addResourceDefinitionFactory(new ProcMaterialResourceDefinitionFactory());
+  manager->addResourceFactory(new EmbossingCatalogResourceFactory());
+  manager->addResourceDefinitionFactory(
+      new EmbossingCatalogResourceDefinitionFactory());
 
   manager->addResourceLocation("Directory", root.string(), "Resources.yaml");
 
@@ -172,6 +177,58 @@ subMaterials:
 
   require(threw, "Duplicate Sub-material id across catalogs did not fail to load");
 }
+
+void exactlyOneEmbossingCatalogLoads(fs::path const& root, wp::Logger& logger) {
+  writeFile(root / "embossing.yaml", R"(presets:
+  - id: "blocks"
+    name: "Blocks"
+    emboss:
+      pattern: Square
+      radius: 12
+      depth: 0.5
+      depthVariation: 0.1
+      runningBondWidth: 50
+      runningBondOffset: 50
+      voronoiRounding: 0.25
+)");
+  writeFile(root / "Resources.yaml", R"(Resources:
+  Resource:
+    - type: "TextFile"
+      name: "EmbossingFile"
+      location: "embossing.yaml"
+    - type: "EmbossingCatalog"
+      name: "EmbossingA"
+      DependentResources:
+        DependentResource:
+          id: "Yaml"
+          ref: "EmbossingFile"
+      Definitions:
+        Definition:
+          Resource: "Yaml"
+    - type: "EmbossingCatalog"
+      name: "EmbossingB"
+      DependentResources:
+        DependentResource:
+          id: "Yaml"
+          ref: "EmbossingFile"
+      Definitions:
+        Definition:
+          Resource: "Yaml"
+)");
+
+  auto manager = makeManager(root, logger);
+  manager->scanLocations();
+  bool threw = false;
+  try {
+    manager->createAllResources();
+  } catch (wp::application::resourcesystem::ResourceException const& error) {
+    threw = true;
+    require(std::string(error.what()).find("Only one global Embossing catalog") !=
+                std::string::npos,
+            "Unexpected singleton error: " + std::string(error.what()));
+  }
+  require(threw, "a second global Embossing catalog was accepted");
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -192,6 +249,8 @@ int main(int argc, char** argv) {
       fixtureLoadsThroughAResourceManager(root, logger);
     } else if (scenario == "duplicate-id") {
       duplicateSubMaterialIdAcrossCatalogsFailsToLoad(root, logger);
+    } else if (scenario == "emboss-singleton") {
+      exactlyOneEmbossingCatalogLoads(root, logger);
     } else {
       throw std::runtime_error("Unknown scenario: " + scenario);
     }

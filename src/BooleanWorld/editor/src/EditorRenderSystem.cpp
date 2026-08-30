@@ -15,6 +15,8 @@
 #include <willpower/application/resourcesystem/ResourceManager.h>
 #include <willpower/common/Logger.h>
 
+#include "EmbossingCatalog.h"
+#include "EmbossingCatalogResourceDefinitionFactory.h"
 #include "ProcMaterial.h"
 #include "ProcMaterialResourceDefinitionFactory.h"
 
@@ -98,8 +100,11 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
   // from BooleanWorldRender, exactly as the game DLL registers them (see
   // DLL.cpp); Map and ProtoEntity are app-only types the preview ignores.
   mResourceMgr->addResourceFactory(new ProcMaterialResourceFactory());
+  mResourceMgr->addResourceFactory(new EmbossingCatalogResourceFactory());
   mResourceMgr->addResourceDefinitionFactory(
       new ProcMaterialResourceDefinitionFactory());
+  mResourceMgr->addResourceDefinitionFactory(
+      new EmbossingCatalogResourceDefinitionFactory());
   mResourceMgr->addResourceFactory(new InertResourceFactory("Map"));
   mResourceMgr->addResourceFactory(new InertResourceFactory("ProtoEntity"));
 
