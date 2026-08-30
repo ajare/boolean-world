@@ -611,6 +611,22 @@ void clampViewToWorldBounds() {
   gViewOffset.y = loY <= hiY ? clamp(gViewOffset.y, loY, hiY) : centre.y;
 }
 
+// The window title follows the loaded World file: just "Editor" while nothing
+// is loaded, otherwise "Editor - <file name>". Updated only when it actually
+// changes, so the per-frame call stays a cheap string compare.
+void updateWindowTitle(editor::Document* doc) {
+  std::string title = "Editor";
+  if (doc->hasFilepath()) {
+    title += " - " + filesystem::path(doc->getFilepath()).filename().string();
+  }
+
+  static std::string lastTitle;
+  if (title != lastTitle) {
+    SDL_SetWindowTitle(gWindow, title.c_str());
+    lastTitle = title;
+  }
+}
+
 void run() {
   ImVec4 clearColour = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);  // ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
   ImGuiIO& io = ImGui::GetIO();
@@ -640,6 +656,10 @@ void run() {
 
     // Events
     done = processEvents(gWindow);
+
+    // Title bar reflects the loaded World file (open/save/new/close all land
+    // here once per frame).
+    updateWindowTitle(editor::Document::instance());
 
     // Logic
     if (editor::Document::instance()->isActive()) {
