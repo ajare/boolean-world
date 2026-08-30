@@ -41,6 +41,7 @@ removed the dependency entirely. Geometry terms are defined in
 | [0032](0032-liquid-equilibrium-is-a-deterministic-post-arrangement-watershed-pass.md) | Liquid equilibrium is a deterministic post-arrangement watershed pass | Accepted |
 | [0033](0033-world-resources-are-host-resolved-before-deserialization.md) | World resources are host-resolved before deserialization | Accepted |
 | [0034](0034-water-reflection-techniques-are-mutually-exclusive.md) | Water reflection techniques are mutually exclusive | Accepted |
+| [0035](0035-emboss-presets-are-a-single-global-catalog.md) | Emboss presets are a single global catalog | Accepted |
 
 ## World geometry rewrite scope
 

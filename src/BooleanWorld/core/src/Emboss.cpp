@@ -74,7 +74,7 @@ char const* EmbossRadiusName(EmbossPattern pattern) {
 // global render option, kept exactly so material authoring reaches the same
 // reliefs that were tuned through them.
 EmbossParameterLimits EmbossRadiusLimits() {
-  return {1.0f, 128.0f};
+  return {1.0f, 32.0f};
 }
 
 EmbossParameterLimits EmbossDepthLimits() {

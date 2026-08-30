@@ -121,11 +121,15 @@ One of the fixed procedural shader algorithms (Marble, Stone, Slate, …) a Sub-
 _Avoid_: material (too broad — see Sub-material), shader, material index (the field name, not the concept)
 
 **Sub-material**:
-A named, fully-parameterized instance of one Technique, defined inside a ProcMaterial resource: fixed parameter values, a fixed base colour, an Embossing block, and a stable string id unique across every ProcMaterial resource. A wall, floor, or ceiling is assigned a Sub-material by that id alone — never a Technique directly, and never with per-instance parameter overrides.
+A named, fully-parameterized instance of one Technique, defined inside a ProcMaterial resource: fixed parameter values, a fixed base colour, Chip settings, and a stable string id unique across every ProcMaterial resource. A wall, floor, or ceiling is assigned a Sub-material by that id alone — never a Technique directly, and never with per-instance parameter overrides.
 _Avoid_: material, material definition (the retired per-Primitive params+colour struct), procedural material
 
+**Emboss preset**:
+A named, globally reusable Embossing definition in the one Embossing catalog. A Primitive's floor, ceiling, and wall independently reference a preset by stable id, or none, separately from their Sub-material ids.
+_Avoid_: Sub-material emboss, material emboss, embossing catalog entry
+
 **Embossing**:
-The tiling relief a Sub-material lays over whatever surface it is applied to — a square, hexagon, running-bond, modular-opus or Voronoi pattern, plus the tile size, groove depth and per-tile depth variation that shape it. Evaluated in the plane of the surface itself, so a wall tiles across and up its own face rather than through a ground-plane projection, and applied as a normal-map perturbation only: it never changes geometry or collision. Authored per Sub-material and bounded by its own limits rather than by a Technique schema, because the same shader code evaluates it whatever the Technique. Was once a global floor-only render option.
+The tiling relief an Emboss preset lays over one assigned surface — a square, hexagon, running-bond, modular-opus or Voronoi pattern, plus the tile size, groove depth and per-tile depth variation that shape it. Evaluated in the plane of the surface itself, so a wall tiles across and up its own face rather than through a ground-plane projection, and applied as a normal-map perturbation only: it never changes geometry or collision. It is shared independently of ProcMaterial catalogs and bounded by its own limits rather than by a Technique schema. Was once a global floor-only render option.
 _Avoid_: floor pattern (it is not floor-only and not a render option), bump map, displacement (nothing is displaced)
 
 **Technique schema**:

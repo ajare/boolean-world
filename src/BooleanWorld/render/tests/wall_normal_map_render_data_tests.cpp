@@ -117,6 +117,13 @@ void shadersShareCompositionContract() {
                 shader->find("material.roughness = 0.0") !=
                     std::string::npos,
             "a world PBR shader lost the parameterless Plain grey Technique");
+    require(shader->find("const float grooveWidth = 1.0") !=
+                    std::string::npos &&
+                shader->find(
+                    "tileGrooveHeight(float distanceToEdge, float radius") ==
+                    std::string::npos &&
+                shader->find("radius * 0.01") == std::string::npos,
+            "a world PBR shader scales emboss groove width or sampling with tile size");
   }
 
   auto sample = shader3d.find("vec3 normalDir = applyWallNormalMap");

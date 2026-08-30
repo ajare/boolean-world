@@ -1,6 +1,6 @@
 # ProcMaterial subclasses Resource directly, not MaterialResource
 
-**Status:** Accepted
+**Status:** Superseded in part by ADR-0035 (Embossing ownership only)
 **Date:** 2026-08-25
 
 Willpower already ships `wp::application::resourcesystem::MaterialResource` —

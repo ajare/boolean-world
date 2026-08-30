@@ -863,9 +863,12 @@ vec2 nearestHexagonCenter(vec2 position, float radius)
     return safeRadius * vec2(1.73205080757 * (roundedCube.x + roundedCube.z * 0.5), 1.5 * roundedCube.z);
 }
 
-float tileGrooveHeight(float distanceToEdge, float radius, float depth)
+// Groove width is fixed in world units, so changing tile size expands only
+// each tile's flat area rather than also softening its edges.
+float tileGrooveHeight(float distanceToEdge, float depth)
 {
-    float groove = 1.0 - smoothstep(0.0, max(radius, 0.001) * 0.075, distanceToEdge);
+    const float grooveWidth = 1.0;
+    float groove = 1.0 - smoothstep(0.0, grooveWidth, distanceToEdge);
     return -max(depth, 0.0) * groove;
 }
 
@@ -945,7 +948,7 @@ float modularOpusTileHeight(vec2 p, float largeTileSize, float depth)
         }
     }
     return embossTileDepthOffset(depth, tileId) +
-        tileGrooveHeight(distanceToEdge, size, depth);
+        tileGrooveHeight(distanceToEdge, depth);
 }
 
 vec2 voronoiFeaturePoint(vec2 cell)
@@ -1006,7 +1009,7 @@ float voronoiTileHeight(vec2 p, float cellSize, float depth)
     }
     return embossTileDepthOffset(depth, nearestCell) +
         tileGrooveHeight(
-            max(distanceToEdge, 0.0) * size, size, depth);
+            max(distanceToEdge, 0.0) * size, depth);
 }
 
 float embossPatternHeight(
@@ -1020,7 +1023,7 @@ float embossPatternHeight(
             (p + vec2(safeRadius)) / (safeRadius * 2.0));
         return embossTileDepthOffset(depth, tileId) +
             tileGrooveHeight(
-                safeRadius - max(local.x, local.y), safeRadius, depth);
+                safeRadius - max(local.x, local.y), depth);
     }
     if (pattern == 2) {
         vec2 local = p - nearestHexagonCenter(p, safeRadius);
@@ -1028,7 +1031,7 @@ float embossPatternHeight(
         return embossTileDepthOffset(
                    depth, (p - local) / safeRadius) +
             tileGrooveHeight(
-                0.8660254 * safeRadius - fromCenter, safeRadius, depth);
+                0.8660254 * safeRadius - fromCenter, depth);
     }
     if (pattern == 3) {
         float widthFactor = clamp(
@@ -1044,8 +1047,7 @@ float embossPatternHeight(
             local, vec2(safeRadius, tileWidth) - local);
         return embossTileDepthOffset(depth, vec2(column, row)) +
             tileGrooveHeight(
-                min(distanceToEdges.x, distanceToEdges.y),
-                min(safeRadius, tileWidth), depth);
+                min(distanceToEdges.x, distanceToEdges.y), depth);
     }
     if (pattern == 4)
         return modularOpusTileHeight(p, radius, depth);
@@ -1132,7 +1134,9 @@ vec3 embossSurface(
     vec3 axisV;
     embossSurfaceAxes(surfaceNormal, axisU, axisV);
 
-    float e = max(radius * 0.01, 0.02);
+    // Keep the finite-difference distance in world units too: scaling it with
+    // the tile size blurred the fixed-width grooves on large tiles.
+    const float e = 0.02;
     vec2 p = vec2(dot(worldPos, axisU), dot(worldPos, axisV));
     vec2 gradient = vec2(
         embossPatternHeight(p + vec2(e, 0.0), radius, depth, pattern, runningBondWidth, runningBondOffset) - embossPatternHeight(p - vec2(e, 0.0), radius, depth, pattern, runningBondWidth, runningBondOffset),
