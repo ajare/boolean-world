@@ -246,6 +246,12 @@ bool setMeshEdgeNormalMapOverride(
     Document* doc, uint32_t edgeIndex,
     bw::core::WallNormalMapOverride const& overrideValue);
 
+// Commits the complete Wall mask value (state, resource, channel, and blend
+// parameters) in one undoable editor action. Sibling to the normal-map action.
+bool setMeshEdgeWallMaskOverride(
+    Document* doc, uint32_t edgeIndex,
+    bw::core::WallMaskOverride const& overrideValue);
+
 // Restores the relationship between the active mesh's Primitive position
 // and size and its geometry ("Recentre mesh").
 bool recentreActiveMesh(Document* doc);

@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <numeric>
 #include <set>
@@ -2092,6 +2093,71 @@ void invalidMeshEdgeNormalMapImageIsAtomic() {
   require(rejected, "an empty ImageResource name was accepted");
 }
 
+void meshEdgeWallMaskImageIsOneUndoEntryAndUndoesCleanly() {
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0.0f, 0.0f});
+  document.activateMesh(meshIndex);
+  auto edgeIndex = document.getActiveMesh()->getFirstEdgeIndex();
+  document.setSelectedMeshSubObjectIndices(
+      editor::Settings::MeshSubMode::Edge, {edgeIndex});
+  document.setModified(false);
+  auto const undoLevelsBefore = editor::getUndoLevels();
+  auto mask = bw::core::WallMaskOverride::image(
+      "JaguarTangentSpaceNormalMap", 3,
+      {0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f});
+
+  editor::transactUndoableAction(
+      &document, "Set Mesh Edge Wall Mask",
+      std::bind(editor::setMeshEdgeWallMaskOverride, std::placeholders::_1,
+                edgeIndex, mask));
+  require(editor::getUndoLevels() == undoLevelsBefore + 1,
+          "state, resource, channel, and blend parameters did not commit as one undo entry");
+  require(document.getActiveMeshEdgeWallMaskOverride(edgeIndex) == mask &&
+              document.getWorld()->getDependentResourceNames() ==
+                  std::vector<std::string>{"JaguarTangentSpaceNormalMap"},
+          "the Image state and World dependency did not commit together");
+
+  editor::undo(&document);
+  require(editor::getUndoLevels() == undoLevelsBefore,
+          "undo did not remove the wall-mask action's one history entry");
+  auto* primitive = static_cast<bw::core::MeshPrimitive*>(
+      document.getWorld()->getPrimitive(meshIndex));
+  auto proxy = primitive->createEditingProxy();
+  require(proxy->getEdgeWallMaskOverride(proxy->getFirstEdgeIndex()).state() ==
+                  bw::core::WallMaskOverride::State::Unset &&
+              document.getWorld()->getDependentResourceNames().empty(),
+          "undo did not restore the edge and dependency list");
+}
+
+void invalidMeshEdgeWallMaskImageIsAtomic() {
+  bool rejected = false;
+  try {
+    (void)bw::core::WallMaskOverride::image("", 0, {});
+  } catch (std::invalid_argument const&) {
+    rejected = true;
+  }
+  require(rejected, "an empty ImageResource name was accepted");
+
+  rejected = false;
+  try {
+    (void)bw::core::WallMaskOverride::image("mask.png", 4, {});
+  } catch (std::invalid_argument const&) {
+    rejected = true;
+  }
+  require(rejected, "a channel outside R/G/B/A was accepted");
+
+  rejected = false;
+  try {
+    auto parameters = bw::core::WallMaskOverride::BlendParameters{};
+    parameters[0] = std::numeric_limits<float>::infinity();
+    (void)bw::core::WallMaskOverride::image("mask.png", 0, parameters);
+  } catch (std::invalid_argument const&) {
+    rejected = true;
+  }
+  require(rejected, "a non-finite blend parameter was accepted");
+}
+
 void meshEdgeVisibleTogglesAndCommitsToThePrimitive() {
   editor::Document document;
   document.newDoc();
@@ -3641,6 +3707,8 @@ int main() {
     meshEdgeCollidesToggleIsOneUndoEntryAndUndoesCleanly();
     meshEdgeNormalMapImageIsOneUndoEntryAndUndoesCleanly();
     invalidMeshEdgeNormalMapImageIsAtomic();
+    meshEdgeWallMaskImageIsOneUndoEntryAndUndoesCleanly();
+    invalidMeshEdgeWallMaskImageIsAtomic();
     meshEdgeVisibleTogglesAndCommitsToThePrimitive();
     meshEdgeVisibleToggleIsOneUndoEntryAndUndoesCleanly();
     drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep();

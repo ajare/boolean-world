@@ -251,6 +251,16 @@ public:
       uint32_t edgeIndex,
       bw::core::WallNormalMapOverride const& overrideValue);
 
+  // Sibling trio for the Wall mask override (see the Wall normal-map trio
+  // above). Unset, and not editable, with no active mesh; the Image state's
+  // resource, channel, and blend parameters commit as one value.
+  [[nodiscard]] bw::core::WallMaskOverride
+  getActiveMeshEdgeWallMaskOverride(uint32_t edgeIndex) const;
+  [[nodiscard]] bool isActiveMeshEdgeWallMaskEditable(uint32_t edgeIndex) const;
+  bool setActiveMeshEdgeWallMaskOverride(
+      uint32_t edgeIndex,
+      bw::core::WallMaskOverride const& overrideValue);
+
   [[nodiscard]] std::vector<uint32_t> getHoveredMeshSubObjectIndices(
       wp::Vector2 const& worldPosition, Settings const& settings) const;
   [[nodiscard]] std::set<uint32_t> getMeshSubObjectIndicesInBounds(

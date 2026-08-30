@@ -669,6 +669,30 @@ bool Document::setActiveMeshEdgeNormalMapOverride(
   return true;
 }
 
+bw::core::WallMaskOverride
+Document::getActiveMeshEdgeWallMaskOverride(uint32_t edgeIndex) const {
+  return mActiveMesh
+             ? mActiveMesh->getEdgeWallMaskOverride(edgeIndex)
+             : bw::core::WallMaskOverride::unset();
+}
+
+bool Document::isActiveMeshEdgeWallMaskEditable(uint32_t edgeIndex) const {
+  return mActiveMesh && mActiveMesh->isEdgeWallMaskEditable(edgeIndex);
+}
+
+bool Document::setActiveMeshEdgeWallMaskOverride(
+    uint32_t edgeIndex,
+    bw::core::WallMaskOverride const& overrideValue) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) {
+    return false;
+  }
+  if (!mActiveMesh->setEdgeWallMaskOverride(edgeIndex, overrideValue)) {
+    return false;
+  }
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
+  return true;
+}
+
 vector<uint32_t> Document::getHoveredMeshSubObjectIndices(
     wp::Vector2 const& worldPosition, Settings const& settings) const {
   vector<uint32_t> result;

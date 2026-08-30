@@ -419,6 +419,12 @@ bool setMeshEdgeNormalMapOverride(
   return doc->setActiveMeshEdgeNormalMapOverride(edgeIndex, overrideValue);
 }
 
+bool setMeshEdgeWallMaskOverride(
+    Document* doc, uint32_t edgeIndex,
+    bw::core::WallMaskOverride const& overrideValue) {
+  return doc->setActiveMeshEdgeWallMaskOverride(edgeIndex, overrideValue);
+}
+
 bool deleteMeshSubObjects(
     Document* doc, Settings::MeshSubMode subMode, set<uint32_t> const& indices) {
   return doc->deleteMeshSubObjects(subMode, indices) > 0;

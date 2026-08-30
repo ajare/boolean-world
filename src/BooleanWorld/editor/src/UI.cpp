@@ -4188,6 +4188,15 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
   } else if (!doc->isActiveMeshEdgeNormalMapEditable(*selectedEdges.begin())) {
     ImGui::TextDisabled("Wall normal map: the selected edge is Internal; only External edges are editable.");
   }
+  if (settings.meshSubMode != Settings::MeshSubMode::Edge) {
+    ImGui::TextDisabled("Wall mask: unavailable in this Mesh sub-mode.");
+  } else if (selectedEdges.empty()) {
+    ImGui::TextDisabled("Wall mask: select exactly one External edge.");
+  } else if (selectedEdges.size() != 1) {
+    ImGui::TextDisabled("Wall mask: multiple edges are selected; select exactly one External edge.");
+  } else if (!doc->isActiveMeshEdgeWallMaskEditable(*selectedEdges.begin())) {
+    ImGui::TextDisabled("Wall mask: the selected edge is Internal; only External edges are editable.");
+  }
   if (selectedEdges.size() == 1) {
     auto edgeIndex = *selectedEdges.begin();
     auto indices = set<uint32_t>{edgeIndex};
@@ -4298,6 +4307,137 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     ImGui::EndDisabled();
     if (!normalMapError.empty()) {
       ImGui::TextWrapped("%s", normalMapError.c_str());
+    }
+
+    static uint32_t wallMaskDraftEdge = ~0u;
+    static int wallMaskState = 0;
+    static char wallMaskResource[512]{};
+    static int wallMaskChannel = 0;
+    static bw::core::WallMaskOverride::BlendParameters wallMaskBlend{};
+    static string wallMaskError;
+
+    // The blend sliders share the primary wall Sub-material's Technique
+    // schema: same parameter names, count, and [minimum, maximum] bounds.
+    bw::core::SubMaterial const* primaryWall = nullptr;
+    bw::core::TechniqueSchema const* wallSchema = nullptr;
+    auto meshPrimitiveIndex = doc->getActiveMeshPrimitiveIndex();
+    if (meshPrimitiveIndex != ~0u) {
+      if (auto* primitive = doc->getWorld()->getPrimitive(meshPrimitiveIndex)) {
+        primaryWall = procMaterialLibrary().findSubMaterial(
+            primitive->getProperties().wallMaterialId);
+        if (primaryWall) {
+          if (auto const* catalog = procMaterialLibrary().findCatalogForSubMaterial(
+                  primaryWall->id)) {
+            wallSchema = catalog->data.findTechniqueSchema(
+                primaryWall->materialIndex);
+          }
+        }
+      }
+    }
+
+    if (wallMaskDraftEdge != edgeIndex) {
+      wallMaskDraftEdge = edgeIndex;
+      wallMaskError.clear();
+      auto value = doc->getActiveMeshEdgeWallMaskOverride(edgeIndex);
+      wallMaskState = static_cast<int>(value.state());
+      wallMaskResource[0] = '\0';
+      wallMaskChannel = 0;
+      wallMaskBlend.fill(0.0f);
+      if (auto image = value.imageData()) {
+        strncpy_s(wallMaskResource, image->resourceName.c_str(), _TRUNCATE);
+        wallMaskChannel = image->channel;
+        wallMaskBlend = image->blendParameters;
+      } else if (primaryWall) {
+        // First enable defaults to a copy of the primary's current
+        // parameters, so the mask starts as a visible no-op.
+        for (size_t i = 0;
+             i < primaryWall->paramValues.size() && i < wallMaskBlend.size();
+             ++i) {
+          wallMaskBlend[i] = primaryWall->paramValues[i];
+        }
+      }
+    }
+    auto wallMaskEditable =
+        settings.meshSubMode == Settings::MeshSubMode::Edge &&
+        doc->isActiveMeshEdgeWallMaskEditable(edgeIndex);
+    ImGui::BeginDisabled(!wallMaskEditable);
+    ImGui::Combo("Wall mask##SelectedMeshEdge", &wallMaskState,
+                 "Not set\0Disabled\0Image\0");
+    if (wallMaskState ==
+        static_cast<int>(bw::core::WallMaskOverride::State::Image)) {
+      ImGui::InputText("Image resource##WallMask", wallMaskResource,
+                       sizeof(wallMaskResource));
+      ImGui::Combo("Channel##WallMask", &wallMaskChannel,
+                   "Red\0Green\0Blue\0Alpha\0");
+      if (wallSchema) {
+        for (size_t i = 0;
+             i < wallSchema->parameters.size() && i < wallMaskBlend.size();
+             ++i) {
+          auto const& parameter = wallSchema->parameters[i];
+          ImGui::SliderFloat(parameter.name.c_str(), &wallMaskBlend[i],
+                             parameter.minimum, parameter.maximum);
+        }
+      } else {
+        ImGui::TextDisabled(
+            "Wall mask blend: the wall Sub-material has no Technique schema.");
+      }
+    }
+    if (ImGui::Button("Apply wall mask##SelectedMeshEdge")) {
+      try {
+        auto value = wallMaskState == 0
+                         ? bw::core::WallMaskOverride::unset()
+                     : wallMaskState == 1
+                         ? bw::core::WallMaskOverride::disabled()
+                         : bw::core::WallMaskOverride::image(
+                               wallMaskResource,
+                               static_cast<uint8_t>(wallMaskChannel),
+                               wallMaskBlend);
+        if (auto image = value.imageData()) {
+          auto* renderSystem = editorRenderSystem();
+          if (!renderSystem) {
+            throw runtime_error("The editor resource system is unavailable.");
+          }
+          auto* manager = renderSystem->resourceManager();
+          string namesp;
+          string name;
+          wp::application::resourcesystem::Resource::splitName(
+              image->resourceName, "World", &namesp, &name);
+          auto resource = manager->getResource(name, namesp);
+          auto imageResource = dynamic_pointer_cast<
+              wp::application::resourcesystem::ImageResource>(resource);
+          if (!imageResource) {
+            throw runtime_error("The named resource is not an ImageResource.");
+          }
+          manager->createResource(resource);
+          manager->loadResource(resource);
+          // The channel is only known once the image is decoded, so validate
+          // after loading (alpha on an RGB image has no data to sample).
+          if (image->channel >= imageResource->getNumChannels()) {
+            throw runtime_error(
+                "The image does not have the selected channel.");
+          }
+        }
+        if (!transactUndoableActionAtomically(
+                doc, "Set Mesh Edge Wall Mask",
+                bind(setMeshEdgeWallMaskOverride, placeholders::_1, edgeIndex,
+                     value))) {
+          wallMaskError = "The selected edge cannot accept a wall mask.";
+        } else {
+          string dependencyError;
+          if (!editorRenderSystem()->loadWorldDependencies(
+                  doc->getWorld()->getDependentResourceNames(), "World",
+                  &dependencyError)) {
+            throw runtime_error(dependencyError);
+          }
+          wallMaskError.clear();
+        }
+      } catch (exception const& error) {
+        wallMaskError = error.what();
+      }
+    }
+    ImGui::EndDisabled();
+    if (!wallMaskError.empty()) {
+      ImGui::TextWrapped("%s", wallMaskError.c_str());
     }
 
     if (ImGui::Button("Split##SelectedMeshEdge")) {
