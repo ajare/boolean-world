@@ -26,29 +26,30 @@ not replace Liquid F0:
   reflection disappears but the grazing response remains.
 
 The fragment shader combines the Fresnel-weighted reflection with the existing
-Liquid absorption/tint contribution. The reflection source is screen-space:
-two scrolling ripple octaves perturb the surface normal, then a dithered ray
-march projects the reflected view ray into the opaque scene depth. A refined,
-point-sampled depth hit supplies scene colour; a miss, unstable silhouette hit,
-screen edge, or grazing view fades to the Liquid ambient fallback. This keeps
-movement and ripple motion stable while avoiding depth-filtered false hits.
+Liquid absorption/tint contribution. The selected Water reflection technique
+supplies the reflected radiance. Screen-space uses two scrolling ripple octaves
+and a dithered ray march through opaque scene depth. Planar projects the same
+ripple normal into the rank-matched reflected scene image. Invalid samples and
+unselected elevations fade to the Liquid ambient fallback.
 
 ## Render paths
 
-Gameplay and the editor's real 3D preview both use MPP's generated-water graph:
+Gameplay and the editor's real 3D preview both use MPP's generated-water graph.
+Screen-space renders the opaque scene, optional ambient occlusion,
+`SceneColourCopy`, and `WaterScene`. Planar instead renders one stable,
+rank-named `PlanarReflectionN` pass/image per selected Liquid elevation, then
+the ordinary opaque scene, optional ambient occlusion, and `WaterScene`; it has
+no `SceneColourCopy`. A Planar frame with no selected elevation creates no
+reflection resource, reflection pass, or Water pass. The editor explicitly
+stays Screen-space.
 
-1. Opaque floors, ceilings, walls, and world geometry render first.
-2. Ambient occlusion, when enabled, composites that opaque scene.
-3. `SceneColourCopy` creates the resolved-scene image and its mip chain.
-4. `WaterScene` draws only the deferred Liquid model over that final opaque
-   image and publishes `WaterComposite`.
-
-Both paths present `WaterComposite`. This is important at every gameplay render
-scale and anti-aliasing mode: the water pass samples the same resolved scene and
-camera frame that rasterized the opaque scene. Resizing rebuilds the resolved
-scene at the current viewport dimensions, including its mip chain. The editor
-preview has one native-resolution, AA-off configuration but otherwise follows
-the same topology and output selection.
+Each Planar pass renders opaque non-Water content with a mirrored, clipped
+camera and no post-processing. Full, Half, and Quarter Planar resolution are
+per-dimension fractions of the active 3D world target and round up to at least
+one pixel. Runtime allocation or reflected-render failure logs a warning and
+sticks for the play session. The selected technique remains Planar, reflection
+passes disappear, and `WaterScene` continues absorption, opaque-depth rejection,
+and compositing with reflected radiance disabled.
 
 Fragment-overdraw diagnostics deliberately use their own scene-and-resolve
 pipeline. They do not enable generated water and continue drawing all world
@@ -72,9 +73,15 @@ depth, Pool equilibrium, or authored Liquid properties.
 ## Manual acceptance
 
 Check a wet world from overhead and grazing angles, while moving and while the
-ripples animate. At screen edges and SSR misses, reflection should transition
-to the ambient fallback rather than jump. View the Liquid surface from below as
-well. Test the property extremes: zero Liquid reflectance removes the interface;
-zero Liquid F0 leaves only the grazing-angle response. Repeat gameplay at full,
-half, quarter, and eighth render scales; with every anti-aliasing mode; and with
-ambient occlusion both enabled and disabled.
+ripples animate. At invalid samples reflection should transition to the ambient
+fallback rather than jump. View the Liquid surface from below as well. Test the
+property extremes: zero Liquid reflectance removes the interface; zero Liquid
+F0 leaves only the grazing-angle response.
+
+For Planar, use F5 to select Full, Half, and Quarter resolution and press F10 at
+each setting. In each timestamped directory compare every `PlanarReflectionN`
+image with the pre-Water opaque scene and `WaterScene`; `render-graph.txt` must
+list each pass's image dimensions and submitted triangles/primitives. Repeat in
+Screen-space and in a zero-visible-Water Planar view and confirm there are no
+Planar captures. Also repeat gameplay at each render scale and anti-aliasing
+mode, with ambient occlusion both enabled and disabled.

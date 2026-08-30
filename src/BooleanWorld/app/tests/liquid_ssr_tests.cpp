@@ -49,8 +49,15 @@ void everyWorldPathUsesThePostWaterWorld() {
   require(state.find("RenderGraphCapture\", {Key::F10}") !=
                   std::string::npos &&
               state.find("requestGraphImageCapture") != std::string::npos &&
-              state.find("capture.passName") != std::string::npos,
-          "gameplay F10 does not capture graph outputs under their pass names");
+              state.find("capture.passName") != std::string::npos &&
+              state.find("stats.primaryColourOutputName") != std::string::npos &&
+              state.find("stats.primaryColourOutputWidth") != std::string::npos,
+          "gameplay F10 and telemetry do not expose named graph images and dimensions");
+  require(state.find("planarReflectionRuntimeFailed") != std::string::npos &&
+              state.find("mPlanarReflectionSessionFailed = true") !=
+                  std::string::npos &&
+              state.find("technique remains Planar") != std::string::npos,
+          "gameplay does not retain Planar selection after a runtime reflection failure");
 
   auto preview = read(app.parent_path() / "editor" / "src" /
                       "PreviewRenderScene.cpp");

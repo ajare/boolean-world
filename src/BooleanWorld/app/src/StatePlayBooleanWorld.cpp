@@ -232,8 +232,13 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
              "." + std::string(
                  bw::app::planarReflectionResolutionName(planarResolution));
   if (technique == bw::app::WaterReflectionTechnique::Planar) {
-    key += ".planes-" + std::to_string(planarPlanes.size());
-    for (auto const& plane : planarPlanes) {
+    key += mPlanarReflectionSessionFailed
+               ? ".reflection-failed"
+               : ".planes-" + std::to_string(planarPlanes.size());
+    for (auto const& plane :
+         mPlanarReflectionSessionFailed
+             ? std::vector<mpp::PlanarReflectionPlaneDescriptor>{}
+             : planarPlanes) {
       key += "." +
              std::to_string(std::bit_cast<std::uint32_t>(plane.elevation)) +
              (plane.viewerSide == mpp::ReflectionPlaneSide::Above
@@ -303,6 +308,7 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
   output.antiAliasing.fxaa = bw::app::antiAliasingIsFxaa(antiAliasing);
   options.outputs.push_back(output);
   options.generatedWater = true;
+  options.waterReflections.enabled = !mPlanarReflectionSessionFailed;
   options.waterReflections.technique =
       technique == bw::app::WaterReflectionTechnique::Planar
           ? mpp::WaterReflectionTechnique::Planar
@@ -1528,7 +1534,13 @@ void StatePlayBooleanWorld::saveRenderGraphImages(
       for (auto const& stats : passStats) {
         manifest << stats.name << ": triangles=" << stats.trianglesSubmitted
                  << ", primitives=" << stats.primitivesSubmitted
-                 << ", fullscreen-quads=" << stats.fullscreenQuads << '\n';
+                 << ", fullscreen-quads=" << stats.fullscreenQuads;
+        if (!stats.primaryColourOutputName.empty()) {
+          manifest << ", image=" << stats.primaryColourOutputName
+                   << ", dimensions=" << stats.primaryColourOutputWidth << 'x'
+                   << stats.primaryColourOutputHeight;
+        }
+        manifest << '\n';
       }
     }
     for (size_t index = 0; index < captures.size(); ++index) {
@@ -1609,6 +1621,15 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   }
   renderSystem->renderScene(
       mScene, mCamera3d, {0.0f, 0.0f}, pipeline->getName());
+  if (pipeline->planarReflectionRuntimeFailed() &&
+      !mPlanarReflectionSessionFailed) {
+    mPlanarReflectionSessionFailed = true;
+    addDisplayMessage(
+        DisplayMessage::Level::Game,
+        "Planar Water reflection disabled for this session; the selected "
+        "technique remains Planar: " +
+            pipeline->getPlanarReflectionFailureMessage());
+  }
   if (captureRenderGraph) {
     saveRenderGraphImages(
         pipeline->takeGraphImageCaptures(),
@@ -1653,9 +1674,11 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   // reflection images and WaterComposite remain to be added.
   auto screenSpaceWater =
       technique == bw::app::WaterReflectionTechnique::ScreenSpace;
-  auto planarWater =
+  auto planarRequested =
       technique == bw::app::WaterReflectionTechnique::Planar &&
       !planarPlanes.empty();
+  auto planarWater = planarRequested && !mPlanarReflectionSessionFailed;
+  auto failedPlanarWater = planarRequested && mPlanarReflectionSessionFailed;
   auto outputImage = preWaterOutputImage;
   if (mDebugDisplay.fragmentOverdraw) {
     outputImage = preWaterOutputImage;
@@ -1665,14 +1688,17 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
     outputImage =
         preWaterOutputImage +
         (planarWater        ? 2u * static_cast<std::uint32_t>(planarPlanes.size()) + 1u
-         : screenSpaceWater ? 2u
-                            : 0u);
+         : failedPlanarWater ? 1u
+         : screenSpaceWater  ? 2u
+                             : 0u);
   } else if (screenSpaceWater) {
     outputImage = 3u + (activeShadowImage ? 1u : 0u);
   } else if (planarWater) {
     outputImage = 2u +
                   2u * static_cast<std::uint32_t>(planarPlanes.size()) +
                   (activeShadowImage ? 1u : 0u);
+  } else if (failedPlanarWater) {
+    outputImage = 2u + (activeShadowImage ? 1u : 0u);
   } else {
     outputImage = 0u;
   }

@@ -168,6 +168,14 @@ _Avoid_: reflectivity (use the authored property name), reflection strength (doe
 A per-Liquid-type scalar from zero to one giving the Liquid surface's Fresnel reflectance at normal incidence. It supplies the base value of the angle-of-incidence response; Liquid reflectance separately grades the resulting response at every angle.
 _Avoid_: Fresnel coefficient (ambiguous between F0 and the angle-dependent result), refractive index (a different optical property from which physical F0 can be derived)
 
+**Water reflection technique**:
+The mutually exclusive method used to produce reflected radiance for Liquid interfaces: Screen-space or Planar. It changes the reflection source without changing Liquid reflectance, Liquid F0, absorption, or interface compositing.
+_Avoid_: reflection mode, SSR mode
+
+**Planar reflection resolution**:
+The per-dimension fraction of the active 3D world target used by Planar water-reflection images: Full, Half, or Quarter.
+_Avoid_: reflection render scale (Render scale already names the resolution of the 3D world)
+
 **Liquid-adjacency**:
 The relation between two solid Arrangement faces (the same faces that render and that the player walks on) across which liquid can equilibrate: both faces must be solid and their shared edge's wall clearance must be nonzero. The Arrangement's outer, unbounded face is liquid-adjacent to a bordering solid face, with an effective floor of negative infinity, only where the Border wall between them is explicitly authored not to collide — a solid wall there blocks liquid exactly as it blocks the player, so an ordinary outer wall is not an opening just because nothing is authored beyond it. Where it is open, it acts as a permanent drain.
 _Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when the wall between them has zero clearance)

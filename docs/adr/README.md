@@ -40,6 +40,7 @@ removed the dependency entirely. Geometry terms are defined in
 | [0031](0031-wedges-are-world-configured-additive-detail-geometry.md) | Wedges are World-configured additive post-fold detail geometry | Accepted |
 | [0032](0032-liquid-equilibrium-is-a-deterministic-post-arrangement-watershed-pass.md) | Liquid equilibrium is a deterministic post-arrangement watershed pass | Accepted |
 | [0033](0033-world-resources-are-host-resolved-before-deserialization.md) | World resources are host-resolved before deserialization | Accepted |
+| [0034](0034-water-reflection-techniques-are-mutually-exclusive.md) | Water reflection techniques are mutually exclusive | Accepted |
 
 ## World geometry rewrite scope
 

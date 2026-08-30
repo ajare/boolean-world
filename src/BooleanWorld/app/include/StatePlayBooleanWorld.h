@@ -168,6 +168,10 @@ private:
   std::optional<bw::app::WaterReflectionTechnique>
       mLiquidReflectionSelectionTechnique;
 
+  // Sticky for this play session. MPP falls back to WaterScene without
+  // reflected radiance; gameplay keeps the configured technique as Planar.
+  bool mPlanarReflectionSessionFailed{false};
+
   // Separate post-process-free pipelines retain the immutable enabled and
   // disabled depth-prepass modes. Each is resized to the selected world target
   // before use.

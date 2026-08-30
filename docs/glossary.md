@@ -163,6 +163,10 @@ arrangement's native edge–face incidence.
 
 **Render scale** — The fraction of screen resolution at which the 3D world is drawn. `full`, `half`, and `quarter` select the available scales; the resulting world image is composited across the screen while the interface remains at native resolution.
 
+**Water reflection technique** — The mutually exclusive method used to produce reflected radiance for Liquid interfaces: Screen-space or Planar. It changes the reflection source without changing Liquid reflectance, Liquid F0, absorption, or interface compositing.
+
+**Planar reflection resolution** — The per-dimension fraction of the active 3D world target used by Planar water-reflection images: Full, Half, or Quarter. It is distinct from Render scale, which controls the 3D world itself.
+
 ## Pipeline
 
 **Generation** — One full rebuild of world geometry from primitives. Runs on a
