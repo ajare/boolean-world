@@ -108,16 +108,16 @@ private:
   // Asynchronous work is a single running worker plus its latest request.
   std::optional<GenerationInput> mPendingGenerationInput;
   bool mGenerationWorkerRunning{false};
+  std::condition_variable mGenerationWorkerIdle;
   std::atomic_uint64_t mNumGenerationRequestsCoalesced{0};
 
-  // Regularly-scheduled worker
-  concurrencpp::result<void> mScheduledWorker;
-
+  // Recurring work is made eligible by main-thread updates. The clock and
+  // latest actual start are atomic because asynchronous work records its start
+  // after the worker begins draining a request.
   std::atomic_bool mScheduledGenerationRunning;
-
-  std::atomic_bool mScheduledGenerationRequested;
-
   std::atomic<float> mGenerationStartInterval;
+  std::atomic<double> mGenerationScheduleTime{0.0};
+  std::atomic<double> mLastGenerationStartTime{-1.0};
 
 private:
   void copyFrom(DynamicWorldDataGenerator const& other);
@@ -141,7 +141,7 @@ private:
   static std::vector<GenerationPrimitiveMetadata> snapshotPrimitiveMetadata(
       std::vector<Primitive*> const& primitives);
 
-  void handleEvents(uint32_t events) override;
+  void handleEvents(float frameTime, uint32_t events) override;
 
   void handleLayerSelectionChanged() override;
 
@@ -151,7 +151,7 @@ private:
 
   void checkCommitPendingClipping();
 
-  void generateOnInterval();
+  bool canStartScheduledGeneration() const;
 
   bool canCommit(Clipping const& clipping);
 

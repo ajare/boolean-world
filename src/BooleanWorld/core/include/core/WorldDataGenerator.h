@@ -66,7 +66,7 @@ protected:
   std::array<wp::Vector2, 3> mViewTriangle;
 
 private:
-  virtual void handleEvents(uint32_t events);
+  virtual void handleEvents(float frameTime, uint32_t events);
   virtual void handleLayerSelectionChanged();
   virtual void handlePrimitiveFilterChanged();
   virtual void handleChipParametersResolverChanged();

@@ -25,6 +25,10 @@ private:
 
   bw::app::ShadowOptions mShadowOptions;
 
+  // Runtime-only F4 override. Model ownership carries it across map states;
+  // constructing a new application model restores the five-second default.
+  float mGenerationStartInterval{5.0f};
+
 public:
   BooleanWorldModel(applib::EntityHandlerFactoryFunction handlerFactory,
                     wp::application::resourcesystem::ResourceManager* resourceMgr,
@@ -94,5 +98,13 @@ public:
 
   bw::app::ShadowOptions const& getShadowOptions() const {
     return mShadowOptions;
+  }
+
+  float getGenerationStartInterval() const {
+    return mGenerationStartInterval;
+  }
+
+  void setGenerationStartInterval(float interval) {
+    mGenerationStartInterval = interval;
   }
 };

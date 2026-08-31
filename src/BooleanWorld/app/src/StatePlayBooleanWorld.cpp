@@ -1015,7 +1015,8 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
 
   mGenerationCallbackToken = dataGenerator->registerGenerationCallback(
       bind(&StatePlayBooleanWorld::handleClippingUpdate, this, std::placeholders::_1));
-  dataGenerator->startGenerationSchedule(5.0f);
+  auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
+  dataGenerator->startGenerationSchedule(model->getGenerationStartInterval());
 
   // Finish move of transition data
   transitionData->userData = nullptr;
@@ -1958,6 +1959,19 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
   }
 
   if (ImGui::Begin("Clipping records")) {
+    auto model =
+        static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
+    auto generationStartInterval = model->getGenerationStartInterval();
+    if (ImGui::SliderFloat(
+            "Generation start interval", &generationStartInterval,
+            0.0f, 30.0f, "%.2f s")) {
+      model->setGenerationStartInterval(generationStartInterval);
+      getWDG()->setGenerationStartInterval(generationStartInterval);
+    }
+    ImGui::TextDisabled(
+        "F4 session-only; zero restarts after each Generation completes.");
+    ImGui::Separator();
+
     vector<ClippingRecord> records;
     {
       lock_guard<mutex> lock(mClippingRecordsMutex);

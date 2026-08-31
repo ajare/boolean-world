@@ -137,7 +137,8 @@ void WorldDataGenerator::_resetLayerSelection(
   mLayerSelection = selection;
 }
 
-void WorldDataGenerator::handleEvents(uint32_t events) {
+void WorldDataGenerator::handleEvents(float frameTime, uint32_t events) {
+  BW_UNUSED(frameTime);
   BW_UNUSED(events);
 }
 
@@ -154,10 +155,9 @@ void WorldDataGenerator::update(
     float frameTime,
     WorldUpdateData const& data,
     uint32_t events) {
-  BW_UNUSED(frameTime);
   auto const v0 = data.entityPosition;
   auto const [v1, v2] = calculateFovTriangle(v0, data.entityAngle, data.entityViewDist, data.entityFov);
   mViewTriangle = {v0, v1, v2};
-  handleEvents(events);
+  handleEvents(frameTime, events);
 }
 }  // namespace bw::core
