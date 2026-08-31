@@ -15,7 +15,7 @@ namespace core {
 using namespace std;
 
 DynamicWorldDataGenerator::DynamicWorldDataGenerator(World const* world)
-    : WorldDataGenerator(), mClippingIdGenerator(0), mWorld(world), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationRequested(false), mScheduledGenerationInterval(5.0f) {
+    : WorldDataGenerator(), mClippingIdGenerator(0), mWorld(world), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationRequested(false), mGenerationStartInterval(5.0f) {
   ArrangementWorldDataGenerator generator;
   mActiveClipping.worldData = make_shared<ArrangementWorldData>(
       generator.getWorldData(),
@@ -30,7 +30,7 @@ DynamicWorldDataGenerator::~DynamicWorldDataGenerator() {
 }
 
 DynamicWorldDataGenerator::DynamicWorldDataGenerator(DynamicWorldDataGenerator const& other)
-    : mClippingIdGenerator(0), mWorld(nullptr), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationRequested(false), mScheduledGenerationInterval(5.0f) {
+    : mClippingIdGenerator(0), mWorld(nullptr), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationRequested(false), mGenerationStartInterval(5.0f) {
   copyFrom(other);
 }
 
@@ -59,7 +59,7 @@ void DynamicWorldDataGenerator::copyFrom(DynamicWorldDataGenerator const& other)
   mGenerationWorkerRunning = false;
   mNumGenerationRequestsCoalesced.store(
       other.mNumGenerationRequestsCoalesced.load());
-  mScheduledGenerationInterval.store(other.mScheduledGenerationInterval.load());
+  mGenerationStartInterval.store(other.mGenerationStartInterval.load());
 }
 
 WorldDataGenerator* DynamicWorldDataGenerator::copy() {
@@ -146,16 +146,16 @@ DynamicWorldDataGenerator::getActiveClippingUpdatedPrimitives() const {
   return mActiveClipping.updatedPrimitives;
 }
 
-void DynamicWorldDataGenerator::setScheduledGenerationInterval(float interval) {
+void DynamicWorldDataGenerator::setGenerationStartInterval(float interval) {
   if (!isfinite(interval) || interval <= 0.0f) {
     throw invalid_argument(
-        "scheduled generation interval must be finite and positive");
+        "generation start interval must be finite and positive");
   }
-  mScheduledGenerationInterval = interval;
+  mGenerationStartInterval = interval;
 }
 
-float DynamicWorldDataGenerator::getScheduledGenerationInterval() const {
-  return mScheduledGenerationInterval;
+float DynamicWorldDataGenerator::getGenerationStartInterval() const {
+  return mGenerationStartInterval;
 }
 
 bool DynamicWorldDataGenerator::isScheduledGenerationRunning() const {
@@ -560,7 +560,7 @@ void DynamicWorldDataGenerator::generateOnInterval() {
     // The scheduler only requests work; the next main-thread update captures
     // the live primitive snapshot before posting the generation worker.
     auto sleepAmt = 0.0f;
-    auto sleepTime = getScheduledGenerationInterval();
+    auto sleepTime = getGenerationStartInterval();
     auto sleepIters = int(ceil(sleepTime));
 
     for (int i = 0; i < sleepIters; ++i) {
@@ -579,7 +579,7 @@ void DynamicWorldDataGenerator::generateOnInterval() {
 }
 
 void DynamicWorldDataGenerator::startGenerationSchedule(float interval) {
-  setScheduledGenerationInterval(interval);
+  setGenerationStartInterval(interval);
 
   if (!mScheduledGenerationRunning) {
     mScheduledGenerationRunning = true;

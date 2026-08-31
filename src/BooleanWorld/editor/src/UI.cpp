@@ -4376,12 +4376,12 @@ void renderConfigView(editor::Document* doc, editor::Settings& settings) {
     // ImGui::Spacing();
   }
 
-  float intervalSchedule = wdg->getScheduledGenerationInterval();
+  float generationStartInterval = wdg->getGenerationStartInterval();
 
   ImGui::SetNextItemWidth(128);
-  if (ImGui::InputFloat("Generation interval", &intervalSchedule)) {
-    if (intervalSchedule >= 1.0f) {
-      wdg->setScheduledGenerationInterval(intervalSchedule);
+  if (ImGui::InputFloat("Generation start interval", &generationStartInterval)) {
+    if (generationStartInterval >= 1.0f) {
+      wdg->setGenerationStartInterval(generationStartInterval);
     }
   }
 
@@ -4391,7 +4391,7 @@ void renderConfigView(editor::Document* doc, editor::Settings& settings) {
 
   if (widgets::ToggleButton("ToggleScheduledGeneration", ICON_FA_ATOM, &scheduledGenRunning)) {
     if (scheduledGenRunning) {
-      wdg->startGenerationSchedule(intervalSchedule);
+      wdg->startGenerationSchedule(generationStartInterval);
     } else {
       wdg->stopGenerationSchedule();
     }

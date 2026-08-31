@@ -345,7 +345,7 @@ WorldSnapshot Document::captureWorldSnapshot() const {
     snapshot.hasDynamicGenerator = true;
     snapshot.alwaysUpdateGeneratorVertices = dynamicGenerator->getAlwaysUpdateVertices();
     snapshot.allowCommitIfVisible = dynamicGenerator->getAllowCommitIfVisible();
-    snapshot.scheduledGenerationInterval = dynamicGenerator->getScheduledGenerationInterval();
+    snapshot.generationStartInterval = dynamicGenerator->getGenerationStartInterval();
   }
 
   return snapshot;
@@ -373,7 +373,7 @@ void Document::restoreWorldSnapshot(WorldSnapshot const& snapshot) {
     auto dynamicGenerator = dynamic_cast<bw::core::DynamicWorldDataGenerator*>(generator);
     dynamicGenerator->setAlwaysUpdateVertices(snapshot.alwaysUpdateGeneratorVertices);
     dynamicGenerator->setAllowCommitIfVisible(snapshot.allowCommitIfVisible);
-    dynamicGenerator->setScheduledGenerationInterval(snapshot.scheduledGenerationInterval);
+    dynamicGenerator->setGenerationStartInterval(snapshot.generationStartInterval);
   }
 
   if (mWorldDependencyLoader) {

@@ -117,7 +117,7 @@ private:
 
   std::atomic_bool mScheduledGenerationRequested;
 
-  std::atomic<float> mScheduledGenerationInterval;
+  std::atomic<float> mGenerationStartInterval;
 
 private:
   void copyFrom(DynamicWorldDataGenerator const& other);
@@ -200,9 +200,9 @@ public:
 
   std::vector<GenerationPrimitiveMetadata> getActiveClippingUpdatedPrimitives() const;
 
-  void setScheduledGenerationInterval(float interval);
+  void setGenerationStartInterval(float interval);
 
-  float getScheduledGenerationInterval() const;
+  float getGenerationStartInterval() const;
 
   bool isScheduledGenerationRunning() const;
 

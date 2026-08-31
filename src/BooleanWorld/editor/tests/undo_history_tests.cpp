@@ -521,7 +521,7 @@ void runtimeFreeSnapshotPreservesEditorGenerationConfiguration() {
   generator->setAlwaysUpdateVertices(false);
   generator->setAllowCommitIfVisible(false);
   generator->setActiveLayer(9);
-  generator->setScheduledGenerationInterval(3.5f);
+  generator->setGenerationStartInterval(3.5f);
 
   auto snapshot = document.captureWorldSnapshot();
   require(world->isModified(),
@@ -537,7 +537,7 @@ void runtimeFreeSnapshotPreservesEditorGenerationConfiguration() {
   require(!restoredGenerator->getAlwaysUpdateVertices() &&
               !restoredGenerator->getAllowCommitIfVisible() &&
               restoredGenerator->getLayerSelection() == bw::core::SelectLayer(9) &&
-              restoredGenerator->getScheduledGenerationInterval() == 3.5f,
+              restoredGenerator->getGenerationStartInterval() == 3.5f,
           "runtime-free snapshot lost editor generation configuration");
 }
 
@@ -552,15 +552,15 @@ void copiedDynamicGeneratorRetainsItsWorldAndSettings() {
   generator.setAlwaysUpdateVertices(true);
   generator.setAllowCommitIfVisible(true);
   generator.setActiveLayer(7);
-  generator.setScheduledGenerationInterval(2.5f);
+  generator.setGenerationStartInterval(2.5f);
 
   auto copyBase = std::unique_ptr<bw::core::WorldDataGenerator>(generator.copy());
   auto copy = static_cast<bw::core::DynamicWorldDataGenerator*>(copyBase.get());
   require(copy->getAlwaysUpdateVertices() && copy->getAllowCommitIfVisible(),
           "dynamic generator copy lost its generation settings");
   require(copy->getLayerSelection() == generator.getLayerSelection() &&
-              copy->getScheduledGenerationInterval() == 2.5f,
-          "dynamic generator copy lost its layer or schedule settings");
+              copy->getGenerationStartInterval() == 2.5f,
+          "dynamic generator copy lost its layer or generation start interval settings");
 
   copy->generateBlocking();
   require(copy->getNumGenerationsComplete() == 1,

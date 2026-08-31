@@ -80,7 +80,7 @@ struct WorldSnapshot {
   bool hasDynamicGenerator{false};
   bool alwaysUpdateGeneratorVertices{false};
   bool allowCommitIfVisible{false};
-  float scheduledGenerationInterval{5.0f};
+  float generationStartInterval{5.0f};
 };
 
 class Document {

@@ -158,34 +158,34 @@ void requireInvalidInterval(Callback&& callback, char const* message) {
   throw std::runtime_error(message);
 }
 
-void invalidScheduleIntervalsAreRejected() {
+void invalidGenerationStartIntervalsAreRejected() {
   bw::core::World world(20.0f, 2.0f);
   DynamicWorldDataGenerator generator(&world);
 
   requireInvalidInterval(
-      [&] { generator.setScheduledGenerationInterval(0.0f); },
-      "zero schedule interval was accepted");
+      [&] { generator.setGenerationStartInterval(0.0f); },
+      "zero generation start interval was accepted");
   requireInvalidInterval(
-      [&] { generator.setScheduledGenerationInterval(-1.0f); },
-      "negative schedule interval was accepted");
+      [&] { generator.setGenerationStartInterval(-1.0f); },
+      "negative generation start interval was accepted");
   requireInvalidInterval(
       [&] {
-        generator.setScheduledGenerationInterval(
+        generator.setGenerationStartInterval(
             std::numeric_limits<float>::infinity());
       },
-      "infinite schedule interval was accepted");
+      "infinite generation start interval was accepted");
   requireInvalidInterval(
       [&] {
         generator.startGenerationSchedule(
             std::numeric_limits<float>::quiet_NaN());
       },
-      "NaN schedule interval was accepted");
+      "NaN generation start interval was accepted");
   require(
       !generator.isScheduledGenerationRunning(),
       "invalid interval started the generation scheduler");
   require(
-      generator.getScheduledGenerationInterval() == 5.0f,
-      "rejected interval changed the configured schedule");
+      generator.getGenerationStartInterval() == 5.0f,
+      "rejected interval changed the configured generation start interval");
 }
 
 }  // namespace
@@ -193,7 +193,7 @@ void invalidScheduleIntervalsAreRejected() {
 int main() {
   try {
     blockedWorkerCoalescesToLatestGenerationSnapshot();
-    invalidScheduleIntervalsAreRejected();
+    invalidGenerationStartIntervalsAreRejected();
     std::cout << "Asynchronous generation work is bounded and coalesced\n";
     return 0;
   } catch (std::exception const& error) {

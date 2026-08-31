@@ -330,7 +330,7 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
   sourceGenerator->setLayerSelection(selectedLayers);
   sourceGenerator->setAlwaysUpdateVertices(true);
   sourceGenerator->setAllowCommitIfVisible(true);
-  sourceGenerator->setScheduledGenerationInterval(2.5f);
+  sourceGenerator->setGenerationStartInterval(2.5f);
   source->setWorldDataGenerator(sourceGenerator);
   bw::core::WorldUpdateData sourceUpdateData{
       {0.0f, 0.0f}, 0.0f, 0.0f, 0.0f, 0.0f, false, false, selectedLayers};
@@ -357,8 +357,8 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
               copiedGenerator->getLayerSelection() == selectedLayers &&
               copiedGenerator->getAlwaysUpdateVertices() &&
               copiedGenerator->getAllowCommitIfVisible() &&
-              copiedGenerator->getScheduledGenerationInterval() == 2.5f,
-          "world copy lost selected layers or dynamic generator settings");
+              copiedGenerator->getGenerationStartInterval() == 2.5f,
+          "world copy lost selected layers or dynamic generator settings, including its generation start interval");
   auto const copiedSourcePrimitives = copiedGenerator->getSourceClippingPrimitives();
   auto const copiedActivePrimitives = copiedGenerator->getActiveClippingPrimitives();
   require(copiedSourcePrimitives.size() == copy->getNumPrimitives() &&
