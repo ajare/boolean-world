@@ -54,11 +54,11 @@
 #define BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION 0.7f
 
 // How far an adjacent floor may be from the swimmer's eye level and still be
-// climbed out onto from the water. Beyond this the ledge is out of reach and
-// the swimmer stays in the liquid. Deliberately larger than
-// BW_PLAYER_STEP_HEIGHT: hauling yourself out of water uses your arms, and
-// buoyancy has already lifted most of your weight.
-#define BW_PLAYER_MAX_CLIMB_OUT_HEIGHT 12.0f
+// mantled onto from the water. Beyond this the ledge is out of reach and the
+// swimmer stays in the liquid. Deliberately larger than BW_PLAYER_STEP_HEIGHT:
+// hauling yourself out of water uses your arms, and buoyancy has already
+// lifted most of your weight.
+#define BW_PLAYER_MANTLE_WATER 12.0f
 // Clear of the crossed edge by this much on landing, so the climb never ends
 // with the collider resting exactly on a wall it must then be pushed off.
 #define BW_PLAYER_CLIMB_OUT_MARGIN 0.25f

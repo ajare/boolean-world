@@ -75,7 +75,6 @@ ArrangementWorldData::ArrangementWorldData(
     arr::ArrangementResultPtr arrangement,
     wp::BoundingBox const& extents,
     float gridCellSize,
-    float stepThreshold,
     ArrangementStats* stats,
     WedgeGenerationParameters const& wedgeGenerationParameters)
     : mArrangement(std::move(arrangement)),
@@ -87,7 +86,6 @@ ArrangementWorldData::ArrangementWorldData(
       mDetail(arr::BuildChipDetail(
           *mArrangement, mWalls, wedgeGenerationParameters)),
       mLiquidDepths(arr::ComputeLiquidLevels(*mArrangement)),
-      mStepThreshold(stepThreshold),
       mWedgeGenerationParameters(wedgeGenerationParameters) {
   if (stats != nullptr) {
     stats->triangleCount = uint32_t(mTriangles.size());
@@ -147,15 +145,15 @@ ArrangementWorldData::ArrangementWorldData(
     // a candidate; traversal queries later remove it when approached from
     // the higher face. An authored override replaces the generated
     // Border/Step default, while Step clearance remains a physical limit.
-    auto exceedsStepThreshold =
+    auto exceedsStepHeight =
         wall.kind == arr::ArrangementWallKind::FloorStep &&
-        wall.maxZ - wall.minZ > stepThreshold;
+        wall.maxZ - wall.minZ > BW_PLAYER_STEP_HEIGHT;
     auto authoredCollision = edge.collidesOverride.value_or(
         wall.kind == arr::ArrangementWallKind::Border);
     auto hasInsufficientClearance =
         wall.kind != arr::ArrangementWallKind::Border &&
         wall.clearance < BW_PLAYER_HEIGHT;
-    auto blocks = authoredCollision || exceedsStepThreshold ||
+    auto blocks = authoredCollision || exceedsStepHeight ||
                   hasInsufficientClearance;
     if (!blocks) {
       continue;
@@ -362,14 +360,14 @@ std::vector<uint32_t> ArrangementWorldData::getWallsNearForTraversal(
     auto const& edge = mArrangement->edges[wall.edge];
     auto authoredCollision = edge.collidesOverride.value_or(
         wall.kind == arr::ArrangementWallKind::Border);
-    auto blocksWithoutStepThreshold =
+    auto blocksWithoutStepHeight =
         authoredCollision ||
         (wall.kind != arr::ArrangementWallKind::Border &&
          wall.clearance < BW_PLAYER_HEIGHT);
-    if (blocksWithoutStepThreshold ||
+    if (blocksWithoutStepHeight ||
         wall.kind != arr::ArrangementWallKind::FloorStep ||
-        wall.maxZ - wall.minZ <= mStepThreshold) {
-      if (blocksWithoutStepThreshold) result.push_back(wallIndex);
+        wall.maxZ - wall.minZ <= BW_PLAYER_STEP_HEIGHT) {
+      if (blocksWithoutStepHeight) result.push_back(wallIndex);
       continue;
     }
 

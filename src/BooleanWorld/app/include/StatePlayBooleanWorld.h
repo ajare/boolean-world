@@ -309,7 +309,7 @@ private:
   // Lifts the player out of the liquid onto an adjacent floor when they are
   // floating as high as swimming allows, pressed against the edge shared with
   // that floor, looking up over it, and its elevation is within
-  // BW_PLAYER_MAX_CLIMB_OUT_HEIGHT of their eye level with room to stand.
+  // BW_PLAYER_MANTLE_WATER of their eye level with room to stand.
   // Moves them the shortest distance that puts them clear on the far side, or
   // leaves them where they are if no edge qualifies. Returns whether it moved
   // them.

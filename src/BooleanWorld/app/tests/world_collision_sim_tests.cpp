@@ -42,7 +42,7 @@ std::shared_ptr<bw::core::ArrangementWorldData> makeRegressionWorldData() {
   bw::core::ArrangementWorldDataGenerator generator;
   generator.generate(&world);
   return std::make_shared<bw::core::ArrangementWorldData>(
-      generator.getWorldData(), world.getExtents(), 64.0f, 8.0f);
+      generator.getWorldData(), world.getExtents(), 64.0f);
 }
 
 std::vector<CollisionWall> makeRegressionCollisionWalls() {

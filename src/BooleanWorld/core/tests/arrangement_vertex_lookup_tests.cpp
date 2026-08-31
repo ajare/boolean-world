@@ -21,7 +21,7 @@ bw::core::ArrangementWorldData makeWorldData() {
       {1'000, 1'000},
       {3'000, 1'000},
       {130'000, 5'000}};
-  return {arrangement, wp::BoundingBox(0.0f, 0.0f, 10.0f, 10.0f), 1.0f, 0.0f};
+  return {arrangement, wp::BoundingBox(0.0f, 0.0f, 10.0f, 10.0f), 1.0f};
 }
 
 void findsNearestArrangementVertices() {

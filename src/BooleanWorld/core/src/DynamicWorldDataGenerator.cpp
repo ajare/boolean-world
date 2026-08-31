@@ -19,8 +19,7 @@ DynamicWorldDataGenerator::DynamicWorldDataGenerator(World const* world)
   mActiveClipping.worldData = make_shared<ArrangementWorldData>(
       generator.getWorldData(),
       world->getExtents(),
-      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      world->getStepThreshold(), nullptr,
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
       world->getWedgeGenerationParameters());
 }
 
@@ -297,7 +296,6 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
           primStats,
           world->getExtents(),
           float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-          world->getStepThreshold(),
           world->getWedgeGenerationParameters()};
 }
 
@@ -327,7 +325,6 @@ void DynamicWorldDataGenerator::generateWorldData(
       arr::BuildArrangement(input.primitives, &stats.arrangement),
       input.worldExtents,
       input.gridCellSize,
-      input.stepThreshold,
       &stats.arrangement,
       input.wedgeGenerationParameters);
 

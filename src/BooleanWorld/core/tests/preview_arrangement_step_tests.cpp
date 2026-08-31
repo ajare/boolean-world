@@ -41,8 +41,8 @@ MeshPrimitive* makeRectangle(
 
 // Builds the exact scoped-primitive-list construction OpenPreview3D uses
 // (ticket #269): a real ArrangementWorldData built once from a fixed
-// Primitive list, using the same extents/gridCellSize/stepThreshold source
-// as DynamicWorldDataGenerator's constructor.
+// Primitive list, using the same extents/grid-cell-size source as
+// DynamicWorldDataGenerator's constructor.
 void aPreviewArrangementReflectsTheNeighborAwareSteppedHeights() {
   bw::core::World world(20.0f, 2.0f);
   auto* base = makeRectangle(
@@ -59,8 +59,7 @@ void aPreviewArrangementReflectsTheNeighborAwareSteppedHeights() {
   generator.generate(primitives);
   bw::core::ArrangementWorldData worldData(
       generator.getWorldData(), world.getExtents(),
-      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      world.getStepThreshold());
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX));
 
   // A per-Primitive extrusion (PrimitivePreviewGeometry, the thing this
   // ticket series replaces) would instead draw the raised Primitive's own

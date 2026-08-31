@@ -153,9 +153,6 @@ void stepWallsUseMaterialFromTheOccludingFace() {
 void insufficientClearanceBlocksMovementRegardlessOfWallKind() {
   wp::BoundingBox extents({-150.0f, -150.0f}, {300.0f, 300.0f});
   constexpr float gridCellSize = 20.0f;
-  // Large enough that no floor step in this test is ever blocked by the
-  // step-height rule alone - isolating the clearance rule under test.
-  constexpr float stepThreshold = 1000.0f;
   // The disc boundary is a regular 32-gon of radius 60 world units; vertex 0
   // sits exactly at (60, 0).
   wp::Vector2 boundaryPoint{60.0f, 0.0f};
@@ -170,7 +167,7 @@ void insufficientClearanceBlocksMovementRegardlessOfWallKind() {
     auto arrangement = bw::core::arr::BuildArrangement(
         annulusAndDisc(propertiesWithHeights(12.0f, 24.0f)));
     bw::core::ArrangementWorldData data(
-        arrangement, extents, gridCellSize, stepThreshold);
+        arrangement, extents, gridCellSize);
     auto nearby = data.getWallsNear(boundaryPoint, 2.0f);
     require(!nearby.empty(),
             "a boundary with less than the player's height in shared clearance did not block");
@@ -183,7 +180,7 @@ void insufficientClearanceBlocksMovementRegardlessOfWallKind() {
     auto arrangement = bw::core::arr::BuildArrangement(
         annulusAndDisc(propertiesWithHeights(4.0f, 40.0f)));
     bw::core::ArrangementWorldData data(
-        arrangement, extents, gridCellSize, stepThreshold);
+        arrangement, extents, gridCellSize);
     auto nearby = data.getWallsNear(boundaryPoint, 2.0f);
     require(nearby.empty(),
             "a boundary with ample shared clearance was blocked");

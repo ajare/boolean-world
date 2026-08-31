@@ -36,7 +36,7 @@ namespace bw::app {
   }
 
   auto eyeZ = playerFloorZ + BW_PLAYER_EYE_HEIGHT;
-  return std::abs(targetFloorZ - eyeZ) <= BW_PLAYER_MAX_CLIMB_OUT_HEIGHT;
+  return std::abs(targetFloorZ - eyeZ) <= BW_PLAYER_MANTLE_WATER;
 }
 
 }  // namespace bw::app

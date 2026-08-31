@@ -31,7 +31,6 @@ void reportsArrangementDiagnostics() {
       arrangement,
       wp::BoundingBox(0.0f, 0.0f, 1.0f, 1.0f),
       1.0f,
-      0.0f,
       &stats);
 
   require(stats.vertexCount == 4,

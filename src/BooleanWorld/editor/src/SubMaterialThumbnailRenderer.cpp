@@ -96,8 +96,7 @@ void SubMaterialThumbnailRenderer::rebuild() {
   generator.generate(primitives);
   mWorldData = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), mWorld->getExtents(),
-      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      mWorld->getStepThreshold(), nullptr,
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
       mWorld->getWedgeGenerationParameters());
 
   mScene = std::make_unique<PreviewRenderScene>(

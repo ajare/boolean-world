@@ -12,7 +12,7 @@ removed the dependency entirely. Geometry terms are defined in
 | [0003](0003-exact-integer-topology.md) | Exact integer topology, fixed-point coordinates, snap-rounding | Accepted |
 | [0004](0004-new-output-contract.md) | New output contract; remove `WorldVertexData` | Accepted |
 | [0005](0005-immutable-worlddata-snapshot.md) | `WorldData` is an immutable snapshot with a property palette | Accepted |
-| [0006](0006-step-wall-collision-threshold.md) | Step walls collide above a world-level height threshold | Accepted |
+| [0006](0006-step-wall-collision-threshold.md) | Step walls collide above a world-level height threshold | Superseded by ADR-0037 |
 | [0007](0007-remove-culling.md) | Remove culling from generation | Accepted |
 | [0008](0008-validation-by-sampled-predicate.md) | Validate by sampled predicate, not by diffing polygons | Accepted |
 | [0009](0009-layer-selection-is-a-per-generation-set.md) | Layer selection is a per-generation set | Accepted |
@@ -42,6 +42,8 @@ removed the dependency entirely. Geometry terms are defined in
 | [0033](0033-world-resources-are-host-resolved-before-deserialization.md) | World resources are host-resolved before deserialization | Accepted |
 | [0034](0034-water-reflection-techniques-are-mutually-exclusive.md) | Water reflection techniques are mutually exclusive | Accepted |
 | [0035](0035-emboss-presets-are-a-single-global-catalog.md) | Emboss presets are a single global catalog | Accepted |
+| [0036](0036-wall-masks-interpolate-a-second-parameter-set-into-a-single-material-evaluation.md) | Wall masks interpolate a second parameter set into a single material evaluation | Accepted |
+| [0037](0037-step-and-water-mantle-heights-are-player-capabilities.md) | Step and water-mantle heights are player capabilities | Accepted |
 
 ## World geometry rewrite scope
 

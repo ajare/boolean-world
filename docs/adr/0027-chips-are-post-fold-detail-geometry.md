@@ -194,9 +194,8 @@ in the horizontal provider and once in the wall provider.
 
 **Chip size as a compile-time constant, or as a World property.** A constant
 needs no plumbing at all and was the obvious first cut, but forces a rebuild for
-every visual tweak and gives no per-material variation. A World property would
-follow `mStepThreshold`'s established pattern, but is serialized into the World
-file, which the brief rules out. The Sub-material was chosen because "how much
+every visual tweak and gives no per-material variation. A World property would add unrelated global authoring state and serialize it
+into the World file, which the brief rules out. The Sub-material was chosen because "how much
 does this material spall" is the same kind of fact as Embossing, which is
 already authored there — accepting, as the cost, `core`'s first dependency on
 material data.

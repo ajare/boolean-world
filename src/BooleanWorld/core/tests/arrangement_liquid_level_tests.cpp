@@ -239,7 +239,7 @@ void getLiquidDepthQueriesTheContainingFace() {
 
   ArrangementWorldData worldData(
       bw::core::arr::BuildArrangement({rim, source}),
-      wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f, 8.0f);
+      wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f);
 
   requireNear(worldData.getLiquidDepth({50.0f, 50.0f}), 18.0,
               "getLiquidDepth should return the containing face's computed depth");

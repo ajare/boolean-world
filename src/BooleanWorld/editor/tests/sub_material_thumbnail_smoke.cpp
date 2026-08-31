@@ -151,8 +151,7 @@ int main() {
       generator.generate(primitives);
       bw::core::ArrangementWorldData worldData(
           generator.getWorldData(), world.getExtents(),
-          float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-          world.getStepThreshold(), nullptr,
+          float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
           world.getWedgeGenerationParameters());
       auto camera = std::make_shared<mpp::Camera>(
           glm::vec3{0.0f, 16.0f, 0.0f}, 0.0f, 0.0f, 0.0f, 45.0f, 1.0f);
@@ -182,8 +181,7 @@ int main() {
       changedGenerator.generate(primitives);
       bw::core::ArrangementWorldData changedWorldData(
           changedGenerator.getWorldData(), world.getExtents(),
-          float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-          world.getStepThreshold(), nullptr,
+          float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
           world.getWedgeGenerationParameters());
       auto rebuiltBrightness = renderLivePreview(changedWorldData);
       std::printf("rebuilt live preview brightness=%.4f\n", rebuiltBrightness);

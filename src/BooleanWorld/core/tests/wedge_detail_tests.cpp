@@ -77,7 +77,7 @@ ArrangementWorldData snapshot(
   }
   return {bw::core::arr::BuildArrangement(primitives),
           wp::BoundingBox({-64.0f, -64.0f}, {128.0f, 128.0f}),
-          16.0f, 8.0f, nullptr, settings};
+          16.0f, nullptr, settings};
 }
 
 std::vector<std::array<float, 3>> wedgePositions(
@@ -833,10 +833,10 @@ void floorWedgesJoinCollisionWithoutChangingOtherQueries() {
   auto arrangement = bw::core::arr::BuildArrangement({room()});
   ArrangementWorldData enabled(
       arrangement, wp::BoundingBox({-64.0f, -64.0f}, {128.0f, 128.0f}),
-      16.0f, 8.0f, &stats, fixedWedge());
+      16.0f, &stats, fixedWedge());
   ArrangementWorldData disabled(
       arrangement, wp::BoundingBox({-64.0f, -64.0f}, {128.0f, 128.0f}),
-      16.0f, 8.0f);
+      16.0f);
   require(stats.wedgeCount == 16 && stats.chipCount == 0,
           "Arrangement diagnostics did not separate Wedges from Chips");
   require(enabled.getTriangles().size() == disabled.getTriangles().size() &&

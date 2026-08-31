@@ -164,8 +164,7 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   generator.generate(primitives);
   auto result = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), world.getExtents(),
-      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      world.getStepThreshold(), nullptr,
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
       world.getWedgeGenerationParameters());
   if (fixture.chips && result->getDetail().getChipCount() == 0) {
     throw std::runtime_error("renderer fixture generated no Chips");

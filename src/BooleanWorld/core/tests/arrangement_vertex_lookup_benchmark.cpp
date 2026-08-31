@@ -97,8 +97,7 @@ int main() {
   bw::core::ArrangementWorldData worldData(
       arrangement,
       wp::BoundingBox(0.0f, 0.0f, float(dimension), float(dimension)),
-      1.0f,
-      0.0f);
+      1.0f);
 
   uint64_t beforeChecksum = 0;
   auto beforeMs = measure(

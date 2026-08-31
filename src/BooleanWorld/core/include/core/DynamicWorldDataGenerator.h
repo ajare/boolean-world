@@ -78,7 +78,6 @@ private:
     PrimitiveProcessingStats primStats;
     wp::BoundingBox worldExtents;
     float gridCellSize;
-    float stepThreshold;
     WedgeGenerationParameters wedgeGenerationParameters;
   };
 

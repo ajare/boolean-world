@@ -54,8 +54,6 @@ private:
 
   bool mAlwaysUpdateVertices;
 
-  float mStepThreshold;
-
   WedgeGenerationParameters mWedgeGenerationParameters;
 
   // Runtime
@@ -178,10 +176,6 @@ public:
   void setAlwaysUpdateVertices(bool always);
 
   [[nodiscard]] bool getAlwaysUpdateVertices() const;
-
-  void setStepThreshold(float threshold);
-
-  [[nodiscard]] float getStepThreshold() const;
 
   void setWedgeGenerationParameters(
       WedgeGenerationParameters const& parameters);

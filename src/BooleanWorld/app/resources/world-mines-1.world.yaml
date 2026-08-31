@@ -7,7 +7,6 @@ world:
   maxExtent: [4096, 4096]
   playerStartPosition: [0, 0]
   playerStartAngle: 0
-  stepThreshold: .inf
   wedgeGeneration:
     enabled: 0
     minimumReach: 12

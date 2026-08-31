@@ -206,7 +206,7 @@ void deepTreeGeneratesAlternatingFilledRegions() {
   generator.generate(std::vector<Primitive*>{primitive.get()});
   bw::core::ArrangementWorldData worldData(
       generator.getWorldData(), {{-10.0f, -10.0f}, {20.0f, 20.0f}},
-      1.0f, 1.0f);
+      1.0f);
   require(worldData.getContainingFaceIndex({4.5f, 0.0f}) != ~0u,
           "the root Shell was not filled");
   require(worldData.getContainingFaceIndex({3.5f, 0.0f}) == ~0u,

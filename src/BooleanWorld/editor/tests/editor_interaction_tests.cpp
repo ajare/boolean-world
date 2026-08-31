@@ -2629,7 +2629,7 @@ void arbitraryDepthRingAuthoringManipulationAndHistoryStayAuthoritative() {
       generator.getWorldData(),
       {generatedCentre - wp::Vector2{halfExtent * 5.0f, halfExtent * 5.0f},
        {halfExtent * 10.0f, halfExtent * 10.0f}},
-      1.0f, 1.0f);
+      1.0f);
   auto sample = [&](float outer, float inner) {
     return wp::Vector2{(outer + inner) * 0.5f, generatedY};
   };
@@ -2942,7 +2942,7 @@ void fillingASelectedHoleCreatesASolidAlongsideExistingIslands() {
     generator.generate(std::vector<bw::core::Primitive*>{value});
     bw::core::ArrangementWorldData data(
         generator.getWorldData(), {{-1000.0f, -1000.0f}, {2000.0f, 2000.0f}},
-        1.0f, 1.0f);
+        1.0f);
     std::array<bool, 4> result{};
     auto const& shell = value->getVertices().front().front();
     auto [minimumX, maximumX] = std::minmax_element(

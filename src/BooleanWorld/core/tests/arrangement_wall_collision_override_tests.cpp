@@ -73,7 +73,6 @@ uint32_t findArrangementEdge(
 void falseOverrideOpensUpABorderWall() {
   wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
   constexpr float gridCellSize = 20.0f;
-  constexpr float stepThreshold = 1000.0f;
 
   std::vector<std::optional<bool>> overrides(4, std::nullopt);
   // Bottom edge: contour[0] = (0,0) -> contour[1] = (10,0).
@@ -90,7 +89,7 @@ void falseOverrideOpensUpABorderWall() {
 
   auto arrangement = bw::core::arr::BuildArrangement({square});
   bw::core::ArrangementWorldData data(
-      arrangement, extents, gridCellSize, stepThreshold);
+      arrangement, extents, gridCellSize);
 
   // The overridden bottom edge must no longer block.
   require(data.circleIntersectsWall({5.0f, 0.0f}, 0.5f) == -1,
@@ -107,7 +106,6 @@ void falseOverrideOpensUpABorderWall() {
 void maximumStepHeightAppliesOnlyWhenAscending() {
   wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
   constexpr float gridCellSize = 20.0f;
-  constexpr float stepThreshold = 8.0f;
 
   std::vector<std::optional<bool>> overrides(4, std::nullopt);
   overrides[1] = false;  // right edge of the lower square
@@ -130,32 +128,43 @@ void maximumStepHeightAppliesOnlyWhenAscending() {
 
   auto arrangement = bw::core::arr::BuildArrangement({lower, upper});
   bw::core::ArrangementWorldData data(
-      arrangement, extents, gridCellSize, stepThreshold);
+      arrangement, extents, gridCellSize);
   auto ascending = data.getWallsNearForTraversal(
       {10.0f, 5.0f}, 0.5f, {5.0f, 5.0f});
   auto descending = data.getWallsNearForTraversal(
       {10.0f, 5.0f}, 0.5f, {15.0f, 5.0f});
   auto fallingOverLowerFace = data.getWallsNearForTraversal(
       {10.0f, 5.0f}, 0.5f, {5.0f, 5.0f}, true);
-  auto includesFloorStep = [&](std::vector<uint32_t> const& wallIndices) {
+  auto includesFloorStep = [&](
+                               bw::core::ArrangementWorldData const& worldData,
+                               std::vector<uint32_t> const& wallIndices) {
+    auto const& worldWalls = worldData.getWalls();
     return std::any_of(
         wallIndices.begin(), wallIndices.end(), [&](uint32_t wallIndex) {
-          return data.getWalls()[wallIndex].kind ==
-                 ArrangementWallKind::FloorStep;
+          return worldWalls[wallIndex].kind == ArrangementWallKind::FloorStep;
         });
   };
-  require(includesFloorStep(ascending),
+
+  upper.properties.floorZ = BW_PLAYER_STEP_HEIGHT;
+  auto atLimitArrangement =
+      bw::core::arr::BuildArrangement({lower, upper});
+  bw::core::ArrangementWorldData atLimitData(
+      atLimitArrangement, extents, gridCellSize);
+  auto atLimitAscending = atLimitData.getWallsNearForTraversal(
+      {10.0f, 5.0f}, 0.5f, {5.0f, 5.0f});
+  require(!includesFloorStep(atLimitData, atLimitAscending),
+          "a floor at the player's fixed step height was blocked");
+  require(includesFloorStep(data, ascending),
           "collides = false bypassed the maximum step height while ascending");
-  require(!includesFloorStep(descending),
+  require(!includesFloorStep(data, descending),
           "the maximum step height blocked traversal from the upper floor");
-  require(!includesFloorStep(fallingOverLowerFace),
+  require(!includesFloorStep(data, fallingOverLowerFace),
           "a tall step wall trapped an actor already falling over its lower face");
 }
 
 void falseOverrideDoesNotBypassInsufficientClearance() {
   wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
   constexpr float gridCellSize = 20.0f;
-  constexpr float stepThreshold = 1000.0f;
 
   std::vector<std::optional<bool>> overrides(4, std::nullopt);
   overrides[1] = false;
@@ -173,33 +182,30 @@ void falseOverrideDoesNotBypassInsufficientClearance() {
       Primitive::FillRule::EvenOdd,
       0,
       2,
-      propertiesWithHeights(12.0f, 24.0f)};
+      propertiesWithHeights(4.0f, 16.0f)};
 
   auto arrangement = bw::core::arr::BuildArrangement({left, right});
   bw::core::ArrangementWorldData data(
-      arrangement, extents, gridCellSize, stepThreshold);
+      arrangement, extents, gridCellSize);
   require(data.circleIntersectsWall({10.0f, 5.0f}, 0.5f) != -1,
           "collides = false bypassed insufficient Step-wall clearance");
 }
 
 // 3. A collides = true override forces a Step wall to block even when its
-//    height is below the world's step threshold and its clearance exceeds
-//    player height.
+//    height is below the player's step height and its clearance exceeds player
+//    height.
 void trueOverrideForcesAStepWallToBlock() {
   wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
   constexpr float gridCellSize = 20.0f;
-  // Large enough that the height difference below is never blocked by the
-  // step-threshold rule alone.
-  constexpr float stepThreshold = 1000.0f;
 
   // Left/right squares sharing the boundary at x = 10. floorZ differs by
-  // only 4 (well under stepThreshold) and clearance is ample (32, well over
-  // BW_PLAYER_HEIGHT) - absent the override, this boundary must not block.
+  // only 4 (under BW_PLAYER_STEP_HEIGHT) and clearance is ample (32, well
+  // over BW_PLAYER_HEIGHT) - absent the override, this boundary must not block.
   auto leftFloorZ = 4.0f;
   auto rightFloorZ = 8.0f;
   auto ceilingZ = 40.0f;
-  require(rightFloorZ - leftFloorZ < stepThreshold,
-          "test fixture assumption drifted: the step height must stay below the threshold");
+  require(rightFloorZ - leftFloorZ < BW_PLAYER_STEP_HEIGHT,
+          "test fixture assumption drifted: the step height must stay below the player's capability");
   require(ceilingZ - rightFloorZ >= BW_PLAYER_HEIGHT,
           "test fixture assumption drifted: clearance must stay ample");
 
@@ -225,10 +231,10 @@ void trueOverrideForcesAStepWallToBlock() {
 
   auto arrangement = bw::core::arr::BuildArrangement({left, right});
   bw::core::ArrangementWorldData data(
-      arrangement, extents, gridCellSize, stepThreshold);
+      arrangement, extents, gridCellSize);
 
   require(data.circleIntersectsWall({10.0f, 5.0f}, 0.5f) != -1,
-          "a collides = true override did not force a below-threshold, ample-clearance Step wall to block");
+          "a collides = true override did not force a below-step-height, ample-clearance Step wall to block");
 }
 
 // 4. An edge whose wall gets split into multiple arrangement sub-segments by
@@ -237,7 +243,6 @@ void trueOverrideForcesAStepWallToBlock() {
 void overrideSurvivesSplittingIntoSubSegments() {
   wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
   constexpr float gridCellSize = 20.0f;
-  constexpr float stepThreshold = 1000.0f;
 
   std::vector<std::optional<bool>> overrides(4, std::nullopt);
   // Top edge: contour[2] = (10,10) -> contour[3] = (0,10).
@@ -282,7 +287,7 @@ void overrideSurvivesSplittingIntoSubSegments() {
           "the split top edge's surviving sub-segments were not produced as ArrangementWalls");
 
   bw::core::ArrangementWorldData data(
-      arrangement, extents, gridCellSize, stepThreshold);
+      arrangement, extents, gridCellSize);
 
   require(data.circleIntersectsWall({8.0f, 10.0f}, 0.4f) == -1,
           "the override was not respected on one sub-segment of the split edge");
@@ -299,7 +304,6 @@ void overrideSurvivesSplittingIntoSubSegments() {
 void coincidingEdgesResolveToTheOverrideRegardlessOfOrder() {
   wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
   constexpr float gridCellSize = 20.0f;
-  constexpr float stepThreshold = 1000.0f;
 
   // Absent the override, this boundary would not block (small step, ample
   // clearance) - see trueOverrideForcesAStepWallToBlock above.
@@ -332,7 +336,7 @@ void coincidingEdgesResolveToTheOverrideRegardlessOfOrder() {
         : std::vector<ArrangementPrimitive>{plain, overridden};
     auto arrangement = bw::core::arr::BuildArrangement(primitives);
     bw::core::ArrangementWorldData data(
-        arrangement, extents, gridCellSize, stepThreshold);
+        arrangement, extents, gridCellSize);
     require(data.circleIntersectsWall({10.0f, 5.0f}, 0.5f) != -1,
             overriddenFirst
                 ? "the Mesh-sourced override did not win when listed first"
@@ -346,7 +350,6 @@ void coincidingEdgesResolveToTheOverrideRegardlessOfOrder() {
 void coincidentMeshEdgeOverridesResolveFalseFirst() {
   wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
   constexpr float gridCellSize = 20.0f;
-  constexpr float stepThreshold = 8.0f;
 
   for (auto authoredValues :
        {std::pair{true, true}, std::pair{true, false}}) {
@@ -378,7 +381,7 @@ void coincidentMeshEdgeOverridesResolveFalseFirst() {
           : std::vector<ArrangementPrimitive>{right, left};
       auto arrangement = bw::core::arr::BuildArrangement(primitives);
       bw::core::ArrangementWorldData data(
-          arrangement, extents, gridCellSize, stepThreshold);
+          arrangement, extents, gridCellSize);
       auto collides =
           data.circleIntersectsWall({10.0f, 5.0f}, 0.5f) != -1;
       require(collides == (authoredValues.first && authoredValues.second),
@@ -393,7 +396,6 @@ void coincidentMeshEdgeOverridesResolveFalseFirst() {
 void overrideHasNoEffectWhenTheFoldErasesTheWall() {
   wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
   constexpr float gridCellSize = 20.0f;
-  constexpr float stepThreshold = 1000.0f;
 
   std::vector<std::optional<bool>> overrides(4, std::nullopt);
   overrides[1] = true;  // right edge of the left square
@@ -427,7 +429,7 @@ void overrideHasNoEffectWhenTheFoldErasesTheWall() {
           "a flat Union with matching floor/ceiling produced a wall despite a collides = true override");
 
   bw::core::ArrangementWorldData data(
-      arrangement, extents, gridCellSize, stepThreshold);
+      arrangement, extents, gridCellSize);
   require(data.circleIntersectsWall({10.0f, 5.0f}, 0.5f) == -1,
           "a collides = true override synthesized a wall the fold did not produce");
 }

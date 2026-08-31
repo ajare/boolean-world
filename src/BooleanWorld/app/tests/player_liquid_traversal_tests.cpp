@@ -31,19 +31,19 @@ void climbOutReachIsMeasuredFromThePlayersEye() {
 
   require(
       bw::app::canClimbOutOfLiquidToFloor(
-          playerFloorZ, eyeZ + BW_PLAYER_MAX_CLIMB_OUT_HEIGHT),
+          playerFloorZ, eyeZ + BW_PLAYER_MANTLE_WATER),
       "a floor exactly one climb reach above the eye was rejected");
   require(
       bw::app::canClimbOutOfLiquidToFloor(
-          playerFloorZ, eyeZ - BW_PLAYER_MAX_CLIMB_OUT_HEIGHT),
+          playerFloorZ, eyeZ - BW_PLAYER_MANTLE_WATER),
       "a floor exactly one climb reach below the eye was rejected");
   require(
       !bw::app::canClimbOutOfLiquidToFloor(
-          playerFloorZ, eyeZ + BW_PLAYER_MAX_CLIMB_OUT_HEIGHT + 0.01f),
+          playerFloorZ, eyeZ + BW_PLAYER_MANTLE_WATER + 0.01f),
       "a floor beyond the climb reach above the eye was accepted");
   require(
       !bw::app::canClimbOutOfLiquidToFloor(
-          playerFloorZ, eyeZ - BW_PLAYER_MAX_CLIMB_OUT_HEIGHT - 0.01f),
+          playerFloorZ, eyeZ - BW_PLAYER_MANTLE_WATER - 0.01f),
       "a floor beyond the climb reach below the eye was accepted");
 }
 
@@ -83,6 +83,14 @@ void downwardSwimmingDoesNotMasqueradeAsFallingFromALedge() {
       "a stationary dry player was treated as descending");
 }
 
+void negativeWaterElevationDoesNotBypassClimbReach() {
+  // A player floating with their base at -106 has an eye at -88. The floor at
+  // zero is therefore 88 units above their eye, not within the 12-unit reach.
+  require(
+      !bw::app::canClimbOutOfLiquidToFloor(-106.0f, 0.0f),
+      "negative player elevation bypassed the liquid climb reach");
+}
+
 void climbOutStillRequiresAnUpwardLift() {
   constexpr float playerFloorZ = 10.0f;
   require(
@@ -102,6 +110,7 @@ int main() {
     climbOutRequiresFacingTheTargetPolygon();
     overlapSuppressionCannotCarryASwimmerAcrossTheWall();
     downwardSwimmingDoesNotMasqueradeAsFallingFromALedge();
+    negativeWaterElevationDoesNotBypassClimbReach();
     climbOutStillRequiresAnUpwardLift();
     std::cout << "Liquid climb-out reach is measured from player eye level\n";
     return 0;

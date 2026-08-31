@@ -27,7 +27,6 @@ class BW_API ArrangementWorldData {
   std::vector<float> mLiquidDepths;
   std::vector<uint32_t> mFloorWedgeTriangleIndices;
   std::vector<uint32_t> mCollisionWallIndices;
-  float mStepThreshold;
   WedgeGenerationParameters mWedgeGenerationParameters;
   std::unique_ptr<ImmutableAccelerationGrid> mTriangleGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mFloorWedgeGrid;
@@ -39,7 +38,6 @@ public:
       arr::ArrangementResultPtr arrangement,
       wp::BoundingBox const& extents,
       float gridCellSize,
-      float stepThreshold,
       ArrangementStats* stats = nullptr,
       WedgeGenerationParameters const& wedgeGenerationParameters = {});
 
@@ -100,9 +98,9 @@ public:
       float radius) const;
 
   // Filters nearby collision walls for movement beginning at sourcePosition.
-  // An over-threshold FloorStep blocks from its lower face but not from its
-  // upper face or while the actor is already descending; authored collision
-  // and clearance constraints still apply in both directions.
+  // A FloorStep above BW_PLAYER_STEP_HEIGHT blocks from its lower face but not
+  // from its upper face or while the actor is already descending; authored
+  // collision and clearance constraints still apply in both directions.
   [[nodiscard]] std::vector<uint32_t> getWallsNearForTraversal(
       wp::Vector2 const& position,
       float radius,
