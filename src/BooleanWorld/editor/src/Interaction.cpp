@@ -27,14 +27,28 @@ void EditorInteraction::applyPrimitiveClick(
     return;
   }
 
+  auto const& selection = doc->getSelectedPrimitiveIndices();
   if (mCycledPrimitiveIndices != hoveredIndices) {
     mCycledPrimitiveIndices = hoveredIndices;
     mCycledPrimitiveIndex = -1;
+
+    // A new hit stack may include the Primitive selected by the preceding
+    // single-hit click. Continue from that Primitive instead of restarting
+    // at the beginning and selecting it again. With no selected member the
+    // first item remains the first click, and a sole hit always selects itself.
+    if (hoveredIndices.size() > 1) {
+      auto selected = find_if(
+          hoveredIndices.begin(), hoveredIndices.end(),
+          [&](uint32_t index) { return selection.contains(index); });
+      if (selected != hoveredIndices.end()) {
+        mCycledPrimitiveIndex =
+            static_cast<int>(distance(hoveredIndices.begin(), selected));
+      }
+    }
   }
   mCycledPrimitiveIndex =
       (mCycledPrimitiveIndex + 1) % static_cast<int>(hoveredIndices.size());
   auto hoveredIndex = hoveredIndices[mCycledPrimitiveIndex];
-  auto const& selection = doc->getSelectedPrimitiveIndices();
 
   if (control) {
     transactUndoableAction(
@@ -688,6 +702,10 @@ bool EditorInteraction::rotateSelectedPrefabInstance(Document* doc, bool next) {
   auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
   auto* field = layer ? dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep()) : nullptr;
   if (!field) return false;
+  if (field->getSelectedPrefab(*layer)) {
+    (void)field->rotatePlacement(*layer, next);
+    return true;
+  }
   if (!field->hasSelectedTile()) return true;
 
   auto tile = field->getSelectedTile();

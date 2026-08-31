@@ -21,7 +21,13 @@ void saveDocumentAs(editor::Document* doc);
 
 void saveDocument(editor::Document* doc);
 
+// Requests application close. A modified active World defers approval until
+// renderApplicationCloseDialog receives an explicit user decision.
 void exitApp(editor::Document* doc);
+
+void renderApplicationCloseDialog(editor::Document* doc);
+
+[[nodiscard]] bool applicationCloseApproved();
 
 void showHelp(editor::Document* doc);
 

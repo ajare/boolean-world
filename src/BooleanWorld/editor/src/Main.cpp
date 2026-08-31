@@ -363,7 +363,7 @@ bool processEvents(SDL_Window* window) {
   // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
   // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
   // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
-  bool done = false;
+  bool closeRequested = false;
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
     ImGui_ImplSDL3_ProcessEvent(&event);
@@ -374,14 +374,14 @@ bool processEvents(SDL_Window* window) {
       editor::addPreview3DMouseMotion(event.motion.xrel, event.motion.yrel);
     }
     if (event.type == SDL_EVENT_QUIT) {
-      done = true;
+      closeRequested = true;
     }
     if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(window)) {
-      done = true;
+      closeRequested = true;
     }
   }
 
-  return done;
+  return closeRequested;
 }
 
 editor::MouseButtonStatus getMouseButtonStatus() {
@@ -523,7 +523,8 @@ void handleSelections(
     auto position = editor::Document::snapMeshDrawPosition(
         input.worldPosition, settings.showGrid, settings.gridSize);
     auto state = doc->getMeshDrawPositionState(position, settings);
-    if (state == editor::Document::MeshDrawPositionState::CloseRing) {
+    if (state == editor::Document::MeshDrawPositionState::CloseRing ||
+        state == editor::Document::MeshDrawPositionState::ConnectVertex) {
       ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     } else {
       drawMeshAuthoringCursor(
@@ -664,8 +665,10 @@ void run() {
     auto updateTimeMicros = ElapsedMicroseconds.QuadPart;
     globalTimeMicros += updateTimeMicros;
 
-    // Events
-    done = processEvents(gWindow);
+    // A native close request is a request, not permission to tear down. It is
+    // resolved after ImGui starts the frame so a modified World can present a
+    // modal confirmation.
+    auto closeRequested = processEvents(gWindow);
 
     // Title bar reflects the loaded World file (open/save/new/close all land
     // here once per frame).
@@ -697,6 +700,9 @@ void run() {
     ImGui::NewFrame();
 
     auto doc = editor::Document::instance();
+    if (closeRequested) {
+      editor::exitApp(doc);
+    }
     auto mouseButtonStatus = getMouseButtonStatus();
 
     // Get world data
@@ -727,6 +733,8 @@ void run() {
 
     double globalTime = globalTimeMicros / 1'000'000.0;
     editor::renderWidgets(doc, gEditorSettings, worldDataPtr, globalTime);
+    editor::renderApplicationCloseDialog(doc);
+    done = editor::applicationCloseApproved();
 
     if (!editor::preview3DIsOpen() && ImGui::IsKeyPressed(ImGuiKey_F10)) {
       showDemoWindow = !showDemoWindow;

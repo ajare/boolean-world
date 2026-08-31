@@ -1,5 +1,6 @@
 add_executable(editor WIN32
     src/Actions.cpp
+    src/ApplicationCloseController.cpp
     src/AppHelpers.cpp
     src/Document.cpp
     src/EditorRenderSystem.cpp
@@ -12,6 +13,7 @@ add_executable(editor WIN32
     src/PrimitiveFieldPreview.cpp
     src/ProcMaterialLibrary.cpp
     src/SubMaterialThumbnailRenderer.cpp
+    src/PrefabPlacementPreview.cpp
     src/PrefabTilingGuide.cpp
     src/Preview3D.cpp
     src/PreviewOutlineRenderer.cpp
@@ -215,6 +217,7 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_editor_prefab_tiling_guide_tests
         tests/prefab_tiling_guide_tests.cpp
+        src/PrefabPlacementPreview.cpp
         src/PrefabTilingGuide.cpp)
     target_include_directories(boolean_world_editor_prefab_tiling_guide_tests PRIVATE include)
     target_link_libraries(boolean_world_editor_prefab_tiling_guide_tests PRIVATE core)
@@ -246,6 +249,17 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_editor_primitive_field_placement_tests)
     add_test(NAME boolean_world_editor_primitive_field_placement
              COMMAND boolean_world_editor_primitive_field_placement_tests)
+
+    add_executable(boolean_world_editor_application_close_controller_tests
+        tests/application_close_controller_tests.cpp
+        src/ApplicationCloseController.cpp)
+    target_include_directories(boolean_world_editor_application_close_controller_tests PRIVATE include)
+    target_compile_features(boolean_world_editor_application_close_controller_tests PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_application_close_controller_tests PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_application_close_controller_tests)
+    bw_output_dirs(boolean_world_editor_application_close_controller_tests)
+    add_test(NAME boolean_world_editor_application_close_controller
+             COMMAND boolean_world_editor_application_close_controller_tests)
 
     add_executable(boolean_world_editor_document_selection_tests
         tests/document_selection_tests.cpp

@@ -24,6 +24,7 @@
 #include <core/MeshPrimitive.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
+#include <core/WorldTriggerLine.h>
 
 #include "Actions.h"
 #include "Defines.h"
@@ -312,6 +313,45 @@ void repeatedClicksCycleThroughStackedPrimitives() {
           "the click cycle did not wrap to the first stacked Primitive");
 }
 
+void primitiveModeIgnoresTriggerLinesWhenNoPrimitiveIsPresent() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  settings.mode = editor::Settings::Mode::Primitive;
+  document.newDoc();
+  document.getWorld()->addTriggerLine(
+      new bw::core::WorldTriggerLine({20.0f, 20.0f}, {30.0f, 20.0f}));
+
+  require(document.getHover({25.0f, 20.0f}, settings, nullptr).type ==
+              editor::HoverableType::None,
+          "Primitive mode exposed a TriggerLine as a selection target");
+}
+
+void movingFromASinglePrimitiveHitIntoAStackContinuesTheCycle() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  document.newDoc();
+  auto first = addRectangle(document, {0.0f, 0.0f}, 10.0f);
+  auto second = addRectangle(document, {8.0f, 0.0f}, 10.0f);
+  editor::EditorInteraction interaction;
+
+  auto click = pointerAt({-4.0f, 0.0f});
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>{first},
+          "the sole Primitive under the cursor was not selected");
+
+  click = pointerAt({4.0f, 0.0f});
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  auto release = pointerAt({4.0f, 0.0f});
+  release.leftReleased = true;
+  interaction.updateSelection(&document, nullptr, settings, release);
+  require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>{second},
+          "entering a Primitive stack restarted instead of continuing its order");
+}
+
 void oneClickSelectsTheFirstMeshPrimitiveInAnOverlap() {
   editor::Document document;
   editor::Settings settings;
@@ -330,6 +370,66 @@ void oneClickSelectsTheFirstMeshPrimitiveInAnOverlap() {
 
   require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>{mesh},
           "one click skipped the first MeshPrimitive in an overlapping stack");
+}
+
+void woodenFramePrefabPrimitivesCanBeSelectedAtTheirBoundaries() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Primitive;
+  auto filepath = std::filesystem::path(BW_EDITOR_RESOURCE_ROOT) /
+                  "world-mines-2.world.yaml";
+  require(document.openDoc(filepath.string()),
+          "world-mines-2.world.yaml did not open");
+
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = dynamic_cast<bw::core::DefinePrefabs*>(layer->getStep(1));
+  require(definitions, "world-mines-2 lost its DefinePrefabs step");
+  bw::core::Prefab* woodenFrame = nullptr;
+  for (uint32_t i = 0; i < definitions->getNumPrefabs(); ++i) {
+    if (definitions->getPrefab(i)->getName() == "Wooden Frame") {
+      woodenFrame = definitions->getPrefab(i);
+      break;
+    }
+  }
+  require(woodenFrame, "world-mines-2 lost its Wooden Frame Prefab");
+  layer->setActiveStep(1);
+  editor::selectPrefab(&document, layer, definitions, woodenFrame);
+
+  bw::core::Primitive* centrePrimitive = nullptr;
+  bw::core::Primitive* rightPrimitive = nullptr;
+  for (auto* primitive : woodenFrame->getPrimitives()) {
+    wp::Vector2 minimum, maximum;
+    primitive->getBounds().getExtents(minimum, maximum);
+    if (primitive->getPickingTriangulation().pointInside({-6.0f, 2.0f})) {
+      centrePrimitive = primitive;
+    }
+    if (minimum.x >= 9.0f && maximum.x > 10.0f) {
+      rightPrimitive = primitive;
+    }
+  }
+  require(centrePrimitive && rightPrimitive,
+          "world-mines-2 lost the expected Wooden Frame geometry");
+  auto worldData = document.getWorld()->getWorldData();
+  require(worldData != nullptr,
+          "selecting Wooden Frame did not generate editor WorldData");
+
+  editor::EditorInteraction interaction;
+  auto click = pointerAt({-6.0f, 2.0f});
+  click.leftClicked = true;
+  interaction.updateSelection(&document, worldData.get(), settings, click);
+  require(document.getSelectedPrimitiveIndices() ==
+              std::set<uint32_t>{centrePrimitive->getId()},
+          "clicking (-6, 2) did not select the centre Wooden Frame primitive");
+
+  click = pointerAt({10.0f, 2.0f});
+  click.leftClicked = true;
+  interaction.updateSelection(&document, worldData.get(), settings, click);
+  auto release = pointerAt({10.0f, 2.0f});
+  release.leftReleased = true;
+  interaction.updateSelection(&document, worldData.get(), settings, release);
+  require(document.getSelectedPrimitiveIndices() ==
+              std::set<uint32_t>{rightPrimitive->getId()},
+          "clicking (10, 2) did not select the right Wooden Frame primitive");
 }
 
 void modeAndSubModeChangesAreEditorPreferencesAndClearSelection() {
@@ -480,6 +580,51 @@ void meshSubObjectClicksSupportModifiersAndRingCycling() {
   interaction.updateSelection(&document, nullptr, settings, click);
   require(document.getSelectedMeshRingIndices() == std::set<uint32_t>{holeRing},
           "clicking a hole edge in Polygon sub-mode did not select its hole Ring");
+}
+
+void edgeSubModeSelectsOnlyTheDirectlyClickedEdge() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  settings.mode = editor::Settings::Mode::Mesh;
+  settings.meshSubMode = editor::Settings::MeshSubMode::Edge;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {});
+  require(document.activateMesh(meshIndex),
+          "could not activate the direct Edge selection fixture");
+
+  auto* mesh = document.getActiveMesh();
+  auto edgeIndex = mesh->getFirstEdgeIndex();
+  auto edgePosition = mesh->getEdge(edgeIndex).getCentre();
+  editor::EditorInteraction interaction;
+  auto clickEdge = [&] {
+    auto click = pointerAt(edgePosition);
+    click.leftClicked = true;
+    interaction.updateSelection(&document, nullptr, settings, click);
+    auto release = pointerAt(edgePosition);
+    release.leftReleased = true;
+    interaction.updateSelection(&document, nullptr, settings, release);
+  };
+
+  clickEdge();
+  require(document.getSelectedMeshEdgeIndices() == std::set<uint32_t>{edgeIndex},
+          "clicking directly on an Edge did not select that Edge");
+  clickEdge();
+  require(document.getSelectedMeshEdgeIndices() == std::set<uint32_t>{edgeIndex},
+          "repeated direct Edge clicks cycled to a different Edge");
+
+  document.clearSelections();
+  wp::Vector2 minimum, maximum;
+  mesh->getExtents(minimum, maximum);
+  auto polygonCentre = (minimum + maximum) / 2.0f;
+  auto click = pointerAt(polygonCentre);
+  click.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, click);
+  auto release = pointerAt(polygonCentre);
+  release.leftReleased = true;
+  interaction.updateSelection(&document, nullptr, settings, release);
+  require(document.getSelectedMeshEdgeIndices().empty(),
+          "clicking the Polygon interior selected or cycled an Edge");
 }
 
 void controlShiftClickSplitsAnEdgeAtThePointerAndSelectsTheNewVertex() {
@@ -2252,6 +2397,120 @@ void drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep() {
           "the draw tool armed on a step that refuses new Primitives");
 }
 
+void prefabDrawCanStartAtAnExistingGridVertexDespiteOverlappingStepGeometry() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  settings.showGrid = true;
+  settings.gridSize = 4.0f;
+  document.newDoc();
+
+  // An earlier step's Mesh overlaps the selected Prefab vertex. Raw World
+  // picking sees this ineligible Primitive first, as in world-mines-2.
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto earlierIndex = addMesh(document, {-68.0f, -32.0f});
+  auto* earlier = document.getWorld()->getPrimitive(earlierIndex);
+  earlier->setSize(1000.0f, 1000.0f);
+  earlier->updateVertexPositions();
+  layer->rebuild();
+
+  auto* definitions = new bw::core::DefinePrefabs;
+  auto stepIndex = layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Prefab 1");
+  definitions->setSelectedPrefab(prefab);
+  layer->setActiveStep(stepIndex);
+  auto* source = bw::core::MeshPrimitive::fromTree(
+      bw::core::Primitive::Operation::Union,
+      {{{{{-1.0f, -1.0f}}, {{1.0f, -1.0f}},
+          {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}},
+         {}}});
+  source->setSize(8.0f, 8.0f);
+  source->setPosition({-64.0f, -28.0f});
+  source->updateVertexPositions();
+  layer->addPrimitive(source);
+  layer->rebuild();
+  auto sourceIndex = prefab->getPrimitive(0)->getId();
+  require(document.activateMesh(sourceIndex), "the Prefab fixture Mesh did not activate");
+  auto const* fixtureMesh = document.getActiveMesh();
+  bool hasTargetVertex = false;
+  for (auto vertex = fixtureMesh->getFirstVertexIndex();
+       !fixtureMesh->vertexIndexIterationFinished(vertex);
+       vertex = fixtureMesh->getNextVertexIndex(vertex)) {
+    hasTargetVertex |=
+        fixtureMesh->getVertex(vertex).getPosition().distanceToSq({-68.0f, 68.0f}) <= 1e-6f;
+  }
+  require(hasTargetVertex, "the Prefab fixture lost its (-68, 68) vertex");
+  document.clearActiveMesh();
+  auto rawHit = document.getPrimitiveIndexAt({-68.0f, 68.0f});
+  require(rawHit != ~0u && !document.meshIneligibilityReason(rawHit).empty(),
+          "the fixture did not put earlier-step geometry over the Prefab vertex");
+
+  require(document.armMeshDrawTool(settings), "the Prefab draw tool did not arm");
+  require(document.placeMeshDrawVertex({-68.0f, 68.0f}, settings),
+          "the first Prefab draw vertex was rejected: " + document.getMeshDrawRejection());
+  require(document.getActiveMesh(), "the first Prefab draw click did not activate its Mesh");
+  require(document.getMeshDrawVertices().size() == 1 &&
+              document.getMeshDrawVertices().front() == wp::Vector2{-68.0f, 68.0f},
+          "the first Prefab draw vertex was not placed at (-68, 68)");
+  require(document.meshDrawTouchesRingBoundary(),
+          "the existing Prefab vertex was not recognized as Ring boundary topology");
+}
+
+void gridSnappedDrawPointTakesPrecedenceOverNearbyPrefabVertex() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  settings.showGrid = true;
+  settings.gridSize = 4.0f;
+  document.newDoc();
+
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs;
+  auto stepIndex = layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Wooden Frame");
+  definitions->setSelectedPrefab(prefab);
+  layer->setActiveStep(stepIndex);
+  auto* source = bw::core::MeshPrimitive::fromTree(
+      bw::core::Primitive::Operation::Union,
+      {{{{{-8.0f, -4.0f}}, {{8.0f, -4.0f}},
+          {{8.0f, 4.0f}}, {{-8.0f, 4.0f}}},
+         {}}});
+  layer->addPrimitive(source);
+  layer->rebuild();
+  require(document.activateMesh(prefab->getPrimitive(0)->getId()),
+          "the Wooden Frame fixture Mesh did not activate");
+  auto* mesh = document.getActiveMesh();
+  auto nearbyVertex = mesh->getFirstVertexIndex();
+  auto existingPosition = mesh->getVertex(nearbyVertex).getPosition();
+  for (auto vertex = mesh->getNextVertexIndex(nearbyVertex);
+       !mesh->vertexIndexIterationFinished(vertex);
+       vertex = mesh->getNextVertexIndex(vertex)) {
+    auto const& candidate = mesh->getVertex(vertex).getPosition();
+    if (candidate.x < existingPosition.x ||
+        (candidate.x == existingPosition.x && candidate.y > existingPosition.y)) {
+      nearbyVertex = vertex;
+      existingPosition = candidate;
+    }
+  }
+  require(existingPosition.x == -8.0f,
+          "the Wooden Frame fixture had no left edge at X = -8");
+  require(document.armMeshDrawTool(settings),
+          "the Wooden Frame draw tool did not arm");
+
+  // DefinePrefabs exposes authored Prefab geometry in the Layer's editing
+  // frame. Relative to that frame these are the reported (-8, 4) existing
+  // vertex and the requested (-12, 4) grid point.
+  auto requestedPosition = existingPosition - wp::Vector2{4.0f, 0.0f};
+  auto position = editor::Document::snapMeshDrawPosition(
+      requestedPosition, settings.showGrid, settings.gridSize);
+  require(document.getMeshDrawPositionState(position, settings) ==
+              editor::Document::MeshDrawPositionState::PlaceVertex,
+          "the (-8, 4) Prefab vertex captured the (-12, 4) grid point");
+  require(document.placeMeshDrawVertex(position, settings),
+          "the (-12, 4) grid point was rejected");
+  require(document.getMeshDrawVertices() ==
+              std::vector<wp::Vector2>{requestedPosition},
+          "the first drawn vertex moved from (-12, 4) to a nearby Prefab vertex");
+}
+
 void drawClicksPlaceGridSnappedVerticesAndRefuseToCloseBelowThree() {
   editor::Document document;
   auto settings = meshDrawSettings();
@@ -3317,6 +3576,75 @@ void drawingFromAnExistingVertexResolvesSiblingOrCutAtClose() {
           "touching a second, different Ring's vertex was not rejected with clear feedback");
 }
 
+void bridgeRingCanConnectVerticesOfSiblingShellsWithoutMergingThem() {
+  editor::Document document;
+  auto settings = meshDrawSettings();
+  settings.meshVertexPickRadius = 0.1f;
+  document.newDoc();
+
+  bw::core::ClosedPolygon upper{
+      {{0.0f, 8.0f}}, {{10.0f, 8.0f}}, {{10.0f, 16.0f}}, {{0.0f, 16.0f}}};
+  bw::core::ClosedPolygon lower{
+      {{0.0f, -8.0f}}, {{10.0f, -8.0f}}, {{10.0f, 0.0f}}, {{0.0f, 0.0f}}};
+  auto* primitive = bw::core::MeshPrimitive::fromTree(
+      bw::core::Primitive::Operation::Union,
+      {{upper, {}}, {lower, {}}});
+  document.getWorld()->addPrimitive(primitive);
+  auto meshIndex = primitive->getId();
+  require(document.activateMesh(meshIndex), "the bridge fixture Mesh did not activate");
+
+  auto* mesh = document.getActiveMesh();
+  auto upperRing = mesh->getFirstPolygonIndex();
+  auto lowerRing = mesh->getNextPolygonIndex(upperRing);
+  auto horizontalExtremes = [&](uint32_t ring, bool minimumY) {
+    auto vertices = mesh->getPolygon(ring).getOrderedVertexIndices();
+    auto targetY = mesh->getVertex(vertices.front()).getPosition().y;
+    for (auto vertex : vertices) {
+      auto y = mesh->getVertex(vertex).getPosition().y;
+      targetY = minimumY ? std::min(targetY, y) : std::max(targetY, y);
+    }
+    std::vector<wp::Vector2> result;
+    for (auto vertex : vertices) {
+      auto position = mesh->getVertex(vertex).getPosition();
+      if (std::abs(position.y - targetY) <= 1e-6f) result.push_back(position);
+    }
+    std::ranges::sort(result, {}, &wp::Vector2::x);
+    return result;
+  };
+  auto upperBottom = horizontalExtremes(upperRing, true);
+  auto lowerTop = horizontalExtremes(lowerRing, false);
+  require(upperBottom.size() == 2 && lowerTop.size() == 2,
+          "the bridge fixture did not expose two horizontal boundary edges");
+
+  require(document.armMeshDrawTool(settings), "the bridge draw tool did not arm");
+  require(document.placeMeshDrawVertex(upperBottom.back(), settings),
+          "the bridge did not start on the upper Shell");
+  require(document.getMeshDrawPositionState(lowerTop.back(), settings) ==
+                  editor::Document::MeshDrawPositionState::ConnectVertex &&
+              document.getMeshDrawConnectionPosition(lowerTop.back(), settings) ==
+                  std::optional{lowerTop.back()},
+          "the compatible sibling-Shell vertex was not exposed for hover highlighting");
+  require(document.placeMeshDrawVertex(lowerTop.back(), settings),
+          "the bridge could not connect to the lower sibling Shell: " +
+              document.getMeshDrawRejection());
+  require(document.placeMeshDrawVertex(lowerTop.front(), settings) &&
+              document.placeMeshDrawVertex(upperBottom.front(), settings),
+          "the remaining sibling-Shell bridge vertices were rejected");
+  require(document.closeMeshDrawRing() == primitive,
+          "the sibling-Shell bridge Ring did not close");
+  require(primitive->getShells().size() == 3,
+          "closing the bridge merged its three authored Shells");
+
+  size_t sharedEdges = 0;
+  for (auto edge = document.getActiveMesh()->getFirstEdgeIndex();
+       !document.getActiveMesh()->edgeIndexIterationFinished(edge);
+       edge = document.getActiveMesh()->getNextEdgeIndex(edge)) {
+    sharedEdges += document.getActiveMesh()->getEdge(edge).getPolygonReferences().size() == 2;
+  }
+  require(sharedEdges == 2,
+          "the bridge did not weld its two boundary edges to the sibling Shells");
+}
+
 void anInternalRingCanTouchItsContainingRingsVertex() {
   auto settings = meshDrawSettings();
   settings.meshVertexPickRadius = 0.5f;
@@ -3462,14 +3790,18 @@ void prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint() {
   field->setSelectedPrefab(*definitions, prefab);
   layer->setActiveStep(fieldIndex);
   editor::EditorInteraction interaction;
+  require(interaction.rotateSelectedPrefabInstance(&document, true) &&
+              field->getPlacementRotation() == 1,
+          "Shift+Right did not rotate the Prefab awaiting placement");
 
   auto click = pointerAt({70.0f, 0.0f});
   click.leftClicked = true;
   interaction.updateSelection(&document, nullptr, settings, click);
   require(field->hasSelectedTile() && field->getSelectedTile() == tile(1, 0) &&
               field->getInstance(tile(1, 0)) &&
+              field->getInstance(tile(1, 0))->rotation == 1 &&
               field->getInstance(tile(1, 0))->mode == bw::core::TileMode::Replace,
-          "PrefabField click did not select and place a Replace instance on the Tile");
+          "PrefabField click did not place the rotated Replace instance on the Tile");
 
   auto shiftClick = click;
   shiftClick.shift = true;
@@ -3614,6 +3946,7 @@ void prefabFieldArrowNavigationAndRotationAreActiveStepGated() {
   field->selectTile(tile(0, 0));
   require(field->placeSelected(*layer, tile(0, 0)),
           "could not place the rotation fixture");
+  field->clearSelectedPrefab();
   editor::EditorInteraction interaction;
 
   auto const instanceCountBefore = field->getInstances().size();
@@ -3712,11 +4045,15 @@ int main() {
     plainControlAndShiftClicksApplyTheirSelectionPolicies();
     deletePrimitivesRefusesTheGhostEvenWhenHandedItsIndexDirectly();
     repeatedClicksCycleThroughStackedPrimitives();
+    primitiveModeIgnoresTriggerLinesWhenNoPrimitiveIsPresent();
+    movingFromASinglePrimitiveHitIntoAStackContinuesTheCycle();
     oneClickSelectsTheFirstMeshPrimitiveInAnOverlap();
+    woodenFramePrefabPrimitivesCanBeSelectedAtTheirBoundaries();
     modeAndSubModeChangesAreEditorPreferencesAndClearSelection();
     meshClicksBuildAndSwitchTheActiveProxy();
     rubberBandSelectionSupportsPlainControlAndShiftPolicies();
     meshSubObjectClicksSupportModifiersAndRingCycling();
+    edgeSubModeSelectsOnlyTheDirectlyClickedEdge();
     controlShiftClickSplitsAnEdgeAtThePointerAndSelectsTheNewVertex();
     draggingASelectedNestedRingDoesNotCycleToItsShell();
     meshRubberBandUsesContainmentAndModifierPolicies();
@@ -3754,6 +4091,8 @@ int main() {
     meshEdgeVisibleTogglesAndCommitsToThePrimitive();
     meshEdgeVisibleToggleIsOneUndoEntryAndUndoesCleanly();
     drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep();
+    prefabDrawCanStartAtAnExistingGridVertexDespiteOverlappingStepGeometry();
+    gridSnappedDrawPointTakesPrecedenceOverNearbyPrefabVertex();
     drawClicksPlaceGridSnappedVerticesAndRefuseToCloseBelowThree();
     backspaceStepsBackAndEscapeIsTwoStage();
     switchingSubModeOrLeavingMeshModeDisarmsAndDiscards();
@@ -3768,6 +4107,7 @@ int main() {
     deletingAWeldedVertexHealsTheHoleAndIsland();
     drawingContextRejectsEscapesAndSelfCrossings();
     drawingFromAnExistingVertexResolvesSiblingOrCutAtClose();
+    bridgeRingCanConnectVerticesOfSiblingShellsWithoutMergingThem();
     anInternalRingCanTouchItsContainingRingsVertex();
     theWholeDrawingGestureIsOneUndoEntry();
     prefabFieldClickAndKeysAreActiveStepGatedAndDoNotDragPaint();

@@ -366,12 +366,17 @@ public:
       wp::Vector2 const& position, Settings const& settings) const;
 
   enum class MeshDrawPositionState { PlaceVertex,
+                                     ConnectVertex,
                                      CloseRing,
                                      Invalid };
 
   // Side-effect-free preview used by the viewport cursor. The position must
   // already be snapped in exactly the same way as a real draw click.
   [[nodiscard]] MeshDrawPositionState getMeshDrawPositionState(
+      wp::Vector2 const& position, Settings const& settings) const;
+
+  // Existing compatible mesh vertex targeted by a ConnectVertex preview.
+  [[nodiscard]] std::optional<wp::Vector2> getMeshDrawConnectionPosition(
       wp::Vector2 const& position, Settings const& settings) const;
 
   bool placeMeshDrawVertex(wp::Vector2 const& position, Settings const& settings);

@@ -172,10 +172,9 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
 
       ImGui::Separator();
       if (ImGui::MenuItem("Exit")) {
-        action = ActionType::Document;
-        checkDocumentModified = true;
-        helperFunc = exitApp;
-        actionText = "Exit application";
+        // Application close has its own persistent Save/Don't Save/Cancel
+        // state because a native Save As dialog may itself be cancelled.
+        exitApp(doc);
       }
 
       ImGui::EndMenu();
@@ -786,6 +785,8 @@ void renderStatusbar(editor::Document* doc, editor::Settings& settings, bw::core
           char const* action =
               drawState == editor::Document::MeshDrawPositionState::CloseRing
                   ? "click to close"
+              : drawState == editor::Document::MeshDrawPositionState::ConnectVertex
+                  ? "click to connect vertex"
               : drawState == editor::Document::MeshDrawPositionState::Invalid
                   ? "invalid position"
                   : "click to place vertex";
@@ -5196,10 +5197,28 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
   }
 
   if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+    auto rotatePrefab = [&](bool next) {
+      auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
+      auto* field = layer
+                        ? dynamic_cast<bw::core::PrefabField*>(
+                              layer->getActiveStep())
+                        : nullptr;
+      if (field && field->getSelectedPrefab(*layer)) {
+        if (!mouseInteractingWithBackground()) return;
+        if (settings.renderMiniMap) {
+          auto miniMapBounds = getMiniMapBounds(doc);
+          miniMapBounds.setPosition(
+              miniMapBounds.getMinExtent() + gWorldViewScreenOrigin);
+          auto mouse = ImGui::GetMousePos();
+          if (miniMapBounds.pointInside(mouse.x, mouse.y)) return;
+        }
+      }
+      gEditorInteraction.rotateSelectedPrefabInstance(doc, next);
+    };
     if (ImGui::Shortcut(ImGuiKey_LeftArrow | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal)) {
-      gEditorInteraction.rotateSelectedPrefabInstance(doc, false);
+      rotatePrefab(false);
     } else if (ImGui::Shortcut(ImGuiKey_RightArrow | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal)) {
-      gEditorInteraction.rotateSelectedPrefabInstance(doc, true);
+      rotatePrefab(true);
     } else if (ImGui::GetIO().KeyMods == ImGuiMod_None) {
       if (ImGui::Shortcut(ImGuiKey_LeftArrow, ImGuiInputFlags_RouteGlobal)) {
         gEditorInteraction.movePrefabTileCursor(doc, -1, 0);

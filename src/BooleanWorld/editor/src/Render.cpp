@@ -24,6 +24,7 @@
 #include "Actions.h"
 #include "Defines.h"
 #include "Document.h"
+#include "PrefabPlacementPreview.h"
 #include "PrefabTilingGuide.h"
 #include "PrimitiveFieldPreview.h"
 #include "Render.h"
@@ -719,11 +720,25 @@ void renderWorld(
             auto cursorPosition = editor::Document::snapMeshDrawPosition(
                 editor::getMouseWorldPosition(), settings.showGrid,
                 settings.gridSize);
-            if (doc->getMeshDrawPositionState(cursorPosition, settings) !=
-                editor::Document::MeshDrawPositionState::Invalid) {
+            auto drawState =
+                doc->getMeshDrawPositionState(cursorPosition, settings);
+            if (drawState != editor::Document::MeshDrawPositionState::Invalid) {
+              auto endpoint = cursorPosition;
+              optional<wp::Vector2> connection;
+              if (drawState ==
+                  editor::Document::MeshDrawPositionState::ConnectVertex) {
+                connection = doc->getMeshDrawConnectionPosition(
+                    cursorPosition, settings);
+                if (connection) endpoint = *connection;
+              }
               drawList->AddLine(
-                  points.back(), worldToScreen(cursorPosition),
+                  points.back(), worldToScreen(endpoint),
                   settings.meshDrawPreviewColour, 2.0f);
+              if (connection) {
+                drawList->AddCircleFilled(
+                    worldToScreen(*connection), settings.meshVertexPickRadius,
+                    settings.meshHoveredColour, 16);
+              }
             }
           }
 
@@ -1008,15 +1023,25 @@ void renderWorld(
 
   // Grid
   if (settings.showGrid) {
-    renderGrid(settings.gridSize, viewBounds, settings.gridColour, 1.0f, renderWorldStuff ? world : nullptr, drawList);
+    auto const gridWorld = renderWorldStuff ? world : nullptr;
+    renderGrid(
+        settings.gridSize, viewBounds, settings.gridColour, 1.0f, gridWorld,
+        drawList);
+
+    // Fine grids still need a stable larger-scale reference. Draw this after
+    // the minor grid so each 32-unit line remains legible at every zoom.
+    if (settings.gridSize < 32.0f) {
+      auto majorGridColour = settings.gridColour;
+      majorGridColour.Value.x = std::min(1.0f, majorGridColour.Value.x + 0.12f);
+      majorGridColour.Value.y = std::min(1.0f, majorGridColour.Value.y + 0.12f);
+      majorGridColour.Value.z = std::min(1.0f, majorGridColour.Value.z + 0.12f);
+      renderGrid(32.0f, viewBounds, majorGridColour, 1.5f, gridWorld, drawList);
+    }
   }
 
-  // PrefabField hovered-tile highlight. With a Prefab selected for placement,
-  // the cell under the pointer previews where the next instance would land.
-  // It is drawn on the selected Prefab's own size grid - not the editor's
-  // generic snapping grid - so the quad is exactly the tile footprint a click
-  // would place. The low-alpha yellow fill sits over the shaded world without
-  // hiding it.
+  // PrefabField placement preview. Draw only the selected Prefab's contours,
+  // translated to the hovered Tile, so the pointer shows the geometry a click
+  // would place without suggesting that the entire cell becomes content.
   if (activeLayer) {
     if (auto const* field = dynamic_cast<bw::core::PrefabField const*>(
             activeLayer->getActiveStep())) {
@@ -1030,20 +1055,28 @@ void renderWorld(
           cursorInMiniMap = miniMapBounds.pointInside(mouse.x, mouse.y);
         }
         if (editor::mouseInteractingWithBackground() && !cursorInMiniMap) {
-          auto const tileSize = selectedPrefab->getTileSize();
-          auto const side =
-              static_cast<float>(bw::core::prefabTileSide(tileSize));
-          auto const tile =
-              field->tileAt(tileSize, editor::getMouseWorldPosition());
-          auto const tileMin = wp::Vector2{
-              static_cast<float>(tile.x) * side,
-              static_cast<float>(tile.y) * side};
-          auto const tileMax = wp::Vector2{
-              static_cast<float>(tile.x + 1) * side,
-              static_cast<float>(tile.y + 1) * side};
-          drawList->AddRectFilled(
-              worldToScreen(tileMin), worldToScreen(tileMax),
-              ImColor(1.0f, 1.0f, 0.0f, 0.2f));
+          auto const tile = field->tileAt(
+              selectedPrefab->getTileSize(),
+              editor::getMouseWorldPosition());
+          auto const* definitions = field->getDefinePrefabs(*activeLayer);
+          auto const angles = definitions
+                                  ? bw::core::prefabTilingRotationAngles(
+                                        definitions->getTilingType())
+                                  : std::span<float const>{};
+          auto const rotation = field->getPlacementRotation();
+          auto const angle = rotation < angles.size() ? angles[rotation] : 0.0f;
+          for (auto const& outline : editor::prefabPlacementOutlines(
+                   *selectedPrefab, tile, angle)) {
+            if (outline.size() < 2) continue;
+            std::vector<ImVec2> screenOutline;
+            screenOutline.reserve(outline.size());
+            for (auto const& point : outline) {
+              screenOutline.push_back(worldToScreen(point));
+            }
+            drawList->AddPolyline(
+                screenOutline.data(), static_cast<int>(screenOutline.size()),
+                settings.selectedPrimitiveColour, ImDrawFlags_Closed, 2.5f);
+          }
         }
       }
     }

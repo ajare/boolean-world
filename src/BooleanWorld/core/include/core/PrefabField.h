@@ -39,6 +39,9 @@ class BW_API PrefabField final : public LayerBuildStep {
   mutable std::vector<std::unique_ptr<Primitive>> mBuiltPrimitives;
   mutable std::vector<Primitive const*> mHiddenPrimitives;
   uint32_t mSelectedPrefabId{~0u};
+  // Editor-only placement orientation, like selected Prefab/Tile focus. It is
+  // neither serialized nor copied into World history snapshots.
+  uint32_t mPlacementRotation{0};
   Tile mSelectedTile{};
   bool mHasSelectedTile{false};
 
@@ -64,6 +67,8 @@ public:
   void setSelectedPrefab(DefinePrefabs const& definitions, Prefab const* prefab);
   void clearSelectedPrefab();
   [[nodiscard]] Prefab* getSelectedPrefab(Layer const& layer) const;
+  [[nodiscard]] uint32_t getPlacementRotation() const;
+  bool rotatePlacement(Layer const& layer, bool next);
 
   void selectTile(Tile tile);
   void clearSelectedTile();
