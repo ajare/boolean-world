@@ -1,6 +1,7 @@
 #define NOMINMAX
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -454,8 +455,7 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
     // The open preview draws an Arrangement built once from direct pointers
     // into the open World's Primitives, so the document's structure must not
-    // change underneath it. Everything here is frozen while it is open bar
-    // the preview toggle itself, which is what closes it again.
+    // change underneath it. Everything here is frozen while it is open.
     bool const previewing = preview3DIsOpen();
     ImGui::BeginDisabled(previewing);
 
@@ -604,59 +604,6 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
     if (ImGui::Button(ICON_FA_HOME)) {
       goHome(doc);
-    }
-
-    ImGui::SameLine();
-
-    auto const* activeDefinePrefabs = world
-                                          ? dynamic_cast<bw::core::DefinePrefabs const*>(
-                                                world->getActiveLayer()->getActiveStep())
-                                          : nullptr;
-    bool const previewingPrefab =
-        activeDefinePrefabs && activeDefinePrefabs->getSelectedPrefab();
-    auto const primitives =
-        world && world->getWorldDataGenerator()
-            ? inScopePrimitives(
-                  *world,
-                  world->getWorldDataGenerator()->getLayerSelection(),
-                  settings)
-            : vector<bw::core::Primitive const*>{};
-    auto const previewGrounding =
-        world && world->getWorldDataGenerator() && !previewingPrefab
-            ? resolveGroundingFloorZ(primitives, doc->getPlayerProxyPosition())
-            : optional<float>{};
-    bool const previewEnabled = world && world->getWorldDataGenerator() &&
-                                (previewingPrefab || previewGrounding.has_value());
-    ImGui::EndDisabled();
-    ImGui::BeginDisabled(!previewing && !previewEnabled);
-    if (ImGui::Button(previewing ? "Exit 3D preview" : "3D preview")) {
-      if (previewing) {
-        closePreview3D();
-      } else if (previewEnabled) {
-        // A Prefab is authored around its origin (ADR-0018), not around the
-        // Player proxy. It need not cover that pivot, so use the conventional
-        // zero-height starting floor until movement reaches authored coverage.
-        auto const startPosition = previewingPrefab
-                                       ? wp::Vector2{0.0f, 0.0f}
-                                       : doc->getPlayerProxyPosition();
-        auto const startAngle =
-            previewingPrefab ? 0.0f : doc->getPlayerProxyAngle();
-        auto const startFloorZ =
-            previewingPrefab
-                ? resolveGroundingFloorZ(primitives, startPosition).value_or(0.0f)
-                : *previewGrounding;
-        openPreview3D(doc, primitives, startPosition, startAngle, startFloorZ);
-      }
-    }
-    ImGui::EndDisabled();
-    ImGui::BeginDisabled(previewing);
-    if (!previewing && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-      if (activeDefinePrefabs && !previewingPrefab) {
-        ImGui::SetTooltip("Select a Prefab to preview in 3D.");
-      } else if (!previewGrounding) {
-        ImGui::SetTooltip(
-            "Move the Player proxy inside an in-scope Primitive to preview in 3D.");
-      }
     }
 
     ImGui::SameLine();
@@ -5946,6 +5893,192 @@ void renderContextSensitiveHelp(editor::Document* doc, editor::Settings& setting
   ImGui::End();
 }
 
+namespace {
+
+struct StartupAnimal {
+  char const* glyph;
+  char const* name;
+};
+
+StartupAnimal const& startupAnimal() {
+  static constexpr array animals{
+      StartupAnimal{ICON_FA_CAT, "cat"},
+      StartupAnimal{ICON_FA_DOG, "dog"},
+      StartupAnimal{ICON_FA_CROW, "crow"},
+      StartupAnimal{ICON_FA_DOVE, "dove"},
+      StartupAnimal{ICON_FA_DRAGON, "dragon"},
+      StartupAnimal{ICON_FA_FISH, "fish"},
+      StartupAnimal{ICON_FA_FROG, "frog"},
+      StartupAnimal{ICON_FA_HIPPO, "hippo"},
+      StartupAnimal{ICON_FA_HORSE, "horse"},
+      StartupAnimal{ICON_FA_OTTER, "otter"},
+      StartupAnimal{ICON_FA_SPIDER, "spider"}};
+  static mt19937 randomEngine{random_device{}()};
+  static uniform_int_distribution<size_t> distribution{0, animals.size() - 1};
+  static size_t const selected = distribution(randomEngine);
+  return animals[selected];
+}
+
+void drawStartupAnimal(
+    ImDrawList* drawList,
+    ImVec2 const& feet,
+    float size,
+    ImU32 colour,
+    ImU32 outline) {
+  auto* font = ImGui::GetFont();
+  auto const& animal = startupAnimal();
+  ImVec2 const dimensions =
+      font->CalcTextSizeA(size, numeric_limits<float>::max(), 0.0f, animal.glyph);
+  ImVec2 const position{
+      feet.x - dimensions.x * 0.5f, feet.y - dimensions.y};
+
+  // A dark four-way outline keeps every silhouette readable over both the 2D
+  // world and the rendered preview, regardless of which animal this run got.
+  constexpr float outlineOffset = 2.0f;
+  drawList->AddText(
+      font, size, {position.x - outlineOffset, position.y}, outline,
+      animal.glyph);
+  drawList->AddText(
+      font, size, {position.x + outlineOffset, position.y}, outline,
+      animal.glyph);
+  drawList->AddText(
+      font, size, {position.x, position.y - outlineOffset}, outline,
+      animal.glyph);
+  drawList->AddText(
+      font, size, {position.x, position.y + outlineOffset}, outline,
+      animal.glyph);
+  drawList->AddText(font, size, position, colour, animal.glyph);
+}
+
+void renderPreviewDropControl(Document* doc, Settings const& settings) {
+  auto world = doc->getWorld();
+  if (!world || !world->getWorldDataGenerator()) {
+    return;
+  }
+
+  constexpr float controlWidth = 54.0f;
+  constexpr float controlHeight = 66.0f;
+  constexpr float margin = 14.0f;
+  ImVec2 const controlPos{
+      gWorldViewScreenOrigin.x + gWorldViewSize.x - controlWidth - margin,
+      gWorldViewScreenOrigin.y + gWorldViewSize.y - controlHeight - margin};
+
+  ImGui::SetNextWindowPos(controlPos);
+  ImGui::SetNextWindowSize({controlWidth, controlHeight});
+  ImGui::SetNextWindowBgAlpha(0.0f);
+  constexpr ImGuiWindowFlags flags =
+      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings |
+      ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoMove |
+      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNav;
+
+  static bool dragging = false;
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.0f, 0.0f});
+  bool const controlVisible =
+      ImGui::Begin("##PreviewAnimalControl", nullptr, flags);
+  ImGui::PopStyleVar();
+  if (controlVisible) {
+    ImGui::SetCursorScreenPos(controlPos);
+    bool const clicked = ImGui::InvisibleButton(
+        "##PreviewAnimal", {controlWidth, controlHeight},
+        ImGuiButtonFlags_MouseButtonLeft);
+    bool const hovered = ImGui::IsItemHovered();
+    bool const active = ImGui::IsItemActive();
+    bool const previewing = preview3DIsOpen();
+    if (!previewing && active &&
+        ImGui::IsMouseDragging(ImGuiMouseButton_Left, 3.0f)) {
+      dragging = true;
+    }
+    if (hovered || active) {
+      ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    }
+    if (hovered && !dragging) {
+      ImGui::SetTooltip(
+          previewing
+              ? "Exit the 3D preview."
+              : format(
+                    "Drag the {} onto the world to enter the 3D preview.",
+                    startupAnimal().name)
+                    .c_str());
+    }
+
+    auto* drawList = ImGui::GetWindowDrawList();
+    ImVec2 const controlMax{
+        controlPos.x + controlWidth, controlPos.y + controlHeight};
+    drawList->AddRectFilled(
+        controlPos, controlMax, IM_COL32(42, 48, 56, 225), 5.0f);
+    drawList->AddRect(
+        controlPos, controlMax,
+        hovered || active ? IM_COL32(255, 214, 48, 255)
+                          : IM_COL32(125, 133, 145, 255),
+        5.0f, 0, 1.5f);
+
+    if (previewing) {
+      dragging = false;
+      ImVec2 const centre{
+          controlPos.x + controlWidth * 0.5f,
+          controlPos.y + controlHeight * 0.5f};
+      constexpr float crossRadius = 13.0f;
+      drawList->AddLine(
+          {centre.x - crossRadius, centre.y - crossRadius},
+          {centre.x + crossRadius, centre.y + crossRadius},
+          IM_COL32(235, 238, 242, 255), 4.0f);
+      drawList->AddLine(
+          {centre.x + crossRadius, centre.y - crossRadius},
+          {centre.x - crossRadius, centre.y + crossRadius},
+          IM_COL32(235, 238, 242, 255), 4.0f);
+      if (clicked) {
+        closePreview3D();
+      }
+    } else {
+      drawStartupAnimal(
+          drawList,
+          {controlPos.x + controlWidth * 0.5f, controlMax.y - 10.0f},
+          40.0f, IM_COL32(255, 193, 7, 255), IM_COL32(92, 65, 0, 255));
+    }
+
+    if (!previewing && dragging) {
+      ImVec2 const mouse = ImGui::GetMousePos();
+      bool const insideViewport =
+          mouse.x >= gWorldViewScreenOrigin.x &&
+          mouse.y >= gWorldViewScreenOrigin.y &&
+          mouse.x < gWorldViewScreenOrigin.x + gWorldViewSize.x &&
+          mouse.y < gWorldViewScreenOrigin.y + gWorldViewSize.y;
+      bool const overControl =
+          mouse.x >= controlPos.x && mouse.y >= controlPos.y &&
+          mouse.x < controlMax.x && mouse.y < controlMax.y;
+      wp::Vector2 const worldPosition = screenToWorldPosition(mouse);
+      auto const primitives = inScopePrimitives(
+          *world, world->getWorldDataGenerator()->getLayerSelection(), settings);
+      auto const floorZ = insideViewport && !overControl
+                              ? resolveGroundingFloorZ(primitives, worldPosition)
+                              : optional<float>{};
+
+      auto* foreground = ImGui::GetForegroundDrawList();
+      ImU32 const validityColour = floorZ ? IM_COL32(70, 205, 105, 255)
+                                         : IM_COL32(225, 75, 75, 255);
+      foreground->AddCircle(mouse, 7.0f, validityColour, 20, 2.0f);
+      drawStartupAnimal(
+          foreground, mouse, 46.0f, validityColour,
+          IM_COL32(45, 45, 45, 255));
+
+      if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        dragging = false;
+        if (floorZ) {
+          // The dropped animal always starts square to the canonical world
+          // plane: angle zero is intentional rather than inherited from the
+          // Player proxy.
+          openPreview3D(doc, primitives, worldPosition, 0.0f, *floorZ);
+        }
+      }
+    } else if (!previewing && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+      dragging = false;
+    }
+  }
+  ImGui::End();
+}
+
+}  // namespace
+
 void renderWidgets(
     editor::Document* doc,
     editor::Settings& settings,
@@ -5971,7 +6104,6 @@ void renderWidgets(
   ImGui::BeginDisabled(previewing);
   renderMenu(doc, settings);
   ImGui::EndDisabled();
-  // Freezes itself, bar the preview toggle that closes the preview again.
   renderToolbar(doc, settings);
 
   auto dockspaceId = ImGui::DockSpaceOverViewport(
@@ -6036,6 +6168,7 @@ void renderWidgets(
       // one in place, rather than covering the editor with a window.
       ImGui::EndDisabled();
       renderPreview3D();
+      renderPreviewDropControl(doc, settings);
       ImGui::BeginDisabled(previewing);
     } else {
       ImGui::SetNextWindowPos(worldPos);
@@ -6060,6 +6193,11 @@ void renderWidgets(
         }
       }
       ImGui::End();
+
+      // This is a real ImGui control layered over the otherwise input-
+      // transparent World window, so it can own a drag without turning the
+      // whole canvas into an ImGui input target.
+      renderPreviewDropControl(doc, settings);
     }
   }
 

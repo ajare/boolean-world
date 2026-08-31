@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <memory>
@@ -192,9 +193,29 @@ PreviewSurfaceRef surfaceUnderCursor() {
 
 void rebuildPreviewWorldData() {
   std::vector<bw::core::Primitive*> primitives;
+  std::vector<std::uint64_t> generatedPriorities;
   primitives.reserve(session.primitivesForGrounding.size());
+  generatedPriorities.reserve(session.primitivesForGrounding.size());
   for (auto const* primitive : session.primitivesForGrounding) {
     primitives.push_back(const_cast<bw::core::Primitive*>(primitive));
+
+    // Previewing a filtered subset must retain the same Layer/step/phase
+    // precedence as full World generation. Falling back to authored priority
+    // here flattened every PrefabField phase to its source Primitive's 8-bit
+    // priority. In particular, a Wooden frame Difference could then lose the
+    // ownership of its exposed wall to the earlier Ore terrain it cut.
+    auto effectivePriority = primitive->getGeneratedPriority();
+    if (session.world) {
+      std::uint64_t layerOrdinal = 0;
+      for (auto const* layer : session.world->getLayers()) {
+        if (layer->getOwningStepIndex(primitive) != ~0u) {
+          effectivePriority |= layerOrdinal << 56;
+          break;
+        }
+        ++layerOrdinal;
+      }
+    }
+    generatedPriorities.push_back(effectivePriority);
   }
   bw::core::ArrangementWorldDataGenerator generator;
   generator.setChipParametersResolver([](std::string const& subMaterialId) {
@@ -202,7 +223,7 @@ void rebuildPreviewWorldData() {
     return material ? material->chip
                     : bw::core::ChipGenerationParameters{};
   });
-  generator.generate(primitives);
+  generator.generateOrdered(primitives, generatedPriorities);
   session.worldData = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), session.world->getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
