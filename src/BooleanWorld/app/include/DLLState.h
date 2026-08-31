@@ -28,16 +28,21 @@ public:
   }
 
   int setWorldDataGenerationOptions(
-      int modeCode, float startInterval,
+      int modeCode, float startInterval, int alwaysUpdateVerticesCode,
+      int allowCommitIfVisibleCode,
       bw::app::WorldDataGenerationOptions& options) const {
     auto mode = bw::app::worldDataGenerationModeFromCode(modeCode);
-    if (!mode || !std::isfinite(startInterval) || startInterval < 0.0f) {
+    if (!mode || !std::isfinite(startInterval) || startInterval < 0.0f ||
+        (alwaysUpdateVerticesCode != 0 && alwaysUpdateVerticesCode != 1) ||
+        (allowCommitIfVisibleCode != 0 && allowCommitIfVisibleCode != 1)) {
       return 1;
     }
 
     auto candidate = options;
     candidate.mode = *mode;
     candidate.startInterval = startInterval;
+    candidate.alwaysUpdateVertices = alwaysUpdateVerticesCode != 0;
+    candidate.allowCommitIfVisible = allowCommitIfVisibleCode != 0;
     options = candidate;
     return 0;
   }

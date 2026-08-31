@@ -35,6 +35,8 @@ Configuration:
     WorldDataGeneration:
       Mode: Asynchronous
       StartInterval: 5
+      AlwaysUpdateVertices: false
+      AllowCommitIfVisible: false
     DLL:
       path: BooleanWorld.dll
     ResourceLocations:

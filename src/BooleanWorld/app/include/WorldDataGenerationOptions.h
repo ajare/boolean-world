@@ -49,6 +49,8 @@ worldDataGenerationModeFromName(std::string_view name) {
 struct WorldDataGenerationOptions {
   WorldDataGenerationMode mode{WorldDataGenerationMode::Asynchronous};
   float startInterval{5.0f};
+  bool alwaysUpdateVertices{false};
+  bool allowCommitIfVisible{false};
 
   bool operator==(WorldDataGenerationOptions const&) const = default;
 };

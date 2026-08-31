@@ -134,7 +134,8 @@ void parseWorldDataGenerationOptions(
                    "'.  /Configuration/Game/WorldDataGeneration must be a section.";
     throw exception(message.c_str());
   }
-  generation->requireOnlyChildren({"Mode", "StartInterval"});
+  generation->requireOnlyChildren(
+      {"Mode", "StartInterval", "AlwaysUpdateVertices", "AllowCommitIfVisible"});
 
   if (auto node = generation->getOptionalChild("Mode")) {
     auto name = utils::StringUtils::toLower(node->getValue());
@@ -147,20 +148,33 @@ void parseWorldDataGenerationOptions(
     options.mode = *mode;
   }
 
-  auto node = generation->getOptionalChild("StartInterval");
-  if (!node) return;
-
-  auto const& text = node->getValue();
-  float value{};
-  auto [end, error] =
-      from_chars(text.data(), text.data() + text.size(), value);
-  if (error != errc{} || end != text.data() + text.size() ||
-      !isfinite(value) || value < 0.0f) {
-    auto message = "Could not load '" + filename +
-                   "'.  Value of /Configuration/Game/WorldDataGeneration/StartInterval must be a finite non-negative number.";
-    throw exception(message.c_str());
+  if (auto node = generation->getOptionalChild("StartInterval")) {
+    auto const& text = node->getValue();
+    float value{};
+    auto [end, error] =
+        from_chars(text.data(), text.data() + text.size(), value);
+    if (error != errc{} || end != text.data() + text.size() ||
+        !isfinite(value) || value < 0.0f) {
+      auto message = "Could not load '" + filename +
+                     "'.  Value of /Configuration/Game/WorldDataGeneration/StartInterval must be a finite non-negative number.";
+      throw exception(message.c_str());
+    }
+    options.startInterval = value;
   }
-  options.startInterval = value;
+
+  auto parseBool = [&](char const* field, bool& option) {
+    auto boolNode = generation->getOptionalChild(field);
+    if (!boolNode) return;
+    auto value = utils::StringUtils::toLower(boolNode->getValue());
+    if (value != "true" && value != "false") {
+      auto message = "Could not load '" + filename + "'.  Value of /Configuration/Game/WorldDataGeneration/" +
+                     field + " must be 'true' or 'false'.";
+      throw exception(message.c_str());
+    }
+    option = value == "true";
+  };
+  parseBool("AlwaysUpdateVertices", options.alwaysUpdateVertices);
+  parseBool("AllowCommitIfVisible", options.allowCommitIfVisible);
 }
 
 void parseShadowOptions(

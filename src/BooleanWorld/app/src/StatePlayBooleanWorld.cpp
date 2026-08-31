@@ -1022,6 +1022,10 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
               bw::app::WorldDataGenerationMode::Asynchronous
           ? bw::core::DynamicWorldDataGenerator::GenerationMode::Asynchronous
           : bw::core::DynamicWorldDataGenerator::GenerationMode::Synchronous);
+  dataGenerator->setAlwaysUpdateVertices(
+      model->getAlwaysUpdateGenerationVertices());
+  dataGenerator->setAllowCommitIfVisible(
+      model->getAllowGenerationCommitIfVisible());
   dataGenerator->startGenerationSchedule(model->getGenerationStartInterval());
 
   // Finish move of transition data
@@ -1993,8 +1997,22 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
       getWDG()->setGenerationStartInterval(generationStartInterval);
     }
     ImGui::EndDisabled();
+
+    auto alwaysUpdateVertices = model->getAlwaysUpdateGenerationVertices();
+    if (ImGui::Checkbox(
+            "Always update animated vertices", &alwaysUpdateVertices)) {
+      model->setAlwaysUpdateGenerationVertices(alwaysUpdateVertices);
+      getWDG()->setAlwaysUpdateVertices(alwaysUpdateVertices);
+    }
+
+    auto allowCommitIfVisible = model->getAllowGenerationCommitIfVisible();
+    if (ImGui::Checkbox("Allow commits while visible", &allowCommitIfVisible)) {
+      model->setAllowGenerationCommitIfVisible(allowCommitIfVisible);
+      getWDG()->setAllowCommitIfVisible(allowCommitIfVisible);
+    }
+
     ImGui::TextDisabled(
-        "F4 session-only; zero restarts after each asynchronous Generation completes.");
+        "F4 changes are session-only; zero restarts after each asynchronous Generation completes.");
     ImGui::Separator();
 
     vector<ClippingRecord> records;

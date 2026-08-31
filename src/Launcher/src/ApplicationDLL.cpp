@@ -126,12 +126,16 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
   if (mSetWorldDataGenerationOptionsFunction(
           bw::app::worldDataGenerationModeCode(
               options.worldDataGeneration.mode),
-          options.worldDataGeneration.startInterval) != 0) {
+          options.worldDataGeneration.startInterval,
+          options.worldDataGeneration.alwaysUpdateVertices ? 1 : 0,
+          options.worldDataGeneration.allowCommitIfVisible ? 1 : 0) != 0) {
     string errMsg = format(
-        "Application rejected World data Generation options: Mode={}, StartInterval={}",
+        "Application rejected World data Generation options: Mode={}, StartInterval={}, AlwaysUpdateVertices={}, AllowCommitIfVisible={}",
         bw::app::worldDataGenerationModeName(
             options.worldDataGeneration.mode),
-        options.worldDataGeneration.startInterval);
+        options.worldDataGeneration.startInterval,
+        options.worldDataGeneration.alwaysUpdateVertices,
+        options.worldDataGeneration.allowCommitIfVisible);
     throw exception(errMsg.c_str());
   }
 

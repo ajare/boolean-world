@@ -380,6 +380,13 @@ int main() {
                 "    WorldDataGeneration:\n      StartInterval: 45\n")
                     .worldDataGeneration.startInterval == 45.0f,
             "A Generation start interval above the F4 range was rejected.");
+    auto visibleGeneration = parseWithWorldDataGeneration(
+        "    WorldDataGeneration:\n"
+        "      AlwaysUpdateVertices: true\n"
+        "      AllowCommitIfVisible: true\n").worldDataGeneration;
+    require(visibleGeneration.alwaysUpdateVertices &&
+                visibleGeneration.allowCommitIfVisible,
+            "Visible animated-vertex Generation options did not parse.");
     requireWorldDataGenerationRejected(
         "    WorldDataGeneration:\n      Interval: 5\n", "Interval");
     requireWorldDataGenerationRejected(
@@ -392,6 +399,12 @@ int main() {
         "    WorldDataGeneration:\n      StartInterval: inf\n", "StartInterval");
     requireWorldDataGenerationRejected(
         "    WorldDataGeneration:\n      StartInterval: soon\n", "StartInterval");
+    requireWorldDataGenerationRejected(
+        "    WorldDataGeneration:\n      AlwaysUpdateVertices: yes\n",
+        "AlwaysUpdateVertices");
+    requireWorldDataGenerationRejected(
+        "    WorldDataGeneration:\n      AllowCommitIfVisible: no\n",
+        "AllowCommitIfVisible");
     requireWorldDataGenerationRejected(
         "    WorldDataGeneration: five\n", "WorldDataGeneration");
     checkedInConfigurationsDeclareAcceptedFiveSecondInterval();

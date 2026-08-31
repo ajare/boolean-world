@@ -3,6 +3,8 @@
 #include "Actions.h"
 #include "UiHelpers.h"
 
+#include <common/GameDefines.h>
+
 namespace editor {
 using namespace std;
 
@@ -425,6 +427,47 @@ void EditorInteraction::updateSelection(
     mPendingPrimitiveClick.clear();
     applyPrimitiveClick(doc, pending, input.control, input.shift);
   }
+}
+
+bool playerProxyHitTest(
+    Document const* doc, wp::Vector2 const& worldPosition) {
+  return doc && doc->getPlayerProxyPosition().distanceTo(worldPosition) <=
+                    BW_PLAYER_RADIUS;
+}
+
+bool EditorInteraction::updatePlayerProxy(
+    Document* doc, PointerInput const& input) {
+  if (input.rightReleased) {
+    mPlayerProxyDragActive = false;
+    mRotatingPlayerProxy = false;
+    return false;
+  }
+
+  if (!mPlayerProxyDragActive && input.rightClicked &&
+      input.cursorInWorldView && !input.cursorInMiniMap &&
+      playerProxyHitTest(doc, input.worldPosition)) {
+    mPlayerProxyDragActive = true;
+    mRotatingPlayerProxy = input.shift;
+  }
+
+  if (mPlayerProxyDragActive && input.rightDragging) {
+    if (mRotatingPlayerProxy) {
+      auto direction = input.worldPosition - doc->getPlayerProxyPosition();
+      if (direction.lengthSq() > 0.0f) {
+        // World +X is mirrored relative to the player angle convention.
+        direction.x = -direction.x;
+        doc->setPlayerProxyAngle(
+            wp::Vector2{0.0f, 1.0f}.anticlockwiseAngleTo(direction));
+      }
+    } else {
+      doc->setPlayerProxyPosition(input.worldPosition);
+    }
+    // The proxy feeds player-dependent animation inputs. Rebuild on every
+    // drag frame, including frames where the pointer did not move.
+    regenerateWorldData(doc);
+  }
+
+  return mPlayerProxyDragActive;
 }
 
 void EditorInteraction::updateDrag(

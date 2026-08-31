@@ -458,6 +458,13 @@ editor::PointerInput readPointerInput(
       mouseStatus.state[editor::MouseButtonStatus::Left] ==
       editor::MouseButtonStatus::State::Released;
   input.leftDragging = mouseStatus.dragging[editor::MouseButtonStatus::Left];
+  input.rightClicked =
+      mouseStatus.state[editor::MouseButtonStatus::Right] ==
+      editor::MouseButtonStatus::State::Clicked;
+  input.rightReleased =
+      mouseStatus.state[editor::MouseButtonStatus::Right] ==
+      editor::MouseButtonStatus::State::Released;
+  input.rightDragging = mouseStatus.dragging[editor::MouseButtonStatus::Right];
   input.control = io.KeyCtrl;
   input.shift = io.KeyShift;
   input.alt = io.KeyAlt;
@@ -541,8 +548,8 @@ void handleSelections(
 // trackpad/one-button setups), and the scroll wheel zooms toward the cursor
 // (as in Blender's 2D editors - Shader/UV/Node/Image editor - rather than its
 // 3D viewport's orbit).
-void handleViewNavigation(editor::Document* doc) {
-  if (!doc->getWorld()) {
+void handleViewNavigation(editor::Document* doc, bool playerProxyDragActive) {
+  if (!doc->getWorld() || playerProxyDragActive) {
     return;
   }
 
@@ -577,7 +584,7 @@ void handleViewNavigation(editor::Document* doc) {
   }
 }
 
-void handleWorldInteraction(
+bool handleWorldInteraction(
     editor::Document* doc,
     editor::PointerInput const& input) {
   // View navigation remains a presentation concern; authored-object drag
@@ -591,6 +598,7 @@ void handleWorldInteraction(
   }
 
   gEditorInteraction.updateDrag(doc, gEditorSettings, input);
+  return gEditorInteraction.updatePlayerProxy(doc, input);
 }
 
 void clampViewToWorldBounds() {
@@ -710,8 +718,8 @@ void run() {
         if (!io.WantCaptureMouse) {
           handleSelections(doc, worldDataPtr, gEditorSettings, pointerInput);
         }
-        handleWorldInteraction(doc, pointerInput);
-        handleViewNavigation(doc);
+        auto playerProxyDragActive = handleWorldInteraction(doc, pointerInput);
+        handleViewNavigation(doc, playerProxyDragActive);
       }
     }
 

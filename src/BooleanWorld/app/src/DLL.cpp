@@ -85,9 +85,11 @@ __declspec(dllexport) int dllSetInputOptions(float mouseSensitivity) {
 }
 
 __declspec(dllexport) int dllSetWorldDataGenerationOptions(
-    int modeCode, float startInterval) {
+    int modeCode, float startInterval, int alwaysUpdateVerticesCode,
+    int allowCommitIfVisibleCode) {
   return dllState.setWorldDataGenerationOptions(
-      modeCode, startInterval, gWorldDataGenerationOptions);
+      modeCode, startInterval, alwaysUpdateVerticesCode,
+      allowCommitIfVisibleCode, gWorldDataGenerationOptions);
 }
 
 __declspec(dllexport) int dllSetVideoOptions(

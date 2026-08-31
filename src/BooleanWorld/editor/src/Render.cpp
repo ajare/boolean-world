@@ -21,6 +21,7 @@
 
 #include "imgui.h"
 
+#include "Actions.h"
 #include "Defines.h"
 #include "Document.h"
 #include "PrefabTilingGuide.h"
@@ -859,6 +860,13 @@ void renderWorld(
         settings.mode == editor::Settings::Mode::Mesh
             ? fadeColour(settings.playerProxyColour, ED_INACTIVE_STEP_PRIMITIVE_ALPHA_SCALE)
             : settings.playerProxyColour);
+
+    if (editor::mouseInteractingWithBackground() &&
+        editor::playerProxyHitTest(doc, editor::getMouseWorldPosition())) {
+      drawList->AddCircle(
+          playerProxyScreen, BW_PLAYER_RADIUS * gViewZoom,
+          IM_COL32(255, 255, 0, 255), 32, 2.0f);
+    }
 
     // FOV
     if (settings.renderPlayerView) {

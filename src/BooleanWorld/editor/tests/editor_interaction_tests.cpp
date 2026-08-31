@@ -3663,10 +3663,52 @@ void prefabFieldArrowNavigationAndRotationAreActiveStepGated() {
           "PrefabField arrow navigation or rotation remained active after its step lost focus");
 }
 
+void rightDraggingPlayerProxyMovesOrTurnsIt() {
+  editor::Document document;
+  document.newDoc();
+  editor::EditorInteraction interaction;
+  editor::PointerInput input{};
+  input.cursorInWorldView = true;
+  input.worldPosition = {0.0f, 0.0f};
+  input.rightClicked = true;
+
+  require(interaction.updatePlayerProxy(&document, input),
+          "right click on the player proxy did not claim its gesture");
+
+  input.rightClicked = false;
+  input.rightDragging = true;
+  input.worldPosition = {20.0f, -10.0f};
+  auto const regenerationsBeforeMove = gRegenerateWorldDataRequests;
+  interaction.updatePlayerProxy(&document, input);
+  require(document.getPlayerProxyPosition() == input.worldPosition &&
+              gRegenerateWorldDataRequests == regenerationsBeforeMove + 1,
+          "right dragging the player proxy did not move it and regenerate WorldData");
+
+  input.rightDragging = false;
+  input.rightReleased = true;
+  require(!interaction.updatePlayerProxy(&document, input),
+          "releasing the player-proxy drag did not end its gesture");
+
+  input.rightReleased = false;
+  input.rightClicked = true;
+  input.shift = true;
+  interaction.updatePlayerProxy(&document, input);
+  input.rightClicked = false;
+  input.rightDragging = true;
+  input.worldPosition = {30.0f, -10.0f};
+  auto const regenerationsBeforeTurn = gRegenerateWorldDataRequests;
+  interaction.updatePlayerProxy(&document, input);
+  require(document.getPlayerProxyPosition() == wp::Vector2{20.0f, -10.0f} &&
+              std::abs(document.getPlayerProxyAngle() - 90.0f) < 0.001f &&
+              gRegenerateWorldDataRequests == regenerationsBeforeTurn + 1,
+          "Shift+right dragging the player proxy did not turn it and regenerate WorldData");
+}
+
 }  // namespace
 
 int main() {
   try {
+    rightDraggingPlayerProxyMovesOrTurnsIt();
     plainControlAndShiftClicksApplyTheirSelectionPolicies();
     deletePrimitivesRefusesTheGhostEvenWhenHandedItsIndexDirectly();
     repeatedClicksCycleThroughStackedPrimitives();

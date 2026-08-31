@@ -119,4 +119,20 @@ public:
   void setGenerationStartInterval(float interval) {
     mWorldDataGenerationOptions.startInterval = interval;
   }
+
+  bool getAlwaysUpdateGenerationVertices() const {
+    return mWorldDataGenerationOptions.alwaysUpdateVertices;
+  }
+
+  void setAlwaysUpdateGenerationVertices(bool alwaysUpdate) {
+    mWorldDataGenerationOptions.alwaysUpdateVertices = alwaysUpdate;
+  }
+
+  bool getAllowGenerationCommitIfVisible() const {
+    return mWorldDataGenerationOptions.allowCommitIfVisible;
+  }
+
+  void setAllowGenerationCommitIfVisible(bool allowCommit) {
+    mWorldDataGenerationOptions.allowCommitIfVisible = allowCommit;
+  }
 };

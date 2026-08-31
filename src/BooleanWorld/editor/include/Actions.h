@@ -38,6 +38,9 @@ struct PointerInput {
   bool leftDown{false};
   bool leftReleased{false};
   bool leftDragging{false};
+  bool rightClicked{false};
+  bool rightReleased{false};
+  bool rightDragging{false};
   bool control{false};
   bool shift{false};
   bool alt{false};
@@ -64,6 +67,9 @@ class EditorInteraction {
 
   bool mMovingMeshSelection{false};
   wp::Vector2 mMeshDragCumulativeDelta;
+
+  bool mPlayerProxyDragActive{false};
+  bool mRotatingPlayerProxy{false};
   std::vector<uint32_t> mPendingMeshSubObjectClick;
 
   void applyPrimitiveClick(
@@ -86,6 +92,10 @@ public:
       Settings const& settings,
       PointerInput const& input);
 
+  // Handles a right-button gesture that began on the runtime player proxy.
+  // Returns true while it owns the gesture, so view navigation can stand down.
+  bool updatePlayerProxy(Document* doc, PointerInput const& input);
+
   // Keyboard routing for PrefabField authoring. Returns true when an active
   // PrefabField consumed the key, including an intentional no-op.
   bool applyPrefabShortcut(Document* doc, bool place, bool clear);
@@ -97,6 +107,9 @@ public:
   bool boxSelectDragging() const;
   wp::Vector2 const& getBoxSelectStartScreen() const;
 };
+
+bool playerProxyHitTest(Document const* doc, wp::Vector2 const& worldPosition);
+
 
 bool recordCurrentState(Document* doc, bool modifying);
 
