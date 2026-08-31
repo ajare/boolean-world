@@ -2816,8 +2816,24 @@ struct SubMaterialPickerState {
 // context is still current - see shutdownMaterialPickerThumbnails().
 std::unique_ptr<SubMaterialThumbnailRenderer> gMaterialPickerThumbnails;
 
+struct WallMaskBlendPreviewTexture {
+  uint32_t texture{};
+  uint32_t standardTexture{};
+  uint32_t secondaryTexture{};
+  string maskReference;
+  int maskChannel{};
+  vector<float> secondaryParams;
+  array<float, 3> secondaryColour{};
+};
+
+WallMaskBlendPreviewTexture gWallMaskBlendPreviewTexture;
+
 void shutdownMaterialPickerThumbnails() {
   gMaterialPickerThumbnails.reset();
+  if (gWallMaskBlendPreviewTexture.texture) {
+    glDeleteTextures(1, &gWallMaskBlendPreviewTexture.texture);
+  }
+  gWallMaskBlendPreviewTexture = {};
 }
 
 void setTechniqueDefaults(
@@ -2862,7 +2878,8 @@ void renderSubMaterialFields(
 
   ImGui::InputText("Name", state.name, sizeof(state.name));
   auto const* schema = data.findTechniqueSchema(state.materialIndex);
-  if (schema) {
+  if (schema && !schema->parameters.empty()) {
+    ImGui::SeparatorText("Technique parameters");
     for (size_t i = 0; i < schema->parameters.size() && i < state.params.size(); ++i) {
       auto const& parameter = schema->parameters[i];
       ImGui::SliderFloat(parameter.name.c_str(), &state.params[i],
@@ -3222,6 +3239,90 @@ int wallMaskChannelCount(char const* reference) {
     }
   }
   return 4;
+}
+
+uint32_t wallMaskBlendedPreviewTexture(
+    uint32_t standardTexture, uint32_t secondaryTexture,
+    string const& maskReference, int maskChannel,
+    vector<float> const& secondaryParams,
+    array<float, 3> const& secondaryColour) {
+  auto const* mask = imageResourceForReference(maskReference);
+  if (!standardTexture || !secondaryTexture || !mask || !mask->getData() ||
+      mask->getWidth() <= 0 || mask->getHeight() <= 0 ||
+      mask->getNumChannels() < 3 || maskChannel < 0 ||
+      maskChannel >= mask->getNumChannels()) {
+    return 0;
+  }
+
+  auto& preview = gWallMaskBlendPreviewTexture;
+  if (preview.texture && preview.standardTexture == standardTexture &&
+      preview.secondaryTexture == secondaryTexture &&
+      preview.maskReference == maskReference &&
+      preview.maskChannel == maskChannel &&
+      preview.secondaryParams == secondaryParams &&
+      preview.secondaryColour == secondaryColour) {
+    return preview.texture;
+  }
+
+  constexpr auto size = SubMaterialThumbnailRenderer::size;
+  vector<uint8_t> standardPixels(size * size * 4u);
+  vector<uint8_t> secondaryPixels(size * size * 4u);
+  vector<uint8_t> blendedPixels(size * size * 4u);
+  GLint previousTexture{};
+  GLint previousPackAlignment{};
+  GLint previousUnpackAlignment{};
+  glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+  glGetIntegerv(GL_PACK_ALIGNMENT, &previousPackAlignment);
+  glGetIntegerv(GL_UNPACK_ALIGNMENT, &previousUnpackAlignment);
+  glPixelStorei(GL_PACK_ALIGNMENT, 1);
+  glBindTexture(GL_TEXTURE_2D, standardTexture);
+  glGetTexImage(
+      GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, standardPixels.data());
+  glBindTexture(GL_TEXTURE_2D, secondaryTexture);
+  glGetTexImage(
+      GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, secondaryPixels.data());
+
+  auto const* maskPixels = mask->getData();
+  auto const maskWidth = mask->getWidth();
+  auto const maskHeight = mask->getHeight();
+  auto const maskChannels = mask->getNumChannels();
+  for (uint32_t y = 0; y < size; ++y) {
+    auto maskY = static_cast<int64_t>(y) * maskHeight / size;
+    for (uint32_t x = 0; x < size; ++x) {
+      auto maskX = static_cast<int64_t>(x) * maskWidth / size;
+      auto maskIndex =
+          (maskY * maskWidth + maskX) * maskChannels + maskChannel;
+      auto weight = static_cast<float>(maskPixels[maskIndex]) / 255.0f;
+      auto pixel = (y * size + x) * 4u;
+      for (uint32_t component = 0; component < 4; ++component) {
+        blendedPixels[pixel + component] = static_cast<uint8_t>(std::round(
+            standardPixels[pixel + component] * (1.0f - weight) +
+            secondaryPixels[pixel + component] * weight));
+      }
+    }
+  }
+
+  if (!preview.texture) glGenTextures(1, &preview.texture);
+  glBindTexture(GL_TEXTURE_2D, preview.texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  glTexImage2D(
+      GL_TEXTURE_2D, 0, GL_RGBA8, size, size, 0, GL_RGBA,
+      GL_UNSIGNED_BYTE, blendedPixels.data());
+  glPixelStorei(GL_PACK_ALIGNMENT, previousPackAlignment);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, previousUnpackAlignment);
+  glBindTexture(GL_TEXTURE_2D, previousTexture);
+
+  preview.standardTexture = standardTexture;
+  preview.secondaryTexture = secondaryTexture;
+  preview.maskReference = maskReference;
+  preview.maskChannel = maskChannel;
+  preview.secondaryParams = secondaryParams;
+  preview.secondaryColour = secondaryColour;
+  return preview.texture;
 }
 
 struct ImageResourcePickerState {
@@ -4665,6 +4766,10 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     static bw::core::WallMaskOverride::BlendParameters wallMaskBlend{};
     static bw::core::WallMaskOverride::BlendColour wallMaskBlendColour{};
     static string wallMaskError;
+    static uint32_t wallMaskPreviewEdge = ~0u;
+    static vector<float> wallMaskPreviewParams;
+    static bw::core::WallMaskOverride::BlendColour wallMaskPreviewColour{};
+    static bool wallMaskPreviewBlendEnabled{};
 
     // The blend sliders share the primary wall Sub-material's Technique
     // schema: same parameter names, count, and [minimum, maximum] bounds.
@@ -4733,16 +4838,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
       if (channelCount >= 4) addChannel("Alpha");
       ImGui::Combo("Channel##WallMask", &wallMaskChannel,
                    channelItems.c_str());
-      ImGui::ColorEdit3("Blend colour##WallMask", wallMaskBlendColour.data());
-      if (wallSchema) {
-        for (size_t i = 0;
-             i < wallSchema->parameters.size() && i < wallMaskBlend.size();
-             ++i) {
-          auto const& parameter = wallSchema->parameters[i];
-          ImGui::SliderFloat(parameter.name.c_str(), &wallMaskBlend[i],
-                             parameter.minimum, parameter.maximum);
-        }
-      } else {
+      if (!wallSchema) {
         ImGui::TextDisabled(
             "Wall mask blend: the wall Sub-material has no Technique schema.");
       }
@@ -4800,7 +4896,135 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
         wallMaskError = error.what();
       }
     }
+
+    ImGui::SameLine();
+    auto const canPreviewWallMask =
+        wallMaskState ==
+            static_cast<int>(bw::core::WallMaskOverride::State::Image) &&
+        primaryWall && wallSchema;
+    ImGui::BeginDisabled(!canPreviewWallMask);
+    if (ImGui::Button("Preview blend target##SelectedMeshEdge")) {
+      wallMaskPreviewEdge = edgeIndex;
+      wallMaskPreviewParams.assign(wallMaskBlend.size(), 0.0f);
+      for (size_t i = 0;
+           i < primaryWall->paramValues.size() &&
+           i < wallMaskPreviewParams.size();
+           ++i) {
+        wallMaskPreviewParams[i] = primaryWall->paramValues[i];
+      }
+      wallMaskPreviewColour = primaryWall->baseColour;
+      wallMaskPreviewBlendEnabled = false;
+      ImGui::OpenPopup("Blend mask target preview##SelectedMeshEdge");
+    }
     ImGui::EndDisabled();
+    ImGui::EndDisabled();
+
+    if (ImGui::BeginPopupModal(
+            "Blend mask target preview##SelectedMeshEdge", nullptr,
+            ImGuiWindowFlags_AlwaysAutoResize)) {
+      if (!primaryWall || !wallSchema || wallMaskPreviewEdge != edgeIndex) {
+        ImGui::TextDisabled(
+            "The selected edge no longer has a previewable wall Sub-material.");
+      } else {
+        if (!gMaterialPickerThumbnails) {
+          if (auto* renderSystem = editorRenderSystem()) {
+            gMaterialPickerThumbnails =
+                make_unique<SubMaterialThumbnailRenderer>(*renderSystem);
+          }
+        }
+
+        ImGui::Checkbox(
+            "Blend using selected wall mask##WallMaskPreview",
+            &wallMaskPreviewBlendEnabled);
+
+        auto standardTexture =
+            gMaterialPickerThumbnails
+                ? gMaterialPickerThumbnails->texture(primaryWall->id)
+                : 0u;
+        auto secondaryTexture =
+            gMaterialPickerThumbnails
+                ? gMaterialPickerThumbnails->draftTexture(
+                      primaryWall->id, primaryWall->materialIndex,
+                      wallMaskPreviewParams, wallMaskPreviewColour)
+                : 0u;
+        auto displayedSecondaryTexture = secondaryTexture;
+        if (wallMaskPreviewBlendEnabled) {
+          displayedSecondaryTexture = wallMaskBlendedPreviewTexture(
+              standardTexture, secondaryTexture, wallMaskResource,
+              wallMaskChannel, wallMaskPreviewParams,
+              wallMaskPreviewColour);
+        }
+        constexpr float previewSize =
+            static_cast<float>(SubMaterialThumbnailRenderer::size) * 4.0f;
+        auto renderPreviewImage = [&](char const* title, uint32_t texture) {
+          ImGui::BeginGroup();
+          ImGui::TextUnformatted(title);
+          if (texture) {
+            ImGui::Image(static_cast<ImTextureID>(texture),
+                         {previewSize, previewSize}, {0.0f, 1.0f},
+                         {1.0f, 0.0f});
+          } else {
+            ImGui::BeginDisabled();
+            ImGui::Button("Unavailable", {previewSize, previewSize});
+            ImGui::EndDisabled();
+          }
+          ImGui::EndGroup();
+        };
+        renderPreviewImage("Standard parameters", standardTexture);
+        ImGui::SameLine();
+        renderPreviewImage(
+            wallMaskPreviewBlendEnabled ? "Masked blend" : "Secondary parameters",
+            displayedSecondaryTexture);
+
+        ImGui::SeparatorText("Secondary parameters");
+        ImGui::ColorEdit3(
+            "Base colour##WallMaskPreview", wallMaskPreviewColour.data());
+        for (size_t i = 0;
+             i < wallSchema->parameters.size() &&
+             i < wallMaskPreviewParams.size();
+             ++i) {
+          auto const& parameter = wallSchema->parameters[i];
+          ImGui::SliderFloat(
+              parameter.name.c_str(), &wallMaskPreviewParams[i],
+              parameter.minimum, parameter.maximum);
+        }
+      }
+
+      auto const canAcceptPreview =
+          primaryWall && wallSchema && wallMaskPreviewEdge == edgeIndex;
+      ImGui::BeginDisabled(!canAcceptPreview);
+      if (ImGui::Button("Revert##WallMaskPreview")) {
+        wallMaskPreviewParams.assign(wallMaskBlend.size(), 0.0f);
+        for (size_t i = 0;
+             i < primaryWall->paramValues.size() &&
+             i < wallMaskPreviewParams.size();
+             ++i) {
+          wallMaskPreviewParams[i] = primaryWall->paramValues[i];
+        }
+        wallMaskPreviewColour = primaryWall->baseColour;
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "Restore the standard Sub-material parameters and base colour.");
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("OK##WallMaskPreview")) {
+        for (size_t i = 0;
+             i < wallMaskBlend.size() && i < wallMaskPreviewParams.size();
+             ++i) {
+          wallMaskBlend[i] = wallMaskPreviewParams[i];
+        }
+        wallMaskBlendColour = wallMaskPreviewColour;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndDisabled();
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel##WallMaskPreview")) {
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+    }
+
     if (!wallMaskError.empty()) {
       ImGui::TextWrapped("%s", wallMaskError.c_str());
     }

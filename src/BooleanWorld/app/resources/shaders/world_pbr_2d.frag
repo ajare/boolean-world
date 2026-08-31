@@ -279,11 +279,15 @@ float materialField(vec2 p, int type)
                (sin(dot(p, normalize(vec2(1.0, -0.35))) * 13.0) * 0.5 + 0.5) * 0.22;
     if (type == 8)
     {
-        // vein_scale (MATERIAL_PARAMS[1]) - same 4.5 default as oreTexture.
+        // vein_scale and veinThickness (MATERIAL_PARAMS[1] and [5]) use
+        // the same 4.5 and 0.24 defaults as oreTexture.
         float veinScale = blendedMaterialParams[1];
+        float veinThickness = blendedMaterialParams[5];
         float warp = fbm(p * 0.62) - 0.5;
         float vein = abs(sin(p.x * veinScale - p.y * 0.8 + warp * 8.0));
-        return fbm(p * 1.6) * 0.42 + (1.0 - smoothstep(0.06, 0.24, vein)) * 0.58;
+        return fbm(p * 1.6) * 0.42 +
+               (1.0 - smoothstep(
+                   veinThickness * 0.25, veinThickness, vein)) * 0.58;
     }
     if (type == 9)
         return fbm(p * 1.15) * 0.58 -
@@ -522,7 +526,7 @@ Material wood2Material2d(vec2 worldPos, vec3 normal)
              blendedMaterialParams[0];
     material.albedo = wood2Colour(p);
     material.metallic = 0.0;
-    material.roughness = 0.56;
+    material.roughness = blendedMaterialParams[1]; // same 0.56 default as wood2Texture.
     material.normal = normalize(normal);
     return material;
 }
@@ -584,6 +588,10 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
     } else {
         p = worldPos * blendedMaterialParams[0];
     }
+    // Per-Technique normal strength is slot 2 (slot 3 for Stone). Marble
+    // retains its dedicated normal implementation and Wet rock its wetness mix.
+    if (type >= 1 && type <= 35)
+        strengths[type] = blendedMaterialParams[type == 1 ? 3 : 2];
     float field = materialField(p, type);
     float detail = noise(p * 7.0);
     float cells = voronoi(p * 3.5);
@@ -600,121 +608,130 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
     } else if (type == 1) {
         // stone_mix (MATERIAL_PARAMS[2]) - same 0.28 default as graniteTexture
         // in world_pbr.frag, and the same role: how strongly mica flecks read
-        // as metallic.
+        // as metallic. New feldspar/quartz frequencies stay unbound because
+        // they would change the shared detail local.
         float stoneMix = blendedMaterialParams[2];
         float quartz = smoothstep(0.68, 0.88, detail);
         material.albedo = mix(vec3(0.16, 0.15, 0.15), vec3(0.72, 0.70, 0.66), quartz);
         material.metallic = smoothstep(0.90, 0.98, noise(p * 13.0)) * stoneMix;
+        // mica_roughness has no corresponding term in this lossy branch.
         material.roughness = 0.58 - quartz * 0.16;
     } else if (type == 2) {
         // Slate's rust_mix has no local bind point here the way it does in
         // world_pbr.frag's slateTexture - this compressed branch has no
-        // separate rust blend at all, only the shared "field" - so it stays
-        // unbound in this shader, same as four of Marble's parameters above.
+        // separate rust blend at all, only the shared "field" - so rust_mix
+        // and rust_freq stay unbound here, same as Marble's lossy parameters.
         material.albedo = mix(vec3(0.075, 0.095, 0.115), vec3(0.18, 0.21, 0.22), field);
-        material.roughness = clamp(0.42 + field * 0.18, 0.34, 0.68);
+        material.roughness = clamp(0.42 + field * blendedMaterialParams[4], 0.34, 0.68);
     } else if (type == 3) {
         // Sandstone's grain_scale would have to change the shared `detail`
         // variable other types also read, so it stays unbound here too.
-        material.albedo = mix(vec3(0.70, 0.43, 0.22), vec3(0.43, 0.16, 0.075), field) * mix(0.86, 1.08, detail);
-        material.roughness = clamp(0.72 + (detail - 0.5) * 0.18, 0.58, 0.9);
+        material.albedo = mix(vec3(0.70, 0.43, 0.22), vec3(0.43, 0.16, 0.075), field) * mix(0.86, blendedMaterialParams[3], detail);
+        material.roughness = clamp(0.72 + (detail - 0.5) * blendedMaterialParams[4], 0.58, 0.9);
     } else if (type == 4) {
         // pore_mix (MATERIAL_PARAMS[1]) - same 0.38 default as
         // limestoneTexture in world_pbr.frag.
         float poreMix = blendedMaterialParams[1];
         float pores = 1.0 - smoothstep(0.08, 0.28, voronoi(p * 5.0));
         material.albedo = mix(vec3(0.48, 0.45, 0.35), vec3(0.82, 0.79, 0.66), broad) * (1.0 - pores * poreMix);
-        material.roughness = 0.62 + pores * 0.25;
+        material.roughness = 0.62 + pores * blendedMaterialParams[3];
     } else if (type == 5) {
         // vesicle_mix (MATERIAL_PARAMS[1]) - same 0.72 default as
         // basaltTexture.
         float vesicleMix = blendedMaterialParams[1];
         float pores = 1.0 - smoothstep(0.10, 0.32, voronoi(p * 3.8));
         material.albedo = mix(vec3(0.025), vec3(0.13), detail) * (1.0 - pores * vesicleMix);
-        material.metallic = 0.03; material.roughness = 0.58 + pores * 0.30;
+        material.metallic = blendedMaterialParams[3]; material.roughness = 0.58 + pores * blendedMaterialParams[4];
     } else if (type == 6) {
-        material.albedo = mix(vec3(0.006, 0.008, 0.012), vec3(0.055, 0.025, 0.075), pow(field, 4.0));
-        material.roughness = 0.075 + smoothstep(0.84, 0.96, detail) * 0.24;
+        material.albedo = mix(vec3(0.006, 0.008, 0.012), vec3(0.055, 0.025, 0.075), pow(field, blendedMaterialParams[3]));
+        material.roughness = 0.075 + smoothstep(0.84, 0.96, detail) * blendedMaterialParams[4];
     } else if (type == 7) {
         // amethyst_mix (MATERIAL_PARAMS[1]) - same 0.72 default as
-        // quartzTexture.
+        // quartzTexture. edge_amt stays unbound because this branch has no
+        // separate crystal-edge albedo term.
         material.albedo = mix(vec3(0.72, 0.82, 0.88), vec3(0.34, 0.14, 0.52), broad * blendedMaterialParams[1]);
-        material.roughness = clamp(0.11 + cells * 0.20, 0.08, 0.34);
+        material.roughness = clamp(0.11 + cells * blendedMaterialParams[4], 0.08, 0.34);
     } else if (type == 8) {
         float metal = smoothstep(0.48, 0.70, field);
         material.albedo = mix(vec3(0.08), vec3(0.62, 0.48, 0.20), metal);
-        material.metallic = metal; material.roughness = mix(0.68, 0.20, metal);
+        material.metallic = metal; material.roughness = mix(0.68, 0.20, metal); // oxidation-only slots 3/4 stay unbound in this lossy branch.
     } else if (type == 9) {
         float rust = smoothstep(0.42, 0.72, broad);
         material.albedo = mix(vec3(0.22, 0.23, 0.24), vec3(0.58, 0.19, 0.035), rust);
-        material.metallic = 0.92 * (1.0 - rust); material.roughness = mix(0.28, 0.88, rust);
+        material.metallic = blendedMaterialParams[3] * (1.0 - rust); material.roughness = mix(0.28, blendedMaterialParams[4], rust);
     } else if (type == 10) {
         material.albedo = mix(vec3(0.42, 0.45, 0.47), vec3(0.74, 0.77, 0.78), clamp(field, 0.0, 1.0));
-        material.metallic = 0.94; material.roughness = 0.25 + clamp(field, 0.0, 1.0) * 0.20;
+        material.metallic = blendedMaterialParams[3]; material.roughness = 0.25 + clamp(field, 0.0, 1.0) * blendedMaterialParams[4];
     } else if (type == 11) {
-        material.albedo = mix(vec3(0.42), vec3(0.70), field); material.metallic = 0.96; material.roughness = 0.20 + field * 0.30;
+        material.albedo = mix(vec3(0.42), vec3(0.70), field); material.metallic = blendedMaterialParams[3]; material.roughness = 0.20 + field * blendedMaterialParams[4];
     } else if (type == 12) {
-        material.albedo = mix(vec3(0.24), vec3(0.56), field); material.metallic = 0.92; material.roughness = 0.30 + (1.0 - field) * 0.22;
+        material.albedo = mix(vec3(0.24), vec3(0.56), field); material.metallic = blendedMaterialParams[3]; material.roughness = 0.30 + (1.0 - field) * blendedMaterialParams[4];
     } else if (type == 13) {
         float patina = smoothstep(0.43, 0.67, field);
         material.albedo = mix(vec3(0.72, 0.27, 0.09), vec3(0.08, 0.38, 0.29), patina);
-        material.metallic = mix(0.98, 0.03, patina); material.roughness = mix(0.20, 0.72, patina);
+        material.metallic = mix(blendedMaterialParams[3], 0.03, patina); material.roughness = mix(0.20, blendedMaterialParams[4], patina);
     } else if (type == 14) {
-        material.albedo = mix(vec3(0.12), vec3(0.65), field); material.metallic = 0.95; material.roughness = mix(0.34, 0.17, field);
+        material.albedo = mix(vec3(0.12), vec3(0.65), field); material.metallic = blendedMaterialParams[3]; material.roughness = mix(blendedMaterialParams[4], 0.17, field);
     } else if (type == 15) {
         // oxide_mix (MATERIAL_PARAMS[1]) - same 0.72 default as
         // heatTreatedMetalTexture.
         vec3 oxide = mix(vec3(0.78, 0.38, 0.08), vec3(0.035, 0.16, 0.48), field);
-        material.albedo = mix(vec3(0.40), oxide, blendedMaterialParams[1]); material.metallic = 0.90; material.roughness = 0.19 + detail * 0.13;
+        material.albedo = mix(vec3(0.40), oxide, blendedMaterialParams[1]); material.metallic = blendedMaterialParams[3]; material.roughness = 0.19 + detail * blendedMaterialParams[4];
     } else if (type == 16) {
+        // knot_dim stays unbound because this branch has no knot field.
         material.albedo = mix(vec3(0.16, 0.055, 0.018), vec3(0.58, 0.29, 0.095), field) * mix(0.76, 1.12, detail);
-        material.roughness = 0.48 + detail * 0.18;
+        material.roughness = 0.48 + detail * blendedMaterialParams[3];
     } else if (type == 17) {
+        // lichen_blend and roughness_amt have no clean equivalents here.
         material.albedo = mix(vec3(0.055, 0.020, 0.008), vec3(0.30, 0.12, 0.035), smoothstep(0.2, 0.78, field)); material.roughness = 0.82;
     } else if (type == 18) {
+        // pore_darken/roughness_amt operate on pores absent from this branch.
         material.albedo = mix(vec3(0.52, 0.43, 0.27), vec3(0.91, 0.84, 0.65), broad); material.roughness = 0.38 + (1.0 - field) * 0.25;
     } else if (type == 19) {
+        // Leather's roughness_amt multiplies wear, which is absent here.
         material.albedo = mix(vec3(0.09, 0.022, 0.012), vec3(0.47, 0.20, 0.08), cells); material.roughness = 0.50 + cells * 0.14;
     } else if (type == 20) {
-        material.albedo = mix(vec3(0.24, 0.025, 0.035), vec3(0.69, 0.24, 0.20), broad); material.roughness = 0.42 + (1.0 - broad) * 0.14;
+        material.albedo = mix(vec3(0.24, 0.025, 0.035), vec3(0.69, 0.24, 0.20), broad); material.roughness = 0.42 + (1.0 - broad) * blendedMaterialParams[3];
     } else if (type == 21) {
-        material.albedo = mix(vec3(0.025, 0.018, 0.035), vec3(0.08, 0.22, 0.21), field); material.metallic = 0.08; material.roughness = 0.16 + (1.0 - field) * 0.30;
+        material.albedo = mix(vec3(0.025, 0.018, 0.035), vec3(0.08, 0.22, 0.21), field); material.metallic = blendedMaterialParams[3]; material.roughness = 0.16 + (1.0 - field) * blendedMaterialParams[4];
     } else if (type == 22) {
+        // Coral's roughness_amt multiplies pores, not this compressed field.
         material.albedo = mix(vec3(0.35, 0.055, 0.045), vec3(0.92, 0.38, 0.24), broad); material.roughness = 0.65 + (1.0 - field) * 0.20;
     } else if (type == 23) {
         material.albedo = mix(vec3(0.035, 0.10, 0.24), spectralPalette(broad + @Uniform(GLOBAL_TIME) * 0.025), 1.0 - smoothstep(0.08, 0.36, cells));
-        material.metallic = 0.16; material.roughness = 0.07 + cells * 0.18;
+        material.metallic = 0.16; material.roughness = 0.07 + cells * blendedMaterialParams[3];
     } else if (type == 24) {
         float energy = smoothstep(-0.35, 0.05, -field);
-        material.albedo = mix(vec3(0.018, 0.022, 0.030), vec3(0.025, 0.32, 0.72), energy); material.metallic = 0.04; material.roughness = mix(0.78, 0.18, energy);
+        material.albedo = mix(vec3(0.018, 0.022, 0.030), vec3(0.025, 0.32, 0.72), energy); material.metallic = blendedMaterialParams[4]; material.roughness = mix(blendedMaterialParams[3], 0.18, energy);
     } else if (type == 25) {
         float pulse = sin(@Uniform(GLOBAL_TIME) * 2.2 + broad * 8.0) * 0.5 + 0.5;
-        material.albedo = mix(vec3(0.055, 0.012, 0.075), vec3(0.18, 0.52, 0.16), cells); material.albedo = mix(material.albedo, vec3(0.62, 0.08, 0.31), pulse * 0.28); material.roughness = 0.28 + cells * 0.24;
+        material.albedo = mix(vec3(0.055, 0.012, 0.075), vec3(0.18, 0.52, 0.16), cells); material.albedo = mix(material.albedo, vec3(0.62, 0.08, 0.31), pulse * blendedMaterialParams[3]); material.roughness = 0.28 + cells * blendedMaterialParams[4];
     } else if (type == 26) {
         // rune_scale (MATERIAL_PARAMS[1]) - same slot materialField's own
         // type-26 branch reads; kept in sync rather than duplicated as a
         // second independent constant.
         vec2 grid = abs(fract(p * blendedMaterialParams[1]) - 0.5); float rune = 1.0 - smoothstep(0.035, 0.10, min(grid.x, grid.y));
-        material.albedo = mix(vec3(0.08, 0.045, 0.16), vec3(0.58, 0.44, 0.82), field); material.albedo = mix(material.albedo, vec3(0.04, 0.75, 0.92), rune); material.metallic = mix(0.96, 0.35, rune); material.roughness = mix(0.20, 0.11, rune);
+        material.albedo = mix(vec3(0.08, 0.045, 0.16), vec3(0.58, 0.44, 0.82), field); material.albedo = mix(material.albedo, vec3(0.04, 0.75, 0.92), rune); material.metallic = mix(blendedMaterialParams[3], 0.35, rune); material.roughness = mix(blendedMaterialParams[4], 0.11, rune);
     } else if (type == 27) {
         // density_threshold (MATERIAL_PARAMS[1]) - same 0.30 default as
         // cloudSolidTexture.
-        float density = smoothstep(blendedMaterialParams[1], 0.78, broad); material.albedo = mix(vec3(0.18, 0.28, 0.46), vec3(0.92, 0.96, 1.0), density); material.roughness = 0.82 - density * 0.26;
+        float density = smoothstep(blendedMaterialParams[1], 0.78, broad); material.albedo = mix(vec3(0.18, 0.28, 0.46), vec3(0.92, 0.96, 1.0), density); material.roughness = 0.82 - density * blendedMaterialParams[3];
     } else if (type == 28) {
-        float fresnel = pow(1.0 - max(dot(normalize(normal), viewDir), 0.0), 2.2);
-        material.albedo = mix(vec3(0.025, 0.12, 0.18), spectralPalette(fresnel * 0.72 + field * 0.18 + @Uniform(GLOBAL_TIME) * 0.035), 0.55 + fresnel * 0.4); material.metallic = 0.48; material.roughness = 0.10 + field * 0.12;
+        float fresnel = pow(1.0 - max(dot(normalize(normal), viewDir), 0.0), blendedMaterialParams[3]);
+        material.albedo = mix(vec3(0.025, 0.12, 0.18), spectralPalette(fresnel * 0.72 + field * 0.18 + @Uniform(GLOBAL_TIME) * 0.035), 0.55 + fresnel * 0.4); material.metallic = 0.48; material.roughness = 0.10 + field * blendedMaterialParams[4];
     } else if (type == 29) {
         // spread_threshold (MATERIAL_PARAMS[1]) - same 0.36 default as
-        // corruptionTexture.
-        float spread = smoothstep(blendedMaterialParams[1], 0.68, broad); material.albedo = mix(vec3(0.025, 0.022, 0.020), vec3(0.20, 0.008, 0.24), spread); material.metallic = spread * 0.12; material.roughness = mix(0.82, 0.30, spread);
+        // corruptionTexture. tendril_blend stays unbound because this
+        // compressed branch has no separate tendril albedo term.
+        float spread = smoothstep(blendedMaterialParams[1], 0.68, broad); material.albedo = mix(vec3(0.025, 0.022, 0.020), vec3(0.20, 0.008, 0.24), spread); material.metallic = spread * 0.12; material.roughness = mix(blendedMaterialParams[4], 0.30, spread);
     } else if (type == 30) {
         // frost_threshold (MATERIAL_PARAMS[1]) - same 0.22 default as
         // frostedGlassTexture.
         float frostDensity = smoothstep(blendedMaterialParams[1], 0.82, field);
         material.albedo = vec3(0.85, 0.91, 0.94) *
-                          mix(0.78, 0.98, frostDensity);
+                          mix(0.78, blendedMaterialParams[3], frostDensity);
         material.roughness = clamp(
-            mix(0.34, 0.80, frostDensity), 0.28, 0.86);
+            mix(0.34, blendedMaterialParams[4], frostDensity), 0.28, 0.86);
     } else if (type == 31) {
         float brickWidth = 1.0;
         float brickHeight = blendedMaterialParams[1];
@@ -725,12 +742,12 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
         float weather = noise(p * 3.3 + vec2(shade * 11.0));
         vec3 fired = mix(
             vec3(0.36, 0.12, 0.075), vec3(0.66, 0.30, 0.16), shade);
-        fired *= mix(0.80, 1.12, weather);
+        fired *= mix(0.80, blendedMaterialParams[3], weather);
         vec3 mortar = mix(
             vec3(0.55, 0.53, 0.49), vec3(0.68, 0.66, 0.62), weather);
         material.albedo = mix(fired, mortar, field);
         material.roughness = clamp(
-            mix(0.58, 0.90, field) + (weather - 0.5) * 0.08,
+            mix(0.58, 0.90, field) + (weather - 0.5) * blendedMaterialParams[4],
             0.55, 0.94);
     } else if (type == 32) {
         vec2 padGrid = p * 9.0;
@@ -745,8 +762,8 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
         vec3 copper = mix(
             vec3(0.55, 0.32, 0.09), vec3(0.85, 0.72, 0.35), isPad);
         material.albedo = mix(solderMask, copper, field);
-        material.metallic = field * 0.9;
-        material.roughness = clamp(mix(0.55, 0.16, field), 0.14, 0.6);
+        material.metallic = field * blendedMaterialParams[4];
+        material.roughness = clamp(mix(blendedMaterialParams[3], 0.16, field), 0.14, 0.6);
     } else if (type == 33) {
         // garnet_scale (MATERIAL_PARAMS[1]) - same 13.0 default as
         // bandedGneissTexture.
@@ -761,9 +778,9 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
             smoothstep(0.30, 0.70, band));
         material.albedo = mix(
             material.albedo, vec3(0.30, 0.045, 0.055), garnet);
-        material.metallic = 0.02;
+        material.metallic = blendedMaterialParams[4];
         material.roughness = clamp(
-            0.48 + (noise(p * 8.0) - 0.5) * 0.16, 0.36, 0.62);
+            0.48 + (noise(p * 8.0) - 0.5) * blendedMaterialParams[3], 0.36, 0.62);
     } else if (type == 34) {
         // mineral_scale (MATERIAL_PARAMS[1]) - same 7.5 default as
         // rockTexture.
@@ -771,16 +788,16 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
         material.albedo = mix(
             vec3(0.16, 0.15, 0.135), vec3(0.43, 0.41, 0.37),
             fbm(p * 0.55));
-        material.albedo *= mix(0.82, 1.10, mineral);
+        material.albedo *= mix(0.82, blendedMaterialParams[3], mineral);
         material.roughness = clamp(
-            0.68 + (mineral - 0.5) * 0.16, 0.58, 0.82);
+            0.68 + (mineral - 0.5) * blendedMaterialParams[4], 0.58, 0.82);
     } else if (type == 35) {
         // moss_scale (MATERIAL_PARAMS[1]) - same 16.0 default as
         // mossyRockTexture.
         float moisture = fbm(p * 0.82 + vec2(4.0, 9.0));
         float upward = max(normalize(normal).y, 0.0);
         float moss = smoothstep(0.43, 0.68, moisture) *
-                     (0.42 + upward * 0.58);
+                     (blendedMaterialParams[3] + upward * (1.0 - blendedMaterialParams[3]));
         float fineMoss = noise(p * blendedMaterialParams[1]);
         vec3 stone = mix(
             vec3(0.13, 0.13, 0.115), vec3(0.38, 0.37, 0.32),
@@ -789,17 +806,17 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
             vec3(0.055, 0.105, 0.025), vec3(0.25, 0.34, 0.07),
             fineMoss);
         material.albedo = mix(stone, mossColour, moss);
-        material.roughness = mix(0.72, 0.92, moss);
+        material.roughness = mix(blendedMaterialParams[4], 0.92, moss);
     } else {
         // wetness_threshold (MATERIAL_PARAMS[1]) - same 0.24 default as
         // wetRockTexture.
         float wetness = smoothstep(
-            blendedMaterialParams[1], 0.76, fbm(p * 0.46 + vec2(12.0, 3.0)));
+            blendedMaterialParams[1], blendedMaterialParams[2], fbm(p * 0.46 + vec2(12.0, 3.0)));
         vec3 dryStone = mix(
             vec3(0.14, 0.14, 0.135), vec3(0.39, 0.38, 0.35),
             fbm(p * 0.62));
-        material.albedo = dryStone * mix(0.72, 0.36, wetness);
-        material.roughness = mix(0.52, 0.075, wetness);
+        material.albedo = dryStone * mix(0.72, blendedMaterialParams[3], wetness);
+        material.roughness = mix(blendedMaterialParams[4], 0.075, wetness);
     }
 
     material.roughness = clamp(material.roughness, 0.04, 1.0);

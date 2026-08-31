@@ -86,6 +86,21 @@ void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resource
   require(catalog.subMaterials.size() == 42,
           "generated catalog must contain 39 built-ins and three distinct level migrations");
 
+  constexpr size_t expectedParameterCounts[39] = {
+      0, 8, 7, 5, 5, 4, 5, 5, 5, 6, 5, 5, 5,
+      5, 5, 5, 5, 5, 5, 5, 4, 4, 5, 4, 4, 5,
+      5, 5, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 2};
+  for (size_t index = 0; index < 39; ++index) {
+    auto const* schema = catalog.findTechniqueSchema(static_cast<uint32_t>(index));
+    require(schema && schema->parameters.size() == expectedParameterCounts[index],
+            "built-in Technique schema has the wrong parameter count");
+  }
+
+  auto const* oreSchema = catalog.findTechniqueSchema(9);
+  require(oreSchema && oreSchema->parameters[5].name == "veinThickness" &&
+              near(oreSchema->parameters[5].defaultValue, 0.24f),
+          "Ore vein thickness is not exported by its Technique schema");
+
   auto const* marbleSchema = catalog.findTechniqueSchema(1);
   require(marbleSchema && marbleSchema->parameters.size() == 8 &&
               marbleSchema->parameters[0].name == "warp_scale" &&
@@ -103,9 +118,10 @@ void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resource
           "built-in Marble did not preserve its default warp_scale");
   auto const* wood2Schema = catalog.findTechniqueSchema(38);
   auto const* wood2 = find("builtin.wood2");
-  require(wood2Schema && wood2Schema->parameters.size() == 1 && wood2 &&
-              wood2->materialIndex == 38 && wood2->paramValues.size() == 1 &&
-              near(wood2->paramValues[0], 0.65f),
+  require(wood2Schema && wood2Schema->parameters.size() == 2 && wood2 &&
+              wood2->materialIndex == 38 && wood2->paramValues.size() == 2 &&
+              near(wood2->paramValues[0], 0.65f) &&
+              near(wood2->paramValues[1], 0.56f),
           "built-in Wood2 does not match its Technique schema");
   auto const* plainGreySchema = catalog.findTechniqueSchema(0);
   auto const* plainGrey = find("builtin.plain.grey");
