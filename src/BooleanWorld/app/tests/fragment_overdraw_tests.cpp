@@ -106,11 +106,14 @@ void appUsesAPostProcessFreeDebugPath() {
           "fragment overdraw resolve does not report zero for one fragment");
 
   auto renderer = read(appRoot.parent_path() / "render" / "src" / "WorldRenderer3d.cpp");
-  require(renderer.find("setMeshMaterial(meshName, material)") != std::string::npos &&
+  require(renderer.find("params->setMeshMaterial(") != std::string::npos &&
+              renderer.find("meshName, enabled ? material") != std::string::npos &&
+              renderer.find("mDebugMeshNames.contains(meshName)") !=
+                  std::string::npos &&
               renderer.find("enabled || mBlendedMeshNames.count(meshName)") !=
                   std::string::npos &&
               renderer.find("setMeshDepthPrepass(") != std::string::npos,
-          "world meshes do not accumulate overdraw or participate in its depth prepass");
+          "world meshes do not switch into overdraw rendering and restore their normal material/depth state");
 
   // Turning the diagnostic off restores each mesh's own blend classification.
   // Forcing every mesh opaque discards the alpha a liquid surface writes, and
