@@ -8,6 +8,7 @@
 
 #include "InputOptions.h"
 #include "VideoOptions.h"
+#include "WorldDataGenerationOptions.h"
 
 class DLLState {
   int mNextStateFactory = 0;
@@ -23,6 +24,19 @@ public:
 
     inputOptions.mouseSensitivity = mouseSensitivity;
 
+    return 0;
+  }
+
+  int setWorldDataGenerationOptions(
+      float startInterval,
+      bw::app::WorldDataGenerationOptions& options) const {
+    if (!std::isfinite(startInterval) || startInterval < 0.0f) {
+      return 1;
+    }
+
+    auto candidate = options;
+    candidate.startInterval = startInterval;
+    options = candidate;
     return 0;
   }
 

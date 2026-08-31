@@ -3,6 +3,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "ProgramOptions.h"
 
@@ -20,7 +21,8 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
                                          std::string const& horizontalMaterialsLine = "",
                                          std::string const& shadowsSection = "",
                                          std::string const& playerTorchSection = "",
-                                         std::string const& waterReflectionsSection = "") {
+                                         std::string const& waterReflectionsSection = "",
+                                         std::string const& worldDataGenerationSection = "") {
   auto path = std::filesystem::temp_directory_path() / "boolean-world-program-options-test.yaml";
   std::ofstream stream(path);
   stream << "Configuration:\n"
@@ -43,7 +45,8 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
             "    Sync: false\n"
          << inputSection
          << "  Game:\n"
-            "    DLL:\n"
+         << worldDataGenerationSection
+         << "    DLL:\n"
             "      path: BooleanWorld.dll\n"
             "    ResourceLocations:\n"
             "      ResourceLocation:\n"
@@ -181,6 +184,32 @@ ProgramOptions parseWithShadows(std::string const& section) {
   }
 }
 
+ProgramOptions parseWithWorldDataGeneration(std::string const& section) {
+  auto path = writeConfiguration(
+      "", "", "", "", "", "", "", "", "", "", section);
+  try {
+    auto options = parseProgramOptions(path.string());
+    std::filesystem::remove(path);
+    return options;
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+}
+
+void requireWorldDataGenerationRejected(
+    std::string const& section, std::string const& field) {
+  try {
+    (void)parseWithWorldDataGeneration(section);
+  } catch (std::exception const& error) {
+    require(std::string(error.what()).find(field) != std::string::npos,
+            "The World data Generation error did not identify '" + field + "'.");
+    return;
+  }
+  throw std::runtime_error(
+      "Game configuration accepted invalid WorldDataGeneration/" + field + ".");
+}
+
 void requireWaterReflectionsRejected(
     std::string const& section, std::string const& field) {
   try {
@@ -279,6 +308,20 @@ void requireHorizontalMaterialsRejected(
       "Video configuration accepted " + description + ".");
 }
 
+void checkedInConfigurationsDeclareAcceptedFiveSecondInterval() {
+  auto const root = std::filesystem::path(BW_LAUNCHER_SOURCE_DIR);
+  for (auto const& relative : std::vector<std::filesystem::path>{
+           "resources/Shipping/Game.yaml",
+           "support/ASTRALEMPRESS/Debug/Game.yaml",
+           "support/ASTRALEMPRESS/MemCheck/Game.yaml",
+           "support/ASTRALEMPRESS/Release/Game.yaml"}) {
+    auto options = parseProgramOptions((root / relative).string());
+    require(options.worldDataGeneration.startInterval == 5.0f,
+            "Checked-in configuration does not declare the five-second Generation interval: " +
+                relative.string());
+  }
+}
+
 void requireAmbientOcclusionRejected(
     std::string const& ambientOcclusionLine,
     std::string const& description) {
@@ -302,6 +345,38 @@ int main() {
 
     requireRejected("GameResource");
     requireRejected("MisspelledOption");
+
+    require(parseWithWorldDataGeneration("")
+                    .worldDataGeneration.startInterval == 5.0f,
+            "A missing WorldDataGeneration section did not default to five seconds.");
+    require(parseWithWorldDataGeneration("    WorldDataGeneration:\n")
+                    .worldDataGeneration.startInterval == 5.0f,
+            "An empty WorldDataGeneration section did not default to five seconds.");
+    require(parseWithWorldDataGeneration(
+                "    WorldDataGeneration:\n      StartInterval: 0\n")
+                    .worldDataGeneration.startInterval == 0.0f,
+            "A zero Generation start interval did not parse.");
+    require(parseWithWorldDataGeneration(
+                "    WorldDataGeneration:\n      StartInterval: 2.75\n")
+                    .worldDataGeneration.startInterval == 2.75f,
+            "A fractional Generation start interval did not parse intact.");
+    require(parseWithWorldDataGeneration(
+                "    WorldDataGeneration:\n      StartInterval: 45\n")
+                    .worldDataGeneration.startInterval == 45.0f,
+            "A Generation start interval above the F4 range was rejected.");
+    requireWorldDataGenerationRejected(
+        "    WorldDataGeneration:\n      Interval: 5\n", "Interval");
+    requireWorldDataGenerationRejected(
+        "    WorldDataGeneration:\n      StartInterval: -1\n", "StartInterval");
+    requireWorldDataGenerationRejected(
+        "    WorldDataGeneration:\n      StartInterval: nan\n", "StartInterval");
+    requireWorldDataGenerationRejected(
+        "    WorldDataGeneration:\n      StartInterval: inf\n", "StartInterval");
+    requireWorldDataGenerationRejected(
+        "    WorldDataGeneration:\n      StartInterval: soon\n", "StartInterval");
+    requireWorldDataGenerationRejected(
+        "    WorldDataGeneration: five\n", "WorldDataGeneration");
+    checkedInConfigurationsDeclareAcceptedFiveSecondInterval();
 
     require(parseWithInput("").input.mouseSensitivity == 0.3f,
             "A configuration without an Input section did not default the mouse sensitivity.");

@@ -4,6 +4,7 @@
 
 #include "Platform.h"
 #include "VideoOptions.h"
+#include "WorldDataGenerationOptions.h"
 
 struct BooleanWorldModel : public applib::Model {
 private:
@@ -25,14 +26,16 @@ private:
 
   bw::app::ShadowOptions mShadowOptions;
 
-  // Runtime-only F4 override. Model ownership carries it across map states;
-  // constructing a new application model restores the five-second default.
-  float mGenerationStartInterval{5.0f};
+  // Application-run configuration. F4 may override it temporarily; model
+  // ownership carries that override across maps without changing Game.yaml.
+  bw::app::WorldDataGenerationOptions mWorldDataGenerationOptions;
 
 public:
   BooleanWorldModel(applib::EntityHandlerFactoryFunction handlerFactory,
                     wp::application::resourcesystem::ResourceManager* resourceMgr,
-                    bw::app::VideoOptions const& videoOptions = {})
+                    bw::app::VideoOptions const& videoOptions = {},
+                    bw::app::WorldDataGenerationOptions const&
+                        worldDataGenerationOptions = {})
       : applib::Model(handlerFactory, resourceMgr),
         mActiveRenderScale(videoOptions.renderScale),
         mActiveAntiAliasing(videoOptions.antiAliasing),
@@ -43,7 +46,8 @@ public:
         mPlanarReflectionResolution(
             videoOptions.waterReflections.planarResolution),
         mPlayerTorchOptions(videoOptions.playerTorch),
-        mShadowOptions(videoOptions.shadows) {
+        mShadowOptions(videoOptions.shadows),
+        mWorldDataGenerationOptions(worldDataGenerationOptions) {
   }
 
   bw::app::RenderScale getActiveRenderScale() const {
@@ -101,10 +105,10 @@ public:
   }
 
   float getGenerationStartInterval() const {
-    return mGenerationStartInterval;
+    return mWorldDataGenerationOptions.startInterval;
   }
 
   void setGenerationStartInterval(float interval) {
-    mGenerationStartInterval = interval;
+    mWorldDataGenerationOptions.startInterval = interval;
   }
 };

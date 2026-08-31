@@ -10,6 +10,8 @@ string ApplicationDLL::msOnEntryFunctionName = "dllOnEntry";
 string ApplicationDLL::msOnExitFunctionName = "dllOnExit";
 string ApplicationDLL::msSetArgumentFunctionName = "dllSetArgument";
 string ApplicationDLL::msSetInputOptionsFunctionName = "dllSetInputOptions";
+string ApplicationDLL::msSetWorldDataGenerationOptionsFunctionName =
+    "dllSetWorldDataGenerationOptions";
 string ApplicationDLL::msSetVideoOptionsFunctionName = "dllSetVideoOptions";
 
 ApplicationDLL::ApplicationDLL()
@@ -18,6 +20,7 @@ ApplicationDLL::ApplicationDLL()
       mGetNextStateFactoryFunction(0),
       mSetArgumentFunction(0),
       mSetInputOptionsFunction(0),
+      mSetWorldDataGenerationOptionsFunction(0),
       mSetVideoOptionsFunction(0),
       mOnEntryFunction(0),
       mOnExitFunction(0),
@@ -58,6 +61,18 @@ void ApplicationDLL::registerRequiredFunctions() {
 
   if (!mSetInputOptionsFunction) {
     string errMsg = "Could not find DLL function '" + msSetInputOptionsFunctionName + "' in '" + mFilepath + "'.";
+    throw exception(errMsg.c_str());
+  }
+
+  mSetWorldDataGenerationOptionsFunction =
+      (DllSetWorldDataGenerationOptionsFunction)GetProcAddress(
+          mGetProcIDDLL,
+          msSetWorldDataGenerationOptionsFunctionName.c_str());
+
+  if (!mSetWorldDataGenerationOptionsFunction) {
+    string errMsg = "Could not find DLL function '" +
+                    msSetWorldDataGenerationOptionsFunctionName + "' in '" +
+                    mFilepath + "'.";
     throw exception(errMsg.c_str());
   }
 
@@ -103,6 +118,16 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
   // input-driven objects with them
   if (mSetInputOptionsFunction(options.input.mouseSensitivity) != 0) {
     string errMsg = format("Application rejected input options: MouseSensitivity={}", options.input.mouseSensitivity);
+    throw exception(errMsg.c_str());
+  }
+
+  // Seed application-run Generation options before entry, and therefore
+  // before any map's mandatory bootstrap Generation.
+  if (mSetWorldDataGenerationOptionsFunction(
+          options.worldDataGeneration.startInterval) != 0) {
+    string errMsg = format(
+        "Application rejected World data Generation options: StartInterval={}",
+        options.worldDataGeneration.startInterval);
     throw exception(errMsg.c_str());
   }
 

@@ -123,6 +123,35 @@ void parseWaterReflectionOptions(
   }
 }
 
+void parseWorldDataGenerationOptions(
+    string const& filename, DataNode* generation,
+    bw::app::WorldDataGenerationOptions& options) {
+  if (generation->getData().isValue()) {
+    // The YAML reader represents an explicitly empty section as an empty
+    // scalar. It is the partial configuration case and keeps the defaults.
+    if (generation->getValue().empty()) return;
+    auto message = "Could not load '" + filename +
+                   "'.  /Configuration/Game/WorldDataGeneration must be a section.";
+    throw exception(message.c_str());
+  }
+  generation->requireOnlyChildren({"StartInterval"});
+
+  auto node = generation->getOptionalChild("StartInterval");
+  if (!node) return;
+
+  auto const& text = node->getValue();
+  float value{};
+  auto [end, error] =
+      from_chars(text.data(), text.data() + text.size(), value);
+  if (error != errc{} || end != text.data() + text.size() ||
+      !isfinite(value) || value < 0.0f) {
+    auto message = "Could not load '" + filename +
+                   "'.  Value of /Configuration/Game/WorldDataGeneration/StartInterval must be a finite non-negative number.";
+    throw exception(message.c_str());
+  }
+  options.startInterval = value;
+}
+
 void parseShadowOptions(
     string const& filename, DataNode* shadows,
     bw::app::ShadowOptions& options) {
@@ -203,7 +232,9 @@ ProgramOptions parseProgramOptions(string const& filename) {
   auto inputNode = configuration.getOptionalChild("Input");
 
   videoNode->requireOnlyChildren({"Width", "Height", "Fullscreen", "VSync", "RenderScale", "AA", "AmbientOcclusion", "RenderTextureFilter", "HorizontalMaterials", "WaterReflections", "PlayerTorch", "Shadows"});
-  gameNode->requireOnlyChildren({"DLL", "ResourceLocations", "Debug", "Arguments"});
+  gameNode->requireOnlyChildren(
+      {"DLL", "ResourceLocations", "Debug", "Arguments",
+       "WorldDataGeneration"});
 
   pOpts.screenWidth = utils::StringUtils::parseInt(videoNode->getChild("Width")->getValue());
   pOpts.screenHeight = utils::StringUtils::parseInt(videoNode->getChild("Height")->getValue());
@@ -293,6 +324,12 @@ ProgramOptions parseProgramOptions(string const& filename) {
     }
 
     pOpts.video.renderTextureFilter = *filter;
+  }
+
+  if (auto generationNode =
+          gameNode->getOptionalChild("WorldDataGeneration")) {
+    parseWorldDataGenerationOptions(
+        filename, generationNode, pOpts.worldDataGeneration);
   }
 
   // Get game DLL
@@ -420,6 +457,9 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
   }
 
   logger->info(std::format("Mouse sensitivity: {}", options.input.mouseSensitivity));
+  logger->info(std::format(
+      "WorldData Generation start interval: {} seconds",
+      options.worldDataGeneration.startInterval));
 
   logger->info(std::format("DLL: {}", options.dll));
   logger->info("");

@@ -32,6 +32,8 @@ Configuration:
   Input:
     MouseSensitivity: 0.3
   Game:
+    WorldDataGeneration:
+      StartInterval: 5
     DLL:
       path: ../BooleanWorld/BooleanWorldd.dll
     ResourceLocations:

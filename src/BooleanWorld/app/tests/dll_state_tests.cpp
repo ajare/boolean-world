@@ -40,6 +40,32 @@ void rejectsUnusableMouseSensitivities() {
   require(options.mouseSensitivity == 2.5f, "Rejected mouse sensitivity changed configuration.");
 }
 
+void transfersWorldDataGenerationOptionsAtomically() {
+  DLLState state;
+  bw::app::WorldDataGenerationOptions options;
+
+  require(state.setWorldDataGenerationOptions(2.75f, options) == 0,
+          "A valid Generation start interval was rejected.");
+  require(options.startInterval == 2.75f,
+          "The Generation start interval did not cross the DLL boundary intact.");
+  auto const accepted = options;
+
+  for (auto invalid : {-1.0f, std::numeric_limits<float>::infinity(),
+                       std::numeric_limits<float>::quiet_NaN()}) {
+    require(state.setWorldDataGenerationOptions(invalid, options) != 0,
+            "An invalid Generation start interval was accepted.");
+    require(options == accepted,
+            "A rejected Generation boundary value changed accepted options.");
+  }
+
+  require(state.setWorldDataGenerationOptions(0.0f, options) == 0 &&
+              options.startInterval == 0.0f,
+          "A zero Generation start interval did not cross intact.");
+  require(state.setWorldDataGenerationOptions(45.5f, options) == 0 &&
+              options.startInterval == 45.5f,
+          "A Generation start interval above the F4 range did not cross intact.");
+}
+
 void acceptsAndValidatesRenderScaleCodes() {
   DLLState state;
   bw::app::VideoOptions options;
@@ -350,6 +376,7 @@ int main() {
   try {
     rejectsUnknownArguments();
     rejectsUnusableMouseSensitivities();
+    transfersWorldDataGenerationOptionsAtomically();
     acceptsAndValidatesRenderScaleCodes();
     transfersShadowOptionsTransactionally();
     renderScaleVocabularyIsClosedAndSizesTargets();

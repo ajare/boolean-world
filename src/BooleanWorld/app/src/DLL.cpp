@@ -18,6 +18,7 @@
 #include "DLLState.h"
 #include "InputOptions.h"
 #include "VideoOptions.h"
+#include "WorldDataGenerationOptions.h"
 #include "MapBooleanWorldDefinitionFactory.h"
 #include "ProtoEntityDefinitionFactory.h"
 
@@ -66,6 +67,10 @@ static bw::app::InputOptions gInputOptions;
 // active scale then survives every map-owned renderer.
 static bw::app::VideoOptions gVideoOptions;
 
+// World data Generation configuration seeds the application-run model before
+// any map can perform its mandatory bootstrap Generation.
+static bw::app::WorldDataGenerationOptions gWorldDataGenerationOptions;
+
 extern "C" {
 __declspec(dllexport) char const* dllGetName() {
   return "BooleanWorld";
@@ -77,6 +82,12 @@ __declspec(dllexport) int dllSetArgument(char const* arg, char const* value) {
 
 __declspec(dllexport) int dllSetInputOptions(float mouseSensitivity) {
   return dllState.setInputOptions(mouseSensitivity, gInputOptions);
+}
+
+__declspec(dllexport) int dllSetWorldDataGenerationOptions(
+    float startInterval) {
+  return dllState.setWorldDataGenerationOptions(
+      startInterval, gWorldDataGenerationOptions);
 }
 
 __declspec(dllexport) int dllSetVideoOptions(
@@ -148,7 +159,9 @@ __declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resou
     return new EntityHandlerBooleanWorld(animDatabase, gInputOptions);
   };
 
-  model = new BooleanWorldModel(entityHandlerFactory, resourceMgr, gVideoOptions);
+  model = new BooleanWorldModel(
+      entityHandlerFactory, resourceMgr, gVideoOptions,
+      gWorldDataGenerationOptions);
   applib::ModelInstance::set(model);
 
   // Create state factories
