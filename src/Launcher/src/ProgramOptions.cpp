@@ -134,7 +134,18 @@ void parseWorldDataGenerationOptions(
                    "'.  /Configuration/Game/WorldDataGeneration must be a section.";
     throw exception(message.c_str());
   }
-  generation->requireOnlyChildren({"StartInterval"});
+  generation->requireOnlyChildren({"Mode", "StartInterval"});
+
+  if (auto node = generation->getOptionalChild("Mode")) {
+    auto name = utils::StringUtils::toLower(node->getValue());
+    auto mode = bw::app::worldDataGenerationModeFromName(name);
+    if (!mode) {
+      auto message = "Could not load '" + filename +
+                     "'.  Value of /Configuration/Game/WorldDataGeneration/Mode must be 'asynchronous' or 'synchronous'.";
+      throw exception(message.c_str());
+    }
+    options.mode = *mode;
+  }
 
   auto node = generation->getOptionalChild("StartInterval");
   if (!node) return;
@@ -458,7 +469,8 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
 
   logger->info(std::format("Mouse sensitivity: {}", options.input.mouseSensitivity));
   logger->info(std::format(
-      "WorldData Generation start interval: {} seconds",
+      "WorldData Generation: {}, start interval {} seconds",
+      bw::app::worldDataGenerationModeName(options.worldDataGeneration.mode),
       options.worldDataGeneration.startInterval));
 
   logger->info(std::format("DLL: {}", options.dll));

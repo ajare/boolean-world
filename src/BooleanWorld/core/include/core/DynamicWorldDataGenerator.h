@@ -48,6 +48,11 @@ public:
     Committed
   };
 
+  enum struct GenerationMode {
+    Asynchronous,
+    Synchronous
+  };
+
   struct GenerationDetails {
     uint32_t clippingId;
     GenerationState state;
@@ -107,8 +112,10 @@ private:
   // Asynchronous work is a single running worker plus its latest request.
   std::optional<GenerationInput> mPendingGenerationInput;
   bool mGenerationWorkerRunning{false};
+  bool mBlockingGenerationRunning{false};
   std::condition_variable mGenerationWorkerIdle;
   std::atomic_uint64_t mNumGenerationRequestsCoalesced{0};
+  std::atomic<GenerationMode> mGenerationMode{GenerationMode::Asynchronous};
 
   // Recurring work is made eligible by main-thread updates. The clock and
   // latest actual start are atomic because asynchronous work records its start
@@ -129,6 +136,8 @@ private:
   void drainGenerationRequests();
 
   void enqueueGeneration(GenerationInput input);
+
+  void runBlockingGeneration(World const* world);
 
   GenerationInput snapshotGenerationInput(
       World const* world, bool regetPrimitives);
@@ -198,6 +207,10 @@ public:
   std::vector<GenerationPrimitiveMetadata> getActiveClippingPrimitives() const;
 
   std::vector<GenerationPrimitiveMetadata> getActiveClippingUpdatedPrimitives() const;
+
+  void setGenerationMode(GenerationMode mode);
+
+  GenerationMode getGenerationMode() const;
 
   void setGenerationStartInterval(float interval);
 

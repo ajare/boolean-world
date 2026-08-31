@@ -316,8 +316,10 @@ void checkedInConfigurationsDeclareAcceptedFiveSecondInterval() {
            "support/ASTRALEMPRESS/MemCheck/Game.yaml",
            "support/ASTRALEMPRESS/Release/Game.yaml"}) {
     auto options = parseProgramOptions((root / relative).string());
-    require(options.worldDataGeneration.startInterval == 5.0f,
-            "Checked-in configuration does not declare the five-second Generation interval: " +
+    require(options.worldDataGeneration.mode ==
+                    bw::app::WorldDataGenerationMode::Asynchronous &&
+                options.worldDataGeneration.startInterval == 5.0f,
+            "Checked-in configuration does not declare asynchronous Generation with a five-second interval: " +
                 relative.string());
   }
 }
@@ -346,12 +348,26 @@ int main() {
     requireRejected("GameResource");
     requireRejected("MisspelledOption");
 
-    require(parseWithWorldDataGeneration("")
-                    .worldDataGeneration.startInterval == 5.0f,
-            "A missing WorldDataGeneration section did not default to five seconds.");
-    require(parseWithWorldDataGeneration("    WorldDataGeneration:\n")
-                    .worldDataGeneration.startInterval == 5.0f,
-            "An empty WorldDataGeneration section did not default to five seconds.");
+    auto defaultGeneration = parseWithWorldDataGeneration("").worldDataGeneration;
+    require(defaultGeneration.mode ==
+                    bw::app::WorldDataGenerationMode::Asynchronous &&
+                defaultGeneration.startInterval == 5.0f,
+            "A missing WorldDataGeneration section did not keep its defaults.");
+    auto emptyGeneration =
+        parseWithWorldDataGeneration("    WorldDataGeneration:\n")
+            .worldDataGeneration;
+    require(emptyGeneration == defaultGeneration,
+            "An empty WorldDataGeneration section did not keep its defaults.");
+    require(parseWithWorldDataGeneration(
+                "    WorldDataGeneration:\n      Mode: SyNcHrOnOuS\n")
+                    .worldDataGeneration.mode ==
+                bw::app::WorldDataGenerationMode::Synchronous,
+            "Synchronous Generation mode did not use standard case handling.");
+    require(parseWithWorldDataGeneration(
+                "    WorldDataGeneration:\n      Mode: ASYNCHRONOUS\n")
+                    .worldDataGeneration.mode ==
+                bw::app::WorldDataGenerationMode::Asynchronous,
+            "Asynchronous Generation mode did not use standard case handling.");
     require(parseWithWorldDataGeneration(
                 "    WorldDataGeneration:\n      StartInterval: 0\n")
                     .worldDataGeneration.startInterval == 0.0f,
@@ -366,6 +382,8 @@ int main() {
             "A Generation start interval above the F4 range was rejected.");
     requireWorldDataGenerationRejected(
         "    WorldDataGeneration:\n      Interval: 5\n", "Interval");
+    requireWorldDataGenerationRejected(
+        "    WorldDataGeneration:\n      Mode: worker\n", "Mode");
     requireWorldDataGenerationRejected(
         "    WorldDataGeneration:\n      StartInterval: -1\n", "StartInterval");
     requireWorldDataGenerationRejected(

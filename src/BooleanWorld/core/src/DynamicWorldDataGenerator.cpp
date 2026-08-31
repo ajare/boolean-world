@@ -27,7 +27,9 @@ DynamicWorldDataGenerator::~DynamicWorldDataGenerator() {
   stopGenerationSchedule();
   std::unique_lock lock(mGenMutex);
   mGenerationWorkerIdle.wait(
-      lock, [this] { return !mGenerationWorkerRunning; });
+      lock, [this] {
+        return !mGenerationWorkerRunning && !mBlockingGenerationRunning;
+      });
 }
 
 DynamicWorldDataGenerator::DynamicWorldDataGenerator(DynamicWorldDataGenerator const& other)
@@ -58,8 +60,10 @@ void DynamicWorldDataGenerator::copyFrom(DynamicWorldDataGenerator const& other)
   mLastGenTime.store(other.mLastGenTime.load());
   mPendingGenerationInput.reset();
   mGenerationWorkerRunning = false;
+  mBlockingGenerationRunning = false;
   mNumGenerationRequestsCoalesced.store(
       other.mNumGenerationRequestsCoalesced.load());
+  mGenerationMode.store(other.mGenerationMode.load());
   mGenerationStartInterval.store(other.mGenerationStartInterval.load());
   mGenerationScheduleTime = 0.0;
   mLastGenerationStartTime = -1.0;
@@ -147,6 +151,21 @@ DynamicWorldDataGenerator::getActiveClippingUpdatedPrimitives() const {
   lock_guard<mutex> lock(mGenMutex);
 
   return mActiveClipping.updatedPrimitives;
+}
+
+void DynamicWorldDataGenerator::setGenerationMode(GenerationMode mode) {
+  lock_guard<mutex> lock(mGenMutex);
+  mGenerationMode = mode;
+  if (mode == GenerationMode::Synchronous) {
+    // Running work is allowed to publish, but work that has not begun belongs
+    // to the asynchronous policy being left behind.
+    mPendingGenerationInput.reset();
+  }
+}
+
+DynamicWorldDataGenerator::GenerationMode
+DynamicWorldDataGenerator::getGenerationMode() const {
+  return mGenerationMode;
 }
 
 void DynamicWorldDataGenerator::setGenerationStartInterval(float interval) {
@@ -387,17 +406,56 @@ void DynamicWorldDataGenerator::enqueueGeneration(GenerationInput input) {
   bool startWorker = false;
   {
     lock_guard<mutex> lock(mGenMutex);
+    if (mGenerationMode != GenerationMode::Asynchronous) {
+      return;
+    }
     if (mPendingGenerationInput) {
       mNumGenerationRequestsCoalesced++;
     }
     mPendingGenerationInput = move(input);
 
-    if (!mGenerationWorkerRunning) {
+    if (!mGenerationWorkerRunning && !mBlockingGenerationRunning) {
       mGenerationWorkerRunning = true;
       startWorker = true;
     }
   }
 
+  if (startWorker) {
+    mExecutorRuntime.thread_pool_executor()->post(
+        [this] { drainGenerationRequests(); });
+  }
+}
+
+void DynamicWorldDataGenerator::runBlockingGeneration(World const* world) {
+  {
+    unique_lock<mutex> lock(mGenMutex);
+    mGenerationWorkerIdle.wait(
+        lock, [this] {
+          return !mGenerationWorkerRunning && !mBlockingGenerationRunning;
+        });
+    mBlockingGenerationRunning = true;
+  }
+
+  try {
+    generateWorldData(snapshotGenerationInput(world, true));
+  } catch (...) {
+    lock_guard<mutex> lock(mGenMutex);
+    mBlockingGenerationRunning = false;
+    mGenerationWorkerIdle.notify_all();
+    throw;
+  }
+
+  bool startWorker = false;
+  {
+    lock_guard<mutex> lock(mGenMutex);
+    mBlockingGenerationRunning = false;
+    if (mGenerationMode == GenerationMode::Asynchronous &&
+        mPendingGenerationInput && !mGenerationWorkerRunning) {
+      mGenerationWorkerRunning = true;
+      startWorker = true;
+    }
+    mGenerationWorkerIdle.notify_all();
+  }
   if (startWorker) {
     mExecutorRuntime.thread_pool_executor()->post(
         [this] { drainGenerationRequests(); });
@@ -507,7 +565,7 @@ WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
   }
 
   if (mNumGenerationsComplete == 0) {
-    generateWorldData(snapshotGenerationInput(world, false));
+    runBlockingGeneration(world);
   }
 
   checkCommitPendingClipping();
@@ -515,6 +573,12 @@ WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
 }
 
 void DynamicWorldDataGenerator::generate(World const* world, bool regetPrimitives) {
+  // Ordinary requests are part of the asynchronous policy. Synchronous mode
+  // gets exactly its update-driven Generation unless the unconditional API is
+  // called explicitly.
+  if (mGenerationMode != GenerationMode::Asynchronous) {
+    return;
+  }
   enqueueGeneration(snapshotGenerationInput(world, regetPrimitives));
 }
 
@@ -526,13 +590,18 @@ void DynamicWorldDataGenerator::generate(bool regetPrimitives) {
 
 void DynamicWorldDataGenerator::generateBlocking() {
   if (mWorld) {
-    generateWorldData(snapshotGenerationInput(mWorld, true));
+    runBlockingGeneration(mWorld);
   }
 }
 
 void DynamicWorldDataGenerator::handleEvents(
     float frameTime, uint32_t events) {
   mGenerationScheduleTime.fetch_add(frameTime);
+
+  if (mGenerationMode == GenerationMode::Synchronous) {
+    generateBlocking();
+    return;
+  }
 
   // Ad-hoc requests remain immediate and become the new interval anchor when
   // their worker actually starts. Do not also create periodic work this frame.

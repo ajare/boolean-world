@@ -104,6 +104,14 @@ public:
     return mShadowOptions;
   }
 
+  bw::app::WorldDataGenerationMode getGenerationMode() const {
+    return mWorldDataGenerationOptions.mode;
+  }
+
+  void setGenerationMode(bw::app::WorldDataGenerationMode mode) {
+    mWorldDataGenerationOptions.mode = mode;
+  }
+
   float getGenerationStartInterval() const {
     return mWorldDataGenerationOptions.startInterval;
   }

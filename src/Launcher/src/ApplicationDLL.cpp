@@ -124,9 +124,13 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
   // Seed application-run Generation options before entry, and therefore
   // before any map's mandatory bootstrap Generation.
   if (mSetWorldDataGenerationOptionsFunction(
+          bw::app::worldDataGenerationModeCode(
+              options.worldDataGeneration.mode),
           options.worldDataGeneration.startInterval) != 0) {
     string errMsg = format(
-        "Application rejected World data Generation options: StartInterval={}",
+        "Application rejected World data Generation options: Mode={}, StartInterval={}",
+        bw::app::worldDataGenerationModeName(
+            options.worldDataGeneration.mode),
         options.worldDataGeneration.startInterval);
     throw exception(errMsg.c_str());
   }

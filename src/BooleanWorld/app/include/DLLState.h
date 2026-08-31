@@ -28,13 +28,15 @@ public:
   }
 
   int setWorldDataGenerationOptions(
-      float startInterval,
+      int modeCode, float startInterval,
       bw::app::WorldDataGenerationOptions& options) const {
-    if (!std::isfinite(startInterval) || startInterval < 0.0f) {
+    auto mode = bw::app::worldDataGenerationModeFromCode(modeCode);
+    if (!mode || !std::isfinite(startInterval) || startInterval < 0.0f) {
       return 1;
     }
 
     auto candidate = options;
+    candidate.mode = *mode;
     candidate.startInterval = startInterval;
     options = candidate;
     return 0;

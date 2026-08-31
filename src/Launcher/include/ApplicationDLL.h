@@ -34,7 +34,7 @@ class ApplicationDLL {
   // struct layout part of the DLL ABI.
   typedef int (*DllSetInputOptionsFunction)(float);
 
-  typedef int (*DllSetWorldDataGenerationOptionsFunction)(float);
+  typedef int (*DllSetWorldDataGenerationOptionsFunction)(int, float);
 
   // Video enums cross as stable integer codes and Torch values as ordered
   // scalars, keeping the ABI plain and independent of C++ struct layout.

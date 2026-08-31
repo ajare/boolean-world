@@ -570,7 +570,8 @@ void StatePlayBooleanWorld::createWorldCollisions(
   auto const& arrangement = mWorldData->getArrangement();
   auto const& walls = mWorldData->getWalls();
   auto radius = BW_PLAYER_SPEED + BW_PLAYER_RADIUS;
-  auto const& playerPosition = getPlayerPhysicalStats().position;
+  auto const& physicalStats = getPlayerPhysicalStats();
+  auto const& playerPosition = physicalStats.position;
   auto swimming = isPlayerSwimming();
   auto descendingForTraversal =
       bw::app::isDescendingForTallStepTraversal(
@@ -1016,6 +1017,11 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
   mGenerationCallbackToken = dataGenerator->registerGenerationCallback(
       bind(&StatePlayBooleanWorld::handleClippingUpdate, this, std::placeholders::_1));
   auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
+  dataGenerator->setGenerationMode(
+      model->getGenerationMode() ==
+              bw::app::WorldDataGenerationMode::Asynchronous
+          ? bw::core::DynamicWorldDataGenerator::GenerationMode::Asynchronous
+          : bw::core::DynamicWorldDataGenerator::GenerationMode::Synchronous);
   dataGenerator->startGenerationSchedule(model->getGenerationStartInterval());
 
   // Finish move of transition data
@@ -1215,7 +1221,7 @@ void StatePlayBooleanWorld::updatePlayerVerticalPhysics(float frameTime) {
 
   if (targetFloor >= physicalStats.floorZ) {
     // Horizontal collision already refused any step too tall to climb (see
-    // ArrangementWorldData's step-threshold/clearance rules), so any floor
+    // ArrangementWorldData's step-height/clearance rules), so any floor
     // rise reaching here is a walkable step: climb it smoothly rather than
     // snapping straight to it, and stay grounded (no carried fall speed).
     // tryClimbOutOfLiquid deliberately routes through here too, leaving the
@@ -1961,15 +1967,34 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
   if (ImGui::Begin("Clipping records")) {
     auto model =
         static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
+    auto mode = model->getGenerationMode();
+    int modeSelection =
+        mode == bw::app::WorldDataGenerationMode::Asynchronous ? 0 : 1;
+    char const* modeLabels[] = {"Asynchronous", "Synchronous"};
+    if (ImGui::Combo("Generation mode", &modeSelection, modeLabels, 2)) {
+      mode = modeSelection == 0
+                 ? bw::app::WorldDataGenerationMode::Asynchronous
+                 : bw::app::WorldDataGenerationMode::Synchronous;
+      model->setGenerationMode(mode);
+      getWDG()->setGenerationMode(
+          mode == bw::app::WorldDataGenerationMode::Asynchronous
+              ? bw::core::DynamicWorldDataGenerator::GenerationMode::Asynchronous
+              : bw::core::DynamicWorldDataGenerator::GenerationMode::Synchronous);
+    }
+
     auto generationStartInterval = model->getGenerationStartInterval();
+    auto const synchronous =
+        mode == bw::app::WorldDataGenerationMode::Synchronous;
+    ImGui::BeginDisabled(synchronous);
     if (ImGui::SliderFloat(
             "Generation start interval", &generationStartInterval,
             0.0f, 30.0f, "%.2f s")) {
       model->setGenerationStartInterval(generationStartInterval);
       getWDG()->setGenerationStartInterval(generationStartInterval);
     }
+    ImGui::EndDisabled();
     ImGui::TextDisabled(
-        "F4 session-only; zero restarts after each Generation completes.");
+        "F4 session-only; zero restarts after each asynchronous Generation completes.");
     ImGui::Separator();
 
     vector<ClippingRecord> records;
