@@ -1467,6 +1467,63 @@ void draggingADifferencePrimitiveDoesNotClearItsSelectionOnRelease() {
   editor::undo(&document);
 }
 
+void primitiveDragSnapsItsMovementToTheGridWhileTheGridIsShown() {
+  editor::Document document;
+  document.newDoc();
+  // Deliberately off-grid: snapping the movement must preserve the offset
+  // the Primitive was authored with.
+  auto index = addRectangle(document, {7.0f, 3.0f});
+  auto const startPosition = document.getWorld()->getPrimitive(index)->getPosition();
+  document.setSelectedPrimitiveIndices({index});
+
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Primitive;
+  settings.showGrid = true;
+  settings.gridSize = 32.0f;
+  editor::EditorInteraction interaction;
+
+  auto positionOf = [&] {
+    return document.getWorld()->getPrimitive(index)->getPosition();
+  };
+  auto dragBy = [&](wp::Vector2 const& screenDelta) {
+    auto drag = pointerAt({500.0f, 500.0f});
+    drag.leftDown = true;
+    drag.leftDragging = true;
+    drag.dragDelta = screenDelta;
+    interaction.updateDrag(&document, settings, drag);
+  };
+
+  // Below half a cell the selection has not reached the next line yet.
+  dragBy({10.0f, 0.0f});
+  require(positionOf() == startPosition,
+          "a sub-cell drag moved a Primitive off its grid step");
+
+  // 10 + 30 = 40 world units right, which rounds to one 32-unit cell.
+  dragBy({30.0f, 0.0f});
+  require(positionOf() == startPosition + wp::Vector2{32.0f, 0.0f},
+          "a grid-snapped drag did not move the Primitive by exactly one cell");
+
+  // Screen y is inverted in world space, so this is 54 units up, which
+  // rounds to two cells, while x accumulates to 100 and rounds to three.
+  dragBy({60.0f, -54.0f});
+  require(positionOf() == startPosition + wp::Vector2{96.0f, 64.0f},
+          "each axis was not snapped to its own whole number of cells");
+
+  auto release = pointerAt({500.0f, 500.0f});
+  release.leftReleased = true;
+  interaction.updateDrag(&document, settings, release);
+
+  // With the grid off the same drag moves by the raw world delta again.
+  settings.showGrid = false;
+  auto const beforeUnsnapped = positionOf();
+  dragBy({10.0f, 0.0f});
+  require(positionOf() == beforeUnsnapped + wp::Vector2{10.0f, 0.0f},
+          "a drag with the grid off did not move by the raw pointer delta");
+  interaction.updateDrag(&document, settings, release);
+
+  editor::undo(&document);
+}
+
 void meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive() {
   editor::Document document;
   editor::Settings settings;
@@ -4218,6 +4275,7 @@ int main() {
     prefabMeshVerticesSnapToFineGridsBeforeToolkitDragThreshold();
     meshDragSnapsToGridBeforeValidating();
     draggingADifferencePrimitiveDoesNotClearItsSelectionOnRelease();
+    primitiveDragSnapsItsMovementToTheGridWhileTheGridIsShown();
     meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive();
     vertexDeletionHealsRingAndRefusesAtMinimumCount();
     edgeDeletionWeldsEndpointsAtMidpointAndRefusesAtMinimumCount();

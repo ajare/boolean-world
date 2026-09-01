@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 
 #include "Actions.h"
 #include "UiHelpers.h"
@@ -9,6 +10,17 @@ namespace editor {
 using namespace std;
 
 namespace {
+
+// Quantises a gesture's total movement to whole grid cells on each axis.
+wp::Vector2 snapMovementToGrid(
+    wp::Vector2 const& movement, bool snapToGrid, float gridSize) {
+  if (!snapToGrid || gridSize <= 0.0f) {
+    return movement;
+  }
+  return {
+      round(movement.x / gridSize) * gridSize,
+      round(movement.y / gridSize) * gridSize};
+}
 
 void beginTransform(Document* doc, string const& name) {
   if (!undoableActionInProgress()) {
@@ -591,6 +603,8 @@ void EditorInteraction::updateDrag(
         commitUndoableAction(doc);
       }
       mMovingSelectedPrimitives = false;
+      mPrimitiveDragCumulativeDelta = {};
+      mPrimitiveDragAppliedDelta = {};
       mScalingSelectedPrimitives = false;
       mRotatingSelectedPrimitives = false;
     }
@@ -649,14 +663,28 @@ void EditorInteraction::updateDrag(
       if (!mScalingSelectedPrimitives && !mRotatingSelectedPrimitives) {
         if (!mMovingSelectedPrimitives) {
           mMovingSelectedPrimitives = true;
+          mPrimitiveDragCumulativeDelta = {};
+          mPrimitiveDragAppliedDelta = {};
           beginTransform(doc, "Transform Primitive(s)");
         }
-        for (auto index : primitiveSelection) {
-          auto primitive = doc->getWorld()->getPrimitive(index);
-          primitive->setPosition(
-              primitive->getPosition() +
-              wp::Vector2{input.dragDelta.x, -input.dragDelta.y} / input.zoom);
-          primitive->updateVertexPositions();
+
+        mPrimitiveDragCumulativeDelta +=
+            wp::Vector2{input.dragDelta.x, -input.dragDelta.y} / input.zoom;
+
+        // Snapping the movement, not the position, keeps whatever offset
+        // from the grid the selection was authored with, and moves the
+        // whole selection by the same whole number of cells.
+        auto movement = snapMovementToGrid(
+            mPrimitiveDragCumulativeDelta, settings.showGrid, settings.gridSize);
+        auto step = movement - mPrimitiveDragAppliedDelta;
+        mPrimitiveDragAppliedDelta = movement;
+
+        if (step.lengthSq() > 0.0f) {
+          for (auto index : primitiveSelection) {
+            auto primitive = doc->getWorld()->getPrimitive(index);
+            primitive->setPosition(primitive->getPosition() + step);
+            primitive->updateVertexPositions();
+          }
         }
       }
     }

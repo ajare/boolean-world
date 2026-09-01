@@ -60,6 +60,11 @@ class EditorInteraction {
   wp::Vector2 mBoxSelectStartScreen;
 
   bool mMovingSelectedPrimitives{false};
+  // A move is measured against the whole gesture rather than frame by
+  // frame, so grid snapping quantises where the selection has been dragged
+  // to instead of quantising - and so losing - each frame's own delta.
+  wp::Vector2 mPrimitiveDragCumulativeDelta;
+  wp::Vector2 mPrimitiveDragAppliedDelta;
   bool mScalingSelectedPrimitives{false};
   bool mRotatingSelectedPrimitives{false};
   bool mMovingSelectedTriggerLine{false};
