@@ -5,6 +5,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -36,6 +37,7 @@
 #include "DisplayMessage.h"
 #include "ClippingRecord.h"
 #include "PlayerTorchShadows.h"
+#include "PlayerWallDepenetration.h"
 #include "LiquidReflectionSelection.h"
 #include "VideoOptions.h"
 
@@ -258,6 +260,9 @@ private:
   void setupPlayerCollision();
 
   void createWorldCollisions(wp::Vector2 const& predictedPosition);
+
+  void liftPlayerOffOverlappingWalls(
+      std::span<bw::app::WallSegment const> walls);
 
   void exit();
 

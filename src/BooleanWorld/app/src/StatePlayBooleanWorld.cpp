@@ -47,6 +47,7 @@
 
 #include "PlayerLiquidTraversal.h"
 #include "PlayerVerticalPhysics.h"
+#include "PlayerWallDepenetration.h"
 #include "PlayerTorchShadows.h"
 #include "BooleanWorldModel.h"
 #include "EntityHandlerBooleanWorld.h"
@@ -574,6 +575,7 @@ void StatePlayBooleanWorld::createWorldCollisions(
   auto const& physicalStats = getPlayerPhysicalStats();
   auto const& playerPosition = physicalStats.position;
   auto swimming = isPlayerSwimming();
+  std::vector<bw::app::WallSegment> addedWalls;
   auto descendingForTraversal =
       bw::app::isDescendingForTallStepTraversal(
           swimming, mPlayerVerticalVelocity);
@@ -614,7 +616,47 @@ void StatePlayBooleanWorld::createWorldCollisions(
     }
 
     mWorldCollisionSim->addLine(v0, v1, wallIndex);
+    addedWalls.push_back({v0, v1});
   }
+
+  liftPlayerOffOverlappingWalls(addedWalls);
+}
+
+// A wall the player is already inside stops them dead in every direction at
+// once, because willpower's sweep abandons any movement that ends still
+// intersecting a line - see resolveWallOverlap. That happens wherever a wall
+// arrives underneath the player rather than being walked into: the swimmer who
+// dropped into a deep pool a couple of units from its bank is the case that
+// bites, since the bank's tall floor step is withheld for the whole fall and
+// reinstated the moment they are submerged enough to count as swimming, and
+// the overlap suppression above deliberately does not cover them.
+//
+// Lifting them clear keeps the wall solid - a swimmer still leaves the liquid
+// only through tryClimbOutOfLiquid - and only ever moves them the shortest
+// distance onto the side they are already on. It is abandoned rather than
+// forced if it would carry them onto a different face, which would be a
+// teleport out of the pool rather than a nudge within it.
+void StatePlayBooleanWorld::liftPlayerOffOverlappingWalls(
+    std::span<bw::app::WallSegment const> walls) {
+  if (!mPlayerCollider || !mWorldData) {
+    return;
+  }
+
+  auto& physicalStats = getPlayerPhysicalStats();
+  auto const& position = physicalStats.position;
+  auto lifted =
+      bw::app::resolveWallOverlap(position, float(BW_PLAYER_RADIUS), walls);
+  if (lifted == position) {
+    return;
+  }
+
+  if (mWorldData->getContainingFaceIndex(lifted) !=
+      mWorldData->getContainingFaceIndex(position)) {
+    return;
+  }
+
+  physicalStats.position = lifted;
+  mPlayerCollider->_setPosition(lifted);
 }
 
 void StatePlayBooleanWorld::createGameObjects(application::resourcesystem::ResourceManager* resourceMgr, mpp::RenderSystem* renderSystem, mpp::ResourceManager* renderResourceMgr, void* args) {
