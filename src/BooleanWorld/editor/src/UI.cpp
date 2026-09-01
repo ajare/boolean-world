@@ -2246,8 +2246,13 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
         beginUndoableAction(doc, "Move point", bind(editor::recordCurrentState, placeholders::_1, true), editValue);
       }
 
-      // Moved
+      // Moved. The undoable action only commits on release, so this drag is
+      // the one path that changes an animated property without passing
+      // through commitUndoableAction's regeneration. Ask for it here so the
+      // world follows the curve as it is dragged; requests coalesce, so a
+      // per-frame ask costs at most one extra generation.
       updateAnimationKeyInInterpolator(doc, lerperType, primitive, key, editPoint, editValue.x, editValue.y);
+      regenerateWorldData(doc);
     }
   }
 
@@ -2256,6 +2261,10 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
       wp::Vector2 editValue = {imPoints[editPoint].x, imPoints[editPoint].y};
       if (editor::transactionValueHasChanged(editValue)) {
         commitUndoableAction(doc);
+      } else {
+        // Dragged back to where it started: nothing to record, but the
+        // transaction opened on click must not be left in progress.
+        abandonUndoableAction(doc);
       }
     } else {
       abandonUndoableAction(doc);
@@ -2502,7 +2511,11 @@ void renderAnimatedProperty(editor::Document* doc, bw::core::Primitive* primitiv
   widgets::HelpMarker("Reset animator.");
   ImGui::SameLine();
   if (ImGui::Button("Reset")) {
+    // Resets captured animator state rather than authored data, so it is not
+    // undoable - but it still changes the value this key contributes to the
+    // fold, so the world it produced is now stale.
     primitive->resetAnimator(key);
+    regenerateWorldData(doc);
   }
 
   ImGui::Separator();
@@ -2670,10 +2683,11 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   if (ImGui::Checkbox("Follow orbit angle", &orientOrbitAngle)) {
     string action = orientOrbitAngle ? "Set Primitive angle to Orbit" : "Unset Primitive Angle to Orbit";
 
+    // setPrimitiveFollowOrbitAngle already applies the value inside the
+    // transaction, which then regenerates. Setting it again out here would
+    // land after that regeneration snapshotted its input.
     transactUndoableAction(doc, action,
                            bind(setPrimitiveFollowOrbitAngle, placeholders::_1, primitive, orientOrbitAngle));
-
-    primitive->setFollowOrbitAngle(orientOrbitAngle);
   }
 
   widgets::HelpMarker("Normally, angle from player to a primitive is taken with 0 degrees being [0, 1].  This value adds an offset (in degrees to that angle).");
