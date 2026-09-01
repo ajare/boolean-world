@@ -287,7 +287,15 @@ bool createMeshPrimitiveFromDrawnRing(Document* doc);
 
 bool createPrimitiveFromGhost(Document* doc);
 
-bool clonePrimitive(Document* doc, uint32_t primitiveIndex);
+// Clones the given Primitives and hands the clones to the pointer: they
+// follow the cursor as a rigid group until a left click places them
+// (commitClonePlacement) or a right click discards them
+// (cancelClonePlacement). The undo snapshot is taken before the clones
+// exist and is only pushed on placement, so a discarded clone leaves the
+// World and the history exactly as it found them.
+bool beginClonePlacement(Document* doc, std::set<uint32_t> const& primitiveIndices);
+void commitClonePlacement(Document* doc);
+void cancelClonePlacement(Document* doc);
 
 // Replaces a MeshPrimitive with one Union MeshPrimitive per filled region,
 // retaining each region's direct Holes.

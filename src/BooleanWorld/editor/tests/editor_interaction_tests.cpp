@@ -3728,6 +3728,149 @@ void theWholeDrawingGestureIsOneUndoEntry() {
           "one undo did not remove the whole drawn shape");
 }
 
+void aCloneFollowsThePointerUntilAClickPlacesIt() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  document.newDoc();
+  editor::EditorInteraction interaction;
+
+  auto sourceIndex = addRectangle(document, {0.0f, 0.0f});
+  auto const sourcePosition =
+      document.getWorld()->getPrimitive(sourceIndex)->getPosition();
+  auto const primitivesBefore = document.getWorld()->getNumPrimitives();
+  document.setModified(false);
+  auto const undoLevelsBefore = editor::getUndoLevels();
+
+  require(editor::beginClonePlacement(&document, {sourceIndex}),
+          "cloning a Primitive did not start a placement gesture");
+  require(document.clonePlacementArmed() &&
+              document.getWorld()->getNumPrimitives() == primitivesBefore + 1,
+          "the clone was not added and handed to the pointer");
+  auto cloneIndices = document.getClonePlacementPrimitiveIndices();
+  require(cloneIndices.size() == 1, "one source Primitive produced more than one clone");
+  auto cloneIndex = *cloneIndices.begin();
+  require(document.getSelectedPrimitiveIndices() == cloneIndices,
+          "the clone did not become the selection");
+
+  // The first frame the pointer is seen only establishes the offset, so the
+  // clone does not jump to wherever the cursor happened to be.
+  interaction.updateSelection(&document, nullptr, settings, pointerAt({50.0f, 50.0f}));
+  require(document.getWorld()->getPrimitive(cloneIndex)->getPosition() == sourcePosition,
+          "the clone jumped to the pointer instead of keeping its offset");
+
+  interaction.updateSelection(&document, nullptr, settings, pointerAt({70.0f, 30.0f}));
+  require(document.getWorld()->getPrimitive(cloneIndex)->getPosition() ==
+              sourcePosition + wp::Vector2{20.0f, -20.0f},
+          "the clone did not follow the pointer");
+  require(editor::getUndoLevels() == undoLevelsBefore && !document.isModified(),
+          "a clone in flight entered undo history before it was placed");
+
+  auto placement = pointerAt({70.0f, 30.0f});
+  placement.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, placement);
+  require(!document.clonePlacementArmed(),
+          "the left button did not end the placement gesture");
+  require(document.getWorld()->getNumPrimitives() == primitivesBefore + 1 &&
+              document.getWorld()->getPrimitive(cloneIndex)->getPosition() ==
+                  sourcePosition + wp::Vector2{20.0f, -20.0f},
+          "placing the clone did not leave it where the pointer left it");
+  require(editor::getUndoLevels() == undoLevelsBefore + 1 && document.isModified(),
+          "placing a clone did not produce exactly one undo entry");
+
+  editor::undo(&document);
+  require(document.getWorld()->getNumPrimitives() == primitivesBefore,
+          "one undo did not remove the placed clone");
+}
+
+void aWholeSelectionClonesAndMovesAsOneGroup() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  document.newDoc();
+  editor::EditorInteraction interaction;
+
+  auto firstIndex = addRectangle(document, {0.0f, 0.0f});
+  auto secondIndex = addRectangle(document, {40.0f, 20.0f});
+  std::set<uint32_t> const sources{firstIndex, secondIndex};
+  auto const firstPosition = document.getWorld()->getPrimitive(firstIndex)->getPosition();
+  auto const secondPosition = document.getWorld()->getPrimitive(secondIndex)->getPosition();
+  auto const primitivesBefore = document.getWorld()->getNumPrimitives();
+  document.setModified(false);
+  auto const undoLevelsBefore = editor::getUndoLevels();
+
+  require(editor::beginClonePlacement(&document, sources),
+          "cloning a multiple selection did not start a placement gesture");
+  auto cloneIndices = document.getClonePlacementPrimitiveIndices();
+  require(cloneIndices.size() == 2 &&
+              document.getWorld()->getNumPrimitives() == primitivesBefore + 2,
+          "cloning a selection of two did not add two clones");
+  require(document.getSelectedPrimitiveIndices() == cloneIndices,
+          "the clones did not become the selection");
+
+  interaction.updateSelection(&document, nullptr, settings, pointerAt({10.0f, 10.0f}));
+  interaction.updateSelection(&document, nullptr, settings, pointerAt({35.0f, 5.0f}));
+
+  auto movement = wp::Vector2{25.0f, -5.0f};
+  auto positionOf = [&](uint32_t index) {
+    return document.getWorld()->getPrimitive(index)->getPosition();
+  };
+  auto clone = cloneIndices.begin();
+  auto firstClone = *clone++;
+  auto secondClone = *clone;
+  require(positionOf(firstClone) == firstPosition + movement &&
+              positionOf(secondClone) == secondPosition + movement,
+          "the clones did not follow the pointer as a rigid group");
+  require(positionOf(firstIndex) == firstPosition &&
+              positionOf(secondIndex) == secondPosition,
+          "moving the clones disturbed the Primitives they were cloned from");
+
+  auto placement = pointerAt({35.0f, 5.0f});
+  placement.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, placement);
+  require(!document.clonePlacementArmed() &&
+              editor::getUndoLevels() == undoLevelsBefore + 1,
+          "placing a cloned group did not produce exactly one undo entry");
+
+  editor::undo(&document);
+  require(document.getWorld()->getNumPrimitives() == primitivesBefore,
+          "one undo did not remove the whole cloned group");
+}
+
+void discardingACloneLeavesNoTraceInTheHistory() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  document.newDoc();
+  editor::EditorInteraction interaction;
+
+  auto sourceIndex = addRectangle(document, {0.0f, 0.0f});
+  auto const sourcePosition =
+      document.getWorld()->getPrimitive(sourceIndex)->getPosition();
+  auto const primitivesBefore = document.getWorld()->getNumPrimitives();
+  document.setModified(false);
+  auto const undoLevelsBefore = editor::getUndoLevels();
+
+  require(editor::beginClonePlacement(&document, {sourceIndex}),
+          "cloning a Primitive did not start a placement gesture");
+  interaction.updateSelection(&document, nullptr, settings, pointerAt({50.0f, 50.0f}));
+  interaction.updateSelection(&document, nullptr, settings, pointerAt({80.0f, 50.0f}));
+
+  auto discard = pointerAt({80.0f, 50.0f});
+  discard.rightClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, discard);
+
+  require(!document.clonePlacementArmed(),
+          "the right button did not end the placement gesture");
+  require(document.getWorld()->getNumPrimitives() == primitivesBefore,
+          "discarding the clone did not remove it from the World");
+  require(document.getWorld()->getPrimitive(sourceIndex)->getPosition() == sourcePosition,
+          "discarding the clone disturbed the Primitive it was cloned from");
+  require(editor::getUndoLevels() == undoLevelsBefore && !editor::canRedo() &&
+              !document.isModified(),
+          "a discarded clone left a trace in the undo history");
+}
+
 void rubberBandSelectionSupportsPlainControlAndShiftPolicies() {
   editor::Document document;
   editor::Settings settings;
@@ -4054,6 +4197,9 @@ int main() {
     woodenFramePrefabPrimitivesCanBeSelectedAtTheirBoundaries();
     modeAndSubModeChangesAreEditorPreferencesAndClearSelection();
     meshClicksBuildAndSwitchTheActiveProxy();
+    aCloneFollowsThePointerUntilAClickPlacesIt();
+    aWholeSelectionClonesAndMovesAsOneGroup();
+    discardingACloneLeavesNoTraceInTheHistory();
     rubberBandSelectionSupportsPlainControlAndShiftPolicies();
     meshSubObjectClicksSupportModifiersAndRingCycling();
     edgeSubModeSelectsOnlyTheDirectlyClickedEdge();

@@ -41,6 +41,12 @@ bool transactUndoableActionAtomically(
 
 void abandonUndoableAction(Document* doc);
 
+// Discards an action begun with beginUndoableAction, restoring the World,
+// selection and modified flag captured when it began. Nothing reaches the
+// undo stack, so the whole gesture leaves no trace in the history. Does
+// nothing when no action is in progress.
+void cancelUndoableAction(Document* doc);
+
 bool undoableActionInProgress();
 
 void clearUndoHistory();

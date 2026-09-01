@@ -297,6 +297,25 @@ void abandonUndoableAction(Document* doc) {
   gTransactionalFunc = nullptr;
 }
 
+void cancelUndoableAction(Document* doc) {
+  if (!gTransactionalFunc) {
+    return;
+  }
+
+  // Restore from a copy: restoreUndoData rebuilds the World, and nothing
+  // about this action should still be in progress while that runs.
+  auto data = move(gTransactionalData);
+  gTransactionalFunc = nullptr;
+  gTransactionalId.clear();
+  gTransactionalData = {};
+  gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
+  gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
+
+  restoreUndoData(doc, data);
+  doc->revalidateSelection();
+  regenerateWorldData(doc);
+}
+
 bool undoableActionInProgress() {
   return static_cast<bool>(gTransactionalFunc);
 }

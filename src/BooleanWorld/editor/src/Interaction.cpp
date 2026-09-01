@@ -111,6 +111,30 @@ void EditorInteraction::updateSelection(
   if (input.leftClicked) {
     mPendingPrimitiveClick.clear();
   }
+
+  // A clone in flight owns the pointer outright, in every mode: it follows
+  // the cursor, the left button places it, and the right button discards it
+  // without leaving an undo entry. Nothing hovers, selects or rubber-bands
+  // underneath it.
+  if (doc->clonePlacementArmed()) {
+    mHover = DocumentHover{};
+    mPendingPrimitiveClick.clear();
+    mPendingMeshSubObjectClick.clear();
+    mBoxSelectPending = false;
+    mBoxSelectDragging = false;
+
+    if (input.rightClicked) {
+      cancelClonePlacement(doc);
+      return;
+    }
+    if (input.cursorInWorldView && !input.cursorInMiniMap) {
+      doc->updateClonePlacement(input.worldPosition);
+      if (input.leftClicked) {
+        commitClonePlacement(doc);
+      }
+    }
+    return;
+  }
   auto* prefabField = layer ? dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep()) : nullptr;
   if (prefabField) {
     mHover = {};
@@ -451,6 +475,10 @@ bool playerProxyHitTest(
 
 bool EditorInteraction::updatePlayerProxy(
     Document* doc, PointerInput const& input) {
+  if (doc->clonePlacementArmed()) {
+    return false;
+  }
+
   if (input.rightReleased) {
     mPlayerProxyDragActive = false;
     mRotatingPlayerProxy = false;
@@ -486,6 +514,11 @@ bool EditorInteraction::updatePlayerProxy(
 
 void EditorInteraction::updateDrag(
     Document* doc, Settings const& settings, PointerInput const& input) {
+  // Placing a clone is a pointer gesture of its own - see updateSelection.
+  if (doc->clonePlacementArmed()) {
+    return;
+  }
+
   auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
   if (layer && dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep())) {
     return;

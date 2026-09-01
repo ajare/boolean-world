@@ -292,6 +292,7 @@ void Document::reset() {
   clearActiveMesh();
   disarmMeshDrawTool();
   disarmMeshSliceTool();
+  disarmClonePlacement();
   mMeshHoverExplanation.clear();
   mPlayerProxyPosition.set(0.0f, 0.0f);
   mPlayerProxyAngle = 0.0f;
@@ -1729,6 +1730,76 @@ bool Document::escapeMeshSlice() {
     disarmMeshSliceTool();
   }
   return true;
+}
+
+bool Document::armClonePlacement(set<uint32_t> const& primitiveIndices) {
+  if (!isActive() || primitiveIndices.empty()) {
+    return false;
+  }
+  for (auto index : primitiveIndices) {
+    if (index >= mWorld->getNumPrimitives()) {
+      return false;
+    }
+  }
+
+  mClonePlacementArmed = true;
+  mClonePlacementPrimitiveIndices = primitiveIndices;
+  mClonePlacementStartPositions.clear();
+  mClonePlacementPointerAnchor = wp::Vector2::ZERO;
+  mClonePlacementPointerAnchored = false;
+  return true;
+}
+
+void Document::disarmClonePlacement() {
+  mClonePlacementArmed = false;
+  mClonePlacementPrimitiveIndices.clear();
+  mClonePlacementStartPositions.clear();
+  mClonePlacementPointerAnchor = wp::Vector2::ZERO;
+  mClonePlacementPointerAnchored = false;
+}
+
+bool Document::clonePlacementArmed() const {
+  return mClonePlacementArmed;
+}
+
+set<uint32_t> const& Document::getClonePlacementPrimitiveIndices() const {
+  return mClonePlacementPrimitiveIndices;
+}
+
+void Document::updateClonePlacement(wp::Vector2 const& pointerWorldPosition) {
+  if (!mClonePlacementArmed || !isActive()) {
+    return;
+  }
+
+  // The group moves from the positions it had when the pointer was anchored,
+  // not from its positions last frame, so no rounding accumulates over a
+  // long gesture.
+  if (!mClonePlacementPointerAnchored) {
+    mClonePlacementStartPositions.clear();
+    for (auto index : mClonePlacementPrimitiveIndices) {
+      auto* primitive = index < mWorld->getNumPrimitives()
+                            ? mWorld->getPrimitive(index)
+                            : nullptr;
+      mClonePlacementStartPositions.push_back(
+          primitive ? primitive->getPosition() : wp::Vector2::ZERO);
+    }
+    mClonePlacementPointerAnchor = pointerWorldPosition;
+    mClonePlacementPointerAnchored = true;
+    return;
+  }
+
+  auto movement = pointerWorldPosition - mClonePlacementPointerAnchor;
+  size_t position = 0;
+  for (auto index : mClonePlacementPrimitiveIndices) {
+    auto* primitive = index < mWorld->getNumPrimitives()
+                          ? mWorld->getPrimitive(index)
+                          : nullptr;
+    if (primitive && position < mClonePlacementStartPositions.size()) {
+      primitive->setPosition(mClonePlacementStartPositions[position] + movement);
+      primitive->updateVertexPositions();
+    }
+    ++position;
+  }
 }
 
 namespace {

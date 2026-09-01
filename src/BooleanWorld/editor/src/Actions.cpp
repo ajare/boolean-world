@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <format>
+#include <limits>
 #include <sstream>
 
 #include <core/RegularPolygon.h>
@@ -507,16 +509,85 @@ bool createPrimitiveFromGhost(Document* doc) {
   return true;
 }
 
-bool clonePrimitive(Document* doc, uint32_t primitiveIndex) {
+bool beginClonePlacement(Document* doc, set<uint32_t> const& primitiveIndices) {
+  if (!doc->isActive() || doc->clonePlacementArmed() || primitiveIndices.empty()) {
+    return false;
+  }
+
   auto world = doc->getWorld();
   if (!world->getActiveLayer()->getActiveStep()->acceptsNewPrimitives()) {
     return false;
   }
 
-  auto primitive = world->getPrimitive(primitiveIndex);
+  // Resolve every source before adding anything: the indices name positions
+  // in the World's Primitive list, and this is about to grow it.
+  vector<bw::core::Primitive*> sources;
+  for (auto index : primitiveIndices) {
+    if (index >= world->getNumPrimitives()) continue;
+    if (auto* primitive = world->getPrimitive(index)) {
+      sources.push_back(primitive);
+    }
+  }
+  if (sources.empty()) {
+    return false;
+  }
 
-  world->addPrimitive(primitive->copy());
+  // The snapshot has to be taken before the clones exist: this action is
+  // committed at the far end of the placement gesture, and undoing it must
+  // return to a World without them in it.
+  beginUndoableAction(
+      doc, format("Clone {} Primitive(s)", sources.size()),
+      bind(recordCurrentState, placeholders::_1, true),
+      numeric_limits<float>::quiet_NaN());
+
+  set<uint32_t> cloneIndices;
+  for (auto* source : sources) {
+    cloneIndices.insert(world->addPrimitive(source->copy()));
+  }
+
+  if (!doc->armClonePlacement(cloneIndices)) {
+    cancelUndoableAction(doc);
+    return false;
+  }
+
+  // The clones, not their sources, are what the rest of the gesture - and
+  // whatever the user does after placing them - acts on.
+  doc->setSelectedPrimitiveIndices(cloneIndices);
   return true;
+}
+
+void commitClonePlacement(Document* doc) {
+  if (!doc->clonePlacementArmed()) {
+    return;
+  }
+
+  doc->disarmClonePlacement();
+  if (undoableActionInProgress()) {
+    commitUndoableAction(doc);
+  }
+}
+
+void cancelClonePlacement(Document* doc) {
+  if (!doc->clonePlacementArmed()) {
+    return;
+  }
+
+  auto cloneIndices = doc->getClonePlacementPrimitiveIndices();
+  doc->disarmClonePlacement();
+
+  if (undoableActionInProgress()) {
+    // The ordinary path: the World goes back to the snapshot taken before
+    // the clones were made, and the history never hears about any of it.
+    cancelUndoableAction(doc);
+    return;
+  }
+
+  // Something else committed our transaction mid-gesture (an edit made from
+  // a panel while the clones were in flight), so they are already in the
+  // history. Removing them is then an ordinary undoable action of its own.
+  transactUndoableActionAtomically(
+      doc, "Discard Cloned Primitive(s)",
+      bind(deletePrimitives, placeholders::_1, cloneIndices));
 }
 
 bool decomposeMeshPrimitive(Document* doc, uint32_t primitiveIndex) {

@@ -219,10 +219,7 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
       }
 
       if (ImGui::MenuItem("Clone", "Ctrl+C")) {
-        auto const& indices = doc->getSelectedPrimitiveIndices();
-        uint32_t index = *indices.begin();
-
-        transactUndoableAction(doc, format("Clone Primitive {}", index), bind(clonePrimitive, placeholders::_1, index));
+        beginClonePlacement(doc, doc->getSelectedPrimitiveIndices());
       }
 
       if (!hasPrimitiveSelection) {
@@ -534,10 +531,7 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
     ImGui::SameLine();
 
     if (ImGui::Button(ICON_FA_CLONE)) {
-      auto const& indices = doc->getSelectedPrimitiveIndices();
-      uint32_t index = *indices.begin();
-
-      transactUndoableAction(doc, format("Clone Primitive {}", index), bind(clonePrimitive, placeholders::_1, index));
+      beginClonePlacement(doc, doc->getSelectedPrimitiveIndices());
     }
 
     if (!hasPrimitiveSelection) {
@@ -5222,10 +5216,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
   if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (doc->hasSelection() && !doc->getSelectedPrimitiveIndices().empty()) {
-        auto const& indices = doc->getSelectedPrimitiveIndices();
-        uint32_t index = *indices.begin();
-
-        transactUndoableAction(doc, format("Clone Primitive {}", index), bind(clonePrimitive, placeholders::_1, index));
+        beginClonePlacement(doc, doc->getSelectedPrimitiveIndices());
       }
     }
   }
@@ -5360,7 +5351,10 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   if (ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      if (!doc->escapeMeshSlice()) {
+      // Esc discards a clone in flight exactly as the right button does.
+      if (doc->clonePlacementArmed()) {
+        cancelClonePlacement(doc);
+      } else if (!doc->escapeMeshSlice()) {
         doc->escapeMeshDraw();
       }
     }

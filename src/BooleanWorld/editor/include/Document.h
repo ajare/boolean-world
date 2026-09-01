@@ -149,6 +149,24 @@ class Document {
   uint32_t mMeshSliceFirstVertexIndex{~0u};
   std::vector<uint32_t> mMeshSliceCandidateRingIndices;
 
+  // Clone placement state. A whole selection's worth of freshly cloned
+  // Primitives follows the pointer until a click places them. They are real
+  // Primitives in the World for the whole gesture - they have to be, to draw
+  // and to keep their identities - but nothing about them is recorded until
+  // they are placed, so a discarded clone leaves no undo entry behind.
+  //
+  // The clones move as a rigid group by the pointer's displacement from the
+  // position it was anchored at, so their relative layout is preserved. That
+  // anchor is established the first time the pointer is seen in the world
+  // view rather than at arming time, because the gesture usually starts from
+  // a menu, a toolbar button, or a keyboard shortcut, with the pointer
+  // nowhere near the clones.
+  bool mClonePlacementArmed{false};
+  std::set<uint32_t> mClonePlacementPrimitiveIndices;
+  std::vector<wp::Vector2> mClonePlacementStartPositions;
+  wp::Vector2 mClonePlacementPointerAnchor;
+  bool mClonePlacementPointerAnchored{false};
+
   wp::Vector2 mPlayerOldProxyPosition, mPlayerProxyPosition;
 
   float mPlayerOldProxyAngle, mPlayerProxyAngle;
@@ -431,6 +449,20 @@ public:
   [[nodiscard]] uint32_t resolveMeshSliceRing(uint32_t vertexIndex) const;
   bool completeMeshSlice(uint32_t vertexIndex);
   bool escapeMeshSlice();
+
+  // Clone placement (see mClonePlacementArmed). Arming does not clone: the
+  // caller adds the clones and hands their indices here. Placement and
+  // discard are the Actions of the same name, which own the undo half of it.
+  bool armClonePlacement(std::set<uint32_t> const& primitiveIndices);
+  void disarmClonePlacement();
+  [[nodiscard]] bool clonePlacementArmed() const;
+  [[nodiscard]] std::set<uint32_t> const& getClonePlacementPrimitiveIndices() const;
+
+  // Moves the clones by the pointer's displacement from where it was first
+  // seen in the world view, so they neither jump on the frame the gesture
+  // becomes visible nor lose their relative layout. Silently does nothing
+  // unless armed.
+  void updateClonePlacement(wp::Vector2 const& pointerWorldPosition);
 
   // Retains a selected Hole and fills it with a welded direct Island. Existing
   // immediate Islands are wrapped in matching Holes beneath the new Island.

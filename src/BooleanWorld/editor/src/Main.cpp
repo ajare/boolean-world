@@ -518,7 +518,9 @@ void handleSelections(
     drawList->AddRect(rectMin, rectMax, IM_COL32(180, 200, 255, 220));
   }
 
-  if (input.cursorInWorldView && !input.cursorInMiniMap &&
+  if (doc->clonePlacementArmed()) {
+    ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+  } else if (input.cursorInWorldView && !input.cursorInMiniMap &&
       doc->meshDrawToolArmed()) {
     auto position = editor::Document::snapMeshDrawPosition(
         input.worldPosition, settings.showGrid, settings.gridSize);
