@@ -136,6 +136,15 @@ bool removeLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t stepIn
 
 bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromIndex, uint32_t toIndex);
 
+// Re-homes one authored Primitive into another build step of the same type,
+// keeping the Primitive itself rather than a copy. The Layer rebuilds, so the
+// Primitive's index changes; the action re-selects it at its new index.
+bool movePrimitiveToLayerBuildStep(
+    Document* doc,
+    bw::core::Layer* layer,
+    bw::core::Primitive* primitive,
+    uint32_t targetStepIndex);
+
 // Prefab selection is ephemeral focus and is called directly. The remaining
 // operations are authored edits intended to run through transactUndoableAction.
 bool selectPrefab(

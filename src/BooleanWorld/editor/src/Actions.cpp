@@ -115,6 +115,29 @@ bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromInde
   return true;
 }
 
+bool movePrimitiveToLayerBuildStep(
+    Document* doc,
+    bw::core::Layer* layer,
+    bw::core::Primitive* primitive,
+    uint32_t targetStepIndex) {
+  layer->movePrimitiveToStep(primitive, targetStepIndex);
+
+  // The rebuild re-stamps every derived index, so the selection this action
+  // was invoked from now names a different Primitive. Follow the one that
+  // moved rather than leaving the Edit Primitive view pointing elsewhere.
+  // A Primitive's id is its index in its own Layer's derived collection, so
+  // it is only a valid selection while the rebuild still emits it.
+  auto movedIndex = primitive->getId();
+  if (movedIndex < layer->getNumPrimitives() &&
+      layer->getPrimitive(movedIndex) == primitive) {
+    doc->setSelectedPrimitiveIndices({movedIndex});
+  } else {
+    doc->clearSelections();
+  }
+
+  return true;
+}
+
 namespace {
 
 void rebuildPrefabAuthoringContext(Document* doc, bw::core::Layer* layer) {

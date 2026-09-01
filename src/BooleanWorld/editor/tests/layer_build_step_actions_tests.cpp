@@ -456,6 +456,92 @@ void selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable() {
           "a Primitive created while the second step was active reached the first step instead");
 }
 
+void movingAPrimitiveBetweenStepsOfTheSameTypeIsOneUndoableAction() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+
+  auto* moved = makeRectangle(1.0f);
+  document.getWorld()->addPrimitive(moved);
+  auto const secondIndex = layer->addStep(makeField({10.0f}));
+
+  require(layer->getOwningStepIndex(moved) == 0,
+          "the fixture Primitive did not start in step 0");
+  require(comesBefore(*layer, 1.0f, 10.0f),
+          "the fixture did not fold the step 0 Primitive before the step 1 one");
+
+  // Step 0 also holds the newDoc ghost Primitive, so the first step's
+  // occupancy is checked as a delta rather than against zero.
+  auto const fieldCountBefore = layer->getPrimitiveField()->getNumPrimitives();
+  document.setModified(false);
+  auto undoBefore = editor::getUndoLevels();
+
+  editor::transactUndoableAction(
+      &document, "Move Primitive to Layer Step",
+      std::bind(editor::movePrimitiveToLayerBuildStep, std::placeholders::_1,
+                layer, moved, secondIndex));
+
+  require(editor::getUndoLevels() == undoBefore + 1,
+          "moving a Primitive between steps did not create exactly one undo entry");
+  layer = document.getWorld()->getActiveLayer();
+  require(!layer->getPrimitiveField()->ownsPrimitive(moved) &&
+              layer->getPrimitiveField()->getNumPrimitives() == fieldCountBefore - 1,
+          "the moved Primitive was left behind in its old step");
+  require(layer->getOwningStepIndex(moved) == secondIndex,
+          "the moved Primitive is not attributed to its new step");
+  require(comesBefore(*layer, 10.0f, 1.0f),
+          "the moved Primitive did not fold in its new step's place");
+  require(document.isModified(),
+          "moving a Primitive between steps did not mark the document modified");
+  require(document.getSelectedPrimitiveIndices().size() == 1 &&
+              layer->getPrimitive(*document.getSelectedPrimitiveIndices().begin()) == moved,
+          "the action did not follow the moved Primitive to its new index");
+
+  // Undo restores the World from a snapshot, so `moved` is a dangling pointer
+  // from here on and the Layer is checked by what it derives instead.
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getPrimitiveField()->getNumPrimitives() == fieldCountBefore,
+          "undo did not return the Primitive to its original step");
+  require(comesBefore(*layer, 1.0f, 10.0f),
+          "undo did not restore the original fold order");
+  require(!document.isModified(), "undo did not restore the clean modified state");
+
+  editor::redo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getPrimitiveField()->getNumPrimitives() == fieldCountBefore - 1,
+          "redo did not re-apply the move");
+  require(comesBefore(*layer, 10.0f, 1.0f),
+          "redo did not restore the moved fold order");
+  require(document.isModified(), "redo did not restore the modified state");
+}
+
+void movingAPrimitiveIntoAStepOfAnotherTypeIsRejectedThroughTheAction() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+
+  auto* authored = makeRectangle(2.0f);
+  document.getWorld()->addPrimitive(authored);
+
+  auto const prefabsIndex = layer->addStep(new bw::core::DefinePrefabs());
+  auto* prefabs =
+      static_cast<bw::core::DefinePrefabs*>(layer->getStep(prefabsIndex));
+  prefabs->setSelectedPrefab(prefabs->addPrefab("Target"));
+  layer->rebuild();
+
+  require(!layer->canMovePrimitiveToStep(authored, prefabsIndex),
+          "a PrimitiveField Primitive was reported movable into a DefinePrefabs step");
+  requireCoreException(
+      [&] {
+        editor::movePrimitiveToLayerBuildStep(
+            &document, layer, authored, prefabsIndex);
+      },
+      "moving a Primitive into a step of another type was not rejected");
+  require(layer->getPrimitiveField()->ownsPrimitive(authored),
+          "a rejected move disturbed the Primitive's original ownership");
+}
+
 }  // namespace
 
 int main() {
@@ -470,6 +556,8 @@ int main() {
     prefabInstanceActionsUndoAndRefuseDeletingReferencedPrefabs();
     prefabFieldBindingRefusesRemovingItsDefinitionsThroughActions();
     selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable();
+    movingAPrimitiveBetweenStepsOfTheSameTypeIsOneUndoableAction();
+    movingAPrimitiveIntoAStepOfAnotherTypeIsRejectedThroughTheAction();
     std::cout << "Layer build step enable/disable action tests passed\n";
     return 0;
   } catch (std::exception const& error) {

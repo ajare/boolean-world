@@ -2713,7 +2713,65 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   }
 }
 
+// The "Build step" combo in the Edit Primitive view. A Primitive may only be
+// re-homed into a step of its own type, so a Layer whose steps are all
+// different types offers nothing and the combo is shown disabled rather than
+// hidden - which step a Primitive belongs to is worth reading even when it
+// cannot be changed.
+void renderPrimitiveBuildStep(editor::Document* doc, bw::core::Primitive* primitive) {
+  auto* layer = doc->getWorld()->getActiveLayer();
+  auto const sourceStepIndex = layer->getOwningStepIndex(primitive);
+
+  if (sourceStepIndex == ~0u) {
+    return;
+  }
+
+  auto const stepLabel = [layer](uint32_t index) {
+    return format("{} :: {}", index, layer->getStep(index)->getType());
+  };
+
+  vector<uint32_t> targets;
+  for (uint32_t i = 0; i < layer->getNumSteps(); ++i) {
+    if (layer->canMovePrimitiveToStep(primitive, i)) {
+      targets.push_back(i);
+    }
+  }
+
+  widgets::HelpMarker(
+      "The LayerBuildStep this Primitive is authored into. A Primitive can only move "
+      "between steps of the same type, and only where both steps are enabled and the "
+      "destination accepts new Primitives. Moving it changes where it folds: step order "
+      "outranks Primitive priority.");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(220.0f);
+
+  bool const movable = !targets.empty();
+  if (!movable) {
+    widgets::PushDisabled();
+  }
+
+  auto const currentLabel = stepLabel(sourceStepIndex);
+  if (ImGui::BeginCombo("Build step", currentLabel.c_str())) {
+    for (auto target : targets) {
+      auto const label = stepLabel(target);
+      if (ImGui::Selectable(label.c_str(), false)) {
+        transactUndoableAction(
+            doc, format("Move Primitive to Layer Step {}", target),
+            bind(movePrimitiveToLayerBuildStep, placeholders::_1, layer,
+                 primitive, target));
+      }
+    }
+    ImGui::EndCombo();
+  }
+
+  if (!movable) {
+    widgets::PopDisabled();
+  }
+}
+
 void renderEditPrimitiveSettings(editor::Document* doc, bw::core::Primitive* primitive, editor::Settings& settings) {
+  renderPrimitiveBuildStep(doc, primitive);
+
   int flags = (int)primitive->getFlags();
 
   auto f0 = ImGui::CheckboxFlags("Don't update Primitive Time when Player is static", &flags, BW_PRIMITIVE_NO_TIME_UPDATE_PLAYER_STATIC);
