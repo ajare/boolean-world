@@ -83,6 +83,16 @@ void Prefab::replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive) 
   }
 }
 
+void Prefab::releasePrimitive(Primitive* primitive) {
+  auto it = find(mPrimitives.begin(), mPrimitives.end(), primitive);
+  if (it == mPrimitives.end()) {
+    throw CoreException(format("{} primitive {} not found in Prefab {}",
+                               primitive->getType(), primitive->getName(), mName));
+  }
+
+  mPrimitives.erase(it);
+}
+
 bool Prefab::ownsPrimitive(Primitive const* primitive) const {
   return find(mPrimitives.begin(), mPrimitives.end(), primitive) != mPrimitives.end();
 }
@@ -186,6 +196,14 @@ void DefinePrefabs::replacePrimitive(Primitive* oldPrimitive, Primitive* newPrim
     throw CoreException("Primitive not owned by the selected Prefab");
   }
   mSelectedPrefab->replacePrimitive(oldPrimitive, newPrimitive);
+  modify();
+}
+
+void DefinePrefabs::releasePrimitive(Primitive* primitive) {
+  if (!mSelectedPrefab || !mSelectedPrefab->ownsPrimitive(primitive)) {
+    throw CoreException("Primitive not owned by the selected Prefab");
+  }
+  mSelectedPrefab->releasePrimitive(primitive);
   modify();
 }
 

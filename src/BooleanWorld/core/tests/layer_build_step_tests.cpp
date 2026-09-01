@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <core/CoreException.h>
+#include <core/DefinePrefabs.h>
 #include <core/Layer.h>
 #include <core/LayerBuildStep.h>
 #include <core/PrimitiveField.h>
@@ -131,6 +132,13 @@ public:
     }
     delete mPrimitive;
     mPrimitive = newPrimitive;
+  }
+
+  void releasePrimitive(bw::core::Primitive* primitive) override {
+    if (primitive != mPrimitive) {
+      throw bw::core::CoreException("Primitive not owned by RefusingStep");
+    }
+    mPrimitive = nullptr;
   }
 
   bool ownsPrimitive(bw::core::Primitive const* primitive) const override {
@@ -553,6 +561,101 @@ void getOwningStepIndexFindsWhichStepProducedAPrimitive() {
           "getOwningStepIndex did not report ~0u for a Primitive owned by no step here");
 }
 
+void aPrimitiveMovesBetweenStepsOfTheSameTypeAndFoldsInItsNewStepsPlace() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto* moved = makeRectangle(0.0f);
+  layer.addPrimitive(moved);
+  auto const secondIndex = layer.addStep(makeField({10.0f}));
+
+  require(layer.getOwningStepIndex(moved) == 0,
+          "the fixture Primitive did not start in step 0");
+  require(layer.getPrimitive(0) == moved,
+          "a step 0 Primitive did not fold before a later step's Primitive");
+
+  require(layer.canMovePrimitiveToStep(moved, secondIndex),
+          "a move between two PrimitiveField steps was not permitted");
+  layer.movePrimitiveToStep(moved, secondIndex);
+
+  require(layer.getOwningStepIndex(moved) == secondIndex,
+          "the moved Primitive is not attributed to its new step");
+  require(layer.getPrimitiveField()->getNumPrimitives() == 0,
+          "the moved Primitive was left behind in its old step");
+  require(layer.getNumPrimitives() == 2,
+          "moving a Primitive between steps changed how many the Layer derives");
+  require(layer.getPrimitive(1) == moved,
+          "the moved Primitive did not take its new step's place in the fold order");
+  require(layer.getPrimitive(moved->getId()) == moved,
+          "the moved Primitive's id was not re-stamped to its new derived index");
+}
+
+void movingAPrimitiveBetweenStepsOfDifferentTypesIsRejected() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto* authored = makeRectangle(0.0f);
+  layer.addPrimitive(authored);
+  auto const prefabsIndex = layer.addStep(new bw::core::DefinePrefabs());
+  auto* prefabs = static_cast<bw::core::DefinePrefabs*>(layer.getStep(prefabsIndex));
+  prefabs->setSelectedPrefab(prefabs->addPrefab("Target"));
+  layer.rebuild();
+
+  require(prefabs->acceptsNewPrimitives(),
+          "the fixture DefinePrefabs step did not accept new Primitives");
+  require(!layer.canMovePrimitiveToStep(authored, prefabsIndex),
+          "a move into a step of another type was reported as permitted");
+  requireCoreException(
+      [&] { layer.movePrimitiveToStep(authored, prefabsIndex); },
+      "a move into a step of another type was not rejected");
+  require(layer.getOwningStepIndex(authored) == 0 &&
+              layer.getPrimitiveField()->ownsPrimitive(authored),
+          "a rejected move disturbed the Primitive's original ownership");
+}
+
+void movesToTheSameStepOutOfRangeStepsAndDisabledStepsAreRejected() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto* authored = makeRectangle(0.0f);
+  layer.addPrimitive(authored);
+  auto const disabledIndex = layer.addStep(makeField({10.0f}));
+  layer.setStepEnabled(disabledIndex, false);
+
+  require(!layer.canMovePrimitiveToStep(authored, 0),
+          "a move into the Primitive's own step was reported as permitted");
+  require(!layer.canMovePrimitiveToStep(authored, layer.getNumSteps()),
+          "a move to an out-of-range step index was reported as permitted");
+  require(!layer.canMovePrimitiveToStep(authored, disabledIndex),
+          "a move into a disabled step was reported as permitted");
+
+  requireCoreException(
+      [&] { layer.movePrimitiveToStep(authored, disabledIndex); },
+      "a move into a disabled step was not rejected");
+
+  bw::core::RectanglePolygon stray(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f);
+  require(!layer.canMovePrimitiveToStep(&stray, disabledIndex),
+          "a Primitive owned by no step here was reported as movable");
+}
+
+void movingAPrimitiveOutOfAStepWhoseOutputCannotBeEditedIsRejected() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto* owned = makeRectangle(0.0f);
+  layer.addStep(new RefusingStep(owned));
+  auto const targetIndex = layer.addStep(new RefusingStep());
+  layer.rebuild();
+
+  // Same type on both sides, so only permitsDirectPrimitiveEditing stands
+  // between this and a move.
+  require(layer.getStep(1)->getType() == layer.getStep(targetIndex)->getType(),
+          "the fixture steps were not the same type");
+  require(!layer.canMovePrimitiveToStep(owned, targetIndex),
+          "a move out of a step that refuses direct editing was permitted");
+  requireCoreException(
+      [&] { layer.movePrimitiveToStep(owned, targetIndex); },
+      "a move out of a step that refuses direct editing was not rejected");
+}
+
 void copyingALayerCopiesItsStepsAndRebuildsFromThem() {
   bw::core::Layer layer(5, "Source", 100.0f, 10.0f);
 
@@ -601,6 +704,10 @@ int main() {
     stepsReceiveOnlyBuildParticipatingPrimitives();
     primitiveStorageIsDispatchedToTheOwningStep();
     getOwningStepIndexFindsWhichStepProducedAPrimitive();
+    aPrimitiveMovesBetweenStepsOfTheSameTypeAndFoldsInItsNewStepsPlace();
+    movingAPrimitiveBetweenStepsOfDifferentTypesIsRejected();
+    movesToTheSameStepOutOfRangeStepsAndDisabledStepsAreRejected();
+    movingAPrimitiveOutOfAStepWhoseOutputCannotBeEditedIsRejected();
     copyingALayerCopiesItsStepsAndRebuildsFromThem();
     std::cout << "A Layer derives its Primitives by running its enabled LayerBuildSteps in order\n";
     return 0;

@@ -186,6 +186,9 @@ public:
   void replacePrimitive(bw::core::Primitive*, bw::core::Primitive*) override {
   }
 
+  void releasePrimitive(bw::core::Primitive*) override {
+  }
+
   bool ownsPrimitive(bw::core::Primitive const*) const override {
     return false;
   }

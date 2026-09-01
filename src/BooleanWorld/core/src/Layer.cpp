@@ -744,6 +744,47 @@ uint32_t Layer::getOwningStepIndex(Primitive const* primitive) const {
   return step != mSteps.end() ? (uint32_t)distance(mSteps.begin(), step) : ~0u;
 }
 
+bool Layer::canMovePrimitiveToStep(
+    Primitive const* primitive, uint32_t targetStepIndex) const {
+  if (targetStepIndex >= mSteps.size()) {
+    return false;
+  }
+
+  auto sourceStepIndex = getOwningStepIndex(primitive);
+  if (sourceStepIndex == ~0u || sourceStepIndex == targetStepIndex) {
+    return false;
+  }
+
+  auto const* source = mSteps[sourceStepIndex];
+  auto const* target = mSteps[targetStepIndex];
+
+  return source->ownsPrimitive(primitive) &&
+         source->getType() == target->getType() &&
+         source->permitsDirectPrimitiveEditing() &&
+         target->acceptsNewPrimitives() &&
+         source->isEnabled() && target->isEnabled();
+}
+
+void Layer::movePrimitiveToStep(Primitive* primitive, uint32_t targetStepIndex) {
+  if (!canMovePrimitiveToStep(primitive, targetStepIndex)) {
+    throw CoreException(format(
+        "{} primitive {} cannot be moved to step {} of this layer",
+        primitive->getType(), primitive->getName(), targetStepIndex));
+  }
+
+  auto* source = mSteps[getOwningStepIndex(primitive)];
+  auto* target = mSteps[targetStepIndex];
+
+  // Release before adopting so the Primitive is never owned twice; if adopt
+  // then threw, the step list would hold it in two places and destroy it
+  // twice. Nothing between these two lines can throw, so the Primitive is
+  // unowned only for that gap.
+  source->releasePrimitive(primitive);
+  target->adoptPrimitive(primitive);
+
+  rebuild();
+}
+
 uint32_t Layer::_appendBuiltPrimitive(
     Primitive* primitive,
     LayerBuildStep const* owningStep,

@@ -58,6 +58,7 @@ public:
   [[nodiscard]] bool acceptsNewPrimitives() const override;
   uint32_t adoptPrimitive(Primitive* primitive) override;
   void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive) override;
+  void releasePrimitive(Primitive* primitive) override;
   [[nodiscard]] bool ownsPrimitive(Primitive const* primitive) const override;
 
   void bind(Layer const& layer, DefinePrefabs const* step);

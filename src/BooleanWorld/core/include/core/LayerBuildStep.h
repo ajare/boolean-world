@@ -129,6 +129,13 @@ public:
   // Replaces one owned Primitive. A null replacement removes it.
   virtual void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive) = 0;
 
+  // Gives up ownership of one owned Primitive without destroying it, so a
+  // caller can re-home it in another step. Deliberately distinct from
+  // replacePrimitive(primitive, nullptr), which destroys: a step that cannot
+  // hand its output out must say so by throwing rather than silently
+  // leaking or deleting.
+  virtual void releasePrimitive(Primitive* primitive) = 0;
+
   [[nodiscard]] virtual bool ownsPrimitive(Primitive const* primitive) const = 0;
 
   void setEnabled(bool enabled);

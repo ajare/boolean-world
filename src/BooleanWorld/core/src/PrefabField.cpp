@@ -150,6 +150,7 @@ bool PrefabField::permitsDirectPrimitiveEditing() const { return false; }
 bool PrefabField::acceptsNewPrimitives() const { return false; }
 uint32_t PrefabField::adoptPrimitive(Primitive*) { throw CoreException("PrefabField does not accept Primitives"); }
 void PrefabField::replacePrimitive(Primitive*, Primitive*) { throw CoreException("PrefabField output cannot be edited directly"); }
+void PrefabField::releasePrimitive(Primitive*) { throw CoreException("PrefabField output cannot be moved to another step"); }
 bool PrefabField::ownsPrimitive(Primitive const* primitive) const {
   return any_of(mBuiltPrimitives.begin(), mBuiltPrimitives.end(),
                 [primitive](auto const& item) { return item.get() == primitive; });

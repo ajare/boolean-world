@@ -177,6 +177,18 @@ void PrimitiveField::replacePrimitive(Primitive* oldPrimitive, Primitive* newPri
   modify();
 }
 
+void PrimitiveField::releasePrimitive(Primitive* primitive) {
+  auto it = find(mPrimitives.begin(), mPrimitives.end(), primitive);
+  if (it == mPrimitives.end()) {
+    throw CoreException(format("{} primitive {} not found in this PrimitiveField step",
+                               primitive->getType(),
+                               primitive->getName()));
+  }
+
+  mPrimitives.erase(it);
+  modify();
+}
+
 bool PrimitiveField::ownsPrimitive(Primitive const* primitive) const {
   return find(mPrimitives.begin(), mPrimitives.end(), primitive) != mPrimitives.end();
 }

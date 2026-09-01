@@ -65,6 +65,7 @@ private:
 
   uint32_t adoptPrimitive(Primitive* primitive);
   void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive);
+  void releasePrimitive(Primitive* primitive);
   [[nodiscard]] bool ownsPrimitive(Primitive const* primitive) const;
   void clear();
 
@@ -115,6 +116,7 @@ public:
   [[nodiscard]] bool acceptsNewPrimitives() const override;
   uint32_t adoptPrimitive(Primitive* primitive) override;
   void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive) override;
+  void releasePrimitive(Primitive* primitive) override;
   [[nodiscard]] bool ownsPrimitive(Primitive const* primitive) const override;
 
   // Returns the created Prefab. Names are display text and need not be unique.

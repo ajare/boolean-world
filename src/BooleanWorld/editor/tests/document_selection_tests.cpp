@@ -101,6 +101,13 @@ public:
     mPrimitive = newPrimitive;
   }
 
+  void releasePrimitive(bw::core::Primitive* primitive) override {
+    if (primitive != mPrimitive) {
+      throw std::runtime_error("Primitive not owned by RefusingStep");
+    }
+    mPrimitive = nullptr;
+  }
+
   bool ownsPrimitive(bw::core::Primitive const* primitive) const override {
     return mPrimitive == primitive;
   }
