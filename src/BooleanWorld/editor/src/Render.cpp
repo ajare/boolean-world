@@ -632,7 +632,10 @@ void renderWorld(
                 settings.meshSelectedColour, ImDrawFlags_Closed, 6.0f);
           }
 
+          // Only Vertex sub-mode picks and edits Vertices; in the others their
+          // markers are noise that hides the geometry underneath them.
           for (auto vertexIndex = mesh->getFirstVertexIndex();
+               settings.meshSubMode == editor::Settings::MeshSubMode::Vertex &&
                !mesh->vertexIndexIterationFinished(vertexIndex);
                vertexIndex = mesh->getNextVertexIndex(vertexIndex)) {
             auto colour = selectedVertices.contains(vertexIndex)

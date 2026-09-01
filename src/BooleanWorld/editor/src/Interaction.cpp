@@ -11,6 +11,34 @@ using namespace std;
 
 namespace {
 
+// A click in Vertex sub-mode acts on the Vertex nearest the pointer alone.
+// Two distinct Vertices commonly sit inside one pick radius, and letting
+// both into the hit stack means repeated clicks alternate between them
+// instead of selecting what is under the pointer. Other consumers of the
+// hit stack - the Slice tool above all - still see every candidate, because
+// resolving between near-coincident Vertices is exactly their job.
+vector<uint32_t> nearestMeshVertexOnly(
+    Document const* doc, vector<uint32_t> const& indices,
+    wp::Vector2 const& worldPosition) {
+  auto const* mesh = doc->getActiveMesh();
+  if (!mesh || indices.size() < 2) {
+    return indices;
+  }
+
+  auto nearest = indices.front();
+  auto nearestDistanceSq =
+      mesh->getVertex(nearest).getPosition().distanceToSq(worldPosition);
+  for (auto index : indices) {
+    auto distanceSq =
+        mesh->getVertex(index).getPosition().distanceToSq(worldPosition);
+    if (distanceSq < nearestDistanceSq) {
+      nearest = index;
+      nearestDistanceSq = distanceSq;
+    }
+  }
+  return {nearest};
+}
+
 // Quantises a gesture's total movement to whole grid cells on each axis.
 wp::Vector2 snapMovementToGrid(
     wp::Vector2 const& movement, bool snapToGrid, float gridSize) {
@@ -288,10 +316,14 @@ void EditorInteraction::updateSelection(
       }
 
       if (mHover.type == HoverableType::MeshSubObject) {
+        auto hits = settings.meshSubMode == Settings::MeshSubMode::Vertex
+                        ? nearestMeshVertexOnly(
+                              doc, mHover.indices, input.worldPosition)
+                        : mHover.indices;
         auto const& selection =
             doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);
         auto selectedHit = any_of(
-            mHover.indices.begin(), mHover.indices.end(),
+            hits.begin(), hits.end(),
             [&](uint32_t index) { return selection.contains(index); });
 
         // For a plain gesture, preserve any selected hit until it is known to
@@ -300,11 +332,11 @@ void EditorInteraction::updateSelection(
         // additionally retain their modifier and click-to-cycle behaviour on
         // release.
         if (selectedHit &&
-            ((!input.control && !input.shift) || mHover.indices.size() > 1)) {
-          mPendingMeshSubObjectClick = mHover.indices;
+            ((!input.control && !input.shift) || hits.size() > 1)) {
+          mPendingMeshSubObjectClick = move(hits);
         } else {
           applyMeshSubObjectClick(
-              doc, settings.meshSubMode, mHover.indices,
+              doc, settings.meshSubMode, hits,
               input.control, input.shift);
         }
       } else if (!input.cursorInMiniMap) {

@@ -500,6 +500,48 @@ void meshClicksBuildAndSwitchTheActiveProxy() {
           "clicking another MeshPrimitive did not switch the active proxy");
 }
 
+void repeatedVertexClicksStayOnTheNearestVertex() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  settings.mode = editor::Settings::Mode::Mesh;
+  document.newDoc();
+  auto meshIndex = addMeshWithHole(document);
+  require(document.activateMesh(meshIndex), "could not activate test mesh");
+  editor::EditorInteraction interaction;
+  auto const* mesh = document.getActiveMesh();
+
+  // A pick radius wide enough to swallow a second Vertex: before, the two
+  // shared the hit stack and repeated clicks alternated between them.
+  auto first = mesh->getFirstVertexIndex();
+  auto second = mesh->getNextVertexIndex(first);
+  auto firstPosition = mesh->getVertex(first).getPosition();
+  auto secondPosition = mesh->getVertex(second).getPosition();
+  settings.meshVertexPickRadius = firstPosition.distanceTo(secondPosition) * 1.5f;
+  require(document.getHoveredMeshSubObjectIndices(firstPosition, settings).size() >= 2,
+          "the fixture did not put two Vertices inside one pick radius");
+
+  auto clickAt = [&](wp::Vector2 const& position) {
+    auto press = pointerAt(position);
+    press.leftClicked = true;
+    interaction.updateSelection(&document, nullptr, settings, press);
+    auto release = pointerAt(position);
+    release.leftReleased = true;
+    interaction.updateSelection(&document, nullptr, settings, release);
+  };
+
+  for (int click = 0; click < 4; ++click) {
+    clickAt(firstPosition);
+    require(document.getSelectedMeshVertexIndices() == std::set<uint32_t>{first},
+            "repeated clicks did not stay on the Vertex nearest the pointer");
+  }
+
+  // The neighbour is still reachable - by clicking nearer to it.
+  clickAt(secondPosition);
+  require(document.getSelectedMeshVertexIndices() == std::set<uint32_t>{second},
+          "clicking nearer the neighbouring Vertex did not select it");
+}
+
 void meshSubObjectClicksSupportModifiersAndRingCycling() {
   editor::Document document;
   editor::Settings settings;
@@ -4258,6 +4300,7 @@ int main() {
     aWholeSelectionClonesAndMovesAsOneGroup();
     discardingACloneLeavesNoTraceInTheHistory();
     rubberBandSelectionSupportsPlainControlAndShiftPolicies();
+    repeatedVertexClicksStayOnTheNearestVertex();
     meshSubObjectClicksSupportModifiersAndRingCycling();
     edgeSubModeSelectsOnlyTheDirectlyClickedEdge();
     controlShiftClickSplitsAnEdgeAtThePointerAndSelectsTheNewVertex();
