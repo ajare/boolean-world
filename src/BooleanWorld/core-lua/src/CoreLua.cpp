@@ -1,4 +1,15 @@
-// core-lua links core, Lua and sol2 together. ScriptRuntime and the
-// RunScript LayerBuildStep are added on top of this in later tickets
-// (spec #357); this translation unit exists only so core-lua is a real
-// compiled library rather than an empty target.
+#include "core-lua/CoreLua.h"
+
+#include <core/LayerBuildStep.h>
+
+#include "core-lua/RunScript.h"
+
+namespace bw {
+namespace core {
+
+void registerScriptStepTypes(ScriptRuntime& runtime) {
+  LayerBuildStep::registerType("RunScript", [&runtime]() { return new RunScript(runtime); });
+}
+
+}  // namespace core
+}  // namespace bw
