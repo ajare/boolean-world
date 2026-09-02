@@ -2,6 +2,7 @@
 
 #include <array>
 #include <format>
+#include <iostream>
 
 #include <core/CoreException.h>
 
@@ -12,18 +13,18 @@ using namespace std;
 
 namespace {
 
-// The base library, by name. Lua has no handle on "the base functions" as a
-// table - they are plain globals - so handing them out one library at a time
-// means listing them. load, dofile, loadfile and collectgarbage are here
-// because they belong to the base library; the Restricted environment a build
-// script runs in drops them (docs/adr/0040), which is a narrowing of this set
-// rather than a different one.
+// The base functions every execution sees, by name. Lua has no handle on
+// "the base functions" as a table - they are plain globals - so handing them
+// out means listing them. load, loadfile, dofile and collectgarbage are
+// deliberately absent: they let a script load code or drive the collector,
+// either of which breaks the determinism a build script depends on
+// (docs/adr/0040). print is bound separately, routed to the host's
+// PrintSink rather than handed out from here.
 constexpr array baseNames = {
-    "_VERSION",     "assert", "collectgarbage", "dofile", "error",
-    "getmetatable", "ipairs", "load",           "loadfile", "next",
-    "pairs",        "pcall",  "print",          "rawequal", "rawget",
-    "rawlen",       "rawset", "select",         "setmetatable", "tonumber",
-    "tostring",     "type",   "warn",           "xpcall"};
+    "_VERSION",     "assert", "error",  "getmetatable", "ipairs",
+    "next",         "pairs",  "pcall",  "rawequal",     "rawget",
+    "rawlen",       "rawset", "select", "setmetatable", "tonumber",
+    "tostring",     "type",   "warn",   "xpcall"};
 
 // A shallow copy, so a script that assigns into math or string changes only
 // its own copy. Without this the fresh environment would still leave one
@@ -49,12 +50,32 @@ void addLibrary(
   environment.set(name, copyLibrary(lua, lua[name]));
 }
 
+// Joins arguments the way Lua's own print does - tostring'd and
+// tab-separated - and hands the finished line to sink, rather than writing
+// anywhere itself.
+void bindPrint(sol::state& lua, sol::environment& environment, PrintSink const& sink) {
+  environment.set_function("print", [&lua, sink](sol::variadic_args args) {
+    sol::function tostringFn = lua["tostring"];
+    string line;
+    bool first = true;
+    for (auto arg : args) {
+      if (!first) {
+        line += '\t';
+      }
+      first = false;
+      line += tostringFn(arg).get<string>();
+    }
+    sink(line);
+  });
+}
+
 }  // namespace
 
-ScriptRuntime::ScriptRuntime() {
+ScriptRuntime::ScriptRuntime(PrintSink printSink)
+    : mPrintSink(move(printSink)) {
   // Opened once on the state so the libraries exist to be handed out; which
   // of them an execution actually sees is decided per execution, in
-  // makeEnvironment(), not here.
+  // execute(), not here.
   mLua.open_libraries(
       sol::lib::base, sol::lib::table, sol::lib::string, sol::lib::math,
       sol::lib::coroutine);
@@ -93,6 +114,7 @@ void ScriptRuntime::execute(
     for (auto const* baseName : baseNames) {
       environment.set(baseName, mLua[baseName]);
     }
+    bindPrint(mLua, environment, mPrintSink);
   }
 
   addLibrary(mLua, environment, libraries, ScriptLibraries::Table, "table");
@@ -117,6 +139,10 @@ void ScriptRuntime::execute(
 
 sol::state& ScriptRuntime::getState() {
   return mLua;
+}
+
+PrintSink ScriptRuntime::defaultPrintSink() {
+  return [](string const& line) { cout << line << '\n'; };
 }
 
 }  // namespace core

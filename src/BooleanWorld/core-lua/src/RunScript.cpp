@@ -31,6 +31,7 @@ LayerBuildStep* RunScript::copy(map<VertexTransformerObject const*, VertexTransf
   auto* result = new RunScript(*mRuntime);
   result->copyFrom(*this);
   result->mScriptName = mScriptName;
+  result->mSeed = mSeed;
   return result;
 }
 
@@ -71,6 +72,10 @@ void RunScript::execute(LayerBuildContext& context) const {
   mRuntime->execute(
       mScriptName, ScriptLibraries::Build, [this, &context](sol::environment& environment) {
         bindScriptTypes(mRuntime->getState());
+
+        // Re-seeded on every execute() so a rebuild reproduces exactly
+        // (docs/adr/0040); ScriptLibraries::Build always includes math.
+        environment["math"]["randomseed"](mSeed);
 
         environment.set_function(
             "create_primitive",
@@ -122,6 +127,19 @@ void RunScript::setScriptName(string const& name) {
 
 string const& RunScript::getScriptName() const {
   return mScriptName;
+}
+
+void RunScript::setSeed(uint64_t seed) {
+  if (seed == mSeed) {
+    return;
+  }
+
+  mSeed = seed;
+  modify();
+}
+
+uint64_t RunScript::getSeed() const {
+  return mSeed;
 }
 
 ScriptRuntime& RunScript::getRuntime() const {

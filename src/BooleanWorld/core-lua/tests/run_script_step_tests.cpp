@@ -10,6 +10,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <core/Layer.h>
 #include <core/LayerBuildStep.h>
@@ -225,6 +226,100 @@ void aScriptNeverOwnsWhatItCreates() {
           "the Layer did not rebuild cleanly after a script raised");
 }
 
+void theBuildEnvironmentDropsFunctionsThatBreakDeterminism() {
+  bw::core::ScriptRuntime runtime;
+  bool loadAbsent = false, loadfileAbsent = false, dofileAbsent = false,
+       collectgarbageAbsent = false, ioAbsent = false, osAbsent = false,
+       debugAbsent = false, packageAbsent = false, requireAbsent = false;
+  auto record = [&](sol::environment& environment) {
+    environment.set_function(
+        "record",
+        [&](bool load, bool loadfile, bool dofile, bool collectgarbage, bool io,
+            bool os, bool debug, bool package, bool require) {
+          loadAbsent = !load;
+          loadfileAbsent = !loadfile;
+          dofileAbsent = !dofile;
+          collectgarbageAbsent = !collectgarbage;
+          ioAbsent = !io;
+          osAbsent = !os;
+          debugAbsent = !debug;
+          packageAbsent = !package;
+          requireAbsent = !require;
+        });
+  };
+
+  runtime.load("restricted", R"(
+    record(load ~= nil, loadfile ~= nil, dofile ~= nil, collectgarbage ~= nil,
+           io ~= nil, os ~= nil, debug ~= nil, package ~= nil, require ~= nil)
+  )");
+
+  runtime.execute("restricted", bw::core::ScriptLibraries::Build, record);
+  require(loadAbsent && loadfileAbsent && dofileAbsent && collectgarbageAbsent &&
+              ioAbsent && osAbsent && debugAbsent && packageAbsent && requireAbsent,
+          "the build environment offered a function that breaks determinism");
+}
+
+void printReachesTheHostsSink() {
+  std::vector<std::string> lines;
+  bw::core::ScriptRuntime runtime(
+      [&lines](std::string const& line) { lines.push_back(line); });
+  runtime.load("greet", R"(print("hello", 1, true))");
+
+  runtime.execute("greet", bw::core::ScriptLibraries::Build);
+
+  require(lines.size() == 1 && lines[0] == "hello\t1\ttrue",
+          "print did not reach the host's sink with Lua's own joining");
+}
+
+void theSeedMakesRebuildsReproducibleAndRerollableByChangingIt() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("scatter", R"(
+    local p = create_primitive("Rectangle")
+    p:set_position(math.random(0, 1000), 0)
+    place_primitive(p)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* step = addScriptStep(layer, runtime, "scatter");
+  step->setSeed(7);
+
+  layer.rebuild();
+  float const firstX = layer.getPrimitive(0)->getPosition().x;
+  layer.rebuild();
+  float const secondX = layer.getPrimitive(0)->getPosition().x;
+  require(firstX == secondX, "rebuilding the same Layer twice did not reproduce the seed's output");
+
+  step->setSeed(8);
+  layer.rebuild();
+  float const rerolledX = layer.getPrimitive(0)->getPosition().x;
+  require(rerolledX != firstX, "changing the seed did not change the output");
+
+  step->setSeed(7);
+  layer.rebuild();
+  float const restoredX = layer.getPrimitive(0)->getPosition().x;
+  require(restoredX == firstX, "restoring the seed did not restore the previous output");
+}
+
+void twoRunScriptStepsCannotObserveEachOthersRandomState() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("draw", R"(
+    local p = create_primitive("Rectangle")
+    p:set_position(math.random(0, 1000), 0)
+    place_primitive(p)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* first = addScriptStep(layer, runtime, "draw");
+  first->setSeed(42);
+  auto* second = addScriptStep(layer, runtime, "draw");
+  second->setSeed(42);
+
+  layer.rebuild();
+  require(layer.getPrimitive(0)->getPosition().x == layer.getPrimitive(1)->getPosition().x,
+          "two steps with the same seed running the same script produced different output "
+          "because one observed the other's leftover random state");
+}
+
 void everyExecutionBeginsWithAFreshEnvironment() {
   bw::core::ScriptRuntime runtime;
   runtime.load("leaky", R"(
@@ -263,6 +358,10 @@ int main() {
     scriptCreatedPrimitivesFoldInRecipeOrder();
     everyExecutionRefillsTheStepsOwnStorage();
     aScriptNeverOwnsWhatItCreates();
+    theBuildEnvironmentDropsFunctionsThatBreakDeterminism();
+    printReachesTheHostsSink();
+    theSeedMakesRebuildsReproducibleAndRerollableByChangingIt();
+    twoRunScriptStepsCannotObserveEachOthersRandomState();
     everyExecutionBeginsWithAFreshEnvironment();
     std::cout << "RunScript build step and ScriptRuntime tests passed\n";
     return 0;

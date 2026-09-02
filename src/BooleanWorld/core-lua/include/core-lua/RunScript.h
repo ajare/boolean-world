@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
@@ -29,6 +30,11 @@ private:
   ScriptRuntime* mRuntime;
 
   std::string mScriptName;
+
+  // Re-applied to math.random at the start of every execute(), so a scatter
+  // reproduces exactly and changing the arrangement is an authored edit
+  // rather than a side effect of rebuilding (docs/adr/0040).
+  uint64_t mSeed = 0;
 
   // Cleared and refilled by every execute(). mutable because execute() is
   // const, following PrefabField.
@@ -79,6 +85,12 @@ public:
   void setScriptName(std::string const& name);
 
   [[nodiscard]] std::string const& getScriptName() const;
+
+  // The in-memory seed re-applied to math.random at the start of every
+  // execute(). Serializing it is a later ticket.
+  void setSeed(uint64_t seed);
+
+  [[nodiscard]] uint64_t getSeed() const;
 
   [[nodiscard]] ScriptRuntime& getRuntime() const;
 };

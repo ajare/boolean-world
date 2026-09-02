@@ -10,6 +10,13 @@
 namespace bw {
 namespace core {
 
+// A completed print() line, joined the way Lua's own print joins its
+// arguments (tostring'd, tab-separated). Given to the host rather than
+// written anywhere here, so a script's output ends up wherever the host logs
+// - a file, a console pane, nowhere in a test - without this library knowing
+// which (docs/adr/0040).
+using PrintSink = std::function<void(std::string const&)>;
+
 // The Lua standard libraries one execution may see. A parameter of execution
 // rather than a property of the runtime, so a future gameplay client can ask
 // for a different set without weakening what a build script is allowed
@@ -52,8 +59,12 @@ private:
   // environment it ran in does not.
   std::map<std::string, sol::protected_function> mChunks;
 
+  PrintSink mPrintSink;
+
 public:
-  ScriptRuntime();
+  // printSink defaults to writing to stdout, so a host that has not wired up
+  // its own log still sees script output somewhere.
+  explicit ScriptRuntime(PrintSink printSink = defaultPrintSink());
 
   ScriptRuntime(ScriptRuntime const&) = delete;
 
@@ -85,6 +96,8 @@ public:
   // code in this library, which registers its usertypes once against the
   // state rather than per execution; hosts have no reason to touch it.
   [[nodiscard]] sol::state& getState();
+
+  [[nodiscard]] static PrintSink defaultPrintSink();
 };
 
 }  // namespace core
