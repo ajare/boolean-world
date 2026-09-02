@@ -108,11 +108,13 @@ bool primitiveFadedForActiveStep(
     return true;
   }
 
-  // PrefabField does not permit direct Primitive editing, but its instances
-  // are the active step's editable content: users author them through Tile
-  // placement. Keep that active content at the normal colour while retaining
-  // the faded treatment for other non-directly-editable procedural output.
+  // PrefabField and RunScript do not permit direct Primitive editing, but
+  // their generated Primitives are still the active step's content. Keep that
+  // content at the normal colour while retaining the faded treatment for
+  // other non-directly-editable procedural output. RunScript is dynamically
+  // registered outside core, so identify it by its stable registered type.
   return !dynamic_cast<bw::core::PrefabField const*>(step) &&
+         step->getType() != "RunScript" &&
          !step->permitsDirectPrimitiveEditing();
 }
 

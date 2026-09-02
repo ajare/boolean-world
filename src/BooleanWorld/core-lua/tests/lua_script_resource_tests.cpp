@@ -110,6 +110,43 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
   auto resource = resourceManager.getResource("ScriptDemo", "World");
   require(dynamic_cast<bw::core::LuaScriptResource*>(resource.get()),
           "the LuaScript factory did not create a LuaScriptResource");
+  require(resource->getType() == "LuaScript" &&
+              resourceManager.getResourcesByType("LuaScript").size() == 2,
+          "LuaScript resources were not discoverable by their declared type");
+
+  auto defaultResource = resourceManager.getResource(
+      bw::core::defaultLayerBuildStepScriptName, "World");
+  resourceManager.createResource(defaultResource);
+  resourceManager.loadResource(defaultResource);
+  auto* defaultScript =
+      dynamic_cast<bw::core::LuaScriptResource*>(defaultResource.get());
+  require(defaultScript && !defaultScript->getText().empty(),
+          "the built-in no-op LuaScript was not registered and loadable");
+
+  // Resource refresh is additive: a declaration created after startup becomes
+  // selectable without replacing either existing Resource object.
+  {
+    std::ofstream script(root / "script-late.lua");
+    script << "-- added after the initial resource scan\n";
+    std::ofstream manifest(root / "Resources.yaml");
+    manifest << R"(Resources:
+  Namespace:
+    name: "World"
+    Resource:
+      - type: "LuaScript"
+        name: "ScriptDemo"
+        location: "script-demo.lua"
+      - type: "LuaScript"
+        name: "ScriptLate"
+        location: "script-late.lua"
+)";
+  }
+  resourceManager.rescanLocations();
+  require(resourceManager.getResource("ScriptDemo", "World") == resource &&
+              resourceManager.getResourcesByType("LuaScript").size() == 3 &&
+              resourceManager.getResource("ScriptLate", "World")->getType() ==
+                  "LuaScript",
+          "a resource re-scan did not add the new LuaScript additively");
 
   // This is the ADR-0033 host sequence: inspect only the dependency header,
   // resolve and compile each LuaScript under its exact authored spelling,
@@ -138,6 +175,15 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
           "resolved LuaScript text was not compiled into the host runtime");
 
   bw::core::registerScriptStepTypes(hostRuntime);
+  bw::core::World defaultWorld(512.0f, 16.0f);
+  auto* defaultStep = new bw::core::RunScript(hostRuntime);
+  defaultWorld.getActiveLayer()->addStep(defaultStep);
+  require(
+      defaultStep->getScriptName() ==
+              bw::core::defaultLayerBuildStepScriptName &&
+          !defaultStep->hasFailed(),
+      "a new RunScript did not execute the built-in no-op default");
+
   bw::core::World loaded(512.0f, 16.0f);
   require(deserializeWorld(yaml, &loaded),
           "the host could not deserialize a World after resolving its script");

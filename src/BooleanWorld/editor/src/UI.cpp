@@ -3885,7 +3885,7 @@ void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings)
   }
 }
 
-optional<string> renderResourceReferencePicker(
+optional<string> renderResourceReferenceCombobox(
     char const* label, char const* resourceType, string const& current) {
   auto* renderSystem = editorRenderSystem();
   auto* manager = renderSystem ? renderSystem->resourceManager() : nullptr;
@@ -3899,56 +3899,31 @@ optional<string> renderResourceReferencePicker(
     return left->getQualifiedName() < right->getQualifiedName();
   });
 
-  string currentReference = current;
   string display = current.empty() ? string("(none)") : current;
   for (auto const& resource : resources) {
     auto reference = worldResourceReference(*resource);
     if (current == reference || current == resource->getQualifiedName()) {
-      currentReference = reference;
-      display = resource->getName();
+      display = resource->getQualifiedName();
       break;
     }
   }
 
-  static map<string, string> pendingReferences;
-  auto popup = format("Select {}", label);
-  if (ImGui::Button(format("{}: {}##ResourcePicker", label, display).c_str())) {
-    pendingReferences[label] = currentReference;
-    ImGui::OpenPopup(popup.c_str());
-  }
-
   optional<string> selectedReference;
-  if (ImGui::BeginPopupModal(
-          popup.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-    ImGui::Text("Choose a %s resource.", resourceType);
-    ImGui::BeginChild("resources", {420.0f, 280.0f}, true);
+  ImGui::SetNextItemWidth(320.0f);
+  if (ImGui::BeginCombo(label, display.c_str())) {
     if (resources.empty()) {
       ImGui::TextDisabled("No %s resources are available.", resourceType);
     }
     for (auto const& resource : resources) {
       auto reference = worldResourceReference(*resource);
-      bool selected = pendingReferences[label] == reference;
-      if (ImGui::Selectable(
-              resource->getQualifiedName().c_str(), selected,
-              ImGuiSelectableFlags_AllowDoubleClick)) {
-        pendingReferences[label] = reference;
-        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-          selectedReference = reference;
-        }
+      bool selected = current == reference ||
+                      current == resource->getQualifiedName();
+      if (ImGui::Selectable(resource->getQualifiedName().c_str(), selected)) {
+        selectedReference = reference;
       }
       if (selected) ImGui::SetItemDefaultFocus();
     }
-    ImGui::EndChild();
-
-    bool canApply = !pendingReferences[label].empty();
-    ImGui::BeginDisabled(!canApply);
-    if (ImGui::Button("OK")) selectedReference = pendingReferences[label];
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
-
-    if (selectedReference) ImGui::CloseCurrentPopup();
-    ImGui::EndPopup();
+    ImGui::EndCombo();
   }
   return selectedReference;
 }
@@ -3964,7 +3939,7 @@ void renderRunScriptView(
   auto* layer = doc->getWorld()->getActiveLayer();
 
   static map<bw::core::RunScript const*, string> scriptErrors;
-  if (auto selected = renderResourceReferencePicker(
+  if (auto selected = renderResourceReferenceCombobox(
           "Lua script", "LuaScript", step->getScriptName())) {
     string error;
     if (auto* renderSystem = editorRenderSystem();
@@ -3978,6 +3953,19 @@ void renderRunScriptView(
       scriptErrors[step] = error.empty() ? "Could not load the Lua script." : error;
     }
   }
+
+  ImGui::BeginDisabled(!editorRenderSystem());
+  if (ImGui::Button("Re-scan resources")) {
+    string error;
+    if (editorRenderSystem()->rescanLuaScripts(&error)) {
+      scriptErrors[step].clear();
+    } else {
+      scriptErrors[step] =
+          error.empty() ? "Could not re-scan Lua script resources." : error;
+    }
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
   ImGui::BeginDisabled(step->getScriptName().empty() || !editorRenderSystem());
   if (ImGui::Button("Reload script")) {
     string error;
@@ -5347,7 +5335,7 @@ void renderCombinedPanel(
         renderPrefabFieldView(doc, prefabField, settings);
       }
     } else if (auto* runScript = dynamic_cast<bw::core::RunScript*>(activeLayer->getActiveStep())) {
-      if (ImGui::CollapsingHeader("Run Script", nullptr, windowFlags)) {
+      if (ImGui::CollapsingHeader("Script", nullptr, windowFlags)) {
         renderRunScriptView(doc, runScript);
       }
     }

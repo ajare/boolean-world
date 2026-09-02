@@ -582,8 +582,10 @@ void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
   editor::undo(&document);
   layer = document.getWorld()->getActiveLayer();
   step = static_cast<bw::core::RunScript*>(layer->getStep(1));
-  require(step->getScriptName().empty() && step->hasFailed(),
-          "undo did not restore the RunScript script reference and failure");
+  require(
+      step->getScriptName() == bw::core::defaultLayerBuildStepScriptName &&
+          !step->hasFailed(),
+      "undo did not restore the RunScript default script reference");
 
   editor::redo(&document, 4);
   layer = document.getWorld()->getActiveLayer();

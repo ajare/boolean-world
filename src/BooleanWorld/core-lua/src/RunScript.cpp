@@ -8,6 +8,7 @@
 #include <core/DefinePrefabs.h>
 #include <core/Layer.h>
 
+#include "core-lua/LuaScriptResource.h"
 #include "core-lua/ScriptBindings.h"
 
 namespace bw {
@@ -16,7 +17,8 @@ namespace core {
 using namespace std;
 
 RunScript::RunScript(ScriptRuntime& runtime)
-    : mRuntime(&runtime) {
+    : mRuntime(&runtime),
+      mScriptName(defaultLayerBuildStepScriptName) {
 }
 
 RunScript::~RunScript() {

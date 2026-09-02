@@ -65,6 +65,14 @@ constexpr array<pair<char const*, char const*>, 4> previewResources{{
     {"Embossing", ""},
 }};
 
+// Canonical spelling for a reference authored by a World.
+string worldResourceReference(
+    wp::application::resourcesystem::Resource const& resource) {
+  if (resource.getNamespace() == "World") return resource.getName();
+  if (resource.getNamespace().empty()) return "/" + resource.getName();
+  return resource.getQualifiedName();
+}
+
 }  // namespace
 
 EditorRenderSystem::EditorRenderSystem(int width, int height) {
@@ -122,6 +130,18 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
   // addResourceLocation only records the location - scanning is what reads
   // the manifest and instantiates its records.
   mResourceMgr->scanLocations();
+
+  // RunScript's Combobox is ready on the first frame, and selecting any
+  // script never pays a first-use file read or compile. Compilation failures
+  // remain cached ordinary step failures and do not abort editor startup.
+  for (auto const& resource : mResourceMgr->getResourcesByType("LuaScript")) {
+    string error;
+    if (!loadLuaScript(worldResourceReference(*resource), &error)) {
+      mLogger->warn(
+          "Could not preload LuaScript " + resource->getQualifiedName() +
+          ": " + error);
+    }
+  }
 
   for (auto const& [name, namesp] : previewResources) {
     auto resource = mResourceMgr->getResource(name, namesp);
@@ -245,6 +265,27 @@ bool EditorRenderSystem::loadLuaScript(
   }
 }
 
+bool EditorRenderSystem::rescanLuaScripts(string* error) {
+  try {
+    mResourceMgr->rescanLocations();
+    for (auto const& resource :
+         mResourceMgr->getResourcesByType("LuaScript")) {
+      string loadError;
+      if (!loadLuaScript(worldResourceReference(*resource), &loadError)) {
+        if (error) {
+          *error = "Could not load LuaScript " + resource->getQualifiedName() +
+                   ": " + loadError;
+        }
+        return false;
+      }
+    }
+    return true;
+  } catch (exception const& exception) {
+    if (error) *error = exception.what();
+    return false;
+  }
+}
+
 bool EditorRenderSystem::reloadLuaScript(
     string const& resourceName, string* error) {
   wp::application::resourcesystem::ResourcePtr resource;
@@ -266,7 +307,7 @@ bool EditorRenderSystem::reloadLuaScript(
         mWorldDependencies.begin(), mWorldDependencies.end(), resource) !=
         mWorldDependencies.end();
 
-    // TextFileResource reads its source during create(), not load(). Release,
+    // LuaScriptResource reads its source during create(), not load(). Release,
     // destroy, and recreate it so an external file edit is actually observed.
     mResourceMgr->releaseResource(resource);
     released = true;

@@ -15,6 +15,8 @@
 #include <core/PrefabField.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
+#include <core-lua/RunScript.h>
+#include <core-lua/ScriptRuntime.h>
 
 #include "Defines.h"
 #include "Document.h"
@@ -410,6 +412,32 @@ void activePrefabFieldPrimitivesUseTheActiveStepColour() {
           "an inactive PrefabField Primitive retained the active-step colour");
 }
 
+void activeRunScriptPrimitivesUseTheActiveStepColour() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("visible-output", R"(
+    local primitive = context:create_primitive("Rectangle")
+    context:place_primitive(primitive)
+  )");
+
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* runScript = new bw::core::RunScript(runtime);
+  runScript->setScriptName("visible-output");
+  auto runScriptIndex = layer->addStep(runScript);
+  layer->setActiveStep(runScriptIndex);
+
+  auto* output = layer->getPrimitive(layer->getNumPrimitives() - 1);
+  require(layer->getOwningStepIndex(output) == runScriptIndex,
+          "the RunScript colour fixture did not produce its Primitive");
+  require(!editor::primitiveFadedForActiveStep(*layer, output),
+          "an active RunScript Primitive used the inactive-step colour");
+
+  layer->setActiveStep(0);
+  require(editor::primitiveFadedForActiveStep(*layer, output),
+          "an inactive RunScript Primitive retained the active-step colour");
+}
+
 void refusingStepPrimitivesAreNotSelectableInPrimitiveMode() {
   editor::Document document;
   editor::Settings settings;
@@ -735,6 +763,7 @@ int main() {
     prefabPrimitivesAreVisibleAndFoldedInIsolationOnlyWhileTheirPrefabIsSelected();
     theGhostIsHiddenWhileAPrefabFieldStepIsActive();
     activePrefabFieldPrimitivesUseTheActiveStepColour();
+    activeRunScriptPrimitivesUseTheActiveStepColour();
     refusingStepPrimitivesAreNotSelectableInPrimitiveMode();
     meshEligibilityRequiresTheSelectedDirectlyEditableStep();
     inScopePrimitivesAndGroundingResolutionFollowFoldOrder();
