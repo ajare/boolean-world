@@ -60,7 +60,19 @@ private:
   uint32_t mId;
   bool mEnabled;
 
+  // Whether this step's execute() threw during the Layer's most recent
+  // rebuild, and what it said. mutable because execute() is const but a
+  // failure is recorded from inside it (docs/adr/0039), following the
+  // precedent set by PrefabField's mutable built-Primitive storage.
+  mutable bool mFailed;
+  mutable std::string mFailureMessage;
+
   void setId(uint32_t id);
+
+  // Called by Layer at the execute() boundary: clearFailure() before every
+  // attempt, recordFailure() if that attempt throws.
+  void clearFailure() const;
+  void recordFailure(std::string message) const;
 
   friend class Layer;
 
@@ -162,6 +174,16 @@ public:
   void setEnabled(bool enabled);
 
   [[nodiscard]] bool isEnabled() const;
+
+  // Whether this step's execute() threw during the Layer's most recent
+  // rebuild (docs/adr/0039). False for a step that ran and produced
+  // nothing, or that was not reached because an earlier step in the same
+  // rebuild failed - both are distinct from having failed itself.
+  [[nodiscard]] bool hasFailed() const;
+
+  // The message from this step's most recent failure. Empty when
+  // hasFailed() is false.
+  [[nodiscard]] std::string const& getFailureMessage() const;
 };
 
 }  // namespace core

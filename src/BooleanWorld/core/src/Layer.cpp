@@ -559,19 +559,36 @@ void Layer::rebuild() {
   mPrimitives.clear();
   mPrimitiveSteps.clear();
 
+  // A step that throws is caught here, at the execute() boundary, rather
+  // than propagating out of rebuild() - which is called from more than
+  // forty places, including mid-undo. The build stops at the failed step:
+  // everything before it stands, and it and every step after it contribute
+  // nothing (docs/adr/0039).
+  bool haltedByFailure = false;
+
   for (uint32_t stepIndex = 0; stepIndex < mSteps.size(); ++stepIndex) {
     auto const* step = mSteps[stepIndex];
-    if (step->isEnabled()) {
-      vector<Primitive*> buildPrimitives;
-      buildPrimitives.reserve(mPrimitives.size());
-      for (uint32_t i = 0; i < mPrimitives.size(); ++i) {
-        if (mPrimitiveSteps[i]->primitivesParticipateInBuild()) {
-          buildPrimitives.push_back(mPrimitives[i]);
-        }
-      }
 
-      LayerBuildContext context(*this, step, stepIndex, buildPrimitives);
+    step->clearFailure();
+
+    if (haltedByFailure || !step->isEnabled()) {
+      continue;
+    }
+
+    vector<Primitive*> buildPrimitives;
+    buildPrimitives.reserve(mPrimitives.size());
+    for (uint32_t i = 0; i < mPrimitives.size(); ++i) {
+      if (mPrimitiveSteps[i]->primitivesParticipateInBuild()) {
+        buildPrimitives.push_back(mPrimitives[i]);
+      }
+    }
+
+    LayerBuildContext context(*this, step, stepIndex, buildPrimitives);
+    try {
       step->execute(context);
+    } catch (exception const& error) {
+      step->recordFailure(error.what());
+      haltedByFailure = true;
     }
   }
 }

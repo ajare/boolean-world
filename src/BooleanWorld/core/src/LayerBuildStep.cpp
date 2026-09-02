@@ -11,7 +11,7 @@ namespace core {
 using namespace std;
 
 LayerBuildStep::LayerBuildStep()
-    : mId(~0u), mEnabled(true) {
+    : mId(~0u), mEnabled(true), mFailed(false) {
 }
 
 Registry<LayerBuildStep>& LayerBuildStep::registry() {
@@ -85,6 +85,24 @@ bool LayerBuildStep::isEnabled() const {
 
 vector<string> LayerBuildStep::collectDependentResourceNames() const {
   return {};
+}
+
+void LayerBuildStep::clearFailure() const {
+  mFailed = false;
+  mFailureMessage.clear();
+}
+
+void LayerBuildStep::recordFailure(string message) const {
+  mFailed = true;
+  mFailureMessage = move(message);
+}
+
+bool LayerBuildStep::hasFailed() const {
+  return mFailed;
+}
+
+string const& LayerBuildStep::getFailureMessage() const {
+  return mFailureMessage;
 }
 
 }  // namespace core

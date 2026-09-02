@@ -160,6 +160,62 @@ private:
   }
 };
 
+// A step whose execute() always throws, for docs/adr/0039 coverage: a step
+// that fails is caught at the execute() boundary rather than propagating.
+class ThrowingStep final : public bw::core::LayerBuildStep {
+public:
+  std::string getType() const override {
+    return "ThrowingStep";
+  }
+
+  bool mayBeFirstStep() const override {
+    return false;
+  }
+
+  bw::core::LayerBuildStep* copy(
+      std::map<bw::core::VertexTransformerObject const*, bw::core::VertexTransformerObject*>&) const override {
+    return new ThrowingStep();
+  }
+
+  void execute(bw::core::LayerBuildContext&) const override {
+    throw bw::core::CoreException("ThrowingStep deliberately failed");
+  }
+
+  bool primitivesParticipateInBuild() const override {
+    return true;
+  }
+
+  bool permitsDirectPrimitiveEditing() const override {
+    return false;
+  }
+
+  bool acceptsNewPrimitives() const override {
+    return false;
+  }
+
+  uint32_t adoptPrimitive(bw::core::Primitive*) override {
+    throw bw::core::CoreException("ThrowingStep cannot own Primitives");
+  }
+
+  void replacePrimitive(bw::core::Primitive*, bw::core::Primitive*) override {
+  }
+
+  void releasePrimitive(bw::core::Primitive*) override {
+  }
+
+  bool ownsPrimitive(bw::core::Primitive const*) const override {
+    return false;
+  }
+
+private:
+  void serializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) const override {
+  }
+
+  bool deserializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) override {
+    return true;
+  }
+};
+
 std::vector<float> builtPositions(bw::core::Layer const& layer) {
   std::vector<float> positions;
   for (auto const* primitive : layer.getPrimitives()) {
@@ -680,6 +736,62 @@ void copyingALayerCopiesItsStepsAndRebuildsFromThem() {
           "a copied Layer's derived Primitive was not the one its own first step holds");
 }
 
+// docs/adr/0039: a failed step is caught at the execute() boundary rather
+// than propagating out of rebuild(), the Layer keeps what steps before it
+// produced, and the failed step plus everything after it contributes
+// nothing.
+void aFailingStepHaltsTheBuildRetainsEarlierOutputAndRecordsItsFailure() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+  layer.getPrimitiveField()->addPrimitive(makeRectangle(0.0f));
+
+  auto const throwingIndex = layer.addStep(new ThrowingStep());
+  auto const laterIndex = layer.addStep(makeField({40.0f}));
+
+  require(builtPositions(layer) == std::vector<float>({0.0f}),
+          "a failed step's Layer did not retain the Primitives produced before it");
+  require(layer.getStep(throwingIndex)->hasFailed(),
+          "a step that threw during execute() was not recorded as failed");
+  require(!layer.getStep(throwingIndex)->getFailureMessage().empty(),
+          "a failed step's failure message was not recorded");
+  require(!layer.getStep(laterIndex)->hasFailed(),
+          "a step after the one that actually failed was itself marked as failed");
+}
+
+// A step that ran and legitimately produced nothing must be distinguishable
+// from one that failed - both contribute zero Primitives, but only one
+// hasFailed().
+void aFailedStepIsDistinguishableFromASuccessfulEmptyStep() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto const emptyFieldIndex = layer.addStep(new bw::core::PrimitiveField());
+  require(!layer.getStep(emptyFieldIndex)->hasFailed(),
+          "a step that ran successfully and produced nothing was marked as failed");
+
+  auto const throwingIndex = layer.addStep(new ThrowingStep());
+  require(layer.getStep(throwingIndex)->hasFailed(),
+          "a step that threw during execute() was not marked as failed");
+}
+
+// Fixing a failed step (here, simply disabling it) clears its failure on the
+// next rebuild and lets the steps after it contribute again.
+void disablingAFailedStepClearsItsFailureAndUnblocksLaterSteps() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+  layer.getPrimitiveField()->addPrimitive(makeRectangle(0.0f));
+
+  auto const throwingIndex = layer.addStep(new ThrowingStep());
+  layer.addStep(makeField({40.0f}));
+
+  require(layer.getStep(throwingIndex)->hasFailed(), "test setup: step did not fail");
+  require(builtPositions(layer) == std::vector<float>({0.0f}), "test setup: build did not halt");
+
+  layer.setStepEnabled(throwingIndex, false);
+
+  require(!layer.getStep(throwingIndex)->hasFailed(),
+          "disabling a failed step did not clear its recorded failure");
+  require(builtPositions(layer) == std::vector<float>({0.0f, 40.0f}),
+          "disabling the failed step did not let the steps after it contribute again");
+}
+
 }  // namespace
 
 int main() {
@@ -711,6 +823,9 @@ int main() {
     movesToTheSameStepOutOfRangeStepsAndDisabledStepsAreRejected();
     movingAPrimitiveOutOfAStepWhoseOutputCannotBeEditedIsRejected();
     copyingALayerCopiesItsStepsAndRebuildsFromThem();
+    aFailingStepHaltsTheBuildRetainsEarlierOutputAndRecordsItsFailure();
+    aFailedStepIsDistinguishableFromASuccessfulEmptyStep();
+    disablingAFailedStepClearsItsFailureAndUnblocksLaterSteps();
     std::cout << "A Layer derives its Primitives by running its enabled LayerBuildSteps in order\n";
     return 0;
   } catch (std::exception const& error) {
