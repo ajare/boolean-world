@@ -1,11 +1,16 @@
 #pragma once
 
+#include <vector>
+
 #include <sol/sol.hpp>
 
 namespace bw {
 namespace core {
 
 class Primitive;
+class Prefab;
+class DefinePrefabs;
+class PrimitiveField;
 
 // A read-only, non-owning view of a Primitive, handed to scripts for prior
 // build Primitives (docs spec #365). sol2 does not track const-ness on a
@@ -15,6 +20,30 @@ class Primitive;
 // no mutating method to call, in Lua or in C++.
 struct PrimitiveView {
   Primitive const* primitive;
+};
+
+// Wraps borrowed Primitive pointers as read-only PrimitiveView handles.
+[[nodiscard]] std::vector<PrimitiveView> toPrimitiveViews(std::vector<Primitive*> const& primitives);
+
+// A read-only, non-owning view of a Prefab (docs spec #366). A script never
+// gets a mutable handle to a Prefab or its Primitives - it only ever passes
+// this handle to a placement function that clones what it wraps.
+struct PrefabView {
+  Prefab const* prefab;
+};
+
+// A read-only, non-owning view of a DefinePrefabs step, letting a script look
+// up one of its Prefabs by name without being able to modify the step
+// (docs spec #366).
+struct DefinePrefabsView {
+  DefinePrefabs const* step;
+};
+
+// A read-only, non-owning view of a PrimitiveField step, letting a script
+// read its authored Primitives without being able to modify the step
+// (docs spec #366).
+struct PrimitiveFieldView {
+  PrimitiveField const* step;
 };
 
 // Registers the usertypes a script sees, on the state rather than on any one

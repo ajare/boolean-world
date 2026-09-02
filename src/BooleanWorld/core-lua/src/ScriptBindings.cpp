@@ -5,7 +5,9 @@
 #include <tuple>
 
 #include <core/CoreException.h>
+#include <core/DefinePrefabs.h>
 #include <core/Primitive.h>
+#include <core/PrimitiveField.h>
 
 namespace bw {
 namespace core {
@@ -35,6 +37,15 @@ Primitive::Operation operationFromName(string const& name) {
 }
 
 }  // namespace
+
+vector<PrimitiveView> toPrimitiveViews(vector<Primitive*> const& primitives) {
+  vector<PrimitiveView> views;
+  views.reserve(primitives.size());
+  for (auto* primitive : primitives) {
+    views.push_back(PrimitiveView{primitive});
+  }
+  return views;
+}
 
 void bindScriptTypes(sol::state& lua) {
   if (lua[boundMarker].valid()) {
@@ -103,6 +114,31 @@ void bindScriptTypes(sol::state& lua) {
       "get_operation",
       [](PrimitiveView const& view) {
         return operationName(view.primitive->getOperation());
+      });
+
+  lua.new_usertype<PrefabView>(
+      "Prefab", sol::no_constructor,
+
+      "get_name", [](PrefabView const& view) { return view.prefab->getName(); });
+
+  lua.new_usertype<DefinePrefabsView>(
+      "DefinePrefabsStep", sol::no_constructor,
+
+      "get_prefab",
+      [](DefinePrefabsView const& view, string const& name) {
+        auto const id = view.step->findPrefabIdByName(name);
+        if (id == ~0u) {
+          throw CoreException(format("No Prefab named '{}'", name));
+        }
+        return PrefabView{view.step->findPrefabById(id)};
+      });
+
+  lua.new_usertype<PrimitiveFieldView>(
+      "PrimitiveFieldStep", sol::no_constructor,
+
+      "get_primitives",
+      [](PrimitiveFieldView const& view) {
+        return sol::as_table(toPrimitiveViews(view.step->getPrimitives()));
       });
 
   lua[boundMarker] = true;

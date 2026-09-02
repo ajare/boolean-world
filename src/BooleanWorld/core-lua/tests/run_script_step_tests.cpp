@@ -14,6 +14,7 @@
 
 #include <willpower/common/BoundingBox.h>
 
+#include <core/DefinePrefabs.h>
 #include <core/Layer.h>
 #include <core/LayerBuildStep.h>
 #include <core/PrimitiveField.h>
@@ -48,6 +49,24 @@ bw::core::RunScript* addScriptStep(
   step->setScriptName(script);
   layer.addStep(step);
   return step;
+}
+
+// Adds a DefinePrefabs step named stepName, holding one Prefab named
+// prefabName with a single Primitive at prefabLocalX (positioned in the
+// Prefab's own local space, before any instance transform).
+bw::core::DefinePrefabs* addPrefabDefinitions(
+    bw::core::Layer& layer, std::string const& stepName, std::string const& prefabName,
+    float prefabLocalX) {
+  auto* definitions = new bw::core::DefinePrefabs;
+  definitions->setName(stepName);
+  auto const defineIndex = layer.addStep(definitions);
+  auto* prefab = definitions->addPrefab(prefabName);
+  definitions->setSelectedPrefab(prefab);
+  layer.setActiveStep(defineIndex);
+  layer.addPrimitive(rectangle(prefabLocalX));
+  definitions->clearSelectedPrefab();
+  layer.setActiveStep(0);
+  return definitions;
 }
 
 void runScriptDeclaresItsCapabilitiesAndIsGivenItsRuntime() {
@@ -459,6 +478,134 @@ void aScatterAvoidsExistingGeometryAndItsOwnPlacements() {
   }
 }
 
+void aScriptPlacesTransformedPrefabInstancesFoundByName() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("stamp", R"(
+    local prefabs = find_define_prefabs("prefabs")
+    local rock = prefabs:get_prefab("rock")
+    place_prefab_instance(rock, 100, 0, 0)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  addPrefabDefinitions(layer, "prefabs", "rock", 3.0f);
+  auto* step = addScriptStep(layer, runtime, "stamp");
+  layer.rebuild();
+
+  require(!step->hasFailed(), "placing a Prefab instance found by name failed the step");
+  require(layer.getNumPrimitives() == 1, "the placed Prefab instance did not reach the Layer");
+  require(at(layer.getPrimitive(0), 103.0f),
+          "the placed instance was not offset by the position the script gave it");
+  require(step->ownsPrimitive(layer.getPrimitive(0)),
+          "the RunScript step did not own the Primitive it placed as a Prefab instance");
+}
+
+void placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("stamp-twice", R"(
+    local prefabs = find_define_prefabs("prefabs")
+    local rock = prefabs:get_prefab("rock")
+    place_prefab_instance(rock, 100, 0, 0)
+    place_prefab_instance(rock, 200, 0, 0)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* definitions = addPrefabDefinitions(layer, "prefabs", "rock", 3.0f);
+  auto* step = addScriptStep(layer, runtime, "stamp-twice");
+  layer.rebuild();
+
+  require(!step->hasFailed(), "placing two Prefab instances failed the step");
+  require(layer.getNumPrimitives() == 2, "both placed instances did not reach the Layer");
+  require(at(layer.getPrimitive(0), 103.0f) && at(layer.getPrimitive(1), 203.0f),
+          "placed instances were not independently positioned copies");
+  require(layer.getPrimitive(0) != layer.getPrimitive(1),
+          "two placed instances shared the same Primitive rather than each being a copy");
+
+  auto* sourcePrimitive = definitions->getPrefab(0)->getPrimitive(0);
+  require(std::abs(sourcePrimitive->getPosition().x - 3.0f) < .001f,
+          "placing transformed instances moved the Prefab's own Primitive");
+}
+
+void aScriptReadsAPrimitiveFieldsPrimitivesAsConst() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("read-field", R"(
+    local field = find_primitive_field("authored")
+    local primitives = field:get_primitives()
+    local p = create_primitive("Rectangle")
+    p:set_position(#primitives * 10, 0)
+    place_primitive(p)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* authored = new bw::core::PrimitiveField;
+  authored->setName("authored");
+  layer.addStep(authored);
+  authored->addPrimitive(rectangle(0.0f));
+  authored->addPrimitive(rectangle(50.0f));
+  auto* step = addScriptStep(layer, runtime, "read-field");
+  layer.rebuild();
+
+  require(!step->hasFailed(), "reading a PrimitiveField's Primitives by name failed the step");
+  require(layer.getNumPrimitives() == 3 && at(layer.getPrimitive(2), 20.0f),
+          "a script did not read a PrimitiveField's Primitives found by name");
+}
+
+void aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("mutate-field", R"(
+    local field = find_primitive_field("authored")
+    local primitives = field:get_primitives()
+    primitives[1]:set_position(999, 999)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* authored = new bw::core::PrimitiveField;
+  authored->setName("authored");
+  layer.addStep(authored);
+  authored->addPrimitive(rectangle(0.0f));
+  auto* step = addScriptStep(layer, runtime, "mutate-field");
+  layer.rebuild();
+
+  require(step->hasFailed(),
+          "a script mutating a PrimitiveField Primitive's const handle was not rejected");
+}
+
+void namingAMissingStepOrPrefabFailsTheStepWithTheName() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("missing-step", R"(find_define_prefabs("nope"))");
+  runtime.load("missing-field", R"(find_primitive_field("nope"))");
+  runtime.load("wrong-type", R"(find_define_prefabs("authored"))");
+  runtime.load("missing-prefab", R"(
+    local prefabs = find_define_prefabs("prefabs")
+    prefabs:get_prefab("nope")
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  addPrefabDefinitions(layer, "prefabs", "rock", 3.0f);
+  auto* authored = new bw::core::PrimitiveField;
+  authored->setName("authored");
+  layer.addStep(authored);
+
+  auto* step = addScriptStep(layer, runtime, "missing-step");
+  layer.rebuild();
+  require(step->hasFailed() && step->getFailureMessage().find("nope") != std::string::npos,
+          "naming a missing step did not fail with a message identifying it");
+
+  step->setScriptName("missing-field");
+  layer.rebuild();
+  require(step->hasFailed() && step->getFailureMessage().find("nope") != std::string::npos,
+          "naming a missing PrimitiveField step did not fail with a message identifying it");
+
+  step->setScriptName("wrong-type");
+  layer.rebuild();
+  require(step->hasFailed() && step->getFailureMessage().find("authored") != std::string::npos,
+          "naming a step of the wrong type did not fail with a message identifying it");
+
+  step->setScriptName("missing-prefab");
+  layer.rebuild();
+  require(step->hasFailed() && step->getFailureMessage().find("nope") != std::string::npos,
+          "naming a missing Prefab did not fail with a message identifying it");
+}
+
 }  // namespace
 
 int main() {
@@ -480,6 +627,11 @@ int main() {
     aScriptCannotMutateAPriorPrimitive();
     aScriptReadsTheLayersExtents();
     aScatterAvoidsExistingGeometryAndItsOwnPlacements();
+    aScriptPlacesTransformedPrefabInstancesFoundByName();
+    placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged();
+    aScriptReadsAPrimitiveFieldsPrimitivesAsConst();
+    aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName();
+    namingAMissingStepOrPrefabFailsTheStepWithTheName();
     std::cout << "RunScript build step and ScriptRuntime tests passed\n";
     return 0;
   } catch (std::exception const& error) {

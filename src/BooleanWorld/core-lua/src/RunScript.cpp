@@ -4,7 +4,9 @@
 #include <format>
 
 #include <core/CoreException.h>
+#include <core/DefinePrefabs.h>
 #include <core/Layer.h>
+#include <core/PrimitiveField.h>
 
 #include "core-lua/ScriptBindings.h"
 
@@ -12,21 +14,6 @@ namespace bw {
 namespace core {
 
 using namespace std;
-
-namespace {
-
-// Wraps borrowed Primitive pointers as read-only PrimitiveView handles, so a
-// script can read prior build Primitives but never mutate them (spec #365).
-vector<PrimitiveView> asPrimitiveViews(vector<Primitive*> const& primitives) {
-  vector<PrimitiveView> views;
-  views.reserve(primitives.size());
-  for (auto* primitive : primitives) {
-    views.push_back(PrimitiveView{primitive});
-  }
-  return views;
-}
-
-}  // namespace
 
 RunScript::RunScript(ScriptRuntime& runtime)
     : mRuntime(&runtime) {
@@ -76,6 +63,37 @@ void RunScript::placePrimitive(LayerBuildContext& context, Primitive* primitive)
   context.appendPrimitive(primitive);
 }
 
+void RunScript::placePrefabInstance(
+    LayerBuildContext& context, Prefab const* prefab, float x, float y, float angle) const {
+  if (!prefab) {
+    throw CoreException("A script placed an instance of an unknown Prefab");
+  }
+
+  map<VertexTransformerObject const*, VertexTransformerObject*> instanceClones;
+  vector<Primitive*> clones;
+  clones.reserve(prefab->getPrimitives().size());
+  for (auto const* source : prefab->getPrimitives()) {
+    unique_ptr<Primitive> clone(source->rotatedCopy(angle));
+    clone->setPosition(clone->getPosition() + wp::Vector2(x, y));
+    auto* raw = clone.get();
+    instanceClones[source] = raw;
+    mBuiltPrimitives.push_back(move(clone));
+    clones.push_back(raw);
+  }
+
+  for (size_t index = 0; index < prefab->getPrimitives().size(); ++index) {
+    auto const* source = prefab->getPrimitives()[index];
+    auto* parent = source->getParent();
+    clones[index]->setParent(
+        parent && instanceClones.contains(parent) ? instanceClones[parent] : nullptr);
+  }
+
+  for (auto* clone : clones) {
+    mPlacedPrimitives.push_back(clone);
+    context.appendPrimitive(clone);
+  }
+}
+
 void RunScript::execute(LayerBuildContext& context) const {
   mBuiltPrimitives.clear();
   mPlacedPrimitives.clear();
@@ -101,9 +119,43 @@ void RunScript::execute(LayerBuildContext& context) const {
             [this, &context](Primitive* primitive) { placePrimitive(context, primitive); });
 
         environment.set_function(
+            "place_prefab_instance",
+            [this, &context](PrefabView view, float x, float y, float angle) {
+              placePrefabInstance(context, view.prefab, x, y, angle);
+            });
+
+        environment.set_function(
+            "find_define_prefabs",
+            [&context](string const& name) {
+              auto const id = context.getLayer().findStepIdByName(name);
+              if (id == ~0u) {
+                throw CoreException(format("No step named '{}'", name));
+              }
+              auto* step = dynamic_cast<DefinePrefabs*>(context.getLayer().getStepById(id));
+              if (!step) {
+                throw CoreException(format("Step '{}' is not a DefinePrefabs step", name));
+              }
+              return DefinePrefabsView{step};
+            });
+
+        environment.set_function(
+            "find_primitive_field",
+            [&context](string const& name) {
+              auto const id = context.getLayer().findStepIdByName(name);
+              if (id == ~0u) {
+                throw CoreException(format("No step named '{}'", name));
+              }
+              auto* step = dynamic_cast<PrimitiveField*>(context.getLayer().getStepById(id));
+              if (!step) {
+                throw CoreException(format("Step '{}' is not a PrimitiveField step", name));
+              }
+              return PrimitiveFieldView{step};
+            });
+
+        environment.set_function(
             "get_build_primitives",
             [&context]() {
-              return sol::as_table(asPrimitiveViews(context.getBuildPrimitives()));
+              return sol::as_table(toPrimitiveViews(context.getBuildPrimitives()));
             });
 
         environment.set_function(
@@ -118,7 +170,7 @@ void RunScript::execute(LayerBuildContext& context) const {
         environment.set_function(
             "find_build_primitives_overlapping",
             [&context](float x, float y, float width, float height) {
-              return sol::as_table(asPrimitiveViews(context.findBuildPrimitivesOverlapping(
+              return sol::as_table(toPrimitiveViews(context.findBuildPrimitivesOverlapping(
                   wp::BoundingBox(x, y, width, height))));
             });
       });

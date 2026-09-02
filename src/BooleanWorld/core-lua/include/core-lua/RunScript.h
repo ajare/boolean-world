@@ -14,6 +14,8 @@
 namespace bw {
 namespace core {
 
+class Prefab;
+
 // The LayerBuildStep that runs a Lua script to produce its Primitives. It is
 // a placing step, never a defining one: its output participates in the build
 // and folds in recipe order like any other step's (docs/adr/0014).
@@ -52,6 +54,14 @@ private:
   [[nodiscard]] Primitive* createPrimitive(std::string const& type) const;
 
   void placePrimitive(LayerBuildContext& context, Primitive* primitive) const;
+
+  // Clones prefab's Primitives into this step's storage, offset by (x, y) and
+  // rotated by angle (degrees, the same convention PrefabField's tiling
+  // angles use), preserving their parent links among each other, and appends
+  // the clones to context. The Prefab's own Primitives are never touched -
+  // instances are copies (docs spec #366).
+  void placePrefabInstance(
+      LayerBuildContext& context, Prefab const* prefab, float x, float y, float angle) const;
 
 public:
   explicit RunScript(ScriptRuntime& runtime);
