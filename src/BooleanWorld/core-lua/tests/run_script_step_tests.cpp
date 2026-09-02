@@ -821,6 +821,97 @@ void reloadingRebuildsExactlyTheLayersThatNameTheScript() {
           "a failed reload left a half-updated compiled chunk in the cache");
 }
 
+void coroutinesAdvanceAcrossTicksAndContainFailures() {
+  using bw::core::ScriptCoroutineStatus;
+  using bw::core::ScriptLibraries;
+
+  bw::core::ScriptRuntime runtime;
+  std::vector<std::string> progress;
+  runtime.load("progress", R"(
+    record("one")
+    coroutine.yield()
+    record("two")
+    coroutine.yield()
+    record("three")
+  )");
+
+  auto bindProgress = [&](std::string prefix) {
+    return [&, prefix = std::move(prefix)](sol::environment& environment) {
+      environment.set_function("record", [&, prefix](std::string const& value) {
+        progress.push_back(prefix + value);
+      });
+    };
+  };
+
+  auto progressing = runtime.startCoroutine(
+      "progress", ScriptLibraries::Base | ScriptLibraries::Coroutine,
+      bindProgress("live-"));
+  auto abandoned = runtime.startCoroutine(
+      "progress", ScriptLibraries::Base | ScriptLibraries::Coroutine,
+      bindProgress("abandoned-"));
+  require(runtime.getCoroutineStatus(progressing) ==
+              ScriptCoroutineStatus::Suspended,
+          "a newly started coroutine was not suspended");
+
+  runtime.abandonCoroutine(abandoned);
+  require(runtime.getCoroutineStatus(abandoned) ==
+              ScriptCoroutineStatus::Abandoned,
+          "abandoning a coroutine did not record its terminal status");
+
+  runtime.resumeCoroutine(progressing);
+  require(progress == std::vector<std::string>{"live-one"} &&
+              runtime.getCoroutineStatus(progressing) ==
+                  ScriptCoroutineStatus::Suspended,
+          "resuming a coroutine did not advance it to exactly its first yield");
+  runtime.tick();
+  require(progress ==
+              std::vector<std::string>{"live-one", "live-two"},
+          "a tick did not advance the live coroutine exactly once");
+  runtime.tick();
+  require(progress == std::vector<std::string>{
+                          "live-one", "live-two", "live-three"} &&
+              runtime.getCoroutineStatus(progressing) ==
+                  ScriptCoroutineStatus::Complete,
+          "the coroutine did not progress and complete across several frames");
+  runtime.tick();
+  require(progress.size() == 3,
+          "a terminal or abandoned coroutine remained in the live tick set");
+
+  runtime.load("bad-coroutine", R"(
+    coroutine.yield()
+    error("coroutine boom")
+  )");
+  runtime.load("healthy-coroutine", R"(
+    record("before")
+    coroutine.yield()
+    record("after")
+  )");
+  auto bad = runtime.startCoroutine(
+      "bad-coroutine", ScriptLibraries::Base | ScriptLibraries::Coroutine);
+  auto healthy = runtime.startCoroutine(
+      "healthy-coroutine", ScriptLibraries::Base | ScriptLibraries::Coroutine,
+      bindProgress("healthy-"));
+
+  runtime.tick();
+  bool reported = false;
+  try {
+    runtime.tick();
+  } catch (bw::core::ScriptException const& error) {
+    reported = std::string(error.what()).find("bad-coroutine") !=
+                   std::string::npos &&
+               std::string(error.what()).find("coroutine boom") !=
+                   std::string::npos;
+  }
+  require(reported && runtime.getCoroutineStatus(bad) ==
+                          ScriptCoroutineStatus::Failed,
+          "an errored coroutine was not reported and marked failed");
+  require(runtime.getCoroutineStatus(healthy) ==
+                  ScriptCoroutineStatus::Complete &&
+              progress[3] == "healthy-before" &&
+              progress[4] == "healthy-after",
+          "one coroutine's error stopped or corrupted another live coroutine");
+}
+
 void namingAMissingStepOrPrefabFailsTheStepWithTheName() {
   bw::core::ScriptRuntime runtime;
   runtime.load("missing-step", R"(find_define_prefabs("nope"))");
@@ -886,6 +977,7 @@ int main() {
     aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName();
     aWorldRoundTripsARunScriptStepAndDeclaresItsResources();
     reloadingRebuildsExactlyTheLayersThatNameTheScript();
+    coroutinesAdvanceAcrossTicksAndContainFailures();
     namingAMissingStepOrPrefabFailsTheStepWithTheName();
     std::cout << "RunScript build step and ScriptRuntime tests passed\n";
     return 0;

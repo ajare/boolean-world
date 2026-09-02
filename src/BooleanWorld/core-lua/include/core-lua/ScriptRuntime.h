@@ -3,8 +3,10 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
+#include <vector>
 
 #include <sol/sol.hpp>
 
@@ -15,6 +17,7 @@ namespace core {
 
 class Layer;
 class RunScript;
+struct ScriptCoroutineState;
 
 // A completed print() line, joined the way Lua's own print joins its
 // arguments (tostring'd, tab-separated). Given to the host rather than
@@ -66,6 +69,28 @@ public:
   [[nodiscard]] std::string const& getTraceback() const;
 };
 
+// The lifecycle state of an asynchronously-run chunk. A newly started chunk
+// is Suspended until its first resume. Complete and Failed coroutines are no
+// longer live and are therefore ignored by tick().
+enum class ScriptCoroutineStatus {
+  Suspended,
+  Complete,
+  Failed,
+  Abandoned,
+};
+
+// An opaque, copyable reference to one coroutine. Its implementation is kept
+// out of the public API; retaining a handle after completion retains only the
+// small status record, not the Lua thread or its environment.
+class ScriptCoroutineHandle {
+private:
+  std::shared_ptr<ScriptCoroutineState> mState;
+
+  explicit ScriptCoroutineHandle(std::shared_ptr<ScriptCoroutineState> state);
+
+  friend class ScriptRuntime;
+};
+
 // Holds the one Lua state, compiles scripts given as text, caches the
 // compiled chunks by name, and runs them. One exists per host and is handed
 // to each RunScript step when that step type is registered, so nothing
@@ -78,9 +103,10 @@ class ScriptRuntime {
 private:
   sol::state mLua;
 
-  // Compiled chunks by name. A chunk outlives the execution that ran it; the
-  // environment it ran in does not.
-  std::map<std::string, sol::protected_function> mChunks;
+  // Lua bytecode by name. Each execution loads a fresh function from this
+  // cached compiled form: concurrent coroutines must not share the function's
+  // mutable _ENV upvalue.
+  std::map<std::string, std::string> mChunks;
 
   // A failed reload replaces the previously compiled chunk. Keeping the
   // compile failure by name lets every RunScript step that names this script
@@ -103,11 +129,17 @@ private:
   friend class RunScript;
 
   PrintSink mPrintSink;
+  std::vector<std::shared_ptr<ScriptCoroutineState>> mCoroutines;
+
+  void finishCoroutine(
+      std::shared_ptr<ScriptCoroutineState> const& coroutine,
+      ScriptCoroutineStatus status);
 
 public:
   // printSink defaults to writing to stdout, so a host that has not wired up
   // its own log still sees script output somewhere.
   explicit ScriptRuntime(PrintSink printSink = defaultPrintSink());
+  ~ScriptRuntime();
 
   ScriptRuntime(ScriptRuntime const&) = delete;
 
@@ -144,6 +176,31 @@ public:
       std::string const& name,
       ScriptLibraries libraries,
       EnvironmentBinder const& bind = {});
+
+  // Creates a suspended execution of the named chunk. Unlike execute(), this
+  // environment intentionally remains alive across frames. Gameplay clients
+  // must therefore never bind build-time handles into it.
+  [[nodiscard]] ScriptCoroutineHandle startCoroutine(
+      std::string const& name,
+      ScriptLibraries libraries,
+      EnvironmentBinder const& bind = {});
+
+  // Advances a live coroutine until its next yield or completion. A script
+  // error marks it Failed, releases its Lua resources, and is reported as a
+  // ScriptException. Resuming a non-suspended coroutine is an error.
+  void resumeCoroutine(ScriptCoroutineHandle const& handle);
+
+  [[nodiscard]] ScriptCoroutineStatus getCoroutineStatus(
+      ScriptCoroutineHandle const& handle) const;
+
+  // Stops a live coroutine and immediately releases its Lua thread and
+  // environment. Abandoning an already terminal coroutine is harmless.
+  void abandonCoroutine(ScriptCoroutineHandle const& handle);
+
+  // Resumes every coroutine that was live at the start of this tick exactly
+  // once. All are advanced even if one fails; the first failure is rethrown
+  // after the remaining live coroutines have had their turn.
+  void tick();
 
   // The state the chunks and their bindings live in. Exposed for the binding
   // code in this library, which registers its usertypes once against the

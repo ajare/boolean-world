@@ -1,11 +1,13 @@
 #include "core-lua/ScriptRuntime.h"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <exception>
 #include <format>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <set>
 #include <string_view>
 
@@ -16,6 +18,17 @@ namespace bw {
 namespace core {
 
 using namespace std;
+
+struct ScriptCoroutineState {
+  ScriptRuntime* owner;
+  ScriptCoroutineStatus status = ScriptCoroutineStatus::Suspended;
+  string scriptName;
+  // These are declared in the order needed for reverse destruction: the
+  // thread must remain rooted while references created on its state die.
+  optional<sol::thread> thread;
+  optional<sol::environment> environment;
+  int yieldedResults = 0;
+};
 
 namespace {
 
@@ -105,7 +118,7 @@ constexpr array baseNames = {
 // A shallow copy, so a script that assigns into math or string changes only
 // its own copy. Without this the fresh environment would still leave one
 // execution able to reach the next through a shared library table.
-sol::table copyLibrary(sol::state& lua, sol::table const& library) {
+sol::table copyLibrary(sol::state_view lua, sol::table const& library) {
   auto result = lua.create_table();
   for (auto const& [key, value] : library) {
     result.set(key, value);
@@ -114,7 +127,7 @@ sol::table copyLibrary(sol::state& lua, sol::table const& library) {
 }
 
 void addLibrary(
-    sol::state& lua,
+    sol::state_view lua,
     sol::environment& environment,
     ScriptLibraries libraries,
     ScriptLibraries library,
@@ -129,8 +142,8 @@ void addLibrary(
 // Joins arguments the way Lua's own print does - tostring'd and
 // tab-separated - and hands the finished line to sink, rather than writing
 // anywhere itself.
-void bindPrint(sol::state& lua, sol::environment& environment, PrintSink const& sink) {
-  environment.set_function("print", [&lua, sink](sol::variadic_args args) {
+void bindPrint(sol::state_view lua, sol::environment& environment, PrintSink const& sink) {
+  environment.set_function("print", [lua, sink](sol::variadic_args args) {
     sol::function tostringFn = lua["tostring"];
     string line;
     bool first = true;
@@ -145,7 +158,42 @@ void bindPrint(sol::state& lua, sol::environment& environment, PrintSink const& 
   });
 }
 
+sol::environment makeEnvironment(
+    sol::state_view lua,
+    PrintSink const& printSink,
+    ScriptLibraries libraries,
+    ScriptRuntime::EnvironmentBinder const& bind) {
+  sol::environment environment(lua, sol::create);
+
+  if (contains(libraries, ScriptLibraries::Base)) {
+    for (auto const* baseName : baseNames) {
+      environment.set(baseName, lua[baseName]);
+    }
+    bindPrint(lua, environment, printSink);
+  }
+
+  addLibrary(lua, environment, libraries, ScriptLibraries::Table, "table");
+  addLibrary(lua, environment, libraries, ScriptLibraries::String, "string");
+  addLibrary(lua, environment, libraries, ScriptLibraries::Math, "math");
+  addLibrary(lua, environment, libraries, ScriptLibraries::Coroutine, "coroutine");
+
+  if (bind) {
+    bind(environment);
+  }
+  return environment;
+}
+
+int appendBytecode(lua_State*, void const* bytes, size_t size, void* output) {
+  static_cast<string*>(output)->append(static_cast<char const*>(bytes), size);
+  return 0;
+}
+
 }  // namespace
+
+ScriptCoroutineHandle::ScriptCoroutineHandle(
+    shared_ptr<ScriptCoroutineState> state)
+    : mState(move(state)) {
+}
 
 ScriptException::ScriptException(
     string message, uint32_t lineNumber, string traceback)
@@ -172,6 +220,15 @@ ScriptRuntime::ScriptRuntime(PrintSink printSink)
       sol::lib::coroutine);
 }
 
+ScriptRuntime::~ScriptRuntime() {
+  // Handles may outlive their runtime. Release every Lua reference while the
+  // state is still alive, leaving those handles as status-only records.
+  while (!mCoroutines.empty()) {
+    auto coroutine = mCoroutines.back();
+    finishCoroutine(coroutine, ScriptCoroutineStatus::Abandoned);
+  }
+}
+
 void ScriptRuntime::load(string const& name, string const& text) {
   // The leading '@' is Lua's own convention for a named source, and is what
   // makes an error report the script's name rather than its whole text.
@@ -190,8 +247,17 @@ void ScriptRuntime::load(string const& name, string const& text) {
     throw ScriptException(failure.message, failure.lineNumber, "");
   }
 
+  string bytecode;
+  sol::protected_function compiled = chunk;
+  compiled.push();
+  int const dumpResult = lua_dump(mLua.lua_state(), appendBytecode, &bytecode, 0);
+  lua_pop(mLua.lua_state(), 1);
+  if (dumpResult != 0) {
+    throw CoreException(format("Lua script '{}' could not be cached", name));
+  }
+
   mCompileFailures.erase(name);
-  mChunks.insert_or_assign(name, chunk);
+  mChunks.insert_or_assign(name, move(bytecode));
 }
 
 void ScriptRuntime::reload(string const& name, string const& text) {
@@ -260,35 +326,20 @@ void ScriptRuntime::execute(
     throw CoreException(format("No Lua script named '{}' has been loaded", name));
   }
 
-  // A fresh table with no globals behind it: what a script assigns goes here
-  // and dies with the execution, and nothing an earlier execution assigned is
-  // reachable from this one.
-  sol::environment environment(mLua, sol::create);
-
-  if (contains(libraries, ScriptLibraries::Base)) {
-    for (auto const* baseName : baseNames) {
-      environment.set(baseName, mLua[baseName]);
-    }
-    bindPrint(mLua, environment, mPrintSink);
+  // Instantiate the cached bytecode so this call owns its function and _ENV.
+  // A fresh table with no globals behind it means nothing survives execution.
+  auto loaded = mLua.load(chunk->second, "@" + name, sol::load_mode::binary);
+  if (!loaded.valid()) {
+    throw CoreException(format("Cached Lua script '{}' could not be loaded", name));
   }
-
-  addLibrary(mLua, environment, libraries, ScriptLibraries::Table, "table");
-  addLibrary(mLua, environment, libraries, ScriptLibraries::String, "string");
-  addLibrary(mLua, environment, libraries, ScriptLibraries::Math, "math");
-  addLibrary(mLua, environment, libraries, ScriptLibraries::Coroutine, "coroutine");
-
-  if (bind) {
-    bind(environment);
-  }
-
-  // The chunk is cached and reused; its environment is replaced before every
-  // call, so the one it ran in last time is not what it runs in now.
-  sol::set_environment(environment, chunk->second);
+  sol::protected_function function = loaded;
+  auto environment = makeEnvironment(mLua, mPrintSink, libraries, bind);
+  sol::set_environment(environment, function);
 
   sol::protected_function_result result;
   {
     InstructionBudgetGuard instructionBudget(mLua.lua_state());
-    result = chunk->second();
+    result = function();
   }
 
   if (!result.valid()) {
@@ -297,6 +348,141 @@ void ScriptRuntime::execute(
     throw ScriptException(
         format("Lua script '{}' failed: {}", name, firstLine(traceback)),
         findLineNumber(name, traceback), traceback);
+  }
+}
+
+ScriptCoroutineHandle ScriptRuntime::startCoroutine(
+    string const& name,
+    ScriptLibraries libraries,
+    EnvironmentBinder const& bind) {
+  if (auto failure = mCompileFailures.find(name);
+      failure != mCompileFailures.end()) {
+    throw ScriptException(
+        failure->second.message, failure->second.lineNumber, "");
+  }
+
+  auto chunk = mChunks.find(name);
+  if (chunk == mChunks.end()) {
+    throw CoreException(format("No Lua script named '{}' has been loaded", name));
+  }
+
+  auto state = make_shared<ScriptCoroutineState>();
+  state->owner = this;
+  state->scriptName = name;
+  state->environment.emplace(
+      makeEnvironment(mLua, mPrintSink, libraries, bind));
+  state->thread.emplace(sol::thread::create(mLua));
+
+  lua_State* coroutine = state->thread->thread_state();
+  string const sourceName = "@" + name;
+  if (luaL_loadbufferx(
+          coroutine, chunk->second.data(), chunk->second.size(),
+          sourceName.c_str(), "b") != LUA_OK) {
+    throw CoreException(format("Cached Lua script '{}' could not be loaded", name));
+  }
+  state->environment->push();
+  lua_xmove(mLua.lua_state(), coroutine, 1);
+  if (!lua_setupvalue(coroutine, 1, 1)) {
+    lua_pop(coroutine, 1);
+    throw CoreException(format("Lua script '{}' has no environment", name));
+  }
+
+  mCoroutines.push_back(state);
+  return ScriptCoroutineHandle(move(state));
+}
+
+void ScriptRuntime::finishCoroutine(
+    shared_ptr<ScriptCoroutineState> const& coroutine,
+    ScriptCoroutineStatus status) {
+  coroutine->status = status;
+  if (coroutine->thread) {
+    lua_settop(coroutine->thread->thread_state(), 0);
+  }
+  coroutine->environment.reset();
+  coroutine->thread.reset();
+  erase(mCoroutines, coroutine);
+}
+
+void ScriptRuntime::resumeCoroutine(ScriptCoroutineHandle const& handle) {
+  auto coroutine = handle.mState;
+  if (!coroutine || coroutine->owner != this) {
+    throw CoreException("Coroutine handle does not belong to this ScriptRuntime");
+  }
+  if (coroutine->status != ScriptCoroutineStatus::Suspended ||
+      !coroutine->thread) {
+    throw CoreException("Only a suspended Lua coroutine can be resumed");
+  }
+
+  lua_State* lua = coroutine->thread->thread_state();
+  if (coroutine->yieldedResults > 0) {
+    lua_pop(lua, coroutine->yieldedResults);
+    coroutine->yieldedResults = 0;
+  }
+
+  int resultCount = 0;
+  int status = LUA_OK;
+  {
+    InstructionBudgetGuard instructionBudget(lua);
+    status = lua_resume(lua, nullptr, 0, &resultCount);
+  }
+
+  if (status == LUA_YIELD) {
+    coroutine->yieldedResults = resultCount;
+    return;
+  }
+  if (status == LUA_OK) {
+    lua_pop(lua, resultCount);
+    finishCoroutine(coroutine, ScriptCoroutineStatus::Complete);
+    return;
+  }
+
+  char const* message = lua_tostring(lua, -1);
+  luaL_traceback(lua, lua, message ? message : "unknown Lua error", 1);
+  string const traceback = lua_tostring(lua, -1);
+  lua_settop(lua, 0);
+  finishCoroutine(coroutine, ScriptCoroutineStatus::Failed);
+  throw ScriptException(
+      format(
+          "Lua script '{}' failed: {}", coroutine->scriptName,
+          firstLine(traceback)),
+      findLineNumber(coroutine->scriptName, traceback), traceback);
+}
+
+ScriptCoroutineStatus ScriptRuntime::getCoroutineStatus(
+    ScriptCoroutineHandle const& handle) const {
+  if (!handle.mState || handle.mState->owner != this) {
+    throw CoreException("Coroutine handle does not belong to this ScriptRuntime");
+  }
+  return handle.mState->status;
+}
+
+void ScriptRuntime::abandonCoroutine(ScriptCoroutineHandle const& handle) {
+  auto coroutine = handle.mState;
+  if (!coroutine || coroutine->owner != this) {
+    throw CoreException("Coroutine handle does not belong to this ScriptRuntime");
+  }
+  if (coroutine->status == ScriptCoroutineStatus::Suspended) {
+    finishCoroutine(coroutine, ScriptCoroutineStatus::Abandoned);
+  }
+}
+
+void ScriptRuntime::tick() {
+  auto const liveAtStart = mCoroutines;
+  exception_ptr firstFailure;
+  for (auto const& coroutine : liveAtStart) {
+    if (coroutine->status != ScriptCoroutineStatus::Suspended) {
+      continue;
+    }
+    try {
+      resumeCoroutine(ScriptCoroutineHandle(coroutine));
+    } catch (ScriptException const&) {
+      if (!firstFailure) {
+        firstFailure = current_exception();
+      }
+    }
+  }
+  if (firstFailure) {
+    rethrow_exception(firstFailure);
   }
 }
 
