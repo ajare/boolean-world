@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <willpower/common/BoundingBox.h>
+
 #include "core/Platform.h"
 #include "core/Serializable.h"
 
@@ -30,6 +32,13 @@ private:
   uint32_t mStepIndex;
   std::vector<Primitive*> const& mBuildPrimitives;
 
+  // Build-participating Primitives the executing step has appended so far
+  // this execute() call. findBuildPrimitivesOverlapping() scans this in
+  // addition to mBuildPrimitives, which is what lets a step avoid its own
+  // earlier output; getBuildPrimitives() deliberately does not include it, so
+  // it keeps reporting prior steps' output only.
+  std::vector<Primitive*> mAppendedBuildPrimitives;
+
   LayerBuildContext(
       Layer& layer,
       LayerBuildStep const* step,
@@ -41,6 +50,19 @@ private:
 public:
   [[nodiscard]] std::vector<Primitive*> const& getBuildPrimitives() const;
   [[nodiscard]] Layer& getLayer() const;
+
+  // The owning Layer's extents, so a script never needs the Layer for them.
+  [[nodiscard]] wp::BoundingBox const& getExtents() const;
+
+  // The build Primitives whose bounds overlap bounds - a bounds-only test,
+  // no exact shape check. Scoped to getBuildPrimitives(): prior steps' output
+  // plus whatever the executing step has appended so far, which is what makes
+  // self-avoidance possible for a step placing many Primitives in sequence.
+  // This makes the result order-dependent within a step. Linear scan, no
+  // spatial acceleration - optimise only if measurement shows it matters.
+  // Returns empty when nothing overlaps.
+  [[nodiscard]] std::vector<Primitive*> findBuildPrimitivesOverlapping(
+      wp::BoundingBox const& bounds) const;
 
   // The default ordering is one phase using the Primitive's authored
   // priority. Composite steps may provide local phases while retaining that

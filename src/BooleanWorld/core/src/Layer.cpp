@@ -38,6 +38,28 @@ Layer& LayerBuildContext::getLayer() const {
   return mLayer;
 }
 
+wp::BoundingBox const& LayerBuildContext::getExtents() const {
+  return mLayer.getExtents();
+}
+
+vector<Primitive*> LayerBuildContext::findBuildPrimitivesOverlapping(
+    wp::BoundingBox const& bounds) const {
+  vector<Primitive*> result;
+
+  auto testAndCollect = [&](vector<Primitive*> const& primitives) {
+    for (auto* primitive : primitives) {
+      if (bounds.intersectsBoundingObject(&primitive->getBounds())) {
+        result.push_back(primitive);
+      }
+    }
+  };
+
+  testAndCollect(mBuildPrimitives);
+  testAndCollect(mAppendedBuildPrimitives);
+
+  return result;
+}
+
 uint32_t LayerBuildContext::appendPrimitive(Primitive* primitive) {
   return appendPrimitive(primitive, 0, primitive->getPriority());
 }
@@ -46,6 +68,10 @@ uint32_t LayerBuildContext::appendPrimitive(
     Primitive* primitive,
     uint8_t phase,
     uint8_t relativePriority) {
+  if (mStep->primitivesParticipateInBuild()) {
+    mAppendedBuildPrimitives.push_back(primitive);
+  }
+
   return mLayer._appendBuiltPrimitive(
       primitive, mStep, mStepIndex, phase, relativePriority);
 }
