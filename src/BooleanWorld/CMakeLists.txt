@@ -4,6 +4,7 @@ target_include_directories(bw-common INTERFACE common/include)
 
 add_subdirectory(core)
 add_subdirectory(core-dll)
+add_subdirectory(core-lua)
 add_subdirectory(render)
 add_subdirectory(app)
 add_subdirectory(editor)

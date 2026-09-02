@@ -178,6 +178,11 @@ add_subdirectory(ext/concurrencpp EXCLUDE_FROM_ALL)
 target_precompile_headers(concurrencpp PRIVATE <chrono> <string>)
 set_target_properties(concurrencpp PROPERTIES FOLDER "Dependencies")
 
+# Lua and sol2 build differently from concurrencpp - upstream Lua has no
+# CMakeLists.txt of its own - so they get a dedicated wrapper. See
+# cmake/Lua.cmake.
+include(Lua)
+
 add_subdirectory(src/AppLib)
 add_subdirectory(src/BooleanWorld)
 add_subdirectory(src/Launcher)
