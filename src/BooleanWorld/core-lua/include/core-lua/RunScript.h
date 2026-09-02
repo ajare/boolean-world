@@ -33,6 +33,12 @@ private:
 
   std::string mScriptName;
 
+  // Authored resource references that are visible only inside the script's
+  // source and therefore cannot be discovered by static collection
+  // (docs/adr/0040). Authored order is preserved; World sorts and removes
+  // duplicates from the dependency projection.
+  std::vector<std::string> mExtraResourceNames;
+
   // Re-applied to math.random at the start of every execute(), so a scatter
   // reproduces exactly and changing the arrangement is an authored edit
   // rather than a side effect of rebuilding (docs/adr/0040).
@@ -95,15 +101,19 @@ public:
 
   [[nodiscard]] bool ownsPrimitive(Primitive const* primitive) const override;
 
-  // The name the script was loaded into the ScriptRuntime under. Serializing
-  // it as a resource name, along with the seed and the extra-resources list,
-  // is a later ticket.
+  [[nodiscard]] std::vector<std::string> collectDependentResourceNames() const override;
+
+  // The name the script was loaded into the ScriptRuntime under and the
+  // authored references visible only inside that script's source.
   void setScriptName(std::string const& name);
 
   [[nodiscard]] std::string const& getScriptName() const;
 
-  // The in-memory seed re-applied to math.random at the start of every
-  // execute(). Serializing it is a later ticket.
+  void setExtraResourceNames(std::vector<std::string> names);
+
+  [[nodiscard]] std::vector<std::string> const& getExtraResourceNames() const;
+
+  // Re-applied to math.random at the start of every execute().
   void setSeed(uint64_t seed);
 
   [[nodiscard]] uint64_t getSeed() const;

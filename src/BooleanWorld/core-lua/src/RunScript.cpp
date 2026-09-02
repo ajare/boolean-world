@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <format>
+#include <set>
 
 #include <core/CoreException.h>
 #include <core/DefinePrefabs.h>
@@ -33,6 +34,7 @@ LayerBuildStep* RunScript::copy(map<VertexTransformerObject const*, VertexTransf
   auto* result = new RunScript(*mRuntime);
   result->copyFrom(*this);
   result->mScriptName = mScriptName;
+  result->mExtraResourceNames = mExtraResourceNames;
   result->mSeed = mSeed;
   return result;
 }
@@ -213,6 +215,19 @@ bool RunScript::ownsPrimitive(Primitive const* primitive) const {
                 [primitive](auto const& built) { return built.get() == primitive; });
 }
 
+vector<string> RunScript::collectDependentResourceNames() const {
+  set<string> names;
+  if (!mScriptName.empty()) {
+    names.insert(mScriptName);
+  }
+  for (auto const& name : mExtraResourceNames) {
+    if (!name.empty()) {
+      names.insert(name);
+    }
+  }
+  return {names.begin(), names.end()};
+}
+
 void RunScript::setScriptName(string const& name) {
   if (name == mScriptName) {
     return;
@@ -224,6 +239,19 @@ void RunScript::setScriptName(string const& name) {
 
 string const& RunScript::getScriptName() const {
   return mScriptName;
+}
+
+void RunScript::setExtraResourceNames(vector<string> names) {
+  if (names == mExtraResourceNames) {
+    return;
+  }
+
+  mExtraResourceNames = move(names);
+  modify();
+}
+
+vector<string> const& RunScript::getExtraResourceNames() const {
+  return mExtraResourceNames;
 }
 
 void RunScript::setSeed(uint64_t seed) {
@@ -254,10 +282,23 @@ string const& RunScript::getFailureTraceback() const {
 
 void RunScript::serializeArgs(shared_ptr<Serializer> serializer, SerializationWorkData&) const {
   serializer->writeString("script", mScriptName);
+  serializer->writeUint64("seed", mSeed);
+  serializer->beginArray("extraResources");
+  for (auto const& name : mExtraResourceNames) {
+    serializer->writeString("", name);
+  }
+  serializer->endArray();
 }
 
 bool RunScript::deserializeArgs(shared_ptr<Serializer> serializer, SerializationWorkData&) {
   mScriptName = serializer->readString("script", true);
+  mSeed = serializer->readUint64("seed");
+  mExtraResourceNames.clear();
+  serializer->beginArray("extraResources");
+  while (serializer->nextArrayItem()) {
+    mExtraResourceNames.push_back(serializer->readString());
+  }
+  serializer->endArray();
   return true;
 }
 

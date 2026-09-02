@@ -19,6 +19,8 @@
 #include <core/LayerBuildStep.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
+#include <core/World.h>
+#include <core/YamlSerializer.h>
 
 #include <core-lua/CoreLua.h>
 #include <core-lua/RunScript.h>
@@ -41,6 +43,22 @@ bw::core::RectanglePolygon* rectangle(float x) {
 
 bool at(bw::core::Primitive const* primitive, float x) {
   return std::abs(primitive->getPosition().x - x) < .001f;
+}
+
+std::string serializeWorld(bw::core::World const& world) {
+  auto writer = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::toString());
+  bw::core::SerializationWorkData workData;
+  world.serialize(writer, workData);
+  return writer->getSerializedString();
+}
+
+bool deserializeWorld(std::string const& yaml, bw::core::World* world) {
+  auto reader = std::shared_ptr<bw::core::Serializer>(
+      bw::core::YamlSerializer::fromString(yaml));
+  reader->deserialize();
+  bw::core::SerializationWorkData workData{16.0f};
+  return world->deserialize(reader, workData);
 }
 
 bw::core::RunScript* addScriptStep(
@@ -668,6 +686,70 @@ void aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName() {
           "a script mutating a PrimitiveField Primitive's const handle was not rejected");
 }
 
+// Ticket #368: the public World serialization seam carries all authored
+// RunScript state and its exact dependency projection, then rebuilding the
+// loaded recipe reproduces the script's output.
+void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
+  bw::core::ScriptRuntime runtime;
+  bw::core::registerScriptStepTypes(runtime);
+  runtime.load("Scripts/scatter", R"(
+    local p = create_primitive("Rectangle")
+    p:set_size(8, 8)
+    p:set_position(math.random(100, 1000), 0)
+    place_primitive(p)
+  )");
+  runtime.load("Scripts/disabled", "");
+
+  bw::core::World source(512.0f, 16.0f);
+  auto* sourceLayer = source.getActiveLayer();
+  sourceLayer->getPrimitiveField()->addPrimitive(rectangle(0.0f));
+
+  auto* sourceStep = new bw::core::RunScript(runtime);
+  sourceStep->setScriptName("Scripts/scatter");
+  sourceStep->setSeed(0x123456789abcdef0ull);
+  sourceStep->setName("seeded scatter");
+  sourceStep->setExtraResourceNames(
+      {"Materials/stone", "Images/wall", "Materials/stone", "Scripts/scatter"});
+  auto const sourceStepIndex = sourceLayer->addStep(sourceStep);
+
+  auto* disabledStep = new bw::core::RunScript(runtime);
+  disabledStep->setScriptName("Scripts/disabled");
+  disabledStep->setName("disabled script");
+  auto const disabledStepIndex = sourceLayer->addStep(disabledStep);
+  sourceLayer->setStepEnabled(disabledStepIndex, false);
+
+  auto const yaml = serializeWorld(source);
+  auto dependencyReader = std::shared_ptr<bw::core::Serializer>(
+      bw::core::YamlSerializer::fromString(yaml));
+  dependencyReader->deserialize();
+  require(
+      bw::core::World::readDependentResourceNames(dependencyReader) ==
+          std::vector<std::string>{"Images/wall", "Materials/stone", "Scripts/disabled", "Scripts/scatter"},
+      "RunScript steps' serialized dependent resources were not exactly sorted and unique");
+
+  bw::core::World loaded(512.0f, 16.0f);
+  require(deserializeWorld(yaml, &loaded),
+          "a World containing a RunScript step did not deserialize");
+  auto* loadedLayer = loaded.getActiveLayer();
+  auto* loadedStep = dynamic_cast<bw::core::RunScript*>(
+      loadedLayer->getStep(sourceStepIndex));
+  require(loadedStep, "the loaded recipe did not restore its RunScript step type");
+  require(loadedStep->getScriptName() == "Scripts/scatter" &&
+              loadedStep->getSeed() == 0x123456789abcdef0ull &&
+              loadedStep->getExtraResourceNames() ==
+                  std::vector<std::string>{"Materials/stone", "Images/wall", "Materials/stone", "Scripts/scatter"} &&
+              loadedStep->getName() == "seeded scatter" &&
+              loadedStep->isEnabled(),
+          "a RunScript step lost authored state during its World round-trip");
+  require(!loadedLayer->getStep(disabledStepIndex)->isEnabled(),
+          "a disabled RunScript step was enabled by its World round-trip");
+  require(sourceLayer->getNumPrimitives() == 2 &&
+              loadedLayer->getNumPrimitives() == 2 &&
+              sourceLayer->getPrimitive(1)->getPosition() ==
+                  loadedLayer->getPrimitive(1)->getPosition(),
+          "the loaded RunScript recipe did not rebuild the same Primitives");
+}
+
 void namingAMissingStepOrPrefabFailsTheStepWithTheName() {
   bw::core::ScriptRuntime runtime;
   runtime.load("missing-step", R"(find_define_prefabs("nope"))");
@@ -731,6 +813,7 @@ int main() {
     placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged();
     aScriptReadsAPrimitiveFieldsPrimitivesAsConst();
     aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName();
+    aWorldRoundTripsARunScriptStepAndDeclaresItsResources();
     namingAMissingStepOrPrefabFailsTheStepWithTheName();
     std::cout << "RunScript build step and ScriptRuntime tests passed\n";
     return 0;
