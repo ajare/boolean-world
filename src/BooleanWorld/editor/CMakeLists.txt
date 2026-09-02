@@ -49,7 +49,7 @@ target_compile_definitions(editor PRIVATE
 target_compile_definitions(editor PRIVATE YAML_CPP_STATIC_DEFINE)
 
 target_link_libraries(editor PRIVATE
-    core Willpower.Geometry
+    core core-lua Willpower.Geometry
     BooleanWorldRender
     vendor::opengl ext::glew
     # mpp/mpp-data/mpp-helper/mpp-mesh/mpp-program/Utils are also pulled in
@@ -113,7 +113,7 @@ if(BUILD_TESTING)
         YAML_CPP_STATIC_DEFINE
         BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml")
     target_link_libraries(boolean_world_editor_world_renderer_smoke PRIVATE
-        core BooleanWorldRender Willpower.Application Willpower.Common
+        core core-lua BooleanWorldRender Willpower.Application Willpower.Common
         Willpower.Geometry vendor::opengl ext::glew
         ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3
         ext::yaml-cpp)
@@ -136,7 +136,7 @@ if(BUILD_TESTING)
         YAML_CPP_STATIC_DEFINE
         BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml")
     target_link_libraries(boolean_world_editor_render_system_smoke PRIVATE
-        core BooleanWorldRender Willpower.Application Willpower.Common
+        core core-lua BooleanWorldRender Willpower.Application Willpower.Common
         vendor::opengl ext::glew
         ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3
         ext::yaml-cpp)
@@ -165,7 +165,7 @@ if(BUILD_TESTING)
         BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml"
         BW_EDITOR_PREVIEW_TEST_WORLD="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/world-test-1.world.yaml")
     target_link_libraries(boolean_world_editor_preview_render_stack_smoke PRIVATE
-        core BooleanWorldRender Willpower.Application Willpower.Common
+        core core-lua BooleanWorldRender Willpower.Application Willpower.Common
         Willpower.Geometry vendor::opengl ext::glew
         ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3
         ext::yaml-cpp)
@@ -191,7 +191,7 @@ if(BUILD_TESTING)
         YAML_CPP_STATIC_DEFINE
         BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml")
     target_link_libraries(boolean_world_editor_sub_material_thumbnail_smoke PRIVATE
-        core BooleanWorldRender Willpower.Application Willpower.Common
+        core core-lua BooleanWorldRender Willpower.Application Willpower.Common
         Willpower.Geometry vendor::opengl ext::glew
         ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3
         ext::yaml-cpp)

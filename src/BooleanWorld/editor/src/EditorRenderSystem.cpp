@@ -15,6 +15,8 @@
 #include <willpower/application/resourcesystem/ResourceManager.h>
 #include <willpower/common/Logger.h>
 
+#include <core-lua/CoreLua.h>
+
 #include "EmbossingCatalog.h"
 #include "EmbossingCatalogResourceDefinitionFactory.h"
 #include "ProcMaterial.h"
@@ -83,6 +85,8 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
 
   mResourceMgr = new wp::application::resourcesystem::ResourceManager(
       mRenderSystem, mRenderResourceMgr, nullptr /* no audio in the editor */, mLogger);
+  mScriptRuntime = make_unique<bw::core::ScriptRuntime>(
+      [this](string const& message) { mLogger->info("Lua: " + message); });
 
   mResourceMgr->addResourceLocationFactory(
       "Directory",
@@ -101,6 +105,7 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
   // DLL.cpp); Map and ProtoEntity are app-only types the preview ignores.
   mResourceMgr->addResourceFactory(new ProcMaterialResourceFactory());
   mResourceMgr->addResourceFactory(new EmbossingCatalogResourceFactory());
+  bw::core::registerLuaScriptResourceType(*mResourceMgr);
   mResourceMgr->addResourceDefinitionFactory(
       new ProcMaterialResourceDefinitionFactory());
   mResourceMgr->addResourceDefinitionFactory(
@@ -137,6 +142,11 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
                     resource->getQualifiedName() + ": " + exception.what());
     }
   }
+
+  // Register only after the runtime and resource system have both completed
+  // startup, so every deserialized RunScript receives this host's live
+  // runtime (ADR-0038).
+  bw::core::registerScriptStepTypes(*mScriptRuntime);
 }
 
 bool EditorRenderSystem::loadWorldDependencies(
@@ -153,6 +163,20 @@ bool EditorRenderSystem::loadWorldDependencies(
       try {
         mResourceMgr->createResource(resource);
         mResourceMgr->loadResource(resource);
+        if (auto script = dynamic_pointer_cast<bw::core::LuaScriptResource>(
+                resource)) {
+          // Keep the exact authored spelling as the runtime key. In
+          // particular, an unqualified name resolved in the World namespace
+          // must still be executable by that unqualified RunScript name.
+          try {
+            script->loadInto(*mScriptRuntime, reference);
+          } catch (bw::core::ScriptException const& exception) {
+            // Keep the dependency resolved: ScriptRuntime caches this compile
+            // failure so the deserialized RunScript can report it as a failed
+            // build step alongside ordinary execution failures (#367).
+            mLogger->error(exception.what());
+          }
+        }
       } catch (...) {
         mResourceMgr->releaseResource(resource);
         throw;

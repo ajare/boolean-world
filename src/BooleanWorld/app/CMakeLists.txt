@@ -51,7 +51,7 @@ target_compile_definitions(BooleanWorld PRIVATE
 target_compile_definitions(BooleanWorld PRIVATE YAML_CPP_STATIC_DEFINE)
 
 target_link_libraries(BooleanWorld PRIVATE
-    core AppLib BooleanWorldRender
+    core core-lua AppLib BooleanWorldRender
     Willpower.Application Willpower.Collide Willpower.Common
     WillPower.Viz
     ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils
@@ -274,7 +274,7 @@ if(BUILD_TESTING)
         src/Map.cpp)
     target_include_directories(boolean_world_map_load_tests PRIVATE include)
     target_link_libraries(boolean_world_map_load_tests PRIVATE
-        core AppLib BooleanWorldRender Willpower.Application Willpower.Common)
+        core core-lua AppLib BooleanWorldRender Willpower.Application Willpower.Common)
     target_compile_definitions(boolean_world_map_load_tests PRIVATE
         BW_MAP_TEST_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources")
     target_compile_features(boolean_world_map_load_tests PRIVATE cxx_std_23)

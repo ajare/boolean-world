@@ -10,6 +10,12 @@ class RenderSystem;
 class ResourceManager;
 }  // namespace mpp
 
+namespace bw {
+namespace core {
+class ScriptRuntime;
+}  // namespace core
+}  // namespace bw
+
 namespace wp {
 class Logger;
 namespace application {
@@ -85,6 +91,7 @@ private:
   mpp::RenderSystem* mRenderSystem{};
   mpp::ResourceManager* mRenderResourceMgr{};
   wp::application::resourcesystem::ResourceManager* mResourceMgr{};
+  std::unique_ptr<bw::core::ScriptRuntime> mScriptRuntime;
   std::vector<std::shared_ptr<
       wp::application::resourcesystem::Resource>> mWorldDependencies;
   // Every ImageResource the manifest declares, created, loaded, and acquired

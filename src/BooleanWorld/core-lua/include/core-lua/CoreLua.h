@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core-lua/LuaScriptResource.h"
 #include "core-lua/ScriptRuntime.h"
 
 namespace bw {

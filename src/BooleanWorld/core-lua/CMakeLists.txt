@@ -4,12 +4,14 @@
 
 add_library(core-lua STATIC
     src/CoreLua.cpp
+    src/LuaScriptResource.cpp
     src/RunScript.cpp
     src/ScriptBindings.cpp
     src/ScriptRuntime.cpp)
 
 target_include_directories(core-lua PUBLIC include)
-target_link_libraries(core-lua PUBLIC core lua::lua sol2::sol2)
+target_link_libraries(core-lua PUBLIC
+    core lua::lua sol2::sol2 Willpower.Application)
 bw_add_header_filter(core-lua "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 target_compile_features(core-lua PRIVATE cxx_std_23)
@@ -29,6 +31,17 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_core_lua_expression_tests)
     add_test(NAME boolean_world_core_lua_expression
              COMMAND boolean_world_core_lua_expression_tests)
+
+    add_executable(boolean_world_lua_script_resource_tests
+        tests/lua_script_resource_tests.cpp)
+    target_link_libraries(boolean_world_lua_script_resource_tests PRIVATE
+        core-lua ext::Utils)
+    target_compile_features(boolean_world_lua_script_resource_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_lua_script_resource_tests)
+    bw_output_dirs(boolean_world_lua_script_resource_tests)
+    bw_deploy_runtime_dlls(boolean_world_lua_script_resource_tests)
+    add_test(NAME boolean_world_lua_script_resource
+             COMMAND boolean_world_lua_script_resource_tests)
 
     add_executable(boolean_world_run_script_tests
         tests/run_script_step_tests.cpp)

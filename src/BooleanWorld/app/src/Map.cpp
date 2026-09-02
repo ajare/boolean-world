@@ -6,8 +6,10 @@
 #include <willpower/application/resourcesystem/ResourceManager.h>
 
 #include <core/BinarySerializer.h>
+#include <core/CoreException.h>
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/YamlSerializer.h>
+#include <core-lua/CoreLua.h>
 
 #include "Map.h"
 
@@ -32,8 +34,12 @@ Map::Map(string const& name,
          string const& source,
          map<string, string> const& tags,
          application::resourcesystem::ResourceLocation* location,
-         wp::Logger* logger)
-    : applib::Map(name, namesp, source, tags, location, 512), mWorld(nullptr), mwLogger(logger) {
+         wp::Logger* logger,
+         bw::core::ScriptRuntime* scriptRuntime)
+    : applib::Map(name, namesp, source, tags, location, 512),
+      mWorld(nullptr),
+      mwLogger(logger),
+      mScriptRuntime(scriptRuntime) {
 }
 
 Map::~Map() {
@@ -96,6 +102,21 @@ void Map::loadWorldFromYaml(
       try {
         resourceMgr->createResource(dependency);
         resourceMgr->loadResource(dependency);
+        if (auto script = dynamic_pointer_cast<bw::core::LuaScriptResource>(
+                dependency)) {
+          if (!mScriptRuntime) {
+            throw bw::core::CoreException(
+                "The Map host has no ScriptRuntime for a LuaScript resource");
+          }
+          try {
+            script->loadInto(*mScriptRuntime, reference);
+          } catch (bw::core::ScriptException const& error) {
+            // The runtime retains compile failures by name. Let the World
+            // deserialize so its RunScript step can expose the failure in the
+            // same way as an execution error (#367).
+            mwLogger->error(error.what());
+          }
+        }
       } catch (...) {
         resourceMgr->releaseResource(dependency);
         throw;

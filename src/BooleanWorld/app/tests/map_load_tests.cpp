@@ -1,3 +1,4 @@
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -5,7 +6,9 @@
 #include <stdexcept>
 #include <string>
 
+#include <willpower/application/resourcesystem/DirectoryResourceLocation.h>
 #include <willpower/application/resourcesystem/Resource.h>
+#include <willpower/application/resourcesystem/ResourceManager.h>
 
 #define class struct
 #include <willpower/application/resourcesystem/TextFileResource.h>
@@ -17,6 +20,8 @@
 #include <core/RectanglePolygon.h>
 #include <core/World.h>
 #include <core/YamlSerializer.h>
+#include <core-lua/CoreLua.h>
+#include <core-lua/RunScript.h>
 
 #include "Map.h"
 
@@ -142,6 +147,71 @@ void yamlWorldsWithoutTheWorldYamlExtensionAreRejected() {
 
   require(threw, "a YAML World without the .world.yaml extension was accepted");
 }
+
+void theGameResolvesAndRunsAWorldsLuaScript() {
+  namespace resources = wp::application::resourcesystem;
+
+  auto const unique =
+      std::chrono::steady_clock::now().time_since_epoch().count();
+  auto root = std::filesystem::temp_directory_path() /
+              ("boolean-world-map-lua-script-resource-" +
+               std::to_string(unique));
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  {
+    std::ofstream script(root / "script.lua");
+    script << R"(local p = create_primitive("Rectangle")
+                  p:set_size(8, 8)
+                  place_primitive(p))";
+    std::ofstream manifest(root / "Resources.yaml");
+    manifest << R"(Resources:
+  Namespace:
+    name: "World"
+    Resource:
+      type: "LuaScript"
+      name: "MapScript"
+      location: "script.lua"
+)";
+  }
+
+  bw::core::ScriptRuntime sourceRuntime;
+  sourceRuntime.load("MapScript", R"(local p = create_primitive("Rectangle")
+                                      p:set_size(8, 8)
+                                      place_primitive(p))");
+  bw::core::World source(512.0f, 16.0f);
+  auto* sourceStep = new bw::core::RunScript(sourceRuntime);
+  sourceStep->setScriptName("MapScript");
+  source.getActiveLayer()->addStep(sourceStep);
+  auto writer = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::toString());
+  auto workData = bw::core::SerializationWorkData{};
+  source.serialize(writer, workData);
+
+  wp::Logger logger;
+  resources::ResourceManager manager(nullptr, nullptr, nullptr, &logger);
+  manager.addResourceLocationFactory(
+      "Directory",
+      [&logger](std::string const& path,
+                std::string const& definition) -> resources::ResourceLocation* {
+        return new resources::DirectoryResourceLocation(
+            &logger, path, definition);
+      });
+  bw::core::registerLuaScriptResourceType(manager);
+  manager.addResourceLocation("Directory", root.string(), "Resources.yaml");
+  manager.scanLocations();
+
+  bw::core::ScriptRuntime gameRuntime;
+  bw::core::registerScriptStepTypes(gameRuntime);
+  Map map("map", "World", "", {}, nullptr, &logger, &gameRuntime);
+  map.loadWorldFromYaml(
+      makeWorldResource(writer->getSerializedString()), &manager);
+
+  require(gameRuntime.isLoaded("MapScript"),
+          "the game did not compile the resolved LuaScript");
+  require(map.getWorld()->getActiveLayer()->getNumPrimitives() == 1,
+          "the game did not run the World resource's RunScript step");
+  std::filesystem::remove_all(root);
+}
 }  // namespace
 
 int main() {
@@ -153,6 +223,7 @@ int main() {
     failedLoadRetainsThePreviousWorld();
     resourcesWithAWorldExtensionLoadAsBinary();
     yamlWorldsWithoutTheWorldYamlExtensionAreRejected();
+    theGameResolvesAndRunsAWorldsLuaScript();
     std::cout << "Map failed-load ownership regression passed\n";
     return 0;
   } catch (std::exception const& error) {
