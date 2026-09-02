@@ -84,6 +84,26 @@ _Avoid_: PlacePrefabs (rejected in favour of the PrimitiveField-echoing name)
 How an occupied Tile on the 32×32, 64×64, or 128×128 grid composes into the global fold: Add or Replace. Add applies the Prefab's Primitives normally. Replace first contributes an exact Tile-sized Difference square, clearing all geometry accumulated below it, then applies the Prefab's Primitives. The mode defaults to Replace and exists only while the Tile is occupied. The 256×256 grid has no Tile mode; its occupants are always Add.
 _Avoid_: blend mode, cell operation
 
+**RunScript (step)**:
+The LayerBuildStep that runs a Lua script to produce its Primitives. It is a placing step, never a defining one: it reads the build-participating Primitives of preceding enabled steps, may look up other steps and their Prefabs by name, and appends new or instanced Primitives, but it never mutates what an earlier step produced and never defines a Prefab. Its authored state is the name of its Lua script, a seed, an extra-resources list, and its own step name; the script text itself lives outside the World, in the Lua script it names. Named for what it does, after DefinePrefabs, rather than for a spread of content laid over the Layer as PrimitiveField and PrefabField are.
+_Avoid_: ScriptField, LuaStep, script primitive
+
+**ScriptRuntime**:
+The single object that holds a Lua state, compiles scripts given as text, caches the compiled chunks by name, and executes them. One exists per host, owned by the editor or the game and handed to each RunScript step when that step type is registered. It resolves nothing itself: a script reaches it as a string, so it never consults the resource system. It runs a chunk either synchronously to completion or as a coroutine advanced over successive frames, and each synchronous execution gets a fresh environment, so nothing a script leaves behind survives into the next rebuild.
+_Avoid_: script manager, script system, Lua VM (which is the state it owns, not the class)
+
+**Lua script**:
+A World dependent resource holding the text of one Lua program, authored outside the editor and loaded by name like any other Resource. A RunScript step names one. Because its text is a resource rather than World content, editing it is not part of a World's undo history, and reloading it recompiles the cached chunk and rebuilds every Layer whose steps name it.
+_Avoid_: script asset, embedded script, script file (the path is an implementation detail of the Resource)
+
+**Restricted environment**:
+The set of Lua values a build script may see: base functions less those that load code or drive the collector, plus table, string, math, and a logged print. It excludes everything that could make a build depend on something outside the recipe — the filesystem, the clock, the module loader — so that re-running a Layer's steps always reproduces the same Primitives. Randomness is permitted but is seeded from the RunScript step's serialized seed at the start of every execution, making a scatter reproducible and a reroll an authored change.
+_Avoid_: sandbox (which suggests a security boundary; this is a determinism boundary), script globals
+
+**Step name**:
+An optional, non-unique label on a LayerBuildStep, existing so that a script can find a step without knowing its id. Unlike the step's id, which is stable for the owning Layer's lifetime, a name is authored and may be changed or duplicated; a script naming a step or Prefab that has since been renamed fails at its next execution, and repairing it is the script author's work.
+_Avoid_: step id (the stable handle), step label, step title
+
 **Wall collision override**:
 A per-edge tri-state on a MeshPrimitive's Ring: Unset, Collides, or Doesn't collide. It is editable in the editor's Edge sub-mode only for an edge used by exactly one polygon in that Primitive's own mesh topology (Willpower's `External` edge connectivity). Unset delegates to generated collision: Border walls collide and Step walls do not unless their floor step is too tall or their clearance is insufficient. Collides additionally blocks a wall; Doesn't collide can open a Border but cannot bypass a Step wall's physical height or clearance constraints. When collinear authored edges contribute to one generated edge, Doesn't collide dominates Collides and Unset contributes nothing. An override never creates a wall where the fold produces none.
 _Avoid_: wall property, collision flag (ambiguous with the runtime collision system), border flag (border here is local mesh-topology "one polygon", not the Arrangement's cross-primitive Border edge — the two usually but not always coincide)

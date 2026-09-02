@@ -44,6 +44,9 @@ removed the dependency entirely. Geometry terms are defined in
 | [0035](0035-emboss-presets-are-a-single-global-catalog.md) | Emboss presets are a single global catalog | Accepted |
 | [0036](0036-wall-masks-interpolate-a-second-parameter-set-into-a-single-material-evaluation.md) | Wall masks interpolate a second parameter set into a single material evaluation | Accepted |
 | [0037](0037-step-and-water-mantle-heights-are-player-capabilities.md) | Step and water-mantle heights are player capabilities | Accepted |
+| [0038](0038-layer-build-steps-are-registered-dynamically.md) | LayerBuildStep types are registered dynamically, not compiled into core | Accepted |
+| [0039](0039-a-failed-build-step-halts-the-layers-build.md) | A failed LayerBuildStep halts its Layer's build | Accepted |
+| [0040](0040-build-scripts-are-deterministic-by-construction.md) | Build scripts are deterministic by construction | Accepted |
 
 ## World geometry rewrite scope
 
