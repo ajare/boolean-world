@@ -684,6 +684,8 @@ void copyingALayerCopiesItsStepsAndRebuildsFromThem() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     theStepRegistryEnumeratesAndInstantiatesEachRegisteredType();
     aNewLayerStartsWithOneEmptyPrimitiveFieldStep();
     executingAPrimitiveFieldStepAddsItsEmbeddedPrimitives();

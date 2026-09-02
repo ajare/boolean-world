@@ -547,6 +547,21 @@ vector<ComplexPolygon> const& Primitive::getVertices() const {
   return mVertices;
 }
 
+void Primitive::collectDependentResourceNames(set<string>& names) const {
+  for (auto const& polygon : getVertices()) {
+    for (auto const& ring : polygon) {
+      for (auto const& vertex : ring) {
+        if (auto image = vertex.edgeNormalMap.imageData()) {
+          names.insert(image->resourceName);
+        }
+        if (auto mask = vertex.edgeWallMask.imageData()) {
+          names.insert(mask->resourceName);
+        }
+      }
+    }
+  }
+}
+
 double Primitive::getArea() const {
   double area = 0.0;
   for (auto const& complexPolygon : getVertices()) {

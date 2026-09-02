@@ -7,6 +7,7 @@
 #include <spdlog/spdlog.h>
 
 #include <core/Layer.h>
+#include <core/LayerBuildStep.h>
 #include <core/RectanglePolygon.h>
 #include <core/WorldTriggerLine.h>
 
@@ -156,6 +157,8 @@ void aDotLayerYamlFileIsNotConfusedWithAPlainYamlFile() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     aLayerExportsAndImportsThroughDotLayerBinaryFile();
     aLayerExportsAndImportsThroughDotLayerYamlFile();
     importingALayerWhoseIdCollidesGetsANonCollidingOne();

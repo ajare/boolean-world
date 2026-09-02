@@ -4,6 +4,8 @@
 
 #include <willpower/application/StateFactory.h>
 
+#include <core/LayerBuildStep.h>
+
 #include <applib/ModelInstance.h>
 #include <applib/StateLoad.h>
 #include <applib/StateUnload.h>
@@ -156,6 +158,11 @@ __declspec(dllexport) wp::application::StateFactory* dllGetNextStateFactory() {
 
 __declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
   dllState.resetStateFactoryEnumeration();
+
+  // docs/adr/0038: LayerBuildStep types are no longer compiled into core's
+  // own registry, so every host must register the ones it wants Worlds to
+  // be able to deserialize.
+  bw::core::LayerBuildStep::registerCoreTypes();
 
   auto entityHandlerFactory = [](shared_ptr<applib::AnimationDatabase> animDatabase) {
     return new EntityHandlerBooleanWorld(animDatabase, gInputOptions);

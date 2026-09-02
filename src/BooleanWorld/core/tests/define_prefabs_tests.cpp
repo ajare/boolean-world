@@ -299,6 +299,8 @@ void registryConstructsDefinePrefabsByTypeName() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     registryConstructsDefinePrefabsByTypeName();
     squareTilingHasTheCoreRotationAngleTable();
     prefabIdsNamesAndStepArgumentsBehaveAsAuthoredData();

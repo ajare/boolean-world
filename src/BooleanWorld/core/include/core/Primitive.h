@@ -3,6 +3,8 @@
 #include <vector>
 #include <array>
 #include <optional>
+#include <set>
+#include <string>
 
 #include <willpower/common/Vector2.h>
 #include <willpower/common/BoundingBox.h>
@@ -219,6 +221,11 @@ public:
   [[nodiscard]] Triangulation const& getPickingTriangulation() const;
 
   virtual std::vector<ComplexPolygon> const& getVertices() const;
+
+  // Inserts the resource names this Primitive's vertices reference directly
+  // (edge normal maps, wall masks) into names. Used by the LayerBuildStep
+  // types that own Primitives to answer collectDependentResourceNames().
+  void collectDependentResourceNames(std::set<std::string>& names) const;
 
   // This Primitive's own raw area, from its own contours alone, as though it
   // existed in isolation - independent of any other Primitive or the

@@ -9,6 +9,7 @@
 #include <core/Defines.h>
 #include <common/MaterialRegistry.h>
 #include <core/EmbossingCatalogData.h>
+#include <core/LayerBuildStep.h>
 #include <core/ProcMaterialData.h>
 #include <core/SerializationWorkData.h>
 #include <core/World.h>
@@ -208,6 +209,8 @@ void migratedWorldReferencesThePreservedCombinationAndRoundTrips(fs::path const&
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     fs::path resources = BW_MATERIAL_MIGRATION_RESOURCE_DIR;
     generatedCatalogPreservesPinnedValuesAndRoundTrips(resources);
     globalEmbossingCatalogPreservesBuiltInRelief(resources);

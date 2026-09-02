@@ -211,6 +211,16 @@ bool DefinePrefabs::ownsPrimitive(Primitive const* primitive) const {
   return mSelectedPrefab && mSelectedPrefab->ownsPrimitive(primitive);
 }
 
+vector<string> DefinePrefabs::collectDependentResourceNames() const {
+  set<string> names;
+  for (auto const* prefab : mPrefabs) {
+    for (auto const* primitive : prefab->getPrimitives()) {
+      primitive->collectDependentResourceNames(names);
+    }
+  }
+  return {names.begin(), names.end()};
+}
+
 Prefab* DefinePrefabs::addPrefab(string const& name) {
   if (mNextPrefabId == numeric_limits<uint32_t>::max()) {
     throw CoreException("No Prefab ids remain in this DefinePrefabs step");

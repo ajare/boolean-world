@@ -14,13 +14,8 @@ LayerBuildStep::LayerBuildStep()
     : mId(~0u), mEnabled(true) {
 }
 
-Registry<LayerBuildStep> const& LayerBuildStep::registry() {
-  static const Registry<LayerBuildStep> stepRegistry(
-      "layer build step",
-      {{"DefinePrefabs", []() { return new DefinePrefabs; }},
-       {"PrefabField", []() { return new PrefabField; }},
-       {"PrimitiveField", []() { return new PrimitiveField; }}});
-
+Registry<LayerBuildStep>& LayerBuildStep::registry() {
+  static Registry<LayerBuildStep> stepRegistry("layer build step");
   return stepRegistry;
 }
 
@@ -30,6 +25,16 @@ vector<string> LayerBuildStep::getRegisteredTypes() {
 
 LayerBuildStep* LayerBuildStep::instantiate(string const& type) {
   return registry().create(type);
+}
+
+void LayerBuildStep::registerType(string const& type, Factory factory) {
+  registry().registerType(type, move(factory));
+}
+
+void LayerBuildStep::registerCoreTypes() {
+  registerType("DefinePrefabs", []() { return new DefinePrefabs; });
+  registerType("PrefabField", []() { return new PrefabField; });
+  registerType("PrimitiveField", []() { return new PrimitiveField; });
 }
 
 void LayerBuildStep::copyFrom(LayerBuildStep const& other) {
@@ -76,6 +81,10 @@ void LayerBuildStep::setEnabled(bool enabled) {
 
 bool LayerBuildStep::isEnabled() const {
   return mEnabled;
+}
+
+vector<string> LayerBuildStep::collectDependentResourceNames() const {
+  return {};
 }
 
 }  // namespace core

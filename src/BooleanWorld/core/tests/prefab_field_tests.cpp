@@ -463,6 +463,8 @@ void overwriteAndClearUseOneOccupantPerTile() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     prefabFieldRegistersBindsByStableIdAndProtectsItsDefinitions();
     prefabFieldBindingSurvivesSerialization();
     sizedTileInstancesAndModesSurviveSerialization();

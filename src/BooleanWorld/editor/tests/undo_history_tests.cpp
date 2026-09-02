@@ -665,6 +665,8 @@ void aThrowingActionLeavesNoTransactionInProgressOrStrayUndoEntry() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     undoAndRedoPreserveEachIntermediateSnapshot();
     undoAndRedoRestoreNonPrimitiveSelections();
     prefabEditsAreUndoableAndRestoreStepQualifiedFocus();

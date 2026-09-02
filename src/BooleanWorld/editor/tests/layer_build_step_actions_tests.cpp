@@ -546,6 +546,8 @@ void movingAPrimitiveIntoAStepOfAnotherTypeIsRejectedThroughTheAction() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     disablingStepZeroRemovesItsPrimitivesAndRebuildRestoresThemOnReEnable();
     togglingStepEnabledIsOneUndoableActionThatRestoresLayerState();
     addingARegisteredStepTypeAsOneUndoableAction();

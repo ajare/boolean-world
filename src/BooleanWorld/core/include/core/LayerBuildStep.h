@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <map>
 #include <cstdint>
 #include <memory>
@@ -66,7 +67,7 @@ private:
 private:
   bool childrenModified() const override;
 
-  [[nodiscard]] static Registry<LayerBuildStep> const& registry();
+  [[nodiscard]] static Registry<LayerBuildStep>& registry();
 
   // The step's own arguments, written into the map the Layer opens for it.
   // The enabled flag is handled by the base class, so subclasses never write
@@ -85,11 +86,25 @@ protected:
 public:
   LayerBuildStep();
 
+  using Factory = std::function<LayerBuildStep*()>;
+
   // The type names held by the shared step Registry.
   [[nodiscard]] static std::vector<std::string> getRegisteredTypes();
 
   // Constructs a step of the named type through the shared step Registry.
   [[nodiscard]] static LayerBuildStep* instantiate(std::string const& type);
+
+  // Registers a step type by name with a creating factory. core names no
+  // concrete step type in its own registry (docs/adr/0038); a host calls
+  // this explicitly during startup for every step type it wants Worlds to
+  // be able to deserialize. Not done through a static initialiser: the
+  // linker discards one from a static library when nothing else references
+  // its translation unit.
+  static void registerType(std::string const& type, Factory factory);
+
+  // Registers the step types core itself defines: DefinePrefabs, PrefabField
+  // and PrimitiveField. Every host that deserializes Worlds must call this.
+  static void registerCoreTypes();
 
   [[nodiscard]] virtual std::string getType() const = 0;
 
@@ -137,6 +152,12 @@ public:
   virtual void releasePrimitive(Primitive* primitive) = 0;
 
   [[nodiscard]] virtual bool ownsPrimitive(Primitive const* primitive) const = 0;
+
+  // Resource names this step references directly (docs/adr/0038), collected
+  // by World into the serialized dependentResources header. The default
+  // answer is none; a step that owns resource references overrides this
+  // rather than World knowing its concrete type.
+  [[nodiscard]] virtual std::vector<std::string> collectDependentResourceNames() const;
 
   void setEnabled(bool enabled);
 

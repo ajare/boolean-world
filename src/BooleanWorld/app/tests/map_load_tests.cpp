@@ -13,6 +13,7 @@
 
 #include <core/BinarySerializer.h>
 #include <core/DynamicWorldDataGenerator.h>
+#include <core/LayerBuildStep.h>
 #include <core/RectanglePolygon.h>
 #include <core/World.h>
 #include <core/YamlSerializer.h>
@@ -145,6 +146,8 @@ void yamlWorldsWithoutTheWorldYamlExtensionAreRejected() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     playMapsUseDynamicWorldDataGenerators();
     establishedWorldEnablesAndRoundTripsWedges();
     failedLoadRetainsThePreviousWorld();

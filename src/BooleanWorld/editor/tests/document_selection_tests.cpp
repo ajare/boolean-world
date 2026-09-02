@@ -723,6 +723,8 @@ void aFailedOpenPreservesTheActiveDocument() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     changingSelectedPrimitiveIndicesDoesNotWriteIntoAnInputRange();
     primitiveHoverQueriesAreSafeWithoutAnActiveDocument();
     theGhostIsHoveredFirstWhereItOverlapsAnotherPrimitive();

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <format>
+#include <set>
 
 #include "core/CoreException.h"
 #include "core/Defines.h"
@@ -195,6 +196,14 @@ bool PrimitiveField::ownsPrimitive(Primitive const* primitive) const {
 
 bool PrimitiveField::contains(Primitive const* primitive) const {
   return ownsPrimitive(primitive);
+}
+
+vector<string> PrimitiveField::collectDependentResourceNames() const {
+  set<string> names;
+  for (auto const* primitive : mPrimitives) {
+    primitive->collectDependentResourceNames(names);
+  }
+  return {names.begin(), names.end()};
 }
 
 uint32_t PrimitiveField::getNumPrimitives() const {

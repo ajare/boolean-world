@@ -25,6 +25,7 @@
 #include <SDL3/SDL_opengl.h>
 #endif
 
+#include <core/LayerBuildStep.h>
 #include <core/WorldData.h>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
@@ -229,6 +230,11 @@ map<string, string> loadHelpFiles(string const& dir) {
 
 void initialise() {
   setupLogging();
+
+  // docs/adr/0038: LayerBuildStep types are no longer compiled into core's
+  // own registry, so every host must register the ones it wants Worlds to
+  // be able to deserialize.
+  bw::core::LayerBuildStep::registerCoreTypes();
 
   // ADR-0024: discover the manifest here, then parse each ProcMaterial YAML
   // directly through bw::core::Serializer (ProcMaterialLibrary), without a

@@ -22,6 +22,17 @@ public:
         mCreators(std::move(creators)) {
   }
 
+  explicit Registry(std::string typeLabel)
+      : mTypeLabel(std::move(typeLabel)) {
+  }
+
+  // Adds or replaces the creator for type. Types are registered at run time
+  // rather than only through the constructor so a type defined outside this
+  // Registry's own library can still enter it (docs/adr/0038).
+  void registerType(std::string const& type, Creator creator) {
+    mCreators[type] = std::move(creator);
+  }
+
   [[nodiscard]] std::vector<std::string> getTypes() const {
     std::vector<std::string> types;
     types.reserve(mCreators.size());

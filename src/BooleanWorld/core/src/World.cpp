@@ -13,6 +13,7 @@
 #include "core/World.h"
 #include "core/CoreException.h"
 #include "core/Defines.h"
+#include "core/LayerBuildStep.h"
 #include "core/Registry.h"
 #include "core/RectanglePolygon.h"
 #include "core/RegularPolygon.h"
@@ -22,8 +23,6 @@
 #include "core/TorusSegmentPolygon.h"
 #include "core/SuperformulaPolygon.h"
 #include "core/MeshPrimitive.h"
-#include "core/PrimitiveField.h"
-#include "core/DefinePrefabs.h"
 #include "core/ArrangementWorldDataGenerator.h"
 #include "core/DefaultWorldDataGenerator.h"
 
@@ -188,35 +187,11 @@ vector<string> World::readDependentResourceNames(
 
 vector<string> World::collectDependentResourceNames() const {
   set<string> names;
-  auto collectPrimitive = [&](Primitive const* primitive) {
-    for (auto const& polygon : primitive->getVertices()) {
-      for (auto const& ring : polygon) {
-        for (auto const& vertex : ring) {
-          if (auto image = vertex.edgeNormalMap.imageData()) {
-            names.insert(image->resourceName);
-          }
-          if (auto mask = vertex.edgeWallMask.imageData()) {
-            names.insert(mask->resourceName);
-          }
-        }
-      }
-    }
-  };
-
   for (auto const* layer : mLayers) {
     for (uint32_t stepIndex = 0; stepIndex < layer->getNumSteps(); ++stepIndex) {
       auto const* step = layer->getStep(stepIndex);
-      if (auto const* field = dynamic_cast<PrimitiveField const*>(step)) {
-        for (auto const* primitive : field->getPrimitives()) {
-          collectPrimitive(primitive);
-        }
-      } else if (auto const* definitions =
-                     dynamic_cast<DefinePrefabs const*>(step)) {
-        for (auto const* prefab : definitions->getPrefabs()) {
-          for (auto const* primitive : prefab->getPrimitives()) {
-            collectPrimitive(primitive);
-          }
-        }
+      for (auto& name : step->collectDependentResourceNames()) {
+        names.insert(move(name));
       }
     }
   }

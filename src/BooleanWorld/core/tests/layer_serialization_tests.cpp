@@ -187,13 +187,62 @@ void theLayerFileFormatCarriesStepsAndNoRawPrimitivesArray() {
   std::remove(path.c_str());
 }
 
+// docs/adr/0038: a step type the host never registered must fail
+// deserialization with a message naming that type, not a generic registry
+// miss.
+void deserializingAnUnregisteredStepTypeFailsNamingIt() {
+  std::string const path = "layer_serialization_tests_unregistered_type.layer.yaml";
+  auto source = makeSourceLayer();
+
+  {
+    std::shared_ptr<bw::core::Serializer> ser(bw::core::YamlSerializer::toFile(path));
+    auto workData = bw::core::SerializationWorkData{};
+    source.serialize(ser, workData);
+    ser->serialize();
+  }
+
+  auto yaml = readFile(path);
+  auto const pos = yaml.find("PrimitiveField");
+  require(pos != std::string::npos,
+          "test setup: could not find a serialized PrimitiveField step type to corrupt");
+  yaml.replace(pos, std::string("PrimitiveField").size(), "Bogus");
+
+  std::ofstream out(path, std::ios::trunc);
+  out << yaml;
+  out.close();
+
+  bw::core::Layer loaded;
+  std::shared_ptr<bw::core::Serializer> ser(bw::core::YamlSerializer::fromFile(path));
+  ser->deserialize();
+  auto workData = bw::core::SerializationWorkData{};
+  workData.accelGridSize = 10.0f;
+
+  require(!loaded.deserialize(ser, workData),
+          "a Layer naming an unregistered step type deserialized successfully");
+
+  bool errorNamesTheType = false;
+  for (auto const& error : loaded.getDeserializationErrors()) {
+    if (error.find("Bogus") != std::string::npos) {
+      errorNamesTheType = true;
+      break;
+    }
+  }
+  require(errorNamesTheType,
+          "deserializing an unregistered step type did not fail with a message naming it");
+
+  std::remove(path.c_str());
+}
+
 }  // namespace
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     layerRoundTripsThroughDotLayerBinaryFile();
     layerRoundTripsThroughDotLayerYamlFile();
     theLayerFileFormatCarriesStepsAndNoRawPrimitivesArray();
+    deserializingAnUnregisteredStepTypeFailsNamingIt();
     std::cout << "Layer round-trips its build steps through .layer (binary) and .layer.yaml, independently of any World\n";
     return 0;
   } catch (std::exception const& error) {

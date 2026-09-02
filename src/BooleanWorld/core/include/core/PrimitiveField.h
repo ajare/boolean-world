@@ -78,6 +78,8 @@ public:
 
   [[nodiscard]] bool ownsPrimitive(Primitive const* primitive) const override;
 
+  [[nodiscard]] std::vector<std::string> collectDependentResourceNames() const override;
+
   [[nodiscard]] bool contains(Primitive const* primitive) const;
 
   [[nodiscard]] uint32_t getNumPrimitives() const;

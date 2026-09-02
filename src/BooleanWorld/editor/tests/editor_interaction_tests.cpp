@@ -4286,6 +4286,8 @@ void rightDraggingPlayerProxyMovesOrTurnsIt() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     rightDraggingPlayerProxyMovesOrTurnsIt();
     plainControlAndShiftClicksApplyTheirSelectionPolicies();
     deletePrimitivesRefusesTheGhostEvenWhenHandedItsIndexDirectly();

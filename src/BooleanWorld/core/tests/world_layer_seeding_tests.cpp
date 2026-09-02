@@ -3,6 +3,7 @@
 #include <stdexcept>
 
 #include <core/BinarySerializer.h>
+#include <core/LayerBuildStep.h>
 #include <core/RectanglePolygon.h>
 #include <core/SerializationWorkData.h>
 #include <core/World.h>
@@ -74,6 +75,8 @@ void deserializingAWorldAlwaysResetsTheActiveLayerIndex() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     newWorldHasExactlyOneLayerAtIndexZero();
     copyingAWorldDeepCopiesItsLayersAndResetsActiveIndex();
     deserializingAWorldAlwaysResetsTheActiveLayerIndex();

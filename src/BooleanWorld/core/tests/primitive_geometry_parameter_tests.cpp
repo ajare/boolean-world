@@ -12,6 +12,7 @@
 #include <core/CirclePolygon.h>
 #include <core/CircleSegmentPolygon.h>
 #include <core/CoreException.h>
+#include <core/LayerBuildStep.h>
 #include <core/RectanglePolygon.h>
 #include <core/RegularPolygon.h>
 #include <core/SuperformulaPolygon.h>
@@ -446,6 +447,8 @@ void superformulaRoundTrips() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     regularPolygonValidatesConstructorsAndSetters();
     circleValidatesConstructorsAndSetters();
     circleSegmentValidatesConstructorsAndSetters();

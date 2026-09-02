@@ -118,6 +118,7 @@ public:
   void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive) override;
   void releasePrimitive(Primitive* primitive) override;
   [[nodiscard]] bool ownsPrimitive(Primitive const* primitive) const override;
+  [[nodiscard]] std::vector<std::string> collectDependentResourceNames() const override;
 
   // Returns the created Prefab. Names are display text and need not be unique.
   Prefab* addPrefab(std::string const& name);

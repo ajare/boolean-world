@@ -10,6 +10,7 @@
 
 #include <core/BinarySerializer.h>
 #include <core/Defines.h>
+#include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
 #include <core/RectanglePolygon.h>
 #include <core/SerializationWorkData.h>
@@ -737,6 +738,8 @@ void shippedWorldFixtureUsesTheCurrentSchema() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     hierarchyRoundTripsThroughYamlAndBinary();
     failedReadsLeaveTheTargetUnchangedAndRejectLegacyInput();
     aggregateLimitsRejectOversizedInputBeforeCommit();

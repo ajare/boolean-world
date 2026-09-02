@@ -7,6 +7,7 @@
 #include <string>
 
 #include <core/CoreException.h>
+#include <core/LayerBuildStep.h>
 #include <core/RectanglePolygon.h>
 #include <core/World.h>
 #include <core/WorldTriggerLine.h>
@@ -447,6 +448,8 @@ void worldsWithoutGridsFailClearlyInsteadOfDereferencingNull() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     reloadRecreatesAccelerationGrids();
     failedDeserializationRetainsTemporaryObjectsAndTargetConfiguration();
     deserializationReusesPrimitiveCreators();

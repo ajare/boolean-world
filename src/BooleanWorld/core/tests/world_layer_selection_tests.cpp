@@ -6,6 +6,7 @@
 
 #include <core/BinarySerializer.h>
 #include <core/Layer.h>
+#include <core/LayerBuildStep.h>
 #include <core/LayerSelection.h>
 #include <core/MeshPrimitive.h>
 #include <core/PrimitiveField.h>
@@ -255,6 +256,8 @@ void loadingAWorldRescopesTheSelectionToTheActiveLayer() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     theFoldGathersOnlyTheSelectedLayersPrimitives();
     selectedLayersFoldInWorldOrderBeforeLocalPriority();
     aPrimitiveFilterKeepsRejectedPrimitivesOutOfTheFold();
