@@ -156,9 +156,14 @@ public:
 
   virtual Primitive* copy() const = 0;
 
-  // Constructs a default Primitive of the named type through the shared
-  // Primitive Registry - the single factory every deserializer goes through.
+  // Constructs a geometry-less Primitive of the named type through the shared
+  // Primitive Registry. Deserializers populate its authored shape data.
   [[nodiscard]] static Primitive* instantiate(std::string const& type);
+
+  // Constructs a valid authored Primitive with the named type's default
+  // geometry. Programmatic authoring paths use this rather than the
+  // deserialization factory above.
+  [[nodiscard]] static Primitive* createDefault(std::string const& type);
 
   Primitive* rotatedCopy(float angle) const;
 

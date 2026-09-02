@@ -3969,7 +3969,17 @@ void renderRunScriptView(
   ImGui::BeginDisabled(step->getScriptName().empty() || !editorRenderSystem());
   if (ImGui::Button("Reload script")) {
     string error;
-    if (editorRenderSystem()->reloadLuaScript(step->getScriptName(), &error)) {
+    auto reloaded =
+        editorRenderSystem()->reloadLuaScript(step->getScriptName(), &error);
+
+    // ScriptRuntime rebuilds every Layer that names this script, replacing
+    // its RunScript-owned Primitives. That derived change bypasses the undo
+    // action path which normally invalidates the editor Arrangement, so make
+    // both the selection and rendered geometry follow the rebuilt output.
+    doc->revalidateSelection();
+    regenerateWorldData(doc);
+
+    if (reloaded) {
       scriptErrors[step].clear();
     } else {
       scriptErrors[step] = error.empty() ? "Could not reload the Lua script." : error;

@@ -50,7 +50,7 @@ LayerBuildStep* RunScript::copy(map<VertexTransformerObject const*, VertexTransf
 }
 
 Primitive* RunScript::createPrimitive(string const& type) const {
-  auto primitive = unique_ptr<Primitive>(Primitive::instantiate(type));
+  auto primitive = unique_ptr<Primitive>(Primitive::createDefault(type));
   auto* borrowed = primitive.get();
   mBuiltPrimitives.push_back(move(primitive));
   return borrowed;

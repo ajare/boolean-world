@@ -202,6 +202,8 @@ void runScriptOperationsAreScopedToTheExecutionContext() {
 
   require(!step->hasFailed() && layer.getNumPrimitives() == 1,
           "RunScript operations were not scoped to the execution context");
+  require(!layer.getPrimitive(0)->getVertices().empty(),
+          "a script-created Rectangle had no renderable geometry");
 }
 
 void scriptCreatedPrimitivesFoldInRecipeOrder() {
