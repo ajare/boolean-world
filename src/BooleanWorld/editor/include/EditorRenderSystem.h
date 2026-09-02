@@ -87,6 +87,11 @@ public:
   bool loadLuaScript(std::string const& resourceName,
                      std::string* error = nullptr);
 
+  // Re-reads an externally edited Lua script, replaces its runtime cache
+  // entry, and rebuilds exactly the Layers whose RunScript steps name it.
+  bool reloadLuaScript(std::string const& resourceName,
+                       std::string* error = nullptr);
+
   // Atomically replaces the resources retained for the active World.
   bool loadWorldDependencies(std::vector<std::string> const& resourceNames,
                              std::string const& currentNamespace,

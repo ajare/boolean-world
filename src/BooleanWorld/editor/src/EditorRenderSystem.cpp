@@ -1,5 +1,6 @@
 #include "EditorRenderSystem.h"
 
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <memory>
@@ -239,6 +240,53 @@ bool EditorRenderSystem::loadLuaScript(
     }
     return true;
   } catch (exception const& exception) {
+    if (error) *error = exception.what();
+    return false;
+  }
+}
+
+bool EditorRenderSystem::reloadLuaScript(
+    string const& resourceName, string* error) {
+  wp::application::resourcesystem::ResourcePtr resource;
+  bool retainedForWorld = false;
+  bool released = false;
+  try {
+    string namesp;
+    string name;
+    wp::application::resourcesystem::Resource::splitName(
+        resourceName, "World", &namesp, &name);
+    resource = mResourceMgr->getResource(name, namesp);
+    auto script = dynamic_pointer_cast<bw::core::LuaScriptResource>(resource);
+    if (!script) {
+      if (error) *error = "The selected resource is not a Lua script.";
+      return false;
+    }
+
+    retainedForWorld = find(
+        mWorldDependencies.begin(), mWorldDependencies.end(), resource) !=
+        mWorldDependencies.end();
+
+    // TextFileResource reads its source during create(), not load(). Release,
+    // destroy, and recreate it so an external file edit is actually observed.
+    mResourceMgr->releaseResource(resource);
+    released = true;
+    mResourceMgr->destroyResources({resource});
+    mResourceMgr->createResource(resource);
+    mResourceMgr->loadResource(resource);
+    if (retainedForWorld) {
+      mResourceMgr->acquireResource(resource);
+      released = false;
+    }
+
+    mScriptRuntime->reload(resourceName, script->getText());
+    return true;
+  } catch (exception const& exception) {
+    // Preserve the World's ownership count even when re-reading or compiling
+    // fails. A compile failure is already retained atomically by the runtime
+    // and has rebuilt its naming Layers before arriving here.
+    if (resource && retainedForWorld && released) {
+      mResourceMgr->acquireResource(resource);
+    }
     if (error) *error = exception.what();
     return false;
   }

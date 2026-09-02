@@ -2,12 +2,15 @@
 
 #include <array>
 #include <cctype>
+#include <exception>
 #include <format>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <string_view>
 
 #include <core/CoreException.h>
+#include <core/Layer.h>
 
 namespace bw {
 namespace core {
@@ -189,6 +192,55 @@ void ScriptRuntime::load(string const& name, string const& text) {
 
   mCompileFailures.erase(name);
   mChunks.insert_or_assign(name, chunk);
+}
+
+void ScriptRuntime::reload(string const& name, string const& text) {
+  exception_ptr compileFailure;
+  try {
+    load(name, text);
+  } catch (ScriptException const&) {
+    // load() atomically replaced the old cache entry with this failure. The
+    // dependent Layers must still rebuild so their RunScript panels report
+    // it instead of continuing to display stale output.
+    compileFailure = current_exception();
+  }
+
+  set<Layer*> layers;
+  if (auto found = mScriptSteps.find(name); found != mScriptSteps.end()) {
+    for (auto const& [step, layer] : found->second) {
+      (void)step;
+      if (layer) {
+        layers.insert(layer);
+      }
+    }
+  }
+  for (auto* layer : layers) {
+    layer->rebuild();
+  }
+
+  if (compileFailure) {
+    rethrow_exception(compileFailure);
+  }
+}
+
+void ScriptRuntime::trackStep(
+    RunScript const* step, string const& name, Layer* layer) {
+  if (name.empty() || !layer) {
+    return;
+  }
+  mScriptSteps[name].insert_or_assign(step, layer);
+}
+
+void ScriptRuntime::untrackStep(RunScript const* step, string const& name) {
+  auto found = mScriptSteps.find(name);
+  if (found == mScriptSteps.end()) {
+    return;
+  }
+
+  found->second.erase(step);
+  if (found->second.empty()) {
+    mScriptSteps.erase(found);
+  }
 }
 
 bool ScriptRuntime::isLoaded(string const& name) const {

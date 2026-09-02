@@ -20,6 +20,15 @@ RunScript::RunScript(ScriptRuntime& runtime)
     : mRuntime(&runtime) {
 }
 
+RunScript::~RunScript() {
+  mRuntime->untrackStep(this, mScriptName);
+}
+
+void RunScript::owningLayerChanged(Layer*, Layer* newLayer) {
+  mRuntime->untrackStep(this, mScriptName);
+  mRuntime->trackStep(this, mScriptName, newLayer);
+}
+
 string RunScript::getType() const {
   return "RunScript";
 }
@@ -233,7 +242,9 @@ void RunScript::setScriptName(string const& name) {
     return;
   }
 
+  mRuntime->untrackStep(this, mScriptName);
   mScriptName = name;
+  mRuntime->trackStep(this, mScriptName, getOwningLayer());
   modify();
 }
 

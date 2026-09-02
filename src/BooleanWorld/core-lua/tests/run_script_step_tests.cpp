@@ -750,6 +750,77 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
           "the loaded RunScript recipe did not rebuild the same Primitives");
 }
 
+void reloadingRebuildsExactlyTheLayersThatNameTheScript() {
+  std::vector<std::string> printed;
+  bw::core::ScriptRuntime runtime(
+      [&printed](std::string const& line) { printed.push_back(line); });
+
+  auto sourceAt = [](float x, std::string const& message) {
+    return "print(\"" + message + "\")\n"
+           "local p = create_primitive(\"Rectangle\")\n"
+           "p:set_position(" + std::to_string(x) + ", 0)\n"
+           "place_primitive(p)";
+  };
+
+  runtime.load("shared", sourceAt(10, "shared-old"));
+  runtime.load("other", sourceAt(30, "other"));
+
+  bw::core::Layer first(0, "first", 512.0f, 16.0f);
+  bw::core::Layer second(1, "second", 512.0f, 16.0f);
+  bw::core::Layer unrelated(2, "unrelated", 512.0f, 16.0f);
+  auto* firstStep = addScriptStep(first, runtime, "shared");
+  auto* duplicateStep = addScriptStep(first, runtime, "shared");
+  auto* secondStep = addScriptStep(second, runtime, "shared");
+  addScriptStep(unrelated, runtime, "other");
+  printed.clear();
+
+  runtime.reload("shared", sourceAt(20, "shared-new"));
+  require(first.getNumPrimitives() == 2 && at(first.getPrimitive(0), 20) &&
+              at(first.getPrimitive(1), 20) &&
+              second.getNumPrimitives() == 1 && at(second.getPrimitive(0), 20),
+          "reload did not replace the cached chunk in every naming Layer");
+  require(unrelated.getNumPrimitives() == 1 && at(unrelated.getPrimitive(0), 30),
+          "reload changed a Layer that does not name the script");
+  require(std::count(printed.begin(), printed.end(), "shared-new") == 3 &&
+              std::count(printed.begin(), printed.end(), "other") == 0,
+          "reload did not rebuild exactly the naming Layers once each");
+
+  // A step's optional label is unrelated to its script reference and must not
+  // disturb the lookup. Removing one of two matching steps must retain the
+  // Layer through the other; repointing the last matching step removes it.
+  firstStep->setName("renamed step");
+  secondStep->setScriptName("other");
+  first.removeStep(1);
+  printed.clear();
+  runtime.reload("shared", sourceAt(40, "shared-after-removal"));
+  require(std::count(printed.begin(), printed.end(), "shared-after-removal") == 1,
+          "removing one matching step also removed its Layer's other reverse entry");
+  duplicateStep->setScriptName("other");
+  printed.clear();
+  runtime.reload("shared", sourceAt(50, "shared-after-repoint"));
+  require(printed.empty(),
+          "a renamed, repointed, or removed step left a stale reverse entry");
+
+  // Adding another naming step establishes a fresh entry. Broken replacement
+  // text is retained as one coherent failure and its Layer is rebuilt, while
+  // the unrelated Layer is still untouched.
+  auto* added = addScriptStep(first, runtime, "shared");
+  printed.clear();
+  bool reported = false;
+  try {
+    runtime.reload("shared", "this is not Lua");
+  } catch (bw::core::ScriptException const& error) {
+    reported = std::string(error.what()).find("shared") != std::string::npos;
+  }
+  require(reported && added->hasFailed() && first.getNumPrimitives() == 1 &&
+              at(first.getPrimitive(0), 30),
+          "a failed reload was not reported through the rebuilt naming step");
+  require(std::count(printed.begin(), printed.end(), "other") == 1,
+          "a failed reload rebuilt the unrelated Layer using another script");
+  require(!runtime.isLoaded("shared"),
+          "a failed reload left a half-updated compiled chunk in the cache");
+}
+
 void namingAMissingStepOrPrefabFailsTheStepWithTheName() {
   bw::core::ScriptRuntime runtime;
   runtime.load("missing-step", R"(find_define_prefabs("nope"))");
@@ -814,6 +885,7 @@ int main() {
     aScriptReadsAPrimitiveFieldsPrimitivesAsConst();
     aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName();
     aWorldRoundTripsARunScriptStepAndDeclaresItsResources();
+    reloadingRebuildsExactlyTheLayersThatNameTheScript();
     namingAMissingStepOrPrefabFailsTheStepWithTheName();
     std::cout << "RunScript build step and ScriptRuntime tests passed\n";
     return 0;

@@ -3978,6 +3978,16 @@ void renderRunScriptView(
       scriptErrors[step] = error.empty() ? "Could not load the Lua script." : error;
     }
   }
+  ImGui::BeginDisabled(step->getScriptName().empty() || !editorRenderSystem());
+  if (ImGui::Button("Reload script")) {
+    string error;
+    if (editorRenderSystem()->reloadLuaScript(step->getScriptName(), &error)) {
+      scriptErrors[step].clear();
+    } else {
+      scriptErrors[step] = error.empty() ? "Could not reload the Lua script." : error;
+    }
+  }
+  ImGui::EndDisabled();
   if (!scriptErrors[step].empty()) {
     ImGui::TextColored(
         ImVec4{1.0f, 0.35f, 0.35f, 1.0f}, "%s",

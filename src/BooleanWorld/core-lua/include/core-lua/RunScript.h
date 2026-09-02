@@ -57,6 +57,8 @@ private:
   mutable uint32_t mFailureLineNumber = 0;
   mutable std::string mFailureTraceback;
 
+  void owningLayerChanged(Layer* oldLayer, Layer* newLayer) override;
+
   void serializeArgs(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
   bool deserializeArgs(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
@@ -77,6 +79,7 @@ private:
 
 public:
   explicit RunScript(ScriptRuntime& runtime);
+  ~RunScript() override;
 
   [[nodiscard]] std::string getType() const override;
 

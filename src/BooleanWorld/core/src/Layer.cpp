@@ -129,6 +129,10 @@ void Layer::swapState(Layer& other) noexcept {
 }
 
 void Layer::rebindOwnedState() {
+  for (auto* step : mSteps) {
+    step->bindLayer(this);
+  }
+
   for (auto* primitive : mPrimitives) {
     primitive->mWorld = mWorld;
     primitive->mInputs.triggerLines = &mTriggerLines;
@@ -209,6 +213,7 @@ void Layer::seedFirstStep() {
   auto* step = new PrimitiveField;
   assignStepId(step);
   mSteps.push_back(step);
+  step->bindLayer(this);
 }
 
 void Layer::assignStepId(LayerBuildStep* step) {
@@ -221,6 +226,7 @@ void Layer::assignStepId(LayerBuildStep* step) {
 
 void Layer::deleteSteps() {
   for (auto* step : mSteps) {
+    step->bindLayer(nullptr);
     delete step;
   }
 
@@ -439,6 +445,7 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mSteps.reserve(steps.size());
   for (auto& step : steps) {
     mSteps.push_back(step.release());
+    mSteps.back()->bindLayer(this);
   }
 
   rebuild();
@@ -684,6 +691,7 @@ uint32_t Layer::insertStep(uint32_t index, LayerBuildStep* step) {
 
   assignStepId(step);
   mSteps.insert(mSteps.begin() + index, step);
+  step->bindLayer(this);
 
   // Inserting at or before the active step's index shifts it along with
   // everything else that was there.
@@ -717,6 +725,7 @@ void Layer::removeStep(uint32_t index) {
     throw CoreException("Cannot delete a DefinePrefabs step referenced by a PrefabField");
   }
 
+  mSteps[index]->bindLayer(nullptr);
   delete mSteps[index];
   mSteps.erase(mSteps.begin() + index);
 

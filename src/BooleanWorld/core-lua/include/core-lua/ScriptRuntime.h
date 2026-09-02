@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 
 #include <sol/sol.hpp>
@@ -11,6 +12,9 @@
 
 namespace bw {
 namespace core {
+
+class Layer;
+class RunScript;
 
 // A completed print() line, joined the way Lua's own print joins its
 // arguments (tostring'd, tab-separated). Given to the host rather than
@@ -87,6 +91,17 @@ private:
   };
   std::map<std::string, CompileFailure> mCompileFailures;
 
+  // The reverse lookup needed by explicit reload. Tracking steps rather than
+  // only Layers preserves the Layer entry when two of its steps name the
+  // same script and one is removed or repointed.
+  std::map<std::string, std::map<RunScript const*, Layer*>> mScriptSteps;
+
+  void trackStep(
+      RunScript const* step, std::string const& name, Layer* layer);
+  void untrackStep(RunScript const* step, std::string const& name);
+
+  friend class RunScript;
+
   PrintSink mPrintSink;
 
 public:
@@ -104,6 +119,12 @@ public:
   // each naming step. Throws a ScriptException when the text does not
   // compile.
   void load(std::string const& name, std::string const& text);
+
+  // Replaces the cached result, then rebuilds each distinct Layer containing
+  // a RunScript step that names name. A compile failure is retained and the
+  // same Layers are rebuilt so they expose that failure, then the exception
+  // is rethrown for the initiating host action to report.
+  void reload(std::string const& name, std::string const& text);
 
   [[nodiscard]] bool isLoaded(std::string const& name) const;
 

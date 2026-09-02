@@ -79,6 +79,11 @@ public:
 // (docs/adr/0014). A step's type is fixed for its lifetime.
 class BW_API LayerBuildStep : public Serializable {
 private:
+  // Non-owning backlink set while this step belongs to a Layer. Besides
+  // making ownership explicit, the change hook lets dynamically registered
+  // step types maintain host-side reverse lookups without core naming them.
+  Layer* mLayer;
+
   uint32_t mId;
   bool mEnabled;
   std::string mName;
@@ -91,6 +96,8 @@ private:
   mutable std::string mFailureMessage;
 
   void setId(uint32_t id);
+
+  void bindLayer(Layer* layer);
 
   // Called by Layer at the execute() boundary: clearFailure() before every
   // attempt, recordFailure() if that attempt throws.
@@ -113,6 +120,12 @@ private:
 
 protected:
   void copyFrom(LayerBuildStep const& other);
+
+  [[nodiscard]] Layer* getOwningLayer() const;
+
+  // Called after the owning Layer changes. The default is inert; a step type
+  // with an ownership-dependent index may override it.
+  virtual void owningLayerChanged(Layer* oldLayer, Layer* newLayer);
 
   void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const final;
 

@@ -11,7 +11,7 @@ namespace core {
 using namespace std;
 
 LayerBuildStep::LayerBuildStep()
-    : mId(~0u), mEnabled(true), mFailed(false) {
+    : mLayer(nullptr), mId(~0u), mEnabled(true), mFailed(false) {
 }
 
 Registry<LayerBuildStep>& LayerBuildStep::registry() {
@@ -67,6 +67,23 @@ bool LayerBuildStep::deserializeImpl(shared_ptr<Serializer> serializer, Serializ
 
 void LayerBuildStep::setId(uint32_t id) {
   mId = id;
+}
+
+void LayerBuildStep::bindLayer(Layer* layer) {
+  if (layer == mLayer) {
+    return;
+  }
+
+  auto* oldLayer = mLayer;
+  mLayer = layer;
+  owningLayerChanged(oldLayer, layer);
+}
+
+Layer* LayerBuildStep::getOwningLayer() const {
+  return mLayer;
+}
+
+void LayerBuildStep::owningLayerChanged(Layer*, Layer*) {
 }
 
 uint32_t LayerBuildStep::getId() const {
