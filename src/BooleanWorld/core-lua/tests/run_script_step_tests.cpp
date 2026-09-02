@@ -117,6 +117,7 @@ void theRuntimeCompilesScriptsFromStringsAndCachesThemByName() {
   }
   require(reported, "executing a script that was never loaded was not reported");
 
+  runtime.load("broken", "return true");
   reported = false;
   try {
     runtime.load("broken", "this is not Lua");
@@ -124,6 +125,18 @@ void theRuntimeCompilesScriptsFromStringsAndCachesThemByName() {
     reported = std::string(error.what()).find("broken") != std::string::npos;
   }
   require(reported, "a script that does not compile was not reported by name");
+
+  // The broken text replaces any prior chunk and remains executable as a
+  // failure, so a RunScript naming it can report the syntax error on rebuild.
+  require(!runtime.isLoaded("broken"), "broken text was reported as a compiled script");
+  reported = false;
+  try {
+    runtime.execute("broken", bw::core::ScriptLibraries::Build);
+  } catch (bw::core::ScriptException const& error) {
+    reported = error.getLineNumber() == 1 &&
+               std::string(error.what()).find("failed to compile") != std::string::npos;
+  }
+  require(reported, "executing retained broken text did not report its syntax line");
 }
 
 void theLibrarySetIsAParameterOfExecution() {
@@ -245,6 +258,92 @@ void aScriptNeverOwnsWhatItCreates() {
   layer.rebuild();
   require(!step->hasFailed() && layer.getNumPrimitives() == 2,
           "the Layer did not rebuild cleanly after a script raised");
+}
+
+// Ticket #367: every ordinary way a script can be broken is contained by
+// Layer::rebuild(), reports useful source information, rolls back partial
+// output, and prevents every later step from running.
+void syntaxRuntimeAndBudgetFailuresAreContainedAndHaltTheBuild() {
+  bw::core::ScriptRuntime runtime;
+
+  try {
+    runtime.load("syntax", "local okay = true\nlocal broken = )");
+  } catch (bw::core::ScriptException const&) {
+    // load() reports immediately to the resource host as well as retaining
+    // the error for the step's next rebuild.
+  }
+
+  runtime.load("runtime", R"(local p = create_primitive("Rectangle")
+p:set_position(10, 0)
+place_primitive(p)
+local function explode()
+  error("deliberate runtime failure")
+end
+explode())");
+
+  runtime.load("runaway", R"(local p = create_primitive("Rectangle")
+p:set_position(20, 0)
+place_primitive(p)
+while true do
+  pcall(function() while true do end end)
+end)");
+
+  struct ObservedFailure {
+    uint32_t lineNumber;
+    std::string message;
+    std::string traceback;
+  };
+
+  auto exerciseFailure = [&](std::string const& scriptName) {
+    bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+    layer.getPrimitiveField()->addPrimitive(rectangle(0.0f));
+    auto* failed = addScriptStep(layer, runtime, scriptName);
+    auto* later = new bw::core::PrimitiveField;
+    layer.addStep(later);
+    later->addPrimitive(rectangle(30.0f));
+
+    // Explicitly exercise the public seam: none of these may escape.
+    layer.rebuild();
+
+    require(failed->hasFailed(), "a broken script did not fail its RunScript step");
+    require(!failed->getFailureMessage().empty(),
+            "a broken script did not retain a failure message");
+    require(layer.getNumPrimitives() == 1 && at(layer.getPrimitive(0), 0.0f),
+            "a failed script kept partial output or allowed a later step to run");
+    require(!later->hasFailed(),
+            "a step halted below a broken script was itself marked as failed");
+    return ObservedFailure{
+        failed->getFailureLineNumber(), failed->getFailureMessage(),
+        failed->getFailureTraceback()};
+  };
+
+  auto const syntax = exerciseFailure("syntax");
+  require(syntax.lineNumber == 2,
+          "a syntax failure did not retain its source line");
+
+  auto const runtimeFailure = exerciseFailure("runtime");
+  require(runtimeFailure.lineNumber == 5,
+          "a runtime failure did not retain its source line");
+  require(runtimeFailure.message.find("deliberate runtime failure") !=
+              std::string::npos,
+          "a runtime failure did not retain its message");
+  require(runtimeFailure.traceback.find("stack traceback") !=
+              std::string::npos,
+          "a runtime failure did not retain its Lua traceback");
+
+  auto const runaway = exerciseFailure("runaway");
+  require(runaway.message.find("instruction budget") != std::string::npos,
+          "a non-terminating script was not stopped by the instruction budget");
+  require(runaway.lineNumber != 0 &&
+              runaway.traceback.find("stack traceback") != std::string::npos,
+          "an instruction-budget failure did not retain its line and traceback");
+
+  runtime.load("empty", "");
+  bw::core::Layer emptyLayer(0, "test", 512.0f, 16.0f);
+  auto* empty = addScriptStep(emptyLayer, runtime, "empty");
+  emptyLayer.rebuild();
+  require(!empty->hasFailed() && emptyLayer.getNumPrimitives() == 0,
+          "a script that successfully produced nothing looked like a failed script");
 }
 
 void theBuildEnvironmentDropsFunctionsThatBreakDeterminism() {
@@ -618,6 +717,7 @@ int main() {
     scriptCreatedPrimitivesFoldInRecipeOrder();
     everyExecutionRefillsTheStepsOwnStorage();
     aScriptNeverOwnsWhatItCreates();
+    syntaxRuntimeAndBudgetFailuresAreContainedAndHaltTheBuild();
     theBuildEnvironmentDropsFunctionsThatBreakDeterminism();
     printReachesTheHostsSink();
     theSeedMakesRebuildsReproducibleAndRerollableByChangingIt();

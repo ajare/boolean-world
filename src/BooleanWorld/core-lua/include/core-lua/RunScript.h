@@ -45,6 +45,12 @@ private:
   // Which of the above the script has placed into the build this execute().
   mutable std::vector<Primitive const*> mPlacedPrimitives;
 
+  // Script-specific detail from the most recent failed execution. The base
+  // step records the display message and failed state at Layer's execute()
+  // boundary; these retain the location and Lua traceback from that error.
+  mutable uint32_t mFailureLineNumber = 0;
+  mutable std::string mFailureTraceback;
+
   void serializeArgs(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const override;
 
   bool deserializeArgs(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
@@ -103,6 +109,12 @@ public:
   [[nodiscard]] uint64_t getSeed() const;
 
   [[nodiscard]] ScriptRuntime& getRuntime() const;
+
+  // Zero and empty respectively when the most recent rebuild did not fail
+  // this step. A syntax error has a line but no runtime call stack.
+  [[nodiscard]] uint32_t getFailureLineNumber() const;
+
+  [[nodiscard]] std::string const& getFailureTraceback() const;
 };
 
 }  // namespace core

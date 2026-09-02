@@ -97,83 +97,91 @@ void RunScript::placePrefabInstance(
 void RunScript::execute(LayerBuildContext& context) const {
   mBuiltPrimitives.clear();
   mPlacedPrimitives.clear();
+  mFailureLineNumber = 0;
+  mFailureTraceback.clear();
 
   if (mScriptName.empty()) {
     throw CoreException("A RunScript step names no Lua script");
   }
 
-  mRuntime->execute(
-      mScriptName, ScriptLibraries::Build, [this, &context](sol::environment& environment) {
-        bindScriptTypes(mRuntime->getState());
+  try {
+    mRuntime->execute(
+        mScriptName, ScriptLibraries::Build, [this, &context](sol::environment& environment) {
+          bindScriptTypes(mRuntime->getState());
 
-        // Re-seeded on every execute() so a rebuild reproduces exactly
-        // (docs/adr/0040); ScriptLibraries::Build always includes math.
-        environment["math"]["randomseed"](mSeed);
+          // Re-seeded on every execute() so a rebuild reproduces exactly
+          // (docs/adr/0040); ScriptLibraries::Build always includes math.
+          environment["math"]["randomseed"](mSeed);
 
-        environment.set_function(
-            "create_primitive",
-            [this](string const& type) { return createPrimitive(type); });
+          environment.set_function(
+              "create_primitive",
+              [this](string const& type) { return createPrimitive(type); });
 
-        environment.set_function(
-            "place_primitive",
-            [this, &context](Primitive* primitive) { placePrimitive(context, primitive); });
+          environment.set_function(
+              "place_primitive",
+              [this, &context](Primitive* primitive) { placePrimitive(context, primitive); });
 
-        environment.set_function(
-            "place_prefab_instance",
-            [this, &context](PrefabView view, float x, float y, float angle) {
-              placePrefabInstance(context, view.prefab, x, y, angle);
-            });
+          environment.set_function(
+              "place_prefab_instance",
+              [this, &context](PrefabView view, float x, float y, float angle) {
+                placePrefabInstance(context, view.prefab, x, y, angle);
+              });
 
-        environment.set_function(
-            "find_define_prefabs",
-            [&context](string const& name) {
-              auto const id = context.getLayer().findStepIdByName(name);
-              if (id == ~0u) {
-                throw CoreException(format("No step named '{}'", name));
-              }
-              auto* step = dynamic_cast<DefinePrefabs*>(context.getLayer().getStepById(id));
-              if (!step) {
-                throw CoreException(format("Step '{}' is not a DefinePrefabs step", name));
-              }
-              return DefinePrefabsView{step};
-            });
+          environment.set_function(
+              "find_define_prefabs",
+              [&context](string const& name) {
+                auto const id = context.getLayer().findStepIdByName(name);
+                if (id == ~0u) {
+                  throw CoreException(format("No step named '{}'", name));
+                }
+                auto* step = dynamic_cast<DefinePrefabs*>(context.getLayer().getStepById(id));
+                if (!step) {
+                  throw CoreException(format("Step '{}' is not a DefinePrefabs step", name));
+                }
+                return DefinePrefabsView{step};
+              });
 
-        environment.set_function(
-            "find_primitive_field",
-            [&context](string const& name) {
-              auto const id = context.getLayer().findStepIdByName(name);
-              if (id == ~0u) {
-                throw CoreException(format("No step named '{}'", name));
-              }
-              auto* step = dynamic_cast<PrimitiveField*>(context.getLayer().getStepById(id));
-              if (!step) {
-                throw CoreException(format("Step '{}' is not a PrimitiveField step", name));
-              }
-              return PrimitiveFieldView{step};
-            });
+          environment.set_function(
+              "find_primitive_field",
+              [&context](string const& name) {
+                auto const id = context.getLayer().findStepIdByName(name);
+                if (id == ~0u) {
+                  throw CoreException(format("No step named '{}'", name));
+                }
+                auto* step = dynamic_cast<PrimitiveField*>(context.getLayer().getStepById(id));
+                if (!step) {
+                  throw CoreException(format("Step '{}' is not a PrimitiveField step", name));
+                }
+                return PrimitiveFieldView{step};
+              });
 
-        environment.set_function(
-            "get_build_primitives",
-            [&context]() {
-              return sol::as_table(toPrimitiveViews(context.getBuildPrimitives()));
-            });
+          environment.set_function(
+              "get_build_primitives",
+              [&context]() {
+                return sol::as_table(toPrimitiveViews(context.getBuildPrimitives()));
+              });
 
-        environment.set_function(
-            "get_extents",
-            [&context]() {
-              auto const& extents = context.getExtents();
-              return make_tuple(
-                  extents.getPosition().x, extents.getPosition().y,
-                  extents.getSize().x, extents.getSize().y);
-            });
+          environment.set_function(
+              "get_extents",
+              [&context]() {
+                auto const& extents = context.getExtents();
+                return make_tuple(
+                    extents.getPosition().x, extents.getPosition().y,
+                    extents.getSize().x, extents.getSize().y);
+              });
 
-        environment.set_function(
-            "find_build_primitives_overlapping",
-            [&context](float x, float y, float width, float height) {
-              return sol::as_table(toPrimitiveViews(context.findBuildPrimitivesOverlapping(
-                  wp::BoundingBox(x, y, width, height))));
-            });
-      });
+          environment.set_function(
+              "find_build_primitives_overlapping",
+              [&context](float x, float y, float width, float height) {
+                return sol::as_table(toPrimitiveViews(context.findBuildPrimitivesOverlapping(
+                    wp::BoundingBox(x, y, width, height))));
+              });
+        });
+  } catch (ScriptException const& error) {
+    mFailureLineNumber = error.getLineNumber();
+    mFailureTraceback = error.getTraceback();
+    throw;
+  }
 }
 
 bool RunScript::primitivesParticipateInBuild() const {
@@ -233,6 +241,15 @@ uint64_t RunScript::getSeed() const {
 
 ScriptRuntime& RunScript::getRuntime() const {
   return *mRuntime;
+}
+
+uint32_t RunScript::getFailureLineNumber() const {
+  return hasFailed() ? mFailureLineNumber : 0;
+}
+
+string const& RunScript::getFailureTraceback() const {
+  static string const empty;
+  return hasFailed() ? mFailureTraceback : empty;
 }
 
 void RunScript::serializeArgs(shared_ptr<Serializer> serializer, SerializationWorkData&) const {

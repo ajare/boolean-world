@@ -610,9 +610,20 @@ void Layer::rebuild() {
     }
 
     LayerBuildContext context(*this, step, stepIndex, buildPrimitives);
+    auto const outputBegin = mPrimitives.size();
     try {
       step->execute(context);
     } catch (exception const& error) {
+      // execute() may have appended output before it failed. A failed step
+      // contributes nothing, so remove that partial output from both the
+      // derived cache and its acceleration grid before retaining the prior
+      // steps' completed output (docs/adr/0039).
+      for (auto i = outputBegin; i < mPrimitives.size(); ++i) {
+        removePrimitiveFromLookupGrid(mPrimitives[i], false);
+      }
+      mPrimitives.resize(outputBegin);
+      mPrimitiveSteps.resize(outputBegin);
+
       step->recordFailure(error.what());
       haltedByFailure = true;
     }
