@@ -17,6 +17,7 @@
 #include <core/DefinePrefabs.h>
 #include <core/LayerBuildStep.h>
 #include <core/WorldData.h>
+#include <core-lua/RunScript.h>
 #include <core/RegularPolygon.h>
 #include <core/CirclePolygon.h>
 #include <core/CircleSegmentPolygon.h>
@@ -3211,11 +3212,11 @@ void shutdownImageResourceThumbnails() {
   gImageResourceThumbnails.clear();
 }
 
-// The name a wall normal-map or mask override stores so that
-// Resource::splitName with the "World" namespace resolves it back to this
-// exact ImageResource: unqualified for World-namespace images, "/name" for
-// the default namespace, qualified otherwise.
-string worldImageReference(
+// The name authored World content stores so Resource::splitName with the
+// "World" namespace resolves it back to this exact Resource: unqualified for
+// World-namespace resources, "/name" for the default namespace, qualified
+// otherwise.
+string worldResourceReference(
     wp::application::resourcesystem::Resource const& resource) {
   if (resource.getNamespace() == "World") return resource.getName();
   if (resource.getNamespace().empty()) return "/" + resource.getName();
@@ -3370,14 +3371,13 @@ bool renderImageResourcePicker(
   auto popup = format("Select {} ImageResource", label);
 
   string current(reference);
-  // A stored override may be qualified ("World/OreMask") or bare for the
-  // default namespace ("Floor5"); canonicalise it so the dialog highlights
-  // the same resource it will write back on OK.
+  // Canonicalise the stored spelling so the dialog highlights the same
+  // resource it will write back on OK.
   auto canonicalReference = [&](string const& candidate) {
     for (auto const* image : images) {
-      if (worldImageReference(*image) == candidate ||
+      if (worldResourceReference(*image) == candidate ||
           image->getQualifiedName() == candidate) {
-        return worldImageReference(*image);
+        return worldResourceReference(*image);
       }
     }
     return candidate;
@@ -3386,7 +3386,7 @@ bool renderImageResourcePicker(
   auto currentCanonical = canonicalReference(current);
   string currentDisplay = currentCanonical.empty() ? "(none)" : currentCanonical;
   for (auto const* image : images) {
-    if (worldImageReference(*image) == currentCanonical) {
+    if (worldResourceReference(*image) == currentCanonical) {
       currentDisplay = image->getName();
       break;
     }
@@ -3419,7 +3419,7 @@ bool renderImageResourcePicker(
       for (size_t i = 0; i < images.size(); ++i) {
         auto const* image = images[i];
         auto key = image->getQualifiedName();
-        auto imageReference = worldImageReference(*image);
+        auto imageReference = worldResourceReference(*image);
         ImGui::PushID(key.c_str());
         ImGui::BeginGroup();
         auto texture = imageResourceThumbnail(*image);
@@ -3885,6 +3885,201 @@ void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings)
   }
 }
 
+optional<string> renderResourceReferencePicker(
+    char const* label, char const* resourceType, string const& current) {
+  auto* renderSystem = editorRenderSystem();
+  auto* manager = renderSystem ? renderSystem->resourceManager() : nullptr;
+  if (!manager) {
+    ImGui::TextDisabled("%s: resource browser unavailable.", label);
+    return nullopt;
+  }
+
+  auto resources = manager->getResourcesByType(resourceType);
+  sort(resources.begin(), resources.end(), [](auto const& left, auto const& right) {
+    return left->getQualifiedName() < right->getQualifiedName();
+  });
+
+  string currentReference = current;
+  string display = current.empty() ? string("(none)") : current;
+  for (auto const& resource : resources) {
+    auto reference = worldResourceReference(*resource);
+    if (current == reference || current == resource->getQualifiedName()) {
+      currentReference = reference;
+      display = resource->getName();
+      break;
+    }
+  }
+
+  static map<string, string> pendingReferences;
+  auto popup = format("Select {}", label);
+  if (ImGui::Button(format("{}: {}##ResourcePicker", label, display).c_str())) {
+    pendingReferences[label] = currentReference;
+    ImGui::OpenPopup(popup.c_str());
+  }
+
+  optional<string> selectedReference;
+  if (ImGui::BeginPopupModal(
+          popup.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::Text("Choose a %s resource.", resourceType);
+    ImGui::BeginChild("resources", {420.0f, 280.0f}, true);
+    if (resources.empty()) {
+      ImGui::TextDisabled("No %s resources are available.", resourceType);
+    }
+    for (auto const& resource : resources) {
+      auto reference = worldResourceReference(*resource);
+      bool selected = pendingReferences[label] == reference;
+      if (ImGui::Selectable(
+              resource->getQualifiedName().c_str(), selected,
+              ImGuiSelectableFlags_AllowDoubleClick)) {
+        pendingReferences[label] = reference;
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+          selectedReference = reference;
+        }
+      }
+      if (selected) ImGui::SetItemDefaultFocus();
+    }
+    ImGui::EndChild();
+
+    bool canApply = !pendingReferences[label].empty();
+    ImGui::BeginDisabled(!canApply);
+    if (ImGui::Button("OK")) selectedReference = pendingReferences[label];
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+
+    if (selectedReference) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+  }
+  return selectedReference;
+}
+
+struct RunScriptExtraResourceEditorState {
+  vector<string> model;
+  vector<array<char, 512>> fields;
+  array<char, 512> adding{};
+};
+
+void renderRunScriptView(
+    editor::Document* doc, bw::core::RunScript* step) {
+  auto* layer = doc->getWorld()->getActiveLayer();
+
+  static map<bw::core::RunScript const*, string> scriptErrors;
+  if (auto selected = renderResourceReferencePicker(
+          "Lua script", "LuaScript", step->getScriptName())) {
+    string error;
+    if (auto* renderSystem = editorRenderSystem();
+        renderSystem && renderSystem->loadLuaScript(*selected, &error)) {
+      scriptErrors[step].clear();
+      transactUndoableAction(
+          doc, "Select RunScript Lua Script",
+          bind(setRunScriptScriptName, placeholders::_1, layer, step,
+               *selected));
+    } else {
+      scriptErrors[step] = error.empty() ? "Could not load the Lua script." : error;
+    }
+  }
+  if (!scriptErrors[step].empty()) {
+    ImGui::TextColored(
+        ImVec4{1.0f, 0.35f, 0.35f, 1.0f}, "%s",
+        scriptErrors[step].c_str());
+  }
+
+  auto seed = step->getSeed();
+  ImGui::SetNextItemWidth(220.0f);
+  if (ImGui::InputScalar(
+          "Seed", ImGuiDataType_U64, &seed, nullptr, nullptr, nullptr,
+          ImGuiInputTextFlags_EnterReturnsTrue)) {
+    transactUndoableAction(
+        doc, "Set RunScript Seed",
+        bind(setRunScriptSeed, placeholders::_1, layer, step, seed));
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Reroll")) {
+    static mt19937_64 randomSeed{random_device{}()};
+    transactUndoableAction(
+        doc, "Reroll RunScript Seed",
+        bind(setRunScriptSeed, placeholders::_1, layer, step, randomSeed()));
+  }
+
+  ImGui::SeparatorText("Extra resources");
+  ImGui::TextWrapped(
+      "Resource names used inside the script but not otherwise visible in the World.");
+  static map<bw::core::RunScript const*, RunScriptExtraResourceEditorState>
+      extraStates;
+  auto& extraState = extraStates[step];
+  auto const& extraResources = step->getExtraResourceNames();
+  if (extraState.model != extraResources) {
+    extraState.model = extraResources;
+    extraState.fields.clear();
+    extraState.fields.resize(extraResources.size());
+    for (size_t i = 0; i < extraResources.size(); ++i) {
+      snprintf(extraState.fields[i].data(), extraState.fields[i].size(), "%s",
+               extraResources[i].c_str());
+    }
+  }
+
+  bool listChanged = false;
+  for (size_t i = 0; i < extraState.fields.size(); ++i) {
+    ImGui::PushID(static_cast<int>(i));
+    ImGui::SetNextItemWidth(300.0f);
+    ImGui::InputText(
+        "##ExtraResource", extraState.fields[i].data(),
+        extraState.fields[i].size());
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+      auto names = extraResources;
+      names[i] = extraState.fields[i].data();
+      transactUndoableAction(
+          doc, "Edit RunScript Extra Resource",
+          bind(setRunScriptExtraResourceNames, placeholders::_1, layer, step,
+               names));
+      listChanged = true;
+    }
+    ImGui::SameLine();
+    if (!listChanged && ImGui::Button(ICON_FA_TRASH "##RemoveExtraResource")) {
+      auto names = extraResources;
+      names.erase(names.begin() + i);
+      transactUndoableAction(
+          doc, "Remove RunScript Extra Resource",
+          bind(setRunScriptExtraResourceNames, placeholders::_1, layer, step,
+               names));
+      listChanged = true;
+    }
+    ImGui::PopID();
+    if (listChanged) break;
+  }
+
+  if (!listChanged) {
+    ImGui::SetNextItemWidth(300.0f);
+    ImGui::InputTextWithHint(
+        "##AddExtraResource", "Resource name", extraState.adding.data(),
+        extraState.adding.size());
+    ImGui::SameLine();
+    ImGui::BeginDisabled(extraState.adding.front() == '\0');
+    if (ImGui::Button("Add")) {
+      auto names = extraResources;
+      names.emplace_back(extraState.adding.data());
+      extraState.adding.front() = '\0';
+      transactUndoableAction(
+          doc, "Add RunScript Extra Resource",
+          bind(setRunScriptExtraResourceNames, placeholders::_1, layer, step,
+               names));
+    }
+    ImGui::EndDisabled();
+  }
+
+  if (step->hasFailed()) {
+    ImGui::SeparatorText("Failure");
+    ImGui::TextWrapped("Message: %s", step->getFailureMessage().c_str());
+    if (step->getFailureLineNumber()) {
+      ImGui::Text("Line: %u", step->getFailureLineNumber());
+    }
+    if (!step->getFailureTraceback().empty()) {
+      ImGui::TextUnformatted("Traceback:");
+      ImGui::TextWrapped("%s", step->getFailureTraceback().c_str());
+    }
+  }
+}
+
 void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
   auto world = doc->getWorld();
   auto* layer = world->getActiveLayer();
@@ -3902,6 +4097,10 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
   }
 
   auto activeStepIndex = layer->getActiveStepIndex();
+  bool buildHalted = false;
+  static map<bw::core::LayerBuildStep const*,
+             pair<string, array<char, 256>>>
+      stepNameStates;
 
   for (uint32_t i = 0; i < numSteps; ++i) {
     ImGui::PushID(i);
@@ -3933,10 +4132,33 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
     ImGui::SameLine();
 
     ImGui::Text("%u :: %s", i, step->getType().c_str());
+    if (step->hasFailed()) {
+      ImGui::SameLine();
+      ImGui::TextColored(
+          ImVec4{1.0f, 0.3f, 0.3f, 1.0f}, "FAILED - NOT RUN");
+    } else if (buildHalted) {
+      ImGui::SameLine();
+      ImGui::TextDisabled("NOT RUN");
+    }
     ImGui::SameLine();
 
     if (widgets::ToggleButton("##StepEnabled", "Enabled", &enabled)) {
       transactUndoableAction(doc, format("Toggle Layer Step {}", i), bind(setLayerBuildStepEnabled, placeholders::_1, layer, i, enabled));
+    }
+
+    auto& [nameModel, name] = stepNameStates[step];
+    if (nameModel != step->getName()) {
+      nameModel = step->getName();
+      snprintf(name.data(), name.size(), "%s", nameModel.c_str());
+    }
+    ImGui::SetNextItemWidth(180.0f);
+    ImGui::InputTextWithHint(
+        "Step name", "Optional script lookup name", name.data(), name.size());
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+      transactUndoableAction(
+          doc, format("Rename Layer Step {}", i),
+          bind(setLayerBuildStepName, placeholders::_1, layer, i,
+               string(name.data())));
     }
 
     if (i != 0) {
@@ -3973,6 +4195,7 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
 
     ImGui::PopID();
 
+    buildHalted = buildHalted || step->hasFailed();
     if (listChanged) {
       break;
     }
@@ -5112,6 +5335,10 @@ void renderCombinedPanel(
     } else if (auto* prefabField = dynamic_cast<bw::core::PrefabField*>(activeLayer->getActiveStep())) {
       if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {
         renderPrefabFieldView(doc, prefabField, settings);
+      }
+    } else if (auto* runScript = dynamic_cast<bw::core::RunScript*>(activeLayer->getActiveStep())) {
+      if (ImGui::CollapsingHeader("Run Script", nullptr, windowFlags)) {
+        renderRunScriptView(doc, runScript);
       }
     }
 

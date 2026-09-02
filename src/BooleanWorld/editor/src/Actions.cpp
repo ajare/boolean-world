@@ -117,6 +117,15 @@ bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromInde
   return true;
 }
 
+bool setLayerBuildStepName(
+    Document*, bw::core::Layer* layer, uint32_t stepIndex,
+    string const& name) {
+  layer->getStep(stepIndex)->setName(name);
+  // A later RunScript may look this step up by name.
+  layer->rebuild();
+  return true;
+}
+
 bool movePrimitiveToLayerBuildStep(
     Document* doc,
     bw::core::Layer* layer,

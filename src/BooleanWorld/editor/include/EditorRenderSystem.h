@@ -80,6 +80,13 @@ public:
   // Re-reads the sole global Embossing catalog after an editor save.
   void reloadEmbossingCatalog(std::string const& resourceName);
 
+  // Resolves one browser-selected Lua script and compiles it under the exact
+  // World-relative spelling the RunScript step will store. A syntax error is
+  // still a successful load: ScriptRuntime caches it so the step can report
+  // the ordinary build failure in its panel.
+  bool loadLuaScript(std::string const& resourceName,
+                     std::string* error = nullptr);
+
   // Atomically replaces the resources retained for the active World.
   bool loadWorldDependencies(std::vector<std::string> const& resourceNames,
                              std::string const& currentNamespace,

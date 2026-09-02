@@ -22,6 +22,7 @@ add_executable(editor WIN32
     src/PreviewSurfacePick.cpp
     ../app/src/ReactiveCamera.cpp
     src/Render.cpp
+    src/RunScriptAuthoring.cpp
     src/UI.cpp
     src/UiHelpers.cpp
     src/Undo.cpp
@@ -403,6 +404,7 @@ if(BUILD_TESTING)
     add_executable(boolean_world_editor_layer_build_step_actions_tests
         tests/layer_build_step_actions_tests.cpp
         src/Actions.cpp
+        src/RunScriptAuthoring.cpp
         src/Document.cpp
         src/PrimitiveDefaults.cpp
         src/Undo.cpp
@@ -411,7 +413,7 @@ if(BUILD_TESTING)
     target_compile_definitions(boolean_world_editor_layer_build_step_actions_tests PRIVATE
         YAML_CPP_STATIC_DEFINE)
     target_link_libraries(boolean_world_editor_layer_build_step_actions_tests PRIVATE
-        core vendor::spdlog ext::glew ext::yaml-cpp)
+        core core-lua vendor::spdlog ext::glew ext::yaml-cpp)
     target_compile_features(boolean_world_editor_layer_build_step_actions_tests PRIVATE cxx_std_20)
     target_compile_options(boolean_world_editor_layer_build_step_actions_tests PRIVATE /W3 /utf-8)
     bw_target_defaults(boolean_world_editor_layer_build_step_actions_tests)

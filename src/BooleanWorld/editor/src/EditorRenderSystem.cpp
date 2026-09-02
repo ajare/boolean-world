@@ -16,6 +16,7 @@
 #include <willpower/common/Logger.h>
 
 #include <core-lua/CoreLua.h>
+#include <core-lua/LuaScriptResource.h>
 
 #include "EmbossingCatalog.h"
 #include "EmbossingCatalogResourceDefinitionFactory.h"
@@ -211,6 +212,36 @@ void EditorRenderSystem::reloadEmbossingCatalog(string const& resourceName) {
   auto resource = mResourceMgr->getResource(resourceName);
   mResourceMgr->releaseResource(resource);
   mResourceMgr->loadResource(resource);
+}
+
+bool EditorRenderSystem::loadLuaScript(
+    string const& resourceName, string* error) {
+  try {
+    string namesp;
+    string name;
+    wp::application::resourcesystem::Resource::splitName(
+        resourceName, "World", &namesp, &name);
+    auto resource = mResourceMgr->getResource(name, namesp);
+    auto script = dynamic_pointer_cast<bw::core::LuaScriptResource>(resource);
+    if (!script) {
+      if (error) *error = "The selected resource is not a Lua script.";
+      return false;
+    }
+
+    mResourceMgr->createResource(resource);
+    mResourceMgr->loadResource(resource);
+    try {
+      script->loadInto(*mScriptRuntime, resourceName);
+    } catch (bw::core::ScriptException const& exception) {
+      // Compilation failures are authored script failures, not picker
+      // failures. ScriptRuntime retained this one under resourceName.
+      mLogger->error(exception.what());
+    }
+    return true;
+  } catch (exception const& exception) {
+    if (error) *error = exception.what();
+    return false;
+  }
 }
 
 namespace {

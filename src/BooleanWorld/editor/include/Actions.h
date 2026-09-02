@@ -14,6 +14,10 @@
 #include "Undo.h"
 #include "Document.h"
 
+namespace bw::core {
+class RunScript;
+}
+
 namespace editor {
 
 class EmbossingCatalogLibrary;
@@ -140,6 +144,21 @@ bool addLayerBuildStep(
 bool removeLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t stepIndex);
 
 bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromIndex, uint32_t toIndex);
+
+// Authored RunScript arguments. Each action rebuilds the Layer immediately so
+// script output and downstream failure state stay in lockstep with the panel.
+bool setLayerBuildStepName(
+    Document* doc, bw::core::Layer* layer, uint32_t stepIndex,
+    std::string const& name);
+bool setRunScriptScriptName(
+    Document* doc, bw::core::Layer* layer, bw::core::RunScript* step,
+    std::string const& scriptName);
+bool setRunScriptSeed(
+    Document* doc, bw::core::Layer* layer, bw::core::RunScript* step,
+    uint64_t seed);
+bool setRunScriptExtraResourceNames(
+    Document* doc, bw::core::Layer* layer, bw::core::RunScript* step,
+    std::vector<std::string> const& names);
 
 // Re-homes one authored Primitive into another build step of the same type,
 // keeping the Primitive itself rather than a copy. The Layer rebuilds, so the

@@ -14,6 +14,8 @@
 #include <core/PrefabField.h>
 #include <core/RectanglePolygon.h>
 #include <core/World.h>
+#include <core-lua/CoreLua.h>
+#include <core-lua/RunScript.h>
 
 #include "Actions.h"
 #include "Document.h"
@@ -516,6 +518,84 @@ void movingAPrimitiveBetweenStepsOfTheSameTypeIsOneUndoableAction() {
   require(document.isModified(), "redo did not restore the modified state");
 }
 
+void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
+    bw::core::ScriptRuntime& runtime) {
+  editor::clearUndoHistory();
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+
+  editor::transactUndoableAction(
+      &document, "Add RunScript Step",
+      std::bind(editor::addLayerBuildStep, std::placeholders::_1, layer,
+                "RunScript"));
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getNumSteps() == 2 &&
+              layer->getStep(1)->getType() == "RunScript",
+          "adding a registered RunScript did not put it in the Layer recipe");
+
+  runtime.load("scatter", "-- an empty successful build script");
+  auto* step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  auto undoBefore = editor::getUndoLevels();
+  editor::transactUndoableAction(
+      &document, "Select Script",
+      std::bind(editor::setRunScriptScriptName, std::placeholders::_1, layer,
+                step, "scatter"));
+  editor::transactUndoableAction(
+      &document, "Set Seed",
+      std::bind(editor::setRunScriptSeed, std::placeholders::_1, layer, step,
+                uint64_t{42}));
+  editor::transactUndoableAction(
+      &document, "Set Step Name",
+      std::bind(editor::setLayerBuildStepName, std::placeholders::_1, layer,
+                uint32_t{1}, "rocks"));
+  editor::transactUndoableAction(
+      &document, "Set Extra Resources",
+      std::bind(editor::setRunScriptExtraResourceNames,
+                std::placeholders::_1, layer, step,
+                std::vector<std::string>{"OreImage", "/SharedData"}));
+
+  require(editor::getUndoLevels() == undoBefore + 4,
+          "RunScript state edits did not each create one undo entry");
+  require(step->getScriptName() == "scatter" && step->getSeed() == 42 &&
+              step->getName() == "rocks" &&
+              step->getExtraResourceNames() ==
+                  std::vector<std::string>{"OreImage", "/SharedData"} &&
+              !step->hasFailed(),
+          "RunScript state actions did not update and rebuild the step");
+
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  require(step->getExtraResourceNames().empty(),
+          "undo did not restore the RunScript extra-resources list");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  require(step->getName().empty(),
+          "undo did not restore the RunScript step name");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  require(step->getSeed() == 0,
+          "undo did not restore the RunScript seed");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  require(step->getScriptName().empty() && step->hasFailed(),
+          "undo did not restore the RunScript script reference and failure");
+
+  editor::redo(&document, 4);
+  layer = document.getWorld()->getActiveLayer();
+  step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  require(step->getScriptName() == "scatter" && step->getSeed() == 42 &&
+              step->getName() == "rocks" &&
+              step->getExtraResourceNames() ==
+                  std::vector<std::string>{"OreImage", "/SharedData"} &&
+              !step->hasFailed(),
+          "redo did not restore all authored RunScript state");
+}
+
 void movingAPrimitiveIntoAStepOfAnotherTypeIsRejectedThroughTheAction() {
   editor::Document document;
   document.newDoc();
@@ -547,6 +627,8 @@ void movingAPrimitiveIntoAStepOfAnotherTypeIsRejectedThroughTheAction() {
 int main() {
   try {
     bw::core::LayerBuildStep::registerCoreTypes();
+    bw::core::ScriptRuntime runtime;
+    bw::core::registerScriptStepTypes(runtime);
 
     disablingStepZeroRemovesItsPrimitivesAndRebuildRestoresThemOnReEnable();
     togglingStepEnabledIsOneUndoableActionThatRestoresLayerState();
@@ -559,8 +641,9 @@ int main() {
     prefabFieldBindingRefusesRemovingItsDefinitionsThroughActions();
     selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable();
     movingAPrimitiveBetweenStepsOfTheSameTypeIsOneUndoableAction();
+    runScriptCanBeAddedAndItsAuthoredStateIsUndoable(runtime);
     movingAPrimitiveIntoAStepOfAnotherTypeIsRejectedThroughTheAction();
-    std::cout << "Layer build step enable/disable action tests passed\n";
+    std::cout << "Layer build step editor action tests passed\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';
