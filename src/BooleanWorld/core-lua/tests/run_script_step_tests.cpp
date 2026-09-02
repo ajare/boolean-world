@@ -179,18 +179,43 @@ void theLibrarySetIsAParameterOfExecution() {
           "a narrower library set still offered libraries it did not name");
 }
 
+void runScriptOperationsAreScopedToTheExecutionContext() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("context", R"(
+    assert(context ~= nil)
+    assert(create_primitive == nil)
+    assert(place_primitive == nil)
+    assert(place_prefab_instance == nil)
+    assert(find_define_prefabs == nil)
+    assert(find_primitive_field == nil)
+    assert(get_build_primitives == nil)
+    assert(get_extents == nil)
+    assert(find_build_primitives_overlapping == nil)
+
+    local primitive = context:create_primitive("Rectangle")
+    context:place_primitive(primitive)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* step = addScriptStep(layer, runtime, "context");
+  layer.rebuild();
+
+  require(!step->hasFailed() && layer.getNumPrimitives() == 1,
+          "RunScript operations were not scoped to the execution context");
+}
+
 void scriptCreatedPrimitivesFoldInRecipeOrder() {
   bw::core::ScriptRuntime runtime;
   runtime.load("two", R"(
-    local first = create_primitive("Rectangle")
+    local first = context:create_primitive("Rectangle")
     first:set_size(8, 8)
     first:set_position(10, 0)
-    place_primitive(first)
+    context:place_primitive(first)
 
-    local second = create_primitive("Rectangle")
+    local second = context:create_primitive("Rectangle")
     second:set_size(8, 8)
     second:set_position(20, 0)
-    place_primitive(second)
+    context:place_primitive(second)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -219,9 +244,9 @@ void scriptCreatedPrimitivesFoldInRecipeOrder() {
 void everyExecutionRefillsTheStepsOwnStorage() {
   bw::core::ScriptRuntime runtime;
   runtime.load("one", R"(
-    local only = create_primitive("Rectangle")
+    local only = context:create_primitive("Rectangle")
     only:set_position(10, 0)
-    place_primitive(only)
+    context:place_primitive(only)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -242,15 +267,15 @@ void aScriptNeverOwnsWhatItCreates() {
   // Two of the three created Primitives are abandoned: one simply never
   // placed, one left behind when the script raises.
   runtime.load("abandon", R"(
-    local kept = create_primitive("Rectangle")
+    local kept = context:create_primitive("Rectangle")
     kept:set_position(10, 0)
-    place_primitive(kept)
+    context:place_primitive(kept)
 
-    local dropped = create_primitive("Rectangle")
+    local dropped = context:create_primitive("Rectangle")
     dropped:set_position(20, 0)
   )");
   runtime.load("raises", R"(
-    local dropped = create_primitive("Rectangle")
+    local dropped = context:create_primitive("Rectangle")
     error("the script gave up")
   )");
 
@@ -291,17 +316,17 @@ void syntaxRuntimeAndBudgetFailuresAreContainedAndHaltTheBuild() {
     // the error for the step's next rebuild.
   }
 
-  runtime.load("runtime", R"(local p = create_primitive("Rectangle")
+  runtime.load("runtime", R"(local p = context:create_primitive("Rectangle")
 p:set_position(10, 0)
-place_primitive(p)
+context:place_primitive(p)
 local function explode()
   error("deliberate runtime failure")
 end
 explode())");
 
-  runtime.load("runaway", R"(local p = create_primitive("Rectangle")
+  runtime.load("runaway", R"(local p = context:create_primitive("Rectangle")
 p:set_position(20, 0)
-place_primitive(p)
+context:place_primitive(p)
 while true do
   pcall(function() while true do end end)
 end)");
@@ -412,9 +437,9 @@ void printReachesTheHostsSink() {
 void theSeedMakesRebuildsReproducibleAndRerollableByChangingIt() {
   bw::core::ScriptRuntime runtime;
   runtime.load("scatter", R"(
-    local p = create_primitive("Rectangle")
+    local p = context:create_primitive("Rectangle")
     p:set_position(math.random(0, 1000), 0)
-    place_primitive(p)
+    context:place_primitive(p)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -441,9 +466,9 @@ void theSeedMakesRebuildsReproducibleAndRerollableByChangingIt() {
 void twoRunScriptStepsCannotObserveEachOthersRandomState() {
   bw::core::ScriptRuntime runtime;
   runtime.load("draw", R"(
-    local p = create_primitive("Rectangle")
+    local p = context:create_primitive("Rectangle")
     p:set_position(math.random(0, 1000), 0)
-    place_primitive(p)
+    context:place_primitive(p)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -464,9 +489,9 @@ void everyExecutionBeginsWithAFreshEnvironment() {
     if leftover ~= nil then error("a global survived into the next execution") end
     leftover = true
 
-    local only = create_primitive("Rectangle")
+    local only = context:create_primitive("Rectangle")
     only:set_position(10, 0)
-    place_primitive(only)
+    context:place_primitive(only)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -487,11 +512,11 @@ void everyExecutionBeginsWithAFreshEnvironment() {
 void scriptsReadPriorBuildPrimitivesAsConstHandles() {
   bw::core::ScriptRuntime runtime;
   runtime.load("count", R"(
-    local priors = get_build_primitives()
-    local p = create_primitive("Rectangle")
+    local priors = context:get_build_primitives()
+    local p = context:create_primitive("Rectangle")
     p:set_size(4, 4)
     p:set_position(#priors * 10, 0)
-    place_primitive(p)
+    context:place_primitive(p)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -505,10 +530,53 @@ void scriptsReadPriorBuildPrimitivesAsConstHandles() {
           "a script did not see the build Primitives produced by preceding steps");
 }
 
+void scriptsAccessInheritedPrimitiveTransforms() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("inherited-transforms", R"(
+    local source = context:get_build_primitives()[1]
+    local tx, ty = source:get_transform_offset()
+    local ex, ey = source:get_influence_eye_origin_offset()
+    local epx, epy = source:get_influence_eye_origin_position()
+    assert(source:is_static())
+
+    local p = context:create_primitive("Rectangle")
+    p:set_size(8, 8)
+    p:set_position(epx, epy)
+    p:set_transform_offset(tx, ty)
+    p:set_orientation(source:get_orientation())
+    p:set_follow_orbit_angle(source:get_follow_orbit_angle())
+    p:set_influence_eye_origin_offset(ex, ey)
+    p:set_influence_eye_angle_offset(source:get_influence_eye_angle_offset())
+    context:place_primitive(p)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* source = rectangle(10.0f);
+  source->setTransformOffset({3.0f, -4.0f});
+  source->setOrientation(27.0f);
+  source->setFollowOrbitAngle(true);
+  source->setInfluenceEyeOriginOffset({5.0f, 6.0f});
+  source->setInfluenceEyeAngleOffset(12.0f);
+  layer.getPrimitiveField()->addPrimitive(source);
+  auto* step = addScriptStep(layer, runtime, "inherited-transforms");
+  layer.rebuild();
+
+  require(!step->hasFailed() && layer.getNumPrimitives() == 2,
+          "accessing inherited Primitive transforms failed the script");
+  auto const* placed = layer.getPrimitive(1);
+  require(placed->getPosition() == wp::Vector2{15.0f, 6.0f} &&
+              placed->getTransformOffset() == wp::Vector2{3.0f, -4.0f} &&
+              placed->getOrientation() == 27.0f &&
+              placed->getFollowOrbitAngle() &&
+              placed->getInfluenceEyeOriginOffset() == wp::Vector2{5.0f, 6.0f} &&
+              placed->getInfluenceEyeAngleOffset() == 12.0f,
+          "inherited Primitive transform values did not cross the Lua API");
+}
+
 void aScriptCannotMutateAPriorPrimitive() {
   bw::core::ScriptRuntime runtime;
   runtime.load("mutate", R"(
-    local priors = get_build_primitives()
+    local priors = context:get_build_primitives()
     priors[1]:set_position(999, 999)
   )");
 
@@ -525,11 +593,11 @@ void aScriptCannotMutateAPriorPrimitive() {
 void aScriptReadsTheLayersExtents() {
   bw::core::ScriptRuntime runtime;
   runtime.load("extents", R"(
-    local x, y, w, h = get_extents()
-    local p = create_primitive("Rectangle")
+    local x, y, w, h = context:get_extents()
+    local p = context:create_primitive("Rectangle")
     p:set_size(4, 4)
     p:set_position(x + w, y + h)
-    place_primitive(p)
+    context:place_primitive(p)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -553,11 +621,11 @@ void aScatterAvoidsExistingGeometryAndItsOwnPlacements() {
     local spacing = 250
     for i = 1, 6 do
       local cx = (i - 1) * spacing
-      if #find_build_primitives_overlapping(cx - spacing / 2, -spacing / 2, spacing, spacing) == 0 then
-        local p = create_primitive("Rectangle")
+      if #context:find_build_primitives_overlapping(cx - spacing / 2, -spacing / 2, spacing, spacing) == 0 then
+        local p = context:create_primitive("Rectangle")
         p:set_size(8, 8)
         p:set_position(cx, 0)
-        place_primitive(p)
+        context:place_primitive(p)
       end
     end
   )");
@@ -598,9 +666,9 @@ void aScatterAvoidsExistingGeometryAndItsOwnPlacements() {
 void aScriptPlacesTransformedPrefabInstancesFoundByName() {
   bw::core::ScriptRuntime runtime;
   runtime.load("stamp", R"(
-    local prefabs = find_define_prefabs("prefabs")
+    local prefabs = context:find_define_prefabs("prefabs")
     local rock = prefabs:get_prefab("rock")
-    place_prefab_instance(rock, 100, 0, 0)
+    context:place_prefab_instance(rock, 100, 0, 0)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -619,10 +687,10 @@ void aScriptPlacesTransformedPrefabInstancesFoundByName() {
 void placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged() {
   bw::core::ScriptRuntime runtime;
   runtime.load("stamp-twice", R"(
-    local prefabs = find_define_prefabs("prefabs")
+    local prefabs = context:find_define_prefabs("prefabs")
     local rock = prefabs:get_prefab("rock")
-    place_prefab_instance(rock, 100, 0, 0)
-    place_prefab_instance(rock, 200, 0, 0)
+    context:place_prefab_instance(rock, 100, 0, 0)
+    context:place_prefab_instance(rock, 200, 0, 0)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -645,11 +713,11 @@ void placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged() {
 void aScriptReadsAPrimitiveFieldsPrimitivesAsConst() {
   bw::core::ScriptRuntime runtime;
   runtime.load("read-field", R"(
-    local field = find_primitive_field("authored")
+    local field = context:find_primitive_field("authored")
     local primitives = field:get_primitives()
-    local p = create_primitive("Rectangle")
+    local p = context:create_primitive("Rectangle")
     p:set_position(#primitives * 10, 0)
-    place_primitive(p)
+    context:place_primitive(p)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -669,7 +737,7 @@ void aScriptReadsAPrimitiveFieldsPrimitivesAsConst() {
 void aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName() {
   bw::core::ScriptRuntime runtime;
   runtime.load("mutate-field", R"(
-    local field = find_primitive_field("authored")
+    local field = context:find_primitive_field("authored")
     local primitives = field:get_primitives()
     primitives[1]:set_position(999, 999)
   )");
@@ -693,10 +761,10 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
   bw::core::ScriptRuntime runtime;
   bw::core::registerScriptStepTypes(runtime);
   runtime.load("Scripts/scatter", R"(
-    local p = create_primitive("Rectangle")
+    local p = context:create_primitive("Rectangle")
     p:set_size(8, 8)
     p:set_position(math.random(100, 1000), 0)
-    place_primitive(p)
+    context:place_primitive(p)
   )");
   runtime.load("Scripts/disabled", "");
 
@@ -757,9 +825,9 @@ void reloadingRebuildsExactlyTheLayersThatNameTheScript() {
 
   auto sourceAt = [](float x, std::string const& message) {
     return "print(\"" + message + "\")\n"
-           "local p = create_primitive(\"Rectangle\")\n"
+           "local p = context:create_primitive(\"Rectangle\")\n"
            "p:set_position(" + std::to_string(x) + ", 0)\n"
-           "place_primitive(p)";
+           "context:place_primitive(p)";
   };
 
   runtime.load("shared", sourceAt(10, "shared-old"));
@@ -914,11 +982,11 @@ void coroutinesAdvanceAcrossTicksAndContainFailures() {
 
 void namingAMissingStepOrPrefabFailsTheStepWithTheName() {
   bw::core::ScriptRuntime runtime;
-  runtime.load("missing-step", R"(find_define_prefabs("nope"))");
-  runtime.load("missing-field", R"(find_primitive_field("nope"))");
-  runtime.load("wrong-type", R"(find_define_prefabs("authored"))");
+  runtime.load("missing-step", R"(context:find_define_prefabs("nope"))");
+  runtime.load("missing-field", R"(context:find_primitive_field("nope"))");
+  runtime.load("wrong-type", R"(context:find_define_prefabs("authored"))");
   runtime.load("missing-prefab", R"(
-    local prefabs = find_define_prefabs("prefabs")
+    local prefabs = context:find_define_prefabs("prefabs")
     prefabs:get_prefab("nope")
   )");
 
@@ -958,6 +1026,7 @@ int main() {
     runScriptDeclaresItsCapabilitiesAndIsGivenItsRuntime();
     theRuntimeCompilesScriptsFromStringsAndCachesThemByName();
     theLibrarySetIsAParameterOfExecution();
+    runScriptOperationsAreScopedToTheExecutionContext();
     scriptCreatedPrimitivesFoldInRecipeOrder();
     everyExecutionRefillsTheStepsOwnStorage();
     aScriptNeverOwnsWhatItCreates();
@@ -968,6 +1037,7 @@ int main() {
     twoRunScriptStepsCannotObserveEachOthersRandomState();
     everyExecutionBeginsWithAFreshEnvironment();
     scriptsReadPriorBuildPrimitivesAsConstHandles();
+    scriptsAccessInheritedPrimitiveTransforms();
     aScriptCannotMutateAPriorPrimitive();
     aScriptReadsTheLayersExtents();
     aScatterAvoidsExistingGeometryAndItsOwnPlacements();

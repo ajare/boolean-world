@@ -6,8 +6,11 @@
 
 #include <core/CoreException.h>
 #include <core/DefinePrefabs.h>
+#include <core/Layer.h>
 #include <core/Primitive.h>
 #include <core/PrimitiveField.h>
+
+#include "core-lua/RunScript.h"
 
 namespace bw {
 namespace core {
@@ -47,6 +50,65 @@ vector<PrimitiveView> toPrimitiveViews(vector<Primitive*> const& primitives) {
   return views;
 }
 
+RunScriptContext::RunScriptContext(
+    RunScript const& step, LayerBuildContext& build)
+    : mStep(&step), mBuild(&build) {
+}
+
+Primitive* RunScriptContext::createPrimitive(string const& type) const {
+  return mStep->createPrimitive(type);
+}
+
+void RunScriptContext::placePrimitive(Primitive* primitive) const {
+  mStep->placePrimitive(*mBuild, primitive);
+}
+
+void RunScriptContext::placePrefabInstance(
+    PrefabView view, float x, float y, float angle) const {
+  mStep->placePrefabInstance(*mBuild, view.prefab, x, y, angle);
+}
+
+DefinePrefabsView RunScriptContext::findDefinePrefabs(string const& name) const {
+  auto const id = mBuild->getLayer().findStepIdByName(name);
+  if (id == ~0u) {
+    throw CoreException(format("No step named '{}'", name));
+  }
+  auto* step = dynamic_cast<DefinePrefabs*>(mBuild->getLayer().getStepById(id));
+  if (!step) {
+    throw CoreException(format("Step '{}' is not a DefinePrefabs step", name));
+  }
+  return DefinePrefabsView{step};
+}
+
+PrimitiveFieldView RunScriptContext::findPrimitiveField(string const& name) const {
+  auto const id = mBuild->getLayer().findStepIdByName(name);
+  if (id == ~0u) {
+    throw CoreException(format("No step named '{}'", name));
+  }
+  auto* step = dynamic_cast<PrimitiveField*>(mBuild->getLayer().getStepById(id));
+  if (!step) {
+    throw CoreException(format("Step '{}' is not a PrimitiveField step", name));
+  }
+  return PrimitiveFieldView{step};
+}
+
+vector<PrimitiveView> RunScriptContext::getBuildPrimitives() const {
+  return toPrimitiveViews(mBuild->getBuildPrimitives());
+}
+
+tuple<float, float, float, float> RunScriptContext::getExtents() const {
+  auto const& extents = mBuild->getExtents();
+  return make_tuple(
+      extents.getPosition().x, extents.getPosition().y,
+      extents.getSize().x, extents.getSize().y);
+}
+
+vector<PrimitiveView> RunScriptContext::findBuildPrimitivesOverlapping(
+    float x, float y, float width, float height) const {
+  return toPrimitiveViews(mBuild->findBuildPrimitivesOverlapping(
+      wp::BoundingBox(x, y, width, height)));
+}
+
 void bindScriptTypes(sol::state& lua) {
   if (lua[boundMarker].valid()) {
     return;
@@ -65,6 +127,44 @@ void bindScriptTypes(sol::state& lua) {
       [](Primitive const& primitive) {
         return make_tuple(primitive.getPosition().x, primitive.getPosition().y);
       },
+
+      "set_transform_offset",
+      [](Primitive& primitive, float x, float y) {
+        primitive.setTransformOffset({x, y});
+      },
+      "get_transform_offset",
+      [](Primitive const& primitive) {
+        return make_tuple(
+            primitive.getTransformOffset().x,
+            primitive.getTransformOffset().y);
+      },
+
+      "set_orientation", &Primitive::setOrientation,
+      "get_orientation", &Primitive::getOrientation,
+
+      "set_follow_orbit_angle", &Primitive::setFollowOrbitAngle,
+      "get_follow_orbit_angle", &Primitive::getFollowOrbitAngle,
+
+      "set_influence_eye_origin_offset",
+      [](Primitive& primitive, float x, float y) {
+        primitive.setInfluenceEyeOriginOffset({x, y});
+      },
+      "get_influence_eye_origin_offset",
+      [](Primitive const& primitive) {
+        return make_tuple(
+            primitive.getInfluenceEyeOriginOffset().x,
+            primitive.getInfluenceEyeOriginOffset().y);
+      },
+      "get_influence_eye_origin_position",
+      [](Primitive const& primitive) {
+        auto const position = primitive.getInfluenceEyeOriginPosition();
+        return make_tuple(position.x, position.y);
+      },
+
+      "set_influence_eye_angle_offset", &Primitive::setInfluenceEyeAngleOffset,
+      "get_influence_eye_angle_offset", &Primitive::getInfluenceEyeAngleOffset,
+
+      "is_static", &Primitive::isStatic,
 
       "set_size",
       [](Primitive& primitive, float x, float y) { primitive.setSize(x, y); },
@@ -101,6 +201,45 @@ void bindScriptTypes(sol::state& lua) {
         return make_tuple(view.primitive->getPosition().x, view.primitive->getPosition().y);
       },
 
+      "get_transform_offset",
+      [](PrimitiveView const& view) {
+        return make_tuple(
+            view.primitive->getTransformOffset().x,
+            view.primitive->getTransformOffset().y);
+      },
+
+      "get_orientation",
+      [](PrimitiveView const& view) {
+        return view.primitive->getOrientation();
+      },
+
+      "get_follow_orbit_angle",
+      [](PrimitiveView const& view) {
+        return view.primitive->getFollowOrbitAngle();
+      },
+
+      "get_influence_eye_origin_offset",
+      [](PrimitiveView const& view) {
+        return make_tuple(
+            view.primitive->getInfluenceEyeOriginOffset().x,
+            view.primitive->getInfluenceEyeOriginOffset().y);
+      },
+      "get_influence_eye_origin_position",
+      [](PrimitiveView const& view) {
+        auto const position = view.primitive->getInfluenceEyeOriginPosition();
+        return make_tuple(position.x, position.y);
+      },
+
+      "get_influence_eye_angle_offset",
+      [](PrimitiveView const& view) {
+        return view.primitive->getInfluenceEyeAngleOffset();
+      },
+
+      "is_static",
+      [](PrimitiveView const& view) {
+        return view.primitive->isStatic();
+      },
+
       "get_size",
       [](PrimitiveView const& view) {
         return make_tuple(view.primitive->getSize().x, view.primitive->getSize().y);
@@ -114,6 +253,24 @@ void bindScriptTypes(sol::state& lua) {
       "get_operation",
       [](PrimitiveView const& view) {
         return operationName(view.primitive->getOperation());
+      });
+
+  lua.new_usertype<RunScriptContext>(
+      "RunScriptContext", sol::no_constructor,
+      "create_primitive", &RunScriptContext::createPrimitive,
+      "place_primitive", &RunScriptContext::placePrimitive,
+      "place_prefab_instance", &RunScriptContext::placePrefabInstance,
+      "find_define_prefabs", &RunScriptContext::findDefinePrefabs,
+      "find_primitive_field", &RunScriptContext::findPrimitiveField,
+      "get_build_primitives",
+      [](RunScriptContext const& context) {
+        return sol::as_table(context.getBuildPrimitives());
+      },
+      "get_extents", &RunScriptContext::getExtents,
+      "find_build_primitives_overlapping",
+      [](RunScriptContext const& context, float x, float y, float width, float height) {
+        return sol::as_table(context.findBuildPrimitivesOverlapping(
+            x, y, width, height));
       });
 
   lua.new_usertype<PrefabView>(

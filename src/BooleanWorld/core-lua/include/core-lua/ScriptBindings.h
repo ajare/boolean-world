@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+#include <tuple>
 #include <vector>
 
 #include <sol/sol.hpp>
@@ -11,6 +13,8 @@ class Primitive;
 class Prefab;
 class DefinePrefabs;
 class PrimitiveField;
+class LayerBuildContext;
+class RunScript;
 
 // A read-only, non-owning view of a Primitive, handed to scripts for prior
 // build Primitives (docs spec #365). sol2 does not track const-ness on a
@@ -44,6 +48,32 @@ struct DefinePrefabsView {
 // (docs spec #366).
 struct PrimitiveFieldView {
   PrimitiveField const* step;
+};
+
+// The borrowed capability object available to a script as `context` while a
+// RunScript step executes. It deliberately exposes execution operations, not
+// the RunScript object itself or its authored configuration.
+class RunScriptContext {
+private:
+  RunScript const* mStep;
+  LayerBuildContext* mBuild;
+
+public:
+  RunScriptContext(RunScript const& step, LayerBuildContext& build);
+
+  [[nodiscard]] Primitive* createPrimitive(std::string const& type) const;
+  void placePrimitive(Primitive* primitive) const;
+  void placePrefabInstance(
+      PrefabView view, float x, float y, float angle) const;
+
+  [[nodiscard]] DefinePrefabsView findDefinePrefabs(
+      std::string const& name) const;
+  [[nodiscard]] PrimitiveFieldView findPrimitiveField(
+      std::string const& name) const;
+  [[nodiscard]] std::vector<PrimitiveView> getBuildPrimitives() const;
+  [[nodiscard]] std::tuple<float, float, float, float> getExtents() const;
+  [[nodiscard]] std::vector<PrimitiveView> findBuildPrimitivesOverlapping(
+      float x, float y, float width, float height) const;
 };
 
 // Registers the usertypes a script sees, on the state rather than on any one

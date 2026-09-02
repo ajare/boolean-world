@@ -1,0 +1,270 @@
+# RunScript Lua API
+
+A `RunScript` LayerBuildStep executes one Lua script while its Layer is rebuilt. The script can inspect build-participating Primitives produced by earlier enabled steps and append new Primitives. It cannot modify earlier output or define Prefabs.
+
+See [RunScript examples](run-script-examples.md) for complete scripts.
+
+## Execution model
+
+- Steps execute in Layer recipe order. Output from a `RunScript` is inserted at that step's position in the fold.
+- Each execution starts with a fresh environment. Globals do not survive a rebuild and are not shared by two `RunScript` steps.
+- The step's serialized seed initializes `math.random` before every execution. The same recipe, script, and seed therefore produce the same random sequence.
+- A script has an instruction budget of 1,000,000 Lua instructions. Exceeding it fails the step.
+- An error discards all output from the failed step and stops the Layer build. Output from preceding steps remains; later steps do not run.
+- Handles returned to Lua are borrowed and are valid only during the current execution. Lua never owns their C++ objects.
+- Lua arrays returned by this API use normal one-based Lua indexing.
+
+A `RunScript` step stores four authored values:
+
+| Value | Meaning |
+|---|---|
+| Script | Name of the Lua script resource to execute. |
+| Seed | Integer used to seed `math.random` at the start of execution. |
+| Extra resources | Resource names used by the script but not discoverable from its source at serialization time. Add every such dependency here. Empty names and duplicates are removed from the World's dependency projection. |
+| Step name | Optional label through which another script can find the step, where supported. Names need not be unique. |
+
+## Execution context
+
+Every execution receives one borrowed `RunScriptContext` as the global
+`context`. It is valid only for that execution and exposes the capabilities of
+the currently executing `RunScript` step without exposing the step's authored
+configuration. Operations scoped to a build are methods on this object rather
+than global functions.
+
+### `context:create_primitive(type)`
+
+Creates a mutable Primitive owned by the current `RunScript` step.
+
+```lua
+local primitive = context:create_primitive("Rectangle")
+```
+
+`type` is case-sensitive. Registered types are:
+
+- `"Rectangle"`
+- `"Regular"`
+- `"Circle"`
+- `"CircleSegment"`
+- `"Torus"`
+- `"TorusSegment"`
+- `"Superformula"`
+- `"Mesh"`
+
+Only the common Primitive properties documented below are exposed. In particular, this API cannot author a `Mesh`'s vertices or change type-specific parameters.
+
+A created Primitive contributes nothing until passed to `context:place_primitive`. An unplaced Primitive is discarded after execution.
+
+**Returns:** mutable `Primitive`.
+
+**Errors:** fails if `type` is not registered.
+
+### `context:place_primitive(primitive)`
+
+Appends a Primitive returned by `context:create_primitive` to the current step's output.
+
+```lua
+context:place_primitive(primitive)
+```
+
+A Primitive may be placed only once and must have been created by the currently executing step. Placement order is retained, subject to the Primitives' step-local priorities during the fold.
+
+**Errors:** fails for `nil`, a foreign Primitive, or a Primitive already placed by this execution.
+
+### `context:get_build_primitives()`
+
+Returns an array of read-only `PrimitiveView` handles for build-participating output from preceding enabled steps.
+
+```lua
+for _, primitive in ipairs(context:get_build_primitives()) do
+    print(primitive:get_type())
+end
+```
+
+The array does **not** include Primitives already placed by the current script. Use `context:find_build_primitives_overlapping` when current-step placements must be included.
+
+**Returns:** `PrimitiveView[]`, possibly empty.
+
+### `context:find_build_primitives_overlapping(x, y, width, height)`
+
+Returns read-only handles for Primitives whose bounds overlap the specified axis-aligned box.
+
+```lua
+local occupied = context:find_build_primitives_overlapping(x, y, width, height)
+```
+
+The query includes build-participating output from preceding steps and Primitives already placed by the current execution. This makes it suitable for collision-avoiding placement. It is a bounds-only test, not an exact polygon intersection, and currently performs a linear scan.
+
+**Returns:** `PrimitiveView[]`, possibly empty.
+
+### `context:get_extents()`
+
+Returns the owning Layer's axis-aligned extents as four values.
+
+```lua
+local x, y, width, height = context:get_extents()
+```
+
+Coordinates use the World plane: +X is right and +Y is up.
+
+**Returns:** `x, y, width, height`.
+
+### `context:find_define_prefabs(step_name)`
+
+Finds the first LayerBuildStep with `step_name` and requires it to be a `DefinePrefabs` step.
+
+```lua
+local definitions = context:find_define_prefabs("environment prefabs")
+```
+
+Step names are optional and non-unique; the first matching step in recipe order wins.
+
+**Returns:** read-only `DefinePrefabsStep`.
+
+**Errors:** fails if no step has that name or the first match has another type.
+
+### `context:find_primitive_field(step_name)`
+
+Finds the first LayerBuildStep with `step_name` and requires it to be a `PrimitiveField` step.
+
+```lua
+local field = context:find_primitive_field("authored terrain")
+```
+
+Step names are optional and non-unique; the first matching step in recipe order wins. The returned view exposes the field's authored Primitives, whether or not those Primitives participate as prior build output at the current recipe position.
+
+**Returns:** read-only `PrimitiveFieldStep`.
+
+**Errors:** fails if no step has that name or the first match has another type.
+
+### `context:place_prefab_instance(prefab, x, y, angle)`
+
+Copies every Primitive in a `Prefab` into the current step's output, rotates the copies about the Prefab origin, and offsets them by `(x, y)`.
+
+```lua
+local definitions = context:find_define_prefabs("environment prefabs")
+local arch = definitions:get_prefab("arch")
+context:place_prefab_instance(arch, 128, 64, 90)
+```
+
+`angle` is a clockwise angle in degrees. For the currently supported Square tiling, use `0`, `90`, `180`, or `270`. Each call makes independent copies and leaves the source Prefab unchanged. Parent relationships between copied Prefab Primitives are preserved.
+
+**Errors:** fails if the value is not a valid Prefab handle.
+
+### `print(...)`
+
+Converts arguments with `tostring`, joins them with tabs, and sends one completed line to the host's script log.
+
+```lua
+print("placed", count, "primitives")
+```
+
+## Mutable `Primitive`
+
+Returned only by `context:create_primitive`.
+
+| Method | Description |
+|---|---|
+| `get_type()` | Returns the case-sensitive registered type name. |
+| `set_position(x, y)` | Sets the Primitive's position in the World plane. |
+| `get_position()` | Returns `x, y`. |
+| `set_transform_offset(x, y)` | Sets the local transform origin relative to the Primitive's position. |
+| `get_transform_offset()` | Returns the transform-origin offset as `x, y`. |
+| `set_orientation(angle)` | Sets the Primitive's orientation in degrees. |
+| `get_orientation()` | Returns the orientation in degrees. |
+| `set_follow_orbit_angle(follow)` | Chooses whether the Primitive's local orientation follows its orbit angle. |
+| `get_follow_orbit_angle()` | Returns whether local orientation follows orbit angle. |
+| `set_influence_eye_origin_offset(x, y)` | Sets the influence eye's offset from the Primitive's position. |
+| `get_influence_eye_origin_offset()` | Returns the influence eye's offset as `x, y`. |
+| `get_influence_eye_origin_position()` | Returns the influence eye's World-plane position as `x, y`. |
+| `set_influence_eye_angle_offset(angle)` | Sets the influence eye's angle offset in degrees. |
+| `get_influence_eye_angle_offset()` | Returns the influence eye's angle offset in degrees. |
+| `is_static()` | Returns whether the Primitive's vertex transformation is static. |
+| `set_size(width, height)` | Sets the common Primitive size. Its exact geometric meaning depends on the type. |
+| `get_size()` | Returns `width, height`. |
+| `set_priority(priority)` | Sets the step-local integer priority. Use the authored range `0`–`255`; lower values fold earlier within this step. Layer and step order take precedence. |
+| `get_priority()` | Returns the priority as an integer. |
+| `set_operation(operation)` | Sets `"union"`, `"intersection"`, `"difference"`, or `"xor"`. Values are case-sensitive. |
+| `get_operation()` | Returns the operation as one of those lowercase strings. |
+
+Only these common properties and inherited spatial-transform properties are currently scriptable. Animation curves and transform flows, fill rule, materials, surface properties, type-specific shape parameters, parentage, and mesh vertices are not exposed.
+
+## Read-only `PrimitiveView`
+
+Returned by `context:get_build_primitives`, `context:find_build_primitives_overlapping`, and `PrimitiveFieldStep:get_primitives`. It has no setters.
+
+| Method | Returns |
+|---|---|
+| `get_type()` | Primitive type name. |
+| `get_position()` | `x, y`. |
+| `get_transform_offset()` | Transform-origin offset as `x, y`. |
+| `get_orientation()` | Orientation in degrees. |
+| `get_follow_orbit_angle()` | Whether local orientation follows orbit angle. |
+| `get_influence_eye_origin_offset()` | Influence-eye offset as `x, y`. |
+| `get_influence_eye_origin_position()` | Influence-eye World-plane position as `x, y`. |
+| `get_influence_eye_angle_offset()` | Influence-eye angle offset in degrees. |
+| `is_static()` | Whether the Primitive's vertex transformation is static. |
+| `get_size()` | `width, height`. |
+| `get_priority()` | Step-local integer priority. |
+| `get_operation()` | `"union"`, `"intersection"`, `"difference"`, or `"xor"`. |
+
+Calling a mutable `Primitive` method such as `set_position` on a `PrimitiveView` fails the script.
+
+## `DefinePrefabsStep`
+
+A read-only view returned by `context:find_define_prefabs`.
+
+### `get_prefab(name)`
+
+Returns the first Prefab in the definition step with the given name.
+
+```lua
+local prefab = definitions:get_prefab("rock")
+```
+
+Prefab names need not be unique; the first match wins.
+
+**Returns:** read-only `Prefab`.
+
+**Errors:** fails if no Prefab has that name.
+
+## `Prefab`
+
+A read-only handle returned by `DefinePrefabsStep:get_prefab`.
+
+### `get_name()`
+
+Returns the Prefab's authored name.
+
+A script cannot inspect or mutate the Prefab's source Primitives. It can pass the handle to `context:place_prefab_instance`.
+
+## `PrimitiveFieldStep`
+
+A read-only view returned by `context:find_primitive_field`.
+
+### `get_primitives()`
+
+Returns the field's authored Primitives as an array of read-only `PrimitiveView` handles.
+
+```lua
+local primitives = field:get_primitives()
+```
+
+## Available Lua libraries
+
+Build scripts receive Lua's base functions and the `table`, `string`, and `math` libraries. `print` is replaced with the host-logged version described above.
+
+The available base names are:
+
+`_VERSION`, `assert`, `error`, `getmetatable`, `ipairs`, `next`, `pairs`, `pcall`, `rawequal`, `rawget`, `rawlen`, `rawset`, `select`, `setmetatable`, `tonumber`, `tostring`, `type`, `warn`, and `xpcall`.
+
+The following are deliberately unavailable to keep builds independent of files, modules, the clock, and persistent process state:
+
+- `load`, `loadfile`, and `dofile`
+- `collectgarbage`
+- `io`, `os`, and `debug`
+- `package` and `require`
+- the `coroutine` library
+
+`math.random` is seeded automatically from the `RunScript` step. Scripts normally should not call `math.randomseed` themselves.
+
+Do not rely on `pairs` order for hash-keyed tables. Sort keys explicitly when their traversal order affects output.

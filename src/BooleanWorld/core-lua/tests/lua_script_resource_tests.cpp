@@ -27,9 +27,9 @@ void require(bool condition, std::string const& message) {
 std::string serializeScriptWorld() {
   bw::core::ScriptRuntime sourceRuntime;
   sourceRuntime.load("ScriptDemo", R"(
-    local primitive = create_primitive("Rectangle")
+    local primitive = context:create_primitive("Rectangle")
     primitive:set_size(8, 8)
-    place_primitive(primitive)
+    context:place_primitive(primitive)
   )");
 
   bw::core::World source(512.0f, 16.0f);
@@ -77,9 +77,9 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
   {
     std::ofstream script(root / "script-demo.lua");
     script << R"(
-      local primitive = create_primitive("Rectangle")
+      local primitive = context:create_primitive("Rectangle")
       primitive:set_size(8, 8)
-      place_primitive(primitive)
+      context:place_primitive(primitive)
     )";
     std::ofstream manifest(root / "Resources.yaml");
     manifest << R"(Resources:

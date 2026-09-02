@@ -41,6 +41,13 @@ private:
 
   InputValue mInputs;
 
+  void setInputUserValue(uint32_t index, float value);
+
+  void setInputs(
+      wp::Vector2 const& entityPosition,
+      float entityAngle,
+      std::vector<WorldTriggerLine*>* triggerLines);
+
   mutable wp::Vector2 mCachedWorldPosition;
 
   mutable uint64_t mWorldPositionCacheRevision{0};
@@ -229,11 +236,7 @@ public:
   //
   // Utility
   //
-  void setInputUserValue(uint32_t index, float value);
-
   float getInputUserValue(uint32_t index) const;
-
-  void setInputs(wp::Vector2 const& entityPosition, float entityAngle, std::vector<WorldTriggerLine*>* triggerLines);
 
   InputValue const& getInputs() const;
 

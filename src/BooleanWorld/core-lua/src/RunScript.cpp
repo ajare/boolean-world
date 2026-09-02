@@ -7,7 +7,6 @@
 #include <core/CoreException.h>
 #include <core/DefinePrefabs.h>
 #include <core/Layer.h>
-#include <core/PrimitiveField.h>
 
 #include "core-lua/ScriptBindings.h"
 
@@ -124,69 +123,10 @@ void RunScript::execute(LayerBuildContext& context) const {
           // (docs/adr/0040); ScriptLibraries::Build always includes math.
           environment["math"]["randomseed"](mSeed);
 
-          environment.set_function(
-              "create_primitive",
-              [this](string const& type) { return createPrimitive(type); });
-
-          environment.set_function(
-              "place_primitive",
-              [this, &context](Primitive* primitive) { placePrimitive(context, primitive); });
-
-          environment.set_function(
-              "place_prefab_instance",
-              [this, &context](PrefabView view, float x, float y, float angle) {
-                placePrefabInstance(context, view.prefab, x, y, angle);
-              });
-
-          environment.set_function(
-              "find_define_prefabs",
-              [&context](string const& name) {
-                auto const id = context.getLayer().findStepIdByName(name);
-                if (id == ~0u) {
-                  throw CoreException(format("No step named '{}'", name));
-                }
-                auto* step = dynamic_cast<DefinePrefabs*>(context.getLayer().getStepById(id));
-                if (!step) {
-                  throw CoreException(format("Step '{}' is not a DefinePrefabs step", name));
-                }
-                return DefinePrefabsView{step};
-              });
-
-          environment.set_function(
-              "find_primitive_field",
-              [&context](string const& name) {
-                auto const id = context.getLayer().findStepIdByName(name);
-                if (id == ~0u) {
-                  throw CoreException(format("No step named '{}'", name));
-                }
-                auto* step = dynamic_cast<PrimitiveField*>(context.getLayer().getStepById(id));
-                if (!step) {
-                  throw CoreException(format("Step '{}' is not a PrimitiveField step", name));
-                }
-                return PrimitiveFieldView{step};
-              });
-
-          environment.set_function(
-              "get_build_primitives",
-              [&context]() {
-                return sol::as_table(toPrimitiveViews(context.getBuildPrimitives()));
-              });
-
-          environment.set_function(
-              "get_extents",
-              [&context]() {
-                auto const& extents = context.getExtents();
-                return make_tuple(
-                    extents.getPosition().x, extents.getPosition().y,
-                    extents.getSize().x, extents.getSize().y);
-              });
-
-          environment.set_function(
-              "find_build_primitives_overlapping",
-              [&context](float x, float y, float width, float height) {
-                return sol::as_table(toPrimitiveViews(context.findBuildPrimitivesOverlapping(
-                    wp::BoundingBox(x, y, width, height))));
-              });
+          // One explicit, borrowed capability object owns every operation
+          // scoped to this RunScript execution. The actual RunScript step and
+          // its authored configuration are not exposed to Lua.
+          environment["context"] = RunScriptContext(*this, context);
         });
   } catch (ScriptException const& error) {
     mFailureLineNumber = error.getLineNumber();

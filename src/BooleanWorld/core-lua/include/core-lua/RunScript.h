@@ -26,6 +26,8 @@ class Prefab;
 // that raises halfway through can neither leak one nor free one twice; a
 // created Primitive the script never places costs one wasted allocation.
 class RunScript final : public LayerBuildStep {
+  friend class RunScriptContext;
+
 private:
   // Not owned. The host's runtime, injected through the registration factory
   // rather than reached for through a singleton, so each test can own its own.

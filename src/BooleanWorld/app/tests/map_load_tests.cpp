@@ -160,9 +160,9 @@ void theGameResolvesAndRunsAWorldsLuaScript() {
   std::filesystem::create_directories(root);
   {
     std::ofstream script(root / "script.lua");
-    script << R"(local p = create_primitive("Rectangle")
+    script << R"(local p = context:create_primitive("Rectangle")
                   p:set_size(8, 8)
-                  place_primitive(p))";
+                  context:place_primitive(p))";
     std::ofstream manifest(root / "Resources.yaml");
     manifest << R"(Resources:
   Namespace:
@@ -175,9 +175,9 @@ void theGameResolvesAndRunsAWorldsLuaScript() {
   }
 
   bw::core::ScriptRuntime sourceRuntime;
-  sourceRuntime.load("MapScript", R"(local p = create_primitive("Rectangle")
+  sourceRuntime.load("MapScript", R"(local p = context:create_primitive("Rectangle")
                                       p:set_size(8, 8)
-                                      place_primitive(p))");
+                                      context:place_primitive(p))");
   bw::core::World source(512.0f, 16.0f);
   auto* sourceStep = new bw::core::RunScript(sourceRuntime);
   sourceStep->setScriptName("MapScript");
