@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include <willpower/common/BoundingBox.h>
+
 #include <core/Layer.h>
 #include <core/LayerBuildStep.h>
 #include <core/PrimitiveField.h>
@@ -346,6 +348,117 @@ void everyExecutionBeginsWithAFreshEnvironment() {
           "a global set during one rebuild survived into the next");
 }
 
+void scriptsReadPriorBuildPrimitivesAsConstHandles() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("count", R"(
+    local priors = get_build_primitives()
+    local p = create_primitive("Rectangle")
+    p:set_size(4, 4)
+    p:set_position(#priors * 10, 0)
+    place_primitive(p)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  layer.getPrimitiveField()->addPrimitive(rectangle(0.0f));
+  layer.getPrimitiveField()->addPrimitive(rectangle(100.0f));
+  auto* step = addScriptStep(layer, runtime, "count");
+  layer.rebuild();
+
+  require(!step->hasFailed(), "reading prior build Primitives failed the step");
+  require(layer.getNumPrimitives() == 3 && at(layer.getPrimitive(2), 20.0f),
+          "a script did not see the build Primitives produced by preceding steps");
+}
+
+void aScriptCannotMutateAPriorPrimitive() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("mutate", R"(
+    local priors = get_build_primitives()
+    priors[1]:set_position(999, 999)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  layer.getPrimitiveField()->addPrimitive(rectangle(0.0f));
+  auto* step = addScriptStep(layer, runtime, "mutate");
+  layer.rebuild();
+
+  require(step->hasFailed(), "a script mutating a prior Primitive's const handle was not rejected");
+  require(at(layer.getPrimitive(0), 0.0f),
+          "a prior Primitive was mutated through a handle the script must not be able to write through");
+}
+
+void aScriptReadsTheLayersExtents() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("extents", R"(
+    local x, y, w, h = get_extents()
+    local p = create_primitive("Rectangle")
+    p:set_size(4, 4)
+    p:set_position(x + w, y + h)
+    place_primitive(p)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  layer.setExtents(wp::BoundingBox(-64.0f, -32.0f, 128.0f, 64.0f));
+  addScriptStep(layer, runtime, "extents");
+  layer.rebuild();
+
+  require(layer.getNumPrimitives() == 1 && at(layer.getPrimitive(0), 64.0f),
+          "a script did not read the Layer's extents through the context");
+}
+
+void aScatterAvoidsExistingGeometryAndItsOwnPlacements() {
+  // A Primitive's default (non-exact) bounds pad every side by the orbit
+  // animator's default distance (100), regardless of its authored size, so
+  // candidates need to sit further apart than that padding for the area
+  // query to distinguish neighbouring slots. A query box matching each
+  // candidate's own slot (corner-anchored per wp::BoundingBox) is enough
+  // margin for one slot's padded bounds not to reach the next.
+  bw::core::ScriptRuntime runtime;
+  runtime.load("scatter", R"(
+    local spacing = 250
+    for i = 1, 6 do
+      local cx = (i - 1) * spacing
+      if #find_build_primitives_overlapping(cx - spacing / 2, -spacing / 2, spacing, spacing) == 0 then
+        local p = create_primitive("Rectangle")
+        p:set_size(8, 8)
+        p:set_position(cx, 0)
+        place_primitive(p)
+      end
+    end
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  layer.getPrimitiveField()->addPrimitive(rectangle(0.0f));
+  auto* step = addScriptStep(layer, runtime, "scatter");
+  layer.rebuild();
+
+  require(!step->hasFailed(), "the scatter script failed to run");
+  // Slot 0 (cx=0) is occupied by the pre-existing rectangle, so exactly 5
+  // new rectangles are placed alongside the one that was already there.
+  require(layer.getNumPrimitives() == 6,
+          "a scatter using the area query did not avoid existing geometry and its own placements");
+
+  for (uint32_t i = 0; i < layer.getNumPrimitives(); ++i) {
+    for (uint32_t j = i + 1; j < layer.getNumPrimitives(); ++j) {
+      require(!layer.getPrimitive(i)->getBounds().intersectsBoundingObject(&layer.getPrimitive(j)->getBounds()),
+              "the scatter produced overlapping Primitives");
+    }
+  }
+
+  auto const firstRunPositions = [&] {
+    std::vector<float> xs;
+    for (uint32_t i = 0; i < layer.getNumPrimitives(); ++i) xs.push_back(layer.getPrimitive(i)->getPosition().x);
+    return xs;
+  }();
+
+  layer.rebuild();
+  require(layer.getNumPrimitives() == firstRunPositions.size(),
+          "the same scatter did not reproduce the same count across rebuilds");
+  for (uint32_t i = 0; i < layer.getNumPrimitives(); ++i) {
+    require(at(layer.getPrimitive(i), firstRunPositions[i]),
+            "the same scatter did not reproduce exactly across rebuilds");
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -363,6 +476,10 @@ int main() {
     theSeedMakesRebuildsReproducibleAndRerollableByChangingIt();
     twoRunScriptStepsCannotObserveEachOthersRandomState();
     everyExecutionBeginsWithAFreshEnvironment();
+    scriptsReadPriorBuildPrimitivesAsConstHandles();
+    aScriptCannotMutateAPriorPrimitive();
+    aScriptReadsTheLayersExtents();
+    aScatterAvoidsExistingGeometryAndItsOwnPlacements();
     std::cout << "RunScript build step and ScriptRuntime tests passed\n";
     return 0;
   } catch (std::exception const& error) {

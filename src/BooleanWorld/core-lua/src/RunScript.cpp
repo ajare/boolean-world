@@ -13,6 +13,21 @@ namespace core {
 
 using namespace std;
 
+namespace {
+
+// Wraps borrowed Primitive pointers as read-only PrimitiveView handles, so a
+// script can read prior build Primitives but never mutate them (spec #365).
+vector<PrimitiveView> asPrimitiveViews(vector<Primitive*> const& primitives) {
+  vector<PrimitiveView> views;
+  views.reserve(primitives.size());
+  for (auto* primitive : primitives) {
+    views.push_back(PrimitiveView{primitive});
+  }
+  return views;
+}
+
+}  // namespace
+
 RunScript::RunScript(ScriptRuntime& runtime)
     : mRuntime(&runtime) {
 }
@@ -84,6 +99,28 @@ void RunScript::execute(LayerBuildContext& context) const {
         environment.set_function(
             "place_primitive",
             [this, &context](Primitive* primitive) { placePrimitive(context, primitive); });
+
+        environment.set_function(
+            "get_build_primitives",
+            [&context]() {
+              return sol::as_table(asPrimitiveViews(context.getBuildPrimitives()));
+            });
+
+        environment.set_function(
+            "get_extents",
+            [&context]() {
+              auto const& extents = context.getExtents();
+              return make_tuple(
+                  extents.getPosition().x, extents.getPosition().y,
+                  extents.getSize().x, extents.getSize().y);
+            });
+
+        environment.set_function(
+            "find_build_primitives_overlapping",
+            [&context](float x, float y, float width, float height) {
+              return sol::as_table(asPrimitiveViews(context.findBuildPrimitivesOverlapping(
+                  wp::BoundingBox(x, y, width, height))));
+            });
       });
 }
 

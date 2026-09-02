@@ -80,6 +80,31 @@ void bindScriptTypes(sol::state& lua) {
         return operationName(primitive.getOperation());
       });
 
+  lua.new_usertype<PrimitiveView>(
+      "PrimitiveView", sol::no_constructor,
+
+      "get_type", [](PrimitiveView const& view) { return view.primitive->getType(); },
+
+      "get_position",
+      [](PrimitiveView const& view) {
+        return make_tuple(view.primitive->getPosition().x, view.primitive->getPosition().y);
+      },
+
+      "get_size",
+      [](PrimitiveView const& view) {
+        return make_tuple(view.primitive->getSize().x, view.primitive->getSize().y);
+      },
+
+      "get_priority",
+      [](PrimitiveView const& view) {
+        return static_cast<uint32_t>(view.primitive->getPriority());
+      },
+
+      "get_operation",
+      [](PrimitiveView const& view) {
+        return operationName(view.primitive->getOperation());
+      });
+
   lua[boundMarker] = true;
 }
 
