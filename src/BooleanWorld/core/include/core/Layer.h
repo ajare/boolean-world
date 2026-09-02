@@ -192,6 +192,11 @@ public:
   [[nodiscard]] LayerBuildStep* getStep(uint32_t index) const;
   [[nodiscard]] LayerBuildStep* getStepById(uint32_t id) const;
 
+  // The id of the first step named name, or ~0u if no step has that name.
+  // Names are deliberately not unique, so this resolves to whichever step
+  // comes first in the recipe.
+  [[nodiscard]] uint32_t findStepIdByName(std::string const& name) const;
+
   // The first step, always a PrimitiveField. Distinct from the active step
   // below, which is where addPrimitive actually writes.
   [[nodiscard]] PrimitiveField* getPrimitiveField() const;

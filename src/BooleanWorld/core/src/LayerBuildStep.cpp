@@ -42,6 +42,7 @@ void LayerBuildStep::copyFrom(LayerBuildStep const& other) {
 
   mId = other.mId;
   mEnabled = other.mEnabled;
+  mName = other.mName;
 }
 
 bool LayerBuildStep::childrenModified() const {
@@ -51,6 +52,7 @@ bool LayerBuildStep::childrenModified() const {
 void LayerBuildStep::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) const {
   serializer->writeUint32("id", mId);
   serializer->writeBool("enabled", mEnabled);
+  serializer->writeString("name", mName);
 
   serializeArgs(serializer, workData);
 }
@@ -58,6 +60,7 @@ void LayerBuildStep::serializeImpl(shared_ptr<Serializer> serializer, Serializat
 bool LayerBuildStep::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) {
   mId = serializer->readUint32("id", !serializer->isPositional(), ~0u);
   mEnabled = serializer->readBool("enabled");
+  mName = serializer->readString("name", true, "");
 
   return deserializeArgs(serializer, workData);
 }
@@ -81,6 +84,19 @@ void LayerBuildStep::setEnabled(bool enabled) {
 
 bool LayerBuildStep::isEnabled() const {
   return mEnabled;
+}
+
+void LayerBuildStep::setName(string const& name) {
+  if (mName == name) {
+    return;
+  }
+
+  mName = name;
+  modify();
+}
+
+string const& LayerBuildStep::getName() const {
+  return mName;
 }
 
 vector<string> LayerBuildStep::collectDependentResourceNames() const {

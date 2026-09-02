@@ -130,6 +130,12 @@ public:
   [[nodiscard]] uint32_t getNumPrefabs() const;
   [[nodiscard]] Prefab* getPrefab(uint32_t index) const;
   [[nodiscard]] Prefab* findPrefabById(uint32_t id) const;
+
+  // The id of the first Prefab named name, or ~0u if no Prefab has that
+  // name. Prefab names are deliberately not unique, so this resolves to
+  // whichever Prefab comes first in the collection.
+  [[nodiscard]] uint32_t findPrefabIdByName(std::string const& name) const;
+
   [[nodiscard]] std::vector<Prefab*> const& getPrefabs() const;
 
   // Selection is editor focus only: it is never serialized or copied.

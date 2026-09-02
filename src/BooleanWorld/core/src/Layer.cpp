@@ -608,6 +608,12 @@ LayerBuildStep* Layer::getStepById(uint32_t id) const {
   return it == mSteps.end() ? nullptr : *it;
 }
 
+uint32_t Layer::findStepIdByName(string const& name) const {
+  auto it = find_if(mSteps.begin(), mSteps.end(),
+                    [&name](auto const* step) { return step->getName() == name; });
+  return it != mSteps.end() ? (*it)->getId() : ~0u;
+}
+
 PrimitiveField* Layer::getPrimitiveField() const {
   assert(!mSteps.empty() && "Layer::getPrimitiveField - the Layer has no first step");
 

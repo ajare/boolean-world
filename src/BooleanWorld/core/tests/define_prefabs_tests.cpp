@@ -295,6 +295,21 @@ void registryConstructsDefinePrefabsByTypeName() {
           "the step Registry did not construct DefinePrefabs");
 }
 
+void findPrefabIdByNameResolvesToTheFirstDuplicateAndReportsNotFound() {
+  bw::core::DefinePrefabs step;
+
+  auto* first = step.addPrefab("Duplicate");
+  step.addPrefab("Duplicate");
+  step.addPrefab("Unique");
+
+  require(step.findPrefabIdByName("Duplicate") == first->getId(),
+          "findPrefabIdByName did not resolve to the first Prefab with a duplicated name");
+  require(step.findPrefabIdByName("Unique") != ~0u,
+          "findPrefabIdByName failed to find a uniquely named Prefab");
+  require(step.findPrefabIdByName("does not exist") == ~0u,
+          "findPrefabIdByName did not report not-found for an unknown name");
+}
+
 }  // namespace
 
 int main() {
@@ -309,6 +324,7 @@ int main() {
     laterStepsCannotObserveSelectedPrefabPrimitives();
     layerCopyClonesPrefabsRemapsParentsAndClearsSelection();
     serializationRoundTripsPrefabsCounterAndArgumentsButNotSelection();
+    findPrefabIdByNameResolvesToTheFirstDuplicateAndReportsNotFound();
     std::cout << "DefinePrefabs owns stable, serializable Prefabs while keeping their Primitives out of the build\n";
     return 0;
   } catch (std::exception const& error) {

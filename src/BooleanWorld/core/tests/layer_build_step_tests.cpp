@@ -792,6 +792,53 @@ void disablingAFailedStepClearsItsFailureAndUnblocksLaterSteps() {
           "disabling the failed step did not let the steps after it contribute again");
 }
 
+// A step's name is authored text distinct from its stable id: unlike the id,
+// it is not assigned by the Layer and need not be unique.
+void aStepsNameRoundTripsThroughSerializationAndDefaultsToEmpty() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+  require(layer.getStep(0)->getName().empty(),
+          "a newly constructed build step did not default to an empty name");
+
+  auto const secondIndex = layer.addStep(makeField({10.0f}));
+  layer.getStep(secondIndex)->setName("spawn points");
+
+  auto writer = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::toString());
+  bw::core::SerializationWorkData writeData;
+  layer.serialize(writer, writeData);
+  writer->serialize();
+
+  bw::core::Layer loaded;
+  auto reader = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::fromString(writer->getSerializedString()));
+  reader->deserialize();
+  bw::core::SerializationWorkData readData;
+  readData.accelGridSize = 10.0f;
+  require(loaded.deserialize(reader, readData),
+          "a Layer with named build steps failed to deserialize");
+
+  require(loaded.getStep(0)->getName().empty(),
+          "an unnamed build step gained a name across serialization");
+  require(loaded.getStep(secondIndex)->getName() == "spawn points",
+          "a build step's name did not round-trip through serialization");
+}
+
+void duplicateStepNamesAreAllowedAndFindStepIdByNameResolvesToTheFirstMatch() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto const secondIndex = layer.addStep(makeField({10.0f}));
+  auto* secondStep = layer.getStep(secondIndex);
+  secondStep->setName("props");
+
+  auto const thirdIndex = layer.addStep(makeField({20.0f}));
+  layer.getStep(thirdIndex)->setName("props");
+
+  require(layer.findStepIdByName("props") == secondStep->getId(),
+          "findStepIdByName did not resolve to the first step with a duplicated name");
+  require(layer.findStepIdByName("does not exist") == ~0u,
+          "findStepIdByName did not report not-found for an unknown name");
+}
+
 }  // namespace
 
 int main() {
@@ -826,6 +873,8 @@ int main() {
     aFailingStepHaltsTheBuildRetainsEarlierOutputAndRecordsItsFailure();
     aFailedStepIsDistinguishableFromASuccessfulEmptyStep();
     disablingAFailedStepClearsItsFailureAndUnblocksLaterSteps();
+    aStepsNameRoundTripsThroughSerializationAndDefaultsToEmpty();
+    duplicateStepNamesAreAllowedAndFindStepIdByNameResolvesToTheFirstMatch();
     std::cout << "A Layer derives its Primitives by running its enabled LayerBuildSteps in order\n";
     return 0;
   } catch (std::exception const& error) {

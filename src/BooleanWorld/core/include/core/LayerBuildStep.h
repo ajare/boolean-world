@@ -59,6 +59,7 @@ class BW_API LayerBuildStep : public Serializable {
 private:
   uint32_t mId;
   bool mEnabled;
+  std::string mName;
 
   // Whether this step's execute() threw during the Layer's most recent
   // rebuild, and what it said. mutable because execute() is const but a
@@ -123,6 +124,13 @@ public:
   // Stable within the owning Layer's lifetime. Unlike a step's position in
   // the recipe, this does not change when other steps are moved or removed.
   [[nodiscard]] uint32_t getId() const;
+
+  // Authored, non-unique text so a script can find this step without knowing
+  // its id (unlike the id, a name is not guaranteed stable or distinct -
+  // Layer::findStepIdByName resolves the first match). Empty by default.
+  void setName(std::string const& name);
+
+  [[nodiscard]] std::string const& getName() const;
 
   // Whether this step may occupy the Layer's reserved first position.
   [[nodiscard]] virtual bool mayBeFirstStep() const = 0;

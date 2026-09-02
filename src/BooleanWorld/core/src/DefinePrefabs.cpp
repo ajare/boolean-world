@@ -295,6 +295,12 @@ Prefab* DefinePrefabs::findPrefabById(uint32_t id) const {
   return it != mPrefabs.end() ? *it : nullptr;
 }
 
+uint32_t DefinePrefabs::findPrefabIdByName(string const& name) const {
+  auto it = find_if(mPrefabs.begin(), mPrefabs.end(),
+                    [&name](auto const* prefab) { return prefab->getName() == name; });
+  return it != mPrefabs.end() ? (*it)->getId() : ~0u;
+}
+
 vector<Prefab*> const& DefinePrefabs::getPrefabs() const {
   return mPrefabs;
 }
