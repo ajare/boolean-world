@@ -4,6 +4,20 @@ local function is_integer(value)
     return type(value) == "number" and value == math.floor(value)
 end
 
+-- Returns the Prefabs from a DefinePrefabs step whose Tile grid has the
+-- requested size, preserving the step's authored collection order.
+function utilities.get_prefabs_with_grid_size(step, grid_size)
+    local matches = {}
+
+    for _, prefab in ipairs(step:get_prefabs()) do
+        if prefab:get_tile_size() == grid_size then
+            matches[#matches + 1] = prefab
+        end
+    end
+
+    return matches
+end
+
 local function is_empty(cell_x, cell_y, grid_size)
     return #context:find_build_primitives_overlapping(
         cell_x * grid_size,
