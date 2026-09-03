@@ -1,8 +1,12 @@
 #include "core-lua/ScriptBindings.h"
 
+#include <algorithm>
 #include <format>
+#include <map>
+#include <set>
 #include <string>
 #include <tuple>
+#include <vector>
 
 #include <core/CoreException.h>
 #include <core/DefinePrefabs.h>
@@ -38,6 +42,94 @@ Primitive::Operation operationFromName(string const& name) {
   if (name == "difference") return Primitive::Operation::Difference;
   if (name == "xor") return Primitive::Operation::XOR;
   throw CoreException(format("'{}' is not a Primitive operation", name));
+}
+
+set<string> prefabTagsFromTable(sol::table const& values) {
+  auto const size = values.size();
+  vector<bool> present(size, false);
+  set<string> tags;
+  size_t entries = 0;
+
+  for (auto const& keyValue : values) {
+    ++entries;
+    auto const& key = keyValue.first;
+    auto const& value = keyValue.second;
+    if (!key.is<lua_Integer>()) {
+      throw CoreException("Prefab tags must be a dense array of strings");
+    }
+    auto const index = key.as<lua_Integer>();
+    if (index < 1 || static_cast<size_t>(index) > size ||
+        present[static_cast<size_t>(index) - 1]) {
+      throw CoreException("Prefab tags must be a dense array of strings");
+    }
+    if (!value.is<string>()) {
+      throw CoreException(format("Prefab tag {} must be a string", index));
+    }
+    present[static_cast<size_t>(index) - 1] = true;
+    tags.insert(value.as<string>());
+  }
+
+  if (entries != size) {
+    throw CoreException("Prefab tags must be a dense array of strings");
+  }
+  return tags;
+}
+
+vector<PrefabView> toPrefabViews(vector<Prefab*> const& prefabs) {
+  vector<PrefabView> views;
+  views.reserve(prefabs.size());
+  for (auto const* prefab : prefabs) {
+    views.push_back(PrefabView{prefab});
+  }
+  return views;
+}
+
+map<string, string> vertexMetadataFromTable(sol::table const& values) {
+  map<string, string> metadata;
+  for (auto const& keyValue : values) {
+    auto const& key = keyValue.first;
+    auto const& value = keyValue.second;
+    if (!key.is<string>() || !value.is<string>()) {
+      throw CoreException(
+          "Vertex metadata filters must contain only string keys and values");
+    }
+    auto name = key.as<string>();
+    if (name.empty()) {
+      throw CoreException("Vertex metadata keys cannot be empty");
+    }
+    metadata.emplace(move(name), value.as<string>());
+  }
+  return metadata;
+}
+
+vector<PrefabVertexView> prefabMetadataVertices(
+    Prefab const& prefab, map<string, string> const& required) {
+  vector<PrefabVertexView> result;
+  for (auto const* primitive : prefab.getPrimitives()) {
+    set<pair<float, float>> seen;
+    for (auto const& polygon : primitive->getVertices()) {
+      for (auto const& ring : polygon) {
+        for (auto const& vertex : ring) {
+          if (vertex.metadata.empty() ||
+              !seen.emplace(vertex.p.x, vertex.p.y).second) {
+            continue;
+          }
+          auto matches = all_of(
+              required.begin(), required.end(),
+              [&vertex](auto const& entry) {
+                auto found = vertex.metadata.find(entry.first);
+                return found != vertex.metadata.end() &&
+                       found->second == entry.second;
+              });
+          if (matches) {
+            result.push_back(
+                PrefabVertexView{vertex.p.x, vertex.p.y, vertex.metadata});
+          }
+        }
+      }
+    }
+  }
+  return result;
 }
 
 ClosedPolygon ringFromPoints(sol::table const& points) {
@@ -608,10 +700,34 @@ void bindScriptTypes(sol::state& lua) {
             x, y, width, height));
       });
 
+  lua.new_usertype<PrefabVertexView>(
+      "PrefabVertex", sol::no_constructor,
+
+      "get_position",
+      [](PrefabVertexView const& view) { return tuple{view.x, view.y}; },
+      "get_metadata",
+      [](PrefabVertexView const& view) {
+        return sol::as_table(view.metadata);
+      });
+
   lua.new_usertype<PrefabView>(
       "Prefab", sol::no_constructor,
 
-      "get_name", [](PrefabView const& view) { return view.prefab->getName(); });
+      "get_name", [](PrefabView const& view) { return view.prefab->getName(); },
+      "get_tags",
+      [](PrefabView const& view) {
+        return sol::as_table(vector<string>(
+            view.prefab->getTags().begin(), view.prefab->getTags().end()));
+      },
+      "get_metadata_vertices",
+      [](PrefabView const& view) {
+        return sol::as_table(prefabMetadataVertices(*view.prefab, {}));
+      },
+      "get_vertices_with_metadata",
+      [](PrefabView const& view, sol::table const& metadata) {
+        return sol::as_table(prefabMetadataVertices(
+            *view.prefab, vertexMetadataFromTable(metadata)));
+      });
 
   lua.new_usertype<DefinePrefabsView>(
       "DefinePrefabsStep", sol::no_constructor,
@@ -623,6 +739,17 @@ void bindScriptTypes(sol::state& lua) {
           throw CoreException(format("No Prefab named '{}'", name));
         }
         return PrefabView{view.step->findPrefabById(id)};
+      },
+
+      "get_prefabs",
+      [](DefinePrefabsView const& view) {
+        return sol::as_table(toPrefabViews(view.step->getPrefabs()));
+      },
+
+      "get_prefabs_with_tags",
+      [](DefinePrefabsView const& view, sol::table const& tags) {
+        return sol::as_table(toPrefabViews(
+            view.step->getPrefabsWithTags(prefabTagsFromTable(tags))));
       });
 
   lua.new_usertype<PrimitiveFieldView>(

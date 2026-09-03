@@ -909,6 +909,116 @@ void placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged() {
           "placing transformed instances moved the Prefab's own Primitive");
 }
 
+void scriptsListAndFilterPrefabsByTags() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("filter-prefabs", R"(
+    local definitions = context:find_define_prefabs("prefabs")
+    local all = definitions:get_prefabs()
+    assert(#all == 3)
+    assert(all[1]:get_name() == "first")
+    assert(all[2]:get_name() == "second")
+    assert(all[3]:get_name() == "third")
+
+    local matches = definitions:get_prefabs_with_tags({"ROCK", "outdoor"})
+    assert(#matches == 2)
+    assert(matches[1]:get_name() == "first")
+    assert(matches[2]:get_name() == "third")
+    assert(#definitions:get_prefabs_with_tags({}) == 3)
+
+    local tags = matches[1]:get_tags()
+    assert(#tags == 2 and tags[1] == "outdoor" and tags[2] == "rock")
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* definitions = new bw::core::DefinePrefabs;
+  definitions->setName("prefabs");
+  layer.addStep(definitions);
+  auto* first = definitions->addPrefab("first");
+  auto* second = definitions->addPrefab("second");
+  auto* third = definitions->addPrefab("third");
+  definitions->setPrefabTags(first, {"rock", "outdoor"});
+  definitions->setPrefabTags(second, {"rock"});
+  definitions->setPrefabTags(third, {"rock", "outdoor", "large"});
+
+  auto* step = addScriptStep(layer, runtime, "filter-prefabs");
+  layer.rebuild();
+  require(!step->hasFailed(),
+          "listing or filtering Prefabs by tags failed the script");
+}
+
+void scriptsReadAndFilterPrefabVertexMetadata() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("vertex-metadata", R"(
+    local prefab = context:find_define_prefabs("prefabs"):get_prefab("markers")
+    local vertices = prefab:get_metadata_vertices()
+    assert(#vertices == 1)
+    local x, y = vertices[1]:get_position()
+    assert(x == 0 and y == 0)
+    local metadata = vertices[1]:get_metadata()
+    assert(metadata.kind == "spawn" and metadata.team == "blue")
+    assert(#prefab:get_vertices_with_metadata({kind = "spawn"}) == 1)
+    assert(#prefab:get_vertices_with_metadata({kind = "spawn", team = "blue"}) == 1)
+    assert(#prefab:get_vertices_with_metadata({kind = "exit"}) == 0)
+    assert(#prefab:get_vertices_with_metadata({}) == 1)
+  )");
+  runtime.load("invalid-vertex-metadata-filter", R"(
+    local prefab = context:find_define_prefabs("prefabs"):get_prefab("markers")
+    prefab:get_vertices_with_metadata({kind = 42})
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* definitions = new bw::core::DefinePrefabs;
+  definitions->setName("prefabs");
+  auto const definitionsIndex = layer.addStep(definitions);
+  auto* prefab = definitions->addPrefab("markers");
+  definitions->setSelectedPrefab(prefab);
+  layer.setActiveStep(definitionsIndex);
+  bw::core::ClosedPolygon ring{
+      {{0.0f, 0.0f}}, {{10.0f, 0.0f}}, {{10.0f, 10.0f}}, {{0.0f, 10.0f}}};
+  ring[0].metadata = {{"kind", "spawn"}, {"team", "blue"}};
+  layer.addPrimitive(bw::core::MeshPrimitive::fromComplexPolygons(
+      bw::core::Primitive::Operation::Union, {{ring}}));
+  definitions->clearSelectedPrefab();
+  layer.setActiveStep(0);
+
+  auto* step = addScriptStep(layer, runtime, "vertex-metadata");
+  layer.rebuild();
+  require(!step->hasFailed(),
+          "reading or filtering Prefab vertex metadata failed the script");
+
+  step->setScriptName("invalid-vertex-metadata-filter");
+  layer.rebuild();
+  require(step->hasFailed(),
+          "a non-string Prefab vertex metadata filter value was accepted");
+}
+
+void malformedLuaPrefabTagFiltersFailTheStep() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("sparse-tags", R"(
+    context:find_define_prefabs("prefabs"):get_prefabs_with_tags({[2] = "rock"})
+  )");
+  runtime.load("mapped-tags", R"(
+    context:find_define_prefabs("prefabs"):get_prefabs_with_tags({kind = "rock"})
+  )");
+  runtime.load("non-string-tags", R"(
+    context:find_define_prefabs("prefabs"):get_prefabs_with_tags({42})
+  )");
+  runtime.load("invalid-tags", R"(
+    context:find_define_prefabs("prefabs"):get_prefabs_with_tags({"not valid"})
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  addPrefabDefinitions(layer, "prefabs", "rock", 0.0f);
+  auto* step = addScriptStep(layer, runtime, "sparse-tags");
+  for (auto const* script : {
+           "sparse-tags", "mapped-tags", "non-string-tags", "invalid-tags"}) {
+    step->setScriptName(script);
+    layer.rebuild();
+    require(step->hasFailed(),
+            "a malformed Lua Prefab tag filter did not fail the script");
+  }
+}
+
 void aScriptReadsAPrimitiveFieldsPrimitivesAsConst() {
   bw::core::ScriptRuntime runtime;
   runtime.load("read-field", R"(
@@ -1250,6 +1360,9 @@ int main() {
     aScatterAvoidsExistingGeometryAndItsOwnPlacements();
     aScriptPlacesTransformedPrefabInstancesFoundByName();
     placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged();
+    scriptsListAndFilterPrefabsByTags();
+    scriptsReadAndFilterPrefabVertexMetadata();
+    malformedLuaPrefabTagFiltersFailTheStep();
     aScriptReadsAPrimitiveFieldsPrimitivesAsConst();
     aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName();
     aWorldRoundTripsARunScriptStepAndDeclaresItsResources();

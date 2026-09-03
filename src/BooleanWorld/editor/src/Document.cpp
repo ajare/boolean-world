@@ -608,6 +608,20 @@ wp::geometry::Mesh const* Document::getActiveMesh() const {
   return mActiveMesh ? &mActiveMesh->getMesh() : nullptr;
 }
 
+map<string, string> Document::getActiveMeshVertexMetadata(
+    uint32_t vertexIndex) const {
+  return mActiveMesh ? mActiveMesh->getVertexMetadata(vertexIndex)
+                     : map<string, string>{};
+}
+
+bool Document::setActiveMeshVertexMetadata(
+    uint32_t vertexIndex, map<string, string> const& metadata) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) return false;
+  if (!mActiveMesh->setVertexMetadata(vertexIndex, metadata)) return false;
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
+  return true;
+}
+
 optional<bool> Document::getActiveMeshEdgeCollisionOverride(
     uint32_t edgeIndex) const {
   return mActiveMesh ? mActiveMesh->getEdgeCollisionOverride(edgeIndex)

@@ -9,6 +9,7 @@
 #include <limits>
 #include <memory>
 #include <random>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -4240,6 +4241,48 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
   }
 }
 
+string prefabTagsText(set<string> const& tags) {
+  string text;
+  for (auto const& tag : tags) {
+    if (!text.empty()) text += ',';
+    text += tag;
+  }
+  return text;
+}
+
+set<string> parsePrefabTags(string const& text) {
+  set<string> tags;
+  string tag;
+  for (unsigned char character : text) {
+    if (character == ',') {
+      if (!tag.empty()) tags.insert(move(tag));
+      tag.clear();
+    } else if (character != ' ' && character != '\t' &&
+               character != '\r' && character != '\n') {
+      auto const isUpper = character >= 'A' && character <= 'Z';
+      tag.push_back(isUpper ? static_cast<char>(character - 'A' + 'a')
+                            : static_cast<char>(character));
+    }
+  }
+  if (!tag.empty()) tags.insert(move(tag));
+  return tags;
+}
+
+int filterPrefabTagCharacter(ImGuiInputTextCallbackData* data) {
+  auto const character = data->EventChar;
+  auto const isLetter =
+      (character >= 'a' && character <= 'z') ||
+      (character >= 'A' && character <= 'Z');
+  auto const isDigit = character >= '0' && character <= '9';
+  auto const isFormattingWhitespace =
+      character == ' ' || character == '\t' || character == '\r' ||
+      character == '\n';
+  return isLetter || isDigit || character == '_' || character == '-' ||
+                 character == ',' || isFormattingWhitespace
+             ? 0
+             : 1;
+}
+
 void renderPrefabsView(
     editor::Document* doc, bw::core::DefinePrefabs* step) {
   auto* layer = doc->getWorld()->getActiveLayer();
@@ -4350,6 +4393,36 @@ void renderPrefabsView(
       }
     }
     ImGui::EndCombo();
+  }
+}
+
+void renderSelectedPrefabView(
+    editor::Document* doc, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab) {
+  auto* layer = doc->getWorld()->getActiveLayer();
+  static string text;
+  static bw::core::Prefab* editingPrefab = nullptr;
+  if (editingPrefab != prefab) {
+    text = prefabTagsText(prefab->getTags());
+  }
+
+  ImGui::TextUnformatted("Tags");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(-1.0f);
+  widgets::InputText(
+      "##PrefabTags", &text, ImGuiInputTextFlags_CallbackCharFilter,
+      filterPrefabTagCharacter);
+  if (ImGui::IsItemActivated()) {
+    editingPrefab = prefab;
+  }
+  if (editingPrefab == prefab && ImGui::IsItemDeactivatedAfterEdit()) {
+    transactUndoableAction(
+        doc, "Set Prefab Tags",
+        bind(setPrefabTags, placeholders::_1, layer, step, prefab,
+             parsePrefabTags(text)));
+  }
+  if (ImGui::IsItemDeactivated()) {
+    editingPrefab = nullptr;
   }
 }
 
@@ -4778,6 +4851,73 @@ void renderMeshDrawToolView(editor::Document* doc, editor::Settings& settings) {
   }
 }
 
+void renderPrefabVertexMetadata(
+    editor::Document* doc, uint32_t vertexIndex) {
+  using MetadataEntry = pair<string, string>;
+  static wp::geometry::Mesh const* draftMesh = nullptr;
+  static uint32_t draftVertex = ~0u;
+  static vector<MetadataEntry> draft;
+
+  auto* mesh = doc->getActiveMesh();
+  if (draftMesh != mesh || draftVertex != vertexIndex) {
+    draftMesh = mesh;
+    draftVertex = vertexIndex;
+    auto const metadata = doc->getActiveMeshVertexMetadata(vertexIndex);
+    draft.assign(metadata.begin(), metadata.end());
+  }
+
+  auto toMetadata = [&]() -> optional<map<string, string>> {
+    map<string, string> metadata;
+    for (auto const& [key, value] : draft) {
+      if (key.empty() || !metadata.emplace(key, value).second) return nullopt;
+    }
+    return metadata;
+  };
+  auto commit = [&] {
+    auto metadata = toMetadata();
+    if (!metadata) return;
+    transactUndoableAction(
+        doc, "Set Prefab Vertex Metadata",
+        bind(setMeshVertexMetadata, placeholders::_1, vertexIndex, *metadata));
+  };
+
+  ImGui::Separator();
+  ImGui::TextUnformatted("Prefab vertex metadata");
+  ImGui::TextUnformatted("Key");
+  ImGui::SameLine(154.0f);
+  ImGui::TextUnformatted("Value");
+  bool commitAfterRow = false;
+  optional<size_t> deleteRow;
+  for (size_t index = 0; index < draft.size(); ++index) {
+    ImGui::PushID(static_cast<int>(index));
+    ImGui::SetNextItemWidth(130.0f);
+    widgets::InputText("##MetadataKey", &draft[index].first);
+    commitAfterRow |= ImGui::IsItemDeactivatedAfterEdit();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(180.0f);
+    widgets::InputText("##MetadataValue", &draft[index].second);
+    commitAfterRow |= ImGui::IsItemDeactivatedAfterEdit();
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_TRASH "##DeleteMetadata")) {
+      deleteRow = index;
+    }
+    ImGui::PopID();
+  }
+
+  if (!toMetadata()) {
+    ImGui::TextDisabled("Metadata keys must be non-empty and unique.");
+  }
+  if (deleteRow) {
+    draft.erase(draft.begin() + *deleteRow);
+    commit();
+  } else if (commitAfterRow) {
+    commit();
+  }
+  if (ImGui::Button("Add metadata")) {
+    draft.emplace_back();
+  }
+}
+
 void renderMeshView(editor::Document* doc, editor::Settings& settings) {
   renderMeshDrawToolView(doc, settings);
   ImGui::Separator();
@@ -4870,6 +5010,15 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
       ImGui::SetTooltip(canDelete
                             ? "Delete selected vertex"
                             : "This Ring cannot contain fewer than three vertices");
+    }
+
+    auto* activeLayer = doc->getWorld()->getActiveLayer();
+    auto* definitions = dynamic_cast<bw::core::DefinePrefabs*>(
+        activeLayer->getActiveStep());
+    auto const primitiveIndex = doc->getActiveMeshPrimitiveIndex();
+    if (definitions && primitiveIndex < activeLayer->getNumPrimitives() &&
+        definitions->ownsPrimitive(activeLayer->getPrimitive(primitiveIndex))) {
+      renderPrefabVertexMetadata(doc, vertexIndex);
     }
   }
 
@@ -5339,6 +5488,14 @@ void renderCombinedPanel(
     if (auto* definePrefabs = dynamic_cast<bw::core::DefinePrefabs*>(activeLayer->getActiveStep())) {
       if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {
         renderPrefabsView(doc, definePrefabs);
+      }
+      if (auto* prefab = definePrefabs->getSelectedPrefab()) {
+        auto const label = format(
+            "Prefab: {}###SelectedPrefab", prefab->getName());
+        if (ImGui::CollapsingHeader(
+                label.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+          renderSelectedPrefabView(doc, definePrefabs, prefab);
+        }
       }
     } else if (auto* prefabField = dynamic_cast<bw::core::PrefabField*>(activeLayer->getActiveStep())) {
       if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {

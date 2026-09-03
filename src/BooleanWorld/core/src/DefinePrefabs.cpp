@@ -26,6 +26,36 @@ const std::array prefabTilingRotationDefinitions{
     PrefabTilingRotationDefinition{PrefabTilingType::Square, squareRotationAngles},
 };
 
+std::string normalizePrefabTag(std::string const& tag) {
+  if (tag.empty()) {
+    throw CoreException("Prefab tags cannot be empty");
+  }
+
+  std::string normalized;
+  normalized.reserve(tag.size());
+  for (unsigned char character : tag) {
+    auto const isLower = character >= 'a' && character <= 'z';
+    auto const isUpper = character >= 'A' && character <= 'Z';
+    auto const isDigit = character >= '0' && character <= '9';
+    if (!isLower && !isUpper && !isDigit && character != '_' && character != '-') {
+      throw CoreException(std::format(
+          "Invalid Prefab tag '{}': tags may contain only ASCII letters, digits, underscores, and hyphens",
+          tag));
+    }
+    normalized.push_back(isUpper ? static_cast<char>(character - 'A' + 'a')
+                                 : static_cast<char>(character));
+  }
+  return normalized;
+}
+
+std::set<std::string> normalizePrefabTags(std::set<std::string> const& tags) {
+  std::set<std::string> normalized;
+  for (auto const& tag : tags) {
+    normalized.insert(normalizePrefabTag(tag));
+  }
+  return normalized;
+}
+
 }  // namespace
 
 using namespace std;
@@ -50,6 +80,7 @@ Prefab::~Prefab() {
 Prefab* Prefab::copy(
     map<VertexTransformerObject const*, VertexTransformerObject*>& primitiveMap) const {
   auto clone = unique_ptr<Prefab>(new Prefab(mId, mName, mTileSize));
+  clone->mTags = mTags;
   clone->mPrimitives.reserve(mPrimitives.size());
   for (auto const* primitive : mPrimitives) {
     auto* clonedPrimitive = primitive->copy();
@@ -114,6 +145,10 @@ string const& Prefab::getName() const {
 
 PrefabTileSize Prefab::getTileSize() const {
   return mTileSize;
+}
+
+set<string> const& Prefab::getTags() const {
+  return mTags;
 }
 
 uint32_t Prefab::getNumPrimitives() const {
@@ -280,6 +315,18 @@ void DefinePrefabs::setPrefabTileSize(Prefab* prefab, PrefabTileSize size) {
   modify();
 }
 
+void DefinePrefabs::setPrefabTags(
+    Prefab* prefab, set<string> const& tags) {
+  auto it = find(mPrefabs.begin(), mPrefabs.end(), prefab);
+  if (it == mPrefabs.end()) {
+    throw CoreException("Prefab not found in this DefinePrefabs step");
+  }
+  auto normalized = normalizePrefabTags(tags);
+  if (prefab->mTags == normalized) return;
+  prefab->mTags = move(normalized);
+  modify();
+}
+
 uint32_t DefinePrefabs::getNumPrefabs() const {
   return (uint32_t)mPrefabs.size();
 }
@@ -303,6 +350,20 @@ uint32_t DefinePrefabs::findPrefabIdByName(string const& name) const {
 
 vector<Prefab*> const& DefinePrefabs::getPrefabs() const {
   return mPrefabs;
+}
+
+vector<Prefab*> DefinePrefabs::getPrefabsWithTags(
+    set<string> const& tags) const {
+  auto const normalized = normalizePrefabTags(tags);
+  vector<Prefab*> result;
+  result.reserve(mPrefabs.size());
+  for (auto* prefab : mPrefabs) {
+    if (all_of(normalized.begin(), normalized.end(),
+               [prefab](auto const& tag) { return prefab->mTags.contains(tag); })) {
+      result.push_back(prefab);
+    }
+  }
+  return result;
 }
 
 void DefinePrefabs::setSelectedPrefab(Prefab* prefab) {
@@ -370,6 +431,13 @@ void DefinePrefabs::serializeArgs(shared_ptr<Serializer> serializer,
         serializer->writeUint32("id", prefab->mId);
         serializer->writeString("name", prefab->mName);
         serializer->writeUint32("tileSize", prefabTileSide(prefab->mTileSize));
+        serializer->beginArray("tags");
+        {
+          for (auto const& tag : prefab->mTags) {
+            serializer->writeString("tag", tag);
+          }
+          serializer->endArray();
+        }
         serializer->beginArray("primitives");
         {
           for (auto const* primitive : prefab->mPrimitives) {
@@ -418,6 +486,16 @@ bool DefinePrefabs::deserializeArgs(shared_ptr<Serializer> serializer,
             id, name, static_cast<PrefabTileSize>(tileSizeValue)));
         if (!ids.insert(id).second || id >= nextPrefabId) {
           throw CoreException("Invalid or duplicate Prefab id in DefinePrefabs step");
+        }
+
+        if (serializer->hasField("tags")) {
+          serializer->beginArray("tags");
+          {
+            while (serializer->nextArrayItem()) {
+              prefab->mTags.insert(normalizePrefabTag(serializer->readString()));
+            }
+            serializer->endArray();
+          }
         }
 
         serializer->beginArray("primitives");

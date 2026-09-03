@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -35,10 +36,17 @@ struct PrimitiveView {
 [[nodiscard]] std::vector<PrimitiveView> toPrimitiveViews(std::vector<Primitive*> const& primitives);
 
 // A read-only, non-owning view of a Prefab (docs spec #366). A script never
-// gets a mutable handle to a Prefab or its Primitives - it only ever passes
-// this handle to a placement function that clones what it wraps.
+// gets a mutable handle to a Prefab or its Primitives; it may inspect tags and
+// annotated vertices or pass this handle to a placement function.
 struct PrefabView {
   Prefab const* prefab;
+};
+
+// An immutable copy of one annotated Prefab vertex in Prefab space.
+struct PrefabVertexView {
+  float x;
+  float y;
+  std::map<std::string, std::string> metadata;
 };
 
 // A read-only, non-owning view of a DefinePrefabs step, letting a script look

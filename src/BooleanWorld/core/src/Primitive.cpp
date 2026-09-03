@@ -553,6 +553,7 @@ vector<ComplexPolygon> Primitive::generateTransformedVertices(wp::Vector2* minEx
         bool vChanged{false};
 
         vertices[i].p = transformVertex(polygon[i].p * mSize, &vChanged);
+        vertices[i].metadata = polygon[i].metadata;
         vertices[i].edgeFlags = polygon[i].edgeFlags;
         vertices[i].edgeNormalMap = polygon[i].edgeNormalMap;
         vertices[i].edgeWallMask = polygon[i].edgeWallMask;

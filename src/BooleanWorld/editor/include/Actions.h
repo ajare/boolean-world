@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <set>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -196,6 +197,9 @@ std::string prefabSizeChangeBlockedReason(
 bool setPrefabTileSize(
     Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
     bw::core::Prefab* prefab, bw::core::PrefabTileSize size);
+bool setPrefabTags(
+    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab, std::set<std::string> const& tags);
 
 bool bindPrefabField(
     Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
@@ -277,6 +281,9 @@ bool fillMeshHole(Document* doc, uint32_t holeRingIndex);
 // through Document::updateMeshDrag. Refused (returning false, leaving the
 // mesh unchanged) if it would break an invariant.
 bool setMeshVertexPosition(Document* doc, uint32_t vertexIndex, wp::Vector2 const& position);
+bool setMeshVertexMetadata(
+    Document* doc, uint32_t vertexIndex,
+    std::map<std::string, std::string> const& metadata);
 
 // Sets or clears the active mesh edge's wall collision override. Refused on
 // an edge whose connectivity is not External.

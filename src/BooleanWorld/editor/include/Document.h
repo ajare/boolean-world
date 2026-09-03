@@ -245,6 +245,11 @@ public:
   void clearActiveMesh();
   [[nodiscard]] uint32_t getActiveMeshPrimitiveIndex() const;
   [[nodiscard]] wp::geometry::Mesh const* getActiveMesh() const;
+  [[nodiscard]] std::map<std::string, std::string> getActiveMeshVertexMetadata(
+      uint32_t vertexIndex) const;
+  bool setActiveMeshVertexMetadata(
+      uint32_t vertexIndex,
+      std::map<std::string, std::string> const& metadata);
 
   // Authored tri-state collision override for one edge of the active mesh.
   // Unset, and not editable, with no active mesh.

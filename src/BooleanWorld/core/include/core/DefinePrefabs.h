@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <set>
 #include <span>
 #include <string>
 #include <vector>
@@ -55,6 +56,7 @@ private:
   uint32_t mId;
   std::string mName;
   PrefabTileSize mTileSize;
+  std::set<std::string> mTags;
   std::vector<Primitive*> mPrimitives;
 
   Prefab(uint32_t id, std::string const& name,
@@ -79,6 +81,7 @@ public:
   [[nodiscard]] uint32_t getId() const;
   [[nodiscard]] std::string const& getName() const;
   [[nodiscard]] PrefabTileSize getTileSize() const;
+  [[nodiscard]] std::set<std::string> const& getTags() const;
   [[nodiscard]] uint32_t getNumPrimitives() const;
   [[nodiscard]] Primitive* getPrimitive(uint32_t index) const;
   [[nodiscard]] std::vector<Primitive*> const& getPrimitives() const;
@@ -126,6 +129,7 @@ public:
   void removePrefab(uint32_t index);
   void setPrefabName(Prefab* prefab, std::string const& name);
   void setPrefabTileSize(Prefab* prefab, PrefabTileSize size);
+  void setPrefabTags(Prefab* prefab, std::set<std::string> const& tags);
 
   [[nodiscard]] uint32_t getNumPrefabs() const;
   [[nodiscard]] Prefab* getPrefab(uint32_t index) const;
@@ -137,6 +141,11 @@ public:
   [[nodiscard]] uint32_t findPrefabIdByName(std::string const& name) const;
 
   [[nodiscard]] std::vector<Prefab*> const& getPrefabs() const;
+
+  // Returns Prefabs containing every requested tag, preserving collection
+  // order. Tag matching is case-insensitive; an empty set returns all Prefabs.
+  [[nodiscard]] std::vector<Prefab*> getPrefabsWithTags(
+      std::set<std::string> const& tags) const;
 
   // Selection is editor focus only: it is never serialized or copied.
   void setSelectedPrefab(Prefab* prefab);

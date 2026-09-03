@@ -9,6 +9,7 @@
 
 #include <core/DefinePrefabs.h>
 #include <core/DynamicWorldDataGenerator.h>
+#include <core/MeshPrimitive.h>
 #include <core/PrefabField.h>
 #include <core/RectanglePolygon.h>
 #include <core/SuperformulaPolygon.h>
@@ -212,6 +213,46 @@ void prefabEditsAreUndoableAndRestoreStepQualifiedFocus() {
               bw::core::PrefabTileSize::Size64 &&
               secondStep->getSelectedPrefab() == secondStep->getPrefab(0),
           "undo did not restore a Prefab tiling argument and focus");
+
+  layer = document.getWorld()->getActiveLayer();
+  auto* tagsPrefab = secondStep->getSelectedPrefab();
+  editor::transactUndoableAction(
+      &document, "Set Prefab Tags",
+      [layer, secondStep, tagsPrefab](editor::Document* doc) {
+        return editor::setPrefabTags(
+            doc, layer, secondStep, tagsPrefab, {"outdoor", "rock"});
+      });
+  require(tagsPrefab->getTags().size() == 2,
+          "setting Prefab tags did not create one authored edit");
+  editor::undo(&document);
+  secondStep = static_cast<bw::core::DefinePrefabs*>(
+      document.getWorld()->getActiveLayer()->getStep(secondStepIndex));
+  require(secondStep->getPrefab(0)->getTags().empty() &&
+              secondStep->getSelectedPrefab() == secondStep->getPrefab(0),
+          "undo did not restore Prefab tags and focus");
+
+  layer = document.getWorld()->getActiveLayer();
+  auto* mesh = bw::core::MeshPrimitive::fromComplexPolygons(
+      bw::core::Primitive::Operation::Union,
+      {{{{{-1.0f, -1.0f}}, {{1.0f, -1.0f}},
+         {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}}}});
+  layer->addPrimitive(mesh);
+  require(document.activateMesh(mesh->getId()),
+          "the Prefab Mesh fixture could not be activated");
+  auto const vertexIndex = document.getActiveMesh()->getFirstVertexIndex();
+  editor::transactUndoableAction(
+      &document, "Set Prefab Vertex Metadata",
+      [vertexIndex](editor::Document* doc) {
+        return editor::setMeshVertexMetadata(
+            doc, vertexIndex, {{"kind", "spawn"}});
+      });
+  require(document.getActiveMeshVertexMetadata(vertexIndex) ==
+              std::map<std::string, std::string>{{"kind", "spawn"}},
+          "setting Prefab vertex metadata did not commit it");
+  editor::undo(&document);
+  require(document.getActiveMesh() &&
+              document.getActiveMeshVertexMetadata(vertexIndex).empty(),
+          "undo did not restore Prefab vertex metadata and Mesh focus");
 }
 
 void prefabFieldStepActionsUndoAndRedoWithoutLosingReferences() {

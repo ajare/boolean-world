@@ -202,7 +202,7 @@ Returned only by `context:create_primitive`.
 | `set_operation(operation)` | Sets `"union"`, `"intersection"`, `"difference"`, or `"xor"`. Values are case-sensitive. |
 | `get_operation()` | Returns the operation as one of those lowercase strings. |
 
-Only these common properties and inherited spatial-transform properties are currently scriptable. Animation curves and transform flows, fill rule, materials, surface properties, type-specific shape parameters, and parentage are not exposed. Mesh geometry is available only on a `MeshPrimitive` returned by `context:create_mesh_primitive`.
+Only these common properties and inherited spatial-transform properties are currently scriptable. Animation curves and transform flows, fill rule, materials, surface properties, type-specific shape parameters, and parentage are not exposed. Mutable Mesh geometry is available only on a `MeshPrimitive` returned by `context:create_mesh_primitive`; Prefabs separately expose read-only annotated vertex positions.
 
 ## Mutable `MeshPrimitive`
 
@@ -268,6 +268,30 @@ Prefab names need not be unique; the first match wins.
 
 **Errors:** fails if no Prefab has that name.
 
+### `get_prefabs()`
+
+Returns every Prefab in authored collection order as an array of read-only
+`Prefab` handles.
+
+```lua
+local prefabs = definitions:get_prefabs()
+```
+
+### `get_prefabs_with_tags(tags)`
+
+Returns the Prefabs containing every requested tag, preserving authored
+collection order. Matching is case-insensitive. An empty tag array returns all
+Prefabs.
+
+```lua
+local outdoor_rocks =
+    definitions:get_prefabs_with_tags({"outdoor", "rock"})
+```
+
+`tags` must be a dense array of strings. Each tag may contain only ASCII
+letters, digits, underscores, and hyphens. Invalid tags or malformed tables
+fail the script.
+
 ## `Prefab`
 
 A read-only handle returned by `DefinePrefabsStep:get_prefab`.
@@ -276,7 +300,52 @@ A read-only handle returned by `DefinePrefabsStep:get_prefab`.
 
 Returns the Prefab's authored name.
 
-A script cannot inspect or mutate the Prefab's source Primitives. It can pass the handle to `context:place_prefab_instance`.
+### `get_tags()`
+
+Returns the Prefab's canonical lowercase tags as a sorted array.
+
+```lua
+local tags = prefab:get_tags()
+```
+
+### `get_metadata_vertices()`
+
+Returns every annotated Prefab vertex as an array of read-only `PrefabVertex`
+values. Vertices are ordered by Prefab Primitive, Ring, and vertex order, with
+welded Ring occurrences returned once per Primitive. Positions are in Prefab
+space.
+
+### `get_vertices_with_metadata(metadata)`
+
+Returns annotated vertices whose metadata contains every supplied key with
+exactly the supplied string value. An empty table returns every annotated
+vertex.
+
+```lua
+local spawns = prefab:get_vertices_with_metadata({
+    kind = "spawn",
+    team = "blue"
+})
+```
+
+Both keys and values must be strings, and keys cannot be empty. Metadata
+matching is case-sensitive.
+
+A script cannot inspect or mutate the Prefab's source Primitives, tags, or
+vertex metadata. It can pass the handle to `context:place_prefab_instance`.
+
+## `PrefabVertex`
+
+A read-only value returned by a Prefab vertex-metadata query.
+
+### `get_position()`
+
+Returns the vertex's Prefab-space position as `x, y`.
+
+### `get_metadata()`
+
+Returns a detached copy of the vertex's string key/value metadata as a Lua
+table. Changing that table does not modify the Prefab.
 
 ## `PrimitiveFieldStep`
 

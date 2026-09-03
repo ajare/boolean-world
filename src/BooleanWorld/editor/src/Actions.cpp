@@ -269,6 +269,16 @@ bool setPrefabTileSize(
   return true;
 }
 
+bool setPrefabTags(
+    Document*, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab, set<string> const& tags) {
+  auto const oldTags = prefab->getTags();
+  step->setPrefabTags(prefab, tags);
+  if (prefab->getTags() == oldTags) return false;
+  layer->rebuild();
+  return true;
+}
+
 bool bindPrefabField(
     Document*, bw::core::Layer* layer, bw::core::PrefabField* field,
     bw::core::DefinePrefabs* definitions) {
@@ -436,6 +446,12 @@ bool selectAllMeshSubObjects(Document* doc, Settings::MeshSubMode subMode) {
 
 bool setMeshVertexPosition(Document* doc, uint32_t vertexIndex, wp::Vector2 const& position) {
   return doc->moveMeshVertexTo(vertexIndex, position);
+}
+
+bool setMeshVertexMetadata(
+    Document* doc, uint32_t vertexIndex,
+    map<string, string> const& metadata) {
+  return doc->setActiveMeshVertexMetadata(vertexIndex, metadata);
 }
 
 bool setMeshEdgeCollisionOverride(

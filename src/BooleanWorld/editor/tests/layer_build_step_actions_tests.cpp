@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <iostream>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -306,6 +307,11 @@ void prefabActionsCreateSelectRenameDeleteAndChangeTilingArguments() {
               bw::core::PrefabTileSize::Size128) &&
               prefab->getTileSize() == bw::core::PrefabTileSize::Size128,
           "Set Prefab tile size action failed");
+  require(editor::setPrefabTags(
+              &document, layer, step, prefab, {"door", "interior"}) &&
+              prefab->getTags() ==
+                  std::set<std::string>({"door", "interior"}),
+          "Set Prefab tags action failed");
   require(editor::setPrefabTilingType(
               &document, layer, step, bw::core::PrefabTilingType::Square),
           "Set Prefab tiling type action failed");

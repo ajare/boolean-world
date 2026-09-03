@@ -1,7 +1,9 @@
 #pragma once
 
-#include <vector>
 #include <cstdint>
+#include <map>
+#include <string>
+#include <vector>
 
 #include <willpower/common/Vector2.h>
 #include <willpower/common/BoundingBox.h>
@@ -16,6 +18,10 @@ namespace core {
 
 struct Vertex {
   wp::Vector2 p;
+
+  // Authored script-facing data attached to this topology vertex. Mesh editing
+  // keeps this identical across every Ring occurrence of a welded vertex.
+  std::map<std::string, std::string> metadata;
 
   // Flags for the edge FROM this vertex TO THE NEXT vertex in its Ring (the
   // "outgoing edge"). See the BW_MESH_EDGE_* flags in Defines.h. All bits
