@@ -65,8 +65,9 @@ private:
 
   bool deserializeArgs(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) override;
 
-  // Allocates a Primitive of the named type directly into this step's
-  // storage and returns a borrowed handle to it.
+  // Allocates a Primitive directly into this step's storage and returns a
+  // borrowed handle to it.
+  [[nodiscard]] Primitive* ownPrimitive(std::unique_ptr<Primitive> primitive) const;
   [[nodiscard]] Primitive* createPrimitive(std::string const& type) const;
 
   void placePrimitive(LayerBuildContext& context, Primitive* primitive) const;

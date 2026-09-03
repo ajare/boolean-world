@@ -17,6 +17,7 @@
 #include <core/DefinePrefabs.h>
 #include <core/Layer.h>
 #include <core/LayerBuildStep.h>
+#include <core/MeshPrimitive.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
 #include <core/World.h>
@@ -184,6 +185,7 @@ void runScriptOperationsAreScopedToTheExecutionContext() {
   runtime.load("context", R"(
     assert(context ~= nil)
     assert(create_primitive == nil)
+    assert(create_mesh_primitive == nil)
     assert(place_primitive == nil)
     assert(place_prefab_instance == nil)
     assert(find_define_prefabs == nil)
@@ -204,6 +206,201 @@ void runScriptOperationsAreScopedToTheExecutionContext() {
           "RunScript operations were not scoped to the execution context");
   require(!layer.getPrimitive(0)->getVertices().empty(),
           "a script-created Rectangle had no renderable geometry");
+}
+
+void aScriptCreatesAMeshPrimitiveFromOneRing() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("mesh", R"(
+    local mesh = context:create_mesh_primitive({
+      {0, 0}, {8, 0}, {8, 8}, {0, 8}
+    })
+    assert(mesh:get_type() == "Mesh")
+    context:place_primitive(mesh)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* step = addScriptStep(layer, runtime, "mesh");
+  layer.rebuild();
+
+  require(!step->hasFailed() && layer.getNumPrimitives() == 1,
+          "creating and placing a MeshPrimitive from a Lua Ring failed");
+  auto* mesh = dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(0));
+  require(mesh != nullptr, "create_mesh_primitive did not create a MeshPrimitive");
+  auto proxy = mesh->createEditingProxy();
+  uint32_t vertexCount = 0;
+  for (auto id = proxy->getFirstVertexIndex();
+       !proxy->vertexIndexIterationFinished(id);
+       id = proxy->getNextVertexIndex(id)) {
+    ++vertexCount;
+  }
+  require(vertexCount == 4,
+          "create_mesh_primitive did not preserve the Ring's four vertices");
+  wp::Vector2 minimum, maximum;
+  proxy->getExtents(minimum, maximum);
+  require(minimum == wp::Vector2{0.0f, 0.0f} &&
+              maximum == wp::Vector2{8.0f, 8.0f},
+          "create_mesh_primitive did not interpret Ring points in the World plane");
+}
+
+void meshGeometryOperationsKeepIdsWithinOneExecution() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("edit-mesh", R"(
+    local mesh = context:create_mesh_primitive({
+      {0, 0}, {8, 0}, {8, 8}, {0, 8}
+    })
+    local vertex_id = mesh:split_edge(0)
+    assert(vertex_id ~= nil)
+    assert(mesh:move_vertex_to(vertex_id, 4, -2))
+    context:place_primitive(mesh)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* step = addScriptStep(layer, runtime, "edit-mesh");
+  layer.rebuild();
+
+  require(!step->hasFailed() && layer.getNumPrimitives() == 1,
+          "editing a MeshPrimitive by sub-object id failed");
+  auto* mesh = dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(0));
+  auto proxy = mesh->createEditingProxy();
+  bool foundMovedSplit = false;
+  for (auto id = proxy->getFirstVertexIndex();
+       !proxy->vertexIndexIterationFinished(id);
+       id = proxy->getNextVertexIndex(id)) {
+    foundMovedSplit |= proxy->getVertex(id).getPosition() == wp::Vector2{4.0f, -2.0f};
+  }
+  require(foundMovedSplit,
+          "a split Vertex id did not remain usable by the next Lua geometry operation");
+}
+
+void scriptsMoveAndRemoveMeshSubObjectsById() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("mesh-sub-objects", R"(
+    local moved = context:create_mesh_primitive({
+      {0, 0}, {8, 0}, {8, 8}, {0, 8}
+    })
+    assert(moved:move_vertex(1, 0, -1))
+    assert(moved:move_edge(2, 1, 0))
+    assert(moved:move_polygon(0, 10, 0))
+    context:place_primitive(moved)
+
+    local vertex_removed = context:create_mesh_primitive({
+      {20, 0}, {24, -1}, {28, 0}, {28, 8}, {20, 8}
+    })
+    assert(vertex_removed:remove_vertex(1))
+    context:place_primitive(vertex_removed)
+
+    local edge_removed = context:create_mesh_primitive({
+      {40, 0}, {44, -1}, {48, 0}, {48, 8}, {40, 8}
+    })
+    assert(edge_removed:remove_edge(0))
+    context:place_primitive(edge_removed)
+
+    local polygon_removed = context:create_mesh_primitive({
+      {60, 0}, {68, 0}, {68, 8}, {60, 8}
+    })
+    local added = polygon_removed:add_shell({
+      {72, 0}, {80, 0}, {80, 8}, {72, 8}
+    })
+    assert(added ~= nil and polygon_removed:remove_polygon(added))
+    context:place_primitive(polygon_removed)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* step = addScriptStep(layer, runtime, "mesh-sub-objects");
+  layer.rebuild();
+
+  require(!step->hasFailed() && layer.getNumPrimitives() == 4,
+          "moving or removing a Mesh sub-object by id failed");
+}
+
+void scriptsAuthorAndSliceMeshContainmentByPolygonId() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("mesh-containment", R"(
+    local nested = context:create_mesh_primitive({
+      {0, 0}, {20, 0}, {20, 20}, {0, 20}
+    })
+    local hole = nested:add_hole(0, {
+      {4, 4}, {16, 4}, {16, 16}, {4, 16}
+    })
+    assert(hole ~= nil)
+    local island = nested:add_island(hole, {
+      {7, 7}, {13, 7}, {13, 13}, {7, 13}
+    })
+    assert(island ~= nil)
+    assert(nested:fill_hole(hole) ~= nil)
+    context:place_primitive(nested)
+
+    local sliced = context:create_mesh_primitive({
+      {30, 0}, {40, 0}, {40, 10}, {30, 10}
+    })
+    assert(sliced:slice_polygon(0, 0, 2))
+    context:place_primitive(sliced)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* step = addScriptStep(layer, runtime, "mesh-containment");
+  layer.rebuild();
+
+  require(!step->hasFailed() && layer.getNumPrimitives() == 2,
+          "authoring Mesh containment or slicing by polygon id failed");
+  auto* sliced = dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(1));
+  require(sliced && sliced->getShells().size() == 2,
+          "slice_polygon did not divide one Shell into two Shells");
+}
+
+void meshPrimitivesRetainTheMutablePrimitiveApi() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("mesh-primitive-api", R"(
+    local mesh = context:create_mesh_primitive({
+      {0, 0}, {8, 0}, {8, 8}, {0, 8}
+    })
+    mesh:set_position(20, 30)
+    mesh:set_priority(17)
+    mesh:set_operation("difference")
+    local x, y = mesh:get_position()
+    assert(x == 20 and y == 30)
+    assert(mesh:get_priority() == 17)
+    assert(mesh:get_operation() == "difference")
+    context:place_primitive(mesh)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* step = addScriptStep(layer, runtime, "mesh-primitive-api");
+  layer.rebuild();
+
+  require(!step->hasFailed() && layer.getNumPrimitives() == 1,
+          "a MeshPrimitive did not retain the mutable Primitive API");
+  auto* mesh = dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(0));
+  require(mesh && mesh->getPosition() == wp::Vector2{20.0f, 30.0f} &&
+              mesh->getPriority() == 17 &&
+              mesh->getOperation() == bw::core::Primitive::Operation::Difference,
+          "MeshPrimitive common properties did not cross the Lua API");
+}
+
+void meshGeometryEditingUsesTheCurrentPrimitiveTransform() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("transform-then-edit", R"(
+    local mesh = context:create_mesh_primitive({
+      {0, 0}, {8, 0}, {8, 8}, {0, 8}
+    })
+    local split_vertex = mesh:split_edge(0)
+    mesh:set_position(100, 100)
+    assert(mesh:move_vertex(split_vertex, 0, -2))
+    context:place_primitive(mesh)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* step = addScriptStep(layer, runtime, "transform-then-edit");
+  layer.rebuild();
+
+  require(!step->hasFailed() && layer.getNumPrimitives() == 1,
+          "editing Mesh geometry after changing its transform failed");
+  auto* mesh = dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(0));
+  auto proxy = mesh->createEditingProxy();
+  wp::Vector2 minimum, maximum;
+  proxy->getExtents(minimum, maximum);
+  require(minimum.x > 90.0f && minimum.y > 90.0f,
+          "a geometry edit used stale pre-transform Mesh coordinates");
 }
 
 void scriptCreatedPrimitivesFoldInRecipeOrder() {
@@ -826,9 +1023,12 @@ void reloadingRebuildsExactlyTheLayersThatNameTheScript() {
       [&printed](std::string const& line) { printed.push_back(line); });
 
   auto sourceAt = [](float x, std::string const& message) {
-    return "print(\"" + message + "\")\n"
+    return "print(\"" + message +
+           "\")\n"
            "local p = context:create_primitive(\"Rectangle\")\n"
-           "p:set_position(" + std::to_string(x) + ", 0)\n"
+           "p:set_position(" +
+           std::to_string(x) +
+           ", 0)\n"
            "context:place_primitive(p)";
   };
 
@@ -940,8 +1140,7 @@ void coroutinesAdvanceAcrossTicksAndContainFailures() {
   runtime.tick();
   require(progress == std::vector<std::string>{
                           "live-one", "live-two", "live-three"} &&
-              runtime.getCoroutineStatus(progressing) ==
-                  ScriptCoroutineStatus::Complete,
+              runtime.getCoroutineStatus(progressing) == ScriptCoroutineStatus::Complete,
           "the coroutine did not progress and complete across several frames");
   runtime.tick();
   require(progress.size() == 3,
@@ -1029,6 +1228,12 @@ int main() {
     theRuntimeCompilesScriptsFromStringsAndCachesThemByName();
     theLibrarySetIsAParameterOfExecution();
     runScriptOperationsAreScopedToTheExecutionContext();
+    aScriptCreatesAMeshPrimitiveFromOneRing();
+    meshGeometryOperationsKeepIdsWithinOneExecution();
+    scriptsMoveAndRemoveMeshSubObjectsById();
+    scriptsAuthorAndSliceMeshContainmentByPolygonId();
+    meshPrimitivesRetainTheMutablePrimitiveApi();
+    meshGeometryEditingUsesTheCurrentPrimitiveTransform();
     scriptCreatedPrimitivesFoldInRecipeOrder();
     everyExecutionRefillsTheStepsOwnStorage();
     aScriptNeverOwnsWhatItCreates();

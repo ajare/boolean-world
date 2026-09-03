@@ -15,7 +15,7 @@ target_link_libraries(core-lua PUBLIC
 bw_add_header_filter(core-lua "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 target_compile_features(core-lua PRIVATE cxx_std_23)
-target_compile_options(core-lua PRIVATE /W3)
+target_compile_options(core-lua PRIVATE /W3 /bigobj)
 bw_target_defaults(core-lua)
 bw_output_dirs(core-lua)
 bw_enable_sdl_checks(core-lua)

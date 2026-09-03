@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -10,6 +13,8 @@ namespace bw {
 namespace core {
 
 class Primitive;
+class MeshPrimitive;
+class MeshPrimitiveEditingProxy;
 class Prefab;
 class DefinePrefabs;
 class PrimitiveField;
@@ -50,6 +55,42 @@ struct PrimitiveFieldView {
   PrimitiveField const* step;
 };
 
+// A mutable, borrowed MeshPrimitive plus its editing authority. Keeping the
+// proxy alive for the whole handle lifetime lets ids returned by one geometry
+// operation be passed directly to the next.
+class ScriptMeshPrimitive {
+private:
+  MeshPrimitive* mPrimitive;
+  std::shared_ptr<MeshPrimitiveEditingProxy> mEditing;
+
+public:
+  explicit ScriptMeshPrimitive(MeshPrimitive* primitive);
+
+  [[nodiscard]] MeshPrimitive* getPrimitive() const;
+  void primitiveTransformChanged();
+  [[nodiscard]] bool moveVertexTo(uint32_t vertexId, float x, float y);
+  [[nodiscard]] bool moveVertex(
+      uint32_t vertexId, float deltaX, float deltaY);
+  [[nodiscard]] bool moveEdge(
+      uint32_t edgeId, float deltaX, float deltaY);
+  [[nodiscard]] bool movePolygon(
+      uint32_t polygonId, float deltaX, float deltaY);
+  [[nodiscard]] std::optional<uint32_t> splitEdge(uint32_t edgeId);
+  [[nodiscard]] std::optional<uint32_t> splitEdge(uint32_t edgeId, float t);
+  [[nodiscard]] bool removeVertex(uint32_t vertexId);
+  [[nodiscard]] bool removeEdge(uint32_t edgeId);
+  [[nodiscard]] bool removePolygon(uint32_t polygonId);
+  [[nodiscard]] std::optional<uint32_t> addShell(sol::table const& points);
+  [[nodiscard]] std::optional<uint32_t> addHole(
+      uint32_t filledPolygonId, sol::table const& points);
+  [[nodiscard]] std::optional<uint32_t> addIsland(
+      uint32_t holePolygonId, sol::table const& points);
+  [[nodiscard]] std::optional<uint32_t> fillHole(uint32_t holePolygonId);
+  [[nodiscard]] bool slicePolygon(
+      uint32_t polygonId, uint32_t firstVertexId,
+      uint32_t secondVertexId);
+};
+
 // The borrowed capability object available to a script as `context` while a
 // RunScript step executes. It deliberately exposes execution operations, not
 // the RunScript object itself or its authored configuration.
@@ -62,7 +103,10 @@ public:
   RunScriptContext(RunScript const& step, LayerBuildContext& build);
 
   [[nodiscard]] Primitive* createPrimitive(std::string const& type) const;
+  [[nodiscard]] ScriptMeshPrimitive createMeshPrimitive(
+      sol::table const& points) const;
   void placePrimitive(Primitive* primitive) const;
+  void placeMeshPrimitive(ScriptMeshPrimitive const& primitive) const;
   void placePrefabInstance(
       PrefabView view, float x, float y, float angle) const;
 

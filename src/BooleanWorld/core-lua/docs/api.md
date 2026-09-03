@@ -50,7 +50,7 @@ local primitive = context:create_primitive("Rectangle")
 - `"Superformula"`
 - `"Mesh"`
 
-Only the common Primitive properties documented below are exposed. In particular, this API cannot author a `Mesh`'s vertices or change type-specific parameters.
+Only the common Primitive properties documented below are exposed. Use `context:create_mesh_primitive` rather than `create_primitive("Mesh")` to author Mesh geometry; other type-specific parameters are not exposed.
 
 A created Primitive contributes nothing until passed to `context:place_primitive`. An unplaced Primitive is discarded after execution.
 
@@ -58,9 +58,25 @@ A created Primitive contributes nothing until passed to `context:place_primitive
 
 **Errors:** fails if `type` is not registered.
 
+### `context:create_mesh_primitive(points)`
+
+Creates a mutable `MeshPrimitive` from one Ring. `points` is a Lua array of `{x, y}` World-plane coordinates. The Ring must contain at least three finite points and must be simple and non-degenerate; winding is normalized automatically.
+
+```lua
+local mesh = context:create_mesh_primitive({
+    {0, 0}, {64, 0}, {64, 32}, {0, 32}
+})
+```
+
+The new MeshPrimitive has a single Shell and defaults to the `"union"` operation. It supports all common Primitive methods plus the Mesh geometry methods documented below.
+
+**Returns:** mutable `MeshPrimitive`.
+
+**Errors:** fails for malformed point entries or invalid Ring geometry.
+
 ### `context:place_primitive(primitive)`
 
-Appends a Primitive returned by `context:create_primitive` to the current step's output.
+Appends a Primitive returned by `context:create_primitive` or `context:create_mesh_primitive` to the current step's output.
 
 ```lua
 context:place_primitive(primitive)
@@ -186,7 +202,32 @@ Returned only by `context:create_primitive`.
 | `set_operation(operation)` | Sets `"union"`, `"intersection"`, `"difference"`, or `"xor"`. Values are case-sensitive. |
 | `get_operation()` | Returns the operation as one of those lowercase strings. |
 
-Only these common properties and inherited spatial-transform properties are currently scriptable. Animation curves and transform flows, fill rule, materials, surface properties, type-specific shape parameters, parentage, and mesh vertices are not exposed.
+Only these common properties and inherited spatial-transform properties are currently scriptable. Animation curves and transform flows, fill rule, materials, surface properties, type-specific shape parameters, and parentage are not exposed. Mesh geometry is available only on a `MeshPrimitive` returned by `context:create_mesh_primitive`.
+
+## Mutable `MeshPrimitive`
+
+Returned only by `context:create_mesh_primitive`. It supports every mutable `Primitive` method above. Geometry uses the editor's Mesh topology and World-plane coordinates. Vertex, Edge, and Polygon arguments are zero-based topology ids, not Lua array indices; scripts are expected to know the ids for the topology they construct.
+
+Every operation validates the complete Ring and containment hierarchy. A refused operation returns `false` or `nil` and leaves the Mesh unchanged. Supplying malformed or geometrically invalid Ring points raises an error.
+
+| Method | Description |
+|---|---|
+| `move_vertex_to(vertex_id, x, y)` | Moves one Vertex to an absolute World-plane position. Returns whether accepted. |
+| `move_vertex(vertex_id, dx, dy)` | Translates one Vertex. Returns whether accepted. |
+| `move_edge(edge_id, dx, dy)` | Translates both vertices of one Edge. Returns whether accepted. |
+| `move_polygon(polygon_id, dx, dy)` | Translates one Ring, without implicitly moving descendants. Returns whether accepted. |
+| `split_edge(edge_id)` | Splits an Edge at its midpoint and returns the new Vertex id, or `nil`. |
+| `split_edge(edge_id, t)` | Splits an Edge at the fraction `t`, strictly between zero and one, and returns the new Vertex id, or `nil`. |
+| `slice_polygon(polygon_id, first_vertex_id, second_vertex_id)` | Divides a Shell or Island along a valid chord between two non-adjacent vertices. Returns whether accepted. |
+| `remove_vertex(vertex_id)` | Removes a Vertex and heals its Ring. Returns whether accepted. |
+| `remove_edge(edge_id)` | Welds a one-sided Edge's endpoints or merges compatible sibling Rings across a two-sided Edge. Returns whether accepted. |
+| `remove_polygon(polygon_id)` | Removes a Ring and its structurally contained descendants. Returns whether accepted. |
+| `add_shell(points)` | Adds a root Shell Ring and returns its Polygon id. |
+| `add_hole(filled_polygon_id, points)` | Adds a Hole to a Shell or Island and returns its Polygon id, or `nil` if the parent id is unsuitable. |
+| `add_island(hole_polygon_id, points)` | Adds an Island to a Hole and returns its Polygon id, or `nil` if the parent id is unsuitable. |
+| `fill_hole(hole_polygon_id)` | Retains a Hole and fills it with a welded Island, wrapping existing immediate Islands as Holes. Returns the new Island's Polygon id, or `nil`. |
+
+`points` in the add methods has the same `{{x, y}, ...}` form as `create_mesh_primitive`.
 
 ## Read-only `PrimitiveView`
 

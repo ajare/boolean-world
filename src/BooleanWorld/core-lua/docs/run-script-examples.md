@@ -15,6 +15,26 @@ room:set_priority(0)
 context:place_primitive(room)
 ```
 
+## Create and edit a MeshPrimitive
+
+Creates one MeshPrimitive from a single Ring, splits Edge `0`, moves the new Vertex, and adds a Hole to Polygon `0`.
+
+```lua
+local room = context:create_mesh_primitive({
+    {0, 0}, {64, 0}, {64, 64}, {0, 64}
+})
+
+local new_vertex = room:split_edge(0)
+room:move_vertex(new_vertex, 0, -8)
+room:add_hole(0, {
+    {16, 16}, {48, 16}, {48, 48}, {16, 48}
+})
+
+context:place_primitive(room)
+```
+
+Vertex, Edge, and Polygon ids are zero-based topology ids. See the API reference for every available geometry operation and its return value.
+
 ## Build a doorway with boolean operations
 
 Places a room and then subtracts a doorway. Priorities order the two Primitives within this `RunScript` step.
