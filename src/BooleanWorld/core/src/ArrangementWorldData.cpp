@@ -165,6 +165,24 @@ ArrangementWorldData::ArrangementWorldData(
     mCollisionWallIndices.push_back(wallIndex);
   }
   mWallGrid = CreateGrid(extents, gridCellSize, wallBounds);
+
+  std::vector<ImmutableAccelerationGrid::ItemBounds> renderedWallBounds;
+  renderedWallBounds.reserve(mWalls.size());
+  mRenderedWallIndices.reserve(mWalls.size());
+  for (uint32_t wallIndex = 0; wallIndex < uint32_t(mWalls.size());
+       ++wallIndex) {
+    auto const& wall = mWalls[wallIndex];
+    if (!wall.visible) {
+      continue;
+    }
+    auto const& edge = mArrangement->edges[wall.edge];
+    auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
+    auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
+    renderedWallBounds.push_back({{std::min(a.x, b.x), std::min(a.y, b.y)},
+                                  {std::max(a.x, b.x), std::max(a.y, b.y)}});
+    mRenderedWallIndices.push_back(wallIndex);
+  }
+  mRenderedWallGrid = CreateGrid(extents, gridCellSize, renderedWallBounds);
 }
 
 arr::ArrangementResult const& ArrangementWorldData::getArrangement() const {
@@ -390,6 +408,57 @@ std::vector<uint32_t> ArrangementWorldData::getWallsNearForTraversal(
     if (sourceFloor < wall.maxZ) result.push_back(wallIndex);
   }
   return result;
+}
+
+std::optional<float> ArrangementWorldData::distanceToFirstWallCrossing(
+    wp::Vector2 const& from,
+    wp::Vector2 const& to,
+    float height) const {
+  auto ray = to - from;
+  auto rayLength = ray.length();
+  if (rayLength <= 0.0f) {
+    return std::nullopt;
+  }
+
+  // BoundingBox normalizes a negative size into its extents, so the ray
+  // itself is the box whichever way it points.
+  wp::BoundingBox bounds(from, ray);
+  ImmutableAccelerationGrid::IndexCollection candidates;
+  mRenderedWallGrid->getCandidateItemsInBoundingArea(bounds, candidates);
+
+  // Keep the nearest crossing rather than the first found: grid cells hand
+  // back candidates in storage order, not along the ray.
+  auto nearest = std::numeric_limits<float>::infinity();
+  for (auto renderedWallIndex : candidates) {
+    auto const& wall = mWalls[mRenderedWallIndices[renderedWallIndex]];
+    // The span is inclusive: a ray level with the lip of a step is grazing
+    // the quad the World draws there, so treat it as blocked rather than
+    // letting it slip through a surface that is visibly in the way.
+    if (height < wall.minZ || height > wall.maxZ) {
+      continue;
+    }
+    auto const& edge = mArrangement->edges[wall.edge];
+    auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
+    auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
+    auto wallSpan = b - a;
+    auto determinant = ray.x * wallSpan.y - wallSpan.x * ray.y;
+    if (std::abs(determinant) <=
+        wp::MathsUtils::Epsilon * std::max(ray.lengthSq(), wallSpan.lengthSq())) {
+      // Parallel. A ray running along a wall is not crossing it, and one
+      // running through its line reaches whatever wall closes the far end.
+      continue;
+    }
+    auto offset = a - from;
+    auto alongRay = (offset.x * wallSpan.y - wallSpan.x * offset.y) / determinant;
+    auto alongWall = (offset.x * ray.y - ray.x * offset.y) / determinant;
+    if (alongRay < 0.0f || alongRay > 1.0f || alongWall < 0.0f ||
+        alongWall > 1.0f) {
+      continue;
+    }
+    nearest = std::min(nearest, alongRay * rayLength);
+  }
+
+  return std::isfinite(nearest) ? std::optional<float>{nearest} : std::nullopt;
 }
 
 int32_t ArrangementWorldData::circleIntersectsWall(

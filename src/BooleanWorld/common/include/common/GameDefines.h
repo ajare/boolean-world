@@ -12,6 +12,12 @@
 #define BW_PLAYER_STEP_SPEED 120.0f
 #define BW_PLAYER_GRAVITY 500.0f
 
+// How far short of a wall the Player Torch stops when the configured debug
+// distance would carry it through one. Placing it exactly on the surface
+// would leave it coplanar with the quad that occludes it, so it has to end up
+// on the near side by a definite margin.
+#define BW_PLAYER_TORCH_WALL_CLEARANCE 1.0f
+
 #define BW_PLAYER_VIEW_DISTANCE 192.0f
 #define BW_PLAYER_FOV 60.0f
 

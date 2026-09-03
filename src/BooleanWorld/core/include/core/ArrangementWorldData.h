@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include <willpower/common/BoundingBox.h>
@@ -27,11 +28,16 @@ class BW_API ArrangementWorldData {
   std::vector<float> mLiquidDepths;
   std::vector<uint32_t> mFloorWedgeTriangleIndices;
   std::vector<uint32_t> mCollisionWallIndices;
+  std::vector<uint32_t> mRenderedWallIndices;
   WedgeGenerationParameters mWedgeGenerationParameters;
   std::unique_ptr<ImmutableAccelerationGrid> mTriangleGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mFloorWedgeGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mVertexGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mWallGrid;
+  // Rendered walls rather than colliding ones: sight and light are blocked by
+  // what a wall draws, which is a different set from what it stops an actor
+  // walking through.
+  std::unique_ptr<ImmutableAccelerationGrid> mRenderedWallGrid;
 
 public:
   ArrangementWorldData(
@@ -110,6 +116,17 @@ public:
   [[nodiscard]] int32_t circleIntersectsWall(
       wp::Vector2 const& position,
       float radius) const;
+
+  // How far a horizontal ray at `height` gets from `from` toward `to` before
+  // the nearest rendered wall blocks it. Empty when it reaches `to` in the
+  // clear. A wall blocks only over its own minZ..maxZ span, so the ray passes
+  // above a low FloorStep and below a high CeilingStep exactly as light
+  // leaving that height does, and a wall the World does not draw blocks
+  // nothing. Collision is a separate question - see getWallsNear.
+  [[nodiscard]] std::optional<float> distanceToFirstWallCrossing(
+      wp::Vector2 const& from,
+      wp::Vector2 const& to,
+      float height) const;
 };
 
 using ArrangementWorldDataPtr = std::shared_ptr<ArrangementWorldData const>;

@@ -1244,9 +1244,25 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   // World 3d uses the handedness-preserving mapping (X, elevation, -Y).
   // Move the light horizontally from the player's eye along the current yaw;
   // pitch does not affect it.
-  auto lightOffset = Vector2::fromAngle(
-                         bw::app::worldViewAngle(physicalStats.angle), Clockwise) *
-                     mDebugDisplay.lightDistance;
+  //
+  // The configured distance is the maximum. Carrying the Torch on through a
+  // wall would light the far side of it and shadow everything the player can
+  // actually see, so the reach is cut to the near side of the first surface
+  // the offset crosses. The test runs at the Torch's own height, which is
+  // what lets it pass over a low floor step and under a high ceiling step
+  // instead of stopping at every change in floor or ceiling level.
+  auto lightDirection = Vector2::fromAngle(
+      bw::app::worldViewAngle(physicalStats.angle), Clockwise);
+  auto lightDistance = mDebugDisplay.lightDistance;
+  if (lightDistance > 0.0f && mWorldData) {
+    lightDistance = bw::app::playerTorchDistance(
+        lightDistance,
+        mWorldData->distanceToFirstWallCrossing(
+            physicalStats.position,
+            physicalStats.position + lightDirection * lightDistance,
+            playerViewHeight));
+  }
+  auto lightOffset = lightDirection * lightDistance;
   glm::vec3 playerPosition{
       physicalStats.position.x,
       playerViewHeight,
@@ -2571,7 +2587,9 @@ void StatePlayBooleanWorld::debug_renderOptions() {
         "Distance ahead of player##PlayerTorch", &mDebugDisplay.lightDistance,
         0.0f, 256.0f, "%.1f");
     ImGui::TextDisabled(
-        "Moves the Torch from the player's eye along the current facing direction.");
+        "Maximum offset from the player's eye along the current facing "
+        "direction. The Torch stops short of the first wall in the way, "
+        "passing over low floor steps and under high ceiling steps.");
     ImGui::SliderFloat(
         "Attenuation radius##PlayerTorch",
         &mDebugDisplay.playerTorch.attenuationRadius,
@@ -2599,6 +2617,21 @@ void StatePlayBooleanWorld::debug_renderOptions() {
     }
     ImGui::Text("Cubemap resolution (configured): %zu", configuredShadows.faceResolution);
     ImGui::TextDisabled("Resolution is read-only during play; no live cubemap reallocation.");
+    auto const shadowDomainName = std::string(bw::app::playerTorchShadowDomain);
+    auto const domainActive =
+        mwRenderSystem->hasShadowDomain(shadowDomainName) &&
+        mwRenderSystem->getShadowDomainOptions(shadowDomainName).enabled;
+    if (domainActive) {
+      ImGui::Text(
+          "Casters selected by the Torch volume: %zu",
+          mwRenderSystem->getShadowDomainDiagnostics(shadowDomainName)
+              .selectedModelCount);
+    } else {
+      ImGui::TextUnformatted("Casters selected by the Torch volume: n/a");
+    }
+    ImGui::TextDisabled(
+        "Scene models the Range sphere retains as casters. Zero means the "
+        "cubemap has no occluders and every lit surface stays fully lit.");
     ImGui::SliderFloat(
         "Range##PlayerTorch", &sessionShadows.options.range,
         sessionShadows.options.nearPlane + 0.01f,

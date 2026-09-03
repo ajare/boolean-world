@@ -1,6 +1,9 @@
 #pragma once
 
 #include <algorithm>
+#include <optional>
+
+#include <common/GameDefines.h>
 
 #include <core/Utils.h>
 #include <willpower/common/Vector2.h>
@@ -27,6 +30,18 @@ inline wp::Vector2 playerMovement(wp::Vector2 input, float yaw) {
 
 inline float worldViewAngle(float playerYaw) {
   return core::clamp_angle(playerYaw);
+}
+
+// The Player Torch's debug offset is a maximum, not a fixed placement: the
+// Torch is a light in the World, so it stops on the near side of the first
+// surface between it and the player rather than passing through into rock the
+// player cannot see into. `blockedAt` is the distance to that surface, empty
+// when the way is clear.
+inline float playerTorchDistance(
+    float maximumDistance, std::optional<float> blockedAt) {
+  if (!blockedAt) return maximumDistance;
+  return std::clamp(
+      *blockedAt - BW_PLAYER_TORCH_WALL_CLEARANCE, 0.0f, maximumDistance);
 }
 
 inline float cameraYaw(float playerYaw) {

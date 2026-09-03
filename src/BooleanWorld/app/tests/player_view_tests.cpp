@@ -1,5 +1,6 @@
 #include <cmath>
 #include <iostream>
+#include <optional>
 
 #include "PlayerView.h"
 #include "ReactiveCamera.h"
@@ -141,6 +142,29 @@ int main() {
     if (!near(direction.x, 1.0f) || !near(direction.y, 0.0f) ||
         !near(direction.z, 0.0f)) {
       return fail("rightward mouse motion does not turn the rendered camera right");
+    }
+  }
+
+  {
+    // The configured Torch distance is a maximum: an unobstructed offset is
+    // used whole, and an obstructed one stops a fixed clearance short of what
+    // blocked it rather than being scaled or ignored.
+    if (!near(bw::app::playerTorchDistance(71.0f, std::nullopt), 71.0f)) {
+      return fail("an unobstructed Player Torch did not use its full distance");
+    }
+    if (!near(
+            bw::app::playerTorchDistance(71.0f, 40.0f),
+            40.0f - BW_PLAYER_TORCH_WALL_CLEARANCE)) {
+      return fail("an obstructed Player Torch did not stop short of the wall");
+    }
+    // A wall beyond the configured reach is not in the way at all, and one
+    // closer than the clearance leaves the Torch at the player rather than
+    // behind them.
+    if (!near(bw::app::playerTorchDistance(71.0f, 200.0f), 71.0f)) {
+      return fail("a wall past the configured distance shortened the Torch");
+    }
+    if (!near(bw::app::playerTorchDistance(71.0f, 0.5f), 0.0f)) {
+      return fail("a wall inside the clearance put the Torch behind the player");
     }
   }
 
