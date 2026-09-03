@@ -141,33 +141,36 @@ This example places markers; it does not clone the source Primitives. The curren
 
 ## Stamp a named Prefab
 
-Create a `DefinePrefabs` step named `environment prefabs` containing a Prefab named `arch`. The script makes independent transformed copies and does not change the source Prefab.
+Create a `DefinePrefabs` step named `environment prefabs` containing a Prefab named `arch`. Tile coordinates are integers; the Prefab's tile size selects the grid automatically. The script makes independent quarter-turned copies and does not change the source Prefab.
 
 ```lua
 local definitions = context:find_define_prefabs("environment prefabs")
 local arch = definitions:get_prefab("arch")
 
-context:place_prefab_instance(arch,   0, 0,   0)
-context:place_prefab_instance(arch, 128, 0,  90)
-context:place_prefab_instance(arch, 256, 0, 180)
-context:place_prefab_instance(arch, 384, 0, 270)
+context:place_prefab_instance(arch, 0, 0,   0)
+context:place_prefab_instance(arch, 1, 0,  90)
+context:place_prefab_instance(arch, 2, 0, 180)
+context:place_prefab_instance(arch, 3, 0, 270)
 ```
 
 ## Deterministically scatter Prefab instances
 
-Create a `DefinePrefabs` step named `nature prefabs` with a Prefab named `rock`. Change the `RunScript` seed to reroll the result.
+Create a `DefinePrefabs` step named `nature prefabs` with a Prefab named `rock`. Change the `RunScript` seed to reroll the result. `get_tile` maps the Layer's World-space extent to the same size-specific grid used for placement.
 
 ```lua
 local definitions = context:find_define_prefabs("nature prefabs")
 local rock = definitions:get_prefab("rock")
 local rotations = { 0, 90, 180, 270 }
 local x, y, width, height = context:get_extents()
+local min_tile_x, min_tile_y = context:get_tile(rock:get_tile_size(), x, y)
+local max_tile_x, max_tile_y = context:get_tile(
+    rock:get_tile_size(), x + width - 0.001, y + height - 0.001)
 
 for i = 1, 24 do
-    local px = x + math.random() * width
-    local py = y + math.random() * height
+    local tile_x = math.random(min_tile_x, max_tile_x)
+    local tile_y = math.random(min_tile_y, max_tile_y)
     local angle = rotations[math.random(1, #rotations)]
-    context:place_prefab_instance(rock, px, py, angle)
+    context:place_prefab_instance(rock, tile_x, tile_y, angle)
 end
 ```
 

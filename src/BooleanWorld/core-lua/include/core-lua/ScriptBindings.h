@@ -116,7 +116,9 @@ public:
   void placePrimitive(Primitive* primitive) const;
   void placeMeshPrimitive(ScriptMeshPrimitive const& primitive) const;
   void placePrefabInstance(
-      PrefabView view, float x, float y, float angle) const;
+      PrefabView view, int32_t tileX, int32_t tileY, float angle) const;
+  [[nodiscard]] std::tuple<int32_t, int32_t> getTile(
+      uint32_t gridSize, float x, float y) const;
 
   [[nodiscard]] DefinePrefabsView findDefinePrefabs(
       std::string const& name) const;

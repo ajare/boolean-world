@@ -188,6 +188,7 @@ void runScriptOperationsAreScopedToTheExecutionContext() {
     assert(create_mesh_primitive == nil)
     assert(place_primitive == nil)
     assert(place_prefab_instance == nil)
+    assert(get_tile == nil)
     assert(find_define_prefabs == nil)
     assert(find_primitive_field == nil)
     assert(get_build_primitives == nil)
@@ -862,25 +863,54 @@ void aScatterAvoidsExistingGeometryAndItsOwnPlacements() {
   }
 }
 
-void aScriptPlacesTransformedPrefabInstancesFoundByName() {
+void aScriptPlacesPrefabInstancesOnTheirSizeSpecificGrid() {
   bw::core::ScriptRuntime runtime;
   runtime.load("stamp", R"(
     local prefabs = context:find_define_prefabs("prefabs")
     local rock = prefabs:get_prefab("rock")
-    context:place_prefab_instance(rock, 100, 0, 0)
+    assert(rock:get_tile_size() == 128)
+    local tile_x, tile_y = context:get_tile(rock:get_tile_size(), -0.01, -128)
+    assert(tile_x == -1 and tile_y == -1)
+    context:place_prefab_instance(rock, tile_x, tile_y, 270)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
-  addPrefabDefinitions(layer, "prefabs", "rock", 3.0f);
+  auto* definitions = addPrefabDefinitions(layer, "prefabs", "rock", 0.0f);
+  definitions->setPrefabTileSize(
+      definitions->getPrefab(0), bw::core::PrefabTileSize::Size128);
   auto* step = addScriptStep(layer, runtime, "stamp");
   layer.rebuild();
 
-  require(!step->hasFailed(), "placing a Prefab instance found by name failed the step");
+  require(!step->hasFailed(), "placing a Prefab instance on its Tile grid failed the step");
   require(layer.getNumPrimitives() == 1, "the placed Prefab instance did not reach the Layer");
-  require(at(layer.getPrimitive(0), 103.0f),
-          "the placed instance was not offset by the position the script gave it");
+  require(layer.getPrimitive(0)->getPosition() == wp::Vector2{-64.0f, -64.0f},
+          "the Prefab's tile size did not select its placement grid");
   require(step->ownsPrimitive(layer.getPrimitive(0)),
           "the RunScript step did not own the Primitive it placed as a Prefab instance");
+}
+
+void prefabPlacementRejectsNonTilesAndNonQuarterTurns() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("fractional-tile", R"(
+    local rock = context:find_define_prefabs("prefabs"):get_prefab("rock")
+    context:place_prefab_instance(rock, 1.5, 0, 0)
+  )");
+  runtime.load("invalid-angle", R"(
+    local rock = context:find_define_prefabs("prefabs"):get_prefab("rock")
+    context:place_prefab_instance(rock, 0, 0, 45)
+  )");
+  runtime.load("invalid-grid-size", R"(context:get_tile(48, 0, 0))");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  addPrefabDefinitions(layer, "prefabs", "rock", 0.0f);
+  auto* step = addScriptStep(layer, runtime, "fractional-tile");
+  for (auto const* script : {
+           "fractional-tile", "invalid-angle", "invalid-grid-size"}) {
+    step->setScriptName(script);
+    layer.rebuild();
+    require(step->hasFailed() && layer.getNumPrimitives() == 0,
+            "Prefab placement accepted a non-Tile location, angle, or grid size");
+  }
 }
 
 void placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged() {
@@ -888,8 +918,8 @@ void placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged() {
   runtime.load("stamp-twice", R"(
     local prefabs = context:find_define_prefabs("prefabs")
     local rock = prefabs:get_prefab("rock")
-    context:place_prefab_instance(rock, 100, 0, 0)
-    context:place_prefab_instance(rock, 200, 0, 0)
+    context:place_prefab_instance(rock, 1, 0, 0)
+    context:place_prefab_instance(rock, 2, 0, 0)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -899,8 +929,8 @@ void placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged() {
 
   require(!step->hasFailed(), "placing two Prefab instances failed the step");
   require(layer.getNumPrimitives() == 2, "both placed instances did not reach the Layer");
-  require(at(layer.getPrimitive(0), 103.0f) && at(layer.getPrimitive(1), 203.0f),
-          "placed instances were not independently positioned copies");
+  require(at(layer.getPrimitive(0), 99.0f) && at(layer.getPrimitive(1), 163.0f),
+          "placed instances were not independently positioned Tile copies");
   require(layer.getPrimitive(0) != layer.getPrimitive(1),
           "two placed instances shared the same Primitive rather than each being a copy");
 
@@ -1358,7 +1388,8 @@ int main() {
     aScriptCannotMutateAPriorPrimitive();
     aScriptReadsTheLayersExtents();
     aScatterAvoidsExistingGeometryAndItsOwnPlacements();
-    aScriptPlacesTransformedPrefabInstancesFoundByName();
+    aScriptPlacesPrefabInstancesOnTheirSizeSpecificGrid();
+    prefabPlacementRejectsNonTilesAndNonQuarterTurns();
     placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged();
     scriptsListAndFilterPrefabsByTags();
     scriptsReadAndFilterPrefabVertexMetadata();

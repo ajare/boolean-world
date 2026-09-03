@@ -1,7 +1,9 @@
 #include "core-lua/ScriptBindings.h"
 
 #include <algorithm>
+#include <cmath>
 #include <format>
+#include <limits>
 #include <map>
 #include <set>
 #include <string>
@@ -25,6 +27,30 @@ using namespace std;
 namespace {
 
 constexpr char const* boundMarker = "__bw_script_types_bound";
+
+int32_t tileCoordinateFromLua(sol::object const& value, char const* name) {
+  if (!value.is<lua_Integer>()) {
+    throw CoreException(format("Prefab Tile {} must be an integer", name));
+  }
+  auto const coordinate = value.as<lua_Integer>();
+  if (coordinate < numeric_limits<int32_t>::min() ||
+      coordinate > numeric_limits<int32_t>::max()) {
+    throw CoreException(format("Prefab Tile {} is out of range", name));
+  }
+  return static_cast<int32_t>(coordinate);
+}
+
+uint32_t prefabGridSizeFromLua(sol::object const& value) {
+  if (!value.is<lua_Integer>()) {
+    throw CoreException("Prefab grid size must be an integer");
+  }
+  auto const size = value.as<lua_Integer>();
+  if (size < 0 || size > numeric_limits<uint32_t>::max() ||
+      !isPrefabTileSize(static_cast<uint32_t>(size))) {
+    throw CoreException("Prefab grid size must be 32, 64, 128, or 256");
+  }
+  return static_cast<uint32_t>(size);
+}
 
 string operationName(Primitive::Operation operation) {
   switch (operation) {
@@ -356,8 +382,28 @@ void RunScriptContext::placeMeshPrimitive(
 }
 
 void RunScriptContext::placePrefabInstance(
-    PrefabView view, float x, float y, float angle) const {
-  mStep->placePrefabInstance(*mBuild, view.prefab, x, y, angle);
+    PrefabView view, int32_t tileX, int32_t tileY, float angle) const {
+  mStep->placePrefabInstance(*mBuild, view.prefab, tileX, tileY, angle);
+}
+
+tuple<int32_t, int32_t> RunScriptContext::getTile(
+    uint32_t gridSize, float x, float y) const {
+  if (!isPrefabTileSize(gridSize)) {
+    throw CoreException("Prefab grid size must be 32, 64, 128, or 256");
+  }
+  if (!isfinite(x) || !isfinite(y)) {
+    throw CoreException("A World position used to find a Tile must be finite");
+  }
+
+  auto coordinate = [gridSize](float value) {
+    auto const result = floor(static_cast<double>(value) / gridSize);
+    if (result < numeric_limits<int32_t>::min() ||
+        result > numeric_limits<int32_t>::max()) {
+      throw CoreException("Prefab Tile coordinate is out of range");
+    }
+    return static_cast<int32_t>(result);
+  };
+  return {coordinate(x), coordinate(y)};
 }
 
 DefinePrefabsView RunScriptContext::findDefinePrefabs(string const& name) const {
@@ -686,7 +732,18 @@ void bindScriptTypes(sol::state& lua) {
       sol::overload(
           &RunScriptContext::placePrimitive,
           &RunScriptContext::placeMeshPrimitive),
-      "place_prefab_instance", &RunScriptContext::placePrefabInstance,
+      "place_prefab_instance",
+      [](RunScriptContext const& context, PrefabView prefab,
+         sol::object const& tileX, sol::object const& tileY, float angle) {
+        context.placePrefabInstance(
+            prefab, tileCoordinateFromLua(tileX, "x"),
+            tileCoordinateFromLua(tileY, "y"), angle);
+      },
+      "get_tile",
+      [](RunScriptContext const& context, sol::object const& gridSize,
+         float x, float y) {
+        return context.getTile(prefabGridSizeFromLua(gridSize), x, y);
+      },
       "find_define_prefabs", &RunScriptContext::findDefinePrefabs,
       "find_primitive_field", &RunScriptContext::findPrimitiveField,
       "get_build_primitives",
@@ -714,6 +771,10 @@ void bindScriptTypes(sol::state& lua) {
       "Prefab", sol::no_constructor,
 
       "get_name", [](PrefabView const& view) { return view.prefab->getName(); },
+      "get_tile_size",
+      [](PrefabView const& view) {
+        return prefabTileSide(view.prefab->getTileSize());
+      },
       "get_tags",
       [](PrefabView const& view) {
         return sol::as_table(vector<string>(

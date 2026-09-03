@@ -152,19 +152,32 @@ Step names are optional and non-unique; the first matching step in recipe order 
 
 **Errors:** fails if no step has that name or the first match has another type.
 
-### `context:place_prefab_instance(prefab, x, y, angle)`
+### `context:get_tile(grid_size, x, y)`
 
-Copies every Primitive in a `Prefab` into the current step's output, rotates the copies about the Prefab origin, and offsets them by `(x, y)`.
+Returns the integer coordinates of the Tile containing World position `(x, y)` on the requested grid. `grid_size` must be `32`, `64`, `128`, or `256`. All grids use the World origin as an intersection and half-open Tiles, matching `PrefabField`.
+
+```lua
+local tile_x, tile_y = context:get_tile(64, world_x, world_y)
+```
+
+**Returns:** `tile_x, tile_y`.
+
+**Errors:** fails for an unsupported grid size, a non-finite World position, or coordinates outside the supported integer range.
+
+### `context:place_prefab_instance(prefab, tile_x, tile_y, angle)`
+
+Copies every Primitive in a `Prefab` into the current step's output and places the copies at the centre of Tile `(tile_x, tile_y)`. The Prefab's tile size automatically selects the 32, 64, 128, or 256 grid.
 
 ```lua
 local definitions = context:find_define_prefabs("environment prefabs")
 local arch = definitions:get_prefab("arch")
-context:place_prefab_instance(arch, 128, 64, 90)
+local tile_x, tile_y = context:get_tile(arch:get_tile_size(), 128, 64)
+context:place_prefab_instance(arch, tile_x, tile_y, 90)
 ```
 
-`angle` is a clockwise angle in degrees. For the currently supported Square tiling, use `0`, `90`, `180`, or `270`. Each call makes independent copies and leaves the source Prefab unchanged. Parent relationships between copied Prefab Primitives are preserved.
+Tile coordinates must be integers. `angle` is a clockwise angle in degrees and must be exactly `0`, `90`, `180`, or `270`. Each call makes independent copies, rotates them about the Prefab origin, and leaves the source Prefab unchanged. Parent relationships between copied Prefab Primitives are preserved.
 
-**Errors:** fails if the value is not a valid Prefab handle.
+**Errors:** fails if the value is not a valid Prefab handle, either Tile coordinate is not an integer, or the angle is not an allowed quarter turn.
 
 ### `print(...)`
 
@@ -299,6 +312,10 @@ A read-only handle returned by `DefinePrefabsStep:get_prefab`.
 ### `get_name()`
 
 Returns the Prefab's authored name.
+
+### `get_tile_size()`
+
+Returns the Prefab's authored tile size as `32`, `64`, `128`, or `256`.
 
 ### `get_tags()`
 

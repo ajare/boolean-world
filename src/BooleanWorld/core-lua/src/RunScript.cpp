@@ -79,17 +79,28 @@ void RunScript::placePrimitive(LayerBuildContext& context, Primitive* primitive)
 }
 
 void RunScript::placePrefabInstance(
-    LayerBuildContext& context, Prefab const* prefab, float x, float y, float angle) const {
+    LayerBuildContext& context, Prefab const* prefab,
+    int32_t tileX, int32_t tileY, float angle) const {
   if (!prefab) {
     throw CoreException("A script placed an instance of an unknown Prefab");
   }
+  if (angle != 0.0f && angle != 90.0f &&
+      angle != 180.0f && angle != 270.0f) {
+    throw CoreException(
+        "A Prefab instance angle must be 0, 90, 180, or 270 degrees");
+  }
+
+  auto const side = static_cast<float>(prefabTileSide(prefab->getTileSize()));
+  auto const position = wp::Vector2{
+      (static_cast<float>(tileX) + 0.5f) * side,
+      (static_cast<float>(tileY) + 0.5f) * side};
 
   map<VertexTransformerObject const*, VertexTransformerObject*> instanceClones;
   vector<Primitive*> clones;
   clones.reserve(prefab->getPrimitives().size());
   for (auto const* source : prefab->getPrimitives()) {
     unique_ptr<Primitive> clone(source->rotatedCopy(angle));
-    clone->setPosition(clone->getPosition() + wp::Vector2(x, y));
+    clone->setPosition(clone->getPosition() + position);
     auto* raw = clone.get();
     instanceClones[source] = raw;
     mBuiltPrimitives.push_back(move(clone));

@@ -72,13 +72,13 @@ private:
 
   void placePrimitive(LayerBuildContext& context, Primitive* primitive) const;
 
-  // Clones prefab's Primitives into this step's storage, offset by (x, y) and
-  // rotated by angle (degrees, the same convention PrefabField's tiling
-  // angles use), preserving their parent links among each other, and appends
-  // the clones to context. The Prefab's own Primitives are never touched -
-  // instances are copies (docs spec #366).
+  // Clones prefab's Primitives into this step's storage at the centre of the
+  // requested Tile on the grid selected by the Prefab's own tile size. The
+  // angle is one of the Square tiling's quarter turns. Parent links among the
+  // clones are preserved and the Prefab's own Primitives are never touched.
   void placePrefabInstance(
-      LayerBuildContext& context, Prefab const* prefab, float x, float y, float angle) const;
+      LayerBuildContext& context, Prefab const* prefab,
+      int32_t tileX, int32_t tileY, float angle) const;
 
 public:
   explicit RunScript(ScriptRuntime& runtime);
