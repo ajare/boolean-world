@@ -371,6 +371,9 @@ Resources:
   Namespace:
     name: "World"
     Resource:
+      - type: "LuaScript"
+        name: "Test1"
+        location: "test-1.lua"
       - type: "Image"
         name: "JaguarTangentSpaceNormalMap"
         location: "images/jaguar_tangent_space_normal_map.png"

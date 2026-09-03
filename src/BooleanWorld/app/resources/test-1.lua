@@ -1,0 +1,6 @@
+local room = context:create_primitive("Rectangle")
+room:set_size(64, 32)
+room:set_position(128, 64)
+room:set_operation("union")
+room:set_priority(0)
+context:place_primitive(room)
