@@ -7,7 +7,7 @@ See [RunScript examples](run-script-examples.md) for complete scripts.
 ## Execution model
 
 - Steps execute in Layer recipe order. Output from a `RunScript` is inserted at that step's position in the fold.
-- Each execution starts with a fresh environment. Globals do not survive a rebuild and are not shared by two `RunScript` steps.
+- Each execution starts with a fresh environment. Globals and included-module tables do not survive a rebuild and are not shared by two `RunScript` steps.
 - The step's serialized seed initializes `math.random` before every execution. The same recipe, script, and seed therefore produce the same random sequence.
 - A script has an instruction budget of 1,000,000 Lua instructions. Exceeding it fails the step.
 - An error discards all output from the failed step and stops the Layer build. Output from preceding steps remains; later steps do not run.
@@ -178,6 +178,58 @@ context:place_prefab_instance(arch, tile_x, tile_y, 90)
 Tile coordinates must be integers. `angle` is a clockwise angle in degrees and must be exactly `0`, `90`, `180`, or `270`. Each call makes independent copies, rotates them about the Prefab origin, and leaves the source Prefab unchanged. Parent relationships between copied Prefab Primitives are preserved.
 
 **Errors:** fails if the value is not a valid Prefab handle, either Tile coordinate is not an integer, or the angle is not an allowed quarter turn.
+
+### `include(resource_name)`
+
+Executes a manifest-declared `LuaScript` dependency and returns the table that
+it returns. `resource_name` is the dependency's canonical qualified resource
+name, such as `"World/Foo"`; it is not a file path or dependency id.
+
+```lua
+local geometry = include("World/Geometry")
+local primitive = geometry.make_rectangle(context, 0, 0, 64, 32)
+```
+
+An included script must return exactly one table:
+
+```lua
+local M = {}
+
+function M.make_rectangle(context, x, y, width, height)
+    local primitive = context:create_primitive("Rectangle")
+    primitive:set_position(x, y)
+    primitive:set_size(width, height)
+    return primitive
+end
+
+return M
+```
+
+The root `LuaScript` must declare the included `LuaScript` through Willpower's
+resource dependency graph. Because a Willpower resource with dependencies is
+composite, its own source is supplied as a named `TextFile` dependency:
+
+```yaml
+- type: "TextFile"
+  name: "GenerateWorldSource"
+  location: "generate-world.lua"
+- type: "LuaScript"
+  name: "Geometry"
+  location: "geometry.lua"
+- type: "LuaScript"
+  name: "GenerateWorld"
+  DependentResources:
+    DependentResource:
+      - id: "Source"
+        ref: "GenerateWorldSource"
+      - ref: "Geometry"
+```
+
+Only transitive `LuaScript` dependencies of the root may be included. An
+undeclared name, an include cycle, or a script that does not return a table
+fails the step. Repeatedly including one resource during an execution returns
+the same table; the cache is discarded at the end of that execution. Included
+chunks use the same Restricted environment and instruction budget as the root.
 
 ### `print(...)`
 
@@ -389,7 +441,7 @@ The following are deliberately unavailable to keep builds independent of files, 
 - `load`, `loadfile`, and `dofile`
 - `collectgarbage`
 - `io`, `os`, and `debug`
-- `package` and `require`
+- `package` and `require` (use the resource-backed `include()` instead)
 - the `coroutine` library
 
 `math.random` is seeded automatically from the `RunScript` step. Scripts normally should not call `math.randomseed` themselves.

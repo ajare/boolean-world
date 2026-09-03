@@ -103,10 +103,19 @@ class ScriptRuntime {
 private:
   sol::state mLua;
 
-  // Lua bytecode by name. Each execution loads a fresh function from this
-  // cached compiled form: concurrent coroutines must not share the function's
-  // mutable _ENV upvalue.
-  std::map<std::string, std::string> mChunks;
+  struct CompiledScript {
+    std::string bytecode;
+
+    // Qualified LuaScript resource name to bytecode. These are the root
+    // resource's manifest-declared transitive LuaScript dependencies; include()
+    // can resolve nothing outside this closed set.
+    std::map<std::string, std::string> includedScripts;
+  };
+
+  // Compiled roots by the exact name authored by RunScript. Each execution
+  // loads fresh functions from these cached forms: executions never share a
+  // mutable _ENV or an included module table.
+  std::map<std::string, CompiledScript> mChunks;
 
   // A failed reload replaces the previously compiled chunk. Keeping the
   // compile failure by name lets every RunScript step that names this script
@@ -150,13 +159,24 @@ public:
   // also replaces any old chunk and is retained so execute() reports it to
   // each naming step. Throws a ScriptException when the text does not
   // compile.
-  void load(std::string const& name, std::string const& text);
+  using IncludedScripts = std::map<std::string, std::string>;
+
+  // includedScripts contains source text keyed by canonical qualified
+  // LuaScript resource name (for example, "World/Foo"). include() is present
+  // only when this map is non-empty, and every included chunk must return a
+  // table. Included chunks are compiled here but executed afresh for each root
+  // execution, with one execution-local table cache.
+  void load(
+      std::string const& name, std::string const& text,
+      IncludedScripts const& includedScripts = {});
 
   // Replaces the cached result, then rebuilds each distinct Layer containing
   // a RunScript step that names name. A compile failure is retained and the
   // same Layers are rebuilt so they expose that failure, then the exception
   // is rethrown for the initiating host action to report.
-  void reload(std::string const& name, std::string const& text);
+  void reload(
+      std::string const& name, std::string const& text,
+      IncludedScripts const& includedScripts = {});
 
   [[nodiscard]] bool isLoaded(std::string const& name) const;
 

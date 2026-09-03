@@ -622,6 +622,59 @@ void theBuildEnvironmentDropsFunctionsThatBreakDeterminism() {
           "the build environment offered a function that breaks determinism");
 }
 
+void includeReturnsExecutionLocalModuleTables() {
+  bw::core::ScriptRuntime runtime;
+  bw::core::ScriptRuntime::IncludedScripts included{{"World/Foo", R"(
+        local count = 0
+        return {
+          next = function()
+            count = count + 1
+            return count
+          end
+        }
+      )"}};
+  runtime.load("root", R"(
+    local first = include("World/Foo")
+    local second = include("World/Foo")
+    record(first == second, first.next(), second.next())
+  )",
+               included);
+
+  std::vector<int> observations;
+  auto bind = [&](sol::environment& environment) {
+    environment.set_function(
+        "record", [&](bool same, int first, int second) {
+          observations.insert(observations.end(), {same ? 1 : 0, first, second});
+        });
+  };
+  runtime.execute("root", bw::core::ScriptLibraries::Build, bind);
+  runtime.execute("root", bw::core::ScriptLibraries::Build, bind);
+  require(observations == std::vector<int>({1, 1, 2, 1, 1, 2}),
+          "include did not cache one returned table per execution or leaked it between executions");
+
+  runtime.load("missing", R"(include("World/Undeclared"))", included);
+  bool missingFailed = false;
+  try {
+    runtime.execute("missing", bw::core::ScriptLibraries::Build);
+  } catch (bw::core::ScriptException const& error) {
+    missingFailed = std::string(error.what()).find("not a declared") !=
+                    std::string::npos;
+  }
+  require(missingFailed,
+          "include resolved a LuaScript outside the root's declared dependencies");
+
+  runtime.load("not-table", R"(include("World/Value"))",
+               {{"World/Value", "return 42"}});
+  bool nonTableFailed = false;
+  try {
+    runtime.execute("not-table", bw::core::ScriptLibraries::Build);
+  } catch (bw::core::ScriptException const& error) {
+    nonTableFailed = std::string(error.what()).find("must return exactly one table") !=
+                     std::string::npos;
+  }
+  require(nonTableFailed, "include accepted a chunk that did not return a table");
+}
+
 void printReachesTheHostsSink() {
   std::vector<std::string> lines;
   bw::core::ScriptRuntime runtime(
@@ -1379,6 +1432,7 @@ int main() {
     aScriptNeverOwnsWhatItCreates();
     syntaxRuntimeAndBudgetFailuresAreContainedAndHaltTheBuild();
     theBuildEnvironmentDropsFunctionsThatBreakDeterminism();
+    includeReturnsExecutionLocalModuleTables();
     printReachesTheHostsSink();
     theSeedMakesRebuildsReproducibleAndRerollableByChangingIt();
     twoRunScriptStepsCannotObserveEachOthersRandomState();

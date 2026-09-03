@@ -55,6 +55,102 @@ doorway:set_priority(1)
 context:place_primitive(doorway)
 ```
 
+## Reuse functions from an included LuaScript
+
+An included script returns one table containing the values it exports. This
+`World/PrimitiveHelpers` resource exports two primitive constructors:
+
+```lua
+-- primitive-helpers.lua
+local helpers = {}
+
+function helpers.rectangle(context, x, y, width, height)
+    local primitive = context:create_primitive("Rectangle")
+    primitive:set_position(x, y)
+    primitive:set_size(width, height)
+    return primitive
+end
+
+function helpers.circle(context, x, y, diameter)
+    local primitive = context:create_primitive("Circle")
+    primitive:set_position(x, y)
+    primitive:set_size(diameter, diameter)
+    return primitive
+end
+
+return helpers
+```
+
+The root script includes the resource by canonical qualified resource name and
+uses the returned table:
+
+```lua
+local primitives = include("World/PrimitiveHelpers")
+
+local room = primitives.rectangle(context, 0, 0, 128, 96)
+room:set_priority(0)
+context:place_primitive(room)
+
+local pillar = primitives.circle(context, 32, 16, 12)
+pillar:set_priority(1)
+context:place_primitive(pillar)
+```
+
+The root must declare `PrimitiveHelpers` as a resource dependency. Since a
+Willpower resource with dependencies is composite, the root's own source is a
+named `TextFile` dependency:
+
+```yaml
+- type: "TextFile"
+  name: "BuildRoomSource"
+  location: "build-room.lua"
+- type: "LuaScript"
+  name: "PrimitiveHelpers"
+  location: "primitive-helpers.lua"
+- type: "LuaScript"
+  name: "BuildRoom"
+  DependentResources:
+    DependentResource:
+      - id: "Source"
+        ref: "BuildRoomSource"
+      - ref: "PrimitiveHelpers"
+```
+
+`include()` cannot resolve an undeclared resource or a file path.
+
+## Keep included state local to one execution
+
+Repeatedly including the same resource in one execution returns the same
+table. This permits private module state without allowing it to leak into the
+next Layer rebuild:
+
+```lua
+-- sequence.lua, registered as World/Sequence
+local next_value = 0
+local sequence = {}
+
+function sequence.next()
+    next_value = next_value + 1
+    return next_value
+end
+
+return sequence
+```
+
+```lua
+-- Root RunScript resource
+local first_reference = include("World/Sequence")
+local second_reference = include("World/Sequence")
+
+assert(first_reference == second_reference)
+print(first_reference.next())   -- 1
+print(second_reference.next())  -- 2
+```
+
+On the next execution, `World/Sequence` runs afresh and the first value is `1`
+again. This execution-local caching also applies when an included table holds
+functions or other Lua objects.
+
 ## Deterministic random scatter
 
 Set the `RunScript` step's seed to reroll this scatter. Rebuilding with the same seed reproduces the same positions.

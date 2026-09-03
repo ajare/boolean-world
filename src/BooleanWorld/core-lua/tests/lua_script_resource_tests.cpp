@@ -77,18 +77,31 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
   {
     std::ofstream script(root / "script-demo.lua");
     script << R"(
+      local dimensions = include("World/ScriptDimensions")
       local primitive = context:create_primitive("Rectangle")
-      primitive:set_size(8, 8)
+      primitive:set_size(dimensions.width, dimensions.height)
       context:place_primitive(primitive)
     )";
+    std::ofstream dimensions(root / "script-dimensions.lua");
+    dimensions << "return { width = 8, height = 8 }\n";
     std::ofstream manifest(root / "Resources.yaml");
     manifest << R"(Resources:
   Namespace:
     name: "World"
     Resource:
-      type: "LuaScript"
-      name: "ScriptDemo"
-      location: "script-demo.lua"
+      - type: "TextFile"
+        name: "ScriptDemoSource"
+        location: "script-demo.lua"
+      - type: "LuaScript"
+        name: "ScriptDimensions"
+        location: "script-dimensions.lua"
+      - type: "LuaScript"
+        name: "ScriptDemo"
+        DependentResources:
+          DependentResource:
+            - id: "Source"
+              ref: "ScriptDemoSource"
+            - ref: "ScriptDimensions"
 )";
   }
 
@@ -111,8 +124,10 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
   require(dynamic_cast<bw::core::LuaScriptResource*>(resource.get()),
           "the LuaScript factory did not create a LuaScriptResource");
   require(resource->getType() == "LuaScript" &&
-              resourceManager.getResourcesByType("LuaScript").size() == 2,
+              resourceManager.getResourcesByType("LuaScript").size() == 3,
           "LuaScript resources were not discoverable by their declared type");
+  resourceManager.createResource(resource);
+  resourceManager.loadResource(resource);
 
   auto defaultResource = resourceManager.getResource(
       bw::core::defaultLayerBuildStepScriptName, "World");
@@ -133,9 +148,19 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
   Namespace:
     name: "World"
     Resource:
+      - type: "TextFile"
+        name: "ScriptDemoSource"
+        location: "script-demo.lua"
+      - type: "LuaScript"
+        name: "ScriptDimensions"
+        location: "script-dimensions.lua"
       - type: "LuaScript"
         name: "ScriptDemo"
-        location: "script-demo.lua"
+        DependentResources:
+          DependentResource:
+            - id: "Source"
+              ref: "ScriptDemoSource"
+            - ref: "ScriptDimensions"
       - type: "LuaScript"
         name: "ScriptLate"
         location: "script-late.lua"
@@ -143,7 +168,7 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
   }
   resourceManager.rescanLocations();
   require(resourceManager.getResource("ScriptDemo", "World") == resource &&
-              resourceManager.getResourcesByType("LuaScript").size() == 3 &&
+              resourceManager.getResourcesByType("LuaScript").size() == 4 &&
               resourceManager.getResource("ScriptLate", "World")->getType() ==
                   "LuaScript",
           "a resource re-scan did not add the new LuaScript additively");
@@ -169,12 +194,36 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
     resourceManager.loadResource(dependency);
     auto* script = dynamic_cast<bw::core::LuaScriptResource*>(dependency.get());
     require(script, "the declared script resolved to a non-Lua resource");
+    require(script->getText().find("include") != std::string::npos,
+            "the root LuaScript resource source was empty or stale");
     script->loadInto(hostRuntime, reference);
   }
   require(hostRuntime.isLoaded("ScriptDemo"),
           "resolved LuaScript text was not compiled into the host runtime");
+  bool reachedContext = false;
+  try {
+    hostRuntime.execute("ScriptDemo", bw::core::ScriptLibraries::Build);
+  } catch (bw::core::ScriptException const& error) {
+    reachedContext = true;
+    require(std::string(error.what()).find("attempt to index a nil value") !=
+                std::string::npos,
+            std::string("the resource-backed include failed before context binding: ") +
+                error.what());
+  }
+  require(reachedContext, "the loaded root LuaScript unexpectedly did nothing");
 
   bw::core::registerScriptStepTypes(hostRuntime);
+  bw::core::Layer probeLayer(0, "probe", 512.0f, 16.0f);
+  auto* probeStep = new bw::core::RunScript(hostRuntime);
+  probeStep->setScriptName("ScriptDemo");
+  probeLayer.addStep(probeStep);
+  probeLayer.rebuild();
+  require(!probeStep->hasFailed(),
+          std::string("resource-backed include probe failed: ") +
+              probeStep->getFailureMessage());
+  require(probeLayer.getNumPrimitives() == 1,
+          "resource-backed include probe placed no Primitive");
+
   bw::core::World defaultWorld(512.0f, 16.0f);
   auto* defaultStep = new bw::core::RunScript(hostRuntime);
   defaultWorld.getActiveLayer()->addStep(defaultStep);
@@ -185,10 +234,24 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
       "a new RunScript did not execute the built-in no-op default");
 
   bw::core::World loaded(512.0f, 16.0f);
-  require(deserializeWorld(yaml, &loaded),
-          "the host could not deserialize a World after resolving its script");
-  require(loaded.getActiveLayer()->getNumPrimitives() == 1,
-          "opening the script World did not run it and produce its Primitive");
+  bool const deserialized = deserializeWorld(yaml, &loaded);
+  std::string deserializeError =
+      "the host could not deserialize a World after resolving its script";
+  for (auto const& error : loaded.getDeserializationErrors()) {
+    deserializeError += "\n" + error;
+  }
+  if (loaded.getActiveLayer()->getNumSteps() > 1) {
+    if (auto* failed = dynamic_cast<bw::core::RunScript*>(
+            loaded.getActiveLayer()->getStep(1));
+        failed && failed->hasFailed()) {
+      deserializeError += "\n" + failed->getFailureMessage();
+    }
+  }
+  require(deserialized, deserializeError);
+  require(loaded.getActiveLayer()->getNumPrimitives() == 1 &&
+              loaded.getActiveLayer()->getPrimitive(0)->getSize() ==
+                  wp::Vector2(8.0f, 8.0f),
+          "opening the script World did not run its manifest-declared Lua include");
 
   fs::remove_all(root);
 }

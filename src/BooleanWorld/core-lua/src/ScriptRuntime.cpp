@@ -19,6 +19,13 @@ namespace core {
 
 using namespace std;
 
+struct IncludeExecutionState {
+  sol::environment* environment = nullptr;
+  map<string, string> scripts;
+  map<string, sol::table> loaded;
+  set<string> loading;
+};
+
 struct ScriptCoroutineState {
   ScriptRuntime* owner;
   ScriptCoroutineStatus status = ScriptCoroutineStatus::Suspended;
@@ -27,6 +34,7 @@ struct ScriptCoroutineState {
   // thread must remain rooted while references created on its state die.
   optional<sol::thread> thread;
   optional<sol::environment> environment;
+  unique_ptr<IncludeExecutionState> includes;
   int yieldedResults = 0;
 };
 
@@ -188,6 +196,70 @@ int appendBytecode(lua_State*, void const* bytes, size_t size, void* output) {
   return 0;
 }
 
+sol::table executeInclude(
+    IncludeExecutionState* state, string const& name,
+    lua_State* callingState) {
+  if (auto cached = state->loaded.find(name); cached != state->loaded.end()) {
+    return cached->second;
+  }
+
+  auto script = state->scripts.find(name);
+  if (script == state->scripts.end()) {
+    throw CoreException(format(
+        "Lua script include '{}' is not a declared LuaScript dependency", name));
+  }
+  if (!state->loading.insert(name).second) {
+    throw CoreException(format("Cyclic Lua script include of '{}'", name));
+  }
+
+  struct LoadingGuard {
+    set<string>& loading;
+    string const& name;
+    ~LoadingGuard() { loading.erase(name); }
+  } loadingGuard{state->loading, name};
+
+  sol::state_view lua(callingState);
+  auto loaded = lua.load(script->second, "@" + name, sol::load_mode::binary);
+  if (!loaded.valid()) {
+    throw CoreException(format("Cached Lua include '{}' could not be loaded", name));
+  }
+
+  sol::protected_function function = loaded;
+  sol::set_environment(*state->environment, function);
+  sol::protected_function_result result = function();
+  if (!result.valid()) {
+    sol::error error = result;
+    throw CoreException(format("Lua include '{}' failed: {}", name, error.what()));
+  }
+
+  if (result.return_count() != 1) {
+    throw CoreException(
+        format("Lua include '{}' must return exactly one table", name));
+  }
+  sol::object value = result.get<sol::object>();
+  if (value.get_type() != sol::type::table) {
+    throw CoreException(
+        format("Lua include '{}' must return exactly one table", name));
+  }
+
+  sol::table table = value.as<sol::table>();
+  state->loaded.insert_or_assign(name, table);
+  return table;
+}
+
+unique_ptr<IncludeExecutionState> bindIncludes(
+    sol::environment& environment, map<string, string> scripts) {
+  auto state = make_unique<IncludeExecutionState>();
+  state->environment = &environment;
+  state->scripts = move(scripts);
+  environment.set_function(
+      "include", [state = state.get()](
+                     string const& name, sol::this_state callingState) {
+        return executeInclude(state, name, callingState.lua_state());
+      });
+  return state;
+}
+
 }  // namespace
 
 ScriptCoroutineHandle::ScriptCoroutineHandle(
@@ -229,41 +301,61 @@ ScriptRuntime::~ScriptRuntime() {
   }
 }
 
-void ScriptRuntime::load(string const& name, string const& text) {
-  // The leading '@' is Lua's own convention for a named source, and is what
-  // makes an error report the script's name rather than its whole text.
-  auto chunk = mLua.load(text, "@" + name, sol::load_mode::text);
-  if (!chunk.valid()) {
-    sol::error error = chunk;
-    string const report = error.what();
-    CompileFailure failure{
-        format("Lua script '{}' failed to compile: {}", name, firstLine(report)),
-        findLineNumber(name, report)};
+void ScriptRuntime::load(
+    string const& name, string const& text,
+    IncludedScripts const& includedScripts) {
+  auto compile = [this](string const& sourceName, string const& source) {
+    // The leading '@' is Lua's convention for a named source and keeps error
+    // locations attached to either the root or the included resource.
+    auto chunk = mLua.load(source, "@" + sourceName, sol::load_mode::text);
+    if (!chunk.valid()) {
+      sol::error error = chunk;
+      string const report = error.what();
+      throw ScriptException(
+          format("Lua script '{}' failed to compile: {}", sourceName,
+                 firstLine(report)),
+          findLineNumber(sourceName, report), "");
+    }
 
-    // Broken new text must not leave the last successfully compiled version
-    // running. Cache the failure itself so RunScript sees it during rebuild.
+    string bytecode;
+    sol::protected_function compiled = chunk;
+    compiled.push();
+    int const dumpResult =
+        lua_dump(mLua.lua_state(), appendBytecode, &bytecode, 0);
+    lua_pop(mLua.lua_state(), 1);
+    if (dumpResult != 0) {
+      throw CoreException(
+          format("Lua script '{}' could not be cached", sourceName));
+    }
+    return bytecode;
+  };
+
+  try {
+    CompiledScript compiled;
+    compiled.bytecode = compile(name, text);
+    for (auto const& [includedName, includedText] : includedScripts) {
+      compiled.includedScripts.insert_or_assign(
+          includedName, compile(includedName, includedText));
+    }
+    mCompileFailures.erase(name);
+    mChunks.insert_or_assign(name, move(compiled));
+  } catch (ScriptException const& error) {
+    // Broken root or dependency text must not leave the last successfully
+    // compiled graph running. Retain one failure under the root name so every
+    // naming RunScript reports it during rebuild.
     mChunks.erase(name);
+    CompileFailure failure{error.what(), error.getLineNumber()};
     mCompileFailures.insert_or_assign(name, failure);
-    throw ScriptException(failure.message, failure.lineNumber, "");
+    throw;
   }
-
-  string bytecode;
-  sol::protected_function compiled = chunk;
-  compiled.push();
-  int const dumpResult = lua_dump(mLua.lua_state(), appendBytecode, &bytecode, 0);
-  lua_pop(mLua.lua_state(), 1);
-  if (dumpResult != 0) {
-    throw CoreException(format("Lua script '{}' could not be cached", name));
-  }
-
-  mCompileFailures.erase(name);
-  mChunks.insert_or_assign(name, move(bytecode));
 }
 
-void ScriptRuntime::reload(string const& name, string const& text) {
+void ScriptRuntime::reload(
+    string const& name, string const& text,
+    IncludedScripts const& includedScripts) {
   exception_ptr compileFailure;
   try {
-    load(name, text);
+    load(name, text, includedScripts);
   } catch (ScriptException const&) {
     // load() atomically replaced the old cache entry with this failure. The
     // dependent Layers must still rebuild so their RunScript panels report
@@ -328,12 +420,16 @@ void ScriptRuntime::execute(
 
   // Instantiate the cached bytecode so this call owns its function and _ENV.
   // A fresh table with no globals behind it means nothing survives execution.
-  auto loaded = mLua.load(chunk->second, "@" + name, sol::load_mode::binary);
+  auto loaded = mLua.load(
+      chunk->second.bytecode, "@" + name, sol::load_mode::binary);
   if (!loaded.valid()) {
     throw CoreException(format("Cached Lua script '{}' could not be loaded", name));
   }
   sol::protected_function function = loaded;
   auto environment = makeEnvironment(mLua, mPrintSink, libraries, bind);
+  auto includes = bindIncludes(
+      environment, chunk->second.includedScripts);
+  (void)includes;  // Keeps the execution-local include cache alive.
   sol::set_environment(environment, function);
 
   sol::protected_function_result result;
@@ -371,12 +467,15 @@ ScriptCoroutineHandle ScriptRuntime::startCoroutine(
   state->scriptName = name;
   state->environment.emplace(
       makeEnvironment(mLua, mPrintSink, libraries, bind));
+  state->includes = bindIncludes(
+      *state->environment, chunk->second.includedScripts);
   state->thread.emplace(sol::thread::create(mLua));
 
   lua_State* coroutine = state->thread->thread_state();
   string const sourceName = "@" + name;
   if (luaL_loadbufferx(
-          coroutine, chunk->second.data(), chunk->second.size(),
+          coroutine, chunk->second.bytecode.data(),
+          chunk->second.bytecode.size(),
           sourceName.c_str(), "b") != LUA_OK) {
     throw CoreException(format("Cached Lua script '{}' could not be loaded", name));
   }
@@ -398,6 +497,7 @@ void ScriptRuntime::finishCoroutine(
   if (coroutine->thread) {
     lua_settop(coroutine->thread->thread_state(), 0);
   }
+  coroutine->includes.reset();
   coroutine->environment.reset();
   coroutine->thread.reset();
   erase(mCoroutines, coroutine);

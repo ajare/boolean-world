@@ -304,14 +304,20 @@ bool EditorRenderSystem::reloadLuaScript(
     }
 
     retainedForWorld = find(
-        mWorldDependencies.begin(), mWorldDependencies.end(), resource) !=
-        mWorldDependencies.end();
+                           mWorldDependencies.begin(), mWorldDependencies.end(), resource) !=
+                       mWorldDependencies.end();
 
-    // LuaScriptResource reads its source during create(), not load(). Release,
-    // destroy, and recreate it so an external file edit is actually observed.
+    // LuaScriptResource reads its source during create(), not load(). A
+    // composite root reads it from its named TextFile dependency, which must
+    // be recreated too for an external edit to be observed.
+    wp::application::resourcesystem::ResourcePtr source;
+    if (script->hasDependentResource("Source")) {
+      source = script->getDependentResource("Source");
+    }
     mResourceMgr->releaseResource(resource);
     released = true;
-    mResourceMgr->destroyResources({resource});
+    mResourceMgr->destroyResources(
+        source ? vector{resource, source} : vector{resource});
     mResourceMgr->createResource(resource);
     mResourceMgr->loadResource(resource);
     if (retainedForWorld) {
@@ -319,7 +325,22 @@ bool EditorRenderSystem::reloadLuaScript(
       released = false;
     }
 
-    mScriptRuntime->reload(resourceName, script->getText());
+    // A LuaScript may be included by another LuaScript through the manifest
+    // dependency graph. Recompile every affected root so its closed include
+    // set and bytecode see the changed text; reloadInto rebuilds Layers naming
+    // that root. The changed resource is also refreshed as a standalone root.
+    for (auto const& candidate :
+         mResourceMgr->getResourcesByType("LuaScript")) {
+      if (candidate != resource && !candidate->dependsOn(resource.get())) {
+        continue;
+      }
+      auto affected = dynamic_pointer_cast<bw::core::LuaScriptResource>(
+          candidate);
+      if (affected) {
+        affected->reloadInto(
+            *mScriptRuntime, worldResourceReference(*candidate));
+      }
+    }
     return true;
   } catch (exception const& exception) {
     // Preserve the World's ownership count even when re-reading or compiling

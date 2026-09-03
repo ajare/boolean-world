@@ -31,7 +31,11 @@ asking script authors to be careful.
 Each execution gets a **fresh environment** containing only base functions
 less those that load code or drive the collector, plus `table`, `string`,
 `math`, and a `print` routed to the editor log. `io`, `os`, `debug`,
-`package` and `require` are absent. The library set is a parameter of the
+`package` and `require` are absent. A separate `include(name)` operation may
+execute only a LuaScript in the root script's manifest-declared transitive
+resource dependencies. It returns that script's table, caches the table only
+for the current execution, and runs the included chunk in the same Restricted
+environment and instruction budget. The library set is a parameter of the
 runtime's execute call rather than a global policy, so a future
 non-deterministic client — gameplay scripting — can ask for a different set
 without weakening this one.
@@ -64,9 +68,10 @@ serializes an authored list of the resources its script names.
 
 ## Consequences
 
-- **No `require`.** Scripts cannot include one another, so shared helper
-  code is copied between steps until a resource-backed module loader exists.
-  This is a real ergonomic cost, accepted deliberately.
+- **No `require`.** Shared helper code instead uses resource-backed
+  `include(name)`. The manifest relationship makes the dependency available
+  before World deserialization, and execution-local caching prevents module
+  state from leaking between rebuilds.
 - The environment cannot be used to cache work between rebuilds. Given how
   often `rebuild()` runs, a build step must be a pure function of the recipe
   anyway.

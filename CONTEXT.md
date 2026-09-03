@@ -100,8 +100,12 @@ _Avoid_: script manager, script system, Lua VM (which is the state it owns, not 
 A World dependent resource holding the text of one Lua program, authored outside the editor and loaded by name like any other Resource. A RunScript step names one. Because its text is a resource rather than World content, editing it is not part of a World's undo history, and reloading it recompiles the cached chunk and rebuilds every Layer whose steps name it.
 _Avoid_: script asset, embedded script, script file (the path is an implementation detail of the Resource)
 
+**Lua include**:
+A Lua script's access to a helper Lua script that the root script declares through its resource dependencies. The helper returns one table, shared by repeated includes only within the current execution; a rebuild executes it afresh. It is named by canonical qualified resource name, never by file path, and runs inside the same Restricted environment as its root.
+_Avoid_: require (Lua's unrestricted process-wide module system), header (an include returns an explicit table rather than inserting declarations), module file
+
 **Restricted environment**:
-The set of Lua values a build script may see: base functions less those that load code or drive the collector, plus table, string, math, and a logged print. It excludes everything that could make a build depend on something outside the recipe — the filesystem, the clock, the module loader — so that re-running a Layer's steps always reproduces the same Primitives. Randomness is permitted but is seeded from the RunScript step's serialized seed at the start of every execution, making a scatter reproducible and a reroll an authored change.
+The set of Lua values a build script may see: base functions less those that load code or drive the collector, plus table, string, math, a logged print, and resource-backed Lua include. It excludes everything that could make a build depend on something outside the recipe — the filesystem, the clock, and Lua's standard module loader — so that re-running a Layer's steps always reproduces the same Primitives. Randomness is permitted but is seeded from the RunScript step's serialized seed at the start of every execution, making a scatter reproducible and a reroll an authored change.
 _Avoid_: sandbox (which suggests a security boundary; this is a determinism boundary), script globals
 
 **Step name**:
