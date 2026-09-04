@@ -7,6 +7,17 @@
 
 #if APP_PLATFORM == APP_PLATFORM_WINDOWS
 #include <windows.h>
+
+// Ask a hybrid-graphics laptop for its discrete GPU. Both vendors' drivers
+// look these symbols up in the export table of the process's own executable,
+// so they belong here and not in any DLL the Launcher loads. Without them an
+// OpenGL context lands on the integrated adapter: on a Radeon 610M / RTX 5070
+// machine the game rendered on the 610M and was GPU-bound at roughly 72 fps
+// with a 512x320 render target.
+extern "C" {
+__declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
 #endif
 
 #include <willpower/common/Exceptions.h>
