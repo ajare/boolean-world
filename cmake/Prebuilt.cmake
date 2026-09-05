@@ -130,6 +130,11 @@ bw_vendor_lib(vendor::fmt            fmt               fmtd)
 bw_vendor_lib(vendor::performanceapi PerformanceAPI_MD PerformanceAPI_MDd)
 bw_vendor_lib(vendor::gtest          gtest             gtest)
 bw_vendor_lib(vendor::nfd            nfd               nfd)
+
+# The vendored FMOD Engine API and the installed FMOD Studio authoring tool
+# must be pinned to the same point release: banks build under an equal or
+# newer runtime, never an older one.
+set(BW_FMOD_VERSION "2.03.14" CACHE STRING "Pinned FMOD Engine/Studio point release" FORCE)
 bw_vendor_lib(vendor::fmod           fmod_vc           fmod_vc)
 bw_vendor_lib(vendor::fmodstudio     fmodstudio_vc     fmodstudio_vc)
 bw_vendor_lib(vendor::fsbank         fsbank_vc         fsbank_vc)
