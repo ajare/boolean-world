@@ -371,6 +371,19 @@ Resources:
   Namespace:
     name: "World"
     Resource:
+      - type: "TextFile"
+        name: "Test1Source"
+        location: "test-1.lua"
+      - type: "LuaScript"
+        name: "UtilityFunctions"
+        location: "utility-functions.lua"
+      - type: "LuaScript"
+        name: "Test1"
+        DependentResources:
+          DependentResource:
+            - id: "Source"
+              ref: "Test1Source"
+            - ref: "UtilityFunctions"
       - type: "Image"
         name: "JaguarTangentSpaceNormalMap"
         location: "images/jaguar_tangent_space_normal_map.png"
@@ -653,7 +666,7 @@ Resources:
                   value: "Texture"
       - type: "TextFile"
         name: "WorldFile"
-        location: "world-mines-1.world.yaml"
+        location: "world-mines-2.world.yaml"
       - type: "Map"
         name: "World"
         DependentResources:

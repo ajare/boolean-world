@@ -53,7 +53,7 @@ The planar subdivision induced by all selected primitive contours. Its faces are
 _Avoid_: Clip result
 
 **LayerBuildStep**:
-One step in a Layer's ordered, serialized recipe for producing its Primitives. Each step's `execute()` reads the Layer as built so far and may only add new Primitives to it; a Layer's Primitives are always derived by re-running its enabled steps in order, never authored or stored independently. The same recipe order is the major order of the boolean fold, with Primitive priority ordering only the output inside one step. A step's type is fixed once created — changing it means deleting the step and adding a new one, never an in-place type change. The first step of a Layer is always a PrimitiveField step and its type cannot be changed (it can only be disabled, never deleted). Deliberately not called "LayerGenerationStep" — "Generation" already names the unrelated boolean-fold pipeline that turns selected Layers' Primitives into world geometry (see `docs/glossary.md`).
+One step in a Layer's ordered, serialized recipe for producing its Primitives. Each step's `execute()` reads the Layer as built so far and may only add new Primitives to it; a Layer's Primitives are always derived by re-running its enabled steps in order, never authored or stored independently. The same recipe order is the major order of the boolean fold, with Primitive priority ordering only the output inside one step. A step's type is fixed once created — changing it means deleting the step and adding a new one, never an in-place type change. An authored Primitive may be re-homed from one step into another of the *same* type, keeping the same Primitive rather than a copy: the destination must accept new Primitives, the source must permit direct editing of its output, and both must be enabled. Moving one changes where it folds, because recipe order outranks Primitive priority. The first step of a Layer is always a PrimitiveField step and its type cannot be changed (it can only be disabled, never deleted). Deliberately not called "LayerGenerationStep" — "Generation" already names the unrelated boolean-fold pipeline that turns selected Layers' Primitives into world geometry (see `docs/glossary.md`).
 _Avoid_: LayerGenerationStep, generation step
 
 **PrimitiveField (step)**:
@@ -61,8 +61,12 @@ The basic LayerBuildStep: an embedded, literal list of Primitive definitions tha
 _Avoid_: conflating with the Voronoi Primitive Field placement feature
 
 **Prefab**:
-A named, stably-identified collection of Primitives authored as a unit so that a PrefabField can place and reference it. Holds Primitives only — never WorldTriggerLines, unlike the removed `addPrefabInstance` copy-paste grouping that once bore this name (see Prefab instance, its unrelated successor). Each Prefab chooses its own standard tile size from 32×32, 64×64, 128×128, and 256×256; newly created Prefabs default to 64×64. Its DefinePrefabs step supplies the shared PrefabTilingType. A Prefab's Primitives never contribute world geometry directly; they exist to be authored and, later, referenced by Prefab instances. A Prefab's pivot — the point its Primitives orbit when it is rotated — is the origin, not the centre of its contents.
+A named, stably-identified collection of Primitives authored as a unit so that a PrefabField can place and reference it. Holds Primitives only — never WorldTriggerLines, unlike the removed `addPrefabInstance` copy-paste grouping that once bore this name (see Prefab instance, its unrelated successor). Each Prefab chooses its own standard tile size from 32×32, 64×64, 128×128, and 256×256; newly created Prefabs default to 64×64. A Prefab also carries a set of lowercase tags, each made only from ASCII letters, digits, underscores, and hyphens, for case-insensitive all-tag lookup by build scripts. Its DefinePrefabs step supplies the shared PrefabTilingType. A Prefab's Primitives never contribute world geometry directly; they exist to be authored and, later, referenced by Prefab instances. A Prefab's pivot — the point its Primitives orbit when it is rotated — is the origin, not the centre of its contents.
 _Avoid_: group, template
+
+**Prefab vertex metadata**:
+String key/value annotations on a Prefab's authored MeshPrimitive vertices, used by build scripts as named points carrying extra meaning beyond their position. Metadata belongs to the welded Vertex: every Ring occurrence of that Vertex shares it. Moving a Vertex preserves its metadata, removing it removes the metadata, and splitting an Edge creates an unannotated Vertex. Keys are non-empty and unique per Vertex; values may be empty. Metadata does not affect geometry or the boolean fold.
+_Avoid_: Prefab metadata (which is ambiguous with Prefab tags), vertex tag (tags classify whole Prefabs)
 
 **DefinePrefabs (step)**:
 The LayerBuildStep that owns a set of Prefabs and supplies their shared PrefabTilingType, but not their individual tile sizes. It defines rather than places: outside an authoring session it contributes nothing to its Layer at all. Which Prefab is being edited is ephemeral editor focus — never serialized, and unselected after construction, copy, or load — mirroring a Layer's active step and a World's active Layer.
@@ -83,6 +87,30 @@ _Avoid_: PlacePrefabs (rejected in favour of the PrimitiveField-echoing name)
 **Tile mode**:
 How an occupied Tile on the 32×32, 64×64, or 128×128 grid composes into the global fold: Add or Replace. Add applies the Prefab's Primitives normally. Replace first contributes an exact Tile-sized Difference square, clearing all geometry accumulated below it, then applies the Prefab's Primitives. The mode defaults to Replace and exists only while the Tile is occupied. The 256×256 grid has no Tile mode; its occupants are always Add.
 _Avoid_: blend mode, cell operation
+
+**RunScript (step)**:
+The LayerBuildStep that runs a Lua script to produce its Primitives. It is a placing step, never a defining one: it reads the build-participating Primitives of preceding enabled steps, may look up other steps and their Prefabs by name, and appends new or instanced Primitives, but it never mutates what an earlier step produced and never defines a Prefab. A script addresses a Prefab placement by integer Tile coordinates; the Prefab's own tile size selects the grid, and its rotation is restricted to 0°, 90°, 180°, or 270°, so scripted placement cannot create an off-grid or arbitrarily rotated Prefab instance. Its authored state is the name of its Lua script, a seed, an extra-resources list, and its own step name; the script text itself lives outside the World, in the Lua script it names. Named for what it does, after DefinePrefabs, rather than for a spread of content laid over the Layer as PrimitiveField and PrefabField are.
+_Avoid_: ScriptField, LuaStep, script primitive
+
+**ScriptRuntime**:
+The single object that holds a Lua state, compiles scripts given as text, caches the compiled chunks by name, and executes them. One exists per host, owned by the editor or the game and handed to each RunScript step when that step type is registered. It resolves nothing itself: a script reaches it as a string, so it never consults the resource system. It runs a chunk either synchronously to completion or as a coroutine advanced over successive frames, and each synchronous execution gets a fresh environment, so nothing a script leaves behind survives into the next rebuild.
+_Avoid_: script manager, script system, Lua VM (which is the state it owns, not the class)
+
+**Lua script**:
+A World dependent resource holding the text of one Lua program, authored outside the editor and loaded by name like any other Resource. A RunScript step names one. Because its text is a resource rather than World content, editing it is not part of a World's undo history, and reloading it recompiles the cached chunk and rebuilds every Layer whose steps name it.
+_Avoid_: script asset, embedded script, script file (the path is an implementation detail of the Resource)
+
+**Lua include**:
+A Lua script's access to a helper Lua script that the root script declares through its resource dependencies. The helper returns one table, shared by repeated includes only within the current execution; a rebuild executes it afresh. It is named by canonical qualified resource name, never by file path, and runs inside the same Restricted environment as its root.
+_Avoid_: require (Lua's unrestricted process-wide module system), header (an include returns an explicit table rather than inserting declarations), module file
+
+**Restricted environment**:
+The set of Lua values a build script may see: base functions less those that load code or drive the collector, plus table, string, math, a logged print, and resource-backed Lua include. It excludes everything that could make a build depend on something outside the recipe — the filesystem, the clock, and Lua's standard module loader — so that re-running a Layer's steps always reproduces the same Primitives. Randomness is permitted but is seeded from the RunScript step's serialized seed at the start of every execution, making a scatter reproducible and a reroll an authored change.
+_Avoid_: sandbox (which suggests a security boundary; this is a determinism boundary), script globals
+
+**Step name**:
+An optional, non-unique label on a LayerBuildStep, existing so that a script can find a step without knowing its id. Unlike the step's id, which is stable for the owning Layer's lifetime, a name is authored and may be changed or duplicated; a script naming a step or Prefab that has since been renamed fails at its next execution, and repairing it is the script author's work.
+_Avoid_: step id (the stable handle), step label, step title
 
 **Wall collision override**:
 A per-edge tri-state on a MeshPrimitive's Ring: Unset, Collides, or Doesn't collide. It is editable in the editor's Edge sub-mode only for an edge used by exactly one polygon in that Primitive's own mesh topology (Willpower's `External` edge connectivity). Unset delegates to generated collision: Border walls collide and Step walls do not unless their floor step is too tall or their clearance is insufficient. Collides additionally blocks a wall; Doesn't collide can open a Border but cannot bypass a Step wall's physical height or clearance constraints. When collinear authored edges contribute to one generated edge, Doesn't collide dominates Collides and Unset contributes nothing. An override never creates a wall where the fold produces none.
@@ -107,6 +135,10 @@ _Avoid_: player start, spawn point
 **Player Torch**:
 The permanently equipped point light carried by the player. It supplies the World's direct illumination and casts shadows in every direction; in player-view previews, the Player proxy stands in for the player carrying it.
 _Avoid_: light source (too broad), shadow light (an implementation input rather than the game concept)
+
+**Water mantle**:
+The deliberate player action that leaves liquid by hauling the player onto an adjacent higher floor. Its reach is measured vertically from the player's eye to that floor and is a player capability shared by every World, distinct from the player's smaller ordinary step height.
+_Avoid_: climb-out (use mantle for the action), water step (ordinary stepping is a different capability)
 
 **Prefab instance**:
 One Tile's occupant: a reference to a same-sized Prefab plus a rotation and, where applicable, a Tile mode; it is not a copy — editing the Prefab's Primitives changes every instance of it. All Replace squares on one grid are applied before any Prefab instances on that grid. Rotation is one of the referenced DefinePrefabs step's PrefabTilingType's allowed angles (four for Square: 0/90/180/270), not an arbitrary orientation. Reuses the name of the removed Primitive+TriggerLine clipboard grouping (`addPrefabInstance`), now fully gone from the codebase — the two are unrelated, and this is the concept the name refers to going forward.

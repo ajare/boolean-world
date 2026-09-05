@@ -108,11 +108,13 @@ bool primitiveFadedForActiveStep(
     return true;
   }
 
-  // PrefabField does not permit direct Primitive editing, but its instances
-  // are the active step's editable content: users author them through Tile
-  // placement. Keep that active content at the normal colour while retaining
-  // the faded treatment for other non-directly-editable procedural output.
+  // PrefabField and RunScript do not permit direct Primitive editing, but
+  // their generated Primitives are still the active step's content. Keep that
+  // content at the normal colour while retaining the faded treatment for
+  // other non-directly-editable procedural output. RunScript is dynamically
+  // registered outside core, so identify it by its stable registered type.
   return !dynamic_cast<bw::core::PrefabField const*>(step) &&
+         step->getType() != "RunScript" &&
          !step->permitsDirectPrimitiveEditing();
 }
 
@@ -292,6 +294,7 @@ void Document::reset() {
   clearActiveMesh();
   disarmMeshDrawTool();
   disarmMeshSliceTool();
+  disarmClonePlacement();
   mMeshHoverExplanation.clear();
   mPlayerProxyPosition.set(0.0f, 0.0f);
   mPlayerProxyAngle = 0.0f;
@@ -345,7 +348,7 @@ WorldSnapshot Document::captureWorldSnapshot() const {
     snapshot.hasDynamicGenerator = true;
     snapshot.alwaysUpdateGeneratorVertices = dynamicGenerator->getAlwaysUpdateVertices();
     snapshot.allowCommitIfVisible = dynamicGenerator->getAllowCommitIfVisible();
-    snapshot.scheduledGenerationInterval = dynamicGenerator->getScheduledGenerationInterval();
+    snapshot.generationStartInterval = dynamicGenerator->getGenerationStartInterval();
   }
 
   return snapshot;
@@ -373,7 +376,7 @@ void Document::restoreWorldSnapshot(WorldSnapshot const& snapshot) {
     auto dynamicGenerator = dynamic_cast<bw::core::DynamicWorldDataGenerator*>(generator);
     dynamicGenerator->setAlwaysUpdateVertices(snapshot.alwaysUpdateGeneratorVertices);
     dynamicGenerator->setAllowCommitIfVisible(snapshot.allowCommitIfVisible);
-    dynamicGenerator->setScheduledGenerationInterval(snapshot.scheduledGenerationInterval);
+    dynamicGenerator->setGenerationStartInterval(snapshot.generationStartInterval);
   }
 
   if (mWorldDependencyLoader) {
@@ -472,7 +475,7 @@ void Document::revalidateSelection() {
 DocumentHover Document::getHover(
     wp::Vector2 const& mouseWorldPos,
     Settings const& settings,
-    bw::core::WorldData const* worldData) const {
+    bw::core::WorldData const*) const {
   if (!isActive()) {
     return {};
   }
@@ -488,25 +491,13 @@ DocumentHover Document::getHover(
                : DocumentHover{HoverableType::Primitive, std::move(primitiveIndices)};
   }
 
-  if (worldData) {
-    auto worldVertexIndex = static_cast<uint32_t>(
-        worldData->getNearestVertexIndex(mouseWorldPos, 3.0f));
-    if (worldVertexIndex != ~0u) {
-      return {HoverableType::WorldVertex, {worldVertexIndex}};
-    }
-  }
-
-  auto triggerLineIndex = getHoveredTriggerLineIndex(mouseWorldPos, settings);
-  if (triggerLineIndex != ~0u) {
-    return {HoverableType::TriggerLine, {triggerLineIndex}};
-  }
-
+  // Primitive mode exposes Primitive areas only. Generated World vertices
+  // and TriggerLines belong to neither Primitive-area selection nor Mesh
+  // sub-object selection, so they do not participate in this mode's hover.
   auto primitiveIndices = getHoveredPrimitiveIndices(mouseWorldPos, settings);
-  if (!primitiveIndices.empty()) {
-    return {HoverableType::Primitive, std::move(primitiveIndices)};
-  }
-
-  return {};
+  return primitiveIndices.empty()
+             ? DocumentHover{}
+             : DocumentHover{HoverableType::Primitive, std::move(primitiveIndices)};
 }
 
 uint32_t Document::getHoveredPrimitiveIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
@@ -530,12 +521,25 @@ vector<uint32_t> Document::getHoveredPrimitiveIndices(wp::Vector2 const& mouseWo
   auto hovered = mWorld->findPrimitiveIndices(
       mouseWorldPos, true, getIgnoredPrimitiveIndices(*mWorld, settings));
 
-  // Ghost first, so the first click of a click-through cycle lands on it; the
-  // rest keep their order, so clicking again still walks what is underneath.
-  auto ghost = find(hovered.begin(), hovered.end(), uint32_t(ED_GHOST_INDEX));
-
-  if (ghost != hovered.end()) {
-    rotate(hovered.begin(), ghost, ghost + 1);
+  auto* activeLayer = mWorld->getActiveLayer();
+  auto* definitions = activeLayer
+                          ? dynamic_cast<bw::core::DefinePrefabs const*>(
+                                activeLayer->getActiveStep())
+                          : nullptr;
+  if (definitions && definitions->getSelectedPrefab()) {
+    // The selected Prefab is the object being authored. Its Primitives take
+    // their normal build order ahead of an overlapping creation ghost, which
+    // stays in the hit stack for click-through.
+    stable_partition(hovered.begin(), hovered.end(), [&](uint32_t index) {
+      return definitions->ownsPrimitive(mWorld->getPrimitive(index));
+    });
+  } else {
+    // Ghost first, so the first click of a click-through cycle lands on it;
+    // the rest keep their order, so clicking again still walks underneath.
+    auto ghost = find(hovered.begin(), hovered.end(), uint32_t(ED_GHOST_INDEX));
+    if (ghost != hovered.end()) {
+      rotate(hovered.begin(), ghost, ghost + 1);
+    }
   }
 
   return hovered;
@@ -602,6 +606,20 @@ uint32_t Document::getActiveMeshPrimitiveIndex() const {
 
 wp::geometry::Mesh const* Document::getActiveMesh() const {
   return mActiveMesh ? &mActiveMesh->getMesh() : nullptr;
+}
+
+map<string, string> Document::getActiveMeshVertexMetadata(
+    uint32_t vertexIndex) const {
+  return mActiveMesh ? mActiveMesh->getVertexMetadata(vertexIndex)
+                     : map<string, string>{};
+}
+
+bool Document::setActiveMeshVertexMetadata(
+    uint32_t vertexIndex, map<string, string> const& metadata) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) return false;
+  if (!mActiveMesh->setVertexMetadata(vertexIndex, metadata)) return false;
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
+  return true;
 }
 
 optional<bool> Document::getActiveMeshEdgeCollisionOverride(
@@ -710,13 +728,30 @@ vector<uint32_t> Document::getHoveredMeshSubObjectIndices(
       }
     }
   } else if (settings.meshSubMode == Settings::MeshSubMode::Edge) {
+    // Edge mode targets one geometric Edge, never a stack to cycle through.
+    // Choose the uniquely nearest Edge inside the pick tolerance. An
+    // equidistant interior click is ambiguous and therefore hits nothing.
+    uint32_t nearestIndex = ~0u;
+    float nearestDistance = settings.meshEdgeSelectionDistance;
+    bool ambiguous = false;
+    constexpr float distanceEpsilon = 1e-6f;
     for (auto index = mActiveMesh->getFirstEdgeIndex();
          !mActiveMesh->edgeIndexIterationFinished(index);
          index = mActiveMesh->getNextEdgeIndex(index)) {
-      if (mActiveMesh->getEdge(index).getDistanceTo(worldPosition) <=
-          settings.meshEdgeSelectionDistance) {
-        result.push_back(index);
+      auto distance = mActiveMesh->getEdge(index).getDistanceTo(worldPosition);
+      if (distance > settings.meshEdgeSelectionDistance) {
+        continue;
       }
+      if (nearestIndex == ~0u || distance < nearestDistance - distanceEpsilon) {
+        nearestIndex = index;
+        nearestDistance = distance;
+        ambiguous = false;
+      } else if (std::abs(distance - nearestDistance) <= distanceEpsilon) {
+        ambiguous = true;
+      }
+    }
+    if (nearestIndex != ~0u && !ambiguous) {
+      result.push_back(nearestIndex);
     }
   } else {
     // A boundary hit is explicit: select the Ring which owns that edge before
@@ -1713,6 +1748,76 @@ bool Document::escapeMeshSlice() {
   return true;
 }
 
+bool Document::armClonePlacement(set<uint32_t> const& primitiveIndices) {
+  if (!isActive() || primitiveIndices.empty()) {
+    return false;
+  }
+  for (auto index : primitiveIndices) {
+    if (index >= mWorld->getNumPrimitives()) {
+      return false;
+    }
+  }
+
+  mClonePlacementArmed = true;
+  mClonePlacementPrimitiveIndices = primitiveIndices;
+  mClonePlacementStartPositions.clear();
+  mClonePlacementPointerAnchor = wp::Vector2::ZERO;
+  mClonePlacementPointerAnchored = false;
+  return true;
+}
+
+void Document::disarmClonePlacement() {
+  mClonePlacementArmed = false;
+  mClonePlacementPrimitiveIndices.clear();
+  mClonePlacementStartPositions.clear();
+  mClonePlacementPointerAnchor = wp::Vector2::ZERO;
+  mClonePlacementPointerAnchored = false;
+}
+
+bool Document::clonePlacementArmed() const {
+  return mClonePlacementArmed;
+}
+
+set<uint32_t> const& Document::getClonePlacementPrimitiveIndices() const {
+  return mClonePlacementPrimitiveIndices;
+}
+
+void Document::updateClonePlacement(wp::Vector2 const& pointerWorldPosition) {
+  if (!mClonePlacementArmed || !isActive()) {
+    return;
+  }
+
+  // The group moves from the positions it had when the pointer was anchored,
+  // not from its positions last frame, so no rounding accumulates over a
+  // long gesture.
+  if (!mClonePlacementPointerAnchored) {
+    mClonePlacementStartPositions.clear();
+    for (auto index : mClonePlacementPrimitiveIndices) {
+      auto* primitive = index < mWorld->getNumPrimitives()
+                            ? mWorld->getPrimitive(index)
+                            : nullptr;
+      mClonePlacementStartPositions.push_back(
+          primitive ? primitive->getPosition() : wp::Vector2::ZERO);
+    }
+    mClonePlacementPointerAnchor = pointerWorldPosition;
+    mClonePlacementPointerAnchored = true;
+    return;
+  }
+
+  auto movement = pointerWorldPosition - mClonePlacementPointerAnchor;
+  size_t position = 0;
+  for (auto index : mClonePlacementPrimitiveIndices) {
+    auto* primitive = index < mWorld->getNumPrimitives()
+                          ? mWorld->getPrimitive(index)
+                          : nullptr;
+    if (primitive && position < mClonePlacementStartPositions.size()) {
+      primitive->setPosition(mClonePlacementStartPositions[position] + movement);
+      primitive->updateVertexPositions();
+    }
+    ++position;
+  }
+}
+
 namespace {
 
 float twiceSignedArea(vector<wp::Vector2> const& points) {
@@ -1842,6 +1947,38 @@ uint32_t ringOwningVertex(
   return ~0u;
 }
 
+// Structural siblings have the same role under the same parent. Root Shells
+// all share the sentinel parent. This is the only cross-Ring relationship a
+// new Ring can inherit without making its containment placement ambiguous.
+bool sameSiblingFamily(
+    bw::core::MeshPrimitiveEditingProxy::NodeMapping const& first,
+    bw::core::MeshPrimitiveEditingProxy::NodeMapping const& second) {
+  return first.role == second.role &&
+         first.parentPolygonIndex == second.parentPolygonIndex;
+}
+
+bool vertexBelongsToConnectionFamily(
+    bw::core::MeshPrimitiveEditingProxy const& mesh,
+    uint32_t vertexIndex,
+    uint32_t connectionRing,
+    bool allowSiblings) {
+  auto mappings = mesh.getNodeMappings();
+  auto connection = ranges::find_if(mappings, [&](auto const& mapping) {
+    return mapping.polygonIndex == connectionRing;
+  });
+  if (connection == mappings.end()) {
+    return false;
+  }
+  for (auto const& mapping : mappings) {
+    if (mesh.getPolygon(mapping.polygonIndex).getVertexIndexSet().contains(vertexIndex) &&
+        (mapping.polygonIndex == connectionRing ||
+         (allowSiblings && sameSiblingFamily(*connection, mapping)))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // The existing mesh vertex within pick radius of position, or ~0u.
 uint32_t findMeshVertexNear(
     bw::core::MeshPrimitiveEditingProxy const& mesh,
@@ -1951,16 +2088,15 @@ bool meshDrawVertexAllowed(
     uint32_t containingRingIndex,
     bool touchesRingBoundary,
     float pickRadiusSq) {
-  // Touching the containing/connection Ring's own vertex is always
-  // permitted - reusing its vertices is the whole point of this feature -
-  // in either mode. Touching a *different* Ring's vertex is ambiguous and
-  // refused, whichever mode this is. Once either endpoint of this segment
-  // legitimately touches the containing Ring, only a *proper* crossing (not
-  // a shared endpoint) of any mesh edge is rejected - `from` itself may
-  // already be sitting on that Ring's boundary, coincident with two of its
-  // edges, from the previous step.
+  // An interior-started Ring remains confined to its containing Ring. A Ring
+  // started on a boundary may also touch sibling Rings with the same role and
+  // parent, which permits a bridge while keeping its tree placement
+  // unambiguous. Once either endpoint legitimately touches that family, only
+  // a proper crossing (not a shared endpoint or edge) is rejected.
   auto touchedVertex = findMeshVertexNear(mesh, to, pickRadiusSq);
-  if (touchedVertex != ~0u && ringOwningVertex(mesh, touchedVertex) != containingRingIndex) {
+  if (touchedVertex != ~0u &&
+      !vertexBelongsToConnectionFamily(
+          mesh, touchedVertex, containingRingIndex, touchesRingBoundary)) {
     return false;
   }
   if (segmentProperlyCrossesMesh(mesh.getMesh(), from, to)) {
@@ -1972,6 +2108,18 @@ bool meshDrawVertexAllowed(
   // An ordinary interior point - touching nothing - must still stay
   // strictly within the containing Ring, exactly as before this feature.
   return innermostRingAt(mesh, mesh.getNodeMappings(), to) == containingRingIndex;
+}
+
+float meshDrawPickRadiusSq(Settings const& settings) {
+  // The cursor position has already been snapped before it reaches the draw
+  // API. While the grid is active, that snapped point is authoritative: only
+  // an existing vertex at the same point may turn the click into a connection.
+  // Otherwise an adjacent fine-grid point can fall inside the ordinary
+  // five-world-unit vertex pick radius and silently move the authored vertex.
+  if (settings.showGrid && settings.gridSize > 0.0f) {
+    return 1e-6f;
+  }
+  return settings.meshVertexPickRadius * settings.meshVertexPickRadius;
 }
 
 uint32_t addDrawnRing(
@@ -2095,7 +2243,7 @@ bool Document::meshDrawClickWouldClose(
   if (!mMeshDrawToolArmed || mMeshDrawVertices.size() < 3) {
     return false;
   }
-  auto radiusSq = settings.meshVertexPickRadius * settings.meshVertexPickRadius;
+  auto radiusSq = meshDrawPickRadiusSq(settings);
   if (mMeshDrawVertices.front().distanceToSq(position) > radiusSq) {
     return false;
   }
@@ -2118,7 +2266,7 @@ Document::MeshDrawPositionState Document::getMeshDrawPositionState(
     return MeshDrawPositionState::CloseRing;
   }
 
-  auto radiusSq = settings.meshVertexPickRadius * settings.meshVertexPickRadius;
+  auto radiusSq = meshDrawPickRadiusSq(settings);
   if (ranges::any_of(mMeshDrawVertices, [&](wp::Vector2 const& vertex) {
         return vertex.distanceToSq(position) <= radiusSq;
       })) {
@@ -2138,7 +2286,35 @@ Document::MeshDrawPositionState Document::getMeshDrawPositionState(
     }
   }
 
+  if (mActiveMesh) {
+    auto vertex = findMeshVertexNear(*mActiveMesh, position, radiusSq);
+    bool connectable = vertex != ~0u &&
+                       (mMeshDrawVertices.empty() ||
+                        (mMeshDrawContainingRingIndex != ~0u &&
+                         vertexBelongsToConnectionFamily(
+                             *mActiveMesh, vertex,
+                             mMeshDrawContainingRingIndex,
+                             mMeshDrawTouchesRingBoundary)));
+    if (connectable) {
+      return MeshDrawPositionState::ConnectVertex;
+    }
+  }
+
   return MeshDrawPositionState::PlaceVertex;
+}
+
+optional<wp::Vector2> Document::getMeshDrawConnectionPosition(
+    wp::Vector2 const& position, Settings const& settings) const {
+  if (!mActiveMesh ||
+      getMeshDrawPositionState(position, settings) !=
+          MeshDrawPositionState::ConnectVertex) {
+    return nullopt;
+  }
+  auto radiusSq = meshDrawPickRadiusSq(settings);
+  auto vertex = findMeshVertexNear(*mActiveMesh, position, radiusSq);
+  return vertex == ~0u
+             ? nullopt
+             : optional{mActiveMesh->getVertex(vertex).getPosition()};
 }
 
 bool Document::placeMeshDrawVertex(
@@ -2153,7 +2329,7 @@ bool Document::placeMeshDrawVertex(
     return false;
   };
 
-  auto radiusSq = settings.meshVertexPickRadius * settings.meshVertexPickRadius;
+  auto radiusSq = meshDrawPickRadiusSq(settings);
   for (size_t i = 0; i < mMeshDrawVertices.size(); ++i) {
     if (mMeshDrawVertices[i].distanceToSq(position) <= radiusSq) {
       if (i == 0 && mMeshDrawVertices.size() >= 3) {
@@ -2182,23 +2358,30 @@ bool Document::placeMeshDrawVertex(
 
   if (mMeshDrawVertices.empty()) {
     auto previouslyActiveMeshIndex = mActiveMeshPrimitiveIndex;
-    // Exact picking finds filled regions. A point in a hole is not an exact
-    // hit, so make a second pass over MeshPrimitive Rings to recover that
-    // authoring context. The first geometrically-containing Primitive wins,
-    // matching the World's ordinary front-to-back index order.
+    // Exact picking finds filled regions and may return an overlapping
+    // Primitive from another step. Make a second pass over eligible
+    // MeshPrimitives to recover hole and existing-vertex authoring context.
+    // The first geometrically-matching Primitive wins, matching the World's
+    // ordinary front-to-back index order.
     auto primitiveIndex = getPrimitiveIndexAt(position);
+    if (primitiveIndex != ~0u && !meshIneligibilityReason(primitiveIndex).empty()) {
+      primitiveIndex = ~0u;
+    }
     if (primitiveIndex == ~0u) {
       for (uint32_t i = 0; i < mWorld->getNumPrimitives(); ++i) {
         auto* primitive = dynamic_cast<bw::core::MeshPrimitive*>(mWorld->getPrimitive(i));
-        if (!primitive || primitive->hasFlag(BW_PRIMITIVE_GHOST_FLAG)) {
+        if (!primitive || primitive->hasFlag(BW_PRIMITIVE_GHOST_FLAG) ||
+            !meshIneligibilityReason(i).empty()) {
           continue;
         }
         auto proxy = i == mActiveMeshPrimitiveIndex && mActiveMesh
                          ? nullptr
                          : primitive->createEditingProxy();
-        auto const& candidate = proxy ? proxy->getMesh() : mActiveMesh->getMesh();
-        auto mappings = proxy ? proxy->getNodeMappings() : mActiveMesh->getNodeMappings();
-        if (innermostRingAt(candidate, mappings, position) != ~0u) {
+        auto const& candidateProxy = proxy ? *proxy : *mActiveMesh;
+        auto const& candidate = candidateProxy.getMesh();
+        auto mappings = candidateProxy.getNodeMappings();
+        if (innermostRingAt(candidate, mappings, position) != ~0u ||
+            findMeshVertexNear(candidateProxy, position, radiusSq) != ~0u) {
           primitiveIndex = i;
           break;
         }
@@ -2206,14 +2389,35 @@ bool Document::placeMeshDrawVertex(
     }
 
     // Establishes the Ring context for the primitive that just (re)became
-    // active: either the Ring whose interior contains the click, or - when
-    // the click instead snapped onto an existing vertex from outside every
-    // Ring - that vertex's own Ring as a connection point. The latter's
+    // active: either the Ring whose interior contains the click, or the Ring
+    // owning an existing vertex used as the exact connection point. The latter's
     // Shell/Hole/Island placement is resolved once the whole Ring is known,
     // at close time (see resolveTouchedRingPlacement).
     auto attachToRingOrBoundary = [&] {
       if (!mActiveMesh) {
         return;
+      }
+      // The first click may have activated this Mesh, so resolve its nearby
+      // vertex against the newly active proxy rather than the proxy (if any)
+      // that was active before picking.
+      auto activeSnappedVertexIndex =
+          findMeshVertexNear(*mActiveMesh, position, radiusSq);
+      auto activeSnappedPosition =
+          activeSnappedVertexIndex == ~0u
+              ? position
+              : mActiveMesh->getVertex(activeSnappedVertexIndex).getPosition();
+      if (activeSnappedVertexIndex != ~0u &&
+          activeSnappedPosition.distanceToSq(position) <= 1e-6f) {
+        auto connectionRing =
+            ringOwningVertex(*mActiveMesh, activeSnappedVertexIndex);
+        if (connectionRing != ~0u) {
+          // An exact vertex is boundary topology even when point-in-Ring
+          // classifies that endpoint as interior.
+          mMeshDrawContainingRingIndex = connectionRing;
+          mMeshDrawTouchesRingBoundary = true;
+          placedPosition = activeSnappedPosition;
+          return;
+        }
       }
       auto ring = innermostRingAt(*mActiveMesh, mActiveMesh->getNodeMappings(), position);
       if (ring != ~0u) {
@@ -2221,18 +2425,20 @@ bool Document::placeMeshDrawVertex(
         mMeshDrawCreatesIsland = mActiveMesh->getPolygon(ring).isHole();
         mMeshDrawCreatesHole = !mMeshDrawCreatesIsland;
         mMeshDrawTouchesRingBoundary = false;
-        if (snappedVertexIndex != ~0u &&
-            ringOwningVertex(*mActiveMesh, snappedVertexIndex) == ring) {
-          placedPosition = snappedPosition;
+        if (activeSnappedVertexIndex != ~0u &&
+            vertexBelongsToConnectionFamily(
+                *mActiveMesh, activeSnappedVertexIndex, ring, false)) {
+          placedPosition = activeSnappedPosition;
         }
         return;
       }
-      if (snappedVertexIndex != ~0u) {
-        auto connectionRing = ringOwningVertex(*mActiveMesh, snappedVertexIndex);
+      if (activeSnappedVertexIndex != ~0u) {
+        auto connectionRing =
+            ringOwningVertex(*mActiveMesh, activeSnappedVertexIndex);
         if (connectionRing != ~0u) {
           mMeshDrawContainingRingIndex = connectionRing;
           mMeshDrawTouchesRingBoundary = true;
-          placedPosition = snappedPosition;
+          placedPosition = activeSnappedPosition;
         }
       }
     };
@@ -2258,7 +2464,9 @@ bool Document::placeMeshDrawVertex(
     // is left as an exact click (and, in the fixed-containing-Ring mode,
     // rejected below exactly as before this feature).
     if (snappedVertexIndex != ~0u && mActiveMesh &&
-        ringOwningVertex(*mActiveMesh, snappedVertexIndex) == mMeshDrawContainingRingIndex) {
+        vertexBelongsToConnectionFamily(
+            *mActiveMesh, snappedVertexIndex, mMeshDrawContainingRingIndex,
+            mMeshDrawTouchesRingBoundary)) {
       placedPosition = snappedPosition;
     }
     if (segmentCrossesDrawnRing(mMeshDrawVertices, placedPosition, false)) {
@@ -2271,7 +2479,7 @@ bool Document::placeMeshDrawVertex(
               mMeshDrawContainingRingIndex, mMeshDrawTouchesRingBoundary, radiusSq)) {
         return reject(
             mMeshDrawTouchesRingBoundary
-                ? "Rejected: that vertex belongs to a different Ring, or that edge would cross existing topology."
+                ? "Rejected: that vertex belongs to a different Ring outside the connection's sibling family, or that edge would cross existing topology."
                 : "Rejected: that vertex would leave the containing region.");
       }
     }
@@ -2565,7 +2773,7 @@ void Document::updateGhost(std::shared_ptr<bw::core::World> world, bw::core::Pri
 std::shared_ptr<bw::core::World> Document::createWorld(float size, float gridSize) {
   auto world = make_shared<bw::core::World>(size, gridSize);
 
-  auto generator = new bw::core::DynamicWorldDataGenerator(world.get());
+  auto generator = new bw::core::DynamicWorldDataGenerator(world.get(), false);
   generator->setAlwaysUpdateVertices(true);
   generator->setAllowCommitIfVisible(true);
   generator->setPrimitiveFilter(mPrimitiveFilter);

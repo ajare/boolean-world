@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <format>
+#include <set>
 
 #include "core/CoreException.h"
 #include "core/Defines.h"
@@ -177,12 +178,32 @@ void PrimitiveField::replacePrimitive(Primitive* oldPrimitive, Primitive* newPri
   modify();
 }
 
+void PrimitiveField::releasePrimitive(Primitive* primitive) {
+  auto it = find(mPrimitives.begin(), mPrimitives.end(), primitive);
+  if (it == mPrimitives.end()) {
+    throw CoreException(format("{} primitive {} not found in this PrimitiveField step",
+                               primitive->getType(),
+                               primitive->getName()));
+  }
+
+  mPrimitives.erase(it);
+  modify();
+}
+
 bool PrimitiveField::ownsPrimitive(Primitive const* primitive) const {
   return find(mPrimitives.begin(), mPrimitives.end(), primitive) != mPrimitives.end();
 }
 
 bool PrimitiveField::contains(Primitive const* primitive) const {
   return ownsPrimitive(primitive);
+}
+
+vector<string> PrimitiveField::collectDependentResourceNames() const {
+  set<string> names;
+  for (auto const* primitive : mPrimitives) {
+    primitive->collectDependentResourceNames(names);
+  }
+  return {names.begin(), names.end()};
 }
 
 uint32_t PrimitiveField::getNumPrimitives() const {

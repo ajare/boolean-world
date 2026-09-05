@@ -2,6 +2,7 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -206,7 +207,7 @@ void deepTreeGeneratesAlternatingFilledRegions() {
   generator.generate(std::vector<Primitive*>{primitive.get()});
   bw::core::ArrangementWorldData worldData(
       generator.getWorldData(), {{-10.0f, -10.0f}, {20.0f, 20.0f}},
-      1.0f, 1.0f);
+      1.0f);
   require(worldData.getContainingFaceIndex({4.5f, 0.0f}) != ~0u,
           "the root Shell was not filled");
   require(worldData.getContainingFaceIndex({3.5f, 0.0f}) == ~0u,
@@ -1176,6 +1177,41 @@ void fillRuleIsFixedToEvenOddAndRejectsConflictingAssignment() {
           "a generic non-EvenOdd assignment changed or silently ignored MeshPrimitive meaning");
 }
 
+void vertexMetadataFollowsTopologyEditsAndCommits() {
+  std::unique_ptr<MeshPrimitive> primitive(MeshPrimitive::fromComplexPolygons(
+      Primitive::Operation::Union, {{ring(-5, -5, 5, 5)}}));
+  auto proxy = primitive->createEditingProxy();
+  auto const vertex = proxy->getFirstVertexIndex();
+  require(proxy->setVertexMetadata(
+              vertex, {{"kind", "spawn"}, {"team", "blue"}}),
+          "vertex metadata was not accepted");
+  proxy->moveVertex(vertex, {1.0f, 0.0f});
+
+  auto const edge = proxy->getFirstEdgeIndex();
+  wp::geometry::SplitEdgeResult split;
+  require(proxy->splitEdge(edge, &split) &&
+              split.newVertexIndices.size() == 1 &&
+              proxy->getVertexMetadata(split.newVertexIndices.front()).empty(),
+          "a split Vertex did not begin with empty metadata");
+  proxy->commitTo(*primitive);
+
+  bool found = false;
+  for (auto const& authored : primitive->getShells().front().ring) {
+    found |= authored.metadata ==
+             std::map<std::string, std::string>{{"kind", "spawn"},
+                                                {"team", "blue"}};
+  }
+  require(found, "vertex metadata did not survive move, split, and commit");
+
+  bool rejectedEmptyKey = false;
+  try {
+    proxy->setVertexMetadata(vertex, {{"", "value"}});
+  } catch (std::exception const&) {
+    rejectedEmptyKey = true;
+  }
+  require(rejectedEmptyKey, "an empty vertex metadata key was accepted");
+}
+
 void shallowConversionRejectsCrossEntryNestingAndMalformedTrees() {
   bool rejectedNesting = false;
   try {
@@ -1229,6 +1265,7 @@ int main() {
     removeVertexMergeKeepsThePredecessorEdgesVisibleValue();
     collidesAndVisibleAreIndependentPerEdge();
     failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged();
+    vertexMetadataFollowsTopologyEditsAndCommits();
     fillRuleIsFixedToEvenOddAndRejectsConflictingAssignment();
     shallowConversionRejectsCrossEntryNestingAndMalformedTrees();
     std::cout << "MeshPrimitive geometry proxy tests passed\n";

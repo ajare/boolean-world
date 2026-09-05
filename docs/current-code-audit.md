@@ -394,7 +394,7 @@ While running, each call adds `now - mTimeStarted` to `mDuration` but never adva
 
 For interval 0 or a negative value, `ceil(interval)` produces zero or fewer sleep iterations. The outer `while (true)` then continuously sets `mScheduledGenerationRequested` without sleeping. NaN is also converted to `int` without validation.
 
-**Fix:** reject non-finite or non-positive intervals in `setScheduledGenerationInterval`/`startGenerationSchedule`. A condition-variable wait with stop notification is cleaner and makes shutdown immediate.
+**Fix:** reject non-finite or non-positive intervals in `setGenerationStartInterval`/`startGenerationSchedule`. A condition-variable wait with stop notification is cleaner and makes shutdown immediate.
 
 ---
 

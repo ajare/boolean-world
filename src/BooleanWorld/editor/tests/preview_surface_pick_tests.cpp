@@ -107,7 +107,7 @@ std::shared_ptr<bw::core::ArrangementWorldData> buildData(
   generator.generate(primitives);
   return std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), wp::BoundingBox{{-200, -200}, {400, 400}},
-      16.0f, 1.0f, nullptr, wedgeSettings);
+      16.0f, nullptr, wedgeSettings);
 }
 
 void looksAtTheFloorWhenAimedDown() {

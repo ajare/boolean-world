@@ -28,6 +28,7 @@ struct ArrangementStats {
   uint32_t wedgeCount{0};
   uint64_t buildPSLGTimeNs{0};
   uint64_t classificationTimeNs{0};
+  uint64_t wayfinderMeshTimeNs{0};
 };
 
 struct GenerationRequestStats {

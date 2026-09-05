@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <core/CoreException.h>
+#include <core/DefinePrefabs.h>
 #include <core/Layer.h>
 #include <core/LayerBuildStep.h>
 #include <core/PrimitiveField.h>
@@ -133,6 +134,13 @@ public:
     mPrimitive = newPrimitive;
   }
 
+  void releasePrimitive(bw::core::Primitive* primitive) override {
+    if (primitive != mPrimitive) {
+      throw bw::core::CoreException("Primitive not owned by RefusingStep");
+    }
+    mPrimitive = nullptr;
+  }
+
   bool ownsPrimitive(bw::core::Primitive const* primitive) const override {
     return mPrimitive == primitive;
   }
@@ -144,6 +152,187 @@ public:
 private:
   mutable std::vector<bw::core::Primitive*> mObservedBuildPrimitives;
 
+  void serializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) const override {
+  }
+
+  bool deserializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) override {
+    return true;
+  }
+};
+
+// A step whose execute() always throws, for docs/adr/0039 coverage: a step
+// that fails is caught at the execute() boundary rather than propagating.
+class ThrowingStep final : public bw::core::LayerBuildStep {
+public:
+  std::string getType() const override {
+    return "ThrowingStep";
+  }
+
+  bool mayBeFirstStep() const override {
+    return false;
+  }
+
+  bw::core::LayerBuildStep* copy(
+      std::map<bw::core::VertexTransformerObject const*, bw::core::VertexTransformerObject*>&) const override {
+    return new ThrowingStep();
+  }
+
+  void execute(bw::core::LayerBuildContext&) const override {
+    throw bw::core::CoreException("ThrowingStep deliberately failed");
+  }
+
+  bool primitivesParticipateInBuild() const override {
+    return true;
+  }
+
+  bool permitsDirectPrimitiveEditing() const override {
+    return false;
+  }
+
+  bool acceptsNewPrimitives() const override {
+    return false;
+  }
+
+  uint32_t adoptPrimitive(bw::core::Primitive*) override {
+    throw bw::core::CoreException("ThrowingStep cannot own Primitives");
+  }
+
+  void replacePrimitive(bw::core::Primitive*, bw::core::Primitive*) override {
+  }
+
+  void releasePrimitive(bw::core::Primitive*) override {
+  }
+
+  bool ownsPrimitive(bw::core::Primitive const*) const override {
+    return false;
+  }
+
+private:
+  void serializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) const override {
+  }
+
+  bool deserializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) override {
+    return true;
+  }
+};
+
+// Captures what LayerBuildContext reports for extents and area queries, so
+// this is verifiable purely in C++ with no scripting involved.
+class AreaQueryStep final : public bw::core::LayerBuildStep {
+  std::vector<float> mPositionsToAppend;
+
+  // Cleared and refilled on each execute(), following PrefabField's
+  // precedent for a step that derives the Primitives it owns.
+  mutable std::vector<std::unique_ptr<bw::core::Primitive>> mBuiltPrimitives;
+
+  mutable wp::BoundingBox mObservedExtents;
+
+  // Parallel to mPositionsToAppend: what the area query saw over that
+  // position's probe bounds just before, and just after, that position was
+  // appended.
+  mutable std::vector<std::vector<bw::core::Primitive*>> mQueriesBeforeAppend;
+  mutable std::vector<std::vector<bw::core::Primitive*>> mQueriesAfterAppend;
+
+  // One query made far from anything placed, to check the empty case.
+  mutable std::vector<bw::core::Primitive*> mQueryMatchingNothing;
+
+public:
+  explicit AreaQueryStep(std::vector<float> positionsToAppend = {})
+      : mPositionsToAppend(std::move(positionsToAppend)) {
+  }
+
+  // A probe guaranteed to overlap a rectangle placed at x by makeRectangle,
+  // whatever margin this build's bounds calculation happens to use.
+  static wp::BoundingBox probeAround(float x) {
+    std::unique_ptr<bw::core::Primitive> probeSource(makeRectangle(x));
+    return probeSource->getBounds();
+  }
+
+  std::string getType() const override {
+    return "AreaQueryStep";
+  }
+
+  bool mayBeFirstStep() const override {
+    return false;
+  }
+
+  bw::core::LayerBuildStep* copy(
+      std::map<bw::core::VertexTransformerObject const*, bw::core::VertexTransformerObject*>&) const override {
+    return new AreaQueryStep(mPositionsToAppend);
+  }
+
+  void execute(bw::core::LayerBuildContext& context) const override {
+    mBuiltPrimitives.clear();
+    mObservedExtents = context.getExtents();
+    mQueriesBeforeAppend.clear();
+    mQueriesAfterAppend.clear();
+
+    for (auto x : mPositionsToAppend) {
+      auto probe = probeAround(x);
+      // Recorded before appending: self-avoidance depends on this not yet
+      // including the Primitive about to be placed at x.
+      mQueriesBeforeAppend.push_back(context.findBuildPrimitivesOverlapping(probe));
+
+      auto primitive = std::unique_ptr<bw::core::Primitive>(makeRectangle(x));
+      auto* raw = primitive.get();
+      mBuiltPrimitives.push_back(std::move(primitive));
+      context.appendPrimitive(raw);
+
+      // Recorded right after: this is what makes the query see the
+      // executing step's own appends so far, not only prior steps' output.
+      mQueriesAfterAppend.push_back(context.findBuildPrimitivesOverlapping(probe));
+    }
+
+    mQueryMatchingNothing = context.findBuildPrimitivesOverlapping(probeAround(-1000000.0f));
+  }
+
+  bool primitivesParticipateInBuild() const override {
+    return true;
+  }
+
+  bool permitsDirectPrimitiveEditing() const override {
+    return false;
+  }
+
+  bool acceptsNewPrimitives() const override {
+    return false;
+  }
+
+  uint32_t adoptPrimitive(bw::core::Primitive*) override {
+    throw bw::core::CoreException("AreaQueryStep does not accept Primitives");
+  }
+
+  void replacePrimitive(bw::core::Primitive*, bw::core::Primitive*) override {
+    throw bw::core::CoreException("AreaQueryStep output cannot be edited directly");
+  }
+
+  void releasePrimitive(bw::core::Primitive*) override {
+    throw bw::core::CoreException("AreaQueryStep output cannot be moved to another step");
+  }
+
+  bool ownsPrimitive(bw::core::Primitive const* primitive) const override {
+    return std::any_of(
+        mBuiltPrimitives.begin(), mBuiltPrimitives.end(),
+        [primitive](auto const& owned) { return owned.get() == primitive; });
+  }
+
+  wp::BoundingBox const& observedExtents() const {
+    return mObservedExtents;
+  }
+
+  std::vector<std::vector<bw::core::Primitive*>> const& queriesBeforeAppend() const {
+    return mQueriesBeforeAppend;
+  }
+
+  std::vector<std::vector<bw::core::Primitive*>> const& queriesAfterAppend() const {
+    return mQueriesAfterAppend;
+  }
+
+  std::vector<bw::core::Primitive*> const& queryMatchingNothing() const {
+    return mQueryMatchingNothing;
+  }
+
+private:
   void serializeArgs(std::shared_ptr<bw::core::Serializer>, bw::core::SerializationWorkData&) const override {
   }
 
@@ -553,6 +742,101 @@ void getOwningStepIndexFindsWhichStepProducedAPrimitive() {
           "getOwningStepIndex did not report ~0u for a Primitive owned by no step here");
 }
 
+void aPrimitiveMovesBetweenStepsOfTheSameTypeAndFoldsInItsNewStepsPlace() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto* moved = makeRectangle(0.0f);
+  layer.addPrimitive(moved);
+  auto const secondIndex = layer.addStep(makeField({10.0f}));
+
+  require(layer.getOwningStepIndex(moved) == 0,
+          "the fixture Primitive did not start in step 0");
+  require(layer.getPrimitive(0) == moved,
+          "a step 0 Primitive did not fold before a later step's Primitive");
+
+  require(layer.canMovePrimitiveToStep(moved, secondIndex),
+          "a move between two PrimitiveField steps was not permitted");
+  layer.movePrimitiveToStep(moved, secondIndex);
+
+  require(layer.getOwningStepIndex(moved) == secondIndex,
+          "the moved Primitive is not attributed to its new step");
+  require(layer.getPrimitiveField()->getNumPrimitives() == 0,
+          "the moved Primitive was left behind in its old step");
+  require(layer.getNumPrimitives() == 2,
+          "moving a Primitive between steps changed how many the Layer derives");
+  require(layer.getPrimitive(1) == moved,
+          "the moved Primitive did not take its new step's place in the fold order");
+  require(layer.getPrimitive(moved->getId()) == moved,
+          "the moved Primitive's id was not re-stamped to its new derived index");
+}
+
+void movingAPrimitiveBetweenStepsOfDifferentTypesIsRejected() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto* authored = makeRectangle(0.0f);
+  layer.addPrimitive(authored);
+  auto const prefabsIndex = layer.addStep(new bw::core::DefinePrefabs());
+  auto* prefabs = static_cast<bw::core::DefinePrefabs*>(layer.getStep(prefabsIndex));
+  prefabs->setSelectedPrefab(prefabs->addPrefab("Target"));
+  layer.rebuild();
+
+  require(prefabs->acceptsNewPrimitives(),
+          "the fixture DefinePrefabs step did not accept new Primitives");
+  require(!layer.canMovePrimitiveToStep(authored, prefabsIndex),
+          "a move into a step of another type was reported as permitted");
+  requireCoreException(
+      [&] { layer.movePrimitiveToStep(authored, prefabsIndex); },
+      "a move into a step of another type was not rejected");
+  require(layer.getOwningStepIndex(authored) == 0 &&
+              layer.getPrimitiveField()->ownsPrimitive(authored),
+          "a rejected move disturbed the Primitive's original ownership");
+}
+
+void movesToTheSameStepOutOfRangeStepsAndDisabledStepsAreRejected() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto* authored = makeRectangle(0.0f);
+  layer.addPrimitive(authored);
+  auto const disabledIndex = layer.addStep(makeField({10.0f}));
+  layer.setStepEnabled(disabledIndex, false);
+
+  require(!layer.canMovePrimitiveToStep(authored, 0),
+          "a move into the Primitive's own step was reported as permitted");
+  require(!layer.canMovePrimitiveToStep(authored, layer.getNumSteps()),
+          "a move to an out-of-range step index was reported as permitted");
+  require(!layer.canMovePrimitiveToStep(authored, disabledIndex),
+          "a move into a disabled step was reported as permitted");
+
+  requireCoreException(
+      [&] { layer.movePrimitiveToStep(authored, disabledIndex); },
+      "a move into a disabled step was not rejected");
+
+  bw::core::RectanglePolygon stray(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f);
+  require(!layer.canMovePrimitiveToStep(&stray, disabledIndex),
+          "a Primitive owned by no step here was reported as movable");
+}
+
+void movingAPrimitiveOutOfAStepWhoseOutputCannotBeEditedIsRejected() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto* owned = makeRectangle(0.0f);
+  layer.addStep(new RefusingStep(owned));
+  auto const targetIndex = layer.addStep(new RefusingStep());
+  layer.rebuild();
+
+  // Same type on both sides, so only permitsDirectPrimitiveEditing stands
+  // between this and a move.
+  require(layer.getStep(1)->getType() == layer.getStep(targetIndex)->getType(),
+          "the fixture steps were not the same type");
+  require(!layer.canMovePrimitiveToStep(owned, targetIndex),
+          "a move out of a step that refuses direct editing was permitted");
+  requireCoreException(
+      [&] { layer.movePrimitiveToStep(owned, targetIndex); },
+      "a move out of a step that refuses direct editing was not rejected");
+}
+
 void copyingALayerCopiesItsStepsAndRebuildsFromThem() {
   bw::core::Layer layer(5, "Source", 100.0f, 10.0f);
 
@@ -577,10 +861,161 @@ void copyingALayerCopiesItsStepsAndRebuildsFromThem() {
           "a copied Layer's derived Primitive was not the one its own first step holds");
 }
 
+// docs/adr/0039: a failed step is caught at the execute() boundary rather
+// than propagating out of rebuild(), the Layer keeps what steps before it
+// produced, and the failed step plus everything after it contributes
+// nothing.
+void aFailingStepHaltsTheBuildRetainsEarlierOutputAndRecordsItsFailure() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+  layer.getPrimitiveField()->addPrimitive(makeRectangle(0.0f));
+
+  auto const throwingIndex = layer.addStep(new ThrowingStep());
+  auto const laterIndex = layer.addStep(makeField({40.0f}));
+
+  require(builtPositions(layer) == std::vector<float>({0.0f}),
+          "a failed step's Layer did not retain the Primitives produced before it");
+  require(layer.getStep(throwingIndex)->hasFailed(),
+          "a step that threw during execute() was not recorded as failed");
+  require(!layer.getStep(throwingIndex)->getFailureMessage().empty(),
+          "a failed step's failure message was not recorded");
+  require(!layer.getStep(laterIndex)->hasFailed(),
+          "a step after the one that actually failed was itself marked as failed");
+}
+
+// A step that ran and legitimately produced nothing must be distinguishable
+// from one that failed - both contribute zero Primitives, but only one
+// hasFailed().
+void aFailedStepIsDistinguishableFromASuccessfulEmptyStep() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto const emptyFieldIndex = layer.addStep(new bw::core::PrimitiveField());
+  require(!layer.getStep(emptyFieldIndex)->hasFailed(),
+          "a step that ran successfully and produced nothing was marked as failed");
+
+  auto const throwingIndex = layer.addStep(new ThrowingStep());
+  require(layer.getStep(throwingIndex)->hasFailed(),
+          "a step that threw during execute() was not marked as failed");
+}
+
+// Fixing a failed step (here, simply disabling it) clears its failure on the
+// next rebuild and lets the steps after it contribute again.
+void disablingAFailedStepClearsItsFailureAndUnblocksLaterSteps() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+  layer.getPrimitiveField()->addPrimitive(makeRectangle(0.0f));
+
+  auto const throwingIndex = layer.addStep(new ThrowingStep());
+  layer.addStep(makeField({40.0f}));
+
+  require(layer.getStep(throwingIndex)->hasFailed(), "test setup: step did not fail");
+  require(builtPositions(layer) == std::vector<float>({0.0f}), "test setup: build did not halt");
+
+  layer.setStepEnabled(throwingIndex, false);
+
+  require(!layer.getStep(throwingIndex)->hasFailed(),
+          "disabling a failed step did not clear its recorded failure");
+  require(builtPositions(layer) == std::vector<float>({0.0f, 40.0f}),
+          "disabling the failed step did not let the steps after it contribute again");
+}
+
+// A step's name is authored text distinct from its stable id: unlike the id,
+// it is not assigned by the Layer and need not be unique.
+void aStepsNameRoundTripsThroughSerializationAndDefaultsToEmpty() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+  require(layer.getStep(0)->getName().empty(),
+          "a newly constructed build step did not default to an empty name");
+
+  auto const secondIndex = layer.addStep(makeField({10.0f}));
+  layer.getStep(secondIndex)->setName("spawn points");
+
+  auto writer = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::toString());
+  bw::core::SerializationWorkData writeData;
+  layer.serialize(writer, writeData);
+  writer->serialize();
+
+  bw::core::Layer loaded;
+  auto reader = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::fromString(writer->getSerializedString()));
+  reader->deserialize();
+  bw::core::SerializationWorkData readData;
+  readData.accelGridSize = 10.0f;
+  require(loaded.deserialize(reader, readData),
+          "a Layer with named build steps failed to deserialize");
+
+  require(loaded.getStep(0)->getName().empty(),
+          "an unnamed build step gained a name across serialization");
+  require(loaded.getStep(secondIndex)->getName() == "spawn points",
+          "a build step's name did not round-trip through serialization");
+}
+
+// docs/adr for #361: LayerBuildContext exposes a Layer's extents so a step
+// never needs the Layer itself for them.
+void theContextExposesTheLayersExtentsWithoutReachingForTheLayer() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto* queryStep = new AreaQueryStep();
+  layer.addStep(queryStep);
+
+  require(queryStep->observedExtents().getPosition() == layer.getExtents().getPosition() &&
+              queryStep->observedExtents().getSize() == layer.getExtents().getSize(),
+          "the context did not report the owning Layer's own extents");
+}
+
+// The area query is bounds-overlap only, scoped to getBuildPrimitives(): it
+// must see prior steps' output, must see the executing step's own appends so
+// far (self-avoidance), and must return empty rather than fail when nothing
+// overlaps.
+void theAreaQuerySeesPriorOutputAndTheExecutingStepsOwnAppendsSoFar() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto* priorPrimitive = makeRectangle(0.0f);
+  layer.addPrimitive(priorPrimitive);
+
+  auto* queryStep = new AreaQueryStep(std::vector<float>({0.0f, 100000.0f}));
+  layer.addStep(queryStep);
+
+  layer.rebuild();
+
+  require(queryStep->queriesBeforeAppend().size() == 2 &&
+              queryStep->queriesAfterAppend().size() == 2,
+          "the fixture step did not run its two scheduled appends");
+
+  require(queryStep->queriesBeforeAppend()[0] == std::vector<bw::core::Primitive*>({priorPrimitive}),
+          "the area query did not see a prior step's Primitive overlapping its bounds");
+
+  require(queryStep->queriesBeforeAppend()[1].empty(),
+          "the area query saw the step's own Primitive before it was appended");
+
+  auto const& afterSecondAppend = queryStep->queriesAfterAppend()[1];
+  require(afterSecondAppend.size() == 1 && afterSecondAppend[0]->getPosition().x == 100000.0f,
+          "the area query did not see the executing step's own append made earlier in the same run");
+
+  require(queryStep->queryMatchingNothing().empty(),
+          "a query matching nothing did not return empty");
+}
+
+void duplicateStepNamesAreAllowedAndFindStepIdByNameResolvesToTheFirstMatch() {
+  bw::core::Layer layer(0, "Base", 100.0f, 10.0f);
+
+  auto const secondIndex = layer.addStep(makeField({10.0f}));
+  auto* secondStep = layer.getStep(secondIndex);
+  secondStep->setName("props");
+
+  auto const thirdIndex = layer.addStep(makeField({20.0f}));
+  layer.getStep(thirdIndex)->setName("props");
+
+  require(layer.findStepIdByName("props") == secondStep->getId(),
+          "findStepIdByName did not resolve to the first step with a duplicated name");
+  require(layer.findStepIdByName("does not exist") == ~0u,
+          "findStepIdByName did not report not-found for an unknown name");
+}
+
 }  // namespace
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     theStepRegistryEnumeratesAndInstantiatesEachRegisteredType();
     aNewLayerStartsWithOneEmptyPrimitiveFieldStep();
     executingAPrimitiveFieldStepAddsItsEmbeddedPrimitives();
@@ -601,7 +1036,18 @@ int main() {
     stepsReceiveOnlyBuildParticipatingPrimitives();
     primitiveStorageIsDispatchedToTheOwningStep();
     getOwningStepIndexFindsWhichStepProducedAPrimitive();
+    aPrimitiveMovesBetweenStepsOfTheSameTypeAndFoldsInItsNewStepsPlace();
+    movingAPrimitiveBetweenStepsOfDifferentTypesIsRejected();
+    movesToTheSameStepOutOfRangeStepsAndDisabledStepsAreRejected();
+    movingAPrimitiveOutOfAStepWhoseOutputCannotBeEditedIsRejected();
     copyingALayerCopiesItsStepsAndRebuildsFromThem();
+    aFailingStepHaltsTheBuildRetainsEarlierOutputAndRecordsItsFailure();
+    aFailedStepIsDistinguishableFromASuccessfulEmptyStep();
+    disablingAFailedStepClearsItsFailureAndUnblocksLaterSteps();
+    aStepsNameRoundTripsThroughSerializationAndDefaultsToEmpty();
+    duplicateStepNamesAreAllowedAndFindStepIdByNameResolvesToTheFirstMatch();
+    theContextExposesTheLayersExtentsWithoutReachingForTheLayer();
+    theAreaQuerySeesPriorOutputAndTheExecutingStepsOwnAppendsSoFar();
     std::cout << "A Layer derives its Primitives by running its enabled LayerBuildSteps in order\n";
     return 0;
   } catch (std::exception const& error) {

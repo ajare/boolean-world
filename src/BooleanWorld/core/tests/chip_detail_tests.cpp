@@ -194,8 +194,7 @@ ArrangementWorldData snapshotOf(
   return ArrangementWorldData(
       bw::core::arr::BuildArrangement(resolved),
       wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}),
-      64.0f,
-      8.0f);
+      64.0f);
 }
 
 // The index of the wall of `kind` whose edge's midpoint is at `midpoint`.
@@ -1022,7 +1021,7 @@ void floorStepSubMaterialControlsCornerChips() {
   primitives[1].chipParameters = enabled;
   ArrangementWorldData higherFloorEnabled(
       bw::core::arr::BuildArrangement(primitives),
-      wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f, 8.0f);
+      wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f);
   require(higherFloorEnabled.getDetail().getChipCount() == 4,
           "the higher-floor Sub-material did not enable its FloorStep Corner Chips");
 
@@ -1030,7 +1029,7 @@ void floorStepSubMaterialControlsCornerChips() {
   primitives[1].chipParameters = {};
   ArrangementWorldData lowerFloorEnabled(
       bw::core::arr::BuildArrangement(primitives),
-      wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f, 8.0f);
+      wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}), 64.0f);
   require(lowerFloorEnabled.getDetail().getChipCount() == 0,
           "the lower-floor Sub-material overrode the FloorStep Sub-material");
 }
@@ -1467,7 +1466,7 @@ void aDisabledMaterialDoesNotDisableOtherMaterialsChips() {
 
   ArrangementWorldData snapshot(
       bw::core::arr::BuildArrangement(primitives),
-      wp::BoundingBox({-64.0f, -64.0f}, {128.0f, 128.0f}), 32.0f, 8.0f);
+      wp::BoundingBox({-64.0f, -64.0f}, {128.0f, 128.0f}), 32.0f);
   require(snapshot.getDetail().getChipCount() == 8,
           "a disabled wall material chipped or disabled the other material");
 }
@@ -1495,7 +1494,7 @@ void theUnchippedOutputsAreIdenticalEitherWay() {
 
   ArrangementWorldData snapshot(
       arrangement, wp::BoundingBox({-256.0f, -256.0f}, {512.0f, 512.0f}),
-      64.0f, 8.0f);
+      64.0f);
   require(snapshot.getDetail().getChipCount() > 0,
           "the fixture produced no Chips, so this proves nothing");
 

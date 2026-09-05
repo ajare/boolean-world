@@ -4,6 +4,7 @@
 
 #include "Platform.h"
 #include "VideoOptions.h"
+#include "WorldDataGenerationOptions.h"
 
 struct BooleanWorldModel : public applib::Model {
 private:
@@ -25,10 +26,16 @@ private:
 
   bw::app::ShadowOptions mShadowOptions;
 
+  // Application-run configuration. F4 may override it temporarily; model
+  // ownership carries that override across maps without changing Game.yaml.
+  bw::app::WorldDataGenerationOptions mWorldDataGenerationOptions;
+
 public:
   BooleanWorldModel(applib::EntityHandlerFactoryFunction handlerFactory,
                     wp::application::resourcesystem::ResourceManager* resourceMgr,
-                    bw::app::VideoOptions const& videoOptions = {})
+                    bw::app::VideoOptions const& videoOptions = {},
+                    bw::app::WorldDataGenerationOptions const&
+                        worldDataGenerationOptions = {})
       : applib::Model(handlerFactory, resourceMgr),
         mActiveRenderScale(videoOptions.renderScale),
         mActiveAntiAliasing(videoOptions.antiAliasing),
@@ -39,7 +46,8 @@ public:
         mPlanarReflectionResolution(
             videoOptions.waterReflections.planarResolution),
         mPlayerTorchOptions(videoOptions.playerTorch),
-        mShadowOptions(videoOptions.shadows) {
+        mShadowOptions(videoOptions.shadows),
+        mWorldDataGenerationOptions(worldDataGenerationOptions) {
   }
 
   bw::app::RenderScale getActiveRenderScale() const {
@@ -94,5 +102,37 @@ public:
 
   bw::app::ShadowOptions const& getShadowOptions() const {
     return mShadowOptions;
+  }
+
+  bw::app::WorldDataGenerationMode getGenerationMode() const {
+    return mWorldDataGenerationOptions.mode;
+  }
+
+  void setGenerationMode(bw::app::WorldDataGenerationMode mode) {
+    mWorldDataGenerationOptions.mode = mode;
+  }
+
+  float getGenerationStartInterval() const {
+    return mWorldDataGenerationOptions.startInterval;
+  }
+
+  void setGenerationStartInterval(float interval) {
+    mWorldDataGenerationOptions.startInterval = interval;
+  }
+
+  bool getAlwaysUpdateGenerationVertices() const {
+    return mWorldDataGenerationOptions.alwaysUpdateVertices;
+  }
+
+  void setAlwaysUpdateGenerationVertices(bool alwaysUpdate) {
+    mWorldDataGenerationOptions.alwaysUpdateVertices = alwaysUpdate;
+  }
+
+  bool getAllowGenerationCommitIfVisible() const {
+    return mWorldDataGenerationOptions.allowCommitIfVisible;
+  }
+
+  void setAllowGenerationCommitIfVisible(bool allowCommit) {
+    mWorldDataGenerationOptions.allowCommitIfVisible = allowCommit;
   }
 };

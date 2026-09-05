@@ -1,5 +1,6 @@
 #include "EditorRenderSystem.h"
 
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <memory>
@@ -14,6 +15,9 @@
 #include <willpower/application/resourcesystem/ResourceFactory.h>
 #include <willpower/application/resourcesystem/ResourceManager.h>
 #include <willpower/common/Logger.h>
+
+#include <core-lua/CoreLua.h>
+#include <core-lua/LuaScriptResource.h>
 
 #include "EmbossingCatalog.h"
 #include "EmbossingCatalogResourceDefinitionFactory.h"
@@ -61,6 +65,14 @@ constexpr array<pair<char const*, char const*>, 4> previewResources{{
     {"Embossing", ""},
 }};
 
+// Canonical spelling for a reference authored by a World.
+string worldResourceReference(
+    wp::application::resourcesystem::Resource const& resource) {
+  if (resource.getNamespace() == "World") return resource.getName();
+  if (resource.getNamespace().empty()) return "/" + resource.getName();
+  return resource.getQualifiedName();
+}
+
 }  // namespace
 
 EditorRenderSystem::EditorRenderSystem(int width, int height) {
@@ -83,6 +95,8 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
 
   mResourceMgr = new wp::application::resourcesystem::ResourceManager(
       mRenderSystem, mRenderResourceMgr, nullptr /* no audio in the editor */, mLogger);
+  mScriptRuntime = make_unique<bw::core::ScriptRuntime>(
+      [this](string const& message) { mLogger->info("Lua: " + message); });
 
   mResourceMgr->addResourceLocationFactory(
       "Directory",
@@ -101,6 +115,7 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
   // DLL.cpp); Map and ProtoEntity are app-only types the preview ignores.
   mResourceMgr->addResourceFactory(new ProcMaterialResourceFactory());
   mResourceMgr->addResourceFactory(new EmbossingCatalogResourceFactory());
+  bw::core::registerLuaScriptResourceType(*mResourceMgr);
   mResourceMgr->addResourceDefinitionFactory(
       new ProcMaterialResourceDefinitionFactory());
   mResourceMgr->addResourceDefinitionFactory(
@@ -115,6 +130,18 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
   // addResourceLocation only records the location - scanning is what reads
   // the manifest and instantiates its records.
   mResourceMgr->scanLocations();
+
+  // RunScript's Combobox is ready on the first frame, and selecting any
+  // script never pays a first-use file read or compile. Compilation failures
+  // remain cached ordinary step failures and do not abort editor startup.
+  for (auto const& resource : mResourceMgr->getResourcesByType("LuaScript")) {
+    string error;
+    if (!loadLuaScript(worldResourceReference(*resource), &error)) {
+      mLogger->warn(
+          "Could not preload LuaScript " + resource->getQualifiedName() +
+          ": " + error);
+    }
+  }
 
   for (auto const& [name, namesp] : previewResources) {
     auto resource = mResourceMgr->getResource(name, namesp);
@@ -137,6 +164,11 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
                     resource->getQualifiedName() + ": " + exception.what());
     }
   }
+
+  // Register only after the runtime and resource system have both completed
+  // startup, so every deserialized RunScript receives this host's live
+  // runtime (ADR-0038).
+  bw::core::registerScriptStepTypes(*mScriptRuntime);
 }
 
 bool EditorRenderSystem::loadWorldDependencies(
@@ -153,6 +185,20 @@ bool EditorRenderSystem::loadWorldDependencies(
       try {
         mResourceMgr->createResource(resource);
         mResourceMgr->loadResource(resource);
+        if (auto script = dynamic_pointer_cast<bw::core::LuaScriptResource>(
+                resource)) {
+          // Keep the exact authored spelling as the runtime key. In
+          // particular, an unqualified name resolved in the World namespace
+          // must still be executable by that unqualified RunScript name.
+          try {
+            script->loadInto(*mScriptRuntime, reference);
+          } catch (bw::core::ScriptException const& exception) {
+            // Keep the dependency resolved: ScriptRuntime caches this compile
+            // failure so the deserialized RunScript can report it as a failed
+            // build step alongside ordinary execution failures (#367).
+            mLogger->error(exception.what());
+          }
+        }
       } catch (...) {
         mResourceMgr->releaseResource(resource);
         throw;
@@ -187,6 +233,125 @@ void EditorRenderSystem::reloadEmbossingCatalog(string const& resourceName) {
   auto resource = mResourceMgr->getResource(resourceName);
   mResourceMgr->releaseResource(resource);
   mResourceMgr->loadResource(resource);
+}
+
+bool EditorRenderSystem::loadLuaScript(
+    string const& resourceName, string* error) {
+  try {
+    string namesp;
+    string name;
+    wp::application::resourcesystem::Resource::splitName(
+        resourceName, "World", &namesp, &name);
+    auto resource = mResourceMgr->getResource(name, namesp);
+    auto script = dynamic_pointer_cast<bw::core::LuaScriptResource>(resource);
+    if (!script) {
+      if (error) *error = "The selected resource is not a Lua script.";
+      return false;
+    }
+
+    mResourceMgr->createResource(resource);
+    mResourceMgr->loadResource(resource);
+    try {
+      script->loadInto(*mScriptRuntime, resourceName);
+    } catch (bw::core::ScriptException const& exception) {
+      // Compilation failures are authored script failures, not picker
+      // failures. ScriptRuntime retained this one under resourceName.
+      mLogger->error(exception.what());
+    }
+    return true;
+  } catch (exception const& exception) {
+    if (error) *error = exception.what();
+    return false;
+  }
+}
+
+bool EditorRenderSystem::rescanLuaScripts(string* error) {
+  try {
+    mResourceMgr->rescanLocations();
+    for (auto const& resource :
+         mResourceMgr->getResourcesByType("LuaScript")) {
+      string loadError;
+      if (!loadLuaScript(worldResourceReference(*resource), &loadError)) {
+        if (error) {
+          *error = "Could not load LuaScript " + resource->getQualifiedName() +
+                   ": " + loadError;
+        }
+        return false;
+      }
+    }
+    return true;
+  } catch (exception const& exception) {
+    if (error) *error = exception.what();
+    return false;
+  }
+}
+
+bool EditorRenderSystem::reloadLuaScript(
+    string const& resourceName, string* error) {
+  wp::application::resourcesystem::ResourcePtr resource;
+  bool retainedForWorld = false;
+  bool released = false;
+  try {
+    string namesp;
+    string name;
+    wp::application::resourcesystem::Resource::splitName(
+        resourceName, "World", &namesp, &name);
+    resource = mResourceMgr->getResource(name, namesp);
+    auto script = dynamic_pointer_cast<bw::core::LuaScriptResource>(resource);
+    if (!script) {
+      if (error) *error = "The selected resource is not a Lua script.";
+      return false;
+    }
+
+    retainedForWorld = find(
+                           mWorldDependencies.begin(), mWorldDependencies.end(), resource) !=
+                       mWorldDependencies.end();
+
+    // LuaScriptResource reads its source during create(), not load(). A
+    // composite root reads it from its named TextFile dependency, which must
+    // be recreated too for an external edit to be observed.
+    wp::application::resourcesystem::ResourcePtr source;
+    if (script->hasDependentResource("Source")) {
+      source = script->getDependentResource("Source");
+    }
+    mResourceMgr->releaseResource(resource);
+    released = true;
+    mResourceMgr->destroyResources(
+        source ? vector{resource, source} : vector{resource});
+    mResourceMgr->createResource(resource);
+    mResourceMgr->loadResource(resource);
+    if (retainedForWorld) {
+      mResourceMgr->acquireResource(resource);
+      released = false;
+    }
+
+    // A LuaScript may be included by another LuaScript through the manifest
+    // dependency graph. Recompile every affected root so its closed include
+    // set and bytecode see the changed text; reloadInto rebuilds Layers naming
+    // that root. The changed resource is also refreshed as a standalone root.
+    for (auto const& candidate :
+         mResourceMgr->getResourcesByType("LuaScript")) {
+      if (candidate != resource && !candidate->dependsOn(resource.get())) {
+        continue;
+      }
+      auto affected = dynamic_pointer_cast<bw::core::LuaScriptResource>(
+          candidate);
+      if (affected) {
+        affected->reloadInto(
+            *mScriptRuntime, worldResourceReference(*candidate));
+      }
+    }
+    return true;
+  } catch (exception const& exception) {
+    // Preserve the World's ownership count even when re-reading or compiling
+    // fails. A compile failure is already retained atomically by the runtime
+    // and has rebuilt its naming Layers before arriving here.
+    if (resource && retainedForWorld && released) {
+      mResourceMgr->acquireResource(resource);
+    }
+    if (error) *error = exception.what();
+    return false;
+  }
 }
 
 namespace {

@@ -123,6 +123,9 @@ add_custom_target(BuildAllDependencies
             --target Willpower.Geometry
     COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
             --config "${BW_DEPENDENCY_CONFIG}" --parallel
+            --target Willpower.Wayfinder
+    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
+            --config "${BW_DEPENDENCY_CONFIG}" --parallel
             --target Willpower.Collide
     COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
             --config "${BW_DEPENDENCY_CONFIG}" --parallel
@@ -155,6 +158,7 @@ foreach(dependency_target
         ext::yaml-cpp
         Willpower.Common
         Willpower.Geometry
+        Willpower.Wayfinder
         Willpower.Collide
         Willpower.Application
         WillPower.Viz)
@@ -177,6 +181,11 @@ add_subdirectory(ext/concurrencpp EXCLUDE_FROM_ALL)
 # pinned upstream source.
 target_precompile_headers(concurrencpp PRIVATE <chrono> <string>)
 set_target_properties(concurrencpp PROPERTIES FOLDER "Dependencies")
+
+# Lua and sol2 build differently from concurrencpp - upstream Lua has no
+# CMakeLists.txt of its own - so they get a dedicated wrapper. See
+# cmake/Lua.cmake.
+include(Lua)
 
 add_subdirectory(src/AppLib)
 add_subdirectory(src/BooleanWorld)

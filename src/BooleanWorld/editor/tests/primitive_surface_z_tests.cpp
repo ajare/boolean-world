@@ -4,6 +4,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <core/LayerBuildStep.h>
 #include <core/RectanglePolygon.h>
 
 #include "Actions.h"
@@ -132,6 +133,8 @@ void theMoveIsUndoable() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     aNudgeMovesOneSurfaceByItsOwnStep();
     neitherSurfacePassesTheOther();
     wallsHaveNoHeightToMove();

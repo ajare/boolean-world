@@ -1,9 +1,11 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <glm/vec3.hpp>
 
@@ -37,9 +39,17 @@ public:
   // synthetic scene, updating saved entries and adding newly created ones.
   [[nodiscard]] std::uint32_t texture(std::string const& subMaterialId);
 
+  // Renders an unsaved parameter/base-colour draft for comparison with the
+  // catalog-backed texture above. Reuses the texture until the draft changes.
+  [[nodiscard]] std::uint32_t draftTexture(
+      std::string const& subMaterialId, std::uint32_t materialIndex,
+      std::vector<float> const& params,
+      std::array<float, 3> const& baseColour);
+
 private:
   void rebuild();
   void clearTextures();
+  std::uint32_t renderTexture(std::string const& subMaterialId) const;
   std::uint32_t copyTexture(std::uint32_t sourceTexture) const;
 
   EditorRenderSystem* mwRenderSystem{};
@@ -48,6 +58,11 @@ private:
   std::unique_ptr<PreviewRenderScene> mScene;
   std::map<std::string, glm::vec3> mCentres;
   std::map<std::string, std::uint32_t> mTextures;
+  std::uint32_t mDraftTexture{};
+  std::string mDraftSubMaterialId;
+  std::uint32_t mDraftMaterialIndex{};
+  std::vector<float> mDraftParams;
+  std::array<float, 3> mDraftBaseColour{};
   std::uint64_t mLibraryRevision{~std::uint64_t{0}};
 };
 

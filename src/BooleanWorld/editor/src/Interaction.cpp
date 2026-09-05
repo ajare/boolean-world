@@ -1,12 +1,54 @@
 #include <algorithm>
+#include <cmath>
 
 #include "Actions.h"
 #include "UiHelpers.h"
+
+#include <common/GameDefines.h>
 
 namespace editor {
 using namespace std;
 
 namespace {
+
+// A click in Vertex sub-mode acts on the Vertex nearest the pointer alone.
+// Two distinct Vertices commonly sit inside one pick radius, and letting
+// both into the hit stack means repeated clicks alternate between them
+// instead of selecting what is under the pointer. Other consumers of the
+// hit stack - the Slice tool above all - still see every candidate, because
+// resolving between near-coincident Vertices is exactly their job.
+vector<uint32_t> nearestMeshVertexOnly(
+    Document const* doc, vector<uint32_t> const& indices,
+    wp::Vector2 const& worldPosition) {
+  auto const* mesh = doc->getActiveMesh();
+  if (!mesh || indices.size() < 2) {
+    return indices;
+  }
+
+  auto nearest = indices.front();
+  auto nearestDistanceSq =
+      mesh->getVertex(nearest).getPosition().distanceToSq(worldPosition);
+  for (auto index : indices) {
+    auto distanceSq =
+        mesh->getVertex(index).getPosition().distanceToSq(worldPosition);
+    if (distanceSq < nearestDistanceSq) {
+      nearest = index;
+      nearestDistanceSq = distanceSq;
+    }
+  }
+  return {nearest};
+}
+
+// Quantises a gesture's total movement to whole grid cells on each axis.
+wp::Vector2 snapMovementToGrid(
+    wp::Vector2 const& movement, bool snapToGrid, float gridSize) {
+  if (!snapToGrid || gridSize <= 0.0f) {
+    return movement;
+  }
+  return {
+      round(movement.x / gridSize) * gridSize,
+      round(movement.y / gridSize) * gridSize};
+}
 
 void beginTransform(Document* doc, string const& name) {
   if (!undoableActionInProgress()) {
@@ -25,14 +67,28 @@ void EditorInteraction::applyPrimitiveClick(
     return;
   }
 
+  auto const& selection = doc->getSelectedPrimitiveIndices();
   if (mCycledPrimitiveIndices != hoveredIndices) {
     mCycledPrimitiveIndices = hoveredIndices;
     mCycledPrimitiveIndex = -1;
+
+    // A new hit stack may include the Primitive selected by the preceding
+    // single-hit click. Continue from that Primitive instead of restarting
+    // at the beginning and selecting it again. With no selected member the
+    // first item remains the first click, and a sole hit always selects itself.
+    if (hoveredIndices.size() > 1) {
+      auto selected = find_if(
+          hoveredIndices.begin(), hoveredIndices.end(),
+          [&](uint32_t index) { return selection.contains(index); });
+      if (selected != hoveredIndices.end()) {
+        mCycledPrimitiveIndex =
+            static_cast<int>(distance(hoveredIndices.begin(), selected));
+      }
+    }
   }
   mCycledPrimitiveIndex =
       (mCycledPrimitiveIndex + 1) % static_cast<int>(hoveredIndices.size());
   auto hoveredIndex = hoveredIndices[mCycledPrimitiveIndex];
-  auto const& selection = doc->getSelectedPrimitiveIndices();
 
   if (control) {
     transactUndoableAction(
@@ -94,6 +150,30 @@ void EditorInteraction::updateSelection(
   auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
   if (input.leftClicked) {
     mPendingPrimitiveClick.clear();
+  }
+
+  // A clone in flight owns the pointer outright, in every mode: it follows
+  // the cursor, the left button places it, and the right button discards it
+  // without leaving an undo entry. Nothing hovers, selects or rubber-bands
+  // underneath it.
+  if (doc->clonePlacementArmed()) {
+    mHover = DocumentHover{};
+    mPendingPrimitiveClick.clear();
+    mPendingMeshSubObjectClick.clear();
+    mBoxSelectPending = false;
+    mBoxSelectDragging = false;
+
+    if (input.rightClicked) {
+      cancelClonePlacement(doc);
+      return;
+    }
+    if (input.cursorInWorldView && !input.cursorInMiniMap) {
+      doc->updateClonePlacement(input.worldPosition);
+      if (input.leftClicked) {
+        commitClonePlacement(doc);
+      }
+    }
+    return;
   }
   auto* prefabField = layer ? dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep()) : nullptr;
   if (prefabField) {
@@ -236,10 +316,14 @@ void EditorInteraction::updateSelection(
       }
 
       if (mHover.type == HoverableType::MeshSubObject) {
+        auto hits = settings.meshSubMode == Settings::MeshSubMode::Vertex
+                        ? nearestMeshVertexOnly(
+                              doc, mHover.indices, input.worldPosition)
+                        : mHover.indices;
         auto const& selection =
             doc->getSelectedMeshSubObjectIndices(settings.meshSubMode);
         auto selectedHit = any_of(
-            mHover.indices.begin(), mHover.indices.end(),
+            hits.begin(), hits.end(),
             [&](uint32_t index) { return selection.contains(index); });
 
         // For a plain gesture, preserve any selected hit until it is known to
@@ -248,11 +332,11 @@ void EditorInteraction::updateSelection(
         // additionally retain their modifier and click-to-cycle behaviour on
         // release.
         if (selectedHit &&
-            ((!input.control && !input.shift) || mHover.indices.size() > 1)) {
-          mPendingMeshSubObjectClick = mHover.indices;
+            ((!input.control && !input.shift) || hits.size() > 1)) {
+          mPendingMeshSubObjectClick = move(hits);
         } else {
           applyMeshSubObjectClick(
-              doc, settings.meshSubMode, mHover.indices,
+              doc, settings.meshSubMode, hits,
               input.control, input.shift);
         }
       } else if (!input.cursorInMiniMap) {
@@ -427,8 +511,58 @@ void EditorInteraction::updateSelection(
   }
 }
 
+bool playerProxyHitTest(
+    Document const* doc, wp::Vector2 const& worldPosition) {
+  return doc && doc->getPlayerProxyPosition().distanceTo(worldPosition) <=
+                    BW_PLAYER_RADIUS;
+}
+
+bool EditorInteraction::updatePlayerProxy(
+    Document* doc, PointerInput const& input) {
+  if (doc->clonePlacementArmed()) {
+    return false;
+  }
+
+  if (input.rightReleased) {
+    mPlayerProxyDragActive = false;
+    mRotatingPlayerProxy = false;
+    return false;
+  }
+
+  if (!mPlayerProxyDragActive && input.rightClicked &&
+      input.cursorInWorldView && !input.cursorInMiniMap &&
+      playerProxyHitTest(doc, input.worldPosition)) {
+    mPlayerProxyDragActive = true;
+    mRotatingPlayerProxy = input.shift;
+  }
+
+  if (mPlayerProxyDragActive && input.rightDragging) {
+    if (mRotatingPlayerProxy) {
+      auto direction = input.worldPosition - doc->getPlayerProxyPosition();
+      if (direction.lengthSq() > 0.0f) {
+        // World +X is mirrored relative to the player angle convention.
+        direction.x = -direction.x;
+        doc->setPlayerProxyAngle(
+            wp::Vector2{0.0f, 1.0f}.anticlockwiseAngleTo(direction));
+      }
+    } else {
+      doc->setPlayerProxyPosition(input.worldPosition);
+    }
+    // The proxy feeds player-dependent animation inputs. Rebuild on every
+    // drag frame, including frames where the pointer did not move.
+    regenerateWorldData(doc);
+  }
+
+  return mPlayerProxyDragActive;
+}
+
 void EditorInteraction::updateDrag(
     Document* doc, Settings const& settings, PointerInput const& input) {
+  // Placing a clone is a pointer gesture of its own - see updateSelection.
+  if (doc->clonePlacementArmed()) {
+    return;
+  }
+
   auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
   if (layer && dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep())) {
     return;
@@ -501,6 +635,8 @@ void EditorInteraction::updateDrag(
         commitUndoableAction(doc);
       }
       mMovingSelectedPrimitives = false;
+      mPrimitiveDragCumulativeDelta = {};
+      mPrimitiveDragAppliedDelta = {};
       mScalingSelectedPrimitives = false;
       mRotatingSelectedPrimitives = false;
     }
@@ -559,14 +695,28 @@ void EditorInteraction::updateDrag(
       if (!mScalingSelectedPrimitives && !mRotatingSelectedPrimitives) {
         if (!mMovingSelectedPrimitives) {
           mMovingSelectedPrimitives = true;
+          mPrimitiveDragCumulativeDelta = {};
+          mPrimitiveDragAppliedDelta = {};
           beginTransform(doc, "Transform Primitive(s)");
         }
-        for (auto index : primitiveSelection) {
-          auto primitive = doc->getWorld()->getPrimitive(index);
-          primitive->setPosition(
-              primitive->getPosition() +
-              wp::Vector2{input.dragDelta.x, -input.dragDelta.y} / input.zoom);
-          primitive->updateVertexPositions();
+
+        mPrimitiveDragCumulativeDelta +=
+            wp::Vector2{input.dragDelta.x, -input.dragDelta.y} / input.zoom;
+
+        // Snapping the movement, not the position, keeps whatever offset
+        // from the grid the selection was authored with, and moves the
+        // whole selection by the same whole number of cells.
+        auto movement = snapMovementToGrid(
+            mPrimitiveDragCumulativeDelta, settings.showGrid, settings.gridSize);
+        auto step = movement - mPrimitiveDragAppliedDelta;
+        mPrimitiveDragAppliedDelta = movement;
+
+        if (step.lengthSq() > 0.0f) {
+          for (auto index : primitiveSelection) {
+            auto primitive = doc->getWorld()->getPrimitive(index);
+            primitive->setPosition(primitive->getPosition() + step);
+            primitive->updateVertexPositions();
+          }
         }
       }
     }
@@ -645,6 +795,10 @@ bool EditorInteraction::rotateSelectedPrefabInstance(Document* doc, bool next) {
   auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
   auto* field = layer ? dynamic_cast<bw::core::PrefabField*>(layer->getActiveStep()) : nullptr;
   if (!field) return false;
+  if (field->getSelectedPrefab(*layer)) {
+    (void)field->rotatePlacement(*layer, next);
+    return true;
+  }
   if (!field->hasSelectedTile()) return true;
 
   auto tile = field->getSelectedTile();

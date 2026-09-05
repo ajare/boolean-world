@@ -37,6 +37,52 @@ Primitive* Primitive::instantiate(string const& type) {
   return primitiveRegistry.create(type);
 }
 
+Primitive* Primitive::createDefault(string const& type) {
+  // Lua deliberately exposes only common Primitive properties, so every
+  // creatable type needs complete, valid shape parameters before the caller
+  // can place it. Keep this separate from instantiate(): deserializers need a
+  // blank object and would otherwise retain transformed default vertices
+  // after replacing its authored polygons.
+  static const Registry<Primitive> defaultPrimitiveRegistry(
+      "primitive",
+      {{"Rectangle",
+        []() {
+          return new RectanglePolygon(Operation::Union, FillRule::NonZero, 1.0f);
+        }},
+       {"Regular",
+        []() {
+          return new RegularPolygon(Operation::Union, FillRule::NonZero, 3);
+        }},
+       {"Circle",
+        []() {
+          return new CirclePolygon(Operation::Union, FillRule::NonZero, 1.0f);
+        }},
+       {"CircleSegment",
+        []() {
+          return new CircleSegmentPolygon(
+              Operation::Union, FillRule::NonZero, 90.0f, 1.0f);
+        }},
+       {"Torus",
+        []() {
+          return new TorusPolygon(
+              Operation::Union, FillRule::NonZero, 0.5f, 1.0f);
+        }},
+       {"TorusSegment",
+        []() {
+          return new TorusSegmentPolygon(
+              Operation::Union, FillRule::NonZero, 0.5f, 90.0f, 1.0f);
+        }},
+       {"Superformula",
+        []() {
+          float values[6] = {1.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+          return new SuperformulaPolygon(
+              Operation::Union, FillRule::NonZero, 1.0f, values);
+        }},
+       {"Mesh", []() { return new MeshPrimitive; }}});
+
+  return defaultPrimitiveRegistry.create(type);
+}
+
 Primitive::Primitive()
     : Primitive(Operation::Union, FillRule::NonZero) {
 }
@@ -507,6 +553,7 @@ vector<ComplexPolygon> Primitive::generateTransformedVertices(wp::Vector2* minEx
         bool vChanged{false};
 
         vertices[i].p = transformVertex(polygon[i].p * mSize, &vChanged);
+        vertices[i].metadata = polygon[i].metadata;
         vertices[i].edgeFlags = polygon[i].edgeFlags;
         vertices[i].edgeNormalMap = polygon[i].edgeNormalMap;
         vertices[i].edgeWallMask = polygon[i].edgeWallMask;
@@ -545,6 +592,21 @@ vector<ComplexPolygon> Primitive::generateTransformedVertices(wp::Vector2* minEx
 
 vector<ComplexPolygon> const& Primitive::getVertices() const {
   return mVertices;
+}
+
+void Primitive::collectDependentResourceNames(set<string>& names) const {
+  for (auto const& polygon : getVertices()) {
+    for (auto const& ring : polygon) {
+      for (auto const& vertex : ring) {
+        if (auto image = vertex.edgeNormalMap.imageData()) {
+          names.insert(image->resourceName);
+        }
+        if (auto mask = vertex.edgeWallMask.imageData()) {
+          names.insert(mask->resourceName);
+        }
+      }
+    }
+  }
 }
 
 double Primitive::getArea() const {

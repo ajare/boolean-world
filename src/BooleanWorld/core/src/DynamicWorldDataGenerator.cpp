@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <stdexcept>
 
@@ -14,23 +13,29 @@ namespace bw {
 namespace core {
 using namespace std;
 
-DynamicWorldDataGenerator::DynamicWorldDataGenerator(World const* world)
-    : WorldDataGenerator(), mClippingIdGenerator(0), mWorld(world), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationRequested(false), mScheduledGenerationInterval(5.0f) {
+DynamicWorldDataGenerator::DynamicWorldDataGenerator(
+    World const* world, bool createWayfinderMesh)
+    : WorldDataGenerator(), mClippingIdGenerator(0), mWorld(world), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mCreateWayfinderMesh(createWayfinderMesh), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mGenerationStartInterval(5.0f) {
   ArrangementWorldDataGenerator generator;
   mActiveClipping.worldData = make_shared<ArrangementWorldData>(
       generator.getWorldData(),
       world->getExtents(),
-      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      world->getStepThreshold(), nullptr,
-      world->getWedgeGenerationParameters());
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
+      world->getWedgeGenerationParameters(),
+      createWayfinderMesh);
 }
 
 DynamicWorldDataGenerator::~DynamicWorldDataGenerator() {
   stopGenerationSchedule();
+  std::unique_lock lock(mGenMutex);
+  mGenerationWorkerIdle.wait(
+      lock, [this] {
+        return !mGenerationWorkerRunning && !mBlockingGenerationRunning;
+      });
 }
 
 DynamicWorldDataGenerator::DynamicWorldDataGenerator(DynamicWorldDataGenerator const& other)
-    : mClippingIdGenerator(0), mWorld(nullptr), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mScheduledGenerationRequested(false), mScheduledGenerationInterval(5.0f) {
+    : mClippingIdGenerator(0), mWorld(nullptr), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mCreateWayfinderMesh(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mGenerationStartInterval(5.0f) {
   copyFrom(other);
 }
 
@@ -49,6 +54,7 @@ void DynamicWorldDataGenerator::copyFrom(DynamicWorldDataGenerator const& other)
   mClippingIdGenerator.store(other.mClippingIdGenerator.load());
   mAlwaysUpdateVertices = other.mAlwaysUpdateVertices;
   mAllowCommitIfVisible = other.mAllowCommitIfVisible;
+  mCreateWayfinderMesh = other.mCreateWayfinderMesh;
   mActiveClipping = other.mActiveClipping;
   mNextClipping = other.mNextClipping;
   mNumGenerationsInProgress = 0;
@@ -57,9 +63,13 @@ void DynamicWorldDataGenerator::copyFrom(DynamicWorldDataGenerator const& other)
   mLastGenTime.store(other.mLastGenTime.load());
   mPendingGenerationInput.reset();
   mGenerationWorkerRunning = false;
+  mBlockingGenerationRunning = false;
   mNumGenerationRequestsCoalesced.store(
       other.mNumGenerationRequestsCoalesced.load());
-  mScheduledGenerationInterval.store(other.mScheduledGenerationInterval.load());
+  mGenerationMode.store(other.mGenerationMode.load());
+  mGenerationStartInterval.store(other.mGenerationStartInterval.load());
+  mGenerationScheduleTime = 0.0;
+  mLastGenerationStartTime = -1.0;
 }
 
 WorldDataGenerator* DynamicWorldDataGenerator::copy() {
@@ -83,6 +93,16 @@ void DynamicWorldDataGenerator::setAllowCommitIfVisible(bool allow) {
 
 bool DynamicWorldDataGenerator::getAllowCommitIfVisible() const {
   return mAllowCommitIfVisible;
+}
+
+void DynamicWorldDataGenerator::setCreateWayfinderMesh(bool create) {
+  lock_guard<mutex> lock(mGenMutex);
+  mCreateWayfinderMesh = create;
+}
+
+bool DynamicWorldDataGenerator::getCreateWayfinderMesh() const {
+  lock_guard<mutex> lock(mGenMutex);
+  return mCreateWayfinderMesh;
 }
 
 void DynamicWorldDataGenerator::setAlwaysUpdateVertices(bool update) {
@@ -146,16 +166,31 @@ DynamicWorldDataGenerator::getActiveClippingUpdatedPrimitives() const {
   return mActiveClipping.updatedPrimitives;
 }
 
-void DynamicWorldDataGenerator::setScheduledGenerationInterval(float interval) {
-  if (!isfinite(interval) || interval <= 0.0f) {
-    throw invalid_argument(
-        "scheduled generation interval must be finite and positive");
+void DynamicWorldDataGenerator::setGenerationMode(GenerationMode mode) {
+  lock_guard<mutex> lock(mGenMutex);
+  mGenerationMode = mode;
+  if (mode == GenerationMode::Synchronous) {
+    // Running work is allowed to publish, but work that has not begun belongs
+    // to the asynchronous policy being left behind.
+    mPendingGenerationInput.reset();
   }
-  mScheduledGenerationInterval = interval;
 }
 
-float DynamicWorldDataGenerator::getScheduledGenerationInterval() const {
-  return mScheduledGenerationInterval;
+DynamicWorldDataGenerator::GenerationMode
+DynamicWorldDataGenerator::getGenerationMode() const {
+  return mGenerationMode;
+}
+
+void DynamicWorldDataGenerator::setGenerationStartInterval(float interval) {
+  if (!isfinite(interval) || interval < 0.0f) {
+    throw invalid_argument(
+        "generation start interval must be finite and non-negative");
+  }
+  mGenerationStartInterval = interval;
+}
+
+float DynamicWorldDataGenerator::getGenerationStartInterval() const {
+  return mGenerationStartInterval;
 }
 
 bool DynamicWorldDataGenerator::isScheduledGenerationRunning() const {
@@ -293,12 +328,13 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
           primStats,
           world->getExtents(),
           float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-          world->getStepThreshold(),
-          world->getWedgeGenerationParameters()};
+          world->getWedgeGenerationParameters(),
+          mCreateWayfinderMesh};
 }
 
 void DynamicWorldDataGenerator::generateWorldData(
     GenerationInput input, bool discardIfSuperseded) {
+  mLastGenerationStartTime = mGenerationScheduleTime.load();
   auto clippingId = mClippingIdGenerator++;
   auto requestStats = GenerationRequestStats{
       mNumGenerationRequestsCoalesced.load()};
@@ -322,9 +358,9 @@ void DynamicWorldDataGenerator::generateWorldData(
       arr::BuildArrangement(input.primitives, &stats.arrangement),
       input.worldExtents,
       input.gridCellSize,
-      input.stepThreshold,
       &stats.arrangement,
-      input.wedgeGenerationParameters);
+      input.wedgeGenerationParameters,
+      input.createWayfinderMesh);
 
   mLastGenTime = timer.elapsedNanoseconds();
   stats.generationRequests.coalescedRequestCount =
@@ -370,6 +406,7 @@ void DynamicWorldDataGenerator::drainGenerationRequests() {
       lock_guard<mutex> lock(mGenMutex);
       if (!mPendingGenerationInput) {
         mGenerationWorkerRunning = false;
+        mGenerationWorkerIdle.notify_all();
         return;
       }
       input = move(mPendingGenerationInput);
@@ -384,17 +421,56 @@ void DynamicWorldDataGenerator::enqueueGeneration(GenerationInput input) {
   bool startWorker = false;
   {
     lock_guard<mutex> lock(mGenMutex);
+    if (mGenerationMode != GenerationMode::Asynchronous) {
+      return;
+    }
     if (mPendingGenerationInput) {
       mNumGenerationRequestsCoalesced++;
     }
     mPendingGenerationInput = move(input);
 
-    if (!mGenerationWorkerRunning) {
+    if (!mGenerationWorkerRunning && !mBlockingGenerationRunning) {
       mGenerationWorkerRunning = true;
       startWorker = true;
     }
   }
 
+  if (startWorker) {
+    mExecutorRuntime.thread_pool_executor()->post(
+        [this] { drainGenerationRequests(); });
+  }
+}
+
+void DynamicWorldDataGenerator::runBlockingGeneration(World const* world) {
+  {
+    unique_lock<mutex> lock(mGenMutex);
+    mGenerationWorkerIdle.wait(
+        lock, [this] {
+          return !mGenerationWorkerRunning && !mBlockingGenerationRunning;
+        });
+    mBlockingGenerationRunning = true;
+  }
+
+  try {
+    generateWorldData(snapshotGenerationInput(world, true));
+  } catch (...) {
+    lock_guard<mutex> lock(mGenMutex);
+    mBlockingGenerationRunning = false;
+    mGenerationWorkerIdle.notify_all();
+    throw;
+  }
+
+  bool startWorker = false;
+  {
+    lock_guard<mutex> lock(mGenMutex);
+    mBlockingGenerationRunning = false;
+    if (mGenerationMode == GenerationMode::Asynchronous &&
+        mPendingGenerationInput && !mGenerationWorkerRunning) {
+      mGenerationWorkerRunning = true;
+      startWorker = true;
+    }
+    mGenerationWorkerIdle.notify_all();
+  }
   if (startWorker) {
     mExecutorRuntime.thread_pool_executor()->post(
         [this] { drainGenerationRequests(); });
@@ -504,7 +580,7 @@ WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
   }
 
   if (mNumGenerationsComplete == 0) {
-    generateWorldData(snapshotGenerationInput(world, false));
+    runBlockingGeneration(world);
   }
 
   checkCommitPendingClipping();
@@ -512,6 +588,12 @@ WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {
 }
 
 void DynamicWorldDataGenerator::generate(World const* world, bool regetPrimitives) {
+  // Ordinary requests are part of the asynchronous policy. Synchronous mode
+  // gets exactly its update-driven Generation unless the unconditional API is
+  // called explicitly.
+  if (mGenerationMode != GenerationMode::Asynchronous) {
+    return;
+  }
   enqueueGeneration(snapshotGenerationInput(world, regetPrimitives));
 }
 
@@ -523,13 +605,27 @@ void DynamicWorldDataGenerator::generate(bool regetPrimitives) {
 
 void DynamicWorldDataGenerator::generateBlocking() {
   if (mWorld) {
-    generateWorldData(snapshotGenerationInput(mWorld, true));
+    runBlockingGeneration(mWorld);
   }
 }
 
-void DynamicWorldDataGenerator::handleEvents(uint32_t events) {
-  auto scheduled = mScheduledGenerationRequested.exchange(false);
-  if (scheduled || events & BW_PRIMITIVE_GLOBAL_EVENT_CLIP) {
+void DynamicWorldDataGenerator::handleEvents(
+    float frameTime, uint32_t events) {
+  mGenerationScheduleTime.fetch_add(frameTime);
+
+  if (mGenerationMode == GenerationMode::Synchronous) {
+    generateBlocking();
+    return;
+  }
+
+  // Ad-hoc requests remain immediate and become the new interval anchor when
+  // their worker actually starts. Do not also create periodic work this frame.
+  if (events & BW_PRIMITIVE_GLOBAL_EVENT_CLIP) {
+    generate();
+    return;
+  }
+
+  if (mScheduledGenerationRunning && canStartScheduledGeneration()) {
     generate();
   }
 }
@@ -554,52 +650,35 @@ void DynamicWorldDataGenerator::handleChipParametersResolverChanged() {
   }
 }
 
-void DynamicWorldDataGenerator::generateOnInterval() {
-  while (true) {
-    // Sleep in multiple phases so we can check for termination more regularly.
-    // The scheduler only requests work; the next main-thread update captures
-    // the live primitive snapshot before posting the generation worker.
-    auto sleepAmt = 0.0f;
-    auto sleepTime = getScheduledGenerationInterval();
-    auto sleepIters = int(ceil(sleepTime));
-
-    for (int i = 0; i < sleepIters; ++i) {
-      auto sleepSeconds = min(sleepTime - sleepAmt, 1.0f);
-
-      this_thread::sleep_for(chrono::duration<float>(sleepSeconds));
-      sleepAmt += sleepSeconds;
-
-      if (!mScheduledGenerationRunning) {
-        return;
-      }
-    }
-
-    mScheduledGenerationRequested = true;
+bool DynamicWorldDataGenerator::canStartScheduledGeneration() const {
+  auto const lastStart = mLastGenerationStartTime.load();
+  if (lastStart < 0.0 ||
+      mGenerationScheduleTime.load() <
+          lastStart + double(getGenerationStartInterval())) {
+    return false;
   }
+
+  // Scheduled ticks never queue behind active work. If the interval has
+  // overrun, one request starts once the worker is idle; missed ticks vanish.
+  lock_guard<mutex> lock(mGenMutex);
+  return !mGenerationWorkerRunning && !mPendingGenerationInput;
 }
 
 void DynamicWorldDataGenerator::startGenerationSchedule(float interval) {
-  setScheduledGenerationInterval(interval);
+  setGenerationStartInterval(interval);
+  mScheduledGenerationRunning = true;
 
-  if (!mScheduledGenerationRunning) {
-    mScheduledGenerationRunning = true;
-    mScheduledGenerationRequested = false;
-
-    // Preserve the immediate first generation while taking its snapshot on
-    // the caller (main) thread.
+  // Callers that have not performed the mandatory blocking bootstrap still
+  // get one initial asynchronous Generation. In normal game startup the
+  // bootstrap has already established the anchor, so a positive interval does
+  // not duplicate it.
+  if (mLastGenerationStartTime.load() < 0.0) {
     generate();
-    mScheduledWorker = mExecutorRuntime.thread_pool_executor()->submit([this] {
-      generateOnInterval();
-    });
   }
 }
 
 void DynamicWorldDataGenerator::stopGenerationSchedule() {
-  if (mScheduledGenerationRunning) {
-    mScheduledGenerationRunning = false;
-    mScheduledWorker.get();
-    mScheduledGenerationRequested = false;
-  }
+  mScheduledGenerationRunning = false;
 }
 
 }  // namespace core

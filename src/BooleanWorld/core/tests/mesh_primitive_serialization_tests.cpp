@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -10,6 +11,7 @@
 
 #include <core/BinarySerializer.h>
 #include <core/Defines.h>
+#include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
 #include <core/RectanglePolygon.h>
 #include <core/SerializationWorkData.h>
@@ -424,9 +426,9 @@ void authoredNormalMapValuesRoundTripAndRejectFutureVersions() {
   require(binaryOk, "normal maps did not load from binary: " + binaryErrors);
   verify(*binaryLoaded);
 
-  auto marker = yaml.find("edgeOverrideFormat: 5");
+  auto marker = yaml.find("edgeOverrideFormat: 6");
   require(marker != std::string::npos, "normal-map format is not versioned");
-  yaml.replace(marker, std::string("edgeOverrideFormat: 5").size(),
+  yaml.replace(marker, std::string("edgeOverrideFormat: 6").size(),
                "edgeOverrideFormat: 99");
   auto rejected = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
@@ -545,9 +547,9 @@ void authoredWallMaskValuesRoundTripAndRejectFutureVersions() {
   require(binaryOk, "Wall masks did not load from binary: " + binaryErrors);
   verify(*binaryLoaded);
 
-  auto marker = yaml.find("edgeOverrideFormat: 5");
+  auto marker = yaml.find("edgeOverrideFormat: 6");
   require(marker != std::string::npos, "Wall-mask format is not versioned");
-  yaml.replace(marker, std::string("edgeOverrideFormat: 5").size(),
+  yaml.replace(marker, std::string("edgeOverrideFormat: 6").size(),
                "edgeOverrideFormat: 99");
   auto rejected = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
@@ -571,9 +573,9 @@ void format4LoadsWallMaskUnsetWithZeroBlendParameters() {
   proxy->commitTo(*primitive);
 
   auto yaml = serializeYaml(*primitive);
-  auto marker = yaml.find("edgeOverrideFormat: 5");
+  auto marker = yaml.find("edgeOverrideFormat: 6");
   require(marker != std::string::npos, "Wall-mask format is not versioned");
-  yaml.replace(marker, std::string("edgeOverrideFormat: 5").size(),
+  yaml.replace(marker, std::string("edgeOverrideFormat: 6").size(),
                "edgeOverrideFormat: 4");
 
   auto loaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
@@ -591,7 +593,7 @@ void format4LoadsWallMaskUnsetWithZeroBlendParameters() {
 }
 
 std::string asLegacyCollisionYaml(std::string yaml, bool retainFormat) {
-  auto marker = yaml.find("edgeOverrideFormat: 5");
+  auto marker = yaml.find("edgeOverrideFormat: 6");
   require(marker != std::string::npos,
           "serialized MeshPrimitive had no edge override format marker");
   auto markerLineStart = yaml.rfind('\n', marker) + 1;
@@ -713,6 +715,40 @@ void wallMaskImageIsCollectedAsWorldDependentResource() {
           "the mask image was not collected as a World dependent resource");
 }
 
+void vertexMetadataRoundTripsAndEmptyMetadataIsOmittedFromYaml() {
+  auto sourceRing = square(-2.0f, -2.0f, 2.0f, 2.0f);
+  sourceRing.front().metadata = {{"kind", "spawn"}, {"team", "blue"}};
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{sourceRing, {}}}));
+
+  auto verify = [](MeshPrimitive const& loaded) {
+    require(loaded.getShells().front().ring.front().metadata ==
+                std::map<std::string, std::string>{{"kind", "spawn"},
+                                                   {"team", "blue"}},
+            "vertex metadata changed on reload");
+  };
+
+  auto const yaml = serializeYaml(*primitive);
+  require(yaml.find("vertexMetadata") != std::string::npos,
+          "non-empty vertex metadata was omitted from YAML");
+  auto yamlLoaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
+  require(deserializeYaml(yaml, *yamlLoaded),
+          "vertex metadata did not load from YAML");
+  verify(*yamlLoaded);
+
+  auto binaryLoaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
+  require(deserializeBinary(serializeBinary(*primitive), *binaryLoaded),
+          "vertex metadata did not load from binary");
+  verify(*binaryLoaded);
+
+  auto empty = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
+  require(serializeYaml(*empty).find("vertexMetadata") == std::string::npos,
+          "empty vertex metadata was serialized to YAML");
+}
+
 void shippedWorldFixtureUsesTheCurrentSchema() {
   auto reader = std::shared_ptr<bw::core::Serializer>(
       bw::core::YamlSerializer::fromFile(
@@ -737,6 +773,8 @@ void shippedWorldFixtureUsesTheCurrentSchema() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     hierarchyRoundTripsThroughYamlAndBinary();
     failedReadsLeaveTheTargetUnchangedAndRejectLegacyInput();
     aggregateLimitsRejectOversizedInputBeforeCommit();
@@ -750,6 +788,7 @@ int main() {
     preFeatureEdgeDataIsRejected();
     proceduralPrimitiveSchemaRemainsFlat();
     wallMaskImageIsCollectedAsWorldDependentResource();
+    vertexMetadataRoundTripsAndEmptyMetadataIsOmittedFromYaml();
     shippedWorldFixtureUsesTheCurrentSchema();
     std::cout << "MeshPrimitive containment tree serialization tests passed\n";
     return 0;

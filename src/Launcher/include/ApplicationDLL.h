@@ -34,6 +34,8 @@ class ApplicationDLL {
   // struct layout part of the DLL ABI.
   typedef int (*DllSetInputOptionsFunction)(float);
 
+  typedef int (*DllSetWorldDataGenerationOptionsFunction)(int, float, int, int);
+
   // Video enums cross as stable integer codes and Torch values as ordered
   // scalars, keeping the ABI plain and independent of C++ struct layout.
   typedef int (*DllSetVideoOptionsFunction)(
@@ -58,6 +60,9 @@ private:
 
   DllSetInputOptionsFunction mSetInputOptionsFunction;
 
+  DllSetWorldDataGenerationOptionsFunction
+      mSetWorldDataGenerationOptionsFunction;
+
   DllSetVideoOptionsFunction mSetVideoOptionsFunction;
 
   static std::string msGetNameFunction;
@@ -71,6 +76,8 @@ private:
   static std::string msSetArgumentFunctionName;
 
   static std::string msSetInputOptionsFunctionName;
+
+  static std::string msSetWorldDataGenerationOptionsFunctionName;
 
   static std::string msSetVideoOptionsFunctionName;
 

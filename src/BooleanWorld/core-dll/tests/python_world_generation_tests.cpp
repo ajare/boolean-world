@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 
+#include <core/LayerBuildStep.h>
 #include <core/VertexTransformer.h>
 #include <core/World.h>
 #include <core/YamlSerializer.h>
@@ -109,6 +110,8 @@ int main(int argc, char** argv) {
 
   auto const output = std::filesystem::path(argv[4]);
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     generateWorld(argv[1], argv[2], argv[3], output);
     inspectGeneratedWorld(output);
     std::filesystem::remove(output);

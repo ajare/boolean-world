@@ -236,26 +236,39 @@ void influenceEyeCopiesItsArcLength() {
   requireNear(copy.getArcLength(), source.getArcLength(), "influence eye arc length was not copied");
 }
 
-void primitiveCopiesPreviousEntityInputs() {
-  bw::core::RectanglePolygon source(
+void primitiveCopiesEntityInputs() {
+  bw::core::World source(100.0f, 10.0f);
+  auto* primitive = new bw::core::RectanglePolygon(
       bw::core::Primitive::Operation::Union,
       bw::core::Primitive::FillRule::NonZero,
       1.0f);
   {
-    auto mutation = source.mutate();
+    auto mutation = primitive->mutate();
     mutation.animation(bw::core::VertexTransformer::Key::Scale)
         .setPoints({{0.0f, 1.0f}, {1.0f, 2.0f}});
   }
-  source.setInputs({3.0f, 4.0f}, 30.0f, nullptr);
+  source.addPrimitive(primitive);
 
-  bw::core::RectanglePolygon copy(source);
-  copy.setInputs({3.0f, 4.0f}, 30.0f, nullptr);
+  bw::core::WorldUpdateData updateData{
+      {3.0f, 4.0f}, 30.0f, 0.0f, 0.0f, 0.0f, false, false,
+      bw::core::SelectLayer(0)};
+  source.update(0.0f, updateData, {100.0f, 100.0f});
 
-  auto const& inputs = copy.getInputs();
-  require(!inputs.playerMove,
-          "a copied vertex transformer object treated an unchanged entity position as movement");
-  require(!inputs.playerTurn,
-          "a copied vertex transformer object treated an unchanged entity angle as a turn");
+  auto copy = std::unique_ptr<bw::core::Primitive>(
+      source.getPrimitive(0)->copy());
+  auto const& inputs = copy->getInputs();
+  requireNear(
+      inputs.entityInfluenceDistance,
+      primitive->getInputs().entityInfluenceDistance,
+      "a copied vertex transformer object lost its entity influence distance");
+  requireNear(
+      inputs.entityInfluenceAngle,
+      primitive->getInputs().entityInfluenceAngle,
+      "a copied vertex transformer object lost its entity influence angle");
+  requireNear(
+      inputs.entityGlobalAngle,
+      primitive->getInputs().entityGlobalAngle,
+      "a copied vertex transformer object lost its entity global angle");
 }
 
 void worldCopiesPreviousPlayerPosition() {
@@ -330,7 +343,7 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
   sourceGenerator->setLayerSelection(selectedLayers);
   sourceGenerator->setAlwaysUpdateVertices(true);
   sourceGenerator->setAllowCommitIfVisible(true);
-  sourceGenerator->setScheduledGenerationInterval(2.5f);
+  sourceGenerator->setGenerationStartInterval(2.5f);
   source->setWorldDataGenerator(sourceGenerator);
   bw::core::WorldUpdateData sourceUpdateData{
       {0.0f, 0.0f}, 0.0f, 0.0f, 0.0f, 0.0f, false, false, selectedLayers};
@@ -357,8 +370,8 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
               copiedGenerator->getLayerSelection() == selectedLayers &&
               copiedGenerator->getAlwaysUpdateVertices() &&
               copiedGenerator->getAllowCommitIfVisible() &&
-              copiedGenerator->getScheduledGenerationInterval() == 2.5f,
-          "world copy lost selected layers or dynamic generator settings");
+              copiedGenerator->getGenerationStartInterval() == 2.5f,
+          "world copy lost selected layers or dynamic generator settings, including its generation start interval");
   auto const copiedSourcePrimitives = copiedGenerator->getSourceClippingPrimitives();
   auto const copiedActivePrimitives = copiedGenerator->getActiveClippingPrimitives();
   require(copiedSourcePrimitives.size() == copy->getNumPrimitives() &&
@@ -430,7 +443,7 @@ int main() {
     primitivesInitializeMaterialIds();
     animatedPropertyCopiesItsSerializedName();
     influenceEyeCopiesItsArcLength();
-    primitiveCopiesPreviousEntityInputs();
+    primitiveCopiesEntityInputs();
     worldCopiesPreviousPlayerPosition();
     copiedWorldRemainsSelfContainedAfterSourceDestruction();
     std::cout << "Value-object copies preserve all members\n";

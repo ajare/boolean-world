@@ -40,6 +40,46 @@ void rejectsUnusableMouseSensitivities() {
   require(options.mouseSensitivity == 2.5f, "Rejected mouse sensitivity changed configuration.");
 }
 
+void transfersWorldDataGenerationOptionsAtomically() {
+  DLLState state;
+  bw::app::WorldDataGenerationOptions options;
+
+  auto synchronous = bw::app::worldDataGenerationModeCode(
+      bw::app::WorldDataGenerationMode::Synchronous);
+  require(state.setWorldDataGenerationOptions(synchronous, 2.75f, 1, 1, options) == 0,
+          "Valid Generation options were rejected.");
+  require(options.mode == bw::app::WorldDataGenerationMode::Synchronous &&
+              options.startInterval == 2.75f && options.alwaysUpdateVertices &&
+              options.allowCommitIfVisible,
+          "Generation options did not cross the DLL boundary intact.");
+  auto const accepted = options;
+
+  for (auto invalid : {-1.0f, std::numeric_limits<float>::infinity(),
+                       std::numeric_limits<float>::quiet_NaN()}) {
+    require(state.setWorldDataGenerationOptions(synchronous, invalid, 1, 1, options) != 0,
+            "An invalid Generation start interval was accepted.");
+    require(options == accepted,
+            "A rejected Generation boundary value changed accepted options.");
+  }
+
+  require(state.setWorldDataGenerationOptions(synchronous, 0.0f, 0, 0, options) == 0 &&
+              options.startInterval == 0.0f,
+          "A zero Generation start interval did not cross intact.");
+  require(state.setWorldDataGenerationOptions(synchronous, 45.5f, 0, 0, options) == 0 &&
+              options.startInterval == 45.5f,
+          "A Generation start interval above the F4 range did not cross intact.");
+  auto const acceptedAgain = options;
+  require(state.setWorldDataGenerationOptions(synchronous, 5.0f, 2, 0, options) != 0 &&
+              state.setWorldDataGenerationOptions(synchronous, 5.0f, 0, -1, options) != 0,
+          "An invalid Generation visibility option was accepted.");
+  require(options == acceptedAgain,
+          "A rejected Generation visibility option changed accepted options.");
+  require(state.setWorldDataGenerationOptions(99, 5.0f, 0, 0, options) != 0,
+          "An invalid Generation mode was accepted.");
+  require(options == acceptedAgain,
+          "A rejected Generation mode partially changed accepted options.");
+}
+
 void acceptsAndValidatesRenderScaleCodes() {
   DLLState state;
   bw::app::VideoOptions options;
@@ -350,6 +390,7 @@ int main() {
   try {
     rejectsUnknownArguments();
     rejectsUnusableMouseSensitivities();
+    transfersWorldDataGenerationOptionsAtomically();
     acceptsAndValidatesRenderScaleCodes();
     transfersShadowOptionsTransactionally();
     renderScaleVocabularyIsClosedAndSizesTargets();

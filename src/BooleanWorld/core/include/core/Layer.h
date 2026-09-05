@@ -192,6 +192,11 @@ public:
   [[nodiscard]] LayerBuildStep* getStep(uint32_t index) const;
   [[nodiscard]] LayerBuildStep* getStepById(uint32_t id) const;
 
+  // The id of the first step named name, or ~0u if no step has that name.
+  // Names are deliberately not unique, so this resolves to whichever step
+  // comes first in the recipe.
+  [[nodiscard]] uint32_t findStepIdByName(std::string const& name) const;
+
   // The first step, always a PrimitiveField. Distinct from the active step
   // below, which is where addPrimitive actually writes.
   [[nodiscard]] PrimitiveField* getPrimitiveField() const;
@@ -207,6 +212,24 @@ public:
   // The index of the build step that produced primitive, or ~0u if no step
   // here did. This works for every step type.
   [[nodiscard]] uint32_t getOwningStepIndex(Primitive const* primitive) const;
+
+  // Whether movePrimitiveToStep would be accepted. A Primitive may only move
+  // between steps of the same type: the recipe is a sequence of unlike
+  // operations, and what one step type owns is not authored in the form
+  // another expects. Beyond that, the Primitive must be directly editable
+  // where it is, the destination must accept new Primitives and be a
+  // different step, and both must be enabled - a move into a disabled step
+  // would author the Primitive into a recipe producing nothing, which is
+  // what addPrimitive already refuses.
+  [[nodiscard]] bool canMovePrimitiveToStep(
+      Primitive const* primitive, uint32_t targetStepIndex) const;
+
+  // Re-homes primitive from its owning step into the step at
+  // targetStepIndex, keeping the same Primitive rather than a copy, and
+  // rebuilds. Rejected unless canMovePrimitiveToStep allows it. Because the
+  // recipe order is the major order of the fold, this changes where the
+  // Primitive folds; its derived index in this Layer changes with it.
+  void movePrimitiveToStep(Primitive* primitive, uint32_t targetStepIndex);
 
   // Takes ownership of step and rebuilds. Index 0 is reserved for the
   // Layer's PrimitiveField step, so index must be >= 1; anything lower is

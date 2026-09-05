@@ -150,6 +150,7 @@ bool PrefabField::permitsDirectPrimitiveEditing() const { return false; }
 bool PrefabField::acceptsNewPrimitives() const { return false; }
 uint32_t PrefabField::adoptPrimitive(Primitive*) { throw CoreException("PrefabField does not accept Primitives"); }
 void PrefabField::replacePrimitive(Primitive*, Primitive*) { throw CoreException("PrefabField output cannot be edited directly"); }
+void PrefabField::releasePrimitive(Primitive*) { throw CoreException("PrefabField output cannot be moved to another step"); }
 bool PrefabField::ownsPrimitive(Primitive const* primitive) const {
   return any_of(mBuiltPrimitives.begin(), mBuiltPrimitives.end(),
                 [primitive](auto const& item) { return item.get() == primitive; });
@@ -162,6 +163,7 @@ void PrefabField::bind(Layer const& layer, DefinePrefabs const* step) {
   }
   mDefinePrefabsStepId = step ? step->getId() : ~0u;
   mSelectedPrefabId = ~0u;
+  mPlacementRotation = 0;
   mHasSelectedTile = false;
   modify();
 }
@@ -177,12 +179,35 @@ void PrefabField::setSelectedPrefab(DefinePrefabs const& definitions, Prefab con
       mSelectedTile.size != prefab->getTileSize()) {
     mHasSelectedTile = false;
   }
-  mSelectedPrefabId = prefab ? prefab->getId() : ~0u;
+  auto const selectedPrefabId = prefab ? prefab->getId() : ~0u;
+  if (selectedPrefabId != mSelectedPrefabId) {
+    mPlacementRotation = 0;
+  }
+  mSelectedPrefabId = selectedPrefabId;
 }
-void PrefabField::clearSelectedPrefab() { mSelectedPrefabId = ~0u; }
+void PrefabField::clearSelectedPrefab() {
+  mSelectedPrefabId = ~0u;
+  mPlacementRotation = 0;
+}
 Prefab* PrefabField::getSelectedPrefab(Layer const& layer) const {
   auto* definitions = getDefinePrefabs(layer);
   return definitions ? definitions->findPrefabById(mSelectedPrefabId) : nullptr;
+}
+uint32_t PrefabField::getPlacementRotation() const {
+  return mPlacementRotation;
+}
+bool PrefabField::rotatePlacement(Layer const& layer, bool next) {
+  auto* selected = getSelectedPrefab(layer);
+  auto* definitions = getDefinePrefabs(layer);
+  if (!selected || !definitions) return false;
+  auto const angles =
+      prefabTilingRotationAngles(definitions->getTilingType());
+  if (angles.empty()) return false;
+  mPlacementRotation = next
+                           ? (mPlacementRotation + 1) % angles.size()
+                           : (mPlacementRotation + angles.size() - 1) %
+                                 angles.size();
+  return true;
 }
 void PrefabField::selectTile(Tile tile) {
   if (!isPrefabTileSize(prefabTileSide(tile.size))) {
@@ -229,9 +254,10 @@ bool PrefabField::placeSelected(Layer& layer, Tile tile, TileMode mode) {
   selectTile(tile);
   auto it = mInstances.find(tile);
   if (tile.size == PrefabTileSize::Size256) mode = TileMode::Add;
-  PrefabInstance replacement{mSelectedPrefabId, 0, mode};
+  PrefabInstance replacement{mSelectedPrefabId, mPlacementRotation, mode};
   if (it != mInstances.end() && it->second.prefabId == replacement.prefabId &&
-      it->second.rotation == 0 && it->second.mode == replacement.mode)
+      it->second.rotation == replacement.rotation &&
+      it->second.mode == replacement.mode)
     return false;
   mInstances[tile] = replacement;
   modify();

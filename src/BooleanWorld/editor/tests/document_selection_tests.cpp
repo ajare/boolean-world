@@ -10,11 +10,14 @@
 #include <spdlog/spdlog.h>
 
 #include <core/DefinePrefabs.h>
+#include <core/DynamicWorldDataGenerator.h>
 #include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
 #include <core/PrefabField.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
+#include <core-lua/RunScript.h>
+#include <core-lua/ScriptRuntime.h>
 
 #include "Defines.h"
 #include "Document.h"
@@ -99,6 +102,13 @@ public:
     }
     delete mPrimitive;
     mPrimitive = newPrimitive;
+  }
+
+  void releasePrimitive(bw::core::Primitive* primitive) override {
+    if (primitive != mPrimitive) {
+      throw std::runtime_error("Primitive not owned by RefusingStep");
+    }
+    mPrimitive = nullptr;
   }
 
   bool ownsPrimitive(bw::core::Primitive const* primitive) const override {
@@ -401,6 +411,63 @@ void activePrefabFieldPrimitivesUseTheActiveStepColour() {
   layer->setActiveStep(0);
   require(editor::primitiveFadedForActiveStep(*layer, output),
           "an inactive PrefabField Primitive retained the active-step colour");
+}
+
+void activeRunScriptPrimitivesAreVisibleAndUseTheActiveStepColour() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("visible-output", R"(
+    local room = context:create_primitive("Rectangle")
+    room:set_size(64, 32)
+    room:set_position(128, 64)
+    room:set_operation("union")
+    room:set_priority(0)
+    context:place_primitive(room)
+  )");
+
+  editor::Document document;
+  editor::Settings settings;
+  document.setPrimitiveFilter(
+      [&settings](bw::core::Layer const& candidateLayer,
+                  bw::core::Primitive const* primitive) {
+        return editor::primitiveParticipatesInEditorFold(
+            candidateLayer, primitive, settings);
+      });
+  document.newDoc();
+  auto world = document.getWorld();
+  auto* layer = world->getActiveLayer();
+  auto* runScript = new bw::core::RunScript(runtime);
+  runScript->setScriptName("visible-output");
+  auto runScriptIndex = layer->addStep(runScript);
+  layer->setActiveStep(runScriptIndex);
+
+  auto* output = layer->getPrimitive(layer->getNumPrimitives() - 1);
+  require(layer->getOwningStepIndex(output) == runScriptIndex,
+          "the RunScript visibility fixture did not produce its Primitive");
+  require(editor::primitiveVisibleForActiveStep(*layer, output, settings),
+          "an active RunScript Primitive was hidden by the editor step filter");
+  require(!editor::primitiveFadedForActiveStep(*layer, output),
+          "an active RunScript Primitive used the inactive-step colour");
+  require(!output->getVertices().empty(),
+          "an active RunScript Primitive had no transformed vertices");
+
+  auto visible = world->findPrimitives(world->getExtents());
+  require(std::find(visible.begin(), visible.end(), output) != visible.end(),
+          "an active RunScript Primitive was missing from the render lookup grid");
+
+  auto* generator = dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
+      world->getWorldDataGenerator());
+  require(generator, "the editor World had no DynamicWorldDataGenerator");
+  generator->generateBlocking();
+  auto worldData = generator->getWorldData(world.get());
+  auto clippingPrimitives = generator->getActiveClippingPrimitives();
+  require(clippingPrimitives.size() == 1,
+          "the editor fold did not admit exactly the active RunScript Primitive");
+  require(worldData && !worldData->getTriangles().empty(),
+          "an active RunScript Primitive produced no rendered Arrangement geometry");
+
+  layer->setActiveStep(0);
+  require(editor::primitiveFadedForActiveStep(*layer, output),
+          "an inactive RunScript Primitive retained the active-step colour");
 }
 
 void refusingStepPrimitivesAreNotSelectableInPrimitiveMode() {
@@ -716,6 +783,8 @@ void aFailedOpenPreservesTheActiveDocument() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     changingSelectedPrimitiveIndicesDoesNotWriteIntoAnInputRange();
     primitiveHoverQueriesAreSafeWithoutAnActiveDocument();
     theGhostIsHoveredFirstWhereItOverlapsAnotherPrimitive();
@@ -726,6 +795,7 @@ int main() {
     prefabPrimitivesAreVisibleAndFoldedInIsolationOnlyWhileTheirPrefabIsSelected();
     theGhostIsHiddenWhileAPrefabFieldStepIsActive();
     activePrefabFieldPrimitivesUseTheActiveStepColour();
+    activeRunScriptPrimitivesAreVisibleAndUseTheActiveStepColour();
     refusingStepPrimitivesAreNotSelectableInPrimitiveMode();
     meshEligibilityRequiresTheSelectedDirectlyEditableStep();
     inScopePrimitivesAndGroundingResolutionFollowFoldOrder();

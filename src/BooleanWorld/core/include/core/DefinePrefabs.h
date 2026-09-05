@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <set>
 #include <span>
 #include <string>
 #include <vector>
@@ -55,6 +56,7 @@ private:
   uint32_t mId;
   std::string mName;
   PrefabTileSize mTileSize;
+  std::set<std::string> mTags;
   std::vector<Primitive*> mPrimitives;
 
   Prefab(uint32_t id, std::string const& name,
@@ -65,6 +67,7 @@ private:
 
   uint32_t adoptPrimitive(Primitive* primitive);
   void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive);
+  void releasePrimitive(Primitive* primitive);
   [[nodiscard]] bool ownsPrimitive(Primitive const* primitive) const;
   void clear();
 
@@ -78,6 +81,7 @@ public:
   [[nodiscard]] uint32_t getId() const;
   [[nodiscard]] std::string const& getName() const;
   [[nodiscard]] PrefabTileSize getTileSize() const;
+  [[nodiscard]] std::set<std::string> const& getTags() const;
   [[nodiscard]] uint32_t getNumPrimitives() const;
   [[nodiscard]] Primitive* getPrimitive(uint32_t index) const;
   [[nodiscard]] std::vector<Primitive*> const& getPrimitives() const;
@@ -115,7 +119,9 @@ public:
   [[nodiscard]] bool acceptsNewPrimitives() const override;
   uint32_t adoptPrimitive(Primitive* primitive) override;
   void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive) override;
+  void releasePrimitive(Primitive* primitive) override;
   [[nodiscard]] bool ownsPrimitive(Primitive const* primitive) const override;
+  [[nodiscard]] std::vector<std::string> collectDependentResourceNames() const override;
 
   // Returns the created Prefab. Names are display text and need not be unique.
   Prefab* addPrefab(std::string const& name);
@@ -123,11 +129,23 @@ public:
   void removePrefab(uint32_t index);
   void setPrefabName(Prefab* prefab, std::string const& name);
   void setPrefabTileSize(Prefab* prefab, PrefabTileSize size);
+  void setPrefabTags(Prefab* prefab, std::set<std::string> const& tags);
 
   [[nodiscard]] uint32_t getNumPrefabs() const;
   [[nodiscard]] Prefab* getPrefab(uint32_t index) const;
   [[nodiscard]] Prefab* findPrefabById(uint32_t id) const;
+
+  // The id of the first Prefab named name, or ~0u if no Prefab has that
+  // name. Prefab names are deliberately not unique, so this resolves to
+  // whichever Prefab comes first in the collection.
+  [[nodiscard]] uint32_t findPrefabIdByName(std::string const& name) const;
+
   [[nodiscard]] std::vector<Prefab*> const& getPrefabs() const;
+
+  // Returns Prefabs containing every requested tag, preserving collection
+  // order. Tag matching is case-insensitive; an empty set returns all Prefabs.
+  [[nodiscard]] std::vector<Prefab*> getPrefabsWithTags(
+      std::set<std::string> const& tags) const;
 
   // Selection is editor focus only: it is never serialized or copied.
   void setSelectedPrefab(Prefab* prefab);

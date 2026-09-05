@@ -10,6 +10,7 @@
 #include <spdlog/spdlog.h>
 
 #include <core/CirclePolygon.h>
+#include <core/LayerBuildStep.h>
 #include <core/RectanglePolygon.h>
 #include <core/RegularPolygon.h>
 #include <core/World.h>
@@ -395,6 +396,8 @@ void invalidBatchFailsBeforeInsertionAndCapacitySettingIsHonoured() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     placementAppendsDefaultsAndIsOneUndoableAction();
     placementSupportsDeterministicOccupiedCellSubsets();
     holePrimitivesFollowOccupiedCellsAsHalfSizeDifferences();

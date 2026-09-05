@@ -180,7 +180,7 @@ void chipParametersAreResolvedInSnapshotOrderOnTheCallingThread() {
   }
   bw::core::ArrangementWorldData withoutResolver(
       bw::core::arr::BuildArrangement(unresolved),
-      wp::BoundingBox({-10.0f, -10.0f}, {40.0f, 40.0f}), 8.0f, 2.0f);
+      wp::BoundingBox({-10.0f, -10.0f}, {40.0f, 40.0f}), 8.0f);
   require(withoutResolver.getDetail().getChipCount() == 0,
           "an absent chip resolver still produced Chips");
 }

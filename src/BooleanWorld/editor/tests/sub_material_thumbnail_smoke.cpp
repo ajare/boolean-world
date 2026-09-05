@@ -1,4 +1,6 @@
 // GPU smoke test for the Selected surface Sub-material thumbnail grid.
+#include <array>
+#include <cmath>
 #include <cstdio>
 #include <exception>
 #include <memory>
@@ -22,22 +24,22 @@
 
 namespace {
 
-float averageBrightness(std::uint32_t texture) {
+float averageBrightness(std::uint32_t texture, std::uint32_t size) {
   std::uint32_t framebuffer{};
   glGenFramebuffers(1, &framebuffer);
   glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
   glFramebufferTexture2D(
       GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
-  std::vector<float> pixels(128u * 128u * 4u);
+  std::vector<float> pixels(size * size * 4u);
   glReadBuffer(GL_COLOR_ATTACHMENT0);
-  glReadPixels(0, 0, 128, 128, GL_RGBA, GL_FLOAT, pixels.data());
+  glReadPixels(0, 0, size, size, GL_RGBA, GL_FLOAT, pixels.data());
   glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
   glDeleteFramebuffers(1, &framebuffer);
   double total{};
   for (std::size_t i = 0; i < pixels.size(); i += 4) {
     total += pixels[i] + pixels[i + 1] + pixels[i + 2];
   }
-  return static_cast<float>(total / (128.0 * 128.0 * 3.0));
+  return static_cast<float>(total / (size * size * 3.0));
 }
 
 }  // namespace
@@ -81,6 +83,51 @@ int main() {
         std::printf("rendered=%zu\n", rendered);
       }
 
+      auto const& draftMaterial =
+          editor::procMaterialLibrary().catalogs().front().data.subMaterials.front();
+      auto darkDraft = thumbnails.draftTexture(
+          draftMaterial.id, draftMaterial.materialIndex,
+          draftMaterial.paramValues, {0.0f, 0.0f, 0.0f});
+      auto darkBrightness = darkDraft
+                                ? averageBrightness(
+                                      darkDraft,
+                                      editor::SubMaterialThumbnailRenderer::size)
+                                : 0.0f;
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      glViewport(0, 0, 128, 128);
+      glClearColor(0.125f, 0.25f, 0.5f, 1.0f);
+      glClear(GL_COLOR_BUFFER_BIT);
+      auto brightDraft = thumbnails.draftTexture(
+          draftMaterial.id, draftMaterial.materialIndex,
+          draftMaterial.paramValues, {1.0f, 1.0f, 1.0f});
+      std::array<float, 4> backbufferPixel{};
+      glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+      glReadBuffer(GL_BACK);
+      glReadPixels(
+          4, 4, 1, 1, GL_RGBA, GL_FLOAT, backbufferPixel.data());
+      auto brightBrightness =
+          brightDraft
+              ? averageBrightness(
+                    brightDraft, editor::SubMaterialThumbnailRenderer::size)
+              : 0.0f;
+      if (std::abs(backbufferPixel[0] - 0.125f) > 0.01f ||
+          std::abs(backbufferPixel[1] - 0.25f) > 0.01f ||
+          std::abs(backbufferPixel[2] - 0.5f) > 0.01f) {
+        std::printf(
+            "FAILED: draft thumbnail leaked into the screen backbuffer "
+            "(%.3f, %.3f, %.3f)\n",
+            backbufferPixel[0], backbufferPixel[1], backbufferPixel[2]);
+        result = 1;
+      }
+      if (!darkDraft || !brightDraft ||
+          std::abs(brightBrightness - darkBrightness) < 0.005f) {
+        std::printf(
+            "FAILED: live draft thumbnail did not respond to base colour "
+            "(dark=%.4f bright=%.4f)\n",
+            darkBrightness, brightBrightness);
+        result = 1;
+      }
+
       // The thumbnail scene stays alive beside the actual preview. Exercise
       // that coexistence: their unique pipeline and batch names must prevent
       // either renderer from reusing the other's resources.
@@ -104,8 +151,7 @@ int main() {
       generator.generate(primitives);
       bw::core::ArrangementWorldData worldData(
           generator.getWorldData(), world.getExtents(),
-          float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-          world.getStepThreshold(), nullptr,
+          float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
           world.getWedgeGenerationParameters());
       auto camera = std::make_shared<mpp::Camera>(
           glm::vec3{0.0f, 16.0f, 0.0f}, 0.0f, 0.0f, 0.0f, 45.0f, 1.0f);
@@ -116,7 +162,7 @@ int main() {
         editor::PreviewRenderScene preview(renderSystem, &world, 128, 128);
         auto texture = preview.render(
             &world, data, camera, camera->getPosition(), 1.0f / 60.0f);
-        return texture ? averageBrightness(texture) : 0.0f;
+        return texture ? averageBrightness(texture, 128) : 0.0f;
       };
       auto brightness = renderLivePreview(worldData);
       std::printf("live preview brightness=%.4f\n", brightness);
@@ -135,8 +181,7 @@ int main() {
       changedGenerator.generate(primitives);
       bw::core::ArrangementWorldData changedWorldData(
           changedGenerator.getWorldData(), world.getExtents(),
-          float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-          world.getStepThreshold(), nullptr,
+          float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
           world.getWedgeGenerationParameters());
       auto rebuiltBrightness = renderLivePreview(changedWorldData);
       std::printf("rebuilt live preview brightness=%.4f\n", rebuiltBrightness);

@@ -25,6 +25,7 @@
 #include <SDL3/SDL_opengl.h>
 #endif
 
+#include <core/LayerBuildStep.h>
 #include <core/WorldData.h>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
@@ -230,6 +231,11 @@ map<string, string> loadHelpFiles(string const& dir) {
 void initialise() {
   setupLogging();
 
+  // docs/adr/0038: LayerBuildStep types are no longer compiled into core's
+  // own registry, so every host must register the ones it wants Worlds to
+  // be able to deserialize.
+  bw::core::LayerBuildStep::registerCoreTypes();
+
   // ADR-0024: discover the manifest here, then parse each ProcMaterial YAML
   // directly through bw::core::Serializer (ProcMaterialLibrary), without a
   // ResourceManager or render-system dependency.
@@ -363,7 +369,7 @@ bool processEvents(SDL_Window* window) {
   // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
   // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
   // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
-  bool done = false;
+  bool closeRequested = false;
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
     ImGui_ImplSDL3_ProcessEvent(&event);
@@ -374,14 +380,14 @@ bool processEvents(SDL_Window* window) {
       editor::addPreview3DMouseMotion(event.motion.xrel, event.motion.yrel);
     }
     if (event.type == SDL_EVENT_QUIT) {
-      done = true;
+      closeRequested = true;
     }
     if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(window)) {
-      done = true;
+      closeRequested = true;
     }
   }
 
-  return done;
+  return closeRequested;
 }
 
 editor::MouseButtonStatus getMouseButtonStatus() {
@@ -458,6 +464,13 @@ editor::PointerInput readPointerInput(
       mouseStatus.state[editor::MouseButtonStatus::Left] ==
       editor::MouseButtonStatus::State::Released;
   input.leftDragging = mouseStatus.dragging[editor::MouseButtonStatus::Left];
+  input.rightClicked =
+      mouseStatus.state[editor::MouseButtonStatus::Right] ==
+      editor::MouseButtonStatus::State::Clicked;
+  input.rightReleased =
+      mouseStatus.state[editor::MouseButtonStatus::Right] ==
+      editor::MouseButtonStatus::State::Released;
+  input.rightDragging = mouseStatus.dragging[editor::MouseButtonStatus::Right];
   input.control = io.KeyCtrl;
   input.shift = io.KeyShift;
   input.alt = io.KeyAlt;
@@ -511,12 +524,15 @@ void handleSelections(
     drawList->AddRect(rectMin, rectMax, IM_COL32(180, 200, 255, 220));
   }
 
-  if (input.cursorInWorldView && !input.cursorInMiniMap &&
+  if (doc->clonePlacementArmed()) {
+    ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+  } else if (input.cursorInWorldView && !input.cursorInMiniMap &&
       doc->meshDrawToolArmed()) {
     auto position = editor::Document::snapMeshDrawPosition(
         input.worldPosition, settings.showGrid, settings.gridSize);
     auto state = doc->getMeshDrawPositionState(position, settings);
-    if (state == editor::Document::MeshDrawPositionState::CloseRing) {
+    if (state == editor::Document::MeshDrawPositionState::CloseRing ||
+        state == editor::Document::MeshDrawPositionState::ConnectVertex) {
       ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     } else {
       drawMeshAuthoringCursor(
@@ -541,8 +557,8 @@ void handleSelections(
 // trackpad/one-button setups), and the scroll wheel zooms toward the cursor
 // (as in Blender's 2D editors - Shader/UV/Node/Image editor - rather than its
 // 3D viewport's orbit).
-void handleViewNavigation(editor::Document* doc) {
-  if (!doc->getWorld()) {
+void handleViewNavigation(editor::Document* doc, bool playerProxyDragActive) {
+  if (!doc->getWorld() || playerProxyDragActive) {
     return;
   }
 
@@ -577,7 +593,7 @@ void handleViewNavigation(editor::Document* doc) {
   }
 }
 
-void handleWorldInteraction(
+bool handleWorldInteraction(
     editor::Document* doc,
     editor::PointerInput const& input) {
   // View navigation remains a presentation concern; authored-object drag
@@ -591,6 +607,7 @@ void handleWorldInteraction(
   }
 
   gEditorInteraction.updateDrag(doc, gEditorSettings, input);
+  return gEditorInteraction.updatePlayerProxy(doc, input);
 }
 
 void clampViewToWorldBounds() {
@@ -656,8 +673,10 @@ void run() {
     auto updateTimeMicros = ElapsedMicroseconds.QuadPart;
     globalTimeMicros += updateTimeMicros;
 
-    // Events
-    done = processEvents(gWindow);
+    // A native close request is a request, not permission to tear down. It is
+    // resolved after ImGui starts the frame so a modified World can present a
+    // modal confirmation.
+    auto closeRequested = processEvents(gWindow);
 
     // Title bar reflects the loaded World file (open/save/new/close all land
     // here once per frame).
@@ -689,6 +708,9 @@ void run() {
     ImGui::NewFrame();
 
     auto doc = editor::Document::instance();
+    if (closeRequested) {
+      editor::exitApp(doc);
+    }
     auto mouseButtonStatus = getMouseButtonStatus();
 
     // Get world data
@@ -710,8 +732,8 @@ void run() {
         if (!io.WantCaptureMouse) {
           handleSelections(doc, worldDataPtr, gEditorSettings, pointerInput);
         }
-        handleWorldInteraction(doc, pointerInput);
-        handleViewNavigation(doc);
+        auto playerProxyDragActive = handleWorldInteraction(doc, pointerInput);
+        handleViewNavigation(doc, playerProxyDragActive);
       }
     }
 
@@ -719,6 +741,8 @@ void run() {
 
     double globalTime = globalTimeMicros / 1'000'000.0;
     editor::renderWidgets(doc, gEditorSettings, worldDataPtr, globalTime);
+    editor::renderApplicationCloseDialog(doc);
+    done = editor::applicationCloseApproved();
 
     if (!editor::preview3DIsOpen() && ImGui::IsKeyPressed(ImGuiKey_F10)) {
       showDemoWindow = !showDemoWindow;

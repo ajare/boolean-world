@@ -5,6 +5,7 @@
 #include <string>
 
 #include <core/BinarySerializer.h>
+#include <core/LayerBuildStep.h>
 #include <core/RectanglePolygon.h>
 #include <core/SerializationWorkData.h>
 #include <core/World.h>
@@ -173,6 +174,8 @@ void theActiveLayerIndexAndLayerSelectionMaskAreAbsentFromBothSerializedForms() 
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     aMultiLayerWorldRoundTripsThroughYaml();
     aMultiLayerWorldRoundTripsThroughBinary();
     loadingResetsTheActiveLayerIndexEvenWhenTheActiveLayerWasReordered();

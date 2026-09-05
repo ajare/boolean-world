@@ -1,5 +1,4 @@
 #include <iterator>
-#include <limits>
 #include <map>
 #include <memory>
 #include <functional>
@@ -14,6 +13,7 @@
 #include "core/World.h"
 #include "core/CoreException.h"
 #include "core/Defines.h"
+#include "core/LayerBuildStep.h"
 #include "core/Registry.h"
 #include "core/RectanglePolygon.h"
 #include "core/RegularPolygon.h"
@@ -23,8 +23,6 @@
 #include "core/TorusSegmentPolygon.h"
 #include "core/SuperformulaPolygon.h"
 #include "core/MeshPrimitive.h"
-#include "core/PrimitiveField.h"
-#include "core/DefinePrefabs.h"
 #include "core/ArrangementWorldDataGenerator.h"
 #include "core/DefaultWorldDataGenerator.h"
 
@@ -40,7 +38,7 @@ World::World()
 }
 
 World::World(float size, float gridSize)
-    : mExtents(-size / 2, -size / 2, size, size), mActiveLayerIndex(0), mNextLayerId(1), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mStepThreshold(numeric_limits<float>::infinity()), mFrameNumber(0), mDataGenerator(new DefaultWorldDataGenerator()), mPrevPlayerPosition{999999.0f, 999999.0f}, mLastPrimitiveUpdateFrameNumber(0) {
+    : mExtents(-size / 2, -size / 2, size, size), mActiveLayerIndex(0), mNextLayerId(1), mPlayerStartPosition{0.0f, 0.0f}, mPlayerStartAngle(0.0f), mAlwaysUpdateVertices(false), mFrameNumber(0), mDataGenerator(new DefaultWorldDataGenerator()), mPrevPlayerPosition{999999.0f, 999999.0f}, mLastPrimitiveUpdateFrameNumber(0) {
   mLayers.push_back(new Layer(0, "Layer 0", size, gridSize));
   mLayers.back()->bindWorld(this);
 }
@@ -75,7 +73,6 @@ void World::swapState(World& other) noexcept {
   swap(mPlayerStartPosition, other.mPlayerStartPosition);
   swap(mPlayerStartAngle, other.mPlayerStartAngle);
   swap(mAlwaysUpdateVertices, other.mAlwaysUpdateVertices);
-  swap(mStepThreshold, other.mStepThreshold);
   swap(mWedgeGenerationParameters, other.mWedgeGenerationParameters);
   swap(mFrameNumber, other.mFrameNumber);
   swap(mDataGenerator, other.mDataGenerator);
@@ -120,7 +117,6 @@ void World::copyFrom(World const& other) {
   mPlayerStartPosition = other.mPlayerStartPosition;
   mPlayerStartAngle = other.mPlayerStartAngle;
   mAlwaysUpdateVertices = other.mAlwaysUpdateVertices;
-  mStepThreshold = other.mStepThreshold;
   mWedgeGenerationParameters = other.mWedgeGenerationParameters;
   mFrameNumber = other.mFrameNumber;
   mPrevPlayerPosition = other.mPrevPlayerPosition;
@@ -191,35 +187,11 @@ vector<string> World::readDependentResourceNames(
 
 vector<string> World::collectDependentResourceNames() const {
   set<string> names;
-  auto collectPrimitive = [&](Primitive const* primitive) {
-    for (auto const& polygon : primitive->getVertices()) {
-      for (auto const& ring : polygon) {
-        for (auto const& vertex : ring) {
-          if (auto image = vertex.edgeNormalMap.imageData()) {
-            names.insert(image->resourceName);
-          }
-          if (auto mask = vertex.edgeWallMask.imageData()) {
-            names.insert(mask->resourceName);
-          }
-        }
-      }
-    }
-  };
-
   for (auto const* layer : mLayers) {
     for (uint32_t stepIndex = 0; stepIndex < layer->getNumSteps(); ++stepIndex) {
       auto const* step = layer->getStep(stepIndex);
-      if (auto const* field = dynamic_cast<PrimitiveField const*>(step)) {
-        for (auto const* primitive : field->getPrimitives()) {
-          collectPrimitive(primitive);
-        }
-      } else if (auto const* definitions =
-                     dynamic_cast<DefinePrefabs const*>(step)) {
-        for (auto const* prefab : definitions->getPrefabs()) {
-          for (auto const* primitive : prefab->getPrimitives()) {
-            collectPrimitive(primitive);
-          }
-        }
+      for (auto& name : step->collectDependentResourceNames()) {
+        names.insert(move(name));
       }
     }
   }
@@ -248,7 +220,6 @@ void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
       serializer->writeVector2("maxExtent", mExtents.getMaxExtent());
       serializer->writeVector2("playerStartPosition", mPlayerStartPosition);
       serializer->writeFloat("playerStartAngle", mPlayerStartAngle);
-      serializer->writeFloat("stepThreshold", mStepThreshold);
       serializer->beginMap("wedgeGeneration");
       serializer->writeBool("enabled", mWedgeGenerationParameters.enabled);
       serializer->writeFloat(
@@ -330,7 +301,6 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   wp::Vector2 minExtent, maxExtent;
   wp::Vector2 playerStartPosition;
   float playerStartAngle;
-  float stepThreshold;
   WedgeGenerationParameters wedgeGenerationParameters;
   vector<unique_ptr<Layer>> layers;
 
@@ -368,8 +338,6 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
         maxExtent = serializer->readVector2("maxExtent");
         playerStartPosition = serializer->readVector2("playerStartPosition");
         playerStartAngle = serializer->readFloat("playerStartAngle");
-        stepThreshold = serializer->readFloat(
-            "stepThreshold", true, numeric_limits<float>::infinity());
         if (serializer->isPositional() ||
             serializer->hasField("wedgeGeneration")) {
           serializer->beginMap("wedgeGeneration");
@@ -509,7 +477,6 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mExtents.setSize(maxExtent - minExtent);
   mPlayerStartPosition = playerStartPosition;
   mPlayerStartAngle = playerStartAngle;
-  mStepThreshold = stepThreshold;
   mWedgeGenerationParameters = wedgeGenerationParameters;
 
   for (auto layer : mLayers) {
@@ -787,14 +754,6 @@ void World::setAlwaysUpdateVertices(bool always) {
 
 bool World::getAlwaysUpdateVertices() const {
   return mAlwaysUpdateVertices;
-}
-
-void World::setStepThreshold(float threshold) {
-  mStepThreshold = threshold;
-}
-
-float World::getStepThreshold() const {
-  return mStepThreshold;
 }
 
 void World::setWedgeGenerationParameters(

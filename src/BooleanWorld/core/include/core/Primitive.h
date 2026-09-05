@@ -3,6 +3,8 @@
 #include <vector>
 #include <array>
 #include <optional>
+#include <set>
+#include <string>
 
 #include <willpower/common/Vector2.h>
 #include <willpower/common/BoundingBox.h>
@@ -154,9 +156,14 @@ public:
 
   virtual Primitive* copy() const = 0;
 
-  // Constructs a default Primitive of the named type through the shared
-  // Primitive Registry - the single factory every deserializer goes through.
+  // Constructs a geometry-less Primitive of the named type through the shared
+  // Primitive Registry. Deserializers populate its authored shape data.
   [[nodiscard]] static Primitive* instantiate(std::string const& type);
+
+  // Constructs a valid authored Primitive with the named type's default
+  // geometry. Programmatic authoring paths use this rather than the
+  // deserialization factory above.
+  [[nodiscard]] static Primitive* createDefault(std::string const& type);
 
   Primitive* rotatedCopy(float angle) const;
 
@@ -219,6 +226,11 @@ public:
   [[nodiscard]] Triangulation const& getPickingTriangulation() const;
 
   virtual std::vector<ComplexPolygon> const& getVertices() const;
+
+  // Inserts the resource names this Primitive's vertices reference directly
+  // (edge normal maps, wall masks) into names. Used by the LayerBuildStep
+  // types that own Primitives to answer collectDependentResourceNames().
+  void collectDependentResourceNames(std::set<std::string>& names) const;
 
   // This Primitive's own raw area, from its own contours alone, as though it
   // existed in isolation - independent of any other Primitive or the

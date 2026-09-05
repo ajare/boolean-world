@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -166,6 +167,12 @@ public:
       uint32_t edgeIndex, float t,
       wp::geometry::SplitEdgeResult* result = nullptr);
   bool splitEdge(uint32_t edgeIndex, wp::geometry::SplitEdgeResult* result = nullptr);
+
+  [[nodiscard]] std::map<std::string, std::string> const& getVertexMetadata(
+      uint32_t vertexIndex) const;
+  bool setVertexMetadata(
+      uint32_t vertexIndex,
+      std::map<std::string, std::string> const& metadata);
 
   // Authored tri-state collision override. External edges default to unset;
   // non-External edges always read unset and cannot be edited.

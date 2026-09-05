@@ -33,6 +33,7 @@
 #include <core/ArrangementWorldData.h>
 #include <core/ArrangementWorldDataGenerator.h>
 #include <core/Defines.h>
+#include <core/LayerBuildStep.h>
 #include <core/World.h>
 #include <core/YamlSerializer.h>
 
@@ -172,8 +173,7 @@ bw::core::ArrangementWorldDataPtr buildWorldData(bw::core::World* world) {
   generator.generate(primitives);
   auto result = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), world->getExtents(),
-      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      world->getStepThreshold(), nullptr,
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
       world->getWedgeGenerationParameters());
   if (result->getWedgeGenerationParameters() !=
       world->getWedgeGenerationParameters() ||
@@ -308,6 +308,8 @@ int materialReassignmentRedrawsTheWorld(
 }
 
 int main() {
+  bw::core::LayerBuildStep::registerCoreTypes();
+
   // Unbuffered: a driver-level crash mid-cycle must not swallow the progress
   // printed up to that point, which is the only clue to where it happened.
   setvbuf(stdout, nullptr, _IONBF, 0);

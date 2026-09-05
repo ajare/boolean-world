@@ -4,6 +4,7 @@
 #include <limits>
 #include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #include <core/DynamicWorldDataGenerator.h>
@@ -158,34 +159,413 @@ void requireInvalidInterval(Callback&& callback, char const* message) {
   throw std::runtime_error(message);
 }
 
-void invalidScheduleIntervalsAreRejected() {
+void invalidGenerationStartIntervalsAreRejected() {
   bw::core::World world(20.0f, 2.0f);
   DynamicWorldDataGenerator generator(&world);
 
+  generator.setGenerationStartInterval(0.0f);
+  require(
+      generator.getGenerationStartInterval() == 0.0f,
+      "zero generation start interval was not retained");
   requireInvalidInterval(
-      [&] { generator.setScheduledGenerationInterval(0.0f); },
-      "zero schedule interval was accepted");
-  requireInvalidInterval(
-      [&] { generator.setScheduledGenerationInterval(-1.0f); },
-      "negative schedule interval was accepted");
+      [&] { generator.setGenerationStartInterval(-1.0f); },
+      "negative generation start interval was accepted");
   requireInvalidInterval(
       [&] {
-        generator.setScheduledGenerationInterval(
+        generator.setGenerationStartInterval(
             std::numeric_limits<float>::infinity());
       },
-      "infinite schedule interval was accepted");
+      "infinite generation start interval was accepted");
   requireInvalidInterval(
       [&] {
         generator.startGenerationSchedule(
             std::numeric_limits<float>::quiet_NaN());
       },
-      "NaN schedule interval was accepted");
+      "NaN generation start interval was accepted");
   require(
       !generator.isScheduledGenerationRunning(),
       "invalid interval started the generation scheduler");
   require(
-      generator.getScheduledGenerationInterval() == 5.0f,
-      "rejected interval changed the configured schedule");
+      generator.getGenerationStartInterval() == 0.0f,
+      "rejected interval changed the configured generation start interval");
+}
+
+struct GenerationObserver {
+  std::mutex mutex;
+  std::condition_variable changed;
+  uint32_t starts{0};
+  uint32_t completions{0};
+
+  void observe(DynamicWorldDataGenerator::GenerationDetails const& details) {
+    std::lock_guard lock(mutex);
+    if (details.state ==
+        DynamicWorldDataGenerator::GenerationState::Generating) {
+      ++starts;
+    } else if (
+        details.state ==
+        DynamicWorldDataGenerator::GenerationState::Generated) {
+      ++completions;
+    }
+    changed.notify_all();
+  }
+
+  void waitForCompletions(uint32_t expected, char const* message) {
+    std::unique_lock lock(mutex);
+    require(
+        changed.wait_for(lock, 10s, [&] { return completions >= expected; }),
+        message);
+  }
+
+  uint32_t startCount() {
+    std::lock_guard lock(mutex);
+    return starts;
+  }
+};
+
+void updateGenerator(DynamicWorldDataGenerator& generator, float frameTime) {
+  generator.update(frameTime, {}, 0);
+}
+
+void waitForStartOnAnIdleUpdate(
+    DynamicWorldDataGenerator& generator,
+    GenerationObserver& observer,
+    uint32_t expected,
+    char const* message) {
+  for (int attempt = 0; attempt < 10000; ++attempt) {
+    updateGenerator(generator, 0.0f);
+    if (observer.startCount() >= expected) {
+      return;
+    }
+    std::this_thread::yield();
+  }
+  throw std::runtime_error(message);
+}
+
+void positiveIntervalUsesBootstrapAsStartAnchor() {
+  bw::core::World world(20.0f, 2.0f);
+  DynamicWorldDataGenerator generator(&world);
+  GenerationObserver observer;
+  auto token = generator.registerGenerationCallback(
+      [&](auto const& details) { observer.observe(details); });
+
+  generator.getWorldData(&world);
+  require(observer.startCount() == 1, "bootstrap Generation was not observed");
+  generator.startGenerationSchedule(2.0f);
+  require(
+      observer.startCount() == 1,
+      "positive schedule duplicated the bootstrap Generation");
+
+  updateGenerator(generator, 1.5f);
+  require(observer.startCount() == 1, "Generation started before its deadline");
+  updateGenerator(generator, 0.5f);
+  observer.waitForCompletions(2, "eligible positive-interval Generation did not complete");
+  require(observer.startCount() == 2, "positive interval started a backlog");
+
+  generator.stopGenerationSchedule();
+  generator.unregisterGenerationCallback(token);
+}
+
+void overrunDoesNotAccumulateScheduledBacklog() {
+  bw::core::World world(20.0f, 2.0f);
+  DynamicWorldDataGenerator generator(&world);
+  generator.getWorldData(&world);
+
+  std::mutex mutex;
+  std::condition_variable changed;
+  bool scheduledStarted = false;
+  bool mayComplete = false;
+  uint32_t starts = 0;
+  uint32_t completions = 0;
+  auto token = generator.registerGenerationCallback(
+      [&](DynamicWorldDataGenerator::GenerationDetails const& details) {
+        std::unique_lock lock(mutex);
+        if (details.state ==
+            DynamicWorldDataGenerator::GenerationState::Generating) {
+          ++starts;
+          if (starts == 1) {
+            scheduledStarted = true;
+            changed.notify_all();
+            changed.wait(lock, [&] { return mayComplete; });
+          }
+        } else if (
+            details.state ==
+            DynamicWorldDataGenerator::GenerationState::Generated) {
+          ++completions;
+          changed.notify_all();
+        }
+      });
+
+  generator.startGenerationSchedule(1.0f);
+  updateGenerator(generator, 1.0f);
+  {
+    std::unique_lock lock(mutex);
+    require(
+        changed.wait_for(lock, 10s, [&] { return scheduledStarted; }),
+        "scheduled Generation did not start");
+  }
+
+  updateGenerator(generator, 20.0f);
+  require(
+      generator.getNumGenerationsPending() == 0,
+      "slow Generation accumulated scheduled work");
+  {
+    std::lock_guard lock(mutex);
+    mayComplete = true;
+  }
+  changed.notify_all();
+  {
+    std::unique_lock lock(mutex);
+    require(
+        changed.wait_for(lock, 10s, [&] { return completions == 1; }),
+        "overrunning Generation did not complete");
+  }
+
+  for (int attempt = 0; attempt < 10000; ++attempt) {
+    updateGenerator(generator, 0.0f);
+    {
+      std::lock_guard lock(mutex);
+      if (starts == 2) {
+        break;
+      }
+    }
+    std::this_thread::yield();
+  }
+  {
+    std::lock_guard lock(mutex);
+    require(starts == 2, "overrun was not followed on the first idle update");
+  }
+  require(
+      generator.getNumGenerationsPending() == 0,
+      "overrun replayed more than one missed interval");
+
+  generator.stopGenerationSchedule();
+  // The second worker is no longer blocked; wait for destruction safety.
+  {
+    std::unique_lock lock(mutex);
+    require(
+        changed.wait_for(lock, 10s, [&] { return completions == 2; }),
+        "post-overrun Generation did not complete");
+  }
+  generator.unregisterGenerationCallback(token);
+}
+
+void zeroIntervalRestartsOnNextMainThreadUpdate() {
+  bw::core::World world(20.0f, 2.0f);
+  DynamicWorldDataGenerator generator(&world);
+  GenerationObserver observer;
+  auto token = generator.registerGenerationCallback(
+      [&](auto const& details) { observer.observe(details); });
+
+  generator.getWorldData(&world);
+  generator.startGenerationSchedule(0.0f);
+  require(observer.startCount() == 1, "zero interval duplicated bootstrap immediately");
+  waitForStartOnAnIdleUpdate(
+      generator, observer, 2,
+      "zero interval did not restart after bootstrap");
+  observer.waitForCompletions(2, "zero-interval restart did not complete");
+  require(observer.startCount() == 2, "zero interval started more than one worker");
+  waitForStartOnAnIdleUpdate(
+      generator, observer, 3,
+      "zero interval did not restart completed work");
+  observer.waitForCompletions(3, "second zero-interval restart did not complete");
+
+  generator.stopGenerationSchedule();
+  generator.unregisterGenerationCallback(token);
+}
+
+void adHocGenerationResetsTheIntervalAnchor() {
+  bw::core::World world(20.0f, 2.0f);
+  DynamicWorldDataGenerator generator(&world);
+  GenerationObserver observer;
+  auto token = generator.registerGenerationCallback(
+      [&](auto const& details) { observer.observe(details); });
+
+  generator.getWorldData(&world);
+  generator.startGenerationSchedule(3.0f);
+  updateGenerator(generator, 2.0f);
+  generator.generate();
+  observer.waitForCompletions(2, "ad-hoc Generation did not complete immediately");
+
+  updateGenerator(generator, 2.0f);
+  require(
+      observer.startCount() == 2,
+      "periodic deadline was not reset by the ad-hoc start");
+  updateGenerator(generator, 1.0f);
+  waitForStartOnAnIdleUpdate(
+      generator, observer, 3,
+      "periodic work did not follow the ad-hoc anchor");
+  observer.waitForCompletions(3, "post-ad-hoc periodic work did not complete");
+
+  generator.stopGenerationSchedule();
+  generator.unregisterGenerationCallback(token);
+}
+
+void synchronousModeGeneratesOncePerUpdateAndIgnoresOrdinaryRequests() {
+  bw::core::World world(20.0f, 2.0f);
+  DynamicWorldDataGenerator generator(&world);
+  GenerationObserver observer;
+  auto token = generator.registerGenerationCallback(
+      [&](auto const& details) { observer.observe(details); });
+
+  generator.setGenerationMode(
+      DynamicWorldDataGenerator::GenerationMode::Synchronous);
+  generator.generate();
+  require(observer.startCount() == 0,
+          "ordinary request was not ignored in synchronous mode");
+
+  updateGenerator(generator, 0.25f);
+  updateGenerator(generator, 0.25f);
+  require(observer.startCount() == 2,
+          "synchronous mode did not perform exactly one Generation per update");
+  require(generator.getNumGenerationsComplete() == 2,
+          "synchronous update did not finish its blocking Generation");
+
+  generator.generateBlocking();
+  require(observer.startCount() == 3 &&
+              generator.getNumGenerationsComplete() == 3,
+          "unconditional blocking request was ignored in synchronous mode");
+
+  generator.unregisterGenerationCallback(token);
+}
+
+void switchingToSynchronousCancelsQueuedWorkAndWaitsForRunningWork() {
+  bw::core::World world(20.0f, 2.0f);
+  DynamicWorldDataGenerator generator(&world);
+
+  std::mutex mutex;
+  std::condition_variable changed;
+  bool firstStarted = false;
+  bool firstMayFinish = false;
+  uint32_t starts = 0;
+  uint32_t completions = 0;
+  auto token = generator.registerGenerationCallback(
+      [&](DynamicWorldDataGenerator::GenerationDetails const& details) {
+        std::unique_lock lock(mutex);
+        if (details.state ==
+            DynamicWorldDataGenerator::GenerationState::Generating) {
+          ++starts;
+          if (starts == 1) {
+            firstStarted = true;
+            changed.notify_all();
+            changed.wait(lock, [&] { return firstMayFinish; });
+          }
+        } else if (details.state ==
+                   DynamicWorldDataGenerator::GenerationState::Generated) {
+          ++completions;
+          changed.notify_all();
+        }
+      });
+
+  generator.generate();
+  {
+    std::unique_lock lock(mutex);
+    require(changed.wait_for(lock, 10s, [&] { return firstStarted; }),
+            "asynchronous work did not start before mode switch");
+  }
+  generator.generate();
+  require(generator.getNumGenerationsPending() == 1,
+          "test did not establish queued asynchronous input");
+  generator.setGenerationMode(
+      DynamicWorldDataGenerator::GenerationMode::Synchronous);
+  require(generator.getNumGenerationsPending() == 0,
+          "switching to synchronous mode retained queued input");
+
+  std::thread synchronousUpdate([&] { updateGenerator(generator, 0.5f); });
+  std::this_thread::yield();
+  {
+    std::lock_guard lock(mutex);
+    require(starts == 1,
+            "blocking Generation overlapped in-flight asynchronous work");
+    firstMayFinish = true;
+  }
+  changed.notify_all();
+  synchronousUpdate.join();
+
+  {
+    std::lock_guard lock(mutex);
+    require(starts == 2 && completions == 2,
+            "mode switch did not finish running work then perform one synchronous Generation");
+  }
+  require(generator.getNumGenerationsComplete() == 2,
+          "cancelled queued input performed Generation work");
+
+  generator.unregisterGenerationCallback(token);
+}
+
+void switchingBackToAsynchronousUsesLatestActualStartAsAnchor() {
+  bw::core::World world(20.0f, 2.0f);
+  DynamicWorldDataGenerator generator(&world);
+  GenerationObserver observer;
+  auto token = generator.registerGenerationCallback(
+      [&](auto const& details) { observer.observe(details); });
+
+  generator.setGenerationMode(
+      DynamicWorldDataGenerator::GenerationMode::Synchronous);
+  generator.startGenerationSchedule(3.0f);
+  updateGenerator(generator, 4.0f);
+  require(observer.startCount() == 1,
+          "synchronous anchor Generation did not run");
+
+  generator.setGenerationMode(
+      DynamicWorldDataGenerator::GenerationMode::Asynchronous);
+  updateGenerator(generator, 2.5f);
+  require(observer.startCount() == 1,
+          "asynchronous mode ignored the latest actual start anchor");
+  updateGenerator(generator, 0.5f);
+  observer.waitForCompletions(
+      2, "asynchronous work did not start at the retained anchor deadline");
+  require(observer.startCount() == 2,
+          "switching back created an asynchronous backlog");
+
+  generator.stopGenerationSchedule();
+  generator.unregisterGenerationCallback(token);
+}
+
+void completedSnapshotsRemainCommitEligibleAcrossModeChanges() {
+  bw::core::World world(20.0f, 2.0f);
+  addLayerPrimitive(
+      *world.getActiveLayer(), rectangle(0.0f, 0.0f, 10.0f, 10.0f));
+  DynamicWorldDataGenerator generator(&world);
+  generator.setAllowCommitIfVisible(true);
+  generator.setGenerationMode(
+      DynamicWorldDataGenerator::GenerationMode::Synchronous);
+  updateGenerator(generator, 0.0f);
+  generator.setGenerationMode(
+      DynamicWorldDataGenerator::GenerationMode::Asynchronous);
+
+  auto data = generator.getWorldData(&world);
+  require(generator.getNumCommits() == 1,
+          "mode change discarded a completed uncommitted snapshot");
+  require(data->getContainingFaceIndex({5.0f, 5.0f}) != ~0u,
+          "snapshot committed across mode change had the wrong geometry");
+}
+
+void liveIntervalChangesRecalculateFromLatestStart() {
+  bw::core::World world(20.0f, 2.0f);
+  DynamicWorldDataGenerator generator(&world);
+  GenerationObserver observer;
+  auto token = generator.registerGenerationCallback(
+      [&](auto const& details) { observer.observe(details); });
+
+  generator.getWorldData(&world);
+  generator.startGenerationSchedule(10.0f);
+  updateGenerator(generator, 4.0f);
+  require(observer.startCount() == 1, "long interval started too early");
+  generator.setGenerationStartInterval(3.0f);
+  updateGenerator(generator, 0.0f);
+  observer.waitForCompletions(2, "shortened live interval did not apply immediately");
+
+  generator.setGenerationStartInterval(10.0f);
+  updateGenerator(generator, 5.0f);
+  require(observer.startCount() == 2, "lengthened live interval used the old deadline");
+  generator.setGenerationStartInterval(1.0f);
+  waitForStartOnAnIdleUpdate(
+      generator, observer, 3,
+      "second shortened interval did not use latest start");
+  observer.waitForCompletions(3, "second shortened-interval work did not complete");
+
+  generator.stopGenerationSchedule();
+  generator.unregisterGenerationCallback(token);
 }
 
 }  // namespace
@@ -193,8 +573,17 @@ void invalidScheduleIntervalsAreRejected() {
 int main() {
   try {
     blockedWorkerCoalescesToLatestGenerationSnapshot();
-    invalidScheduleIntervalsAreRejected();
-    std::cout << "Asynchronous generation work is bounded and coalesced\n";
+    invalidGenerationStartIntervalsAreRejected();
+    positiveIntervalUsesBootstrapAsStartAnchor();
+    overrunDoesNotAccumulateScheduledBacklog();
+    zeroIntervalRestartsOnNextMainThreadUpdate();
+    adHocGenerationResetsTheIntervalAnchor();
+    synchronousModeGeneratesOncePerUpdateAndIgnoresOrdinaryRequests();
+    switchingToSynchronousCancelsQueuedWorkAndWaitsForRunningWork();
+    switchingBackToAsynchronousUsesLatestActualStartAsAnchor();
+    completedSnapshotsRemainCommitEligibleAcrossModeChanges();
+    liveIntervalChangesRecalculateFromLatestStart();
+    std::cout << "Dynamic Generation modes are safe and controllable\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';

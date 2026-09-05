@@ -38,6 +38,28 @@ Layer& LayerBuildContext::getLayer() const {
   return mLayer;
 }
 
+wp::BoundingBox const& LayerBuildContext::getExtents() const {
+  return mLayer.getExtents();
+}
+
+vector<Primitive*> LayerBuildContext::findBuildPrimitivesOverlapping(
+    wp::BoundingBox const& bounds) const {
+  vector<Primitive*> result;
+
+  auto testAndCollect = [&](vector<Primitive*> const& primitives) {
+    for (auto* primitive : primitives) {
+      if (bounds.intersectsBoundingObject(&primitive->getBounds())) {
+        result.push_back(primitive);
+      }
+    }
+  };
+
+  testAndCollect(mBuildPrimitives);
+  testAndCollect(mAppendedBuildPrimitives);
+
+  return result;
+}
+
 uint32_t LayerBuildContext::appendPrimitive(Primitive* primitive) {
   return appendPrimitive(primitive, 0, primitive->getPriority());
 }
@@ -46,6 +68,10 @@ uint32_t LayerBuildContext::appendPrimitive(
     Primitive* primitive,
     uint8_t phase,
     uint8_t relativePriority) {
+  if (mStep->primitivesParticipateInBuild()) {
+    mAppendedBuildPrimitives.push_back(primitive);
+  }
+
   return mLayer._appendBuiltPrimitive(
       primitive, mStep, mStepIndex, phase, relativePriority);
 }
@@ -103,6 +129,10 @@ void Layer::swapState(Layer& other) noexcept {
 }
 
 void Layer::rebindOwnedState() {
+  for (auto* step : mSteps) {
+    step->bindLayer(this);
+  }
+
   for (auto* primitive : mPrimitives) {
     primitive->mWorld = mWorld;
     primitive->mInputs.triggerLines = &mTriggerLines;
@@ -183,6 +213,7 @@ void Layer::seedFirstStep() {
   auto* step = new PrimitiveField;
   assignStepId(step);
   mSteps.push_back(step);
+  step->bindLayer(this);
 }
 
 void Layer::assignStepId(LayerBuildStep* step) {
@@ -195,6 +226,7 @@ void Layer::assignStepId(LayerBuildStep* step) {
 
 void Layer::deleteSteps() {
   for (auto* step : mSteps) {
+    step->bindLayer(nullptr);
     delete step;
   }
 
@@ -413,6 +445,7 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mSteps.reserve(steps.size());
   for (auto& step : steps) {
     mSteps.push_back(step.release());
+    mSteps.back()->bindLayer(this);
   }
 
   rebuild();
@@ -559,19 +592,47 @@ void Layer::rebuild() {
   mPrimitives.clear();
   mPrimitiveSteps.clear();
 
+  // A step that throws is caught here, at the execute() boundary, rather
+  // than propagating out of rebuild() - which is called from more than
+  // forty places, including mid-undo. The build stops at the failed step:
+  // everything before it stands, and it and every step after it contribute
+  // nothing (docs/adr/0039).
+  bool haltedByFailure = false;
+
   for (uint32_t stepIndex = 0; stepIndex < mSteps.size(); ++stepIndex) {
     auto const* step = mSteps[stepIndex];
-    if (step->isEnabled()) {
-      vector<Primitive*> buildPrimitives;
-      buildPrimitives.reserve(mPrimitives.size());
-      for (uint32_t i = 0; i < mPrimitives.size(); ++i) {
-        if (mPrimitiveSteps[i]->primitivesParticipateInBuild()) {
-          buildPrimitives.push_back(mPrimitives[i]);
-        }
-      }
 
-      LayerBuildContext context(*this, step, stepIndex, buildPrimitives);
+    step->clearFailure();
+
+    if (haltedByFailure || !step->isEnabled()) {
+      continue;
+    }
+
+    vector<Primitive*> buildPrimitives;
+    buildPrimitives.reserve(mPrimitives.size());
+    for (uint32_t i = 0; i < mPrimitives.size(); ++i) {
+      if (mPrimitiveSteps[i]->primitivesParticipateInBuild()) {
+        buildPrimitives.push_back(mPrimitives[i]);
+      }
+    }
+
+    LayerBuildContext context(*this, step, stepIndex, buildPrimitives);
+    auto const outputBegin = mPrimitives.size();
+    try {
       step->execute(context);
+    } catch (exception const& error) {
+      // execute() may have appended output before it failed. A failed step
+      // contributes nothing, so remove that partial output from both the
+      // derived cache and its acceleration grid before retaining the prior
+      // steps' completed output (docs/adr/0039).
+      for (auto i = outputBegin; i < mPrimitives.size(); ++i) {
+        removePrimitiveFromLookupGrid(mPrimitives[i], false);
+      }
+      mPrimitives.resize(outputBegin);
+      mPrimitiveSteps.resize(outputBegin);
+
+      step->recordFailure(error.what());
+      haltedByFailure = true;
     }
   }
 }
@@ -589,6 +650,12 @@ LayerBuildStep* Layer::getStep(uint32_t index) const {
 LayerBuildStep* Layer::getStepById(uint32_t id) const {
   auto it = find_if(mSteps.begin(), mSteps.end(), [id](auto const* step) { return step->getId() == id; });
   return it == mSteps.end() ? nullptr : *it;
+}
+
+uint32_t Layer::findStepIdByName(string const& name) const {
+  auto it = find_if(mSteps.begin(), mSteps.end(),
+                    [&name](auto const* step) { return step->getName() == name; });
+  return it != mSteps.end() ? (*it)->getId() : ~0u;
 }
 
 PrimitiveField* Layer::getPrimitiveField() const {
@@ -624,6 +691,7 @@ uint32_t Layer::insertStep(uint32_t index, LayerBuildStep* step) {
 
   assignStepId(step);
   mSteps.insert(mSteps.begin() + index, step);
+  step->bindLayer(this);
 
   // Inserting at or before the active step's index shifts it along with
   // everything else that was there.
@@ -657,6 +725,7 @@ void Layer::removeStep(uint32_t index) {
     throw CoreException("Cannot delete a DefinePrefabs step referenced by a PrefabField");
   }
 
+  mSteps[index]->bindLayer(nullptr);
   delete mSteps[index];
   mSteps.erase(mSteps.begin() + index);
 
@@ -742,6 +811,47 @@ uint32_t Layer::getOwningStepIndex(Primitive const* primitive) const {
   auto const* owningStep = mPrimitiveSteps[primitiveIndex];
   auto step = find(mSteps.begin(), mSteps.end(), owningStep);
   return step != mSteps.end() ? (uint32_t)distance(mSteps.begin(), step) : ~0u;
+}
+
+bool Layer::canMovePrimitiveToStep(
+    Primitive const* primitive, uint32_t targetStepIndex) const {
+  if (targetStepIndex >= mSteps.size()) {
+    return false;
+  }
+
+  auto sourceStepIndex = getOwningStepIndex(primitive);
+  if (sourceStepIndex == ~0u || sourceStepIndex == targetStepIndex) {
+    return false;
+  }
+
+  auto const* source = mSteps[sourceStepIndex];
+  auto const* target = mSteps[targetStepIndex];
+
+  return source->ownsPrimitive(primitive) &&
+         source->getType() == target->getType() &&
+         source->permitsDirectPrimitiveEditing() &&
+         target->acceptsNewPrimitives() &&
+         source->isEnabled() && target->isEnabled();
+}
+
+void Layer::movePrimitiveToStep(Primitive* primitive, uint32_t targetStepIndex) {
+  if (!canMovePrimitiveToStep(primitive, targetStepIndex)) {
+    throw CoreException(format(
+        "{} primitive {} cannot be moved to step {} of this layer",
+        primitive->getType(), primitive->getName(), targetStepIndex));
+  }
+
+  auto* source = mSteps[getOwningStepIndex(primitive)];
+  auto* target = mSteps[targetStepIndex];
+
+  // Release before adopting so the Primitive is never owned twice; if adopt
+  // then threw, the step list would hold it in two places and destroy it
+  // twice. Nothing between these two lines can throw, so the Primitive is
+  // unowned only for that gap.
+  source->releasePrimitive(primitive);
+  target->adoptPrimitive(primitive);
+
+  rebuild();
 }
 
 uint32_t Layer::_appendBuiltPrimitive(

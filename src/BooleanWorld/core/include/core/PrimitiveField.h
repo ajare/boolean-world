@@ -73,7 +73,12 @@ public:
   // no-op.
   void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive) override;
 
+  // Drops primitive from this step's authored list without destroying it.
+  void releasePrimitive(Primitive* primitive) override;
+
   [[nodiscard]] bool ownsPrimitive(Primitive const* primitive) const override;
+
+  [[nodiscard]] std::vector<std::string> collectDependentResourceNames() const override;
 
   [[nodiscard]] bool contains(Primitive const* primitive) const;
 

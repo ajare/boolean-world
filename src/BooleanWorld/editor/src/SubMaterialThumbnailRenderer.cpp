@@ -42,6 +42,10 @@ void SubMaterialThumbnailRenderer::clearTextures() {
     if (texture) glDeleteTextures(1, &texture);
   }
   mTextures.clear();
+  if (mDraftTexture) glDeleteTextures(1, &mDraftTexture);
+  mDraftTexture = 0;
+  mDraftSubMaterialId.clear();
+  mDraftParams.clear();
 }
 
 void SubMaterialThumbnailRenderer::rebuild() {
@@ -92,8 +96,7 @@ void SubMaterialThumbnailRenderer::rebuild() {
   generator.generate(primitives);
   mWorldData = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), mWorld->getExtents(),
-      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-      mWorld->getStepThreshold(), nullptr,
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
       mWorld->getWedgeGenerationParameters());
 
   mScene = std::make_unique<PreviewRenderScene>(
@@ -151,6 +154,74 @@ std::uint32_t SubMaterialThumbnailRenderer::copyTexture(
   return destination;
 }
 
+std::uint32_t SubMaterialThumbnailRenderer::renderTexture(
+    std::string const& subMaterialId) const {
+  auto centre = mCentres.find(subMaterialId);
+  if (!mScene || !mWorldData || centre == mCentres.end()) return 0;
+
+  // MPP's offscreen graph returns to its screen target when it finishes and
+  // clears that target when graph presentation is disabled. Thumbnail renders
+  // happen while ImGui is only building its draw list, after Main has already
+  // cleared the backbuffer, so that clear would otherwise appear as a small
+  // live preview in the editor's bottom-left corner. Preserve the editor's
+  // clear state and re-establish its clean backbuffer before ImGui draws.
+  GLint previousReadFramebuffer{}, previousDrawFramebuffer{};
+  GLint previousViewport[4]{};
+  GLint previousScissorBox[4]{};
+  GLint previousDrawBuffer{};
+  GLfloat previousClearColour[4]{};
+  GLboolean previousScissor = glIsEnabled(GL_SCISSOR_TEST);
+  GLboolean previousColourMask[4]{};
+  glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousReadFramebuffer);
+  glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousDrawFramebuffer);
+  glGetIntegerv(GL_VIEWPORT, previousViewport);
+  glGetIntegerv(GL_SCISSOR_BOX, previousScissorBox);
+  glGetIntegerv(GL_DRAW_BUFFER, &previousDrawBuffer);
+  glGetFloatv(GL_COLOR_CLEAR_VALUE, previousClearColour);
+  glGetBooleanv(GL_COLOR_WRITEMASK, previousColourMask);
+
+  auto restoreBackbuffer = [&] {
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glDrawBuffer(GL_BACK);
+    glDisable(GL_SCISSOR_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glClearColor(
+        previousClearColour[0], previousClearColour[1],
+        previousClearColour[2], previousClearColour[3]);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
+    glDrawBuffer(previousDrawBuffer);
+    glViewport(
+        previousViewport[0], previousViewport[1], previousViewport[2],
+        previousViewport[3]);
+    glScissor(
+        previousScissorBox[0], previousScissorBox[1], previousScissorBox[2],
+        previousScissorBox[3]);
+    if (previousScissor) glEnable(GL_SCISSOR_TEST);
+    glColorMask(
+        previousColourMask[0], previousColourMask[1], previousColourMask[2],
+        previousColourMask[3]);
+  };
+
+  try {
+    auto position = centre->second + glm::vec3{0.0f, cameraHeight, 0.0f};
+    auto camera = std::make_shared<mpp::Camera>(
+        position, 0.0f, 0.0f, 0.0f, 45.0f, 1.0f);
+    camera->setLookAt(position, centre->second, {0.0f, 0.0f, -1.0f});
+    camera->setClipDistances(0.1f, 1000.0f);
+    auto source = mScene->render(
+        mWorld.get(), *mWorldData, camera, position, 1.0f / 60.0f);
+    auto result = source ? copyTexture(source) : 0;
+    restoreBackbuffer();
+    return result;
+  } catch (...) {
+    restoreBackbuffer();
+    throw;
+  }
+}
+
 std::uint32_t SubMaterialThumbnailRenderer::texture(
     std::string const& subMaterialId) {
   auto const revision = procMaterialLibrary().revision();
@@ -169,25 +240,44 @@ std::uint32_t SubMaterialThumbnailRenderer::texture(
   if (auto found = mTextures.find(subMaterialId); found != mTextures.end()) {
     return found->second;
   }
-  auto centre = mCentres.find(subMaterialId);
-  if (centre == mCentres.end()) return 0;
 
   try {
-    auto position = centre->second + glm::vec3{0.0f, cameraHeight, 0.0f};
-    auto camera = std::make_shared<mpp::Camera>(
-        position, 0.0f, 0.0f, 0.0f, 45.0f, 1.0f);
-    camera->setLookAt(position, centre->second, {0.0f, 0.0f, -1.0f});
-    camera->setClipDistances(0.1f, 1000.0f);
-    auto source = mScene->render(
-        mWorld.get(), *mWorldData, camera, position, 1.0f / 60.0f);
-    if (!source) return 0;
-    auto copied = copyTexture(source);
+    auto copied = renderTexture(subMaterialId);
     mTextures.emplace(subMaterialId, copied);
     return copied;
   } catch (...) {
     mTextures.emplace(subMaterialId, 0u);
     return 0;
   }
+}
+
+std::uint32_t SubMaterialThumbnailRenderer::draftTexture(
+    std::string const& subMaterialId, std::uint32_t materialIndex,
+    std::vector<float> const& params,
+    std::array<float, 3> const& baseColour) {
+  // Cache the catalog version before changing this bucket's live uniforms.
+  // It remains the stable left-hand comparison image while the draft moves.
+  if (!texture(subMaterialId) || !mScene) return 0;
+  if (mDraftTexture && mDraftSubMaterialId == subMaterialId &&
+      mDraftMaterialIndex == materialIndex && mDraftParams == params &&
+      mDraftBaseColour == baseColour) {
+    return mDraftTexture;
+  }
+
+  if (mDraftTexture) glDeleteTextures(1, &mDraftTexture);
+  mDraftTexture = 0;
+  mDraftSubMaterialId = subMaterialId;
+  mDraftMaterialIndex = materialIndex;
+  mDraftParams = params;
+  mDraftBaseColour = baseColour;
+  try {
+    mScene->updateMaterialDraft(
+        subMaterialId, materialIndex, params, baseColour);
+    mDraftTexture = renderTexture(subMaterialId);
+  } catch (...) {
+    // Keep draft failure isolated from the already-copied standard thumbnail.
+  }
+  return mDraftTexture;
 }
 
 }  // namespace editor

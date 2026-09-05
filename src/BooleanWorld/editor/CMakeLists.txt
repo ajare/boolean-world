@@ -1,5 +1,6 @@
 add_executable(editor WIN32
     src/Actions.cpp
+    src/ApplicationCloseController.cpp
     src/AppHelpers.cpp
     src/Document.cpp
     src/EditorRenderSystem.cpp
@@ -12,6 +13,7 @@ add_executable(editor WIN32
     src/PrimitiveFieldPreview.cpp
     src/ProcMaterialLibrary.cpp
     src/SubMaterialThumbnailRenderer.cpp
+    src/PrefabPlacementPreview.cpp
     src/PrefabTilingGuide.cpp
     src/Preview3D.cpp
     src/PreviewOutlineRenderer.cpp
@@ -20,6 +22,7 @@ add_executable(editor WIN32
     src/PreviewSurfacePick.cpp
     ../app/src/ReactiveCamera.cpp
     src/Render.cpp
+    src/RunScriptAuthoring.cpp
     src/UI.cpp
     src/UiHelpers.cpp
     src/Undo.cpp
@@ -47,7 +50,7 @@ target_compile_definitions(editor PRIVATE
 target_compile_definitions(editor PRIVATE YAML_CPP_STATIC_DEFINE)
 
 target_link_libraries(editor PRIVATE
-    core Willpower.Geometry
+    core core-lua Willpower.Geometry
     BooleanWorldRender
     vendor::opengl ext::glew
     # mpp/mpp-data/mpp-helper/mpp-mesh/mpp-program/Utils are also pulled in
@@ -111,7 +114,7 @@ if(BUILD_TESTING)
         YAML_CPP_STATIC_DEFINE
         BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml")
     target_link_libraries(boolean_world_editor_world_renderer_smoke PRIVATE
-        core BooleanWorldRender Willpower.Application Willpower.Common
+        core core-lua BooleanWorldRender Willpower.Application Willpower.Common
         Willpower.Geometry vendor::opengl ext::glew
         ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3
         ext::yaml-cpp)
@@ -134,7 +137,7 @@ if(BUILD_TESTING)
         YAML_CPP_STATIC_DEFINE
         BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml")
     target_link_libraries(boolean_world_editor_render_system_smoke PRIVATE
-        core BooleanWorldRender Willpower.Application Willpower.Common
+        core core-lua BooleanWorldRender Willpower.Application Willpower.Common
         vendor::opengl ext::glew
         ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3
         ext::yaml-cpp)
@@ -163,7 +166,7 @@ if(BUILD_TESTING)
         BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml"
         BW_EDITOR_PREVIEW_TEST_WORLD="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/world-test-1.world.yaml")
     target_link_libraries(boolean_world_editor_preview_render_stack_smoke PRIVATE
-        core BooleanWorldRender Willpower.Application Willpower.Common
+        core core-lua BooleanWorldRender Willpower.Application Willpower.Common
         Willpower.Geometry vendor::opengl ext::glew
         ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3
         ext::yaml-cpp)
@@ -189,7 +192,7 @@ if(BUILD_TESTING)
         YAML_CPP_STATIC_DEFINE
         BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml")
     target_link_libraries(boolean_world_editor_sub_material_thumbnail_smoke PRIVATE
-        core BooleanWorldRender Willpower.Application Willpower.Common
+        core core-lua BooleanWorldRender Willpower.Application Willpower.Common
         Willpower.Geometry vendor::opengl ext::glew
         ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils ext::sdl3
         ext::yaml-cpp)
@@ -215,6 +218,7 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_editor_prefab_tiling_guide_tests
         tests/prefab_tiling_guide_tests.cpp
+        src/PrefabPlacementPreview.cpp
         src/PrefabTilingGuide.cpp)
     target_include_directories(boolean_world_editor_prefab_tiling_guide_tests PRIVATE include)
     target_link_libraries(boolean_world_editor_prefab_tiling_guide_tests PRIVATE core)
@@ -247,6 +251,17 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_editor_primitive_field_placement
              COMMAND boolean_world_editor_primitive_field_placement_tests)
 
+    add_executable(boolean_world_editor_application_close_controller_tests
+        tests/application_close_controller_tests.cpp
+        src/ApplicationCloseController.cpp)
+    target_include_directories(boolean_world_editor_application_close_controller_tests PRIVATE include)
+    target_compile_features(boolean_world_editor_application_close_controller_tests PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_application_close_controller_tests PRIVATE /W3 /utf-8)
+    bw_target_defaults(boolean_world_editor_application_close_controller_tests)
+    bw_output_dirs(boolean_world_editor_application_close_controller_tests)
+    add_test(NAME boolean_world_editor_application_close_controller
+             COMMAND boolean_world_editor_application_close_controller_tests)
+
     add_executable(boolean_world_editor_document_selection_tests
         tests/document_selection_tests.cpp
         src/Document.cpp
@@ -256,7 +271,7 @@ if(BUILD_TESTING)
     target_compile_definitions(boolean_world_editor_document_selection_tests PRIVATE
         YAML_CPP_STATIC_DEFINE)
     target_link_libraries(boolean_world_editor_document_selection_tests PRIVATE
-        core vendor::spdlog ext::glew ext::yaml-cpp)
+        core core-lua vendor::spdlog ext::glew ext::yaml-cpp)
     target_compile_features(boolean_world_editor_document_selection_tests PRIVATE cxx_std_20)
     target_compile_options(boolean_world_editor_document_selection_tests PRIVATE /W3 /utf-8)
     bw_target_defaults(boolean_world_editor_document_selection_tests)
@@ -389,6 +404,7 @@ if(BUILD_TESTING)
     add_executable(boolean_world_editor_layer_build_step_actions_tests
         tests/layer_build_step_actions_tests.cpp
         src/Actions.cpp
+        src/RunScriptAuthoring.cpp
         src/Document.cpp
         src/PrimitiveDefaults.cpp
         src/Undo.cpp
@@ -397,7 +413,7 @@ if(BUILD_TESTING)
     target_compile_definitions(boolean_world_editor_layer_build_step_actions_tests PRIVATE
         YAML_CPP_STATIC_DEFINE)
     target_link_libraries(boolean_world_editor_layer_build_step_actions_tests PRIVATE
-        core vendor::spdlog ext::glew ext::yaml-cpp)
+        core core-lua vendor::spdlog ext::glew ext::yaml-cpp)
     target_compile_features(boolean_world_editor_layer_build_step_actions_tests PRIVATE cxx_std_20)
     target_compile_options(boolean_world_editor_layer_build_step_actions_tests PRIVATE /W3 /utf-8)
     bw_target_defaults(boolean_world_editor_layer_build_step_actions_tests)

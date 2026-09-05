@@ -10,6 +10,12 @@ class RenderSystem;
 class ResourceManager;
 }  // namespace mpp
 
+namespace bw {
+namespace core {
+class ScriptRuntime;
+}  // namespace core
+}  // namespace bw
+
 namespace wp {
 class Logger;
 namespace application {
@@ -30,10 +36,10 @@ namespace editor {
 // independent resource-manager view of the same on-disk ProcMaterial data
 // that ProcMaterialLibrary already loads directly.
 //
-// Construction also scans the manifest and loads exactly the resources the
-// preview's WorldRenderer looks up by name (the two world Materials and the
-// ProcMaterial catalog), along with their dependencies. Nothing else in the
-// manifest is created or loaded.
+// Construction also scans the manifest and loads the resources the preview's
+// WorldRenderer looks up by name (the two world Materials and the data
+// catalogs), along with every Image and LuaScript so resource pickers are ready
+// on the first frame. Other manifest resources are created or loaded as needed.
 //
 // Constructed once while the editor starts up and kept for the rest of the
 // process - createCoreResources()'s shader/pipeline compilation and the
@@ -74,6 +80,23 @@ public:
   // Re-reads the sole global Embossing catalog after an editor save.
   void reloadEmbossingCatalog(std::string const& resourceName);
 
+  // Resolves one browser-selected Lua script and compiles it under the exact
+  // World-relative spelling the RunScript step will store. A syntax error is
+  // still a successful load: ScriptRuntime caches it so the step can report
+  // the ordinary build failure in its panel.
+  bool loadLuaScript(std::string const& resourceName,
+                     std::string* error = nullptr);
+
+  // Re-scans resource manifests for newly declared resources, then creates,
+  // loads, and compiles every newly visible LuaScript. Existing resource
+  // objects are preserved.
+  bool rescanLuaScripts(std::string* error = nullptr);
+
+  // Re-reads an externally edited Lua script, replaces its runtime cache
+  // entry, and rebuilds exactly the Layers whose RunScript steps name it.
+  bool reloadLuaScript(std::string const& resourceName,
+                       std::string* error = nullptr);
+
   // Atomically replaces the resources retained for the active World.
   bool loadWorldDependencies(std::vector<std::string> const& resourceNames,
                              std::string const& currentNamespace,
@@ -85,6 +108,7 @@ private:
   mpp::RenderSystem* mRenderSystem{};
   mpp::ResourceManager* mRenderResourceMgr{};
   wp::application::resourcesystem::ResourceManager* mResourceMgr{};
+  std::unique_ptr<bw::core::ScriptRuntime> mScriptRuntime;
   std::vector<std::shared_ptr<
       wp::application::resourcesystem::Resource>> mWorldDependencies;
   // Every ImageResource the manifest declares, created, loaded, and acquired

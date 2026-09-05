@@ -1,6 +1,6 @@
 # ADR-0006: Step walls collide above a world-level height threshold
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0037
 **Date:** 2026-08-16
 
 ## Context

@@ -152,6 +152,7 @@ endfunction()
 
 bw_import_willpower(Willpower.Common willpower.common)
 bw_import_willpower(Willpower.Geometry willpower.geometry)
+bw_import_willpower(Willpower.Wayfinder willpower.wayfinder)
 bw_import_willpower(Willpower.Collide willpower.collide)
 bw_import_willpower(Willpower.Application willpower.application)
 bw_import_willpower(WillPower.Viz willpower.viz)
@@ -159,6 +160,8 @@ bw_import_willpower(WillPower.Viz willpower.viz)
 target_link_libraries(Willpower.Common INTERFACE vendor::headers)
 target_link_libraries(Willpower.Geometry INTERFACE
     Willpower.Common vendor::headers)
+target_link_libraries(Willpower.Wayfinder INTERFACE
+    Willpower.Common Willpower.Geometry)
 target_link_libraries(Willpower.Collide INTERFACE
     Willpower.Common Willpower.Geometry)
 target_link_libraries(Willpower.Application INTERFACE

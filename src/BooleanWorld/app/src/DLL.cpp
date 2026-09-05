@@ -1,8 +1,12 @@
 #include <cstdint>
+#include <memory>
 
 #include <willpower/common/Logger.h>
 
 #include <willpower/application/StateFactory.h>
+
+#include <core/LayerBuildStep.h>
+#include <core-lua/CoreLua.h>
 
 #include <applib/ModelInstance.h>
 #include <applib/StateLoad.h>
@@ -18,6 +22,7 @@
 #include "DLLState.h"
 #include "InputOptions.h"
 #include "VideoOptions.h"
+#include "WorldDataGenerationOptions.h"
 #include "MapBooleanWorldDefinitionFactory.h"
 #include "ProtoEntityDefinitionFactory.h"
 
@@ -42,8 +47,9 @@
 
 using namespace std;
 
-// Model
+// Model and process-wide build-script runtime.
 static applib::Model* model = nullptr;
+static unique_ptr<bw::core::ScriptRuntime> scriptRuntime;
 
 // State factories
 static DLLState dllState;
@@ -66,6 +72,10 @@ static bw::app::InputOptions gInputOptions;
 // active scale then survives every map-owned renderer.
 static bw::app::VideoOptions gVideoOptions;
 
+// World data Generation configuration seeds the application-run model before
+// any map can perform its mandatory bootstrap Generation.
+static bw::app::WorldDataGenerationOptions gWorldDataGenerationOptions;
+
 extern "C" {
 __declspec(dllexport) char const* dllGetName() {
   return "BooleanWorld";
@@ -77,6 +87,14 @@ __declspec(dllexport) int dllSetArgument(char const* arg, char const* value) {
 
 __declspec(dllexport) int dllSetInputOptions(float mouseSensitivity) {
   return dllState.setInputOptions(mouseSensitivity, gInputOptions);
+}
+
+__declspec(dllexport) int dllSetWorldDataGenerationOptions(
+    int modeCode, float startInterval, int alwaysUpdateVerticesCode,
+    int allowCommitIfVisibleCode) {
+  return dllState.setWorldDataGenerationOptions(
+      modeCode, startInterval, alwaysUpdateVerticesCode,
+      allowCommitIfVisibleCode, gWorldDataGenerationOptions);
 }
 
 __declspec(dllexport) int dllSetVideoOptions(
@@ -144,11 +162,21 @@ __declspec(dllexport) wp::application::StateFactory* dllGetNextStateFactory() {
 __declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
   dllState.resetStateFactoryEnumeration();
 
+  // docs/adr/0038: LayerBuildStep types are no longer compiled into core's
+  // own registry, so every host must register the ones it wants Worlds to
+  // be able to deserialize.
+  bw::core::LayerBuildStep::registerCoreTypes();
+  scriptRuntime = make_unique<bw::core::ScriptRuntime>(
+      [logger](string const& message) { logger->info("Lua: " + message); });
+  bw::core::registerScriptStepTypes(*scriptRuntime);
+
   auto entityHandlerFactory = [](shared_ptr<applib::AnimationDatabase> animDatabase) {
     return new EntityHandlerBooleanWorld(animDatabase, gInputOptions);
   };
 
-  model = new BooleanWorldModel(entityHandlerFactory, resourceMgr, gVideoOptions);
+  model = new BooleanWorldModel(
+      entityHandlerFactory, resourceMgr, gVideoOptions,
+      gWorldDataGenerationOptions);
   applib::ModelInstance::set(model);
 
   // Create state factories
@@ -161,8 +189,10 @@ __declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resou
   statePlayBooleanWorldFactory = new StatePlayBooleanWorldFactory(logger);
 
   // Add resource factories
-  resourceMgr->addResourceFactory(new MapResourceFactory(logger));
+  resourceMgr->addResourceFactory(
+      new MapResourceFactory(logger, *scriptRuntime));
   resourceMgr->addResourceFactory(new ProtoEntityResourceFactory(model->entityHandler, model->animationDatabase));
+  bw::core::registerLuaScriptResourceType(*resourceMgr);
   resourceMgr->addResourceFactory(new ProcMaterialResourceFactory());
   resourceMgr->addResourceFactory(new EmbossingCatalogResourceFactory());
 
@@ -202,5 +232,7 @@ __declspec(dllexport) void dllOnExit() {
   // Model
   delete model;
   model = nullptr;
+
+  scriptRuntime.reset();
 }
 }

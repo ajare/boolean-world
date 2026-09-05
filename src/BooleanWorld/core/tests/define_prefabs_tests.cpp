@@ -2,6 +2,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -9,6 +10,7 @@
 #include <core/CoreException.h>
 #include <core/DefinePrefabs.h>
 #include <core/Layer.h>
+#include <core/MeshPrimitive.h>
 #include <core/RectanglePolygon.h>
 #include <core/SerializationWorkData.h>
 #include <core/YamlSerializer.h>
@@ -67,6 +69,9 @@ public:
   void replacePrimitive(bw::core::Primitive*, bw::core::Primitive*) override {
     throw bw::core::CoreException("ObservingStep owns no Primitives");
   }
+  void releasePrimitive(bw::core::Primitive*) override {
+    throw bw::core::CoreException("ObservingStep owns no Primitives");
+  }
   bool ownsPrimitive(bw::core::Primitive const*) const override { return false; }
 
 private:
@@ -113,6 +118,43 @@ void prefabIdsNamesAndStepArgumentsBehaveAsAuthoredData() {
               first->getTileSize() == bw::core::PrefabTileSize::Size128 &&
               replacement->getTileSize() == bw::core::PrefabTileSize::Size64,
           "Prefab name or per-Prefab tile size was not mutable");
+}
+
+void prefabTagsAreCanonicalValidatedAndFilterInCollectionOrder() {
+  bw::core::DefinePrefabs step;
+  auto* first = step.addPrefab("First");
+  auto* second = step.addPrefab("Second");
+  auto* third = step.addPrefab("Third");
+
+  step.setPrefabTags(first, {"Rock", "OUTDOOR"});
+  step.setPrefabTags(second, {"rock"});
+  step.setPrefabTags(third, {"rock", "outdoor", "large-feature"});
+
+  require(first->getTags() == std::set<std::string>({"outdoor", "rock"}),
+          "Prefab tags were not normalized to lowercase");
+  auto const rocks = step.getPrefabsWithTags({"ROCK"});
+  require(rocks.size() == 3 && rocks[0] == first && rocks[1] == second &&
+              rocks[2] == third,
+          "tag filtering was not case-insensitive or did not preserve collection order");
+  auto const outdoorRocks = step.getPrefabsWithTags({"outdoor", "rock"});
+  require(outdoorRocks.size() == 2 && outdoorRocks[0] == first &&
+              outdoorRocks[1] == third,
+          "tag filtering did not require every requested tag");
+  require(step.getPrefabsWithTags({}).size() == 3,
+          "an empty tag filter did not return every Prefab");
+
+  requireCoreException([&] { step.setPrefabTags(first, {"not valid"}); },
+                       "Prefab accepted a tag containing whitespace");
+  requireCoreException(
+      [&] {
+        auto ignored = step.getPrefabsWithTags({"bad!"});
+        (void)ignored;
+      },
+      "Prefab filtering accepted an invalid tag");
+  bw::core::DefinePrefabs other;
+  auto* foreign = other.addPrefab("Foreign");
+  requireCoreException([&] { step.setPrefabTags(foreign, {"valid"}); },
+                       "DefinePrefabs changed tags on a foreign Prefab");
 }
 
 void ordinaryAndPrefabSourcePrioritiesUseTheFullRange() {
@@ -206,6 +248,7 @@ void layerCopyClonesPrefabsRemapsParentsAndClearsSelection() {
   auto source = std::make_unique<bw::core::Layer>(0, "Base", 256.0f, 16.0f);
   auto* sourceStep = addDefinePrefabs(*source);
   auto* sourcePrefab = sourceStep->addPrefab("Parented");
+  sourceStep->setPrefabTags(sourcePrefab, {"source-tag"});
   sourceStep->setSelectedPrefab(sourcePrefab);
   source->setActiveStep(1);
   auto* root = makeRectangle(0.0f);
@@ -220,9 +263,11 @@ void layerCopyClonesPrefabsRemapsParentsAndClearsSelection() {
               copy->getNumPrimitives() == 0,
           "copying a Layer retained ephemeral Prefab selection");
   require(copiedStep->getNumPrefabs() == 1 &&
+              copiedStep->getPrefab(0)->getTags() ==
+                  std::set<std::string>({"source-tag"}) &&
               copiedStep->getPrefab(0)->getPrimitive(0) != root &&
               copiedStep->getPrefab(0)->getPrimitive(1) != child,
-          "copying a Layer did not deep-copy its Prefabs");
+          "copying a Layer did not deep-copy its Prefabs and tags");
 
   auto* copiedRoot = copiedStep->getPrefab(0)->getPrimitive(0);
   auto* copiedChild = copiedStep->getPrefab(0)->getPrimitive(1);
@@ -243,6 +288,7 @@ void serializationRoundTripsPrefabsCounterAndArgumentsButNotSelection() {
   auto const expectedNextId = second->getId() + 1;
   sourceStep->setPrefabTileSize(kept, bw::core::PrefabTileSize::Size128);
   sourceStep->setPrefabTileSize(second, bw::core::PrefabTileSize::Size32);
+  sourceStep->setPrefabTags(kept, {"Rock", "OUTDOOR"});
   sourceStep->setSelectedPrefab(kept);
   source.setActiveStep(1);
   source.addPrimitive(makeRectangle(42.0f));
@@ -266,6 +312,8 @@ void serializationRoundTripsPrefabsCounterAndArgumentsButNotSelection() {
   require(loadedStep->getNumPrefabs() == 2 &&
               loadedStep->getPrefab(0)->getId() == kept->getId() &&
               loadedStep->getPrefab(0)->getName() == "Same name" &&
+              loadedStep->getPrefab(0)->getTags() ==
+                  std::set<std::string>({"outdoor", "rock"}) &&
               loadedStep->getPrefab(0)->getNumPrimitives() == 1 &&
               loadedStep->getPrefab(0)->getPrimitive(0)->getPosition().x == 42.0f,
           "Prefab ids, names, or Primitives did not round-trip");
@@ -282,6 +330,62 @@ void serializationRoundTripsPrefabsCounterAndArgumentsButNotSelection() {
           "the serialized monotonic Prefab id counter was not restored");
 }
 
+void prefabVertexMetadataRoundTripsAndEmptyMetadataIsOmitted() {
+  bw::core::Layer source(4, "Prefabs", 256.0f, 16.0f);
+  auto* definitions = addDefinePrefabs(source);
+  auto* prefab = definitions->addPrefab("Markers");
+  definitions->setSelectedPrefab(prefab);
+  source.setActiveStep(1);
+
+  bw::core::ClosedPolygon ring{
+      {{0.0f, 0.0f}}, {{10.0f, 0.0f}}, {{10.0f, 10.0f}}, {{0.0f, 10.0f}}};
+  ring[0].metadata = {{"kind", "spawn"}, {"team", "blue"}};
+  source.addPrimitive(bw::core::MeshPrimitive::fromComplexPolygons(
+      bw::core::Primitive::Operation::Union, {{ring}}));
+
+  auto writer = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::toString());
+  bw::core::SerializationWorkData writeData;
+  source.serialize(writer, writeData);
+  writer->serialize();
+  auto const yaml = writer->getSerializedString();
+  require(yaml.find("vertexMetadata") != std::string::npos,
+          "non-empty Prefab vertex metadata was not serialized");
+
+  bw::core::Layer loaded;
+  auto reader = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::fromString(yaml));
+  reader->deserialize();
+  bw::core::SerializationWorkData readData;
+  readData.accelGridSize = 16.0f;
+  require(loaded.deserialize(reader, readData),
+          "Prefab vertex metadata failed to deserialize");
+  auto* loadedDefinitions =
+      static_cast<bw::core::DefinePrefabs*>(loaded.getStep(1));
+  auto* loadedMesh = static_cast<bw::core::MeshPrimitive*>(
+      loadedDefinitions->getPrefab(0)->getPrimitive(0));
+  require(loadedMesh->getShells().front().ring.front().metadata ==
+              std::map<std::string, std::string>{{"kind", "spawn"},
+                                                 {"team", "blue"}},
+          "Prefab vertex metadata did not round-trip");
+
+  for (auto& vertex : ring) vertex.metadata.clear();
+  bw::core::Layer emptySource(5, "Prefabs", 256.0f, 16.0f);
+  auto* emptyDefinitions = addDefinePrefabs(emptySource);
+  auto* emptyPrefab = emptyDefinitions->addPrefab("No markers");
+  emptyDefinitions->setSelectedPrefab(emptyPrefab);
+  emptySource.setActiveStep(1);
+  emptySource.addPrimitive(bw::core::MeshPrimitive::fromComplexPolygons(
+      bw::core::Primitive::Operation::Union, {{ring}}));
+  auto emptyWriter = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::toString());
+  emptySource.serialize(emptyWriter, writeData);
+  emptyWriter->serialize();
+  require(emptyWriter->getSerializedString().find("vertexMetadata") ==
+              std::string::npos,
+          "empty Prefab vertex metadata was serialized");
+}
+
 void registryConstructsDefinePrefabsByTypeName() {
   auto const types = bw::core::LayerBuildStep::getRegisteredTypes();
   require(std::find(types.begin(), types.end(), "DefinePrefabs") != types.end(),
@@ -292,18 +396,38 @@ void registryConstructsDefinePrefabsByTypeName() {
           "the step Registry did not construct DefinePrefabs");
 }
 
+void findPrefabIdByNameResolvesToTheFirstDuplicateAndReportsNotFound() {
+  bw::core::DefinePrefabs step;
+
+  auto* first = step.addPrefab("Duplicate");
+  step.addPrefab("Duplicate");
+  step.addPrefab("Unique");
+
+  require(step.findPrefabIdByName("Duplicate") == first->getId(),
+          "findPrefabIdByName did not resolve to the first Prefab with a duplicated name");
+  require(step.findPrefabIdByName("Unique") != ~0u,
+          "findPrefabIdByName failed to find a uniquely named Prefab");
+  require(step.findPrefabIdByName("does not exist") == ~0u,
+          "findPrefabIdByName did not report not-found for an unknown name");
+}
+
 }  // namespace
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     registryConstructsDefinePrefabsByTypeName();
     squareTilingHasTheCoreRotationAngleTable();
     prefabIdsNamesAndStepArgumentsBehaveAsAuthoredData();
+    prefabTagsAreCanonicalValidatedAndFilterInCollectionOrder();
     ordinaryAndPrefabSourcePrioritiesUseTheFullRange();
     selectionControlsOutputCapabilitiesAndLayerStorage();
     laterStepsCannotObserveSelectedPrefabPrimitives();
     layerCopyClonesPrefabsRemapsParentsAndClearsSelection();
     serializationRoundTripsPrefabsCounterAndArgumentsButNotSelection();
+    prefabVertexMetadataRoundTripsAndEmptyMetadataIsOmitted();
+    findPrefabIdByNameResolvesToTheFirstDuplicateAndReportsNotFound();
     std::cout << "DefinePrefabs owns stable, serializable Prefabs while keeping their Primitives out of the build\n";
     return 0;
   } catch (std::exception const& error) {

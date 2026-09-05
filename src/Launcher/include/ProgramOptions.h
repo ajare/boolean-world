@@ -9,6 +9,7 @@
 #include <willpower/application/AudioOptions.h>
 
 #include "VideoOptions.h"
+#include "WorldDataGenerationOptions.h"
 
 struct ProgramOptions {
   struct ResourceLocation {
@@ -47,6 +48,8 @@ public:
   Input input;
 
   bw::app::VideoOptions video;
+
+  bw::app::WorldDataGenerationOptions worldDataGeneration;
 
   Debugging debugging;
 };

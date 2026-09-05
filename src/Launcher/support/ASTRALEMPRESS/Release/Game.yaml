@@ -32,6 +32,11 @@ Configuration:
   Input:
     MouseSensitivity: 0.6
   Game:
+    WorldDataGeneration:
+      Mode: Asynchronous
+      StartInterval: 5
+      AlwaysUpdateVertices: false
+      AllowCommitIfVisible: false
     DLL:
       path: ../BooleanWorld/BooleanWorld.dll
     ResourceLocations:

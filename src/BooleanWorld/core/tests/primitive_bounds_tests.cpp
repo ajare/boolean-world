@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
 #include <core/SuperformulaPolygon.h>
 #include <core/TorusPolygon.h>
@@ -131,6 +132,8 @@ void primitiveBoundsSurviveAllPrimitivePaths() {
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     meshBoundsContainArbitraryAuthoredCoordinates();
     primitiveBoundsSurviveAllPrimitivePaths();
     std::cout << "Generated primitive bounds cover construction, copying, and serialization\n";

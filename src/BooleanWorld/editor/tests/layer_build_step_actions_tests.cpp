@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <iostream>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -14,6 +15,8 @@
 #include <core/PrefabField.h>
 #include <core/RectanglePolygon.h>
 #include <core/World.h>
+#include <core-lua/CoreLua.h>
+#include <core-lua/RunScript.h>
 
 #include "Actions.h"
 #include "Document.h"
@@ -304,6 +307,11 @@ void prefabActionsCreateSelectRenameDeleteAndChangeTilingArguments() {
               bw::core::PrefabTileSize::Size128) &&
               prefab->getTileSize() == bw::core::PrefabTileSize::Size128,
           "Set Prefab tile size action failed");
+  require(editor::setPrefabTags(
+              &document, layer, step, prefab, {"door", "interior"}) &&
+              prefab->getTags() ==
+                  std::set<std::string>({"door", "interior"}),
+          "Set Prefab tags action failed");
   require(editor::setPrefabTilingType(
               &document, layer, step, bw::core::PrefabTilingType::Square),
           "Set Prefab tiling type action failed");
@@ -456,10 +464,180 @@ void selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable() {
           "a Primitive created while the second step was active reached the first step instead");
 }
 
+void movingAPrimitiveBetweenStepsOfTheSameTypeIsOneUndoableAction() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+
+  auto* moved = makeRectangle(1.0f);
+  document.getWorld()->addPrimitive(moved);
+  auto const secondIndex = layer->addStep(makeField({10.0f}));
+
+  require(layer->getOwningStepIndex(moved) == 0,
+          "the fixture Primitive did not start in step 0");
+  require(comesBefore(*layer, 1.0f, 10.0f),
+          "the fixture did not fold the step 0 Primitive before the step 1 one");
+
+  // Step 0 also holds the newDoc ghost Primitive, so the first step's
+  // occupancy is checked as a delta rather than against zero.
+  auto const fieldCountBefore = layer->getPrimitiveField()->getNumPrimitives();
+  document.setModified(false);
+  auto undoBefore = editor::getUndoLevels();
+
+  editor::transactUndoableAction(
+      &document, "Move Primitive to Layer Step",
+      std::bind(editor::movePrimitiveToLayerBuildStep, std::placeholders::_1,
+                layer, moved, secondIndex));
+
+  require(editor::getUndoLevels() == undoBefore + 1,
+          "moving a Primitive between steps did not create exactly one undo entry");
+  layer = document.getWorld()->getActiveLayer();
+  require(!layer->getPrimitiveField()->ownsPrimitive(moved) &&
+              layer->getPrimitiveField()->getNumPrimitives() == fieldCountBefore - 1,
+          "the moved Primitive was left behind in its old step");
+  require(layer->getOwningStepIndex(moved) == secondIndex,
+          "the moved Primitive is not attributed to its new step");
+  require(comesBefore(*layer, 10.0f, 1.0f),
+          "the moved Primitive did not fold in its new step's place");
+  require(document.isModified(),
+          "moving a Primitive between steps did not mark the document modified");
+  require(document.getSelectedPrimitiveIndices().size() == 1 &&
+              layer->getPrimitive(*document.getSelectedPrimitiveIndices().begin()) == moved,
+          "the action did not follow the moved Primitive to its new index");
+
+  // Undo restores the World from a snapshot, so `moved` is a dangling pointer
+  // from here on and the Layer is checked by what it derives instead.
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getPrimitiveField()->getNumPrimitives() == fieldCountBefore,
+          "undo did not return the Primitive to its original step");
+  require(comesBefore(*layer, 1.0f, 10.0f),
+          "undo did not restore the original fold order");
+  require(!document.isModified(), "undo did not restore the clean modified state");
+
+  editor::redo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getPrimitiveField()->getNumPrimitives() == fieldCountBefore - 1,
+          "redo did not re-apply the move");
+  require(comesBefore(*layer, 10.0f, 1.0f),
+          "redo did not restore the moved fold order");
+  require(document.isModified(), "redo did not restore the modified state");
+}
+
+void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
+    bw::core::ScriptRuntime& runtime) {
+  editor::clearUndoHistory();
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+
+  editor::transactUndoableAction(
+      &document, "Add RunScript Step",
+      std::bind(editor::addLayerBuildStep, std::placeholders::_1, layer,
+                "RunScript"));
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getNumSteps() == 2 &&
+              layer->getStep(1)->getType() == "RunScript",
+          "adding a registered RunScript did not put it in the Layer recipe");
+
+  runtime.load("scatter", "-- an empty successful build script");
+  auto* step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  auto undoBefore = editor::getUndoLevels();
+  editor::transactUndoableAction(
+      &document, "Select Script",
+      std::bind(editor::setRunScriptScriptName, std::placeholders::_1, layer,
+                step, "scatter"));
+  editor::transactUndoableAction(
+      &document, "Set Seed",
+      std::bind(editor::setRunScriptSeed, std::placeholders::_1, layer, step,
+                uint64_t{42}));
+  editor::transactUndoableAction(
+      &document, "Set Step Name",
+      std::bind(editor::setLayerBuildStepName, std::placeholders::_1, layer,
+                uint32_t{1}, "rocks"));
+  editor::transactUndoableAction(
+      &document, "Set Extra Resources",
+      std::bind(editor::setRunScriptExtraResourceNames,
+                std::placeholders::_1, layer, step,
+                std::vector<std::string>{"OreImage", "/SharedData"}));
+
+  require(editor::getUndoLevels() == undoBefore + 4,
+          "RunScript state edits did not each create one undo entry");
+  require(step->getScriptName() == "scatter" && step->getSeed() == 42 &&
+              step->getName() == "rocks" &&
+              step->getExtraResourceNames() ==
+                  std::vector<std::string>{"OreImage", "/SharedData"} &&
+              !step->hasFailed(),
+          "RunScript state actions did not update and rebuild the step");
+
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  require(step->getExtraResourceNames().empty(),
+          "undo did not restore the RunScript extra-resources list");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  require(step->getName().empty(),
+          "undo did not restore the RunScript step name");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  require(step->getSeed() == 0,
+          "undo did not restore the RunScript seed");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  require(
+      step->getScriptName() == bw::core::defaultLayerBuildStepScriptName &&
+          !step->hasFailed(),
+      "undo did not restore the RunScript default script reference");
+
+  editor::redo(&document, 4);
+  layer = document.getWorld()->getActiveLayer();
+  step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  require(step->getScriptName() == "scatter" && step->getSeed() == 42 &&
+              step->getName() == "rocks" &&
+              step->getExtraResourceNames() ==
+                  std::vector<std::string>{"OreImage", "/SharedData"} &&
+              !step->hasFailed(),
+          "redo did not restore all authored RunScript state");
+}
+
+void movingAPrimitiveIntoAStepOfAnotherTypeIsRejectedThroughTheAction() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+
+  auto* authored = makeRectangle(2.0f);
+  document.getWorld()->addPrimitive(authored);
+
+  auto const prefabsIndex = layer->addStep(new bw::core::DefinePrefabs());
+  auto* prefabs =
+      static_cast<bw::core::DefinePrefabs*>(layer->getStep(prefabsIndex));
+  prefabs->setSelectedPrefab(prefabs->addPrefab("Target"));
+  layer->rebuild();
+
+  require(!layer->canMovePrimitiveToStep(authored, prefabsIndex),
+          "a PrimitiveField Primitive was reported movable into a DefinePrefabs step");
+  requireCoreException(
+      [&] {
+        editor::movePrimitiveToLayerBuildStep(
+            &document, layer, authored, prefabsIndex);
+      },
+      "moving a Primitive into a step of another type was not rejected");
+  require(layer->getPrimitiveField()->ownsPrimitive(authored),
+          "a rejected move disturbed the Primitive's original ownership");
+}
+
 }  // namespace
 
 int main() {
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+    bw::core::ScriptRuntime runtime;
+    bw::core::registerScriptStepTypes(runtime);
+
     disablingStepZeroRemovesItsPrimitivesAndRebuildRestoresThemOnReEnable();
     togglingStepEnabledIsOneUndoableActionThatRestoresLayerState();
     addingARegisteredStepTypeAsOneUndoableAction();
@@ -470,7 +648,10 @@ int main() {
     prefabInstanceActionsUndoAndRefuseDeletingReferencedPrefabs();
     prefabFieldBindingRefusesRemovingItsDefinitionsThroughActions();
     selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable();
-    std::cout << "Layer build step enable/disable action tests passed\n";
+    movingAPrimitiveBetweenStepsOfTheSameTypeIsOneUndoableAction();
+    runScriptCanBeAddedAndItsAuthoredStateIsUndoable(runtime);
+    movingAPrimitiveIntoAStepOfAnotherTypeIsRejectedThroughTheAction();
+    std::cout << "Layer build step editor action tests passed\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';

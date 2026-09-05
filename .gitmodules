@@ -4,3 +4,9 @@
 [submodule "ext/concurrencpp"]
 	path = ext/concurrencpp
 	url = https://github.com/David-Haim/concurrencpp.git
+[submodule "ext/lua"]
+	path = ext/lua
+	url = https://github.com/lua/lua.git
+[submodule "ext/sol2"]
+	path = ext/sol2
+	url = https://github.com/ThePhD/sol2.git

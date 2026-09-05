@@ -48,6 +48,11 @@ public:
     Committed
   };
 
+  enum struct GenerationMode {
+    Asynchronous,
+    Synchronous
+  };
+
   struct GenerationDetails {
     uint32_t clippingId;
     GenerationState state;
@@ -78,8 +83,8 @@ private:
     PrimitiveProcessingStats primStats;
     wp::BoundingBox worldExtents;
     float gridCellSize;
-    float stepThreshold;
     WedgeGenerationParameters wedgeGenerationParameters;
+    bool createWayfinderMesh;
   };
 
   std::atomic_uint32_t mClippingIdGenerator;
@@ -98,6 +103,7 @@ private:
   concurrencpp::runtime mExecutorRuntime;
 
   bool mAlwaysUpdateVertices, mAllowCommitIfVisible;
+  bool mCreateWayfinderMesh;
 
   std::atomic_uint32_t mNumGenerationsInProgress;
 
@@ -108,16 +114,18 @@ private:
   // Asynchronous work is a single running worker plus its latest request.
   std::optional<GenerationInput> mPendingGenerationInput;
   bool mGenerationWorkerRunning{false};
+  bool mBlockingGenerationRunning{false};
+  std::condition_variable mGenerationWorkerIdle;
   std::atomic_uint64_t mNumGenerationRequestsCoalesced{0};
+  std::atomic<GenerationMode> mGenerationMode{GenerationMode::Asynchronous};
 
-  // Regularly-scheduled worker
-  concurrencpp::result<void> mScheduledWorker;
-
+  // Recurring work is made eligible by main-thread updates. The clock and
+  // latest actual start are atomic because asynchronous work records its start
+  // after the worker begins draining a request.
   std::atomic_bool mScheduledGenerationRunning;
-
-  std::atomic_bool mScheduledGenerationRequested;
-
-  std::atomic<float> mScheduledGenerationInterval;
+  std::atomic<float> mGenerationStartInterval;
+  std::atomic<double> mGenerationScheduleTime{0.0};
+  std::atomic<double> mLastGenerationStartTime{-1.0};
 
 private:
   void copyFrom(DynamicWorldDataGenerator const& other);
@@ -131,6 +139,8 @@ private:
 
   void enqueueGeneration(GenerationInput input);
 
+  void runBlockingGeneration(World const* world);
+
   GenerationInput snapshotGenerationInput(
       World const* world, bool regetPrimitives);
 
@@ -141,7 +151,7 @@ private:
   static std::vector<GenerationPrimitiveMetadata> snapshotPrimitiveMetadata(
       std::vector<Primitive*> const& primitives);
 
-  void handleEvents(uint32_t events) override;
+  void handleEvents(float frameTime, uint32_t events) override;
 
   void handleLayerSelectionChanged() override;
 
@@ -151,14 +161,15 @@ private:
 
   void checkCommitPendingClipping();
 
-  void generateOnInterval();
+  bool canStartScheduledGeneration() const;
 
   bool canCommit(Clipping const& clipping);
 
   void fireCallbacks(GenerationDetails const& details);
 
 public:
-  explicit DynamicWorldDataGenerator(World const* world);
+  explicit DynamicWorldDataGenerator(
+      World const* world, bool createWayfinderMesh = false);
 
   ~DynamicWorldDataGenerator();
 
@@ -180,6 +191,10 @@ public:
 
   bool getAllowCommitIfVisible() const;
 
+  void setCreateWayfinderMesh(bool create);
+
+  bool getCreateWayfinderMesh() const;
+
   uint32_t getNumGenerationsInProgress() const;
 
   uint32_t getNumGenerationsComplete() const;
@@ -200,9 +215,13 @@ public:
 
   std::vector<GenerationPrimitiveMetadata> getActiveClippingUpdatedPrimitives() const;
 
-  void setScheduledGenerationInterval(float interval);
+  void setGenerationMode(GenerationMode mode);
 
-  float getScheduledGenerationInterval() const;
+  GenerationMode getGenerationMode() const;
+
+  void setGenerationStartInterval(float interval);
+
+  float getGenerationStartInterval() const;
 
   bool isScheduledGenerationRunning() const;
 

@@ -11,10 +11,17 @@
 
 #include <core/World.h>
 
+namespace bw {
+namespace core {
+class ScriptRuntime;
+}  // namespace core
+}  // namespace bw
+
 class Map : public applib::Map {
   bw::core::World* mWorld;
 
   wp::Logger* mwLogger;
+  bw::core::ScriptRuntime* mScriptRuntime;
 
 public:
   Map(std::string const& name,
@@ -22,7 +29,8 @@ public:
       std::string const& source,
       std::map<std::string, std::string> const& tags,
       wp::application::resourcesystem::ResourceLocation* location,
-      wp::Logger* logger);
+      wp::Logger* logger,
+      bw::core::ScriptRuntime* scriptRuntime = nullptr);
 
   ~Map();
 
@@ -37,13 +45,17 @@ public:
 
 class MapResourceFactory : public wp::application::resourcesystem::ResourceFactory {
   wp::Logger* mwLogger;
+  bw::core::ScriptRuntime* mScriptRuntime;
 
 public:
-  explicit MapResourceFactory(wp::Logger* logger)
-      : wp::application::resourcesystem::ResourceFactory("Map"), mwLogger(logger) {
+  MapResourceFactory(wp::Logger* logger, bw::core::ScriptRuntime& scriptRuntime)
+      : wp::application::resourcesystem::ResourceFactory("Map"),
+        mwLogger(logger),
+        mScriptRuntime(&scriptRuntime) {
   }
 
   wp::application::resourcesystem::Resource* createResource(std::string const& name, std::string const& namesp, std::string const& source, std::map<std::string, std::string> const& tags, wp::application::resourcesystem::ResourceLocation* location) override {
-    return new Map(name, namesp, source, tags, location, mwLogger);
+    return new Map(name, namesp, source, tags, location, mwLogger,
+                   mScriptRuntime);
   }
 };

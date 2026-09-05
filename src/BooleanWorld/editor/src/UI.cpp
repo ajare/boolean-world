@@ -1,6 +1,7 @@
 #define NOMINMAX
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -8,6 +9,7 @@
 #include <limits>
 #include <memory>
 #include <random>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -16,6 +18,7 @@
 #include <core/DefinePrefabs.h>
 #include <core/LayerBuildStep.h>
 #include <core/WorldData.h>
+#include <core-lua/RunScript.h>
 #include <core/RegularPolygon.h>
 #include <core/CirclePolygon.h>
 #include <core/CircleSegmentPolygon.h>
@@ -171,10 +174,9 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
 
       ImGui::Separator();
       if (ImGui::MenuItem("Exit")) {
-        action = ActionType::Document;
-        checkDocumentModified = true;
-        helperFunc = exitApp;
-        actionText = "Exit application";
+        // Application close has its own persistent Save/Don't Save/Cancel
+        // state because a native Save As dialog may itself be cancelled.
+        exitApp(doc);
       }
 
       ImGui::EndMenu();
@@ -219,10 +221,7 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
       }
 
       if (ImGui::MenuItem("Clone", "Ctrl+C")) {
-        auto const& indices = doc->getSelectedPrimitiveIndices();
-        uint32_t index = *indices.begin();
-
-        transactUndoableAction(doc, format("Clone Primitive {}", index), bind(clonePrimitive, placeholders::_1, index));
+        beginClonePlacement(doc, doc->getSelectedPrimitiveIndices());
       }
 
       if (!hasPrimitiveSelection) {
@@ -454,8 +453,7 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
     // The open preview draws an Arrangement built once from direct pointers
     // into the open World's Primitives, so the document's structure must not
-    // change underneath it. Everything here is frozen while it is open bar
-    // the preview toggle itself, which is what closes it again.
+    // change underneath it. Everything here is frozen while it is open.
     bool const previewing = preview3DIsOpen();
     ImGui::BeginDisabled(previewing);
 
@@ -535,10 +533,7 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
     ImGui::SameLine();
 
     if (ImGui::Button(ICON_FA_CLONE)) {
-      auto const& indices = doc->getSelectedPrimitiveIndices();
-      uint32_t index = *indices.begin();
-
-      transactUndoableAction(doc, format("Clone Primitive {}", index), bind(clonePrimitive, placeholders::_1, index));
+      beginClonePlacement(doc, doc->getSelectedPrimitiveIndices());
     }
 
     if (!hasPrimitiveSelection) {
@@ -604,59 +599,6 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
 
     if (ImGui::Button(ICON_FA_HOME)) {
       goHome(doc);
-    }
-
-    ImGui::SameLine();
-
-    auto const* activeDefinePrefabs = world
-                                          ? dynamic_cast<bw::core::DefinePrefabs const*>(
-                                                world->getActiveLayer()->getActiveStep())
-                                          : nullptr;
-    bool const previewingPrefab =
-        activeDefinePrefabs && activeDefinePrefabs->getSelectedPrefab();
-    auto const primitives =
-        world && world->getWorldDataGenerator()
-            ? inScopePrimitives(
-                  *world,
-                  world->getWorldDataGenerator()->getLayerSelection(),
-                  settings)
-            : vector<bw::core::Primitive const*>{};
-    auto const previewGrounding =
-        world && world->getWorldDataGenerator() && !previewingPrefab
-            ? resolveGroundingFloorZ(primitives, doc->getPlayerProxyPosition())
-            : optional<float>{};
-    bool const previewEnabled = world && world->getWorldDataGenerator() &&
-                                (previewingPrefab || previewGrounding.has_value());
-    ImGui::EndDisabled();
-    ImGui::BeginDisabled(!previewing && !previewEnabled);
-    if (ImGui::Button(previewing ? "Exit 3D preview" : "3D preview")) {
-      if (previewing) {
-        closePreview3D();
-      } else if (previewEnabled) {
-        // A Prefab is authored around its origin (ADR-0018), not around the
-        // Player proxy. It need not cover that pivot, so use the conventional
-        // zero-height starting floor until movement reaches authored coverage.
-        auto const startPosition = previewingPrefab
-                                       ? wp::Vector2{0.0f, 0.0f}
-                                       : doc->getPlayerProxyPosition();
-        auto const startAngle =
-            previewingPrefab ? 0.0f : doc->getPlayerProxyAngle();
-        auto const startFloorZ =
-            previewingPrefab
-                ? resolveGroundingFloorZ(primitives, startPosition).value_or(0.0f)
-                : *previewGrounding;
-        openPreview3D(doc, primitives, startPosition, startAngle, startFloorZ);
-      }
-    }
-    ImGui::EndDisabled();
-    ImGui::BeginDisabled(previewing);
-    if (!previewing && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-      if (activeDefinePrefabs && !previewingPrefab) {
-        ImGui::SetTooltip("Select a Prefab to preview in 3D.");
-      } else if (!previewGrounding) {
-        ImGui::SetTooltip(
-            "Move the Player proxy inside an in-scope Primitive to preview in 3D.");
-      }
     }
 
     ImGui::SameLine();
@@ -839,6 +781,8 @@ void renderStatusbar(editor::Document* doc, editor::Settings& settings, bw::core
           char const* action =
               drawState == editor::Document::MeshDrawPositionState::CloseRing
                   ? "click to close"
+              : drawState == editor::Document::MeshDrawPositionState::ConnectVertex
+                  ? "click to connect vertex"
               : drawState == editor::Document::MeshDrawPositionState::Invalid
                   ? "invalid position"
                   : "click to place vertex";
@@ -2304,8 +2248,13 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
         beginUndoableAction(doc, "Move point", bind(editor::recordCurrentState, placeholders::_1, true), editValue);
       }
 
-      // Moved
+      // Moved. The undoable action only commits on release, so this drag is
+      // the one path that changes an animated property without passing
+      // through commitUndoableAction's regeneration. Ask for it here so the
+      // world follows the curve as it is dragged; requests coalesce, so a
+      // per-frame ask costs at most one extra generation.
       updateAnimationKeyInInterpolator(doc, lerperType, primitive, key, editPoint, editValue.x, editValue.y);
+      regenerateWorldData(doc);
     }
   }
 
@@ -2314,6 +2263,10 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
       wp::Vector2 editValue = {imPoints[editPoint].x, imPoints[editPoint].y};
       if (editor::transactionValueHasChanged(editValue)) {
         commitUndoableAction(doc);
+      } else {
+        // Dragged back to where it started: nothing to record, but the
+        // transaction opened on click must not be left in progress.
+        abandonUndoableAction(doc);
       }
     } else {
       abandonUndoableAction(doc);
@@ -2560,7 +2513,11 @@ void renderAnimatedProperty(editor::Document* doc, bw::core::Primitive* primitiv
   widgets::HelpMarker("Reset animator.");
   ImGui::SameLine();
   if (ImGui::Button("Reset")) {
+    // Resets captured animator state rather than authored data, so it is not
+    // undoable - but it still changes the value this key contributes to the
+    // fold, so the world it produced is now stale.
     primitive->resetAnimator(key);
+    regenerateWorldData(doc);
   }
 
   ImGui::Separator();
@@ -2728,10 +2685,11 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   if (ImGui::Checkbox("Follow orbit angle", &orientOrbitAngle)) {
     string action = orientOrbitAngle ? "Set Primitive angle to Orbit" : "Unset Primitive Angle to Orbit";
 
+    // setPrimitiveFollowOrbitAngle already applies the value inside the
+    // transaction, which then regenerates. Setting it again out here would
+    // land after that regeneration snapshotted its input.
     transactUndoableAction(doc, action,
                            bind(setPrimitiveFollowOrbitAngle, placeholders::_1, primitive, orientOrbitAngle));
-
-    primitive->setFollowOrbitAngle(orientOrbitAngle);
   }
 
   widgets::HelpMarker("Normally, angle from player to a primitive is taken with 0 degrees being [0, 1].  This value adds an offset (in degrees to that angle).");
@@ -2765,7 +2723,65 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   }
 }
 
+// The "Build step" combo in the Edit Primitive view. A Primitive may only be
+// re-homed into a step of its own type, so a Layer whose steps are all
+// different types offers nothing and the combo is shown disabled rather than
+// hidden - which step a Primitive belongs to is worth reading even when it
+// cannot be changed.
+void renderPrimitiveBuildStep(editor::Document* doc, bw::core::Primitive* primitive) {
+  auto* layer = doc->getWorld()->getActiveLayer();
+  auto const sourceStepIndex = layer->getOwningStepIndex(primitive);
+
+  if (sourceStepIndex == ~0u) {
+    return;
+  }
+
+  auto const stepLabel = [layer](uint32_t index) {
+    return format("{} :: {}", index, layer->getStep(index)->getType());
+  };
+
+  vector<uint32_t> targets;
+  for (uint32_t i = 0; i < layer->getNumSteps(); ++i) {
+    if (layer->canMovePrimitiveToStep(primitive, i)) {
+      targets.push_back(i);
+    }
+  }
+
+  widgets::HelpMarker(
+      "The LayerBuildStep this Primitive is authored into. A Primitive can only move "
+      "between steps of the same type, and only where both steps are enabled and the "
+      "destination accepts new Primitives. Moving it changes where it folds: step order "
+      "outranks Primitive priority.");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(220.0f);
+
+  bool const movable = !targets.empty();
+  if (!movable) {
+    widgets::PushDisabled();
+  }
+
+  auto const currentLabel = stepLabel(sourceStepIndex);
+  if (ImGui::BeginCombo("Build step", currentLabel.c_str())) {
+    for (auto target : targets) {
+      auto const label = stepLabel(target);
+      if (ImGui::Selectable(label.c_str(), false)) {
+        transactUndoableAction(
+            doc, format("Move Primitive to Layer Step {}", target),
+            bind(movePrimitiveToLayerBuildStep, placeholders::_1, layer,
+                 primitive, target));
+      }
+    }
+    ImGui::EndCombo();
+  }
+
+  if (!movable) {
+    widgets::PopDisabled();
+  }
+}
+
 void renderEditPrimitiveSettings(editor::Document* doc, bw::core::Primitive* primitive, editor::Settings& settings) {
+  renderPrimitiveBuildStep(doc, primitive);
+
   int flags = (int)primitive->getFlags();
 
   auto f0 = ImGui::CheckboxFlags("Don't update Primitive Time when Player is static", &flags, BW_PRIMITIVE_NO_TIME_UPDATE_PLAYER_STATIC);
@@ -2816,8 +2832,24 @@ struct SubMaterialPickerState {
 // context is still current - see shutdownMaterialPickerThumbnails().
 std::unique_ptr<SubMaterialThumbnailRenderer> gMaterialPickerThumbnails;
 
+struct WallMaskBlendPreviewTexture {
+  uint32_t texture{};
+  uint32_t standardTexture{};
+  uint32_t secondaryTexture{};
+  string maskReference;
+  int maskChannel{};
+  vector<float> secondaryParams;
+  array<float, 3> secondaryColour{};
+};
+
+WallMaskBlendPreviewTexture gWallMaskBlendPreviewTexture;
+
 void shutdownMaterialPickerThumbnails() {
   gMaterialPickerThumbnails.reset();
+  if (gWallMaskBlendPreviewTexture.texture) {
+    glDeleteTextures(1, &gWallMaskBlendPreviewTexture.texture);
+  }
+  gWallMaskBlendPreviewTexture = {};
 }
 
 void setTechniqueDefaults(
@@ -2862,7 +2894,8 @@ void renderSubMaterialFields(
 
   ImGui::InputText("Name", state.name, sizeof(state.name));
   auto const* schema = data.findTechniqueSchema(state.materialIndex);
-  if (schema) {
+  if (schema && !schema->parameters.empty()) {
+    ImGui::SeparatorText("Technique parameters");
     for (size_t i = 0; i < schema->parameters.size() && i < state.params.size(); ++i) {
       auto const& parameter = schema->parameters[i];
       ImGui::SliderFloat(parameter.name.c_str(), &state.params[i],
@@ -3180,11 +3213,11 @@ void shutdownImageResourceThumbnails() {
   gImageResourceThumbnails.clear();
 }
 
-// The name a wall normal-map or mask override stores so that
-// Resource::splitName with the "World" namespace resolves it back to this
-// exact ImageResource: unqualified for World-namespace images, "/name" for
-// the default namespace, qualified otherwise.
-string worldImageReference(
+// The name authored World content stores so Resource::splitName with the
+// "World" namespace resolves it back to this exact Resource: unqualified for
+// World-namespace resources, "/name" for the default namespace, qualified
+// otherwise.
+string worldResourceReference(
     wp::application::resourcesystem::Resource const& resource) {
   if (resource.getNamespace() == "World") return resource.getName();
   if (resource.getNamespace().empty()) return "/" + resource.getName();
@@ -3224,6 +3257,90 @@ int wallMaskChannelCount(char const* reference) {
   return 4;
 }
 
+uint32_t wallMaskBlendedPreviewTexture(
+    uint32_t standardTexture, uint32_t secondaryTexture,
+    string const& maskReference, int maskChannel,
+    vector<float> const& secondaryParams,
+    array<float, 3> const& secondaryColour) {
+  auto const* mask = imageResourceForReference(maskReference);
+  if (!standardTexture || !secondaryTexture || !mask || !mask->getData() ||
+      mask->getWidth() <= 0 || mask->getHeight() <= 0 ||
+      mask->getNumChannels() < 3 || maskChannel < 0 ||
+      maskChannel >= mask->getNumChannels()) {
+    return 0;
+  }
+
+  auto& preview = gWallMaskBlendPreviewTexture;
+  if (preview.texture && preview.standardTexture == standardTexture &&
+      preview.secondaryTexture == secondaryTexture &&
+      preview.maskReference == maskReference &&
+      preview.maskChannel == maskChannel &&
+      preview.secondaryParams == secondaryParams &&
+      preview.secondaryColour == secondaryColour) {
+    return preview.texture;
+  }
+
+  constexpr auto size = SubMaterialThumbnailRenderer::size;
+  vector<uint8_t> standardPixels(size * size * 4u);
+  vector<uint8_t> secondaryPixels(size * size * 4u);
+  vector<uint8_t> blendedPixels(size * size * 4u);
+  GLint previousTexture{};
+  GLint previousPackAlignment{};
+  GLint previousUnpackAlignment{};
+  glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+  glGetIntegerv(GL_PACK_ALIGNMENT, &previousPackAlignment);
+  glGetIntegerv(GL_UNPACK_ALIGNMENT, &previousUnpackAlignment);
+  glPixelStorei(GL_PACK_ALIGNMENT, 1);
+  glBindTexture(GL_TEXTURE_2D, standardTexture);
+  glGetTexImage(
+      GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, standardPixels.data());
+  glBindTexture(GL_TEXTURE_2D, secondaryTexture);
+  glGetTexImage(
+      GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, secondaryPixels.data());
+
+  auto const* maskPixels = mask->getData();
+  auto const maskWidth = mask->getWidth();
+  auto const maskHeight = mask->getHeight();
+  auto const maskChannels = mask->getNumChannels();
+  for (uint32_t y = 0; y < size; ++y) {
+    auto maskY = static_cast<int64_t>(y) * maskHeight / size;
+    for (uint32_t x = 0; x < size; ++x) {
+      auto maskX = static_cast<int64_t>(x) * maskWidth / size;
+      auto maskIndex =
+          (maskY * maskWidth + maskX) * maskChannels + maskChannel;
+      auto weight = static_cast<float>(maskPixels[maskIndex]) / 255.0f;
+      auto pixel = (y * size + x) * 4u;
+      for (uint32_t component = 0; component < 4; ++component) {
+        blendedPixels[pixel + component] = static_cast<uint8_t>(std::round(
+            standardPixels[pixel + component] * (1.0f - weight) +
+            secondaryPixels[pixel + component] * weight));
+      }
+    }
+  }
+
+  if (!preview.texture) glGenTextures(1, &preview.texture);
+  glBindTexture(GL_TEXTURE_2D, preview.texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  glTexImage2D(
+      GL_TEXTURE_2D, 0, GL_RGBA8, size, size, 0, GL_RGBA,
+      GL_UNSIGNED_BYTE, blendedPixels.data());
+  glPixelStorei(GL_PACK_ALIGNMENT, previousPackAlignment);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, previousUnpackAlignment);
+  glBindTexture(GL_TEXTURE_2D, previousTexture);
+
+  preview.standardTexture = standardTexture;
+  preview.secondaryTexture = secondaryTexture;
+  preview.maskReference = maskReference;
+  preview.maskChannel = maskChannel;
+  preview.secondaryParams = secondaryParams;
+  preview.secondaryColour = secondaryColour;
+  return preview.texture;
+}
+
 struct ImageResourcePickerState {
   string pendingReference;
 };
@@ -3255,14 +3372,13 @@ bool renderImageResourcePicker(
   auto popup = format("Select {} ImageResource", label);
 
   string current(reference);
-  // A stored override may be qualified ("World/OreMask") or bare for the
-  // default namespace ("Floor5"); canonicalise it so the dialog highlights
-  // the same resource it will write back on OK.
+  // Canonicalise the stored spelling so the dialog highlights the same
+  // resource it will write back on OK.
   auto canonicalReference = [&](string const& candidate) {
     for (auto const* image : images) {
-      if (worldImageReference(*image) == candidate ||
+      if (worldResourceReference(*image) == candidate ||
           image->getQualifiedName() == candidate) {
-        return worldImageReference(*image);
+        return worldResourceReference(*image);
       }
     }
     return candidate;
@@ -3271,7 +3387,7 @@ bool renderImageResourcePicker(
   auto currentCanonical = canonicalReference(current);
   string currentDisplay = currentCanonical.empty() ? "(none)" : currentCanonical;
   for (auto const* image : images) {
-    if (worldImageReference(*image) == currentCanonical) {
+    if (worldResourceReference(*image) == currentCanonical) {
       currentDisplay = image->getName();
       break;
     }
@@ -3304,7 +3420,7 @@ bool renderImageResourcePicker(
       for (size_t i = 0; i < images.size(); ++i) {
         auto const* image = images[i];
         auto key = image->getQualifiedName();
-        auto imageReference = worldImageReference(*image);
+        auto imageReference = worldResourceReference(*image);
         ImGui::PushID(key.c_str());
         ImGui::BeginGroup();
         auto texture = imageResourceThumbnail(*image);
@@ -3770,6 +3886,209 @@ void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings)
   }
 }
 
+optional<string> renderResourceReferenceCombobox(
+    char const* label, char const* resourceType, string const& current) {
+  auto* renderSystem = editorRenderSystem();
+  auto* manager = renderSystem ? renderSystem->resourceManager() : nullptr;
+  if (!manager) {
+    ImGui::TextDisabled("%s: resource browser unavailable.", label);
+    return nullopt;
+  }
+
+  auto resources = manager->getResourcesByType(resourceType);
+  sort(resources.begin(), resources.end(), [](auto const& left, auto const& right) {
+    return left->getQualifiedName() < right->getQualifiedName();
+  });
+
+  string display = current.empty() ? string("(none)") : current;
+  for (auto const& resource : resources) {
+    auto reference = worldResourceReference(*resource);
+    if (current == reference || current == resource->getQualifiedName()) {
+      display = resource->getQualifiedName();
+      break;
+    }
+  }
+
+  optional<string> selectedReference;
+  ImGui::SetNextItemWidth(320.0f);
+  if (ImGui::BeginCombo(label, display.c_str())) {
+    if (resources.empty()) {
+      ImGui::TextDisabled("No %s resources are available.", resourceType);
+    }
+    for (auto const& resource : resources) {
+      auto reference = worldResourceReference(*resource);
+      bool selected = current == reference ||
+                      current == resource->getQualifiedName();
+      if (ImGui::Selectable(resource->getQualifiedName().c_str(), selected)) {
+        selectedReference = reference;
+      }
+      if (selected) ImGui::SetItemDefaultFocus();
+    }
+    ImGui::EndCombo();
+  }
+  return selectedReference;
+}
+
+struct RunScriptExtraResourceEditorState {
+  vector<string> model;
+  vector<array<char, 512>> fields;
+  array<char, 512> adding{};
+};
+
+void renderRunScriptView(
+    editor::Document* doc, bw::core::RunScript* step) {
+  auto* layer = doc->getWorld()->getActiveLayer();
+
+  static map<bw::core::RunScript const*, string> scriptErrors;
+  if (auto selected = renderResourceReferenceCombobox(
+          "Lua script", "LuaScript", step->getScriptName())) {
+    string error;
+    if (auto* renderSystem = editorRenderSystem();
+        renderSystem && renderSystem->loadLuaScript(*selected, &error)) {
+      scriptErrors[step].clear();
+      transactUndoableAction(
+          doc, "Select RunScript Lua Script",
+          bind(setRunScriptScriptName, placeholders::_1, layer, step,
+               *selected));
+    } else {
+      scriptErrors[step] = error.empty() ? "Could not load the Lua script." : error;
+    }
+  }
+
+  ImGui::BeginDisabled(!editorRenderSystem());
+  if (ImGui::Button("Re-scan resources")) {
+    string error;
+    if (editorRenderSystem()->rescanLuaScripts(&error)) {
+      scriptErrors[step].clear();
+    } else {
+      scriptErrors[step] =
+          error.empty() ? "Could not re-scan Lua script resources." : error;
+    }
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  ImGui::BeginDisabled(step->getScriptName().empty() || !editorRenderSystem());
+  if (ImGui::Button("Reload script")) {
+    string error;
+    auto reloaded =
+        editorRenderSystem()->reloadLuaScript(step->getScriptName(), &error);
+
+    // ScriptRuntime rebuilds every Layer that names this script, replacing
+    // its RunScript-owned Primitives. That derived change bypasses the undo
+    // action path which normally invalidates the editor Arrangement, so make
+    // both the selection and rendered geometry follow the rebuilt output.
+    doc->revalidateSelection();
+    regenerateWorldData(doc);
+
+    if (reloaded) {
+      scriptErrors[step].clear();
+    } else {
+      scriptErrors[step] = error.empty() ? "Could not reload the Lua script." : error;
+    }
+  }
+  ImGui::EndDisabled();
+  if (!scriptErrors[step].empty()) {
+    ImGui::TextColored(
+        ImVec4{1.0f, 0.35f, 0.35f, 1.0f}, "%s",
+        scriptErrors[step].c_str());
+  }
+
+  auto seed = step->getSeed();
+  ImGui::SetNextItemWidth(220.0f);
+  if (ImGui::InputScalar(
+          "Seed", ImGuiDataType_U64, &seed, nullptr, nullptr, nullptr,
+          ImGuiInputTextFlags_EnterReturnsTrue)) {
+    transactUndoableAction(
+        doc, "Set RunScript Seed",
+        bind(setRunScriptSeed, placeholders::_1, layer, step, seed));
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Reroll")) {
+    static mt19937_64 randomSeed{random_device{}()};
+    transactUndoableAction(
+        doc, "Reroll RunScript Seed",
+        bind(setRunScriptSeed, placeholders::_1, layer, step, randomSeed()));
+  }
+
+  ImGui::SeparatorText("Extra resources");
+  ImGui::TextWrapped(
+      "Resource names used inside the script but not otherwise visible in the World.");
+  static map<bw::core::RunScript const*, RunScriptExtraResourceEditorState>
+      extraStates;
+  auto& extraState = extraStates[step];
+  auto const& extraResources = step->getExtraResourceNames();
+  if (extraState.model != extraResources) {
+    extraState.model = extraResources;
+    extraState.fields.clear();
+    extraState.fields.resize(extraResources.size());
+    for (size_t i = 0; i < extraResources.size(); ++i) {
+      snprintf(extraState.fields[i].data(), extraState.fields[i].size(), "%s",
+               extraResources[i].c_str());
+    }
+  }
+
+  bool listChanged = false;
+  for (size_t i = 0; i < extraState.fields.size(); ++i) {
+    ImGui::PushID(static_cast<int>(i));
+    ImGui::SetNextItemWidth(300.0f);
+    ImGui::InputText(
+        "##ExtraResource", extraState.fields[i].data(),
+        extraState.fields[i].size());
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+      auto names = extraResources;
+      names[i] = extraState.fields[i].data();
+      transactUndoableAction(
+          doc, "Edit RunScript Extra Resource",
+          bind(setRunScriptExtraResourceNames, placeholders::_1, layer, step,
+               names));
+      listChanged = true;
+    }
+    ImGui::SameLine();
+    if (!listChanged && ImGui::Button(ICON_FA_TRASH "##RemoveExtraResource")) {
+      auto names = extraResources;
+      names.erase(names.begin() + i);
+      transactUndoableAction(
+          doc, "Remove RunScript Extra Resource",
+          bind(setRunScriptExtraResourceNames, placeholders::_1, layer, step,
+               names));
+      listChanged = true;
+    }
+    ImGui::PopID();
+    if (listChanged) break;
+  }
+
+  if (!listChanged) {
+    ImGui::SetNextItemWidth(300.0f);
+    ImGui::InputTextWithHint(
+        "##AddExtraResource", "Resource name", extraState.adding.data(),
+        extraState.adding.size());
+    ImGui::SameLine();
+    ImGui::BeginDisabled(extraState.adding.front() == '\0');
+    if (ImGui::Button("Add")) {
+      auto names = extraResources;
+      names.emplace_back(extraState.adding.data());
+      extraState.adding.front() = '\0';
+      transactUndoableAction(
+          doc, "Add RunScript Extra Resource",
+          bind(setRunScriptExtraResourceNames, placeholders::_1, layer, step,
+               names));
+    }
+    ImGui::EndDisabled();
+  }
+
+  if (step->hasFailed()) {
+    ImGui::SeparatorText("Failure");
+    ImGui::TextWrapped("Message: %s", step->getFailureMessage().c_str());
+    if (step->getFailureLineNumber()) {
+      ImGui::Text("Line: %u", step->getFailureLineNumber());
+    }
+    if (!step->getFailureTraceback().empty()) {
+      ImGui::TextUnformatted("Traceback:");
+      ImGui::TextWrapped("%s", step->getFailureTraceback().c_str());
+    }
+  }
+}
+
 void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
   auto world = doc->getWorld();
   auto* layer = world->getActiveLayer();
@@ -3787,6 +4106,10 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
   }
 
   auto activeStepIndex = layer->getActiveStepIndex();
+  bool buildHalted = false;
+  static map<bw::core::LayerBuildStep const*,
+             pair<string, array<char, 256>>>
+      stepNameStates;
 
   for (uint32_t i = 0; i < numSteps; ++i) {
     ImGui::PushID(i);
@@ -3818,10 +4141,33 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
     ImGui::SameLine();
 
     ImGui::Text("%u :: %s", i, step->getType().c_str());
+    if (step->hasFailed()) {
+      ImGui::SameLine();
+      ImGui::TextColored(
+          ImVec4{1.0f, 0.3f, 0.3f, 1.0f}, "FAILED - NOT RUN");
+    } else if (buildHalted) {
+      ImGui::SameLine();
+      ImGui::TextDisabled("NOT RUN");
+    }
     ImGui::SameLine();
 
     if (widgets::ToggleButton("##StepEnabled", "Enabled", &enabled)) {
       transactUndoableAction(doc, format("Toggle Layer Step {}", i), bind(setLayerBuildStepEnabled, placeholders::_1, layer, i, enabled));
+    }
+
+    auto& [nameModel, name] = stepNameStates[step];
+    if (nameModel != step->getName()) {
+      nameModel = step->getName();
+      snprintf(name.data(), name.size(), "%s", nameModel.c_str());
+    }
+    ImGui::SetNextItemWidth(180.0f);
+    ImGui::InputTextWithHint(
+        "Step name", "Optional script lookup name", name.data(), name.size());
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+      transactUndoableAction(
+          doc, format("Rename Layer Step {}", i),
+          bind(setLayerBuildStepName, placeholders::_1, layer, i,
+               string(name.data())));
     }
 
     if (i != 0) {
@@ -3858,6 +4204,7 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
 
     ImGui::PopID();
 
+    buildHalted = buildHalted || step->hasFailed();
     if (listChanged) {
       break;
     }
@@ -3892,6 +4239,48 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
         doc, "Add Layer Step",
         bind(addLayerBuildStep, placeholders::_1, layer, selectedStepType));
   }
+}
+
+string prefabTagsText(set<string> const& tags) {
+  string text;
+  for (auto const& tag : tags) {
+    if (!text.empty()) text += ',';
+    text += tag;
+  }
+  return text;
+}
+
+set<string> parsePrefabTags(string const& text) {
+  set<string> tags;
+  string tag;
+  for (unsigned char character : text) {
+    if (character == ',') {
+      if (!tag.empty()) tags.insert(move(tag));
+      tag.clear();
+    } else if (character != ' ' && character != '\t' &&
+               character != '\r' && character != '\n') {
+      auto const isUpper = character >= 'A' && character <= 'Z';
+      tag.push_back(isUpper ? static_cast<char>(character - 'A' + 'a')
+                            : static_cast<char>(character));
+    }
+  }
+  if (!tag.empty()) tags.insert(move(tag));
+  return tags;
+}
+
+int filterPrefabTagCharacter(ImGuiInputTextCallbackData* data) {
+  auto const character = data->EventChar;
+  auto const isLetter =
+      (character >= 'a' && character <= 'z') ||
+      (character >= 'A' && character <= 'Z');
+  auto const isDigit = character >= '0' && character <= '9';
+  auto const isFormattingWhitespace =
+      character == ' ' || character == '\t' || character == '\r' ||
+      character == '\n';
+  return isLetter || isDigit || character == '_' || character == '-' ||
+                 character == ',' || isFormattingWhitespace
+             ? 0
+             : 1;
 }
 
 void renderPrefabsView(
@@ -4004,6 +4393,36 @@ void renderPrefabsView(
       }
     }
     ImGui::EndCombo();
+  }
+}
+
+void renderSelectedPrefabView(
+    editor::Document* doc, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab) {
+  auto* layer = doc->getWorld()->getActiveLayer();
+  static string text;
+  static bw::core::Prefab* editingPrefab = nullptr;
+  if (editingPrefab != prefab) {
+    text = prefabTagsText(prefab->getTags());
+  }
+
+  ImGui::TextUnformatted("Tags");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(-1.0f);
+  widgets::InputText(
+      "##PrefabTags", &text, ImGuiInputTextFlags_CallbackCharFilter,
+      filterPrefabTagCharacter);
+  if (ImGui::IsItemActivated()) {
+    editingPrefab = prefab;
+  }
+  if (editingPrefab == prefab && ImGui::IsItemDeactivatedAfterEdit()) {
+    transactUndoableAction(
+        doc, "Set Prefab Tags",
+        bind(setPrefabTags, placeholders::_1, layer, step, prefab,
+             parsePrefabTags(text)));
+  }
+  if (ImGui::IsItemDeactivated()) {
+    editingPrefab = nullptr;
   }
 }
 
@@ -4275,12 +4694,12 @@ void renderConfigView(editor::Document* doc, editor::Settings& settings) {
     // ImGui::Spacing();
   }
 
-  float intervalSchedule = wdg->getScheduledGenerationInterval();
+  float generationStartInterval = wdg->getGenerationStartInterval();
 
   ImGui::SetNextItemWidth(128);
-  if (ImGui::InputFloat("Generation interval", &intervalSchedule)) {
-    if (intervalSchedule >= 1.0f) {
-      wdg->setScheduledGenerationInterval(intervalSchedule);
+  if (ImGui::InputFloat("Generation start interval", &generationStartInterval)) {
+    if (generationStartInterval >= 1.0f) {
+      wdg->setGenerationStartInterval(generationStartInterval);
     }
   }
 
@@ -4290,7 +4709,7 @@ void renderConfigView(editor::Document* doc, editor::Settings& settings) {
 
   if (widgets::ToggleButton("ToggleScheduledGeneration", ICON_FA_ATOM, &scheduledGenRunning)) {
     if (scheduledGenRunning) {
-      wdg->startGenerationSchedule(intervalSchedule);
+      wdg->startGenerationSchedule(generationStartInterval);
     } else {
       wdg->stopGenerationSchedule();
     }
@@ -4432,6 +4851,73 @@ void renderMeshDrawToolView(editor::Document* doc, editor::Settings& settings) {
   }
 }
 
+void renderPrefabVertexMetadata(
+    editor::Document* doc, uint32_t vertexIndex) {
+  using MetadataEntry = pair<string, string>;
+  static wp::geometry::Mesh const* draftMesh = nullptr;
+  static uint32_t draftVertex = ~0u;
+  static vector<MetadataEntry> draft;
+
+  auto* mesh = doc->getActiveMesh();
+  if (draftMesh != mesh || draftVertex != vertexIndex) {
+    draftMesh = mesh;
+    draftVertex = vertexIndex;
+    auto const metadata = doc->getActiveMeshVertexMetadata(vertexIndex);
+    draft.assign(metadata.begin(), metadata.end());
+  }
+
+  auto toMetadata = [&]() -> optional<map<string, string>> {
+    map<string, string> metadata;
+    for (auto const& [key, value] : draft) {
+      if (key.empty() || !metadata.emplace(key, value).second) return nullopt;
+    }
+    return metadata;
+  };
+  auto commit = [&] {
+    auto metadata = toMetadata();
+    if (!metadata) return;
+    transactUndoableAction(
+        doc, "Set Prefab Vertex Metadata",
+        bind(setMeshVertexMetadata, placeholders::_1, vertexIndex, *metadata));
+  };
+
+  ImGui::Separator();
+  ImGui::TextUnformatted("Prefab vertex metadata");
+  ImGui::TextUnformatted("Key");
+  ImGui::SameLine(154.0f);
+  ImGui::TextUnformatted("Value");
+  bool commitAfterRow = false;
+  optional<size_t> deleteRow;
+  for (size_t index = 0; index < draft.size(); ++index) {
+    ImGui::PushID(static_cast<int>(index));
+    ImGui::SetNextItemWidth(130.0f);
+    widgets::InputText("##MetadataKey", &draft[index].first);
+    commitAfterRow |= ImGui::IsItemDeactivatedAfterEdit();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(180.0f);
+    widgets::InputText("##MetadataValue", &draft[index].second);
+    commitAfterRow |= ImGui::IsItemDeactivatedAfterEdit();
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_TRASH "##DeleteMetadata")) {
+      deleteRow = index;
+    }
+    ImGui::PopID();
+  }
+
+  if (!toMetadata()) {
+    ImGui::TextDisabled("Metadata keys must be non-empty and unique.");
+  }
+  if (deleteRow) {
+    draft.erase(draft.begin() + *deleteRow);
+    commit();
+  } else if (commitAfterRow) {
+    commit();
+  }
+  if (ImGui::Button("Add metadata")) {
+    draft.emplace_back();
+  }
+}
+
 void renderMeshView(editor::Document* doc, editor::Settings& settings) {
   renderMeshDrawToolView(doc, settings);
   ImGui::Separator();
@@ -4524,6 +5010,15 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
       ImGui::SetTooltip(canDelete
                             ? "Delete selected vertex"
                             : "This Ring cannot contain fewer than three vertices");
+    }
+
+    auto* activeLayer = doc->getWorld()->getActiveLayer();
+    auto* definitions = dynamic_cast<bw::core::DefinePrefabs*>(
+        activeLayer->getActiveStep());
+    auto const primitiveIndex = doc->getActiveMeshPrimitiveIndex();
+    if (definitions && primitiveIndex < activeLayer->getNumPrimitives() &&
+        definitions->ownsPrimitive(activeLayer->getPrimitive(primitiveIndex))) {
+      renderPrefabVertexMetadata(doc, vertexIndex);
     }
   }
 
@@ -4665,6 +5160,10 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     static bw::core::WallMaskOverride::BlendParameters wallMaskBlend{};
     static bw::core::WallMaskOverride::BlendColour wallMaskBlendColour{};
     static string wallMaskError;
+    static uint32_t wallMaskPreviewEdge = ~0u;
+    static vector<float> wallMaskPreviewParams;
+    static bw::core::WallMaskOverride::BlendColour wallMaskPreviewColour{};
+    static bool wallMaskPreviewBlendEnabled{};
 
     // The blend sliders share the primary wall Sub-material's Technique
     // schema: same parameter names, count, and [minimum, maximum] bounds.
@@ -4733,16 +5232,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
       if (channelCount >= 4) addChannel("Alpha");
       ImGui::Combo("Channel##WallMask", &wallMaskChannel,
                    channelItems.c_str());
-      ImGui::ColorEdit3("Blend colour##WallMask", wallMaskBlendColour.data());
-      if (wallSchema) {
-        for (size_t i = 0;
-             i < wallSchema->parameters.size() && i < wallMaskBlend.size();
-             ++i) {
-          auto const& parameter = wallSchema->parameters[i];
-          ImGui::SliderFloat(parameter.name.c_str(), &wallMaskBlend[i],
-                             parameter.minimum, parameter.maximum);
-        }
-      } else {
+      if (!wallSchema) {
         ImGui::TextDisabled(
             "Wall mask blend: the wall Sub-material has no Technique schema.");
       }
@@ -4800,7 +5290,135 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
         wallMaskError = error.what();
       }
     }
+
+    ImGui::SameLine();
+    auto const canPreviewWallMask =
+        wallMaskState ==
+            static_cast<int>(bw::core::WallMaskOverride::State::Image) &&
+        primaryWall && wallSchema;
+    ImGui::BeginDisabled(!canPreviewWallMask);
+    if (ImGui::Button("Preview blend target##SelectedMeshEdge")) {
+      wallMaskPreviewEdge = edgeIndex;
+      wallMaskPreviewParams.assign(wallMaskBlend.size(), 0.0f);
+      for (size_t i = 0;
+           i < primaryWall->paramValues.size() &&
+           i < wallMaskPreviewParams.size();
+           ++i) {
+        wallMaskPreviewParams[i] = primaryWall->paramValues[i];
+      }
+      wallMaskPreviewColour = primaryWall->baseColour;
+      wallMaskPreviewBlendEnabled = false;
+      ImGui::OpenPopup("Blend mask target preview##SelectedMeshEdge");
+    }
     ImGui::EndDisabled();
+    ImGui::EndDisabled();
+
+    if (ImGui::BeginPopupModal(
+            "Blend mask target preview##SelectedMeshEdge", nullptr,
+            ImGuiWindowFlags_AlwaysAutoResize)) {
+      if (!primaryWall || !wallSchema || wallMaskPreviewEdge != edgeIndex) {
+        ImGui::TextDisabled(
+            "The selected edge no longer has a previewable wall Sub-material.");
+      } else {
+        if (!gMaterialPickerThumbnails) {
+          if (auto* renderSystem = editorRenderSystem()) {
+            gMaterialPickerThumbnails =
+                make_unique<SubMaterialThumbnailRenderer>(*renderSystem);
+          }
+        }
+
+        ImGui::Checkbox(
+            "Blend using selected wall mask##WallMaskPreview",
+            &wallMaskPreviewBlendEnabled);
+
+        auto standardTexture =
+            gMaterialPickerThumbnails
+                ? gMaterialPickerThumbnails->texture(primaryWall->id)
+                : 0u;
+        auto secondaryTexture =
+            gMaterialPickerThumbnails
+                ? gMaterialPickerThumbnails->draftTexture(
+                      primaryWall->id, primaryWall->materialIndex,
+                      wallMaskPreviewParams, wallMaskPreviewColour)
+                : 0u;
+        auto displayedSecondaryTexture = secondaryTexture;
+        if (wallMaskPreviewBlendEnabled) {
+          displayedSecondaryTexture = wallMaskBlendedPreviewTexture(
+              standardTexture, secondaryTexture, wallMaskResource,
+              wallMaskChannel, wallMaskPreviewParams,
+              wallMaskPreviewColour);
+        }
+        constexpr float previewSize =
+            static_cast<float>(SubMaterialThumbnailRenderer::size) * 4.0f;
+        auto renderPreviewImage = [&](char const* title, uint32_t texture) {
+          ImGui::BeginGroup();
+          ImGui::TextUnformatted(title);
+          if (texture) {
+            ImGui::Image(static_cast<ImTextureID>(texture),
+                         {previewSize, previewSize}, {0.0f, 1.0f},
+                         {1.0f, 0.0f});
+          } else {
+            ImGui::BeginDisabled();
+            ImGui::Button("Unavailable", {previewSize, previewSize});
+            ImGui::EndDisabled();
+          }
+          ImGui::EndGroup();
+        };
+        renderPreviewImage("Standard parameters", standardTexture);
+        ImGui::SameLine();
+        renderPreviewImage(
+            wallMaskPreviewBlendEnabled ? "Masked blend" : "Secondary parameters",
+            displayedSecondaryTexture);
+
+        ImGui::SeparatorText("Secondary parameters");
+        ImGui::ColorEdit3(
+            "Base colour##WallMaskPreview", wallMaskPreviewColour.data());
+        for (size_t i = 0;
+             i < wallSchema->parameters.size() &&
+             i < wallMaskPreviewParams.size();
+             ++i) {
+          auto const& parameter = wallSchema->parameters[i];
+          ImGui::SliderFloat(
+              parameter.name.c_str(), &wallMaskPreviewParams[i],
+              parameter.minimum, parameter.maximum);
+        }
+      }
+
+      auto const canAcceptPreview =
+          primaryWall && wallSchema && wallMaskPreviewEdge == edgeIndex;
+      ImGui::BeginDisabled(!canAcceptPreview);
+      if (ImGui::Button("Revert##WallMaskPreview")) {
+        wallMaskPreviewParams.assign(wallMaskBlend.size(), 0.0f);
+        for (size_t i = 0;
+             i < primaryWall->paramValues.size() &&
+             i < wallMaskPreviewParams.size();
+             ++i) {
+          wallMaskPreviewParams[i] = primaryWall->paramValues[i];
+        }
+        wallMaskPreviewColour = primaryWall->baseColour;
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "Restore the standard Sub-material parameters and base colour.");
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("OK##WallMaskPreview")) {
+        for (size_t i = 0;
+             i < wallMaskBlend.size() && i < wallMaskPreviewParams.size();
+             ++i) {
+          wallMaskBlend[i] = wallMaskPreviewParams[i];
+        }
+        wallMaskBlendColour = wallMaskPreviewColour;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndDisabled();
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel##WallMaskPreview")) {
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+    }
+
     if (!wallMaskError.empty()) {
       ImGui::TextWrapped("%s", wallMaskError.c_str());
     }
@@ -4871,9 +5489,21 @@ void renderCombinedPanel(
       if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {
         renderPrefabsView(doc, definePrefabs);
       }
+      if (auto* prefab = definePrefabs->getSelectedPrefab()) {
+        auto const label = format(
+            "Prefab: {}###SelectedPrefab", prefab->getName());
+        if (ImGui::CollapsingHeader(
+                label.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+          renderSelectedPrefabView(doc, definePrefabs, prefab);
+        }
+      }
     } else if (auto* prefabField = dynamic_cast<bw::core::PrefabField*>(activeLayer->getActiveStep())) {
       if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {
         renderPrefabFieldView(doc, prefabField, settings);
+      }
+    } else if (auto* runScript = dynamic_cast<bw::core::RunScript*>(activeLayer->getActiveStep())) {
+      if (ImGui::CollapsingHeader("Script", nullptr, windowFlags)) {
+        renderRunScriptView(doc, runScript);
       }
     }
 
@@ -4992,10 +5622,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
   if (ImGui::Shortcut(ImGuiKey_C | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (doc->hasSelection() && !doc->getSelectedPrimitiveIndices().empty()) {
-        auto const& indices = doc->getSelectedPrimitiveIndices();
-        uint32_t index = *indices.begin();
-
-        transactUndoableAction(doc, format("Clone Primitive {}", index), bind(clonePrimitive, placeholders::_1, index));
+        beginClonePlacement(doc, doc->getSelectedPrimitiveIndices());
       }
     }
   }
@@ -5025,10 +5652,28 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
   }
 
   if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
+    auto rotatePrefab = [&](bool next) {
+      auto* layer = doc->isActive() ? doc->getWorld()->getActiveLayer() : nullptr;
+      auto* field = layer
+                        ? dynamic_cast<bw::core::PrefabField*>(
+                              layer->getActiveStep())
+                        : nullptr;
+      if (field && field->getSelectedPrefab(*layer)) {
+        if (!mouseInteractingWithBackground()) return;
+        if (settings.renderMiniMap) {
+          auto miniMapBounds = getMiniMapBounds(doc);
+          miniMapBounds.setPosition(
+              miniMapBounds.getMinExtent() + gWorldViewScreenOrigin);
+          auto mouse = ImGui::GetMousePos();
+          if (miniMapBounds.pointInside(mouse.x, mouse.y)) return;
+        }
+      }
+      gEditorInteraction.rotateSelectedPrefabInstance(doc, next);
+    };
     if (ImGui::Shortcut(ImGuiKey_LeftArrow | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal)) {
-      gEditorInteraction.rotateSelectedPrefabInstance(doc, false);
+      rotatePrefab(false);
     } else if (ImGui::Shortcut(ImGuiKey_RightArrow | ImGuiMod_Shift, ImGuiInputFlags_RouteGlobal)) {
-      gEditorInteraction.rotateSelectedPrefabInstance(doc, true);
+      rotatePrefab(true);
     } else if (ImGui::GetIO().KeyMods == ImGuiMod_None) {
       if (ImGui::Shortcut(ImGuiKey_LeftArrow, ImGuiInputFlags_RouteGlobal)) {
         gEditorInteraction.movePrefabTileCursor(doc, -1, 0);
@@ -5112,7 +5757,10 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
 
   if (ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      if (!doc->escapeMeshSlice()) {
+      // Esc discards a clone in flight exactly as the right button does.
+      if (doc->clonePlacementArmed()) {
+        cancelClonePlacement(doc);
+      } else if (!doc->escapeMeshSlice()) {
         doc->escapeMeshDraw();
       }
     }
@@ -5722,6 +6370,192 @@ void renderContextSensitiveHelp(editor::Document* doc, editor::Settings& setting
   ImGui::End();
 }
 
+namespace {
+
+struct StartupAnimal {
+  char const* glyph;
+  char const* name;
+};
+
+StartupAnimal const& startupAnimal() {
+  static constexpr array animals{
+      StartupAnimal{ICON_FA_CAT, "cat"},
+      StartupAnimal{ICON_FA_DOG, "dog"},
+      StartupAnimal{ICON_FA_CROW, "crow"},
+      StartupAnimal{ICON_FA_DOVE, "dove"},
+      StartupAnimal{ICON_FA_DRAGON, "dragon"},
+      StartupAnimal{ICON_FA_FISH, "fish"},
+      StartupAnimal{ICON_FA_FROG, "frog"},
+      StartupAnimal{ICON_FA_HIPPO, "hippo"},
+      StartupAnimal{ICON_FA_HORSE, "horse"},
+      StartupAnimal{ICON_FA_OTTER, "otter"},
+      StartupAnimal{ICON_FA_SPIDER, "spider"}};
+  static mt19937 randomEngine{random_device{}()};
+  static uniform_int_distribution<size_t> distribution{0, animals.size() - 1};
+  static size_t const selected = distribution(randomEngine);
+  return animals[selected];
+}
+
+void drawStartupAnimal(
+    ImDrawList* drawList,
+    ImVec2 const& feet,
+    float size,
+    ImU32 colour,
+    ImU32 outline) {
+  auto* font = ImGui::GetFont();
+  auto const& animal = startupAnimal();
+  ImVec2 const dimensions =
+      font->CalcTextSizeA(size, numeric_limits<float>::max(), 0.0f, animal.glyph);
+  ImVec2 const position{
+      feet.x - dimensions.x * 0.5f, feet.y - dimensions.y};
+
+  // A dark four-way outline keeps every silhouette readable over both the 2D
+  // world and the rendered preview, regardless of which animal this run got.
+  constexpr float outlineOffset = 2.0f;
+  drawList->AddText(
+      font, size, {position.x - outlineOffset, position.y}, outline,
+      animal.glyph);
+  drawList->AddText(
+      font, size, {position.x + outlineOffset, position.y}, outline,
+      animal.glyph);
+  drawList->AddText(
+      font, size, {position.x, position.y - outlineOffset}, outline,
+      animal.glyph);
+  drawList->AddText(
+      font, size, {position.x, position.y + outlineOffset}, outline,
+      animal.glyph);
+  drawList->AddText(font, size, position, colour, animal.glyph);
+}
+
+void renderPreviewDropControl(Document* doc, Settings const& settings) {
+  auto world = doc->getWorld();
+  if (!world || !world->getWorldDataGenerator()) {
+    return;
+  }
+
+  constexpr float controlWidth = 54.0f;
+  constexpr float controlHeight = 66.0f;
+  constexpr float margin = 14.0f;
+  ImVec2 const controlPos{
+      gWorldViewScreenOrigin.x + gWorldViewSize.x - controlWidth - margin,
+      gWorldViewScreenOrigin.y + gWorldViewSize.y - controlHeight - margin};
+
+  ImGui::SetNextWindowPos(controlPos);
+  ImGui::SetNextWindowSize({controlWidth, controlHeight});
+  ImGui::SetNextWindowBgAlpha(0.0f);
+  constexpr ImGuiWindowFlags flags =
+      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings |
+      ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoMove |
+      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNav;
+
+  static bool dragging = false;
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.0f, 0.0f});
+  bool const controlVisible =
+      ImGui::Begin("##PreviewAnimalControl", nullptr, flags);
+  ImGui::PopStyleVar();
+  if (controlVisible) {
+    ImGui::SetCursorScreenPos(controlPos);
+    bool const clicked = ImGui::InvisibleButton(
+        "##PreviewAnimal", {controlWidth, controlHeight},
+        ImGuiButtonFlags_MouseButtonLeft);
+    bool const hovered = ImGui::IsItemHovered();
+    bool const active = ImGui::IsItemActive();
+    bool const previewing = preview3DIsOpen();
+    if (!previewing && active &&
+        ImGui::IsMouseDragging(ImGuiMouseButton_Left, 3.0f)) {
+      dragging = true;
+    }
+    if (hovered || active) {
+      ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    }
+    if (hovered && !dragging) {
+      ImGui::SetTooltip(
+          previewing
+              ? "Exit the 3D preview."
+              : format(
+                    "Drag the {} onto the world to enter the 3D preview.",
+                    startupAnimal().name)
+                    .c_str());
+    }
+
+    auto* drawList = ImGui::GetWindowDrawList();
+    ImVec2 const controlMax{
+        controlPos.x + controlWidth, controlPos.y + controlHeight};
+    drawList->AddRectFilled(
+        controlPos, controlMax, IM_COL32(42, 48, 56, 225), 5.0f);
+    drawList->AddRect(
+        controlPos, controlMax,
+        hovered || active ? IM_COL32(255, 214, 48, 255)
+                          : IM_COL32(125, 133, 145, 255),
+        5.0f, 0, 1.5f);
+
+    if (previewing) {
+      dragging = false;
+      ImVec2 const centre{
+          controlPos.x + controlWidth * 0.5f,
+          controlPos.y + controlHeight * 0.5f};
+      constexpr float crossRadius = 13.0f;
+      drawList->AddLine(
+          {centre.x - crossRadius, centre.y - crossRadius},
+          {centre.x + crossRadius, centre.y + crossRadius},
+          IM_COL32(235, 238, 242, 255), 4.0f);
+      drawList->AddLine(
+          {centre.x + crossRadius, centre.y - crossRadius},
+          {centre.x - crossRadius, centre.y + crossRadius},
+          IM_COL32(235, 238, 242, 255), 4.0f);
+      if (clicked) {
+        closePreview3D();
+      }
+    } else {
+      drawStartupAnimal(
+          drawList,
+          {controlPos.x + controlWidth * 0.5f, controlMax.y - 10.0f},
+          40.0f, IM_COL32(255, 193, 7, 255), IM_COL32(92, 65, 0, 255));
+    }
+
+    if (!previewing && dragging) {
+      ImVec2 const mouse = ImGui::GetMousePos();
+      bool const insideViewport =
+          mouse.x >= gWorldViewScreenOrigin.x &&
+          mouse.y >= gWorldViewScreenOrigin.y &&
+          mouse.x < gWorldViewScreenOrigin.x + gWorldViewSize.x &&
+          mouse.y < gWorldViewScreenOrigin.y + gWorldViewSize.y;
+      bool const overControl =
+          mouse.x >= controlPos.x && mouse.y >= controlPos.y &&
+          mouse.x < controlMax.x && mouse.y < controlMax.y;
+      wp::Vector2 const worldPosition = screenToWorldPosition(mouse);
+      auto const primitives = inScopePrimitives(
+          *world, world->getWorldDataGenerator()->getLayerSelection(), settings);
+      auto const floorZ = insideViewport && !overControl
+                              ? resolveGroundingFloorZ(primitives, worldPosition)
+                              : optional<float>{};
+
+      auto* foreground = ImGui::GetForegroundDrawList();
+      ImU32 const validityColour = floorZ ? IM_COL32(70, 205, 105, 255)
+                                         : IM_COL32(225, 75, 75, 255);
+      foreground->AddCircle(mouse, 7.0f, validityColour, 20, 2.0f);
+      drawStartupAnimal(
+          foreground, mouse, 46.0f, validityColour,
+          IM_COL32(45, 45, 45, 255));
+
+      if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        dragging = false;
+        if (floorZ) {
+          // The dropped animal always starts square to the canonical world
+          // plane: angle zero is intentional rather than inherited from the
+          // Player proxy.
+          openPreview3D(doc, primitives, worldPosition, 0.0f, *floorZ);
+        }
+      }
+    } else if (!previewing && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+      dragging = false;
+    }
+  }
+  ImGui::End();
+}
+
+}  // namespace
+
 void renderWidgets(
     editor::Document* doc,
     editor::Settings& settings,
@@ -5747,7 +6581,6 @@ void renderWidgets(
   ImGui::BeginDisabled(previewing);
   renderMenu(doc, settings);
   ImGui::EndDisabled();
-  // Freezes itself, bar the preview toggle that closes the preview again.
   renderToolbar(doc, settings);
 
   auto dockspaceId = ImGui::DockSpaceOverViewport(
@@ -5812,6 +6645,7 @@ void renderWidgets(
       // one in place, rather than covering the editor with a window.
       ImGui::EndDisabled();
       renderPreview3D();
+      renderPreviewDropControl(doc, settings);
       ImGui::BeginDisabled(previewing);
     } else {
       ImGui::SetNextWindowPos(worldPos);
@@ -5836,6 +6670,11 @@ void renderWidgets(
         }
       }
       ImGui::End();
+
+      // This is a real ImGui control layered over the otherwise input-
+      // transparent World window, so it can own a drag without turning the
+      // whole canvas into an ImGui input target.
+      renderPreviewDropControl(doc, settings);
     }
   }
 

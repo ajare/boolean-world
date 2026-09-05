@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <set>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,10 @@
 
 #include "Undo.h"
 #include "Document.h"
+
+namespace bw::core {
+class RunScript;
+}
 
 namespace editor {
 
@@ -38,6 +43,9 @@ struct PointerInput {
   bool leftDown{false};
   bool leftReleased{false};
   bool leftDragging{false};
+  bool rightClicked{false};
+  bool rightReleased{false};
+  bool rightDragging{false};
   bool control{false};
   bool shift{false};
   bool alt{false};
@@ -57,6 +65,11 @@ class EditorInteraction {
   wp::Vector2 mBoxSelectStartScreen;
 
   bool mMovingSelectedPrimitives{false};
+  // A move is measured against the whole gesture rather than frame by
+  // frame, so grid snapping quantises where the selection has been dragged
+  // to instead of quantising - and so losing - each frame's own delta.
+  wp::Vector2 mPrimitiveDragCumulativeDelta;
+  wp::Vector2 mPrimitiveDragAppliedDelta;
   bool mScalingSelectedPrimitives{false};
   bool mRotatingSelectedPrimitives{false};
   bool mMovingSelectedTriggerLine{false};
@@ -64,6 +77,9 @@ class EditorInteraction {
 
   bool mMovingMeshSelection{false};
   wp::Vector2 mMeshDragCumulativeDelta;
+
+  bool mPlayerProxyDragActive{false};
+  bool mRotatingPlayerProxy{false};
   std::vector<uint32_t> mPendingMeshSubObjectClick;
 
   void applyPrimitiveClick(
@@ -86,6 +102,10 @@ public:
       Settings const& settings,
       PointerInput const& input);
 
+  // Handles a right-button gesture that began on the runtime player proxy.
+  // Returns true while it owns the gesture, so view navigation can stand down.
+  bool updatePlayerProxy(Document* doc, PointerInput const& input);
+
   // Keyboard routing for PrefabField authoring. Returns true when an active
   // PrefabField consumed the key, including an intentional no-op.
   bool applyPrefabShortcut(Document* doc, bool place, bool clear);
@@ -97,6 +117,9 @@ public:
   bool boxSelectDragging() const;
   wp::Vector2 const& getBoxSelectStartScreen() const;
 };
+
+bool playerProxyHitTest(Document const* doc, wp::Vector2 const& worldPosition);
+
 
 bool recordCurrentState(Document* doc, bool modifying);
 
@@ -122,6 +145,30 @@ bool addLayerBuildStep(
 bool removeLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t stepIndex);
 
 bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromIndex, uint32_t toIndex);
+
+// Authored RunScript arguments. Each action rebuilds the Layer immediately so
+// script output and downstream failure state stay in lockstep with the panel.
+bool setLayerBuildStepName(
+    Document* doc, bw::core::Layer* layer, uint32_t stepIndex,
+    std::string const& name);
+bool setRunScriptScriptName(
+    Document* doc, bw::core::Layer* layer, bw::core::RunScript* step,
+    std::string const& scriptName);
+bool setRunScriptSeed(
+    Document* doc, bw::core::Layer* layer, bw::core::RunScript* step,
+    uint64_t seed);
+bool setRunScriptExtraResourceNames(
+    Document* doc, bw::core::Layer* layer, bw::core::RunScript* step,
+    std::vector<std::string> const& names);
+
+// Re-homes one authored Primitive into another build step of the same type,
+// keeping the Primitive itself rather than a copy. The Layer rebuilds, so the
+// Primitive's index changes; the action re-selects it at its new index.
+bool movePrimitiveToLayerBuildStep(
+    Document* doc,
+    bw::core::Layer* layer,
+    bw::core::Primitive* primitive,
+    uint32_t targetStepIndex);
 
 // Prefab selection is ephemeral focus and is called directly. The remaining
 // operations are authored edits intended to run through transactUndoableAction.
@@ -150,6 +197,9 @@ std::string prefabSizeChangeBlockedReason(
 bool setPrefabTileSize(
     Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
     bw::core::Prefab* prefab, bw::core::PrefabTileSize size);
+bool setPrefabTags(
+    Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab, std::set<std::string> const& tags);
 
 bool bindPrefabField(
     Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
@@ -231,6 +281,9 @@ bool fillMeshHole(Document* doc, uint32_t holeRingIndex);
 // through Document::updateMeshDrag. Refused (returning false, leaving the
 // mesh unchanged) if it would break an invariant.
 bool setMeshVertexPosition(Document* doc, uint32_t vertexIndex, wp::Vector2 const& position);
+bool setMeshVertexMetadata(
+    Document* doc, uint32_t vertexIndex,
+    std::map<std::string, std::string> const& metadata);
 
 // Sets or clears the active mesh edge's wall collision override. Refused on
 // an edge whose connectivity is not External.
@@ -265,7 +318,15 @@ bool createMeshPrimitiveFromDrawnRing(Document* doc);
 
 bool createPrimitiveFromGhost(Document* doc);
 
-bool clonePrimitive(Document* doc, uint32_t primitiveIndex);
+// Clones the given Primitives and hands the clones to the pointer: they
+// follow the cursor as a rigid group until a left click places them
+// (commitClonePlacement) or a right click discards them
+// (cancelClonePlacement). The undo snapshot is taken before the clones
+// exist and is only pushed on placement, so a discarded clone leaves the
+// World and the history exactly as it found them.
+bool beginClonePlacement(Document* doc, std::set<uint32_t> const& primitiveIndices);
+void commitClonePlacement(Document* doc);
+void cancelClonePlacement(Document* doc);
 
 // Replaces a MeshPrimitive with one Union MeshPrimitive per filled region,
 // retaining each region's direct Holes.

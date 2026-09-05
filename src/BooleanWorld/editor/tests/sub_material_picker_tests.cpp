@@ -8,6 +8,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <core/LayerBuildStep.h>
 #include <core/RectanglePolygon.h>
 
 #include "Actions.h"
@@ -249,6 +250,8 @@ int main() {
                   ("boolean-world-sub-material-picker-" + std::to_string(unique));
   fs::create_directories(root);
   try {
+    bw::core::LayerBuildStep::registerCoreTypes();
+
     libraryDiscoversTwoLevelsAndSelectionIsUndoable(root);
     authoringActionsAreSavedUndoableAndProtectReferences(root);
     fs::remove_all(root);

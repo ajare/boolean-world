@@ -953,8 +953,12 @@ vec3 geologyNormal(vec3 p, vec3 normal, int type, float field,
 // geologyField's granite branch above for why it is bound there instead.
 struct StoneParams
 {
-    float baseScale;  // 0: overall world-space pattern scale.
-    float stoneMix;   // 2: how strongly mica flecks read as metallic.
+    float baseScale;
+    float stoneMix;
+    float normalStrength;
+    float feldsparFreq;
+    float quartzFreq;
+    float micaRoughness;
 };
 
 StoneParams unpackStoneParams()
@@ -962,6 +966,10 @@ StoneParams unpackStoneParams()
     StoneParams result;
     result.baseScale = blendedMaterialParams[0];
     result.stoneMix = blendedMaterialParams[2];
+    result.normalStrength = blendedMaterialParams[3];
+    result.feldsparFreq = blendedMaterialParams[4];
+    result.quartzFreq = blendedMaterialParams[5];
+    result.micaRoughness = blendedMaterialParams[6];
     return result;
 }
 
@@ -972,15 +980,15 @@ Material graniteTexture(vec3 worldPos, vec3 normal)
     Material material;
     vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 0);
-    float quartz = smoothstep(0.68, 0.88, noise(p * 7.3 + vec3(2.0)));
-    float feldspar = smoothstep(0.52, 0.78, noise(p * 4.7 + vec3(11.0)));
+    float quartz = smoothstep(0.68, 0.88, noise(p * params.quartzFreq + vec3(2.0)));
+    float feldspar = smoothstep(0.52, 0.78, noise(p * params.feldsparFreq + vec3(11.0)));
     float mica = smoothstep(0.88, 0.97, noise(p * 13.0 + vec3(23.0)));
     vec3 colour = mix(vec3(0.16, 0.15, 0.15), vec3(0.48, 0.42, 0.38), feldspar);
     colour = mix(colour, vec3(0.72, 0.70, 0.66), quartz);
     material.albedo = mix(colour, vec3(0.035), mica);
     material.metallic = mica * params.stoneMix;
-    material.roughness = clamp(0.58 - quartz * 0.16 - mica * 0.20, 0.24, 0.68);
-    material.normal = geologyNormal(p, normal, 0, surface, 0.055);
+    material.roughness = clamp(0.58 - quartz * 0.16 - mica * params.micaRoughness, 0.24, 0.68);
+    material.normal = geologyNormal(p, normal, 0, surface, params.normalStrength);
     return material;
 }
 
@@ -989,8 +997,11 @@ Material graniteTexture(vec3 worldPos, vec3 normal)
 // to, same discipline as MarbleParams/StoneParams above.
 struct SlateParams
 {
-    float baseScale;  // 0: overall world-space pattern scale.
-    float rustMix;    // 1: how strongly the oxidised streaks blend in.
+    float baseScale;
+    float rustMix;
+    float normalStrength;
+    float rustFreq;
+    float roughnessAmt;
 };
 
 SlateParams unpackSlateParams()
@@ -998,6 +1009,9 @@ SlateParams unpackSlateParams()
     SlateParams result;
     result.baseScale = blendedMaterialParams[0];
     result.rustMix = blendedMaterialParams[1];
+    result.normalStrength = blendedMaterialParams[2];
+    result.rustFreq = blendedMaterialParams[3];
+    result.roughnessAmt = blendedMaterialParams[4];
     return result;
 }
 
@@ -1009,21 +1023,24 @@ Material slateTexture(vec3 worldPos, vec3 normal)
     vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 1);
     float layer = sin(p.y * 8.0 + p.x * 0.7 + fbm(p * 0.8) * 3.2) * 0.5 + 0.5;
-    float rust = smoothstep(0.73, 0.93, fbm(p * 1.9 + vec3(8.0)));
+    float rust = smoothstep(0.73, 0.93, fbm(p * params.rustFreq + vec3(8.0)));
     material.albedo = mix(vec3(0.075, 0.095, 0.115),
                           vec3(0.18, 0.21, 0.22), layer);
     material.albedo = mix(material.albedo, vec3(0.30, 0.13, 0.055), rust * params.rustMix);
     material.metallic = 0.0;
-    material.roughness = clamp(0.42 + layer * 0.18, 0.34, 0.68);
-    material.normal = geologyNormal(p, normal, 1, surface, 0.045);
+    material.roughness = clamp(0.42 + layer * params.roughnessAmt, 0.34, 0.68);
+    material.normal = geologyNormal(p, normal, 1, surface, params.normalStrength);
     return material;
 }
 
 // Sandstone's two knobs, matching its ProcMaterial Technique schema.
 struct SandstoneParams
 {
-    float baseScale;   // 0: overall world-space pattern scale.
-    float grainScale;  // 1: fine grain noise frequency.
+    float baseScale;
+    float grainScale;
+    float normalStrength;
+    float brightAmt;
+    float roughnessAmt;
 };
 
 SandstoneParams unpackSandstoneParams()
@@ -1031,6 +1048,9 @@ SandstoneParams unpackSandstoneParams()
     SandstoneParams result;
     result.baseScale = blendedMaterialParams[0];
     result.grainScale = blendedMaterialParams[1];
+    result.normalStrength = blendedMaterialParams[2];
+    result.brightAmt = blendedMaterialParams[3];
+    result.roughnessAmt = blendedMaterialParams[4];
     return result;
 }
 
@@ -1046,18 +1066,20 @@ Material sandstoneTexture(vec3 worldPos, vec3 normal)
     vec3 pale = vec3(0.70, 0.43, 0.22);
     vec3 red = vec3(0.43, 0.16, 0.075);
     material.albedo = mix(pale, red, smoothstep(0.25, 0.8, band));
-    material.albedo *= mix(0.86, 1.08, grain);
+    material.albedo *= mix(0.86, params.brightAmt, grain);
     material.metallic = 0.0;
-    material.roughness = clamp(0.72 + (grain - 0.5) * 0.18, 0.58, 0.9);
-    material.normal = geologyNormal(p, normal, 2, surface, 0.07);
+    material.roughness = clamp(0.72 + (grain - 0.5) * params.roughnessAmt, 0.58, 0.9);
+    material.normal = geologyNormal(p, normal, 2, surface, params.normalStrength);
     return material;
 }
 
 // Limestone's two knobs, matching its ProcMaterial Technique schema.
 struct LimestoneParams
 {
-    float baseScale;  // 0: overall world-space pattern scale.
-    float poreMix;    // 1: how strongly dissolved pores darken the surface.
+    float baseScale;
+    float poreMix;
+    float normalStrength;
+    float roughnessAmt;
 };
 
 LimestoneParams unpackLimestoneParams()
@@ -1065,6 +1087,8 @@ LimestoneParams unpackLimestoneParams()
     LimestoneParams result;
     result.baseScale = blendedMaterialParams[0];
     result.poreMix = blendedMaterialParams[1];
+    result.normalStrength = blendedMaterialParams[2];
+    result.roughnessAmt = blendedMaterialParams[3];
     return result;
 }
 
@@ -1081,8 +1105,8 @@ Material limestoneTexture(vec3 worldPos, vec3 normal)
                           vec3(0.82, 0.79, 0.66), deposits);
     material.albedo *= 1.0 - pores * params.poreMix;
     material.metallic = 0.0;
-    material.roughness = clamp(0.62 + pores * 0.25, 0.52, 0.9);
-    material.normal = geologyNormal(p, normal, 3, surface, 0.065);
+    material.roughness = clamp(0.62 + pores * params.roughnessAmt, 0.52, 0.9);
+    material.normal = geologyNormal(p, normal, 3, surface, params.normalStrength);
     return material;
 }
 
@@ -1092,11 +1116,21 @@ Material limestoneTexture(vec3 worldPos, vec3 normal)
 // own *Texture function only - never inside geologyField/geologyNormal,
 // which every geology material calls for its own type but which none of
 // them may safely change the shared behaviour of.
-struct BasaltParams { float baseScale; float vesicleMix; };
+struct BasaltParams
+{
+    float baseScale;
+    float vesicleMix;
+    float normalStrength;
+    float metallicAmt;
+    float roughnessAmt;
+};
 BasaltParams unpackBasaltParams() {
     BasaltParams r;
     r.baseScale = blendedMaterialParams[0];
     r.vesicleMix = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.metallicAmt = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -1112,17 +1146,27 @@ Material basaltTexture(vec3 worldPos, vec3 normal)
     material.albedo = mix(vec3(0.025, 0.027, 0.030),
                           vec3(0.12, 0.13, 0.14), grain);
     material.albedo *= 1.0 - vesicles * params.vesicleMix;
-    material.metallic = 0.03;
-    material.roughness = clamp(0.58 + vesicles * 0.30, 0.48, 0.92);
-    material.normal = geologyNormal(p, normal, 4, surface, 0.075);
+    material.metallic = params.metallicAmt;
+    material.roughness = clamp(0.58 + vesicles * params.roughnessAmt, 0.48, 0.92);
+    material.normal = geologyNormal(p, normal, 4, surface, params.normalStrength);
     return material;
 }
 
-struct ObsidianParams { float baseScale; float inclusionMix; };
+struct ObsidianParams
+{
+    float baseScale;
+    float inclusionMix;
+    float normalStrength;
+    float sheenExp;
+    float roughnessAmt;
+};
 ObsidianParams unpackObsidianParams() {
     ObsidianParams r;
     r.baseScale = blendedMaterialParams[0];
     r.inclusionMix = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.sheenExp = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -1133,22 +1177,32 @@ Material obsidianTexture(vec3 worldPos, vec3 normal)
     Material material;
     vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 5);
-    float sheen = pow(surface, 4.0);
+    float sheen = pow(surface, params.sheenExp);
     float inclusions = smoothstep(0.84, 0.96, noise(p * 9.0));
     material.albedo = mix(vec3(0.006, 0.008, 0.012),
                           vec3(0.055, 0.025, 0.075), sheen);
     material.albedo = mix(material.albedo, vec3(0.17, 0.09, 0.05), inclusions * params.inclusionMix);
     material.metallic = 0.0;
-    material.roughness = clamp(0.075 + inclusions * 0.24 + sheen * 0.035, 0.055, 0.34);
-    material.normal = geologyNormal(p, normal, 5, surface, 0.018);
+    material.roughness = clamp(0.075 + inclusions * params.roughnessAmt + sheen * 0.035, 0.055, 0.34);
+    material.normal = geologyNormal(p, normal, 5, surface, params.normalStrength);
     return material;
 }
 
-struct QuartzParams { float baseScale; float amethystMix; };
+struct QuartzParams
+{
+    float baseScale;
+    float amethystMix;
+    float normalStrength;
+    float edgeAmt;
+    float roughnessAmt;
+};
 QuartzParams unpackQuartzParams() {
     QuartzParams r;
     r.baseScale = blendedMaterialParams[0];
     r.amethystMix = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.edgeAmt = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -1165,18 +1219,30 @@ Material quartzTexture(vec3 worldPos, vec3 normal)
     float edge = 1.0 - smoothstep(0.10, 0.30, cells);
     material.albedo = mix(vec3(0.72, 0.82, 0.88),
                           vec3(0.34, 0.14, 0.52), amethyst * params.amethystMix);
-    material.albedo = mix(material.albedo, vec3(0.92, 0.98, 1.0), edge * 0.55);
+    material.albedo = mix(material.albedo, vec3(0.92, 0.98, 1.0), edge * params.edgeAmt);
     material.metallic = 0.0;
-    material.roughness = clamp(0.11 + cells * 0.20, 0.08, 0.34);
-    material.normal = geologyNormal(p, normal, 6, surface, 0.075);
+    material.roughness = clamp(0.11 + cells * params.roughnessAmt, 0.08, 0.34);
+    material.normal = geologyNormal(p, normal, 6, surface, params.normalStrength);
     return material;
 }
 
-struct OreParams { float baseScale; float veinScale; };
+struct OreParams
+{
+    float baseScale;
+    float veinScale;
+    float normalStrength;
+    float metallicDarken;
+    float roughnessAmt;
+    float veinThickness;
+};
 OreParams unpackOreParams() {
     OreParams r;
     r.baseScale = blendedMaterialParams[0];
     r.veinScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.metallicDarken = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
+    r.veinThickness = blendedMaterialParams[5];
     return r;
 }
 
@@ -1189,23 +1255,34 @@ Material oreTexture(vec3 worldPos, vec3 normal)
     float surface = geologyField(p, 7);
     float warp = fbm(p * 0.62) - 0.5;
     float vein = abs(sin(p.x * params.veinScale + p.y * 1.1 - p.z * 0.8 + warp * 8.0));
-    float metal = 1.0 - smoothstep(0.06, 0.24, vein);
+    float metal = 1.0 - smoothstep(
+        params.veinThickness * 0.25, params.veinThickness, vein);
     float oxidation = smoothstep(
         0.62, 0.88, noise(p * 3.7 + vec3(31.0))) * metal;
     vec3 host = mix(vec3(0.055, 0.06, 0.065), vec3(0.20, 0.18, 0.15), fbm(p * 1.6));
     vec3 ore = mix(vec3(0.48, 0.45, 0.38), vec3(0.73, 0.43, 0.12), oxidation);
     material.albedo = mix(host, ore, metal);
-    material.metallic = metal * (1.0 - oxidation * 0.65);
-    material.roughness = clamp(mix(0.68, 0.20, metal) + oxidation * 0.25, 0.16, 0.78);
-    material.normal = geologyNormal(p, normal, 7, surface, 0.06);
+    material.metallic = metal * (1.0 - oxidation * params.metallicDarken);
+    material.roughness = clamp(mix(0.68, 0.20, metal) + oxidation * params.roughnessAmt, 0.16, 0.78);
+    material.normal = geologyNormal(p, normal, 7, surface, params.normalStrength);
     return material;
 }
 
-struct BandedGneissParams { float baseScale; float garnetScale; };
+struct BandedGneissParams
+{
+    float baseScale;
+    float garnetScale;
+    float normalStrength;
+    float roughnessAmt;
+    float metallicAmt;
+};
 BandedGneissParams unpackBandedGneissParams() {
     BandedGneissParams r;
     r.baseScale = blendedMaterialParams[0];
     r.garnetScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.roughnessAmt = blendedMaterialParams[3];
+    r.metallicAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -1224,18 +1301,28 @@ Material bandedGneissTexture(vec3 worldPos, vec3 normal)
         vec3(0.075, 0.080, 0.085), vec3(0.66, 0.61, 0.54),
         smoothstep(0.30, 0.70, band));
     material.albedo = mix(material.albedo, vec3(0.30, 0.045, 0.055), garnet);
-    material.metallic = 0.02;
-    material.roughness = clamp(0.48 + (noise(p * 8.0) - 0.5) * 0.16,
+    material.metallic = params.metallicAmt;
+    material.roughness = clamp(0.48 + (noise(p * 8.0) - 0.5) * params.roughnessAmt,
                                0.36, 0.62);
-    material.normal = geologyNormal(p, normal, 8, surface, 0.052);
+    material.normal = geologyNormal(p, normal, 8, surface, params.normalStrength);
     return material;
 }
 
-struct RockParams { float baseScale; float mineralScale; };
+struct RockParams
+{
+    float baseScale;
+    float mineralScale;
+    float normalStrength;
+    float brightAmt;
+    float roughnessAmt;
+};
 RockParams unpackRockParams() {
     RockParams r;
     r.baseScale = blendedMaterialParams[0];
     r.mineralScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.brightAmt = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -1250,18 +1337,28 @@ Material rockTexture(vec3 worldPos, vec3 normal)
     float weather = fbm(p * 0.55);
     material.albedo = mix(
         vec3(0.16, 0.15, 0.135), vec3(0.43, 0.41, 0.37), weather);
-    material.albedo *= mix(0.82, 1.10, mineral);
+    material.albedo *= mix(0.82, params.brightAmt, mineral);
     material.metallic = 0.0;
-    material.roughness = clamp(0.68 + (mineral - 0.5) * 0.16, 0.58, 0.82);
-    material.normal = geologyNormal(p, normal, 9, surface, 0.075);
+    material.roughness = clamp(0.68 + (mineral - 0.5) * params.roughnessAmt, 0.58, 0.82);
+    material.normal = geologyNormal(p, normal, 9, surface, params.normalStrength);
     return material;
 }
 
-struct MossyRockParams { float baseScale; float mossScale; };
+struct MossyRockParams
+{
+    float baseScale;
+    float mossScale;
+    float normalStrength;
+    float mossBias;
+    float roughnessMax;
+};
 MossyRockParams unpackMossyRockParams() {
     MossyRockParams r;
     r.baseScale = blendedMaterialParams[0];
     r.mossScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.mossBias = blendedMaterialParams[3];
+    r.roughnessMax = blendedMaterialParams[4];
     return r;
 }
 
@@ -1274,7 +1371,7 @@ Material mossyRockTexture(vec3 worldPos, vec3 normal)
     float surface = geologyField(p, 10);
     float moisture = fbm(p * 0.82 + vec3(4.0, 9.0, 2.0));
     float upward = max(normalize(normal).y, 0.0);
-    float moss = smoothstep(0.43, 0.68, moisture) * (0.42 + upward * 0.58);
+    float moss = smoothstep(0.43, 0.68, moisture) * (params.mossBias + upward * (1.0 - params.mossBias));
     float fineMoss = noise(p * params.mossScale);
     vec3 stone = mix(vec3(0.13, 0.13, 0.115), vec3(0.38, 0.37, 0.32),
                      fbm(p * 0.55));
@@ -1282,16 +1379,26 @@ Material mossyRockTexture(vec3 worldPos, vec3 normal)
         vec3(0.055, 0.105, 0.025), vec3(0.25, 0.34, 0.07), fineMoss);
     material.albedo = mix(stone, mossColour, moss);
     material.metallic = 0.0;
-    material.roughness = mix(0.72, 0.92, moss);
-    material.normal = geologyNormal(p, normal, 10, surface, 0.068);
+    material.roughness = mix(params.roughnessMax, 0.92, moss);
+    material.normal = geologyNormal(p, normal, 10, surface, params.normalStrength);
     return material;
 }
 
-struct WetRockParams { float baseScale; float wetnessThreshold; };
+struct WetRockParams
+{
+    float baseScale;
+    float wetnessThreshold;
+    float wetnessUpper;
+    float darkAmt;
+    float roughnessMax;
+};
 WetRockParams unpackWetRockParams() {
     WetRockParams r;
     r.baseScale = blendedMaterialParams[0];
     r.wetnessThreshold = blendedMaterialParams[1];
+    r.wetnessUpper = blendedMaterialParams[2];
+    r.darkAmt = blendedMaterialParams[3];
+    r.roughnessMax = blendedMaterialParams[4];
     return r;
 }
 
@@ -1303,12 +1410,12 @@ Material wetRockTexture(vec3 worldPos, vec3 normal)
     vec3 p = worldPos * params.baseScale;
     float surface = geologyField(p, 11);
     float wetness = smoothstep(
-        params.wetnessThreshold, 0.76, fbm(p * 0.46 + vec3(12.0, 3.0, 8.0)));
+        params.wetnessThreshold, params.wetnessUpper, fbm(p * 0.46 + vec3(12.0, 3.0, 8.0)));
     vec3 dryStone = mix(vec3(0.14, 0.14, 0.135), vec3(0.39, 0.38, 0.35),
                         fbm(p * 0.62));
-    material.albedo = dryStone * mix(0.72, 0.36, wetness);
+    material.albedo = dryStone * mix(0.72, params.darkAmt, wetness);
     material.metallic = 0.0;
-    material.roughness = mix(0.52, 0.075, wetness);
+    material.roughness = mix(params.roughnessMax, 0.075, wetness);
     material.normal = geologyNormal(p, normal, 11, surface,
                                     mix(0.062, 0.035, wetness));
     return material;
@@ -1375,11 +1482,21 @@ vec3 metalNormal(vec3 p, vec3 normal, int type, float field, float strength)
 // index - same "base_scale in slot 0, second slot local to this function
 // only" discipline as the geology materials above; none of these may safely
 // change metalField/metalNormal, which every metal calls.
-struct RustedIronParams { float baseScale; float rustScale; };
+struct RustedIronParams
+{
+    float baseScale;
+    float rustScale;
+    float normalStrength;
+    float metallicMax;
+    float roughnessMax;
+};
 RustedIronParams unpackRustedIronParams() {
     RustedIronParams r;
     r.baseScale = blendedMaterialParams[0];
     r.rustScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.metallicMax = blendedMaterialParams[3];
+    r.roughnessMax = blendedMaterialParams[4];
     return r;
 }
 
@@ -1397,17 +1514,27 @@ Material rustedIronTexture(vec3 worldPos, vec3 normal)
                     vec3(0.58, 0.19, 0.035), noise(p * params.rustScale));
     float rustMask = clamp(corrosion + pits * 0.45, 0.0, 1.0);
     material.albedo = mix(iron, rust, rustMask);
-    material.metallic = mix(0.92, 0.0, rustMask);
-    material.roughness = mix(0.28, 0.88, rustMask);
-    material.normal = metalNormal(p, normal, 0, surface, 0.065);
+    material.metallic = mix(params.metallicMax, 0.0, rustMask);
+    material.roughness = mix(0.28, params.roughnessMax, rustMask);
+    material.normal = metalNormal(p, normal, 0, surface, params.normalStrength);
     return material;
 }
 
-struct GalvanizedSteelParams { float baseScale; float facetMix; };
+struct GalvanizedSteelParams
+{
+    float baseScale;
+    float facetMix;
+    float normalStrength;
+    float metallicAmt;
+    float roughnessAmt;
+};
 GalvanizedSteelParams unpackGalvanizedSteelParams() {
     GalvanizedSteelParams r;
     r.baseScale = blendedMaterialParams[0];
     r.facetMix = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.metallicAmt = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -1422,17 +1549,27 @@ Material galvanizedSteelTexture(vec3 worldPos, vec3 normal)
     float facet = clamp(crystals * params.facetMix, 0.0, 1.0);
     material.albedo = mix(vec3(0.42, 0.45, 0.47),
                           vec3(0.74, 0.77, 0.78), facet);
-    material.metallic = 0.94;
-    material.roughness = clamp(0.25 + facet * 0.20, 0.22, 0.48);
-    material.normal = metalNormal(p, normal, 1, surface, 0.035);
+    material.metallic = params.metallicAmt;
+    material.roughness = clamp(0.25 + facet * params.roughnessAmt, 0.22, 0.48);
+    material.normal = metalNormal(p, normal, 1, surface, params.normalStrength);
     return material;
 }
 
-struct BrushedMetalParams { float baseScale; float scratchMix; };
+struct BrushedMetalParams
+{
+    float baseScale;
+    float scratchMix;
+    float normalStrength;
+    float metallicAmt;
+    float roughnessAmt;
+};
 BrushedMetalParams unpackBrushedMetalParams() {
     BrushedMetalParams r;
     r.baseScale = blendedMaterialParams[0];
     r.scratchMix = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.metallicAmt = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -1447,17 +1584,27 @@ Material brushedMetalTexture(vec3 worldPos, vec3 normal)
     material.albedo = mix(vec3(0.42, 0.44, 0.46),
                           vec3(0.68, 0.70, 0.72), surface);
     material.albedo *= 1.0 - scratch * params.scratchMix;
-    material.metallic = 0.96;
-    material.roughness = clamp(0.20 + scratch * 0.30, 0.18, 0.52);
-    material.normal = metalNormal(p, normal, 2, surface, 0.012);
+    material.metallic = params.metallicAmt;
+    material.roughness = clamp(0.20 + scratch * params.roughnessAmt, 0.18, 0.52);
+    material.normal = metalNormal(p, normal, 2, surface, params.normalStrength);
     return material;
 }
 
-struct HammeredMetalParams { float baseScale; float dentScale; };
+struct HammeredMetalParams
+{
+    float baseScale;
+    float dentScale;
+    float normalStrength;
+    float metallicAmt;
+    float roughnessAmt;
+};
 HammeredMetalParams unpackHammeredMetalParams() {
     HammeredMetalParams r;
     r.baseScale = blendedMaterialParams[0];
     r.dentScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.metallicAmt = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -1471,17 +1618,27 @@ Material hammeredMetalTexture(vec3 worldPos, vec3 normal)
     float dents = geologyVoronoi(p * params.dentScale);
     material.albedo = mix(vec3(0.24, 0.25, 0.27),
                           vec3(0.52, 0.55, 0.58), smoothstep(0.1, 0.7, dents));
-    material.metallic = 0.92;
-    material.roughness = clamp(0.30 + (1.0 - surface) * 0.22, 0.28, 0.58);
-    material.normal = metalNormal(p, normal, 3, surface, 0.085);
+    material.metallic = params.metallicAmt;
+    material.roughness = clamp(0.30 + (1.0 - surface) * params.roughnessAmt, 0.28, 0.58);
+    material.normal = metalNormal(p, normal, 3, surface, params.normalStrength);
     return material;
 }
 
-struct PatinatedCopperParams { float baseScale; float exposedScale; };
+struct PatinatedCopperParams
+{
+    float baseScale;
+    float exposedScale;
+    float normalStrength;
+    float metallicMax;
+    float roughnessMax;
+};
 PatinatedCopperParams unpackPatinatedCopperParams() {
     PatinatedCopperParams r;
     r.baseScale = blendedMaterialParams[0];
     r.exposedScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.metallicMax = blendedMaterialParams[3];
+    r.roughnessMax = blendedMaterialParams[4];
     return r;
 }
 
@@ -1499,17 +1656,27 @@ Material patinatedCopperTexture(vec3 worldPos, vec3 normal)
     vec3 verdigris = mix(vec3(0.025, 0.20, 0.15),
                          vec3(0.12, 0.48, 0.39), fbm(p * 1.6));
     material.albedo = mix(copper, verdigris, patina);
-    material.metallic = mix(0.98, 0.03, patina);
-    material.roughness = mix(0.20, 0.72, patina);
-    material.normal = metalNormal(p, normal, 4, surface, 0.04);
+    material.metallic = mix(params.metallicMax, 0.03, patina);
+    material.roughness = mix(0.20, params.roughnessMax, patina);
+    material.normal = metalNormal(p, normal, 4, surface, params.normalStrength);
     return material;
 }
 
-struct DamasceneSteelParams { float baseScale; float layerThreshold; };
+struct DamasceneSteelParams
+{
+    float baseScale;
+    float layerThreshold;
+    float normalStrength;
+    float metallicAmt;
+    float roughnessMax;
+};
 DamasceneSteelParams unpackDamasceneSteelParams() {
     DamasceneSteelParams r;
     r.baseScale = blendedMaterialParams[0];
     r.layerThreshold = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.metallicAmt = blendedMaterialParams[3];
+    r.roughnessMax = blendedMaterialParams[4];
     return r;
 }
 
@@ -1523,17 +1690,27 @@ Material damasceneSteelTexture(vec3 worldPos, vec3 normal)
     float layers = smoothstep(params.layerThreshold, 0.68, surface);
     material.albedo = mix(vec3(0.12, 0.13, 0.15),
                           vec3(0.62, 0.65, 0.68), layers);
-    material.metallic = 0.95;
-    material.roughness = mix(0.34, 0.17, layers);
-    material.normal = metalNormal(p, normal, 5, surface, 0.018);
+    material.metallic = params.metallicAmt;
+    material.roughness = mix(params.roughnessMax, 0.17, layers);
+    material.normal = metalNormal(p, normal, 5, surface, params.normalStrength);
     return material;
 }
 
-struct HeatTreatedMetalParams { float baseScale; float oxideMix; };
+struct HeatTreatedMetalParams
+{
+    float baseScale;
+    float oxideMix;
+    float normalStrength;
+    float metallicAmt;
+    float roughnessAmt;
+};
 HeatTreatedMetalParams unpackHeatTreatedMetalParams() {
     HeatTreatedMetalParams r;
     r.baseScale = blendedMaterialParams[0];
     r.oxideMix = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.metallicAmt = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -1551,9 +1728,9 @@ Material heatTreatedMetalTexture(vec3 worldPos, vec3 normal)
     vec3 oxideColour = mix(straw, violet, smoothstep(0.18, 0.58, band));
     oxideColour = mix(oxideColour, blue, smoothstep(0.55, 0.88, band));
     material.albedo = mix(vec3(0.38, 0.40, 0.42), oxideColour, params.oxideMix);
-    material.metallic = 0.90;
-    material.roughness = clamp(0.19 + noise(p * 6.0) * 0.13, 0.18, 0.34);
-    material.normal = metalNormal(p, normal, 6, surface, 0.014);
+    material.metallic = params.metallicAmt;
+    material.roughness = clamp(0.19 + noise(p * 6.0) * params.roughnessAmt, 0.18, 0.34);
+    material.normal = metalNormal(p, normal, 6, surface, params.normalStrength);
     return material;
 }
 
@@ -1741,11 +1918,16 @@ vec3 wood2Colour(vec3 p)
         vec3(0.52, 0.32, 0.19), wood2Remap01(wood, 0.56, 1.0));
 }
 
-struct Wood2Params { float baseScale; };
+struct Wood2Params
+{
+    float baseScale;
+    float roughness;
+};
 Wood2Params unpackWood2Params()
 {
     Wood2Params result;
     result.baseScale = blendedMaterialParams[0];
+    result.roughness = blendedMaterialParams[1];
     return result;
 }
 
@@ -1755,7 +1937,7 @@ Material wood2Texture(vec3 worldPos, vec3 normal)
     Material material;
     material.albedo = wood2Colour(worldPos * params.baseScale);
     material.metallic = 0.0;
-    material.roughness = 0.56;
+    material.roughness = params.roughness;
     material.normal = normalize(normal);
     return material;
 }
@@ -1764,11 +1946,21 @@ Material wood2Texture(vec3 worldPos, vec3 normal)
 // its index - same discipline as the geology/metal materials above; none of
 // these may safely change organicField/organicNormal, which every organic
 // material calls.
-struct WoodParams { float baseScale; float ringScale; };
+struct WoodParams
+{
+    float baseScale;
+    float ringScale;
+    float normalStrength;
+    float roughnessAmt;
+    float knotDim;
+};
 WoodParams unpackWoodParams() {
     WoodParams r;
     r.baseScale = blendedMaterialParams[0];
     r.ringScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.roughnessAmt = blendedMaterialParams[3];
+    r.knotDim = blendedMaterialParams[4];
     return r;
 }
 
@@ -1785,18 +1977,28 @@ Material woodTexture(vec3 worldPos, vec3 normal)
     float knot = 1.0 - smoothstep(0.08, 0.34, geologyVoronoi(p * 1.4));
     material.albedo = mix(vec3(0.16, 0.055, 0.018),
                           vec3(0.58, 0.29, 0.095), ring);
-    material.albedo *= mix(0.76, 1.12, grain) * (1.0 - knot * 0.38);
+    material.albedo *= mix(0.76, 1.12, grain) * (1.0 - knot * params.knotDim);
     material.metallic = 0.0;
-    material.roughness = clamp(0.48 + grain * 0.18, 0.42, 0.7);
-    material.normal = organicNormal(p, normal, 0, surface, 0.038);
+    material.roughness = clamp(0.48 + grain * params.roughnessAmt, 0.42, 0.7);
+    material.normal = organicNormal(p, normal, 0, surface, params.normalStrength);
     return material;
 }
 
-struct BarkParams { float baseScale; float ridgeScale; };
+struct BarkParams
+{
+    float baseScale;
+    float ridgeScale;
+    float normalStrength;
+    float lichenBlend;
+    float roughnessAmt;
+};
 BarkParams unpackBarkParams() {
     BarkParams r;
     r.baseScale = blendedMaterialParams[0];
     r.ridgeScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.lichenBlend = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -1811,18 +2013,28 @@ Material barkTexture(vec3 worldPos, vec3 normal)
     float lichen = smoothstep(0.67, 0.88, fbm(p * 1.5 + vec3(9.0)));
     material.albedo = mix(vec3(0.055, 0.020, 0.008),
                           vec3(0.30, 0.12, 0.035), high);
-    material.albedo = mix(material.albedo, vec3(0.20, 0.27, 0.07), lichen * 0.35);
+    material.albedo = mix(material.albedo, vec3(0.20, 0.27, 0.07), lichen * params.lichenBlend);
     material.metallic = 0.0;
-    material.roughness = clamp(0.76 + (1.0 - high) * 0.16, 0.7, 0.95);
-    material.normal = organicNormal(p, normal, 1, surface, 0.095);
+    material.roughness = clamp(0.76 + (1.0 - high) * params.roughnessAmt, 0.7, 0.95);
+    material.normal = organicNormal(p, normal, 1, surface, params.normalStrength);
     return material;
 }
 
-struct BoneParams { float baseScale; float poreScale; };
+struct BoneParams
+{
+    float baseScale;
+    float poreScale;
+    float normalStrength;
+    float poreDarken;
+    float roughnessAmt;
+};
 BoneParams unpackBoneParams() {
     BoneParams r;
     r.baseScale = blendedMaterialParams[0];
     r.poreScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.poreDarken = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -1837,18 +2049,26 @@ Material boneTexture(vec3 worldPos, vec3 normal)
     float pores = 1.0 - smoothstep(0.07, 0.23, geologyVoronoi(p * params.poreScale));
     material.albedo = mix(vec3(0.52, 0.43, 0.27),
                           vec3(0.91, 0.84, 0.65), age);
-    material.albedo *= 1.0 - pores * 0.30;
+    material.albedo *= 1.0 - pores * params.poreDarken;
     material.metallic = 0.0;
-    material.roughness = clamp(0.38 + pores * 0.36, 0.34, 0.78);
-    material.normal = organicNormal(p, normal, 2, surface, 0.045);
+    material.roughness = clamp(0.38 + pores * params.roughnessAmt, 0.34, 0.78);
+    material.normal = organicNormal(p, normal, 2, surface, params.normalStrength);
     return material;
 }
 
-struct LeatherParams { float baseScale; float wearMix; };
+struct LeatherParams
+{
+    float baseScale;
+    float wearMix;
+    float normalStrength;
+    float roughnessAmt;
+};
 LeatherParams unpackLeatherParams() {
     LeatherParams r;
     r.baseScale = blendedMaterialParams[0];
     r.wearMix = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.roughnessAmt = blendedMaterialParams[3];
     return r;
 }
 
@@ -1865,16 +2085,24 @@ Material leatherTexture(vec3 worldPos, vec3 normal)
                           vec3(0.34, 0.095, 0.035), cells);
     material.albedo = mix(material.albedo, vec3(0.47, 0.20, 0.08), wear * params.wearMix);
     material.metallic = 0.0;
-    material.roughness = clamp(0.50 - wear * 0.16 + cells * 0.14, 0.32, 0.68);
-    material.normal = organicNormal(p, normal, 3, surface, 0.035);
+    material.roughness = clamp(0.50 - wear * params.roughnessAmt + cells * 0.14, 0.32, 0.68);
+    material.normal = organicNormal(p, normal, 3, surface, params.normalStrength);
     return material;
 }
 
-struct FleshParams { float baseScale; float veinMix; };
+struct FleshParams
+{
+    float baseScale;
+    float veinMix;
+    float normalStrength;
+    float roughnessAmt;
+};
 FleshParams unpackFleshParams() {
     FleshParams r;
     r.baseScale = blendedMaterialParams[0];
     r.veinMix = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.roughnessAmt = blendedMaterialParams[3];
     return r;
 }
 
@@ -1893,16 +2121,26 @@ Material fleshTexture(vec3 worldPos, vec3 normal)
                           vec3(0.69, 0.24, 0.20), mottling);
     material.albedo = mix(material.albedo, vec3(0.07, 0.025, 0.12), veins * params.veinMix);
     material.metallic = 0.0;
-    material.roughness = clamp(0.42 + (1.0 - mottling) * 0.14, 0.38, 0.6);
-    material.normal = organicNormal(p, normal, 4, surface, 0.022);
+    material.roughness = clamp(0.42 + (1.0 - mottling) * params.roughnessAmt, 0.38, 0.6);
+    material.normal = organicNormal(p, normal, 4, surface, params.normalStrength);
     return material;
 }
 
-struct ChitinParams { float baseScale; float plateScale; };
+struct ChitinParams
+{
+    float baseScale;
+    float plateScale;
+    float normalStrength;
+    float metallicAmt;
+    float roughnessAmt;
+};
 ChitinParams unpackChitinParams() {
     ChitinParams r;
     r.baseScale = blendedMaterialParams[0];
     r.plateScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.metallicAmt = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -1922,17 +2160,25 @@ Material chitinTexture(vec3 worldPos, vec3 normal)
     vec3 brightShell = mix(vec3(0.14, 0.055, 0.20),
                            vec3(0.035, 0.24, 0.22), band);
     material.albedo = mix(darkShell, brightShell, plate);
-    material.metallic = 0.08;
-    material.roughness = clamp(0.16 + (1.0 - plate) * 0.30, 0.14, 0.48);
-    material.normal = organicNormal(p, normal, 5, surface, 0.048);
+    material.metallic = params.metallicAmt;
+    material.roughness = clamp(0.16 + (1.0 - plate) * params.roughnessAmt, 0.14, 0.48);
+    material.normal = organicNormal(p, normal, 5, surface, params.normalStrength);
     return material;
 }
 
-struct CoralParams { float baseScale; float poreMix; };
+struct CoralParams
+{
+    float baseScale;
+    float poreMix;
+    float normalStrength;
+    float roughnessAmt;
+};
 CoralParams unpackCoralParams() {
     CoralParams r;
     r.baseScale = blendedMaterialParams[0];
     r.poreMix = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.roughnessAmt = blendedMaterialParams[3];
     return r;
 }
 
@@ -1949,8 +2195,8 @@ Material coralTexture(vec3 worldPos, vec3 normal)
                           vec3(0.92, 0.38, 0.24), colonies);
     material.albedo = mix(material.albedo, vec3(0.055, 0.018, 0.012), pores * params.poreMix);
     material.metallic = 0.0;
-    material.roughness = clamp(0.65 + pores * 0.27, 0.58, 0.94);
-    material.normal = organicNormal(p, normal, 6, surface, 0.085);
+    material.roughness = clamp(0.65 + pores * params.roughnessAmt, 0.58, 0.94);
+    material.normal = organicNormal(p, normal, 6, surface, params.normalStrength);
     return material;
 }
 
@@ -2027,11 +2273,19 @@ vec3 spectralPalette(float phase)
 // safely change supernaturalField/supernaturalNormal, which every
 // supernatural material calls; time-driven animation constants
 // (GLOBAL_TIME's own coefficients) are left alone rather than made tunable.
-struct ArcaneCrystalParams { float baseScale; float coreMix; };
+struct ArcaneCrystalParams
+{
+    float baseScale;
+    float coreMix;
+    float normalStrength;
+    float roughnessAmt;
+};
 ArcaneCrystalParams unpackArcaneCrystalParams() {
     ArcaneCrystalParams r;
     r.baseScale = blendedMaterialParams[0];
     r.coreMix = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.roughnessAmt = blendedMaterialParams[3];
     return r;
 }
 
@@ -2048,16 +2302,26 @@ Material arcaneCrystalTexture(vec3 worldPos, vec3 normal)
     material.albedo = mix(vec3(0.035, 0.10, 0.24),
                           spectralPalette(colourShift), core * params.coreMix);
     material.metallic = 0.16;
-    material.roughness = clamp(0.07 + cells * 0.18, 0.055, 0.28);
-    material.normal = supernaturalNormal(p, normal, 0, surface, 0.095);
+    material.roughness = clamp(0.07 + cells * params.roughnessAmt, 0.055, 0.28);
+    material.normal = supernaturalNormal(p, normal, 0, surface, params.normalStrength);
     return material;
 }
 
-struct EnergyStoneParams { float baseScale; float energyScale; };
+struct EnergyStoneParams
+{
+    float baseScale;
+    float energyScale;
+    float normalStrength;
+    float roughnessMax;
+    float metallicAmt;
+};
 EnergyStoneParams unpackEnergyStoneParams() {
     EnergyStoneParams r;
     r.baseScale = blendedMaterialParams[0];
     r.energyScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.roughnessMax = blendedMaterialParams[3];
+    r.metallicAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -2073,17 +2337,27 @@ Material energyStoneTexture(vec3 worldPos, vec3 normal)
     float energy = 1.0 - smoothstep(0.035, 0.18, seam);
     material.albedo = mix(vec3(0.018, 0.022, 0.030),
                           vec3(0.025, 0.32, 0.72), energy);
-    material.metallic = 0.04;
-    material.roughness = mix(0.78, 0.18, energy);
-    material.normal = supernaturalNormal(p, normal, 1, surface, 0.065);
+    material.metallic = params.metallicAmt;
+    material.roughness = mix(params.roughnessMax, 0.18, energy);
+    material.normal = supernaturalNormal(p, normal, 1, surface, params.normalStrength);
     return material;
 }
 
-struct AlienTissueParams { float baseScale; float cellScale; };
+struct AlienTissueParams
+{
+    float baseScale;
+    float cellScale;
+    float normalStrength;
+    float pulseBlend;
+    float roughnessAmt;
+};
 AlienTissueParams unpackAlienTissueParams() {
     AlienTissueParams r;
     r.baseScale = blendedMaterialParams[0];
     r.cellScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.pulseBlend = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -2100,18 +2374,28 @@ Material alienTissueTexture(vec3 worldPos, vec3 normal)
                   0.5;
     material.albedo = mix(vec3(0.055, 0.012, 0.075),
                           vec3(0.18, 0.52, 0.16), smoothstep(0.18, 0.72, cells));
-    material.albedo = mix(material.albedo, vec3(0.62, 0.08, 0.31), pulse * 0.28);
+    material.albedo = mix(material.albedo, vec3(0.62, 0.08, 0.31), pulse * params.pulseBlend);
     material.metallic = 0.0;
-    material.roughness = clamp(0.28 + cells * 0.24, 0.24, 0.56);
-    material.normal = supernaturalNormal(p, normal, 2, surface, 0.055);
+    material.roughness = clamp(0.28 + cells * params.roughnessAmt, 0.24, 0.56);
+    material.normal = supernaturalNormal(p, normal, 2, surface, params.normalStrength);
     return material;
 }
 
-struct MagicalMetalParams { float baseScale; float runeScale; };
+struct MagicalMetalParams
+{
+    float baseScale;
+    float runeScale;
+    float normalStrength;
+    float metallicMax;
+    float roughnessMax;
+};
 MagicalMetalParams unpackMagicalMetalParams() {
     MagicalMetalParams r;
     r.baseScale = blendedMaterialParams[0];
     r.runeScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.metallicMax = blendedMaterialParams[3];
+    r.roughnessMax = blendedMaterialParams[4];
     return r;
 }
 
@@ -2128,17 +2412,25 @@ Material magicalMetalTexture(vec3 worldPos, vec3 normal)
     material.albedo = mix(vec3(0.08, 0.045, 0.16),
                           vec3(0.58, 0.44, 0.82), flow);
     material.albedo = mix(material.albedo, vec3(0.04, 0.75, 0.92), rune);
-    material.metallic = mix(0.96, 0.35, rune);
-    material.roughness = mix(0.20, 0.11, rune);
-    material.normal = supernaturalNormal(p, normal, 3, surface, 0.026);
+    material.metallic = mix(params.metallicMax, 0.35, rune);
+    material.roughness = mix(params.roughnessMax, 0.11, rune);
+    material.normal = supernaturalNormal(p, normal, 3, surface, params.normalStrength);
     return material;
 }
 
-struct CloudSolidParams { float baseScale; float densityThreshold; };
+struct CloudSolidParams
+{
+    float baseScale;
+    float densityThreshold;
+    float normalStrength;
+    float roughnessAmt;
+};
 CloudSolidParams unpackCloudSolidParams() {
     CloudSolidParams r;
     r.baseScale = blendedMaterialParams[0];
     r.densityThreshold = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.roughnessAmt = blendedMaterialParams[3];
     return r;
 }
 
@@ -2155,16 +2447,26 @@ Material cloudSolidTexture(vec3 worldPos, vec3 normal)
     material.albedo = mix(vec3(0.18, 0.28, 0.46),
                           vec3(0.92, 0.96, 1.0), density);
     material.metallic = 0.0;
-    material.roughness = clamp(0.82 - density * 0.26, 0.5, 0.88);
-    material.normal = supernaturalNormal(p, normal, 4, surface, 0.032);
+    material.roughness = clamp(0.82 - density * params.roughnessAmt, 0.5, 0.88);
+    material.normal = supernaturalNormal(p, normal, 4, surface, params.normalStrength);
     return material;
 }
 
-struct HolographicParams { float baseScale; float scanScale; };
+struct HolographicParams
+{
+    float baseScale;
+    float scanScale;
+    float normalStrength;
+    float fresnelExp;
+    float roughnessAmt;
+};
 HolographicParams unpackHolographicParams() {
     HolographicParams r;
     r.baseScale = blendedMaterialParams[0];
     r.scanScale = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.fresnelExp = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -2175,22 +2477,32 @@ Material holographicTexture(vec3 worldPos, vec3 normal, vec3 viewDir)
     Material material;
     vec3 p = worldPos * params.baseScale;
     float surface = supernaturalField(p, 5);
-    float fresnel = pow(1.0 - max(dot(normalize(normal), viewDir), 0.0), 2.2);
+    float fresnel = pow(1.0 - max(dot(normalize(normal), viewDir), 0.0), params.fresnelExp);
     float scan = sin(p.y * params.scanScale + @Uniform(GLOBAL_TIME) * 3.0) * 0.5 + 0.5;
     vec3 spectrum = spectralPalette(fresnel * 0.72 + scan * 0.18 +
                                     @Uniform(GLOBAL_TIME) * 0.035);
     material.albedo = mix(vec3(0.025, 0.12, 0.18), spectrum, 0.55 + fresnel * 0.4);
     material.metallic = 0.48;
-    material.roughness = clamp(0.10 + scan * 0.12, 0.08, 0.24);
-    material.normal = supernaturalNormal(p, normal, 5, surface, 0.008);
+    material.roughness = clamp(0.10 + scan * params.roughnessAmt, 0.08, 0.24);
+    material.normal = supernaturalNormal(p, normal, 5, surface, params.normalStrength);
     return material;
 }
 
-struct CorruptionParams { float baseScale; float spreadThreshold; };
+struct CorruptionParams
+{
+    float baseScale;
+    float spreadThreshold;
+    float normalStrength;
+    float tendrilBlend;
+    float roughnessMax;
+};
 CorruptionParams unpackCorruptionParams() {
     CorruptionParams r;
     r.baseScale = blendedMaterialParams[0];
     r.spreadThreshold = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.tendrilBlend = blendedMaterialParams[3];
+    r.roughnessMax = blendedMaterialParams[4];
     return r;
 }
 
@@ -2206,10 +2518,10 @@ Material corruptionTexture(vec3 worldPos, vec3 normal)
     float tendril = smoothstep(-0.18, 0.06, -surface);
     material.albedo = mix(vec3(0.025, 0.022, 0.020),
                           vec3(0.20, 0.008, 0.24), spread);
-    material.albedo = mix(material.albedo, vec3(0.62, 0.015, 0.42), tendril * 0.72);
+    material.albedo = mix(material.albedo, vec3(0.62, 0.015, 0.42), tendril * params.tendrilBlend);
     material.metallic = spread * 0.12;
-    material.roughness = mix(0.82, 0.30, spread);
-    material.normal = supernaturalNormal(p, normal, 6, surface, 0.072);
+    material.roughness = mix(params.roughnessMax, 0.30, spread);
+    material.normal = supernaturalNormal(p, normal, 6, surface, params.normalStrength);
     return material;
 }
 
@@ -2294,11 +2606,21 @@ vec3 frostedGlassNormal(vec3 p, vec3 normal, float field, float strength)
 // principle to changing them - they are left as-is anyway, so every bind
 // point here stays the same simple "local to this function" shape as the
 // rest of the file.
-struct FrostedGlassParams { float baseScale; float frostThreshold; };
+struct FrostedGlassParams
+{
+    float baseScale;
+    float frostThreshold;
+    float normalStrength;
+    float brightAmt;
+    float roughnessMax;
+};
 FrostedGlassParams unpackFrostedGlassParams() {
     FrostedGlassParams r;
     r.baseScale = blendedMaterialParams[0];
     r.frostThreshold = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.brightAmt = blendedMaterialParams[3];
+    r.roughnessMax = blendedMaterialParams[4];
     return r;
 }
 
@@ -2315,10 +2637,10 @@ Material frostedGlassTexture(vec3 worldPos, vec3 normal)
     // quality is approximated with a pale, desaturated albedo whose
     // roughness thins out wherever the etch is sparse.
     vec3 clearTint = vec3(0.85, 0.91, 0.94);
-    material.albedo = clearTint * mix(0.78, 0.98, frostDensity);
+    material.albedo = clearTint * mix(0.78, params.brightAmt, frostDensity);
     material.metallic = 0.0;
-    material.roughness = clamp(mix(0.34, 0.80, frostDensity), 0.28, 0.86);
-    material.normal = frostedGlassNormal(p, normal, surface, 0.045);
+    material.roughness = clamp(mix(0.34, params.roughnessMax, frostDensity), 0.28, 0.86);
+    material.normal = frostedGlassNormal(p, normal, surface, params.normalStrength);
     return material;
 }
 
@@ -2340,11 +2662,21 @@ float brickReliefField(vec2 uv, float brickHeight)
     return 1.0 - smoothstep(0.0, mortarWidth, mortar);
 }
 
-struct BrickParams { float baseScale; float brickHeight; };
+struct BrickParams
+{
+    float baseScale;
+    float brickHeight;
+    float normalStrength;
+    float weatherBright;
+    float roughnessAmt;
+};
 BrickParams unpackBrickParams() {
     BrickParams r;
     r.baseScale = blendedMaterialParams[0];
     r.brickHeight = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.weatherBright = blendedMaterialParams[3];
+    r.roughnessAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -2370,19 +2702,19 @@ Material brickTexture(vec3 worldPos, vec3 normal)
     float weather = noise(vec3(uv * 3.3, shade * 11.0));
 
     vec3 fired = mix(vec3(0.36, 0.12, 0.075), vec3(0.66, 0.30, 0.16), shade);
-    fired *= mix(0.80, 1.12, weather);
+    fired *= mix(0.80, params.weatherBright, weather);
     vec3 mortarColour = mix(vec3(0.55, 0.53, 0.49), vec3(0.68, 0.66, 0.62), weather);
 
     material.albedo = mix(fired, mortarColour, mortarMask);
     material.metallic = 0.0;
     material.roughness = clamp(
-        mix(0.58, 0.90, mortarMask) + (weather - 0.5) * 0.08, 0.55, 0.94);
+        mix(0.58, 0.90, mortarMask) + (weather - 0.5) * params.roughnessAmt, 0.55, 0.94);
 
     const float epsilon = 0.01;
     float gradientU = brickReliefField(uv + vec2(epsilon, 0.0), params.brickHeight) - mortarMask;
     float gradientV = brickReliefField(uv + vec2(0.0, epsilon), params.brickHeight) - mortarMask;
     vec3 bump = (tangent * gradientU + bitangent * gradientV) / epsilon;
-    material.normal = normalize(geometricNormal - bump * 0.045);
+    material.normal = normalize(geometricNormal - bump * params.normalStrength);
 
     return material;
 }
@@ -2399,11 +2731,21 @@ float circuitReliefField(vec2 uv)
     return max(trace * traceActive, pad * padActive);
 }
 
-struct CircuitBoardParams { float baseScale; float fineTraceMix; };
+struct CircuitBoardParams
+{
+    float baseScale;
+    float fineTraceMix;
+    float normalStrength;
+    float copperRoughMax;
+    float metallicAmt;
+};
 CircuitBoardParams unpackCircuitBoardParams() {
     CircuitBoardParams r;
     r.baseScale = blendedMaterialParams[0];
     r.fineTraceMix = blendedMaterialParams[1];
+    r.normalStrength = blendedMaterialParams[2];
+    r.copperRoughMax = blendedMaterialParams[3];
+    r.metallicAmt = blendedMaterialParams[4];
     return r;
 }
 
@@ -2437,14 +2779,14 @@ Material circuitBoardTexture(vec3 worldPos, vec3 normal)
         vec3(0.55, 0.32, 0.09), vec3(0.85, 0.72, 0.35), isPad);
 
     material.albedo = mix(solderMask, copper, copperMask);
-    material.metallic = copperMask * 0.9;
-    material.roughness = clamp(mix(0.55, 0.16, copperMask), 0.14, 0.6);
+    material.metallic = copperMask * params.metallicAmt;
+    material.roughness = clamp(mix(params.copperRoughMax, 0.16, copperMask), 0.14, 0.6);
 
     const float epsilon = 0.01;
     float gradientU = circuitReliefField(uv + vec2(epsilon, 0.0)) - coarseTraces;
     float gradientV = circuitReliefField(uv + vec2(0.0, epsilon)) - coarseTraces;
     vec3 bump = (tangent * gradientU + bitangent * gradientV) / epsilon;
-    material.normal = normalize(geometricNormal - bump * 0.02);
+    material.normal = normalize(geometricNormal - bump * params.normalStrength);
 
     return material;
 }

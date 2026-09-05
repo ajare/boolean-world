@@ -30,9 +30,10 @@
 #include "imgui.h"
 
 #include "AppHelpers.h"
+#include "ApplicationCloseController.h"
 #include "Defines.h"
+#include "EditorException.h"
 #include "Markdown.h"
-#include "ExitApplicationException.h"
 #include "PrimitiveFieldPreview.h"
 
 extern wp::Vector2 gViewOffset;
@@ -46,6 +47,8 @@ constexpr nfdfilteritem_t kWorldFilters[] = {
     {"YAML world", "world.yaml"},
     {"Binary world", "world"},
 };
+editor::ApplicationCloseController applicationCloseController;
+bool closeApproved{false};
 
 bool hasExtension(std::string const& filepath, std::string const& extension) {
   if (filepath.size() < extension.size()) {
@@ -106,8 +109,66 @@ void saveDocument(editor::Document* doc) {
 }
 
 void exitApp(editor::Document* doc) {
-  getPrimitiveFieldPreview().close();
-  throw ExitApplicationException(0, "Exit");
+  auto result = applicationCloseController.requestClose(
+      doc->isActive(), doc->isActive() && doc->isModified());
+  if (result == ApplicationCloseResult::Close) {
+    getPrimitiveFieldPreview().close();
+    closeApproved = true;
+  }
+}
+
+void renderApplicationCloseDialog(editor::Document* doc) {
+  if (!applicationCloseController.confirmationPending()) {
+    return;
+  }
+
+  // Open at the root ID stack. File > Exit requests close from inside a menu,
+  // while a native window close requests it outside any ImGui window; opening
+  // here gives both paths the same persistent modal identity.
+  if (!ImGui::IsPopupOpen("Save changes before closing?")) {
+    ImGui::OpenPopup("Save changes before closing?");
+  }
+  auto centre = ImGui::GetMainViewport()->GetCenter();
+  ImGui::SetNextWindowPos(centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  if (!ImGui::BeginPopupModal(
+          "Save changes before closing?", nullptr,
+          ImGuiWindowFlags_AlwaysAutoResize)) {
+    return;
+  }
+
+  ImGui::TextUnformatted("The current World has unsaved changes.");
+  ImGui::TextUnformatted("Do you want to save them before closing?");
+  ImGui::Separator();
+
+  if (ImGui::Button("Save", ImVec2(120, 0))) {
+    saveDocument(doc);
+    if (applicationCloseController.saveCompleted(!doc->isModified()) ==
+        ApplicationCloseResult::Close) {
+      getPrimitiveFieldPreview().close();
+      closeApproved = true;
+      ImGui::CloseCurrentPopup();
+    }
+  }
+  ImGui::SetItemDefaultFocus();
+  ImGui::SameLine();
+  if (ImGui::Button("Don't Save", ImVec2(120, 0))) {
+    if (applicationCloseController.discard() == ApplicationCloseResult::Close) {
+      getPrimitiveFieldPreview().close();
+      closeApproved = true;
+    }
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    applicationCloseController.cancel();
+    ImGui::CloseCurrentPopup();
+  }
+
+  ImGui::EndPopup();
+}
+
+bool applicationCloseApproved() {
+  return closeApproved;
 }
 
 void showHelp(editor::Document* doc) {

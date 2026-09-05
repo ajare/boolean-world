@@ -169,8 +169,11 @@ arrangement's native edge–face incidence.
 
 ## Pipeline
 
-**Generation** — One full rebuild of world geometry from primitives. Runs on a
-worker thread, not every frame; cadence of at least one second.
+**Generation** — One full rebuild of world geometry from Primitives. In
+Asynchronous mode, requests run on one worker and periodic starts use the
+configured start interval; a newer queued request replaces an older one. In
+Synchronous mode, one blocking Generation runs during every normal game
+update. Switching modes never changes whether a completed result may Commit.
 
 **Commit** — Publishing a completed generation as the active `WorldData`. Gated
 so geometry does not visibly pop: a generation is held back while any primitive

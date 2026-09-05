@@ -49,6 +49,22 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.28
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.055
+      - name: feldsparFreq
+        min: 0.5
+        max: 20
+        default: 4.7
+      - name: quartzFreq
+        min: 0.5
+        max: 20
+        default: 7.3
+      - name: micaRoughness
+        min: 0
+        max: 1
+        default: 0.2
   - materialIndex: 3
     parameters:
       - name: base_scale
@@ -59,6 +75,18 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.35
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.045
+      - name: rustFreq
+        min: 0.1
+        max: 8
+        default: 1.9
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.18
   - materialIndex: 4
     parameters:
       - name: base_scale
@@ -69,6 +97,18 @@ techniqueSchemas:
         min: 5
         max: 30
         default: 18
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.07
+      - name: brightAmt
+        min: 0.5
+        max: 2
+        default: 1.08
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.18
   - materialIndex: 5
     parameters:
       - name: base_scale
@@ -79,6 +119,14 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.38
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.065
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.25
   - materialIndex: 6
     parameters:
       - name: base_scale
@@ -89,6 +137,18 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.72
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.075
+      - name: metallicAmt
+        min: 0
+        max: 1
+        default: 0.03
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.3
   - materialIndex: 7
     parameters:
       - name: base_scale
@@ -99,6 +159,18 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.3
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.018
+      - name: sheenExp
+        min: 0.5
+        max: 8
+        default: 4
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.24
   - materialIndex: 8
     parameters:
       - name: base_scale
@@ -109,6 +181,18 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.72
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.075
+      - name: edgeAmt
+        min: 0
+        max: 1
+        default: 0.55
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.2
   - materialIndex: 9
     parameters:
       - name: base_scale
@@ -119,6 +203,22 @@ techniqueSchemas:
         min: 1
         max: 10
         default: 4.5
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.06
+      - name: metallicDarken
+        min: 0
+        max: 1
+        default: 0.65
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.25
+      - name: veinThickness
+        min: 0.01
+        max: 1
+        default: 0.24
   - materialIndex: 10
     parameters:
       - name: base_scale
@@ -129,6 +229,18 @@ techniqueSchemas:
         min: 1
         max: 10
         default: 4.5
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.065
+      - name: metallicMax
+        min: 0
+        max: 1
+        default: 0.92
+      - name: roughnessMax
+        min: 0
+        max: 1
+        default: 0.88
   - materialIndex: 11
     parameters:
       - name: base_scale
@@ -139,6 +251,18 @@ techniqueSchemas:
         min: 0.5
         max: 3
         default: 1.45
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.035
+      - name: metallicAmt
+        min: 0
+        max: 1
+        default: 0.94
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.2
   - materialIndex: 12
     parameters:
       - name: base_scale
@@ -149,6 +273,18 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.18
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.012
+      - name: metallicAmt
+        min: 0
+        max: 1
+        default: 0.96
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.3
   - materialIndex: 13
     parameters:
       - name: base_scale
@@ -159,6 +295,18 @@ techniqueSchemas:
         min: 1
         max: 10
         default: 4.2
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.085
+      - name: metallicAmt
+        min: 0
+        max: 1
+        default: 0.92
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.22
   - materialIndex: 14
     parameters:
       - name: base_scale
@@ -169,6 +317,18 @@ techniqueSchemas:
         min: 1
         max: 10
         default: 2.8
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.04
+      - name: metallicMax
+        min: 0
+        max: 1
+        default: 0.98
+      - name: roughnessMax
+        min: 0
+        max: 1
+        default: 0.72
   - materialIndex: 15
     parameters:
       - name: base_scale
@@ -179,6 +339,18 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.32
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.018
+      - name: metallicAmt
+        min: 0
+        max: 1
+        default: 0.95
+      - name: roughnessMax
+        min: 0
+        max: 1
+        default: 0.34
   - materialIndex: 16
     parameters:
       - name: base_scale
@@ -189,6 +361,18 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.72
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.014
+      - name: metallicAmt
+        min: 0
+        max: 1
+        default: 0.9
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.13
   - materialIndex: 17
     parameters:
       - name: base_scale
@@ -199,6 +383,18 @@ techniqueSchemas:
         min: 5
         max: 30
         default: 18
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.038
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.18
+      - name: knotDim
+        min: 0
+        max: 1
+        default: 0.38
   - materialIndex: 18
     parameters:
       - name: base_scale
@@ -209,6 +405,18 @@ techniqueSchemas:
         min: 1
         max: 15
         default: 7
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.095
+      - name: lichenBlend
+        min: 0
+        max: 1
+        default: 0.35
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.16
   - materialIndex: 19
     parameters:
       - name: base_scale
@@ -219,6 +427,18 @@ techniqueSchemas:
         min: 1
         max: 15
         default: 7
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.045
+      - name: poreDarken
+        min: 0
+        max: 1
+        default: 0.3
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.36
   - materialIndex: 20
     parameters:
       - name: base_scale
@@ -229,6 +449,14 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.42
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.035
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.16
   - materialIndex: 21
     parameters:
       - name: base_scale
@@ -239,6 +467,14 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.72
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.022
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.14
   - materialIndex: 22
     parameters:
       - name: base_scale
@@ -249,6 +485,18 @@ techniqueSchemas:
         min: 1
         max: 10
         default: 3.2
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.048
+      - name: metallicAmt
+        min: 0
+        max: 1
+        default: 0.08
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.3
   - materialIndex: 23
     parameters:
       - name: base_scale
@@ -259,6 +507,14 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.8
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.085
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.27
   - materialIndex: 24
     parameters:
       - name: base_scale
@@ -269,6 +525,14 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.82
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.095
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.18
   - materialIndex: 25
     parameters:
       - name: base_scale
@@ -279,6 +543,18 @@ techniqueSchemas:
         min: 1
         max: 10
         default: 4.2
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.065
+      - name: roughnessMax
+        min: 0
+        max: 1
+        default: 0.78
+      - name: metallicAmt
+        min: 0
+        max: 1
+        default: 0.04
   - materialIndex: 26
     parameters:
       - name: base_scale
@@ -289,6 +565,18 @@ techniqueSchemas:
         min: 1
         max: 10
         default: 3.5
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.055
+      - name: pulseBlend
+        min: 0
+        max: 1
+        default: 0.28
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.24
   - materialIndex: 27
     parameters:
       - name: base_scale
@@ -299,6 +587,18 @@ techniqueSchemas:
         min: 0.5
         max: 5
         default: 1.7
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.026
+      - name: metallicMax
+        min: 0
+        max: 1
+        default: 0.96
+      - name: roughnessMax
+        min: 0
+        max: 1
+        default: 0.2
   - materialIndex: 28
     parameters:
       - name: base_scale
@@ -309,6 +609,14 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.3
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.032
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.26
   - materialIndex: 29
     parameters:
       - name: base_scale
@@ -319,6 +627,18 @@ techniqueSchemas:
         min: 5
         max: 60
         default: 35
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.008
+      - name: fresnelExp
+        min: 0.5
+        max: 8
+        default: 2.2
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.12
   - materialIndex: 30
     parameters:
       - name: base_scale
@@ -329,6 +649,18 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.36
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.072
+      - name: tendrilBlend
+        min: 0
+        max: 1
+        default: 0.72
+      - name: roughnessMax
+        min: 0
+        max: 1
+        default: 0.82
   - materialIndex: 31
     parameters:
       - name: base_scale
@@ -339,6 +671,18 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.22
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.045
+      - name: brightAmt
+        min: 0.5
+        max: 2
+        default: 0.98
+      - name: roughnessMax
+        min: 0
+        max: 1
+        default: 0.8
   - materialIndex: 32
     parameters:
       - name: base_scale
@@ -349,6 +693,18 @@ techniqueSchemas:
         min: 0.1
         max: 1
         default: 0.42
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.045
+      - name: weatherBright
+        min: 0.5
+        max: 2
+        default: 1.12
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.08
   - materialIndex: 33
     parameters:
       - name: base_scale
@@ -359,6 +715,18 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.55
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.02
+      - name: copperRoughMax
+        min: 0
+        max: 1
+        default: 0.55
+      - name: metallicAmt
+        min: 0
+        max: 1
+        default: 0.9
   - materialIndex: 34
     parameters:
       - name: base_scale
@@ -369,6 +737,18 @@ techniqueSchemas:
         min: 5
         max: 20
         default: 13
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.052
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.16
+      - name: metallicAmt
+        min: 0
+        max: 1
+        default: 0.02
   - materialIndex: 35
     parameters:
       - name: base_scale
@@ -379,6 +759,18 @@ techniqueSchemas:
         min: 1
         max: 15
         default: 7.5
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.075
+      - name: brightAmt
+        min: 0.5
+        max: 2
+        default: 1.1
+      - name: roughnessAmt
+        min: 0
+        max: 0.5
+        default: 0.16
   - materialIndex: 36
     parameters:
       - name: base_scale
@@ -389,6 +781,18 @@ techniqueSchemas:
         min: 5
         max: 30
         default: 16
+      - name: normalStrength
+        min: 0
+        max: 0.5
+        default: 0.068
+      - name: mossBias
+        min: 0
+        max: 1
+        default: 0.42
+      - name: roughnessMax
+        min: 0
+        max: 1
+        default: 0.72
   - materialIndex: 37
     parameters:
       - name: base_scale
@@ -399,12 +803,28 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.24
+      - name: wetnessUpper
+        min: 0
+        max: 1
+        default: 0.76
+      - name: darkAmt
+        min: 0
+        max: 1
+        default: 0.36
+      - name: roughnessMax
+        min: 0
+        max: 1
+        default: 0.52
   - materialIndex: 38
     parameters:
       - name: base_scale
         min: 0.1
         max: 3
         default: 0.65
+      - name: roughness
+        min: 0
+        max: 1
+        default: 0.56
   - materialIndex: 0
     parameters:
       []
@@ -429,7 +849,7 @@ subMaterials:
   - id: builtin.stone
     name: Stone
     materialIndex: 2
-    params: [0.82, 8, 0.28]
+    params: [0.82, 8, 0.28, 0.055, 4.7, 7.3, 0.2]
     baseColour: [0.25, 0.24, 0.22]
     chip:
       minimumArrisLength: 2
@@ -446,7 +866,7 @@ subMaterials:
   - id: builtin.slate
     name: Slate
     materialIndex: 3
-    params: [0.72, 0.35]
+    params: [0.72, 0.35, 0.045, 1.9, 0.18]
     baseColour: [0.13, 0.16, 0.18]
     chip:
       minimumArrisLength: 2
@@ -463,7 +883,7 @@ subMaterials:
   - id: builtin.sandstone
     name: Sandstone
     materialIndex: 4
-    params: [0.58, 18]
+    params: [0.58, 18, 0.07, 1.08, 0.18]
     baseColour: [0.55, 0.33, 0.17]
     chip:
       minimumArrisLength: 2
@@ -480,7 +900,7 @@ subMaterials:
   - id: builtin.limestone
     name: Limestone
     materialIndex: 5
-    params: [0.66, 0.38]
+    params: [0.66, 0.38, 0.065, 0.25]
     baseColour: [0.65, 0.62, 0.51]
     chip:
       minimumArrisLength: 2
@@ -497,7 +917,7 @@ subMaterials:
   - id: builtin.basalt
     name: Basalt
     materialIndex: 6
-    params: [0.85, 0.72]
+    params: [0.85, 0.72, 0.075, 0.03, 0.3]
     baseColour: [0.06, 0.07, 0.08]
     chip:
       minimumArrisLength: 2
@@ -514,7 +934,7 @@ subMaterials:
   - id: builtin.obsidian
     name: Obsidian
     materialIndex: 7
-    params: [0.7, 0.3]
+    params: [0.7, 0.3, 0.018, 4, 0.24]
     baseColour: [0.03, 0.02, 0.04]
     chip:
       minimumArrisLength: 2
@@ -531,7 +951,7 @@ subMaterials:
   - id: builtin.quartz.crystal
     name: Quartz / crystal
     materialIndex: 8
-    params: [0.62, 0.72]
+    params: [0.62, 0.72, 0.075, 0.55, 0.2]
     baseColour: [0.72, 0.82, 0.88]
     chip:
       minimumArrisLength: 2
@@ -548,7 +968,7 @@ subMaterials:
   - id: builtin.ore
     name: Ore
     materialIndex: 9
-    params: [0.72, 4.5]
+    params: [0.72, 4.5, 0.06, 0.65, 0.25, 0.24]
     baseColour: [0.3, 0.28, 0.24]
     chip:
       minimumArrisLength: 2
@@ -565,7 +985,7 @@ subMaterials:
   - id: builtin.rusted.iron
     name: Rusted iron
     materialIndex: 10
-    params: [0.72, 4.5]
+    params: [0.72, 4.5, 0.065, 0.92, 0.88]
     baseColour: [0.35, 0.15, 0.05]
     chip:
       minimumArrisLength: 2
@@ -582,7 +1002,7 @@ subMaterials:
   - id: builtin.galvanized.steel
     name: Galvanized steel
     materialIndex: 11
-    params: [0.66, 1.45]
+    params: [0.66, 1.45, 0.035, 0.94, 0.2]
     baseColour: [0.55, 0.58, 0.6]
     chip:
       minimumArrisLength: 2
@@ -599,7 +1019,7 @@ subMaterials:
   - id: builtin.brushed.metal
     name: Brushed metal
     materialIndex: 12
-    params: [0.82, 0.18]
+    params: [0.82, 0.18, 0.012, 0.96, 0.3]
     baseColour: [0.55, 0.57, 0.59]
     chip:
       minimumArrisLength: 2
@@ -616,7 +1036,7 @@ subMaterials:
   - id: builtin.hammered.metal
     name: Hammered metal
     materialIndex: 13
-    params: [0.72, 4.2]
+    params: [0.72, 4.2, 0.085, 0.92, 0.22]
     baseColour: [0.38, 0.4, 0.43]
     chip:
       minimumArrisLength: 2
@@ -633,7 +1053,7 @@ subMaterials:
   - id: builtin.patinated.copper
     name: Patinated copper
     materialIndex: 14
-    params: [0.66, 2.8]
+    params: [0.66, 2.8, 0.04, 0.98, 0.72]
     baseColour: [0.3, 0.45, 0.35]
     chip:
       minimumArrisLength: 2
@@ -650,7 +1070,7 @@ subMaterials:
   - id: builtin.damascene.steel
     name: Damascene steel
     materialIndex: 15
-    params: [0.72, 0.32]
+    params: [0.72, 0.32, 0.018, 0.95, 0.34]
     baseColour: [0.35, 0.37, 0.4]
     chip:
       minimumArrisLength: 2
@@ -667,7 +1087,7 @@ subMaterials:
   - id: builtin.heat.treated.metal
     name: Heat-treated metal
     materialIndex: 16
-    params: [0.62, 0.72]
+    params: [0.62, 0.72, 0.014, 0.9, 0.13]
     baseColour: [0.4, 0.3, 0.35]
     chip:
       minimumArrisLength: 2
@@ -684,7 +1104,7 @@ subMaterials:
   - id: builtin.wood
     name: Wood
     materialIndex: 17
-    params: [0.54, 18]
+    params: [0.54, 18, 0.038, 0.18, 0.38]
     baseColour: [0.38, 0.19, 0.07]
     chip:
       minimumArrisLength: 2
@@ -701,7 +1121,7 @@ subMaterials:
   - id: builtin.wood2
     name: Wood2
     materialIndex: 38
-    params: [0.65]
+    params: [0.65, 0.1]
     baseColour: [0.25, 0.11, 0.04]
     chip:
       minimumArrisLength: 2
@@ -718,7 +1138,7 @@ subMaterials:
   - id: builtin.bark
     name: Bark
     materialIndex: 18
-    params: [0.62, 7]
+    params: [0.62, 7, 0.095, 0.35, 0.16]
     baseColour: [0.15, 0.07, 0.03]
     chip:
       minimumArrisLength: 2
@@ -735,7 +1155,7 @@ subMaterials:
   - id: builtin.bone.ivory
     name: Bone / ivory
     materialIndex: 19
-    params: [0.68, 7]
+    params: [0.68, 7, 0.045, 0.3, 0.36]
     baseColour: [0.72, 0.64, 0.47]
     chip:
       minimumArrisLength: 2
@@ -752,7 +1172,7 @@ subMaterials:
   - id: builtin.leather
     name: Leather
     materialIndex: 20
-    params: [0.76, 0.42]
+    params: [0.76, 0.42, 0.035, 0.16]
     baseColour: [0.25, 0.1, 0.05]
     chip:
       minimumArrisLength: 2
@@ -769,7 +1189,7 @@ subMaterials:
   - id: builtin.flesh
     name: Flesh
     materialIndex: 21
-    params: [0.6, 0.72]
+    params: [0.6, 0.72, 0.022, 0.14]
     baseColour: [0.45, 0.15, 0.13]
     chip:
       minimumArrisLength: 2
@@ -786,7 +1206,7 @@ subMaterials:
   - id: builtin.chitin.shell
     name: Chitin / shell
     materialIndex: 22
-    params: [0.67, 3.2]
+    params: [0.67, 3.2, 0.048, 0.08, 0.3]
     baseColour: [0.08, 0.05, 0.11]
     chip:
       minimumArrisLength: 2
@@ -803,7 +1223,7 @@ subMaterials:
   - id: builtin.coral
     name: Coral
     materialIndex: 23
-    params: [0.66, 0.8]
+    params: [0.66, 0.8, 0.085, 0.27]
     baseColour: [0.65, 0.22, 0.15]
     chip:
       minimumArrisLength: 2
@@ -820,7 +1240,7 @@ subMaterials:
   - id: builtin.arcane.crystal
     name: Arcane crystal
     materialIndex: 24
-    params: [0.64, 0.82]
+    params: [0.64, 0.82, 0.095, 0.18]
     baseColour: [0.1, 0.2, 0.45]
     chip:
       minimumArrisLength: 2
@@ -837,7 +1257,7 @@ subMaterials:
   - id: builtin.energy.stone
     name: Energy stone
     materialIndex: 25
-    params: [0.68, 4.2]
+    params: [0.68, 4.2, 0.065, 0.78, 0.04]
     baseColour: [0.1, 0.25, 0.55]
     chip:
       minimumArrisLength: 2
@@ -854,7 +1274,7 @@ subMaterials:
   - id: builtin.alien.tissue
     name: Alien tissue
     materialIndex: 26
-    params: [0.67, 3.5]
+    params: [0.67, 3.5, 0.055, 0.28, 0.24]
     baseColour: [0.2, 0.3, 0.15]
     chip:
       minimumArrisLength: 2
@@ -871,7 +1291,7 @@ subMaterials:
   - id: builtin.magical.metal
     name: Magical metal
     materialIndex: 27
-    params: [0.72, 1.7]
+    params: [0.72, 1.7, 0.026, 0.96, 0.2]
     baseColour: [0.35, 0.3, 0.55]
     chip:
       minimumArrisLength: 2
@@ -888,7 +1308,7 @@ subMaterials:
   - id: builtin.solid.cloud
     name: Solid cloud
     materialIndex: 28
-    params: [0.53, 0.3]
+    params: [0.53, 0.3, 0.032, 0.26]
     baseColour: [0.55, 0.65, 0.8]
     chip:
       minimumArrisLength: 2
@@ -905,7 +1325,7 @@ subMaterials:
   - id: builtin.holographic
     name: Holographic
     materialIndex: 29
-    params: [0.75, 35]
+    params: [0.75, 35, 0.008, 2.2, 0.12]
     baseColour: [0.35, 0.4, 0.5]
     chip:
       minimumArrisLength: 2
@@ -922,7 +1342,7 @@ subMaterials:
   - id: builtin.corruption
     name: Corruption
     materialIndex: 30
-    params: [0.65, 0.36]
+    params: [0.65, 0.36, 0.072, 0.72, 0.82]
     baseColour: [0.2, 0.05, 0.2]
     chip:
       minimumArrisLength: 2
@@ -939,7 +1359,7 @@ subMaterials:
   - id: builtin.frosted.glass
     name: Frosted glass
     materialIndex: 31
-    params: [1.4, 0.22]
+    params: [1.4, 0.22, 0.045, 0.98, 0.8]
     baseColour: [0.82, 0.88, 0.9]
     chip:
       minimumArrisLength: 2
@@ -956,7 +1376,7 @@ subMaterials:
   - id: builtin.brick
     name: Brick
     materialIndex: 32
-    params: [0.95, 0.42]
+    params: [0.95, 0.42, 0.045, 1.12, 0.08]
     baseColour: [0.48, 0.22, 0.13]
     chip:
       minimumArrisLength: 2
@@ -973,7 +1393,7 @@ subMaterials:
   - id: builtin.circuit.board
     name: Circuit board
     materialIndex: 33
-    params: [1.15, 0.55]
+    params: [1.15, 0.55, 0.02, 0.55, 0.9]
     baseColour: [0.1, 0.2, 0.12]
     chip:
       minimumArrisLength: 2
@@ -990,7 +1410,7 @@ subMaterials:
   - id: builtin.banded.gneiss
     name: Banded gneiss
     materialIndex: 34
-    params: [0.68, 13]
+    params: [0.68, 13, 0.052, 0.16, 0.02]
     baseColour: [0.35, 0.32, 0.28]
     chip:
       minimumArrisLength: 2
@@ -1007,7 +1427,7 @@ subMaterials:
   - id: builtin.rock
     name: Rock
     materialIndex: 35
-    params: [0.74, 7.5]
+    params: [0.74, 7.5, 0.075, 1.1, 0.16]
     baseColour: [0.3, 0.29, 0.26]
     chip:
       minimumArrisLength: 2
@@ -1024,7 +1444,7 @@ subMaterials:
   - id: builtin.mossy.rock
     name: Mossy rock
     materialIndex: 36
-    params: [0.72, 16]
+    params: [0.72, 16, 0.068, 0.42, 0.72]
     baseColour: [0.2, 0.24, 0.15]
     chip:
       minimumArrisLength: 2
@@ -1041,7 +1461,7 @@ subMaterials:
   - id: builtin.wet.rock
     name: Wet rock
     materialIndex: 37
-    params: [0.74, 0.24]
+    params: [0.74, 0.24, 0.76, 0.36, 0.52]
     baseColour: [0.2, 0.2, 0.19]
     chip:
       minimumArrisLength: 2

@@ -41,11 +41,21 @@ F1 opens **Player Torch** diagnostics. The controls are session-only:
 - enabled override (configured / force enabled / force disabled);
 - range, constant and normal bias;
 - hard versus PCF filter, PCF radius, and fade start; and
-- read-only configured cubemap resolution and hardware-fallback status.
+- read-only configured cubemap resolution, hardware-fallback status, and the
+  number of casters the Torch's Range sphere currently selects.
 
 They never write `Game.yaml`; edit its `Video/Shadows` block to persist a value.
+The caster count is the World's own surface models plus any other scene model
+the sphere retains; zero means the cubemap holds no occluders at all, so every
+lit surface stays fully lit however the biases and filter are set.
 The Game recalculates the Torch position from the player's eye and yaw/debug
-offset each frame. MPP reuses the cubemap while the light, caster state, and
+offset each frame. That offset is a maximum: the Torch is a light in the World,
+so it stops `BW_PLAYER_TORCH_WALL_CLEARANCE` short of the first surface between
+it and the player rather than passing through into rock. The check is made at
+the Torch's own height, so a floor step it clears and a ceiling step it passes
+under do not shorten it - see
+`ArrangementWorldData::distanceToFirstWallCrossing`, which considers what a
+wall draws rather than what it collides with. MPP reuses the cubemap while the light, caster state, and
 options are unchanged, and redraws all six faces when they change. A committed
 World generation explicitly invalidates the domain because dynamic world buffers
 do not expose a model revision to MPP.

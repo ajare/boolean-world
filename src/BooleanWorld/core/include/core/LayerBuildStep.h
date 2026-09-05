@@ -1,10 +1,13 @@
 #pragma once
 
+#include <functional>
 #include <map>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <willpower/common/BoundingBox.h>
 
 #include "core/Platform.h"
 #include "core/Serializable.h"
@@ -29,6 +32,13 @@ private:
   uint32_t mStepIndex;
   std::vector<Primitive*> const& mBuildPrimitives;
 
+  // Build-participating Primitives the executing step has appended so far
+  // this execute() call. findBuildPrimitivesOverlapping() scans this in
+  // addition to mBuildPrimitives, which is what lets a step avoid its own
+  // earlier output; getBuildPrimitives() deliberately does not include it, so
+  // it keeps reporting prior steps' output only.
+  std::vector<Primitive*> mAppendedBuildPrimitives;
+
   LayerBuildContext(
       Layer& layer,
       LayerBuildStep const* step,
@@ -40,6 +50,19 @@ private:
 public:
   [[nodiscard]] std::vector<Primitive*> const& getBuildPrimitives() const;
   [[nodiscard]] Layer& getLayer() const;
+
+  // The owning Layer's extents, so a script never needs the Layer for them.
+  [[nodiscard]] wp::BoundingBox const& getExtents() const;
+
+  // The build Primitives whose bounds overlap bounds - a bounds-only test,
+  // no exact shape check. Scoped to getBuildPrimitives(): prior steps' output
+  // plus whatever the executing step has appended so far, which is what makes
+  // self-avoidance possible for a step placing many Primitives in sequence.
+  // This makes the result order-dependent within a step. Linear scan, no
+  // spatial acceleration - optimise only if measurement shows it matters.
+  // Returns empty when nothing overlaps.
+  [[nodiscard]] std::vector<Primitive*> findBuildPrimitivesOverlapping(
+      wp::BoundingBox const& bounds) const;
 
   // The default ordering is one phase using the Primitive's authored
   // priority. Composite steps may provide local phases while retaining that
@@ -56,17 +79,37 @@ public:
 // (docs/adr/0014). A step's type is fixed for its lifetime.
 class BW_API LayerBuildStep : public Serializable {
 private:
+  // Non-owning backlink set while this step belongs to a Layer. Besides
+  // making ownership explicit, the change hook lets dynamically registered
+  // step types maintain host-side reverse lookups without core naming them.
+  Layer* mLayer;
+
   uint32_t mId;
   bool mEnabled;
+  std::string mName;
+
+  // Whether this step's execute() threw during the Layer's most recent
+  // rebuild, and what it said. mutable because execute() is const but a
+  // failure is recorded from inside it (docs/adr/0039), following the
+  // precedent set by PrefabField's mutable built-Primitive storage.
+  mutable bool mFailed;
+  mutable std::string mFailureMessage;
 
   void setId(uint32_t id);
+
+  void bindLayer(Layer* layer);
+
+  // Called by Layer at the execute() boundary: clearFailure() before every
+  // attempt, recordFailure() if that attempt throws.
+  void clearFailure() const;
+  void recordFailure(std::string message) const;
 
   friend class Layer;
 
 private:
   bool childrenModified() const override;
 
-  [[nodiscard]] static Registry<LayerBuildStep> const& registry();
+  [[nodiscard]] static Registry<LayerBuildStep>& registry();
 
   // The step's own arguments, written into the map the Layer opens for it.
   // The enabled flag is handled by the base class, so subclasses never write
@@ -78,6 +121,12 @@ private:
 protected:
   void copyFrom(LayerBuildStep const& other);
 
+  [[nodiscard]] Layer* getOwningLayer() const;
+
+  // Called after the owning Layer changes. The default is inert; a step type
+  // with an ownership-dependent index may override it.
+  virtual void owningLayerChanged(Layer* oldLayer, Layer* newLayer);
+
   void serializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) const final;
 
   bool deserializeImpl(std::shared_ptr<Serializer> serializer, SerializationWorkData& workData) final;
@@ -85,17 +134,38 @@ protected:
 public:
   LayerBuildStep();
 
+  using Factory = std::function<LayerBuildStep*()>;
+
   // The type names held by the shared step Registry.
   [[nodiscard]] static std::vector<std::string> getRegisteredTypes();
 
   // Constructs a step of the named type through the shared step Registry.
   [[nodiscard]] static LayerBuildStep* instantiate(std::string const& type);
 
+  // Registers a step type by name with a creating factory. core names no
+  // concrete step type in its own registry (docs/adr/0038); a host calls
+  // this explicitly during startup for every step type it wants Worlds to
+  // be able to deserialize. Not done through a static initialiser: the
+  // linker discards one from a static library when nothing else references
+  // its translation unit.
+  static void registerType(std::string const& type, Factory factory);
+
+  // Registers the step types core itself defines: DefinePrefabs, PrefabField
+  // and PrimitiveField. Every host that deserializes Worlds must call this.
+  static void registerCoreTypes();
+
   [[nodiscard]] virtual std::string getType() const = 0;
 
   // Stable within the owning Layer's lifetime. Unlike a step's position in
   // the recipe, this does not change when other steps are moved or removed.
   [[nodiscard]] uint32_t getId() const;
+
+  // Authored, non-unique text so a script can find this step without knowing
+  // its id (unlike the id, a name is not guaranteed stable or distinct -
+  // Layer::findStepIdByName resolves the first match). Empty by default.
+  void setName(std::string const& name);
+
+  [[nodiscard]] std::string const& getName() const;
 
   // Whether this step may occupy the Layer's reserved first position.
   [[nodiscard]] virtual bool mayBeFirstStep() const = 0;
@@ -129,11 +199,34 @@ public:
   // Replaces one owned Primitive. A null replacement removes it.
   virtual void replacePrimitive(Primitive* oldPrimitive, Primitive* newPrimitive) = 0;
 
+  // Gives up ownership of one owned Primitive without destroying it, so a
+  // caller can re-home it in another step. Deliberately distinct from
+  // replacePrimitive(primitive, nullptr), which destroys: a step that cannot
+  // hand its output out must say so by throwing rather than silently
+  // leaking or deleting.
+  virtual void releasePrimitive(Primitive* primitive) = 0;
+
   [[nodiscard]] virtual bool ownsPrimitive(Primitive const* primitive) const = 0;
+
+  // Resource names this step references directly (docs/adr/0038), collected
+  // by World into the serialized dependentResources header. The default
+  // answer is none; a step that owns resource references overrides this
+  // rather than World knowing its concrete type.
+  [[nodiscard]] virtual std::vector<std::string> collectDependentResourceNames() const;
 
   void setEnabled(bool enabled);
 
   [[nodiscard]] bool isEnabled() const;
+
+  // Whether this step's execute() threw during the Layer's most recent
+  // rebuild (docs/adr/0039). False for a step that ran and produced
+  // nothing, or that was not reached because an earlier step in the same
+  // rebuild failed - both are distinct from having failed itself.
+  [[nodiscard]] bool hasFailed() const;
+
+  // The message from this step's most recent failure. Empty when
+  // hasFailed() is false.
+  [[nodiscard]] std::string const& getFailureMessage() const;
 };
 
 }  // namespace core
