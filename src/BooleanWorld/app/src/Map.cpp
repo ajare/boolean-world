@@ -148,7 +148,7 @@ void Map::loadWorldFromYaml(
     }
 
     candidate->setWorldDataGenerator(
-        new bw::core::DynamicWorldDataGenerator(candidate.get(), true));
+        new bw::core::DynamicWorldDataGenerator(candidate.get(), false));
     delete mWorld;
     mWorld = candidate.release();
   } else {

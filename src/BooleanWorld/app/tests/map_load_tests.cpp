@@ -56,9 +56,12 @@ void playMapsUseDynamicWorldDataGenerators() {
   Map map("map", "", "", {}, nullptr, &logger);
   map.loadWorldFromYaml(makeWorldResource(readFixture("world-test-1.world.yaml")));
 
-  require(dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
-              map.getWorld()->getWorldDataGenerator()) != nullptr,
+  auto* generator = dynamic_cast<bw::core::DynamicWorldDataGenerator*>(
+      map.getWorld()->getWorldDataGenerator());
+  require(generator != nullptr,
           "Loaded play map did not install a dynamic world data generator");
+  require(!generator->getCreateWayfinderMesh(),
+          "Loaded play map enabled Wayfinder mesh generation by default");
 }
 
 void establishedWorldEnablesAndRoundTripsWedges() {
