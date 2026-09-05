@@ -1,6 +1,8 @@
+#include <stdexcept>
+#ifdef _WIN32
 #define NOMINMAX
-
 #include <Windows.h>
+#endif
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -252,7 +254,7 @@ void initialise() {
 
   glewExperimental = GL_TRUE;
   if (glewInit() != GLEW_OK) {
-    throw exception("GLEW initialisation failed");
+    throw runtime_error("GLEW initialisation failed");
   }
 
   //
@@ -653,24 +655,17 @@ void run() {
   //
   // Main loop
   //
-  LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
-  LARGE_INTEGER Frequency;
-
-  QueryPerformanceFrequency(&Frequency);
-  QueryPerformanceCounter(&StartingTime);
+  auto const frequency = SDL_GetPerformanceFrequency();
+  auto startingTime = SDL_GetPerformanceCounter();
 
   bool done = false, showDemoWindow = false;
-  LONGLONG globalTimeMicros{0};
+  std::int64_t globalTimeMicros{0};
   while (!done) {
-    // Get elapsed time
-    QueryPerformanceCounter(&EndingTime);
-    ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
-    ElapsedMicroseconds.QuadPart *= 1000000;
-    ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
-
-    StartingTime = EndingTime;
-
-    auto updateTimeMicros = ElapsedMicroseconds.QuadPart;
+    // SDL's monotonic performance counter is available on every platform.
+    auto const endingTime = SDL_GetPerformanceCounter();
+    auto const updateTimeMicros = static_cast<std::int64_t>(
+        (endingTime - startingTime) * 1000000 / frequency);
+    startingTime = endingTime;
     globalTimeMicros += updateTimeMicros;
 
     // A native close request is a request, not permission to tear down. It is
@@ -763,7 +758,7 @@ void run() {
 }
 
 void outputToDebugger(string const& msg) {
-#ifdef _DEBUG
+#if defined(_DEBUG) && defined(_WIN32)
   char const* msgc = msg.c_str();
 
   size_t reqLength = ::MultiByteToWideChar(CP_UTF8, 0, msgc, (int)strlen(msgc), 0, 0);

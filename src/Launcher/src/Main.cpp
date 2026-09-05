@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <format>
 #include <iostream>
 
@@ -279,7 +280,7 @@ ProgramOptions startup(string const& configFile, LauncherLifecycle& lifecycle) {
     gMppLogger = nullptr;
   });
   if (!gMppLogger->initialise("mpp.log", mpp::Logger::Level::Debug)) {
-    throw exception("Could not create MPP logger!");
+    throw runtime_error("Could not create MPP logger!");
   }
 
   // Read in program options
@@ -300,10 +301,22 @@ ProgramOptions startup(string const& configFile, LauncherLifecycle& lifecycle) {
     gAppSettings = nullptr;
   });
 
+#if defined(__linux__)
+  // The vendored GLEW build uses its GLX backend. SDL otherwise prefers
+  // Wayland when both Wayland and XWayland are available, producing a valid
+  // EGL context that GLEW cannot initialise ("No GLX display"). Respect an
+  // explicit user choice, but default the Launcher to SDL's X11 backend.
+  if (!SDL_getenv("SDL_VIDEODRIVER") &&
+      !SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11")) {
+    throw runtime_error("Could not select SDL's X11 video driver for GLX.");
+  }
+#endif
   if (!SDL_Init(SDL_INIT_VIDEO)) {
-    throw exception("Could not initialise SDL subsystem!");
+    throw runtime_error("Could not initialise SDL subsystem: " +
+                        string(SDL_GetError()));
   }
   lifecycle.track(Service::Platform, []() { SDL_Quit(); });
+  gLogger->info("SDL video driver: " + string(SDL_GetCurrentVideoDriver()));
 
   // Create timer
   gTimer = new TimerSDL();
@@ -463,7 +476,10 @@ void updateImGui(float frameTime) {
 
     ImGui::GetAllocatorFunctions(&imGuiAllocFunc, &imGuiFreeFunc, &imGuiUserData);
 
-    gStateMgr->renderImGui(frameTime, imGuiCtx, imPlotCtx, imGuiAllocFunc, imGuiFreeFunc, imGuiUserData);
+    gStateMgr->renderImGui(
+        frameTime, imGuiCtx, imPlotCtx,
+        reinterpret_cast<void*>(imGuiAllocFunc),
+        reinterpret_cast<void*>(imGuiFreeFunc), imGuiUserData);
 
     ImGui::EndFrame();
     ImGui::Render();
@@ -574,7 +590,7 @@ int main(int argc, char** argv) {
     gLogger->error(e.what());
     exitCode = 1;
 
-#ifdef _DEBUG
+#if defined(_DEBUG) && defined(_WIN32)
     char const* msg = e.what();
 
     size_t reqLength = ::MultiByteToWideChar(CP_UTF8, 0, msg, (int)strlen(msg), 0, 0);
@@ -587,7 +603,7 @@ int main(int argc, char** argv) {
     gLogger->error(e.what());
     exitCode = 1;
 
-#ifdef _DEBUG
+#if defined(_DEBUG) && defined(_WIN32)
     char const* msg = e.what();
 
     size_t reqLength = ::MultiByteToWideChar(CP_UTF8, 0, msg, (int)strlen(msg), 0, 0);
@@ -600,7 +616,7 @@ int main(int argc, char** argv) {
     gLogger->error(e.what());
     exitCode = 1;
 
-#ifdef _DEBUG
+#if defined(_DEBUG) && defined(_WIN32)
     char const* msg = e.what();
 
     size_t reqLength = ::MultiByteToWideChar(CP_UTF8, 0, msg, (int)strlen(msg), 0, 0);
@@ -620,7 +636,7 @@ int main(int argc, char** argv) {
     gLogger->error(detail);
     exitCode = 1;
 
-#ifdef _DEBUG
+#if defined(_DEBUG) && defined(_WIN32)
     char const* msg = detail.c_str();
 
     size_t reqLength = ::MultiByteToWideChar(CP_UTF8, 0, msg, (int)strlen(msg), 0, 0);
@@ -633,7 +649,7 @@ int main(int argc, char** argv) {
     gLogger->error(e.what());
     exitCode = 1;
 
-#ifdef _DEBUG
+#if defined(_DEBUG) && defined(_WIN32)
     char const* msg = e.what();
 
     size_t reqLength = ::MultiByteToWideChar(CP_UTF8, 0, msg, (int)strlen(msg), 0, 0);

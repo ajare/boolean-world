@@ -77,19 +77,19 @@ static bw::app::VideoOptions gVideoOptions;
 static bw::app::WorldDataGenerationOptions gWorldDataGenerationOptions;
 
 extern "C" {
-__declspec(dllexport) char const* dllGetName() {
+APPLICATION_API char const* dllGetName() {
   return "BooleanWorld";
 }
 
-__declspec(dllexport) int dllSetArgument(char const* arg, char const* value) {
+APPLICATION_API int dllSetArgument(char const* arg, char const* value) {
   return dllState.setArgument(arg, value, gThreadedLoading);
 }
 
-__declspec(dllexport) int dllSetInputOptions(float mouseSensitivity) {
+APPLICATION_API int dllSetInputOptions(float mouseSensitivity) {
   return dllState.setInputOptions(mouseSensitivity, gInputOptions);
 }
 
-__declspec(dllexport) int dllSetWorldDataGenerationOptions(
+APPLICATION_API int dllSetWorldDataGenerationOptions(
     int modeCode, float startInterval, int alwaysUpdateVerticesCode,
     int allowCommitIfVisibleCode) {
   return dllState.setWorldDataGenerationOptions(
@@ -97,7 +97,7 @@ __declspec(dllexport) int dllSetWorldDataGenerationOptions(
       allowCommitIfVisibleCode, gWorldDataGenerationOptions);
 }
 
-__declspec(dllexport) int dllSetVideoOptions(
+APPLICATION_API int dllSetVideoOptions(
     int renderScaleCode,
     int antiAliasingCode,
     int ambientOcclusionCode,
@@ -127,7 +127,7 @@ __declspec(dllexport) int dllSetVideoOptions(
       gVideoOptions);
 }
 
-__declspec(dllexport) wp::application::StateFactory* dllGetNextStateFactory() {
+APPLICATION_API wp::application::StateFactory* dllGetNextStateFactory() {
   wp::application::StateFactory* stateFactory;
   switch (dllState.getNextStateFactoryIndex()) {
     case 0:
@@ -159,7 +159,7 @@ __declspec(dllexport) wp::application::StateFactory* dllGetNextStateFactory() {
   return stateFactory;
 }
 
-__declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
+APPLICATION_API void dllOnEntry(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
   dllState.resetStateFactoryEnumeration();
 
   // docs/adr/0038: LayerBuildStep types are no longer compiled into core's
@@ -206,7 +206,7 @@ __declspec(dllexport) void dllOnEntry(wp::Logger* logger, wp::application::resou
       new EmbossingCatalogResourceDefinitionFactory());
 }
 
-__declspec(dllexport) void dllOnExit() {
+APPLICATION_API void dllOnExit() {
   // Destroy state factories
   delete stateControllerFactory;
   stateControllerFactory = nullptr;

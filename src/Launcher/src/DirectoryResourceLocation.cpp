@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include "utils/FileSystem.h"
 
 #include "willpower/common/Exceptions.h"
@@ -26,7 +27,7 @@ resourcesystem::DataStreamPtr DirectoryResourceLocation::getHardResourceDataStre
 
 resourcesystem::DataStreamPtr DirectoryResourceLocation::getHardResourceDataStreamProgressive(string const& file, std::string const& namesp, DataStreamFetchProgressCallback progress) const
 {
-        throw exception("DirectoryResourceLocation::getHardResourceDataStreamProgressive() not yet implemented.");
+        throw runtime_error("DirectoryResourceLocation::getHardResourceDataStreamProgressive() not yet implemented.");
 }
 */
 bool DirectoryResourceLocation::hardResourceExists(string const& file) const {

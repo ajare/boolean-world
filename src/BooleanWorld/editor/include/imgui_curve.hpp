@@ -223,7 +223,7 @@ namespace ImGui
 
                     if (snap)
                     {
-                        throw std::exception("Snap-to-grid not yet implemented");
+                        throw std::runtime_error("Snap-to-grid not yet implemented");
                     }
 
                     auto& py = points[selected].y;

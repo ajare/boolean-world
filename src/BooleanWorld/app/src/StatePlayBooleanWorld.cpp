@@ -2690,8 +2690,8 @@ void StatePlayBooleanWorld::_renderImGui(float frameTime, void* imGuiCtx, void* 
   ImGuiDllBoundaryState imGuiBoundaryState{
       static_cast<ImGuiContext*>(imGuiCtx),
       static_cast<ImPlotContext*>(imPlotCtx),
-      static_cast<ImGuiMemAllocFunc>(allocFunc),
-      static_cast<ImGuiMemFreeFunc>(freeFunc),
+      reinterpret_cast<ImGuiMemAllocFunc>(allocFunc),
+      reinterpret_cast<ImGuiMemFreeFunc>(freeFunc),
       userData};
 
   //

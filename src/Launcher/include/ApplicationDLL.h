@@ -4,6 +4,8 @@
 
 #if APP_PLATFORM == APP_PLATFORM_WINDOWS
 #include <Windows.h>
+#else
+#include <dlfcn.h>
 #endif
 
 #include <cstdint>
@@ -45,6 +47,8 @@ class ApplicationDLL {
 private:
 #if APP_PLATFORM == APP_PLATFORM_WINDOWS
   HINSTANCE mGetProcIDDLL;
+#else
+  void* mGetProcIDDLL;
 #endif
 
   std::string mFilepath;

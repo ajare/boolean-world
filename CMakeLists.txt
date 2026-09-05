@@ -15,23 +15,21 @@ project(BooleanWorld LANGUAGES CXX)
 set(BW_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${BW_ROOT}/cmake")
 
-if(NOT MSVC)
-    message(FATAL_ERROR "BooleanWorld is a Windows/MSVC build.")
+# Keep single-config Linux builds deterministic and compatible with the
+# standalone Willpower/MassivePolyPusher build trees.
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release)
 endif()
 
-# x64 only: vendor/lib ships x64 libraries exclusively.
+# x64 only: the engine and Windows vendor libraries are x64-only.
 if(CMAKE_SIZEOF_VOID_P AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "Only x64 is supported (vendor/lib is x64-only). Configure with -A x64.")
 endif()
 
-# Debug and Release, as the original solutions had; Shipping is a fully
-# optimised Release-derived configuration; and MemCheck is a Debug build
-# instrumented with AddressSanitizer for finding memory errors and leaks.
-# MemCheck mirrors the ASan setup already used by
-# launcher_zip_resource_location_tests (see src/Launcher/CMakeLists.txt).
-if(CMAKE_CONFIGURATION_TYPES)
+# The extra configurations and their flags are MSVC-specific.
+if(MSVC AND CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Shipping;MemCheck" CACHE STRING "" FORCE)
-endif()
 
 # Shipping keeps Release's speed-oriented optimisation and adds whole-program
 # optimisation. Do not use floating-point or CPU-specific switches here: those
@@ -68,6 +66,7 @@ set(CMAKE_SHARED_LINKER_FLAGS_MEMCHECK
 # MemCheck against the same prebuilt Debug import libraries and DLLs Debug
 # uses (see cmake/Submodules.cmake and cmake/Prebuilt.cmake).
 set(CMAKE_MAP_IMPORTED_CONFIG_MEMCHECK "Debug" CACHE STRING "" FORCE)
+endif() # MSVC multi-config setup
 
 # MSVC's AddressSanitizer does not implement LeakSanitizer at all -
 # detect_leaks=1 is rejected outright ("not supported on this platform"),
@@ -87,11 +86,16 @@ set(BW_MEMCHECK_ENVIRONMENT
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+if(UNIX)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
 
 # Every .vcxproj set CharacterSet=Unicode. This is load-bearing, not cosmetic:
 # ApplicationDLL::load builds a wstring and calls LoadLibrary, which only
 # resolves to LoadLibraryW when UNICODE is defined.
-add_compile_definitions(UNICODE _UNICODE)
+if(WIN32)
+    add_compile_definitions(UNICODE _UNICODE)
+endif()
 
 # All generated binaries live below this CMake build tree. Each target uses an
 # isolated output directory configured by bw_output_dirs().
@@ -232,4 +236,6 @@ if(BUILD_TESTING)
     bw_add_test_target_dependencies("${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 
-set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Launcher)
+if(MSVC)
+    set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Launcher)
+endif()

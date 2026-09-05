@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <limits>
 #include <memory>
 
@@ -73,7 +74,7 @@ resourcesystem::DataStreamPtr ZipResourceLocation::getHardResourceDataStream(str
 
 resourcesystem::DataStreamPtr ZipResourceLocation::getHardResourceDataStreamProgressive(string const& file, string const& namesp, DataStreamFetchProgressCallback progress) const
 {
-        throw exception("ZipResourceLocation::getHardResourceDataStreamProgressive() not yet implemented.");
+        throw runtime_error("ZipResourceLocation::getHardResourceDataStreamProgressive() not yet implemented.");
 }
 */
 bool ZipResourceLocation::hardResourceExists(string const& file) const {

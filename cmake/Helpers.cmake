@@ -38,10 +38,12 @@ endfunction()
 # helpers that show up as extra exported symbols. Use bw_enable_sdl_checks
 # on the targets that had it.
 function(bw_target_defaults tgt)
-    set_target_properties(${tgt} PROPERTIES
-        DEBUG_POSTFIX "d"
-        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug,MemCheck>:Debug>DLL")
-    target_compile_options(${tgt} PRIVATE /MP)
+    set_target_properties(${tgt} PROPERTIES DEBUG_POSTFIX "d")
+    if(MSVC)
+        set_target_properties(${tgt} PROPERTIES
+            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug,MemCheck>:Debug>DLL")
+        target_compile_options(${tgt} PRIVATE /MP)
+    endif()
     # _DEBUG / NDEBUG were spelled out per configuration in every vcxproj.
     # MemCheck is a Debug build (see the top-level CMakeLists.txt), so it
     # takes the _DEBUG branch too.
@@ -79,6 +81,9 @@ endfunction()
 # drops the COMMAND when it evaluates empty, and the same generator
 # expression on COMMENT keeps the build step silent for Debug/Release too.
 function(bw_deploy_asan_runtime tgt)
+    if(NOT MSVC)
+        return()
+    endif()
     get_filename_component(msvc_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
     add_custom_command(TARGET ${tgt} POST_BUILD
         COMMAND "$<$<CONFIG:MemCheck>:${CMAKE_COMMAND}>" -E copy_if_different
@@ -93,9 +98,11 @@ endfunction()
 #
 # /sdl, matching <SDLCheck>true</SDLCheck> in the original .vcxproj.
 function(bw_enable_sdl_checks)
-    foreach(tgt ${ARGN})
-        target_compile_options(${tgt} PRIVATE /sdl)
-    endforeach()
+    if(MSVC)
+        foreach(tgt ${ARGN})
+            target_compile_options(${tgt} PRIVATE /sdl)
+        endforeach()
+    endif()
 endfunction()
 
 # bw_no_postfix(<target>...)
@@ -113,6 +120,9 @@ endfunction()
 # replaces CopyWillpowerBinaries.bat / CopySupportFiles.bat: CMake already
 # knows the full transitive set, so nothing has to be listed by hand.
 function(bw_deploy_runtime_dlls tgt)
+    if(NOT WIN32)
+        return()
+    endif()
     add_custom_command(TARGET ${tgt} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "$<TARGET_RUNTIME_DLLS:${tgt}>" "$<TARGET_FILE_DIR:${tgt}>"
@@ -127,6 +137,9 @@ endfunction()
 # static stubs, so they never show up in TARGET_RUNTIME_DLLS. Copy the whole
 # per-configuration directory, which is what the old .bat files did.
 function(bw_deploy_vendor_dlls tgt)
+    if(NOT WIN32)
+        return()
+    endif()
     add_custom_command(TARGET ${tgt} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${BW_VENDOR_BIN}/$<IF:$<CONFIG:Debug,MemCheck>,Debug,Release>"

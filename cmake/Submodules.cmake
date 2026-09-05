@@ -13,31 +13,37 @@ set(BW_MPP_SOURCE_DIR "${BW_WILLPOWER_SOURCE_DIR}/ext/massive-poly-pusher")
 set(BW_MPP_BUILD_DIR "${BW_WILLPOWER_BUILD_DIR}/_deps/massive-poly-pusher-build")
 
 function(_bw_willpower_present cfg out_var)
-    set(suffix "")
-    if(cfg STREQUAL "Debug")
-        set(suffix "d")
+    if(WIN32)
+        set(suffix "")
+        if(cfg STREQUAL "Debug")
+            set(suffix "d")
+        endif()
+        foreach(target Willpower.Common Willpower.Geometry Willpower.Wayfinder
+                Willpower.Collide Willpower.Application WillPower.Viz)
+            if(NOT EXISTS "${BW_WILLPOWER_BUILD_DIR}/lib/${cfg}/${target}/${target}${suffix}.lib")
+                set(${out_var} FALSE PARENT_SCOPE)
+                return()
+            endif()
+        endforeach()
+        foreach(file MppAppSupport SDL3)
+            if(NOT EXISTS "${BW_MPP_BUILD_DIR}/lib/${cfg}/${file}${suffix}.lib")
+                set(${out_var} FALSE PARENT_SCOPE)
+                return()
+            endif()
+        endforeach()
+    else()
+        foreach(target Willpower.Common Willpower.Geometry Willpower.Wayfinder
+                Willpower.Collide Willpower.Application WillPower.Viz)
+            if(NOT EXISTS "${BW_WILLPOWER_BUILD_DIR}/bin/${cfg}/${target}/lib${target}.so")
+                set(${out_var} FALSE PARENT_SCOPE)
+                return()
+            endif()
+        endforeach()
+        if(NOT EXISTS "${BW_MPP_SOURCE_DIR}/build/bin/${cfg}/libMassivePolyPusher.so")
+            set(${out_var} FALSE PARENT_SCOPE)
+            return()
+        endif()
     endif()
-
-    foreach(target
-            Willpower.Common
-            Willpower.Geometry
-            Willpower.Wayfinder
-            Willpower.Collide
-            Willpower.Application
-            WillPower.Viz)
-        if(NOT EXISTS
-                "${BW_WILLPOWER_BUILD_DIR}/lib/${cfg}/${target}/${target}${suffix}.lib")
-            set(${out_var} FALSE PARENT_SCOPE)
-            return()
-        endif()
-    endforeach()
-
-    foreach(file MppAppSupport SDL3)
-        if(NOT EXISTS "${BW_MPP_BUILD_DIR}/lib/${cfg}/${file}${suffix}.lib")
-            set(${out_var} FALSE PARENT_SCOPE)
-            return()
-        endif()
-    endforeach()
     set(${out_var} TRUE PARENT_SCOPE)
 endfunction()
 
@@ -55,7 +61,12 @@ function(bw_ensure_willpower)
     # mappings in the top-level CMakeLists.txt). Their standalone builds do
     # not define either BooleanWorld-specific configuration.
     set(_bw_underlying_configs "")
-    foreach(cfg ${CMAKE_CONFIGURATION_TYPES})
+    if(CMAKE_CONFIGURATION_TYPES)
+        set(_bw_requested_configs ${CMAKE_CONFIGURATION_TYPES})
+    else()
+        set(_bw_requested_configs ${CMAKE_BUILD_TYPE})
+    endif()
+    foreach(cfg ${_bw_requested_configs})
         if(cfg STREQUAL "MemCheck")
             list(APPEND _bw_underlying_configs "Debug")
         elseif(cfg STREQUAL "Shipping")
@@ -111,13 +122,15 @@ function(bw_ensure_willpower)
 
         if(NOT EXISTS "${BW_WILLPOWER_BUILD_DIR}/CMakeCache.txt")
             message(STATUS "Configuring Willpower")
+            set(_bw_configure_command
+                "${CMAKE_COMMAND}" -S "${BW_WILLPOWER_SOURCE_DIR}"
+                -B "${BW_WILLPOWER_BUILD_DIR}" -G "${CMAKE_GENERATOR}"
+                -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${cfg})
+            if(WIN32)
+                list(APPEND _bw_configure_command -A x64)
+            endif()
             execute_process(
-                COMMAND "${CMAKE_COMMAND}"
-                        -S "${BW_WILLPOWER_SOURCE_DIR}"
-                        -B "${BW_WILLPOWER_BUILD_DIR}"
-                        -G "${CMAKE_GENERATOR}"
-                        -A x64
-                        -DBUILD_TESTING=OFF
+                COMMAND ${_bw_configure_command}
                 RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE out)
             if(NOT rc EQUAL 0)
                 message(FATAL_ERROR "Failed to configure Willpower:\n${out}")

@@ -20,15 +20,41 @@ non-recursive clone will not build. For an existing clone, run:
 
 ## Building
 
+Only x64 builds are supported. CMake builds Willpower and its nested
+MassivePolyPusher dependency on demand, so the first build can take several
+minutes.
+
+### Linux
+
+A C++23 compiler, CMake 3.26 or newer, and the OpenGL/X11 development packages
+needed by SDL3 are required. Configure with a single-config generator:
+
+    cmake -S . -B build-linux \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_TESTING=OFF
+    cmake --build build-linux --parallel
+
+Use `Debug` instead of `Release` for a debug build. To build and run the tests,
+omit `-DBUILD_TESTING=OFF`, then run:
+
+    ctest --test-dir build-linux --output-on-failure
+
+The build consumes Willpower and MassivePolyPusher from their standalone Linux
+build trees under `ext/willpower/build` and
+`ext/willpower/ext/massive-poly-pusher/build`. To use already-built dependency
+artifacts without allowing BooleanWorld to update them, add
+`-DBW_BUILD_WILLPOWER=OFF` when configuring.
+
+### Windows
+
     RebuildAll.bat Release
 
-or directly:
+Or invoke CMake directly:
 
     cmake -S . -B build-cmake -G "Visual Studio 18 2026" -A x64
     cmake --build build-cmake --config Release --parallel
 
-Configurations are `Debug` and `Release`. Only `x64` is supported.
-
+Windows configurations include `Debug`, `Release`, `Shipping`, and `MemCheck`.
 `build-cmake/BooleanWorld.sln` can be opened in Visual Studio; `Launcher` is
 the startup project.
 
@@ -41,7 +67,13 @@ and builds Willpower on demand if its libraries are missing; Willpower builds
 its nested MassivePolyPusher dependency in the same tree. The first build takes
 several minutes.
 
-Pass `-DBW_BUILD_WILLPOWER=OFF` to manage the build yourself:
+Pass `-DBW_BUILD_WILLPOWER=OFF` to manage the build yourself. On Linux:
+
+    cmake -S ext/willpower -B ext/willpower/build \
+        -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+    cmake --build ext/willpower/build --parallel
+
+On Windows:
 
     cmake -S ext/willpower -B ext/willpower/build -G "Visual Studio 18 2026" -A x64 -DBUILD_TESTING=OFF
     cmake --build ext/willpower/build --config Release --parallel
@@ -55,13 +87,19 @@ spline_library and Superluminal.
 
 All generated binaries, import libraries, staged runtime dependencies, and
 runtime support files stay beneath the selected CMake build directory. Runtime
-targets use `build-cmake/bin/<Config>/<Target>/`; import and static libraries
-use `build-cmake/lib/<Config>/<Target>/`.
+targets use `<build-dir>/bin/<Config>/<Target>/`; import and static libraries
+use `<build-dir>/lib/<Config>/<Target>/`.
 
 ## Running
 
     cd build-cmake\bin\Release\Launcher
     Launcher.exe BooleanWorld.yaml
+
+On Linux the staged launcher is self-contained apart from its RPATH-resolved
+engine libraries:
+
+    cd build-linux/bin/Release/Launcher
+    ./Launcher Game.yaml
 
 `Launcher.exe` loads an application DLL named in the config. The build
 generates `BooleanWorld.yaml` with absolute paths next to `Launcher.exe`.

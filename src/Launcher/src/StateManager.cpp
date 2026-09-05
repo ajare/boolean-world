@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <willpower/application/StateExceptions.h>
 
 #include "StateManager.h"
@@ -33,7 +34,7 @@ void StateManager::registerStateFactory(application::StateFactory* factory) {
   // Make sure one is not already registered
   if (mStateFactories.find(type) != mStateFactories.end()) {
     string errMsg = "State factory '" + type + "' already registered.";
-    throw exception(errMsg.c_str());
+    throw runtime_error(errMsg.c_str());
   }
 
   mStateFactories[type] = factory;
@@ -43,7 +44,7 @@ application::StateFactory* StateManager::getStateFactory(string const& type) {
   auto it = mStateFactories.find(type);
   if (it == mStateFactories.end()) {
     string errMsg = "State factory '" + type + "' not registered.";
-    throw exception(errMsg.c_str());
+    throw runtime_error(errMsg.c_str());
   }
 
   return it->second;

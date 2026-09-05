@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <stack>
 #include <algorithm>
 #include <charconv>
@@ -37,7 +38,7 @@ StructuredData importStructuredData(utils::StructuredData const& source) {
   auto message = "Could not load '" + filename +
                  "'.  Value of /Configuration/Video/Shadows/" + field +
                  " " + requirement + ".";
-  throw exception(message.c_str());
+  throw runtime_error(message.c_str());
 }
 
 float parseShadowFloat(
@@ -59,7 +60,7 @@ float parseShadowFloat(
   auto message = "Could not load '" + filename +
                  "'.  Value of /Configuration/Video/PlayerTorch/" + field +
                  " " + requirement + ".";
-  throw exception(message.c_str());
+  throw runtime_error(message.c_str());
 }
 
 void parsePlayerTorchOptions(
@@ -106,7 +107,7 @@ void parseWaterReflectionOptions(
     if (!technique) {
       auto message = "Could not load '" + filename +
                      "'.  Value of /Configuration/Video/WaterReflections/Technique must be 'screen-space' or 'planar'.";
-      throw exception(message.c_str());
+      throw runtime_error(message.c_str());
     }
     options.technique = *technique;
   }
@@ -117,7 +118,7 @@ void parseWaterReflectionOptions(
     if (!resolution) {
       auto message = "Could not load '" + filename +
                      "'.  Value of /Configuration/Video/WaterReflections/PlanarResolution must be 'full', 'half' or 'quarter'.";
-      throw exception(message.c_str());
+      throw runtime_error(message.c_str());
     }
     options.planarResolution = *resolution;
   }
@@ -132,7 +133,7 @@ void parseWorldDataGenerationOptions(
     if (generation->getValue().empty()) return;
     auto message = "Could not load '" + filename +
                    "'.  /Configuration/Game/WorldDataGeneration must be a section.";
-    throw exception(message.c_str());
+    throw runtime_error(message.c_str());
   }
   generation->requireOnlyChildren(
       {"Mode", "StartInterval", "AlwaysUpdateVertices", "AllowCommitIfVisible"});
@@ -143,7 +144,7 @@ void parseWorldDataGenerationOptions(
     if (!mode) {
       auto message = "Could not load '" + filename +
                      "'.  Value of /Configuration/Game/WorldDataGeneration/Mode must be 'asynchronous' or 'synchronous'.";
-      throw exception(message.c_str());
+      throw runtime_error(message.c_str());
     }
     options.mode = *mode;
   }
@@ -157,7 +158,7 @@ void parseWorldDataGenerationOptions(
         !isfinite(value) || value < 0.0f) {
       auto message = "Could not load '" + filename +
                      "'.  Value of /Configuration/Game/WorldDataGeneration/StartInterval must be a finite non-negative number.";
-      throw exception(message.c_str());
+      throw runtime_error(message.c_str());
     }
     options.startInterval = value;
   }
@@ -169,7 +170,7 @@ void parseWorldDataGenerationOptions(
     if (value != "true" && value != "false") {
       auto message = "Could not load '" + filename + "'.  Value of /Configuration/Game/WorldDataGeneration/" +
                      field + " must be 'true' or 'false'.";
-      throw exception(message.c_str());
+      throw runtime_error(message.c_str());
     }
     option = value == "true";
   };
@@ -276,7 +277,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
     auto renderScale = bw::app::renderScaleFromName(renderScaleName);
     if (!renderScale) {
       string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/RenderScale must be 'full', 'half', 'quarter' or 'eighth'.";
-      throw exception(errMsg.c_str());
+      throw runtime_error(errMsg.c_str());
     }
 
     pOpts.video.renderScale = *renderScale;
@@ -289,7 +290,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
     auto antiAliasing = bw::app::antiAliasingFromName(antiAliasingName);
     if (!antiAliasing) {
       string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/AA must be 'off', 'msaa-2x', 'msaa-4x', 'msaa-8x' or 'fxaa'.";
-      throw exception(errMsg.c_str());
+      throw runtime_error(errMsg.c_str());
     }
 
     pOpts.video.antiAliasing = *antiAliasing;
@@ -303,7 +304,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
         bw::app::ambientOcclusionFromName(ambientOcclusionName);
     if (!ambientOcclusion) {
       string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/AmbientOcclusion must be 'ssao', 'gtao-depth', 'gtao-normals' or 'none'.";
-      throw exception(errMsg.c_str());
+      throw runtime_error(errMsg.c_str());
     }
 
     pOpts.video.ambientOcclusion = *ambientOcclusion;
@@ -317,7 +318,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
     auto materials = bw::app::horizontalMaterialsFromName(materialsName);
     if (!materials) {
       string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/HorizontalMaterials must be '2d' or '3d'.";
-      throw exception(errMsg.c_str());
+      throw runtime_error(errMsg.c_str());
     }
     pOpts.video.horizontalMaterials = *materials;
   }
@@ -345,7 +346,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
     auto filter = bw::app::renderTextureFilterFromName(filterName);
     if (!filter) {
       string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Video/RenderTextureFilter must be 'linear' or 'nearest'.";
-      throw exception(errMsg.c_str());
+      throw runtime_error(errMsg.c_str());
     }
 
     pOpts.video.renderTextureFilter = *filter;
@@ -390,7 +391,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
 
       if (!isfinite(sensitivity) || sensitivity <= 0.0f) {
         string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Input/MouseSensitivity must be a number greater than zero.";
-        throw exception(errMsg.c_str());
+        throw runtime_error(errMsg.c_str());
       }
 
       pOpts.input.mouseSensitivity = sensitivity;
@@ -409,7 +410,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
 
       if (enabled != "enabled" && enabled != "disabled") {
         string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Game/Debug/InGame must be either 'enabled' or 'disabled'.";
-        throw exception(errMsg.c_str());
+        throw runtime_error(errMsg.c_str());
       }
 
       pOpts.debugging.inGame = enabled == "enabled";

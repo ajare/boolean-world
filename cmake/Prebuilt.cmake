@@ -17,6 +17,7 @@ set(BW_VENDOR    "${BW_ROOT}/vendor")
 set(BW_VENDOR_LIB "${BW_VENDOR}/lib/vs2026/x64")
 set(BW_VENDOR_BIN "${BW_VENDOR}/bin/vs2026/x64")
 
+if(WIN32)
 set(BW_WILLPOWER_LIB "${BW_WILLPOWER_BUILD_DIR}/lib")
 set(BW_WILLPOWER_BIN "${BW_WILLPOWER_BUILD_DIR}/bin")
 set(BW_MPP_LIB "${BW_MPP_BUILD_DIR}/lib")
@@ -169,3 +170,74 @@ target_link_libraries(Willpower.Application INTERFACE
 target_link_libraries(WillPower.Viz INTERFACE
     Willpower.Common Willpower.Collide
     ext::mpp ext::mpp-mesh ext::mpp-helper ext::mpp-program)
+
+else()
+# Linux consumes the artifacts produced by the standalone Willpower build and
+# by MassivePolyPusher's existing source-tree output layout.
+set(BW_MPP_OUTPUT "${BW_MPP}/build")
+set(BW_MPP_BIN "${BW_MPP_OUTPUT}/bin/${CMAKE_BUILD_TYPE}")
+set(BW_MPP_LIB "${BW_MPP_OUTPUT}/lib/${CMAKE_BUILD_TYPE}")
+set(BW_WILLPOWER_BIN "${BW_WILLPOWER_BUILD_DIR}/bin/${CMAKE_BUILD_TYPE}")
+set(BW_MPP_GLEW_INCLUDE_DIR "${BW_MPP_BUILD_DIR}/_deps/glew-2.3.1/include")
+
+function(bw_linux_shared name location)
+    add_library(${name} SHARED IMPORTED GLOBAL)
+    set_target_properties(${name} PROPERTIES IMPORTED_LOCATION "${location}")
+endfunction()
+function(bw_linux_mpp name stem include_dir)
+    bw_linux_shared(${name} "${BW_MPP_BIN}/lib${stem}.so")
+    target_include_directories(${name} INTERFACE ${include_dir})
+endfunction()
+
+bw_linux_mpp(ext::Utils Utils "${BW_MPP}/ext/utils/include")
+bw_linux_mpp(ext::mpp MassivePolyPusher "${BW_MPP}/mpp/include;${BW_MPP}/vendor/include;${BW_MPP_GLEW_INCLUDE_DIR}")
+bw_linux_mpp(ext::mpp-mesh MppMesh "${BW_MPP}/mpp-mesh/include")
+bw_linux_mpp(ext::mpp-helper MppHelper "${BW_MPP}/mpp-helper/include")
+bw_linux_mpp(ext::mpp-program MppProgram "${BW_MPP}/mpp-program/include")
+bw_linux_mpp(ext::mpp-data MppData "${BW_MPP}/mpp-data/include")
+bw_linux_mpp(ext::sdl3 SDL3 "${BW_MPP}/ext/sdl/include")
+bw_linux_mpp(ext::glew GLEW "${BW_MPP_GLEW_INCLUDE_DIR}")
+set_property(TARGET ext::glew APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS GLEW_NO_GLU)
+set_property(TARGET ext::mpp APPEND PROPERTY INTERFACE_LINK_LIBRARIES ext::mpp-data ext::glew)
+
+add_library(ext::mpp-app-support STATIC IMPORTED GLOBAL)
+set_target_properties(ext::mpp-app-support PROPERTIES
+    IMPORTED_LOCATION "${BW_MPP_LIB}/libMppAppSupport.a"
+    INTERFACE_INCLUDE_DIRECTORIES "${BW_MPP}/mpp-app-support/include")
+add_library(ext::yaml-cpp STATIC IMPORTED GLOBAL)
+set_target_properties(ext::yaml-cpp PROPERTIES
+    IMPORTED_LOCATION "${BW_MPP_LIB}/libyaml-cpp.a"
+    INTERFACE_INCLUDE_DIRECTORIES "${BW_MPP}/ext/utils/vendor/yaml-cpp/include")
+
+add_library(vendor::headers INTERFACE IMPORTED GLOBAL)
+target_include_directories(vendor::headers INTERFACE "${BW_VENDOR}/include")
+add_library(vendor::spdlog INTERFACE IMPORTED GLOBAL)
+target_link_libraries(vendor::spdlog INTERFACE vendor::headers)
+target_compile_definitions(vendor::spdlog INTERFACE SPDLOG_HEADER_ONLY)
+# Native file dialogs and Superluminal are currently Windows-only consumers.
+add_library(vendor::nfd INTERFACE IMPORTED GLOBAL)
+add_library(vendor::performanceapi INTERFACE IMPORTED GLOBAL)
+target_link_libraries(vendor::nfd INTERFACE vendor::headers)
+target_link_libraries(vendor::performanceapi INTERFACE vendor::headers)
+
+find_package(OpenGL REQUIRED)
+add_library(vendor::opengl INTERFACE IMPORTED GLOBAL)
+target_link_libraries(vendor::opengl INTERFACE OpenGL::GL ${CMAKE_DL_LIBS})
+
+function(bw_linux_willpower target module)
+    bw_linux_shared(${target} "${BW_WILLPOWER_BIN}/${target}/lib${target}.so")
+    target_include_directories(${target} INTERFACE "${BW_WILLPOWER}/${module}/include")
+endfunction()
+bw_linux_willpower(Willpower.Common willpower.common)
+bw_linux_willpower(Willpower.Geometry willpower.geometry)
+bw_linux_willpower(Willpower.Wayfinder willpower.wayfinder)
+bw_linux_willpower(Willpower.Collide willpower.collide)
+bw_linux_willpower(Willpower.Application willpower.application)
+bw_linux_willpower(WillPower.Viz willpower.viz)
+target_link_libraries(Willpower.Common INTERFACE vendor::headers)
+target_link_libraries(Willpower.Geometry INTERFACE Willpower.Common vendor::headers)
+target_link_libraries(Willpower.Wayfinder INTERFACE Willpower.Common Willpower.Geometry)
+target_link_libraries(Willpower.Collide INTERFACE Willpower.Common Willpower.Geometry)
+target_link_libraries(Willpower.Application INTERFACE Willpower.Common ext::mpp ext::mpp-mesh ext::mpp-program)
+target_link_libraries(WillPower.Viz INTERFACE Willpower.Common Willpower.Collide ext::mpp ext::mpp-mesh ext::mpp-helper ext::mpp-program)
+endif()

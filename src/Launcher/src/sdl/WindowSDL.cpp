@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <format>
 
 #include <willpower/application/Key.h>
@@ -162,34 +163,34 @@ void WindowSDL::create() {
   // GL_POINT_SPRITE to be enabled and otherwise produces transparent glyphs.
   if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE)) {
     string err = SDL_GetError();
-    throw exception(("Could not set OpenGL attribute: " + err).c_str());
+    throw runtime_error(("Could not set OpenGL attribute: " + err).c_str());
   }
 
   if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3)) {
     string err = SDL_GetError();
-    throw exception(("Could not set OpenGL attribute: " + err).c_str());
+    throw runtime_error(("Could not set OpenGL attribute: " + err).c_str());
   }
 
   if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2)) {
     string err = SDL_GetError();
-    throw exception(("Could not set OpenGL attribute: " + err).c_str());
+    throw runtime_error(("Could not set OpenGL attribute: " + err).c_str());
   }
 
   if (!SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1)) {
     string err = SDL_GetError();
-    throw exception(("Could not set OpenGL attribute: " + err).c_str());
+    throw runtime_error(("Could not set OpenGL attribute: " + err).c_str());
   }
 
   if (!SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24)) {
     string err = SDL_GetError();
-    throw exception(("Could not set OpenGL attribute: " + err).c_str());
+    throw runtime_error(("Could not set OpenGL attribute: " + err).c_str());
   }
 
   // Relative-mouse hints are read when the mode is enabled, so set them first.
   // Motion is left at the scale SDL reports it: the application's own mouse
   // sensitivity is the one place turn speed is scaled.
   if (!SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_CENTER, "1")) {
-    throw exception("Could not set hint: SDL_HINT_MOUSE_RELATIVE_MODE_CENTER");
+    throw runtime_error("Could not set hint: SDL_HINT_MOUSE_RELATIVE_MODE_CENTER");
   }
 
   // Create window
@@ -203,7 +204,7 @@ void WindowSDL::create() {
 
   if (!mWindow) {
     string err = SDL_GetError();
-    throw exception(("Could not create SDL window: " + err).c_str());
+    throw runtime_error(("Could not create SDL window: " + err).c_str());
   }
 
   // An SDL3 fullscreen window is borderless-desktop unless it is given an
@@ -220,7 +221,7 @@ void WindowSDL::create() {
 
   mContextGL = SDL_GL_CreateContext(mWindow);
   if (!SDL_GL_MakeCurrent(mWindow, mContextGL)) {
-    throw exception("Could not set the OpenGL context.");
+    throw runtime_error("Could not set the OpenGL context.");
   }
 
   // Log what the driver actually handed back rather than what was asked for -
