@@ -7,6 +7,7 @@
 #include <core/ArrangementWorldData.h>
 #include <willpower/wayfinder/Floor.h>
 #include <willpower/wayfinder/Mesh.h>
+#include <willpower/wayfinder/PathDatabase.h>
 #include <willpower/wayfinder/Sector.h>
 
 namespace {
@@ -31,8 +32,39 @@ void consumesExistingTriangulation() {
   auto* sector = mesh.getSector(0);
   require(sector->getNumHoles() == 1,
           "direct Wayfinder triangulation did not recover its hole boundary");
-  require(sector->getFloor(0)->getNumPolygons() == triangles.size(),
+  auto* floor = sector->getFloor(0);
+  require(floor->getNumPolygons() == triangles.size(),
           "direct Wayfinder construction retriangulated its input");
+
+  floor->calculatePaths(0);
+  auto path = floor->getPath({2.0f, 3.5f}, 4, 0);
+  size_t portalCount = 0;
+  for ([[maybe_unused]] auto portal : path) {
+    ++portalCount;
+  }
+  require(portalCount > 0 && portalCount < triangles.size(),
+          "target-tree route did not reconstruct a portal path");
+
+  wp::wayfinder::PathDatabase boundedDatabase;
+  boundedDatabase.setSize(static_cast<uint32_t>(triangles.size()));
+  boundedDatabase.setMaxCachedTargets(2);
+  auto const* polygonisation = floor->getPolygonisation();
+  polygonisation->calculatePaths(0, &boundedDatabase);
+  polygonisation->calculatePaths(1, &boundedDatabase);
+  polygonisation->calculatePaths(2, &boundedDatabase);
+  require(boundedDatabase.getNumCachedTargets() == 2,
+          "PathDatabase exceeded its target-tree cache limit");
+  require(!boundedDatabase.isCalculated(0),
+          "PathDatabase did not evict its least recently used target tree");
+
+  polygonisation->calculatePaths(0, &boundedDatabase);
+  require(!boundedDatabase.getPath(4, 0, *polygonisation).empty(),
+          "compact target tree did not reconstruct a portal path");
+
+  wp::wayfinder::PathDatabase largeDatabase;
+  largeDatabase.setSize(10'000);
+  require(largeDatabase.getNumCachedTargets() == 0,
+          "PathDatabase eagerly allocated a target tree");
 }
 
 void reportsArrangementDiagnostics() {
