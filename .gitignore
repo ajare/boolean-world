@@ -1,6 +1,7 @@
 # Out-of-source CMake build trees
 /build-cmake/
 /build-linux/
+/build-windows/
 /build/
 CMakeUserPresets.json
 
