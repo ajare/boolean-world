@@ -20,8 +20,8 @@ set(BW_VENDOR_BIN "${BW_VENDOR}/bin/vs2026/x64")
 if(WIN32)
 set(BW_WILLPOWER_LIB "${BW_WILLPOWER_BUILD_DIR}/lib")
 set(BW_WILLPOWER_BIN "${BW_WILLPOWER_BUILD_DIR}/bin")
-set(BW_MPP_LIB "${BW_MPP_BUILD_DIR}/lib")
-set(BW_MPP_BIN "${BW_MPP_BUILD_DIR}/bin")
+set(BW_MPP_LIB "${BW_MPP_OUTPUT_DIR}/lib")
+set(BW_MPP_BIN "${BW_MPP_OUTPUT_DIR}/bin")
 set(BW_MPP_GLEW_INCLUDE_DIR "${BW_MPP_BUILD_DIR}/_deps/glew-2.3.1/include")
 
 # bw_import_shared(<target> <lib-release> <lib-debug> [INCLUDE dirs...])
@@ -174,9 +174,8 @@ target_link_libraries(WillPower.Viz INTERFACE
 else()
 # Linux consumes the artifacts produced by the standalone Willpower build and
 # by MassivePolyPusher's existing source-tree output layout.
-set(BW_MPP_OUTPUT "${BW_MPP}/build")
-set(BW_MPP_BIN "${BW_MPP_OUTPUT}/bin/${CMAKE_BUILD_TYPE}")
-set(BW_MPP_LIB "${BW_MPP_OUTPUT}/lib/${CMAKE_BUILD_TYPE}")
+set(BW_MPP_BIN "${BW_MPP_OUTPUT_DIR}/bin/${CMAKE_BUILD_TYPE}")
+set(BW_MPP_LIB "${BW_MPP_OUTPUT_DIR}/lib/${CMAKE_BUILD_TYPE}")
 set(BW_WILLPOWER_BIN "${BW_WILLPOWER_BUILD_DIR}/bin/${CMAKE_BUILD_TYPE}")
 set(BW_MPP_GLEW_INCLUDE_DIR "${BW_MPP_BUILD_DIR}/_deps/glew-2.3.1/include")
 
