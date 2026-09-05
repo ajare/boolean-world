@@ -90,16 +90,16 @@ APPLICATION_API int dllSetInputOptions(float mouseSensitivity) {
   return dllState.setInputOptions(mouseSensitivity, gInputOptions);
 }
 
-__declspec(dllexport) int dllCpuUpdateTimingCaptureEnabled() {
+APPLICATION_API int dllCpuUpdateTimingCaptureEnabled() {
   return bw::app::cpuUpdateProfiler().captureEnabled() ? 1 : 0;
 }
 
-__declspec(dllexport) void dllRecordCpuUpdateTimings(
+APPLICATION_API void dllRecordCpuUpdateTimings(
     std::uint64_t gameNs, std::uint64_t audioNs) {
   bw::app::cpuUpdateProfiler().recordFrame(gameNs, audioNs);
 }
 
-__declspec(dllexport) int dllSetWorldDataGenerationOptions(
+APPLICATION_API int dllSetWorldDataGenerationOptions(
     int modeCode, float startInterval, int alwaysUpdateVerticesCode,
     int allowCommitIfVisibleCode) {
   return dllState.setWorldDataGenerationOptions(
