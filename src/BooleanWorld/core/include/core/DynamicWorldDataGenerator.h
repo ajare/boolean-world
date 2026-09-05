@@ -84,6 +84,7 @@ private:
     wp::BoundingBox worldExtents;
     float gridCellSize;
     WedgeGenerationParameters wedgeGenerationParameters;
+    bool createWayfinderMesh;
   };
 
   std::atomic_uint32_t mClippingIdGenerator;
@@ -102,6 +103,7 @@ private:
   concurrencpp::runtime mExecutorRuntime;
 
   bool mAlwaysUpdateVertices, mAllowCommitIfVisible;
+  bool mCreateWayfinderMesh;
 
   std::atomic_uint32_t mNumGenerationsInProgress;
 
@@ -166,7 +168,8 @@ private:
   void fireCallbacks(GenerationDetails const& details);
 
 public:
-  explicit DynamicWorldDataGenerator(World const* world);
+  explicit DynamicWorldDataGenerator(
+      World const* world, bool createWayfinderMesh = false);
 
   ~DynamicWorldDataGenerator();
 
@@ -187,6 +190,10 @@ public:
   void setAllowCommitIfVisible(bool allow);
 
   bool getAllowCommitIfVisible() const;
+
+  void setCreateWayfinderMesh(bool create);
+
+  bool getCreateWayfinderMesh() const;
 
   uint32_t getNumGenerationsInProgress() const;
 

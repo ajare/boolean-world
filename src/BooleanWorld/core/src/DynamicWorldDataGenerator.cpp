@@ -13,14 +13,16 @@ namespace bw {
 namespace core {
 using namespace std;
 
-DynamicWorldDataGenerator::DynamicWorldDataGenerator(World const* world)
-    : WorldDataGenerator(), mClippingIdGenerator(0), mWorld(world), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mGenerationStartInterval(5.0f) {
+DynamicWorldDataGenerator::DynamicWorldDataGenerator(
+    World const* world, bool createWayfinderMesh)
+    : WorldDataGenerator(), mClippingIdGenerator(0), mWorld(world), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mCreateWayfinderMesh(createWayfinderMesh), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mGenerationStartInterval(5.0f) {
   ArrangementWorldDataGenerator generator;
   mActiveClipping.worldData = make_shared<ArrangementWorldData>(
       generator.getWorldData(),
       world->getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
-      world->getWedgeGenerationParameters());
+      world->getWedgeGenerationParameters(),
+      createWayfinderMesh);
 }
 
 DynamicWorldDataGenerator::~DynamicWorldDataGenerator() {
@@ -33,7 +35,7 @@ DynamicWorldDataGenerator::~DynamicWorldDataGenerator() {
 }
 
 DynamicWorldDataGenerator::DynamicWorldDataGenerator(DynamicWorldDataGenerator const& other)
-    : mClippingIdGenerator(0), mWorld(nullptr), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mGenerationStartInterval(5.0f) {
+    : mClippingIdGenerator(0), mWorld(nullptr), mAlwaysUpdateVertices(false), mAllowCommitIfVisible(false), mCreateWayfinderMesh(false), mNumGenerationsInProgress(0), mNumGenerationsComplete(0), mNumCommits(0), mLastGenTime(0), mScheduledGenerationRunning(false), mGenerationStartInterval(5.0f) {
   copyFrom(other);
 }
 
@@ -52,6 +54,7 @@ void DynamicWorldDataGenerator::copyFrom(DynamicWorldDataGenerator const& other)
   mClippingIdGenerator.store(other.mClippingIdGenerator.load());
   mAlwaysUpdateVertices = other.mAlwaysUpdateVertices;
   mAllowCommitIfVisible = other.mAllowCommitIfVisible;
+  mCreateWayfinderMesh = other.mCreateWayfinderMesh;
   mActiveClipping = other.mActiveClipping;
   mNextClipping = other.mNextClipping;
   mNumGenerationsInProgress = 0;
@@ -90,6 +93,16 @@ void DynamicWorldDataGenerator::setAllowCommitIfVisible(bool allow) {
 
 bool DynamicWorldDataGenerator::getAllowCommitIfVisible() const {
   return mAllowCommitIfVisible;
+}
+
+void DynamicWorldDataGenerator::setCreateWayfinderMesh(bool create) {
+  lock_guard<mutex> lock(mGenMutex);
+  mCreateWayfinderMesh = create;
+}
+
+bool DynamicWorldDataGenerator::getCreateWayfinderMesh() const {
+  lock_guard<mutex> lock(mGenMutex);
+  return mCreateWayfinderMesh;
 }
 
 void DynamicWorldDataGenerator::setAlwaysUpdateVertices(bool update) {
@@ -315,7 +328,8 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
           primStats,
           world->getExtents(),
           float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
-          world->getWedgeGenerationParameters()};
+          world->getWedgeGenerationParameters(),
+          mCreateWayfinderMesh};
 }
 
 void DynamicWorldDataGenerator::generateWorldData(
@@ -345,7 +359,8 @@ void DynamicWorldDataGenerator::generateWorldData(
       input.worldExtents,
       input.gridCellSize,
       &stats.arrangement,
-      input.wedgeGenerationParameters);
+      input.wedgeGenerationParameters,
+      input.createWayfinderMesh);
 
   mLastGenTime = timer.elapsedNanoseconds();
   stats.generationRequests.coalescedRequestCount =

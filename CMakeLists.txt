@@ -123,6 +123,9 @@ add_custom_target(BuildAllDependencies
             --target Willpower.Geometry
     COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
             --config "${BW_DEPENDENCY_CONFIG}" --parallel
+            --target Willpower.Wayfinder
+    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
+            --config "${BW_DEPENDENCY_CONFIG}" --parallel
             --target Willpower.Collide
     COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
             --config "${BW_DEPENDENCY_CONFIG}" --parallel
@@ -155,6 +158,7 @@ foreach(dependency_target
         ext::yaml-cpp
         Willpower.Common
         Willpower.Geometry
+        Willpower.Wayfinder
         Willpower.Collide
         Willpower.Application
         WillPower.Viz)

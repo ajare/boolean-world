@@ -16,6 +16,10 @@
 #include "core/Stats.h"
 #include "core/WedgeGenerationParameters.h"
 
+namespace wp::wayfinder {
+class Mesh;
+}
+
 namespace bw::core {
 class BW_API ArrangementWorldData {
   arr::ArrangementResultPtr mArrangement;
@@ -38,6 +42,7 @@ class BW_API ArrangementWorldData {
   // what a wall draws, which is a different set from what it stops an actor
   // walking through.
   std::unique_ptr<ImmutableAccelerationGrid> mRenderedWallGrid;
+  std::shared_ptr<wp::wayfinder::Mesh> mWayfinderMesh;
 
 public:
   ArrangementWorldData(
@@ -45,7 +50,12 @@ public:
       wp::BoundingBox const& extents,
       float gridCellSize,
       ArrangementStats* stats = nullptr,
-      WedgeGenerationParameters const& wedgeGenerationParameters = {});
+      WedgeGenerationParameters const& wedgeGenerationParameters = {},
+      bool createWayfinderMesh = false);
+
+  // Present when navigation generation was requested and the arrangement has
+  // at least one solid polygon.
+  [[nodiscard]] wp::wayfinder::Mesh* getWayfinderMesh() const;
 
   [[nodiscard]] arr::ArrangementResult const& getArrangement() const;
 

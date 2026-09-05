@@ -1,12 +1,14 @@
 #include "core/ArrangementWorldData.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <optional>
 
 #include <willpower/common/BoundingCircle.h>
 #include <willpower/common/MathsUtils.h>
+#include <willpower/wayfinder/Mesh.h>
 
 #include "common/GameDefines.h"
 
@@ -53,6 +55,30 @@ std::optional<float> TriangleHeightAt(
   return u * a[2] + v * b[2] + w * c[2];
 }
 
+std::shared_ptr<wp::wayfinder::Mesh> CreateWayfinderMesh(
+    arr::ArrangementResult const& arrangement,
+    std::vector<arr::ArrangementTriangle> const& triangles) {
+  if (triangles.empty()) {
+    return {};
+  }
+
+  std::vector<wp::Vector2> vertices;
+  vertices.reserve(arrangement.vertices.size());
+  for (auto const& vertex : arrangement.vertices) {
+    vertices.push_back(ToWorld(vertex));
+  }
+
+  std::vector<wp::wayfinder::Triangle> wayfinderTriangles;
+  wayfinderTriangles.reserve(triangles.size());
+  for (auto const& triangle : triangles) {
+    wayfinderTriangles.push_back(
+        {triangle.v[0], triangle.v[1], triangle.v[2]});
+  }
+
+  return std::make_shared<wp::wayfinder::Mesh>(
+      vertices, wayfinderTriangles);
+}
+
 wp::BoundingBox VertexGridExtents(
     wp::BoundingBox const& extents,
     float targetCellSize,
@@ -76,7 +102,8 @@ ArrangementWorldData::ArrangementWorldData(
     wp::BoundingBox const& extents,
     float gridCellSize,
     ArrangementStats* stats,
-    WedgeGenerationParameters const& wedgeGenerationParameters)
+    WedgeGenerationParameters const& wedgeGenerationParameters,
+    bool createWayfinderMesh)
     : mArrangement(std::move(arrangement)),
       mTriangles(arr::BuildArrangementTriangles(*mArrangement)),
       mWalls(arr::BuildArrangementWalls(*mArrangement)),
@@ -183,6 +210,21 @@ ArrangementWorldData::ArrangementWorldData(
     mRenderedWallIndices.push_back(wallIndex);
   }
   mRenderedWallGrid = CreateGrid(extents, gridCellSize, renderedWallBounds);
+
+  if (createWayfinderMesh) {
+    auto start = std::chrono::steady_clock::now();
+    mWayfinderMesh = CreateWayfinderMesh(*mArrangement, mTriangles);
+    if (stats != nullptr) {
+      stats->wayfinderMeshTimeNs = uint64_t(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now() - start)
+              .count());
+    }
+  }
+}
+
+wp::wayfinder::Mesh* ArrangementWorldData::getWayfinderMesh() const {
+  return mWayfinderMesh.get();
 }
 
 arr::ArrangementResult const& ArrangementWorldData::getArrangement() const {

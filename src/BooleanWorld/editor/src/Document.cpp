@@ -2773,7 +2773,7 @@ void Document::updateGhost(std::shared_ptr<bw::core::World> world, bw::core::Pri
 std::shared_ptr<bw::core::World> Document::createWorld(float size, float gridSize) {
   auto world = make_shared<bw::core::World>(size, gridSize);
 
-  auto generator = new bw::core::DynamicWorldDataGenerator(world.get());
+  auto generator = new bw::core::DynamicWorldDataGenerator(world.get(), false);
   generator->setAlwaysUpdateVertices(true);
   generator->setAllowCommitIfVisible(true);
   generator->setPrimitiveFilter(mPrimitiveFilter);

@@ -5,6 +5,9 @@
 
 #include <core/Arrangement.h>
 #include <core/ArrangementWorldData.h>
+#include <willpower/wayfinder/Floor.h>
+#include <willpower/wayfinder/Mesh.h>
+#include <willpower/wayfinder/Sector.h>
 
 namespace {
 
@@ -12,6 +15,24 @@ void require(bool condition, std::string const& message) {
   if (!condition) {
     throw std::runtime_error(message);
   }
+}
+
+void consumesExistingTriangulation() {
+  std::vector<wp::Vector2> vertices{
+      {0.0f, 0.0f}, {4.0f, 0.0f}, {4.0f, 4.0f}, {0.0f, 4.0f},
+      {1.0f, 1.0f}, {1.0f, 3.0f}, {3.0f, 3.0f}, {3.0f, 1.0f}};
+  std::vector<wp::wayfinder::Triangle> triangles{
+      {0, 1, 7}, {0, 7, 4}, {1, 2, 6}, {1, 6, 7},
+      {2, 3, 5}, {2, 5, 6}, {3, 0, 4}, {3, 4, 5}};
+
+  wp::wayfinder::Mesh mesh(vertices, triangles);
+  require(mesh.getNumSectors() == 1,
+          "direct Wayfinder triangulation split one connected sector");
+  auto* sector = mesh.getSector(0);
+  require(sector->getNumHoles() == 1,
+          "direct Wayfinder triangulation did not recover its hole boundary");
+  require(sector->getFloor(0)->getNumPolygons() == triangles.size(),
+          "direct Wayfinder construction retriangulated its input");
 }
 
 void reportsArrangementDiagnostics() {
@@ -31,7 +52,9 @@ void reportsArrangementDiagnostics() {
       arrangement,
       wp::BoundingBox(0.0f, 0.0f, 1.0f, 1.0f),
       1.0f,
-      &stats);
+      &stats,
+      {},
+      true);
 
   require(stats.vertexCount == 4,
           "arrangement diagnostics did not report fixed-point vertices");
@@ -45,12 +68,29 @@ void reportsArrangementDiagnostics() {
           "arrangement diagnostics did not report border walls");
   require(stats.buildPSLGTimeNs + stats.classificationTimeNs > 0,
           "arrangement diagnostics did not record construction timings");
+  require(worldData.getWayfinderMesh() != nullptr,
+          "requested Wayfinder mesh was not returned in world data");
+  require(worldData.getWayfinderMesh()->getNumSectors() == 1,
+          "Wayfinder did not preserve the arrangement's connected sector");
+  require(worldData.getWayfinderMesh()->getSector(0)->getFloor(0)->getNumPolygons() ==
+              worldData.getTriangles().size(),
+          "Wayfinder did not consume the arrangement triangulation directly");
+  require(stats.wayfinderMeshTimeNs > 0,
+          "arrangement diagnostics did not time Wayfinder mesh generation");
+
+  ArrangementWorldData withoutWayfinder(
+      arrangement,
+      wp::BoundingBox(0.0f, 0.0f, 1.0f, 1.0f),
+      1.0f);
+  require(withoutWayfinder.getWayfinderMesh() == nullptr,
+          "Wayfinder mesh generation was not optional");
 }
 
 }  // namespace
 
 int main() {
   try {
+    consumesExistingTriangulation();
     reportsArrangementDiagnostics();
     std::cout << "Arrangement diagnostics report generated topology\n";
     return 0;

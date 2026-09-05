@@ -65,7 +65,7 @@ bw_add_header_filter(core
 target_compile_definitions(core PRIVATE YAML_CPP_STATIC_DEFINE _CONSOLE)
 
 target_link_libraries(core PUBLIC
-    bw-common Willpower.Common Willpower.Geometry
+    bw-common Willpower.Common Willpower.Geometry Willpower.Wayfinder
     concurrencpp::concurrencpp ext::yaml-cpp)
 
 target_compile_features(core PRIVATE cxx_std_23)

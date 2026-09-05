@@ -1967,6 +1967,12 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
       getWDG()->setAllowCommitIfVisible(allowCommitIfVisible);
     }
 
+    auto createWayfinderMesh = getWDG()->getCreateWayfinderMesh();
+    if (ImGui::Checkbox(
+            "Generate Wayfinder mesh", &createWayfinderMesh)) {
+      getWDG()->setCreateWayfinderMesh(createWayfinderMesh);
+    }
+
     ImGui::TextDisabled(
         "F4 changes are session-only; zero restarts after each asynchronous Generation completes.");
     ImGui::Separator();
@@ -2100,7 +2106,7 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
         ImGuiTableFlags_BordersV |
         ImGuiTableFlags_ContextMenuInBody;
 
-    if (ImGui::BeginTable("Generation", 18, flags)) {
+    if (ImGui::BeginTable("Generation", 19, flags)) {
       ImGui::TableSetupColumn("Id", ImGuiTableColumnFlags_WidthFixed, 128);
       ImGui::TableSetupColumn("Gen 0", ImGuiTableColumnFlags_WidthFixed, 128);
       ImGui::TableSetupColumn("Gen 1", ImGuiTableColumnFlags_WidthFixed, 128);
@@ -2119,6 +2125,7 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
       ImGui::TableSetupColumn("Wedges");
       ImGui::TableSetupColumn("PSLG (us)");
       ImGui::TableSetupColumn("Classify (us)");
+      ImGui::TableSetupColumn("Wayfinder (us)");
       ImGui::TableHeadersRow();
 
       auto numRecords = records.size();
@@ -2231,6 +2238,7 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
         showArrangementStat(15, arrangement.wedgeCount);
         showArrangementTime(16, arrangement.buildPSLGTimeNs);
         showArrangementTime(17, arrangement.classificationTimeNs);
+        showArrangementTime(18, arrangement.wayfinderMeshTimeNs);
       }
 
       ImGui::EndTable();
