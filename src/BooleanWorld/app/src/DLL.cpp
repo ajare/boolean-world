@@ -19,6 +19,7 @@
 #include <applib/ProtoEntityDefaultDefinitionFactory.h>
 #include <applib/ImageSetTiledDefinitionFactory.h>
 
+#include "CpuUpdateProfiler.h"
 #include "DLLState.h"
 #include "InputOptions.h"
 #include "VideoOptions.h"
@@ -87,6 +88,15 @@ __declspec(dllexport) int dllSetArgument(char const* arg, char const* value) {
 
 __declspec(dllexport) int dllSetInputOptions(float mouseSensitivity) {
   return dllState.setInputOptions(mouseSensitivity, gInputOptions);
+}
+
+__declspec(dllexport) int dllCpuUpdateTimingCaptureEnabled() {
+  return bw::app::cpuUpdateProfiler().captureEnabled() ? 1 : 0;
+}
+
+__declspec(dllexport) void dllRecordCpuUpdateTimings(
+    std::uint64_t gameNs, std::uint64_t audioNs) {
+  bw::app::cpuUpdateProfiler().recordFrame(gameNs, audioNs);
 }
 
 __declspec(dllexport) int dllSetWorldDataGenerationOptions(

@@ -419,11 +419,19 @@ void synchronousModeGeneratesOncePerUpdateAndIgnoresOrdinaryRequests() {
           "synchronous mode did not perform exactly one Generation per update");
   require(generator.getNumGenerationsComplete() == 2,
           "synchronous update did not finish its blocking Generation");
+  require(generator.getLastSynchronousGenerationTimeNs() > 0,
+          "synchronous update did not expose its blocking Generation time");
 
   generator.generateBlocking();
   require(observer.startCount() == 3 &&
               generator.getNumGenerationsComplete() == 3,
           "unconditional blocking request was ignored in synchronous mode");
+
+  generator.setGenerationMode(
+      DynamicWorldDataGenerator::GenerationMode::Asynchronous);
+  updateGenerator(generator, 0.25f);
+  require(generator.getLastSynchronousGenerationTimeNs() == 0,
+          "an asynchronous update retained a stale synchronous Generation time");
 
   generator.unregisterGenerationCallback(token);
 }

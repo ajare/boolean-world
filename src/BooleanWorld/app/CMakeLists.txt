@@ -1,6 +1,7 @@
 # The game itself: a DLL that Launcher.exe loads at runtime.
 
 add_library(BooleanWorld SHARED
+    src/CpuUpdateProfiler.cpp
     src/DLL.cpp
     src/EntityHandlerBooleanWorld.cpp
     src/LiquidReflectionSelection.cpp
@@ -65,6 +66,16 @@ bw_enable_sdl_checks(BooleanWorld)
 set_target_properties(BooleanWorld PROPERTIES FOLDER BooleanWorld)
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_cpu_update_profiler_tests
+        tests/cpu_update_profiler_tests.cpp
+        src/CpuUpdateProfiler.cpp)
+    target_include_directories(boolean_world_cpu_update_profiler_tests PRIVATE include)
+    target_compile_features(boolean_world_cpu_update_profiler_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_cpu_update_profiler_tests)
+    bw_output_dirs(boolean_world_cpu_update_profiler_tests)
+    add_test(NAME boolean_world_cpu_update_profiler
+             COMMAND boolean_world_cpu_update_profiler_tests)
+
     add_executable(boolean_world_clipping_record_tests
         tests/clipping_record_tests.cpp)
     target_include_directories(boolean_world_clipping_record_tests PRIVATE include)

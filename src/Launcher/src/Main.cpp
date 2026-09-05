@@ -1,5 +1,6 @@
 #include <format>
 #include <iostream>
+#include <optional>
 
 #include "utils/StringUtils.h"
 
@@ -516,19 +517,45 @@ int main(int argc, char** argv) {
 
         updateImGui(updateFreq);
 
+        auto captureCpuUpdateTimings =
+            gDLL->cpuUpdateTimingCaptureEnabled();
+        optional<wp::Timer> cpuUpdateTimer;
+        if (captureCpuUpdateTimings) {
+          cpuUpdateTimer.emplace();
+        }
         auto startTime = elapsedSeconds();
 
         wp::Timer timerNs;
         auto startTimeNs = timerNs.elapsedNanoseconds();
+        auto gameStartNs = captureCpuUpdateTimings
+                               ? cpuUpdateTimer->elapsedNanoseconds()
+                               : 0;
 
         gStateMgr->update(updateFreq);
 
+        auto gameEndNs = captureCpuUpdateTimings
+                             ? cpuUpdateTimer->elapsedNanoseconds()
+                             : 0;
+        int64_t audioUpdateNs = 0;
         if (gAudioSystem) {
+          auto audioStartNs = captureCpuUpdateTimings
+                                  ? cpuUpdateTimer->elapsedNanoseconds()
+                                  : 0;
           gAudioSystem->update();
+          if (captureCpuUpdateTimings) {
+            audioUpdateNs =
+                cpuUpdateTimer->elapsedNanoseconds() - audioStartNs;
+          }
         }
 
         auto endTime = elapsedSeconds();
         auto endTimeNs = timerNs.elapsedNanoseconds();
+
+        if (captureCpuUpdateTimings) {
+          gDLL->recordCpuUpdateTimings(
+              static_cast<uint64_t>(gameEndNs - gameStartNs),
+              static_cast<uint64_t>(audioUpdateNs));
+        }
 
         numFramesProcessed++;
 

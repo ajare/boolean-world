@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -45,6 +46,7 @@
 
 #include "StatePlayBooleanWorld.h"
 
+#include "CpuUpdateProfiler.h"
 #include "PlayerLiquidTraversal.h"
 #include "PlayerVerticalPhysics.h"
 #include "PlayerWallDepenetration.h"
@@ -1385,6 +1387,12 @@ void StatePlayBooleanWorld::updateImpl(float frameTime) {
   updatePreRenderers(frameTime);
   updateScreenFxManagement(frameTime);
   updateRenderers(frameTime);
+
+  auto& cpuProfiler = bw::app::cpuUpdateProfiler();
+  if (cpuProfiler.captureEnabled()) {
+    cpuProfiler.setLatestGameUpdate(
+        mGlobalTime, getWDG()->getLastSynchronousGenerationTimeNs());
+  }
 }
 
 // Draws the 3d world through the world renderer's offscreen target and
@@ -1917,6 +1925,136 @@ void StatePlayBooleanWorld::debug_renderCollisionSim(wp::Vector2 const& viewSize
   drawList->AddCircleFilled(playerPos, BW_PLAYER_RADIUS, ImColor(0.8f, 0.8f, 0.4f));
 }
 
+void StatePlayBooleanWorld::debug_renderCpuUpdateTimings(
+    double timelineEnd, double timelineDuration,
+    float* graphStartX, float* graphEndX) {
+  *graphStartX = 0.0f;
+  *graphEndX = 0.0f;
+
+  auto& profiler = bw::app::cpuUpdateProfiler();
+  auto captureEnabled = profiler.captureEnabled();
+  if (ImGui::Checkbox("Capture CPU update timings", &captureEnabled)) {
+    profiler.setCaptureEnabled(captureEnabled);
+  }
+
+  if (!captureEnabled) {
+    ImGui::TextDisabled(
+        "Capture is off. Timings are retained for %.2f seconds.",
+        timelineDuration);
+    return;
+  }
+
+  auto const& samples = profiler.samples();
+  if (samples.empty()) {
+    ImGui::TextDisabled("Waiting for the first CPU update sample...");
+    return;
+  }
+
+  static constexpr array<char const*, bw::app::CpuUpdateSubsystemCount>
+      labels{
+          "Game logic",
+          "Synchronous World Generation",
+          "Audio",
+      };
+  static constexpr array<ImVec4, bw::app::CpuUpdateSubsystemCount> colours{
+      ImVec4{0.35f, 0.80f, 0.40f, 1.0f},
+      ImVec4{0.95f, 0.35f, 0.25f, 1.0f},
+      ImVec4{0.90f, 0.35f, 0.75f, 1.0f},
+  };
+
+  constexpr double nanosecondsPerMicrosecond = 1'000.0;
+  constexpr double nanosecondsPerMillisecond = 1'000'000.0;
+  constexpr double targetFrameTimeUs =
+      (1'000'000'000.0 / 60.0) / nanosecondsPerMicrosecond;
+
+  vector<double> x(samples.size());
+  vector<double> cumulative(samples.size(), 0.0);
+  vector<double> lower(samples.size());
+  vector<double> upper(samples.size());
+  double maximumUpdateUs = targetFrameTimeUs;
+  for (size_t sampleIndex = 0; sampleIndex < samples.size(); ++sampleIndex) {
+    x[sampleIndex] =
+        samples[sampleIndex].timestampSeconds - timelineEnd;
+    uint64_t totalNs = 0;
+    for (auto durationNs : samples[sampleIndex].durationsNs) {
+      totalNs += durationNs;
+    }
+    maximumUpdateUs = max(
+        maximumUpdateUs,
+        static_cast<double>(totalNs) / nanosecondsPerMicrosecond);
+  }
+
+  ImGui::Text(
+      "Synchronous CPU update loop - last %.2f seconds",
+      timelineDuration);
+  if (ImPlot::BeginPlot("##CpuUpdateTimings", {-1.0f, 260.0f})) {
+    ImPlot::SetupAxes("Seconds", "Microseconds",
+                      ImPlotAxisFlags_Lock,
+                      ImPlotAxisFlags_LockMin);
+    ImPlot::SetupAxisFormat(ImAxis_Y1, "%.0f");
+    ImPlot::SetupAxesLimits(
+        -timelineDuration, 0.0, 0.0,
+        maximumUpdateUs * 1.1, ImPlotCond_Always);
+
+    auto const plotPosition = ImPlot::GetPlotPos();
+    auto const plotSize = ImPlot::GetPlotSize();
+    *graphStartX = plotPosition.x;
+    *graphEndX = plotPosition.x + plotSize.x;
+
+    for (size_t subsystemIndex = 0;
+         subsystemIndex < bw::app::CpuUpdateSubsystemCount;
+         ++subsystemIndex) {
+      for (size_t sampleIndex = 0; sampleIndex < samples.size();
+           ++sampleIndex) {
+        lower[sampleIndex] = cumulative[sampleIndex];
+        cumulative[sampleIndex] +=
+            static_cast<double>(
+                samples[sampleIndex].durationsNs[subsystemIndex]) /
+            nanosecondsPerMicrosecond;
+        upper[sampleIndex] = cumulative[sampleIndex];
+      }
+      ImPlot::SetNextFillStyle(colours[subsystemIndex], 0.70f);
+      ImPlot::PlotShaded(labels[subsystemIndex], x.data(), lower.data(),
+                         upper.data(), static_cast<int>(samples.size()));
+    }
+
+    double targetX[]{-timelineDuration, 0.0};
+    double targetY[]{targetFrameTimeUs, targetFrameTimeUs};
+    ImPlot::SetNextLineStyle(ImVec4{1.0f, 1.0f, 1.0f, 1.0f}, 2.0f);
+    ImPlot::PlotLine(
+        "60 FPS target (16,666.667 us)", targetX, targetY, 2);
+
+    if (ImPlot::IsPlotHovered()) {
+      auto const mouse = ImPlot::GetPlotMousePos();
+      auto nearest = min_element(
+          x.begin(), x.end(), [&](double lhs, double rhs) {
+            return abs(lhs - mouse.x) < abs(rhs - mouse.x);
+          });
+      auto const sampleIndex = static_cast<size_t>(nearest - x.begin());
+      auto const& sample = samples[sampleIndex];
+      uint64_t totalNs = 0;
+      ImGui::BeginTooltip();
+      ImGui::Text("%.3f seconds", x[sampleIndex]);
+      for (size_t subsystemIndex = 0;
+           subsystemIndex < bw::app::CpuUpdateSubsystemCount;
+           ++subsystemIndex) {
+        auto const durationNs = sample.durationsNs[subsystemIndex];
+        totalNs += durationNs;
+        ImGui::Text("%s: %llu ns", labels[subsystemIndex],
+                    static_cast<unsigned long long>(durationNs));
+      }
+      ImGui::Separator();
+      ImGui::Text("Total: %llu ns (%.3f ms)",
+                  static_cast<unsigned long long>(totalNs),
+                  static_cast<double>(totalNs) /
+                      nanosecondsPerMillisecond);
+      ImGui::EndTooltip();
+    }
+
+    ImPlot::EndPlot();
+  }
+}
+
 void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList) {
   VAR_UNUSED(drawList);
 
@@ -1925,6 +2063,8 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
   }
 
   if (ImGui::Begin("Clipping records")) {
+    ImGui::TextUnformatted("World Generation");
+
     auto model =
         static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
     auto mode = model->getGenerationMode();
@@ -1977,17 +2117,30 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
         "F4 changes are session-only; zero restarts after each asynchronous Generation completes.");
     ImGui::Separator();
 
+    constexpr double fallbackTimelineDuration = 5.0;
+    auto const timelineDuration =
+        !synchronous && generationStartInterval > 0.0f
+            ? static_cast<double>(generationStartInterval)
+            : fallbackTimelineDuration;
+    auto& cpuProfiler = bw::app::cpuUpdateProfiler();
+    cpuProfiler.setHistorySeconds(timelineDuration, mGlobalTime);
+
+    float cpuGraphStartX = 0.0f;
+    float cpuGraphEndX = 0.0f;
+    debug_renderCpuUpdateTimings(
+        mGlobalTime, timelineDuration, &cpuGraphStartX, &cpuGraphEndX);
+    ImGui::Separator();
+
     vector<ClippingRecord> records;
     {
       lock_guard<mutex> lock(mClippingRecordsMutex);
       records.assign(mClippingRecords.begin(), mClippingRecords.end());
     }
 
-    constexpr double TimelineDuration = 5.0;
     constexpr float TimelineRowHeight = 22.0f;
     constexpr float TimelineAxisHeight = 24.0f;
     auto timelineEnd = mGlobalTime;
-    auto timelineStart = timelineEnd - TimelineDuration;
+    auto timelineStart = timelineEnd - timelineDuration;
 
     vector<ClippingRecord const*> visibleRecords;
     for (auto const& record : records) {
@@ -2002,7 +2155,7 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
       }
     }
 
-    ImGui::TextUnformatted("Last 5 seconds");
+    ImGui::Text("Last %.2f seconds", timelineDuration);
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.20f, 1.0f), "Start / generating");
     ImGui::SameLine();
@@ -2025,26 +2178,32 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
         canvasPosition, canvasEnd, IM_COL32(24, 26, 31, 255), 3.0f);
 
     constexpr float LabelWidth = 52.0f;
-    auto graphStartX = canvasPosition.x + LabelWidth;
-    auto graphEndX = canvasEnd.x - 8.0f;
+    auto graphStartX = cpuGraphEndX > cpuGraphStartX
+                           ? cpuGraphStartX
+                           : canvasPosition.x + LabelWidth;
+    auto graphEndX = cpuGraphEndX > cpuGraphStartX
+                         ? cpuGraphEndX
+                         : canvasEnd.x - 8.0f;
     auto timeToX = [&](double time) {
       auto fraction = clamp(
-          (time - timelineStart) / TimelineDuration, 0.0, 1.0);
+          (time - timelineStart) / timelineDuration, 0.0, 1.0);
       return graphStartX +
              static_cast<float>(fraction) * (graphEndX - graphStartX);
     };
 
-    for (int second = 0; second <= int(TimelineDuration); ++second) {
-      auto x = graphStartX +
-               (graphEndX - graphStartX) *
-                   (static_cast<float>(second) / float(TimelineDuration));
+    constexpr int TimelineTickCount = 5;
+    for (int tick = 0; tick <= TimelineTickCount; ++tick) {
+      auto const fraction =
+          static_cast<float>(tick) / float(TimelineTickCount);
+      auto x = graphStartX + (graphEndX - graphStartX) * fraction;
       timelineDrawList->AddLine(
           {x, canvasPosition.y + TimelineAxisHeight - 5.0f},
           {x, canvasEnd.y},
           IM_COL32(65, 69, 78, 255));
-      auto label = second == int(TimelineDuration)
+      auto const secondsAgo = timelineDuration * (1.0 - fraction);
+      auto label = tick == TimelineTickCount
                        ? string("now")
-                       : format("-{}s", int(TimelineDuration) - second);
+                       : format("-{:.1f}s", secondsAgo);
       timelineDrawList->AddText(
           {x - 10.0f, canvasPosition.y + 3.0f},
           IM_COL32(180, 184, 194, 255), label.c_str());

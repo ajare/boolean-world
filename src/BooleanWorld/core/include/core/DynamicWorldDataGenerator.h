@@ -111,6 +111,11 @@ private:
 
   std::atomic_uint64_t mLastGenTime;
 
+  // Wall-clock time spent in blocking Generation during the current World
+  // update. Unlike mLastGenTime this includes snapshotting, callbacks, and any
+  // wait for an asynchronous worker to finish.
+  std::atomic_uint64_t mLastSynchronousGenerationTimeNs{0};
+
   // Asynchronous work is a single running worker plus its latest request.
   std::optional<GenerationInput> mPendingGenerationInput;
   bool mGenerationWorkerRunning{false};
@@ -206,6 +211,8 @@ public:
   uint32_t getNumCommits() const;
 
   uint64_t getLastGenTime() const;
+
+  uint64_t getLastSynchronousGenerationTimeNs() const;
 
   std::vector<GenerationPrimitiveMetadata> getSourceClippingPrimitives() const;
 

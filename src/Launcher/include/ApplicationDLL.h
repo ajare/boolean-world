@@ -34,6 +34,11 @@ class ApplicationDLL {
   // struct layout part of the DLL ABI.
   typedef int (*DllSetInputOptionsFunction)(float);
 
+  typedef int (*DllCpuUpdateTimingCaptureEnabledFunction)();
+
+  typedef void (*DllRecordCpuUpdateTimingsFunction)(
+      std::uint64_t, std::uint64_t);
+
   typedef int (*DllSetWorldDataGenerationOptionsFunction)(int, float, int, int);
 
   // Video enums cross as stable integer codes and Torch values as ordered
@@ -86,9 +91,18 @@ private:
 
   DllOnExitFunction mOnExitFunction;
 
+  DllCpuUpdateTimingCaptureEnabledFunction
+      mCpuUpdateTimingCaptureEnabledFunction;
+
+  DllRecordCpuUpdateTimingsFunction mRecordCpuUpdateTimingsFunction;
+
   bool mEntryStarted;
 
   static std::string msOnEntryFunctionName, msOnExitFunctionName;
+
+  static std::string msCpuUpdateTimingCaptureEnabledFunctionName;
+
+  static std::string msRecordCpuUpdateTimingsFunctionName;
 
 private:
   void registerRequiredFunctions();
@@ -107,6 +121,11 @@ public:
   void unload();
 
   std::string getApplicationName() const;
+
+  bool cpuUpdateTimingCaptureEnabled() const;
+
+  void recordCpuUpdateTimings(std::uint64_t gameNs,
+                              std::uint64_t audioNs) const;
 
   void registerStateFactories(StateManager* stateMgr);
 };

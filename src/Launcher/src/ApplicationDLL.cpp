@@ -8,6 +8,10 @@ string ApplicationDLL::msGetNextStateFactoryFunctionName = "dllGetNextStateFacto
 string ApplicationDLL::msGetNextResourceFactoryFunctionName = "dllGetNextResourceFactory";
 string ApplicationDLL::msOnEntryFunctionName = "dllOnEntry";
 string ApplicationDLL::msOnExitFunctionName = "dllOnExit";
+string ApplicationDLL::msCpuUpdateTimingCaptureEnabledFunctionName =
+    "dllCpuUpdateTimingCaptureEnabled";
+string ApplicationDLL::msRecordCpuUpdateTimingsFunctionName =
+    "dllRecordCpuUpdateTimings";
 string ApplicationDLL::msSetArgumentFunctionName = "dllSetArgument";
 string ApplicationDLL::msSetInputOptionsFunctionName = "dllSetInputOptions";
 string ApplicationDLL::msSetWorldDataGenerationOptionsFunctionName =
@@ -24,6 +28,8 @@ ApplicationDLL::ApplicationDLL()
       mSetVideoOptionsFunction(0),
       mOnEntryFunction(0),
       mOnExitFunction(0),
+      mCpuUpdateTimingCaptureEnabledFunction(0),
+      mRecordCpuUpdateTimingsFunction(0),
       mEntryStarted(false) {
 }
 
@@ -87,6 +93,13 @@ void ApplicationDLL::registerRequiredFunctions() {
 void ApplicationDLL::registerOptionalFunctions() {
   mOnEntryFunction = (DllOnEntryFunction)GetProcAddress(mGetProcIDDLL, msOnEntryFunctionName.c_str());
   mOnExitFunction = (DllOnExitFunction)GetProcAddress(mGetProcIDDLL, msOnExitFunctionName.c_str());
+  mCpuUpdateTimingCaptureEnabledFunction =
+      (DllCpuUpdateTimingCaptureEnabledFunction)GetProcAddress(
+          mGetProcIDDLL,
+          msCpuUpdateTimingCaptureEnabledFunctionName.c_str());
+  mRecordCpuUpdateTimingsFunction =
+      (DllRecordCpuUpdateTimingsFunction)GetProcAddress(
+          mGetProcIDDLL, msRecordCpuUpdateTimingsFunctionName.c_str());
 }
 
 void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
@@ -215,6 +228,19 @@ void ApplicationDLL::unload() {
 
 string ApplicationDLL::getApplicationName() const {
   return string(mGetNameFunction());
+}
+
+bool ApplicationDLL::cpuUpdateTimingCaptureEnabled() const {
+  return mCpuUpdateTimingCaptureEnabledFunction &&
+         mRecordCpuUpdateTimingsFunction &&
+         mCpuUpdateTimingCaptureEnabledFunction() != 0;
+}
+
+void ApplicationDLL::recordCpuUpdateTimings(
+    uint64_t gameNs, uint64_t audioNs) const {
+  if (mRecordCpuUpdateTimingsFunction) {
+    mRecordCpuUpdateTimingsFunction(gameNs, audioNs);
+  }
 }
 
 void ApplicationDLL::registerStateFactories(StateManager* stateMgr) {

@@ -334,6 +334,10 @@ private:
 
   void debug_renderCollisionSim(wp::Vector2 const& viewSize, wp::Vector2 const& viewOffset, wp::Vector2 const& viewScale, ImDrawList* drawList);
 
+  void debug_renderCpuUpdateTimings(
+      double timelineEnd, double timelineDuration,
+      float* graphStartX, float* graphEndX);
+
   void debug_renderClipGenerationInfo(ImDrawList* drawList);
 
   void debug_renderOptions();

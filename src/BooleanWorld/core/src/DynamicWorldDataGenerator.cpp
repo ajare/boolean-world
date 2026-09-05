@@ -3,6 +3,7 @@
 #include <stdexcept>
 
 #include <willpower/common/MathsUtils.h>
+#include <willpower/common/Timer.h>
 
 #include "core/DynamicWorldDataGenerator.h"
 #include "core/World.h"
@@ -61,6 +62,7 @@ void DynamicWorldDataGenerator::copyFrom(DynamicWorldDataGenerator const& other)
   mNumGenerationsComplete.store(other.mNumGenerationsComplete.load());
   mNumCommits.store(other.mNumCommits.load());
   mLastGenTime.store(other.mLastGenTime.load());
+  mLastSynchronousGenerationTimeNs = 0;
   mPendingGenerationInput.reset();
   mGenerationWorkerRunning = false;
   mBlockingGenerationRunning = false;
@@ -136,6 +138,11 @@ uint32_t DynamicWorldDataGenerator::getNumCommits() const {
 
 uint64_t DynamicWorldDataGenerator::getLastGenTime() const {
   return mLastGenTime;
+}
+
+uint64_t DynamicWorldDataGenerator::getLastSynchronousGenerationTimeNs()
+    const {
+  return mLastSynchronousGenerationTimeNs;
 }
 
 vector<DynamicWorldDataGenerator::GenerationPrimitiveMetadata>
@@ -442,6 +449,7 @@ void DynamicWorldDataGenerator::enqueueGeneration(GenerationInput input) {
 }
 
 void DynamicWorldDataGenerator::runBlockingGeneration(World const* world) {
+  wp::Timer timer;
   {
     unique_lock<mutex> lock(mGenMutex);
     mGenerationWorkerIdle.wait(
@@ -475,6 +483,7 @@ void DynamicWorldDataGenerator::runBlockingGeneration(World const* world) {
     mExecutorRuntime.thread_pool_executor()->post(
         [this] { drainGenerationRequests(); });
   }
+  mLastSynchronousGenerationTimeNs = timer.elapsedNanoseconds();
 }
 
 void DynamicWorldDataGenerator::fireCallbacks(GenerationDetails const& details) {
@@ -611,6 +620,7 @@ void DynamicWorldDataGenerator::generateBlocking() {
 
 void DynamicWorldDataGenerator::handleEvents(
     float frameTime, uint32_t events) {
+  mLastSynchronousGenerationTimeNs = 0;
   mGenerationScheduleTime.fetch_add(frameTime);
 
   if (mGenerationMode == GenerationMode::Synchronous) {
