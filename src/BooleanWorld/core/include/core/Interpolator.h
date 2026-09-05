@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <exception>
+#include <format>
 #include <algorithm>
 #include <cassert>
 #include <limits>

@@ -1,3 +1,4 @@
+#include <stdexcept>
 #pragma once
 
 #include <map>
@@ -103,7 +104,7 @@ public:
         ImDrawCmd const* pcmd = &drawList->CmdBuffer[cmd_i];
 
         if (pcmd->UserCallback != nullptr) {
-          throw std::exception("User callbacks not supported.");
+          throw std::runtime_error("User callbacks not supported.");
         } else {
           // Project scissor/clipping rectangles into framebuffer space
           ImVec2 clipMin((pcmd->ClipRect.x - clipOff.x) * clipScale.x, (pcmd->ClipRect.y - clipOff.y) * clipScale.y);

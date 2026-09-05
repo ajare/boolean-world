@@ -48,7 +48,7 @@
 #endif
 #endif
 #elif MIM_PLATFORM == MIM_PLATFORM_LINUX
-#if defined(APPLICATION_API)
+#if defined(APPLICATION_DLL_EXPORT)
 #define APPLICATION_API __attribute__((visibility("default")))
 #else
 #define APPLICATION_API

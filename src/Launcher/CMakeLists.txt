@@ -37,7 +37,7 @@ target_link_libraries(Launcher PRIVATE
     vendor::opengl)  # [DEBUG-a4f2] glReadPixels for frame capture
 
 target_compile_features(Launcher PRIVATE cxx_std_20)
-target_compile_options(Launcher PRIVATE /W3)
+target_compile_options(Launcher PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W3>)
 bw_target_defaults(Launcher)
 bw_output_dirs(Launcher)
 bw_enable_sdl_checks(Launcher)
@@ -92,7 +92,7 @@ if(BUILD_TESTING)
     target_link_libraries(launcher_window_input_tests PRIVATE
         Willpower.Common Willpower.Application ext::mpp ext::Utils ext::sdl3)
     target_compile_features(launcher_window_input_tests PRIVATE cxx_std_20)
-    target_compile_options(launcher_window_input_tests PRIVATE /W3)
+    target_compile_options(launcher_window_input_tests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W3>)
     bw_target_defaults(launcher_window_input_tests)
     bw_output_dirs(launcher_window_input_tests)
     bw_enable_sdl_checks(launcher_window_input_tests)
@@ -100,6 +100,7 @@ if(BUILD_TESTING)
     bw_deploy_vendor_dlls(launcher_window_input_tests)
     add_test(NAME launcher_window_input COMMAND launcher_window_input_tests)
 
+    if(WIN32)
     add_executable(launcher_zip_resource_location_tests
         tests/zip_resource_location_tests.cpp
         src/ZipResourceLocation.cpp)
@@ -121,6 +122,7 @@ if(BUILD_TESTING)
                 "$<TARGET_FILE_DIR:launcher_zip_resource_location_tests>")
     add_test(NAME launcher_zip_resource_location
              COMMAND launcher_zip_resource_location_tests)
+    endif()
 endif()
 
 # The game DLL is loaded by name at runtime, so there is no link-time edge -
@@ -130,10 +132,8 @@ add_dependencies(Launcher BooleanWorld)
 bw_deploy_runtime_dlls(Launcher)
 bw_deploy_vendor_dlls(Launcher)
 
-# Shipping is self-contained: copy the game DLL that normally sits in its
-# sibling output directory, its configuration, and the complete resource root
-# the configuration names. The conditional command is omitted in all other
-# configurations.
+# Shipping is a Windows packaging configuration.
+if(WIN32)
 add_custom_command(TARGET Launcher POST_BUILD
     COMMAND "$<$<CONFIG:Shipping>:${CMAKE_COMMAND}>" -E copy_if_different
             "$<TARGET_FILE:BooleanWorld>"
@@ -146,6 +146,40 @@ add_custom_command(TARGET Launcher POST_BUILD
             "$<TARGET_FILE_DIR:Launcher>/resources"
     VERBATIM
     COMMENT "$<$<CONFIG:Shipping>:Staging self-contained Shipping Launcher>")
+
+endif()
+
+if(UNIX AND NOT APPLE)
+    # Prefer the copies staged beside Launcher while retaining CMake's build
+    # tree paths for targets run from their individual output directories.
+    set_property(TARGET Launcher BooleanWorld APPEND PROPERTY BUILD_RPATH
+                 "$ORIGIN")
+
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/resources/Shipping/Game.yaml"
+         _bw_linux_game_config)
+    string(REPLACE "BooleanWorld.dll" "./libBooleanWorld.so"
+           _bw_linux_game_config "${_bw_linux_game_config}")
+    string(REPLACE "path: resources/"
+           "path: \"${BW_ROOT}/src/BooleanWorld/app/resources/\""
+           _bw_linux_game_config "${_bw_linux_game_config}")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/Game-linux.yaml"
+         "${_bw_linux_game_config}")
+    add_custom_command(TARGET Launcher POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+                "-DEXECUTABLE=$<TARGET_FILE:Launcher>"
+                "-DGAME_LIBRARY=$<TARGET_FILE:BooleanWorld>"
+                "-DDESTINATION=$<TARGET_FILE_DIR:Launcher>"
+                "-DPROJECT_ROOT=${BW_ROOT}"
+                "-DREADELF=${CMAKE_READELF}"
+                -P "${BW_ROOT}/cmake/StageLinuxRuntime.cmake"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_BINARY_DIR}/Game-linux.yaml"
+                "$<TARGET_FILE_DIR:Launcher>/Game.yaml"
+        COMMAND ${CMAKE_COMMAND} -E remove_directory
+                "$<TARGET_FILE_DIR:Launcher>/resources"
+        VERBATIM
+        COMMENT "Staging Linux Launcher configuration and shared libraries")
+endif()
 
 # Per-machine support files:
 #   support/<COMPUTERNAME>/<CONFIG>/*  ->  output directory
@@ -162,12 +196,13 @@ if(DEFINED ENV{COMPUTERNAME})
         COMMENT "Staging support files for $ENV{COMPUTERNAME}")
 endif()
 
-# The game DLL pulls in libraries Launcher itself never links (MppHelper via
-# AppLib, for one). Because it is loaded by name rather than linked, those do
-# not appear in Launcher's own TARGET_RUNTIME_DLLS - stage the game's set too.
-add_custom_command(TARGET Launcher POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_RUNTIME_DLLS:BooleanWorld>" "$<TARGET_FILE_DIR:Launcher>"
-    COMMAND_EXPAND_LISTS
-    VERBATIM
-    COMMENT "Staging the game DLL's own dependencies")
+# TARGET_RUNTIME_DLLS is a Windows DLL facility. Linux resolves shared objects
+# through the generated RPATH and the standalone dependency build directories.
+if(WIN32)
+    add_custom_command(TARGET Launcher POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_RUNTIME_DLLS:BooleanWorld>" "$<TARGET_FILE_DIR:Launcher>"
+        COMMAND_EXPAND_LISTS
+        VERBATIM
+        COMMENT "Staging the game DLL's own dependencies")
+endif()

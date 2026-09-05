@@ -47,7 +47,7 @@ target_link_libraries(AppLib PUBLIC
     vendor::headers)
 
 target_compile_features(AppLib PRIVATE cxx_std_23)
-target_compile_options(AppLib PRIVATE /W3)
+target_compile_options(AppLib PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W3>)
 bw_target_defaults(AppLib)
 bw_output_dirs(AppLib)
 bw_enable_sdl_checks(AppLib)

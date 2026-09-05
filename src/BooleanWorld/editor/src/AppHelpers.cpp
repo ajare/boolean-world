@@ -1,7 +1,3 @@
-#define NOMINMAX
-#include <Windows.h>
-#undef NOMINMAX
-
 #include <algorithm>
 #include <cctype>
 #include <format>

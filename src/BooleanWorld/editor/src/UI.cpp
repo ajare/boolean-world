@@ -3470,8 +3470,8 @@ bool renderImageResourcePicker(
       if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
 
       if (applyPicker && canApply) {
-        strncpy_s(reference, referenceCapacity,
-                  pickerState.pendingReference.c_str(), _TRUNCATE);
+        std::snprintf(reference, referenceCapacity, "%s",
+                      pickerState.pendingReference.c_str());
         ImGui::CloseCurrentPopup();
       }
     }
@@ -5085,7 +5085,8 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
       normalMapState = static_cast<int>(value.state());
       normalMapResource[0] = '\0';
       if (auto image = value.imageData()) {
-        strncpy_s(normalMapResource, image->resourceName.c_str(), _TRUNCATE);
+        std::snprintf(normalMapResource, sizeof(normalMapResource), "%s",
+                      image->resourceName.c_str());
         normalMapRepeat = image->repeat;
         normalMapStrength = image->strength;
       }
@@ -5194,7 +5195,8 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
       wallMaskBlend.fill(0.0f);
       wallMaskBlendColour = {1.0f, 1.0f, 1.0f};
       if (auto image = value.imageData()) {
-        strncpy_s(wallMaskResource, image->resourceName.c_str(), _TRUNCATE);
+        std::snprintf(wallMaskResource, sizeof(wallMaskResource), "%s",
+                      image->resourceName.c_str());
         wallMaskChannel = image->channel;
         wallMaskBlend = image->blendParameters;
         wallMaskBlendColour = image->blendColour;

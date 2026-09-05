@@ -227,3 +227,19 @@ _Avoid_: Wet component (the connectivity, not the body of liquid), lake, pond
 **Sill**:
 The elevation liquid must reach to cross one liquid-adjacency: the higher of the two faces' floors, since liquid only reaches the higher face once it tops that face's floor. Against the exterior drain, whose floor is negative infinity, the Sill is the bordering face's own floor.
 _Avoid_: saddle, spill point, threshold, wall clearance (which decides whether the adjacency exists at all, not what liquid must reach to cross it)
+
+**AudioEmitter**:
+A point sound source owned by exactly one Primitive, positioned by a two-dimensional offset from its Primitive's position together with a height offset above the floor of the face it falls in. It is authored on its Primitive and transforms with it, but its world position is settled once, when a World's geometry is generated, and never changes afterwards. A sound that has to move through a World is an entity, not an AudioEmitter.
+_Avoid_: sound source (which also covers moving entity sources), audio event (the authored sound an emitter names, not the place it sounds from), speaker
+
+**Emitter capture**:
+The generation-time resolution of every AudioEmitter into a single world position, and the decision of whether it survives at all. An emitter survives only where the Arrangement has a solid face, its parent Primitive still contributes to the solid there, and its derived emitter height stands below that face's ceiling. An emitter that does not survive takes no part in the generated World. Existence is decided by the parent Primitive; elevation is not.
+_Avoid_: emitter placement (the authoring act, not the generation-time resolution), emitter culling (which names only the discarding half)
+
+**Derived emitter height**:
+The world height a captured AudioEmitter sounds from: its authored height offset added to the floor of the face it falls in, taken after floor Wedges have raised that floor — the same surface the player stands on. That floor comes from whichever Primitive won the face's properties, never from the emitter's own parent Primitive, so one authored offset resolves to different heights on different faces.
+_Avoid_: emitter height offset (the authored value, not the resolved height), parent floor (the parent Primitive's own floorZ, which does not determine it)
+
+**Acoustic preset**:
+A named description of how a surface absorbs, scatters, and transmits sound, referenced by stable id from a Sub-material so that one authored surface carries the same acoustic character everywhere it appears. A missing or empty id is a valid, if unresolved, state; resolution happens outside the World, exactly as it does for Sub-material and Embossing references. It describes what the world does to a sound, never the sound itself: an AudioEmitter names what is heard, an Acoustic preset only what the surfaces do to it.
+_Avoid_: acoustic material (ambiguous with both Sub-material and the render Material), surface absorption (one of its several properties), reverb setting (a property of the space, not of a surface)

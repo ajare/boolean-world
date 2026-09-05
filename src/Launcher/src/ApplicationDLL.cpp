@@ -1,7 +1,13 @@
+#include <stdexcept>
 #include <format>
 #include "ApplicationDLL.h"
 
 using namespace std;
+
+#if APP_PLATFORM != APP_PLATFORM_WINDOWS
+#define GetProcAddress(handle, name) dlsym((handle), (name))
+#define FreeLibrary(handle) dlclose((handle))
+#endif
 
 string ApplicationDLL::msGetNameFunction = "dllGetName";
 string ApplicationDLL::msGetNextStateFactoryFunctionName = "dllGetNextStateFactory";
@@ -46,28 +52,28 @@ void ApplicationDLL::registerRequiredFunctions() {
 
   if (!mGetNameFunction) {
     string errMsg = "Could not find DLL function '" + msGetNameFunction + "' in '" + mFilepath + "'.";
-    throw exception(errMsg.c_str());
+    throw runtime_error(errMsg.c_str());
   }
 
   mGetNextStateFactoryFunction = (DllGetNextStateFactoryFunction)GetProcAddress(mGetProcIDDLL, msGetNextStateFactoryFunctionName.c_str());
 
   if (!mGetNextStateFactoryFunction) {
     string errMsg = "Could not find DLL function '" + msGetNextStateFactoryFunctionName + "' in '" + mFilepath + "'.";
-    throw exception(errMsg.c_str());
+    throw runtime_error(errMsg.c_str());
   }
 
   mSetArgumentFunction = (DllSetArgumentFunction)GetProcAddress(mGetProcIDDLL, msSetArgumentFunctionName.c_str());
 
   if (!mSetArgumentFunction) {
     string errMsg = "Could not find DLL function '" + msSetArgumentFunctionName + "' in '" + mFilepath + "'.";
-    throw exception(errMsg.c_str());
+    throw runtime_error(errMsg.c_str());
   }
 
   mSetInputOptionsFunction = (DllSetInputOptionsFunction)GetProcAddress(mGetProcIDDLL, msSetInputOptionsFunctionName.c_str());
 
   if (!mSetInputOptionsFunction) {
     string errMsg = "Could not find DLL function '" + msSetInputOptionsFunctionName + "' in '" + mFilepath + "'.";
-    throw exception(errMsg.c_str());
+    throw runtime_error(errMsg.c_str());
   }
 
   mSetWorldDataGenerationOptionsFunction =
@@ -79,14 +85,14 @@ void ApplicationDLL::registerRequiredFunctions() {
     string errMsg = "Could not find DLL function '" +
                     msSetWorldDataGenerationOptionsFunctionName + "' in '" +
                     mFilepath + "'.";
-    throw exception(errMsg.c_str());
+    throw runtime_error(errMsg.c_str());
   }
 
   mSetVideoOptionsFunction = (DllSetVideoOptionsFunction)GetProcAddress(mGetProcIDDLL, msSetVideoOptionsFunctionName.c_str());
 
   if (!mSetVideoOptionsFunction) {
     string errMsg = "Could not find DLL function '" + msSetVideoOptionsFunctionName + "' in '" + mFilepath + "'.";
-    throw exception(errMsg.c_str());
+    throw runtime_error(errMsg.c_str());
   }
 }
 
@@ -106,15 +112,17 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
   mFilepath = options.dll;
 
 #if APP_PLATFORM == APP_PLATFORM_WINDOWS
-
-  // Load DLL
   mGetProcIDDLL = LoadLibrary(wstring(mFilepath.begin(), mFilepath.end()).c_str());
-
   if (!mGetProcIDDLL) {
     auto err = GetLastError();
-    string errMsg = std::format("Could not load '{}'.  Error code: {}", mFilepath, err);
-    throw exception(errMsg.c_str());
+    throw runtime_error(std::format("Could not load '{}'. Error code: {}", mFilepath, err));
   }
+#else
+  mGetProcIDDLL = dlopen(mFilepath.c_str(), RTLD_NOW | RTLD_LOCAL);
+  if (!mGetProcIDDLL) {
+    throw runtime_error(std::format("Could not load '{}': {}", mFilepath, dlerror()));
+  }
+#endif
 
   registerRequiredFunctions();
   registerOptionalFunctions();
@@ -123,7 +131,7 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
   for (auto const& argument : options.arguments) {
     if (mSetArgumentFunction(argument.first.c_str(), argument.second.c_str()) != 0) {
       string errMsg = format("Application could not parse config argument: {}={}", argument.first, argument.second);
-      throw exception(errMsg.c_str());
+      throw runtime_error(errMsg.c_str());
     }
   }
 
@@ -131,7 +139,7 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
   // input-driven objects with them
   if (mSetInputOptionsFunction(options.input.mouseSensitivity) != 0) {
     string errMsg = format("Application rejected input options: MouseSensitivity={}", options.input.mouseSensitivity);
-    throw exception(errMsg.c_str());
+    throw runtime_error(errMsg.c_str());
   }
 
   // Seed application-run Generation options before entry, and therefore
@@ -149,7 +157,7 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
         options.worldDataGeneration.startInterval,
         options.worldDataGeneration.alwaysUpdateVertices,
         options.worldDataGeneration.allowCommitIfVisible);
-    throw exception(errMsg.c_str());
+    throw runtime_error(errMsg.c_str());
   }
 
   // Pass video options before entry so the model starts with the configured
@@ -192,7 +200,7 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
         shadows.constantBias, shadows.normalBias,
         bw::app::shadowFilterCode(shadows.filter), shadows.filterRadius,
         shadows.fadeStart);
-    throw exception(errMsg.c_str());
+    throw runtime_error(errMsg.c_str());
   }
 
   // Call entry function
@@ -203,14 +211,9 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
     mOnEntryFunction(logger, resourceMgr);
   }
 
-#else
-  throw exception("DLL loading for non-Windows platforms is not yet implemented.");
-#endif
 }
 
 void ApplicationDLL::unload() {
-#if APP_PLATFORM == APP_PLATFORM_WINDOWS
-
   // Call exit function
   if (mEntryStarted && mOnExitFunction) {
     mOnExitFunction();
@@ -221,9 +224,6 @@ void ApplicationDLL::unload() {
     FreeLibrary(mGetProcIDDLL);
     mGetProcIDDLL = 0;
   }
-#else
-  throw exception("DLL loading for non-Windows platforms is not yet implemented.");
-#endif
 }
 
 string ApplicationDLL::getApplicationName() const {

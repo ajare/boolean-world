@@ -69,7 +69,7 @@ target_link_libraries(core PUBLIC
     concurrencpp::concurrencpp ext::yaml-cpp)
 
 target_compile_features(core PRIVATE cxx_std_23)
-target_compile_options(core PRIVATE /W3)
+target_compile_options(core PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W3>)
 bw_target_defaults(core)
 bw_output_dirs(core)
 bw_enable_sdl_checks(core)

@@ -1,7 +1,10 @@
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
-
 #include <Windows.h>
 #include <Shellapi.h>
+#else
+#include <cstdlib>
+#endif
 #include <string>
 
 #include "imgui.h"
@@ -27,7 +30,15 @@ void linkCallback(ImGui::MarkdownLinkCallbackData data) {
     gLogger->warn("Refusing to open a help link that is not http(s): {}", url);
     return;
   }
+#ifdef _WIN32
   ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+#else
+  // The scheme validation above makes this safe to pass as one quoted shell
+  // argument; escape the only character significant inside single quotes.
+  std::string escaped;
+  for (char c : url) escaped += c == '\'' ? "'\\''" : std::string(1, c);
+  std::system(("xdg-open '" + escaped + "' >/dev/null 2>&1 &").c_str());
+#endif
 }
 
 inline ImGui::MarkdownImageData imageCallback(ImGui::MarkdownLinkCallbackData data) {

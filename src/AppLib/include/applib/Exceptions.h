@@ -1,16 +1,16 @@
 #pragma once
 
 #include <string>
-#include <exception>
+#include <stdexcept>
 
 #include "Platform.h"
 
 namespace applib {
 
-class Exception : public std::exception {
+class Exception : public std::runtime_error {
 public:
   explicit Exception(std::string const& message)
-      : std::exception(message.c_str()) {
+      : std::runtime_error(message) {
   }
 };
 

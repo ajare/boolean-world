@@ -56,10 +56,10 @@ target_link_libraries(BooleanWorld PRIVATE
     Willpower.Application Willpower.Collide Willpower.Common
     WillPower.Viz
     ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils
-    ext::yaml-cpp opengl32)
+    ext::yaml-cpp vendor::opengl)
 
 target_compile_features(BooleanWorld PRIVATE cxx_std_23)
-target_compile_options(BooleanWorld PRIVATE /W4)
+target_compile_options(BooleanWorld PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
 bw_target_defaults(BooleanWorld)
 bw_output_dirs(BooleanWorld)
 bw_enable_sdl_checks(BooleanWorld)
