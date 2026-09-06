@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <iostream>
 
 #pragma warning(push)
@@ -245,6 +246,53 @@ vector<uint8_t> collectFadedStepPrimitives(bw::core::Layer const& layer) {
 
 bool fromInactiveStep(vector<uint8_t> const& flags, uint32_t primitiveId) {
   return primitiveId < flags.size() && flags[primitiveId] != 0;
+}
+
+char const* captureFailureText(bw::core::AudioEmitterCaptureFailure reason) {
+  switch (reason) {
+    case bw::core::AudioEmitterCaptureFailure::NoSolidGeometry:
+      return "Discarded: no solid geometry here";
+    case bw::core::AudioEmitterCaptureFailure::ParentDoesNotContribute:
+      return "Discarded: parent Primitive does not contribute here";
+    case bw::core::AudioEmitterCaptureFailure::DerivedHeightAboveCeiling:
+      return "Discarded: derived height is above the ceiling";
+  }
+  return "Discarded";
+}
+
+void renderAudioEmitterMarker(
+    ImDrawList* drawList, wp::Vector2 const& position, float cullRadius,
+    ImU32 colour, char const* label) {
+  auto centre = worldToScreen(position);
+  if (cullRadius > 0.0f) {
+    drawList->AddCircle(
+        centre, cullRadius * gViewZoom, colour, 64, 1.5f);
+  }
+  constexpr float markerRadius = 6.0f;
+  drawList->AddCircleFilled(centre, markerRadius, IM_COL32(20, 20, 20, 220), 16);
+  drawList->AddCircle(centre, markerRadius, colour, 16, 2.0f);
+  drawList->AddLine(
+      {centre.x - 3.0f, centre.y}, {centre.x + 3.0f, centre.y}, colour, 1.5f);
+  drawList->AddLine(
+      {centre.x, centre.y - 3.0f}, {centre.x, centre.y + 3.0f}, colour, 1.5f);
+  drawList->AddText({centre.x + 9.0f, centre.y - 7.0f}, colour, label);
+}
+
+void renderAudioEmitters(
+    bw::core::ArrangementWorldData const& worldData, ImDrawList* drawList) {
+  constexpr ImU32 capturedColour = IM_COL32(80, 225, 255, 255);
+  constexpr ImU32 failedColour = IM_COL32(255, 80, 65, 255);
+  for (auto const& emitter : worldData.getCapturedAudioEmitters()) {
+    char label[64];
+    std::snprintf(label, sizeof(label), "AudioEmitter  height %.2f", emitter.height);
+    renderAudioEmitterMarker(
+        drawList, emitter.position, emitter.cullRadius, capturedColour, label);
+  }
+  for (auto const& emitter : worldData.getFailedAudioEmitters()) {
+    renderAudioEmitterMarker(
+        drawList, emitter.position, emitter.cullRadius, failedColour,
+        captureFailureText(emitter.reason));
+  }
 }
 
 void renderWorld(
@@ -1092,6 +1140,13 @@ void renderWorld(
     renderPrimitiveFieldPreview(
         *primitiveFieldPreview.layout, primitiveFieldPreview.primitives,
         drawList);
+  }
+
+  // Capture diagnostics are generation output, not authored offsets. Drawing
+  // them last keeps a discarded emitter and its reason visible even when its
+  // parent has been cleared by later fold content.
+  if (worldData) {
+    renderAudioEmitters(*worldData, drawList);
   }
 }
 

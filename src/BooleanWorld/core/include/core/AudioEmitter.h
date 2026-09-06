@@ -20,6 +20,12 @@ struct EmitterPlacementKey {
   bool operator==(EmitterPlacementKey const&) const = default;
 };
 
+enum class AudioEmitterCaptureFailure {
+  NoSolidGeometry,
+  ParentDoesNotContribute,
+  DerivedHeightAboveCeiling,
+};
+
 // Immutable generation output. Identity is the authored GUID together with
 // the optional placement key; directly-authored Primitives have no key.
 struct CapturedAudioEmitter {
@@ -29,6 +35,20 @@ struct CapturedAudioEmitter {
   std::string guid;
   float cullRadius{0.0f};
   std::optional<EmitterPlacementKey> placementKey;
+};
+
+// Editor-facing capture diagnostic. A failed emitter over solid geometry has
+// a derived height from that face's Wedge-raised floor. NoSolidGeometry has no
+// floor from which a derived height could be computed.
+struct FailedAudioEmitter {
+  wp::Vector2 position;
+  std::optional<float> derivedHeight;
+  float heightOffset{0.0f};
+  std::string soundId;
+  std::string guid;
+  float cullRadius{0.0f};
+  std::optional<EmitterPlacementKey> placementKey;
+  AudioEmitterCaptureFailure reason{AudioEmitterCaptureFailure::NoSolidGeometry};
 };
 
 struct AudioEmitter : public Serializable {

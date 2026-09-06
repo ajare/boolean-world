@@ -45,6 +45,7 @@ class BW_API ArrangementWorldData {
   std::unique_ptr<ImmutableAccelerationGrid> mRenderedWallGrid;
   std::shared_ptr<wp::wayfinder::Mesh> mWayfinderMesh;
   std::vector<CapturedAudioEmitter> mCapturedAudioEmitters;
+  std::vector<FailedAudioEmitter> mFailedAudioEmitters;
 
 public:
   ArrangementWorldData(
@@ -72,6 +73,11 @@ public:
 
   [[nodiscard]] std::vector<CapturedAudioEmitter> const&
   getCapturedAudioEmitters() const;
+
+  // Every authored/generated emitter rejected by capture, together with the
+  // first failed limb of the capture rule for editor feedback.
+  [[nodiscard]] std::vector<FailedAudioEmitter> const&
+  getFailedAudioEmitters() const;
 
   [[nodiscard]] WedgeGenerationParameters const&
   getWedgeGenerationParameters() const;

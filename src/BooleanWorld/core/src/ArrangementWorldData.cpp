@@ -213,24 +213,35 @@ ArrangementWorldData::ArrangementWorldData(
   // Capture is deliberately after detail geometry and its floor-Wedge index:
   // derived emitter height uses the same raised floor as player collision.
   mCapturedAudioEmitters.reserve(mArrangement->audioEmitters.size());
+  mFailedAudioEmitters.reserve(mArrangement->audioEmitters.size());
   for (auto const& emitter : mArrangement->audioEmitters) {
+    auto fail = [&](AudioEmitterCaptureFailure reason,
+                    std::optional<float> derivedHeight = std::nullopt) {
+      mFailedAudioEmitters.push_back(
+          {emitter.position, derivedHeight, emitter.heightOffset,
+           emitter.soundId, emitter.guid, emitter.cullRadius,
+           emitter.placementKey, reason});
+    };
+
     auto faceIndex = getContainingFaceIndex(emitter.position);
-    if (faceIndex == ~0u) {
+    if (faceIndex == ~0u || !mArrangement->faces[faceIndex].solid) {
+      fail(AudioEmitterCaptureFailure::NoSolidGeometry);
       continue;
     }
     auto const& face = mArrangement->faces[faceIndex];
-    if (!face.solid ||
-        !face.solidContributors.contains(emitter.parentPrimitiveIndex)) {
-      continue;
-    }
     auto height = getFloorHeight(emitter.position) + emitter.heightOffset;
-    auto ceiling =
-        mArrangement->palette[face.paletteIndex].ceilingZ;
-    if (!(height < ceiling)) {
+    if (!face.solidContributors.contains(emitter.parentPrimitiveIndex)) {
+      fail(AudioEmitterCaptureFailure::ParentDoesNotContribute, height);
       continue;
     }
-    mCapturedAudioEmitters.push_back({emitter.position, height, emitter.soundId, emitter.guid,
-                                      emitter.cullRadius, emitter.placementKey});
+    auto ceiling = mArrangement->palette[face.paletteIndex].ceilingZ;
+    if (!(height < ceiling)) {
+      fail(AudioEmitterCaptureFailure::DerivedHeightAboveCeiling, height);
+      continue;
+    }
+    mCapturedAudioEmitters.push_back(
+        {emitter.position, height, emitter.soundId, emitter.guid,
+         emitter.cullRadius, emitter.placementKey});
   }
 
   if (createWayfinderMesh) {
@@ -269,6 +280,11 @@ arr::DetailGeometry const& ArrangementWorldData::getDetail() const {
 std::vector<CapturedAudioEmitter> const&
 ArrangementWorldData::getCapturedAudioEmitters() const {
   return mCapturedAudioEmitters;
+}
+
+std::vector<FailedAudioEmitter> const&
+ArrangementWorldData::getFailedAudioEmitters() const {
+  return mFailedAudioEmitters;
 }
 
 std::vector<float> const& ArrangementWorldData::getLiquidDepths() const {

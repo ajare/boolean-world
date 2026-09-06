@@ -17,6 +17,7 @@
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 #pragma warning(pop)
 
 #include <GL/glew.h>
@@ -878,6 +879,102 @@ void createPreviewScene(ImVec2 const& windowSize) {
   }
 }
 
+char const* emitterFailureText(bw::core::AudioEmitterCaptureFailure reason) {
+  switch (reason) {
+    case bw::core::AudioEmitterCaptureFailure::NoSolidGeometry:
+      return "Discarded: no solid geometry here";
+    case bw::core::AudioEmitterCaptureFailure::ParentDoesNotContribute:
+      return "Discarded: parent Primitive does not contribute here";
+    case bw::core::AudioEmitterCaptureFailure::DerivedHeightAboveCeiling:
+      return "Discarded: derived height is above the ceiling";
+  }
+  return "Discarded";
+}
+
+bool projectEmitterPoint(glm::vec3 const& point, ImVec2& screenPoint) {
+  auto clip = session.camera->getProjectionTransform() *
+              session.camera->getViewTransform() * glm::vec4(point, 1.0f);
+  if (clip.w <= 0.0f || clip.z < -clip.w || clip.z > clip.w) {
+    return false;
+  }
+  auto ndcX = clip.x / clip.w;
+  auto ndcY = clip.y / clip.w;
+  screenPoint = {
+      session.viewportMin.x + (ndcX + 1.0f) * 0.5f *
+                                  (session.viewportMax.x - session.viewportMin.x),
+      session.viewportMin.y + (1.0f - ndcY) * 0.5f *
+                                  (session.viewportMax.y - session.viewportMin.y)};
+  return true;
+}
+
+void drawEmitterGizmo(
+    ImDrawList* drawList, wp::Vector2 const& position, float height,
+    float cullRadius, ImU32 colour, char const* label) {
+  // Authored +Y maps to renderer -Z; elevation maps to renderer +Y.
+  glm::vec3 const rendererCentre{position.x, height, -position.y};
+
+  constexpr int segments = 64;
+  constexpr float twoPi = 6.28318530717958647692f;
+  if (cullRadius > 0.0f) {
+    // Three great circles make the 3D cull-radius sphere readable from every
+    // camera angle instead of presenting it as a ground-plane range only.
+    for (int ring = 0; ring < 3; ++ring) {
+      auto point = [&](float angle) {
+        auto x = std::cos(angle) * cullRadius;
+        auto y = std::sin(angle) * cullRadius;
+        switch (ring) {
+          case 0: return rendererCentre + glm::vec3{x, 0.0f, -y};
+          case 1: return rendererCentre + glm::vec3{x, y, 0.0f};
+          default: return rendererCentre + glm::vec3{0.0f, y, -x};
+        }
+      };
+      for (int index = 0; index < segments; ++index) {
+        ImVec2 from;
+        ImVec2 to;
+        if (projectEmitterPoint(
+                point(float(index) / float(segments) * twoPi), from) &&
+            projectEmitterPoint(
+                point(float(index + 1) / float(segments) * twoPi), to)) {
+          drawList->AddLine(from, to, colour, 1.5f);
+        }
+      }
+    }
+  }
+
+  ImVec2 centre;
+  if (!projectEmitterPoint(rendererCentre, centre)) {
+    return;
+  }
+  drawList->AddCircleFilled(centre, 6.0f, IM_COL32(20, 20, 20, 220), 16);
+  drawList->AddCircle(centre, 6.0f, colour, 16, 2.0f);
+  drawList->AddLine(
+      {centre.x - 3.0f, centre.y}, {centre.x + 3.0f, centre.y}, colour, 1.5f);
+  drawList->AddLine(
+      {centre.x, centre.y - 3.0f}, {centre.x, centre.y + 3.0f}, colour, 1.5f);
+  drawList->AddText({centre.x + 9.0f, centre.y - 7.0f}, colour, label);
+}
+
+void drawEmitterGizmos() {
+  if (!session.worldData) return;
+  auto* drawList = ImGui::GetWindowDrawList();
+  constexpr ImU32 capturedColour = IM_COL32(80, 225, 255, 255);
+  constexpr ImU32 failedColour = IM_COL32(255, 80, 65, 255);
+  for (auto const& emitter : session.worldData->getCapturedAudioEmitters()) {
+    drawEmitterGizmo(
+        drawList, emitter.position, emitter.height, emitter.cullRadius,
+        capturedColour, "AudioEmitter");
+  }
+  for (auto const& emitter : session.worldData->getFailedAudioEmitters()) {
+    // With no solid face there is no floor and therefore no derived height.
+    // HeightOffset is the only meaningful elevation available for placing the
+    // red diagnostic; every other failure is shown at its computed height.
+    auto height = emitter.derivedHeight.value_or(emitter.heightOffset);
+    drawEmitterGizmo(
+        drawList, emitter.position, height, emitter.cullRadius, failedColour,
+        emitterFailureText(emitter.reason));
+  }
+}
+
 // Draws the world into the pipeline's offscreen images and hands ImGui the
 // resolved texture. Nothing here touches the backbuffer, so the preview is no
 // longer scissored into the window ImGui is itself drawing into.
@@ -1184,6 +1281,9 @@ void renderPreview3D() {
     // before ImGui gets to render anything referring to them.
     if (!closing) {
       renderPreviewScene(ImGui::GetWindowSize());
+      // Overlay after the resolved scene image so capture failures cannot be
+      // hidden by the geometry that caused them.
+      drawEmitterGizmos();
     }
 
     ImGui::SetCursorPos({12.0f, 12.0f});

@@ -156,6 +156,17 @@ void captureAppliesEachSurvivalRuleAndUsesTheWinningFloor() {
               near(captured.front().height, 5.5f) &&
               !captured.front().placementKey,
           "capture did not use the property-winning Primitive's floor or direct identity");
+
+  auto const& failed = data->getFailedAudioEmitters();
+  require(
+      failed.size() == 2 && failed[0].guid == "no-solid-face" &&
+          !failed[0].derivedHeight &&
+          failed[0].reason ==
+              bw::core::AudioEmitterCaptureFailure::NoSolidGeometry &&
+          failed[1].guid == "at-ceiling" &&
+          near(failed[1].derivedHeight.value_or(-1.0f), 10.0f) &&
+          failed[1].reason == bw::core::AudioEmitterCaptureFailure::DerivedHeightAboveCeiling,
+      "capture diagnostics did not identify the failed rule or derived height");
 }
 
 void replaceSquareClearsParentContributionAndPlacementKeyIdentifiesPrefab() {
@@ -200,6 +211,13 @@ void replaceSquareClearsParentContributionAndPlacementKeyIdentifiesPrefab() {
               captured.front().placementKey ==
                   bw::core::EmitterPlacementKey{0, 0, 64},
           "captured Prefab emitter lost its fixed position or placement key");
+  auto const& failed = data->getFailedAudioEmitters();
+  require(
+      failed.size() == 1 && failed.front().guid == "cleared-parent" &&
+          failed.front().derivedHeight &&
+          failed.front().reason ==
+              bw::core::AudioEmitterCaptureFailure::ParentDoesNotContribute,
+      "a Replace-cleared parent emitter was not diagnosed as discarded");
 }
 
 void captureUsesTheWedgeRaisedWinningFloor() {
