@@ -76,11 +76,14 @@ void openDocument(editor::Document* doc) {
     NFD_FreePath(outPath);
 
     getPrimitiveFieldPreview().close();
-    bool ok = doc->openDoc(filepath);
-
-    if (!ok) {
-      ImGui::OpenPopup("Open file failed");
+    if (!doc->openDoc(filepath)) {
+      throw EditorException(format("Could not open '{}'; see editor.log for details.",
+                                   filepath));
     }
+  } else if (res == NFD_ERROR) {
+    auto const* error = NFD_GetError();
+    throw EditorException(format("Could not open the file dialog: {}",
+                                 error ? error : "unknown error"));
   }
 }
 

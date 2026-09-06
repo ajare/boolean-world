@@ -6270,21 +6270,6 @@ void checkModalPopups(editor::Document* doc, editor::Settings& settings) {
   }
 
   //
-  // Open file failed
-  //
-  ImGui::SetNextWindowPos(centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-
-  if (ImGui::BeginPopupModal("Open file failed", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-    ImGui::Text("Load failed!  See error log.");
-
-    if (ImGui::Button("OK", ImVec2(120, 0))) {
-      ImGui::CloseCurrentPopup();
-    }
-
-    ImGui::EndPopup();
-  }
-
-  //
   // Help / instructions
   //
   ImGui::SetNextWindowPos(centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));

@@ -39,6 +39,13 @@ endfunction()
 # on the targets that had it.
 function(bw_target_defaults tgt)
     set_target_properties(${tgt} PROPERTIES DEBUG_POSTFIX "d")
+    get_target_property(_bw_type ${tgt} TYPE)
+    if(_bw_type STREQUAL "EXECUTABLE")
+        # Keep applications and test runners non-interactive when Windows or
+        # the debug CRT reports an error. The source is a no-op off Windows.
+        target_sources(${tgt} PRIVATE
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/NonInteractiveErrorMode.cpp")
+    endif()
     if(MSVC)
         set_target_properties(${tgt} PROPERTIES
             MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug,MemCheck>:Debug>DLL")

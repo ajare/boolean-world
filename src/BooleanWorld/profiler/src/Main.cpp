@@ -78,6 +78,10 @@ int main(int argc, char** argv) {
   }
 
   auto world = openWorld(filename);
+  if (!world) {
+    return 1;
+  }
+
   auto dataGenerator = dynamic_cast<bw::core::DynamicWorldDataGenerator*>(world->getWorldDataGenerator());
 
   // Run a few times to "warm up"
