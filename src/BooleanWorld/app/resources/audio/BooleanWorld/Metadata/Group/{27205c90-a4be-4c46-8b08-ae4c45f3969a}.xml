@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.02.03.00">
+	<object class="MixerGroup" id="{27205c90-a4be-4c46-8b08-ae4c45f3969a}">
+		<property name="note">
+			<value>Theme.* events only. Music must never carry or route through Steam Audio effects.</value>
+		</property>
+		<property name="name">
+			<value>Music</value>
+		</property>
+		<relationship name="effectChain">
+			<destination>{921445b1-33ad-40cc-999d-8aaed3ea53e4}</destination>
+		</relationship>
+		<relationship name="panner">
+			<destination>{19e7bd8e-3b83-46d3-be1d-5e333b409709}</destination>
+		</relationship>
+		<relationship name="output">
+			<destination>{4df6f342-d6f9-46ea-af46-5632914156eb}</destination>
+		</relationship>
+	</object>
+	<object class="MixerBusEffectChain" id="{921445b1-33ad-40cc-999d-8aaed3ea53e4}">
+		<relationship name="effects">
+			<destination>{5cc0d94d-d497-40c8-b06f-beba168e1b28}</destination>
+		</relationship>
+	</object>
+	<object class="MixerBusPanner" id="{19e7bd8e-3b83-46d3-be1d-5e333b409709}" />
+	<object class="MixerBusFader" id="{5cc0d94d-d497-40c8-b06f-beba168e1b28}" />
+</objects>

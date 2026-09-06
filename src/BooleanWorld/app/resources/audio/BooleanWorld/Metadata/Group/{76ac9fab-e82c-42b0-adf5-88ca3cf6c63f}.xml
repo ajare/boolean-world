@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.02.03.00">
+	<object class="MixerGroup" id="{76ac9fab-e82c-42b0-adf5-88ca3cf6c63f}">
+		<property name="note">
+			<value>Diegetic events only. Each event carries one Steam Audio Spatializer; no Mixer Return bus is used.</value>
+		</property>
+		<property name="name">
+			<value>World</value>
+		</property>
+		<relationship name="effectChain">
+			<destination>{0e2c54e8-f5a1-4380-98bd-b127ba2f066f}</destination>
+		</relationship>
+		<relationship name="panner">
+			<destination>{ff8bb28b-804e-4627-8a9f-20c0afa8230e}</destination>
+		</relationship>
+		<relationship name="output">
+			<destination>{4df6f342-d6f9-46ea-af46-5632914156eb}</destination>
+		</relationship>
+	</object>
+	<object class="MixerBusEffectChain" id="{0e2c54e8-f5a1-4380-98bd-b127ba2f066f}">
+		<relationship name="effects">
+			<destination>{d010cdd9-620a-44ff-8adc-5e1f49ced000}</destination>
+		</relationship>
+	</object>
+	<object class="MixerBusPanner" id="{ff8bb28b-804e-4627-8a9f-20c0afa8230e}" />
+	<object class="MixerBusFader" id="{d010cdd9-620a-44ff-8adc-5e1f49ced000}" />
+</objects>

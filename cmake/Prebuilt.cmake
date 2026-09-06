@@ -141,7 +141,7 @@ set(BW_STEAM_AUDIO_VERSION "4.8.1" CACHE STRING "Pinned Steam Audio point releas
 # FMOD Studio discovers effects from its project-local Plugins directory.
 # Populate it while configuring rather than committing a second copy: the
 # runtime deployment helper copies the same vendor directory beside every exe.
-set(BW_FMOD_STUDIO_PROJECT "${BW_ROOT}/src/BooleanWorld/app/resources/audio/Themes")
+set(BW_FMOD_STUDIO_PROJECT "${BW_ROOT}/src/BooleanWorld/app/resources/audio/BooleanWorld")
 set(BW_FMOD_STUDIO_PLUGINS "${BW_FMOD_STUDIO_PROJECT}/Plugins")
 file(MAKE_DIRECTORY "${BW_FMOD_STUDIO_PLUGINS}")
 foreach(plugin_file phonon.dll phonon_fmod.dll phonon_fmod.plugin.js)

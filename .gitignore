@@ -13,16 +13,16 @@ CMakeUserPresets.json
 *.user
 *.ipch
 **/.vs/
-/src/BooleanWorld/app/resources/audio/Themes/.cache/
-/src/BooleanWorld/app/resources/audio/Themes/.unsaved/
-/src/BooleanWorld/app/resources/audio/Themes/.user/
-/src/BooleanWorld/app/resources/audio/Themes/Plugins/
+/src/BooleanWorld/app/resources/audio/BooleanWorld/.cache/
+/src/BooleanWorld/app/resources/audio/BooleanWorld/.unsaved/
+/src/BooleanWorld/app/resources/audio/BooleanWorld/.user/
+/src/BooleanWorld/app/resources/audio/BooleanWorld/Plugins/
 # FMOD Studio build output. The compiled .bank files are tracked: the game
 # validates them at resource-load time even when audio is disabled, so a
-# fresh clone cannot reach the Play state without them (~92K total).
+# fresh clone cannot reach the Play state without them.
 # Everything else FMOD Studio emits here stays ignored.
-/src/BooleanWorld/app/resources/audio/Themes/Build/**
-!/src/BooleanWorld/app/resources/audio/Themes/Build/
-!/src/BooleanWorld/app/resources/audio/Themes/Build/Desktop/
-!/src/BooleanWorld/app/resources/audio/Themes/Build/Desktop/*.bank
+/src/BooleanWorld/app/resources/audio/BooleanWorld/Build/**
+!/src/BooleanWorld/app/resources/audio/BooleanWorld/Build/
+!/src/BooleanWorld/app/resources/audio/BooleanWorld/Build/Desktop/
+!/src/BooleanWorld/app/resources/audio/BooleanWorld/Build/Desktop/*.bank
 **/__pycache__
