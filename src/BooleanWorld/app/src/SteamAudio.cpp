@@ -368,6 +368,30 @@ struct SteamAudio::Implementation {
   }
 };
 
+void SteamAudio::loadPlugin(wp::application::AudioSystem& audioSystem) {
+#if defined(WP_APPLICATION_USE_FMOD)
+  auto* coreSystem = audioSystem.getCoreSystem();
+  if (!coreSystem) {
+    throw std::runtime_error("FMOD core system is unavailable");
+  }
+
+  // The FMOD integration does not load the Steam Audio core until its DSP is
+  // instantiated, which is too late for us to resolve the simulation API. Keep
+  // it process-loaded alongside the FMOD-owned plugin.
+  if (!GetModuleHandleA("phonon.dll") && !LoadLibraryA("phonon.dll")) {
+    throw std::runtime_error("Unable to load Steam Audio core module");
+  }
+  if (!GetModuleHandleA("phonon_fmod.dll")) {
+    unsigned int pluginHandle{};
+    requireFmod(
+        coreSystem->loadPlugin("phonon_fmod.dll", &pluginHandle, 0),
+        "Unable to load phonon_fmod.dll into FMOD core");
+  }
+#else
+  (void)audioSystem;
+#endif
+}
+
 SteamAudio::SteamAudio(
     wp::application::AudioSystem& audioSystem,
     AudioSimulationOptions const& options)
@@ -387,19 +411,11 @@ SteamAudio::SteamAudio(
   implementation.quality = *selected;
 #if defined(WP_APPLICATION_USE_FMOD)
   implementation.audioSystem = &audioSystem;
+  loadPlugin(audioSystem);
   implementation.coreSystem = audioSystem.getCoreSystem();
-  if (!implementation.coreSystem) {
-    throw std::runtime_error("FMOD core system is unavailable");
-  }
 
-  unsigned int pluginHandle{};
-  if (implementation.coreSystem->loadPlugin("phonon_fmod.dll", &pluginHandle,
-                                            0) != FMOD_OK) {
-    throw std::runtime_error("Unable to load phonon_fmod.dll into FMOD core");
-  }
-
-  // loadPlugin owns the module. Its dependency phonon.dll is consequently
-  // present before resolving either API's entry points.
+  // loadPlugin registered the FMOD integration and process-loaded phonon.dll
+  // before resolving either module's API entry points.
   auto pluginModule = GetModuleHandleA("phonon_fmod.dll");
   if (!pluginModule) {
     throw std::runtime_error("FMOD loaded Steam Audio without its module");
@@ -1131,19 +1147,41 @@ void SteamAudio::setListener(mpp::Camera const& camera) {
   auto const& cameraPosition = camera.getPosition();
   auto const& cameraDirection = camera.getDirection();
   auto const& cameraUp = camera.getUp();
-  auto position = fmodVector(cameraPosition);
-  auto forward = fmodVector(cameraDirection);
-  auto up = fmodVector(cameraUp);
-  FMOD_VECTOR const velocity{0.0f, 0.0f, 0.0f};
-  if (mImplementation->coreSystem->set3DListenerAttributes(
-          0, &position, &velocity, &forward, &up) != FMOD_OK) {
-    throw std::runtime_error("Unable to update FMOD listener attributes");
+  auto finite = [](glm::vec3 const& vector) {
+    return std::isfinite(vector.x) && std::isfinite(vector.y) &&
+           std::isfinite(vector.z);
+  };
+  if (!finite(cameraPosition) || !finite(cameraDirection) ||
+      !finite(cameraUp)) {
+    throw std::runtime_error("FMOD listener camera basis is not finite");
   }
+
+  // FMOD rejects a non-orthogonal listener basis. Camera vectors are normally
+  // orthonormal, but rebuilding the basis here prevents accumulated floating
+  // point error from turning a valid long-running session into an invalid
+  // listener update.
+  auto forwardLength = glm::length(cameraDirection);
+  auto right = glm::cross(cameraDirection, cameraUp);
+  auto rightLength = glm::length(right);
+  if (forwardLength <= std::numeric_limits<float>::epsilon() ||
+      rightLength <= std::numeric_limits<float>::epsilon()) {
+    throw std::runtime_error("FMOD listener camera basis is degenerate");
+  }
+  auto forward = cameraDirection / forwardLength;
+  right /= rightLength;
+  auto up = glm::normalize(glm::cross(right, forward));
+
+  auto position = fmodVector(cameraPosition);
+  auto fmodForward = fmodVector(forward);
+  auto fmodUp = fmodVector(up);
+  FMOD_VECTOR const velocity{0.0f, 0.0f, 0.0f};
+  requireFmod(mImplementation->coreSystem->set3DListenerAttributes(
+                  0, &position, &velocity, &fmodForward, &fmodUp),
+              "Unable to update FMOD listener attributes");
 
   auto listener = std::make_shared<Implementation::ListenerState const>(
       Implementation::ListenerState{
-          {iplVector(glm::normalize(glm::cross(cameraDirection, cameraUp))),
-           iplVector(cameraUp), iplVector(cameraDirection),
+          {iplVector(right), iplVector(up), iplVector(forward),
            iplVector(cameraPosition)}});
   mImplementation->listener.store(std::move(listener),
                                   std::memory_order_release);

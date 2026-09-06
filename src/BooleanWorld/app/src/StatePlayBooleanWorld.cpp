@@ -1159,7 +1159,7 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
 
 void StatePlayBooleanWorld::updateAudio(float frameTime) {
   if (!mThemeInstance) {
-    mThemeInstance = mwAudioSystem->startEvent("Theme.Sandstone");
+    mThemeInstance = mwAudioSystem->startEvent("World/Theme.Sandstone");
   }
 
   if (mSteamAudio) {

@@ -26,7 +26,9 @@ class ApplicationDLL {
 
   typedef wp::application::StateFactory* (*DllGetNextStateFactoryFunction)();
 
-  typedef void (*DllOnEntryFunction)(wp::Logger*, wp::application::resourcesystem::ResourceManager*);
+  typedef void (*DllOnEntryFunction)(
+      wp::Logger*, wp::application::resourcesystem::ResourceManager*,
+      wp::application::AudioSystem*);
 
   typedef void (*DllOnExitFunction)();
 
@@ -135,7 +137,10 @@ public:
 
   std::string const& getFilepath() const;
 
-  void load(ProgramOptions const& options, wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr);
+  void load(
+      ProgramOptions const& options, wp::Logger* logger,
+      wp::application::resourcesystem::ResourceManager* resourceMgr,
+      wp::application::AudioSystem* audioSystem);
 
   void unload();
 

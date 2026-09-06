@@ -30,6 +30,7 @@
 #include "WorldDataGenerationOptions.h"
 #include "MapBooleanWorldDefinitionFactory.h"
 #include "ProtoEntityDefinitionFactory.h"
+#include "SteamAudio.h"
 
 // Model
 #include "BooleanWorldModel.h"
@@ -229,8 +230,17 @@ APPLICATION_API wp::application::StateFactory* dllGetNextStateFactory() {
   return stateFactory;
 }
 
-APPLICATION_API void dllOnEntry(wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
+APPLICATION_API void dllOnEntry(
+    wp::Logger* logger,
+    wp::application::resourcesystem::ResourceManager* resourceMgr,
+    wp::application::AudioSystem* audioSystem) {
   dllState.resetStateFactoryEnumeration();
+
+  // FMOD must know the Steam Audio DSP before map loading creates banks whose
+  // events reference it. The full simulation remains owned by the Play state.
+  if (audioSystem) {
+    bw::app::SteamAudio::loadPlugin(*audioSystem);
+  }
 
   // docs/adr/0038: LayerBuildStep types are no longer compiled into core's
   // own registry, so every host must register the ones it wants Worlds to

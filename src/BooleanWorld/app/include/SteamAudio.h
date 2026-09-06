@@ -47,6 +47,10 @@ struct AudioSimulationDiagnostics {
 // plugin itself remains owned by FMOD's core system.
 class SteamAudio {
 public:
+  // Registers the Steam Audio DSP with FMOD before any bank that references it
+  // is loaded. Safe to call again when constructing the simulation objects.
+  static void loadPlugin(wp::application::AudioSystem& audioSystem);
+
   SteamAudio(
       wp::application::AudioSystem& audioSystem,
       AudioSimulationOptions const& options);

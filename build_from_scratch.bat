@@ -132,7 +132,21 @@ if exist "%MPP_DIR%\build" (
 )
 
 echo Configuring Willpower build tree...
-cmake -S "%WILLPOWER_DIR%" -B "%WILLPOWER_DIR%\build"
+rem BooleanWorld enables its FMOD-backed audio by default on Windows. Configure
+rem the separately-built Willpower DLL with the same backend; otherwise the game
+rem compiles Steam Audio support while AudioSystem::getCoreSystem() remains the
+rem no-op implementation and Launcher fails on entering Play.
+set "FMOD_INCLUDE_DIR=%ROOT_DIR%\vendor\include\fmod"
+set "FMOD_LIB_DIR=%ROOT_DIR%\vendor\lib\vs2026\x64\Release"
+set "FMOD_BIN_DIR=%ROOT_DIR%\vendor\bin\vs2026\x64\Release"
+cmake -S "%WILLPOWER_DIR%" -B "%WILLPOWER_DIR%\build" ^
+    -DWILLPOWER_ENABLE_FMOD=ON ^
+    -DWILLPOWER_FMOD_CORE_INCLUDE="%FMOD_INCLUDE_DIR%\core" ^
+    -DWILLPOWER_FMOD_STUDIO_INCLUDE="%FMOD_INCLUDE_DIR%\studio" ^
+    -DWILLPOWER_FMOD_CORE_LIBRARY="%FMOD_LIB_DIR%\fmod_vc.lib" ^
+    -DWILLPOWER_FMOD_STUDIO_LIBRARY="%FMOD_LIB_DIR%\fmodstudio_vc.lib" ^
+    -DWILLPOWER_FMOD_CORE_DLL="%FMOD_BIN_DIR%\fmod.dll" ^
+    -DWILLPOWER_FMOD_STUDIO_DLL="%FMOD_BIN_DIR%\fmodstudio.dll"
 if errorlevel 1 (
     set "ERROR_MESSAGE=Willpower CMake configuration failed"
     goto fatal

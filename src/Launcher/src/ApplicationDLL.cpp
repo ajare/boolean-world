@@ -133,7 +133,10 @@ void ApplicationDLL::registerOptionalFunctions() {
           mGetProcIDDLL, msRecordCpuUpdateTimingsFunctionName.c_str());
 }
 
-void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp::application::resourcesystem::ResourceManager* resourceMgr) {
+void ApplicationDLL::load(
+    ProgramOptions const& options, wp::Logger* logger,
+    wp::application::resourcesystem::ResourceManager* resourceMgr,
+    wp::application::AudioSystem* audioSystem) {
   mFilepath = options.dll;
 
 #if APP_PLATFORM == APP_PLATFORM_WINDOWS
@@ -256,7 +259,7 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
     // dllOnEntry can itself fail after constructing some DLL-owned objects.
     // Mark it started first so dllOnExit gets a chance to unwind those objects.
     mEntryStarted = true;
-    mOnEntryFunction(logger, resourceMgr);
+    mOnEntryFunction(logger, resourceMgr, audioSystem);
   }
 }
 
