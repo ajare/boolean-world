@@ -112,6 +112,8 @@ void PrefabField::execute(LayerBuildContext& context) const {
       for (auto const* source : prefab->getPrimitives()) {
         unique_ptr<Primitive> clone(source->rotatedCopy(angle));
         clone->setPosition(clone->getPosition() + tileCentre(tile));
+        clone->setEmitterPlacementKey(
+            EmitterPlacementKey{tile.x, tile.y, prefabTileSide(tile.size)});
         instanceClones[source] = clone.get();
         instanceOutput.push_back({source->getPriority(), sequence++, move(clone)});
       }

@@ -101,6 +101,8 @@ void RunScript::placePrefabInstance(
   for (auto const* source : prefab->getPrimitives()) {
     unique_ptr<Primitive> clone(source->rotatedCopy(angle));
     clone->setPosition(clone->getPosition() + position);
+    clone->setEmitterPlacementKey(EmitterPlacementKey{
+        tileX, tileY, prefabTileSide(prefab->getTileSize())});
     auto* raw = clone.get();
     instanceClones[source] = raw;
     mBuiltPrimitives.push_back(move(clone));

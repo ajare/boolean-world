@@ -1173,6 +1173,9 @@ ArrangementResultPtr BuildArrangement(
     result->chipParametersPalette.push_back(primitive.chipParameters);
     result->primitiveOperations.push_back(primitive.operation);
     result->primitiveRawAreas.push_back(primitive.rawArea);
+    result->audioEmitters.insert(
+        result->audioEmitters.end(), primitive.audioEmitters.begin(),
+        primitive.audioEmitters.end());
   }
 
   // Face zero is the unbounded exterior, allowing every edge to name two
@@ -1181,6 +1184,7 @@ ArrangementResultPtr BuildArrangement(
   // boundaries.
   ArrangementFace exteriorFace;
   exteriorFace.membership = Membership(primitives.size());
+  exteriorFace.solidContributors = Membership(primitives.size());
   for (auto const& node : hierarchy) {
     if (node.parent >= 0) {
       continue;
@@ -1221,6 +1225,44 @@ ArrangementResultPtr BuildArrangement(
       outputFace.innerBoundaryVertices.push_back(move(boundaryVertices));
     }
     outputFace.solid = face.solid;
+    outputFace.solidContributors = Membership(primitives.size());
+    bool contributorSolid = false;
+    for (auto primitiveIndex : foldOrder) {
+      auto const member = face.membership.contains(primitiveIndex);
+      switch (primitives[primitiveIndex].operation) {
+        case Primitive::Operation::Union:
+          if (member) {
+            contributorSolid = true;
+            outputFace.solidContributors.set(primitiveIndex);
+          }
+          break;
+        case Primitive::Operation::Intersection:
+          if (!member) {
+            contributorSolid = false;
+            outputFace.solidContributors = Membership(primitives.size());
+          } else if (contributorSolid) {
+            outputFace.solidContributors.set(primitiveIndex);
+          }
+          break;
+        case Primitive::Operation::Difference:
+          if (member) {
+            contributorSolid = false;
+            outputFace.solidContributors = Membership(primitives.size());
+          }
+          break;
+        case Primitive::Operation::XOR:
+          if (member) {
+            if (contributorSolid) {
+              contributorSolid = false;
+              outputFace.solidContributors = Membership(primitives.size());
+            } else {
+              contributorSolid = true;
+              outputFace.solidContributors.set(primitiveIndex);
+            }
+          }
+          break;
+      }
+    }
 
     // The old engine associates properties with the Union that starts an
     // intermediate fold run. Later operations modify that run without taking
@@ -1754,7 +1796,7 @@ vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
   for (auto const& adjacency : BuildLiquidAdjacency(arrangement)) {
     auto sill = adjacency.drain
                     ? liquid[adjacency.face0 == 0 ? adjacency.face1
-                                                 : adjacency.face0]
+                                                  : adjacency.face0]
                           .floorZ
                     : max(liquid[adjacency.face0].floorZ,
                           liquid[adjacency.face1].floorZ);

@@ -126,6 +126,7 @@ void Primitive::copyFrom(Primitive const& other) {
   mSize = other.mSize;
   mProperties = other.mProperties;
   mAudioEmitters = other.mAudioEmitters;
+  mEmitterPlacementKey = other.mEmitterPlacementKey;
   mBounds = other.mBounds;
   mPickingTriangulation.reset();
   mVertices = other.mVertices;
@@ -144,6 +145,12 @@ Primitive* Primitive::rotatedCopy(float angle) const {
   // Rotate authored geometry. Procedural Primitives rotate their polygon
   // parameters; MeshPrimitive rotates its authoritative containment tree.
   p->rotateAuthoredGeometry(angle, origin);
+
+  // AudioEmitter offsets are authored in the same local frame as the
+  // Primitive, so a placed, rotated Prefab turns them with its geometry.
+  for (auto& emitter : p->mAudioEmitters) {
+    emitter.offset = emitter.offset.rotatedClockwiseCopy(angle);
+  }
 
   // Bump angles
   p->setInfluenceEyeAngleOffset(p->getInfluenceEyeAngleOffset() + angle);
@@ -318,6 +325,15 @@ void Primitive::setAudioEmitters(vector<AudioEmitter> const& audioEmitters) {
 
 vector<AudioEmitter> const& Primitive::getAudioEmitters() const {
   return mAudioEmitters;
+}
+
+void Primitive::setEmitterPlacementKey(
+    optional<EmitterPlacementKey> const& placementKey) {
+  mEmitterPlacementKey = placementKey;
+}
+
+optional<EmitterPlacementKey> const& Primitive::getEmitterPlacementKey() const {
+  return mEmitterPlacementKey;
 }
 
 uint32_t Primitive::getNumVertices() const {

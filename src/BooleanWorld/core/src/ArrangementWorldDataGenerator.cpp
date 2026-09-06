@@ -147,6 +147,17 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
     auto const chipParameters = chipParametersResolver
                                     ? chipParametersResolver(properties.wallMaterialId)
                                     : ChipGenerationParameters{};
+    std::vector<arr::ArrangementAudioEmitter> audioEmitters;
+    audioEmitters.reserve(primitive->getAudioEmitters().size());
+    for (auto const& emitter : primitive->getAudioEmitters()) {
+      audioEmitters.push_back({primitive->getPosition() + emitter.offset,
+                               emitter.heightOffset,
+                               emitter.soundId,
+                               emitter.guid,
+                               emitter.cullRadius,
+                               primitive->getEmitterPlacementKey(),
+                               uint32_t(index)});
+    }
     result.push_back({std::move(contours.contours),
                       primitive->getOperation(),
                       primitive->getFillRule(),
@@ -162,7 +173,8 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
                           Primitive::PropertyContribution::Contributing,
                       std::move(contours.edgeNormalMapOverrides),
                       std::move(contours.edgeWallMaskOverrides),
-                      primitive->getArea()});
+                      primitive->getArea(),
+                      std::move(audioEmitters)});
   }
   return result;
 }

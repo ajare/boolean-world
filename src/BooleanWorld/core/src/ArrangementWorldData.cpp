@@ -143,9 +143,8 @@ ArrangementWorldData::ArrangementWorldData(
     auto const& a = triangle.v[0].position;
     auto const& b = triangle.v[1].position;
     auto const& c = triangle.v[2].position;
-    floorWedgeBounds.push_back({
-        {std::min({a[0], b[0], c[0]}), std::min({a[1], b[1], c[1]})},
-        {std::max({a[0], b[0], c[0]}), std::max({a[1], b[1], c[1]})}});
+    floorWedgeBounds.push_back({{std::min({a[0], b[0], c[0]}), std::min({a[1], b[1], c[1]})},
+                                {std::max({a[0], b[0], c[0]}), std::max({a[1], b[1], c[1]})}});
     mFloorWedgeTriangleIndices.push_back(detailIndex);
   }
   mFloorWedgeGrid = CreateGrid(extents, gridCellSize, floorWedgeBounds);
@@ -211,6 +210,29 @@ ArrangementWorldData::ArrangementWorldData(
   }
   mRenderedWallGrid = CreateGrid(extents, gridCellSize, renderedWallBounds);
 
+  // Capture is deliberately after detail geometry and its floor-Wedge index:
+  // derived emitter height uses the same raised floor as player collision.
+  mCapturedAudioEmitters.reserve(mArrangement->audioEmitters.size());
+  for (auto const& emitter : mArrangement->audioEmitters) {
+    auto faceIndex = getContainingFaceIndex(emitter.position);
+    if (faceIndex == ~0u) {
+      continue;
+    }
+    auto const& face = mArrangement->faces[faceIndex];
+    if (!face.solid ||
+        !face.solidContributors.contains(emitter.parentPrimitiveIndex)) {
+      continue;
+    }
+    auto height = getFloorHeight(emitter.position) + emitter.heightOffset;
+    auto ceiling =
+        mArrangement->palette[face.paletteIndex].ceilingZ;
+    if (!(height < ceiling)) {
+      continue;
+    }
+    mCapturedAudioEmitters.push_back({emitter.position, height, emitter.soundId, emitter.guid,
+                                      emitter.cullRadius, emitter.placementKey});
+  }
+
   if (createWayfinderMesh) {
     auto start = std::chrono::steady_clock::now();
     mWayfinderMesh = CreateWayfinderMesh(*mArrangement, mTriangles);
@@ -242,6 +264,11 @@ std::vector<arr::ArrangementWall> const& ArrangementWorldData::getWalls() const 
 
 arr::DetailGeometry const& ArrangementWorldData::getDetail() const {
   return mDetail;
+}
+
+std::vector<CapturedAudioEmitter> const&
+ArrangementWorldData::getCapturedAudioEmitters() const {
+  return mCapturedAudioEmitters;
 }
 
 std::vector<float> const& ArrangementWorldData::getLiquidDepths() const {

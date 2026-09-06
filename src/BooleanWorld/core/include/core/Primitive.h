@@ -88,6 +88,10 @@ private:
 
   std::vector<AudioEmitter> mAudioEmitters;
 
+  // Generation-only provenance for emitters carried by a placed Prefab.
+  // It is deliberately not serialized; the placing step reconstructs it.
+  std::optional<EmitterPlacementKey> mEmitterPlacementKey;
+
   mutable wp::BoundingBox mBounds;
 
   mutable std::optional<Triangulation> mPickingTriangulation;
@@ -227,6 +231,12 @@ public:
   void setAudioEmitters(std::vector<AudioEmitter> const& audioEmitters);
 
   [[nodiscard]] std::vector<AudioEmitter> const& getAudioEmitters() const;
+
+  void setEmitterPlacementKey(
+      std::optional<EmitterPlacementKey> const& placementKey);
+
+  [[nodiscard]] std::optional<EmitterPlacementKey> const&
+  getEmitterPlacementKey() const;
 
   uint32_t getNumVertices() const;
 

@@ -9,6 +9,7 @@
 #include <willpower/common/Vector2.h>
 
 #include "core/Arrangement.h"
+#include "core/AudioEmitter.h"
 #include "core/Chips.h"
 #include "core/ImmutableAccelerationGrid.h"
 #include "core/LiquidType.h"
@@ -43,6 +44,7 @@ class BW_API ArrangementWorldData {
   // walking through.
   std::unique_ptr<ImmutableAccelerationGrid> mRenderedWallGrid;
   std::shared_ptr<wp::wayfinder::Mesh> mWayfinderMesh;
+  std::vector<CapturedAudioEmitter> mCapturedAudioEmitters;
 
 public:
   ArrangementWorldData(
@@ -67,6 +69,9 @@ public:
   // Post-fold detail: Chip replacements and additive Wedge facets. Renderers
   // consume all entries; floor-height collision also consumes floor Wedges.
   [[nodiscard]] arr::DetailGeometry const& getDetail() const;
+
+  [[nodiscard]] std::vector<CapturedAudioEmitter> const&
+  getCapturedAudioEmitters() const;
 
   [[nodiscard]] WedgeGenerationParameters const&
   getWedgeGenerationParameters() const;

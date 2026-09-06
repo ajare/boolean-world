@@ -31,7 +31,7 @@ inline constexpr int64_t FixedPointUnitsPerWorldUnit = 1000;
 // Cycle::area or FaceArea2's convention) into a world-space area.
 [[nodiscard]] inline double ToWorldArea(int64_t area2) {
   return double(area2) /
-      (2.0 * double(FixedPointUnitsPerWorldUnit) * double(FixedPointUnitsPerWorldUnit));
+         (2.0 * double(FixedPointUnitsPerWorldUnit) * double(FixedPointUnitsPerWorldUnit));
 }
 
 struct FixedPointVertex {
@@ -177,6 +177,18 @@ struct ArrangementWall {
   WallMaskOverride wallMaskOverride{};
 };
 
+struct ArrangementAudioEmitter {
+  wp::Vector2 position;
+  float heightOffset{0.0f};
+  std::string soundId;
+  std::string guid;
+  float cullRadius{0.0f};
+  std::optional<EmitterPlacementKey> placementKey;
+  // Index into the current generation's ArrangementPrimitive list, matching
+  // ArrangementFace::membership (not Primitive::getId()).
+  uint32_t parentPrimitiveIndex{~0u};
+};
+
 struct ArrangementPrimitive {
   std::vector<Contour> contours;
   Primitive::Operation operation;
@@ -204,6 +216,9 @@ struct ArrangementPrimitive {
   // This Primitive's own raw area (Primitive::getArea()), independent of the
   // fold - see ComputeUndistributedLiquidDepths, which is the only consumer.
   double rawArea{0};
+  // Authored emitters already resolved into world-plane positions while the
+  // live Primitive is snapshotted. Capture later decides survival and height.
+  std::vector<ArrangementAudioEmitter> audioEmitters{};
 };
 
 struct ArrangementEdge {
@@ -236,6 +251,11 @@ struct ArrangementFace {
   // this so a Difference can own the Border walls created by its cut.
   Primitive::Operation operation{Primitive::Operation::Union};
   bool contributesProperties{false};
+  // Provenance of the final solid through the ordered fold. Unlike raw
+  // membership, this is cleared when a later Difference/Intersection/XOR
+  // removes the accumulated solid and is retained when a Union overpaints it.
+  // Trailing so existing aggregate fixtures retain their field order.
+  Membership solidContributors{0};
 };
 
 // One direct liquid-adjacency between two solid Arrangement faces (the same
@@ -269,6 +289,7 @@ struct ArrangementResult {
   // with.
   std::vector<Primitive::Operation> primitiveOperations;
   std::vector<double> primitiveRawAreas;
+  std::vector<ArrangementAudioEmitter> audioEmitters;
 };
 
 // A wall's front face is the one its outward normal points away from: the
