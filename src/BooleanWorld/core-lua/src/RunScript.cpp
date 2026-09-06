@@ -169,7 +169,8 @@ void RunScript::execute(LayerBuildContext& context) const {
           // scoped to this RunScript execution. The actual RunScript step and
           // its authored configuration are not exposed to Lua.
           environment["context"] = RunScriptContext(*this, context);
-        });
+        },
+        getName());
   } catch (ScriptException const& error) {
     mFailureLineNumber = error.getLineNumber();
     mFailureTraceback = error.getTraceback();

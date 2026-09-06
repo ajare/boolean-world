@@ -10,7 +10,7 @@ See [RunScript examples](run-script-examples.md) for complete scripts.
 - Each execution starts with a fresh environment. Globals and included-module tables do not survive a rebuild and are not shared by two `RunScript` steps.
 - The step's serialized seed initializes `math.random` before every execution. The same recipe, script, and seed therefore produce the same random sequence.
 - A script has an instruction budget of 1,000,000 Lua instructions. Exceeding it fails the step.
-- An error discards all output from the failed step and stops the Layer build. Output from preceding steps remains; later steps do not run.
+- An error discards all output from the failed step and stops the Layer build. Output from preceding steps remains; later steps do not run. The attempted execution and its error are sent to the host's log under the LayerBuildStep and script names.
 - Handles returned to Lua are borrowed and are valid only during the current execution. Lua never owns their C++ objects.
 - Lua arrays returned by this API use normal one-based Lua indexing.
 
@@ -233,7 +233,7 @@ chunks use the same Restricted environment and instruction budget as the root.
 
 ### `print(...)`
 
-Converts arguments with `tostring`, joins them with tabs, and sends one completed line to the host's script log.
+Converts arguments with `tostring`, joins them with tabs, and sends one completed line to the host's log for the executing script.
 
 ```lua
 print("placed", count, "primitives")

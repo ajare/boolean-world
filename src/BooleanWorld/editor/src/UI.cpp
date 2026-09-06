@@ -6631,6 +6631,89 @@ void renderPreviewDropControl(Document* doc, Settings const& settings) {
   ImGui::End();
 }
 
+void dockMainWindowAtBottom(ImGuiID dockspaceId) {
+  static bool initialDockingApplied = false;
+  if (initialDockingApplied) {
+    return;
+  }
+
+  // Preserve a layout the user has already saved, including an intentionally
+  // floating Main window. Only a brand-new window receives the default split.
+  if (ImGui::FindWindowSettingsByID(ImHashStr("Main"))) {
+    initialDockingApplied = true;
+    return;
+  }
+
+  auto* centralNode = ImGui::DockBuilderGetCentralNode(dockspaceId);
+  if (!centralNode) {
+    return;
+  }
+
+  ImGuiID bottomNode = 0;
+  ImGui::DockBuilderSplitNode(
+      centralNode->ID, ImGuiDir_Down, 0.25f, &bottomNode, nullptr);
+  ImGui::DockBuilderDockWindow("Main", bottomNode);
+  ImGui::DockBuilderFinish(dockspaceId);
+  initialDockingApplied = true;
+}
+
+void renderScriptLog() {
+  auto* renderSystem = editorRenderSystem();
+  auto const* logs = renderSystem ? &renderSystem->scriptLogs() : nullptr;
+  if (!logs || logs->empty()) {
+    ImGui::TextDisabled("No Layer build scripts have run.");
+    return;
+  }
+
+  if (ImGui::BeginTabBar("##ScriptLogs")) {
+    for (size_t index = 0; index < logs->size(); ++index) {
+      auto const& log = (*logs)[index];
+      auto label = format("{}###ScriptLog{}", log.name, index);
+      if (ImGui::BeginTabItem(label.c_str())) {
+        ImGui::PushID(static_cast<int>(index));
+        if (ImGui::Button("Clear")) {
+          renderSystem->clearScriptLog(log.name);
+        }
+        ImGui::Separator();
+
+        if (ImGui::BeginChild(
+                "##Contents", ImVec2{}, ImGuiChildFlags_Borders,
+                ImGuiWindowFlags_HorizontalScrollbar)) {
+          for (auto const& line : log.lines) {
+            if (line.error) {
+              ImGui::PushStyleColor(
+                  ImGuiCol_Text, ImVec4{1.0f, 0.25f, 0.25f, 1.0f});
+            }
+            ImGui::TextUnformatted(line.message.c_str());
+            if (line.error) {
+              ImGui::PopStyleColor();
+            }
+          }
+        }
+        ImGui::EndChild();
+        ImGui::PopID();
+        ImGui::EndTabItem();
+      }
+    }
+    ImGui::EndTabBar();
+  }
+}
+
+void renderMainWindow(ImGuiID dockspaceId) {
+  dockMainWindowAtBottom(dockspaceId);
+
+  if (ImGui::Begin("Main")) {
+    if (ImGui::BeginTabBar("##MainTabs")) {
+      if (ImGui::BeginTabItem("Script Log")) {
+        renderScriptLog();
+        ImGui::EndTabItem();
+      }
+      ImGui::EndTabBar();
+    }
+  }
+  ImGui::End();
+}
+
 }  // namespace
 
 void renderWidgets(
@@ -6678,6 +6761,8 @@ void renderWidgets(
         renderContextSensitiveHelp(doc, settings);
       }
     }
+
+    renderMainWindow(dockspaceId);
   }
 
   ImGui::BeginDisabled(previewing);

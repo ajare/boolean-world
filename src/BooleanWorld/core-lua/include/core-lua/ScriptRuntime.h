@@ -19,12 +19,24 @@ class Layer;
 class RunScript;
 struct ScriptCoroutineState;
 
-// A completed print() line, joined the way Lua's own print joins its
-// arguments (tostring'd, tab-separated). Given to the host rather than
-// written anywhere here, so a script's output ends up wherever the host logs
-// - a file, a console pane, nowhere in a test - without this library knowing
-// which (docs/adr/0040).
-using PrintSink = std::function<void(std::string const&)>;
+// An execution event handed to the host so it can create a per-script log,
+// retain print() output, and distinguish failures without this library knowing
+// whether that log is a file, a console pane, or nowhere in a test. A
+// RunScript also supplies its optional LayerBuildStep name as log context.
+enum class ScriptLogEventType {
+  ExecutionStarted,
+  Output,
+  Error,
+};
+
+struct ScriptLogEvent {
+  ScriptLogEventType type;
+  std::string scriptName;
+  std::string message;
+  std::string stepName;
+};
+
+using ScriptLogSink = std::function<void(ScriptLogEvent const&)>;
 
 // The Lua standard libraries one execution may see. A parameter of execution
 // rather than a property of the runtime, so a future gameplay client can ask
@@ -137,7 +149,7 @@ private:
 
   friend class RunScript;
 
-  PrintSink mPrintSink;
+  ScriptLogSink mLogSink;
   std::vector<std::shared_ptr<ScriptCoroutineState>> mCoroutines;
 
   void finishCoroutine(
@@ -145,9 +157,9 @@ private:
       ScriptCoroutineStatus status);
 
 public:
-  // printSink defaults to writing to stdout, so a host that has not wired up
-  // its own log still sees script output somewhere.
-  explicit ScriptRuntime(PrintSink printSink = defaultPrintSink());
+  // logSink defaults to writing output and errors to the console, so a host
+  // that has not wired up its own log still sees script messages somewhere.
+  explicit ScriptRuntime(ScriptLogSink logSink = defaultLogSink());
   ~ScriptRuntime();
 
   ScriptRuntime(ScriptRuntime const&) = delete;
@@ -195,7 +207,8 @@ public:
   void execute(
       std::string const& name,
       ScriptLibraries libraries,
-      EnvironmentBinder const& bind = {});
+      EnvironmentBinder const& bind = {},
+      std::string const& stepName = {});
 
   // Creates a suspended execution of the named chunk. Unlike execute(), this
   // environment intentionally remains alive across frames. Gameplay clients
@@ -227,7 +240,7 @@ public:
   // state rather than per execution; hosts have no reason to touch it.
   [[nodiscard]] sol::state& getState();
 
-  [[nodiscard]] static PrintSink defaultPrintSink();
+  [[nodiscard]] static ScriptLogSink defaultLogSink();
 };
 
 }  // namespace core

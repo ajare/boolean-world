@@ -247,7 +247,13 @@ APPLICATION_API void dllOnEntry(
   // be able to deserialize.
   bw::core::LayerBuildStep::registerCoreTypes();
   scriptRuntime = make_unique<bw::core::ScriptRuntime>(
-      [logger](string const& message) { logger->info("Lua: " + message); });
+      [logger](bw::core::ScriptLogEvent const& event) {
+        if (event.type == bw::core::ScriptLogEventType::Output) {
+          logger->info("Lua [" + event.scriptName + "]: " + event.message);
+        } else if (event.type == bw::core::ScriptLogEventType::Error) {
+          logger->error("Lua [" + event.scriptName + "]: " + event.message);
+        }
+      });
   bw::core::registerScriptStepTypes(*scriptRuntime);
 
   auto entityHandlerFactory = [](shared_ptr<applib::AnimationDatabase> animDatabase) {

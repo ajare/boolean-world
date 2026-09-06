@@ -675,16 +675,56 @@ void includeReturnsExecutionLocalModuleTables() {
   require(nonTableFailed, "include accepted a chunk that did not return a table");
 }
 
-void printReachesTheHostsSink() {
-  std::vector<std::string> lines;
+void scriptExecutionsOutputAndErrorsReachTheHostsLogSink() {
+  std::vector<bw::core::ScriptLogEvent> events;
   bw::core::ScriptRuntime runtime(
-      [&lines](std::string const& line) { lines.push_back(line); });
+      [&events](bw::core::ScriptLogEvent const& event) {
+        events.push_back(event);
+      });
   runtime.load("greet", R"(print("hello", 1, true))");
 
   runtime.execute("greet", bw::core::ScriptLibraries::Build);
 
-  require(lines.size() == 1 && lines[0] == "hello\t1\ttrue",
-          "print did not reach the host's sink with Lua's own joining");
+  require(events.size() == 2 &&
+              events[0].type ==
+                  bw::core::ScriptLogEventType::ExecutionStarted &&
+              events[0].scriptName == "greet" &&
+              events[1].type == bw::core::ScriptLogEventType::Output &&
+              events[1].scriptName == "greet" &&
+              events[1].message == "hello\t1\ttrue",
+          "a script execution and print did not reach the host's log sink");
+
+  runtime.load("broken", R"(error("broken output"))");
+  try {
+    runtime.execute("broken", bw::core::ScriptLibraries::Build);
+  } catch (bw::core::ScriptException const&) {
+  }
+  require(events.size() == 4 &&
+              events[2].type ==
+                  bw::core::ScriptLogEventType::ExecutionStarted &&
+              events[2].scriptName == "broken" &&
+              events[3].type == bw::core::ScriptLogEventType::Error &&
+              events[3].scriptName == "broken" &&
+              events[3].message.find("broken output") != std::string::npos,
+          "a script failure did not reach the host's log sink as an error");
+
+  events.clear();
+  runtime.load("build-log", R"(print("built"))");
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* step = addScriptStep(layer, runtime, "build-log");
+  step->setName("Scripts");
+  events.clear();
+  layer.rebuild();
+  require(events.size() == 2 && events[0].stepName == "Scripts" &&
+              events[1].stepName == "Scripts",
+          "a Layer build did not identify its named RunScript step in the log");
+
+  step->setName("");
+  events.clear();
+  layer.rebuild();
+  require(events.size() == 2 && events[0].stepName.empty() &&
+              events[1].stepName.empty(),
+          "an unnamed RunScript step did not retain its empty log context");
 }
 
 void theSeedMakesRebuildsReproducibleAndRerollableByChangingIt() {
@@ -1323,7 +1363,11 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
 void reloadingRebuildsExactlyTheLayersThatNameTheScript() {
   std::vector<std::string> printed;
   bw::core::ScriptRuntime runtime(
-      [&printed](std::string const& line) { printed.push_back(line); });
+      [&printed](bw::core::ScriptLogEvent const& event) {
+        if (event.type == bw::core::ScriptLogEventType::Output) {
+          printed.push_back(event.message);
+        }
+      });
 
   auto sourceAt = [](float x, std::string const& message) {
     return "print(\"" + message +
@@ -1543,7 +1587,7 @@ int main() {
     syntaxRuntimeAndBudgetFailuresAreContainedAndHaltTheBuild();
     theBuildEnvironmentDropsFunctionsThatBreakDeterminism();
     includeReturnsExecutionLocalModuleTables();
-    printReachesTheHostsSink();
+    scriptExecutionsOutputAndErrorsReachTheHostsLogSink();
     theSeedMakesRebuildsReproducibleAndRerollableByChangingIt();
     scriptsCreateEditListAndRemoveAudioEmittersOnBothPrimitiveTypes();
     twoRunScriptStepsCannotObserveEachOthersRandomState();

@@ -116,7 +116,7 @@ string firstLine(string_view report) {
 // deliberately absent: they let a script load code or drive the collector,
 // either of which breaks the determinism a build script depends on
 // (docs/adr/0040). print is bound separately, routed to the host's
-// PrintSink rather than handed out from here.
+// ScriptLogSink rather than handed out from here.
 constexpr array baseNames = {
     "_VERSION", "assert", "error", "getmetatable", "ipairs",
     "next", "pairs", "pcall", "rawequal", "rawget",
@@ -148,27 +148,34 @@ void addLibrary(
 }
 
 // Joins arguments the way Lua's own print does - tostring'd and
-// tab-separated - and hands the finished line to sink, rather than writing
-// anywhere itself.
-void bindPrint(sol::state_view lua, sol::environment& environment, PrintSink const& sink) {
-  environment.set_function("print", [lua, sink](sol::variadic_args args) {
-    sol::function tostringFn = lua["tostring"];
-    string line;
-    bool first = true;
-    for (auto arg : args) {
-      if (!first) {
-        line += '\t';
-      }
-      first = false;
-      line += tostringFn(arg).get<string>();
-    }
-    sink(line);
-  });
+// tab-separated - and hands the finished line to the host log.
+void bindPrint(
+    sol::state_view lua, sol::environment& environment,
+    ScriptLogSink const& sink, string const& scriptName,
+    string const& stepName) {
+  environment.set_function(
+      "print", [lua, sink, scriptName, stepName](sol::variadic_args args) {
+        sol::function tostringFn = lua["tostring"];
+        string line;
+        bool first = true;
+        for (auto arg : args) {
+          if (!first) {
+            line += '\t';
+          }
+          first = false;
+          line += tostringFn(arg).get<string>();
+        }
+        if (sink) {
+          sink({ScriptLogEventType::Output, scriptName, move(line), stepName});
+        }
+      });
 }
 
 sol::environment makeEnvironment(
     sol::state_view lua,
-    PrintSink const& printSink,
+    ScriptLogSink const& logSink,
+    string const& scriptName,
+    string const& stepName,
     ScriptLibraries libraries,
     ScriptRuntime::EnvironmentBinder const& bind) {
   sol::environment environment(lua, sol::create);
@@ -177,7 +184,7 @@ sol::environment makeEnvironment(
     for (auto const* baseName : baseNames) {
       environment.set(baseName, lua[baseName]);
     }
-    bindPrint(lua, environment, printSink);
+    bindPrint(lua, environment, logSink, scriptName, stepName);
   }
 
   addLibrary(lua, environment, libraries, ScriptLibraries::Table, "table");
@@ -282,8 +289,8 @@ string const& ScriptException::getTraceback() const {
   return mTraceback;
 }
 
-ScriptRuntime::ScriptRuntime(PrintSink printSink)
-    : mPrintSink(move(printSink)) {
+ScriptRuntime::ScriptRuntime(ScriptLogSink logSink)
+    : mLogSink(move(logSink)) {
   // Opened once on the state so the libraries exist to be handed out; which
   // of them an execution actually sees is decided per execution, in
   // execute(), not here.
@@ -406,44 +413,57 @@ bool ScriptRuntime::isLoaded(string const& name) const {
 }
 
 void ScriptRuntime::execute(
-    string const& name, ScriptLibraries libraries, EnvironmentBinder const& bind) {
-  if (auto failure = mCompileFailures.find(name);
-      failure != mCompileFailures.end()) {
-    throw ScriptException(
-        failure->second.message, failure->second.lineNumber, "");
+    string const& name, ScriptLibraries libraries,
+    EnvironmentBinder const& bind, string const& stepName) {
+  if (mLogSink) {
+    mLogSink({ScriptLogEventType::ExecutionStarted, name, "", stepName});
   }
 
-  auto chunk = mChunks.find(name);
-  if (chunk == mChunks.end()) {
-    throw CoreException(format("No Lua script named '{}' has been loaded", name));
-  }
+  try {
+    if (auto failure = mCompileFailures.find(name);
+        failure != mCompileFailures.end()) {
+      throw ScriptException(
+          failure->second.message, failure->second.lineNumber, "");
+    }
 
-  // Instantiate the cached bytecode so this call owns its function and _ENV.
-  // A fresh table with no globals behind it means nothing survives execution.
-  auto loaded = mLua.load(
-      chunk->second.bytecode, "@" + name, sol::load_mode::binary);
-  if (!loaded.valid()) {
-    throw CoreException(format("Cached Lua script '{}' could not be loaded", name));
-  }
-  sol::protected_function function = loaded;
-  auto environment = makeEnvironment(mLua, mPrintSink, libraries, bind);
-  auto includes = bindIncludes(
-      environment, chunk->second.includedScripts);
-  (void)includes;  // Keeps the execution-local include cache alive.
-  sol::set_environment(environment, function);
+    auto chunk = mChunks.find(name);
+    if (chunk == mChunks.end()) {
+      throw CoreException(format("No Lua script named '{}' has been loaded", name));
+    }
 
-  sol::protected_function_result result;
-  {
-    InstructionBudgetGuard instructionBudget(mLua.lua_state());
-    result = function();
-  }
+    // Instantiate the cached bytecode so this call owns its function and _ENV.
+    // A fresh table with no globals behind it means nothing survives execution.
+    auto loaded = mLua.load(
+        chunk->second.bytecode, "@" + name, sol::load_mode::binary);
+    if (!loaded.valid()) {
+      throw CoreException(format("Cached Lua script '{}' could not be loaded", name));
+    }
+    sol::protected_function function = loaded;
+    auto environment = makeEnvironment(
+        mLua, mLogSink, name, stepName, libraries, bind);
+    auto includes = bindIncludes(
+        environment, chunk->second.includedScripts);
+    (void)includes;  // Keeps the execution-local include cache alive.
+    sol::set_environment(environment, function);
 
-  if (!result.valid()) {
-    sol::error error = result;
-    string const traceback = error.what();
-    throw ScriptException(
-        format("Lua script '{}' failed: {}", name, firstLine(traceback)),
-        findLineNumber(name, traceback), traceback);
+    sol::protected_function_result result;
+    {
+      InstructionBudgetGuard instructionBudget(mLua.lua_state());
+      result = function();
+    }
+
+    if (!result.valid()) {
+      sol::error error = result;
+      string const traceback = error.what();
+      throw ScriptException(
+          format("Lua script '{}' failed: {}", name, firstLine(traceback)),
+          findLineNumber(name, traceback), traceback);
+    }
+  } catch (exception const& error) {
+    if (mLogSink) {
+      mLogSink({ScriptLogEventType::Error, name, error.what(), stepName});
+    }
+    throw;
   }
 }
 
@@ -466,7 +486,7 @@ ScriptCoroutineHandle ScriptRuntime::startCoroutine(
   state->owner = this;
   state->scriptName = name;
   state->environment.emplace(
-      makeEnvironment(mLua, mPrintSink, libraries, bind));
+      makeEnvironment(mLua, mLogSink, name, "", libraries, bind));
   state->includes = bindIncludes(
       *state->environment, chunk->second.includedScripts);
   state->thread.emplace(sol::thread::create(mLua));
@@ -590,8 +610,14 @@ sol::state& ScriptRuntime::getState() {
   return mLua;
 }
 
-PrintSink ScriptRuntime::defaultPrintSink() {
-  return [](string const& line) { cout << line << '\n'; };
+ScriptLogSink ScriptRuntime::defaultLogSink() {
+  return [](ScriptLogEvent const& event) {
+    if (event.type == ScriptLogEventType::ExecutionStarted) {
+      return;
+    }
+    auto& output = event.type == ScriptLogEventType::Error ? cerr : cout;
+    output << '[' << event.scriptName << "] " << event.message << '\n';
+  };
 }
 
 }  // namespace core

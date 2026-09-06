@@ -13,6 +13,7 @@ class ResourceManager;
 namespace bw {
 namespace core {
 class ScriptRuntime;
+struct ScriptLogEvent;
 }  // namespace core
 }  // namespace bw
 
@@ -27,6 +28,16 @@ class Resource;
 }  // namespace wp
 
 namespace editor {
+
+struct EditorScriptLogLine {
+  std::string message;
+  bool error{false};
+};
+
+struct EditorScriptLog {
+  std::string name;
+  std::vector<EditorScriptLogLine> lines;
+};
 
 // Bootstraps mpp::RenderSystem/mpp::ResourceManager and the manifest-driven
 // wp::application::resourcesystem::ResourceManager against an already
@@ -102,12 +113,16 @@ public:
                              std::string const& currentNamespace,
                              std::string* error = nullptr);
 
+  [[nodiscard]] std::vector<EditorScriptLog> const& scriptLogs() const;
+  void clearScriptLog(std::string const& name);
+
 private:
   mpp::Logger* mMppLogger{};
   wp::Logger* mLogger{};
   mpp::RenderSystem* mRenderSystem{};
   mpp::ResourceManager* mRenderResourceMgr{};
   wp::application::resourcesystem::ResourceManager* mResourceMgr{};
+  std::vector<EditorScriptLog> mScriptLogs;
   std::unique_ptr<bw::core::ScriptRuntime> mScriptRuntime;
   std::vector<std::shared_ptr<
       wp::application::resourcesystem::Resource>> mWorldDependencies;

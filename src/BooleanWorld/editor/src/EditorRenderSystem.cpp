@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <filesystem>
+#include <iterator>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -96,7 +97,27 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
   mResourceMgr = new wp::application::resourcesystem::ResourceManager(
       mRenderSystem, mRenderResourceMgr, nullptr /* no audio in the editor */, mLogger);
   mScriptRuntime = make_unique<bw::core::ScriptRuntime>(
-      [this](string const& message) { mLogger->info("Lua: " + message); });
+      [this](bw::core::ScriptLogEvent const& event) {
+        auto const logName =
+            (event.stepName.empty() ? string("<unnamed>") : event.stepName) +
+            "/" + event.scriptName;
+        auto log = find_if(
+            mScriptLogs.begin(), mScriptLogs.end(), [&](auto const& candidate) {
+              return candidate.name == logName;
+            });
+        if (log == mScriptLogs.end()) {
+          mScriptLogs.push_back(EditorScriptLog{logName, {}});
+          log = prev(mScriptLogs.end());
+        }
+
+        if (event.type == bw::core::ScriptLogEventType::Output) {
+          log->lines.push_back({event.message, false});
+          mLogger->info("Lua [" + logName + "]: " + event.message);
+        } else if (event.type == bw::core::ScriptLogEventType::Error) {
+          log->lines.push_back({event.message, true});
+          mLogger->error("Lua [" + logName + "]: " + event.message);
+        }
+      });
 
   mResourceMgr->addResourceLocationFactory(
       "Directory",
@@ -354,6 +375,20 @@ bool EditorRenderSystem::reloadLuaScript(
     }
     if (error) *error = exception.what();
     return false;
+  }
+}
+
+vector<EditorScriptLog> const& EditorRenderSystem::scriptLogs() const {
+  return mScriptLogs;
+}
+
+void EditorRenderSystem::clearScriptLog(string const& name) {
+  auto log = find_if(
+      mScriptLogs.begin(), mScriptLogs.end(), [&](auto const& candidate) {
+        return candidate.name == name;
+      });
+  if (log != mScriptLogs.end()) {
+    log->lines.clear();
   }
 }
 
