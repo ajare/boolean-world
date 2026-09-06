@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string_view>
 
 #include <glm/vec3.hpp>
 #include <mpp/Camera.h>
@@ -17,6 +18,7 @@ using ArrangementWorldDataPtr = std::shared_ptr<ArrangementWorldData const>;
 class AcousticPresetResolver;
 
 namespace bw::app {
+struct AudioSimulationOptions;
 class AcousticScene;
 using AcousticScenePtr = std::shared_ptr<AcousticScene const>;
 
@@ -24,11 +26,20 @@ using AcousticScenePtr = std::shared_ptr<AcousticScene const>;
 // plugin itself remains owned by FMOD's core system.
 class SteamAudio {
 public:
-  explicit SteamAudio(wp::application::AudioSystem& audioSystem);
+  SteamAudio(
+      wp::application::AudioSystem& audioSystem,
+      AudioSimulationOptions const& options);
   ~SteamAudio();
 
   SteamAudio(SteamAudio const&) = delete;
   SteamAudio& operator=(SteamAudio const&) = delete;
+
+  // Changes all quality dimensions atomically for subsequent simulation
+  // ticks. Returns false for an unknown preset or when live changes are
+  // disabled by Game.yaml.
+  [[nodiscard]] bool setQualityPreset(std::string_view name);
+  [[nodiscard]] std::string_view getQualityPreset() const;
+  [[nodiscard]] bool qualityMayBeModifiedLive() const;
 
   void setListener(mpp::Camera const& camera);
 

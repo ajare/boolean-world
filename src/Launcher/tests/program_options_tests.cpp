@@ -360,6 +360,16 @@ void checkedInConfigurationsDeclareAcceptedFiveSecondInterval() {
                 options.worldDataGeneration.startInterval == 5.0f,
             "Checked-in configuration does not declare asynchronous Generation with a five-second interval: " +
                 relative.string());
+    auto const& audio = options.audioSimulation;
+    require(audio.presets.size() == 3 && audio.qualityPreset == "Medium" &&
+                audio.presets[0].rayCount == 2048 &&
+                audio.presets[1].bounceCount == 4 &&
+                audio.presets[2].impulseResponseDuration == 2.0f &&
+                audio.presets[2].ambisonicOrder == 2 &&
+                audio.presets[2].reflectionSourceCap == 8 &&
+                audio.presets[2].simulationUpdateRate == 15.0f,
+            "Checked-in audio quality presets did not parse intact: " +
+                relative.string());
   }
 }
 
@@ -655,6 +665,33 @@ int main() {
     requireAudioOutputRejected("    Output: quadraphonic\n", "an unknown audio output");
     requireAudioOutputRejected("    Output:\n", "an empty audio output");
     requireAudioFieldRejected("    Volume: 5\n", "Volume");
+
+    auto simulation = parseWithAudioOutput(
+        "    QualityPreset: Low\n"
+        "    QualityMayBeModifiedLive: false\n"
+        "    Occlusion: true\n"
+        "    Transmission: false\n"
+        "    Reflections: false\n"
+        "    AirAbsorption: true\n"
+        "    QualityPresets:\n"
+        "      Preset:\n"
+        "        - Name: Low\n"
+        "          RayCount: 1024\n"
+        "          BounceCount: 2\n"
+        "          ImpulseResponseDuration: 0.5\n"
+        "          AmbisonicOrder: 1\n"
+        "          ReflectionSourceCap: 3\n"
+        "          SimulationUpdateRate: 8\n").audioSimulation;
+    require(simulation.presets.size() == 1 && simulation.qualityPreset == "Low" &&
+                !simulation.qualityMayBeModifiedLive &&
+                simulation.presets[0].rayCount == 1024 &&
+                simulation.presets[0].reflectionSourceCap == 3 &&
+                !simulation.features.transmission && !simulation.features.reflections,
+            "Audio simulation options did not parse intact.");
+    requireAudioFieldRejected(
+        "    Occlusion: false\n    Transmission: true\n", "Transmission");
+    requireAudioFieldRejected("    QualityPreset: Missing\n", "QualityPreset");
+    requireAudioFieldRejected("    Occlussion: true\n", "Occlussion");
 
     std::cout << "Program-options schema validation passed\n";
     return 0;

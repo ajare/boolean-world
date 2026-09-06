@@ -20,6 +20,12 @@ string ApplicationDLL::msRecordCpuUpdateTimingsFunctionName =
     "dllRecordCpuUpdateTimings";
 string ApplicationDLL::msSetArgumentFunctionName = "dllSetArgument";
 string ApplicationDLL::msSetInputOptionsFunctionName = "dllSetInputOptions";
+string ApplicationDLL::msResetAudioSimulationOptionsFunctionName =
+    "dllResetAudioSimulationOptions";
+string ApplicationDLL::msAddAudioQualityPresetFunctionName =
+    "dllAddAudioQualityPreset";
+string ApplicationDLL::msSetAudioSimulationOptionsFunctionName =
+    "dllSetAudioSimulationOptions";
 string ApplicationDLL::msSetWorldDataGenerationOptionsFunctionName =
     "dllSetWorldDataGenerationOptions";
 string ApplicationDLL::msSetVideoOptionsFunctionName = "dllSetVideoOptions";
@@ -30,6 +36,9 @@ ApplicationDLL::ApplicationDLL()
       mGetNextStateFactoryFunction(0),
       mSetArgumentFunction(0),
       mSetInputOptionsFunction(0),
+      mResetAudioSimulationOptionsFunction(0),
+      mAddAudioQualityPresetFunction(0),
+      mSetAudioSimulationOptionsFunction(0),
       mSetWorldDataGenerationOptionsFunction(0),
       mSetVideoOptionsFunction(0),
       mOnEntryFunction(0),
@@ -74,6 +83,22 @@ void ApplicationDLL::registerRequiredFunctions() {
   if (!mSetInputOptionsFunction) {
     string errMsg = "Could not find DLL function '" + msSetInputOptionsFunctionName + "' in '" + mFilepath + "'.";
     throw runtime_error(errMsg.c_str());
+  }
+
+  mResetAudioSimulationOptionsFunction =
+      (DllResetAudioSimulationOptionsFunction)GetProcAddress(
+          mGetProcIDDLL, msResetAudioSimulationOptionsFunctionName.c_str());
+  mAddAudioQualityPresetFunction =
+      (DllAddAudioQualityPresetFunction)GetProcAddress(
+          mGetProcIDDLL, msAddAudioQualityPresetFunctionName.c_str());
+  mSetAudioSimulationOptionsFunction =
+      (DllSetAudioSimulationOptionsFunction)GetProcAddress(
+          mGetProcIDDLL, msSetAudioSimulationOptionsFunctionName.c_str());
+  if (!mResetAudioSimulationOptionsFunction ||
+      !mAddAudioQualityPresetFunction ||
+      !mSetAudioSimulationOptionsFunction) {
+    throw runtime_error(
+        "Application is missing required audio simulation configuration exports");
   }
 
   mSetWorldDataGenerationOptionsFunction =
@@ -140,6 +165,29 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
   if (mSetInputOptionsFunction(options.input.mouseSensitivity) != 0) {
     string errMsg = format("Application rejected input options: MouseSensitivity={}", options.input.mouseSensitivity);
     throw runtime_error(errMsg.c_str());
+  }
+
+  // Transfer the data-driven preset catalog before entry. Calls use only
+  // scalar values and strings so no STL layout crosses the DLL boundary.
+  mResetAudioSimulationOptionsFunction();
+  for (auto const& preset : options.audioSimulation.presets) {
+    if (mAddAudioQualityPresetFunction(
+            preset.name.c_str(), preset.rayCount, preset.bounceCount,
+            preset.impulseResponseDuration, preset.ambisonicOrder,
+            preset.reflectionSourceCap, preset.simulationUpdateRate) != 0) {
+      throw runtime_error("Application rejected audio quality preset '" +
+                          preset.name + "'");
+    }
+  }
+  auto const& audioFeatures = options.audioSimulation.features;
+  if (mSetAudioSimulationOptionsFunction(
+          options.audioSimulation.qualityPreset.c_str(),
+          options.audioSimulation.qualityMayBeModifiedLive ? 1 : 0,
+          audioFeatures.occlusion ? 1 : 0,
+          audioFeatures.transmission ? 1 : 0,
+          audioFeatures.reflections ? 1 : 0,
+          audioFeatures.airAbsorption ? 1 : 0) != 0) {
+    throw runtime_error("Application rejected audio simulation options");
   }
 
   // Seed application-run Generation options before entry, and therefore
@@ -210,7 +258,6 @@ void ApplicationDLL::load(ProgramOptions const& options, wp::Logger* logger, wp:
     mEntryStarted = true;
     mOnEntryFunction(logger, resourceMgr);
   }
-
 }
 
 void ApplicationDLL::unload() {

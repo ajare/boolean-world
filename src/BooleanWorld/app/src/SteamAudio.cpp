@@ -24,6 +24,7 @@
 
 #include "AcousticPresetResolver.h"
 #include "AcousticScene.h"
+#include "AudioSimulationOptions.h"
 #include "EmitterSourcePolicy.h"
 #include "PeriodicSnapshotWorker.h"
 #include "PlayerView.h"
@@ -67,15 +68,7 @@ using SourceSetInputsFunction = void(IPLCALL*)(
 using FmodAddSourceFunction = IPLint32(IPLCALL*)(IPLSource);
 using FmodRemoveSourceFunction = void(IPLCALL*)(IPLint32);
 
-// #387's measured candidate is the temporary top preset until #401 makes
-// presets data-driven. These are allocation maxima, not per-tick settings.
-constexpr IPLint32 TopPresetMaxRays = 4096;
-constexpr IPLint32 TopPresetMaxSources = 1;
-constexpr IPLfloat32 TopPresetMaxDuration = 1.0f;
-constexpr IPLint32 TopPresetMaxAmbisonicOrder = 1;
-constexpr IPLint32 TopPresetBounces = 4;
 constexpr IPLfloat32 TopPresetIrradianceMinDistance = 1.0f;
-constexpr auto ReflectionTickInterval = std::chrono::milliseconds(100);
 constexpr float ReflectionHysteresisMargin = 0.1f;
 constexpr float ReflectionFadeDuration = 0.3f;
 constexpr float VanishedEmitterFadeDuration = 0.3f;
@@ -112,13 +105,19 @@ IPLCoordinateSpace3 sourceCoordinates(glm::vec3 const& position) {
 }
 
 IPLSimulationInputs sourceSimulationInputs(
-    IPLCoordinateSpace3 const& coordinates, IPLSimulationFlags flags) {
+    IPLCoordinateSpace3 const& coordinates, IPLSimulationFlags flags,
+    bw::app::AudioFeatureOptions const& features) {
   IPLSimulationInputs inputs{};
   inputs.flags = flags;
-  inputs.directFlags = static_cast<IPLDirectSimulationFlags>(
-      IPL_DIRECTSIMULATIONFLAGS_AIRABSORPTION |
-      IPL_DIRECTSIMULATIONFLAGS_OCCLUSION |
-      IPL_DIRECTSIMULATIONFLAGS_TRANSMISSION);
+  auto directFlags = 0;
+  if (features.airAbsorption) {
+    directFlags |= IPL_DIRECTSIMULATIONFLAGS_AIRABSORPTION;
+  }
+  if (features.occlusion) directFlags |= IPL_DIRECTSIMULATIONFLAGS_OCCLUSION;
+  if (features.transmission) {
+    directFlags |= IPL_DIRECTSIMULATIONFLAGS_TRANSMISSION;
+  }
+  inputs.directFlags = static_cast<IPLDirectSimulationFlags>(directFlags);
   inputs.source = coordinates;
   inputs.airAbsorptionModel.type = IPL_AIRABSORPTIONTYPE_DEFAULT;
   inputs.occlusionType = IPL_OCCLUSIONTYPE_RAYCAST;
@@ -242,6 +241,8 @@ struct SteamAudio::Implementation {
   struct PublishedSimulationState {
     AcousticScenePtr scene;
     uint64_t sceneVersion{};
+    AudioQualityPreset quality;
+    AudioFeatureOptions features;
     std::vector<ReflectionSourceState> sources;
   };
 
@@ -296,6 +297,8 @@ struct SteamAudio::Implementation {
   uint64_t nextSceneVersion{1};
   core::ArrangementWorldDataPtr publishedWorld;
   AcousticScenePtr publishedScene;
+  AudioSimulationOptions options;
+  AudioQualityPreset quality;
   std::vector<core::CapturedAudioEmitter> emitterDefinitions;
   std::vector<ActiveEmitter> activeEmitters;
   std::unique_ptr<PeriodicSnapshotWorker> reflectionWorker;
@@ -306,6 +309,8 @@ struct SteamAudio::Implementation {
     auto state = std::make_shared<PublishedSimulationState>();
     state->scene = publishedScene;
     state->sceneVersion = publishedSceneVersion;
+    state->quality = quality;
+    state->features = options.features;
     state->sources.reserve(activeEmitters.size());
     for (auto const& emitter : activeEmitters) {
       state->sources.push_back(
@@ -359,10 +364,24 @@ struct SteamAudio::Implementation {
   }
 };
 
-SteamAudio::SteamAudio(wp::application::AudioSystem& audioSystem)
+SteamAudio::SteamAudio(
+    wp::application::AudioSystem& audioSystem,
+    AudioSimulationOptions const& options)
     : mImplementation(new Implementation) {
-#if defined(WP_APPLICATION_USE_FMOD)
   auto& implementation = *mImplementation;
+  implementation.options = options;
+  auto selected = implementation.options.findPreset(
+      implementation.options.qualityPreset);
+  if (!selected || implementation.options.presets.empty()) {
+    throw std::invalid_argument("Audio quality preset is not configured");
+  }
+  if (!implementation.options.features.occlusion &&
+      implementation.options.features.transmission) {
+    throw std::invalid_argument(
+        "Audio transmission requires occlusion to be enabled");
+  }
+  implementation.quality = *selected;
+#if defined(WP_APPLICATION_USE_FMOD)
   implementation.audioSystem = &audioSystem;
   implementation.coreSystem = audioSystem.getCoreSystem();
   if (!implementation.coreSystem) {
@@ -494,11 +513,28 @@ SteamAudio::SteamAudio(wp::application::AudioSystem& audioSystem)
   simulationSettings.sceneType = IPL_SCENETYPE_DEFAULT;
   simulationSettings.reflectionType = IPL_REFLECTIONEFFECTTYPE_HYBRID;
   simulationSettings.maxNumOcclusionSamples = 1;
-  simulationSettings.maxNumRays = TopPresetMaxRays;
+  auto maximum = [&options](auto member) {
+    auto value = options.presets.front().*member;
+    for (auto const& preset : options.presets) {
+      value = std::max(value, preset.*member);
+    }
+    return value;
+  };
+  auto const maxRays = maximum(&AudioQualityPreset::rayCount);
+  auto const maxDuration = maximum(
+      &AudioQualityPreset::impulseResponseDuration);
+  auto const maxOrder = maximum(&AudioQualityPreset::ambisonicOrder);
+  auto const maxSources = maximum(&AudioQualityPreset::reflectionSourceCap);
+  if (maxRays > std::uint32_t(std::numeric_limits<IPLint32>::max()) ||
+      maxOrder > std::uint32_t(std::numeric_limits<IPLint32>::max()) ||
+      maxSources > std::uint32_t(std::numeric_limits<IPLint32>::max())) {
+    throw std::overflow_error("Audio quality preset exceeds Steam Audio limits");
+  }
+  simulationSettings.maxNumRays = static_cast<IPLint32>(maxRays);
   simulationSettings.numDiffuseSamples = 1;
-  simulationSettings.maxDuration = TopPresetMaxDuration;
-  simulationSettings.maxOrder = TopPresetMaxAmbisonicOrder;
-  simulationSettings.maxNumSources = TopPresetMaxSources;
+  simulationSettings.maxDuration = maxDuration;
+  simulationSettings.maxOrder = static_cast<IPLint32>(maxOrder);
+  simulationSettings.maxNumSources = static_cast<IPLint32>(maxSources);
   simulationSettings.numThreads = 1;
   simulationSettings.rayBatchSize = 1;
   simulationSettings.samplingRate = sampleRate;
@@ -512,7 +548,9 @@ SteamAudio::SteamAudio(wp::application::AudioSystem& audioSystem)
 
   implementation.reflectionWorker =
       std::make_unique<PeriodicSnapshotWorker>(
-          ReflectionTickInterval,
+          std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+              std::chrono::duration<float>(
+                  1.0f / implementation.quality.simulationUpdateRate)),
           [&implementation](PeriodicSnapshotWorker::SnapshotPtr const& value) {
             auto published = std::static_pointer_cast<
                 Implementation::PublishedSimulationState const>(value);
@@ -539,10 +577,10 @@ SteamAudio::SteamAudio(wp::application::AudioSystem& audioSystem)
 
             IPLSimulationSharedInputs inputs{};
             inputs.listener = listener->coordinates;
-            inputs.numRays = TopPresetMaxRays;
-            inputs.numBounces = TopPresetBounces;
-            inputs.duration = TopPresetMaxDuration;
-            inputs.order = TopPresetMaxAmbisonicOrder;
+            inputs.numRays = static_cast<IPLint32>(published->quality.rayCount);
+            inputs.numBounces = static_cast<IPLint32>(published->quality.bounceCount);
+            inputs.duration = published->quality.impulseResponseDuration;
+            inputs.order = static_cast<IPLint32>(published->quality.ambisonicOrder);
             inputs.irradianceMinDistance = TopPresetIrradianceMinDistance;
 
             std::shared_lock simulation(
@@ -553,14 +591,18 @@ SteamAudio::SteamAudio(wp::application::AudioSystem& audioSystem)
             for (auto const& source : published->sources) {
               auto sourceInputs = sourceSimulationInputs(
                   source.coordinates,
-                  source.selected ? IPL_SIMULATIONFLAGS_REFLECTIONS
-                                  : static_cast<IPLSimulationFlags>(0));
+                  source.selected && published->features.reflections
+                      ? IPL_SIMULATIONFLAGS_REFLECTIONS
+                      : static_cast<IPLSimulationFlags>(0),
+                  published->features);
               implementation.sourceSetInputs(
                   source.source->source, IPL_SIMULATIONFLAGS_REFLECTIONS,
                   &sourceInputs);
             }
-            implementation.simulatorRunReflections(
-                implementation.simulator);
+            if (published->features.reflections) {
+              implementation.simulatorRunReflections(
+                  implementation.simulator);
+            }
           });
 #else
   (void)audioSystem;
@@ -569,6 +611,34 @@ SteamAudio::SteamAudio(wp::application::AudioSystem& audioSystem)
 
 SteamAudio::~SteamAudio() {
   delete mImplementation;
+}
+
+bool SteamAudio::setQualityPreset(std::string_view name) {
+  auto& implementation = *mImplementation;
+  auto preset = implementation.options.findPreset(name);
+  if (!preset) return false;
+  if (!implementation.options.qualityMayBeModifiedLive &&
+      name != implementation.quality.name) {
+    return false;
+  }
+  implementation.quality = *preset;
+  implementation.options.qualityPreset = preset->name;
+  if (implementation.reflectionWorker) {
+    implementation.reflectionWorker->setInterval(
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<float>(
+                1.0f / preset->simulationUpdateRate)));
+    implementation.publishSimulationState();
+  }
+  return true;
+}
+
+std::string_view SteamAudio::getQualityPreset() const {
+  return mImplementation->quality.name;
+}
+
+bool SteamAudio::qualityMayBeModifiedLive() const {
+  return mImplementation->options.qualityMayBeModifiedLive;
 }
 
 AcousticScenePtr SteamAudio::buildScene(
@@ -743,7 +813,11 @@ void SteamAudio::updateEmitters(
              active->selectedForReflections});
   }
   auto decisions = selectEmitterSources(
-      candidates, TopPresetMaxSources, ReflectionHysteresisMargin);
+      candidates,
+      implementation.options.features.reflections
+          ? implementation.quality.reflectionSourceCap
+          : 0,
+      ReflectionHysteresisMargin);
 
   std::vector<std::size_t> removals;
   for (std::size_t i = 0; i < implementation.activeEmitters.size(); ++i) {
@@ -871,7 +945,8 @@ void SteamAudio::updateEmitters(
   for (auto& active : implementation.activeEmitters) {
     auto const coordinates = sourceCoordinates(sourcePosition(active.definition));
     auto directInputs = sourceSimulationInputs(
-        coordinates, IPL_SIMULATIONFLAGS_DIRECT);
+        coordinates, IPL_SIMULATIONFLAGS_DIRECT,
+        implementation.options.features);
     implementation.sourceSetInputs(
         active.source->source, IPL_SIMULATIONFLAGS_DIRECT, &directInputs);
 
@@ -931,8 +1006,9 @@ void SteamAudio::updateEmitters(
       requireFmod(
           active.spatializer->setParameterBool(
               ApplyReflectionsParameter,
-              active.reflectionContribution > 0.0f ||
-                  active.selectedForReflections),
+              implementation.options.features.reflections &&
+                  (active.reflectionContribution > 0.0f ||
+                   active.selectedForReflections)),
           "Unable to update emitter reflections");
       requireFmod(
           active.spatializer->setParameterFloat(

@@ -36,6 +36,13 @@ class ApplicationDLL {
   // struct layout part of the DLL ABI.
   typedef int (*DllSetInputOptionsFunction)(float);
 
+  typedef void (*DllResetAudioSimulationOptionsFunction)();
+  typedef int (*DllAddAudioQualityPresetFunction)(
+      char const*, std::uint32_t, std::uint32_t, float, std::uint32_t,
+      std::uint32_t, float);
+  typedef int (*DllSetAudioSimulationOptionsFunction)(
+      char const*, int, int, int, int, int);
+
   typedef int (*DllCpuUpdateTimingCaptureEnabledFunction)();
 
   typedef void (*DllRecordCpuUpdateTimingsFunction)(
@@ -69,6 +76,10 @@ private:
 
   DllSetInputOptionsFunction mSetInputOptionsFunction;
 
+  DllResetAudioSimulationOptionsFunction mResetAudioSimulationOptionsFunction;
+  DllAddAudioQualityPresetFunction mAddAudioQualityPresetFunction;
+  DllSetAudioSimulationOptionsFunction mSetAudioSimulationOptionsFunction;
+
   DllSetWorldDataGenerationOptionsFunction
       mSetWorldDataGenerationOptionsFunction;
 
@@ -85,6 +96,10 @@ private:
   static std::string msSetArgumentFunctionName;
 
   static std::string msSetInputOptionsFunctionName;
+
+  static std::string msResetAudioSimulationOptionsFunctionName;
+  static std::string msAddAudioQualityPresetFunctionName;
+  static std::string msSetAudioSimulationOptionsFunctionName;
 
   static std::string msSetWorldDataGenerationOptionsFunctionName;
 

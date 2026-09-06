@@ -26,11 +26,12 @@ public:
   PeriodicSnapshotWorker& operator=(PeriodicSnapshotWorker const&) = delete;
 
   void publish(SnapshotPtr snapshot);
+  void setInterval(std::chrono::steady_clock::duration interval);
 
 private:
   void run(std::stop_token stopToken);
 
-  std::chrono::steady_clock::duration mInterval;
+  std::atomic<std::chrono::steady_clock::duration> mInterval;
   Tick mTick;
   std::atomic<SnapshotPtr> mLatestSnapshot;
   std::mutex mWaitMutex;

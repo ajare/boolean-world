@@ -5,6 +5,7 @@
 #include <cmath>
 #include <format>
 #include <memory>
+#include <type_traits>
 
 #include "utils/StringUtils.h"
 #include "utils/YamlReader.h"
@@ -178,6 +179,114 @@ void parseWorldDataGenerationOptions(
   parseBool("AllowCommitIfVisible", options.allowCommitIfVisible);
 }
 
+[[noreturn]] void audioValueError(
+    string const& filename, string const& field, string const& requirement) {
+  throw runtime_error(
+      "Could not load '" + filename +
+      "'.  Value of /Configuration/Audio/" + field + " " + requirement + ".");
+}
+
+bool parseAudioBool(
+    string const& filename, DataNode* parent, char const* field,
+    bool defaultValue) {
+  auto node = parent->getOptionalChild(field);
+  if (!node) return defaultValue;
+  auto value = utils::StringUtils::toLower(node->getValue());
+  if (value != "true" && value != "false") {
+    audioValueError(filename, field, "must be 'true' or 'false'");
+  }
+  return value == "true";
+}
+
+template <class Value>
+Value parsePositiveAudioNumber(
+    string const& filename, DataNode* parent, char const* field,
+    string const& presetName) {
+  auto const& text = parent->getChild(field)->getValue();
+  Value value{};
+  auto [end, error] = from_chars(text.data(), text.data() + text.size(), value);
+  if (error != errc{} || end != text.data() + text.size() ||
+      (is_floating_point_v<Value> && !isfinite(value)) || value <= Value{}) {
+    audioValueError(
+        filename, "QualityPresets/" + presetName + "/" + field,
+        "must be a finite number greater than zero");
+  }
+  return value;
+}
+
+void parseAudioSimulationOptions(
+    string const& filename, DataNode* audio,
+    bw::app::AudioSimulationOptions& options) {
+  if (auto quality = audio->getOptionalChild("QualityPreset")) {
+    options.qualityPreset = quality->getValue();
+    if (options.qualityPreset.empty()) {
+      audioValueError(filename, "QualityPreset", "must name a preset");
+    }
+  }
+  options.qualityMayBeModifiedLive = parseAudioBool(
+      filename, audio, "QualityMayBeModifiedLive",
+      options.qualityMayBeModifiedLive);
+
+  options.features.occlusion = parseAudioBool(
+      filename, audio, "Occlusion", options.features.occlusion);
+  options.features.transmission = parseAudioBool(
+      filename, audio, "Transmission", options.features.transmission);
+  options.features.reflections = parseAudioBool(
+      filename, audio, "Reflections", options.features.reflections);
+  options.features.airAbsorption = parseAudioBool(
+      filename, audio, "AirAbsorption", options.features.airAbsorption);
+  if (!options.features.occlusion && options.features.transmission) {
+    audioValueError(
+        filename, "Transmission",
+        "cannot be enabled while Occlusion is disabled");
+  }
+
+  if (auto presets = audio->getOptionalChild("QualityPresets")) {
+    presets->requireOnlyChildren({"Preset"});
+    options.presets.clear();
+    auto preset = presets->getOptionalChild("Preset");
+    while (preset) {
+      preset->requireOnlyChildren(
+          {"Name", "RayCount", "BounceCount", "ImpulseResponseDuration",
+           "AmbisonicOrder", "ReflectionSourceCap", "SimulationUpdateRate"});
+      bw::app::AudioQualityPreset value;
+      value.name = preset->getChild("Name")->getValue();
+      if (value.name.empty()) {
+        audioValueError(filename, "QualityPresets/Name", "must not be empty");
+      }
+      if (ranges::any_of(options.presets, [&](auto const& existing) {
+            return existing.name == value.name;
+          })) {
+        audioValueError(
+            filename, "QualityPresets/" + value.name,
+            "must have a unique name");
+      }
+      value.rayCount = parsePositiveAudioNumber<uint32_t>(
+          filename, preset, "RayCount", value.name);
+      value.bounceCount = parsePositiveAudioNumber<uint32_t>(
+          filename, preset, "BounceCount", value.name);
+      value.impulseResponseDuration = parsePositiveAudioNumber<float>(
+          filename, preset, "ImpulseResponseDuration", value.name);
+      value.ambisonicOrder = parsePositiveAudioNumber<uint32_t>(
+          filename, preset, "AmbisonicOrder", value.name);
+      value.reflectionSourceCap = parsePositiveAudioNumber<uint32_t>(
+          filename, preset, "ReflectionSourceCap", value.name);
+      value.simulationUpdateRate = parsePositiveAudioNumber<float>(
+          filename, preset, "SimulationUpdateRate", value.name);
+      options.presets.push_back(move(value));
+      if (!preset->next()) break;
+    }
+    if (options.presets.empty()) {
+      audioValueError(filename, "QualityPresets", "must contain a Preset");
+    }
+  }
+  if (!options.findPreset(options.qualityPreset)) {
+    audioValueError(
+        filename, "QualityPreset",
+        "must name one of the configured QualityPresets");
+  }
+}
+
 void parseShadowOptions(
     string const& filename, DataNode* shadows,
     bw::app::ShadowOptions& options) {
@@ -261,7 +370,10 @@ ProgramOptions parseProgramOptions(string const& filename) {
   gameNode->requireOnlyChildren(
       {"DLL", "ResourceLocations", "Debug", "Arguments",
        "WorldDataGeneration"});
-  audioNode->requireOnlyChildren({"Enabled", "Channels", "Sync", "Output"});
+  audioNode->requireOnlyChildren(
+      {"Enabled", "Channels", "Sync", "Output", "QualityPreset",
+       "QualityMayBeModifiedLive", "Occlusion", "Transmission",
+       "Reflections", "AirAbsorption", "QualityPresets"});
 
   pOpts.screenWidth = utils::StringUtils::parseInt(videoNode->getChild("Width")->getValue());
   pOpts.screenHeight = utils::StringUtils::parseInt(videoNode->getChild("Height")->getValue());
@@ -389,6 +501,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
     pOpts.audioOutput = *output;
   }
   pOpts.audio.speakerMode = bw::app::audioOutputSpeakerMode(pOpts.audioOutput);
+  parseAudioSimulationOptions(filename, audioNode, pOpts.audioSimulation);
 
   // Get input options. The whole section is optional; the defaults in
   // ProgramOptions::Input stand in for anything left out.

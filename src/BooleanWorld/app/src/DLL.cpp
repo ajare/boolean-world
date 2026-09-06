@@ -1,5 +1,8 @@
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include <willpower/common/Logger.h>
 
@@ -19,6 +22,7 @@
 #include <applib/ProtoEntityDefaultDefinitionFactory.h>
 #include <applib/ImageSetTiledDefinitionFactory.h>
 
+#include "AudioSimulationOptions.h"
 #include "CpuUpdateProfiler.h"
 #include "DLLState.h"
 #include "InputOptions.h"
@@ -71,6 +75,15 @@ static bool gThreadedLoading = true;
 // entity handler can be built with it.
 static bw::app::InputOptions gInputOptions;
 
+// Steam Audio configuration is transferred as scalars across the DLL boundary
+// before entry, then remains available to each play-state instance.
+static bw::app::AudioSimulationOptions gAudioSimulationOptions;
+
+bw::app::AudioSimulationOptions const&
+bw::app::configuredAudioSimulationOptions() {
+  return gAudioSimulationOptions;
+}
+
 // Video configuration is validated before entry and seeds the model, whose
 // active scale then survives every map-owned renderer.
 static bw::app::VideoOptions gVideoOptions;
@@ -90,6 +103,51 @@ APPLICATION_API int dllSetArgument(char const* arg, char const* value) {
 
 APPLICATION_API int dllSetInputOptions(float mouseSensitivity) {
   return dllState.setInputOptions(mouseSensitivity, gInputOptions);
+}
+
+APPLICATION_API void dllResetAudioSimulationOptions() {
+  gAudioSimulationOptions.presets.clear();
+}
+
+APPLICATION_API int dllAddAudioQualityPreset(
+    char const* name, std::uint32_t rayCount, std::uint32_t bounceCount,
+    float impulseResponseDuration, std::uint32_t ambisonicOrder,
+    std::uint32_t reflectionSourceCap, float simulationUpdateRate) {
+  if (!name || !*name || rayCount == 0 || bounceCount == 0 ||
+      !std::isfinite(impulseResponseDuration) ||
+      impulseResponseDuration <= 0.0f || ambisonicOrder == 0 ||
+      reflectionSourceCap == 0 || !std::isfinite(simulationUpdateRate) ||
+      simulationUpdateRate <= 0.0f ||
+      std::ranges::any_of(gAudioSimulationOptions.presets,
+                          [name](auto const& preset) {
+                            return preset.name == name;
+                          })) {
+    return 1;
+  }
+  gAudioSimulationOptions.presets.push_back(
+      {name, rayCount, bounceCount, impulseResponseDuration, ambisonicOrder,
+       reflectionSourceCap, simulationUpdateRate});
+  return 0;
+}
+
+APPLICATION_API int dllSetAudioSimulationOptions(
+    char const* qualityPreset, int qualityMayBeModifiedLive,
+    int occlusion, int transmission, int reflections, int airAbsorption) {
+  auto booleanCode = [](int value) { return value == 0 || value == 1; };
+  if (!qualityPreset || !booleanCode(qualityMayBeModifiedLive) ||
+      !booleanCode(occlusion) || !booleanCode(transmission) ||
+      !booleanCode(reflections) || !booleanCode(airAbsorption) ||
+      (!occlusion && transmission)) {
+    return 1;
+  }
+  gAudioSimulationOptions.qualityPreset = qualityPreset;
+  if (!gAudioSimulationOptions.findPreset(qualityPreset)) return 1;
+  gAudioSimulationOptions.qualityMayBeModifiedLive =
+      qualityMayBeModifiedLive != 0;
+  gAudioSimulationOptions.features = {
+      occlusion != 0, transmission != 0, reflections != 0,
+      airAbsorption != 0};
+  return 0;
 }
 
 APPLICATION_API int dllCpuUpdateTimingCaptureEnabled() {

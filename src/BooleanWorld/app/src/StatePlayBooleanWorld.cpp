@@ -48,6 +48,7 @@
 #include "StatePlayBooleanWorld.h"
 
 #include "AcousticPresetResolver.h"
+#include "AudioSimulationOptions.h"
 #include "CpuUpdateProfiler.h"
 #include "PlayerLiquidTraversal.h"
 #include "PlayerVerticalPhysics.h"
@@ -1042,7 +1043,8 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
 
   createCamera();
   if (mwAudioSystem) {
-    mSteamAudio = std::make_unique<bw::app::SteamAudio>(*mwAudioSystem);
+    mSteamAudio = std::make_unique<bw::app::SteamAudio>(
+        *mwAudioSystem, bw::app::configuredAudioSimulationOptions());
   }
   createRenderers(renderResourceMgr, transitionData);
 

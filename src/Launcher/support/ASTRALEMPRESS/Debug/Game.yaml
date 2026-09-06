@@ -30,6 +30,35 @@ Configuration:
     Channels: 1024
     Sync: false
     Output: Speakers
+    QualityPreset: Medium
+    QualityMayBeModifiedLive: true
+    Occlusion: true
+    Transmission: true
+    Reflections: true
+    AirAbsorption: true
+    QualityPresets:
+      Preset:
+        - Name: Low
+          RayCount: 2048
+          BounceCount: 2
+          ImpulseResponseDuration: 0.5
+          AmbisonicOrder: 1
+          ReflectionSourceCap: 2
+          SimulationUpdateRate: 5
+        - Name: Medium
+          RayCount: 4096
+          BounceCount: 4
+          ImpulseResponseDuration: 1.0
+          AmbisonicOrder: 1
+          ReflectionSourceCap: 4
+          SimulationUpdateRate: 10
+        - Name: High
+          RayCount: 8192
+          BounceCount: 8
+          ImpulseResponseDuration: 2.0
+          AmbisonicOrder: 2
+          ReflectionSourceCap: 8
+          SimulationUpdateRate: 15
   Input:
     MouseSensitivity: 0.3
   Game:

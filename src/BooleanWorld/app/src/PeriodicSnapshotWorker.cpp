@@ -8,7 +8,7 @@ namespace bw::app {
 PeriodicSnapshotWorker::PeriodicSnapshotWorker(
     std::chrono::steady_clock::duration interval, Tick tick)
     : mInterval(interval), mTick(std::move(tick)), mLatestSnapshot() {
-  if (mInterval <= std::chrono::steady_clock::duration::zero()) {
+  if (interval <= std::chrono::steady_clock::duration::zero()) {
     throw std::invalid_argument("Snapshot worker interval must be positive");
   }
   if (!mTick) {
@@ -31,6 +31,15 @@ void PeriodicSnapshotWorker::publish(SnapshotPtr snapshot) {
   mLatestSnapshot.store(std::move(snapshot), std::memory_order_release);
 }
 
+void PeriodicSnapshotWorker::setInterval(
+    std::chrono::steady_clock::duration interval) {
+  if (interval <= std::chrono::steady_clock::duration::zero()) {
+    throw std::invalid_argument("Snapshot worker interval must be positive");
+  }
+  mInterval.store(interval, std::memory_order_release);
+  mWake.notify_all();
+}
+
 void PeriodicSnapshotWorker::run(std::stop_token stopToken) {
   while (!stopToken.stop_requested()) {
     auto const tickStarted = std::chrono::steady_clock::now();
@@ -44,8 +53,9 @@ void PeriodicSnapshotWorker::run(std::stop_token stopToken) {
     }
 
     std::unique_lock lock(mWaitMutex);
-    mWake.wait_until(lock, tickStarted + mInterval,
-                     [&] { return stopToken.stop_requested(); });
+    mWake.wait_until(
+        lock, tickStarted + mInterval.load(std::memory_order_acquire),
+        [&] { return stopToken.stop_requested(); });
   }
 }
 
