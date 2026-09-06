@@ -179,8 +179,9 @@ if /i "%MULTI_CONFIG%"=="false" (
     )
 ) else (
     rem BooleanWorld's Visual Studio solution contains all configurations, so
-    rem its configure step validates both dependency configurations regardless
-    rem of which configuration this invocation will ultimately build.
+    rem its configure step validates every underlying dependency configuration
+    rem regardless of which configuration this invocation will ultimately build.
+    rem MemCheck reuses Debug, while Shipping has dedicated dependency binaries.
     rem Willpower must build first to configure MassivePolyPusher's build tree.
     echo Building Willpower Debug...
     cmake --build "%WILLPOWER_DIR%\build" --config Debug --parallel
@@ -204,6 +205,18 @@ if /i "%MULTI_CONFIG%"=="false" (
     cmake --build "%WILLPOWER_DIR%\build\_deps\massive-poly-pusher-build" --config Release --parallel --target MppAppSupport
     if errorlevel 1 (
         set "ERROR_MESSAGE=MassivePolyPusher Release support build failed"
+        goto fatal
+    )
+    echo Building Willpower Shipping...
+    cmake --build "%WILLPOWER_DIR%\build" --config Shipping --parallel
+    if errorlevel 1 (
+        set "ERROR_MESSAGE=Willpower Shipping build failed"
+        goto fatal
+    )
+    echo Building MassivePolyPusher support Shipping...
+    cmake --build "%WILLPOWER_DIR%\build\_deps\massive-poly-pusher-build" --config Shipping --parallel --target MppAppSupport
+    if errorlevel 1 (
+        set "ERROR_MESSAGE=MassivePolyPusher Shipping support build failed"
         goto fatal
     )
 )
