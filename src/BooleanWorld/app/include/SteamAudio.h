@@ -1,10 +1,16 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include <glm/vec3.hpp>
 #include <mpp/Camera.h>
+
+#include "AudioSimulationOptions.h"
+#include "EmitterSourcePolicy.h"
 
 namespace wp::application {
 class AudioSystem;
@@ -18,9 +24,24 @@ using ArrangementWorldDataPtr = std::shared_ptr<ArrangementWorldData const>;
 class AcousticPresetResolver;
 
 namespace bw::app {
-struct AudioSimulationOptions;
 class AcousticScene;
 using AcousticScenePtr = std::shared_ptr<AcousticScene const>;
+
+struct AudioEmitterSimulationDiagnostics {
+  EmitterSourceIdentity identity;
+  std::string soundId;
+  float normalizedRankingScore{};
+  bool selectedForReflections{};
+};
+
+struct AudioSimulationDiagnostics {
+  std::size_t capturedEmitterCount{};
+  std::size_t inCullRangeEmitterCount{};
+  std::size_t reflectionEmitterCount{};
+  std::vector<AudioEmitterSimulationDiagnostics> rankedEmitters;
+  double reflectionThreadCostMilliseconds{};
+  double reflectionUpdateRateHz{};
+};
 
 // Owns the process-wide Steam Audio objects required by the FMOD plugin. The
 // plugin itself remains owned by FMOD's core system.
@@ -40,6 +61,15 @@ public:
   [[nodiscard]] bool setQualityPreset(std::string_view name);
   [[nodiscard]] std::string_view getQualityPreset() const;
   [[nodiscard]] bool qualityMayBeModifiedLive() const;
+  [[nodiscard]] std::vector<AudioQualityPreset> const& getQualityPresets() const;
+  [[nodiscard]] AudioQualityPreset const& getQualitySettings() const;
+
+  [[nodiscard]] AudioFeatureOptions getFeatures() const;
+  // Changes the simulator inputs without rebuilding its DSP graph. The
+  // transmission-without-occlusion combination is rejected.
+  [[nodiscard]] bool setFeatures(AudioFeatureOptions features);
+
+  [[nodiscard]] AudioSimulationDiagnostics getDiagnostics() const;
 
   void setListener(mpp::Camera const& camera);
 

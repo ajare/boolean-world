@@ -61,6 +61,7 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     bool collisionSim{false};
     bool clipGeneration{false};
     bool options{false};
+    bool audio{false};
     bool wireframe{false};
     bool depthPrepass{true};
     bool sortGeometryFrontToBack{false};
@@ -99,7 +100,7 @@ class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
     bool _renderTriangulationLines{false};
 
     bool active() const {
-      return minimap || collisionSim || clipGeneration || options;
+      return minimap || collisionSim || clipGeneration || options || audio;
     }
   };
 
@@ -357,6 +358,8 @@ private:
   void debug_renderClipGenerationInfo(ImDrawList* drawList);
 
   void debug_renderOptions();
+
+  void debug_renderAudio();
 
   void ImGui_renderArrangement(bw::core::ArrangementWorldData const& worldData, wp::BoundingBox const& viewBounds, wp::Vector2 const& viewOffset, wp::Vector2 const& viewSize, wp::Vector2 const& viewScale, ImDrawList* drawList);
 

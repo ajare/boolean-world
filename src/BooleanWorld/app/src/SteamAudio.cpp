@@ -301,6 +301,10 @@ struct SteamAudio::Implementation {
   AudioQualityPreset quality;
   std::vector<core::CapturedAudioEmitter> emitterDefinitions;
   std::vector<ActiveEmitter> activeEmitters;
+  AudioSimulationDiagnostics diagnostics;
+  std::atomic<std::int64_t> previousReflectionTickStartedNs{};
+  std::atomic<std::uint64_t> reflectionThreadCostNs{};
+  std::atomic<double> reflectionUpdateRateHz{};
   std::unique_ptr<PeriodicSnapshotWorker> reflectionWorker;
 
   void publishSimulationState() {
@@ -561,6 +565,20 @@ SteamAudio::SteamAudio(
               return;
             }
 
+            auto const tickStarted = std::chrono::steady_clock::now();
+            auto const tickStartedNs = std::chrono::duration_cast<
+                                           std::chrono::nanoseconds>(tickStarted.time_since_epoch())
+                                           .count();
+            auto const previousStartedNs =
+                implementation.previousReflectionTickStartedNs.exchange(
+                    tickStartedNs, std::memory_order_relaxed);
+            if (previousStartedNs > 0 && tickStartedNs > previousStartedNs) {
+              implementation.reflectionUpdateRateHz.store(
+                  1'000'000'000.0 /
+                      static_cast<double>(tickStartedNs - previousStartedNs),
+                  std::memory_order_relaxed);
+            }
+
             if (published->sceneVersion !=
                 implementation.simulationSceneVersion) {
               std::unique_lock transition(
@@ -603,6 +621,12 @@ SteamAudio::SteamAudio(
               implementation.simulatorRunReflections(
                   implementation.simulator);
             }
+            implementation.reflectionThreadCostNs.store(
+                static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - tickStarted)
+                        .count()),
+                std::memory_order_relaxed);
           });
 #else
   (void)audioSystem;
@@ -639,6 +663,36 @@ std::string_view SteamAudio::getQualityPreset() const {
 
 bool SteamAudio::qualityMayBeModifiedLive() const {
   return mImplementation->options.qualityMayBeModifiedLive;
+}
+
+std::vector<AudioQualityPreset> const& SteamAudio::getQualityPresets() const {
+  return mImplementation->options.presets;
+}
+
+AudioQualityPreset const& SteamAudio::getQualitySettings() const {
+  return mImplementation->quality;
+}
+
+AudioFeatureOptions SteamAudio::getFeatures() const {
+  return mImplementation->options.features;
+}
+
+bool SteamAudio::setFeatures(AudioFeatureOptions features) {
+  if (!features.occlusion && features.transmission) return false;
+  mImplementation->options.features = features;
+  mImplementation->publishSimulationState();
+  return true;
+}
+
+AudioSimulationDiagnostics SteamAudio::getDiagnostics() const {
+  auto result = mImplementation->diagnostics;
+  result.reflectionThreadCostMilliseconds =
+      static_cast<double>(mImplementation->reflectionThreadCostNs.load(
+          std::memory_order_relaxed)) /
+      1'000'000.0;
+  result.reflectionUpdateRateHz =
+      mImplementation->reflectionUpdateRateHz.load(std::memory_order_relaxed);
+  return result;
 }
 
 AcousticScenePtr SteamAudio::buildScene(
@@ -746,9 +800,10 @@ void SteamAudio::syncEmitters(core::ArrangementWorldDataPtr sourceWorld) {
   if (!sourceWorld) {
     throw std::invalid_argument("Emitter sync requires a World snapshot");
   }
-#if defined(WP_APPLICATION_USE_FMOD)
   auto& implementation = *mImplementation;
   auto const& next = sourceWorld->getCapturedAudioEmitters();
+  implementation.diagnostics.capturedEmitterCount = next.size();
+#if defined(WP_APPLICATION_USE_FMOD)
   std::vector<EmitterSourceIdentity> previousIdentities;
   std::vector<EmitterSourceIdentity> nextIdentities;
   previousIdentities.reserve(implementation.activeEmitters.size());
@@ -776,7 +831,7 @@ void SteamAudio::syncEmitters(core::ArrangementWorldDataPtr sourceWorld) {
   implementation.emitterDefinitions.assign(next.begin(), next.end());
   implementation.publishSimulationState();
 #else
-  (void)sourceWorld;
+  implementation.emitterDefinitions.assign(next.begin(), next.end());
 #endif
 }
 
@@ -818,6 +873,27 @@ void SteamAudio::updateEmitters(
           ? implementation.quality.reflectionSourceCap
           : 0,
       ReflectionHysteresisMargin);
+
+  implementation.diagnostics.inCullRangeEmitterCount = 0;
+  implementation.diagnostics.reflectionEmitterCount = 0;
+  implementation.diagnostics.rankedEmitters.clear();
+  implementation.diagnostics.rankedEmitters.reserve(decisions.size());
+  for (std::size_t i = 0; i < decisions.size(); ++i) {
+    auto const& decision = decisions[i];
+    if (!decision.inRange) continue;
+    ++implementation.diagnostics.inCullRangeEmitterCount;
+    if (decision.selectedForReflections) {
+      ++implementation.diagnostics.reflectionEmitterCount;
+    }
+    auto const& emitter = implementation.emitterDefinitions[i];
+    implementation.diagnostics.rankedEmitters.push_back(
+        {emitterIdentity(emitter), emitter.soundId,
+         decision.normalizedDistance,
+         decision.selectedForReflections});
+  }
+  std::ranges::stable_sort(
+      implementation.diagnostics.rankedEmitters,
+      {}, &AudioEmitterSimulationDiagnostics::normalizedRankingScore);
 
   std::vector<std::size_t> removals;
   for (std::size_t i = 0; i < implementation.activeEmitters.size(); ++i) {

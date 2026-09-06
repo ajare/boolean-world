@@ -528,6 +528,13 @@ void StatePlayBooleanWorld::registerInput() {
   registerInputState("Debug.CollisionSim", {Key::F3}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("Debug.ClipGen", {Key::F4}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("Debug.Options", {Key::F5}, {}, {}, {}, {}, {}, false, false, 0, false);
+  // Shipping configurations that prohibit live audio changes do not expose
+  // the view at all: F7 remains entirely unbound rather than opening a
+  // read-only version of the developer panel.
+  if (bw::app::configuredAudioSimulationOptions()
+          .qualityMayBeModifiedLive) {
+    registerInputState("Debug.Audio", {Key::F7}, {}, {}, {}, {}, {}, false, false, 0, false);
+  }
   registerInputState("ToggleAllLayers", {Key::F9}, {}, {}, {}, {}, {}, false, false, 0, true);
   registerInputState("RenderGraphCapture", {Key::F10}, {}, {}, {}, {}, {}, false, false, 0, false);
   registerInputState("Screenshot", {Key::F11}, {}, {}, {}, {}, {}, false, false, 0, false);
@@ -1255,6 +1262,10 @@ void StatePlayBooleanWorld::updateActions(vector<string> const& activeStates, fl
       mDebugDisplay.clipGeneration = !mDebugDisplay.clipGeneration;
     } else if (state == "Debug.Options") {
       mDebugDisplay.options = !mDebugDisplay.options;
+    } else if (state == "Debug.Audio" &&
+               bw::app::configuredAudioSimulationOptions()
+                   .qualityMayBeModifiedLive) {
+      mDebugDisplay.audio = !mDebugDisplay.audio;
     } else if (state == "ToggleAllLayers") {
       mAllLayers = !mAllLayers;
       getMap()->getWorld()->getWorldDataGenerator()->setLayerSelection(
@@ -1830,7 +1841,8 @@ bool StatePlayBooleanWorld::_imGuiCapturesInput() const {
   // The input panel is dragged with the mouse, so it needs the cursor - which
   // means view control stops while it is up, and the mouse can be let go of
   // over the slider without turning the player.
-  return mDebugDisplay.clipGeneration || mDebugDisplay.options;
+  return mDebugDisplay.clipGeneration || mDebugDisplay.options ||
+         mDebugDisplay.audio;
 }
 
 ImVec2 StatePlayBooleanWorld::wpVecToImVec2(wp::Vector2 const& v, wp::Vector2 const& offset, wp::Vector2 const& size, wp::Vector2 const& scale) {
@@ -2462,6 +2474,130 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
   ImGui::End();
 }
 
+void StatePlayBooleanWorld::debug_renderAudio() {
+  if (!mDebugDisplay.audio) return;
+
+  if (ImGui::Begin("Audio diagnostics")) {
+    if (!mSteamAudio) {
+      ImGui::TextDisabled("Spatial audio is unavailable.");
+    } else {
+      auto activePreset = std::string(mSteamAudio->getQualityPreset());
+      if (ImGui::BeginCombo("Quality preset", activePreset.c_str())) {
+        for (auto const& preset : mSteamAudio->getQualityPresets()) {
+          auto const selected = preset.name == activePreset;
+          if (ImGui::Selectable(preset.name.c_str(), selected)) {
+            (void)mSteamAudio->setQualityPreset(preset.name);
+          }
+          if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+      }
+
+      auto const& quality = mSteamAudio->getQualitySettings();
+      if (ImGui::BeginTable("AudioQualitySettings", 2)) {
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted("Rays");
+        ImGui::TableNextColumn();
+        ImGui::Text("%u", quality.rayCount);
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted("Bounces");
+        ImGui::TableNextColumn();
+        ImGui::Text("%u", quality.bounceCount);
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted("Impulse response");
+        ImGui::TableNextColumn();
+        ImGui::Text("%.3f s", quality.impulseResponseDuration);
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted("Ambisonic order");
+        ImGui::TableNextColumn();
+        ImGui::Text("%u", quality.ambisonicOrder);
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted("Reflection source cap");
+        ImGui::TableNextColumn();
+        ImGui::Text("%u", quality.reflectionSourceCap);
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted("Target update rate");
+        ImGui::TableNextColumn();
+        ImGui::Text("%.2f Hz", quality.simulationUpdateRate);
+        ImGui::EndTable();
+      }
+
+      ImGui::Separator();
+      ImGui::TextUnformatted("Features");
+      auto features = mSteamAudio->getFeatures();
+      auto featuresChanged = false;
+      if (ImGui::Checkbox("Occlusion", &features.occlusion)) {
+        if (!features.occlusion) features.transmission = false;
+        featuresChanged = true;
+      }
+      if (ImGui::Checkbox("Transmission", &features.transmission)) {
+        if (features.transmission) features.occlusion = true;
+        featuresChanged = true;
+      }
+      featuresChanged |= ImGui::Checkbox("Reflections", &features.reflections);
+      featuresChanged |= ImGui::Checkbox("Air absorption", &features.airAbsorption);
+      if (featuresChanged) (void)mSteamAudio->setFeatures(features);
+
+      auto const diagnostics = mSteamAudio->getDiagnostics();
+      ImGui::Separator();
+      ImGui::TextUnformatted("Emitters");
+      ImGui::Text("Captured: %zu", diagnostics.capturedEmitterCount);
+      ImGui::Text("In cull range: %zu", diagnostics.inCullRangeEmitterCount);
+      ImGui::Text(
+          "Simulated for reflections: %zu / %u",
+          diagnostics.reflectionEmitterCount, quality.reflectionSourceCap);
+
+      if (ImGui::BeginTable(
+              "AudioEmitterRanking", 3,
+              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Emitter");
+        ImGui::TableSetupColumn("Score");
+        ImGui::TableSetupColumn("Reflections");
+        ImGui::TableHeadersRow();
+        for (auto const& emitter : diagnostics.rankedEmitters) {
+          ImGui::TableNextRow();
+          ImGui::TableNextColumn();
+          ImGui::TextUnformatted(emitter.identity.guid.c_str());
+          if (!emitter.soundId.empty()) {
+            ImGui::TextDisabled("%s", emitter.soundId.c_str());
+          }
+          if (emitter.identity.placement) {
+            auto const& placement = *emitter.identity.placement;
+            ImGui::TextDisabled(
+                "Tile (%d, %d), %u", placement.tileX,
+                placement.tileY, placement.gridSize);
+          }
+          ImGui::TableNextColumn();
+          ImGui::Text("%.3f", emitter.normalizedRankingScore);
+          ImGui::TableNextColumn();
+          ImGui::TextUnformatted(
+              emitter.selectedForReflections ? "yes" : "no");
+        }
+        ImGui::EndTable();
+      }
+      ImGui::TextDisabled(
+          "Score is distance divided by cull radius; lower ranks first.");
+
+      ImGui::Separator();
+      ImGui::TextUnformatted("Reflection worker");
+      ImGui::Text(
+          "Last thread cost: %.3f ms",
+          diagnostics.reflectionThreadCostMilliseconds);
+      ImGui::Text(
+          "Measured update rate: %.2f Hz",
+          diagnostics.reflectionUpdateRateHz);
+      ImGui::TextDisabled("F7 changes are session-only.");
+    }
+  }
+  ImGui::End();
+}
+
 void StatePlayBooleanWorld::debug_renderOptions() {
   if (!mDebugDisplay.options) {
     return;
@@ -2923,4 +3059,5 @@ void StatePlayBooleanWorld::_renderImGui(float frameTime, void* imGuiCtx, void* 
   debug_renderCollisionSim(viewSize, viewOffset, viewScale, drawList);
   debug_renderClipGenerationInfo(drawList);
   debug_renderOptions();
+  debug_renderAudio();
 }
