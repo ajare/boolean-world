@@ -1,7 +1,10 @@
 local utilities = include("World/UtilityFunctions")
 
 local GRID_SIZE = 256
-local CONNECTOR_KEY = "flush-connector"
+local FLUSH_CONNECTOR_KEY = "flush-connector"
+local STOPE_CONNECTOR_KEY = "stope-connector"
+local STOPE_MAX_DISTANCE = 128
+local CONNECTOR_KEYS = {FLUSH_CONNECTOR_KEY, STOPE_CONNECTOR_KEY}
 local DIRECTIONS = {"north", "east", "south", "west"}
 local DIRECTION_SET = {north = true, east = true, south = true, west = true}
 local OPPOSITE = {
@@ -35,23 +38,34 @@ local function rotate_point(x, y, angle)
     end
 end
 
+local function make_directional_connectors()
+    return {north = {}, east = {}, south = {}, west = {}}
+end
+
 local function make_option(prefab, angle, id)
-    local connectors = {north = {}, east = {}, south = {}, west = {}}
+    local connectors = {
+        [FLUSH_CONNECTOR_KEY] = make_directional_connectors(),
+        [STOPE_CONNECTOR_KEY] = make_directional_connectors()
+    }
 
     for _, edge in ipairs(prefab:get_metadata_edges()) do
         local metadata = edge:get_metadata()
-        local direction = metadata[CONNECTOR_KEY]
-        if DIRECTION_SET[direction] then
-            local x1, y1, x2, y2 = edge:get_endpoints()
-            x1, y1 = rotate_point(x1, y1, angle)
-            x2, y2 = rotate_point(x2, y2, angle)
-            direction = ROTATED_DIRECTION[angle][direction]
-            connectors[direction][#connectors[direction] + 1] = {
-                x1 = x1,
-                y1 = y1,
-                x2 = x2,
-                y2 = y2
-            }
+        for _, connector_key in ipairs(CONNECTOR_KEYS) do
+            local direction = metadata[connector_key]
+            if DIRECTION_SET[direction] then
+                local x1, y1, x2, y2 = edge:get_endpoints()
+                x1, y1 = rotate_point(x1, y1, angle)
+                x2, y2 = rotate_point(x2, y2, angle)
+                direction = ROTATED_DIRECTION[angle][direction]
+                local directional_connectors = connectors[connector_key]
+                directional_connectors[direction][
+                    #directional_connectors[direction] + 1] = {
+                    x1 = x1,
+                    y1 = y1,
+                    x2 = x2,
+                    y2 = y2
+                }
+            end
         end
     end
 
@@ -109,6 +123,73 @@ local function connector_sets_match(first, first_x, first_y, second,
     end
 
     return true
+end
+
+local function stope_matching_cells(candidate, existing, existing_x,
+                                    existing_y, direction)
+    local ex1, ey1, ex2, ey2 = world_segment(existing, existing_x,
+                                              existing_y)
+    local parallel_first, parallel_second, candidate_parallel_first,
+          candidate_parallel_second, existing_perpendicular,
+          candidate_perpendicular
+
+    if direction == "north" or direction == "south" then
+        parallel_first, parallel_second = ex1, ex2
+        candidate_parallel_first, candidate_parallel_second = candidate.x1,
+                                                                    candidate.x2
+        existing_perpendicular = (ey1 + ey2) / 2
+        candidate_perpendicular = (candidate.y1 + candidate.y2) / 2
+    else
+        parallel_first, parallel_second = ey1, ey2
+        candidate_parallel_first, candidate_parallel_second = candidate.y1,
+                                                                    candidate.y2
+        existing_perpendicular = (ex1 + ex2) / 2
+        candidate_perpendicular = (candidate.x1 + candidate.x2) / 2
+    end
+
+    -- North/south connector endpoints must share x coordinates; east/west
+    -- endpoints must share y coordinates. Reversed endpoint order is allowed.
+    local function aligned_axis(first, second)
+        local offset = parallel_first - first
+        if not close(parallel_second - second, offset) then
+            return nil
+        end
+
+        local cell = math.floor(offset / GRID_SIZE)
+        if not close(offset, (cell + 0.5) * GRID_SIZE) then
+            return nil
+        end
+        return cell
+    end
+
+    local parallel_cell = aligned_axis(candidate_parallel_first,
+                                       candidate_parallel_second)
+    if parallel_cell == nil then
+        parallel_cell = aligned_axis(candidate_parallel_second,
+                                     candidate_parallel_first)
+    end
+    if parallel_cell == nil then
+        return {}
+    end
+
+    -- Unlike flush connectors, stopes may bridge a gap along the axis
+    -- perpendicular to their edges.
+    local minimum = (existing_perpendicular - STOPE_MAX_DISTANCE -
+                        candidate_perpendicular) / GRID_SIZE - 0.5
+    local maximum = (existing_perpendicular + STOPE_MAX_DISTANCE -
+                        candidate_perpendicular) / GRID_SIZE - 0.5
+    local cell_epsilon = EPSILON / GRID_SIZE
+    local first_cell = math.ceil(minimum - cell_epsilon)
+    local last_cell = math.floor(maximum + cell_epsilon)
+    local cells = {}
+    for perpendicular_cell = first_cell, last_cell do
+        if direction == "north" or direction == "south" then
+            cells[#cells + 1] = {x = parallel_cell, y = perpendicular_cell}
+        else
+            cells[#cells + 1] = {x = perpendicular_cell, y = parallel_cell}
+        end
+    end
+    return cells
 end
 
 -- Returns the grid cell which would make the two segments overlap exactly,
@@ -187,31 +268,50 @@ for _, existing_option in ipairs(options) do
     local transitions = {}
     local transitions_by_key = {}
     for _, existing_direction in ipairs(DIRECTIONS) do
-        local existing_connectors =
-            existing_option.connectors[existing_direction]
         local candidate_direction = OPPOSITE[existing_direction]
 
-        for _, candidate_option in ipairs(options) do
-            local candidate_connectors =
-                candidate_option.connectors[candidate_direction]
-            for _, candidate_segment in ipairs(candidate_connectors) do
-                for _, existing_segment in ipairs(existing_connectors) do
-                    local x, y = matching_cell(candidate_segment,
-                                               existing_segment, 0, 0)
-                    if x ~= nil and
-                        (#candidate_connectors == 1 and
-                             #existing_connectors == 1 or
-                         connector_sets_match(candidate_connectors, x, y,
-                                              existing_connectors, 0, 0)) then
-                        local key = cell_key(x, y) .. ":" .. candidate_option.id
-                        if transitions_by_key[key] == nil then
-                            local transition = {
-                                x = x,
-                                y = y,
-                                option = candidate_option
-                            }
-                            transitions[#transitions + 1] = transition
-                            transitions_by_key[key] = transition
+        -- Match each connector type independently: flush connectors can only
+        -- join flush connectors, and stope connectors can only join stopes.
+        for _, connector_key in ipairs(CONNECTOR_KEYS) do
+            local existing_connectors = existing_option.connectors[
+                                            connector_key][existing_direction]
+            for _, candidate_option in ipairs(options) do
+                local candidate_connectors = candidate_option.connectors[
+                                                 connector_key][
+                                                 candidate_direction]
+                for _, candidate_segment in ipairs(candidate_connectors) do
+                    for _, existing_segment in ipairs(existing_connectors) do
+                        local matching_cells
+                        if connector_key == FLUSH_CONNECTOR_KEY then
+                            local x, y = matching_cell(candidate_segment,
+                                                       existing_segment, 0, 0)
+                            matching_cells = {}
+                            if x ~= nil and
+                                (#candidate_connectors == 1 and
+                                     #existing_connectors == 1 or
+                                 connector_sets_match(candidate_connectors, x,
+                                                      y, existing_connectors,
+                                                      0, 0)) then
+                                matching_cells[1] = {x = x, y = y}
+                            end
+                        else
+                            matching_cells = stope_matching_cells(
+                                candidate_segment, existing_segment, 0, 0,
+                                existing_direction)
+                        end
+
+                        for _, cell in ipairs(matching_cells) do
+                            local key = cell_key(cell.x, cell.y) .. ":" ..
+                                            candidate_option.id
+                            if transitions_by_key[key] == nil then
+                                local transition = {
+                                    x = cell.x,
+                                    y = cell.y,
+                                    option = candidate_option
+                                }
+                                transitions[#transitions + 1] = transition
+                                transitions_by_key[key] = transition
+                            end
                         end
                     end
                 end
