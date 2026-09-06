@@ -727,6 +727,52 @@ void scriptExecutionsOutputAndErrorsReachTheHostsLogSink() {
           "an unnamed RunScript step did not retain its empty log context");
 }
 
+void debugPrintIsANoOpUnlessTheHostSuppliesASink() {
+  std::vector<bw::core::ScriptLogEvent> regularEvents;
+  auto regularSink = [&regularEvents](bw::core::ScriptLogEvent const& event) {
+    regularEvents.push_back(event);
+  };
+
+  bw::core::ScriptRuntime gameRuntime(regularSink);
+  gameRuntime.load("debug", R"(dprint("editor only"))");
+  gameRuntime.execute("debug", bw::core::ScriptLibraries::Build);
+  require(regularEvents.size() == 1 &&
+              regularEvents[0].type ==
+                  bw::core::ScriptLogEventType::ExecutionStarted,
+          "dprint wrote to a runtime which supplied no debug sink");
+
+  regularEvents.clear();
+  std::vector<bw::core::ScriptLogEvent> debugEvents;
+  bw::core::ScriptRuntime editorRuntime(
+      regularSink,
+      [&debugEvents](bw::core::ScriptLogEvent const& event) {
+        debugEvents.push_back(event);
+      });
+  editorRuntime.load("debug", R"(dprint("editor only"))");
+  editorRuntime.execute(
+      "debug", bw::core::ScriptLibraries::Build, {}, "Scripts");
+  require(regularEvents.size() == 1 && debugEvents.size() == 1 &&
+              debugEvents[0].type == bw::core::ScriptLogEventType::Output &&
+              debugEvents[0].scriptName == "debug" &&
+              debugEvents[0].stepName == "Scripts" &&
+              debugEvents[0].message == "editor only",
+          "dprint did not reach the host's debug sink with its log context");
+
+  regularEvents.clear();
+  editorRuntime.load("invalid-debug", "dprint(42)");
+  try {
+    editorRuntime.execute(
+        "invalid-debug", bw::core::ScriptLibraries::Build);
+  } catch (bw::core::ScriptException const&) {
+  }
+  require(regularEvents.size() == 2 &&
+              regularEvents[1].type == bw::core::ScriptLogEventType::Error &&
+              regularEvents[1].message.find("exactly one string") !=
+                  std::string::npos &&
+              debugEvents.size() == 1,
+          "dprint accepted a non-string argument");
+}
+
 void theSeedMakesRebuildsReproducibleAndRerollableByChangingIt() {
   bw::core::ScriptRuntime runtime;
   runtime.load("scatter", R"(
@@ -1588,6 +1634,7 @@ int main() {
     theBuildEnvironmentDropsFunctionsThatBreakDeterminism();
     includeReturnsExecutionLocalModuleTables();
     scriptExecutionsOutputAndErrorsReachTheHostsLogSink();
+    debugPrintIsANoOpUnlessTheHostSuppliesASink();
     theSeedMakesRebuildsReproducibleAndRerollableByChangingIt();
     scriptsCreateEditListAndRemoveAudioEmittersOnBothPrimitiveTypes();
     twoRunScriptStepsCannotObserveEachOthersRandomState();

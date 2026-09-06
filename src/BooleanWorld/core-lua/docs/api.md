@@ -239,6 +239,19 @@ Converts arguments with `tostring`, joins them with tabs, and sends one complete
 print("placed", count, "primitives")
 ```
 
+### `dprint(message)`
+
+Sends the string `message` to a host-provided debug log. The default sink is
+a no-op, so `dprint` produces no output in the game. The editor supplies a
+sink which appends the message to the executing LayerBuildStep's Script Log
+tab.
+
+```lua
+dprint("candidate count: " .. #candidates)
+```
+
+Exactly one string argument is required.
+
 ## Mutable `Primitive`
 
 Returned only by `context:create_primitive`.

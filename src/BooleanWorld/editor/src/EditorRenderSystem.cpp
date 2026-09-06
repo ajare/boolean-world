@@ -96,28 +96,29 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
 
   mResourceMgr = new wp::application::resourcesystem::ResourceManager(
       mRenderSystem, mRenderResourceMgr, nullptr /* no audio in the editor */, mLogger);
-  mScriptRuntime = make_unique<bw::core::ScriptRuntime>(
-      [this](bw::core::ScriptLogEvent const& event) {
-        auto const logName =
-            (event.stepName.empty() ? string("<unnamed>") : event.stepName) +
-            "/" + event.scriptName;
-        auto log = find_if(
-            mScriptLogs.begin(), mScriptLogs.end(), [&](auto const& candidate) {
-              return candidate.name == logName;
-            });
-        if (log == mScriptLogs.end()) {
-          mScriptLogs.push_back(EditorScriptLog{logName, {}});
-          log = prev(mScriptLogs.end());
-        }
+  auto scriptLogSink = [this](bw::core::ScriptLogEvent const& event) {
+    auto const logName =
+        (event.stepName.empty() ? string("<unnamed>") : event.stepName) +
+        "/" + event.scriptName;
+    auto log = find_if(
+        mScriptLogs.begin(), mScriptLogs.end(), [&](auto const& candidate) {
+          return candidate.name == logName;
+        });
+    if (log == mScriptLogs.end()) {
+      mScriptLogs.push_back(EditorScriptLog{logName, {}});
+      log = prev(mScriptLogs.end());
+    }
 
-        if (event.type == bw::core::ScriptLogEventType::Output) {
-          log->lines.push_back({event.message, false});
-          mLogger->info("Lua [" + logName + "]: " + event.message);
-        } else if (event.type == bw::core::ScriptLogEventType::Error) {
-          log->lines.push_back({event.message, true});
-          mLogger->error("Lua [" + logName + "]: " + event.message);
-        }
-      });
+    if (event.type == bw::core::ScriptLogEventType::Output) {
+      log->lines.push_back({event.message, false});
+      mLogger->info("Lua [" + logName + "]: " + event.message);
+    } else if (event.type == bw::core::ScriptLogEventType::Error) {
+      log->lines.push_back({event.message, true});
+      mLogger->error("Lua [" + logName + "]: " + event.message);
+    }
+  };
+  mScriptRuntime = make_unique<bw::core::ScriptRuntime>(
+      scriptLogSink, scriptLogSink);
 
   mResourceMgr->addResourceLocationFactory(
       "Directory",

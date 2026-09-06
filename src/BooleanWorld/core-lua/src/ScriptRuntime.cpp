@@ -115,8 +115,8 @@ string firstLine(string_view report) {
 // out means listing them. load, loadfile, dofile and collectgarbage are
 // deliberately absent: they let a script load code or drive the collector,
 // either of which breaks the determinism a build script depends on
-// (docs/adr/0040). print is bound separately, routed to the host's
-// ScriptLogSink rather than handed out from here.
+// (docs/adr/0040). print and the opt-in dprint are bound separately, routed
+// to host sinks rather than handed out from here.
 constexpr array baseNames = {
     "_VERSION", "assert", "error", "getmetatable", "ipairs",
     "next", "pairs", "pcall", "rawequal", "rawget",
@@ -171,9 +171,25 @@ void bindPrint(
       });
 }
 
+void bindDebugPrint(
+    sol::environment& environment, ScriptLogSink const& sink,
+    string const& scriptName, string const& stepName) {
+  environment.set_function(
+      "dprint", [sink, scriptName, stepName](sol::variadic_args args) {
+        if (args.size() != 1 || !args.begin()->is<string>()) {
+          throw CoreException("dprint expects exactly one string argument");
+        }
+        if (sink) {
+          sink({ScriptLogEventType::Output, scriptName,
+                args.begin()->as<string>(), stepName});
+        }
+      });
+}
+
 sol::environment makeEnvironment(
     sol::state_view lua,
     ScriptLogSink const& logSink,
+    ScriptLogSink const& debugLogSink,
     string const& scriptName,
     string const& stepName,
     ScriptLibraries libraries,
@@ -185,6 +201,7 @@ sol::environment makeEnvironment(
       environment.set(baseName, lua[baseName]);
     }
     bindPrint(lua, environment, logSink, scriptName, stepName);
+    bindDebugPrint(environment, debugLogSink, scriptName, stepName);
   }
 
   addLibrary(lua, environment, libraries, ScriptLibraries::Table, "table");
@@ -289,8 +306,9 @@ string const& ScriptException::getTraceback() const {
   return mTraceback;
 }
 
-ScriptRuntime::ScriptRuntime(ScriptLogSink logSink)
-    : mLogSink(move(logSink)) {
+ScriptRuntime::ScriptRuntime(
+    ScriptLogSink logSink, ScriptLogSink debugLogSink)
+    : mLogSink(move(logSink)), mDebugLogSink(move(debugLogSink)) {
   // Opened once on the state so the libraries exist to be handed out; which
   // of them an execution actually sees is decided per execution, in
   // execute(), not here.
@@ -440,7 +458,7 @@ void ScriptRuntime::execute(
     }
     sol::protected_function function = loaded;
     auto environment = makeEnvironment(
-        mLua, mLogSink, name, stepName, libraries, bind);
+        mLua, mLogSink, mDebugLogSink, name, stepName, libraries, bind);
     auto includes = bindIncludes(
         environment, chunk->second.includedScripts);
     (void)includes;  // Keeps the execution-local include cache alive.
@@ -485,8 +503,8 @@ ScriptCoroutineHandle ScriptRuntime::startCoroutine(
   auto state = make_shared<ScriptCoroutineState>();
   state->owner = this;
   state->scriptName = name;
-  state->environment.emplace(
-      makeEnvironment(mLua, mLogSink, name, "", libraries, bind));
+  state->environment.emplace(makeEnvironment(
+      mLua, mLogSink, mDebugLogSink, name, "", libraries, bind));
   state->includes = bindIncludes(
       *state->environment, chunk->second.includedScripts);
   state->thread.emplace(sol::thread::create(mLua));

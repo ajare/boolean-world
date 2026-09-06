@@ -150,6 +150,7 @@ private:
   friend class RunScript;
 
   ScriptLogSink mLogSink;
+  ScriptLogSink mDebugLogSink;
   std::vector<std::shared_ptr<ScriptCoroutineState>> mCoroutines;
 
   void finishCoroutine(
@@ -157,9 +158,12 @@ private:
       ScriptCoroutineStatus status);
 
 public:
-  // logSink defaults to writing output and errors to the console, so a host
-  // that has not wired up its own log still sees script messages somewhere.
-  explicit ScriptRuntime(ScriptLogSink logSink = defaultLogSink());
+  // logSink defaults to writing output and errors to the console. debugLogSink
+  // is deliberately empty by default, making Lua's dprint() a no-op unless a
+  // development host such as the editor opts into its output.
+  explicit ScriptRuntime(
+      ScriptLogSink logSink = defaultLogSink(),
+      ScriptLogSink debugLogSink = {});
   ~ScriptRuntime();
 
   ScriptRuntime(ScriptRuntime const&) = delete;

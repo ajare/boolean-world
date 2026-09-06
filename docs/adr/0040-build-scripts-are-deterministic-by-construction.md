@@ -30,8 +30,9 @@ asking script authors to be careful.
 
 Each execution gets a **fresh environment** containing only base functions
 less those that load code or drive the collector, plus `table`, `string`,
-`math`, and a `print` routed to the editor log. `io`, `os`, `debug`,
-`package` and `require` are absent. A separate `include(name)` operation may
+`math`, a `print` routed to the host log, and `dprint` routed to an optional
+host debug sink which is a no-op by default. `io`, `os`, `debug`, `package`
+and `require` are absent. A separate `include(name)` operation may
 execute only a LuaScript in the root script's manifest-declared transitive
 resource dependencies. It returns that script's table, caches the table only
 for the current execution, and runs the included chunk in the same Restricted
