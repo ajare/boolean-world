@@ -10,6 +10,7 @@
 #include <willpower/common/BoundingBox.h>
 #include <willpower/common/Timer.h>
 
+#include "core/AudioEmitter.h"
 #include "core/VertexTransformerObject.h"
 #include "core/Triangulation.h"
 #include "core/Vertex.h"
@@ -84,6 +85,8 @@ private:
   wp::Vector2 mSize;
 
   PrimitivePropertySet mProperties;
+
+  std::vector<AudioEmitter> mAudioEmitters;
 
   mutable wp::BoundingBox mBounds;
 
@@ -220,6 +223,10 @@ public:
   void setProperties(PrimitivePropertySet const& properties);
 
   PrimitivePropertySet const& getProperties() const;
+
+  void setAudioEmitters(std::vector<AudioEmitter> const& audioEmitters);
+
+  [[nodiscard]] std::vector<AudioEmitter> const& getAudioEmitters() const;
 
   uint32_t getNumVertices() const;
 

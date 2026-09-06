@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cassert>
 
@@ -124,6 +125,7 @@ void Primitive::copyFrom(Primitive const& other) {
   mGeneratedPriority = other.mGeneratedPriority;
   mSize = other.mSize;
   mProperties = other.mProperties;
+  mAudioEmitters = other.mAudioEmitters;
   mBounds = other.mBounds;
   mPickingTriangulation.reset();
   mVertices = other.mVertices;
@@ -309,6 +311,15 @@ PrimitivePropertySet const& Primitive::getProperties() const {
   return mProperties;
 }
 
+void Primitive::setAudioEmitters(vector<AudioEmitter> const& audioEmitters) {
+  mAudioEmitters = audioEmitters;
+  notifyWorldChanged();
+}
+
+vector<AudioEmitter> const& Primitive::getAudioEmitters() const {
+  return mAudioEmitters;
+}
+
 uint32_t Primitive::getNumVertices() const {
   uint32_t numVertices{0};
 
@@ -337,7 +348,9 @@ void Primitive::setVertices(vector<ComplexPolygon> const& polygons) {
 }
 
 bool Primitive::childrenModified() const {
-  return VertexTransformerObject::childrenModified() || mProperties.isModified();
+  return VertexTransformerObject::childrenModified() || mProperties.isModified() ||
+         any_of(mAudioEmitters.begin(), mAudioEmitters.end(),
+                [](AudioEmitter const& emitter) { return emitter.isModified(); });
 }
 
 void Primitive::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) const {
@@ -361,6 +374,14 @@ void Primitive::serializePrimitive(
     serializer->writeVector2("size", mSize);
 
     mProperties.serialize(serializer, workData);
+
+    serializer->beginArray("audioEmitters");
+    {
+      for (auto const& emitter : mAudioEmitters) {
+        emitter.serialize(serializer, workData);
+      }
+      serializer->endArray();  // audioEmitters
+    }
 
     if (includeComplexPolygons) {
       serializer->beginArray("complexPolygons");
@@ -426,6 +447,7 @@ bool Primitive::deserializePrimitive(
   uint8_t priority;
   wp::Vector2 size;
   PrimitivePropertySet properties;
+  vector<AudioEmitter> audioEmitters;
   vector<ComplexPolygon> complexPolygons;
 
   try {
@@ -442,6 +464,19 @@ bool Primitive::deserializePrimitive(
       if (!properties.deserialize(serializer, workData)) {
         copyErrorsAndWarnings(&properties, true, true);
         return false;
+      }
+
+      serializer->beginArray("audioEmitters");
+      {
+        while (serializer->nextArrayItem()) {
+          AudioEmitter emitter;
+          if (!emitter.deserialize(serializer, workData)) {
+            copyErrorsAndWarnings(&emitter, true, true);
+            return false;
+          }
+          audioEmitters.push_back(move(emitter));
+        }
+        serializer->endArray();  // audioEmitters
       }
 
       if (includeComplexPolygons) {
@@ -520,6 +555,7 @@ bool Primitive::deserializePrimitive(
   mSize = size;
   mFrameNumber = 0;
   mProperties = properties;
+  mAudioEmitters = move(audioEmitters);
   mPolygons = complexPolygons;
 
   _invalidate();
