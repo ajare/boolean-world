@@ -46,6 +46,12 @@ struct GraphImageCapture;
 struct GraphPassExecutionStats;
 }
 
+namespace FMOD {
+namespace Studio {
+class EventInstance;
+}  // namespace Studio
+}  // namespace FMOD
+
 class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
   struct DebugDisplay {
     bool minimap{false};
@@ -191,6 +197,9 @@ private:
       bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken};
 
   std::deque<DisplayMessage> mDisplayMessages;
+
+  // Phase 0 gate (#383): one theme event, started once and left running.
+  FMOD::Studio::EventInstance* mThemeInstance{nullptr};
 
 private:
   [[nodiscard]] bw::core::LayerSelection layerSelection() const;

@@ -21,6 +21,7 @@
 
 #include <utils/Image.h>
 
+#include <willpower/application/AudioSystem.h>
 #include <willpower/application/StateExceptions.h>
 
 #include <willpower/collide/ColliderCircle.h>
@@ -1120,6 +1121,13 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
 
 void StatePlayBooleanWorld::updateAudio(float frameTime) {
   BW_UNUSED(frameTime);
+
+  // Phase 0 gate (#383): prove the FMOD path end to end with one theme,
+  // started once and left running. Real emitter-driven playback is later
+  // work (ADR-0041).
+  if (!mThemeInstance) {
+    mThemeInstance = mwAudioSystem->startEvent("Theme.Sandstone");
+  }
 }
 
 void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
