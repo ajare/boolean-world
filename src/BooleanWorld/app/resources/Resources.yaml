@@ -348,6 +348,18 @@ Resources:
         Definition:
           Resource: "Yaml"
     - type: "TextFile"
+      name: "AcousticCatalogFile"
+      location: "acoustics-built-in.yaml"
+    - type: "AcousticCatalog"
+      name: "Acoustics"
+      DependentResources:
+        DependentResource:
+          id: "Yaml"
+          ref: "AcousticCatalogFile"
+      Definitions:
+        Definition:
+          Resource: "Yaml"
+    - type: "TextFile"
       name: "ProcMaterialsFile"
       location: "proc-materials-built-in.yaml"
     - type: "ProcMaterial"

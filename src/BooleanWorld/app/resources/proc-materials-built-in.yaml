@@ -830,6 +830,7 @@ techniqueSchemas:
       []
 subMaterials:
   - id: builtin.marble
+    acousticPreset: builtin.acoustic.rock
     name: Marble
     materialIndex: 1
     params: [1.35, 5, 12, 0.025, 0.2, 0.35, 0.42, 0.72]
@@ -847,6 +848,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, PyramidalDivot, MultiFacetSpall, TrapezoidalSpall]
   - id: builtin.stone
+    acousticPreset: builtin.acoustic.rock
     name: Stone
     materialIndex: 2
     params: [0.82, 8, 0.28, 0.055, 4.7, 7.3, 0.2]
@@ -864,6 +866,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, PyramidalDivot, MultiFacetSpall, SteppedFracture, VShapedNotch, TrapezoidalSpall]
   - id: builtin.slate
+    acousticPreset: builtin.acoustic.rock
     name: Slate
     materialIndex: 3
     params: [0.72, 0.35, 0.045, 1.9, 0.18]
@@ -881,6 +884,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.sandstone
+    acousticPreset: builtin.acoustic.rock
     name: Sandstone
     materialIndex: 4
     params: [0.58, 18, 0.07, 1.08, 0.18]
@@ -898,6 +902,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.limestone
+    acousticPreset: builtin.acoustic.rock
     name: Limestone
     materialIndex: 5
     params: [0.66, 0.38, 0.065, 0.25]
@@ -915,6 +920,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.basalt
+    acousticPreset: builtin.acoustic.rock
     name: Basalt
     materialIndex: 6
     params: [0.85, 0.72, 0.075, 0.03, 0.3]
@@ -932,6 +938,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, PrismaticNotch, PyramidalDivot, MultiFacetSpall, VShapedNotch]
   - id: builtin.obsidian
+    acousticPreset: builtin.acoustic.rock
     name: Obsidian
     materialIndex: 7
     params: [0.7, 0.3, 0.018, 4, 0.24]
@@ -949,6 +956,7 @@ subMaterials:
       cornerProbability: 1
       types: [PyramidalDivot, MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.quartz.crystal
+    acousticPreset: builtin.acoustic.rock
     name: Quartz / crystal
     materialIndex: 8
     params: [0.62, 0.72, 0.075, 0.55, 0.2]
@@ -966,6 +974,7 @@ subMaterials:
       cornerProbability: 1
       types: [PyramidalDivot, MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.ore
+    acousticPreset: builtin.acoustic.rock
     name: Ore
     materialIndex: 9
     params: [0.72, 4.5, 0.06, 0.65, 0.25, 0.24]
@@ -983,6 +992,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, PyramidalDivot, MultiFacetSpall, SteppedFracture]
   - id: builtin.rusted.iron
+    acousticPreset: builtin.acoustic.metal
     name: Rusted iron
     materialIndex: 10
     params: [0.72, 4.5, 0.065, 0.92, 0.88]
@@ -1000,6 +1010,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, MultiFacetSpall, SteppedFracture, VShapedNotch, TrapezoidalSpall]
   - id: builtin.galvanized.steel
+    acousticPreset: builtin.acoustic.metal
     name: Galvanized steel
     materialIndex: 11
     params: [0.66, 1.45, 0.035, 0.94, 0.2]
@@ -1017,6 +1028,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, SteppedFracture, VShapedNotch]
   - id: builtin.brushed.metal
+    acousticPreset: builtin.acoustic.metal
     name: Brushed metal
     materialIndex: 12
     params: [0.82, 0.18, 0.012, 0.96, 0.3]
@@ -1034,6 +1046,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, SteppedFracture, VShapedNotch]
   - id: builtin.hammered.metal
+    acousticPreset: builtin.acoustic.metal
     name: Hammered metal
     materialIndex: 13
     params: [0.72, 4.2, 0.085, 0.92, 0.22]
@@ -1051,6 +1064,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, PyramidalDivot, MultiFacetSpall, VShapedNotch]
   - id: builtin.patinated.copper
+    acousticPreset: builtin.acoustic.metal
     name: Patinated copper
     materialIndex: 14
     params: [0.66, 2.8, 0.04, 0.98, 0.72]
@@ -1068,6 +1082,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.damascene.steel
+    acousticPreset: builtin.acoustic.metal
     name: Damascene steel
     materialIndex: 15
     params: [0.72, 0.32, 0.018, 0.95, 0.34]
@@ -1085,6 +1100,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, PyramidalDivot, SteppedFracture, VShapedNotch]
   - id: builtin.heat.treated.metal
+    acousticPreset: builtin.acoustic.metal
     name: Heat-treated metal
     materialIndex: 16
     params: [0.62, 0.72, 0.014, 0.9, 0.13]
@@ -1102,6 +1118,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, PyramidalDivot, SteppedFracture, VShapedNotch]
   - id: builtin.wood
+    acousticPreset: builtin.acoustic.wood
     name: Wood
     materialIndex: 17
     params: [0.54, 18, 0.038, 0.18, 0.38]
@@ -1119,6 +1136,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, SteppedFracture, VShapedNotch, TrapezoidalSpall]
   - id: builtin.wood2
+    acousticPreset: builtin.acoustic.wood
     name: Wood2
     materialIndex: 38
     params: [0.65, 0.1]
@@ -1136,6 +1154,7 @@ subMaterials:
       cornerProbability: 0
       types: [Tapered, SteppedFracture, VShapedNotch, TrapezoidalSpall]
   - id: builtin.bark
+    acousticPreset: builtin.acoustic.wood
     name: Bark
     materialIndex: 18
     params: [0.62, 7, 0.095, 0.35, 0.16]
@@ -1153,6 +1172,7 @@ subMaterials:
       cornerProbability: 1
       types: [MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.bone.ivory
+    acousticPreset: builtin.acoustic.ceramic
     name: Bone / ivory
     materialIndex: 19
     params: [0.68, 7, 0.045, 0.3, 0.36]
@@ -1170,6 +1190,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, PyramidalDivot, MultiFacetSpall, VShapedNotch]
   - id: builtin.leather
+    acousticPreset: builtin.acoustic.carpet
     name: Leather
     materialIndex: 20
     params: [0.76, 0.42, 0.035, 0.16]
@@ -1187,6 +1208,7 @@ subMaterials:
       cornerProbability: 1
       types: [MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.flesh
+    acousticPreset: builtin.acoustic.carpet
     name: Flesh
     materialIndex: 21
     params: [0.6, 0.72, 0.022, 0.14]
@@ -1204,6 +1226,7 @@ subMaterials:
       cornerProbability: 1
       types: [PyramidalDivot, MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.chitin.shell
+    acousticPreset: builtin.acoustic.ceramic
     name: Chitin / shell
     materialIndex: 22
     params: [0.67, 3.2, 0.048, 0.08, 0.3]
@@ -1221,6 +1244,7 @@ subMaterials:
       cornerProbability: 1
       types: [PyramidalDivot, MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.coral
+    acousticPreset: builtin.acoustic.rock
     name: Coral
     materialIndex: 23
     params: [0.66, 0.8, 0.085, 0.27]
@@ -1238,6 +1262,7 @@ subMaterials:
       cornerProbability: 1
       types: [PyramidalDivot, MultiFacetSpall, TrapezoidalSpall]
   - id: builtin.arcane.crystal
+    acousticPreset: builtin.acoustic.generic
     name: Arcane crystal
     materialIndex: 24
     params: [0.64, 0.82, 0.095, 0.18]
@@ -1255,6 +1280,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, PyramidalDivot, MultiFacetSpall, VShapedNotch]
   - id: builtin.energy.stone
+    acousticPreset: builtin.acoustic.rock
     name: Energy stone
     materialIndex: 25
     params: [0.68, 4.2, 0.065, 0.78, 0.04]
@@ -1272,6 +1298,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, PyramidalDivot, MultiFacetSpall, VShapedNotch]
   - id: builtin.alien.tissue
+    acousticPreset: builtin.acoustic.carpet
     name: Alien tissue
     materialIndex: 26
     params: [0.67, 3.5, 0.055, 0.28, 0.24]
@@ -1289,6 +1316,7 @@ subMaterials:
       cornerProbability: 1
       types: [PyramidalDivot, MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.magical.metal
+    acousticPreset: builtin.acoustic.metal
     name: Magical metal
     materialIndex: 27
     params: [0.72, 1.7, 0.026, 0.96, 0.2]
@@ -1306,6 +1334,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, PyramidalDivot, SteppedFracture, VShapedNotch]
   - id: builtin.solid.cloud
+    acousticPreset: builtin.acoustic.generic
     name: Solid cloud
     materialIndex: 28
     params: [0.53, 0.3, 0.032, 0.26]
@@ -1323,6 +1352,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, PyramidalDivot, VShapedNotch]
   - id: builtin.holographic
+    acousticPreset: builtin.acoustic.glass
     name: Holographic
     materialIndex: 29
     params: [0.75, 35, 0.008, 2.2, 0.12]
@@ -1340,6 +1370,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, PyramidalDivot, SteppedFracture, VShapedNotch]
   - id: builtin.corruption
+    acousticPreset: builtin.acoustic.generic
     name: Corruption
     materialIndex: 30
     params: [0.65, 0.36, 0.072, 0.72, 0.82]
@@ -1357,6 +1388,7 @@ subMaterials:
       cornerProbability: 1
       types: [PyramidalDivot, MultiFacetSpall, SteppedFracture, VShapedNotch]
   - id: builtin.frosted.glass
+    acousticPreset: builtin.acoustic.glass
     name: Frosted glass
     materialIndex: 31
     params: [1.4, 0.22, 0.045, 0.98, 0.8]
@@ -1374,6 +1406,7 @@ subMaterials:
       cornerProbability: 1
       types: [PyramidalDivot, MultiFacetSpall, VShapedNotch, TrapezoidalSpall]
   - id: builtin.brick
+    acousticPreset: builtin.acoustic.brick
     name: Brick
     materialIndex: 32
     params: [0.95, 0.42, 0.045, 1.12, 0.08]
@@ -1391,6 +1424,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, PrismaticNotch, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.circuit.board
+    acousticPreset: builtin.acoustic.generic
     name: Circuit board
     materialIndex: 33
     params: [1.15, 0.55, 0.02, 0.55, 0.9]
@@ -1408,6 +1442,7 @@ subMaterials:
       cornerProbability: 1
       types: [PrismaticNotch, SteppedFracture, VShapedNotch]
   - id: builtin.banded.gneiss
+    acousticPreset: builtin.acoustic.rock
     name: Banded gneiss
     materialIndex: 34
     params: [0.68, 13, 0.052, 0.16, 0.02]
@@ -1425,6 +1460,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.rock
+    acousticPreset: builtin.acoustic.rock
     name: Rock
     materialIndex: 35
     params: [0.74, 7.5, 0.075, 1.1, 0.16]
@@ -1442,6 +1478,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, PyramidalDivot, MultiFacetSpall, SteppedFracture, VShapedNotch, TrapezoidalSpall]
   - id: builtin.mossy.rock
+    acousticPreset: builtin.acoustic.rock
     name: Mossy rock
     materialIndex: 36
     params: [0.72, 16, 0.068, 0.42, 0.72]
@@ -1459,6 +1496,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, PyramidalDivot, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.wet.rock
+    acousticPreset: builtin.acoustic.rock
     name: Wet rock
     materialIndex: 37
     params: [0.74, 0.24, 0.76, 0.36, 0.52]
@@ -1476,6 +1514,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, PyramidalDivot, MultiFacetSpall, SteppedFracture, TrapezoidalSpall]
   - id: builtin.plain.grey
+    acousticPreset: builtin.acoustic.generic
     name: Plain grey
     materialIndex: 0
     params: []
@@ -1493,6 +1532,7 @@ subMaterials:
       cornerProbability: 0
       types: [Tapered]
   - id: migrated.marble.1
+    acousticPreset: builtin.acoustic.rock
     name: Migrated Marble 1
     materialIndex: 1
     params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
@@ -1510,6 +1550,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, PyramidalDivot, MultiFacetSpall, TrapezoidalSpall]
   - id: migrated_marble_1
+    acousticPreset: builtin.acoustic.rock
     name: Migrated Marble 1
     materialIndex: 1
     params: [1.1, 6, 18, 0.15, 0.25, 0.65, 0.2, 0.5]
@@ -1527,6 +1568,7 @@ subMaterials:
       cornerProbability: 1
       types: [Tapered, PyramidalDivot, MultiFacetSpall, TrapezoidalSpall]
   - id: migrated_marble_2
+    acousticPreset: builtin.acoustic.rock
     name: Migrated Marble 2
     materialIndex: 1
     params: [5, 6, 20, 0.15, 0.165, 0.601, 0.222, 0.201]

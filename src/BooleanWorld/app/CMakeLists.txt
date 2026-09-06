@@ -1,6 +1,9 @@
 # The game itself: a DLL that Launcher.exe loads at runtime.
 
 add_library(BooleanWorld SHARED
+    src/AcousticCatalog.cpp
+    src/AcousticCatalogResourceDefinitionFactory.cpp
+    src/AcousticPresetResolver.cpp
     src/CpuUpdateProfiler.cpp
     src/DLL.cpp
     src/EntityHandlerBooleanWorld.cpp
@@ -67,6 +70,24 @@ bw_enable_sdl_checks(BooleanWorld)
 set_target_properties(BooleanWorld PROPERTIES FOLDER BooleanWorld)
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_acoustic_catalog_tests
+        tests/acoustic_catalog_tests.cpp
+        src/AcousticCatalog.cpp
+        src/AcousticCatalogResourceDefinitionFactory.cpp
+        src/AcousticPresetResolver.cpp)
+    target_include_directories(boolean_world_acoustic_catalog_tests PRIVATE include)
+    target_link_libraries(boolean_world_acoustic_catalog_tests PRIVATE
+        core AppLib BooleanWorldRender Willpower.Application Willpower.Common)
+    target_compile_definitions(boolean_world_acoustic_catalog_tests PRIVATE
+        YAML_CPP_STATIC_DEFINE)
+    target_compile_features(boolean_world_acoustic_catalog_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_acoustic_catalog_tests)
+    bw_output_dirs(boolean_world_acoustic_catalog_tests)
+    bw_deploy_runtime_dlls(boolean_world_acoustic_catalog_tests)
+    bw_deploy_vendor_dlls(boolean_world_acoustic_catalog_tests)
+    add_test(NAME boolean_world_acoustic_catalog
+             COMMAND boolean_world_acoustic_catalog_tests)
+
     add_executable(boolean_world_cpu_update_profiler_tests
         tests/cpu_update_profiler_tests.cpp
         src/CpuUpdateProfiler.cpp)

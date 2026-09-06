@@ -1,0 +1,58 @@
+# Steam Audio 4.8.1's documented standard surface materials. Coefficients are
+# fractions in the low (400 Hz), middle (2.5 kHz), and high (15 kHz) bands.
+presets:
+  - id: builtin.acoustic.generic
+    name: Generic
+    absorption: [0.10, 0.20, 0.30]
+    scattering: 0.05
+    transmission: [0.100, 0.050, 0.030]
+  - id: builtin.acoustic.brick
+    name: Brick
+    absorption: [0.03, 0.04, 0.07]
+    scattering: 0.05
+    transmission: [0.015, 0.015, 0.015]
+  - id: builtin.acoustic.concrete
+    name: Concrete
+    absorption: [0.05, 0.07, 0.08]
+    scattering: 0.05
+    transmission: [0.015, 0.002, 0.001]
+  - id: builtin.acoustic.ceramic
+    name: Ceramic
+    absorption: [0.01, 0.02, 0.02]
+    scattering: 0.05
+    transmission: [0.060, 0.044, 0.011]
+  - id: builtin.acoustic.gravel
+    name: Gravel
+    absorption: [0.60, 0.70, 0.80]
+    scattering: 0.05
+    transmission: [0.031, 0.012, 0.008]
+  - id: builtin.acoustic.carpet
+    name: Carpet
+    absorption: [0.24, 0.69, 0.73]
+    scattering: 0.05
+    transmission: [0.020, 0.005, 0.003]
+  - id: builtin.acoustic.glass
+    name: Glass
+    absorption: [0.06, 0.03, 0.02]
+    scattering: 0.05
+    transmission: [0.060, 0.044, 0.011]
+  - id: builtin.acoustic.plaster
+    name: Plaster
+    absorption: [0.12, 0.06, 0.04]
+    scattering: 0.05
+    transmission: [0.056, 0.056, 0.004]
+  - id: builtin.acoustic.wood
+    name: Wood
+    absorption: [0.11, 0.07, 0.06]
+    scattering: 0.05
+    transmission: [0.070, 0.014, 0.005]
+  - id: builtin.acoustic.metal
+    name: Metal
+    absorption: [0.20, 0.07, 0.06]
+    scattering: 0.05
+    transmission: [0.200, 0.025, 0.010]
+  - id: builtin.acoustic.rock
+    name: Rock
+    absorption: [0.13, 0.20, 0.24]
+    scattering: 0.05
+    transmission: [0.015, 0.002, 0.001]

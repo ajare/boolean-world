@@ -39,6 +39,8 @@
 #include "StatePlayBooleanWorld.h"
 
 // Resources
+#include "AcousticCatalog.h"
+#include "AcousticCatalogResourceDefinitionFactory.h"
 #include "Map.h"
 #include "EmbossingCatalog.h"
 #include "EmbossingCatalogResourceDefinitionFactory.h"
@@ -205,6 +207,7 @@ APPLICATION_API void dllOnEntry(wp::Logger* logger, wp::application::resourcesys
   bw::core::registerLuaScriptResourceType(*resourceMgr);
   resourceMgr->addResourceFactory(new ProcMaterialResourceFactory());
   resourceMgr->addResourceFactory(new EmbossingCatalogResourceFactory());
+  resourceMgr->addResourceFactory(new AcousticCatalogResourceFactory());
 
   // Add resource definition factories
   resourceMgr->addResourceDefinitionFactory(new MapBooleanWorldDefinitionFactory());
@@ -214,6 +217,8 @@ APPLICATION_API void dllOnEntry(wp::Logger* logger, wp::application::resourcesys
   resourceMgr->addResourceDefinitionFactory(new ProcMaterialResourceDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(
       new EmbossingCatalogResourceDefinitionFactory());
+  resourceMgr->addResourceDefinitionFactory(
+      new AcousticCatalogResourceDefinitionFactory());
 }
 
 APPLICATION_API void dllOnExit() {

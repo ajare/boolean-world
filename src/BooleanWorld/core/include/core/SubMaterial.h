@@ -20,6 +20,11 @@ struct SubMaterial : public Serializable {
   std::string id;
   std::string displayName;
 
+  // Opaque stable reference into the app-side Acoustic catalog. Empty and
+  // unknown ids are valid authored states; the app resolves either to its
+  // documented fallback without involving core in acoustic calculations.
+  std::string acousticPresetId;
+
   // Selects the Technique (and therefore the TechniqueSchema) this
   // Sub-material's paramValues are bounded by.
   uint32_t materialIndex{0};

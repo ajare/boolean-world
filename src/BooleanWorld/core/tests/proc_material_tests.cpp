@@ -53,6 +53,7 @@ ProcMaterialData buildMarbleCatalog() {
   SubMaterial weatheredSlate;
   weatheredSlate.id = "weathered_slate";
   weatheredSlate.displayName = "Weathered Slate";
+  weatheredSlate.acousticPresetId = "builtin.acoustic.rock";
   weatheredSlate.materialIndex = 0;
   weatheredSlate.paramValues = {1.35f, 5.0f};
   weatheredSlate.baseColour = {0.18f, 0.18f, 0.20f};
@@ -101,6 +102,8 @@ void roundTripPreservesEveryField() {
   auto const& subMaterial = roundTripped.subMaterials[0];
   require(subMaterial.id == "weathered_slate", "SubMaterial id did not round-trip");
   require(subMaterial.displayName == "Weathered Slate", "SubMaterial displayName did not round-trip");
+  require(subMaterial.acousticPresetId == "builtin.acoustic.rock",
+          "SubMaterial Acoustic preset id did not round-trip");
   require(subMaterial.materialIndex == 0, "SubMaterial materialIndex did not round-trip");
   require(subMaterial.paramValues.size() == 2 && near(subMaterial.paramValues[0], 1.35f) &&
               near(subMaterial.paramValues[1], 5.0f),
@@ -145,6 +148,8 @@ void pinnedMarbleValuesSurviveDeserialization() {
           "the Marble warp_scale default changed");
   require(near(data.subMaterials[0].paramValues[0], 1.35f),
           "Weathered Slate's warp_scale value changed");
+  require(data.subMaterials[0].acousticPresetId.empty(),
+          "a missing Acoustic preset id did not remain a valid unresolved state");
 }
 
 void outOfBoundsParameterValueIsRejected() {

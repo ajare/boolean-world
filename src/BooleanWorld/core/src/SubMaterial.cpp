@@ -109,6 +109,7 @@ void SubMaterial::serializeImpl(shared_ptr<Serializer> serializer, Serialization
   {
     serializer->writeString("id", id);
     serializer->writeString("name", displayName);
+    serializer->writeString("acousticPreset", acousticPresetId);
     serializer->writeUint32("materialIndex", materialIndex);
 
     serializer->beginArray("params", false);
@@ -159,7 +160,7 @@ void SubMaterial::serializeImpl(shared_ptr<Serializer> serializer, Serialization
 }
 
 bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) {
-  string id_, displayName_;
+  string id_, displayName_, acousticPresetId_;
   uint32_t materialIndex_{0};
   vector<float> paramValues_;
   array<float, 3> baseColour_{};
@@ -170,6 +171,9 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
     {
       id_ = serializer->readString("id");
       displayName_ = serializer->readString("name");
+      // Catalogs predating Acoustic presets remain valid and unresolved.
+      acousticPresetId_ = serializer->readString(
+          "acousticPreset", !serializer->isPositional(), "");
       materialIndex_ = serializer->readUint32("materialIndex");
 
       serializer->beginArray("params");
@@ -269,6 +273,7 @@ bool SubMaterial::deserializeImpl(shared_ptr<Serializer> serializer, Serializati
   // Commit
   id = move(id_);
   displayName = move(displayName_);
+  acousticPresetId = move(acousticPresetId_);
   materialIndex = materialIndex_;
   paramValues = move(paramValues_);
   baseColour = baseColour_;

@@ -122,6 +122,9 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
       new EmbossingCatalogResourceDefinitionFactory());
   mResourceMgr->addResourceFactory(new InertResourceFactory("Map"));
   mResourceMgr->addResourceFactory(new InertResourceFactory("ProtoEntity"));
+  // Acoustic data is game-only and has no editing UI; the preview only needs
+  // to recognize its manifest record while scanning shared resources.
+  mResourceMgr->addResourceFactory(new InertResourceFactory("AcousticCatalog"));
 
   filesystem::path manifest{BW_EDITOR_PROC_MATERIAL_MANIFEST};
   mResourceMgr->addResourceLocation(
