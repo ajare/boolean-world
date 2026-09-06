@@ -98,6 +98,8 @@ Steam Audio is given a **custom scene**: it calls back into the game for every r
 
 ## Further Notes
 
-Four verifications are unresolved and each can change scope. Whether `EventDescription::getMinMaxDistance` returns a usable value on a Spatializer-panned event decides if `AudioEmitter` needs a sixth field for cull radius. Whether `ImmutableAccelerationGrid` lazily caches inside any query path decides whether the ray callbacks can read it lock-free. Whether per-ray callback overhead outweighs the structural win decides whether ADR-0043 stands or falls back to a triangle-mesh `IPLScene`. And whether Steam Audio 4.8.1's prebuilt `phonon_fmod.dll` loads against FMOD 2.03.14 could invert the version pin above.
+Three verifications are unresolved and each can change scope. Whether `EventDescription::getMinMaxDistance` returns a usable value on a Spatializer-panned event decides if `AudioEmitter` needs a sixth field for cull radius. Whether `ImmutableAccelerationGrid` lazily caches inside any query path decides whether the ray callbacks can read it lock-free. Whether per-ray callback overhead outweighs the structural win decides whether ADR-0043 stands or falls back to a triangle-mesh `IPLScene`.
+
+Steam Audio 4.8.1's Windows x64 `phonon_fmod.dll` was loaded with `FMOD::System::loadPlugin` against the pinned FMOD 2.03.14 runtime in #384. It returned `FMOD_OK`, so the FMOD/Studio 2.03.14 pin stands.
 
 The FMOD-enabled branch of `AudioSystem.cpp` has been edited but never compiled, because no FMOD Engine SDK is installed on this machine. Treat it as unverified until the first FMOD-enabled build.
