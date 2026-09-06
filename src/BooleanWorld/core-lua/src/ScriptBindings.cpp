@@ -158,6 +158,18 @@ vector<PrefabVertexView> prefabMetadataVertices(
   return result;
 }
 
+RunScriptContext executionContext(sol::this_environment current) {
+  if (!current) {
+    throw CoreException("AudioEmitters may only be created during a RunScript execution");
+  }
+  sol::environment& environment = current;
+  sol::object context = environment["context"];
+  if (!context.is<RunScriptContext>()) {
+    throw CoreException("AudioEmitters may only be created during a RunScript execution");
+  }
+  return context.as<RunScriptContext>();
+}
+
 ClosedPolygon ringFromPoints(sol::table const& points) {
   ClosedPolygon ring;
   ring.reserve(points.size());
@@ -190,6 +202,77 @@ vector<PrimitiveView> toPrimitiveViews(vector<Primitive*> const& primitives) {
   return views;
 }
 
+ScriptAudioEmitter::ScriptAudioEmitter(Primitive* primitive, string guid)
+    : mPrimitive(primitive), mGuid(move(guid)) {
+}
+
+namespace {
+
+AudioEmitter const& findAudioEmitter(ScriptAudioEmitter const& handle) {
+  auto const& emitters = handle.getPrimitive()->getAudioEmitters();
+  auto found = find_if(emitters.begin(), emitters.end(), [&handle](auto const& emitter) {
+    return emitter.guid == handle.getGuid();
+  });
+  if (found == emitters.end()) {
+    throw CoreException("AudioEmitter is no longer owned by its Primitive");
+  }
+  return *found;
+}
+
+template <typename Change>
+void changeAudioEmitter(ScriptAudioEmitter const& handle, Change change) {
+  auto emitters = handle.getPrimitive()->getAudioEmitters();
+  auto found = find_if(emitters.begin(), emitters.end(), [&handle](auto const& emitter) {
+    return emitter.guid == handle.getGuid();
+  });
+  if (found == emitters.end()) {
+    throw CoreException("AudioEmitter is no longer owned by its Primitive");
+  }
+  change(*found);
+  handle.getPrimitive()->setAudioEmitters(emitters);
+}
+
+}  // namespace
+
+tuple<float, float> ScriptAudioEmitter::getOffset() const {
+  auto const& offset = findAudioEmitter(*this).offset;
+  return {offset.x, offset.y};
+}
+
+void ScriptAudioEmitter::setOffset(float x, float y) const {
+  changeAudioEmitter(*this, [x, y](auto& emitter) {
+    emitter.offset = {x, y};
+  });
+}
+
+float ScriptAudioEmitter::getHeightOffset() const {
+  return findAudioEmitter(*this).heightOffset;
+}
+
+void ScriptAudioEmitter::setHeightOffset(float height) const {
+  changeAudioEmitter(*this, [height](auto& emitter) {
+    emitter.heightOffset = height;
+  });
+}
+
+string ScriptAudioEmitter::getSoundId() const {
+  return findAudioEmitter(*this).soundId;
+}
+
+void ScriptAudioEmitter::setSoundId(string const& soundId) const {
+  changeAudioEmitter(*this, [&soundId](auto& emitter) {
+    emitter.soundId = soundId;
+  });
+}
+
+Primitive* ScriptAudioEmitter::getPrimitive() const {
+  return mPrimitive;
+}
+
+string const& ScriptAudioEmitter::getGuid() const {
+  return mGuid;
+}
+
 RunScriptContext::RunScriptContext(
     RunScript const& step, LayerBuildContext& build)
     : mStep(&step), mBuild(&build) {
@@ -197,6 +280,49 @@ RunScriptContext::RunScriptContext(
 
 Primitive* RunScriptContext::createPrimitive(string const& type) const {
   return mStep->createPrimitive(type);
+}
+
+ScriptAudioEmitter RunScriptContext::addAudioEmitter(
+    Primitive* primitive, float x, float y, float heightOffset,
+    string const& soundId) const {
+  if (!primitive || !mStep->ownsPrimitive(primitive)) {
+    throw CoreException(
+        "A script added an AudioEmitter to a Primitive its RunScript step does not own");
+  }
+
+  AudioEmitter emitter;
+  emitter.offset = {x, y};
+  emitter.heightOffset = heightOffset;
+  emitter.soundId = soundId;
+  emitter.guid = mStep->nextAudioEmitterGuid();
+  auto emitters = primitive->getAudioEmitters();
+  emitters.push_back(emitter);
+  primitive->setAudioEmitters(emitters);
+  return ScriptAudioEmitter(primitive, move(emitter.guid));
+}
+
+vector<ScriptAudioEmitter> RunScriptContext::getAudioEmitters(
+    Primitive* primitive) const {
+  vector<ScriptAudioEmitter> result;
+  if (!primitive) return result;
+  result.reserve(primitive->getAudioEmitters().size());
+  for (auto const& emitter : primitive->getAudioEmitters()) {
+    result.emplace_back(primitive, emitter.guid);
+  }
+  return result;
+}
+
+bool RunScriptContext::removeAudioEmitter(
+    Primitive* primitive, ScriptAudioEmitter const& emitter) const {
+  if (!primitive || emitter.getPrimitive() != primitive) return false;
+  auto emitters = primitive->getAudioEmitters();
+  auto found = find_if(emitters.begin(), emitters.end(), [&emitter](auto const& candidate) {
+    return candidate.guid == emitter.getGuid();
+  });
+  if (found == emitters.end()) return false;
+  emitters.erase(found);
+  primitive->setAudioEmitters(emitters);
+  return true;
 }
 
 ScriptMeshPrimitive::ScriptMeshPrimitive(MeshPrimitive* primitive)
@@ -452,8 +578,37 @@ void bindScriptTypes(sol::state& lua) {
     return;
   }
 
+  lua.new_usertype<ScriptAudioEmitter>(
+      "AudioEmitter", sol::no_constructor,
+      "get_offset", &ScriptAudioEmitter::getOffset,
+      "set_offset", &ScriptAudioEmitter::setOffset,
+      "get_height_offset", &ScriptAudioEmitter::getHeightOffset,
+      "set_height_offset", &ScriptAudioEmitter::setHeightOffset,
+      "get_sound_id", &ScriptAudioEmitter::getSoundId,
+      "set_sound_id", &ScriptAudioEmitter::setSoundId);
+
   lua.new_usertype<Primitive>(
       "Primitive", sol::no_constructor,
+
+      "add_audio_emitter",
+      sol::overload(
+          [](Primitive& primitive, sol::this_environment environment) {
+            return executionContext(environment).addAudioEmitter(&primitive, 0.0f, 0.0f, 0.0f, "");
+          },
+          [](Primitive& primitive, float x, float y, float heightOffset,
+             string const& soundId, sol::this_environment environment) {
+            return executionContext(environment).addAudioEmitter(&primitive, x, y, heightOffset, soundId);
+          }),
+      "get_audio_emitters",
+      [](Primitive& primitive, sol::this_environment environment) {
+        return sol::as_table(
+            executionContext(environment).getAudioEmitters(&primitive));
+      },
+      "remove_audio_emitter",
+      [](Primitive& primitive, ScriptAudioEmitter const& emitter,
+         sol::this_environment environment) {
+        return executionContext(environment).removeAudioEmitter(&primitive, emitter);
+      },
 
       "get_type", &Primitive::getType,
 
@@ -535,6 +690,25 @@ void bindScriptTypes(sol::state& lua) {
       "get_type",
       [](ScriptMeshPrimitive const& mesh) {
         return mesh.getPrimitive()->getType();
+      },
+
+      "add_audio_emitter",
+      sol::overload(
+          [](ScriptMeshPrimitive& mesh, sol::this_environment environment) {
+            return executionContext(environment).addAudioEmitter(mesh.getPrimitive(), 0.0f, 0.0f, 0.0f, "");
+          },
+          [](ScriptMeshPrimitive& mesh, float x, float y, float heightOffset,
+             string const& soundId, sol::this_environment environment) {
+            return executionContext(environment).addAudioEmitter(mesh.getPrimitive(), x, y, heightOffset, soundId);
+          }),
+      "get_audio_emitters",
+      [](ScriptMeshPrimitive& mesh, sol::this_environment environment) {
+        return sol::as_table(executionContext(environment).getAudioEmitters(mesh.getPrimitive()));
+      },
+      "remove_audio_emitter",
+      [](ScriptMeshPrimitive& mesh, ScriptAudioEmitter const& emitter,
+         sol::this_environment environment) {
+        return executionContext(environment).removeAudioEmitter(mesh.getPrimitive(), emitter);
       },
 
       "set_position",

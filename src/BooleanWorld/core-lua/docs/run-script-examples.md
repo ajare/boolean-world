@@ -15,6 +15,35 @@ room:set_priority(0)
 context:place_primitive(room)
 ```
 
+## Add AudioEmitters to a Primitive
+
+AudioEmitters move with their parent Primitive. Their offsets are in the
+Primitive's local World-plane frame, and the height offset is measured above
+the generated floor. The RunScript seed and creation order derive stable GUIDs
+automatically; scripts cannot read or set those GUIDs.
+
+```lua
+local fountain = context:create_primitive("Circle")
+fountain:set_size(32, 32)
+fountain:set_position(64, 64)
+
+local water = fountain:add_audio_emitter(0, 0, 8, "events/fountain")
+water:set_offset(2, -1)
+water:set_height_offset(10)
+water:set_sound_id("events/fountain_large")
+
+for _, emitter in ipairs(fountain:get_audio_emitters()) do
+    local x, y = emitter:get_offset()
+    print(emitter:get_sound_id(), x, y, emitter:get_height_offset())
+end
+
+context:place_primitive(fountain)
+```
+
+`add_audio_emitter()` with no arguments creates an emitter with zero offsets
+and an empty sound id. `remove_audio_emitter(emitter)` removes a returned
+emitter handle. The same functions are available on a mutable MeshPrimitive.
+
 ## Create and edit a MeshPrimitive
 
 Creates one MeshPrimitive from a single Ring, splits Edge `0`, moves the new Vertex, and adds a Hole to Polygon `0`.

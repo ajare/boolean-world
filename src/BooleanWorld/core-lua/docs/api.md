@@ -246,6 +246,10 @@ Returned only by `context:create_primitive`.
 | Method | Description |
 |---|---|
 | `get_type()` | Returns the case-sensitive registered type name. |
+| `add_audio_emitter()` | Adds and returns an `AudioEmitter` with zero offsets and an empty sound id. |
+| `add_audio_emitter(x, y, height_offset, sound_id)` | Adds and returns an `AudioEmitter` with the supplied local offset, floor-relative height offset, and opaque sound id. |
+| `get_audio_emitters()` | Returns the mutable `AudioEmitter[]` owned by this Primitive, in creation order. |
+| `remove_audio_emitter(emitter)` | Removes an emitter returned by this Primitive and returns whether it was still present. |
 | `set_position(x, y)` | Sets the Primitive's position in the World plane. |
 | `get_position()` | Returns `x, y`. |
 | `set_transform_offset(x, y)` | Sets the local transform origin relative to the Primitive's position. |
@@ -293,6 +297,25 @@ Every operation validates the complete Ring and containment hierarchy. A refused
 | `fill_hole(hole_polygon_id)` | Retains a Hole and fills it with a welded Island, wrapping existing immediate Islands as Holes. Returns the new Island's Polygon id, or `nil`. |
 
 `points` in the add methods has the same `{{x, y}, ...}` form as `create_mesh_primitive`.
+
+## Mutable `AudioEmitter`
+
+Returned by `add_audio_emitter` and `get_audio_emitters` on a mutable
+`Primitive` or `MeshPrimitive`. Its GUID is derived deterministically from the
+RunScript step's serialized seed and the emitter's creation order. Lua cannot
+supply, read, or change that identity.
+
+| Method | Description |
+|---|---|
+| `get_offset()` | Returns the Primitive-local World-plane offset as `x, y`. |
+| `set_offset(x, y)` | Sets the Primitive-local World-plane offset. |
+| `get_height_offset()` | Returns the offset above the generated floor. |
+| `set_height_offset(height)` | Sets the offset above the generated floor. |
+| `get_sound_id()` | Returns the opaque sound id. |
+| `set_sound_id(sound_id)` | Sets the opaque sound id. |
+
+An emitter handle remains usable when more emitters are added to its Primitive.
+After that emitter is removed, using the stale handle fails the script.
 
 ## Read-only `PrimitiveView`
 

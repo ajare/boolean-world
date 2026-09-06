@@ -59,6 +59,29 @@ Primitive* RunScript::createPrimitive(string const& type) const {
   return ownPrimitive(unique_ptr<Primitive>(Primitive::createDefault(type)));
 }
 
+string RunScript::nextAudioEmitterGuid() const {
+  // SplitMix64 gives a stable cross-platform mapping from the serialized seed
+  // and creation order. UUID version/variant bits are set only to keep the
+  // resulting opaque identity in the conventional textual shape.
+  auto mix = [](uint64_t value) {
+    value += 0x9e3779b97f4a7c15ull;
+    value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ull;
+    value = (value ^ (value >> 27)) * 0x94d049bb133111ebull;
+    return value ^ (value >> 31);
+  };
+
+  auto const counter = mAudioEmitterCounter++;
+  auto const high = mix(mSeed ^ mix(counter));
+  auto const low = mix(high ^ counter ^ 0xd6e8feb86659fd93ull);
+  return format(
+      "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
+      static_cast<uint32_t>(high >> 32),
+      static_cast<uint16_t>(high >> 16),
+      static_cast<uint16_t>((high & 0x0fffull) | 0x5000ull),
+      static_cast<uint16_t>(((low >> 48) & 0x3fffull) | 0x8000ull),
+      low & 0x0000ffffffffffffull);
+}
+
 void RunScript::placePrimitive(LayerBuildContext& context, Primitive* primitive) const {
   if (!primitive) {
     throw CoreException("A script placed nothing");
@@ -125,6 +148,7 @@ void RunScript::placePrefabInstance(
 void RunScript::execute(LayerBuildContext& context) const {
   mBuiltPrimitives.clear();
   mPlacedPrimitives.clear();
+  mAudioEmitterCounter = 0;
   mFailureLineNumber = 0;
   mFailureTraceback.clear();
 

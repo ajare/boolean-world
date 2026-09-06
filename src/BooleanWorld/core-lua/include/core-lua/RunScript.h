@@ -46,6 +46,10 @@ private:
   // rather than a side effect of rebuilding (docs/adr/0040).
   uint64_t mSeed = 0;
 
+  // Reset for every execution. Script-created AudioEmitter identities are a
+  // deterministic function of mSeed and this creation-order counter.
+  mutable uint64_t mAudioEmitterCounter = 0;
+
   // Cleared and refilled by every execute(). mutable because execute() is
   // const, following PrefabField.
   mutable std::vector<std::unique_ptr<Primitive>> mBuiltPrimitives;
@@ -69,6 +73,7 @@ private:
   // borrowed handle to it.
   [[nodiscard]] Primitive* ownPrimitive(std::unique_ptr<Primitive> primitive) const;
   [[nodiscard]] Primitive* createPrimitive(std::string const& type) const;
+  [[nodiscard]] std::string nextAudioEmitterGuid() const;
 
   void placePrimitive(LayerBuildContext& context, Primitive* primitive) const;
 

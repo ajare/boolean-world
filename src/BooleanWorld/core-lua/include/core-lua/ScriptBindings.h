@@ -22,6 +22,28 @@ class PrimitiveField;
 class LayerBuildContext;
 class RunScript;
 
+// A mutable handle to an AudioEmitter owned by a script-created Primitive.
+// It resolves by deterministic GUID rather than retaining a vector element
+// pointer, so adding another emitter cannot invalidate a handle Lua holds.
+class ScriptAudioEmitter {
+private:
+  Primitive* mPrimitive;
+  std::string mGuid;
+
+public:
+  ScriptAudioEmitter(Primitive* primitive, std::string guid);
+
+  [[nodiscard]] std::tuple<float, float> getOffset() const;
+  void setOffset(float x, float y) const;
+  [[nodiscard]] float getHeightOffset() const;
+  void setHeightOffset(float height) const;
+  [[nodiscard]] std::string getSoundId() const;
+  void setSoundId(std::string const& soundId) const;
+
+  [[nodiscard]] Primitive* getPrimitive() const;
+  [[nodiscard]] std::string const& getGuid() const;
+};
+
 // A read-only, non-owning view of a Primitive, handed to scripts for prior
 // build Primitives (docs spec #365). sol2 does not track const-ness on a
 // bound pointer type - a script holding a `Primitive*` could call any bound
@@ -111,6 +133,13 @@ public:
   RunScriptContext(RunScript const& step, LayerBuildContext& build);
 
   [[nodiscard]] Primitive* createPrimitive(std::string const& type) const;
+  [[nodiscard]] ScriptAudioEmitter addAudioEmitter(
+      Primitive* primitive, float x, float y, float heightOffset,
+      std::string const& soundId) const;
+  [[nodiscard]] std::vector<ScriptAudioEmitter> getAudioEmitters(
+      Primitive* primitive) const;
+  [[nodiscard]] bool removeAudioEmitter(
+      Primitive* primitive, ScriptAudioEmitter const& emitter) const;
   [[nodiscard]] ScriptMeshPrimitive createMeshPrimitive(
       sol::table const& points) const;
   void placePrimitive(Primitive* primitive) const;

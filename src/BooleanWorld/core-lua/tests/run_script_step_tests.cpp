@@ -692,6 +692,7 @@ void theSeedMakesRebuildsReproducibleAndRerollableByChangingIt() {
   runtime.load("scatter", R"(
     local p = context:create_primitive("Rectangle")
     p:set_position(math.random(0, 1000), 0)
+    p:add_audio_emitter(math.random(0, 100), -3, 2, "ambience/wind")
     context:place_primitive(p)
   )");
 
@@ -701,19 +702,80 @@ void theSeedMakesRebuildsReproducibleAndRerollableByChangingIt() {
 
   layer.rebuild();
   float const firstX = layer.getPrimitive(0)->getPosition().x;
+  auto const firstEmitter = layer.getPrimitive(0)->getAudioEmitters().front();
   layer.rebuild();
   float const secondX = layer.getPrimitive(0)->getPosition().x;
-  require(firstX == secondX, "rebuilding the same Layer twice did not reproduce the seed's output");
+  auto const& secondEmitter = layer.getPrimitive(0)->getAudioEmitters().front();
+  require(firstX == secondX && firstEmitter.offset == secondEmitter.offset &&
+              firstEmitter.heightOffset == secondEmitter.heightOffset &&
+              firstEmitter.soundId == secondEmitter.soundId &&
+              firstEmitter.guid == secondEmitter.guid && !secondEmitter.guid.empty(),
+          "rebuilding the same Layer twice did not reproduce the seed's Primitive and AudioEmitter output");
 
   step->setSeed(8);
   layer.rebuild();
   float const rerolledX = layer.getPrimitive(0)->getPosition().x;
-  require(rerolledX != firstX, "changing the seed did not change the output");
+  auto const rerolledGuid = layer.getPrimitive(0)->getAudioEmitters().front().guid;
+  require(rerolledX != firstX && rerolledGuid != firstEmitter.guid,
+          "changing the seed did not change the output and derived emitter GUID");
 
   step->setSeed(7);
   layer.rebuild();
   float const restoredX = layer.getPrimitive(0)->getPosition().x;
-  require(restoredX == firstX, "restoring the seed did not restore the previous output");
+  require(restoredX == firstX &&
+              layer.getPrimitive(0)->getAudioEmitters().front().guid == firstEmitter.guid,
+          "restoring the seed did not restore the previous output and emitter GUID");
+}
+
+void scriptsCreateEditListAndRemoveAudioEmittersOnBothPrimitiveTypes() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("emitters", R"(
+    local primitive = context:create_primitive("Rectangle")
+    local emitter = primitive:add_audio_emitter()
+    assert(emitter.get_guid == nil and emitter.set_guid == nil)
+    emitter:set_offset(4, -5)
+    emitter:set_height_offset(6)
+    emitter:set_sound_id("events/fire")
+
+    local removed = primitive:add_audio_emitter(1, 2, 3, "remove/me")
+    assert(#primitive:get_audio_emitters() == 2)
+    assert(primitive:remove_audio_emitter(removed))
+    assert(not primitive:remove_audio_emitter(removed))
+    local px, py = emitter:get_offset()
+    assert(px == 4 and py == -5)
+    assert(emitter:get_height_offset() == 6)
+    assert(emitter:get_sound_id() == "events/fire")
+    context:place_primitive(primitive)
+
+    local mesh = context:create_mesh_primitive({
+      {0, 0}, {8, 0}, {8, 8}, {0, 8}
+    })
+    local mesh_emitter = mesh:add_audio_emitter(-1, 2, 3, "events/water")
+    local mx, my = mesh_emitter:get_offset()
+    assert(mx == -1 and my == 2)
+    assert(#mesh:get_audio_emitters() == 1)
+    context:place_primitive(mesh)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* step = addScriptStep(layer, runtime, "emitters");
+  step->setSeed(1234);
+  layer.rebuild();
+
+  require(!step->hasFailed() && layer.getNumPrimitives() == 2,
+          "using the AudioEmitter API failed the RunScript step");
+  auto const& primitiveEmitter = layer.getPrimitive(0)->getAudioEmitters();
+  auto const& meshEmitter = layer.getPrimitive(1)->getAudioEmitters();
+  require(primitiveEmitter.size() == 1 &&
+              primitiveEmitter.front().offset == wp::Vector2{4.0f, -5.0f} &&
+              primitiveEmitter.front().heightOffset == 6.0f &&
+              primitiveEmitter.front().soundId == "events/fire" &&
+              meshEmitter.size() == 1 &&
+              meshEmitter.front().offset == wp::Vector2{-1.0f, 2.0f} &&
+              meshEmitter.front().heightOffset == 3.0f &&
+              meshEmitter.front().soundId == "events/water" &&
+              primitiveEmitter.front().guid != meshEmitter.front().guid,
+          "AudioEmitter values did not cross both mutable Primitive APIs");
 }
 
 void twoRunScriptStepsCannotObserveEachOthersRandomState() {
@@ -1435,6 +1497,7 @@ int main() {
     includeReturnsExecutionLocalModuleTables();
     printReachesTheHostsSink();
     theSeedMakesRebuildsReproducibleAndRerollableByChangingIt();
+    scriptsCreateEditListAndRemoveAudioEmittersOnBothPrimitiveTypes();
     twoRunScriptStepsCannotObserveEachOthersRandomState();
     everyExecutionBeginsWithAFreshEnvironment();
     scriptsReadPriorBuildPrimitivesAsConstHandles();
