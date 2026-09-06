@@ -680,6 +680,7 @@ void StatePlayBooleanWorld::destroyGameObjects() {
   }
   mGenerationCallbackToken =
       bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken;
+  mEmitterResyncPending.store(false, std::memory_order_release);
 
   // Join the dedicated reflections thread while the FMOD system, loaded
   // resources, and game DLL are all still alive.
@@ -1064,6 +1065,7 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
   if (mSteamAudio && mWorldData) {
     mSteamAudio->updateWorldSnapshot(
         mWorldData, *mAcousticPresetResolver);
+    mSteamAudio->syncEmitters(mWorldData);
   }
 
   // Start scheduled world clipping
@@ -1135,6 +1137,10 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
     // committed immutable generation, never once per frame.
     mSteamAudio->updateWorldSnapshot(
         mWorldData, *mAcousticPresetResolver);
+    if (mEmitterResyncPending.exchange(
+            false, std::memory_order_acq_rel)) {
+      mSteamAudio->syncEmitters(mWorldData);
+    }
   }
 
   // Supply the physics step with walls around the predicted destination. Player
@@ -1143,13 +1149,17 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
 }
 
 void StatePlayBooleanWorld::updateAudio(float frameTime) {
-  BW_UNUSED(frameTime);
-
-  // Phase 0 gate (#383): prove the FMOD path end to end with one theme,
-  // started once and left running. Real emitter-driven playback is later
-  // work (ADR-0041).
   if (!mThemeInstance) {
     mThemeInstance = mwAudioSystem->startEvent("Theme.Sandstone");
+  }
+
+  if (mSteamAudio) {
+    auto const& physicalStats = getPlayerPhysicalStats();
+    mSteamAudio->updateEmitters(
+        bw::app::worldToRendererAudioPosition(
+            physicalStats.position,
+            physicalStats.floorZ + BW_PLAYER_EYE_HEIGHT),
+        frameTime);
   }
 }
 
@@ -1370,6 +1380,10 @@ void StatePlayBooleanWorld::handleClippingUpdate(bw::core::DynamicWorldDataGener
       break;
 
     case bw::core::DynamicWorldDataGenerator::GenerationState::Committed:
+      // The callback is the authoritative regeneration boundary. The World
+      // pointer is assigned just after this callback returns, so defer the
+      // identity reconciliation until updatePreEntities has that new snapshot.
+      mEmitterResyncPending.store(true, std::memory_order_release);
       mwRenderer->setWorldChanged();
       // World models use dynamic providers, so MPP cannot observe their
       // vertex/index writes through model revisions. A committed generation is

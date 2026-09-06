@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <deque>
 #include <map>
 #include <memory>
@@ -197,6 +198,7 @@ private:
 
   bw::core::DynamicWorldDataGenerator::GenerationCallbackToken mGenerationCallbackToken{
       bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken};
+  std::atomic_bool mEmitterResyncPending{false};
 
   std::deque<DisplayMessage> mDisplayMessages;
 

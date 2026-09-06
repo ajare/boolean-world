@@ -8,6 +8,7 @@ add_library(BooleanWorld SHARED
     src/CpuUpdateProfiler.cpp
     src/DLL.cpp
     src/EntityHandlerBooleanWorld.cpp
+    src/EmitterSourcePolicy.cpp
     src/LiquidReflectionSelection.cpp
     src/Map.cpp
     src/MapBooleanWorldDefinitionFactory.cpp
@@ -67,7 +68,7 @@ if(BW_ENABLE_FMOD)
     # Willpower is consumed as a prebuilt imported target, so its private
     # configure cannot propagate this backend switch to the game DLL.
     target_compile_definitions(BooleanWorld PRIVATE WP_APPLICATION_USE_FMOD)
-    target_link_libraries(BooleanWorld PRIVATE vendor::fmod)
+    target_link_libraries(BooleanWorld PRIVATE vendor::fmod vendor::fmodstudio)
 endif()
 
 target_compile_features(BooleanWorld PRIVATE cxx_std_23)
@@ -148,6 +149,18 @@ if(BUILD_TESTING)
     bw_target_defaults(boolean_world_dll_state_tests)
     bw_output_dirs(boolean_world_dll_state_tests)
     add_test(NAME boolean_world_dll_state COMMAND boolean_world_dll_state_tests)
+
+    add_executable(boolean_world_emitter_source_policy_tests
+        tests/emitter_source_policy_tests.cpp
+        src/EmitterSourcePolicy.cpp)
+    target_include_directories(boolean_world_emitter_source_policy_tests
+        PRIVATE include)
+    target_compile_features(boolean_world_emitter_source_policy_tests
+        PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_emitter_source_policy_tests)
+    bw_output_dirs(boolean_world_emitter_source_policy_tests)
+    add_test(NAME boolean_world_emitter_source_policy
+             COMMAND boolean_world_emitter_source_policy_tests)
 
     add_executable(boolean_world_fragment_overdraw_tests
         tests/fragment_overdraw_tests.cpp)

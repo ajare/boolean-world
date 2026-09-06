@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include <glm/vec3.hpp>
 #include <mpp/Camera.h>
 
 namespace wp::application {
@@ -30,6 +31,15 @@ public:
   SteamAudio& operator=(SteamAudio const&) = delete;
 
   void setListener(mpp::Camera const& camera);
+
+  // Reconciles captured emitters by (GUID, placement key). A matching active
+  // source and its FMOD EventInstance survive a generation commit unchanged;
+  // vanished sources begin a short whole-event fade.
+  void syncEmitters(core::ArrangementWorldDataPtr sourceWorld);
+
+  // Applies distance culling, starts/stops events, updates source simulation
+  // inputs, and cross-fades reflection-budget transitions.
+  void updateEmitters(glm::vec3 const& listenerPosition, float frameTime);
 
   // Runs the cheap, latency-sensitive direct/occlusion pass on the caller's
   // game thread. If the reflection worker is changing scenes, this tick is
