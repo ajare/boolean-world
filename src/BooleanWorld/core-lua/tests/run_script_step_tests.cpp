@@ -1256,16 +1256,23 @@ void prefabPlacementRejectsNonTilesAndNonQuarterTurns() {
     context:place_prefab_instance(rock, 0, 0, 45)
   )");
   runtime.load("invalid-grid-size", R"(context:get_tile(48, 0, 0))");
+  runtime.load("fractional-grid-size", R"(context:get_tile(32.5, 0, 0))");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
   addPrefabDefinitions(layer, "prefabs", "rock", 0.0f);
   auto* step = addScriptStep(layer, runtime, "fractional-tile");
   for (auto const* script : {
-           "fractional-tile", "invalid-angle", "invalid-grid-size"}) {
+           "fractional-tile", "invalid-angle", "invalid-grid-size",
+           "fractional-grid-size"}) {
     step->setScriptName(script);
     layer.rebuild();
-    require(step->hasFailed() && layer.getNumPrimitives() == 0,
-            "Prefab placement accepted a non-Tile location, angle, or grid size");
+    if (!step->hasFailed() || layer.getNumPrimitives() != 0) {
+      throw std::runtime_error(
+          std::string("Prefab validation failed for '") + script +
+          "': failed=" + (step->hasFailed() ? "true" : "false") +
+          ", primitives=" + std::to_string(layer.getNumPrimitives()) +
+          ", message='" + step->getFailureMessage() + "'");
+    }
   }
 }
 

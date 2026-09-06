@@ -28,11 +28,28 @@ namespace {
 
 constexpr char const* boundMarker = "__bw_script_types_bound";
 
+bool integralNumberFromLua(
+    sol::object const& value, lua_Number& integerValue) {
+  auto* lua = value.lua_state();
+  if (!lua) {
+    return false;
+  }
+  value.push();
+  auto const isNumber = lua_type(lua, -1) == LUA_TNUMBER;
+  auto const number = isNumber ? lua_tonumber(lua, -1) : 0.0;
+  lua_pop(lua, 1);
+  if (!isNumber || !isfinite(number) || trunc(number) != number) {
+    return false;
+  }
+  integerValue = number;
+  return true;
+}
+
 int32_t tileCoordinateFromLua(sol::object const& value, char const* name) {
-  if (!value.is<lua_Integer>()) {
+  lua_Number coordinate{};
+  if (!integralNumberFromLua(value, coordinate)) {
     throw CoreException(format("Prefab Tile {} must be an integer", name));
   }
-  auto const coordinate = value.as<lua_Integer>();
   if (coordinate < numeric_limits<int32_t>::min() ||
       coordinate > numeric_limits<int32_t>::max()) {
     throw CoreException(format("Prefab Tile {} is out of range", name));
@@ -41,10 +58,10 @@ int32_t tileCoordinateFromLua(sol::object const& value, char const* name) {
 }
 
 uint32_t prefabGridSizeFromLua(sol::object const& value) {
-  if (!value.is<lua_Integer>()) {
+  lua_Number size{};
+  if (!integralNumberFromLua(value, size)) {
     throw CoreException("Prefab grid size must be an integer");
   }
-  auto const size = value.as<lua_Integer>();
   if (size < 0 || size > numeric_limits<uint32_t>::max() ||
       !isPrefabTileSize(static_cast<uint32_t>(size))) {
     throw CoreException("Prefab grid size must be 32, 64, 128, or 256");
