@@ -146,6 +146,10 @@ void validateRing(ClosedPolygon& ring, size_t& ringCount, size_t& vertexCount) {
                [](auto const& entry) { return entry.first.empty(); })) {
       throw CoreException("Vertex metadata keys cannot be empty");
     }
+    if (any_of(ring[i].edgeMetadata.begin(), ring[i].edgeMetadata.end(),
+               [](auto const& entry) { return entry.first.empty(); })) {
+      throw CoreException("Edge metadata keys cannot be empty");
+    }
   }
   for (size_t i = 0; i < ring.size(); ++i) {
     for (size_t j = i + 1; j < ring.size(); ++j) {
@@ -172,6 +176,7 @@ void validateRing(ClosedPolygon& ring, size_t& ringCount, size_t& vertexCount) {
     reverse(ring.begin(), ring.end());
     for (size_t i = 0; i < ring.size(); ++i) {
       auto source = (ring.size() + ring.size() - 2 - i) % ring.size();
+      ring[i].edgeMetadata = original[source].edgeMetadata;
       ring[i].edgeFlags = original[source].edgeFlags;
       ring[i].edgeNormalMap = original[source].edgeNormalMap;
       ring[i].edgeWallMask = original[source].edgeWallMask;
@@ -390,10 +395,11 @@ struct MeshPrimitiveEditingProxy::Impl {
   // occurrence of that topology Vertex reads and writes one value.
   unordered_map<uint32_t, map<string, string>> vertexMetadata;
 
-  // Per-edge flags, keyed by Mesh edge index. Populated whenever a Mesh edge
-  // is created (see Builder::addRing) by copying in the source Vertex's
-  // edgeFlags. Entries for edges that no longer exist are simply stale and
-  // are never queried again.
+  // Per-edge data, keyed by welded Mesh edge index. Populated whenever a Mesh
+  // edge is created (see Builder::addRing) from the source Vertex's outgoing
+  // edge properties. Entries for edges that no longer exist are simply stale
+  // and are never queried again.
+  unordered_map<uint32_t, map<string, string>> edgeMetadata;
   unordered_map<uint32_t, uint32_t> edgeFlags;
   unordered_map<uint32_t, WallNormalMapOverride> edgeNormalMaps;
   unordered_map<uint32_t, WallMaskOverride> edgeWallMasks;
@@ -471,10 +477,15 @@ struct MeshPrimitiveEditingProxy::Impl {
         if (inserted) {
           found->second = target.mesh.addEdge(wp::geometry::Edge(first, second));
           // ring[i]'s outgoing edge is (first, second): the edge to the
-          // next vertex in this Ring. Copy its stored flags in.
+          // next vertex in this Ring. Copy its stored properties in.
+          target.edgeMetadata[found->second] = ring[i].edgeMetadata;
           target.edgeFlags[found->second] = ring[i].edgeFlags;
           target.edgeNormalMaps[found->second] = ring[i].edgeNormalMap;
           target.edgeWallMasks[found->second] = ring[i].edgeWallMask;
+        } else if (target.edgeMetadata.at(found->second) !=
+                   ring[i].edgeMetadata) {
+          throw CoreException(
+              "Welded MeshPrimitive Ring edges have inconsistent metadata");
         }
         edgeData.insert(edgeData.end(), {first, second, found->second});
       }
@@ -501,6 +512,7 @@ struct MeshPrimitiveEditingProxy::Impl {
     mesh.clear();
     shells.clear();
     vertexMetadata.clear();
+    edgeMetadata.clear();
     edgeFlags.clear();
     edgeNormalMaps.clear();
     edgeWallMasks.clear();
@@ -536,6 +548,10 @@ struct MeshPrimitiveEditingProxy::Impl {
       auto edgeIndex = source.getEdgeIndexByVertices(ordered[i], ordered[next]);
       if (edgeIndex >= 0) {
         auto index = static_cast<uint32_t>(edgeIndex);
+        auto metadata = edgeMetadata.find(index);
+        if (metadata != edgeMetadata.end()) {
+          result[i].edgeMetadata = metadata->second;
+        }
         result[i].edgeFlags = rawEdgeFlags(index);
         auto normalMap = edgeNormalMaps.find(index);
         if (normalMap != edgeNormalMaps.end()) {
@@ -798,6 +814,7 @@ void MeshPrimitiveEditingProxy::moveRing(uint32_t polygonIndex, wp::Vector2 cons
 bool MeshPrimitiveEditingProxy::splitEdge(
     uint32_t edgeIndex, float t,
     wp::geometry::SplitEdgeResult* result) {
+  auto originalMetadata = getEdgeMetadata(edgeIndex);
   auto originalFlags = mImpl->rawEdgeFlags(edgeIndex);
   auto originalNormalMap = mImpl->edgeNormalMap(edgeIndex);
   auto originalWallMask = mImpl->edgeWallMask(edgeIndex);
@@ -812,6 +829,8 @@ bool MeshPrimitiveEditingProxy::splitEdge(
     mImpl->vertexMetadata[vertexIndex] = {};
   }
   if (target->newEdgeIndices.size() == 2) {
+    mImpl->edgeMetadata[target->newEdgeIndices[0]] = originalMetadata;
+    mImpl->edgeMetadata[target->newEdgeIndices[1]] = originalMetadata;
     mImpl->edgeFlags[target->newEdgeIndices[0]] = originalFlags;
     mImpl->edgeFlags[target->newEdgeIndices[1]] = originalFlags;
     mImpl->edgeNormalMaps[target->newEdgeIndices[0]] = originalNormalMap;
@@ -843,6 +862,27 @@ bool MeshPrimitiveEditingProxy::setVertexMetadata(
     throw CoreException("Vertex metadata keys cannot be empty");
   }
   auto& existing = mImpl->vertexMetadata[vertexIndex];
+  if (existing == metadata) return false;
+  existing = metadata;
+  return true;
+}
+
+map<string, string> const& MeshPrimitiveEditingProxy::getEdgeMetadata(
+    uint32_t edgeIndex) const {
+  if (edgeIndexIterationFinished(edgeIndex)) {
+    throw CoreException("Mesh edge not found");
+  }
+  return mImpl->edgeMetadata.at(edgeIndex);
+}
+
+bool MeshPrimitiveEditingProxy::setEdgeMetadata(
+    uint32_t edgeIndex, map<string, string> const& metadata) {
+  if (edgeIndexIterationFinished(edgeIndex)) return false;
+  if (any_of(metadata.begin(), metadata.end(),
+             [](auto const& entry) { return entry.first.empty(); })) {
+    throw CoreException("Edge metadata keys cannot be empty");
+  }
+  auto& existing = mImpl->edgeMetadata[edgeIndex];
   if (existing == metadata) return false;
   existing = metadata;
   return true;
@@ -1035,6 +1075,7 @@ bool MeshPrimitiveEditingProxy::sliceFilledRing(
             mImpl->mesh.getEdgeIndexByVertices(ordered[index], ordered[next]);
         if (edgeIndex >= 0) {
           auto index = static_cast<uint32_t>(edgeIndex);
+          vertex.edgeMetadata = mImpl->edgeMetadata.at(index);
           vertex.edgeFlags = mImpl->rawEdgeFlags(index);
           vertex.edgeNormalMap = mImpl->edgeNormalMap(index);
           vertex.edgeWallMask = mImpl->edgeWallMask(index);
@@ -1129,7 +1170,9 @@ bool MeshPrimitiveEditingProxy::removeVertex(uint32_t vertexIndex) {
     auto incoming = mImpl->mesh.getEdgeIndexByVertices(previous, *found);
     auto outgoing = mImpl->mesh.getEdgeIndexByVertices(*found, next);
     if (incoming >= 0 && outgoing >= 0 &&
-        (mImpl->edgeNormalMap(static_cast<uint32_t>(incoming)) !=
+        (mImpl->edgeMetadata.at(static_cast<uint32_t>(incoming)) !=
+             mImpl->edgeMetadata.at(static_cast<uint32_t>(outgoing)) ||
+         mImpl->edgeNormalMap(static_cast<uint32_t>(incoming)) !=
              mImpl->edgeNormalMap(static_cast<uint32_t>(outgoing)) ||
          mImpl->edgeWallMask(static_cast<uint32_t>(incoming)) !=
              mImpl->edgeWallMask(static_cast<uint32_t>(outgoing)))) {
@@ -1510,6 +1553,19 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
         }
         serializer->endArray();
       }
+      if (serializer->isPositional()) {
+        serializer->writeBool("hasEdgeMetadata", !vertex.edgeMetadata.empty());
+      }
+      if (!vertex.edgeMetadata.empty()) {
+        serializer->beginArray("edgeMetadata");
+        for (auto const& [key, value] : vertex.edgeMetadata) {
+          serializer->beginMap("entry");
+          serializer->writeString("key", key);
+          serializer->writeString("value", value);
+          serializer->endMap();
+        }
+        serializer->endArray();
+      }
       serializer->writeUint8(
           "normalMapState", static_cast<uint8_t>(vertex.edgeNormalMap.state()));
       if (auto image = vertex.edgeNormalMap.imageData()) {
@@ -1550,7 +1606,7 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
 
   serializer->beginMap("meshPrimitive");
   serializer->writeUint32("treeFormat", TreeFormatMagic);
-  serializer->writeUint32("edgeOverrideFormat", 6);
+  serializer->writeUint32("edgeOverrideFormat", 7);
   serializer->beginArray("shells");
   vector<Event> events;
   for (auto shell = mShells.rbegin(); shell != mShells.rend(); ++shell) {
@@ -1632,7 +1688,7 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
       edgeOverrideFormat =
           serializer->readUint32("collisionOverrideFormat", true, 0);
     }
-    if (edgeOverrideFormat < 4 || edgeOverrideFormat > 6) {
+    if (edgeOverrideFormat < 4 || edgeOverrideFormat > 7) {
       throw CoreException("Unsupported MeshPrimitive edge override format version.");
     }
 
@@ -1681,6 +1737,27 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
               }
               if (!ring.back().metadata.emplace(move(key), move(value)).second) {
                 throw CoreException("Vertex metadata keys must be unique");
+              }
+            }
+            serializer->endArray();
+          }
+        }
+        if (edgeOverrideFormat >= 7) {
+          auto const hasMetadata = serializer->isPositional()
+                                       ? serializer->readBool("hasEdgeMetadata")
+                                       : serializer->hasField("edgeMetadata");
+          if (hasMetadata) {
+            serializer->beginArray("edgeMetadata");
+            while (serializer->nextArrayItem()) {
+              serializer->beginMap("entry");
+              auto key = serializer->readString("key");
+              auto value = serializer->readString("value");
+              serializer->endMap();
+              if (key.empty()) {
+                throw CoreException("Edge metadata keys cannot be empty");
+              }
+              if (!ring.back().edgeMetadata.emplace(move(key), move(value)).second) {
+                throw CoreException("Edge metadata keys must be unique");
               }
             }
             serializer->endArray();

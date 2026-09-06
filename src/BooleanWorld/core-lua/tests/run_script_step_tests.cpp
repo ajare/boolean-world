@@ -1091,9 +1091,9 @@ void scriptsListAndFilterPrefabsByTags() {
           "listing or filtering Prefabs by tags failed the script");
 }
 
-void scriptsReadAndFilterPrefabVertexMetadata() {
+void scriptsReadAndFilterPrefabTopologyMetadata() {
   bw::core::ScriptRuntime runtime;
-  runtime.load("vertex-metadata", R"(
+  runtime.load("topology-metadata", R"(
     local prefab = context:find_define_prefabs("prefabs"):get_prefab("markers")
     local vertices = prefab:get_metadata_vertices()
     assert(#vertices == 1)
@@ -1105,10 +1105,25 @@ void scriptsReadAndFilterPrefabVertexMetadata() {
     assert(#prefab:get_vertices_with_metadata({kind = "spawn", team = "blue"}) == 1)
     assert(#prefab:get_vertices_with_metadata({kind = "exit"}) == 0)
     assert(#prefab:get_vertices_with_metadata({}) == 1)
+
+    local edges = prefab:get_metadata_edges()
+    assert(#edges == 1)
+    local x1, y1, x2, y2 = edges[1]:get_endpoints()
+    assert(x1 == 0 and y1 == 0 and x2 == 10 and y2 == 0)
+    metadata = edges[1]:get_metadata()
+    assert(metadata.kind == "entrance" and metadata.team == "blue")
+    assert(#prefab:get_edges_with_metadata({kind = "entrance"}) == 1)
+    assert(#prefab:get_edges_with_metadata({kind = "entrance", team = "blue"}) == 1)
+    assert(#prefab:get_edges_with_metadata({kind = "exit"}) == 0)
+    assert(#prefab:get_edges_with_metadata({}) == 1)
   )");
   runtime.load("invalid-vertex-metadata-filter", R"(
     local prefab = context:find_define_prefabs("prefabs"):get_prefab("markers")
     prefab:get_vertices_with_metadata({kind = 42})
+  )");
+  runtime.load("invalid-edge-metadata-filter", R"(
+    local prefab = context:find_define_prefabs("prefabs"):get_prefab("markers")
+    prefab:get_edges_with_metadata({kind = 42})
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -1121,20 +1136,24 @@ void scriptsReadAndFilterPrefabVertexMetadata() {
   bw::core::ClosedPolygon ring{
       {{0.0f, 0.0f}}, {{10.0f, 0.0f}}, {{10.0f, 10.0f}}, {{0.0f, 10.0f}}};
   ring[0].metadata = {{"kind", "spawn"}, {"team", "blue"}};
+  ring[0].edgeMetadata = {{"kind", "entrance"}, {"team", "blue"}};
   layer.addPrimitive(bw::core::MeshPrimitive::fromComplexPolygons(
       bw::core::Primitive::Operation::Union, {{ring}}));
   definitions->clearSelectedPrefab();
   layer.setActiveStep(0);
 
-  auto* step = addScriptStep(layer, runtime, "vertex-metadata");
+  auto* step = addScriptStep(layer, runtime, "topology-metadata");
   layer.rebuild();
   require(!step->hasFailed(),
-          "reading or filtering Prefab vertex metadata failed the script");
+          "reading or filtering Prefab topology metadata failed the script");
 
-  step->setScriptName("invalid-vertex-metadata-filter");
-  layer.rebuild();
-  require(step->hasFailed(),
-          "a non-string Prefab vertex metadata filter value was accepted");
+  for (auto const* invalid : {"invalid-vertex-metadata-filter",
+                              "invalid-edge-metadata-filter"}) {
+    step->setScriptName(invalid);
+    layer.rebuild();
+    require(step->hasFailed(),
+            "a non-string Prefab topology metadata filter value was accepted");
+  }
 }
 
 void malformedLuaPrefabTagFiltersFailTheStep() {
@@ -1509,7 +1528,7 @@ int main() {
     prefabPlacementRejectsNonTilesAndNonQuarterTurns();
     placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged();
     scriptsListAndFilterPrefabsByTags();
-    scriptsReadAndFilterPrefabVertexMetadata();
+    scriptsReadAndFilterPrefabTopologyMetadata();
     malformedLuaPrefabTagFiltersFailTheStep();
     aScriptReadsAPrimitiveFieldsPrimitivesAsConst();
     aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName();

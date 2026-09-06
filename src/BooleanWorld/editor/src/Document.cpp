@@ -622,6 +622,20 @@ bool Document::setActiveMeshVertexMetadata(
   return true;
 }
 
+map<string, string> Document::getActiveMeshEdgeMetadata(
+    uint32_t edgeIndex) const {
+  return mActiveMesh ? mActiveMesh->getEdgeMetadata(edgeIndex)
+                     : map<string, string>{};
+}
+
+bool Document::setActiveMeshEdgeMetadata(
+    uint32_t edgeIndex, map<string, string> const& metadata) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u) return false;
+  if (!mActiveMesh->setEdgeMetadata(edgeIndex, metadata)) return false;
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
+  return true;
+}
+
 optional<bool> Document::getActiveMeshEdgeCollisionOverride(
     uint32_t edgeIndex) const {
   return mActiveMesh ? mActiveMesh->getEdgeCollisionOverride(edgeIndex)

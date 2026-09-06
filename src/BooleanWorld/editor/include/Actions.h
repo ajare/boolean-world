@@ -284,6 +284,9 @@ bool setMeshVertexPosition(Document* doc, uint32_t vertexIndex, wp::Vector2 cons
 bool setMeshVertexMetadata(
     Document* doc, uint32_t vertexIndex,
     std::map<std::string, std::string> const& metadata);
+bool setMeshEdgeMetadata(
+    Document* doc, uint32_t edgeIndex,
+    std::map<std::string, std::string> const& metadata);
 
 // Sets or clears the active mesh edge's wall collision override. Refused on
 // an edge whose connectivity is not External.

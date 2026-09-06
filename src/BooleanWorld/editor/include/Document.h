@@ -250,6 +250,11 @@ public:
   bool setActiveMeshVertexMetadata(
       uint32_t vertexIndex,
       std::map<std::string, std::string> const& metadata);
+  [[nodiscard]] std::map<std::string, std::string> getActiveMeshEdgeMetadata(
+      uint32_t edgeIndex) const;
+  bool setActiveMeshEdgeMetadata(
+      uint32_t edgeIndex,
+      std::map<std::string, std::string> const& metadata);
 
   // Authored tri-state collision override for one edge of the active mesh.
   // Unset, and not editable, with no active mesh.

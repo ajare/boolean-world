@@ -455,6 +455,12 @@ bool setMeshVertexMetadata(
   return doc->setActiveMeshVertexMetadata(vertexIndex, metadata);
 }
 
+bool setMeshEdgeMetadata(
+    Document* doc, uint32_t edgeIndex,
+    map<string, string> const& metadata) {
+  return doc->setActiveMeshEdgeMetadata(edgeIndex, metadata);
+}
+
 bool setMeshEdgeCollisionOverride(
     Document* doc, uint32_t edgeIndex, optional<bool> collides) {
   return doc->setActiveMeshEdgeCollisionOverride(edgeIndex, collides);

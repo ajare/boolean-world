@@ -23,6 +23,11 @@ struct Vertex {
   // keeps this identical across every Ring occurrence of a welded vertex.
   std::map<std::string, std::string> metadata;
 
+  // Authored script-facing data attached to the edge FROM this vertex TO THE
+  // NEXT vertex in its Ring. Mesh editing keeps this identical across every
+  // Ring occurrence of a welded edge.
+  std::map<std::string, std::string> edgeMetadata;
+
   // Flags for the edge FROM this vertex TO THE NEXT vertex in its Ring (the
   // "outgoing edge"). See the BW_MESH_EDGE_* flags in Defines.h. All bits
   // clear means collision is not overridden and the wall is visible.

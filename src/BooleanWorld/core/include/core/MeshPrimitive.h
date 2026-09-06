@@ -174,6 +174,12 @@ public:
       uint32_t vertexIndex,
       std::map<std::string, std::string> const& metadata);
 
+  [[nodiscard]] std::map<std::string, std::string> const& getEdgeMetadata(
+      uint32_t edgeIndex) const;
+  bool setEdgeMetadata(
+      uint32_t edgeIndex,
+      std::map<std::string, std::string> const& metadata);
+
   // Authored tri-state collision override. External edges default to unset;
   // non-External edges always read unset and cannot be edited.
   [[nodiscard]] std::optional<bool> getEdgeCollisionOverride(

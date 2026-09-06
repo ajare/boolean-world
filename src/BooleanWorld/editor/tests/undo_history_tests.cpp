@@ -253,6 +253,21 @@ void prefabEditsAreUndoableAndRestoreStepQualifiedFocus() {
   require(document.getActiveMesh() &&
               document.getActiveMeshVertexMetadata(vertexIndex).empty(),
           "undo did not restore Prefab vertex metadata and Mesh focus");
+
+  auto const edgeIndex = document.getActiveMesh()->getFirstEdgeIndex();
+  editor::transactUndoableAction(
+      &document, "Set Prefab Edge Metadata",
+      [edgeIndex](editor::Document* doc) {
+        return editor::setMeshEdgeMetadata(
+            doc, edgeIndex, {{"kind", "entrance"}});
+      });
+  require(document.getActiveMeshEdgeMetadata(edgeIndex) ==
+              std::map<std::string, std::string>{{"kind", "entrance"}},
+          "setting Prefab edge metadata did not commit it");
+  editor::undo(&document);
+  require(document.getActiveMesh() &&
+              document.getActiveMeshEdgeMetadata(edgeIndex).empty(),
+          "undo did not restore Prefab edge metadata and Mesh focus");
 }
 
 void prefabFieldStepActionsUndoAndRedoWithoutLosingReferences() {

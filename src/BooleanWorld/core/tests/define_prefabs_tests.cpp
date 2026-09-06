@@ -340,6 +340,7 @@ void prefabVertexMetadataRoundTripsAndEmptyMetadataIsOmitted() {
   bw::core::ClosedPolygon ring{
       {{0.0f, 0.0f}}, {{10.0f, 0.0f}}, {{10.0f, 10.0f}}, {{0.0f, 10.0f}}};
   ring[0].metadata = {{"kind", "spawn"}, {"team", "blue"}};
+  ring[0].edgeMetadata = {{"kind", "entrance"}, {"team", "blue"}};
   source.addPrimitive(bw::core::MeshPrimitive::fromComplexPolygons(
       bw::core::Primitive::Operation::Union, {{ring}}));
 
@@ -351,6 +352,8 @@ void prefabVertexMetadataRoundTripsAndEmptyMetadataIsOmitted() {
   auto const yaml = writer->getSerializedString();
   require(yaml.find("vertexMetadata") != std::string::npos,
           "non-empty Prefab vertex metadata was not serialized");
+  require(yaml.find("edgeMetadata") != std::string::npos,
+          "non-empty Prefab edge metadata was not serialized");
 
   bw::core::Layer loaded;
   auto reader = std::shared_ptr<bw::core::YamlSerializer>(
@@ -364,12 +367,20 @@ void prefabVertexMetadataRoundTripsAndEmptyMetadataIsOmitted() {
       static_cast<bw::core::DefinePrefabs*>(loaded.getStep(1));
   auto* loadedMesh = static_cast<bw::core::MeshPrimitive*>(
       loadedDefinitions->getPrefab(0)->getPrimitive(0));
-  require(loadedMesh->getShells().front().ring.front().metadata ==
+  auto const& loadedVertex = loadedMesh->getShells().front().ring.front();
+  require(loadedVertex.metadata ==
               std::map<std::string, std::string>{{"kind", "spawn"},
                                                  {"team", "blue"}},
           "Prefab vertex metadata did not round-trip");
+  require(loadedVertex.edgeMetadata ==
+              std::map<std::string, std::string>{{"kind", "entrance"},
+                                                 {"team", "blue"}},
+          "Prefab edge metadata did not round-trip");
 
-  for (auto& vertex : ring) vertex.metadata.clear();
+  for (auto& vertex : ring) {
+    vertex.metadata.clear();
+    vertex.edgeMetadata.clear();
+  }
   bw::core::Layer emptySource(5, "Prefabs", 256.0f, 16.0f);
   auto* emptyDefinitions = addDefinePrefabs(emptySource);
   auto* emptyPrefab = emptyDefinitions->addPrefab("No markers");
@@ -381,9 +392,11 @@ void prefabVertexMetadataRoundTripsAndEmptyMetadataIsOmitted() {
       bw::core::YamlSerializer::toString());
   emptySource.serialize(emptyWriter, writeData);
   emptyWriter->serialize();
-  require(emptyWriter->getSerializedString().find("vertexMetadata") ==
-              std::string::npos,
+  auto const emptyYaml = emptyWriter->getSerializedString();
+  require(emptyYaml.find("vertexMetadata") == std::string::npos,
           "empty Prefab vertex metadata was serialized");
+  require(emptyYaml.find("edgeMetadata") == std::string::npos,
+          "empty Prefab edge metadata was serialized");
 }
 
 void registryConstructsDefinePrefabsByTypeName() {

@@ -1212,6 +1212,43 @@ void vertexMetadataFollowsTopologyEditsAndCommits() {
   require(rejectedEmptyKey, "an empty vertex metadata key was accepted");
 }
 
+void edgeMetadataFollowsTopologyEditsAndCommits() {
+  std::unique_ptr<MeshPrimitive> primitive(MeshPrimitive::fromComplexPolygons(
+      Primitive::Operation::Union, {{ring(-5, -5, 5, 5)}}));
+  auto proxy = primitive->createEditingProxy();
+  auto const edge = proxy->getFirstEdgeIndex();
+  auto const metadata =
+      std::map<std::string, std::string>{{"kind", "entrance"},
+                                         {"team", "blue"}};
+  require(proxy->setEdgeMetadata(edge, metadata),
+          "edge metadata was not accepted");
+  proxy->moveEdge(edge, {1.0f, 0.0f});
+
+  wp::geometry::SplitEdgeResult split;
+  require(proxy->splitEdge(edge, &split) &&
+              split.newEdgeIndices.size() == 2 &&
+              proxy->getEdgeMetadata(split.newEdgeIndices[0]) == metadata &&
+              proxy->getEdgeMetadata(split.newEdgeIndices[1]) == metadata,
+          "a split Edge did not copy metadata to both halves");
+  proxy->commitTo(*primitive);
+
+  auto const& authoredRing = primitive->getShells().front().ring;
+  require(std::count_if(
+              authoredRing.begin(), authoredRing.end(),
+              [&](auto const& vertex) {
+                return vertex.edgeMetadata == metadata;
+              }) == 2,
+          "edge metadata did not survive move, split, and commit");
+
+  bool rejectedEmptyKey = false;
+  try {
+    proxy->setEdgeMetadata(split.newEdgeIndices.front(), {{"", "value"}});
+  } catch (std::exception const&) {
+    rejectedEmptyKey = true;
+  }
+  require(rejectedEmptyKey, "an empty edge metadata key was accepted");
+}
+
 void shallowConversionRejectsCrossEntryNestingAndMalformedTrees() {
   bool rejectedNesting = false;
   try {
@@ -1266,6 +1303,7 @@ int main() {
     collidesAndVisibleAreIndependentPerEdge();
     failedProxyCommitLeavesAuthoredAndDerivedGeometryUnchanged();
     vertexMetadataFollowsTopologyEditsAndCommits();
+    edgeMetadataFollowsTopologyEditsAndCommits();
     fillRuleIsFixedToEvenOddAndRejectsConflictingAssignment();
     shallowConversionRejectsCrossEntryNestingAndMalformedTrees();
     std::cout << "MeshPrimitive geometry proxy tests passed\n";

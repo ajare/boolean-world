@@ -271,7 +271,7 @@ Returned only by `context:create_primitive`.
 | `set_operation(operation)` | Sets `"union"`, `"intersection"`, `"difference"`, or `"xor"`. Values are case-sensitive. |
 | `get_operation()` | Returns the operation as one of those lowercase strings. |
 
-Only these common properties and inherited spatial-transform properties are currently scriptable. Animation curves and transform flows, fill rule, materials, surface properties, type-specific shape parameters, and parentage are not exposed. Mutable Mesh geometry is available only on a `MeshPrimitive` returned by `context:create_mesh_primitive`; Prefabs separately expose read-only annotated vertex positions.
+Only these common properties and inherited spatial-transform properties are currently scriptable. Animation curves and transform flows, fill rule, materials, surface properties, type-specific shape parameters, and parentage are not exposed. Mutable Mesh geometry is available only on a `MeshPrimitive` returned by `context:create_mesh_primitive`; Prefabs separately expose read-only annotated vertices and edges.
 
 ## Mutable `MeshPrimitive`
 
@@ -423,8 +423,27 @@ local spawns = prefab:get_vertices_with_metadata({
 Both keys and values must be strings, and keys cannot be empty. Metadata
 matching is case-sensitive.
 
+### `get_metadata_edges()`
+
+Returns every annotated Prefab edge as an array of read-only `PrefabEdge`
+values. Edges are ordered by Prefab Primitive, Ring, and edge order, with
+welded Ring occurrences returned once per Primitive. Endpoints are in Prefab
+space.
+
+### `get_edges_with_metadata(metadata)`
+
+Returns annotated edges whose metadata contains every supplied key with
+exactly the supplied string value. An empty table returns every annotated
+edge. The filter follows the same validation and case-sensitive matching rules
+as `get_vertices_with_metadata`.
+
+```lua
+local entrances = prefab:get_edges_with_metadata({kind = "entrance"})
+```
+
 A script cannot inspect or mutate the Prefab's source Primitives, tags, or
-vertex metadata. It can pass the handle to `context:place_prefab_instance`.
+vertex or edge metadata. It can pass the handle to
+`context:place_prefab_instance`.
 
 ## `PrefabVertex`
 
@@ -438,6 +457,19 @@ Returns the vertex's Prefab-space position as `x, y`.
 
 Returns a detached copy of the vertex's string key/value metadata as a Lua
 table. Changing that table does not modify the Prefab.
+
+## `PrefabEdge`
+
+A read-only value returned by a Prefab edge-metadata query.
+
+### `get_endpoints()`
+
+Returns the edge's Prefab-space endpoints as `x1, y1, x2, y2`.
+
+### `get_metadata()`
+
+Returns a detached copy of the edge's string key/value metadata as a Lua table.
+Changing that table does not modify the Prefab.
 
 ## `PrimitiveFieldStep`
 

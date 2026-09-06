@@ -59,7 +59,7 @@ struct PrimitiveView {
 
 // A read-only, non-owning view of a Prefab (docs spec #366). A script never
 // gets a mutable handle to a Prefab or its Primitives; it may inspect tags and
-// annotated vertices or pass this handle to a placement function.
+// annotated topology or pass this handle to a placement function.
 struct PrefabView {
   Prefab const* prefab;
 };
@@ -68,6 +68,15 @@ struct PrefabView {
 struct PrefabVertexView {
   float x;
   float y;
+  std::map<std::string, std::string> metadata;
+};
+
+// An immutable copy of one annotated Prefab edge in Prefab space.
+struct PrefabEdgeView {
+  float firstX;
+  float firstY;
+  float secondX;
+  float secondY;
   std::map<std::string, std::string> metadata;
 };
 

@@ -110,22 +110,34 @@ vector<PrefabView> toPrefabViews(vector<Prefab*> const& prefabs) {
   return views;
 }
 
-map<string, string> vertexMetadataFromTable(sol::table const& values) {
+map<string, string> metadataFromTable(
+    sol::table const& values, string const& subject) {
   map<string, string> metadata;
   for (auto const& keyValue : values) {
     auto const& key = keyValue.first;
     auto const& value = keyValue.second;
     if (!key.is<string>() || !value.is<string>()) {
-      throw CoreException(
-          "Vertex metadata filters must contain only string keys and values");
+      throw CoreException(format(
+          "{} metadata filters must contain only string keys and values",
+          subject));
     }
     auto name = key.as<string>();
     if (name.empty()) {
-      throw CoreException("Vertex metadata keys cannot be empty");
+      throw CoreException(format("{} metadata keys cannot be empty", subject));
     }
     metadata.emplace(move(name), value.as<string>());
   }
   return metadata;
+}
+
+bool metadataMatches(
+    map<string, string> const& metadata,
+    map<string, string> const& required) {
+  return all_of(
+      required.begin(), required.end(), [&](auto const& entry) {
+        auto found = metadata.find(entry.first);
+        return found != metadata.end() && found->second == entry.second;
+      });
 }
 
 vector<PrefabVertexView> prefabMetadataVertices(
@@ -140,16 +152,40 @@ vector<PrefabVertexView> prefabMetadataVertices(
               !seen.emplace(vertex.p.x, vertex.p.y).second) {
             continue;
           }
-          auto matches = all_of(
-              required.begin(), required.end(),
-              [&vertex](auto const& entry) {
-                auto found = vertex.metadata.find(entry.first);
-                return found != vertex.metadata.end() &&
-                       found->second == entry.second;
-              });
-          if (matches) {
+          if (metadataMatches(vertex.metadata, required)) {
             result.push_back(
                 PrefabVertexView{vertex.p.x, vertex.p.y, vertex.metadata});
+          }
+        }
+      }
+    }
+  }
+  return result;
+}
+
+vector<PrefabEdgeView> prefabMetadataEdges(
+    Prefab const& prefab, map<string, string> const& required) {
+  vector<PrefabEdgeView> result;
+  using Point = pair<float, float>;
+  using Edge = pair<Point, Point>;
+  for (auto const* primitive : prefab.getPrimitives()) {
+    set<Edge> seen;
+    for (auto const& polygon : primitive->getVertices()) {
+      for (auto const& ring : polygon) {
+        for (size_t index = 0; index < ring.size(); ++index) {
+          auto const& first = ring[index];
+          auto const& second = ring[(index + 1) % ring.size()];
+          Point firstPoint{first.p.x, first.p.y};
+          Point secondPoint{second.p.x, second.p.y};
+          auto key = minmax(firstPoint, secondPoint);
+          if (first.edgeMetadata.empty() ||
+              !seen.emplace(key.first, key.second).second) {
+            continue;
+          }
+          if (metadataMatches(first.edgeMetadata, required)) {
+            result.push_back(PrefabEdgeView{
+                first.p.x, first.p.y, second.p.x, second.p.y,
+                first.edgeMetadata});
           }
         }
       }
@@ -941,6 +977,19 @@ void bindScriptTypes(sol::state& lua) {
         return sol::as_table(view.metadata);
       });
 
+  lua.new_usertype<PrefabEdgeView>(
+      "PrefabEdge", sol::no_constructor,
+
+      "get_endpoints",
+      [](PrefabEdgeView const& view) {
+        return tuple{
+            view.firstX, view.firstY, view.secondX, view.secondY};
+      },
+      "get_metadata",
+      [](PrefabEdgeView const& view) {
+        return sol::as_table(view.metadata);
+      });
+
   lua.new_usertype<PrefabView>(
       "Prefab", sol::no_constructor,
 
@@ -961,7 +1010,16 @@ void bindScriptTypes(sol::state& lua) {
       "get_vertices_with_metadata",
       [](PrefabView const& view, sol::table const& metadata) {
         return sol::as_table(prefabMetadataVertices(
-            *view.prefab, vertexMetadataFromTable(metadata)));
+            *view.prefab, metadataFromTable(metadata, "Vertex")));
+      },
+      "get_metadata_edges",
+      [](PrefabView const& view) {
+        return sol::as_table(prefabMetadataEdges(*view.prefab, {}));
+      },
+      "get_edges_with_metadata",
+      [](PrefabView const& view, sol::table const& metadata) {
+        return sol::as_table(prefabMetadataEdges(
+            *view.prefab, metadataFromTable(metadata, "Edge")));
       });
 
   lua.new_usertype<DefinePrefabsView>(

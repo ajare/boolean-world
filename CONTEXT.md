@@ -68,6 +68,10 @@ _Avoid_: group, template
 String key/value annotations on a Prefab's authored MeshPrimitive vertices, used by build scripts as named points carrying extra meaning beyond their position. Metadata belongs to the welded Vertex: every Ring occurrence of that Vertex shares it. Moving a Vertex preserves its metadata, removing it removes the metadata, and splitting an Edge creates an unannotated Vertex. Keys are non-empty and unique per Vertex; values may be empty. Metadata does not affect geometry or the boolean fold.
 _Avoid_: Prefab metadata (which is ambiguous with Prefab tags), vertex tag (tags classify whole Prefabs)
 
+**Prefab edge metadata**:
+String key/value annotations on a Prefab's authored MeshPrimitive edges, used by build scripts as named spans carrying extra meaning beyond their endpoints. Metadata belongs to the welded Edge: every Ring occurrence of that Edge shares it. Moving an Edge or either endpoint preserves its metadata, removing it removes the metadata, and splitting it copies its metadata to both resulting Edges. Keys are non-empty and unique per Edge; values may be empty. Metadata does not affect geometry or the boolean fold.
+_Avoid_: Prefab metadata (which is ambiguous with Prefab tags), edge tag (tags classify whole Prefabs)
+
 **DefinePrefabs (step)**:
 The LayerBuildStep that owns a set of Prefabs and supplies their shared PrefabTilingType, but not their individual tile sizes. It defines rather than places: outside an authoring session it contributes nothing to its Layer at all. Which Prefab is being edited is ephemeral editor focus — never serialized, and unselected after construction, copy, or load — mirroring a Layer's active step and a World's active Layer.
 _Avoid_: PlacePrefabs (the rejected name for PrefabField)

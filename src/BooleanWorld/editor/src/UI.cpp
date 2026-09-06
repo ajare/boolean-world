@@ -4918,18 +4918,32 @@ void renderMeshDrawToolView(editor::Document* doc, editor::Settings& settings) {
   }
 }
 
-void renderPrefabVertexMetadata(
-    editor::Document* doc, uint32_t vertexIndex) {
+bool activeMeshBelongsToPrefab(editor::Document* doc) {
+  auto* activeLayer = doc->getWorld()->getActiveLayer();
+  auto* definitions = dynamic_cast<bw::core::DefinePrefabs*>(
+      activeLayer->getActiveStep());
+  auto const primitiveIndex = doc->getActiveMeshPrimitiveIndex();
+  return definitions && primitiveIndex < activeLayer->getNumPrimitives() &&
+         definitions->ownsPrimitive(activeLayer->getPrimitive(primitiveIndex));
+}
+
+void renderPrefabTopologyMetadata(
+    editor::Document* doc, uint32_t topologyIndex, bool edge) {
   using MetadataEntry = pair<string, string>;
   static wp::geometry::Mesh const* draftMesh = nullptr;
-  static uint32_t draftVertex = ~0u;
+  static uint32_t draftIndex = ~0u;
+  static bool draftIsEdge = false;
   static vector<MetadataEntry> draft;
 
   auto* mesh = doc->getActiveMesh();
-  if (draftMesh != mesh || draftVertex != vertexIndex) {
+  if (draftMesh != mesh || draftIndex != topologyIndex ||
+      draftIsEdge != edge) {
     draftMesh = mesh;
-    draftVertex = vertexIndex;
-    auto const metadata = doc->getActiveMeshVertexMetadata(vertexIndex);
+    draftIndex = topologyIndex;
+    draftIsEdge = edge;
+    auto const metadata = edge
+                              ? doc->getActiveMeshEdgeMetadata(topologyIndex)
+                              : doc->getActiveMeshVertexMetadata(topologyIndex);
     draft.assign(metadata.begin(), metadata.end());
   }
 
@@ -4943,13 +4957,23 @@ void renderPrefabVertexMetadata(
   auto commit = [&] {
     auto metadata = toMetadata();
     if (!metadata) return;
-    transactUndoableAction(
-        doc, "Set Prefab Vertex Metadata",
-        bind(setMeshVertexMetadata, placeholders::_1, vertexIndex, *metadata));
+    if (edge) {
+      transactUndoableAction(
+          doc, "Set Prefab Edge Metadata",
+          bind(setMeshEdgeMetadata, placeholders::_1, topologyIndex,
+               *metadata));
+    } else {
+      transactUndoableAction(
+          doc, "Set Prefab Vertex Metadata",
+          bind(setMeshVertexMetadata, placeholders::_1, topologyIndex,
+               *metadata));
+    }
   };
 
+  ImGui::PushID(edge ? "PrefabEdgeMetadata" : "PrefabVertexMetadata");
   ImGui::Separator();
-  ImGui::TextUnformatted("Prefab vertex metadata");
+  ImGui::TextUnformatted(
+      edge ? "Prefab edge metadata" : "Prefab vertex metadata");
   ImGui::TextUnformatted("Key");
   ImGui::SameLine(154.0f);
   ImGui::TextUnformatted("Value");
@@ -4983,6 +5007,7 @@ void renderPrefabVertexMetadata(
   if (ImGui::Button("Add metadata")) {
     draft.emplace_back();
   }
+  ImGui::PopID();
 }
 
 void renderMeshView(editor::Document* doc, editor::Settings& settings) {
@@ -5079,13 +5104,8 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
                             : "This Ring cannot contain fewer than three vertices");
     }
 
-    auto* activeLayer = doc->getWorld()->getActiveLayer();
-    auto* definitions = dynamic_cast<bw::core::DefinePrefabs*>(
-        activeLayer->getActiveStep());
-    auto const primitiveIndex = doc->getActiveMeshPrimitiveIndex();
-    if (definitions && primitiveIndex < activeLayer->getNumPrimitives() &&
-        definitions->ownsPrimitive(activeLayer->getPrimitive(primitiveIndex))) {
-      renderPrefabVertexMetadata(doc, vertexIndex);
+    if (activeMeshBelongsToPrefab(doc)) {
+      renderPrefabTopologyMetadata(doc, vertexIndex, false);
     }
   }
 
@@ -5112,6 +5132,9 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     auto edgeIndex = *selectedEdges.begin();
     auto indices = set<uint32_t>{edgeIndex};
     ImGui::Text("Selected edge: %u", edgeIndex);
+    if (activeMeshBelongsToPrefab(doc)) {
+      renderPrefabTopologyMetadata(doc, edgeIndex, true);
+    }
     if (doc->isActiveMeshEdgeCollisionEditable(edgeIndex)) {
       auto collisionOverride =
           doc->getActiveMeshEdgeCollisionOverride(edgeIndex);
