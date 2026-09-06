@@ -98,7 +98,9 @@ Steam Audio is given a **custom scene**: it calls back into the game for every r
 
 ## Further Notes
 
-Two verifications are unresolved and each can change scope. Whether `ImmutableAccelerationGrid` lazily caches inside any query path decides whether the ray callbacks can read it lock-free. Whether per-ray callback overhead outweighs the structural win decides whether ADR-0043 stands or falls back to a triangle-mesh `IPLScene`.
+One verification remains unresolved and can change scope: whether per-ray callback overhead outweighs the structural win decides whether ADR-0043 stands or falls back to a triangle-mesh `IPLScene`.
+
+#386 audited the ray-query paths. `ImmutableAccelerationGrid` has no `mutable` state or lazy structures: construction fills its cell offsets and items, while its queries only read those arrays. `getCandidateItemsInBoundingArea` uses a caller-owned candidate vector, not grid scratch storage. `ArrangementWorldData` likewise has no `mutable` members or lazily-built query data; its constructor builds the triangle, floor-Wedge, collision-wall, and rendered-wall grids before publishing the snapshot. `getContainingFaceIndex`/`pointInTriangle`, floor and ceiling height queries, and the rendered-wall lookup used by `distanceToFirstWallCrossing` only read that completed state. Concurrent reads through `ArrangementWorldDataPtr` are therefore safe; no precomputation change or thread-local scratch is needed before the simulation thread is built.
 
 Steam Audio 4.8.1's Windows x64 `phonon_fmod.dll` was loaded with `FMOD::System::loadPlugin` against the pinned FMOD 2.03.14 runtime in #384. It returned `FMOD_OK`, so the FMOD/Studio 2.03.14 pin stands.
 
