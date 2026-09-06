@@ -128,6 +128,10 @@ endif()
 # The game DLL is loaded by name at runtime, so there is no link-time edge -
 # state it explicitly so it is always built first.
 add_dependencies(Launcher BooleanWorld)
+# BooleanWorld is dlopen'd rather than linked, so explicitly make changes to
+# the game library relink Launcher and rerun all of its runtime staging steps.
+set_property(TARGET Launcher APPEND PROPERTY
+    LINK_DEPENDS "$<TARGET_FILE:BooleanWorld>")
 
 bw_deploy_runtime_dlls(Launcher)
 bw_deploy_vendor_dlls(Launcher)
@@ -186,23 +190,34 @@ if(UNIX AND NOT APPLE)
                                "${BW_FMOD_CORE_LIBRARY}" DIRECTORY)
         get_filename_component(_bw_fmod_studio_lib_dir
                                "${BW_FMOD_STUDIO_LIBRARY}" DIRECTORY)
-        add_custom_command(TARGET Launcher POST_BUILD
-            # Copy the versioned ELF files as well as their development
-            # symlinks: DT_NEEDED names libfmod.so.<major>, not libfmod.so.
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                    "${_bw_fmod_core_lib_dir}"
-                    "$<TARGET_FILE_DIR:Launcher>"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                    "${_bw_fmod_studio_lib_dir}"
-                    "$<TARGET_FILE_DIR:Launcher>"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${BW_STEAM_AUDIO_LIBRARY}"
-                    "$<TARGET_FILE_DIR:Launcher>/libphonon.so"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${BW_STEAM_AUDIO_FMOD_PLUGIN}"
-                    "$<TARGET_FILE_DIR:Launcher>/libphonon_fmod.so"
+        # This always-out-of-date prerequisite restores the audio runtime even
+        # when Launcher itself does not need relinking (and therefore would not
+        # execute a POST_BUILD command). The POST_BUILD invocation is still
+        # required because StageLinuxRuntime removes old .so files while
+        # assembling a freshly linked Launcher's runtime directory.
+        add_custom_target(StageLauncherAudio
+            COMMAND ${CMAKE_COMMAND}
+                    "-DFMOD_CORE_DIR=${_bw_fmod_core_lib_dir}"
+                    "-DFMOD_STUDIO_DIR=${_bw_fmod_studio_lib_dir}"
+                    "-DSTEAM_AUDIO_LIBRARY=${BW_STEAM_AUDIO_LIBRARY}"
+                    "-DSTEAM_AUDIO_FMOD_PLUGIN=${BW_STEAM_AUDIO_FMOD_PLUGIN}"
+                    "-DDESTINATION=$<TARGET_FILE_DIR:Launcher>"
+                    -P "${BW_ROOT}/cmake/StageLinuxAudio.cmake"
             VERBATIM
             COMMENT "Staging FMOD and Steam Audio for Linux")
+        set_property(TARGET StageLauncherAudio PROPERTY FOLDER "Launcher")
+        add_dependencies(Launcher StageLauncherAudio)
+
+        add_custom_command(TARGET Launcher POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                    "-DFMOD_CORE_DIR=${_bw_fmod_core_lib_dir}"
+                    "-DFMOD_STUDIO_DIR=${_bw_fmod_studio_lib_dir}"
+                    "-DSTEAM_AUDIO_LIBRARY=${BW_STEAM_AUDIO_LIBRARY}"
+                    "-DSTEAM_AUDIO_FMOD_PLUGIN=${BW_STEAM_AUDIO_FMOD_PLUGIN}"
+                    "-DDESTINATION=$<TARGET_FILE_DIR:Launcher>"
+                    -P "${BW_ROOT}/cmake/StageLinuxAudio.cmake"
+            VERBATIM
+            COMMENT "Restaging FMOD and Steam Audio after Linux runtime scan")
         unset(_bw_fmod_core_lib_dir)
         unset(_bw_fmod_studio_lib_dir)
     endif()

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <limits>
 #include <shared_mutex>
 #include <stdexcept>
@@ -424,9 +425,17 @@ void SteamAudio::loadPlugin(wp::application::AudioSystem& audioSystem) {
   }
   if (!findNativeModule(SteamAudioFmodLibrary)) {
     unsigned int pluginHandle{};
-    requireFmod(
-        coreSystem->loadPlugin(SteamAudioFmodLibrary, &pluginHandle, 0),
-        "Unable to load the Steam Audio FMOD plug-in");
+#if defined(_WIN32)
+    auto const* pluginPath = SteamAudioFmodLibrary;
+#else
+    // FMOD performs the dlopen itself, so libBooleanWorld's $ORIGIN RUNPATH
+    // does not participate. Point it at the plugin staged beside Launcher.
+    auto const stagedPlugin =
+        std::filesystem::absolute(SteamAudioFmodLibrary).string();
+    auto const* pluginPath = stagedPlugin.c_str();
+#endif
+    requireFmod(coreSystem->loadPlugin(pluginPath, &pluginHandle, 0),
+                "Unable to load the Steam Audio FMOD plug-in");
   }
 #else
   (void)audioSystem;
