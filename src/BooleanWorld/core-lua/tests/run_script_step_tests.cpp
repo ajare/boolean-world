@@ -978,6 +978,35 @@ void aScatterAvoidsExistingGeometryAndItsOwnPlacements() {
   }
 }
 
+void anOverlapQueryIgnoresTheEditorGhost() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("ignore-ghost", R"(
+    local function overlapping_origin()
+      return context:find_build_primitives_overlapping(-4, -4, 8, 8)
+    end
+
+    assert(#overlapping_origin() == 0)
+
+    local p = context:create_primitive("Rectangle")
+    p:set_size(8, 8)
+    context:place_primitive(p)
+
+    assert(#overlapping_origin() == 1)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* ghost = rectangle(0.0f);
+  ghost->setFlags(ghost->getFlags() | BW_PRIMITIVE_GHOST_FLAG);
+  layer.getPrimitiveField()->addPrimitive(ghost);
+  auto* step = addScriptStep(layer, runtime, "ignore-ghost");
+  layer.rebuild();
+
+  require(!step->hasFailed(),
+          "an overlap query treated the editor ghost as build geometry");
+  require(layer.getNumPrimitives() == 2,
+          "ignoring the editor ghost also hid the script's own placement");
+}
+
 void aScriptPlacesPrefabInstancesOnTheirSizeSpecificGrid() {
   bw::core::ScriptRuntime runtime;
   runtime.load("stamp", R"(
@@ -1524,6 +1553,7 @@ int main() {
     aScriptCannotMutateAPriorPrimitive();
     aScriptReadsTheLayersExtents();
     aScatterAvoidsExistingGeometryAndItsOwnPlacements();
+    anOverlapQueryIgnoresTheEditorGhost();
     aScriptPlacesPrefabInstancesOnTheirSizeSpecificGrid();
     prefabPlacementRejectsNonTilesAndNonQuarterTurns();
     placedPrefabInstancesAreCopiesLeavingThePrefabUnchanged();

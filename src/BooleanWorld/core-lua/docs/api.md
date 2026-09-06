@@ -108,7 +108,7 @@ Returns read-only handles for Primitives whose bounds overlap the specified axis
 local occupied = context:find_build_primitives_overlapping(x, y, width, height)
 ```
 
-The query includes build-participating output from preceding steps and Primitives already placed by the current execution. This makes it suitable for collision-avoiding placement. It is a bounds-only test, not an exact polygon intersection, and currently performs a linear scan.
+The query includes build-participating output from preceding steps and Primitives already placed by the current execution. It excludes the editor-only ghost Primitive. This makes it suitable for collision-avoiding placement. It is a bounds-only test, not an exact polygon intersection, and currently performs a linear scan.
 
 **Returns:** `PrimitiveView[]`, possibly empty.
 

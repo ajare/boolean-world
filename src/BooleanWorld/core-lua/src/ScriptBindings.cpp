@@ -605,8 +605,12 @@ tuple<float, float, float, float> RunScriptContext::getExtents() const {
 
 vector<PrimitiveView> RunScriptContext::findBuildPrimitivesOverlapping(
     float x, float y, float width, float height) const {
-  return toPrimitiveViews(mBuild->findBuildPrimitivesOverlapping(
-      wp::BoundingBox(x, y, width, height)));
+  auto primitives = mBuild->findBuildPrimitivesOverlapping(
+      wp::BoundingBox(x, y, width, height));
+  erase_if(primitives, [](auto const* primitive) {
+    return primitive->hasFlag(BW_PRIMITIVE_GHOST_FLAG);
+  });
+  return toPrimitiveViews(primitives);
 }
 
 void bindScriptTypes(sol::state& lua) {
