@@ -70,6 +70,43 @@ bw::core::RunScript* addScriptStep(
   return step;
 }
 
+std::vector<bw::core::ScriptParameterDefinition> scriptParameterDefinitions() {
+  using bw::core::ScriptParameterDefinition;
+  using bw::core::ScriptParameterType;
+
+  ScriptParameterDefinition label;
+  label.name = "label";
+  label.type = ScriptParameterType::String;
+  label.defaultValue = std::string("mine");
+
+  ScriptParameterDefinition style;
+  style.name = "style";
+  style.type = ScriptParameterType::String;
+  style.defaultValue = std::string("rough");
+  style.choices = {"rough", "smooth"};
+
+  ScriptParameterDefinition count;
+  count.name = "count";
+  count.type = ScriptParameterType::Integer;
+  count.defaultValue = int64_t{4};
+  count.integerMinimum = 1;
+  count.integerMaximum = 20;
+
+  ScriptParameterDefinition scale;
+  scale.name = "scale";
+  scale.type = ScriptParameterType::Number;
+  scale.defaultValue = 1.5;
+  scale.numberMinimum = 0.25;
+  scale.numberMaximum = 4.0;
+
+  ScriptParameterDefinition enabled;
+  enabled.name = "enabled";
+  enabled.type = ScriptParameterType::Boolean;
+  enabled.defaultValue = true;
+
+  return {label, style, count, scale, enabled};
+}
+
 // Adds a DefinePrefabs step named stepName, holding one Prefab named
 // prefabName with a single Primitive at prefabLocalX (positioned in the
 // Prefab's own local space, before any instance transform).
@@ -86,6 +123,56 @@ bw::core::DefinePrefabs* addPrefabDefinitions(
   definitions->clearSelectedPrefab();
   layer.setActiveStep(0);
   return definitions;
+}
+
+void resourceParametersAreExposedThroughTheParamsTable() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("parameterized", R"(
+    assert(type(params) == "table")
+    assert(type(params.label) == "string")
+    assert(math.type(params.count) == "integer")
+    assert(type(params.scale) == "number")
+    assert(type(params.enabled) == "boolean")
+    local primitive = context:create_primitive("Rectangle")
+    primitive:set_position(params.count, params.scale)
+    primitive:set_size(params.enabled and 8 or 4, #params.label)
+    primitive:set_priority(params.style == "smooth" and 2 or 1)
+    context:place_primitive(primitive)
+  )",
+               {}, scriptParameterDefinitions());
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* step = addScriptStep(layer, runtime, "parameterized");
+  require(!step->hasFailed() && layer.getNumPrimitives() == 1 &&
+              layer.getPrimitive(0)->getPosition() == wp::Vector2(4.0f, 1.5f) &&
+              layer.getPrimitive(0)->getSize() == wp::Vector2(8.0f, 4.0f) &&
+              layer.getPrimitive(0)->getPriority() == 1,
+          "a new RunScript did not execute with its resource defaults");
+
+  step->setParameterValue("label", std::string("tunnels"));
+  step->setParameterValue("style", std::string("smooth"));
+  step->setParameterValue("count", int64_t{12});
+  step->setParameterValue("scale", 2.25);
+  step->setParameterValue("enabled", false);
+  layer.rebuild();
+  require(!step->hasFailed() &&
+              layer.getPrimitive(0)->getPosition() == wp::Vector2(12.0f, 2.25f) &&
+              layer.getPrimitive(0)->getSize() == wp::Vector2(4.0f, 7.0f) &&
+              layer.getPrimitive(0)->getPriority() == 2,
+          "serialized RunScript choices did not override resource defaults");
+
+  step->clearParameterValue("count");
+  layer.rebuild();
+  require(layer.getPrimitive(0)->getPosition().x == 4.0f,
+          "clearing a RunScript choice did not restore the resource default");
+
+  bool rejected = false;
+  try {
+    step->setParameterValue("count", int64_t{21});
+  } catch (bw::core::CoreException const&) {
+    rejected = true;
+  }
+  require(rejected, "RunScript accepted a parameter outside its resource range");
 }
 
 void runScriptDeclaresItsCapabilitiesAndIsGivenItsRuntime() {
@@ -727,6 +814,45 @@ void scriptExecutionsOutputAndErrorsReachTheHostsLogSink() {
           "an unnamed RunScript step did not retain its empty log context");
 }
 
+void optedInInstructionCountsReachTheLogAtTheEndOfEachRun() {
+  std::vector<bw::core::ScriptLogEvent> events;
+  bw::core::ScriptRuntime runtime(
+      [&events](bw::core::ScriptLogEvent const& event) {
+        events.push_back(event);
+      },
+      {}, true);
+  runtime.load("counted", "local value = 1 + 2");
+
+  runtime.execute(
+      "counted", bw::core::ScriptLibraries::Build, {}, "Generator");
+
+  std::string const prefix = "Lua instructions executed: ";
+  require(events.size() == 2 &&
+              events[0].type ==
+                  bw::core::ScriptLogEventType::ExecutionStarted &&
+              events[1].type == bw::core::ScriptLogEventType::Output &&
+              events[1].stepName == "Generator" &&
+              events[1].message.starts_with(prefix) &&
+              events[1].message.ends_with(" / 1000000") &&
+              std::stoull(events[1].message.substr(prefix.size())) > 0,
+          "an opted-in host did not receive the instruction count after a run");
+
+  events.clear();
+  runtime.load("counted-error", "error('expected failure')");
+  try {
+    runtime.execute(
+        "counted-error", bw::core::ScriptLibraries::Build, {}, "Generator");
+  } catch (bw::core::ScriptException const&) {
+  }
+  require(events.size() == 3 &&
+              events[1].type == bw::core::ScriptLogEventType::Error &&
+              events[2].type == bw::core::ScriptLogEventType::Output &&
+              events[2].message.starts_with(prefix) &&
+              events[2].message.ends_with(" / 1000000") &&
+              std::stoull(events[2].message.substr(prefix.size())) > 0,
+          "a failed run did not finish its log with an instruction count");
+}
+
 void debugPrintIsANoOpUnlessTheHostSuppliesASink() {
   std::vector<bw::core::ScriptLogEvent> regularEvents;
   auto regularSink = [&regularEvents](bw::core::ScriptLogEvent const& event) {
@@ -1353,7 +1479,8 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
     p:set_size(8, 8)
     p:set_position(math.random(100, 1000), 0)
     context:place_primitive(p)
-  )");
+  )",
+               {}, scriptParameterDefinitions());
   runtime.load("Scripts/disabled", "");
 
   bw::core::World source(512.0f, 16.0f);
@@ -1366,6 +1493,10 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
   sourceStep->setName("seeded scatter");
   sourceStep->setExtraResourceNames(
       {"Materials/stone", "Images/wall", "Materials/stone", "Scripts/scatter"});
+  sourceStep->setParameterValue("label", std::string("saved"));
+  sourceStep->setParameterValue("count", int64_t{9});
+  sourceStep->setParameterValue("scale", 3.25);
+  sourceStep->setParameterValue("enabled", false);
   auto const sourceStepIndex = sourceLayer->addStep(sourceStep);
 
   auto* disabledStep = new bw::core::RunScript(runtime);
@@ -1394,6 +1525,17 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
               loadedStep->getSeed() == 0x123456789abcdef0ull &&
               loadedStep->getExtraResourceNames() ==
                   std::vector<std::string>{"Materials/stone", "Images/wall", "Materials/stone", "Scripts/scatter"} &&
+              loadedStep->getParameterValues().size() == 5 &&
+              std::get<std::string>(
+                  loadedStep->getParameterValues().at("label")) == "saved" &&
+              std::get<std::string>(
+                  loadedStep->getParameterValues().at("style")) == "rough" &&
+              std::get<int64_t>(
+                  loadedStep->getParameterValues().at("count")) == 9 &&
+              std::get<double>(
+                  loadedStep->getParameterValues().at("scale")) == 3.25 &&
+              !std::get<bool>(
+                  loadedStep->getParameterValues().at("enabled")) &&
               loadedStep->getName() == "seeded scatter" &&
               loadedStep->isEnabled(),
           "a RunScript step lost authored state during its World round-trip");
@@ -1617,6 +1759,8 @@ int main() {
   try {
     bw::core::LayerBuildStep::registerCoreTypes();
 
+    resourceParametersAreExposedThroughTheParamsTable();
+    aWorldRoundTripsARunScriptStepAndDeclaresItsResources();
     runScriptDeclaresItsCapabilitiesAndIsGivenItsRuntime();
     theRuntimeCompilesScriptsFromStringsAndCachesThemByName();
     theLibrarySetIsAParameterOfExecution();
@@ -1634,6 +1778,7 @@ int main() {
     theBuildEnvironmentDropsFunctionsThatBreakDeterminism();
     includeReturnsExecutionLocalModuleTables();
     scriptExecutionsOutputAndErrorsReachTheHostsLogSink();
+    optedInInstructionCountsReachTheLogAtTheEndOfEachRun();
     debugPrintIsANoOpUnlessTheHostSuppliesASink();
     theSeedMakesRebuildsReproducibleAndRerollableByChangingIt();
     scriptsCreateEditListAndRemoveAudioEmittersOnBothPrimitiveTypes();
@@ -1653,7 +1798,6 @@ int main() {
     malformedLuaPrefabTagFiltersFailTheStep();
     aScriptReadsAPrimitiveFieldsPrimitivesAsConst();
     aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName();
-    aWorldRoundTripsARunScriptStepAndDeclaresItsResources();
     reloadingRebuildsExactlyTheLayersThatNameTheScript();
     coroutinesAdvanceAcrossTicksAndContainFailures();
     namingAMissingStepOrPrefabFailsTheStepWithTheName();

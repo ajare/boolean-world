@@ -3239,7 +3239,8 @@ wp::application::resourcesystem::ImageResource const* imageResourceForReference(
   try {
     auto resource = manager->getResource(name, namesp);
     return dynamic_pointer_cast<
-        wp::application::resourcesystem::ImageResource>(resource).get();
+               wp::application::resourcesystem::ImageResource>(resource)
+        .get();
   } catch (...) {
     return nullptr;
   }
@@ -4002,6 +4003,127 @@ struct RunScriptExtraResourceEditorState {
   array<char, 512> adding{};
 };
 
+struct RunScriptTextParameterEditorState {
+  string model;
+  string field;
+};
+
+int resizeRunScriptTextParameter(
+    ImGuiInputTextCallbackData* data) {
+  if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+    auto* text = static_cast<string*>(data->UserData);
+    text->resize(data->BufTextLen);
+    data->Buf = text->data();
+  }
+  return 0;
+}
+
+bool inputRunScriptTextParameter(char const* label, string* text) {
+  return ImGui::InputText(
+      label, text->data(), text->capacity() + 1,
+      ImGuiInputTextFlags_CallbackResize, resizeRunScriptTextParameter, text);
+}
+
+void renderRunScriptParameters(
+    editor::Document* doc, bw::core::Layer* layer,
+    bw::core::RunScript* step) {
+  auto const& definitions = step->getRuntime().getParameterDefinitions(
+      step->getScriptName());
+  if (definitions.empty()) return;
+
+  ImGui::SeparatorText("Params");
+  static map<bw::core::RunScript const*,
+             map<string, RunScriptTextParameterEditorState>>
+      textStates;
+
+  for (auto const& definition : definitions) {
+    ImGui::PushID(definition.name.c_str());
+    auto value = step->getParameterValue(definition);
+    if (!definition.accepts(value)) {
+      value = definition.defaultValue;
+      ImGui::TextColored(
+          ImVec4{1.0f, 0.35f, 0.35f, 1.0f},
+          "The serialized value is invalid for the current resource definition.");
+    }
+
+    bool changed = false;
+    if (definition.type == bw::core::ScriptParameterType::String) {
+      auto const& current = get<string>(value);
+      if (definition.choices.empty()) {
+        auto& state = textStates[step][definition.name];
+        if (state.model != current) {
+          state.model = current;
+          state.field = current;
+        }
+        ImGui::SetNextItemWidth(300.0f);
+        inputRunScriptTextParameter(definition.name.c_str(), &state.field);
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+          value = state.field;
+          changed = true;
+        }
+      } else {
+        ImGui::SetNextItemWidth(300.0f);
+        if (ImGui::BeginCombo(definition.name.c_str(), current.c_str())) {
+          for (auto const& choice : definition.choices) {
+            bool const selected = choice == current;
+            if (ImGui::Selectable(choice.c_str(), selected)) {
+              value = choice;
+              changed = true;
+            }
+            if (selected) ImGui::SetItemDefaultFocus();
+          }
+          ImGui::EndCombo();
+        }
+      }
+    } else if (definition.type ==
+               bw::core::ScriptParameterType::Integer) {
+      auto integer = get<int64_t>(value);
+      ImGui::SetNextItemWidth(300.0f);
+      if (ImGui::SliderScalar(
+              definition.name.c_str(), ImGuiDataType_S64, &integer,
+              &definition.integerMinimum, &definition.integerMaximum)) {
+        value = integer;
+        changed = true;
+      }
+    } else if (definition.type == bw::core::ScriptParameterType::Number) {
+      auto number = get<double>(value);
+      ImGui::SetNextItemWidth(300.0f);
+      if (ImGui::SliderScalar(
+              definition.name.c_str(), ImGuiDataType_Double, &number,
+              &definition.numberMinimum, &definition.numberMaximum, "%.6g")) {
+        value = number;
+        changed = true;
+      }
+    } else {
+      auto boolean = get<bool>(value);
+      if (ImGui::Checkbox(definition.name.c_str(), &boolean)) {
+        value = boolean;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      transactUndoableAction(
+          doc, format("Set RunScript Param {}", definition.name),
+          bind(setRunScriptParameterValue, placeholders::_1, layer, step,
+               definition.name, value));
+    }
+
+    bool const hasSerializedValue =
+        step->getParameterValues().contains(definition.name);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!hasSerializedValue);
+    if (ImGui::SmallButton("Revert to resource default")) {
+      transactUndoableAction(
+          doc, format("Revert RunScript Param {}", definition.name),
+          bind(clearRunScriptParameterValue, placeholders::_1, layer, step,
+               definition.name));
+    }
+    ImGui::EndDisabled();
+    ImGui::PopID();
+  }
+}
+
 void renderRunScriptView(
     editor::Document* doc, bw::core::RunScript* step) {
   auto* layer = doc->getWorld()->getActiveLayer();
@@ -4059,6 +4181,8 @@ void renderRunScriptView(
         ImVec4{1.0f, 0.35f, 0.35f, 1.0f}, "%s",
         scriptErrors[step].c_str());
   }
+
+  renderRunScriptParameters(doc, layer, step);
 
   auto seed = step->getSeed();
   ImGui::SetNextItemWidth(220.0f);
@@ -6609,7 +6733,7 @@ void renderPreviewDropControl(Document* doc, Settings const& settings) {
 
       auto* foreground = ImGui::GetForegroundDrawList();
       ImU32 const validityColour = floorZ ? IM_COL32(70, 205, 105, 255)
-                                         : IM_COL32(225, 75, 75, 255);
+                                          : IM_COL32(225, 75, 75, 255);
       foreground->AddCircle(mouse, 7.0f, validityColour, 20, 2.0f);
       drawStartupAnimal(
           foreground, mouse, 46.0f, validityColour,

@@ -1,8 +1,14 @@
 #include "core-lua/LuaScriptResource.h"
 
+#include <algorithm>
+#include <charconv>
+#include <cctype>
+#include <cmath>
 #include <memory>
+#include <unordered_set>
 #include <utility>
 
+#include <willpower/application/resourcesystem/ResourceDefinitionFactory.h>
 #include <willpower/application/resourcesystem/ResourceExceptions.h>
 #include <willpower/application/resourcesystem/ResourceManager.h>
 #include <willpower/application/resourcesystem/TextFileResource.h>
@@ -14,6 +20,187 @@ namespace core {
 
 using namespace std;
 namespace resources = wp::application::resourcesystem;
+
+namespace {
+
+[[noreturn]] void parameterError(
+    resources::Resource const* resource, string const& message) {
+  throw resources::ResourceException(
+      resource, "invalid LuaScript Params: " + message);
+}
+
+string requiredProperty(
+    resources::Resource const* resource, wp::DataNode* node,
+    string const& name) {
+  string value;
+  if (!node->getOptionalProperty(name, value)) {
+    parameterError(resource, "Param is missing '" + name + "'");
+  }
+  return value;
+}
+
+int64_t parseInteger(
+    resources::Resource const* resource, string const& parameter,
+    string const& field, string const& text) {
+  int64_t value{};
+  auto const result = from_chars(text.data(), text.data() + text.size(), value);
+  if (result.ec != errc{} || result.ptr != text.data() + text.size()) {
+    parameterError(
+        resource, "Param '" + parameter + "' has non-integer " + field +
+                      " '" + text + "'");
+  }
+  return value;
+}
+
+double parseNumber(
+    resources::Resource const* resource, string const& parameter,
+    string const& field, string const& text) {
+  double value{};
+  auto const result = from_chars(
+      text.data(), text.data() + text.size(), value, chars_format::general);
+  if (result.ec != errc{} || result.ptr != text.data() + text.size() ||
+      !isfinite(value)) {
+    parameterError(
+        resource, "Param '" + parameter + "' has non-number " + field +
+                      " '" + text + "'");
+  }
+  return value;
+}
+
+class LuaScriptResourceDefinitionFactory final
+    : public resources::ResourceDefinitionFactory {
+public:
+  LuaScriptResourceDefinitionFactory()
+      : ResourceDefinitionFactory("LuaScript", "") {}
+
+  void create(
+      resources::Resource* resource, resources::ResourceManager*,
+      wp::DataNode* node) override {
+    auto* script = static_cast<LuaScriptResource*>(resource);
+    vector<ScriptParameterDefinition> definitions;
+    auto* params = node->getOptionalChild("Params");
+    if (!params) {
+      script->setParameterDefinitions({});
+      return;
+    }
+
+    params->requireOnlyChildren({"Param"});
+    auto* parameter = params->getOptionalChild("Param");
+    if (!parameter) {
+      parameterError(resource, "Params contains no Param");
+    }
+
+    unordered_set<string> names;
+    do {
+      ScriptParameterDefinition definition;
+      definition.name = requiredProperty(resource, parameter, "name");
+      if (definition.name.empty()) {
+        parameterError(resource, "Param name may not be empty");
+      }
+      if (!names.insert(definition.name).second) {
+        parameterError(
+            resource, "duplicate Param name '" + definition.name + "'");
+      }
+
+      auto const authoredType =
+          requiredProperty(resource, parameter, "type");
+      auto type = authoredType;
+      transform(
+          type.begin(), type.end(), type.begin(),
+          [](unsigned char character) { return static_cast<char>(tolower(character)); });
+      auto const defaultText =
+          requiredProperty(resource, parameter, "default");
+      if (type == "string") {
+        parameter->requireOnlyChildren(
+            {"name", "type", "default", "Choices"});
+        definition.type = ScriptParameterType::String;
+        definition.defaultValue = defaultText;
+        if (auto* choices = parameter->getOptionalChild("Choices")) {
+          choices->requireOnlyChildren({"Choice"});
+          auto* choice = choices->getOptionalChild("Choice");
+          if (!choice) {
+            parameterError(
+                resource, "Param '" + definition.name +
+                              "' has an empty Choices list");
+          }
+          do {
+            auto value = choice->getValue();
+            if (find(
+                    definition.choices.begin(), definition.choices.end(),
+                    value) != definition.choices.end()) {
+              parameterError(
+                  resource, "Param '" + definition.name +
+                                "' has duplicate Choice '" + value + "'");
+            }
+            definition.choices.push_back(move(value));
+          } while (choice->next());
+        }
+      } else if (type == "integer") {
+        parameter->requireOnlyChildren(
+            {"name", "type", "default", "min", "max"});
+        definition.type = ScriptParameterType::Integer;
+        definition.integerMinimum = parseInteger(
+            resource, definition.name, "min",
+            requiredProperty(resource, parameter, "min"));
+        definition.integerMaximum = parseInteger(
+            resource, definition.name, "max",
+            requiredProperty(resource, parameter, "max"));
+        definition.defaultValue = parseInteger(
+            resource, definition.name, "default", defaultText);
+      } else if (type == "number") {
+        parameter->requireOnlyChildren(
+            {"name", "type", "default", "min", "max"});
+        definition.type = ScriptParameterType::Number;
+        definition.numberMinimum = parseNumber(
+            resource, definition.name, "min",
+            requiredProperty(resource, parameter, "min"));
+        definition.numberMaximum = parseNumber(
+            resource, definition.name, "max",
+            requiredProperty(resource, parameter, "max"));
+        definition.defaultValue = parseNumber(
+            resource, definition.name, "default", defaultText);
+      } else if (type == "boolean") {
+        parameter->requireOnlyChildren({"name", "type", "default"});
+        definition.type = ScriptParameterType::Boolean;
+        if (defaultText == "true") {
+          definition.defaultValue = true;
+        } else if (defaultText == "false") {
+          definition.defaultValue = false;
+        } else {
+          parameterError(
+              resource, "Param '" + definition.name +
+                            "' has Boolean default '" + defaultText +
+                            "'; expected true or false");
+        }
+      } else {
+        parameterError(
+            resource, "Param '" + definition.name + "' has unknown type '" +
+                          authoredType + "'");
+      }
+
+      if (definition.type == ScriptParameterType::Integer &&
+          definition.integerMinimum > definition.integerMaximum) {
+        parameterError(
+            resource, "Param '" + definition.name + "' has min above max");
+      }
+      if (definition.type == ScriptParameterType::Number &&
+          definition.numberMinimum > definition.numberMaximum) {
+        parameterError(
+            resource, "Param '" + definition.name + "' has min above max");
+      }
+      if (!definition.accepts(definition.defaultValue)) {
+        parameterError(
+            resource, "Param '" + definition.name +
+                          "' has a default outside its choices or range");
+      }
+      definitions.push_back(move(definition));
+    } while (parameter->next());
+
+    script->setParameterDefinitions(move(definitions));
+  }
+};
+
+}  // namespace
 
 LuaScriptResource::LuaScriptResource(
     string const& name, string const& namesp, string const& source,
@@ -29,9 +216,9 @@ LuaScriptResource::LuaScriptResource(
 
 void LuaScriptResource::create(
     resources::DataStreamPtr data, resources::ResourceManager* resourceManager) {
-  // LuaScript has no structured ResourceDefinition. A leaf reads its source
-  // directly, a composite reads the named TextFile dependency "Source", and
-  // a built-in uses its internal text.
+  // A leaf reads its source directly, a composite reads the named TextFile
+  // dependency "Source", and a built-in uses its internal text. Manifested
+  // scripts then parse their Params definition.
   mResourceManager = resourceManager;
   if (data) {
     parseData(move(data));
@@ -46,6 +233,13 @@ void LuaScriptResource::create(
   } else {
     parseData({});
   }
+
+  // Internal programmatic scripts have no ResourceLocation and no manifest
+  // definition. Every manifested resource has at least the resource system's
+  // synthesized empty default Definition.
+  if (mwLocation) {
+    parseDefinition(resourceManager);
+  }
 }
 
 void LuaScriptResource::parseData(resources::DataStreamPtr data) {
@@ -59,11 +253,22 @@ void LuaScriptResource::parseData(resources::DataStreamPtr data) {
 
 void LuaScriptResource::destroy() {
   mText.clear();
+  mParameterDefinitions.clear();
   mResourceManager = nullptr;
 }
 
 string const& LuaScriptResource::getText() const {
   return mText;
+}
+
+vector<ScriptParameterDefinition> const&
+LuaScriptResource::getParameterDefinitions() const {
+  return mParameterDefinitions;
+}
+
+void LuaScriptResource::setParameterDefinitions(
+    vector<ScriptParameterDefinition> definitions) {
+  mParameterDefinitions = move(definitions);
 }
 
 map<string, string> LuaScriptResource::collectIncludedScripts() const {
@@ -91,12 +296,16 @@ map<string, string> LuaScriptResource::collectIncludedScripts() const {
 
 void LuaScriptResource::loadInto(
     ScriptRuntime& runtime, string const& authoredName) const {
-  runtime.load(authoredName, getText(), collectIncludedScripts());
+  runtime.load(
+      authoredName, getText(), collectIncludedScripts(),
+      mParameterDefinitions);
 }
 
 void LuaScriptResource::reloadInto(
     ScriptRuntime& runtime, string const& authoredName) const {
-  runtime.reload(authoredName, getText(), collectIncludedScripts());
+  runtime.reload(
+      authoredName, getText(), collectIncludedScripts(),
+      mParameterDefinitions);
 }
 
 LuaScriptResourceFactory::LuaScriptResourceFactory()
@@ -111,6 +320,8 @@ resources::Resource* LuaScriptResourceFactory::createResource(
 
 void registerLuaScriptResourceType(resources::ResourceManager& resourceManager) {
   resourceManager.addResourceFactory(new LuaScriptResourceFactory);
+  resourceManager.addResourceDefinitionFactory(
+      new LuaScriptResourceDefinitionFactory);
   resourceManager.addResource(make_shared<LuaScriptResource>(
       defaultLayerBuildStepScriptName, "World", defaultLayerBuildStepScript));
 }

@@ -46,6 +46,11 @@ serializes a **seed**, re-applied at the start of every execution. A
 scatter therefore reproduces exactly, and changing the arrangement is an
 authored edit — a reroll — rather than a side effect of rebuilding.
 
+Resource-authored Script parameters enter the environment only through an
+execution-local `params` table. Their effective typed values are serialized
+with each `RunScript` step, so a later resource-default change cannot make the
+game rebuild a saved World differently from the editor that saved it.
+
 Because the environment is rebuilt per execution, nothing a script leaves
 in a global survives to the next rebuild, and two steps cannot share state
 through one.

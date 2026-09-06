@@ -540,7 +540,14 @@ void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
               layer->getStep(1)->getType() == "RunScript",
           "adding a registered RunScript did not put it in the Layer recipe");
 
-  runtime.load("scatter", "-- an empty successful build script");
+  bw::core::ScriptParameterDefinition density;
+  density.name = "density";
+  density.type = bw::core::ScriptParameterType::Integer;
+  density.defaultValue = int64_t{5};
+  density.integerMinimum = 1;
+  density.integerMaximum = 10;
+  runtime.load(
+      "scatter", "-- an empty successful build script", {}, {density});
   auto* step = static_cast<bw::core::RunScript*>(layer->getStep(1));
   auto undoBefore = editor::getUndoLevels();
   editor::transactUndoableAction(
@@ -560,16 +567,28 @@ void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
       std::bind(editor::setRunScriptExtraResourceNames,
                 std::placeholders::_1, layer, step,
                 std::vector<std::string>{"OreImage", "/SharedData"}));
+  editor::transactUndoableAction(
+      &document, "Set Param",
+      std::bind(editor::setRunScriptParameterValue,
+                std::placeholders::_1, layer, step, "density",
+                bw::core::ScriptParameterValue{int64_t{8}}));
 
-  require(editor::getUndoLevels() == undoBefore + 4,
+  require(editor::getUndoLevels() == undoBefore + 5,
           "RunScript state edits did not each create one undo entry");
   require(step->getScriptName() == "scatter" && step->getSeed() == 42 &&
               step->getName() == "rocks" &&
               step->getExtraResourceNames() ==
                   std::vector<std::string>{"OreImage", "/SharedData"} &&
+              std::get<int64_t>(step->getParameterValues().at("density")) == 8 &&
               !step->hasFailed(),
           "RunScript state actions did not update and rebuild the step");
 
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  step = static_cast<bw::core::RunScript*>(layer->getStep(1));
+  require(
+      std::get<int64_t>(step->getParameterValues().at("density")) == 5,
+      "undo did not restore the RunScript resource default");
   editor::undo(&document);
   layer = document.getWorld()->getActiveLayer();
   step = static_cast<bw::core::RunScript*>(layer->getStep(1));
@@ -593,13 +612,14 @@ void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
           !step->hasFailed(),
       "undo did not restore the RunScript default script reference");
 
-  editor::redo(&document, 4);
+  editor::redo(&document, 5);
   layer = document.getWorld()->getActiveLayer();
   step = static_cast<bw::core::RunScript*>(layer->getStep(1));
   require(step->getScriptName() == "scatter" && step->getSeed() == 42 &&
               step->getName() == "rocks" &&
               step->getExtraResourceNames() ==
                   std::vector<std::string>{"OreImage", "/SharedData"} &&
+              std::get<int64_t>(step->getParameterValues().at("density")) == 8 &&
               !step->hasFailed(),
           "redo did not restore all authored RunScript state");
 }

@@ -409,6 +409,15 @@ Resources:
             - id: "Source"
               ref: "MinesLayerSource"
             - ref: "UtilityFunctions"
+        Definitions:
+          Definition:
+            Params:
+              Param:
+                name: "iterations"
+                type: "integer"
+                min: "1"
+                max: "50"
+                default: "10"
       - type: "Image"
         name: "JaguarTangentSpaceNormalMap"
         location: "images/jaguar_tangent_space_normal_map.png"

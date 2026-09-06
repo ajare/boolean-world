@@ -6,6 +6,7 @@
 #include <set>
 #include <set>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <core/DefinePrefabs.h>
@@ -120,7 +121,6 @@ public:
 
 bool playerProxyHitTest(Document const* doc, wp::Vector2 const& worldPosition);
 
-
 bool recordCurrentState(Document* doc, bool modifying);
 
 // Editor-mode changes are preferences, not authored edits: they clear the
@@ -160,6 +160,13 @@ bool setRunScriptSeed(
 bool setRunScriptExtraResourceNames(
     Document* doc, bw::core::Layer* layer, bw::core::RunScript* step,
     std::vector<std::string> const& names);
+bool setRunScriptParameterValue(
+    Document* doc, bw::core::Layer* layer, bw::core::RunScript* step,
+    std::string const& name,
+    std::variant<std::string, int64_t, double, bool> const& value);
+bool clearRunScriptParameterValue(
+    Document* doc, bw::core::Layer* layer, bw::core::RunScript* step,
+    std::string const& name);
 
 // Re-homes one authored Primitive into another build step of the same type,
 // keeping the Primitive itself rather than a copy. The Layer rebuilds, so the

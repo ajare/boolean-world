@@ -26,15 +26,23 @@ void require(bool condition, std::string const& message) {
 
 std::string serializeScriptWorld() {
   bw::core::ScriptRuntime sourceRuntime;
+  bw::core::ScriptParameterDefinition count;
+  count.name = "count";
+  count.type = bw::core::ScriptParameterType::Integer;
+  count.defaultValue = int64_t{4};
+  count.integerMinimum = 1;
+  count.integerMaximum = 20;
   sourceRuntime.load("ScriptDemo", R"(
     local primitive = context:create_primitive("Rectangle")
     primitive:set_size(8, 8)
     context:place_primitive(primitive)
-  )");
+  )",
+                     {}, {count});
 
   bw::core::World source(512.0f, 16.0f);
   auto* step = new bw::core::RunScript(sourceRuntime);
   step->setScriptName("ScriptDemo");
+  step->setParameterValue("count", int64_t{9});
   source.getActiveLayer()->addStep(step);
 
   auto serializer = std::shared_ptr<bw::core::YamlSerializer>(
@@ -79,7 +87,8 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
     script << R"(
       local dimensions = include("World/ScriptDimensions")
       local primitive = context:create_primitive("Rectangle")
-      primitive:set_size(dimensions.width, dimensions.height)
+      primitive:set_size(dimensions.width + params.count,
+                         dimensions.height * params.scale)
       context:place_primitive(primitive)
     )";
     std::ofstream dimensions(root / "script-dimensions.lua");
@@ -102,6 +111,33 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
             - id: "Source"
               ref: "ScriptDemoSource"
             - ref: "ScriptDimensions"
+        Definitions:
+          Definition:
+            Params:
+              Param:
+                - name: "label"
+                  type: "string"
+                  default: "mine"
+                - name: "style"
+                  type: "string"
+                  default: "rough"
+                  Choices:
+                    Choice:
+                      - "rough"
+                      - "smooth"
+                - name: "count"
+                  type: "integer"
+                  min: "1"
+                  max: "20"
+                  default: "4"
+                - name: "scale"
+                  type: "number"
+                  min: "0.25"
+                  max: "4.0"
+                  default: "1.5"
+                - name: "enabled"
+                  type: "boolean"
+                  default: "true"
 )";
   }
 
@@ -128,6 +164,25 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
           "LuaScript resources were not discoverable by their declared type");
   resourceManager.createResource(resource);
   resourceManager.loadResource(resource);
+  auto* parameterizedScript =
+      dynamic_cast<bw::core::LuaScriptResource*>(resource.get());
+  auto const& parameterDefinitions =
+      parameterizedScript->getParameterDefinitions();
+  require(
+      parameterDefinitions.size() == 5 &&
+          parameterDefinitions[0].name == "label" &&
+          std::get<std::string>(parameterDefinitions[0].defaultValue) ==
+              "mine" &&
+          parameterDefinitions[1].choices ==
+              std::vector<std::string>{"rough", "smooth"} &&
+          parameterDefinitions[2].integerMinimum == 1 &&
+          parameterDefinitions[2].integerMaximum == 20 &&
+          std::get<int64_t>(parameterDefinitions[2].defaultValue) == 4 &&
+          parameterDefinitions[3].numberMinimum == 0.25 &&
+          parameterDefinitions[3].numberMaximum == 4.0 &&
+          std::get<double>(parameterDefinitions[3].defaultValue) == 1.5 &&
+          std::get<bool>(parameterDefinitions[4].defaultValue),
+      "LuaScript Params were not parsed from the resource definition");
 
   auto defaultResource = resourceManager.getResource(
       bw::core::defaultLayerBuildStepScriptName, "World");
@@ -200,6 +255,8 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
   }
   require(hostRuntime.isLoaded("ScriptDemo"),
           "resolved LuaScript text was not compiled into the host runtime");
+  require(hostRuntime.getParameterDefinitions("ScriptDemo").size() == 5,
+          "the LuaScript resource did not load its Params into the runtime");
   bool reachedContext = false;
   try {
     hostRuntime.execute("ScriptDemo", bw::core::ScriptLibraries::Build);
@@ -221,8 +278,10 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
   require(!probeStep->hasFailed(),
           std::string("resource-backed include probe failed: ") +
               probeStep->getFailureMessage());
-  require(probeLayer.getNumPrimitives() == 1,
-          "resource-backed include probe placed no Primitive");
+  require(probeLayer.getNumPrimitives() == 1 &&
+              probeLayer.getPrimitive(0)->getSize() ==
+                  wp::Vector2(12.0f, 12.0f),
+          "a new RunScript did not use its LuaScript resource defaults");
 
   bw::core::World defaultWorld(512.0f, 16.0f);
   auto* defaultStep = new bw::core::RunScript(hostRuntime);
@@ -250,8 +309,8 @@ void aHostResolvesAndCompilesScriptsBeforeWorldDeserialization(
   require(deserialized, deserializeError);
   require(loaded.getActiveLayer()->getNumPrimitives() == 1 &&
               loaded.getActiveLayer()->getPrimitive(0)->getSize() ==
-                  wp::Vector2(8.0f, 8.0f),
-          "opening the script World did not run its manifest-declared Lua include");
+                  wp::Vector2(17.0f, 12.0f),
+          "opening the script World did not apply its serialized Param over the resource default");
 
   fs::remove_all(root);
 }

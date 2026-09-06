@@ -154,26 +154,6 @@ local function cell_is_empty(x, y)
     ) == 0
 end
 
-local function matching_neighbour_count(option, cell_x, cell_y, placements)
-    local count = 0
-    for _, placement in ipairs(placements) do
-        local matches = false
-        for _, direction in ipairs(DIRECTIONS) do
-            if connector_sets_match(
-                option.connectors[direction], cell_x, cell_y,
-                placement.option.connectors[OPPOSITE[direction]],
-                placement.x, placement.y) then
-                matches = true
-                break
-            end
-        end
-        if matches then
-            count = count + 1
-        end
-    end
-    return count
-end
-
 dprint("Finding prefabs")
 local definitions = context:find_define_prefabs("Main")
 local size_256_prefabs = utilities.get_prefabs_with_grid_size(definitions,
@@ -200,92 +180,128 @@ for _, prefab in ipairs(tunnel_prefabs) do
     end
 end
 
--- Seed the layout so the first loop iteration has an occupied neighbour.
-dprint("Placing initial prefab")
-local placements = {}
-local placements_by_cell = {}
-local seed = unrotated_options[math.random(#unrotated_options)]
-local seed_x, seed_y = utilities.find_closest_empty_grid_cell(0, 0, GRID_SIZE)
-context:place_prefab_instance(seed.prefab, seed_x, seed_y, seed.angle)
-local seed_placement = {x = seed_x, y = seed_y, option = seed}
-placements[1] = seed_placement
-placements_by_cell[cell_key(seed_x, seed_y)] = seed_placement
+-- Connector geometry is local to a Prefab, so calculate each possible
+-- option-to-option cell offset once rather than repeating the segment work for
+-- every placed instance.
+for _, existing_option in ipairs(options) do
+    local transitions = {}
+    local transitions_by_key = {}
+    for _, existing_direction in ipairs(DIRECTIONS) do
+        local existing_connectors =
+            existing_option.connectors[existing_direction]
+        local candidate_direction = OPPOSITE[existing_direction]
 
-dprint(string.format("Placing %d prefabs", 10))
-for _ = 1, 10 do
-    local candidates = {}
-    local candidates_by_key = {}
-    local empty_cells = {}
-
-    local function cell_is_available(x, y)
-        local key = cell_key(x, y)
-        if placements_by_cell[key] ~= nil then
-            return false
-        end
-        if empty_cells[key] == nil then
-            empty_cells[key] = cell_is_empty(x, y)
-        end
-        return empty_cells[key]
-    end
-
-    -- Every candidate is derived by exactly overlaying opposite connector
-    -- edges. This also discovers the right cell offset if a Prefab spans more
-    -- than one grid cell.
-    for _, placement in ipairs(placements) do
-        for _, existing_direction in ipairs(DIRECTIONS) do
-            local existing_connectors =
-                placement.option.connectors[existing_direction]
-            local candidate_direction = OPPOSITE[existing_direction]
-
-            for _, option in ipairs(options) do
-                local candidate_connectors =
-                    option.connectors[candidate_direction]
-                for _, candidate_segment in ipairs(candidate_connectors) do
-                    for _, existing_segment in ipairs(existing_connectors) do
-                        local x, y = matching_cell(candidate_segment,
-                                                   existing_segment,
-                                                   placement.x, placement.y)
-                        if x ~= nil and cell_is_available(x, y) and
-                            connector_sets_match(candidate_connectors, x, y,
-                                                 existing_connectors,
-                                                 placement.x, placement.y) then
-                            local key = cell_key(x, y) .. ":" .. option.id
-                            if candidates_by_key[key] == nil then
-                                local candidate = {
-                                    x = x,
-                                    y = y,
-                                    option = option
-                                }
-                                candidates[#candidates + 1] = candidate
-                                candidates_by_key[key] = candidate
-                            end
+        for _, candidate_option in ipairs(options) do
+            local candidate_connectors =
+                candidate_option.connectors[candidate_direction]
+            for _, candidate_segment in ipairs(candidate_connectors) do
+                for _, existing_segment in ipairs(existing_connectors) do
+                    local x, y = matching_cell(candidate_segment,
+                                               existing_segment, 0, 0)
+                    if x ~= nil and
+                        (#candidate_connectors == 1 and
+                             #existing_connectors == 1 or
+                         connector_sets_match(candidate_connectors, x, y,
+                                              existing_connectors, 0, 0)) then
+                        local key = cell_key(x, y) .. ":" .. candidate_option.id
+                        if transitions_by_key[key] == nil then
+                            local transition = {
+                                x = x,
+                                y = y,
+                                option = candidate_option
+                            }
+                            transitions[#transitions + 1] = transition
+                            transitions_by_key[key] = transition
                         end
                     end
                 end
             end
         end
     end
+    existing_option.transitions = transitions
+end
 
+-- Seed the layout so the first loop iteration has an occupied neighbour.
+dprint("Placing initial prefab")
+local placements_by_cell = {}
+local seed = unrotated_options[math.random(#unrotated_options)]
+local seed_x, seed_y = utilities.find_closest_empty_grid_cell(0, 0, GRID_SIZE)
+context:place_prefab_instance(seed.prefab, seed_x, seed_y, seed.angle)
+local seed_placement = {x = seed_x, y = seed_y, option = seed}
+placements_by_cell[cell_key(seed_x, seed_y)] = seed_placement
+
+local candidates = {}
+local candidates_by_key = {}
+local empty_cells = {}
+
+local function cell_is_available(x, y)
+    local key = cell_key(x, y)
+    if placements_by_cell[key] ~= nil then
+        return false
+    end
+    if empty_cells[key] == nil then
+        empty_cells[key] = cell_is_empty(x, y)
+    end
+    return empty_cells[key]
+end
+
+-- Add only the frontier contributed by a new placement. A candidate remembers
+-- every placement it joins, so later iterations do not have to rediscover and
+-- recount all previous placement/candidate pairs.
+local function add_candidates_for_placement(placement)
+    for _, transition in ipairs(placement.option.transitions) do
+        local x = placement.x + transition.x
+        local y = placement.y + transition.y
+        if cell_is_available(x, y) then
+            local key = cell_key(x, y) .. ":" .. transition.option.id
+            local candidate = candidates_by_key[key]
+            if candidate == nil then
+                candidate = {
+                    x = x,
+                    y = y,
+                    option = transition.option,
+                    neighbours = 0,
+                    matching_placements = {}
+                }
+                candidates[#candidates + 1] = candidate
+                candidates_by_key[key] = candidate
+            end
+            if not candidate.matching_placements[placement] then
+                candidate.matching_placements[placement] = true
+                candidate.neighbours = candidate.neighbours + 1
+            end
+        end
+    end
+end
+
+add_candidates_for_placement(seed_placement)
+
+dprint(string.format("Placing %d prefabs", params.iterations))
+for _ = 1, params.iterations do
     local best_neighbours = 0
     local best_distance = math.huge
     local best_candidates = {}
+    local available_candidates = {}
 
     for _, candidate in ipairs(candidates) do
-        local neighbours = matching_neighbour_count(
-            candidate.option, candidate.x, candidate.y, placements)
-        local distance = candidate.x * candidate.x +
-                             candidate.y * candidate.y
+        if cell_is_available(candidate.x, candidate.y) then
+            available_candidates[#available_candidates + 1] = candidate
+            local neighbours = candidate.neighbours
+            local distance = candidate.x * candidate.x +
+                                 candidate.y * candidate.y
 
-        if neighbours > best_neighbours or
-            (neighbours == best_neighbours and distance < best_distance) then
-            best_neighbours = neighbours
-            best_distance = distance
-            best_candidates = {candidate}
-        elseif neighbours == best_neighbours and
-            distance == best_distance then
-            best_candidates[#best_candidates + 1] = candidate
+            if neighbours > best_neighbours or
+                (neighbours == best_neighbours and distance < best_distance) then
+                best_neighbours = neighbours
+                best_distance = distance
+                best_candidates = {candidate}
+            elseif neighbours == best_neighbours and
+                distance == best_distance then
+                best_candidates[#best_candidates + 1] = candidate
+            end
         end
     end
+    candidates = available_candidates
 
     if #best_candidates == 0 then
         break
@@ -317,6 +333,6 @@ for _ = 1, 10 do
         y = candidate.y,
         option = candidate.option
     }
-    placements[#placements + 1] = placement
     placements_by_cell[cell_key(candidate.x, candidate.y)] = placement
+    add_candidates_for_placement(placement)
 end

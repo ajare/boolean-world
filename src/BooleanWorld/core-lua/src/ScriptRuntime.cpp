@@ -41,8 +41,8 @@ struct ScriptCoroutineState {
 namespace {
 
 // A high enough ceiling for substantial procedural placement, but finite so
-// a mistaken infinite loop returns control promptly. The hook runs only once
-// at the ceiling, avoiding callback overhead during ordinary scripts.
+// a mistaken infinite loop returns control promptly. Hosts which do not ask
+// for an exact count pay for only one hook callback at the ceiling.
 constexpr int InstructionBudget = 1'000'000;
 constexpr string_view InstructionBudgetMessage =
     "Lua script instruction budget exceeded";
@@ -55,6 +55,20 @@ void stopAtInstructionBudget(lua_State* lua, lua_Debug*) {
   luaL_error(lua, "%s", InstructionBudgetMessage.data());
 }
 
+thread_local uint64_t* activeInstructionCount = nullptr;
+
+void countInstructions(lua_State* lua, lua_Debug*) {
+  if (!activeInstructionCount) {
+    return;
+  }
+  ++*activeInstructionCount;
+  if (*activeInstructionCount >= InstructionBudget) {
+    // This hook already fires every instruction, so a caught budget error gets
+    // no uncounted grace period before the next instruction fails as well.
+    luaL_error(lua, "%s", InstructionBudgetMessage.data());
+  }
+}
+
 // Restores any hook a future ScriptRuntime client may have installed rather
 // than assuming this runtime is the only user of the Lua state.
 class InstructionBudgetGuard {
@@ -63,18 +77,29 @@ private:
   lua_Hook mPreviousHook;
   int mPreviousMask;
   int mPreviousCount;
+  uint64_t* mPreviousInstructionCount;
 
 public:
-  explicit InstructionBudgetGuard(lua_State* lua)
+  explicit InstructionBudgetGuard(
+      lua_State* lua, uint64_t* instructionCount = nullptr)
       : mLua(lua),
         mPreviousHook(lua_gethook(lua)),
         mPreviousMask(lua_gethookmask(lua)),
-        mPreviousCount(lua_gethookcount(lua)) {
-    lua_sethook(mLua, stopAtInstructionBudget, LUA_MASKCOUNT, InstructionBudget);
+        mPreviousCount(lua_gethookcount(lua)),
+        mPreviousInstructionCount(activeInstructionCount) {
+    activeInstructionCount = instructionCount;
+    if (instructionCount) {
+      *instructionCount = 0;
+      lua_sethook(mLua, countInstructions, LUA_MASKCOUNT, 1);
+    } else {
+      lua_sethook(
+          mLua, stopAtInstructionBudget, LUA_MASKCOUNT, InstructionBudget);
+    }
   }
 
   ~InstructionBudgetGuard() {
     lua_sethook(mLua, mPreviousHook, mPreviousMask, mPreviousCount);
+    activeInstructionCount = mPreviousInstructionCount;
   }
 };
 
@@ -193,6 +218,7 @@ sol::environment makeEnvironment(
     string const& scriptName,
     string const& stepName,
     ScriptLibraries libraries,
+    vector<ScriptParameterDefinition> const& parameterDefinitions,
     ScriptRuntime::EnvironmentBinder const& bind) {
   sol::environment environment(lua, sol::create);
 
@@ -208,6 +234,16 @@ sol::environment makeEnvironment(
   addLibrary(lua, environment, libraries, ScriptLibraries::String, "string");
   addLibrary(lua, environment, libraries, ScriptLibraries::Math, "math");
   addLibrary(lua, environment, libraries, ScriptLibraries::Coroutine, "coroutine");
+
+  auto params = lua.create_table();
+  for (auto const& definition : parameterDefinitions) {
+    visit(
+        [&params, &definition](auto const& value) {
+          params[definition.name] = value;
+        },
+        definition.defaultValue);
+  }
+  environment["params"] = params;
 
   if (bind) {
     bind(environment);
@@ -307,8 +343,11 @@ string const& ScriptException::getTraceback() const {
 }
 
 ScriptRuntime::ScriptRuntime(
-    ScriptLogSink logSink, ScriptLogSink debugLogSink)
-    : mLogSink(move(logSink)), mDebugLogSink(move(debugLogSink)) {
+    ScriptLogSink logSink, ScriptLogSink debugLogSink,
+    bool logInstructionCounts)
+    : mLogSink(move(logSink)),
+      mDebugLogSink(move(debugLogSink)),
+      mLogInstructionCounts(logInstructionCounts) {
   // Opened once on the state so the libraries exist to be handed out; which
   // of them an execution actually sees is decided per execution, in
   // execute(), not here.
@@ -328,7 +367,9 @@ ScriptRuntime::~ScriptRuntime() {
 
 void ScriptRuntime::load(
     string const& name, string const& text,
-    IncludedScripts const& includedScripts) {
+    IncludedScripts const& includedScripts,
+    vector<ScriptParameterDefinition> parameterDefinitions) {
+  mParameterDefinitions.insert_or_assign(name, move(parameterDefinitions));
   auto compile = [this](string const& sourceName, string const& source) {
     // The leading '@' is Lua's convention for a named source and keeps error
     // locations attached to either the root or the included resource.
@@ -377,10 +418,11 @@ void ScriptRuntime::load(
 
 void ScriptRuntime::reload(
     string const& name, string const& text,
-    IncludedScripts const& includedScripts) {
+    IncludedScripts const& includedScripts,
+    vector<ScriptParameterDefinition> parameterDefinitions) {
   exception_ptr compileFailure;
   try {
-    load(name, text, includedScripts);
+    load(name, text, includedScripts, move(parameterDefinitions));
   } catch (ScriptException const&) {
     // load() atomically replaced the old cache entry with this failure. The
     // dependent Layers must still rebuild so their RunScript panels report
@@ -430,12 +472,35 @@ bool ScriptRuntime::isLoaded(string const& name) const {
   return mChunks.contains(name);
 }
 
+vector<ScriptParameterDefinition> const&
+ScriptRuntime::getParameterDefinitions(string const& name) const {
+  static vector<ScriptParameterDefinition> const empty;
+  auto const found = mParameterDefinitions.find(name);
+  return found == mParameterDefinitions.end() ? empty : found->second;
+}
+
 void ScriptRuntime::execute(
     string const& name, ScriptLibraries libraries,
     EnvironmentBinder const& bind, string const& stepName) {
   if (mLogSink) {
     mLogSink({ScriptLogEventType::ExecutionStarted, name, "", stepName});
   }
+
+  uint64_t instructionCount = 0;
+  bool executionBegan = false;
+  bool instructionCountLogged = false;
+  auto logInstructionCount = [&]() {
+    if (!mLogInstructionCounts || !mLogSink || instructionCountLogged) {
+      return;
+    }
+    instructionCountLogged = true;
+    mLogSink(
+        {ScriptLogEventType::Output, name,
+         format(
+             "Lua instructions executed: {} / {}", instructionCount,
+             InstructionBudget),
+         stepName});
+  };
 
   try {
     if (auto failure = mCompileFailures.find(name);
@@ -458,15 +523,18 @@ void ScriptRuntime::execute(
     }
     sol::protected_function function = loaded;
     auto environment = makeEnvironment(
-        mLua, mLogSink, mDebugLogSink, name, stepName, libraries, bind);
+        mLua, mLogSink, mDebugLogSink, name, stepName, libraries,
+        getParameterDefinitions(name), bind);
     auto includes = bindIncludes(
         environment, chunk->second.includedScripts);
     (void)includes;  // Keeps the execution-local include cache alive.
     sol::set_environment(environment, function);
 
     sol::protected_function_result result;
+    executionBegan = true;
     {
-      InstructionBudgetGuard instructionBudget(mLua.lua_state());
+      InstructionBudgetGuard instructionBudget(
+          mLua.lua_state(), mLogInstructionCounts ? &instructionCount : nullptr);
       result = function();
     }
 
@@ -477,9 +545,13 @@ void ScriptRuntime::execute(
           format("Lua script '{}' failed: {}", name, firstLine(traceback)),
           findLineNumber(name, traceback), traceback);
     }
+    logInstructionCount();
   } catch (exception const& error) {
     if (mLogSink) {
       mLogSink({ScriptLogEventType::Error, name, error.what(), stepName});
+    }
+    if (executionBegan) {
+      logInstructionCount();
     }
     throw;
   }
@@ -504,7 +576,8 @@ ScriptCoroutineHandle ScriptRuntime::startCoroutine(
   state->owner = this;
   state->scriptName = name;
   state->environment.emplace(makeEnvironment(
-      mLua, mLogSink, mDebugLogSink, name, "", libraries, bind));
+      mLua, mLogSink, mDebugLogSink, name, "", libraries,
+      getParameterDefinitions(name), bind));
   state->includes = bindIncludes(
       *state->environment, chunk->second.includedScripts);
   state->thread.emplace(sol::thread::create(mLua));

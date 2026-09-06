@@ -118,7 +118,7 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
     }
   };
   mScriptRuntime = make_unique<bw::core::ScriptRuntime>(
-      scriptLogSink, scriptLogSink);
+      scriptLogSink, scriptLogSink, true);
 
   mResourceMgr->addResourceLocationFactory(
       "Directory",

@@ -29,4 +29,21 @@ bool setRunScriptExtraResourceNames(
   return true;
 }
 
+bool setRunScriptParameterValue(
+    Document*, bw::core::Layer* layer, bw::core::RunScript* step,
+    std::string const& name,
+    bw::core::ScriptParameterValue const& value) {
+  step->setParameterValue(name, value);
+  layer->rebuild();
+  return true;
+}
+
+bool clearRunScriptParameterValue(
+    Document*, bw::core::Layer* layer, bw::core::RunScript* step,
+    std::string const& name) {
+  step->clearParameterValue(name);
+  layer->rebuild();
+  return true;
+}
+
 }  // namespace editor

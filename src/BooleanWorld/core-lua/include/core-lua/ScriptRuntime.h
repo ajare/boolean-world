@@ -12,6 +12,8 @@
 
 #include <core/CoreException.h>
 
+#include "core-lua/ScriptParameters.h"
+
 namespace bw {
 namespace core {
 
@@ -108,9 +110,9 @@ private:
 // to each RunScript step when that step type is registered, so nothing
 // reaches for it through a singleton and a test can own its own.
 //
-// It resolves nothing itself: a script arrives as a string, never as a
-// resource name, which is what keeps it free of the resource system and so
-// testable without a ResourceManager.
+// It resolves nothing itself: script text and parameter definitions arrive as
+// values, never as a resource name, which keeps it free of the resource system
+// and testable without a ResourceManager.
 class ScriptRuntime {
 private:
   sol::state mLua;
@@ -128,6 +130,11 @@ private:
   // loads fresh functions from these cached forms: executions never share a
   // mutable _ENV or an included module table.
   std::map<std::string, CompiledScript> mChunks;
+
+  // Resource-authored editor/runtime inputs survive a compile failure so the
+  // editor can still render and repair a step while its script text is broken.
+  std::map<std::string, std::vector<ScriptParameterDefinition>>
+      mParameterDefinitions;
 
   // A failed reload replaces the previously compiled chunk. Keeping the
   // compile failure by name lets every RunScript step that names this script
@@ -151,6 +158,7 @@ private:
 
   ScriptLogSink mLogSink;
   ScriptLogSink mDebugLogSink;
+  bool mLogInstructionCounts;
   std::vector<std::shared_ptr<ScriptCoroutineState>> mCoroutines;
 
   void finishCoroutine(
@@ -160,10 +168,13 @@ private:
 public:
   // logSink defaults to writing output and errors to the console. debugLogSink
   // is deliberately empty by default, making Lua's dprint() a no-op unless a
-  // development host such as the editor opts into its output.
+  // development host such as the editor opts into its output. Exact
+  // instruction counting is also opt-in because its per-instruction hook is
+  // intended for development diagnostics rather than the game runtime.
   explicit ScriptRuntime(
       ScriptLogSink logSink = defaultLogSink(),
-      ScriptLogSink debugLogSink = {});
+      ScriptLogSink debugLogSink = {},
+      bool logInstructionCounts = false);
   ~ScriptRuntime();
 
   ScriptRuntime(ScriptRuntime const&) = delete;
@@ -184,7 +195,8 @@ public:
   // execution, with one execution-local table cache.
   void load(
       std::string const& name, std::string const& text,
-      IncludedScripts const& includedScripts = {});
+      IncludedScripts const& includedScripts = {},
+      std::vector<ScriptParameterDefinition> parameterDefinitions = {});
 
   // Replaces the cached result, then rebuilds each distinct Layer containing
   // a RunScript step that names name. A compile failure is retained and the
@@ -192,9 +204,15 @@ public:
   // is rethrown for the initiating host action to report.
   void reload(
       std::string const& name, std::string const& text,
-      IncludedScripts const& includedScripts = {});
+      IncludedScripts const& includedScripts = {},
+      std::vector<ScriptParameterDefinition> parameterDefinitions = {});
 
   [[nodiscard]] bool isLoaded(std::string const& name) const;
+
+  // Empty for an internal script or one whose resource declares no Params.
+  // The returned definitions are ordered as authored in the manifest.
+  [[nodiscard]] std::vector<ScriptParameterDefinition> const&
+  getParameterDefinitions(std::string const& name) const;
 
   // Called with the environment an execution is about to run in, so a caller
   // can put its own bindings in it. The environment is discarded when the
@@ -202,7 +220,8 @@ public:
   using EnvironmentBinder = std::function<void(sol::environment&)>;
 
   // Runs the named chunk synchronously to completion in a fresh environment
-  // holding the requested libraries plus whatever bind adds. Fresh means
+  // holding the requested libraries, a params table containing the loaded
+  // definitions' defaults, plus whatever bind adds. Fresh means
   // nothing a previous execution left behind is visible, and nothing this one
   // leaves behind survives. Throws a CoreException when the chunk is not
   // loaded, or a ScriptException with line and traceback when compilation or

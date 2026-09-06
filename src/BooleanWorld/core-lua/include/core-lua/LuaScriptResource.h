@@ -2,8 +2,11 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 #include <willpower/application/resourcesystem/ResourceFactory.h>
+
+#include "core-lua/ScriptParameters.h"
 
 namespace wp {
 namespace application {
@@ -23,9 +26,10 @@ inline constexpr char defaultLayerBuildStepScriptName[] =
 inline constexpr char defaultLayerBuildStepScript[] =
     "-- Built-in no-op LayerBuildStep script.\n";
 
-// A World-dependent Lua script. The host explicitly hands its source text and
-// manifest-declared transitive LuaScript dependencies to ScriptRuntime under
-// the exact name authored by RunScript before deserializing the World. A leaf
+// A World-dependent Lua script. The host explicitly hands its source text,
+// manifest-declared Params, and transitive LuaScript dependencies to
+// ScriptRuntime under the exact name authored by RunScript before deserializing
+// the World. A leaf
 // script may come directly from a ResourceLocation. A composite root obtains
 // its source from the named TextFile dependency "Source" and may depend on
 // helper LuaScripts. Internal programmatic scripts need neither.
@@ -34,6 +38,7 @@ class LuaScriptResource final
 private:
   std::string mText;
   std::string mInternalText;
+  std::vector<ScriptParameterDefinition> mParameterDefinitions;
   wp::application::resourcesystem::ResourceManager* mResourceManager = nullptr;
 
   [[nodiscard]] std::map<std::string, std::string> collectIncludedScripts() const;
@@ -58,6 +63,13 @@ public:
       std::string text);
 
   [[nodiscard]] std::string const& getText() const;
+
+  [[nodiscard]] std::vector<ScriptParameterDefinition> const&
+  getParameterDefinitions() const;
+
+  // Used by the ResourceDefinitionFactory after validating manifest Params.
+  void setParameterDefinitions(
+      std::vector<ScriptParameterDefinition> definitions);
 
   void loadInto(ScriptRuntime& runtime,
                 std::string const& authoredName) const;

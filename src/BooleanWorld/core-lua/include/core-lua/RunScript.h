@@ -41,6 +41,11 @@ private:
   // duplicates from the dependency projection.
   std::vector<std::string> mExtraResourceNames;
 
+  // Serialized per-step choices keyed by the resource-authored Param name.
+  // Missing entries use the current LuaScript resource default. Unknown
+  // entries are retained so a temporarily removed Param can round-trip.
+  std::map<std::string, ScriptParameterValue> mParameterValues;
+
   // Re-applied to math.random at the start of every execute(), so a scatter
   // reproduces exactly and changing the arrangement is an authored edit
   // rather than a side effect of rebuilding (docs/adr/0040).
@@ -123,6 +128,20 @@ public:
   void setExtraResourceNames(std::vector<std::string> names);
 
   [[nodiscard]] std::vector<std::string> const& getExtraResourceNames() const;
+
+  // Overrides one resource default. The value must match the currently loaded
+  // definition and its choices/range. clearParameterValue() restores the
+  // resource default. All effective declared values are serialized.
+  void setParameterValue(
+      std::string const& name, ScriptParameterValue const& value);
+
+  void clearParameterValue(std::string const& name);
+
+  [[nodiscard]] std::map<std::string, ScriptParameterValue> const&
+  getParameterValues() const;
+
+  [[nodiscard]] ScriptParameterValue const& getParameterValue(
+      ScriptParameterDefinition const& definition) const;
 
   // Re-applied to math.random at the start of every execute().
   void setSeed(uint64_t seed);

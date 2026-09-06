@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <format>
 #include <set>
+#include <type_traits>
+#include <variant>
 
 #include <core/CoreException.h>
 #include <core/DefinePrefabs.h>
@@ -45,6 +47,7 @@ LayerBuildStep* RunScript::copy(map<VertexTransformerObject const*, VertexTransf
   result->copyFrom(*this);
   result->mScriptName = mScriptName;
   result->mExtraResourceNames = mExtraResourceNames;
+  result->mParameterValues = mParameterValues;
   result->mSeed = mSeed;
   return result;
 }
@@ -165,9 +168,27 @@ void RunScript::execute(LayerBuildContext& context) const {
           // (docs/adr/0040); ScriptLibraries::Build always includes math.
           environment["math"]["randomseed"](mSeed);
 
+          sol::table params = environment["params"];
+          for (auto const& definition :
+               mRuntime->getParameterDefinitions(mScriptName)) {
+            auto const& value = getParameterValue(definition);
+            if (!definition.accepts(value)) {
+              throw CoreException(format(
+                  "RunScript parameter '{}' is not a valid {} value for its "
+                  "LuaScript resource definition",
+                  definition.name, scriptParameterTypeName(definition.type)));
+            }
+            visit(
+                [&params, &definition](auto const& concrete) {
+                  params[definition.name] = concrete;
+                },
+                value);
+          }
+          environment["params"] = params;
+
           // One explicit, borrowed capability object owns every operation
           // scoped to this RunScript execution. The actual RunScript step and
-          // its authored configuration are not exposed to Lua.
+          // its authored configuration other than params are not exposed to Lua.
           environment["context"] = RunScriptContext(*this, context);
         },
         getName());
@@ -227,6 +248,7 @@ void RunScript::setScriptName(string const& name) {
 
   mRuntime->untrackStep(this, mScriptName);
   mScriptName = name;
+  mParameterValues.clear();
   mRuntime->trackStep(this, mScriptName, getOwningLayer());
   modify();
 }
@@ -246,6 +268,47 @@ void RunScript::setExtraResourceNames(vector<string> names) {
 
 vector<string> const& RunScript::getExtraResourceNames() const {
   return mExtraResourceNames;
+}
+
+void RunScript::setParameterValue(
+    string const& name, ScriptParameterValue const& value) {
+  auto const& definitions = mRuntime->getParameterDefinitions(mScriptName);
+  auto const definition = find_if(
+      definitions.begin(), definitions.end(),
+      [&name](auto const& candidate) { return candidate.name == name; });
+  if (definition == definitions.end()) {
+    throw CoreException(
+        format("LuaScript '{}' declares no Param named '{}'", mScriptName, name));
+  }
+  if (!definition->accepts(value)) {
+    throw CoreException(format(
+        "RunScript parameter '{}' is not a valid {} value for its LuaScript "
+        "resource definition",
+        name, scriptParameterTypeName(definition->type)));
+  }
+  if (auto current = mParameterValues.find(name);
+      current != mParameterValues.end() && current->second == value) {
+    return;
+  }
+  mParameterValues.insert_or_assign(name, value);
+  modify();
+}
+
+void RunScript::clearParameterValue(string const& name) {
+  if (mParameterValues.erase(name) != 0) {
+    modify();
+  }
+}
+
+map<string, ScriptParameterValue> const& RunScript::getParameterValues() const {
+  return mParameterValues;
+}
+
+ScriptParameterValue const& RunScript::getParameterValue(
+    ScriptParameterDefinition const& definition) const {
+  auto const found = mParameterValues.find(definition.name);
+  return found == mParameterValues.end() ? definition.defaultValue
+                                         : found->second;
 }
 
 void RunScript::setSeed(uint64_t seed) {
@@ -282,6 +345,37 @@ void RunScript::serializeArgs(shared_ptr<Serializer> serializer, SerializationWo
     serializer->writeString("", name);
   }
   serializer->endArray();
+
+  auto values = mParameterValues;
+  for (auto const& definition :
+       mRuntime->getParameterDefinitions(mScriptName)) {
+    values.try_emplace(definition.name, definition.defaultValue);
+  }
+  serializer->beginArray("params");
+  for (auto const& [name, value] : values) {
+    serializer->beginMap("");
+    serializer->writeString("name", name);
+    visit(
+        [&serializer](auto const& concrete) {
+          using Value = decay_t<decltype(concrete)>;
+          if constexpr (is_same_v<Value, string>) {
+            serializer->writeString("type", "string");
+            serializer->writeString("value", concrete);
+          } else if constexpr (is_same_v<Value, int64_t>) {
+            serializer->writeString("type", "integer");
+            serializer->writeInt64("value", concrete);
+          } else if constexpr (is_same_v<Value, double>) {
+            serializer->writeString("type", "number");
+            serializer->writeDouble("value", concrete);
+          } else {
+            serializer->writeString("type", "boolean");
+            serializer->writeBool("value", concrete);
+          }
+        },
+        value);
+    serializer->endMap();
+  }
+  serializer->endArray();
 }
 
 bool RunScript::deserializeArgs(shared_ptr<Serializer> serializer, SerializationWorkData&) {
@@ -293,6 +387,35 @@ bool RunScript::deserializeArgs(shared_ptr<Serializer> serializer, Serialization
     mExtraResourceNames.push_back(serializer->readString());
   }
   serializer->endArray();
+
+  mParameterValues.clear();
+  if (serializer->isPositional() || serializer->hasField("params")) {
+    serializer->beginArray("params");
+    while (serializer->nextArrayItem()) {
+      serializer->beginMap("");
+      auto const name = serializer->readString("name");
+      auto const type = serializer->readString("type");
+      if (type == "string") {
+        mParameterValues.insert_or_assign(
+            name, serializer->readString("value"));
+      } else if (type == "integer") {
+        mParameterValues.insert_or_assign(
+            name, serializer->readInt64("value"));
+      } else if (type == "number") {
+        mParameterValues.insert_or_assign(
+            name, serializer->readDouble("value"));
+      } else if (type == "boolean") {
+        mParameterValues.insert_or_assign(
+            name, serializer->readBool("value"));
+      } else {
+        throw CoreException(
+            format("RunScript parameter '{}' has unknown serialized type '{}'",
+                   name, type));
+      }
+      serializer->endMap();
+    }
+    serializer->endArray();
+  }
   return true;
 }
 
