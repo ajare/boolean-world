@@ -7,6 +7,32 @@
 option(BW_BUILD_WILLPOWER
     "Configure and build Willpower if its libraries have not been built" ON)
 
+# The single switch for FMOD-backed audio. This drives WILLPOWER_ENABLE_FMOD in
+# Willpower's own configure below - never set that option directly, since the
+# two would otherwise be independently settable and could disagree with each
+# other (see #381).
+if(WIN32)
+    option(BW_ENABLE_FMOD
+        "Enable FMOD-backed audio (requires the vendored FMOD Engine API under vendor/)" ON)
+else()
+    option(BW_ENABLE_FMOD
+        "Enable FMOD-backed audio (requires the vendored FMOD Engine API under vendor/)" OFF)
+    if(BW_ENABLE_FMOD)
+        message(FATAL_ERROR "BW_ENABLE_FMOD requires Windows (the vendored FMOD binaries are Windows-only).")
+    endif()
+endif()
+
+# The vendored FMOD tree, passed through to Willpower's configure so it never
+# needs its own copy of these paths. Kept in sync with cmake/Prebuilt.cmake's
+# BW_VENDOR* locations; duplicated here because Submodules.cmake is included
+# before Prebuilt.cmake.
+set(BW_FMOD_CORE_INCLUDE   "${BW_ROOT}/vendor/include/fmod/core")
+set(BW_FMOD_STUDIO_INCLUDE "${BW_ROOT}/vendor/include/fmod/studio")
+set(BW_FMOD_CORE_LIBRARY   "${BW_ROOT}/vendor/lib/vs2026/x64/Release/fmod_vc.lib")
+set(BW_FMOD_STUDIO_LIBRARY "${BW_ROOT}/vendor/lib/vs2026/x64/Release/fmodstudio_vc.lib")
+set(BW_FMOD_CORE_DLL       "${BW_ROOT}/vendor/bin/vs2026/x64/Release/fmod.dll")
+set(BW_FMOD_STUDIO_DLL     "${BW_ROOT}/vendor/bin/vs2026/x64/Release/fmodstudio.dll")
+
 set(BW_WILLPOWER_SOURCE_DIR "${BW_ROOT}/ext/willpower")
 set(BW_WILLPOWER_BUILD_DIR "${BW_WILLPOWER_SOURCE_DIR}/build")
 set(BW_MPP_SOURCE_DIR "${BW_WILLPOWER_SOURCE_DIR}/ext/massive-poly-pusher")
@@ -91,8 +117,15 @@ function(bw_ensure_willpower)
         COMMAND git -C "${BW_MPP_SOURCE_DIR}" rev-parse HEAD
         RESULT_VARIABLE mpp_revision_rc
         OUTPUT_VARIABLE mpp_revision OUTPUT_STRIP_TRAILING_WHITESPACE)
+    # BW_ENABLE_FMOD (and where it points) is the single switch driving
+    # Willpower's own WILLPOWER_ENABLE_FMOD. Folding it into the tracked state
+    # forces a reconfigure whenever it changes, rather than silently keeping
+    # whatever Willpower's cache already has - see #381.
+    set(fmod_option_state
+        "BW_ENABLE_FMOD=${BW_ENABLE_FMOD}\n${BW_FMOD_CORE_INCLUDE}\n${BW_FMOD_STUDIO_INCLUDE}\n${BW_FMOD_CORE_LIBRARY}\n${BW_FMOD_STUDIO_LIBRARY}\n${BW_FMOD_CORE_DLL}\n${BW_FMOD_STUDIO_DLL}\n")
+
     if(willpower_revision_rc EQUAL 0 AND mpp_revision_rc EQUAL 0)
-        set(dependency_revision "${willpower_revision}\n${mpp_revision}\n")
+        set(dependency_revision "${willpower_revision}\n${mpp_revision}\n${fmod_option_state}")
     else()
         # A source export without Git metadata cannot prove that its artifacts
         # are current, so conservatively ask the native build tool every time.
@@ -123,14 +156,34 @@ function(bw_ensure_willpower)
             continue()
         endif()
 
-        if(NOT EXISTS "${BW_WILLPOWER_BUILD_DIR}/CMakeCache.txt")
+        # Reconfigure whenever the cache is missing outright, or whenever
+        # revisions_match is FALSE for a reason other than missing artifacts -
+        # in particular, BW_ENABLE_FMOD changing. Gating this solely on cache
+        # presence (as before) meant a flipped switch never reached Willpower's
+        # cache on an existing checkout.
+        if(NOT EXISTS "${BW_WILLPOWER_BUILD_DIR}/CMakeCache.txt" OR NOT revisions_match)
             message(STATUS "Configuring Willpower")
             set(_bw_configure_command
                 "${CMAKE_COMMAND}" -S "${BW_WILLPOWER_SOURCE_DIR}"
                 -B "${BW_WILLPOWER_BUILD_DIR}" -G "${CMAKE_GENERATOR}"
-                -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${cfg})
-            if(WIN32)
+                -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=${cfg}
+                -DWILLPOWER_ENABLE_FMOD=${BW_ENABLE_FMOD})
+            # -A must only be passed the first time a cache is created: passing
+            # it again on a reconfigure conflicts if the platform was implicit
+            # (empty CMAKE_GENERATOR_PLATFORM) rather than explicitly recorded,
+            # and CMake refuses to proceed. Updating -D cache variables alone
+            # does not need it - the generator platform is already fixed.
+            if(WIN32 AND NOT EXISTS "${BW_WILLPOWER_BUILD_DIR}/CMakeCache.txt")
                 list(APPEND _bw_configure_command -A x64)
+            endif()
+            if(BW_ENABLE_FMOD)
+                list(APPEND _bw_configure_command
+                    -DWILLPOWER_FMOD_CORE_INCLUDE=${BW_FMOD_CORE_INCLUDE}
+                    -DWILLPOWER_FMOD_STUDIO_INCLUDE=${BW_FMOD_STUDIO_INCLUDE}
+                    -DWILLPOWER_FMOD_CORE_LIBRARY=${BW_FMOD_CORE_LIBRARY}
+                    -DWILLPOWER_FMOD_STUDIO_LIBRARY=${BW_FMOD_STUDIO_LIBRARY}
+                    -DWILLPOWER_FMOD_CORE_DLL=${BW_FMOD_CORE_DLL}
+                    -DWILLPOWER_FMOD_STUDIO_DLL=${BW_FMOD_STUDIO_DLL})
             endif()
             execute_process(
                 COMMAND ${_bw_configure_command}
