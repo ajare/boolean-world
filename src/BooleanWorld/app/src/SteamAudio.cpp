@@ -1,4 +1,7 @@
+#include <limits>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 #include <Windows.h>
 
@@ -7,6 +10,8 @@
 
 #include <willpower/application/AudioSystem.h>
 
+#include "AcousticPresetResolver.h"
+#include "AcousticScene.h"
 #include "SteamAudio.h"
 
 namespace {
@@ -17,6 +22,15 @@ using SetHRTFFunction = void(IPLCALL*)(IPLHRTF);
 using SetSimulationSettingsFunction = void(IPLCALL*)(IPLSimulationSettings);
 using ContextReleaseFunction = void(IPLCALL*)(IPLContext*);
 using HRTFReleaseFunction = void(IPLCALL*)(IPLHRTF*);
+using ContextRetainFunction = IPLContext(IPLCALL*)(IPLContext);
+using SceneCreateFunction = IPLerror(IPLCALL*)(
+    IPLContext, IPLSceneSettings*, IPLScene*);
+using SceneReleaseFunction = void(IPLCALL*)(IPLScene*);
+using SceneCommitFunction = void(IPLCALL*)(IPLScene);
+using StaticMeshCreateFunction = IPLerror(IPLCALL*)(
+    IPLScene, IPLStaticMeshSettings*, IPLStaticMesh*);
+using StaticMeshReleaseFunction = void(IPLCALL*)(IPLStaticMesh*);
+using StaticMeshAddFunction = void(IPLCALL*)(IPLStaticMesh, IPLScene);
 
 // #387's measured candidate is the temporary top preset until #401 makes
 // presets data-driven. These are allocation maxima, not per-tick settings.
@@ -41,6 +55,39 @@ FMOD_VECTOR fmodVector(glm::vec3 const& value) {
 
 namespace bw::app {
 
+struct AcousticScene::Implementation {
+  IPLContext context{};
+  IPLScene scene{};
+  IPLStaticMesh staticMesh{};
+  ContextReleaseFunction contextRelease{};
+  SceneReleaseFunction sceneRelease{};
+  StaticMeshReleaseFunction staticMeshRelease{};
+
+  ~Implementation() {
+    if (staticMesh) staticMeshRelease(&staticMesh);
+    if (scene) sceneRelease(&scene);
+    if (context) contextRelease(&context);
+  }
+};
+
+AcousticScene::AcousticScene(
+    core::ArrangementWorldDataPtr sourceWorld,
+    AcousticSceneMesh mesh,
+    std::unique_ptr<Implementation> implementation)
+    : mSourceWorld(std::move(sourceWorld)),
+      mMesh(std::move(mesh)),
+      mImplementation(std::move(implementation)) {}
+
+AcousticScene::~AcousticScene() = default;
+
+core::ArrangementWorldDataPtr const& AcousticScene::getSourceWorld() const {
+  return mSourceWorld;
+}
+
+AcousticSceneMesh const& AcousticScene::getExportedMesh() const {
+  return mMesh;
+}
+
 struct SteamAudio::Implementation {
   FMOD::System* coreSystem{};
   IPLContext context{};
@@ -49,6 +96,13 @@ struct SteamAudio::Implementation {
   bool fmodInitialized{false};
   ContextReleaseFunction contextRelease{};
   HRTFReleaseFunction hrtfRelease{};
+  ContextRetainFunction contextRetain{};
+  SceneCreateFunction sceneCreate{};
+  SceneReleaseFunction sceneRelease{};
+  SceneCommitFunction sceneCommit{};
+  StaticMeshCreateFunction staticMeshCreate{};
+  StaticMeshReleaseFunction staticMeshRelease{};
+  StaticMeshAddFunction staticMeshAdd{};
 
   ~Implementation() {
     if (fmodInitialized) terminate();
@@ -91,6 +145,22 @@ SteamAudio::SteamAudio(wp::application::AudioSystem& audioSystem)
       steamAudioFunction(phononModule, "iplContextRelease"));
   implementation.hrtfRelease = reinterpret_cast<HRTFReleaseFunction>(
       steamAudioFunction(phononModule, "iplHRTFRelease"));
+  implementation.contextRetain = reinterpret_cast<ContextRetainFunction>(
+      steamAudioFunction(phononModule, "iplContextRetain"));
+  implementation.sceneCreate = reinterpret_cast<SceneCreateFunction>(
+      steamAudioFunction(phononModule, "iplSceneCreate"));
+  implementation.sceneRelease = reinterpret_cast<SceneReleaseFunction>(
+      steamAudioFunction(phononModule, "iplSceneRelease"));
+  implementation.sceneCommit = reinterpret_cast<SceneCommitFunction>(
+      steamAudioFunction(phononModule, "iplSceneCommit"));
+  implementation.staticMeshCreate =
+      reinterpret_cast<StaticMeshCreateFunction>(
+          steamAudioFunction(phononModule, "iplStaticMeshCreate"));
+  implementation.staticMeshRelease =
+      reinterpret_cast<StaticMeshReleaseFunction>(
+          steamAudioFunction(phononModule, "iplStaticMeshRelease"));
+  implementation.staticMeshAdd = reinterpret_cast<StaticMeshAddFunction>(
+      steamAudioFunction(phononModule, "iplStaticMeshAdd"));
   implementation.terminate = reinterpret_cast<TerminateFunction>(
       steamAudioFunction(pluginModule, "iplFMODTerminate"));
   auto initialize = reinterpret_cast<InitializeFunction>(
@@ -134,8 +204,8 @@ SteamAudio::SteamAudio(wp::application::AudioSystem& audioSystem)
   setHrtf(implementation.hrtf);
 
   IPLSimulationSettings simulationSettings{};
-  simulationSettings.flags = IPL_SIMULATIONFLAGS_DIRECT |
-                             IPL_SIMULATIONFLAGS_REFLECTIONS;
+  simulationSettings.flags = static_cast<IPLSimulationFlags>(
+      IPL_SIMULATIONFLAGS_DIRECT | IPL_SIMULATIONFLAGS_REFLECTIONS);
   simulationSettings.sceneType = IPL_SCENETYPE_DEFAULT;
   simulationSettings.reflectionType = IPL_REFLECTIONEFFECTTYPE_HYBRID;
   simulationSettings.maxNumOcclusionSamples = 1;
@@ -156,6 +226,87 @@ SteamAudio::SteamAudio(wp::application::AudioSystem& audioSystem)
 
 SteamAudio::~SteamAudio() {
   delete mImplementation;
+}
+
+AcousticScenePtr SteamAudio::buildScene(
+    core::ArrangementWorldDataPtr sourceWorld,
+    AcousticPresetResolver const& resolver) const {
+  if (!sourceWorld) {
+    throw std::invalid_argument("Acoustic scene requires a World snapshot");
+  }
+
+  auto mesh = ExportAcousticSceneMesh(
+      *sourceWorld, [&](std::string const& subMaterialId) -> AcousticPreset const& {
+        return resolver.resolveSubMaterial(subMaterialId);
+      });
+
+  std::unique_ptr<AcousticScene::Implementation> native;
+#if defined(WP_APPLICATION_USE_FMOD)
+  auto fitsIplInt = [](size_t size) {
+    return size <= size_t(std::numeric_limits<IPLint32>::max());
+  };
+  if (!fitsIplInt(mesh.vertices.size()) ||
+      !fitsIplInt(mesh.triangles.size()) ||
+      !fitsIplInt(mesh.materials.size())) {
+    throw std::overflow_error("Acoustic scene exceeds Steam Audio limits");
+  }
+
+  auto const& api = *mImplementation;
+  native = std::make_unique<AcousticScene::Implementation>();
+  native->contextRelease = api.contextRelease;
+  native->sceneRelease = api.sceneRelease;
+  native->staticMeshRelease = api.staticMeshRelease;
+  native->context = api.contextRetain(api.context);
+
+  IPLSceneSettings sceneSettings{};
+  sceneSettings.type = IPL_SCENETYPE_DEFAULT;
+  if (api.sceneCreate(native->context, &sceneSettings, &native->scene) !=
+      IPL_STATUS_SUCCESS) {
+    throw std::runtime_error("Unable to create Steam Audio scene");
+  }
+
+  if (!mesh.triangles.empty()) {
+    std::vector<IPLVector3> vertices;
+    vertices.reserve(mesh.vertices.size());
+    for (auto const& vertex : mesh.vertices) {
+      vertices.push_back({vertex.x, vertex.y, vertex.z});
+    }
+    std::vector<IPLTriangle> triangles;
+    std::vector<IPLint32> materialIndices;
+    triangles.reserve(mesh.triangles.size());
+    materialIndices.reserve(mesh.triangles.size());
+    for (auto const& triangle : mesh.triangles) {
+      triangles.push_back(
+          {{IPLint32(triangle.vertices[0]), IPLint32(triangle.vertices[1]),
+            IPLint32(triangle.vertices[2])}});
+      materialIndices.push_back(IPLint32(triangle.materialIndex));
+    }
+    std::vector<IPLMaterial> materials;
+    materials.reserve(mesh.materials.size());
+    for (auto const& preset : mesh.materials) {
+      materials.push_back(
+          {{preset.absorption[0], preset.absorption[1], preset.absorption[2]},
+           preset.scattering,
+           {preset.transmission[0], preset.transmission[1],
+            preset.transmission[2]}});
+    }
+
+    IPLStaticMeshSettings meshSettings{
+        IPLint32(vertices.size()), IPLint32(triangles.size()),
+        IPLint32(materials.size()), vertices.data(), triangles.data(),
+        materialIndices.data(), materials.data()};
+    if (api.staticMeshCreate(
+            native->scene, &meshSettings, &native->staticMesh) !=
+        IPL_STATUS_SUCCESS) {
+      throw std::runtime_error("Unable to create Steam Audio static mesh");
+    }
+    api.staticMeshAdd(native->staticMesh, native->scene);
+  }
+  api.sceneCommit(native->scene);
+#endif
+
+  return std::shared_ptr<AcousticScene const>(new AcousticScene(
+      std::move(sourceWorld), std::move(mesh), std::move(native)));
 }
 
 void SteamAudio::setListener(mpp::Camera const& camera) {

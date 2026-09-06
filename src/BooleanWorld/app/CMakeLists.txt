@@ -4,6 +4,7 @@ add_library(BooleanWorld SHARED
     src/AcousticCatalog.cpp
     src/AcousticCatalogResourceDefinitionFactory.cpp
     src/AcousticPresetResolver.cpp
+    src/AcousticSceneMesh.cpp
     src/CpuUpdateProfiler.cpp
     src/DLL.cpp
     src/EntityHandlerBooleanWorld.cpp
@@ -61,6 +62,12 @@ target_link_libraries(BooleanWorld PRIVATE
     WillPower.Viz
     ext::mpp ext::mpp-helper ext::mpp-mesh ext::Utils
     ext::yaml-cpp vendor::opengl)
+if(BW_ENABLE_FMOD)
+    # Willpower is consumed as a prebuilt imported target, so its private
+    # configure cannot propagate this backend switch to the game DLL.
+    target_compile_definitions(BooleanWorld PRIVATE WP_APPLICATION_USE_FMOD)
+    target_link_libraries(BooleanWorld PRIVATE vendor::fmod)
+endif()
 
 target_compile_features(BooleanWorld PRIVATE cxx_std_23)
 target_compile_options(BooleanWorld PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
@@ -70,6 +77,19 @@ bw_enable_sdl_checks(BooleanWorld)
 set_target_properties(BooleanWorld PROPERTIES FOLDER BooleanWorld)
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_acoustic_scene_tests
+        tests/acoustic_scene_tests.cpp
+        src/AcousticSceneMesh.cpp)
+    target_include_directories(boolean_world_acoustic_scene_tests PRIVATE include)
+    target_link_libraries(boolean_world_acoustic_scene_tests PRIVATE
+        core Willpower.Application Willpower.Common)
+    target_compile_features(boolean_world_acoustic_scene_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_acoustic_scene_tests)
+    bw_output_dirs(boolean_world_acoustic_scene_tests)
+    bw_deploy_runtime_dlls(boolean_world_acoustic_scene_tests)
+    add_test(NAME boolean_world_acoustic_scene
+             COMMAND boolean_world_acoustic_scene_tests)
+
     add_executable(boolean_world_acoustic_catalog_tests
         tests/acoustic_catalog_tests.cpp
         src/AcousticCatalog.cpp
