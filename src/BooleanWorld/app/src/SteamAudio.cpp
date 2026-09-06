@@ -11,13 +11,17 @@
 #include <utility>
 #include <vector>
 
+#if defined(_WIN32)
 #include <Windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 #include <glm/geometric.hpp>
 
 #include <fmod.hpp>
 #include <fmod_errors.h>
-#include <fmod/studio/fmod_studio.hpp>
+#include <fmod_studio.hpp>
 #include <phonon.h>
 
 #include <willpower/application/AudioSystem.h>
@@ -81,10 +85,47 @@ constexpr int ReflectionsMixLevelParameter = 27;
 constexpr int SimulationOutputsHandleParameter = 33;
 constexpr char SteamAudioSpatializerName[] = "Steam Audio Spatializer";
 
-FARPROC steamAudioFunction(HMODULE module, char const* name) {
-  auto function = GetProcAddress(module, name);
+#if defined(_WIN32)
+using NativeModule = HMODULE;
+constexpr char SteamAudioCoreLibrary[] = "phonon.dll";
+constexpr char SteamAudioFmodLibrary[] = "phonon_fmod.dll";
+
+NativeModule findNativeModule(char const* name) {
+  return GetModuleHandleA(name);
+}
+
+NativeModule loadNativeModule(char const* name) {
+  if (auto module = findNativeModule(name)) return module;
+  return LoadLibraryA(name);
+}
+
+void* nativeFunction(NativeModule module, char const* name) {
+  return reinterpret_cast<void*>(GetProcAddress(module, name));
+}
+#else
+using NativeModule = void*;
+constexpr char SteamAudioCoreLibrary[] = "libphonon.so";
+constexpr char SteamAudioFmodLibrary[] = "libphonon_fmod.so";
+
+NativeModule findNativeModule(char const* name) {
+  return dlopen(name, RTLD_NOW | RTLD_NOLOAD);
+}
+
+NativeModule loadNativeModule(char const* name) {
+  if (auto module = findNativeModule(name)) return module;
+  return dlopen(name, RTLD_NOW | RTLD_LOCAL);
+}
+
+void* nativeFunction(NativeModule module, char const* name) {
+  return dlsym(module, name);
+}
+#endif
+
+void* steamAudioFunction(NativeModule module, char const* name) {
+  auto* function = nativeFunction(module, name);
   if (!function) {
-    throw std::runtime_error("Steam Audio FMOD plugin is missing a required API");
+    throw std::runtime_error(
+        std::string("Steam Audio library is missing required API: ") + name);
   }
   return function;
 }
@@ -378,14 +419,14 @@ void SteamAudio::loadPlugin(wp::application::AudioSystem& audioSystem) {
   // The FMOD integration does not load the Steam Audio core until its DSP is
   // instantiated, which is too late for us to resolve the simulation API. Keep
   // it process-loaded alongside the FMOD-owned plugin.
-  if (!GetModuleHandleA("phonon.dll") && !LoadLibraryA("phonon.dll")) {
-    throw std::runtime_error("Unable to load Steam Audio core module");
+  if (!loadNativeModule(SteamAudioCoreLibrary)) {
+    throw std::runtime_error("Unable to load Steam Audio core library");
   }
-  if (!GetModuleHandleA("phonon_fmod.dll")) {
+  if (!findNativeModule(SteamAudioFmodLibrary)) {
     unsigned int pluginHandle{};
     requireFmod(
-        coreSystem->loadPlugin("phonon_fmod.dll", &pluginHandle, 0),
-        "Unable to load phonon_fmod.dll into FMOD core");
+        coreSystem->loadPlugin(SteamAudioFmodLibrary, &pluginHandle, 0),
+        "Unable to load the Steam Audio FMOD plug-in");
   }
 #else
   (void)audioSystem;
@@ -414,15 +455,15 @@ SteamAudio::SteamAudio(
   loadPlugin(audioSystem);
   implementation.coreSystem = audioSystem.getCoreSystem();
 
-  // loadPlugin registered the FMOD integration and process-loaded phonon.dll
-  // before resolving either module's API entry points.
-  auto pluginModule = GetModuleHandleA("phonon_fmod.dll");
+  // loadPlugin registered the FMOD integration and process-loaded the core
+  // before resolving either library's API entry points.
+  auto pluginModule = loadNativeModule(SteamAudioFmodLibrary);
   if (!pluginModule) {
-    throw std::runtime_error("FMOD loaded Steam Audio without its module");
+    throw std::runtime_error("FMOD loaded Steam Audio without its library");
   }
-  auto phononModule = GetModuleHandleA("phonon.dll");
+  auto phononModule = loadNativeModule(SteamAudioCoreLibrary);
   if (!phononModule) {
-    throw std::runtime_error("Steam Audio core module is unavailable");
+    throw std::runtime_error("Steam Audio core library is unavailable");
   }
 
   auto contextCreate = reinterpret_cast<decltype(&iplContextCreate)>(

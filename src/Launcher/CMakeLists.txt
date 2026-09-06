@@ -179,6 +179,33 @@ if(UNIX AND NOT APPLE)
                 "$<TARGET_FILE_DIR:Launcher>/resources"
         VERBATIM
         COMMENT "Staging Linux Launcher configuration and shared libraries")
+    if(BW_ENABLE_FMOD)
+        # Steam Audio is loaded through FMOD/dlopen rather than an ELF link
+        # edge, so dependency scanning cannot discover these two libraries.
+        get_filename_component(_bw_fmod_core_lib_dir
+                               "${BW_FMOD_CORE_LIBRARY}" DIRECTORY)
+        get_filename_component(_bw_fmod_studio_lib_dir
+                               "${BW_FMOD_STUDIO_LIBRARY}" DIRECTORY)
+        add_custom_command(TARGET Launcher POST_BUILD
+            # Copy the versioned ELF files as well as their development
+            # symlinks: DT_NEEDED names libfmod.so.<major>, not libfmod.so.
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${_bw_fmod_core_lib_dir}"
+                    "$<TARGET_FILE_DIR:Launcher>"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${_bw_fmod_studio_lib_dir}"
+                    "$<TARGET_FILE_DIR:Launcher>"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${BW_STEAM_AUDIO_LIBRARY}"
+                    "$<TARGET_FILE_DIR:Launcher>/libphonon.so"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${BW_STEAM_AUDIO_FMOD_PLUGIN}"
+                    "$<TARGET_FILE_DIR:Launcher>/libphonon_fmod.so"
+            VERBATIM
+            COMMENT "Staging FMOD and Steam Audio for Linux")
+        unset(_bw_fmod_core_lib_dir)
+        unset(_bw_fmod_studio_lib_dir)
+    endif()
 endif()
 
 # Per-machine support files:

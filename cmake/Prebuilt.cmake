@@ -132,7 +132,7 @@ set_target_properties(ext::yaml-cpp PROPERTIES
 
 add_library(vendor::headers INTERFACE IMPORTED GLOBAL)
 target_include_directories(vendor::headers INTERFACE
-    "${BW_VENDOR}/include" "${BW_VENDOR}/include/fmod/core")
+    "${BW_VENDOR}/include" "${BW_FMOD_CORE_INCLUDE}" "${BW_FMOD_STUDIO_INCLUDE}")
 
 # bw_vendor_lib(<target> <release-stem> <debug-stem>)
 function(bw_vendor_lib name rel dbg)
@@ -254,7 +254,8 @@ set_target_properties(ext::yaml-cpp PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${BW_MPP}/ext/utils/vendor/yaml-cpp/include")
 
 add_library(vendor::headers INTERFACE IMPORTED GLOBAL)
-target_include_directories(vendor::headers INTERFACE "${BW_VENDOR}/include")
+target_include_directories(vendor::headers INTERFACE
+    "${BW_VENDOR}/include" "${BW_FMOD_CORE_INCLUDE}" "${BW_FMOD_STUDIO_INCLUDE}")
 add_library(vendor::spdlog INTERFACE IMPORTED GLOBAL)
 target_link_libraries(vendor::spdlog INTERFACE vendor::headers)
 target_compile_definitions(vendor::spdlog INTERFACE SPDLOG_HEADER_ONLY)
@@ -263,6 +264,22 @@ add_library(vendor::nfd INTERFACE IMPORTED GLOBAL)
 add_library(vendor::performanceapi INTERFACE IMPORTED GLOBAL)
 target_link_libraries(vendor::nfd INTERFACE vendor::headers)
 target_link_libraries(vendor::performanceapi INTERFACE vendor::headers)
+
+if(BW_ENABLE_FMOD)
+    foreach(required_path
+            BW_FMOD_CORE_INCLUDE BW_FMOD_STUDIO_INCLUDE
+            BW_FMOD_CORE_LIBRARY BW_FMOD_STUDIO_LIBRARY
+            BW_STEAM_AUDIO_LIBRARY BW_STEAM_AUDIO_FMOD_PLUGIN)
+        if(NOT ${required_path} OR NOT EXISTS "${${required_path}}")
+            message(FATAL_ERROR
+                "BW_ENABLE_FMOD requires ${required_path} to name an existing Linux SDK path")
+        endif()
+    endforeach()
+    bw_linux_shared(vendor::fmod "${BW_FMOD_CORE_LIBRARY}")
+    target_include_directories(vendor::fmod INTERFACE "${BW_FMOD_CORE_INCLUDE}")
+    bw_linux_shared(vendor::fmodstudio "${BW_FMOD_STUDIO_LIBRARY}")
+    target_include_directories(vendor::fmodstudio INTERFACE "${BW_FMOD_STUDIO_INCLUDE}")
+endif()
 
 find_package(OpenGL REQUIRED)
 add_library(vendor::opengl INTERFACE IMPORTED GLOBAL)

@@ -32,6 +32,9 @@ nfdresult_t runDialog(char const* command, nfdu8char_t** outPath) {
 extern "C" {
 nfdresult_t NFD_Init(void) { return NFD_OKAY; }
 void NFD_Quit(void) {}
+const char* NFD_GetError(void) {
+  return "Unable to start the zenity file dialog";
+}
 void NFD_FreePathU8(nfdu8char_t* path) { free(path); }
 void NFD_FreePathN(nfdnchar_t* path) { free(path); }
 

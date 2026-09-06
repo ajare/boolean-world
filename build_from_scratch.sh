@@ -11,6 +11,9 @@ Build Willpower, MassivePolyPusher, and BooleanWorld from clean build trees.
 Options:
   --with-mpp-lfs       Download MassivePolyPusher's Git LFS files.
   --with-tests         Build BooleanWorld's test targets.
+  --fmod-sdk DIR       Refresh staged audio files from an extracted Linux FMOD SDK.
+  --steam-audio-sdk DIR
+                        Steam Audio FMOD SDK root (required with --fmod-sdk).
   --config CONFIG      Build configuration (default: Release).
   --build-dir DIR      BooleanWorld build directory, relative to this repository
                        unless absolute (default: build-linux).
@@ -31,6 +34,8 @@ fail() {
 
 WITH_MPP_LFS=false
 WITH_TESTS=false
+FMOD_SDK=
+STEAM_AUDIO_SDK=
 BUILD_TYPE=Release
 BUILD_DIR=build-linux
 
@@ -43,6 +48,16 @@ while (($#)); do
         --with-tests)
             WITH_TESTS=true
             shift
+            ;;
+        --fmod-sdk)
+            (($# >= 2)) || fail "--fmod-sdk requires a value"
+            FMOD_SDK=$2
+            shift 2
+            ;;
+        --steam-audio-sdk)
+            (($# >= 2)) || fail "--steam-audio-sdk requires a value"
+            STEAM_AUDIO_SDK=$2
+            shift 2
             ;;
         --config)
             (($# >= 2)) || fail "--config requires a value"
@@ -84,9 +99,34 @@ willpower_args=(--build-type "$BUILD_TYPE" --build-dir build)
 if [[ "$WITH_MPP_LFS" == true ]]; then
     willpower_args+=(--with-mpp-lfs)
 fi
+if [[ -n "$FMOD_SDK" || -n "$STEAM_AUDIO_SDK" ]]; then
+    [[ -n "$FMOD_SDK" && -n "$STEAM_AUDIO_SDK" ]] || \
+        fail "--fmod-sdk and --steam-audio-sdk must be supplied together"
+    FMOD_SDK=$(cd -- "$FMOD_SDK" && pwd -P) || fail "FMOD SDK directory does not exist"
+    STEAM_AUDIO_SDK=$(cd -- "$STEAM_AUDIO_SDK" && pwd -P) || fail "Steam Audio SDK directory does not exist"
+
+    printf 'Refreshing vendored Linux audio SDK files...\n'
+    install -m 0644 "$FMOD_SDK"/api/core/inc/* vendor/include/fmod/core/
+    install -m 0644 "$FMOD_SDK"/api/studio/inc/* vendor/include/fmod/studio/
+    install -m 0644 "$STEAM_AUDIO_SDK/lib/linux-x64/libphonon.so" vendor/lib/linux/x64/Release/
+    install -m 0644 "$STEAM_AUDIO_SDK/lib/linux-x64/libphonon_fmod.so" vendor/lib/linux/x64/Release/
+    install -m 0755 "$FMOD_SDK/api/core/lib/x86_64/libfmod.so" vendor/lib/linux/x64/Release/libfmod.so.14.14
+    install -m 0755 "$FMOD_SDK/api/studio/lib/x86_64/libfmodstudio.so" vendor/lib/linux/x64/Release/libfmodstudio.so.14.14
+fi
 
 printf 'Building Willpower and MassivePolyPusher from scratch...\n'
 bash "$WILLPOWER_SCRIPT" "${willpower_args[@]}"
+
+# Reconfigure the freshly-created Willpower tree against the same staged FMOD
+# files Boolean World imports.
+cmake -S "$ROOT_DIR/ext/willpower" -B "$ROOT_DIR/ext/willpower/build" \
+    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DWILLPOWER_ENABLE_FMOD=ON \
+    -DWILLPOWER_FMOD_CORE_INCLUDE="$ROOT_DIR/vendor/include/fmod/core" \
+    -DWILLPOWER_FMOD_STUDIO_INCLUDE="$ROOT_DIR/vendor/include/fmod/studio" \
+    -DWILLPOWER_FMOD_CORE_LIBRARY="$ROOT_DIR/vendor/lib/linux/x64/Release/libfmod.so" \
+    -DWILLPOWER_FMOD_STUDIO_LIBRARY="$ROOT_DIR/vendor/lib/linux/x64/Release/libfmodstudio.so"
+cmake --build "$ROOT_DIR/ext/willpower/build" --config "$BUILD_TYPE" \
+    --parallel --target Willpower.Application
 
 if [[ "$BUILD_DIR" != /* ]]; then
     BUILD_DIR="$ROOT_DIR/$BUILD_DIR"
@@ -110,10 +150,11 @@ else
 fi
 
 printf 'Configuring BooleanWorld %s build in %s...\n' "$BUILD_TYPE" "$BUILD_DIR"
-cmake -S "$ROOT_DIR" -B "$BUILD_DIR" \
-    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-    -DBUILD_TESTING="$BUILD_TESTING" \
-    -DBW_BUILD_WILLPOWER=OFF
+configure_args=(
+    -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+    -DBUILD_TESTING="$BUILD_TESTING"
+    -DBW_BUILD_WILLPOWER=OFF)
+cmake -S "$ROOT_DIR" -B "$BUILD_DIR" "${configure_args[@]}"
 
 printf 'Building BooleanWorld...\n'
 cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --parallel

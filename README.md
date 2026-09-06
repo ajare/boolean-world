@@ -45,6 +45,22 @@ build trees under `ext/willpower/build` and
 artifacts without allowing BooleanWorld to update them, add
 `-DBW_BUILD_WILLPOWER=OFF` when configuring.
 
+The pinned Linux FMOD and Steam Audio headers and shared objects are staged
+under `vendor/`, parallel to the Windows SDK files, and audio is enabled by
+default. The launcher copies the unversioned and SONAME-versioned FMOD objects
+plus `libphonon.so` and `libphonon_fmod.so` beside itself.
+
+To refresh those staged files from SDK archives, extract FMOD Engine 2.03.14
+and the **Steam Audio FMOD integration** 4.8.1, then run:
+
+    ./build_from_scratch.sh \
+        --fmod-sdk /path/to/fmodstudioapi20314linux \
+        --steam-audio-sdk /path/to/steamaudio_fmod
+
+The paths must contain FMOD's `api/{core,studio}` trees and Steam Audio FMOD's
+`lib/linux-x64/{libphonon.so,libphonon_fmod.so}`. A normal build needs no SDK
+arguments. Set `BW_ENABLE_FMOD=OFF` only for an intentionally audio-free build.
+
 ### Windows
 
     RebuildAll.bat Release

@@ -11,27 +11,28 @@ option(BW_BUILD_WILLPOWER
 # Willpower's own configure below - never set that option directly, since the
 # two would otherwise be independently settable and could disagree with each
 # other (see #381).
-if(WIN32)
-    option(BW_ENABLE_FMOD
-        "Enable FMOD-backed audio (requires the vendored FMOD Engine API under vendor/)" ON)
-else()
-    option(BW_ENABLE_FMOD
-        "Enable FMOD-backed audio (requires the vendored FMOD Engine API under vendor/)" OFF)
-    if(BW_ENABLE_FMOD)
-        message(FATAL_ERROR "BW_ENABLE_FMOD requires Windows (the vendored FMOD binaries are Windows-only).")
-    endif()
-endif()
+set(_bw_fmod_default ON)
+option(BW_ENABLE_FMOD
+    "Enable FMOD-backed audio (requires the FMOD Engine and Steam Audio SDKs)" ${_bw_fmod_default})
+unset(_bw_fmod_default)
 
-# The vendored FMOD tree, passed through to Willpower's configure so it never
-# needs its own copy of these paths. Kept in sync with cmake/Prebuilt.cmake's
-# BW_VENDOR* locations; duplicated here because Submodules.cmake is included
-# before Prebuilt.cmake.
-set(BW_FMOD_CORE_INCLUDE   "${BW_ROOT}/vendor/include/fmod/core")
-set(BW_FMOD_STUDIO_INCLUDE "${BW_ROOT}/vendor/include/fmod/studio")
-set(BW_FMOD_CORE_LIBRARY   "${BW_ROOT}/vendor/lib/vs2026/x64/Release/fmod_vc.lib")
-set(BW_FMOD_STUDIO_LIBRARY "${BW_ROOT}/vendor/lib/vs2026/x64/Release/fmodstudio_vc.lib")
-set(BW_FMOD_CORE_DLL       "${BW_ROOT}/vendor/bin/vs2026/x64/Release/fmod.dll")
-set(BW_FMOD_STUDIO_DLL     "${BW_ROOT}/vendor/bin/vs2026/x64/Release/fmodstudio.dll")
+# SDK locations are cache entries so Linux builds can point at the official
+# (redistribution-restricted) SDK installations without copying them into Git.
+set(BW_FMOD_CORE_INCLUDE "${BW_ROOT}/vendor/include/fmod/core" CACHE PATH "FMOD core include directory")
+set(BW_FMOD_STUDIO_INCLUDE "${BW_ROOT}/vendor/include/fmod/studio" CACHE PATH "FMOD Studio include directory")
+if(WIN32)
+    set(BW_FMOD_CORE_LIBRARY "${BW_ROOT}/vendor/lib/vs2026/x64/Release/fmod_vc.lib" CACHE FILEPATH "FMOD core library")
+    set(BW_FMOD_STUDIO_LIBRARY "${BW_ROOT}/vendor/lib/vs2026/x64/Release/fmodstudio_vc.lib" CACHE FILEPATH "FMOD Studio library")
+    set(BW_FMOD_CORE_DLL "${BW_ROOT}/vendor/bin/vs2026/x64/Release/fmod.dll" CACHE FILEPATH "FMOD core runtime")
+    set(BW_FMOD_STUDIO_DLL "${BW_ROOT}/vendor/bin/vs2026/x64/Release/fmodstudio.dll" CACHE FILEPATH "FMOD Studio runtime")
+else()
+    set(_bw_linux_audio_dir "${BW_ROOT}/vendor/lib/linux/x64/Release")
+    set(BW_FMOD_CORE_LIBRARY "${_bw_linux_audio_dir}/libfmod.so" CACHE FILEPATH "FMOD core library")
+    set(BW_FMOD_STUDIO_LIBRARY "${_bw_linux_audio_dir}/libfmodstudio.so" CACHE FILEPATH "FMOD Studio library")
+    set(BW_STEAM_AUDIO_LIBRARY "${_bw_linux_audio_dir}/libphonon.so" CACHE FILEPATH "Steam Audio core library")
+    set(BW_STEAM_AUDIO_FMOD_PLUGIN "${_bw_linux_audio_dir}/libphonon_fmod.so" CACHE FILEPATH "Steam Audio FMOD plugin")
+    unset(_bw_linux_audio_dir)
+endif()
 
 set(BW_WILLPOWER_SOURCE_DIR "${BW_ROOT}/ext/willpower")
 set(BW_WILLPOWER_BUILD_DIR "${BW_WILLPOWER_SOURCE_DIR}/build")
@@ -120,7 +121,7 @@ function(bw_ensure_willpower)
     # forces a reconfigure whenever it changes, rather than silently keeping
     # whatever Willpower's cache already has - see #381.
     set(fmod_option_state
-        "BW_ENABLE_FMOD=${BW_ENABLE_FMOD}\n${BW_FMOD_CORE_INCLUDE}\n${BW_FMOD_STUDIO_INCLUDE}\n${BW_FMOD_CORE_LIBRARY}\n${BW_FMOD_STUDIO_LIBRARY}\n${BW_FMOD_CORE_DLL}\n${BW_FMOD_STUDIO_DLL}\n")
+        "BW_ENABLE_FMOD=${BW_ENABLE_FMOD}\n${BW_FMOD_CORE_INCLUDE}\n${BW_FMOD_STUDIO_INCLUDE}\n${BW_FMOD_CORE_LIBRARY}\n${BW_FMOD_STUDIO_LIBRARY}\n${BW_FMOD_CORE_DLL}\n${BW_FMOD_STUDIO_DLL}\n${BW_STEAM_AUDIO_LIBRARY}\n${BW_STEAM_AUDIO_FMOD_PLUGIN}\n")
 
     if(willpower_revision_rc EQUAL 0 AND mpp_revision_rc EQUAL 0)
         set(dependency_revision "${willpower_revision}\n${mpp_revision}\n${fmod_option_state}")
@@ -179,9 +180,12 @@ function(bw_ensure_willpower)
                     -DWILLPOWER_FMOD_CORE_INCLUDE=${BW_FMOD_CORE_INCLUDE}
                     -DWILLPOWER_FMOD_STUDIO_INCLUDE=${BW_FMOD_STUDIO_INCLUDE}
                     -DWILLPOWER_FMOD_CORE_LIBRARY=${BW_FMOD_CORE_LIBRARY}
-                    -DWILLPOWER_FMOD_STUDIO_LIBRARY=${BW_FMOD_STUDIO_LIBRARY}
-                    -DWILLPOWER_FMOD_CORE_DLL=${BW_FMOD_CORE_DLL}
-                    -DWILLPOWER_FMOD_STUDIO_DLL=${BW_FMOD_STUDIO_DLL})
+                    -DWILLPOWER_FMOD_STUDIO_LIBRARY=${BW_FMOD_STUDIO_LIBRARY})
+                if(WIN32)
+                    list(APPEND _bw_configure_command
+                        -DWILLPOWER_FMOD_CORE_DLL=${BW_FMOD_CORE_DLL}
+                        -DWILLPOWER_FMOD_STUDIO_DLL=${BW_FMOD_STUDIO_DLL})
+                endif()
             endif()
             execute_process(
                 COMMAND ${_bw_configure_command}
