@@ -78,7 +78,7 @@ namespace editor {
 using namespace std;
 
 constexpr int minGridSizeExponent = 1;  // 2 world units
-constexpr int maxGridSizeExponent = 6;  // 64 world units
+constexpr int maxGridSizeExponent = 8;  // 256 world units
 
 filesystem::path editorResourceRoot() {
 #ifdef BW_EDITOR_RESOURCE_ROOT
