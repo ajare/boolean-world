@@ -48,7 +48,7 @@ function(bw_target_defaults tgt)
     endif()
     if(MSVC)
         set_target_properties(${tgt} PROPERTIES
-            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug,MemCheck>:Debug>DLL")
+            MSVC_RUNTIME_LIBRARY "${BW_MSVC_RUNTIME_LIBRARY}")
         target_compile_options(${tgt} PRIVATE /MP)
     endif()
     # _DEBUG / NDEBUG were spelled out per configuration in every vcxproj.

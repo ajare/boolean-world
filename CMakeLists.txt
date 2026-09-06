@@ -43,8 +43,9 @@ set(CMAKE_EXE_LINKER_FLAGS_SHIPPING
 set(CMAKE_SHARED_LINKER_FLAGS_SHIPPING
     "${CMAKE_EXE_LINKER_FLAGS_SHIPPING}" CACHE STRING "" FORCE)
 
-# External dependencies only provide Debug and Release binaries. Shipping uses
-# their Release variants while this project is built with the flags above.
+# Vendor dependencies only provide Debug and Release binaries, so Release is
+# the fallback for imported targets. Willpower and MassivePolyPusher override
+# this per target because they provide dedicated Shipping binaries.
 set(CMAKE_MAP_IMPORTED_CONFIG_SHIPPING "Release" CACHE STRING "" FORCE)
 
 # Willpower/MassivePolyPusher/vendor are prebuilt without ASan, so their
@@ -67,6 +68,16 @@ set(CMAKE_SHARED_LINKER_FLAGS_MEMCHECK
 # uses (see cmake/Submodules.cmake and cmake/Prebuilt.cmake).
 set(CMAKE_MAP_IMPORTED_CONFIG_MEMCHECK "Debug" CACHE STRING "" FORCE)
 endif() # MSVC multi-config setup
+
+# Developer configurations use the DLL CRT as before. Shipping uses the static
+# release CRT so the executables do not require the Visual C++ Redistributable.
+# Set the default before creating any targets, including source dependencies;
+# bw_target_defaults() repeats it per first-party target for clarity.
+set(BW_MSVC_RUNTIME_LIBRARY
+    "MultiThreaded$<$<OR:$<CONFIG:Debug>,$<CONFIG:MemCheck>>:Debug>$<$<NOT:$<CONFIG:Shipping>>:DLL>")
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "${BW_MSVC_RUNTIME_LIBRARY}")
+endif()
 
 # MSVC's AddressSanitizer does not implement LeakSanitizer at all -
 # detect_leaks=1 is rejected outright ("not supported on this platform"),
@@ -110,11 +121,10 @@ bw_ensure_willpower()
 # Keep an explicit build-time target for updating every buildable dependency in
 # dependency order for the active configuration. MppAppSupport recursively
 # builds MPP's own SDL/GLEW/yaml-cpp dependencies; the Willpower modules are
-# then built from foundational to dependent. MemCheck consumes Debug and
-# Shipping consumes Release dependency binaries, matching the imported-target
-# configuration mappings above.
+# then built from foundational to dependent. MemCheck consumes Debug dependency
+# binaries; Shipping consumes the dedicated Shipping builds.
 set(BW_DEPENDENCY_CONFIG
-    "$<IF:$<CONFIG:MemCheck>,Debug,$<IF:$<CONFIG:Shipping>,Release,$<CONFIG>>>")
+    "$<IF:$<CONFIG:MemCheck>,Debug,$<CONFIG>>")
 add_custom_target(BuildAllDependencies
     COMMAND "${CMAKE_COMMAND}" --build "${BW_MPP_BUILD_DIR}"
             --config "${BW_DEPENDENCY_CONFIG}" --parallel

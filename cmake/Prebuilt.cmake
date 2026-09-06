@@ -71,6 +71,10 @@ function(bw_import_mpp name stem)
         DLL_RELEASE "${BW_MPP_BIN}/Release/${stem}.dll"
         DLL_DEBUG   "${BW_MPP_BIN}/Debug/${stem}d.dll"
         INCLUDE ${A_INCLUDE})
+    set_target_properties(${name} PROPERTIES
+        MAP_IMPORTED_CONFIG_SHIPPING Shipping
+        IMPORTED_IMPLIB_SHIPPING "${BW_MPP_LIB}/Shipping/${stem}.lib"
+        IMPORTED_LOCATION_SHIPPING "${BW_MPP_BIN}/Shipping/${stem}.dll")
 endfunction()
 
 bw_import_mpp(ext::Utils Utils        INCLUDE "${BW_MPP}/ext/utils/include")
@@ -92,6 +96,9 @@ bw_import_static(ext::mpp-app-support
     "${BW_MPP_LIB}/Release/MppAppSupport.lib"
     "${BW_MPP_LIB}/Debug/MppAppSupportd.lib"
     INCLUDE "${BW_MPP}/mpp-app-support/include")
+set_target_properties(ext::mpp-app-support PROPERTIES
+    MAP_IMPORTED_CONFIG_SHIPPING Shipping
+    IMPORTED_LOCATION_SHIPPING "${BW_MPP_LIB}/Shipping/MppAppSupport.lib")
 
 # SDL3, GLEW and yaml-cpp now come from mpp's build rather than vendor/.
 bw_import_shared(ext::sdl3
@@ -99,14 +106,25 @@ bw_import_shared(ext::sdl3
     DLL_RELEASE "${BW_MPP_BIN}/Release/SDL3.dll"
     DLL_DEBUG   "${BW_MPP_BIN}/Debug/SDL3d.dll"
     INCLUDE "${BW_MPP}/ext/sdl/include")
+set_target_properties(ext::sdl3 PROPERTIES
+    MAP_IMPORTED_CONFIG_SHIPPING Shipping
+    IMPORTED_IMPLIB_SHIPPING "${BW_MPP_LIB}/Shipping/SDL3.lib"
+    IMPORTED_LOCATION_SHIPPING "${BW_MPP_BIN}/Shipping/SDL3.dll")
 bw_import_shared(ext::glew
     "${BW_MPP_LIB}/Release/glew32.lib" "${BW_MPP_LIB}/Debug/glew32d.lib"
     DLL_RELEASE "${BW_MPP_BIN}/Release/glew32.dll"
     DLL_DEBUG   "${BW_MPP_BIN}/Debug/glew32d.dll"
     INCLUDE "${BW_MPP_GLEW_INCLUDE_DIR}")
+set_target_properties(ext::glew PROPERTIES
+    MAP_IMPORTED_CONFIG_SHIPPING Shipping
+    IMPORTED_IMPLIB_SHIPPING "${BW_MPP_LIB}/Shipping/glew32.lib"
+    IMPORTED_LOCATION_SHIPPING "${BW_MPP_BIN}/Shipping/glew32.dll")
 bw_import_static(ext::yaml-cpp
     "${BW_MPP_LIB}/Release/yaml-cpp.lib" "${BW_MPP_LIB}/Debug/yaml-cppd.lib"
     INCLUDE "${BW_MPP}/ext/utils/vendor/yaml-cpp/include")
+set_target_properties(ext::yaml-cpp PROPERTIES
+    MAP_IMPORTED_CONFIG_SHIPPING Shipping
+    IMPORTED_LOCATION_SHIPPING "${BW_MPP_LIB}/Shipping/yaml-cpp.lib")
 
 # --------------------------------------------------------------------------
 # vendor/ - the third-party libraries mpp does not supply.
@@ -170,6 +188,12 @@ function(bw_import_willpower target module)
         DLL_RELEASE "${BW_WILLPOWER_BIN}/Release/${target}/${target}.dll"
         DLL_DEBUG "${BW_WILLPOWER_BIN}/Debug/${target}/${target}d.dll"
         INCLUDE "${BW_WILLPOWER}/${module}/include")
+    set_target_properties(${target} PROPERTIES
+        MAP_IMPORTED_CONFIG_SHIPPING Shipping
+        IMPORTED_IMPLIB_SHIPPING
+            "${BW_WILLPOWER_LIB}/Shipping/${target}/${target}.lib"
+        IMPORTED_LOCATION_SHIPPING
+            "${BW_WILLPOWER_BIN}/Shipping/${target}/${target}.dll")
 endfunction()
 
 bw_import_willpower(Willpower.Common willpower.common)

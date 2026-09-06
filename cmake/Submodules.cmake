@@ -85,10 +85,10 @@ function(bw_ensure_willpower)
             "git submodule update --init --recursive")
     endif()
 
-    # MemCheck reuses the Debug and Shipping reuses the Release
-    # Willpower/MassivePolyPusher builds (see the CMAKE_MAP_IMPORTED_CONFIG_*
-    # mappings in the top-level CMakeLists.txt). Their standalone builds do
-    # not define either BooleanWorld-specific configuration.
+    # MemCheck reuses the Debug Willpower/MassivePolyPusher builds (see the
+    # CMAKE_MAP_IMPORTED_CONFIG_MEMCHECK mapping in the top-level
+    # CMakeLists.txt). Shipping is built as a first-class configuration in
+    # both dependency trees.
     set(_bw_underlying_configs "")
     if(CMAKE_CONFIGURATION_TYPES)
         set(_bw_requested_configs ${CMAKE_CONFIGURATION_TYPES})
@@ -98,8 +98,6 @@ function(bw_ensure_willpower)
     foreach(cfg ${_bw_requested_configs})
         if(cfg STREQUAL "MemCheck")
             list(APPEND _bw_underlying_configs "Debug")
-        elseif(cfg STREQUAL "Shipping")
-            list(APPEND _bw_underlying_configs "Release")
         else()
             list(APPEND _bw_underlying_configs "${cfg}")
         endif()
