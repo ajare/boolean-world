@@ -56,7 +56,9 @@ Or invoke CMake directly:
 
 Windows configurations include `Debug`, `Release`, `Shipping`, and `MemCheck`.
 `build-cmake/BooleanWorld.sln` can be opened in Visual Studio; `Launcher` is
-the startup project.
+the startup project. Run a CMake configure before opening the FMOD Studio
+project: it stages the Steam Audio plugin in the project's `Plugins/` directory.
+Without it, Studio opens with unrecognised effects on every event.
 
 ### Submodule libraries are built separately
 

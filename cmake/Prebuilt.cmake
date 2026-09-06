@@ -133,8 +133,24 @@ bw_vendor_lib(vendor::nfd            nfd               nfd)
 
 # The vendored FMOD Engine API and the installed FMOD Studio authoring tool
 # must be pinned to the same point release: banks build under an equal or
-# newer runtime, never an older one.
+# newer runtime, never an older one. Steam Audio's FMOD plugin is pinned here
+# too, so the plugin designers author against is the plugin players run.
 set(BW_FMOD_VERSION "2.03.14" CACHE STRING "Pinned FMOD Engine/Studio point release" FORCE)
+set(BW_STEAM_AUDIO_VERSION "4.8.1" CACHE STRING "Pinned Steam Audio point release" FORCE)
+
+# FMOD Studio discovers effects from its project-local Plugins directory.
+# Populate it while configuring rather than committing a second copy: the
+# runtime deployment helper copies the same vendor directory beside every exe.
+set(BW_FMOD_STUDIO_PROJECT "${BW_ROOT}/src/BooleanWorld/app/resources/audio/Themes")
+set(BW_FMOD_STUDIO_PLUGINS "${BW_FMOD_STUDIO_PROJECT}/Plugins")
+file(MAKE_DIRECTORY "${BW_FMOD_STUDIO_PLUGINS}")
+foreach(plugin_file phonon.dll phonon_fmod.dll phonon_fmod.plugin.js)
+    file(COPY_FILE
+        "${BW_VENDOR_BIN}/Release/${plugin_file}"
+        "${BW_FMOD_STUDIO_PLUGINS}/${plugin_file}"
+        ONLY_IF_DIFFERENT)
+endforeach()
+
 bw_vendor_lib(vendor::fmod           fmod_vc           fmod_vc)
 bw_vendor_lib(vendor::fmodstudio     fmodstudio_vc     fmodstudio_vc)
 bw_vendor_lib(vendor::fsbank         fsbank_vc         fsbank_vc)
