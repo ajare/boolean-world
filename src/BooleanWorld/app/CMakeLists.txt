@@ -16,6 +16,7 @@ add_library(BooleanWorld SHARED
     src/StateMapTransitionBooleanWorld.cpp
     src/StateMapUnloadBooleanWorld.cpp
     src/StatePlayBooleanWorld.cpp
+    src/SteamAudio.cpp
     src/WorldCollisionSim.cpp
     # Vendored ImGui + ImPlot. Each BooleanWorld app carries its own copy;
     # this one and Launcher's are a newer ImGui than editor's.

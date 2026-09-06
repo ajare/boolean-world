@@ -3,6 +3,7 @@
 #include <array>
 #include <deque>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -39,6 +40,7 @@
 #include "PlayerTorchShadows.h"
 #include "PlayerWallDepenetration.h"
 #include "LiquidReflectionSelection.h"
+#include "SteamAudio.h"
 #include "VideoOptions.h"
 
 namespace mpp {
@@ -197,6 +199,8 @@ private:
       bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken};
 
   std::deque<DisplayMessage> mDisplayMessages;
+
+  std::unique_ptr<bw::app::SteamAudio> mSteamAudio;
 
   // Phase 0 gate (#383): one theme event, started once and left running.
   FMOD::Studio::EventInstance* mThemeInstance{nullptr};

@@ -211,9 +211,8 @@ void StatePlayBooleanWorld::createCamera() {
 
   auto const& physicalStats = getPlayerPhysicalStats();
   auto camera = new ReactiveCamera(
-      glm::vec3(
-          physicalStats.position.x, BW_PLAYER_HEIGHT,
-          -physicalStats.position.y),
+      bw::app::worldToRendererAudioPosition(
+          physicalStats.position, BW_PLAYER_HEIGHT),
       bw::app::cameraYaw(physicalStats.angle), physicalStats.pitch, BW_PLAYER_FOV, aspectRatio);
   camera->setClipDistances(0.1f, BW_PLAYER_VIEW_DISTANCE + 10);
 
@@ -1035,6 +1034,9 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
   createEntityManagement();
 
   createCamera();
+  if (mwAudioSystem) {
+    mSteamAudio = std::make_unique<bw::app::SteamAudio>(*mwAudioSystem);
+  }
   createRenderers(renderResourceMgr, transitionData);
 
   // We want to turn off the default entity rendering from AppLib here, as it is for 2d entities,
@@ -1246,10 +1248,17 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   // beneath them: those two only match once physics has caught up.
   auto playerViewHeight = physicalStats.floorZ + BW_PLAYER_EYE_HEIGHT;
 
-  static_cast<ReactiveCamera*>(mCamera3d.get())->setPosition({physicalStats.position.x, playerViewHeight, -physicalStats.position.y});
+  static_cast<ReactiveCamera*>(mCamera3d.get())->setPosition(
+      bw::app::worldToRendererAudioPosition(
+          physicalStats.position, playerViewHeight));
   // Renderer and authored yaw now increase in the same direction.
   static_cast<ReactiveCamera*>(mCamera3d.get())->yaw(physicalStats.angle - mPlayerPrevAngle);
   static_cast<ReactiveCamera*>(mCamera3d.get())->pitch(physicalStats.pitch - mPlayerPrevPitch);
+  if (mSteamAudio) {
+    // Camera basis vectors already contain yaw and pitch in renderer/audio
+    // space; deriving them from player angles here would invite divergence.
+    mSteamAudio->setListener(*mCamera3d);
+  }
 
   // World 3d uses the handedness-preserving mapping (X, elevation, -Y).
   // Move the light horizontally from the player's eye along the current yaw;

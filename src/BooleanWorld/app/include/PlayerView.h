@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <optional>
 
+#include <glm/vec3.hpp>
+
 #include <common/GameDefines.h>
 
 #include <core/Utils.h>
@@ -26,6 +28,13 @@ inline float applyMousePitch(float pitch, float mouseDeltaY, float sensitivity) 
 inline wp::Vector2 playerMovement(wp::Vector2 input, float yaw) {
   input.rotateClockwise(yaw);
   return input;
+}
+
+// The renderer and FMOD share this right-handed world mapping. Keeping it in
+// one place prevents the listener from becoming mirrored relative to the view.
+inline glm::vec3 worldToRendererAudioPosition(
+    wp::Vector2 const& position, float elevation) {
+  return {position.x, elevation, -position.y};
 }
 
 inline float worldViewAngle(float playerYaw) {

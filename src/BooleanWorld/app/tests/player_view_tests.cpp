@@ -72,6 +72,15 @@ int main() {
     return fail("a sensitive mouse turns the view past the pitch limit");
   }
 
+  {
+    auto audioPosition = bw::app::worldToRendererAudioPosition(
+        {3.0f, 7.0f}, 2.0f);
+    if (!near(audioPosition.x, 3.0f) || !near(audioPosition.y, 2.0f) ||
+        !near(audioPosition.z, -7.0f)) {
+      return fail("renderer and audio position does not preserve world handedness");
+    }
+  }
+
   if (!near(bw::app::worldViewAngle(0.0f), 0.0f) ||
       !near(bw::app::worldViewAngle(90.0f), 90.0f)) {
     return fail("core view angle does not match authored player yaw");
