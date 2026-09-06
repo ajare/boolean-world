@@ -22,7 +22,8 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
                                          std::string const& shadowsSection = "",
                                          std::string const& playerTorchSection = "",
                                          std::string const& waterReflectionsSection = "",
-                                         std::string const& worldDataGenerationSection = "") {
+                                         std::string const& worldDataGenerationSection = "",
+                                         std::string const& audioOutputLine = "") {
   auto path = std::filesystem::temp_directory_path() / "boolean-world-program-options-test.yaml";
   std::ofstream stream(path);
   stream << "Configuration:\n"
@@ -43,6 +44,7 @@ std::filesystem::path writeConfiguration(std::string const& extraGameField,
             "    Enabled: false\n"
             "    Channels: 32\n"
             "    Sync: false\n"
+         << audioOutputLine
          << inputSection
          << "  Game:\n"
          << worldDataGenerationSection
@@ -195,6 +197,43 @@ ProgramOptions parseWithWorldDataGeneration(std::string const& section) {
     std::filesystem::remove(path);
     throw;
   }
+}
+
+ProgramOptions parseWithAudioOutput(std::string const& audioOutputLine) {
+  auto path = writeConfiguration(
+      "", "", "", "", "", "", "", "", "", "", "", audioOutputLine);
+  try {
+    auto options = parseProgramOptions(path.string());
+    std::filesystem::remove(path);
+    return options;
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+}
+
+void requireAudioOutputRejected(
+    std::string const& audioOutputLine, std::string const& description) {
+  try {
+    (void)parseWithAudioOutput(audioOutputLine);
+  } catch (std::exception const& error) {
+    require(std::string(error.what()).find("Output") != std::string::npos,
+            "The audio-output error did not name the field.");
+    return;
+  }
+  throw std::runtime_error("Audio configuration accepted " + description + ".");
+}
+
+void requireAudioFieldRejected(
+    std::string const& audioLine, std::string const& field) {
+  try {
+    (void)parseWithAudioOutput(audioLine);
+  } catch (std::exception const& error) {
+    require(std::string(error.what()).find(field) != std::string::npos,
+            "The unknown-field error did not identify '" + field + "'.");
+    return;
+  }
+  throw std::runtime_error("Audio configuration accepted unsupported field '" + field + "'.");
 }
 
 void requireWorldDataGenerationRejected(
@@ -592,6 +631,30 @@ int main() {
     requireShadowsRejected("    Shadows:\n      Filter: soft\n", "Filter");
     requireShadowsRejected("    Shadows:\n      FilterRadius: -1\n", "FilterRadius");
     requireShadowsRejected("    Shadows:\n      FadeStart: 1.01\n", "FadeStart");
+
+    require(parseWithAudioOutput("").audioOutput == bw::app::AudioOutput::Speakers,
+            "A configuration without Audio/Output did not default to Speakers.");
+    require(parseWithAudioOutput("    Output: HeAdPhOnEs\n").audioOutput ==
+                bw::app::AudioOutput::Headphones,
+            "The configured Headphones output did not parse case-insensitively.");
+    require(parseWithAudioOutput("    Output: SPEAKERS\n").audioOutput ==
+                bw::app::AudioOutput::Speakers,
+            "The configured Speakers output did not parse case-insensitively.");
+    require(parseWithAudioOutput("    Output: surround\n").audioOutput ==
+                bw::app::AudioOutput::Surround,
+            "The configured Surround output did not parse.");
+    require(parseWithAudioOutput("    Output: Headphones\n").audio.speakerMode ==
+                wp::application::SpeakerMode::Stereo,
+            "Headphones did not force a stereo FMOD software format.");
+    require(parseWithAudioOutput("    Output: Speakers\n").audio.speakerMode ==
+                wp::application::SpeakerMode::Default,
+            "Speakers did not follow the OS device's FMOD software format.");
+    require(parseWithAudioOutput("    Output: Surround\n").audio.speakerMode ==
+                wp::application::SpeakerMode::Surround5Point1,
+            "Surround did not select a 5.1 FMOD software format.");
+    requireAudioOutputRejected("    Output: quadraphonic\n", "an unknown audio output");
+    requireAudioOutputRejected("    Output:\n", "an empty audio output");
+    requireAudioFieldRejected("    Volume: 5\n", "Volume");
 
     std::cout << "Program-options schema validation passed\n";
     return 0;

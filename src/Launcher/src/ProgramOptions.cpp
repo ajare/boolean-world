@@ -261,6 +261,7 @@ ProgramOptions parseProgramOptions(string const& filename) {
   gameNode->requireOnlyChildren(
       {"DLL", "ResourceLocations", "Debug", "Arguments",
        "WorldDataGeneration"});
+  audioNode->requireOnlyChildren({"Enabled", "Channels", "Sync", "Output"});
 
   pOpts.screenWidth = utils::StringUtils::parseInt(videoNode->getChild("Width")->getValue());
   pOpts.screenHeight = utils::StringUtils::parseInt(videoNode->getChild("Height")->getValue());
@@ -378,6 +379,17 @@ ProgramOptions parseProgramOptions(string const& filename) {
   pOpts.audio.numChannels = utils::StringUtils::parseInt(audioNode->getChild("Channels")->getValue());
   pOpts.audio.synchronous = utils::StringUtils::parseBool(audioNode->getChild("Sync")->getValue());
 
+  if (auto outputNode = audioNode->getOptionalChild("Output")) {
+    auto outputName = utils::StringUtils::toLower(outputNode->getValue());
+    auto output = bw::app::audioOutputFromName(outputName);
+    if (!output) {
+      string errMsg = "Could not load '" + filename + "'.  Value of /Configuration/Audio/Output must be 'Headphones', 'Speakers' or 'Surround'.";
+      throw runtime_error(errMsg.c_str());
+    }
+    pOpts.audioOutput = *output;
+  }
+  pOpts.audio.speakerMode = bw::app::audioOutputSpeakerMode(pOpts.audioOutput);
+
   // Get input options. The whole section is optional; the defaults in
   // ProgramOptions::Input stand in for anything left out.
   if (inputNode) {
@@ -480,6 +492,7 @@ void logProgramOptions(ProgramOptions const& options, Logger* logger) {
   if (options.audioEnabled) {
     logger->info(std::format("Audio synchronous: {}", options.audio.synchronous));
     logger->info(std::format("Audio channels: {}", options.audio.numChannels));
+    logger->info(std::format("Audio output: {}", bw::app::audioOutputName(options.audioOutput)));
   }
 
   logger->info(std::format("Mouse sensitivity: {}", options.input.mouseSensitivity));

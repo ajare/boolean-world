@@ -8,6 +8,7 @@
 
 #include <willpower/application/AudioOptions.h>
 
+#include "AudioOutputOptions.h"
 #include "VideoOptions.h"
 #include "WorldDataGenerationOptions.h"
 
@@ -44,6 +45,8 @@ public:
   bool audioEnabled;
 
   wp::application::AudioOptions audio;
+
+  bw::app::AudioOutput audioOutput{bw::app::AudioOutput::Speakers};
 
   Input input;
 

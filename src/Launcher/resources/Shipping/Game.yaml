@@ -29,6 +29,7 @@ Configuration:
     Enabled: false
     Channels: 1024
     Sync: false
+    Output: Speakers
   Input:
     MouseSensitivity: 0.6
   Game:
