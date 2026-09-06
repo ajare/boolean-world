@@ -48,7 +48,7 @@ Steam Audio is given a **custom scene**: it calls back into the game for every r
 
 ### World model
 
-- `AudioEmitter` is a `Serializable` in `core` with five fields: 2D offset, height offset, `soundId`, and a GUID. `soundId` is opaque and never resolved by `core`, exactly as `PrimitivePropertySet` treats Sub-material and Emboss-preset ids.
+- `AudioEmitter` is a `Serializable` in `core` with six fields: 2D offset, height offset, `soundId`, a GUID, and cull radius. `soundId` is opaque and never resolved by `core`, exactly as `PrimitivePropertySet` treats Sub-material and Emboss-preset ids. Cull radius is the authored maximum distance used for broad-phase culling and reflection-source ranking; it is separate because `EventDescription::getMinMaxDistance` does not report the Spatializer curve's maximum distance.
 - Emitter capture runs during `ArrangementWorldData` construction, **after** detail geometry, since derived height depends on floor Wedges. An emitter survives only where the Arrangement has a solid face, its **parent** Primitive still contributes to the solid there, and its derived height stands below that face's ceiling.
 - Derived emitter height is the authored offset added to the Wedge-raised floor of the containing face, taken from whichever Primitive **won** that face's properties. Existence is decided by the parent; elevation is not.
 - A captured emitter is identified by *(emitter GUID, placement key)*, the placement key being the Tile coordinates and grid size that PrefabField and RunScript already use to address a placement.
@@ -63,7 +63,7 @@ Steam Audio is given a **custom scene**: it calls back into the game for every r
 - Convert world to audio space with the renderer's existing mapping, `(x, elevation, -y)`, extracted into one shared function used by both the camera and the listener, and initialise FMOD with `FMOD_INIT_3D_RIGHTHANDED`. Listener orientation comes from the camera's own basis vectors. Listener velocity is zero; no Doppler.
 - Run reflection simulation on a **dedicated thread**, not the concurrencpp executor that world generation uses. The thread takes its own `shared_ptr` to the `WorldData` snapshot per tick, so a commit landing mid-tick finishes against the old world and picks up the new one next tick.
 - Re-sync emitters on each generation commit through the existing `registerGenerationCallback` hook. A surviving emitter keeps its `EventInstance`; a vanished one fades rather than cutting.
-- Cull by the event's authored maximum distance. Rank surviving sources for reflection simulation by distance normalised against that maximum, capped, with hysteresis on entry and exit and a short fade on the reflection contribution. A source past the cap keeps direct path and occlusion and loses only reverb.
+- Cull by the AudioEmitter's authored cull radius. Rank surviving sources for reflection simulation by distance normalised against that radius, capped, with hysteresis on entry and exit and a short fade on the reflection contribution. A source past the cap keeps direct path and occlusion and loses only reverb.
 - An emitter's event runs whenever the listener is within range, starting from the beginning. Intermittency is authored inside the FMOD event.
 - Quality presets are named, defined in `Game.yaml`, and bundle ray count, bounce count, impulse-response duration, ambisonic order, the concurrent reflection source cap, and the simulation update rate. Simulator maxima are allocated from the top preset so quality can change live.
 - A single `Game.yaml` value decides whether quality may be modified live; when false, the F7 audio debug view is not exposed.
@@ -98,8 +98,10 @@ Steam Audio is given a **custom scene**: it calls back into the game for every r
 
 ## Further Notes
 
-Three verifications are unresolved and each can change scope. Whether `EventDescription::getMinMaxDistance` returns a usable value on a Spatializer-panned event decides if `AudioEmitter` needs a sixth field for cull radius. Whether `ImmutableAccelerationGrid` lazily caches inside any query path decides whether the ray callbacks can read it lock-free. Whether per-ray callback overhead outweighs the structural win decides whether ADR-0043 stands or falls back to a triangle-mesh `IPLScene`.
+Two verifications are unresolved and each can change scope. Whether `ImmutableAccelerationGrid` lazily caches inside any query path decides whether the ray callbacks can read it lock-free. Whether per-ray callback overhead outweighs the structural win decides whether ADR-0043 stands or falls back to a triangle-mesh `IPLScene`.
 
 Steam Audio 4.8.1's Windows x64 `phonon_fmod.dll` was loaded with `FMOD::System::loadPlugin` against the pinned FMOD 2.03.14 runtime in #384. It returned `FMOD_OK`, so the FMOD/Studio 2.03.14 pin stands.
+
+#385 authored a Studio 2.03.14 event with the Steam Audio Spatializer as its only spatializer, Curve-Driven distance attenuation, and the Spatializer curve range set to 1–37. After building and loading the bank with FMOD 2.03.14, `EventDescription::getMinMaxDistance` returned 1–20: its default event range, not the Spatializer curve's authored maximum. The value is unusable for culling and reflection ranking, so `AudioEmitter` requires its sixth, authored cull-radius field.
 
 The FMOD-enabled branch of `AudioSystem.cpp` has been edited but never compiled, because no FMOD Engine SDK is installed on this machine. Treat it as unverified until the first FMOD-enabled build.
