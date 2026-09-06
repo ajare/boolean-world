@@ -700,7 +700,7 @@ Resources:
                   value: "Texture"
       - type: "TextFile"
         name: "WorldFile"
-        location: "world-mines-2.world.yaml"
+        location: "world-mines-3.world.yaml"
       - type: "Map"
         name: "World"
         DependentResources:
