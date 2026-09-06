@@ -49,7 +49,8 @@ removed the dependency entirely. Geometry terms are defined in
 | [0040](0040-build-scripts-are-deterministic-by-construction.md) | Build scripts are deterministic by construction | Accepted |
 | [0041](0041-audioemitters-are-owned-by-primitives-and-captured-at-generation.md) | AudioEmitters are owned by Primitives and captured at World generation | Accepted |
 | [0042](0042-acoustics-are-simulated-in-real-time-never-baked.md) | Acoustics are simulated in real time, never baked | Accepted |
-| [0043](0043-steam-audio-traces-the-arrangement-directly.md) | Steam Audio traces the Arrangement directly, not a triangle mesh | Accepted |
+| [0043](0043-steam-audio-traces-the-arrangement-directly.md) | Steam Audio traces the Arrangement directly, not a triangle mesh | Superseded by ADR-0044 |
+| [0044](0044-steam-audio-uses-a-triangle-scene.md) | Steam Audio uses a triangle scene derived from each World snapshot | Accepted |
 
 ## World geometry rewrite scope
 

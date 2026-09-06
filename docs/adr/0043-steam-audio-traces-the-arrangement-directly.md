@@ -1,6 +1,6 @@
 # ADR-0043: Steam Audio traces the Arrangement directly, not a triangle mesh
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0044
 **Date:** 2026-09-05
 **Relates to:** ADR-0042 (acoustics are simulated in real time), ADR-0005 (`WorldData` is an immutable snapshot)
 

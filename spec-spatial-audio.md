@@ -10,7 +10,7 @@ Integrate Steam Audio as an FMOD Studio plugin, providing binaural direct sound,
 
 Sound sources are authored as **AudioEmitters** owned by Primitives, so they ride every carrier a Primitive already rides — Prefabs hold them, PrefabField places them, RunScript emits them — and are resolved to fixed world positions by **emitter capture** during World generation (ADR-0041).
 
-Steam Audio is given a **custom scene**: it calls back into the game for every ray query, answered directly from `ArrangementWorldData`, so no acoustic geometry representation is ever built or maintained (ADR-0043).
+Steam Audio is given a triangle-mesh `IPLScene` derived from each `ArrangementWorldData` snapshot and handed to the simulation thread as one versioned unit with that snapshot (ADR-0044). A custom Arrangement tracer remains only as a correctness reference for the export.
 
 ## User Stories
 
@@ -59,7 +59,7 @@ Steam Audio is given a **custom scene**: it calls back into the game for every r
 
 - All Steam Audio code lives in BooleanWorld. Willpower gains only what the foundation requires, plus an accessor for the core FMOD system.
 - Initialise in the documented order: `System::loadPlugin("phonon_fmod.dll")` on the core system, create the Steam Audio context, `iplFMODInitialize`, create and set an HRTF, then `iplFMODSetSimulationSettings`.
-- Supply Steam Audio a custom scene whose ray callbacks are answered from `ArrangementWorldData` — a 2D march over the rendered wall grid for walls, analytic plane intersections for floors and ceilings.
+- Build a default triangle-mesh `IPLScene` from each `ArrangementWorldData` snapshot: one floor and ceiling for every solid Arrangement triangle and one quad for every visible ArrangementWall, with Acoustic presets resolved into the mesh's material table. Publish the committed scene and its source World snapshot to the simulation thread as one versioned pair; retain the custom Arrangement tracer only as a test reference.
 - Convert world to audio space with the renderer's existing mapping, `(x, elevation, -y)`, extracted into one shared function used by both the camera and the listener, and initialise FMOD with `FMOD_INIT_3D_RIGHTHANDED`. Listener orientation comes from the camera's own basis vectors. Listener velocity is zero; no Doppler.
 - Run reflection simulation on a **dedicated thread**, not the concurrencpp executor that world generation uses. The thread takes its own `shared_ptr` to the `WorldData` snapshot per tick, so a commit landing mid-tick finishes against the old world and picks up the new one next tick.
 - Re-sync emitters on each generation commit through the existing `registerGenerationCallback` hook. A surviving emitter keeps its `EventInstance`; a vanished one fades rather than cutting.
@@ -79,7 +79,7 @@ Steam Audio is given a **custom scene**: it calls back into the game for every r
 ## Testing Decisions
 
 - Emitter capture is the highest-value test and needs no FMOD: a small World with known Primitives, asserting survival under each limb of the three-part rule and asserting derived height against the winning Primitive's Wedge-raised floor.
-- The ray tracer is tested by property assertions — a ray between two points in one face hits nothing; a ray crossing a rendered wall hits it; a ray above `ceilingZ` hits the ceiling — plus a comparison harness against a brute-force reference over the same arrangement.
+- Triangle export is checked against a test-only custom Arrangement tracer: a ray between two points in one face hits nothing; a ray crossing a rendered wall hits it; and upward or downward rays hit the corresponding ceiling or floor with the same Acoustic preset. The custom tracer is also compared with a brute-force reference over the same Arrangement.
 - Extend ADR-0040's existing "rebuild the same Layer twice and get identical Primitives" assertion to cover emitters and their derived GUIDs.
 - Culling, ranking and hysteresis are pure functions over distance and maximum distance, tested table-driven.
 - Extend the existing core serialization, run-script step, editor interaction and map-load test families rather than creating new low-level seams.
@@ -98,7 +98,7 @@ Steam Audio is given a **custom scene**: it calls back into the game for every r
 
 ## Further Notes
 
-One verification remains unresolved and can change scope: whether per-ray callback overhead outweighs the structural win decides whether ADR-0043 stands or falls back to a triangle-mesh `IPLScene`.
+#387 compared both scene paths on `world-mines-1.world.yaml` (190 faces, 625 horizontal triangles, 686 walls) in an MSVC x64 Release build on an AMD Ryzen 9 9955HX. At a fixed single-threaded Hybrid preset of 4,096 rays, four bounces, a 1.0-second impulse response, first-order Ambisonics, one source, and ray batch size one, 30 runs after five warm-ups averaged **18.9 ms** for the custom Arrangement callbacks and **10.0 ms** for the equivalent 2,622-triangle `IPLScene`; five complete repetitions put the ratio at 1.87–1.91x. An empty-scene control put the callback boundary itself at roughly 0.14 ms per 4,096 callbacks, so crossing the plugin boundary was not the dominant cost, but the 2.5D tracer still failed to recover Steam Audio's optimized BVH cost. ADR-0044 therefore supersedes ADR-0043: use the triangle scene at runtime and keep the custom tracer only as an export-correctness reference.
 
 #386 audited the ray-query paths. `ImmutableAccelerationGrid` has no `mutable` state or lazy structures: construction fills its cell offsets and items, while its queries only read those arrays. `getCandidateItemsInBoundingArea` uses a caller-owned candidate vector, not grid scratch storage. `ArrangementWorldData` likewise has no `mutable` members or lazily-built query data; its constructor builds the triangle, floor-Wedge, collision-wall, and rendered-wall grids before publishing the snapshot. `getContainingFaceIndex`/`pointInTriangle`, floor and ceiling height queries, and the rendered-wall lookup used by `distanceToFirstWallCrossing` only read that completed state. Concurrent reads through `ArrangementWorldDataPtr` are therefore safe; no precomputation change or thread-local scratch is needed before the simulation thread is built.
 
