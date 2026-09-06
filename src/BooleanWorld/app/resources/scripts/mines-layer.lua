@@ -174,6 +174,7 @@ local function matching_neighbour_count(option, cell_x, cell_y, placements)
     return count
 end
 
+dprint("Finding prefabs")
 local definitions = context:find_define_prefabs("Main")
 local size_256_prefabs = utilities.get_prefabs_with_grid_size(definitions,
                                                               GRID_SIZE)
@@ -200,6 +201,7 @@ for _, prefab in ipairs(tunnel_prefabs) do
 end
 
 -- Seed the layout so the first loop iteration has an occupied neighbour.
+dprint("Placing initial prefab")
 local placements = {}
 local placements_by_cell = {}
 local seed = unrotated_options[math.random(#unrotated_options)]
@@ -209,6 +211,7 @@ local seed_placement = {x = seed_x, y = seed_y, option = seed}
 placements[1] = seed_placement
 placements_by_cell[cell_key(seed_x, seed_y)] = seed_placement
 
+dprint(string.format("Placing %d prefabs", 10))
 for _ = 1, 10 do
     local candidates = {}
     local candidates_by_key = {}

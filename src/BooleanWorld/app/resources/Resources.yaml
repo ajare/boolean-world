@@ -388,16 +388,26 @@ Resources:
     Resource:
       - type: "TextFile"
         name: "Test1Source"
-        location: "test-1.lua"
+        location: "scripts/test-1.lua"
+      - type: "TextFile"
+        name: "MinesLayerSource"
+        location: "scripts/mines-layer.lua"        
       - type: "LuaScript"
         name: "UtilityFunctions"
-        location: "utility-functions.lua"
+        location: "scripts/utility-functions.lua"
       - type: "LuaScript"
         name: "Test1"
         DependentResources:
           DependentResource:
             - id: "Source"
               ref: "Test1Source"
+            - ref: "UtilityFunctions"
+      - type: "LuaScript"
+        name: "MinesLayer"
+        DependentResources:
+          DependentResource:
+            - id: "Source"
+              ref: "MinesLayerSource"
             - ref: "UtilityFunctions"
       - type: "Image"
         name: "JaguarTangentSpaceNormalMap"
