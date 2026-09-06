@@ -616,6 +616,24 @@ void worldYamlSerializationRequiresTheWorldYamlExtension() {
   require(openThrew, "opening a YAML World without .world.yaml did not throw");
 }
 
+void openingAWorldWithNoPrimitivesRestoresTheEditorGhost() {
+  auto const filepath = std::filesystem::temp_directory_path() /
+                        "boolean-world-empty-document-open-test.world.yaml";
+
+  editor::Document source;
+  source.newDoc();
+  source.saveDocAs(filepath.string());
+
+  editor::Document loaded;
+  require(loaded.openDoc(filepath.string()),
+          "opening a World with no saved Primitives failed");
+  require(loaded.isActive() && loaded.getWorld()->getNumPrimitives() == 1 &&
+              (loaded.getGhost()->getFlags() & BW_PRIMITIVE_GHOST_FLAG) != 0,
+          "opening an empty World did not restore only the editor ghost");
+
+  std::filesystem::remove(filepath);
+}
+
 void openingADocumentReplacesTheActiveDocument() {
   auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-test.world.yaml";
 
@@ -801,6 +819,7 @@ int main() {
     inScopePrimitivesAndGroundingResolutionFollowFoldOrder();
     worldYamlSerializationRequiresTheWorldYamlExtension();
     openingADocumentReplacesTheActiveDocument();
+    openingAWorldWithNoPrimitivesRestoresTheEditorGhost();
     openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost();
     worldTestPrefabMeshPrimitivesAreHoverSelectable();
     aFailedOpenPreservesTheActiveDocument();

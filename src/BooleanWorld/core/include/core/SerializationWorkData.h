@@ -17,7 +17,7 @@ struct SerializationWorkData {
   // World files omit the editor-only ghost; editor snapshots retain it.
   bool includeGhostPrimitives{false};
 
-  // World files require authored content; editor snapshots may represent an empty world.
+  // Runtime loads require authored content; editor loads and snapshots may represent an empty world.
   bool allowEmptyWorld{false};
 
   // Map VertexTransformer ids to their pointer

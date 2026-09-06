@@ -2873,6 +2873,7 @@ bool Document::openDoc(string const& filepath) {
     auto candidate = createWorld(ED_DEFAULT_WORLD_SIZE, ED_DEFAULT_WORLD_ACCEL_GRID_SIZE);
 
     auto workData = bw::core::SerializationWorkData{};
+    workData.allowEmptyWorld = true;
 
     if (candidate->deserialize(ser, workData)) {
       auto const& warnings = candidate->getDeserializationWarnings();
