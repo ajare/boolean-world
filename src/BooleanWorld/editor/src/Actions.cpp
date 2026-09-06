@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <format>
 #include <limits>
+#include <random>
 #include <sstream>
 
 #include <core/RegularPolygon.h>
@@ -792,6 +793,81 @@ bool setPrimitiveFollowOrbitAngle(Document* doc, bw::core::Primitive* primitive,
 bool setPrimitivePriority(
     Document*, bw::core::Primitive* primitive, uint8_t priority) {
   primitive->setPriority(priority);
+  return true;
+}
+
+namespace {
+
+string newAudioEmitterGuid() {
+  static random_device source;
+  static mt19937_64 random(source());
+
+  auto const high = random();
+  auto const low = random();
+  return format(
+      "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
+      static_cast<uint32_t>(high >> 32),
+      static_cast<uint16_t>(high >> 16),
+      static_cast<uint16_t>((high & 0x0fffull) | 0x4000ull),
+      static_cast<uint16_t>(((low >> 48) & 0x3fffull) | 0x8000ull),
+      low & 0x0000ffffffffffffull);
+}
+
+template <typename Change>
+bool changePrimitiveAudioEmitter(
+    bw::core::Primitive* primitive, uint32_t emitterIndex, Change change) {
+  auto emitters = primitive->getAudioEmitters();
+  if (emitterIndex >= emitters.size()) {
+    return false;
+  }
+  change(emitters[emitterIndex]);
+  primitive->setAudioEmitters(emitters);
+  return true;
+}
+
+}  // namespace
+
+bool addPrimitiveAudioEmitter(Document*, bw::core::Primitive* primitive) {
+  auto emitters = primitive->getAudioEmitters();
+  bw::core::AudioEmitter emitter;
+  emitter.guid = newAudioEmitterGuid();
+  emitters.push_back(move(emitter));
+  primitive->setAudioEmitters(emitters);
+  return true;
+}
+
+bool setPrimitiveAudioEmitterOffset(
+    Document*, bw::core::Primitive* primitive, uint32_t emitterIndex,
+    wp::Vector2 const& offset) {
+  return changePrimitiveAudioEmitter(
+      primitive, emitterIndex,
+      [&offset](auto& emitter) { emitter.offset = offset; });
+}
+
+bool setPrimitiveAudioEmitterHeightOffset(
+    Document*, bw::core::Primitive* primitive, uint32_t emitterIndex,
+    float heightOffset) {
+  return changePrimitiveAudioEmitter(
+      primitive, emitterIndex,
+      [heightOffset](auto& emitter) { emitter.heightOffset = heightOffset; });
+}
+
+bool setPrimitiveAudioEmitterSoundId(
+    Document*, bw::core::Primitive* primitive, uint32_t emitterIndex,
+    string const& soundId) {
+  return changePrimitiveAudioEmitter(
+      primitive, emitterIndex,
+      [&soundId](auto& emitter) { emitter.soundId = soundId; });
+}
+
+bool deletePrimitiveAudioEmitter(
+    Document*, bw::core::Primitive* primitive, uint32_t emitterIndex) {
+  auto emitters = primitive->getAudioEmitters();
+  if (emitterIndex >= emitters.size()) {
+    return false;
+  }
+  emitters.erase(emitters.begin() + emitterIndex);
+  primitive->setAudioEmitters(emitters);
   return true;
 }
 

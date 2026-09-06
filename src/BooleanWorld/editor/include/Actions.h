@@ -358,6 +358,23 @@ bool setPrimitiveFollowOrbitAngle(Document* doc, bw::core::Primitive* primitive,
 
 bool setPrimitivePriority(Document* doc, bw::core::Primitive* primitive, uint8_t priority);
 
+// AudioEmitter authoring is index-based because emitters have no author-facing
+// names. Add creates the opaque authored GUID; edits deliberately leave it and
+// the not-yet-exposed cull radius unchanged.
+bool addPrimitiveAudioEmitter(
+    Document* doc, bw::core::Primitive* primitive);
+bool setPrimitiveAudioEmitterOffset(
+    Document* doc, bw::core::Primitive* primitive, uint32_t emitterIndex,
+    wp::Vector2 const& offset);
+bool setPrimitiveAudioEmitterHeightOffset(
+    Document* doc, bw::core::Primitive* primitive, uint32_t emitterIndex,
+    float heightOffset);
+bool setPrimitiveAudioEmitterSoundId(
+    Document* doc, bw::core::Primitive* primitive, uint32_t emitterIndex,
+    std::string const& soundId);
+bool deletePrimitiveAudioEmitter(
+    Document* doc, bw::core::Primitive* primitive, uint32_t emitterIndex);
+
 enum class PrimitiveMaterialSurface {
   Floor,
   Ceiling,

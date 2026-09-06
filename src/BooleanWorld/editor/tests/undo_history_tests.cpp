@@ -674,6 +674,85 @@ void newDocClearsUndoHistory() {
           "newDoc did not clear the undo and redo history");
 }
 
+void audioEmitterEditsAreUndoableAndPreserveIdentity() {
+  editor::Document document;
+  document.newDoc();
+  bw::core::Primitive* primitive = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f);
+  document.getWorld()->addPrimitive(primitive);
+  auto const primitiveIndex = primitive->getId();
+  document.setModified(false);
+  editor::clearUndoHistory();
+
+  editor::transactUndoableAction(
+      &document, "add emitter",
+      [primitive](editor::Document* doc) {
+        return editor::addPrimitiveAudioEmitter(doc, primitive);
+      });
+  auto const guid = primitive->getAudioEmitters().front().guid;
+  require(!guid.empty(), "the editor created an AudioEmitter without an identity");
+
+  editor::transactUndoableAction(
+      &document, "set emitter offset",
+      [primitive](editor::Document* doc) {
+        return editor::setPrimitiveAudioEmitterOffset(
+            doc, primitive, 0, {3.0f, -4.0f});
+      });
+  editor::transactUndoableAction(
+      &document, "set emitter floor offset",
+      [primitive](editor::Document* doc) {
+        return editor::setPrimitiveAudioEmitterHeightOffset(
+            doc, primitive, 0, 2.5f);
+      });
+  editor::transactUndoableAction(
+      &document, "set emitter soundId",
+      [primitive](editor::Document* doc) {
+        return editor::setPrimitiveAudioEmitterSoundId(
+            doc, primitive, 0, "ambient/drip");
+      });
+
+  auto const& edited = primitive->getAudioEmitters().front();
+  require(
+      edited.offset == wp::Vector2{3.0f, -4.0f} &&
+          edited.heightOffset == 2.5f && edited.soundId == "ambient/drip" &&
+          edited.guid == guid,
+      "editing an AudioEmitter lost its fields or identity");
+
+  editor::undo(&document, 3);
+  primitive = document.getWorld()->getPrimitive(primitiveIndex);
+  auto const& restored = primitive->getAudioEmitters().front();
+  require(
+      restored.offset == wp::Vector2{} && restored.heightOffset == 0.0f &&
+          restored.soundId.empty() && restored.guid == guid,
+      "undo did not restore the newly-added AudioEmitter");
+
+  editor::redo(&document, 3);
+  primitive = document.getWorld()->getPrimitive(primitiveIndex);
+  require(
+      primitive->getAudioEmitters().front().soundId == "ambient/drip",
+      "redo did not restore AudioEmitter edits");
+
+  editor::transactUndoableAction(
+      &document, "delete emitter",
+      [primitive](editor::Document* doc) {
+        return editor::deletePrimitiveAudioEmitter(doc, primitive, 0);
+      });
+  require(primitive->getAudioEmitters().empty(),
+          "deleting an AudioEmitter left it on the Primitive");
+
+  editor::undo(&document);
+  primitive = document.getWorld()->getPrimitive(primitiveIndex);
+  require(
+      primitive->getAudioEmitters().size() == 1 &&
+          primitive->getAudioEmitters().front().guid == guid,
+      "undo did not restore the deleted AudioEmitter and its identity");
+  editor::redo(&document);
+  require(document.getWorld()->getPrimitive(primitiveIndex)
+              ->getAudioEmitters().empty(),
+          "redo did not delete the AudioEmitter again");
+}
+
 void aThrowingActionLeavesNoTransactionInProgressOrStrayUndoEntry() {
   editor::Document document;
   document.newDoc();
@@ -724,6 +803,7 @@ int main() {
     undoHistoryRetainsConfiguredCapacity();
     historyDoesNotCopyUndoOrRedoWorldSnapshots();
     newDocClearsUndoHistory();
+    audioEmitterEditsAreUndoableAndPreserveIdentity();
     aThrowingActionLeavesNoTransactionInProgressOrStrayUndoEntry();
     std::cout << "Undo history regressions passed\n";
     return 0;

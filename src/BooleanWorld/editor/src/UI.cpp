@@ -3702,6 +3702,60 @@ void renderEditPrimitiveProperties(editor::Document* doc, bw::core::Primitive* p
   }
 }
 
+void renderEditPrimitiveAudioEmitters(
+    editor::Document* doc, bw::core::Primitive* primitive) {
+  if (ImGui::Button("Add emitter")) {
+    transactUndoableAction(
+        doc, "Add AudioEmitter",
+        bind(addPrimitiveAudioEmitter, placeholders::_1, primitive));
+  }
+
+  auto const emitters = primitive->getAudioEmitters();
+  for (uint32_t i = 0; i < emitters.size(); ++i) {
+    auto const& emitter = emitters[i];
+    ImGui::PushID(static_cast<int>(i));
+    ImGui::SeparatorText(format("Emitter {}", i).c_str());
+
+    if (ImGui::Button("Delete")) {
+      transactUndoableAction(
+          doc, format("Delete AudioEmitter {}", i),
+          bind(deletePrimitiveAudioEmitter, placeholders::_1, primitive, i));
+      ImGui::PopID();
+      break;
+    }
+
+    float offset[2]{emitter.offset.x, emitter.offset.y};
+    ImGui::SetNextItemWidth(192.0f);
+    if (ImGui::InputFloat2("Offset", offset)) {
+      transactUndoableAction(
+          doc, format("Set AudioEmitter {} offset", i),
+          bind(setPrimitiveAudioEmitterOffset, placeholders::_1, primitive, i,
+               wp::Vector2{offset[0], offset[1]}));
+    }
+
+    auto floorOffset = emitter.heightOffset;
+    ImGui::SetNextItemWidth(128.0f);
+    if (ImGui::InputFloat("Floor offset", &floorOffset)) {
+      transactUndoableAction(
+          doc, format("Set AudioEmitter {} floor offset", i),
+          bind(setPrimitiveAudioEmitterHeightOffset, placeholders::_1,
+               primitive, i, floorOffset));
+    }
+
+    auto soundId = emitter.soundId;
+    ImGui::SetNextItemWidth(256.0f);
+    if (widgets::InputText(
+            "soundId", &soundId, ImGuiInputTextFlags_EnterReturnsTrue)) {
+      transactUndoableAction(
+          doc, format("Set AudioEmitter {} soundId", i),
+          bind(setPrimitiveAudioEmitterSoundId, placeholders::_1, primitive,
+               i, soundId));
+    }
+
+    ImGui::PopID();
+  }
+}
+
 void renderEditPrimitiveSettings(editor::Document* doc, editor::Settings& settings) {
   auto world = doc->getWorld();
   auto const& selectedIndices = doc->getSelectedPrimitiveIndices();
@@ -3756,6 +3810,16 @@ void renderEditPrimitiveProperties(editor::Document* doc, editor::Settings& sett
   }
 }
 
+void renderEditPrimitiveAudioEmitters(editor::Document* doc) {
+  auto const& selectedIndices = doc->getSelectedPrimitiveIndices();
+  if (selectedIndices.size() == 1) {
+    renderEditPrimitiveAudioEmitters(
+        doc, doc->getWorld()->getPrimitive(*selectedIndices.begin()));
+  } else if (selectedIndices.size() > 1) {
+    ImGui::Text("Multiple primitives selected.");
+  }
+}
+
 // Whether the Edit Primitive view has anything at all to show. Document's
 // hasSelection() is not the question: it is also true for a TriggerLine or a
 // world vertex. Nor is a selected ghost, which is authoring furniture with
@@ -3781,6 +3845,9 @@ void renderEditPrimitiveView(editor::Document* doc, editor::Settings& settings, 
 
   ImGui::SeparatorText("Properties");
   renderEditPrimitiveProperties(doc, settings);
+
+  ImGui::SeparatorText("Audio Emitters");
+  renderEditPrimitiveAudioEmitters(doc);
 }
 
 void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings) {
