@@ -47,6 +47,7 @@
 
 #include "StatePlayBooleanWorld.h"
 
+#include "AcousticPresetResolver.h"
 #include "CpuUpdateProfiler.h"
 #include "PlayerLiquidTraversal.h"
 #include "PlayerVerticalPhysics.h"
@@ -680,6 +681,11 @@ void StatePlayBooleanWorld::destroyGameObjects() {
   mGenerationCallbackToken =
       bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken;
 
+  // Join the dedicated reflections thread while the FMOD system, loaded
+  // resources, and game DLL are all still alive.
+  mSteamAudio.reset();
+  mAcousticPresetResolver.reset();
+
   applib::ModelInstance::entityHandler()->setupCollisions(nullptr, nullptr);
   delete mWorldCollisionSim;
   mWorldCollisionSim = nullptr;
@@ -1045,12 +1051,20 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
 
   setupScene();
   loadAllReferencedResources();
+  if (mSteamAudio) {
+    mAcousticPresetResolver =
+        std::make_unique<AcousticPresetResolver>(mwResourceMgr);
+  }
 
   // Set up input
   registerInput();
 
   // For subclasses
   createGameObjects(resourceMgr, renderSystem, renderResourceMgr, args);
+  if (mSteamAudio && mWorldData) {
+    mSteamAudio->updateWorldSnapshot(
+        mWorldData, *mAcousticPresetResolver);
+  }
 
   // Start scheduled world clipping
   auto dataGenerator = getWDG();
@@ -1115,6 +1129,13 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
   world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, layerSelection()}, {0, 0});
 
   mWorldData = world->getWorldData();
+  if (mSteamAudio) {
+    // getWorldData is queried every frame, but updateWorldSnapshot compares
+    // pointer identity so export and native scene commit happen once per newly
+    // committed immutable generation, never once per frame.
+    mSteamAudio->updateWorldSnapshot(
+        mWorldData, *mAcousticPresetResolver);
+  }
 
   // Supply the physics step with walls around the predicted destination. Player
   // location is evaluated only after that step has resolved movement.
@@ -1258,6 +1279,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
     // Camera basis vectors already contain yaw and pitch in renderer/audio
     // space; deriving them from player angles here would invite divergence.
     mSteamAudio->setListener(*mCamera3d);
+    mSteamAudio->runDirectSimulation();
   }
 
   // World 3d uses the handedness-preserving mapping (X, elevation, -Y).

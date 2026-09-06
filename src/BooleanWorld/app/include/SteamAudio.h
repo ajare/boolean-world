@@ -31,6 +31,17 @@ public:
 
   void setListener(mpp::Camera const& camera);
 
+  // Runs the cheap, latency-sensitive direct/occlusion pass on the caller's
+  // game thread. If the reflection worker is changing scenes, this tick is
+  // skipped rather than hitching the game thread behind that handoff.
+  void runDirectSimulation();
+
+  // Builds only when sourceWorld differs from the last published snapshot,
+  // then atomically publishes the committed scene and its source as one unit.
+  void updateWorldSnapshot(
+      core::ArrangementWorldDataPtr sourceWorld,
+      AcousticPresetResolver const& resolver);
+
   // Exports and commits a new immutable default triangle-mesh scene. The
   // returned object retains the exact source snapshot; it is never updated in
   // place when a later generation commits.

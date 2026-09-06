@@ -11,6 +11,7 @@ add_library(BooleanWorld SHARED
     src/LiquidReflectionSelection.cpp
     src/Map.cpp
     src/MapBooleanWorldDefinitionFactory.cpp
+    src/PeriodicSnapshotWorker.cpp
     src/PlayerLocation.cpp
     src/ProtoEntity.cpp
     src/ProtoEntityDefinitionFactory.cpp
@@ -77,6 +78,18 @@ bw_enable_sdl_checks(BooleanWorld)
 set_target_properties(BooleanWorld PROPERTIES FOLDER BooleanWorld)
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_periodic_snapshot_worker_tests
+        tests/periodic_snapshot_worker_tests.cpp
+        src/PeriodicSnapshotWorker.cpp)
+    target_include_directories(boolean_world_periodic_snapshot_worker_tests
+        PRIVATE include)
+    target_compile_features(boolean_world_periodic_snapshot_worker_tests
+        PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_periodic_snapshot_worker_tests)
+    bw_output_dirs(boolean_world_periodic_snapshot_worker_tests)
+    add_test(NAME boolean_world_periodic_snapshot_worker
+             COMMAND boolean_world_periodic_snapshot_worker_tests)
+
     add_executable(boolean_world_acoustic_scene_tests
         tests/acoustic_scene_tests.cpp
         src/AcousticSceneMesh.cpp)

@@ -200,6 +200,7 @@ private:
 
   std::deque<DisplayMessage> mDisplayMessages;
 
+  std::unique_ptr<AcousticPresetResolver> mAcousticPresetResolver;
   std::unique_ptr<bw::app::SteamAudio> mSteamAudio;
 
   // Phase 0 gate (#383): one theme event, started once and left running.

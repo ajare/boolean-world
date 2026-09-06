@@ -1,4 +1,8 @@
+#include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <limits>
+#include <shared_mutex>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -12,6 +16,7 @@
 
 #include "AcousticPresetResolver.h"
 #include "AcousticScene.h"
+#include "PeriodicSnapshotWorker.h"
 #include "SteamAudio.h"
 
 namespace {
@@ -31,6 +36,15 @@ using StaticMeshCreateFunction = IPLerror(IPLCALL*)(
     IPLScene, IPLStaticMeshSettings*, IPLStaticMesh*);
 using StaticMeshReleaseFunction = void(IPLCALL*)(IPLStaticMesh*);
 using StaticMeshAddFunction = void(IPLCALL*)(IPLStaticMesh, IPLScene);
+using SimulatorCreateFunction = IPLerror(IPLCALL*)(
+    IPLContext, IPLSimulationSettings*, IPLSimulator*);
+using SimulatorReleaseFunction = void(IPLCALL*)(IPLSimulator*);
+using SimulatorSetSceneFunction = void(IPLCALL*)(IPLSimulator, IPLScene);
+using SimulatorCommitFunction = void(IPLCALL*)(IPLSimulator);
+using SimulatorSetSharedInputsFunction = void(IPLCALL*)(
+    IPLSimulator, IPLSimulationFlags, IPLSimulationSharedInputs*);
+using SimulatorRunDirectFunction = void(IPLCALL*)(IPLSimulator);
+using SimulatorRunReflectionsFunction = void(IPLCALL*)(IPLSimulator);
 
 // #387's measured candidate is the temporary top preset until #401 makes
 // presets data-driven. These are allocation maxima, not per-tick settings.
@@ -38,6 +52,9 @@ constexpr IPLint32 TopPresetMaxRays = 4096;
 constexpr IPLint32 TopPresetMaxSources = 1;
 constexpr IPLfloat32 TopPresetMaxDuration = 1.0f;
 constexpr IPLint32 TopPresetMaxAmbisonicOrder = 1;
+constexpr IPLint32 TopPresetBounces = 4;
+constexpr IPLfloat32 TopPresetIrradianceMinDistance = 1.0f;
+constexpr auto ReflectionTickInterval = std::chrono::milliseconds(100);
 
 FARPROC steamAudioFunction(HMODULE module, char const* name) {
   auto function = GetProcAddress(module, name);
@@ -48,6 +65,10 @@ FARPROC steamAudioFunction(HMODULE module, char const* name) {
 }
 
 FMOD_VECTOR fmodVector(glm::vec3 const& value) {
+  return {value.x, value.y, value.z};
+}
+
+IPLVector3 iplVector(glm::vec3 const& value) {
   return {value.x, value.y, value.z};
 }
 
@@ -89,9 +110,19 @@ AcousticSceneMesh const& AcousticScene::getExportedMesh() const {
 }
 
 struct SteamAudio::Implementation {
+  struct ListenerState {
+    IPLCoordinateSpace3 coordinates{};
+  };
+
+  struct PublishedScene {
+    AcousticScenePtr scene;
+    uint64_t version{};
+  };
+
   FMOD::System* coreSystem{};
   IPLContext context{};
   IPLHRTF hrtf{};
+  IPLSimulator simulator{};
   TerminateFunction terminate{};
   bool fmodInitialized{false};
   ContextReleaseFunction contextRelease{};
@@ -103,8 +134,26 @@ struct SteamAudio::Implementation {
   StaticMeshCreateFunction staticMeshCreate{};
   StaticMeshReleaseFunction staticMeshRelease{};
   StaticMeshAddFunction staticMeshAdd{};
+  SimulatorReleaseFunction simulatorRelease{};
+  SimulatorSetSceneFunction simulatorSetScene{};
+  SimulatorCommitFunction simulatorCommit{};
+  SimulatorSetSharedInputsFunction simulatorSetSharedInputs{};
+  SimulatorRunDirectFunction simulatorRunDirect{};
+  SimulatorRunReflectionsFunction simulatorRunReflections{};
+
+  std::atomic<std::shared_ptr<ListenerState const>> listener;
+  std::shared_mutex sceneTransitionMutex;
+  std::atomic<bool> sceneReady{false};
+  uint64_t simulationSceneVersion{};
+  uint64_t nextSceneVersion{1};
+  core::ArrangementWorldDataPtr publishedWorld;
+  std::unique_ptr<PeriodicSnapshotWorker> reflectionWorker;
 
   ~Implementation() {
+    // The worker and every scene it can retain must be gone before the
+    // simulator, context, and dynamically loaded API are released.
+    reflectionWorker.reset();
+    if (simulator) simulatorRelease(&simulator);
     if (fmodInitialized) terminate();
     if (hrtf) hrtfRelease(&hrtf);
     if (context) contextRelease(&context);
@@ -161,6 +210,26 @@ SteamAudio::SteamAudio(wp::application::AudioSystem& audioSystem)
           steamAudioFunction(phononModule, "iplStaticMeshRelease"));
   implementation.staticMeshAdd = reinterpret_cast<StaticMeshAddFunction>(
       steamAudioFunction(phononModule, "iplStaticMeshAdd"));
+  auto simulatorCreate = reinterpret_cast<SimulatorCreateFunction>(
+      steamAudioFunction(phononModule, "iplSimulatorCreate"));
+  implementation.simulatorRelease =
+      reinterpret_cast<SimulatorReleaseFunction>(
+          steamAudioFunction(phononModule, "iplSimulatorRelease"));
+  implementation.simulatorSetScene =
+      reinterpret_cast<SimulatorSetSceneFunction>(
+          steamAudioFunction(phononModule, "iplSimulatorSetScene"));
+  implementation.simulatorCommit =
+      reinterpret_cast<SimulatorCommitFunction>(
+          steamAudioFunction(phononModule, "iplSimulatorCommit"));
+  implementation.simulatorSetSharedInputs =
+      reinterpret_cast<SimulatorSetSharedInputsFunction>(
+          steamAudioFunction(phononModule, "iplSimulatorSetSharedInputs"));
+  implementation.simulatorRunDirect =
+      reinterpret_cast<SimulatorRunDirectFunction>(
+          steamAudioFunction(phononModule, "iplSimulatorRunDirect"));
+  implementation.simulatorRunReflections =
+      reinterpret_cast<SimulatorRunReflectionsFunction>(
+          steamAudioFunction(phononModule, "iplSimulatorRunReflections"));
   implementation.terminate = reinterpret_cast<TerminateFunction>(
       steamAudioFunction(pluginModule, "iplFMODTerminate"));
   auto initialize = reinterpret_cast<InitializeFunction>(
@@ -219,6 +288,55 @@ SteamAudio::SteamAudio(wp::application::AudioSystem& audioSystem)
   simulationSettings.samplingRate = sampleRate;
   simulationSettings.frameSize = static_cast<IPLint32>(frameSize);
   setSimulationSettings(simulationSettings);
+
+  if (simulatorCreate(implementation.context, &simulationSettings,
+                      &implementation.simulator) != IPL_STATUS_SUCCESS) {
+    throw std::runtime_error("Unable to create Steam Audio simulator");
+  }
+
+  implementation.reflectionWorker =
+      std::make_unique<PeriodicSnapshotWorker>(
+          ReflectionTickInterval,
+          [&implementation](PeriodicSnapshotWorker::SnapshotPtr const& value) {
+            auto published =
+                std::static_pointer_cast<Implementation::PublishedScene const>(
+                    value);
+            auto listener = implementation.listener.load(
+                std::memory_order_acquire);
+            if (!published || !published->scene || !listener ||
+                !published->scene->mImplementation) {
+              return;
+            }
+
+            if (published->version !=
+                implementation.simulationSceneVersion) {
+              std::unique_lock transition(
+                  implementation.sceneTransitionMutex);
+              implementation.simulatorSetScene(
+                  implementation.simulator,
+                  published->scene->mImplementation->scene);
+              implementation.simulatorCommit(implementation.simulator);
+              implementation.simulationSceneVersion = published->version;
+              implementation.sceneReady.store(
+                  true, std::memory_order_release);
+            }
+
+            IPLSimulationSharedInputs inputs{};
+            inputs.listener = listener->coordinates;
+            inputs.numRays = TopPresetMaxRays;
+            inputs.numBounces = TopPresetBounces;
+            inputs.duration = TopPresetMaxDuration;
+            inputs.order = TopPresetMaxAmbisonicOrder;
+            inputs.irradianceMinDistance = TopPresetIrradianceMinDistance;
+
+            std::shared_lock simulation(
+                implementation.sceneTransitionMutex);
+            implementation.simulatorSetSharedInputs(
+                implementation.simulator,
+                IPL_SIMULATIONFLAGS_REFLECTIONS, &inputs);
+            implementation.simulatorRunReflections(
+                implementation.simulator);
+          });
 #else
   (void)audioSystem;
 #endif
@@ -309,16 +427,71 @@ AcousticScenePtr SteamAudio::buildScene(
       std::move(sourceWorld), std::move(mesh), std::move(native)));
 }
 
+void SteamAudio::updateWorldSnapshot(
+    core::ArrangementWorldDataPtr sourceWorld,
+    AcousticPresetResolver const& resolver) {
+  if (!sourceWorld) {
+    throw std::invalid_argument("Acoustic simulation requires a World snapshot");
+  }
+  if (sourceWorld == mImplementation->publishedWorld) return;
+
+  // buildScene does all native scene construction and commit work before the
+  // pair becomes visible. The worker can therefore only load complete pairs.
+  auto scene = buildScene(sourceWorld, resolver);
+#if defined(WP_APPLICATION_USE_FMOD)
+  auto published = std::make_shared<Implementation::PublishedScene const>(
+      Implementation::PublishedScene{
+          std::move(scene), mImplementation->nextSceneVersion++});
+  mImplementation->reflectionWorker->publish(std::move(published));
+#endif
+  mImplementation->publishedWorld = std::move(sourceWorld);
+}
+
+void SteamAudio::runDirectSimulation() {
+#if defined(WP_APPLICATION_USE_FMOD)
+  auto& implementation = *mImplementation;
+  auto listener = implementation.listener.load(std::memory_order_acquire);
+  if (!listener ||
+      !implementation.sceneReady.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  // Scene replacement is the only exclusive simulator operation. Never make
+  // the game thread wait behind it: one skipped direct tick is preferable to
+  // an update hitch at a World commit boundary.
+  std::shared_lock simulation(
+      implementation.sceneTransitionMutex, std::try_to_lock);
+  if (!simulation.owns_lock()) return;
+
+  IPLSimulationSharedInputs inputs{};
+  inputs.listener = listener->coordinates;
+  implementation.simulatorSetSharedInputs(
+      implementation.simulator, IPL_SIMULATIONFLAGS_DIRECT, &inputs);
+  implementation.simulatorRunDirect(implementation.simulator);
+#endif
+}
+
 void SteamAudio::setListener(mpp::Camera const& camera) {
 #if defined(WP_APPLICATION_USE_FMOD)
-  auto position = fmodVector(camera.getPosition());
-  auto forward = fmodVector(camera.getDirection());
-  auto up = fmodVector(camera.getUp());
+  auto const& cameraPosition = camera.getPosition();
+  auto const& cameraDirection = camera.getDirection();
+  auto const& cameraUp = camera.getUp();
+  auto position = fmodVector(cameraPosition);
+  auto forward = fmodVector(cameraDirection);
+  auto up = fmodVector(cameraUp);
   FMOD_VECTOR const velocity{0.0f, 0.0f, 0.0f};
   if (mImplementation->coreSystem->set3DListenerAttributes(
           0, &position, &velocity, &forward, &up) != FMOD_OK) {
     throw std::runtime_error("Unable to update FMOD listener attributes");
   }
+
+  auto listener = std::make_shared<Implementation::ListenerState const>(
+      Implementation::ListenerState{
+          {iplVector(glm::normalize(glm::cross(cameraDirection, cameraUp))),
+           iplVector(cameraUp), iplVector(cameraDirection),
+           iplVector(cameraPosition)}});
+  mImplementation->listener.store(std::move(listener),
+                                  std::memory_order_release);
 #else
   (void)camera;
 #endif
