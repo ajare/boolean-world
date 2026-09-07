@@ -236,13 +236,13 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
         auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
 
         if (!primitiveIndices.empty()) {
-          transactUndoableAction(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), bind(deletePrimitives, placeholders::_1, primitiveIndices));
+          transact(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), [&] { deletePrimitives(doc, primitiveIndices); });
         }
 
         auto triggerLineIndex = doc->getSelectedTriggerLineIndex();
 
         if (triggerLineIndex != ~0u) {
-          transactUndoableAction(doc, "Delete TriggerLine", bind(deleteTriggerLine, placeholders::_1, triggerLineIndex));
+          transact(doc, "Delete TriggerLine", [&] { deleteTriggerLine(doc, triggerLineIndex); });
         }
       }
 
@@ -256,12 +256,12 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
 
       if (ImGui::MenuItem("Bake to mesh", "Ctrl+B")) {
         auto const& indices = doc->getSelectedPrimitiveIndices();
-        transactUndoableAction(doc, format("Bake {} Primitive(s)", indices.size()), bind(bakePrimitives, placeholders::_1, indices));
+        transact(doc, format("Bake {} Primitive(s)", indices.size()), [&] { bakePrimitives(doc, indices); });
       }
 
       if (ImGui::MenuItem("Clip to grid")) {
         auto const& indices = doc->getSelectedPrimitiveIndices();
-        transactUndoableAction(doc, format("Clip Primitive(s) to grid", indices.size()), bind(clipPrimitivesToGrid, placeholders::_1, indices, settings.gridSize));
+        transact(doc, format("Clip Primitive(s) to grid", indices.size()), [&] { clipPrimitivesToGrid(doc, indices, settings.gridSize); });
       }
 
       if (!hasPrimitiveSelection) {
@@ -275,13 +275,11 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
       if (ImGui::MenuItem("Select all", "Ctrl+A")) {
         if (settings.mode == Settings::Mode::Mesh) {
           if (doc->getActiveMesh()) {
-            transactUndoableAction(
-                doc, "Select All Mesh Sub-objects",
-                bind(selectAllMeshSubObjects, placeholders::_1, settings.meshSubMode));
+            transact(doc, "Select All Mesh Sub-objects", [&] { selectAllMeshSubObjects(doc, settings.meshSubMode); });
           }
         } else {
           auto indices = doc->getSelectablePrimitiveIndices(settings);
-          transactUndoableAction(doc, "Select All", bind(selectPrimitives, placeholders::_1, set<uint32_t>(indices.begin(), indices.end())));
+          transact(doc, "Select All", [&] { selectPrimitives(doc, set<uint32_t>(indices.begin(), indices.end())); });
         }
       }
 
@@ -294,7 +292,7 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
       }
 
       if (ImGui::MenuItem("Deselect all", "Ctrl+D")) {
-        transactUndoableAction(doc, "Clear Selections", clearSelections);
+        transact(doc, "Clear Selections", [&] { clearSelections(doc); });
       }
 
       if (!hasAnySelection) {
@@ -309,7 +307,7 @@ void renderMenu(editor::Document* doc, editor::Settings& settings) {
 
         if (ImGui::MenuItem("New Layer")) {
           auto layerName = format("Layer {}", world->getNumLayers());
-          transactUndoableAction(doc, "New Layer", bind(addLayer, placeholders::_1, layerName));
+          transact(doc, "New Layer", [&] { addLayer(doc, layerName); });
         }
 
         if (ImGui::MenuItem("Regenerate world data")) {
@@ -550,13 +548,13 @@ void renderToolbar(Document* doc, editor::Settings& settings) {
       auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
 
       if (!primitiveIndices.empty()) {
-        transactUndoableAction(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), bind(deletePrimitives, placeholders::_1, primitiveIndices));
+        transact(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), [&] { deletePrimitives(doc, primitiveIndices); });
       }
 
       auto triggerLineIndex = doc->getSelectedTriggerLineIndex();
 
       if (triggerLineIndex != ~0u) {
-        transactUndoableAction(doc, "Delete TriggerLine", bind(deleteTriggerLine, placeholders::_1, triggerLineIndex));
+        transact(doc, "Delete TriggerLine", [&] { deleteTriggerLine(doc, triggerLineIndex); });
       }
     }
 
@@ -841,8 +839,7 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
   ImGui::SetNextItemWidth(192);
   if (widgets::InputText(
           "Name##World", &worldName, ImGuiInputTextFlags_EnterReturnsTrue)) {
-    transactUndoableAction(doc, "Set World name",
-                           bind(setWorldName, placeholders::_1, worldName));
+    transact(doc, "Set World name", [&] { setWorldName(doc, worldName); });
   }
 
   // Description
@@ -851,8 +848,8 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
   if (widgets::InputTextMultiline(
           "Description##World", &worldDesc, ImVec2(512, 96))) {
     // Don't make this transactional as every character change will create an undo state
-    // transactUndoableAction(doc, "Set World description",
-    //	bind(setWorldDescription, placeholders::_1, worldDesc));
+    // transact(doc, "Set World description",
+    //          [&] { setWorldDescription(doc, worldDesc); });
     setWorldDescription(doc, worldDesc);
     doc->setModified(true);
   }
@@ -888,8 +885,7 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
   if (ImGui::InputFloat2("PlayerStartPos##World", pPosition)) {
     wp::Vector2 position{pPosition[0], pPosition[1]};
 
-    transactUndoableAction(doc, "Set Primitive Position",
-                           bind(setPlayerStartPosition, placeholders::_1, position));
+    transact(doc, "Set Primitive Position", [&] { setPlayerStartPosition(doc, position); });
   }
 
   // Wedges
@@ -970,11 +966,7 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
   }
   ImGui::BeginDisabled(!wedgeDraftModified);
   if (ImGui::Button("Apply Wedge settings##WorldWedges")) {
-    if (transactUndoableActionAtomically(
-            doc, "Set World Wedge settings",
-            bind(
-                setWorldWedgeGenerationParameters, placeholders::_1,
-                wedgeDraft))) {
+    if (transactUndoableActionAtomically(doc, "Set World Wedge settings", [&](Document* doc) { return setWorldWedgeGenerationParameters(doc, wedgeDraft); })) {
       wedgeSource = world->getWedgeGenerationParameters();
       wedgeDraft = wedgeSource;
       wedgeDraftModified = false;
@@ -1397,8 +1389,8 @@ bw::core::Primitive::Operation setOperationWidget(Document* doc, bw::core::Primi
     }
 
     if (primitive) {
-      transactUndoableAction(doc, "Set operation", [primitive, editOperation](editor::Document* doc) {
-        return setPrimitiveOperation(doc, primitive, editOperation);
+      transact(doc, "Set operation", [&] {
+        setPrimitiveOperation(doc, primitive, editOperation);
       });
     }
   }
@@ -1465,8 +1457,8 @@ bw::core::Primitive::FillRule setFillRuleWidget(Document* doc, bw::core::Primiti
     }
 
     if (primitive) {
-      transactUndoableAction(doc, "Set fill rule", [primitive, editFillRule](editor::Document* doc) {
-        return setPrimitiveFillRule(doc, primitive, editFillRule);
+      transact(doc, "Set fill rule", [&] {
+        setPrimitiveFillRule(doc, primitive, editFillRule);
       });
     }
   }
@@ -1626,7 +1618,7 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
   ImGui::SameLine();
   ImGui::BeginDisabled(!acceptsNewPrimitives);
   if (ImGui::Button("Create##CreatePrimitive")) {
-    transactUndoableAction(doc, funcText, createPrimitiveFromGhost);
+    transact(doc, funcText, [&] { createPrimitiveFromGhost(doc); });
   }
   ImGui::EndDisabled();
 }
@@ -1661,11 +1653,10 @@ void renderEditCirclePolygon(editor::Document* doc, bw::core::Primitive* primiti
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
     resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
 
-    transactUndoableAction(doc, format("Set Circle Resolution to {}", resolution), [circle, resolution](editor::Document* doc) {
+    transact(doc, format("Set Circle Resolution to {}", resolution), [&] {
       auto staticBefore = circle->isStatic();
 
       circle->setResolution(resolution);
-      return true;
     });
   }
 }
@@ -1682,11 +1673,10 @@ void renderEditCircleSegmentPolygon(editor::Document* doc, bw::core::Primitive* 
   if (ImGui::InputFloat("ArcLength##EditPrimitive", &arcLength, 1.0f, 5.0f)) {
     arcLength = clamp(arcLength, ED_MIN_ARC_LENGTH, ED_MAX_ARC_LENGTH);
 
-    transactUndoableAction(doc, format("Set Circle Segment Arc Length to {}", arcLength), [circleSeg, arcLength, resolution](editor::Document* doc) {
+    transact(doc, format("Set Circle Segment Arc Length to {}", arcLength), [&] {
       auto staticBefore = circleSeg->isStatic();
 
       circleSeg->setArcLength(arcLength);
-      return true;
     });
   }
 
@@ -1695,9 +1685,8 @@ void renderEditCircleSegmentPolygon(editor::Document* doc, bw::core::Primitive* 
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
     resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
 
-    transactUndoableAction(doc, format("Set Circle Segment Resolution to {}", resolution), [circleSeg, resolution](editor::Document* doc) {
+    transact(doc, format("Set Circle Segment Resolution to {}", resolution), [&] {
       circleSeg->setResolution(resolution);
-      return true;
     });
   }
 }
@@ -1728,9 +1717,8 @@ void renderEditTorusPolygon(editor::Document* doc, bw::core::Primitive* primitiv
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
     resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
 
-    transactUndoableAction(doc, format("Set Torus Resolution to {}", resolution), [torus, resolution](editor::Document* doc) {
+    transact(doc, format("Set Torus Resolution to {}", resolution), [&] {
       torus->setResolution(resolution);
-      return true;
     });
   }
 }
@@ -1762,11 +1750,10 @@ void renderEditTorusSegmentPolygon(editor::Document* doc, bw::core::Primitive* p
   if (ImGui::InputFloat("ArcLength##EditPrimitive", &arcLength, 1.0f, 5.0f)) {
     arcLength = clamp(arcLength, ED_MIN_ARC_LENGTH, ED_MAX_ARC_LENGTH);
 
-    transactUndoableAction(doc, format("Set Torus Segment Arc Length to {}", arcLength), [torusSeg, arcLength, resolution](editor::Document* doc) {
+    transact(doc, format("Set Torus Segment Arc Length to {}", arcLength), [&] {
       auto staticBefore = torusSeg->isStatic();
 
       torusSeg->setArcLength(arcLength);
-      return true;
     });
   }
 
@@ -1775,9 +1762,8 @@ void renderEditTorusSegmentPolygon(editor::Document* doc, bw::core::Primitive* p
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
     resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
 
-    transactUndoableAction(doc, format("Set Torus Resolution to {}", resolution), [torusSeg, resolution](editor::Document* doc) {
+    transact(doc, format("Set Torus Resolution to {}", resolution), [&] {
       torusSeg->setResolution(resolution);
-      return true;
     });
   }
 }
@@ -1831,9 +1817,8 @@ void renderEditSuperformulaPolygon(editor::Document* doc, bw::core::Primitive* p
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
     resolution = clamp(resolution, ED_MIN_SUPERFORMULA_RESOLUTION, 1.0f);
 
-    transactUndoableAction(doc, format("Set Superformula Resolution to {}", resolution), [sf, resolution](editor::Document* doc) {
+    transact(doc, format("Set Superformula Resolution to {}", resolution), [&] {
       sf->setResolution(resolution);
-      return true;
     });
   }
 
@@ -1878,9 +1863,7 @@ bool renderEditMeshPrimitive(editor::Document* doc, bw::core::Primitive* primiti
   ImGui::EndDisabled();
   if (decompose) {
     auto index = primitive->getId();
-    transactUndoableAction(
-        doc, "Decompose MeshPrimitive",
-        bind(decomposeMeshPrimitive, placeholders::_1, index));
+    transact(doc, "Decompose MeshPrimitive", [&] { decomposeMeshPrimitive(doc, index); });
   }
   widgets::HelpMarker(
       "Replace this MeshPrimitive with one Union MeshPrimitive per filled "
@@ -1923,8 +1906,8 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(96);
     if (ImGui::Combo("##Op1TransformFlow", &operand0, operandTypes, numOperandTypes)) {
-      transactUndoableAction(doc, "Set Transform Operand 1", [primitive, key, i, operand0](editor::Document* doc) {
-        return setTransformOperand(doc, primitive, key, i, 0, (bw::core::tTransform::OperandType)operand0);
+      transact(doc, "Set Transform Operand 1", [&] {
+        setTransformOperand(doc, primitive, key, i, 0, (bw::core::tTransform::OperandType)operand0);
       });
     }
 
@@ -1937,18 +1920,18 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
     switch ((bw::core::tTransform::OperandType)operand0) {
       case bw::core::tTransform::OperandType::Input:
         if (ImGui::Combo("##In1TransformFlow", &input0, inputTypes, IM_ARRAYSIZE(inputTypes))) {
-          transactUndoableAction(doc, "Set Transform Input 1", [primitive, key, i, input0](editor::Document* doc) {
-            return setTransformInput(doc, primitive, key, i, 0, (bw::core::InputType)input0);
+          transact(doc, "Set Transform Input 1", [&] {
+            setTransformInput(doc, primitive, key, i, 0, (bw::core::InputType)input0);
           });
         }
         break;
 
       case bw::core::tTransform::OperandType::Constant:
         if (ImGui::InputFloat("##Cn1TransformFlow", &constant0, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-          transactUndoableAction(doc, "Set Transform Constant 1", [primitive, key, i, constant0](editor::Document* doc) {
+          transact(doc, "Set Transform Constant 1", [&] {
             // float c = clamp(constant0, ED_MIN_TRANSFORM_CONSTANT, ED_MAX_TRANSFORM_CONSTANT);
             float c = constant0;
-            return setTransformConstant(doc, primitive, key, i, 0, c);
+            setTransformConstant(doc, primitive, key, i, 0, c);
           });
         }
         break;
@@ -1960,9 +1943,9 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
       case bw::core::tTransform::OperandType::Square:
         if (ImGui::InputFloat("##Fn1TransformFlow", &fnMultiplier0, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
           if (fnMultiplier0 > 0.0f) {
-            transactUndoableAction(doc, "Set Transform Function 1", [primitive, key, i, fnMultiplier0](editor::Document* doc) {
+            transact(doc, "Set Transform Function 1", [&] {
               float c = fnMultiplier0;
-              return setTransformFnMultiplier(doc, primitive, key, i, 0, c);
+              setTransformFnMultiplier(doc, primitive, key, i, 0, c);
             });
           }
         }
@@ -1972,9 +1955,9 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
       case bw::core::tTransform::OperandType::TriggerLineRed:
       case bw::core::tTransform::OperandType::TriggerLineBlue:
         if (ImGui::InputInt("##Tr1TransformFlow", &index0, 1, 10, ImGuiInputTextFlags_EnterReturnsTrue)) {
-          transactUndoableAction(doc, "Set Transform Index 1", [primitive, key, i, index0](editor::Document* doc) {
+          transact(doc, "Set Transform Index 1", [&] {
             uint32_t i0 = max(0, index0);
-            return setTransformTriggerLine(doc, primitive, key, i, 0, i0);
+            setTransformTriggerLine(doc, primitive, key, i, 0, i0);
           });
         }
         break;
@@ -1993,8 +1976,8 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(64);
     if (ImGui::Combo("##OpTransformFlow", &operation, opTypes, IM_ARRAYSIZE(opTypes))) {
-      transactUndoableAction(doc, "Set Transform Operation", [primitive, key, i, operation](editor::Document* doc) {
-        return setTransformOperation(doc, primitive, key, i, (bw::core::tTransform::Operation)operation);
+      transact(doc, "Set Transform Operation", [&] {
+        setTransformOperation(doc, primitive, key, i, (bw::core::tTransform::Operation)operation);
       });
     }
 
@@ -2005,8 +1988,8 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(96);
     if (ImGui::Combo("##Op2TransformFlow", &operand1, operandTypes, numOperandTypes)) {
-      transactUndoableAction(doc, "Set Transform Operand 1", [primitive, key, i, operand1](editor::Document* doc) {
-        return setTransformOperand(doc, primitive, key, i, 1, (bw::core::tTransform::OperandType)operand1);
+      transact(doc, "Set Transform Operand 1", [&] {
+        setTransformOperand(doc, primitive, key, i, 1, (bw::core::tTransform::OperandType)operand1);
       });
     }
 
@@ -2019,19 +2002,19 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
     switch ((bw::core::tTransform::OperandType)operand1) {
       case bw::core::tTransform::OperandType::Input:
         if (ImGui::Combo("##In2TransformFlow", &input1, inputTypes, IM_ARRAYSIZE(inputTypes))) {
-          transactUndoableAction(doc, "Set Transform Input 2", [primitive, key, i, input1](editor::Document* doc) {
-            return setTransformInput(doc, primitive, key, i, 1, (bw::core::InputType)input1);
+          transact(doc, "Set Transform Input 2", [&] {
+            setTransformInput(doc, primitive, key, i, 1, (bw::core::InputType)input1);
           });
         }
         break;
 
       case bw::core::tTransform::OperandType::Constant:
         if (ImGui::InputFloat("##Cn2TransformFlow", &constant1, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-          transactUndoableAction(doc, "Set Transform Constant 2", [primitive, key, i, constant1](editor::Document* doc) {
+          transact(doc, "Set Transform Constant 2", [&] {
             // float c = clamp(constant1, ED_MIN_TRANSFORM_CONSTANT, ED_MAX_TRANSFORM_CONSTANT);
             float c = constant1;
 
-            return setTransformConstant(doc, primitive, key, i, 1, c);
+            setTransformConstant(doc, primitive, key, i, 1, c);
           });
         }
         break;
@@ -2043,9 +2026,9 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
       case bw::core::tTransform::OperandType::Square:
         if (ImGui::InputFloat("##Fn2TransformFlow", &fnMultiplier1, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
           if (fnMultiplier1 > 0.0f) {
-            transactUndoableAction(doc, "Set Transform Function 2", [primitive, key, i, fnMultiplier1](editor::Document* doc) {
+            transact(doc, "Set Transform Function 2", [&] {
               float c = fnMultiplier1;
-              return setTransformFnMultiplier(doc, primitive, key, i, 1, c);
+              setTransformFnMultiplier(doc, primitive, key, i, 1, c);
             });
           }
         }
@@ -2055,9 +2038,9 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
       case bw::core::tTransform::OperandType::TriggerLineRed:
       case bw::core::tTransform::OperandType::TriggerLineBlue:
         if (ImGui::InputInt("##Tr2TransformFlow", &index1, 1, 10, ImGuiInputTextFlags_EnterReturnsTrue)) {
-          transactUndoableAction(doc, "Set Transform Index 2", [primitive, key, i, index1](editor::Document* doc) {
+          transact(doc, "Set Transform Index 2", [&] {
             uint32_t i1 = max(0, index1);
-            return setTransformTriggerLine(doc, primitive, key, i, 1, i1);
+            setTransformTriggerLine(doc, primitive, key, i, 1, i1);
           });
         }
         break;
@@ -2090,27 +2073,23 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
     ImGui::PopButtonRepeat();
 
     if (counter < 0) {
-      transactUndoableAction(doc, format("Swap {} Transforms", keyName),
-                             bind(swapTransforms, placeholders::_1, primitive, key, i, i - 1));
+      transact(doc, format("Swap {} Transforms", keyName), [&] { swapTransforms(doc, primitive, key, i, i - 1); });
 
     } else if (counter > 0) {
-      transactUndoableAction(doc, format("Swap {} Transforms", keyName),
-                             bind(swapTransforms, placeholders::_1, primitive, key, i, i + 1));
+      transact(doc, format("Swap {} Transforms", keyName), [&] { swapTransforms(doc, primitive, key, i, i + 1); });
     }
 
     ImGui::SameLine();
 
     if (ImGui::Button(ICON_FA_ERASER)) {
-      transactUndoableAction(doc, format("Remove {} Transform", keyName),
-                             bind(removeTransform, placeholders::_1, primitive, key, i));
+      transact(doc, format("Remove {} Transform", keyName), [&] { removeTransform(doc, primitive, key, i); });
     }
 
     ImGui::PopID();
   }
 
   if (ImGui::Button(ICON_FA_PLUS)) {
-    transactUndoableAction(doc, format("Add {} Transform", keyName),
-                           bind(addTransform, placeholders::_1, primitive, key));
+    transact(doc, format("Add {} Transform", keyName), [&] { addTransform(doc, primitive, key); });
   }
 }
 
@@ -2238,9 +2217,9 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
     // So we may need to update the segments
     if (nPoints > (int)numPoints) {
       auto const& p = imPoints[editPoint];
-      transactUndoableAction(doc, format("Add {} Point at {:.2f}", name, p.x), bind(addKeyToInterpolator, placeholders::_1, lerperType, primitive, key, p.x, p.y));
+      transact(doc, format("Add {} Point at {:.2f}", name, p.x), [&] { addKeyToInterpolator(doc, lerperType, primitive, key, p.x, p.y); });
     } else if (nPoints < (int)numPoints) {
-      transactUndoableAction(doc, format("Remove {} Point {}", name, editPoint), bind(removeKeyFromInterpolator, placeholders::_1, lerperType, primitive, key, editPoint));
+      transact(doc, format("Remove {} Point {}", name, editPoint), [&] { removeKeyFromInterpolator(doc, lerperType, primitive, key, editPoint); });
     } else {
       wp::Vector2 editValue = {imPoints[editPoint].x, imPoints[editPoint].y};
 
@@ -2305,8 +2284,8 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
       ImGui::SetNextItemWidth(128);
       int curEasing = (int)segment.easing;
       if (ImGui::Combo("###Interpolator", &curEasing, easingsStr.c_str(), 6)) {
-        transactUndoableAction(doc, "Set Interpolator Segment Easing", [lerperType, primitive, key, i, curEasing](editor::Document* doc) {
-          return setInterpolatorEasing(doc, lerperType, primitive, key, i, (bw::core::Easing)curEasing);
+        transact(doc, "Set Interpolator Segment Easing", [&] {
+          setInterpolatorEasing(doc, lerperType, primitive, key, i, (bw::core::Easing)curEasing);
         });
       }
 
@@ -2341,10 +2320,9 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
         inputValues[2] = clamp(inputValues[2], scaleMin.x, scaleMax.x);
         inputValues[3] = clamp(inputValues[3], scaleMin.y, scaleMax.y);
 
-        transactUndoableAction(doc, "Update Points", [lerperType, primitive, key, i, inputValues](Document* doc) {
+        transact(doc, "Update Points", [&] {
           updateAnimationKeyInInterpolator(doc, lerperType, primitive, key, i, inputValues[0], inputValues[1]);
           updateAnimationKeyInInterpolator(doc, lerperType, primitive, key, i + 1, inputValues[2], inputValues[3]);
-          return true;
         });
       }
 
@@ -2359,7 +2337,7 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
   ImGui::PopID();
 
   if (pointToRemove != -1) {
-    transactUndoableAction(doc, format("Remove {} Point {}", lerperType, pointToRemove), bind(removeKeyFromInterpolator, placeholders::_1, lerperType, primitive, key, (uint32_t)pointToRemove));
+    transact(doc, format("Remove {} Point {}", lerperType, pointToRemove), [&] { removeKeyFromInterpolator(doc, lerperType, primitive, key, (uint32_t)pointToRemove); });
   }
 }
 
@@ -2417,8 +2395,8 @@ void renderValueCapture(editor::Document* doc, bw::core::Primitive* primitive, b
   int selectedMode = (int)primitive->getCaptureMode(key);
   if (ImGui::Combo("Capture mode", &selectedMode, captureModesStr.c_str(), 6)) {
     auto mode = (bw::core::ValueCaptureMode)selectedMode;
-    transactUndoableAction(doc, "Set Capture Mode", [primitive, key, mode](editor::Document* doc) {
-      return setPrimitiveCaptureMode(doc, primitive, key, mode);
+    transact(doc, "Set Capture Mode", [&] {
+      setPrimitiveCaptureMode(doc, primitive, key, mode);
     });
   }
 }
@@ -2430,8 +2408,8 @@ void renderAnimatedPropertyEvents(editor::Document* doc, bw::core::Primitive* pr
   ImGui::SameLine();
 
   if (ImGui::Button(ICON_FA_PLUS)) {
-    transactUndoableAction(doc, "Add Animated Property Event", [primitive, key](editor::Document* doc) {
-      return addPrimitiveAnimatedPropertyEvent(doc, primitive, key, 1, bw::core::AnimatedPropertyEventTriggerType::UpDown, 0.5f);
+    transact(doc, "Add Animated Property Event", [&] {
+      addPrimitiveAnimatedPropertyEvent(doc, primitive, key, 1, bw::core::AnimatedPropertyEventTriggerType::UpDown, 0.5f);
     });
   }
 
@@ -2477,7 +2455,7 @@ void renderAnimatedPropertyEvents(editor::Document* doc, bw::core::Primitive* pr
     int triggerType = (int)event.triggerType;
 
     if (ImGui::Combo("Trigger", &triggerType, triggerTypesStr.c_str(), 6)) {
-      transactUndoableAction(doc, "Set Primitive Event Trigger", bind(setPrimitiveAnimatedPropertyEvent, placeholders::_1, primitive, key, i, event.eventType, (bw::core::AnimatedPropertyEventTriggerType)triggerType, event.value));
+      transact(doc, "Set Primitive Event Trigger", [&] { setPrimitiveAnimatedPropertyEvent(doc, primitive, key, i, event.eventType, (bw::core::AnimatedPropertyEventTriggerType)triggerType, event.value); });
     }
 
     ImGui::SameLine();
@@ -2488,7 +2466,7 @@ void renderAnimatedPropertyEvents(editor::Document* doc, bw::core::Primitive* pr
     int eventType = (int)log2(event.eventType);  // eventType is a bitmask, not an index
 
     if (ImGui::Combo("Action", &eventType, eventTypesStr.c_str(), 6)) {
-      transactUndoableAction(doc, "Set Primitive Event Action", bind(setPrimitiveAnimatedPropertyEvent, placeholders::_1, primitive, key, i, 1 << eventType, event.triggerType, event.value));
+      transact(doc, "Set Primitive Event Action", [&] { setPrimitiveAnimatedPropertyEvent(doc, primitive, key, i, 1 << eventType, event.triggerType, event.value); });
     }
 
     ImGui::SameLine();
@@ -2498,12 +2476,12 @@ void renderAnimatedPropertyEvents(editor::Document* doc, bw::core::Primitive* pr
     ImGui::SetNextItemWidth(64);
     float value = event.value;
     if (ImGui::InputFloat("Value", &value, 0.0f, 0.0f, "%.1f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-      transactUndoableAction(doc, "Set Primitive Event Value", bind(setPrimitiveAnimatedPropertyEvent, placeholders::_1, primitive, key, i, event.eventType, event.triggerType, value));
+      transact(doc, "Set Primitive Event Value", [&] { setPrimitiveAnimatedPropertyEvent(doc, primitive, key, i, event.eventType, event.triggerType, value); });
     }
   }
 
   if (indexToDelete >= 0) {
-    transactUndoableAction(doc, "Delete Primitive Event", bind(deletePrimitiveAnimatedPropertyEvent, placeholders::_1, primitive, key, (uint32_t)indexToDelete));
+    transact(doc, "Delete Primitive Event", [&] { deletePrimitiveAnimatedPropertyEvent(doc, primitive, key, (uint32_t)indexToDelete); });
   }
 }
 
@@ -2559,7 +2537,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   ImGui::SameLine();
   if (ImGui::Button(ICON_FA_CLONE)) {
     auto index = primitive->getId();
-    transactUndoableAction(doc, format("Clone&Rotate Primitive {}", index), bind(cloneRotatedPrimitive, placeholders::_1, index, wp::MathsUtils::degrees(copyAngle)));
+    transact(doc, format("Clone&Rotate Primitive {}", index), [&] { cloneRotatedPrimitive(doc, index, wp::MathsUtils::degrees(copyAngle)); });
   }
 
   ImGui::Separator();
@@ -2619,8 +2597,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   if (ImGui::InputFloat2("Position##EditPrimitive", pPosition)) {
     wp::Vector2 position{pPosition[0], pPosition[1]};
 
-    transactUndoableAction(doc, "Set Primitive Position",
-                           bind(setPrimitivePosition, placeholders::_1, primitive, position));
+    transact(doc, "Set Primitive Position", [&] { setPrimitivePosition(doc, primitive, position); });
   }
 
   wp::Vector2 const& primitiveTransformOrigin = primitive->getTransformOffset();
@@ -2638,8 +2615,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
     // };
     wp::Vector2 transformOrigin = {pTransformOrigin[0], pTransformOrigin[1]};
 
-    transactUndoableAction(doc, "Set Primitive Transform Offset",
-                           bind(setPrimitiveTransformOffset, placeholders::_1, primitive, transformOrigin));
+    transact(doc, "Set Primitive Transform Offset", [&] { setPrimitiveTransformOffset(doc, primitive, transformOrigin); });
   }
 
   wp::Vector2 primitiveInfluenceOriginOffset = primitive->getInfluenceEyeOriginOffset();
@@ -2653,8 +2629,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   if (ImGui::InputFloat2("Influence Origin Offset##EditPrimitive", pInfluenceOriginOffset)) {
     wp::Vector2 influenceOriginOffset{pInfluenceOriginOffset[0], pInfluenceOriginOffset[1]};
 
-    transactUndoableAction(doc, "Set Primitive Influence Origin Offset",
-                           bind(setPrimitiveInfluenceOriginOffset, placeholders::_1, primitive, influenceOriginOffset));
+    transact(doc, "Set Primitive Influence Origin Offset", [&] { setPrimitiveInfluenceOriginOffset(doc, primitive, influenceOriginOffset); });
   }
 
   if (primitive->getType() == "Regular") {
@@ -2688,8 +2663,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
     // setPrimitiveFollowOrbitAngle already applies the value inside the
     // transaction, which then regenerates. Setting it again out here would
     // land after that regeneration snapshotted its input.
-    transactUndoableAction(doc, action,
-                           bind(setPrimitiveFollowOrbitAngle, placeholders::_1, primitive, orientOrbitAngle));
+    transact(doc, action, [&] { setPrimitiveFollowOrbitAngle(doc, primitive, orientOrbitAngle); });
   }
 
   widgets::HelpMarker("Normally, angle from player to a primitive is taken with 0 degrees being [0, 1].  This value adds an offset (in degrees to that angle).");
@@ -2765,10 +2739,7 @@ void renderPrimitiveBuildStep(editor::Document* doc, bw::core::Primitive* primit
     for (auto target : targets) {
       auto const label = stepLabel(target);
       if (ImGui::Selectable(label.c_str(), false)) {
-        transactUndoableAction(
-            doc, format("Move Primitive to Layer Step {}", target),
-            bind(movePrimitiveToLayerBuildStep, placeholders::_1, layer,
-                 primitive, target));
+        transact(doc, format("Move Primitive to Layer Step {}", target), [&] { movePrimitiveToLayerBuildStep(doc, layer, primitive, target); });
       }
     }
     ImGui::EndCombo();
@@ -2789,9 +2760,8 @@ void renderEditPrimitiveSettings(editor::Document* doc, bw::core::Primitive* pri
   auto f2 = ImGui::CheckboxFlags("Calculate exact bounds based on vertex position", &flags, BW_PRIMITIVE_EXACT_BOUNDS_FLAG);
 
   if (f0 || f1 || f2) {
-    transactUndoableAction(doc, "Update Primitive flags", [primitive, flags](Document* doc) {
+    transact(doc, "Update Primitive flags", [&] {
       primitive->setFlags((uint32_t)flags);
-      return true;
     });
   }
 
@@ -2803,9 +2773,8 @@ void renderEditPrimitiveSettings(editor::Document* doc, bw::core::Primitive* pri
 
   if (ImGui::InputFloat("Time update distance", &timeUpdateDist, 0.0f, 0.0f, "%.1f", ImGuiInputTextFlags_EnterReturnsTrue)) {
     if (timeUpdateDist >= 0.0f) {
-      transactUndoableAction(doc, "Update Primitive Time Update distance", [primitive, timeUpdateDist](Document* doc) {
+      transact(doc, "Update Primitive Time Update distance", [&] {
         primitive->setTimeUpdateDistance(timeUpdateDist);
-        return true;
       });
     }
   }
@@ -3043,11 +3012,9 @@ bool renderSubMaterialPicker(
         auto const id = pickerState.pendingId;
         if (id != *subMaterialId) {
           *subMaterialId = id;
-          transactUndoableAction(
-              doc, format("Set {} Sub-material", label),
-              [primitive, surface, id](editor::Document* actionDoc) {
-                return setPrimitiveSubMaterial(actionDoc, primitive, surface, id);
-              });
+          transact(doc, format("Set {} Sub-material", label), [&] {
+            setPrimitiveSubMaterial(doc, primitive, surface, id);
+          });
         }
         ImGui::CloseCurrentPopup();
       }
@@ -3087,8 +3054,8 @@ bool renderSubMaterialPicker(
     state.deletionReport = subMaterialDeletionBlockedReason(doc, id);
     if (state.deletionReport.empty()) {
       transactUndoableActionAtomically(
-          doc, "Delete Sub-material", [id](Document* actionDoc) {
-            return deleteSubMaterial(actionDoc, &procMaterialLibrary(), id);
+          doc, "Delete Sub-material", [id](Document* doc) {
+            return deleteSubMaterial(doc, &procMaterialLibrary(), id);
           });
       if (*subMaterialId == id) subMaterialId->clear();
     }
@@ -3110,13 +3077,13 @@ bool renderSubMaterialPicker(
       auto materialIndex = state.materialIndex;
       string createdId;
       transactUndoableActionAtomically(
-          doc, "Create Sub-material", [&](Document* actionDoc) {
-            if (!createSubMaterial(actionDoc, &procMaterialLibrary(), resourceName,
+          doc, "Create Sub-material", [&](Document* doc) {
+            if (!createSubMaterial(doc, &procMaterialLibrary(), resourceName,
                                    name, materialIndex, params, colour, chip,
                                    &createdId)) {
               return false;
             }
-            return setPrimitiveSubMaterial(actionDoc, primitive, surface, createdId);
+            return setPrimitiveSubMaterial(doc, primitive, surface, createdId);
           });
       *subMaterialId = createdId;
       ImGui::CloseCurrentPopup();
@@ -3136,10 +3103,10 @@ bool renderSubMaterialPicker(
       auto colour = state.colour;
       auto chip = state.chip;
       transactUndoableActionAtomically(
-          doc, "Edit Sub-material", [&](Document* actionDoc) {
-            renameSubMaterial(actionDoc, &procMaterialLibrary(), id, name);
+          doc, "Edit Sub-material", [&](Document* doc) {
+            renameSubMaterial(doc, &procMaterialLibrary(), id, name);
             return editSubMaterial(
-                actionDoc, &procMaterialLibrary(), id, params, colour, chip);
+                doc, &procMaterialLibrary(), id, params, colour, chip);
           });
       ImGui::CloseCurrentPopup();
     }
@@ -3528,12 +3495,10 @@ void renderEmbossPresetPanel(
           format("Preset##{}", label).c_str(), &selected, items.c_str(), 8)) {
     auto id = selected == 0 ? string{} : presets[selected - 1].id;
     *presetId = id;
-    transactUndoableAction(
-        doc, format("Set {} Emboss preset", label),
-        [primitive, surface, id](Document* actionDoc) {
-          return setPrimitiveEmbossPreset(
-              actionDoc, primitive, surface, id);
-        });
+    transact(doc, format("Set {} Emboss preset", label), [&] {
+      setPrimitiveEmbossPreset(
+          doc, primitive, surface, id);
+    });
     loadEmbossPresetPanel(state, id);
   }
 
@@ -3552,11 +3517,11 @@ void renderEmbossPresetPanel(
     auto name = string(state.name);
     auto emboss = state.emboss;
     if (transactUndoableActionAtomically(
-            doc, "Save Emboss preset", [&](Document* actionDoc) {
+            doc, "Save Emboss preset", [&](Document* doc) {
               renameEmbossPreset(
-                  actionDoc, &embossingCatalogLibrary(), id, name);
+                  doc, &embossingCatalogLibrary(), id, name);
               return editEmbossPreset(
-                  actionDoc, &embossingCatalogLibrary(), id, emboss);
+                  doc, &embossingCatalogLibrary(), id, emboss);
             })) {
       reloadAuthoredEmbossingCatalog();
       loadEmbossPresetPanel(state, id);
@@ -3569,14 +3534,14 @@ void renderEmbossPresetPanel(
     auto emboss = state.emboss;
     string createdId;
     if (transactUndoableActionAtomically(
-            doc, "Save new Emboss preset", [&](Document* actionDoc) {
+            doc, "Save new Emboss preset", [&](Document* doc) {
               if (!createEmbossPreset(
-                      actionDoc, &embossingCatalogLibrary(), name, emboss,
+                      doc, &embossingCatalogLibrary(), name, emboss,
                       &createdId)) {
                 return false;
               }
               return setPrimitiveEmbossPreset(
-                  actionDoc, primitive, surface, createdId);
+                  doc, primitive, surface, createdId);
             })) {
       *presetId = createdId;
       reloadAuthoredEmbossingCatalog();
@@ -3696,9 +3661,8 @@ void renderEditPrimitiveProperties(editor::Document* doc, bw::core::Primitive* p
 
   // Update
   if (updateProperties) {
-    transactUndoableAction(doc, "Update Primitive properties", [primitive, properties](editor::Document* doc) {
+    transact(doc, "Update Primitive properties", [&] {
       primitive->setProperties(properties);
-      return true;
     });
   }
 }
@@ -3706,9 +3670,7 @@ void renderEditPrimitiveProperties(editor::Document* doc, bw::core::Primitive* p
 void renderEditPrimitiveAudioEmitters(
     editor::Document* doc, bw::core::Primitive* primitive) {
   if (ImGui::Button("Add emitter")) {
-    transactUndoableAction(
-        doc, "Add AudioEmitter",
-        bind(addPrimitiveAudioEmitter, placeholders::_1, primitive));
+    transact(doc, "Add AudioEmitter", [&] { addPrimitiveAudioEmitter(doc, primitive); });
   }
 
   auto const emitters = primitive->getAudioEmitters();
@@ -3718,9 +3680,7 @@ void renderEditPrimitiveAudioEmitters(
     ImGui::SeparatorText(format("Emitter {}", i).c_str());
 
     if (ImGui::Button("Delete")) {
-      transactUndoableAction(
-          doc, format("Delete AudioEmitter {}", i),
-          bind(deletePrimitiveAudioEmitter, placeholders::_1, primitive, i));
+      transact(doc, format("Delete AudioEmitter {}", i), [&] { deletePrimitiveAudioEmitter(doc, primitive, i); });
       ImGui::PopID();
       break;
     }
@@ -3728,29 +3688,20 @@ void renderEditPrimitiveAudioEmitters(
     float offset[2]{emitter.offset.x, emitter.offset.y};
     ImGui::SetNextItemWidth(192.0f);
     if (ImGui::InputFloat2("Offset", offset)) {
-      transactUndoableAction(
-          doc, format("Set AudioEmitter {} offset", i),
-          bind(setPrimitiveAudioEmitterOffset, placeholders::_1, primitive, i,
-               wp::Vector2{offset[0], offset[1]}));
+      transact(doc, format("Set AudioEmitter {} offset", i), [&] { setPrimitiveAudioEmitterOffset(doc, primitive, i, wp::Vector2{offset[0], offset[1]}); });
     }
 
     auto floorOffset = emitter.heightOffset;
     ImGui::SetNextItemWidth(128.0f);
     if (ImGui::InputFloat("Floor offset", &floorOffset)) {
-      transactUndoableAction(
-          doc, format("Set AudioEmitter {} floor offset", i),
-          bind(setPrimitiveAudioEmitterHeightOffset, placeholders::_1,
-               primitive, i, floorOffset));
+      transact(doc, format("Set AudioEmitter {} floor offset", i), [&] { setPrimitiveAudioEmitterHeightOffset(doc, primitive, i, floorOffset); });
     }
 
     auto soundId = emitter.soundId;
     ImGui::SetNextItemWidth(256.0f);
     if (widgets::InputText(
             "soundId", &soundId, ImGuiInputTextFlags_EnterReturnsTrue)) {
-      transactUndoableAction(
-          doc, format("Set AudioEmitter {} soundId", i),
-          bind(setPrimitiveAudioEmitterSoundId, placeholders::_1, primitive,
-               i, soundId));
+      transact(doc, format("Set AudioEmitter {} soundId", i), [&] { setPrimitiveAudioEmitterSoundId(doc, primitive, i, soundId); });
     }
 
     ImGui::PopID();
@@ -3879,8 +3830,8 @@ void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings)
     if (!isGhost || settings.ghostActive) {
       if (ImGui::Button(ICON_FA_HAND_POINTER)) {
         auto selectId = primitive->getId();
-        auto f = bind(editor::selectPrimitive, placeholders::_1, selectId);
-        editor::transactUndoableAction(doc, format("Select Primitive {}", selectId), f);
+        editor::transact(doc, format("Select Primitive {}", selectId),
+                         [&] { editor::selectPrimitive(doc, selectId); });
       }
     }
 
@@ -3920,19 +3871,17 @@ void renderPrimitiveOrderView(editor::Document* doc, editor::Settings& settings)
 
       if (counter < 0) {
         auto prevPrim = primitives[i - 1];
-        transactUndoableAction(doc, "Swap Primitive Priorities", [primitive, prevPrim](editor::Document* doc) {
+        transact(doc, "Swap Primitive Priorities", [&] {
           auto prevPriority = prevPrim->getPriority();
           prevPrim->setPriority(primitive->getPriority());
           primitive->setPriority(prevPriority);
-          return true;
         });
       } else if (counter > 0) {
         auto nextPrim = primitives[i + 1];
-        transactUndoableAction(doc, "Swap Primitive Priorities", [primitive, nextPrim](editor::Document* doc) {
+        transact(doc, "Swap Primitive Priorities", [&] {
           auto nextPriority = nextPrim->getPriority();
           nextPrim->setPriority(primitive->getPriority());
           primitive->setPriority(nextPriority);
-          return true;
         });
       }
 
@@ -4103,10 +4052,7 @@ void renderRunScriptParameters(
     }
 
     if (changed) {
-      transactUndoableAction(
-          doc, format("Set RunScript Param {}", definition.name),
-          bind(setRunScriptParameterValue, placeholders::_1, layer, step,
-               definition.name, value));
+      transact(doc, format("Set RunScript Param {}", definition.name), [&] { setRunScriptParameterValue(doc, layer, step, definition.name, value); });
     }
 
     bool const hasSerializedValue =
@@ -4114,10 +4060,7 @@ void renderRunScriptParameters(
     ImGui::SameLine();
     ImGui::BeginDisabled(!hasSerializedValue);
     if (ImGui::SmallButton("Revert to resource default")) {
-      transactUndoableAction(
-          doc, format("Revert RunScript Param {}", definition.name),
-          bind(clearRunScriptParameterValue, placeholders::_1, layer, step,
-               definition.name));
+      transact(doc, format("Revert RunScript Param {}", definition.name), [&] { clearRunScriptParameterValue(doc, layer, step, definition.name); });
     }
     ImGui::EndDisabled();
     ImGui::PopID();
@@ -4135,10 +4078,7 @@ void renderRunScriptView(
     if (auto* renderSystem = editorRenderSystem();
         renderSystem && renderSystem->loadLuaScript(*selected, &error)) {
       scriptErrors[step].clear();
-      transactUndoableAction(
-          doc, "Select RunScript Lua Script",
-          bind(setRunScriptScriptName, placeholders::_1, layer, step,
-               *selected));
+      transact(doc, "Select RunScript Lua Script", [&] { setRunScriptScriptName(doc, layer, step, *selected); });
     } else {
       scriptErrors[step] = error.empty() ? "Could not load the Lua script." : error;
     }
@@ -4189,16 +4129,12 @@ void renderRunScriptView(
   if (ImGui::InputScalar(
           "Seed", ImGuiDataType_U64, &seed, nullptr, nullptr, nullptr,
           ImGuiInputTextFlags_EnterReturnsTrue)) {
-    transactUndoableAction(
-        doc, "Set RunScript Seed",
-        bind(setRunScriptSeed, placeholders::_1, layer, step, seed));
+    transact(doc, "Set RunScript Seed", [&] { setRunScriptSeed(doc, layer, step, seed); });
   }
   ImGui::SameLine();
   if (ImGui::Button("Reroll")) {
     static mt19937_64 randomSeed{random_device{}()};
-    transactUndoableAction(
-        doc, "Reroll RunScript Seed",
-        bind(setRunScriptSeed, placeholders::_1, layer, step, randomSeed()));
+    transact(doc, "Reroll RunScript Seed", [&] { setRunScriptSeed(doc, layer, step, randomSeed()); });
   }
 
   ImGui::SeparatorText("Extra resources");
@@ -4228,20 +4164,14 @@ void renderRunScriptView(
     if (ImGui::IsItemDeactivatedAfterEdit()) {
       auto names = extraResources;
       names[i] = extraState.fields[i].data();
-      transactUndoableAction(
-          doc, "Edit RunScript Extra Resource",
-          bind(setRunScriptExtraResourceNames, placeholders::_1, layer, step,
-               names));
+      transact(doc, "Edit RunScript Extra Resource", [&] { setRunScriptExtraResourceNames(doc, layer, step, names); });
       listChanged = true;
     }
     ImGui::SameLine();
     if (!listChanged && ImGui::Button(ICON_FA_TRASH "##RemoveExtraResource")) {
       auto names = extraResources;
       names.erase(names.begin() + i);
-      transactUndoableAction(
-          doc, "Remove RunScript Extra Resource",
-          bind(setRunScriptExtraResourceNames, placeholders::_1, layer, step,
-               names));
+      transact(doc, "Remove RunScript Extra Resource", [&] { setRunScriptExtraResourceNames(doc, layer, step, names); });
       listChanged = true;
     }
     ImGui::PopID();
@@ -4259,10 +4189,7 @@ void renderRunScriptView(
       auto names = extraResources;
       names.emplace_back(extraState.adding.data());
       extraState.adding.front() = '\0';
-      transactUndoableAction(
-          doc, "Add RunScript Extra Resource",
-          bind(setRunScriptExtraResourceNames, placeholders::_1, layer, step,
-               names));
+      transact(doc, "Add RunScript Extra Resource", [&] { setRunScriptExtraResourceNames(doc, layer, step, names); });
     }
     ImGui::EndDisabled();
   }
@@ -4343,7 +4270,7 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
     ImGui::SameLine();
 
     if (widgets::ToggleButton("##StepEnabled", "Enabled", &enabled)) {
-      transactUndoableAction(doc, format("Toggle Layer Step {}", i), bind(setLayerBuildStepEnabled, placeholders::_1, layer, i, enabled));
+      transact(doc, format("Toggle Layer Step {}", i), [&] { setLayerBuildStepEnabled(doc, layer, i, enabled); });
     }
 
     auto& [nameModel, name] = stepNameStates[step];
@@ -4355,10 +4282,7 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
     ImGui::InputTextWithHint(
         "Step name", "Optional script lookup name", name.data(), name.size());
     if (ImGui::IsItemDeactivatedAfterEdit()) {
-      transactUndoableAction(
-          doc, format("Rename Layer Step {}", i),
-          bind(setLayerBuildStepName, placeholders::_1, layer, i,
-               string(name.data())));
+      transact(doc, format("Rename Layer Step {}", i), [&] { setLayerBuildStepName(doc, layer, i, string(name.data())); });
     }
 
     if (i != 0) {
@@ -4369,7 +4293,7 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
       // arrow is omitted rather than offered and rejected.
       if (i > 1) {
         if (ImGui::ArrowButton("##StepUp", ImGuiDir_Up)) {
-          transactUndoableAction(doc, format("Move Layer Step {}", i), bind(moveLayerBuildStep, placeholders::_1, layer, i, i - 1));
+          transact(doc, format("Move Layer Step {}", i), [&] { moveLayerBuildStep(doc, layer, i, i - 1); });
           listChanged = true;
         }
         ImGui::SameLine();
@@ -4377,7 +4301,7 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
 
       if (!listChanged && i < numSteps - 1) {
         if (ImGui::ArrowButton("##StepDown", ImGuiDir_Down)) {
-          transactUndoableAction(doc, format("Move Layer Step {}", i), bind(moveLayerBuildStep, placeholders::_1, layer, i, i + 1));
+          transact(doc, format("Move Layer Step {}", i), [&] { moveLayerBuildStep(doc, layer, i, i + 1); });
           listChanged = true;
         }
         ImGui::SameLine();
@@ -4386,7 +4310,7 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
       ImGui::PopButtonRepeat();
 
       if (!listChanged && ImGui::Button(ICON_FA_TRASH "##RemoveLayerStep")) {
-        transactUndoableAction(doc, format("Remove Layer Step {}", i), bind(removeLayerBuildStep, placeholders::_1, layer, i));
+        transact(doc, format("Remove Layer Step {}", i), [&] { removeLayerBuildStep(doc, layer, i); });
         listChanged = true;
       }
     }
@@ -4426,9 +4350,7 @@ void renderLayerStepsView(editor::Document* doc, editor::Settings& settings) {
 
   ImGui::SameLine();
   if (ImGui::Button("Add Step") && !selectedStepType.empty()) {
-    transactUndoableAction(
-        doc, "Add Layer Step",
-        bind(addLayerBuildStep, placeholders::_1, layer, selectedStepType));
+    transact(doc, "Add Layer Step", [&] { addLayerBuildStep(doc, layer, selectedStepType); });
   }
 }
 
@@ -4503,10 +4425,7 @@ void renderPrefabsView(
       editingPrefab = prefab;
     }
     if (editingPrefab == prefab && ImGui::IsItemDeactivatedAfterEdit()) {
-      transactUndoableAction(
-          doc, "Rename Prefab",
-          bind(renamePrefab, placeholders::_1, layer, step, prefab,
-               string(name)));
+      transact(doc, "Rename Prefab", [&] { renamePrefab(doc, layer, step, prefab, string(name)); });
     }
     if (ImGui::IsItemDeactivated()) {
       editingPrefab = nullptr;
@@ -4526,10 +4445,7 @@ void renderPrefabsView(
         ImGui::BeginDisabled(!reason.empty());
         if (ImGui::Selectable(label.c_str(), size == currentSize) &&
             size != currentSize) {
-          transactUndoableAction(
-              doc, "Set Prefab Tile Size",
-              bind(setPrefabTileSize, placeholders::_1, layer, step, prefab,
-                   size));
+          transact(doc, "Set Prefab Tile Size", [&] { setPrefabTileSize(doc, layer, step, prefab, size); });
         }
         ImGui::EndDisabled();
         if (!reason.empty() &&
@@ -4544,9 +4460,7 @@ void renderPrefabsView(
     auto blockedReason = prefabDeletionBlockedReason(layer, step, prefab);
     ImGui::BeginDisabled(!blockedReason.empty());
     if (ImGui::Button(ICON_FA_TRASH "##DeletePrefab")) {
-      transactUndoableAction(
-          doc, "Delete Prefab",
-          bind(deletePrefab, placeholders::_1, layer, step, prefab));
+      transact(doc, "Delete Prefab", [&] { deletePrefab(doc, layer, step, prefab); });
       listChanged = true;
     }
     ImGui::EndDisabled();
@@ -4562,9 +4476,7 @@ void renderPrefabsView(
   }
 
   if (ImGui::Button("Create Prefab")) {
-    transactUndoableAction(
-        doc, "Create Prefab",
-        bind(createPrefab, placeholders::_1, layer, step));
+    transact(doc, "Create Prefab", [&] { createPrefab(doc, layer, step); });
   }
 
   ImGui::Separator();
@@ -4577,10 +4489,7 @@ void renderPrefabsView(
     for (auto const& definition : prefabTilingGuideDefinitions()) {
       bool selected = tilingType == definition.type;
       if (ImGui::Selectable(definition.name.data(), selected) && !selected) {
-        transactUndoableAction(
-            doc, "Set Prefab Tiling Type",
-            bind(setPrefabTilingType, placeholders::_1, layer, step,
-                 definition.type));
+        transact(doc, "Set Prefab Tiling Type", [&] { setPrefabTilingType(doc, layer, step, definition.type); });
       }
     }
     ImGui::EndCombo();
@@ -4607,10 +4516,7 @@ void renderSelectedPrefabView(
     editingPrefab = prefab;
   }
   if (editingPrefab == prefab && ImGui::IsItemDeactivatedAfterEdit()) {
-    transactUndoableAction(
-        doc, "Set Prefab Tags",
-        bind(setPrefabTags, placeholders::_1, layer, step, prefab,
-             parsePrefabTags(text)));
+    transact(doc, "Set Prefab Tags", [&] { setPrefabTags(doc, layer, step, prefab, parsePrefabTags(text)); });
   }
   if (ImGui::IsItemDeactivated()) {
     editingPrefab = nullptr;
@@ -4708,8 +4614,7 @@ void renderPrefabFieldView(
     for (uint32_t i = 0; i < layer->getNumSteps(); ++i) {
       auto* candidate = dynamic_cast<bw::core::DefinePrefabs*>(layer->getStep(i));
       if (candidate && ImGui::Selectable(format("{} :: DefinePrefabs", i).c_str())) {
-        transactUndoableAction(doc, "Bind PrefabField",
-                               bind(bindPrefabField, placeholders::_1, layer, field, candidate));
+        transact(doc, "Bind PrefabField", [&] { bindPrefabField(doc, layer, field, candidate); });
       }
     }
     return;
@@ -4765,11 +4670,7 @@ void renderPrefabFieldView(
     if (instance && tile.size != bw::core::PrefabTileSize::Size256) {
       bool add = instance->mode == bw::core::TileMode::Add;
       if (ImGui::Checkbox("Add", &add)) {
-        transactUndoableAction(
-            doc, "Set Prefab Tile Mode",
-            bind(setPrefabInstanceMode, placeholders::_1, layer, field, tile,
-                 add ? bw::core::TileMode::Add
-                     : bw::core::TileMode::Replace));
+        transact(doc, "Set Prefab Tile Mode", [&] { setPrefabInstanceMode(doc, layer, field, tile, add ? bw::core::TileMode::Add : bw::core::TileMode::Replace); });
       }
     }
   }
@@ -4779,11 +4680,10 @@ void renderCreateTriggerLineView(editor::Document* doc, editor::Settings& settin
   auto world = doc->getWorld();
 
   if (ImGui::Button("Create at ghost##CreateTriggerLine")) {
-    transactUndoableAction(doc, "Create Trigger Line##CreateTriggerLine", [world](editor::Document*) {
+    transact(doc, "Create Trigger Line##CreateTriggerLine", [&] {
       auto ghost = world->getPrimitive(0);
       world->addTriggerLine(new bw::core::WorldTriggerLine(
           ghost->getPosition() - wp::Vector2(100, 0), ghost->getPosition() + wp::Vector2(100, 0)));
-      return true;
     });
   }
 }
@@ -4807,8 +4707,8 @@ void renderEditTriggerLineView(editor::Document* doc, editor::Settings& settings
 
   if (ImGui::Combo("Side##EditTriggerLine", &selectedSide, "Red\0Blue\0Both\0\0", 6)) {
     auto side = (bw::core::WorldTriggerLineSide)selectedSide;
-    transactUndoableAction(doc, "Set Trigger Line Side", [triggerLine, side](editor::Document* doc) {
-      return setTriggerLineSide(doc, triggerLine, side);
+    transact(doc, "Set Trigger Line Side", [&] {
+      setTriggerLineSide(doc, triggerLine, side);
     });
   }
 }
@@ -5082,15 +4982,9 @@ void renderPrefabTopologyMetadata(
     auto metadata = toMetadata();
     if (!metadata) return;
     if (edge) {
-      transactUndoableAction(
-          doc, "Set Prefab Edge Metadata",
-          bind(setMeshEdgeMetadata, placeholders::_1, topologyIndex,
-               *metadata));
+      transact(doc, "Set Prefab Edge Metadata", [&] { setMeshEdgeMetadata(doc, topologyIndex, *metadata); });
     } else {
-      transactUndoableAction(
-          doc, "Set Prefab Vertex Metadata",
-          bind(setMeshVertexMetadata, placeholders::_1, topologyIndex,
-               *metadata));
+      transact(doc, "Set Prefab Vertex Metadata", [&] { setMeshVertexMetadata(doc, topologyIndex, *metadata); });
     }
   };
 
@@ -5195,18 +5089,12 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     float y = position.y;
     ImGui::SetNextItemWidth(112);
     if (ImGui::InputFloat("X##MeshVertexPosition", &x)) {
-      transactUndoableAction(
-          doc, "Set Mesh Vertex X Position",
-          bind(setMeshVertexPosition, placeholders::_1, vertexIndex,
-               wp::Vector2{x, position.y}));
+      transact(doc, "Set Mesh Vertex X Position", [&] { setMeshVertexPosition(doc, vertexIndex, wp::Vector2{x, position.y}); });
     }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(112);
     if (ImGui::InputFloat("Y##MeshVertexPosition", &y)) {
-      transactUndoableAction(
-          doc, "Set Mesh Vertex Y Position",
-          bind(setMeshVertexPosition, placeholders::_1, vertexIndex,
-               wp::Vector2{position.x, y}));
+      transact(doc, "Set Mesh Vertex Y Position", [&] { setMeshVertexPosition(doc, vertexIndex, wp::Vector2{position.x, y}); });
     }
 
     ImGui::SameLine();
@@ -5216,10 +5104,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
             Settings::MeshSubMode::Vertex, indices) > 0;
     ImGui::BeginDisabled(!canDelete);
     if (ImGui::Button(ICON_FA_TRASH "##DeleteSelectedMeshVertex")) {
-      transactUndoableAction(
-          doc, "Delete Mesh Vertex",
-          bind(deleteMeshSubObjects, placeholders::_1,
-               Settings::MeshSubMode::Vertex, indices));
+      transact(doc, "Delete Mesh Vertex", [&] { deleteMeshSubObjects(doc, Settings::MeshSubMode::Vertex, indices); });
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -5271,18 +5156,13 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
         optional<bool> value = collisionOption == 0
                                    ? nullopt
                                    : optional<bool>{collisionOption == 1};
-        transactUndoableAction(
-            doc, "Set Mesh Edge Collision Override",
-            bind(setMeshEdgeCollisionOverride, placeholders::_1,
-                 edgeIndex, value));
+        transact(doc, "Set Mesh Edge Collision Override", [&] { setMeshEdgeCollisionOverride(doc, edgeIndex, value); });
       }
     }
     if (doc->isActiveMeshEdgeVisibilityEditable(edgeIndex)) {
       auto visible = doc->getActiveMeshEdgeVisible(edgeIndex);
       if (ImGui::Checkbox("Visible##SelectedMeshEdge", &visible)) {
-        transactUndoableAction(
-            doc, "Set Mesh Edge Visible",
-            bind(setMeshEdgeVisible, placeholders::_1, edgeIndex, visible));
+        transact(doc, "Set Mesh Edge Visible", [&] { setMeshEdgeVisible(doc, edgeIndex, visible); });
       }
     }
 
@@ -5345,10 +5225,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
           manager->createResource(resource);
           manager->loadResource(resource);
         }
-        if (!transactUndoableActionAtomically(
-                doc, "Set Mesh Edge Wall Normal Map",
-                bind(setMeshEdgeNormalMapOverride, placeholders::_1, edgeIndex,
-                     value))) {
+        if (!transactUndoableActionAtomically(doc, "Set Mesh Edge Wall Normal Map", [&](Document* doc) { return setMeshEdgeNormalMapOverride(doc, edgeIndex, value); })) {
           normalMapError = "The selected edge cannot accept a wall normal map.";
         } else {
           string dependencyError;
@@ -5488,10 +5365,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
                 "The image does not have the selected channel.");
           }
         }
-        if (!transactUndoableActionAtomically(
-                doc, "Set Mesh Edge Wall Mask",
-                bind(setMeshEdgeWallMaskOverride, placeholders::_1, edgeIndex,
-                     value))) {
+        if (!transactUndoableActionAtomically(doc, "Set Mesh Edge Wall Mask", [&](Document* doc) { return setMeshEdgeWallMaskOverride(doc, edgeIndex, value); })) {
           wallMaskError = "The selected edge cannot accept a wall mask.";
         } else {
           string dependencyError;
@@ -5640,9 +5514,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
     }
 
     if (ImGui::Button("Split##SelectedMeshEdge")) {
-      transactUndoableAction(
-          doc, "Split Mesh Edge",
-          bind(splitMeshEdges, placeholders::_1, indices));
+      transact(doc, "Split Mesh Edge", [&] { splitMeshEdges(doc, indices); });
     }
     ImGui::SameLine();
     auto canDelete =
@@ -5650,10 +5522,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
             Settings::MeshSubMode::Edge, indices) > 0;
     ImGui::BeginDisabled(!canDelete);
     if (ImGui::Button(ICON_FA_TRASH "##DeleteSelectedMeshEdge")) {
-      transactUndoableAction(
-          doc, "Delete Mesh Edge",
-          bind(deleteMeshSubObjects, placeholders::_1,
-               Settings::MeshSubMode::Edge, indices));
+      transact(doc, "Delete Mesh Edge", [&] { deleteMeshSubObjects(doc, Settings::MeshSubMode::Edge, indices); });
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -5664,7 +5533,7 @@ void renderMeshView(editor::Document* doc, editor::Settings& settings) {
   }
 
   if (ImGui::Button("Recentre mesh")) {
-    transactUndoableAction(doc, "Recentre Mesh", recentreActiveMesh);
+    transact(doc, "Recentre Mesh", [&] { recentreActiveMesh(doc); });
   }
   widgets::HelpMarker(
       "Restores the relationship between the Primitive's position/size and its geometry.");
@@ -5847,13 +5716,11 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (settings.mode == Settings::Mode::Mesh) {
         if (doc->getActiveMesh()) {
-          transactUndoableAction(
-              doc, "Select All Mesh Sub-objects",
-              bind(selectAllMeshSubObjects, placeholders::_1, settings.meshSubMode));
+          transact(doc, "Select All Mesh Sub-objects", [&] { selectAllMeshSubObjects(doc, settings.meshSubMode); });
         }
       } else if (doc->isActive()) {
         auto indices = doc->getSelectablePrimitiveIndices(settings);
-        transactUndoableAction(doc, "Select All", bind(selectPrimitives, placeholders::_1, set<uint32_t>(indices.begin(), indices.end())));
+        transact(doc, "Select All", [&] { selectPrimitives(doc, set<uint32_t>(indices.begin(), indices.end())); });
       }
     }
   }
@@ -5862,7 +5729,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (doc->hasSelection() &&
           (settings.mode != Settings::Mode::Mesh || doc->getActiveMesh())) {
-        transactUndoableAction(doc, "Clear Selections", clearSelections);
+        transact(doc, "Clear Selections", [&] { clearSelections(doc); });
       }
     }
   }
@@ -5922,9 +5789,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
                     settings.meshSubMode == Settings::MeshSubMode::Vertex ? "Vertex(es)"
                     : settings.meshSubMode == Settings::MeshSubMode::Edge ? "Edge(s)"
                                                                           : "Polygon(s)";
-                transactUndoableAction(
-                    doc, format("Delete {} Mesh {}", previewCount, subObjectLabel),
-                    bind(deleteMeshSubObjects, placeholders::_1, settings.meshSubMode, indices));
+                transact(doc, format("Delete {} Mesh {}", previewCount, subObjectLabel), [&] { deleteMeshSubObjects(doc, settings.meshSubMode, indices); });
               }
             }
           }
@@ -5932,13 +5797,13 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
           auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
 
           if (!primitiveIndices.empty()) {
-            transactUndoableAction(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), bind(deletePrimitives, placeholders::_1, primitiveIndices));
+            transact(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), [&] { deletePrimitives(doc, primitiveIndices); });
           }
 
           auto triggerLineIndex = doc->getSelectedTriggerLineIndex();
 
           if (triggerLineIndex != ~0u) {
-            transactUndoableAction(doc, "Delete TriggerLine", bind(deleteTriggerLine, placeholders::_1, triggerLineIndex));
+            transact(doc, "Delete TriggerLine", [&] { deleteTriggerLine(doc, triggerLineIndex); });
           }
         }
       }
@@ -5956,9 +5821,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
           doc->getActiveMesh() && selectedRings.size() == 1 &&
           doc->getActiveMesh()->getPolygon(*selectedRings.begin()).isHole()) {
         auto holeRing = *selectedRings.begin();
-        transactUndoableAction(
-            doc, "Fill Mesh Hole",
-            bind(fillMeshHole, placeholders::_1, holeRing));
+        transact(doc, "Fill Mesh Hole", [&] { fillMeshHole(doc, holeRing); });
       } else {
         doc->armMeshDrawTool(settings);
       }
@@ -5992,9 +5855,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
           if (!indices.empty()) {
             auto previewCount = doc->previewMeshEdgeSplitCount(indices);
             if (previewCount > 0) {
-              transactUndoableAction(
-                  doc, format("Split {} Mesh Edge(s)", previewCount),
-                  bind(splitMeshEdges, placeholders::_1, indices));
+              transact(doc, format("Split {} Mesh Edge(s)", previewCount), [&] { splitMeshEdges(doc, indices); });
             }
           }
         }
@@ -6009,7 +5870,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
         uint32_t index = *indices.begin();
 
         auto prim = doc->getWorld()->getPrimitive(index);
-        transactUndoableAction(doc, format("Decrease Primitive priority", index), bind(decreasePrimitivePriority, placeholders::_1, prim));
+        transact(doc, format("Decrease Primitive priority", index), [&] { decreasePrimitivePriority(doc, prim); });
       }
     }
   }
@@ -6021,7 +5882,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
         uint32_t index = *indices.begin();
 
         auto prim = doc->getWorld()->getPrimitive(index);
-        transactUndoableAction(doc, format("Increase Primitive priority", index), bind(increasePrimitivePriority, placeholders::_1, prim));
+        transact(doc, format("Increase Primitive priority", index), [&] { increasePrimitivePriority(doc, prim); });
       }
     }
   }
@@ -6030,7 +5891,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (doc->hasSelection() && !doc->getSelectedPrimitiveIndices().empty()) {
         auto const& indices = doc->getSelectedPrimitiveIndices();
-        transactUndoableAction(doc, format("Bake {} Primitive(s)", indices.size()), bind(bakePrimitives, placeholders::_1, indices));
+        transact(doc, format("Bake {} Primitive(s)", indices.size()), [&] { bakePrimitives(doc, indices); });
       }
     }
   }
@@ -6135,7 +5996,7 @@ void handleShortcuts(editor::Document* doc, editor::Settings& settings) {
       ImGui::Shortcut(ImGuiKey_C, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive() &&
         doc->getWorld()->getActiveLayer()->getActiveStep()->acceptsNewPrimitives()) {
-      transactUndoableAction(doc, format("Create {} Primitive", doc->getGhost()->getType()), createPrimitiveFromGhost);
+      transact(doc, format("Create {} Primitive", doc->getGhost()->getType()), [&] { createPrimitiveFromGhost(doc); });
     }
   }
 }

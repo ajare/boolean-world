@@ -29,6 +29,8 @@ void beginUndoableAction(Document* doc, std::string const& id, UndoableActionFun
 
 void commitUndoableAction(Document* doc, std::string const& id = "");
 
+void transact(Document* doc, std::string const& name, std::function<void()> const& body);
+
 void transactUndoableAction(Document* doc, std::string const& id, UndoableActionFunction func);
 
 // Executes immediately and records the snapshot only when the function

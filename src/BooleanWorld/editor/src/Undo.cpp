@@ -249,6 +249,13 @@ void commitUndoableAction(Document* doc, string const& id) {
   regenerateWorldData(doc);
 }
 
+void transact(Document* doc, string const& name, function<void()> const& body) {
+  transactUndoableAction(doc, name, [&](Document*) {
+    body();
+    return true;
+  });
+}
+
 void transactUndoableAction(Document* doc, string const& id, UndoableActionFunction func) {
   beginUndoableAction(doc, id, func, numeric_limits<float>::quiet_NaN());
   commitUndoableAction(doc);

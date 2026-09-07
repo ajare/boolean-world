@@ -396,13 +396,11 @@ void renderEmbossEditor(PreviewPrimitive& previewPrimitive) {
   ImGui::SetNextItemWidth(280.0f);
   if (ImGui::Combo("Emboss preset", &selected, items.c_str(), 8)) {
     auto id = selected == 0 ? std::string{} : presets[selected - 1].id;
-    transactUndoableAction(
-        session.document, "Set preview surface Emboss preset",
-        [&](Document* actionDoc) {
-          return setPrimitiveEmbossPreset(
-              actionDoc, previewPrimitive.source,
-              materialSurface(session.selection.surface), id);
-        });
+    transact(session.document, "Set preview surface Emboss preset", [&] {
+      setPrimitiveEmbossPreset(
+          session.document, previewPrimitive.source,
+          materialSurface(session.selection.surface), id);
+    });
     rebuildPreviewForSurfaceEdit();
     loadEmbossDraft(id);
   }
@@ -422,11 +420,11 @@ void renderEmbossEditor(PreviewPrimitive& previewPrimitive) {
     auto emboss = state.emboss;
     if (transactUndoableActionAtomically(
             session.document, "Save Emboss preset",
-            [&](Document* actionDoc) {
+            [&](Document* doc) {
               renameEmbossPreset(
-                  actionDoc, &embossingCatalogLibrary(), id, name);
+                  doc, &embossingCatalogLibrary(), id, name);
               return editEmbossPreset(
-                  actionDoc, &embossingCatalogLibrary(), id, emboss);
+                  doc, &embossingCatalogLibrary(), id, emboss);
             })) {
       reconcileSavedEmbossingCatalog();
       loadEmbossDraft(id);
@@ -439,14 +437,14 @@ void renderEmbossEditor(PreviewPrimitive& previewPrimitive) {
     std::string createdId;
     if (transactUndoableActionAtomically(
             session.document, "Save new Emboss preset",
-            [&](Document* actionDoc) {
+            [&](Document* doc) {
               if (!createEmbossPreset(
-                      actionDoc, &embossingCatalogLibrary(), name, emboss,
+                      doc, &embossingCatalogLibrary(), name, emboss,
                       &createdId)) {
                 return false;
               }
               return setPrimitiveEmbossPreset(
-                  actionDoc, previewPrimitive.source,
+                  doc, previewPrimitive.source,
                   materialSurface(session.selection.surface), createdId);
             })) {
       reconcileSavedEmbossingCatalog();
@@ -545,13 +543,11 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
 
     if (clicked && !selected) {
       auto const id = material.id;
-      transactUndoableAction(
-          session.document, "Set preview surface Sub-material",
-          [&](Document* actionDoc) {
-            return setPrimitiveSubMaterial(
-                actionDoc, previewPrimitive.source,
-                materialSurface(session.selection.surface), id);
-          });
+      transact(session.document, "Set preview surface Sub-material", [&] {
+        setPrimitiveSubMaterial(
+            session.document, previewPrimitive.source,
+            materialSurface(session.selection.surface), id);
+      });
       rebuildPreviewForSurfaceEdit();
       loadMaterialDraft(id);
     }
@@ -592,11 +588,11 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       auto chip = state.chip;
       if (transactUndoableActionAtomically(
               session.document, "Save Sub-material",
-              [&](Document* actionDoc) {
+              [&](Document* doc) {
                 renameSubMaterial(
-                    actionDoc, &procMaterialLibrary(), id, name);
+                    doc, &procMaterialLibrary(), id, name);
                 return editSubMaterial(
-                    actionDoc, &procMaterialLibrary(), id, params, colour,
+                    doc, &procMaterialLibrary(), id, params, colour,
                     chip);
               })) {
         reconcileSavedProcMaterial(catalog.resourceName);
@@ -614,14 +610,14 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       std::string createdId;
       if (transactUndoableActionAtomically(
               session.document, "Save new Sub-material",
-              [&](Document* actionDoc) {
+              [&](Document* doc) {
                 if (!createSubMaterial(
-                        actionDoc, &procMaterialLibrary(), resourceName, name,
+                        doc, &procMaterialLibrary(), resourceName, name,
                         materialIndex, params, colour, chip, &createdId)) {
                   return false;
                 }
                 return setPrimitiveSubMaterial(
-                    actionDoc, previewPrimitive.source,
+                    doc, previewPrimitive.source,
                     materialSurface(session.selection.surface), createdId);
               })) {
         reconcileSavedProcMaterial(resourceName);
@@ -782,11 +778,9 @@ void updateSelectedSurfaceFromInput(bool acceptKeyboard) {
     return;
   }
 
-  transactUndoableAction(
-      session.document, "Move preview surface",
-      [primitive, &moved](Document* actionDoc) {
-        return setPrimitiveProperties(actionDoc, primitive, moved);
-      });
+  transact(session.document, "Move preview surface", [&] {
+    setPrimitiveProperties(session.document, primitive, moved);
+  });
   rebuildPreviewForSurfaceEdit();
 }
 

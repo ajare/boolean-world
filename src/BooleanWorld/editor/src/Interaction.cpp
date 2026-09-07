@@ -91,20 +91,13 @@ void EditorInteraction::applyPrimitiveClick(
   auto hoveredIndex = hoveredIndices[mCycledPrimitiveIndex];
 
   if (control) {
-    transactUndoableAction(
-        doc, "Toggle Primitive " + to_string(hoveredIndex),
-        bind(togglePrimitiveSelected, placeholders::_1, hoveredIndex));
+    transact(doc, "Toggle Primitive " + to_string(hoveredIndex), [&] { togglePrimitiveSelected(doc, hoveredIndex); });
   } else if (shift) {
     if (!doc->indexInSelection(hoveredIndex)) {
-      transactUndoableAction(
-          doc, "Add Primitive " + to_string(hoveredIndex) + " To Selection",
-          bind(addPrimitivesToSelection, placeholders::_1,
-               set<uint32_t>{hoveredIndex}));
+      transact(doc, "Add Primitive " + to_string(hoveredIndex) + " To Selection", [&] { addPrimitivesToSelection(doc, set<uint32_t>{hoveredIndex}); });
     }
   } else if (selection != set<uint32_t>{hoveredIndex}) {
-    transactUndoableAction(
-        doc, "Select Primitive " + to_string(hoveredIndex),
-        bind(selectPrimitive, placeholders::_1, hoveredIndex));
+    transact(doc, "Select Primitive " + to_string(hoveredIndex), [&] { selectPrimitive(doc, hoveredIndex); });
   }
 }
 
@@ -126,19 +119,13 @@ void EditorInteraction::applyMeshSubObjectClick(
   auto const& selection = doc->getSelectedMeshSubObjectIndices(subMode);
 
   if (control) {
-    transactUndoableAction(
-        doc, "Toggle Mesh Sub-object " + to_string(index),
-        bind(toggleMeshSubObjectsSelected, placeholders::_1, subMode, indices));
+    transact(doc, "Toggle Mesh Sub-object " + to_string(index), [&] { toggleMeshSubObjectsSelected(doc, subMode, indices); });
   } else if (shift) {
     if (!selection.contains(index)) {
-      transactUndoableAction(
-          doc, "Add Mesh Sub-object " + to_string(index) + " To Selection",
-          bind(addMeshSubObjectsToSelection, placeholders::_1, subMode, indices));
+      transact(doc, "Add Mesh Sub-object " + to_string(index) + " To Selection", [&] { addMeshSubObjectsToSelection(doc, subMode, indices); });
     }
   } else if (selection != indices) {
-    transactUndoableAction(
-        doc, "Select Mesh Sub-object " + to_string(index),
-        bind(selectMeshSubObjects, placeholders::_1, subMode, indices));
+    transact(doc, "Select Mesh Sub-object " + to_string(index), [&] { selectMeshSubObjects(doc, subMode, indices); });
   }
 }
 
@@ -188,15 +175,9 @@ void EditorInteraction::updateSelection(
         auto tile = prefabField->tileAt(*layer, input.worldPosition);
         prefabField->selectTile(tile);
         if (input.shift) {
-          (void)transactUndoableActionAtomically(
-              doc, "Place Add Prefab Instance",
-              bind(placePrefabInstanceWithMode, placeholders::_1, layer,
-                   prefabField, tile, bw::core::TileMode::Add));
+          (void)transactUndoableActionAtomically(doc, "Place Add Prefab Instance", [&](Document* doc) { return placePrefabInstanceWithMode(doc, layer, prefabField, tile, bw::core::TileMode::Add); });
         } else {
-          (void)transactUndoableActionAtomically(
-              doc, "Place Replace Prefab Instance",
-              bind(placePrefabInstanceWithMode, placeholders::_1, layer,
-                   prefabField, tile, bw::core::TileMode::Replace));
+          (void)transactUndoableActionAtomically(doc, "Place Replace Prefab Instance", [&](Document* doc) { return placePrefabInstanceWithMode(doc, layer, prefabField, tile, bw::core::TileMode::Replace); });
         }
       } else {
         (void)prefabField->selectOccupiedTileAt(input.worldPosition);
@@ -232,9 +213,7 @@ void EditorInteraction::updateSelection(
               return doc->canCompleteMeshSlice(vertexIndex);
             });
         if (matching != mHover.indices.end()) {
-          transactUndoableAction(
-              doc, "Slice Mesh Ring",
-              bind(sliceMesh, placeholders::_1, *matching));
+          transact(doc, "Slice Mesh Ring", [&] { sliceMesh(doc, *matching); });
         }
       }
     }
@@ -254,8 +233,7 @@ void EditorInteraction::updateSelection(
           input.worldPosition, settings.showGrid, settings.gridSize);
 
       if (doc->meshDrawClickWouldClose(position, settings)) {
-        transactUndoableAction(
-            doc, "Create Mesh Primitive", createMeshPrimitiveFromDrawnRing);
+        transact(doc, "Create Mesh Primitive", [&] { createMeshPrimitiveFromDrawnRing(doc); });
         settings.activeMeshPrimitiveIndex = doc->getActiveMeshPrimitiveIndex();
       } else if (doc->placeMeshDrawVertex(position, settings)) {
         settings.activeMeshPrimitiveIndex = doc->getActiveMeshPrimitiveIndex();
@@ -298,20 +276,17 @@ void EditorInteraction::updateSelection(
           !mHover.indices.empty()) {
         auto edgeIndex = mHover.indices.front();
         auto splitPosition = input.worldPosition;
-        transactUndoableAction(
-            doc, "Split Mesh Edge At Pointer",
-            [&settings, edgeIndex, splitPosition](Document* actionDocument) {
-              auto vertexIndex = actionDocument->splitMeshEdgeAt(
-                  edgeIndex, splitPosition);
-              if (vertexIndex == ~0u) {
-                return false;
-              }
-              setMeshSubMode(
-                  actionDocument, settings, Settings::MeshSubMode::Vertex);
-              actionDocument->setSelectedMeshSubObjectIndices(
-                  Settings::MeshSubMode::Vertex, {vertexIndex});
-              return true;
-            });
+        transact(doc, "Split Mesh Edge At Pointer", [&] {
+          auto vertexIndex = doc->splitMeshEdgeAt(
+              edgeIndex, splitPosition);
+          if (vertexIndex == ~0u) {
+            return;
+          }
+          setMeshSubMode(
+              doc, settings, Settings::MeshSubMode::Vertex);
+          doc->setSelectedMeshSubObjectIndices(
+              Settings::MeshSubMode::Vertex, {vertexIndex});
+        });
         return;
       }
 
@@ -379,26 +354,17 @@ void EditorInteraction::updateSelection(
           wp::BoundingBox(minExtent, maxExtent - minExtent), settings);
       if (indices.empty()) {
         if (!input.control && !input.shift) {
-          transactUndoableAction(doc, "Clear selection", clearSelections);
+          transact(doc, "Clear selection", [&] { clearSelections(doc); });
         }
       } else if (input.control) {
-        transactUndoableAction(
-            doc, "Toggle Mesh Sub-objects In Selection Box",
-            bind(toggleMeshSubObjectsSelected, placeholders::_1,
-                 settings.meshSubMode, indices));
+        transact(doc, "Toggle Mesh Sub-objects In Selection Box", [&] { toggleMeshSubObjectsSelected(doc, settings.meshSubMode, indices); });
       } else if (input.shift) {
-        transactUndoableAction(
-            doc, "Add Mesh Sub-objects In Selection Box",
-            bind(addMeshSubObjectsToSelection, placeholders::_1,
-                 settings.meshSubMode, indices));
+        transact(doc, "Add Mesh Sub-objects In Selection Box", [&] { addMeshSubObjectsToSelection(doc, settings.meshSubMode, indices); });
       } else {
-        transactUndoableAction(
-            doc, "Select Mesh Sub-objects In Selection Box",
-            bind(selectMeshSubObjects, placeholders::_1,
-                 settings.meshSubMode, indices));
+        transact(doc, "Select Mesh Sub-objects In Selection Box", [&] { selectMeshSubObjects(doc, settings.meshSubMode, indices); });
       }
     } else if (!input.control && !input.shift) {
-      transactUndoableAction(doc, "Clear selection", clearSelections);
+      transact(doc, "Clear selection", [&] { clearSelections(doc); });
     }
     return;
   }
@@ -438,15 +404,11 @@ void EditorInteraction::updateSelection(
         break;
 
       case HoverableType::TriggerLine:
-        transactUndoableAction(
-            doc, "Select TriggerLine " + to_string(mHover.indices.front()),
-            bind(selectTriggerLine, placeholders::_1, mHover.indices.front()));
+        transact(doc, "Select TriggerLine " + to_string(mHover.indices.front()), [&] { selectTriggerLine(doc, mHover.indices.front()); });
         break;
 
       case HoverableType::WorldVertex:
-        transactUndoableAction(
-            doc, "Select World Vertex " + to_string(mHover.indices.front()),
-            bind(selectWorldVertex, placeholders::_1, mHover.indices.front()));
+        transact(doc, "Select World Vertex " + to_string(mHover.indices.front()), [&] { selectWorldVertex(doc, mHover.indices.front()); });
         break;
 
       case HoverableType::None:
@@ -486,23 +448,17 @@ void EditorInteraction::updateSelection(
 
       if (!indices.empty()) {
         if (input.control) {
-          transactUndoableAction(
-              doc, "Toggle Primitives In Selection Box",
-              bind(togglePrimitivesSelected, placeholders::_1, indices));
+          transact(doc, "Toggle Primitives In Selection Box", [&] { togglePrimitivesSelected(doc, indices); });
         } else if (input.shift) {
-          transactUndoableAction(
-              doc, "Add Primitives In Selection Box",
-              bind(addPrimitivesToSelection, placeholders::_1, indices));
+          transact(doc, "Add Primitives In Selection Box", [&] { addPrimitivesToSelection(doc, indices); });
         } else {
-          transactUndoableAction(
-              doc, "Select Primitives In Selection Box",
-              bind(selectPrimitives, placeholders::_1, indices));
+          transact(doc, "Select Primitives In Selection Box", [&] { selectPrimitives(doc, indices); });
         }
       } else if (!input.control && !input.shift) {
-        transactUndoableAction(doc, "Clear selection", clearSelections);
+        transact(doc, "Clear selection", [&] { clearSelections(doc); });
       }
     } else if (!input.control && !input.shift) {
-      transactUndoableAction(doc, "Clear selection", clearSelections);
+      transact(doc, "Clear selection", [&] { clearSelections(doc); });
     }
   } else if (!mPendingPrimitiveClick.empty()) {
     auto pending = move(mPendingPrimitiveClick);
@@ -769,13 +725,9 @@ bool EditorInteraction::applyPrefabShortcut(Document* doc, bool place, bool clea
 
   auto tile = field->getSelectedTile();
   if (place && field->getSelectedPrefab(*layer)) {
-    transactUndoableActionAtomically(
-        doc, "Place Prefab Instance",
-        bind(placePrefabInstance, placeholders::_1, layer, field, tile));
+    transactUndoableActionAtomically(doc, "Place Prefab Instance", [&](Document* doc) { return placePrefabInstance(doc, layer, field, tile); });
   } else if (clear) {
-    transactUndoableActionAtomically(
-        doc, "Clear Prefab Instance",
-        bind(clearPrefabInstance, placeholders::_1, layer, field, tile));
+    transactUndoableActionAtomically(doc, "Clear Prefab Instance", [&](Document* doc) { return clearPrefabInstance(doc, layer, field, tile); });
   }
   return true;
 }
@@ -803,9 +755,7 @@ bool EditorInteraction::rotateSelectedPrefabInstance(Document* doc, bool next) {
 
   auto tile = field->getSelectedTile();
   if (!field->getInstance(tile)) return true;
-  transactUndoableActionAtomically(
-      doc, "Rotate Prefab Instance",
-      bind(rotatePrefabInstance, placeholders::_1, layer, field, tile, next));
+  transactUndoableActionAtomically(doc, "Rotate Prefab Instance", [&](Document* doc) { return rotatePrefabInstance(doc, layer, field, tile, next); });
   return true;
 }
 

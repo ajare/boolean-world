@@ -617,9 +617,7 @@ void cancelClonePlacement(Document* doc) {
   // Something else committed our transaction mid-gesture (an edit made from
   // a panel while the clones were in flight), so they are already in the
   // history. Removing them is then an ordinary undoable action of its own.
-  transactUndoableActionAtomically(
-      doc, "Discard Cloned Primitive(s)",
-      bind(deletePrimitives, placeholders::_1, cloneIndices));
+  transactUndoableActionAtomically(doc, "Discard Cloned Primitive(s)", [&](Document* actionDoc) { return deletePrimitives(actionDoc, cloneIndices); });
 }
 
 bool decomposeMeshPrimitive(Document* doc, uint32_t primitiveIndex) {
