@@ -51,6 +51,7 @@
 #include "AudioSimulationOptions.h"
 #include "CpuUpdateProfiler.h"
 #include "PlayerLiquidTraversal.h"
+#include "PlayerSurfaceTraversal.h"
 #include "PlayerVerticalPhysics.h"
 #include "PlayerWallDepenetration.h"
 #include "PlayerTorchShadows.h"
@@ -1108,6 +1109,12 @@ void StatePlayBooleanWorld::updatePreInput(float frameTime) {
 }
 
 void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
+  auto const& traversalStart = getPlayerPhysicalStats();
+  mPlayerTraversalStartPosition = traversalStart.position;
+  mPlayerTraversalStartFeetElevation = traversalStart.feetElevation;
+  mPlayerTraversalStartVerticalVelocity = mPlayerVerticalVelocity;
+  mPlayerTraversalStartValid = mPlayerVerticalHeightInitialized;
+
   // Uses last frame's settled position/feet elevation - this frame's movement
   // has not been computed yet - which is exactly the submersion state that
   // should govern how fast, and by which controls, that movement happens.
@@ -1172,7 +1179,26 @@ void StatePlayBooleanWorld::updateAudio(float frameTime) {
 }
 
 void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
-  auto const& physicalStats = getPlayerPhysicalStats();
+  auto& physicalStats = getPlayerPhysicalStats();
+
+  if (mPlayerTraversalStartValid && mWorldData) {
+    auto traversal = bw::app::evaluatePlayerSurfaceTraversal(
+        *mWorldData, mPlayerTraversalStartPosition, physicalStats.position,
+        mPlayerTraversalStartFeetElevation,
+        mPlayerTraversalStartVerticalVelocity);
+    if (traversal.allowedFraction < 1.0f) {
+      physicalStats.position =
+          mPlayerTraversalStartPosition +
+          (physicalStats.position - mPlayerTraversalStartPosition) *
+              traversal.allowedFraction;
+      mPlayerCollider->_setPosition(physicalStats.position);
+    }
+    if (traversal.supportedFloorElevation) {
+      physicalStats.feetElevation = *traversal.supportedFloorElevation;
+      mPlayerVerticalVelocity = 0.0f;
+    }
+  }
+
   auto location = bw::app::evaluatePlayerLocation(
       *mWorldData, physicalStats.position, BW_PLAYER_RADIUS);
   mPlayerPolygonIndex = location.faceIndex;

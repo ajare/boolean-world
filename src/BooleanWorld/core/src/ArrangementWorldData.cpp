@@ -31,7 +31,7 @@ std::unique_ptr<ImmutableAccelerationGrid> CreateGrid(
       extents.getMinExtent(), size, dimensionsX, dimensionsY, itemBounds);
 }
 
-wp::Vector2 EdgeInteractionPosition(
+std::optional<float> SegmentIntersectionFraction(
     wp::Vector2 const& source,
     wp::Vector2 const& destination,
     wp::Vector2 const& edgeStart,
@@ -39,18 +39,17 @@ wp::Vector2 EdgeInteractionPosition(
   auto movement = destination - source;
   auto edge = edgeEnd - edgeStart;
   auto determinant = movement.x * edge.y - movement.y * edge.x;
-  if (std::abs(determinant) > 1.0e-8f) {
-    auto offset = edgeStart - source;
-    auto alongMovement =
-        (offset.x * edge.y - offset.y * edge.x) / determinant;
-    auto alongEdge =
-        (offset.x * movement.y - offset.y * movement.x) / determinant;
-    if (alongMovement >= 0.0f && alongMovement <= 1.0f &&
-        alongEdge >= 0.0f && alongEdge <= 1.0f) {
-      return source + movement * alongMovement;
-    }
+  if (std::abs(determinant) <= 1.0e-8f) return std::nullopt;
+  auto offset = edgeStart - source;
+  auto alongMovement =
+      (offset.x * edge.y - offset.y * edge.x) / determinant;
+  auto alongEdge =
+      (offset.x * movement.y - offset.y * movement.x) / determinant;
+  if (alongMovement < 0.0f || alongMovement > 1.0f ||
+      alongEdge < 0.0f || alongEdge > 1.0f) {
+    return std::nullopt;
   }
-  return destination.closestPointOnLine(edgeStart, edgeEnd);
+  return alongMovement;
 }
 
 std::optional<float> TriangleHeightAt(
@@ -180,6 +179,16 @@ ArrangementWorldData::ArrangementWorldData(
   auto vertexExtents = VertexGridExtents(
       extents, gridCellSize, mArrangement->vertices);
   mVertexGrid = CreateGrid(vertexExtents, gridCellSize, vertexBounds);
+
+  std::vector<ImmutableAccelerationGrid::ItemBounds> edgeBounds;
+  edgeBounds.reserve(mArrangement->edges.size());
+  for (auto const& edge : mArrangement->edges) {
+    auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
+    auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
+    edgeBounds.push_back({{std::min(a.x, b.x), std::min(a.y, b.y)},
+                          {std::max(a.x, b.x), std::max(a.y, b.y)}});
+  }
+  mEdgeGrid = CreateGrid(extents, gridCellSize, edgeBounds);
 
   std::vector<ImmutableAccelerationGrid::ItemBounds> wallBounds;
   wallBounds.reserve(mWalls.size());
@@ -433,6 +442,60 @@ std::optional<SurfaceSample> ArrangementWorldData::getSurfaceSample(
   return sample;
 }
 
+std::vector<SurfaceTraversalSegment>
+ArrangementWorldData::getSurfaceTraversal(
+    wp::Vector2 const& start,
+    wp::Vector2 const& end) const {
+  auto movement = end - start;
+  if (movement.lengthSq() <= 1.0e-12f) {
+    auto faceIndex = getContainingFaceIndex(start);
+    auto surface = getSurfaceSample(faceIndex, start);
+    return {{0.0f, 1.0f, faceIndex, surface, surface}};
+  }
+
+  wp::Vector2 minExtent{
+      std::min(start.x, end.x), std::min(start.y, end.y)};
+  wp::Vector2 maxExtent{
+      std::max(start.x, end.x), std::max(start.y, end.y)};
+  wp::BoundingBox bounds(minExtent, maxExtent - minExtent);
+  ImmutableAccelerationGrid::IndexCollection candidates;
+  mEdgeGrid->getCandidateItemsInBoundingArea(bounds, candidates);
+
+  std::vector<float> fractions{0.0f, 1.0f};
+  fractions.reserve(candidates.size() + 2);
+  for (auto edgeIndex : candidates) {
+    auto const& edge = mArrangement->edges[edgeIndex];
+    auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
+    auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
+    auto fraction = SegmentIntersectionFraction(start, end, a, b);
+    if (fraction && *fraction > 1.0e-6f && *fraction < 1.0f - 1.0e-6f) {
+      fractions.push_back(*fraction);
+    }
+  }
+  std::sort(fractions.begin(), fractions.end());
+  fractions.erase(
+      std::unique(
+          fractions.begin(), fractions.end(),
+          [](float a, float b) { return std::abs(a - b) <= 1.0e-5f; }),
+      fractions.end());
+
+  std::vector<SurfaceTraversalSegment> result;
+  result.reserve(fractions.size() - 1);
+  for (size_t index = 0; index + 1 < fractions.size(); ++index) {
+    auto begin = fractions[index];
+    auto finish = fractions[index + 1];
+    auto middle = start + movement * ((begin + finish) * 0.5f);
+    auto faceIndex = getContainingFaceIndex(middle);
+    auto beginPosition = start + movement * begin;
+    auto endPosition = start + movement * finish;
+    result.push_back(
+        {begin, finish, faceIndex,
+         getSurfaceSample(faceIndex, beginPosition),
+         getSurfaceSample(faceIndex, endPosition)});
+  }
+  return result;
+}
+
 float ArrangementWorldData::getFloorHeight(
     wp::Vector2 const& position) const {
   auto sample = getSurfaceSample(position);
@@ -524,16 +587,58 @@ std::vector<uint32_t> ArrangementWorldData::getWallsNearForTraversal(
     float radius,
     wp::Vector2 const& sourcePosition,
     bool descending) const {
-  auto sourceFace = getContainingFaceIndex(sourcePosition);
-  auto candidates = getWallsNear(destinationPosition, radius);
+  auto traversal = getSurfaceTraversal(sourcePosition, destinationPosition);
+  auto sourceFaceAt = [&](float fraction) {
+    for (auto const& segment : traversal) {
+      if (fraction <= segment.endFraction + 1.0e-5f) {
+        return segment.faceIndex;
+      }
+    }
+    return getContainingFaceIndex(sourcePosition);
+  };
+
+  auto minExtent = wp::Vector2{
+      std::min(sourcePosition.x, destinationPosition.x) - radius,
+      std::min(sourcePosition.y, destinationPosition.y) - radius};
+  auto maxExtent = wp::Vector2{
+      std::max(sourcePosition.x, destinationPosition.x) + radius,
+      std::max(sourcePosition.y, destinationPosition.y) + radius};
+  wp::BoundingBox sweptBounds(minExtent, maxExtent - minExtent);
+  ImmutableAccelerationGrid::IndexCollection broadCandidates;
+  mWallGrid->getCandidateItemsInBoundingArea(sweptBounds, broadCandidates);
+  struct TraversalCandidate {
+    uint32_t wallIndex;
+    float crossingFraction;
+  };
+  std::vector<TraversalCandidate> candidates;
+  candidates.reserve(broadCandidates.size());
+  for (auto collisionWallIndex : broadCandidates) {
+    auto wallIndex = mCollisionWallIndices[collisionWallIndex];
+    auto orientation =
+        arr::OrientArrangementWall(*mArrangement, mWalls[wallIndex]);
+    auto crossing = SegmentIntersectionFraction(
+        sourcePosition, destinationPosition, orientation.v0, orientation.v1);
+    candidates.push_back(
+        {wallIndex, crossing.value_or(std::numeric_limits<float>::infinity())});
+  }
+  std::ranges::stable_sort(
+      candidates, {}, &TraversalCandidate::crossingFraction);
+
   std::vector<uint32_t> result;
   result.reserve(candidates.size());
-  for (auto wallIndex : candidates) {
+  for (auto const& candidate : candidates) {
+    auto wallIndex = candidate.wallIndex;
     auto const& wall = mWalls[wallIndex];
     auto const& edge = mArrangement->edges[wall.edge];
     auto orientation = arr::OrientArrangementWall(*mArrangement, wall);
-    auto interaction = EdgeInteractionPosition(
+    auto crossingFraction = SegmentIntersectionFraction(
         sourcePosition, destinationPosition, orientation.v0, orientation.v1);
+    auto interaction = crossingFraction
+                           ? sourcePosition +
+                                 (destinationPosition - sourcePosition) *
+                                     *crossingFraction
+                           : destinationPosition.closestPointOnLine(
+                                 orientation.v0, orientation.v1);
     if (wallBlocksTraversalWithoutStepAt(wallIndex, interaction)) {
       result.push_back(wallIndex);
       continue;
@@ -548,6 +653,11 @@ std::vector<uint32_t> ArrangementWorldData::getWallsNearForTraversal(
     // A FloorStep blocks only when the exact crossing rises farther than the
     // player's capability. Sampling both incident faces explicitly avoids the
     // arbitrary side selected by a point-in-triangle query on their edge.
+    auto sourceFace =
+        crossingFraction
+            ? sourceFaceAt(std::max(0.0f, *crossingFraction - 1.0e-5f))
+            : (traversal.empty() ? getContainingFaceIndex(sourcePosition)
+                                 : traversal.back().faceIndex);
     if (sourceFace != edge.face[0] && sourceFace != edge.face[1]) {
       result.push_back(wallIndex);
       continue;

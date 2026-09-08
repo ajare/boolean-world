@@ -36,6 +36,18 @@ struct SurfaceSample {
   arr::ArrangementFace const* face;
 };
 
+// One maximal part of a World-plane movement that lies in a single
+// Arrangement face. Fractions are ordered along start -> end. Endpoint
+// samples are evaluated explicitly in that face, so an Arrangement-edge
+// position never depends on point-location tie breaking.
+struct SurfaceTraversalSegment {
+  float beginFraction;
+  float endFraction;
+  uint32_t faceIndex;
+  std::optional<SurfaceSample> beginSurface;
+  std::optional<SurfaceSample> endSurface;
+};
+
 class BW_API ArrangementWorldData {
   arr::ArrangementResultPtr mArrangement;
   std::vector<arr::ArrangementTriangle> mTriangles;
@@ -52,6 +64,7 @@ class BW_API ArrangementWorldData {
   std::unique_ptr<ImmutableAccelerationGrid> mTriangleGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mFloorWedgeGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mVertexGrid;
+  std::unique_ptr<ImmutableAccelerationGrid> mEdgeGrid;
   std::unique_ptr<ImmutableAccelerationGrid> mWallGrid;
   // Rendered walls rather than colliding ones: sight and light are blocked by
   // what a wall draws, which is a different set from what it stops an actor
@@ -117,6 +130,13 @@ public:
   [[nodiscard]] std::optional<SurfaceSample> getSurfaceSample(
       uint32_t faceIndex,
       wp::Vector2 const& position) const;
+
+  // Splits a movement at every crossed Arrangement edge and returns the
+  // traversed affine face segments in movement order. This is the common
+  // basis for local step, support, and sloped-clearance decisions.
+  [[nodiscard]] std::vector<SurfaceTraversalSegment> getSurfaceTraversal(
+      wp::Vector2 const& start,
+      wp::Vector2 const& end) const;
 
   [[nodiscard]] int32_t getNearestVertexIndex(
       wp::Vector2 const& position,

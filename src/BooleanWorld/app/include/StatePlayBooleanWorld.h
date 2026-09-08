@@ -138,6 +138,15 @@ private:
   // of change while falling - stepping up is a direct, velocity-free rise.
   float mPlayerVerticalVelocity;
 
+  // Captured before entity collision resolves this frame's horizontal move.
+  // The post-entity pass traces the actual resolved chord through ordered
+  // Arrangement faces to follow continuous floors and enforce affine
+  // clearance between edges.
+  wp::Vector2 mPlayerTraversalStartPosition{};
+  float mPlayerTraversalStartFeetElevation{0.0f};
+  float mPlayerTraversalStartVerticalVelocity{0.0f};
+  bool mPlayerTraversalStartValid{false};
+
   // True once PhysicalStats::feetElevation has been snapped to the sampled
   // floor at least once. Until mWorldData exists (early in map load) the floor
   // query falls back to 0, so the first valid reading is a snap, not a fall.
