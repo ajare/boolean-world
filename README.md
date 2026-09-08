@@ -39,10 +39,10 @@ omit `-DBUILD_TESTING=OFF`, then run:
 
     ctest --test-dir build-linux --output-on-failure
 
-The build consumes Willpower and MassivePolyPusher from their standalone Linux
-build trees under `ext/willpower/build` and
-`ext/willpower/ext/massive-poly-pusher/build`. To use already-built dependency
-artifacts without allowing BooleanWorld to update them, add
+The build consumes Willpower and MassivePolyPusher from same-named standalone
+build trees. For `build-linux`, these are `ext/willpower/build-linux` and
+`ext/willpower/ext/massive-poly-pusher/build-linux`. To use already-built
+dependency artifacts without allowing BooleanWorld to update them, add
 `-DBW_BUILD_WILLPOWER=OFF` when configuring.
 
 The pinned Linux FMOD and Steam Audio headers and shared objects are staged
@@ -63,7 +63,7 @@ arguments. Set `BW_ENABLE_FMOD=OFF` only for an intentionally audio-free build.
 
 ### Windows
 
-    RebuildAll.bat Release
+    RebuildAll.bat /config Release
 
 Or invoke CMake directly:
 
@@ -80,21 +80,22 @@ Without it, Studio opens with unrecognised effects on every event.
 
 The generated BooleanWorld solution contains only projects under `src/`.
 Willpower and MassivePolyPusher are consumed as imported binaries from
-Willpower's standalone build tree under `ext/willpower/build`. CMake configures
-and builds Willpower on demand if its libraries are missing; Willpower builds
-its nested MassivePolyPusher dependency in the same tree. The first build takes
-several minutes.
+same-named build trees beneath their checkouts. A BooleanWorld `build-windows`
+tree uses `ext/willpower/build-windows` and
+`ext/willpower/ext/massive-poly-pusher/build-windows`; another build-directory
+name is propagated in the same way. CMake configures and builds Willpower on
+demand if its libraries are missing. The first build takes several minutes.
 
 Pass `-DBW_BUILD_WILLPOWER=OFF` to manage the build yourself. On Linux:
 
-    cmake -S ext/willpower -B ext/willpower/build \
+    cmake -S ext/willpower -B ext/willpower/build-linux \
         -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-    cmake --build ext/willpower/build --parallel
+    cmake --build ext/willpower/build-linux --parallel
 
 On Windows:
 
-    cmake -S ext/willpower -B ext/willpower/build -G "Visual Studio 18 2026" -A x64 -DBUILD_TESTING=OFF
-    cmake --build ext/willpower/build --config Release --parallel
+    cmake -S ext/willpower -B ext/willpower/build-windows -G "Visual Studio 18 2026" -A x64 -DBUILD_TESTING=OFF
+    cmake --build ext/willpower/build-windows --config Release --parallel
 
 `utils`, SDL3, GLEW and yaml-cpp all come from that tree. `vendor/` supplies
 only what MassivePolyPusher does not: spdlog, fmt, concurrencpp, entt, mapbox,

@@ -34,13 +34,20 @@ else()
     unset(_bw_linux_audio_dir)
 endif()
 
+# Keep every generated solution distinguishable by platform while preserving a
+# predictable relationship between the three nested checkouts. For example, a
+# BooleanWorld build-windows tree consumes ext/willpower/build-windows and
+# ext/willpower/ext/massive-poly-pusher/build-windows.
+get_filename_component(BW_BUILD_DIR_NAME "${CMAKE_BINARY_DIR}" NAME)
+if(NOT BW_BUILD_DIR_NAME)
+    message(FATAL_ERROR "Could not determine the BooleanWorld build directory name")
+endif()
 set(BW_WILLPOWER_SOURCE_DIR "${BW_ROOT}/ext/willpower")
-set(BW_WILLPOWER_BUILD_DIR "${BW_WILLPOWER_SOURCE_DIR}/build")
+set(BW_WILLPOWER_BUILD_DIR
+    "${BW_WILLPOWER_SOURCE_DIR}/${BW_BUILD_DIR_NAME}")
 set(BW_MPP_SOURCE_DIR "${BW_WILLPOWER_SOURCE_DIR}/ext/massive-poly-pusher")
-set(BW_MPP_BUILD_DIR "${BW_WILLPOWER_BUILD_DIR}/_deps/massive-poly-pusher-build")
-# MPP's CMake project is configured in BW_MPP_BUILD_DIR but deliberately writes
-# its libraries and DLLs to a stable build directory beside its source tree.
-set(BW_MPP_OUTPUT_DIR "${BW_MPP_SOURCE_DIR}/build")
+set(BW_MPP_BUILD_DIR "${BW_MPP_SOURCE_DIR}/${BW_BUILD_DIR_NAME}")
+set(BW_MPP_OUTPUT_DIR "${BW_MPP_BUILD_DIR}")
 
 function(_bw_willpower_present cfg out_var)
     if(WIN32)
