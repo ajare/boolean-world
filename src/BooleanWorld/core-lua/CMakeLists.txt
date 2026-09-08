@@ -41,6 +41,7 @@ if(BUILD_TESTING)
     bw_target_defaults(boolean_world_lua_script_resource_tests)
     bw_output_dirs(boolean_world_lua_script_resource_tests)
     bw_deploy_runtime_dlls(boolean_world_lua_script_resource_tests)
+    bw_deploy_vendor_dlls(boolean_world_lua_script_resource_tests)
     add_test(NAME boolean_world_lua_script_resource
              COMMAND boolean_world_lua_script_resource_tests)
 

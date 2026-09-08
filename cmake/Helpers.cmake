@@ -1,5 +1,46 @@
 # Shared helpers for the BooleanWorld CMake build.
 
+# add_test(NAME <name> COMMAND <command> [arguments...])
+#
+# On Windows, run every CTest test beneath a statically linked launcher that
+# disables inherited system error UI before the test image is loaded. Putting
+# NonInteractiveErrorMode.cpp in each executable is still useful for CRT
+# reports, but cannot suppress the missing-DLL dialog because that failure
+# occurs before any code in the test executable can run.
+function(add_test)
+    if(NOT WIN32 OR NOT TARGET boolean_world_test_launcher)
+        _add_test(${ARGV})
+        return()
+    endif()
+
+    cmake_parse_arguments(PARSE_ARGV 0 _bw_test "COMMAND_EXPAND_LISTS"
+        "NAME;WORKING_DIRECTORY" "COMMAND;CONFIGURATIONS")
+    if(_bw_test_UNPARSED_ARGUMENTS OR NOT _bw_test_NAME OR NOT _bw_test_COMMAND)
+        message(FATAL_ERROR "Unsupported add_test arguments: ${ARGV}")
+    endif()
+
+    list(GET _bw_test_COMMAND 0 _bw_test_command)
+    if(TARGET "${_bw_test_command}")
+        add_dependencies("${_bw_test_command}" boolean_world_test_launcher)
+        list(REMOVE_AT _bw_test_COMMAND 0)
+        list(PREPEND _bw_test_COMMAND "$<TARGET_FILE:${_bw_test_command}>")
+    endif()
+
+    set(_bw_test_options)
+    if(_bw_test_CONFIGURATIONS)
+        list(APPEND _bw_test_options CONFIGURATIONS ${_bw_test_CONFIGURATIONS})
+    endif()
+    if(_bw_test_WORKING_DIRECTORY)
+        list(APPEND _bw_test_options WORKING_DIRECTORY "${_bw_test_WORKING_DIRECTORY}")
+    endif()
+    if(_bw_test_COMMAND_EXPAND_LISTS)
+        list(APPEND _bw_test_options COMMAND_EXPAND_LISTS)
+    endif()
+    _add_test(NAME "${_bw_test_NAME}"
+        COMMAND "$<TARGET_FILE:boolean_world_test_launcher>" ${_bw_test_COMMAND}
+        ${_bw_test_options})
+endfunction()
+
 # bw_add_header_filter(<target> [include-dir...])
 #
 # Add first-party headers to a target so Visual Studio emits a "Header Files"

@@ -181,6 +181,22 @@ endforeach()
 
 include(Helpers)
 
+# A test executable cannot suppress a missing-DLL dialog itself because its
+# code never starts. CTest therefore launches every Windows test through this
+# dependency-free process, whose error mode is inherited by the child.
+if(BUILD_TESTING AND WIN32)
+    add_executable(boolean_world_test_launcher src/TestLauncher.cpp)
+    target_compile_features(boolean_world_test_launcher PRIVATE cxx_std_20)
+    if(MSVC)
+        set_target_properties(boolean_world_test_launcher PROPERTIES
+            MSVC_RUNTIME_LIBRARY
+                "MultiThreaded$<$<CONFIG:Debug,MemCheck>:Debug>")
+    endif()
+    bw_output_dirs(boolean_world_test_launcher)
+    set_target_properties(boolean_world_test_launcher PROPERTIES
+        FOLDER "TestCases")
+endif()
+
 # concurrencpp is built from its pinned source submodule, rather than linked
 # from vendor/. EXCLUDE_FROM_ALL keeps it out of unrelated builds; targets that
 # link concurrencpp::concurrencpp bring it in transitively.
