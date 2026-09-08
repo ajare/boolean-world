@@ -411,16 +411,21 @@ float materialField(vec2 p, int type)
            (1.0 - smoothstep(0.03, 0.17, tendril)) * 0.48;
 }
 
-vec3 perturbHorizontalNormal(
-    vec2 p, vec3 normal, int type, float field, float strength)
+vec3 perturbSurfaceNormal(
+    vec2 p, vec3 normal, vec3 surfaceUp, vec3 axisU, vec3 axisV,
+    int type, float field, float strength)
 {
     const float epsilon = 0.024;
     vec2 gradient = vec2(
         materialField(p + vec2(epsilon, 0.0), type) - field,
         materialField(p + vec2(0.0, epsilon), type) - field) / epsilon;
-    float facing = normal.y < 0.0 ? -1.0 : 1.0;
-    return normalize(normal - vec3(gradient.x, 0.0, gradient.y) *
-                     strength * facing);
+    // materialField's derivative is expressed in the Surface frame. Lift it
+    // through that frame rather than treating its components as World X/Z.
+    // Face-forwarding may have reversed the shading normal, so reverse the
+    // height derivative with it while retaining the geometric frame itself.
+    float facing = dot(normal, surfaceUp) < 0.0 ? -1.0 : 1.0;
+    vec3 worldGradient = axisU * gradient.x + axisV * gradient.y;
+    return normalize(normal - worldGradient * strength * facing);
 }
 
 // Horizontal port of "Procedural Wood texture" by dean_the_coder:
@@ -519,10 +524,10 @@ vec3 wood2Colour(vec3 p)
             wood2Remap01(wood, 0.19, 0.56)),
         vec3(0.52, 0.32, 0.19), wood2Remap01(wood, 0.56, 1.0));
 }
-Material wood2Material2d(vec2 worldPos, vec3 normal)
+Material wood2Material2d(vec2 surfacePosition, vec3 normal)
 {
     Material material;
-    vec3 p = vec3(worldPos.x, 0.0, worldPos.y) *
+    vec3 p = vec3(surfacePosition.x, 0.0, surfacePosition.y) *
              blendedMaterialParams[0];
     material.albedo = wood2Colour(p);
     material.metallic = 0.0;
@@ -551,12 +556,14 @@ Material waterMaterial2d(vec3 normal)
     return material;
 }
 
-Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
+Material material2d(
+    vec2 surfacePosition, vec3 normal, vec3 surfaceUp,
+    vec3 axisU, vec3 axisV, vec3 viewDir, int type)
 {
     if (type == 0)
         return plainGreyMaterial2d(normal);
     if (type == 38)
-        return wood2Material2d(worldPos, normal);
+        return wood2Material2d(surfacePosition, normal);
     if (type == 40)
         return waterMaterial2d(normal);
 
@@ -576,7 +583,7 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
         0.045, 0.035, 0.022, 0.048, 0.085, 0.095, 0.065, 0.055, 0.026,
         0.032, 0.008, 0.072, 0.045, 0.045, 0.020, 0.052, 0.075, 0.068,
         0.050);
-    vec2 p = worldPos * scales[type];
+    vec2 p = surfacePosition * scales[type];
     // Marble's fbm_scale and Stone's base_scale (MATERIAL_PARAMS[7] and [0])
     // override this shared per-type table for exactly the one type each
     // belongs to; scales[0] and scales[1] are those parameters' own defaults,
@@ -584,9 +591,9 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
     if (type == 0) {
         // Marble alone keeps its scale in slot 7 (fbm_scale) - every other
         // material's base_scale is slot 0.
-        p = worldPos * blendedMaterialParams[7];
+        p = surfacePosition * blendedMaterialParams[7];
     } else {
-        p = worldPos * blendedMaterialParams[0];
+        p = surfacePosition * blendedMaterialParams[0];
     }
     // Per-Technique normal strength is slot 2 (slot 3 for Stone). Marble
     // retains its dedicated normal implementation and Wet rock its wetness mix.
@@ -820,14 +827,15 @@ Material material2d(vec2 worldPos, vec3 normal, vec3 viewDir, int type)
     }
 
     material.roughness = clamp(material.roughness, 0.04, 1.0);
-    material.normal = perturbHorizontalNormal(
-        p, normal, type, field, strengths[type]);
+    material.normal = perturbSurfaceNormal(
+        p, normal, surfaceUp, axisU, axisV,
+        type, field, strengths[type]);
     return material;
 }
 
-vec3 supernaturalEmission(vec2 worldPos, int materialIndex)
+vec3 supernaturalEmission(vec2 surfacePosition, int materialIndex)
 {
-    vec2 p = worldPos * 0.68;
+    vec2 p = surfacePosition * 0.68;
     float pulse = sin(@Uniform(GLOBAL_TIME) * 2.4) * 0.5 + 0.5;
     if (materialIndex == 24) {
         float core = 1.0 - smoothstep(0.07, 0.28, voronoi(p * 2.8));
@@ -1106,14 +1114,6 @@ void surfaceFrame(vec3 surfaceUp, out vec3 axisU, out vec3 axisV)
     axisV = cross(axisU, up);
 }
 
-vec2 surfaceCoordinates(vec3 worldPos, vec3 surfaceUp)
-{
-    vec3 axisU;
-    vec3 axisV;
-    surfaceFrame(surfaceUp, axisU, axisV);
-    return vec2(dot(worldPos, axisU), dot(worldPos, axisV));
-}
-
 int floorMaterialIndex(vec2 surfacePosition, int primaryMaterialIndex)
 {
     int secondaryMaterialIndex = @Uniform(SECONDARY_MATERIAL_INDEX);
@@ -1138,18 +1138,17 @@ int floorMaterialIndex(vec2 surfacePosition, int primaryMaterialIndex)
 // coordinates. It used to be floors-only and assume World X/Z, which would
 // distort a sloped plane and mirror a ceiling's outward-facing normal.
 vec3 embossSurface(
-    vec3 normal, vec3 worldPos, vec3 surfaceUp, float radius, float depth,
-    int pattern, float runningBondWidth, float runningBondOffset)
+    vec3 normal, vec2 surfacePosition, vec3 axisU, vec3 axisV,
+    float radius, float depth, int pattern,
+    float runningBondWidth, float runningBondOffset)
 {
     vec3 surfaceNormal = normalize(normal);
-    vec3 axisU;
-    vec3 axisV;
-    surfaceFrame(surfaceUp, axisU, axisV);
 
-    // Keep the finite-difference distance in world units too: scaling it with
-    // the tile size blurred the fixed-width grooves on large tiles.
+    // Keep both the coordinates and tangent axes captured from the geometric
+    // Surface frame. Earlier procedural perturbation must not rotate the frame
+    // in which Embossing is evaluated.
     const float e = 0.02;
-    vec2 p = vec2(dot(worldPos, axisU), dot(worldPos, axisV));
+    vec2 p = surfacePosition;
     vec2 gradient = vec2(
         embossPatternHeight(p + vec2(e, 0.0), radius, depth, pattern, runningBondWidth, runningBondOffset) - embossPatternHeight(p - vec2(e, 0.0), radius, depth, pattern, runningBondWidth, runningBondOffset),
         embossPatternHeight(p + vec2(0.0, e), radius, depth, pattern, runningBondWidth, runningBondOffset) - embossPatternHeight(p - vec2(0.0, e), radius, depth, pattern, runningBondWidth, runningBondOffset)) / (2.0 * e);
@@ -1398,9 +1397,14 @@ void main()
 
     vec3 worldPos = @In(FRAGPOSITION);
     vec3 surfaceUp = normalize(@In(SURFACE_UP));
-    // Set material coordinates from immutable geometric data before the
+    // Capture the complete Surface frame from immutable geometric data before
     // view-dependent face-forwarding or any normal-map/Embossing perturbation.
-    vec2 surfacePosition = surfaceCoordinates(worldPos, surfaceUp);
+    // All 2D material effects below share these exact axes and coordinates.
+    vec3 surfaceAxisU;
+    vec3 surfaceAxisV;
+    surfaceFrame(surfaceUp, surfaceAxisU, surfaceAxisV);
+    vec2 surfacePosition = vec2(
+        dot(worldPos, surfaceAxisU), dot(worldPos, surfaceAxisV));
     vec2 texturePosition = snapToGrid(
         surfacePosition / @Uniform(MATERIAL_SCALE),
         @Uniform(PIXEL_SIZE));
@@ -1421,16 +1425,17 @@ void main()
     vec3 normal = applyWallNormalMap(shadingNormal);
     blendMaterialParams();
     Material material = material2d(
-        texturePosition, normal, viewDir, materialIndex);
+        texturePosition, normal, surfaceUp, surfaceAxisU, surfaceAxisV,
+        viewDir, materialIndex);
     // The blended base colour tints the surface's own colour before lighting.
     material.albedo *= blendedMaterialColour;
     // Whatever this material embosses, on whatever surface it was
     // applied to - floor, ceiling or wall.
     if (@Uniform(EMBOSS_PATTERN) != 0)
         material.normal = embossSurface(
-            material.normal, worldPos, surfaceUp, @Uniform(EMBOSS_RADIUS),
-            @Uniform(EMBOSS_DEPTH), @Uniform(EMBOSS_PATTERN),
-            @Uniform(EMBOSS_RUNNING_BOND_WIDTH),
+            material.normal, surfacePosition, surfaceAxisU, surfaceAxisV,
+            @Uniform(EMBOSS_RADIUS), @Uniform(EMBOSS_DEPTH),
+            @Uniform(EMBOSS_PATTERN), @Uniform(EMBOSS_RUNNING_BOND_WIDTH),
             @Uniform(EMBOSS_RUNNING_BOND_OFFSET));
     shadingNormal = material.normal;
     PbrLighting lighting = shadePbr(

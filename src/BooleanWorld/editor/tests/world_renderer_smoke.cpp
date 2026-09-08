@@ -53,8 +53,10 @@ struct RenderFixture {
   bool wedges{};
   bool lookAtWedges{};
   bool lookAtFloor{};
+  bool lookAtCeiling{};
   bool wet{};
   bool sloped{};
+  bool fragmented{};
 };
 
 struct ResourceCounts {
@@ -88,8 +90,11 @@ void writeDirectionalNormal() {
 bw::core::ArrangementWorldDataPtr buildWorldData(
     bw::core::World& world, RenderFixture const& fixture) {
   world.createAccelerationGrids(16.0f);
-  bw::core::ClosedPolygon ring{
-      {{-16, -16}}, {{16, -16}}, {{16, 16}}, {{-16, 16}}};
+  bw::core::ClosedPolygon ring = fixture.fragmented
+      ? bw::core::ClosedPolygon{
+            {{-16, -16}}, {{0, -16}}, {{0, 16}}, {{-16, 16}}}
+      : bw::core::ClosedPolygon{
+            {{-16, -16}}, {{16, -16}}, {{16, 16}}, {{-16, 16}}};
   auto* primitive = bw::core::MeshPrimitive::fromTree(
       bw::core::Primitive::Operation::Union, {{{ring, {}}}});
 
@@ -137,6 +142,15 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   primitive->setProperties(properties);
   world.addPrimitive(primitive);
   std::vector<bw::core::Primitive*> primitives{primitive};
+  if (fixture.fragmented) {
+    bw::core::ClosedPolygon rightRing{
+        {{0, -16}}, {{16, -16}}, {{16, 16}}, {{0, 16}}};
+    auto* right = bw::core::MeshPrimitive::fromTree(
+        bw::core::Primitive::Operation::Union, {{{rightRing, {}}}});
+    right->setProperties(properties);
+    world.addPrimitive(right);
+    primitives.push_back(right);
+  }
   if (fixture.chips) {
     bw::core::ClosedPolygon platformRing{
         {{-8, -8}}, {{8, -8}}, {{8, 8}}, {{-8, 8}}};
@@ -225,11 +239,14 @@ std::vector<float> render(
   auto camera = std::make_shared<ReactiveCamera>(
       glm::vec3{
           0.0f,
-          fixture.lookAtWedges || fixture.lookAtFloor
-              ? 40.0f
-              : BW_PLAYER_EYE_HEIGHT,
+          fixture.lookAtCeiling
+              ? 8.0f
+              : (fixture.lookAtWedges || fixture.lookAtFloor
+                     ? 40.0f
+                     : BW_PLAYER_EYE_HEIGHT),
           0.0f},
-      bw::app::cameraYaw(0.0f), fixture.lookAtFloor ? 45.0f : 0.0f,
+      bw::app::cameraYaw(0.0f),
+      fixture.lookAtCeiling ? -45.0f : (fixture.lookAtFloor ? 45.0f : 0.0f),
       BW_PLAYER_FOV,
       kWidth / float(kHeight));
   camera->setClipDistances(0.1f, 1000000.0f);
@@ -294,6 +311,34 @@ int main() {
           renderSystem, {.lookAtFloor = true, .sloped = true});
       require(regionDifference(flatFloor, sloped) > 0.0005,
               "evaluated sloped geometry rendered like the flat baseline");
+
+      // Exercise the fast path itself. A horizontal floor and its reflected
+      // ceiling have the historic X/Z orientation, while splitting one sloped
+      // plane into separate Arrangement faces must neither restart its field
+      // nor alter its in-plane material scale.
+      auto flatFloor2d = render(
+          renderSystem,
+          {.horizontal = bw::app::HorizontalMaterials::TwoDimensional,
+           .lookAtFloor = true});
+      auto flatCeiling2d = render(
+          renderSystem,
+          {.horizontal = bw::app::HorizontalMaterials::TwoDimensional,
+           .lookAtCeiling = true});
+      require(regionDifference(flatFloor2d, flatCeiling2d) < 0.0005,
+              "2D ceiling material did not retain the floor orientation");
+      auto sloped2d = render(
+          renderSystem,
+          {.horizontal = bw::app::HorizontalMaterials::TwoDimensional,
+           .lookAtFloor = true,
+           .sloped = true});
+      auto fragmentedSlope2d = render(
+          renderSystem,
+          {.horizontal = bw::app::HorizontalMaterials::TwoDimensional,
+           .lookAtFloor = true,
+           .sloped = true,
+           .fragmented = true});
+      require(regionDifference(sloped2d, fragmentedSlope2d) < 0.0005,
+              "2D Surface frame changed across fragments of one sloped plane");
       std::array<uint32_t, 3> wetSurfaceTriangles;
       auto wet = render(renderSystem, {.wet = true}, &wetSurfaceTriangles);
       require(drySurfaceTriangles[0] == wetSurfaceTriangles[0] &&

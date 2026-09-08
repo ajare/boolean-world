@@ -55,9 +55,22 @@ The paths share `world.vert` but have separate fragment shaders and programs:
 
 The 3D shader remains the authoritative wall implementation. The 2D shader has
 native `vec2` noise, FBM, Voronoi, material fields, procedural-normal sampling,
-and supernatural emission implementations for all 30 material indices. It
-samples `worldPos.xz` only, so horizontal material appearance does not change
-with floor or ceiling elevation.
+and supernatural emission implementations for every procedural Technique.
+
+The 2D path evaluates in a stable **Surface frame** derived from the surface's
+unperturbed up-vector. Its U axis is World X projected into the surface plane
+(with a World Z fallback near vertical), and its V axis completes the
+right-handed orthonormal frame. Coordinates are World-origin anchored dot
+products against those axes. Consequently a horizontal surface still produces
+exactly World X/Z, while a sloped surface has undistorted in-plane distances and
+separate Arrangement fragments of one plane cannot acquire separate origins.
+Floors and ceilings canonicalize to the same up-vector, so outward-facing
+ceiling normals do not mirror the field.
+
+Material scale is applied after this projection. Procedural field derivatives
+are lifted back to World space through the Surface frame's U/V axes before they
+perturb the shading normal. Secondary-material selection, supernatural
+emission, and Embossing all consume coordinates from the same captured frame.
 
 Both shaders expose the same renderer-facing controls: material index and
 parameters, material scale, global time, player position, and the batch's
@@ -66,10 +79,10 @@ with either horizontal mode.
 
 ## Embossing
 
-Embossing is a property of the Sub-material (`core/Emboss.h`), not a global
-render option, so its uniforms arrive per batch alongside `MATERIAL_INDEX` and
-`MATERIAL_PARAMS` - and it applies to whatever surface the material was
-assigned to, floor, ceiling or wall alike.
+Embossing is assigned independently through a surface's Emboss preset, not a
+global render option, so its uniforms arrive per batch alongside
+`MATERIAL_INDEX` and `MATERIAL_PARAMS` - and it applies to whatever surface the
+preset was assigned to, floor, ceiling or wall alike.
 
 `EMBOSS_PATTERN` takes six values:
 
@@ -92,9 +105,10 @@ length. `EMBOSS_VORONOI_ROUNDING` smoothly rounds Voronoi cell junctions from
 `0` (sharp) to `1` (maximum rounding).
 
 The pattern is laid out in the plane of the surface being shaded, not in the
-world's ground plane: `embossSurfaceAxes` picks world x/z for anything roughly
-horizontal and the wall's own across/up axes otherwise, so a tiled wall reads
-as tiles rather than as vertical streaks.
+World ground plane. On the horizontal 2D path it reuses the coordinates and
+tangent axes captured from the unperturbed geometric Surface frame. It does not
+derive a new frame from the normal after the Technique has perturbed that
+normal.
 
 Square/grid, hexagon, and modular-opus patterns can optionally select a
 secondary procedural material through one global debug enable setting
