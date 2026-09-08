@@ -98,6 +98,25 @@ void propertyTransparentDifferenceDoesNotOwnCutWalls() {
           "a property-transparent Difference supplied a cut-wall material");
 }
 
+void propertyTransparentUnionDoesNotOverpaintSurfaceProperties() {
+  auto base = primitive(Primitive::Operation::Union, 1, 91);
+  base.properties.floorZ = bw::core::Elevation{3.0f, {0.25f, -0.5f}};
+  base.properties.ceilingZ = bw::core::Elevation{20.0f, {-0.1f, 0.2f}};
+  auto structural = primitive(Primitive::Operation::Union, 2, 92);
+  structural.properties.floorZ = 99.0f;
+  structural.properties.ceilingZ = 100.0f;
+  structural.contributesProperties = false;
+
+  auto arrangement = bw::core::arr::BuildArrangement({base, structural});
+  auto const& face = arrangement->faces[1];
+  auto const& properties = arrangement->palette[face.paletteIndex];
+  require(face.solid && face.primitiveIndex == 91 &&
+              face.contributesProperties &&
+              properties.floorZ == base.properties.floorZ &&
+              properties.ceilingZ == base.properties.ceilingZ,
+          "a property-transparent Union overpainted a solid face's Elevation planes");
+}
+
 void usesOneStableOrderForUnsortedEqualPriorityFolds() {
   std::vector<ArrangementPrimitive> primitives{
       primitive(Primitive::Operation::Difference, 5, 61),
@@ -130,6 +149,7 @@ int main() {
     preservesRunBasedWinnerWhenOneExists();
     differenceOwnsTheWallsItCuts();
     propertyTransparentDifferenceDoesNotOwnCutWalls();
+    propertyTransparentUnionDoesNotOverpaintSurfaceProperties();
     usesOneStableOrderForUnsortedEqualPriorityFolds();
     std::cout << "Solid arrangement faces always have a winning primitive\n";
     return 0;

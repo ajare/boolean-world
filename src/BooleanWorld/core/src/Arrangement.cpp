@@ -1274,7 +1274,9 @@ ArrangementResultPtr BuildArrangement(
     int runPrimitive = -1;
     bool runSolid = false;
     auto finishRun = [&] {
-      if (runSolid &&
+      // Structural Primitives still shape the run, but property ownership is
+      // selected only from authored, property-contributing run starters.
+      if (runSolid && primitives[runPrimitive].contributesProperties &&
           (winningPrimitive < 0 ||
            primitives[runPrimitive].priority >
                primitives[winningPrimitive].priority)) {
@@ -1300,6 +1302,8 @@ ArrangementResultPtr BuildArrangement(
       winningPrimitive = -1;
       for (auto primitiveIndex : foldOrder) {
         if (face.membership.contains(primitiveIndex) &&
+            (!face.solid ||
+             primitives[primitiveIndex].contributesProperties) &&
             (winningPrimitive < 0 ||
              primitives[primitiveIndex].priority >
                  primitives[winningPrimitive].priority)) {

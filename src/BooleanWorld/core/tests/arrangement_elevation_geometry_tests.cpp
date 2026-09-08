@@ -109,6 +109,37 @@ void trianglesEvaluateTheirOwningElevationPlanes() {
   }
 }
 
+void booleanSubdivisionPreservesOnePlaneAcrossEveryFragment() {
+  PrimitivePropertySet properties;
+  properties.floorZ = Elevation{2.0f, {0.75f, -0.25f}};
+  properties.ceilingZ = Elevation{30.0f, {-0.1f, 0.2f}};
+  auto base = primitive(rectangle(0, 0, 4000, 4000), 0, properties);
+  auto subdivision = primitive(rectangle(1500, 1000, 2500, 3000), 1, {});
+  subdivision.contributesProperties = false;
+
+  auto arrangement =
+      bw::core::arr::BuildArrangement({base, subdivision});
+  auto triangles = bw::core::arr::BuildArrangementTriangles(*arrangement);
+  require(arrangement->faces.size() > 2 && triangles.size() > 2,
+          "the structural boolean did not subdivide the sloped surface");
+  for (size_t faceIndex = 1; faceIndex < arrangement->faces.size(); ++faceIndex) {
+    auto const& face = arrangement->faces[faceIndex];
+    if (!face.solid) continue;
+    require(face.primitiveIndex == 0 && face.contributesProperties,
+            "a subdivided fragment changed its property-winning Primitive");
+  }
+  for (auto const& triangle : triangles) {
+    requireNormal(triangle.floor.normal, properties.floorZ.normal(),
+                  "a subdivided plane fragment changed its floor normal");
+    for (size_t corner = 0; corner < 3; ++corner) {
+      auto position = worldPosition(arrangement->vertices[triangle.v[corner]]);
+      requireNear(triangle.floor.elevation[corner],
+                  properties.floorZ.evaluate(position),
+                  "a subdivided plane fragment changed its elevation");
+    }
+  }
+}
+
 void wallsEvaluateBothBoundariesAtBothEdgeEndpoints() {
   PrimitivePropertySet left;
   left.floorZ = Elevation{0.0f, {0.0f, 0.25f}};
@@ -267,6 +298,7 @@ void elevationCrossingsDoNotAlterExactArrangementTopology() {
 int main() {
   try {
     trianglesEvaluateTheirOwningElevationPlanes();
+    booleanSubdivisionPreservesOnePlaneAcrossEveryFragment();
     wallsEvaluateBothBoundariesAtBothEdgeEndpoints();
     generatedRegionsRejectCrossedPlanesButPermitEquality();
     nonzeroLiquidWithSlopedGeneratedSurfacesFailsClearly();

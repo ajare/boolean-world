@@ -4,7 +4,9 @@
 #include <memory>
 #include <stdexcept>
 
+#include <core/ArrangementWorldDataGenerator.h>
 #include <core/DefinePrefabs.h>
+#include <core/Elevation.h>
 #include <core/Layer.h>
 #include <core/PrefabField.h>
 #include <core/PrimitiveField.h>
@@ -58,6 +60,42 @@ void referencesAreClonedPositionedAndStayLive() {
   layer.rebuild();
   require(std::abs(layer.getPrimitive(0)->getPosition().x - 169.0f) < .001f,
           "editing a Prefab did not propagate to its instance on rebuild");
+}
+
+void rotatedInstancesRotateAndTranslateElevationPlanes() {
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* definitions = new bw::core::DefinePrefabs;
+  auto defineIndex = layer.addStep(definitions);
+  auto* prefab = definitions->addPrefab("Ramp");
+  definitions->setSelectedPrefab(prefab);
+  layer.setActiveStep(defineIndex);
+  auto* source = rectangle(3.0f);
+  auto properties = source->getProperties();
+  properties.floorZ = bw::core::Elevation{5.0f, {1.0f, 0.0f}};
+  source->setProperties(properties);
+  layer.addPrimitive(source);
+  definitions->clearSelectedPrefab();
+
+  auto* field = new bw::core::PrefabField;
+  layer.addStep(field);
+  field->bind(layer, definitions);
+  field->setSelectedPrefab(*definitions, prefab);
+  auto const tile = bw::core::Tile{bw::core::PrefabTileSize::Size64, 0, 0};
+  require(field->placeSelected(layer, tile), "slope placement failed");
+  require(field->setInstanceMode(layer, tile, bw::core::TileMode::Add) &&
+              field->rotateInstance(layer, tile, true),
+          "slope instance could not be rotated");
+
+  require(layer.getNumPrimitives() == 1,
+          "rotated slope instance did not emit one Primitive");
+  auto const* placed = layer.getPrimitive(0);
+  auto snapshots = bw::core::SnapshotPrimitives({layer.getPrimitive(0)});
+  auto const& worldPlane = snapshots.front().properties.floorZ;
+  require(std::abs(worldPlane.evaluate(placed->getPosition()) - 5.0f) < .001f &&
+              std::abs(worldPlane.evaluate(
+                           placed->getPosition() + wp::Vector2{0.0f, -2.0f}) -
+                       7.0f) < .001f,
+          "a rotated Prefab instance did not rotate and anchor its floor plane");
 }
 
 void prefabFieldRegistersBindsByStableIdAndProtectsItsDefinitions() {
@@ -469,6 +507,7 @@ int main() {
     prefabFieldBindingSurvivesSerialization();
     sizedTileInstancesAndModesSurviveSerialization();
     referencesAreClonedPositionedAndStayLive();
+    rotatedInstancesRotateAndTranslateElevationPlanes();
     reorderingBoundStepsPreservesPrefabFieldReferences();
     copyingBoundPrefabFieldUsesCopiedDefinitionsAndPrefabs();
     gridsGenerateInStepLocalPhases();

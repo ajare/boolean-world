@@ -32,13 +32,19 @@ ComplexPolygon rectangle(float left, float bottom, float right, float top) {
   return {{{{left, bottom}}, {{right, bottom}}, {{right, top}}, {{left, top}}}};
 }
 
-void authoredElevationPlanesFollowTranslationAndRotation() {
+void authoredElevationPlanesFollowTranslationRotationAndScale() {
   std::unique_ptr<MeshPrimitive> primitive(MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union,
       {rectangle(-1.0f, -1.0f, 1.0f, 1.0f)}));
   primitive->setSize(3.0f, 2.0f);
   primitive->setPosition({17.0f, -9.0f});
   primitive->setOrientation(37.0f);
+  {
+    auto mutation = primitive->mutate();
+    mutation.animation(bw::core::VertexTransformer::Key::Scale)
+        .setPoints({{0.0f, 2.0f}, {1.0f, 2.0f}});
+  }
+  primitive->calculateAnimationValues();
   primitive->updateVertexPositions();
 
   auto properties = primitive->getProperties();
@@ -59,7 +65,7 @@ void authoredElevationPlanesFollowTranslationAndRotation() {
         std::abs(transformed.floorZ.evaluate(world) - floorExpected) < 0.001f &&
             std::abs(transformed.ceilingZ.evaluate(world) - ceilingExpected) <
                 0.001f,
-        "a translated and rotated local Elevation plane did not retain its authored heights");
+        "a translated, rotated, and scaled local Elevation plane did not retain its authored heights");
   }
 }
 
@@ -353,7 +359,7 @@ void directGenerationCapturesWorldWedgeSettings() {
 
 int main() {
   try {
-    authoredElevationPlanesFollowTranslationAndRotation();
+    authoredElevationPlanesFollowTranslationRotationAndScale();
     generationWorkerUsesCapturedPrimitiveSnapshot();
     chipParametersAreResolvedInSnapshotOrderOnTheCallingThread();
     primitiveRemovalBeforeCompletionAndCommitIsSafe();

@@ -14,6 +14,7 @@
 
 #include <willpower/common/BoundingBox.h>
 
+#include <core/ArrangementWorldDataGenerator.h>
 #include <core/DefinePrefabs.h>
 #include <core/Layer.h>
 #include <core/LayerBuildStep.h>
@@ -1260,6 +1261,10 @@ void aScriptPlacesPrefabInstancesOnTheirSizeSpecificGrid() {
   auto* definitions = addPrefabDefinitions(layer, "prefabs", "rock", 0.0f);
   definitions->setPrefabTileSize(
       definitions->getPrefab(0), bw::core::PrefabTileSize::Size128);
+  auto* source = definitions->getPrefab(0)->getPrimitive(0);
+  auto properties = source->getProperties();
+  properties.floorZ = bw::core::Elevation{5.0f, {1.0f, 0.0f}};
+  source->setProperties(properties);
   auto* step = addScriptStep(layer, runtime, "stamp");
   layer.rebuild();
 
@@ -1269,6 +1274,14 @@ void aScriptPlacesPrefabInstancesOnTheirSizeSpecificGrid() {
           "the Prefab's tile size did not select its placement grid");
   require(step->ownsPrimitive(layer.getPrimitive(0)),
           "the RunScript step did not own the Primitive it placed as a Prefab instance");
+  auto snapshots =
+      bw::core::SnapshotPrimitives({layer.getPrimitive(0)});
+  auto const& worldPlane = snapshots.front().properties.floorZ;
+  auto const position = layer.getPrimitive(0)->getPosition();
+  require(std::abs(worldPlane.evaluate(position) - 5.0f) < .001f &&
+              std::abs(worldPlane.evaluate(position + wp::Vector2{0.0f, 2.0f}) -
+                       7.0f) < .001f,
+          "a RunScript Prefab placement did not rotate and anchor its floor plane");
 }
 
 void prefabPlacementRejectsNonTilesAndNonQuarterTurns() {
