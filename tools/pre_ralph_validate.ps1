@@ -3,24 +3,26 @@
 Validates that a labelled GitHub issue frontier is ready for ralph-loop.ps1.
 
 .DESCRIPTION
-Validates all open tickets carrying one supplied label in the current GitHub
-repository. The script requires at least one matching ticket, ready-for-agent
-on every ticket, at least one ticket with native GitHub blocked_by metadata,
-and supported difficulty and priority labels on every ticket.
+Validates executable open tickets carrying one supplied label in the current
+GitHub repository. Parent specification issues referenced by a ticket's
+"## Parent" section are ignored, matching ralph-loop.ps1. The script requires
+at least one executable ticket, ready-for-agent on every ticket, at least one
+ticket with native GitHub blocked_by metadata, and supported difficulty and
+priority labels on every ticket.
 
 Difficulty and priority namespaces may use ':' or '/'. Supported difficulty
-values are trivial, small, low, medium, large, high, and hard. Supported
-priority values are critical, urgent, p0, high, p1, medium, normal, p2, low,
-p3, and non-negative integers.
+values are trivial, small, low, medium, large, high, and hard. This repository's
+bare priority labels critical, high, medium, and low are accepted, as are the
+aliases urgent, p0, p1, normal, p2, and p3 and namespaced non-negative integers.
 
 .PARAMETER Label
-The single label used to select open tickets, for example feature/my-feature.
+The single label used to select open tickets, for example feature:portals.
 
 .EXAMPLE
-.\tools\pre_ralph_validate.ps1 -Label feature/resource-validation
+.\tools\pre_ralph_validate.ps1 -Label feature:portals
 
 .EXAMPLE
-.\tools\pre_ralph_validate.ps1 feature/resource-validation
+.\tools\pre_ralph_validate.ps1 feature:portals
 #>
 [CmdletBinding()]
 param(
@@ -45,6 +47,7 @@ function Invoke-Gh {
 function Add-TicketFailure {
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [System.Collections.Generic.List[string]]$Failures,
         [Parameter(Mandatory = $true)]
         [string]$Message
@@ -63,17 +66,34 @@ try {
         "issue", "list", "--repo", $repository,
         "--state", "open", "--label", $Label,
         "--limit", "1000",
-        "--json", "number,title,labels,url"
+        "--json", "number,title,body,labels,url"
     )
-    $parsedIssues = $json | ConvertFrom-Json
-    $issues = [object[]]$parsedIssues
+    $parsedIssues = [object[]]($json | ConvertFrom-Json)
 
-    if ($issues.Count -eq 0) {
+    if ($parsedIssues.Count -eq 0) {
         Write-Error "No open tickets carry label '$Label' in $repository." -ErrorAction Continue
         exit 1
     }
 
-    Write-Host "Validating $($issues.Count) open ticket(s) carrying '$Label' in $repository."
+    # A feature's parent specification commonly carries the feature and ready
+    # labels too, but ralph-loop deliberately does not execute it. Derive the
+    # same parent set from child tickets before validating the frontier.
+    $parentNumbers = @{}
+    foreach ($issue in $parsedIssues) {
+        if ([string]$issue.body -match '(?im)^## Parent\s*\r?\n+\s*#(\d+)') {
+            $parentNumbers[[int]$Matches[1]] = $true
+        }
+    }
+    $issues = @($parsedIssues | Where-Object { -not $parentNumbers.ContainsKey([int]$_.number) })
+
+    if ($issues.Count -eq 0) {
+        Write-Error "No executable open tickets carry label '$Label' in $repository." -ErrorAction Continue
+        exit 1
+    }
+
+    $ignoredCount = $parsedIssues.Count - $issues.Count
+    $ignoredText = if ($ignoredCount -gt 0) { " ($ignoredCount parent specification issue(s) ignored)" } else { "" }
+    Write-Host "Validating $($issues.Count) executable open ticket(s) carrying '$Label' in $repository$ignoredText."
 
     $supportedDifficulties = @("trivial", "small", "low", "medium", "large", "high", "hard")
     $supportedPriorities = @("critical", "urgent", "p0", "high", "p1", "medium", "normal", "p2", "low", "p3")
@@ -100,7 +120,9 @@ try {
                 }
             }
 
-            if ($name -match '^(?i:priority)[/:]\s*(.*)$') {
+            if ($name -match '^(?i:critical|urgent|p0|high|p1|medium|normal|p2|low|p3)$') {
+                ++$priorityCount
+            } elseif ($name -match '^(?i:priority)[/:]\s*(.*)$') {
                 ++$priorityCount
                 $value = $Matches[1].ToLowerInvariant()
                 if ($value -notin $supportedPriorities -and $value -notmatch '^\d+$') {

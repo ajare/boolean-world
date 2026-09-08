@@ -8,14 +8,16 @@ usage() {
     cat <<'EOF'
 Usage: pre_ralph_validate.sh LABEL
 
-Validates all open tickets carrying LABEL in the current GitHub repository.
-LABEL is typically a feature label such as feature/my-feature.
+Validates the executable open tickets carrying LABEL in the current GitHub
+repository. LABEL is typically a feature label such as feature:portals.
+Parent specification issues referenced by a ticket's "## Parent" section are
+ignored, matching ralph-loop.sh.
 
 Checks:
-  1. At least one open ticket has LABEL.
-  2. Every matching ticket has ready-for-agent.
-  3. At least one matching ticket has native GitHub blocked_by metadata.
-  4. Every matching ticket has difficulty and priority labels.
+  1. At least one executable open ticket has LABEL.
+  2. Every ticket has ready-for-agent.
+  3. At least one ticket has native GitHub blocked_by metadata.
+  4. Every ticket has difficulty and priority labels.
   5. Every difficulty label has a supported value.
   6. Every priority label has a supported value.
 
@@ -26,8 +28,9 @@ Supported priority values:
   critical, urgent, p0, high, p1, medium, normal, p2, low, p3,
   or a non-negative integer
 
-Both ':' and '/' namespace separators are accepted, for example
- difficulty:hard, difficulty/hard, priority:p1, and priority/P1.
+This repository's bare priority labels (critical, high, medium, and low) are
+accepted, as are namespaced priorities. Both ':' and '/' namespace separators
+are accepted, for example difficulty:large and priority:4.
 EOF
 }
 
@@ -55,15 +58,33 @@ repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) ||
     die "Could not infer the GitHub repository. Run this script inside a GitHub checkout."
 
 issues=$(gh issue list --repo "$repo" --state open --label "$label" --limit 1000 \
-    --json number,title,labels,url 2>/dev/null) || die "Could not list tickets carrying '$label'."
-issue_count=$(jq 'length' <<<"$issues")
+    --json number,title,body,labels,url 2>/dev/null) || die "Could not list tickets carrying '$label'."
+all_issue_count=$(jq 'length' <<<"$issues")
 
-if ((issue_count == 0)); then
+if ((all_issue_count == 0)); then
     printf "FAIL: No open tickets carry label '%s' in %s.\n" "$label" "$repo" >&2
     exit 1
 fi
 
-printf "Validating %d open ticket(s) carrying '%s' in %s.\n" "$issue_count" "$label" "$repo"
+# A feature's parent specification commonly carries the feature and ready
+# labels too, but ralph-loop deliberately does not execute it. Derive the same
+# parent set from child tickets before validating the executable frontier.
+parent_numbers=$(jq '[.[] | (.body // "") |
+    capture("(?im)^## Parent\\s*\\r?\\n+\\s*#(?<number>[0-9]+)")?.number // empty |
+    tonumber] | unique' <<<"$issues")
+issues=$(jq --argjson parents "$parent_numbers" \
+    '[.[] | select(.number as $number | ($parents | index($number) | not))]' <<<"$issues")
+issue_count=$(jq 'length' <<<"$issues")
+ignored_count=$((all_issue_count - issue_count))
+
+if ((issue_count == 0)); then
+    printf "FAIL: No executable open tickets carry label '%s' in %s.\n" "$label" "$repo" >&2
+    exit 1
+fi
+
+printf "Validating %d executable open ticket(s) carrying '%s' in %s" "$issue_count" "$label" "$repo"
+((ignored_count == 0)) || printf ' (%d parent specification issue(s) ignored)' "$ignored_count"
+printf '.\n'
 
 failures=0
 blocked_ticket_count=0
@@ -89,7 +110,9 @@ while IFS= read -r issue; do
             fi
         fi
 
-        if [[ $normalized =~ ^priority[/:][[:space:]]*(.*)$ ]]; then
+        if [[ $normalized =~ ^(critical|urgent|p0|high|p1|medium|normal|p2|low|p3)$ ]]; then
+            ((++priority_count))
+        elif [[ $normalized =~ ^priority[/:][[:space:]]*(.*)$ ]]; then
             ((++priority_count))
             value=${BASH_REMATCH[1]}
             if [[ ! $value =~ ^(critical|urgent|p0|high|p1|medium|normal|p2|low|p3|[0-9]+)$ ]]; then
