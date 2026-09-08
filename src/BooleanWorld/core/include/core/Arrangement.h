@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -147,9 +148,19 @@ struct PolygonNode {
   std::vector<int> children;
 };
 
+// One side of a triangulated Arrangement face. Elevations correspond to the
+// owning ArrangementTriangle's v entries; normal is one flat geometric normal
+// shared by all three vertices.
+struct ArrangementTriangleSurface {
+  std::array<float, 3> elevation{};
+  std::array<float, 3> normal{};
+};
+
 struct ArrangementTriangle {
   uint32_t v[3];
   uint32_t face;
+  ArrangementTriangleSurface floor{};
+  ArrangementTriangleSurface ceiling{};
 };
 
 enum struct ArrangementWallKind : uint8_t {
@@ -164,9 +175,10 @@ struct ArrangementWall {
   float maxZ;
   uint16_t paletteIndex;
   ArrangementWallKind kind;
-  // Vertical headroom actually available to cross this wall: the overlap of
-  // the two adjacent solid faces' floor/ceiling ranges (min ceilingZ minus
-  // max floorZ). Meaningless for Border, which always blocks regardless.
+  // Minimum vertical headroom available along this source edge: the overlap
+  // of the two adjacent solid faces' evaluated floor/ceiling ranges. For a
+  // zero-gradient World this is the previous face-wide value. Meaningless for
+  // Border, which always blocks regardless.
   float clearance;
   // Whether this wall renders. Resolved directly from the source edge's
   // visibleOverride (defaulting true) - unlike collision, visibility needs
@@ -175,6 +187,12 @@ struct ArrangementWall {
   bool visible{true};
   WallNormalMapOverride normalMapOverride{};
   WallMaskOverride wallMaskOverride{};
+  // Evaluated vertical boundaries at ArrangementEdge::v[0] and v[1]. Keeping
+  // their exact source edge lets elevation-only crossings remain derived
+  // geometry rather than Arrangement vertices. minZ/maxZ are conservative
+  // bounds retained for flat-compatible consumers.
+  std::array<float, 2> bottomZ{};
+  std::array<float, 2> topZ{};
 };
 
 struct ArrangementAudioEmitter {

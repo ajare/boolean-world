@@ -48,6 +48,7 @@ void triangulatesArrangementAtFixedPointPrecision() {
   arrangement.faces.emplace_back(
       ArrangementFace{{}, {}, {}, {}, Membership(0)});
   arrangement.faces.emplace_back(std::move(face));
+  arrangement.palette.emplace_back();
 
   auto triangles = bw::core::arr::BuildArrangementTriangles(arrangement);
   require(triangles.size() == 2,

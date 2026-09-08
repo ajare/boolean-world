@@ -1430,13 +1430,31 @@ vector<ArrangementTriangle> BuildArrangementTriangles(
       addBoundary(hole);
     }
 
+    auto const& properties = arrangement.palette[face.paletteIndex];
+    auto floorNormal = properties.floorZ.normal();
+    auto ceilingUp = properties.ceilingZ.normal();
+    array<float, 3> ceilingNormal{
+        -ceilingUp[0], -ceilingUp[1], -ceilingUp[2]};
+
     auto indices = mapbox::earcut<uint32_t>(polygons);
     for (size_t i = 0; i < indices.size(); i += 3) {
-      triangles.push_back(
-          {{vertexIndices[indices[i]],
-            vertexIndices[indices[i + 1]],
-            vertexIndices[indices[i + 2]]},
-           faceIndex});
+      ArrangementTriangle triangle{
+          {vertexIndices[indices[i]],
+           vertexIndices[indices[i + 1]],
+           vertexIndices[indices[i + 2]]},
+          faceIndex};
+      triangle.floor.normal = floorNormal;
+      triangle.ceiling.normal = ceilingNormal;
+      for (size_t corner = 0; corner < 3; ++corner) {
+        auto const& fixed = arrangement.vertices[triangle.v[corner]];
+        wp::Vector2 position{
+            ToWorldCoordinate(fixed.x), ToWorldCoordinate(fixed.y)};
+        triangle.floor.elevation[corner] =
+            properties.floorZ.evaluate(position);
+        triangle.ceiling.elevation[corner] =
+            properties.ceilingZ.evaluate(position);
+      }
+      triangles.push_back(std::move(triangle));
     }
   }
   return triangles;
@@ -1450,6 +1468,35 @@ vector<ArrangementWall> BuildArrangementWalls(
     auto const& edge = arrangement.edges[edgeIndex];
     auto const& face0 = arrangement.faces[edge.face[0]];
     auto const& face1 = arrangement.faces[edge.face[1]];
+    array<wp::Vector2, 2> endpointPositions;
+    for (size_t endpoint = 0; endpoint < endpointPositions.size(); ++endpoint) {
+      auto const& fixed = arrangement.vertices[edge.v[endpoint]];
+      endpointPositions[endpoint] = {
+          ToWorldCoordinate(fixed.x), ToWorldCoordinate(fixed.y)};
+    }
+    auto evaluate = [&](Elevation const& elevation) {
+      array<float, 2> result;
+      for (size_t endpoint = 0; endpoint < result.size(); ++endpoint) {
+        result[endpoint] = elevation.evaluate(endpointPositions[endpoint]);
+      }
+      return result;
+    };
+    auto appendWall = [&](uint16_t paletteIndex, ArrangementWallKind kind,
+                          array<float, 2> const& bottomZ,
+                          array<float, 2> const& topZ, float clearance) {
+      walls.push_back(
+          {edgeIndex,
+           *min_element(bottomZ.begin(), bottomZ.end()),
+           *max_element(topZ.begin(), topZ.end()),
+           paletteIndex,
+           kind,
+           clearance,
+           edge.visibleOverride.value_or(true),
+           edge.normalMapOverride.value_or(WallNormalMapOverride::unset()),
+           edge.wallMaskOverride.value_or(WallMaskOverride::unset()),
+           bottomZ,
+           topZ});
+    };
 
     if (face0.solid != face1.solid) {
       auto const& solidFace = face0.solid ? face0 : face1;
@@ -1465,16 +1512,11 @@ vector<ArrangementWall> BuildArrangementWalls(
                   emptyFace.contributesProperties
               ? emptyFace.paletteIndex
               : solidFace.paletteIndex;
-      walls.push_back(
-          {edgeIndex,
-           properties.floorZ,
-           properties.ceilingZ,
-           paletteIndex,
-           ArrangementWallKind::Border,
-           properties.ceilingZ - properties.floorZ,
-           edge.visibleOverride.value_or(true),
-           edge.normalMapOverride.value_or(WallNormalMapOverride::unset()),
-           edge.wallMaskOverride.value_or(WallMaskOverride::unset())});
+      auto bottomZ = evaluate(properties.floorZ);
+      auto topZ = evaluate(properties.ceilingZ);
+      appendWall(
+          paletteIndex, ArrangementWallKind::Border, bottomZ, topZ,
+          min(topZ[0] - bottomZ[0], topZ[1] - bottomZ[1]));
       continue;
     }
     if (!face0.solid) {
@@ -1483,39 +1525,37 @@ vector<ArrangementWall> BuildArrangementWalls(
 
     auto const& properties0 = arrangement.palette[face0.paletteIndex];
     auto const& properties1 = arrangement.palette[face1.paletteIndex];
-    // The headroom actually available to cross between these two solid
-    // faces - both a floor step too high and a ceiling dropping below the
-    // player's height block passage, regardless of which of floorZ/ceilingZ
-    // differs.
-    auto clearance = min(properties0.ceilingZ, properties1.ceilingZ) -
-                     max(properties0.floorZ, properties1.floorZ);
+    auto floor0 = evaluate(properties0.floorZ);
+    auto floor1 = evaluate(properties1.floorZ);
+    auto ceiling0 = evaluate(properties0.ceilingZ);
+    auto ceiling1 = evaluate(properties1.ceilingZ);
+    // The smallest headroom available anywhere on an affine source edge is
+    // attained at an endpoint. Retain that conservative scalar for existing
+    // traversal while preserving the evaluated endpoint geometry.
+    auto clearance = min(
+        min(ceiling0[0], ceiling1[0]) - max(floor0[0], floor1[0]),
+        min(ceiling0[1], ceiling1[1]) - max(floor0[1], floor1[1]));
     if (properties0.floorZ != properties1.floorZ) {
       auto const& higherFloorFace =
           properties0.floorZ > properties1.floorZ ? face0 : face1;
-      walls.push_back(
-          {edgeIndex,
-           min(properties0.floorZ, properties1.floorZ),
-           max(properties0.floorZ, properties1.floorZ),
-           higherFloorFace.paletteIndex,
-           ArrangementWallKind::FloorStep,
-           clearance,
-           edge.visibleOverride.value_or(true),
-           edge.normalMapOverride.value_or(WallNormalMapOverride::unset()),
-           edge.wallMaskOverride.value_or(WallMaskOverride::unset())});
+      array<float, 2> bottomZ{
+          min(floor0[0], floor1[0]), min(floor0[1], floor1[1])};
+      array<float, 2> topZ{
+          max(floor0[0], floor1[0]), max(floor0[1], floor1[1])};
+      appendWall(
+          higherFloorFace.paletteIndex, ArrangementWallKind::FloorStep,
+          bottomZ, topZ, clearance);
     }
     if (properties0.ceilingZ != properties1.ceilingZ) {
       auto const& lowerCeilingFace =
           properties0.ceilingZ < properties1.ceilingZ ? face0 : face1;
-      walls.push_back(
-          {edgeIndex,
-           min(properties0.ceilingZ, properties1.ceilingZ),
-           max(properties0.ceilingZ, properties1.ceilingZ),
-           lowerCeilingFace.paletteIndex,
-           ArrangementWallKind::CeilingStep,
-           clearance,
-           edge.visibleOverride.value_or(true),
-           edge.normalMapOverride.value_or(WallNormalMapOverride::unset()),
-           edge.wallMaskOverride.value_or(WallMaskOverride::unset())});
+      array<float, 2> bottomZ{
+          min(ceiling0[0], ceiling1[0]), min(ceiling0[1], ceiling1[1])};
+      array<float, 2> topZ{
+          max(ceiling0[0], ceiling1[0]), max(ceiling0[1], ceiling1[1])};
+      appendWall(
+          lowerCeilingFace.paletteIndex, ArrangementWallKind::CeilingStep,
+          bottomZ, topZ, clearance);
     }
   }
   return walls;
