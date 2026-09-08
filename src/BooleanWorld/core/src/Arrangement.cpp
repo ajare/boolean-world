@@ -1762,50 +1762,22 @@ vector<ArrangementWall> BuildArrangementWalls(
 }
 
 vector<LiquidAdjacency> BuildLiquidAdjacency(ArrangementResult const& arrangement) {
+  // Derive this legacy face-level topology view from the authoritative
+  // Hydraulic graph. In particular, do not compare Elevation planes through
+  // their base elevations: a sloped or pinched edge is adjacent exactly when
+  // BuildHydraulicLinks finds a positive-clearance traversable portion.
+  auto triangles = BuildArrangementTriangles(arrangement);
+  auto cells = BuildHydraulicCells(arrangement, triangles);
+  auto links = BuildHydraulicLinks(arrangement, cells);
+
   vector<LiquidAdjacency> result;
-  for (auto const& edge : arrangement.edges) {
-    auto f0 = edge.face[0];
-    auto f1 = edge.face[1];
-    if (f0 == f1) {
-      continue;
-    }
-    auto const& face0 = arrangement.faces[f0];
-    auto const& face1 = arrangement.faces[f1];
-
-    // The unbounded exterior face (index 0) is never solid itself; any other
-    // pair must both be real rooms (solid, per BuildArrangementTriangles'
-    // same convention) to equilibrate together.
-    auto drain = f0 == 0 || f1 == 0;
-    if (drain) {
-      auto const& roomFace = f0 == 0 ? face1 : face0;
-      // This edge is exactly the Border wall BuildArrangementWalls would
-      // build here, and that wall collides by default - the same as any
-      // other Border wall - unless explicitly authored not to. A solid wall
-      // that already blocks the player blocks liquid the same way, so only
-      // an edge explicitly marked non-colliding is actually open to the
-      // Arrangement's unbounded exterior; an ordinary outer wall is not a
-      // drain just because nothing is authored beyond it.
-      if (!roomFace.solid || edge.collidesOverride.value_or(true)) {
-        continue;
-      }
-    } else if (!face0.solid || !face1.solid) {
-      continue;
-    }
-
-    if (!drain) {
-      auto const& properties0 = arrangement.palette[face0.paletteIndex];
-      auto const& properties1 = arrangement.palette[face1.paletteIndex];
-      // Same headroom computation BuildArrangementWalls uses for player
-      // movement, rather than a second connectivity notion.
-      auto clearance = min(properties0.ceilingZ, properties1.ceilingZ) -
-                       max(properties0.floorZ, properties1.floorZ);
-      if (clearance == 0.0f) {
-        continue;
-      }
-    }
-
+  for (auto const& link : links) {
+    auto face0 = cells[link.cell0].triangle.face;
+    auto face1 = link.drain ? uint32_t{0}
+                            : cells[link.cell1].triangle.face;
+    if (face0 == face1) continue;
     result.push_back(
-        {min(f0, f1), max(f0, f1), drain});
+        {min(face0, face1), max(face0, face1), link.drain});
   }
 
   sort(result.begin(), result.end(), [](auto const& a, auto const& b) {
@@ -2360,13 +2332,16 @@ LiquidState ComputeLiquidState(
     auto level = groupLevel[findRoot(cellIndex)];
     result.poolElevations[cellIndex] = level;
 
-    // Legacy flat-world callers still receive one depth per face. Sloped and
-    // multi-Pool callers consume position-based cell state instead; taking the
-    // greatest cell value preserves the useful flat result without pretending
-    // that a non-convex face now has one Pool.
+    // Legacy flat-world callers still receive one depth per face. There is no
+    // truthful scalar depth for a sloped face, so its compatibility value
+    // remains zero; position-based callers consume Hydraulic-cell state.
     auto faceIndex = result.cells[cellIndex].triangle.face;
     auto const& properties =
         arrangement.palette[arrangement.faces[faceIndex].paletteIndex];
+    if (properties.floorZ.gradient != wp::Vector2::ZERO ||
+        properties.ceilingZ.gradient != wp::Vector2::ZERO) {
+      continue;
+    }
     auto clearance = max(
         0.0, double(properties.ceilingZ.baseElevation) -
                  properties.floorZ.baseElevation);

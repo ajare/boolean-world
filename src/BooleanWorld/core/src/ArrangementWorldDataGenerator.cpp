@@ -54,6 +54,13 @@ Elevation TransformElevationToWorld(
 }
 }  // namespace
 
+float EvaluatePrimitiveElevation(
+    Primitive const& primitive,
+    Elevation const& elevation,
+    wp::Vector2 const& worldPosition) {
+  return TransformElevationToWorld(primitive, elevation).evaluate(worldPosition);
+}
+
 PrimitiveContours ConvertPrimitiveToContours(
     Primitive const& primitive) {
   PrimitiveContours result;

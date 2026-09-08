@@ -9,6 +9,7 @@
 #include <willpower/geometry/Polygon.h>
 #include <willpower/geometry/Vertex.h>
 
+#include "core/ArrangementWorldDataGenerator.h"
 #include "core/DefinePrefabs.h"
 #include "core/Vertex.h"
 #include "core/MeshPrimitive.h"
@@ -144,7 +145,8 @@ optional<float> resolveGroundingFloorZ(
   if (!groundedPrimitive) {
     return nullopt;
   }
-  return groundedPrimitive->getProperties().floorZ;
+  return bw::core::EvaluatePrimitiveElevation(
+      *groundedPrimitive, groundedPrimitive->getProperties().floorZ, point);
 }
 
 namespace {

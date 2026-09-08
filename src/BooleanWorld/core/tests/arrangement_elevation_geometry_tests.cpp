@@ -370,6 +370,8 @@ void nonzeroLiquidWithSlopedGeneratedSurfacesIsAccepted() {
   auto liquid = bw::core::arr::ComputeLiquidState(*arrangement, triangles);
   require(!liquid.surfaceTriangles.empty(),
           "Liquid on a sloped generated surface did not settle");
+  require(liquid.faceDepths[1] == 0.0f,
+          "the flat compatibility API invented one depth for a sloped face");
 }
 
 void elevationCrossingsDoNotAlterExactArrangementTopology() {

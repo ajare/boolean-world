@@ -62,6 +62,14 @@ existing horizontal surface. It evaluates to one elevation and one constant
 up-facing normal at every World-plane position while the Arrangement remains
 purely two-dimensional.
 
+**Surface frame** — The stable orthonormal coordinates of one generated
+surface, derived from its unperturbed geometric up-vector. U is World X
+projected into the surface (with a World Z fallback near vertical), V completes
+the right-handed frame, and both coordinates are anchored at the World origin.
+Two-dimensional procedural materials use this frame so physical scale,
+orientation, and normal perturbations remain continuous across Arrangement
+fragments of one Elevation plane.
+
 **World dependent resource** — A named Willpower Resource referenced by
 authored World content and required before that World can be deserialized and
 activated. The serialized list is the exact, sorted projection of all such
@@ -93,9 +101,10 @@ arrangement equivalent to the old sequence of boolean operations.
 `ceilingZ`. Carries a wall spanning the difference. Never rendered before the
 rewrite — see ADR-0004 on `is2Sided`.
 
-**Step height** — `|face[0].floorZ - face[1].floorZ|` across a step edge.
-Compared against the world's **step threshold** to decide whether the player is
-blocked or steps up (ADR-0006).
+**Step height** — The difference between the two incident floor Elevation
+planes sampled where traversal crosses a step edge. Compared against the
+player's fixed step-height capability to decide whether the player is blocked
+or steps up (ADR-0037).
 
 **Palette** — Per-generation `vector<PrimitivePropertySet>`, copied at
 generation time. Faces store a `uint16_t` index into it, so `WorldData` is
@@ -114,8 +123,17 @@ derived from, and never adds points to, exact Arrangement topology.
 **Hydraulic link** — A traversable shared edge between two Hydraulic cells,
 including an artificial triangulation edge within one Arrangement face, or an
 explicitly open edge from a cell to the exterior drain. A link exists only over
-positive-clearance portions of the edge and becomes reachable at its Sill: the
-lowest maximum-adjacent-floor elevation over those portions.
+positive-clearance portions of the edge and becomes reachable at its Sill.
+
+**Pool** — One set of Hydraulic cells holding Liquid at a single shared
+horizontal surface elevation. Two Pools merge when their combined equilibrium
+reaches the Sill between them; below it, only Liquid above the Sill spills and
+the donor remains brim-full.
+
+**Sill** — The elevation Liquid must reach to cross one Hydraulic link: the
+minimum, over every positive-clearance part of its shared edge, of the maximum
+adjacent floor elevation. Affine floor and ceiling crossings can delimit the
+traversable part.
 
 **Snap-rounding** — Forcing computed intersection points onto the integer grid,
 so that all output topology is exactly representable and vertex identity is an

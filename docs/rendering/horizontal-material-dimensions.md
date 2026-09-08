@@ -1,8 +1,8 @@
-# Horizontal procedural-material dimensions
+# Surface-up-vector coordinates for 2D procedural materials
 
-Boolean World's world renderer separates horizontal surfaces from walls so that
-floors and ceilings can use cheaper two-dimensional procedural materials. Walls
-always use the original three-dimensional material shader.
+Boolean World's world renderer separates floor and ceiling surfaces from walls
+so those surfaces, including slopes, can use cheaper two-dimensional procedural
+materials. Walls always use the original three-dimensional material shader.
 
 ## Configuration
 
@@ -57,9 +57,10 @@ The 3D shader remains the authoritative wall implementation. The 2D shader has
 native `vec2` noise, FBM, Voronoi, material fields, procedural-normal sampling,
 and supernatural emission implementations for every procedural Technique.
 
-The 2D path evaluates in a stable **Surface frame** derived from the surface's
-unperturbed up-vector. Its U axis is World X projected into the surface plane
-(with a World Z fallback near vertical), and its V axis completes the
+The 2D path evaluates in surface-up-vector coordinates: a stable **Surface
+frame** derived from the surface's unperturbed up-vector. Its U axis is World X
+projected into the surface plane (with a World Z fallback near vertical), and
+its V axis completes the
 right-handed orthonormal frame. Coordinates are World-origin anchored dot
 products against those axes. Consequently a horizontal surface still produces
 exactly World X/Z, while a sloped surface has undistorted in-plane distances and

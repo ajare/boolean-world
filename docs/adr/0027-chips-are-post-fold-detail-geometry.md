@@ -2,7 +2,15 @@
 
 **Status:** Accepted
 **Date:** 2026-08-27
-**Related:** ADR-0002 (one planar arrangement replaces sequential booleans), ADR-0005 (`WorldData` is an immutable snapshot with a property palette), ADR-0022 (wall collision override is a local mesh-edge flag), ADR-0025 (the editor's 3D preview renders through the real render pipeline)
+**Related:** ADR-0002 (one planar arrangement replaces sequential booleans), ADR-0005 (`WorldData` is an immutable snapshot with a property palette), ADR-0022 (wall collision override is a local mesh-edge flag), ADR-0025 (the editor's 3D preview renders through the real render pipeline), ADR-0045 (non-horizontal Arris candidates are omitted)
+
+## Sloped-surface amendment
+
+ADR-0045 replaces the historical face-wide `floorZ` and `ceilingZ` assumptions
+below with Elevation planes. Chip geometry remains a post-fold detail channel,
+but candidates involving a non-horizontal floor or ceiling Arris are omitted
+until Chips can be constructed in arbitrary surface planes. Horizontal
+candidates retain this ADR's geometry and deterministic generation unchanged.
 
 ## Context
 

@@ -113,6 +113,31 @@ void zeroClearanceRoomsAreNotLiquidAdjacent() {
       "rooms whose shared boundary has zero clearance must not be liquid-adjacent");
 }
 
+void slopedOpeningIsClassifiedFromItsTraversablePortion() {
+  auto leftProperties = heights(0.0f, 5.0f);
+  auto rightProperties = heights(0.0f, 20.0f);
+  rightProperties.floorZ = bw::core::Elevation{5.0f, {0.0f, -0.05f}};
+  auto roomA = ArrangementPrimitive{
+      {rectangle(0, 0, 100, 100)}, Primitive::Operation::Union,
+      Primitive::FillRule::NonZero, 0, 1, leftProperties};
+  auto roomB = ArrangementPrimitive{
+      {rectangle(100, 0, 200, 100)}, Primitive::Operation::Union,
+      Primitive::FillRule::NonZero, 1, 2, rightProperties};
+
+  auto arrangement = bw::core::arr::BuildArrangement({roomA, roomB});
+  uint32_t faceA = ~0u, faceB = ~0u;
+  for (uint32_t faceIndex = 1; faceIndex < arrangement->faces.size();
+       ++faceIndex) {
+    auto primitiveIndex = arrangement->faces[faceIndex].primitiveIndex;
+    if (primitiveIndex == 1) faceA = faceIndex;
+    if (primitiveIndex == 2) faceB = faceIndex;
+  }
+  auto adjacency = bw::core::arr::BuildLiquidAdjacency(*arrangement);
+  require(
+      faceA != ~0u && faceB != ~0u && isAdjacent(adjacency, faceA, faceB),
+      "a shared edge open only away from its base elevations was not liquid-adjacent");
+}
+
 // A lone solid room with nothing surrounding it shares its whole boundary
 // with the Arrangement's own unbounded exterior face, but every one of those
 // edges is an ordinary Border wall - solid and colliding by default, exactly
@@ -173,6 +198,7 @@ int main() {
   try {
     openDoorwayFacesAreLiquidAdjacent();
     zeroClearanceRoomsAreNotLiquidAdjacent();
+    slopedOpeningIsClassifiedFromItsTraversablePortion();
     anOrdinaryRoomTouchingTheOuterBoundaryDoesNotDrain();
     anExplicitlyOpenEdgeDrainsToTheExteriorFace();
     std::cout << "The liquid-adjacency relation reflects clearance and the exterior drain\n";

@@ -1,11 +1,14 @@
 # Liquid rendering
 
-Liquid is a separate, blended world surface. `arr::ComputeLiquidLevels` derives
-one **Liquid depth** for each Arrangement face; `WorldRenderer` emits the wet
-face at `floorZ + liquidDepth` into its Liquid scene model. The ordinary
-Horizontal model contains floors and ceilings, while only the Liquid model is
-deferred to MPP's water pass. This lets Liquid reflect the final opaque world
-without moving opaque geometry out of its normal rendering path.
+Liquid is a separate, blended world surface. `arr::ComputeLiquidState` settles
+horizontal Pools across Hydraulic cells, integrating each cell's affine floor
+and ceiling capacity. It clips each wet cell against its shoreline and ceiling,
+then `WorldRenderer` emits the resulting `LiquidSurfaceTriangle`s at their Pool
+elevations into its Liquid scene model. No face-wide scalar floor or Liquid
+depth participates in this path. The ordinary Horizontal model contains floors
+and ceilings, while only the Liquid model is deferred to MPP's water pass. This
+lets Liquid reflect the final opaque world without moving opaque geometry out
+of its normal rendering path.
 
 ## Interface model
 

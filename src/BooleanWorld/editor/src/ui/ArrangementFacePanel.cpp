@@ -22,12 +22,12 @@ void renderArrangementFaceView(ViewContext& context) {
   ImGui::Text("Face: %u", faceIndex);
   ImGui::Text("Primitive: %u", face.primitiveIndex);
   auto properties = arrangement.palette[face.paletteIndex];
+  auto position = getMouseWorldPosition();
   ImGui::Text(
-      "Floor / ceiling: %.2f / %.2f",
-      properties.floorZ.baseElevation,
-      properties.ceilingZ.baseElevation);
+      "Floor / ceiling at cursor: %.2f / %.2f",
+      properties.floorZ.evaluate(position),
+      properties.ceilingZ.evaluate(position));
   renderPrimitivePropertySet(&properties, false, doc, settings);
 }
-
 
 }  // namespace editor

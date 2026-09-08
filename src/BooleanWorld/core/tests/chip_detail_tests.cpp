@@ -1447,6 +1447,28 @@ void chipsUseRandomSizesAndNonOverlappingRandomPositions() {
   }
 }
 
+void nonHorizontalArrisesDoNotProduceScalarHeightChips() {
+  auto slopedFloor = slabAndPlatform(12.0f);
+  slopedFloor.back().properties.floorZ.gradient = {0.05f, 0.0f};
+  auto floorSnapshot = snapshotOf(slopedFloor, fixedCornerChip(2.0f));
+  require(floorSnapshot.getDetail().getChipCount() == 0 &&
+              floorSnapshot.getDetail().getTriangles().empty(),
+          "a sloped floor Arris produced scalar-height Chip geometry");
+
+  auto slopedCeiling = slabAndBulkhead(36.0f);
+  slopedCeiling.back().properties.ceilingZ.gradient = {0.05f, 0.0f};
+  auto ceilingSnapshot = snapshotOf(slopedCeiling);
+  require(ceilingSnapshot.getDetail().getChipCount() == 0 &&
+              ceilingSnapshot.getDetail().getTriangles().empty(),
+          "a sloped ceiling Arris produced scalar-height Chip geometry");
+
+  auto properties = propertiesWithHeights(0.0f, 48.0f);
+  properties.floorZ.gradient = {0.05f, 0.0f};
+  auto verticalSnapshot = snapshotOf({{{concaveContour()}, Primitive::Operation::Union, Primitive::FillRule::EvenOdd, 1, 0, properties}});
+  require(verticalChipCount(verticalSnapshot.getDetail()) == 0,
+          "walls bounded by a sloped surface produced a scalar-height Vertical Chip");
+}
+
 // Resolved dimensions belong to each wall's own Sub-material palette entry:
 // a disabled material can coexist with one that chips.
 void aDisabledMaterialDoesNotDisableOtherMaterialsChips() {
@@ -1562,6 +1584,7 @@ int main() {
     everyArrisChipTypeBuildsOnHorizontalAndVerticalEdges();
     eachArrisChipChoosesFromItsSubMaterialsTypeList();
     chipsUseRandomSizesAndNonOverlappingRandomPositions();
+    nonHorizontalArrisesDoNotProduceScalarHeightChips();
     aDisabledMaterialDoesNotDisableOtherMaterialsChips();
     aChipBelowTheMinimumSizeIsDroppedEntirely();
     std::cout << "Chips are cut into eligible Arrises and trihedral Corners "

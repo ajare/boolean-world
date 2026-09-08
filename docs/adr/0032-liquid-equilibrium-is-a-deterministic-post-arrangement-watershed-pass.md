@@ -1,7 +1,7 @@
 # ADR-0032: Liquid equilibrium is a deterministic post-arrangement watershed pass
 
-**Status:** Accepted; face-level capacity and depth partially superseded by #425
-**Related:** ADR-0004 (faces are the unit of derived truth; membership already tracks every covering Primitive), ADR-0027 (precedent for a distinct post-fold detail channel layered after the core Arrangement)
+**Status:** Accepted in part; face-level capacity, Sill, and depth details superseded by ADR-0045
+**Related:** ADR-0004 (faces are the unit of derived truth; membership already tracks every covering Primitive), ADR-0027 (precedent for a distinct post-fold detail channel layered after the core Arrangement), ADR-0045 (affine Hydraulic cells)
 
 ## Sloped Hydraulic cell amendment
 

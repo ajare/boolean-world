@@ -828,6 +828,22 @@ void worldFrequencyControlsEdgeAndCornerAttempts() {
           "a probability of zero created a Corner Wedge");
 }
 
+void nonHorizontalArrisesDoNotProduceScalarHeightWedges() {
+  auto slopedFloor = room();
+  slopedFloor.properties.floorZ.gradient = {0.05f, 0.0f};
+  auto floorSnapshot = snapshot({slopedFloor}, fixedWedge());
+  require(floorSnapshot.getDetail().getWedgeCount() == 0 &&
+              floorSnapshot.getDetail().getTriangles().empty(),
+          "a sloped floor Arris produced scalar-height Wedge geometry");
+
+  auto slopedCeiling = room();
+  slopedCeiling.properties.ceilingZ.gradient = {0.05f, 0.0f};
+  auto ceilingSnapshot = snapshot({slopedCeiling}, fixedWedge());
+  require(ceilingSnapshot.getDetail().getWedgeCount() == 0 &&
+              ceilingSnapshot.getDetail().getTriangles().empty(),
+          "a sloped ceiling Arris produced scalar-height Wedge geometry");
+}
+
 void floorWedgesJoinCollisionWithoutChangingOtherQueries() {
   bw::core::ArrangementStats stats;
   auto arrangement = bw::core::arr::BuildArrangement({room()});
@@ -871,6 +887,7 @@ int main() {
     wedgeGenerationDoesNotPerturbChips();
     qualityRecursivelyTessellatesWithDeterministicVariation();
     worldFrequencyControlsEdgeAndCornerAttempts();
+    nonHorizontalArrisesDoNotProduceScalarHeightWedges();
     floorWedgesJoinCollisionWithoutChangingOtherQueries();
     std::cout << "Wedges are deterministic additive Border-wall detail\n";
     return 0;

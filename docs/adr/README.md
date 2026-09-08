@@ -38,7 +38,7 @@ removed the dependency entirely. Geometry terms are defined in
 | [0029](0029-structural-primitives-are-property-transparent.md) | Structural Primitives are property-transparent | Accepted |
 | [0030](0030-wall-normal-map-overrides-belong-to-authored-external-edges.md) | Wall normal-map overrides belong to authored External edges | Accepted |
 | [0031](0031-wedges-are-world-configured-additive-detail-geometry.md) | Wedges are World-configured additive post-fold detail geometry | Accepted |
-| [0032](0032-liquid-equilibrium-is-a-deterministic-post-arrangement-watershed-pass.md) | Liquid equilibrium is a deterministic post-arrangement watershed pass | Accepted |
+| [0032](0032-liquid-equilibrium-is-a-deterministic-post-arrangement-watershed-pass.md) | Liquid equilibrium is a deterministic post-arrangement watershed pass | Partially superseded by ADR-0045 |
 | [0033](0033-world-resources-are-host-resolved-before-deserialization.md) | World resources are host-resolved before deserialization | Accepted |
 | [0034](0034-water-reflection-techniques-are-mutually-exclusive.md) | Water reflection techniques are mutually exclusive | Accepted |
 | [0035](0035-emboss-presets-are-a-single-global-catalog.md) | Emboss presets are a single global catalog | Accepted |
@@ -51,6 +51,7 @@ removed the dependency entirely. Geometry terms are defined in
 | [0042](0042-acoustics-are-simulated-in-real-time-never-baked.md) | Acoustics are simulated in real time, never baked | Accepted |
 | [0043](0043-steam-audio-traces-the-arrangement-directly.md) | Steam Audio traces the Arrangement directly, not a triangle mesh | Superseded by ADR-0044 |
 | [0044](0044-steam-audio-uses-a-triangle-scene.md) | Steam Audio uses a triangle scene derived from each World snapshot | Accepted |
+| [0045](0045-liquid-equilibrium-uses-affine-hydraulic-cells.md) | Liquid equilibrium uses affine Hydraulic cells | Accepted |
 
 ## World geometry rewrite scope
 

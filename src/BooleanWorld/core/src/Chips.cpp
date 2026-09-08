@@ -1079,6 +1079,43 @@ float FaceBoundaryDistance(
   return nearest;
 }
 
+bool IsHorizontal(Elevation const& elevation) {
+  return elevation.gradient == wp::Vector2::ZERO;
+}
+
+bool SupportsHorizontalDetail(
+    ArrangementResult const& arrangement,
+    ArrangementWall const& wall) {
+  auto const& edge = arrangement.edges[wall.edge];
+  auto const& properties0 =
+      arrangement.palette[arrangement.faces[edge.face[0]].paletteIndex];
+  auto const& properties1 =
+      arrangement.palette[arrangement.faces[edge.face[1]].paletteIndex];
+  auto surfaceIsHorizontal = [&](PrimitivePropertySet const& properties) {
+    return wall.kind == ArrangementWallKind::FloorStep
+               ? IsHorizontal(properties.floorZ)
+               : IsHorizontal(properties.ceilingZ);
+  };
+  return surfaceIsHorizontal(properties0) &&
+         surfaceIsHorizontal(properties1);
+}
+
+bool SupportsWallDetail(
+    ArrangementResult const& arrangement,
+    ArrangementWall const& wall) {
+  auto const& edge = arrangement.edges[wall.edge];
+  for (auto faceIndex : edge.face) {
+    auto const& face = arrangement.faces[faceIndex];
+    if (!face.solid) continue;
+    auto const& properties = arrangement.palette[face.paletteIndex];
+    if (!IsHorizontal(properties.floorZ) ||
+        !IsHorizontal(properties.ceilingZ)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Rebuilds one horizontal face's floor or ceiling with every Chip footprint
 // on it subtracted from its boundary polygon, rather than clipping the
 // individual triangles the unchipped face earcut to.
@@ -1093,7 +1130,7 @@ void AddRebuiltFaceHorizontal(
   auto const& face = arrangement.faces[source.index];
   auto isFloor = source.kind == DetailSurfaceKind::FloorOfFace;
   auto const& properties = arrangement.palette[face.paletteIndex];
-  auto z = isFloor ? properties.floorZ : properties.ceilingZ;
+  auto z = (isFloor ? properties.floorZ : properties.ceilingZ).baseElevation;
 
   std::vector<std::vector<EarcutPoint>> polygons;
   // Parallel to earcut's own index space, which runs across every ring in
@@ -1321,8 +1358,9 @@ DetailGeometry BuildChipDetail(
 
   auto bittenFaceFor = [&](ArrangementWall const& wall)
       -> std::optional<uint32_t> {
-    if (wall.kind != ArrangementWallKind::FloorStep &&
-        wall.kind != ArrangementWallKind::CeilingStep) {
+    if ((wall.kind != ArrangementWallKind::FloorStep &&
+         wall.kind != ArrangementWallKind::CeilingStep) ||
+        !SupportsHorizontalDetail(arrangement, wall)) {
       return std::nullopt;
     }
     auto const& edge = arrangement.edges[wall.edge];
@@ -1330,10 +1368,14 @@ DetailGeometry BuildChipDetail(
         arrangement.palette[arrangement.faces[edge.face[0]].paletteIndex];
     auto const& properties1 =
         arrangement.palette[arrangement.faces[edge.face[1]].paletteIndex];
-    auto face = wall.kind == ArrangementWallKind::FloorStep
-                    ? (properties0.floorZ > properties1.floorZ ? edge.face[0]
+    auto face =
+        wall.kind == ArrangementWallKind::FloorStep
+            ? (properties0.floorZ.baseElevation >
+                       properties1.floorZ.baseElevation
+                   ? edge.face[0]
                                                                : edge.face[1])
-                    : (properties0.ceilingZ < properties1.ceilingZ
+            : (properties0.ceilingZ.baseElevation <
+                       properties1.ceilingZ.baseElevation
                            ? edge.face[0]
                            : edge.face[1]);
     return arrangement.faces[face].solid ? std::optional<uint32_t>{face}
@@ -1496,7 +1538,7 @@ DetailGeometry BuildChipDetail(
     // ones. Invisible walls carry no damage on either adjoining surface.
     auto isFloorStep = wall.kind == ArrangementWallKind::FloorStep;
     if ((!isFloorStep && wall.kind != ArrangementWallKind::CeilingStep) ||
-        !wall.visible) {
+        !wall.visible || !SupportsHorizontalDetail(arrangement, wall)) {
       continue;
     }
 
@@ -1505,11 +1547,14 @@ DetailGeometry BuildChipDetail(
         arrangement.palette[arrangement.faces[edge.face[0]].paletteIndex];
     auto const& properties1 =
         arrangement.palette[arrangement.faces[edge.face[1]].paletteIndex];
-    auto bittenFace = isFloorStep
-                          ? (properties0.floorZ > properties1.floorZ
+    auto bittenFace =
+        isFloorStep
+            ? (properties0.floorZ.baseElevation >
+                       properties1.floorZ.baseElevation
                                  ? edge.face[0]
                                  : edge.face[1])
-                          : (properties0.ceilingZ < properties1.ceilingZ
+            : (properties0.ceilingZ.baseElevation <
+                       properties1.ceilingZ.baseElevation
                                  ? edge.face[0]
                                  : edge.face[1]);
     if (!arrangement.faces[bittenFace].solid) {
@@ -1690,7 +1735,9 @@ DetailGeometry BuildChipDetail(
         auto const& wallB = walls[b.wallIndex];
         auto const& propertiesA = arrangement.palette[wallA.paletteIndex];
         auto const& propertiesB = arrangement.palette[wallB.paletteIndex];
-        if (propertiesA.wallMaterialId != propertiesB.wallMaterialId) {
+        if (!SupportsWallDetail(arrangement, wallA) ||
+            !SupportsWallDetail(arrangement, wallB) ||
+            propertiesA.wallMaterialId != propertiesB.wallMaterialId) {
           continue;
         }
         if (!IsEligibleVerticalAngle(a, b)) {
@@ -1886,7 +1933,8 @@ DetailGeometry BuildChipDetail(
     for (uint32_t wallIndex = 0; wallIndex < uint32_t(walls.size());
          ++wallIndex) {
       auto const& wall = walls[wallIndex];
-      if (!wall.visible || wall.kind != ArrangementWallKind::Border) {
+      if (!wall.visible || wall.kind != ArrangementWallKind::Border ||
+          !SupportsWallDetail(arrangement, wall)) {
         continue;
       }
       auto const& edge = arrangement.edges[wall.edge];
@@ -2087,6 +2135,8 @@ DetailGeometry BuildChipDetail(
           auto const& wallB = walls[b.wallIndex];
           if (wallA.kind != ArrangementWallKind::Border ||
               wallB.kind != ArrangementWallKind::Border ||
+              !SupportsWallDetail(arrangement, wallA) ||
+              !SupportsWallDetail(arrangement, wallB) ||
               std::abs(a.ray.x * b.ray.y - a.ray.y * b.ray.x) <=
                   ConcavityEpsilon) {
             continue;

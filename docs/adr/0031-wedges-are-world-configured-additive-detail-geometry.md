@@ -1,7 +1,14 @@
 # ADR-0031: Wedges are World-configured additive post-fold detail geometry
 
 **Status:** Accepted
-**Related:** ADR-0005 (immutable World snapshot), ADR-0025 (shared real render pipeline), ADR-0027 (post-fold detail channel)
+**Related:** ADR-0005 (immutable World snapshot), ADR-0025 (shared real render pipeline), ADR-0027 (post-fold detail channel), ADR-0045 (non-horizontal Arris candidates are omitted)
+
+## Sloped-surface amendment
+
+Wedge construction remains defined only for horizontal floor and ceiling
+Arrises. ADR-0045 requires candidates involving a non-horizontal floor or
+ceiling surface to be omitted rather than projected from one base elevation;
+horizontal candidates retain this ADR's deterministic generation unchanged.
 
 ## Context
 

@@ -48,6 +48,10 @@ _Avoid_: Treating the game view as a mirrored coordinate system
 An affine height function over the World plane, consisting of a base elevation and a two-dimensional gradient. A Primitive supplies one independently for its floor and ceiling; zero gradient is the existing horizontal surface. The plane determines elevation and one constant up-facing normal at every World-plane position while the Arrangement remains purely two-dimensional.
 _Avoid_: slope (which describes only the gradient, not the surface), height (a sampled scalar, not the function)
 
+**Surface frame**:
+The stable orthonormal coordinates of one generated surface, derived from its unperturbed geometric up-vector. U is World X projected into the surface (with a World Z fallback near vertical), V completes the right-handed frame, and both coordinates are anchored at the World origin. Two-dimensional procedural materials, their normal perturbations, and Embossing use this frame so physical scale and orientation remain continuous across Arrangement fragments of one Elevation plane.
+_Avoid_: UV coordinates (the frame exists before material scaling), tangent frame (which may mean a per-triangle or normal-mapped basis), face-local coordinates (the origin is World-stable rather than face-local)
+
 **Fixed-point vertex**:
 An exact point on the world geometry grid. It is the canonical coordinate type for topology and arrangement output.
 _Avoid_: Clipper point, floating-point topology vertex

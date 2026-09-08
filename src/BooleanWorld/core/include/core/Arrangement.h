@@ -198,8 +198,9 @@ struct LiquidSurfaceTriangle {
 // parallel to cells and may repeat for every cell in one Pool. Negative
 // infinity means no Liquid occupies that cell's basin; a finite elevation can
 // still leave the whole local cell dry above the shoreline. faceDepths retains
-// the flat-world compatibility view used by older callers; position-based
-// queries use poolElevations and evaluate the local floor instead.
+// the flat-world compatibility view used by older callers and is zero for a
+// non-horizontal face; position-based queries use poolElevations and evaluate
+// the local floor instead.
 struct LiquidState {
   std::vector<HydraulicCell> cells;
   std::vector<double> poolElevations;
@@ -330,8 +331,9 @@ struct ArrangementFace {
 };
 
 // One direct liquid-adjacency between two solid Arrangement faces. Retained
-// as the face-level topology view for callers that do not need sloped Sills;
-// Liquid settlement uses HydraulicLink below.
+// as a compatibility topology view and derived from the Hydraulic links, so
+// sloped and pinched openings are still classified correctly. Liquid
+// settlement itself uses HydraulicLink below.
 struct LiquidAdjacency {
   uint32_t face0;
   uint32_t face1;
@@ -437,8 +439,8 @@ bool PointInFace(
 [[nodiscard]] std::vector<ArrangementWall> BuildArrangementWalls(
     ArrangementResult const& arrangement);
 
-// The liquid-adjacency relation over every pair of solid faces, one entry
-// per unordered pair. This compatibility view computes no sloped Sill.
+// The liquid-adjacency relation over every linked pair of solid faces, one
+// entry per unordered pair. Derived from Hydraulic links but omits their Sills.
 [[nodiscard]] std::vector<LiquidAdjacency> BuildLiquidAdjacency(
     ArrangementResult const& arrangement);
 

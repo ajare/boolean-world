@@ -33,6 +33,13 @@ struct PrimitiveContours {
       edgeWallMaskOverrides;
 };
 
+// Samples one authored local Elevation plane after applying the Primitive's
+// live affine transform, at a World-plane position.
+[[nodiscard]] BW_API float EvaluatePrimitiveElevation(
+    Primitive const& primitive,
+    Elevation const& elevation,
+    wp::Vector2 const& worldPosition);
+
 [[nodiscard]] BW_API PrimitiveContours ConvertPrimitiveToContours(
     Primitive const& primitive);
 

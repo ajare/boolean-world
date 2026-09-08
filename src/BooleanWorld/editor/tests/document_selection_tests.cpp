@@ -553,6 +553,12 @@ void inScopePrimitivesAndGroundingResolutionFollowFoldOrder() {
   require(editor::resolveGroundingFloorZ({single}, {100.0f, 100.0f}) ==
               std::optional<float>{12.0f},
           "grounding did not return a single containing Primitive's floor");
+  auto slopedProperties = single->getProperties();
+  slopedProperties.floorZ.gradient = {0.5f, 0.0f};
+  single->setProperties(slopedProperties);
+  require(editor::resolveGroundingFloorZ({single}, {101.0f, 100.0f}) ==
+              std::optional<float>{12.5f},
+          "grounding treated a translated sloped Primitive as one scalar floor");
 
   auto* lowerPriority = makePrimitive(24.0f, 2);
   auto* higherPriority = makePrimitive(36.0f, 3);
