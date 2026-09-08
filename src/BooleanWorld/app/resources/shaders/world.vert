@@ -11,6 +11,7 @@ void main()
     @Out(vec3 FRAGPOSITION) = vec3(@MMatrix * vec4(@In(POSITION), 1.0));
     @Out(vec3 FRAGNORMAL) = normalize(@NormalMatrix * @Vec3(@In(NORMAL)));
     @Out(vec2 TEXCOORDS) = @In(TEXCOORDS);
+    @Out(vec3 SURFACE_UP) = normalize(@NormalMatrix * @Vec3(@In(SURFACE_UP)));
     @Out(vec4 COLOUR) = @In(COLOUR);
     @Out(float LIQUID_SURFACE_HEIGHT) = @In(USER);
 

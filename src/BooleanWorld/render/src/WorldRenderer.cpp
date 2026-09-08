@@ -461,9 +461,11 @@ void WorldRenderer::reloadSubMaterialResolver(
 uint32_t WorldRenderer::addVertexToDataProvider(
     DataProvider dataProvider, uint32_t meshIndex, float px, float py,
     float pz, float nx, float ny, float nz, float u, float v, uint32_t c,
-    float liquidSurfaceHeight) {
+    float liquidSurfaceHeight, float surfaceUpX, float surfaceUpY,
+    float surfaceUpZ) {
   WorldTriangle3dDataProvider::DrawVert vertex{
-      {px, py, pz}, {nx, ny, nz}, {u, v}, c, liquidSurfaceHeight};
+      {px, py, pz}, {nx, ny, nz}, {u, v}, c, liquidSurfaceHeight,
+      {surfaceUpX, surfaceUpY, surfaceUpZ}};
   return dataProvider->addVertex(meshIndex, vertex);
 }
 
@@ -473,7 +475,10 @@ void WorldRenderer::addDetailTriangleToDataProvider(
     bw::core::arr::DetailTriangle const& triangle,
     bool mirrored,
     uint32_t colour,
-    float liquidSurfaceHeight) {
+    float liquidSurfaceHeight,
+    float surfaceUpX,
+    float surfaceUpY,
+    float surfaceUpZ) {
   // Arrangement space keeps height in z and renderer space keeps it in y,
   // mapping (x, y, z) to (x, z, -y) - a rotation, not a reflection, so a
   // triangle wound counter-clockwise about its normal there stays wound
@@ -491,7 +496,7 @@ void WorldRenderer::addDetailTriangleToDataProvider(
         dataProvider, meshIndex, vertex.position[0], vertex.position[2],
         -vertex.position[1], sign * vertex.normal[0], sign * vertex.normal[2],
         -sign * vertex.normal[1], vertex.uv[0], vertex.uv[1], colour,
-        liquidSurfaceHeight);
+        liquidSurfaceHeight, surfaceUpX, surfaceUpY, surfaceUpZ);
   }
   if (mirrored) {
     dataProvider->addTriangle(meshIndex, indices[2], indices[1], indices[0]);
@@ -540,6 +545,14 @@ void WorldRenderer::updateHorizontalDataProvider(
                 : properties.ceilingEmbossPresetId);
     return horizontal.renderer->getMeshIndexForMaterialHash(
         resolved.def.hash(resolved.materialIndex), isFloor);
+  };
+  auto surfaceUpFor = [&](bw::core::arr::DetailSurfaceKey const& key) {
+    auto const& properties =
+        worldData.palette[worldData.faces[key.index].paletteIndex];
+    auto up = key.kind == DetailSurfaceKind::FloorOfFace
+                  ? properties.floorZ.normal()
+                  : properties.ceilingZ.normal();
+    return std::array<float, 3>{up[0], up[2], -up[1]};
   };
 
   std::vector<uint32_t> horizontalCounts(
@@ -607,7 +620,8 @@ void WorldRenderer::updateHorizontalDataProvider(
             triangle.face == highlightedFace && !highlightedCeiling
                 ? lookedAtVertexColour
                 : untintedVertexColour,
-            liquidSurfaceHeight);
+            liquidSurfaceHeight, triangle.floor.normal[0],
+            triangle.floor.normal[2], -triangle.floor.normal[1]);
       }
       horizontal.dataProvider->addTriangle(
           floorMesh, floorIndices[0], floorIndices[1], floorIndices[2]);
@@ -632,7 +646,8 @@ void WorldRenderer::updateHorizontalDataProvider(
           triangle.face == highlightedFace && highlightedCeiling
               ? lookedAtVertexColour
               : untintedVertexColour,
-          liquidSurfaceHeight);
+          liquidSurfaceHeight, -triangle.ceiling.normal[0],
+          -triangle.ceiling.normal[2], triangle.ceiling.normal[1]);
     }
     horizontal.dataProvider->addTriangle(
         ceilingMesh, ceilingIndices[0], ceilingIndices[1], ceilingIndices[2]);
@@ -645,11 +660,13 @@ void WorldRenderer::updateHorizontalDataProvider(
     auto highlighted = replacement.source.index == highlightedFace &&
                        highlightedCeiling ==
                            (replacement.source.kind == DetailSurfaceKind::CeilingOfFace);
+    auto surfaceUp = surfaceUpFor(replacement.source);
     addDetailTriangleToDataProvider(
         horizontal.dataProvider, horizontalMeshFor(replacement.source),
         replacement, false,
         highlighted ? lookedAtVertexColour : untintedVertexColour,
-        liquidSurfaceHeightFor(replacement.source));
+        liquidSurfaceHeightFor(replacement.source), surfaceUp[0], surfaceUp[1],
+        surfaceUp[2]);
   }
   horizontal.dataProvider->finalizeInternals();
   horizontal.dataProvider->setNumPrimitives(horizontal.dataProvider->getNumTriangles());

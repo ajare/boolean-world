@@ -26,6 +26,9 @@ public:
     float tex[2];
     uint32_t col;
     float liquidSurfaceHeight;
+    // The unperturbed, canonical up-facing normal of a horizontal surface.
+    // Unlike `nor`, this is never face-forwarded or normal-map perturbed.
+    float surfaceUp[3];
   };
 
   struct MeshData {
@@ -40,7 +43,7 @@ public:
   };
 
 private:
-  using VertexKey = std::array<uint32_t, 10>;
+  using VertexKey = std::array<uint32_t, 13>;
 
   struct VertexKeyHash {
     size_t operator()(VertexKey const& key) const noexcept;

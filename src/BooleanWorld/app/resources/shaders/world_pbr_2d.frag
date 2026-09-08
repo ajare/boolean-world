@@ -1092,14 +1092,36 @@ bool modularOpusTileUsesSecondaryMaterial(vec2 p, float largeTileSize)
     return !modularOpusPositionIsInLargeTile(p, largeTileSize);
 }
 
-int floorMaterialIndex(vec3 worldPos, int primaryMaterialIndex)
+// A canonical up-vector makes a floor and its ceiling share an orientation.
+// Project World X into the surface plane (falling back to World Z near a
+// vertical plane), then complete a right-handed frame. Horizontal surfaces
+// therefore retain their exact historic World X/Z coordinates.
+void surfaceFrame(vec3 surfaceUp, out vec3 axisU, out vec3 axisV)
+{
+    vec3 up = normalize(surfaceUp);
+    axisU = vec3(1.0, 0.0, 0.0) - up * up.x;
+    if (dot(axisU, axisU) < 0.0001)
+        axisU = vec3(0.0, 0.0, 1.0) - up * up.z;
+    axisU = normalize(axisU);
+    axisV = cross(axisU, up);
+}
+
+vec2 surfaceCoordinates(vec3 worldPos, vec3 surfaceUp)
+{
+    vec3 axisU;
+    vec3 axisV;
+    surfaceFrame(surfaceUp, axisU, axisV);
+    return vec2(dot(worldPos, axisU), dot(worldPos, axisV));
+}
+
+int floorMaterialIndex(vec2 surfacePosition, int primaryMaterialIndex)
 {
     int secondaryMaterialIndex = @Uniform(SECONDARY_MATERIAL_INDEX);
     if (@Uniform(USE_SECONDARY_MATERIAL) == 0 ||
         secondaryMaterialIndex < 0 ||
         secondaryMaterialIndex == primaryMaterialIndex)
         return primaryMaterialIndex;
-    vec2 p = worldPos.xz;
+    vec2 p = surfacePosition;
     float radius = @Uniform(EMBOSS_RADIUS);
     int pattern = @Uniform(EMBOSS_PATTERN);
     if (pattern == 1 && gridTileUsesSecondaryMaterial(p, radius))
@@ -1112,34 +1134,17 @@ int floorMaterialIndex(vec3 worldPos, int primaryMaterialIndex)
     return primaryMaterialIndex;
 }
 
-// The plane a surface's relief is laid out in: the ground plane for anything
-// roughly horizontal, and the wall's own across/up axes for anything else.
-// Embossing used to be a floors-only effect and could assume world xz; now
-// that it belongs to the material, it has to work on whatever the material is
-// applied to, and a wall tiled through its ground-plane projection would read
-// as vertical streaks rather than tiles.
-void embossSurfaceAxes(vec3 normal, out vec3 axisU, out vec3 axisV)
-{
-    if (abs(normal.y) > 0.5)
-    {
-        axisU = vec3(1.0, 0.0, 0.0);
-        axisV = vec3(0.0, 0.0, 1.0);
-    }
-    else
-    {
-        axisU = normalize(cross(vec3(0.0, 1.0, 0.0), normal));
-        axisV = vec3(0.0, 1.0, 0.0);
-    }
-}
-
+// Embossing follows the same canonical surface frame as procedural material
+// coordinates. It used to be floors-only and assume World X/Z, which would
+// distort a sloped plane and mirror a ceiling's outward-facing normal.
 vec3 embossSurface(
-    vec3 normal, vec3 worldPos, float radius, float depth, int pattern,
-    float runningBondWidth, float runningBondOffset)
+    vec3 normal, vec3 worldPos, vec3 surfaceUp, float radius, float depth,
+    int pattern, float runningBondWidth, float runningBondOffset)
 {
     vec3 surfaceNormal = normalize(normal);
     vec3 axisU;
     vec3 axisV;
-    embossSurfaceAxes(surfaceNormal, axisU, axisV);
+    surfaceFrame(surfaceUp, axisU, axisV);
 
     // Keep the finite-difference distance in world units too: scaling it with
     // the tile size blurred the fixed-width grooves on large tiles.
@@ -1392,6 +1397,16 @@ void main()
         1.0 - fragmentDistance / @Uniform(VIEW_DISTANCE), 0.0, 1.0), 1.7);
 
     vec3 worldPos = @In(FRAGPOSITION);
+    vec3 surfaceUp = normalize(@In(SURFACE_UP));
+    // Set material coordinates from immutable geometric data before the
+    // view-dependent face-forwarding or any normal-map/Embossing perturbation.
+    vec2 surfacePosition = surfaceCoordinates(worldPos, surfaceUp);
+    vec2 texturePosition = snapToGrid(
+        surfacePosition / @Uniform(MATERIAL_SCALE),
+        @Uniform(PIXEL_SIZE));
+    int materialIndex = floorMaterialIndex(
+        surfacePosition, clamp(@Uniform(MATERIAL_INDEX), 0, 40));
+    materialIndex = clamp(materialIndex, 0, 40);
     vec3 viewDir = normalize(@ViewPos - worldPos);
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
     // Every horizontal surface here is single-sided geometry rendered without
@@ -1404,12 +1419,6 @@ void main()
         shadingNormal = -shadingNormal;
     }
     vec3 normal = applyWallNormalMap(shadingNormal);
-    vec2 texturePosition = snapToGrid(
-        worldPos.xz / @Uniform(MATERIAL_SCALE),
-        @Uniform(PIXEL_SIZE));
-    int materialIndex = floorMaterialIndex(
-        worldPos, clamp(@Uniform(MATERIAL_INDEX), 0, 40));
-    materialIndex = clamp(materialIndex, 0, 40);
     blendMaterialParams();
     Material material = material2d(
         texturePosition, normal, viewDir, materialIndex);
@@ -1419,7 +1428,7 @@ void main()
     // applied to - floor, ceiling or wall.
     if (@Uniform(EMBOSS_PATTERN) != 0)
         material.normal = embossSurface(
-            material.normal, worldPos, @Uniform(EMBOSS_RADIUS),
+            material.normal, worldPos, surfaceUp, @Uniform(EMBOSS_RADIUS),
             @Uniform(EMBOSS_DEPTH), @Uniform(EMBOSS_PATTERN),
             @Uniform(EMBOSS_RUNNING_BOND_WIDTH),
             @Uniform(EMBOSS_RUNNING_BOND_OFFSET));

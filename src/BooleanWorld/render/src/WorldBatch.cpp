@@ -24,6 +24,9 @@ mpp::mesh::MeshSpecification WorldBatch::createMeshSpecification(
   specification.getVertexBufferAttributeLayout(0).createAttribute(
       mpp::mesh::Vertex::Component::UserDefined1, "LIQUID_SURFACE_HEIGHT",
       mpp::mesh::Vertex::DataType::Float, false);
+  specification.getVertexBufferAttributeLayout(0).createAttribute(
+      mpp::mesh::Vertex::Component::UserDefined3, "SURFACE_UP",
+      mpp::mesh::Vertex::DataType::Float, false);
   return specification;
 }
 
