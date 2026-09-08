@@ -180,13 +180,12 @@ std::optional<Hit> traceArrangementReference(
   auto worldDirectionY = -ray.direction.z;
   for (auto const& wall : world.getWalls()) {
     if (!wall.visible) continue;
-    auto const& edge = arrangement.edges[wall.edge];
-    auto const& fixedA = arrangement.vertices[edge.v[0]];
-    auto const& fixedB = arrangement.vertices[edge.v[1]];
-    auto ax = bw::core::arr::ToWorldCoordinate(fixedA.x);
-    auto ay = bw::core::arr::ToWorldCoordinate(fixedA.y);
-    auto spanX = bw::core::arr::ToWorldCoordinate(fixedB.x) - ax;
-    auto spanY = bw::core::arr::ToWorldCoordinate(fixedB.y) - ay;
+    auto orientation =
+        bw::core::arr::OrientArrangementWall(arrangement, wall);
+    auto ax = orientation.v0.x;
+    auto ay = orientation.v0.y;
+    auto spanX = orientation.v1.x - ax;
+    auto spanY = orientation.v1.y - ay;
     auto determinant = worldDirectionX * spanY - spanX * worldDirectionY;
     if (std::abs(determinant) <= 1.0e-7f) continue;
     auto offsetX = ax - worldOriginX;
@@ -200,9 +199,11 @@ std::optional<Hit> traceArrangementReference(
       continue;
     }
     auto elevation = ray.origin.y + ray.direction.y * distance;
-    auto bottom = wall.bottomZ[0] +
-                  (wall.bottomZ[1] - wall.bottomZ[0]) * alongWall;
-    auto top = wall.topZ[0] + (wall.topZ[1] - wall.topZ[0]) * alongWall;
+    auto bottom = orientation.bottomZ[0] +
+                  (orientation.bottomZ[1] - orientation.bottomZ[0]) *
+                      alongWall;
+    auto top = orientation.topZ[0] +
+               (orientation.topZ[1] - orientation.topZ[0]) * alongWall;
     if (elevation < bottom || elevation > top) continue;
     auto const& properties = arrangement.palette[wall.paletteIndex];
     consider(nearest, distance,
@@ -242,22 +243,20 @@ std::optional<Hit> traceArrangementBruteForce(
   }
   for (auto const& wall : world.getWalls()) {
     if (!wall.visible) continue;
-    auto const& edge = arrangement.edges[wall.edge];
-    auto make = [&](uint32_t index, float elevation) {
-      auto const& vertex = arrangement.vertices[index];
+    auto surface =
+        bw::core::arr::BuildArrangementWallSurface(arrangement, wall);
+    auto make = [](bw::core::arr::ArrangementWallSurfaceVertex const& vertex) {
       return AcousticSceneVertex{
-          bw::core::arr::ToWorldCoordinate(vertex.x), elevation,
-          -bw::core::arr::ToWorldCoordinate(vertex.y)};
+          vertex.position.x, vertex.elevation, -vertex.position.y};
     };
-    auto bottom0 = make(edge.v[0], wall.bottomZ[0]);
-    auto bottom1 = make(edge.v[1], wall.bottomZ[1]);
-    auto top0 = make(edge.v[0], wall.topZ[0]);
-    auto top1 = make(edge.v[1], wall.topZ[1]);
     auto material = resolve(
                         arrangement.palette[wall.paletteIndex].wallMaterialId)
                         .id;
-    facets.push_back({top1, bottom1, bottom0, material});
-    facets.push_back({bottom0, top0, top1, material});
+    for (uint8_t corner = 1; corner + 1 < surface.vertexCount; ++corner) {
+      facets.push_back(
+          {make(surface.vertices[0]), make(surface.vertices[corner]),
+           make(surface.vertices[corner + 1]), material});
+    }
   }
 
   std::optional<Hit> nearest;
@@ -311,6 +310,22 @@ std::shared_ptr<ArrangementWorldData> makeSlopedWorld() {
       wp::BoundingBox({-5.0f, -5.0f}, {20.0f, 20.0f}), 4.0f);
 }
 
+std::shared_ptr<ArrangementWorldData> makeCrossingStepWorld() {
+  auto left = properties(0.0f, 30.0f, "left");
+  left.floorZ.gradient = {0.0f, 1.0f};
+  left.ceilingZ.gradient = {0.0f, 1.0f};
+  auto right = properties(10.0f, 40.0f, "right");
+  right.floorZ.gradient = {0.0f, -1.0f};
+  right.ceilingZ.gradient = {0.0f, -1.0f};
+  ArrangementPrimitive leftRoom{
+      {rectangle(-1, 0, 0, 10)}, Primitive::Operation::Union, Primitive::FillRule::EvenOdd, 0, 1, left};
+  ArrangementPrimitive rightRoom{
+      {rectangle(0, 0, 1, 10)}, Primitive::Operation::Union, Primitive::FillRule::EvenOdd, 1, 2, right};
+  return std::make_shared<ArrangementWorldData>(
+      bw::core::arr::BuildArrangement({leftRoom, rightRoom}),
+      wp::BoundingBox({-2.0f, -1.0f}, {4.0f, 12.0f}), 2.0f);
+}
+
 std::unordered_map<std::string, AcousticPreset> makePresets() {
   std::unordered_map<std::string, AcousticPreset> result;
   for (auto side : {std::string("left"), std::string("right")}) {
@@ -340,15 +355,21 @@ void exportHasEverySurfaceAndResolvedMaterial() {
   AcousticMaterialResolver resolver = [&](std::string const& id)
       -> AcousticPreset const& { return presets.at(id); };
   auto mesh = bw::app::ExportAcousticSceneMesh(*world, resolver);
-  auto visibleWalls = std::count_if(
-      world->getWalls().begin(), world->getWalls().end(),
-      [](auto const& wall) { return wall.visible; });
+  size_t wallTriangles = 0;
+  size_t wallVertices = 0;
+  for (auto const& wall : world->getWalls()) {
+    if (!wall.visible) continue;
+    auto surface = bw::core::arr::BuildArrangementWallSurface(
+        world->getArrangement(), wall);
+    wallTriangles += surface.vertexCount >= 3 ? surface.vertexCount - 2 : 0;
+    wallVertices += surface.vertexCount;
+  }
   require(mesh.triangles.size() ==
-              world->getTriangles().size() * 2 + size_t(visibleWalls) * 2,
-          "export did not contain one floor, ceiling, and visible wall quad");
+              world->getTriangles().size() * 2 + wallTriangles,
+          "export did not contain every visible wall facet");
   require(mesh.vertices.size() ==
-              world->getTriangles().size() * 6 + size_t(visibleWalls) * 4,
-          "exported wall quads did not retain their four shared vertices");
+              world->getTriangles().size() * 6 + wallVertices,
+          "exported walls did not retain their shared perimeter vertices");
   require(mesh.materials.size() == presets.size(),
           "export material table did not de-duplicate resolved presets");
   for (auto const& triangle : mesh.triangles) {
@@ -374,12 +395,15 @@ void exportHasEverySurfaceAndResolvedMaterial() {
     if (!wall.visible) continue;
     auto orientation =
         bw::core::arr::OrientArrangementWall(world->getArrangement(), wall);
+    auto surface = bw::core::arr::BuildArrangementWallSurface(
+        world->getArrangement(), wall);
     AcousticSceneVertex expected{
         orientation.normal.x, 0.0f, -orientation.normal.y};
-    require(dot(triangleNormal(exportedWallTriangle), expected) > 0.0f &&
-                dot(triangleNormal(exportedWallTriangle + 1), expected) > 0.0f,
-            "exported wall winding does not match its canonical front side");
-    exportedWallTriangle += 2;
+    for (uint8_t corner = 1; corner + 1 < surface.vertexCount; ++corner) {
+      require(dot(triangleNormal(exportedWallTriangle), expected) > 0.0f,
+              "exported wall winding does not match its canonical front side");
+      ++exportedWallTriangle;
+    }
   }
 }
 
@@ -427,23 +451,17 @@ void exportUsesEvaluatedSurfaceGeometry() {
 
   for (auto const& wall : world->getWalls()) {
     if (!wall.visible) continue;
-    auto orientation =
-        bw::core::arr::OrientArrangementWall(arrangement, wall);
-    std::array<AcousticSceneVertex, 4> expected{
-        AcousticSceneVertex{orientation.v0.x, orientation.bottomZ[0],
-                            -orientation.v0.y},
-        AcousticSceneVertex{orientation.v1.x, orientation.bottomZ[1],
-                            -orientation.v1.y},
-        AcousticSceneVertex{orientation.v1.x, orientation.topZ[1],
-                            -orientation.v1.y},
-        AcousticSceneVertex{orientation.v0.x, orientation.topZ[0],
-                            -orientation.v0.y}};
-    for (size_t corner = 0; corner < expected.size(); ++corner) {
-      auto delta = mesh.vertices[vertexOffset + corner] - expected[corner];
+    auto surface =
+        bw::core::arr::BuildArrangementWallSurface(arrangement, wall);
+    for (uint8_t corner = 0; corner < surface.vertexCount; ++corner) {
+      auto const& vertex = surface.vertices[corner];
+      AcousticSceneVertex expected{
+          vertex.position.x, vertex.elevation, -vertex.position.y};
+      auto delta = mesh.vertices[vertexOffset + corner] - expected;
       require(dot(delta, delta) < 0.000001f,
               "Acoustic wall geometry flattened an evaluated boundary");
     }
-    vertexOffset += expected.size();
+    vertexOffset += surface.vertexCount;
   }
   require(vertexOffset == mesh.vertices.size(),
           "Acoustic geometry validation did not consume the exported mesh");
@@ -478,6 +496,53 @@ void exportUsesEvaluatedSurfaceGeometry() {
   requireEquivalent(
       traceExportedMesh(mesh, wallRay, 0.001f, 4.0f),
       Hit{2.0f, "slope.wall"}, "variable-height wall export");
+}
+
+void crossingStepSegmentsExportAsOwnedFrontFacingTriangles() {
+  auto world = makeCrossingStepWorld();
+  auto presets = makePresets();
+  AcousticMaterialResolver resolver = [&](std::string const& id)
+      -> AcousticPreset const& { return presets.at(id); };
+  auto mesh = bw::app::ExportAcousticSceneMesh(*world, resolver);
+  auto const& arrangement = world->getArrangement();
+
+  size_t triangularSteps = 0;
+  for (auto const& wall : world->getWalls()) {
+    auto const& edge = arrangement.edges[wall.edge];
+    if (wall.kind == bw::core::arr::ArrangementWallKind::Border ||
+        !arrangement.faces[edge.face[0]].solid ||
+        !arrangement.faces[edge.face[1]].solid) {
+      continue;
+    }
+    auto surface =
+        bw::core::arr::BuildArrangementWallSurface(arrangement, wall);
+    require(surface.vertexCount == 3,
+            "a crossing Step was not exported from a triangular surface");
+    ++triangularSteps;
+  }
+  require(triangularSteps == 4,
+          "the two crossing Step kinds did not produce four triangles");
+
+  struct Candidate {
+    float authoredY;
+    float elevation;
+    char const* material;
+  };
+  for (auto const& candidate : {
+           Candidate{2.0f, 5.0f, "right.wall"},
+           Candidate{8.0f, 5.0f, "left.wall"},
+           Candidate{2.0f, 35.0f, "left.wall"},
+           Candidate{8.0f, 35.0f, "right.wall"}}) {
+    Ray ray{{-0.5f, candidate.elevation, -candidate.authoredY},
+            {1.0f, 0.0f, 0.0f}};
+    Hit expected{0.5f, candidate.material};
+    requireEquivalent(
+        traceArrangementReference(*world, resolver, ray, 0.001f, 2.0f),
+        expected, "crossing Step reference");
+    requireEquivalent(
+        traceExportedMesh(mesh, ray, 0.001f, 2.0f), expected,
+        "crossing Step export");
+  }
 }
 
 void propertyRaysAgree() {
@@ -576,6 +641,7 @@ int main() {
   try {
     exportHasEverySurfaceAndResolvedMaterial();
     exportUsesEvaluatedSurfaceGeometry();
+    crossingStepSegmentsExportAsOwnedFrontFacingTriangles();
     propertyRaysAgree();
     std::cout << "Acoustic scene export coverage passed\n";
   } catch (std::exception const& exception) {

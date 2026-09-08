@@ -218,6 +218,61 @@ void traversalSamplesStepAndClearanceAtTheCrossing() {
           "local standing clearance used an unrelated edge sample");
 }
 
+void crossingFloorStepsUseTheLocalSegmentAndDirection() {
+  wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
+  constexpr float gridCellSize = 20.0f;
+
+  std::vector<std::optional<bool>> overrides(4, std::nullopt);
+  overrides[1] = false;
+  auto leftProperties = propertiesWithHeights(0.0f, 48.0f);
+  leftProperties.floorZ.gradient = {0.0f, 1.0f};
+  auto rightProperties = propertiesWithHeights(10.0f, 48.0f);
+  rightProperties.floorZ.gradient = {0.0f, -1.0f};
+  ArrangementPrimitive left{
+      {rectContour(0, 0, 10 * U, 10 * U)},
+      Primitive::Operation::Union,
+      Primitive::FillRule::EvenOdd,
+      0,
+      1,
+      leftProperties,
+      {overrides}};
+  ArrangementPrimitive right{
+      {rectContour(10 * U, 0, 20 * U, 10 * U)},
+      Primitive::Operation::Union,
+      Primitive::FillRule::EvenOdd,
+      0,
+      2,
+      rightProperties};
+
+  bw::core::ArrangementWorldData data(
+      bw::core::arr::BuildArrangement({left, right}), extents,
+      gridCellSize);
+  auto floorStepCount = std::ranges::count_if(
+      data.getWalls(), [](auto const& wall) {
+        return wall.kind == ArrangementWallKind::FloorStep;
+      });
+  require(floorStepCount == 2,
+          "a crossing FloorStep was not split into two collision segments");
+  auto includesFloorStep = [&](wp::Vector2 const& destination,
+                               wp::Vector2 const& source) {
+    auto candidates = data.getWallsNearForTraversal(
+        destination, 0.5f, source);
+    return std::ranges::any_of(candidates, [&](uint32_t wallIndex) {
+      return data.getWalls()[wallIndex].kind ==
+             ArrangementWallKind::FloorStep;
+    });
+  };
+
+  require(includesFloorStep({10.1f, 0.5f}, {5.0f, 0.5f}),
+          "a locally tall ascent on the first derived segment did not block");
+  require(!includesFloorStep({10.1f, 2.0f}, {5.0f, 2.0f}),
+          "a locally short ascent used the first segment's maximum height");
+  require(!includesFloorStep({10.1f, 8.0f}, {5.0f, 8.0f}),
+          "a descent was blocked after the Step orientation crossed");
+  require(includesFloorStep({9.9f, 9.5f}, {15.0f, 9.5f}),
+          "a locally tall ascent on the reversed segment did not block");
+}
+
 void falseOverrideDoesNotBypassInsufficientClearance() {
   wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
   constexpr float gridCellSize = 20.0f;
@@ -388,8 +443,8 @@ void coincidingEdgesResolveToTheOverrideRegardlessOfOrder() {
 
   for (bool overriddenFirst : {true, false}) {
     std::vector<ArrangementPrimitive> primitives = overriddenFirst
-        ? std::vector<ArrangementPrimitive>{overridden, plain}
-        : std::vector<ArrangementPrimitive>{plain, overridden};
+                                                       ? std::vector<ArrangementPrimitive>{overridden, plain}
+                                                       : std::vector<ArrangementPrimitive>{plain, overridden};
     auto arrangement = bw::core::arr::BuildArrangement(primitives);
     bw::core::ArrangementWorldData data(
         arrangement, extents, gridCellSize);
@@ -433,8 +488,8 @@ void coincidentMeshEdgeOverridesResolveFalseFirst() {
 
     for (bool leftFirst : {true, false}) {
       std::vector<ArrangementPrimitive> primitives = leftFirst
-          ? std::vector<ArrangementPrimitive>{left, right}
-          : std::vector<ArrangementPrimitive>{right, left};
+                                                         ? std::vector<ArrangementPrimitive>{left, right}
+                                                         : std::vector<ArrangementPrimitive>{right, left};
       auto arrangement = bw::core::arr::BuildArrangement(primitives);
       bw::core::ArrangementWorldData data(
           arrangement, extents, gridCellSize);
@@ -497,6 +552,7 @@ int main() {
     falseOverrideOpensUpABorderWall();
     maximumStepHeightAppliesOnlyWhenAscending();
     traversalSamplesStepAndClearanceAtTheCrossing();
+    crossingFloorStepsUseTheLocalSegmentAndDirection();
     falseOverrideDoesNotBypassInsufficientClearance();
     trueOverrideForcesAStepWallToBlock();
     overrideSurvivesSplittingIntoSubSegments();

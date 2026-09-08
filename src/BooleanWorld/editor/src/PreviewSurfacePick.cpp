@@ -71,32 +71,40 @@ Vector3 horizontalVertex(
       bw::core::arr::ToWorldCoordinate(vertex.y), z};
 }
 
-// The polygon a wall belongs to. BuildArrangementWalls builds each wall from
-// one specific side of its edge - the side whose floor and ceiling gave the
-// wall its extent, and whose property set it carries - so that side is the
-// polygon whose Primitive owns the wall material. Choosing it by kind rather
-// than by matching palette indices keeps the two in step even where both
-// sides happen to share a palette entry.
+// BuildArrangementWalls records the exact face whose Primitive owns each
+// derived segment's wall material. Keep a fallback for hand-built fixtures
+// that predate that field, using the segment midpoint rather than an unrelated
+// plane sample at the World origin.
 uint32_t wallFace(
     bw::core::arr::ArrangementResult const& arrangement,
     bw::core::arr::ArrangementWall const& wall) {
   if (wall.edge >= arrangement.edges.size()) {
     return ~0u;
   }
+  if (wall.ownerFace < arrangement.faces.size()) {
+    return wall.ownerFace;
+  }
   auto const& edge = arrangement.edges[wall.edge];
   auto const& face0 = arrangement.faces[edge.face[0]];
   auto const& face1 = arrangement.faces[edge.face[1]];
   auto const& properties0 = arrangement.palette[face0.paletteIndex];
   auto const& properties1 = arrangement.palette[face1.paletteIndex];
+  auto orientation =
+      bw::core::arr::OrientArrangementWall(arrangement, wall);
+  auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
   switch (wall.kind) {
     case bw::core::arr::ArrangementWallKind::Border:
       return face0.solid ? edge.face[0] : edge.face[1];
     case bw::core::arr::ArrangementWallKind::FloorStep:
-      return properties0.floorZ < properties1.floorZ ? edge.face[0]
-                                                     : edge.face[1];
+      return properties0.floorZ.evaluate(midpoint) >
+                     properties1.floorZ.evaluate(midpoint)
+                 ? edge.face[0]
+                 : edge.face[1];
     case bw::core::arr::ArrangementWallKind::CeilingStep:
-      return properties0.ceilingZ > properties1.ceilingZ ? edge.face[0]
-                                                         : edge.face[1];
+      return properties0.ceilingZ.evaluate(midpoint) <
+                     properties1.ceilingZ.evaluate(midpoint)
+                 ? edge.face[0]
+                 : edge.face[1];
   }
   return ~0u;
 }
@@ -144,15 +152,15 @@ PreviewScenePick pickPreviewSceneSurface(
     if (!wall.visible) {
       continue;
     }
-    auto const& edge = arrangement.edges[wall.edge];
-    auto bottom0 = horizontalVertex(arrangement, edge.v[0], wall.bottomZ[0]);
-    auto bottom1 = horizontalVertex(arrangement, edge.v[1], wall.bottomZ[1]);
-    auto top0 = horizontalVertex(arrangement, edge.v[0], wall.topZ[0]);
-    auto top1 = horizontalVertex(arrangement, edge.v[1], wall.topZ[1]);
-    std::array<std::array<Vector3, 3>, 2> wallTriangles{
-        std::array<Vector3, 3>{bottom0, bottom1, top1},
-        std::array<Vector3, 3>{top1, top0, bottom0}};
-    for (auto const& triangle : wallTriangles) {
+    auto surface =
+        bw::core::arr::BuildArrangementWallSurface(arrangement, wall);
+    auto vertex = [](bw::core::arr::ArrangementWallSurfaceVertex const& item) {
+      return Vector3{item.position.x, item.position.y, item.elevation};
+    };
+    for (uint8_t corner = 1; corner + 1 < surface.vertexCount; ++corner) {
+      std::array<Vector3, 3> triangle{
+          vertex(surface.vertices[0]), vertex(surface.vertices[corner]),
+          vertex(surface.vertices[corner + 1])};
       float distance{};
       if (!rayHitsTriangle(rayOrigin, direction, triangle, distance) ||
           (nearest.hit() && distance >= nearest.surfaceHit.distance)) {

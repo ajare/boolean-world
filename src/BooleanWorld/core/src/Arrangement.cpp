@@ -1528,15 +1528,19 @@ vector<ArrangementWall> BuildArrangementWalls(
           ToWorldCoordinate(fixed.x), ToWorldCoordinate(fixed.y)};
     }
     auto evaluate = [&](Elevation const& elevation) {
-      array<float, 2> result;
-      for (size_t endpoint = 0; endpoint < result.size(); ++endpoint) {
-        result[endpoint] = elevation.evaluate(endpointPositions[endpoint]);
-      }
-      return result;
+      return array<float, 2>{
+          elevation.evaluate(endpointPositions[0]),
+          elevation.evaluate(endpointPositions[1])};
+    };
+    auto sample = [](array<float, 2> const& values, float parameter) {
+      return lerp(values[0], values[1], parameter);
     };
     auto appendWall = [&](uint16_t paletteIndex, ArrangementWallKind kind,
                           array<float, 2> const& bottomZ,
-                          array<float, 2> const& topZ, float clearance) {
+                          array<float, 2> const& topZ,
+                          array<float, 2> const& sourceEdgeParameter,
+                          float clearance, uint32_t frontFace,
+                          uint32_t ownerFace) {
       walls.push_back(
           {edgeIndex,
            *min_element(bottomZ.begin(), bottomZ.end()),
@@ -1548,28 +1552,34 @@ vector<ArrangementWall> BuildArrangementWalls(
            edge.normalMapOverride.value_or(WallNormalMapOverride::unset()),
            edge.wallMaskOverride.value_or(WallMaskOverride::unset()),
            bottomZ,
-           topZ});
+           topZ,
+           sourceEdgeParameter,
+           frontFace,
+           ownerFace});
     };
 
     if (face0.solid != face1.solid) {
-      auto const& solidFace = face0.solid ? face0 : face1;
-      auto const& emptyFace = face0.solid ? face1 : face0;
-      auto const& properties =
-          arrangement.palette[solidFace.paletteIndex];
+      auto solidFaceIndex = face0.solid ? edge.face[0] : edge.face[1];
+      auto emptyFaceIndex = face0.solid ? edge.face[1] : edge.face[0];
+      auto const& solidFace = arrangement.faces[solidFaceIndex];
+      auto const& emptyFace = arrangement.faces[emptyFaceIndex];
+      auto const& properties = arrangement.palette[solidFace.paletteIndex];
       // An authored Difference contributes no solid Face of its own, but its
       // boundary creates the newly exposed wall. Property-transparent
       // structural Differences instead leave ownership with the surviving
       // solid Face. In either case that Face supplies the vertical span.
-      auto paletteIndex =
+      auto ownerFace =
           emptyFace.operation == bw::core::Primitive::Operation::Difference &&
                   emptyFace.contributesProperties
-              ? emptyFace.paletteIndex
-              : solidFace.paletteIndex;
+              ? emptyFaceIndex
+              : solidFaceIndex;
       auto bottomZ = evaluate(properties.floorZ);
       auto topZ = evaluate(properties.ceilingZ);
       appendWall(
-          paletteIndex, ArrangementWallKind::Border, bottomZ, topZ,
-          min(topZ[0] - bottomZ[0], topZ[1] - bottomZ[1]));
+          arrangement.faces[ownerFace].paletteIndex,
+          ArrangementWallKind::Border, bottomZ, topZ, {0.0f, 1.0f},
+          min(topZ[0] - bottomZ[0], topZ[1] - bottomZ[1]), solidFaceIndex,
+          ownerFace);
       continue;
     }
     if (!face0.solid) {
@@ -1582,34 +1592,82 @@ vector<ArrangementWall> BuildArrangementWalls(
     auto floor1 = evaluate(properties1.floorZ);
     auto ceiling0 = evaluate(properties0.ceilingZ);
     auto ceiling1 = evaluate(properties1.ceilingZ);
-    // The smallest headroom available anywhere on an affine source edge is
-    // attained at an endpoint. Retain that conservative scalar for existing
-    // traversal while preserving the evaluated endpoint geometry.
-    auto clearance = min(
-        min(ceiling0[0], ceiling1[0]) - max(floor0[0], floor1[0]),
-        min(ceiling0[1], ceiling1[1]) - max(floor0[1], floor1[1]));
-    if (properties0.floorZ != properties1.floorZ) {
-      auto const& higherFloorFace =
-          properties0.floorZ > properties1.floorZ ? face0 : face1;
-      array<float, 2> bottomZ{
-          min(floor0[0], floor1[0]), min(floor0[1], floor1[1])};
-      array<float, 2> topZ{
-          max(floor0[0], floor1[0]), max(floor0[1], floor1[1])};
-      appendWall(
-          higherFloorFace.paletteIndex, ArrangementWallKind::FloorStep,
-          bottomZ, topZ, clearance);
-    }
-    if (properties0.ceilingZ != properties1.ceilingZ) {
-      auto const& lowerCeilingFace =
-          properties0.ceilingZ < properties1.ceilingZ ? face0 : face1;
-      array<float, 2> bottomZ{
-          min(ceiling0[0], ceiling1[0]), min(ceiling0[1], ceiling1[1])};
-      array<float, 2> topZ{
-          max(ceiling0[0], ceiling1[0]), max(ceiling0[1], ceiling1[1])};
-      appendWall(
-          lowerCeilingFace.paletteIndex, ArrangementWallKind::CeilingStep,
-          bottomZ, topZ, clearance);
-    }
+    auto clearanceAt = [&](float parameter) {
+      return min(sample(ceiling0, parameter), sample(ceiling1, parameter)) -
+             max(sample(floor0, parameter), sample(floor1, parameter));
+    };
+
+    // Along one source edge the difference between two affine Elevation
+    // planes is linear. Split at its one possible interior zero so each
+    // derived segment has one unambiguous front side and material owner. The
+    // crossing remains floating-point derived output, never Arrangement
+    // topology.
+    auto appendStepSegments = [&](ArrangementWallKind kind,
+                                  array<float, 2> const& side0,
+                                  array<float, 2> const& side1) {
+      array<float, 2> difference{
+          side0[0] - side1[0], side0[1] - side1[1]};
+      array<float, 3> cuts{0.0f, 1.0f, 1.0f};
+      size_t cutCount = 2;
+      optional<float> crossing;
+      if ((difference[0] < 0.0f && difference[1] > 0.0f) ||
+          (difference[0] > 0.0f && difference[1] < 0.0f)) {
+        crossing = difference[0] / (difference[0] - difference[1]);
+        cuts[1] = *crossing;
+        cuts[2] = 1.0f;
+        cutCount = 3;
+      }
+
+      for (size_t segment = 0; segment + 1 < cutCount; ++segment) {
+        auto start = cuts[segment];
+        auto end = cuts[segment + 1];
+        if (!(end > start)) continue;
+        auto midpoint = (start + end) * 0.5f;
+        auto midpointDifference =
+            sample(side0, midpoint) - sample(side1, midpoint);
+        if (midpointDifference == 0.0f) continue;
+
+        auto sideAt = [&](array<float, 2> const& values, float parameter) {
+          return sample(values, parameter);
+        };
+        array<float, 2> segmentSide0{
+            sideAt(side0, start), sideAt(side0, end)};
+        array<float, 2> segmentSide1{
+            sideAt(side1, start), sideAt(side1, end)};
+        // Both formulae describe exactly the same crossing. Pin the two
+        // independently rounded samples to one value so a triangular wall has
+        // one shared tip rather than a microscopic fourth edge.
+        for (size_t endpoint = 0; endpoint < 2; ++endpoint) {
+          auto parameter = endpoint == 0 ? start : end;
+          if (crossing && parameter == *crossing) {
+            auto common =
+                (segmentSide0[endpoint] + segmentSide1[endpoint]) * 0.5f;
+            segmentSide0[endpoint] = common;
+            segmentSide1[endpoint] = common;
+          }
+        }
+
+        array<float, 2> bottomZ{
+            min(segmentSide0[0], segmentSide1[0]),
+            min(segmentSide0[1], segmentSide1[1])};
+        array<float, 2> topZ{
+            max(segmentSide0[0], segmentSide1[0]),
+            max(segmentSide0[1], segmentSide1[1])};
+        auto face0Owns = kind == ArrangementWallKind::FloorStep
+                             ? midpointDifference > 0.0f
+                             : midpointDifference < 0.0f;
+        auto ownerFace = face0Owns ? edge.face[0] : edge.face[1];
+        auto frontFace = face0Owns ? edge.face[1] : edge.face[0];
+        appendWall(
+            arrangement.faces[ownerFace].paletteIndex, kind, bottomZ, topZ,
+            {start, end}, min(clearanceAt(start), clearanceAt(end)),
+            frontFace, ownerFace);
+      }
+    };
+
+    appendStepSegments(ArrangementWallKind::FloorStep, floor0, floor1);
+    appendStepSegments(
+        ArrangementWallKind::CeilingStep, ceiling0, ceiling1);
   }
   return walls;
 }
@@ -2002,37 +2060,49 @@ ArrangementWallOrientation OrientArrangementWall(
   auto const& face1 = arrangement.faces[edge.face[1]];
   auto const& fixed0 = arrangement.vertices[edge.v[0]];
   auto const& fixed1 = arrangement.vertices[edge.v[1]];
+  wp::Vector2 source0{
+      ToWorldCoordinate(fixed0.x), ToWorldCoordinate(fixed0.y)};
+  wp::Vector2 source1{
+      ToWorldCoordinate(fixed1.x), ToWorldCoordinate(fixed1.y)};
+  auto sourceSpan = source1 - source0;
 
   ArrangementWallOrientation result{
-      {ToWorldCoordinate(fixed0.x), ToWorldCoordinate(fixed0.y)},
-      {ToWorldCoordinate(fixed1.x), ToWorldCoordinate(fixed1.y)},
+      source0 + sourceSpan * wall.sourceEdgeParameter[0],
+      source0 + sourceSpan * wall.sourceEdgeParameter[1],
       {},
       wall.bottomZ,
       wall.topZ};
   result.normal = (result.v1 - result.v0).normalisedCopy().perpendicular();
 
-  bool face0IsFront = false;
-  switch (wall.kind) {
-    case ArrangementWallKind::Border:
-      face0IsFront = face0.solid;
-      break;
+  auto face0IsFront = wall.frontFace == edge.face[0];
+  if (wall.frontFace != edge.face[0] && wall.frontFace != edge.face[1]) {
+    // Retain useful behavior for hand-authored test fixtures and older callers
+    // that aggregate-initialize a wall without the derived frontFace field.
+    auto midpoint = (result.v0 + result.v1) * 0.5f;
+    switch (wall.kind) {
+      case ArrangementWallKind::Border:
+        face0IsFront = face0.solid;
+        break;
 
-    case ArrangementWallKind::FloorStep: {
-      auto const& properties0 = arrangement.palette[face0.paletteIndex];
-      auto const& properties1 = arrangement.palette[face1.paletteIndex];
-      face0IsFront = properties0.floorZ < properties1.floorZ;
-      break;
+      case ArrangementWallKind::FloorStep: {
+        auto const& properties0 = arrangement.palette[face0.paletteIndex];
+        auto const& properties1 = arrangement.palette[face1.paletteIndex];
+        face0IsFront = properties0.floorZ.evaluate(midpoint) <
+                       properties1.floorZ.evaluate(midpoint);
+        break;
+      }
+
+      case ArrangementWallKind::CeilingStep: {
+        auto const& properties0 = arrangement.palette[face0.paletteIndex];
+        auto const& properties1 = arrangement.palette[face1.paletteIndex];
+        face0IsFront = properties0.ceilingZ.evaluate(midpoint) >
+                       properties1.ceilingZ.evaluate(midpoint);
+        break;
+      }
+
+      default:
+        throw std::logic_error("Unknown arrangement wall kind");
     }
-
-    case ArrangementWallKind::CeilingStep: {
-      auto const& properties0 = arrangement.palette[face0.paletteIndex];
-      auto const& properties1 = arrangement.palette[face1.paletteIndex];
-      face0IsFront = properties0.ceilingZ > properties1.ceilingZ;
-      break;
-    }
-
-    default:
-      throw std::logic_error("Unknown arrangement wall kind");
   }
 
   if (!face0IsFront) {
@@ -2040,6 +2110,46 @@ ArrangementWallOrientation OrientArrangementWall(
     std::swap(result.v0, result.v1);
     std::swap(result.bottomZ[0], result.bottomZ[1]);
     std::swap(result.topZ[0], result.topZ[1]);
+  }
+  return result;
+}
+
+ArrangementWallSurface BuildArrangementWallSurface(
+    ArrangementResult const& arrangement,
+    ArrangementWall const& wall) {
+  auto orientation = OrientArrangementWall(arrangement, wall);
+  auto startHeight = orientation.topZ[0] - orientation.bottomZ[0];
+  auto endHeight = orientation.topZ[1] - orientation.bottomZ[1];
+  ArrangementWallSurface result;
+  if (startHeight > 0.0f && endHeight > 0.0f) {
+    result.vertices = {
+        ArrangementWallSurfaceVertex{
+            orientation.v0, orientation.bottomZ[0], 0, false},
+        ArrangementWallSurfaceVertex{
+            orientation.v0, orientation.topZ[0], 0, true},
+        ArrangementWallSurfaceVertex{
+            orientation.v1, orientation.topZ[1], 1, true},
+        ArrangementWallSurfaceVertex{
+            orientation.v1, orientation.bottomZ[1], 1, false}};
+    result.vertexCount = 4;
+  } else if (startHeight > 0.0f) {
+    result.vertices = {
+        ArrangementWallSurfaceVertex{
+            orientation.v0, orientation.bottomZ[0], 0, false},
+        ArrangementWallSurfaceVertex{
+            orientation.v0, orientation.topZ[0], 0, true},
+        ArrangementWallSurfaceVertex{
+            orientation.v1, orientation.topZ[1], 1, true}};
+    result.vertexCount = 3;
+  } else if (endHeight > 0.0f) {
+    result.vertices = {
+        ArrangementWallSurfaceVertex{
+            orientation.v0, orientation.topZ[0], 0, true},
+        ArrangementWallSurfaceVertex{
+            orientation.v1, orientation.topZ[1], 1, true},
+        ArrangementWallSurfaceVertex{
+            orientation.v1, orientation.bottomZ[1], 1, false}};
+    result.vertexCount = 3;
   }
   return result;
 }

@@ -85,9 +85,10 @@ private:
   // changing the opaque floor and ceiling model.
   void updateLiquidDataProvider(bw::core::WorldData const& worldData);
 
-  // Wall quad geometry. Each wall picks, every call, whichever single quad
-  // currently faces the player: its authored material if the player is on
-  // the side its normal points toward, or the reserved plain-white
+  // Wall surface geometry. Each wall picks, every call, whichever single
+  // triangular or quadrilateral side currently faces the player: its authored
+  // material if the player is on the side its normal points toward, or the
+  // reserved plain-white
   // material otherwise. Called every frame regardless of mWorldHasChanged,
   // since the player moving is enough to flip that choice for a wall even
   // when nothing about the world itself changed.
@@ -105,7 +106,7 @@ private:
 
   // Emits one Chip detail triangle, mapping it out of arrangement space
   // (Z up) into renderer space. `mirrored` flips it for a wall drawn from
-  // behind, exactly as the wall quad itself is flipped there.
+  // behind, exactly as the wall surface itself is flipped there.
   void addDetailTriangleToDataProvider(
       DataProvider dataProvider,
       uint32_t meshIndex,

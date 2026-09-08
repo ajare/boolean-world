@@ -2,6 +2,7 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -187,6 +188,146 @@ void wallsEvaluateBothBoundariesAtBothEdgeEndpoints() {
   };
   requireEndpoints(*floorStep, true);
   requireEndpoints(*ceilingStep, false);
+  require(
+      bw::core::arr::BuildArrangementWallSurface(*arrangement, *floorStep)
+                  .vertexCount == 4 &&
+          bw::core::arr::BuildArrangementWallSurface(
+              *arrangement, *ceilingStep)
+                  .vertexCount == 4,
+      "varying non-crossing Step walls were not quadrilateral surfaces");
+}
+
+void crossingStepPlanesProduceOwnedOrientedTriangularSegments() {
+  PrimitivePropertySet left;
+  left.floorZ = Elevation{0.0f, {0.0f, 1.0f}};
+  left.ceilingZ = Elevation{30.0f, {0.0f, 1.0f}};
+  left.wallMaterialId = "left.wall";
+  PrimitivePropertySet right;
+  right.floorZ = Elevation{10.0f, {0.0f, -1.0f}};
+  right.ceilingZ = Elevation{40.0f, {0.0f, -1.0f}};
+  right.wallMaterialId = "right.wall";
+
+  auto leftPrimitive =
+      primitive(rectangle(-1000, 0, 0, 10000), 0, left);
+  leftPrimitive.contourEdgeOverrides = {
+      {std::nullopt, false, std::nullopt, std::nullopt}};
+  leftPrimitive.contourEdgeVisibleOverrides = {
+      {std::nullopt, false, std::nullopt, std::nullopt}};
+  leftPrimitive.contourEdgeNormalMapOverrides = {{std::nullopt, bw::core::WallNormalMapOverride::disabled(),
+                                                  std::nullopt, std::nullopt}};
+  leftPrimitive.contourEdgeWallMaskOverrides = {{std::nullopt, bw::core::WallMaskOverride::disabled(),
+                                                 std::nullopt, std::nullopt}};
+
+  auto arrangement = bw::core::arr::BuildArrangement(
+      {leftPrimitive,
+       primitive(rectangle(0, 0, 1000, 10000), 1, right)});
+  auto walls = bw::core::arr::BuildArrangementWalls(*arrangement);
+  std::vector<bw::core::arr::ArrangementWall const*> floorSegments;
+  std::vector<bw::core::arr::ArrangementWall const*> ceilingSegments;
+  for (auto const& wall : walls) {
+    auto const& edge = arrangement->edges[wall.edge];
+    if (!arrangement->faces[edge.face[0]].solid ||
+        !arrangement->faces[edge.face[1]].solid) {
+      continue;
+    }
+    if (wall.kind == ArrangementWallKind::FloorStep) {
+      floorSegments.push_back(&wall);
+    } else if (wall.kind == ArrangementWallKind::CeilingStep) {
+      ceilingSegments.push_back(&wall);
+    }
+  }
+  require(floorSegments.size() == 2 && ceilingSegments.size() == 2,
+          "crossing adjacent planes did not split both Step surfaces");
+
+  auto verifySegments = [&](auto const& segments, float crossingZ,
+                            bool floor) {
+    requireNear(segments[0]->sourceEdgeParameter[0], 0.0f,
+                "the first derived segment did not start at its source edge");
+    requireNear(segments[0]->sourceEdgeParameter[1], 0.5f,
+                "the first derived segment did not end at the plane crossing");
+    requireNear(segments[1]->sourceEdgeParameter[0], 0.5f,
+                "the second derived segment did not start at the plane crossing");
+    requireNear(segments[1]->sourceEdgeParameter[1], 1.0f,
+                "the second derived segment did not end at its source edge");
+
+    for (auto const* segment : segments) {
+      require(!segment->visible,
+              "a derived Step segment lost its visibility override");
+      require(
+          arrangement->edges[segment->edge].collidesOverride == false,
+          "a derived Step segment lost its collision override");
+      require(segment->normalMapOverride.state() ==
+                      bw::core::WallNormalMapOverride::State::Disabled &&
+                  segment->wallMaskOverride.state() ==
+                      bw::core::WallMaskOverride::State::Disabled,
+              "a derived Step segment lost an inherited Image override");
+      auto surface =
+          bw::core::arr::BuildArrangementWallSurface(*arrangement, *segment);
+      require(surface.vertexCount == 3,
+              "a Step segment ending at a plane crossing was not triangular");
+      require(std::ranges::any_of(surface.vertices.begin(),
+                                  surface.vertices.begin() +
+                                      surface.vertexCount,
+                                  [&](auto const& vertex) {
+                                    return std::abs(vertex.position.y - 5.0f) <
+                                               Epsilon &&
+                                           std::abs(vertex.elevation -
+                                                    crossingZ) < Epsilon;
+                                  }),
+              "a triangular Step segment did not retain its crossing tip");
+      require(segment->ownerFace < arrangement->faces.size() &&
+                  segment->frontFace < arrangement->faces.size() &&
+                  segment->ownerFace != segment->frontFace,
+              "a derived Step segment did not identify its two sides");
+      auto const& owner = arrangement->palette[arrangement->faces[segment->ownerFace].paletteIndex];
+      require(owner.wallMaterialId ==
+                  arrangement->palette[segment->paletteIndex].wallMaterialId,
+              "a derived Step segment did not use its owner's material");
+      auto orientation =
+          bw::core::arr::OrientArrangementWall(*arrangement, *segment);
+      auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
+      auto const& front = arrangement->palette[arrangement->faces[segment->frontFace].paletteIndex];
+      auto const& behind = arrangement->palette[arrangement->faces[segment->ownerFace].paletteIndex];
+      auto frontHeight = floor ? front.floorZ.evaluate(midpoint)
+                               : front.ceilingZ.evaluate(midpoint);
+      auto behindHeight = floor ? behind.floorZ.evaluate(midpoint)
+                                : behind.ceilingZ.evaluate(midpoint);
+      require(floor ? frontHeight < behindHeight
+                    : frontHeight > behindHeight,
+              "a derived Step segment faced the wrong adjacent plane");
+    }
+
+    auto firstOrientation = bw::core::arr::OrientArrangementWall(
+        *arrangement, *segments[0]);
+    auto secondOrientation = bw::core::arr::OrientArrangementWall(
+        *arrangement, *segments[1]);
+    require(firstOrientation.normal.dot(secondOrientation.normal) < -0.99f,
+            "Step segments did not reverse orientation where ordering crossed");
+    require(segments[0]->paletteIndex != segments[1]->paletteIndex,
+            "Step segments did not change material owner at the crossing");
+  };
+  verifySegments(floorSegments, 5.0f, true);
+  verifySegments(ceilingSegments, 35.0f, false);
+}
+
+void planesCoincidentAlongAnEdgeProduceNoDegenerateStep() {
+  PrimitivePropertySet left;
+  left.floorZ = Elevation{0.0f, {1.0f, 0.0f}};
+  left.ceilingZ = 20.0f;
+  PrimitivePropertySet right;
+  right.floorZ = 0.0f;
+  right.ceilingZ = 20.0f;
+  auto arrangement = bw::core::arr::BuildArrangement(
+      {primitive(rectangle(-1000, 0, 0, 10000), 0, left),
+       primitive(rectangle(0, 0, 1000, 10000), 1, right)});
+  auto walls = bw::core::arr::BuildArrangementWalls(*arrangement);
+  require(std::ranges::none_of(walls, [&](auto const& wall) {
+            auto const& edge = arrangement->edges[wall.edge];
+            return wall.kind == ArrangementWallKind::FloorStep &&
+                   arrangement->faces[edge.face[0]].solid &&
+                   arrangement->faces[edge.face[1]].solid;
+          }),
+          "planes equal along their source edge produced a degenerate Step");
 }
 
 void generatedRegionsRejectCrossedPlanesButPermitEquality() {
@@ -300,6 +441,8 @@ int main() {
     trianglesEvaluateTheirOwningElevationPlanes();
     booleanSubdivisionPreservesOnePlaneAcrossEveryFragment();
     wallsEvaluateBothBoundariesAtBothEdgeEndpoints();
+    crossingStepPlanesProduceOwnedOrientedTriangularSegments();
+    planesCoincidentAlongAnEdgeProduceNoDegenerateStep();
     generatedRegionsRejectCrossedPlanesButPermitEquality();
     nonzeroLiquidWithSlopedGeneratedSurfacesFailsClearly();
     elevationCrossingsDoNotAlterExactArrangementTopology();

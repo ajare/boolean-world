@@ -28,12 +28,17 @@ AcousticSceneMesh ExportAcousticSceneMesh(
   auto const& arrangement = world.getArrangement();
   auto const& horizontal = world.getTriangles();
   auto const& walls = world.getWalls();
-  auto visibleWallCount = size_t{};
+  auto wallVertexCount = size_t{};
+  auto wallTriangleCount = size_t{};
   for (auto const& wall : walls) {
-    if (wall.visible) ++visibleWallCount;
+    if (!wall.visible) continue;
+    auto surface = core::arr::BuildArrangementWallSurface(arrangement, wall);
+    wallVertexCount += surface.vertexCount;
+    wallTriangleCount +=
+        surface.vertexCount >= 3 ? surface.vertexCount - 2 : 0;
   }
-  result.vertices.reserve(horizontal.size() * 6 + visibleWallCount * 4);
-  result.triangles.reserve(horizontal.size() * 2 + visibleWallCount * 2);
+  result.vertices.reserve(horizontal.size() * 6 + wallVertexCount);
+  result.triangles.reserve(horizontal.size() * 2 + wallTriangleCount);
 
   std::unordered_map<std::string, uint32_t> materialIndices;
   auto materialIndexFor = [&](std::string const& subMaterialId) {
@@ -89,33 +94,28 @@ AcousticSceneMesh ExportAcousticSceneMesh(
 
   for (auto const& wall : walls) {
     if (!wall.visible) continue;
-    auto const orientation = core::arr::OrientArrangementWall(arrangement, wall);
+    auto surface = core::arr::BuildArrangementWallSurface(arrangement, wall);
+    if (surface.vertexCount < 3) continue;
     auto const& properties = arrangement.palette[wall.paletteIndex];
     auto materialIndex = materialIndexFor(properties.wallMaterialId);
-    AcousticSceneVertex const bottom0{
-        orientation.v0.x, orientation.bottomZ[0], -orientation.v0.y};
-    AcousticSceneVertex const bottom1{
-        orientation.v1.x, orientation.bottomZ[1], -orientation.v1.y};
-    AcousticSceneVertex const top1{
-        orientation.v1.x, orientation.topZ[1], -orientation.v1.y};
-    AcousticSceneVertex const top0{
-        orientation.v0.x, orientation.topZ[0], -orientation.v0.y};
 
-    // Match the visible wall quad's diagonal and front-face winding while
-    // retaining one four-vertex quad rather than two disconnected facets.
     if (result.vertices.size() >
-        size_t(std::numeric_limits<uint32_t>::max()) - 4) {
+        size_t(std::numeric_limits<uint32_t>::max()) - surface.vertexCount) {
       throw std::overflow_error("Too many vertices in Acoustic scene");
     }
     auto first = uint32_t(result.vertices.size());
-    result.vertices.push_back(bottom0);
-    result.vertices.push_back(bottom1);
-    result.vertices.push_back(top1);
-    result.vertices.push_back(top0);
-    result.triangles.push_back(
-        {{first + 2, first + 1, first}, materialIndex});
-    result.triangles.push_back(
-        {{first, first + 3, first + 2}, materialIndex});
+    for (uint8_t corner = 0; corner < surface.vertexCount; ++corner) {
+      auto const& vertex = surface.vertices[corner];
+      result.vertices.push_back(
+          {vertex.position.x, vertex.elevation, -vertex.position.y});
+    }
+    // The shared wall perimeter is ordered around the canonical front side;
+    // triangulating it as a fan matches the renderer and emits exactly one
+    // facet for a triangular Step segment and two for a quadrilateral.
+    for (uint8_t corner = 1; corner + 1 < surface.vertexCount; ++corner) {
+      result.triangles.push_back(
+          {{first, first + corner, first + corner + 1}, materialIndex});
+    }
   }
 
   return result;

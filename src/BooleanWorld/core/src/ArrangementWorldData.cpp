@@ -188,6 +188,7 @@ ArrangementWorldData::ArrangementWorldData(
        ++wallIndex) {
     auto const& wall = mWalls[wallIndex];
     auto const& edge = mArrangement->edges[wall.edge];
+    auto orientation = arr::OrientArrangementWall(*mArrangement, wall);
     // A floor step above the player's maximum step height may block an
     // ascent regardless of an authored collision override, so retain it as
     // a candidate; traversal queries later remove it when approached from
@@ -210,8 +211,8 @@ ArrangementWorldData::ArrangementWorldData(
     if (!blocks) {
       continue;
     }
-    auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
-    auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
+    auto const& a = orientation.v0;
+    auto const& b = orientation.v1;
     wallBounds.push_back({{std::min(a.x, b.x), std::min(a.y, b.y)},
                           {std::max(a.x, b.x), std::max(a.y, b.y)}});
     mCollisionWallIndices.push_back(wallIndex);
@@ -227,9 +228,9 @@ ArrangementWorldData::ArrangementWorldData(
     if (!wall.visible) {
       continue;
     }
-    auto const& edge = mArrangement->edges[wall.edge];
-    auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
-    auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
+    auto orientation = arr::OrientArrangementWall(*mArrangement, wall);
+    auto const& a = orientation.v0;
+    auto const& b = orientation.v1;
     renderedWallBounds.push_back({{std::min(a.x, b.x), std::min(a.y, b.y)},
                                   {std::max(a.x, b.x), std::max(a.y, b.y)}});
     mRenderedWallIndices.push_back(wallIndex);
@@ -506,9 +507,9 @@ bool ArrangementWorldData::wallBlocksTraversalWithoutStepAt(
   if (authoredCollision) return true;
   if (wall.kind == arr::ArrangementWallKind::Border) return false;
 
-  auto edgeStart = ToWorld(mArrangement->vertices[edge.v[0]]);
-  auto edgeEnd = ToWorld(mArrangement->vertices[edge.v[1]]);
-  auto interaction = position.closestPointOnLine(edgeStart, edgeEnd);
+  auto orientation = arr::OrientArrangementWall(*mArrangement, wall);
+  auto interaction =
+      position.closestPointOnLine(orientation.v0, orientation.v1);
   auto side0 = getSurfaceSample(edge.face[0], interaction);
   auto side1 = getSurfaceSample(edge.face[1], interaction);
   if (!side0 || !side1) return true;
@@ -530,10 +531,9 @@ std::vector<uint32_t> ArrangementWorldData::getWallsNearForTraversal(
   for (auto wallIndex : candidates) {
     auto const& wall = mWalls[wallIndex];
     auto const& edge = mArrangement->edges[wall.edge];
-    auto edgeStart = ToWorld(mArrangement->vertices[edge.v[0]]);
-    auto edgeEnd = ToWorld(mArrangement->vertices[edge.v[1]]);
+    auto orientation = arr::OrientArrangementWall(*mArrangement, wall);
     auto interaction = EdgeInteractionPosition(
-        sourcePosition, destinationPosition, edgeStart, edgeEnd);
+        sourcePosition, destinationPosition, orientation.v0, orientation.v1);
     if (wallBlocksTraversalWithoutStepAt(wallIndex, interaction)) {
       result.push_back(wallIndex);
       continue;
@@ -587,8 +587,9 @@ std::optional<float> ArrangementWorldData::distanceToFirstWallCrossing(
   for (auto renderedWallIndex : candidates) {
     auto const& wall = mWalls[mRenderedWallIndices[renderedWallIndex]];
     auto const& edge = mArrangement->edges[wall.edge];
-    auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
-    auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
+    auto orientation = arr::OrientArrangementWall(*mArrangement, wall);
+    auto const& a = orientation.v0;
+    auto const& b = orientation.v1;
     auto wallSpan = b - a;
     auto determinant = ray.x * wallSpan.y - wallSpan.x * ray.y;
     if (std::abs(determinant) <=
@@ -605,9 +606,11 @@ std::optional<float> ArrangementWorldData::distanceToFirstWallCrossing(
       continue;
     }
     auto crossing = a + wallSpan * alongWall;
-    auto bottom =
-        wall.bottomZ[0] + (wall.bottomZ[1] - wall.bottomZ[0]) * alongWall;
-    auto top = wall.topZ[0] + (wall.topZ[1] - wall.topZ[0]) * alongWall;
+    auto bottom = orientation.bottomZ[0] +
+                  (orientation.bottomZ[1] - orientation.bottomZ[0]) *
+                      alongWall;
+    auto top = orientation.topZ[0] +
+               (orientation.topZ[1] - orientation.topZ[0]) * alongWall;
     if (wall.kind != arr::ArrangementWallKind::Border) {
       auto side0 = getSurfaceSample(edge.face[0], crossing);
       auto side1 = getSurfaceSample(edge.face[1], crossing);
@@ -636,10 +639,9 @@ int32_t ArrangementWorldData::circleIntersectsWall(
     wp::Vector2 const& position,
     float radius) const {
   for (auto wallIndex : getWallsNear(position, radius)) {
-    auto const& edge = mArrangement->edges[mWalls[wallIndex].edge];
-    auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
-    auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
-    if (position.distanceToLine(a, b) <= radius) {
+    auto const& wall = mWalls[wallIndex];
+    auto orientation = arr::OrientArrangementWall(*mArrangement, wall);
+    if (position.distanceToLine(orientation.v0, orientation.v1) <= radius) {
       return int32_t(wallIndex);
     }
   }
@@ -653,10 +655,10 @@ int32_t ArrangementWorldData::circleIntersectsWallForTraversal(
     bool descending) const {
   for (auto wallIndex : getWallsNearForTraversal(
            destinationPosition, radius, sourcePosition, descending)) {
-    auto const& edge = mArrangement->edges[mWalls[wallIndex].edge];
-    auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
-    auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
-    if (destinationPosition.distanceToLine(a, b) <= radius) {
+    auto const& wall = mWalls[wallIndex];
+    auto orientation = arr::OrientArrangementWall(*mArrangement, wall);
+    if (destinationPosition.distanceToLine(
+            orientation.v0, orientation.v1) <= radius) {
       return int32_t(wallIndex);
     }
   }

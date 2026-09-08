@@ -484,7 +484,7 @@ void WorldRenderer::addDetailTriangleToDataProvider(
   // triangle wound counter-clockwise about its normal there stays wound
   // counter-clockwise about the mapped normal here and the indices pass
   // through in order. The world draws unculled either way (which is why each
-  // wall picks one quad per frame rather than emitting both sides); what
+  // wall picks one surface per frame rather than emitting both sides); what
   // carries the surface is the explicit normal, so mirroring a wall remainder
   // for its back face has to flip that as well as the winding. Chip facets are
   // never passed here as mirrored surfaces.
@@ -726,8 +726,9 @@ void WorldRenderer::updateWallDataProvider(
   auto const& walls = snapshot.getWalls();
   auto& wallRenderer = mMaterialRenderers[2];
 
-  // Walls render two-sided, but only ever as a single quad: whichever side
-  // currently faces the player keeps the wall's authored material: this
+  // Walls render two-sided, but only ever as one triangular or quadrilateral
+  // surface: whichever side currently faces the player keeps the wall's
+  // authored material: this
   // reserved, plain-white material - see WorldBatch::createModelStream
   // (which guarantees this mesh bucket exists) and
   // BW_WALL_BACK_FACE_MATERIAL_INDEX - renders on the far side instead.
@@ -766,7 +767,7 @@ void WorldRenderer::updateWallDataProvider(
       };
 
   // A chipped wall draws its remainder plus the chamfer facets instead of its
-  // plain quad. Only the coplanar wall remainder follows the player-facing
+  // plain surface. Only the coplanar wall remainder follows the player-facing
   // material decision above. A facet is an outward-facing surface in its own
   // right: mirroring it with the vertical wall would invert its face normal
   // when viewed from the horizontal side and make overhead lighting black.
@@ -806,7 +807,11 @@ void WorldRenderer::updateWallDataProvider(
                            : unmappedAuthoredMesh];
         }
       } else {
-        wallCounts[authoredMesh] += 2u;
+        auto surface =
+            bw::core::arr::BuildArrangementWallSurface(worldData, wall);
+        wallCounts[authoredMesh] += surface.vertexCount >= 3
+                                        ? surface.vertexCount - 2u
+                                        : 0u;
       }
     } else if (suppressed) {
       for (auto const& replacement : replacements) {
@@ -814,7 +819,11 @@ void WorldRenderer::updateWallDataProvider(
                                                    : unmappedAuthoredMesh];
       }
     } else {
-      wallCounts[backMesh] += 2u;
+      auto surface =
+          bw::core::arr::BuildArrangementWallSurface(worldData, wall);
+      wallCounts[backMesh] += surface.vertexCount >= 3
+                                  ? surface.vertexCount - 2u
+                                  : 0u;
     }
   }
   wallRenderer.dataProvider->updateInternals(wallCounts);
@@ -825,8 +834,6 @@ void WorldRenderer::updateWallDataProvider(
       continue;
     }
     auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
-    auto const& v0 = orientation.v0;
-    auto const& v1 = orientation.v1;
     auto replacements =
         detail.isSuppressed(DetailSurfaceKind::Wall, uint32_t(wallIndex))
             ? detail.replacementsFor(
@@ -865,29 +872,28 @@ void WorldRenderer::updateWallDataProvider(
       }
       auto const& normal = orientation.normal;
       auto uv = CalculateWallPhysicalUv(orientation, wall);
-      auto bottom0 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v0.x, orientation.bottomZ[0], -v0.y,
-          normal.x, 0, -normal.y, uv.u0, uv.bottomV[0], colour,
-          liquidSurfaceHeight);
-      auto bottom1 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v1.x, orientation.bottomZ[1], -v1.y,
-          normal.x, 0, -normal.y, uv.u1, uv.bottomV[1], colour,
-          liquidSurfaceHeight);
-      auto top1 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v1.x, orientation.topZ[1], -v1.y,
-          normal.x, 0, -normal.y, uv.u1, uv.topV[1], colour,
-          liquidSurfaceHeight);
-      auto top0 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v0.x, orientation.topZ[0], -v0.y,
-          normal.x, 0, -normal.y, uv.u0, uv.topV[0], colour,
-          liquidSurfaceHeight);
-      wallRenderer.dataProvider->addTriangle(mesh, top1, bottom1, bottom0);
-      wallRenderer.dataProvider->addTriangle(mesh, bottom0, top0, top1);
+      auto surface =
+          bw::core::arr::BuildArrangementWallSurface(worldData, wall);
+      auto addSurfaceVertex = [&](size_t index) {
+        auto const& vertex = surface.vertices[index];
+        auto u = vertex.endpoint == 0 ? uv.u0 : uv.u1;
+        auto v = vertex.topBoundary ? uv.topV[vertex.endpoint]
+                                    : uv.bottomV[vertex.endpoint];
+        return addVertexToDataProvider(
+            wallRenderer.dataProvider, mesh, vertex.position.x,
+            vertex.elevation, -vertex.position.y, normal.x, 0, -normal.y, u,
+            v, colour, liquidSurfaceHeight);
+      };
+      for (uint8_t corner = 1; corner + 1 < surface.vertexCount; ++corner) {
+        auto first = addSurfaceVertex(0);
+        auto second = addSurfaceVertex(corner);
+        auto third = addSurfaceVertex(corner + 1);
+        wallRenderer.dataProvider->addTriangle(mesh, first, second, third);
+      }
     } else {
-      // The same 4 corners and diagonal as the facesPlayer branch above,
-      // with each triangle's vertex order reversed - not a different
-      // diagonal - so the winding, and therefore which side it's visible
-      // from, is a true mirror image rather than an inconsistent one.
+      // The same perimeter and fan as the facesPlayer branch above, with each
+      // triangle's vertex order reversed, so the winding and therefore which
+      // side is visible is a true mirror image.
       auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
       auto backNormal = -orientation.normal;
       auto colour = int32_t(wallIndex) == highlightedWall
@@ -914,24 +920,22 @@ void WorldRenderer::updateWallDataProvider(
         }
         continue;
       }
-      auto bottom0 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v0.x, orientation.bottomZ[0], -v0.y,
-          backNormal.x, 0, -backNormal.y, 0, 0, colour,
-          liquidSurfaceHeight);
-      auto bottom1 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v1.x, orientation.bottomZ[1], -v1.y,
-          backNormal.x, 0, -backNormal.y, 1, 0, colour,
-          liquidSurfaceHeight);
-      auto top1 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v1.x, orientation.topZ[1], -v1.y,
-          backNormal.x, 0, -backNormal.y, 1, 1, colour,
-          liquidSurfaceHeight);
-      auto top0 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v0.x, orientation.topZ[0], -v0.y,
-          backNormal.x, 0, -backNormal.y, 0, 1, colour,
-          liquidSurfaceHeight);
-      wallRenderer.dataProvider->addTriangle(mesh, bottom0, bottom1, top1);
-      wallRenderer.dataProvider->addTriangle(mesh, top1, top0, bottom0);
+      auto surface =
+          bw::core::arr::BuildArrangementWallSurface(worldData, wall);
+      auto addSurfaceVertex = [&](size_t index) {
+        auto const& vertex = surface.vertices[index];
+        return addVertexToDataProvider(
+            wallRenderer.dataProvider, mesh, vertex.position.x,
+            vertex.elevation, -vertex.position.y, backNormal.x, 0,
+            -backNormal.y, float(vertex.endpoint),
+            vertex.topBoundary ? 1.0f : 0.0f, colour, liquidSurfaceHeight);
+      };
+      for (uint8_t corner = 1; corner + 1 < surface.vertexCount; ++corner) {
+        auto first = addSurfaceVertex(0);
+        auto second = addSurfaceVertex(corner);
+        auto third = addSurfaceVertex(corner + 1);
+        wallRenderer.dataProvider->addTriangle(mesh, third, second, first);
+      }
     }
   }
   wallRenderer.dataProvider->finalizeInternals();
@@ -976,7 +980,7 @@ void WorldRenderer::update(
   }
   // Unlike the horizontal provider, walls depend on playerPosition, so they
   // need rebuilding on every call - the player moving is reason enough for
-  // a wall to flip which single quad it shows, even when nothing about the
+  // a wall to flip which single surface it shows, even when nothing about the
   // world itself changed.
   updateWallDataProvider(worldData, playerPosition, highlightedWall);
 

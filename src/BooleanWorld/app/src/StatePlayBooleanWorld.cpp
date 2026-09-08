@@ -594,15 +594,10 @@ void StatePlayBooleanWorld::createWorldCollisions(
            predictedPosition, radius, playerPosition,
            descendingForTraversal)) {
     auto const& wall = walls[wallIndex];
-    auto const& edge = arrangement.edges[wall.edge];
-    auto const& fixed0 = arrangement.vertices[edge.v[0]];
-    auto const& fixed1 = arrangement.vertices[edge.v[1]];
-    wp::Vector2 v0{
-        bw::core::arr::ToWorldCoordinate(fixed0.x),
-        bw::core::arr::ToWorldCoordinate(fixed0.y)};
-    wp::Vector2 v1{
-        bw::core::arr::ToWorldCoordinate(fixed1.x),
-        bw::core::arr::ToWorldCoordinate(fixed1.y)};
+    auto orientation =
+        bw::core::arr::OrientArrangementWall(arrangement, wall);
+    auto const& v0 = orientation.v0;
+    auto const& v1 = orientation.v1;
 
     // A tall FloorStep is withheld while the player crosses over it - falling
     // off the ledge, or swimming above the pool floor it encloses - so by the
@@ -928,12 +923,10 @@ bool StatePlayBooleanWorld::tryClimbOutOfLiquid() {
       continue;
     }
 
-    auto toWorld = [](auto const& vertex) {
-      return wp::Vector2{bw::core::arr::ToWorldCoordinate(vertex.x),
-                         bw::core::arr::ToWorldCoordinate(vertex.y)};
-    };
-    auto v0 = toWorld(arrangement.vertices[edge.v[0]]);
-    auto v1 = toWorld(arrangement.vertices[edge.v[1]]);
+    auto orientation =
+        bw::core::arr::OrientArrangementWall(arrangement, wall);
+    auto const& v0 = orientation.v0;
+    auto const& v1 = orientation.v1;
     if (position.distanceToLine(v0, v1) > contactDistance) {
       continue;
     }
@@ -1965,15 +1958,10 @@ void StatePlayBooleanWorld::debug_renderCollisionSim(wp::Vector2 const& viewSize
         continue;
       }
 
-      auto const& edge = arrangement.edges[wall.edge];
-      auto const& fixed0 = arrangement.vertices[edge.v[0]];
-      auto const& fixed1 = arrangement.vertices[edge.v[1]];
-      wp::Vector2 v0{
-          bw::core::arr::ToWorldCoordinate(fixed0.x),
-          bw::core::arr::ToWorldCoordinate(fixed0.y)};
-      wp::Vector2 v1{
-          bw::core::arr::ToWorldCoordinate(fixed1.x),
-          bw::core::arr::ToWorldCoordinate(fixed1.y)};
+      auto orientation =
+          bw::core::arr::OrientArrangementWall(arrangement, wall);
+      auto const& v0 = orientation.v0;
+      auto const& v1 = orientation.v1;
 
       drawList->AddLine(
           wpVecToImVec2(v0, viewOffset, viewSize, viewScale),

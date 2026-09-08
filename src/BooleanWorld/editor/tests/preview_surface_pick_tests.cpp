@@ -317,9 +317,9 @@ void editingTheResolvedOwnerChangesWhatTheSurfaceDraws() {
       "editing one polygon's owner reached a Primitive it does not own");
 }
 
-// A wall belongs to the polygon that gave it its extent, not to whichever
-// side of its edge comes first: the solid side of a border, the lower side of
-// a floor step, the higher side of a ceiling step.
+// A wall resolves to the Primitive that owns its rendered material, not to
+// whichever side of its edge comes first: the Border's selected owner, the
+// higher floor of a FloorStep, and the lower ceiling of a CeilingStep.
 void wallsResolveToThePolygonTheyBound() {
   auto left = makeRoomSpanning(-5, -5, 5, 5, 0, 20, 1, 0);
   auto right = makeRoomSpanning(5, -5, 15, 5, 4, 10, 2, 0);
@@ -336,17 +336,17 @@ void wallsResolveToThePolygonTheyBound() {
   auto floorStep = editor::pickPreviewSceneSurface(*data, {0, 0, 2}, {1, 0, 0});
   require(
       floorStep.surfaceHit.surface == PreviewSurface::Wall &&
-          ownerPrimitive(*data, floorStep, primitives) == left.get() &&
-          editor::previewSurfaceSubMaterialId(*data, floorStep) == "wall.1",
-      "a floor step did not resolve to the polygon its floor steps up from");
+          ownerPrimitive(*data, floorStep, primitives) == right.get() &&
+          editor::previewSurfaceSubMaterialId(*data, floorStep) == "wall.2",
+      "a FloorStep did not resolve to its higher-floor material owner");
 
   auto ceilingStep =
       editor::pickPreviewSceneSurface(*data, {0, 0, 15}, {1, 0, 0});
   require(
       ceilingStep.surfaceHit.surface == PreviewSurface::Wall &&
-          ownerPrimitive(*data, ceilingStep, primitives) == left.get() &&
-          editor::previewSurfaceSubMaterialId(*data, ceilingStep) == "wall.1",
-      "a ceiling step did not resolve to the polygon its ceiling steps down from");
+          ownerPrimitive(*data, ceilingStep, primitives) == right.get() &&
+          editor::previewSurfaceSubMaterialId(*data, ceilingStep) == "wall.2",
+      "a CeilingStep did not resolve to its lower-ceiling material owner");
 }
 
 // Primitive ids are Layer-local - Layer::_appendBuiltPrimitive stamps each
@@ -414,13 +414,12 @@ void movingTheResolvedOwnerRaisesOnlyThatPolygon() {
           near(neighbour.surfaceHit.distance, 20.0f),
       "moving one polygon's floor moved a polygon it does not own");
 
-  // The step it just made is a wall, and that wall belongs to the polygon
-  // whose floor stayed low - the one you would be standing on to see it.
+  // The step it just made is surfaced by the higher floor that occludes it.
   auto step = editor::pickPreviewSceneSurface(*rebuilt, {-3, 0, 4}, {1, 0, 0});
   require(
       step.surfaceHit.surface == PreviewSurface::Wall &&
-          ownerPrimitive(*rebuilt, step, primitives) == lower.get(),
-      "the step the nudge created did not resolve to the lower polygon");
+          ownerPrimitive(*rebuilt, step, primitives) == higher.get(),
+      "the step the nudge created did not resolve to its material owner");
 }
 
 void outlinesUseTheRenderersReflectedGroundPlane() {
@@ -514,6 +513,65 @@ void slopedSurfacesPickAndOutlineTheirEvaluatedGeometry() {
   }
 }
 
+void crossingStepSegmentsPickAndOutlineAsTrianglesWithTheirOwners() {
+  bw::core::PrimitivePropertySet left;
+  left.floorZ = bw::core::Elevation{0.0f, {0.0f, 1.0f}};
+  left.ceilingZ = bw::core::Elevation{30.0f, {0.0f, 1.0f}};
+  left.wallMaterialId = "left.wall";
+  bw::core::PrimitivePropertySet right;
+  right.floorZ = bw::core::Elevation{10.0f, {0.0f, -1.0f}};
+  right.ceilingZ = bw::core::Elevation{40.0f, {0.0f, -1.0f}};
+  right.wallMaterialId = "right.wall";
+  constexpr int64_t U = bw::core::arr::FixedPointUnitsPerWorldUnit;
+  bw::core::arr::ArrangementPrimitive leftPrimitive{
+      {{{-U, 0}, {0, 0}, {0, 10 * U}, {-U, 10 * U}}},
+      Primitive::Operation::Union,
+      Primitive::FillRule::NonZero,
+      0,
+      0,
+      left};
+  bw::core::arr::ArrangementPrimitive rightPrimitive{
+      {{{0, 0}, {U, 0}, {U, 10 * U}, {0, 10 * U}}},
+      Primitive::Operation::Union,
+      Primitive::FillRule::NonZero,
+      1,
+      1,
+      right};
+  bw::core::ArrangementWorldData data(
+      bw::core::arr::BuildArrangement({leftPrimitive, rightPrimitive}),
+      wp::BoundingBox{{-2.0f, -1.0f}, {4.0f, 12.0f}}, 2.0f);
+
+  struct Candidate {
+    Vector3 origin;
+    float elevation;
+    uint32_t owner;
+    std::string material;
+  };
+  for (auto const& candidate : {
+           Candidate{{-0.5f, 2.0f, 5.0f}, 5.0f, 1, "right.wall"},
+           Candidate{{-0.5f, 8.0f, 5.0f}, 5.0f, 0, "left.wall"},
+           Candidate{{-0.5f, 2.0f, 35.0f}, 35.0f, 0, "left.wall"},
+           Candidate{{-0.5f, 8.0f, 35.0f}, 35.0f, 1, "right.wall"}}) {
+    auto pick = editor::pickPreviewSceneSurface(
+        data, candidate.origin, {1.0f, 0.0f, 0.0f});
+    auto owner = editor::resolvePreviewSurfaceOwner(data, pick);
+    require(pick.surfaceHit.surface == PreviewSurface::Wall &&
+                near(pick.surfaceHit.distance, 0.5f),
+            "picking missed a triangular Step segment");
+    require(owner.primitiveListIndex == candidate.owner &&
+                editor::previewSurfaceSubMaterialId(data, pick) ==
+                    candidate.material,
+            "a picked Step segment did not resolve to its material owner");
+    auto outline = editor::previewSurfaceOutline(data, pick);
+    require(outline.size() == 6,
+            "a triangular Step segment was outlined as a quadrilateral");
+    require(std::ranges::any_of(outline, [&](auto const& point) {
+              return near(point[0], 0.0f) && near(point[1], candidate.elevation);
+            }),
+            "the Step outline did not include the picked elevation");
+  }
+}
+
 void unpickedSurfacesResolveToNothing() {
   auto room = makeRoom();
   auto data = buildData({room.get()});
@@ -547,6 +605,7 @@ int main() {
     movingTheResolvedOwnerRaisesOnlyThatPolygon();
     outlinesUseTheRenderersReflectedGroundPlane();
     slopedSurfacesPickAndOutlineTheirEvaluatedGeometry();
+    crossingStepSegmentsPickAndOutlineAsTrianglesWithTheirOwners();
     unpickedSurfacesResolveToNothing();
     std::cout << "Preview surface pick tests passed\n";
     return 0;

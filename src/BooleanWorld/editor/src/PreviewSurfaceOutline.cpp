@@ -13,6 +13,11 @@ std::array<float, 3> rendererPoint(
       -bw::core::arr::ToWorldCoordinate(vertex.y)};
 }
 
+std::array<float, 3> rendererPoint(
+    bw::core::arr::ArrangementWallSurfaceVertex const& vertex) {
+  return {vertex.position.x, vertex.elevation, -vertex.position.y};
+}
+
 }  // namespace
 
 std::vector<std::array<float, 3>> previewSurfaceOutline(
@@ -42,15 +47,12 @@ std::vector<std::array<float, 3>> previewSurfaceOutline(
     if (surface.surfaceHit.wallIndex >= walls.size()) return segments;
     auto const& wall = walls[surface.surfaceHit.wallIndex];
     if (wall.edge >= arrangement.edges.size()) return segments;
-    auto const& edge = arrangement.edges[wall.edge];
-    std::array<std::array<float, 3>, 4> quad{
-        rendererPoint(arrangement.vertices[edge.v[0]], wall.bottomZ[0]),
-        rendererPoint(arrangement.vertices[edge.v[1]], wall.bottomZ[1]),
-        rendererPoint(arrangement.vertices[edge.v[1]], wall.topZ[1]),
-        rendererPoint(arrangement.vertices[edge.v[0]], wall.topZ[0])};
-    for (std::size_t index = 0; index < quad.size(); ++index) {
-      segments.push_back(quad[index]);
-      segments.push_back(quad[(index + 1) % quad.size()]);
+    auto wallSurface =
+        bw::core::arr::BuildArrangementWallSurface(arrangement, wall);
+    for (uint8_t index = 0; index < wallSurface.vertexCount; ++index) {
+      segments.push_back(rendererPoint(wallSurface.vertices[index]));
+      segments.push_back(rendererPoint(
+          wallSurface.vertices[(index + 1) % wallSurface.vertexCount]));
     }
     return segments;
   }

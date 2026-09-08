@@ -34,8 +34,9 @@ triangle scene's highly optimized BVH cost.
 Steam Audio receives a default triangle-mesh `IPLScene` derived from each
 published `ArrangementWorldData` snapshot. The mesh contains the same analytic
 surfaces the custom path would have exposed: each solid Arrangement triangle's
-floor and ceiling and each visible ArrangementWall's quad. Acoustic presets are
-resolved to the mesh's material table while it is built.
+floor and ceiling and each visible ArrangementWall's triangular or
+quadrilateral surface. Acoustic presets are resolved to the mesh's material
+table while it is built.
 
 The scene and the immutable World snapshot it represents move through runtime
 handoff as one versioned unit. Replacing a World snapshot builds and commits a

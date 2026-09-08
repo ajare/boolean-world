@@ -175,8 +175,8 @@ struct ArrangementWall {
   float maxZ;
   uint16_t paletteIndex;
   ArrangementWallKind kind;
-  // Minimum vertical headroom available along this source edge: the overlap
-  // of the two adjacent solid faces' evaluated floor/ceiling ranges. For a
+  // Minimum vertical headroom available along this derived segment: the
+  // overlap of the two adjacent solid faces' evaluated floor/ceiling ranges. For a
   // zero-gradient World this is the previous face-wide value. Meaningless for
   // Border, which always blocks regardless.
   float clearance;
@@ -187,12 +187,21 @@ struct ArrangementWall {
   bool visible{true};
   WallNormalMapOverride normalMapOverride{};
   WallMaskOverride wallMaskOverride{};
-  // Evaluated vertical boundaries at ArrangementEdge::v[0] and v[1]. Keeping
-  // their exact source edge lets elevation-only crossings remain derived
-  // geometry rather than Arrangement vertices. minZ/maxZ are conservative
-  // bounds retained for flat-compatible consumers.
+  // Evaluated vertical boundaries at sourceEdgeParameter[0] and [1] along
+  // ArrangementEdge::v[0] -> v[1]. A Step surface is split into separate
+  // derived segments when its adjacent planes cross, without introducing an
+  // Arrangement vertex. minZ/maxZ are conservative bounds retained for
+  // flat-compatible consumers.
   std::array<float, 2> bottomZ{};
   std::array<float, 2> topZ{};
+  std::array<float, 2> sourceEdgeParameter{0.0f, 1.0f};
+  // The canonical front side and the face whose Primitive owns this segment's
+  // wall material. They differ for Steps: FloorStep faces the lower floor and
+  // is owned by the higher floor; CeilingStep faces the higher ceiling and is
+  // owned by the lower ceiling. A Difference-owned Border can likewise have
+  // an empty ownerFace while facing its adjacent solid face.
+  uint32_t frontFace{~0u};
+  uint32_t ownerFace{~0u};
 };
 
 struct ArrangementAudioEmitter {
@@ -323,6 +332,23 @@ struct ArrangementWallOrientation {
   std::array<float, 2> topZ{};
 };
 
+struct ArrangementWallSurfaceVertex {
+  wp::Vector2 position;
+  float elevation{};
+  uint8_t endpoint{};
+  bool topBoundary{};
+};
+
+// The nondegenerate perimeter of one derived wall segment, ordered about its
+// canonical front normal. A quadrilateral has four vertices; a segment whose
+// adjacent planes meet at one endpoint is a triangle with three. Consumers
+// triangulate it as a fan so rendering, picking, outlines, and acoustics use
+// exactly the same surface.
+struct ArrangementWallSurface {
+  std::array<ArrangementWallSurfaceVertex, 4> vertices{};
+  uint8_t vertexCount{};
+};
+
 using ArrangementResultPtr = std::shared_ptr<ArrangementResult const>;
 using PrimitiveFoldOrder = std::vector<uint32_t>;
 
@@ -391,6 +417,10 @@ bool PointInFace(
     ArrangementResult const& arrangement);
 
 [[nodiscard]] ArrangementWallOrientation OrientArrangementWall(
+    ArrangementResult const& arrangement,
+    ArrangementWall const& wall);
+
+[[nodiscard]] ArrangementWallSurface BuildArrangementWallSurface(
     ArrangementResult const& arrangement,
     ArrangementWall const& wall);
 

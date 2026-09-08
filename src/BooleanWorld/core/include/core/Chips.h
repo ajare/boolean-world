@@ -16,8 +16,8 @@ namespace bw::core::arr {
 // A renderer emits *two* surfaces from one ArrangementTriangle - a floor at
 // the face's floorZ and a ceiling at its ceilingZ - so a key names the side,
 // never the triangle: suppressing a triangle outright would punch a matching
-// hole in the surface on the other side of the face. Walls emit one quad
-// each, so a wall key names the wall.
+// hole in the surface on the other side of the face. Walls emit one triangular
+// or quadrilateral surface each, so a wall key names the wall.
 enum struct DetailSurfaceKind : uint8_t {
   FloorOfFace,
   CeilingOfFace,
