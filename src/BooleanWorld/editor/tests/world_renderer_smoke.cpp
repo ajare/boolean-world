@@ -52,7 +52,9 @@ struct RenderFixture {
   bool chips{};
   bool wedges{};
   bool lookAtWedges{};
+  bool lookAtFloor{};
   bool wet{};
+  bool sloped{};
 };
 
 struct ResourceCounts {
@@ -119,6 +121,10 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   auto properties = primitive->getProperties();
   properties.floorZ = 0.0f;
   properties.ceilingZ = 48.0f;
+  if (fixture.sloped) {
+    properties.floorZ.gradient = {0.25f, 0.125f};
+    properties.ceilingZ.gradient = {-0.125f, 0.25f};
+  }
   properties.floorMaterialId = "migrated.marble.1";
   properties.ceilingMaterialId = "migrated.marble.1";
   properties.wallMaterialId = "migrated.marble.1";
@@ -218,8 +224,13 @@ std::vector<float> render(
       renderSystem, &world, kWidth, kHeight, fixture.horizontal);
   auto camera = std::make_shared<ReactiveCamera>(
       glm::vec3{
-          0.0f, fixture.lookAtWedges ? 40.0f : BW_PLAYER_EYE_HEIGHT, 0.0f},
-      bw::app::cameraYaw(0.0f), 0.0f, BW_PLAYER_FOV,
+          0.0f,
+          fixture.lookAtWedges || fixture.lookAtFloor
+              ? 40.0f
+              : BW_PLAYER_EYE_HEIGHT,
+          0.0f},
+      bw::app::cameraYaw(0.0f), fixture.lookAtFloor ? 45.0f : 0.0f,
+      BW_PLAYER_FOV,
       kWidth / float(kHeight));
   camera->setClipDistances(0.1f, 1000000.0f);
   uint32_t texture{};
@@ -278,6 +289,11 @@ int main() {
 
       std::array<uint32_t, 3> drySurfaceTriangles;
       auto unset = render(renderSystem, {}, &drySurfaceTriangles);
+      auto flatFloor = render(renderSystem, {.lookAtFloor = true});
+      auto sloped = render(
+          renderSystem, {.lookAtFloor = true, .sloped = true});
+      require(regionDifference(flatFloor, sloped) > 0.0005,
+              "evaluated sloped geometry rendered like the flat baseline");
       std::array<uint32_t, 3> wetSurfaceTriangles;
       auto wet = render(renderSystem, {.wet = true}, &wetSurfaceTriangles);
       require(drySurfaceTriangles[0] == wetSurfaceTriangles[0] &&

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include <core/Arrangement.h>
 #include <core/Chips.h>
 
@@ -8,6 +10,8 @@ struct WallPhysicalUv {
   float u1{1.0f};
   float minV{};
   float maxV{1.0f};
+  std::array<float, 2> bottomV{};
+  std::array<float, 2> topV{1.0f, 1.0f};
 };
 
 // Physical wall UVs are independent of procedural Sub-material coordinates.
@@ -31,8 +35,16 @@ struct WallPhysicalUv {
   if (repeat <= 0.0f) return {};
   auto length = orientation.v0.distanceTo(orientation.v1);
   if (length <= 0.0f) return {};
-  auto verticalRepeat = (wall.maxZ - wall.minZ) * repeat / length;
-  return {0.0f, repeat, 0.0f, verticalRepeat};
+  auto verticalScale = repeat / length;
+  WallPhysicalUv result{
+      0.0f, repeat, 0.0f, (wall.maxZ - wall.minZ) * verticalScale};
+  for (size_t endpoint = 0; endpoint < 2; ++endpoint) {
+    result.bottomV[endpoint] =
+        (orientation.bottomZ[endpoint] - wall.minZ) * verticalScale;
+    result.topV[endpoint] =
+        (orientation.topZ[endpoint] - wall.minZ) * verticalScale;
+  }
+  return result;
 }
 
 // Chip generation triangulates a bitten wall in its own normalized UV space.

@@ -35,6 +35,21 @@ void physicalUvsUseWallLocalRepeatCount() {
           "Unset wall changed the legacy UV data");
 }
 
+void physicalUvsFollowVariableWallBoundaries() {
+  auto mapped = bw::core::WallNormalMapOverride::image(
+      "normal/directional.png", 4.0f, 1.0f);
+  bw::core::arr::ArrangementWall wall{
+      0, 6.0f, 16.0f, 0,
+      bw::core::arr::ArrangementWallKind::Border, 8.0f, true, mapped};
+  bw::core::arr::ArrangementWallOrientation orientation{
+      {3.0f, 4.0f}, {6.0f, 8.0f}, {-0.8f, 0.6f}, {6.0f, 8.0f}, {14.0f, 16.0f}};
+
+  auto uv = CalculateWallPhysicalUv(orientation, wall);
+  require(near(uv.bottomV[0], 0.0f) && near(uv.bottomV[1], 1.6f) &&
+              near(uv.topV[0], 6.4f) && near(uv.topV[1], 8.0f),
+          "mapped UVs flattened a variable-height wall to scalar bounds");
+}
+
 void physicalUvsAlignToEachWallWithoutWorldPhase() {
   auto mapped = bw::core::WallNormalMapOverride::image(
       "normal/directional.png", 4.0f, 1.0f);
@@ -176,6 +191,7 @@ void mappedAndUnmappedSurfacesHaveDistinctBucketIdentity() {
 int main() {
   try {
     physicalUvsUseWallLocalRepeatCount();
+    physicalUvsFollowVariableWallBoundaries();
     physicalUvsAlignToEachWallWithoutWorldPhase();
     chippedWallRemainderKeepsWallLocalUvAnchoring();
     shadersShareCompositionContract();

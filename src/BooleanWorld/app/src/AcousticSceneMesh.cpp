@@ -75,8 +75,8 @@ AcousticSceneMesh ExportAcousticSceneMesh(
     std::array<AcousticSceneVertex, 3> ceiling;
     for (size_t i = 0; i < 3; ++i) {
       auto const& vertex = arrangement.vertices[triangle.v[i]];
-      floor[i] = audioVertex(vertex, properties.floorZ);
-      ceiling[i] = audioVertex(vertex, properties.ceilingZ);
+      floor[i] = audioVertex(vertex, triangle.floor.elevation[i]);
+      ceiling[i] = audioVertex(vertex, triangle.ceiling.elevation[i]);
     }
 
     // Arrangement triangles face upward after conversion to audio space. Keep
@@ -93,13 +93,13 @@ AcousticSceneMesh ExportAcousticSceneMesh(
     auto const& properties = arrangement.palette[wall.paletteIndex];
     auto materialIndex = materialIndexFor(properties.wallMaterialId);
     AcousticSceneVertex const bottom0{
-        orientation.v0.x, wall.minZ, -orientation.v0.y};
+        orientation.v0.x, orientation.bottomZ[0], -orientation.v0.y};
     AcousticSceneVertex const bottom1{
-        orientation.v1.x, wall.minZ, -orientation.v1.y};
+        orientation.v1.x, orientation.bottomZ[1], -orientation.v1.y};
     AcousticSceneVertex const top1{
-        orientation.v1.x, wall.maxZ, -orientation.v1.y};
+        orientation.v1.x, orientation.topZ[1], -orientation.v1.y};
     AcousticSceneVertex const top0{
-        orientation.v0.x, wall.maxZ, -orientation.v0.y};
+        orientation.v0.x, orientation.topZ[0], -orientation.v0.y};
 
     // Match the visible wall quad's diagonal and front-face winding while
     // retaining one four-vertex quad rather than two disconnected facets.

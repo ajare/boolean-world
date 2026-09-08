@@ -313,11 +313,14 @@ struct ArrangementResult {
 // A wall's front face is the one its outward normal points away from: the
 // solid side for Border, the lower side for FloorStep, the higher side for
 // CeilingStep. v0/v1 are the wall's endpoints ordered so that walking from
-// v0 to v1 keeps the front face on the left, matching normal.
+// v0 to v1 keeps the front face on the left, matching normal. bottomZ/topZ
+// follow that same oriented endpoint order.
 struct ArrangementWallOrientation {
   wp::Vector2 v0;
   wp::Vector2 v1;
   wp::Vector2 normal;
+  std::array<float, 2> bottomZ{};
+  std::array<float, 2> topZ{};
 };
 
 using ArrangementResultPtr = std::shared_ptr<ArrangementResult const>;

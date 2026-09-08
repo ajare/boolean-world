@@ -120,15 +120,13 @@ PreviewScenePick pickPreviewSceneSurface(
   auto const& triangles = worldData.getTriangles();
   for (size_t index = 0; index < triangles.size(); ++index) {
     auto const& triangle = triangles[index];
-    auto const& properties =
-        arrangement.palette[arrangement.faces[triangle.face].paletteIndex];
-    for (auto const [surface, z] : {
-             std::pair{PreviewSurface::Floor, properties.floorZ},
-             std::pair{PreviewSurface::Ceiling, properties.ceilingZ}}) {
+    for (auto const [surface, elevations] : {
+             std::pair{PreviewSurface::Floor, &triangle.floor.elevation},
+             std::pair{PreviewSurface::Ceiling, &triangle.ceiling.elevation}}) {
       std::array<Vector3, 3> vertices{
-          horizontalVertex(arrangement, triangle.v[0], z),
-          horizontalVertex(arrangement, triangle.v[1], z),
-          horizontalVertex(arrangement, triangle.v[2], z)};
+          horizontalVertex(arrangement, triangle.v[0], (*elevations)[0]),
+          horizontalVertex(arrangement, triangle.v[1], (*elevations)[1]),
+          horizontalVertex(arrangement, triangle.v[2], (*elevations)[2])};
       float distance{};
       if (!rayHitsTriangle(rayOrigin, direction, vertices, distance) ||
           (nearest.hit() && distance >= nearest.surfaceHit.distance)) {
@@ -147,10 +145,10 @@ PreviewScenePick pickPreviewSceneSurface(
       continue;
     }
     auto const& edge = arrangement.edges[wall.edge];
-    auto bottom0 = horizontalVertex(arrangement, edge.v[0], wall.minZ);
-    auto bottom1 = horizontalVertex(arrangement, edge.v[1], wall.minZ);
-    auto top0 = horizontalVertex(arrangement, edge.v[0], wall.maxZ);
-    auto top1 = horizontalVertex(arrangement, edge.v[1], wall.maxZ);
+    auto bottom0 = horizontalVertex(arrangement, edge.v[0], wall.bottomZ[0]);
+    auto bottom1 = horizontalVertex(arrangement, edge.v[1], wall.bottomZ[1]);
+    auto top0 = horizontalVertex(arrangement, edge.v[0], wall.topZ[0]);
+    auto top1 = horizontalVertex(arrangement, edge.v[1], wall.topZ[1]);
     std::array<std::array<Vector3, 3>, 2> wallTriangles{
         std::array<Vector3, 3>{bottom0, bottom1, top1},
         std::array<Vector3, 3>{top1, top0, bottom0}};

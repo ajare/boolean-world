@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -450,6 +451,63 @@ void outlinesUseTheRenderersReflectedGroundPlane() {
   }
 }
 
+void slopedSurfacesPickAndOutlineTheirEvaluatedGeometry() {
+  auto room = makeRoomSpanning(0.0f, 0.0f, 10.0f, 10.0f);
+  auto properties = room->getProperties();
+  properties.floorZ = bw::core::Elevation{0.0f, {0.0f, 0.5f}};
+  properties.ceilingZ = bw::core::Elevation{20.0f, {0.0f, -0.25f}};
+  room->setProperties(properties);
+  auto data = buildData({room.get()});
+
+  auto floor = editor::pickPreviewSceneSurface(
+      *data, {4.0f, 2.0f, 10.0f}, {0.0f, 0.0f, -1.0f});
+  auto ceiling = editor::pickPreviewSceneSurface(
+      *data, {4.0f, 2.0f, 10.0f}, {0.0f, 0.0f, 1.0f});
+  require(floor.surfaceHit.surface == PreviewSurface::Floor &&
+              near(floor.surfaceHit.distance, 9.0f),
+          "surface picking flattened an evaluated floor");
+  require(ceiling.surfaceHit.surface == PreviewSurface::Ceiling &&
+              near(ceiling.surfaceHit.distance, 9.5f),
+          "surface picking flattened an evaluated ceiling");
+
+  auto floorOutline = editor::previewSurfaceOutline(*data, floor);
+  require(!floorOutline.empty(), "the sloped floor produced no outline");
+  for (auto const& point : floorOutline) {
+    auto authoredY = -point[2];
+    require(near(point[1], properties.floorZ.evaluate({point[0], authoredY})),
+            "the floor outline did not follow its Elevation plane");
+  }
+
+  auto lowWall = editor::pickPreviewSceneSurface(
+      *data, {5.0f, 2.0f, 2.0f}, {-1.0f, 0.0f, 0.0f});
+  auto belowWall = editor::pickPreviewSceneSurface(
+      *data, {5.0f, 8.0f, 2.0f}, {-1.0f, 0.0f, 0.0f});
+  require(lowWall.surfaceHit.surface == PreviewSurface::Wall &&
+              near(lowWall.surfaceHit.distance, 5.0f),
+          "surface picking missed a variable-height wall where it exists");
+  require(!belowWall.hit(),
+          "surface picking hit below a variable-height wall boundary");
+
+  auto wallOutline = editor::previewSurfaceOutline(*data, lowWall);
+  require(wallOutline.size() == 8,
+          "the variable-height wall did not produce a four-edge outline");
+  auto const& wall = data->getWalls()[lowWall.surfaceHit.wallIndex];
+  auto const& edge = data->getArrangement().edges[wall.edge];
+  for (size_t endpoint = 0; endpoint < 2; ++endpoint) {
+    auto const& fixed = data->getArrangement().vertices[edge.v[endpoint]];
+    auto x = bw::core::arr::ToWorldCoordinate(fixed.x);
+    auto y = bw::core::arr::ToWorldCoordinate(fixed.y);
+    auto hasPoint = [&](float elevation) {
+      return std::ranges::any_of(wallOutline, [&](auto const& point) {
+        return near(point[0], x) && near(point[1], elevation) &&
+               near(point[2], -y);
+      });
+    };
+    require(hasPoint(wall.bottomZ[endpoint]) && hasPoint(wall.topZ[endpoint]),
+            "the wall outline flattened an evaluated endpoint boundary");
+  }
+}
+
 void unpickedSurfacesResolveToNothing() {
   auto room = makeRoom();
   auto data = buildData({room.get()});
@@ -482,6 +540,7 @@ int main() {
     primitivesSharingAnIdAcrossLayersStillResolveApart();
     movingTheResolvedOwnerRaisesOnlyThatPolygon();
     outlinesUseTheRenderersReflectedGroundPlane();
+    slopedSurfacesPickAndOutlineTheirEvaluatedGeometry();
     unpickedSurfacesResolveToNothing();
     std::cout << "Preview surface pick tests passed\n";
     return 0;

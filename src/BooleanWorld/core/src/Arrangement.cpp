@@ -1953,7 +1953,9 @@ ArrangementWallOrientation OrientArrangementWall(
   ArrangementWallOrientation result{
       {ToWorldCoordinate(fixed0.x), ToWorldCoordinate(fixed0.y)},
       {ToWorldCoordinate(fixed1.x), ToWorldCoordinate(fixed1.y)},
-      {}};
+      {},
+      wall.bottomZ,
+      wall.topZ};
   result.normal = (result.v1 - result.v0).normalisedCopy().perpendicular();
 
   bool face0IsFront = false;
@@ -1983,6 +1985,8 @@ ArrangementWallOrientation OrientArrangementWall(
   if (!face0IsFront) {
     result.normal = -result.normal;
     std::swap(result.v0, result.v1);
+    std::swap(result.bottomZ[0], result.bottomZ[1]);
+    std::swap(result.topZ[0], result.topZ[1]);
   }
   return result;
 }

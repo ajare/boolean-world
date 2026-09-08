@@ -59,6 +59,27 @@ void requireFacesFace0Side(
   requireNear(orientation.v1.x, face0IsFront ? 1.0f : 0.0f, message);
 }
 
+void orientedElevationsFollowOrientedEndpoints() {
+  auto result = arrangement(false, true, 1.0f, 0.0f, 3.0f, 3.0f);
+  bw::core::arr::ArrangementWall wall{
+      0, 1.0f, 7.0f, 1,
+      bw::core::arr::ArrangementWallKind::FloorStep, 2.0f};
+  wall.bottomZ = {1.0f, 2.0f};
+  wall.topZ = {6.0f, 7.0f};
+
+  auto orientation = bw::core::arr::OrientArrangementWall(result, wall);
+  requireNear(orientation.v0.x, 1.0f,
+              "a reversed wall did not reverse its first endpoint");
+  requireNear(orientation.bottomZ[0], 2.0f,
+              "a reversed wall detached its bottom from the first endpoint");
+  requireNear(orientation.bottomZ[1], 1.0f,
+              "a reversed wall detached its bottom from the second endpoint");
+  requireNear(orientation.topZ[0], 7.0f,
+              "a reversed wall detached its top from the first endpoint");
+  requireNear(orientation.topZ[1], 6.0f,
+              "a reversed wall detached its top from the second endpoint");
+}
+
 void wallsFaceTheirIncidentFrontSide() {
   // Border walls face the solid polygon rather than the empty exterior.
   requireFacesFace0Side(
@@ -96,6 +117,7 @@ void wallsFaceTheirIncidentFrontSide() {
 int main() {
   try {
     wallsFaceTheirIncidentFrontSide();
+    orientedElevationsFollowOrientedEndpoints();
     std::cout << "Arrangement walls face their incident front sides\n";
     return 0;
   } catch (std::exception const& error) {

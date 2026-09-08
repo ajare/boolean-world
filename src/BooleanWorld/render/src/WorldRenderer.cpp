@@ -601,7 +601,9 @@ void WorldRenderer::updateHorizontalDataProvider(
         // the indices as well to preserve the floor's front face.
         floorIndices[2 - i] = addVertexToDataProvider(
             horizontal.dataProvider, floorMesh, positions[i].x,
-            properties.floorZ, -positions[i].y, 0, 1, 0, uv.x, uv.y,
+            triangle.floor.elevation[i], -positions[i].y,
+            triangle.floor.normal[0], triangle.floor.normal[2],
+            -triangle.floor.normal[1], uv.x, uv.y,
             triangle.face == highlightedFace && !highlightedCeiling
                 ? lookedAtVertexColour
                 : untintedVertexColour,
@@ -624,7 +626,9 @@ void WorldRenderer::updateHorizontalDataProvider(
       auto uv = positions[i] / 64.0f;
       ceilingIndices[i] = addVertexToDataProvider(
           horizontal.dataProvider, ceilingMesh, positions[i].x,
-          properties.ceilingZ, -positions[i].y, 0, -1, 0, uv.x, uv.y,
+          triangle.ceiling.elevation[i], -positions[i].y,
+          triangle.ceiling.normal[0], triangle.ceiling.normal[2],
+          -triangle.ceiling.normal[1], uv.x, uv.y,
           triangle.face == highlightedFace && highlightedCeiling
               ? lookedAtVertexColour
               : untintedVertexColour,
@@ -845,20 +849,20 @@ void WorldRenderer::updateWallDataProvider(
       auto const& normal = orientation.normal;
       auto uv = CalculateWallPhysicalUv(orientation, wall);
       auto bottom0 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v0.x, wall.minZ, -v0.y,
-          normal.x, 0, -normal.y, uv.u0, uv.minV, colour,
+          wallRenderer.dataProvider, mesh, v0.x, orientation.bottomZ[0], -v0.y,
+          normal.x, 0, -normal.y, uv.u0, uv.bottomV[0], colour,
           liquidSurfaceHeight);
       auto bottom1 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v1.x, wall.minZ, -v1.y,
-          normal.x, 0, -normal.y, uv.u1, uv.minV, colour,
+          wallRenderer.dataProvider, mesh, v1.x, orientation.bottomZ[1], -v1.y,
+          normal.x, 0, -normal.y, uv.u1, uv.bottomV[1], colour,
           liquidSurfaceHeight);
       auto top1 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, -v1.y,
-          normal.x, 0, -normal.y, uv.u1, uv.maxV, colour,
+          wallRenderer.dataProvider, mesh, v1.x, orientation.topZ[1], -v1.y,
+          normal.x, 0, -normal.y, uv.u1, uv.topV[1], colour,
           liquidSurfaceHeight);
       auto top0 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, -v0.y,
-          normal.x, 0, -normal.y, uv.u0, uv.maxV, colour,
+          wallRenderer.dataProvider, mesh, v0.x, orientation.topZ[0], -v0.y,
+          normal.x, 0, -normal.y, uv.u0, uv.topV[0], colour,
           liquidSurfaceHeight);
       wallRenderer.dataProvider->addTriangle(mesh, top1, bottom1, bottom0);
       wallRenderer.dataProvider->addTriangle(mesh, bottom0, top0, top1);
@@ -894,19 +898,19 @@ void WorldRenderer::updateWallDataProvider(
         continue;
       }
       auto bottom0 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v0.x, wall.minZ, -v0.y,
+          wallRenderer.dataProvider, mesh, v0.x, orientation.bottomZ[0], -v0.y,
           backNormal.x, 0, -backNormal.y, 0, 0, colour,
           liquidSurfaceHeight);
       auto bottom1 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v1.x, wall.minZ, -v1.y,
+          wallRenderer.dataProvider, mesh, v1.x, orientation.bottomZ[1], -v1.y,
           backNormal.x, 0, -backNormal.y, 1, 0, colour,
           liquidSurfaceHeight);
       auto top1 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v1.x, wall.maxZ, -v1.y,
+          wallRenderer.dataProvider, mesh, v1.x, orientation.topZ[1], -v1.y,
           backNormal.x, 0, -backNormal.y, 1, 1, colour,
           liquidSurfaceHeight);
       auto top0 = addVertexToDataProvider(
-          wallRenderer.dataProvider, mesh, v0.x, wall.maxZ, -v0.y,
+          wallRenderer.dataProvider, mesh, v0.x, orientation.topZ[0], -v0.y,
           backNormal.x, 0, -backNormal.y, 0, 1, colour,
           liquidSurfaceHeight);
       wallRenderer.dataProvider->addTriangle(mesh, bottom0, bottom1, top1);

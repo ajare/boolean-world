@@ -140,30 +140,38 @@ bool pointInTriangle(
   return u >= -Epsilon && v >= -Epsilon && u + v <= 1.0f + Epsilon;
 }
 
-// Test-only 2.5D reference: horizontal surfaces are intersected analytically,
-// and visible Arrangement walls are found by marching the ray in the World
-// plane before evaluating its elevation at each crossing.
+// Test-only 2.5D reference: planar surfaces are intersected analytically, and
+// visible Arrangement walls are found by marching the ray in the World plane
+// before evaluating their boundaries at each crossing.
 std::optional<Hit> traceArrangementReference(
     ArrangementWorldData const& world, AcousticMaterialResolver const& resolve,
     Ray const& ray, float minDistance, float maxDistance) {
   std::optional<Hit> nearest;
   auto const& arrangement = world.getArrangement();
 
-  if (std::abs(ray.direction.y) > 1.0e-7f) {
-    for (auto const& triangle : world.getTriangles()) {
-      auto const& properties = arrangement.palette[arrangement.faces[triangle.face].paletteIndex];
-      auto horizontal = [&](float elevation, std::string const& material) {
-        auto distance = (elevation - ray.origin.y) / ray.direction.y;
-        if (distance < minDistance || distance > maxDistance) return;
-        auto point = ray.origin + ray.direction * distance;
-        // Audio -Z maps back to authored +Y.
-        if (pointInTriangle(point.x, -point.z, triangle, arrangement)) {
-          consider(nearest, distance, resolve(material).id);
-        }
-      };
-      horizontal(properties.floorZ, properties.floorMaterialId);
-      horizontal(properties.ceilingZ, properties.ceilingMaterialId);
-    }
+  for (auto const& triangle : world.getTriangles()) {
+    auto const& properties =
+        arrangement.palette[arrangement.faces[triangle.face].paletteIndex];
+    auto planar = [&](bw::core::arr::ArrangementTriangleSurface const& surface,
+                      std::string const& material) {
+      auto const& fixed = arrangement.vertices[triangle.v[0]];
+      AcousticSceneVertex pointOnPlane{
+          bw::core::arr::ToWorldCoordinate(fixed.x), surface.elevation[0],
+          -bw::core::arr::ToWorldCoordinate(fixed.y)};
+      AcousticSceneVertex normal{
+          surface.normal[0], surface.normal[2], -surface.normal[1]};
+      auto denominator = dot(ray.direction, normal);
+      if (std::abs(denominator) <= 1.0e-7f) return;
+      auto distance = dot(pointOnPlane - ray.origin, normal) / denominator;
+      if (distance < minDistance || distance > maxDistance) return;
+      auto point = ray.origin + ray.direction * distance;
+      // Audio -Z maps back to authored +Y.
+      if (pointInTriangle(point.x, -point.z, triangle, arrangement)) {
+        consider(nearest, distance, resolve(material).id);
+      }
+    };
+    planar(triangle.floor, properties.floorMaterialId);
+    planar(triangle.ceiling, properties.ceilingMaterialId);
   }
 
   auto worldOriginX = ray.origin.x;
@@ -192,7 +200,10 @@ std::optional<Hit> traceArrangementReference(
       continue;
     }
     auto elevation = ray.origin.y + ray.direction.y * distance;
-    if (elevation < wall.minZ || elevation > wall.maxZ) continue;
+    auto bottom = wall.bottomZ[0] +
+                  (wall.bottomZ[1] - wall.bottomZ[0]) * alongWall;
+    auto top = wall.topZ[0] + (wall.topZ[1] - wall.topZ[0]) * alongWall;
+    if (elevation < bottom || elevation > top) continue;
     auto const& properties = arrangement.palette[wall.paletteIndex];
     consider(nearest, distance,
              resolve(properties.wallMaterialId).id);
@@ -218,14 +229,15 @@ std::optional<Hit> traceArrangementBruteForce(
         -bw::core::arr::ToWorldCoordinate(vertex.y)};
   };
   for (auto const& triangle : world.getTriangles()) {
-    auto const& properties = arrangement.palette[arrangement.faces[triangle.face].paletteIndex];
-    auto a = horizontalVertex(triangle.v[0], properties.floorZ);
-    auto b = horizontalVertex(triangle.v[1], properties.floorZ);
-    auto c = horizontalVertex(triangle.v[2], properties.floorZ);
+    auto const& properties =
+        arrangement.palette[arrangement.faces[triangle.face].paletteIndex];
+    auto a = horizontalVertex(triangle.v[0], triangle.floor.elevation[0]);
+    auto b = horizontalVertex(triangle.v[1], triangle.floor.elevation[1]);
+    auto c = horizontalVertex(triangle.v[2], triangle.floor.elevation[2]);
     facets.push_back({a, b, c, resolve(properties.floorMaterialId).id});
-    a.y = properties.ceilingZ;
-    b.y = properties.ceilingZ;
-    c.y = properties.ceilingZ;
+    a = horizontalVertex(triangle.v[0], triangle.ceiling.elevation[0]);
+    b = horizontalVertex(triangle.v[1], triangle.ceiling.elevation[1]);
+    c = horizontalVertex(triangle.v[2], triangle.ceiling.elevation[2]);
     facets.push_back({a, b, c, resolve(properties.ceilingMaterialId).id});
   }
   for (auto const& wall : world.getWalls()) {
@@ -237,10 +249,10 @@ std::optional<Hit> traceArrangementBruteForce(
           bw::core::arr::ToWorldCoordinate(vertex.x), elevation,
           -bw::core::arr::ToWorldCoordinate(vertex.y)};
     };
-    auto bottom0 = make(edge.v[0], wall.minZ);
-    auto bottom1 = make(edge.v[1], wall.minZ);
-    auto top0 = make(edge.v[0], wall.maxZ);
-    auto top1 = make(edge.v[1], wall.maxZ);
+    auto bottom0 = make(edge.v[0], wall.bottomZ[0]);
+    auto bottom1 = make(edge.v[1], wall.bottomZ[1]);
+    auto top0 = make(edge.v[0], wall.topZ[0]);
+    auto top1 = make(edge.v[1], wall.topZ[1]);
     auto material = resolve(
                         arrangement.palette[wall.paletteIndex].wallMaterialId)
                         .id;
@@ -286,6 +298,17 @@ std::shared_ptr<ArrangementWorldData> makeWorld() {
   return std::make_shared<ArrangementWorldData>(
       bw::core::arr::BuildArrangement({left, right}),
       wp::BoundingBox({-5.0f, -5.0f}, {30.0f, 20.0f}), 4.0f);
+}
+
+std::shared_ptr<ArrangementWorldData> makeSlopedWorld() {
+  auto sloped = properties(1.0f, 20.0f, "slope");
+  sloped.floorZ.gradient = {0.5f, -0.2f};
+  sloped.ceilingZ.gradient = {-0.1f, 0.3f};
+  ArrangementPrimitive room{
+      {rectangle(0, 0, 10, 10)}, Primitive::Operation::Union, Primitive::FillRule::EvenOdd, 0, 1, sloped};
+  return std::make_shared<ArrangementWorldData>(
+      bw::core::arr::BuildArrangement({room}),
+      wp::BoundingBox({-5.0f, -5.0f}, {20.0f, 20.0f}), 4.0f);
 }
 
 std::unordered_map<std::string, AcousticPreset> makePresets() {
@@ -358,6 +381,103 @@ void exportHasEverySurfaceAndResolvedMaterial() {
             "exported wall winding does not match its canonical front side");
     exportedWallTriangle += 2;
   }
+}
+
+void exportUsesEvaluatedSurfaceGeometry() {
+  auto world = makeSlopedWorld();
+  auto presets = makePresets();
+  for (auto surface : {std::string("floor"), std::string("ceiling"),
+                       std::string("wall")}) {
+    auto id = "slope." + surface;
+    presets.emplace(
+        id, AcousticPreset{id, id, {0.1f, 0.2f, 0.3f}, 0.05f, {0.01f, 0.02f, 0.03f}});
+  }
+  AcousticMaterialResolver resolver = [&](std::string const& id)
+      -> AcousticPreset const& { return presets.at(id); };
+  auto mesh = bw::app::ExportAcousticSceneMesh(*world, resolver);
+  auto const& arrangement = world->getArrangement();
+
+  size_t vertexOffset = 0;
+  for (auto const& triangle : world->getTriangles()) {
+    for (size_t corner = 0; corner < 3; ++corner) {
+      require(std::abs(mesh.vertices[vertexOffset + corner].y -
+                       triangle.floor.elevation[corner]) < 0.0001f,
+              "Acoustic floor geometry flattened an evaluated elevation");
+      require(std::abs(mesh.vertices[vertexOffset + 3 + corner].y -
+                       triangle.ceiling.elevation[2 - corner]) < 0.0001f,
+              "Acoustic ceiling geometry flattened an evaluated elevation");
+    }
+    auto floorNormal =
+        cross(mesh.vertices[vertexOffset + 1] - mesh.vertices[vertexOffset],
+              mesh.vertices[vertexOffset + 2] - mesh.vertices[vertexOffset]);
+    auto ceilingNormal =
+        cross(mesh.vertices[vertexOffset + 4] - mesh.vertices[vertexOffset + 3],
+              mesh.vertices[vertexOffset + 5] - mesh.vertices[vertexOffset + 3]);
+    AcousticSceneVertex expectedFloorNormal{
+        triangle.floor.normal[0], triangle.floor.normal[2],
+        -triangle.floor.normal[1]};
+    AcousticSceneVertex expectedCeilingNormal{
+        triangle.ceiling.normal[0], triangle.ceiling.normal[2],
+        -triangle.ceiling.normal[1]};
+    require(dot(floorNormal, expectedFloorNormal) > 0.0f &&
+                dot(ceilingNormal, expectedCeilingNormal) > 0.0f,
+            "Acoustic surface winding disagrees with generated normals");
+    vertexOffset += 6;
+  }
+
+  for (auto const& wall : world->getWalls()) {
+    if (!wall.visible) continue;
+    auto orientation =
+        bw::core::arr::OrientArrangementWall(arrangement, wall);
+    std::array<AcousticSceneVertex, 4> expected{
+        AcousticSceneVertex{orientation.v0.x, orientation.bottomZ[0],
+                            -orientation.v0.y},
+        AcousticSceneVertex{orientation.v1.x, orientation.bottomZ[1],
+                            -orientation.v1.y},
+        AcousticSceneVertex{orientation.v1.x, orientation.topZ[1],
+                            -orientation.v1.y},
+        AcousticSceneVertex{orientation.v0.x, orientation.topZ[0],
+                            -orientation.v0.y}};
+    for (size_t corner = 0; corner < expected.size(); ++corner) {
+      auto delta = mesh.vertices[vertexOffset + corner] - expected[corner];
+      require(dot(delta, delta) < 0.000001f,
+              "Acoustic wall geometry flattened an evaluated boundary");
+    }
+    vertexOffset += expected.size();
+  }
+  require(vertexOffset == mesh.vertices.size(),
+          "Acoustic geometry validation did not consume the exported mesh");
+
+  AcousticSceneVertex sample{4.0f, 10.0f, -5.0f};
+  auto down = Ray{sample, {0.0f, -1.0f, 0.0f}};
+  auto up = Ray{sample, {0.0f, 1.0f, 0.0f}};
+  auto floorElevation =
+      arrangement.palette[1].floorZ.evaluate({sample.x, -sample.z});
+  auto ceilingElevation =
+      arrangement.palette[1].ceilingZ.evaluate({sample.x, -sample.z});
+  requireEquivalent(
+      traceExportedMesh(mesh, down, 0.001f, 30.0f),
+      Hit{sample.y - floorElevation, "slope.floor"},
+      "sloped floor export");
+  requireEquivalent(
+      traceExportedMesh(mesh, up, 0.001f, 30.0f),
+      Hit{ceilingElevation - sample.y, "slope.ceiling"},
+      "sloped ceiling export");
+
+  auto const& wall = world->getWalls().front();
+  auto orientation = bw::core::arr::OrientArrangementWall(arrangement, wall);
+  auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
+  auto elevation =
+      (orientation.bottomZ[0] + orientation.bottomZ[1] +
+       orientation.topZ[0] + orientation.topZ[1]) *
+      0.25f;
+  AcousticSceneVertex wallNormal{
+      orientation.normal.x, 0.0f, -orientation.normal.y};
+  AcousticSceneVertex wallPoint{midpoint.x, elevation, -midpoint.y};
+  auto wallRay = Ray{wallPoint + wallNormal * 2.0f, wallNormal * -1.0f};
+  requireEquivalent(
+      traceExportedMesh(mesh, wallRay, 0.001f, 4.0f),
+      Hit{2.0f, "slope.wall"}, "variable-height wall export");
 }
 
 void propertyRaysAgree() {
@@ -455,6 +575,7 @@ void propertyRaysAgree() {
 int main() {
   try {
     exportHasEverySurfaceAndResolvedMaterial();
+    exportUsesEvaluatedSurfaceGeometry();
     propertyRaysAgree();
     std::cout << "Acoustic scene export coverage passed\n";
   } catch (std::exception const& exception) {

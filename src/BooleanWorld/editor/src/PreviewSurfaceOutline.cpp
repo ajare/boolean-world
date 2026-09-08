@@ -22,12 +22,18 @@ std::vector<std::array<float, 3>> previewSurfaceOutline(
   if (!surface.hit()) return segments;
 
   auto const& arrangement = worldData.getArrangement();
-  auto appendLoop = [&](std::vector<uint32_t> const& loop, float height) {
+  auto appendLoop = [&](std::vector<uint32_t> const& loop,
+                        bw::core::Elevation const& elevation) {
     for (std::size_t index = 0; index < loop.size(); ++index) {
       auto const& from = arrangement.vertices[loop[index]];
       auto const& to = arrangement.vertices[loop[(index + 1) % loop.size()]];
-      segments.push_back(rendererPoint(from, height));
-      segments.push_back(rendererPoint(to, height));
+      auto evaluate = [&](bw::core::arr::FixedPointVertex const& vertex) {
+        return elevation.evaluate(
+            {bw::core::arr::ToWorldCoordinate(vertex.x),
+             bw::core::arr::ToWorldCoordinate(vertex.y)});
+      };
+      segments.push_back(rendererPoint(from, evaluate(from)));
+      segments.push_back(rendererPoint(to, evaluate(to)));
     }
   };
 
@@ -38,10 +44,10 @@ std::vector<std::array<float, 3>> previewSurfaceOutline(
     if (wall.edge >= arrangement.edges.size()) return segments;
     auto const& edge = arrangement.edges[wall.edge];
     std::array<std::array<float, 3>, 4> quad{
-        rendererPoint(arrangement.vertices[edge.v[0]], wall.minZ),
-        rendererPoint(arrangement.vertices[edge.v[1]], wall.minZ),
-        rendererPoint(arrangement.vertices[edge.v[1]], wall.maxZ),
-        rendererPoint(arrangement.vertices[edge.v[0]], wall.maxZ)};
+        rendererPoint(arrangement.vertices[edge.v[0]], wall.bottomZ[0]),
+        rendererPoint(arrangement.vertices[edge.v[1]], wall.bottomZ[1]),
+        rendererPoint(arrangement.vertices[edge.v[1]], wall.topZ[1]),
+        rendererPoint(arrangement.vertices[edge.v[0]], wall.topZ[0])};
     for (std::size_t index = 0; index < quad.size(); ++index) {
       segments.push_back(quad[index]);
       segments.push_back(quad[(index + 1) % quad.size()]);
