@@ -8,14 +8,18 @@ Selects open issues carrying the ready-for-agent label, excludes issues with
 open native GitHub blockers, and resumes tickets already assigned to the
 current user before claiming new work. New work is ordered by priority labels
 (critical/P0, high/P1, medium/P2, low/P3, or priority:<number>) and then issue
-number. Issues referenced by another ticket's "## Parent" section are treated
+number. Priority and difficulty namespace labels accept either `:` or `/`. Issues referenced by another ticket's "## Parent" section are treated
 as specs/maps rather than executable tickets.
 
 The agent is chosen with the mandatory -Agent parameter and runs in
 non-interactive print mode. Provider failures use capped exponential backoff;
-usage-limit failures poll at ten-minute intervals by default. After each
-completed ticket the loop reports its ISO 8601 start and end timestamps,
-duration, and total token usage across every retry attempt. Where the provider
+usage-limit failures poll at ten-minute intervals by default. If an agent exits
+successfully without closing its ticket, the loop starts another attempt with
+the original request plus a recovery prompt pointing to the previous attempt's
+log. The agent is told to inspect and resolve the issue recorded there rather
+than merely repeating it. After each completed ticket the loop reports its ISO
+8601 start and end timestamps, duration, and total token usage across every
+retry attempt. Where the provider
 exposes it, the loop also reports current-window and weekly usage. Logs and
 sessions are written below the system temporary directory, in pi-ralph-loop or
 claude-ralph-loop according to the agent.
@@ -207,6 +211,23 @@ function Invoke-Gh {
     return ($output -join [Environment]::NewLine)
 }
 
+function Invoke-GitQuiet {
+    param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+    # Windows PowerShell turns ordinary native stderr (including git's
+    # successful "Switched to..." messages) into error records when stderr is
+    # merged while ErrorActionPreference is Stop. Probe the exit code with
+    # native output suppressed under Continue, then restore the caller's mode.
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & git @Arguments *> $null
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+}
+
 function Get-Priority {
     param([object[]]$Labels)
 
@@ -214,11 +235,11 @@ function Get-Priority {
     foreach ($label in $Labels) {
         $name = ([string]$label.name).ToLowerInvariant().Trim()
         switch -Regex ($name) {
-            '^(priority:\s*)?(critical|urgent|p0)$' { $rank = [Math]::Min($rank, 0); continue }
-            '^(priority:\s*)?(high|p1)$'            { $rank = [Math]::Min($rank, 1); continue }
-            '^(priority:\s*)?(medium|normal|p2)$'  { $rank = [Math]::Min($rank, 2); continue }
-            '^(priority:\s*)?(low|p3)$'            { $rank = [Math]::Min($rank, 3); continue }
-            '^priority:\s*(\d+)$'                  { $rank = [Math]::Min($rank, [int]$Matches[1]); continue }
+            '^(priority[:/]\s*)?(critical|urgent|p0)$' { $rank = [Math]::Min($rank, 0); continue }
+            '^(priority[:/]\s*)?(high|p1)$'            { $rank = [Math]::Min($rank, 1); continue }
+            '^(priority[:/]\s*)?(medium|normal|p2)$'  { $rank = [Math]::Min($rank, 2); continue }
+            '^(priority[:/]\s*)?(low|p3)$'            { $rank = [Math]::Min($rank, 3); continue }
+            '^priority[:/]\s*(\d+)$'                  { $rank = [Math]::Min($rank, [int]$Matches[1]); continue }
         }
     }
     return $rank
@@ -262,13 +283,13 @@ function Get-AdaptiveModelAndEffort {
 
     $difficultyLabels = @($Labels | ForEach-Object {
         $name = ([string]$_.name).ToLowerInvariant().Trim()
-        if ($name -match '^difficulty:\s*(trivial|small|low|medium|large|high|hard)$') {
+        if ($name -match '^difficulty[:/]\s*(trivial|small|low|medium|large|high|hard)$') {
             $Matches[1]
         }
     } | Select-Object -Unique)
 
     if ($difficultyLabels.Count -eq 0) {
-        throw "Adaptive model and effort requires one of: difficulty:trivial, difficulty:small, difficulty:low, difficulty:medium, difficulty:large, difficulty:high, or difficulty:hard."
+        throw "Adaptive model and effort requires one supported difficulty label using ':' or '/', for example difficulty:medium or difficulty/medium."
     }
     if ($difficultyLabels.Count -gt 1) {
         throw "Adaptive model and effort found conflicting difficulty labels: $($difficultyLabels -join ', ')."
@@ -281,13 +302,13 @@ function Get-AdaptiveModelAndEffort {
             return [pscustomobject]@{ Difficulty = "trivial"; Model = $models.Smaller; Effort = "medium" }
         }
         { $_ -in @("small", "low") } {
-            return [pscustomobject]@{ Difficulty = $_; Model = $models.Smaller; Effort = "medium" }
+            return [pscustomobject]@{ Difficulty = $_; Model = $models.Smaller; Effort = "high" }
         }
         "medium" {
-            return [pscustomobject]@{ Difficulty = "medium"; Model = $models.Smaller; Effort = "medium" }
+            return [pscustomobject]@{ Difficulty = "medium"; Model = $models.Larger; Effort = "medium" }
         }
         { $_ -in @("large", "high", "hard") } {
-            return [pscustomobject]@{ Difficulty = $_; Model = $models.Larger; Effort = "medium" }
+            return [pscustomobject]@{ Difficulty = $_; Model = $models.Larger; Effort = "high" }
         }
         default {
             throw "Unsupported difficulty label '$($difficultyLabels[0])'."
@@ -412,6 +433,20 @@ function Write-Status {
     if (-not $Quiet) {
         Write-Host $Message
     }
+}
+
+function Remove-TerminalControlSequences {
+    param([AllowEmptyString()][Parameter(Mandatory = $true)][string]$Text)
+
+    # Agents can emit terminal teardown commands on stderr even in print mode.
+    # Never replay cursor movement, screen switching, or other control codes in
+    # the parent terminal or preserve them in the attempt log.
+    return $Text `
+        -replace '\x1B\][^\x07]*(?:\x07|\x1B\\)', '' `
+        -replace '\x1B[PX^_].*?\x1B\\', '' `
+        -replace '\x1B\[[0-?]*[ -/]*[@-~]', '' `
+        -replace '\x1B[@-_]', '' `
+        -replace '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', ''
 }
 
 function Get-NumericProperty {
@@ -783,18 +818,14 @@ if ($initialTrackedChanges.Count -gt 0) {
 if ($UseBranch) {
     $currentBranch = (& git rev-parse --abbrev-ref HEAD).Trim()
     if ($currentBranch -ne $UseBranch) {
-        & git rev-parse --verify --quiet "refs/heads/$UseBranch" *> $null
-        if ($LASTEXITCODE -eq 0) {
-            & git checkout $UseBranch 2>&1 | Out-Null
+        if ((Invoke-GitQuiet @("rev-parse", "--verify", "--quiet", "refs/heads/$UseBranch")) -eq 0) {
+            $checkoutResult = Invoke-GitQuiet @("checkout", $UseBranch)
+        } elseif ((Invoke-GitQuiet @("ls-remote", "--exit-code", "--heads", "origin", $UseBranch)) -eq 0) {
+            $checkoutResult = Invoke-GitQuiet @("checkout", "-b", $UseBranch, "--track", "origin/$UseBranch")
         } else {
-            & git ls-remote --exit-code --heads origin $UseBranch *> $null
-            if ($LASTEXITCODE -eq 0) {
-                & git checkout -b $UseBranch --track "origin/$UseBranch" 2>&1 | Out-Null
-            } else {
-                & git checkout -b $UseBranch 2>&1 | Out-Null
-            }
+            $checkoutResult = Invoke-GitQuiet @("checkout", "-b", $UseBranch)
         }
-        if ($LASTEXITCODE -ne 0) {
+        if ($checkoutResult -ne 0) {
             throw "Failed to check out branch '$UseBranch'."
         }
         Write-Status "Switched to branch '$UseBranch'."
@@ -849,7 +880,8 @@ while ($true) {
     Write-Status "Ticket #$number started at $($ticketStartedAt.ToString('o'))."
 
     $startingHead = (& git rev-parse HEAD).Trim()
-    $prompt = Get-TicketPrompt -Repository $Repo -Number $number
+    $originalPrompt = Get-TicketPrompt -Repository $Repo -Number $number
+    $prompt = $originalPrompt
     $retryInterval = $InitialRetryIntervalSeconds
     $attempt = 0
 
@@ -891,23 +923,31 @@ while ($true) {
         try {
             $output = [System.Collections.Generic.List[string]]::new()
             & $Agent @agentArguments 2>&1 |
-                Tee-Object -FilePath $logPath -Append |
                 ForEach-Object {
                     # Emit each line as it arrives instead of handing the host one
                     # screen-sized string after the agent exits. Splitting bare carriage
                     # returns also turns progress-style redraws into scrolling lines.
                     foreach ($line in ([string]$_ -split "`r`n|`n|`r")) {
-                        [void]$output.Add($line)
-                        if (-not $Quiet) {
-                            Write-Host $line
-                        }
+                        Remove-TerminalControlSequences $line
+                    }
+                } |
+                Tee-Object -FilePath $logPath -Append |
+                ForEach-Object {
+                    $line = [string]$_
+                    [void]$output.Add($line)
+                    if (-not $Quiet) {
+                        Write-Host $line
                     }
                 }
             $agentExitCode = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $previousErrorActionPreference
         }
-        $outputText = $output -join [Environment]::NewLine
+        $outputText = if (Test-Path $logPath) {
+            Get-Content -Path $logPath -Raw
+        } else {
+            $output -join [Environment]::NewLine
+        }
 
         # A provider can fail after the agent has already committed and closed.
         if (Test-TicketComplete -Repository $Repo -Number $number -StartingHead $startingHead) {
@@ -916,7 +956,25 @@ while ($true) {
         }
 
         if ($agentExitCode -eq 0) {
-            throw "$Agent exited successfully, but #$number was not closed with a new commit and clean tracked worktree. Inspect $logPath."
+            Write-Warning "$Agent exited successfully without completing #$number. Starting a recovery attempt using $logPath."
+            $prompt = @"
+$originalPrompt
+
+## Recovery attempt
+
+A previous agent attempt exited successfully without closing ticket #$number.
+Inspect the previous attempt log at:
+
+$logPath
+
+Determine why that attempt did not complete the original request, then resolve
+the issue recorded in the log and finish the original ticket. Continue from the
+current worktree and repository state. Do not merely repeat the previous
+explanation or stop after describing the blocker; try to resolve it and carry
+the original request through implementation, verification, commit, and issue
+closure.
+"@
+            continue
         }
 
         if (Test-UsageLimitError $outputText) {
