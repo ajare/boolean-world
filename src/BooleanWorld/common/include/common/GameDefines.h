@@ -4,6 +4,9 @@
 #define BW_PLAYER_HEIGHT 20.0f
 #define BW_PLAYER_EYE_HEIGHT (BW_PLAYER_HEIGHT * 0.9f)
 #define BW_PLAYER_STEP_HEIGHT 8.0f
+// Maximum angle in degrees between a walkable floor normal and World up.
+// Steeper floors remain traversable along their contours and downhill.
+#define BW_PLAYER_MAX_WALKABLE_SLOPE 45.0f
 
 // Vertical physics: how fast the player rises onto a taller floor (already
 // admitted by collision's step-height/clearance rules) rather than

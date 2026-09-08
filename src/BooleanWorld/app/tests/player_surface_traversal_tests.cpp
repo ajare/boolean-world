@@ -104,6 +104,61 @@ void continuousDescentFollowsOnlyWhileGrounded() {
           "a descending floor pulled an airborne player downward");
 }
 
+void overlySteepFloorRemovesOnlyUphillMovement() {
+  auto data = dataFor({region(0, 20, 1, surfaces(0.0f, 80.0f, {2.0f, 0.0f}))});
+
+  auto uphill = bw::app::evaluatePlayerSurfaceTraversal(
+      *data, {2.0f, 5.0f}, {8.0f, 5.0f}, 4.0f, 0.0f);
+  requireNear(uphill.resolvedPosition.x, 2.0f, 0.001f,
+              "an unwalkable floor retained uphill movement");
+  requireNear(uphill.resolvedPosition.y, 5.0f, 0.001f,
+              "blocking uphill movement introduced contour movement");
+
+  auto alongContour = bw::app::evaluatePlayerSurfaceTraversal(
+      *data, {5.0f, 2.0f}, {5.0f, 8.0f}, 10.0f, 0.0f);
+  requireNear(alongContour.resolvedPosition.x, 5.0f, 0.001f,
+              "contour movement drifted uphill or downhill");
+  requireNear(alongContour.resolvedPosition.y, 8.0f, 0.001f,
+              "an unwalkable floor blocked contour movement");
+
+  auto downhill = bw::app::evaluatePlayerSurfaceTraversal(
+      *data, {8.0f, 5.0f}, {2.0f, 5.0f}, 16.0f, 0.0f);
+  requireNear(downhill.resolvedPosition.x, 2.0f, 0.001f,
+              "an unwalkable floor blocked downhill movement");
+}
+
+void diagonalMovementCannotZigzagUphill() {
+  auto data = dataFor({region(0, 20, 1, surfaces(0.0f, 80.0f, {2.0f, 0.0f}))});
+  wp::Vector2 position{5.0f, 5.0f};
+
+  auto first = bw::app::evaluatePlayerSurfaceTraversal(
+      *data, position, position + wp::Vector2{3.0f, 2.0f}, 10.0f, 0.0f);
+  position = first.resolvedPosition;
+  auto second = bw::app::evaluatePlayerSurfaceTraversal(
+      *data, position, position + wp::Vector2{3.0f, -2.0f}, 10.0f, 0.0f);
+
+  requireNear(second.resolvedPosition.x, 5.0f, 0.001f,
+              "diagonal zigzag accumulated uphill progress");
+  requireNear(second.resolvedPosition.y, 5.0f, 0.001f,
+              "diagonal zigzag did not preserve contour components");
+}
+
+void enteringOrLandingOnSteepFloorCanMoveDownhill() {
+  auto data = dataFor({region(0, 20, 1, surfaces(0.0f, 80.0f, {2.0f, 0.0f}))});
+
+  auto entering = bw::app::evaluatePlayerSurfaceTraversal(
+      *data, {22.0f, 5.0f}, {16.0f, 5.0f}, 0.0f, 0.0f);
+  requireNear(entering.resolvedPosition.x, 16.0f, 0.001f,
+              "entering an unwalkable floor trapped downhill movement");
+
+  auto landing = bw::app::evaluatePlayerSurfaceTraversal(
+      *data, {8.0f, 5.0f}, {3.0f, 5.0f}, 30.0f, -10.0f);
+  requireNear(landing.resolvedPosition.x, 3.0f, 0.001f,
+              "landing on an unwalkable floor trapped downhill movement");
+  require(!landing.supportedFloorElevation,
+          "an airborne landing was pulled onto the floor during traversal");
+}
+
 void losingSupportEntersOrdinaryVerticalPhysics() {
   auto data = dataFor(
       {region(0, 10, 1, surfaces(10.0f, 40.0f)),
@@ -235,12 +290,16 @@ int main() {
   try {
     groundedPlayerFollowsOneAscendingPlane();
     continuousDescentFollowsOnlyWhileGrounded();
+    overlySteepFloorRemovesOnlyUphillMovement();
+    diagonalMovementCannotZigzagUphill();
+    enteringOrLandingOnSteepFloorCanMoveDownhill();
     losingSupportEntersOrdinaryVerticalPhysics();
     crossedArrangementEdgesAreReportedInMovementOrder();
     laterStepsUseTheFaceReachedAtEarlierCrossings();
     variableStepEdgesUseTheirLocalCrossingHeight();
     slopedCeilingIsCheckedAcrossEveryAffineSegment();
-    std::cout << "Player surface traversal follows local affine geometry\n";
+    std::cout << "Player surface traversal follows local affine geometry and "
+                 "walkable-slope limits\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';

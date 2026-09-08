@@ -1186,11 +1186,8 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
         *mWorldData, mPlayerTraversalStartPosition, physicalStats.position,
         mPlayerTraversalStartFeetElevation,
         mPlayerTraversalStartVerticalVelocity);
-    if (traversal.allowedFraction < 1.0f) {
-      physicalStats.position =
-          mPlayerTraversalStartPosition +
-          (physicalStats.position - mPlayerTraversalStartPosition) *
-              traversal.allowedFraction;
+    if (traversal.resolvedPosition != physicalStats.position) {
+      physicalStats.position = traversal.resolvedPosition;
       mPlayerCollider->_setPosition(physicalStats.position);
     }
     if (traversal.supportedFloorElevation) {

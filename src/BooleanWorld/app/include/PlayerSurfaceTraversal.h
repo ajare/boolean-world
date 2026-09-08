@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <optional>
 
 #include <core/ArrangementWorldData.h>
@@ -15,9 +16,14 @@ namespace bw::app {
 // this result handles constraints and support that exist within the affine
 // face segments between those walls.
 struct PlayerSurfaceTraversalResult {
-  // One unless a floor/ceiling pair becomes too narrow within a traversed
-  // affine segment. The limit is where standing clearance reaches exactly the
-  // player's height.
+  // The endpoint after directional slope constraints and affine clearance.
+  // This is not necessarily on the original movement chord: an unwalkable
+  // floor removes only that chord's uphill component.
+  wp::Vector2 resolvedPosition{};
+
+  // One unless a floor/ceiling pair becomes too narrow within the
+  // slope-constrained chord. The limit is where standing clearance reaches
+  // exactly the player's height.
   float allowedFraction{1.0f};
   bool clearanceBlocked{false};
 
@@ -27,6 +33,48 @@ struct PlayerSurfaceTraversalResult {
   std::optional<float> supportedFloorElevation;
 };
 
+[[nodiscard]] inline bool isPlayerFloorWalkable(
+    std::array<float, 3> const& geometricNormal) {
+  constexpr auto RadiansPerDegree =
+      std::numbers::pi_v<float> / 180.0f;
+  return geometricNormal[2] >=
+         std::cos(BW_PLAYER_MAX_WALKABLE_SLOPE * RadiansPerDegree);
+}
+
+// Applies each traversed floor's one-sided directional constraint separately.
+// Classification deliberately reads the winning Elevation plane rather than
+// SurfaceSample::floorNormal, which may contain collision-detail perturbation.
+[[nodiscard]] inline wp::Vector2 constrainPlayerMovementToWalkableSlopes(
+    bw::core::ArrangementWorldData const& world,
+    wp::Vector2 const& start,
+    wp::Vector2 const& end) {
+  auto movement = end - start;
+  auto resolved = start;
+  for (auto const& segment : world.getSurfaceTraversal(start, end)) {
+    auto displacement =
+        movement * (segment.endFraction - segment.beginFraction);
+    if (segment.beginSurface) {
+      auto const& arrangement = world.getArrangement();
+      auto const& face = arrangement.faces[segment.faceIndex];
+      auto const geometricNormal =
+          arrangement.palette[face.paletteIndex].floorZ.normal();
+      if (!isPlayerFloorWalkable(geometricNormal)) {
+        wp::Vector2 uphill{-geometricNormal[0], -geometricNormal[1]};
+        auto uphillLength = std::sqrt(uphill.lengthSquared());
+        if (uphillLength > 0.0f) {
+          uphill /= uphillLength;
+          auto uphillDisplacement = displacement.dot(uphill);
+          if (uphillDisplacement > 0.0f) {
+            displacement -= uphill * uphillDisplacement;
+          }
+        }
+      }
+    }
+    resolved += displacement;
+  }
+  return resolved;
+}
+
 [[nodiscard]] inline PlayerSurfaceTraversalResult evaluatePlayerSurfaceTraversal(
     bw::core::ArrangementWorldData const& world,
     wp::Vector2 const& start,
@@ -34,7 +82,9 @@ struct PlayerSurfaceTraversalResult {
     float feetElevation,
     float verticalVelocity) {
   PlayerSurfaceTraversalResult result;
-  auto segments = world.getSurfaceTraversal(start, end);
+  result.resolvedPosition =
+      constrainPlayerMovementToWalkableSlopes(world, start, end);
+  auto segments = world.getSurfaceTraversal(start, result.resolvedPosition);
   if (segments.empty()) return result;
 
   constexpr float ElevationEpsilon = 0.001f;
@@ -95,8 +145,11 @@ struct PlayerSurfaceTraversalResult {
     }
   }
 
+  result.resolvedPosition =
+      start + (result.resolvedPosition - start) * result.allowedFraction;
+
   if (supported) {
-    auto position = start + (end - start) * result.allowedFraction;
+    auto const& position = result.resolvedPosition;
     auto segment = std::find_if(
         segments.begin(), segments.end(), [&](auto const& candidate) {
           return result.allowedFraction <= candidate.endFraction + 1.0e-5f;
