@@ -444,24 +444,15 @@ Resources:
       - type: "Shader"
         name: "WorldFragmentShader"
         location: "shaders/world_pbr.frag"
-        Definitions:
-          Definition:
-            textures: "1"
       - type: "Shader"
         name: "WorldHorizontal2dFragmentShader"
         location: "shaders/world_pbr_2d.frag"
-        Definitions:
-          Definition:
-            textures: "1"
       - type: "Shader"
         name: "FragmentOverdrawShader"
         location: "shaders/fragment_overdraw.frag"
       - type: "Shader"
         name: "FragmentOverdrawResolveShader"
         location: "shaders/fragment_overdraw_resolve.frag"
-        Definitions:
-          Definition:
-            textures: "1"
       - type: "Shader"
         name: "PlayerTorchMarkerVertexShader"
         location: "shaders/player_torch_marker.vert"
@@ -474,9 +465,6 @@ Resources:
       - type: "Shader"
         name: "VignetteFragmentShader"
         location: "shaders/vignette.frag"
-        Definitions:
-          Definition:
-            textures: "1"
       - type: "Program"
         name: "WorldProgram"
         DependentResources:
