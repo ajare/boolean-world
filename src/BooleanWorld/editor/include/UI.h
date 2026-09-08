@@ -12,6 +12,13 @@
 
 namespace editor {
 
+struct ViewContext {
+  Document* doc;
+  Settings& settings;
+  bw::core::WorldData const* worldData;
+  double globalTime;
+};
+
 struct MouseButtonStatus {
   enum Button {
     Left,

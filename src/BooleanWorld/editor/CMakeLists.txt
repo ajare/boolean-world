@@ -24,6 +24,24 @@ add_executable(editor WIN32
     src/Render.cpp
     src/RunScriptAuthoring.cpp
     src/UI.cpp
+    src/ui/AnimationWidgets.cpp
+    src/ui/ArrangementFacePanel.cpp
+    src/ui/Chrome.cpp
+    src/ui/CombinedPanel.cpp
+    src/ui/ConfigPanel.cpp
+    src/ui/ContextHelpPanel.cpp
+    src/ui/DebugPanel.cpp
+    src/ui/HistoryPanel.cpp
+    src/ui/LayerStepsPanel.cpp
+    src/ui/MainWindow.cpp
+    src/ui/MeshPanel.cpp
+    src/ui/Modals.cpp
+    src/ui/PrefabPanel.cpp
+    src/ui/PrimitivePanel.cpp
+    src/ui/ResourceWidgets.cpp
+    src/ui/Shortcuts.cpp
+    src/ui/TriggerLinePanel.cpp
+    src/ui/WorldPanel.cpp
     src/UiHelpers.cpp
     src/Undo.cpp
     src/WidgetHelpers.cpp
