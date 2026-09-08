@@ -555,7 +555,12 @@ float ArrangementWorldData::getLiquidSurfaceHeight(
   auto depth = std::clamp(
       poolElevation - floor, 0.0,
       double(std::max(0.0f, ceiling - floor)));
-  return depth > 0.0 ? float(poolElevation)
+  // The Pool's equilibrium can lie above this cell's local ceiling. Gameplay
+  // needs the highest Liquid elevation reachable at this position, not a free
+  // surface hidden beyond solid geometry, so derive it from the same clamped
+  // local column as getLiquidDepth. The raw Pool elevation remains available
+  // through getLiquidPoolElevations().
+  return depth > 0.0 ? float(double(floor) + depth)
                      : -std::numeric_limits<float>::infinity();
 }
 

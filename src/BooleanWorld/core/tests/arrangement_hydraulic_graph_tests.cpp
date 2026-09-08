@@ -141,14 +141,15 @@ bool connectedBelow(
 }
 
 void aSharedEdgesSillUsesItsLowestTraversableOpening() {
-  // Along the shared edge x=0, y=0..10, the left floor is y. The right
-  // ceiling is 2y-5 while its own floor is -5. Thus max(floors)=y and
-  // min(ceilings)=2y-5: the opening exists only above y=5 and its Sill is 5.
+  // Along the shared edge x=0, y=0..10, the left floor/ceiling are
+  // 2+0.2y and 12-0.8y; the right floor/ceiling are y-10 and y. The opening
+  // is pinched closed below y=2.5 and again at y=10, with the two ceilings
+  // also crossing at y=20/3. Its lowest open bottom is therefore 2.5.
   auto arrangement = bw::core::arr::BuildArrangement({
-      rectangle(-10, 0, 0, 10, 0, Elevation{0.0f, {0.0f, 1.0f}},
-                Elevation{20.0f}, 0.0f),
-      rectangle(0, 0, 10, 10, 1, Elevation{-5.0f},
-                Elevation{-5.0f, {0.0f, 2.0f}}, 0.0f),
+      rectangle(-10, 0, 0, 10, 0, Elevation{2.0f, {0.0f, 0.2f}},
+                Elevation{12.0f, {0.0f, -0.8f}}, 0.0f),
+      rectangle(0, 0, 10, 10, 1, Elevation{-10.0f, {0.0f, 1.0f}},
+                Elevation{0.0f, {0.0f, 1.0f}}, 0.0f),
   });
   auto triangles = bw::core::arr::BuildArrangementTriangles(*arrangement);
   auto cells = bw::core::arr::BuildHydraulicCells(*arrangement, triangles);
@@ -165,8 +166,8 @@ void aSharedEdgesSillUsesItsLowestTraversableOpening() {
   });
   require(shared != links.end(),
           "the traversable part of a shared sloped edge produced no hydraulic link");
-  requireNear(shared->sill, 5.0,
-              "the shared edge Sill did not use the lowest traversable opening");
+  requireNear(shared->sill, 2.5,
+              "ceiling crossings did not delimit the pinched opening's Sill");
 
   auto sealed = bw::core::arr::BuildArrangement({
       rectangle(-10, 0, 0, 10, 0, Elevation{0.0f, {0.0f, 1.0f}},

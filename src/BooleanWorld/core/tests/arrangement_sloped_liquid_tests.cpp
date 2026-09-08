@@ -45,15 +45,23 @@ Contour contour(std::initializer_list<std::array<double, 2>> vertices) {
   return result;
 }
 
-ArrangementPrimitive basin(Contour shape, float liquidLevel = 2.0f) {
+ArrangementPrimitive room(
+    Contour shape, uint32_t primitiveIndex, Elevation floor,
+    Elevation ceiling, float liquidLevel, double rawArea) {
   PrimitivePropertySet properties;
-  properties.floorZ = Elevation{0.0f, {1.0f, 0.0f}};
-  properties.ceilingZ = 20.0f;
+  properties.floorZ = floor;
+  properties.ceilingZ = ceiling;
   properties.liquidLevel = liquidLevel;
   ArrangementPrimitive result{
-      {std::move(shape)}, Primitive::Operation::Union, Primitive::FillRule::NonZero, 0, 0, properties};
-  result.rawArea = 100.0;
+      {std::move(shape)}, Primitive::Operation::Union, Primitive::FillRule::NonZero, 0, primitiveIndex, properties};
+  result.rawArea = rawArea;
   return result;
+}
+
+ArrangementPrimitive basin(Contour shape, float liquidLevel = 2.0f) {
+  return room(
+      std::move(shape), 0, Elevation{0.0f, {1.0f, 0.0f}},
+      Elevation{20.0f}, liquidLevel, 100.0);
 }
 
 std::shared_ptr<ArrangementWorldData const> worldData(
@@ -80,6 +88,22 @@ void aHydraulicCellIntegratesItsAffineColumn() {
               "a Hydraulic cell did not integrate its affine full capacity");
   requireNear(cell.capacityBelow(100.0), cell.volumeBelow(25.0),
               "capacity above the ceiling changed after the cell was full");
+
+  HydraulicCell ceilingCapped;
+  ceilingCapped.positions =
+      {{{0.0f, 0.0f}, {10.0f, 0.0f}, {0.0f, 10.0f}}};
+  ceilingCapped.worldArea = 50.0;
+  ceilingCapped.floor = Elevation{0.0f};
+  ceilingCapped.ceiling = Elevation{0.0f, {1.0f, 0.0f}};
+  requireNear(
+      ceilingCapped.volumeBelow(5.0), 875.0 / 6.0,
+      "a sloped ceiling did not cap each partly flooded column locally");
+  requireNear(
+      ceilingCapped.volumeBelow(10.0), 500.0 / 3.0,
+      "a sloped ceiling integrated the wrong full cell capacity");
+  requireNear(
+      ceilingCapped.volumeBelow(100.0), 500.0 / 3.0,
+      "Liquid rose above the full capacity of a sloped ceiling");
 }
 
 void arrangementTrianglesBecomeHydraulicCells() {
@@ -169,6 +193,100 @@ void aCompletelyFloodedCellDrawsNoFreeSurface() {
               "a flooded cell did not report its full local depth");
 }
 
+void aFloodedLowCeilingCellConnectsOnePoolWithoutAFreeSurface() {
+  auto arrangement = bw::core::arr::BuildArrangement({
+      room(
+          contour({{-10, 0}, {0, 0}, {0, 10}, {-10, 10}}), 0,
+          Elevation{0.0f}, Elevation{20.0f}, 14.0f, 100.0),
+      room(
+          contour({{0, 0}, {10, 0}, {10, 10}, {0, 10}}), 1,
+          Elevation{0.0f}, Elevation{3.0f, {0.1f, 0.0f}}, 0.0f,
+          100.0),
+      room(
+          contour({{10, 0}, {20, 0}, {20, 10}, {10, 10}}), 2,
+          Elevation{0.0f}, Elevation{20.0f}, 0.0f, 100.0),
+  });
+  ArrangementWorldData data(
+      arrangement, wp::BoundingBox({-20.0f, -5.0f}, {50.0f, 20.0f}),
+      8.0f);
+
+  uint32_t passageFace = ~0u;
+  for (uint32_t face = 1; face < uint32_t(arrangement->faces.size()); ++face) {
+    if (arrangement->faces[face].solid &&
+        arrangement->faces[face].primitiveIndex == 1) {
+      passageFace = face;
+      break;
+    }
+  }
+  require(passageFace != ~0u, "the low-ceiling passage face was not generated");
+
+  // 1400 units settle into two 100-unit-area tall rooms and the passage's
+  // 350-unit full capacity: 2 * 100 * elevation + 350 = 1400.
+  constexpr double expectedPoolElevation = 5.25;
+  auto const& cells = data.getHydraulicCells();
+  auto const& elevations = data.getLiquidPoolElevations();
+  for (size_t index = 0; index < cells.size(); ++index) {
+    requireNear(
+        elevations[index], expectedPoolElevation,
+        "a flooded connector did not retain the shared Pool elevation");
+  }
+  require(
+      data.getContainingFaceIndex({15.0f, 4.0f}) != ~0u,
+      "the right room query point was outside generated geometry");
+  requireNear(
+      data.getLiquidDepth({15.0f, 4.0f}), expectedPoolElevation,
+      "a completely flooded passage did not preserve hydraulic connectivity");
+  requireNear(
+      data.getLiquidDepth({5.0f, 4.0f}), 3.5,
+      "local Liquid depth crossed the passage's sloped ceiling");
+  requireNear(
+      data.getLiquidSurfaceHeight({5.0f, 4.0f}), 3.5,
+      "the reachable Liquid surface was not clamped to the local ceiling");
+  requireNear(
+      data.getLiquidSurfaceHeight({15.0f, 4.0f}), expectedPoolElevation,
+      "a reachable free surface lost the Pool equilibrium elevation");
+
+  for (auto const& triangle : data.getLiquidSurfaceTriangles()) {
+    require(
+        triangle.face != passageFace,
+        "a completely flooded passage emitted a free surface through its ceiling");
+  }
+}
+
+void sealedOverflowFillsToCapacityDeterministically() {
+  auto makeData = [] {
+    auto arrangement = bw::core::arr::BuildArrangement({room(
+        contour({{0, 0}, {10, 0}, {10, 10}, {0, 10}}), 0,
+        Elevation{0.0f}, Elevation{3.0f, {0.1f, 0.0f}}, 100.0f,
+        100.0)});
+    return std::make_shared<ArrangementWorldData>(
+        arrangement, wp::BoundingBox({-5.0f, -5.0f}, {20.0f, 20.0f}),
+        8.0f);
+  };
+  auto data = makeData();
+  auto repeated = makeData();
+
+  require(data->getLiquidPoolElevations() ==
+              repeated->getLiquidPoolElevations(),
+          "sealed capacity overflow did not settle deterministically");
+  require(data->getLiquidSurfaceTriangles().empty(),
+          "sealed overflow emitted a free surface above its ceiling");
+  requireNear(data->getLiquidDepth({5.0f, 4.0f}), 3.5,
+              "sealed overflow did not fill the local column to capacity");
+  requireNear(
+      data->getLiquidSurfaceHeight({5.0f, 4.0f}), 3.5,
+      "sealed overflow exposed a reachable surface above the local ceiling");
+
+  double settledVolume = 0.0;
+  auto const& cells = data->getHydraulicCells();
+  auto const& elevations = data->getLiquidPoolElevations();
+  for (size_t index = 0; index < cells.size(); ++index) {
+    settledVolume += cells[index].volumeBelow(elevations[index]);
+  }
+  requireNear(settledVolume, 350.0,
+              "sealed overflow did not stop at total sloped capacity");
+}
+
 void subdividingTheSameBasinChangesNeitherVolumeNorEquilibrium() {
   auto ordinary = worldData(
       contour({{0, 0}, {10, 0}, {10, 10}, {0, 10}}));
@@ -222,6 +340,8 @@ int main() {
     arrangementTrianglesBecomeHydraulicCells();
     oneSlopedBasinSettlesToAHorizontalShoreline();
     aCompletelyFloodedCellDrawsNoFreeSurface();
+    aFloodedLowCeilingCellConnectsOnePoolWithoutAFreeSurface();
+    sealedOverflowFillsToCapacityDeterministically();
     subdividingTheSameBasinChangesNeitherVolumeNorEquilibrium();
     std::cout << "Sloped Hydraulic cells conserve and render one horizontal Pool\n";
     return 0;

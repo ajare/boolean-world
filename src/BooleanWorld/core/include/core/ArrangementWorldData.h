@@ -171,10 +171,11 @@ public:
   // must query depth by position or consume Pool elevations instead.
   [[nodiscard]] std::vector<float> const& getLiquidDepths() const;
 
-  // The horizontal Pool elevation governing Liquid at position. Negative
-  // infinity outside the Arrangement or on a dry part of a cell. A completely
-  // flooded cell can report a Pool above its local ceiling even though it
-  // emits no visible free-surface geometry there.
+  // The highest Liquid elevation reachable at position, derived from the
+  // same locally floor/ceiling-clamped column as getLiquidDepth. Negative
+  // infinity outside the Arrangement or on a dry part of a cell. In a
+  // completely flooded cell this is the local ceiling; the Pool's unclamped
+  // equilibrium remains available through getLiquidPoolElevations().
   [[nodiscard]] float getLiquidSurfaceHeight(wp::Vector2 const& position) const;
 
   // The LiquidType of whichever Primitive's properties won the containing
