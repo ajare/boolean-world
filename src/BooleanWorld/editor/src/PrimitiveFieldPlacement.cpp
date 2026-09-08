@@ -11,15 +11,11 @@
 #include <utility>
 #include <vector>
 
-#include <core/CirclePolygon.h>
 #include <core/Defines.h>
-#include <core/Primitive.h>
-#include <core/RectanglePolygon.h>
-#include <core/RegularPolygon.h>
+#include <core/PrimitiveFactory.h>
 #include <core/World.h>
 
 #include "Actions.h"
-#include "AppHelpers.h"
 #include "Document.h"
 #include "Settings.h"
 #include "UiHelpers.h"
@@ -144,32 +140,22 @@ void validatePreview(
   }
 }
 
-std::unique_ptr<bw::core::Primitive> createPrimitive(
+bw::core::PrimitiveShapeSpec shapeSpec(
     PrimitiveFieldPrimitivePreview const& preview) {
-  using Primitive = bw::core::Primitive;
   if (preview.isHole) {
-    return std::make_unique<bw::core::RegularPolygon>(
-        Primitive::Operation::Difference, Primitive::FillRule::NonZero,
-        preview.regularSideCount);
+    return bw::core::RegularPolygonSpec{preview.regularSideCount};
   }
   switch (preview.type) {
     case PrimitiveFieldType::Rectangle:
-      return std::make_unique<bw::core::RectanglePolygon>(
-          Primitive::Operation::Union, Primitive::FillRule::NonZero,
-          PrimitiveFieldRectangleXyRatio);
+      return bw::core::RectangleSpec{PrimitiveFieldRectangleXyRatio};
     case PrimitiveFieldType::Triangle:
-      return std::make_unique<bw::core::RegularPolygon>(
-          Primitive::Operation::Union, Primitive::FillRule::NonZero, 3);
+      return bw::core::RegularPolygonSpec{3};
     case PrimitiveFieldType::Pentagon:
-      return std::make_unique<bw::core::RegularPolygon>(
-          Primitive::Operation::Union, Primitive::FillRule::NonZero, 5);
+      return bw::core::RegularPolygonSpec{5};
     case PrimitiveFieldType::Hexagon:
-      return std::make_unique<bw::core::RegularPolygon>(
-          Primitive::Operation::Union, Primitive::FillRule::NonZero, 6);
+      return bw::core::RegularPolygonSpec{6};
     case PrimitiveFieldType::Circle:
-      return std::make_unique<bw::core::CirclePolygon>(
-          Primitive::Operation::Union, Primitive::FillRule::NonZero,
-          PrimitiveFieldCircleResolution);
+      return bw::core::CircleSpec{PrimitiveFieldCircleResolution};
   }
   throw std::runtime_error("The primitive preview has an unsupported type.");
 }
@@ -179,10 +165,12 @@ std::vector<std::unique_ptr<bw::core::Primitive>> buildBatch(
   std::vector<std::unique_ptr<bw::core::Primitive>> batch;
   batch.reserve(previews.size());
   for (auto const& preview : previews) {
-    auto primitive = createPrimitive(preview);
-    _setPrimitiveParameters(
-        primitive.get(), 0, preview.position, wp::Vector2::ZERO,
-        preview.size, preview.angle);
+    auto operation = preview.isHole
+                         ? bw::core::Primitive::Operation::Difference
+                         : bw::core::Primitive::Operation::Union;
+    auto primitive = bw::core::PrimitiveFactory::create({shapeSpec(preview), operation,
+                                                         bw::core::Primitive::FillRule::NonZero, 0, preview.position,
+                                                         preview.size, preview.angle});
     setPrimitiveDefaultMaterials(primitive.get());
 
     auto const& angle = primitive->getAnimationInterpolator(

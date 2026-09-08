@@ -1,17 +1,12 @@
 #pragma once
 
 #include <functional>
-
-#include "core/Primitive.h"
+#include <string>
 
 #include "Document.h"
 
 namespace editor {
-typedef std::function<bw::core::Primitive*()> CreatePrimitiveFunction;
-
 typedef std::function<void(Document*)> DocumentHelperFunction;
-
-typedef std::function<bw::core::Primitive*()> CreatePrimitiveFunction;
 
 void newDocument(editor::Document* doc);
 
@@ -57,75 +52,5 @@ void frameAllWorld(editor::Document* doc);
 void enableGhost(editor::Document* doc, bool enable);
 
 void selectAndHomeGhost(editor::Document* doc);
-
-void _setPrimitiveParameters(bw::core::Primitive* prim, uint8_t priority, wp::Vector2 const& position, wp::Vector2 const& offset, float scale, float angle);
-
-bw::core::Primitive* createRegularPolygonPrimitive(
-    bw::core::Primitive::Operation op,
-    bw::core::Primitive::FillRule fillRule,
-    uint32_t numSides,
-    uint8_t priority,
-    wp::Vector2 const& position,
-    float scale,
-    float angle);
-
-bw::core::Primitive* createCirclePrimitive(
-    bw::core::Primitive::Operation op,
-    bw::core::Primitive::FillRule fillRule,
-    float resolution,
-    uint8_t priority,
-    wp::Vector2 const& position,
-    float scale,
-    float angle);
-
-bw::core::Primitive* createCircleSegmentPrimitive(
-    bw::core::Primitive::Operation op,
-    bw::core::Primitive::FillRule fillRule,
-    float arcLength,
-    float resolution,
-    uint8_t priority,
-    wp::Vector2 const& position,
-    float scale,
-    float angle);
-
-bw::core::Primitive* createTorusPrimitive(
-    bw::core::Primitive::Operation op,
-    bw::core::Primitive::FillRule fillRule,
-    float thickness,
-    float resolution,
-    uint8_t priority,
-    wp::Vector2 const& position,
-    float scale,
-    float angle);
-
-bw::core::Primitive* createTorusSegmentPrimitive(
-    bw::core::Primitive::Operation op,
-    bw::core::Primitive::FillRule fillRule,
-    float thickness,
-    float arcLength,
-    float resolution,
-    uint8_t priority,
-    wp::Vector2 const& position,
-    float scale,
-    float angle);
-
-bw::core::Primitive* createRectanglePrimitive(
-    bw::core::Primitive::Operation op,
-    bw::core::Primitive::FillRule fillRule,
-    float xyRatio,
-    uint8_t priority,
-    wp::Vector2 const& position,
-    float scale,
-    float angle);
-
-bw::core::Primitive* createSuperformulaPrimitive(
-    bw::core::Primitive::Operation op,
-    bw::core::Primitive::FillRule fillRule,
-    float values[6],
-    float resolution,
-    uint8_t priority,
-    wp::Vector2 const& position,
-    float scale,
-    float angle);
 
 }  // namespace editor

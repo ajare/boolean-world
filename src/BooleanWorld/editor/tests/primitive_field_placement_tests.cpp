@@ -11,12 +11,12 @@
 
 #include <core/CirclePolygon.h>
 #include <core/LayerBuildStep.h>
+#include <core/PrimitiveFactory.h>
 #include <core/RectanglePolygon.h>
 #include <core/RegularPolygon.h>
 #include <core/World.h>
 
 #include "Actions.h"
-#include "AppHelpers.h"
 #include "Document.h"
 #include "PrimitiveFieldPlacement.h"
 #include "PrimitiveFieldPreview.h"
@@ -119,13 +119,14 @@ void placementAppendsDefaultsAndIsOneUndoableAction() {
           "successful placement replaced or changed existing primitives");
 
   std::set<uint32_t> expectedSelection;
-  bw::core::RectanglePolygon expected(
-      bw::core::Primitive::Operation::Union,
-      bw::core::Primitive::FillRule::NonZero,
-      editor::PrimitiveFieldRectangleXyRatio);
-  editor::_setPrimitiveParameters(
-      &expected, 0, {}, {}, primitives[0].size, primitives[0].angle);
-  editor::setPrimitiveDefaultMaterials(&expected);
+  auto expected = bw::core::PrimitiveFactory::create({bw::core::RectangleSpec{editor::PrimitiveFieldRectangleXyRatio},
+                                                      bw::core::Primitive::Operation::Union,
+                                                      bw::core::Primitive::FillRule::NonZero,
+                                                      0,
+                                                      {},
+                                                      primitives[0].size,
+                                                      primitives[0].angle});
+  editor::setPrimitiveDefaultMaterials(expected.get());
 
   for (size_t i = 0; i < primitives.size(); ++i) {
     auto index = oldCount + static_cast<uint32_t>(i);
@@ -173,7 +174,7 @@ void placementAppendsDefaultsAndIsOneUndoableAction() {
                 primitive->getPriority() == 0 &&
                 primitive->getOrientation() == 0.0f && primitive->isStatic(),
             "a placed primitive did not use normal editor defaults");
-    require(sameProperties(primitive->getProperties(), expected.getProperties()),
+    require(sameProperties(primitive->getProperties(), expected->getProperties()),
             "placed primitive materials did not match normal editor creation");
 
     auto const angle = primitives[i].angle;

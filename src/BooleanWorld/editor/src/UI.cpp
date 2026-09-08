@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <random>
@@ -27,6 +28,7 @@
 #include <core/RectanglePolygon.h>
 #include <core/SuperformulaPolygon.h>
 #include <core/MeshPrimitive.h>
+#include <core/PrimitiveFactory.h>
 #include <core/Defines.h>
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/LiquidType.h>
@@ -76,6 +78,14 @@ extern editor::EditorInteraction gEditorInteraction;
 
 namespace editor {
 using namespace std;
+
+using CreatePrimitiveFunction = function<unique_ptr<bw::core::Primitive>()>;
+
+CreatePrimitiveFunction createPrimitiveFunction(bw::core::PrimitiveSpec spec) {
+  return [spec = move(spec)] {
+    return bw::core::PrimitiveFactory::create(spec);
+  };
+}
 
 constexpr int minGridSizeExponent = 1;  // 2 world units
 constexpr int maxGridSizeExponent = 8;  // 256 world units
@@ -1015,7 +1025,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateRegularPolygon(editor::
 
   return {
       format("Create Regular {}-Gon Primitive", numSides),
-      bind(createRegularPolygonPrimitive, op, fillRule, (uint32_t)numSides, priority, position, scale, angle),
+      createPrimitiveFunction({bw::core::RegularPolygonSpec{static_cast<uint32_t>(numSides)}, op, fillRule, priority, position, scale, angle}),
       modified};
 }
 
@@ -1034,7 +1044,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateCirclePolygon(editor::D
 
   return {
       "Create Circle Primitive",
-      bind(createCirclePrimitive, op, fillRule, resolution, priority, position, scale, angle),
+      createPrimitiveFunction({bw::core::CircleSpec{resolution}, op, fillRule, priority, position, scale, angle}),
       modified};
 }
 
@@ -1063,7 +1073,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateCircleSegmentPolygon(ed
 
   return {
       "Create Circle Segment Primitive",
-      bind(createCircleSegmentPrimitive, op, fillRule, arcLength, resolution, priority, position, scale, angle),
+      createPrimitiveFunction({bw::core::CircleSegmentSpec{arcLength, resolution}, op, fillRule, priority, position, scale, angle}),
       modified};
 }
 
@@ -1094,7 +1104,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusPolygon(editor::Do
 
   return {
       "Create Torus Primitive",
-      bind(createTorusPrimitive, op, fillRule, thickness, resolution, priority, position, scale, angle),
+      createPrimitiveFunction({bw::core::TorusSpec{thickness, resolution}, op, fillRule, priority, position, scale, angle}),
       modified};
 }
 
@@ -1136,7 +1146,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateTorusSegmentPolygon(edi
 
   return {
       "Create Torus Segment Primitive",
-      bind(createTorusSegmentPrimitive, op, fillRule, thickness, arcLength, resolution, priority, position, scale, angle),
+      createPrimitiveFunction({bw::core::TorusSegmentSpec{thickness, arcLength, resolution}, op, fillRule, priority, position, scale, angle}),
       modified};
 }
 
@@ -1155,7 +1165,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateRectanglePolygon(editor
 
   return {
       "Create Rectangle Primitive",
-      bind(createRectanglePrimitive, op, fillRule, xyRatio, priority, position, scale, angle),
+      createPrimitiveFunction({bw::core::RectangleSpec{xyRatio}, op, fillRule, priority, position, scale, angle}),
       modified};
 }
 
@@ -1311,7 +1321,7 @@ tuple<string, CreatePrimitiveFunction, bool> renderCreateSuperformulaPolygon(edi
 
   return {
       "Create Superformula Primitive",
-      bind(createSuperformulaPrimitive, op, fillRule, values, resolution, priority, position, scale, angle),
+      createPrimitiveFunction({bw::core::SuperformulaSpec{{values[0], values[1], values[2], values[3], values[4], values[5]}, resolution}, op, fillRule, priority, position, scale, angle}),
       modified};
 }
 
@@ -1599,7 +1609,7 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
 
   if (modified || primOptionsModified) {
     auto newGhost = newPrimitiveFunc();
-    doc->updateGhost(doc->getWorld(), newGhost);
+    doc->updateGhost(doc->getWorld(), newGhost.release());
   }
 
   if (committed) {
