@@ -50,14 +50,6 @@ wp::Vector2 snapMovementToGrid(
       round(movement.y / gridSize) * gridSize};
 }
 
-void beginTransform(Document* doc, string const& name) {
-  if (!undoableActionInProgress()) {
-    beginUndoableAction(
-        doc, name,
-        bind(recordCurrentState, placeholders::_1, true), 0.0f);
-  }
-}
-
 }  // namespace
 
 void EditorInteraction::applyPrimitiveClick(
@@ -561,7 +553,9 @@ void EditorInteraction::updateDrag(
         mMovingMeshSelection = true;
         mMeshDragCumulativeDelta = {};
         doc->beginMeshDrag(settings.meshSubMode);
-        beginTransform(doc, "Move Mesh Selection");
+        if (!undoableActionInProgress()) {
+          beginTransaction(doc, "Move Mesh Selection", 0.0f);
+        }
       }
 
       mMeshDragCumulativeDelta +=
@@ -601,7 +595,9 @@ void EditorInteraction::updateDrag(
       if (input.shift) {
         if (!mScalingSelectedPrimitives) {
           mScalingSelectedPrimitives = true;
-          beginTransform(doc, "Transform Primitive(s)");
+          if (!undoableActionInProgress()) {
+            beginTransaction(doc, "Transform Primitive(s)", 0.0f);
+          }
         }
 
         for (auto index : primitiveSelection) {
@@ -626,7 +622,9 @@ void EditorInteraction::updateDrag(
       if (input.alt) {
         if (!mRotatingSelectedPrimitives) {
           mRotatingSelectedPrimitives = true;
-          beginTransform(doc, "Transform Primitive(s)");
+          if (!undoableActionInProgress()) {
+            beginTransaction(doc, "Transform Primitive(s)", 0.0f);
+          }
         }
 
         for (auto index : primitiveSelection) {
@@ -653,7 +651,9 @@ void EditorInteraction::updateDrag(
           mMovingSelectedPrimitives = true;
           mPrimitiveDragCumulativeDelta = {};
           mPrimitiveDragAppliedDelta = {};
-          beginTransform(doc, "Transform Primitive(s)");
+          if (!undoableActionInProgress()) {
+            beginTransaction(doc, "Transform Primitive(s)", 0.0f);
+          }
         }
 
         mPrimitiveDragCumulativeDelta +=
@@ -690,7 +690,9 @@ void EditorInteraction::updateDrag(
     if (input.leftDragging) {
       if (!mMovingSelectedTriggerLine) {
         mMovingSelectedTriggerLine = true;
-        beginTransform(doc, "Move TriggerLine");
+        if (!undoableActionInProgress()) {
+          beginTransaction(doc, "Move TriggerLine", 0.0f);
+        }
       }
 
       auto world = doc->getWorld();

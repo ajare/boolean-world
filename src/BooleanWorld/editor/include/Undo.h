@@ -13,7 +13,7 @@ struct HistoryItem {
   bool isUndo;
 };
 
-typedef std::function<bool(Document*)> UndoableActionFunction;
+using UndoableActionFunction = std::function<bool(Document*)>;
 
 bool canUndo();
 
@@ -26,6 +26,11 @@ size_t getRedoLevels();
 void beginUndoableAction(Document* doc, std::string const& id, UndoableActionFunction func, float v);
 
 void beginUndoableAction(Document* doc, std::string const& id, UndoableActionFunction func, wp::Vector2 const& v);
+
+// Begins a gesture whose mutations are applied incrementally before commit.
+void beginTransaction(Document* doc, std::string const& id, float v);
+
+void beginTransaction(Document* doc, std::string const& id, wp::Vector2 const& v);
 
 void commitUndoableAction(Document* doc, std::string const& id = "");
 

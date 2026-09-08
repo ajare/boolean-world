@@ -121,8 +121,6 @@ public:
 
 bool playerProxyHitTest(Document const* doc, wp::Vector2 const& worldPosition);
 
-bool recordCurrentState(Document* doc, bool modifying);
-
 // Editor-mode changes are preferences, not authored edits: they clear the
 // current selection without entering undo history or dirtying the Document.
 void setEditorMode(Document* doc, Settings& settings, Settings::Mode mode);

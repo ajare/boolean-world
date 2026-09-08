@@ -9,7 +9,7 @@
 #include "Document.h"
 #include "Settings.h"
 
-#define MINIMAP_SCALE (512.0f / 24.0f)
+constexpr float MINIMAP_SCALE = 512.0f / 24.0f;
 #define MINIMAP_PADDING 20.0f
 
 void renderWorld(

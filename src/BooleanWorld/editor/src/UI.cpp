@@ -866,7 +866,7 @@ void renderWorldView(editor::Document* doc, editor::Settings& settings) {
   }
 
   if (ImGui::IsItemActivated()) {
-    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+    beginTransaction(doc, "", 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Player start angle to {}", world->getPlayerStartAngle()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -1705,7 +1705,7 @@ void renderEditTorusPolygon(editor::Document* doc, bw::core::Primitive* primitiv
   }
 
   if (ImGui::IsItemActivated()) {
-    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+    beginTransaction(doc, "", 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Torus Thickness to {}", torus->getThickness()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -1738,7 +1738,7 @@ void renderEditTorusSegmentPolygon(editor::Document* doc, bw::core::Primitive* p
   }
 
   if (ImGui::IsItemActivated()) {
-    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+    beginTransaction(doc, "", 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Torus Segment Thickness to {}", torusSeg->getThickness()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -1788,7 +1788,7 @@ void renderEditRectanglePolygon(editor::Document* doc, bw::core::Primitive* prim
   }
 
   if (ImGui::IsItemActivated()) {
-    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+    beginTransaction(doc, "", 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Rectangle X/Y ratio to {}", rectangle->getXyRatio()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -1798,7 +1798,7 @@ void renderEditRectanglePolygon(editor::Document* doc, bw::core::Primitive* prim
 
 void completeSuperformulaControlValueEdit(editor::Document* doc, bw::core::SuperformulaPolygon* superformula, uint32_t index, string const& name) {
   if (ImGui::IsItemActivated()) {
-    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+    beginTransaction(doc, "", 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Superformula {} to {}", name, superformula->getValue(index)));
   } else if (ImGui::IsItemDeactivated()) {
@@ -2224,7 +2224,7 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
       wp::Vector2 editValue = {imPoints[editPoint].x, imPoints[editPoint].y};
 
       if (clicked) {
-        beginUndoableAction(doc, "Move point", bind(editor::recordCurrentState, placeholders::_1, true), editValue);
+        beginTransaction(doc, "Move point", editValue);
       }
 
       // Moved. The undoable action only commits on release, so this drag is
@@ -2558,7 +2558,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   }
 
   if (ImGui::IsItemActivated()) {
-    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+    beginTransaction(doc, "", 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Primitive Priority to {}", (int)primitive->getPriority()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -2579,7 +2579,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   }
 
   if (ImGui::IsItemActivated()) {
-    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+    beginTransaction(doc, "", 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Primitive Size to {}", primitive->getSize().x));
   } else if (ImGui::IsItemDeactivated()) {
@@ -2677,7 +2677,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   }
 
   if (ImGui::IsItemActivated()) {
-    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+    beginTransaction(doc, "", 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Eye Angle Offset to {}", primitive->getInfluenceEyeAngleOffset()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -4893,7 +4893,7 @@ void renderMeshDrawToolView(editor::Document* doc, editor::Settings& settings) {
   }
 
   if (ImGui::IsItemActivated()) {
-    beginUndoableAction(doc, "", bind(editor::recordCurrentState, placeholders::_1, true), 0.0f);
+    beginTransaction(doc, "", 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Drawn Mesh Priority to {}", (int)ghost->getPriority()));
   } else if (ImGui::IsItemDeactivated()) {

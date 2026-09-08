@@ -192,6 +192,14 @@ void beginUndoableAction(Document* doc, string const& id, UndoableActionFunction
   gTransactionalFunc = func;
 }
 
+void beginTransaction(Document* doc, string const& id, float v) {
+  beginUndoableAction(doc, id, [](Document*) { return true; }, v);
+}
+
+void beginTransaction(Document* doc, string const& id, wp::Vector2 const& v) {
+  beginUndoableAction(doc, id, [](Document*) { return true; }, v);
+}
+
 bool transactionValueHasChanged(float v) {
   return !isnan(gTransactionalInitialFloatValue) && gTransactionalInitialFloatValue != v;
 }

@@ -24,10 +24,6 @@
 namespace editor {
 using namespace std;
 
-bool recordCurrentState(Document* doc, bool modifying) {
-  return modifying;
-}
-
 void setEditorMode(Document* doc, Settings& settings, Settings::Mode mode) {
   if (settings.mode == mode) {
     return;
@@ -567,9 +563,8 @@ bool beginClonePlacement(Document* doc, set<uint32_t> const& primitiveIndices) {
   // The snapshot has to be taken before the clones exist: this action is
   // committed at the far end of the placement gesture, and undoing it must
   // return to a World without them in it.
-  beginUndoableAction(
+  beginTransaction(
       doc, format("Clone {} Primitive(s)", sources.size()),
-      bind(recordCurrentState, placeholders::_1, true),
       numeric_limits<float>::quiet_NaN());
 
   set<uint32_t> cloneIndices;
