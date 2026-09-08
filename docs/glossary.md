@@ -111,6 +111,12 @@ whose integrated capacity determines how much of a horizontal Pool it can hold
 and whose wet portion is clipped to produce visible Liquid geometry. It is
 derived from, and never adds points to, exact Arrangement topology.
 
+**Hydraulic link** — A traversable shared edge between two Hydraulic cells,
+including an artificial triangulation edge within one Arrangement face, or an
+explicitly open edge from a cell to the exterior drain. A link exists only over
+positive-clearance portions of the edge and becomes reachable at its Sill: the
+lowest maximum-adjacent-floor elevation over those portions.
+
 **Snap-rounding** — Forcing computed intersection points onto the integer grid,
 so that all output topology is exactly representable and vertex identity is an
 integer comparison rather than a float comparison (ADR-0003).

@@ -229,24 +229,28 @@ The per-dimension fraction of the active 3D world target used by Planar water-re
 _Avoid_: reflection render scale (Render scale already names the resolution of the 3D world)
 
 **Liquid-adjacency**:
-The relation between two solid Arrangement faces (the same faces that render and that the player walks on) across which liquid can equilibrate: both faces must be solid and their shared edge's wall clearance must be nonzero. The Arrangement's outer, unbounded face is liquid-adjacent to a bordering solid face, with an effective floor of negative infinity, only where the Border wall between them is explicitly authored not to collide — a solid wall there blocks liquid exactly as it blocks the player, so an ordinary outer wall is not an opening just because nothing is authored beyond it. Where it is open, it acts as a permanent drain.
-_Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when the wall between them has zero clearance)
+The relation between two solid Arrangement faces across whose shared edge Hydraulic cells may link: both faces must be solid and some positive-clearance part of the shared opening must exist. The Arrangement's outer, unbounded face is liquid-adjacent to a bordering solid face only where the Border wall is explicitly authored not to collide — a solid wall there blocks liquid exactly as it blocks the player, so an ordinary outer wall is not an opening just because nothing is authored beyond it. Where reached, an open exterior link acts as a permanent drain.
+_Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when no traversable opening exists)
 
 **Hydraulic cell**:
 One generated Arrangement triangle together with its affine floor and ceiling functions and derived Liquid state. It is the unit whose integrated capacity determines how much of a horizontal Pool it can hold and whose wet portion is clipped to produce visible Liquid geometry; its World-plane triangle remains ordinary derived triangulation, never new Arrangement topology.
 _Avoid_: Liquid triangle (the cell also exists while dry), face (one Arrangement face may contain several Hydraulic cells)
 
+**Hydraulic link**:
+A traversable shared edge between two Hydraulic cells, including an artificial triangulation edge inside one Arrangement face, or an explicitly open edge from one cell to the exterior drain. It exists only where some part of the edge has positive vertical clearance and is crossed only when Liquid reaches its Sill.
+_Avoid_: face adjacency (links join cells), opening (the traversable span from which the link is derived)
+
 **Wet component**:
-A maximal set of Arrangement faces connected by liquid-adjacency. Its liquid settles as one or more Pools, not necessarily at one shared elevation: a face unreachable from any seed liquid stays dry regardless of its own floor height, and a face standing above every surface around it stays dry while its neighbours hold liquid.
+A maximal set of Hydraulic cells connected by Hydraulic links. Its liquid settles as one or more Pools, not necessarily at one shared elevation: a cell unreachable from any seed Liquid stays dry regardless of its own floor height, and a cell standing above every reached Sill stays dry while its neighbours hold Liquid.
 _Avoid_: lake, basin, pond, Pool (a Wet component may hold several)
 
 **Pool**:
-One set of faces within a Wet component holding liquid at a single shared surface elevation. Two Pools become one the moment that shared surface would stand at or above the Sill between them; below it they stay two, and the higher one spills only what stands above the Sill into the lower, ending exactly brim-full at the Sill rather than emptying into it.
-_Avoid_: Wet component (the connectivity, not the body of liquid), lake, pond
+One set of Hydraulic cells within a Wet component holding Liquid at a single shared surface elevation. Two Pools become one the moment their combined equilibrium would stand at or above the Sill between them; below it they stay two, and the higher one spills only what stands above the Sill into the lower, ending exactly brim-full at the Sill rather than emptying into it.
+_Avoid_: Wet component (the connectivity, not the body of Liquid), lake, pond
 
 **Sill**:
-The elevation liquid must reach to cross one liquid-adjacency: the higher of the two faces' floors, since liquid only reaches the higher face once it tops that face's floor. Against the exterior drain, whose floor is negative infinity, the Sill is the bordering face's own floor.
-_Avoid_: saddle, spill point, threshold, wall clearance (which decides whether the adjacency exists at all, not what liquid must reach to cross it)
+The elevation Liquid must reach to cross one Hydraulic link: the minimum, over every positive-clearance part of its shared edge, of the maximum adjacent floor elevation. For an exterior-drain link, only the bordering cell's floor and ceiling bound the opening. Affine floor and ceiling crossings along the edge can delimit the traversable part and therefore the Sill.
+_Avoid_: saddle, spill point, threshold, wall clearance (which decides where an opening exists, not the elevation at its bottom)
 
 **AudioEmitter**:
 A point sound source owned by exactly one Primitive, positioned by a two-dimensional offset from its Primitive's position together with a height offset above the floor of the face it falls in. It is authored on its Primitive and transforms with it, but its world position is settled once, when a World's geometry is generated, and never changes afterwards. A sound that has to move through a World is an entity, not an AudioEmitter.

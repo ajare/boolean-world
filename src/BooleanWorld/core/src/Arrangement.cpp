@@ -1821,6 +1821,164 @@ vector<LiquidAdjacency> BuildLiquidAdjacency(ArrangementResult const& arrangemen
   return result;
 }
 
+namespace {
+using HydraulicEdgeKey = pair<uint32_t, uint32_t>;
+
+HydraulicEdgeKey HydraulicEdge(uint32_t vertex0, uint32_t vertex1) {
+  return {min(vertex0, vertex1), max(vertex0, vertex1)};
+}
+
+optional<double> FindHydraulicSill(
+    HydraulicCell const& cell0,
+    HydraulicCell const& cell1,
+    FixedPointVertex const& fixed0,
+    FixedPointVertex const& fixed1) {
+  wp::Vector2 position0{
+      ToWorldCoordinate(fixed0.x), ToWorldCoordinate(fixed0.y)};
+  wp::Vector2 position1{
+      ToWorldCoordinate(fixed1.x), ToWorldCoordinate(fixed1.y)};
+  array<array<double, 2>, 4> functions{{
+      {cell0.floor.evaluate(position0), cell0.floor.evaluate(position1)},
+      {cell1.floor.evaluate(position0), cell1.floor.evaluate(position1)},
+      {cell0.ceiling.evaluate(position0), cell0.ceiling.evaluate(position1)},
+      {cell1.ceiling.evaluate(position0), cell1.ceiling.evaluate(position1)},
+  }};
+
+  // Between crossings, the maximum floor and minimum ceiling are each one
+  // affine function and their ordering cannot change. Include every pairwise
+  // crossing so this remains true at floor/floor, ceiling/ceiling, and all
+  // floor/ceiling changes without relying on which function currently wins.
+  vector<double> cuts{0.0, 1.0};
+  for (size_t first = 0; first < functions.size(); ++first) {
+    for (size_t second = first + 1; second < functions.size(); ++second) {
+      auto difference0 = functions[first][0] - functions[second][0];
+      auto difference1 = functions[first][1] - functions[second][1];
+      auto denominator = difference0 - difference1;
+      if (denominator == 0.0) continue;
+      auto crossing = difference0 / denominator;
+      if (crossing > 0.0 && crossing < 1.0) cuts.push_back(crossing);
+    }
+  }
+  sort(cuts.begin(), cuts.end());
+  cuts.erase(unique(cuts.begin(), cuts.end()), cuts.end());
+
+  auto sample = [&](size_t function, double parameter) {
+    return lerp(
+        functions[function][0], functions[function][1], parameter);
+  };
+  auto opening = [&](double parameter) {
+    auto floor = max(sample(0, parameter), sample(1, parameter));
+    auto ceiling = min(sample(2, parameter), sample(3, parameter));
+    return floor < ceiling;
+  };
+  auto bottom = [&](double parameter) {
+    return max(sample(0, parameter), sample(1, parameter));
+  };
+
+  auto sill = numeric_limits<double>::infinity();
+  for (size_t interval = 0; interval + 1 < cuts.size(); ++interval) {
+    auto begin = cuts[interval];
+    auto end = cuts[interval + 1];
+    if (!(end > begin) || !opening(midpoint(begin, end))) continue;
+
+    // The opening itself is strict, but its hydraulic threshold is the
+    // infimum at its closure too: once a surface reaches that elevation an
+    // arbitrarily nearby positive-width part of the edge is traversable.
+    sill = min(sill, min(bottom(begin), bottom(end)));
+  }
+  if (!isfinite(sill)) return nullopt;
+  return sill;
+}
+}  // namespace
+
+vector<HydraulicLink> BuildHydraulicLinks(
+    ArrangementResult const& arrangement,
+    vector<HydraulicCell> const& cells) {
+  map<HydraulicEdgeKey, vector<uint32_t>> occurrences;
+  for (uint32_t cellIndex = 0; cellIndex < uint32_t(cells.size());
+       ++cellIndex) {
+    auto const& triangle = cells[cellIndex].triangle;
+    for (size_t edge = 0; edge < 3; ++edge) {
+      occurrences[HydraulicEdge(
+                      triangle.v[edge], triangle.v[(edge + 1) % 3])]
+          .push_back(cellIndex);
+    }
+  }
+
+  map<HydraulicEdgeKey, uint32_t> arrangementEdges;
+  for (uint32_t edgeIndex = 0;
+       edgeIndex < uint32_t(arrangement.edges.size()); ++edgeIndex) {
+    auto const& edge = arrangement.edges[edgeIndex];
+    arrangementEdges[HydraulicEdge(edge.v[0], edge.v[1])] = edgeIndex;
+  }
+
+  using LinkKey = tuple<uint32_t, uint32_t, bool>;
+  map<LinkKey, double> lowestSills;
+  auto append = [&](uint32_t cell0, uint32_t cell1, bool drain,
+                    HydraulicEdgeKey const& edgeKey) {
+    auto const& cell = cells[cell0];
+    auto const& neighbour = drain ? cell : cells[cell1];
+    auto sill = FindHydraulicSill(
+        cell, neighbour, arrangement.vertices[edgeKey.first],
+        arrangement.vertices[edgeKey.second]);
+    if (!sill) return;
+
+    if (!drain && cell1 < cell0) swap(cell0, cell1);
+    LinkKey key{cell0, drain ? HydraulicDrainCell : cell1, drain};
+    auto [entry, inserted] = lowestSills.emplace(key, *sill);
+    if (!inserted) entry->second = min(entry->second, *sill);
+  };
+
+  for (auto const& [edgeKey, edgeCells] : occurrences) {
+    if (edgeCells.size() == 2) {
+      auto cell0 = edgeCells[0];
+      auto cell1 = edgeCells[1];
+      auto face0 = cells[cell0].triangle.face;
+      auto face1 = cells[cell1].triangle.face;
+      if (face0 != face1) {
+        auto source = arrangementEdges.find(edgeKey);
+        if (source == arrangementEdges.end()) continue;
+        auto const& edge = arrangement.edges[source->second];
+        auto incident =
+            (edge.face[0] == face0 && edge.face[1] == face1) ||
+            (edge.face[0] == face1 && edge.face[1] == face0);
+        if (!incident) continue;
+      }
+      // Same-face pairs are artificial triangulation edges (including Earcut
+      // bridges around holes). They are open geometrically, but their affine
+      // floor still gives them a real Sill.
+      append(cell0, cell1, false, edgeKey);
+      continue;
+    }
+
+    if (edgeCells.size() != 1) continue;
+    auto source = arrangementEdges.find(edgeKey);
+    if (source == arrangementEdges.end()) continue;
+    auto const& edge = arrangement.edges[source->second];
+    if (edge.face[0] != 0 && edge.face[1] != 0) continue;
+    auto cell = edgeCells.front();
+    auto roomFace = edge.face[0] == 0 ? edge.face[1] : edge.face[0];
+    if (cells[cell].triangle.face != roomFace ||
+        !arrangement.faces[roomFace].solid ||
+        edge.collidesOverride.value_or(true)) {
+      continue;
+    }
+    append(cell, HydraulicDrainCell, true, edgeKey);
+  }
+
+  vector<HydraulicLink> result;
+  result.reserve(lowestSills.size());
+  for (auto const& [key, sill] : lowestSills) {
+    auto [cell0, cell1, drain] = key;
+    result.push_back({cell0, cell1, sill, drain});
+  }
+  sort(result.begin(), result.end(), [](auto const& left, auto const& right) {
+    return tie(left.sill, left.cell0, left.cell1, left.drain) <
+           tie(right.sill, right.cell0, right.cell1, right.drain);
+  });
+  return result;
+}
+
 static vector<double> ComputeUndistributedLiquidDepthsDouble(
     ArrangementResult const& arrangement) {
   auto faceCount = uint32_t(arrangement.faces.size());
@@ -2052,16 +2210,6 @@ vector<LiquidSurfaceTriangle> BuildLiquidSurfaceTriangles(
   return result;
 }
 
-// One liquid-adjacency resolved into the elevation liquid has to reach before
-// it can cross: the higher of the two floors, since the lower face's liquid
-// only reaches the higher face once it is deep enough to top that face's
-// floor. The exterior drain's floor is negative infinity, so a drain link's
-// sill is simply the bordering face's own floor.
-struct LiquidLink {
-  double sill{0};
-  uint32_t face0{0};
-  uint32_t face1{0};
-};
 }  // namespace
 
 LiquidState ComputeLiquidState(
@@ -2077,73 +2225,52 @@ LiquidState ComputeLiquidState(
 
   auto undistributed =
       ComputeUndistributedLiquidDepthsDouble(arrangement);
-  vector<vector<uint32_t>> faceCells(faceCount);
-  for (uint32_t cellIndex = 0; cellIndex < uint32_t(result.cells.size());
-       ++cellIndex) {
-    faceCells[result.cells[cellIndex].triangle.face].push_back(cellIndex);
+  auto cellCount = uint32_t(result.cells.size());
+  if (cellCount == 0) return result;
+
+  // Each cell receives its face's seeded depth over its own World-plane area.
+  // This apportions every authored Primitive's conserved volume by surviving
+  // cell area without pre-connecting cells merely because they share a face.
+  vector<double> volumes(cellCount, 0.0);
+  for (uint32_t cellIndex = 0; cellIndex < cellCount; ++cellIndex) {
+    auto face = result.cells[cellIndex].triangle.face;
+    volumes[cellIndex] =
+        undistributed[face] * result.cells[cellIndex].worldArea;
   }
 
-  vector<double> volumes(faceCount, 0.0);
-  for (uint32_t faceIndex = 1; faceIndex < faceCount; ++faceIndex) {
-    for (auto cellIndex : faceCells[faceIndex]) {
-      volumes[faceIndex] += double(undistributed[faceIndex]) *
-                            result.cells[cellIndex].worldArea;
-    }
-  }
-
-  // Union-find over faces. Each group is a pool: the cells sharing one
-  // surface elevation, the volume they hold between them, and whether that
-  // pool has reached the exterior and emptied.
-  vector<uint32_t> parent(faceCount);
-  vector<vector<uint32_t>> members(faceCount);
-  vector<double> groupVolume(faceCount, 0.0);
-  vector<double> groupLevel(faceCount, -numeric_limits<double>::infinity());
-  vector<bool> groupDrained(faceCount, false);
-  for (uint32_t faceIndex = 0; faceIndex < faceCount; ++faceIndex) {
-    parent[faceIndex] = faceIndex;
-    if (faceIndex == 0) {
-      groupDrained[0] = true;
+  // Union-find over Hydraulic cells plus one permanent exterior-drain node.
+  // Each group is a Pool: its cells share one surface elevation, conserve one
+  // volume, and remember whether they have reached the exterior and emptied.
+  auto drainNode = cellCount;
+  auto nodeCount = cellCount + 1;
+  vector<uint32_t> parent(nodeCount);
+  vector<vector<uint32_t>> members(nodeCount);
+  vector<double> groupVolume(nodeCount, 0.0);
+  vector<double> groupLevel(nodeCount, -numeric_limits<double>::infinity());
+  vector<bool> groupDrained(nodeCount, false);
+  for (uint32_t node = 0; node < nodeCount; ++node) {
+    parent[node] = node;
+    if (node == drainNode) {
+      groupDrained[node] = true;
       continue;
     }
-    if (!arrangement.faces[faceIndex].solid) {
-      continue;
-    }
-    members[faceIndex] = faceCells[faceIndex];
-    groupVolume[faceIndex] = volumes[faceIndex];
-    if (volumes[faceIndex] > 0.0) {
-      groupLevel[faceIndex] = SolveLiquidLevel(
-          result.cells, members[faceIndex], volumes[faceIndex]);
+    members[node] = {node};
+    groupVolume[node] = volumes[node];
+    if (volumes[node] > 0.0) {
+      groupLevel[node] =
+          SolveLiquidLevel(result.cells, members[node], volumes[node]);
     }
   }
 
-  auto findRoot = [&parent](uint32_t faceIndex) {
-    while (parent[faceIndex] != faceIndex) {
-      parent[faceIndex] = parent[parent[faceIndex]];
-      faceIndex = parent[faceIndex];
+  auto findRoot = [&parent](uint32_t node) {
+    while (parent[node] != node) {
+      parent[node] = parent[parent[node]];
+      node = parent[node];
     }
-    return faceIndex;
+    return node;
   };
 
-  vector<LiquidLink> links;
-  for (auto const& adjacency : BuildLiquidAdjacency(arrangement)) {
-    auto face0 = adjacency.face0 == 0 ? adjacency.face1 : adjacency.face0;
-    auto face1 = adjacency.face1 == 0 ? adjacency.face0 : adjacency.face1;
-    auto const& properties0 =
-        arrangement.palette[arrangement.faces[face0].paletteIndex];
-    auto const& properties1 =
-        arrangement.palette[arrangement.faces[face1].paletteIndex];
-    // Distinct-basin sloped Sills are generalized by the hydraulic-link pass.
-    // Retain ADR-0032's base-elevation link behavior here while Hydraulic cells
-    // handle one sloped basin.
-    auto sill = adjacency.drain
-                    ? double(properties0.floorZ.baseElevation)
-                    : max(double(properties0.floorZ.baseElevation),
-                          double(properties1.floorZ.baseElevation));
-    links.push_back({sill, adjacency.face0, adjacency.face1});
-  }
-  sort(links.begin(), links.end(), [](auto const& a, auto const& b) {
-    return tie(a.sill, a.face0, a.face1) < tie(b.sill, b.face0, b.face1);
-  });
+  auto links = BuildHydraulicLinks(arrangement, result.cells);
 
   // Rising-level fill: repeatedly take the lowest sill whose liquid has
   // actually risen high enough to cross it, and resolve what crossing it
@@ -2159,8 +2286,8 @@ LiquidState ComputeLiquidState(
   //    crosses, leaving the donor exactly brim-full at the sill and the two
   //    still separate.
   //
-  // Every pass either merges two distinct groups - at most faceCount - 1
-  // times - or leaves a donor standing exactly at a sill, which cannot spill
+  // Every pass either merges two distinct groups - at most cellCount times -
+  // or leaves a donor standing exactly at a sill, which cannot spill
   // over that sill again until something else pours into it, and can only
   // ever be poured into from strictly higher up. So this is a union-find walk
   // over liquid flowing downhill, not a convergence loop: there is no epsilon
@@ -2168,8 +2295,8 @@ LiquidState ComputeLiquidState(
   for (auto flowing = true; flowing;) {
     flowing = false;
     for (auto const& link : links) {
-      auto root0 = findRoot(link.face0);
-      auto root1 = findRoot(link.face1);
+      auto root0 = findRoot(link.cell0);
+      auto root1 = findRoot(link.drain ? drainNode : link.cell1);
       if (root0 == root1 ||
           max(groupLevel[root0], groupLevel[root1]) < link.sill) {
         continue;
@@ -2194,7 +2321,7 @@ LiquidState ComputeLiquidState(
         parent[root1] = root0;
         members[root0] = std::move(combined);
         members[root1].clear();
-        groupVolume[root0] = combinedVolume;
+        groupVolume[root0] = drained ? 0.0 : combinedVolume;
         groupDrained[root0] = drained;
         groupLevel[root0] = combinedLevel;
         flowing = true;
@@ -2229,19 +2356,23 @@ LiquidState ComputeLiquidState(
     }
   }
 
-  for (uint32_t faceIndex = 1; faceIndex < faceCount; ++faceIndex) {
-    if (!arrangement.faces[faceIndex].solid) continue;
-    auto level = groupLevel[findRoot(faceIndex)];
+  for (uint32_t cellIndex = 0; cellIndex < cellCount; ++cellIndex) {
+    auto level = groupLevel[findRoot(cellIndex)];
+    result.poolElevations[cellIndex] = level;
+
+    // Legacy flat-world callers still receive one depth per face. Sloped and
+    // multi-Pool callers consume position-based cell state instead; taking the
+    // greatest cell value preserves the useful flat result without pretending
+    // that a non-convex face now has one Pool.
+    auto faceIndex = result.cells[cellIndex].triangle.face;
     auto const& properties =
         arrangement.palette[arrangement.faces[faceIndex].paletteIndex];
     auto clearance = max(
         0.0, double(properties.ceilingZ.baseElevation) -
                  properties.floorZ.baseElevation);
-    result.faceDepths[faceIndex] = float(clamp(
+    auto depth = float(clamp(
         level - properties.floorZ.baseElevation, 0.0, clearance));
-    for (auto cellIndex : faceCells[faceIndex]) {
-      result.poolElevations[cellIndex] = level;
-    }
+    result.faceDepths[faceIndex] = max(result.faceDepths[faceIndex], depth);
   }
   result.surfaceTriangles =
       BuildLiquidSurfaceTriangles(result.cells, result.poolElevations);

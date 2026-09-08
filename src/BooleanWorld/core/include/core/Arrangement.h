@@ -329,20 +329,25 @@ struct ArrangementFace {
   Membership solidContributors{0};
 };
 
-// One direct liquid-adjacency between two solid Arrangement faces (the same
-// faces BuildArrangementTriangles renders and the player walks): either they
-// share a wall whose vertical clearance (the same headroom computation
-// BuildArrangementWalls uses for player movement) is nonzero, or one side is
-// the Arrangement's unbounded exterior face (index 0) and the Border wall
-// between them is explicitly authored not to collide - a solid wall there
-// blocks liquid exactly as it blocks the player, so an ordinary outer wall
-// is not an opening just because nothing is authored beyond it. Where it is
-// open, drain is true and the exterior acts as a permanent drain with an
-// effectively negative-infinite floor rather than an ordinary
-// clearance-limited neighbor.
+// One direct liquid-adjacency between two solid Arrangement faces. Retained
+// as the face-level topology view for callers that do not need sloped Sills;
+// Liquid settlement uses HydraulicLink below.
 struct LiquidAdjacency {
   uint32_t face0;
   uint32_t face1;
+  bool drain{false};
+};
+
+// One traversable shared edge in the Hydraulic cell graph. Artificial
+// triangulation edges inside an Arrangement face participate exactly like
+// face boundaries but do not connect their cells until Liquid reaches sill.
+// For a drain, cell1 is HydraulicDrainCell and the link exists only where the
+// corresponding exterior Border is explicitly authored not to collide.
+inline constexpr uint32_t HydraulicDrainCell = ~0u;
+struct HydraulicLink {
+  uint32_t cell0{0};
+  uint32_t cell1{0};
+  double sill{0.0};
   bool drain{false};
 };
 
@@ -433,10 +438,17 @@ bool PointInFace(
     ArrangementResult const& arrangement);
 
 // The liquid-adjacency relation over every pair of solid faces, one entry
-// per unordered pair, for the later watershed equilibrium pass to consume.
-// This computes no liquid depth itself.
+// per unordered pair. This compatibility view computes no sloped Sill.
 [[nodiscard]] std::vector<LiquidAdjacency> BuildLiquidAdjacency(
     ArrangementResult const& arrangement);
+
+// Builds links for every shared Hydraulic-cell edge. The Sill is the lowest
+// opening-bottom elevation over portions where the maximum adjacent floor is
+// strictly below the minimum adjacent ceiling. Same-face triangulation edges
+// are included; closed edges are omitted.
+[[nodiscard]] std::vector<HydraulicLink> BuildHydraulicLinks(
+    ArrangementResult const& arrangement,
+    std::vector<HydraulicCell> const& cells);
 
 // Each solid face's undistributed liquid depth: the sum, over every
 // Union-operation Primitive in that face's membership, of
@@ -452,11 +464,10 @@ bool PointInFace(
 [[nodiscard]] std::vector<float> ComputeUndistributedLiquidDepths(
     ArrangementResult const& arrangement);
 
-// Settles authored volume into horizontal Pools over Hydraulic cells. Capacity
-// is integrated over each affine floor and ceiling and Pool elevation is found
-// by deterministic fixed-iteration bisection, so no linear-capacity assumption
-// remains. This pass retains the existing face-level adjacency/Sill graph;
-// sloped links between distinct basins are generalized separately.
+// Settles authored volume into horizontal Pools over the Hydraulic cell graph.
+// Capacity is integrated over each affine floor and ceiling and Pool elevation
+// is found by deterministic fixed-iteration bisection, so no linear-capacity
+// assumption remains. Pools cross only links whose sloped Sill they reach.
 [[nodiscard]] LiquidState ComputeLiquidState(
     ArrangementResult const& arrangement,
     std::vector<ArrangementTriangle> const& triangles);

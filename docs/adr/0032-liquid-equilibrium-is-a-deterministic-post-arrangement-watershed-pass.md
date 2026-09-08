@@ -10,9 +10,16 @@
 of the cells' integrated affine floor-to-ceiling columns, Pool elevation is
 solved by deterministic fixed-iteration bisection, local Liquid depth is sampled
 beneath that horizontal elevation, and visible interfaces are clipped to each
-cell's wet portion. The conservation, Pool, watershed, directed-spill,
-overflow, and exterior-drain decisions below remain in force. #426 separately
-generalizes the face-level liquid-adjacency and Sill graph for slopes.
+cell's wet portion.
+
+#426 replaces the face-level settlement graph with **Hydraulic links** across
+both Arrangement edges and artificial triangulation edges. A link exists only
+where the maximum adjacent floor is below the minimum adjacent ceiling, and its
+Sill is the lowest opening-bottom elevation over those traversable portions.
+This lets one non-convex face retain separate low Pools until their connecting
+route is reached. Explicitly non-colliding exterior Borders produce drain links;
+ordinary Borders remain watertight. The conservation, Pool, watershed,
+directed-spill, overflow, and exterior-drain decisions below remain in force.
 
 ## Context
 
