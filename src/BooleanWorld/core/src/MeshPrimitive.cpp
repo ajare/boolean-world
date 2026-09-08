@@ -1904,6 +1904,7 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
 
     normalizeAndValidateTree(candidate.mShells);
     candidate.mPolygons = flatten(candidate.mShells);
+    candidate.refreshElevationPlanes();
     candidate.updateVertexPositions();
   } catch (exception const& error) {
     addDeserializationError(error.what());

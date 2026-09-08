@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 
 #include <willpower/common/MathsUtils.h>
 
@@ -146,18 +147,12 @@ Primitive* Primitive::rotatedCopy(float angle) const {
   // parameters; MeshPrimitive rotates its authoritative containment tree.
   p->rotateAuthoredGeometry(angle, origin);
 
-  // The Prefab placement rotation above is baked into authored geometry rather
-  // than represented by the live Primitive transform, so bake the same affine
-  // change into each local Elevation plane.
+  // Prefab rotation is baked into authored geometry, so rotate each authored
+  // Elevation span with it. Span angles increase counter-clockwise while this
+  // operation's angle increases clockwise.
   auto properties = p->getProperties();
-  auto rotateElevation = [&](Elevation& elevation) {
-    auto rotatedGradient = elevation.gradient.rotatedClockwiseCopy(angle);
-    elevation.baseElevation +=
-        elevation.gradient.dot(origin) - rotatedGradient.dot(origin);
-    elevation.gradient = rotatedGradient;
-  };
-  rotateElevation(properties.floorZ);
-  rotateElevation(properties.ceilingZ);
+  properties.floorSpan.directionAngle -= angle;
+  properties.ceilingSpan.directionAngle -= angle;
   p->setProperties(properties);
 
   // AudioEmitter offsets are authored in the same local frame as the
@@ -311,11 +306,13 @@ uint64_t Primitive::getGeneratedPriority() const {
 
 void Primitive::setSize(wp::Vector2 const& size) {
   mSize = size;
+  refreshElevationPlanes();
   notifyWorldChanged();
 }
 
 void Primitive::setSize(float x, float y) {
   mSize.set(x, y);
+  refreshElevationPlanes();
   notifyWorldChanged();
 }
 
@@ -332,12 +329,124 @@ wp::Vector2 Primitive::transformLocalPointToWorld(
 }
 
 void Primitive::setProperties(PrimitivePropertySet const& properties) {
+  auto floorPlaneChanged = properties.floorZ != mProperties.floorZ;
+  auto ceilingPlaneChanged = properties.ceilingZ != mProperties.ceilingZ;
+  auto floorSpanChanged = properties.floorSpan != mProperties.floorSpan;
+  auto ceilingSpanChanged = properties.ceilingSpan != mProperties.ceilingSpan;
   mProperties = properties;
+  if (floorPlaneChanged && !floorSpanChanged) {
+    mProperties.floorSpanAuthored = false;
+  } else if (floorSpanChanged) {
+    mProperties.floorSpanAuthored = true;
+  }
+  if (ceilingPlaneChanged && !ceilingSpanChanged) {
+    mProperties.ceilingSpanAuthored = false;
+  } else if (ceilingSpanChanged) {
+    mProperties.ceilingSpanAuthored = true;
+  }
+  refreshElevationPlanes();
   notifyWorldChanged();
 }
 
 PrimitivePropertySet const& Primitive::getProperties() const {
   return mProperties;
+}
+
+ElevationBounds Primitive::getElevationBounds(float directionAngle) const {
+  constexpr float degreesToRadians =
+      3.14159265358979323846f / 180.0f;
+  auto radians = directionAngle * degreesToRadians;
+  wp::Vector2 direction{-std::sin(radians), std::cos(radians)};
+  wp::Vector2 perpendicular{direction.y, -direction.x};
+
+  float minDirection = std::numeric_limits<float>::max();
+  float maxDirection = std::numeric_limits<float>::lowest();
+  float minPerpendicular = std::numeric_limits<float>::max();
+  float maxPerpendicular = std::numeric_limits<float>::lowest();
+  bool hasVertex = false;
+  for (auto const& region : mPolygons) {
+    for (auto const& ring : region) {
+      for (auto const& vertex : ring) {
+        // Primitive authored geometry spans two canonical units. The neutral
+        // live transform scales those to the local World plane by one half.
+        wp::Vector2 point{
+            vertex.p.x * mSize.x * 0.5f,
+            vertex.p.y * mSize.y * 0.5f};
+        auto along = point.dot(direction);
+        auto across = point.dot(perpendicular);
+        minDirection = std::min(minDirection, along);
+        maxDirection = std::max(maxDirection, along);
+        minPerpendicular = std::min(minPerpendicular, across);
+        maxPerpendicular = std::max(maxPerpendicular, across);
+        hasVertex = true;
+      }
+    }
+  }
+
+  if (!hasVertex) {
+    return {};
+  }
+
+  ElevationBounds result;
+  result.direction = direction;
+  result.minimumDirection = minDirection;
+  result.maximumDirection = maxDirection;
+  result.corners = {
+      direction * minDirection + perpendicular * minPerpendicular,
+      direction * minDirection + perpendicular * maxPerpendicular,
+      direction * maxDirection + perpendicular * maxPerpendicular,
+      direction * maxDirection + perpendicular * minPerpendicular};
+  return result;
+}
+
+Elevation Primitive::getElevationPlane(PrimitiveSurface surface) const {
+  auto const& span = surface == PrimitiveSurface::Floor
+                         ? mProperties.floorSpan
+                         : mProperties.ceilingSpan;
+  auto bounds = getElevationBounds(span.directionAngle);
+  auto run = bounds.maximumDirection - bounds.minimumDirection;
+  if (!(run > 0.0f) || !std::isfinite(run)) {
+    return Elevation{span.lowerElevation};
+  }
+  auto rise = span.upperElevation - span.lowerElevation;
+  auto gradient = bounds.direction * (rise / run);
+  return Elevation{
+      span.lowerElevation - gradient.dot(
+                                bounds.direction * bounds.minimumDirection),
+      gradient};
+}
+
+void Primitive::refreshElevationPlanes() {
+  auto migratePlane = [&](Elevation const& plane, ElevationSpan& span,
+                          bool& authored) {
+    if (authored || mPolygons.empty()) {
+      return;
+    }
+    auto length = plane.gradient.length();
+    if (!(length > 0.0f) || !std::isfinite(length)) {
+      span = {0.0f, plane.baseElevation, plane.baseElevation};
+    } else {
+      auto direction = plane.gradient / length;
+      constexpr float radiansToDegrees =
+          180.0f / 3.14159265358979323846f;
+      auto angle = std::atan2(-direction.x, direction.y) * radiansToDegrees;
+      auto bounds = getElevationBounds(angle);
+      span = {
+          angle,
+          plane.evaluate(direction * bounds.minimumDirection),
+          plane.evaluate(direction * bounds.maximumDirection)};
+    }
+    authored = true;
+  };
+
+  migratePlane(
+      mProperties.floorZ, mProperties.floorSpan,
+      mProperties.floorSpanAuthored);
+  migratePlane(
+      mProperties.ceilingZ, mProperties.ceilingSpan,
+      mProperties.ceilingSpanAuthored);
+  mProperties.floorZ = getElevationPlane(PrimitiveSurface::Floor);
+  mProperties.ceilingZ = getElevationPlane(PrimitiveSurface::Ceiling);
 }
 
 void Primitive::setAudioEmitters(vector<AudioEmitter> const& audioEmitters) {
@@ -380,6 +489,7 @@ void Primitive::setVertices(vector<ComplexPolygon> const& polygons) {
   }
 
   mPolygons = polygons;
+  refreshElevationPlanes();
   updateVertexPositions();
   invalidatePostTransform(true, true);
   polygonsUpdated();
@@ -595,6 +705,7 @@ bool Primitive::deserializePrimitive(
   mProperties = properties;
   mAudioEmitters = move(audioEmitters);
   mPolygons = complexPolygons;
+  refreshElevationPlanes();
 
   _invalidate();
 

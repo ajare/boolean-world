@@ -49,6 +49,8 @@ struct Settings {
   bool renderWorldBorder{true};
   bool renderPrimitiveBorders{true};
   bool renderPrimitiveBounds{false};
+  bool renderFloorElevationBounds{false};
+  bool renderCeilingElevationBounds{false};
   bool renderScaleInfluenceZones{true};
   bool renderAngleInfluenceZones{true};
   bool renderOrbitAngleInfluenceZones{true};
@@ -86,6 +88,8 @@ struct Settings {
   ImColor vertexColour{0.8f, 0.5f, 0.0f, 1.0f};
   ImColor staticBoundsColour{0.0f, 1.0f, 0.0f, 1.0f};
   ImColor animatedBoundsColour{0.0f, 1.0f, 1.0f, 1.0f};
+  ImColor floorElevationBoundsColour{0.1f, 0.9f, 1.0f, 1.0f};
+  ImColor ceilingElevationBoundsColour{1.0f, 0.3f, 0.9f, 1.0f};
   ImColor primitiveColour{0.5f, 0.5f, 0.5f, 1.0f};
   ImColor selectedPrimitiveColour{1.0f, 1.0f, 0.0f, 1.0f};
   ImColor hoveredPrimitiveColour{1.0f, 0.1f, 0.1f, 1.0f};

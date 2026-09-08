@@ -55,12 +55,20 @@ meaning of every primitive above it. Preserved exactly by the rewrite
 ceiling / wall material indices and definitions. The renderable attributes of
 a region.
 
-**Elevation plane** — An affine height function over the World plane,
-consisting of a base elevation and a two-dimensional gradient. A Primitive
-supplies one independently for its floor and ceiling; zero gradient is the
-existing horizontal surface. It evaluates to one elevation and one constant
-up-facing normal at every World-plane position while the Arrangement remains
-purely two-dimensional.
+**Elevation span** — A Primitive's authored description of one floor or
+ceiling: a direction angle, a lower elevation, and an upper elevation. Zero
+degrees points along the Primitive's local +Y axis and angles increase
+counter-clockwise. The angle orients a bounding box fitted around every Ring;
+elevation interpolates from its negative-direction edge to its
+positive-direction edge and stays constant across the perpendicular axis.
+Editing the Primitive refits the box while retaining the authored values. A
+zero-length box uses the lower elevation throughout.
+
+**Elevation plane** — The affine height function derived from an Elevation
+span for generation. A Primitive supplies one independently for its floor and
+ceiling; equal lower and upper elevations produce a horizontal surface. It
+evaluates to one elevation and one constant up-facing normal at every
+World-plane position while the Arrangement remains purely two-dimensional.
 
 **Surface frame** — The stable orthonormal coordinates of one generated
 surface, derived from its unperturbed geometric up-vector. U is World X

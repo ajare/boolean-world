@@ -29,6 +29,7 @@
 
 #include <mpp/Camera.h>
 #include <mpp/ResourceManager.h>
+#include <willpower/application/resourcesystem/ResourceManager.h>
 
 #include <core/ArrangementWorldData.h>
 #include <core/ArrangementWorldDataGenerator.h>
@@ -164,13 +165,17 @@ std::unique_ptr<bw::core::World> loadWorld(std::string const& path) {
 // the world rather than a selection-scoped subset.
 bw::core::ArrangementWorldDataPtr buildWorldData(bw::core::World* world) {
   std::vector<bw::core::Primitive*> primitives;
+  std::vector<std::uint64_t> priorities;
   primitives.reserve(world->getNumPrimitives());
+  priorities.reserve(world->getNumPrimitives());
   for (uint32_t i = 0; i < world->getNumPrimitives(); ++i) {
-    primitives.push_back(world->getPrimitive(i));
+    auto* primitive = world->getPrimitive(i);
+    primitives.push_back(primitive);
+    priorities.push_back(primitive->getGeneratedPriority());
   }
 
   bw::core::ArrangementWorldDataGenerator generator;
-  generator.generate(primitives);
+  generator.generateOrdered(primitives, priorities);
   auto result = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), world->getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
@@ -307,6 +312,39 @@ int materialReassignmentRedrawsTheWorld(
   return 0;
 }
 
+int worldMines3Renders(editor::EditorRenderSystem& renderSystem) {
+  std::string dependencyError;
+  if (!renderSystem.loadWorldDependencies(
+          {"MinesLayer"}, "World", &dependencyError)) {
+    throw std::runtime_error(
+        "Could not load world-mines-3 dependencies: " + dependencyError);
+  }
+
+  auto world = loadWorld(BW_EDITOR_MINES_3_TEST_WORLD);
+  auto worldData = buildWorldData(world.get());
+  auto surface = worldData->getSurfaceSample({0.0f, 0.0f});
+  if (!surface) {
+    throw std::runtime_error(
+        "world-mines-3 has no grounding surface at the tunnel drop point");
+  }
+  auto floor = surface->floorElevation;
+  auto camera = std::make_shared<ReactiveCamera>(
+      glm::vec3{0.0f, floor + BW_PLAYER_EYE_HEIGHT, 0.0f},
+      bw::app::cameraYaw(0.0f), 0.0f, BW_PLAYER_FOV,
+      kWidth / (float)kHeight);
+  camera->setClipDistances(0.1f, 1000000.0f);
+
+  editor::PreviewRenderScene scene(
+      renderSystem, world.get(), kWidth, kHeight);
+  auto texture = scene.render(
+      world.get(), *worldData, camera, camera->getPosition(), 1.0f / 60.0f);
+  if (texture == 0) {
+    printf("FAILED: world-mines-3 preview rendered no texture\n");
+    return 1;
+  }
+  return 0;
+}
+
 int main() {
   bw::core::LayerBuildStep::registerCoreTypes();
 
@@ -358,6 +396,21 @@ int main() {
 
     editor::procMaterialLibrary().load(BW_EDITOR_PROC_MATERIAL_MANIFEST);
     editor::EditorRenderSystem renderSystem(kWidth, kHeight);
+    // Launcher loads every world program, including overdraw whose fragment
+    // shader consumes none of world.vert's varyings. Link that combination
+    // too: native flat outputs must not collide with MPP's explicit locations
+    // when the linker eliminates unused inputs.
+    auto* resources = renderSystem.resourceManager();
+    for (auto name : {"WorldProgram", "WorldHorizontal2dProgram",
+                      "FragmentOverdrawProgram"}) {
+      auto program = resources->getResource(name, "World");
+      resources->createResource(program);
+      resources->loadResource(program);
+      // The application Program wrapper only declares its MPP resource.
+      // Force the GPU load rather than leaving shader linking deferred.
+      program->getMppResource()->load();
+    }
+    result |= worldMines3Renders(renderSystem);
 
     ResourceCounts baseline;
     for (int cycle = 0; cycle < kCycles; ++cycle) {

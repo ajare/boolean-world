@@ -199,7 +199,8 @@ if(BUILD_TESTING)
     target_compile_definitions(boolean_world_editor_preview_render_stack_smoke PRIVATE
         YAML_CPP_STATIC_DEFINE
         BW_EDITOR_PROC_MATERIAL_MANIFEST="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/Resources.yaml"
-        BW_EDITOR_PREVIEW_TEST_WORLD="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/world-test-1.world.yaml")
+        BW_EDITOR_PREVIEW_TEST_WORLD="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/world-test-1.world.yaml"
+        BW_EDITOR_MINES_3_TEST_WORLD="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/world-mines-3.world.yaml")
     target_link_libraries(boolean_world_editor_preview_render_stack_smoke PRIVATE
         core core-lua BooleanWorldRender Willpower.Application Willpower.Common
         Willpower.Geometry vendor::opengl ext::glew
@@ -310,7 +311,8 @@ if(BUILD_TESTING)
         src/ProcMaterialLibrary.cpp)
     target_include_directories(boolean_world_editor_document_selection_tests PRIVATE include)
     target_compile_definitions(boolean_world_editor_document_selection_tests PRIVATE
-        YAML_CPP_STATIC_DEFINE)
+        YAML_CPP_STATIC_DEFINE
+        BW_EDITOR_RESOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources")
     target_link_libraries(boolean_world_editor_document_selection_tests PRIVATE
         core core-lua vendor::spdlog ext::glew ext::yaml-cpp)
     target_compile_features(boolean_world_editor_document_selection_tests PRIVATE cxx_std_20)

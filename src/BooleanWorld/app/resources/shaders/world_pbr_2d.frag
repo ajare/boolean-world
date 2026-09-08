@@ -1,5 +1,8 @@
 @@Version
 
+// Native varying paired with world.vert; Pool elevation is constant per triangle.
+layout(location = 5) flat in float liquidSurfaceHeight;
+
 // Keep the horizontal shader's public controls in lockstep with world_pbr.frag.
 @@Uniform(float VIEW_DISTANCE);
 @@Uniform(float GLOBAL_TIME);
@@ -1385,7 +1388,6 @@ vec3 applyLiquidAbsorption(
 
 void main()
 {
-    float liquidSurfaceHeight = @In(LIQUID_SURFACE_HEIGHT);
 
     // Fade every contribution to black at the world-view boundary. This is
     // intentionally separate from the Torch's configurable direct-light

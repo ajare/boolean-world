@@ -12,9 +12,17 @@ namespace core {
 class Primitive;
 
 struct PrimitivePropertySet : public Serializable {
-  // Affine surface planes. The historical names remain while flat consumers
-  // migrate; assigning a scalar creates a horizontal (zero-gradient) plane.
+  // The spans are authored; the affine planes are derived against their
+  // owning Primitive's fitted elevation bounds. floorZ/ceilingZ remain in the
+  // generated property set consumed by the Arrangement.
+  ElevationSpan floorSpan{0.0f, 0.0f, 0.0f};
+  ElevationSpan ceilingSpan{0.0f, 48.0f, 48.0f};
   Elevation floorZ{0.0f}, ceilingZ{48.0f};
+
+  // Deserialization/compatibility state. False means the legacy affine plane
+  // must be converted after an owning Primitive supplies its fitted bounds.
+  bool floorSpanAuthored{true};
+  bool ceilingSpanAuthored{true};
 
   // Authored liquid volume scalar, meaningful only on a Primitive whose
   // operation is Union - see ComputeLiquidLevels. Inert (but still stored) on

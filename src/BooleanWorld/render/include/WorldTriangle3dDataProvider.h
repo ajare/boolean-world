@@ -25,10 +25,10 @@ public:
     float nor[3];
     float tex[2];
     uint32_t col;
-    float liquidSurfaceHeight;
-    // The unperturbed, canonical up-facing normal of a horizontal surface.
-    // Unlike `nor`, this is never face-forwarded or normal-map perturbed.
+    // Packed as one UserDefined4 attribute for the resource and programmatic
+    // mesh specifications: xyz is canonical surface up and w is Liquid height.
     float surfaceUp[3];
+    float liquidSurfaceHeight;
   };
 
   struct MeshData {

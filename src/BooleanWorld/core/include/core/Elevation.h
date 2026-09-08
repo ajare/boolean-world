@@ -7,6 +7,25 @@
 
 namespace bw::core {
 
+// Authored floor/ceiling values. directionAngle is measured counter-clockwise
+// from local +Y; lower and upper apply at the fitted OBB's opposite edges.
+struct ElevationSpan {
+  float directionAngle{0.0f};
+  float lowerElevation{0.0f};
+  float upperElevation{0.0f};
+
+  friend bool operator==(ElevationSpan const&, ElevationSpan const&) = default;
+};
+
+struct ElevationBounds {
+  std::array<wp::Vector2, 4> corners{};
+  wp::Vector2 direction{0.0f, 1.0f};
+  float minimumDirection{};
+  float maximumDirection{};
+};
+
+enum class PrimitiveSurface { Floor, Ceiling };
+
 // An affine elevation plane over the World plane. The gradient components are
 // elevation gained per World unit along +X and +Y; baseElevation is the
 // elevation at the World-plane origin.

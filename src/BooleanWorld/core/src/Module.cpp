@@ -207,14 +207,14 @@ int mod_set_primitive_floor_z(float z) {
 }
 
 int mod_set_primitive_floor_elevation(
-    float base, float gradientX, float gradientY) {
+    float angle, float lower, float upper) {
   return InvokeApi([&]() {
-    if (!HasCurrentPrimitive() || !IsFinite(base) || !IsFinite(gradientX) ||
-        !IsFinite(gradientY)) {
+    if (!HasCurrentPrimitive() || !IsFinite(angle) || !IsFinite(lower) ||
+        !IsFinite(upper)) {
       return 1;
     }
     auto properties = gPrimitive->getProperties();
-    properties.floorZ = Elevation{base, {gradientX, gradientY}};
+    properties.floorSpan = ElevationSpan{angle, lower, upper};
     gPrimitive->setProperties(properties);
     return 0;
   });
@@ -233,14 +233,14 @@ int mod_set_primitive_ceiling_z(float z) {
 }
 
 int mod_set_primitive_ceiling_elevation(
-    float base, float gradientX, float gradientY) {
+    float angle, float lower, float upper) {
   return InvokeApi([&]() {
-    if (!HasCurrentPrimitive() || !IsFinite(base) || !IsFinite(gradientX) ||
-        !IsFinite(gradientY)) {
+    if (!HasCurrentPrimitive() || !IsFinite(angle) || !IsFinite(lower) ||
+        !IsFinite(upper)) {
       return 1;
     }
     auto properties = gPrimitive->getProperties();
-    properties.ceilingZ = Elevation{base, {gradientX, gradientY}};
+    properties.ceilingSpan = ElevationSpan{angle, lower, upper};
     gPrimitive->setProperties(properties);
     return 0;
   });

@@ -1,6 +1,9 @@
 #include "core/PrimitivePropertySet.h"
 #include "core/Primitive.h"
 
+#include <cmath>
+#include <limits>
+
 namespace bw {
 namespace core {
 using namespace std;
@@ -32,12 +35,28 @@ void PrimitivePropertySet::serializeImpl(shared_ptr<Serializer> serializer, Seri
     serializer->writeString("ceilingEmbossPreset", ceilingEmbossPresetId);
     serializer->writeString("wallEmbossPreset", wallEmbossPresetId);
 
+    // Appended after the historical property payload so positional Worlds can
+    // still be read. The old affine fields above remain a derived compatibility
+    // projection rather than authored slope controls.
+    serializer->writeFloat("floorElevationAngle", floorSpan.directionAngle);
+    serializer->writeFloat("floorLowerElevation", floorSpan.lowerElevation);
+    serializer->writeFloat("floorUpperElevation", floorSpan.upperElevation);
+    serializer->writeFloat(
+        "ceilingElevationAngle", ceilingSpan.directionAngle);
+    serializer->writeFloat(
+        "ceilingLowerElevation", ceilingSpan.lowerElevation);
+    serializer->writeFloat(
+        "ceilingUpperElevation", ceilingSpan.upperElevation);
+
     serializer->endMap();  // primitivePropertySet
   }
 }
 
 bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) {
   Elevation floorZ_{0.0f}, ceilingZ_{40.0f};
+  ElevationSpan floorSpan_, ceilingSpan_{0.0f, 40.0f, 40.0f};
+  bool floorSpanAuthored_ = false;
+  bool ceilingSpanAuthored_ = false;
   float liquidLevel_{0};
   LiquidType liquidType_{LiquidType::Water};
 
@@ -67,6 +86,28 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
       ceilingEmbossPresetId_ = serializer->readString("ceilingEmbossPreset");
       wallEmbossPresetId_ = serializer->readString("wallEmbossPreset");
 
+      auto const missing = std::numeric_limits<float>::quiet_NaN();
+      auto const floorAngle =
+          serializer->readFloat("floorElevationAngle", true, missing);
+      if (std::isfinite(floorAngle)) {
+        floorSpan_.directionAngle = floorAngle;
+        floorSpan_.lowerElevation =
+            serializer->readFloat("floorLowerElevation");
+        floorSpan_.upperElevation =
+            serializer->readFloat("floorUpperElevation");
+        floorSpanAuthored_ = true;
+      }
+      auto const ceilingAngle =
+          serializer->readFloat("ceilingElevationAngle", true, missing);
+      if (std::isfinite(ceilingAngle)) {
+        ceilingSpan_.directionAngle = ceilingAngle;
+        ceilingSpan_.lowerElevation =
+            serializer->readFloat("ceilingLowerElevation");
+        ceilingSpan_.upperElevation =
+            serializer->readFloat("ceilingUpperElevation");
+        ceilingSpanAuthored_ = true;
+      }
+
       serializer->endMap();  // primitivePropertySet
     }
   } catch (exception& e) {
@@ -77,6 +118,10 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
   // Commit
   floorZ = floorZ_;
   ceilingZ = ceilingZ_;
+  floorSpan = floorSpan_;
+  ceilingSpan = ceilingSpan_;
+  floorSpanAuthored = floorSpanAuthored_;
+  ceilingSpanAuthored = ceilingSpanAuthored_;
   liquidLevel = liquidLevel_;
   liquidType = liquidType_;
   floorMaterialId = floorMaterialId_;

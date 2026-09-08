@@ -345,10 +345,10 @@ Returned only by `context:create_primitive`.
 | `get_priority()` | Returns the priority as an integer. |
 | `set_operation(operation)` | Sets `"union"`, `"intersection"`, `"difference"`, or `"xor"`. Values are case-sensitive. |
 | `get_operation()` | Returns the operation as one of those lowercase strings. |
-| `set_floor_elevation(base, gradient_x, gradient_y)` | Sets the floor Elevation plane independently. The base is its elevation at the Primitive origin and the gradient is in the Primitive's local World plane. All values must be finite. |
-| `get_floor_elevation()` | Returns the floor `base, gradient_x, gradient_y`. |
-| `set_ceiling_elevation(base, gradient_x, gradient_y)` | Sets the ceiling Elevation plane independently, with the same local-space semantics. All values must be finite. |
-| `get_ceiling_elevation()` | Returns the ceiling `base, gradient_x, gradient_y`. |
+| `set_floor_elevation(angle, lower, upper)` | Sets the floor Elevation span. Zero degrees points along local +Y and angles increase counter-clockwise; elevation interpolates from `lower` to `upper` across the fitted bounds. All values must be finite. |
+| `get_floor_elevation()` | Returns the floor `angle, lower, upper`. |
+| `set_ceiling_elevation(angle, lower, upper)` | Sets the ceiling Elevation span with the same local-space semantics. All values must be finite. |
+| `get_ceiling_elevation()` | Returns the ceiling `angle, lower, upper`. |
 
 Only these common properties and inherited spatial-transform properties are currently scriptable. Animation curves and transform flows, fill rule, materials, surface properties, type-specific shape parameters, and parentage are not exposed. Mutable Mesh geometry is available only on a `MeshPrimitive` returned by `context:create_mesh_primitive`; Prefabs separately expose read-only annotated vertices and edges.
 
@@ -414,8 +414,8 @@ Returned by `context:get_build_primitives`, `context:find_build_primitives_overl
 | `get_size()` | `width, height`. |
 | `get_priority()` | Step-local integer priority. |
 | `get_operation()` | `"union"`, `"intersection"`, `"difference"`, or `"xor"`. |
-| `get_floor_elevation()` | Floor `base, gradient_x, gradient_y`. |
-| `get_ceiling_elevation()` | Ceiling `base, gradient_x, gradient_y`. |
+| `get_floor_elevation()` | Floor `angle, lower, upper`. |
+| `get_ceiling_elevation()` | Ceiling `angle, lower, upper`. |
 
 Calling a mutable `Primitive` method such as `set_position` on a `PrimitiveView` fails the script.
 

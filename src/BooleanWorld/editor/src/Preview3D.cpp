@@ -728,10 +728,10 @@ void updateCameraFromInput(bool previewHovered, bool acceptKeyboard) {
       {session.position.x, session.eyeZ, -session.position.y});
 }
 
-// How far Shift+Up/Down moves the selected floor or ceiling, and how far the
-// same with Ctrl held moves it. Eight units is the step the 2D panel's
-// Floor Z field takes on a fast click, so the two agree; one unit is for
-// placing a surface exactly.
+// How far Shift+Up/Down moves the selected floor or ceiling,
+// Shift+Plus/Minus moves the Elevation span end ahead of the view, and
+// Shift+Brackets changes a selected floor's Liquid level. Ctrl selects the fine step. Eight
+// units matches the 2D panel's fast click; one unit is for exact placement.
 constexpr float coarseSurfaceZStep = 8.0f;
 constexpr float fineSurfaceZStep = 1.0f;
 
@@ -751,14 +751,31 @@ void updateSelectedSurfaceFromInput(bool acceptKeyboard) {
 
   // Repeating, so the surface keeps moving while the key is held.
   auto const step = io.KeyCtrl ? fineSurfaceZStep : coarseSurfaceZStep;
-  float delta = 0.0f;
+  float surfaceDelta = 0.0f;
   if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, true)) {
-    delta += step;
+    surfaceDelta += step;
   }
   if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true)) {
-    delta -= step;
+    surfaceDelta -= step;
   }
-  if (delta == 0.0f) {
+  float slopeEndDelta = 0.0f;
+  if (ImGui::IsKeyPressed(ImGuiKey_Equal, true) ||
+      ImGui::IsKeyPressed(ImGuiKey_KeypadAdd, true)) {
+    slopeEndDelta += step;
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_Minus, true) ||
+      ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract, true)) {
+    slopeEndDelta -= step;
+  }
+  float liquidDelta = 0.0f;
+  if (ImGui::IsKeyPressed(ImGuiKey_RightBracket, true)) {
+    liquidDelta += step;
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, true)) {
+    liquidDelta -= step;
+  }
+  if (surfaceDelta == 0.0f && slopeEndDelta == 0.0f &&
+      liquidDelta == 0.0f) {
     return;
   }
 
@@ -770,11 +787,33 @@ void updateSelectedSurfaceFromInput(bool acceptKeyboard) {
 
   auto* primitive = previewPrimitive->source;
   auto const current = primitive->getProperties();
-  auto const moved =
-      movedSurfaceZ(current, materialSurface(surface), delta);
+  auto moved = current;
+  if (liquidDelta != 0.0f) {
+    if (surface == PreviewSurface::Floor &&
+        primitive->getOperation() == bw::core::Primitive::Operation::Union) {
+      moved = movedLiquidLevel(
+          current, materialSurface(surface), liquidDelta);
+    }
+  } else if (slopeEndDelta != 0.0f) {
+    auto const& look = session.camera->getDirection();
+    // Renderer +Z is World -Y; convert the camera's horizontal look direction
+    // back to the World plane before selecting the end ahead of the view.
+    auto end = elevationSpanEndTowardsView(
+        *primitive, materialSurface(surface), {look.x, -look.z});
+    if (end) {
+      moved = movedElevationSpanEnd(
+          *primitive, materialSurface(surface), *end, slopeEndDelta);
+    }
+  } else {
+    moved = movedSurfaceZ(current, materialSurface(surface), surfaceDelta);
+  }
   // A nudge into the opposing surface is clamped to nothing at all, and an
   // action that changes nothing has no business on the undo stack.
-  if (moved.floorZ == current.floorZ && moved.ceilingZ == current.ceilingZ) {
+  if (moved.floorZ == current.floorZ &&
+      moved.ceilingZ == current.ceilingZ &&
+      moved.floorSpan == current.floorSpan &&
+      moved.ceilingSpan == current.ceilingSpan &&
+      moved.liquidLevel == current.liquidLevel) {
     return;
   }
 
@@ -1283,7 +1322,8 @@ void renderPreview3D() {
     ImGui::SetCursorPos({12.0f, 12.0f});
     ImGui::TextUnformatted(
         "WASD/Arrows to move, right-drag to look, click a surface to select, "
-        "shift+up/down to raise a floor or ceiling (+ctrl for one unit), "
+        "shift+up/down to move a surface, shift +/- to move the Elevation "
+        "span end ahead, shift [/] to change floor water (+ctrl for one unit), "
         "ESC to exit preview");
 
     if (closing) {

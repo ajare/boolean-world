@@ -32,7 +32,7 @@ ComplexPolygon rectangle(float left, float bottom, float right, float top) {
   return {{{{left, bottom}}, {{right, bottom}}, {{right, top}}, {{left, top}}}};
 }
 
-void authoredElevationPlanesFollowTranslationRotationAndScale() {
+void authoredElevationSpansFollowTranslationRotationAndScale() {
   std::unique_ptr<MeshPrimitive> primitive(MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union,
       {rectangle(-1.0f, -1.0f, 1.0f, 1.0f)}));
@@ -48,9 +48,13 @@ void authoredElevationPlanesFollowTranslationRotationAndScale() {
   primitive->updateVertexPositions();
 
   auto properties = primitive->getProperties();
-  properties.floorZ = bw::core::Elevation{6.0f, {2.0f, -0.5f}};
-  properties.ceilingZ = bw::core::Elevation{30.0f, {-0.25f, 0.75f}};
+  properties.floorSpan = {25.0f, 6.0f, 18.0f};
+  properties.ceilingSpan = {-40.0f, 30.0f, 42.0f};
   primitive->setProperties(properties);
+  auto const floorPlane =
+      primitive->getElevationPlane(bw::core::PrimitiveSurface::Floor);
+  auto const ceilingPlane =
+      primitive->getElevationPlane(bw::core::PrimitiveSurface::Ceiling);
 
   auto snapshots = bw::core::SnapshotPrimitives({primitive.get()});
   require(snapshots.size() == 1, "Primitive Elevation snapshot was missing");
@@ -59,13 +63,13 @@ void authoredElevationPlanesFollowTranslationRotationAndScale() {
        {wp::Vector2{0.0f, 0.0f}, wp::Vector2{0.5f, -0.75f},
         wp::Vector2{-1.0f, 1.0f}}) {
     auto const world = primitive->transformLocalPointToWorld(local);
-    auto const floorExpected = properties.floorZ.evaluate(local);
-    auto const ceilingExpected = properties.ceilingZ.evaluate(local);
+    auto const floorExpected = floorPlane.evaluate(local);
+    auto const ceilingExpected = ceilingPlane.evaluate(local);
     require(
         std::abs(transformed.floorZ.evaluate(world) - floorExpected) < 0.001f &&
             std::abs(transformed.ceilingZ.evaluate(world) - ceilingExpected) <
                 0.001f,
-        "a translated, rotated, and scaled local Elevation plane did not retain its authored heights");
+        "a translated, rotated, and scaled Elevation span did not retain its derived heights");
   }
 }
 
@@ -359,7 +363,7 @@ void directGenerationCapturesWorldWedgeSettings() {
 
 int main() {
   try {
-    authoredElevationPlanesFollowTranslationRotationAndScale();
+    authoredElevationSpansFollowTranslationRotationAndScale();
     generationWorkerUsesCapturedPrimitiveSnapshot();
     chipParametersAreResolvedInSnapshotOrderOnTheCallingThread();
     primitiveRemovalBeforeCompletionAndCommitIsSafe();

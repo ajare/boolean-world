@@ -113,6 +113,8 @@ protected:
 
   virtual void generateVertices();
 
+  void refreshElevationPlanes();
+
   virtual std::vector<ComplexPolygon> generateVerticesImpl() = 0;
 
   void notifyWorldChanged() const override;
@@ -233,6 +235,12 @@ public:
   void setProperties(PrimitivePropertySet const& properties);
 
   PrimitivePropertySet const& getProperties() const;
+
+  // Fits an OBB in the Primitive's authored local World plane with one axis
+  // along directionAngle (counter-clockwise from +Y).
+  [[nodiscard]] ElevationBounds getElevationBounds(float directionAngle) const;
+
+  [[nodiscard]] Elevation getElevationPlane(PrimitiveSurface surface) const;
 
   void setAudioEmitters(std::vector<AudioEmitter> const& audioEmitters);
 

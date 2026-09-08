@@ -464,8 +464,8 @@ uint32_t WorldRenderer::addVertexToDataProvider(
     float liquidSurfaceHeight, float surfaceUpX, float surfaceUpY,
     float surfaceUpZ) {
   WorldTriangle3dDataProvider::DrawVert vertex{
-      {px, py, pz}, {nx, ny, nz}, {u, v}, c, liquidSurfaceHeight,
-      {surfaceUpX, surfaceUpY, surfaceUpZ}};
+      {px, py, pz}, {nx, ny, nz}, {u, v}, c,
+      {surfaceUpX, surfaceUpY, surfaceUpZ}, liquidSurfaceHeight};
   return dataProvider->addVertex(meshIndex, vertex);
 }
 

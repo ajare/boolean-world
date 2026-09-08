@@ -22,11 +22,11 @@ int mod_set_primitive_priority(uint8_t priority);
 
 int mod_set_primitive_floor_z(float z);
 
-int mod_set_primitive_floor_elevation(float base, float gradientX, float gradientY);
+int mod_set_primitive_floor_elevation(float angle, float lower, float upper);
 
 int mod_set_primitive_ceiling_z(float z);
 
-int mod_set_primitive_ceiling_elevation(float base, float gradientX, float gradientY);
+int mod_set_primitive_ceiling_elevation(float angle, float lower, float upper);
 
 int mod_set_primitive_flags(uint32_t flags);
 

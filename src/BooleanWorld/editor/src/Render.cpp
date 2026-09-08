@@ -1002,6 +1002,63 @@ void renderWorld(
       }
     }
 
+    // Elevation-span OBBs for the selected Primitive. The first edge is the
+    // authored lower edge and the opposite edge is the upper edge; an arrow
+    // through the centre makes the interpolation direction visible.
+    if ((settings.renderFloorElevationBounds ||
+         settings.renderCeilingElevationBounds) &&
+        selectedPrimitiveIndices.size() == 1) {
+      auto selectedId = *selectedPrimitiveIndices.begin();
+      auto found = std::find_if(
+          primitives.begin(), primitives.end(),
+          [selectedId](auto const* primitive) {
+            return primitive->getId() == selectedId;
+          });
+      if (found != primitives.end()) {
+        auto* primitive = *found;
+        auto drawElevationBounds = [&](float angle, ImColor colour) {
+          auto bounds = primitive->getElevationBounds(angle);
+          std::array<ImVec2, 4> screen;
+          for (size_t i = 0; i < bounds.corners.size(); ++i) {
+            screen[i] = worldToScreen(
+                primitive->transformLocalPointToWorld(bounds.corners[i]));
+          }
+          for (size_t i = 0; i < screen.size(); ++i) {
+            auto width = i == 0 ? 3.0f : 1.5f;
+            drawList->AddLine(
+                screen[i], screen[(i + 1) % screen.size()], colour, width);
+          }
+          wp::Vector2 low{
+              (screen[0].x + screen[1].x) * 0.5f,
+              (screen[0].y + screen[1].y) * 0.5f};
+          wp::Vector2 high{
+              (screen[2].x + screen[3].x) * 0.5f,
+              (screen[2].y + screen[3].y) * 0.5f};
+          drawList->AddLine({low.x, low.y}, {high.x, high.y}, colour, 1.5f);
+          auto delta = high - low;
+          auto length = delta.length();
+          auto direction = length > 0.0f ? delta / length : wp::Vector2{0, -1};
+          auto side = wp::Vector2{-direction.y, direction.x};
+          auto arrowA = high - direction * 10.0f + side * 5.0f;
+          auto arrowB = high - direction * 10.0f - side * 5.0f;
+          drawList->AddTriangleFilled(
+              {high.x, high.y}, {arrowA.x, arrowA.y},
+              {arrowB.x, arrowB.y}, colour);
+        };
+        auto const& properties = primitive->getProperties();
+        if (settings.renderFloorElevationBounds) {
+          drawElevationBounds(
+              properties.floorSpan.directionAngle,
+              settings.floorElevationBoundsColour);
+        }
+        if (settings.renderCeilingElevationBounds) {
+          drawElevationBounds(
+              properties.ceilingSpan.directionAngle,
+              settings.ceilingElevationBoundsColour);
+        }
+      }
+    }
+
     // Bounding boxes
     if (settings.renderPrimitiveBounds && !primitives.empty()) {
       drawList->AddDrawCmd();

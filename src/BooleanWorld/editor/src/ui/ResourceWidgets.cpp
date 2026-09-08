@@ -789,18 +789,26 @@ void renderEmbossPresetValue(char const* label, string const& presetId) {
 
 bool renderPrimitivePropertySet(
     bw::core::PrimitivePropertySet* properties, bool editable,
-    editor::Document* doc, editor::Settings&,
+    editor::Document* doc, editor::Settings& settings,
     bw::core::Primitive* primitive) {
   bool updateProperties{false};
 
   ImGui::SetNextItemWidth(128);
 
   if (editable) {
-    updateProperties |= ImGui::InputFloat("Floor base elevation", &properties->floorZ.baseElevation, 1, 8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
+    updateProperties |= ImGui::InputFloat(
+        "Floor direction angle", &properties->floorSpan.directionAngle, 1, 15,
+        "%g deg", ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SameLine();
+    ImGui::Checkbox("Show OBB##FloorElevation", &settings.renderFloorElevationBounds);
     ImGui::SetNextItemWidth(128);
-    updateProperties |= ImGui::InputFloat2(
-        "Floor gradient (X, Y)", &properties->floorZ.gradient.x, "%g",
-        ImGuiInputTextFlags_EnterReturnsTrue);
+    updateProperties |= ImGui::InputFloat(
+        "Floor lower elevation", &properties->floorSpan.lowerElevation, 1, 8,
+        "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SetNextItemWidth(128);
+    updateProperties |= ImGui::InputFloat(
+        "Floor upper elevation", &properties->floorSpan.upperElevation, 1, 8,
+        "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
   } else {
     ImGui::Text("Floor base elevation: %2.1f", properties->floorZ.baseElevation);
     ImGui::Text(
@@ -811,11 +819,20 @@ bool renderPrimitivePropertySet(
   ImGui::SetNextItemWidth(128);
 
   if (editable) {
-    updateProperties |= ImGui::InputFloat("Ceiling base elevation", &properties->ceilingZ.baseElevation, 1, 8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
+    updateProperties |= ImGui::InputFloat(
+        "Ceiling direction angle", &properties->ceilingSpan.directionAngle, 1,
+        15, "%g deg", ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SameLine();
+    ImGui::Checkbox(
+        "Show OBB##CeilingElevation", &settings.renderCeilingElevationBounds);
     ImGui::SetNextItemWidth(128);
-    updateProperties |= ImGui::InputFloat2(
-        "Ceiling gradient (X, Y)", &properties->ceilingZ.gradient.x, "%g",
-        ImGuiInputTextFlags_EnterReturnsTrue);
+    updateProperties |= ImGui::InputFloat(
+        "Ceiling lower elevation", &properties->ceilingSpan.lowerElevation, 1,
+        8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SetNextItemWidth(128);
+    updateProperties |= ImGui::InputFloat(
+        "Ceiling upper elevation", &properties->ceilingSpan.upperElevation, 1,
+        8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
   } else {
     ImGui::Text("Ceiling base elevation: %2.1f", properties->ceilingZ.baseElevation);
     ImGui::Text(

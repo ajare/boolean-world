@@ -1,5 +1,8 @@
 @@Version
 
+// Native varying paired with world.vert; Pool elevation is constant per triangle.
+layout(location = 5) flat in float liquidSurfaceHeight;
+
 // Global
 @@Uniform(float VIEW_DISTANCE);
 @@Uniform(float GLOBAL_TIME);
@@ -3132,7 +3135,6 @@ vec3 applyLiquidAbsorption(
 
 void main()
 {
-    float liquidSurfaceHeight = @In(LIQUID_SURFACE_HEIGHT);
     int bucketMaterialIndex = clamp(@Uniform(MATERIAL_INDEX), 0, 40);
 
     // Liquid is an interface, not another lit volume. The water pass has no

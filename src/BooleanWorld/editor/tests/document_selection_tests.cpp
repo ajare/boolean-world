@@ -9,6 +9,8 @@
 
 #include <spdlog/spdlog.h>
 
+#include <core/ArrangementWorldData.h>
+#include <core/ArrangementWorldDataGenerator.h>
 #include <core/DefinePrefabs.h>
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/LayerBuildStep.h>
@@ -16,6 +18,7 @@
 #include <core/PrefabField.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
+#include <core-lua/CoreLua.h>
 #include <core-lua/RunScript.h>
 #include <core-lua/ScriptRuntime.h>
 
@@ -754,6 +757,62 @@ void worldTestPrefabMeshPrimitivesAreHoverSelectable() {
           "world-test-1.world.yaml's Prefab MeshPrimitives were not hover-selectable in Primitive mode");
 }
 
+void worldMines3BuildsPreviewWorldData(bw::core::ScriptRuntime& runtime) {
+  auto const resourceRoot = std::filesystem::path(BW_EDITOR_RESOURCE_ROOT);
+  auto readText = [](std::filesystem::path const& path) {
+    std::ifstream input(path);
+    if (!input) {
+      throw std::runtime_error("could not open " + path.string());
+    }
+    return std::string(
+        std::istreambuf_iterator<char>(input),
+        std::istreambuf_iterator<char>());
+  };
+  runtime.load(
+      "MinesLayer", readText(resourceRoot / "scripts/mines-layer.lua"),
+      {{"World/UtilityFunctions",
+        readText(resourceRoot / "scripts/utility-functions.lua")}},
+      {{.name = "iterations",
+        .type = bw::core::ScriptParameterType::Integer,
+        .defaultValue = int64_t{10},
+        .integerMinimum = 1,
+        .integerMaximum = 50}});
+
+  editor::Document document;
+  require(
+      document.openDoc((resourceRoot / "world-mines-3.world.yaml").string()),
+      "world-mines-3.world.yaml did not open");
+
+  editor::Settings settings;
+  settings.ghostActive = false;
+  auto* world = document.getWorld().get();
+  auto const selected = world->getWorldDataGenerator()->getLayerSelection();
+  auto const inScope = editor::inScopePrimitives(*world, selected, settings);
+  std::vector<bw::core::Primitive*> primitives;
+  std::vector<std::uint64_t> priorities;
+  for (auto const* primitive : inScope) {
+    primitives.push_back(const_cast<bw::core::Primitive*>(primitive));
+    priorities.push_back(primitive->getGeneratedPriority());
+  }
+
+  bw::core::ArrangementWorldDataGenerator generator;
+  generator.generateOrdered(primitives, priorities);
+  auto preview = std::make_shared<bw::core::ArrangementWorldData>(
+      generator.getWorldData(), world->getExtents(),
+      float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
+      world->getWedgeGenerationParameters());
+  require(!preview->getTriangles().empty(),
+          "world-mines-3 produced no preview triangles");
+  require(preview->getHydraulicCells().size() == preview->getTriangles().size(),
+          "world-mines-3 preview hydraulic cells do not match its triangles");
+  require(preview->getLiquidPoolElevations().size() ==
+              preview->getTriangles().size(),
+          "world-mines-3 preview Pool elevations do not match its triangles");
+  std::cout << "world-mines-3: " << inScope.size() << " primitives, "
+            << preview->getTriangles().size() << " triangles, "
+            << preview->getWalls().size() << " walls\n";
+}
+
 void aFailedOpenPreservesTheActiveDocument() {
   auto const filepath = std::filesystem::temp_directory_path() / "boolean-world-document-open-failure-test.world.yaml";
 
@@ -813,6 +872,8 @@ void aFailedOpenPreservesTheActiveDocument() {
 int main() {
   try {
     bw::core::LayerBuildStep::registerCoreTypes();
+    bw::core::ScriptRuntime runtime;
+    bw::core::registerScriptStepTypes(runtime);
 
     changingSelectedPrimitiveIndicesDoesNotWriteIntoAnInputRange();
     primitiveHoverQueriesAreSafeWithoutAnActiveDocument();
@@ -833,6 +894,7 @@ int main() {
     openingAWorldWithNoPrimitivesRestoresTheEditorGhost();
     openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost();
     worldTestPrefabMeshPrimitivesAreHoverSelectable();
+    worldMines3BuildsPreviewWorldData(runtime);
     aFailedOpenPreservesTheActiveDocument();
     std::cout << "Document selection and hover queries passed\n";
     return 0;

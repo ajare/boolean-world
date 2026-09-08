@@ -414,6 +414,28 @@ bool setPrimitiveEmbossPreset(
     bw::core::PrimitivePropertySet properties,
     PrimitiveMaterialSurface surface, float delta);
 
+// Adjusts the non-negative authored Liquid level only when a floor owns the
+// selected surface.
+[[nodiscard]] bw::core::PrimitivePropertySet movedLiquidLevel(
+    bw::core::PrimitivePropertySet properties,
+    PrimitiveMaterialSurface surface, float delta);
+
+enum class ElevationSpanEnd { Lower, Upper };
+
+// Chooses the authored end edge lying along the view direction in the World
+// plane. A perpendicular view chooses neither end. Walls do not own an
+// Elevation span.
+[[nodiscard]] std::optional<ElevationSpanEnd> elevationSpanEndTowardsView(
+    bw::core::Primitive const& primitive, PrimitiveMaterialSurface surface,
+    wp::Vector2 const& viewDirection);
+
+// Moves just one authored slope end. Movement toward the opposing surface is
+// clamped before the floor and ceiling cross anywhere in the Primitive's
+// local axis-aligned bounds.
+[[nodiscard]] bw::core::PrimitivePropertySet movedElevationSpanEnd(
+    bw::core::Primitive const& primitive, PrimitiveMaterialSurface surface,
+    ElevationSpanEnd end, float delta);
+
 // Assigns a whole property set. Intended to be called through
 // transactUndoableAction.
 bool setPrimitiveProperties(

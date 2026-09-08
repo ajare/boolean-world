@@ -37,6 +37,16 @@ void shaderHasNoMaterialOrLightingWork() {
                   std::string::npos &&
               catalog.find("Material.FragmentOverdraw") != std::string::npos,
           "fragment overdraw shader is not a loadable world material");
+
+  auto programBegin = catalog.find("name: \"FragmentOverdrawProgram\"");
+  auto programEnd = catalog.find("name: \"FragmentOverdrawResolveProgram\"",
+                                 programBegin);
+  require(programBegin != std::string::npos && programEnd != std::string::npos,
+          "fragment overdraw program definition is missing");
+  auto program = catalog.substr(programBegin, programEnd - programBegin);
+  require(program.find("data: \"user4\"") != std::string::npos &&
+              program.find("data: \"user1\"") == std::string::npos,
+          "fragment overdraw vertex layout does not provide packed surface data");
 }
 
 void appOffersDepthPrepassToggle() {

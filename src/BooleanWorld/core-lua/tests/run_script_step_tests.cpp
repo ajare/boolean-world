@@ -466,30 +466,30 @@ void meshPrimitivesRetainTheMutablePrimitiveApi() {
           "MeshPrimitive common properties did not cross the Lua API");
 }
 
-void scriptsAuthorIndependentElevationPlanes() {
+void scriptsAuthorIndependentElevationSpans() {
   bw::core::ScriptRuntime runtime;
-  runtime.load("elevation-planes", R"(
+  runtime.load("elevation-spans", R"(
     local primitive = context:create_primitive("Rectangle")
-    primitive:set_floor_elevation(-4, 0.25, -0.5)
-    primitive:set_ceiling_elevation(60, -0.125, 0.75)
-    local floor_base, floor_x, floor_y = primitive:get_floor_elevation()
-    local ceiling_base, ceiling_x, ceiling_y = primitive:get_ceiling_elevation()
-    assert(floor_base == -4 and floor_x == 0.25 and floor_y == -0.5)
-    assert(ceiling_base == 60 and ceiling_x == -0.125 and ceiling_y == 0.75)
+    primitive:set_floor_elevation(15, -4, 12)
+    primitive:set_ceiling_elevation(-70, 60, 84)
+    local floor_angle, floor_lower, floor_upper = primitive:get_floor_elevation()
+    local ceiling_angle, ceiling_lower, ceiling_upper = primitive:get_ceiling_elevation()
+    assert(floor_angle == 15 and floor_lower == -4 and floor_upper == 12)
+    assert(ceiling_angle == -70 and ceiling_lower == 60 and ceiling_upper == 84)
     context:place_primitive(primitive)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
-  auto* step = addScriptStep(layer, runtime, "elevation-planes");
+  auto* step = addScriptStep(layer, runtime, "elevation-spans");
   layer.rebuild();
 
   require(!step->hasFailed() && layer.getNumPrimitives() == 1,
-          "a script could not author floor and ceiling Elevation planes");
+          "a script could not author floor and ceiling Elevation spans");
   auto const& properties = layer.getPrimitive(0)->getProperties();
-  require(properties.floorZ == bw::core::Elevation{-4.0f, {0.25f, -0.5f}} &&
-              properties.ceilingZ ==
-                  bw::core::Elevation{60.0f, {-0.125f, 0.75f}},
-          "script-authored Elevation plane values did not reach the Primitive");
+  require(properties.floorSpan == bw::core::ElevationSpan{15.0f, -4.0f, 12.0f} &&
+              properties.ceilingSpan ==
+                  bw::core::ElevationSpan{-70.0f, 60.0f, 84.0f},
+          "script-authored Elevation-span values did not reach the Primitive");
 }
 
 void meshGeometryEditingUsesTheCurrentPrimitiveTransform() {
@@ -1816,7 +1816,7 @@ int main() {
     scriptsMoveAndRemoveMeshSubObjectsById();
     scriptsAuthorAndSliceMeshContainmentByPolygonId();
     meshPrimitivesRetainTheMutablePrimitiveApi();
-    scriptsAuthorIndependentElevationPlanes();
+    scriptsAuthorIndependentElevationSpans();
     meshGeometryEditingUsesTheCurrentPrimitiveTransform();
     scriptCreatedPrimitivesFoldInRecipeOrder();
     everyExecutionRefillsTheStepsOwnStorage();

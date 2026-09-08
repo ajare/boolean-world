@@ -88,22 +88,22 @@ Primitive::Operation operationFromName(string const& name) {
 }
 
 void setElevation(
-    Primitive& primitive, bool floor, float base, float gradientX,
-    float gradientY) {
-  if (!isfinite(base) || !isfinite(gradientX) || !isfinite(gradientY)) {
-    throw CoreException("Elevation plane values must be finite");
+    Primitive& primitive, bool floor, float angle, float lower,
+    float upper) {
+  if (!isfinite(angle) || !isfinite(lower) || !isfinite(upper)) {
+    throw CoreException("Elevation-span values must be finite");
   }
   auto properties = primitive.getProperties();
-  auto& elevation = floor ? properties.floorZ : properties.ceilingZ;
-  elevation = Elevation{base, {gradientX, gradientY}};
+  auto& span = floor ? properties.floorSpan : properties.ceilingSpan;
+  span = ElevationSpan{angle, lower, upper};
   primitive.setProperties(properties);
 }
 
 tuple<float, float, float> getElevation(
     Primitive const& primitive, bool floor) {
   auto const& properties = primitive.getProperties();
-  auto const& elevation = floor ? properties.floorZ : properties.ceilingZ;
-  return {elevation.baseElevation, elevation.gradient.x, elevation.gradient.y};
+  auto const& span = floor ? properties.floorSpan : properties.ceilingSpan;
+  return {span.directionAngle, span.lowerElevation, span.upperElevation};
 }
 
 set<string> prefabTagsFromTable(sol::table const& values) {
@@ -761,14 +761,14 @@ void bindScriptTypes(sol::state& lua) {
       },
 
       "set_floor_elevation",
-      [](Primitive& primitive, float base, float gradientX, float gradientY) {
-        setElevation(primitive, true, base, gradientX, gradientY);
+      [](Primitive& primitive, float angle, float lower, float upper) {
+        setElevation(primitive, true, angle, lower, upper);
       },
       "get_floor_elevation",
       [](Primitive const& primitive) { return getElevation(primitive, true); },
       "set_ceiling_elevation",
-      [](Primitive& primitive, float base, float gradientX, float gradientY) {
-        setElevation(primitive, false, base, gradientX, gradientY);
+      [](Primitive& primitive, float angle, float lower, float upper) {
+        setElevation(primitive, false, angle, lower, upper);
       },
       "get_ceiling_elevation",
       [](Primitive const& primitive) { return getElevation(primitive, false); });
@@ -903,18 +903,18 @@ void bindScriptTypes(sol::state& lua) {
       },
 
       "set_floor_elevation",
-      [](ScriptMeshPrimitive& mesh, float base, float gradientX,
-         float gradientY) {
-        setElevation(*mesh.getPrimitive(), true, base, gradientX, gradientY);
+      [](ScriptMeshPrimitive& mesh, float angle, float lower,
+         float upper) {
+        setElevation(*mesh.getPrimitive(), true, angle, lower, upper);
       },
       "get_floor_elevation",
       [](ScriptMeshPrimitive const& mesh) {
         return getElevation(*mesh.getPrimitive(), true);
       },
       "set_ceiling_elevation",
-      [](ScriptMeshPrimitive& mesh, float base, float gradientX,
-         float gradientY) {
-        setElevation(*mesh.getPrimitive(), false, base, gradientX, gradientY);
+      [](ScriptMeshPrimitive& mesh, float angle, float lower,
+         float upper) {
+        setElevation(*mesh.getPrimitive(), false, angle, lower, upper);
       },
       "get_ceiling_elevation",
       [](ScriptMeshPrimitive const& mesh) {

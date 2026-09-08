@@ -21,11 +21,12 @@ string variantIdentity(optional<WallRenderVariant> const& variant) {
 mpp::mesh::MeshSpecification WorldBatch::createMeshSpecification(
     mpp::mesh::Primitive::Type primitiveType) {
   auto specification = TriangleBatch::createMeshSpecification(primitiveType);
+  // The resource-manifest mesh parser gives every user-defined component the
+  // same USER identifier, so separate UserDefined1 and UserDefined3 channels
+  // cannot coexist in the resource Programs. Pack surface up and Liquid
+  // elevation into one vec4 shared by both declarative and programmatic specs.
   specification.getVertexBufferAttributeLayout(0).createAttribute(
-      mpp::mesh::Vertex::Component::UserDefined1, "LIQUID_SURFACE_HEIGHT",
-      mpp::mesh::Vertex::DataType::Float, false);
-  specification.getVertexBufferAttributeLayout(0).createAttribute(
-      mpp::mesh::Vertex::Component::UserDefined3, "SURFACE_UP",
+      mpp::mesh::Vertex::Component::UserDefined4,
       mpp::mesh::Vertex::DataType::Float, false);
   return specification;
 }

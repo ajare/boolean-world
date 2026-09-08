@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <limits>
 #include <random>
@@ -927,6 +928,109 @@ bw::core::PrimitivePropertySet movedSurfaceZ(
       break;
   }
   return properties;
+}
+
+bw::core::PrimitivePropertySet movedLiquidLevel(
+    bw::core::PrimitivePropertySet properties,
+    PrimitiveMaterialSurface surface, float delta) {
+  if (surface == PrimitiveMaterialSurface::Floor) {
+    properties.liquidLevel = std::max(0.0f, properties.liquidLevel + delta);
+  }
+  return properties;
+}
+
+optional<ElevationSpanEnd> elevationSpanEndTowardsView(
+    bw::core::Primitive const& primitive, PrimitiveMaterialSurface surface,
+    wp::Vector2 const& viewDirection) {
+  auto const& properties = primitive.getProperties();
+  bw::core::ElevationSpan const* span{};
+  switch (surface) {
+    case PrimitiveMaterialSurface::Floor:
+      span = &properties.floorSpan;
+      break;
+    case PrimitiveMaterialSurface::Ceiling:
+      span = &properties.ceilingSpan;
+      break;
+    case PrimitiveMaterialSurface::Wall:
+      return nullopt;
+  }
+
+  auto const bounds = primitive.getElevationBounds(span->directionAngle);
+  auto const lower = primitive.transformLocalPointToWorld(
+      (bounds.corners[0] + bounds.corners[1]) * 0.5f);
+  auto const upper = primitive.transformLocalPointToWorld(
+      (bounds.corners[2] + bounds.corners[3]) * 0.5f);
+  auto const alignment = (upper - lower).dot(viewDirection);
+  constexpr float directionEpsilon = 1.0e-6f;
+  if (std::abs(alignment) <= directionEpsilon) {
+    return nullopt;
+  }
+  return alignment > 0.0f ? ElevationSpanEnd::Upper
+                          : ElevationSpanEnd::Lower;
+}
+
+bw::core::PrimitivePropertySet movedElevationSpanEnd(
+    bw::core::Primitive const& primitive, PrimitiveMaterialSurface surface,
+    ElevationSpanEnd end, float delta) {
+  auto current = primitive.getProperties();
+  if (surface == PrimitiveMaterialSurface::Wall || delta == 0.0f) {
+    return current;
+  }
+
+  auto requested = current;
+  auto& span = surface == PrimitiveMaterialSurface::Floor
+                   ? requested.floorSpan
+                   : requested.ceilingSpan;
+  auto& elevation = end == ElevationSpanEnd::Lower
+                        ? span.lowerElevation
+                        : span.upperElevation;
+  auto const originalElevation = elevation;
+  elevation += delta;
+
+  auto planeForSpan = [&](bw::core::ElevationSpan const& value) {
+    auto bounds = primitive.getElevationBounds(value.directionAngle);
+    auto run = bounds.maximumDirection - bounds.minimumDirection;
+    if (!(run > 0.0f)) {
+      return bw::core::Elevation{value.lowerElevation};
+    }
+    auto gradient =
+        bounds.direction *
+        ((value.upperElevation - value.lowerElevation) / run);
+    return bw::core::Elevation{
+        value.lowerElevation -
+            gradient.dot(bounds.direction * bounds.minimumDirection),
+        gradient};
+  };
+
+  auto const currentFloor = primitive.getElevationPlane(
+      bw::core::PrimitiveSurface::Floor);
+  auto const currentCeiling = primitive.getElevationPlane(
+      bw::core::PrimitiveSurface::Ceiling);
+  auto const requestedFloor = planeForSpan(requested.floorSpan);
+  auto const requestedCeiling = planeForSpan(requested.ceilingSpan);
+
+  // An affine gap reaches its minimum at a corner. The Primitive's local
+  // axis-aligned fitted bounds contain all of its Rings, so checking those
+  // corners guarantees the edited floor and ceiling do not cross inside it.
+  auto const checkBounds = primitive.getElevationBounds(0.0f);
+  float acceptedFraction = 1.0f;
+  for (auto const& point : checkBounds.corners) {
+    auto currentGap =
+        currentCeiling.evaluate(point) - currentFloor.evaluate(point);
+    auto requestedGap =
+        requestedCeiling.evaluate(point) - requestedFloor.evaluate(point);
+    if (requestedGap < 0.0f) {
+      if (!(currentGap > 0.0f)) {
+        acceptedFraction = 0.0f;
+      } else {
+        acceptedFraction = std::min(
+            acceptedFraction, currentGap / (currentGap - requestedGap));
+      }
+    }
+  }
+
+  elevation = originalElevation + delta * acceptedFraction;
+  return requested;
 }
 
 bool setPrimitiveProperties(

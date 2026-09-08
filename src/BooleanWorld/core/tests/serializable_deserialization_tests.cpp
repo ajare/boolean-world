@@ -1,3 +1,4 @@
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -5,6 +6,7 @@
 
 #include <core/BinarySerializer.h>
 #include <core/PrimitivePropertySet.h>
+#include <core/RectanglePolygon.h>
 #include <core/Serializable.h>
 #include <core/YamlSerializer.h>
 
@@ -110,10 +112,10 @@ void propertySetRoundTripsSurfaceResourceIds() {
           "horizontal Elevation planes did not retain the scalar wire format");
 }
 
-void propertySetRoundTripsSlopedElevations() {
+void propertySetRoundTripsElevationSpans() {
   bw::core::PrimitivePropertySet original;
-  original.floorZ = bw::core::Elevation{-3.0f, {0.25f, -0.5f}};
-  original.ceilingZ = bw::core::Elevation{72.0f, {-0.125f, 0.75f}};
+  original.floorSpan = {35.0f, -3.0f, 12.0f};
+  original.ceilingSpan = {-75.0f, 64.0f, 72.0f};
 
   bw::core::SerializationWorkData writeWorkData;
   auto writer = std::shared_ptr<bw::core::Serializer>(
@@ -128,19 +130,53 @@ void propertySetRoundTripsSlopedElevations() {
   bw::core::PrimitivePropertySet copy;
   bw::core::SerializationWorkData readWorkData;
   require(copy.deserialize(reader, readWorkData) &&
-              copy.floorZ == original.floorZ &&
-              copy.ceilingZ == original.ceilingZ,
-          "sloped Elevation planes did not round-trip through YAML");
-  require(yaml.find("floorGradient: [0.25, -0.5]") != std::string::npos &&
-              yaml.find("ceilingGradient: [-0.125, 0.75]") !=
-                  std::string::npos,
-          "Elevation gradients were not explicit in YAML");
+              copy.floorSpan == original.floorSpan &&
+              copy.ceilingSpan == original.ceilingSpan,
+          "Elevation spans did not round-trip through YAML");
+  require(yaml.find("floorElevationAngle: 35") != std::string::npos &&
+              yaml.find("floorLowerElevation: -3") != std::string::npos &&
+              yaml.find("floorUpperElevation: 12") != std::string::npos &&
+              yaml.find("ceilingElevationAngle: -75") != std::string::npos,
+          "authored Elevation-span values were not explicit in YAML");
+}
+
+void legacyElevationPlanesMigrateAfterGeometryIsAvailable() {
+  auto reader = std::shared_ptr<bw::core::Serializer>(
+      bw::core::YamlSerializer::fromString(
+          "floorZ: 5\nfloorGradient: [2, -1]\n"
+          "ceilingZ: 40\nceilingGradient: [0, 0]\n"
+          "floorEmbossPreset: ''\nceilingEmbossPreset: ''\n"
+          "wallEmbossPreset: ''\n"));
+  reader->deserialize();
+
+  bw::core::PrimitivePropertySet legacy;
+  bw::core::SerializationWorkData readWorkData;
+  require(legacy.deserialize(reader, readWorkData) &&
+              !legacy.floorSpanAuthored,
+          "legacy affine Elevation data was not identified for migration");
+
+  bw::core::RectanglePolygon primitive(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f);
+  primitive.setSize(2.0f, 4.0f);
+  primitive.setProperties(legacy);
+  auto migrated = primitive.getElevationPlane(
+      bw::core::PrimitiveSurface::Floor);
+  for (wp::Vector2 const point :
+       {wp::Vector2{-1.0f, -2.0f}, wp::Vector2{0.0f, 0.0f},
+        wp::Vector2{1.0f, 2.0f}}) {
+    require(
+        std::abs(
+            migrated.evaluate(point) -
+            (5.0f + 2.0f * point.x - point.y)) < 0.001f,
+        "legacy affine Elevation values changed during migration");
+  }
 }
 
 void propertySetRoundTripsEmbossPresetIdsInBinary() {
   bw::core::PrimitivePropertySet original;
-  original.floorZ = bw::core::Elevation{4.0f, {0.5f, -0.25f}};
-  original.ceilingZ = bw::core::Elevation{60.0f, {-0.75f, 0.125f}};
+  original.floorSpan = {15.0f, 4.0f, 20.0f};
+  original.ceilingSpan = {120.0f, 48.0f, 60.0f};
   original.floorEmbossPresetId = "floor_relief";
   original.ceilingEmbossPresetId = "";
   original.wallEmbossPresetId = "wall_relief";
@@ -158,8 +194,8 @@ void propertySetRoundTripsEmbossPresetIdsInBinary() {
   bw::core::PrimitivePropertySet copy;
   bw::core::SerializationWorkData readWorkData;
   require(copy.deserialize(reader, readWorkData) &&
-              copy.floorZ == original.floorZ &&
-              copy.ceilingZ == original.ceilingZ &&
+              copy.floorSpan == original.floorSpan &&
+              copy.ceilingSpan == original.ceilingSpan &&
               copy.floorEmbossPresetId == "floor_relief" &&
               copy.ceilingEmbossPresetId.empty() &&
               copy.wallEmbossPresetId == "wall_relief",
@@ -186,7 +222,8 @@ int main() {
     successfulDeserializationLeavesObjectUnmodified();
     failedDeserializationReturnsFailureIndependentlyOfModifiedState();
     propertySetRoundTripsSurfaceResourceIds();
-    propertySetRoundTripsSlopedElevations();
+    propertySetRoundTripsElevationSpans();
+    legacyElevationPlanesMigrateAfterGeometryIsAvailable();
     propertySetRoundTripsEmbossPresetIdsInBinary();
     propertySetRejectsLegacyShapeWithoutEmbossPresetIds();
     std::cout << "Serializable deserialization coverage passed\n";

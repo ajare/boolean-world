@@ -44,9 +44,13 @@ _Avoid_: inner shell, nested outer polygon
 The canonical authored coordinate system: +X is right and +Y is up. The editor, game view, controls, and map all preserve this orientation; elevation is a separate axis.
 _Avoid_: Treating the game view as a mirrored coordinate system
 
+**Elevation span**:
+A Primitive's authored description of one floor or ceiling: a direction angle, a lower elevation, and an upper elevation. Zero degrees points along the Primitive's local +Y axis and angles increase counter-clockwise. The angle orients a bounding box fitted around every Ring; elevation interpolates from the box's negative-direction edge to its positive-direction edge and stays constant across the perpendicular axis. Editing the Primitive refits the box while retaining the three authored values. A zero-length box uses the lower elevation throughout.
+_Avoid_: gradient (the derived rate of elevation change), slope (ambiguous between direction and steepness), OBB settings (the box is derived rather than separately authored)
+
 **Elevation plane**:
-An affine height function over the World plane, consisting of a base elevation and a two-dimensional gradient. A Primitive supplies one independently for its floor and ceiling; zero gradient is the existing horizontal surface. The plane determines elevation and one constant up-facing normal at every World-plane position while the Arrangement remains purely two-dimensional.
-_Avoid_: slope (which describes only the gradient, not the surface), height (a sampled scalar, not the function)
+The affine height function derived from an Elevation span for generation. A Primitive supplies one independently for its floor and ceiling; equal lower and upper elevations produce a horizontal surface. The plane determines elevation and one constant up-facing normal at every World-plane position while the Arrangement remains purely two-dimensional.
+_Avoid_: Elevation span (the authored values from which the plane is derived), slope, height (a sampled scalar, not the function)
 
 **Surface frame**:
 The stable orthonormal coordinates of one generated surface, derived from its unperturbed geometric up-vector. U is World X projected into the surface (with a World Z fallback near vertical), V completes the right-handed frame, and both coordinates are anchored at the World origin. Two-dimensional procedural materials, their normal perturbations, and Embossing use this frame so physical scale and orientation remain continuous across Arrangement fragments of one Elevation plane.
