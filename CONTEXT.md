@@ -44,6 +44,10 @@ _Avoid_: inner shell, nested outer polygon
 The canonical authored coordinate system: +X is right and +Y is up. The editor, game view, controls, and map all preserve this orientation; elevation is a separate axis.
 _Avoid_: Treating the game view as a mirrored coordinate system
 
+**Elevation plane**:
+An affine height function over the World plane, consisting of a base elevation and a two-dimensional gradient. A Primitive supplies one independently for its floor and ceiling; zero gradient is the existing horizontal surface. The plane determines elevation and one constant up-facing normal at every World-plane position while the Arrangement remains purely two-dimensional.
+_Avoid_: slope (which describes only the gradient, not the surface), height (a sampled scalar, not the function)
+
 **Fixed-point vertex**:
 An exact point on the world geometry grid. It is the canonical coordinate type for topology and arrangement output.
 _Avoid_: Clipper point, floating-point topology vertex

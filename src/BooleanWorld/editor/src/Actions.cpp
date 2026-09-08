@@ -914,12 +914,14 @@ bw::core::PrimitivePropertySet movedSurfaceZ(
     PrimitiveMaterialSurface surface, float delta) {
   switch (surface) {
     case PrimitiveMaterialSurface::Floor:
-      properties.floorZ =
-          std::min(properties.floorZ + delta, properties.ceilingZ);
+      properties.floorZ.baseElevation = std::min(
+          properties.floorZ.baseElevation + delta,
+          properties.ceilingZ.baseElevation);
       break;
     case PrimitiveMaterialSurface::Ceiling:
-      properties.ceilingZ =
-          std::max(properties.ceilingZ + delta, properties.floorZ);
+      properties.ceilingZ.baseElevation = std::max(
+          properties.ceilingZ.baseElevation + delta,
+          properties.floorZ.baseElevation);
       break;
     case PrimitiveMaterialSurface::Wall:
       break;

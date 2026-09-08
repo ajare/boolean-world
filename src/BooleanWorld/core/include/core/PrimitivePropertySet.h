@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "core/Elevation.h"
 #include "core/LiquidType.h"
 #include "core/Serializable.h"
 
@@ -11,7 +12,9 @@ namespace core {
 class Primitive;
 
 struct PrimitivePropertySet : public Serializable {
-  float floorZ{0}, ceilingZ{48};
+  // Affine surface planes. The historical names remain while flat consumers
+  // migrate; assigning a scalar creates a horizontal (zero-gradient) plane.
+  Elevation floorZ{0.0f}, ceilingZ{48.0f};
 
   // Authored liquid volume scalar, meaningful only on a Primitive whose
   // operation is Union - see ComputeLiquidLevels. Inert (but still stored) on

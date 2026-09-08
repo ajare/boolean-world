@@ -43,6 +43,45 @@ MeshPrimitive* makeRectangle(
 // (ticket #269): a real ArrangementWorldData built once from a fixed
 // Primitive list, using the same extents/grid-cell-size source as
 // DynamicWorldDataGenerator's constructor.
+void generatedWorldDataSamplesElevationPlanesAtTheRequestedPosition() {
+  bw::core::World world(20.0f, 2.0f);
+  auto* primitive = makeRectangle(
+      Primitive::Operation::Union, 0.0f, 0.0f, 10.0f, 10.0f, 3.0f, 20.0f);
+  auto properties = primitive->getProperties();
+  properties.floorZ.gradient = {2.0f, -1.0f};
+  properties.ceilingZ.gradient = {0.0f, 0.5f};
+  primitive->setProperties(properties);
+  world.addPrimitive(primitive);
+
+  bw::core::ArrangementWorldDataGenerator generator;
+  generator.generate(std::vector<Primitive*>{primitive});
+  bw::core::ArrangementWorldData worldData(
+      generator.getWorldData(), world.getExtents(), 2.0f);
+
+  auto sample = worldData.getSurfaceSample({2.0f, 4.0f});
+  require(sample.has_value(), "a solid face did not produce a surface sample");
+  require(std::abs(sample->floorElevation - 3.0f) < 0.0001f &&
+              std::abs(sample->ceilingElevation - 22.0f) < 0.0001f,
+          "the surface sample did not evaluate both Elevation planes locally");
+  auto normalLength = std::sqrt(6.0f);
+  require(std::abs(sample->floorNormal[0] + 2.0f / normalLength) < 0.0001f &&
+              std::abs(sample->floorNormal[1] - 1.0f / normalLength) < 0.0001f &&
+              std::abs(sample->floorNormal[2] - 1.0f / normalLength) < 0.0001f &&
+              sample->ceilingNormal[2] < 0.0f,
+          "the surface sample did not expose outward plane normals");
+  require(sample->face ==
+                  &worldData.getArrangement().faces[sample->faceIndex] &&
+              sample->face->solid,
+          "the surface sample did not identify its containing Arrangement face");
+  require(std::abs(worldData.getFloorHeight({2.0f, 4.0f}) -
+                   sample->floorElevation) < 0.0001f &&
+              std::abs(worldData.getCeilingHeight({2.0f, 4.0f}) -
+                       sample->ceilingElevation) < 0.0001f,
+          "flat-compatible height queries disagreed with the authoritative sample");
+  require(!worldData.getSurfaceSample({-5.0f, -5.0f}),
+          "a position outside generated geometry produced a surface sample");
+}
+
 void aPreviewArrangementReflectsTheNeighborAwareSteppedHeights() {
   bw::core::World world(20.0f, 2.0f);
   auto* base = makeRectangle(
@@ -105,6 +144,7 @@ void aPreviewArrangementReflectsTheNeighborAwareSteppedHeights() {
 
 int main() {
   try {
+    generatedWorldDataSamplesElevationPlanesAtTheRequestedPosition();
     aPreviewArrangementReflectsTheNeighborAwareSteppedHeights();
     std::cout
         << "A preview's Arrangement build reflects neighbor-aware stepped heights\n";

@@ -24,8 +24,8 @@ void renderArrangementFaceView(ViewContext& context) {
   auto properties = arrangement.palette[face.paletteIndex];
   ImGui::Text(
       "Floor / ceiling: %.2f / %.2f",
-      properties.floorZ,
-      properties.ceilingZ);
+      properties.floorZ.baseElevation,
+      properties.ceilingZ.baseElevation);
   renderPrimitivePropertySet(&properties, false, doc, settings);
 }
 

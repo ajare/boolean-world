@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -22,6 +23,19 @@ class Mesh;
 }
 
 namespace bw::core {
+
+// The generated surfaces at one World-plane position. `face` points into the
+// immutable Arrangement snapshot owned by the ArrangementWorldData that
+// produced this value and is valid for the snapshot's lifetime.
+struct SurfaceSample {
+  float floorElevation;
+  float ceilingElevation;
+  std::array<float, 3> floorNormal;
+  std::array<float, 3> ceilingNormal;
+  uint32_t faceIndex;
+  arr::ArrangementFace const* face;
+};
+
 class BW_API ArrangementWorldData {
   arr::ArrangementResultPtr mArrangement;
   std::vector<arr::ArrangementTriangle> mTriangles;
@@ -88,6 +102,12 @@ public:
       wp::Vector2 const& position) const;
 
   [[nodiscard]] uint32_t getContainingPrimitiveIndex(
+      wp::Vector2 const& position) const;
+
+  // The authoritative position-based contract for generated floor and
+  // ceiling geometry. Empty outside generated solid faces. Floor Wedges are
+  // included because they alter the collision surface.
+  [[nodiscard]] std::optional<SurfaceSample> getSurfaceSample(
       wp::Vector2 const& position) const;
 
   [[nodiscard]] int32_t getNearestVertexIndex(

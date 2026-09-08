@@ -100,6 +100,14 @@ void propertySetRoundTripsSurfaceResourceIds() {
           "liquid level did not round-trip the same way floorZ/ceilingZ do");
   require(roundTripped.liquidType == original.liquidType,
           "liquid type did not round-trip the same way liquid level does");
+  require(roundTripped.floorZ.evaluate({123.0f, -45.0f}) == 0.0f &&
+              roundTripped.ceilingZ.evaluate({123.0f, -45.0f}) == 48.0f &&
+              roundTripped.floorZ.gradient == wp::Vector2::ZERO &&
+              roundTripped.ceilingZ.gradient == wp::Vector2::ZERO,
+          "serialized scalar elevations did not load as zero-gradient Elevation planes");
+  require(yaml.find("floorZ: 0") != std::string::npos &&
+              yaml.find("ceilingZ: 48") != std::string::npos,
+          "horizontal Elevation planes did not retain the scalar wire format");
 }
 
 void propertySetRoundTripsEmbossPresetIdsInBinary() {

@@ -796,17 +796,17 @@ bool renderPrimitivePropertySet(
   ImGui::SetNextItemWidth(128);
 
   if (editable) {
-    updateProperties |= ImGui::InputFloat("Floor Z", &properties->floorZ, 1, 8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
+    updateProperties |= ImGui::InputFloat("Floor Z", &properties->floorZ.baseElevation, 1, 8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
   } else {
-    ImGui::Text("Floor Z: %2.1f", properties->floorZ);
+    ImGui::Text("Floor Z: %2.1f", properties->floorZ.baseElevation);
   }
 
   ImGui::SetNextItemWidth(128);
 
   if (editable) {
-    updateProperties |= ImGui::InputFloat("Ceiling Z", &properties->ceilingZ, 1, 8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
+    updateProperties |= ImGui::InputFloat("Ceiling Z", &properties->ceilingZ.baseElevation, 1, 8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
   } else {
-    ImGui::Text("Ceiling Z: %2.1f", properties->ceilingZ);
+    ImGui::Text("Ceiling Z: %2.1f", properties->ceilingZ.baseElevation);
   }
 
   // Liquid level and type are inert on any operation but Union, so they are

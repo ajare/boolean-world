@@ -13,8 +13,11 @@ void PrimitivePropertySet::serializeImpl(shared_ptr<Serializer> serializer, Seri
   serializer->beginMap("primitivePropertySet");
   {
     // Heights
-    serializer->writeFloat("floorZ", floorZ);
-    serializer->writeFloat("ceilingZ", ceilingZ);
+    // Preserve the existing scalar wire format. Authored nonzero gradients
+    // are introduced by the later slope-authoring ticket; legacy values are
+    // the base elevations of horizontal planes.
+    serializer->writeFloat("floorZ", floorZ.baseElevation);
+    serializer->writeFloat("ceilingZ", ceilingZ.baseElevation);
     serializer->writeFloat("liquidLevel", liquidLevel);
     serializer->writeString("liquidType", LiquidTypeName(liquidType));
 

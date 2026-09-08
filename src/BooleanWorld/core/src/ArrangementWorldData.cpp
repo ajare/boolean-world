@@ -364,40 +364,54 @@ int32_t ArrangementWorldData::getNearestVertexIndex(
   return result;
 }
 
-float ArrangementWorldData::getFloorHeight(
+std::optional<SurfaceSample> ArrangementWorldData::getSurfaceSample(
     wp::Vector2 const& position) const {
   auto faceIndex = getContainingFaceIndex(position);
-  if (faceIndex == ~0u) {
-    return -std::numeric_limits<float>::infinity();
-  }
-  auto height =
-      mArrangement->palette[mArrangement->faces[faceIndex].paletteIndex]
-          .floorZ;
+  if (faceIndex == ~0u) return std::nullopt;
+
+  auto const& face = mArrangement->faces[faceIndex];
+  auto const& properties = mArrangement->palette[face.paletteIndex];
+  auto floorNormal = properties.floorZ.normal();
+  auto ceilingUp = properties.ceilingZ.normal();
+  SurfaceSample sample{
+      properties.floorZ.evaluate(position),
+      properties.ceilingZ.evaluate(position),
+      floorNormal,
+      {-ceilingUp[0], -ceilingUp[1], -ceilingUp[2]},
+      faceIndex,
+      &face};
 
   int cellX, cellY;
   mFloorWedgeGrid->getContainingCell(
       true, position.x, position.y, cellX, cellY);
-  if (cellX < 0 || cellY < 0) return height;
+  if (cellX < 0 || cellY < 0) return sample;
   for (auto floorWedgeIndex :
        mFloorWedgeGrid->getCellItems(cellX, cellY)) {
     auto detailIndex = mFloorWedgeTriangleIndices[floorWedgeIndex];
     auto const& triangle = mDetail.getTriangles()[detailIndex];
     // A floor Wedge can only raise collision above its source face. Taking the
     // maximum also resolves shared fan edges and intentional Wedge overlap.
-    if (auto wedgeHeight = TriangleHeightAt(triangle, position)) {
-      height = std::max(height, *wedgeHeight);
+    if (auto wedgeHeight = TriangleHeightAt(triangle, position);
+        wedgeHeight && *wedgeHeight > sample.floorElevation) {
+      sample.floorElevation = *wedgeHeight;
+      sample.floorNormal = triangle.v[0].normal;
     }
   }
-  return height;
+  return sample;
+}
+
+float ArrangementWorldData::getFloorHeight(
+    wp::Vector2 const& position) const {
+  auto sample = getSurfaceSample(position);
+  return sample ? sample->floorElevation
+                : -std::numeric_limits<float>::infinity();
 }
 
 float ArrangementWorldData::getCeilingHeight(
     wp::Vector2 const& position) const {
-  auto faceIndex = getContainingFaceIndex(position);
-  return faceIndex == ~0u
-             ? std::numeric_limits<float>::infinity()
-             : mArrangement->palette[mArrangement->faces[faceIndex].paletteIndex]
-                   .ceilingZ;
+  auto sample = getSurfaceSample(position);
+  return sample ? sample->ceilingElevation
+                : std::numeric_limits<float>::infinity();
 }
 
 float ArrangementWorldData::getLiquidDepth(wp::Vector2 const& position) const {

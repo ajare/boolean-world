@@ -55,6 +55,13 @@ meaning of every primitive above it. Preserved exactly by the rewrite
 ceiling / wall material indices and definitions. The renderable attributes of
 a region.
 
+**Elevation plane** — An affine height function over the World plane,
+consisting of a base elevation and a two-dimensional gradient. A Primitive
+supplies one independently for its floor and ceiling; zero gradient is the
+existing horizontal surface. It evaluates to one elevation and one constant
+up-facing normal at every World-plane position while the Arrangement remains
+purely two-dimensional.
+
 **World dependent resource** — A named Willpower Resource referenced by
 authored World content and required before that World can be deserialized and
 activated. The serialized list is the exact, sorted projection of all such
