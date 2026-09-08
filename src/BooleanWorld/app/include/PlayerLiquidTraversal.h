@@ -1,8 +1,13 @@
 #pragma once
 
 #include <cmath>
+#include <cstdint>
+
+#include <core/ArrangementWorldData.h>
 
 #include <common/GameDefines.h>
+
+#include "PlayerSurfaceTraversal.h"
 
 namespace bw::app {
 
@@ -38,6 +43,31 @@ namespace bw::app {
   auto eyeElevation = playerFeetElevation + BW_PLAYER_EYE_HEIGHT;
   return std::abs(targetFloorElevation - eyeElevation) <=
          BW_PLAYER_MANTLE_WATER;
+}
+
+// Validates every landing-dependent part of a water mantle at the proposed
+// player-centre position. Sampling a known face first keeps an Arrangement-edge
+// destination unambiguous; the final containment query still proves that the
+// proposal actually landed in that face.
+[[nodiscard]] inline bool canLandLiquidMantle(
+    bw::core::ArrangementWorldData const& world,
+    uint32_t targetFace,
+    wp::Vector2 const& sourcePosition,
+    wp::Vector2 const& landingPosition,
+    float playerFeetElevation) {
+  auto surface = world.getSurfaceSample(targetFace, landingPosition);
+  if (!surface ||
+      !canClimbOutOfLiquidToFloor(
+          playerFeetElevation, surface->floorElevation) ||
+      !isPlayerFloorWalkable(surface->floorNormal) ||
+      surface->ceilingElevation - surface->floorElevation <
+          BW_PLAYER_HEIGHT) {
+    return false;
+  }
+
+  return world.getContainingFaceIndex(landingPosition) == targetFace &&
+         world.circleIntersectsWallForTraversal(
+             landingPosition, BW_PLAYER_RADIUS, sourcePosition) < 0;
 }
 
 }  // namespace bw::app

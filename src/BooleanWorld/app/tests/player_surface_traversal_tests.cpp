@@ -17,6 +17,7 @@
 
 #include "PlayerSurfaceTraversal.h"
 #include "PlayerVerticalPhysics.h"
+#include "PlayerWorldReconciliation.h"
 
 namespace {
 using bw::core::Primitive;
@@ -284,6 +285,58 @@ void slopedCeilingIsCheckedAcrossEveryAffineSegment() {
   requireNear(traversal.allowedFraction, 14.0f / 15.0f, 0.001f,
               "sloped-ceiling clearance was not solved on its local segment");
 }
+
+void rebuiltWorldReconcilesSupportAndContainment() {
+  wp::Vector2 const position{5.0f, 5.0f};
+  auto level = dataFor({region(0, 20, 1, surfaces(0.0f, 50.0f))});
+  auto raised = dataFor(
+      {region(0, 20, 1, surfaces(4.0f, 50.0f, {0.4f, 0.0f}))});
+  auto regrounded = bw::app::reconcilePlayerAfterWorldRebuild(
+      *level, *raised, position, {0.0f, 0.0f});
+  require(regrounded.regrounded && !regrounded.supportLost &&
+              !regrounded.requiresLocationRecovery,
+          "a raised rebuilt support did not reground the player");
+  requireNear(regrounded.vertical.feetElevation, 6.0f, 0.001f,
+              "regrounding retained the old face's floor elevation");
+  requireNear(regrounded.vertical.verticalVelocity, 0.0f, 0.001f,
+              "regrounding retained stale falling velocity");
+
+  auto high = dataFor({region(0, 20, 1, surfaces(10.0f, 50.0f))});
+  auto lowered = dataFor({region(0, 20, 1, surfaces(0.0f, 50.0f))});
+  auto unsupported = bw::app::reconcilePlayerAfterWorldRebuild(
+      *high, *lowered, position, {10.0f, 0.0f});
+  require(unsupported.supportLost && !unsupported.regrounded,
+          "a rebuilt floor drop retained grounded support");
+  bw::app::PlayerVerticalInputs fallInputs;
+  fallInputs.floorElevation = lowered->getFloorHeight(position);
+  fallInputs.frameTime = 0.1f;
+  auto falling = bw::app::stepPlayerVerticalPhysics(
+      unsupported.vertical, fallInputs);
+  require(falling.verticalVelocity < 0.0f &&
+              falling.feetElevation < unsupported.vertical.feetElevation,
+          "lost rebuilt support did not enter ordinary falling physics");
+
+  auto loweredCeiling = dataFor(
+      {region(0, 20, 1, surfaces(0.0f, 25.0f))});
+  auto ceilingConflict = bw::app::reconcilePlayerAfterWorldRebuild(
+      *level, *loweredCeiling, position, {10.0f, -1.0f});
+  require(ceilingConflict.requiresLocationRecovery,
+          "a rebuilt ceiling through the player bypassed invalid-location handling");
+
+  auto tooShort = dataFor(
+      {region(0, 20, 1, surfaces(5.0f, 24.0f))});
+  auto noContainment = bw::app::reconcilePlayerAfterWorldRebuild(
+      *level, *tooShort, position, {0.0f, 0.0f});
+  require(noContainment.requiresLocationRecovery &&
+              !noContainment.regrounded,
+          "a rebuilt space shorter than the player was treated as valid support");
+
+  auto removed = dataFor({});
+  auto noFace = bw::app::reconcilePlayerAfterWorldRebuild(
+      *level, *removed, position, {0.0f, 0.0f});
+  require(noFace.supportLost && noFace.requiresLocationRecovery,
+          "removing the face beneath the player did not enter location recovery");
+}
 }  // namespace
 
 int main() {
@@ -298,8 +351,9 @@ int main() {
     laterStepsUseTheFaceReachedAtEarlierCrossings();
     variableStepEdgesUseTheirLocalCrossingHeight();
     slopedCeilingIsCheckedAcrossEveryAffineSegment();
-    std::cout << "Player surface traversal follows local affine geometry and "
-                 "walkable-slope limits\n";
+    rebuiltWorldReconcilesSupportAndContainment();
+    std::cout << "Player traversal and World rebuilds follow local affine "
+                 "geometry\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';

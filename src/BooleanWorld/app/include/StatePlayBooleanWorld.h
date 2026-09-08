@@ -152,6 +152,11 @@ private:
   // query falls back to 0, so the first valid reading is a snap, not a fall.
   bool mPlayerVerticalHeightInitialized;
 
+  // Set for the frame in which a rebuilt snapshot cannot contain the player's
+  // current vertical cylinder. This routes the rebuild through the same
+  // invalid-location branch used for a missing face or unresolved wall overlap.
+  bool mPlayerRebuildNeedsLocationRecovery{false};
+
   // Captured from this frame's peekInput call (see getWorldInput) and
   // consumed by updatePlayerVerticalPhysics - how hard fly controls are asking
   // the player to swim up or down, in -1 to 1. Effort rather than speed: what

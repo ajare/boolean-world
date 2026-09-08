@@ -54,6 +54,7 @@
 #include "PlayerSurfaceTraversal.h"
 #include "PlayerVerticalPhysics.h"
 #include "PlayerWallDepenetration.h"
+#include "PlayerWorldReconciliation.h"
 #include "PlayerTorchShadows.h"
 #include "BooleanWorldModel.h"
 #include "EntityHandlerBooleanWorld.h"
@@ -944,29 +945,13 @@ bool StatePlayBooleanWorld::tryClimbOutOfLiquid() {
     auto destination =
         closestPoint +
         outward * (float(BW_PLAYER_RADIUS) + BW_PLAYER_CLIMB_OUT_MARGIN);
-    auto targetSurface =
-        mWorldData->getSurfaceSample(targetFace, destination);
-    if (!targetSurface) continue;
-
-    // Climbing out is a lift onto something above the swimmer. A floor at or
-    // below their float height is just more of the pool - reachable by
-    // swimming, and nothing to haul themselves onto. The ledge itself must
-    // also be within arm's reach of their eye level.
-    if (!bw::app::canClimbOutOfLiquidToFloor(
-            physicalStats.feetElevation,
-            targetSurface->floorElevation)) {
-      continue;
-    }
-    if (targetSurface->ceilingElevation - targetSurface->floorElevation <
-        BW_PLAYER_HEIGHT) {
-      continue;
-    }
-
-    // Room to stand there: on the face we meant, and clear of every wall
-    // around it - otherwise the climb would end wedged in geometry.
-    if (mWorldData->getContainingFaceIndex(destination) != targetFace ||
-        mWorldData->circleIntersectsWallForTraversal(
-            destination, BW_PLAYER_RADIUS, position) >= 0) {
+    // Reach, floor walkability, local standing clearance, final containment,
+    // and wall clearance all belong to the proposed player-centre position.
+    // In particular, none may reuse the face's base elevation or a sample at
+    // the edge where the mantle began.
+    if (!bw::app::canLandLiquidMantle(
+            *mWorldData, targetFace, position, destination,
+            physicalStats.feetElevation)) {
       continue;
     }
 
@@ -1138,7 +1123,20 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
 
   world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, layerSelection()}, {0, 0});
 
-  mWorldData = world->getWorldData();
+  auto rebuiltWorldData = world->getWorldData();
+  mPlayerRebuildNeedsLocationRecovery = false;
+  if (mWorldData && rebuiltWorldData != mWorldData &&
+      mPlayerVerticalHeightInitialized) {
+    auto& physicalStats = getPlayerPhysicalStats();
+    auto reconciliation = bw::app::reconcilePlayerAfterWorldRebuild(
+        *mWorldData, *rebuiltWorldData, physicalStats.position,
+        {physicalStats.feetElevation, mPlayerVerticalVelocity});
+    physicalStats.feetElevation = reconciliation.vertical.feetElevation;
+    mPlayerVerticalVelocity = reconciliation.vertical.verticalVelocity;
+    mPlayerRebuildNeedsLocationRecovery =
+        reconciliation.requiresLocationRecovery;
+  }
+  mWorldData = std::move(rebuiltWorldData);
   if (mSteamAudio) {
     // getWorldData is queried every frame, but updateWorldSnapshot compares
     // pointer identity so export and native scene commit happen once per newly
@@ -1194,7 +1192,8 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
   mPlayerPolygonIndex = location.faceIndex;
   mPlayerBorderIntersectIndex = location.intersectingWallIndex;
 
-  if (!playerInWorld() || playerIntersectsWorldBorders()) {
+  if (!playerInWorld() || playerIntersectsWorldBorders() ||
+      mPlayerRebuildNeedsLocationRecovery) {
     // TODO
     // ...
   }
