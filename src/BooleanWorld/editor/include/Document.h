@@ -16,7 +16,9 @@
 #include "core/World.h"
 
 #include "HoverableType.h"
+#include "Selection.h"
 #include "Settings.h"
+#include "WorldDocument.h"
 
 namespace editor {
 
@@ -72,45 +74,9 @@ struct DocumentHover {
   std::vector<uint32_t> indices;
 };
 
-struct WorldSnapshot {
-  std::string serializedWorld;
-  float accelerationGridSize{-1.0f};
-  bw::core::LayerSelection layerSelection;
-  bool alwaysUpdateWorldVertices{false};
-  bool hasDynamicGenerator{false};
-  bool alwaysUpdateGeneratorVertices{false};
-  bool allowCommitIfVisible{false};
-  float generationStartInterval{5.0f};
-};
-
-class Document {
-  bool mModified;
-
-  std::string mFilepath;
-
-  std::shared_ptr<bw::core::World> mWorld;
-
-  // Held here rather than on one World, so that every World the Document
-  // builds - new, opened, or restored from an undo snapshot - generates
-  // through the same filter.
-  bw::core::PrimitiveFilter mPrimitiveFilter;
-
-  std::function<bool(std::vector<std::string> const&, std::string*)>
-      mWorldDependencyLoader;
-
-  std::set<uint32_t> mSelectedPrimitiveIndices;
-
-  uint32_t mSelectedWorldVertexIndex;
-
-  uint32_t mSelectedTriggerLineIndex;
-
+class Document : public WorldDocument, public Selection {
   uint32_t mActiveMeshPrimitiveIndex{~0u};
   std::unique_ptr<bw::core::MeshPrimitiveEditingProxy> mActiveMesh;
-  std::set<uint32_t> mSelectedMeshVertexIndices;
-  std::set<uint32_t> mSelectedMeshEdgeIndices;
-  std::set<uint32_t> mSelectedMeshRingIndices;
-  std::string mMeshHoverExplanation;
-
   // Sub-object drag state (ticket #180). Kept as a snapshot taken at the
   // start of the gesture, rather than the live mesh, so each frame's
   // candidate delta is validated against a fixed reference and clamping
@@ -171,50 +137,18 @@ class Document {
 
   float mPlayerOldProxyAngle, mPlayerProxyAngle;
 
-  static Document* msInstance;
-
 private:
-  void reset();
+  void clearTransientState() override;
+  [[nodiscard]] bw::core::World const* selectionWorld() const override;
 
   // Writes the active editing proxy back to the authored MeshPrimitive.
   // MeshPrimitive's polygon-update hook rebuilds downstream LayerBuildStep
   // output and requests World regeneration.
   void commitMeshPolygons(uint32_t primitiveIndex);
 
-  std::shared_ptr<bw::core::World> createWorld(float size, float gridSize);
-
 public:
   Document();
-
-  virtual ~Document();
-
-  static Document* instance();
-
-  bool isActive() const;
-
-  void setModified(bool modified = true);
-
-  bool isModified() const;
-
-  std::string const& getFilepath() const;
-
-  bool hasFilepath() const;
-
-  void setWorld(bw::core::World const& world);
-
-  WorldSnapshot captureWorldSnapshot() const;
-
-  void restoreWorldSnapshot(WorldSnapshot const& snapshot);
-
-  // Applies to the current World immediately, which regenerates its world
-  // data, and to every World built afterwards.
-  void setPrimitiveFilter(bw::core::PrimitiveFilter filter);
-
-  std::shared_ptr<bw::core::World> getWorld();
-
-  bw::core::Primitive* getGhost();
-
-  void updateGhost(std::shared_ptr<bw::core::World> world, bw::core::Primitive* primitive);
+  ~Document() override = default;
 
   // Resolves the editor's hover priority without depending on ImGui:
   // generated World vertices, then trigger lines, then Primitives.
@@ -295,25 +229,11 @@ public:
       wp::BoundingBox const& worldBounds, Settings const& settings) const;
   [[nodiscard]] std::set<uint32_t> getSelectableMeshSubObjectIndices(
       Settings::MeshSubMode subMode) const;
-  [[nodiscard]] std::set<uint32_t> const& getSelectedMeshSubObjectIndices(
-      Settings::MeshSubMode subMode) const;
-  [[nodiscard]] std::set<uint32_t> const& getSelectedMeshVertexIndices() const;
-  [[nodiscard]] std::set<uint32_t> const& getSelectedMeshEdgeIndices() const;
-  [[nodiscard]] std::set<uint32_t> const& getSelectedMeshRingIndices() const;
-  void setSelectedMeshSubObjectIndices(
-      Settings::MeshSubMode subMode, std::set<uint32_t> const& indices);
-  void addSelectedMeshSubObjectIndices(
-      Settings::MeshSubMode subMode, std::set<uint32_t> const& indices);
-  void toggleSelectedMeshSubObjectIndices(
-      Settings::MeshSubMode subMode, std::set<uint32_t> const& indices);
   void restoreMeshSelection(
       uint32_t activeMeshPrimitiveIndex,
       std::set<uint32_t> const& vertices,
       std::set<uint32_t> const& edges,
       std::set<uint32_t> const& rings);
-  void setMeshHoverExplanation(std::string explanation);
-  [[nodiscard]] std::string const& getMeshHoverExplanation() const;
-
   // Begins a rigid-group drag of exactly the current sub-mode's selection:
   // selected Rings do not implicitly select their descendants. The group
   // moves together or not at all, so a clamped move never deforms it.
@@ -478,47 +398,7 @@ public:
   // immediate Islands are wrapped in matching Holes beneath the new Island.
   bool fillMeshHole(uint32_t holeRingIndex);
 
-  bool indexInSelection(uint32_t index) const;
-
-  void setSelectedWorldVertexIndex(uint32_t index);
-
-  void setSelectedTriggerLineIndex(uint32_t index);
-
-  void setSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
-
-  void addSelectedPrimitiveIndex(uint32_t index);
-
-  void addSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
-
-  void removeSelectedPrimitiveIndex(uint32_t index);
-
-  void removeSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
-
-  void clearSelections();
-  void clearMeshSelections();
-
-  // Drops any selected Primitive/TriggerLine index that no longer names a
-  // live object - e.g. after a delete rebuilds the Layer's Primitive list
-  // and re-stamps ids from scratch. Called at the end of every undoable
-  // action (ticket #198) since selection is index-based, not identity-based:
-  // a surviving index may now name a different Primitive, which is accepted
-  // as out of scope for this ticket. mSelectedWorldVertexIndex is left
-  // alone - it names a vertex in the asynchronously regenerated WorldData,
-  // which Document has no synchronous bound for, and nothing dereferences it
-  // as an array index.
-  void revalidateSelection();
-
-  std::set<uint32_t> const& getSelectedPrimitiveIndices() const;
-
-  bool anyPrimitiveIndicesSelected(std::vector<uint32_t> const& indices) const;
-
-  uint32_t getSelectedWorldVertexIndex() const;
-
-  uint32_t getSelectedTriggerLineIndex() const;
-
   uint32_t getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
-
-  bool hasSelection() const;
 
   void setPlayerProxyPosition(wp::Vector2 const& pos);
 
@@ -532,29 +412,6 @@ public:
 
   float getPlayerOldProxyAngle() const;
 
-  void newDoc();
-
-  void closeDoc();
-
-  bool openDoc(std::string const& filepath);
-
-  void setWorldDependencyLoader(
-      std::function<bool(std::vector<std::string> const&, std::string*)> loader);
-
-  void saveDoc();
-
-  void saveDocAs(std::string const& filepath);
-
-  // Exports a single Layer to its own file, independent of the rest of the
-  // World - ".layer" (binary) or ".layer.yaml", chosen by filepath's
-  // extension.
-  void exportLayer(bw::core::Layer const* layer, std::string const& filepath) const;
-
-  // Imports a standalone ".layer"/".layer.yaml" file into the current
-  // World's Layer collection, returning the new Layer (with a fresh id if
-  // its own collided with one the World already had), or nullptr on
-  // failure.
-  bw::core::Layer* importLayer(std::string const& filepath);
 };
 
 }  // namespace editor

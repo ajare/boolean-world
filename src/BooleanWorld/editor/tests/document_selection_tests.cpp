@@ -21,6 +21,7 @@
 
 #include "Defines.h"
 #include "Document.h"
+#include "Selection.h"
 #include "Settings.h"
 #include "UiHelpers.h"
 
@@ -124,16 +125,20 @@ private:
   }
 };
 
-void changingSelectedPrimitiveIndicesDoesNotWriteIntoAnInputRange() {
-  editor::Document document;
-  document.setSelectedPrimitiveIndices({2, 4});
+class SelectionWithoutWorld final : public editor::Selection {
+  bw::core::World const* selectionWorld() const override { return nullptr; }
+};
 
-  document.addSelectedPrimitiveIndices({1, 4, 8});
-  require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>({1, 2, 4, 8}),
+void changingSelectedPrimitiveIndicesDoesNotWriteIntoAnInputRange() {
+  SelectionWithoutWorld selection;
+  selection.setSelectedPrimitiveIndices({2, 4});
+
+  selection.addSelectedPrimitiveIndices({1, 4, 8});
+  require(selection.getSelectedPrimitiveIndices() == std::set<uint32_t>({1, 2, 4, 8}),
           "adding selected primitive indices did not preserve their union");
 
-  document.removeSelectedPrimitiveIndices({2, 7, 8});
-  require(document.getSelectedPrimitiveIndices() == std::set<uint32_t>({1, 4}),
+  selection.removeSelectedPrimitiveIndices({2, 7, 8});
+  require(selection.getSelectedPrimitiveIndices() == std::set<uint32_t>({1, 4}),
           "removing selected primitive indices did not preserve their difference");
 }
 

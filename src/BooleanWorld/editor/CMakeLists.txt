@@ -3,6 +3,9 @@ add_executable(editor WIN32
     src/ApplicationCloseController.cpp
     src/AppHelpers.cpp
     src/Document.cpp
+    src/MeshGeometry.cpp
+    src/Selection.cpp
+    src/WorldDocument.cpp
     src/EditorRenderSystem.cpp
     src/EmbossingCatalogLibrary.cpp
     src/Interaction.cpp
@@ -101,6 +104,19 @@ bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/../core/doc" "doc/core")
 bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/doc" "doc/editor")
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_editor_mesh_geometry_tests
+        tests/mesh_geometry_tests.cpp
+        src/MeshGeometry.cpp)
+    target_include_directories(boolean_world_editor_mesh_geometry_tests PRIVATE include)
+    target_link_libraries(boolean_world_editor_mesh_geometry_tests PRIVATE core Willpower.Geometry)
+    target_compile_features(boolean_world_editor_mesh_geometry_tests PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_mesh_geometry_tests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W3;/utf-8>)
+    bw_target_defaults(boolean_world_editor_mesh_geometry_tests)
+    bw_output_dirs(boolean_world_editor_mesh_geometry_tests)
+    bw_deploy_runtime_dlls(boolean_world_editor_mesh_geometry_tests)
+    add_test(NAME boolean_world_editor_mesh_geometry
+             COMMAND boolean_world_editor_mesh_geometry_tests)
+
     add_executable(boolean_world_editor_preview_surface_pick_tests
         tests/preview_surface_pick_tests.cpp
         src/PreviewSurfaceOutline.cpp
@@ -252,6 +268,9 @@ if(BUILD_TESTING)
     add_executable(boolean_world_editor_primitive_field_placement_tests
         tests/primitive_field_placement_tests.cpp
         src/Document.cpp
+        src/MeshGeometry.cpp
+        src/Selection.cpp
+        src/WorldDocument.cpp
         src/PrimitiveDefaults.cpp
         src/PrimitiveFieldPlacement.cpp
         src/PrimitiveFieldPreview.cpp
@@ -284,6 +303,9 @@ if(BUILD_TESTING)
     add_executable(boolean_world_editor_document_selection_tests
         tests/document_selection_tests.cpp
         src/Document.cpp
+        src/MeshGeometry.cpp
+        src/Selection.cpp
+        src/WorldDocument.cpp
         src/Undo.cpp
         src/ProcMaterialLibrary.cpp)
     target_include_directories(boolean_world_editor_document_selection_tests PRIVATE include)
@@ -303,6 +325,9 @@ if(BUILD_TESTING)
         tests/editor_interaction_tests.cpp
         src/Actions.cpp
         src/Document.cpp
+        src/MeshGeometry.cpp
+        src/Selection.cpp
+        src/WorldDocument.cpp
         src/Interaction.cpp
         src/PrimitiveDefaults.cpp
         src/Undo.cpp
@@ -324,6 +349,9 @@ if(BUILD_TESTING)
     add_executable(boolean_world_editor_document_layer_import_export_tests
         tests/document_layer_import_export_tests.cpp
         src/Document.cpp
+        src/MeshGeometry.cpp
+        src/Selection.cpp
+        src/WorldDocument.cpp
         src/Undo.cpp
         src/ProcMaterialLibrary.cpp)
     target_include_directories(boolean_world_editor_document_layer_import_export_tests PRIVATE include)
@@ -343,6 +371,9 @@ if(BUILD_TESTING)
         tests/undo_history_tests.cpp
         src/Actions.cpp
         src/Document.cpp
+        src/MeshGeometry.cpp
+        src/Selection.cpp
+        src/WorldDocument.cpp
         src/PrimitiveDefaults.cpp
         src/Undo.cpp
         src/ProcMaterialLibrary.cpp)
@@ -363,6 +394,9 @@ if(BUILD_TESTING)
         tests/primitive_surface_z_tests.cpp
         src/Actions.cpp
         src/Document.cpp
+        src/MeshGeometry.cpp
+        src/Selection.cpp
+        src/WorldDocument.cpp
         src/PrimitiveDefaults.cpp
         src/ProcMaterialLibrary.cpp
         src/Undo.cpp)
@@ -383,6 +417,9 @@ if(BUILD_TESTING)
         tests/sub_material_picker_tests.cpp
         src/Actions.cpp
         src/Document.cpp
+        src/MeshGeometry.cpp
+        src/Selection.cpp
+        src/WorldDocument.cpp
         src/PrimitiveDefaults.cpp
         src/ProcMaterialLibrary.cpp
         src/Undo.cpp)
@@ -403,6 +440,9 @@ if(BUILD_TESTING)
         tests/embossing_catalog_authoring_tests.cpp
         src/Actions.cpp
         src/Document.cpp
+        src/MeshGeometry.cpp
+        src/Selection.cpp
+        src/WorldDocument.cpp
         src/EmbossingCatalogLibrary.cpp
         src/PrimitiveDefaults.cpp
         src/ProcMaterialLibrary.cpp
@@ -425,6 +465,9 @@ if(BUILD_TESTING)
         src/Actions.cpp
         src/RunScriptAuthoring.cpp
         src/Document.cpp
+        src/MeshGeometry.cpp
+        src/Selection.cpp
+        src/WorldDocument.cpp
         src/PrimitiveDefaults.cpp
         src/Undo.cpp
         src/ProcMaterialLibrary.cpp)

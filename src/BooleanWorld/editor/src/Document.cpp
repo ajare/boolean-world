@@ -1,18 +1,6 @@
 #include <algorithm>
-#include <cctype>
 #include <cmath>
-#include <exception>
-#include <filesystem>
-#include <fstream>
-#include <format>
 #include <limits>
-
-#pragma warning(push)
-#pragma warning(disable : 4307)
-#include <spdlog/spdlog.h>
-#pragma warning(pop)
-
-#include <yaml-cpp/yaml.h>
 
 #include <willpower/common/MathsUtils.h>
 #include <willpower/geometry/Edge.h>
@@ -21,11 +9,7 @@
 #include <willpower/geometry/Polygon.h>
 #include <willpower/geometry/Vertex.h>
 
-#include "core/BinarySerializer.h"
 #include "core/DefinePrefabs.h"
-#include "core/YamlSerializer.h"
-#include "core/RegularPolygon.h"
-#include "core/DynamicWorldDataGenerator.h"
 #include "core/Vertex.h"
 #include "core/MeshPrimitive.h"
 #include "core/LayerBuildStep.h"
@@ -35,29 +19,15 @@
 
 #include "Defines.h"
 #include "Document.h"
-#include "EditorException.h"
-#include "AppHelpers.h"
-#include "Undo.h"
-
-extern spdlog::logger* gLogger;
-
+#include "MeshGeometry.h"
 namespace editor {
 using namespace std;
-
-namespace {
-bool hasExtension(string const& filepath, string const& extension) {
-  if (filepath.size() < extension.size()) {
-    return false;
-  }
-
-  auto const tail = filepath.substr(filepath.size() - extension.size());
-  return equal(tail.begin(), tail.end(), extension.begin(), [](char a, char b) {
-    return tolower(static_cast<unsigned char>(a)) == tolower(static_cast<unsigned char>(b));
-  });
-}
-}  // namespace
-
-Document* Document::msInstance = nullptr;
+using meshGeometry::addDrawnRing;
+using meshGeometry::innermostRingAt;
+using meshGeometry::pointInsideRing;
+using meshGeometry::segmentProperlyCrossesMesh;
+using meshGeometry::segmentsIntersect;
+using meshGeometry::twiceSignedArea;
 
 bool primitiveVisibleForActiveStep(
     bw::core::Layer const& layer,
@@ -179,47 +149,6 @@ optional<float> resolveGroundingFloorZ(
 
 namespace {
 
-bool pointInsideRing(
-    wp::geometry::Mesh const& mesh,
-    wp::geometry::Polygon const& ring,
-    wp::Vector2 const& point) {
-  auto vertices = ring.getOrderedVertexIndices();
-  if (vertices.size() < 3) {
-    return false;
-  }
-  bool inside = false;
-  for (size_t i = 0, previous = vertices.size() - 1; i < vertices.size(); previous = i++) {
-    auto const& a = mesh.getVertex(vertices[i]).getPosition();
-    auto const& b = mesh.getVertex(vertices[previous]).getPosition();
-    if ((a.y > point.y) != (b.y > point.y) &&
-        point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
-bw::core::Primitive* createEditorGhost() {
-  auto* ghost = new bw::core::RegularPolygon(
-      bw::core::Primitive::Operation::Union,
-      bw::core::Primitive::FillRule::NonZero,
-      3);
-
-  ghost->setPriority(0);
-  ghost->setPosition(wp::Vector2::ZERO);
-  ghost->setFlags(ghost->getFlags() | BW_PRIMITIVE_GHOST_FLAG);
-
-  {
-    auto mutation = ghost->mutate();
-    mutation.animation(bw::core::VertexTransformer::Key::Scale).setPoints({{0.0f, 1.0f}, {1.0f, 1.0f}});
-    mutation.animation(bw::core::VertexTransformer::Key::Angle).setPoints({{0.0f, 0.0f}, {1.0f, 0.0f}});
-    mutation.animation(bw::core::VertexTransformer::Key::OrbitAngle).setPoints({{0.0f, 0.0f}, {1.0f, 0.0f}});
-    mutation.animation(bw::core::VertexTransformer::Key::OrbitDistance).setPoints({{0.0f, 0.0f}, {1.0f, 0.0f}});
-  }
-
-  return ghost;
-}
-
 set<uint32_t> getIgnoredPrimitiveIndices(bw::core::World const& world, Settings const& settings) {
   set<uint32_t> ignores;
 
@@ -269,28 +198,15 @@ set<uint32_t> getIgnoredPrimitiveIndices(bw::core::World const& world, Settings 
 }  // namespace
 
 Document::Document()
-    : mModified(false), mSelectedWorldVertexIndex(~0u), mSelectedTriggerLineIndex(~0u), mPlayerOldProxyPosition({0, 0}), mPlayerProxyPosition({0, 0}), mPlayerProxyAngle(0.0f), mPlayerOldProxyAngle(0.0f) {
+    : mPlayerOldProxyPosition({0, 0}), mPlayerProxyPosition({0, 0}),
+      mPlayerOldProxyAngle(0.0f), mPlayerProxyAngle(0.0f) {}
+
+bw::core::World const* Document::selectionWorld() const {
+  return mWorld.get();
 }
 
-Document::~Document() {
-}
-
-Document* Document::instance() {
-  if (!msInstance) {
-    msInstance = new Document();
-  }
-
-  return msInstance;
-}
-
-void Document::reset() {
-  clearUndoHistory();
-  mModified = false;
-  mFilepath = "";
-  mWorld.reset();
-  mSelectedWorldVertexIndex = ~0u;
-  mSelectedTriggerLineIndex = ~0u;
-  mSelectedPrimitiveIndices.clear();
+void Document::clearTransientState() {
+  clearSelections();
   clearActiveMesh();
   disarmMeshDrawTool();
   disarmMeshSliceTool();
@@ -298,178 +214,6 @@ void Document::reset() {
   mMeshHoverExplanation.clear();
   mPlayerProxyPosition.set(0.0f, 0.0f);
   mPlayerProxyAngle = 0.0f;
-}
-
-bool Document::isActive() const {
-  return mWorld != nullptr;
-}
-
-void Document::setModified(bool modified) {
-  mModified = modified;
-}
-
-bool Document::isModified() const {
-  return mModified;
-}
-
-string const& Document::getFilepath() const {
-  return mFilepath;
-}
-
-bool Document::hasFilepath() const {
-  return mFilepath != "";
-}
-
-void Document::setWorld(bw::core::World const& world) {
-  mWorld = make_shared<bw::core::World>(world);
-}
-
-WorldSnapshot Document::captureWorldSnapshot() const {
-  if (!mWorld) {
-    throw EditorException("Cannot snapshot an inactive document.");
-  }
-
-  auto serializer = shared_ptr<bw::core::YamlSerializer>(
-      bw::core::YamlSerializer::toString());
-  auto workData = bw::core::SerializationWorkData{};
-  workData.markSerializedUnmodified = false;
-  workData.includeGhostPrimitives = true;
-  mWorld->serialize(serializer, workData);
-  serializer->serialize();
-
-  WorldSnapshot snapshot;
-  snapshot.serializedWorld = serializer->getSerializedString();
-  snapshot.accelerationGridSize = mWorld->getPrimitiveAccelerationGridSize();
-  snapshot.alwaysUpdateWorldVertices = mWorld->getAlwaysUpdateVertices();
-
-  auto generator = mWorld->getWorldDataGenerator();
-  snapshot.layerSelection = generator->getLayerSelection();
-  if (auto dynamicGenerator = dynamic_cast<bw::core::DynamicWorldDataGenerator const*>(generator)) {
-    snapshot.hasDynamicGenerator = true;
-    snapshot.alwaysUpdateGeneratorVertices = dynamicGenerator->getAlwaysUpdateVertices();
-    snapshot.allowCommitIfVisible = dynamicGenerator->getAllowCommitIfVisible();
-    snapshot.generationStartInterval = dynamicGenerator->getGenerationStartInterval();
-  }
-
-  return snapshot;
-}
-
-void Document::restoreWorldSnapshot(WorldSnapshot const& snapshot) {
-  auto serializer = shared_ptr<bw::core::YamlSerializer>(
-      bw::core::YamlSerializer::fromString(snapshot.serializedWorld));
-  serializer->deserialize();
-
-  auto world = createWorld(ED_DEFAULT_WORLD_SIZE, ED_DEFAULT_WORLD_ACCEL_GRID_SIZE);
-  world->removePrimitive(uint32_t(ED_GHOST_INDEX));
-
-  auto workData = bw::core::SerializationWorkData{};
-  workData.accelGridSize = snapshot.accelerationGridSize;
-  workData.allowEmptyWorld = true;
-  if (!world->deserialize(serializer, workData)) {
-    throw EditorException("Could not restore the world snapshot.");
-  }
-
-  world->setAlwaysUpdateVertices(snapshot.alwaysUpdateWorldVertices);
-  auto generator = world->getWorldDataGenerator();
-  generator->setLayerSelection(snapshot.layerSelection);
-  if (snapshot.hasDynamicGenerator) {
-    auto dynamicGenerator = dynamic_cast<bw::core::DynamicWorldDataGenerator*>(generator);
-    dynamicGenerator->setAlwaysUpdateVertices(snapshot.alwaysUpdateGeneratorVertices);
-    dynamicGenerator->setAllowCommitIfVisible(snapshot.allowCommitIfVisible);
-    dynamicGenerator->setGenerationStartInterval(snapshot.generationStartInterval);
-  }
-
-  if (mWorldDependencyLoader) {
-    string error;
-    if (!mWorldDependencyLoader(world->getDependentResourceNames(), &error)) {
-      throw EditorException("Could not restore World dependencies: " + error);
-    }
-  }
-  mWorld = move(world);
-}
-
-void Document::setPrimitiveFilter(bw::core::PrimitiveFilter filter) {
-  mPrimitiveFilter = move(filter);
-
-  if (mWorld) {
-    mWorld->getWorldDataGenerator()->setPrimitiveFilter(mPrimitiveFilter);
-  }
-}
-
-shared_ptr<bw::core::World> Document::getWorld() {
-  return mWorld;
-}
-
-void Document::setSelectedWorldVertexIndex(uint32_t index) {
-  clearSelections();
-  mSelectedWorldVertexIndex = index;
-}
-
-void Document::setSelectedTriggerLineIndex(uint32_t index) {
-  clearSelections();
-  mSelectedTriggerLineIndex = index;
-}
-
-void Document::setSelectedPrimitiveIndices(set<uint32_t> const& indices) {
-  clearSelections();
-  mSelectedPrimitiveIndices = indices;
-}
-
-void Document::addSelectedPrimitiveIndex(uint32_t index) {
-  mSelectedPrimitiveIndices.insert(index);
-}
-
-void Document::addSelectedPrimitiveIndices(set<uint32_t> const& indices) {
-  mSelectedPrimitiveIndices.insert(indices.begin(), indices.end());
-}
-
-void Document::removeSelectedPrimitiveIndex(uint32_t index) {
-  mSelectedPrimitiveIndices.erase(index);
-}
-
-void Document::removeSelectedPrimitiveIndices(set<uint32_t> const& indices) {
-  for (auto index : indices) {
-    mSelectedPrimitiveIndices.erase(index);
-  }
-}
-
-void Document::clearSelections() {
-  mSelectedPrimitiveIndices.clear();
-  mSelectedWorldVertexIndex = ~0u;
-  mSelectedTriggerLineIndex = ~0u;
-  clearMeshSelections();
-}
-
-void Document::clearMeshSelections() {
-  mSelectedMeshVertexIndices.clear();
-  mSelectedMeshEdgeIndices.clear();
-  mSelectedMeshRingIndices.clear();
-}
-
-void Document::revalidateSelection() {
-  if (!mWorld) {
-    return;
-  }
-
-  auto numPrimitives = mWorld->getNumPrimitives();
-
-  for (auto it = mSelectedPrimitiveIndices.begin(); it != mSelectedPrimitiveIndices.end();) {
-    if (*it >= numPrimitives) {
-      it = mSelectedPrimitiveIndices.erase(it);
-    } else {
-      ++it;
-    }
-  }
-
-  if (mSelectedTriggerLineIndex != ~0u && mSelectedTriggerLineIndex >= mWorld->getNumTriggerLines()) {
-    mSelectedTriggerLineIndex = ~0u;
-  }
-
-  // mSelectedWorldVertexIndex names a vertex in the asynchronously
-  // regenerated WorldData, which Document has no synchronous handle on here,
-  // so there is no live count to bound-check it against. It is left alone:
-  // nothing dereferences it as an array index (only compares it to ~0u), so
-  // unlike the two selections above it cannot cause an out-of-bounds read.
 }
 
 DocumentHover Document::getHover(
@@ -861,44 +605,6 @@ set<uint32_t> Document::getSelectableMeshSubObjectIndices(
   return result;
 }
 
-set<uint32_t> const& Document::getSelectedMeshSubObjectIndices(
-    Settings::MeshSubMode subMode) const {
-  if (subMode == Settings::MeshSubMode::Vertex) return mSelectedMeshVertexIndices;
-  if (subMode == Settings::MeshSubMode::Edge) return mSelectedMeshEdgeIndices;
-  return mSelectedMeshRingIndices;
-}
-
-set<uint32_t> const& Document::getSelectedMeshVertexIndices() const { return mSelectedMeshVertexIndices; }
-set<uint32_t> const& Document::getSelectedMeshEdgeIndices() const { return mSelectedMeshEdgeIndices; }
-set<uint32_t> const& Document::getSelectedMeshRingIndices() const { return mSelectedMeshRingIndices; }
-
-void Document::setSelectedMeshSubObjectIndices(
-    Settings::MeshSubMode subMode, set<uint32_t> const& indices) {
-  clearSelections();
-  auto* selection = subMode == Settings::MeshSubMode::Vertex ? &mSelectedMeshVertexIndices
-                    : subMode == Settings::MeshSubMode::Edge ? &mSelectedMeshEdgeIndices
-                                                             : &mSelectedMeshRingIndices;
-  *selection = indices;
-}
-
-void Document::addSelectedMeshSubObjectIndices(
-    Settings::MeshSubMode subMode, set<uint32_t> const& indices) {
-  auto* selection = subMode == Settings::MeshSubMode::Vertex ? &mSelectedMeshVertexIndices
-                    : subMode == Settings::MeshSubMode::Edge ? &mSelectedMeshEdgeIndices
-                                                             : &mSelectedMeshRingIndices;
-  selection->insert(indices.begin(), indices.end());
-}
-
-void Document::toggleSelectedMeshSubObjectIndices(
-    Settings::MeshSubMode subMode, set<uint32_t> const& indices) {
-  auto* selection = subMode == Settings::MeshSubMode::Vertex ? &mSelectedMeshVertexIndices
-                    : subMode == Settings::MeshSubMode::Edge ? &mSelectedMeshEdgeIndices
-                                                             : &mSelectedMeshRingIndices;
-  for (auto index : indices) {
-    if (!selection->erase(index)) selection->insert(index);
-  }
-}
-
 void Document::restoreMeshSelection(
     uint32_t activeMeshPrimitiveIndex, set<uint32_t> const& vertices,
     set<uint32_t> const& edges, set<uint32_t> const& rings) {
@@ -910,13 +616,6 @@ void Document::restoreMeshSelection(
   }
 }
 
-void Document::setMeshHoverExplanation(string explanation) {
-  mMeshHoverExplanation = move(explanation);
-}
-
-string const& Document::getMeshHoverExplanation() const {
-  return mMeshHoverExplanation;
-}
 
 namespace {
 
@@ -1834,119 +1533,10 @@ void Document::updateClonePlacement(wp::Vector2 const& pointerWorldPosition) {
 
 namespace {
 
-float twiceSignedArea(vector<wp::Vector2> const& points) {
-  float area = 0.0f;
-  for (size_t i = 0; i < points.size(); ++i) {
-    auto const& a = points[i];
-    auto const& b = points[(i + 1) % points.size()];
-    area += a.x * b.y - b.x * a.y;
-  }
-  return area;
-}
-
-float ringArea(wp::geometry::Mesh const& mesh, uint32_t polygonIndex) {
-  vector<wp::Vector2> points;
-  for (auto vertex : mesh.getPolygon(polygonIndex).getOrderedVertexIndices()) {
-    points.push_back(mesh.getVertex(vertex).getPosition());
-  }
-  return abs(twiceSignedArea(points));
-}
-
-uint32_t innermostRingAt(
-    wp::geometry::Mesh const& mesh,
-    vector<bw::core::MeshPrimitiveEditingProxy::NodeMapping> const& mappings,
-    wp::Vector2 const& position) {
-  auto depthOf = [&](uint32_t polygonIndex) {
-    uint32_t depth = 0;
-    for (;;) {
-      auto mapping = ranges::find_if(mappings, [&](auto const& candidate) {
-        return candidate.polygonIndex == polygonIndex;
-      });
-      if (mapping == mappings.end() || mapping->parentPolygonIndex == ~0u) {
-        return depth;
-      }
-      polygonIndex = mapping->parentPolygonIndex;
-      ++depth;
-    }
-  };
-
-  uint32_t result = ~0u;
-  uint32_t deepest = 0;
-  float smallestArea = numeric_limits<float>::max();
-  for (auto index = mesh.getFirstPolygonIndex();
-       !mesh.polygonIndexIterationFinished(index);
-       index = mesh.getNextPolygonIndex(index)) {
-    auto area = ringArea(mesh, index);
-    auto depth = depthOf(index);
-    if (pointInsideRing(mesh, mesh.getPolygon(index), position) &&
-        (area < smallestArea || (area == smallestArea && depth > deepest))) {
-      result = index;
-      deepest = depth;
-      smallestArea = area;
-    }
-  }
-  return result;
-}
-
-float orientation(wp::Vector2 const& a, wp::Vector2 const& b, wp::Vector2 const& c) {
-  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-}
-
-bool pointOnSegment(wp::Vector2 const& a, wp::Vector2 const& b, wp::Vector2 const& p) {
-  constexpr float epsilon = 0.0001f;
-  return abs(orientation(a, b, p)) <= epsilon &&
-         p.x >= min(a.x, b.x) - epsilon && p.x <= max(a.x, b.x) + epsilon &&
-         p.y >= min(a.y, b.y) - epsilon && p.y <= max(a.y, b.y) + epsilon;
-}
-
-bool segmentsIntersect(
-    wp::Vector2 const& a, wp::Vector2 const& b,
-    wp::Vector2 const& c, wp::Vector2 const& d) {
-  auto o1 = orientation(a, b, c);
-  auto o2 = orientation(a, b, d);
-  auto o3 = orientation(c, d, a);
-  auto o4 = orientation(c, d, b);
-  if (((o1 > 0.0f && o2 < 0.0f) || (o1 < 0.0f && o2 > 0.0f)) &&
-      ((o3 > 0.0f && o4 < 0.0f) || (o3 < 0.0f && o4 > 0.0f))) {
-    return true;
-  }
-  return pointOnSegment(a, b, c) || pointOnSegment(a, b, d) ||
-         pointOnSegment(c, d, a) || pointOnSegment(c, d, b);
-}
-
 // Unlike segmentsIntersect, a shared endpoint (including one that lands
 // exactly on an existing vertex) is not itself a crossing - only a segment
 // that strictly passes through another's interior is. This is what lets a
 // drawn edge legitimately touch an existing Ring's vertex.
-bool properSegmentsIntersect(
-    wp::Vector2 const& a, wp::Vector2 const& b,
-    wp::Vector2 const& c, wp::Vector2 const& d) {
-  auto o1 = orientation(a, b, c);
-  auto o2 = orientation(a, b, d);
-  auto o3 = orientation(c, d, a);
-  auto o4 = orientation(c, d, b);
-  return ((o1 > 0.0f && o2 < 0.0f) || (o1 < 0.0f && o2 > 0.0f)) &&
-         ((o3 > 0.0f && o4 < 0.0f) || (o3 < 0.0f && o4 > 0.0f));
-}
-
-bool segmentProperlyCrossesMesh(
-    wp::geometry::Mesh const& mesh,
-    wp::Vector2 const& first,
-    wp::Vector2 const& second) {
-  for (auto edgeIndex = mesh.getFirstEdgeIndex();
-       !mesh.edgeIndexIterationFinished(edgeIndex);
-       edgeIndex = mesh.getNextEdgeIndex(edgeIndex)) {
-    auto const& edge = mesh.getEdge(edgeIndex);
-    if (properSegmentsIntersect(
-            first, second,
-            mesh.getVertex(edge.getFirstVertex()).getPosition(),
-            mesh.getVertex(edge.getSecondVertex()).getPosition())) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // The single Ring (Shell, Hole or Island) that owns this mesh vertex, or
 // ~0u. When a vertex is shared by more than one Ring (an existing Ring
 // already touching another there), the first match in getNodeMappings'
@@ -2134,22 +1724,6 @@ float meshDrawPickRadiusSq(Settings const& settings) {
     return 1e-6f;
   }
   return settings.meshVertexPickRadius * settings.meshVertexPickRadius;
-}
-
-uint32_t addDrawnRing(
-    wp::geometry::Mesh& mesh, vector<wp::Vector2> const& points) {
-  wp::geometry::IndexVector vertices;
-  wp::geometry::IndexVector edgeData;
-  for (auto const& point : points) {
-    vertices.push_back(mesh.addVertex(wp::geometry::Vertex(point)));
-  }
-  for (size_t i = 0; i < vertices.size(); ++i) {
-    auto first = vertices[i];
-    auto second = vertices[(i + 1) % vertices.size()];
-    auto edge = mesh.addEdge(wp::geometry::Edge(first, second));
-    edgeData.insert(edgeData.end(), {first, second, edge});
-  }
-  return mesh.addPolygon(wp::geometry::Polygon(edgeData));
 }
 
 }  // namespace
@@ -2708,38 +2282,6 @@ uint32_t Document::getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, 
              : ~0u;
 }
 
-bool Document::indexInSelection(uint32_t index) const {
-  return mSelectedPrimitiveIndices.find(index) != mSelectedPrimitiveIndices.end();
-}
-
-set<uint32_t> const& Document::getSelectedPrimitiveIndices() const {
-  return mSelectedPrimitiveIndices;
-}
-
-bool Document::anyPrimitiveIndicesSelected(vector<uint32_t> const& indices) const {
-  for (auto index : indices) {
-    if (find(mSelectedPrimitiveIndices.begin(), mSelectedPrimitiveIndices.end(), index) != mSelectedPrimitiveIndices.end()) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-uint32_t Document::getSelectedWorldVertexIndex() const {
-  return mSelectedWorldVertexIndex;
-}
-
-uint32_t Document::getSelectedTriggerLineIndex() const {
-  return mSelectedTriggerLineIndex;
-}
-
-bool Document::hasSelection() const {
-  return !mSelectedPrimitiveIndices.empty() || mSelectedTriggerLineIndex != ~0u ||
-         mSelectedWorldVertexIndex != ~0u || !mSelectedMeshVertexIndices.empty() ||
-         !mSelectedMeshEdgeIndices.empty() || !mSelectedMeshRingIndices.empty();
-}
-
 void Document::setPlayerProxyPosition(wp::Vector2 const& pos) {
   mPlayerOldProxyPosition = mPlayerProxyPosition;
   mPlayerProxyPosition = pos;
@@ -2766,242 +2308,5 @@ float Document::getPlayerOldProxyAngle() const {
   return mPlayerOldProxyAngle;
 }
 
-bw::core::Primitive* Document::getGhost() {
-  if (isActive()) {
-    return mWorld->getPrimitive(0);
-  } else {
-    throw EditorException("Document not active");
-  }
-}
-
-void Document::updateGhost(std::shared_ptr<bw::core::World> world, bw::core::Primitive* primitive) {
-  primitive->setFlags(primitive->getFlags() | BW_PRIMITIVE_GHOST_FLAG);
-
-  if (world->getNumPrimitives() == 0) {
-    world->addPrimitive(primitive);
-  } else {
-    world->replacePrimitive(0, primitive);
-  }
-}
-
-std::shared_ptr<bw::core::World> Document::createWorld(float size, float gridSize) {
-  auto world = make_shared<bw::core::World>(size, gridSize);
-
-  auto generator = new bw::core::DynamicWorldDataGenerator(world.get(), false);
-  generator->setAlwaysUpdateVertices(true);
-  generator->setAllowCommitIfVisible(true);
-  generator->setPrimitiveFilter(mPrimitiveFilter);
-  world->setWorldDataGenerator(generator);
-
-  // Create ghost primitive as a preview for creating primitives.
-  updateGhost(world, createEditorGhost());
-
-  return world;
-}
-
-void Document::newDoc() {
-  reset();
-  if (mWorldDependencyLoader) {
-    string ignored;
-    mWorldDependencyLoader({}, &ignored);
-  }
-
-  mWorld = createWorld(ED_DEFAULT_WORLD_SIZE, ED_DEFAULT_WORLD_ACCEL_GRID_SIZE);
-  mModified = false;
-}
-
-void Document::closeDoc() {
-  reset();
-  if (mWorldDependencyLoader) {
-    string ignored;
-    mWorldDependencyLoader({}, &ignored);
-  }
-}
-
-void Document::setWorldDependencyLoader(
-    function<bool(vector<string> const&, string*)> loader) {
-  mWorldDependencyLoader = move(loader);
-}
-
-bool Document::openDoc(string const& filepath) {
-  auto const yaml = hasExtension(filepath, ".world.yaml");
-  auto const binary = hasExtension(filepath, ".world") && !yaml;
-
-  if (yaml || binary) {
-    shared_ptr<bw::core::Serializer> ser = yaml
-                                               ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(filepath))
-                                               : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(filepath));
-
-    try {
-      ser->deserialize();
-    } catch (exception& e) {
-      gLogger->error(e.what());
-      return false;
-    }
-
-    auto previousDependencies = mWorld
-                                    ? mWorld->getDependentResourceNames()
-                                    : vector<string>{};
-    if (mWorldDependencyLoader) {
-      try {
-        auto dependencyReader = yaml
-                                    ? shared_ptr<bw::core::Serializer>(
-                                          bw::core::YamlSerializer::fromFile(filepath))
-                                    : shared_ptr<bw::core::Serializer>(
-                                          bw::core::BinarySerializer::fromFile(filepath));
-        dependencyReader->deserialize();
-        string error;
-        if (!mWorldDependencyLoader(
-                bw::core::World::readDependentResourceNames(dependencyReader),
-                &error)) {
-          gLogger->error(error);
-          return false;
-        }
-      } catch (exception const& error) {
-        gLogger->error(error.what());
-        return false;
-      }
-    }
-
-    auto restoreDependencies = [&] {
-      if (mWorldDependencyLoader) {
-        string ignored;
-        mWorldDependencyLoader(previousDependencies, &ignored);
-      }
-    };
-
-    auto candidate = createWorld(ED_DEFAULT_WORLD_SIZE, ED_DEFAULT_WORLD_ACCEL_GRID_SIZE);
-
-    auto workData = bw::core::SerializationWorkData{};
-    workData.allowEmptyWorld = true;
-
-    if (candidate->deserialize(ser, workData)) {
-      auto const& warnings = candidate->getDeserializationWarnings();
-
-      if (!warnings.empty()) {
-        for (auto const& warning : warnings) {
-          gLogger->warn(warning);
-        }
-      }
-
-      // Saved Worlds omit the editor-only ghost. Restore it at the front of
-      // the first PrimitiveField's authored order so ED_GHOST_INDEX remains
-      // stable even when that field is empty and index 0 currently belongs to
-      // derived output from a later, non-editable step such as PrefabField.
-      auto* activeLayer = candidate->getActiveLayer();
-      auto hasGhost = candidate->getNumPrimitives() > 0 &&
-                      (candidate->getPrimitive(ED_GHOST_INDEX)->getFlags() &
-                       BW_PRIMITIVE_GHOST_FLAG) != 0;
-      if (!hasGhost) {
-        auto* ghost = createEditorGhost();
-        activeLayer->prependPrimitive(ghost);
-      }
-      reset();
-      mFilepath = filepath;
-      mWorld = move(candidate);
-      return true;
-    } else {
-      auto const& errors = candidate->getDeserializationErrors();
-
-      if (!errors.empty()) {
-        for (auto const& error : errors) {
-          gLogger->error(error);
-        }
-      }
-
-      restoreDependencies();
-      return false;
-    }
-  } else {
-    throw EditorException(format("Could not open {} (filetype not supported)", filepath));
-  }
-}
-
-void Document::saveDoc() {
-  if (mFilepath == "") {
-    throw EditorException("Document has no filepath set.");
-  }
-
-  auto const yaml = hasExtension(mFilepath, ".world.yaml");
-  auto const binary = hasExtension(mFilepath, ".world") && !yaml;
-
-  if (yaml || binary) {
-    shared_ptr<bw::core::Serializer> ser = yaml
-                                               ? shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toFile(mFilepath))
-                                               : shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::toFile(mFilepath));
-    auto workData = bw::core::SerializationWorkData{};
-
-    mWorld->serialize(ser, workData);
-    ser->serialize();
-  } else {
-    throw EditorException(format("Could not save {} (filetype not supported)", mFilepath));
-  }
-
-  mModified = false;
-}
-
-void Document::saveDocAs(string const& filepath) {
-  auto const yaml = hasExtension(filepath, ".world.yaml");
-  auto const binary = hasExtension(filepath, ".world") && !yaml;
-  if (!yaml && !binary) {
-    throw EditorException(format("Could not save {} (filetype not supported)", filepath));
-  }
-
-  mFilepath = filepath;
-  saveDoc();
-}
-
-void Document::exportLayer(bw::core::Layer const* layer, string const& filepath) const {
-  shared_ptr<bw::core::Serializer> ser;
-
-  if (hasExtension(filepath, ".layer.yaml")) {
-    ser = shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::toFile(filepath));
-  } else if (hasExtension(filepath, ".layer")) {
-    ser = shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::toFile(filepath));
-  } else {
-    throw EditorException(format("Could not export {} (filetype not supported)", filepath));
-  }
-
-  auto workData = bw::core::SerializationWorkData{};
-  layer->serialize(ser, workData);
-  ser->serialize();
-}
-
-bw::core::Layer* Document::importLayer(string const& filepath) {
-  shared_ptr<bw::core::Serializer> ser;
-
-  if (hasExtension(filepath, ".layer.yaml")) {
-    ser = shared_ptr<bw::core::Serializer>(bw::core::YamlSerializer::fromFile(filepath));
-  } else if (hasExtension(filepath, ".layer")) {
-    ser = shared_ptr<bw::core::Serializer>(bw::core::BinarySerializer::fromFile(filepath));
-  } else {
-    throw EditorException(format("Could not import {} (filetype not supported)", filepath));
-  }
-
-  try {
-    ser->deserialize();
-  } catch (exception& e) {
-    gLogger->error(e.what());
-    return nullptr;
-  }
-
-  auto layer = make_unique<bw::core::Layer>();
-
-  auto workData = bw::core::SerializationWorkData{};
-  workData.accelGridSize = mWorld->getPrimitiveAccelerationGridSize();
-
-  if (!layer->deserialize(ser, workData)) {
-    for (auto const& error : layer->getDeserializationErrors()) {
-      gLogger->error(error);
-    }
-    return nullptr;
-  }
-
-  for (auto const& warning : layer->getDeserializationWarnings()) {
-    gLogger->warn(warning);
-  }
-
-  return mWorld->addLayer(layer.release());
-}
 
 }  // namespace editor

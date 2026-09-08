@@ -80,6 +80,7 @@ editor::Settings gEditorSettings;
 editor::HoverableType gHoveredType{editor::HoverableType::None};
 std::vector<uint32_t> gHoveredIndices;
 editor::EditorInteraction gEditorInteraction;
+editor::Document gDocument;
 
 using namespace std;
 
@@ -266,7 +267,7 @@ void initialise() {
   //
   try {
     editor::createEditorRenderSystem(ED_WINDOW_WIDTH, ED_WINDOW_HEIGHT);
-    editor::Document::instance()->setWorldDependencyLoader(
+    gDocument.setWorldDependencyLoader(
         [](vector<string> const& names, string* error) {
           return editor::editorRenderSystem()->loadWorldDependencies(
               names, "World", error);
@@ -325,7 +326,7 @@ void setup() {
   // Installed once, ahead of any World: every World the Document builds
   // generates through it, so a Primitive hidden by the step filter contributes
   // no geometry either.
-  editor::applyStepVisibilityFilter(editor::Document::instance(), gEditorSettings);
+  editor::applyStepVisibilityFilter(&gDocument, gEditorSettings);
 }
 
 void shutdown() {
@@ -613,11 +614,11 @@ bool handleWorldInteraction(
 }
 
 void clampViewToWorldBounds() {
-  if (!editor::Document::instance()->isActive()) {
+  if (!gDocument.isActive()) {
     return;
   }
 
-  auto const& worldBounds = editor::Document::instance()->getWorld()->getExtents();
+  auto const& worldBounds = gDocument.getWorld()->getExtents();
   wp::Vector2 minExtent, maxExtent;
 
   worldBounds.getExtents(minExtent, maxExtent);
@@ -675,11 +676,11 @@ void run() {
 
     // Title bar reflects the loaded World file (open/save/new/close all land
     // here once per frame).
-    updateWindowTitle(editor::Document::instance());
+    updateWindowTitle(&gDocument);
 
     // Logic
-    if (editor::Document::instance()->isActive()) {
-      auto doc = editor::Document::instance();
+    if (gDocument.isActive()) {
+      auto doc = &gDocument;
 
       auto const& proxyPos = doc->getPlayerProxyPosition();
       auto proxyAngle = doc->getPlayerProxyAngle();
@@ -702,7 +703,7 @@ void run() {
 
     ImGui::NewFrame();
 
-    auto doc = editor::Document::instance();
+    auto doc = &gDocument;
     if (closeRequested) {
       editor::exitApp(doc);
     }
