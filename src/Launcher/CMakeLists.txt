@@ -115,6 +115,7 @@ if(BUILD_TESTING)
     bw_target_defaults(launcher_zip_resource_location_tests)
     bw_output_dirs(launcher_zip_resource_location_tests)
     bw_deploy_runtime_dlls(launcher_zip_resource_location_tests)
+    bw_deploy_vendor_dlls(launcher_zip_resource_location_tests)
     get_filename_component(msvc_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
     add_custom_command(TARGET launcher_zip_resource_location_tests POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
