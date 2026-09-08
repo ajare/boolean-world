@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
@@ -29,6 +30,37 @@ void require(bool condition, char const* message) {
 
 ComplexPolygon rectangle(float left, float bottom, float right, float top) {
   return {{{{left, bottom}}, {{right, bottom}}, {{right, top}}, {{left, top}}}};
+}
+
+void authoredElevationPlanesFollowTranslationAndRotation() {
+  std::unique_ptr<MeshPrimitive> primitive(MeshPrimitive::fromComplexPolygons(
+      Primitive::Operation::Union,
+      {rectangle(-1.0f, -1.0f, 1.0f, 1.0f)}));
+  primitive->setSize(3.0f, 2.0f);
+  primitive->setPosition({17.0f, -9.0f});
+  primitive->setOrientation(37.0f);
+  primitive->updateVertexPositions();
+
+  auto properties = primitive->getProperties();
+  properties.floorZ = bw::core::Elevation{6.0f, {2.0f, -0.5f}};
+  properties.ceilingZ = bw::core::Elevation{30.0f, {-0.25f, 0.75f}};
+  primitive->setProperties(properties);
+
+  auto snapshots = bw::core::SnapshotPrimitives({primitive.get()});
+  require(snapshots.size() == 1, "Primitive Elevation snapshot was missing");
+  auto const& transformed = snapshots.front().properties;
+  for (wp::Vector2 const local :
+       {wp::Vector2{0.0f, 0.0f}, wp::Vector2{0.5f, -0.75f},
+        wp::Vector2{-1.0f, 1.0f}}) {
+    auto const world = primitive->transformLocalPointToWorld(local);
+    auto const floorExpected = properties.floorZ.evaluate(local);
+    auto const ceilingExpected = properties.ceilingZ.evaluate(local);
+    require(
+        std::abs(transformed.floorZ.evaluate(world) - floorExpected) < 0.001f &&
+            std::abs(transformed.ceilingZ.evaluate(world) - ceilingExpected) <
+                0.001f,
+        "a translated and rotated local Elevation plane did not retain its authored heights");
+  }
 }
 
 void generationWorkerUsesCapturedPrimitiveSnapshot() {
@@ -321,6 +353,7 @@ void directGenerationCapturesWorldWedgeSettings() {
 
 int main() {
   try {
+    authoredElevationPlanesFollowTranslationAndRotation();
     generationWorkerUsesCapturedPrimitiveSnapshot();
     chipParametersAreResolvedInSnapshotOrderOnTheCallingThread();
     primitiveRemovalBeforeCompletionAndCommitIsSafe();

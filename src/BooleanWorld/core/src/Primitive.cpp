@@ -146,6 +146,20 @@ Primitive* Primitive::rotatedCopy(float angle) const {
   // parameters; MeshPrimitive rotates its authoritative containment tree.
   p->rotateAuthoredGeometry(angle, origin);
 
+  // The Prefab placement rotation above is baked into authored geometry rather
+  // than represented by the live Primitive transform, so bake the same affine
+  // change into each local Elevation plane.
+  auto properties = p->getProperties();
+  auto rotateElevation = [&](Elevation& elevation) {
+    auto rotatedGradient = elevation.gradient.rotatedClockwiseCopy(angle);
+    elevation.baseElevation +=
+        elevation.gradient.dot(origin) - rotatedGradient.dot(origin);
+    elevation.gradient = rotatedGradient;
+  };
+  rotateElevation(properties.floorZ);
+  rotateElevation(properties.ceilingZ);
+  p->setProperties(properties);
+
   // AudioEmitter offsets are authored in the same local frame as the
   // Primitive, so a placed, rotated Prefab turns them with its geometry.
   for (auto& emitter : p->mAudioEmitters) {
@@ -307,6 +321,14 @@ void Primitive::setSize(float x, float y) {
 
 wp::Vector2 const& Primitive::getSize() const {
   return mSize;
+}
+
+wp::Vector2 Primitive::transformLocalPointToWorld(
+    wp::Vector2 const& point) const {
+  // Primitive geometry's canonical authored scale is two units across and the
+  // transformer's neutral scale is one half; this conversion makes one local
+  // World-plane unit remain one World unit before animated scaling.
+  return transformVertex(point * 2.0f, nullptr);
 }
 
 void Primitive::setProperties(PrimitivePropertySet const& properties) {

@@ -454,8 +454,10 @@ void outlinesUseTheRenderersReflectedGroundPlane() {
 void slopedSurfacesPickAndOutlineTheirEvaluatedGeometry() {
   auto room = makeRoomSpanning(0.0f, 0.0f, 10.0f, 10.0f);
   auto properties = room->getProperties();
-  properties.floorZ = bw::core::Elevation{0.0f, {0.0f, 0.5f}};
-  properties.ceilingZ = bw::core::Elevation{20.0f, {0.0f, -0.25f}};
+  // This authored Primitive is centred at (5, 5), so these local bases retain
+  // the generated world planes z=.5y and z=20-.25y used by the fixture.
+  properties.floorZ = bw::core::Elevation{2.5f, {0.0f, 0.5f}};
+  properties.ceilingZ = bw::core::Elevation{18.75f, {0.0f, -0.25f}};
   room->setProperties(properties);
   auto data = buildData({room.get()});
 
@@ -472,10 +474,14 @@ void slopedSurfacesPickAndOutlineTheirEvaluatedGeometry() {
 
   auto floorOutline = editor::previewSurfaceOutline(*data, floor);
   require(!floorOutline.empty(), "the sloped floor produced no outline");
+  auto const& generatedProperties = data->getArrangement().palette[1];
   for (auto const& point : floorOutline) {
     auto authoredY = -point[2];
-    require(near(point[1], properties.floorZ.evaluate({point[0], authoredY})),
-            "the floor outline did not follow its Elevation plane");
+    require(
+        near(
+            point[1],
+            generatedProperties.floorZ.evaluate({point[0], authoredY})),
+        "the floor outline did not follow its Elevation plane");
   }
 
   auto lowWall = editor::pickPreviewSceneSurface(

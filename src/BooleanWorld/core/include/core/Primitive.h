@@ -224,6 +224,12 @@ public:
 
   wp::Vector2 const& getSize() const;
 
+  // Applies the same live affine transform used by authored geometry. The
+  // input is in the Primitive-origin local World plane (authored size is a
+  // shape parameter, not a coordinate-unit conversion).
+  [[nodiscard]] wp::Vector2 transformLocalPointToWorld(
+      wp::Vector2 const& point) const;
+
   void setProperties(PrimitivePropertySet const& properties);
 
   PrimitivePropertySet const& getProperties() const;

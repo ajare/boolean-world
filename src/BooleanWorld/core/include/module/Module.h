@@ -18,12 +18,15 @@ int mod_create_rectangle_polygon(uint32_t operation, uint32_t fillType, float xy
 
 int mod_create_torus_polygon(uint32_t operation, uint32_t fillType, float thickness, float resolution, uint32_t materialIndex);
 
-
 int mod_set_primitive_priority(uint8_t priority);
 
 int mod_set_primitive_floor_z(float z);
 
+int mod_set_primitive_floor_elevation(float base, float gradientX, float gradientY);
+
 int mod_set_primitive_ceiling_z(float z);
+
+int mod_set_primitive_ceiling_elevation(float base, float gradientX, float gradientY);
 
 int mod_set_primitive_flags(uint32_t flags);
 

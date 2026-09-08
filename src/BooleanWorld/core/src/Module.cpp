@@ -206,6 +206,20 @@ int mod_set_primitive_floor_z(float z) {
   });
 }
 
+int mod_set_primitive_floor_elevation(
+    float base, float gradientX, float gradientY) {
+  return InvokeApi([&]() {
+    if (!HasCurrentPrimitive() || !IsFinite(base) || !IsFinite(gradientX) ||
+        !IsFinite(gradientY)) {
+      return 1;
+    }
+    auto properties = gPrimitive->getProperties();
+    properties.floorZ = Elevation{base, {gradientX, gradientY}};
+    gPrimitive->setProperties(properties);
+    return 0;
+  });
+}
+
 int mod_set_primitive_ceiling_z(float z) {
   return InvokeApi([&]() {
     if (!HasCurrentPrimitive() || !IsFinite(z)) {
@@ -213,6 +227,20 @@ int mod_set_primitive_ceiling_z(float z) {
     }
     auto properties = gPrimitive->getProperties();
     properties.ceilingZ = z;
+    gPrimitive->setProperties(properties);
+    return 0;
+  });
+}
+
+int mod_set_primitive_ceiling_elevation(
+    float base, float gradientX, float gradientY) {
+  return InvokeApi([&]() {
+    if (!HasCurrentPrimitive() || !IsFinite(base) || !IsFinite(gradientX) ||
+        !IsFinite(gradientY)) {
+      return 1;
+    }
+    auto properties = gPrimitive->getProperties();
+    properties.ceilingZ = Elevation{base, {gradientX, gradientY}};
     gPrimitive->setProperties(properties);
     return 0;
   });

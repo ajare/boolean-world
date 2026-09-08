@@ -12,12 +12,12 @@ bool PrimitivePropertySet::childrenModified() const {
 void PrimitivePropertySet::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) const {
   serializer->beginMap("primitivePropertySet");
   {
-    // Heights
-    // Preserve the existing scalar wire format. Authored nonzero gradients
-    // are introduced by the later slope-authoring ticket; legacy values are
-    // the base elevations of horizontal planes.
+    // Elevation planes. Keep the historical scalar names for their base
+    // elevations so keyed legacy Worlds load as horizontal planes.
     serializer->writeFloat("floorZ", floorZ.baseElevation);
+    serializer->writeVector2("floorGradient", floorZ.gradient);
     serializer->writeFloat("ceilingZ", ceilingZ.baseElevation);
+    serializer->writeVector2("ceilingGradient", ceilingZ.gradient);
     serializer->writeFloat("liquidLevel", liquidLevel);
     serializer->writeString("liquidType", LiquidTypeName(liquidType));
 
@@ -37,7 +37,7 @@ void PrimitivePropertySet::serializeImpl(shared_ptr<Serializer> serializer, Seri
 }
 
 bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWorkData& workData) {
-  float floorZ_{0}, ceilingZ_{40};
+  Elevation floorZ_{0.0f}, ceilingZ_{40.0f};
   float liquidLevel_{0};
   LiquidType liquidType_{LiquidType::Water};
 
@@ -47,8 +47,12 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
   try {
     serializer->beginMap("primitivePropertySet");
     {
-      floorZ_ = serializer->readFloat("floorZ");
-      ceilingZ_ = serializer->readFloat("ceilingZ");
+      floorZ_.baseElevation = serializer->readFloat("floorZ");
+      floorZ_.gradient = serializer->readVector2(
+          "floorGradient", !serializer->isPositional(), wp::Vector2::ZERO);
+      ceilingZ_.baseElevation = serializer->readFloat("ceilingZ");
+      ceilingZ_.gradient = serializer->readVector2(
+          "ceilingGradient", !serializer->isPositional(), wp::Vector2::ZERO);
       liquidLevel_ = serializer->readFloat("liquidLevel", true, 0.0f);
       liquidType_ = LiquidTypeFromName(
           serializer->readString("liquidType", true, "Water"));

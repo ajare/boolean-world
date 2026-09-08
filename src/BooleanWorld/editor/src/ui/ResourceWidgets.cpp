@@ -796,17 +796,31 @@ bool renderPrimitivePropertySet(
   ImGui::SetNextItemWidth(128);
 
   if (editable) {
-    updateProperties |= ImGui::InputFloat("Floor Z", &properties->floorZ.baseElevation, 1, 8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
+    updateProperties |= ImGui::InputFloat("Floor base elevation", &properties->floorZ.baseElevation, 1, 8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SetNextItemWidth(128);
+    updateProperties |= ImGui::InputFloat2(
+        "Floor gradient (X, Y)", &properties->floorZ.gradient.x, "%g",
+        ImGuiInputTextFlags_EnterReturnsTrue);
   } else {
-    ImGui::Text("Floor Z: %2.1f", properties->floorZ.baseElevation);
+    ImGui::Text("Floor base elevation: %2.1f", properties->floorZ.baseElevation);
+    ImGui::Text(
+        "Floor gradient: (%g, %g)", properties->floorZ.gradient.x,
+        properties->floorZ.gradient.y);
   }
 
   ImGui::SetNextItemWidth(128);
 
   if (editable) {
-    updateProperties |= ImGui::InputFloat("Ceiling Z", &properties->ceilingZ.baseElevation, 1, 8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
+    updateProperties |= ImGui::InputFloat("Ceiling base elevation", &properties->ceilingZ.baseElevation, 1, 8, "%2.1f", ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SetNextItemWidth(128);
+    updateProperties |= ImGui::InputFloat2(
+        "Ceiling gradient (X, Y)", &properties->ceilingZ.gradient.x, "%g",
+        ImGuiInputTextFlags_EnterReturnsTrue);
   } else {
-    ImGui::Text("Ceiling Z: %2.1f", properties->ceilingZ.baseElevation);
+    ImGui::Text("Ceiling base elevation: %2.1f", properties->ceilingZ.baseElevation);
+    ImGui::Text(
+        "Ceiling gradient: (%g, %g)", properties->ceilingZ.gradient.x,
+        properties->ceilingZ.gradient.y);
   }
 
   // Liquid level and type are inert on any operation but Union, so they are
@@ -877,6 +891,5 @@ bool renderPrimitivePropertySet(
 
   return updateProperties;
 }
-
 
 }  // namespace editor

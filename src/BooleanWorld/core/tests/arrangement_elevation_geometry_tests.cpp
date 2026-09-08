@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <core/Arrangement.h>
+#include <core/CoreException.h>
 #include <core/Elevation.h>
 
 namespace {
@@ -157,6 +158,48 @@ void wallsEvaluateBothBoundariesAtBothEdgeEndpoints() {
   requireEndpoints(*ceilingStep, false);
 }
 
+void generatedRegionsRejectCrossedPlanesButPermitEquality() {
+  PrimitivePropertySet crossed;
+  crossed.floorZ = Elevation{0.0f, {1.0f, 0.0f}};
+  crossed.ceilingZ = 5.0f;
+
+  bool rejected = false;
+  try {
+    (void)bw::core::arr::BuildArrangement(
+        {primitive(rectangle(0, 0, 10000, 10000), 0, crossed)});
+  } catch (bw::core::CoreException const& error) {
+    auto const message = std::string(error.what());
+    rejected = message.find("floor elevation exceeds ceiling elevation") !=
+               std::string::npos;
+  }
+  require(rejected, "a region whose sloped floor crossed its ceiling was not clearly rejected");
+
+  PrimitivePropertySet touching;
+  touching.floorZ = Elevation{0.0f, {0.5f, 0.0f}};
+  touching.ceilingZ = 5.0f;
+  auto arrangement = bw::core::arr::BuildArrangement(
+      {primitive(rectangle(0, 0, 10000, 10000), 0, touching)});
+  require(arrangement->faces.size() == 2 && arrangement->faces[1].solid,
+          "zero clearance at a boundary vertex was rejected");
+}
+
+void nonzeroLiquidWithSlopedGeneratedSurfacesFailsClearly() {
+  PrimitivePropertySet properties;
+  properties.floorZ = Elevation{0.0f, {0.1f, 0.0f}};
+  properties.ceilingZ = 20.0f;
+  properties.liquidLevel = 1.0f;
+
+  bool rejected = false;
+  try {
+    (void)bw::core::arr::BuildArrangement(
+        {primitive(rectangle(0, 0, 10000, 10000), 0, properties)});
+  } catch (bw::core::CoreException const& error) {
+    auto const message = std::string(error.what());
+    rejected = message.find("cannot settle nonzero Liquid") != std::string::npos;
+  }
+  require(rejected, "Liquid on a sloped surface did not fail clearly");
+}
+
 void elevationCrossingsDoNotAlterExactArrangementTopology() {
   PrimitivePropertySet flat;
   flat.floorZ = 0.0f;
@@ -225,6 +268,8 @@ int main() {
   try {
     trianglesEvaluateTheirOwningElevationPlanes();
     wallsEvaluateBothBoundariesAtBothEdgeEndpoints();
+    generatedRegionsRejectCrossedPlanesButPermitEquality();
+    nonzeroLiquidWithSlopedGeneratedSurfacesFailsClearly();
     elevationCrossingsDoNotAlterExactArrangementTopology();
     std::cout << "Arrangement surface geometry evaluates Elevation planes without changing topology\n";
     return 0;

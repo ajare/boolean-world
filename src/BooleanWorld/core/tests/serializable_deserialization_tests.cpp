@@ -110,8 +110,37 @@ void propertySetRoundTripsSurfaceResourceIds() {
           "horizontal Elevation planes did not retain the scalar wire format");
 }
 
+void propertySetRoundTripsSlopedElevations() {
+  bw::core::PrimitivePropertySet original;
+  original.floorZ = bw::core::Elevation{-3.0f, {0.25f, -0.5f}};
+  original.ceilingZ = bw::core::Elevation{72.0f, {-0.125f, 0.75f}};
+
+  bw::core::SerializationWorkData writeWorkData;
+  auto writer = std::shared_ptr<bw::core::Serializer>(
+      bw::core::YamlSerializer::toString());
+  original.serialize(writer, writeWorkData);
+  auto yaml = static_cast<bw::core::YamlSerializer*>(writer.get())
+                  ->getSerializedString();
+
+  auto reader = std::shared_ptr<bw::core::Serializer>(
+      bw::core::YamlSerializer::fromString(yaml));
+  reader->deserialize();
+  bw::core::PrimitivePropertySet copy;
+  bw::core::SerializationWorkData readWorkData;
+  require(copy.deserialize(reader, readWorkData) &&
+              copy.floorZ == original.floorZ &&
+              copy.ceilingZ == original.ceilingZ,
+          "sloped Elevation planes did not round-trip through YAML");
+  require(yaml.find("floorGradient: [0.25, -0.5]") != std::string::npos &&
+              yaml.find("ceilingGradient: [-0.125, 0.75]") !=
+                  std::string::npos,
+          "Elevation gradients were not explicit in YAML");
+}
+
 void propertySetRoundTripsEmbossPresetIdsInBinary() {
   bw::core::PrimitivePropertySet original;
+  original.floorZ = bw::core::Elevation{4.0f, {0.5f, -0.25f}};
+  original.ceilingZ = bw::core::Elevation{60.0f, {-0.75f, 0.125f}};
   original.floorEmbossPresetId = "floor_relief";
   original.ceilingEmbossPresetId = "";
   original.wallEmbossPresetId = "wall_relief";
@@ -129,10 +158,12 @@ void propertySetRoundTripsEmbossPresetIdsInBinary() {
   bw::core::PrimitivePropertySet copy;
   bw::core::SerializationWorkData readWorkData;
   require(copy.deserialize(reader, readWorkData) &&
+              copy.floorZ == original.floorZ &&
+              copy.ceilingZ == original.ceilingZ &&
               copy.floorEmbossPresetId == "floor_relief" &&
               copy.ceilingEmbossPresetId.empty() &&
               copy.wallEmbossPresetId == "wall_relief",
-          "per-surface Emboss-preset ids did not round-trip in binary data");
+          "Elevation planes and Emboss-preset ids did not round-trip in binary data");
 }
 
 void propertySetRejectsLegacyShapeWithoutEmbossPresetIds() {
@@ -155,6 +186,7 @@ int main() {
     successfulDeserializationLeavesObjectUnmodified();
     failedDeserializationReturnsFailureIndependentlyOfModifiedState();
     propertySetRoundTripsSurfaceResourceIds();
+    propertySetRoundTripsSlopedElevations();
     propertySetRoundTripsEmbossPresetIdsInBinary();
     propertySetRejectsLegacyShapeWithoutEmbossPresetIds();
     std::cout << "Serializable deserialization coverage passed\n";

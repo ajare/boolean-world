@@ -50,8 +50,18 @@ COREDLL_API int set_primitive_floor_z(float z) {
   return mod_set_primitive_floor_z(z);
 }
 
+COREDLL_API int set_primitive_floor_elevation(
+    float base, float gradientX, float gradientY) {
+  return mod_set_primitive_floor_elevation(base, gradientX, gradientY);
+}
+
 COREDLL_API int set_primitive_ceiling_z(float z) {
   return mod_set_primitive_ceiling_z(z);
+}
+
+COREDLL_API int set_primitive_ceiling_elevation(
+    float base, float gradientX, float gradientY) {
+  return mod_set_primitive_ceiling_elevation(base, gradientX, gradientY);
 }
 
 COREDLL_API int set_primitive_flags(uint32_t flags) {

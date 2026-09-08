@@ -87,6 +87,25 @@ Primitive::Operation operationFromName(string const& name) {
   throw CoreException(format("'{}' is not a Primitive operation", name));
 }
 
+void setElevation(
+    Primitive& primitive, bool floor, float base, float gradientX,
+    float gradientY) {
+  if (!isfinite(base) || !isfinite(gradientX) || !isfinite(gradientY)) {
+    throw CoreException("Elevation plane values must be finite");
+  }
+  auto properties = primitive.getProperties();
+  auto& elevation = floor ? properties.floorZ : properties.ceilingZ;
+  elevation = Elevation{base, {gradientX, gradientY}};
+  primitive.setProperties(properties);
+}
+
+tuple<float, float, float> getElevation(
+    Primitive const& primitive, bool floor) {
+  auto const& properties = primitive.getProperties();
+  auto const& elevation = floor ? properties.floorZ : properties.ceilingZ;
+  return {elevation.baseElevation, elevation.gradient.x, elevation.gradient.y};
+}
+
 set<string> prefabTagsFromTable(sol::table const& values) {
   auto const size = values.size();
   vector<bool> present(size, false);
@@ -739,7 +758,20 @@ void bindScriptTypes(sol::state& lua) {
       "get_operation",
       [](Primitive const& primitive) {
         return operationName(primitive.getOperation());
-      });
+      },
+
+      "set_floor_elevation",
+      [](Primitive& primitive, float base, float gradientX, float gradientY) {
+        setElevation(primitive, true, base, gradientX, gradientY);
+      },
+      "get_floor_elevation",
+      [](Primitive const& primitive) { return getElevation(primitive, true); },
+      "set_ceiling_elevation",
+      [](Primitive& primitive, float base, float gradientX, float gradientY) {
+        setElevation(primitive, false, base, gradientX, gradientY);
+      },
+      "get_ceiling_elevation",
+      [](Primitive const& primitive) { return getElevation(primitive, false); });
 
   lua.new_usertype<ScriptMeshPrimitive>(
       "MeshPrimitive", sol::no_constructor,
@@ -870,6 +902,25 @@ void bindScriptTypes(sol::state& lua) {
         return operationName(mesh.getPrimitive()->getOperation());
       },
 
+      "set_floor_elevation",
+      [](ScriptMeshPrimitive& mesh, float base, float gradientX,
+         float gradientY) {
+        setElevation(*mesh.getPrimitive(), true, base, gradientX, gradientY);
+      },
+      "get_floor_elevation",
+      [](ScriptMeshPrimitive const& mesh) {
+        return getElevation(*mesh.getPrimitive(), true);
+      },
+      "set_ceiling_elevation",
+      [](ScriptMeshPrimitive& mesh, float base, float gradientX,
+         float gradientY) {
+        setElevation(*mesh.getPrimitive(), false, base, gradientX, gradientY);
+      },
+      "get_ceiling_elevation",
+      [](ScriptMeshPrimitive const& mesh) {
+        return getElevation(*mesh.getPrimitive(), false);
+      },
+
       "split_edge",
       sol::overload(
           [](ScriptMeshPrimitive& mesh, uint32_t edgeId) {
@@ -953,6 +1004,15 @@ void bindScriptTypes(sol::state& lua) {
       "get_operation",
       [](PrimitiveView const& view) {
         return operationName(view.primitive->getOperation());
+      },
+
+      "get_floor_elevation",
+      [](PrimitiveView const& view) {
+        return getElevation(*view.primitive, true);
+      },
+      "get_ceiling_elevation",
+      [](PrimitiveView const& view) {
+        return getElevation(*view.primitive, false);
       });
 
   lua.new_usertype<RunScriptContext>(

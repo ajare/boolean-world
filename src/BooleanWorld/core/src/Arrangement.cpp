@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <format>
 #include <stdexcept>
 #include <tuple>
 #include <unordered_map>
@@ -18,6 +19,7 @@
 #include <mapbox/earcut.hpp>
 
 #include <core/Arrangement.h>
+#include <core/CoreException.h>
 #include <willpower/common/AccelerationGrid.h>
 #include <willpower/common/BoundingBox.h>
 #include <willpower/common/Timer.h>
@@ -1325,6 +1327,53 @@ ArrangementResultPtr BuildArrangement(
                              edge.visibleOverride,
                              edge.normalMapOverride,
                              edge.wallMaskOverride});
+  }
+
+  // A floor-minus-ceiling difference is affine, so its maximum over a
+  // polygonal face occurs at one of the outer or hole boundary vertices.
+  // Validate the generated regions, after property ownership has been folded,
+  // without introducing elevation-only points into Arrangement topology.
+  for (uint32_t faceIndex = 1; faceIndex < result->faces.size(); ++faceIndex) {
+    auto const& face = result->faces[faceIndex];
+    if (!face.solid) {
+      continue;
+    }
+    auto const& properties = result->palette[face.paletteIndex];
+    auto validateBoundary = [&](vector<uint32_t> const& vertices) {
+      for (auto vertexIndex : vertices) {
+        auto const& fixed = result->vertices[vertexIndex];
+        wp::Vector2 const position{
+            ToWorldCoordinate(fixed.x), ToWorldCoordinate(fixed.y)};
+        if (properties.floorZ.evaluate(position) >
+            properties.ceilingZ.evaluate(position)) {
+          throw CoreException(format(
+              "Generation rejected solid region {}: floor elevation exceeds ceiling elevation at ({}, {})",
+              faceIndex, position.x, position.y));
+        }
+      }
+    };
+    validateBoundary(face.outerBoundaryVertices);
+    for (auto const& boundary : face.innerBoundaryVertices) {
+      validateBoundary(boundary);
+    }
+  }
+
+  auto const hasLiquidSeed = ranges::any_of(primitives, [](auto const& primitive) {
+    return primitive.operation == Primitive::Operation::Union &&
+           primitive.properties.liquidLevel != 0.0f;
+  });
+  if (hasLiquidSeed) {
+    auto const hasSlopedRegion = ranges::any_of(
+        result->faces.begin() + 1, result->faces.end(), [&](auto const& face) {
+          if (!face.solid) return false;
+          auto const& properties = result->palette[face.paletteIndex];
+          return properties.floorZ.gradient != wp::Vector2::ZERO ||
+                 properties.ceilingZ.gradient != wp::Vector2::ZERO;
+        });
+    if (hasSlopedRegion) {
+      throw CoreException(
+          "Generation cannot settle nonzero Liquid in a World containing a sloped floor or ceiling");
+    }
   }
 
   if (stats != nullptr) {

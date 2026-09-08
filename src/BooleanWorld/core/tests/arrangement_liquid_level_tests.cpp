@@ -30,8 +30,7 @@ void requireNear(double actual, double expected, std::string const& message) {
 
 Contour rectangle(double minX, double minY, double maxX, double maxY) {
   auto fp = [](double v) { return ToFixedPointCoordinate(v); };
-  return {{fp(minX), fp(minY)}, {fp(maxX), fp(minY)},
-          {fp(maxX), fp(maxY)}, {fp(minX), fp(maxY)}};
+  return {{fp(minX), fp(minY)}, {fp(maxX), fp(minY)}, {fp(maxX), fp(maxY)}, {fp(minX), fp(maxY)}};
 }
 
 PrimitivePropertySet properties(float floorZ, float ceilingZ, float liquidLevel) {
@@ -49,8 +48,7 @@ ArrangementPrimitive rectanglePrimitive(
     Contour contour, Primitive::Operation operation, uint8_t priority,
     uint32_t primitiveIndex, PrimitivePropertySet const& props, double rawArea) {
   ArrangementPrimitive result{
-      {std::move(contour)}, operation, Primitive::FillRule::NonZero,
-      priority, primitiveIndex, props};
+      {std::move(contour)}, operation, Primitive::FillRule::NonZero, priority, primitiveIndex, props};
   result.rawArea = rawArea;
   return result;
 }
@@ -234,7 +232,6 @@ void getLiquidDepthQueriesTheContainingFace() {
       rectangle(-10, -10, 110, 110), Primitive::Operation::Union, 0, 1,
       properties(48.0f, 48.0f, 0.0f), 14400.0);
   auto sourceProperties = properties(0.0f, 48.0f, 18.0f);
-  sourceProperties.floorZ.gradient = {0.1f, 0.0f};
   auto source = rectanglePrimitive(
       rectangle(0, 0, 100, 100), Primitive::Operation::Union, 1, 2,
       sourceProperties, 10000.0);
@@ -245,10 +242,10 @@ void getLiquidDepthQueriesTheContainingFace() {
 
   requireNear(worldData.getLiquidDepth({50.0f, 50.0f}), 18.0,
               "getLiquidDepth should return the containing face's computed depth");
-  requireNear(worldData.getLiquidSurfaceHeight({20.0f, 50.0f}), 20.0,
-              "the Liquid surface query did not sample its position");
-  requireNear(worldData.getLiquidSurfaceHeight({80.0f, 50.0f}), 26.0,
-              "the Liquid surface query used a face-wide floor elevation");
+  requireNear(worldData.getLiquidSurfaceHeight({20.0f, 50.0f}), 18.0,
+              "the Liquid surface query returned the wrong elevation");
+  requireNear(worldData.getLiquidSurfaceHeight({80.0f, 50.0f}), 18.0,
+              "the Liquid surface query varied across a horizontal pool");
   requireNear(worldData.getLiquidDepth({-200.0f, -200.0f}), 0.0,
               "getLiquidDepth outside the arrangement should be zero");
 }

@@ -1,10 +1,13 @@
 #include "core/ArrangementWorldDataGenerator.h"
 
 #include <algorithm>
+#include <cmath>
+#include <format>
 #include <map>
 #include <stdexcept>
 #include <utility>
 
+#include "core/CoreException.h"
 #include "core/Defines.h"
 #include "core/MeshPrimitive.h"
 #include "core/Primitive.h"
@@ -22,6 +25,32 @@ EdgeKey MakeEdgeKey(arr::FixedPointVertex const& a, arr::FixedPointVertex const&
   FixedPointVertexKey ka{a.x, a.y};
   FixedPointVertexKey kb{b.x, b.y};
   return ka <= kb ? EdgeKey{ka, kb} : EdgeKey{kb, ka};
+}
+
+Elevation TransformElevationToWorld(
+    Primitive const& primitive, Elevation const& local) {
+  if (local.gradient == wp::Vector2::ZERO) {
+    return local;
+  }
+
+  auto const anchor = primitive.transformLocalPointToWorld({0.0f, 0.0f});
+  auto const xAxis =
+      primitive.transformLocalPointToWorld({1.0f, 0.0f}) - anchor;
+  auto const yAxis =
+      primitive.transformLocalPointToWorld({0.0f, 1.0f}) - anchor;
+  auto const determinant = xAxis.x * yAxis.y - yAxis.x * xAxis.y;
+  if (!std::isfinite(determinant) || determinant == 0.0f) {
+    throw CoreException(std::format(
+        "Primitive {} has a nonzero Elevation gradient but a singular local transform",
+        primitive.getId()));
+  }
+
+  wp::Vector2 const worldGradient{
+      (yAxis.y * local.gradient.x - xAxis.y * local.gradient.y) /
+          determinant,
+      (-yAxis.x * local.gradient.x + xAxis.x * local.gradient.y) /
+          determinant};
+  return {local.baseElevation - worldGradient.dot(anchor), worldGradient};
 }
 }  // namespace
 
@@ -143,7 +172,10 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
   for (size_t index = 0; index < primitives.size(); ++index) {
     auto* primitive = primitives[index];
     auto contours = ConvertPrimitiveToContours(*primitive);
-    auto const properties = primitive->getProperties();
+    auto properties = primitive->getProperties();
+    properties.floorZ = TransformElevationToWorld(*primitive, properties.floorZ);
+    properties.ceilingZ =
+        TransformElevationToWorld(*primitive, properties.ceilingZ);
     auto const chipParameters = chipParametersResolver
                                     ? chipParametersResolver(properties.wallMaterialId)
                                     : ChipGenerationParameters{};

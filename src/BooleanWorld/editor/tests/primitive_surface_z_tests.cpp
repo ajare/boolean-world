@@ -97,6 +97,38 @@ void wallsHaveNoHeightToMove() {
       "nudging a wall moved the Primitive's floor or ceiling");
 }
 
+void aGradientEditIsUndoable() {
+  editor::clearUndoHistory();
+  editor::Document document;
+  document.newDoc();
+  auto index = document.getWorld()->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f));
+  auto* primitive = document.getWorld()->getPrimitive(index);
+
+  auto changed = primitive->getProperties();
+  changed.floorZ.gradient = {0.25f, -0.5f};
+  changed.ceilingZ.gradient = {-0.125f, 0.75f};
+  editor::transactUndoableAction(
+      &document, "Edit Elevation gradients",
+      [primitive, &changed](editor::Document* doc) {
+        return editor::setPrimitiveProperties(doc, primitive, changed);
+      });
+  require(primitive->getProperties().floorZ.gradient == wp::Vector2{0.25f, -0.5f} &&
+              primitive->getProperties().ceilingZ.gradient ==
+                  wp::Vector2{-0.125f, 0.75f},
+          "the gradient edit did not reach the Primitive");
+
+  editor::undo(&document);
+  require(document.getWorld()->getPrimitive(index)->getProperties().floorZ.gradient ==
+              wp::Vector2::ZERO,
+          "undo did not restore the floor gradient");
+  editor::redo(&document);
+  require(document.getWorld()->getPrimitive(index)->getProperties().ceilingZ.gradient ==
+              wp::Vector2{-0.125f, 0.75f},
+          "redo did not restore the ceiling gradient");
+}
+
 void theMoveIsUndoable() {
   editor::clearUndoHistory();
   editor::Document document;
@@ -138,6 +170,7 @@ int main() {
     aNudgeMovesOneSurfaceByItsOwnStep();
     neitherSurfacePassesTheOther();
     wallsHaveNoHeightToMove();
+    aGradientEditIsUndoable();
     theMoveIsUndoable();
     std::cout << "Primitive surface Z tests passed\n";
     return 0;

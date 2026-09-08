@@ -48,8 +48,8 @@ void generatedWorldDataSamplesElevationPlanesAtTheRequestedPosition() {
   auto* primitive = makeRectangle(
       Primitive::Operation::Union, 0.0f, 0.0f, 10.0f, 10.0f, 3.0f, 20.0f);
   auto properties = primitive->getProperties();
-  properties.floorZ.gradient = {2.0f, -1.0f};
-  properties.ceilingZ.gradient = {0.0f, 0.5f};
+  properties.floorZ.gradient = {0.5f, -0.25f};
+  properties.ceilingZ.gradient = {0.0f, 0.125f};
   primitive->setProperties(properties);
   world.addPrimitive(primitive);
 
@@ -60,12 +60,12 @@ void generatedWorldDataSamplesElevationPlanesAtTheRequestedPosition() {
 
   auto sample = worldData.getSurfaceSample({2.0f, 4.0f});
   require(sample.has_value(), "a solid face did not produce a surface sample");
-  require(std::abs(sample->floorElevation - 3.0f) < 0.0001f &&
-              std::abs(sample->ceilingElevation - 22.0f) < 0.0001f,
+  require(std::abs(sample->floorElevation - 1.75f) < 0.0001f &&
+              std::abs(sample->ceilingElevation - 19.875f) < 0.0001f,
           "the surface sample did not evaluate both Elevation planes locally");
-  auto normalLength = std::sqrt(6.0f);
-  require(std::abs(sample->floorNormal[0] + 2.0f / normalLength) < 0.0001f &&
-              std::abs(sample->floorNormal[1] - 1.0f / normalLength) < 0.0001f &&
+  auto normalLength = std::sqrt(1.3125f);
+  require(std::abs(sample->floorNormal[0] + 0.5f / normalLength) < 0.0001f &&
+              std::abs(sample->floorNormal[1] - 0.25f / normalLength) < 0.0001f &&
               std::abs(sample->floorNormal[2] - 1.0f / normalLength) < 0.0001f &&
               sample->ceilingNormal[2] < 0.0f,
           "the surface sample did not expose outward plane normals");
