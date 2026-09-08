@@ -674,6 +674,28 @@ void historyDoesNotCopyUndoOrRedoWorldSnapshots() {
           "reading history copied an undo or redo world snapshot");
 }
 
+void namedCommandsDriveHistoryMetadata() {
+  require(editor::commandRegistry().size() ==
+              static_cast<size_t>(editor::CommandId::Count),
+          "command registry does not enumerate every command id");
+  require(editor::AddLayer::name() == editor::commandInfo(editor::AddLayer::id).name,
+          "named command and registry labels drifted apart");
+
+  editor::Document document;
+  document.newDoc();
+  auto const layersBefore = document.getWorld()->getNumLayers();
+  editor::transact(&document, editor::AddLayer::id, [&] {
+    editor::AddLayer::execute(document, "Registry layer");
+  });
+
+  auto const history = editor::getActionHistory();
+  require(document.getWorld()->getNumLayers() == layersBefore + 1,
+          "named AddLayer command did not execute its action");
+  require(!history.empty() && history.back().command == editor::AddLayer::id &&
+              editor::commandInfo(history.back().command).name == "Add Layer",
+          "history did not retain the typed command id");
+}
+
 void newDocClearsUndoHistory() {
   editor::Document document;
   document.newDoc();
@@ -817,6 +839,7 @@ int main() {
     copiedDynamicGeneratorRetainsItsWorldAndSettings();
     undoHistoryRetainsConfiguredCapacity();
     historyDoesNotCopyUndoOrRedoWorldSnapshots();
+    namedCommandsDriveHistoryMetadata();
     newDocClearsUndoHistory();
     audioEmitterEditsAreUndoableAndPreserveIdentity();
     aThrowingActionLeavesNoTransactionInProgressOrStrayUndoEntry();

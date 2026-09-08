@@ -54,14 +54,16 @@ struct UndoData {
 };
 
 struct UndoEntry {
-  std::string id;
+  CommandId command{CommandId::Edit};
+  std::string detail;
   UndoData data;
 };
 
 // Internal
 static std::deque<UndoEntry> gUndoStack, gRedoStack;
 static UndoData gTransactionalData;
-static std::string gTransactionalId;
+static CommandId gTransactionalCommand{CommandId::Edit};
+static std::string gTransactionalDetail;
 static float gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
 static wp::Vector2 gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
 static UndoableActionFunction gTransactionalFunc;
@@ -166,38 +168,43 @@ size_t getRedoLevels() {
   return gRedoStack.size();
 }
 
-void beginUndoableAction(Document* doc, string const& id, UndoableActionFunction func, float v) {
-  if (gTransactionalFunc) {
-    commitUndoableAction(doc);
-    //	throw EditorException(format("Tried to begin action '{}' but '{}' was already in a transactional state.", id, gTransactionalId));
-  }
-
-  gTransactionalId = id;
+void beginUndoableAction(Document* doc, CommandId command, UndoableActionFunction func, float v, string detail) {
+  if (gTransactionalFunc) commitUndoableAction(doc);
+  gTransactionalCommand = command;
+  gTransactionalDetail = move(detail);
   gTransactionalData = captureUndoData(doc);
-
   gTransactionalInitialFloatValue = v;
-  gTransactionalFunc = func;
+  gTransactionalFunc = move(func);
 }
 
-void beginUndoableAction(Document* doc, string const& id, UndoableActionFunction func, wp::Vector2 const& v) {
-  if (gTransactionalFunc) {
-    commitUndoableAction(doc);
-    //	throw EditorException(format("Tried to begin action '{}' but '{}' was already in a transactional state.", id, gTransactionalId));
-  }
-
-  gTransactionalId = id;
+void beginUndoableAction(Document* doc, CommandId command, UndoableActionFunction func, wp::Vector2 const& v, string detail) {
+  if (gTransactionalFunc) commitUndoableAction(doc);
+  gTransactionalCommand = command;
+  gTransactionalDetail = move(detail);
   gTransactionalData = captureUndoData(doc);
-
   gTransactionalInitialVectorValue = v;
-  gTransactionalFunc = func;
+  gTransactionalFunc = move(func);
 }
 
-void beginTransaction(Document* doc, string const& id, float v) {
-  beginUndoableAction(doc, id, [](Document*) { return true; }, v);
+void beginTransaction(Document* doc, CommandId command, float v, string detail) {
+  beginUndoableAction(doc, command, [](Document*) { return true; }, v, move(detail));
 }
 
-void beginTransaction(Document* doc, string const& id, wp::Vector2 const& v) {
-  beginUndoableAction(doc, id, [](Document*) { return true; }, v);
+void beginTransaction(Document* doc, CommandId command, wp::Vector2 const& v, string detail) {
+  beginUndoableAction(doc, command, [](Document*) { return true; }, v, move(detail));
+}
+
+void beginUndoableAction(Document* doc, string const& detail, UndoableActionFunction func, float v) {
+  beginUndoableAction(doc, CommandId::Edit, move(func), v, detail);
+}
+void beginUndoableAction(Document* doc, string const& detail, UndoableActionFunction func, wp::Vector2 const& v) {
+  beginUndoableAction(doc, CommandId::Edit, move(func), v, detail);
+}
+void beginTransaction(Document* doc, string const& detail, float v) {
+  beginTransaction(doc, CommandId::Edit, v, detail);
+}
+void beginTransaction(Document* doc, string const& detail, wp::Vector2 const& v) {
+  beginTransaction(doc, CommandId::Edit, v, detail);
 }
 
 bool transactionValueHasChanged(float v) {
@@ -208,17 +215,18 @@ bool transactionValueHasChanged(wp::Vector2 const& v) {
   return !isnan(gTransactionalInitialVectorValue.x) && gTransactionalInitialVectorValue != v;
 }
 
-void commitUndoableAction(Document* doc, string const& id) {
+void commitUndoableAction(Document* doc) {
   gRedoStack.clear();
 
-  UndoEntry data{id != "" ? id : gTransactionalId, gTransactionalData};
+  UndoEntry data{gTransactionalCommand, gTransactionalDetail, gTransactionalData};
   gUndoStack.push_back(data);
   bw::common::trimDequeToCapacity(gUndoStack, MAX_STACK_SIZE);
 
   auto func = gTransactionalFunc;
   auto clearTransactionalState = [] {
     gTransactionalFunc = nullptr;
-    gTransactionalId.clear();
+    gTransactionalCommand = CommandId::Edit;
+    gTransactionalDetail.clear();
     gTransactionalData = {};
     gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
     gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
@@ -257,29 +265,40 @@ void commitUndoableAction(Document* doc, string const& id) {
   regenerateWorldData(doc);
 }
 
-void transact(Document* doc, string const& name, function<void()> const& body) {
-  transactUndoableAction(doc, name, [&](Document*) {
-    body();
-    return true;
-  });
-}
-
-void transactUndoableAction(Document* doc, string const& id, UndoableActionFunction func) {
-  beginUndoableAction(doc, id, func, numeric_limits<float>::quiet_NaN());
+void commitUndoableAction(Document* doc, string const& detail) {
+  gTransactionalDetail = detail;
   commitUndoableAction(doc);
 }
 
+void transact(Document* doc, CommandId command, function<void()> const& body, string detail) {
+  transactUndoableAction(doc, command, [&](Document*) {
+    body();
+    return true;
+  }, move(detail));
+}
+
+void transactUndoableAction(Document* doc, CommandId command, UndoableActionFunction func, string detail) {
+  beginUndoableAction(doc, command, move(func), numeric_limits<float>::quiet_NaN(), move(detail));
+  commitUndoableAction(doc);
+}
+
+void transact(Document* doc, string const& detail, function<void()> const& body) {
+  transact(doc, CommandId::Edit, body, detail);
+}
+void transactUndoableAction(Document* doc, string const& detail, UndoableActionFunction func) {
+  transactUndoableAction(doc, CommandId::Edit, move(func), detail);
+}
+
 bool transactUndoableActionAtomically(
-    Document* doc,
-    string const& id,
-    UndoableActionFunction func) {
+    Document* doc, CommandId command, UndoableActionFunction func,
+    string detail) {
   if (gTransactionalFunc) {
     throw EditorException(
         "Cannot run an atomic action while another undoable action is in progress.");
   }
 
   auto previous = captureUndoData(doc);
-  UndoEntry entry{id, previous};
+  UndoEntry entry{command, move(detail), previous};
   auto restorePrevious = [&]() { restoreUndoData(doc, previous); };
 
   try {
@@ -301,8 +320,14 @@ bool transactUndoableActionAtomically(
   }
 }
 
+bool transactUndoableActionAtomically(
+    Document* doc, string const& detail, UndoableActionFunction func) {
+  return transactUndoableActionAtomically(doc, CommandId::Edit, move(func), detail);
+}
+
 void abandonUndoableAction(Document* doc) {
-  gTransactionalId.clear();
+  gTransactionalCommand = CommandId::Edit;
+  gTransactionalDetail.clear();
 
   gTransactionalData = {};
   gTransactionalData.docModified = doc->isModified();
@@ -321,7 +346,8 @@ void cancelUndoableAction(Document* doc) {
   // about this action should still be in progress while that runs.
   auto data = move(gTransactionalData);
   gTransactionalFunc = nullptr;
-  gTransactionalId.clear();
+  gTransactionalCommand = CommandId::Edit;
+  gTransactionalDetail.clear();
   gTransactionalData = {};
   gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
   gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
@@ -340,7 +366,8 @@ void clearUndoHistory() {
   gRedoStack.clear();
 
   gTransactionalFunc = nullptr;
-  gTransactionalId.clear();
+  gTransactionalCommand = CommandId::Edit;
+  gTransactionalDetail.clear();
   gTransactionalData = {};
   gTransactionalInitialFloatValue = numeric_limits<float>::quiet_NaN();
   gTransactionalInitialVectorValue = {numeric_limits<float>::quiet_NaN(), numeric_limits<float>::quiet_NaN()};
@@ -357,9 +384,10 @@ void undo(Document* doc, int count) {
 
   for (int i = 0; i < count && canUndo(); ++i) {
     auto& oldEntry = gUndoStack.back();
-    auto id = oldEntry.id;
+    auto command = oldEntry.command;
+    auto detail = move(oldEntry.detail);
 
-    gRedoStack.push_back({move(id), move(data)});
+    gRedoStack.push_back({command, move(detail), move(data)});
     data = move(oldEntry.data);
     gUndoStack.pop_back();
     restored = true;
@@ -383,9 +411,10 @@ void redo(Document* doc, int count) {
 
   for (int i = 0; i < count && canRedo(); ++i) {
     auto& oldEntry = gRedoStack.back();
-    auto id = oldEntry.id;
+    auto command = oldEntry.command;
+    auto detail = move(oldEntry.detail);
 
-    gUndoStack.push_back({move(id), move(data)});
+    gUndoStack.push_back({command, move(detail), move(data)});
     data = move(oldEntry.data);
     gRedoStack.pop_back();
     restored = true;
@@ -402,12 +431,12 @@ vector<HistoryItem> getActionHistory() {
   vector<HistoryItem> entries;
 
   for (auto const& item : gUndoStack) {
-    entries.push_back({item.id, true});
+    entries.push_back({item.command, item.detail, true});
   }
 
   ranges::reverse_view redoStackRev{gRedoStack};
   for (auto const& item : redoStackRev) {
-    entries.push_back({item.id, false});
+    entries.push_back({item.command, item.detail, false});
   }
 
   return entries;

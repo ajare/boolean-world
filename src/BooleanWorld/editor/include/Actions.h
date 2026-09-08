@@ -8,6 +8,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include <utility>
 
 #include <core/DefinePrefabs.h>
 #include <core/Emboss.h>
@@ -15,6 +16,7 @@
 
 #include "Undo.h"
 #include "Document.h"
+#include "Commands.h"
 
 namespace bw::core {
 class RunScript;
@@ -509,5 +511,21 @@ bool setTransformFnMultiplier(Document* doc, bw::core::Primitive* primitive, bw:
 bool setTransformTriggerLine(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, uint32_t indexIndex, uint32_t index);
 
 bool setTransformOperation(Document* doc, bw::core::Primitive* primitive, bw::core::VertexTransformer::Key key, uint32_t transformIndex, bw::core::tTransform::Operation operation);
+
+// Named command façade over the implementation functions above. Command
+// metadata and the complete list live in Commands.h; these small value types
+// make actions discoverable and callable without repeating a history label at
+// each call site.
+#define EDITOR_DECLARE_COMMAND(type, label, function)                         \
+  struct type {                                                               \
+    static constexpr CommandId id = CommandId::type;                          \
+    static constexpr char const* name() { return label; }                     \
+    template <typename... Args>                                               \
+    static decltype(auto) execute(Document& doc, Args&&... args) {            \
+      return function(&doc, std::forward<Args>(args)...);                     \
+    }                                                                         \
+  };
+EDITOR_ACTION_COMMANDS(EDITOR_DECLARE_COMMAND)
+#undef EDITOR_DECLARE_COMMAND
 
 }  // namespace editor

@@ -237,7 +237,7 @@ bool renderSubMaterialPicker(
         auto const id = pickerState.pendingId;
         if (id != *subMaterialId) {
           *subMaterialId = id;
-          transact(doc, format("Set {} Sub-material", label), [&] {
+          transact(doc, CommandId::SetPrimitiveSubMaterial, [&] {
             setPrimitiveSubMaterial(doc, primitive, surface, id);
           });
         }
@@ -279,7 +279,7 @@ bool renderSubMaterialPicker(
     state.deletionReport = subMaterialDeletionBlockedReason(doc, id);
     if (state.deletionReport.empty()) {
       transactUndoableActionAtomically(
-          doc, "Delete Sub-material", [id](Document* doc) {
+          doc, CommandId::DeleteSubMaterial, [id](Document* doc) {
             return deleteSubMaterial(doc, &procMaterialLibrary(), id);
           });
       if (*subMaterialId == id) subMaterialId->clear();
@@ -302,7 +302,7 @@ bool renderSubMaterialPicker(
       auto materialIndex = state.materialIndex;
       string createdId;
       transactUndoableActionAtomically(
-          doc, "Create Sub-material", [&](Document* doc) {
+          doc, CommandId::CreateSubMaterial, [&](Document* doc) {
             if (!createSubMaterial(doc, &procMaterialLibrary(), resourceName,
                                    name, materialIndex, params, colour, chip,
                                    &createdId)) {
@@ -328,7 +328,7 @@ bool renderSubMaterialPicker(
       auto colour = state.colour;
       auto chip = state.chip;
       transactUndoableActionAtomically(
-          doc, "Edit Sub-material", [&](Document* doc) {
+          doc, CommandId::EditSubMaterial, [&](Document* doc) {
             renameSubMaterial(doc, &procMaterialLibrary(), id, name);
             return editSubMaterial(
                 doc, &procMaterialLibrary(), id, params, colour, chip);
@@ -720,7 +720,7 @@ void renderEmbossPresetPanel(
           format("Preset##{}", label).c_str(), &selected, items.c_str(), 8)) {
     auto id = selected == 0 ? string{} : presets[selected - 1].id;
     *presetId = id;
-    transact(doc, format("Set {} Emboss preset", label), [&] {
+    transact(doc, CommandId::SetPrimitiveEmbossPreset, [&] {
       setPrimitiveEmbossPreset(
           doc, primitive, surface, id);
     });
@@ -742,7 +742,7 @@ void renderEmbossPresetPanel(
     auto name = string(state.name);
     auto emboss = state.emboss;
     if (transactUndoableActionAtomically(
-            doc, "Save Emboss preset", [&](Document* doc) {
+            doc, CommandId::EditEmbossPreset, [&](Document* doc) {
               renameEmbossPreset(
                   doc, &embossingCatalogLibrary(), id, name);
               return editEmbossPreset(
@@ -759,7 +759,7 @@ void renderEmbossPresetPanel(
     auto emboss = state.emboss;
     string createdId;
     if (transactUndoableActionAtomically(
-            doc, "Save new Emboss preset", [&](Document* doc) {
+            doc, CommandId::CreateEmbossPreset, [&](Document* doc) {
               if (!createEmbossPreset(
                       doc, &embossingCatalogLibrary(), name, emboss,
                       &createdId)) {

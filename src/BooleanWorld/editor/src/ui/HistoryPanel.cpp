@@ -49,7 +49,8 @@ void renderHistoryView(ViewContext& context) {
     }
 
     ImGui::SameLine();
-    ImGui::TextUnformatted(item.id.c_str());
+    auto const& command = commandInfo(item.command);
+    ImGui::TextUnformatted(command.name.data(), command.name.data() + command.name.size());
 
     ImGui::PopID();
   }

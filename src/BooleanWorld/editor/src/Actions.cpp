@@ -564,8 +564,9 @@ bool beginClonePlacement(Document* doc, set<uint32_t> const& primitiveIndices) {
   // committed at the far end of the placement gesture, and undoing it must
   // return to a World without them in it.
   beginTransaction(
-      doc, format("Clone {} Primitive(s)", sources.size()),
-      numeric_limits<float>::quiet_NaN());
+      doc, CommandId::BeginClonePlacement,
+      numeric_limits<float>::quiet_NaN(),
+      format("Clone {} Primitive(s)", sources.size()));
 
   set<uint32_t> cloneIndices;
   for (auto* source : sources) {
@@ -612,7 +613,7 @@ void cancelClonePlacement(Document* doc) {
   // Something else committed our transaction mid-gesture (an edit made from
   // a panel while the clones were in flight), so they are already in the
   // history. Removing them is then an ordinary undoable action of its own.
-  transactUndoableActionAtomically(doc, "Discard Cloned Primitive(s)", [&](Document* actionDoc) { return deletePrimitives(actionDoc, cloneIndices); });
+  transactUndoableActionAtomically(doc, CommandId::DeletePrimitives, [&](Document* actionDoc) { return deletePrimitives(actionDoc, cloneIndices); });
 }
 
 bool decomposeMeshPrimitive(Document* doc, uint32_t primitiveIndex) {

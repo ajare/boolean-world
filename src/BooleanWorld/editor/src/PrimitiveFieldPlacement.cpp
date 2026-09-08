@@ -253,8 +253,7 @@ PrimitiveFieldPlacementResult placePrimitiveField(
     }
 
     auto placed = transactUndoableActionAtomically(
-        document,
-        std::format("Place {} Field Primitive(s)", batch.size()),
+        document, CommandId::PlacePrimitiveField,
         [&](Document* doc) {
           auto target = doc->getWorld();
           auto firstIndex = target->getNumPrimitives();

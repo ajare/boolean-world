@@ -174,13 +174,13 @@ void renderMenu(ViewContext& context) {
         auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
 
         if (!primitiveIndices.empty()) {
-          transact(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), [&] { deletePrimitives(doc, primitiveIndices); });
+          transact(doc, CommandId::DeletePrimitives, [&] { deletePrimitives(doc, primitiveIndices); });
         }
 
         auto triggerLineIndex = doc->getSelectedTriggerLineIndex();
 
         if (triggerLineIndex != ~0u) {
-          transact(doc, "Delete TriggerLine", [&] { deleteTriggerLine(doc, triggerLineIndex); });
+          transact(doc, CommandId::DeleteTriggerLine, [&] { deleteTriggerLine(doc, triggerLineIndex); });
         }
       }
 
@@ -194,12 +194,12 @@ void renderMenu(ViewContext& context) {
 
       if (ImGui::MenuItem("Bake to mesh", "Ctrl+B")) {
         auto const& indices = doc->getSelectedPrimitiveIndices();
-        transact(doc, format("Bake {} Primitive(s)", indices.size()), [&] { bakePrimitives(doc, indices); });
+        transact(doc, CommandId::BakePrimitives, [&] { bakePrimitives(doc, indices); });
       }
 
       if (ImGui::MenuItem("Clip to grid")) {
         auto const& indices = doc->getSelectedPrimitiveIndices();
-        transact(doc, format("Clip Primitive(s) to grid", indices.size()), [&] { clipPrimitivesToGrid(doc, indices, settings.gridSize); });
+        transact(doc, CommandId::ClipPrimitivesToGrid, [&] { clipPrimitivesToGrid(doc, indices, settings.gridSize); });
       }
 
       if (!hasPrimitiveSelection) {
@@ -213,11 +213,11 @@ void renderMenu(ViewContext& context) {
       if (ImGui::MenuItem("Select all", "Ctrl+A")) {
         if (settings.mode == Settings::Mode::Mesh) {
           if (doc->getActiveMesh()) {
-            transact(doc, "Select All Mesh Sub-objects", [&] { selectAllMeshSubObjects(doc, settings.meshSubMode); });
+            transact(doc, CommandId::SelectAllMeshSubObjects, [&] { selectAllMeshSubObjects(doc, settings.meshSubMode); });
           }
         } else {
           auto indices = doc->getSelectablePrimitiveIndices(settings);
-          transact(doc, "Select All", [&] { selectPrimitives(doc, set<uint32_t>(indices.begin(), indices.end())); });
+          transact(doc, CommandId::SelectPrimitives, [&] { selectPrimitives(doc, set<uint32_t>(indices.begin(), indices.end())); });
         }
       }
 
@@ -230,7 +230,7 @@ void renderMenu(ViewContext& context) {
       }
 
       if (ImGui::MenuItem("Deselect all", "Ctrl+D")) {
-        transact(doc, "Clear Selections", [&] { clearSelections(doc); });
+        transact(doc, CommandId::ClearSelections, [&] { clearSelections(doc); });
       }
 
       if (!hasAnySelection) {
@@ -245,7 +245,7 @@ void renderMenu(ViewContext& context) {
 
         if (ImGui::MenuItem("New Layer")) {
           auto layerName = format("Layer {}", world->getNumLayers());
-          transact(doc, "New Layer", [&] { addLayer(doc, layerName); });
+          transact(doc, CommandId::AddLayer, [&] { addLayer(doc, layerName); });
         }
 
         if (ImGui::MenuItem("Regenerate world data")) {
@@ -488,13 +488,13 @@ void renderToolbar(ViewContext& context) {
       auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
 
       if (!primitiveIndices.empty()) {
-        transact(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), [&] { deletePrimitives(doc, primitiveIndices); });
+        transact(doc, CommandId::DeletePrimitives, [&] { deletePrimitives(doc, primitiveIndices); });
       }
 
       auto triggerLineIndex = doc->getSelectedTriggerLineIndex();
 
       if (triggerLineIndex != ~0u) {
-        transact(doc, "Delete TriggerLine", [&] { deleteTriggerLine(doc, triggerLineIndex); });
+        transact(doc, CommandId::DeleteTriggerLine, [&] { deleteTriggerLine(doc, triggerLineIndex); });
       }
     }
 

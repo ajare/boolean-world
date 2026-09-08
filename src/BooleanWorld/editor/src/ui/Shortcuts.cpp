@@ -78,11 +78,11 @@ void handleShortcuts(ViewContext& context) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (settings.mode == Settings::Mode::Mesh) {
         if (doc->getActiveMesh()) {
-          transact(doc, "Select All Mesh Sub-objects", [&] { selectAllMeshSubObjects(doc, settings.meshSubMode); });
+          transact(doc, CommandId::SelectAllMeshSubObjects, [&] { selectAllMeshSubObjects(doc, settings.meshSubMode); });
         }
       } else if (doc->isActive()) {
         auto indices = doc->getSelectablePrimitiveIndices(settings);
-        transact(doc, "Select All", [&] { selectPrimitives(doc, set<uint32_t>(indices.begin(), indices.end())); });
+        transact(doc, CommandId::SelectPrimitives, [&] { selectPrimitives(doc, set<uint32_t>(indices.begin(), indices.end())); });
       }
     }
   }
@@ -91,7 +91,7 @@ void handleShortcuts(ViewContext& context) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (doc->hasSelection() &&
           (settings.mode != Settings::Mode::Mesh || doc->getActiveMesh())) {
-        transact(doc, "Clear Selections", [&] { clearSelections(doc); });
+        transact(doc, CommandId::ClearSelections, [&] { clearSelections(doc); });
       }
     }
   }
@@ -151,7 +151,7 @@ void handleShortcuts(ViewContext& context) {
                     settings.meshSubMode == Settings::MeshSubMode::Vertex ? "Vertex(es)"
                     : settings.meshSubMode == Settings::MeshSubMode::Edge ? "Edge(s)"
                                                                           : "Polygon(s)";
-                transact(doc, format("Delete {} Mesh {}", previewCount, subObjectLabel), [&] { deleteMeshSubObjects(doc, settings.meshSubMode, indices); });
+                transact(doc, CommandId::DeleteMeshSubObjects, [&] { deleteMeshSubObjects(doc, settings.meshSubMode, indices); });
               }
             }
           }
@@ -159,13 +159,13 @@ void handleShortcuts(ViewContext& context) {
           auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
 
           if (!primitiveIndices.empty()) {
-            transact(doc, format("Delete {} Primitive(s)", primitiveIndices.size()), [&] { deletePrimitives(doc, primitiveIndices); });
+            transact(doc, CommandId::DeletePrimitives, [&] { deletePrimitives(doc, primitiveIndices); });
           }
 
           auto triggerLineIndex = doc->getSelectedTriggerLineIndex();
 
           if (triggerLineIndex != ~0u) {
-            transact(doc, "Delete TriggerLine", [&] { deleteTriggerLine(doc, triggerLineIndex); });
+            transact(doc, CommandId::DeleteTriggerLine, [&] { deleteTriggerLine(doc, triggerLineIndex); });
           }
         }
       }
@@ -183,7 +183,7 @@ void handleShortcuts(ViewContext& context) {
           doc->getActiveMesh() && selectedRings.size() == 1 &&
           doc->getActiveMesh()->getPolygon(*selectedRings.begin()).isHole()) {
         auto holeRing = *selectedRings.begin();
-        transact(doc, "Fill Mesh Hole", [&] { fillMeshHole(doc, holeRing); });
+        transact(doc, CommandId::FillMeshHole, [&] { fillMeshHole(doc, holeRing); });
       } else {
         doc->armMeshDrawTool(settings);
       }
@@ -217,7 +217,7 @@ void handleShortcuts(ViewContext& context) {
           if (!indices.empty()) {
             auto previewCount = doc->previewMeshEdgeSplitCount(indices);
             if (previewCount > 0) {
-              transact(doc, format("Split {} Mesh Edge(s)", previewCount), [&] { splitMeshEdges(doc, indices); });
+              transact(doc, CommandId::SplitMeshEdges, [&] { splitMeshEdges(doc, indices); });
             }
           }
         }
@@ -232,7 +232,7 @@ void handleShortcuts(ViewContext& context) {
         uint32_t index = *indices.begin();
 
         auto prim = doc->getWorld()->getPrimitive(index);
-        transact(doc, format("Decrease Primitive priority", index), [&] { decreasePrimitivePriority(doc, prim); });
+        transact(doc, CommandId::DecreasePrimitivePriority, [&] { decreasePrimitivePriority(doc, prim); });
       }
     }
   }
@@ -244,7 +244,7 @@ void handleShortcuts(ViewContext& context) {
         uint32_t index = *indices.begin();
 
         auto prim = doc->getWorld()->getPrimitive(index);
-        transact(doc, format("Increase Primitive priority", index), [&] { increasePrimitivePriority(doc, prim); });
+        transact(doc, CommandId::IncreasePrimitivePriority, [&] { increasePrimitivePriority(doc, prim); });
       }
     }
   }
@@ -253,7 +253,7 @@ void handleShortcuts(ViewContext& context) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
       if (doc->hasSelection() && !doc->getSelectedPrimitiveIndices().empty()) {
         auto const& indices = doc->getSelectedPrimitiveIndices();
-        transact(doc, format("Bake {} Primitive(s)", indices.size()), [&] { bakePrimitives(doc, indices); });
+        transact(doc, CommandId::BakePrimitives, [&] { bakePrimitives(doc, indices); });
       }
     }
   }
@@ -358,7 +358,7 @@ void handleShortcuts(ViewContext& context) {
       ImGui::Shortcut(ImGuiKey_C, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && doc->isActive() &&
         doc->getWorld()->getActiveLayer()->getActiveStep()->acceptsNewPrimitives()) {
-      transact(doc, format("Create {} Primitive", doc->getGhost()->getType()), [&] { createPrimitiveFromGhost(doc); });
+      transact(doc, CommandId::CreatePrimitiveFromGhost, [&] { createPrimitiveFromGhost(doc); });
     }
   }
 }

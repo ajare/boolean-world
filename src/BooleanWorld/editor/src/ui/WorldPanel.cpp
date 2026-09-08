@@ -16,7 +16,7 @@ void renderWorldView(ViewContext& context) {
   ImGui::SetNextItemWidth(192);
   if (widgets::InputText(
           "Name##World", &worldName, ImGuiInputTextFlags_EnterReturnsTrue)) {
-    transact(doc, "Set World name", [&] { setWorldName(doc, worldName); });
+    transact(doc, CommandId::SetWorldName, [&] { setWorldName(doc, worldName); });
   }
 
   // Description
@@ -25,7 +25,7 @@ void renderWorldView(ViewContext& context) {
   if (widgets::InputTextMultiline(
           "Description##World", &worldDesc, ImVec2(512, 96))) {
     // Don't make this transactional as every character change will create an undo state
-    // transact(doc, "Set World description",
+    // transact(doc, CommandId::SetWorldDescription,
     //          [&] { setWorldDescription(doc, worldDesc); });
     setWorldDescription(doc, worldDesc);
     doc->setModified(true);
@@ -43,7 +43,7 @@ void renderWorldView(ViewContext& context) {
   }
 
   if (ImGui::IsItemActivated()) {
-    beginTransaction(doc, "", 0.0f);
+    beginTransaction(doc, CommandId::SetPlayerStartAngle, 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Player start angle to {}", world->getPlayerStartAngle()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -62,7 +62,7 @@ void renderWorldView(ViewContext& context) {
   if (ImGui::InputFloat2("PlayerStartPos##World", pPosition)) {
     wp::Vector2 position{pPosition[0], pPosition[1]};
 
-    transact(doc, "Set Primitive Position", [&] { setPlayerStartPosition(doc, position); });
+    transact(doc, CommandId::SetPlayerStartPosition, [&] { setPlayerStartPosition(doc, position); });
   }
 
   // Wedges
@@ -143,7 +143,7 @@ void renderWorldView(ViewContext& context) {
   }
   ImGui::BeginDisabled(!wedgeDraftModified);
   if (ImGui::Button("Apply Wedge settings##WorldWedges")) {
-    if (transactUndoableActionAtomically(doc, "Set World Wedge settings", [&](Document* doc) { return setWorldWedgeGenerationParameters(doc, wedgeDraft); })) {
+    if (transactUndoableActionAtomically(doc, CommandId::SetWorldWedgeGenerationParameters, [&](Document* doc) { return setWorldWedgeGenerationParameters(doc, wedgeDraft); })) {
       wedgeSource = world->getWedgeGenerationParameters();
       wedgeDraft = wedgeSource;
       wedgeDraftModified = false;

@@ -11,7 +11,7 @@ void renderCreateTriggerLineView(ViewContext& context) {
   auto world = doc->getWorld();
 
   if (ImGui::Button("Create at ghost##CreateTriggerLine")) {
-    transact(doc, "Create Trigger Line##CreateTriggerLine", [&] {
+    transact(doc, CommandId::CreateTriggerLine, [&] {
       auto ghost = world->getPrimitive(0);
       world->addTriggerLine(new bw::core::WorldTriggerLine(
           ghost->getPosition() - wp::Vector2(100, 0), ghost->getPosition() + wp::Vector2(100, 0)));
@@ -40,7 +40,7 @@ void renderEditTriggerLineView(ViewContext& context, uint32_t triggerLineIndex) 
 
   if (ImGui::Combo("Side##EditTriggerLine", &selectedSide, "Red\0Blue\0Both\0\0", 6)) {
     auto side = (bw::core::WorldTriggerLineSide)selectedSide;
-    transact(doc, "Set Trigger Line Side", [&] {
+    transact(doc, CommandId::SetTriggerLineSide, [&] {
       setTriggerLineSide(doc, triggerLine, side);
     });
   }

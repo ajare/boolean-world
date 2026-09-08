@@ -35,7 +35,7 @@ void renderPrimitiveOrderView(ViewContext& context) {
     if (!isGhost || settings.ghostActive) {
       if (ImGui::Button(ICON_FA_HAND_POINTER)) {
         auto selectId = primitive->getId();
-        editor::transact(doc, format("Select Primitive {}", selectId),
+        editor::transact(doc, CommandId::SelectPrimitive,
                          [&] { editor::selectPrimitive(doc, selectId); });
       }
     }
@@ -76,14 +76,14 @@ void renderPrimitiveOrderView(ViewContext& context) {
 
       if (counter < 0) {
         auto prevPrim = primitives[i - 1];
-        transact(doc, "Swap Primitive Priorities", [&] {
+        transact(doc, CommandId::SwapPrimitivePriorities, [&] {
           auto prevPriority = prevPrim->getPriority();
           prevPrim->setPriority(primitive->getPriority());
           primitive->setPriority(prevPriority);
         });
       } else if (counter > 0) {
         auto nextPrim = primitives[i + 1];
-        transact(doc, "Swap Primitive Priorities", [&] {
+        transact(doc, CommandId::SwapPrimitivePriorities, [&] {
           auto nextPriority = nextPrim->getPriority();
           nextPrim->setPriority(primitive->getPriority());
           primitive->setPriority(nextPriority);
@@ -257,7 +257,7 @@ void renderRunScriptParameters(
     }
 
     if (changed) {
-      transact(doc, format("Set RunScript Param {}", definition.name), [&] { setRunScriptParameterValue(doc, layer, step, definition.name, value); });
+      transact(doc, CommandId::SetRunScriptParameterValue, [&] { setRunScriptParameterValue(doc, layer, step, definition.name, value); });
     }
 
     bool const hasSerializedValue =
@@ -265,7 +265,7 @@ void renderRunScriptParameters(
     ImGui::SameLine();
     ImGui::BeginDisabled(!hasSerializedValue);
     if (ImGui::SmallButton("Revert to resource default")) {
-      transact(doc, format("Revert RunScript Param {}", definition.name), [&] { clearRunScriptParameterValue(doc, layer, step, definition.name); });
+      transact(doc, CommandId::ClearRunScriptParameterValue, [&] { clearRunScriptParameterValue(doc, layer, step, definition.name); });
     }
     ImGui::EndDisabled();
     ImGui::PopID();
@@ -284,7 +284,7 @@ void renderRunScriptView(
     if (auto* renderSystem = editorRenderSystem();
         renderSystem && renderSystem->loadLuaScript(*selected, &error)) {
       scriptErrors[step].clear();
-      transact(doc, "Select RunScript Lua Script", [&] { setRunScriptScriptName(doc, layer, step, *selected); });
+      transact(doc, CommandId::SetRunScriptScriptName, [&] { setRunScriptScriptName(doc, layer, step, *selected); });
     } else {
       scriptErrors[step] = error.empty() ? "Could not load the Lua script." : error;
     }
@@ -335,12 +335,12 @@ void renderRunScriptView(
   if (ImGui::InputScalar(
           "Seed", ImGuiDataType_U64, &seed, nullptr, nullptr, nullptr,
           ImGuiInputTextFlags_EnterReturnsTrue)) {
-    transact(doc, "Set RunScript Seed", [&] { setRunScriptSeed(doc, layer, step, seed); });
+    transact(doc, CommandId::SetRunScriptSeed, [&] { setRunScriptSeed(doc, layer, step, seed); });
   }
   ImGui::SameLine();
   if (ImGui::Button("Reroll")) {
     static mt19937_64 randomSeed{random_device{}()};
-    transact(doc, "Reroll RunScript Seed", [&] { setRunScriptSeed(doc, layer, step, randomSeed()); });
+    transact(doc, CommandId::SetRunScriptSeed, [&] { setRunScriptSeed(doc, layer, step, randomSeed()); });
   }
 
   ImGui::SeparatorText("Extra resources");
@@ -370,14 +370,14 @@ void renderRunScriptView(
     if (ImGui::IsItemDeactivatedAfterEdit()) {
       auto names = extraResources;
       names[i] = extraState.fields[i].data();
-      transact(doc, "Edit RunScript Extra Resource", [&] { setRunScriptExtraResourceNames(doc, layer, step, names); });
+      transact(doc, CommandId::SetRunScriptExtraResourceNames, [&] { setRunScriptExtraResourceNames(doc, layer, step, names); });
       listChanged = true;
     }
     ImGui::SameLine();
     if (!listChanged && ImGui::Button(ICON_FA_TRASH "##RemoveExtraResource")) {
       auto names = extraResources;
       names.erase(names.begin() + i);
-      transact(doc, "Remove RunScript Extra Resource", [&] { setRunScriptExtraResourceNames(doc, layer, step, names); });
+      transact(doc, CommandId::SetRunScriptExtraResourceNames, [&] { setRunScriptExtraResourceNames(doc, layer, step, names); });
       listChanged = true;
     }
     ImGui::PopID();
@@ -395,7 +395,7 @@ void renderRunScriptView(
       auto names = extraResources;
       names.emplace_back(extraState.adding.data());
       extraState.adding.front() = '\0';
-      transact(doc, "Add RunScript Extra Resource", [&] { setRunScriptExtraResourceNames(doc, layer, step, names); });
+      transact(doc, CommandId::SetRunScriptExtraResourceNames, [&] { setRunScriptExtraResourceNames(doc, layer, step, names); });
     }
     ImGui::EndDisabled();
   }
@@ -478,7 +478,7 @@ void renderLayerStepsView(ViewContext& context) {
     ImGui::SameLine();
 
     if (widgets::ToggleButton("##StepEnabled", "Enabled", &enabled)) {
-      transact(doc, format("Toggle Layer Step {}", i), [&] { setLayerBuildStepEnabled(doc, layer, i, enabled); });
+      transact(doc, CommandId::SetLayerBuildStepEnabled, [&] { setLayerBuildStepEnabled(doc, layer, i, enabled); });
     }
 
     auto& [nameModel, name] = stepNameStates[step];
@@ -490,7 +490,7 @@ void renderLayerStepsView(ViewContext& context) {
     ImGui::InputTextWithHint(
         "Step name", "Optional script lookup name", name.data(), name.size());
     if (ImGui::IsItemDeactivatedAfterEdit()) {
-      transact(doc, format("Rename Layer Step {}", i), [&] { setLayerBuildStepName(doc, layer, i, string(name.data())); });
+      transact(doc, CommandId::SetLayerBuildStepName, [&] { setLayerBuildStepName(doc, layer, i, string(name.data())); });
     }
 
     if (i != 0) {
@@ -501,7 +501,7 @@ void renderLayerStepsView(ViewContext& context) {
       // arrow is omitted rather than offered and rejected.
       if (i > 1) {
         if (ImGui::ArrowButton("##StepUp", ImGuiDir_Up)) {
-          transact(doc, format("Move Layer Step {}", i), [&] { moveLayerBuildStep(doc, layer, i, i - 1); });
+          transact(doc, CommandId::MoveLayerBuildStep, [&] { moveLayerBuildStep(doc, layer, i, i - 1); });
           listChanged = true;
         }
         ImGui::SameLine();
@@ -509,7 +509,7 @@ void renderLayerStepsView(ViewContext& context) {
 
       if (!listChanged && i < numSteps - 1) {
         if (ImGui::ArrowButton("##StepDown", ImGuiDir_Down)) {
-          transact(doc, format("Move Layer Step {}", i), [&] { moveLayerBuildStep(doc, layer, i, i + 1); });
+          transact(doc, CommandId::MoveLayerBuildStep, [&] { moveLayerBuildStep(doc, layer, i, i + 1); });
           listChanged = true;
         }
         ImGui::SameLine();
@@ -518,7 +518,7 @@ void renderLayerStepsView(ViewContext& context) {
       ImGui::PopButtonRepeat();
 
       if (!listChanged && ImGui::Button(ICON_FA_TRASH "##RemoveLayerStep")) {
-        transact(doc, format("Remove Layer Step {}", i), [&] { removeLayerBuildStep(doc, layer, i); });
+        transact(doc, CommandId::RemoveLayerBuildStep, [&] { removeLayerBuildStep(doc, layer, i); });
         listChanged = true;
       }
     }
@@ -558,7 +558,7 @@ void renderLayerStepsView(ViewContext& context) {
 
   ImGui::SameLine();
   if (ImGui::Button("Add Step") && !selectedStepType.empty()) {
-    transact(doc, "Add Layer Step", [&] { addLayerBuildStep(doc, layer, selectedStepType); });
+    transact(doc, CommandId::AddLayerBuildStep, [&] { addLayerBuildStep(doc, layer, selectedStepType); });
   }
 }
 

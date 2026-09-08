@@ -77,7 +77,7 @@ void renderPrefabsView(
       editingPrefab = prefab;
     }
     if (editingPrefab == prefab && ImGui::IsItemDeactivatedAfterEdit()) {
-      transact(doc, "Rename Prefab", [&] { renamePrefab(doc, layer, step, prefab, string(name)); });
+      transact(doc, CommandId::RenamePrefab, [&] { renamePrefab(doc, layer, step, prefab, string(name)); });
     }
     if (ImGui::IsItemDeactivated()) {
       editingPrefab = nullptr;
@@ -97,7 +97,7 @@ void renderPrefabsView(
         ImGui::BeginDisabled(!reason.empty());
         if (ImGui::Selectable(label.c_str(), size == currentSize) &&
             size != currentSize) {
-          transact(doc, "Set Prefab Tile Size", [&] { setPrefabTileSize(doc, layer, step, prefab, size); });
+          transact(doc, CommandId::SetPrefabTileSize, [&] { setPrefabTileSize(doc, layer, step, prefab, size); });
         }
         ImGui::EndDisabled();
         if (!reason.empty() &&
@@ -112,7 +112,7 @@ void renderPrefabsView(
     auto blockedReason = prefabDeletionBlockedReason(layer, step, prefab);
     ImGui::BeginDisabled(!blockedReason.empty());
     if (ImGui::Button(ICON_FA_TRASH "##DeletePrefab")) {
-      transact(doc, "Delete Prefab", [&] { deletePrefab(doc, layer, step, prefab); });
+      transact(doc, CommandId::DeletePrefab, [&] { deletePrefab(doc, layer, step, prefab); });
       listChanged = true;
     }
     ImGui::EndDisabled();
@@ -128,7 +128,7 @@ void renderPrefabsView(
   }
 
   if (ImGui::Button("Create Prefab")) {
-    transact(doc, "Create Prefab", [&] { createPrefab(doc, layer, step); });
+    transact(doc, CommandId::CreatePrefab, [&] { createPrefab(doc, layer, step); });
   }
 
   ImGui::Separator();
@@ -141,7 +141,7 @@ void renderPrefabsView(
     for (auto const& definition : prefabTilingGuideDefinitions()) {
       bool selected = tilingType == definition.type;
       if (ImGui::Selectable(definition.name.data(), selected) && !selected) {
-        transact(doc, "Set Prefab Tiling Type", [&] { setPrefabTilingType(doc, layer, step, definition.type); });
+        transact(doc, CommandId::SetPrefabTilingType, [&] { setPrefabTilingType(doc, layer, step, definition.type); });
       }
     }
     ImGui::EndCombo();
@@ -169,7 +169,7 @@ void renderSelectedPrefabView(
     editingPrefab = prefab;
   }
   if (editingPrefab == prefab && ImGui::IsItemDeactivatedAfterEdit()) {
-    transact(doc, "Set Prefab Tags", [&] { setPrefabTags(doc, layer, step, prefab, parsePrefabTags(text)); });
+    transact(doc, CommandId::SetPrefabTags, [&] { setPrefabTags(doc, layer, step, prefab, parsePrefabTags(text)); });
   }
   if (ImGui::IsItemDeactivated()) {
     editingPrefab = nullptr;
@@ -267,7 +267,7 @@ void renderPrefabFieldView(
     for (uint32_t i = 0; i < layer->getNumSteps(); ++i) {
       auto* candidate = dynamic_cast<bw::core::DefinePrefabs*>(layer->getStep(i));
       if (candidate && ImGui::Selectable(format("{} :: DefinePrefabs", i).c_str())) {
-        transact(doc, "Bind PrefabField", [&] { bindPrefabField(doc, layer, field, candidate); });
+        transact(doc, CommandId::BindPrefabField, [&] { bindPrefabField(doc, layer, field, candidate); });
       }
     }
     return;
@@ -323,7 +323,7 @@ void renderPrefabFieldView(
     if (instance && tile.size != bw::core::PrefabTileSize::Size256) {
       bool add = instance->mode == bw::core::TileMode::Add;
       if (ImGui::Checkbox("Add", &add)) {
-        transact(doc, "Set Prefab Tile Mode", [&] { setPrefabInstanceMode(doc, layer, field, tile, add ? bw::core::TileMode::Add : bw::core::TileMode::Replace); });
+        transact(doc, CommandId::SetPrefabInstanceMode, [&] { setPrefabInstanceMode(doc, layer, field, tile, add ? bw::core::TileMode::Add : bw::core::TileMode::Replace); });
       }
     }
   }

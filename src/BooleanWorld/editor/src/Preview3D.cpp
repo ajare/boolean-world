@@ -396,7 +396,7 @@ void renderEmbossEditor(PreviewPrimitive& previewPrimitive) {
   ImGui::SetNextItemWidth(280.0f);
   if (ImGui::Combo("Emboss preset", &selected, items.c_str(), 8)) {
     auto id = selected == 0 ? std::string{} : presets[selected - 1].id;
-    transact(session.document, "Set preview surface Emboss preset", [&] {
+    transact(session.document, CommandId::SetPrimitiveEmbossPreset, [&] {
       setPrimitiveEmbossPreset(
           session.document, previewPrimitive.source,
           materialSurface(session.selection.surface), id);
@@ -419,7 +419,7 @@ void renderEmbossEditor(PreviewPrimitive& previewPrimitive) {
     auto name = std::string(state.name);
     auto emboss = state.emboss;
     if (transactUndoableActionAtomically(
-            session.document, "Save Emboss preset",
+            session.document, CommandId::EditEmbossPreset,
             [&](Document* doc) {
               renameEmbossPreset(
                   doc, &embossingCatalogLibrary(), id, name);
@@ -436,7 +436,7 @@ void renderEmbossEditor(PreviewPrimitive& previewPrimitive) {
     auto emboss = state.emboss;
     std::string createdId;
     if (transactUndoableActionAtomically(
-            session.document, "Save new Emboss preset",
+            session.document, CommandId::CreateEmbossPreset,
             [&](Document* doc) {
               if (!createEmbossPreset(
                       doc, &embossingCatalogLibrary(), name, emboss,
@@ -543,7 +543,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
 
     if (clicked && !selected) {
       auto const id = material.id;
-      transact(session.document, "Set preview surface Sub-material", [&] {
+      transact(session.document, CommandId::SetPrimitiveSubMaterial, [&] {
         setPrimitiveSubMaterial(
             session.document, previewPrimitive.source,
             materialSurface(session.selection.surface), id);
@@ -587,7 +587,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       auto colour = state.colour;
       auto chip = state.chip;
       if (transactUndoableActionAtomically(
-              session.document, "Save Sub-material",
+              session.document, CommandId::EditSubMaterial,
               [&](Document* doc) {
                 renameSubMaterial(
                     doc, &procMaterialLibrary(), id, name);
@@ -609,7 +609,7 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       auto resourceName = catalog.resourceName;
       std::string createdId;
       if (transactUndoableActionAtomically(
-              session.document, "Save new Sub-material",
+              session.document, CommandId::CreateSubMaterial,
               [&](Document* doc) {
                 if (!createSubMaterial(
                         doc, &procMaterialLibrary(), resourceName, name,
@@ -778,7 +778,7 @@ void updateSelectedSurfaceFromInput(bool acceptKeyboard) {
     return;
   }
 
-  transact(session.document, "Move preview surface", [&] {
+  transact(session.document, CommandId::SetPrimitiveProperties, [&] {
     setPrimitiveProperties(session.document, primitive, moved);
   });
   rebuildPreviewForSurfaceEdit();

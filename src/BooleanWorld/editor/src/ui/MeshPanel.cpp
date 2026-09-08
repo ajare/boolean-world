@@ -21,7 +21,7 @@ void renderMeshDrawToolView(editor::Document* doc, editor::Settings& settings) {
   }
 
   if (ImGui::IsItemActivated()) {
-    beginTransaction(doc, "", 0.0f);
+    beginTransaction(doc, CommandId::SetPrimitivePriority, 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Drawn Mesh Priority to {}", (int)ghost->getPriority()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -110,9 +110,9 @@ void renderPrefabTopologyMetadata(
     auto metadata = toMetadata();
     if (!metadata) return;
     if (edge) {
-      transact(doc, "Set Prefab Edge Metadata", [&] { setMeshEdgeMetadata(doc, topologyIndex, *metadata); });
+      transact(doc, CommandId::SetMeshEdgeMetadata, [&] { setMeshEdgeMetadata(doc, topologyIndex, *metadata); });
     } else {
-      transact(doc, "Set Prefab Vertex Metadata", [&] { setMeshVertexMetadata(doc, topologyIndex, *metadata); });
+      transact(doc, CommandId::SetMeshVertexMetadata, [&] { setMeshVertexMetadata(doc, topologyIndex, *metadata); });
     }
   };
 
@@ -219,12 +219,12 @@ void renderMeshView(ViewContext& context) {
     float y = position.y;
     ImGui::SetNextItemWidth(112);
     if (ImGui::InputFloat("X##MeshVertexPosition", &x)) {
-      transact(doc, "Set Mesh Vertex X Position", [&] { setMeshVertexPosition(doc, vertexIndex, wp::Vector2{x, position.y}); });
+      transact(doc, CommandId::SetMeshVertexPosition, [&] { setMeshVertexPosition(doc, vertexIndex, wp::Vector2{x, position.y}); });
     }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(112);
     if (ImGui::InputFloat("Y##MeshVertexPosition", &y)) {
-      transact(doc, "Set Mesh Vertex Y Position", [&] { setMeshVertexPosition(doc, vertexIndex, wp::Vector2{position.x, y}); });
+      transact(doc, CommandId::SetMeshVertexPosition, [&] { setMeshVertexPosition(doc, vertexIndex, wp::Vector2{position.x, y}); });
     }
 
     ImGui::SameLine();
@@ -234,7 +234,7 @@ void renderMeshView(ViewContext& context) {
             Settings::MeshSubMode::Vertex, indices) > 0;
     ImGui::BeginDisabled(!canDelete);
     if (ImGui::Button(ICON_FA_TRASH "##DeleteSelectedMeshVertex")) {
-      transact(doc, "Delete Mesh Vertex", [&] { deleteMeshSubObjects(doc, Settings::MeshSubMode::Vertex, indices); });
+      transact(doc, CommandId::DeleteMeshSubObjects, [&] { deleteMeshSubObjects(doc, Settings::MeshSubMode::Vertex, indices); });
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -286,13 +286,13 @@ void renderMeshView(ViewContext& context) {
         optional<bool> value = collisionOption == 0
                                    ? nullopt
                                    : optional<bool>{collisionOption == 1};
-        transact(doc, "Set Mesh Edge Collision Override", [&] { setMeshEdgeCollisionOverride(doc, edgeIndex, value); });
+        transact(doc, CommandId::SetMeshEdgeCollisionOverride, [&] { setMeshEdgeCollisionOverride(doc, edgeIndex, value); });
       }
     }
     if (doc->isActiveMeshEdgeVisibilityEditable(edgeIndex)) {
       auto visible = doc->getActiveMeshEdgeVisible(edgeIndex);
       if (ImGui::Checkbox("Visible##SelectedMeshEdge", &visible)) {
-        transact(doc, "Set Mesh Edge Visible", [&] { setMeshEdgeVisible(doc, edgeIndex, visible); });
+        transact(doc, CommandId::SetMeshEdgeVisible, [&] { setMeshEdgeVisible(doc, edgeIndex, visible); });
       }
     }
 
@@ -355,7 +355,7 @@ void renderMeshView(ViewContext& context) {
           manager->createResource(resource);
           manager->loadResource(resource);
         }
-        if (!transactUndoableActionAtomically(doc, "Set Mesh Edge Wall Normal Map", [&](Document* doc) { return setMeshEdgeNormalMapOverride(doc, edgeIndex, value); })) {
+        if (!transactUndoableActionAtomically(doc, CommandId::SetMeshEdgeNormalMapOverride, [&](Document* doc) { return setMeshEdgeNormalMapOverride(doc, edgeIndex, value); })) {
           normalMapError = "The selected edge cannot accept a wall normal map.";
         } else {
           string dependencyError;
@@ -495,7 +495,7 @@ void renderMeshView(ViewContext& context) {
                 "The image does not have the selected channel.");
           }
         }
-        if (!transactUndoableActionAtomically(doc, "Set Mesh Edge Wall Mask", [&](Document* doc) { return setMeshEdgeWallMaskOverride(doc, edgeIndex, value); })) {
+        if (!transactUndoableActionAtomically(doc, CommandId::SetMeshEdgeWallMaskOverride, [&](Document* doc) { return setMeshEdgeWallMaskOverride(doc, edgeIndex, value); })) {
           wallMaskError = "The selected edge cannot accept a wall mask.";
         } else {
           string dependencyError;
@@ -644,7 +644,7 @@ void renderMeshView(ViewContext& context) {
     }
 
     if (ImGui::Button("Split##SelectedMeshEdge")) {
-      transact(doc, "Split Mesh Edge", [&] { splitMeshEdges(doc, indices); });
+      transact(doc, CommandId::SplitMeshEdges, [&] { splitMeshEdges(doc, indices); });
     }
     ImGui::SameLine();
     auto canDelete =
@@ -652,7 +652,7 @@ void renderMeshView(ViewContext& context) {
             Settings::MeshSubMode::Edge, indices) > 0;
     ImGui::BeginDisabled(!canDelete);
     if (ImGui::Button(ICON_FA_TRASH "##DeleteSelectedMeshEdge")) {
-      transact(doc, "Delete Mesh Edge", [&] { deleteMeshSubObjects(doc, Settings::MeshSubMode::Edge, indices); });
+      transact(doc, CommandId::DeleteMeshSubObjects, [&] { deleteMeshSubObjects(doc, Settings::MeshSubMode::Edge, indices); });
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -663,7 +663,7 @@ void renderMeshView(ViewContext& context) {
   }
 
   if (ImGui::Button("Recentre mesh")) {
-    transact(doc, "Recentre Mesh", [&] { recentreActiveMesh(doc); });
+    transact(doc, CommandId::RecentreActiveMesh, [&] { recentreActiveMesh(doc); });
   }
   widgets::HelpMarker(
       "Restores the relationship between the Primitive's position/size and its geometry.");

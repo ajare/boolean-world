@@ -394,7 +394,7 @@ bw::core::Primitive::Operation setOperationWidget(Document* doc, bw::core::Primi
     }
 
     if (primitive) {
-      transact(doc, "Set operation", [&] {
+      transact(doc, CommandId::SetPrimitiveOperation, [&] {
         setPrimitiveOperation(doc, primitive, editOperation);
       });
     }
@@ -462,7 +462,7 @@ bw::core::Primitive::FillRule setFillRuleWidget(Document* doc, bw::core::Primiti
     }
 
     if (primitive) {
-      transact(doc, "Set fill rule", [&] {
+      transact(doc, CommandId::SetPrimitiveFillRule, [&] {
         setPrimitiveFillRule(doc, primitive, editFillRule);
       });
     }
@@ -623,7 +623,7 @@ void renderCreateNewPrimitive(editor::Document* doc, editor::Settings& settings)
   ImGui::SameLine();
   ImGui::BeginDisabled(!acceptsNewPrimitives);
   if (ImGui::Button("Create##CreatePrimitive")) {
-    transact(doc, funcText, [&] { createPrimitiveFromGhost(doc); });
+    transact(doc, CommandId::CreatePrimitiveFromGhost, [&] { createPrimitiveFromGhost(doc); });
   }
   ImGui::EndDisabled();
 }
@@ -660,7 +660,7 @@ void renderEditCirclePolygon(editor::Document* doc, bw::core::Primitive* primiti
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
     resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
 
-    transact(doc, format("Set Circle Resolution to {}", resolution), [&] {
+    transact(doc, CommandId::EditPrimitiveShape, [&] {
       auto staticBefore = circle->isStatic();
 
       circle->setResolution(resolution);
@@ -680,7 +680,7 @@ void renderEditCircleSegmentPolygon(editor::Document* doc, bw::core::Primitive* 
   if (ImGui::InputFloat("ArcLength##EditPrimitive", &arcLength, 1.0f, 5.0f)) {
     arcLength = clamp(arcLength, ED_MIN_ARC_LENGTH, ED_MAX_ARC_LENGTH);
 
-    transact(doc, format("Set Circle Segment Arc Length to {}", arcLength), [&] {
+    transact(doc, CommandId::EditPrimitiveShape, [&] {
       auto staticBefore = circleSeg->isStatic();
 
       circleSeg->setArcLength(arcLength);
@@ -692,7 +692,7 @@ void renderEditCircleSegmentPolygon(editor::Document* doc, bw::core::Primitive* 
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
     resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
 
-    transact(doc, format("Set Circle Segment Resolution to {}", resolution), [&] {
+    transact(doc, CommandId::EditPrimitiveShape, [&] {
       circleSeg->setResolution(resolution);
     });
   }
@@ -712,7 +712,7 @@ void renderEditTorusPolygon(editor::Document* doc, bw::core::Primitive* primitiv
   }
 
   if (ImGui::IsItemActivated()) {
-    beginTransaction(doc, "", 0.0f);
+    beginTransaction(doc, CommandId::EditPrimitiveShape, 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Torus Thickness to {}", torus->getThickness()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -724,7 +724,7 @@ void renderEditTorusPolygon(editor::Document* doc, bw::core::Primitive* primitiv
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
     resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
 
-    transact(doc, format("Set Torus Resolution to {}", resolution), [&] {
+    transact(doc, CommandId::EditPrimitiveShape, [&] {
       torus->setResolution(resolution);
     });
   }
@@ -745,7 +745,7 @@ void renderEditTorusSegmentPolygon(editor::Document* doc, bw::core::Primitive* p
   }
 
   if (ImGui::IsItemActivated()) {
-    beginTransaction(doc, "", 0.0f);
+    beginTransaction(doc, CommandId::EditPrimitiveShape, 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Torus Segment Thickness to {}", torusSeg->getThickness()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -757,7 +757,7 @@ void renderEditTorusSegmentPolygon(editor::Document* doc, bw::core::Primitive* p
   if (ImGui::InputFloat("ArcLength##EditPrimitive", &arcLength, 1.0f, 5.0f)) {
     arcLength = clamp(arcLength, ED_MIN_ARC_LENGTH, ED_MAX_ARC_LENGTH);
 
-    transact(doc, format("Set Torus Segment Arc Length to {}", arcLength), [&] {
+    transact(doc, CommandId::EditPrimitiveShape, [&] {
       auto staticBefore = torusSeg->isStatic();
 
       torusSeg->setArcLength(arcLength);
@@ -769,7 +769,7 @@ void renderEditTorusSegmentPolygon(editor::Document* doc, bw::core::Primitive* p
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
     resolution = clamp(resolution, ED_MIN_CIRCLE_RESOLUTION, 1.0f);
 
-    transact(doc, format("Set Torus Resolution to {}", resolution), [&] {
+    transact(doc, CommandId::EditPrimitiveShape, [&] {
       torusSeg->setResolution(resolution);
     });
   }
@@ -795,7 +795,7 @@ void renderEditRectanglePolygon(editor::Document* doc, bw::core::Primitive* prim
   }
 
   if (ImGui::IsItemActivated()) {
-    beginTransaction(doc, "", 0.0f);
+    beginTransaction(doc, CommandId::EditPrimitiveShape, 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Rectangle X/Y ratio to {}", rectangle->getXyRatio()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -805,7 +805,7 @@ void renderEditRectanglePolygon(editor::Document* doc, bw::core::Primitive* prim
 
 void completeSuperformulaControlValueEdit(editor::Document* doc, bw::core::SuperformulaPolygon* superformula, uint32_t index, string const& name) {
   if (ImGui::IsItemActivated()) {
-    beginTransaction(doc, "", 0.0f);
+    beginTransaction(doc, CommandId::EditPrimitiveShape, 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Superformula {} to {}", name, superformula->getValue(index)));
   } else if (ImGui::IsItemDeactivated()) {
@@ -824,7 +824,7 @@ void renderEditSuperformulaPolygon(editor::Document* doc, bw::core::Primitive* p
   if (ImGui::InputFloat("Res##EditPrimitive", &resolution, 0.01f, 0.1f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
     resolution = clamp(resolution, ED_MIN_SUPERFORMULA_RESOLUTION, 1.0f);
 
-    transact(doc, format("Set Superformula Resolution to {}", resolution), [&] {
+    transact(doc, CommandId::EditPrimitiveShape, [&] {
       sf->setResolution(resolution);
     });
   }
@@ -870,7 +870,7 @@ bool renderEditMeshPrimitive(editor::Document* doc, bw::core::Primitive* primiti
   ImGui::EndDisabled();
   if (decompose) {
     auto index = primitive->getId();
-    transact(doc, "Decompose MeshPrimitive", [&] { decomposeMeshPrimitive(doc, index); });
+    transact(doc, CommandId::DecomposeMeshPrimitive, [&] { decomposeMeshPrimitive(doc, index); });
   }
   widgets::HelpMarker(
       "Replace this MeshPrimitive with one Union MeshPrimitive per filled "
@@ -893,7 +893,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   ImGui::SameLine();
   if (ImGui::Button(ICON_FA_CLONE)) {
     auto index = primitive->getId();
-    transact(doc, format("Clone&Rotate Primitive {}", index), [&] { cloneRotatedPrimitive(doc, index, wp::MathsUtils::degrees(copyAngle)); });
+    transact(doc, CommandId::CloneRotatedPrimitive, [&] { cloneRotatedPrimitive(doc, index, wp::MathsUtils::degrees(copyAngle)); });
   }
 
   ImGui::Separator();
@@ -914,7 +914,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   }
 
   if (ImGui::IsItemActivated()) {
-    beginTransaction(doc, "", 0.0f);
+    beginTransaction(doc, CommandId::EditPrimitiveShape, 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Primitive Priority to {}", (int)primitive->getPriority()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -935,7 +935,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   }
 
   if (ImGui::IsItemActivated()) {
-    beginTransaction(doc, "", 0.0f);
+    beginTransaction(doc, CommandId::EditPrimitiveShape, 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Primitive Size to {}", primitive->getSize().x));
   } else if (ImGui::IsItemDeactivated()) {
@@ -953,7 +953,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   if (ImGui::InputFloat2("Position##EditPrimitive", pPosition)) {
     wp::Vector2 position{pPosition[0], pPosition[1]};
 
-    transact(doc, "Set Primitive Position", [&] { setPrimitivePosition(doc, primitive, position); });
+    transact(doc, CommandId::SetPrimitivePosition, [&] { setPrimitivePosition(doc, primitive, position); });
   }
 
   wp::Vector2 const& primitiveTransformOrigin = primitive->getTransformOffset();
@@ -971,7 +971,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
     // };
     wp::Vector2 transformOrigin = {pTransformOrigin[0], pTransformOrigin[1]};
 
-    transact(doc, "Set Primitive Transform Offset", [&] { setPrimitiveTransformOffset(doc, primitive, transformOrigin); });
+    transact(doc, CommandId::SetPrimitiveTransformOffset, [&] { setPrimitiveTransformOffset(doc, primitive, transformOrigin); });
   }
 
   wp::Vector2 primitiveInfluenceOriginOffset = primitive->getInfluenceEyeOriginOffset();
@@ -985,7 +985,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   if (ImGui::InputFloat2("Influence Origin Offset##EditPrimitive", pInfluenceOriginOffset)) {
     wp::Vector2 influenceOriginOffset{pInfluenceOriginOffset[0], pInfluenceOriginOffset[1]};
 
-    transact(doc, "Set Primitive Influence Origin Offset", [&] { setPrimitiveInfluenceOriginOffset(doc, primitive, influenceOriginOffset); });
+    transact(doc, CommandId::SetPrimitiveInfluenceOriginOffset, [&] { setPrimitiveInfluenceOriginOffset(doc, primitive, influenceOriginOffset); });
   }
 
   if (primitive->getType() == "Regular") {
@@ -1019,7 +1019,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
     // setPrimitiveFollowOrbitAngle already applies the value inside the
     // transaction, which then regenerates. Setting it again out here would
     // land after that regeneration snapshotted its input.
-    transact(doc, action, [&] { setPrimitiveFollowOrbitAngle(doc, primitive, orientOrbitAngle); });
+    transact(doc, CommandId::SetPrimitiveFollowOrbitAngle, [&] { setPrimitiveFollowOrbitAngle(doc, primitive, orientOrbitAngle); });
   }
 
   widgets::HelpMarker("Normally, angle from player to a primitive is taken with 0 degrees being [0, 1].  This value adds an offset (in degrees to that angle).");
@@ -1033,7 +1033,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
   }
 
   if (ImGui::IsItemActivated()) {
-    beginTransaction(doc, "", 0.0f);
+    beginTransaction(doc, CommandId::EditPrimitiveShape, 0.0f);
   } else if (ImGui::IsItemDeactivatedAfterEdit()) {
     commitUndoableAction(doc, format("Set Eye Angle Offset to {}", primitive->getInfluenceEyeAngleOffset()));
   } else if (ImGui::IsItemDeactivated()) {
@@ -1095,7 +1095,7 @@ void renderPrimitiveBuildStep(editor::Document* doc, bw::core::Primitive* primit
     for (auto target : targets) {
       auto const label = stepLabel(target);
       if (ImGui::Selectable(label.c_str(), false)) {
-        transact(doc, format("Move Primitive to Layer Step {}", target), [&] { movePrimitiveToLayerBuildStep(doc, layer, primitive, target); });
+        transact(doc, CommandId::MovePrimitiveToLayerBuildStep, [&] { movePrimitiveToLayerBuildStep(doc, layer, primitive, target); });
       }
     }
     ImGui::EndCombo();
@@ -1116,7 +1116,7 @@ void renderEditPrimitiveSettings(editor::Document* doc, bw::core::Primitive* pri
   auto f2 = ImGui::CheckboxFlags("Calculate exact bounds based on vertex position", &flags, BW_PRIMITIVE_EXACT_BOUNDS_FLAG);
 
   if (f0 || f1 || f2) {
-    transact(doc, "Update Primitive flags", [&] {
+    transact(doc, CommandId::SetPrimitiveProperties, [&] {
       primitive->setFlags((uint32_t)flags);
     });
   }
@@ -1129,7 +1129,7 @@ void renderEditPrimitiveSettings(editor::Document* doc, bw::core::Primitive* pri
 
   if (ImGui::InputFloat("Time update distance", &timeUpdateDist, 0.0f, 0.0f, "%.1f", ImGuiInputTextFlags_EnterReturnsTrue)) {
     if (timeUpdateDist >= 0.0f) {
-      transact(doc, "Update Primitive Time Update distance", [&] {
+      transact(doc, CommandId::SetPrimitiveProperties, [&] {
         primitive->setTimeUpdateDistance(timeUpdateDist);
       });
     }
@@ -1144,7 +1144,7 @@ void renderEditPrimitiveProperties(editor::Document* doc, bw::core::Primitive* p
 
   // Update
   if (updateProperties) {
-    transact(doc, "Update Primitive properties", [&] {
+    transact(doc, CommandId::SetPrimitiveProperties, [&] {
       primitive->setProperties(properties);
     });
   }
@@ -1153,7 +1153,7 @@ void renderEditPrimitiveProperties(editor::Document* doc, bw::core::Primitive* p
 void renderEditPrimitiveAudioEmitters(
     editor::Document* doc, bw::core::Primitive* primitive) {
   if (ImGui::Button("Add emitter")) {
-    transact(doc, "Add AudioEmitter", [&] { addPrimitiveAudioEmitter(doc, primitive); });
+    transact(doc, CommandId::AddPrimitiveAudioEmitter, [&] { addPrimitiveAudioEmitter(doc, primitive); });
   }
 
   auto const emitters = primitive->getAudioEmitters();
@@ -1163,7 +1163,7 @@ void renderEditPrimitiveAudioEmitters(
     ImGui::SeparatorText(format("Emitter {}", i).c_str());
 
     if (ImGui::Button("Delete")) {
-      transact(doc, format("Delete AudioEmitter {}", i), [&] { deletePrimitiveAudioEmitter(doc, primitive, i); });
+      transact(doc, CommandId::DeletePrimitiveAudioEmitter, [&] { deletePrimitiveAudioEmitter(doc, primitive, i); });
       ImGui::PopID();
       break;
     }
@@ -1171,20 +1171,20 @@ void renderEditPrimitiveAudioEmitters(
     float offset[2]{emitter.offset.x, emitter.offset.y};
     ImGui::SetNextItemWidth(192.0f);
     if (ImGui::InputFloat2("Offset", offset)) {
-      transact(doc, format("Set AudioEmitter {} offset", i), [&] { setPrimitiveAudioEmitterOffset(doc, primitive, i, wp::Vector2{offset[0], offset[1]}); });
+      transact(doc, CommandId::SetPrimitiveAudioEmitterOffset, [&] { setPrimitiveAudioEmitterOffset(doc, primitive, i, wp::Vector2{offset[0], offset[1]}); });
     }
 
     auto floorOffset = emitter.heightOffset;
     ImGui::SetNextItemWidth(128.0f);
     if (ImGui::InputFloat("Floor offset", &floorOffset)) {
-      transact(doc, format("Set AudioEmitter {} floor offset", i), [&] { setPrimitiveAudioEmitterHeightOffset(doc, primitive, i, floorOffset); });
+      transact(doc, CommandId::SetPrimitiveAudioEmitterHeightOffset, [&] { setPrimitiveAudioEmitterHeightOffset(doc, primitive, i, floorOffset); });
     }
 
     auto soundId = emitter.soundId;
     ImGui::SetNextItemWidth(256.0f);
     if (widgets::InputText(
             "soundId", &soundId, ImGuiInputTextFlags_EnterReturnsTrue)) {
-      transact(doc, format("Set AudioEmitter {} soundId", i), [&] { setPrimitiveAudioEmitterSoundId(doc, primitive, i, soundId); });
+      transact(doc, CommandId::SetPrimitiveAudioEmitterSoundId, [&] { setPrimitiveAudioEmitterSoundId(doc, primitive, i, soundId); });
     }
 
     ImGui::PopID();

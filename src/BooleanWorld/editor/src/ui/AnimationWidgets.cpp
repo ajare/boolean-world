@@ -41,7 +41,7 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(96);
     if (ImGui::Combo("##Op1TransformFlow", &operand0, operandTypes, numOperandTypes)) {
-      transact(doc, "Set Transform Operand 1", [&] {
+      transact(doc, CommandId::SetTransformOperand, [&] {
         setTransformOperand(doc, primitive, key, i, 0, (bw::core::tTransform::OperandType)operand0);
       });
     }
@@ -55,7 +55,7 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
     switch ((bw::core::tTransform::OperandType)operand0) {
       case bw::core::tTransform::OperandType::Input:
         if (ImGui::Combo("##In1TransformFlow", &input0, inputTypes, IM_ARRAYSIZE(inputTypes))) {
-          transact(doc, "Set Transform Input 1", [&] {
+          transact(doc, CommandId::SetTransformInput, [&] {
             setTransformInput(doc, primitive, key, i, 0, (bw::core::InputType)input0);
           });
         }
@@ -63,7 +63,7 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
 
       case bw::core::tTransform::OperandType::Constant:
         if (ImGui::InputFloat("##Cn1TransformFlow", &constant0, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-          transact(doc, "Set Transform Constant 1", [&] {
+          transact(doc, CommandId::SetTransformConstant, [&] {
             // float c = clamp(constant0, ED_MIN_TRANSFORM_CONSTANT, ED_MAX_TRANSFORM_CONSTANT);
             float c = constant0;
             setTransformConstant(doc, primitive, key, i, 0, c);
@@ -78,7 +78,7 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
       case bw::core::tTransform::OperandType::Square:
         if (ImGui::InputFloat("##Fn1TransformFlow", &fnMultiplier0, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
           if (fnMultiplier0 > 0.0f) {
-            transact(doc, "Set Transform Function 1", [&] {
+            transact(doc, CommandId::SetTransformFnMultiplier, [&] {
               float c = fnMultiplier0;
               setTransformFnMultiplier(doc, primitive, key, i, 0, c);
             });
@@ -90,7 +90,7 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
       case bw::core::tTransform::OperandType::TriggerLineRed:
       case bw::core::tTransform::OperandType::TriggerLineBlue:
         if (ImGui::InputInt("##Tr1TransformFlow", &index0, 1, 10, ImGuiInputTextFlags_EnterReturnsTrue)) {
-          transact(doc, "Set Transform Index 1", [&] {
+          transact(doc, CommandId::SetTransformTriggerLine, [&] {
             uint32_t i0 = max(0, index0);
             setTransformTriggerLine(doc, primitive, key, i, 0, i0);
           });
@@ -111,7 +111,7 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(64);
     if (ImGui::Combo("##OpTransformFlow", &operation, opTypes, IM_ARRAYSIZE(opTypes))) {
-      transact(doc, "Set Transform Operation", [&] {
+      transact(doc, CommandId::SetTransformOperation, [&] {
         setTransformOperation(doc, primitive, key, i, (bw::core::tTransform::Operation)operation);
       });
     }
@@ -123,7 +123,7 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(96);
     if (ImGui::Combo("##Op2TransformFlow", &operand1, operandTypes, numOperandTypes)) {
-      transact(doc, "Set Transform Operand 1", [&] {
+      transact(doc, CommandId::SetTransformOperand, [&] {
         setTransformOperand(doc, primitive, key, i, 1, (bw::core::tTransform::OperandType)operand1);
       });
     }
@@ -137,7 +137,7 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
     switch ((bw::core::tTransform::OperandType)operand1) {
       case bw::core::tTransform::OperandType::Input:
         if (ImGui::Combo("##In2TransformFlow", &input1, inputTypes, IM_ARRAYSIZE(inputTypes))) {
-          transact(doc, "Set Transform Input 2", [&] {
+          transact(doc, CommandId::SetTransformInput, [&] {
             setTransformInput(doc, primitive, key, i, 1, (bw::core::InputType)input1);
           });
         }
@@ -145,7 +145,7 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
 
       case bw::core::tTransform::OperandType::Constant:
         if (ImGui::InputFloat("##Cn2TransformFlow", &constant1, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-          transact(doc, "Set Transform Constant 2", [&] {
+          transact(doc, CommandId::SetTransformConstant, [&] {
             // float c = clamp(constant1, ED_MIN_TRANSFORM_CONSTANT, ED_MAX_TRANSFORM_CONSTANT);
             float c = constant1;
 
@@ -161,7 +161,7 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
       case bw::core::tTransform::OperandType::Square:
         if (ImGui::InputFloat("##Fn2TransformFlow", &fnMultiplier1, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
           if (fnMultiplier1 > 0.0f) {
-            transact(doc, "Set Transform Function 2", [&] {
+            transact(doc, CommandId::SetTransformFnMultiplier, [&] {
               float c = fnMultiplier1;
               setTransformFnMultiplier(doc, primitive, key, i, 1, c);
             });
@@ -173,7 +173,7 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
       case bw::core::tTransform::OperandType::TriggerLineRed:
       case bw::core::tTransform::OperandType::TriggerLineBlue:
         if (ImGui::InputInt("##Tr2TransformFlow", &index1, 1, 10, ImGuiInputTextFlags_EnterReturnsTrue)) {
-          transact(doc, "Set Transform Index 2", [&] {
+          transact(doc, CommandId::SetTransformTriggerLine, [&] {
             uint32_t i1 = max(0, index1);
             setTransformTriggerLine(doc, primitive, key, i, 1, i1);
           });
@@ -208,23 +208,23 @@ void renderTransformFlow(editor::Document* doc, bw::core::Primitive* primitive, 
     ImGui::PopButtonRepeat();
 
     if (counter < 0) {
-      transact(doc, format("Swap {} Transforms", keyName), [&] { swapTransforms(doc, primitive, key, i, i - 1); });
+      transact(doc, CommandId::SwapTransforms, [&] { swapTransforms(doc, primitive, key, i, i - 1); });
 
     } else if (counter > 0) {
-      transact(doc, format("Swap {} Transforms", keyName), [&] { swapTransforms(doc, primitive, key, i, i + 1); });
+      transact(doc, CommandId::SwapTransforms, [&] { swapTransforms(doc, primitive, key, i, i + 1); });
     }
 
     ImGui::SameLine();
 
     if (ImGui::Button(ICON_FA_ERASER)) {
-      transact(doc, format("Remove {} Transform", keyName), [&] { removeTransform(doc, primitive, key, i); });
+      transact(doc, CommandId::RemoveTransform, [&] { removeTransform(doc, primitive, key, i); });
     }
 
     ImGui::PopID();
   }
 
   if (ImGui::Button(ICON_FA_PLUS)) {
-    transact(doc, format("Add {} Transform", keyName), [&] { addTransform(doc, primitive, key); });
+    transact(doc, CommandId::AddTransform, [&] { addTransform(doc, primitive, key); });
   }
 }
 
@@ -352,14 +352,14 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
     // So we may need to update the segments
     if (nPoints > (int)numPoints) {
       auto const& p = imPoints[editPoint];
-      transact(doc, format("Add {} Point at {:.2f}", name, p.x), [&] { addKeyToInterpolator(doc, lerperType, primitive, key, p.x, p.y); });
+      transact(doc, CommandId::AddKeyToInterpolator, [&] { addKeyToInterpolator(doc, lerperType, primitive, key, p.x, p.y); });
     } else if (nPoints < (int)numPoints) {
-      transact(doc, format("Remove {} Point {}", name, editPoint), [&] { removeKeyFromInterpolator(doc, lerperType, primitive, key, editPoint); });
+      transact(doc, CommandId::RemoveKeyFromInterpolator, [&] { removeKeyFromInterpolator(doc, lerperType, primitive, key, editPoint); });
     } else {
       wp::Vector2 editValue = {imPoints[editPoint].x, imPoints[editPoint].y};
 
       if (clicked) {
-        beginTransaction(doc, "Move point", editValue);
+        beginTransaction(doc, CommandId::UpdateAnimationKeyInInterpolator, editValue);
       }
 
       // Moved. The undoable action only commits on release, so this drag is
@@ -419,7 +419,7 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
       ImGui::SetNextItemWidth(128);
       int curEasing = (int)segment.easing;
       if (ImGui::Combo("###Interpolator", &curEasing, easingsStr.c_str(), 6)) {
-        transact(doc, "Set Interpolator Segment Easing", [&] {
+        transact(doc, CommandId::SetInterpolatorEasing, [&] {
           setInterpolatorEasing(doc, lerperType, primitive, key, i, (bw::core::Easing)curEasing);
         });
       }
@@ -455,7 +455,7 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
         inputValues[2] = clamp(inputValues[2], scaleMin.x, scaleMax.x);
         inputValues[3] = clamp(inputValues[3], scaleMin.y, scaleMax.y);
 
-        transact(doc, "Update Points", [&] {
+        transact(doc, CommandId::UpdateAnimationKeyInInterpolator, [&] {
           updateAnimationKeyInInterpolator(doc, lerperType, primitive, key, i, inputValues[0], inputValues[1]);
           updateAnimationKeyInInterpolator(doc, lerperType, primitive, key, i + 1, inputValues[2], inputValues[3]);
         });
@@ -472,7 +472,7 @@ void renderInterpolator(editor::Document* doc, bw::core::Primitive* primitive, b
   ImGui::PopID();
 
   if (pointToRemove != -1) {
-    transact(doc, format("Remove {} Point {}", lerperType, pointToRemove), [&] { removeKeyFromInterpolator(doc, lerperType, primitive, key, (uint32_t)pointToRemove); });
+    transact(doc, CommandId::RemoveKeyFromInterpolator, [&] { removeKeyFromInterpolator(doc, lerperType, primitive, key, (uint32_t)pointToRemove); });
   }
 }
 
@@ -530,7 +530,7 @@ void renderValueCapture(editor::Document* doc, bw::core::Primitive* primitive, b
   int selectedMode = (int)primitive->getCaptureMode(key);
   if (ImGui::Combo("Capture mode", &selectedMode, captureModesStr.c_str(), 6)) {
     auto mode = (bw::core::ValueCaptureMode)selectedMode;
-    transact(doc, "Set Capture Mode", [&] {
+    transact(doc, CommandId::SetPrimitiveCaptureMode, [&] {
       setPrimitiveCaptureMode(doc, primitive, key, mode);
     });
   }
@@ -543,7 +543,7 @@ void renderAnimatedPropertyEvents(editor::Document* doc, bw::core::Primitive* pr
   ImGui::SameLine();
 
   if (ImGui::Button(ICON_FA_PLUS)) {
-    transact(doc, "Add Animated Property Event", [&] {
+    transact(doc, CommandId::AddPrimitiveAnimatedPropertyEvent, [&] {
       addPrimitiveAnimatedPropertyEvent(doc, primitive, key, 1, bw::core::AnimatedPropertyEventTriggerType::UpDown, 0.5f);
     });
   }
@@ -590,7 +590,7 @@ void renderAnimatedPropertyEvents(editor::Document* doc, bw::core::Primitive* pr
     int triggerType = (int)event.triggerType;
 
     if (ImGui::Combo("Trigger", &triggerType, triggerTypesStr.c_str(), 6)) {
-      transact(doc, "Set Primitive Event Trigger", [&] { setPrimitiveAnimatedPropertyEvent(doc, primitive, key, i, event.eventType, (bw::core::AnimatedPropertyEventTriggerType)triggerType, event.value); });
+      transact(doc, CommandId::SetPrimitiveAnimatedPropertyEvent, [&] { setPrimitiveAnimatedPropertyEvent(doc, primitive, key, i, event.eventType, (bw::core::AnimatedPropertyEventTriggerType)triggerType, event.value); });
     }
 
     ImGui::SameLine();
@@ -601,7 +601,7 @@ void renderAnimatedPropertyEvents(editor::Document* doc, bw::core::Primitive* pr
     int eventType = (int)log2(event.eventType);  // eventType is a bitmask, not an index
 
     if (ImGui::Combo("Action", &eventType, eventTypesStr.c_str(), 6)) {
-      transact(doc, "Set Primitive Event Action", [&] { setPrimitiveAnimatedPropertyEvent(doc, primitive, key, i, 1 << eventType, event.triggerType, event.value); });
+      transact(doc, CommandId::SetPrimitiveAnimatedPropertyEvent, [&] { setPrimitiveAnimatedPropertyEvent(doc, primitive, key, i, 1 << eventType, event.triggerType, event.value); });
     }
 
     ImGui::SameLine();
@@ -611,12 +611,12 @@ void renderAnimatedPropertyEvents(editor::Document* doc, bw::core::Primitive* pr
     ImGui::SetNextItemWidth(64);
     float value = event.value;
     if (ImGui::InputFloat("Value", &value, 0.0f, 0.0f, "%.1f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-      transact(doc, "Set Primitive Event Value", [&] { setPrimitiveAnimatedPropertyEvent(doc, primitive, key, i, event.eventType, event.triggerType, value); });
+      transact(doc, CommandId::SetPrimitiveAnimatedPropertyEvent, [&] { setPrimitiveAnimatedPropertyEvent(doc, primitive, key, i, event.eventType, event.triggerType, value); });
     }
   }
 
   if (indexToDelete >= 0) {
-    transact(doc, "Delete Primitive Event", [&] { deletePrimitiveAnimatedPropertyEvent(doc, primitive, key, (uint32_t)indexToDelete); });
+    transact(doc, CommandId::DeletePrimitiveAnimatedPropertyEvent, [&] { deletePrimitiveAnimatedPropertyEvent(doc, primitive, key, (uint32_t)indexToDelete); });
   }
 }
 
