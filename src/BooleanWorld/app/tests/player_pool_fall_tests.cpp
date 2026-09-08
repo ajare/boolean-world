@@ -82,7 +82,7 @@ std::shared_ptr<bw::core::ArrangementWorldData> makePitWorld(
 struct Frame {
   float time;
   wp::Vector2 position;
-  float floorZ;
+  float feetElevation;
   float verticalVelocity;
   bool swimming;
   uint32_t wallLines;
@@ -113,13 +113,13 @@ public:
 
   wp::Vector2 const& position() const { return mPosition; }
 
-  float floorZ() const { return mState.floorZ; }
+  float feetElevation() const { return mState.feetElevation; }
 
   bool swimming() const {
     auto liquidSurface = mData.getLiquidSurfaceHeight(mPosition);
     auto submersion =
         std::isfinite(liquidSurface)
-            ? std::clamp(liquidSurface - mState.floorZ, 0.0f,
+            ? std::clamp(liquidSurface - mState.feetElevation, 0.0f,
                          float(BW_PLAYER_HEIGHT))
             : 0.0f;
     return submersion >= BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION *
@@ -154,8 +154,7 @@ public:
 
       auto blocksOnlyByStepHeight =
           wall.kind == bw::core::arr::ArrangementWallKind::FloorStep &&
-          !edge.collidesOverride.value_or(false) &&
-          wall.clearance >= BW_PLAYER_HEIGHT;
+          !mData.wallBlocksTraversalWithoutStepAt(wallIndex, mPosition);
       if (blocksOnlyByStepHeight &&
           bw::app::maySuppressOverlappingTallStep(isSwimming) &&
           mPosition.distanceToLine(v0, v1) < BW_PLAYER_RADIUS) {
@@ -187,7 +186,7 @@ public:
     inputs.frameTime = FrameTime;
     inputs.swimEffort = 0.0f;
     if (inputs.inWorld) {
-      inputs.targetFloor = mData.getFloorHeight(mPosition);
+      inputs.floorElevation = mData.getFloorHeight(mPosition);
       inputs.liquidSurface = mData.getLiquidSurfaceHeight(mPosition);
       inputs.liquid =
           bw::core::GetLiquidProperties(mData.getLiquidType(mPosition));
@@ -195,7 +194,7 @@ public:
     mState = bw::app::stepPlayerVerticalPhysics(mState, inputs);
 
     mTime += FrameTime;
-    return {mTime,      mPosition, mState.floorZ, mState.verticalVelocity,
+    return {mTime, mPosition, mState.feetElevation, mState.verticalVelocity,
             isSwimming, lineCount};
   }
 
@@ -213,7 +212,7 @@ public:
   std::vector<Frame> stepOffTheEdgeAndSettle(
       wp::Vector2 const& walkDirection, float settleSeconds) {
     std::vector<Frame> trace;
-    for (uint32_t i = 0; i < 600 && mState.floorZ > -1.0f; ++i) {
+    for (uint32_t i = 0; i < 600 && mState.feetElevation > -1.0f; ++i) {
       trace.push_back(step(walkDirection));
     }
     auto settled = run(wp::Vector2::ZERO, settleSeconds);
@@ -230,9 +229,9 @@ void walkingOffABankIntoADeepPoolDoesNotPinThePlayerToTheBank() {
   PlayerHarness player(*data, {0.0f, 120.0f});
   player.run({0.0f, -1.0f}, 6.0f);
 
-  require(player.floorZ() < -50.0f,
-          "player never fell into the pool (floorZ " +
-              std::to_string(player.floorZ()) + ")");
+  require(player.feetElevation() < -50.0f,
+          "player never fell into the pool (feet elevation " +
+              std::to_string(player.feetElevation()) + ")");
   require(player.position().y < 44.0f - 1.0f,
           "player was pinned at the bank edge (y " +
               std::to_string(player.position().y) + ")");
@@ -288,9 +287,9 @@ void liftingASwimmerClearOfTheBankDoesNotLetThemSwimOverIt() {
   require(swimmer.position().y < 50.0f,
           "a swimmer crossed the bank horizontally (y " +
               std::to_string(swimmer.position().y) + ")");
-  require(swimmer.floorZ() < -50.0f,
-          "a swimmer was lifted out of the pool by pushing at its bank (floorZ " +
-              std::to_string(swimmer.floorZ()) + ")");
+  require(swimmer.feetElevation() < -50.0f,
+          "a swimmer was lifted out of the pool by pushing at its bank (feet elevation " +
+              std::to_string(swimmer.feetElevation()) + ")");
 }
 
 // Control: the same pit with no water in it. A dry faller lands on the bottom

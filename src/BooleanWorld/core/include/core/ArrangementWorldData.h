@@ -110,6 +110,14 @@ public:
   [[nodiscard]] std::optional<SurfaceSample> getSurfaceSample(
       wp::Vector2 const& position) const;
 
+  // Samples a face already identified by a caller at a position on or within
+  // it. This is the unambiguous form for Arrangement-edge crossings, where a
+  // point belongs to both incident faces and an ordinary containment lookup
+  // could select either one.
+  [[nodiscard]] std::optional<SurfaceSample> getSurfaceSample(
+      uint32_t faceIndex,
+      wp::Vector2 const& position) const;
+
   [[nodiscard]] int32_t getNearestVertexIndex(
       wp::Vector2 const& position,
       float radius) const;
@@ -130,9 +138,9 @@ public:
   [[nodiscard]] std::vector<float> const& getLiquidDepths() const;
 
   // The world-space height of the settled liquid surface at position - the
-  // containing face's own (un-Wedge-raised) floorZ plus its liquid depth,
-  // matching the surface WorldRenderer draws. Negative infinity outside the
-  // arrangement or wherever no liquid reaches.
+  // containing face's own sampled (un-Wedge-raised) floor elevation plus its
+  // liquid depth, matching the surface WorldRenderer draws. Negative infinity
+  // outside the arrangement or wherever no liquid reaches.
   [[nodiscard]] float getLiquidSurfaceHeight(wp::Vector2 const& position) const;
 
   // The LiquidType of whichever Primitive's properties won the containing
@@ -149,20 +157,37 @@ public:
   // from its upper face or while the actor is already descending; authored
   // collision and clearance constraints still apply in both directions.
   [[nodiscard]] std::vector<uint32_t> getWallsNearForTraversal(
-      wp::Vector2 const& position,
+      wp::Vector2 const& destinationPosition,
       float radius,
       wp::Vector2 const& sourcePosition,
       bool descending = false) const;
+
+  // True when authored collision or local standing clearance blocks this
+  // wall independently of floor-step height. The supplied position is
+  // projected onto the wall, so overlap recovery uses the same local surface
+  // samples as traversal.
+  [[nodiscard]] bool wallBlocksTraversalWithoutStepAt(
+      uint32_t wallIndex,
+      wp::Vector2 const& position) const;
 
   [[nodiscard]] int32_t circleIntersectsWall(
       wp::Vector2 const& position,
       float radius) const;
 
+  // Destination-aware form used by actions such as Liquid mantling. Unlike
+  // circleIntersectsWall's conservative collision-grid query, local Step
+  // height and clearance are evaluated at the attempted crossing.
+  [[nodiscard]] int32_t circleIntersectsWallForTraversal(
+      wp::Vector2 const& destinationPosition,
+      float radius,
+      wp::Vector2 const& sourcePosition,
+      bool descending = false) const;
+
   // How far a horizontal ray at `height` gets from `from` toward `to` before
   // the nearest rendered wall blocks it. Empty when it reaches `to` in the
-  // clear. A wall blocks only over its own minZ..maxZ span, so the ray passes
-  // above a low FloorStep and below a high CeilingStep exactly as light
-  // leaving that height does, and a wall the World does not draw blocks
+  // clear. A wall blocks only over its evaluated span at the crossing, so the
+  // ray passes above a low FloorStep and below a high CeilingStep exactly as
+  // light leaving that height does, and a wall the World does not draw blocks
   // nothing. Collision is a separate question - see getWallsNear.
   [[nodiscard]] std::optional<float> distanceToFirstWallCrossing(
       wp::Vector2 const& from,

@@ -37,7 +37,7 @@ void ProtoEntityDefaultDefinitionFactory::createProtoEntity(ProtoEntity* entity,
   if (physicalNode) {
     // Parse
     Vector2 position = Vector2::ZERO;
-    float floorZ = 0.0f;
+    float feetElevation = 0.0f;
     float angle = 0.0f;
     float pitch = 0.0f;
 
@@ -67,7 +67,7 @@ void ProtoEntityDefaultDefinitionFactory::createProtoEntity(ProtoEntity* entity,
     BoundingBox bounds(position - size / 2, size);
 
     handler->registerProtoComponent<PhysicalStats>(protoId, {position,
-                                                             floorZ,
+                                                             feetElevation,
                                                              angle,
                                                              pitch,
                                                              collides,

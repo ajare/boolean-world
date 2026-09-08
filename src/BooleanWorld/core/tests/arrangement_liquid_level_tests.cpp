@@ -233,9 +233,11 @@ void getLiquidDepthQueriesTheContainingFace() {
   auto rim = rectanglePrimitive(
       rectangle(-10, -10, 110, 110), Primitive::Operation::Union, 0, 1,
       properties(48.0f, 48.0f, 0.0f), 14400.0);
+  auto sourceProperties = properties(0.0f, 48.0f, 18.0f);
+  sourceProperties.floorZ.gradient = {0.1f, 0.0f};
   auto source = rectanglePrimitive(
       rectangle(0, 0, 100, 100), Primitive::Operation::Union, 1, 2,
-      properties(0.0f, 48.0f, 18.0f), 10000.0);
+      sourceProperties, 10000.0);
 
   ArrangementWorldData worldData(
       bw::core::arr::BuildArrangement({rim, source}),
@@ -243,6 +245,10 @@ void getLiquidDepthQueriesTheContainingFace() {
 
   requireNear(worldData.getLiquidDepth({50.0f, 50.0f}), 18.0,
               "getLiquidDepth should return the containing face's computed depth");
+  requireNear(worldData.getLiquidSurfaceHeight({20.0f, 50.0f}), 20.0,
+              "the Liquid surface query did not sample its position");
+  requireNear(worldData.getLiquidSurfaceHeight({80.0f, 50.0f}), 26.0,
+              "the Liquid surface query used a face-wide floor elevation");
   requireNear(worldData.getLiquidDepth({-200.0f, -200.0f}), 0.0,
               "getLiquidDepth outside the arrangement should be zero");
 }

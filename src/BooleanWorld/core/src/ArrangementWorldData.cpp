@@ -31,6 +31,28 @@ std::unique_ptr<ImmutableAccelerationGrid> CreateGrid(
       extents.getMinExtent(), size, dimensionsX, dimensionsY, itemBounds);
 }
 
+wp::Vector2 EdgeInteractionPosition(
+    wp::Vector2 const& source,
+    wp::Vector2 const& destination,
+    wp::Vector2 const& edgeStart,
+    wp::Vector2 const& edgeEnd) {
+  auto movement = destination - source;
+  auto edge = edgeEnd - edgeStart;
+  auto determinant = movement.x * edge.y - movement.y * edge.x;
+  if (std::abs(determinant) > 1.0e-8f) {
+    auto offset = edgeStart - source;
+    auto alongMovement =
+        (offset.x * edge.y - offset.y * edge.x) / determinant;
+    auto alongEdge =
+        (offset.x * movement.y - offset.y * movement.x) / determinant;
+    if (alongMovement >= 0.0f && alongMovement <= 1.0f &&
+        alongEdge >= 0.0f && alongEdge <= 1.0f) {
+      return source + movement * alongMovement;
+    }
+  }
+  return destination.closestPointOnLine(edgeStart, edgeEnd);
+}
+
 std::optional<float> TriangleHeightAt(
     arr::DetailTriangle const& triangle,
     wp::Vector2 const& position) {
@@ -171,9 +193,13 @@ ArrangementWorldData::ArrangementWorldData(
     // a candidate; traversal queries later remove it when approached from
     // the higher face. An authored override replaces the generated
     // Border/Step default, while Step clearance remains a physical limit.
+    // These are conservative broad-phase predicates only. Exact traversal
+    // evaluates both incident surfaces at the attempted crossing below.
     auto exceedsStepHeight =
         wall.kind == arr::ArrangementWallKind::FloorStep &&
-        wall.maxZ - wall.minZ > BW_PLAYER_STEP_HEIGHT;
+        std::max(
+            wall.topZ[0] - wall.bottomZ[0],
+            wall.topZ[1] - wall.bottomZ[1]) > BW_PLAYER_STEP_HEIGHT;
     auto authoredCollision = edge.collidesOverride.value_or(
         wall.kind == arr::ArrangementWallKind::Border);
     auto hasInsufficientClearance =
@@ -223,19 +249,18 @@ ArrangementWorldData::ArrangementWorldData(
            emitter.placementKey, reason});
     };
 
-    auto faceIndex = getContainingFaceIndex(emitter.position);
-    if (faceIndex == ~0u || !mArrangement->faces[faceIndex].solid) {
+    auto surface = getSurfaceSample(emitter.position);
+    if (!surface) {
       fail(AudioEmitterCaptureFailure::NoSolidGeometry);
       continue;
     }
-    auto const& face = mArrangement->faces[faceIndex];
-    auto height = getFloorHeight(emitter.position) + emitter.heightOffset;
-    if (!face.solidContributors.contains(emitter.parentPrimitiveIndex)) {
+    auto height = surface->floorElevation + emitter.heightOffset;
+    if (!surface->face->solidContributors.contains(
+            emitter.parentPrimitiveIndex)) {
       fail(AudioEmitterCaptureFailure::ParentDoesNotContribute, height);
       continue;
     }
-    auto ceiling = mArrangement->palette[face.paletteIndex].ceilingZ;
-    if (!(height < ceiling)) {
+    if (!(height < surface->ceilingElevation)) {
       fail(AudioEmitterCaptureFailure::DerivedHeightAboveCeiling, height);
       continue;
     }
@@ -366,10 +391,16 @@ int32_t ArrangementWorldData::getNearestVertexIndex(
 
 std::optional<SurfaceSample> ArrangementWorldData::getSurfaceSample(
     wp::Vector2 const& position) const {
-  auto faceIndex = getContainingFaceIndex(position);
-  if (faceIndex == ~0u) return std::nullopt;
+  return getSurfaceSample(getContainingFaceIndex(position), position);
+}
+
+std::optional<SurfaceSample> ArrangementWorldData::getSurfaceSample(
+    uint32_t faceIndex,
+    wp::Vector2 const& position) const {
+  if (faceIndex >= mArrangement->faces.size()) return std::nullopt;
 
   auto const& face = mArrangement->faces[faceIndex];
+  if (!face.solid) return std::nullopt;
   auto const& properties = mArrangement->palette[face.paletteIndex];
   auto floorNormal = properties.floorZ.normal();
   auto ceilingUp = properties.ceilingZ.normal();
@@ -389,6 +420,7 @@ std::optional<SurfaceSample> ArrangementWorldData::getSurfaceSample(
        mFloorWedgeGrid->getCellItems(cellX, cellY)) {
     auto detailIndex = mFloorWedgeTriangleIndices[floorWedgeIndex];
     auto const& triangle = mDetail.getTriangles()[detailIndex];
+    if (triangle.source.index != faceIndex) continue;
     // A floor Wedge can only raise collision above its source face. Taking the
     // maximum also resolves shared fan edges and intentional Wedge overlap.
     if (auto wedgeHeight = TriangleHeightAt(triangle, position);
@@ -415,28 +447,28 @@ float ArrangementWorldData::getCeilingHeight(
 }
 
 float ArrangementWorldData::getLiquidDepth(wp::Vector2 const& position) const {
-  // Liquid pools in solid faces (the same ones the triangle grid behind
-  // getContainingFaceIndex indexes, and BuildArrangementTriangles renders),
-  // so the same accelerated lookup floor/ceiling height queries use applies
-  // here too.
-  auto faceIndex = getContainingFaceIndex(position);
-  return faceIndex == ~0u ? 0.0f : mLiquidDepths[faceIndex];
+  auto surface = getSurfaceSample(position);
+  return surface ? mLiquidDepths[surface->faceIndex] : 0.0f;
 }
 
 float ArrangementWorldData::getLiquidSurfaceHeight(
     wp::Vector2 const& position) const {
-  auto faceIndex = getContainingFaceIndex(position);
-  if (faceIndex == ~0u) {
+  auto surface = getSurfaceSample(position);
+  if (!surface) {
     return -std::numeric_limits<float>::infinity();
   }
-  auto liquidDepth = mLiquidDepths[faceIndex];
+  auto liquidDepth = mLiquidDepths[surface->faceIndex];
   if (liquidDepth <= 0.0f) {
     return -std::numeric_limits<float>::infinity();
   }
-  auto floorZ =
-      mArrangement->palette[mArrangement->faces[faceIndex].paletteIndex]
-          .floorZ;
-  return floorZ + liquidDepth;
+  // Liquid settlement still stores one depth per flat-world face. Evaluate
+  // that face's plane at the query position rather than converting its base
+  // elevation as though it were a face-wide height. Floor Wedges do not move
+  // the rendered free surface, so use the selected Elevation plane rather
+  // than the collision-raised floor in SurfaceSample.
+  auto const& properties =
+      mArrangement->palette[surface->face->paletteIndex];
+  return properties.floorZ.evaluate(position) + liquidDepth;
 }
 
 LiquidType ArrangementWorldData::getLiquidType(
@@ -463,48 +495,72 @@ std::vector<uint32_t> ArrangementWorldData::getWallsNear(
   return result;
 }
 
+bool ArrangementWorldData::wallBlocksTraversalWithoutStepAt(
+    uint32_t wallIndex,
+    wp::Vector2 const& position) const {
+  if (wallIndex >= mWalls.size()) return true;
+  auto const& wall = mWalls[wallIndex];
+  auto const& edge = mArrangement->edges[wall.edge];
+  auto authoredCollision = edge.collidesOverride.value_or(
+      wall.kind == arr::ArrangementWallKind::Border);
+  if (authoredCollision) return true;
+  if (wall.kind == arr::ArrangementWallKind::Border) return false;
+
+  auto edgeStart = ToWorld(mArrangement->vertices[edge.v[0]]);
+  auto edgeEnd = ToWorld(mArrangement->vertices[edge.v[1]]);
+  auto interaction = position.closestPointOnLine(edgeStart, edgeEnd);
+  auto side0 = getSurfaceSample(edge.face[0], interaction);
+  auto side1 = getSurfaceSample(edge.face[1], interaction);
+  if (!side0 || !side1) return true;
+  auto clearance =
+      std::min(side0->ceilingElevation, side1->ceilingElevation) -
+      std::max(side0->floorElevation, side1->floorElevation);
+  return clearance < BW_PLAYER_HEIGHT;
+}
+
 std::vector<uint32_t> ArrangementWorldData::getWallsNearForTraversal(
-    wp::Vector2 const& position,
+    wp::Vector2 const& destinationPosition,
     float radius,
     wp::Vector2 const& sourcePosition,
     bool descending) const {
   auto sourceFace = getContainingFaceIndex(sourcePosition);
-  auto candidates = getWallsNear(position, radius);
+  auto candidates = getWallsNear(destinationPosition, radius);
   std::vector<uint32_t> result;
   result.reserve(candidates.size());
   for (auto wallIndex : candidates) {
     auto const& wall = mWalls[wallIndex];
     auto const& edge = mArrangement->edges[wall.edge];
-    auto authoredCollision = edge.collidesOverride.value_or(
-        wall.kind == arr::ArrangementWallKind::Border);
-    auto blocksWithoutStepHeight =
-        authoredCollision ||
-        (wall.kind != arr::ArrangementWallKind::Border &&
-         wall.clearance < BW_PLAYER_HEIGHT);
-    if (blocksWithoutStepHeight ||
-        wall.kind != arr::ArrangementWallKind::FloorStep ||
-        wall.maxZ - wall.minZ <= BW_PLAYER_STEP_HEIGHT) {
-      if (blocksWithoutStepHeight) result.push_back(wallIndex);
+    auto edgeStart = ToWorld(mArrangement->vertices[edge.v[0]]);
+    auto edgeEnd = ToWorld(mArrangement->vertices[edge.v[1]]);
+    auto interaction = EdgeInteractionPosition(
+        sourcePosition, destinationPosition, edgeStart, edgeEnd);
+    if (wallBlocksTraversalWithoutStepAt(wallIndex, interaction)) {
+      result.push_back(wallIndex);
       continue;
     }
+    if (wall.kind != arr::ArrangementWallKind::FloorStep) continue;
 
     // Once a fall has begun, the actor may already be horizontally over the
     // lower face while still descending from the ledge. Do not reintroduce
     // the step wall behind it and trap its collider there.
     if (descending) continue;
 
-    // A tall FloorStep otherwise blocks only while approaching it from its
-    // lower face. If the source cannot be associated with either adjacent
-    // face, retain the wall conservatively rather than accidentally opening
-    // an ascent.
+    // A FloorStep blocks only when the exact crossing rises farther than the
+    // player's capability. Sampling both incident faces explicitly avoids the
+    // arbitrary side selected by a point-in-triangle query on their edge.
     if (sourceFace != edge.face[0] && sourceFace != edge.face[1]) {
       result.push_back(wallIndex);
       continue;
     }
-    auto sourceFloor =
-        mArrangement->palette[mArrangement->faces[sourceFace].paletteIndex]
-            .floorZ;
-    if (sourceFloor < wall.maxZ) result.push_back(wallIndex);
+    auto targetFace =
+        sourceFace == edge.face[0] ? edge.face[1] : edge.face[0];
+    auto source = getSurfaceSample(sourceFace, interaction);
+    auto target = getSurfaceSample(targetFace, interaction);
+    if (!source || !target ||
+        target->floorElevation - source->floorElevation >
+            BW_PLAYER_STEP_HEIGHT) {
+      result.push_back(wallIndex);
+    }
   }
   return result;
 }
@@ -530,12 +586,6 @@ std::optional<float> ArrangementWorldData::distanceToFirstWallCrossing(
   auto nearest = std::numeric_limits<float>::infinity();
   for (auto renderedWallIndex : candidates) {
     auto const& wall = mWalls[mRenderedWallIndices[renderedWallIndex]];
-    // The span is inclusive: a ray level with the lip of a step is grazing
-    // the quad the World draws there, so treat it as blocked rather than
-    // letting it slip through a surface that is visibly in the way.
-    if (height < wall.minZ || height > wall.maxZ) {
-      continue;
-    }
     auto const& edge = mArrangement->edges[wall.edge];
     auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
     auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
@@ -554,6 +604,28 @@ std::optional<float> ArrangementWorldData::distanceToFirstWallCrossing(
         alongWall > 1.0f) {
       continue;
     }
+    auto crossing = a + wallSpan * alongWall;
+    auto bottom =
+        wall.bottomZ[0] + (wall.bottomZ[1] - wall.bottomZ[0]) * alongWall;
+    auto top = wall.topZ[0] + (wall.topZ[1] - wall.topZ[0]) * alongWall;
+    if (wall.kind != arr::ArrangementWallKind::Border) {
+      auto side0 = getSurfaceSample(edge.face[0], crossing);
+      auto side1 = getSurfaceSample(edge.face[1], crossing);
+      if (!side0 || !side1) continue;
+      if (wall.kind == arr::ArrangementWallKind::FloorStep) {
+        bottom = std::min(side0->floorElevation, side1->floorElevation);
+        top = std::max(side0->floorElevation, side1->floorElevation);
+      } else {
+        bottom = std::min(
+            side0->ceilingElevation, side1->ceilingElevation);
+        top = std::max(
+            side0->ceilingElevation, side1->ceilingElevation);
+      }
+    }
+    // The span is inclusive: a ray level with the lip of a step is grazing
+    // the generated surface, so treat it as blocked. Evaluate that span at
+    // the crossing rather than using the wall's conservative broad bounds.
+    if (height < bottom || height > top) continue;
     nearest = std::min(nearest, alongRay * rayLength);
   }
 
@@ -568,6 +640,23 @@ int32_t ArrangementWorldData::circleIntersectsWall(
     auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
     auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
     if (position.distanceToLine(a, b) <= radius) {
+      return int32_t(wallIndex);
+    }
+  }
+  return -1;
+}
+
+int32_t ArrangementWorldData::circleIntersectsWallForTraversal(
+    wp::Vector2 const& destinationPosition,
+    float radius,
+    wp::Vector2 const& sourcePosition,
+    bool descending) const {
+  for (auto wallIndex : getWallsNearForTraversal(
+           destinationPosition, radius, sourcePosition, descending)) {
+    auto const& edge = mArrangement->edges[mWalls[wallIndex].edge];
+    auto a = ToWorld(mArrangement->vertices[edge.v[0]]);
+    auto b = ToWorld(mArrangement->vertices[edge.v[1]]);
+    if (destinationPosition.distanceToLine(a, b) <= radius) {
       return int32_t(wallIndex);
     }
   }

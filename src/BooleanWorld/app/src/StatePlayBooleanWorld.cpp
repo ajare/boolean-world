@@ -415,7 +415,7 @@ void StatePlayBooleanWorld::setupMapRenderer(applib::StateTransitionData* transi
   auto const& physicalStats = getPlayerPhysicalStats();
   auto initialPosition = glm::vec3{
       physicalStats.position.x,
-      physicalStats.floorZ + BW_PLAYER_EYE_HEIGHT,
+      physicalStats.feetElevation + BW_PLAYER_EYE_HEIGHT,
       -physicalStats.position.y};
   mwRenderSystem->configureShadowDomain(
       std::string(bw::app::playerTorchShadowDomain),
@@ -618,8 +618,8 @@ void StatePlayBooleanWorld::createWorldCollisions(
     // horizontal collision cross here would bypass those checks.
     auto blocksOnlyByStepHeight =
         wall.kind == bw::core::arr::ArrangementWallKind::FloorStep &&
-        !edge.collidesOverride.value_or(false) &&
-        wall.clearance >= BW_PLAYER_HEIGHT;
+        !mWorldData->wallBlocksTraversalWithoutStepAt(
+            wallIndex, playerPosition);
     if (blocksOnlyByStepHeight &&
         bw::app::maySuppressOverlappingTallStep(swimming) &&
         playerPosition.distanceToLine(v0, v1) < BW_PLAYER_RADIUS) {
@@ -754,16 +754,16 @@ vector<string> StatePlayBooleanWorld::getDebuggingText() const {
 
   auto const& physicalStats = getPlayerPhysicalStats();
   auto playerPrimIndex = getPlayerPrimitive();
-  auto floorHeight = getPlayerFloorHeight();
-  auto ceilingHeight = getPlayerCeilingHeight();
+  auto floorElevation = getPlayerFloorElevation();
+  auto ceilingElevation = getPlayerCeilingElevation();
   auto liquidSubmersionDepth = getPlayerLiquidSubmersionDepth();
 
   vector<string> lines{
       STR_FORMAT("Mouse screen: {:.0f},{:.0f}", mouseScreen.x, mouseScreen.y),
       STR_FORMAT("Mouse world: {:.2f},{:.2f}", mouseWorld.x, mouseWorld.y),
       STR_FORMAT("Player world: {:.2f},{:.2f}", physicalStats.position.x, physicalStats.position.y),
-      STR_FORMAT("Player floor/ceil: {:.2f},{:.2f}", floorHeight, ceilingHeight),
-      STR_FORMAT("Player height/vZ: {:.2f},{:.2f}", physicalStats.floorZ, mPlayerVerticalVelocity),
+      STR_FORMAT("Player floor/ceil: {:.2f},{:.2f}", floorElevation, ceilingElevation),
+      STR_FORMAT("Player feet/vZ: {:.2f},{:.2f}", physicalStats.feetElevation, mPlayerVerticalVelocity),
       STR_FORMAT("Player angle: {:.2f}", physicalStats.angle),
       STR_FORMAT("Player poly: {}", mPlayerPolygonIndex),
       STR_FORMAT("Player prim: {}", playerPrimIndex),
@@ -799,24 +799,24 @@ float StatePlayBooleanWorld::getPlayerAngle() const {
   return getPlayerPhysicalStats().angle;
 }
 
-float StatePlayBooleanWorld::getFloorHeightAt(wp::Vector2 const& pos) const {
+float StatePlayBooleanWorld::getFloorElevationAt(wp::Vector2 const& pos) const {
   return mWorldData ? mWorldData->getFloorHeight(pos) : 0.0f;
 }
 
-float StatePlayBooleanWorld::getCeilingHeightAt(wp::Vector2 const& pos) const {
+float StatePlayBooleanWorld::getCeilingElevationAt(wp::Vector2 const& pos) const {
   return mWorldData ? mWorldData->getCeilingHeight(pos) : 0.0f;
 }
 
-float StatePlayBooleanWorld::getPlayerFloorHeight() const {
+float StatePlayBooleanWorld::getPlayerFloorElevation() const {
   auto const& playerStats = getPlayerPhysicalStats();
 
-  return getFloorHeightAt(playerStats.position);
+  return getFloorElevationAt(playerStats.position);
 }
 
-float StatePlayBooleanWorld::getPlayerCeilingHeight() const {
+float StatePlayBooleanWorld::getPlayerCeilingElevation() const {
   auto const& playerStats = getPlayerPhysicalStats();
 
-  return getCeilingHeightAt(playerStats.position);
+  return getCeilingElevationAt(playerStats.position);
 }
 
 float StatePlayBooleanWorld::getPlayerLiquidSubmersionDepth() const {
@@ -830,7 +830,7 @@ float StatePlayBooleanWorld::getPlayerLiquidSubmersionDepth() const {
     return 0.0f;
   }
 
-  auto submersion = liquidSurface - playerStats.floorZ;
+  auto submersion = liquidSurface - playerStats.feetElevation;
   return std::clamp(submersion, 0.0f, float(BW_PLAYER_HEIGHT));
 }
 
@@ -893,9 +893,10 @@ bool StatePlayBooleanWorld::tryClimbOutOfLiquid() {
 
   // Only from the top of the swimmer's reach - the same height the vertical
   // clamp in updatePlayerVerticalPhysics holds them at once they stop rising.
-  auto floatHeight = liquidSurface - BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION *
-                                         float(BW_PLAYER_HEIGHT);
-  if (physicalStats.floorZ < floatHeight - 0.01f) {
+  auto floatingFeetElevation =
+      liquidSurface - BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION *
+                          float(BW_PLAYER_HEIGHT);
+  if (physicalStats.feetElevation < floatingFeetElevation - 0.01f) {
     return false;
   }
 
@@ -950,34 +951,39 @@ bool StatePlayBooleanWorld::tryClimbOutOfLiquid() {
       continue;
     }
 
-    auto const& targetProperties =
-        arrangement.palette[arrangement.faces[targetFace].paletteIndex];
+    // The shortest move that puts the whole collider past the edge. Floor
+    // reach and headroom are properties of this landing position, not of an
+    // arbitrary point (or base elevation) elsewhere in the target face.
+    auto destination =
+        closestPoint +
+        outward * (float(BW_PLAYER_RADIUS) + BW_PLAYER_CLIMB_OUT_MARGIN);
+    auto targetSurface =
+        mWorldData->getSurfaceSample(targetFace, destination);
+    if (!targetSurface) continue;
+
     // Climbing out is a lift onto something above the swimmer. A floor at or
     // below their float height is just more of the pool - reachable by
     // swimming, and nothing to haul themselves onto. The ledge itself must
     // also be within arm's reach of their eye level.
     if (!bw::app::canClimbOutOfLiquidToFloor(
-            physicalStats.floorZ, targetProperties.floorZ)) {
+            physicalStats.feetElevation,
+            targetSurface->floorElevation)) {
       continue;
     }
-    if (targetProperties.ceilingZ - targetProperties.floorZ <
+    if (targetSurface->ceilingElevation - targetSurface->floorElevation <
         BW_PLAYER_HEIGHT) {
       continue;
     }
 
-    // The shortest move that puts the whole collider past the edge.
-    auto destination =
-        closestPoint +
-        outward * (float(BW_PLAYER_RADIUS) + BW_PLAYER_CLIMB_OUT_MARGIN);
-
     // Room to stand there: on the face we meant, and clear of every wall
     // around it - otherwise the climb would end wedged in geometry.
     if (mWorldData->getContainingFaceIndex(destination) != targetFace ||
-        mWorldData->circleIntersectsWall(destination, BW_PLAYER_RADIUS) >= 0) {
+        mWorldData->circleIntersectsWallForTraversal(
+            destination, BW_PLAYER_RADIUS, position) >= 0) {
       continue;
     }
 
-    // Only the horizontal move happens here. Leaving floorZ down at the
+    // Only the horizontal move happens here. Leaving feetElevation down at the
     // swimmer's float height hands the rise to the ordinary step-up branch of
     // updatePlayerVerticalPhysics, which climbs towards the new floor at
     // BW_PLAYER_STEP_SPEED from the next frame on - so the eye rises out of
@@ -1109,7 +1115,7 @@ void StatePlayBooleanWorld::updatePreInput(float frameTime) {
 }
 
 void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
-  // Uses last frame's settled position/floorZ - this frame's movement (below)
+  // Uses last frame's settled position/feet elevation - this frame's movement
   // has not been computed yet - which is exactly the submersion state that
   // should govern how fast, and by which controls, that movement happens.
   auto entityHandler = static_cast<EntityHandlerBooleanWorld*>(
@@ -1167,7 +1173,7 @@ void StatePlayBooleanWorld::updateAudio(float frameTime) {
     mSteamAudio->updateEmitters(
         bw::app::worldToRendererAudioPosition(
             physicalStats.position,
-            physicalStats.floorZ + BW_PLAYER_EYE_HEIGHT),
+            physicalStats.feetElevation + BW_PLAYER_EYE_HEIGHT),
         frameTime);
   }
 }
@@ -1213,7 +1219,7 @@ void StatePlayBooleanWorld::updatePlayerVerticalPhysics(float frameTime) {
       return;
     }
     if (playerInWorld()) {
-      physicalStats.floorZ = getFloorHeightAt(physicalStats.position);
+      physicalStats.feetElevation = getFloorElevationAt(physicalStats.position);
       mPlayerVerticalVelocity = 0.0f;
       mPlayerVerticalHeightInitialized = true;
       return;
@@ -1225,15 +1231,15 @@ void StatePlayBooleanWorld::updatePlayerVerticalPhysics(float frameTime) {
   inputs.frameTime = frameTime;
   inputs.swimEffort = mPlayerSwimEffort;
   if (inputs.inWorld) {
-    inputs.targetFloor = getFloorHeightAt(physicalStats.position);
+    inputs.floorElevation = getFloorElevationAt(physicalStats.position);
     inputs.liquidSurface =
         mWorldData->getLiquidSurfaceHeight(physicalStats.position);
     inputs.liquid = getLiquidPropertiesAt(physicalStats.position);
   }
 
   auto next = bw::app::stepPlayerVerticalPhysics(
-      {physicalStats.floorZ, mPlayerVerticalVelocity}, inputs);
-  physicalStats.floorZ = next.floorZ;
+      {physicalStats.feetElevation, mPlayerVerticalVelocity}, inputs);
+  physicalStats.feetElevation = next.feetElevation;
   mPlayerVerticalVelocity = next.verticalVelocity;
 }
 
@@ -1290,7 +1296,8 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   // updatePlayerVerticalPhysics - smoothed onto steps, falling under
   // gravity off ledges) plus player eye height, not the floor directly
   // beneath them: those two only match once physics has caught up.
-  auto playerViewHeight = physicalStats.floorZ + BW_PLAYER_EYE_HEIGHT;
+  auto playerViewHeight =
+      physicalStats.feetElevation + BW_PLAYER_EYE_HEIGHT;
 
   static_cast<ReactiveCamera*>(mCamera3d.get())->setPosition(
       bw::app::worldToRendererAudioPosition(

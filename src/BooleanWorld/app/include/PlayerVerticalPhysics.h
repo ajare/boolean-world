@@ -10,11 +10,11 @@
 
 namespace bw::app {
 
-// Where the player is vertically, and how fast that is changing. floorZ is the
-// height of the player's feet, not the floor beneath them - the floor is only
-// what it rests on when they are grounded.
+// Where the player is vertically, and how fast that is changing. The feet
+// elevation is player state, distinct from the sampled floor elevation beneath
+// it; the two coincide only while grounded.
 struct PlayerVerticalState {
-  float floorZ{0.0f};
+  float feetElevation{0.0f};
   float verticalVelocity{0.0f};
 };
 
@@ -22,9 +22,9 @@ struct PlayerVerticalState {
 // player. Kept free of the play state so the rule can be exercised on its own.
 struct PlayerVerticalInputs {
   // False when the player is off the arrangement entirely, in which case
-  // targetFloor carries no meaning.
+  // floorElevation carries no meaning.
   bool inWorld{true};
-  float targetFloor{0.0f};
+  float floorElevation{0.0f};
   // -infinity where the face holds no liquid.
   float liquidSurface{-std::numeric_limits<float>::infinity()};
   bw::core::LiquidProperties liquid{};
@@ -56,14 +56,15 @@ struct PlayerVerticalInputs {
     return state;
   }
 
-  auto targetFloor = inputs.targetFloor;
+  auto floorElevation = inputs.floorElevation;
   auto frameTime = inputs.frameTime;
   auto liquidSurface = inputs.liquidSurface;
   // The height a floating player settles at. Liquid shallower than the
   // swimming threshold puts this below its own floor, in which case the floor
   // wins and the player wades rather than floats.
-  auto floatZ = liquidSurface - BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION *
-                                    float(BW_PLAYER_HEIGHT);
+  auto floatingFeetElevation =
+      liquidSurface - BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION *
+                          float(BW_PLAYER_HEIGHT);
   // Submersion is measured at the player's own height, so walking off the edge
   // of a deep pool is an ordinary fall until they actually reach the water.
   // Liquid carries part of the player's weight either where it is deep enough
@@ -75,9 +76,10 @@ struct PlayerVerticalInputs {
   auto equilibriumFraction = buoyantEquilibriumFraction(liquid);
   auto equilibriumZ =
       liquidSurface - equilibriumFraction * float(BW_PLAYER_HEIGHT);
-  auto inLiquid = std::isfinite(liquidSurface) &&
-                  liquidSurface > state.floorZ &&
-                  (equilibriumZ > targetFloor || state.floorZ > targetFloor);
+  auto inLiquid =
+      std::isfinite(liquidSurface) && liquidSurface > state.feetElevation &&
+      (equilibriumZ > floorElevation ||
+       state.feetElevation > floorElevation);
   if (inLiquid) {
     // Archimedes: the upward force goes with the submerged volume, which for a
     // uniform cylinder is just the submerged fraction of its height. Balanced
@@ -85,7 +87,8 @@ struct PlayerVerticalInputs {
     // feels no net force, a fully submerged one rises, and one barely dipped
     // still falls at close to full gravity.
     auto submergedFraction = std::clamp(
-        (liquidSurface - state.floorZ) / float(BW_PLAYER_HEIGHT), 0.0f, 1.0f);
+        (liquidSurface - state.feetElevation) / float(BW_PLAYER_HEIGHT),
+        0.0f, 1.0f);
     auto buoyantAcceleration =
         BW_PLAYER_GRAVITY * (submergedFraction / equilibriumFraction - 1.0f);
 
@@ -115,13 +118,13 @@ struct PlayerVerticalInputs {
         state.verticalVelocity *
         std::min(1.0f, liquid.viscosity * submergedFraction * frameTime);
 
-    auto previousFloorZ = state.floorZ;
-    state.floorZ += state.verticalVelocity * frameTime;
+    auto previousFeetElevation = state.feetElevation;
+    state.feetElevation += state.verticalVelocity * frameTime;
 
-    if (state.floorZ <= targetFloor) {
+    if (state.feetElevation <= floorElevation) {
       // Reached the bottom - a hard stop, but any upward swim input still
       // lifts off again.
-      state.floorZ = targetFloor;
+      state.feetElevation = floorElevation;
       state.verticalVelocity = std::max(state.verticalVelocity, 0.0f);
     }
 
@@ -131,15 +134,17 @@ struct PlayerVerticalInputs {
     // BW_PLAYER_MIN_SWIM_SUBMERSION_FRACTION), but someone dropping in from
     // above starts above that height and must be left to sink past it under
     // their own momentum.
-    auto maxFloorZ = std::max(targetFloor, floatZ);
-    if (previousFloorZ <= maxFloorZ && state.floorZ > maxFloorZ) {
-      state.floorZ = maxFloorZ;
+    auto maximumFeetElevation =
+        std::max(floorElevation, floatingFeetElevation);
+    if (previousFeetElevation <= maximumFeetElevation &&
+        state.feetElevation > maximumFeetElevation) {
+      state.feetElevation = maximumFeetElevation;
       state.verticalVelocity = std::min(state.verticalVelocity, 0.0f);
     }
     return state;
   }
 
-  if (targetFloor >= state.floorZ) {
+  if (floorElevation >= state.feetElevation) {
     // Horizontal collision already refused any step too tall to climb (see
     // ArrangementWorldData's step-height/clearance rules), so any floor
     // rise reaching here is a walkable step: climb it smoothly rather than
@@ -147,15 +152,16 @@ struct PlayerVerticalInputs {
     // tryClimbOutOfLiquid deliberately routes through here too, leaving the
     // player below their new bank so this smooths the haul out of the liquid.
     state.verticalVelocity = 0.0f;
-    state.floorZ +=
-        std::min(targetFloor - state.floorZ, BW_PLAYER_STEP_SPEED * frameTime);
+    state.feetElevation += std::min(
+        floorElevation - state.feetElevation,
+        BW_PLAYER_STEP_SPEED * frameTime);
   } else {
     // Walked past the edge of the floor beneath us: accelerate downward
     // under gravity until the new, lower floor catches us.
     state.verticalVelocity -= BW_PLAYER_GRAVITY * frameTime;
-    state.floorZ += state.verticalVelocity * frameTime;
-    if (state.floorZ <= targetFloor) {
-      state.floorZ = targetFloor;
+    state.feetElevation += state.verticalVelocity * frameTime;
+    if (state.feetElevation <= floorElevation) {
+      state.feetElevation = floorElevation;
       state.verticalVelocity = 0.0f;
     }
   }

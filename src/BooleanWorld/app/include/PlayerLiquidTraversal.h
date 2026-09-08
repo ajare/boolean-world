@@ -30,13 +30,14 @@ namespace bw::app {
 }
 
 [[nodiscard]] inline bool canClimbOutOfLiquidToFloor(
-    float playerFloorZ, float targetFloorZ) {
-  if (targetFloorZ <= playerFloorZ) {
+    float playerFeetElevation, float targetFloorElevation) {
+  if (targetFloorElevation <= playerFeetElevation) {
     return false;
   }
 
-  auto eyeZ = playerFloorZ + BW_PLAYER_EYE_HEIGHT;
-  return std::abs(targetFloorZ - eyeZ) <= BW_PLAYER_MANTLE_WATER;
+  auto eyeElevation = playerFeetElevation + BW_PLAYER_EYE_HEIGHT;
+  return std::abs(targetFloorElevation - eyeElevation) <=
+         BW_PLAYER_MANTLE_WATER;
 }
 
 }  // namespace bw::app

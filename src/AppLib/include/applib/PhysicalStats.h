@@ -9,7 +9,9 @@ namespace applib {
 
 struct PhysicalStats {
   wp::Vector2 position;
-  float floorZ;
+  // The player's feet elevation, which may differ from the sampled floor
+  // while stepping, falling, or swimming.
+  float feetElevation;
   float angle;
   float pitch;
   bool collides;

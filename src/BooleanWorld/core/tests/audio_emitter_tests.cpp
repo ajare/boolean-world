@@ -169,6 +169,41 @@ void captureAppliesEachSurvivalRuleAndUsesTheWinningFloor() {
       "capture diagnostics did not identify the failed rule or derived height");
 }
 
+void captureSamplesTheEmitterPosition() {
+  bw::core::World world(64.0f, 8.0f);
+  auto* parent = makeRectangle(
+      bw::core::Primitive::Operation::Union, -10.0f, -8.0f, 10.0f, 8.0f);
+  bw::core::PrimitivePropertySet properties;
+  properties.floorZ = bw::core::Elevation{5.0f, {1.0f, 0.0f}};
+  properties.ceilingZ = bw::core::Elevation{15.0f, {0.5f, 0.0f}};
+  parent->setProperties(properties);
+
+  auto low = emitter();
+  low.guid = "local-low-surface";
+  low.offset = {-5.0f, 0.0f};
+  low.heightOffset = 8.0f;
+  auto high = emitter();
+  high.guid = "local-high-surface";
+  high.offset = {5.0f, 0.0f};
+  high.heightOffset = 8.0f;
+  parent->setAudioEmitters({low, high});
+  world.addPrimitive(parent);
+
+  auto data = capture(world);
+  auto const& captured = data->getCapturedAudioEmitters();
+  require(captured.size() == 1 &&
+              captured.front().guid == "local-low-surface" &&
+              near(captured.front().height, 8.0f),
+          "emitter capture did not derive height from its local floor sample");
+  auto const& failed = data->getFailedAudioEmitters();
+  require(failed.size() == 1 &&
+              failed.front().guid == "local-high-surface" &&
+              near(failed.front().derivedHeight.value_or(-1.0f), 18.0f) &&
+              failed.front().reason ==
+                  bw::core::AudioEmitterCaptureFailure::DerivedHeightAboveCeiling,
+          "emitter capture did not compare against its local ceiling sample");
+}
+
 void replaceSquareClearsParentContributionAndPlacementKeyIdentifiesPrefab() {
   bw::core::World world(128.0f, 8.0f);
   auto* layer = world.getActiveLayer();
@@ -284,6 +319,7 @@ int main() {
     bw::core::LayerBuildStep::registerCoreTypes();
     worldsRoundTripThroughBothSerializers();
     captureAppliesEachSurvivalRuleAndUsesTheWinningFloor();
+    captureSamplesTheEmitterPosition();
     replaceSquareClearsParentContributionAndPlacementKeyIdentifiesPrefab();
     captureUsesTheWedgeRaisedWinningFloor();
     prefabCopiesKeepEmitterGuids();

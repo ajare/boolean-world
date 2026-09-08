@@ -144,6 +144,10 @@ _Avoid_: asset path, normal-map dependency
 A position and facing angle stored on the Document, representing where the in-game player currently would be. Independent of any Primitive or Layer; used to render the editor's player-view overlay and to seed a flythrough's starting pose.
 _Avoid_: player start, spawn point
 
+**Player feet elevation**:
+The simulated elevation of the player's feet. It equals the sampled floor elevation while grounded, but differs while the player steps, falls, floats, or swims.
+_Avoid_: player floor, floorZ (which confuses player state with the generated surface beneath it)
+
 **Player Torch**:
 The permanently equipped point light carried by the player. It supplies the World's direct illumination and casts shadows in every direction; in player-view previews, the Player proxy stands in for the player carrying it.
 _Avoid_: light source (too broad), shadow light (an implementation input rather than the game concept)

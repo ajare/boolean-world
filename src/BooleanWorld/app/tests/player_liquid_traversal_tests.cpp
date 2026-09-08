@@ -26,24 +26,27 @@ void climbOutRequiresLookingUp() {
 }
 
 void climbOutReachIsMeasuredFromThePlayersEye() {
-  constexpr float playerFloorZ = 10.0f;
-  constexpr float eyeZ = playerFloorZ + BW_PLAYER_EYE_HEIGHT;
+  constexpr float playerFeetElevation = 10.0f;
+  constexpr float eyeElevation =
+      playerFeetElevation + BW_PLAYER_EYE_HEIGHT;
 
   require(
       bw::app::canClimbOutOfLiquidToFloor(
-          playerFloorZ, eyeZ + BW_PLAYER_MANTLE_WATER),
+          playerFeetElevation, eyeElevation + BW_PLAYER_MANTLE_WATER),
       "a floor exactly one climb reach above the eye was rejected");
   require(
       bw::app::canClimbOutOfLiquidToFloor(
-          playerFloorZ, eyeZ - BW_PLAYER_MANTLE_WATER),
+          playerFeetElevation, eyeElevation - BW_PLAYER_MANTLE_WATER),
       "a floor exactly one climb reach below the eye was rejected");
   require(
       !bw::app::canClimbOutOfLiquidToFloor(
-          playerFloorZ, eyeZ + BW_PLAYER_MANTLE_WATER + 0.01f),
+          playerFeetElevation,
+          eyeElevation + BW_PLAYER_MANTLE_WATER + 0.01f),
       "a floor beyond the climb reach above the eye was accepted");
   require(
       !bw::app::canClimbOutOfLiquidToFloor(
-          playerFloorZ, eyeZ - BW_PLAYER_MANTLE_WATER - 0.01f),
+          playerFeetElevation,
+          eyeElevation - BW_PLAYER_MANTLE_WATER - 0.01f),
       "a floor beyond the climb reach below the eye was accepted");
 }
 
@@ -92,12 +95,14 @@ void negativeWaterElevationDoesNotBypassClimbReach() {
 }
 
 void climbOutStillRequiresAnUpwardLift() {
-  constexpr float playerFloorZ = 10.0f;
+  constexpr float playerFeetElevation = 10.0f;
   require(
-      !bw::app::canClimbOutOfLiquidToFloor(playerFloorZ, playerFloorZ),
+      !bw::app::canClimbOutOfLiquidToFloor(
+          playerFeetElevation, playerFeetElevation),
       "a floor at the swimmer's base was accepted as a climb");
   require(
-      !bw::app::canClimbOutOfLiquidToFloor(playerFloorZ, playerFloorZ - 1.0f),
+      !bw::app::canClimbOutOfLiquidToFloor(
+          playerFeetElevation, playerFeetElevation - 1.0f),
       "a floor below the swimmer was accepted as a climb");
 }
 

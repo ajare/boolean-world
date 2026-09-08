@@ -170,6 +170,57 @@ Contour rectContour(int64_t x0, int64_t y0, int64_t x1, int64_t y1) {
   return {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
 }
 
+void variableWallSpanIsSampledAtTheRayCrossing() {
+  constexpr int64_t U = worldUnitInFixedPoint;
+  auto leftProperties = propertiesWithHeights(0.0f, 48.0f);
+  auto rightProperties = propertiesWithHeights(0.0f, 48.0f);
+  rightProperties.floorZ.gradient = {0.0f, 1.0f};
+  ArrangementPrimitive left{
+      {rectContour(0, 0, 10 * U, 10 * U)},
+      Primitive::Operation::Union,
+      Primitive::FillRule::EvenOdd,
+      0,
+      1,
+      leftProperties};
+  ArrangementPrimitive right{
+      {rectContour(10 * U, 0, 20 * U, 10 * U)},
+      Primitive::Operation::Union,
+      Primitive::FillRule::EvenOdd,
+      0,
+      2,
+      rightProperties};
+  ArrangementWorldData data(
+      bw::core::arr::BuildArrangement({left, right}),
+      wp::BoundingBox({-5.0f, -5.0f}, {30.0f, 20.0f}), 10.0f);
+
+  require(near(data.distanceToFirstWallCrossing(
+                   {5.0f, 2.0f}, {25.0f, 2.0f}, 5.0f),
+               15.0f),
+          "a ray above the local wall span used another edge position");
+  require(near(data.distanceToFirstWallCrossing(
+                   {5.0f, 8.0f}, {25.0f, 8.0f}, 5.0f),
+               5.0f),
+          "a ray inside the local wall span used conservative wall bounds");
+
+  leftProperties.floorZ.gradient = {0.0f, 1.0f};
+  rightProperties.floorZ = bw::core::Elevation{10.0f, {0.0f, -1.0f}};
+  ArrangementPrimitive crossingLeft = left;
+  crossingLeft.properties = leftProperties;
+  ArrangementPrimitive crossingRight = right;
+  crossingRight.properties = rightProperties;
+  ArrangementWorldData crossingData(
+      bw::core::arr::BuildArrangement({crossingLeft, crossingRight}),
+      wp::BoundingBox({-5.0f, -5.0f}, {30.0f, 20.0f}), 10.0f);
+  require(near(crossingData.distanceToFirstWallCrossing(
+                   {5.0f, 2.0f}, {25.0f, 2.0f}, 6.0f),
+               5.0f),
+          "a ray inside a crossing floor pair missed the local Step span");
+  require(near(crossingData.distanceToFirstWallCrossing(
+                   {5.0f, 5.0f}, {25.0f, 5.0f}, 6.0f),
+               15.0f),
+          "a ray used an arbitrary endpoint where two floors meet");
+}
+
 void anUndrawnWallBlocksNothing() {
   // Sight and light are stopped by what a wall draws, not by whether it
   // collides: a Border hidden by an authored override still blocks movement
@@ -211,6 +262,7 @@ int main() {
     aCeilingStepBlocksOnlyAboveItsBottom();
     aStepPairLeavesTheGapBetweenThemOpen();
     aRayThatFallsShortIsUnobstructed();
+    variableWallSpanIsSampledAtTheRayCrossing();
     anUndrawnWallBlocksNothing();
   } catch (std::exception const& exception) {
     std::cerr << exception.what() << std::endl;

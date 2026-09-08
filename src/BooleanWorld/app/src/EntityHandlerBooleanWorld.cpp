@@ -74,7 +74,7 @@ bool EntityHandlerBooleanWorld::updateImpl(Entity* entity, bool inputControlled,
       float curAngle, newAngle, curPitch, newPitch, verticalEffort;
 
       // Vertical (swimming) movement is applied separately by
-      // StatePlayBooleanWorld's own peekInput call, against physicalStats.floorZ
+      // StatePlayBooleanWorld's own peekInput call, against the player's feet
       // rather than this collider - so the vertical effort here is unused.
       peekInput(*entity, &curPosition, &newPosition, &curAngle, &newAngle, &curPitch, &newPitch, &velocity, &verticalEffort, frameTime);
 

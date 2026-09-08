@@ -162,6 +162,62 @@ void maximumStepHeightAppliesOnlyWhenAscending() {
           "a tall step wall trapped an actor already falling over its lower face");
 }
 
+void traversalSamplesStepAndClearanceAtTheCrossing() {
+  wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
+  constexpr float gridCellSize = 20.0f;
+
+  std::vector<std::optional<bool>> overrides(4, std::nullopt);
+  overrides[1] = false;
+  auto leftProperties = propertiesWithHeights(0.0f, 48.0f);
+  auto rightProperties = propertiesWithHeights(0.0f, 48.0f);
+  rightProperties.floorZ.gradient = {0.0f, 1.0f};
+  rightProperties.ceilingZ.gradient = {0.0f, -2.0f};
+  ArrangementPrimitive left{
+      {rectContour(0, 0, 10 * U, 10 * U)},
+      Primitive::Operation::Union,
+      Primitive::FillRule::EvenOdd,
+      0,
+      1,
+      leftProperties,
+      {overrides}};
+  ArrangementPrimitive right{
+      {rectContour(10 * U, 0, 20 * U, 10 * U)},
+      Primitive::Operation::Union,
+      Primitive::FillRule::EvenOdd,
+      0,
+      2,
+      rightProperties};
+
+  auto arrangement = bw::core::arr::BuildArrangement({left, right});
+  bw::core::ArrangementWorldData data(
+      arrangement, extents, gridCellSize);
+  auto includesKind = [&](std::vector<uint32_t> const& wallIndices,
+                          ArrangementWallKind kind) {
+    return std::any_of(
+        wallIndices.begin(), wallIndices.end(), [&](uint32_t wallIndex) {
+          return data.getWalls()[wallIndex].kind == kind;
+        });
+  };
+
+  auto lowCrossing = data.getWallsNearForTraversal(
+      {10.1f, 2.0f}, 0.5f, {5.0f, 2.0f});
+  auto highCrossing = data.getWallsNearForTraversal(
+      {10.1f, 9.0f}, 0.5f, {5.0f, 9.0f});
+  auto pinchedCrossing = data.getWallsNearForTraversal(
+      {10.1f, 9.5f}, 0.5f, {5.0f, 9.5f});
+  auto diagonalCrossing = data.getWallsNearForTraversal(
+      {10.5f, 9.0f}, 0.6f, {9.0f, 0.0f});
+  require(!includesKind(lowCrossing, ArrangementWallKind::FloorStep),
+          "a locally short, roomy step was blocked by another edge position");
+  require(includesKind(highCrossing, ArrangementWallKind::FloorStep),
+          "a locally tall step used an unrelated edge sample");
+  require(!includesKind(diagonalCrossing, ArrangementWallKind::FloorStep),
+          "a diagonal move sampled its destination instead of its edge crossing");
+  require(!includesKind(lowCrossing, ArrangementWallKind::CeilingStep) &&
+              includesKind(pinchedCrossing, ArrangementWallKind::CeilingStep),
+          "local standing clearance used an unrelated edge sample");
+}
+
 void falseOverrideDoesNotBypassInsufficientClearance() {
   wp::BoundingBox extents({-5.0f, -5.0f}, {30.0f, 30.0f});
   constexpr float gridCellSize = 20.0f;
@@ -440,6 +496,7 @@ int main() {
   try {
     falseOverrideOpensUpABorderWall();
     maximumStepHeightAppliesOnlyWhenAscending();
+    traversalSamplesStepAndClearanceAtTheCrossing();
     falseOverrideDoesNotBypassInsufficientClearance();
     trueOverrideForcesAStepWallToBlock();
     overrideSurvivesSplittingIntoSubSegments();

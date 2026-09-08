@@ -133,14 +133,14 @@ private:
 
   float mPlayerPrevAngle, mPlayerPrevPitch;
 
-  // Vertical physics (ticket: step-up/gravity). physicalStats.floorZ is the
-  // player's current simulated height; this is only its rate of change while
-  // falling - stepping up is a direct, velocity-free rise.
+  // Vertical physics (ticket: step-up/gravity). The PhysicalStats feet
+  // elevation is the player's current simulated height; this is only its rate
+  // of change while falling - stepping up is a direct, velocity-free rise.
   float mPlayerVerticalVelocity;
 
-  // True once physicalStats.floorZ has been snapped to the real floor at
-  // least once. Until mWorldData exists (early in map load) the floor query
-  // falls back to 0, so the very first valid reading is a snap, not a fall.
+  // True once PhysicalStats::feetElevation has been snapped to the sampled
+  // floor at least once. Until mWorldData exists (early in map load) the floor
+  // query falls back to 0, so the first valid reading is a snap, not a fall.
   bool mPlayerVerticalHeightInitialized;
 
   // Captured from this frame's peekInput call (see getWorldInput) and
@@ -291,17 +291,17 @@ private:
 
   uint32_t getPlayerPrimitive() const;
 
-  float getFloorHeightAt(wp::Vector2 const& pos) const;
+  float getFloorElevationAt(wp::Vector2 const& pos) const;
 
-  float getCeilingHeightAt(wp::Vector2 const& pos) const;
+  float getCeilingElevationAt(wp::Vector2 const& pos) const;
 
-  float getPlayerFloorHeight() const;
+  float getPlayerFloorElevation() const;
 
-  float getPlayerCeilingHeight() const;
+  float getPlayerCeilingElevation() const;
 
-  // How deep the player cylinder (base at physicalStats.floorZ, extending up
-  // BW_PLAYER_HEIGHT) is submerged below the settled liquid surface at their
-  // position, clamped to [0, BW_PLAYER_HEIGHT]. Zero wherever there is no
+  // How deep the player cylinder (base at PhysicalStats::feetElevation,
+  // extending up BW_PLAYER_HEIGHT) is submerged below the liquid surface at
+  // their position, clamped to [0, BW_PLAYER_HEIGHT]. Zero wherever there is no
   // liquid, or the player stands above its surface.
   float getPlayerLiquidSubmersionDepth() const;
 
