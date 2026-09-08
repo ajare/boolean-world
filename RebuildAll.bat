@@ -1,17 +1,37 @@
 @echo off
 REM Configures and builds BooleanWorld with CMake.
 REM
-REM Usage: RebuildAll.bat [Debug|Release]     (default: Release)
+REM Usage: RebuildAll.bat [/config CONFIG]     (default: Release)
 REM
-REM Willpower and its nested MassivePolyPusher dependency keep their own CMake
-REM build under ext\willpower\build. This project links their binaries rather
-REM than adding their projects to the generated solution. CMake builds them on
-REM demand if their libraries are missing - see cmake\Submodules.cmake.
+REM Willpower and its nested MassivePolyPusher dependency use same-named CMake
+REM build directories beneath their checkouts. For this script's build-cmake,
+REM they use ext\willpower\build-cmake and
+REM ext\willpower\ext\massive-poly-pusher\build-cmake. This project links their
+REM binaries rather than adding their projects to the generated solution. CMake
+REM builds them on demand if their libraries are missing - see cmake\Submodules.cmake.
 
 SETLOCAL
 
-SET CONFIG=%1
-IF "%CONFIG%"=="" SET CONFIG=Release
+SET CONFIG=Release
+
+:parse_args
+IF "%~1"=="" GOTO :args_done
+IF /I "%~1"=="/config" (
+    IF "%~2"=="" (
+        >&2 ECHO ERROR: /config requires a value.
+        GOTO :usage_error
+    )
+    SET CONFIG=%~2
+    SHIFT
+    SHIFT
+    GOTO :parse_args
+)
+IF /I "%~1"=="/?" GOTO :usage_success
+IF /I "%~1"=="/help" GOTO :usage_success
+>&2 ECHO ERROR: unknown option: %~1
+GOTO :usage_error
+
+:args_done
 SET LAUNCHER_EXE=Launcher.exe
 IF /I "%CONFIG%"=="Debug" SET LAUNCHER_EXE=Launcherd.exe
 
@@ -46,6 +66,22 @@ echo   build-cmake\bin\%CONFIG%\Launcher\%LAUNCHER_EXE%
 echo   build-cmake\bin\%CONFIG%\editor\editor.exe
 echo.
 echo Run: cd build-cmake\bin\%CONFIG%\Launcher ^&^& %LAUNCHER_EXE% BooleanWorld.yaml
+EXIT /B 0
+
+:usage_success
+CALL :usage
+EXIT /B 0
+
+:usage_error
+CALL :usage
+EXIT /B 1
+
+:usage
+ECHO Usage: RebuildAll.bat [/config CONFIG]
+ECHO.
+ECHO Options:
+ECHO   /config CONFIG   Build configuration ^(default: Release^).
+ECHO(  /?, /help        Show this help.
 EXIT /B 0
 
 :fail

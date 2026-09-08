@@ -78,6 +78,20 @@ bw_output_dirs(BooleanWorld)
 bw_enable_sdl_checks(BooleanWorld)
 set_target_properties(BooleanWorld PROPERTIES FOLDER BooleanWorld)
 
+willpower_declare_resource_schema(
+    RESOURCE_TYPE Map
+    FACTORY_TYPE BooleanWorld
+    SCHEMA_ID
+        "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/map-boolean-world.schema.json"
+    SOURCE_FILE
+        "${CMAKE_CURRENT_SOURCE_DIR}/schemas/map-boolean-world.schema.json")
+willpower_declare_resource_schema(
+    RESOURCE_TYPE AcousticCatalog
+    SCHEMA_ID
+        "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/acoustic-catalog.schema.json"
+    SOURCE_FILE
+        "${CMAKE_CURRENT_SOURCE_DIR}/schemas/acoustic-catalog.schema.json")
+
 if(BUILD_TESTING)
     add_executable(boolean_world_periodic_snapshot_worker_tests
         tests/periodic_snapshot_worker_tests.cpp

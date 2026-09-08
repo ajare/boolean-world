@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/embossing-catalog.schema.json",
+  "title": "EmbossingCatalog Resource",
+  "$ref": "#/definitions/resource",
+  "definitions": {
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Resource"],
+      "properties": {
+        "Resource": { "enum": ["Yaml"] }
+      }
+    },
+    "definitions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Definition"],
+      "properties": {
+        "Definition": { "$ref": "#/definitions/definition" }
+      }
+    },
+    "yamlDependency": {
+      "allOf": [
+        { "$ref": "https://schemas.willpower.dev/resource-manifest/resource.schema.json#/definitions/dependentResource" },
+        {
+          "required": ["id", "ref"],
+          "properties": {
+            "id": { "enum": ["Yaml"] },
+            "ref": {
+              "$ref": "https://schemas.willpower.dev/resource-manifest/common.schema.json#/definitions/nonEmptyString",
+              "x-willpower-editor-version": "1.0",
+              "x-willpower-widget": "resource-reference",
+              "x-willpower-allowed-resource-types": ["TextFile"],
+              "x-willpower-reference-scope": "manifest"
+            }
+          }
+        }
+      ]
+    },
+    "dependentResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["DependentResource"],
+      "properties": {
+        "DependentResource": { "$ref": "#/definitions/yamlDependency" }
+      }
+    },
+    "resource": {
+      "allOf": [
+        { "$ref": "https://schemas.willpower.dev/resource-manifest/resource.schema.json#/definitions/resource" },
+        {
+          "required": ["name", "DependentResources", "Definitions"],
+          "properties": {
+            "type": { "enum": ["EmbossingCatalog"] },
+            "DependentResources": { "$ref": "#/definitions/dependentResources" },
+            "Definitions": { "$ref": "#/definitions/definitions" }
+          },
+          "not": {
+            "anyOf": [
+              { "required": ["location"] },
+              { "required": ["Option"] }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -92,10 +92,25 @@ printf 'Synchronizing and checking out all submodules...\n'
 git submodule sync --recursive
 git submodule update --init --recursive
 
-WILLPOWER_SCRIPT="$ROOT_DIR/ext/willpower/build_from_scratch.sh"
+WILLPOWER_DIR="$ROOT_DIR/ext/willpower"
+WILLPOWER_SCRIPT="$WILLPOWER_DIR/build_from_scratch.sh"
 [[ -f "$WILLPOWER_SCRIPT" ]] || fail "Willpower was not checked out correctly"
 
-willpower_args=(--build-type "$BUILD_TYPE" --build-dir build)
+if [[ "$BUILD_DIR" != /* ]]; then
+    BUILD_DIR="$ROOT_DIR/$BUILD_DIR"
+fi
+
+[[ -n "$BUILD_DIR" && "$BUILD_DIR" != / && "$BUILD_DIR" != "$ROOT_DIR" ]] || \
+    fail "refusing to remove unsafe build directory: $BUILD_DIR"
+case "$BUILD_DIR/" in
+    "$WILLPOWER_DIR/"*)
+        fail "BooleanWorld build directory must not be inside ext/willpower"
+        ;;
+esac
+
+BUILD_DIR_NAME=$(basename -- "$BUILD_DIR")
+WILLPOWER_BUILD_DIR="$WILLPOWER_DIR/$BUILD_DIR_NAME"
+willpower_args=(--config "$BUILD_TYPE" --build-dir "$BUILD_DIR_NAME")
 if [[ "$WITH_MPP_LFS" == true ]]; then
     willpower_args+=(--with-mpp-lfs)
 fi
@@ -119,26 +134,14 @@ bash "$WILLPOWER_SCRIPT" "${willpower_args[@]}"
 
 # Reconfigure the freshly-created Willpower tree against the same staged FMOD
 # files Boolean World imports.
-cmake -S "$ROOT_DIR/ext/willpower" -B "$ROOT_DIR/ext/willpower/build" \
+cmake -S "$WILLPOWER_DIR" -B "$WILLPOWER_BUILD_DIR" \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DWILLPOWER_ENABLE_FMOD=ON \
     -DWILLPOWER_FMOD_CORE_INCLUDE="$ROOT_DIR/vendor/include/fmod/core" \
     -DWILLPOWER_FMOD_STUDIO_INCLUDE="$ROOT_DIR/vendor/include/fmod/studio" \
     -DWILLPOWER_FMOD_CORE_LIBRARY="$ROOT_DIR/vendor/lib/linux/x64/Release/libfmod.so" \
     -DWILLPOWER_FMOD_STUDIO_LIBRARY="$ROOT_DIR/vendor/lib/linux/x64/Release/libfmodstudio.so"
-cmake --build "$ROOT_DIR/ext/willpower/build" --config "$BUILD_TYPE" \
+cmake --build "$WILLPOWER_BUILD_DIR" --config "$BUILD_TYPE" \
     --parallel --target Willpower.Application
-
-if [[ "$BUILD_DIR" != /* ]]; then
-    BUILD_DIR="$ROOT_DIR/$BUILD_DIR"
-fi
-
-[[ -n "$BUILD_DIR" && "$BUILD_DIR" != / && "$BUILD_DIR" != "$ROOT_DIR" ]] || \
-    fail "refusing to remove unsafe build directory: $BUILD_DIR"
-case "$BUILD_DIR/" in
-    "$ROOT_DIR/ext/willpower/"*)
-        fail "BooleanWorld build directory must not be inside ext/willpower"
-        ;;
-esac
 
 printf 'Removing previous BooleanWorld build output...\n'
 rm -rf -- "$BUILD_DIR"

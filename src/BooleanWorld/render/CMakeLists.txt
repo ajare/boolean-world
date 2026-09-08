@@ -30,6 +30,17 @@ bw_target_defaults(BooleanWorldRender)
 bw_output_dirs(BooleanWorldRender)
 set_target_properties(BooleanWorldRender PROPERTIES FOLDER BooleanWorld)
 
+willpower_declare_resource_schema(
+    RESOURCE_TYPE ProcMaterial
+    SCHEMA_ID
+        "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/proc-material.schema.json"
+    SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/schemas/proc-material.schema.json")
+willpower_declare_resource_schema(
+    RESOURCE_TYPE EmbossingCatalog
+    SCHEMA_ID
+        "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/embossing-catalog.schema.json"
+    SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/schemas/embossing-catalog.schema.json")
+
 if(BUILD_TESTING)
     add_executable(boolean_world_wall_normal_map_render_data_tests
         tests/wall_normal_map_render_data_tests.cpp)
