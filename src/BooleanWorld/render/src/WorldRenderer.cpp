@@ -521,16 +521,29 @@ void WorldRenderer::updateHorizontalDataProvider(
   // a matching hole in the surface overhead.
   auto const& detail = snapshot.getDetail();
   using bw::core::arr::DetailSurfaceKind;
-  auto const& liquidDepths = snapshot.getLiquidDepths();
-  auto liquidSurfaceHeightFor =
-      [&](bw::core::arr::DetailSurfaceKey const& source) {
-        if (source.kind == DetailSurfaceKind::Wall ||
-            liquidDepths[source.index] <= 0.0f) {
+  auto const& poolElevations = snapshot.getLiquidPoolElevations();
+  auto const& hydraulicCells = snapshot.getHydraulicCells();
+  auto liquidSurfaceHeightForCell = [&](size_t cellIndex) {
+    auto elevation = poolElevations[cellIndex];
+    return std::isfinite(elevation) &&
+                   hydraulicCells[cellIndex].volumeBelow(elevation) > 0.0
+               ? float(elevation)
+               : WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
+  };
+  auto liquidSurfaceHeightForDetail =
+      [&](bw::core::arr::DetailTriangle const& detailTriangle) {
+        if (detailTriangle.source.kind == DetailSurfaceKind::Wall) {
           return WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
         }
-        auto const& sourceProperties =
-            worldData.palette[worldData.faces[source.index].paletteIndex];
-        return sourceProperties.floorZ + liquidDepths[source.index];
+        wp::Vector2 centroid{};
+        for (auto const& vertex : detailTriangle.v) {
+          centroid += {vertex.position[0], vertex.position[1]};
+        }
+        centroid /= 3.0f;
+        auto elevation = snapshot.getLiquidSurfaceHeight(centroid);
+        return std::isfinite(elevation)
+                   ? elevation
+                   : WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
       };
 
   // A rebuilt face's replacements resolve exactly the Sub-material the face
@@ -596,10 +609,7 @@ void WorldRenderer::updateHorizontalDataProvider(
           bw::core::arr::ToWorldCoordinate(vertex.y)};
     }
 
-    auto liquidSurfaceHeight =
-        liquidDepths[triangle.face] > 0.0f
-            ? properties.floorZ + liquidDepths[triangle.face]
-            : WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
+    auto liquidSurfaceHeight = liquidSurfaceHeightForCell(triangleIndex);
 
     if (!detail.isSuppressed(DetailSurfaceKind::FloorOfFace, triangle.face)) {
       auto floorResolved = mBakedSubMaterialResolver.resolve(
@@ -665,7 +675,7 @@ void WorldRenderer::updateHorizontalDataProvider(
         horizontal.dataProvider, horizontalMeshFor(replacement.source),
         replacement, false,
         highlighted ? lookedAtVertexColour : untintedVertexColour,
-        liquidSurfaceHeightFor(replacement.source), surfaceUp[0], surfaceUp[1],
+        liquidSurfaceHeightForDetail(replacement), surfaceUp[0], surfaceUp[1],
         surfaceUp[2]);
   }
   horizontal.dataProvider->finalizeInternals();
@@ -675,8 +685,7 @@ void WorldRenderer::updateHorizontalDataProvider(
 void WorldRenderer::updateLiquidDataProvider(
     bw::core::WorldData const& snapshot) {
   auto const& worldData = snapshot.getArrangement();
-  auto const& triangles = snapshot.getTriangles();
-  auto const& liquidDepths = snapshot.getLiquidDepths();
+  auto const& triangles = snapshot.getLiquidSurfaceTriangles();
   auto& liquid = mMaterialRenderers[1];
   auto liquidHashFor = [](bw::core::LiquidType liquidType) {
     return bw::core::MaterialDefinition{}.data.hash(
@@ -685,7 +694,6 @@ void WorldRenderer::updateLiquidDataProvider(
 
   std::vector<uint32_t> counts(liquid.dataProvider->getNumMeshes());
   for (auto const& triangle : triangles) {
-    if (liquidDepths[triangle.face] <= 0.0f) continue;
     auto const& properties =
         worldData.palette[worldData.faces[triangle.face].paletteIndex];
     ++counts[liquid.renderer->getMeshIndexForMaterialHash(
@@ -694,24 +702,19 @@ void WorldRenderer::updateLiquidDataProvider(
   liquid.dataProvider->updateInternals(counts);
 
   for (auto const& triangle : triangles) {
-    auto liquidDepth = liquidDepths[triangle.face];
-    if (liquidDepth <= 0.0f) continue;
     auto const& properties =
         worldData.palette[worldData.faces[triangle.face].paletteIndex];
     auto mesh = liquid.renderer->getMeshIndexForMaterialHash(
         liquidHashFor(properties.liquidType), true);
-    auto liquidZ = properties.floorZ + liquidDepth;
     uint32_t indices[3];
     for (int i = 0; i < 3; ++i) {
-      auto const& vertex = worldData.vertices[triangle.v[i]];
-      wp::Vector2 position{
-          bw::core::arr::ToWorldCoordinate(vertex.x),
-          bw::core::arr::ToWorldCoordinate(vertex.y)};
+      auto const& position = triangle.positions[i];
       auto uv = position / 64.0f;
       // Reflecting authored Y into renderer -Z reverses winding.
       indices[2 - i] = addVertexToDataProvider(
-          liquid.dataProvider, mesh, position.x, liquidZ, -position.y,
-          0, 1, 0, uv.x, uv.y, transparentVertexColour, liquidZ);
+          liquid.dataProvider, mesh, position.x, triangle.elevation,
+          -position.y, 0, 1, 0, uv.x, uv.y, transparentVertexColour,
+          triangle.elevation);
     }
     liquid.dataProvider->addTriangle(mesh, indices[0], indices[1], indices[2]);
   }

@@ -11,6 +11,7 @@
 #include <willpower/common/Vector2.h>
 
 #include "core/ChipGenerationParameters.h"
+#include "core/Elevation.h"
 #include "core/Primitive.h"
 #include "core/Stats.h"
 #include "core/WallMaskOverride.h"
@@ -161,6 +162,49 @@ struct ArrangementTriangle {
   uint32_t face;
   ArrangementTriangleSurface floor{};
   ArrangementTriangleSurface ceiling{};
+};
+
+// One triangulated piece of an Arrangement face used by Liquid settlement.
+// Its floor and ceiling remain affine over the World-plane triangle: storing
+// their values at the corners is sufficient to integrate the vertical column
+// exactly and does not add elevation-only points to Arrangement topology.
+struct HydraulicCell {
+  ArrangementTriangle triangle;
+  std::array<wp::Vector2, 3> positions{};
+  Elevation floor;
+  Elevation ceiling;
+  double worldArea{};
+
+  // Integrated Liquid volume this cell can hold below one horizontal
+  // elevation, clamped locally between its affine floor and ceiling. Returns
+  // zero below the floor and the cell's full capacity above the ceiling.
+  [[nodiscard]] double volumeBelow(double elevation) const;
+  [[nodiscard]] double capacityBelow(double elevation) const {
+    return volumeBelow(elevation);
+  }
+};
+
+// One triangle of a clipped, horizontal visible Liquid interface. A wet cell
+// can emit more than one of these after clipping, or none when it is dry or
+// completely flooded above its ceiling.
+struct LiquidSurfaceTriangle {
+  std::array<wp::Vector2, 3> positions{};
+  float elevation{};
+  uint32_t cell{};
+  uint32_t face{};
+};
+
+// Immutable result of the post-Arrangement Liquid pass. Pool elevations are
+// parallel to cells and may repeat for every cell in one Pool. Negative
+// infinity means no Liquid occupies that cell's basin; a finite elevation can
+// still leave the whole local cell dry above the shoreline. faceDepths retains
+// the flat-world compatibility view used by older callers; position-based
+// queries use poolElevations and evaluate the local floor instead.
+struct LiquidState {
+  std::vector<HydraulicCell> cells;
+  std::vector<double> poolElevations;
+  std::vector<LiquidSurfaceTriangle> surfaceTriangles;
+  std::vector<float> faceDepths;
 };
 
 enum struct ArrangementWallKind : uint8_t {
@@ -379,6 +423,12 @@ bool PointInFace(
 [[nodiscard]] std::vector<ArrangementTriangle> BuildArrangementTriangles(
     ArrangementResult const& arrangement);
 
+// Converts generated Arrangement triangles into Hydraulic cells without
+// changing their triangulation or exact planar topology.
+[[nodiscard]] std::vector<HydraulicCell> BuildHydraulicCells(
+    ArrangementResult const& arrangement,
+    std::vector<ArrangementTriangle> const& triangles);
+
 [[nodiscard]] std::vector<ArrangementWall> BuildArrangementWalls(
     ArrangementResult const& arrangement);
 
@@ -402,17 +452,17 @@ bool PointInFace(
 [[nodiscard]] std::vector<float> ComputeUndistributedLiquidDepths(
     ArrangementResult const& arrangement);
 
-// Each solid face's finished liquid depth, parallel to arrangement.faces.
-// The undistributed seed volumes above settle into pools, each a set of faces
-// at one shared surface elevation. Two pools joined by liquid-adjacency become
-// one once that shared surface would stand at or above the sill between them
-// (the higher of their two floors); below it they stay two, and the higher
-// pool spills only what stands above the sill into the lower, ending exactly
-// brim-full at the sill. One connected region can therefore finish holding
-// several pools at several elevations. Each face's depth is then capped at
-// its own ceiling - a sealed pool holding more than its total capacity fills
-// every member face to the ceiling and discards the excess - and any pool
-// reaching the unbounded exterior face drains to zero throughout.
+// Settles authored volume into horizontal Pools over Hydraulic cells. Capacity
+// is integrated over each affine floor and ceiling and Pool elevation is found
+// by deterministic fixed-iteration bisection, so no linear-capacity assumption
+// remains. This pass retains the existing face-level adjacency/Sill graph;
+// sloped links between distinct basins are generalized separately.
+[[nodiscard]] LiquidState ComputeLiquidState(
+    ArrangementResult const& arrangement,
+    std::vector<ArrangementTriangle> const& triangles);
+
+// Flat-world compatibility view: one settled depth per Arrangement face.
+// New position-dependent consumers use LiquidState through ArrangementWorldData.
 [[nodiscard]] std::vector<float> ComputeLiquidLevels(
     ArrangementResult const& arrangement);
 

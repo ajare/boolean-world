@@ -355,21 +355,21 @@ void generatedRegionsRejectCrossedPlanesButPermitEquality() {
           "zero clearance at a boundary vertex was rejected");
 }
 
-void nonzeroLiquidWithSlopedGeneratedSurfacesFailsClearly() {
+void nonzeroLiquidWithSlopedGeneratedSurfacesIsAccepted() {
   PrimitivePropertySet properties;
   properties.floorZ = Elevation{0.0f, {0.1f, 0.0f}};
   properties.ceilingZ = 20.0f;
   properties.liquidLevel = 1.0f;
 
-  bool rejected = false;
-  try {
-    (void)bw::core::arr::BuildArrangement(
-        {primitive(rectangle(0, 0, 10000, 10000), 0, properties)});
-  } catch (bw::core::CoreException const& error) {
-    auto const message = std::string(error.what());
-    rejected = message.find("cannot settle nonzero Liquid") != std::string::npos;
-  }
-  require(rejected, "Liquid on a sloped surface did not fail clearly");
+  auto liquidPrimitive =
+      primitive(rectangle(0, 0, 10000, 10000), 0, properties);
+  liquidPrimitive.rawArea = 100.0;
+  auto arrangement =
+      bw::core::arr::BuildArrangement({liquidPrimitive});
+  auto triangles = bw::core::arr::BuildArrangementTriangles(*arrangement);
+  auto liquid = bw::core::arr::ComputeLiquidState(*arrangement, triangles);
+  require(!liquid.surfaceTriangles.empty(),
+          "Liquid on a sloped generated surface did not settle");
 }
 
 void elevationCrossingsDoNotAlterExactArrangementTopology() {
@@ -444,7 +444,7 @@ int main() {
     crossingStepPlanesProduceOwnedOrientedTriangularSegments();
     planesCoincidentAlongAnEdgeProduceNoDegenerateStep();
     generatedRegionsRejectCrossedPlanesButPermitEquality();
-    nonzeroLiquidWithSlopedGeneratedSurfacesFailsClearly();
+    nonzeroLiquidWithSlopedGeneratedSurfacesIsAccepted();
     elevationCrossingsDoNotAlterExactArrangementTopology();
     std::cout << "Arrangement surface geometry evaluates Elevation planes without changing topology\n";
     return 0;

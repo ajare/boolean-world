@@ -1,7 +1,18 @@
 # ADR-0032: Liquid equilibrium is a deterministic post-arrangement watershed pass
 
-**Status:** Accepted
+**Status:** Accepted; face-level capacity and depth partially superseded by #425
 **Related:** ADR-0004 (faces are the unit of derived truth; membership already tracks every covering Primitive), ADR-0027 (precedent for a distinct post-fold detail channel layered after the core Arrangement)
+
+## Sloped Hydraulic cell amendment
+
+#425 replaces an Arrangement face as the unit of Liquid capacity with one
+**Hydraulic cell** per generated Arrangement triangle. Pool capacity is the sum
+of the cells' integrated affine floor-to-ceiling columns, Pool elevation is
+solved by deterministic fixed-iteration bisection, local Liquid depth is sampled
+beneath that horizontal elevation, and visible interfaces are clipped to each
+cell's wet portion. The conservation, Pool, watershed, directed-spill,
+overflow, and exterior-drain decisions below remain in force. #426 separately
+generalizes the face-level liquid-adjacency and Sill graph for slopes.
 
 ## Context
 

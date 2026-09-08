@@ -133,7 +133,7 @@ ArrangementWorldData::ArrangementWorldData(
       // the two outputs above. Neither of those is altered by its presence.
       mDetail(arr::BuildChipDetail(
           *mArrangement, mWalls, wedgeGenerationParameters)),
-      mLiquidDepths(arr::ComputeLiquidLevels(*mArrangement)),
+      mLiquidState(arr::ComputeLiquidState(*mArrangement, mTriangles)),
       mWedgeGenerationParameters(wedgeGenerationParameters) {
   if (stats != nullptr) {
     stats->triangleCount = uint32_t(mTriangles.size());
@@ -322,8 +322,23 @@ ArrangementWorldData::getFailedAudioEmitters() const {
   return mFailedAudioEmitters;
 }
 
+std::vector<arr::HydraulicCell> const&
+ArrangementWorldData::getHydraulicCells() const {
+  return mLiquidState.cells;
+}
+
+std::vector<double> const&
+ArrangementWorldData::getLiquidPoolElevations() const {
+  return mLiquidState.poolElevations;
+}
+
+std::vector<arr::LiquidSurfaceTriangle> const&
+ArrangementWorldData::getLiquidSurfaceTriangles() const {
+  return mLiquidState.surfaceTriangles;
+}
+
 std::vector<float> const& ArrangementWorldData::getLiquidDepths() const {
-  return mLiquidDepths;
+  return mLiquidState.faceDepths;
 }
 
 WedgeGenerationParameters const&
@@ -511,28 +526,37 @@ float ArrangementWorldData::getCeilingHeight(
 }
 
 float ArrangementWorldData::getLiquidDepth(wp::Vector2 const& position) const {
-  auto surface = getSurfaceSample(position);
-  return surface ? mLiquidDepths[surface->faceIndex] : 0.0f;
+  auto triangleIndex = pointInTriangle(position);
+  if (triangleIndex < 0) return 0.0f;
+  auto poolElevation = mLiquidState.poolElevations[triangleIndex];
+  if (!std::isfinite(poolElevation)) return 0.0f;
+
+  auto const& cell = mLiquidState.cells[triangleIndex];
+  auto floor = cell.floor.evaluate(position);
+  auto ceiling = cell.ceiling.evaluate(position);
+  return float(std::clamp(
+      poolElevation - floor, 0.0,
+      double(std::max(0.0f, ceiling - floor))));
 }
 
 float ArrangementWorldData::getLiquidSurfaceHeight(
     wp::Vector2 const& position) const {
-  auto surface = getSurfaceSample(position);
-  if (!surface) {
+  auto triangleIndex = pointInTriangle(position);
+  if (triangleIndex < 0) {
     return -std::numeric_limits<float>::infinity();
   }
-  auto liquidDepth = mLiquidDepths[surface->faceIndex];
-  if (liquidDepth <= 0.0f) {
+  auto poolElevation = mLiquidState.poolElevations[triangleIndex];
+  if (!std::isfinite(poolElevation)) {
     return -std::numeric_limits<float>::infinity();
   }
-  // Liquid settlement still stores one depth per flat-world face. Evaluate
-  // that face's plane at the query position rather than converting its base
-  // elevation as though it were a face-wide height. Floor Wedges do not move
-  // the rendered free surface, so use the selected Elevation plane rather
-  // than the collision-raised floor in SurfaceSample.
-  auto const& properties =
-      mArrangement->palette[surface->face->paletteIndex];
-  return properties.floorZ.evaluate(position) + liquidDepth;
+  auto const& cell = mLiquidState.cells[triangleIndex];
+  auto floor = cell.floor.evaluate(position);
+  auto ceiling = cell.ceiling.evaluate(position);
+  auto depth = std::clamp(
+      poolElevation - floor, 0.0,
+      double(std::max(0.0f, ceiling - floor)));
+  return depth > 0.0 ? float(poolElevation)
+                     : -std::numeric_limits<float>::infinity();
 }
 
 LiquidType ArrangementWorldData::getLiquidType(

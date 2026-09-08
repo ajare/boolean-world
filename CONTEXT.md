@@ -232,6 +232,10 @@ _Avoid_: reflection render scale (Render scale already names the resolution of t
 The relation between two solid Arrangement faces (the same faces that render and that the player walks on) across which liquid can equilibrate: both faces must be solid and their shared edge's wall clearance must be nonzero. The Arrangement's outer, unbounded face is liquid-adjacent to a bordering solid face, with an effective floor of negative infinity, only where the Border wall between them is explicitly authored not to collide — a solid wall there blocks liquid exactly as it blocks the player, so an ordinary outer wall is not an opening just because nothing is authored beyond it. Where it is open, it acts as a permanent drain.
 _Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when the wall between them has zero clearance)
 
+**Hydraulic cell**:
+One generated Arrangement triangle together with its affine floor and ceiling functions and derived Liquid state. It is the unit whose integrated capacity determines how much of a horizontal Pool it can hold and whose wet portion is clipped to produce visible Liquid geometry; its World-plane triangle remains ordinary derived triangulation, never new Arrangement topology.
+_Avoid_: Liquid triangle (the cell also exists while dry), face (one Arrangement face may contain several Hydraulic cells)
+
 **Wet component**:
 A maximal set of Arrangement faces connected by liquid-adjacency. Its liquid settles as one or more Pools, not necessarily at one shared elevation: a face unreachable from any seed liquid stays dry regardless of its own floor height, and a face standing above every surface around it stays dry while its neighbours hold liquid.
 _Avoid_: lake, basin, pond, Pool (a Wet component may hold several)

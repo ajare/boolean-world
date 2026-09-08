@@ -103,23 +103,16 @@ std::vector<mpp::PlanarReflectionPlaneDescriptor>
 discoverLiquidReflectionPlanes(
     bw::core::WorldData const& snapshot, mpp::Camera& camera,
     bw::app::LiquidReflectionSelectionPolicy& selectionPolicy) {
-  auto const& arrangement = snapshot.getArrangement();
-  auto const& liquidDepths = snapshot.getLiquidDepths();
+  auto const& generated = snapshot.getLiquidSurfaceTriangles();
   std::vector<bw::app::LiquidSurfaceTriangle> surfaces;
-  surfaces.reserve(snapshot.getTriangles().size());
-  for (auto const& triangle : snapshot.getTriangles()) {
-    auto depth = liquidDepths[triangle.face];
-    if (depth <= 0.0f) continue;
-    auto const& properties =
-        arrangement.palette[arrangement.faces[triangle.face].paletteIndex];
-    auto elevation = properties.floorZ + depth;
+  surfaces.reserve(generated.size());
+  for (auto const& triangle : generated) {
     bw::app::LiquidSurfaceTriangle surface;
-    surface.elevation = elevation;
+    surface.elevation = triangle.elevation;
     for (int index = 0; index < 3; ++index) {
-      auto const& vertex = arrangement.vertices[triangle.v[index]];
       surface.vertices[index] = {
-          bw::core::arr::ToWorldCoordinate(vertex.x), elevation,
-          -bw::core::arr::ToWorldCoordinate(vertex.y)};
+          triangle.positions[index].x, triangle.elevation,
+          -triangle.positions[index].y};
     }
     surfaces.push_back(surface);
   }

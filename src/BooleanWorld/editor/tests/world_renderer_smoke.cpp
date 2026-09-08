@@ -138,7 +138,7 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
     properties.ceilingEmbossPresetId = "builtin.emboss.stone";
     properties.wallEmbossPresetId = "builtin.emboss.stone";
   }
-  properties.liquidLevel = fixture.wet ? 8.0f : 0.0f;
+  properties.liquidLevel = fixture.wet ? 2.0f : 0.0f;
   primitive->setProperties(properties);
   world.addPrimitive(primitive);
   std::vector<bw::core::Primitive*> primitives{primitive};
@@ -346,6 +346,12 @@ int main() {
                   wetSurfaceTriangles[1] != 0 &&
                   drySurfaceTriangles[2] == wetSurfaceTriangles[2],
               "wet and dry Worlds did not partition Horizontal, Liquid, and Walls");
+      std::array<uint32_t, 3> wetSlopeSurfaceTriangles;
+      auto wetSlope = render(
+          renderSystem, {.wet = true, .sloped = true},
+          &wetSlopeSurfaceTriangles);
+      require(!wetSlope.empty() && wetSlopeSurfaceTriangles[1] != 0,
+              "a sloped basin produced no clipped Liquid render geometry");
       // This overhead fixture intentionally has no high-contrast reflection
       // source. Its Liquid F0 response can therefore be below a broad-image
       // difference threshold; topology and WaterScene selection are covered

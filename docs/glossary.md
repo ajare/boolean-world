@@ -105,6 +105,12 @@ self-contained and never reaches back into live, animating primitives
 **Fixed-point vertex** — An exact point on the world geometry grid. The
 canonical coordinate type for topology, contours, and arrangement output.
 
+**Hydraulic cell** — One generated Arrangement triangle together with its
+affine floor and ceiling functions and derived Liquid state. It is the unit
+whose integrated capacity determines how much of a horizontal Pool it can hold
+and whose wet portion is clipped to produce visible Liquid geometry. It is
+derived from, and never adds points to, exact Arrangement topology.
+
 **Snap-rounding** — Forcing computed intersection points onto the integer grid,
 so that all output topology is exactly representable and vertex identity is an
 integer comparison rather than a float comparison (ADR-0003).

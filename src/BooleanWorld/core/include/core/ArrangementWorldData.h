@@ -55,8 +55,9 @@ class BW_API ArrangementWorldData {
   // Post-fold detail geometry. Chips and ceiling Wedges remain render-only;
   // floor Wedge facets additionally contribute to floor collision height.
   arr::DetailGeometry mDetail;
-  // One settled liquid depth per face - see arr::ComputeLiquidLevels.
-  std::vector<float> mLiquidDepths;
+  // Hydraulic cells, horizontal Pool elevations, and clipped visible Liquid
+  // geometry derived from the generated Arrangement triangles.
+  arr::LiquidState mLiquidState;
   std::vector<uint32_t> mFloorWedgeTriangleIndices;
   std::vector<uint32_t> mCollisionWallIndices;
   std::vector<uint32_t> mRenderedWallIndices;
@@ -148,19 +149,32 @@ public:
 
   [[nodiscard]] float getCeilingHeight(wp::Vector2 const& position) const;
 
-  // The settled liquid depth at position - see arr::ComputeLiquidLevels. Zero
-  // outside the arrangement or wherever no liquid reaches.
+  // One Hydraulic cell per generated Arrangement triangle and its basin's
+  // settled Pool elevation. Pool entries are negative infinity where the
+  // basin holds no Liquid; a cell wholly above a shoreline can still share
+  // its basin's finite elevation while reporting zero local depth.
+  [[nodiscard]] std::vector<arr::HydraulicCell> const&
+  getHydraulicCells() const;
+  [[nodiscard]] std::vector<double> const& getLiquidPoolElevations() const;
+
+  // Horizontal visible interfaces clipped to the portions of Hydraulic cells
+  // where the Pool lies above the affine floor and below the affine ceiling.
+  [[nodiscard]] std::vector<arr::LiquidSurfaceTriangle> const&
+  getLiquidSurfaceTriangles() const;
+
+  // The settled Liquid depth at position, evaluated below the containing
+  // cell's horizontal Pool elevation and clamped to its local affine floor and
+  // ceiling. Zero outside the Arrangement or on a dry part of a cell.
   [[nodiscard]] float getLiquidDepth(wp::Vector2 const& position) const;
 
-  // One settled liquid depth per face, parallel to arr::Arrangement's faces
-  // and directly indexable by an ArrangementTriangle's face - see
-  // arr::ComputeLiquidLevels. Zero means dry.
+  // Flat-world compatibility view, parallel to Arrangement faces. New code
+  // must query depth by position or consume Pool elevations instead.
   [[nodiscard]] std::vector<float> const& getLiquidDepths() const;
 
-  // The world-space height of the settled liquid surface at position - the
-  // containing face's own sampled (un-Wedge-raised) floor elevation plus its
-  // liquid depth, matching the surface WorldRenderer draws. Negative infinity
-  // outside the arrangement or wherever no liquid reaches.
+  // The horizontal Pool elevation governing Liquid at position. Negative
+  // infinity outside the Arrangement or on a dry part of a cell. A completely
+  // flooded cell can report a Pool above its local ceiling even though it
+  // emits no visible free-surface geometry there.
   [[nodiscard]] float getLiquidSurfaceHeight(wp::Vector2 const& position) const;
 
   // The LiquidType of whichever Primitive's properties won the containing

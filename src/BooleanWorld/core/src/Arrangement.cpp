@@ -5,6 +5,7 @@
 #include <limits>
 #include <map>
 #include <format>
+#include <numeric>
 #include <stdexcept>
 #include <tuple>
 #include <unordered_map>
@@ -1362,24 +1363,6 @@ ArrangementResultPtr BuildArrangement(
     }
   }
 
-  auto const hasLiquidSeed = ranges::any_of(primitives, [](auto const& primitive) {
-    return primitive.operation == Primitive::Operation::Union &&
-           primitive.properties.liquidLevel != 0.0f;
-  });
-  if (hasLiquidSeed) {
-    auto const hasSlopedRegion = ranges::any_of(
-        result->faces.begin() + 1, result->faces.end(), [&](auto const& face) {
-          if (!face.solid) return false;
-          auto const& properties = result->palette[face.paletteIndex];
-          return properties.floorZ.gradient != wp::Vector2::ZERO ||
-                 properties.ceilingZ.gradient != wp::Vector2::ZERO;
-        });
-    if (hasSlopedRegion) {
-      throw CoreException(
-          "Generation cannot settle nonzero Liquid in a World containing a sloped floor or ceiling");
-    }
-  }
-
   if (stats != nullptr) {
     stats->vertexCount = uint32_t(result->vertices.size());
     stats->edgeCount = uint32_t(result->edges.size());
@@ -1511,6 +1494,112 @@ vector<ArrangementTriangle> BuildArrangementTriangles(
     }
   }
   return triangles;
+}
+
+namespace {
+double TriangleArea(std::array<wp::Vector2, 3> const& positions) {
+  auto const ab = positions[1] - positions[0];
+  auto const ac = positions[2] - positions[0];
+  return 0.5 * std::abs(
+                   double(ab.x) * double(ac.y) -
+                   double(ab.y) * double(ac.x));
+}
+
+// Integral of max(elevation - plane, 0) over a triangle whose affine plane is
+// represented by its three corner elevations. Linear clipping leaves either
+// the whole triangle, one similar corner triangle, or the whole signed prism
+// less one similar negative corner triangle.
+double PositivePartVolume(
+    double area,
+    std::array<float, 3> const& plane,
+    double elevation) {
+  std::array<double, 3> depth{
+      elevation - plane[0], elevation - plane[1], elevation - plane[2]};
+  auto positiveCount = std::ranges::count_if(
+      depth, [](double value) { return value > 0.0; });
+  if (positiveCount == 0) return 0.0;
+  if (positiveCount == 3) {
+    return area * (depth[0] + depth[1] + depth[2]) / 3.0;
+  }
+
+  if (positiveCount == 1) {
+    auto positive = size_t(std::ranges::find_if(
+                               depth, [](double value) { return value > 0.0; }) -
+                           depth.begin());
+    auto other0 = (positive + 1) % 3;
+    auto other1 = (positive + 2) % 3;
+    auto d = depth[positive];
+    auto ratio0 = d / (d - depth[other0]);
+    auto ratio1 = d / (d - depth[other1]);
+    return area * ratio0 * ratio1 * d / 3.0;
+  }
+
+  auto negative = size_t(std::ranges::find_if(
+                             depth, [](double value) { return value <= 0.0; }) -
+                         depth.begin());
+  auto other0 = (negative + 1) % 3;
+  auto other1 = (negative + 2) % 3;
+  auto magnitude = -depth[negative];
+  auto ratio0 = magnitude / (depth[other0] + magnitude);
+  auto ratio1 = magnitude / (depth[other1] + magnitude);
+  auto signedVolume = area * (depth[0] + depth[1] + depth[2]) / 3.0;
+  return signedVolume + area * ratio0 * ratio1 * magnitude / 3.0;
+}
+}  // namespace
+
+double HydraulicCell::volumeBelow(double elevation) const {
+  std::array<float, 3> floorElevations;
+  std::array<float, 3> ceilingElevations;
+  for (size_t corner = 0; corner < positions.size(); ++corner) {
+    floorElevations[corner] = floor.evaluate(positions[corner]);
+    ceilingElevations[corner] = ceiling.evaluate(positions[corner]);
+  }
+
+  auto minimumFloor =
+      double(*std::min_element(floorElevations.begin(), floorElevations.end()));
+  if (elevation <= minimumFloor) return 0.0;
+
+  auto maximumCeiling = double(
+      *std::max_element(ceilingElevations.begin(), ceilingElevations.end()));
+  if (elevation >= maximumCeiling) {
+    auto clearanceSum = 0.0;
+    for (size_t corner = 0; corner < 3; ++corner) {
+      clearanceSum += ceilingElevations[corner] - floorElevations[corner];
+    }
+    return worldArea * std::max(0.0, clearanceSum) / 3.0;
+  }
+
+  // clamp(elevation - floor, 0, ceiling - floor) equals the positive
+  // part above the floor minus the positive part above the ceiling.
+  return std::max(
+      0.0, PositivePartVolume(worldArea, floorElevations, elevation) -
+               PositivePartVolume(worldArea, ceilingElevations, elevation));
+}
+
+vector<HydraulicCell> BuildHydraulicCells(
+    ArrangementResult const& arrangement,
+    vector<ArrangementTriangle> const& triangles) {
+  vector<HydraulicCell> cells;
+  cells.reserve(triangles.size());
+  for (auto const& triangle : triangles) {
+    HydraulicCell cell;
+    cell.triangle = triangle;
+    auto const& properties =
+        arrangement.palette[arrangement.faces[triangle.face].paletteIndex];
+    cell.floor = properties.floorZ;
+    cell.ceiling = properties.ceilingZ;
+    for (size_t corner = 0; corner < cell.positions.size(); ++corner) {
+      auto const& fixed = arrangement.vertices[triangle.v[corner]];
+      cell.positions[corner] = {
+          ToWorldCoordinate(fixed.x), ToWorldCoordinate(fixed.y)};
+    }
+    cell.worldArea = std::abs(ToWorldArea(Cross(
+        arrangement.vertices[triangle.v[0]],
+        arrangement.vertices[triangle.v[1]],
+        arrangement.vertices[triangle.v[2]])));
+    cells.push_back(std::move(cell));
+  }
+  return cells;
 }
 
 vector<ArrangementWall> BuildArrangementWalls(
@@ -1732,10 +1821,10 @@ vector<LiquidAdjacency> BuildLiquidAdjacency(ArrangementResult const& arrangemen
   return result;
 }
 
-vector<float> ComputeUndistributedLiquidDepths(
+static vector<double> ComputeUndistributedLiquidDepthsDouble(
     ArrangementResult const& arrangement) {
   auto faceCount = uint32_t(arrangement.faces.size());
-  vector<float> depths(faceCount, 0.0f);
+  vector<double> depths(faceCount, 0.0);
   auto primitiveCount = arrangement.primitiveOperations.size();
 
   // Shared by both passes below, since a face's area is needed once to total
@@ -1804,73 +1893,163 @@ vector<float> ComputeUndistributedLiquidDepths(
 
     // Deliberately unclamped: capping here would destroy volume that the
     // equilibrium pass needs to spread into neighbouring faces.
-    depths[faceIndex] = float(depth);
+    depths[faceIndex] = depth;
   }
   return depths;
 }
 
-namespace {
-// One face's hydrology inputs, gathered once so the fill below never has to
-// go back to the palette or recompute an area.
-struct FaceLiquid {
-  double floorZ{0};
-  double ceilingZ{0};
-  double area{0};
-};
+vector<float> ComputeUndistributedLiquidDepths(
+    ArrangementResult const& arrangement) {
+  auto precise = ComputeUndistributedLiquidDepthsDouble(arrangement);
+  vector<float> depths;
+  depths.reserve(precise.size());
+  ranges::transform(
+      precise, back_inserter(depths),
+      [](double depth) { return static_cast<float>(depth); });
+  return depths;
+}
 
-// Volume held by these faces if the liquid surface sat at elevation z. Each
-// face holds area * (z - floorZ), never below zero and never past its own
-// ceiling, so this is continuous, non-decreasing and piecewise linear in z.
+namespace {
+// Integrated capacity of one prospective Pool at a horizontal elevation.
 double LiquidCapacityBelow(
-    vector<FaceLiquid> const& liquid,
-    vector<uint32_t> const& faces,
-    double z) {
+    vector<HydraulicCell> const& cells,
+    vector<uint32_t> const& cellIndices,
+    double elevation) {
   double total = 0.0;
-  for (auto faceIndex : faces) {
-    auto const& face = liquid[faceIndex];
-    auto clearance = max(0.0, face.ceilingZ - face.floorZ);
-    total += face.area * clamp(z - face.floorZ, 0.0, clearance);
+  for (auto cellIndex : cellIndices) {
+    total += cells[cellIndex].volumeBelow(elevation);
   }
   return total;
 }
 
-// The elevation at which `volume` settles across these faces, found exactly:
-// LiquidCapacityBelow bends only at a floor or a ceiling, so the answer is the
-// linear interpolation inside the single segment between consecutive
-// breakpoints that brackets the volume - no epsilon, no iteration. A volume
-// exceeding every face's combined capacity settles at the highest ceiling,
-// which caps each member face and silently discards the excess.
-double SolveLiquidLevel(
-    vector<FaceLiquid> const& liquid,
-    vector<uint32_t> const& faces,
-    double volume) {
-  vector<double> breakpoints;
-  breakpoints.reserve(faces.size() * 2);
-  for (auto faceIndex : faces) {
-    auto const& face = liquid[faceIndex];
-    breakpoints.push_back(face.floorZ);
-    breakpoints.push_back(max(face.floorZ, face.ceilingZ));
+std::array<double, 2> LiquidElevationBounds(
+    vector<HydraulicCell> const& cells,
+    vector<uint32_t> const& cellIndices) {
+  std::array<double, 2> bounds{
+      numeric_limits<double>::infinity(),
+      -numeric_limits<double>::infinity()};
+  for (auto cellIndex : cellIndices) {
+    auto const& cell = cells[cellIndex];
+    for (auto const& position : cell.positions) {
+      bounds[0] = min(bounds[0], double(cell.floor.evaluate(position)));
+      bounds[1] = max(bounds[1], double(cell.ceiling.evaluate(position)));
+    }
   }
-  sort(breakpoints.begin(), breakpoints.end());
-  breakpoints.erase(
-      unique(breakpoints.begin(), breakpoints.end()), breakpoints.end());
-  if (breakpoints.empty()) {
+  return bounds;
+}
+
+// Sloped-cell capacity is piecewise cubic. Fixed-count double-precision
+// bisection is deterministic for identical generated input and makes no
+// assumption that capacity is linear in elevation.
+double SolveLiquidLevel(
+    vector<HydraulicCell> const& cells,
+    vector<uint32_t> const& cellIndices,
+    double volume) {
+  if (cellIndices.empty()) {
     return -numeric_limits<double>::infinity();
   }
-
-  auto lowerCapacity = 0.0;
-  for (size_t i = 1; i < breakpoints.size(); ++i) {
-    auto upperCapacity = LiquidCapacityBelow(liquid, faces, breakpoints[i]);
-    if (upperCapacity >= volume) {
-      auto slope = (upperCapacity - lowerCapacity) /
-                   (breakpoints[i] - breakpoints[i - 1]);
-      if (slope > 0.0) {
-        return breakpoints[i - 1] + (volume - lowerCapacity) / slope;
-      }
-    }
-    lowerCapacity = upperCapacity;
+  auto bounds = LiquidElevationBounds(cells, cellIndices);
+  if (volume <= 0.0) return bounds[0];
+  if (LiquidCapacityBelow(cells, cellIndices, bounds[1]) <= volume) {
+    return bounds[1];
   }
-  return breakpoints.back();
+
+  auto lower = bounds[0];
+  auto upper = bounds[1];
+  // 64 iterations reduce even the full float elevation range below one double
+  // ULP for ordinary World scales while keeping the work data-independent.
+  for (int iteration = 0; iteration < 64; ++iteration) {
+    auto middle = std::midpoint(lower, upper);
+    if (LiquidCapacityBelow(cells, cellIndices, middle) < volume) {
+      lower = middle;
+    } else {
+      upper = middle;
+    }
+  }
+  // Return the capacity-satisfying side of the bracket so a Pool whose exact
+  // equilibrium is a Sill still reaches it rather than rounding just below.
+  return upper;
+}
+
+struct ClipVertex {
+  wp::Vector2 position;
+  double floorDistance;
+  double ceilingDistance;
+};
+
+vector<ClipVertex> ClipLiquidPolygon(
+    vector<ClipVertex> polygon,
+    bool floorBoundary) {
+  vector<ClipVertex> result;
+  if (polygon.empty()) return result;
+  auto distance = [&](ClipVertex const& vertex) {
+    return floorBoundary ? vertex.floorDistance : vertex.ceilingDistance;
+  };
+  auto previous = polygon.back();
+  auto previousInside = distance(previous) >= 0.0;
+  for (auto const& current : polygon) {
+    auto currentInside = distance(current) >= 0.0;
+    if (currentInside != previousInside) {
+      auto previousDistance = distance(previous);
+      auto currentDistance = distance(current);
+      auto parameter = previousDistance /
+                       (previousDistance - currentDistance);
+      result.push_back(
+          {previous.position +
+               (current.position - previous.position) * float(parameter),
+           std::lerp(previous.floorDistance, current.floorDistance, parameter),
+           std::lerp(
+               previous.ceilingDistance, current.ceilingDistance,
+               parameter)});
+    }
+    if (currentInside) result.push_back(current);
+    previous = current;
+    previousInside = currentInside;
+  }
+  return result;
+}
+
+vector<LiquidSurfaceTriangle> BuildLiquidSurfaceTriangles(
+    vector<HydraulicCell> const& cells,
+    vector<double> const& poolElevations) {
+  vector<LiquidSurfaceTriangle> result;
+  for (uint32_t cellIndex = 0; cellIndex < uint32_t(cells.size());
+       ++cellIndex) {
+    auto elevation = poolElevations[cellIndex];
+    if (!std::isfinite(elevation) ||
+        cells[cellIndex].volumeBelow(elevation) <= 0.0) {
+      continue;
+    }
+    auto const& cell = cells[cellIndex];
+    vector<ClipVertex> polygon;
+    polygon.reserve(5);
+    auto hasExposedInterface = false;
+    for (size_t corner = 0; corner < cell.positions.size(); ++corner) {
+      auto floorElevation = cell.floor.evaluate(cell.positions[corner]);
+      auto ceilingDistance =
+          cell.ceiling.evaluate(cell.positions[corner]) - elevation;
+      polygon.push_back(
+          {cell.positions[corner], elevation - floorElevation,
+           ceilingDistance});
+      hasExposedInterface |= ceilingDistance > 0.0;
+    }
+    // A cell filled exactly to, or above, its ceiling remains part of the
+    // Pool but has no exposed horizontal interface to draw.
+    if (!hasExposedInterface) continue;
+    polygon = ClipLiquidPolygon(std::move(polygon), true);
+    polygon = ClipLiquidPolygon(std::move(polygon), false);
+    if (polygon.size() < 3) continue;
+
+    for (size_t corner = 1; corner + 1 < polygon.size(); ++corner) {
+      std::array<wp::Vector2, 3> positions{
+          polygon[0].position, polygon[corner].position,
+          polygon[corner + 1].position};
+      if (TriangleArea(positions) <= 0.0) continue;
+      result.push_back(
+          {positions, float(elevation), cellIndex, cell.triangle.face});
+    }
+  }
+  return result;
 }
 
 // One liquid-adjacency resolved into the elevation liquid has to reach before
@@ -1885,32 +2064,34 @@ struct LiquidLink {
 };
 }  // namespace
 
-vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
+LiquidState ComputeLiquidState(
+    ArrangementResult const& arrangement,
+    vector<ArrangementTriangle> const& triangles) {
+  LiquidState result;
   auto faceCount = uint32_t(arrangement.faces.size());
-  vector<float> depths(faceCount, 0.0f);
-  if (faceCount == 0) {
-    return depths;
+  result.faceDepths.assign(faceCount, 0.0f);
+  result.cells = BuildHydraulicCells(arrangement, triangles);
+  result.poolElevations.assign(
+      result.cells.size(), -numeric_limits<double>::infinity());
+  if (faceCount == 0) return result;
+
+  auto undistributed =
+      ComputeUndistributedLiquidDepthsDouble(arrangement);
+  vector<vector<uint32_t>> faceCells(faceCount);
+  for (uint32_t cellIndex = 0; cellIndex < uint32_t(result.cells.size());
+       ++cellIndex) {
+    faceCells[result.cells[cellIndex].triangle.face].push_back(cellIndex);
   }
 
-  auto undistributed = ComputeUndistributedLiquidDepths(arrangement);
-
-  // Face zero, the unbounded exterior, is the permanent drain: it never holds
-  // liquid and its entry stays zeroed.
-  vector<FaceLiquid> liquid(faceCount);
   vector<double> volumes(faceCount, 0.0);
   for (uint32_t faceIndex = 1; faceIndex < faceCount; ++faceIndex) {
-    auto const& face = arrangement.faces[faceIndex];
-    if (!face.solid) {
-      continue;
+    for (auto cellIndex : faceCells[faceIndex]) {
+      volumes[faceIndex] += double(undistributed[faceIndex]) *
+                            result.cells[cellIndex].worldArea;
     }
-    auto const& properties = arrangement.palette[face.paletteIndex];
-    liquid[faceIndex] = {
-        double(properties.floorZ), double(properties.ceilingZ),
-        max(0.0, FaceArea(face, arrangement))};
-    volumes[faceIndex] = double(undistributed[faceIndex]) * liquid[faceIndex].area;
   }
 
-  // Union-find over faces. Each group is a pool: the faces sharing one
+  // Union-find over faces. Each group is a pool: the cells sharing one
   // surface elevation, the volume they hold between them, and whether that
   // pool has reached the exterior and emptied.
   vector<uint32_t> parent(faceCount);
@@ -1927,11 +2108,11 @@ vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
     if (!arrangement.faces[faceIndex].solid) {
       continue;
     }
-    members[faceIndex].push_back(faceIndex);
+    members[faceIndex] = faceCells[faceIndex];
     groupVolume[faceIndex] = volumes[faceIndex];
     if (volumes[faceIndex] > 0.0) {
-      groupLevel[faceIndex] =
-          SolveLiquidLevel(liquid, members[faceIndex], volumes[faceIndex]);
+      groupLevel[faceIndex] = SolveLiquidLevel(
+          result.cells, members[faceIndex], volumes[faceIndex]);
     }
   }
 
@@ -1945,12 +2126,19 @@ vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
 
   vector<LiquidLink> links;
   for (auto const& adjacency : BuildLiquidAdjacency(arrangement)) {
+    auto face0 = adjacency.face0 == 0 ? adjacency.face1 : adjacency.face0;
+    auto face1 = adjacency.face1 == 0 ? adjacency.face0 : adjacency.face1;
+    auto const& properties0 =
+        arrangement.palette[arrangement.faces[face0].paletteIndex];
+    auto const& properties1 =
+        arrangement.palette[arrangement.faces[face1].paletteIndex];
+    // Distinct-basin sloped Sills are generalized by the hydraulic-link pass.
+    // Retain ADR-0032's base-elevation link behavior here while Hydraulic cells
+    // handle one sloped basin.
     auto sill = adjacency.drain
-                    ? liquid[adjacency.face0 == 0 ? adjacency.face1
-                                                  : adjacency.face0]
-                          .floorZ
-                    : max(liquid[adjacency.face0].floorZ,
-                          liquid[adjacency.face1].floorZ);
+                    ? double(properties0.floorZ.baseElevation)
+                    : max(double(properties0.floorZ.baseElevation),
+                          double(properties1.floorZ.baseElevation));
     links.push_back({sill, adjacency.face0, adjacency.face1});
   }
   sort(links.begin(), links.end(), [](auto const& a, auto const& b) {
@@ -1997,7 +2185,7 @@ vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
       auto combinedLevel =
           drained || combinedVolume <= 0.0
               ? -numeric_limits<double>::infinity()
-              : SolveLiquidLevel(liquid, combined, combinedVolume);
+              : SolveLiquidLevel(result.cells, combined, combinedVolume);
 
       if (drained || combinedLevel >= link.sill) {
         // One body of liquid. Merging changes its surface elevation, so
@@ -2018,7 +2206,8 @@ vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
       // elevations, with the donor left exactly at the sill.
       auto donor = groupLevel[root0] >= groupLevel[root1] ? root0 : root1;
       auto recipient = donor == root0 ? root1 : root0;
-      auto retained = LiquidCapacityBelow(liquid, members[donor], link.sill);
+      auto retained =
+          LiquidCapacityBelow(result.cells, members[donor], link.sill);
       auto spilled = groupVolume[donor] - retained;
       if (spilled <= 0.0) {
         // Already brim-full at this sill and holding nothing back. Re-running
@@ -2033,7 +2222,7 @@ vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
       groupLevel[recipient] =
           groupVolume[recipient] > 0.0
               ? SolveLiquidLevel(
-                    liquid, members[recipient], groupVolume[recipient])
+                    result.cells, members[recipient], groupVolume[recipient])
               : -numeric_limits<double>::infinity();
       flowing = true;
       break;
@@ -2041,15 +2230,27 @@ vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
   }
 
   for (uint32_t faceIndex = 1; faceIndex < faceCount; ++faceIndex) {
-    if (!arrangement.faces[faceIndex].solid) {
-      continue;
-    }
+    if (!arrangement.faces[faceIndex].solid) continue;
     auto level = groupLevel[findRoot(faceIndex)];
-    auto const& face = liquid[faceIndex];
-    auto clearance = max(0.0, face.ceilingZ - face.floorZ);
-    depths[faceIndex] = float(clamp(level - face.floorZ, 0.0, clearance));
+    auto const& properties =
+        arrangement.palette[arrangement.faces[faceIndex].paletteIndex];
+    auto clearance = max(
+        0.0, double(properties.ceilingZ.baseElevation) -
+                 properties.floorZ.baseElevation);
+    result.faceDepths[faceIndex] = float(clamp(
+        level - properties.floorZ.baseElevation, 0.0, clearance));
+    for (auto cellIndex : faceCells[faceIndex]) {
+      result.poolElevations[cellIndex] = level;
+    }
   }
-  return depths;
+  result.surfaceTriangles =
+      BuildLiquidSurfaceTriangles(result.cells, result.poolElevations);
+  return result;
+}
+
+vector<float> ComputeLiquidLevels(ArrangementResult const& arrangement) {
+  auto triangles = BuildArrangementTriangles(arrangement);
+  return ComputeLiquidState(arrangement, triangles).faceDepths;
 }
 
 ArrangementWallOrientation OrientArrangementWall(
