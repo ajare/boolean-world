@@ -180,6 +180,7 @@ foreach(dependency_target
 endforeach()
 
 include(Helpers)
+include("${BW_WILLPOWER_SOURCE_DIR}/cmake/ResourceSchemas.cmake")
 
 # concurrencpp is built from its pinned source submodule, rather than linked
 # from vendor/. EXCLUDE_FROM_ALL keeps it out of unrelated builds; targets that
@@ -203,6 +204,17 @@ include(Lua)
 
 add_subdirectory(src/AppLib)
 add_subdirectory(src/BooleanWorld)
+
+set(BW_RESOURCE_SCHEMA_BUNDLE_DIR
+    "${CMAKE_BINARY_DIR}/resource-schema-bundle")
+willpower_compose_resource_schema_bundle(
+    TARGET boolean_world_resource_schema_bundle
+    OUTPUT_DIRECTORY "${BW_RESOURCE_SCHEMA_BUNDLE_DIR}"
+    ROOT_SCHEMA_ID
+        "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/resource-manifest.schema.json"
+    BUILTIN_BUNDLE
+        "${BW_WILLPOWER_BUILD_DIR}/willpower.application/resource-schema-bundle")
+
 add_subdirectory(src/Launcher)
 
 if(BUILD_TESTING)

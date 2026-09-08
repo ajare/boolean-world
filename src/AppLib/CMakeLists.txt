@@ -53,6 +53,23 @@ bw_output_dirs(AppLib)
 bw_enable_sdl_checks(AppLib)
 set_target_properties(AppLib PROPERTIES FOLDER AppLib)
 
+willpower_declare_resource_schema(
+    RESOURCE_TYPE Map
+    SCHEMA_ID
+        "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/map.schema.json"
+    SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/schemas/map.schema.json")
+willpower_declare_resource_schema(
+    RESOURCE_TYPE Map
+    FACTORY_TYPE Tiled
+    SCHEMA_ID
+        "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/map-tiled.schema.json"
+    SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/schemas/map-tiled.schema.json")
+willpower_declare_resource_schema(
+    RESOURCE_TYPE ProtoEntity
+    SCHEMA_ID
+        "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/proto-entity.schema.json"
+    SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/schemas/proto-entity.schema.json")
+
 if(BUILD_TESTING)
     add_executable(applib_proto_entity_schema_tests
         tests/proto_entity_schema_tests.cpp)

@@ -22,6 +22,12 @@ bw_output_dirs(core-lua)
 bw_enable_sdl_checks(core-lua)
 set_target_properties(core-lua PROPERTIES FOLDER BooleanWorld)
 
+willpower_declare_resource_schema(
+    RESOURCE_TYPE LuaScript
+    SCHEMA_ID
+        "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/lua-script.schema.json"
+    SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/schemas/lua-script.schema.json")
+
 if(BUILD_TESTING)
     add_executable(boolean_world_core_lua_expression_tests
         tests/core_lua_expression_tests.cpp)

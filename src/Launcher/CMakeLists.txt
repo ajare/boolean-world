@@ -223,6 +223,79 @@ if(UNIX AND NOT APPLE)
     endif()
 endif()
 
+# Stage Willpower's Resource Manifest Editor separately from the game. Its
+# application bundle is selected entirely through the deployment INI; no
+# application code is linked into or loaded by the editor.
+set(_bw_resource_manager_ini
+    "${CMAKE_CURRENT_BINARY_DIR}/resource-manager-$<CONFIG>.ini")
+file(GENERATE OUTPUT "${_bw_resource_manager_ini}" CONTENT
+"; BooleanWorld Resource Manifest Editor deployment.\n[ResourceManifestEditor]\nformatVersion=1\nbaseBundle=resource-schema-bundle\n\n[mpp]\nmsaa=off\nssaa=off\ntaa=false\nfxaa=false\n")
+
+add_custom_target(BuildWillpowerResourceSchemas
+    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
+            --config "${BW_DEPENDENCY_CONFIG}" --parallel
+            --target willpower_resource_schema_bundle
+    COMMENT "Building Willpower Resource Schema Bundle"
+    USES_TERMINAL
+    VERBATIM)
+set_property(TARGET BuildWillpowerResourceSchemas PROPERTY FOLDER "Dependencies")
+add_dependencies(boolean_world_resource_schema_bundle
+    BuildWillpowerResourceSchemas)
+
+add_custom_target(BuildWillpowerResourceManager
+    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
+            --config "${BW_DEPENDENCY_CONFIG}" --parallel
+            --target resource_manager
+    COMMENT "Building Willpower Resource Manifest Editor"
+    USES_TERMINAL
+    VERBATIM)
+add_dependencies(BuildWillpowerResourceManager
+    BuildAllDependencies BuildWillpowerResourceSchemas)
+set_property(TARGET BuildWillpowerResourceManager PROPERTY FOLDER "Dependencies")
+
+set(_bw_resource_manager_source
+    "${BW_WILLPOWER_BUILD_DIR}/bin/${BW_DEPENDENCY_CONFIG}/resource_manager")
+set(_bw_resource_manager_destination
+    "${CMAKE_BINARY_DIR}/bin/$<CONFIG>/ResourceManifestEditor")
+add_custom_target(BooleanWorldResourceManager ALL
+    COMMAND "${CMAKE_COMMAND}" -E remove_directory
+            "${_bw_resource_manager_destination}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${_bw_resource_manager_source}"
+            "${_bw_resource_manager_destination}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${_bw_resource_manager_ini}"
+            "${_bw_resource_manager_destination}/resource-manager.ini"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${BW_RESOURCE_SCHEMA_BUNDLE_DIR}"
+            "${_bw_resource_manager_destination}/resource-schema-bundle"
+    DEPENDS "${_bw_resource_manager_ini}"
+    COMMENT "Staging BooleanWorld Resource Manifest Editor"
+    VERBATIM)
+add_dependencies(BooleanWorldResourceManager
+    BuildWillpowerResourceManager boolean_world_resource_schema_bundle)
+set_property(TARGET BooleanWorldResourceManager PROPERTY FOLDER "Tools")
+
+if(BUILD_TESTING)
+    if(WIN32)
+        set(_bw_resource_manager_executable_suffix ".exe")
+    else()
+        set(_bw_resource_manager_executable_suffix "")
+    endif()
+    set(_bw_resource_manager_executable
+        "${_bw_resource_manager_destination}/resource-manager$<$<CONFIG:Debug,MemCheck>:d>${_bw_resource_manager_executable_suffix}")
+    add_test(NAME boolean_world_resource_schema_bundle
+        COMMAND "${CMAKE_COMMAND}"
+            "-DRESOURCE_MANAGER=${_bw_resource_manager_executable}"
+            "-DINI=${_bw_resource_manager_destination}/resource-manager.ini"
+            "-DAPPLICATION_MANIFEST=${BW_ROOT}/src/BooleanWorld/app/resources/Resources.yaml"
+            "-DAPPLICATION_BASE_DIRECTORY=${BW_ROOT}/src/BooleanWorld/app/resources"
+            "-DFIXTURE_DIRECTORY=${CMAKE_CURRENT_SOURCE_DIR}/tests/resource-schema"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/resource_schema_bundle_tests.cmake")
+    unset(_bw_resource_manager_executable_suffix)
+    unset(_bw_resource_manager_executable)
+endif()
+
 # Per-machine support files:
 #   support/<COMPUTERNAME>/<CONFIG>/*  ->  output directory
 # Run through a script so both $<CONFIG> and the directory's existence resolve

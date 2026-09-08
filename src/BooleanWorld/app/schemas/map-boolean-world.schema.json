@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/map-boolean-world.schema.json",
+  "title": "Map BooleanWorld Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["factory", "Resource"],
+  "properties": {
+    "factory": { "enum": ["BooleanWorld"] },
+    "Resource": { "enum": ["Yaml"] }
+  }
+}
