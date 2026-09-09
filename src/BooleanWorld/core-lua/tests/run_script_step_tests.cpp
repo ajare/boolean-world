@@ -470,6 +470,9 @@ void scriptsAuthorIndependentElevationSpans() {
   bw::core::ScriptRuntime runtime;
   runtime.load("elevation-spans", R"(
     local primitive = context:create_primitive("Rectangle")
+    assert(not pcall(function()
+      primitive:set_floor_elevation(math.huge, 0, 0)
+    end))
     primitive:set_floor_elevation(15, -4, 12)
     primitive:set_ceiling_elevation(-70, 60, 84)
     local floor_angle, floor_lower, floor_upper = primitive:get_floor_elevation()
@@ -477,19 +480,39 @@ void scriptsAuthorIndependentElevationSpans() {
     assert(floor_angle == 15 and floor_lower == -4 and floor_upper == 12)
     assert(ceiling_angle == -70 and ceiling_lower == 60 and ceiling_upper == 84)
     context:place_primitive(primitive)
+
+    local mesh = context:create_mesh_primitive({
+      {0, 0}, {8, 0}, {8, 8}, {0, 8}
+    })
+    mesh:set_floor_elevation(-20, 3, 9)
+    mesh:set_ceiling_elevation(45, 30, 42)
+    local mesh_floor_angle, mesh_floor_lower, mesh_floor_upper =
+      mesh:get_floor_elevation()
+    local mesh_ceiling_angle, mesh_ceiling_lower, mesh_ceiling_upper =
+      mesh:get_ceiling_elevation()
+    assert(mesh_floor_angle == -20 and mesh_floor_lower == 3 and
+           mesh_floor_upper == 9)
+    assert(mesh_ceiling_angle == 45 and mesh_ceiling_lower == 30 and
+           mesh_ceiling_upper == 42)
+    context:place_primitive(mesh)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
   auto* step = addScriptStep(layer, runtime, "elevation-spans");
   layer.rebuild();
 
-  require(!step->hasFailed() && layer.getNumPrimitives() == 1,
+  require(!step->hasFailed() && layer.getNumPrimitives() == 2,
           "a script could not author floor and ceiling Elevation spans");
   auto const& properties = layer.getPrimitive(0)->getProperties();
   require(properties.floorSpan == bw::core::ElevationSpan{15.0f, -4.0f, 12.0f} &&
               properties.ceilingSpan ==
                   bw::core::ElevationSpan{-70.0f, 60.0f, 84.0f},
           "script-authored Elevation-span values did not reach the Primitive");
+  auto const& meshProperties = layer.getPrimitive(1)->getProperties();
+  require(meshProperties.floorSpan == bw::core::ElevationSpan{-20.0f, 3.0f, 9.0f} &&
+              meshProperties.ceilingSpan ==
+                  bw::core::ElevationSpan{45.0f, 30.0f, 42.0f},
+          "script-authored Elevation-span values did not reach the MeshPrimitive");
 }
 
 void meshGeometryEditingUsesTheCurrentPrimitiveTransform() {
