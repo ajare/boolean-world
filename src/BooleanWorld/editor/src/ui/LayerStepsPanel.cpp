@@ -162,6 +162,18 @@ struct RunScriptTextParameterEditorState {
   string field;
 };
 
+struct RunScriptIntegerVariableEditorState {
+  int64_t model = 0;
+  int64_t field = 0;
+  bool initialized = false;
+};
+
+struct RunScriptFloatVariableEditorState {
+  double model = 0.0;
+  double field = 0.0;
+  bool initialized = false;
+};
+
 int resizeRunScriptTextParameter(
     ImGuiInputTextCallbackData* data) {
   if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
@@ -175,24 +187,46 @@ int resizeRunScriptTextParameter(
 bool inputRunScriptTextParameter(char const* label, string* text) {
   return ImGui::InputText(
       label, text->data(), text->capacity() + 1,
-      ImGuiInputTextFlags_CallbackResize, resizeRunScriptTextParameter, text);
+      ImGuiInputTextFlags_CallbackResize |
+          ImGuiInputTextFlags_EnterReturnsTrue,
+      resizeRunScriptTextParameter, text);
 }
 
-void renderRunScriptParameters(
+void renderRunScriptStepVariables(
     editor::Document* doc, bw::core::Layer* layer,
     bw::core::RunScript* step) {
-  auto const& definitions = step->getRuntime().getParameterDefinitions(
+  auto const& definitions = step->getRuntime().getStepVariableDefinitions(
       step->getScriptName());
-  if (definitions.empty()) return;
+  auto inherited = layer->getEffectiveBuildVariables();
+  set<string> declaredNames;
+  for (auto const& definition : definitions) declaredNames.insert(definition.name);
+  if (definitions.empty() && inherited.empty()) return;
 
-  ImGui::SeparatorText("Params");
+  ImGui::SeparatorText("Variables");
+  for (auto const& [name, value] : inherited) {
+    if (declaredNames.contains(name)) continue;
+    ImGui::PushID(name.c_str());
+    ImGui::TextDisabled("%s (%s) = %s", name.c_str(),
+                        bw::core::buildVariableTypeName(bw::core::buildVariableType(value)),
+                        visit([](auto const& concrete) { return format("{}", concrete); }, value).c_str());
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", layer->getBuildVariables().contains(name) ? "Layer" : "World");
+    ImGui::PopID();
+  }
   static map<bw::core::RunScript const*,
              map<string, RunScriptTextParameterEditorState>>
       textStates;
+  static map<bw::core::RunScript const*,
+             map<string, RunScriptIntegerVariableEditorState>>
+      integerStates;
+  static map<bw::core::RunScript const*,
+             map<string, RunScriptFloatVariableEditorState>>
+      floatStates;
+  static map<bw::core::RunScript const*, string> errors;
 
   for (auto const& definition : definitions) {
     ImGui::PushID(definition.name.c_str());
-    auto value = step->getParameterValue(definition);
+    auto value = step->getStepVariableValue(definition);
     if (!definition.accepts(value)) {
       value = definition.defaultValue;
       ImGui::TextColored(
@@ -201,7 +235,7 @@ void renderRunScriptParameters(
     }
 
     bool changed = false;
-    if (definition.type == bw::core::ScriptParameterType::String) {
+    if (definition.type == bw::core::BuildVariableType::String) {
       auto const& current = get<string>(value);
       if (definition.choices.empty()) {
         auto& state = textStates[step][definition.name];
@@ -210,10 +244,11 @@ void renderRunScriptParameters(
           state.field = current;
         }
         ImGui::SetNextItemWidth(300.0f);
-        inputRunScriptTextParameter(definition.name.c_str(), &state.field);
-        if (ImGui::IsItemDeactivatedAfterEdit()) {
+        bool const submitted = inputRunScriptTextParameter(
+            definition.name.c_str(), &state.field);
+        if (submitted || ImGui::IsItemDeactivatedAfterEdit()) {
           value = state.field;
-          changed = true;
+          changed = state.field != current;
         }
       } else {
         ImGui::SetNextItemWidth(300.0f);
@@ -230,23 +265,37 @@ void renderRunScriptParameters(
         }
       }
     } else if (definition.type ==
-               bw::core::ScriptParameterType::Integer) {
-      auto integer = get<int64_t>(value);
-      ImGui::SetNextItemWidth(300.0f);
-      if (ImGui::SliderScalar(
-              definition.name.c_str(), ImGuiDataType_S64, &integer,
-              &definition.integerMinimum, &definition.integerMaximum)) {
-        value = integer;
-        changed = true;
+               bw::core::BuildVariableType::Integer) {
+      auto const current = get<int64_t>(value);
+      auto& state = integerStates[step][definition.name];
+      if (!state.initialized || state.model != current) {
+        state.model = current;
+        state.field = current;
+        state.initialized = true;
       }
-    } else if (definition.type == bw::core::ScriptParameterType::Number) {
-      auto number = get<double>(value);
       ImGui::SetNextItemWidth(300.0f);
-      if (ImGui::SliderScalar(
-              definition.name.c_str(), ImGuiDataType_Double, &number,
-              &definition.numberMinimum, &definition.numberMaximum, "%.6g")) {
-        value = number;
-        changed = true;
+      bool const submitted = ImGui::InputScalar(
+          definition.name.c_str(), ImGuiDataType_S64, &state.field, nullptr,
+          nullptr, nullptr, ImGuiInputTextFlags_EnterReturnsTrue);
+      if (submitted || ImGui::IsItemDeactivatedAfterEdit()) {
+        value = state.field;
+        changed = state.field != current;
+      }
+    } else if (definition.type == bw::core::BuildVariableType::Float) {
+      auto const current = get<double>(value);
+      auto& state = floatStates[step][definition.name];
+      if (!state.initialized || state.model != current) {
+        state.model = current;
+        state.field = current;
+        state.initialized = true;
+      }
+      ImGui::SetNextItemWidth(300.0f);
+      bool const submitted = ImGui::InputScalar(
+          definition.name.c_str(), ImGuiDataType_Double, &state.field,
+          nullptr, nullptr, "%.12g", ImGuiInputTextFlags_EnterReturnsTrue);
+      if (submitted || ImGui::IsItemDeactivatedAfterEdit()) {
+        value = state.field;
+        changed = state.field != current;
       }
     } else {
       auto boolean = get<bool>(value);
@@ -257,18 +306,35 @@ void renderRunScriptParameters(
     }
 
     if (changed) {
-      transact(doc, CommandId::SetRunScriptParameterValue, [&] { setRunScriptParameterValue(doc, layer, step, definition.name, value); });
+      try {
+        if (transactUndoableActionAtomically(
+                doc, CommandId::SetRunScriptStepVariableValue,
+                [&](Document*) {
+                  return setRunScriptStepVariableValue(
+                      doc, layer, step, definition.name, value);
+                })) {
+          errors[step].clear();
+        }
+      } catch (exception const& exception) {
+        errors[step] = exception.what();
+      }
     }
 
     bool const hasSerializedValue =
-        step->getParameterValues().contains(definition.name);
+        step->getStepVariableValues().contains(definition.name);
     ImGui::SameLine();
     ImGui::BeginDisabled(!hasSerializedValue);
     if (ImGui::SmallButton("Revert to resource default")) {
-      transact(doc, CommandId::ClearRunScriptParameterValue, [&] { clearRunScriptParameterValue(doc, layer, step, definition.name); });
+      transact(doc, CommandId::ClearRunScriptStepVariableValue, [&] { clearRunScriptStepVariableValue(doc, layer, step, definition.name); });
     }
     ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::TextDisabled("Step");
     ImGui::PopID();
+  }
+  if (!errors[step].empty()) {
+    ImGui::TextColored(
+        ImVec4{1.0f, 0.35f, 0.35f, 1.0f}, "%s", errors[step].c_str());
   }
 }
 
@@ -328,7 +394,7 @@ void renderRunScriptView(
         scriptErrors[step].c_str());
   }
 
-  renderRunScriptParameters(doc, layer, step);
+  renderRunScriptStepVariables(doc, layer, step);
 
   auto seed = step->getSeed();
   ImGui::SetNextItemWidth(220.0f);
@@ -464,6 +530,8 @@ void renderLayerStepsView(ViewContext& context) {
   auto world = doc->getWorld();
   auto* layer = world->getActiveLayer();
   auto numSteps = layer->getNumSteps();
+
+  renderBuildVariablesEditor(context, layer);
 
   widgets::HelpMarker("Disabling a step and rebuilding removes its Primitives from this Layer; re-enabling restores them. The first step can be disabled but never removed, retyped, or reordered. The active step (radio button) is where Create/Edit Primitive writes.");
 

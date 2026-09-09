@@ -1674,7 +1674,7 @@ world:
           seed: 0
           extraResources:
             []
-          params:
+          vars:
             - name: iterations
               type: integer
               value: 37

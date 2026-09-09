@@ -77,29 +77,36 @@ public:
       resources::Resource* resource, resources::ResourceManager*,
       wp::DataNode* node) override {
     auto* script = static_cast<LuaScriptResource*>(resource);
-    vector<ScriptParameterDefinition> definitions;
-    auto* params = node->getOptionalChild("Params");
-    if (!params) {
-      script->setParameterDefinitions({});
+    vector<StepVariableDefinition> definitions;
+    auto* vars = node->getOptionalChild("Vars");
+    auto* legacyParams = node->getOptionalChild("Params");
+    if (vars && legacyParams) {
+      parameterError(resource, "Definition may not contain both Vars and legacy Params");
+    }
+    auto* collection = vars ? vars : legacyParams;
+    if (!collection) {
+      script->setStepVariableDefinitions({});
       return;
     }
 
-    params->requireOnlyChildren({"Param"});
-    auto* parameter = params->getOptionalChild("Param");
+    auto const* itemName = vars ? "Var" : "Param";
+    collection->requireOnlyChildren({itemName});
+    auto* parameter = collection->getOptionalChild(itemName);
     if (!parameter) {
-      parameterError(resource, "Params contains no Param");
+      parameterError(resource, string(vars ? "Vars contains no Var" : "Params contains no Param"));
     }
 
     unordered_set<string> names;
     do {
-      ScriptParameterDefinition definition;
+      StepVariableDefinition definition;
       definition.name = requiredProperty(resource, parameter, "name");
-      if (definition.name.empty()) {
-        parameterError(resource, "Param name may not be empty");
+      if (!isValidBuildVariableName(definition.name)) {
+        parameterError(resource, "Step build variable name '" + definition.name +
+                                     "' is not a valid Lua identifier");
       }
       if (!names.insert(definition.name).second) {
         parameterError(
-            resource, "duplicate Param name '" + definition.name + "'");
+            resource, "duplicate Step build variable name '" + definition.name + "'");
       }
 
       auto const authoredType =
@@ -113,7 +120,7 @@ public:
       if (type == "string") {
         parameter->requireOnlyChildren(
             {"name", "type", "default", "Choices"});
-        definition.type = ScriptParameterType::String;
+        definition.type = BuildVariableType::String;
         definition.defaultValue = defaultText;
         if (auto* choices = parameter->getOptionalChild("Choices")) {
           choices->requireOnlyChildren({"Choice"});
@@ -138,7 +145,7 @@ public:
       } else if (type == "integer") {
         parameter->requireOnlyChildren(
             {"name", "type", "default", "min", "max"});
-        definition.type = ScriptParameterType::Integer;
+        definition.type = BuildVariableType::Integer;
         definition.integerMinimum = parseInteger(
             resource, definition.name, "min",
             requiredProperty(resource, parameter, "min"));
@@ -147,21 +154,21 @@ public:
             requiredProperty(resource, parameter, "max"));
         definition.defaultValue = parseInteger(
             resource, definition.name, "default", defaultText);
-      } else if (type == "number") {
+      } else if (type == "float" || (legacyParams && type == "number")) {
         parameter->requireOnlyChildren(
             {"name", "type", "default", "min", "max"});
-        definition.type = ScriptParameterType::Number;
-        definition.numberMinimum = parseNumber(
+        definition.type = BuildVariableType::Float;
+        definition.floatMinimum = parseNumber(
             resource, definition.name, "min",
             requiredProperty(resource, parameter, "min"));
-        definition.numberMaximum = parseNumber(
+        definition.floatMaximum = parseNumber(
             resource, definition.name, "max",
             requiredProperty(resource, parameter, "max"));
         definition.defaultValue = parseNumber(
             resource, definition.name, "default", defaultText);
       } else if (type == "boolean") {
         parameter->requireOnlyChildren({"name", "type", "default"});
-        definition.type = ScriptParameterType::Boolean;
+        definition.type = BuildVariableType::Boolean;
         if (defaultText == "true") {
           definition.defaultValue = true;
         } else if (defaultText == "false") {
@@ -174,17 +181,17 @@ public:
         }
       } else {
         parameterError(
-            resource, "Param '" + definition.name + "' has unknown type '" +
+            resource, "Step build variable '" + definition.name + "' has unknown type '" +
                           authoredType + "'");
       }
 
-      if (definition.type == ScriptParameterType::Integer &&
+      if (definition.type == BuildVariableType::Integer &&
           definition.integerMinimum > definition.integerMaximum) {
         parameterError(
             resource, "Param '" + definition.name + "' has min above max");
       }
-      if (definition.type == ScriptParameterType::Number &&
-          definition.numberMinimum > definition.numberMaximum) {
+      if (definition.type == BuildVariableType::Float &&
+          definition.floatMinimum > definition.floatMaximum) {
         parameterError(
             resource, "Param '" + definition.name + "' has min above max");
       }
@@ -196,7 +203,7 @@ public:
       definitions.push_back(move(definition));
     } while (parameter->next());
 
-    script->setParameterDefinitions(move(definitions));
+    script->setStepVariableDefinitions(move(definitions));
   }
 };
 
@@ -253,7 +260,7 @@ void LuaScriptResource::parseData(resources::DataStreamPtr data) {
 
 void LuaScriptResource::destroy() {
   mText.clear();
-  mParameterDefinitions.clear();
+  mStepVariableDefinitions.clear();
   mResourceManager = nullptr;
 }
 
@@ -261,14 +268,14 @@ string const& LuaScriptResource::getText() const {
   return mText;
 }
 
-vector<ScriptParameterDefinition> const&
-LuaScriptResource::getParameterDefinitions() const {
-  return mParameterDefinitions;
+vector<StepVariableDefinition> const&
+LuaScriptResource::getStepVariableDefinitions() const {
+  return mStepVariableDefinitions;
 }
 
-void LuaScriptResource::setParameterDefinitions(
-    vector<ScriptParameterDefinition> definitions) {
-  mParameterDefinitions = move(definitions);
+void LuaScriptResource::setStepVariableDefinitions(
+    vector<StepVariableDefinition> definitions) {
+  mStepVariableDefinitions = move(definitions);
 }
 
 map<string, string> LuaScriptResource::collectIncludedScripts() const {
@@ -298,14 +305,14 @@ void LuaScriptResource::loadInto(
     ScriptRuntime& runtime, string const& authoredName) const {
   runtime.load(
       authoredName, getText(), collectIncludedScripts(),
-      mParameterDefinitions);
+      mStepVariableDefinitions);
 }
 
 void LuaScriptResource::reloadInto(
     ScriptRuntime& runtime, string const& authoredName) const {
   runtime.reload(
       authoredName, getText(), collectIncludedScripts(),
-      mParameterDefinitions);
+      mStepVariableDefinitions);
 }
 
 LuaScriptResourceFactory::LuaScriptResourceFactory()

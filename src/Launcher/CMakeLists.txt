@@ -278,6 +278,19 @@ add_dependencies(BooleanWorldResourceManager
 set_property(TARGET BooleanWorldResourceManager PROPERTY FOLDER "Tools")
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_resource_schema_validator
+        tests/resource_schema_validator.cpp)
+    target_link_libraries(boolean_world_resource_schema_validator PRIVATE
+        Willpower.Common Willpower.Application ext::Utils)
+    target_compile_features(boolean_world_resource_schema_validator PRIVATE
+        cxx_std_20)
+    bw_target_defaults(boolean_world_resource_schema_validator)
+    bw_output_dirs(boolean_world_resource_schema_validator)
+    bw_deploy_runtime_dlls(boolean_world_resource_schema_validator)
+    bw_deploy_vendor_dlls(boolean_world_resource_schema_validator)
+    add_dependencies(boolean_world_resource_schema_validator
+        boolean_world_resource_schema_bundle)
+
     if(WIN32)
         set(_bw_resource_manager_executable_suffix ".exe")
     else()
@@ -289,8 +302,9 @@ if(BUILD_TESTING)
         COMMAND "${CMAKE_COMMAND}"
             "-DRESOURCE_MANAGER=${_bw_resource_manager_executable}"
             "-DINI=${_bw_resource_manager_destination}/resource-manager.ini"
+            "-DVALIDATOR=$<TARGET_FILE:boolean_world_resource_schema_validator>"
+            "-DBUNDLE=${BW_RESOURCE_SCHEMA_BUNDLE_DIR}"
             "-DAPPLICATION_MANIFEST=${BW_ROOT}/src/BooleanWorld/app/resources/Resources.yaml"
-            "-DAPPLICATION_BASE_DIRECTORY=${BW_ROOT}/src/BooleanWorld/app/resources"
             "-DFIXTURE_DIRECTORY=${CMAKE_CURRENT_SOURCE_DIR}/tests/resource-schema"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/resource_schema_bundle_tests.cmake")
     unset(_bw_resource_manager_executable_suffix)

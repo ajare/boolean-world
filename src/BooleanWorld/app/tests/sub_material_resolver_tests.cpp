@@ -175,7 +175,7 @@ subMaterials:
 // unknown, or an empty/unresolved slot - falls back to the negative Debug
 // material index rather than aliasing a real Technique.
 void resolveFallsBackForAnUnknownId(fs::path const& root, wp::Logger& logger) {
-  writeFile(root / "Resources.yaml", "Resources:\n");
+  writeFile(root / "Resources.yaml", "Resources: {}\n");
 
   ResourceManager manager(nullptr, nullptr, nullptr, &logger);
   manager.addResourceLocationFactory(

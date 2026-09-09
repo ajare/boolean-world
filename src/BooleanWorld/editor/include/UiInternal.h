@@ -112,6 +112,8 @@ void renderMenu(ViewContext& context);
 void renderToolbar(ViewContext& context);
 void renderStatusbar(ViewContext& context);
 void renderWorldView(ViewContext& context);
+void renderBuildVariablesEditor(
+    ViewContext& context, bw::core::Layer* layer = nullptr);
 void renderCreatePrimitiveView(ViewContext& context);
 void renderEditPrimitiveView(ViewContext& context);
 bool hasEditablePrimitiveSelection(Document* doc);

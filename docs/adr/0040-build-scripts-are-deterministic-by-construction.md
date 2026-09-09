@@ -46,10 +46,15 @@ serializes a **seed**, re-applied at the start of every execution. A
 scatter therefore reproduces exactly, and changing the arrangement is an
 authored edit — a reroll — rather than a side effect of rebuilding.
 
-Resource-authored Script parameters enter the environment only through an
-execution-local `params` table. Their effective typed values are serialized
-with each `RunScript` step, so a later resource-default change cannot make the
-game rebuild a saved World differently from the editor that saved it.
+Authored Build variables enter the environment only through execution-local,
+immutable tables. `world.vars` contains the World scope, `layer.vars` applies
+same-typed Layer overrides, and `step.vars` applies the RunScript's
+resource-declared same-typed overrides. Each narrower scope inherits the
+unshadowed values above it. Their typed values are serialized with their
+owning World, Layer, or `RunScript` step, so a later resource-default change
+cannot make the game rebuild a saved World differently from the editor that
+saved it. Iterating any `vars` table with `pairs()` is lexical by name, and
+Build environments omit `rawset` so scripts cannot bypass immutability.
 
 Because the environment is rebuilt per execution, nothing a script leaves
 in a global survives to the next rebuild, and two steps cannot share state

@@ -164,17 +164,20 @@ void horizontalMaterialCoordinatesUseCanonicalSurfaceUp() {
           shader2d.find("vec3(1.0, 0.0, 0.0) - up * up.x") !=
               std::string::npos &&
           shader2d.find("axisV = cross(axisU, up)") != std::string::npos &&
-          shader2d.find("vec2 surfacePosition = surfaceCoordinates(worldPos, surfaceUp)") !=
+          shader2d.find("surfaceFrame(surfaceUp, surfaceAxisU, surfaceAxisV)") !=
+              std::string::npos &&
+          shader2d.find("dot(worldPos, surfaceAxisU), dot(worldPos, surfaceAxisV)") !=
               std::string::npos,
       "2D shader does not flatten horizontal surfaces through a World-anchored frame");
 
-  auto coordinates = shader2d.find("vec2 surfacePosition = surfaceCoordinates");
+  auto coordinates = shader2d.find("vec2 surfacePosition = vec2(");
   auto faceForward = shader2d.find("if (dot(shadingNormal, viewDir) < 0.0)");
   auto emboss = shader2d.find("material.normal = embossSurface");
   require(coordinates != std::string::npos && faceForward != std::string::npos &&
               emboss != std::string::npos && coordinates < faceForward &&
               faceForward < emboss &&
-              shader2d.find("material.normal, worldPos, surfaceUp") !=
+              shader2d.find(
+                  "material.normal, surfacePosition, surfaceAxisU, surfaceAxisV") !=
                   std::string::npos,
           "2D material coordinates are not fixed before facing and Embossing");
 }

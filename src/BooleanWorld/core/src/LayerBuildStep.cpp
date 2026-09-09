@@ -20,6 +20,10 @@ Registry<LayerBuildStep>& LayerBuildStep::registry() {
   return stepRegistry;
 }
 
+BuildVariables LayerBuildStep::getDeclaredBuildVariables() const {
+  return {};
+}
+
 vector<string> LayerBuildStep::getRegisteredTypes() {
   return registry().getTypes();
 }

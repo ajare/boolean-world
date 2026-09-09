@@ -44,13 +44,25 @@
         "max": { "$ref": "https://schemas.willpower.dev/resource-manifest/common.schema.json#/definitions/integer" }
       }
     },
-    "numberParameter": {
+    "floatParameter": {
       "type": "object",
       "additionalProperties": false,
       "required": ["name", "type", "default", "min", "max"],
       "properties": {
         "name": { "$ref": "https://schemas.willpower.dev/resource-manifest/common.schema.json#/definitions/nonEmptyString" },
-        "type": { "pattern": "^[Nn][Uu][Mm][Bb][Ee][Rr]$" },
+        "type": { "pattern": "^[Ff][Ll][Oo][Aa][Tt]$" },
+        "default": { "$ref": "https://schemas.willpower.dev/resource-manifest/common.schema.json#/definitions/number" },
+        "min": { "$ref": "https://schemas.willpower.dev/resource-manifest/common.schema.json#/definitions/number" },
+        "max": { "$ref": "https://schemas.willpower.dev/resource-manifest/common.schema.json#/definitions/number" }
+      }
+    },
+    "legacyNumberParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "default", "min", "max"],
+      "properties": {
+        "name": { "$ref": "https://schemas.willpower.dev/resource-manifest/common.schema.json#/definitions/nonEmptyString" },
+        "type": { "pattern": "^([Nn][Uu][Mm][Bb][Ee][Rr]|[Ff][Ll][Oo][Aa][Tt])$" },
         "default": { "$ref": "https://schemas.willpower.dev/resource-manifest/common.schema.json#/definitions/number" },
         "min": { "$ref": "https://schemas.willpower.dev/resource-manifest/common.schema.json#/definitions/number" },
         "max": { "$ref": "https://schemas.willpower.dev/resource-manifest/common.schema.json#/definitions/number" }
@@ -70,7 +82,7 @@
       "oneOf": [
         { "$ref": "#/definitions/stringParameter" },
         { "$ref": "#/definitions/integerParameter" },
-        { "$ref": "#/definitions/numberParameter" },
+        { "$ref": "#/definitions/floatParameter" },
         { "$ref": "#/definitions/booleanParameter" }
       ]
     },
@@ -84,20 +96,48 @@
         }
       ]
     },
+    "legacyParameter": {
+      "oneOf": [
+        { "$ref": "#/definitions/stringParameter" },
+        { "$ref": "#/definitions/integerParameter" },
+        { "$ref": "#/definitions/legacyNumberParameter" },
+        { "$ref": "#/definitions/booleanParameter" }
+      ]
+    },
+    "legacyParameterCollection": {
+      "oneOf": [
+        { "$ref": "#/definitions/legacyParameter" },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/legacyParameter" }
+        }
+      ]
+    },
     "params": {
       "type": "object",
       "additionalProperties": false,
       "required": ["Param"],
       "properties": {
-        "Param": { "$ref": "#/definitions/parameterCollection" }
+        "Param": { "$ref": "#/definitions/legacyParameterCollection" }
+      }
+    },
+    "vars": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Var"],
+      "properties": {
+        "Var": { "$ref": "#/definitions/parameterCollection" }
       }
     },
     "definition": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "Vars": { "$ref": "#/definitions/vars" },
         "Params": { "$ref": "#/definitions/params" }
-      }
+      },
+      "not": { "required": ["Vars", "Params"] }
     },
     "definitions": {
       "type": "object",

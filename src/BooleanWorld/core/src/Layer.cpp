@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <iterator>
+#include <format>
 #include <limits>
 #include <set>
 
@@ -13,6 +14,7 @@
 #include "core/LayerBuildStep.h"
 #include "core/PrimitiveField.h"
 #include "core/PrefabField.h"
+#include "core/World.h"
 
 namespace bw {
 namespace core {
@@ -117,6 +119,7 @@ void Layer::swapState(Layer& other) noexcept {
   swap(mId, other.mId);
   swap(mNextStepId, other.mNextStepId);
   swap(mName, other.mName);
+  swap(mBuildVariables, other.mBuildVariables);
   swap(mExtents, other.mExtents);
   swap(mSteps, other.mSteps);
   swap(mActiveStepIndex, other.mActiveStepIndex);
@@ -154,6 +157,7 @@ void Layer::copyFrom(Layer const& other) {
   mId = other.mId;
   mNextStepId = other.mNextStepId;
   mName = other.mName;
+  mBuildVariables = other.mBuildVariables;
   mExtents = other.mExtents;
 
   if (other.mPrimitiveLookupGrid) {
@@ -254,6 +258,7 @@ void Layer::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
   {
     serializer->writeUint32("id", mId);
     serializer->writeString("name", mName);
+    serializeBuildVariables(serializer, mBuildVariables);
     serializer->writeVector2("minExtent", mExtents.getMinExtent());
     serializer->writeVector2("maxExtent", mExtents.getMaxExtent());
     serializer->writeUint32("nextStepId", mNextStepId);
@@ -295,6 +300,7 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
 
   uint32_t id;
   string name;
+  BuildVariables buildVariables;
   wp::Vector2 minExtent, maxExtent;
   uint32_t nextStepId;
   vector<unique_ptr<LayerBuildStep>> steps;
@@ -305,6 +311,7 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     {
       id = serializer->readUint32("id");
       name = serializer->readString("name", true);
+      buildVariables = deserializeBuildVariables(serializer);
       minExtent = serializer->readVector2("minExtent");
       maxExtent = serializer->readVector2("maxExtent");
       nextStepId = serializer->readUint32(
@@ -402,6 +409,21 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
       }
     }
 
+    validateBuildVariables(buildVariables, format("Layer '{}'", name));
+    for (auto const& step : steps) {
+      for (auto const& [variableName, value] : step->getDeclaredBuildVariables()) {
+        if (auto inherited = buildVariables.find(variableName);
+            inherited != buildVariables.end() &&
+            buildVariableType(inherited->second) != buildVariableType(value)) {
+          throw CoreException(format(
+              "Layer '{}' Step build variable '{}' has type {}, but its inherited variable has type {}",
+              name, variableName,
+              buildVariableTypeName(buildVariableType(value)),
+              buildVariableTypeName(buildVariableType(inherited->second))));
+        }
+      }
+    }
+
     // Fix up VertexTransformer parents.
     for (auto const& [vtoId, vt] : workData.vtoIdToVtoMap) {
       auto parentIdIt = workData.vtoIdToParentMap.find(vtoId);
@@ -426,6 +448,7 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mId = id;
   mNextStepId = nextStepId;
   mName = name;
+  mBuildVariables = move(buildVariables);
   mExtents.setPosition(minExtent);
   mExtents.setSize(maxExtent - minExtent);
   mActiveStepIndex = 0;
@@ -572,6 +595,105 @@ string const& Layer::getName() const {
   return mName;
 }
 
+World* Layer::getWorld() const {
+  return mWorld;
+}
+
+BuildVariables const& Layer::getBuildVariables() const {
+  return mBuildVariables;
+}
+
+BuildVariables Layer::getEffectiveBuildVariables() const {
+  BuildVariables result = mWorld ? mWorld->getBuildVariables() : BuildVariables{};
+  for (auto const& [name, value] : mBuildVariables) result.insert_or_assign(name, value);
+  return result;
+}
+
+void Layer::validateBuildVariableCascade(BuildVariables const& worldVariables) const {
+  validateBuildVariables(mBuildVariables, format("Layer '{}'", mName));
+  auto effective = worldVariables;
+  for (auto const& [name, value] : mBuildVariables) {
+    if (auto inherited = effective.find(name);
+        inherited != effective.end() &&
+        buildVariableType(inherited->second) != buildVariableType(value)) {
+      throw CoreException(format(
+          "Layer '{}' build variable '{}' has type {}, but its World variable has type {}",
+          mName, name, buildVariableTypeName(buildVariableType(value)),
+          buildVariableTypeName(buildVariableType(inherited->second))));
+    }
+    effective.insert_or_assign(name, value);
+  }
+  for (auto const* step : mSteps) {
+    for (auto const& [name, value] : step->getDeclaredBuildVariables()) {
+      if (auto inherited = effective.find(name);
+          inherited != effective.end() &&
+          buildVariableType(inherited->second) != buildVariableType(value)) {
+        throw CoreException(format(
+            "RunScript step '{}' build variable '{}' has type {}, but its inherited variable has type {}",
+            step->getName(), name, buildVariableTypeName(buildVariableType(value)),
+            buildVariableTypeName(buildVariableType(inherited->second))));
+      }
+    }
+  }
+}
+
+void Layer::setBuildVariable(string const& name, BuildVariableValue value) {
+  if (auto current = mBuildVariables.find(name);
+      current != mBuildVariables.end() && current->second == value) return;
+  auto candidate = mBuildVariables;
+  candidate.insert_or_assign(name, move(value));
+  auto const worldVariables = mWorld ? mWorld->getBuildVariables() : BuildVariables{};
+  auto original = move(mBuildVariables);
+  mBuildVariables = move(candidate);
+  try {
+    validateBuildVariableCascade(worldVariables);
+  } catch (...) {
+    mBuildVariables = move(original);
+    throw;
+  }
+  rebuild();
+  modify();
+}
+
+void Layer::removeBuildVariable(string const& name) {
+  if (!mBuildVariables.contains(name)) return;
+  auto candidate = mBuildVariables;
+  candidate.erase(name);
+  auto original = move(mBuildVariables);
+  mBuildVariables = move(candidate);
+  try {
+    validateBuildVariableCascade(mWorld ? mWorld->getBuildVariables() : BuildVariables{});
+  } catch (...) {
+    mBuildVariables = move(original);
+    throw;
+  }
+  rebuild();
+  modify();
+}
+
+void Layer::renameBuildVariable(string const& oldName, string const& newName) {
+  if (oldName == newName) return;
+  auto found = mBuildVariables.find(oldName);
+  if (found == mBuildVariables.end()) throw CoreException(format(
+      "Layer '{}' has no build variable '{}'", mName, oldName));
+  if (mBuildVariables.contains(newName)) throw CoreException(format(
+      "Layer '{}' already has build variable '{}'", mName, newName));
+  auto candidate = mBuildVariables;
+  auto value = candidate.at(oldName);
+  candidate.erase(oldName);
+  candidate.emplace(newName, move(value));
+  auto original = move(mBuildVariables);
+  mBuildVariables = move(candidate);
+  try {
+    validateBuildVariableCascade(mWorld ? mWorld->getBuildVariables() : BuildVariables{});
+  } catch (...) {
+    mBuildVariables = move(original);
+    throw;
+  }
+  rebuild();
+  modify();
+}
+
 void Layer::setExtents(wp::BoundingBox const& extents) {
   mExtents = extents;
 }
@@ -687,6 +809,18 @@ uint32_t Layer::insertStep(uint32_t index, LayerBuildStep* step) {
 
   if (index > getNumSteps()) {
     throw CoreException(format("Cannot insert a build step at index {} into a Layer with {} steps", index, getNumSteps()));
+  }
+
+  auto effective = getEffectiveBuildVariables();
+  for (auto const& [name, value] : step->getDeclaredBuildVariables()) {
+    if (auto inherited = effective.find(name);
+        inherited != effective.end() &&
+        buildVariableType(inherited->second) != buildVariableType(value)) {
+      throw CoreException(format(
+          "LayerBuildStep build variable '{}' has type {}, but its inherited variable has type {}",
+          name, buildVariableTypeName(buildVariableType(value)),
+          buildVariableTypeName(buildVariableType(inherited->second))));
+    }
   }
 
   assignStepId(step);

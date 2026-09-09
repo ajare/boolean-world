@@ -7,6 +7,7 @@ add_library(core STATIC
     src/ArrangementWorldData.cpp
     src/ArrangementWorldDataGenerator.cpp
     src/BinarySerializer.cpp
+    src/BuildVariables.cpp
     src/CirclePolygon.cpp
     src/CircleSegmentPolygon.cpp
     src/Chips.cpp

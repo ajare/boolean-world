@@ -12,7 +12,7 @@
 
 #include <core/CoreException.h>
 
-#include "core-lua/ScriptParameters.h"
+#include "core-lua/StepVariables.h"
 
 namespace bw {
 namespace core {
@@ -110,7 +110,7 @@ private:
 // to each RunScript step when that step type is registered, so nothing
 // reaches for it through a singleton and a test can own its own.
 //
-// It resolves nothing itself: script text and parameter definitions arrive as
+// It resolves nothing itself: script text and Step build variable definitions arrive as
 // values, never as a resource name, which keeps it free of the resource system
 // and testable without a ResourceManager.
 class ScriptRuntime {
@@ -133,8 +133,8 @@ private:
 
   // Resource-authored editor/runtime inputs survive a compile failure so the
   // editor can still render and repair a step while its script text is broken.
-  std::map<std::string, std::vector<ScriptParameterDefinition>>
-      mParameterDefinitions;
+  std::map<std::string, std::vector<StepVariableDefinition>>
+      mStepVariableDefinitions;
 
   // A failed reload replaces the previously compiled chunk. Keeping the
   // compile failure by name lets every RunScript step that names this script
@@ -196,7 +196,7 @@ public:
   void load(
       std::string const& name, std::string const& text,
       IncludedScripts const& includedScripts = {},
-      std::vector<ScriptParameterDefinition> parameterDefinitions = {});
+      std::vector<StepVariableDefinition> stepVariableDefinitions = {});
 
   // Replaces the cached result, then rebuilds each distinct Layer containing
   // a RunScript step that names name. A compile failure is retained and the
@@ -205,14 +205,14 @@ public:
   void reload(
       std::string const& name, std::string const& text,
       IncludedScripts const& includedScripts = {},
-      std::vector<ScriptParameterDefinition> parameterDefinitions = {});
+      std::vector<StepVariableDefinition> stepVariableDefinitions = {});
 
   [[nodiscard]] bool isLoaded(std::string const& name) const;
 
-  // Empty for an internal script or one whose resource declares no Params.
+  // Empty for an internal script or one whose resource declares no Step build variables.
   // The returned definitions are ordered as authored in the manifest.
-  [[nodiscard]] std::vector<ScriptParameterDefinition> const&
-  getParameterDefinitions(std::string const& name) const;
+  [[nodiscard]] std::vector<StepVariableDefinition> const&
+  getStepVariableDefinitions(std::string const& name) const;
 
   // Called with the environment an execution is about to run in, so a caller
   // can put its own bindings in it. The environment is discarded when the
@@ -220,7 +220,7 @@ public:
   using EnvironmentBinder = std::function<void(sol::environment&)>;
 
   // Runs the named chunk synchronously to completion in a fresh environment
-  // holding the requested libraries, a params table containing the loaded
+  // holding the requested libraries, a step.vars table containing the loaded
   // definitions' defaults, plus whatever bind adds. Fresh means
   // nothing a previous execution left behind is visible, and nothing this one
   // leaves behind survives. Throws a CoreException when the chunk is not

@@ -29,19 +29,19 @@ bool setRunScriptExtraResourceNames(
   return true;
 }
 
-bool setRunScriptParameterValue(
+bool setRunScriptStepVariableValue(
     Document*, bw::core::Layer* layer, bw::core::RunScript* step,
     std::string const& name,
-    bw::core::ScriptParameterValue const& value) {
-  step->setParameterValue(name, value);
+    bw::core::BuildVariableValue const& value) {
+  step->setStepVariableValue(name, value);
   layer->rebuild();
   return true;
 }
 
-bool clearRunScriptParameterValue(
+bool clearRunScriptStepVariableValue(
     Document*, bw::core::Layer* layer, bw::core::RunScript* step,
     std::string const& name) {
-  step->clearParameterValue(name);
+  step->clearStepVariableValue(name);
   layer->rebuild();
   return true;
 }

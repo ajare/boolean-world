@@ -10,6 +10,7 @@
 #include <vector>
 #include <utility>
 
+#include <core/BuildVariables.h>
 #include <core/DefinePrefabs.h>
 #include <core/Emboss.h>
 #include <core/PrefabField.h>
@@ -131,6 +132,19 @@ void setEditorMode(Document* doc, Settings& settings, Settings::Mode mode);
 void setMeshSubMode(Document* doc, Settings& settings, Settings::MeshSubMode subMode);
 
 bool setWorldName(Document* doc, std::string const& name);
+bool setWorldBuildVariable(
+    Document* doc, std::string const& name, bw::core::BuildVariableValue value);
+bool removeWorldBuildVariable(Document* doc, std::string const& name);
+bool renameWorldBuildVariable(
+    Document* doc, std::string const& oldName, std::string const& newName);
+bool setLayerBuildVariable(
+    Document* doc, bw::core::Layer* layer, std::string const& name,
+    bw::core::BuildVariableValue value);
+bool removeLayerBuildVariable(
+    Document* doc, bw::core::Layer* layer, std::string const& name);
+bool renameLayerBuildVariable(
+    Document* doc, bw::core::Layer* layer, std::string const& oldName,
+    std::string const& newName);
 
 bool setWorldWedgeGenerationParameters(
     Document* doc,
@@ -161,11 +175,11 @@ bool setRunScriptSeed(
 bool setRunScriptExtraResourceNames(
     Document* doc, bw::core::Layer* layer, bw::core::RunScript* step,
     std::vector<std::string> const& names);
-bool setRunScriptParameterValue(
+bool setRunScriptStepVariableValue(
     Document* doc, bw::core::Layer* layer, bw::core::RunScript* step,
     std::string const& name,
     std::variant<std::string, int64_t, double, bool> const& value);
-bool clearRunScriptParameterValue(
+bool clearRunScriptStepVariableValue(
     Document* doc, bw::core::Layer* layer, bw::core::RunScript* step,
     std::string const& name);
 
@@ -431,7 +445,8 @@ bool setPrimitiveEmbossPreset(
     bw::core::PrimitivePropertySet properties,
     PrimitiveMaterialSurface surface, float delta);
 
-enum class ElevationSpanEnd { Lower, Upper };
+enum class ElevationSpanEnd { Lower,
+                              Upper };
 
 // Chooses the authored end edge lying along the view direction in the World
 // plane. A perpendicular view chooses neither end. Walls do not own an
@@ -549,14 +564,14 @@ bool setTransformOperation(Document* doc, bw::core::Primitive* primitive, bw::co
 // metadata and the complete list live in Commands.h; these small value types
 // make actions discoverable and callable without repeating a history label at
 // each call site.
-#define EDITOR_DECLARE_COMMAND(type, label, function)                         \
-  struct type {                                                               \
-    static constexpr CommandId id = CommandId::type;                          \
-    static constexpr char const* name() { return label; }                     \
-    template <typename... Args>                                               \
-    static decltype(auto) execute(Document& doc, Args&&... args) {            \
-      return function(&doc, std::forward<Args>(args)...);                     \
-    }                                                                         \
+#define EDITOR_DECLARE_COMMAND(type, label, function)              \
+  struct type {                                                    \
+    static constexpr CommandId id = CommandId::type;               \
+    static constexpr char const* name() { return label; }          \
+    template <typename... Args>                                    \
+    static decltype(auto) execute(Document& doc, Args&&... args) { \
+      return function(&doc, std::forward<Args>(args)...);          \
+    }                                                              \
   };
 EDITOR_ACTION_COMMANDS(EDITOR_DECLARE_COMMAND)
 #undef EDITOR_DECLARE_COMMAND

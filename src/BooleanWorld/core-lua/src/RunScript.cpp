@@ -9,6 +9,7 @@
 #include <core/CoreException.h>
 #include <core/DefinePrefabs.h>
 #include <core/Layer.h>
+#include <core/World.h>
 
 #include "core-lua/LuaScriptResource.h"
 #include "core-lua/ScriptBindings.h"
@@ -17,6 +18,95 @@ namespace bw {
 namespace core {
 
 using namespace std;
+
+namespace {
+
+sol::table readonlyVariables(
+    sol::state_view lua, BuildVariables const& variables) {
+  auto values = lua.create_table();
+  auto names = lua.create_table(static_cast<int>(variables.size()), 0);
+  int index = 1;
+  for (auto const& [name, value] : variables) {
+    visit([&](auto const& concrete) { values[name] = concrete; }, value);
+    names[index++] = name;
+  }
+
+  sol::function factory = lua.script(R"(
+    local host_rawset, host_setmetatable, host_error = rawset, setmetatable, error
+    return function(values, names)
+      local proxy = {}
+      return host_setmetatable(proxy, {
+        __index = values,
+        __newindex = function(_, key)
+          host_error("build variable table is read-only: " .. tostring(key), 2)
+        end,
+        __pairs = function()
+          local i = 0
+          return function()
+            i = i + 1
+            local key = names[i]
+            if key ~= nil then return key, values[key] end
+          end
+        end,
+        __metatable = "protected build variable table"
+      })
+    end
+  )");
+  return factory(values, names);
+}
+
+sol::table readonlyNamespace(
+    sol::state_view lua, sol::table const& variables) {
+  auto values = lua.create_table();
+  values["vars"] = variables;
+  sol::function factory = lua.script(R"(
+    local host_setmetatable, host_error = setmetatable, error
+    return function(values)
+      return host_setmetatable({}, {
+        __index = values,
+        __newindex = function(_, key)
+          host_error("build variable namespace is read-only: " .. tostring(key), 2)
+        end,
+        __pairs = function()
+          local done = false
+          return function()
+            if not done then done = true; return "vars", values.vars end
+          end
+        end,
+        __metatable = "protected build variable namespace"
+      })
+    end
+  )");
+  return factory(values);
+}
+
+void reserveNamespaces(
+    sol::state_view lua, sol::environment& environment,
+    sol::table const& world, sol::table const& layer,
+    sol::table const& step) {
+  auto bindings = lua.create_table();
+  bindings["world"] = world;
+  bindings["layer"] = layer;
+  bindings["step"] = step;
+  sol::function reserve = lua.script(R"(
+    local host_rawset, host_setmetatable, host_error = rawset, setmetatable, error
+    return function(env, bindings)
+      host_setmetatable(env, {
+        __index = bindings,
+        __newindex = function(target, key, value)
+          if bindings[key] ~= nil then
+            host_error("build variable namespace cannot be rebound: " .. tostring(key), 2)
+          end
+          host_rawset(target, key, value)
+        end,
+        __metatable = "protected build environment"
+      })
+    end
+  )");
+  reserve(environment, bindings);
+}
+
+}  // namespace
 
 RunScript::RunScript(ScriptRuntime& runtime)
     : mRuntime(&runtime),
@@ -36,6 +126,14 @@ string RunScript::getType() const {
   return "RunScript";
 }
 
+BuildVariables RunScript::getDeclaredBuildVariables() const {
+  BuildVariables result;
+  for (auto const& definition : mRuntime->getStepVariableDefinitions(mScriptName)) {
+    result.emplace(definition.name, getStepVariableValue(definition));
+  }
+  return result;
+}
+
 bool RunScript::mayBeFirstStep() const {
   return false;
 }
@@ -47,7 +145,7 @@ LayerBuildStep* RunScript::copy(map<VertexTransformerObject const*, VertexTransf
   result->copyFrom(*this);
   result->mScriptName = mScriptName;
   result->mExtraResourceNames = mExtraResourceNames;
-  result->mParameterValues = mParameterValues;
+  result->mStepVariableValues = mStepVariableValues;
   result->mSeed = mSeed;
   return result;
 }
@@ -168,27 +266,43 @@ void RunScript::execute(LayerBuildContext& context) const {
           // (docs/adr/0040); ScriptLibraries::Build always includes math.
           environment["math"]["randomseed"](mSeed);
 
-          sol::table params = environment["params"];
+          auto worldVariables = context.getLayer().getWorld()
+                                    ? context.getLayer().getWorld()->getBuildVariables()
+                                    : BuildVariables{};
+          auto layerVariables = context.getLayer().getEffectiveBuildVariables();
+          auto stepVariables = layerVariables;
           for (auto const& definition :
-               mRuntime->getParameterDefinitions(mScriptName)) {
-            auto const& value = getParameterValue(definition);
+               mRuntime->getStepVariableDefinitions(mScriptName)) {
+            auto const& value = getStepVariableValue(definition);
             if (!definition.accepts(value)) {
               throw CoreException(format(
-                  "RunScript parameter '{}' is not a valid {} value for its "
+                  "RunScript Step build variable '{}' is not a valid {} value for its "
                   "LuaScript resource definition",
-                  definition.name, scriptParameterTypeName(definition.type)));
+                  definition.name, buildVariableTypeName(definition.type)));
             }
-            visit(
-                [&params, &definition](auto const& concrete) {
-                  params[definition.name] = concrete;
-                },
-                value);
+            if (auto inherited = stepVariables.find(definition.name);
+                inherited != stepVariables.end() &&
+                buildVariableType(inherited->second) != buildVariableType(value)) {
+              throw CoreException(format(
+                  "RunScript Step build variable '{}' has type {}, but its inherited variable has type {}",
+                  definition.name, buildVariableTypeName(buildVariableType(value)),
+                  buildVariableTypeName(buildVariableType(inherited->second))));
+            }
+            stepVariables.insert_or_assign(definition.name, value);
           }
-          environment["params"] = params;
+
+          auto lua = sol::state_view(mRuntime->getState());
+          auto worldVars = readonlyVariables(lua, worldVariables);
+          auto layerVars = readonlyVariables(lua, layerVariables);
+          auto stepVars = readonlyVariables(lua, stepVariables);
+          reserveNamespaces(
+              lua, environment,
+              readonlyNamespace(lua, worldVars),
+              readonlyNamespace(lua, layerVars),
+              readonlyNamespace(lua, stepVars));
 
           // One explicit, borrowed capability object owns every operation
-          // scoped to this RunScript execution. The actual RunScript step and
-          // its authored configuration other than params are not exposed to Lua.
+          // scoped to this RunScript execution.
           environment["context"] = RunScriptContext(*this, context);
         },
         getName());
@@ -246,9 +360,23 @@ void RunScript::setScriptName(string const& name) {
     return;
   }
 
+  auto oldName = mScriptName;
+  auto oldValues = mStepVariableValues;
   mRuntime->untrackStep(this, mScriptName);
   mScriptName = name;
-  mParameterValues.clear();
+  mStepVariableValues.clear();
+  try {
+    if (auto* layer = getOwningLayer()) {
+      layer->validateBuildVariableCascade(
+          layer->getWorld() ? layer->getWorld()->getBuildVariables()
+                            : BuildVariables{});
+    }
+  } catch (...) {
+    mScriptName = move(oldName);
+    mStepVariableValues = move(oldValues);
+    mRuntime->trackStep(this, mScriptName, getOwningLayer());
+    throw;
+  }
   mRuntime->trackStep(this, mScriptName, getOwningLayer());
   modify();
 }
@@ -270,45 +398,56 @@ vector<string> const& RunScript::getExtraResourceNames() const {
   return mExtraResourceNames;
 }
 
-void RunScript::setParameterValue(
-    string const& name, ScriptParameterValue const& value) {
-  auto const& definitions = mRuntime->getParameterDefinitions(mScriptName);
+void RunScript::setStepVariableValue(
+    string const& name, BuildVariableValue const& value) {
+  auto const& definitions = mRuntime->getStepVariableDefinitions(mScriptName);
   auto const definition = find_if(
       definitions.begin(), definitions.end(),
       [&name](auto const& candidate) { return candidate.name == name; });
   if (definition == definitions.end()) {
     throw CoreException(
-        format("LuaScript '{}' declares no Param named '{}'", mScriptName, name));
+        format("LuaScript '{}' declares no Step build variable named '{}'", mScriptName, name));
   }
   if (!definition->accepts(value)) {
     throw CoreException(format(
-        "RunScript parameter '{}' is not a valid {} value for its LuaScript "
+        "RunScript Step build variable '{}' is not a valid {} value for its LuaScript "
         "resource definition",
-        name, scriptParameterTypeName(definition->type)));
+        name, buildVariableTypeName(definition->type)));
   }
-  if (auto current = mParameterValues.find(name);
-      current != mParameterValues.end() && current->second == value) {
+  if (auto* layer = getOwningLayer()) {
+    auto inherited = layer->getEffectiveBuildVariables();
+    if (auto found = inherited.find(name);
+        found != inherited.end() &&
+        buildVariableType(found->second) != buildVariableType(value)) {
+      throw CoreException(format(
+          "RunScript Step build variable '{}' has type {}, but its inherited variable has type {}",
+          name, buildVariableTypeName(buildVariableType(value)),
+          buildVariableTypeName(buildVariableType(found->second))));
+    }
+  }
+  if (auto current = mStepVariableValues.find(name);
+      current != mStepVariableValues.end() && current->second == value) {
     return;
   }
-  mParameterValues.insert_or_assign(name, value);
+  mStepVariableValues.insert_or_assign(name, value);
   modify();
 }
 
-void RunScript::clearParameterValue(string const& name) {
-  if (mParameterValues.erase(name) != 0) {
+void RunScript::clearStepVariableValue(string const& name) {
+  if (mStepVariableValues.erase(name) != 0) {
     modify();
   }
 }
 
-map<string, ScriptParameterValue> const& RunScript::getParameterValues() const {
-  return mParameterValues;
+map<string, BuildVariableValue> const& RunScript::getStepVariableValues() const {
+  return mStepVariableValues;
 }
 
-ScriptParameterValue const& RunScript::getParameterValue(
-    ScriptParameterDefinition const& definition) const {
-  auto const found = mParameterValues.find(definition.name);
-  return found == mParameterValues.end() ? definition.defaultValue
-                                         : found->second;
+BuildVariableValue const& RunScript::getStepVariableValue(
+    StepVariableDefinition const& definition) const {
+  auto const found = mStepVariableValues.find(definition.name);
+  return found == mStepVariableValues.end() ? definition.defaultValue
+                                            : found->second;
 }
 
 void RunScript::setSeed(uint64_t seed) {
@@ -346,12 +485,12 @@ void RunScript::serializeArgs(shared_ptr<Serializer> serializer, SerializationWo
   }
   serializer->endArray();
 
-  auto values = mParameterValues;
+  auto values = mStepVariableValues;
   for (auto const& definition :
-       mRuntime->getParameterDefinitions(mScriptName)) {
+       mRuntime->getStepVariableDefinitions(mScriptName)) {
     values.try_emplace(definition.name, definition.defaultValue);
   }
-  serializer->beginArray("params");
+  serializer->beginArray("vars");
   for (auto const& [name, value] : values) {
     serializer->beginMap("");
     serializer->writeString("name", name);
@@ -365,7 +504,7 @@ void RunScript::serializeArgs(shared_ptr<Serializer> serializer, SerializationWo
             serializer->writeString("type", "integer");
             serializer->writeInt64("value", concrete);
           } else if constexpr (is_same_v<Value, double>) {
-            serializer->writeString("type", "number");
+            serializer->writeString("type", "float");
             serializer->writeDouble("value", concrete);
           } else {
             serializer->writeString("type", "boolean");
@@ -388,34 +527,41 @@ bool RunScript::deserializeArgs(shared_ptr<Serializer> serializer, Serialization
   }
   serializer->endArray();
 
-  mParameterValues.clear();
-  if (serializer->isPositional() || serializer->hasField("params")) {
-    serializer->beginArray("params");
+  mStepVariableValues.clear();
+  bool const hasVars = serializer->isPositional() || serializer->hasField("vars");
+  bool const hasLegacyParams = !serializer->isPositional() && serializer->hasField("params");
+  if (hasVars && hasLegacyParams) {
+    throw CoreException("RunScript may not contain both vars and legacy params");
+  }
+  if (hasVars || hasLegacyParams) {
+    serializer->beginArray(hasVars ? "vars" : "params");
     while (serializer->nextArrayItem()) {
       serializer->beginMap("");
       auto const name = serializer->readString("name");
       auto const type = serializer->readString("type");
+      BuildVariableValue value;
       if (type == "string") {
-        mParameterValues.insert_or_assign(
-            name, serializer->readString("value"));
+        value = serializer->readString("value");
       } else if (type == "integer") {
-        mParameterValues.insert_or_assign(
-            name, serializer->readInt64("value"));
-      } else if (type == "number") {
-        mParameterValues.insert_or_assign(
-            name, serializer->readDouble("value"));
+        value = serializer->readInt64("value");
+      } else if (type == "float" || (!hasVars && type == "number")) {
+        value = serializer->readDouble("value");
       } else if (type == "boolean") {
-        mParameterValues.insert_or_assign(
-            name, serializer->readBool("value"));
+        value = serializer->readBool("value");
       } else {
         throw CoreException(
-            format("RunScript parameter '{}' has unknown serialized type '{}'",
+            format("RunScript Step build variable '{}' has unknown serialized type '{}'",
                    name, type));
+      }
+      if (!mStepVariableValues.emplace(name, move(value)).second) {
+        throw CoreException(format(
+            "Duplicate RunScript Step build variable '{}'", name));
       }
       serializer->endMap();
     }
     serializer->endArray();
   }
+  validateBuildVariables(mStepVariableValues, "RunScript Step");
   return true;
 }
 

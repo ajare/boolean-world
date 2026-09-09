@@ -12,6 +12,7 @@
 
 #include "core/Platform.h"
 #include "core/Serializable.h"
+#include "core/BuildVariables.h"
 #include "core/Layer.h"
 #include "core/Primitive.h"
 #include "core/WorldData.h"
@@ -30,6 +31,8 @@ private:
   std::string mName;
 
   std::string mDescription;
+
+  BuildVariables mBuildVariables;
 
   wp::BoundingBox mExtents;
 
@@ -164,6 +167,12 @@ public:
   void setDescription(std::string const& desc);
 
   [[nodiscard]] std::string const& getDescription() const;
+
+  [[nodiscard]] BuildVariables const& getBuildVariables() const;
+  void setBuildVariable(std::string const& name, BuildVariableValue value);
+  void removeBuildVariable(std::string const& name);
+  void renameBuildVariable(
+      std::string const& oldName, std::string const& newName);
 
   void setPlayerStartPosition(wp::Vector2 const& pos);
 

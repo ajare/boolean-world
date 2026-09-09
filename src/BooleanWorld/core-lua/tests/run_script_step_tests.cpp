@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -72,38 +73,38 @@ bw::core::RunScript* addScriptStep(
   return step;
 }
 
-std::vector<bw::core::ScriptParameterDefinition> scriptParameterDefinitions() {
-  using bw::core::ScriptParameterDefinition;
-  using bw::core::ScriptParameterType;
+std::vector<bw::core::StepVariableDefinition> stepVariableDefinitions() {
+  using bw::core::BuildVariableType;
+  using bw::core::StepVariableDefinition;
 
-  ScriptParameterDefinition label;
+  StepVariableDefinition label;
   label.name = "label";
-  label.type = ScriptParameterType::String;
+  label.type = BuildVariableType::String;
   label.defaultValue = std::string("mine");
 
-  ScriptParameterDefinition style;
+  StepVariableDefinition style;
   style.name = "style";
-  style.type = ScriptParameterType::String;
+  style.type = BuildVariableType::String;
   style.defaultValue = std::string("rough");
   style.choices = {"rough", "smooth"};
 
-  ScriptParameterDefinition count;
+  StepVariableDefinition count;
   count.name = "count";
-  count.type = ScriptParameterType::Integer;
+  count.type = BuildVariableType::Integer;
   count.defaultValue = int64_t{4};
   count.integerMinimum = 1;
   count.integerMaximum = 20;
 
-  ScriptParameterDefinition scale;
+  StepVariableDefinition scale;
   scale.name = "scale";
-  scale.type = ScriptParameterType::Number;
+  scale.type = BuildVariableType::Float;
   scale.defaultValue = 1.5;
-  scale.numberMinimum = 0.25;
-  scale.numberMaximum = 4.0;
+  scale.floatMinimum = 0.25;
+  scale.floatMaximum = 4.0;
 
-  ScriptParameterDefinition enabled;
+  StepVariableDefinition enabled;
   enabled.name = "enabled";
-  enabled.type = ScriptParameterType::Boolean;
+  enabled.type = BuildVariableType::Boolean;
   enabled.defaultValue = true;
 
   return {label, style, count, scale, enabled};
@@ -127,21 +128,21 @@ bw::core::DefinePrefabs* addPrefabDefinitions(
   return definitions;
 }
 
-void resourceParametersAreExposedThroughTheParamsTable() {
+void resourceStepVariablesAreExposedThroughTheStepTable() {
   bw::core::ScriptRuntime runtime;
   runtime.load("parameterized", R"(
-    assert(type(params) == "table")
-    assert(type(params.label) == "string")
-    assert(math.type(params.count) == "integer")
-    assert(type(params.scale) == "number")
-    assert(type(params.enabled) == "boolean")
+    assert(type(step.vars) == "table")
+    assert(type(step.vars.label) == "string")
+    assert(math.type(step.vars.count) == "integer")
+    assert(type(step.vars.scale) == "number")
+    assert(type(step.vars.enabled) == "boolean")
     local primitive = context:create_primitive("Rectangle")
-    primitive:set_position(params.count, params.scale)
-    primitive:set_size(params.enabled and 8 or 4, #params.label)
-    primitive:set_priority(params.style == "smooth" and 2 or 1)
+    primitive:set_position(step.vars.count, step.vars.scale)
+    primitive:set_size(step.vars.enabled and 8 or 4, #step.vars.label)
+    primitive:set_priority(step.vars.style == "smooth" and 2 or 1)
     context:place_primitive(primitive)
   )",
-               {}, scriptParameterDefinitions());
+               {}, stepVariableDefinitions());
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
   auto* step = addScriptStep(layer, runtime, "parameterized");
@@ -151,11 +152,11 @@ void resourceParametersAreExposedThroughTheParamsTable() {
               layer.getPrimitive(0)->getPriority() == 1,
           "a new RunScript did not execute with its resource defaults");
 
-  step->setParameterValue("label", std::string("tunnels"));
-  step->setParameterValue("style", std::string("smooth"));
-  step->setParameterValue("count", int64_t{12});
-  step->setParameterValue("scale", 2.25);
-  step->setParameterValue("enabled", false);
+  step->setStepVariableValue("label", std::string("tunnels"));
+  step->setStepVariableValue("style", std::string("smooth"));
+  step->setStepVariableValue("count", int64_t{12});
+  step->setStepVariableValue("scale", 2.25);
+  step->setStepVariableValue("enabled", false);
   layer.rebuild();
   require(!step->hasFailed() &&
               layer.getPrimitive(0)->getPosition() == wp::Vector2(12.0f, 2.25f) &&
@@ -163,18 +164,101 @@ void resourceParametersAreExposedThroughTheParamsTable() {
               layer.getPrimitive(0)->getPriority() == 2,
           "serialized RunScript choices did not override resource defaults");
 
-  step->clearParameterValue("count");
+  step->clearStepVariableValue("count");
   layer.rebuild();
   require(layer.getPrimitive(0)->getPosition().x == 4.0f,
           "clearing a RunScript choice did not restore the resource default");
 
   bool rejected = false;
   try {
-    step->setParameterValue("count", int64_t{21});
+    step->setStepVariableValue("count", int64_t{21});
   } catch (bw::core::CoreException const&) {
     rejected = true;
   }
-  require(rejected, "RunScript accepted a parameter outside its resource range");
+  require(rejected, "RunScript accepted a Step build variable outside its resource range");
+}
+
+void buildVariablesCascadeThroughWorldLayerAndStepScopes() {
+  bw::core::ScriptRuntime runtime;
+
+  bw::core::StepVariableDefinition shared;
+  shared.name = "shared";
+  shared.type = bw::core::BuildVariableType::Integer;
+  shared.defaultValue = int64_t{30};
+  shared.integerMinimum = 0;
+  shared.integerMaximum = 100;
+
+  bw::core::StepVariableDefinition stepOnly = shared;
+  stepOnly.name = "step_only";
+  stepOnly.defaultValue = int64_t{3};
+
+  runtime.load("cascade", R"(
+    assert(params == nil)
+    assert(rawset == nil)
+    assert(world.vars.world_only == 1 and world.vars.shared == 10)
+    assert(layer.vars.world_only == 1 and layer.vars.shared == 20 and layer.vars.layer_only == 2)
+    assert(step.vars.world_only == 1 and step.vars.shared == 30)
+    assert(step.vars.layer_only == 2 and step.vars.step_only == 3)
+    assert(math.type(step.vars.shared) == "integer")
+
+    local names = {}
+    for name in pairs(step.vars) do names[#names + 1] = name end
+    assert(table.concat(names, ",") == "layer_only,shared,step_only,world_only")
+
+    assert(not pcall(function() world.vars.world_only = 9 end))
+    assert(not pcall(function() layer.vars.extra = 9 end))
+    assert(not pcall(function() step.vars.shared = 9 end))
+    assert(not pcall(function() setmetatable(world.vars, {}) end))
+    assert(not pcall(function() setmetatable(layer, {}) end))
+    assert(not pcall(function() world = {} end))
+    assert(not pcall(function() layer = {} end))
+    assert(not pcall(function() step = {} end))
+  )",
+               {}, {shared, stepOnly});
+
+  bw::core::World world(512.0f, 16.0f);
+  auto* layer = world.getActiveLayer();
+  world.setBuildVariable("world_only", int64_t{1});
+  world.setBuildVariable("shared", int64_t{10});
+  layer->setBuildVariable("layer_only", int64_t{2});
+  layer->setBuildVariable("shared", int64_t{20});
+  auto* step = addScriptStep(*layer, runtime, "cascade");
+  require(!step->hasFailed(), "build-variable scopes did not cascade into RunScript");
+
+  bool rejected = false;
+  try {
+    layer->setBuildVariable("shared", std::string("wrong"));
+  } catch (bw::core::CoreException const&) {
+    rejected = true;
+  }
+  require(rejected && std::get<int64_t>(layer->getBuildVariables().at("shared")) == 20,
+          "a mismatched Layer override was not rejected atomically");
+
+  layer->setStepEnabled(1, false);
+  rejected = false;
+  try {
+    world.setBuildVariable("step_only", std::string("wrong"));
+  } catch (bw::core::CoreException const&) {
+    rejected = true;
+  }
+  require(rejected && !world.getBuildVariables().contains("step_only"),
+          "a World edit conflicting with a disabled Step declaration was not rejected");
+
+  for (auto const& [name, value] :
+       std::vector<std::pair<std::string, bw::core::BuildVariableValue>>{
+           {"end", int64_t{1}},
+           {"not-valid", int64_t{1}},
+           {"text", std::string("embedded\0nul", 12)},
+           {"number", std::numeric_limits<double>::infinity()}}) {
+    rejected = false;
+    try {
+      world.setBuildVariable(name, value);
+    } catch (bw::core::CoreException const&) {
+      rejected = true;
+    }
+    require(rejected && !world.getBuildVariables().contains(name),
+            "an invalid World build variable was not rejected atomically");
+  }
 }
 
 void runScriptDeclaresItsCapabilitiesAndIsGivenItsRuntime() {
@@ -1550,11 +1634,15 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
     p:set_position(math.random(100, 1000), 0)
     context:place_primitive(p)
   )",
-               {}, scriptParameterDefinitions());
+               {}, stepVariableDefinitions());
   runtime.load("Scripts/disabled", "");
 
   bw::core::World source(512.0f, 16.0f);
+  source.setBuildVariable("world_count", int64_t{7});
+  source.setBuildVariable("world_scale", 1.25);
   auto* sourceLayer = source.getActiveLayer();
+  sourceLayer->setBuildVariable("layer_enabled", true);
+  sourceLayer->setBuildVariable("layer_label", std::string("mines"));
   sourceLayer->getPrimitiveField()->addPrimitive(rectangle(0.0f));
 
   auto* sourceStep = new bw::core::RunScript(runtime);
@@ -1563,10 +1651,10 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
   sourceStep->setName("seeded scatter");
   sourceStep->setExtraResourceNames(
       {"Materials/stone", "Images/wall", "Materials/stone", "Scripts/scatter"});
-  sourceStep->setParameterValue("label", std::string("saved"));
-  sourceStep->setParameterValue("count", int64_t{9});
-  sourceStep->setParameterValue("scale", 3.25);
-  sourceStep->setParameterValue("enabled", false);
+  sourceStep->setStepVariableValue("label", std::string("saved"));
+  sourceStep->setStepVariableValue("count", int64_t{9});
+  sourceStep->setStepVariableValue("scale", 3.25);
+  sourceStep->setStepVariableValue("enabled", false);
   auto const sourceStepIndex = sourceLayer->addStep(sourceStep);
 
   auto* disabledStep = new bw::core::RunScript(runtime);
@@ -1576,6 +1664,10 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
   sourceLayer->setStepEnabled(disabledStepIndex, false);
 
   auto const yaml = serializeWorld(source);
+  require(yaml.find("vars:") != std::string::npos &&
+              yaml.find("type: float") != std::string::npos &&
+              yaml.find("params:") == std::string::npos,
+          "build variables did not use the new typed vars serialization");
   auto dependencyReader = std::shared_ptr<bw::core::Serializer>(
       bw::core::YamlSerializer::fromString(yaml));
   dependencyReader->deserialize();
@@ -1588,6 +1680,11 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
   require(deserializeWorld(yaml, &loaded),
           "a World containing a RunScript step did not deserialize");
   auto* loadedLayer = loaded.getActiveLayer();
+  require(std::get<int64_t>(loaded.getBuildVariables().at("world_count")) == 7 &&
+              std::get<double>(loaded.getBuildVariables().at("world_scale")) == 1.25 &&
+              std::get<bool>(loadedLayer->getBuildVariables().at("layer_enabled")) &&
+              std::get<std::string>(loadedLayer->getBuildVariables().at("layer_label")) == "mines",
+          "World or Layer build variables did not round-trip");
   auto* loadedStep = dynamic_cast<bw::core::RunScript*>(
       loadedLayer->getStep(sourceStepIndex));
   require(loadedStep, "the loaded recipe did not restore its RunScript step type");
@@ -1595,17 +1692,17 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
               loadedStep->getSeed() == 0x123456789abcdef0ull &&
               loadedStep->getExtraResourceNames() ==
                   std::vector<std::string>{"Materials/stone", "Images/wall", "Materials/stone", "Scripts/scatter"} &&
-              loadedStep->getParameterValues().size() == 5 &&
+              loadedStep->getStepVariableValues().size() == 5 &&
               std::get<std::string>(
-                  loadedStep->getParameterValues().at("label")) == "saved" &&
+                  loadedStep->getStepVariableValues().at("label")) == "saved" &&
               std::get<std::string>(
-                  loadedStep->getParameterValues().at("style")) == "rough" &&
+                  loadedStep->getStepVariableValues().at("style")) == "rough" &&
               std::get<int64_t>(
-                  loadedStep->getParameterValues().at("count")) == 9 &&
+                  loadedStep->getStepVariableValues().at("count")) == 9 &&
               std::get<double>(
-                  loadedStep->getParameterValues().at("scale")) == 3.25 &&
+                  loadedStep->getStepVariableValues().at("scale")) == 3.25 &&
               !std::get<bool>(
-                  loadedStep->getParameterValues().at("enabled")) &&
+                  loadedStep->getStepVariableValues().at("enabled")) &&
               loadedStep->getName() == "seeded scatter" &&
               loadedStep->isEnabled(),
           "a RunScript step lost authored state during its World round-trip");
@@ -1871,7 +1968,8 @@ int main() {
   try {
     bw::core::LayerBuildStep::registerCoreTypes();
 
-    resourceParametersAreExposedThroughTheParamsTable();
+    resourceStepVariablesAreExposedThroughTheStepTable();
+    buildVariablesCascadeThroughWorldLayerAndStepScopes();
     aWorldRoundTripsARunScriptStepAndDeclaresItsResources();
     runScriptDeclaresItsCapabilitiesAndIsGivenItsRuntime();
     theRuntimeCompilesScriptsFromStringsAndCachesThemByName();

@@ -11,6 +11,7 @@
 
 #include "core/Platform.h"
 #include "core/Serializable.h"
+#include "core/BuildVariables.h"
 
 namespace bw {
 namespace core {
@@ -156,6 +157,10 @@ public:
   static void registerCoreTypes();
 
   [[nodiscard]] virtual std::string getType() const = 0;
+
+  // Step-scope declarations used to validate and materialize the cascading
+  // world -> layer -> step build-variable view. Most step types declare none.
+  [[nodiscard]] virtual BuildVariables getDeclaredBuildVariables() const;
 
   // Stable within the owning Layer's lifetime. Unlike a step's position in
   // the recipe, this does not change when other steps are moved or removed.

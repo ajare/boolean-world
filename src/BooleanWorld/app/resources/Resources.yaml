@@ -411,8 +411,8 @@ Resources:
             - ref: "UtilityFunctions"
         Definitions:
           Definition:
-            Params:
-              Param:
+            Vars:
+              Var:
                 name: "iterations"
                 type: "integer"
                 min: "1"

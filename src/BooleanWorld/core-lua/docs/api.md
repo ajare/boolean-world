@@ -8,7 +8,7 @@ See [RunScript examples](run-script-examples.md) for complete scripts.
 
 - Steps execute in Layer recipe order. Output from a `RunScript` is inserted at that step's position in the fold.
 - Each execution starts with a fresh environment. Globals and included-module tables do not survive a rebuild and are not shared by two `RunScript` steps.
-- The step's serialized seed initializes `math.random` before every execution. The same recipe, script, seed, and `params` values therefore produce the same result.
+- The step's serialized seed initializes `math.random` before every execution. The same recipe, script, seed, and `step.vars` values therefore produce the same result.
 - A script has an instruction budget of 1,000,000 Lua instructions. Exceeding it fails the step.
 - The editor enables exact instruction profiling. At the end of every execution that entered Lua, successful or failed, its Script Log receives `Lua instructions executed: N / 1000000`. Other hosts may leave profiling disabled to avoid its per-instruction hook overhead.
 - An error discards all output from the failed step and stops the Layer build. Output from preceding steps remains; later steps do not run. The attempted execution and its error are sent to the host's log under the LayerBuildStep and script names.
@@ -22,20 +22,28 @@ A `RunScript` step stores these authored values:
 | Script | Name of the Lua script resource to execute. |
 | Seed | Integer used to seed `math.random` at the start of execution. |
 | Extra resources | Resource names used by the script but not discoverable from its source at serialization time. Add every such dependency here. Empty names and duplicates are removed from the World's dependency projection. |
-| Params | Per-step values for the parameters declared by the selected LuaScript resource. |
+| Step variables | Per-step values declared by the selected LuaScript resource. |
 | Step name | Optional label through which another script can find the step, where supported. Names need not be unique. |
 
-## Script parameters
+## Build variables
 
-A LuaScript resource may declare values exposed to its root script in the
-global `params` table. Parameter names must be non-empty and unique within the
-resource. Types are the lowercase strings `string`, `integer`, `number`, and
-`boolean`. Every parameter requires a `default`.
+Every RunScript receives three immutable, cascading tables:
 
-A string with no `Choices` is free text. A string with `Choices` is restricted
-to those values, including its default. Integer and number parameters require
-inclusive `min` and `max` bounds and must have a default inside that range.
-Boolean defaults are `true` or `false`.
+- `world.vars` contains World build variables.
+- `layer.vars` inherits World values and applies Layer overrides.
+- `step.vars` inherits effective Layer values and applies the current RunScript's Step overrides.
+
+All three support deterministic, lexicographically ordered `pairs()` iteration.
+Assignments and rebinding `world`, `layer`, or `step` fail. Names are
+case-sensitive Lua identifiers, excluding Lua keywords, and an override must
+retain its inherited type.
+
+A LuaScript resource may declare Step build variables. Types are the lowercase
+strings `string`, `integer`, `float`, and `boolean`; every declaration requires
+a `default`. A string with no `Choices` is free text. A string with `Choices`
+is restricted to those values, including its default. Integer and float
+variables require inclusive `min` and `max` bounds and a default inside that
+range. Boolean defaults are `true` or `false`.
 
 ```yaml
 - type: "LuaScript"
@@ -46,8 +54,8 @@ Boolean defaults are `true` or `false`.
       ref: "GenerateMinesSource"
   Definitions:
     Definition:
-      Params:
-        Param:
+      Vars:
+        Var:
           - name: "theme"
             type: "string"
             default: "stone"
@@ -64,7 +72,7 @@ Boolean defaults are `true` or `false`.
             max: "100"
             default: "20"
           - name: "branch_scale"
-            type: "number"
+            type: "float"
             min: "0.25"
             max: "4.0"
             default: "1.0"
@@ -74,16 +82,17 @@ Boolean defaults are `true` or `false`.
 ```
 
 ```lua
-for room = 1, params.room_count do
-    -- Generate one room using params.theme, params.branch_scale, etc.
+for room = 1, step.vars.room_count do
+    -- Generate one room using step.vars.theme, step.vars.branch_scale, etc.
 end
 ```
 
-The editor creates a widget appropriate to each declaration. A new step uses
-the resource defaults. A saved World serializes every effective declared
-value; those World values override later resource defaults in both the game
-and editor. **Revert to resource default** removes a step's override and uses
-the currently loaded resource default again.
+The editor creates a widget appropriate to each declaration and shows inherited
+World and Layer values read-only. A new step uses the resource defaults. A
+saved World serializes every effective declared Step value; those values
+override later resource defaults in both the game and editor. **Revert to
+resource default** removes a step's authored choice and uses the currently
+loaded resource default again.
 
 ## Execution context
 

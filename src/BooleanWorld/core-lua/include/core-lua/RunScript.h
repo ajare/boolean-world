@@ -41,10 +41,10 @@ private:
   // duplicates from the dependency projection.
   std::vector<std::string> mExtraResourceNames;
 
-  // Serialized per-step choices keyed by the resource-authored Param name.
+  // Serialized per-step choices keyed by the resource-authored Step variable name.
   // Missing entries use the current LuaScript resource default. Unknown
-  // entries are retained so a temporarily removed Param can round-trip.
-  std::map<std::string, ScriptParameterValue> mParameterValues;
+  // entries are retained so a temporarily removed Step variable can round-trip.
+  std::map<std::string, BuildVariableValue> mStepVariableValues;
 
   // Re-applied to math.random at the start of every execute(), so a scatter
   // reproduces exactly and changing the arrangement is an authored edit
@@ -96,6 +96,8 @@ public:
 
   [[nodiscard]] std::string getType() const override;
 
+  [[nodiscard]] BuildVariables getDeclaredBuildVariables() const override;
+
   [[nodiscard]] bool mayBeFirstStep() const override;
 
   [[nodiscard]] LayerBuildStep* copy(
@@ -130,18 +132,18 @@ public:
   [[nodiscard]] std::vector<std::string> const& getExtraResourceNames() const;
 
   // Overrides one resource default. The value must match the currently loaded
-  // definition and its choices/range. clearParameterValue() restores the
+  // definition and its choices/range. clearStepVariableValue() restores the
   // resource default. All effective declared values are serialized.
-  void setParameterValue(
-      std::string const& name, ScriptParameterValue const& value);
+  void setStepVariableValue(
+      std::string const& name, BuildVariableValue const& value);
 
-  void clearParameterValue(std::string const& name);
+  void clearStepVariableValue(std::string const& name);
 
-  [[nodiscard]] std::map<std::string, ScriptParameterValue> const&
-  getParameterValues() const;
+  [[nodiscard]] std::map<std::string, BuildVariableValue> const&
+  getStepVariableValues() const;
 
-  [[nodiscard]] ScriptParameterValue const& getParameterValue(
-      ScriptParameterDefinition const& definition) const;
+  [[nodiscard]] BuildVariableValue const& getStepVariableValue(
+      StepVariableDefinition const& definition) const;
 
   // Re-applied to math.random at the start of every execute().
   void setSeed(uint64_t seed);

@@ -1139,7 +1139,7 @@ subMaterials:
     acousticPreset: builtin.acoustic.wood
     name: Wood2
     materialIndex: 38
-    params: [0.65, 0.1]
+    params: [0.65, 0.56]
     baseColour: [0.25, 0.11, 0.04]
     chip:
       minimumArrisLength: 2

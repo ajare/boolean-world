@@ -6,7 +6,7 @@
 
 #include <willpower/application/resourcesystem/ResourceFactory.h>
 
-#include "core-lua/ScriptParameters.h"
+#include "core-lua/StepVariables.h"
 
 namespace wp {
 namespace application {
@@ -27,7 +27,7 @@ inline constexpr char defaultLayerBuildStepScript[] =
     "-- Built-in no-op LayerBuildStep script.\n";
 
 // A World-dependent Lua script. The host explicitly hands its source text,
-// manifest-declared Params, and transitive LuaScript dependencies to
+// manifest-declared Step build variables, and transitive LuaScript dependencies to
 // ScriptRuntime under the exact name authored by RunScript before deserializing
 // the World. A leaf
 // script may come directly from a ResourceLocation. A composite root obtains
@@ -38,7 +38,7 @@ class LuaScriptResource final
 private:
   std::string mText;
   std::string mInternalText;
-  std::vector<ScriptParameterDefinition> mParameterDefinitions;
+  std::vector<StepVariableDefinition> mStepVariableDefinitions;
   wp::application::resourcesystem::ResourceManager* mResourceManager = nullptr;
 
   [[nodiscard]] std::map<std::string, std::string> collectIncludedScripts() const;
@@ -64,12 +64,12 @@ public:
 
   [[nodiscard]] std::string const& getText() const;
 
-  [[nodiscard]] std::vector<ScriptParameterDefinition> const&
-  getParameterDefinitions() const;
+  [[nodiscard]] std::vector<StepVariableDefinition> const&
+  getStepVariableDefinitions() const;
 
-  // Used by the ResourceDefinitionFactory after validating manifest Params.
-  void setParameterDefinitions(
-      std::vector<ScriptParameterDefinition> definitions);
+  // Used by the ResourceDefinitionFactory after validating manifest Step build variables.
+  void setStepVariableDefinitions(
+      std::vector<StepVariableDefinition> definitions);
 
   void loadInto(ScriptRuntime& runtime,
                 std::string const& authoredName) const;

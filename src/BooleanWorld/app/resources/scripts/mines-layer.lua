@@ -376,8 +376,8 @@ end
 
 add_candidates_for_placement(seed_placement)
 
-dprint(string.format("Placing %d prefabs", params.iterations))
-for _ = 1, params.iterations do
+dprint(string.format("Placing %d prefabs", step.vars.iterations))
+for _ = 1, step.vars.iterations do
     local best_neighbours = 0
     local best_distance = math.huge
     local best_candidates = {}

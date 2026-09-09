@@ -218,12 +218,18 @@ sol::environment makeEnvironment(
     string const& scriptName,
     string const& stepName,
     ScriptLibraries libraries,
-    vector<ScriptParameterDefinition> const& parameterDefinitions,
+    vector<StepVariableDefinition> const& stepVariableDefinitions,
     ScriptRuntime::EnvironmentBinder const& bind) {
   sol::environment environment(lua, sol::create);
+  (void)stepVariableDefinitions;
 
   if (contains(libraries, ScriptLibraries::Base)) {
     for (auto const* baseName : baseNames) {
+      // A Lua table cannot be genuinely read-only while rawset is exposed.
+      // Build scripts receive immutable authored-variable proxies, so omit
+      // rawset only from that restricted library policy.
+      if (libraries == ScriptLibraries::Build &&
+          string_view(baseName) == "rawset") continue;
       environment.set(baseName, lua[baseName]);
     }
     bindPrint(lua, environment, logSink, scriptName, stepName);
@@ -234,16 +240,6 @@ sol::environment makeEnvironment(
   addLibrary(lua, environment, libraries, ScriptLibraries::String, "string");
   addLibrary(lua, environment, libraries, ScriptLibraries::Math, "math");
   addLibrary(lua, environment, libraries, ScriptLibraries::Coroutine, "coroutine");
-
-  auto params = lua.create_table();
-  for (auto const& definition : parameterDefinitions) {
-    visit(
-        [&params, &definition](auto const& value) {
-          params[definition.name] = value;
-        },
-        definition.defaultValue);
-  }
-  environment["params"] = params;
 
   if (bind) {
     bind(environment);
@@ -368,8 +364,8 @@ ScriptRuntime::~ScriptRuntime() {
 void ScriptRuntime::load(
     string const& name, string const& text,
     IncludedScripts const& includedScripts,
-    vector<ScriptParameterDefinition> parameterDefinitions) {
-  mParameterDefinitions.insert_or_assign(name, move(parameterDefinitions));
+    vector<StepVariableDefinition> stepVariableDefinitions) {
+  mStepVariableDefinitions.insert_or_assign(name, move(stepVariableDefinitions));
   auto compile = [this](string const& sourceName, string const& source) {
     // The leading '@' is Lua's convention for a named source and keeps error
     // locations attached to either the root or the included resource.
@@ -419,10 +415,10 @@ void ScriptRuntime::load(
 void ScriptRuntime::reload(
     string const& name, string const& text,
     IncludedScripts const& includedScripts,
-    vector<ScriptParameterDefinition> parameterDefinitions) {
+    vector<StepVariableDefinition> stepVariableDefinitions) {
   exception_ptr compileFailure;
   try {
-    load(name, text, includedScripts, move(parameterDefinitions));
+    load(name, text, includedScripts, move(stepVariableDefinitions));
   } catch (ScriptException const&) {
     // load() atomically replaced the old cache entry with this failure. The
     // dependent Layers must still rebuild so their RunScript panels report
@@ -472,11 +468,11 @@ bool ScriptRuntime::isLoaded(string const& name) const {
   return mChunks.contains(name);
 }
 
-vector<ScriptParameterDefinition> const&
-ScriptRuntime::getParameterDefinitions(string const& name) const {
-  static vector<ScriptParameterDefinition> const empty;
-  auto const found = mParameterDefinitions.find(name);
-  return found == mParameterDefinitions.end() ? empty : found->second;
+vector<StepVariableDefinition> const&
+ScriptRuntime::getStepVariableDefinitions(string const& name) const {
+  static vector<StepVariableDefinition> const empty;
+  auto const found = mStepVariableDefinitions.find(name);
+  return found == mStepVariableDefinitions.end() ? empty : found->second;
 }
 
 void ScriptRuntime::execute(
@@ -524,7 +520,7 @@ void ScriptRuntime::execute(
     sol::protected_function function = loaded;
     auto environment = makeEnvironment(
         mLua, mLogSink, mDebugLogSink, name, stepName, libraries,
-        getParameterDefinitions(name), bind);
+        getStepVariableDefinitions(name), bind);
     auto includes = bindIncludes(
         environment, chunk->second.includedScripts);
     (void)includes;  // Keeps the execution-local include cache alive.
@@ -577,7 +573,7 @@ ScriptCoroutineHandle ScriptRuntime::startCoroutine(
   state->scriptName = name;
   state->environment.emplace(makeEnvironment(
       mLua, mLogSink, mDebugLogSink, name, "", libraries,
-      getParameterDefinitions(name), bind));
+      getStepVariableDefinitions(name), bind));
   state->includes = bindIncludes(
       *state->environment, chunk->second.includedScripts);
   state->thread.emplace(sol::thread::create(mLua));

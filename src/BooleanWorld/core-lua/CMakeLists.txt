@@ -7,7 +7,7 @@ add_library(core-lua STATIC
     src/LuaScriptResource.cpp
     src/RunScript.cpp
     src/ScriptBindings.cpp
-    src/ScriptParameters.cpp
+    src/StepVariables.cpp
     src/ScriptRuntime.cpp)
 
 target_include_directories(core-lua PUBLIC include)

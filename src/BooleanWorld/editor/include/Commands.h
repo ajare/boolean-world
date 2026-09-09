@@ -25,8 +25,8 @@ namespace editor {
   X(SetRunScriptScriptName, "Select RunScript Lua script", setRunScriptScriptName) \
   X(SetRunScriptSeed, "Set RunScript seed", setRunScriptSeed) \
   X(SetRunScriptExtraResourceNames, "Set RunScript extra resources", setRunScriptExtraResourceNames) \
-  X(SetRunScriptParameterValue, "Set RunScript parameter", setRunScriptParameterValue) \
-  X(ClearRunScriptParameterValue, "Revert RunScript parameter", clearRunScriptParameterValue) \
+  X(SetRunScriptStepVariableValue, "Set RunScript Step build variable", setRunScriptStepVariableValue) \
+  X(ClearRunScriptStepVariableValue, "Revert RunScript Step build variable", clearRunScriptStepVariableValue) \
   X(SetTileMapMapSize, "Set TileMap Map size", setTileMapMapSize) \
   X(SetTileMapCellSize, "Set TileMap cell size", setTileMapCellSize) \
   X(ToggleTileMapCell, "Toggle TileMap cell", toggleTileMapCell) \
@@ -127,7 +127,13 @@ namespace editor {
   X(SetTransformConstant, "Set transform constant", setTransformConstant) \
   X(SetTransformFnMultiplier, "Set transform function", setTransformFnMultiplier) \
   X(SetTransformTriggerLine, "Set transform TriggerLine", setTransformTriggerLine) \
-  X(SetTransformOperation, "Set transform operation", setTransformOperation)
+  X(SetTransformOperation, "Set transform operation", setTransformOperation) \
+  X(SetWorldBuildVariable, "Set World build variable", setWorldBuildVariable) \
+  X(RemoveWorldBuildVariable, "Remove World build variable", removeWorldBuildVariable) \
+  X(RenameWorldBuildVariable, "Rename World build variable", renameWorldBuildVariable) \
+  X(SetLayerBuildVariable, "Set Layer build variable", setLayerBuildVariable) \
+  X(RemoveLayerBuildVariable, "Remove Layer build variable", removeLayerBuildVariable) \
+  X(RenameLayerBuildVariable, "Rename Layer build variable", renameLayerBuildVariable)
 
 #define EDITOR_GESTURE_COMMANDS(X) \
   X(Edit, "Edit") \

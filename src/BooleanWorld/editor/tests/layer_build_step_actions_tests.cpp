@@ -540,9 +540,9 @@ void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
               layer->getStep(1)->getType() == "RunScript",
           "adding a registered RunScript did not put it in the Layer recipe");
 
-  bw::core::ScriptParameterDefinition density;
+  bw::core::StepVariableDefinition density;
   density.name = "density";
-  density.type = bw::core::ScriptParameterType::Integer;
+  density.type = bw::core::BuildVariableType::Integer;
   density.defaultValue = int64_t{5};
   density.integerMinimum = 1;
   density.integerMaximum = 10;
@@ -569,9 +569,9 @@ void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
                 std::vector<std::string>{"OreImage", "/SharedData"}));
   editor::transactUndoableAction(
       &document, "Set Param",
-      std::bind(editor::setRunScriptParameterValue,
+      std::bind(editor::setRunScriptStepVariableValue,
                 std::placeholders::_1, layer, step, "density",
-                bw::core::ScriptParameterValue{int64_t{8}}));
+                bw::core::BuildVariableValue{int64_t{8}}));
 
   require(editor::getUndoLevels() == undoBefore + 5,
           "RunScript state edits did not each create one undo entry");
@@ -579,7 +579,7 @@ void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
               step->getName() == "rocks" &&
               step->getExtraResourceNames() ==
                   std::vector<std::string>{"OreImage", "/SharedData"} &&
-              std::get<int64_t>(step->getParameterValues().at("density")) == 8 &&
+              std::get<int64_t>(step->getStepVariableValues().at("density")) == 8 &&
               !step->hasFailed(),
           "RunScript state actions did not update and rebuild the step");
 
@@ -587,7 +587,7 @@ void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
   layer = document.getWorld()->getActiveLayer();
   step = static_cast<bw::core::RunScript*>(layer->getStep(1));
   require(
-      std::get<int64_t>(step->getParameterValues().at("density")) == 5,
+      std::get<int64_t>(step->getStepVariableValues().at("density")) == 5,
       "undo did not restore the RunScript resource default");
   editor::undo(&document);
   layer = document.getWorld()->getActiveLayer();
@@ -619,9 +619,37 @@ void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
               step->getName() == "rocks" &&
               step->getExtraResourceNames() ==
                   std::vector<std::string>{"OreImage", "/SharedData"} &&
-              std::get<int64_t>(step->getParameterValues().at("density")) == 8 &&
+              std::get<int64_t>(step->getStepVariableValues().at("density")) == 8 &&
               !step->hasFailed(),
           "redo did not restore all authored RunScript state");
+}
+
+void buildVariableActionsAreUndoableAtWorldAndLayerScopes() {
+  editor::Document document;
+  document.newDoc();
+  editor::clearUndoHistory();
+
+  auto world = document.getWorld();
+  auto* layer = world->getActiveLayer();
+  editor::transact(&document, editor::CommandId::SetWorldBuildVariable, [&] {
+    editor::setWorldBuildVariable(&document, "count", int64_t{4});
+  });
+  editor::transact(&document, editor::CommandId::SetLayerBuildVariable, [&] {
+    editor::setLayerBuildVariable(&document, layer, "count", int64_t{7});
+  });
+  require(std::get<int64_t>(layer->getEffectiveBuildVariables().at("count")) == 7,
+          "Layer build-variable action did not override the World value");
+
+  editor::undo(&document);
+  world = document.getWorld();
+  layer = world->getActiveLayer();
+  require(std::get<int64_t>(layer->getEffectiveBuildVariables().at("count")) == 4 &&
+              layer->getBuildVariables().empty(),
+          "undo did not remove the Layer build-variable override");
+
+  editor::undo(&document);
+  require(document.getWorld()->getBuildVariables().empty(),
+          "undo did not remove the World build variable");
 }
 
 void movingAPrimitiveIntoAStepOfAnotherTypeIsRejectedThroughTheAction() {
@@ -670,6 +698,7 @@ int main() {
     selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable();
     movingAPrimitiveBetweenStepsOfTheSameTypeIsOneUndoableAction();
     runScriptCanBeAddedAndItsAuthoredStateIsUndoable(runtime);
+    buildVariableActionsAreUndoableAtWorldAndLayerScopes();
     movingAPrimitiveIntoAStepOfAnotherTypeIsRejectedThroughTheAction();
     std::cout << "Layer build step editor action tests passed\n";
     return 0;

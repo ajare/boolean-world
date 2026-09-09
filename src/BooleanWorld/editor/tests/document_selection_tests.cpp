@@ -773,7 +773,7 @@ void worldMines3BuildsPreviewWorldData(bw::core::ScriptRuntime& runtime) {
       {{"World/UtilityFunctions",
         readText(resourceRoot / "scripts/utility-functions.lua")}},
       {{.name = "iterations",
-        .type = bw::core::ScriptParameterType::Integer,
+        .type = bw::core::BuildVariableType::Integer,
         .defaultValue = int64_t{10},
         .integerMinimum = 1,
         .integerMaximum = 50}});

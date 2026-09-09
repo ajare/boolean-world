@@ -77,6 +77,43 @@ bool setWorldName(Document* doc, string const& name) {
   return true;
 }
 
+bool setWorldBuildVariable(
+    Document* doc, string const& name, bw::core::BuildVariableValue value) {
+  doc->getWorld()->setBuildVariable(name, move(value));
+  return true;
+}
+
+bool removeWorldBuildVariable(Document* doc, string const& name) {
+  doc->getWorld()->removeBuildVariable(name);
+  return true;
+}
+
+bool renameWorldBuildVariable(
+    Document* doc, string const& oldName, string const& newName) {
+  doc->getWorld()->renameBuildVariable(oldName, newName);
+  return true;
+}
+
+bool setLayerBuildVariable(
+    Document*, bw::core::Layer* layer, string const& name,
+    bw::core::BuildVariableValue value) {
+  layer->setBuildVariable(name, move(value));
+  return true;
+}
+
+bool removeLayerBuildVariable(
+    Document*, bw::core::Layer* layer, string const& name) {
+  layer->removeBuildVariable(name);
+  return true;
+}
+
+bool renameLayerBuildVariable(
+    Document*, bw::core::Layer* layer, string const& oldName,
+    string const& newName) {
+  layer->renameBuildVariable(oldName, newName);
+  return true;
+}
+
 bool setWorldWedgeGenerationParameters(
     Document* doc,
     bw::core::WedgeGenerationParameters const& parameters) {

@@ -63,8 +63,8 @@ Resources:
           ref: LuaSource
       Definitions:
         Definition:
-          Params:
-            Param:
+          Vars:
+            Var:
               - name: text
                 type: string
                 default: value
@@ -76,13 +76,13 @@ Resources:
                 max: 10
                 default: 2
               - name: scale
-                type: number
+                type: float
                 min: 0.5
                 max: 2.0
                 default: 1.0
               - name: enabled
                 type: boolean
-                default: true
+                default: "true"
     - type: ProcMaterial
       name: Materials
       DependentResources:

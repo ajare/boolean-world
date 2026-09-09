@@ -66,6 +66,7 @@ void World::swapState(World& other) noexcept {
   using std::swap;
   swap(mName, other.mName);
   swap(mDescription, other.mDescription);
+  swap(mBuildVariables, other.mBuildVariables);
   swap(mExtents, other.mExtents);
   swap(mLayers, other.mLayers);
   swap(mActiveLayerIndex, other.mActiveLayerIndex);
@@ -86,6 +87,9 @@ void World::rebindOwnedState() {
   for (auto* layer : mLayers) {
     layer->_setFrameNumber(mFrameNumber);
     layer->bindWorld(this);
+    // Layer copies are first built standalone; rebuild once their World scope
+    // is available so RunScript sees the complete variable cascade.
+    layer->rebuild();
   }
 
   if (mDataGenerator) {
@@ -113,6 +117,7 @@ void World::copyFrom(World const& other) {
 
   mName = other.mName;
   mDescription = other.mDescription;
+  mBuildVariables = other.mBuildVariables;
   mExtents = other.mExtents;
   mPlayerStartPosition = other.mPlayerStartPosition;
   mPlayerStartAngle = other.mPlayerStartAngle;
@@ -215,6 +220,7 @@ void World::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
 
       serializer->writeString("name", getName());
       serializer->writeString("description", getDescription());
+      serializeBuildVariables(serializer, mBuildVariables);
 
       serializer->writeVector2("minExtent", mExtents.getMinExtent());
       serializer->writeVector2("maxExtent", mExtents.getMaxExtent());
@@ -297,6 +303,7 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
 
   // Read in to temporary objects
   string worldName, description;
+  BuildVariables buildVariables;
   vector<string> declaredDependentResources;
   wp::Vector2 minExtent, maxExtent;
   wp::Vector2 playerStartPosition;
@@ -334,6 +341,7 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
 
         worldName = serializer->readString("name");
         description = serializer->readString("description", true);
+        buildVariables = deserializeBuildVariables(serializer);
         minExtent = serializer->readVector2("minExtent");
         maxExtent = serializer->readVector2("maxExtent");
         playerStartPosition = serializer->readVector2("playerStartPosition");
@@ -470,9 +478,20 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     return false;
   }
 
+  try {
+    validateBuildVariables(buildVariables, "World");
+    for (auto const& layer : layers) {
+      layer->validateBuildVariableCascade(buildVariables);
+    }
+  } catch (exception const& error) {
+    addDeserializationError(error.what());
+    return false;
+  }
+
   // Commit
   mName = worldName;
   mDescription = description;
+  mBuildVariables = move(buildVariables);
   mExtents.setPosition(minExtent);
   mExtents.setSize(maxExtent - minExtent);
   mPlayerStartPosition = playerStartPosition;
@@ -512,6 +531,9 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   for (auto* layer : mLayers) {
     layer->_setFrameNumber(0);
     layer->bindWorld(this);
+    // A temporary standalone Layer initially rebuilt with an empty World
+    // scope. Rebuild now that the cascade's World values are available.
+    layer->rebuild();
 
     for (auto primitive : layer->getPrimitives()) {
       primitive->updateTime(0.0, {wp::Vector2::ZERO,
@@ -565,6 +587,7 @@ float World::getPrimitiveAccelerationGridSize() const {
 void World::clear() {
   mName = "";
   mDescription = "";
+  mBuildVariables.clear();
   mFrameNumber = 0;
   mLastPrimitiveUpdateFrameNumber = 0;
 
@@ -592,6 +615,49 @@ void World::setDescription(string const& desc) {
 
 string const& World::getDescription() const {
   return mDescription;
+}
+
+BuildVariables const& World::getBuildVariables() const {
+  return mBuildVariables;
+}
+
+void World::setBuildVariable(string const& name, BuildVariableValue value) {
+  auto candidate = mBuildVariables;
+  candidate.insert_or_assign(name, move(value));
+  validateBuildVariables(candidate, "World");
+  for (auto const* layer : mLayers) layer->validateBuildVariableCascade(candidate);
+  if (candidate == mBuildVariables) return;
+  mBuildVariables = move(candidate);
+  for (auto* layer : mLayers) layer->rebuild();
+  modify();
+}
+
+void World::removeBuildVariable(string const& name) {
+  if (!mBuildVariables.contains(name)) return;
+  auto candidate = mBuildVariables;
+  candidate.erase(name);
+  for (auto const* layer : mLayers) layer->validateBuildVariableCascade(candidate);
+  mBuildVariables = move(candidate);
+  for (auto* layer : mLayers) layer->rebuild();
+  modify();
+}
+
+void World::renameBuildVariable(string const& oldName, string const& newName) {
+  if (oldName == newName) return;
+  auto found = mBuildVariables.find(oldName);
+  if (found == mBuildVariables.end())
+    throw CoreException(format("World has no build variable '{}'", oldName));
+  if (mBuildVariables.contains(newName))
+    throw CoreException(format("World already has build variable '{}'", newName));
+  auto candidate = mBuildVariables;
+  auto value = candidate.at(oldName);
+  candidate.erase(oldName);
+  candidate.emplace(newName, move(value));
+  validateBuildVariables(candidate, "World");
+  for (auto const* layer : mLayers) layer->validateBuildVariableCascade(candidate);
+  mBuildVariables = move(candidate);
+  for (auto* layer : mLayers) layer->rebuild();
+  modify();
 }
 
 wp::BoundingBox const& World::getExtents() const {
@@ -662,6 +728,7 @@ Layer* World::addLayer(string const& name) {
 }
 
 Layer* World::addLayer(Layer* layer) {
+  layer->validateBuildVariableCascade(mBuildVariables);
   auto const colliding = any_of(mLayers.begin(), mLayers.end(), [&](Layer const* existing) {
     return existing->getId() == layer->getId();
   });
@@ -674,6 +741,7 @@ Layer* World::addLayer(Layer* layer) {
 
   mLayers.push_back(layer);
   layer->bindWorld(this);
+  layer->rebuild();
 
   return layer;
 }

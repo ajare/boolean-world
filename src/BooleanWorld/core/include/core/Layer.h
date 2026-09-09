@@ -12,6 +12,7 @@
 
 #include "core/Platform.h"
 #include "core/Serializable.h"
+#include "core/BuildVariables.h"
 #include "core/Primitive.h"
 #include "core/WorldTriggerLine.h"
 
@@ -54,6 +55,8 @@ private:
   uint32_t mNextStepId;
 
   std::string mName;
+
+  BuildVariables mBuildVariables;
 
   wp::BoundingBox mExtents;
 
@@ -176,6 +179,18 @@ public:
   void setName(std::string const& name);
 
   [[nodiscard]] std::string const& getName() const;
+
+  [[nodiscard]] World* getWorld() const;
+
+  [[nodiscard]] BuildVariables const& getBuildVariables() const;
+  [[nodiscard]] BuildVariables getEffectiveBuildVariables() const;
+  void setBuildVariable(std::string const& name, BuildVariableValue value);
+  void removeBuildVariable(std::string const& name);
+  void renameBuildVariable(
+      std::string const& oldName, std::string const& newName);
+
+  // Validates local and Step overrides against a prospective World scope.
+  void validateBuildVariableCascade(BuildVariables const& worldVariables) const;
 
   void setExtents(wp::BoundingBox const& extents);
 
