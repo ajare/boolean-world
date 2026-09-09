@@ -610,7 +610,7 @@ bool handleWorldInteraction(
   }
 
   auto* activeLayer = doc->getWorld()->getActiveLayer();
-  if (activeLayer && dynamic_cast<bw::core::TileMap*>(
+  if (activeLayer && dynamic_cast<bw::core::DefineTileMaps*>(
                          activeLayer->getActiveStep())) {
     return false;
   }
@@ -732,12 +732,12 @@ void run() {
       // navigation also run outside ImGui's normal widget routing.
       if (!editor::preview3DIsOpen()) {
         auto* activeLayer = doc->getWorld()->getActiveLayer();
-        auto tileMapActive = activeLayer &&
-                             dynamic_cast<bw::core::TileMap*>(activeLayer->getActiveStep());
+        auto tileMapsActive = activeLayer &&
+            dynamic_cast<bw::core::DefineTileMaps*>(activeLayer->getActiveStep());
         // TileMap painting must see a release over editor chrome so it can
         // commit the complete gesture as one undo entry. Pointer location
         // checks in EditorInteraction still prevent chrome clicks painting.
-        if (!io.WantCaptureMouse || tileMapActive) {
+        if (!io.WantCaptureMouse || tileMapsActive) {
           handleSelections(doc, worldDataPtr, gEditorSettings, pointerInput);
         }
         auto playerProxyDragActive = handleWorldInteraction(doc, pointerInput);

@@ -1,10 +1,10 @@
 #include "core/LayerBuildStep.h"
 
 #include "core/DefinePrefabs.h"
+#include "core/DefineTileMaps.h"
 #include "core/PrimitiveField.h"
 #include "core/PrefabField.h"
 #include "core/Registry.h"
-#include "core/TileMap.h"
 
 namespace bw {
 namespace core {
@@ -29,6 +29,9 @@ vector<string> LayerBuildStep::getRegisteredTypes() {
 }
 
 LayerBuildStep* LayerBuildStep::instantiate(string const& type) {
+  // TileMap was the serialized name of the former single-map step. Keep it
+  // readable without advertising it as a type that can be newly authored.
+  if (type == "TileMap") return DefineTileMaps::instantiateLegacyTileMap();
   return registry().create(type);
 }
 
@@ -40,7 +43,7 @@ void LayerBuildStep::registerCoreTypes() {
   registerType("DefinePrefabs", []() { return new DefinePrefabs; });
   registerType("PrefabField", []() { return new PrefabField; });
   registerType("PrimitiveField", []() { return new PrimitiveField; });
-  registerType("TileMap", []() { return new TileMap; });
+  registerType("DefineTileMaps", []() { return new DefineTileMaps; });
 }
 
 void LayerBuildStep::copyFrom(LayerBuildStep const& other) {

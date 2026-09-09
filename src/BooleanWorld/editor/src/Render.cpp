@@ -14,8 +14,8 @@
 #include <core/Utils.h>
 #include <core/Layer.h>
 #include <core/DefinePrefabs.h>
+#include <core/DefineTileMaps.h>
 #include <core/PrefabField.h>
-#include <core/TileMap.h>
 #include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
 
@@ -30,6 +30,7 @@
 #include "PrefabTilingGuide.h"
 #include "PrimitiveFieldPreview.h"
 #include "Render.h"
+#include "TileMapLayout.h"
 #include "UiHelpers.h"
 
 using namespace std;
@@ -358,16 +359,16 @@ void renderWorld(
   // Render
   auto drawList = ImGui::GetWindowDrawList();
 
-  // A TileMap is finite authored data rather than geometry. Draw its complete
-  // bounded grid before Primitives, filling set cells and highlighting the
-  // cell under the pointer. A disabled map remains visible but dimmed.
-  if (auto const* tileMap = activeLayer
-                                ? dynamic_cast<bw::core::TileMap const*>(
-                                      activeLayer->getActiveStep())
-                                : nullptr) {
-    auto const alpha = tileMap->isEnabled() ? 1.0f : 0.35f;
-    auto const cellSize = static_cast<float>(tileMap->getCellSize());
-    auto const dimension = tileMap->getWidth();
+  // DefineTileMaps is finite authored data rather than geometry. Draw every
+  // owned Map before Primitives in its fixed four-column layout.
+  if (auto const* definitions = activeLayer
+          ? dynamic_cast<bw::core::DefineTileMaps const*>(
+                activeLayer->getActiveStep())
+          : nullptr) {
+    auto const alpha = definitions->isEnabled() ? 1.0f : 0.35f;
+    auto const cellSize = static_cast<float>(definitions->getCellSize());
+    auto const mapSize = static_cast<float>(definitions->getMapSize());
+    auto const dimension = definitions->getTileMap(0)->getWidth();
     auto rectPoints = [&](float x0, float y0, float x1, float y1) {
       auto first = worldToScreen({x0, y0});
       auto second = worldToScreen({x1, y1});
@@ -376,42 +377,58 @@ void renderWorld(
           ImVec2{max(first.x, second.x), max(first.y, second.y)}};
     };
     auto const fill = ImColor(0.2f, 0.9f, 0.75f, 0.28f * alpha);
-    for (uint32_t y = 0; y < dimension; ++y) {
-      for (uint32_t x = 0; x < dimension; ++x) {
-        if (!tileMap->getCell(x, y)) continue;
-        auto const [minimum, maximum] = rectPoints(
-            x * cellSize, y * cellSize,
-            (x + 1) * cellSize, (y + 1) * cellSize);
-        drawList->AddRectFilled(minimum, maximum, fill);
-      }
-    }
-    auto const mapSize = static_cast<float>(tileMap->getMapSize());
     auto const gridColour = ImColor(0.2f, 0.9f, 0.75f, 0.7f * alpha);
-    for (uint32_t line = 0; line <= dimension; ++line) {
-      auto const coordinate = line * cellSize;
-      drawList->AddLine(
-          worldToScreen({coordinate, 0.0f}),
-          worldToScreen({coordinate, mapSize}), gridColour, 1.0f);
-      drawList->AddLine(
-          worldToScreen({0.0f, coordinate}),
-          worldToScreen({mapSize, coordinate}), gridColour, 1.0f);
+    for (uint32_t mapIndex = 0;
+         mapIndex < definitions->getNumTileMaps(); ++mapIndex) {
+      auto const* tileMap = definitions->getTileMap(mapIndex);
+      auto const origin = editor::tileMapOrigin(
+          mapIndex, definitions->getMapSize(), definitions->getCellSize());
+      for (uint32_t y = 0; y < dimension; ++y) {
+        for (uint32_t x = 0; x < dimension; ++x) {
+          if (!tileMap->getCell(x, y)) continue;
+          auto const [minimum, maximum] = rectPoints(
+              origin.x + x * cellSize, origin.y + y * cellSize,
+              origin.x + (x + 1) * cellSize,
+              origin.y + (y + 1) * cellSize);
+          drawList->AddRectFilled(minimum, maximum, fill);
+        }
+      }
+      for (uint32_t line = 0; line <= dimension; ++line) {
+        auto const coordinate = line * cellSize;
+        drawList->AddLine(
+            worldToScreen({origin.x + coordinate, origin.y}),
+            worldToScreen({origin.x + coordinate, origin.y + mapSize}),
+            gridColour, 1.0f);
+        drawList->AddLine(
+            worldToScreen({origin.x, origin.y + coordinate}),
+            worldToScreen({origin.x + mapSize, origin.y + coordinate}),
+            gridColour, 1.0f);
+      }
+      auto const label = to_string(mapIndex);
+      auto const labelPosition = worldToScreen(
+          {origin.x + cellSize * 0.15f, origin.y + mapSize - cellSize * 0.15f});
+      drawList->AddText(labelPosition, gridColour, label.c_str());
     }
 
-    if (tileMap->isEnabled()) {
+    if (definitions->isEnabled()) {
       auto const mouse = ImGui::GetMousePos();
       auto const withinWorldView =
           mouse.x >= gWorldViewScreenOrigin.x &&
           mouse.y >= gWorldViewScreenOrigin.y &&
           mouse.x < gWorldViewScreenOrigin.x + gWorldViewSize.x &&
           mouse.y < gWorldViewScreenOrigin.y + gWorldViewSize.y;
-      auto const position = editor::screenToWorldPosition(mouse);
-      if (withinWorldView && position.x >= 0.0f && position.y >= 0.0f &&
-          position.x < mapSize && position.y < mapSize) {
-        auto const x = static_cast<uint32_t>(floor(position.x / cellSize));
-        auto const y = static_cast<uint32_t>(floor(position.y / cellSize));
+      auto location = editor::tileMapCellAt(
+          editor::screenToWorldPosition(mouse), definitions->getNumTileMaps(),
+          definitions->getMapSize(), definitions->getCellSize());
+      if (withinWorldView && location) {
+        auto const origin = editor::tileMapOrigin(
+            location->mapIndex, definitions->getMapSize(),
+            definitions->getCellSize());
         auto const [minimum, maximum] = rectPoints(
-            x * cellSize, y * cellSize,
-            (x + 1) * cellSize, (y + 1) * cellSize);
+            origin.x + location->x * cellSize,
+            origin.y + location->y * cellSize,
+            origin.x + (location->x + 1) * cellSize,
+            origin.y + (location->y + 1) * cellSize);
         drawList->AddRect(
             minimum, maximum, IM_COL32(255, 230, 70, 255), 0.0f, 0, 2.5f);
       }

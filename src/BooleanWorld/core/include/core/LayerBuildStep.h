@@ -151,8 +151,9 @@ public:
   // its translation unit.
   static void registerType(std::string const& type, Factory factory);
 
-  // Registers the step types core itself defines: DefinePrefabs, PrefabField,
-  // PrimitiveField and TileMap. Every host that deserializes Worlds must call
+  // Registers the step types core itself defines: DefinePrefabs,
+  // DefineTileMaps, PrefabField and PrimitiveField. Every host that
+  // deserializes Worlds must call
   // this.
   static void registerCoreTypes();
 

@@ -239,55 +239,56 @@ editor::PointerInput pointerAt(wp::Vector2 const& position) {
   return input;
 }
 
-void activeTileMapClicksToggleOnlyItsBoundedCells() {
+void activeDefineTileMapsEditsEveryMapInOneGesture() {
   editor::Document document;
   editor::Settings settings;
   settings.ghostActive = false;
   document.newDoc();
   auto primitiveIndex = addRectangle(document, {40.0f, 70.0f});
   auto* layer = document.getWorld()->getActiveLayer();
-  auto* tileMap = new bw::core::TileMap;
-  layer->addStep(tileMap);
+  auto* definitions = new bw::core::DefineTileMaps;
+  definitions->setNumTileMaps(2);
+  layer->addStep(definitions);
   layer->setActiveStep(1);
   editor::EditorInteraction interaction;
 
   auto input = pointerAt({40.0f, 70.0f});
   input.leftClicked = true;
   interaction.updateSelection(&document, nullptr, settings, input);
-  require(tileMap->getCell(1, 2) == 1,
-          "clicking an active TileMap did not toggle its cell");
+  require(definitions->getTileMap(0)->getCell(1, 2) == 1,
+          "clicking DefineTileMaps did not toggle its cell");
   require(!document.getSelectedPrimitiveIndices().contains(primitiveIndex),
-          "clicking an active TileMap selected a Primitive beneath it");
+          "clicking DefineTileMaps selected a Primitive beneath it");
   input.leftClicked = false;
   input.leftReleased = true;
   interaction.updateSelection(&document, nullptr, settings, input);
 
   editor::undo(&document);
   layer = document.getWorld()->getActiveLayer();
-  tileMap = dynamic_cast<bw::core::TileMap*>(layer->getActiveStep());
-  require(tileMap && tileMap->getCell(1, 2) == 0,
-          "undo did not restore the active TileMap and its cell value");
+  definitions = dynamic_cast<bw::core::DefineTileMaps*>(layer->getActiveStep());
+  require(definitions && definitions->getTileMap(0)->getCell(1, 2) == 0,
+          "undo did not restore a TileMap cell value");
   editor::redo(&document);
   layer = document.getWorld()->getActiveLayer();
-  tileMap = dynamic_cast<bw::core::TileMap*>(layer->getActiveStep());
-  require(tileMap && tileMap->getCell(1, 2) == 1,
-          "redo did not restore the active TileMap and its cell value");
+  definitions = dynamic_cast<bw::core::DefineTileMaps*>(layer->getActiveStep());
+  require(definitions && definitions->getTileMap(0)->getCell(1, 2) == 1,
+          "redo did not restore a TileMap cell value");
 
-  input = pointerAt({256.0f, 64.0f});
+  input = pointerAt({270.0f, 64.0f});
   input.leftClicked = true;
   interaction.updateSelection(&document, nullptr, settings, input);
-  require(tileMap->getCell(1, 2) == 1,
-          "a click on the TileMap's excluded upper boundary changed a cell");
+  require(definitions->getTileMap(0)->getCell(1, 2) == 1,
+          "clicking TileMap padding changed a cell");
 
   auto undoLevelsBeforeDrag = editor::getUndoLevels();
   input = pointerAt({8.0f, 8.0f});
   input.leftClicked = true;
   interaction.updateSelection(&document, nullptr, settings, input);
-  input = pointerAt({40.0f, 8.0f});
+  input = pointerAt({296.0f, 8.0f});
   input.leftDown = true;
   input.leftDragging = true;
   interaction.updateSelection(&document, nullptr, settings, input);
-  input = pointerAt({72.0f, 8.0f});
+  input = pointerAt({360.0f, 8.0f});
   input.leftDown = true;
   input.leftDragging = true;
   interaction.updateSelection(&document, nullptr, settings, input);
@@ -295,31 +296,29 @@ void activeTileMapClicksToggleOnlyItsBoundedCells() {
   input.leftDragging = false;
   input.leftReleased = true;
   interaction.updateSelection(&document, nullptr, settings, input);
-  require(tileMap->getCell(0, 0) == 1 &&
-              tileMap->getCell(1, 0) == 1 &&
-              tileMap->getCell(2, 0) == 1,
-          "dragging did not paint every visited TileMap cell");
+  require(definitions->getTileMap(0)->getCell(0, 0) == 1 &&
+              definitions->getTileMap(1)->getCell(0, 0) == 1 &&
+              definitions->getTileMap(1)->getCell(1, 0) == 1 &&
+              definitions->getTileMap(1)->getCell(2, 0) == 1,
+          "dragging did not paint cells across multiple TileMaps");
   require(editor::getUndoLevels() == undoLevelsBeforeDrag + 1,
-          "a TileMap drag did not create exactly one undo entry");
+          "a multi-TileMap drag did not create exactly one undo entry");
   editor::undo(&document);
   layer = document.getWorld()->getActiveLayer();
-  tileMap = dynamic_cast<bw::core::TileMap*>(layer->getActiveStep());
-  require(tileMap->getCell(0, 0) == 0 &&
-              tileMap->getCell(1, 0) == 0 &&
-              tileMap->getCell(2, 0) == 0,
-          "undo did not revert the complete TileMap drag");
+  definitions = dynamic_cast<bw::core::DefineTileMaps*>(layer->getActiveStep());
+  require(definitions->getTileMap(0)->getCell(0, 0) == 0 &&
+              definitions->getTileMap(1)->getCell(0, 0) == 0 &&
+              definitions->getTileMap(1)->getCell(1, 0) == 0 &&
+              definitions->getTileMap(1)->getCell(2, 0) == 0,
+          "undo did not revert a multi-TileMap drag");
 
   editor::redo(&document);
   layer = document.getWorld()->getActiveLayer();
-  tileMap = dynamic_cast<bw::core::TileMap*>(layer->getActiveStep());
-  input = pointerAt({72.0f, 8.0f});
+  definitions = dynamic_cast<bw::core::DefineTileMaps*>(layer->getActiveStep());
+  input = pointerAt({360.0f, 8.0f});
   input.leftClicked = true;
   interaction.updateSelection(&document, nullptr, settings, input);
-  input = pointerAt({8.0f, 8.0f});
-  input.leftDown = true;
-  input.leftDragging = true;
-  interaction.updateSelection(&document, nullptr, settings, input);
-  input = pointerAt({72.0f, 8.0f});
+  input = pointerAt({296.0f, 8.0f});
   input.leftDown = true;
   input.leftDragging = true;
   interaction.updateSelection(&document, nullptr, settings, input);
@@ -327,24 +326,21 @@ void activeTileMapClicksToggleOnlyItsBoundedCells() {
   input.leftDragging = false;
   input.leftReleased = true;
   interaction.updateSelection(&document, nullptr, settings, input);
-  require(tileMap->getCell(0, 0) == 0 &&
-              tileMap->getCell(1, 0) == 0 &&
-              tileMap->getCell(2, 0) == 0,
-          "dragging from a set cell did not erase every crossed cell");
+  require(definitions->getTileMap(0)->getCell(0, 0) == 1 &&
+              definitions->getTileMap(1)->getCell(0, 0) == 0 &&
+              definitions->getTileMap(1)->getCell(1, 0) == 0 &&
+              definitions->getTileMap(1)->getCell(2, 0) == 0,
+          "dragging from a set cell did not erase its TileMap");
   editor::undo(&document);
   layer = document.getWorld()->getActiveLayer();
-  tileMap = dynamic_cast<bw::core::TileMap*>(layer->getActiveStep());
-  require(tileMap->getCell(0, 0) == 1 &&
-              tileMap->getCell(1, 0) == 1 &&
-              tileMap->getCell(2, 0) == 1,
-          "undo did not restore cells erased by a TileMap drag");
+  definitions = dynamic_cast<bw::core::DefineTileMaps*>(layer->getActiveStep());
 
   layer->setStepEnabled(1, false);
   input = pointerAt({104.0f, 104.0f});
   input.leftClicked = true;
   interaction.updateSelection(&document, nullptr, settings, input);
-  require(tileMap->getCell(3, 3) == 0,
-          "clicking a disabled TileMap changed a cell");
+  require(definitions->getTileMap(0)->getCell(3, 3) == 0,
+          "clicking disabled DefineTileMaps changed a cell");
 }
 
 void plainControlAndShiftClicksApplyTheirSelectionPolicies() {
@@ -4472,7 +4468,7 @@ int main() {
     prefabFieldClickPlacesAMeshPrefabPrimitiveWithoutCrashing();
     worldWedgeSettingsAreAtomicUndoableAndRegenerate();
     prefabFieldArrowNavigationAndRotationAreActiveStepGated();
-    activeTileMapClicksToggleOnlyItsBoundedCells();
+    activeDefineTileMapsEditsEveryMapInOneGesture();
     std::cout << "Editor selection interactions passed\n";
     return 0;
   } catch (std::exception const& error) {

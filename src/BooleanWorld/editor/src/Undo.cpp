@@ -5,8 +5,8 @@
 #include <common/BoundedDeque.h>
 
 #include <core/DefinePrefabs.h>
+#include <core/DefineTileMaps.h>
 #include <core/PrefabField.h>
-#include <core/TileMap.h>
 #include <core/World.h>
 
 #include "Undo.h"
@@ -38,7 +38,7 @@ struct PrefabFieldFocus {
   bool hasTile{false};
 };
 
-struct TileMapFocus {
+struct DefineTileMapsFocus {
   uint32_t layerId{~0u};
   uint32_t stepIndex{~0u};
 };
@@ -54,7 +54,7 @@ struct UndoData {
   set<uint32_t> selectedMeshRings;
   vector<PrefabFocus> prefabFocus;
   vector<PrefabFieldFocus> prefabFieldFocus;
-  optional<TileMapFocus> tileMapFocus;
+  optional<DefineTileMapsFocus> defineTileMapsFocus;
   ProcMaterialLibrarySnapshot procMaterials;
   EmbossingCatalogSnapshot embossingCatalog;
   bool docModified{false};
@@ -78,11 +78,13 @@ static UndoableActionFunction gTransactionalFunc;
 UndoData captureUndoData(Document* doc) {
   vector<PrefabFocus> prefabFocus;
   vector<PrefabFieldFocus> prefabFieldFocus;
-  optional<TileMapFocus> tileMapFocus;
+  optional<DefineTileMapsFocus> defineTileMapsFocus;
   if (doc->isActive()) {
     for (auto const* layer : doc->getWorld()->getLayers()) {
-      if (dynamic_cast<bw::core::TileMap const*>(layer->getActiveStep())) {
-        tileMapFocus = TileMapFocus{layer->getId(), layer->getActiveStepIndex()};
+      if (dynamic_cast<bw::core::DefineTileMaps const*>(
+              layer->getActiveStep())) {
+        defineTileMapsFocus = DefineTileMapsFocus{
+            layer->getId(), layer->getActiveStepIndex()};
       }
       for (uint32_t stepIndex = 0; stepIndex < layer->getNumSteps(); ++stepIndex) {
         auto const* step = dynamic_cast<bw::core::DefinePrefabs const*>(
@@ -115,7 +117,7 @@ UndoData captureUndoData(Document* doc) {
       doc->getSelectedMeshRingIndices(),
       move(prefabFocus),
       move(prefabFieldFocus),
-      tileMapFocus,
+      defineTileMapsFocus,
       procMaterialLibrary().captureSnapshot(),
       embossingCatalogLibrary().captureSnapshot(),
       doc->isModified()};
@@ -137,13 +139,13 @@ void restoreUndoData(Document* doc, UndoData const& data) {
       layer->rebuild();
     }
   }
-  if (data.tileMapFocus) {
-    auto* layer = doc->getWorld()->getLayer(data.tileMapFocus->layerId);
-    if (layer && data.tileMapFocus->stepIndex < layer->getNumSteps() &&
-        dynamic_cast<bw::core::TileMap*>(
-            layer->getStep(data.tileMapFocus->stepIndex))) {
+  if (data.defineTileMapsFocus) {
+    auto* layer = doc->getWorld()->getLayer(data.defineTileMapsFocus->layerId);
+    if (layer && data.defineTileMapsFocus->stepIndex < layer->getNumSteps() &&
+        dynamic_cast<bw::core::DefineTileMaps*>(
+            layer->getStep(data.defineTileMapsFocus->stepIndex))) {
       doc->getWorld()->setActiveLayer(layer);
-      layer->setActiveStep(data.tileMapFocus->stepIndex);
+      layer->setActiveStep(data.defineTileMapsFocus->stepIndex);
     }
   }
   for (auto const& focus : data.prefabFieldFocus) {

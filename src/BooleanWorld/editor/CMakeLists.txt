@@ -16,6 +16,7 @@ add_executable(editor WIN32
     src/PrimitiveFieldPreview.cpp
     src/ProcMaterialLibrary.cpp
     src/SubMaterialThumbnailRenderer.cpp
+    src/TileMapLayout.cpp
     src/PrefabPlacementPreview.cpp
     src/PrefabTilingGuide.cpp
     src/Preview3D.cpp
@@ -104,6 +105,19 @@ bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/../core/doc" "doc/core")
 bw_deploy_directory(editor "${CMAKE_CURRENT_SOURCE_DIR}/doc" "doc/editor")
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_editor_tile_map_layout_tests
+        tests/tile_map_layout_tests.cpp
+        src/TileMapLayout.cpp)
+    target_include_directories(boolean_world_editor_tile_map_layout_tests PRIVATE include)
+    target_link_libraries(boolean_world_editor_tile_map_layout_tests PRIVATE Willpower.Common)
+    target_compile_features(boolean_world_editor_tile_map_layout_tests PRIVATE cxx_std_20)
+    target_compile_options(boolean_world_editor_tile_map_layout_tests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W3;/utf-8>)
+    bw_target_defaults(boolean_world_editor_tile_map_layout_tests)
+    bw_output_dirs(boolean_world_editor_tile_map_layout_tests)
+    bw_deploy_runtime_dlls(boolean_world_editor_tile_map_layout_tests)
+    add_test(NAME boolean_world_editor_tile_map_layout
+             COMMAND boolean_world_editor_tile_map_layout_tests)
+
     add_executable(boolean_world_editor_mesh_geometry_tests
         tests/mesh_geometry_tests.cpp
         src/MeshGeometry.cpp)
@@ -331,6 +345,7 @@ if(BUILD_TESTING)
         src/Selection.cpp
         src/WorldDocument.cpp
         src/Interaction.cpp
+        src/TileMapLayout.cpp
         src/PrimitiveDefaults.cpp
         src/Undo.cpp
         src/ProcMaterialLibrary.cpp)

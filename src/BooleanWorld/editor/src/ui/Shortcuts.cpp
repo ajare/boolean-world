@@ -53,10 +53,10 @@ void handleShortcuts(ViewContext& context) {
     }
   }
 
-  // TileMap authoring excludes interaction with every other authored object.
-  // File operations and TileMap undo/redo above remain available; view
-  // navigation is handled by the World view itself.
-  if (doc->isActive() && dynamic_cast<bw::core::TileMap*>(
+  // DefineTileMaps authoring excludes interaction with every other authored
+  // object. File operations and TileMap undo/redo above remain available;
+  // view navigation is handled by the World view itself.
+  if (doc->isActive() && dynamic_cast<bw::core::DefineTileMaps*>(
                              doc->getWorld()->getActiveLayer()->getActiveStep())) {
     return;
   }

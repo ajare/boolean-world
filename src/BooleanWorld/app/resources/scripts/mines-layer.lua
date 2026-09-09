@@ -235,6 +235,213 @@ local function cell_is_empty(x, y)
     ) == 0
 end
 
+local function create_tunnels_section_primitive(step_name, index,
+                                                corridor_width)
+    local tile_map = context:find_tile_map(step_name, index)
+    local width = tile_map:get_width()
+    local height = tile_map:get_height()
+    local cell_size = tile_map:get_cell_size()
+    local map_size = tile_map:get_map_size()
+    assert(type(corridor_width) == "number" and corridor_width > 0 and
+               corridor_width <= cell_size,
+           "corridor width must be greater than zero and no larger than the TileMap cell size")
+    local inset = (cell_size - corridor_width) / 2
+    local edges = {}
+    local outgoing = {}
+
+    local function add_edge(x1, y1, x2, y2, direction)
+        local edge = {
+            x1 = x1,
+            y1 = y1,
+            x2 = x2,
+            y2 = y2,
+            direction = direction,
+            used = false
+        }
+        edges[#edges + 1] = edge
+        local key = cell_key(x1, y1)
+        if outgoing[key] == nil then
+            outgoing[key] = {}
+        end
+        outgoing[key][#outgoing[key] + 1] = edge
+    end
+
+    -- Give every exposed cell side a counter-clockwise directed edge. Shared
+    -- sides are omitted, leaving only the outlines of the set cells.
+    for y = 0, height - 1 do
+        for x = 0, width - 1 do
+            if tile_map:get_cell(x, y) == 1 then
+                if y == 0 or tile_map:get_cell(x, y - 1) == 0 then
+                    add_edge(x, y, x + 1, y, 0)
+                end
+                if x == width - 1 or tile_map:get_cell(x + 1, y) == 0 then
+                    add_edge(x + 1, y, x + 1, y + 1, 1)
+                end
+                if y == height - 1 or tile_map:get_cell(x, y + 1) == 0 then
+                    add_edge(x + 1, y + 1, x, y + 1, 2)
+                end
+                if x == 0 or tile_map:get_cell(x - 1, y) == 0 then
+                    add_edge(x, y + 1, x, y, 3)
+                end
+            end
+        end
+    end
+
+    local function next_edge(edge)
+        local candidates = outgoing[cell_key(edge.x2, edge.y2)] or {}
+        local best = nil
+        local best_rank = math.huge
+        for _, candidate in ipairs(candidates) do
+            if not candidate.used then
+                local turn = (candidate.direction - edge.direction) % 4
+                -- At a corner shared only diagonally, keep the occupied cells
+                -- on the left instead of joining two otherwise separate Rings.
+                local rank = ({[0] = 1, [1] = 0, [2] = 3, [3] = 2})[turn]
+                if rank < best_rank then
+                    best = candidate
+                    best_rank = rank
+                end
+            end
+        end
+        return best
+    end
+
+    local rings = {}
+    for _, first_edge in ipairs(edges) do
+        if not first_edge.used then
+            local ring_edges = {}
+            local edge = first_edge
+            while true do
+                edge.used = true
+                ring_edges[#ring_edges + 1] = edge
+                if edge.x2 == first_edge.x1 and edge.y2 == first_edge.y1 then
+                    break
+                end
+                edge = assert(next_edge(edge), "TileMap cells have an open outline")
+            end
+
+            -- Intersect each pair of inset edge lines at a corner. Edges on
+            -- the Map boundary remain flush so adjacent TileMaps can meet.
+            -- Collinear unit edges contribute no additional point.
+            local corners = {}
+            for edge_index, current in ipairs(ring_edges) do
+                local previous = ring_edges[
+                                     (edge_index - 2) % #ring_edges + 1]
+                if previous.direction ~= current.direction then
+                    local x = current.x1 * cell_size
+                    local y = current.y1 * cell_size
+                    for _, adjacent in ipairs({previous, current}) do
+                        if adjacent.direction == 0 and adjacent.y1 ~= 0 then
+                            y = adjacent.y1 * cell_size + inset
+                        elseif adjacent.direction == 1 and
+                            adjacent.x1 ~= width then
+                            x = adjacent.x1 * cell_size - inset
+                        elseif adjacent.direction == 2 and
+                            adjacent.y1 ~= height then
+                            y = adjacent.y1 * cell_size - inset
+                        elseif adjacent.direction == 3 and adjacent.x1 ~= 0 then
+                            x = adjacent.x1 * cell_size + inset
+                        end
+                    end
+                    corners[#corners + 1] = {
+                        x - map_size / 2,
+                        y - map_size / 2
+                    }
+                end
+            end
+
+            local area = 0
+            for point_index, point in ipairs(corners) do
+                local following = corners[point_index % #corners + 1]
+                area = area + point[1] * following[2] -
+                           following[1] * point[2]
+            end
+            rings[#rings + 1] = {
+                points = corners,
+                area = math.abs(area),
+                children = {}
+            }
+        end
+    end
+
+    if #rings == 0 then
+        return nil, map_size
+    end
+
+    local function point_is_inside(point, ring)
+        local inside = false
+        local previous = ring[#ring]
+        for _, current in ipairs(ring) do
+            if (current[2] > point[2]) ~= (previous[2] > point[2]) and
+                point[1] < (previous[1] - current[1]) *
+                    (point[2] - current[2]) /
+                    (previous[2] - current[2]) + current[1] then
+                inside = not inside
+            end
+            previous = current
+        end
+        return inside
+    end
+
+    -- Build the alternating Shell/Hole/Island hierarchy from geometric
+    -- containment so disconnected regions and enclosed unset cells survive.
+    local roots = {}
+    for _, ring in ipairs(rings) do
+        local parent = nil
+        for _, candidate in ipairs(rings) do
+            if candidate ~= ring and candidate.area > ring.area and
+                point_is_inside(ring.points[1], candidate.points) and
+                (parent == nil or candidate.area < parent.area) then
+                parent = candidate
+            end
+        end
+        ring.parent = parent
+        if parent == nil then
+            roots[#roots + 1] = ring
+        else
+            parent.children[#parent.children + 1] = ring
+        end
+    end
+
+    local mesh = nil
+    local function add_ring(ring, parent_id, depth)
+        local polygon_id
+        if depth == 0 then
+            if mesh == nil then
+                mesh = context:create_mesh_primitive(ring.points)
+                polygon_id = 0
+            else
+                polygon_id = assert(mesh:add_shell(ring.points))
+            end
+        elseif depth % 2 == 1 then
+            polygon_id = assert(mesh:add_hole(parent_id, ring.points))
+        else
+            polygon_id = assert(mesh:add_island(parent_id, ring.points))
+        end
+
+        for _, child in ipairs(ring.children) do
+            add_ring(child, polygon_id, depth + 1)
+        end
+    end
+
+    for _, root in ipairs(roots) do
+        add_ring(root, nil, 0)
+    end
+
+    -- Creation defaults intentionally supply materials and floor/ceiling
+    -- elevations until the generated TileMap geometry needs authored values.
+    return mesh, map_size
+end
+
+local tile_map_mesh, tile_map_size = create_tunnels_section_primitive(
+    "TileMaps", 0, layer.vars.corridor_width)
+assert(tile_map_mesh ~= nil, "TileMaps[0] has no set cells")
+local tile_map_x, tile_map_y =
+    utilities.find_closest_empty_grid_cell(0, 0, tile_map_size)
+tile_map_mesh:set_position((tile_map_x + 0.5) * tile_map_size,
+                           (tile_map_y + 0.5) * tile_map_size)
+context:place_primitive(tile_map_mesh)
+
 dprint("Finding prefabs")
 local definitions = context:find_define_prefabs("Main")
 local size_256_prefabs = utilities.get_prefabs_with_grid_size(definitions,

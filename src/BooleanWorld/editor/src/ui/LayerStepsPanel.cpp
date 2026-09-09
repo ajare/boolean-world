@@ -479,11 +479,30 @@ void renderRunScriptView(
   }
 }
 
-void renderTileMapView(ViewContext& context, bw::core::TileMap* tileMap) {
+void renderDefineTileMapsView(
+    ViewContext& context, bw::core::DefineTileMaps* definitions) {
   auto* doc = context.doc;
   auto* layer = doc->getWorld()->getActiveLayer();
 
-  auto const mapSize = tileMap->getMapSize();
+  auto const count = definitions->getNumTileMaps();
+  auto const countLabel = format("{}", count);
+  ImGui::SetNextItemWidth(180.0f);
+  if (ImGui::BeginCombo("Count", countLabel.c_str())) {
+    for (uint32_t candidate = 1;
+         candidate <= bw::core::DefineTileMaps::MaxTileMaps; ++candidate) {
+      auto const selected = candidate == count;
+      auto const label = format("{}", candidate);
+      if (ImGui::Selectable(label.c_str(), selected)) {
+        transact(doc, CommandId::SetNumTileMaps, [&] {
+          setNumTileMaps(doc, layer, definitions, candidate);
+        });
+      }
+      if (selected) ImGui::SetItemDefaultFocus();
+    }
+    ImGui::EndCombo();
+  }
+
+  auto const mapSize = definitions->getMapSize();
   auto const mapLabel = format("{}", mapSize);
   ImGui::SetNextItemWidth(180.0f);
   if (ImGui::BeginCombo("Map size", mapLabel.c_str())) {
@@ -492,7 +511,7 @@ void renderTileMapView(ViewContext& context, bw::core::TileMap* tileMap) {
       auto const label = format("{}", size);
       if (ImGui::Selectable(label.c_str(), selected)) {
         transact(doc, CommandId::SetTileMapMapSize, [&] {
-          setTileMapMapSize(doc, layer, tileMap, size);
+          setTileMapMapSize(doc, layer, definitions, size);
         });
       }
       if (selected) ImGui::SetItemDefaultFocus();
@@ -500,7 +519,7 @@ void renderTileMapView(ViewContext& context, bw::core::TileMap* tileMap) {
     ImGui::EndCombo();
   }
 
-  auto const cellSize = tileMap->getCellSize();
+  auto const cellSize = definitions->getCellSize();
   auto const cellLabel = format("{}", cellSize);
   ImGui::SetNextItemWidth(180.0f);
   if (ImGui::BeginCombo("Cell size", cellLabel.c_str())) {
@@ -509,16 +528,18 @@ void renderTileMapView(ViewContext& context, bw::core::TileMap* tileMap) {
       auto const label = format("{}", size);
       if (ImGui::Selectable(label.c_str(), selected)) {
         transact(doc, CommandId::SetTileMapCellSize, [&] {
-          setTileMapCellSize(doc, layer, tileMap, size);
+          setTileMapCellSize(doc, layer, definitions, size);
         });
       }
       if (selected) ImGui::SetItemDefaultFocus();
     }
     ImGui::EndCombo();
   }
-  ImGui::Text("Grid: %u x %u", tileMap->getWidth(), tileMap->getHeight());
-  if (tileMap->isEnabled()) {
-    ImGui::TextUnformatted("Click a cell in the World view to toggle it.");
+  auto const* first = definitions->getTileMap(0);
+  ImGui::Text("Grid: %u x %u", first->getWidth(), first->getHeight());
+  if (definitions->isEnabled()) {
+    ImGui::TextUnformatted(
+        "Click or drag over cells in the World view to edit them.");
   } else {
     ImGui::TextDisabled("Enable this step to edit its cells.");
   }

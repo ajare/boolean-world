@@ -12,6 +12,7 @@
 
 #include <core/CoreException.h>
 #include <core/DefinePrefabs.h>
+#include <core/DefineTileMaps.h>
 #include <core/Layer.h>
 #include <core/MeshPrimitive.h>
 #include <core/Primitive.h>
@@ -566,6 +567,11 @@ ScriptMeshPrimitive RunScriptContext::createMeshPrimitive(sol::table const& poin
   auto ring = ringFromPoints(points);
   auto primitive = unique_ptr<MeshPrimitive>(MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union, {{move(ring)}}));
+  auto properties = primitive->getProperties();
+  properties.floorMaterialId = "builtin.plain.grey";
+  properties.ceilingMaterialId = "builtin.plain.grey";
+  properties.wallMaterialId = "builtin.plain.grey";
+  primitive->setProperties(properties);
   auto* borrowed = primitive.get();
   (void)mStep->ownPrimitive(move(primitive));
   return ScriptMeshPrimitive(borrowed);
@@ -629,33 +635,34 @@ PrimitiveFieldView RunScriptContext::findPrimitiveField(string const& name) cons
   return PrimitiveFieldView{step};
 }
 
-TileMapView RunScriptContext::findTileMap(string const& name) const {
+TileMapView RunScriptContext::findTileMap(
+    string const& name, uint32_t index) const {
   auto& layer = mBuild->getLayer();
   auto const id = layer.findStepIdByName(name);
   if (id == ~0u) {
     throw CoreException(format("No step named '{}'", name));
   }
-  auto* tileMap = dynamic_cast<TileMap*>(layer.getStepById(id));
-  if (!tileMap) {
-    throw CoreException(format("Step '{}' is not a TileMap step", name));
+  auto* definitions = dynamic_cast<DefineTileMaps*>(layer.getStepById(id));
+  if (!definitions) {
+    throw CoreException(format("Step '{}' is not a DefineTileMaps step", name));
   }
 
-  uint32_t tileMapIndex = ~0u;
+  uint32_t definitionsIndex = ~0u;
   uint32_t runScriptIndex = ~0u;
-  for (uint32_t index = 0; index < layer.getNumSteps(); ++index) {
-    auto* candidate = layer.getStep(index);
-    if (candidate == tileMap) tileMapIndex = index;
-    if (candidate == mStep) runScriptIndex = index;
+  for (uint32_t stepIndex = 0; stepIndex < layer.getNumSteps(); ++stepIndex) {
+    auto* candidate = layer.getStep(stepIndex);
+    if (candidate == definitions) definitionsIndex = stepIndex;
+    if (candidate == mStep) runScriptIndex = stepIndex;
   }
-  if (!tileMap->isEnabled()) {
-    throw CoreException(format("TileMap step '{}' is disabled", name));
+  if (!definitions->isEnabled()) {
+    throw CoreException(format("DefineTileMaps step '{}' is disabled", name));
   }
-  if (tileMapIndex == ~0u || runScriptIndex == ~0u ||
-      tileMapIndex >= runScriptIndex) {
+  if (definitionsIndex == ~0u || runScriptIndex == ~0u ||
+      definitionsIndex >= runScriptIndex) {
     throw CoreException(format(
-        "TileMap step '{}' must precede this RunScript step", name));
+        "DefineTileMaps step '{}' must precede this RunScript step", name));
   }
-  return TileMapView{tileMap};
+  return TileMapView{definitions->getTileMap(index)};
 }
 
 vector<PrimitiveView> RunScriptContext::getBuildPrimitives() const {
@@ -1166,12 +1173,13 @@ void bindScriptTypes(sol::state& lua) {
       });
 
   lua.new_usertype<TileMapView>(
-      "TileMapStep", sol::no_constructor,
-      "get_cell", [](TileMapView const& view, uint32_t x, uint32_t y) { return view.step->getCell(x, y); },
-      "get_width", [](TileMapView const& view) { return view.step->getWidth(); },
-      "get_height", [](TileMapView const& view) { return view.step->getHeight(); },
-      "get_map_size", [](TileMapView const& view) { return view.step->getMapSize(); },
-      "get_cell_size", [](TileMapView const& view) { return view.step->getCellSize(); });
+      "TileMap", sol::no_constructor,
+      "get_index", [](TileMapView const& view) { return view.map->getIndex(); },
+      "get_cell", [](TileMapView const& view, uint32_t x, uint32_t y) { return view.map->getCell(x, y); },
+      "get_width", [](TileMapView const& view) { return view.map->getWidth(); },
+      "get_height", [](TileMapView const& view) { return view.map->getHeight(); },
+      "get_map_size", [](TileMapView const& view) { return view.map->getMapSize(); },
+      "get_cell_size", [](TileMapView const& view) { return view.map->getCellSize(); });
 
   lua[boundMarker] = true;
 }

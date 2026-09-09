@@ -13,6 +13,7 @@ add_library(core STATIC
     src/Chips.cpp
     src/DefaultWorldDataGenerator.cpp
     src/DefinePrefabs.cpp
+    src/DefineTileMaps.cpp
     src/DynamicWorldDataGenerator.cpp
     src/Easing.cpp
     src/Emboss.cpp

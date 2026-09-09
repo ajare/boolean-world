@@ -133,7 +133,8 @@ namespace editor {
   X(RenameWorldBuildVariable, "Rename World build variable", renameWorldBuildVariable) \
   X(SetLayerBuildVariable, "Set Layer build variable", setLayerBuildVariable) \
   X(RemoveLayerBuildVariable, "Remove Layer build variable", removeLayerBuildVariable) \
-  X(RenameLayerBuildVariable, "Rename Layer build variable", renameLayerBuildVariable)
+  X(RenameLayerBuildVariable, "Rename Layer build variable", renameLayerBuildVariable) \
+  X(SetNumTileMaps, "Set number of TileMaps", setNumTileMaps)
 
 #define EDITOR_GESTURE_COMMANDS(X) \
   X(Edit, "Edit") \

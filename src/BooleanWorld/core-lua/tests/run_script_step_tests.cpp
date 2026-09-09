@@ -22,6 +22,7 @@
 #include <core/MeshPrimitive.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
+#include <core/DefineTileMaps.h>
 #include <core/TileMap.h>
 #include <core/World.h>
 #include <core/YamlSerializer.h>
@@ -400,6 +401,11 @@ void aScriptCreatesAMeshPrimitiveFromOneRing() {
           "creating and placing a MeshPrimitive from a Lua Ring failed");
   auto* mesh = dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(0));
   require(mesh != nullptr, "create_mesh_primitive did not create a MeshPrimitive");
+  auto const& properties = mesh->getProperties();
+  require(properties.floorMaterialId == "builtin.plain.grey" &&
+              properties.ceilingMaterialId == "builtin.plain.grey" &&
+              properties.wallMaterialId == "builtin.plain.grey",
+          "create_mesh_primitive did not use the default plain-grey material");
   auto proxy = mesh->createEditingProxy();
   uint32_t vertexCount = 0;
   for (auto id = proxy->getFirstVertexIndex();
@@ -1883,33 +1889,36 @@ void coroutinesAdvanceAcrossTicksAndContainFailures() {
           "one coroutine's error stopped or corrupted another live coroutine");
 }
 
-void scriptsQueryEarlierEnabledTileMaps() {
+void scriptsQueryIndexedMapsFromEarlierDefineTileMaps() {
   bw::core::ScriptRuntime runtime;
   runtime.load("read-tile-map", R"(
-    local map = context:find_tile_map("layout")
+    local map = context:find_tile_map("layout", 1)
     local p = context:create_primitive("Rectangle")
-    p:set_position(map:get_cell(3, 4) * 10, map:get_width())
+    p:set_position(
+        map:get_cell(3, 4) * 10, map:get_width() + map:get_index())
     p:set_size(map:get_map_size(), map:get_cell_size())
     context:place_primitive(p)
   )");
   runtime.load("read-outside-tile-map", R"(
-    context:find_tile_map("layout"):get_cell(8, 0)
+    context:find_tile_map("layout", 1):get_cell(8, 0)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
-  auto* map = new bw::core::TileMap;
-  map->setName("layout");
-  map->setCell(3, 4, 1);
-  layer.addStep(map);
+  auto* definitions = new bw::core::DefineTileMaps;
+  definitions->setName("layout");
+  definitions->setNumTileMaps(2);
+  definitions->getTileMap(1)->setCell(3, 4, 1);
+  layer.addStep(definitions);
   auto* script = addScriptStep(layer, runtime, "read-tile-map");
   layer.rebuild();
 
-  require(!script->hasFailed(), "querying an earlier enabled TileMap failed");
+  require(!script->hasFailed(),
+          "querying an indexed TileMap from earlier DefineTileMaps failed");
   require(layer.getNumPrimitives() == 1 && at(layer.getPrimitive(0), 10.0f),
           "Lua did not read the TileMap cell value");
   require(layer.getPrimitive(0)->getSize().x == 256.0f &&
               layer.getPrimitive(0)->getSize().y == 32.0f &&
-              layer.getPrimitive(0)->getPosition().y == 8.0f,
+              layer.getPrimitive(0)->getPosition().y == 9.0f,
           "Lua did not expose the TileMap dimensions and sizes");
 
   script->setScriptName("read-outside-tile-map");
@@ -1918,11 +1927,12 @@ void scriptsQueryEarlierEnabledTileMaps() {
   script->setScriptName("read-tile-map");
 
   layer.setStepEnabled(1, false);
-  require(script->hasFailed(), "Lua queried a disabled TileMap");
+  require(script->hasFailed(), "Lua queried disabled DefineTileMaps");
 
   layer.setStepEnabled(1, true);
   layer.moveStep(1, 2);
-  require(script->hasFailed(), "Lua queried a TileMap later in the recipe");
+  require(script->hasFailed(),
+          "Lua queried DefineTileMaps later in the recipe");
 }
 
 void namingAMissingStepOrPrefabFailsTheStepWithTheName() {
@@ -2009,7 +2019,7 @@ int main() {
     malformedLuaPrefabTagFiltersFailTheStep();
     aScriptReadsAPrimitiveFieldsPrimitivesAsConst();
     aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName();
-    scriptsQueryEarlierEnabledTileMaps();
+    scriptsQueryIndexedMapsFromEarlierDefineTileMaps();
     reloadingRebuildsExactlyTheLayersThatNameTheScript();
     coroutinesAdvanceAcrossTicksAndContainFailures();
     namingAMissingStepOrPrefabFailsTheStepWithTheName();

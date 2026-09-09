@@ -95,9 +95,9 @@ struct PrimitiveFieldView {
   PrimitiveField const* step;
 };
 
-// A read-only view of an earlier, enabled TileMap step.
+// A read-only view of one TileMap in an earlier, enabled DefineTileMaps step.
 struct TileMapView {
-  TileMap const* step;
+  TileMap const* map;
 };
 
 // A mutable, borrowed MeshPrimitive plus its editing authority. Keeping the
@@ -168,7 +168,8 @@ public:
       std::string const& name) const;
   [[nodiscard]] PrimitiveFieldView findPrimitiveField(
       std::string const& name) const;
-  [[nodiscard]] TileMapView findTileMap(std::string const& name) const;
+  [[nodiscard]] TileMapView findTileMap(
+      std::string const& name, uint32_t index) const;
   [[nodiscard]] std::vector<PrimitiveView> getBuildPrimitives() const;
   [[nodiscard]] std::tuple<float, float, float, float> getExtents() const;
   [[nodiscard]] std::vector<PrimitiveView> findBuildPrimitivesOverlapping(

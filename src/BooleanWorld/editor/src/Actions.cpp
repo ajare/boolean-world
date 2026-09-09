@@ -162,31 +162,49 @@ bool setLayerBuildStepName(
 }
 
 bool setTileMapMapSize(
-    Document*, bw::core::Layer* layer, bw::core::TileMap* tileMap,
-    uint32_t size) {
-  if (layer->getActiveStep() != tileMap || tileMap->getMapSize() == size) {
+    Document*, bw::core::Layer* layer,
+    bw::core::DefineTileMaps* definitions, uint32_t size) {
+  if (layer->getActiveStep() != definitions ||
+      definitions->getMapSize() == size) {
     return false;
   }
-  tileMap->setMapSize(size);
+  definitions->setMapSize(size);
   layer->rebuild();
   return true;
 }
 
 bool setTileMapCellSize(
-    Document*, bw::core::Layer* layer, bw::core::TileMap* tileMap,
-    uint32_t size) {
-  if (layer->getActiveStep() != tileMap || tileMap->getCellSize() == size) {
+    Document*, bw::core::Layer* layer,
+    bw::core::DefineTileMaps* definitions, uint32_t size) {
+  if (layer->getActiveStep() != definitions ||
+      definitions->getCellSize() == size) {
     return false;
   }
-  tileMap->setCellSize(size);
+  definitions->setCellSize(size);
+  layer->rebuild();
+  return true;
+}
+
+bool setNumTileMaps(
+    Document*, bw::core::Layer* layer,
+    bw::core::DefineTileMaps* definitions, uint32_t count) {
+  if (layer->getActiveStep() != definitions ||
+      definitions->getNumTileMaps() == count) {
+    return false;
+  }
+  definitions->setNumTileMaps(count);
   layer->rebuild();
   return true;
 }
 
 bool toggleTileMapCell(
-    Document*, bw::core::Layer* layer, bw::core::TileMap* tileMap,
+    Document*, bw::core::Layer* layer,
+    bw::core::DefineTileMaps* definitions, bw::core::TileMap* tileMap,
     uint32_t x, uint32_t y) {
-  if (layer->getActiveStep() != tileMap || !tileMap->isEnabled()) return false;
+  if (layer->getActiveStep() != definitions || !definitions->isEnabled() ||
+      definitions->getTileMap(tileMap->getIndex()) != tileMap) {
+    return false;
+  }
   tileMap->toggleCell(x, y);
   layer->rebuild();
   return true;

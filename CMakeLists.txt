@@ -251,6 +251,45 @@ if(BUILD_TESTING)
         VERBATIM)
     set_property(TARGET RunAllTests PROPERTY FOLDER "TestCases")
 
+    # Place test and benchmark projects in domain-oriented solution folders.
+    # Prefer a recognisable cross-module domain where the target name supplies
+    # one; otherwise retain the source component as a useful fallback.
+    function(bw_target_category target directory output_variable)
+        if(target MATCHES "(^|_)editor(_|$)")
+            set(category "Editor")
+        elseif(target MATCHES "(^|_)(acoustic|audio|emitter)(_|$)")
+            set(category "Acoustic")
+        elseif(target MATCHES "(^|_)liquid(_|$)")
+            set(category "Liquid")
+        elseif(target MATCHES "(^|_)(player|collision)(_|$)")
+            set(category "Player")
+        elseif(target MATCHES "(^|_)(lua|script)(_|$)")
+            set(category "Scripting")
+        elseif(target MATCHES "(^|_)(render|fragment|triangle_data_provider)(_|$)")
+            set(category "Rendering")
+        elseif(target MATCHES "(^|_)(arrangement|chip|wedge)(_|$)"
+               OR target MATCHES "(^|_)wall_.*(override|snapshot)(_|$)")
+            set(category "Arrangement")
+        elseif(directory MATCHES "[/\\]AppLib$")
+            set(category "AppLib")
+        elseif(directory MATCHES "[/\\]Launcher$")
+            set(category "Launcher")
+        elseif(directory MATCHES "[/\\]core-dll$")
+            set(category "Core DLL")
+        elseif(directory MATCHES "[/\\]core-lua$")
+            set(category "Scripting")
+        elseif(directory MATCHES "[/\\]core$")
+            set(category "Core")
+        elseif(directory MATCHES "[/\\]render$")
+            set(category "Rendering")
+        elseif(directory MATCHES "[/\\]app$")
+            set(category "Application")
+        else()
+            set(category "Other")
+        endif()
+        set(${output_variable} "${category}" PARENT_SCOPE)
+    endfunction()
+
     # Building RunAllTests from Visual Studio must first bring every test
     # executable up to date. Test targets consistently use the _tests suffix;
     # GPU-dependent smoke executables intentionally do not, because they are
@@ -262,9 +301,13 @@ if(BUILD_TESTING)
             # Unit/integration tests use the _tests suffix; GPU-dependent
             # smoke tests are manual but are test projects too.
             if(target MATCHES "(_tests|_smoke)$")
-                set_property(TARGET "${target}" PROPERTY FOLDER "TestCases")
+                bw_target_category("${target}" "${directory}" category)
+                set_property(TARGET "${target}" PROPERTY FOLDER
+                             "TestCases/${category}")
             elseif(target MATCHES "_benchmark$")
-                set_property(TARGET "${target}" PROPERTY FOLDER "Benchmarks")
+                bw_target_category("${target}" "${directory}" category)
+                set_property(TARGET "${target}" PROPERTY FOLDER
+                             "Benchmarks/${category}")
             endif()
             if(target MATCHES "_tests$")
                 add_dependencies(RunAllTests "${target}")

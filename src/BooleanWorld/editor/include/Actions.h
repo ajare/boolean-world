@@ -12,9 +12,9 @@
 
 #include <core/BuildVariables.h>
 #include <core/DefinePrefabs.h>
+#include <core/DefineTileMaps.h>
 #include <core/Emboss.h>
 #include <core/PrefabField.h>
-#include <core/TileMap.h>
 
 #include "Undo.h"
 #include "Document.h"
@@ -71,7 +71,8 @@ class EditorInteraction {
 
   bool mTileMapPaintActive{false};
   int mTileMapPaintValue{0};
-  std::optional<std::array<uint32_t, 2>> mTileMapLastPaintCell;
+  // Map index, cell X and cell Y for the last point in a paint gesture.
+  std::optional<std::array<uint32_t, 3>> mTileMapLastPaintCell;
 
   bool mMovingSelectedPrimitives{false};
   // A move is measured against the whole gesture rather than frame by
@@ -197,13 +198,17 @@ bool movePrimitiveToLayerBuildStep(
     uint32_t targetStepIndex);
 
 bool setTileMapMapSize(
-    Document* doc, bw::core::Layer* layer, bw::core::TileMap* tileMap,
-    uint32_t size);
+    Document* doc, bw::core::Layer* layer,
+    bw::core::DefineTileMaps* definitions, uint32_t size);
 bool setTileMapCellSize(
-    Document* doc, bw::core::Layer* layer, bw::core::TileMap* tileMap,
-    uint32_t size);
+    Document* doc, bw::core::Layer* layer,
+    bw::core::DefineTileMaps* definitions, uint32_t size);
+bool setNumTileMaps(
+    Document* doc, bw::core::Layer* layer,
+    bw::core::DefineTileMaps* definitions, uint32_t count);
 bool toggleTileMapCell(
-    Document* doc, bw::core::Layer* layer, bw::core::TileMap* tileMap,
+    Document* doc, bw::core::Layer* layer,
+    bw::core::DefineTileMaps* definitions, bw::core::TileMap* tileMap,
     uint32_t x, uint32_t y);
 
 // Prefab selection is ephemeral focus and is called directly. The remaining

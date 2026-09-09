@@ -68,12 +68,16 @@ _Avoid_: Clip result
 One step in a Layer's ordered, serialized recipe for producing its Primitives. Each step's `execute()` reads the Layer as built so far and may only add new Primitives to it; a Layer's Primitives are always derived by re-running its enabled steps in order, never authored or stored independently. The same recipe order is the major order of the boolean fold, with Primitive priority ordering only the output inside one step. A step's type is fixed once created — changing it means deleting the step and adding a new one, never an in-place type change. An authored Primitive may be re-homed from one step into another of the *same* type, keeping the same Primitive rather than a copy: the destination must accept new Primitives, the source must permit direct editing of its output, and both must be enabled. Moving one changes where it folds, because recipe order outranks Primitive priority. The first step of a Layer is always a PrimitiveField step and its type cannot be changed (it can only be disabled, never deleted). Deliberately not called "LayerGenerationStep" — "Generation" already names the unrelated boolean-fold pipeline that turns selected Layers' Primitives into world geometry (see `docs/glossary.md`).
 _Avoid_: LayerGenerationStep, generation step
 
-**TileMap (step)**:
-A data-only LayerBuildStep holding a finite square Map from `(0,0)` to `(size,size)`, divided into binary TileMap cells for later steps to query. Its Map size is 64, 128, or 256 World units and its cell size is 2, 4, 8, 16, or 32 World units.
-_Avoid_: Tile field, grid step
+**DefineTileMaps (step)**:
+A data-only LayerBuildStep owning between one and sixteen TileMaps for later steps to query. All of its TileMaps share one Map size and cell size. Reducing its count removes the highest-indexed TileMaps; increasing it appends empty TileMaps. In the editor they are arranged in a fixed four-column, row-major grid beginning at the World origin, separated by one cell-size of padding.
+_Avoid_: TileMap step, Tile field, grid step
+
+**TileMap**:
+One finite square binary Map owned by a DefineTileMaps step. Its generated zero-based index is its position in that step, increasing rightward then upward in the editor layout. Its Map size is 64, 128, or 256 World units and its cell size is 2, 4, 8, 16, or 32 World units, shared with its sibling TileMaps.
+_Avoid_: TileMap step, tile field
 
 **TileMap cell**:
-One zero-based binary location in a TileMap, increasing rightward and upward from the Map's lower-left corner; `0` is unset and `1` is set. Distinct from a PrefabField Tile, which belongs to an infinite size-specific grid and may hold a Prefab instance.
+One zero-based binary location in a TileMap, increasing rightward and upward from that TileMap's lower-left corner; `0` is unset and `1` is set. Distinct from a PrefabField Tile, which belongs to an infinite size-specific grid and may hold a Prefab instance.
 _Avoid_: Tile, grid square
 
 **PrimitiveField (step)**:

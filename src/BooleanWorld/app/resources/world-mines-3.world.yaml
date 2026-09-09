@@ -3,6 +3,8 @@ world:
     - MinesLayer
   name: ""
   description: ""
+  vars:
+    []
   minExtent: [-4096, -4096]
   maxExtent: [4096, 4096]
   playerStartPosition: [0, 0]
@@ -26,9 +28,13 @@ world:
   layers:
     - id: 0
       name: Layer 0
+      vars:
+        - name: corridor_width
+          type: integer
+          value: 24
       minExtent: [-4096, -4096]
       maxExtent: [4096, 4096]
-      nextStepId: 4
+      nextStepId: 5
       steps:
         - type: PrimitiveField
           id: 0
@@ -305,7 +311,9 @@ world:
                     size: [256, 256]
                     primitivePropertySet:
                       floorZ: 0
-                      ceilingZ: 48
+                      floorGradient: [-0, 0]
+                      ceilingZ: 40
+                      ceilingGradient: [-0, 0]
                       liquidLevel: 0
                       liquidType: Water
                       floorMaterial: builtin.plain.grey
@@ -314,6 +322,12 @@ world:
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
+                      floorElevationAngle: 0
+                      floorLowerElevation: 0
+                      floorUpperElevation: 0
+                      ceilingElevationAngle: 0
+                      ceilingLowerElevation: 40
+                      ceilingUpperElevation: 40
                     audioEmitters:
                       []
                   meshPrimitive:
@@ -706,7 +720,9 @@ world:
                     size: [256, 256]
                     primitivePropertySet:
                       floorZ: 0
-                      ceilingZ: 48
+                      floorGradient: [-0, 0]
+                      ceilingZ: 40
+                      ceilingGradient: [-0, 0]
                       liquidLevel: 0
                       liquidType: Water
                       floorMaterial: builtin.plain.grey
@@ -715,6 +731,12 @@ world:
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
+                      floorElevationAngle: 0
+                      floorLowerElevation: 0
+                      floorUpperElevation: 0
+                      ceilingElevationAngle: 0
+                      ceilingLowerElevation: 40
+                      ceilingUpperElevation: 40
                     audioEmitters:
                       []
                   meshPrimitive:
@@ -1110,7 +1132,9 @@ world:
                     size: [256, 256]
                     primitivePropertySet:
                       floorZ: 0
-                      ceilingZ: 48
+                      floorGradient: [-0, 0]
+                      ceilingZ: 40
+                      ceilingGradient: [-0, 0]
                       liquidLevel: 0
                       liquidType: Water
                       floorMaterial: builtin.plain.grey
@@ -1119,6 +1143,12 @@ world:
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
+                      floorElevationAngle: 0
+                      floorLowerElevation: 0
+                      floorUpperElevation: 0
+                      ceilingElevationAngle: 0
+                      ceilingLowerElevation: 40
+                      ceilingUpperElevation: 40
                     audioEmitters:
                       []
                   meshPrimitive:
@@ -1500,7 +1530,9 @@ world:
                     size: [256, 256]
                     primitivePropertySet:
                       floorZ: 0
-                      ceilingZ: 48
+                      floorGradient: [-0, 0]
+                      ceilingZ: 40
+                      ceilingGradient: [-0, 0]
                       liquidLevel: 0
                       liquidType: Water
                       floorMaterial: builtin.plain.grey
@@ -1509,6 +1541,12 @@ world:
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
+                      floorElevationAngle: 0
+                      floorLowerElevation: 0
+                      floorUpperElevation: 0
+                      ceilingElevationAngle: 0
+                      ceilingLowerElevation: 40
+                      ceilingUpperElevation: 40
                     audioEmitters:
                       []
                   meshPrimitive:
@@ -1666,6 +1704,14 @@ world:
                                 wallMaskState: 0
                             islands:
                               []
+        - type: DefineTileMaps
+          id: 4
+          enabled: 1
+          name: TileMaps
+          mapSize: 256
+          cellSize: 32
+          tileMaps:
+            - cells: [0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0]
         - type: RunScript
           id: 2
           enabled: 1
@@ -1939,7 +1985,9 @@ world:
                 size: [88, 88]
                 primitivePropertySet:
                   floorZ: 0
-                  ceilingZ: 48
+                  floorGradient: [-0, 0]
+                  ceilingZ: 40
+                  ceilingGradient: [-0, 0]
                   liquidLevel: 0
                   liquidType: Water
                   floorMaterial: builtin.plain.grey
@@ -1948,6 +1996,12 @@ world:
                   floorEmbossPreset: ""
                   ceilingEmbossPreset: ""
                   wallEmbossPreset: ""
+                  floorElevationAngle: 0
+                  floorLowerElevation: 0
+                  floorUpperElevation: 0
+                  ceilingElevationAngle: 0
+                  ceilingLowerElevation: 40
+                  ceilingUpperElevation: 40
                 audioEmitters:
                   []
               meshPrimitive:
@@ -2261,7 +2315,9 @@ world:
                 size: [28.285, 28.285]
                 primitivePropertySet:
                   floorZ: 0
+                  floorGradient: [-0, 0]
                   ceilingZ: 48
+                  ceilingGradient: [-0, 0]
                   liquidLevel: 0
                   liquidType: Water
                   floorMaterial: builtin.plain.grey
@@ -2270,6 +2326,12 @@ world:
                   floorEmbossPreset: ""
                   ceilingEmbossPreset: ""
                   wallEmbossPreset: ""
+                  floorElevationAngle: 0
+                  floorLowerElevation: 0
+                  floorUpperElevation: 0
+                  ceilingElevationAngle: 0
+                  ceilingLowerElevation: 48
+                  ceilingUpperElevation: 48
                 audioEmitters:
                   []
                 complexPolygons:
@@ -2537,7 +2599,9 @@ world:
                 size: [37.249, 37.249]
                 primitivePropertySet:
                   floorZ: 0
+                  floorGradient: [-0, 0]
                   ceilingZ: 48
+                  ceilingGradient: [-0, 0]
                   liquidLevel: 0
                   liquidType: Water
                   floorMaterial: builtin.plain.grey
@@ -2546,6 +2610,12 @@ world:
                   floorEmbossPreset: ""
                   ceilingEmbossPreset: ""
                   wallEmbossPreset: ""
+                  floorElevationAngle: 0
+                  floorLowerElevation: 0
+                  floorUpperElevation: 0
+                  ceilingElevationAngle: 0
+                  ceilingLowerElevation: 48
+                  ceilingUpperElevation: 48
                 audioEmitters:
                   []
                 complexPolygons:

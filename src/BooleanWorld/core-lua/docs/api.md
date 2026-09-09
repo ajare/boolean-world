@@ -139,7 +139,7 @@ local mesh = context:create_mesh_primitive({
 })
 ```
 
-The new MeshPrimitive has a single Shell and defaults to the `"union"` operation. It supports all common Primitive methods plus the Mesh geometry methods documented below.
+The new MeshPrimitive has a single Shell and defaults to the `"union"` operation and `"builtin.plain.grey"` for its floor, ceiling, and wall materials. It supports all common Primitive methods plus the Mesh geometry methods documented below.
 
 **Returns:** mutable `MeshPrimitive`.
 
@@ -223,24 +223,25 @@ Step names are optional and non-unique; the first matching step in recipe order 
 
 **Errors:** fails if no step has that name or the first match has another type.
 
-### `context:find_tile_map(step_name)`
+### `context:find_tile_map(step_name, index)`
 
-Finds the first LayerBuildStep with `step_name` and requires it to be an enabled
-`TileMap` earlier than the current `RunScript` in recipe order. It does not skip
-a disabled, later, or wrong-type first match in favour of another duplicate
-name.
+Finds the first LayerBuildStep with `step_name`, requires it to be an enabled
+`DefineTileMaps` earlier than the current `RunScript` in recipe order, and
+returns its zero-based TileMap `index`. It does not skip a disabled, later, or
+wrong-type first match in favour of another duplicate name.
 
 ```lua
-local layout = context:find_tile_map("layout")
+local layout = context:find_tile_map("layouts", 1)
 if layout:get_cell(3, 4) == 1 then
     -- Generate content for the set cell.
 end
 ```
 
-**Returns:** read-only `TileMapStep`.
+**Returns:** read-only `TileMap`.
 
-**Errors:** fails if no step has that name, the first match is not a TileMap, or
-the TileMap is disabled or does not precede this RunScript.
+**Errors:** fails if no step has that name, the first match is not a
+DefineTileMaps step, the step is disabled or does not precede this RunScript,
+or `index` is outside that step's TileMaps.
 
 ### `context:get_tile(grid_size, x, y)`
 
@@ -592,7 +593,7 @@ Returns the field's authored Primitives as an array of read-only `PrimitiveView`
 local primitives = field:get_primitives()
 ```
 
-## `TileMapStep`
+## `TileMap`
 
 A read-only view returned by `context:find_tile_map`. Cell coordinates are
 zero-based from the lower-left of the Map, increasing rightward and upward.
@@ -600,6 +601,7 @@ Out-of-range coordinates fail the script.
 
 | Method | Returns |
 |---|---|
+| `get_index()` | Generated zero-based index within the owning DefineTileMaps step. |
 | `get_cell(x, y)` | Integer `0` for an unset cell or `1` for a set cell. |
 | `get_width()` | Map width in cells. |
 | `get_height()` | Map height in cells. |

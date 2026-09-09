@@ -2,6 +2,7 @@
 #include <cmath>
 
 #include "Actions.h"
+#include "TileMapLayout.h"
 #include "UiHelpers.h"
 
 #include <common/GameDefines.h>
@@ -131,12 +132,13 @@ void EditorInteraction::updateSelection(
     mPendingPrimitiveClick.clear();
   }
 
-  // An active TileMap is the sole authored object under the pointer. View
+  // Active DefineTileMaps owns the authored objects under the pointer. View
   // navigation is handled outside this selection path and remains available.
-  auto* tileMap = layer
-                      ? dynamic_cast<bw::core::TileMap*>(layer->getActiveStep())
-                      : nullptr;
-  if (!tileMap && mTileMapPaintActive) {
+  auto* definitions = layer
+                          ? dynamic_cast<bw::core::DefineTileMaps*>(
+                                layer->getActiveStep())
+                          : nullptr;
+  if (!definitions && mTileMapPaintActive) {
     if (input.leftReleased) {
       if (undoableActionInProgress()) commitUndoableAction(doc);
       mTileMapPaintActive = false;
@@ -144,7 +146,7 @@ void EditorInteraction::updateSelection(
     }
     return;
   }
-  if (tileMap) {
+  if (definitions) {
     mHover = {};
     mPendingPrimitiveClick.clear();
     mPendingMeshSubObjectClick.clear();
@@ -160,34 +162,38 @@ void EditorInteraction::updateSelection(
       return;
     }
 
-    if (!tileMap->isEnabled() ||
+    if (!definitions->isEnabled() ||
         (!input.leftClicked &&
          !(mTileMapPaintActive && input.leftDown)) ||
         !input.cursorInWorldView || input.cursorInMiniMap) {
       if (mTileMapPaintActive) mTileMapLastPaintCell.reset();
       return;
     }
-    auto const mapSize = static_cast<float>(tileMap->getMapSize());
-    auto const& position = input.worldPosition;
-    if (position.x < 0.0f || position.y < 0.0f ||
-        position.x >= mapSize || position.y >= mapSize) {
+    auto location = tileMapCellAt(
+        input.worldPosition, definitions->getNumTileMaps(),
+        definitions->getMapSize(), definitions->getCellSize());
+    if (!location) {
       if (mTileMapPaintActive) mTileMapLastPaintCell.reset();
       return;
     }
-    auto const cellSize = static_cast<float>(tileMap->getCellSize());
-    auto const x = static_cast<uint32_t>(floor(position.x / cellSize));
-    auto const y = static_cast<uint32_t>(floor(position.y / cellSize));
+    auto* tileMap = definitions->getTileMap(location->mapIndex);
+    auto const x = location->x;
+    auto const y = location->y;
 
     if (input.leftClicked) {
       mTileMapPaintActive = true;
       mTileMapPaintValue = tileMap->getCell(x, y) == 0 ? 1 : 0;
-      mTileMapLastPaintCell = array<uint32_t, 2>{x, y};
+      mTileMapLastPaintCell = array<uint32_t, 3>{location->mapIndex, x, y};
       beginTransaction(doc, CommandId::PaintTileMapCells, 0.0f);
     }
 
-    auto from = mTileMapLastPaintCell.value_or(array<uint32_t, 2>{x, y});
-    auto lineX = static_cast<int>(from[0]);
-    auto lineY = static_cast<int>(from[1]);
+    auto from = mTileMapLastPaintCell.value_or(
+        array<uint32_t, 3>{location->mapIndex, x, y});
+    // Padding separates independent Maps. Entering another Map starts a new
+    // line there rather than connecting unrelated local cell coordinates.
+    if (from[0] != location->mapIndex) from = {location->mapIndex, x, y};
+    auto lineX = static_cast<int>(from[1]);
+    auto lineY = static_cast<int>(from[2]);
     auto const targetX = static_cast<int>(x);
     auto const targetY = static_cast<int>(y);
     auto const deltaX = abs(targetX - lineX);
@@ -214,7 +220,8 @@ void EditorInteraction::updateSelection(
         lineY += stepY;
       }
     }
-    mTileMapLastPaintCell = array<uint32_t, 2>{x, y};
+    mTileMapLastPaintCell =
+        array<uint32_t, 3>{location->mapIndex, x, y};
     if (changed) layer->rebuild();
     return;
   }

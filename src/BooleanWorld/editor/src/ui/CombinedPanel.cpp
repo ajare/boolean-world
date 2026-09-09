@@ -36,11 +36,11 @@ void renderCombinedPanel(ViewContext& context) {
     }
 
     auto* activeLayer = doc->getWorld()->getActiveLayer();
-    auto* tileMap =
-        dynamic_cast<bw::core::TileMap*>(activeLayer->getActiveStep());
-    if (tileMap) {
-      if (ImGui::CollapsingHeader("TileMap", nullptr, windowFlags)) {
-        renderTileMapView(context, tileMap);
+    auto* defineTileMaps =
+        dynamic_cast<bw::core::DefineTileMaps*>(activeLayer->getActiveStep());
+    if (defineTileMaps) {
+      if (ImGui::CollapsingHeader("TileMaps", nullptr, windowFlags)) {
+        renderDefineTileMapsView(context, defineTileMaps);
       }
     } else if (auto* definePrefabs = dynamic_cast<bw::core::DefinePrefabs*>(activeLayer->getActiveStep())) {
       if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {
@@ -64,7 +64,7 @@ void renderCombinedPanel(ViewContext& context) {
       }
     }
 
-    if (!tileMap) {
+    if (!defineTileMaps) {
       if (settings.mode == Settings::Mode::Primitive) {
         // Below Layer: creating a Primitive writes into the active Layer's active
         // step, so the choice of where comes before the making of what, and
