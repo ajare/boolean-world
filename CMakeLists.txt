@@ -115,6 +115,12 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 include(CTest)   # must be at top level for ctest to find tests in subdirectories
 
+# A forgotten wait, deadlock, or third-party UI must not block unattended test
+# execution indefinitely. Individual tests may override their TIMEOUT property
+# after registration when they have a justified longer runtime.
+set(BW_TEST_TIMEOUT_SECONDS "300" CACHE STRING
+    "Default maximum runtime of each CTest test")
+
 include(Submodules)
 bw_ensure_willpower()
 

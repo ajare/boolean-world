@@ -7,21 +7,29 @@
 # NonInteractiveErrorMode.cpp in each executable is still useful for CRT
 # reports, but cannot suppress the missing-DLL dialog because that failure
 # occurs before any code in the test executable can run.
+#
+# Tests whose COMMAND names a CMake executable target also get their transitive
+# runtime DLLs staged automatically. Keeping both policies here means a newly
+# registered test is non-interactive and deployable by default rather than
+# relying on every caller to remember separate setup.
 function(add_test)
-    if(NOT WIN32 OR NOT TARGET boolean_world_test_launcher)
-        _add_test(${ARGV})
-        return()
-    endif()
-
     cmake_parse_arguments(PARSE_ARGV 0 _bw_test "COMMAND_EXPAND_LISTS"
         "NAME;WORKING_DIRECTORY" "COMMAND;CONFIGURATIONS")
     if(_bw_test_UNPARSED_ARGUMENTS OR NOT _bw_test_NAME OR NOT _bw_test_COMMAND)
         message(FATAL_ERROR "Unsupported add_test arguments: ${ARGV}")
     endif()
 
+    if(NOT WIN32 OR NOT TARGET boolean_world_test_launcher)
+        _add_test(${ARGV})
+        set_tests_properties("${_bw_test_NAME}" PROPERTIES
+            TIMEOUT "${BW_TEST_TIMEOUT_SECONDS}")
+        return()
+    endif()
+
     list(GET _bw_test_COMMAND 0 _bw_test_command)
     if(TARGET "${_bw_test_command}")
         add_dependencies("${_bw_test_command}" boolean_world_test_launcher)
+        bw_deploy_runtime_dlls("${_bw_test_command}")
         list(REMOVE_AT _bw_test_COMMAND 0)
         list(PREPEND _bw_test_COMMAND "$<TARGET_FILE:${_bw_test_command}>")
     endif()
@@ -39,6 +47,8 @@ function(add_test)
     _add_test(NAME "${_bw_test_NAME}"
         COMMAND "$<TARGET_FILE:boolean_world_test_launcher>" ${_bw_test_COMMAND}
         ${_bw_test_options})
+    set_tests_properties("${_bw_test_NAME}" PROPERTIES
+        TIMEOUT "${BW_TEST_TIMEOUT_SECONDS}")
 endfunction()
 
 # bw_add_header_filter(<target> [include-dir...])
@@ -171,10 +181,25 @@ function(bw_deploy_runtime_dlls tgt)
     if(NOT WIN32)
         return()
     endif()
+
+    # add_test() applies this automatically, while existing application and
+    # explicit test setup may apply it earlier. Only attach one post-build
+    # command in either case.
+    get_property(_bw_runtime_dlls_configured TARGET ${tgt}
+        PROPERTY BW_RUNTIME_DLLS_CONFIGURED SET)
+    if(_bw_runtime_dlls_configured)
+        return()
+    endif()
+    set_property(TARGET ${tgt} PROPERTY BW_RUNTIME_DLLS_CONFIGURED TRUE)
+
+    # A test with no shared-library dependencies has an empty runtime DLL list.
+    # Route staging through a script so that case is a successful no-op. A pipe
+    # is safe as the list separator because Windows paths cannot contain it.
     add_custom_command(TARGET ${tgt} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "$<TARGET_RUNTIME_DLLS:${tgt}>" "$<TARGET_FILE_DIR:${tgt}>"
-        COMMAND_EXPAND_LISTS
+        COMMAND ${CMAKE_COMMAND}
+                "-DBW_RUNTIME_DLLS=$<JOIN:$<TARGET_RUNTIME_DLLS:${tgt}>,|>"
+                "-DBW_RUNTIME_DLL_DESTINATION=$<TARGET_FILE_DIR:${tgt}>"
+                -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/DeployRuntimeDlls.cmake"
         VERBATIM
         COMMENT "Staging runtime DLLs for ${tgt}")
 endfunction()
@@ -188,6 +213,14 @@ function(bw_deploy_vendor_dlls tgt)
     if(NOT WIN32)
         return()
     endif()
+
+    get_property(_bw_vendor_dlls_configured TARGET ${tgt}
+        PROPERTY BW_VENDOR_DLLS_CONFIGURED SET)
+    if(_bw_vendor_dlls_configured)
+        return()
+    endif()
+    set_property(TARGET ${tgt} PROPERTY BW_VENDOR_DLLS_CONFIGURED TRUE)
+
     add_custom_command(TARGET ${tgt} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${BW_VENDOR_BIN}/$<IF:$<CONFIG:Debug,MemCheck>,Debug,Release>"

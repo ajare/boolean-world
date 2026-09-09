@@ -10,6 +10,37 @@
 
 namespace {
 
+constexpr DWORD statusInvalidImageFormat = 0xC000007B;
+constexpr DWORD statusDllNotFound = 0xC0000135;
+constexpr DWORD statusDllInitFailed = 0xC0000142;
+constexpr DWORD statusEntryPointNotFound = 0xC0000139;
+
+void reportLoaderFailure(DWORD exitCode) {
+  wchar_t const* reason = nullptr;
+  switch (exitCode) {
+    case statusInvalidImageFormat:
+      reason = L"invalid executable or DLL image (often an architecture mismatch)";
+      break;
+    case statusDllNotFound:
+      reason = L"required DLL not found";
+      break;
+    case statusDllInitFailed:
+      reason = L"DLL initialization failed";
+      break;
+    case statusEntryPointNotFound:
+      reason = L"required DLL entry point not found";
+      break;
+    default:
+      return;
+  }
+
+  std::fwprintf(stderr,
+                L"Test failed during Windows loader startup: %ls "
+                L"(status 0x%08lX). Check the test target's runtime DLL "
+                L"dependencies and staging.\n",
+                reason, exitCode);
+}
+
 std::wstring quoteArgument(std::wstring const& argument) {
   std::wstring quoted = L"\"";
   std::size_t backslashes = 0;
@@ -74,6 +105,7 @@ int wmain(int argc, wchar_t** argv) {
                  GetLastError());
   }
 
+  reportLoaderFailure(exitCode);
   CloseHandle(processInfo.hThread);
   CloseHandle(processInfo.hProcess);
   return static_cast<int>(exitCode);
