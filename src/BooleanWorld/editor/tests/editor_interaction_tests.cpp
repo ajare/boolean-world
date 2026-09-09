@@ -258,6 +258,9 @@ void activeTileMapClicksToggleOnlyItsBoundedCells() {
           "clicking an active TileMap did not toggle its cell");
   require(!document.getSelectedPrimitiveIndices().contains(primitiveIndex),
           "clicking an active TileMap selected a Primitive beneath it");
+  input.leftClicked = false;
+  input.leftReleased = true;
+  interaction.updateSelection(&document, nullptr, settings, input);
 
   editor::undo(&document);
   layer = document.getWorld()->getActiveLayer();
@@ -276,19 +279,71 @@ void activeTileMapClicksToggleOnlyItsBoundedCells() {
   require(tileMap->getCell(1, 2) == 1,
           "a click on the TileMap's excluded upper boundary changed a cell");
 
-  input = pointerAt({40.0f, 70.0f});
+  auto undoLevelsBeforeDrag = editor::getUndoLevels();
+  input = pointerAt({8.0f, 8.0f});
+  input.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, input);
+  input = pointerAt({40.0f, 8.0f});
   input.leftDown = true;
   input.leftDragging = true;
   interaction.updateSelection(&document, nullptr, settings, input);
-  require(tileMap->getCell(1, 2) == 1,
-          "dragging painted an active TileMap cell");
-
-  layer->setStepEnabled(1, false);
-  input.leftClicked = true;
+  input = pointerAt({72.0f, 8.0f});
+  input.leftDown = true;
+  input.leftDragging = true;
+  interaction.updateSelection(&document, nullptr, settings, input);
   input.leftDown = false;
   input.leftDragging = false;
+  input.leftReleased = true;
   interaction.updateSelection(&document, nullptr, settings, input);
-  require(tileMap->getCell(1, 2) == 1,
+  require(tileMap->getCell(0, 0) == 1 &&
+              tileMap->getCell(1, 0) == 1 &&
+              tileMap->getCell(2, 0) == 1,
+          "dragging did not paint every visited TileMap cell");
+  require(editor::getUndoLevels() == undoLevelsBeforeDrag + 1,
+          "a TileMap drag did not create exactly one undo entry");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  tileMap = dynamic_cast<bw::core::TileMap*>(layer->getActiveStep());
+  require(tileMap->getCell(0, 0) == 0 &&
+              tileMap->getCell(1, 0) == 0 &&
+              tileMap->getCell(2, 0) == 0,
+          "undo did not revert the complete TileMap drag");
+
+  editor::redo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  tileMap = dynamic_cast<bw::core::TileMap*>(layer->getActiveStep());
+  input = pointerAt({72.0f, 8.0f});
+  input.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, input);
+  input = pointerAt({8.0f, 8.0f});
+  input.leftDown = true;
+  input.leftDragging = true;
+  interaction.updateSelection(&document, nullptr, settings, input);
+  input = pointerAt({72.0f, 8.0f});
+  input.leftDown = true;
+  input.leftDragging = true;
+  interaction.updateSelection(&document, nullptr, settings, input);
+  input.leftDown = false;
+  input.leftDragging = false;
+  input.leftReleased = true;
+  interaction.updateSelection(&document, nullptr, settings, input);
+  require(tileMap->getCell(0, 0) == 0 &&
+              tileMap->getCell(1, 0) == 0 &&
+              tileMap->getCell(2, 0) == 0,
+          "dragging from a set cell did not erase every crossed cell");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  tileMap = dynamic_cast<bw::core::TileMap*>(layer->getActiveStep());
+  require(tileMap->getCell(0, 0) == 1 &&
+              tileMap->getCell(1, 0) == 1 &&
+              tileMap->getCell(2, 0) == 1,
+          "undo did not restore cells erased by a TileMap drag");
+
+  layer->setStepEnabled(1, false);
+  input = pointerAt({104.0f, 104.0f});
+  input.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, input);
+  require(tileMap->getCell(3, 3) == 0,
           "clicking a disabled TileMap changed a cell");
 }
 
@@ -2575,9 +2630,8 @@ void prefabDrawCanStartAtAnExistingGridVertexDespiteOverlappingStepGeometry() {
   layer->setActiveStep(stepIndex);
   auto* source = bw::core::MeshPrimitive::fromTree(
       bw::core::Primitive::Operation::Union,
-      {{{{{-1.0f, -1.0f}}, {{1.0f, -1.0f}},
-          {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}},
-         {}}});
+      {{{{{-1.0f, -1.0f}}, {{1.0f, -1.0f}}, {{1.0f, 1.0f}}, {{-1.0f, 1.0f}}},
+        {}}});
   source->setSize(8.0f, 8.0f);
   source->setPosition({-64.0f, -28.0f});
   source->updateVertexPositions();
@@ -2625,9 +2679,8 @@ void gridSnappedDrawPointTakesPrecedenceOverNearbyPrefabVertex() {
   layer->setActiveStep(stepIndex);
   auto* source = bw::core::MeshPrimitive::fromTree(
       bw::core::Primitive::Operation::Union,
-      {{{{{-8.0f, -4.0f}}, {{8.0f, -4.0f}},
-          {{8.0f, 4.0f}}, {{-8.0f, 4.0f}}},
-         {}}});
+      {{{{{-8.0f, -4.0f}}, {{8.0f, -4.0f}}, {{8.0f, 4.0f}}, {{-8.0f, 4.0f}}},
+        {}}});
   layer->addPrimitive(source);
   layer->rebuild();
   require(document.activateMesh(prefab->getPrimitive(0)->getId()),

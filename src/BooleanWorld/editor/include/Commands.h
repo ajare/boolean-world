@@ -144,7 +144,8 @@ namespace editor {
   X(EditPrimitiveShape, "Edit Primitive shape") \
   X(CreateTriggerLine, "Create TriggerLine") \
   X(PlacePrimitiveField, "Place Primitive field") \
-  X(SwapPrimitivePriorities, "Swap Primitive priorities")
+  X(SwapPrimitivePriorities, "Swap Primitive priorities") \
+  X(PaintTileMapCells, "Paint TileMap cells")
 
 enum class CommandId : uint16_t {
 #define EDITOR_COMMAND_ENUM(type, label, function) type,

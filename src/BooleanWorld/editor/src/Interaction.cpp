@@ -136,30 +136,86 @@ void EditorInteraction::updateSelection(
   auto* tileMap = layer
                       ? dynamic_cast<bw::core::TileMap*>(layer->getActiveStep())
                       : nullptr;
+  if (!tileMap && mTileMapPaintActive) {
+    if (input.leftReleased) {
+      if (undoableActionInProgress()) commitUndoableAction(doc);
+      mTileMapPaintActive = false;
+      mTileMapLastPaintCell.reset();
+    }
+    return;
+  }
   if (tileMap) {
     mHover = {};
     mPendingPrimitiveClick.clear();
     mPendingMeshSubObjectClick.clear();
     mBoxSelectPending = false;
     mBoxSelectDragging = false;
-    if (!tileMap->isEnabled() || !input.leftClicked ||
+
+    if (input.leftReleased) {
+      if (mTileMapPaintActive && undoableActionInProgress()) {
+        commitUndoableAction(doc);
+      }
+      mTileMapPaintActive = false;
+      mTileMapLastPaintCell.reset();
+      return;
+    }
+
+    if (!tileMap->isEnabled() ||
+        (!input.leftClicked &&
+         !(mTileMapPaintActive && input.leftDown)) ||
         !input.cursorInWorldView || input.cursorInMiniMap) {
+      if (mTileMapPaintActive) mTileMapLastPaintCell.reset();
       return;
     }
     auto const mapSize = static_cast<float>(tileMap->getMapSize());
     auto const& position = input.worldPosition;
     if (position.x < 0.0f || position.y < 0.0f ||
         position.x >= mapSize || position.y >= mapSize) {
+      if (mTileMapPaintActive) mTileMapLastPaintCell.reset();
       return;
     }
     auto const cellSize = static_cast<float>(tileMap->getCellSize());
     auto const x = static_cast<uint32_t>(floor(position.x / cellSize));
     auto const y = static_cast<uint32_t>(floor(position.y / cellSize));
-    (void)transactUndoableActionAtomically(
-        doc, CommandId::ToggleTileMapCell,
-        [&](Document* doc) {
-          return toggleTileMapCell(doc, layer, tileMap, x, y);
-        });
+
+    if (input.leftClicked) {
+      mTileMapPaintActive = true;
+      mTileMapPaintValue = tileMap->getCell(x, y) == 0 ? 1 : 0;
+      mTileMapLastPaintCell = array<uint32_t, 2>{x, y};
+      beginTransaction(doc, CommandId::PaintTileMapCells, 0.0f);
+    }
+
+    auto from = mTileMapLastPaintCell.value_or(array<uint32_t, 2>{x, y});
+    auto lineX = static_cast<int>(from[0]);
+    auto lineY = static_cast<int>(from[1]);
+    auto const targetX = static_cast<int>(x);
+    auto const targetY = static_cast<int>(y);
+    auto const deltaX = abs(targetX - lineX);
+    auto const deltaY = -abs(targetY - lineY);
+    auto const stepX = lineX < targetX ? 1 : -1;
+    auto const stepY = lineY < targetY ? 1 : -1;
+    auto error = deltaX + deltaY;
+    bool changed = false;
+    while (true) {
+      auto const cellX = static_cast<uint32_t>(lineX);
+      auto const cellY = static_cast<uint32_t>(lineY);
+      if (tileMap->getCell(cellX, cellY) != mTileMapPaintValue) {
+        tileMap->setCell(cellX, cellY, mTileMapPaintValue);
+        changed = true;
+      }
+      if (lineX == targetX && lineY == targetY) break;
+      auto const twiceError = 2 * error;
+      if (twiceError >= deltaY) {
+        error += deltaY;
+        lineX += stepX;
+      }
+      if (twiceError <= deltaX) {
+        error += deltaX;
+        lineY += stepY;
+      }
+    }
+    mTileMapLastPaintCell = array<uint32_t, 2>{x, y};
+    if (changed) layer->rebuild();
     return;
   }
 

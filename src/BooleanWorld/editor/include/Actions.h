@@ -69,6 +69,10 @@ class EditorInteraction {
   bool mBoxSelectDragging{false};
   wp::Vector2 mBoxSelectStartScreen;
 
+  bool mTileMapPaintActive{false};
+  int mTileMapPaintValue{0};
+  std::optional<std::array<uint32_t, 2>> mTileMapLastPaintCell;
+
   bool mMovingSelectedPrimitives{false};
   // A move is measured against the whole gesture rather than frame by
   // frame, so grid snapping quantises where the selection has been dragged
