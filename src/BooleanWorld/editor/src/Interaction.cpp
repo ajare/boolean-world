@@ -131,6 +131,38 @@ void EditorInteraction::updateSelection(
     mPendingPrimitiveClick.clear();
   }
 
+  // An active TileMap is the sole authored object under the pointer. View
+  // navigation is handled outside this selection path and remains available.
+  auto* tileMap = layer
+                      ? dynamic_cast<bw::core::TileMap*>(layer->getActiveStep())
+                      : nullptr;
+  if (tileMap) {
+    mHover = {};
+    mPendingPrimitiveClick.clear();
+    mPendingMeshSubObjectClick.clear();
+    mBoxSelectPending = false;
+    mBoxSelectDragging = false;
+    if (!tileMap->isEnabled() || !input.leftClicked ||
+        !input.cursorInWorldView || input.cursorInMiniMap) {
+      return;
+    }
+    auto const mapSize = static_cast<float>(tileMap->getMapSize());
+    auto const& position = input.worldPosition;
+    if (position.x < 0.0f || position.y < 0.0f ||
+        position.x >= mapSize || position.y >= mapSize) {
+      return;
+    }
+    auto const cellSize = static_cast<float>(tileMap->getCellSize());
+    auto const x = static_cast<uint32_t>(floor(position.x / cellSize));
+    auto const y = static_cast<uint32_t>(floor(position.y / cellSize));
+    (void)transactUndoableActionAtomically(
+        doc, CommandId::ToggleTileMapCell,
+        [&](Document* doc) {
+          return toggleTileMapCell(doc, layer, tileMap, x, y);
+        });
+    return;
+  }
+
   // A clone in flight owns the pointer outright, in every mode: it follows
   // the cursor, the left button places it, and the right button discards it
   // without leaving an undo entry. Nothing hovers, selects or rubber-bands

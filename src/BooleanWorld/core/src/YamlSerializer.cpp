@@ -1,4 +1,3 @@
-#include <cassert>
 #include <fstream>
 #include <format>
 
@@ -211,7 +210,11 @@ bool YamlSerializer::nextArrayItem() {
   auto& node = mNodeStack.top();
   auto& seqIt = mSeqIteratorStack.top();
 
-  assert(node.IsSequence() && "YamlSerializer::nextArrayItem() - node is not a sequence");
+  if (!node.IsSequence()) {
+    throw SerializationException(format(
+        "Expected a sequence at {}, found YAML node type {}", getPath(""),
+        static_cast<uint32_t>(node.Type())));
+  }
 
   return ++seqIt != node.size();
 }

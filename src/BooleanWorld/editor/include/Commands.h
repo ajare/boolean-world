@@ -27,6 +27,9 @@ namespace editor {
   X(SetRunScriptExtraResourceNames, "Set RunScript extra resources", setRunScriptExtraResourceNames) \
   X(SetRunScriptParameterValue, "Set RunScript parameter", setRunScriptParameterValue) \
   X(ClearRunScriptParameterValue, "Revert RunScript parameter", clearRunScriptParameterValue) \
+  X(SetTileMapMapSize, "Set TileMap Map size", setTileMapMapSize) \
+  X(SetTileMapCellSize, "Set TileMap cell size", setTileMapCellSize) \
+  X(ToggleTileMapCell, "Toggle TileMap cell", toggleTileMapCell) \
   X(MovePrimitiveToLayerBuildStep, "Move Primitive to Layer step", movePrimitiveToLayerBuildStep) \
   X(SelectPrefab, "Select Prefab", selectPrefab) \
   X(CreatePrefab, "Create Prefab", createPrefab) \

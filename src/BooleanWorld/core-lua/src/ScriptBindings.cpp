@@ -16,6 +16,7 @@
 #include <core/MeshPrimitive.h>
 #include <core/Primitive.h>
 #include <core/PrimitiveField.h>
+#include <core/TileMap.h>
 
 #include "core-lua/RunScript.h"
 
@@ -628,6 +629,35 @@ PrimitiveFieldView RunScriptContext::findPrimitiveField(string const& name) cons
   return PrimitiveFieldView{step};
 }
 
+TileMapView RunScriptContext::findTileMap(string const& name) const {
+  auto& layer = mBuild->getLayer();
+  auto const id = layer.findStepIdByName(name);
+  if (id == ~0u) {
+    throw CoreException(format("No step named '{}'", name));
+  }
+  auto* tileMap = dynamic_cast<TileMap*>(layer.getStepById(id));
+  if (!tileMap) {
+    throw CoreException(format("Step '{}' is not a TileMap step", name));
+  }
+
+  uint32_t tileMapIndex = ~0u;
+  uint32_t runScriptIndex = ~0u;
+  for (uint32_t index = 0; index < layer.getNumSteps(); ++index) {
+    auto* candidate = layer.getStep(index);
+    if (candidate == tileMap) tileMapIndex = index;
+    if (candidate == mStep) runScriptIndex = index;
+  }
+  if (!tileMap->isEnabled()) {
+    throw CoreException(format("TileMap step '{}' is disabled", name));
+  }
+  if (tileMapIndex == ~0u || runScriptIndex == ~0u ||
+      tileMapIndex >= runScriptIndex) {
+    throw CoreException(format(
+        "TileMap step '{}' must precede this RunScript step", name));
+  }
+  return TileMapView{tileMap};
+}
+
 vector<PrimitiveView> RunScriptContext::getBuildPrimitives() const {
   return toPrimitiveViews(mBuild->getBuildPrimitives());
 }
@@ -1037,6 +1067,7 @@ void bindScriptTypes(sol::state& lua) {
       },
       "find_define_prefabs", &RunScriptContext::findDefinePrefabs,
       "find_primitive_field", &RunScriptContext::findPrimitiveField,
+      "find_tile_map", &RunScriptContext::findTileMap,
       "get_build_primitives",
       [](RunScriptContext const& context) {
         return sol::as_table(context.getBuildPrimitives());
@@ -1133,6 +1164,14 @@ void bindScriptTypes(sol::state& lua) {
       [](PrimitiveFieldView const& view) {
         return sol::as_table(toPrimitiveViews(view.step->getPrimitives()));
       });
+
+  lua.new_usertype<TileMapView>(
+      "TileMapStep", sol::no_constructor,
+      "get_cell", [](TileMapView const& view, uint32_t x, uint32_t y) { return view.step->getCell(x, y); },
+      "get_width", [](TileMapView const& view) { return view.step->getWidth(); },
+      "get_height", [](TileMapView const& view) { return view.step->getHeight(); },
+      "get_map_size", [](TileMapView const& view) { return view.step->getMapSize(); },
+      "get_cell_size", [](TileMapView const& view) { return view.step->getCellSize(); });
 
   lua[boundMarker] = true;
 }

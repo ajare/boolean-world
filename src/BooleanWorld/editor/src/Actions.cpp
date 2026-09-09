@@ -124,6 +124,37 @@ bool setLayerBuildStepName(
   return true;
 }
 
+bool setTileMapMapSize(
+    Document*, bw::core::Layer* layer, bw::core::TileMap* tileMap,
+    uint32_t size) {
+  if (layer->getActiveStep() != tileMap || tileMap->getMapSize() == size) {
+    return false;
+  }
+  tileMap->setMapSize(size);
+  layer->rebuild();
+  return true;
+}
+
+bool setTileMapCellSize(
+    Document*, bw::core::Layer* layer, bw::core::TileMap* tileMap,
+    uint32_t size) {
+  if (layer->getActiveStep() != tileMap || tileMap->getCellSize() == size) {
+    return false;
+  }
+  tileMap->setCellSize(size);
+  layer->rebuild();
+  return true;
+}
+
+bool toggleTileMapCell(
+    Document*, bw::core::Layer* layer, bw::core::TileMap* tileMap,
+    uint32_t x, uint32_t y) {
+  if (layer->getActiveStep() != tileMap || !tileMap->isEnabled()) return false;
+  tileMap->toggleCell(x, y);
+  layer->rebuild();
+  return true;
+}
+
 bool movePrimitiveToLayerBuildStep(
     Document* doc,
     bw::core::Layer* layer,

@@ -19,6 +19,7 @@ class MeshPrimitiveEditingProxy;
 class Prefab;
 class DefinePrefabs;
 class PrimitiveField;
+class TileMap;
 class LayerBuildContext;
 class RunScript;
 
@@ -94,6 +95,11 @@ struct PrimitiveFieldView {
   PrimitiveField const* step;
 };
 
+// A read-only view of an earlier, enabled TileMap step.
+struct TileMapView {
+  TileMap const* step;
+};
+
 // A mutable, borrowed MeshPrimitive plus its editing authority. Keeping the
 // proxy alive for the whole handle lifetime lets ids returned by one geometry
 // operation be passed directly to the next.
@@ -162,6 +168,7 @@ public:
       std::string const& name) const;
   [[nodiscard]] PrimitiveFieldView findPrimitiveField(
       std::string const& name) const;
+  [[nodiscard]] TileMapView findTileMap(std::string const& name) const;
   [[nodiscard]] std::vector<PrimitiveView> getBuildPrimitives() const;
   [[nodiscard]] std::tuple<float, float, float, float> getExtents() const;
   [[nodiscard]] std::vector<PrimitiveView> findBuildPrimitivesOverlapping(

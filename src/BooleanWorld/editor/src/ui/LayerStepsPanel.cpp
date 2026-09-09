@@ -413,6 +413,51 @@ void renderRunScriptView(
   }
 }
 
+void renderTileMapView(ViewContext& context, bw::core::TileMap* tileMap) {
+  auto* doc = context.doc;
+  auto* layer = doc->getWorld()->getActiveLayer();
+
+  auto const mapSize = tileMap->getMapSize();
+  auto const mapLabel = format("{}", mapSize);
+  ImGui::SetNextItemWidth(180.0f);
+  if (ImGui::BeginCombo("Map size", mapLabel.c_str())) {
+    for (auto size : {64u, 128u, 256u}) {
+      auto const selected = size == mapSize;
+      auto const label = format("{}", size);
+      if (ImGui::Selectable(label.c_str(), selected)) {
+        transact(doc, CommandId::SetTileMapMapSize, [&] {
+          setTileMapMapSize(doc, layer, tileMap, size);
+        });
+      }
+      if (selected) ImGui::SetItemDefaultFocus();
+    }
+    ImGui::EndCombo();
+  }
+
+  auto const cellSize = tileMap->getCellSize();
+  auto const cellLabel = format("{}", cellSize);
+  ImGui::SetNextItemWidth(180.0f);
+  if (ImGui::BeginCombo("Cell size", cellLabel.c_str())) {
+    for (auto size : {2u, 4u, 8u, 16u, 32u}) {
+      auto const selected = size == cellSize;
+      auto const label = format("{}", size);
+      if (ImGui::Selectable(label.c_str(), selected)) {
+        transact(doc, CommandId::SetTileMapCellSize, [&] {
+          setTileMapCellSize(doc, layer, tileMap, size);
+        });
+      }
+      if (selected) ImGui::SetItemDefaultFocus();
+    }
+    ImGui::EndCombo();
+  }
+  ImGui::Text("Grid: %u x %u", tileMap->getWidth(), tileMap->getHeight());
+  if (tileMap->isEnabled()) {
+    ImGui::TextUnformatted("Click a cell in the World view to toggle it.");
+  } else {
+    ImGui::TextDisabled("Enable this step to edit its cells.");
+  }
+}
+
 void renderLayerStepsView(ViewContext& context) {
   auto* doc = context.doc;
   auto& settings = context.settings;
@@ -452,6 +497,7 @@ void renderLayerStepsView(ViewContext& context) {
     // ephemeral editor-authoring focus, never serialized.
     if (ImGui::RadioButton("##StepActive", i == activeStepIndex)) {
       layer->setActiveStep(i);
+      if (doc->clonePlacementArmed()) cancelClonePlacement(doc);
       doc->disarmMeshDrawTool();
       doc->clearActiveMesh();
       doc->clearSelections();
@@ -561,6 +607,5 @@ void renderLayerStepsView(ViewContext& context) {
     transact(doc, CommandId::AddLayerBuildStep, [&] { addLayerBuildStep(doc, layer, selectedStepType); });
   }
 }
-
 
 }  // namespace editor

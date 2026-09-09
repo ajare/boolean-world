@@ -13,6 +13,7 @@
 #include <core/DefinePrefabs.h>
 #include <core/Emboss.h>
 #include <core/PrefabField.h>
+#include <core/TileMap.h>
 
 #include "Undo.h"
 #include "Document.h"
@@ -176,6 +177,16 @@ bool movePrimitiveToLayerBuildStep(
     bw::core::Layer* layer,
     bw::core::Primitive* primitive,
     uint32_t targetStepIndex);
+
+bool setTileMapMapSize(
+    Document* doc, bw::core::Layer* layer, bw::core::TileMap* tileMap,
+    uint32_t size);
+bool setTileMapCellSize(
+    Document* doc, bw::core::Layer* layer, bw::core::TileMap* tileMap,
+    uint32_t size);
+bool toggleTileMapCell(
+    Document* doc, bw::core::Layer* layer, bw::core::TileMap* tileMap,
+    uint32_t x, uint32_t y);
 
 // Prefab selection is ephemeral focus and is called directly. The remaining
 // operations are authored edits intended to run through transactUndoableAction.

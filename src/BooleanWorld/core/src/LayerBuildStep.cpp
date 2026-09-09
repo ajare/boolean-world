@@ -4,6 +4,7 @@
 #include "core/PrimitiveField.h"
 #include "core/PrefabField.h"
 #include "core/Registry.h"
+#include "core/TileMap.h"
 
 namespace bw {
 namespace core {
@@ -35,6 +36,7 @@ void LayerBuildStep::registerCoreTypes() {
   registerType("DefinePrefabs", []() { return new DefinePrefabs; });
   registerType("PrefabField", []() { return new PrefabField; });
   registerType("PrimitiveField", []() { return new PrimitiveField; });
+  registerType("TileMap", []() { return new TileMap; });
 }
 
 void LayerBuildStep::copyFrom(LayerBuildStep const& other) {

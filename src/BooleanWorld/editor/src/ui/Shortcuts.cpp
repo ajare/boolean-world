@@ -53,6 +53,14 @@ void handleShortcuts(ViewContext& context) {
     }
   }
 
+  // TileMap authoring excludes interaction with every other authored object.
+  // File operations and TileMap undo/redo above remain available; view
+  // navigation is handled by the World view itself.
+  if (doc->isActive() && dynamic_cast<bw::core::TileMap*>(
+                             doc->getWorld()->getActiveLayer()->getActiveStep())) {
+    return;
+  }
+
   if (settings.mode == Settings::Mode::Mesh &&
       !ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
     if (ImGui::Shortcut(ImGuiKey_1 | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
@@ -365,6 +373,5 @@ void handleShortcuts(ViewContext& context) {
 
 void handleMouseInteraction(ViewContext&) {
 }
-
 
 }  // namespace editor

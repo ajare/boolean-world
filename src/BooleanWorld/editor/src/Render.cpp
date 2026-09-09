@@ -15,6 +15,7 @@
 #include <core/Layer.h>
 #include <core/DefinePrefabs.h>
 #include <core/PrefabField.h>
+#include <core/TileMap.h>
 #include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
 
@@ -356,6 +357,66 @@ void renderWorld(
 
   // Render
   auto drawList = ImGui::GetWindowDrawList();
+
+  // A TileMap is finite authored data rather than geometry. Draw its complete
+  // bounded grid before Primitives, filling set cells and highlighting the
+  // cell under the pointer. A disabled map remains visible but dimmed.
+  if (auto const* tileMap = activeLayer
+                                ? dynamic_cast<bw::core::TileMap const*>(
+                                      activeLayer->getActiveStep())
+                                : nullptr) {
+    auto const alpha = tileMap->isEnabled() ? 1.0f : 0.35f;
+    auto const cellSize = static_cast<float>(tileMap->getCellSize());
+    auto const dimension = tileMap->getWidth();
+    auto rectPoints = [&](float x0, float y0, float x1, float y1) {
+      auto first = worldToScreen({x0, y0});
+      auto second = worldToScreen({x1, y1});
+      return pair{
+          ImVec2{min(first.x, second.x), min(first.y, second.y)},
+          ImVec2{max(first.x, second.x), max(first.y, second.y)}};
+    };
+    auto const fill = ImColor(0.2f, 0.9f, 0.75f, 0.28f * alpha);
+    for (uint32_t y = 0; y < dimension; ++y) {
+      for (uint32_t x = 0; x < dimension; ++x) {
+        if (!tileMap->getCell(x, y)) continue;
+        auto const [minimum, maximum] = rectPoints(
+            x * cellSize, y * cellSize,
+            (x + 1) * cellSize, (y + 1) * cellSize);
+        drawList->AddRectFilled(minimum, maximum, fill);
+      }
+    }
+    auto const mapSize = static_cast<float>(tileMap->getMapSize());
+    auto const gridColour = ImColor(0.2f, 0.9f, 0.75f, 0.7f * alpha);
+    for (uint32_t line = 0; line <= dimension; ++line) {
+      auto const coordinate = line * cellSize;
+      drawList->AddLine(
+          worldToScreen({coordinate, 0.0f}),
+          worldToScreen({coordinate, mapSize}), gridColour, 1.0f);
+      drawList->AddLine(
+          worldToScreen({0.0f, coordinate}),
+          worldToScreen({mapSize, coordinate}), gridColour, 1.0f);
+    }
+
+    if (tileMap->isEnabled()) {
+      auto const mouse = ImGui::GetMousePos();
+      auto const withinWorldView =
+          mouse.x >= gWorldViewScreenOrigin.x &&
+          mouse.y >= gWorldViewScreenOrigin.y &&
+          mouse.x < gWorldViewScreenOrigin.x + gWorldViewSize.x &&
+          mouse.y < gWorldViewScreenOrigin.y + gWorldViewSize.y;
+      auto const position = editor::screenToWorldPosition(mouse);
+      if (withinWorldView && position.x >= 0.0f && position.y >= 0.0f &&
+          position.x < mapSize && position.y < mapSize) {
+        auto const x = static_cast<uint32_t>(floor(position.x / cellSize));
+        auto const y = static_cast<uint32_t>(floor(position.y / cellSize));
+        auto const [minimum, maximum] = rectPoints(
+            x * cellSize, y * cellSize,
+            (x + 1) * cellSize, (y + 1) * cellSize);
+        drawList->AddRect(
+            minimum, maximum, IM_COL32(255, 230, 70, 255), 0.0f, 0, 2.5f);
+      }
+    }
+  }
 
   // The tiling guide is the active DefinePrefabs step's pivot frame, not the
   // snapping grid. Draw it before every Primitive so it cannot obscure the

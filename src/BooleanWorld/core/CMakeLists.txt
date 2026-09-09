@@ -40,6 +40,7 @@ add_library(core STATIC
     src/SubMaterial.cpp
     src/SuperformulaPolygon.cpp
     src/TechniqueSchema.cpp
+    src/TileMap.cpp
     src/TorusPolygon.cpp
     src/TorusSegmentPolygon.cpp
     src/TransformFlow.cpp
@@ -78,6 +79,14 @@ bw_enable_sdl_checks(core)
 set_target_properties(core PROPERTIES FOLDER BooleanWorld)
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_tile_map_tests tests/tile_map_tests.cpp)
+    target_link_libraries(boolean_world_tile_map_tests PRIVATE core)
+    target_compile_features(boolean_world_tile_map_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_tile_map_tests)
+    bw_output_dirs(boolean_world_tile_map_tests)
+    bw_deploy_runtime_dlls(boolean_world_tile_map_tests)
+    add_test(NAME boolean_world_tile_map COMMAND boolean_world_tile_map_tests)
+
     add_executable(boolean_world_primitive_factory_tests
         tests/primitive_factory_tests.cpp)
     target_link_libraries(boolean_world_primitive_factory_tests PRIVATE core)

@@ -609,6 +609,12 @@ bool handleWorldInteraction(
     }
   }
 
+  auto* activeLayer = doc->getWorld()->getActiveLayer();
+  if (activeLayer && dynamic_cast<bw::core::TileMap*>(
+                         activeLayer->getActiveStep())) {
+    return false;
+  }
+
   gEditorInteraction.updateDrag(doc, gEditorSettings, input);
   return gEditorInteraction.updatePlayerProxy(doc, input);
 }

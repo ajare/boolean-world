@@ -111,6 +111,37 @@ void worldsRoundTripThroughBothSerializers() {
   requireWorldEmitter(binaryWorld);
 }
 
+void yamlWorldsFromBeforeAudioEmittersDefaultToNone() {
+  bw::core::World source(100.0f, 10.0f);
+  source.addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f));
+  auto writer = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::toString());
+  bw::core::SerializationWorkData writeData;
+  source.serialize(writer, writeData);
+  writer->serialize();
+  auto yaml = writer->getSerializedString();
+  auto const field = yaml.find("audioEmitters:");
+  auto const followingField = yaml.find("complexPolygons:", field);
+  require(field != std::string::npos && followingField != std::string::npos,
+          "AudioEmitter legacy YAML fixture could not remove the field");
+  auto const firstLine = yaml.rfind('\n', field) + 1;
+  auto const followingLine = yaml.rfind('\n', followingField) + 1;
+  yaml.erase(firstLine, followingLine - firstLine);
+
+  auto reader = std::shared_ptr<bw::core::Serializer>(
+      bw::core::YamlSerializer::fromString(yaml));
+  reader->deserialize();
+  bw::core::World loaded;
+  bw::core::SerializationWorkData readData{10.0f};
+  require(loaded.deserialize(reader, readData),
+          "YAML World from before AudioEmitters did not deserialize");
+  require(loaded.getNumPrimitives() == 1 &&
+              loaded.getPrimitive(0)->getAudioEmitters().empty(),
+          "a missing legacy audioEmitters field did not default to empty");
+}
+
 void captureAppliesEachSurvivalRuleAndUsesTheWinningFloor() {
   bw::core::World world(64.0f, 8.0f);
   auto* parent = makeRectangle(
@@ -318,6 +349,7 @@ int main() {
   try {
     bw::core::LayerBuildStep::registerCoreTypes();
     worldsRoundTripThroughBothSerializers();
+    yamlWorldsFromBeforeAudioEmittersDefaultToNone();
     captureAppliesEachSurvivalRuleAndUsesTheWinningFloor();
     captureSamplesTheEmitterPosition();
     replaceSquareClearsParentContributionAndPlacementKeyIdentifiesPrefab();

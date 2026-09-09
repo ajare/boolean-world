@@ -214,6 +214,25 @@ Step names are optional and non-unique; the first matching step in recipe order 
 
 **Errors:** fails if no step has that name or the first match has another type.
 
+### `context:find_tile_map(step_name)`
+
+Finds the first LayerBuildStep with `step_name` and requires it to be an enabled
+`TileMap` earlier than the current `RunScript` in recipe order. It does not skip
+a disabled, later, or wrong-type first match in favour of another duplicate
+name.
+
+```lua
+local layout = context:find_tile_map("layout")
+if layout:get_cell(3, 4) == 1 then
+    -- Generate content for the set cell.
+end
+```
+
+**Returns:** read-only `TileMapStep`.
+
+**Errors:** fails if no step has that name, the first match is not a TileMap, or
+the TileMap is disabled or does not precede this RunScript.
+
 ### `context:get_tile(grid_size, x, y)`
 
 Returns the integer coordinates of the Tile containing World position `(x, y)` on the requested grid. `grid_size` must be `32`, `64`, `128`, or `256`. All grids use the World origin as an intersection and half-open Tiles, matching `PrefabField`.
@@ -563,6 +582,20 @@ Returns the field's authored Primitives as an array of read-only `PrimitiveView`
 ```lua
 local primitives = field:get_primitives()
 ```
+
+## `TileMapStep`
+
+A read-only view returned by `context:find_tile_map`. Cell coordinates are
+zero-based from the lower-left of the Map, increasing rightward and upward.
+Out-of-range coordinates fail the script.
+
+| Method | Returns |
+|---|---|
+| `get_cell(x, y)` | Integer `0` for an unset cell or `1` for a set cell. |
+| `get_width()` | Map width in cells. |
+| `get_height()` | Map height in cells. |
+| `get_map_size()` | Map side length in World units: `64`, `128`, or `256`. |
+| `get_cell_size()` | Cell side length in World units: `2`, `4`, `8`, `16`, or `32`. |
 
 ## Available Lua libraries
 

@@ -21,6 +21,7 @@
 
 #include <core/DefinePrefabs.h>
 #include <core/LayerBuildStep.h>
+#include <core/TileMap.h>
 #include <core/WorldData.h>
 #include <core-lua/RunScript.h>
 #include <core/RegularPolygon.h>
@@ -124,6 +125,7 @@ void renderSelectedPrefabView(ViewContext& context,
 void renderPrefabFieldView(ViewContext& context,
                            bw::core::PrefabField* prefabField);
 void renderRunScriptView(ViewContext& context, bw::core::RunScript* runScript);
+void renderTileMapView(ViewContext& context, bw::core::TileMap* tileMap);
 void renderCreateTriggerLineView(ViewContext& context);
 void renderEditTriggerLineView(ViewContext& context,
                                uint32_t triggerLineIndex);

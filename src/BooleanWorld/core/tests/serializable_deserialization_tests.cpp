@@ -8,6 +8,7 @@
 #include <core/PrimitivePropertySet.h>
 #include <core/RectanglePolygon.h>
 #include <core/Serializable.h>
+#include <core/SerializationException.h>
 #include <core/YamlSerializer.h>
 
 namespace {
@@ -202,6 +203,24 @@ void propertySetRoundTripsEmbossPresetIdsInBinary() {
           "Elevation planes and Emboss-preset ids did not round-trip in binary data");
 }
 
+void malformedYamlArraysReportTheirPathInsteadOfAborting() {
+  auto serializer = std::shared_ptr<bw::core::Serializer>(
+      bw::core::YamlSerializer::fromString("items: not-an-array\n"));
+  serializer->deserialize();
+  serializer->beginArray("items");
+  try {
+    (void)serializer->nextArrayItem();
+  } catch (bw::core::SerializationException const& error) {
+    auto const message = std::string(error.what());
+    require(message.find("/items/") != std::string::npos &&
+                message.find("Expected a sequence") != std::string::npos,
+            "malformed YAML array error did not identify its path and shape");
+    serializer->endArray();
+    return;
+  }
+  throw std::runtime_error("a malformed YAML array was accepted");
+}
+
 void propertySetRejectsLegacyShapeWithoutEmbossPresetIds() {
   auto serializer = std::shared_ptr<bw::core::Serializer>(
       bw::core::YamlSerializer::fromString(
@@ -225,6 +244,7 @@ int main() {
     propertySetRoundTripsElevationSpans();
     legacyElevationPlanesMigrateAfterGeometryIsAvailable();
     propertySetRoundTripsEmbossPresetIdsInBinary();
+    malformedYamlArraysReportTheirPathInsteadOfAborting();
     propertySetRejectsLegacyShapeWithoutEmbossPresetIds();
     std::cout << "Serializable deserialization coverage passed\n";
     return 0;

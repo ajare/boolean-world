@@ -21,6 +21,7 @@
 #include <core/MeshPrimitive.h>
 #include <core/PrimitiveField.h>
 #include <core/RectanglePolygon.h>
+#include <core/TileMap.h>
 #include <core/World.h>
 #include <core/YamlSerializer.h>
 
@@ -1785,6 +1786,48 @@ void coroutinesAdvanceAcrossTicksAndContainFailures() {
           "one coroutine's error stopped or corrupted another live coroutine");
 }
 
+void scriptsQueryEarlierEnabledTileMaps() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("read-tile-map", R"(
+    local map = context:find_tile_map("layout")
+    local p = context:create_primitive("Rectangle")
+    p:set_position(map:get_cell(3, 4) * 10, map:get_width())
+    p:set_size(map:get_map_size(), map:get_cell_size())
+    context:place_primitive(p)
+  )");
+  runtime.load("read-outside-tile-map", R"(
+    context:find_tile_map("layout"):get_cell(8, 0)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* map = new bw::core::TileMap;
+  map->setName("layout");
+  map->setCell(3, 4, 1);
+  layer.addStep(map);
+  auto* script = addScriptStep(layer, runtime, "read-tile-map");
+  layer.rebuild();
+
+  require(!script->hasFailed(), "querying an earlier enabled TileMap failed");
+  require(layer.getNumPrimitives() == 1 && at(layer.getPrimitive(0), 10.0f),
+          "Lua did not read the TileMap cell value");
+  require(layer.getPrimitive(0)->getSize().x == 256.0f &&
+              layer.getPrimitive(0)->getSize().y == 32.0f &&
+              layer.getPrimitive(0)->getPosition().y == 8.0f,
+          "Lua did not expose the TileMap dimensions and sizes");
+
+  script->setScriptName("read-outside-tile-map");
+  layer.rebuild();
+  require(script->hasFailed(), "Lua read an out-of-range TileMap cell");
+  script->setScriptName("read-tile-map");
+
+  layer.setStepEnabled(1, false);
+  require(script->hasFailed(), "Lua queried a disabled TileMap");
+
+  layer.setStepEnabled(1, true);
+  layer.moveStep(1, 2);
+  require(script->hasFailed(), "Lua queried a TileMap later in the recipe");
+}
+
 void namingAMissingStepOrPrefabFailsTheStepWithTheName() {
   bw::core::ScriptRuntime runtime;
   runtime.load("missing-step", R"(context:find_define_prefabs("nope"))");
@@ -1868,6 +1911,7 @@ int main() {
     malformedLuaPrefabTagFiltersFailTheStep();
     aScriptReadsAPrimitiveFieldsPrimitivesAsConst();
     aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName();
+    scriptsQueryEarlierEnabledTileMaps();
     reloadingRebuildsExactlyTheLayersThatNameTheScript();
     coroutinesAdvanceAcrossTicksAndContainFailures();
     namingAMissingStepOrPrefabFailsTheStepWithTheName();

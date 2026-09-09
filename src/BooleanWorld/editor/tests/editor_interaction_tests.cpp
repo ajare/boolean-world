@@ -239,6 +239,59 @@ editor::PointerInput pointerAt(wp::Vector2 const& position) {
   return input;
 }
 
+void activeTileMapClicksToggleOnlyItsBoundedCells() {
+  editor::Document document;
+  editor::Settings settings;
+  settings.ghostActive = false;
+  document.newDoc();
+  auto primitiveIndex = addRectangle(document, {40.0f, 70.0f});
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* tileMap = new bw::core::TileMap;
+  layer->addStep(tileMap);
+  layer->setActiveStep(1);
+  editor::EditorInteraction interaction;
+
+  auto input = pointerAt({40.0f, 70.0f});
+  input.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, input);
+  require(tileMap->getCell(1, 2) == 1,
+          "clicking an active TileMap did not toggle its cell");
+  require(!document.getSelectedPrimitiveIndices().contains(primitiveIndex),
+          "clicking an active TileMap selected a Primitive beneath it");
+
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  tileMap = dynamic_cast<bw::core::TileMap*>(layer->getActiveStep());
+  require(tileMap && tileMap->getCell(1, 2) == 0,
+          "undo did not restore the active TileMap and its cell value");
+  editor::redo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  tileMap = dynamic_cast<bw::core::TileMap*>(layer->getActiveStep());
+  require(tileMap && tileMap->getCell(1, 2) == 1,
+          "redo did not restore the active TileMap and its cell value");
+
+  input = pointerAt({256.0f, 64.0f});
+  input.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, input);
+  require(tileMap->getCell(1, 2) == 1,
+          "a click on the TileMap's excluded upper boundary changed a cell");
+
+  input = pointerAt({40.0f, 70.0f});
+  input.leftDown = true;
+  input.leftDragging = true;
+  interaction.updateSelection(&document, nullptr, settings, input);
+  require(tileMap->getCell(1, 2) == 1,
+          "dragging painted an active TileMap cell");
+
+  layer->setStepEnabled(1, false);
+  input.leftClicked = true;
+  input.leftDown = false;
+  input.leftDragging = false;
+  interaction.updateSelection(&document, nullptr, settings, input);
+  require(tileMap->getCell(1, 2) == 1,
+          "clicking a disabled TileMap changed a cell");
+}
+
 void plainControlAndShiftClicksApplyTheirSelectionPolicies() {
   editor::Document document;
   editor::Settings settings;
@@ -4366,6 +4419,7 @@ int main() {
     prefabFieldClickPlacesAMeshPrefabPrimitiveWithoutCrashing();
     worldWedgeSettingsAreAtomicUndoableAndRegenerate();
     prefabFieldArrowNavigationAndRotationAreActiveStepGated();
+    activeTileMapClicksToggleOnlyItsBoundedCells();
     std::cout << "Editor selection interactions passed\n";
     return 0;
   } catch (std::exception const& error) {

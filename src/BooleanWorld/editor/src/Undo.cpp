@@ -6,6 +6,7 @@
 
 #include <core/DefinePrefabs.h>
 #include <core/PrefabField.h>
+#include <core/TileMap.h>
 #include <core/World.h>
 
 #include "Undo.h"
@@ -37,6 +38,11 @@ struct PrefabFieldFocus {
   bool hasTile{false};
 };
 
+struct TileMapFocus {
+  uint32_t layerId{~0u};
+  uint32_t stepIndex{~0u};
+};
+
 struct UndoData {
   WorldSnapshot world;
   set<uint32_t> selection;
@@ -48,6 +54,7 @@ struct UndoData {
   set<uint32_t> selectedMeshRings;
   vector<PrefabFocus> prefabFocus;
   vector<PrefabFieldFocus> prefabFieldFocus;
+  optional<TileMapFocus> tileMapFocus;
   ProcMaterialLibrarySnapshot procMaterials;
   EmbossingCatalogSnapshot embossingCatalog;
   bool docModified{false};
@@ -71,8 +78,12 @@ static UndoableActionFunction gTransactionalFunc;
 UndoData captureUndoData(Document* doc) {
   vector<PrefabFocus> prefabFocus;
   vector<PrefabFieldFocus> prefabFieldFocus;
+  optional<TileMapFocus> tileMapFocus;
   if (doc->isActive()) {
     for (auto const* layer : doc->getWorld()->getLayers()) {
+      if (dynamic_cast<bw::core::TileMap const*>(layer->getActiveStep())) {
+        tileMapFocus = TileMapFocus{layer->getId(), layer->getActiveStepIndex()};
+      }
       for (uint32_t stepIndex = 0; stepIndex < layer->getNumSteps(); ++stepIndex) {
         auto const* step = dynamic_cast<bw::core::DefinePrefabs const*>(
             layer->getStep(stepIndex));
@@ -104,6 +115,7 @@ UndoData captureUndoData(Document* doc) {
       doc->getSelectedMeshRingIndices(),
       move(prefabFocus),
       move(prefabFieldFocus),
+      tileMapFocus,
       procMaterialLibrary().captureSnapshot(),
       embossingCatalogLibrary().captureSnapshot(),
       doc->isModified()};
@@ -123,6 +135,15 @@ void restoreUndoData(Document* doc, UndoData const& data) {
     if (step) {
       step->setSelectedPrefab(step->findPrefabById(focus.prefabId));
       layer->rebuild();
+    }
+  }
+  if (data.tileMapFocus) {
+    auto* layer = doc->getWorld()->getLayer(data.tileMapFocus->layerId);
+    if (layer && data.tileMapFocus->stepIndex < layer->getNumSteps() &&
+        dynamic_cast<bw::core::TileMap*>(
+            layer->getStep(data.tileMapFocus->stepIndex))) {
+      doc->getWorld()->setActiveLayer(layer);
+      layer->setActiveStep(data.tileMapFocus->stepIndex);
     }
   }
   for (auto const& focus : data.prefabFieldFocus) {

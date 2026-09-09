@@ -36,7 +36,13 @@ void renderCombinedPanel(ViewContext& context) {
     }
 
     auto* activeLayer = doc->getWorld()->getActiveLayer();
-    if (auto* definePrefabs = dynamic_cast<bw::core::DefinePrefabs*>(activeLayer->getActiveStep())) {
+    auto* tileMap =
+        dynamic_cast<bw::core::TileMap*>(activeLayer->getActiveStep());
+    if (tileMap) {
+      if (ImGui::CollapsingHeader("TileMap", nullptr, windowFlags)) {
+        renderTileMapView(context, tileMap);
+      }
+    } else if (auto* definePrefabs = dynamic_cast<bw::core::DefinePrefabs*>(activeLayer->getActiveStep())) {
       if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {
         renderPrefabsView(context, definePrefabs);
       }
@@ -58,43 +64,44 @@ void renderCombinedPanel(ViewContext& context) {
       }
     }
 
-    if (settings.mode == Settings::Mode::Primitive) {
-      // Below Layer: creating a Primitive writes into the active Layer's active
-      // step, so the choice of where comes before the making of what, and
-      // editing one comes after both.
-      if (ImGui::CollapsingHeader("Create Primitive", nullptr, windowFlags)) {
-        renderCreatePrimitiveView(context);
+    if (!tileMap) {
+      if (settings.mode == Settings::Mode::Primitive) {
+        // Below Layer: creating a Primitive writes into the active Layer's active
+        // step, so the choice of where comes before the making of what, and
+        // editing one comes after both.
+        if (ImGui::CollapsingHeader("Create Primitive", nullptr, windowFlags)) {
+          renderCreatePrimitiveView(context);
+        }
+
+        // The header follows the view: no header where the view would have
+        // nothing under it.
+        if (hasEditablePrimitiveSelection(doc)) {
+          if (ImGui::CollapsingHeader("Edit Primitive", nullptr, windowFlags)) {
+            renderEditPrimitiveView(context);
+          }
+        }
+      } else if (ImGui::CollapsingHeader("Mesh", nullptr, windowFlags)) {
+        renderMeshView(context);
       }
 
-      // The header follows the view: no header where the view would have
-      // nothing under it.
-      if (hasEditablePrimitiveSelection(doc)) {
-        if (ImGui::CollapsingHeader("Edit Primitive", nullptr, windowFlags)) {
-          renderEditPrimitiveView(context);
+      if (ImGui::CollapsingHeader("Clip Order", nullptr, windowFlags)) {
+        renderPrimitiveOrderView(context);
+      }
+
+      if (ImGui::CollapsingHeader("Create Trigger Line", nullptr, windowFlags)) {
+        renderCreateTriggerLineView(context);
+      }
+
+      auto selectedTriggerLineIndex = doc->getSelectedTriggerLineIndex();
+      if (selectedTriggerLineIndex != ~0u) {
+        if (ImGui::CollapsingHeader("Edit Trigger Line", nullptr, windowFlags)) {
+          renderEditTriggerLineView(context, selectedTriggerLineIndex);
         }
       }
-    } else if (ImGui::CollapsingHeader("Mesh", nullptr, windowFlags)) {
-      renderMeshView(context);
-    }
 
-    if (ImGui::CollapsingHeader("Clip Order", nullptr, windowFlags)) {
-      renderPrimitiveOrderView(context);
-    }
-
-    if (ImGui::CollapsingHeader("Create Trigger Line", nullptr, windowFlags)) {
-      renderCreateTriggerLineView(context);
-    }
-
-    auto selectedTriggerLineIndex = doc->getSelectedTriggerLineIndex();
-
-    if (selectedTriggerLineIndex != ~0u) {
-      if (ImGui::CollapsingHeader("Edit Trigger Line", nullptr, windowFlags)) {
-        renderEditTriggerLineView(context, selectedTriggerLineIndex);
+      if (ImGui::CollapsingHeader("Region under cursor", nullptr, windowFlags)) {
+        renderArrangementFaceView(context);
       }
-    }
-
-    if (ImGui::CollapsingHeader("Region under cursor", nullptr, windowFlags)) {
-      renderArrangementFaceView(context);
     }
 
     if (!getActionHistory().empty()) {
@@ -110,6 +117,5 @@ void renderCombinedPanel(ViewContext& context) {
 
   ImGui::End();
 }
-
 
 }  // namespace editor

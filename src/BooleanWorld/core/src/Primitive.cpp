@@ -614,17 +614,22 @@ bool Primitive::deserializePrimitive(
         return false;
       }
 
-      serializer->beginArray("audioEmitters");
-      {
-        while (serializer->nextArrayItem()) {
-          AudioEmitter emitter;
-          if (!emitter.deserialize(serializer, workData)) {
-            copyErrorsAndWarnings(&emitter, true, true);
-            return false;
+      // AudioEmitters were added after the keyed YAML World format was
+      // already in use. Their absent field means an empty authored list;
+      // positional formats always contain the array and must still consume it.
+      if (serializer->isPositional() || serializer->hasField("audioEmitters")) {
+        serializer->beginArray("audioEmitters");
+        {
+          while (serializer->nextArrayItem()) {
+            AudioEmitter emitter;
+            if (!emitter.deserialize(serializer, workData)) {
+              copyErrorsAndWarnings(&emitter, true, true);
+              return false;
+            }
+            audioEmitters.push_back(move(emitter));
           }
-          audioEmitters.push_back(move(emitter));
+          serializer->endArray();  // audioEmitters
         }
-        serializer->endArray();  // audioEmitters
       }
 
       if (includeComplexPolygons) {
