@@ -56,6 +56,42 @@ void validateChip(bw::core::ChipGenerationParameters const& chip) {
   }
 }
 
+string lowerCase(string value) {
+  transform(value.begin(), value.end(), value.begin(),
+            [](unsigned char c) { return static_cast<char>(tolower(c)); });
+  return value;
+}
+
+template <typename Value, typename DisplayName, typename TieBreak>
+vector<Value const*> filterAndSortByDisplayedName(
+    vector<Value> const& values, string_view expression, string* regexError,
+    DisplayName displayName, TieBreak tieBreak) {
+  regexError->clear();
+  optional<regex> filter;
+  try {
+    filter.emplace(expression.begin(), expression.end(),
+                   regex_constants::ECMAScript | regex_constants::icase);
+  } catch (regex_error const&) {
+    *regexError = "Invalid regular expression.";
+    return {};
+  }
+
+  vector<Value const*> matches;
+  for (auto const& value : values) {
+    if (regex_search(displayName(value), *filter)) matches.push_back(&value);
+  }
+  sort(matches.begin(), matches.end(), [&](auto const* first, auto const* second) {
+    auto const firstName = string(displayName(*first));
+    auto const secondName = string(displayName(*second));
+    auto const firstFolded = lowerCase(firstName);
+    auto const secondFolded = lowerCase(secondName);
+    if (firstFolded != secondFolded) return firstFolded < secondFolded;
+    if (firstName != secondName) return firstName < secondName;
+    return tieBreak(*first) < tieBreak(*second);
+  });
+  return matches;
+}
+
 string makeId(string const& name) {
   string id;
   bool separator{false};
@@ -90,34 +126,19 @@ bw::core::ProcMaterialData loadCatalog(fs::path const& path) {
 vector<bw::core::SubMaterial const*> filterAndSortSubMaterials(
     vector<bw::core::SubMaterial> const& subMaterials,
     string_view expression, string* regexError) {
-  regexError->clear();
-  optional<regex> filter;
-  try {
-    filter.emplace(expression.begin(), expression.end(),
-                   regex_constants::ECMAScript | regex_constants::icase);
-  } catch (regex_error const&) {
-    *regexError = "Invalid regular expression.";
-    return {};
-  }
+  return filterAndSortByDisplayedName(
+      subMaterials, expression, regexError,
+      [](auto const& material) -> string const& { return material.displayName; },
+      [](auto const& material) -> string const& { return material.id; });
+}
 
-  vector<bw::core::SubMaterial const*> matches;
-  for (auto const& material : subMaterials) {
-    if (regex_search(material.displayName, *filter)) matches.push_back(&material);
-  }
-  sort(matches.begin(), matches.end(), [](auto const* first, auto const* second) {
-    auto firstName = first->displayName;
-    auto secondName = second->displayName;
-    transform(firstName.begin(), firstName.end(), firstName.begin(),
-              [](unsigned char c) { return static_cast<char>(tolower(c)); });
-    transform(secondName.begin(), secondName.end(), secondName.begin(),
-              [](unsigned char c) { return static_cast<char>(tolower(c)); });
-    if (firstName != secondName) return firstName < secondName;
-    if (first->displayName != second->displayName) {
-      return first->displayName < second->displayName;
-    }
-    return first->id < second->id;
-  });
-  return matches;
+vector<TriplanarMaterialEntry const*> filterAndSortTriplanarMaterials(
+    vector<TriplanarMaterialEntry> const& materials,
+    string_view expression, string* regexError) {
+  return filterAndSortByDisplayedName(
+      materials, expression, regexError,
+      [](auto const& material) -> string const& { return material.resourceName; },
+      [](auto const& material) -> string const& { return material.resourceName; });
 }
 
 void ProcMaterialLibrary::load(fs::path const& resourcesManifest) {

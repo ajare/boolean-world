@@ -958,12 +958,11 @@ bool deletePrimitiveAudioEmitter(
   return true;
 }
 
-bool setPrimitiveSubMaterial(
+bool setPrimitiveSurfaceMaterial(
     Document*, bw::core::Primitive* primitive,
-    PrimitiveMaterialSurface surface, string const& subMaterialId) {
+    PrimitiveMaterialSurface surface,
+    bw::core::SurfaceMaterialReference const& material) {
   auto properties = primitive->getProperties();
-  auto material =
-      bw::core::SurfaceMaterialReference::subMaterial(subMaterialId);
   switch (surface) {
     case PrimitiveMaterialSurface::Floor:
       properties.floorMaterialId = material;
@@ -977,6 +976,22 @@ bool setPrimitiveSubMaterial(
   }
   primitive->setProperties(properties);
   return true;
+}
+
+bool setPrimitiveSubMaterial(
+    Document* doc, bw::core::Primitive* primitive,
+    PrimitiveMaterialSurface surface, string const& subMaterialId) {
+  return setPrimitiveSurfaceMaterial(
+      doc, primitive, surface,
+      bw::core::SurfaceMaterialReference::subMaterial(subMaterialId));
+}
+
+bool setPrimitiveTriplanarMaterial(
+    Document* doc, bw::core::Primitive* primitive,
+    PrimitiveMaterialSurface surface, string const& qualifiedResourceName) {
+  return setPrimitiveSurfaceMaterial(
+      doc, primitive, surface,
+      bw::core::SurfaceMaterialReference::triplanar(qualifiedResourceName));
 }
 
 bool setPrimitiveEmbossPreset(

@@ -129,6 +129,75 @@ void libraryDiscoversTwoLevelsAndSelectionIsUndoable(fs::path const& root) {
           "the selected Sub-material data was not available to the renderer");
 }
 
+void triplanarPickerSortsFiltersAndAssignsTaggedReferences() {
+  std::vector<editor::TriplanarMaterialEntry> materials{
+      {"World/Zinc", "World/ZincImage", 8.0f, 2.0f},
+      {"World/alpha", "World/AlphaImage", 16.0f, 4.0f},
+      {"World/Blue Stone", "World/StoneImage", 32.0f, 8.0f},
+      {"World/ALPINE", "World/AlpineImage", 64.0f, 16.0f}};
+  auto authoredResources = materials;
+
+  std::string error;
+  auto all = editor::filterAndSortTriplanarMaterials(materials, "", &error);
+  require(error.empty() && all.size() == 4 &&
+              all[0]->resourceName == "World/alpha" &&
+              all[1]->resourceName == "World/ALPINE" &&
+              all[2]->resourceName == "World/Blue Stone" &&
+              all[3]->resourceName == "World/Zinc",
+          "Triplanar picker entries are not alphabetically row-major ready");
+  auto partial = editor::filterAndSortTriplanarMaterials(
+      materials, "UE st", &error);
+  require(error.empty() && partial.size() == 1 &&
+              partial[0]->resourceName == "World/Blue Stone",
+          "Triplanar picker regex does not match a case-insensitive substring");
+  auto noMatch = editor::filterAndSortTriplanarMaterials(
+      materials, "does-not-exist", &error);
+  require(noMatch.empty() && error.empty(),
+          "Triplanar no-match result differs from Sub-materials");
+  auto invalid = editor::filterAndSortTriplanarMaterials(materials, "[", &error);
+  require(invalid.empty() && error == "Invalid regular expression.",
+          "Triplanar invalid-regex feedback differs from Sub-materials");
+
+  editor::clearUndoHistory();
+  editor::Document document;
+  document.newDoc();
+  auto index = document.getWorld()->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f));
+  auto* primitive = document.getWorld()->getPrimitive(index);
+  editor::transactUndoableAction(
+      &document, "Set Triplanar material", [primitive](editor::Document* doc) {
+        return editor::setPrimitiveTriplanarMaterial(
+            doc, primitive, editor::PrimitiveMaterialSurface::Ceiling,
+            "World/Blue Stone");
+      });
+  auto assigned =
+      document.getWorld()->getPrimitive(index)->getProperties().ceilingMaterialId;
+  require(assigned.kind == bw::core::SurfaceMaterialKind::Triplanar &&
+              assigned.reference == "World/Blue Stone",
+          "Triplanar selection did not write a tagged Surface material reference");
+  editor::undo(&document);
+  require(document.getWorld()
+                  ->getPrimitive(index)
+                  ->getProperties()
+                  .ceilingMaterialId.kind ==
+              bw::core::SurfaceMaterialKind::SubMaterial,
+          "undo did not restore the previous Surface material family");
+  editor::redo(&document);
+  assigned =
+      document.getWorld()->getPrimitive(index)->getProperties().ceilingMaterialId;
+  require(assigned.kind == bw::core::SurfaceMaterialKind::Triplanar &&
+              assigned.reference == "World/Blue Stone",
+          "redo did not restore the tagged Triplanar assignment");
+  require(materials.size() == authoredResources.size() &&
+              materials[2].albedoResourceName ==
+                  authoredResources[2].albedoResourceName &&
+              materials[2].tileWidth == authoredResources[2].tileWidth &&
+              materials[2].blendSharpness ==
+                  authoredResources[2].blendSharpness,
+          "assign/undo/redo modified a file-authored Triplanar resource view");
+}
+
 void pickerSortsAndRegexFiltersByDisplayName() {
   std::vector<bw::core::SubMaterial> materials(4);
   materials[0].id = "zinc";
@@ -286,6 +355,7 @@ int main() {
     bw::core::LayerBuildStep::registerCoreTypes();
 
     libraryDiscoversTwoLevelsAndSelectionIsUndoable(root);
+    triplanarPickerSortsFiltersAndAssignsTaggedReferences();
     pickerSortsAndRegexFiltersByDisplayName();
     authoringActionsAreSavedUndoableAndProtectReferences(root);
     fs::remove_all(root);

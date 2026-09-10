@@ -425,11 +425,24 @@ enum class PrimitiveMaterialSurface {
   Wall
 };
 
-// Assigns one stable Sub-material id. Intended to be called through
-// transactUndoableAction by the material picker.
+// Assigns one tagged Surface material reference. Intended to be called
+// through transactUndoableAction by either material-picker source.
+bool setPrimitiveSurfaceMaterial(
+    Document* doc, bw::core::Primitive* primitive,
+    PrimitiveMaterialSurface surface,
+    bw::core::SurfaceMaterialReference const& material);
+
+// Existing Sub-material shortcut retained for callers that already hold an id.
 bool setPrimitiveSubMaterial(
     Document* doc, bw::core::Primitive* primitive,
     PrimitiveMaterialSurface surface, std::string const& subMaterialId);
+
+// Read-only Triplanar-source shortcut. The qualified Resource name is copied
+// into World content; the file-authored resource itself is never mutated.
+bool setPrimitiveTriplanarMaterial(
+    Document* doc, bw::core::Primitive* primitive,
+    PrimitiveMaterialSurface surface,
+    std::string const& qualifiedResourceName);
 
 // Assigns one optional global Emboss-preset id to exactly one surface.
 bool setPrimitiveEmbossPreset(

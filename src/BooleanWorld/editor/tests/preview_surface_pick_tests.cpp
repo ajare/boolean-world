@@ -572,6 +572,21 @@ void crossingStepSegmentsPickAndOutlineAsTrianglesWithTheirOwners() {
   }
 }
 
+void taggedTriplanarAssignmentIsVisibleToPreviewPicker() {
+  auto room = makeRoom();
+  auto properties = room->getProperties();
+  properties.wallMaterialId =
+      bw::core::SurfaceMaterialReference::triplanar("World/Stone");
+  room->setProperties(properties);
+  auto data = buildData({room.get()});
+  auto wall = editor::pickPreviewSceneSurface(*data, {0, 0, 10}, {1, 0, 0});
+  auto material = editor::previewSurfaceMaterial(*data, wall);
+  require(material.kind == bw::core::SurfaceMaterialKind::Triplanar &&
+              material.reference == "World/Stone" &&
+              editor::previewSurfaceSubMaterialId(*data, wall).empty(),
+          "3D-preview picker lost the selected Surface material family tag");
+}
+
 void unpickedSurfacesResolveToNothing() {
   auto room = makeRoom();
   auto data = buildData({room.get()});
@@ -606,6 +621,7 @@ int main() {
     outlinesUseTheRenderersReflectedGroundPlane();
     slopedSurfacesPickAndOutlineTheirEvaluatedGeometry();
     crossingStepSegmentsPickAndOutlineAsTrianglesWithTheirOwners();
+    taggedTriplanarAssignmentIsVisibleToPreviewPicker();
     unpickedSurfacesResolveToNothing();
     std::cout << "Preview surface pick tests passed\n";
     return 0;

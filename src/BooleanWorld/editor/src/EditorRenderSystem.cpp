@@ -195,6 +195,23 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
     }
   }
 
+  // Triplanar materials are file-authored and read-only in the editor. Load
+  // and retain every valid declaration so both picker workflows expose the
+  // complete source, not only resources an already-open World happened to
+  // reference. Their ImageResource dependencies are already resident above.
+  for (auto const& resource :
+       mResourceMgr->getResourcesByType("TriplanarMaterial")) {
+    try {
+      mResourceMgr->createResource(resource);
+      mResourceMgr->loadResource(resource);
+      mResourceMgr->acquireResource(resource);
+      mPreloadedTriplanarMaterials.push_back(resource);
+    } catch (std::exception const& exception) {
+      mLogger->warn(std::string("Could not preload Triplanar material ") +
+                    resource->getQualifiedName() + ": " + exception.what());
+    }
+  }
+
   // Register only after the runtime and resource system have both completed
   // startup, so every deserialized RunScript receives this host's live
   // runtime (ADR-0038).
@@ -426,6 +443,11 @@ EditorRenderSystem::~EditorRenderSystem() {
     mResourceMgr->releaseResource(resource);
   }
   mWorldDependencies.clear();
+
+  for (auto const& resource : mPreloadedTriplanarMaterials) {
+    mResourceMgr->releaseResource(resource);
+  }
+  mPreloadedTriplanarMaterials.clear();
 
   for (auto const& resource : mPreloadedImages) {
     mResourceMgr->releaseResource(resource);

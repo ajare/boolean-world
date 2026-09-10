@@ -7,10 +7,14 @@
 #include <string_view>
 
 #include <core/ArrangementWorldData.h>
+#include <core/SurfaceMaterialReference.h>
 
 namespace editor {
 
-enum class PreviewSurface { None, Floor, Ceiling, Wall };
+enum class PreviewSurface { None,
+                            Floor,
+                            Ceiling,
+                            Wall };
 
 struct PreviewSurfaceHit {
   PreviewSurface surface{PreviewSurface::None};
@@ -86,8 +90,13 @@ struct PreviewSurfaceOwner {
     bw::core::ArrangementWorldData const& worldData,
     PreviewScenePick const& pick);
 
-// The Sub-material id the picked surface currently draws with: the owning
-// polygon's floor, ceiling or wall id, whichever the pick names.
+// The tagged Surface material reference the picked surface currently draws
+// with: the owning polygon's floor, ceiling or wall assignment.
+[[nodiscard]] bw::core::SurfaceMaterialReference previewSurfaceMaterial(
+    bw::core::ArrangementWorldData const& worldData,
+    PreviewScenePick const& pick);
+
+// Existing Sub-material-only view. Returns empty for a Triplanar assignment.
 [[nodiscard]] std::string previewSurfaceSubMaterialId(
     bw::core::ArrangementWorldData const& worldData,
     PreviewScenePick const& pick);

@@ -125,12 +125,18 @@ private:
   std::vector<EditorScriptLog> mScriptLogs;
   std::unique_ptr<bw::core::ScriptRuntime> mScriptRuntime;
   std::vector<std::shared_ptr<
-      wp::application::resourcesystem::Resource>> mWorldDependencies;
-  // Every ImageResource the manifest declares, created, loaded, and acquired
-  // at construction so wall normal-map/mask pickers can show thumbnails
-  // without per-selection loads. Released while the GL context is current.
+      wp::application::resourcesystem::Resource>>
+      mWorldDependencies;
+  // Every ImageResource and Triplanar material the manifest declares,
+  // created, loaded, and acquired at construction so both material pickers
+  // can discover them and render thumbnails without first-use loading.
+  // Released while the GL context is current.
   std::vector<std::shared_ptr<
-      wp::application::resourcesystem::Resource>> mPreloadedImages;
+      wp::application::resourcesystem::Resource>>
+      mPreloadedImages;
+  std::vector<std::shared_ptr<
+      wp::application::resourcesystem::Resource>>
+      mPreloadedTriplanarMaterials;
 };
 
 // Constructs the process-wide instance against the already-current GL

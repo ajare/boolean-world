@@ -16,6 +16,7 @@ add_executable(editor WIN32
     src/PrimitiveFieldPreview.cpp
     src/ProcMaterialLibrary.cpp
     src/SubMaterialThumbnailRenderer.cpp
+    src/TriplanarMaterialDiscovery.cpp
     src/TileMapLayout.cpp
     src/PrefabPlacementPreview.cpp
     src/PrefabTilingGuide.cpp
@@ -232,15 +233,17 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_editor_preview_render_stack_smoke)
     bw_deploy_vendor_dlls(boolean_world_editor_preview_render_stack_smoke)
 
-    # Not registered via add_test - renders every catalog Sub-material through
-    # the real world material shaders and therefore needs a real GPU/driver.
+    # Renders every catalog Sub-material and loaded Triplanar material through
+    # the real world pipeline in a hidden window. The repository test launcher
+    # keeps driver/loader failures unattended.
     add_executable(boolean_world_editor_sub_material_thumbnail_smoke
         tests/sub_material_thumbnail_smoke.cpp
         src/EditorRenderSystem.cpp
         src/PreviewOutlineRenderer.cpp
         src/PreviewRenderScene.cpp
         src/ProcMaterialLibrary.cpp
-        src/SubMaterialThumbnailRenderer.cpp)
+        src/SubMaterialThumbnailRenderer.cpp
+        src/TriplanarMaterialDiscovery.cpp)
     target_include_directories(boolean_world_editor_sub_material_thumbnail_smoke PRIVATE
         include ../app/include)
     target_compile_definitions(boolean_world_editor_sub_material_thumbnail_smoke PRIVATE
@@ -257,6 +260,8 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_editor_sub_material_thumbnail_smoke)
     bw_deploy_runtime_dlls(boolean_world_editor_sub_material_thumbnail_smoke)
     bw_deploy_vendor_dlls(boolean_world_editor_sub_material_thumbnail_smoke)
+    add_test(NAME boolean_world_editor_triplanar_material_thumbnail
+             COMMAND boolean_world_editor_sub_material_thumbnail_smoke)
 
     add_executable(boolean_world_editor_primitive_field_preview_tests
         tests/primitive_field_preview_tests.cpp

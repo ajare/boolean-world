@@ -84,6 +84,7 @@ struct PreviewMaterialEditorState {
   bool initialized{};
   bool hasDraft{};
   int catalogIndex{};
+  bool triplanarSource{};
   std::string editingId;
   char name[256]{};
   char nameFilter[256]{};
@@ -331,10 +332,11 @@ PreviewPrimitive* sourcePrimitive(PreviewSurfaceRef const& surface) {
              : nullptr;
 }
 
-std::string surfaceSubMaterialId(PreviewSurfaceRef const& surface) {
+bw::core::SurfaceMaterialReference surfaceMaterial(
+    PreviewSurfaceRef const& surface) {
   return session.worldData
-             ? previewSurfaceSubMaterialId(*session.worldData, asPick(surface))
-             : std::string{};
+             ? previewSurfaceMaterial(*session.worldData, asPick(surface))
+             : bw::core::SurfaceMaterialReference{};
 }
 
 std::string surfaceEmbossPresetId(PreviewSurfaceRef const& surface) {
@@ -343,12 +345,21 @@ std::string surfaceEmbossPresetId(PreviewSurfaceRef const& surface) {
              : std::string{};
 }
 
-void loadMaterialDraft(std::string const& id) {
+void loadMaterialDraft(
+    bw::core::SurfaceMaterialReference const& reference) {
   auto& state = session.materialEditor;
   state.initialized = true;
   state.hasDraft = false;
+  state.triplanarSource =
+      reference.kind == bw::core::SurfaceMaterialKind::Triplanar;
   state.editingId.clear();
 
+  if (state.triplanarSource) {
+    state.editingId = reference.reference;
+    return;
+  }
+
+  auto const& id = reference.reference;
   auto const& catalogs = procMaterialLibrary().catalogs();
   auto const* owner = procMaterialLibrary().findCatalogForSubMaterial(id);
   if (!owner) {
@@ -483,32 +494,150 @@ void renderChipEditor(PreviewMaterialEditorState& state) {
   widgets::ChipFields(state.chip);
 }
 
+void renderPreviewTriplanarSource(
+    PreviewPrimitive& previewPrimitive,
+    std::vector<TriplanarMaterialEntry> const& materials) {
+  auto& state = session.materialEditor;
+  ImGui::SetNextItemWidth(280.0f);
+  ImGui::InputText("Filter (regex)", state.nameFilter,
+                   sizeof(state.nameFilter));
+  std::string regexError;
+  auto visibleMaterials = filterAndSortTriplanarMaterials(
+      materials, state.nameFilter, &regexError);
+  if (!regexError.empty()) {
+    ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled),
+                       "%s", regexError.c_str());
+  }
+
+  if (!session.materialThumbnails) {
+    if (auto* renderSystem = editorRenderSystem()) {
+      session.materialThumbnails =
+          std::make_unique<SubMaterialThumbnailRenderer>(*renderSystem);
+    }
+  }
+
+  constexpr float thumbnailSize =
+      static_cast<float>(SubMaterialThumbnailRenderer::size);
+  constexpr float tileWidth = thumbnailSize + 12.0f;
+  auto columns = std::max(
+      1, static_cast<int>(ImGui::GetContentRegionAvail().x / tileWidth));
+  for (size_t i = 0; i < visibleMaterials.size(); ++i) {
+    auto const& material = *visibleMaterials[i];
+    ImGui::PushID(material.resourceName.c_str());
+    ImGui::BeginGroup();
+    auto texture = session.materialThumbnails
+                       ? session.materialThumbnails->triplanarTexture(
+                             material.resourceName)
+                       : 0u;
+    bool const selected = material.resourceName == state.editingId;
+    if (selected) {
+      ImGui::PushStyleColor(
+          ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+      ImGui::PushStyleColor(
+          ImGuiCol_ButtonHovered,
+          ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
+    }
+    bool clicked =
+        texture
+            ? ImGui::ImageButton(
+                  "thumbnail", static_cast<ImTextureID>(texture),
+                  {thumbnailSize, thumbnailSize}, {0.0f, 1.0f},
+                  {1.0f, 0.0f})
+            : ImGui::Button("Unavailable", {thumbnailSize, thumbnailSize});
+    if (selected) ImGui::PopStyleColor(2);
+    auto textWidth = ImGui::CalcTextSize(material.resourceName.c_str()).x;
+    ImGui::SetCursorPosX(
+        ImGui::GetCursorPosX() +
+        std::max(0.0f, (thumbnailSize - textWidth) * 0.5f));
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + thumbnailSize);
+    ImGui::TextWrapped("%s", material.resourceName.c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::EndGroup();
+    ImGui::PopID();
+
+    if (clicked && !selected) {
+      auto value = bw::core::SurfaceMaterialReference::triplanar(
+          material.resourceName);
+      transact(session.document, CommandId::SetPrimitiveSubMaterial, [&] {
+        setPrimitiveSurfaceMaterial(
+            session.document, previewPrimitive.source,
+            materialSurface(session.selection.surface), value);
+      });
+      rebuildPreviewForSurfaceEdit();
+      loadMaterialDraft(value);
+    }
+    if ((static_cast<int>(i) + 1) % columns != 0) ImGui::SameLine();
+  }
+  if (visibleMaterials.empty() && regexError.empty()) {
+    ImGui::TextDisabled("No Triplanar material names match the filter.");
+  }
+
+  auto selected = std::find_if(
+      materials.begin(), materials.end(), [&](auto const& material) {
+        return material.resourceName == state.editingId;
+      });
+  if (selected != materials.end() &&
+      ImGui::CollapsingHeader(
+          "Selected resource", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::Text("Resource name: %s", selected->resourceName.c_str());
+    ImGui::Text("Albedo ImageResource: %s",
+                selected->albedoResourceName.c_str());
+    ImGui::Text("Tile width: %g", selected->tileWidth);
+    ImGui::Text("Blend sharpness: %g", selected->blendSharpness);
+  }
+
+  // Embossing is a separate surface assignment and remains fully editable
+  // even though the Triplanar resource and all of its own fields are read-only.
+  renderEmbossEditor(previewPrimitive);
+}
+
 void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
   auto const& catalogs = procMaterialLibrary().catalogs();
-  if (catalogs.empty()) {
-    ImGui::TextDisabled("No ProcMaterial resources are available.");
+  auto* renderSystem = editorRenderSystem();
+  auto triplanarMaterials = discoverLoadedTriplanarMaterials(
+      renderSystem ? renderSystem->resourceManager() : nullptr);
+  if (catalogs.empty() && triplanarMaterials.empty()) {
+    ImGui::TextDisabled("No material resources are available.");
     return;
   }
 
   auto& state = session.materialEditor;
   if (!state.initialized) {
-    loadMaterialDraft(surfaceSubMaterialId(session.selection));
+    loadMaterialDraft(surfaceMaterial(session.selection));
   }
-  state.catalogIndex = std::clamp(
-      state.catalogIndex, 0, static_cast<int>(catalogs.size()) - 1);
+  if (!catalogs.empty()) {
+    state.catalogIndex = std::clamp(
+        state.catalogIndex, 0, static_cast<int>(catalogs.size()) - 1);
+  }
 
-  std::string catalogItems;
+  int sourceIndex = state.triplanarSource
+                        ? static_cast<int>(catalogs.size())
+                        : state.catalogIndex;
+  if (catalogs.empty()) sourceIndex = 0;
+  std::string sourceItems;
   for (auto const& catalog : catalogs) {
-    catalogItems += catalog.resourceName;
-    catalogItems += '\0';
+    sourceItems += "ProcMaterial: " + catalog.resourceName;
+    sourceItems += '\0';
   }
+  sourceItems += "Triplanar materials";
+  sourceItems += '\0';
   ImGui::SetNextItemWidth(280.0f);
   if (ImGui::Combo(
-          "ProcMaterial", &state.catalogIndex, catalogItems.c_str(), 6)) {
+          "Material source", &sourceIndex, sourceItems.c_str(), 6)) {
+    state.triplanarSource =
+        sourceIndex == static_cast<int>(catalogs.size());
+    if (!state.triplanarSource) state.catalogIndex = sourceIndex;
     state.hasDraft = false;
     state.editingId.clear();
   }
 
+  if (state.triplanarSource || catalogs.empty()) {
+    state.triplanarSource = true;
+    renderPreviewTriplanarSource(previewPrimitive, triplanarMaterials);
+    return;
+  }
+
+  state.catalogIndex = sourceIndex;
   auto const& catalog = catalogs[state.catalogIndex];
   ImGui::SetNextItemWidth(280.0f);
   ImGui::InputText("Filter (regex)", state.nameFilter,
@@ -573,7 +702,8 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
             materialSurface(session.selection.surface), id);
       });
       rebuildPreviewForSurfaceEdit();
-      loadMaterialDraft(id);
+      loadMaterialDraft(
+          bw::core::SurfaceMaterialReference::subMaterial(id));
     }
     if ((static_cast<int>(i) + 1) % columns != 0) ImGui::SameLine();
   }
@@ -623,7 +753,8 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
                     chip);
               })) {
         reconcileSavedProcMaterial(catalog.resourceName);
-        loadMaterialDraft(id);
+        loadMaterialDraft(
+            bw::core::SurfaceMaterialReference::subMaterial(id));
       }
     }
     ImGui::SameLine();
@@ -649,12 +780,14 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
               })) {
         reconcileSavedProcMaterial(resourceName);
         rebuildPreviewForSurfaceEdit();
-        loadMaterialDraft(createdId);
+        loadMaterialDraft(
+            bw::core::SurfaceMaterialReference::subMaterial(createdId));
       }
     }
     ImGui::SameLine();
     if (ImGui::Button("Revert")) {
-      loadMaterialDraft(state.editingId);
+      loadMaterialDraft(
+          bw::core::SurfaceMaterialReference::subMaterial(state.editingId));
     }
   }
 }
@@ -1083,16 +1216,16 @@ void renderPreviewScene(ImVec2 const& windowSize) {
       {1.0f, 0.0f});
 }
 
-// Editing the selected surface - assigning it a Sub-material, or moving its
-// floor or ceiling - changes more than a uniform, so nothing the preview
-// built beforehand can be reused:
+// Editing the selected surface - assigning a Surface material reference, or
+// moving its floor or ceiling - changes more than a uniform, so nothing the
+// preview built beforehand can be reused:
 //
-//   - which mesh bucket a triangle or wall lands in is decided by the
-//     Sub-material id in the Arrangement palette, and this session's
+//   - which mesh bucket a triangle or wall lands in is decided by its tagged
+//     material reference in the Arrangement palette, and this session's
 //     Arrangement is a snapshot taken when the preview opened; and
 //   - the buckets themselves are baked in WorldBatch::createModelStream from
-//     the material ids every Primitive carried when the render scene was
-//     built, so a Sub-material that no Primitive was using then has no bucket
+//     the material references every Primitive carried when the render scene
+//     was built, so a reference that no Primitive was using then has no bucket
 //     at all - and getMeshIndexForMaterialHash answers a missing bucket with
 //     zero, which is a real, and wrong, mesh.
 //

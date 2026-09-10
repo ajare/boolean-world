@@ -9,6 +9,10 @@
 
 #include <core/ProcMaterialData.h>
 
+namespace wp::application::resourcesystem {
+class ResourceManager;
+}
+
 namespace editor {
 
 struct ProcMaterialCatalog {
@@ -27,6 +31,32 @@ struct ProcMaterialLibrarySnapshot {
 // reports a user-facing error through regexError.
 std::vector<bw::core::SubMaterial const*> filterAndSortSubMaterials(
     std::vector<bw::core::SubMaterial> const& subMaterials,
+    std::string_view expression, std::string* regexError);
+
+// Read-only picker view of one loaded, file-authored Triplanar material.
+// resourceName and albedoResourceName are qualified Resource names, which are
+// both the displayed identity and the exact Surface material reference written
+// by the picker.
+struct TriplanarMaterialEntry {
+  std::string resourceName;
+  std::string albedoResourceName;
+  float tileWidth{};
+  float blendSharpness{};
+};
+
+// Discovers only resources that the editor's ResourceManager has successfully
+// loaded. The EditorRenderSystem eagerly loads every declared Triplanar
+// material, while this boundary keeps malformed/unavailable resources out of
+// both picker paths.
+[[nodiscard]] std::vector<TriplanarMaterialEntry>
+discoverLoadedTriplanarMaterials(
+    wp::application::resourcesystem::ResourceManager* resourceManager);
+
+// Applies the same case-insensitive ECMAScript regex_search and alphabetical
+// display-name ordering as filterAndSortSubMaterials.
+[[nodiscard]] std::vector<TriplanarMaterialEntry const*>
+filterAndSortTriplanarMaterials(
+    std::vector<TriplanarMaterialEntry> const& materials,
     std::string_view expression, std::string* regexError);
 
 // Editor-side discovery and authoring for the material picker. Resources.yaml

@@ -212,7 +212,7 @@ PreviewSurfaceOwner resolvePreviewSurfaceOwner(
   return owner;
 }
 
-std::string previewSurfaceSubMaterialId(
+bw::core::SurfaceMaterialReference previewSurfaceMaterial(
     bw::core::ArrangementWorldData const& worldData,
     PreviewScenePick const& pick) {
   auto owner = resolvePreviewSurfaceOwner(worldData, pick);
@@ -233,6 +233,15 @@ std::string previewSurfaceSubMaterialId(
       break;
   }
   return {};
+}
+
+std::string previewSurfaceSubMaterialId(
+    bw::core::ArrangementWorldData const& worldData,
+    PreviewScenePick const& pick) {
+  auto material = previewSurfaceMaterial(worldData, pick);
+  return material.kind == bw::core::SurfaceMaterialKind::SubMaterial
+             ? material.reference
+             : std::string{};
 }
 
 std::string previewSurfaceEmbossPresetId(

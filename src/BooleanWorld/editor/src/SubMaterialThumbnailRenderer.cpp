@@ -42,6 +42,11 @@ void SubMaterialThumbnailRenderer::clearTextures() {
     if (texture) glDeleteTextures(1, &texture);
   }
   mTextures.clear();
+  for (auto const& [name, texture] : mTriplanarTextures) {
+    (void)name;
+    if (texture) glDeleteTextures(1, &texture);
+  }
+  mTriplanarTextures.clear();
   if (mDraftTexture) glDeleteTextures(1, &mDraftTexture);
   mDraftTexture = 0;
   mDraftSubMaterialId.clear();
@@ -53,6 +58,8 @@ void SubMaterialThumbnailRenderer::rebuild() {
   mWorldData.reset();
   mWorld.reset();
   mCentres.clear();
+  mTriplanarCameras.clear();
+  mTriplanarPaletteIndices.clear();
   clearTextures();
 
   mWorld = std::make_unique<bw::core::World>(1.0f, -1.0f);
@@ -86,6 +93,45 @@ void SubMaterialThumbnailRenderer::rebuild() {
       mCentres.emplace(material.id, glm::vec3{x, 1.0f, -y});
       ++ordinal;
     }
+  }
+
+  auto triplanarMaterials = discoverLoadedTriplanarMaterials(
+      mwRenderSystem->resourceManager());
+  for (auto const& material : triplanarMaterials) {
+    auto column = ordinal % swatchesPerRow;
+    auto row = ordinal / swatchesPerRow;
+    float x = (static_cast<float>(column) - 3.5f) * swatchSpacing;
+    float y = (static_cast<float>(row) - 3.5f) * swatchSpacing;
+    constexpr float roomHalfExtent = 10.0f;
+    bw::core::ClosedPolygon ring{
+        {{x - roomHalfExtent, y - roomHalfExtent}},
+        {{x + roomHalfExtent, y - roomHalfExtent}},
+        {{x + roomHalfExtent, y + roomHalfExtent}},
+        {{x - roomHalfExtent, y + roomHalfExtent}}};
+    auto* primitive = bw::core::MeshPrimitive::fromTree(
+        bw::core::Primitive::Operation::Union, {{{ring, {}}}});
+    auto properties = primitive->getProperties();
+    properties.floorZ = 0.0f;
+    properties.ceilingZ = 12.0f;
+    auto reference = bw::core::SurfaceMaterialReference::triplanar(
+        material.resourceName);
+    properties.floorMaterialId = reference;
+    properties.ceilingMaterialId = reference;
+    properties.wallMaterialId = reference;
+    primitive->setProperties(properties);
+    mWorld->addPrimitive(primitive);
+    primitives.push_back(primitive);
+    mTriplanarPaletteIndices.emplace(
+        material.resourceName, static_cast<std::uint16_t>(primitives.size()));
+
+    // Arrangement +Y maps to renderer -Z. The camera sits inside the room and
+    // looks toward its lower-left World-plane corner, framing the floor and
+    // the two Border walls joined by that corner's vertical edge.
+    mTriplanarCameras.emplace(
+        material.resourceName,
+        TriplanarCamera{{x + 4.0f, 5.0f, -y - 4.0f},
+                        {x - 8.0f, 3.0f, -y + 8.0f}});
+    ++ordinal;
   }
 
   bw::core::ArrangementWorldDataGenerator generator;
@@ -157,7 +203,23 @@ std::uint32_t SubMaterialThumbnailRenderer::copyTexture(
 std::uint32_t SubMaterialThumbnailRenderer::renderTexture(
     std::string const& subMaterialId) const {
   auto centre = mCentres.find(subMaterialId);
-  if (!mScene || !mWorldData || centre == mCentres.end()) return 0;
+  if (centre == mCentres.end()) return 0;
+  auto position = centre->second + glm::vec3{0.0f, cameraHeight, 0.0f};
+  return renderFromCamera(position, centre->second, {0.0f, 0.0f, -1.0f});
+}
+
+std::uint32_t SubMaterialThumbnailRenderer::renderTriplanarTexture(
+    std::string const& qualifiedResourceName) const {
+  auto camera = mTriplanarCameras.find(qualifiedResourceName);
+  if (camera == mTriplanarCameras.end()) return 0;
+  return renderFromCamera(
+      camera->second.position, camera->second.target, {0.0f, 1.0f, 0.0f});
+}
+
+std::uint32_t SubMaterialThumbnailRenderer::renderFromCamera(
+    glm::vec3 const& position, glm::vec3 const& target,
+    glm::vec3 const& up) const {
+  if (!mScene || !mWorldData) return 0;
 
   // MPP's offscreen graph returns to its screen target when it finishes and
   // clears that target when graph presentation is disabled. Thumbnail renders
@@ -206,10 +268,9 @@ std::uint32_t SubMaterialThumbnailRenderer::renderTexture(
   };
 
   try {
-    auto position = centre->second + glm::vec3{0.0f, cameraHeight, 0.0f};
     auto camera = std::make_shared<mpp::Camera>(
         position, 0.0f, 0.0f, 0.0f, 45.0f, 1.0f);
-    camera->setLookAt(position, centre->second, {0.0f, 0.0f, -1.0f});
+    camera->setLookAt(position, target, up);
     camera->setClipDistances(0.1f, 1000.0f);
     auto source = mScene->render(
         mWorld.get(), *mWorldData, camera, position, 1.0f / 60.0f);
@@ -249,6 +310,75 @@ std::uint32_t SubMaterialThumbnailRenderer::texture(
     mTextures.emplace(subMaterialId, 0u);
     return 0;
   }
+}
+
+std::uint32_t SubMaterialThumbnailRenderer::triplanarTexture(
+    std::string const& qualifiedResourceName) {
+  auto const revision = procMaterialLibrary().revision();
+  if (mLibraryRevision != revision) {
+    try {
+      rebuild();
+    } catch (...) {
+      mScene.reset();
+      mLibraryRevision = revision;
+      return 0;
+    }
+  }
+  if (!mScene || !mWorldData) return 0;
+  if (auto found = mTriplanarTextures.find(qualifiedResourceName);
+      found != mTriplanarTextures.end()) {
+    return found->second;
+  }
+
+  try {
+    auto copied = renderTriplanarTexture(qualifiedResourceName);
+    mTriplanarTextures.emplace(qualifiedResourceName, copied);
+    return copied;
+  } catch (...) {
+    mTriplanarTextures.emplace(qualifiedResourceName, 0u);
+    return 0;
+  }
+}
+
+bool SubMaterialThumbnailRenderer::
+    triplanarThumbnailUsesConnectedWallProjection(
+        std::string const& qualifiedResourceName) const {
+  if (!mWorldData) return false;
+  auto palette = mTriplanarPaletteIndices.find(qualifiedResourceName);
+  if (palette == mTriplanarPaletteIndices.end()) return false;
+
+  auto const& arrangement = mWorldData->getArrangement();
+  auto const& walls = mWorldData->getWalls();
+  bool hasFloor = false;
+  for (auto const& triangle : mWorldData->getTriangles()) {
+    if (triangle.face < arrangement.faces.size() &&
+        arrangement.faces[triangle.face].paletteIndex == palette->second) {
+      hasFloor = true;
+      break;
+    }
+  }
+  if (!hasFloor) return false;
+
+  for (std::size_t first = 0; first < walls.size(); ++first) {
+    if (walls[first].paletteIndex != palette->second ||
+        walls[first].edge >= arrangement.edges.size()) {
+      continue;
+    }
+    auto const& firstEdge = arrangement.edges[walls[first].edge];
+    for (std::size_t second = first + 1; second < walls.size(); ++second) {
+      if (walls[second].paletteIndex != palette->second ||
+          walls[second].edge >= arrangement.edges.size()) {
+        continue;
+      }
+      auto const& secondEdge = arrangement.edges[walls[second].edge];
+      for (auto firstVertex : firstEdge.v) {
+        for (auto secondVertex : secondEdge.v) {
+          if (firstVertex == secondVertex) return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 std::uint32_t SubMaterialThumbnailRenderer::draftTexture(

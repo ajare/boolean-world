@@ -16,10 +16,17 @@ struct SubMaterialAuthoringState {
 };
 
 struct SubMaterialPickerState {
-  // The Sub-material id selected inside the open picker modal, distinct from
-  // the Primitive's committed id until OK (or a double-click) applies it.
+  // The material identity selected inside the open picker modal, distinct from
+  // the Primitive's committed assignment until OK (or a double-click) applies
+  // it. Shared by the Sub-material and Triplanar source paths.
   string pendingId;
   array<char, 256> nameFilter{};
+};
+
+struct MaterialPickerSourceState {
+  bool initialized{};
+  int source{};
+  bw::core::SurfaceMaterialReference lastAssignment;
 };
 
 // Owns the thumbnail renderer backing the Sub-material picker modal. It is
@@ -102,36 +109,215 @@ void renderSubMaterialFields(
   widgets::ChipFields(state.chip);
 }
 
-bool renderSubMaterialPicker(
-    char const* label, string* subMaterialId, editor::Document* doc,
+bool renderTriplanarMaterialPicker(
+    char const* label, bw::core::SurfaceMaterialReference* materialReference,
+    vector<TriplanarMaterialEntry> const& materials, editor::Document* doc,
     bw::core::Primitive* primitive, editor::PrimitiveMaterialSurface surface) {
+  static map<string, SubMaterialPickerState> pickerStates;
+  auto& pickerState = pickerStates[string(label) + " Triplanar"];
+  auto popup = format("Select {} Triplanar material", label);
+
+  auto selected = find_if(
+      materials.begin(), materials.end(), [&](auto const& material) {
+        return materialReference->kind ==
+                   bw::core::SurfaceMaterialKind::Triplanar &&
+               material.resourceName == materialReference->reference;
+      });
+  auto currentName = selected == materials.end()
+                         ? string("(unassigned)")
+                         : selected->resourceName;
+  if (ImGui::Button(
+          format("{} Triplanar material: {}##{}-select", label, currentName,
+                 label)
+              .c_str())) {
+    pickerState.pendingId =
+        selected == materials.end() ? string{} : selected->resourceName;
+    ImGui::OpenPopup(popup.c_str());
+  }
+
+  constexpr float thumbnailSize =
+      static_cast<float>(SubMaterialThumbnailRenderer::size);
+  constexpr float tileWidth = thumbnailSize + 12.0f;
+  constexpr int pickerColumns = 6;
+  if (ImGui::BeginPopupModal(
+          popup.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::Text("Choose a Triplanar material.");
+    ImGui::SetNextItemWidth(pickerColumns * tileWidth);
+    ImGui::InputText("Filter (regex)", pickerState.nameFilter.data(),
+                     pickerState.nameFilter.size());
+
+    string regexError;
+    auto visibleMaterials = filterAndSortTriplanarMaterials(
+        materials, pickerState.nameFilter.data(), &regexError);
+    if (!regexError.empty()) {
+      ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled),
+                         "%s", regexError.c_str());
+    }
+
+    if (materials.empty()) {
+      ImGui::TextDisabled("No loaded Triplanar materials are available.");
+    } else {
+      if (!gMaterialPickerThumbnails) {
+        if (auto* renderSystem = editorRenderSystem()) {
+          gMaterialPickerThumbnails =
+              make_unique<SubMaterialThumbnailRenderer>(*renderSystem);
+        }
+      }
+
+      bool applyPicker = false;
+      ImGui::BeginChild(
+          "thumbnails",
+          ImVec2{pickerColumns * tileWidth + ImGui::GetStyle().ScrollbarSize,
+                 420.0f});
+      for (size_t i = 0; i < visibleMaterials.size(); ++i) {
+        auto const& material = *visibleMaterials[i];
+        ImGui::PushID(material.resourceName.c_str());
+        ImGui::BeginGroup();
+        auto texture = gMaterialPickerThumbnails
+                           ? gMaterialPickerThumbnails->triplanarTexture(
+                                 material.resourceName)
+                           : 0u;
+        bool const isSelected = material.resourceName == pickerState.pendingId;
+        if (isSelected) {
+          ImGui::PushStyleColor(
+              ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+          ImGui::PushStyleColor(
+              ImGuiCol_ButtonHovered,
+              ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
+        }
+        bool clicked =
+            texture
+                ? ImGui::ImageButton(
+                      "thumbnail", static_cast<ImTextureID>(texture),
+                      {thumbnailSize, thumbnailSize}, {0.0f, 1.0f},
+                      {1.0f, 0.0f})
+                : ImGui::Button("Unavailable", {thumbnailSize, thumbnailSize});
+        if (isSelected) ImGui::PopStyleColor(2);
+        auto textWidth = ImGui::CalcTextSize(material.resourceName.c_str()).x;
+        ImGui::SetCursorPosX(
+            ImGui::GetCursorPosX() +
+            max(0.0f, (thumbnailSize - textWidth) * 0.5f));
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + thumbnailSize);
+        ImGui::TextWrapped("%s", material.resourceName.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::EndGroup();
+        ImGui::PopID();
+        if (clicked) {
+          pickerState.pendingId = material.resourceName;
+          if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            applyPicker = true;
+          }
+        }
+        if ((static_cast<int>(i) + 1) % pickerColumns != 0) ImGui::SameLine();
+      }
+      if (visibleMaterials.empty() && regexError.empty()) {
+        ImGui::TextDisabled("No Triplanar material names match the filter.");
+      }
+      ImGui::EndChild();
+
+      auto pending = find_if(
+          materials.begin(), materials.end(), [&](auto const& material) {
+            return material.resourceName == pickerState.pendingId;
+          });
+      bool canApply = pending != materials.end();
+      if (!canApply) ImGui::BeginDisabled();
+      if (ImGui::Button("OK")) applyPicker = true;
+      if (!canApply) ImGui::EndDisabled();
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+      if (applyPicker && canApply) {
+        auto value = bw::core::SurfaceMaterialReference::triplanar(
+            pending->resourceName);
+        if (*materialReference != value) {
+          *materialReference = value;
+          transact(doc, CommandId::SetPrimitiveSubMaterial, [&] {
+            setPrimitiveSurfaceMaterial(doc, primitive, surface, value);
+          });
+        }
+        ImGui::CloseCurrentPopup();
+      }
+    }
+    ImGui::EndPopup();
+  }
+
+  selected = find_if(
+      materials.begin(), materials.end(), [&](auto const& material) {
+        return materialReference->kind ==
+                   bw::core::SurfaceMaterialKind::Triplanar &&
+               material.resourceName == materialReference->reference;
+      });
+  if (selected != materials.end() &&
+      ImGui::CollapsingHeader(
+          format("{} Selected resource", label).c_str(),
+          ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::Text("Resource name: %s", selected->resourceName.c_str());
+    ImGui::Text("Albedo ImageResource: %s",
+                selected->albedoResourceName.c_str());
+    ImGui::Text("Tile width: %g", selected->tileWidth);
+    ImGui::Text("Blend sharpness: %g", selected->blendSharpness);
+  }
+  return false;
+}
+
+bool renderSurfaceMaterialPicker(
+    char const* label,
+    bw::core::SurfaceMaterialReference* materialReference,
+    editor::Document* doc, bw::core::Primitive* primitive,
+    editor::PrimitiveMaterialSurface surface) {
   auto const& catalogs = procMaterialLibrary().catalogs();
-  if (catalogs.empty()) {
-    ImGui::TextDisabled("%s material: no ProcMaterial resources", label);
+  auto* renderSystem = editorRenderSystem();
+  auto triplanarMaterials = discoverLoadedTriplanarMaterials(
+      renderSystem ? renderSystem->resourceManager() : nullptr);
+  if (catalogs.empty() && triplanarMaterials.empty()) {
+    ImGui::TextDisabled("%s material: no material resources", label);
     return false;
   }
 
-  static map<string, int> selectedCatalogs;
-  auto& selectedCatalog = selectedCatalogs[label];
-  if (auto const* owner = procMaterialLibrary().findCatalogForSubMaterial(*subMaterialId)) {
-    selectedCatalog = (int)distance(catalogs.data(), owner);
+  static map<string, MaterialPickerSourceState> selectedSources;
+  auto& sourceState = selectedSources[label];
+  if (!sourceState.initialized ||
+      sourceState.lastAssignment != *materialReference) {
+    sourceState.initialized = true;
+    sourceState.lastAssignment = *materialReference;
+    if (materialReference->kind ==
+        bw::core::SurfaceMaterialKind::Triplanar) {
+      sourceState.source = static_cast<int>(catalogs.size());
+    } else if (auto const* owner =
+                   procMaterialLibrary().findCatalogForSubMaterial(
+                       materialReference->reference)) {
+      sourceState.source =
+          static_cast<int>(distance(catalogs.data(), owner));
+    }
   }
-  selectedCatalog = clamp(selectedCatalog, 0, (int)catalogs.size() - 1);
+  auto& selectedSource = sourceState.source;
+  selectedSource =
+      clamp(selectedSource, 0, static_cast<int>(catalogs.size()));
+  if (catalogs.empty()) selectedSource = 0;
 
-  string catalogItems;
+  string sourceItems;
   for (auto const& catalog : catalogs) {
-    catalogItems += catalog.resourceName;
-    catalogItems += '\0';
+    sourceItems += "ProcMaterial: " + catalog.resourceName;
+    sourceItems += '\0';
   }
+  sourceItems += "Triplanar materials";
+  sourceItems += '\0';
   ImGui::SetNextItemWidth(256);
-  ImGui::Combo(format("{} ProcMaterial", label).c_str(), &selectedCatalog,
-               catalogItems.c_str(), 6);
+  ImGui::Combo(format("{} material source", label).c_str(), &selectedSource,
+               sourceItems.c_str(), 6);
 
-  auto const& catalog = catalogs[selectedCatalog];
+  if (selectedSource == static_cast<int>(catalogs.size())) {
+    return renderTriplanarMaterialPicker(
+        label, materialReference, triplanarMaterials, doc, primitive, surface);
+  }
+
+  auto* subMaterialId = &materialReference->reference;
+  auto const& catalog = catalogs[selectedSource];
   int selectedSubMaterial{-1};
-  for (size_t i = 0; i < catalog.data.subMaterials.size(); ++i) {
-    auto const& subMaterial = catalog.data.subMaterials[i];
-    if (subMaterial.id == *subMaterialId) selectedSubMaterial = (int)i;
+  if (materialReference->kind == bw::core::SurfaceMaterialKind::SubMaterial) {
+    for (size_t i = 0; i < catalog.data.subMaterials.size(); ++i) {
+      auto const& subMaterial = catalog.data.subMaterials[i];
+      if (subMaterial.id == *subMaterialId) selectedSubMaterial = (int)i;
+    }
   }
 
   static map<string, SubMaterialPickerState> pickerStates;
@@ -145,7 +331,10 @@ bool renderSubMaterialPicker(
   if (ImGui::Button(
           format("{} Sub-material: {}##{}-select", label, currentName, label)
               .c_str())) {
-    pickerState.pendingId = *subMaterialId;
+    pickerState.pendingId =
+        materialReference->kind == bw::core::SurfaceMaterialKind::SubMaterial
+            ? *subMaterialId
+            : string{};
     ImGui::OpenPopup(pickPopup.c_str());
   }
 
@@ -250,10 +439,11 @@ bool renderSubMaterialPicker(
 
       if (applyPicker && canApply) {
         auto const id = pickerState.pendingId;
-        if (id != *subMaterialId) {
-          *subMaterialId = id;
+        auto value = bw::core::SurfaceMaterialReference::subMaterial(id);
+        if (*materialReference != value) {
+          *materialReference = value;
           transact(doc, CommandId::SetPrimitiveSubMaterial, [&] {
-            setPrimitiveSubMaterial(doc, primitive, surface, id);
+            setPrimitiveSurfaceMaterial(doc, primitive, surface, value);
           });
         }
         ImGui::CloseCurrentPopup();
@@ -297,7 +487,11 @@ bool renderSubMaterialPicker(
           doc, CommandId::DeleteSubMaterial, [id](Document* doc) {
             return deleteSubMaterial(doc, &procMaterialLibrary(), id);
           });
-      if (*subMaterialId == id) subMaterialId->clear();
+      if (materialReference->kind ==
+              bw::core::SurfaceMaterialKind::SubMaterial &&
+          *subMaterialId == id) {
+        subMaterialId->clear();
+      }
     }
   }
   if (!hasSelection) ImGui::EndDisabled();
@@ -325,7 +519,8 @@ bool renderSubMaterialPicker(
             }
             return setPrimitiveSubMaterial(doc, primitive, surface, createdId);
           });
-      *subMaterialId = createdId;
+      *materialReference =
+          bw::core::SurfaceMaterialReference::subMaterial(createdId);
       ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
@@ -357,18 +552,32 @@ bool renderSubMaterialPicker(
   return false;
 }
 
-void renderSubMaterialValue(char const* label, string const& subMaterialId) {
-  auto const* catalog = procMaterialLibrary().findCatalogForSubMaterial(subMaterialId);
-  if (!catalog) {
+void renderSurfaceMaterialValue(
+    char const* label,
+    bw::core::SurfaceMaterialReference const& materialReference) {
+  if (materialReference.kind == bw::core::SurfaceMaterialKind::Triplanar) {
     ImGui::Text("%s material: %s", label,
-                subMaterialId.empty() ? "(unassigned)" : subMaterialId.c_str());
+                materialReference.reference.empty()
+                    ? "(unassigned)"
+                    : materialReference.reference.c_str());
+    return;
+  }
+
+  auto const* catalog = procMaterialLibrary().findCatalogForSubMaterial(
+      materialReference.reference);
+  if (!catalog) {
+    ImGui::Text(
+        "%s material: %s", label,
+        materialReference.reference.empty()
+            ? "(unassigned)"
+            : materialReference.reference.c_str());
     return;
   }
   auto const& subMaterials = catalog->data.subMaterials;
-  auto found = find_if(subMaterials.begin(), subMaterials.end(),
-                       [&subMaterialId](auto const& value) {
-                         return value.id == subMaterialId;
-                       });
+  auto found = find_if(
+      subMaterials.begin(), subMaterials.end(), [&](auto const& value) {
+        return value.id == materialReference.reference;
+      });
   ImGui::Text("%s material: %s / %s", label, catalog->resourceName.c_str(),
               found->displayName.c_str());
 }
@@ -894,14 +1103,14 @@ bool renderPrimitivePropertySet(
   }
 
   if (editable) {
-    renderSubMaterialPicker(
-        "Floor", &properties->floorMaterialId.reference, doc, primitive,
+    renderSurfaceMaterialPicker(
+        "Floor", &properties->floorMaterialId, doc, primitive,
         PrimitiveMaterialSurface::Floor);
-    renderSubMaterialPicker(
-        "Ceiling", &properties->ceilingMaterialId.reference, doc, primitive,
+    renderSurfaceMaterialPicker(
+        "Ceiling", &properties->ceilingMaterialId, doc, primitive,
         PrimitiveMaterialSurface::Ceiling);
-    renderSubMaterialPicker(
-        "Wall", &properties->wallMaterialId.reference, doc, primitive,
+    renderSurfaceMaterialPicker(
+        "Wall", &properties->wallMaterialId, doc, primitive,
         PrimitiveMaterialSurface::Wall);
     renderEmbossPresetPanel(
         "Floor", &properties->floorEmbossPresetId, doc, primitive,
@@ -913,9 +1122,9 @@ bool renderPrimitivePropertySet(
         "Wall", &properties->wallEmbossPresetId, doc, primitive,
         PrimitiveMaterialSurface::Wall);
   } else {
-    renderSubMaterialValue("Floor", properties->floorMaterialId);
-    renderSubMaterialValue("Ceiling", properties->ceilingMaterialId);
-    renderSubMaterialValue("Wall", properties->wallMaterialId);
+    renderSurfaceMaterialValue("Floor", properties->floorMaterialId);
+    renderSurfaceMaterialValue("Ceiling", properties->ceilingMaterialId);
+    renderSurfaceMaterialValue("Wall", properties->wallMaterialId);
     renderEmbossPresetValue("Floor", properties->floorEmbossPresetId);
     renderEmbossPresetValue("Ceiling", properties->ceilingEmbossPresetId);
     renderEmbossPresetValue("Wall", properties->wallEmbossPresetId);
