@@ -29,24 +29,27 @@ world:
     - id: 0
       name: Layer 0
       vars:
+        - name: cell_floor_split_pct
+          type: float
+          value: 35
+        - name: corner_pool_pct
+          type: float
+          value: 90
         - name: corridor_base_height
           type: integer
           value: 32
         - name: corridor_width
           type: integer
           value: 24
+        - name: floor_step_variance
+          type: float
+          value: 5
         - name: mine_material
           type: string
           value: builtin.basalt
         - name: support_frame_pct
           type: float
           value: 35
-        - name: cell_floor_split_pct
-          type: float
-          value: 35
-        - name: floor_step_variance
-          type: float
-          value: 8
       minExtent: [-4096, -4096]
       maxExtent: [4096, 4096]
       nextStepId: 5
@@ -1775,7 +1778,7 @@ world:
           primitives:
             - type: Mesh
               vertexTransformerObject:
-                id: 826
+                id: 711
                 parentId: -1
                 position: [-16, 8]
                 transformOffset: [0, 0]
@@ -2111,7 +2114,7 @@ world:
                       []
             - type: Rectangle
               vertexTransformerObject:
-                id: 827
+                id: 712
                 parentId: -1
                 position: [-60, 0]
                 transformOffset: [0, 0]
@@ -2401,7 +2404,7 @@ world:
                 xyRatio: 2
             - type: Rectangle
               vertexTransformerObject:
-                id: 828
+                id: 713
                 parentId: -1
                 position: [28, 0]
                 transformOffset: [0, 0]

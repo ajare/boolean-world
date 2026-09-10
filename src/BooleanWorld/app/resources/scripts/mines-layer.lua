@@ -22,6 +22,7 @@ local ROTATED_DIRECTION = {
 local ANGLES = {0, 90, 180, 270}
 local EPSILON = 0.001
 local split_candidates_by_map = {}
+local corner_candidates_by_map = {}
 
 local function cell_key(x, y)
     return x .. "," .. y
@@ -538,8 +539,10 @@ local function create_tunnels_section_primitive(step_name, index,
     -- skewed cross-cut. The cut endpoints lie on the already-inset walls, so
     -- slicing preserves the tunnel footprint while adding another polygon.
     local split_candidates = split_candidates_by_map[index]
+    local corner_candidates = corner_candidates_by_map[index]
     if split_candidates == nil then
         split_candidates = {}
+        corner_candidates = {}
         local neighbour_offsets = {
             {x = 0, y = -1},
             {x = 1, y = 0},
@@ -559,22 +562,33 @@ local function create_tunnels_section_primitive(step_name, index,
                             neighbours[#neighbours + 1] = offset
                         end
                     end
-                    if #neighbours == 2 and
-                        (neighbours[1].x == neighbours[2].x or
-                            neighbours[1].y == neighbours[2].y) then
-                        split_candidates[#split_candidates + 1] = {
-                            x = x,
-                            y = y,
-                            direction_x =
-                                (neighbours[2].x - neighbours[1].x) / 2,
-                            direction_y =
-                                (neighbours[2].y - neighbours[1].y) / 2
-                        }
+                    if #neighbours == 2 then
+                        local is_straight =
+                            neighbours[1].x == neighbours[2].x or
+                                neighbours[1].y == neighbours[2].y
+                        if is_straight then
+                            split_candidates[#split_candidates + 1] = {
+                                x = x,
+                                y = y,
+                                direction_x =
+                                    (neighbours[2].x - neighbours[1].x) / 2,
+                                direction_y =
+                                    (neighbours[2].y - neighbours[1].y) / 2
+                            }
+                        else
+                            corner_candidates[#corner_candidates + 1] = {
+                                x = x,
+                                y = y,
+                                first = neighbours[1],
+                                second = neighbours[2]
+                            }
+                        end
                     end
                 end
             end
         end
         split_candidates_by_map[index] = split_candidates
+        corner_candidates_by_map[index] = corner_candidates
     end
     local cell_floor_split_pct = layer.vars.cell_floor_split_pct
     assert(type(cell_floor_split_pct) == "number" and
@@ -585,6 +599,11 @@ local function create_tunnels_section_primitive(step_name, index,
     assert(type(floor_step_variance) == "number" and
                floor_step_variance >= 0,
            "layer.vars.floor_step_variance must be a non-negative number")
+    local corner_pool_pct = layer.vars.corner_pool_pct
+    assert(type(corner_pool_pct) == "number" and corner_pool_pct >= 0 and
+               corner_pool_pct <= 100,
+           "layer.vars.corner_pool_pct must be a number from 0 to 100")
+    local corner_pool_chance = corner_pool_pct / 100
 
     local mesh = nil
     local function add_ring(ring, parent_id, depth)
@@ -653,6 +672,62 @@ local function create_tunnels_section_primitive(step_name, index,
         end
     end
 
+    local pool_points = {}
+    for _, candidate in ipairs(corner_candidates) do
+        if math.random() < corner_pool_chance then
+            local center_x = (candidate.x + 0.5) * cell_size - map_size / 2
+            local center_y = (candidate.y + 0.5) * cell_size - map_size / 2
+            local corner_x = center_x -
+                                 (candidate.first.x + candidate.second.x) *
+                                     corridor_width / 2
+            local corner_y = center_y -
+                                 (candidate.first.y + candidate.second.y) *
+                                     corridor_width / 2
+            -- Reach well past the wall midpoints so the isolated corner
+            -- triangle is broad enough to read as a pool.
+            local pool_radius = corridor_width * 0.75
+            local first_x = corner_x + candidate.first.x * pool_radius
+            local first_y = corner_y + candidate.first.y * pool_radius
+            local second_x = corner_x + candidate.second.x * pool_radius
+            local second_y = corner_y + candidate.second.y * pool_radius
+            local pool_edge = mesh:slice_at(first_x, first_y,
+                                                 second_x, second_y)
+            if pool_edge ~= nil then
+                local segment_count = math.random(3, 4)
+                local curve_amplitude = 1.5 + math.random() * 1.5
+                local offsets = {}
+                for vertex_index = 1, segment_count - 1 do
+                    local curve = math.sin(math.pi * vertex_index /
+                                               segment_count) * curve_amplitude
+                    local roughness = (math.random() - 0.5) * 0.5
+                    offsets[vertex_index] = curve + roughness
+                end
+                assert(mesh:roughen_edge(pool_edge, offsets,
+                                         corner_x, corner_y))
+                sliced_cells[cell_key(candidate.x, candidate.y)] = true
+                local corner_direction_x = corner_x - center_x
+                local corner_direction_y = corner_y - center_y
+                local pool_angle = math.deg(math.atan(
+                                                -corner_direction_x,
+                                                corner_direction_y))
+                if pool_angle < 0 then
+                    pool_angle = pool_angle + 360
+                end
+                pool_points[#pool_points + 1] = {
+                    x = corner_x +
+                        (candidate.first.x + candidate.second.x) *
+                            corridor_width / 8,
+                    y = corner_y +
+                        (candidate.first.y + candidate.second.y) *
+                            corridor_width / 8,
+                    adjacent_x = center_x,
+                    adjacent_y = center_y,
+                    angle = pool_angle
+                }
+            end
+        end
+    end
+
     -- Horizontal surfaces use the catalog's 2D material program; walls use
     -- its 3D program. Both variants share the basalt Sub-material id.
     mesh:set_floor_material(layer.vars.mine_material)
@@ -682,6 +757,28 @@ local function create_tunnels_section_primitive(step_name, index,
         floor_regions[1] = {primitive = mesh, height = 0}
     end
 
+    for _, pool_point in ipairs(pool_points) do
+        local pool_region = nil
+        local adjacent_region = nil
+        for _, region in ipairs(floor_regions) do
+            if region.primitive:contains_point(pool_point.x, pool_point.y) then
+                pool_region = region
+            end
+            if region.primitive:contains_point(pool_point.adjacent_x,
+                                                pool_point.adjacent_y) then
+                adjacent_region = region
+            end
+        end
+        assert(pool_region ~= nil and adjacent_region ~= nil and
+                   pool_region ~= adjacent_region,
+               "a corner pool did not produce a separate floor polygon")
+        pool_region.height = adjacent_region.height
+        pool_region.primitive:set_floor_elevation(
+            pool_point.angle + 180, adjacent_region.height - 3,
+            adjacent_region.height)
+        pool_region.primitive:set_liquid_level(8)
+    end
+
     local wooden_supports = create_wooden_supports(
                                 tile_map, corridor_width, map_size, primary,
                                 sliced_cells, floor_regions)
@@ -703,18 +800,25 @@ local function place_tunnels_section(primitive, primitive_size,
     local primitive_local_x, primitive_local_y = primitive:get_position()
     local primitive_offset_x, primitive_offset_y =
         rotate_point(primitive_local_x, primitive_local_y, angle)
+    local floor_angle, floor_lower, floor_upper =
+        primitive:get_floor_elevation()
     primitive:set_position(position_x + primitive_offset_x,
                            position_y + primitive_offset_y)
     primitive:set_orientation(angle)
+    primitive:set_floor_elevation(floor_angle, floor_lower, floor_upper)
     context:place_primitive(primitive)
 
     for _, section_primitive in ipairs(section_primitives) do
         local local_x, local_y = section_primitive:get_position()
         local rotated_x, rotated_y = rotate_point(local_x, local_y, angle)
+        local section_floor_angle, section_floor_lower, section_floor_upper =
+            section_primitive:get_floor_elevation()
         section_primitive:set_position(position_x + rotated_x,
                                        position_y + rotated_y)
         section_primitive:set_orientation(
             section_primitive:get_orientation() + angle)
+        section_primitive:set_floor_elevation(
+            section_floor_angle, section_floor_lower, section_floor_upper)
         context:place_primitive(section_primitive)
     end
 end

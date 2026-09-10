@@ -521,11 +521,11 @@ void scriptsAuthorAndSliceMeshContainmentByPolygonId() {
       {50, 0}, {60, 0}, {60, 10}, {50, 10}
     })
     local slice_edge = assert(sliced_at:slice_at(50, 2, 60, 8))
-    local slice_vertex = assert(sliced_at:split_edge(slice_edge, 0.5))
-    assert(sliced_at:move_vertex(slice_vertex, 1, -1))
+    assert(sliced_at:roughen_edge(slice_edge, {1, 1.5, 1}, 55, 2))
     assert(sliced_at:contains_point(51, 1))
     local parts = context:decompose_mesh_primitive(sliced_at)
     assert(#parts == 2)
+    parts[1]:set_liquid_level(8)
     context:place_primitive(parts[1])
     context:place_primitive(parts[2])
   )");
@@ -544,8 +544,9 @@ void scriptsAuthorAndSliceMeshContainmentByPolygonId() {
   auto* secondPart =
       dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(3));
   require(firstPart && secondPart && firstPart->getShells().size() == 1 &&
-              secondPart->getShells().size() == 1,
-          "decompose_mesh_primitive did not separate sliced Shells");
+              secondPart->getShells().size() == 1 &&
+              firstPart->getProperties().liquidLevel == 8.0f,
+          "decomposed Mesh properties did not cross the Lua API");
 }
 
 void meshPrimitivesRetainTheMutablePrimitiveApi() {

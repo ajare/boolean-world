@@ -555,6 +555,75 @@ optional<uint32_t> ScriptMeshPrimitive::splitEdge(
   return result.newVertexIndices.front();
 }
 
+bool ScriptMeshPrimitive::roughenEdge(
+    uint32_t edgeId, sol::table const& offsets,
+    float towardX, float towardY) {
+  auto const offsetCount = offsets.size();
+  if (mEditing->edgeIndexIterationFinished(edgeId) ||
+      (offsetCount != 2 && offsetCount != 3) ||
+      !isfinite(towardX) || !isfinite(towardY)) {
+    return false;
+  }
+  vector<float> displacements;
+  displacements.reserve(offsetCount);
+  for (size_t index = 1; index <= offsetCount; ++index) {
+    auto displacement = offsets.get<float>(index);
+    if (!isfinite(displacement) || displacement < 0.0f) return false;
+    displacements.push_back(displacement);
+  }
+
+  auto candidate = *mEditing;
+  auto const& original = candidate.getEdge(edgeId);
+  auto const originalSecond = uint32_t(original.getSecondVertex());
+  auto const& firstPosition =
+      candidate.getVertex(original.getFirstVertex()).getPosition();
+  auto const& secondPosition =
+      candidate.getVertex(original.getSecondVertex()).getPosition();
+  auto const delta = secondPosition - firstPosition;
+  auto const length = sqrt(delta.x * delta.x + delta.y * delta.y);
+  if (length <= 0.0f) return false;
+  wp::Vector2 normal{-delta.y / length, delta.x / length};
+  auto const midpoint = (firstPosition + secondPosition) / 2.0f;
+  auto const toward = wp::Vector2{towardX, towardY} - midpoint;
+  if (normal.dot(toward) < 0.0f) normal = -normal;
+
+  vector<uint32_t> vertices;
+  vertices.reserve(offsetCount);
+  auto remainderEdge = edgeId;
+  auto const segmentCount = uint32_t(offsetCount + 1);
+  for (uint32_t index = 0; index < offsetCount; ++index) {
+    wp::geometry::SplitEdgeResult result;
+    auto const remainingSegments = segmentCount - index;
+    if (!candidate.splitEdge(
+            remainderEdge, 1.0f / float(remainingSegments), &result) ||
+        result.newVertexIndices.size() != 1 ||
+        result.newEdgeIndices.size() != 2) {
+      return false;
+    }
+    vertices.push_back(result.newVertexIndices.front());
+    auto foundRemainder = false;
+    for (auto newEdge : result.newEdgeIndices) {
+      auto const& edge = candidate.getEdge(newEdge);
+      if (uint32_t(edge.getFirstVertex()) == originalSecond ||
+          uint32_t(edge.getSecondVertex()) == originalSecond) {
+        remainderEdge = newEdge;
+        foundRemainder = true;
+        break;
+      }
+    }
+    if (!foundRemainder) return false;
+  }
+
+  auto movedMesh = candidate.getMesh();
+  for (size_t index = 0; index < vertices.size(); ++index) {
+    movedMesh.moveVertex(vertices[index], normal * displacements[index]);
+  }
+  if (!candidate.replaceMesh(move(movedMesh))) return false;
+  *mEditing = move(candidate);
+  mEditing->commitTo(*mPrimitive);
+  return true;
+}
+
 bool ScriptMeshPrimitive::removeVertex(uint32_t vertexId) {
   if (mEditing->vertexIndexIterationFinished(vertexId) ||
       !mEditing->removeVertex(vertexId)) {
@@ -1166,6 +1235,16 @@ void bindScriptTypes(sol::state& lua) {
       [](ScriptMeshPrimitive const& mesh) {
         return getElevation(*mesh.getPrimitive(), false);
       },
+      "set_liquid_level",
+      [](ScriptMeshPrimitive& mesh, float level) {
+        if (!isfinite(level) || level < 0.0f) {
+          throw CoreException(
+              "MeshPrimitive liquid level must be finite and non-negative");
+        }
+        auto properties = mesh.getPrimitive()->getProperties();
+        properties.liquidLevel = level;
+        mesh.getPrimitive()->setProperties(properties);
+      },
 
       "set_floor_material",
       [](ScriptMeshPrimitive& mesh, string const& materialId) {
@@ -1233,6 +1312,7 @@ void bindScriptTypes(sol::state& lua) {
           [](ScriptMeshPrimitive& mesh, uint32_t edgeId, float t) {
             return mesh.splitEdge(edgeId, t);
           }),
+      "roughen_edge", &ScriptMeshPrimitive::roughenEdge,
       "move_vertex_to", &ScriptMeshPrimitive::moveVertexTo,
       "move_vertex", &ScriptMeshPrimitive::moveVertex,
       "move_edge", &ScriptMeshPrimitive::moveEdge,

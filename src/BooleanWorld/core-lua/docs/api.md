@@ -410,9 +410,11 @@ Every operation validates the complete Ring and containment hierarchy. A refused
 | `move_polygon(polygon_id, dx, dy)` | Translates one Ring, without implicitly moving descendants. Returns whether accepted. |
 | `split_edge(edge_id)` | Splits an Edge at its midpoint and returns the new Vertex id, or `nil`. |
 | `split_edge(edge_id, t)` | Splits an Edge at the fraction `t`, strictly between zero and one, and returns the new Vertex id, or `nil`. |
+| `roughen_edge(edge_id, offsets, toward_x, toward_y)` | Splits an Edge into three or four segments and displaces its new vertices normally toward the supplied point by the two or three non-negative values in `offsets`. Returns whether accepted. |
 | `slice_polygon(polygon_id, first_vertex_id, second_vertex_id)` | Divides a Shell or Island along a valid chord between two non-adjacent vertices. Returns whether accepted. |
 | `slice_at(x1, y1, x2, y2)` | Divides the filled polygon whose boundary contains both points and returns the new internal Edge id, or `nil`. Boundary Edges are split as needed. |
 | `contains_point(x, y)` | Returns whether the World-plane point lies inside the filled mesh. |
+| `set_liquid_level(level)` | Sets the non-negative amount of Water contributed by this mesh. |
 | `remove_vertex(vertex_id)` | Removes a Vertex and heals its Ring. Returns whether accepted. |
 | `remove_edge(edge_id)` | Welds a one-sided Edge's endpoints or merges compatible sibling Rings across a two-sided Edge. Returns whether accepted. |
 | `remove_polygon(polygon_id)` | Removes a Ring and its structurally contained descendants. Returns whether accepted. |

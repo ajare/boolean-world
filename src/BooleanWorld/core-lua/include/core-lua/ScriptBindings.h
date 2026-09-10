@@ -122,6 +122,9 @@ public:
       uint32_t polygonId, float deltaX, float deltaY);
   [[nodiscard]] std::optional<uint32_t> splitEdge(uint32_t edgeId);
   [[nodiscard]] std::optional<uint32_t> splitEdge(uint32_t edgeId, float t);
+  [[nodiscard]] bool roughenEdge(
+      uint32_t edgeId, sol::table const& offsets,
+      float towardX, float towardY);
   [[nodiscard]] bool removeVertex(uint32_t vertexId);
   [[nodiscard]] bool removeEdge(uint32_t edgeId);
   [[nodiscard]] bool removePolygon(uint32_t polygonId);

@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -203,18 +204,41 @@ void minesKeepTunnelFloorsLevelAndCreateWoodenSupports() {
 
   require(!tunnels.empty(), "the mines script produced no tunnel floors");
   bool foundVariedFloor = false;
+  bool foundCornerPool = false;
   for (auto const* tunnel : tunnels) {
     auto const* mesh = dynamic_cast<bw::core::MeshPrimitive const*>(tunnel);
     require(mesh && mesh->getShells().size() == 1,
             "a sliced tunnel floor was not decomposed by polygon");
     auto const floor = tunnel->getProperties().floorSpan;
-    require(floor.lowerElevation >= -8.0f && floor.lowerElevation <= 8.0f &&
-                floor.upperElevation == floor.lowerElevation,
-            "a tunnel polygon floor height was outside [-8, 8]");
     foundVariedFloor |= floor.lowerElevation != 0.0f;
+    auto const liquidLevel = tunnel->getProperties().liquidLevel;
+    if (liquidLevel > 0.0f) {
+      auto cornerAngle = std::fmod(floor.directionAngle, 360.0f);
+      if (cornerAngle < 0.0f) cornerAngle += 360.0f;
+      auto const pointsTowardCorner = cornerAngle == 45.0f ||
+                                      cornerAngle == 135.0f ||
+                                      cornerAngle == 225.0f ||
+                                      cornerAngle == 315.0f;
+      auto const poolVertices = mesh->getShells().front().ring.size();
+      require(liquidLevel == 8.0f && pointsTowardCorner &&
+                  (poolVertices == 5 || poolVertices == 6) &&
+                  floor.lowerElevation >= -16.0f &&
+                  floor.upperElevation <= 8.0f &&
+                  std::abs(floor.upperElevation - floor.lowerElevation -
+                           3.0f) < 0.0001f,
+              "a corner pool did not curve and slope toward its corner");
+      foundCornerPool = true;
+    } else {
+      require(floor.lowerElevation >= -8.0f &&
+                  floor.lowerElevation <= 8.0f &&
+                  floor.upperElevation == floor.lowerElevation,
+              "a non-pool tunnel polygon had an invalid floor elevation");
+    }
   }
   require(foundVariedFloor,
           "sliced tunnel polygons did not receive varied floor heights");
+  require(foundCornerPool,
+          "corner cells did not create lowered pool polygons");
   require(!bridges.empty() && posts.size() == bridges.size() * 2,
           "the configured wooden support percentage produced no complete frames");
   for (auto const* bridge : bridges) {
