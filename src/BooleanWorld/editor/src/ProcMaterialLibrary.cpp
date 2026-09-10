@@ -4,6 +4,8 @@
 #include <cctype>
 #include <map>
 #include <memory>
+#include <optional>
+#include <regex>
 #include <stdexcept>
 
 #include <yaml-cpp/yaml.h>
@@ -84,6 +86,39 @@ bw::core::ProcMaterialData loadCatalog(fs::path const& path) {
 }
 
 }  // namespace
+
+vector<bw::core::SubMaterial const*> filterAndSortSubMaterials(
+    vector<bw::core::SubMaterial> const& subMaterials,
+    string_view expression, string* regexError) {
+  regexError->clear();
+  optional<regex> filter;
+  try {
+    filter.emplace(expression.begin(), expression.end(),
+                   regex_constants::ECMAScript | regex_constants::icase);
+  } catch (regex_error const&) {
+    *regexError = "Invalid regular expression.";
+    return {};
+  }
+
+  vector<bw::core::SubMaterial const*> matches;
+  for (auto const& material : subMaterials) {
+    if (regex_search(material.displayName, *filter)) matches.push_back(&material);
+  }
+  sort(matches.begin(), matches.end(), [](auto const* first, auto const* second) {
+    auto firstName = first->displayName;
+    auto secondName = second->displayName;
+    transform(firstName.begin(), firstName.end(), firstName.begin(),
+              [](unsigned char c) { return static_cast<char>(tolower(c)); });
+    transform(secondName.begin(), secondName.end(), secondName.begin(),
+              [](unsigned char c) { return static_cast<char>(tolower(c)); });
+    if (firstName != secondName) return firstName < secondName;
+    if (first->displayName != second->displayName) {
+      return first->displayName < second->displayName;
+    }
+    return first->id < second->id;
+  });
+  return matches;
+}
 
 void ProcMaterialLibrary::load(fs::path const& resourcesManifest) {
   auto root = YAML::LoadFile(resourcesManifest.string());

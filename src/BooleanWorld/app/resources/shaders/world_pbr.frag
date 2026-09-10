@@ -976,7 +976,7 @@ StoneParams unpackStoneParams()
     return result;
 }
 
-Material graniteTexture(vec3 worldPos, vec3 normal)
+Material stoneTexture(vec3 worldPos, vec3 normal)
 {
     StoneParams params = unpackStoneParams();
 
@@ -992,6 +992,88 @@ Material graniteTexture(vec3 worldPos, vec3 normal)
     material.metallic = mica * params.stoneMix;
     material.roughness = clamp(0.58 - quartz * 0.16 - mica * params.micaRoughness, 0.24, 0.68);
     material.normal = geologyNormal(p, normal, 0, surface, params.normalStrength);
+    return material;
+}
+
+// Granite is a dedicated, continuous 3D mineral field. It remains distinct
+// from the legacy Stone Technique above: feldspar, quartz and mica each have
+// an exposed abundance, while one shared field drives its colour and normal.
+struct GraniteParams
+{
+    float baseScale;
+    float grainScale;
+    float feldsparAmount;
+    float quartzAmount;
+    float micaAmount;
+    float normalStrength;
+    float roughness;
+    float colourVariation;
+};
+
+GraniteParams unpackGraniteParams()
+{
+    GraniteParams result;
+    result.baseScale = blendedMaterialParams[0];
+    result.grainScale = blendedMaterialParams[1];
+    result.feldsparAmount = blendedMaterialParams[2];
+    result.quartzAmount = blendedMaterialParams[3];
+    result.micaAmount = blendedMaterialParams[4];
+    result.normalStrength = blendedMaterialParams[5];
+    result.roughness = blendedMaterialParams[6];
+    result.colourVariation = blendedMaterialParams[7];
+    return result;
+}
+
+float graniteMineralField(vec3 p, GraniteParams params)
+{
+    float coarse = fbm(p * 0.55);
+    float grains = noise(p * params.grainScale);
+    float boundaries = 1.0 - smoothstep(
+        0.08, 0.42, geologyVoronoi(p * 2.8));
+    return coarse * 0.42 + grains * 0.33 + boundaries * 0.25;
+}
+
+Material graniteTexture(vec3 worldPos, vec3 normal)
+{
+    GraniteParams params = unpackGraniteParams();
+    vec3 p = worldPos * params.baseScale;
+    float field = graniteMineralField(p, params);
+    float feldspar = smoothstep(
+        0.38, 0.82, fbm(p * 1.7 + vec3(11.0, 3.0, 7.0))) *
+        params.feldsparAmount;
+    float quartz = smoothstep(
+        0.40, 0.78, 1.0 - geologyVoronoi(p * 3.4 + vec3(5.0))) *
+        params.quartzAmount;
+    float mica = smoothstep(
+        0.90, 0.985, noise(p * params.grainScale * 2.1 + vec3(23.0))) *
+        params.micaAmount;
+
+    vec3 darkMineral = vec3(0.18, 0.17, 0.17);
+    vec3 lightMineral = vec3(0.62, 0.59, 0.56);
+    vec3 colour = mix(
+        darkMineral, lightMineral,
+        clamp(0.5 + (field - 0.5) * (1.0 + params.colourVariation * 2.0),
+              0.0, 1.0));
+    colour = mix(colour, vec3(0.72, 0.48, 0.43), feldspar);
+    colour = mix(colour, vec3(0.76, 0.75, 0.72), quartz);
+    colour = mix(colour, vec3(0.035, 0.032, 0.03), mica);
+
+    const float epsilon = 0.025;
+    vec3 gradient = vec3(
+        graniteMineralField(p + vec3(epsilon, 0.0, 0.0), params) - field,
+        graniteMineralField(p + vec3(0.0, epsilon, 0.0), params) - field,
+        graniteMineralField(p + vec3(0.0, 0.0, epsilon), params) - field) /
+        epsilon;
+    vec3 geometricNormal = normalize(normal);
+    gradient -= geometricNormal * dot(gradient, geometricNormal);
+
+    Material material;
+    material.albedo = colour;
+    material.metallic = 0.0;
+    material.roughness = clamp(
+        params.roughness - quartz * 0.13 + mica * 0.08, 0.12, 1.0);
+    material.normal = normalize(
+        geometricNormal - gradient * params.normalStrength);
     return material;
 }
 
@@ -2962,7 +3044,7 @@ Material evaluateMaterial(
     switch (materialIndex)
     {
         case 1: material = marbleTexture(texturePosition, normalDir); break;
-        case 2: material = graniteTexture(texturePosition, normalDir); break;
+        case 2: material = stoneTexture(texturePosition, normalDir); break;
         case 3: material = slateTexture(texturePosition, normalDir); break;
         case 4: material = sandstoneTexture(texturePosition, normalDir); break;
         case 5: material = limestoneTexture(texturePosition, normalDir); break;
@@ -2999,8 +3081,9 @@ Material evaluateMaterial(
         case 36: material = mossyRockTexture(texturePosition, normalDir); break;
         case 37: material = wetRockTexture(texturePosition, normalDir); break;
         case 38: material = wood2Texture(texturePosition, normalDir); break;
+        case 39: material = graniteTexture(texturePosition, normalDir); break;
         case 0: material = plainGreyMaterial(normalDir); break;
-        case 39: // BW_WALL_BACK_FACE_MATERIAL_INDEX (Defines.h): a plain
+        case 40: // BW_WALL_BACK_FACE_MATERIAL_INDEX (Defines.h): a plain
                  // white matte surface for the unmapped side of a wall.
             material.albedo = vec3(1.0, 1.0, 1.0);
             material.metallic = 0.0;
@@ -3135,12 +3218,12 @@ vec3 applyLiquidAbsorption(
 
 void main()
 {
-    int bucketMaterialIndex = clamp(@Uniform(MATERIAL_INDEX), 0, 40);
+    int bucketMaterialIndex = clamp(@Uniform(MATERIAL_INDEX), 0, 41);
 
     // Liquid is an interface, not another lit volume. The water pass has no
     // depth attachment, so reject interfaces hidden by the sampled opaque
     // depth before marching that same point-sampled buffer.
-    if (bucketMaterialIndex == 40)
+    if (bucketMaterialIndex == 41)
     {
         vec2 screenUv = gl_FragCoord.xy * VIEWPORT_SIZE.zw;
         bool hasWaterPass = @Uniform(LIQUID_WATER_PASS_ENABLED) != 0;
@@ -3301,8 +3384,8 @@ void main()
         @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE),
         @Uniform(PIXEL_SIZE));
     int materialIndex = floorMaterialIndex(
-        @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 39));
-    materialIndex = clamp(materialIndex, 0, 39);
+        @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 40));
+    materialIndex = clamp(materialIndex, 0, 40);
     blendMaterialParams();
     Material material = evaluateMaterial(
         texturePosition, normalDir, viewDir, materialIndex);

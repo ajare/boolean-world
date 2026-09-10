@@ -10,6 +10,17 @@ namespace editor {
 class Document;
 
 [[nodiscard]] bool preview3DIsOpen();
+[[nodiscard]] bool preview3DIsEntering();
+
+// Defers the synchronous preview construction until the next editor frame,
+// allowing the current frame to present its status-bar loading message first.
+void requestOpenPreview3D(
+    Document* document,
+    std::vector<bw::core::Primitive const*> primitives,
+    wp::Vector2 const& playerPosition,
+    float playerAngle,
+    float floorZ);
+void processPendingPreview3DOpen();
 
 void openPreview3D(
     Document* document,

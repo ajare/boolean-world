@@ -680,7 +680,9 @@ void renderStatusbar(ViewContext& context) {
 
   if (ImGui::BeginViewportSideBar("##MainStatusBar", viewport, ImGuiDir_Down, height, windowFlags)) {
     if (ImGui::BeginMenuBar()) {
-      if (doc->isActive()) {
+      if (preview3DIsEntering()) {
+        ImGui::TextUnformatted("Entering 3d mode");
+      } else if (doc->isActive()) {
         auto world = doc->getWorld();
 
         // Number of primitives

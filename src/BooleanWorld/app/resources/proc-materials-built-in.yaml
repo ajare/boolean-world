@@ -825,6 +825,40 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.56
+  - materialIndex: 39
+    parameters:
+      - name: base_scale
+        min: 0.05
+        max: 3
+        default: 0.45
+      - name: grain_scale
+        min: 1
+        max: 24
+        default: 7
+      - name: feldspar_amount
+        min: 0
+        max: 1
+        default: 0.58
+      - name: quartz_amount
+        min: 0
+        max: 1
+        default: 0.32
+      - name: mica_amount
+        min: 0
+        max: 1
+        default: 0.1
+      - name: normal_strength
+        min: 0
+        max: 0.5
+        default: 0.065
+      - name: roughness
+        min: 0
+        max: 1
+        default: 0.62
+      - name: colour_variation
+        min: 0
+        max: 1
+        default: 0.28
   - materialIndex: 0
     parameters:
       []
@@ -1153,6 +1187,24 @@ subMaterials:
       maximumCornerDistance: 3
       cornerProbability: 0
       types: [Tapered, SteppedFracture, VShapedNotch, TrapezoidalSpall]
+  - id: builtin.granite
+    acousticPreset: builtin.acoustic.rock
+    name: Granite
+    materialIndex: 39
+    params: [0.45, 7, 0.58, 0.32, 0.1, 0.065, 0.62, 0.28]
+    baseColour: [0.72, 0.7, 0.68]
+    chip:
+      minimumArrisLength: 2
+      minimumDepth: 1
+      maximumDepth: 3
+      minimumReach: 1
+      maximumReach: 3
+      minimumSpacing: 3.1
+      probability: 0.3
+      minimumCornerDistance: 1
+      maximumCornerDistance: 3
+      cornerProbability: 1
+      types: [Tapered, PyramidalDivot, MultiFacetSpall, SteppedFracture, VShapedNotch, TrapezoidalSpall]
   - id: builtin.bark
     acousticPreset: builtin.acoustic.wood
     name: Bark

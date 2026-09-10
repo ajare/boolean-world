@@ -428,8 +428,11 @@ local function create_tunnels_section_primitive(step_name, index,
         add_ring(root, nil, 0)
     end
 
-    -- Creation defaults intentionally supply materials and floor/ceiling
-    -- elevations until the generated TileMap geometry needs authored values.
+    -- Horizontal surfaces use the catalog's 2D material program; walls use
+    -- its 3D program. Both variants share the basalt Sub-material id.
+    mesh:set_floor_material("builtin.basalt")
+    mesh:set_ceiling_material("builtin.basalt")
+    mesh:set_wall_material("builtin.basalt")
     return mesh, map_size
 end
 

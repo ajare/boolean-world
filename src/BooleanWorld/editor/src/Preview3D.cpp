@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -85,6 +86,7 @@ struct PreviewMaterialEditorState {
   int catalogIndex{};
   std::string editingId;
   char name[256]{};
+  char nameFilter[256]{};
   uint32_t materialIndex{};
   std::vector<float> params;
   std::array<float, 3> colour{};
@@ -98,6 +100,17 @@ struct PreviewEmbossEditorState {
   char name[256]{};
   bw::core::EmbossData emboss;
 };
+
+struct PendingPreviewOpen {
+  Document* document{};
+  bw::core::World const* world{};
+  std::vector<bw::core::Primitive const*> primitives;
+  wp::Vector2 playerPosition;
+  float playerAngle{};
+  float floorZ{};
+};
+
+std::optional<PendingPreviewOpen> pendingPreviewOpen;
 
 struct PreviewSession {
   bool open{};
@@ -497,6 +510,17 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
   }
 
   auto const& catalog = catalogs[state.catalogIndex];
+  ImGui::SetNextItemWidth(280.0f);
+  ImGui::InputText("Filter (regex)", state.nameFilter,
+                   sizeof(state.nameFilter));
+  std::string regexError;
+  auto visibleMaterials = filterAndSortSubMaterials(
+      catalog.data.subMaterials, state.nameFilter, &regexError);
+  if (!regexError.empty()) {
+    ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled),
+                       "%s", regexError.c_str());
+  }
+
   if (!session.materialThumbnails) {
     if (auto* renderSystem = editorRenderSystem()) {
       session.materialThumbnails =
@@ -509,8 +533,8 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
   constexpr float tileWidth = thumbnailSize + 12.0f;
   auto columns = std::max(
       1, static_cast<int>(ImGui::GetContentRegionAvail().x / tileWidth));
-  for (size_t i = 0; i < catalog.data.subMaterials.size(); ++i) {
-    auto const& material = catalog.data.subMaterials[i];
+  for (size_t i = 0; i < visibleMaterials.size(); ++i) {
+    auto const& material = *visibleMaterials[i];
     ImGui::PushID(material.id.c_str());
     ImGui::BeginGroup();
     auto texture = session.materialThumbnails
@@ -552,6 +576,9 @@ void renderPreviewMaterialEditor(PreviewPrimitive& previewPrimitive) {
       loadMaterialDraft(id);
     }
     if ((static_cast<int>(i) + 1) % columns != 0) ImGui::SameLine();
+  }
+  if (visibleMaterials.empty() && regexError.empty()) {
+    ImGui::TextDisabled("No Sub-material names match the filter.");
   }
 
   if (!state.hasDraft) {
@@ -1091,13 +1118,47 @@ bool preview3DIsOpen() {
   return session.open;
 }
 
+bool preview3DIsEntering() {
+  return pendingPreviewOpen.has_value();
+}
+
+void requestOpenPreview3D(
+    Document* document,
+    std::vector<bw::core::Primitive const*> primitives,
+    wp::Vector2 const& playerPosition,
+    float playerAngle,
+    float floorZ) {
+  pendingPreviewOpen = PendingPreviewOpen{
+      document,
+      document && document->isActive() ? document->getWorld().get() : nullptr,
+      std::move(primitives),
+      playerPosition,
+      playerAngle,
+      floorZ};
+}
+
+void processPendingPreview3DOpen() {
+  if (!pendingPreviewOpen) return;
+  auto request = std::move(*pendingPreviewOpen);
+  pendingPreviewOpen.reset();
+  if (!request.document || !request.document->isActive() ||
+      request.document->getWorld().get() != request.world) {
+    return;
+  }
+  openPreview3D(
+      request.document, std::move(request.primitives), request.playerPosition,
+      request.playerAngle, request.floorZ);
+}
+
 void shutdownPreview3D() {
+  pendingPreviewOpen.reset();
   session.open = false;
   session.renderScene.reset();
   session.materialThumbnails.reset();
 }
 
 void closePreview3D() {
+  pendingPreviewOpen.reset();
   if (!session.open) {
     return;
   }

@@ -537,10 +537,16 @@ void meshPrimitivesRetainTheMutablePrimitiveApi() {
     mesh:set_position(20, 30)
     mesh:set_priority(17)
     mesh:set_operation("difference")
+    mesh:set_floor_material("floor.basalt")
+    mesh:set_ceiling_material("ceiling.basalt")
+    mesh:set_wall_material("wall.basalt")
     local x, y = mesh:get_position()
     assert(x == 20 and y == 30)
     assert(mesh:get_priority() == 17)
     assert(mesh:get_operation() == "difference")
+    assert(mesh:get_floor_material() == "floor.basalt")
+    assert(mesh:get_ceiling_material() == "ceiling.basalt")
+    assert(mesh:get_wall_material() == "wall.basalt")
     context:place_primitive(mesh)
   )");
 
@@ -553,7 +559,10 @@ void meshPrimitivesRetainTheMutablePrimitiveApi() {
   auto* mesh = dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(0));
   require(mesh && mesh->getPosition() == wp::Vector2{20.0f, 30.0f} &&
               mesh->getPriority() == 17 &&
-              mesh->getOperation() == bw::core::Primitive::Operation::Difference,
+              mesh->getOperation() == bw::core::Primitive::Operation::Difference &&
+              mesh->getProperties().floorMaterialId == "floor.basalt" &&
+              mesh->getProperties().ceilingMaterialId == "ceiling.basalt" &&
+              mesh->getProperties().wallMaterialId == "wall.basalt",
           "MeshPrimitive common properties did not cross the Lua API");
 }
 

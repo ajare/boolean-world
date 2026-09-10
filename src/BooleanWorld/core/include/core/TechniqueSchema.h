@@ -21,7 +21,7 @@ struct TechniqueParameterSchema {
 
 struct TechniqueSchema : public Serializable {
   // The Technique this schema bounds (world_pbr.frag/world_pbr_2d.frag's
-  // switch(materialIndex) index, 0-38 - see CONTEXT.md's "Technique" entry).
+  // switch(materialIndex) index, 0-39 - see CONTEXT.md's "Technique" entry).
   uint32_t materialIndex{0};
 
   std::vector<TechniqueParameterSchema> parameters;

@@ -129,6 +129,39 @@ void libraryDiscoversTwoLevelsAndSelectionIsUndoable(fs::path const& root) {
           "the selected Sub-material data was not available to the renderer");
 }
 
+void pickerSortsAndRegexFiltersByDisplayName() {
+  std::vector<bw::core::SubMaterial> materials(4);
+  materials[0].id = "zinc";
+  materials[0].displayName = "Zinc";
+  materials[1].id = "alpha";
+  materials[1].displayName = "Alpha";
+  materials[2].id = "stone";
+  materials[2].displayName = "Blue Stone";
+  materials[3].id = "alpine";
+  materials[3].displayName = "ALPINE";
+
+  std::string error;
+  auto all = editor::filterAndSortSubMaterials(materials, "", &error);
+  require(error.empty() && all.size() == 4 && all[0]->id == "alpha" &&
+              all[1]->id == "alpine" && all[2]->id == "stone" &&
+              all[3]->id == "zinc",
+          "picker materials are not ordered by name, case-insensitively");
+
+  auto partial = editor::filterAndSortSubMaterials(materials, "UE st", &error);
+  require(error.empty() && partial.size() == 1 && partial[0]->id == "stone",
+          "picker regex does not match a case-insensitive name substring");
+
+  auto regexMatches =
+      editor::filterAndSortSubMaterials(materials, "^(alpha|alpine)$", &error);
+  require(error.empty() && regexMatches.size() == 2 &&
+              regexMatches[0]->id == "alpha" && regexMatches[1]->id == "alpine",
+          "picker filter does not apply regular-expression syntax");
+
+  auto invalid = editor::filterAndSortSubMaterials(materials, "[", &error);
+  require(invalid.empty() && !error.empty(),
+          "picker accepted an invalid regular expression");
+}
+
 void authoringActionsAreSavedUndoableAndProtectReferences(fs::path const& root) {
   auto& library = editor::procMaterialLibrary();
   library.load(root / "Resources.yaml");
@@ -253,6 +286,7 @@ int main() {
     bw::core::LayerBuildStep::registerCoreTypes();
 
     libraryDiscoversTwoLevelsAndSelectionIsUndoable(root);
+    pickerSortsAndRegexFiltersByDisplayName();
     authoringActionsAreSavedUndoableAndProtectReferences(root);
     fs::remove_all(root);
     std::cout << "Sub-material picker coverage passed\n";

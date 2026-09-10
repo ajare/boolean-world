@@ -52,6 +52,7 @@ removed the dependency entirely. Geometry terms are defined in
 | [0043](0043-steam-audio-traces-the-arrangement-directly.md) | Steam Audio traces the Arrangement directly, not a triangle mesh | Superseded by ADR-0044 |
 | [0044](0044-steam-audio-uses-a-triangle-scene.md) | Steam Audio uses a triangle scene derived from each World snapshot | Accepted |
 | [0045](0045-liquid-equilibrium-uses-affine-hydraulic-cells.md) | Liquid equilibrium uses affine Hydraulic cells | Accepted |
+| [0046](0046-triplanar-materials-use-tagged-surface-references-and-shared-wall-projection-normals.md) | Triplanar materials use tagged surface references and shared wall projection normals | Accepted |
 
 ## World geometry rewrite scope
 

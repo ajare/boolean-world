@@ -56,6 +56,10 @@ _Avoid_: Elevation span (the authored values from which the plane is derived), s
 The stable orthonormal coordinates of one generated surface, derived from its unperturbed geometric up-vector. U is World X projected into the surface (with a World Z fallback near vertical), V completes the right-handed frame, and both coordinates are anchored at the World origin. Two-dimensional procedural materials, their normal perturbations, and Embossing use this frame so physical scale and orientation remain continuous across Arrangement fragments of one Elevation plane.
 _Avoid_: UV coordinates (the frame exists before material scaling), tangent frame (which may mean a per-triangle or normal-mapped basis), face-local coordinates (the origin is World-stable rather than face-local)
 
+**Projection normal**:
+The derived direction used only to blend a Triplanar material's three projections, independently of the geometric normal used for lighting. Same-material vertical walls share one Projection normal averaged from every incident wall along each overlapping elevation span of their common edge, making their World-position samples identical there while the direction interpolates across each render-only wall span.
+_Avoid_: shading normal, geometric normal, smoothed lighting normal
+
 **Fixed-point vertex**:
 An exact point on the world geometry grid. It is the canonical coordinate type for topology and arrangement output.
 _Avoid_: Clipper point, floating-point topology vertex
@@ -153,11 +157,15 @@ The same per-edge, External-only mechanism as Wall collision override, for a sec
 _Avoid_: render flag, hidden flag
 
 **Wall normal-map override**:
-A per-External-edge choice that is Unset, Disabled, or an ImageResource normal map, inherited by the uncut ArrangementWall surface that edge contributes to; Chip facets expose new surfaces and do not inherit it. Higher-precedence explicit choices dominate lower contributors; it varies wall-surface detail independently of the wall's Sub-material and never changes geometry or collision.
+A per-External-edge choice that is Unset, Disabled, or an ImageResource normal map, inherited by the uncut ArrangementWall surface that edge contributes to; Chip facets expose new surfaces and do not inherit it. Higher-precedence explicit choices dominate lower contributors; it varies wall-surface detail independently of the wall's Surface material reference and never changes geometry or collision.
 _Avoid_: Sub-material normal map, Primitive normal map, wall texture, image filepath
 
+**Wall mask**:
+A per-External-edge image channel that interpolates one Sub-material's parameters and base colour toward an authored second set before evaluating that Sub-material's Technique once. Its authored data remains present but has no effect while the wall uses a Triplanar material.
+_Avoid_: material blend, texture blend, Triplanar mask
+
 **World dependent resource**:
-A named Willpower Resource referenced by authored World content and required before that World can be deserialized and activated. A World's serialized list is the exact, sorted projection of all such references, including references in disabled LayerBuildSteps and Prefab definitions.
+A named Willpower Resource referenced by authored World content and required before that World can be deserialized and activated. A World's serialized list is the exact, sorted projection of all such direct references, including Triplanar materials and references in disabled LayerBuildSteps and Prefab definitions; dependencies owned by those resources are loaded transitively rather than duplicated.
 _Avoid_: asset path, normal-map dependency
 
 **Player proxy**:
@@ -188,12 +196,20 @@ _Avoid_: material registry, material resource (ambiguous with willpower's own `M
 One of the fixed procedural shader algorithms (Marble, Stone, Slate, …) a Sub-material selects by `material_index`. Its dispatch is a hand-maintained switch inside the 3D and 2D fragment shaders and cannot become data-driven without a shader-codegen effort; only a Technique's name, parameter bounds, and defaults move into ProcMaterial data. A Technique is never authored or assigned directly — only through a Sub-material.
 _Avoid_: material (too broad — see Sub-material), shader, material index (the field name, not the concept)
 
+**Surface material reference**:
+A tagged assignment on one floor, ceiling, or wall that names either a Sub-material by stable id or a Triplanar material by resource name. The explicit kind keeps identifiers from different material families unambiguous.
+_Avoid_: material id, inferred material type, untyped material reference
+
 **Sub-material**:
-A named, fully-parameterized instance of one Technique, defined inside a ProcMaterial resource: fixed parameter values, a fixed base colour, Chip settings, and a stable string id unique across every ProcMaterial resource. A wall, floor, or ceiling is assigned a Sub-material by that id alone — never a Technique directly, and never with per-instance parameter overrides.
+A named, fully-parameterized instance of one Technique, defined inside a ProcMaterial resource: fixed parameter values, a fixed base colour, Chip settings, and a stable string id unique across every ProcMaterial resource. A surface selects it through a Surface material reference containing that id — never a Technique directly, and never with per-instance parameter overrides.
 _Avoid_: material, material definition (the retired per-Primitive params+colour struct), procedural material
 
+**Triplanar material**:
+A surface material whose albedo image is projected from three World-origin-anchored axis planes and blended by Projection normal, assignable directly to a floor, ceiling, or wall as an alternative to a Sub-material. One three-dimensional evaluation remains continuous across those surface types; it owns a World-space tile width and blend sharpness, derives tile height from image aspect ratio, requires repeat wrapping, and leaves tileable image content to its author. Further PBR controls, maps, Chip settings, and acoustic selection are not part of it.
+_Avoid_: Sub-material (which is a parameterized Technique instance), procedural material, texture
+
 **Emboss preset**:
-A named, globally reusable Embossing definition in the one Embossing catalog. A Primitive's floor, ceiling, and wall independently reference a preset by stable id, or none, separately from their Sub-material ids.
+A named, globally reusable Embossing definition in the one Embossing catalog. A Primitive's floor, ceiling, and wall independently reference a preset by stable id, or none, separately from their Surface material references.
 _Avoid_: Sub-material emboss, material emboss, embossing catalog entry
 
 **Embossing**:

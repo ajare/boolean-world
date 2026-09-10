@@ -19,6 +19,7 @@ struct SubMaterialPickerState {
   // The Sub-material id selected inside the open picker modal, distinct from
   // the Primitive's committed id until OK (or a double-click) applies it.
   string pendingId;
+  array<char, 256> nameFilter{};
 };
 
 // Owns the thumbnail renderer backing the Sub-material picker modal. It is
@@ -156,6 +157,17 @@ bool renderSubMaterialPicker(
   if (ImGui::BeginPopupModal(pickPopup.c_str(), nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     ImGui::Text("Choose a Sub-material from %s.", catalog.resourceName.c_str());
+    ImGui::SetNextItemWidth(pickerColumns * tileWidth);
+    ImGui::InputText("Filter (regex)", pickerState.nameFilter.data(),
+                     pickerState.nameFilter.size());
+
+    string regexError;
+    auto visibleMaterials = filterAndSortSubMaterials(
+        catalog.data.subMaterials, pickerState.nameFilter.data(), &regexError);
+    if (!regexError.empty()) {
+      ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled),
+                         "%s", regexError.c_str());
+    }
 
     if (catalog.data.subMaterials.empty()) {
       ImGui::TextDisabled("This ProcMaterial has no Sub-materials.");
@@ -176,8 +188,8 @@ bool renderSubMaterialPicker(
           ImVec2{pickerColumns * tileWidth + ImGui::GetStyle().ScrollbarSize,
                  420.0f});
 
-      for (size_t i = 0; i < catalog.data.subMaterials.size(); ++i) {
-        auto const& material = catalog.data.subMaterials[i];
+      for (size_t i = 0; i < visibleMaterials.size(); ++i) {
+        auto const& material = *visibleMaterials[i];
         ImGui::PushID(material.id.c_str());
         ImGui::BeginGroup();
         auto texture = gMaterialPickerThumbnails
@@ -218,6 +230,9 @@ bool renderSubMaterialPicker(
         if ((static_cast<int>(i) + 1) % pickerColumns != 0) {
           ImGui::SameLine();
         }
+      }
+      if (visibleMaterials.empty() && regexError.empty()) {
+        ImGui::TextDisabled("No Sub-material names match the filter.");
       }
       ImGui::EndChild();
 

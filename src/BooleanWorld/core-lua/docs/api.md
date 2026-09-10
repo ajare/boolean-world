@@ -378,8 +378,14 @@ Returned only by `context:create_primitive`.
 | `get_floor_elevation()` | Returns the floor `angle, lower, upper`. |
 | `set_ceiling_elevation(angle, lower, upper)` | Sets the ceiling Elevation span with the same local-space semantics. All values must be finite. |
 | `get_ceiling_elevation()` | Returns the ceiling `angle, lower, upper`. |
+| `set_floor_material(material_id)` | Sets the floor Sub-material id. Horizontal surfaces use the catalog's 2D material program when that rendering mode is active. |
+| `get_floor_material()` | Returns the floor Sub-material id. |
+| `set_ceiling_material(material_id)` | Sets the ceiling Sub-material id. Horizontal surfaces use the catalog's 2D material program when that rendering mode is active. |
+| `get_ceiling_material()` | Returns the ceiling Sub-material id. |
+| `set_wall_material(material_id)` | Sets the wall Sub-material id. |
+| `get_wall_material()` | Returns the wall Sub-material id. |
 
-Only these common properties and inherited spatial-transform properties are currently scriptable. Animation curves and transform flows, fill rule, materials, surface properties, type-specific shape parameters, and parentage are not exposed. Mutable Mesh geometry is available only on a `MeshPrimitive` returned by `context:create_mesh_primitive`; Prefabs separately expose read-only annotated vertices and edges.
+Only these common properties and inherited spatial-transform properties are currently scriptable. Animation curves and transform flows, fill rule, other surface properties, type-specific shape parameters, and parentage are not exposed. Mutable Mesh geometry is available only on a `MeshPrimitive` returned by `context:create_mesh_primitive`; Prefabs separately expose read-only annotated vertices and edges.
 
 ## Mutable `MeshPrimitive`
 

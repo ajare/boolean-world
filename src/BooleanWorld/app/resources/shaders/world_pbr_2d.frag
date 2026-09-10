@@ -539,6 +539,63 @@ Material wood2Material2d(vec2 surfacePosition, vec3 normal)
     return material;
 }
 
+float graniteMineralField2d(vec2 p, float grainScale)
+{
+    float coarse = fbm(p * 0.55);
+    float grains = noise(p * grainScale);
+    float boundaries = 1.0 - smoothstep(
+        0.08, 0.42, voronoi(p * 2.8));
+    return coarse * 0.42 + grains * 0.33 + boundaries * 0.25;
+}
+
+Material graniteMaterial2d(
+    vec2 surfacePosition, vec3 normal, vec3 surfaceUp,
+    vec3 axisU, vec3 axisV)
+{
+    float baseScale = blendedMaterialParams[0];
+    float grainScale = blendedMaterialParams[1];
+    float feldsparAmount = blendedMaterialParams[2];
+    float quartzAmount = blendedMaterialParams[3];
+    float micaAmount = blendedMaterialParams[4];
+    float normalStrength = blendedMaterialParams[5];
+    float roughness = blendedMaterialParams[6];
+    float colourVariation = blendedMaterialParams[7];
+
+    vec2 p = surfacePosition * baseScale;
+    float field = graniteMineralField2d(p, grainScale);
+    float feldspar = smoothstep(
+        0.38, 0.82, fbm(p * 1.7 + vec2(11.0, 3.0))) * feldsparAmount;
+    float quartz = smoothstep(
+        0.40, 0.78, 1.0 - voronoi(p * 3.4 + vec2(5.0))) * quartzAmount;
+    float mica = smoothstep(
+        0.90, 0.985, noise(p * grainScale * 2.1 + vec2(23.0))) * micaAmount;
+
+    vec3 colour = mix(
+        vec3(0.18, 0.17, 0.17), vec3(0.62, 0.59, 0.56),
+        clamp(0.5 + (field - 0.5) * (1.0 + colourVariation * 2.0),
+              0.0, 1.0));
+    colour = mix(colour, vec3(0.72, 0.48, 0.43), feldspar);
+    colour = mix(colour, vec3(0.76, 0.75, 0.72), quartz);
+    colour = mix(colour, vec3(0.035, 0.032, 0.03), mica);
+
+    const float epsilon = 0.024;
+    vec2 gradient = vec2(
+        graniteMineralField2d(p + vec2(epsilon, 0.0), grainScale) - field,
+        graniteMineralField2d(p + vec2(0.0, epsilon), grainScale) - field) /
+        epsilon;
+    float facing = dot(normal, surfaceUp) < 0.0 ? -1.0 : 1.0;
+    vec3 worldGradient = axisU * gradient.x + axisV * gradient.y;
+
+    Material material;
+    material.albedo = colour;
+    material.metallic = 0.0;
+    material.roughness = clamp(
+        roughness - quartz * 0.13 + mica * 0.08, 0.12, 1.0);
+    material.normal = normalize(
+        normal - worldGradient * normalStrength * facing);
+    return material;
+}
+
 Material plainGreyMaterial2d(vec3 normal)
 {
     Material material;
@@ -567,7 +624,10 @@ Material material2d(
         return plainGreyMaterial2d(normal);
     if (type == 38)
         return wood2Material2d(surfacePosition, normal);
-    if (type == 40)
+    if (type == 39)
+        return graniteMaterial2d(
+            surfacePosition, normal, surfaceUp, axisU, axisV);
+    if (type == 41)
         return waterMaterial2d(normal);
 
     // Plain grey occupies material index 0. Procedural Techniques are shifted
@@ -1411,8 +1471,8 @@ void main()
         surfacePosition / @Uniform(MATERIAL_SCALE),
         @Uniform(PIXEL_SIZE));
     int materialIndex = floorMaterialIndex(
-        surfacePosition, clamp(@Uniform(MATERIAL_INDEX), 0, 40));
-    materialIndex = clamp(materialIndex, 0, 40);
+        surfacePosition, clamp(@Uniform(MATERIAL_INDEX), 0, 41));
+    materialIndex = clamp(materialIndex, 0, 41);
     vec3 viewDir = normalize(@ViewPos - worldPos);
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
     // Every horizontal surface here is single-sided geometry rendered without

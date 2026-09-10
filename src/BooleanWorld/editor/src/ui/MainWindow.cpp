@@ -179,7 +179,8 @@ void renderPreviewDropControl(ViewContext& context) {
           // The dropped animal always starts square to the canonical world
           // plane: angle zero is intentional rather than inherited from the
           // Player proxy.
-          openPreview3D(doc, primitives, worldPosition, 0.0f, *floorZ);
+          requestOpenPreview3D(
+              doc, primitives, worldPosition, 0.0f, *floorZ);
         }
       }
     } else if (!previewing && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
@@ -274,6 +275,11 @@ void renderMainWindow(ImGuiID dockspaceId) {
 
 
 void renderEditor(ViewContext& context) {
+  // Preview construction is deliberately one frame behind the drop that
+  // requests it. The preceding frame can then reach presentation with the
+  // status-bar message visible before this synchronous work begins.
+  processPendingPreview3DOpen();
+
   auto* doc = context.doc;
   auto& settings = context.settings;
   auto const* worldData = context.worldData;

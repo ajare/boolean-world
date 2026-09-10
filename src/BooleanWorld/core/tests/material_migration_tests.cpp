@@ -73,8 +73,11 @@ T roundTrip(T const& source) {
 
 void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resources) {
   require(bw::common::TechniqueNames[0] == "Plain grey" &&
-              bw::common::TechniqueNames[1] == "Marble",
-          "compiled Technique names do not match the shifted shader indices");
+              bw::common::TechniqueNames[1] == "Marble" &&
+              bw::common::TechniqueNames[39] == "Granite" &&
+              BW_WALL_BACK_FACE_MATERIAL_INDEX == 40 &&
+              BW_WATER_MATERIAL_INDEX == 41,
+          "compiled Technique names or reserved indices do not match the shader dispatch");
 
   auto manifest = readFile(resources / "Resources.yaml");
   require(manifest.find("location: \"proc-materials-built-in.yaml\"") != std::string::npos &&
@@ -82,16 +85,16 @@ void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resource
           "Resources.yaml does not declare the generated built-in ProcMaterial");
 
   auto catalog = loadFile<ProcMaterialData>(resources / "proc-materials-built-in.yaml");
-  require(catalog.techniqueSchemas.size() == 39,
-          "generated catalog does not contain all 39 Technique schemas");
-  require(catalog.subMaterials.size() == 42,
-          "generated catalog must contain 39 built-ins and three distinct level migrations");
+  require(catalog.techniqueSchemas.size() == 40,
+          "generated catalog does not contain all 40 Technique schemas");
+  require(catalog.subMaterials.size() == 43,
+          "generated catalog must contain 40 built-ins and three distinct level migrations");
 
-  constexpr size_t expectedParameterCounts[39] = {
+  constexpr size_t expectedParameterCounts[40] = {
       0, 8, 7, 5, 5, 4, 5, 5, 5, 6, 5, 5, 5,
       5, 5, 5, 5, 5, 5, 5, 4, 4, 5, 4, 4, 5,
-      5, 5, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 2};
-  for (size_t index = 0; index < 39; ++index) {
+      5, 5, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 2, 8};
+  for (size_t index = 0; index < 40; ++index) {
     auto const* schema = catalog.findTechniqueSchema(static_cast<uint32_t>(index));
     require(schema && schema->parameters.size() == expectedParameterCounts[index],
             "built-in Technique schema has the wrong parameter count");
@@ -124,6 +127,13 @@ void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resource
               near(wood2->paramValues[0], 0.65f) &&
               near(wood2->paramValues[1], 0.56f),
           "built-in Wood2 does not match its Technique schema");
+  auto const* graniteSchema = catalog.findTechniqueSchema(39);
+  auto const* granite = find("builtin.granite");
+  require(graniteSchema && graniteSchema->parameters.size() == 8 && granite &&
+              granite->materialIndex == 39 && granite->paramValues.size() == 8 &&
+              graniteSchema->parameters[1].name == "grain_scale" &&
+              near(granite->paramValues[5], 0.065f),
+          "built-in Granite does not match its Technique schema");
   auto const* plainGreySchema = catalog.findTechniqueSchema(0);
   auto const* plainGrey = find("builtin.plain.grey");
   require(plainGreySchema && plainGreySchema->parameters.empty() && plainGrey &&
@@ -139,7 +149,7 @@ void generatedCatalogPreservesPinnedValuesAndRoundTrips(fs::path const& resource
           "the hand-tuned level material combination was not preserved");
 
   auto reloaded = roundTrip(catalog);
-  require(reloaded.techniqueSchemas.size() == 39 && reloaded.subMaterials.size() == 42,
+  require(reloaded.techniqueSchemas.size() == 40 && reloaded.subMaterials.size() == 43,
           "generated catalog changed during round-trip");
 }
 

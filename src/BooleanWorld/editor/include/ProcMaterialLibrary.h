@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <core/ProcMaterialData.h>
@@ -20,6 +21,13 @@ struct ProcMaterialLibrarySnapshot {
   std::vector<ProcMaterialCatalog> catalogs;
   uint64_t revision{0};
 };
+
+// Returns Sub-materials ordered by display name, after case-insensitive
+// regex-searching that name. An invalid expression returns no matches and
+// reports a user-facing error through regexError.
+std::vector<bw::core::SubMaterial const*> filterAndSortSubMaterials(
+    std::vector<bw::core::SubMaterial> const& subMaterials,
+    std::string_view expression, std::string* regexError);
 
 // Editor-side discovery and authoring for the material picker. Resources.yaml
 // is used only as a manifest; each ProcMaterial payload is read and written
