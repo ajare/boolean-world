@@ -247,7 +247,7 @@ bool renderTriplanarMaterialPicker(
                material.resourceName == materialReference->reference;
       });
   if (selected != materials.end() &&
-      ImGui::CollapsingHeader(
+      widgets::InspectableCollapsingHeader(
           format("{} Selected resource", label).c_str(),
           ImGuiTreeNodeFlags_DefaultOpen)) {
     ImGui::Text("Resource name: %s", selected->resourceName.c_str());
@@ -924,7 +924,7 @@ void renderEmbossPresetPanel(
     char const* label, string* presetId, Document* doc,
     bw::core::Primitive* primitive, PrimitiveMaterialSurface surface) {
   auto header = format("{} Embossing", label);
-  if (!ImGui::CollapsingHeader(header.c_str())) return;
+  if (!widgets::InspectableCollapsingHeader(header.c_str())) return;
 
   static map<string, EmbossPresetPanelState> states;
   auto& state = states[label];

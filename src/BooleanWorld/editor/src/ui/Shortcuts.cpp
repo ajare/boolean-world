@@ -166,7 +166,7 @@ void handleShortcuts(ViewContext& context) {
         } else if (doc->hasSelection()) {
           auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
 
-          if (!primitiveIndices.empty()) {
+          if (doc->selectedPrimitivesPermitDirectEditing()) {
             transact(doc, CommandId::DeletePrimitives, [&] { deletePrimitives(doc, primitiveIndices); });
           }
 
@@ -235,7 +235,7 @@ void handleShortcuts(ViewContext& context) {
 
   if (ImGui::Shortcut(ImGuiKey_LeftBracket | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      if (doc->hasSelection() && !doc->getSelectedPrimitiveIndices().empty()) {
+      if (doc->selectedPrimitivesPermitDirectEditing()) {
         auto const& indices = doc->getSelectedPrimitiveIndices();
         uint32_t index = *indices.begin();
 
@@ -247,7 +247,7 @@ void handleShortcuts(ViewContext& context) {
 
   if (ImGui::Shortcut(ImGuiKey_RightBracket | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      if (doc->hasSelection() && !doc->getSelectedPrimitiveIndices().empty()) {
+      if (doc->selectedPrimitivesPermitDirectEditing()) {
         auto const& indices = doc->getSelectedPrimitiveIndices();
         uint32_t index = *indices.begin();
 
@@ -259,7 +259,7 @@ void handleShortcuts(ViewContext& context) {
 
   if (ImGui::Shortcut(ImGuiKey_B | ImGuiMod_Ctrl, ImGuiInputFlags_RouteGlobal)) {
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()) {
-      if (doc->hasSelection() && !doc->getSelectedPrimitiveIndices().empty()) {
+      if (doc->selectedPrimitivesPermitDirectEditing()) {
         auto const& indices = doc->getSelectedPrimitiveIndices();
         transact(doc, CommandId::BakePrimitives, [&] { bakePrimitives(doc, indices); });
       }

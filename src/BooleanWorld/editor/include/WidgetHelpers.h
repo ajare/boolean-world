@@ -14,6 +14,11 @@ void PushDisabled();
 
 void PopDisabled();
 
+// Keeps a disclosure header interactive when it appears inside a disabled
+// inspector while leaving the disclosed controls in that disabled scope.
+bool InspectableCollapsingHeader(
+    char const* label, ImGuiTreeNodeFlags flags = 0);
+
 bool ToggleButton(const char* str_id, const char* title, bool v);
 
 bool ToggleButton(char const* str_id, const char* title, bool* v);

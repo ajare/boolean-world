@@ -29,9 +29,18 @@ world:
     - id: 0
       name: Layer 0
       vars:
+        - name: corridor_base_height
+          type: integer
+          value: 32
         - name: corridor_width
           type: integer
           value: 24
+        - name: mine_material
+          type: string
+          value: builtin.basalt
+        - name: support_frame_pct
+          type: float
+          value: 0.35
       minExtent: [-4096, -4096]
       maxExtent: [4096, 4096]
       nextStepId: 5
@@ -316,9 +325,15 @@ world:
                       ceilingGradient: [-0, 0]
                       liquidLevel: 0
                       liquidType: Water
-                      floorMaterial: builtin.plain.grey
-                      ceilingMaterial: builtin.plain.grey
-                      wallMaterial: builtin.plain.grey
+                      floorMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      ceilingMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      wallMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
@@ -725,9 +740,15 @@ world:
                       ceilingGradient: [-0, 0]
                       liquidLevel: 0
                       liquidType: Water
-                      floorMaterial: builtin.plain.grey
-                      ceilingMaterial: builtin.plain.grey
-                      wallMaterial: builtin.plain.grey
+                      floorMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      ceilingMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      wallMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
@@ -1137,9 +1158,15 @@ world:
                       ceilingGradient: [-0, 0]
                       liquidLevel: 0
                       liquidType: Water
-                      floorMaterial: builtin.plain.grey
-                      ceilingMaterial: builtin.plain.grey
-                      wallMaterial: builtin.plain.grey
+                      floorMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      ceilingMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      wallMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
@@ -1535,9 +1562,15 @@ world:
                       ceilingGradient: [-0, 0]
                       liquidLevel: 0
                       liquidType: Water
-                      floorMaterial: builtin.plain.grey
-                      ceilingMaterial: builtin.plain.grey
-                      wallMaterial: builtin.plain.grey
+                      floorMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      ceilingMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      wallMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
@@ -1736,7 +1769,7 @@ world:
           primitives:
             - type: Mesh
               vertexTransformerObject:
-                id: 40
+                id: 280
                 parentId: -1
                 position: [-16, 8]
                 transformOffset: [0, 0]
@@ -1995,9 +2028,15 @@ world:
                   ceilingGradient: [-0, 0]
                   liquidLevel: 0
                   liquidType: Water
-                  floorMaterial: builtin.plain.grey
-                  ceilingMaterial: builtin.plain.grey
-                  wallMaterial: builtin.plain.grey
+                  floorMaterial:
+                    kind: subMaterial
+                    reference: builtin.plain.grey
+                  ceilingMaterial:
+                    kind: subMaterial
+                    reference: builtin.plain.grey
+                  wallMaterial:
+                    kind: subMaterial
+                    reference: builtin.plain.grey
                   floorEmbossPreset: ""
                   ceilingEmbossPreset: ""
                   wallEmbossPreset: ""
@@ -2066,7 +2105,7 @@ world:
                       []
             - type: Rectangle
               vertexTransformerObject:
-                id: 41
+                id: 281
                 parentId: -1
                 position: [-60, 0]
                 transformOffset: [0, 0]
@@ -2325,9 +2364,15 @@ world:
                   ceilingGradient: [-0, 0]
                   liquidLevel: 0
                   liquidType: Water
-                  floorMaterial: builtin.plain.grey
-                  ceilingMaterial: builtin.plain.grey
-                  wallMaterial: builtin.plain.grey
+                  floorMaterial:
+                    kind: subMaterial
+                    reference: builtin.plain.grey
+                  ceilingMaterial:
+                    kind: subMaterial
+                    reference: builtin.plain.grey
+                  wallMaterial:
+                    kind: subMaterial
+                    reference: builtin.plain.grey
                   floorEmbossPreset: ""
                   ceilingEmbossPreset: ""
                   wallEmbossPreset: ""
@@ -2350,7 +2395,7 @@ world:
                 xyRatio: 2
             - type: Rectangle
               vertexTransformerObject:
-                id: 42
+                id: 282
                 parentId: -1
                 position: [28, 0]
                 transformOffset: [0, 0]
@@ -2609,9 +2654,15 @@ world:
                   ceilingGradient: [-0, 0]
                   liquidLevel: 0
                   liquidType: Water
-                  floorMaterial: builtin.plain.grey
-                  ceilingMaterial: builtin.plain.grey
-                  wallMaterial: builtin.plain.grey
+                  floorMaterial:
+                    kind: subMaterial
+                    reference: builtin.plain.grey
+                  ceilingMaterial:
+                    kind: subMaterial
+                    reference: builtin.plain.grey
+                  wallMaterial:
+                    kind: subMaterial
+                    reference: builtin.plain.grey
                   floorEmbossPreset: ""
                   ceilingEmbossPreset: ""
                   wallEmbossPreset: ""

@@ -51,6 +51,10 @@ void renderPrimitiveOrderView(ViewContext& context) {
     ImGui::Text("%s :: Priority %d", label, primitivePriority);
 
     if (!isGhost) {
+      auto const readOnly =
+          !doc->primitivePermitsDirectEditing(primitive->getId());
+      ImGui::BeginDisabled(readOnly);
+
       int counter = 0;
       ImGui::PushButtonRepeat(false);
 
@@ -96,6 +100,8 @@ void renderPrimitiveOrderView(ViewContext& context) {
           setFillRuleWidget(doc, primitive, 2);
         }
       }
+
+      ImGui::EndDisabled();
     }
 
     if (selected) {
@@ -371,14 +377,18 @@ void renderRunScriptView(
   ImGui::BeginDisabled(step->getScriptName().empty() || !editorRenderSystem());
   if (ImGui::Button("Reload script")) {
     string error;
+    doc->clearSelections();
     auto reloaded =
         editorRenderSystem()->reloadLuaScript(step->getScriptName(), &error);
 
     // ScriptRuntime rebuilds every Layer that names this script, replacing
     // its RunScript-owned Primitives. That derived change bypasses the undo
-    // action path which normally invalidates the editor Arrangement, so make
-    // both the selection and rendered geometry follow the rebuilt output.
-    doc->revalidateSelection();
+    // action path which normally invalidates the editor Arrangement and marks
+    // the Document modified, so make it saveable and refresh the rendered
+    // geometry. Selection was cleared before reloading because generated
+    // Primitive identities do not survive a script run. Failed reloads can
+    // also rebuild naming Layers before reporting the script error.
+    doc->setModified();
     regenerateWorldData(doc);
 
     if (reloaded) {

@@ -47,7 +47,7 @@
 namespace mpp {
 struct GraphImageCapture;
 struct GraphPassExecutionStats;
-}
+}  // namespace mpp
 
 namespace FMOD {
 namespace Studio {
@@ -166,7 +166,6 @@ private:
 
   bool mExitScheduled;
 
-  bool mScreenshotRequested{false};
   bool mRenderGraphCaptureRequested{false};
 
   // Once MPP has disabled a requested domain after unsupported hardware or a
@@ -353,7 +352,6 @@ private:
 
   void addDisplayMessage(DisplayMessage::Level level, std::string const& message);
 
-  void saveScreenshot(mpp::RenderSystem* renderSystem);
   void saveRenderGraphImages(
       std::vector<mpp::GraphImageCapture> const& captures,
       std::vector<mpp::GraphPassExecutionStats> const& passStats);
@@ -368,6 +366,8 @@ private:
   void debug_renderCpuUpdateTimings(
       double timelineEnd, double timelineDuration,
       float* graphStartX, float* graphEndX);
+
+  void debug_renderFrameRateHistory();
 
   void debug_renderClipGenerationInfo(ImDrawList* drawList);
 

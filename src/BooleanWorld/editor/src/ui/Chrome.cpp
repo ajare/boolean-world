@@ -76,6 +76,26 @@ void renderMenu(ViewContext& context) {
         actionText = "Open world";
       }
 
+      ImGui::SeparatorText("Recent");
+      auto const& recentWorlds = recentWorldPaths();
+      if (recentWorlds.empty()) {
+        ImGui::BeginDisabled();
+        ImGui::MenuItem("(None)");
+        ImGui::EndDisabled();
+      } else {
+        for (auto const& filepath : recentWorlds) {
+          if (ImGui::MenuItem(filepath.c_str())) {
+            action = ActionType::Document;
+            checkDocumentModified = true;
+            helperFunc = [filepath](Document* document) {
+              openRecentDocument(document, filepath);
+            };
+            actionText = "Open recent world";
+          }
+        }
+      }
+      ImGui::Separator();
+
       auto world = doc->getWorld();
       bool saveDisabled = !world || !doc->isModified();
       bool saveAsDisabled = !world;
@@ -125,7 +145,8 @@ void renderMenu(ViewContext& context) {
 
       bool canUndoAction = canUndo();
       bool canRedoAction = canRedo();
-      bool hasPrimitiveSelection = !doc->getSelectedPrimitiveIndices().empty();
+      bool canEditPrimitiveSelection =
+          doc->selectedPrimitivesPermitDirectEditing();
       bool hasTriggerLineSelection = doc->getSelectedTriggerLineIndex() != ~0u;
       bool hasAnySelection = doc->hasSelection();
       bool resetDisabled = !world;
@@ -154,7 +175,7 @@ void renderMenu(ViewContext& context) {
         widgets::PopDisabled();
       }
 
-      if (!hasPrimitiveSelection) {
+      if (!canEditPrimitiveSelection) {
         widgets::PushDisabled();
       }
 
@@ -162,18 +183,18 @@ void renderMenu(ViewContext& context) {
         beginClonePlacement(doc, doc->getSelectedPrimitiveIndices());
       }
 
-      if (!hasPrimitiveSelection) {
+      if (!canEditPrimitiveSelection) {
         widgets::PopDisabled();
       }
 
-      if (!hasPrimitiveSelection && !hasTriggerLineSelection) {
+      if (!canEditPrimitiveSelection && !hasTriggerLineSelection) {
         widgets::PushDisabled();
       }
 
       if (ImGui::MenuItem("Delete", "Del")) {
         auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
 
-        if (!primitiveIndices.empty()) {
+        if (canEditPrimitiveSelection) {
           transact(doc, CommandId::DeletePrimitives, [&] { deletePrimitives(doc, primitiveIndices); });
         }
 
@@ -184,11 +205,11 @@ void renderMenu(ViewContext& context) {
         }
       }
 
-      if (!hasPrimitiveSelection && !hasTriggerLineSelection) {
+      if (!canEditPrimitiveSelection && !hasTriggerLineSelection) {
         widgets::PopDisabled();
       }
 
-      if (!hasPrimitiveSelection) {
+      if (!canEditPrimitiveSelection) {
         widgets::PushDisabled();
       }
 
@@ -202,7 +223,7 @@ void renderMenu(ViewContext& context) {
         transact(doc, CommandId::ClipPrimitivesToGrid, [&] { clipPrimitivesToGrid(doc, indices, settings.gridSize); });
       }
 
-      if (!hasPrimitiveSelection) {
+      if (!canEditPrimitiveSelection) {
         widgets::PopDisabled();
       }
 
@@ -399,7 +420,8 @@ void renderToolbar(ViewContext& context) {
     bool saveAsDisabled = !world;
     bool canUndoAction = canUndo();
     bool canRedoAction = canRedo();
-    bool hasPrimitiveSelection = !doc->getSelectedPrimitiveIndices().empty();
+    bool canEditPrimitiveSelection =
+        doc->selectedPrimitivesPermitDirectEditing();
     bool hasTriggerLineSelection = doc->getSelectedTriggerLineIndex() != ~0u;
 
     // Authoring mode is an editor preference, so it deliberately bypasses
@@ -464,7 +486,7 @@ void renderToolbar(ViewContext& context) {
     //
     // Primitive operations
     //
-    if (!hasPrimitiveSelection) {
+    if (!canEditPrimitiveSelection) {
       widgets::PushDisabled();
     }
 
@@ -474,20 +496,20 @@ void renderToolbar(ViewContext& context) {
       beginClonePlacement(doc, doc->getSelectedPrimitiveIndices());
     }
 
-    if (!hasPrimitiveSelection) {
+    if (!canEditPrimitiveSelection) {
       widgets::PopDisabled();
     }
 
     ImGui::SameLine();
 
-    if (!hasPrimitiveSelection && !hasTriggerLineSelection) {
+    if (!canEditPrimitiveSelection && !hasTriggerLineSelection) {
       widgets::PushDisabled();
     }
 
     if (ImGui::Button(ICON_FA_ERASER)) {
       auto const& primitiveIndices = doc->getSelectedPrimitiveIndices();
 
-      if (!primitiveIndices.empty()) {
+      if (canEditPrimitiveSelection) {
         transact(doc, CommandId::DeletePrimitives, [&] { deletePrimitives(doc, primitiveIndices); });
       }
 
@@ -498,7 +520,7 @@ void renderToolbar(ViewContext& context) {
       }
     }
 
-    if (!hasPrimitiveSelection && !hasTriggerLineSelection) {
+    if (!canEditPrimitiveSelection && !hasTriggerLineSelection) {
       widgets::PopDisabled();
     }
 
@@ -774,6 +796,5 @@ void renderStatusbar(ViewContext& context) {
     ImGui::End();
   }
 }
-
 
 }  // namespace editor

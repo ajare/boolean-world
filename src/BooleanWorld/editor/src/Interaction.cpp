@@ -672,7 +672,8 @@ void EditorInteraction::updateDrag(
     return;
   }
 
-  if (!primitiveSelection.empty()) {
+  if (!primitiveSelection.empty() &&
+      doc->selectedPrimitivesPermitDirectEditing()) {
     if (input.leftReleased) {
       if ((mMovingSelectedPrimitives || mScalingSelectedPrimitives ||
            mRotatingSelectedPrimitives) &&

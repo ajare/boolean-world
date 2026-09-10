@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "Document.h"
 
@@ -11,6 +12,12 @@ typedef std::function<void(Document*)> DocumentHelperFunction;
 void newDocument(editor::Document* doc);
 
 void openDocument(editor::Document* doc);
+
+[[nodiscard]] std::vector<std::string> const& recentWorldPaths();
+
+void openRecentDocument(editor::Document* doc, std::string const& filepath);
+
+void renderRecentWorldMissingDialog();
 
 void saveDocumentAs(editor::Document* doc);
 

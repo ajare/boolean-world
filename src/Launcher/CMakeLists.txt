@@ -4,6 +4,7 @@
 add_executable(Launcher WIN32
     src/ApplicationDLL.cpp
     src/DirectoryResourceLocation.cpp
+    src/FrameRateTracker.cpp
     src/LauncherLifecycle.cpp
     src/Main.cpp
     src/ProgramOptions.cpp
@@ -49,6 +50,7 @@ set_target_properties(Launcher PROPERTIES
 if(BUILD_TESTING)
     add_executable(launcher_lifecycle_tests
         tests/launcher_lifecycle_tests.cpp
+        src/FrameRateTracker.cpp
         src/LauncherLifecycle.cpp)
     target_include_directories(launcher_lifecycle_tests PRIVATE include)
     target_compile_features(launcher_lifecycle_tests PRIVATE cxx_std_20)

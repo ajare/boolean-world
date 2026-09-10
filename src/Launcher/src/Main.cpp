@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <algorithm>
 #include <format>
 #include <iostream>
 #include <optional>
@@ -52,6 +53,7 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 
 #include "ProgramOptions.h"
 #include "ApplicationDLL.h"
+#include "FrameRateTracker.h"
 #include "LauncherLifecycle.h"
 #include "StateManager.h"
 #include "ExitApplicationException.h"
@@ -83,6 +85,7 @@ static application::ApplicationSettings* gAppSettings = nullptr;
 static application::resourcesystem::ResourceManager* gResourceMgr = nullptr;
 
 bool gDisplayDebugEnabled = false;
+static FrameRateTracker gGameFrameRate;
 
 // Rendering objects
 static mpp::RenderSystem* gRenderSystem = nullptr;
@@ -435,17 +438,20 @@ ProgramOptions startup(string const& configFile, LauncherLifecycle& lifecycle) {
 //
 
 void setupDebugPanel() {
-  string fpsColour;
-  float fps = gTimer->getFPS();
-  if (fps < 30) {
-    fpsColour = "[#FF0000FF]";
-  } else if (fps < 55) {
-    fpsColour = "[#FFFF00FF]";
-  } else {
-    fpsColour = "[#00FF00FF]";
+  string fpsDisplay = "FPS: --";
+  if (gStateMgr->isCurrentState("Play") &&
+      !gGameFrameRate.samples().empty()) {
+    auto const fps = gGameFrameRate.framesPerSecond();
+    string fpsColour;
+    if (fps < 30.0) {
+      fpsColour = "[#FF0000FF]";
+    } else if (fps < 55.0) {
+      fpsColour = "[#FFFF00FF]";
+    } else {
+      fpsColour = "[#00FF00FF]";
+    }
+    fpsDisplay = std::format("FPS: {}{:.1f}", fpsColour, fps);
   }
-
-  string fpsDisplay = std::format("FPS: {}{}", fpsColour, (int)fps);
   gRenderSystem->setDebugPreMessages({fpsDisplay});
 
   gRenderSystem->setDebugPostMessages(gStateMgr->getDebuggingText());
@@ -475,7 +481,8 @@ void updateImGui(float frameTime) {
     ImGuiMemFreeFunc imGuiFreeFunc;
     void* imGuiUserData;
 
-    ImGui::GetAllocatorFunctions(&imGuiAllocFunc, &imGuiFreeFunc, &imGuiUserData);
+    ImGui::GetAllocatorFunctions(
+        &imGuiAllocFunc, &imGuiFreeFunc, &imGuiUserData);
 
     gStateMgr->renderImGui(
         frameTime, imGuiCtx, imPlotCtx,
@@ -517,10 +524,10 @@ int main(int argc, char** argv) {
     gStateMgr->enterInitialState();
     gTimer->reset();
 
+    bool trackingGameFrameRate = false;
     while (gWindow->isActive()) {
       // Get frame time
       float frameTime = gTimer->getDeltaTime();
-      gTimer->addFrameToCounter(frameTime);
 
       accum += frameTime;
 
@@ -579,6 +586,16 @@ int main(int argc, char** argv) {
         totalTimeNs += (endTimeNs - startTimeNs);
       }
 
+      auto const gameStateActive =
+          gStateMgr->isCurrentState("Play");
+      if (gameStateActive && !trackingGameFrameRate) {
+        // The first presentation interval now begins in Play; loading and
+        // state-transition stalls can no longer enter the game FPS value.
+        gGameFrameRate.reset();
+        gDLL->resetFrameRateHistory();
+      }
+      trackingGameFrameRate = gameStateActive;
+
       // Render
       setupDebugPanel();
 
@@ -594,10 +611,23 @@ int main(int argc, char** argv) {
         gImGuiRenderer->render(gRenderSystem);
       }
 
+      // The game requests F11 captures during its update. Fulfil them only
+      // after launcher-owned overlays have been drawn so ImGui is included.
+      gDLL->captureScreenshotIfRequested(gRenderSystem);
+
       captureFrameIfRequested();  // [DEBUG-a4f2]
 
-      // Flip to screen
+      // Flip to screen. Sample afterwards so this interval includes the
+      // driver's present/VSync wait rather than only CPU submission time.
       gWindow->show();
+      if (trackingGameFrameRate && gStateMgr->isCurrentState("Play")) {
+        auto const presentedAt = elapsedSeconds();
+        gGameFrameRate.recordPresentedFrame(presentedAt);
+        if (!gGameFrameRate.samples().empty()) {
+          gDLL->recordFrameRate(
+              presentedAt, gGameFrameRate.framesPerSecond());
+        }
+      }
     }
   } catch (ExitApplicationException& e) {
     if (auto average = LauncherLifecycle::averageDuration(totalTime, numFramesProcessed)) {

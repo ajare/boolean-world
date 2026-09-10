@@ -187,9 +187,16 @@ set<uint32_t> getIgnoredPrimitiveIndices(bw::core::World const& world, Settings 
       if (settings.mode == Settings::Mode::Mesh &&
           owningStepIndex != activeLayer->getActiveStepIndex()) {
         ignores.insert(i);
-      } else if (owningStepIndex != ~0u &&
-                 !activeLayer->getStep(owningStepIndex)->permitsDirectPrimitiveEditing()) {
-        ignores.insert(i);
+      } else if (owningStepIndex != ~0u) {
+        auto const* owningStep = activeLayer->getStep(owningStepIndex);
+        auto const inspectableRunScriptOutput =
+            settings.mode == Settings::Mode::Primitive &&
+            owningStepIndex == activeLayer->getActiveStepIndex() &&
+            owningStep->getType() == "RunScript";
+        if (!owningStep->permitsDirectPrimitiveEditing() &&
+            !inspectableRunScriptOutput) {
+          ignores.insert(i);
+        }
       }
     }
   }
@@ -200,8 +207,7 @@ set<uint32_t> getIgnoredPrimitiveIndices(bw::core::World const& world, Settings 
 }  // namespace
 
 Document::Document()
-    : mPlayerOldProxyPosition({0, 0}), mPlayerProxyPosition({0, 0}),
-      mPlayerOldProxyAngle(0.0f), mPlayerProxyAngle(0.0f) {}
+    : mPlayerOldProxyPosition({0, 0}), mPlayerProxyPosition({0, 0}), mPlayerOldProxyAngle(0.0f), mPlayerProxyAngle(0.0f) {}
 
 bw::core::World const* Document::selectionWorld() const {
   return mWorld.get();
@@ -617,7 +623,6 @@ void Document::restoreMeshSelection(
     mSelectedMeshRingIndices = rings;
   }
 }
-
 
 namespace {
 
@@ -2276,6 +2281,30 @@ vector<uint32_t> Document::getSelectablePrimitiveIndices(Settings const& setting
   return result;
 }
 
+bool Document::primitivePermitsDirectEditing(uint32_t primitiveIndex) const {
+  if (!mWorld || primitiveIndex >= mWorld->getNumPrimitives() ||
+      primitiveIndex == uint32_t(ED_GHOST_INDEX)) {
+    return false;
+  }
+
+  auto* layer = mWorld->getActiveLayer();
+  if (!layer) {
+    return false;
+  }
+  auto* primitive = mWorld->getPrimitive(primitiveIndex);
+  auto owningStepIndex = layer->getOwningStepIndex(primitive);
+  return owningStepIndex != ~0u &&
+         layer->getStep(owningStepIndex)->permitsDirectPrimitiveEditing();
+}
+
+bool Document::selectedPrimitivesPermitDirectEditing() const {
+  auto const& selection = getSelectedPrimitiveIndices();
+  return !selection.empty() &&
+         all_of(selection.begin(), selection.end(), [&](uint32_t index) {
+           return primitivePermitsDirectEditing(index);
+         });
+}
+
 uint32_t Document::getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
   return isActive() && settings.mode != Settings::Mode::Mesh
              ? mWorld->findTriggerLineIndex(
@@ -2309,6 +2338,5 @@ float Document::getPlayerProxyAngle() const {
 float Document::getPlayerOldProxyAngle() const {
   return mPlayerOldProxyAngle;
 }
-
 
 }  // namespace editor

@@ -4,45 +4,53 @@
 #include <core-lua/RunScript.h>
 
 namespace editor {
+namespace {
+
+void rebuildRunScript(Document* document, bw::core::Layer* layer) {
+  document->clearSelections();
+  layer->rebuild();
+}
+
+}  // namespace
 
 bool setRunScriptScriptName(
-    Document*, bw::core::Layer* layer, bw::core::RunScript* step,
+    Document* document, bw::core::Layer* layer, bw::core::RunScript* step,
     std::string const& scriptName) {
   step->setScriptName(scriptName);
-  layer->rebuild();
+  rebuildRunScript(document, layer);
   return true;
 }
 
 bool setRunScriptSeed(
-    Document*, bw::core::Layer* layer, bw::core::RunScript* step,
+    Document* document, bw::core::Layer* layer, bw::core::RunScript* step,
     uint64_t seed) {
   step->setSeed(seed);
-  layer->rebuild();
+  rebuildRunScript(document, layer);
   return true;
 }
 
 bool setRunScriptExtraResourceNames(
-    Document*, bw::core::Layer* layer, bw::core::RunScript* step,
+    Document* document, bw::core::Layer* layer, bw::core::RunScript* step,
     std::vector<std::string> const& names) {
   step->setExtraResourceNames(names);
-  layer->rebuild();
+  rebuildRunScript(document, layer);
   return true;
 }
 
 bool setRunScriptStepVariableValue(
-    Document*, bw::core::Layer* layer, bw::core::RunScript* step,
+    Document* document, bw::core::Layer* layer, bw::core::RunScript* step,
     std::string const& name,
     bw::core::BuildVariableValue const& value) {
   step->setStepVariableValue(name, value);
-  layer->rebuild();
+  rebuildRunScript(document, layer);
   return true;
 }
 
 bool clearRunScriptStepVariableValue(
-    Document*, bw::core::Layer* layer, bw::core::RunScript* step,
+    Document* document, bw::core::Layer* layer, bw::core::RunScript* step,
     std::string const& name) {
   step->clearStepVariableValue(name);
-  layer->rebuild();
+  rebuildRunScript(document, layer);
   return true;
 }
 

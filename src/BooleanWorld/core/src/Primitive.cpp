@@ -82,7 +82,18 @@ Primitive* Primitive::createDefault(string const& type) {
         }},
        {"Mesh", []() { return new MeshPrimitive; }}});
 
-  return defaultPrimitiveRegistry.create(type);
+  auto* primitive = defaultPrimitiveRegistry.create(type);
+
+  // Default-created Primitives are ready for immediate use rather than
+  // deserialization. Match PrimitiveFactory's neutral authored transforms;
+  // VertexTransformer's raw orbit-distance default is deliberately non-zero.
+  using Key = VertexTransformer::Key;
+  auto mutation = primitive->mutate();
+  mutation.animation(Key::Scale).setDefaultStructure({{0.0f, 1.0f}, {1.0f, 1.0f}}, {{Easing::Linear}}, true);
+  mutation.animation(Key::Angle).setDefaultStructure({{0.0f, 0.0f}, {1.0f, 0.0f}}, {{Easing::Linear}}, true);
+  mutation.animation(Key::OrbitAngle).setDefaultStructure({{0.0f, 0.0f}, {1.0f, 0.0f}}, {{Easing::Linear}}, true);
+  mutation.animation(Key::OrbitDistance).setDefaultStructure({{0.0f, 0.0f}, {1.0f, 0.0f}}, {{Easing::Linear}}, true);
+  return primitive;
 }
 
 Primitive::Primitive()

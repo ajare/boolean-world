@@ -50,6 +50,7 @@
 #include "AcousticPresetResolver.h"
 #include "AudioSimulationOptions.h"
 #include "CpuUpdateProfiler.h"
+#include "FrameRateHistory.h"
 #include "PlayerLiquidTraversal.h"
 #include "PlayerSurfaceTraversal.h"
 #include "PlayerVerticalPhysics.h"
@@ -67,6 +68,7 @@
 #include "ReactiveCamera.h"
 #include "GameException.h"
 #include "ImGuiDllBoundaryState.h"
+#include "Screenshot.h"
 #include "LiquidReflectionSelection.h"
 
 #define CLIPPING_RECORD_COUNT_MAX 10
@@ -229,8 +231,7 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
                                          : ".no-depth-prepass") +
              "." +
              std::string(bw::app::waterReflectionTechniqueName(technique)) +
-             "." + std::string(
-                 bw::app::planarReflectionResolutionName(planarResolution));
+             "." + std::string(bw::app::planarReflectionResolutionName(planarResolution));
   if (technique == bw::app::WaterReflectionTechnique::Planar) {
     key += mPlanarReflectionSessionFailed
                ? ".reflection-failed"
@@ -244,10 +245,8 @@ mpp::RenderPipelinePtr const& StatePlayBooleanWorld::getOrCreateWorldRenderPipel
              (plane.viewerSide == mpp::ReflectionPlaneSide::Above
                   ? ".above"
                   : ".below") +
-             "." + std::to_string(std::bit_cast<std::uint32_t>(
-                       plane.minimumMatchingElevation)) +
-             "." + std::to_string(std::bit_cast<std::uint32_t>(
-                       plane.maximumMatchingElevation));
+             "." + std::to_string(std::bit_cast<std::uint32_t>(plane.minimumMatchingElevation)) +
+             "." + std::to_string(std::bit_cast<std::uint32_t>(plane.maximumMatchingElevation));
     }
   }
   auto& pipeline = mWorldRenderPipelines[key];
@@ -357,7 +356,7 @@ StatePlayBooleanWorld::getOrCreateFragmentOverdrawPipeline(
     bw::app::RenderScale renderScale) {
   auto const& target = mwRenderer->getRenderTarget(renderScale);
   auto depthPrepassIndex = mDebugDisplay.depthPrepass ? std::size_t{1}
-                                                     : std::size_t{0};
+                                                      : std::size_t{0};
   auto& pipeline = mFragmentOverdrawPipelines[depthPrepassIndex];
   if (!pipeline) {
     mpp::RenderPipelineOptions options;
@@ -1287,7 +1286,7 @@ void StatePlayBooleanWorld::updateActions(vector<string> const& activeStates, fl
     } else if (state == "RenderGraphCapture") {
       mRenderGraphCaptureRequested = true;
     } else if (state == "Screenshot") {
-      mScreenshotRequested = true;
+      bw::app::requestScreenshot();
     }
   }
 
@@ -1307,9 +1306,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   auto playerViewHeight =
       physicalStats.feetElevation + BW_PLAYER_EYE_HEIGHT;
 
-  static_cast<ReactiveCamera*>(mCamera3d.get())->setPosition(
-      bw::app::worldToRendererAudioPosition(
-          physicalStats.position, playerViewHeight));
+  static_cast<ReactiveCamera*>(mCamera3d.get())->setPosition(bw::app::worldToRendererAudioPosition(physicalStats.position, playerViewHeight));
   // Renderer and authored yaw now increase in the same direction.
   static_cast<ReactiveCamera*>(mCamera3d.get())->yaw(physicalStats.angle - mPlayerPrevAngle);
   static_cast<ReactiveCamera*>(mCamera3d.get())->pitch(physicalStats.pitch - mPlayerPrevPitch);
@@ -1455,6 +1452,10 @@ void StatePlayBooleanWorld::handleClippingUpdate(bw::core::DynamicWorldDataGener
 void StatePlayBooleanWorld::updateImpl(float frameTime) {
   mGlobalTime += frameTime;
 
+  if (auto screenshotResult = bw::app::takeScreenshotResult()) {
+    addDisplayMessage(DisplayMessage::Level::Game, *screenshotResult);
+  }
+
   if (mExitScheduled) {
     exit();
   }
@@ -1484,70 +1485,6 @@ void StatePlayBooleanWorld::updateImpl(float frameTime) {
 // The scene is handed to an MPP render-graph pipeline, which applies the
 // selected MSAA or FXAA stage. This state copies the filtered output into the
 // selected world target and composites it to the actual screen.
-void StatePlayBooleanWorld::saveScreenshot(
-    mpp::RenderSystem* renderSystem) {
-  namespace fs = std::filesystem;
-  using namespace std::chrono;
-
-  auto const width = renderSystem->getWindowWidth();
-  auto const height = renderSystem->getWindowHeight();
-  if (width == 0 || height == 0) {
-    addDisplayMessage(
-        DisplayMessage::Level::Game,
-        "Could not save screenshot: the window has no drawable area.");
-    return;
-  }
-
-  try {
-    std::vector<uint8_t> pixels(width * height * 3);
-    GLint previousPackAlignment = 0;
-    glGetIntegerv(GL_PACK_ALIGNMENT, &previousPackAlignment);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glReadPixels(
-        0, 0, static_cast<GLsizei>(width), static_cast<GLsizei>(height),
-        GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
-    glPixelStorei(GL_PACK_ALIGNMENT, previousPackAlignment);
-
-    auto const rowSize = width * 3;
-    for (size_t y = 0; y < height / 2; ++y) {
-      auto top = pixels.begin() + y * rowSize;
-      auto bottom = pixels.begin() + (height - y - 1) * rowSize;
-      std::swap_ranges(top, top + rowSize, bottom);
-    }
-
-    auto const now = system_clock::now();
-    auto const time = system_clock::to_time_t(now);
-    std::tm localTime{};
-#ifdef _WIN32
-    localtime_s(&localTime, &time);
-#else
-    localtime_r(&time, &localTime);
-#endif
-    auto const millisecondsPart =
-        duration_cast<milliseconds>(now.time_since_epoch()).count() % 1000;
-    std::ostringstream filename;
-    filename << "BooleanWorld_"
-             << std::put_time(&localTime, "%Y-%m-%d_%H-%M-%S-")
-             << std::setfill('0') << std::setw(3) << millisecondsPart
-             << ".png";
-
-    auto const shotsDirectory = fs::current_path() / "shots";
-    fs::create_directories(shotsDirectory);
-    auto const filepath = shotsDirectory / filename.str();
-
-    utils::Image image;
-    image.loadFromData(width, height, 24, pixels.data());
-    image.saveToFile(filepath.string());
-    addDisplayMessage(
-        DisplayMessage::Level::Game,
-        "Saved screenshot to " + filepath.string());
-  } catch (std::exception const& exception) {
-    addDisplayMessage(
-        DisplayMessage::Level::Game,
-        "Could not save screenshot: " + std::string(exception.what()));
-  }
-}
-
 void StatePlayBooleanWorld::saveRenderGraphImages(
     std::vector<mpp::GraphImageCapture> const& captures,
     std::vector<mpp::GraphPassExecutionStats> const& passStats) {
@@ -1742,7 +1679,7 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
     // and AO images, then WaterComposite follows the final AO image.
     outputImage =
         preWaterOutputImage +
-        (planarWater        ? 2u * static_cast<std::uint32_t>(planarPlanes.size()) + 1u
+        (planarWater         ? 2u * static_cast<std::uint32_t>(planarPlanes.size()) + 1u
          : failedPlanarWater ? 1u
          : screenSpaceWater  ? 2u
                              : 0u);
@@ -1839,12 +1776,6 @@ void StatePlayBooleanWorld::renderImpl(mpp::RenderSystem* renderSystem, mpp::Res
     renderSystem->renderText(format("{:.2f}", message.time), 0, y, colour);
     renderSystem->renderText(message.text, 100, y, colour);
     y += 16;
-  }
-
-  if (mScreenshotRequested) {
-    mScreenshotRequested = false;
-    renderSystem->flushVertexBuffers();
-    saveScreenshot(renderSystem);
   }
 }
 
@@ -2132,6 +2063,38 @@ void StatePlayBooleanWorld::debug_renderCpuUpdateTimings(
   }
 }
 
+void StatePlayBooleanWorld::debug_renderFrameRateHistory() {
+  auto const& samples = bw::app::presentedFrameRateHistory().samples();
+  ImGui::TextUnformatted("Presented game frame rate - last 5 seconds");
+  if (samples.empty()) {
+    ImGui::TextDisabled("Waiting for presented game frames...");
+    return;
+  }
+
+  auto const timelineEnd = samples.back().timestampSeconds;
+  vector<double> x(samples.size());
+  vector<double> y(samples.size());
+  double minimumFps = samples.front().framesPerSecond;
+  double maximumFps = minimumFps;
+  for (size_t index = 0; index < samples.size(); ++index) {
+    x[index] = samples[index].timestampSeconds - timelineEnd;
+    y[index] = samples[index].framesPerSecond;
+    minimumFps = min(minimumFps, y[index]);
+    maximumFps = max(maximumFps, y[index]);
+  }
+  auto const padding = max(1.0, (maximumFps - minimumFps) * 0.1);
+
+  if (ImPlot::BeginPlot("##PresentedGameFrameRate", {-1.0f, 260.0f})) {
+    ImPlot::SetupAxes("Seconds", "FPS", ImPlotAxisFlags_Lock,
+                      ImPlotAxisFlags_Lock);
+    ImPlot::SetupAxesLimits(-5.0, 0.0, max(0.0, minimumFps - padding),
+                            maximumFps + padding, ImPlotCond_Always);
+    ImPlot::PlotLine("Presented FPS", x.data(), y.data(),
+                     static_cast<int>(samples.size()));
+    ImPlot::EndPlot();
+  }
+}
+
 void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList) {
   VAR_UNUSED(drawList);
 
@@ -2204,8 +2167,12 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
 
     float cpuGraphStartX = 0.0f;
     float cpuGraphEndX = 0.0f;
-    debug_renderCpuUpdateTimings(
-        mGlobalTime, timelineDuration, &cpuGraphStartX, &cpuGraphEndX);
+    if (ImPlot::BeginAlignedPlots("GamePerformancePlots")) {
+      debug_renderCpuUpdateTimings(
+          mGlobalTime, timelineDuration, &cpuGraphStartX, &cpuGraphEndX);
+      debug_renderFrameRateHistory();
+      ImPlot::EndAlignedPlots();
+    }
     ImGui::Separator();
 
     vector<ClippingRecord> records;
@@ -2658,10 +2625,10 @@ void StatePlayBooleanWorld::debug_renderOptions() {
       if (ImGui::Checkbox(
               "Override liquid opacity", &opacityOverrideEnabled)) {
         mDebugDisplay.liquidOpacityOverride = opacityOverrideEnabled
-            ? std::optional<float>{getLiquidPropertiesAt(
-                                        getPlayerPosition())
-                                        .opacity}
-            : std::nullopt;
+                                                  ? std::optional<float>{getLiquidPropertiesAt(
+                                                                             getPlayerPosition())
+                                                                             .opacity}
+                                                  : std::nullopt;
       }
       ImGui::BeginDisabled(!opacityOverrideEnabled);
       auto opacity = mDebugDisplay.liquidOpacityOverride.value_or(0.0f);
@@ -2675,10 +2642,10 @@ void StatePlayBooleanWorld::debug_renderOptions() {
           mDebugDisplay.liquidTintOverride.has_value();
       if (ImGui::Checkbox("Override liquid colour", &tintOverrideEnabled)) {
         mDebugDisplay.liquidTintOverride = tintOverrideEnabled
-            ? std::optional<std::array<float, 3>>{getLiquidPropertiesAt(
-                                                        getPlayerPosition())
-                                                        .tint}
-            : std::nullopt;
+                                               ? std::optional<std::array<float, 3>>{getLiquidPropertiesAt(
+                                                                                         getPlayerPosition())
+                                                                                         .tint}
+                                               : std::nullopt;
       }
       ImGui::BeginDisabled(!tintOverrideEnabled);
       auto tint = mDebugDisplay.liquidTintOverride.value_or(
@@ -2693,10 +2660,10 @@ void StatePlayBooleanWorld::debug_renderOptions() {
       if (ImGui::Checkbox(
               "Override liquid reflectance", &reflectanceOverrideEnabled)) {
         mDebugDisplay.liquidReflectanceOverride = reflectanceOverrideEnabled
-            ? std::optional<float>{getLiquidPropertiesAt(
-                                        getPlayerPosition())
-                                        .reflectance}
-            : std::nullopt;
+                                                      ? std::optional<float>{getLiquidPropertiesAt(
+                                                                                 getPlayerPosition())
+                                                                                 .reflectance}
+                                                      : std::nullopt;
       }
       ImGui::BeginDisabled(!reflectanceOverrideEnabled);
       auto reflectance =
@@ -2710,10 +2677,10 @@ void StatePlayBooleanWorld::debug_renderOptions() {
       auto f0OverrideEnabled = mDebugDisplay.liquidF0Override.has_value();
       if (ImGui::Checkbox("Override liquid F0", &f0OverrideEnabled)) {
         mDebugDisplay.liquidF0Override = f0OverrideEnabled
-            ? std::optional<float>{getLiquidPropertiesAt(
-                                        getPlayerPosition())
-                                        .f0}
-            : std::nullopt;
+                                             ? std::optional<float>{getLiquidPropertiesAt(
+                                                                        getPlayerPosition())
+                                                                        .f0}
+                                             : std::nullopt;
       }
       ImGui::BeginDisabled(!f0OverrideEnabled);
       auto f0 = mDebugDisplay.liquidF0Override.value_or(0.0f);
@@ -2752,7 +2719,8 @@ void StatePlayBooleanWorld::debug_renderOptions() {
       if (ImGui::BeginCombo(
               "Planar reflection resolution",
               bw::app::planarReflectionResolutionName(
-                  activePlanarResolution).data())) {
+                  activePlanarResolution)
+                  .data())) {
         for (auto resolution : bw::app::allPlanarReflectionResolutions) {
           auto selected = resolution == activePlanarResolution;
           if (ImGui::Selectable(

@@ -6,6 +6,8 @@ namespace editor {
 using namespace std;
 
 void checkModalPopups(ViewContext& context) {
+  renderRecentWorldMissingDialog();
+
   auto* doc = context.doc;
   auto& settings = context.settings;
   ImVec2 centre = ImGui::GetMainViewport()->GetCenter();
@@ -291,6 +293,5 @@ void checkModalPopups(ViewContext& context) {
     ImGui::EndPopup();
   }
 }
-
 
 }  // namespace editor

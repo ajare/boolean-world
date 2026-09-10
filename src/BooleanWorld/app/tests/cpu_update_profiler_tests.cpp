@@ -2,6 +2,7 @@
 #include <stdexcept>
 
 #include "CpuUpdateProfiler.h"
+#include "FrameRateHistory.h"
 
 namespace {
 
@@ -42,6 +43,23 @@ void separatesSynchronousWorldGenerationFromGameLogic() {
           "synchronous World Generation was not separated from game logic");
 }
 
+void retainsFiveSecondsOfPresentedFrameRates() {
+  bw::app::PresentedFrameRateHistory history;
+  history.record(10.0, 60.0);
+  history.record(14.9, 59.5);
+  history.record(15.0, 61.0);
+  history.record(15.01, 58.0);
+
+  require(history.samples().size() == 3 &&
+              history.samples().front().timestampSeconds == 14.9 &&
+              history.samples().back().framesPerSecond == 58.0,
+          "presented frame-rate history did not retain five seconds");
+
+  history.reset();
+  require(history.samples().empty(),
+          "presented frame-rate reset retained samples");
+}
+
 void usesTheConfiguredHistoryAndToggleClearsIt() {
   CpuUpdateProfiler profiler;
   profiler.setCaptureEnabled(true);
@@ -79,6 +97,7 @@ int main() {
   try {
     captureIsDisabledByDefault();
     separatesSynchronousWorldGenerationFromGameLogic();
+    retainsFiveSecondsOfPresentedFrameRates();
     usesTheConfiguredHistoryAndToggleClearsIt();
     std::cout << "CPU update profiler regression passed\n";
     return 0;

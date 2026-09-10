@@ -546,18 +546,25 @@ void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
   density.defaultValue = int64_t{5};
   density.integerMinimum = 1;
   density.integerMaximum = 10;
-  runtime.load(
-      "scatter", "-- an empty successful build script", {}, {density});
+  runtime.load("scatter", R"(
+    local primitive = context:create_primitive("Rectangle")
+    context:place_primitive(primitive)
+  )",
+               {}, {density});
   auto* step = static_cast<bw::core::RunScript*>(layer->getStep(1));
   auto undoBefore = editor::getUndoLevels();
   editor::transactUndoableAction(
       &document, "Select Script",
       std::bind(editor::setRunScriptScriptName, std::placeholders::_1, layer,
                 step, "scatter"));
+  document.setSelectedPrimitiveIndices(
+      {layer->getPrimitive(layer->getNumPrimitives() - 1)->getId()});
   editor::transactUndoableAction(
       &document, "Set Seed",
       std::bind(editor::setRunScriptSeed, std::placeholders::_1, layer, step,
                 uint64_t{42}));
+  require(document.getSelectedPrimitiveIndices().empty(),
+          "running a RunScript did not clear its generated selection");
   editor::transactUndoableAction(
       &document, "Set Step Name",
       std::bind(editor::setLayerBuildStepName, std::placeholders::_1, layer,

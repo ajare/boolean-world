@@ -30,7 +30,9 @@
 #include "WorldDataGenerationOptions.h"
 #include "MapBooleanWorldDefinitionFactory.h"
 #include "ProtoEntityDefinitionFactory.h"
+#include "FrameRateHistory.h"
 #include "SteamAudio.h"
+#include "Screenshot.h"
 
 // Model
 #include "BooleanWorldModel.h"
@@ -160,6 +162,21 @@ APPLICATION_API int dllCpuUpdateTimingCaptureEnabled() {
 APPLICATION_API void dllRecordCpuUpdateTimings(
     std::uint64_t gameNs, std::uint64_t audioNs) {
   bw::app::cpuUpdateProfiler().recordFrame(gameNs, audioNs);
+}
+
+APPLICATION_API void dllResetFrameRateHistory() {
+  bw::app::presentedFrameRateHistory().reset();
+}
+
+APPLICATION_API void dllRecordFrameRate(
+    double timestampSeconds, double framesPerSecond) {
+  bw::app::presentedFrameRateHistory().record(
+      timestampSeconds, framesPerSecond);
+}
+
+APPLICATION_API void dllCaptureScreenshotIfRequested(
+    mpp::RenderSystem* renderSystem) {
+  bw::app::captureScreenshotIfRequested(renderSystem);
 }
 
 APPLICATION_API int dllSetWorldDataGenerationOptions(

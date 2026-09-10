@@ -2,6 +2,7 @@
 
 #include <map>
 #include <string>
+#include <string_view>
 #include <deque>
 #include <functional>
 
@@ -72,6 +73,8 @@ public:
   void injectMouseMotionInput(float positionX, float positionY);
 
   std::vector<std::string> getDebuggingText() const;
+
+  [[nodiscard]] bool isCurrentState(std::string_view name) const;
 
   void update(float frameTime);
 

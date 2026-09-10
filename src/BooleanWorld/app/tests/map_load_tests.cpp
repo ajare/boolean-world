@@ -2,9 +2,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <willpower/application/resourcesystem/DirectoryResourceLocation.h>
 #include <willpower/application/resourcesystem/Resource.h>
@@ -151,6 +153,100 @@ void yamlWorldsWithoutTheWorldYamlExtensionAreRejected() {
   require(threw, "a YAML World without the .world.yaml extension was accepted");
 }
 
+void minesCreateOneSixCellFloorVariationPerTunnelSection() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load(
+      "MinesLayer", readFixture("scripts/mines-layer.lua"),
+      {{"World/UtilityFunctions", readFixture("scripts/utility-functions.lua")}},
+      {{.name = "iterations",
+        .type = bw::core::BuildVariableType::Integer,
+        .defaultValue = int64_t{10},
+        .integerMinimum = 1,
+        .integerMaximum = 50}});
+  bw::core::registerScriptStepTypes(runtime);
+
+  wp::Logger logger;
+  Map map("map", "", "", {}, nullptr, &logger, &runtime);
+  map.loadWorldFromYaml(
+      makeWorldResource(readFixture("world-mines-3.world.yaml")));
+
+  auto* layer = map.getWorld()->getActiveLayer();
+  uint32_t scriptStepIndex = ~0u;
+  bw::core::RunScript* scriptStep = nullptr;
+  for (uint32_t i = 0; i < layer->getNumSteps(); ++i) {
+    if (auto* candidate =
+            dynamic_cast<bw::core::RunScript*>(layer->getStep(i))) {
+      scriptStepIndex = i;
+      scriptStep = candidate;
+      break;
+    }
+  }
+  require(scriptStep && !scriptStep->hasFailed(),
+          "the mines RunScript did not build");
+
+  std::vector<bw::core::Primitive*> tunnels;
+  std::vector<bw::core::Primitive*> floorCells;
+  std::vector<bw::core::Primitive*> bridges;
+  std::vector<bw::core::Primitive*> posts;
+  for (auto* primitive : layer->getPrimitives()) {
+    if (layer->getOwningStepIndex(primitive) != scriptStepIndex) continue;
+    auto const size = primitive->getSize();
+    if (primitive->getType() == "Mesh" && primitive->getPriority() == 0) {
+      tunnels.push_back(primitive);
+    } else if (primitive->getType() == "Rectangle" &&
+               primitive->getPriority() == 1 && size.x >= 24.0f &&
+               size.y >= 24.0f) {
+      floorCells.push_back(primitive);
+    } else if (primitive->getType() == "Rectangle" &&
+               primitive->getPriority() == 1) {
+      bridges.push_back(primitive);
+    } else if (primitive->getType() == "Rectangle" &&
+               primitive->getPriority() == 2) {
+      posts.push_back(primitive);
+    }
+  }
+
+  require(!tunnels.empty() && floorCells.size() == tunnels.size() * 6,
+          "a tunnel section did not create exactly six floor-variation cells");
+  auto const baseFloor = tunnels.front()->getProperties().floorSpan;
+  for (auto const* cell : floorCells) {
+    auto const floor = cell->getProperties().floorSpan;
+    auto const offset = floor.lowerElevation - baseFloor.lowerElevation;
+    require((offset == -4.0f || offset == 4.0f) &&
+                floor.upperElevation == baseFloor.upperElevation + offset,
+            "a floor-variation cell was not raised or lowered by four");
+  }
+
+  for (auto const* bridge : bridges) {
+    auto expectedFloor = baseFloor;
+    for (auto const* cell : floorCells) {
+      if (cell->getPickingTriangulation().pointInside(bridge->getPosition())) {
+        expectedFloor = cell->getProperties().floorSpan;
+        break;
+      }
+    }
+    require(bridge->getProperties().floorSpan == expectedFloor,
+            "a wooden bridge did not inherit its cell's floor height");
+  }
+
+  for (auto const* post : posts) {
+    bw::core::Primitive const* nearestBridge = nullptr;
+    auto nearestDistance = std::numeric_limits<float>::max();
+    for (auto const* bridge : bridges) {
+      auto const distance =
+          post->getPosition().distanceToSq(bridge->getPosition());
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestBridge = bridge;
+      }
+    }
+    require(nearestBridge && nearestDistance < 13.0f * 13.0f &&
+                post->getProperties().floorSpan ==
+                    nearestBridge->getProperties().floorSpan,
+            "a wooden post did not inherit its frame's floor height");
+  }
+}
+
 void theGameResolvesAndRunsAWorldsLuaScript() {
   namespace resources = wp::application::resourcesystem;
 
@@ -226,6 +322,7 @@ int main() {
     failedLoadRetainsThePreviousWorld();
     resourcesWithAWorldExtensionLoadAsBinary();
     yamlWorldsWithoutTheWorldYamlExtensionAreRejected();
+    minesCreateOneSixCellFloorVariationPerTunnelSection();
     theGameResolvesAndRunsAWorldsLuaScript();
     std::cout << "Map failed-load ownership regression passed\n";
     return 0;

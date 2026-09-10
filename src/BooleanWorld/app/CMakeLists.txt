@@ -9,6 +9,7 @@ add_library(BooleanWorld SHARED
     src/DLL.cpp
     src/EntityHandlerBooleanWorld.cpp
     src/EmitterSourcePolicy.cpp
+    src/FrameRateHistory.cpp
     src/LiquidReflectionSelection.cpp
     src/Map.cpp
     src/MapBooleanWorldDefinitionFactory.cpp
@@ -17,6 +18,7 @@ add_library(BooleanWorld SHARED
     src/ProtoEntity.cpp
     src/ProtoEntityDefinitionFactory.cpp
     src/ReactiveCamera.cpp
+    src/Screenshot.cpp
     src/StateControllerBooleanWorld.cpp
     src/StateMapLoadBooleanWorld.cpp
     src/StateMapTransitionBooleanWorld.cpp
@@ -138,7 +140,8 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_cpu_update_profiler_tests
         tests/cpu_update_profiler_tests.cpp
-        src/CpuUpdateProfiler.cpp)
+        src/CpuUpdateProfiler.cpp
+        src/FrameRateHistory.cpp)
     target_include_directories(boolean_world_cpu_update_profiler_tests PRIVATE include)
     target_compile_features(boolean_world_cpu_update_profiler_tests PRIVATE cxx_std_23)
     bw_target_defaults(boolean_world_cpu_update_profiler_tests)

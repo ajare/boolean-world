@@ -27,6 +27,17 @@ void PopDisabled() {
   }
 }
 
+bool InspectableCollapsingHeader(
+    char const* label, ImGuiTreeNodeFlags flags) {
+  ImGuiContext& g = *GImGui;
+  auto const disabled =
+      (g.CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
+  if (disabled) ImGui::BeginDisabledOverrideReenable();
+  auto const open = ImGui::CollapsingHeader(label, flags);
+  if (disabled) ImGui::EndDisabledOverrideReenable();
+  return open;
+}
+
 bool ToggleButton(const char* str_id, const char* title, bool v) {
   ImVec2 p = ImGui::GetCursorScreenPos();
   ImDrawList* draw_list = ImGui::GetWindowDrawList();

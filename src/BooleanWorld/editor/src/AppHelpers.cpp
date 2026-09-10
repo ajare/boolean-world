@@ -2,7 +2,11 @@
 #include <cctype>
 #include <format>
 #include <limits>
+#include <memory>
 #include <nfd/nfd.h>
+#include <optional>
+
+#include <SDL3/SDL.h>
 
 #pragma warning(push)
 #pragma warning(disable : 4307)
@@ -23,6 +27,7 @@
 #include "EditorException.h"
 #include "Markdown.h"
 #include "PrimitiveFieldPreview.h"
+#include "RecentWorlds.h"
 
 extern wp::Vector2 gViewOffset;
 extern float gViewZoom;
@@ -37,6 +42,20 @@ constexpr nfdfilteritem_t kWorldFilters[] = {
 };
 editor::ApplicationCloseController applicationCloseController;
 bool closeApproved{false};
+std::unique_ptr<editor::RecentWorlds> recentWorlds;
+std::optional<std::string> missingRecentWorld;
+
+editor::RecentWorlds& getRecentWorlds() {
+  if (!recentWorlds) {
+    std::filesystem::path storagePath;
+    if (auto* preferencePath = SDL_GetPrefPath("ajare", "BooleanWorldEditor")) {
+      storagePath = std::filesystem::path(preferencePath) / "recent-worlds.txt";
+      SDL_free(preferencePath);
+    }
+    recentWorlds = std::make_unique<editor::RecentWorlds>(storagePath);
+  }
+  return *recentWorlds;
+}
 
 bool hasExtension(std::string const& filepath, std::string const& extension) {
   if (filepath.size() < extension.size()) {
@@ -72,10 +91,52 @@ void openDocument(editor::Document* doc) {
       throw EditorException(format("Could not open '{}'; see editor.log for details.",
                                    filepath));
     }
+    getRecentWorlds().record(filepath);
   } else if (res == NFD_ERROR) {
     auto const* error = NFD_GetError();
     throw EditorException(format("Could not open the file dialog: {}",
                                  error ? error : "unknown error"));
+  }
+}
+
+vector<string> const& recentWorldPaths() {
+  return getRecentWorlds().paths();
+}
+
+void openRecentDocument(editor::Document* doc, string const& filepath) {
+  auto result = getRecentWorlds().open(filepath, [&](string const& path) {
+    getPrimitiveFieldPreview().close();
+    return doc->openDoc(path);
+  });
+  if (result == RecentWorlds::OpenResult::Missing) {
+    missingRecentWorld = filepath;
+  } else if (result == RecentWorlds::OpenResult::Failed) {
+    throw EditorException(format("Could not open '{}'; see editor.log for details.",
+                                 filepath));
+  }
+}
+
+void renderRecentWorldMissingDialog() {
+  constexpr char title[] = "Recent World not found";
+  if (!missingRecentWorld) {
+    return;
+  }
+  if (!ImGui::IsPopupOpen(title)) {
+    ImGui::OpenPopup(title);
+  }
+  auto centre = ImGui::GetMainViewport()->GetCenter();
+  ImGui::SetNextWindowPos(centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  if (ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::TextUnformatted("The recent World is no longer at its expected location:");
+    ImGui::TextWrapped("%s", missingRecentWorld->c_str());
+    ImGui::TextUnformatted("It has been removed from the Recent list.");
+    ImGui::Separator();
+    if (ImGui::Button("OK", ImVec2(120, 0))) {
+      missingRecentWorld.reset();
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SetItemDefaultFocus();
+    ImGui::EndPopup();
   }
 }
 

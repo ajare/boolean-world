@@ -25,6 +25,7 @@
 #include <core/DefineTileMaps.h>
 #include <core/TileMap.h>
 #include <core/World.h>
+#include <core/WorldUpdateData.h>
 #include <core/YamlSerializer.h>
 
 #include <core-lua/CoreLua.h>
@@ -728,6 +729,46 @@ void meshGeometryEditingUsesTheCurrentPrimitiveTransform() {
   proxy->getExtents(minimum, maximum);
   require(minimum.x > 90.0f && minimum.y > 90.0f,
           "a geometry edit used stale pre-transform Mesh coordinates");
+}
+
+void scriptCreatedPrimitiveTransformsAreNeutral() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("neutral-transform", R"(
+    local primitive = context:create_primitive("Rectangle")
+    primitive:set_size(20, 4)
+    primitive:set_position(48, 48)
+    primitive:set_orientation(180)
+    context:place_primitive(primitive)
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* step = addScriptStep(layer, runtime, "neutral-transform");
+  layer.rebuild();
+
+  require(!step->hasFailed() && layer.getNumPrimitives() == 1,
+          "the neutral-transform script did not build");
+  auto* primitive = layer.getPrimitive(0);
+  bw::core::WorldUpdateData updateData{
+      {0.0f, 0.0f}, 0.0f, 1.0f, 90.0f, 500.0f, false, false, bw::core::SelectLayer(0)};
+  primitive->updateTime(1.0f, updateData);
+
+  wp::Vector2 minimum{
+      std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+  wp::Vector2 maximum{
+      -std::numeric_limits<float>::max(), -std::numeric_limits<float>::max()};
+  for (auto const& polygon : primitive->getVertices()) {
+    for (auto const& contour : polygon) {
+      for (auto const& vertex : contour) {
+        minimum.x = std::min(minimum.x, vertex.p.x);
+        minimum.y = std::min(minimum.y, vertex.p.y);
+        maximum.x = std::max(maximum.x, vertex.p.x);
+        maximum.y = std::max(maximum.y, vertex.p.y);
+      }
+    }
+  }
+  auto const centre = (minimum + maximum) * 0.5f;
+  require(centre.distanceToSq(primitive->getPosition()) < 0.001f,
+          "a script-created Primitive gained the raw default orbit offset when time advanced");
 }
 
 void scriptCreatedPrimitivesFoldInRecipeOrder() {
@@ -2091,6 +2132,7 @@ int main() {
     scriptsAuthorAndInspectTaggedSurfaceMaterials();
     scriptsAuthorIndependentElevationSpans();
     meshGeometryEditingUsesTheCurrentPrimitiveTransform();
+    scriptCreatedPrimitiveTransformsAreNeutral();
     scriptCreatedPrimitivesFoldInRecipeOrder();
     everyExecutionRefillsTheStepsOwnStorage();
     aScriptNeverOwnsWhatItCreates();

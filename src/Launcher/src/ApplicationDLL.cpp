@@ -18,6 +18,12 @@ string ApplicationDLL::msCpuUpdateTimingCaptureEnabledFunctionName =
     "dllCpuUpdateTimingCaptureEnabled";
 string ApplicationDLL::msRecordCpuUpdateTimingsFunctionName =
     "dllRecordCpuUpdateTimings";
+string ApplicationDLL::msResetFrameRateHistoryFunctionName =
+    "dllResetFrameRateHistory";
+string ApplicationDLL::msRecordFrameRateFunctionName =
+    "dllRecordFrameRate";
+string ApplicationDLL::msCaptureScreenshotIfRequestedFunctionName =
+    "dllCaptureScreenshotIfRequested";
 string ApplicationDLL::msSetArgumentFunctionName = "dllSetArgument";
 string ApplicationDLL::msSetInputOptionsFunctionName = "dllSetInputOptions";
 string ApplicationDLL::msResetAudioSimulationOptionsFunctionName =
@@ -45,6 +51,9 @@ ApplicationDLL::ApplicationDLL()
       mOnExitFunction(0),
       mCpuUpdateTimingCaptureEnabledFunction(0),
       mRecordCpuUpdateTimingsFunction(0),
+      mResetFrameRateHistoryFunction(0),
+      mRecordFrameRateFunction(0),
+      mCaptureScreenshotIfRequestedFunction(0),
       mEntryStarted(false) {
 }
 
@@ -131,6 +140,16 @@ void ApplicationDLL::registerOptionalFunctions() {
   mRecordCpuUpdateTimingsFunction =
       (DllRecordCpuUpdateTimingsFunction)GetProcAddress(
           mGetProcIDDLL, msRecordCpuUpdateTimingsFunctionName.c_str());
+  mResetFrameRateHistoryFunction =
+      (DllResetFrameRateHistoryFunction)GetProcAddress(
+          mGetProcIDDLL, msResetFrameRateHistoryFunctionName.c_str());
+  mRecordFrameRateFunction =
+      (DllRecordFrameRateFunction)GetProcAddress(
+          mGetProcIDDLL, msRecordFrameRateFunctionName.c_str());
+  mCaptureScreenshotIfRequestedFunction =
+      (DllCaptureScreenshotIfRequestedFunction)GetProcAddress(
+          mGetProcIDDLL,
+          msCaptureScreenshotIfRequestedFunctionName.c_str());
 }
 
 void ApplicationDLL::load(
@@ -290,6 +309,26 @@ void ApplicationDLL::recordCpuUpdateTimings(
     uint64_t gameNs, uint64_t audioNs) const {
   if (mRecordCpuUpdateTimingsFunction) {
     mRecordCpuUpdateTimingsFunction(gameNs, audioNs);
+  }
+}
+
+void ApplicationDLL::resetFrameRateHistory() const {
+  if (mResetFrameRateHistoryFunction) {
+    mResetFrameRateHistoryFunction();
+  }
+}
+
+void ApplicationDLL::recordFrameRate(
+    double timestampSeconds, double framesPerSecond) const {
+  if (mRecordFrameRateFunction) {
+    mRecordFrameRateFunction(timestampSeconds, framesPerSecond);
+  }
+}
+
+void ApplicationDLL::captureScreenshotIfRequested(
+    mpp::RenderSystem* renderSystem) const {
+  if (mCaptureScreenshotIfRequestedFunction) {
+    mCaptureScreenshotIfRequestedFunction(renderSystem);
   }
 }
 

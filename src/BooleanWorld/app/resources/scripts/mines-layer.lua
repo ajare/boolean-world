@@ -235,6 +235,272 @@ local function cell_is_empty(x, y)
     ) == 0
 end
 
+local floor_variation_components_by_map = {}
+
+local function create_floor_height_variation(tile_map_index, tile_map,
+                                               corridor_width, map_size,
+                                               corridor)
+    local cell_size = tile_map:get_cell_size()
+    local width = tile_map:get_width()
+    local height = tile_map:get_height()
+    local inset = (cell_size - corridor_width) / 2
+    local neighbour_offsets = {
+        {x = 0, y = -1},
+        {x = 1, y = 0},
+        {x = 0, y = 1},
+        {x = -1, y = 0}
+    }
+
+    local function cell_is_set(x, y)
+        return x >= 0 and x < width and y >= 0 and y < height and
+                   tile_map:get_cell(x, y) == 1
+    end
+
+    -- First find connected components large enough to contain the variation,
+    -- then grow six cells from a random seed. Choosing only from the current
+    -- frontier guarantees that the resulting cells remain connected in any
+    -- shape the TileMap permits.
+    local eligible_components =
+        floor_variation_components_by_map[tile_map_index]
+    if eligible_components == nil then
+        local visited = {}
+        eligible_components = {}
+        for y = 0, height - 1 do
+            for x = 0, width - 1 do
+                local key = cell_key(x, y)
+                if cell_is_set(x, y) and not visited[key] then
+                    local component = {}
+                    local queue = {{x = x, y = y}}
+                    visited[key] = true
+                    local queue_index = 1
+                    while queue_index <= #queue do
+                        local cell = queue[queue_index]
+                        queue_index = queue_index + 1
+                        component[#component + 1] = cell
+                        for _, offset in ipairs(neighbour_offsets) do
+                            local next_x = cell.x + offset.x
+                            local next_y = cell.y + offset.y
+                            local next_key = cell_key(next_x, next_y)
+                            if cell_is_set(next_x, next_y) and
+                                not visited[next_key] then
+                                visited[next_key] = true
+                                queue[#queue + 1] = {x = next_x, y = next_y}
+                            end
+                        end
+                    end
+                    if #component >= 6 then
+                        eligible_components[#eligible_components + 1] =
+                            component
+                    end
+                end
+            end
+        end
+        assert(#eligible_components > 0,
+               "each tunnel section needs six connected set cells")
+        floor_variation_components_by_map[tile_map_index] =
+            eligible_components
+    end
+
+    local component = eligible_components[math.random(#eligible_components)]
+    local seed = component[math.random(#component)]
+    local selected = {{x = seed.x, y = seed.y}}
+    local selected_lookup = {[cell_key(seed.x, seed.y)] = true}
+    local frontier = {}
+    local frontier_lookup = {}
+
+    local function add_frontier(cell)
+        for _, offset in ipairs(neighbour_offsets) do
+            local x = cell.x + offset.x
+            local y = cell.y + offset.y
+            local key = cell_key(x, y)
+            if cell_is_set(x, y) and not selected_lookup[key] and
+                not frontier_lookup[key] then
+                frontier[#frontier + 1] = {x = x, y = y}
+                frontier_lookup[key] = true
+            end
+        end
+    end
+
+    add_frontier(seed)
+    while #selected < 6 do
+        local frontier_index = math.random(#frontier)
+        local cell = table.remove(frontier, frontier_index)
+        local key = cell_key(cell.x, cell.y)
+        frontier_lookup[key] = nil
+        selected_lookup[key] = true
+        selected[#selected + 1] = cell
+        add_frontier(cell)
+    end
+
+    local floor_angle, floor_lower, floor_upper =
+        corridor:get_floor_elevation()
+    local ceiling_angle, ceiling_lower, ceiling_upper =
+        corridor:get_ceiling_elevation()
+    local floor_offset = math.random(2) == 1 and -4 or 4
+    local floor_offsets = {}
+    local primitives = {}
+
+    for _, cell in ipairs(selected) do
+        floor_offsets[cell_key(cell.x, cell.y)] = floor_offset
+
+        -- Clip this cell to the same inset corridor rectangle used by the
+        -- tunnel outline. Edges at the TileMap boundary remain flush so a
+        -- neighbouring section can still meet them.
+        local minimum_x = cell.x * cell_size - map_size / 2
+        local maximum_x = minimum_x + cell_size
+        local minimum_y = cell.y * cell_size - map_size / 2
+        local maximum_y = minimum_y + cell_size
+        if cell.x > 0 and not cell_is_set(cell.x - 1, cell.y) then
+            minimum_x = minimum_x + inset
+        end
+        if cell.x < width - 1 and not cell_is_set(cell.x + 1, cell.y) then
+            maximum_x = maximum_x - inset
+        end
+        if cell.y > 0 and not cell_is_set(cell.x, cell.y - 1) then
+            minimum_y = minimum_y + inset
+        end
+        if cell.y < height - 1 and not cell_is_set(cell.x, cell.y + 1) then
+            maximum_y = maximum_y - inset
+        end
+
+        local primitive = context:create_primitive("Rectangle")
+        primitive:set_size(maximum_x - minimum_x, maximum_y - minimum_y)
+        primitive:set_position((minimum_x + maximum_x) / 2,
+                               (minimum_y + maximum_y) / 2)
+        primitive:set_operation("union")
+        primitive:set_priority(1)
+        primitive:set_floor_elevation(floor_angle,
+                                      floor_lower + floor_offset,
+                                      floor_upper + floor_offset)
+        primitive:set_ceiling_elevation(ceiling_angle, ceiling_lower,
+                                        ceiling_upper)
+        primitive:set_floor_material(layer.vars.mine_material)
+        primitive:set_ceiling_material(layer.vars.mine_material)
+        primitive:set_wall_material(layer.vars.mine_material)
+        primitives[#primitives + 1] = primitive
+    end
+
+    return floor_offsets, primitives
+end
+
+local function create_wooden_supports(tile_map, corridor_width, map_size,
+                                       corridor, floor_offsets)
+    local cell_size = tile_map:get_cell_size()
+    local width = tile_map:get_width()
+    local height = tile_map:get_height()
+    local neighbour_offsets = {
+        {x = 0, y = -1},
+        {x = 1, y = 0},
+        {x = 0, y = 1},
+        {x = -1, y = 0}
+    }
+    local floor_angle, floor_lower, floor_upper =
+        corridor:get_floor_elevation()
+    local ceiling_angle, ceiling_lower, ceiling_upper =
+        corridor:get_ceiling_elevation()
+    local support_frame_pct = layer.vars.support_frame_pct
+    assert(type(support_frame_pct) == "number" and support_frame_pct >= 0 and
+               support_frame_pct <= 100,
+           "layer.vars.support_frame_pct must be a number from 0 to 100")
+    local support_frame_chance = support_frame_pct / 100
+    local supports = {}
+
+    local function cell_is_set(x, y)
+        return x >= 0 and x < width and y >= 0 and y < height and
+                   tile_map:get_cell(x, y) == 1
+    end
+
+    local function configure_wood(primitive)
+        primitive:set_floor_material("builtin.wood2")
+        primitive:set_ceiling_material("builtin.wood2")
+        primitive:set_wall_material("builtin.wood2")
+    end
+
+    local function add_primitive(primitive)
+        configure_wood(primitive)
+        supports[#supports + 1] = primitive
+    end
+
+    for y = 0, height - 1 do
+        for x = 0, width - 1 do
+            if cell_is_set(x, y) then
+                local neighbours = {}
+                for _, offset in ipairs(neighbour_offsets) do
+                    if cell_is_set(x + offset.x, y + offset.y) then
+                        neighbours[#neighbours + 1] = offset
+                    end
+                end
+
+                local is_straight_corridor = #neighbours == 2 and
+                    (neighbours[1].x == neighbours[2].x or
+                        neighbours[1].y == neighbours[2].y)
+                if is_straight_corridor and
+                    math.random() < support_frame_chance then
+                    local floor_offset = floor_offsets[cell_key(x, y)] or 0
+                    -- The line between the two neighbours is the corridor's
+                    -- local direction. Its normal points toward the two walls
+                    -- carrying the frame.
+                    local direction_x = neighbours[2].x - neighbours[1].x
+                    local direction_y = neighbours[2].y - neighbours[1].y
+                    local direction_length = math.sqrt(
+                                                 direction_x * direction_x +
+                                                     direction_y * direction_y)
+                    local normal_x = -direction_y / direction_length
+                    local normal_y = direction_x / direction_length
+                    local center_x = (x + 0.5) * cell_size - map_size / 2
+                    local center_y = (y + 0.5) * cell_size - map_size / 2
+
+                    for _, side in ipairs({-1, 1}) do
+                        local post = context:create_primitive("Rectangle")
+                        post:set_size(4, 4)
+                        post:set_position(
+                            center_x + side * normal_x * corridor_width / 2,
+                            center_y + side * normal_y * corridor_width / 2)
+                        post:set_operation("difference")
+                        -- Keep the posts after the bridge in the Boolean fold
+                        -- so its Union cannot fill their wall cut-outs.
+                        post:set_priority(2)
+                        post:set_floor_elevation(
+                            floor_angle, floor_lower + floor_offset,
+                            floor_upper + floor_offset)
+                        post:set_ceiling_elevation(ceiling_angle,
+                                                   ceiling_lower,
+                                                   ceiling_upper)
+                        add_primitive(post)
+                    end
+
+                    local bridge = context:create_primitive("Rectangle")
+                    -- Each wall-centred post extends 2 units into the
+                    -- corridor, so span only the gap between their inner
+                    -- edges rather than overlapping either post.
+                    bridge:set_size(corridor_width - 4, 4)
+                    bridge:set_position(center_x, center_y)
+                    -- Primitive orientations are clockwise, while atan is
+                    -- anticlockwise in the World plane.
+                    bridge:set_orientation(math.deg(math.atan(-normal_y,
+                                                              normal_x)))
+                    bridge:set_operation("union")
+                    -- Override the corridor's ceiling and materials while
+                    -- still folding before the higher-priority posts.
+                    bridge:set_priority(1)
+                    bridge:set_floor_elevation(
+                        floor_angle, floor_lower + floor_offset,
+                        floor_upper + floor_offset)
+                    bridge:set_ceiling_elevation(
+                        0, layer.vars.corridor_base_height - 2,
+                        layer.vars.corridor_base_height - 2)
+                    add_primitive(bridge)
+                    bridge:set_floor_material(layer.vars.mine_material)
+                    bridge:set_ceiling_material("builtin.wood2")
+                    bridge:set_wall_material("builtin.wood2")
+                end
+            end
+        end
+    end
+
+    return supports
+end
+
 local function create_tunnels_section_primitive(step_name, index,
                                                 corridor_width)
     local tile_map = context:find_tile_map(step_name, index)
@@ -430,20 +696,62 @@ local function create_tunnels_section_primitive(step_name, index,
 
     -- Horizontal surfaces use the catalog's 2D material program; walls use
     -- its 3D program. Both variants share the basalt Sub-material id.
-    mesh:set_floor_material("builtin.basalt")
-    mesh:set_ceiling_material("builtin.basalt")
-    mesh:set_wall_material("builtin.basalt")
-    return mesh, map_size
+    mesh:set_floor_material(layer.vars.mine_material)
+    mesh:set_ceiling_material(layer.vars.mine_material)
+    mesh:set_wall_material(layer.vars.mine_material)
+    mesh:set_ceiling_elevation(0, layer.vars.corridor_base_height,
+                               layer.vars.corridor_base_height)
+    -- Floor variation must be authored first so frames in those cells inherit
+    -- its elevation and fold after the variation geometry.
+    local floor_offsets, section_primitives =
+        create_floor_height_variation(index, tile_map, corridor_width,
+                                      map_size, mesh)
+    local wooden_supports = create_wooden_supports(
+                                tile_map, corridor_width, map_size, mesh,
+                                floor_offsets)
+    for _, support in ipairs(wooden_supports) do
+        section_primitives[#section_primitives + 1] = support
+    end
+    return mesh, map_size, section_primitives
 end
 
-local tile_map_mesh, tile_map_size = create_tunnels_section_primitive(
-    "TileMaps", 0, layer.vars.corridor_width)
+local function place_tunnels_section(primitive, primitive_size,
+                                     section_primitives, cell_x, cell_y, angle)
+    local position_x = (cell_x + 0.5) * primitive_size
+    local position_y = (cell_y + 0.5) * primitive_size
+
+    -- create_mesh_primitive normalizes its points around their bounds centre.
+    -- Preserve that local centre relative to the TileMap origin; otherwise an
+    -- asymmetric TileMap shifts its tunnel while the supports remain in their
+    -- cell-relative positions. Rotation can turn that shift onto either axis.
+    local primitive_local_x, primitive_local_y = primitive:get_position()
+    local primitive_offset_x, primitive_offset_y =
+        rotate_point(primitive_local_x, primitive_local_y, angle)
+    primitive:set_position(position_x + primitive_offset_x,
+                           position_y + primitive_offset_y)
+    primitive:set_orientation(angle)
+    context:place_primitive(primitive)
+
+    for _, section_primitive in ipairs(section_primitives) do
+        local local_x, local_y = section_primitive:get_position()
+        local rotated_x, rotated_y = rotate_point(local_x, local_y, angle)
+        section_primitive:set_position(position_x + rotated_x,
+                                       position_y + rotated_y)
+        section_primitive:set_orientation(
+            section_primitive:get_orientation() + angle)
+        context:place_primitive(section_primitive)
+    end
+end
+
+local tile_map_mesh, tile_map_size, tile_map_section_primitives =
+    create_tunnels_section_primitive("TileMaps", 0,
+                                     layer.vars.corridor_width)
 assert(tile_map_mesh ~= nil, "TileMaps[0] has no set cells")
 local tile_map_x, tile_map_y =
     utilities.find_closest_empty_grid_cell(0, 0, tile_map_size)
-tile_map_mesh:set_position((tile_map_x + 0.5) * tile_map_size,
-                           (tile_map_y + 0.5) * tile_map_size)
-context:place_primitive(tile_map_mesh)
+place_tunnels_section(tile_map_mesh, tile_map_size,
+                      tile_map_section_primitives,
+                      tile_map_x, tile_map_y, 0)
 
 dprint("Finding prefabs")
 local definitions = context:find_define_prefabs("Main")
@@ -536,7 +844,14 @@ dprint("Placing initial prefab")
 local placements_by_cell = {}
 local seed = unrotated_options[math.random(#unrotated_options)]
 local seed_x, seed_y = utilities.find_closest_empty_grid_cell(0, 0, GRID_SIZE)
-context:place_prefab_instance(seed.prefab, seed_x, seed_y, seed.angle)
+local seed_tile_map_index = math.random(0, 1)
+local seed_primitive, seed_primitive_size, seed_section_primitives =
+    create_tunnels_section_primitive("TileMaps", seed_tile_map_index,
+                                     layer.vars.corridor_width)
+assert(seed_primitive ~= nil,
+       string.format("TileMaps[%d] has no set cells", seed_tile_map_index))
+place_tunnels_section(seed_primitive, seed_primitive_size,
+                      seed_section_primitives, seed_x, seed_y, seed.angle)
 local seed_placement = {x = seed_x, y = seed_y, option = seed}
 placements_by_cell[cell_key(seed_x, seed_y)] = seed_placement
 
@@ -636,8 +951,15 @@ for _ = 1, step.vars.iterations do
     local prefab_choice = prefab_choices[math.random(#prefab_choices)]
     local candidate = prefab_choice.candidates[
         math.random(#prefab_choice.candidates)]
-    context:place_prefab_instance(candidate.option.prefab, candidate.x,
-                                  candidate.y, candidate.option.angle)
+    local tile_map_index = math.random(0, 1)
+    local primitive, primitive_size, section_primitives =
+        create_tunnels_section_primitive("TileMaps", tile_map_index,
+                                         layer.vars.corridor_width)
+    assert(primitive ~= nil,
+           string.format("TileMaps[%d] has no set cells", tile_map_index))
+    place_tunnels_section(primitive, primitive_size, section_primitives,
+                          candidate.x,
+                          candidate.y, ANGLES[math.random(#ANGLES)])
     local placement = {
         x = candidate.x,
         y = candidate.y,

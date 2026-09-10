@@ -199,6 +199,10 @@ vector<string> StateManager::getDebuggingText() const {
   return mCurState->getDebuggingText();
 }
 
+bool StateManager::isCurrentState(string_view name) const {
+  return mCurState && mCurState->getName() == name;
+}
+
 void StateManager::update(float frameTime) {
   executeStateChangeableAction([this, frameTime]() {
     for (auto state : mActiveStates) {

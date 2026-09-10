@@ -170,6 +170,12 @@ public:
   // its active step unless showAllStepPrimitives opts out - for Select All.
   std::vector<uint32_t> getSelectablePrimitiveIndices(Settings const& settings) const;
 
+  // Generated RunScript Primitives can be inspected and selected, but never
+  // changed through Primitive editing actions or gestures.
+  [[nodiscard]] bool primitivePermitsDirectEditing(
+      uint32_t primitiveIndex) const;
+  [[nodiscard]] bool selectedPrimitivesPermitDirectEditing() const;
+
   // Mesh-mode eligibility is deliberately stricter than ordinary Primitive
   // selection: only a MeshPrimitive produced by the selected step itself is
   // directly editable.
@@ -411,7 +417,6 @@ public:
   float getPlayerProxyAngle() const;
 
   float getPlayerOldProxyAngle() const;
-
 };
 
 }  // namespace editor

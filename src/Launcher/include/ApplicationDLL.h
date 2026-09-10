@@ -50,6 +50,11 @@ class ApplicationDLL {
   typedef void (*DllRecordCpuUpdateTimingsFunction)(
       std::uint64_t, std::uint64_t);
 
+  typedef void (*DllResetFrameRateHistoryFunction)();
+  typedef void (*DllRecordFrameRateFunction)(double, double);
+
+  typedef void (*DllCaptureScreenshotIfRequestedFunction)(mpp::RenderSystem*);
+
   typedef int (*DllSetWorldDataGenerationOptionsFunction)(int, float, int, int);
 
   // Video enums cross as stable integer codes and Torch values as ordered
@@ -117,6 +122,12 @@ private:
 
   DllRecordCpuUpdateTimingsFunction mRecordCpuUpdateTimingsFunction;
 
+  DllResetFrameRateHistoryFunction mResetFrameRateHistoryFunction;
+  DllRecordFrameRateFunction mRecordFrameRateFunction;
+
+  DllCaptureScreenshotIfRequestedFunction
+      mCaptureScreenshotIfRequestedFunction;
+
   bool mEntryStarted;
 
   static std::string msOnEntryFunctionName, msOnExitFunctionName;
@@ -124,6 +135,11 @@ private:
   static std::string msCpuUpdateTimingCaptureEnabledFunctionName;
 
   static std::string msRecordCpuUpdateTimingsFunctionName;
+
+  static std::string msResetFrameRateHistoryFunctionName;
+  static std::string msRecordFrameRateFunctionName;
+
+  static std::string msCaptureScreenshotIfRequestedFunctionName;
 
 private:
   void registerRequiredFunctions();
@@ -150,6 +166,12 @@ public:
 
   void recordCpuUpdateTimings(std::uint64_t gameNs,
                               std::uint64_t audioNs) const;
+
+  void resetFrameRateHistory() const;
+  void recordFrameRate(double timestampSeconds,
+                       double framesPerSecond) const;
+
+  void captureScreenshotIfRequested(mpp::RenderSystem* renderSystem) const;
 
   void registerStateFactories(StateManager* stateMgr);
 };

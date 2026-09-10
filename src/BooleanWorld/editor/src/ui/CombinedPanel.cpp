@@ -38,6 +38,8 @@ void renderCombinedPanel(ViewContext& context) {
     auto* activeLayer = doc->getWorld()->getActiveLayer();
     auto* defineTileMaps =
         dynamic_cast<bw::core::DefineTileMaps*>(activeLayer->getActiveStep());
+    auto* runScript =
+        dynamic_cast<bw::core::RunScript*>(activeLayer->getActiveStep());
     if (defineTileMaps) {
       if (ImGui::CollapsingHeader("TileMaps", nullptr, windowFlags)) {
         renderDefineTileMapsView(context, defineTileMaps);
@@ -58,7 +60,7 @@ void renderCombinedPanel(ViewContext& context) {
       if (ImGui::CollapsingHeader("Prefabs", nullptr, windowFlags)) {
         renderPrefabFieldView(context, prefabField);
       }
-    } else if (auto* runScript = dynamic_cast<bw::core::RunScript*>(activeLayer->getActiveStep())) {
+    } else if (runScript) {
       if (ImGui::CollapsingHeader("Script", nullptr, windowFlags)) {
         renderRunScriptView(context, runScript);
       }
@@ -69,9 +71,11 @@ void renderCombinedPanel(ViewContext& context) {
         // Below Layer: creating a Primitive writes into the active Layer's active
         // step, so the choice of where comes before the making of what, and
         // editing one comes after both.
+        ImGui::BeginDisabled(runScript != nullptr);
         if (ImGui::CollapsingHeader("Create Primitive", nullptr, windowFlags)) {
           renderCreatePrimitiveView(context);
         }
+        ImGui::EndDisabled();
 
         // The header follows the view: no header where the view would have
         // nothing under it.

@@ -458,6 +458,22 @@ void activeRunScriptPrimitivesAreVisibleAndUseTheActiveStepColour() {
   require(!output->getVertices().empty(),
           "an active RunScript Primitive had no transformed vertices");
 
+  auto hovered = document.getHoveredPrimitiveIndices({128.0f, 64.0f}, settings);
+  require(std::find(hovered.begin(), hovered.end(), output->getId()) !=
+              hovered.end(),
+          "an active RunScript Primitive could not be selected by clicking");
+  auto boxed = document.getPrimitiveIndicesInBounds(
+      wp::BoundingBox({90.0f, 40.0f}, {76.0f, 48.0f}), settings);
+  require(std::find(boxed.begin(), boxed.end(), output->getId()) != boxed.end(),
+          "an active RunScript Primitive could not be box selected");
+  auto selectable = document.getSelectablePrimitiveIndices(settings);
+  require(std::find(selectable.begin(), selectable.end(), output->getId()) !=
+              selectable.end(),
+          "Select All omitted an active RunScript Primitive");
+  document.setSelectedPrimitiveIndices({output->getId()});
+  require(!document.selectedPrimitivesPermitDirectEditing(),
+          "an active RunScript Primitive was exposed for direct editing");
+
   auto visible = world->findPrimitives(world->getExtents());
   require(std::find(visible.begin(), visible.end(), output) != visible.end(),
           "an active RunScript Primitive was missing from the render lookup grid");

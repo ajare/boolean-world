@@ -1,9 +1,11 @@
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "FrameRateTracker.h"
 #include "LauncherLifecycle.h"
 
 namespace {
@@ -53,6 +55,30 @@ constexpr Service teardownOrder[]{
 
 void require(bool condition, std::string const& message) {
   if (!condition) throw std::runtime_error(message);
+}
+
+void verifyFrameRateTracking() {
+  FrameRateTracker tracker;
+  tracker.recordPresentedFrame(100.0);
+  require(tracker.framesPerSecond() == 0.0 && tracker.samples().empty(),
+          "A single presented frame produced an FPS value");
+
+  constexpr double frameDuration = 1.0 / 60.0;
+  for (int frame = 1; frame <= 360; ++frame) {
+    tracker.recordPresentedFrame(100.0 + frame * frameDuration);
+  }
+
+  require(std::abs(tracker.framesPerSecond() - 60.0) < 0.001,
+          "Presented-frame FPS was calculated incorrectly");
+  require(!tracker.samples().empty() &&
+              tracker.samples().back().timestampSeconds -
+                      tracker.samples().front().timestampSeconds <=
+                  5.0 + frameDuration,
+          "Frame-rate graph retained more than five seconds");
+
+  tracker.reset();
+  require(tracker.framesPerSecond() == 0.0 && tracker.samples().empty(),
+          "Reset retained frame-rate state");
 }
 
 void verifyFailureAfter(size_t lastConstructed) {
@@ -105,7 +131,9 @@ int main() {
     require(LauncherLifecycle::averageDuration(3.0, 2).value() == 1.5,
             "Non-zero timing average was incorrect");
 
-    std::cout << "Launcher lifecycle failure-injection tests passed\n";
+    verifyFrameRateTracking();
+
+    std::cout << "Launcher lifecycle and frame-rate tests passed\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';

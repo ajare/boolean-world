@@ -1047,7 +1047,7 @@ void renderEditPrimitiveGeometry(editor::Document* doc, bw::core::Primitive* pri
       "Orbit Distance"};
 
   for (int i = 0; i < (int)bw::core::VertexTransformer::Key::COUNT; ++i) {
-    if (ImGui::CollapsingHeader(animatedPropertyNames[i])) {
+    if (widgets::InspectableCollapsingHeader(animatedPropertyNames[i])) {
       renderAnimatedProperty(doc, primitive, (bw::core::VertexTransformer::Key)i, settings, globalTime);
     }
   }
@@ -1275,6 +1275,9 @@ void renderEditPrimitiveView(ViewContext& context) {
     return;
   }
 
+  auto const readOnly = !doc->selectedPrimitivesPermitDirectEditing();
+  ImGui::BeginDisabled(readOnly);
+
   ImGui::SeparatorText("Settings");
   renderEditPrimitiveSettings(doc, settings);
 
@@ -1286,7 +1289,8 @@ void renderEditPrimitiveView(ViewContext& context) {
 
   ImGui::SeparatorText("Audio Emitters");
   renderEditPrimitiveAudioEmitters(doc);
-}
 
+  ImGui::EndDisabled();
+}
 
 }  // namespace editor
