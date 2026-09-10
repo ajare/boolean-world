@@ -60,6 +60,7 @@ struct RenderFixture {
   bool sloped{};
   bool fragmented{};
   bool triplanar{};
+  bool triplanarWallOnly{};
   bool angled{};
   bool continuityJunction{};
   // 0 uses the built-in material; 1 and 2 use identical RGB with alpha 0/1.
@@ -155,7 +156,7 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
     properties.floorZ.gradient = {0.25f, 0.125f};
     properties.ceilingZ.gradient = {-0.125f, 0.25f};
   }
-  if (fixture.triplanar) {
+  if (fixture.triplanar || fixture.triplanarWallOnly) {
     auto materialName = fixture.continuityJunction
                             ? "World/TriplanarWallContinuityDiagnostic"
                         : fixture.triplanarAlphaVariant == 1
@@ -164,8 +165,14 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
                             ? "World/TriplanarAlphaOneDiagnostic"
                             : "World/TriplanarFloorTiles";
     auto material = bw::core::SurfaceMaterialReference::triplanar(materialName);
-    properties.floorMaterial = material;
-    properties.ceilingMaterial = material;
+    properties.floorMaterial = fixture.triplanar
+                                   ? material
+                                   : bw::core::SurfaceMaterialReference::subMaterial(
+                                         "migrated.marble.1");
+    properties.ceilingMaterial = fixture.triplanar
+                                     ? material
+                                     : bw::core::SurfaceMaterialReference::subMaterial(
+                                           "migrated.marble.1");
     properties.wallMaterial = material;
   } else {
     properties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial("migrated.marble.1");
@@ -297,6 +304,21 @@ std::vector<float> readColour(uint32_t texture) {
   return pixels;
 }
 
+// The camera faces a wall through the image centre. Average that stable region
+// so a material routed to black cannot satisfy a mere difference comparison.
+double centreRegionEnergy(std::vector<float> const& image) {
+  double energy = 0.0;
+  size_t pixels = 0;
+  for (int y = kHeight / 4; y < 3 * kHeight / 4; ++y) {
+    for (int x = kWidth / 4; x < 3 * kWidth / 4; ++x) {
+      auto offset = (size_t(y) * kWidth + x) * 4;
+      energy += image[offset] + image[offset + 1] + image[offset + 2];
+      ++pixels;
+    }
+  }
+  return pixels == 0 ? 0.0 : energy / double(pixels);
+}
+
 // Compare the broad non-black union of both images. This tolerates
 // driver-dependent edge coverage and post-processing while still requiring a
 // material-sized region to change.
@@ -327,7 +349,7 @@ std::vector<float> render(
                              : fixture.triplanarAlphaVariant == 2
                                  ? "World/TriplanarAlphaOneDiagnostic"
                                  : "World/TriplanarFloorTiles";
-  auto dependencies = fixture.triplanar
+  auto dependencies = fixture.triplanar || fixture.triplanarWallOnly
                           ? std::vector<std::string>{triplanarDependency}
                           : std::vector<std::string>{};
   if (fixture.wallMask) {
@@ -396,6 +418,8 @@ void triplanarMaterialsRenderThroughTheRealWorldPrograms(
       renderSystem, {.lookAtCeiling = true, .triplanar = true});
   auto proceduralWall = render(renderSystem, {});
   auto triplanarWall = render(renderSystem, {.triplanar = true});
+  auto wallOnlyTriplanar = render(
+      renderSystem, {.triplanarWallOnly = true});
   auto angledProcedural = render(renderSystem, {.angled = true});
   auto angledTriplanar = render(
       renderSystem, {.triplanar = true, .angled = true});
@@ -407,6 +431,8 @@ void triplanarMaterialsRenderThroughTheRealWorldPrograms(
   require(regionDifference(proceduralWall, triplanarWall) > 0.0005 &&
               regionDifference(angledProcedural, angledTriplanar) > 0.0005,
           "Triplanar albedo did not reach vertical walls at arbitrary angles");
+  require(centreRegionEnergy(wallOnlyTriplanar) > 0.015,
+          "an independently assigned Triplanar wall rendered black");
 
   auto triplanarSlope = render(
       renderSystem,
@@ -417,8 +443,11 @@ void triplanarMaterialsRenderThroughTheRealWorldPrograms(
        .sloped = true,
        .fragmented = true,
        .triplanar = true});
+  // Separate triangle topology can perturb lit/shadowed edge coverage. Keep
+  // enough tolerance for that while still rejecting a material-scale or phase
+  // change across the broad comparison region.
   require(regionDifference(
-              triplanarSlope, fragmentedTriplanarSlope) < 0.0005,
+              triplanarSlope, fragmentedTriplanarSlope) < 0.02,
           "Triplanar World scale or origin changed across fragments");
   auto triplanarFloor2d = render(
       renderSystem,

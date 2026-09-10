@@ -3256,7 +3256,10 @@ vec3 applyLiquidAbsorption(
 
 void main()
 {
-    int bucketMaterialIndex = clamp(@Uniform(MATERIAL_INDEX), 0, 41);
+    // Keep reserved values distinct before dispatch. Clamping the Triplanar
+    // sentinel (42) to the Liquid index (41) routes image-backed walls through
+    // the Liquid interface path, whose unlit reflection output is black there.
+    int bucketMaterialIndex = @Uniform(MATERIAL_INDEX);
 
     // Liquid is an interface, not another lit volume. The water pass has no
     // depth attachment, so reject interfaces hidden by the sampled opaque
