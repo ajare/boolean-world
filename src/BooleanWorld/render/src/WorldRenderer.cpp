@@ -15,6 +15,7 @@
 #include <willpower/application/resourcesystem/ImageResource.h>
 
 #include "WorldRenderer.h"
+#include "TriplanarWallRenderData.h"
 #include "WallMaskRenderData.h"
 #include "WallNormalMapRenderData.h"
 
@@ -478,10 +479,12 @@ uint32_t WorldRenderer::addVertexToDataProvider(
     DataProvider dataProvider, uint32_t meshIndex, float px, float py,
     float pz, float nx, float ny, float nz, float u, float v, uint32_t c,
     float liquidSurfaceHeight, float surfaceUpX, float surfaceUpY,
-    float surfaceUpZ) {
+    float surfaceUpZ,
+    optional<array<float, 3>> const& projectionNormal) {
+  auto projection = projectionNormal.value_or(
+      array<float, 3>{surfaceUpX, surfaceUpY, surfaceUpZ});
   WorldTriangle3dDataProvider::DrawVert vertex{
-      {px, py, pz}, {nx, ny, nz}, {u, v}, c,
-      {surfaceUpX, surfaceUpY, surfaceUpZ}, liquidSurfaceHeight};
+      {px, py, pz}, {nx, ny, nz}, {u, v}, c, {projection[0], projection[1], projection[2]}, liquidSurfaceHeight};
   return dataProvider->addVertex(meshIndex, vertex);
 }
 
@@ -743,6 +746,7 @@ void WorldRenderer::updateWallDataProvider(
     int32_t highlightedWall) {
   auto const& worldData = snapshot.getArrangement();
   auto const& walls = snapshot.getWalls();
+  auto projectionData = BuildTriplanarWallProjectionData(worldData, walls);
   auto& wallRenderer = mMaterialRenderers[2];
 
   // Walls render two-sided, but only ever as one triangular or quadrilateral
@@ -825,6 +829,11 @@ void WorldRenderer::updateWallDataProvider(
                            ? authoredMesh
                            : unmappedAuthoredMesh];
         }
+      } else if (projectionData[wallIndex].usesTriplanar) {
+        wallCounts[authoredMesh] += static_cast<uint32_t>(
+            BuildTriplanarWallRenderTriangles(
+                worldData, wall, projectionData[wallIndex])
+                .size());
       } else {
         auto surface =
             bw::core::arr::BuildArrangementWallSurface(worldData, wall);
@@ -891,6 +900,26 @@ void WorldRenderer::updateWallDataProvider(
         continue;
       }
       auto const& normal = orientation.normal;
+      if (projectionData[wallIndex].usesTriplanar) {
+        auto triangles = BuildTriplanarWallRenderTriangles(
+            worldData, wall, projectionData[wallIndex]);
+        for (auto const& triangle : triangles) {
+          uint32_t indices[3];
+          for (size_t corner = 0; corner < 3; ++corner) {
+            auto const& vertex = triangle.vertices[corner];
+            indices[corner] = addVertexToDataProvider(
+                wallRenderer.dataProvider, mesh, vertex.position.x,
+                vertex.elevation, -vertex.position.y, normal.x, 0, -normal.y,
+                vertex.u, vertex.v, colour, liquidSurfaceHeight, normal.x,
+                0.0f, -normal.y,
+                array<float, 3>{vertex.projectionNormal.x, 0.0f,
+                                -vertex.projectionNormal.y});
+          }
+          wallRenderer.dataProvider->addTriangle(
+              mesh, indices[0], indices[1], indices[2]);
+        }
+        continue;
+      }
       auto uv = CalculateWallPhysicalUv(orientation, wall);
       auto surface =
           bw::core::arr::BuildArrangementWallSurface(worldData, wall);

@@ -454,6 +454,19 @@ Resources:
             Albedo: "Albedo"
             TileWidth: 32
             BlendSharpness: 4
+      # Asymmetric, non-square diagnostic used by the registered real-render
+      # continuity test so mirrored/swapped projections cannot pass unnoticed.
+      - type: "TriplanarMaterial"
+        name: "TriplanarWallContinuityDiagnostic"
+        DependentResources:
+          DependentResource:
+            id: "Albedo"
+            ref: "OreMask"
+        Definitions:
+          Definition:
+            Albedo: "Albedo"
+            TileWidth: 16
+            BlendSharpness: 4
       - type: "Shader"
         name: "WorldVertexShader"
         location: "shaders/world.vert"

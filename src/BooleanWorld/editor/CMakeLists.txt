@@ -174,6 +174,8 @@ if(BUILD_TESTING)
     bw_deploy_vendor_dlls(boolean_world_editor_world_renderer_smoke)
     add_test(NAME boolean_world_triplanar_material_real_render
              COMMAND boolean_world_editor_world_renderer_smoke triplanar)
+    add_test(NAME boolean_world_triplanar_wall_continuity_real_render
+             COMMAND boolean_world_editor_world_renderer_smoke triplanar-continuity)
 
     # Not registered via add_test - needs a real GPU/driver. Build and run it
     # manually to see EditorRenderSystem's bootstrap/teardown work (or fail)

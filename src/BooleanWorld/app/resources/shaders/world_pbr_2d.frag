@@ -1,7 +1,7 @@
 @@Version
 
 // Native varying paired with world.vert; Pool elevation is constant per triangle.
-layout(location = 5) flat in float liquidSurfaceHeight;
+layout(location = 6) flat in float liquidSurfaceHeight;
 
 // Keep the horizontal shader's public controls in lockstep with world_pbr.frag.
 @@Uniform(float VIEW_DISTANCE);
@@ -1525,7 +1525,8 @@ void main()
     Material material;
     if (usesTriplanar)
     {
-        material.albedo = triplanarAlbedo(worldPos, surfaceUp);
+        material.albedo = triplanarAlbedo(
+            worldPos, normalize(@In(PROJECTION_NORMAL)));
         material.metallic = 0.0;
         material.roughness = 0.7;
         material.normal = normal;

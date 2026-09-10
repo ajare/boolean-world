@@ -105,7 +105,9 @@ private:
       float liquidSurfaceHeight =
           WorldTriangle3dDataProvider::dryLiquidSurfaceHeight,
       float surfaceUpX = 0.0f, float surfaceUpY = 1.0f,
-      float surfaceUpZ = 0.0f);
+      float surfaceUpZ = 0.0f,
+      std::optional<std::array<float, 3>> const& projectionNormal =
+          std::nullopt);
 
   // Emits one Chip detail triangle, mapping it out of arrangement space
   // (Z up) into renderer space. `mirrored` flips it for a wall drawn from

@@ -26,8 +26,10 @@ public:
     float tex[2];
     uint32_t col;
     // Packed as one UserDefined4 attribute for the resource and programmatic
-    // mesh specifications: xyz is canonical surface up and w is Liquid height.
-    float surfaceUp[3];
+    // mesh specifications: xyz is canonical surface up for horizontal and
+    // procedural surfaces, and the independent Projection normal for
+    // Triplanar walls. Wall lighting continues to use nor. W is Liquid height.
+    float surfaceUpOrProjectionNormal[3];
     float liquidSurfaceHeight;
   };
 

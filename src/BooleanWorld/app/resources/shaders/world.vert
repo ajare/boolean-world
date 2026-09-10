@@ -4,10 +4,10 @@
 // Keep it per-primitive: smooth interpolation can perturb even equal vertex
 // values and make individual fragments fall back instead of reflecting.
 // MPP's @Out declaration has no interpolation-qualifier syntax, so use a
-// native GLSL varying. Reserve location 5 after the five @Out fields below;
+// native GLSL varying. Reserve location 6 after the six @Out fields below;
 // leaving it implicit can collide with MPP's explicitly located outputs.
 // Both world fragment shaders must use the same reserved location.
-layout(location = 5) flat out float liquidSurfaceHeight;
+layout(location = 6) flat out float liquidSurfaceHeight;
 
 void main()
 {
@@ -22,6 +22,8 @@ void main()
     @Out(vec2 TEXCOORDS) = @In(TEXCOORDS);
     vec4 surfaceData = @In(USER);
     @Out(vec3 SURFACE_UP) = normalize(@NormalMatrix * surfaceData.xyz);
+    @Out(vec3 PROJECTION_NORMAL) =
+        normalize(@NormalMatrix * surfaceData.xyz);
     @Out(vec4 COLOUR) = @In(COLOUR);
     liquidSurfaceHeight = surfaceData.w;
 

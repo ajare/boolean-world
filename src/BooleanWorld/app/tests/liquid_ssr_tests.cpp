@@ -112,13 +112,13 @@ void everyWorldPathUsesThePostWaterWorld() {
 void poolElevationIsNotInterpolated() {
   auto shaders = std::filesystem::path(BW_APP_RESOURCE_DIR) / "shaders";
   auto vertex = read(shaders / "world.vert");
-  require(vertex.find("layout(location = 5) flat out float liquidSurfaceHeight;") != std::string::npos &&
+  require(vertex.find("layout(location = 6) flat out float liquidSurfaceHeight;") != std::string::npos &&
               vertex.find("liquidSurfaceHeight = surfaceData.w;") != std::string::npos &&
               vertex.find("@Out(float LIQUID_SURFACE_HEIGHT)") == std::string::npos,
           "Pool elevation must be flat and use its reserved varying location");
   for (auto name : {"world_pbr.frag", "world_pbr_2d.frag"}) {
     auto fragment = read(shaders / name);
-    require(fragment.find("layout(location = 5) flat in float liquidSurfaceHeight;") != std::string::npos &&
+    require(fragment.find("layout(location = 6) flat in float liquidSurfaceHeight;") != std::string::npos &&
                 fragment.find("@In(LIQUID_SURFACE_HEIGHT)") == std::string::npos,
             "a world fragment shader does not consume the flat Pool elevation");
   }

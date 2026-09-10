@@ -60,6 +60,7 @@ struct RenderFixture {
   bool fragmented{};
   bool triplanar{};
   bool angled{};
+  bool continuityJunction{};
 };
 
 struct ResourceCounts {
@@ -93,7 +94,8 @@ void writeDirectionalNormal() {
 bw::core::ArrangementWorldDataPtr buildWorldData(
     bw::core::World& world, RenderFixture const& fixture) {
   world.createAccelerationGrids(16.0f);
-  bw::core::ClosedPolygon ring = fixture.angled
+  bw::core::ClosedPolygon ring =
+      (fixture.angled || fixture.continuityJunction)
       ? bw::core::ClosedPolygon{
             {{0, -22}}, {{22, 0}}, {{0, 22}}, {{-22, 0}}}
       : fixture.fragmented
@@ -138,7 +140,9 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   }
   if (fixture.triplanar) {
     auto material = bw::core::SurfaceMaterialReference::triplanar(
-        "World/TriplanarFloorTiles");
+        fixture.continuityJunction
+            ? "World/TriplanarWallContinuityDiagnostic"
+            : "World/TriplanarFloorTiles");
     properties.floorMaterialId = material;
     properties.ceilingMaterialId = material;
     properties.wallMaterialId = material;
@@ -156,6 +160,28 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   primitive->setProperties(properties);
   world.addPrimitive(primitive);
   std::vector<bw::core::Primitive*> primitives{primitive};
+  if (fixture.continuityJunction) {
+    struct JunctionPrimitive {
+      bw::core::ClosedPolygon ring;
+      float floor;
+      float ceiling;
+    };
+    for (auto const& adjoining : std::array{
+             JunctionPrimitive{
+                 {{{0, 22}}, {{20, 30}}, {{5, 45}}}, 8.0f, 32.0f},
+             JunctionPrimitive{
+                 {{{0, 22}}, {{-5, 45}}, {{-20, 30}}}, 16.0f, 56.0f}}) {
+      auto* incident = bw::core::MeshPrimitive::fromTree(
+          bw::core::Primitive::Operation::Union,
+          {{{adjoining.ring, {}}}});
+      auto incidentProperties = properties;
+      incidentProperties.floorZ = adjoining.floor;
+      incidentProperties.ceilingZ = adjoining.ceiling;
+      incident->setProperties(incidentProperties);
+      world.addPrimitive(incident);
+      primitives.push_back(incident);
+    }
+  }
   if (fixture.fragmented) {
     bw::core::ClosedPolygon rightRing{
         {{0, -16}}, {{16, -16}}, {{16, 16}}, {{0, 16}}};
@@ -249,7 +275,9 @@ std::vector<float> render(
   std::string dependencyError;
   auto dependencies = fixture.triplanar
                           ? std::vector<std::string>{
-                                "World/TriplanarFloorTiles"}
+                                fixture.continuityJunction
+                                    ? "World/TriplanarWallContinuityDiagnostic"
+                                    : "World/TriplanarFloorTiles"}
                           : std::vector<std::string>{};
   if (!renderSystem.loadWorldDependencies(
           dependencies, "World", &dependencyError)) {
@@ -340,6 +368,25 @@ void triplanarMaterialsRenderThroughTheRealWorldPrograms(
   require(!triplanarFloor2d.empty(),
           "2D world Program did not render a Triplanar floor");
 }
+
+void triplanarWallContinuityRendersThroughTheRealWorldProgram(
+    editor::EditorRenderSystem& renderSystem) {
+  // Three arbitrary-angle regions meet at the diamond's north Arrangement
+  // vertex with floor/ceiling spans 0..48, 8..32, and 16..56. OreMask is an
+  // asymmetric 2:1 diagnostic image, so the real Program exercises unequal
+  // and multi-wall continuity without a symmetric texture hiding swaps.
+  std::array<uint32_t, 3> proceduralTriangles;
+  auto procedural = render(
+      renderSystem, {.continuityJunction = true}, &proceduralTriangles);
+  std::array<uint32_t, 3> triplanarTriangles;
+  auto triplanar = render(
+      renderSystem, {.triplanar = true, .continuityJunction = true},
+      &triplanarTriangles);
+  require(regionDifference(procedural, triplanar) > 0.0005,
+          "asymmetric Triplanar diagnostic did not render at the unequal multi-wall junction");
+  require(triplanarTriangles[2] > proceduralTriangles[2],
+          "unequal junction spans did not reach the real renderer as split wall triangles");
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -374,10 +421,11 @@ int main(int argc, char** argv) {
       writeDirectionalNormal();
       editor::EditorRenderSystem renderSystem(kWidth, kHeight);
 
-      auto triplanarOnly =
-          argc == 2 && std::string(argv[1]) == "triplanar";
-      if (triplanarOnly) {
+      auto scenario = argc == 2 ? std::string(argv[1]) : std::string{};
+      if (scenario == "triplanar") {
         triplanarMaterialsRenderThroughTheRealWorldPrograms(renderSystem);
+      } else if (scenario == "triplanar-continuity") {
+        triplanarWallContinuityRendersThroughTheRealWorldProgram(renderSystem);
       } else {
         std::array<uint32_t, 3> drySurfaceTriangles;
       auto unset = render(renderSystem, {}, &drySurfaceTriangles);
