@@ -145,6 +145,15 @@ The new MeshPrimitive has a single Shell and defaults to the `"union"` operation
 
 **Errors:** fails for malformed point entries or invalid Ring geometry.
 
+### `context:decompose_mesh_primitive(primitive)`
+
+Creates one independently placeable `MeshPrimitive` for each filled polygon in
+a sliced mesh. Each result copies the source Primitive's authored properties and
+contains one Shell. Returns an empty array when the source has fewer than two
+filled polygons.
+
+**Returns:** array of mutable `MeshPrimitive` values owned by the current step.
+
 ### `context:place_primitive(primitive)`
 
 Appends a Primitive returned by `context:create_primitive` or `context:create_mesh_primitive` to the current step's output.
@@ -385,11 +394,11 @@ Returned only by `context:create_primitive`.
 | `set_wall_material(material_id)` | Sets the wall Sub-material id. |
 | `get_wall_material()` | Returns the wall Sub-material id. |
 
-Only these common properties and inherited spatial-transform properties are currently scriptable. Animation curves and transform flows, fill rule, other surface properties, type-specific shape parameters, and parentage are not exposed. Mutable Mesh geometry is available only on a `MeshPrimitive` returned by `context:create_mesh_primitive`; Prefabs separately expose read-only annotated vertices and edges.
+Only these common properties and inherited spatial-transform properties are currently scriptable. Animation curves and transform flows, fill rule, other surface properties, type-specific shape parameters, and parentage are not exposed. Mutable Mesh geometry is available on a `MeshPrimitive` returned by `context:create_mesh_primitive` or `context:decompose_mesh_primitive`; Prefabs separately expose read-only annotated vertices and edges.
 
 ## Mutable `MeshPrimitive`
 
-Returned only by `context:create_mesh_primitive`. It supports every mutable `Primitive` method above. Geometry uses the editor's Mesh topology and World-plane coordinates. Vertex, Edge, and Polygon arguments are zero-based topology ids, not Lua array indices; scripts are expected to know the ids for the topology they construct.
+Returned by `context:create_mesh_primitive` and `context:decompose_mesh_primitive`. It supports every mutable `Primitive` method above. Geometry uses the editor's Mesh topology and World-plane coordinates. Vertex, Edge, and Polygon arguments are zero-based topology ids, not Lua array indices; scripts are expected to know the ids for the topology they construct.
 
 Every operation validates the complete Ring and containment hierarchy. A refused operation returns `false` or `nil` and leaves the Mesh unchanged. Supplying malformed or geometrically invalid Ring points raises an error.
 
@@ -402,6 +411,8 @@ Every operation validates the complete Ring and containment hierarchy. A refused
 | `split_edge(edge_id)` | Splits an Edge at its midpoint and returns the new Vertex id, or `nil`. |
 | `split_edge(edge_id, t)` | Splits an Edge at the fraction `t`, strictly between zero and one, and returns the new Vertex id, or `nil`. |
 | `slice_polygon(polygon_id, first_vertex_id, second_vertex_id)` | Divides a Shell or Island along a valid chord between two non-adjacent vertices. Returns whether accepted. |
+| `slice_at(x1, y1, x2, y2)` | Divides the filled polygon whose boundary contains both points and returns the new internal Edge id, or `nil`. Boundary Edges are split as needed. |
+| `contains_point(x, y)` | Returns whether the World-plane point lies inside the filled mesh. |
 | `remove_vertex(vertex_id)` | Removes a Vertex and heals its Ring. Returns whether accepted. |
 | `remove_edge(edge_id)` | Welds a one-sided Edge's endpoints or merges compatible sibling Rings across a two-sided Edge. Returns whether accepted. |
 | `remove_polygon(polygon_id)` | Removes a Ring and its structurally contained descendants. Returns whether accepted. |

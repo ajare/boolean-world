@@ -622,6 +622,94 @@ bool ScriptMeshPrimitive::slicePolygon(
   return true;
 }
 
+bool ScriptMeshPrimitive::containsPoint(float x, float y) const {
+  return mPrimitive->getPickingTriangulation().pointInside({x, y});
+}
+
+optional<uint32_t> ScriptMeshPrimitive::sliceAt(
+    float firstX, float firstY, float secondX, float secondY) {
+  constexpr float tolerance = 0.001f;
+  auto insertBoundaryVertex = [](MeshPrimitiveEditingProxy& editing,
+                                 uint32_t polygonId,
+                                 wp::Vector2 const& point) -> optional<uint32_t> {
+    auto const vertices =
+        editing.getPolygon(polygonId).getOrderedVertexIndices();
+    for (size_t index = 0; index < vertices.size(); ++index) {
+      auto firstVertex = vertices[index];
+      auto secondVertex = vertices[(index + 1) % vertices.size()];
+      auto const& first = editing.getVertex(firstVertex).getPosition();
+      auto const& second = editing.getVertex(secondVertex).getPosition();
+      auto edge = second - first;
+      auto relative = point - first;
+      auto edgeLengthSquared = edge.x * edge.x + edge.y * edge.y;
+      if (relative.distanceToSq({0.0f, 0.0f}) <= tolerance * tolerance) {
+        return firstVertex;
+      }
+      auto cross = edge.x * relative.y - edge.y * relative.x;
+      auto projection = edge.x * relative.x + edge.y * relative.y;
+      if (edgeLengthSquared <= 0.0f ||
+          abs(cross) > tolerance * sqrt(edgeLengthSquared) ||
+          projection <= tolerance ||
+          projection >= edgeLengthSquared - tolerance) {
+        continue;
+      }
+      auto edgeId = editing.getMesh().getEdgeIndexByVertices(
+          int32_t(firstVertex), int32_t(secondVertex));
+      if (edgeId < 0) return nullopt;
+      wp::geometry::SplitEdgeResult split;
+      if (!editing.splitEdge(
+              uint32_t(edgeId), projection / edgeLengthSquared, &split) ||
+          split.newVertexIndices.empty()) {
+        return nullopt;
+      }
+      return split.newVertexIndices.front();
+    }
+    return nullopt;
+  };
+
+  for (auto const& mapping : mEditing->getNodeMappings()) {
+    if (mapping.role == MeshPrimitiveEditingProxy::NodeRole::Hole) continue;
+    auto candidate = *mEditing;
+    auto firstVertex = insertBoundaryVertex(
+        candidate, mapping.polygonIndex, {firstX, firstY});
+    if (!firstVertex) continue;
+    auto secondVertex = insertBoundaryVertex(
+        candidate, mapping.polygonIndex, {secondX, secondY});
+    if (!secondVertex ||
+        !candidate.sliceFilledRing(
+            mapping.polygonIndex, *firstVertex, *secondVertex)) {
+      continue;
+    }
+    optional<uint32_t> sliceEdge;
+    wp::Vector2 const firstPoint{firstX, firstY};
+    wp::Vector2 const secondPoint{secondX, secondY};
+    for (auto edgeIndex = candidate.getFirstEdgeIndex();
+         !candidate.edgeIndexIterationFinished(edgeIndex);
+         edgeIndex = candidate.getNextEdgeIndex(edgeIndex)) {
+      auto const& edge = candidate.getEdge(edgeIndex);
+      auto const& edgeFirst =
+          candidate.getVertex(edge.getFirstVertex()).getPosition();
+      auto const& edgeSecond =
+          candidate.getVertex(edge.getSecondVertex()).getPosition();
+      auto const forward =
+          edgeFirst.distanceToSq(firstPoint) <= tolerance * tolerance &&
+          edgeSecond.distanceToSq(secondPoint) <= tolerance * tolerance;
+      auto const reverse =
+          edgeFirst.distanceToSq(secondPoint) <= tolerance * tolerance &&
+          edgeSecond.distanceToSq(firstPoint) <= tolerance * tolerance;
+      if (forward || reverse) {
+        sliceEdge = edgeIndex;
+        break;
+      }
+    }
+    if (!sliceEdge) continue;
+    *mEditing = move(candidate);
+    mEditing->commitTo(*mPrimitive);
+    return sliceEdge;
+  }
+  return nullopt;
+}
+
 ScriptMeshPrimitive RunScriptContext::createMeshPrimitive(sol::table const& points) const {
   auto ring = ringFromPoints(points);
   auto primitive = unique_ptr<MeshPrimitive>(MeshPrimitive::fromComplexPolygons(
@@ -635,6 +723,18 @@ ScriptMeshPrimitive RunScriptContext::createMeshPrimitive(sol::table const& poin
   auto* borrowed = primitive.get();
   (void)mStep->ownPrimitive(move(primitive));
   return ScriptMeshPrimitive(borrowed);
+}
+
+vector<ScriptMeshPrimitive> RunScriptContext::decomposeMeshPrimitive(
+    ScriptMeshPrimitive const& primitive) const {
+  vector<ScriptMeshPrimitive> result;
+  for (auto* part : primitive.getPrimitive()->decomposeFilledRegions()) {
+    unique_ptr<MeshPrimitive> owned(part);
+    auto* borrowed = owned.get();
+    (void)mStep->ownPrimitive(move(owned));
+    result.emplace_back(borrowed);
+  }
+  return result;
 }
 
 void RunScriptContext::placePrimitive(Primitive* primitive) const {
@@ -1144,7 +1244,9 @@ void bindScriptTypes(sol::state& lua) {
       "add_hole", &ScriptMeshPrimitive::addHole,
       "add_island", &ScriptMeshPrimitive::addIsland,
       "fill_hole", &ScriptMeshPrimitive::fillHole,
-      "slice_polygon", &ScriptMeshPrimitive::slicePolygon);
+      "slice_polygon", &ScriptMeshPrimitive::slicePolygon,
+      "contains_point", &ScriptMeshPrimitive::containsPoint,
+      "slice_at", &ScriptMeshPrimitive::sliceAt);
 
   lua.new_usertype<PrimitiveView>(
       "PrimitiveView", sol::no_constructor,
@@ -1238,6 +1340,11 @@ void bindScriptTypes(sol::state& lua) {
       "RunScriptContext", sol::no_constructor,
       "create_primitive", &RunScriptContext::createPrimitive,
       "create_mesh_primitive", &RunScriptContext::createMeshPrimitive,
+      "decompose_mesh_primitive",
+      [](RunScriptContext const& context,
+         ScriptMeshPrimitive const& primitive) {
+        return sol::as_table(context.decomposeMeshPrimitive(primitive));
+      },
       "place_primitive",
       sol::overload(
           &RunScriptContext::placePrimitive,

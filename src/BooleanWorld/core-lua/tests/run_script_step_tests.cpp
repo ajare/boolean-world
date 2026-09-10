@@ -516,17 +516,36 @@ void scriptsAuthorAndSliceMeshContainmentByPolygonId() {
     })
     assert(sliced:slice_polygon(0, 0, 2))
     context:place_primitive(sliced)
+
+    local sliced_at = context:create_mesh_primitive({
+      {50, 0}, {60, 0}, {60, 10}, {50, 10}
+    })
+    local slice_edge = assert(sliced_at:slice_at(50, 2, 60, 8))
+    local slice_vertex = assert(sliced_at:split_edge(slice_edge, 0.5))
+    assert(sliced_at:move_vertex(slice_vertex, 1, -1))
+    assert(sliced_at:contains_point(51, 1))
+    local parts = context:decompose_mesh_primitive(sliced_at)
+    assert(#parts == 2)
+    context:place_primitive(parts[1])
+    context:place_primitive(parts[2])
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
   auto* step = addScriptStep(layer, runtime, "mesh-containment");
   layer.rebuild();
 
-  require(!step->hasFailed() && layer.getNumPrimitives() == 2,
+  require(!step->hasFailed() && layer.getNumPrimitives() == 4,
           "authoring Mesh containment or slicing by polygon id failed");
   auto* sliced = dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(1));
   require(sliced && sliced->getShells().size() == 2,
           "slice_polygon did not divide one Shell into two Shells");
+  auto* firstPart =
+      dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(2));
+  auto* secondPart =
+      dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(3));
+  require(firstPart && secondPart && firstPart->getShells().size() == 1 &&
+              secondPart->getShells().size() == 1,
+          "decompose_mesh_primitive did not separate sliced Shells");
 }
 
 void meshPrimitivesRetainTheMutablePrimitiveApi() {

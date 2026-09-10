@@ -41,6 +41,12 @@ world:
         - name: support_frame_pct
           type: float
           value: 35
+        - name: cell_floor_split_pct
+          type: float
+          value: 35
+        - name: floor_step_variance
+          type: float
+          value: 8
       minExtent: [-4096, -4096]
       maxExtent: [4096, 4096]
       nextStepId: 5

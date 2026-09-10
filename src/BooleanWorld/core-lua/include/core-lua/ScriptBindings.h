@@ -134,6 +134,9 @@ public:
   [[nodiscard]] bool slicePolygon(
       uint32_t polygonId, uint32_t firstVertexId,
       uint32_t secondVertexId);
+  [[nodiscard]] bool containsPoint(float x, float y) const;
+  [[nodiscard]] std::optional<uint32_t> sliceAt(
+      float firstX, float firstY, float secondX, float secondY);
 };
 
 // The borrowed capability object available to a script as `context` while a
@@ -157,6 +160,8 @@ public:
       Primitive* primitive, ScriptAudioEmitter const& emitter) const;
   [[nodiscard]] ScriptMeshPrimitive createMeshPrimitive(
       sol::table const& points) const;
+  [[nodiscard]] std::vector<ScriptMeshPrimitive> decomposeMeshPrimitive(
+      ScriptMeshPrimitive const& primitive) const;
   void placePrimitive(Primitive* primitive) const;
   void placeMeshPrimitive(ScriptMeshPrimitive const& primitive) const;
   void placePrefabInstance(

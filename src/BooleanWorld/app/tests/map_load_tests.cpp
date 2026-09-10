@@ -19,6 +19,7 @@
 #include <core/BinarySerializer.h>
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/LayerBuildStep.h>
+#include <core/MeshPrimitive.h>
 #include <core/RectanglePolygon.h>
 #include <core/World.h>
 #include <core/YamlSerializer.h>
@@ -153,7 +154,7 @@ void yamlWorldsWithoutTheWorldYamlExtensionAreRejected() {
   require(threw, "a YAML World without the .world.yaml extension was accepted");
 }
 
-void minesCreateOneSixCellFloorVariationPerTunnelSection() {
+void minesKeepTunnelFloorsLevelAndCreateWoodenSupports() {
   bw::core::ScriptRuntime runtime;
   runtime.load(
       "MinesLayer", readFixture("scripts/mines-layer.lua"),
@@ -185,18 +186,12 @@ void minesCreateOneSixCellFloorVariationPerTunnelSection() {
           "the mines RunScript did not build");
 
   std::vector<bw::core::Primitive*> tunnels;
-  std::vector<bw::core::Primitive*> floorCells;
   std::vector<bw::core::Primitive*> bridges;
   std::vector<bw::core::Primitive*> posts;
   for (auto* primitive : layer->getPrimitives()) {
     if (layer->getOwningStepIndex(primitive) != scriptStepIndex) continue;
-    auto const size = primitive->getSize();
     if (primitive->getType() == "Mesh" && primitive->getPriority() == 0) {
       tunnels.push_back(primitive);
-    } else if (primitive->getType() == "Rectangle" &&
-               primitive->getPriority() == 1 && size.x >= 24.0f &&
-               size.y >= 24.0f) {
-      floorCells.push_back(primitive);
     } else if (primitive->getType() == "Rectangle" &&
                primitive->getPriority() == 1) {
       bridges.push_back(primitive);
@@ -206,29 +201,35 @@ void minesCreateOneSixCellFloorVariationPerTunnelSection() {
     }
   }
 
-  require(!tunnels.empty() && floorCells.size() == tunnels.size() * 6,
-          "a tunnel section did not create exactly six floor-variation cells");
+  require(!tunnels.empty(), "the mines script produced no tunnel floors");
+  bool foundVariedFloor = false;
+  for (auto const* tunnel : tunnels) {
+    auto const* mesh = dynamic_cast<bw::core::MeshPrimitive const*>(tunnel);
+    require(mesh && mesh->getShells().size() == 1,
+            "a sliced tunnel floor was not decomposed by polygon");
+    auto const floor = tunnel->getProperties().floorSpan;
+    require(floor.lowerElevation >= -8.0f && floor.lowerElevation <= 8.0f &&
+                floor.upperElevation == floor.lowerElevation,
+            "a tunnel polygon floor height was outside [-8, 8]");
+    foundVariedFloor |= floor.lowerElevation != 0.0f;
+  }
+  require(foundVariedFloor,
+          "sliced tunnel polygons did not receive varied floor heights");
   require(!bridges.empty() && posts.size() == bridges.size() * 2,
           "the configured wooden support percentage produced no complete frames");
-  auto const baseFloor = tunnels.front()->getProperties().floorSpan;
-  for (auto const* cell : floorCells) {
-    auto const floor = cell->getProperties().floorSpan;
-    auto const offset = floor.lowerElevation - baseFloor.lowerElevation;
-    require((offset == -4.0f || offset == 4.0f) &&
-                floor.upperElevation == baseFloor.upperElevation + offset,
-            "a floor-variation cell was not raised or lowered by four");
-  }
-
   for (auto const* bridge : bridges) {
-    auto expectedFloor = baseFloor;
-    for (auto const* cell : floorCells) {
-      if (cell->getPickingTriangulation().pointInside(bridge->getPosition())) {
-        expectedFloor = cell->getProperties().floorSpan;
+    bw::core::Primitive const* containingFloor = nullptr;
+    for (auto const* tunnel : tunnels) {
+      if (tunnel->getPickingTriangulation().pointInside(
+              bridge->getPosition())) {
+        containingFloor = tunnel;
         break;
       }
     }
-    require(bridge->getProperties().floorSpan == expectedFloor,
-            "a wooden bridge did not inherit its cell's floor height");
+    require(containingFloor &&
+                bridge->getProperties().floorSpan ==
+                    containingFloor->getProperties().floorSpan,
+            "a wooden bridge did not use its tunnel polygon's floor height");
   }
 
   for (auto const* post : posts) {
@@ -324,7 +325,7 @@ int main() {
     failedLoadRetainsThePreviousWorld();
     resourcesWithAWorldExtensionLoadAsBinary();
     yamlWorldsWithoutTheWorldYamlExtensionAreRejected();
-    minesCreateOneSixCellFloorVariationPerTunnelSection();
+    minesKeepTunnelFloorsLevelAndCreateWoodenSupports();
     theGameResolvesAndRunsAWorldsLuaScript();
     std::cout << "Map failed-load ownership regression passed\n";
     return 0;
