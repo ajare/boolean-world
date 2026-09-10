@@ -44,6 +44,14 @@ bool YamlSerializer::hasField(string const& name) const {
   return node.IsMap() && node[name].IsDefined();
 }
 
+bool YamlSerializer::fieldIsMap(string const& name) const {
+  if (mSerializing) {
+    return false;
+  }
+  auto const node = mNodeStack.empty() ? mLoadedData : mNodeStack.top();
+  return node.IsMap() && node[name].IsMap();
+}
+
 string YamlSerializer::getPath(string const& leaf) const {
   string path = "/";
 

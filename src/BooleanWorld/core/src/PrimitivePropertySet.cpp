@@ -8,6 +8,38 @@ namespace bw {
 namespace core {
 using namespace std;
 
+namespace {
+
+void writeSurfaceMaterial(
+    shared_ptr<Serializer> const& serializer, string const& field,
+    SurfaceMaterialReference const& material) {
+  serializer->beginMap(field);
+  serializer->writeString("kind", string(surfaceMaterialKindName(material.kind)));
+  serializer->writeString("reference", material.reference);
+  serializer->endMap();
+}
+
+SurfaceMaterialReference readSurfaceMaterial(
+    shared_ptr<Serializer> const& serializer, string const& field) {
+  // Pre-#442 World compatibility is intentionally limited to scalar values in
+  // keyed formats. Positional data always follows the current two-field
+  // representation; no general string-to-kind inference is performed.
+  if (!serializer->isPositional() &&
+      (!serializer->hasField(field) || !serializer->fieldIsMap(field))) {
+    return SurfaceMaterialReference::subMaterial(
+        serializer->readString(field, true, ""));
+  }
+
+  serializer->beginMap(field);
+  auto const kind = surfaceMaterialKindFromName(
+      serializer->readString("kind"));
+  auto reference = serializer->readString("reference");
+  serializer->endMap();
+  return {kind, std::move(reference)};
+}
+
+}  // namespace
+
 bool PrimitivePropertySet::childrenModified() const {
   return false;
 }
@@ -24,10 +56,10 @@ void PrimitivePropertySet::serializeImpl(shared_ptr<Serializer> serializer, Seri
     serializer->writeFloat("liquidLevel", liquidLevel);
     serializer->writeString("liquidType", LiquidTypeName(liquidType));
 
-    // Sub-material id references
-    serializer->writeString("floorMaterial", floorMaterialId);
-    serializer->writeString("ceilingMaterial", ceilingMaterialId);
-    serializer->writeString("wallMaterial", wallMaterialId);
+    // Every newly written surface assignment uses the tagged contract.
+    writeSurfaceMaterial(serializer, "floorMaterial", floorMaterialId);
+    writeSurfaceMaterial(serializer, "ceilingMaterial", ceilingMaterialId);
+    writeSurfaceMaterial(serializer, "wallMaterial", wallMaterialId);
 
     // Emboss-preset id references are always explicit, including the empty
     // no-relief state. This is the format marker for the ownership break.
@@ -60,7 +92,7 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
   float liquidLevel_{0};
   LiquidType liquidType_{LiquidType::Water};
 
-  string floorMaterialId_, ceilingMaterialId_, wallMaterialId_;
+  SurfaceMaterialReference floorMaterial_, ceilingMaterial_, wallMaterial_;
   string floorEmbossPresetId_, ceilingEmbossPresetId_, wallEmbossPresetId_;
 
   try {
@@ -76,9 +108,9 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
       liquidType_ = LiquidTypeFromName(
           serializer->readString("liquidType", true, "Water"));
 
-      floorMaterialId_ = serializer->readString("floorMaterial", true, "");
-      ceilingMaterialId_ = serializer->readString("ceilingMaterial", true, "");
-      wallMaterialId_ = serializer->readString("wallMaterial", true, "");
+      floorMaterial_ = readSurfaceMaterial(serializer, "floorMaterial");
+      ceilingMaterial_ = readSurfaceMaterial(serializer, "ceilingMaterial");
+      wallMaterial_ = readSurfaceMaterial(serializer, "wallMaterial");
 
       // Required in YAML and positional binary data: there is deliberately no
       // compatibility path for the old Primitive property shape.
@@ -124,9 +156,9 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
   ceilingSpanAuthored = ceilingSpanAuthored_;
   liquidLevel = liquidLevel_;
   liquidType = liquidType_;
-  floorMaterialId = floorMaterialId_;
-  ceilingMaterialId = ceilingMaterialId_;
-  wallMaterialId = wallMaterialId_;
+  floorMaterialId = std::move(floorMaterial_);
+  ceilingMaterialId = std::move(ceilingMaterial_);
+  wallMaterialId = std::move(wallMaterial_);
   floorEmbossPresetId = floorEmbossPresetId_;
   ceilingEmbossPresetId = ceilingEmbossPresetId_;
   wallEmbossPresetId = wallEmbossPresetId_;

@@ -40,6 +40,7 @@ add_library(core STATIC
     src/Serializable.cpp
     src/Serializer.cpp
     src/SubMaterial.cpp
+    src/SurfaceMaterialReference.cpp
     src/SuperformulaPolygon.cpp
     src/TechniqueSchema.cpp
     src/TileMap.cpp

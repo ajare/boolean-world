@@ -67,6 +67,8 @@ public:
 
   bool hasField(std::string const& name) const override;
 
+  bool fieldIsMap(std::string const& name) const override;
+
   // Serialization
   void writeUint8(std::string const& name, uint8_t value) override;
 

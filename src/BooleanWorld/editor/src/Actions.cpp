@@ -962,15 +962,17 @@ bool setPrimitiveSubMaterial(
     Document*, bw::core::Primitive* primitive,
     PrimitiveMaterialSurface surface, string const& subMaterialId) {
   auto properties = primitive->getProperties();
+  auto material =
+      bw::core::SurfaceMaterialReference::subMaterial(subMaterialId);
   switch (surface) {
     case PrimitiveMaterialSurface::Floor:
-      properties.floorMaterialId = subMaterialId;
+      properties.floorMaterialId = material;
       break;
     case PrimitiveMaterialSurface::Ceiling:
-      properties.ceilingMaterialId = subMaterialId;
+      properties.ceilingMaterialId = material;
       break;
     case PrimitiveMaterialSurface::Wall:
-      properties.wallMaterialId = subMaterialId;
+      properties.wallMaterialId = material;
       break;
   }
   primitive->setProperties(properties);
@@ -1163,9 +1165,9 @@ string subMaterialDeletionBlockedReason(Document* doc, string const& subMaterial
   for (auto const* primitive : doc->getWorld()->getPrimitives()) {
     auto const& properties = primitive->getProperties();
     vector<string> surfaces;
-    if (properties.floorMaterialId == subMaterialId) surfaces.push_back("floor");
-    if (properties.ceilingMaterialId == subMaterialId) surfaces.push_back("ceiling");
-    if (properties.wallMaterialId == subMaterialId) surfaces.push_back("wall");
+    if (properties.floorMaterialId.reference == subMaterialId) surfaces.push_back("floor");
+    if (properties.ceilingMaterialId.reference == subMaterialId) surfaces.push_back("ceiling");
+    if (properties.wallMaterialId.reference == subMaterialId) surfaces.push_back("wall");
     if (!surfaces.empty()) {
       if (report.tellp() > 0) report << "; ";
       report << "Primitive " << index << " (";

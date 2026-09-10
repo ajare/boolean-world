@@ -31,6 +31,13 @@ public:
     return true;
   }
 
+  // Keyed serializers use this to distinguish a newly tagged structured value
+  // from a legacy scalar at the same field. Positional serializers always read
+  // the current structured contract.
+  virtual bool fieldIsMap(std::string const&) const {
+    return true;
+  }
+
   // Serialization
   void writeBool(std::string const& name, bool value);
 

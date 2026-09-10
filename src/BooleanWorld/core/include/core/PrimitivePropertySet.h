@@ -6,6 +6,7 @@
 #include "core/Elevation.h"
 #include "core/LiquidType.h"
 #include "core/Serializable.h"
+#include "core/SurfaceMaterialReference.h"
 
 namespace bw {
 namespace core {
@@ -34,12 +35,15 @@ struct PrimitivePropertySet : public Serializable {
   // still stored) wherever liquidLevel itself is.
   LiquidType liquidType{LiquidType::Water};
 
-  // Stable Sub-material id references - see SubMaterial.h. A missing or
-  // empty id is a valid, if unresolved, state; resolution against a loaded
-  // ProcMaterial catalog happens elsewhere.
-  std::string floorMaterialId;
-  std::string ceilingMaterialId;
-  std::string wallMaterialId;
+  // Tagged Surface material references. An empty reference is valid but
+  // unresolved. The kind prevents Sub-material ids and qualified Triplanar
+  // resource names from being inferred by registry search order.
+  // Transitional C++ field names are retained through the expand phase so
+  // existing subsystems can migrate independently. #447 removes the obsolete
+  // `Id` names and SurfaceMaterialReference's string compatibility helpers.
+  SurfaceMaterialReference floorMaterialId;
+  SurfaceMaterialReference ceilingMaterialId;
+  SurfaceMaterialReference wallMaterialId;
 
   // Optional stable references into the sole global Embossing catalog. An
   // empty id explicitly means that this surface has no Embossing.

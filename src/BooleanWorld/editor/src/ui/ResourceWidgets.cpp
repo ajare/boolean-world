@@ -895,13 +895,13 @@ bool renderPrimitivePropertySet(
 
   if (editable) {
     renderSubMaterialPicker(
-        "Floor", &properties->floorMaterialId, doc, primitive,
+        "Floor", &properties->floorMaterialId.reference, doc, primitive,
         PrimitiveMaterialSurface::Floor);
     renderSubMaterialPicker(
-        "Ceiling", &properties->ceilingMaterialId, doc, primitive,
+        "Ceiling", &properties->ceilingMaterialId.reference, doc, primitive,
         PrimitiveMaterialSurface::Ceiling);
     renderSubMaterialPicker(
-        "Wall", &properties->wallMaterialId, doc, primitive,
+        "Wall", &properties->wallMaterialId.reference, doc, primitive,
         PrimitiveMaterialSurface::Wall);
     renderEmbossPresetPanel(
         "Floor", &properties->floorEmbossPresetId, doc, primitive,

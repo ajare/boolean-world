@@ -402,9 +402,9 @@ void aScriptCreatesAMeshPrimitiveFromOneRing() {
   auto* mesh = dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(0));
   require(mesh != nullptr, "create_mesh_primitive did not create a MeshPrimitive");
   auto const& properties = mesh->getProperties();
-  require(properties.floorMaterialId == "builtin.plain.grey" &&
-              properties.ceilingMaterialId == "builtin.plain.grey" &&
-              properties.wallMaterialId == "builtin.plain.grey",
+  require(properties.floorMaterialId.reference == "builtin.plain.grey" &&
+              properties.ceilingMaterialId.reference == "builtin.plain.grey" &&
+              properties.wallMaterialId.reference == "builtin.plain.grey",
           "create_mesh_primitive did not use the default plain-grey material");
   auto proxy = mesh->createEditingProxy();
   uint32_t vertexCount = 0;
@@ -560,9 +560,15 @@ void meshPrimitivesRetainTheMutablePrimitiveApi() {
   require(mesh && mesh->getPosition() == wp::Vector2{20.0f, 30.0f} &&
               mesh->getPriority() == 17 &&
               mesh->getOperation() == bw::core::Primitive::Operation::Difference &&
-              mesh->getProperties().floorMaterialId == "floor.basalt" &&
-              mesh->getProperties().ceilingMaterialId == "ceiling.basalt" &&
-              mesh->getProperties().wallMaterialId == "wall.basalt",
+              mesh->getProperties().floorMaterialId.reference == "floor.basalt" &&
+              mesh->getProperties().ceilingMaterialId.reference == "ceiling.basalt" &&
+              mesh->getProperties().wallMaterialId.reference == "wall.basalt" &&
+              mesh->getProperties().floorMaterialId.kind ==
+                  bw::core::SurfaceMaterialKind::SubMaterial &&
+              mesh->getProperties().ceilingMaterialId.kind ==
+                  bw::core::SurfaceMaterialKind::SubMaterial &&
+              mesh->getProperties().wallMaterialId.kind ==
+                  bw::core::SurfaceMaterialKind::SubMaterial,
           "MeshPrimitive common properties did not cross the Lua API");
 }
 

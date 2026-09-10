@@ -113,10 +113,11 @@ enum class MaterialSurface { Floor, Ceiling, Wall };
 void setMaterial(
     Primitive& primitive, MaterialSurface surface, string const& materialId) {
   auto properties = primitive.getProperties();
+  auto material = SurfaceMaterialReference::subMaterial(materialId);
   switch (surface) {
-    case MaterialSurface::Floor: properties.floorMaterialId = materialId; break;
-    case MaterialSurface::Ceiling: properties.ceilingMaterialId = materialId; break;
-    case MaterialSurface::Wall: properties.wallMaterialId = materialId; break;
+    case MaterialSurface::Floor: properties.floorMaterialId = material; break;
+    case MaterialSurface::Ceiling: properties.ceilingMaterialId = material; break;
+    case MaterialSurface::Wall: properties.wallMaterialId = material; break;
   }
   primitive.setProperties(properties);
 }
@@ -125,9 +126,9 @@ string const& getMaterial(
     Primitive const& primitive, MaterialSurface surface) {
   auto const& properties = primitive.getProperties();
   switch (surface) {
-    case MaterialSurface::Floor: return properties.floorMaterialId;
-    case MaterialSurface::Ceiling: return properties.ceilingMaterialId;
-    case MaterialSurface::Wall: return properties.wallMaterialId;
+    case MaterialSurface::Floor: return properties.floorMaterialId.reference;
+    case MaterialSurface::Ceiling: return properties.ceilingMaterialId.reference;
+    case MaterialSurface::Wall: return properties.wallMaterialId.reference;
   }
   throw CoreException("Unknown Primitive surface");
 }
@@ -592,9 +593,10 @@ ScriptMeshPrimitive RunScriptContext::createMeshPrimitive(sol::table const& poin
   auto primitive = unique_ptr<MeshPrimitive>(MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union, {{move(ring)}}));
   auto properties = primitive->getProperties();
-  properties.floorMaterialId = "builtin.plain.grey";
-  properties.ceilingMaterialId = "builtin.plain.grey";
-  properties.wallMaterialId = "builtin.plain.grey";
+  properties.floorMaterialId =
+      SurfaceMaterialReference::subMaterial("builtin.plain.grey");
+  properties.ceilingMaterialId = properties.floorMaterialId;
+  properties.wallMaterialId = properties.floorMaterialId;
   primitive->setProperties(properties);
   auto* borrowed = primitive.get();
   (void)mStep->ownPrimitive(move(primitive));

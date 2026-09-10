@@ -61,15 +61,18 @@ void failedDeserializationReturnsFailureIndependentlyOfModifiedState() {
           "deserialization result leaked into the modified state");
 }
 
-void propertySetRoundTripsSurfaceResourceIds() {
+void propertySetRoundTripsTaggedSurfaceMaterials() {
   bw::core::PrimitivePropertySet original;
   original.floorZ = 0.0f;
   original.ceilingZ = 48.0f;
   original.liquidLevel = 12.5f;
   original.liquidType = bw::core::LiquidType::Water;
-  original.floorMaterialId = "weathered_slate";
-  original.ceilingMaterialId = "polished_slate";
-  original.wallMaterialId = "";
+  original.floorMaterialId = bw::core::SurfaceMaterialReference::triplanar(
+      "World/WeatheredSlate");
+  original.ceilingMaterialId = bw::core::SurfaceMaterialReference::subMaterial(
+      "polished_slate");
+  original.wallMaterialId = bw::core::SurfaceMaterialReference::triplanar(
+      "World/WallSlate");
   original.floorEmbossPresetId = "weathered_blocks";
   original.ceilingEmbossPresetId = "";
   original.wallEmbossPresetId = "chiselled_edges";
@@ -86,13 +89,13 @@ void propertySetRoundTripsSurfaceResourceIds() {
   bw::core::PrimitivePropertySet roundTripped;
   bw::core::SerializationWorkData readWorkData;
   require(roundTripped.deserialize(reader, readWorkData),
-          "property set failed to round-trip Sub-material ids");
+          "property set failed to round-trip tagged Surface materials");
   require(roundTripped.floorMaterialId == original.floorMaterialId,
-          "floor Sub-material id did not round-trip");
+          "tagged floor Triplanar material did not round-trip");
   require(roundTripped.ceilingMaterialId == original.ceilingMaterialId,
-          "ceiling Sub-material id did not round-trip");
+          "tagged ceiling Sub-material did not round-trip");
   require(roundTripped.wallMaterialId == original.wallMaterialId,
-          "an empty wall Sub-material id did not round-trip as empty");
+          "tagged wall Triplanar material did not round-trip");
   require(roundTripped.floorEmbossPresetId == original.floorEmbossPresetId,
           "floor Emboss-preset id did not round-trip");
   require(roundTripped.ceilingEmbossPresetId == original.ceilingEmbossPresetId,
@@ -111,6 +114,50 @@ void propertySetRoundTripsSurfaceResourceIds() {
   require(yaml.find("floorZ: 0") != std::string::npos &&
               yaml.find("ceilingZ: 48") != std::string::npos,
           "horizontal Elevation planes did not retain the scalar wire format");
+  auto hasTaggedMaterial = [&yaml](
+                               std::string const& field,
+                               std::string const& kind,
+                               std::string const& reference) {
+    auto const fieldPosition = yaml.find(field + ":");
+    auto const kindPosition = yaml.find("kind: " + kind, fieldPosition);
+    auto const referencePosition =
+        yaml.find("reference: " + reference, kindPosition);
+    return fieldPosition != std::string::npos &&
+           kindPosition != std::string::npos &&
+           referencePosition != std::string::npos;
+  };
+  require(hasTaggedMaterial(
+              "floorMaterial", "triplanar", "World/WeatheredSlate") &&
+              hasTaggedMaterial(
+                  "ceilingMaterial", "subMaterial", "polished_slate") &&
+              hasTaggedMaterial(
+                  "wallMaterial", "triplanar", "World/WallSlate"),
+          "new YAML did not tag every Surface material mapping");
+}
+
+void legacyScalarSurfaceMaterialsDeserializeAsSubMaterials() {
+  auto reader = std::shared_ptr<bw::core::Serializer>(
+      bw::core::YamlSerializer::fromString(
+          "floorZ: 0\nceilingZ: 48\n"
+          "floorMaterial: legacy.floor\n"
+          "ceilingMaterial: legacy.ceiling\n"
+          "wallMaterial: legacy.wall\n"
+          "floorEmbossPreset: ''\nceilingEmbossPreset: ''\n"
+          "wallEmbossPreset: ''\n"));
+  reader->deserialize();
+
+  bw::core::PrimitivePropertySet properties;
+  bw::core::SerializationWorkData workData;
+  require(properties.deserialize(reader, workData),
+          "legacy scalar Surface materials did not deserialize");
+  require(
+      properties.floorMaterialId ==
+              bw::core::SurfaceMaterialReference::subMaterial("legacy.floor") &&
+          properties.ceilingMaterialId ==
+              bw::core::SurfaceMaterialReference::subMaterial("legacy.ceiling") &&
+          properties.wallMaterialId ==
+              bw::core::SurfaceMaterialReference::subMaterial("legacy.wall"),
+      "legacy scalar Surface materials were not expanded as Sub-materials");
 }
 
 void propertySetRoundTripsElevationSpans() {
@@ -152,8 +199,9 @@ void legacyElevationPlanesMigrateAfterGeometryIsAvailable() {
 
   bw::core::PrimitivePropertySet legacy;
   bw::core::SerializationWorkData readWorkData;
-  require(legacy.deserialize(reader, readWorkData) &&
-              !legacy.floorSpanAuthored,
+  require(legacy.deserialize(reader, readWorkData),
+          "legacy affine Elevation data failed to deserialize");
+  require(!legacy.floorSpanAuthored,
           "legacy affine Elevation data was not identified for migration");
 
   bw::core::RectanglePolygon primitive(
@@ -240,7 +288,8 @@ int main() {
   try {
     successfulDeserializationLeavesObjectUnmodified();
     failedDeserializationReturnsFailureIndependentlyOfModifiedState();
-    propertySetRoundTripsSurfaceResourceIds();
+    propertySetRoundTripsTaggedSurfaceMaterials();
+    legacyScalarSurfaceMaterialsDeserializeAsSubMaterials();
     propertySetRoundTripsElevationSpans();
     legacyElevationPlanesMigrateAfterGeometryIsAvailable();
     propertySetRoundTripsEmbossPresetIdsInBinary();
