@@ -50,6 +50,9 @@ layout(location = 5) flat in float liquidSurfaceHeight;
 @@Uniform(int MATERIAL_INDEX);
 @@Uniform(float MATERIAL_PARAMS[8]);
 @@Uniform(vec3 MATERIAL_COLOUR);
+@@Uniform(int TRIPLANAR_ENABLED);
+@@Uniform(vec2 TRIPLANAR_TILE_SIZE);
+@@Uniform(float TRIPLANAR_BLEND_SHARPNESS);
 @@Uniform(int EMBOSS_PATTERN);
 @@Uniform(float EMBOSS_RADIUS);
 @@Uniform(float EMBOSS_DEPTH);
@@ -74,6 +77,7 @@ vec3 blendedMaterialColour;
 ## Texture
 @@Texture(sampler2D TEX1);
 @@Texture(sampler2D TEX2);
+@@Texture(sampler2D TEX3);
 ##
 @@Texture(sampler2D PBR_SCENE_COLOUR_RESOLVED);
 @@Texture(sampler2D PBR_PLANAR_REFLECTION_0);
@@ -3100,6 +3104,40 @@ Material evaluateMaterial(
     return material;
 }
 
+vec3 triplanarAlbedo(vec3 rendererPosition, vec3 rendererProjectionNormal)
+{
+    // Convert renderer (X, elevation, -WorldY) back to the authored World's
+    // (X, Y, elevation) axes. Projection planes are fixed and never flipped
+    // according to the normal's sign, so phase stays anchored at World origin.
+    vec3 worldPosition = vec3(
+        rendererPosition.x, -rendererPosition.z, rendererPosition.y);
+    vec3 projectionNormal = abs(vec3(
+        rendererProjectionNormal.x, -rendererProjectionNormal.z,
+        rendererProjectionNormal.y));
+    float sharpness = @Uniform(TRIPLANAR_BLEND_SHARPNESS);
+    vec3 weights = pow(projectionNormal, vec3(sharpness));
+    float weightSum = weights.x + weights.y + weights.z;
+    weights = weightSum > 0.0
+        ? weights / weightSum
+        : vec3(0.0, 0.0, 1.0);
+
+    vec2 tileSize = max(
+        @Uniform(TRIPLANAR_TILE_SIZE), vec2(0.000001));
+    vec3 xPlane = texture(
+        @Texture(TEX3),
+        vec2(worldPosition.y / tileSize.x,
+             worldPosition.z / tileSize.y)).rgb;
+    vec3 yPlane = texture(
+        @Texture(TEX3),
+        vec2(worldPosition.x / tileSize.x,
+             worldPosition.z / tileSize.y)).rgb;
+    vec3 zPlane = texture(
+        @Texture(TEX3),
+        vec2(worldPosition.x / tileSize.x,
+             worldPosition.y / tileSize.y)).rgb;
+    return xPlane * weights.x + yPlane * weights.y + zPlane * weights.z;
+}
+
 // Shared by the 3D and horizontal PBR programs. Horizontal batches always
 // bind WALL_NORMAL_MAP_ENABLED=0; keeping the complete contract here and in
 // world_pbr_2d.frag prevents the two world pipelines from drifting.
@@ -3387,8 +3425,21 @@ void main()
         @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 40));
     materialIndex = clamp(materialIndex, 0, 40);
     blendMaterialParams();
-    Material material = evaluateMaterial(
-        texturePosition, normalDir, viewDir, materialIndex);
+    bool usesTriplanar = @Uniform(TRIPLANAR_ENABLED) != 0;
+    Material material;
+    if (usesTriplanar)
+    {
+        material.albedo = triplanarAlbedo(
+            @In(FRAGPOSITION), normalize(@In(SURFACE_UP)));
+        material.metallic = 0.0;
+        material.roughness = 0.7;
+        material.normal = normalDir;
+    }
+    else
+    {
+        material = evaluateMaterial(
+            texturePosition, normalDir, viewDir, materialIndex);
+    }
 
     // The blended base colour tints the surface's own colour before any
     // lighting; the per-vertex tint (white unless the editor is marking a
@@ -3415,7 +3466,8 @@ void main()
         material, viewDir, @In(FRAGPOSITION),
         @Uniform(LIGHT_POSITION));
     vec3 ambientAndEmission = lighting.ambient +
-        supernaturalEmission(texturePosition, materialIndex);
+        (usesTriplanar ? vec3(0.0)
+                       : supernaturalEmission(texturePosition, materialIndex));
     // Absorption attenuates all radiance in linear space. It therefore follows
     // emission but precedes tone mapping, gamma, and the stylistic distance
     // fade applied at output. The Player Torch's direct term takes its nearly

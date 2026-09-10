@@ -27,7 +27,7 @@ public:
                      mpp::ResourceManager* resourceMgr,
                      bw::core::World const* world,
                      WorldSurfaceSet surfaceSet,
-                     SubMaterialResolver const* resolver,
+                     SurfaceMaterialResolver const* resolver,
                      std::vector<WallRenderSurface> wallRenderSurfaces = {});
 
   virtual ~WorldBatchRenderer();

@@ -8,6 +8,9 @@ add_library(BooleanWorldRender STATIC
     src/ProcMaterial.cpp
     src/ProcMaterialResourceDefinitionFactory.cpp
     src/SubMaterialResolver.cpp
+    src/SurfaceMaterialResolver.cpp
+    src/TriplanarMaterial.cpp
+    src/TriplanarMaterialResourceDefinitionFactory.cpp
     src/WorldBatch.cpp
     src/WorldBatchRenderer.cpp
     src/WorldRenderer.cpp
@@ -40,6 +43,11 @@ willpower_declare_resource_schema(
     SCHEMA_ID
         "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/embossing-catalog.schema.json"
     SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/schemas/embossing-catalog.schema.json")
+willpower_declare_resource_schema(
+    RESOURCE_TYPE TriplanarMaterial
+    SCHEMA_ID
+        "https://ajare.github.io/boolean-world/schemas/resource-manifest/v1/triplanar-material.schema.json"
+    SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/schemas/triplanar-material.schema.json")
 
 if(BUILD_TESTING)
     add_executable(boolean_world_wall_normal_map_render_data_tests
@@ -74,5 +82,27 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_wall_mask_render_data
              COMMAND boolean_world_wall_mask_render_data_tests)
     set_target_properties(boolean_world_wall_mask_render_data_tests PROPERTIES
+        FOLDER BooleanWorld)
+
+    add_executable(boolean_world_triplanar_material_load_tests
+        tests/triplanar_material_load_tests.cpp)
+    target_link_libraries(boolean_world_triplanar_material_load_tests PRIVATE
+        BooleanWorldRender)
+    target_compile_definitions(boolean_world_triplanar_material_load_tests PRIVATE
+        BW_TRIPLANAR_TEST_IMAGE="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/images/mask1.png")
+    target_compile_features(boolean_world_triplanar_material_load_tests PRIVATE cxx_std_23)
+    target_compile_options(boolean_world_triplanar_material_load_tests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
+    bw_target_defaults(boolean_world_triplanar_material_load_tests)
+    bw_output_dirs(boolean_world_triplanar_material_load_tests)
+    bw_deploy_runtime_dlls(boolean_world_triplanar_material_load_tests)
+    bw_deploy_vendor_dlls(boolean_world_triplanar_material_load_tests)
+    foreach(scenario IN ITEMS
+            defaults explicit invalid-tile-low invalid-tile-high invalid-tile-nan
+            invalid-sharpness-low invalid-sharpness-high invalid-sharpness-infinite
+            missing-image wrong-type non-repeat)
+        add_test(NAME boolean_world_triplanar_material_load_${scenario}
+                 COMMAND boolean_world_triplanar_material_load_tests ${scenario})
+    endforeach()
+    set_target_properties(boolean_world_triplanar_material_load_tests PROPERTIES
         FOLDER BooleanWorld)
 endif()

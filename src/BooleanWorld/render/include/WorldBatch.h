@@ -12,7 +12,7 @@
 #include <core/World.h>
 #include <core/MaterialDefinition.h>
 
-#include "SubMaterialResolver.h"
+#include "SurfaceMaterialResolver.h"
 #include "WallRenderVariant.h"
 
 enum class WorldSurfaceSet {
@@ -25,7 +25,7 @@ class WorldBatch : public mpp::TriangleBatch {
   bw::core::World const* mWorld;
   WorldSurfaceSet mSurfaceSet;
 
-  SubMaterialResolver const* mwResolver;
+  SurfaceMaterialResolver const* mwResolver;
 
   using MaterialMeshKey = std::tuple<uint64_t, bool, std::string>;
 
@@ -42,17 +42,18 @@ private:
       bw::core::MaterialDefinition const& def,
       bool floor,
       std::optional<WallRenderVariant> const& variant,
-      std::shared_ptr<mpp::ProgrammaticModelStream> modelStream);
+      std::shared_ptr<mpp::ProgrammaticModelStream> modelStream,
+      std::optional<uint64_t> resolvedHash = std::nullopt);
 
   void processSurfaceMaterial(
-      std::string const& subMaterialId,
+      bw::core::SurfaceMaterialReference const& material,
       std::string const& embossPresetId,
       bool floor,
       std::optional<WallRenderVariant> const& variant,
       std::shared_ptr<mpp::ProgrammaticModelStream> modelStream);
 
 public:
-  WorldBatch(std::string const& name, mpp::ResourcePtr textureOrMaterial, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr, bw::core::World const* world, WorldSurfaceSet surfaceSet, SubMaterialResolver const* resolver, std::vector<WallRenderSurface> wallRenderSurfaces = {});
+  WorldBatch(std::string const& name, mpp::ResourcePtr textureOrMaterial, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr, bw::core::World const* world, WorldSurfaceSet surfaceSet, SurfaceMaterialResolver const* resolver, std::vector<WallRenderSurface> wallRenderSurfaces = {});
 
   std::shared_ptr<mpp::ModelStream> createModelStream() override;
 

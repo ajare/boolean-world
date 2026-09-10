@@ -715,6 +715,25 @@ void wallMaskImageIsCollectedAsWorldDependentResource() {
           "the mask image was not collected as a World dependent resource");
 }
 
+void triplanarMaterialsAreDirectWorldDependencies() {
+  bw::core::World world(100.0f, 10.0f);
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
+  auto properties = primitive->getProperties();
+  properties.floorMaterialId =
+      bw::core::SurfaceMaterialReference::triplanar("World/ZebraTiles");
+  properties.ceilingMaterialId =
+      bw::core::SurfaceMaterialReference::triplanar("World/AmberTiles");
+  properties.wallMaterialId =
+      bw::core::SurfaceMaterialReference::triplanar("World/ZebraTiles");
+  primitive->setProperties(properties);
+  world.addPrimitive(primitive.release());
+
+  require(world.getDependentResourceNames() ==
+              std::vector<std::string>{"World/AmberTiles", "World/ZebraTiles"},
+          "Triplanar materials were not exact sorted World dependencies");
+}
+
 void topologyMetadataRoundTripsAndEmptyMetadataIsOmittedFromYaml() {
   auto sourceRing = square(-2.0f, -2.0f, 2.0f, 2.0f);
   sourceRing.front().metadata = {{"kind", "spawn"}, {"team", "blue"}};
@@ -800,6 +819,7 @@ int main() {
     preFeatureEdgeDataIsRejected();
     proceduralPrimitiveSchemaRemainsFlat();
     wallMaskImageIsCollectedAsWorldDependentResource();
+    triplanarMaterialsAreDirectWorldDependencies();
     topologyMetadataRoundTripsAndEmptyMetadataIsOmittedFromYaml();
     shippedWorldFixtureUsesTheCurrentSchema();
     std::cout << "MeshPrimitive containment tree serialization tests passed\n";

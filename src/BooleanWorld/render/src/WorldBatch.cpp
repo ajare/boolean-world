@@ -31,7 +31,7 @@ mpp::mesh::MeshSpecification WorldBatch::createMeshSpecification(
   return specification;
 }
 
-WorldBatch::WorldBatch(string const& name, mpp::ResourcePtr textureOrMaterial, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr, bw::core::World const* world, WorldSurfaceSet surfaceSet, SubMaterialResolver const* resolver, vector<WallRenderSurface> wallRenderSurfaces)
+WorldBatch::WorldBatch(string const& name, mpp::ResourcePtr textureOrMaterial, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr, bw::core::World const* world, WorldSurfaceSet surfaceSet, SurfaceMaterialResolver const* resolver, vector<WallRenderSurface> wallRenderSurfaces)
     : TriangleBatch(name,
                     {mpp::TriangleBatchOptions::Dimension::P3D,
                      true,
@@ -62,11 +62,12 @@ void WorldBatch::processMaterialDefinition(
     bw::core::MaterialDefinition const& def,
     bool floor,
     optional<WallRenderVariant> const& variant,
-    shared_ptr<mpp::ProgrammaticModelStream> modelStream) {
+    shared_ptr<mpp::ProgrammaticModelStream> modelStream,
+    optional<uint64_t> resolvedHash) {
   if (floor && variant) {
     throw invalid_argument("Wall render variants cannot be used by horizontal surfaces.");
   }
-  auto hashValue = def.data.hash(index);
+  auto hashValue = resolvedHash.value_or(def.data.hash(index));
   MaterialMeshKey key{hashValue, floor, variantIdentity(variant)};
 
   if (mMaterialHashToMesh.find(key) == mMaterialHashToMesh.end()) {
@@ -90,16 +91,18 @@ void WorldBatch::processMaterialDefinition(
 }
 
 void WorldBatch::processSurfaceMaterial(
-    string const& subMaterialId,
+    bw::core::SurfaceMaterialReference const& material,
     string const& embossPresetId,
     bool floor,
     optional<WallRenderVariant> const& variant,
     shared_ptr<mpp::ProgrammaticModelStream> modelStream) {
-  auto resolved = mwResolver->resolve(subMaterialId, embossPresetId);
+  auto resolved = mwResolver->resolve(material, embossPresetId);
   bw::core::MaterialDefinition def;
   def.data = resolved.def;
 
-  processMaterialDefinition(resolved.materialIndex, def, floor, variant, modelStream);
+  processMaterialDefinition(
+      resolved.materialIndex, def, floor, variant, modelStream,
+      resolved.hash());
 }
 
 shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
@@ -133,7 +136,7 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
   if (mSurfaceSet == WorldSurfaceSet::Walls) {
     for (auto const& surface : mWallRenderSurfaces) {
       processSurfaceMaterial(
-          surface.subMaterialId, surface.embossPresetId, false,
+          surface.material, surface.embossPresetId, false,
           surface.variant, modelStream);
     }
   }

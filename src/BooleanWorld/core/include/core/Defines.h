@@ -78,6 +78,11 @@ typedef int64_t frame_number_type;
 // material id.
 #define BW_WATER_MATERIAL_INDEX 41
 
+// Reserved MATERIAL_INDEX identifying an image-backed Triplanar Surface
+// material bucket. Its albedo and fixed PBR response are supplied by the world
+// shader; it is never a ProcMaterial Technique index.
+#define BW_TRIPLANAR_MATERIAL_INDEX 42
+
 // A materialIndex a Sub-material id resolves to when the id doesn't name any
 // Sub-material in a loaded ProcMaterial catalog (missing/unknown/empty). Every
 // negative material index is the built-in Debug material, a solid-magenta

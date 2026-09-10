@@ -128,7 +128,7 @@ char const* surfaceSetName(WorldSurfaceSet surfaceSet) {
 WorldRenderer3d::WorldRenderer3d(
     ResourcePtr resource, ResourcePtr fragmentOverdrawMaterial,
     wp::Logger* logger, WorldSurfaceSet surfaceSet,
-    SubMaterialResolver const* resolver,
+    SurfaceMaterialResolver const* resolver,
     vector<WallRenderSurface> wallRenderSurfaces,
     bool deferToWaterPass,
     string batchNamePrefix)
@@ -263,14 +263,14 @@ void WorldRenderer3d::updateMaterialUniforms(
   updateMesh(std::nullopt);
   if (mSurfaceSet != WorldSurfaceSet::Walls || floor) return;
 
-  // Wall normal maps decorate a Sub-material bucket; they do not fork its
-  // Technique or Embossing state. A preview draft must therefore reach every
+  // Wall images decorate a Surface-material bucket; they do not fork its
+  // material or Embossing state. A preview draft must therefore reach every
   // mapped variant as well as the ordinary bucket, without touching the
   // variant's independently bound image uniforms and texture.
   for (auto const& surface : mWallRenderSurfaces) {
     auto resolved = mwResolver->resolve(
-        surface.subMaterialId, surface.embossPresetId);
-    if (resolved.def.hash(resolved.materialIndex) == bakedMaterialHash) {
+        surface.material, surface.embossPresetId);
+    if (resolved.hash() == bakedMaterialHash) {
       updateMesh(surface.variant);
     }
   }
@@ -357,6 +357,37 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
             meshName, static_cast<uint32_t>(textureUnit), texture);
       };
 
+  auto configureTriplanar =
+      [&](std::string const& meshName, mpp::UniformCollection& uniforms,
+          SurfaceMaterialResolver::Resolved const& resolved) {
+        uniforms.updateUniform(
+            "TRIPLANAR_ENABLED", int32_t{resolved.isTriplanar() ? 1 : 0});
+        if (!resolved.isTriplanar()) return;
+
+        auto const* material = resolved.triplanar;
+        uniforms.updateUniform(
+            "TRIPLANAR_TILE_SIZE",
+            glm::vec2{material->getTileWidth(), material->getTileHeight()});
+        uniforms.updateUniform(
+            "TRIPLANAR_BLEND_SHARPNESS", material->getBlendSharpness());
+
+        auto worldMaterial = dynamic_pointer_cast<mpp::Material>(
+            mMaterial->getMppResource());
+        auto program = worldMaterial
+                           ? dynamic_pointer_cast<mpp::Program>(
+                                 worldMaterial->getProgram())
+                           : nullptr;
+        auto textureUnit = program ? program->getSamplerUnit("TEX3") : -1;
+        auto const& albedo = material->getAlbedo();
+        if (textureUnit < 0 || !albedo || !albedo->getMppResource()) {
+          throw logic_error(
+              "Triplanar albedo texture sampler TEX3 is unavailable.");
+        }
+        params->setMeshTexture(
+            meshName, static_cast<uint32_t>(textureUnit),
+            albedo->getMppResource());
+      };
+
   // Create uniforms for each material mesh.
   mUniforms.resize(worldBatch->getMaterialMeshCount(), nullptr);
   mMaterialIndices.resize(worldBatch->getMaterialMeshCount(), 0);
@@ -385,6 +416,9 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("SECONDARY_MATERIAL_INDEX", int32_t{-1});
     uniforms.setUniform("USE_SECONDARY_MATERIAL", int32_t{0});
     uniforms.setUniform("MATERIAL_COLOUR", glm::vec3{1.0f});
+    uniforms.setUniform("TRIPLANAR_ENABLED", int32_t{0});
+    uniforms.setUniform("TRIPLANAR_TILE_SIZE", glm::vec2{32.0f});
+    uniforms.setUniform("TRIPLANAR_BLEND_SHARPNESS", 4.0f);
     uniforms.setUniform("WALL_NORMAL_MAP_ENABLED", int32_t{0});
     uniforms.setUniform("WALL_NORMAL_MAP_STRENGTH", 1.0f);
     uniforms.setUniform("WALL_NORMAL_MAP_ASPECT_RATIO", 1.0f);
@@ -405,7 +439,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     if (mSurfaceSet == WorldSurfaceSet::Walls) {
       auto resolved = mwResolver->resolve(
           properties.wallMaterialId, properties.wallEmbossPresetId);
-      auto hashValue = resolved.def.hash(resolved.materialIndex);
+      auto hashValue = resolved.hash();
       auto meshIndex =
           worldBatch->getMeshIndexForMaterialHash(hashValue, false);
       if (mUniforms[meshIndex] == nullptr) {
@@ -422,6 +456,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
         setMaterialColour(*uniforms, resolved.def.baseColour);
         setEmbossUniforms(*uniforms, resolved.def.emboss);
         initializeGlobalUniforms(*uniforms);
+        configureTriplanar(meshName, *uniforms, resolved);
         // Unmasked wall buckets pass the primary parameters as the blend set
         // and sample the 1x1 zero mask texture, keeping the mask contract
         // uniform with masked buckets.
@@ -445,7 +480,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     // Floor
     auto floorResolved = mwResolver->resolve(
         properties.floorMaterialId, properties.floorEmbossPresetId);
-    auto hashValue = floorResolved.def.hash(floorResolved.materialIndex);
+    auto hashValue = floorResolved.hash();
     auto meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, true);
 
     if (mUniforms[meshIndex] == nullptr) {
@@ -461,6 +496,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       setMaterialColour(*uniforms, floorResolved.def.baseColour);
       setEmbossUniforms(*uniforms, floorResolved.def.emboss);
       initializeGlobalUniforms(*uniforms);
+      configureTriplanar(meshName, *uniforms, floorResolved);
 
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] =
@@ -470,7 +506,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     // Ceiling
     auto ceilingResolved = mwResolver->resolve(
         properties.ceilingMaterialId, properties.ceilingEmbossPresetId);
-    hashValue = ceilingResolved.def.hash(ceilingResolved.materialIndex);
+    hashValue = ceilingResolved.hash();
     meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, false);
 
     if (mUniforms[meshIndex] == nullptr) {
@@ -486,6 +522,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       setMaterialColour(*uniforms, ceilingResolved.def.baseColour);
       setEmbossUniforms(*uniforms, ceilingResolved.def.emboss);
       initializeGlobalUniforms(*uniforms);
+      configureTriplanar(meshName, *uniforms, ceilingResolved);
 
       mUniforms[meshIndex] = uniforms;
       mMaterialIndices[meshIndex] =
@@ -500,8 +537,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     for (auto const& surface : mWallRenderSurfaces) {
       auto const& variant = *surface.variant;
       auto resolved = mwResolver->resolve(
-          surface.subMaterialId, surface.embossPresetId);
-      auto hashValue = resolved.def.hash(resolved.materialIndex);
+          surface.material, surface.embossPresetId);
+      auto hashValue = resolved.hash();
       auto meshIndex = worldBatch->getMeshIndexForMaterialHash(
           hashValue, false, variant);
       if (mUniforms[meshIndex] != nullptr) {
@@ -537,15 +574,18 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       setMaterialColour(*uniforms, resolved.def.baseColour);
       setEmbossUniforms(*uniforms, resolved.def.emboss);
       initializeGlobalUniforms(*uniforms);
+      configureTriplanar(meshName, *uniforms, resolved);
       if (variant.setUniforms) {
         variant.setUniforms(*uniforms);
       }
-      if (variant.setMaskUniforms) {
+      // Wall-mask authoring remains dormant while the wall uses a Triplanar
+      // material. A normal map is independent and still composes above.
+      if (!resolved.isTriplanar() && variant.setMaskUniforms) {
         variant.setMaskUniforms(*uniforms);
         bindWallMaskTexture(meshName, variant.maskTexture);
       } else {
-        // A normal-map-only variant is still an unmasked wall: primary
-        // parameters as the blend set and the zero mask texture.
+        // A Triplanar or normal-map-only variant is unmasked: primary
+        // parameters as the inert blend set and the zero mask texture.
         uniforms->updateUniform(
             "WALL_MASK_BLEND_PARAMS", resolved.def.params.data());
         bindWallMaskTexture(meshName, mWallMaskZeroTexture);

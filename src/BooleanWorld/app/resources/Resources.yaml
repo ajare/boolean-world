@@ -380,6 +380,11 @@ Resources:
     - type: "Image"
       name: "Floor5"
       location: "images/floor5.png"
+      Option:
+        - name: "wrapping"
+          value: "repeat"
+        - name: "mipmaps"
+          value: "true"
     - type: "Image"
       name: "Floor6"
       location: "images/floor6.png"
@@ -438,6 +443,17 @@ Resources:
             value: "repeat"
           - name: "mipmaps"
             value: "true"
+      - type: "TriplanarMaterial"
+        name: "TriplanarFloorTiles"
+        DependentResources:
+          DependentResource:
+            id: "Albedo"
+            ref: "/Floor5"
+        Definitions:
+          Definition:
+            Albedo: "Albedo"
+            TileWidth: 32
+            BlendSharpness: 4
       - type: "Shader"
         name: "WorldVertexShader"
         location: "shaders/world.vert"
@@ -668,6 +684,9 @@ Resources:
                 - sampler: "TEX2"
                   type: "resource"
                   value: "Texture"
+                - sampler: "TEX3"
+                  type: "resource"
+                  value: "Texture"
       - type: "Material"
         name: "Material.Default"
         DependentResources:
@@ -684,6 +703,9 @@ Resources:
                   type: "resource"
                   value: "Texture"
                 - sampler: "TEX2"
+                  type: "resource"
+                  value: "Texture"
+                - sampler: "TEX3"
                   type: "resource"
                   value: "Texture"
       - type: "TextFile"

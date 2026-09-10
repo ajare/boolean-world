@@ -140,14 +140,14 @@ void shadersShareMaskContract() {
   }
 
   auto blend = shader3d.find("blendMaterialParams();");
-  auto evaluate = shader3d.find("Material material = evaluateMaterial");
+  auto evaluate = shader3d.find("material = evaluateMaterial");
   auto emboss = shader3d.find("material.normal = embossSurface", evaluate);
   require(blend != std::string::npos && blend < evaluate &&
               evaluate < emboss,
           "3D shader does not interpolate before the single material evaluation and Embossing");
 
   auto horizontalBlend = shader2d.find("blendMaterialParams();");
-  auto horizontalEvaluate = shader2d.find("Material material = material2d");
+  auto horizontalEvaluate = shader2d.find("material = material2d");
   require(horizontalBlend != std::string::npos &&
               horizontalBlend < horizontalEvaluate,
           "2D shader does not interpolate before its material evaluation");
@@ -172,10 +172,12 @@ void maskedAndUnmaskedSurfacesHaveDistinctBucketIdentity() {
       wallImageVariantIdentity("normal-map-v1-x", *otherMask.imageData())};
   WallRenderVariant bareVariant{"normal-map-v1-x"};
 
-  WallRenderSurface unmapped{"same.sub-material", std::nullopt};
-  WallRenderSurface masked{"same.sub-material", maskedVariant};
+  auto material = bw::core::SurfaceMaterialReference::subMaterial(
+      "same.sub-material");
+  WallRenderSurface unmapped{material, std::nullopt};
+  WallRenderSurface masked{material, maskedVariant};
   WallRenderSurface differentlyMasked{
-      "same.sub-material", differentlyMaskedVariant};
+      material, differentlyMaskedVariant};
   require(!unmapped.variant && masked.variant && differentlyMasked.variant,
           "mask states cannot select distinct buckets");
   require(masked.variant->identity != differentlyMasked.variant->identity,

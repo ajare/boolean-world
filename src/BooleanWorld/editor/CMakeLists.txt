@@ -148,9 +148,8 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_editor_preview_surface_pick
              COMMAND boolean_world_editor_preview_surface_pick_tests)
 
-    # Not registered via add_test - needs a real GPU/driver. This replaces the
-    # deleted PreviewMaterialProgram smoke with the WorldRenderer path now used
-    # by the editor preview.
+    # Drives the real hidden-window OpenGL WorldRenderer path used by the
+    # editor preview. The repository test launcher keeps failures unattended.
     add_executable(boolean_world_editor_world_renderer_smoke
         tests/world_renderer_smoke.cpp
         src/EditorRenderSystem.cpp
@@ -173,6 +172,8 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_editor_world_renderer_smoke)
     bw_deploy_runtime_dlls(boolean_world_editor_world_renderer_smoke)
     bw_deploy_vendor_dlls(boolean_world_editor_world_renderer_smoke)
+    add_test(NAME boolean_world_triplanar_material_real_render
+             COMMAND boolean_world_editor_world_renderer_smoke triplanar)
 
     # Not registered via add_test - needs a real GPU/driver. Build and run it
     # manually to see EditorRenderSystem's bootstrap/teardown work (or fail)

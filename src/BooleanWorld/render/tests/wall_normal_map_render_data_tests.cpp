@@ -140,6 +140,21 @@ void shadersShareCompositionContract() {
                     std::string::npos &&
                 shader->find("radius * 0.01") == std::string::npos,
             "a world PBR shader scales emboss groove width or sampling with tile size");
+    require(shader->find("vec3 triplanarAlbedo") != std::string::npos &&
+                shader->find("rendererPosition.x, -rendererPosition.z") !=
+                    std::string::npos &&
+                shader->find("projectionNormal = abs(vec3(") !=
+                    std::string::npos &&
+                shader->find("pow(projectionNormal, vec3(sharpness))") !=
+                    std::string::npos &&
+                shader->find("weights / weightSum") != std::string::npos &&
+                shader->find("@Texture(TEX3)") != std::string::npos &&
+                shader->find(".rgb;") != std::string::npos &&
+                shader->find("material.metallic = 0.0") !=
+                    std::string::npos &&
+                shader->find("material.roughness = 0.7") !=
+                    std::string::npos,
+            "a world PBR shader lost the fixed opaque Triplanar projection contract");
   }
 
   require(shader3d.find("Material graniteTexture") != std::string::npos &&
@@ -156,14 +171,14 @@ void shadersShareCompositionContract() {
           "Granite or the following reserved materials are not dispatched by both procedural PBR programs");
 
   auto sample = shader3d.find("vec3 normalDir = applyWallNormalMap");
-  auto evaluate = shader3d.find("Material material = evaluateMaterial");
+  auto evaluate = shader3d.find("material = evaluateMaterial");
   auto emboss = shader3d.find("material.normal = embossSurface", evaluate);
   require(sample != std::string::npos && sample < evaluate && evaluate < emboss,
           "3D shader does not compose Image before Technique and Embossing");
 
   auto horizontalApply = shader2d.find(
       "vec3 normal = applyWallNormalMap(shadingNormal)");
-  auto horizontalEvaluate = shader2d.find("Material material = material2d");
+  auto horizontalEvaluate = shader2d.find("material = material2d");
   require(horizontalApply != std::string::npos &&
               horizontalApply < horizontalEvaluate,
           "2D shader does not bind the compatible dormant map contract");
@@ -214,12 +229,14 @@ void strengthScalesTangentPlaneBeforeRenormalization() {
 }
 
 void mappedAndUnmappedSurfacesHaveDistinctBucketIdentity() {
-  WallRenderSurface unmapped{"same.sub-material", std::nullopt};
-  WallRenderSurface disabled{"same.sub-material", std::nullopt};
+  auto material = bw::core::SurfaceMaterialReference::subMaterial(
+      "same.sub-material");
+  WallRenderSurface unmapped{material, std::nullopt};
+  WallRenderSurface disabled{material, std::nullopt};
   WallRenderVariant mappedVariant{"normal-map-v1-directional"};
   WallRenderVariant differentMappedVariant{"normal-map-v1-other-scale"};
-  WallRenderSurface mapped{"same.sub-material", mappedVariant};
-  WallRenderSurface differentlyMapped{"same.sub-material", differentMappedVariant};
+  WallRenderSurface mapped{material, mappedVariant};
+  WallRenderSurface differentlyMapped{material, differentMappedVariant};
   require(!unmapped.variant && !disabled.variant && mapped.variant &&
               differentlyMapped.variant &&
               mapped.variant->identity != differentlyMapped.variant->identity,

@@ -122,15 +122,49 @@ void setMaterial(
   primitive.setProperties(properties);
 }
 
-string const& getMaterial(
+SurfaceMaterialReference const& getSurfaceMaterial(
     Primitive const& primitive, MaterialSurface surface) {
   auto const& properties = primitive.getProperties();
   switch (surface) {
-    case MaterialSurface::Floor: return properties.floorMaterialId.reference;
-    case MaterialSurface::Ceiling: return properties.ceilingMaterialId.reference;
-    case MaterialSurface::Wall: return properties.wallMaterialId.reference;
+    case MaterialSurface::Floor: return properties.floorMaterialId;
+    case MaterialSurface::Ceiling: return properties.ceilingMaterialId;
+    case MaterialSurface::Wall: return properties.wallMaterialId;
   }
   throw CoreException("Unknown Primitive surface");
+}
+
+string const& getMaterial(
+    Primitive const& primitive, MaterialSurface surface) {
+  return getSurfaceMaterial(primitive, surface).reference;
+}
+
+void setSurfaceMaterial(
+    Primitive& primitive, MaterialSurface surface, string const& kind,
+    string const& reference) {
+  auto materialKind = surfaceMaterialKindFromName(kind);
+  if (reference.empty()) {
+    throw CoreException("Surface material reference must not be empty");
+  }
+  if (materialKind == SurfaceMaterialKind::Triplanar &&
+      reference.find('/') == string::npos) {
+    throw CoreException(
+        "Triplanar Surface material reference must be qualified");
+  }
+
+  auto properties = primitive.getProperties();
+  auto material = SurfaceMaterialReference{materialKind, reference};
+  switch (surface) {
+    case MaterialSurface::Floor: properties.floorMaterialId = material; break;
+    case MaterialSurface::Ceiling: properties.ceilingMaterialId = material; break;
+    case MaterialSurface::Wall: properties.wallMaterialId = material; break;
+  }
+  primitive.setProperties(properties);
+}
+
+tuple<string, string> getSurfaceMaterialValues(
+    Primitive const& primitive, MaterialSurface surface) {
+  auto const& material = getSurfaceMaterial(primitive, surface);
+  return {string(surfaceMaterialKindName(material.kind)), material.reference};
 }
 
 set<string> prefabTagsFromTable(sol::table const& values) {
@@ -859,6 +893,30 @@ void bindScriptTypes(sol::state& lua) {
       "get_wall_material",
       [](Primitive const& primitive) {
         return getMaterial(primitive, MaterialSurface::Wall);
+      },
+      "set_floor_surface_material",
+      [](Primitive& primitive, string const& kind, string const& reference) {
+        setSurfaceMaterial(primitive, MaterialSurface::Floor, kind, reference);
+      },
+      "get_floor_surface_material",
+      [](Primitive const& primitive) {
+        return getSurfaceMaterialValues(primitive, MaterialSurface::Floor);
+      },
+      "set_ceiling_surface_material",
+      [](Primitive& primitive, string const& kind, string const& reference) {
+        setSurfaceMaterial(primitive, MaterialSurface::Ceiling, kind, reference);
+      },
+      "get_ceiling_surface_material",
+      [](Primitive const& primitive) {
+        return getSurfaceMaterialValues(primitive, MaterialSurface::Ceiling);
+      },
+      "set_wall_surface_material",
+      [](Primitive& primitive, string const& kind, string const& reference) {
+        setSurfaceMaterial(primitive, MaterialSurface::Wall, kind, reference);
+      },
+      "get_wall_surface_material",
+      [](Primitive const& primitive) {
+        return getSurfaceMaterialValues(primitive, MaterialSurface::Wall);
       });
 
   lua.new_usertype<ScriptMeshPrimitive>(
@@ -1033,6 +1091,39 @@ void bindScriptTypes(sol::state& lua) {
       [](ScriptMeshPrimitive const& mesh) {
         return getMaterial(*mesh.getPrimitive(), MaterialSurface::Wall);
       },
+      "set_floor_surface_material",
+      [](ScriptMeshPrimitive& mesh, string const& kind,
+         string const& reference) {
+        setSurfaceMaterial(
+            *mesh.getPrimitive(), MaterialSurface::Floor, kind, reference);
+      },
+      "get_floor_surface_material",
+      [](ScriptMeshPrimitive const& mesh) {
+        return getSurfaceMaterialValues(
+            *mesh.getPrimitive(), MaterialSurface::Floor);
+      },
+      "set_ceiling_surface_material",
+      [](ScriptMeshPrimitive& mesh, string const& kind,
+         string const& reference) {
+        setSurfaceMaterial(
+            *mesh.getPrimitive(), MaterialSurface::Ceiling, kind, reference);
+      },
+      "get_ceiling_surface_material",
+      [](ScriptMeshPrimitive const& mesh) {
+        return getSurfaceMaterialValues(
+            *mesh.getPrimitive(), MaterialSurface::Ceiling);
+      },
+      "set_wall_surface_material",
+      [](ScriptMeshPrimitive& mesh, string const& kind,
+         string const& reference) {
+        setSurfaceMaterial(
+            *mesh.getPrimitive(), MaterialSurface::Wall, kind, reference);
+      },
+      "get_wall_surface_material",
+      [](ScriptMeshPrimitive const& mesh) {
+        return getSurfaceMaterialValues(
+            *mesh.getPrimitive(), MaterialSurface::Wall);
+      },
 
       "split_edge",
       sol::overload(
@@ -1126,6 +1217,21 @@ void bindScriptTypes(sol::state& lua) {
       "get_ceiling_elevation",
       [](PrimitiveView const& view) {
         return getElevation(*view.primitive, false);
+      },
+      "get_floor_surface_material",
+      [](PrimitiveView const& view) {
+        return getSurfaceMaterialValues(
+            *view.primitive, MaterialSurface::Floor);
+      },
+      "get_ceiling_surface_material",
+      [](PrimitiveView const& view) {
+        return getSurfaceMaterialValues(
+            *view.primitive, MaterialSurface::Ceiling);
+      },
+      "get_wall_surface_material",
+      [](PrimitiveView const& view) {
+        return getSurfaceMaterialValues(
+            *view.primitive, MaterialSurface::Wall);
       });
 
   lua.new_usertype<RunScriptContext>(

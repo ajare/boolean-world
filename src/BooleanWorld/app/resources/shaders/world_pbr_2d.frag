@@ -26,6 +26,9 @@ layout(location = 5) flat in float liquidSurfaceHeight;
 @@Uniform(int MATERIAL_INDEX);
 @@Uniform(float MATERIAL_PARAMS[8]);
 @@Uniform(vec3 MATERIAL_COLOUR);
+@@Uniform(int TRIPLANAR_ENABLED);
+@@Uniform(vec2 TRIPLANAR_TILE_SIZE);
+@@Uniform(float TRIPLANAR_BLEND_SHARPNESS);
 @@Uniform(int EMBOSS_PATTERN);
 @@Uniform(float EMBOSS_RADIUS);
 @@Uniform(float EMBOSS_DEPTH);
@@ -51,6 +54,7 @@ vec3 blendedMaterialColour;
 ## Texture
 @@Texture(sampler2D TEX1);
 @@Texture(sampler2D TEX2);
+@@Texture(sampler2D TEX3);
 ##
 @@Texture(sampler2DShadow SHADOW_MAP);
 @@Texture(samplerCubeShadow POINT_SHADOW_MAP);
@@ -1339,6 +1343,37 @@ PbrLighting shadePbr(Material m, vec3 viewDir, vec3 worldPos, vec3 lightPos)
     return lighting;
 }
 
+vec3 triplanarAlbedo(vec3 rendererPosition, vec3 rendererProjectionNormal)
+{
+    vec3 worldPosition = vec3(
+        rendererPosition.x, -rendererPosition.z, rendererPosition.y);
+    vec3 projectionNormal = abs(vec3(
+        rendererProjectionNormal.x, -rendererProjectionNormal.z,
+        rendererProjectionNormal.y));
+    float sharpness = @Uniform(TRIPLANAR_BLEND_SHARPNESS);
+    vec3 weights = pow(projectionNormal, vec3(sharpness));
+    float weightSum = weights.x + weights.y + weights.z;
+    weights = weightSum > 0.0
+        ? weights / weightSum
+        : vec3(0.0, 0.0, 1.0);
+
+    vec2 tileSize = max(
+        @Uniform(TRIPLANAR_TILE_SIZE), vec2(0.000001));
+    vec3 xPlane = texture(
+        @Texture(TEX3),
+        vec2(worldPosition.y / tileSize.x,
+             worldPosition.z / tileSize.y)).rgb;
+    vec3 yPlane = texture(
+        @Texture(TEX3),
+        vec2(worldPosition.x / tileSize.x,
+             worldPosition.z / tileSize.y)).rgb;
+    vec3 zPlane = texture(
+        @Texture(TEX3),
+        vec2(worldPosition.x / tileSize.x,
+             worldPosition.y / tileSize.y)).rgb;
+    return xPlane * weights.x + yPlane * weights.y + zPlane * weights.z;
+}
+
 // Shared with world_pbr.frag. Wall normal maps currently have no horizontal
 // authoring owner, so every 2D horizontal batch binds the enable flag to zero;
 // retaining the full implementation keeps both PBR programs contract-compatible.
@@ -1486,9 +1521,21 @@ void main()
     }
     vec3 normal = applyWallNormalMap(shadingNormal);
     blendMaterialParams();
-    Material material = material2d(
-        texturePosition, normal, surfaceUp, surfaceAxisU, surfaceAxisV,
-        viewDir, materialIndex);
+    bool usesTriplanar = @Uniform(TRIPLANAR_ENABLED) != 0;
+    Material material;
+    if (usesTriplanar)
+    {
+        material.albedo = triplanarAlbedo(worldPos, surfaceUp);
+        material.metallic = 0.0;
+        material.roughness = 0.7;
+        material.normal = normal;
+    }
+    else
+    {
+        material = material2d(
+            texturePosition, normal, surfaceUp, surfaceAxisU, surfaceAxisV,
+            viewDir, materialIndex);
+    }
     // The blended base colour tints the surface's own colour before lighting.
     material.albedo *= blendedMaterialColour;
     // Whatever this material embosses, on whatever surface it was

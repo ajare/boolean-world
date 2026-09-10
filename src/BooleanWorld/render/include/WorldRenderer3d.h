@@ -17,7 +17,7 @@
 
 #include "SecondaryMaterialOptions.h"
 #include "VideoOptions.h"
-#include "SubMaterialResolver.h"
+#include "SurfaceMaterialResolver.h"
 #include "WorldBatchRenderer.h"
 #include "WorldTriangle3dDataProvider.h"
 #include "WallRenderVariant.h"
@@ -30,7 +30,7 @@ class WorldRenderer3d {
   WorldSurfaceSet mSurfaceSet;
   bool mDeferToWaterPass;
 
-  SubMaterialResolver const* mwResolver;
+  SurfaceMaterialResolver const* mwResolver;
   std::vector<WallRenderSurface> mWallRenderSurfaces;
 
   mpp::ScenePtr mScene;
@@ -73,7 +73,7 @@ public:
       wp::application::resourcesystem::ResourcePtr fragmentOverdrawMaterial,
       wp::Logger* logger,
       WorldSurfaceSet surfaceSet,
-      SubMaterialResolver const* resolver,
+      SurfaceMaterialResolver const* resolver,
       std::vector<WallRenderSurface> wallRenderSurfaces = {},
       bool deferToWaterPass = false,
       std::string batchNamePrefix = "World3d");

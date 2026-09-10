@@ -1,6 +1,7 @@
-// Manual/opt-in integration test: requires a real OpenGL driver. It drives the
-// same EditorRenderSystem + PreviewRenderScene + WorldRenderer stack used by
-// the editor, and compares broad rendered regions rather than exact pixels.
+// Real OpenGL integration test. CTest runs the focused Triplanar scenario;
+// invoking without a scenario retains the broader manual renderer smoke. Both
+// drive EditorRenderSystem + PreviewRenderScene + WorldRenderer and compare
+// broad rendered regions rather than exact pixels.
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -57,6 +58,8 @@ struct RenderFixture {
   bool wet{};
   bool sloped{};
   bool fragmented{};
+  bool triplanar{};
+  bool angled{};
 };
 
 struct ResourceCounts {
@@ -90,11 +93,14 @@ void writeDirectionalNormal() {
 bw::core::ArrangementWorldDataPtr buildWorldData(
     bw::core::World& world, RenderFixture const& fixture) {
   world.createAccelerationGrids(16.0f);
-  bw::core::ClosedPolygon ring = fixture.fragmented
+  bw::core::ClosedPolygon ring = fixture.angled
       ? bw::core::ClosedPolygon{
-            {{-16, -16}}, {{0, -16}}, {{0, 16}}, {{-16, 16}}}
-      : bw::core::ClosedPolygon{
-            {{-16, -16}}, {{16, -16}}, {{16, 16}}, {{-16, 16}}};
+            {{0, -22}}, {{22, 0}}, {{0, 22}}, {{-22, 0}}}
+      : fixture.fragmented
+          ? bw::core::ClosedPolygon{
+                {{-16, -16}}, {{0, -16}}, {{0, 16}}, {{-16, 16}}}
+          : bw::core::ClosedPolygon{
+                {{-16, -16}}, {{16, -16}}, {{16, 16}}, {{-16, 16}}};
   auto* primitive = bw::core::MeshPrimitive::fromTree(
       bw::core::Primitive::Operation::Union, {{{ring, {}}}});
 
@@ -130,9 +136,17 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
     properties.floorZ.gradient = {0.25f, 0.125f};
     properties.ceilingZ.gradient = {-0.125f, 0.25f};
   }
-  properties.floorMaterialId = "migrated.marble.1";
-  properties.ceilingMaterialId = "migrated.marble.1";
-  properties.wallMaterialId = "migrated.marble.1";
+  if (fixture.triplanar) {
+    auto material = bw::core::SurfaceMaterialReference::triplanar(
+        "World/TriplanarFloorTiles");
+    properties.floorMaterialId = material;
+    properties.ceilingMaterialId = material;
+    properties.wallMaterialId = material;
+  } else {
+    properties.floorMaterialId = "migrated.marble.1";
+    properties.ceilingMaterialId = "migrated.marble.1";
+    properties.wallMaterialId = "migrated.marble.1";
+  }
   if (fixture.emboss) {
     properties.floorEmbossPresetId = "builtin.emboss.stone";
     properties.ceilingEmbossPresetId = "builtin.emboss.stone";
@@ -232,6 +246,17 @@ double regionDifference(
 std::vector<float> render(
     editor::EditorRenderSystem& renderSystem, RenderFixture const& fixture,
     std::array<uint32_t, 3>* surfaceTriangles = nullptr) {
+  std::string dependencyError;
+  auto dependencies = fixture.triplanar
+                          ? std::vector<std::string>{
+                                "World/TriplanarFloorTiles"}
+                          : std::vector<std::string>{};
+  if (!renderSystem.loadWorldDependencies(
+          dependencies, "World", &dependencyError)) {
+    throw std::runtime_error(
+        "could not load render fixture dependencies: " + dependencyError);
+  }
+
   bw::core::World world(1.0f, -1.0f);
   auto worldData = buildWorldData(world, fixture);
   editor::PreviewRenderScene scene(
@@ -270,9 +295,54 @@ std::vector<float> render(
 void require(bool condition, char const* message) {
   if (!condition) throw std::runtime_error(message);
 }
+
+void triplanarMaterialsRenderThroughTheRealWorldPrograms(
+    editor::EditorRenderSystem& renderSystem) {
+  auto proceduralFloor = render(
+      renderSystem, {.lookAtFloor = true});
+  auto triplanarFloor = render(
+      renderSystem, {.lookAtFloor = true, .triplanar = true});
+  auto proceduralCeiling = render(
+      renderSystem, {.lookAtCeiling = true});
+  auto triplanarCeiling = render(
+      renderSystem, {.lookAtCeiling = true, .triplanar = true});
+  auto proceduralWall = render(renderSystem, {});
+  auto triplanarWall = render(renderSystem, {.triplanar = true});
+  auto angledProcedural = render(renderSystem, {.angled = true});
+  auto angledTriplanar = render(
+      renderSystem, {.triplanar = true, .angled = true});
+
+  require(regionDifference(proceduralFloor, triplanarFloor) > 0.0005,
+          "Triplanar albedo did not reach an isolated floor");
+  require(regionDifference(proceduralCeiling, triplanarCeiling) > 0.0005,
+          "Triplanar albedo did not reach an isolated ceiling");
+  require(regionDifference(proceduralWall, triplanarWall) > 0.0005 &&
+              regionDifference(angledProcedural, angledTriplanar) > 0.0005,
+          "Triplanar albedo did not reach vertical walls at arbitrary angles");
+
+  auto triplanarSlope = render(
+      renderSystem,
+      {.lookAtFloor = true, .sloped = true, .triplanar = true});
+  auto fragmentedTriplanarSlope = render(
+      renderSystem,
+      {.lookAtFloor = true,
+       .sloped = true,
+       .fragmented = true,
+       .triplanar = true});
+  require(regionDifference(
+              triplanarSlope, fragmentedTriplanarSlope) < 0.0005,
+          "Triplanar World scale or origin changed across fragments");
+  auto triplanarFloor2d = render(
+      renderSystem,
+      {.horizontal = bw::app::HorizontalMaterials::TwoDimensional,
+       .lookAtFloor = true,
+       .triplanar = true});
+  require(!triplanarFloor2d.empty(),
+          "2D world Program did not render a Triplanar floor");
+}
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     std::printf("SDL_Init failed: %s\n", SDL_GetError());
     return 1;
@@ -304,7 +374,12 @@ int main() {
       writeDirectionalNormal();
       editor::EditorRenderSystem renderSystem(kWidth, kHeight);
 
-      std::array<uint32_t, 3> drySurfaceTriangles;
+      auto triplanarOnly =
+          argc == 2 && std::string(argv[1]) == "triplanar";
+      if (triplanarOnly) {
+        triplanarMaterialsRenderThroughTheRealWorldPrograms(renderSystem);
+      } else {
+        std::array<uint32_t, 3> drySurfaceTriangles;
       auto unset = render(renderSystem, {}, &drySurfaceTriangles);
       auto flatFloor = render(renderSystem, {.lookAtFloor = true});
       auto sloped = render(
@@ -339,6 +414,7 @@ int main() {
            .fragmented = true});
       require(regionDifference(sloped2d, fragmentedSlope2d) < 0.0005,
               "2D Surface frame changed across fragments of one sloped plane");
+
       std::array<uint32_t, 3> wetSurfaceTriangles;
       auto wet = render(renderSystem, {.wet = true}, &wetSurfaceTriangles);
       require(drySurfaceTriangles[0] == wetSurfaceTriangles[0] &&
@@ -449,6 +525,7 @@ int main() {
           require(counts == *baseline,
                   "preview teardown leaked normal-map CPU/GPU resources");
         }
+      }
       }
 
       std::filesystem::remove(kDirectionalNormal);

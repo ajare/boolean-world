@@ -572,6 +572,89 @@ void meshPrimitivesRetainTheMutablePrimitiveApi() {
           "MeshPrimitive common properties did not cross the Lua API");
 }
 
+void scriptsAuthorAndInspectTaggedSurfaceMaterials() {
+  bw::core::ScriptRuntime runtime;
+  runtime.load("surface-materials", R"(
+    local primitive = context:create_primitive("Rectangle")
+    assert(not pcall(function()
+      primitive:set_floor_surface_material("unknown", "World/Tiles")
+    end))
+    assert(not pcall(function()
+      primitive:set_floor_surface_material("triplanar", "Unqualified")
+    end))
+    assert(not pcall(function()
+      primitive:set_floor_surface_material("triplanar", "")
+    end))
+    primitive:set_floor_surface_material("triplanar", "World/FloorTiles")
+    primitive:set_ceiling_surface_material("subMaterial", "ceiling.stone")
+    primitive:set_wall_surface_material("triplanar", "World/WallTiles")
+    local floor_kind, floor_reference =
+      primitive:get_floor_surface_material()
+    local ceiling_kind, ceiling_reference =
+      primitive:get_ceiling_surface_material()
+    local wall_kind, wall_reference = primitive:get_wall_surface_material()
+    assert(floor_kind == "triplanar" and floor_reference == "World/FloorTiles")
+    assert(ceiling_kind == "subMaterial" and
+           ceiling_reference == "ceiling.stone")
+    assert(wall_kind == "triplanar" and wall_reference == "World/WallTiles")
+    context:place_primitive(primitive)
+
+    local mesh = context:create_mesh_primitive({
+      {0, 0}, {8, 0}, {8, 8}, {0, 8}
+    })
+    mesh:set_floor_surface_material("triplanar", "/SharedTiles")
+    mesh:set_ceiling_surface_material("triplanar", "World/CeilingTiles")
+    mesh:set_wall_surface_material("triplanar", "World/OldWallTiles")
+    -- Existing methods remain Sub-material shortcuts and reset the tag.
+    mesh:set_wall_material("wall.basalt")
+    local kind, reference = mesh:get_wall_surface_material()
+    assert(kind == "subMaterial" and reference == "wall.basalt")
+    context:place_primitive(mesh)
+  )");
+  runtime.load("inspect-surface-materials", R"(
+    local priors = context:get_build_primitives()
+    local floor_kind, floor_reference =
+      priors[1]:get_floor_surface_material()
+    local wall_kind, wall_reference = priors[1]:get_wall_surface_material()
+    assert(floor_kind == "triplanar" and floor_reference == "World/FloorTiles")
+    assert(wall_kind == "triplanar" and wall_reference == "World/WallTiles")
+    local mesh_floor_kind, mesh_floor_reference =
+      priors[2]:get_floor_surface_material()
+    assert(mesh_floor_kind == "triplanar" and
+           mesh_floor_reference == "/SharedTiles")
+  )");
+
+  bw::core::Layer layer(0, "test", 512.0f, 16.0f);
+  auto* author = addScriptStep(layer, runtime, "surface-materials");
+  auto* inspect = addScriptStep(layer, runtime, "inspect-surface-materials");
+  layer.rebuild();
+
+  require(!author->hasFailed() && !inspect->hasFailed() &&
+              layer.getNumPrimitives() == 2,
+          "tagged Surface-material Lua methods failed");
+  auto const& primitive = layer.getPrimitive(0)->getProperties();
+  auto const& mesh = layer.getPrimitive(1)->getProperties();
+  require(primitive.floorMaterialId ==
+              bw::core::SurfaceMaterialReference::triplanar(
+                  "World/FloorTiles") &&
+              primitive.ceilingMaterialId ==
+                  bw::core::SurfaceMaterialReference::subMaterial(
+                      "ceiling.stone") &&
+              primitive.wallMaterialId ==
+                  bw::core::SurfaceMaterialReference::triplanar(
+                      "World/WallTiles") &&
+              mesh.floorMaterialId ==
+                  bw::core::SurfaceMaterialReference::triplanar(
+                      "/SharedTiles") &&
+              mesh.ceilingMaterialId ==
+                  bw::core::SurfaceMaterialReference::triplanar(
+                      "World/CeilingTiles") &&
+              mesh.wallMaterialId ==
+                  bw::core::SurfaceMaterialReference::subMaterial(
+                      "wall.basalt"),
+          "tagged Surface-material values did not cross the Lua API");
+}
+
 void scriptsAuthorIndependentElevationSpans() {
   bw::core::ScriptRuntime runtime;
   runtime.load("elevation-spans", R"(
@@ -2005,6 +2088,7 @@ int main() {
     scriptsMoveAndRemoveMeshSubObjectsById();
     scriptsAuthorAndSliceMeshContainmentByPolygonId();
     meshPrimitivesRetainTheMutablePrimitiveApi();
+    scriptsAuthorAndInspectTaggedSurfaceMaterials();
     scriptsAuthorIndependentElevationSpans();
     meshGeometryEditingUsesTheCurrentPrimitiveTransform();
     scriptCreatedPrimitivesFoldInRecipeOrder();

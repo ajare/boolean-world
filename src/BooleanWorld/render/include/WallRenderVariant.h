@@ -8,8 +8,10 @@
 #include <mpp/Resource.h>
 #include <mpp/UniformCollection.h>
 
+#include <core/SurfaceMaterialReference.h>
+
 // Rendering-only data that distinguishes one wall surface from another without
-// changing the Sub-material it resolves.  `identity` is the complete stable
+// changing the Surface material it resolves. `identity` is the complete stable
 // value identity of the variant; equivalent values must use the same string.
 // The payload is deliberately opaque to the world geometry layer, which owns
 // neither GPU textures nor shader uniforms.
@@ -35,11 +37,11 @@ struct WallRenderVariant {
   }
 };
 
-// A wall surface selects a Sub-material as usual, then optionally augments its
-// render bucket with a surface-specific variant.  Horizontal surfaces never
-// use this type, so their batching key remains unchanged.
+// A wall surface selects its tagged Surface material, then optionally augments
+// its render bucket with a surface-specific image variant. Horizontal surfaces
+// never use this type, so their batching key remains unchanged.
 struct WallRenderSurface {
-  std::string subMaterialId;
+  bw::core::SurfaceMaterialReference material;
   std::optional<WallRenderVariant> variant;
   std::string embossPresetId;
 };

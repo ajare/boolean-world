@@ -51,6 +51,8 @@
 #include "EmbossingCatalogResourceDefinitionFactory.h"
 #include "ProcMaterial.h"
 #include "ProcMaterialResourceDefinitionFactory.h"
+#include "TriplanarMaterial.h"
+#include "TriplanarMaterialResourceDefinitionFactory.h"
 #include "ProtoEntity.h"
 
 using namespace std;
@@ -280,6 +282,7 @@ APPLICATION_API void dllOnEntry(
   resourceMgr->addResourceFactory(new ProtoEntityResourceFactory(model->entityHandler, model->animationDatabase));
   bw::core::registerLuaScriptResourceType(*resourceMgr);
   resourceMgr->addResourceFactory(new ProcMaterialResourceFactory());
+  resourceMgr->addResourceFactory(new TriplanarMaterialResourceFactory());
   resourceMgr->addResourceFactory(new EmbossingCatalogResourceFactory());
   resourceMgr->addResourceFactory(new AcousticCatalogResourceFactory());
 
@@ -289,6 +292,8 @@ APPLICATION_API void dllOnEntry(
   resourceMgr->addResourceDefinitionFactory(new ProtoEntityDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(new applib::ImageSetTiledDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(new ProcMaterialResourceDefinitionFactory());
+  resourceMgr->addResourceDefinitionFactory(
+      new TriplanarMaterialResourceDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(
       new EmbossingCatalogResourceDefinitionFactory());
   resourceMgr->addResourceDefinitionFactory(

@@ -20,6 +20,7 @@
 
 #include "SecondaryMaterialOptions.h"
 #include "SubMaterialResolver.h"
+#include "SurfaceMaterialResolver.h"
 #include "VideoOptions.h"
 #include "WorldTriangle3dDataProvider.h"
 #include "WorldRenderer3d.h"
@@ -49,6 +50,8 @@ private:
   // remains in these buckets until the preview closes, even after a save
   // changes a definition's hash.
   SubMaterialResolver mBakedSubMaterialResolver;
+  SurfaceMaterialResolver mSurfaceMaterialResolver;
+  SurfaceMaterialResolver mBakedSurfaceMaterialResolver;
 
   wp::application::resourcesystem::ResourceManager* mResourceMgr{};
   std::string mWorldResourceNamespace;
