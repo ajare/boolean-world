@@ -434,6 +434,16 @@ Resources:
           - name: "mipmaps"
             value: "true"
       - type: "Image"
+        name: "TriplanarCompositionNormal"
+        location: "images/triplanar-composition-normal.png"
+        Option:
+          - name: "colour-space"
+            value: "linear"
+          - name: "wrapping"
+            value: "repeat"
+          - name: "mipmaps"
+            value: "true"
+      - type: "Image"
         name: "OreMask"
         location: "images/mask1.png"
         Option:
@@ -466,6 +476,42 @@ Resources:
           Definition:
             Albedo: "Albedo"
             TileWidth: 16
+            BlendSharpness: 4
+      # Same RGB texels with opposite alpha, used to prove that Triplanar
+      # albedo alpha cannot affect colour, opacity, depth, or shadow behavior.
+      - type: "Image"
+        name: "TriplanarAlphaZeroImage"
+        location: "images/triplanar-alpha-zero.png"
+        Option:
+          - name: "wrapping"
+            value: "repeat"
+      - type: "Image"
+        name: "TriplanarAlphaOneImage"
+        location: "images/triplanar-alpha-one.png"
+        Option:
+          - name: "wrapping"
+            value: "repeat"
+      - type: "TriplanarMaterial"
+        name: "TriplanarAlphaZeroDiagnostic"
+        DependentResources:
+          DependentResource:
+            id: "Albedo"
+            ref: "TriplanarAlphaZeroImage"
+        Definitions:
+          Definition:
+            Albedo: "Albedo"
+            TileWidth: 8
+            BlendSharpness: 4
+      - type: "TriplanarMaterial"
+        name: "TriplanarAlphaOneDiagnostic"
+        DependentResources:
+          DependentResource:
+            id: "Albedo"
+            ref: "TriplanarAlphaOneImage"
+        Definitions:
+          Definition:
+            Albedo: "Albedo"
+            TileWidth: 8
             BlendSharpness: 4
       - type: "Shader"
         name: "WorldVertexShader"

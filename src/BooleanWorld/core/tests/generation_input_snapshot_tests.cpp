@@ -172,6 +172,9 @@ void chipParametersAreResolvedInSnapshotOrderOnTheCallingThread() {
   std::unique_ptr<MeshPrimitive> second(MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union,
       {rectangle(5.0f, 5.0f, 15.0f, 15.0f)}));
+  std::unique_ptr<MeshPrimitive> triplanar(MeshPrimitive::fromComplexPolygons(
+      Primitive::Operation::Union,
+      {rectangle(25.0f, 0.0f, 45.0f, 20.0f)}));
   auto firstProperties = first->getProperties();
   firstProperties.wallMaterialId = "soft_stone";
   first->setProperties(firstProperties);
@@ -179,8 +182,15 @@ void chipParametersAreResolvedInSnapshotOrderOnTheCallingThread() {
   secondProperties.floorZ = 10.0f;
   secondProperties.wallMaterialId = "hard_slate";
   second->setProperties(secondProperties);
+  auto triplanarProperties = triplanar->getProperties();
+  // Deliberately collide with a chip-enabled Sub-material id: material-family
+  // identity, not the reference string alone, must control Chip eligibility.
+  triplanarProperties.wallMaterialId =
+      bw::core::SurfaceMaterialReference::triplanar("soft_stone");
+  triplanar->setProperties(triplanarProperties);
 
-  std::vector<Primitive*> primitives{first.get(), second.get()};
+  std::vector<Primitive*> primitives{
+      first.get(), second.get(), triplanar.get()};
   std::vector<std::string> consulted;
   auto const callingThread = std::this_thread::get_id();
   auto snapshots = bw::core::SnapshotPrimitives(
@@ -210,8 +220,10 @@ void chipParametersAreResolvedInSnapshotOrderOnTheCallingThread() {
                   0.25f &&
               arrangement->chipParametersPalette[2].types ==
                   std::vector<bw::core::ChipType>{
-                      bw::core::ChipType::MultiFacetSpall},
-          "resolved Chip parameters landed in the wrong palette order");
+                      bw::core::ChipType::MultiFacetSpall} &&
+              arrangement->chipParametersPalette[3] ==
+                  bw::core::ChipGenerationParameters{},
+          "resolved Chip parameters landed in the wrong palette order or a Triplanar material gained Chips");
 
   auto unresolved = bw::core::SnapshotPrimitives(primitives);
   for (auto const& primitive : unresolved) {

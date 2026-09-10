@@ -41,8 +41,9 @@ AcousticSceneMesh ExportAcousticSceneMesh(
   result.triangles.reserve(horizontal.size() * 2 + wallTriangleCount);
 
   std::unordered_map<std::string, uint32_t> materialIndices;
-  auto materialIndexFor = [&](std::string const& subMaterialId) {
-    auto const& preset = resolveMaterial(subMaterialId);
+  auto materialIndexFor =
+      [&](core::SurfaceMaterialReference const& surfaceMaterial) {
+    auto const& preset = resolveMaterial(surfaceMaterial);
     if (auto found = materialIndices.find(preset.id);
         found != materialIndices.end()) {
       return found->second;

@@ -36,6 +36,13 @@ AcousticPreset const& AcousticPresetResolver::resolveSubMaterial(
              : resolve(found->second);
 }
 
+AcousticPreset const& AcousticPresetResolver::resolveSurfaceMaterial(
+    bw::core::SurfaceMaterialReference const& material) const {
+  return material.kind == bw::core::SurfaceMaterialKind::Triplanar
+             ? defaultPreset()
+             : resolveSubMaterial(material.reference);
+}
+
 AcousticPreset const& AcousticPresetResolver::defaultPreset() {
   // Steam Audio's documented generic material. This code-owned copy makes
   // fallback deterministic even if no catalog was loaded; the built-in data

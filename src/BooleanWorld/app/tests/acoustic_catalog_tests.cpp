@@ -87,8 +87,7 @@ subMaterials:
 
   ResourceManager manager(nullptr, nullptr, nullptr, &logger);
   manager.addResourceLocationFactory(
-      "Directory", [&logger](std::string const& path,
-                              std::string const& definition) -> ResourceLocation* {
+      "Directory", [&logger](std::string const& path, std::string const& definition) -> ResourceLocation* {
         return new DirectoryResourceLocation(&logger, path, definition);
       });
   manager.addResourceFactory(new AcousticCatalogResourceFactory());
@@ -109,6 +108,15 @@ subMaterials:
           "authored Acoustic preset did not resolve");
   require(resolver.resolveSubMaterial("test.visual.stone") == stone,
           "Sub-material did not resolve through its Acoustic preset id");
+  require(resolver.resolveSurfaceMaterial(
+              bw::core::SurfaceMaterialReference::subMaterial(
+                  "test.visual.stone")) == stone,
+          "tagged Sub-material acoustic resolution changed");
+  require(resolver.resolveSurfaceMaterial(
+              bw::core::SurfaceMaterialReference::triplanar(
+                  "test.visual.stone")) ==
+              AcousticPresetResolver::defaultPreset(),
+          "Triplanar material inferred an acoustic choice from a colliding Sub-material id");
 
   auto const& missing = resolver.resolve("no.such.preset");
   auto const& empty = resolver.resolve("");

@@ -769,8 +769,10 @@ AcousticScenePtr SteamAudio::buildScene(
   }
 
   auto mesh = ExportAcousticSceneMesh(
-      *sourceWorld, [&](std::string const& subMaterialId) -> AcousticPreset const& {
-        return resolver.resolveSubMaterial(subMaterialId);
+      *sourceWorld,
+      [&](core::SurfaceMaterialReference const& material)
+          -> AcousticPreset const& {
+        return resolver.resolveSurfaceMaterial(material);
       });
 
   std::unique_ptr<AcousticScene::Implementation> native;

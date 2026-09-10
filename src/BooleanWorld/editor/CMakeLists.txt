@@ -174,6 +174,8 @@ if(BUILD_TESTING)
     bw_deploy_vendor_dlls(boolean_world_editor_world_renderer_smoke)
     add_test(NAME boolean_world_triplanar_material_real_render
              COMMAND boolean_world_editor_world_renderer_smoke triplanar)
+    add_test(NAME boolean_world_triplanar_surface_composition_real_render
+             COMMAND boolean_world_editor_world_renderer_smoke triplanar-composition)
     add_test(NAME boolean_world_triplanar_wall_continuity_real_render
              COMMAND boolean_world_editor_world_renderer_smoke triplanar-continuity)
 

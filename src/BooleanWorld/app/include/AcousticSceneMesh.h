@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include <core/SurfaceMaterialReference.h>
+
 #include "AcousticCatalog.h"
 
 namespace bw::core {
@@ -40,11 +42,12 @@ struct AcousticSceneMesh {
   std::vector<AcousticPreset> materials;
 };
 
-// The callback resolves a generated surface's Sub-material id to its Acoustic
-// preset. AcousticPresetResolver supplies this seam at runtime; tests can use a
-// small in-memory catalog without constructing the resource system.
-using AcousticMaterialResolver =
-    std::function<AcousticPreset const&(std::string const&)>;
+// The callback resolves a generated Surface material reference to its Acoustic
+// preset. Keeping the family tag prevents a Triplanar resource name from being
+// inferred as a Sub-material id. AcousticPresetResolver supplies this seam at
+// runtime; tests can use a small in-memory catalog without the resource system.
+using AcousticMaterialResolver = std::function<AcousticPreset const&(
+    core::SurfaceMaterialReference const&)>;
 
 [[nodiscard]] AcousticSceneMesh ExportAcousticSceneMesh(
     core::ArrangementWorldData const& world,

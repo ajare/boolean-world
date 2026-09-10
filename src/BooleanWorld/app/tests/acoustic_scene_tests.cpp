@@ -8,6 +8,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -349,6 +350,46 @@ void requireEquivalent(
           context + ": Acoustic preset differs");
 }
 
+void triplanarSurfacesUseGenericAcousticsWithoutIdentifierInference() {
+  auto triplanarProperties = properties(0.0f, 20.0f, "shared");
+  // Deliberately collide with a Sub-material id. The explicit family tag must
+  // win, while the ceiling and walls retain existing Sub-material resolution.
+  triplanarProperties.floorMaterialId =
+      bw::core::SurfaceMaterialReference::triplanar("shared.floor");
+  ArrangementPrimitive room{
+      {rectangle(0, 0, 10, 10)}, Primitive::Operation::Union, Primitive::FillRule::EvenOdd, 0, 1, triplanarProperties};
+  ArrangementWorldData world(
+      bw::core::arr::BuildArrangement({room}),
+      wp::BoundingBox({-5.0f, -5.0f}, {20.0f, 20.0f}), 4.0f);
+
+  AcousticPreset generic{
+      "builtin.acoustic.generic", "Generic", {0.1f, 0.2f, 0.3f}, 0.05f, {0.1f, 0.05f, 0.03f}};
+  AcousticPreset collided{
+      "test.collided", "Collided", {0.8f, 0.8f, 0.8f}, 0.8f, {0.8f, 0.8f, 0.8f}};
+  AcousticMaterialResolver resolver =
+      [&](auto const& material) -> AcousticPreset const& {
+    using Material = std::remove_cvref_t<decltype(material)>;
+    if constexpr (std::is_same_v<
+                      Material, bw::core::SurfaceMaterialReference>) {
+      return material.kind == bw::core::SurfaceMaterialKind::Triplanar
+                 ? generic
+                 : collided;
+    } else {
+      return collided;
+    }
+  };
+
+  auto mesh = bw::app::ExportAcousticSceneMesh(world, resolver);
+  require(std::ranges::any_of(mesh.materials, [&](auto const& material) {
+            return material.id == generic.id;
+          }),
+          "Triplanar surface did not resolve to builtin.acoustic.generic");
+  require(std::ranges::any_of(mesh.materials, [&](auto const& material) {
+            return material.id == collided.id;
+          }),
+          "Sub-material surface acoustic resolution changed");
+}
+
 void exportHasEverySurfaceAndResolvedMaterial() {
   auto world = makeWorld();
   auto presets = makePresets();
@@ -639,6 +680,7 @@ void propertyRaysAgree() {
 
 int main() {
   try {
+    triplanarSurfacesUseGenericAcousticsWithoutIdentifierInference();
     exportHasEverySurfaceAndResolvedMaterial();
     exportUsesEvaluatedSurfaceGeometry();
     crossingStepSegmentsExportAsOwnedFrontFacingTriangles();

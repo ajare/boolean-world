@@ -51,6 +51,25 @@ willpower_declare_resource_schema(
     SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/schemas/triplanar-material.schema.json")
 
 if(BUILD_TESTING)
+    add_executable(boolean_world_triplanar_surface_composition_tests
+        tests/triplanar_surface_composition_tests.cpp)
+    target_link_libraries(boolean_world_triplanar_surface_composition_tests PRIVATE
+        BooleanWorldRender)
+    target_compile_definitions(boolean_world_triplanar_surface_composition_tests PRIVATE
+        BW_TRIPLANAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/schemas/triplanar-material.schema.json"
+        BW_WORLD_PBR_SHADER="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/shaders/world_pbr.frag"
+        BW_WORLD_PBR_2D_SHADER="${CMAKE_CURRENT_SOURCE_DIR}/../app/resources/shaders/world_pbr_2d.frag"
+        BW_WORLD_RENDERER3D_SOURCE="${CMAKE_CURRENT_SOURCE_DIR}/src/WorldRenderer3d.cpp")
+    target_compile_features(boolean_world_triplanar_surface_composition_tests PRIVATE cxx_std_23)
+    target_compile_options(boolean_world_triplanar_surface_composition_tests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
+    bw_target_defaults(boolean_world_triplanar_surface_composition_tests)
+    bw_output_dirs(boolean_world_triplanar_surface_composition_tests)
+    bw_deploy_runtime_dlls(boolean_world_triplanar_surface_composition_tests)
+    add_test(NAME boolean_world_triplanar_surface_composition
+             COMMAND boolean_world_triplanar_surface_composition_tests)
+    set_target_properties(boolean_world_triplanar_surface_composition_tests PROPERTIES
+        FOLDER BooleanWorld)
+
     add_executable(boolean_world_triplanar_wall_render_data_tests
         tests/triplanar_wall_render_data_tests.cpp)
     target_link_libraries(boolean_world_triplanar_wall_render_data_tests PRIVATE

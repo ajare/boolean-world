@@ -5,6 +5,8 @@
 
 #include <willpower/application/resourcesystem/ResourceManager.h>
 
+#include <core/SurfaceMaterialReference.h>
+
 #include "AcousticCatalog.h"
 
 // Resolves the opaque id stored by core::SubMaterial. Empty and unknown ids
@@ -27,6 +29,11 @@ public:
   // rather than its referenced Acoustic preset id.
   [[nodiscard]] AcousticPreset const& resolveSubMaterial(
       std::string const& subMaterialId) const;
+
+  // Triplanar materials have no acoustic choice and always use Generic.
+  // Sub-material references retain their authored preset resolution.
+  [[nodiscard]] AcousticPreset const& resolveSurfaceMaterial(
+      bw::core::SurfaceMaterialReference const& material) const;
 
   [[nodiscard]] static AcousticPreset const& defaultPreset();
 };

@@ -50,6 +50,7 @@ struct RenderFixture {
       bw::app::HorizontalMaterials::ThreeDimensional};
   int32_t debugWallTechnique{-1};
   bool emboss{};
+  bool wallMask{};
   bool chips{};
   bool wedges{};
   bool lookAtWedges{};
@@ -61,6 +62,8 @@ struct RenderFixture {
   bool triplanar{};
   bool angled{};
   bool continuityJunction{};
+  // 0 uses the built-in material; 1 and 2 use identical RGB with alpha 0/1.
+  int triplanarAlphaVariant{};
 };
 
 struct ResourceCounts {
@@ -106,26 +109,40 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   auto* primitive = bw::core::MeshPrimitive::fromTree(
       bw::core::Primitive::Operation::Union, {{{ring, {}}}});
 
-  if (fixture.map != MapFixture::Unset) {
+  if (fixture.map != MapFixture::Unset || fixture.wallMask) {
     auto proxy = primitive->createEditingProxy();
+    auto normalImageReference = fixture.triplanar
+                                    ? "World/TriplanarCompositionNormal"
+                                    : kDirectionalNormal;
+    auto maskImageReference = fixture.wallMask
+                                  ? "World/OreMask"
+                                  : kDirectionalNormal;
     size_t ordinal = 0;
     for (auto edge = proxy->getFirstEdgeIndex();
          !proxy->edgeIndexIterationFinished(edge);
          edge = proxy->getNextEdgeIndex(edge), ++ordinal) {
-      auto image = bw::core::WallNormalMapOverride::image(
-          kDirectionalNormal,
-          fixture.map == MapFixture::MixedSharedImage && ordinal == 1
-              ? fixture.repeat * 2.0f
-              : fixture.repeat,
-          fixture.map == MapFixture::MixedSharedImage && ordinal == 2
-              ? 2.0f
-              : fixture.strength);
-      if (fixture.map == MapFixture::Disabled ||
-          (fixture.map == MapFixture::MixedSharedImage && ordinal == 3)) {
-        proxy->setEdgeNormalMapOverride(
-            edge, bw::core::WallNormalMapOverride::disabled());
-      } else {
-        proxy->setEdgeNormalMapOverride(edge, image);
+      if (fixture.map != MapFixture::Unset) {
+        auto image = bw::core::WallNormalMapOverride::image(
+            normalImageReference,
+            fixture.map == MapFixture::MixedSharedImage && ordinal == 1
+                ? fixture.repeat * 2.0f
+                : fixture.repeat,
+            fixture.map == MapFixture::MixedSharedImage && ordinal == 2
+                ? 2.0f
+                : fixture.strength);
+        if (fixture.map == MapFixture::Disabled ||
+            (fixture.map == MapFixture::MixedSharedImage && ordinal == 3)) {
+          proxy->setEdgeNormalMapOverride(
+              edge, bw::core::WallNormalMapOverride::disabled());
+        } else {
+          proxy->setEdgeNormalMapOverride(edge, image);
+        }
+      }
+      if (fixture.wallMask) {
+        bw::core::WallMaskOverride::BlendParameters blend{};
+        proxy->setEdgeWallMaskOverride(
+            edge, bw::core::WallMaskOverride::image(
+                      maskImageReference, 0, blend, {0.0f, 1.0f, 0.0f}));
       }
     }
     proxy->commitTo(*primitive);
@@ -139,10 +156,14 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
     properties.ceilingZ.gradient = {-0.125f, 0.25f};
   }
   if (fixture.triplanar) {
-    auto material = bw::core::SurfaceMaterialReference::triplanar(
-        fixture.continuityJunction
-            ? "World/TriplanarWallContinuityDiagnostic"
-            : "World/TriplanarFloorTiles");
+    auto materialName = fixture.continuityJunction
+                            ? "World/TriplanarWallContinuityDiagnostic"
+                        : fixture.triplanarAlphaVariant == 1
+                            ? "World/TriplanarAlphaZeroDiagnostic"
+                        : fixture.triplanarAlphaVariant == 2
+                            ? "World/TriplanarAlphaOneDiagnostic"
+                            : "World/TriplanarFloorTiles";
+    auto material = bw::core::SurfaceMaterialReference::triplanar(materialName);
     properties.floorMaterialId = material;
     properties.ceilingMaterialId = material;
     properties.wallMaterialId = material;
@@ -191,7 +212,7 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
     world.addPrimitive(right);
     primitives.push_back(right);
   }
-  if (fixture.chips) {
+  if (fixture.chips && !fixture.triplanar) {
     bw::core::ClosedPolygon platformRing{
         {{-8, -8}}, {{8, -8}}, {{8, 8}}, {{-8, 8}}};
     auto* platform = bw::core::MeshPrimitive::fromTree(
@@ -226,8 +247,34 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
       generator.getWorldData(), world.getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
       world.getWedgeGenerationParameters());
-  if (fixture.chips && result->getDetail().getChipCount() == 0) {
-    throw std::runtime_error("renderer fixture generated no Chips");
+  if (fixture.map == MapFixture::Image) {
+    auto mappedWalls = std::ranges::count_if(
+        result->getWalls(), [](auto const& wall) {
+          return wall.normalMapOverride.imageData() != nullptr;
+        });
+    if (mappedWalls == 0) {
+      throw std::runtime_error(
+          "renderer fixture lost its wall normal-map overrides");
+    }
+    auto frontWalls = std::ranges::count_if(
+        result->getWalls(), [&](auto const& wall) {
+          auto orientation = bw::core::arr::OrientArrangementWall(
+              result->getArrangement(), wall);
+          auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
+          return orientation.normal.dot(-midpoint) > 0.0f;
+        });
+    if (frontWalls == 0) {
+      throw std::runtime_error(
+          "renderer fixture exposes only wall back faces to its camera");
+    }
+  }
+  if (fixture.chips && fixture.triplanar &&
+      result->getDetail().getChipCount() != 0) {
+    throw std::runtime_error("Triplanar renderer fixture generated Chips");
+  }
+  if (fixture.chips && !fixture.triplanar &&
+      result->getDetail().getChipCount() == 0) {
+    throw std::runtime_error("Sub-material renderer fixture generated no Chips");
   }
   if (fixture.wedges && result->getDetail().getWedgeCount() != 24) {
     throw std::runtime_error(
@@ -273,12 +320,25 @@ std::vector<float> render(
     editor::EditorRenderSystem& renderSystem, RenderFixture const& fixture,
     std::array<uint32_t, 3>* surfaceTriangles = nullptr) {
   std::string dependencyError;
+  auto triplanarDependency = fixture.continuityJunction
+                                 ? "World/TriplanarWallContinuityDiagnostic"
+                             : fixture.triplanarAlphaVariant == 1
+                                 ? "World/TriplanarAlphaZeroDiagnostic"
+                             : fixture.triplanarAlphaVariant == 2
+                                 ? "World/TriplanarAlphaOneDiagnostic"
+                                 : "World/TriplanarFloorTiles";
   auto dependencies = fixture.triplanar
-                          ? std::vector<std::string>{
-                                fixture.continuityJunction
-                                    ? "World/TriplanarWallContinuityDiagnostic"
-                                    : "World/TriplanarFloorTiles"}
+                          ? std::vector<std::string>{triplanarDependency}
                           : std::vector<std::string>{};
+  if (fixture.wallMask) {
+    dependencies.emplace_back("World/OreMask");
+  }
+  if (fixture.triplanar && fixture.map != MapFixture::Unset) {
+    dependencies.emplace_back("World/TriplanarCompositionNormal");
+  } else if (fixture.map == MapFixture::Image ||
+             fixture.map == MapFixture::MixedSharedImage) {
+    dependencies.emplace_back(kDirectionalNormal);
+  }
   if (!renderSystem.loadWorldDependencies(
           dependencies, "World", &dependencyError)) {
     throw std::runtime_error(
@@ -369,6 +429,62 @@ void triplanarMaterialsRenderThroughTheRealWorldPrograms(
           "2D world Program did not render a Triplanar floor");
 }
 
+void triplanarComposesWithEstablishedSurfaceFeatures(
+    editor::EditorRenderSystem& renderSystem) {
+  auto baseline = render(
+      renderSystem, {.triplanar = true, .angled = true});
+  auto mapped = render(
+      renderSystem,
+      {.map = MapFixture::Image, .triplanar = true, .angled = true});
+  auto mappedAndEmbossed = render(
+      renderSystem,
+      {.map = MapFixture::Image,
+       .emboss = true,
+       .triplanar = true,
+       .angled = true});
+  require(!mapped.empty() && !mappedAndEmbossed.empty(),
+          "Triplanar normal-map/Emboss composition did not reach the real renderer");
+
+  auto maskedTriplanar = render(
+      renderSystem,
+      {.wallMask = true, .triplanar = true, .angled = true});
+  require(regionDifference(baseline, maskedTriplanar) < 0.0005,
+          "authored wall mask affected a Triplanar material");
+  auto subMaterial = render(renderSystem, {});
+  auto maskedSubMaterial = render(renderSystem, {.wallMask = true});
+  require(regionDifference(subMaterial, maskedSubMaterial) > 0.0005,
+          "switching to a Sub-material did not restore the authored wall mask");
+
+  std::array<uint32_t, 3> baselineTriangles;
+  (void)render(renderSystem, {.triplanar = true}, &baselineTriangles);
+  std::array<uint32_t, 3> chipTriangles;
+  auto chipConfigured = render(
+      renderSystem, {.chips = true, .triplanar = true}, &chipTriangles);
+  require(!chipConfigured.empty() && chipTriangles == baselineTriangles,
+          "Chip configuration changed Triplanar render geometry");
+
+  auto alphaZero = render(
+      renderSystem,
+      {.lookAtFloor = true, .triplanar = true, .triplanarAlphaVariant = 1});
+  auto alphaOne = render(
+      renderSystem,
+      {.lookAtFloor = true, .triplanar = true, .triplanarAlphaVariant = 2});
+  require(regionDifference(alphaZero, alphaOne) < 0.0005,
+          "RGBA albedo alpha changed Triplanar colour or opacity");
+
+  for (auto horizontal : {bw::app::HorizontalMaterials::ThreeDimensional,
+                          bw::app::HorizontalMaterials::TwoDimensional}) {
+    auto slopedSurface = render(
+        renderSystem,
+        {.horizontal = horizontal,
+         .lookAtFloor = true,
+         .sloped = true,
+         .triplanar = true});
+    require(!slopedSurface.empty(),
+            "sloped Triplanar surface did not render in a horizontal mode");
+  }
+}
+
 void triplanarWallContinuityRendersThroughTheRealWorldProgram(
     editor::EditorRenderSystem& renderSystem) {
   // Three arbitrary-angle regions meet at the diamond's north Arrangement
@@ -424,6 +540,8 @@ int main(int argc, char** argv) {
       auto scenario = argc == 2 ? std::string(argv[1]) : std::string{};
       if (scenario == "triplanar") {
         triplanarMaterialsRenderThroughTheRealWorldPrograms(renderSystem);
+      } else if (scenario == "triplanar-composition") {
+        triplanarComposesWithEstablishedSurfaceFeatures(renderSystem);
       } else if (scenario == "triplanar-continuity") {
         triplanarWallContinuityRendersThroughTheRealWorldProgram(renderSystem);
       } else {

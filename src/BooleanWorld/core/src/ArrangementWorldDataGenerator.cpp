@@ -183,9 +183,14 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
     properties.floorZ = TransformElevationToWorld(*primitive, properties.floorZ);
     properties.ceilingZ =
         TransformElevationToWorld(*primitive, properties.ceilingZ);
-    auto const chipParameters = chipParametersResolver
-                                    ? chipParametersResolver(properties.wallMaterialId)
-                                    : ChipGenerationParameters{};
+    // Chips belong only to the governing Sub-material. Keep the material-family
+    // tag at this boundary so a Triplanar resource name can never accidentally
+    // inherit settings from an identically named Sub-material.
+    auto const chipParameters =
+        chipParametersResolver &&
+                properties.wallMaterialId.kind == SurfaceMaterialKind::SubMaterial
+            ? chipParametersResolver(properties.wallMaterialId.reference)
+            : ChipGenerationParameters{};
     std::vector<arr::ArrangementAudioEmitter> audioEmitters;
     audioEmitters.reserve(primitive->getAudioEmitters().size());
     for (auto const& emitter : primitive->getAudioEmitters()) {
