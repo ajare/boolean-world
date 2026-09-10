@@ -720,11 +720,11 @@ void triplanarMaterialsAreDirectWorldDependencies() {
   auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
   auto properties = primitive->getProperties();
-  properties.floorMaterialId =
+  properties.floorMaterial =
       bw::core::SurfaceMaterialReference::triplanar("World/ZebraTiles");
-  properties.ceilingMaterialId =
+  properties.ceilingMaterial =
       bw::core::SurfaceMaterialReference::triplanar("World/AmberTiles");
-  properties.wallMaterialId =
+  properties.wallMaterial =
       bw::core::SurfaceMaterialReference::triplanar("World/ZebraTiles");
   primitive->setProperties(properties);
   world.addPrimitive(primitive.release());

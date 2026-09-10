@@ -57,9 +57,9 @@ void PrimitivePropertySet::serializeImpl(shared_ptr<Serializer> serializer, Seri
     serializer->writeString("liquidType", LiquidTypeName(liquidType));
 
     // Every newly written surface assignment uses the tagged contract.
-    writeSurfaceMaterial(serializer, "floorMaterial", floorMaterialId);
-    writeSurfaceMaterial(serializer, "ceilingMaterial", ceilingMaterialId);
-    writeSurfaceMaterial(serializer, "wallMaterial", wallMaterialId);
+    writeSurfaceMaterial(serializer, "floorMaterial", floorMaterial);
+    writeSurfaceMaterial(serializer, "ceilingMaterial", ceilingMaterial);
+    writeSurfaceMaterial(serializer, "wallMaterial", wallMaterial);
 
     // Emboss-preset id references are always explicit, including the empty
     // no-relief state. This is the format marker for the ownership break.
@@ -156,9 +156,9 @@ bool PrimitivePropertySet::deserializeImpl(shared_ptr<Serializer> serializer, Se
   ceilingSpanAuthored = ceilingSpanAuthored_;
   liquidLevel = liquidLevel_;
   liquidType = liquidType_;
-  floorMaterialId = std::move(floorMaterial_);
-  ceilingMaterialId = std::move(ceilingMaterial_);
-  wallMaterialId = std::move(wallMaterial_);
+  floorMaterial = std::move(floorMaterial_);
+  ceilingMaterial = std::move(ceilingMaterial_);
+  wallMaterial = std::move(wallMaterial_);
   floorEmbossPresetId = floorEmbossPresetId_;
   ceilingEmbossPresetId = ceilingEmbossPresetId_;
   wallEmbossPresetId = wallEmbossPresetId_;

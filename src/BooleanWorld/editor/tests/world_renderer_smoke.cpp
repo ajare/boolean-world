@@ -164,13 +164,13 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
                             ? "World/TriplanarAlphaOneDiagnostic"
                             : "World/TriplanarFloorTiles";
     auto material = bw::core::SurfaceMaterialReference::triplanar(materialName);
-    properties.floorMaterialId = material;
-    properties.ceilingMaterialId = material;
-    properties.wallMaterialId = material;
+    properties.floorMaterial = material;
+    properties.ceilingMaterial = material;
+    properties.wallMaterial = material;
   } else {
-    properties.floorMaterialId = "migrated.marble.1";
-    properties.ceilingMaterialId = "migrated.marble.1";
-    properties.wallMaterialId = "migrated.marble.1";
+    properties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial("migrated.marble.1");
+    properties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial("migrated.marble.1");
+    properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("migrated.marble.1");
   }
   if (fixture.emboss) {
     properties.floorEmbossPresetId = "builtin.emboss.stone";
@@ -220,9 +220,9 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
     auto platformProperties = platform->getProperties();
     platformProperties.floorZ = 8.0f;
     platformProperties.ceilingZ = 48.0f;
-    platformProperties.floorMaterialId = "migrated.marble.1";
-    platformProperties.ceilingMaterialId = "migrated.marble.1";
-    platformProperties.wallMaterialId = "migrated.marble.1";
+    platformProperties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial("migrated.marble.1");
+    platformProperties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial("migrated.marble.1");
+    platformProperties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("migrated.marble.1");
     platform->setProperties(platformProperties);
     platform->setPriority(1);
     world.addPrimitive(platform);

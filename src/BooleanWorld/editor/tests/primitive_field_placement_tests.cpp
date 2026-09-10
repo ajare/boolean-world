@@ -54,9 +54,9 @@ bool sameProperties(
     bw::core::PrimitivePropertySet const& lhs,
     bw::core::PrimitivePropertySet const& rhs) {
   return lhs.floorZ == rhs.floorZ && lhs.ceilingZ == rhs.ceilingZ &&
-         lhs.floorMaterialId == rhs.floorMaterialId &&
-         lhs.ceilingMaterialId == rhs.ceilingMaterialId &&
-         lhs.wallMaterialId == rhs.wallMaterialId;
+         lhs.floorMaterial == rhs.floorMaterial &&
+         lhs.ceilingMaterial == rhs.ceilingMaterial &&
+         lhs.wallMaterial == rhs.wallMaterial;
 }
 
 bw::core::PrimitiveFieldLayout representativeLayout() {

@@ -8,8 +8,8 @@ void editor::setPrimitiveDefaultMaterials(bw::core::Primitive* prim) {
   auto const* defaultMaterial =
       procMaterialLibrary().findSubMaterialByMaterialIndex(0);
   auto properties = prim->getProperties();
-  properties.floorMaterialId = defaultMaterial ? defaultMaterial->id : "";
-  properties.ceilingMaterialId = defaultMaterial ? defaultMaterial->id : "";
-  properties.wallMaterialId = defaultMaterial ? defaultMaterial->id : "";
+  properties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial(defaultMaterial ? defaultMaterial->id : "");
+  properties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial(defaultMaterial ? defaultMaterial->id : "");
+  properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial(defaultMaterial ? defaultMaterial->id : "");
   prim->setProperties(properties);
 }

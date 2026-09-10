@@ -200,15 +200,15 @@ void migratedWorldReferencesThePreservedCombinationAndRoundTrips(fs::path const&
   bool migratedFloor = false, migratedCeiling = false, migratedWall = false;
   for (auto const* primitive : world.getPrimitives()) {
     auto const& properties = primitive->getProperties();
-    migratedFloor |= properties.floorMaterialId.reference == "migrated.marble.1";
-    migratedCeiling |= properties.ceilingMaterialId.reference == "migrated.marble.1";
-    migratedWall |= properties.wallMaterialId.reference == "migrated.marble.1";
+    migratedFloor |= properties.floorMaterial.reference == "migrated.marble.1";
+    migratedCeiling |= properties.ceilingMaterial.reference == "migrated.marble.1";
+    migratedWall |= properties.wallMaterial.reference == "migrated.marble.1";
     require(
-        properties.floorMaterialId.kind ==
+        properties.floorMaterial.kind ==
                 bw::core::SurfaceMaterialKind::SubMaterial &&
-            properties.ceilingMaterialId.kind ==
+            properties.ceilingMaterial.kind ==
                 bw::core::SurfaceMaterialKind::SubMaterial &&
-            properties.wallMaterialId.kind ==
+            properties.wallMaterial.kind ==
                 bw::core::SurfaceMaterialKind::SubMaterial,
         "legacy World scalar materials did not load as Sub-material references");
     require(properties.floorEmbossPresetId.empty() &&

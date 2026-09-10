@@ -49,7 +49,7 @@ ArrangementPrimitive region(
   bw::core::PrimitivePropertySet properties;
   properties.floorZ = 0.0f;
   properties.ceilingZ = 10.0f;
-  properties.ceilingMaterialId = "ceiling.fixture";
+  properties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial("ceiling.fixture");
   return {std::move(contours), Primitive::Operation::Union,
           Primitive::FillRule::EvenOdd, 1, 0, properties, {},
           visibility.empty()

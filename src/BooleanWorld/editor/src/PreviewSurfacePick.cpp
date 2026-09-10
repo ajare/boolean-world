@@ -224,11 +224,11 @@ bw::core::SurfaceMaterialReference previewSurfaceMaterial(
   auto const& properties = arrangement.palette[owner.paletteIndex];
   switch (pick.surfaceHit.surface) {
     case PreviewSurface::Floor:
-      return properties.floorMaterialId;
+      return properties.floorMaterial;
     case PreviewSurface::Ceiling:
-      return properties.ceilingMaterialId;
+      return properties.ceilingMaterial;
     case PreviewSurface::Wall:
-      return properties.wallMaterialId;
+      return properties.wallMaterial;
     case PreviewSurface::None:
       break;
   }

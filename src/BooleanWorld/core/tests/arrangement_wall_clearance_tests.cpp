@@ -128,7 +128,7 @@ void wallClearanceReflectsTheSharedHeadroomBetweenBothFaces() {
 
 void stepWallsUseMaterialFromTheOccludingFace() {
   auto discProperties = propertiesWithHeights(12.0f, 24.0f);
-  discProperties.wallMaterialId = "disc.wall";
+  discProperties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("disc.wall");
   auto arrangement = bw::core::arr::BuildArrangement(
       annulusAndDisc(discProperties));
   auto walls = bw::core::arr::BuildArrangementWalls(*arrangement);
@@ -140,8 +140,7 @@ void stepWallsUseMaterialFromTheOccludingFace() {
         wall.kind != ArrangementWallKind::CeilingStep) {
       continue;
     }
-    require(arrangement->palette[wall.paletteIndex].wallMaterialId ==
-                "disc.wall",
+    require(arrangement->palette[wall.paletteIndex].wallMaterial == bw::core::SurfaceMaterialReference::subMaterial("disc.wall"),
             "a step wall did not use the occluding face's wall material");
     sawFloorStep |= wall.kind == ArrangementWallKind::FloorStep;
     sawCeilingStep |= wall.kind == ArrangementWallKind::CeilingStep;

@@ -115,9 +115,9 @@ void setMaterial(
   auto properties = primitive.getProperties();
   auto material = SurfaceMaterialReference::subMaterial(materialId);
   switch (surface) {
-    case MaterialSurface::Floor: properties.floorMaterialId = material; break;
-    case MaterialSurface::Ceiling: properties.ceilingMaterialId = material; break;
-    case MaterialSurface::Wall: properties.wallMaterialId = material; break;
+    case MaterialSurface::Floor: properties.floorMaterial = material; break;
+    case MaterialSurface::Ceiling: properties.ceilingMaterial = material; break;
+    case MaterialSurface::Wall: properties.wallMaterial = material; break;
   }
   primitive.setProperties(properties);
 }
@@ -126,9 +126,9 @@ SurfaceMaterialReference const& getSurfaceMaterial(
     Primitive const& primitive, MaterialSurface surface) {
   auto const& properties = primitive.getProperties();
   switch (surface) {
-    case MaterialSurface::Floor: return properties.floorMaterialId;
-    case MaterialSurface::Ceiling: return properties.ceilingMaterialId;
-    case MaterialSurface::Wall: return properties.wallMaterialId;
+    case MaterialSurface::Floor: return properties.floorMaterial;
+    case MaterialSurface::Ceiling: return properties.ceilingMaterial;
+    case MaterialSurface::Wall: return properties.wallMaterial;
   }
   throw CoreException("Unknown Primitive surface");
 }
@@ -154,9 +154,9 @@ void setSurfaceMaterial(
   auto properties = primitive.getProperties();
   auto material = SurfaceMaterialReference{materialKind, reference};
   switch (surface) {
-    case MaterialSurface::Floor: properties.floorMaterialId = material; break;
-    case MaterialSurface::Ceiling: properties.ceilingMaterialId = material; break;
-    case MaterialSurface::Wall: properties.wallMaterialId = material; break;
+    case MaterialSurface::Floor: properties.floorMaterial = material; break;
+    case MaterialSurface::Ceiling: properties.ceilingMaterial = material; break;
+    case MaterialSurface::Wall: properties.wallMaterial = material; break;
   }
   primitive.setProperties(properties);
 }
@@ -627,10 +627,10 @@ ScriptMeshPrimitive RunScriptContext::createMeshPrimitive(sol::table const& poin
   auto primitive = unique_ptr<MeshPrimitive>(MeshPrimitive::fromComplexPolygons(
       Primitive::Operation::Union, {{move(ring)}}));
   auto properties = primitive->getProperties();
-  properties.floorMaterialId =
+  properties.floorMaterial =
       SurfaceMaterialReference::subMaterial("builtin.plain.grey");
-  properties.ceilingMaterialId = properties.floorMaterialId;
-  properties.wallMaterialId = properties.floorMaterialId;
+  properties.ceilingMaterial = properties.floorMaterial;
+  properties.wallMaterial = properties.floorMaterial;
   primitive->setProperties(properties);
   auto* borrowed = primitive.get();
   (void)mStep->ownPrimitive(move(primitive));

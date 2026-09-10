@@ -213,6 +213,7 @@ if(BUILD_TESTING)
         src/PreviewRenderScene.cpp
         src/ProcMaterialLibrary.cpp
         src/SubMaterialThumbnailRenderer.cpp
+        src/TriplanarMaterialDiscovery.cpp
         ../app/src/ReactiveCamera.cpp)
     target_include_directories(boolean_world_editor_preview_render_stack_smoke PRIVATE
         include ../app/include)

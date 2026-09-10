@@ -75,9 +75,9 @@ Fixture buildFixture() {
   Fixture fixture;
   fixture.arrangement.faces.resize(2);
   fixture.arrangement.palette.resize(3);
-  fixture.arrangement.palette[1].wallMaterialId =
+  fixture.arrangement.palette[1].wallMaterial =
       bw::core::SurfaceMaterialReference::triplanar("World/AsymmetricA");
-  fixture.arrangement.palette[2].wallMaterialId =
+  fixture.arrangement.palette[2].wallMaterial =
       bw::core::SurfaceMaterialReference::triplanar("World/AsymmetricB");
 
   auto junction = addVertex(fixture.arrangement, 0.0f, 0.0f);

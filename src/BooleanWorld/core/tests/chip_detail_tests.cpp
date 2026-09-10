@@ -1244,9 +1244,9 @@ uint32_t verticalChipCount(DetailGeometry const& detail) {
 
 void verticalArrisesBetweenDifferentSubMaterialsDoNotChip() {
   auto propertiesA = propertiesWithHeights(0.0f, 48.0f);
-  propertiesA.wallMaterialId = "stone_a";
+  propertiesA.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("stone_a");
   auto propertiesB = propertiesWithHeights(0.0f, 48.0f);
-  propertiesB.wallMaterialId = "stone_b";
+  propertiesB.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("stone_b");
   std::vector<ArrangementPrimitive> primitives{
       {{rectContour(-20, -20, 0, 20)},
        Primitive::Operation::Union,
@@ -1265,7 +1265,7 @@ void verticalArrisesBetweenDifferentSubMaterialsDoNotChip() {
   require(verticalChipCount(differentMaterials.getDetail()) == 0,
           "a Vertical Arris between different Sub-materials chipped");
 
-  primitives[1].properties.wallMaterialId = "stone_a";
+  primitives[1].properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("stone_a");
   auto sameMaterial = snapshotOf(primitives);
   require(verticalChipCount(sameMaterial.getDetail()) == 1,
           "the same-material control Vertical Arris did not chip");

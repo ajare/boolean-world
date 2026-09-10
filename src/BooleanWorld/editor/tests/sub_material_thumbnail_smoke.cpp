@@ -216,9 +216,9 @@ int main() {
       auto* primitive = bw::core::MeshPrimitive::fromTree(
           bw::core::Primitive::Operation::Union, {{{ring, {}}}});
       auto properties = primitive->getProperties();
-      properties.floorMaterialId = first.id;
-      properties.ceilingMaterialId = first.id;
-      properties.wallMaterialId = first.id;
+      properties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial(first.id);
+      properties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial(first.id);
+      properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial(first.id);
       primitive->setProperties(properties);
       world.addPrimitive(primitive);
       std::vector<bw::core::Primitive*> primitives{primitive};
@@ -248,9 +248,9 @@ int main() {
 
       auto const& second =
           editor::procMaterialLibrary().catalogs().front().data.subMaterials[1];
-      properties.floorMaterialId = second.id;
-      properties.ceilingMaterialId = second.id;
-      properties.wallMaterialId = second.id;
+      properties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial(second.id);
+      properties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial(second.id);
+      properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial(second.id);
       primitive->setProperties(properties);
       bw::core::ArrangementWorldDataGenerator changedGenerator;
       changedGenerator.generate(primitives);

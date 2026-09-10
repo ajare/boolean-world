@@ -188,8 +188,8 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
     // inherit settings from an identically named Sub-material.
     auto const chipParameters =
         chipParametersResolver &&
-                properties.wallMaterialId.kind == SurfaceMaterialKind::SubMaterial
-            ? chipParametersResolver(properties.wallMaterialId.reference)
+                properties.wallMaterial.kind == SurfaceMaterialKind::SubMaterial
+            ? chipParametersResolver(properties.wallMaterial.reference)
             : ChipGenerationParameters{};
     std::vector<arr::ArrangementAudioEmitter> audioEmitters;
     audioEmitters.reserve(primitive->getAudioEmitters().size());

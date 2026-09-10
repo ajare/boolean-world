@@ -88,9 +88,9 @@ AcousticSceneMesh ExportAcousticSceneMesh(
     // Arrangement triangles face upward after conversion to audio space. Keep
     // that order for the floor and reverse it for the downward ceiling.
     addTriangle(floor[0], floor[1], floor[2],
-                materialIndexFor(properties.floorMaterialId));
+                materialIndexFor(properties.floorMaterial));
     addTriangle(ceiling[2], ceiling[1], ceiling[0],
-                materialIndexFor(properties.ceilingMaterialId));
+                materialIndexFor(properties.ceilingMaterial));
   }
 
   for (auto const& wall : walls) {
@@ -98,7 +98,7 @@ AcousticSceneMesh ExportAcousticSceneMesh(
     auto surface = core::arr::BuildArrangementWallSurface(arrangement, wall);
     if (surface.vertexCount < 3) continue;
     auto const& properties = arrangement.palette[wall.paletteIndex];
-    auto materialIndex = materialIndexFor(properties.wallMaterialId);
+    auto materialIndex = materialIndexFor(properties.wallMaterial);
 
     if (result.vertices.size() >
         size_t(std::numeric_limits<uint32_t>::max()) - surface.vertexCount) {

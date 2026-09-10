@@ -66,16 +66,15 @@ void preservesRunBasedWinnerWhenOneExists() {
 
 void differenceOwnsTheWallsItCuts() {
   auto base = primitive(Primitive::Operation::Union, 0, 71);
-  base.properties.wallMaterialId = "base.wall";
+  base.properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("base.wall");
   auto cut = primitive(Primitive::Operation::Difference, 23, 72);
   cut.contours = {insetSquare()};
-  cut.properties.wallMaterialId = "cut.wall";
+  cut.properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("cut.wall");
 
   auto arrangement = bw::core::arr::BuildArrangement({base, cut});
   auto walls = bw::core::arr::BuildArrangementWalls(*arrangement);
   auto cutWalls = std::ranges::count_if(walls, [&](auto const& wall) {
-    return arrangement->palette[wall.paletteIndex].wallMaterialId ==
-           "cut.wall";
+    return arrangement->palette[wall.paletteIndex].wallMaterial == bw::core::SurfaceMaterialReference::subMaterial("cut.wall");
   });
   require(walls.size() == 8 && cutWalls == 4,
           "the Difference did not own exactly the four walls it cut");
@@ -83,17 +82,16 @@ void differenceOwnsTheWallsItCuts() {
 
 void propertyTransparentDifferenceDoesNotOwnCutWalls() {
   auto base = primitive(Primitive::Operation::Union, 0, 81);
-  base.properties.wallMaterialId = "base.wall";
+  base.properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("base.wall");
   auto cut = primitive(Primitive::Operation::Difference, 23, 82);
   cut.contours = {insetSquare()};
-  cut.properties.wallMaterialId = "structural.wall";
+  cut.properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("structural.wall");
   cut.contributesProperties = false;
 
   auto arrangement = bw::core::arr::BuildArrangement({base, cut});
   auto walls = bw::core::arr::BuildArrangementWalls(*arrangement);
   require(std::ranges::all_of(walls, [&](auto const& wall) {
-            return arrangement->palette[wall.paletteIndex].wallMaterialId ==
-                   "base.wall";
+            return arrangement->palette[wall.paletteIndex].wallMaterial == bw::core::SurfaceMaterialReference::subMaterial("base.wall");
           }),
           "a property-transparent Difference supplied a cut-wall material");
 }

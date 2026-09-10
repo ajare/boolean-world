@@ -51,9 +51,14 @@ operation. Order-dependent and non-local: inserting a primitive changes the
 meaning of every primitive above it. Preserved exactly by the rewrite
 (ADR-0001).
 
-**Property set** (`PrimitivePropertySet`) — `floorZ`, `ceilingZ`, and floor /
-ceiling / wall material indices and definitions. The renderable attributes of
-a region.
+**Property set** (`PrimitivePropertySet`) — Floor and ceiling Elevation spans,
+floor / ceiling / wall Surface material references, and the remaining authored
+surface and regional properties. The renderable attributes of a region.
+
+**Surface material reference** — A tagged assignment on one floor, ceiling, or
+wall. Its explicit kind selects either a Sub-material, identified by stable id,
+or a Triplanar material, identified by qualified resource name. The two
+identity domains are never distinguished by registry search.
 
 **Elevation span** — A Primitive's authored description of one floor or
 ceiling: a direction angle, a lower elevation, and an upper elevation. Zero

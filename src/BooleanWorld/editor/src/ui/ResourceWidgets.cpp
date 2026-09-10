@@ -1104,13 +1104,13 @@ bool renderPrimitivePropertySet(
 
   if (editable) {
     renderSurfaceMaterialPicker(
-        "Floor", &properties->floorMaterialId, doc, primitive,
+        "Floor", &properties->floorMaterial, doc, primitive,
         PrimitiveMaterialSurface::Floor);
     renderSurfaceMaterialPicker(
-        "Ceiling", &properties->ceilingMaterialId, doc, primitive,
+        "Ceiling", &properties->ceilingMaterial, doc, primitive,
         PrimitiveMaterialSurface::Ceiling);
     renderSurfaceMaterialPicker(
-        "Wall", &properties->wallMaterialId, doc, primitive,
+        "Wall", &properties->wallMaterial, doc, primitive,
         PrimitiveMaterialSurface::Wall);
     renderEmbossPresetPanel(
         "Floor", &properties->floorEmbossPresetId, doc, primitive,
@@ -1122,9 +1122,9 @@ bool renderPrimitivePropertySet(
         "Wall", &properties->wallEmbossPresetId, doc, primitive,
         PrimitiveMaterialSurface::Wall);
   } else {
-    renderSurfaceMaterialValue("Floor", properties->floorMaterialId);
-    renderSurfaceMaterialValue("Ceiling", properties->ceilingMaterialId);
-    renderSurfaceMaterialValue("Wall", properties->wallMaterialId);
+    renderSurfaceMaterialValue("Floor", properties->floorMaterial);
+    renderSurfaceMaterialValue("Ceiling", properties->ceilingMaterial);
+    renderSurfaceMaterialValue("Wall", properties->wallMaterial);
     renderEmbossPresetValue("Floor", properties->floorEmbossPresetId);
     renderEmbossPresetValue("Ceiling", properties->ceilingEmbossPresetId);
     renderEmbossPresetValue("Wall", properties->wallEmbossPresetId);

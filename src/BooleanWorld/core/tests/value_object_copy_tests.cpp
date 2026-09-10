@@ -170,19 +170,19 @@ void bezierSplineCopiesRetainControlsAndSamples() {
   }
 }
 
-void primitivesInitializeMaterialIds() {
+void primitivesInitializeSurfaceMaterials() {
   bw::core::RectanglePolygon primitive(
       bw::core::Primitive::Operation::Union,
       bw::core::Primitive::FillRule::NonZero,
       1.0f);
   auto const& properties = primitive.getProperties();
 
-  require(properties.floorMaterialId.empty(),
-          "a new primitive did not initialize its floor material id");
-  require(properties.ceilingMaterialId.empty(),
-          "a new primitive did not initialize its ceiling material id");
-  require(properties.wallMaterialId.empty(),
-          "a new primitive did not initialize its wall material id");
+  require(properties.floorMaterial.reference.empty(),
+          "a new primitive did not initialize its floor Surface material reference");
+  require(properties.ceilingMaterial.reference.empty(),
+          "a new primitive did not initialize its ceiling Surface material reference");
+  require(properties.wallMaterial.reference.empty(),
+          "a new primitive did not initialize its wall Surface material reference");
 }
 
 void primitiveCopiesItsPropertySet() {
@@ -193,9 +193,9 @@ void primitiveCopiesItsPropertySet() {
   bw::core::PrimitivePropertySet properties;
   properties.floorZ = -12.5f;
   properties.ceilingZ = 84.25f;
-  properties.floorMaterialId = "floor-slate";
-  properties.ceilingMaterialId = "ceiling-plaster";
-  properties.wallMaterialId = "wall-brick";
+  properties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial("floor-slate");
+  properties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial("ceiling-plaster");
+  properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("wall-brick");
   source.setProperties(properties);
 
   bw::core::RectanglePolygon copy(source);
@@ -203,12 +203,12 @@ void primitiveCopiesItsPropertySet() {
 
   requireNear(copiedProperties.floorZ, properties.floorZ, "floor height was not copied");
   requireNear(copiedProperties.ceilingZ, properties.ceilingZ, "ceiling height was not copied");
-  require(copiedProperties.floorMaterialId == properties.floorMaterialId,
-          "floor material id was not copied");
-  require(copiedProperties.ceilingMaterialId == properties.ceilingMaterialId,
-          "ceiling material id was not copied");
-  require(copiedProperties.wallMaterialId == properties.wallMaterialId,
-          "wall material id was not copied");
+  require(copiedProperties.floorMaterial == properties.floorMaterial,
+          "floor Surface material reference was not copied");
+  require(copiedProperties.ceilingMaterial == properties.ceilingMaterial,
+          "ceiling Surface material reference was not copied");
+  require(copiedProperties.wallMaterial == properties.wallMaterial,
+          "wall Surface material reference was not copied");
 }
 
 void animatedPropertyCopiesItsSerializedName() {
@@ -321,9 +321,9 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
   bw::core::PrimitivePropertySet properties;
   properties.floorZ = 12.5f;
   properties.ceilingZ = 63.0f;
-  properties.floorMaterialId = "grandchild-floor";
-  properties.ceilingMaterialId = "grandchild-ceiling";
-  properties.wallMaterialId = "grandchild-wall";
+  properties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial("grandchild-floor");
+  properties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial("grandchild-ceiling");
+  properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("grandchild-wall");
   grandchild->setProperties(properties);
 
   auto* rootPtr = root.get();
@@ -385,9 +385,9 @@ void copiedWorldRemainsSelfContainedAfterSourceDestruction() {
   auto const copiedProperties = copy->getPrimitive(2)->getProperties();
   require(copiedProperties.floorZ == properties.floorZ &&
               copiedProperties.ceilingZ == properties.ceilingZ &&
-              copiedProperties.floorMaterialId == properties.floorMaterialId &&
-              copiedProperties.ceilingMaterialId == properties.ceilingMaterialId &&
-              copiedProperties.wallMaterialId == properties.wallMaterialId,
+              copiedProperties.floorMaterial == properties.floorMaterial &&
+              copiedProperties.ceilingMaterial == properties.ceilingMaterial &&
+              copiedProperties.wallMaterial == properties.wallMaterial,
           "world copy lost primitive properties");
 
   auto const oldGrandchildVertex =
@@ -440,7 +440,7 @@ int main() {
   try {
     generatedShapeCopiesRetainDefiningState();
     bezierSplineCopiesRetainControlsAndSamples();
-    primitivesInitializeMaterialIds();
+    primitivesInitializeSurfaceMaterials();
     animatedPropertyCopiesItsSerializedName();
     influenceEyeCopiesItsArcLength();
     primitiveCopiesEntityInputs();

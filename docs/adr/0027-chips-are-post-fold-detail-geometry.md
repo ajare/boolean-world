@@ -124,7 +124,7 @@ preventing overlap.
 Depth, reach, and Corner distance default to ranges of 1–3, minimum Arris
 length to 2, spacing to 3.1, and both probabilities to zero. The governing
 Sub-material is the **wall's**:
-`palette[wall.paletteIndex].wallMaterialId`, which
+`palette[wall.paletteIndex].wallMaterial`, which
 `BuildArrangementWalls` already resolves to exactly one entry per wall (the
 lower face for a `FloorStep`, the higher for a `CeilingStep`), so no tie-break
 rule is needed. That same Sub-material supplies the new facet's own material,

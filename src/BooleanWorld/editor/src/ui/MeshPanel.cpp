@@ -394,8 +394,11 @@ void renderMeshView(ViewContext& context) {
     auto meshPrimitiveIndex = doc->getActiveMeshPrimitiveIndex();
     if (meshPrimitiveIndex != ~0u) {
       if (auto* primitive = doc->getWorld()->getPrimitive(meshPrimitiveIndex)) {
-        primaryWall = procMaterialLibrary().findSubMaterial(
-            primitive->getProperties().wallMaterialId);
+        auto const& wallMaterial = primitive->getProperties().wallMaterial;
+        if (wallMaterial.kind == bw::core::SurfaceMaterialKind::SubMaterial) {
+          primaryWall =
+              procMaterialLibrary().findSubMaterial(wallMaterial.reference);
+        }
         if (primaryWall) {
           if (auto const* catalog = procMaterialLibrary().findCatalogForSubMaterial(
                   primaryWall->id)) {

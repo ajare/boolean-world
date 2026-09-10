@@ -3,6 +3,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 
 #include <core/BinarySerializer.h>
 #include <core/PrimitivePropertySet.h>
@@ -12,6 +13,13 @@
 #include <core/YamlSerializer.h>
 
 namespace {
+
+static_assert(!std::is_constructible_v<
+              bw::core::SurfaceMaterialReference, std::string>);
+static_assert(!std::is_assignable_v<
+              bw::core::SurfaceMaterialReference&, std::string>);
+static_assert(!std::is_convertible_v<
+              bw::core::SurfaceMaterialReference, std::string const&>);
 
 class DeserializationProbe final : public bw::core::Serializable {
 public:
@@ -67,11 +75,11 @@ void propertySetRoundTripsTaggedSurfaceMaterials() {
   original.ceilingZ = 48.0f;
   original.liquidLevel = 12.5f;
   original.liquidType = bw::core::LiquidType::Water;
-  original.floorMaterialId = bw::core::SurfaceMaterialReference::triplanar(
+  original.floorMaterial = bw::core::SurfaceMaterialReference::triplanar(
       "World/WeatheredSlate");
-  original.ceilingMaterialId = bw::core::SurfaceMaterialReference::subMaterial(
+  original.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial(
       "polished_slate");
-  original.wallMaterialId = bw::core::SurfaceMaterialReference::triplanar(
+  original.wallMaterial = bw::core::SurfaceMaterialReference::triplanar(
       "World/WallSlate");
   original.floorEmbossPresetId = "weathered_blocks";
   original.ceilingEmbossPresetId = "";
@@ -90,11 +98,11 @@ void propertySetRoundTripsTaggedSurfaceMaterials() {
   bw::core::SerializationWorkData readWorkData;
   require(roundTripped.deserialize(reader, readWorkData),
           "property set failed to round-trip tagged Surface materials");
-  require(roundTripped.floorMaterialId == original.floorMaterialId,
+  require(roundTripped.floorMaterial == original.floorMaterial,
           "tagged floor Triplanar material did not round-trip");
-  require(roundTripped.ceilingMaterialId == original.ceilingMaterialId,
+  require(roundTripped.ceilingMaterial == original.ceilingMaterial,
           "tagged ceiling Sub-material did not round-trip");
-  require(roundTripped.wallMaterialId == original.wallMaterialId,
+  require(roundTripped.wallMaterial == original.wallMaterial,
           "tagged wall Triplanar material did not round-trip");
   require(roundTripped.floorEmbossPresetId == original.floorEmbossPresetId,
           "floor Emboss-preset id did not round-trip");
@@ -151,11 +159,11 @@ void legacyScalarSurfaceMaterialsDeserializeAsSubMaterials() {
   require(properties.deserialize(reader, workData),
           "legacy scalar Surface materials did not deserialize");
   require(
-      properties.floorMaterialId ==
+      properties.floorMaterial ==
               bw::core::SurfaceMaterialReference::subMaterial("legacy.floor") &&
-          properties.ceilingMaterialId ==
+          properties.ceilingMaterial ==
               bw::core::SurfaceMaterialReference::subMaterial("legacy.ceiling") &&
-          properties.wallMaterialId ==
+          properties.wallMaterial ==
               bw::core::SurfaceMaterialReference::subMaterial("legacy.wall"),
       "legacy scalar Surface materials were not expanded as Sub-materials");
 }

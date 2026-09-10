@@ -160,7 +160,7 @@ TriplanarWallProjectionData BuildTriplanarWallProjectionData(
   for (size_t wallIndex = 0; wallIndex < walls.size(); ++wallIndex) {
     auto const& wall = walls[wallIndex];
     if (wall.paletteIndex >= arrangement.palette.size()) continue;
-    auto const& material = arrangement.palette[wall.paletteIndex].wallMaterialId;
+    auto const& material = arrangement.palette[wall.paletteIndex].wallMaterial;
     if (material.kind != bw::core::SurfaceMaterialKind::Triplanar) continue;
 
     auto& wallResult = result[wallIndex];

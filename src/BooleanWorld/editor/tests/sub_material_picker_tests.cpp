@@ -111,16 +111,14 @@ void libraryDiscoversTwoLevelsAndSelectionIsUndoable(fs::path const& root) {
             doc, primitive, editor::PrimitiveMaterialSurface::Wall,
             "wood.oak");
       });
-  require(document.getWorld()->getPrimitive(index)->getProperties().wallMaterialId ==
-              "wood.oak",
+  require(document.getWorld()->getPrimitive(index)->getProperties().wallMaterial == bw::core::SurfaceMaterialReference::subMaterial("wood.oak"),
           "picker selection did not write the stable Sub-material id");
 
   editor::undo(&document);
-  require(document.getWorld()->getPrimitive(index)->getProperties().wallMaterialId.empty(),
+  require(document.getWorld()->getPrimitive(index)->getProperties().wallMaterial.reference.empty(),
           "undo did not restore the previous wall Sub-material id");
   editor::redo(&document);
-  require(document.getWorld()->getPrimitive(index)->getProperties().wallMaterialId ==
-              "wood.oak",
+  require(document.getWorld()->getPrimitive(index)->getProperties().wallMaterial == bw::core::SurfaceMaterialReference::subMaterial("wood.oak"),
           "redo did not restore the selected wall Sub-material id");
 
   auto const* selected = library.findSubMaterial("wood.oak");
@@ -172,7 +170,7 @@ void triplanarPickerSortsFiltersAndAssignsTaggedReferences() {
             "World/Blue Stone");
       });
   auto assigned =
-      document.getWorld()->getPrimitive(index)->getProperties().ceilingMaterialId;
+      document.getWorld()->getPrimitive(index)->getProperties().ceilingMaterial;
   require(assigned.kind == bw::core::SurfaceMaterialKind::Triplanar &&
               assigned.reference == "World/Blue Stone",
           "Triplanar selection did not write a tagged Surface material reference");
@@ -180,12 +178,12 @@ void triplanarPickerSortsFiltersAndAssignsTaggedReferences() {
   require(document.getWorld()
                   ->getPrimitive(index)
                   ->getProperties()
-                  .ceilingMaterialId.kind ==
+                  .ceilingMaterial.kind ==
               bw::core::SurfaceMaterialKind::SubMaterial,
           "undo did not restore the previous Surface material family");
   editor::redo(&document);
   assigned =
-      document.getWorld()->getPrimitive(index)->getProperties().ceilingMaterialId;
+      document.getWorld()->getPrimitive(index)->getProperties().ceilingMaterial;
   require(assigned.kind == bw::core::SurfaceMaterialKind::Triplanar &&
               assigned.reference == "World/Blue Stone",
           "redo did not restore the tagged Triplanar assignment");
@@ -260,6 +258,15 @@ void authoringActionsAreSavedUndoableAndProtectReferences(fs::path const& root) 
           "redo did not restore the created Sub-material");
   primitive = document.getWorld()->getPrimitive(index);
 
+  auto properties = primitive->getProperties();
+  properties.floorMaterial =
+      bw::core::SurfaceMaterialReference::triplanar(createdId);
+  primitive->setProperties(properties);
+  require(editor::subMaterialDeletionBlockedReason(&document, createdId).empty(),
+          "Triplanar identity collision blocked Sub-material deletion");
+  properties.floorMaterial = {};
+  primitive->setProperties(properties);
+
   editor::transactUndoableActionAtomically(
       &document, "Assign created Sub-material", [&](editor::Document* actionDoc) {
         return editor::setPrimitiveSubMaterial(
@@ -272,11 +279,13 @@ void authoringActionsAreSavedUndoableAndProtectReferences(fs::path const& root) 
             actionDoc, &library, createdId, "Mirror-polished Stone");
       });
   require(library.findSubMaterial(createdId)->displayName == "Mirror-polished Stone" &&
-              document.getWorld()->getPrimitive(index)->getProperties().wallMaterialId == createdId,
+              document.getWorld()->getPrimitive(index)->getProperties().wallMaterial ==
+                  bw::core::SurfaceMaterialReference::subMaterial(createdId),
           "rename changed the stable id referenced by a Primitive");
   editor::undo(&document);
   require(library.findSubMaterial(createdId)->displayName == "Polished Stone" &&
-              document.getWorld()->getPrimitive(index)->getProperties().wallMaterialId == createdId,
+              document.getWorld()->getPrimitive(index)->getProperties().wallMaterial ==
+                  bw::core::SurfaceMaterialReference::subMaterial(createdId),
           "undo did not restore the old name while preserving Primitive references");
   editor::redo(&document);
   require(library.findSubMaterial(createdId)->displayName == "Mirror-polished Stone",

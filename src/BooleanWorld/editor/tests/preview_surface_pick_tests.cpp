@@ -59,9 +59,9 @@ std::unique_ptr<MeshPrimitive> makeRoomSpanning(
   auto properties = primitive->getProperties();
   properties.floorZ = floorZ;
   properties.ceilingZ = ceilingZ;
-  properties.floorMaterialId = "floor." + std::to_string(id);
-  properties.ceilingMaterialId = "ceiling." + std::to_string(id);
-  properties.wallMaterialId = "wall." + std::to_string(id);
+  properties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial("floor." + std::to_string(id));
+  properties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial("ceiling." + std::to_string(id));
+  properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("wall." + std::to_string(id));
   properties.floorEmbossPresetId = "floor.emboss." + std::to_string(id);
   properties.ceilingEmbossPresetId = "ceiling.emboss." + std::to_string(id);
   properties.wallEmbossPresetId = "wall.emboss." + std::to_string(id);
@@ -89,13 +89,13 @@ void setSurfaceMaterial(
   auto properties = primitive->getProperties();
   switch (surface) {
     case PreviewSurface::Floor:
-      properties.floorMaterialId = id;
+      properties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial(id);
       break;
     case PreviewSurface::Ceiling:
-      properties.ceilingMaterialId = id;
+      properties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial(id);
       break;
     default:
-      properties.wallMaterialId = id;
+      properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial(id);
       break;
   }
   primitive->setProperties(properties);
@@ -308,12 +308,12 @@ void editingTheResolvedOwnerChangesWhatTheSurfaceDraws() {
   }
 
   require(
-      higher->getProperties().floorMaterialId == "picked.material" &&
-          higher->getProperties().ceilingMaterialId == "picked.material" &&
-          higher->getProperties().wallMaterialId == "picked.material",
+      higher->getProperties().floorMaterial == bw::core::SurfaceMaterialReference::subMaterial("picked.material") &&
+          higher->getProperties().ceilingMaterial == bw::core::SurfaceMaterialReference::subMaterial("picked.material") &&
+          higher->getProperties().wallMaterial == bw::core::SurfaceMaterialReference::subMaterial("picked.material"),
       "the three surfaces did not each resolve to the same overlapping owner");
   require(
-      lower->getProperties().floorMaterialId == "floor.1",
+      lower->getProperties().floorMaterial == bw::core::SurfaceMaterialReference::subMaterial("floor.1"),
       "editing one polygon's owner reached a Primitive it does not own");
 }
 
@@ -517,11 +517,11 @@ void crossingStepSegmentsPickAndOutlineAsTrianglesWithTheirOwners() {
   bw::core::PrimitivePropertySet left;
   left.floorZ = bw::core::Elevation{0.0f, {0.0f, 1.0f}};
   left.ceilingZ = bw::core::Elevation{30.0f, {0.0f, 1.0f}};
-  left.wallMaterialId = "left.wall";
+  left.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("left.wall");
   bw::core::PrimitivePropertySet right;
   right.floorZ = bw::core::Elevation{10.0f, {0.0f, -1.0f}};
   right.ceilingZ = bw::core::Elevation{40.0f, {0.0f, -1.0f}};
-  right.wallMaterialId = "right.wall";
+  right.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("right.wall");
   constexpr int64_t U = bw::core::arr::FixedPointUnitsPerWorldUnit;
   bw::core::arr::ArrangementPrimitive leftPrimitive{
       {{{-U, 0}, {0, 0}, {0, 10 * U}, {-U, 10 * U}}},
@@ -575,7 +575,7 @@ void crossingStepSegmentsPickAndOutlineAsTrianglesWithTheirOwners() {
 void taggedTriplanarAssignmentIsVisibleToPreviewPicker() {
   auto room = makeRoom();
   auto properties = room->getProperties();
-  properties.wallMaterialId =
+  properties.wallMaterial =
       bw::core::SurfaceMaterialReference::triplanar("World/Stone");
   room->setProperties(properties);
   auto data = buildData({room.get()});

@@ -83,9 +83,9 @@ void SubMaterialThumbnailRenderer::rebuild() {
       auto properties = primitive->getProperties();
       properties.floorZ = 0.0f;
       properties.ceilingZ = 1.0f;
-      properties.floorMaterialId = material.id;
-      properties.ceilingMaterialId = material.id;
-      properties.wallMaterialId = material.id;
+      properties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial(material.id);
+      properties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial(material.id);
+      properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial(material.id);
       primitive->setProperties(properties);
       mWorld->addPrimitive(primitive);
       primitives.push_back(primitive);
@@ -115,9 +115,9 @@ void SubMaterialThumbnailRenderer::rebuild() {
     properties.ceilingZ = 12.0f;
     auto reference = bw::core::SurfaceMaterialReference::triplanar(
         material.resourceName);
-    properties.floorMaterialId = reference;
-    properties.ceilingMaterialId = reference;
-    properties.wallMaterialId = reference;
+    properties.floorMaterial = reference;
+    properties.ceilingMaterial = reference;
+    properties.wallMaterial = reference;
     primitive->setProperties(properties);
     mWorld->addPrimitive(primitive);
     primitives.push_back(primitive);

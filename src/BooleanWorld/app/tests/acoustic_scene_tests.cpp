@@ -153,8 +153,9 @@ std::optional<Hit> traceArrangementReference(
   for (auto const& triangle : world.getTriangles()) {
     auto const& properties =
         arrangement.palette[arrangement.faces[triangle.face].paletteIndex];
-    auto planar = [&](bw::core::arr::ArrangementTriangleSurface const& surface,
-                      std::string const& material) {
+    auto planar = [&](
+                      bw::core::arr::ArrangementTriangleSurface const& surface,
+                      bw::core::SurfaceMaterialReference const& material) {
       auto const& fixed = arrangement.vertices[triangle.v[0]];
       AcousticSceneVertex pointOnPlane{
           bw::core::arr::ToWorldCoordinate(fixed.x), surface.elevation[0],
@@ -171,8 +172,8 @@ std::optional<Hit> traceArrangementReference(
         consider(nearest, distance, resolve(material).id);
       }
     };
-    planar(triangle.floor, properties.floorMaterialId);
-    planar(triangle.ceiling, properties.ceilingMaterialId);
+    planar(triangle.floor, properties.floorMaterial);
+    planar(triangle.ceiling, properties.ceilingMaterial);
   }
 
   auto worldOriginX = ray.origin.x;
@@ -208,7 +209,7 @@ std::optional<Hit> traceArrangementReference(
     if (elevation < bottom || elevation > top) continue;
     auto const& properties = arrangement.palette[wall.paletteIndex];
     consider(nearest, distance,
-             resolve(properties.wallMaterialId).id);
+             resolve(properties.wallMaterial).id);
   }
   return nearest;
 }
@@ -236,11 +237,11 @@ std::optional<Hit> traceArrangementBruteForce(
     auto a = horizontalVertex(triangle.v[0], triangle.floor.elevation[0]);
     auto b = horizontalVertex(triangle.v[1], triangle.floor.elevation[1]);
     auto c = horizontalVertex(triangle.v[2], triangle.floor.elevation[2]);
-    facets.push_back({a, b, c, resolve(properties.floorMaterialId).id});
+    facets.push_back({a, b, c, resolve(properties.floorMaterial).id});
     a = horizontalVertex(triangle.v[0], triangle.ceiling.elevation[0]);
     b = horizontalVertex(triangle.v[1], triangle.ceiling.elevation[1]);
     c = horizontalVertex(triangle.v[2], triangle.ceiling.elevation[2]);
-    facets.push_back({a, b, c, resolve(properties.ceilingMaterialId).id});
+    facets.push_back({a, b, c, resolve(properties.ceilingMaterial).id});
   }
   for (auto const& wall : world.getWalls()) {
     if (!wall.visible) continue;
@@ -251,7 +252,7 @@ std::optional<Hit> traceArrangementBruteForce(
           vertex.position.x, vertex.elevation, -vertex.position.y};
     };
     auto material = resolve(
-                        arrangement.palette[wall.paletteIndex].wallMaterialId)
+                        arrangement.palette[wall.paletteIndex].wallMaterial)
                         .id;
     for (uint8_t corner = 1; corner + 1 < surface.vertexCount; ++corner) {
       facets.push_back(
@@ -280,9 +281,9 @@ PrimitivePropertySet properties(
   PrimitivePropertySet result;
   result.floorZ = floor;
   result.ceilingZ = ceiling;
-  result.floorMaterialId = prefix + ".floor";
-  result.ceilingMaterialId = prefix + ".ceiling";
-  result.wallMaterialId = prefix + ".wall";
+  result.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial(prefix + ".floor");
+  result.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial(prefix + ".ceiling");
+  result.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial(prefix + ".wall");
   return result;
 }
 
@@ -354,7 +355,7 @@ void triplanarSurfacesUseGenericAcousticsWithoutIdentifierInference() {
   auto triplanarProperties = properties(0.0f, 20.0f, "shared");
   // Deliberately collide with a Sub-material id. The explicit family tag must
   // win, while the ceiling and walls retain existing Sub-material resolution.
-  triplanarProperties.floorMaterialId =
+  triplanarProperties.floorMaterial =
       bw::core::SurfaceMaterialReference::triplanar("shared.floor");
   ArrangementPrimitive room{
       {rectangle(0, 0, 10, 10)}, Primitive::Operation::Union, Primitive::FillRule::EvenOdd, 0, 1, triplanarProperties};
@@ -393,8 +394,9 @@ void triplanarSurfacesUseGenericAcousticsWithoutIdentifierInference() {
 void exportHasEverySurfaceAndResolvedMaterial() {
   auto world = makeWorld();
   auto presets = makePresets();
-  AcousticMaterialResolver resolver = [&](std::string const& id)
-      -> AcousticPreset const& { return presets.at(id); };
+  AcousticMaterialResolver resolver =
+      [&](bw::core::SurfaceMaterialReference const& material)
+      -> AcousticPreset const& { return presets.at(material.reference); };
   auto mesh = bw::app::ExportAcousticSceneMesh(*world, resolver);
   size_t wallTriangles = 0;
   size_t wallVertices = 0;
@@ -457,8 +459,9 @@ void exportUsesEvaluatedSurfaceGeometry() {
     presets.emplace(
         id, AcousticPreset{id, id, {0.1f, 0.2f, 0.3f}, 0.05f, {0.01f, 0.02f, 0.03f}});
   }
-  AcousticMaterialResolver resolver = [&](std::string const& id)
-      -> AcousticPreset const& { return presets.at(id); };
+  AcousticMaterialResolver resolver =
+      [&](bw::core::SurfaceMaterialReference const& material)
+      -> AcousticPreset const& { return presets.at(material.reference); };
   auto mesh = bw::app::ExportAcousticSceneMesh(*world, resolver);
   auto const& arrangement = world->getArrangement();
 
@@ -542,8 +545,9 @@ void exportUsesEvaluatedSurfaceGeometry() {
 void crossingStepSegmentsExportAsOwnedFrontFacingTriangles() {
   auto world = makeCrossingStepWorld();
   auto presets = makePresets();
-  AcousticMaterialResolver resolver = [&](std::string const& id)
-      -> AcousticPreset const& { return presets.at(id); };
+  AcousticMaterialResolver resolver =
+      [&](bw::core::SurfaceMaterialReference const& material)
+      -> AcousticPreset const& { return presets.at(material.reference); };
   auto mesh = bw::app::ExportAcousticSceneMesh(*world, resolver);
   auto const& arrangement = world->getArrangement();
 
@@ -589,8 +593,9 @@ void crossingStepSegmentsExportAsOwnedFrontFacingTriangles() {
 void propertyRaysAgree() {
   auto world = makeWorld();
   auto presets = makePresets();
-  AcousticMaterialResolver resolver = [&](std::string const& id)
-      -> AcousticPreset const& { return presets.at(id); };
+  AcousticMaterialResolver resolver =
+      [&](bw::core::SurfaceMaterialReference const& material)
+      -> AcousticPreset const& { return presets.at(material.reference); };
   auto mesh = bw::app::ExportAcousticSceneMesh(*world, resolver);
   std::mt19937 random(398);
   std::uniform_real_distribution<float> insideX(0.5f, 9.5f);

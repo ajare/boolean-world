@@ -201,11 +201,11 @@ void crossingStepPlanesProduceOwnedOrientedTriangularSegments() {
   PrimitivePropertySet left;
   left.floorZ = Elevation{0.0f, {0.0f, 1.0f}};
   left.ceilingZ = Elevation{30.0f, {0.0f, 1.0f}};
-  left.wallMaterialId = "left.wall";
+  left.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("left.wall");
   PrimitivePropertySet right;
   right.floorZ = Elevation{10.0f, {0.0f, -1.0f}};
   right.ceilingZ = Elevation{40.0f, {0.0f, -1.0f}};
-  right.wallMaterialId = "right.wall";
+  right.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("right.wall");
 
   auto leftPrimitive =
       primitive(rectangle(-1000, 0, 0, 10000), 0, left);
@@ -280,8 +280,8 @@ void crossingStepPlanesProduceOwnedOrientedTriangularSegments() {
                   segment->ownerFace != segment->frontFace,
               "a derived Step segment did not identify its two sides");
       auto const& owner = arrangement->palette[arrangement->faces[segment->ownerFace].paletteIndex];
-      require(owner.wallMaterialId ==
-                  arrangement->palette[segment->paletteIndex].wallMaterialId,
+      require(owner.wallMaterial ==
+                  arrangement->palette[segment->paletteIndex].wallMaterial,
               "a derived Step segment did not use its owner's material");
       auto orientation =
           bw::core::arr::OrientArrangementWall(*arrangement, *segment);

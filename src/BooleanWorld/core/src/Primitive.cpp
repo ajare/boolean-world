@@ -787,9 +787,9 @@ vector<ComplexPolygon> const& Primitive::getVertices() const {
 
 void Primitive::collectDependentResourceNames(set<string>& names) const {
   auto const& properties = getProperties();
-  for (auto const* material : {&properties.floorMaterialId,
-                               &properties.ceilingMaterialId,
-                               &properties.wallMaterialId}) {
+  for (auto const* material : {&properties.floorMaterial,
+                               &properties.ceilingMaterial,
+                               &properties.wallMaterial}) {
     if (material->kind == SurfaceMaterialKind::Triplanar &&
         !material->reference.empty()) {
       names.insert(material->reference);

@@ -438,7 +438,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
     if (mSurfaceSet == WorldSurfaceSet::Walls) {
       auto resolved = mwResolver->resolve(
-          properties.wallMaterialId, properties.wallEmbossPresetId);
+          properties.wallMaterial, properties.wallEmbossPresetId);
       auto hashValue = resolved.hash();
       auto meshIndex =
           worldBatch->getMeshIndexForMaterialHash(hashValue, false);
@@ -479,7 +479,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
     // Floor
     auto floorResolved = mwResolver->resolve(
-        properties.floorMaterialId, properties.floorEmbossPresetId);
+        properties.floorMaterial, properties.floorEmbossPresetId);
     auto hashValue = floorResolved.hash();
     auto meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, true);
 
@@ -505,7 +505,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
 
     // Ceiling
     auto ceilingResolved = mwResolver->resolve(
-        properties.ceilingMaterialId, properties.ceilingEmbossPresetId);
+        properties.ceilingMaterial, properties.ceilingEmbossPresetId);
     hashValue = ceilingResolved.hash();
     meshIndex = worldBatch->getMeshIndexForMaterialHash(hashValue, false);
 

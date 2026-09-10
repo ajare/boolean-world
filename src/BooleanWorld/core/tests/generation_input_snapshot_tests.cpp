@@ -176,16 +176,16 @@ void chipParametersAreResolvedInSnapshotOrderOnTheCallingThread() {
       Primitive::Operation::Union,
       {rectangle(25.0f, 0.0f, 45.0f, 20.0f)}));
   auto firstProperties = first->getProperties();
-  firstProperties.wallMaterialId = "soft_stone";
+  firstProperties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("soft_stone");
   first->setProperties(firstProperties);
   auto secondProperties = second->getProperties();
   secondProperties.floorZ = 10.0f;
-  secondProperties.wallMaterialId = "hard_slate";
+  secondProperties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("hard_slate");
   second->setProperties(secondProperties);
   auto triplanarProperties = triplanar->getProperties();
   // Deliberately collide with a chip-enabled Sub-material id: material-family
   // identity, not the reference string alone, must control Chip eligibility.
-  triplanarProperties.wallMaterialId =
+  triplanarProperties.wallMaterial =
       bw::core::SurfaceMaterialReference::triplanar("soft_stone");
   triplanar->setProperties(triplanarProperties);
 

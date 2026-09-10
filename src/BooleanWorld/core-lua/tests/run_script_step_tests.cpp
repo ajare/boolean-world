@@ -402,9 +402,9 @@ void aScriptCreatesAMeshPrimitiveFromOneRing() {
   auto* mesh = dynamic_cast<bw::core::MeshPrimitive*>(layer.getPrimitive(0));
   require(mesh != nullptr, "create_mesh_primitive did not create a MeshPrimitive");
   auto const& properties = mesh->getProperties();
-  require(properties.floorMaterialId.reference == "builtin.plain.grey" &&
-              properties.ceilingMaterialId.reference == "builtin.plain.grey" &&
-              properties.wallMaterialId.reference == "builtin.plain.grey",
+  require(properties.floorMaterial.reference == "builtin.plain.grey" &&
+              properties.ceilingMaterial.reference == "builtin.plain.grey" &&
+              properties.wallMaterial.reference == "builtin.plain.grey",
           "create_mesh_primitive did not use the default plain-grey material");
   auto proxy = mesh->createEditingProxy();
   uint32_t vertexCount = 0;
@@ -560,14 +560,14 @@ void meshPrimitivesRetainTheMutablePrimitiveApi() {
   require(mesh && mesh->getPosition() == wp::Vector2{20.0f, 30.0f} &&
               mesh->getPriority() == 17 &&
               mesh->getOperation() == bw::core::Primitive::Operation::Difference &&
-              mesh->getProperties().floorMaterialId.reference == "floor.basalt" &&
-              mesh->getProperties().ceilingMaterialId.reference == "ceiling.basalt" &&
-              mesh->getProperties().wallMaterialId.reference == "wall.basalt" &&
-              mesh->getProperties().floorMaterialId.kind ==
+              mesh->getProperties().floorMaterial.reference == "floor.basalt" &&
+              mesh->getProperties().ceilingMaterial.reference == "ceiling.basalt" &&
+              mesh->getProperties().wallMaterial.reference == "wall.basalt" &&
+              mesh->getProperties().floorMaterial.kind ==
                   bw::core::SurfaceMaterialKind::SubMaterial &&
-              mesh->getProperties().ceilingMaterialId.kind ==
+              mesh->getProperties().ceilingMaterial.kind ==
                   bw::core::SurfaceMaterialKind::SubMaterial &&
-              mesh->getProperties().wallMaterialId.kind ==
+              mesh->getProperties().wallMaterial.kind ==
                   bw::core::SurfaceMaterialKind::SubMaterial,
           "MeshPrimitive common properties did not cross the Lua API");
 }
@@ -634,22 +634,22 @@ void scriptsAuthorAndInspectTaggedSurfaceMaterials() {
           "tagged Surface-material Lua methods failed");
   auto const& primitive = layer.getPrimitive(0)->getProperties();
   auto const& mesh = layer.getPrimitive(1)->getProperties();
-  require(primitive.floorMaterialId ==
-              bw::core::SurfaceMaterialReference::triplanar(
-                  "World/FloorTiles") &&
-              primitive.ceilingMaterialId ==
+  require(primitive.floorMaterial ==
+                  bw::core::SurfaceMaterialReference::triplanar(
+                      "World/FloorTiles") &&
+              primitive.ceilingMaterial ==
                   bw::core::SurfaceMaterialReference::subMaterial(
                       "ceiling.stone") &&
-              primitive.wallMaterialId ==
+              primitive.wallMaterial ==
                   bw::core::SurfaceMaterialReference::triplanar(
                       "World/WallTiles") &&
-              mesh.floorMaterialId ==
+              mesh.floorMaterial ==
                   bw::core::SurfaceMaterialReference::triplanar(
                       "/SharedTiles") &&
-              mesh.ceilingMaterialId ==
+              mesh.ceilingMaterial ==
                   bw::core::SurfaceMaterialReference::triplanar(
                       "World/CeilingTiles") &&
-              mesh.wallMaterialId ==
+              mesh.wallMaterial ==
                   bw::core::SurfaceMaterialReference::subMaterial(
                       "wall.basalt"),
           "tagged Surface-material values did not cross the Lua API");

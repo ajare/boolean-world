@@ -239,9 +239,9 @@ void assignEverySurface(bw::core::World* world, std::string const& id) {
   for (uint32_t i = 0; i < world->getNumPrimitives(); ++i) {
     auto* primitive = world->getPrimitive(i);
     auto properties = primitive->getProperties();
-    properties.floorMaterialId = id;
-    properties.ceilingMaterialId = id;
-    properties.wallMaterialId = id;
+    properties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial(id);
+    properties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial(id);
+    properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial(id);
     primitive->setProperties(properties);
   }
 }

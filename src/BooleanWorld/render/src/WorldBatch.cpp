@@ -118,14 +118,14 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
 
     if (mSurfaceSet == WorldSurfaceSet::Horizontal) {
       processSurfaceMaterial(
-          properties.floorMaterialId, properties.floorEmbossPresetId, true,
+          properties.floorMaterial, properties.floorEmbossPresetId, true,
           nullopt, modelStream);
       processSurfaceMaterial(
-          properties.ceilingMaterialId, properties.ceilingEmbossPresetId,
+          properties.ceilingMaterial, properties.ceilingEmbossPresetId,
           false, nullopt, modelStream);
     } else if (mSurfaceSet == WorldSurfaceSet::Walls) {
       processSurfaceMaterial(
-          properties.wallMaterialId, properties.wallEmbossPresetId, false,
+          properties.wallMaterial, properties.wallEmbossPresetId, false,
           nullopt, modelStream);
     }
   }
@@ -143,7 +143,7 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
 
   // A wall's back face (the side its normal points away from) always
   // renders as this reserved, plain-white material, regardless of any
-  // Primitive's authored wallMaterialId - so its mesh bucket needs to
+  // Primitive's authored wallMaterial - so its mesh bucket needs to
   // exist even for a World with no Primitives yet.
   if (mSurfaceSet == WorldSurfaceSet::Walls) {
     processMaterialDefinition(
@@ -152,7 +152,7 @@ shared_ptr<mpp::ModelStream> WorldBatch::createModelStream() {
   }
 
   // A liquid surface always renders as one of these reserved materials,
-  // regardless of any Primitive's authored floorMaterialId - so every liquid
+  // regardless of any Primitive's authored floorMaterial - so every liquid
   // type's mesh bucket needs to exist even for a World with no Primitives
   // yet, since which type wets a given face isn't known until then.
   if (mSurfaceSet == WorldSurfaceSet::Liquid) {

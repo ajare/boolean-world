@@ -1412,7 +1412,7 @@ DetailGeometry BuildChipDetail(
         }
         auto const& propertiesA = arrangement.palette[wallA.paletteIndex];
         auto const& propertiesB = arrangement.palette[wallB.paletteIndex];
-        if (propertiesA.wallMaterialId != propertiesB.wallMaterialId) {
+        if (propertiesA.wallMaterial != propertiesB.wallMaterial) {
           continue;
         }
 
@@ -1737,7 +1737,7 @@ DetailGeometry BuildChipDetail(
         auto const& propertiesB = arrangement.palette[wallB.paletteIndex];
         if (!SupportsWallDetail(arrangement, wallA) ||
             !SupportsWallDetail(arrangement, wallB) ||
-            propertiesA.wallMaterialId != propertiesB.wallMaterialId) {
+            propertiesA.wallMaterial != propertiesB.wallMaterial) {
           continue;
         }
         if (!IsEligibleVerticalAngle(a, b)) {
