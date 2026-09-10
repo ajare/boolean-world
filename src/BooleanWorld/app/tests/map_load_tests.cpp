@@ -208,6 +208,8 @@ void minesCreateOneSixCellFloorVariationPerTunnelSection() {
 
   require(!tunnels.empty() && floorCells.size() == tunnels.size() * 6,
           "a tunnel section did not create exactly six floor-variation cells");
+  require(!bridges.empty() && posts.size() == bridges.size() * 2,
+          "the configured wooden support percentage produced no complete frames");
   auto const baseFloor = tunnels.front()->getProperties().floorSpan;
   for (auto const* cell : floorCells) {
     auto const floor = cell->getProperties().floorSpan;

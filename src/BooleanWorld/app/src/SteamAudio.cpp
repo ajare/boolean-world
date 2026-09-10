@@ -854,14 +854,26 @@ void SteamAudio::updateWorldSnapshot(
 
   // buildScene does all native scene construction and commit work before the
   // pair becomes visible. The worker can therefore only load complete pairs.
-  auto scene = buildScene(sourceWorld, resolver);
+  (void)publishWorldSnapshot(
+      buildScene(std::move(sourceWorld), resolver));
+}
+
+AcousticScenePtr SteamAudio::publishWorldSnapshot(AcousticScenePtr scene) {
+  if (!scene) {
+    throw std::invalid_argument("Acoustic scene is missing");
+  }
+  auto sourceWorld = scene->getSourceWorld();
+  if (sourceWorld == mImplementation->publishedWorld) return nullptr;
+  AcousticScenePtr retired;
 #if defined(WP_APPLICATION_USE_FMOD)
-  mImplementation->publishedScene = std::move(scene);
+  retired = std::exchange(
+      mImplementation->publishedScene, std::move(scene));
   mImplementation->publishedSceneVersion =
       mImplementation->nextSceneVersion++;
   mImplementation->publishSimulationState();
 #endif
   mImplementation->publishedWorld = std::move(sourceWorld);
+  return retired;
 }
 
 void SteamAudio::syncEmitters(core::ArrangementWorldDataPtr sourceWorld) {

@@ -8,6 +8,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iomanip>
 #include <sstream>
 
@@ -678,6 +679,12 @@ void StatePlayBooleanWorld::destroyGameObjects() {
   mGenerationCallbackToken =
       bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken;
   mEmitterResyncPending.store(false, std::memory_order_release);
+  {
+    lock_guard lock(mPreparedGenerationArtifactsMutex);
+    mPreparedGenerationArtifacts.clear();
+    mRetiredWorldRenderData.clear();
+    mRetiredAcousticScenes.clear();
+  }
 
   // Join the dedicated reflections thread while the FMOD system, loaded
   // resources, and game DLL are all still alive.
@@ -1048,10 +1055,29 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
 
   // For subclasses
   createGameObjects(resourceMgr, renderSystem, renderResourceMgr, args);
-  if (mSteamAudio && mWorldData) {
-    mSteamAudio->updateWorldSnapshot(
-        mWorldData, *mAcousticPresetResolver);
-    mSteamAudio->syncEmitters(mWorldData);
+  if (mWorldData) {
+    auto const& physicalStats = getPlayerPhysicalStats();
+    auto const viewerPosition = bw::app::worldToRendererAudioPosition(
+        physicalStats.position, physicalStats.feetElevation);
+    auto initialArtifacts = std::async(
+        std::launch::async,
+        [this, worldData = mWorldData, viewerPosition] {
+          PreparedGenerationArtifacts artifacts;
+          artifacts.worldData = worldData;
+          artifacts.renderData = mwRenderer->prepareWorldRenderData(
+              worldData, viewerPosition);
+          if (mSteamAudio) {
+            artifacts.acousticScene = mSteamAudio->buildScene(
+                worldData, *mAcousticPresetResolver);
+          }
+          return artifacts;
+        }).get();
+    mwRenderer->publishWorldRenderData(initialArtifacts.renderData);
+    if (mSteamAudio) {
+      (void)mSteamAudio->publishWorldSnapshot(
+          std::move(initialArtifacts.acousticScene));
+      mSteamAudio->syncEmitters(mWorldData);
+    }
   }
 
   // Start scheduled world clipping
@@ -1123,6 +1149,11 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
   world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, layerSelection()}, {0, 0});
 
   auto rebuiltWorldData = world->getWorldData();
+  auto const worldSnapshotChanged = rebuiltWorldData != mWorldData;
+  auto preparedArtifacts =
+      worldSnapshotChanged
+          ? takePreparedGenerationArtifacts(rebuiltWorldData)
+          : std::nullopt;
   mPlayerRebuildNeedsLocationRecovery = false;
   if (mWorldData && rebuiltWorldData != mWorldData &&
       mPlayerVerticalHeightInitialized) {
@@ -1136,12 +1167,45 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
         reconciliation.requiresLocationRecovery;
   }
   mWorldData = std::move(rebuiltWorldData);
+  if (worldSnapshotChanged) {
+    if (preparedArtifacts && preparedArtifacts->renderData) {
+      auto completed = std::move(preparedArtifacts->renderData);
+      mwRenderer->publishWorldRenderData(completed);
+      lock_guard lock(mPreparedGenerationArtifactsMutex);
+      mRetiredWorldRenderData.push_back(std::move(completed));
+    } else {
+      // Preserve rendering if a generation predates artifact preparation or
+      // an off-thread build failed. This rare fallback is intentionally
+      // visible in the update profiler.
+      mwRenderer->setWorldChanged();
+      if (preparedArtifacts && !preparedArtifacts->renderError.empty()) {
+        addDisplayMessage(
+            DisplayMessage::Level::Debug,
+            "World render preparation failed: " +
+                preparedArtifacts->renderError);
+      }
+    }
+  }
   if (mSteamAudio) {
-    // getWorldData is queried every frame, but updateWorldSnapshot compares
-    // pointer identity so export and native scene commit happen once per newly
-    // committed immutable generation, never once per frame.
-    mSteamAudio->updateWorldSnapshot(
-        mWorldData, *mAcousticPresetResolver);
+    if (preparedArtifacts && preparedArtifacts->acousticScene) {
+      auto retired = mSteamAudio->publishWorldSnapshot(
+          std::move(preparedArtifacts->acousticScene));
+      if (retired) {
+        lock_guard lock(mPreparedGenerationArtifactsMutex);
+        mRetiredAcousticScenes.push_back(std::move(retired));
+      }
+    } else {
+      // The initial snapshot and failed worker preparations retain the
+      // synchronous compatibility path.
+      mSteamAudio->updateWorldSnapshot(
+          mWorldData, *mAcousticPresetResolver);
+      if (preparedArtifacts && !preparedArtifacts->acousticError.empty()) {
+        addDisplayMessage(
+            DisplayMessage::Level::Debug,
+            "Acoustic scene preparation failed: " +
+                preparedArtifacts->acousticError);
+      }
+    }
     if (mEmitterResyncPending.exchange(
             false, std::memory_order_acq_rel)) {
       mSteamAudio->syncEmitters(mWorldData);
@@ -1390,12 +1454,75 @@ void StatePlayBooleanWorld::resumeImpl(void* args) {
   }
 }
 
-void StatePlayBooleanWorld::handleClippingUpdate(bw::core::DynamicWorldDataGenerator::GenerationDetails const& details) {
-  lock_guard<mutex> lock(mClippingRecordsMutex);
+void StatePlayBooleanWorld::handleClippingUpdate(
+    bw::core::DynamicWorldDataGenerator::GenerationDetails const& details) {
+  using GenerationState =
+      bw::core::DynamicWorldDataGenerator::GenerationState;
 
-  // If state is Generating, insert
+  if (details.state == GenerationState::Generated && details.worldData) {
+    // Reclaim payloads displaced by the previous main-thread swap here rather
+    // than charging their buffer/native-scene destruction to a game update.
+    std::vector<WorldRenderer::PreparedWorldRenderDataPtr> retiredRenderData;
+    std::vector<bw::app::AcousticScenePtr> retiredAcousticScenes;
+    {
+      lock_guard lock(mPreparedGenerationArtifactsMutex);
+      retiredRenderData.swap(mRetiredWorldRenderData);
+      retiredAcousticScenes.swap(mRetiredAcousticScenes);
+    }
+    retiredRenderData.clear();
+    retiredAcousticScenes.clear();
+
+    PreparedGenerationArtifacts artifacts;
+    artifacts.worldData = details.worldData;
+    auto const viewerPosition = glm::vec3{
+        details.viewerPosition.x, 0.0f, -details.viewerPosition.y};
+    try {
+      artifacts.renderData = mwRenderer->prepareWorldRenderData(
+          details.worldData, viewerPosition);
+    } catch (std::exception const& error) {
+      artifacts.renderError = error.what();
+    }
+    if (mSteamAudio) {
+      try {
+        artifacts.acousticScene = mSteamAudio->buildScene(
+            details.worldData, *mAcousticPresetResolver);
+      } catch (std::exception const& error) {
+        artifacts.acousticError = error.what();
+      }
+    }
+
+    lock_guard lock(mPreparedGenerationArtifactsMutex);
+    mPreparedGenerationArtifacts.insert_or_assign(
+        details.clippingId, std::move(artifacts));
+    while (mPreparedGenerationArtifacts.size() >
+           bw::core::DynamicWorldDataGenerator::MaxPendingGenerations + 1) {
+      mPreparedGenerationArtifacts.erase(mPreparedGenerationArtifacts.begin());
+    }
+  }
+
+  if (details.state == GenerationState::Committed) {
+    // The callback is the authoritative regeneration boundary. The World
+    // pointer is assigned just after this callback returns, so defer emitter
+    // identity reconciliation until updatePreEntities adopts that snapshot.
+    mEmitterResyncPending.store(true, std::memory_order_release);
+    // Dynamic providers and the point-shadow cache do not expose revisions;
+    // the prepared payload swap below is their explicit geometry boundary.
+    if (mwRenderSystem->hasShadowDomain(
+            std::string(bw::app::playerTorchShadowDomain))) {
+      mwRenderSystem->invalidateShadowDomain(
+          std::string(bw::app::playerTorchShadowDomain));
+    }
+    addDisplayMessage(
+        DisplayMessage::Level::Debug,
+        format(
+            "Arrangement committed: {} vertices, {} faces",
+            details.stats.arrangement.vertexCount,
+            details.stats.arrangement.faceCount));
+  }
+
+  lock_guard lock(mClippingRecordsMutex);
   switch (details.state) {
-    case bw::core::DynamicWorldDataGenerator::GenerationState::Generating:
+    case GenerationState::Generating:
       mClippingRecords.push_back({details.clippingId,
                                   mGlobalTime,
                                   -1.0,
@@ -1404,49 +1531,46 @@ void StatePlayBooleanWorld::handleClippingUpdate(bw::core::DynamicWorldDataGener
                                   details.stats});
       break;
 
-    case bw::core::DynamicWorldDataGenerator::GenerationState::Committed:
-      // The callback is the authoritative regeneration boundary. The World
-      // pointer is assigned just after this callback returns, so defer the
-      // identity reconciliation until updatePreEntities has that new snapshot.
-      mEmitterResyncPending.store(true, std::memory_order_release);
-      mwRenderer->setWorldChanged();
-      // World models use dynamic providers, so MPP cannot observe their
-      // vertex/index writes through model revisions. A committed generation is
-      // the explicit shadow-relevant geometry boundary.
-      if (mwRenderSystem->hasShadowDomain(
-              std::string(bw::app::playerTorchShadowDomain))) {
-        mwRenderSystem->invalidateShadowDomain(
-            std::string(bw::app::playerTorchShadowDomain));
-      }
-      addDisplayMessage(
-          DisplayMessage::Level::Debug,
-          format(
-              "Arrangement committed: {} vertices, {} faces",
-              details.stats.arrangement.vertexCount,
-              details.stats.arrangement.faceCount));
-      [[fallthrough]];
-    case bw::core::DynamicWorldDataGenerator::GenerationState::Generated:
-      // Find the record with the matching ID and update
+    case GenerationState::Generated:
+    case GenerationState::Committed:
       for (auto& record : mClippingRecords) {
-        if (record.clippingId == details.clippingId) {
-          if (details.state == bw::core::DynamicWorldDataGenerator::GenerationState::Generated) {
-            record.generationCompleteTime = mGlobalTime;
-            record.generationTimeNs = details.genTimeNs;
-            record.stats = details.stats;
-          } else {
-            record.commitedTime = mGlobalTime;
-          }
-
-          break;
+        if (record.clippingId != details.clippingId) {
+          continue;
         }
+        if (details.state == GenerationState::Generated) {
+          record.generationCompleteTime = mGlobalTime;
+          record.generationTimeNs = details.genTimeNs;
+          record.stats = details.stats;
+        } else {
+          record.commitedTime = mGlobalTime;
+        }
+        break;
       }
       break;
 
     default:
       break;
   }
+  bw::common::trimDequeToCapacity(
+      mClippingRecords, CLIPPING_RECORD_COUNT_MAX);
+}
 
-  bw::common::trimDequeToCapacity(mClippingRecords, CLIPPING_RECORD_COUNT_MAX);
+std::optional<StatePlayBooleanWorld::PreparedGenerationArtifacts>
+StatePlayBooleanWorld::takePreparedGenerationArtifacts(
+    bw::core::WorldDataPtr const& worldData) {
+  lock_guard lock(mPreparedGenerationArtifactsMutex);
+  auto found = std::find_if(
+      mPreparedGenerationArtifacts.begin(),
+      mPreparedGenerationArtifacts.end(),
+      [&worldData](auto const& entry) {
+        return entry.second.worldData == worldData;
+      });
+  if (found == mPreparedGenerationArtifacts.end()) {
+    return std::nullopt;
+  }
+  auto result = std::move(found->second);
+  mPreparedGenerationArtifacts.erase(found);
+  return result;
 }
 
 void StatePlayBooleanWorld::updateImpl(float frameTime) {

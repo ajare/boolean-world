@@ -29,9 +29,13 @@
 class WorldRenderer {
 public:
   enum class WallUpdatePolicy {
-    CommittedWorldGenerationOnly,
+    GameplayViewerSideChanges,
     EditorEveryUpdate,
   };
+
+  class PreparedWorldRenderData;
+  using PreparedWorldRenderDataPtr =
+      std::shared_ptr<PreparedWorldRenderData>;
 
   using RenderTargets = std::array<mpp::RenderTargetPtr, bw::app::renderScaleCount>;
   using WallRenderVariantResolver = std::function<std::optional<WallRenderVariant>(
@@ -72,6 +76,7 @@ private:
   bool mFragmentOverdraw{false};
   int32_t mHighlightedTriangle{-1};
   bool mHighlightedCeiling{};
+  std::vector<uint8_t> mWallFacingNormalSides;
 
   wp::Logger* mwLogger;
   bw::core::World* mwWorld{nullptr};
@@ -88,20 +93,28 @@ private:
   void updateHorizontalDataProvider(
       bw::core::WorldData const& worldData,
       int32_t highlightedTriangle,
-      bool highlightedCeiling);
+      bool highlightedCeiling,
+      DataProvider const& dataProvider);
 
   // Liquid has its own blended scene model so it can be deferred without
   // changing the opaque floor and ceiling model.
-  void updateLiquidDataProvider(bw::core::WorldData const& worldData);
+  void updateLiquidDataProvider(
+      bw::core::WorldData const& worldData,
+      DataProvider const& dataProvider);
 
   // Wall surface geometry. Each wall picks whichever single triangular or
   // quadrilateral side faces the supplied viewer position: its authored
   // material on the side its normal points toward, or the reserved plain-white
-  // material otherwise. Gameplay rebuilds this only for a committed world
-  // generation; the editor can opt into rebuilding as its preview camera moves.
+  // material otherwise. Gameplay rebuilds only when one of those side choices
+  // changes; the editor can opt into rebuilding on every preview update.
+  [[nodiscard]] std::vector<uint8_t> wallFacingNormalSides(
+      bw::core::WorldData const& worldData,
+      glm::vec3 const& viewerPosition) const;
+
   void updateWallDataProvider(
-      bw::core::WorldData const& worldData, glm::vec3 const& playerPosition,
-      int32_t highlightedWall);
+      bw::core::WorldData const& worldData,
+      std::vector<uint8_t> const& facingNormalSides,
+      int32_t highlightedWall, DataProvider const& dataProvider);
 
   uint32_t addVertexToDataProvider(
       DataProvider dataProvider, uint32_t meshIndex, float px, float py,
@@ -186,6 +199,17 @@ public:
   // can release them from its main-thread post-work step rather than from the
   // threadable pre-work that tears the renderer itself down.
   RenderTargets detachRenderTargets();
+
+  // Builds immutable CPU-side mesh payloads without touching active providers
+  // or OpenGL. Gameplay calls this from the world-generation worker.
+  [[nodiscard]] PreparedWorldRenderDataPtr prepareWorldRenderData(
+      bw::core::WorldDataPtr worldData,
+      glm::vec3 const& viewerPosition);
+
+  // Replaces the active providers' payloads while preserving the provider
+  // identities held by MPP. Must be called on the main/render thread.
+  void publishWorldRenderData(
+      PreparedWorldRenderDataPtr const& prepared);
 
   void update(
       bw::core::World* world,

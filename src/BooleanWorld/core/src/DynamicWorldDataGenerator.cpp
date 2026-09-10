@@ -336,7 +336,8 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
           world->getExtents(),
           float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
           world->getWedgeGenerationParameters(),
-          mCreateWayfinderMesh};
+          mCreateWayfinderMesh,
+          mViewTriangle[0]};
 }
 
 void DynamicWorldDataGenerator::generateWorldData(
@@ -349,7 +350,9 @@ void DynamicWorldDataGenerator::generateWorldData(
       clippingId,
       GenerationState::Generating,
       0,
-      {input.primStats, {}, requestStats}};
+      {input.primStats, {}, requestStats},
+      nullptr,
+      input.viewerPosition};
 
   // Count the callback-blocked portion as active work as well as the geometry
   // build itself. The asynchronous drain calls this function serially.
@@ -384,6 +387,15 @@ void DynamicWorldDataGenerator::generateWorldData(
     superseded = mPendingGenerationInput.has_value();
   }
 
+  details.state = GenerationState::Generated;
+  details.genTimeNs = mLastGenTime;
+  details.stats = stats;
+  details.worldData = superseded ? nullptr : results;
+
+  // Derived immutable artifacts are prepared by Generated callbacks before
+  // the clipping can be observed and committed by the game thread.
+  fireCallbacks(details);
+
   if (!superseded) {
     mPendingClippings.push_bounded(
         {clippingId,
@@ -392,18 +404,13 @@ void DynamicWorldDataGenerator::generateWorldData(
          move(input.updatedPrimitives),
          input.layerSelection,
          stats,
-         mLastGenTime},
+         mLastGenTime,
+         input.viewerPosition},
         MaxPendingGenerations);
   }
 
   mNumGenerationsInProgress--;
   mNumGenerationsComplete++;
-
-  details.state = GenerationState::Generated;
-  details.genTimeNs = mLastGenTime;
-  details.stats = stats;
-
-  fireCallbacks(details);
 }
 
 void DynamicWorldDataGenerator::drainGenerationRequests() {
@@ -570,7 +577,9 @@ void DynamicWorldDataGenerator::checkCommitPendingClipping() {
     mNumCommits++;
   }
 
-  fireCallbacks({clippingId, GenerationState::Committed, 0, stats});
+  fireCallbacks(
+      {clippingId, GenerationState::Committed, 0, stats,
+       mActiveClipping.worldData, mActiveClipping.viewerPosition});
 }
 
 WorldDataPtr DynamicWorldDataGenerator::getWorldData(World const* world) {

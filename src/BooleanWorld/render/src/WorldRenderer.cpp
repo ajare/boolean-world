@@ -65,6 +65,14 @@ struct MaskPayload {
 
 }  // namespace
 
+class WorldRenderer::PreparedWorldRenderData {
+  friend class WorldRenderer;
+
+  bw::core::WorldDataPtr worldData;
+  std::array<DataProvider, 3> providers;
+  std::vector<uint8_t> wallFacingNormalSides;
+};
+
 WorldRenderer::WorldRenderer(
     wp::application::resourcesystem::ResourceManager* resourceMgr,
     wp::Logger* logger,
@@ -161,6 +169,49 @@ mpp::RenderTargetPtr const& WorldRenderer::getRenderTarget(
 
 WorldRenderer::RenderTargets WorldRenderer::detachRenderTargets() {
   return std::move(mWorldTargets);
+}
+
+WorldRenderer::PreparedWorldRenderDataPtr
+WorldRenderer::prepareWorldRenderData(
+    bw::core::WorldDataPtr worldData,
+    glm::vec3 const& viewerPosition) {
+  if (!worldData) {
+    throw std::invalid_argument("world render data requires a World snapshot");
+  }
+
+  auto prepared = std::make_shared<PreparedWorldRenderData>();
+  prepared->worldData = std::move(worldData);
+  for (size_t index = 0; index < prepared->providers.size(); ++index) {
+    prepared->providers[index] =
+        std::make_shared<WorldTriangle3dDataProvider>();
+    prepared->providers[index]->setMeshCount(
+        mMaterialRenderers[index].dataProvider->getNumMeshes());
+  }
+
+  updateHorizontalDataProvider(
+      *prepared->worldData, -1, false, prepared->providers[0]);
+  updateLiquidDataProvider(*prepared->worldData, prepared->providers[1]);
+  prepared->wallFacingNormalSides =
+      wallFacingNormalSides(*prepared->worldData, viewerPosition);
+  updateWallDataProvider(
+      *prepared->worldData, prepared->wallFacingNormalSides, -1,
+      prepared->providers[2]);
+  return prepared;
+}
+
+void WorldRenderer::publishWorldRenderData(
+    PreparedWorldRenderDataPtr const& prepared) {
+  if (!prepared) {
+    throw std::invalid_argument("prepared world render data is missing");
+  }
+  for (size_t index = 0; index < prepared->providers.size(); ++index) {
+    mMaterialRenderers[index].dataProvider->replaceData(
+        *prepared->providers[index]);
+  }
+  mWallFacingNormalSides = prepared->wallFacingNormalSides;
+  mWorldHasChanged = false;
+  mHighlightedTriangle = -1;
+  mHighlightedCeiling = false;
 }
 
 void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
@@ -529,14 +580,16 @@ void WorldRenderer::addDetailTriangleToDataProvider(
 void WorldRenderer::updateHorizontalDataProvider(
     bw::core::WorldData const& snapshot,
     int32_t highlightedTriangle,
-    bool highlightedCeiling) {
+    bool highlightedCeiling,
+    DataProvider const& dataProvider) {
   auto const& worldData = snapshot.getArrangement();
   auto const& triangles = snapshot.getTriangles();
   auto const highlightedFace =
       highlightedTriangle >= 0 && size_t(highlightedTriangle) < triangles.size()
           ? triangles[highlightedTriangle].face
           : ~0u;
-  auto& horizontal = mMaterialRenderers[0];
+  auto horizontal = mMaterialRenderers[0];
+  horizontal.dataProvider = dataProvider;
   // A Chip bites into one side of a face only, so the detail channel names
   // the side (ADR-0027): skipping the whole ArrangementTriangle would punch
   // a matching hole in the surface overhead.
@@ -704,10 +757,12 @@ void WorldRenderer::updateHorizontalDataProvider(
 }
 
 void WorldRenderer::updateLiquidDataProvider(
-    bw::core::WorldData const& snapshot) {
+    bw::core::WorldData const& snapshot,
+    DataProvider const& dataProvider) {
   auto const& worldData = snapshot.getArrangement();
   auto const& triangles = snapshot.getLiquidSurfaceTriangles();
-  auto& liquid = mMaterialRenderers[1];
+  auto liquid = mMaterialRenderers[1];
+  liquid.dataProvider = dataProvider;
   auto liquidHashFor = [](bw::core::LiquidType liquidType) {
     return bw::core::MaterialDefinition{}.data.hash(
         bw::core::LiquidMaterialIndex(liquidType));
@@ -743,20 +798,43 @@ void WorldRenderer::updateLiquidDataProvider(
   liquid.dataProvider->setNumPrimitives(liquid.dataProvider->getNumTriangles());
 }
 
-void WorldRenderer::updateWallDataProvider(
-    bw::core::WorldData const& snapshot, glm::vec3 const& playerPosition,
-    int32_t highlightedWall) {
+std::vector<uint8_t> WorldRenderer::wallFacingNormalSides(
+    bw::core::WorldData const& snapshot,
+    glm::vec3 const& viewerPosition) const {
   auto const& worldData = snapshot.getArrangement();
   auto const& walls = snapshot.getWalls();
+  wp::Vector2 viewerPositionXZ{viewerPosition.x, -viewerPosition.z};
+  std::vector<uint8_t> result;
+  result.reserve(walls.size());
+  for (auto const& wall : walls) {
+    auto orientation =
+        bw::core::arr::OrientArrangementWall(worldData, wall);
+    auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
+    result.push_back(
+        orientation.normal.dot(viewerPositionXZ - midpoint) > 0.0f);
+  }
+  return result;
+}
+
+void WorldRenderer::updateWallDataProvider(
+    bw::core::WorldData const& snapshot,
+    std::vector<uint8_t> const& facingNormalSides,
+    int32_t highlightedWall, DataProvider const& dataProvider) {
+  auto const& worldData = snapshot.getArrangement();
+  auto const& walls = snapshot.getWalls();
+  if (facingNormalSides.size() != walls.size()) {
+    throw std::invalid_argument(
+        "wall-facing choices do not match the World snapshot");
+  }
   auto projectionData = BuildTriplanarWallProjectionData(worldData, walls);
-  auto& wallRenderer = mMaterialRenderers[2];
+  auto wallRenderer = mMaterialRenderers[2];
+  wallRenderer.dataProvider = dataProvider;
 
   // Walls render two-sided, but only ever as one triangular or quadrilateral
   // surface: whichever side currently faces the player keeps the wall's
-  // authored material: this
-  // reserved, plain-white material - see WorldBatch::createModelStream
-  // (which guarantees this mesh bucket exists) and
-  // BW_WALL_BACK_FACE_MATERIAL_INDEX - renders on the far side instead.
+  // authored material. The reserved, plain-white material - see
+  // WorldBatch::createModelStream (which guarantees this mesh bucket exists)
+  // and BW_WALL_BACK_FACE_MATERIAL_INDEX - renders on the far side instead.
   // Emitting both sides' quads at once (an earlier version of this) put two
   // coplanar, oppositely-wound quads in the same mesh's material bucket,
   // which is exactly what backface culling exists to prevent overdraw of -
@@ -764,12 +842,6 @@ void WorldRenderer::updateWallDataProvider(
   // one ever being visible.
   auto backHash =
       bw::core::MaterialDefinition{}.data.hash(BW_WALL_BACK_FACE_MATERIAL_INDEX);
-  wp::Vector2 playerPositionXZ{playerPosition.x, -playerPosition.z};
-
-  auto facesPlayer = [&](bw::core::arr::ArrangementWallOrientation const& orientation) {
-    auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
-    return orientation.normal.dot(playerPositionXZ - midpoint) > 0.0f;
-  };
   auto variantFor = [&](bw::core::arr::ArrangementWall const& wall) {
     return mWallRenderVariantResolver ? mWallRenderVariantResolver(wall)
                                       : optional<WallRenderVariant>{};
@@ -823,7 +895,7 @@ void WorldRenderer::updateWallDataProvider(
     auto backMesh =
         wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
     auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
-    if (facesPlayer(orientation)) {
+    if (facingNormalSides[wallIndex]) {
       if (suppressed) {
         for (auto const& replacement : replacements) {
           ++wallCounts[replacement.kind ==
@@ -870,7 +942,7 @@ void WorldRenderer::updateWallDataProvider(
                   DetailSurfaceKind::Wall, uint32_t(wallIndex))
             : std::span<bw::core::arr::DetailTriangle const>{};
 
-    auto drawsNormalSide = facesPlayer(orientation);
+    auto drawsNormalSide = facingNormalSides[wallIndex] != 0;
     auto liquidSurfaceHeight =
         liquidSurfaceHeightFor(orientation, drawsNormalSide);
 
@@ -1026,14 +1098,21 @@ void WorldRenderer::update(
   auto const worldHasChanged = mWorldHasChanged;
   if (worldHasChanged || horizontalHighlightChanged) {
     updateHorizontalDataProvider(
-        worldData, highlightedTriangle, highlightedCeiling);
+        worldData, highlightedTriangle, highlightedCeiling,
+        mMaterialRenderers[0].dataProvider);
   }
   if (worldHasChanged) {
-    updateLiquidDataProvider(worldData);
+    updateLiquidDataProvider(
+        worldData, mMaterialRenderers[1].dataProvider);
   }
+  auto facingNormalSides = wallFacingNormalSides(worldData, playerPosition);
   if (worldHasChanged ||
-      mWallUpdatePolicy == WallUpdatePolicy::EditorEveryUpdate) {
-    updateWallDataProvider(worldData, playerPosition, highlightedWall);
+      mWallUpdatePolicy == WallUpdatePolicy::EditorEveryUpdate ||
+      facingNormalSides != mWallFacingNormalSides) {
+    updateWallDataProvider(
+        worldData, facingNormalSides, highlightedWall,
+        mMaterialRenderers[2].dataProvider);
+    mWallFacingNormalSides = std::move(facingNormalSides);
   }
   mWorldHasChanged = false;
 

@@ -97,6 +97,11 @@ public:
       core::ArrangementWorldDataPtr sourceWorld,
       AcousticPresetResolver const& resolver);
 
+  // Publishes a scene whose expensive mesh export and native scene commit were
+  // completed by the world-generation worker.
+  [[nodiscard]] AcousticScenePtr publishWorldSnapshot(
+      AcousticScenePtr scene);
+
   // Exports and commits a new immutable default triangle-mesh scene. The
   // returned object retains the exact source snapshot; it is never updated in
   // place when a later generation commits.

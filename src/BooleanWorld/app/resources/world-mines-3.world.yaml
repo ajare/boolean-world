@@ -40,7 +40,7 @@ world:
           value: builtin.basalt
         - name: support_frame_pct
           type: float
-          value: 0.35
+          value: 35
       minExtent: [-4096, -4096]
       maxExtent: [4096, 4096]
       nextStepId: 5
@@ -1769,7 +1769,7 @@ world:
           primitives:
             - type: Mesh
               vertexTransformerObject:
-                id: 280
+                id: 826
                 parentId: -1
                 position: [-16, 8]
                 transformOffset: [0, 0]
@@ -2105,7 +2105,7 @@ world:
                       []
             - type: Rectangle
               vertexTransformerObject:
-                id: 281
+                id: 827
                 parentId: -1
                 position: [-60, 0]
                 transformOffset: [0, 0]
@@ -2395,7 +2395,7 @@ world:
                 xyRatio: 2
             - type: Rectangle
               vertexTransformerObject:
-                id: 282
+                id: 828
                 parentId: -1
                 position: [28, 0]
                 transformOffset: [0, 0]

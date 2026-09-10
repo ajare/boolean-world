@@ -3,6 +3,7 @@
 #include <iostream>
 #include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #include <core/DynamicWorldDataGenerator.h>
@@ -65,6 +66,66 @@ void staleLayerGenerationDoesNotBlockCurrentGeneration() {
   generator.unregisterGenerationCallback(token);
 }
 
+void generatedArtifactsFinishBeforeCommitBecomesVisible() {
+  bw::core::World world(20.0f, 2.0f);
+  DynamicWorldDataGenerator generator(&world);
+  generator.setAllowCommitIfVisible(true);
+  generator.generateBlocking();
+  auto original = generator.getWorldData(&world);
+
+  std::mutex mutex;
+  std::condition_variable changed;
+  bool preparing = false;
+  bool releasePreparation = false;
+  bw::core::WorldDataPtr generatedWorld;
+  bw::core::WorldDataPtr committedWorld;
+  auto token = generator.registerGenerationCallback(
+      [&](DynamicWorldDataGenerator::GenerationDetails const& details) {
+        if (details.state ==
+            DynamicWorldDataGenerator::GenerationState::Generated) {
+          std::unique_lock lock(mutex);
+          generatedWorld = details.worldData;
+          preparing = true;
+          changed.notify_all();
+          changed.wait(lock, [&] { return releasePreparation; });
+        } else if (
+            details.state ==
+            DynamicWorldDataGenerator::GenerationState::Committed) {
+          std::lock_guard lock(mutex);
+          committedWorld = details.worldData;
+        }
+      });
+
+  generator.generate(&world);
+  {
+    std::unique_lock lock(mutex);
+    require(changed.wait_for(lock, 10s, [&] { return preparing; }),
+            "generated callback did not begin artifact preparation");
+  }
+  require(generatedWorld != nullptr,
+          "generated callback did not receive its immutable World snapshot");
+  require(generator.getWorldData(&world) == original,
+          "World committed before generated artifact preparation completed");
+
+  {
+    std::lock_guard lock(mutex);
+    releasePreparation = true;
+  }
+  changed.notify_all();
+
+  auto deadline = std::chrono::steady_clock::now() + 10s;
+  bw::core::WorldDataPtr current;
+  do {
+    current = generator.getWorldData(&world);
+    if (current == generatedWorld) break;
+    std::this_thread::sleep_for(1ms);
+  } while (std::chrono::steady_clock::now() < deadline);
+
+  require(current == generatedWorld && committedWorld == generatedWorld,
+          "commit did not publish the callback-prepared World snapshot");
+  generator.unregisterGenerationCallback(token);
+}
+
 void pendingGenerationQueueDropsOldestEntriesAtItsBound() {
   bw::core::World world(20.0f, 2.0f);
   DynamicWorldDataGenerator generator(&world);
@@ -109,6 +170,7 @@ void pendingGenerationQueueDropsOldestEntriesAtItsBound() {
 int main() {
   try {
     staleLayerGenerationDoesNotBlockCurrentGeneration();
+    generatedArtifactsFinishBeforeCommitBecomesVisible();
     pendingGenerationQueueDropsOldestEntriesAtItsBound();
     std::cout << "Commit queue discards stale and excess generations\n";
     return 0;

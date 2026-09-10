@@ -84,6 +84,11 @@ public:
 
   void finalizeInternals();
 
+  // Atomically from the renderer's perspective, replaces the CPU-side mesh
+  // payload with a completed off-thread build. The provider object itself is
+  // retained because MPP's batch owns its shared identity.
+  void replaceData(WorldTriangle3dDataProvider& completed);
+
   // Restores authored triangle order or sorts every material mesh by
   // triangle-centroid distance from the view. Blended liquid uses
   // BackToFront independently of opaque diagnostic ordering.

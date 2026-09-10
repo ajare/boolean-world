@@ -56,6 +56,14 @@ class EventInstance;
 }  // namespace FMOD
 
 class APPLICATION_API StatePlayBooleanWorld : public applib::StatePlay {
+  struct PreparedGenerationArtifacts {
+    bw::core::WorldDataPtr worldData;
+    WorldRenderer::PreparedWorldRenderDataPtr renderData;
+    bw::app::AcousticScenePtr acousticScene;
+    std::string renderError;
+    std::string acousticError;
+  };
+
   struct DebugDisplay {
     bool minimap{false};
     bool collisionSim{false};
@@ -214,6 +222,15 @@ private:
       bw::core::DynamicWorldDataGenerator::InvalidGenerationCallbackToken};
   std::atomic_bool mEmitterResyncPending{false};
 
+  // Generated callbacks run on the generation worker and complete these
+  // immutable artifacts before core makes that generation committable.
+  std::mutex mPreparedGenerationArtifactsMutex;
+  std::map<uint32_t, PreparedGenerationArtifacts>
+      mPreparedGenerationArtifacts;
+  std::vector<WorldRenderer::PreparedWorldRenderDataPtr>
+      mRetiredWorldRenderData;
+  std::vector<bw::app::AcousticScenePtr> mRetiredAcousticScenes;
+
   std::deque<DisplayMessage> mDisplayMessages;
 
   std::unique_ptr<AcousticPresetResolver> mAcousticPresetResolver;
@@ -297,6 +314,9 @@ private:
   void exit();
 
   void handleClippingUpdate(bw::core::DynamicWorldDataGenerator::GenerationDetails const& details);
+
+  std::optional<PreparedGenerationArtifacts> takePreparedGenerationArtifacts(
+      bw::core::WorldDataPtr const& worldData);
 
   bw::core::DynamicWorldDataGenerator* getWDG();
 

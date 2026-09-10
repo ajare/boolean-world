@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <cstring>
+#include <stdexcept>
 
 #include <glm/geometric.hpp>
 
@@ -196,6 +197,22 @@ void WorldTriangle3dDataProvider::finalizeInternals() {
     mVertexIndices[meshIndex].clear();
     mVertexIndices[meshIndex].rehash(0);
   }
+}
+
+void WorldTriangle3dDataProvider::replaceData(
+    WorldTriangle3dDataProvider& completed) {
+  if (mVertexStride != completed.mVertexStride ||
+      mMeshData.size() != completed.mMeshData.size()) {
+    throw std::invalid_argument(
+        "completed world geometry does not match the active provider");
+  }
+
+  mMeshData.swap(completed.mMeshData);
+  mVertexIndices.swap(completed.mVertexIndices);
+  mAuthoredIndices.swap(completed.mAuthoredIndices);
+  std::swap(mTriangleOrder, completed.mTriangleOrder);
+  setNumPrimitives(getNumTriangles());
+  completed.setNumPrimitives(completed.getNumTriangles());
 }
 
 void WorldTriangle3dDataProvider::orderTrianglesForView(

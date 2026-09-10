@@ -166,6 +166,33 @@ void trianglesCanBeOrderedClosestFirstAndRestored() {
           "disabling view sorting did not restore authored triangle order");
 }
 
+void completedBuildReplacesActivePayloadWithoutChangingProvider() {
+  WorldTriangle3dDataProvider active;
+  active.setMeshCount(1);
+  active.updateInternals({1});
+  active.nextVertexPtr(0);
+  active.nextVertexPtr(0);
+  active.nextVertexPtr(0);
+  active.addTriangle(0, 0, 1, 2);
+  active.finalizeInternals();
+
+  WorldTriangle3dDataProvider completed;
+  completed.setMeshCount(1);
+  completed.updateInternals({2});
+  for (uint32_t index = 0; index < 6; ++index) {
+    completed.nextVertexPtr(0);
+  }
+  completed.addTriangle(0, 0, 1, 2);
+  completed.addTriangle(0, 3, 4, 5);
+  completed.finalizeInternals();
+
+  active.replaceData(completed);
+  require(active.getNumTriangles() == 2 && active.getNumVertices() == 6,
+          "completed world geometry was not installed");
+  require(completed.getNumTriangles() == 1 && completed.getNumVertices() == 3,
+          "replaced world geometry was not transferred safely");
+}
+
 void indicesRemainValidBeyondSixteenBits() {
   constexpr uint32_t triangleCount = 21'846;
   constexpr uint32_t vertexCount = triangleCount * 3;
@@ -201,6 +228,7 @@ int main() {
     buffersAreSizedPerMesh();
     safelyReusesVerticesWithinEachMaterialMesh();
     trianglesCanBeOrderedClosestFirstAndRestored();
+    completedBuildReplacesActivePayloadWithoutChangingProvider();
     indicesRemainValidBeyondSixteenBits();
     std::cout << "World triangle data provider safely reuses material vertices with 32-bit indices\n";
     return 0;

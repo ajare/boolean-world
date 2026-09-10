@@ -40,6 +40,8 @@ public:
     LayerSelection layerSelection;
     Stats stats;
     uint64_t genTimeNs{0};
+    wp::Vector2 viewerPosition;
+
   };
 
   enum struct GenerationState {
@@ -58,6 +60,12 @@ public:
     GenerationState state;
     uint64_t genTimeNs;
     Stats stats;
+    // Present only for a generated result that can still be committed, and
+    // for its later commit notification. Generated callbacks run on the
+    // generation worker before the result becomes visible to the game thread,
+    // allowing immutable derived artifacts to be prepared without a race.
+    WorldDataPtr worldData;
+    wp::Vector2 viewerPosition;
   };
 
   typedef std::function<void(GenerationDetails const& details)> GenerationCompleteCallback;
@@ -85,6 +93,7 @@ private:
     float gridCellSize;
     WedgeGenerationParameters wedgeGenerationParameters;
     bool createWayfinderMesh;
+    wp::Vector2 viewerPosition;
   };
 
   std::atomic_uint32_t mClippingIdGenerator;
