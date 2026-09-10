@@ -75,7 +75,9 @@ void StateMapTransitionBooleanWorld::processResources(application::resourcesyste
     auto model = static_cast<BooleanWorldModel*>(applib::ModelInstance::get());
     auto newWorldRenderer = new WorldRenderer(
         resourceMgr, this->mwLogger, model->getRenderTextureFilter(),
-        model->getHorizontalMaterials(), {}, {}, "World", true);
+        model->getHorizontalMaterials(),
+        WorldRenderer::WallUpdatePolicy::CommittedWorldGenerationOnly,
+        {}, {}, "World", true);
     newWorldRenderer->createRenderTargets(this->mwRenderSystem);
 
     this->mTransitionData.userData = newWorldRenderer;

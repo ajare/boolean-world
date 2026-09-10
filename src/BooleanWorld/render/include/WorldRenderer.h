@@ -28,6 +28,11 @@
 
 class WorldRenderer {
 public:
+  enum class WallUpdatePolicy {
+    CommittedWorldGenerationOnly,
+    EditorEveryUpdate,
+  };
+
   using RenderTargets = std::array<mpp::RenderTargetPtr, bw::app::renderScaleCount>;
   using WallRenderVariantResolver = std::function<std::optional<WallRenderVariant>(
       bw::core::arr::ArrangementWall const&)>;
@@ -60,6 +65,7 @@ private:
   std::vector<MaterialRenderer> mMaterialRenderers;
   std::vector<WallRenderSurface> mWallRenderSurfaces;
   WallRenderVariantResolver mWallRenderVariantResolver;
+  WallUpdatePolicy mWallUpdatePolicy;
 
   bool mWorldHasChanged;
   bool mWireframe{false};
@@ -88,13 +94,11 @@ private:
   // changing the opaque floor and ceiling model.
   void updateLiquidDataProvider(bw::core::WorldData const& worldData);
 
-  // Wall surface geometry. Each wall picks, every call, whichever single
-  // triangular or quadrilateral side currently faces the player: its authored
-  // material if the player is on the side its normal points toward, or the
-  // reserved plain-white
-  // material otherwise. Called every frame regardless of mWorldHasChanged,
-  // since the player moving is enough to flip that choice for a wall even
-  // when nothing about the world itself changed.
+  // Wall surface geometry. Each wall picks whichever single triangular or
+  // quadrilateral side faces the supplied viewer position: its authored
+  // material on the side its normal points toward, or the reserved plain-white
+  // material otherwise. Gameplay rebuilds this only for a committed world
+  // generation; the editor can opt into rebuilding as its preview camera moves.
   void updateWallDataProvider(
       bw::core::WorldData const& worldData, glm::vec3 const& playerPosition,
       int32_t highlightedWall);
@@ -129,6 +133,7 @@ public:
       wp::Logger* logger,
       bw::app::RenderTextureFilter renderTextureFilter,
       bw::app::HorizontalMaterials horizontalMaterials,
+      WallUpdatePolicy wallUpdatePolicy,
       std::vector<WallRenderSurface> wallRenderSurfaces = {},
       WallRenderVariantResolver wallRenderVariantResolver = {},
       std::string worldResourceNamespace = "World",

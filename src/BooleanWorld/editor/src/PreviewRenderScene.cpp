@@ -108,6 +108,7 @@ PreviewRenderScene::PreviewRenderScene(
   mRenderer = std::make_unique<WorldRenderer>(
       renderSystem.resourceManager(), renderSystem.logger(),
       bw::app::RenderTextureFilter::Linear, horizontalMaterials,
+      WorldRenderer::WallUpdatePolicy::EditorEveryUpdate,
       std::vector<WallRenderSurface>{},
       WorldRenderer::WallRenderVariantResolver{}, "World", true,
       "World3d." + instanceName);

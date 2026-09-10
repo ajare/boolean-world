@@ -70,6 +70,7 @@ WorldRenderer::WorldRenderer(
     wp::Logger* logger,
     bw::app::RenderTextureFilter renderTextureFilter,
     bw::app::HorizontalMaterials horizontalMaterials,
+    WallUpdatePolicy wallUpdatePolicy,
     vector<WallRenderSurface> wallRenderSurfaces,
     WallRenderVariantResolver wallRenderVariantResolver,
     string worldResourceNamespace,
@@ -86,6 +87,7 @@ WorldRenderer::WorldRenderer(
       mBatchNamePrefix(move(batchNamePrefix)),
       mWallRenderSurfaces(move(wallRenderSurfaces)),
       mWallRenderVariantResolver(move(wallRenderVariantResolver)),
+      mWallUpdatePolicy(wallUpdatePolicy),
       mWorldHasChanged(true),
       mwLogger(logger),
       mRenderTextureFilter(renderTextureFilter) {
@@ -1015,23 +1017,25 @@ void WorldRenderer::update(
     int32_t highlightedWall) {
   BW_UNUSED(world);
 
-  if (highlightedTriangle != mHighlightedTriangle ||
-      highlightedCeiling != mHighlightedCeiling) {
-    mWorldHasChanged = true;
-    mHighlightedTriangle = highlightedTriangle;
-    mHighlightedCeiling = highlightedCeiling;
-  }
-  if (mWorldHasChanged) {
+  auto const horizontalHighlightChanged =
+      highlightedTriangle != mHighlightedTriangle ||
+      highlightedCeiling != mHighlightedCeiling;
+  mHighlightedTriangle = highlightedTriangle;
+  mHighlightedCeiling = highlightedCeiling;
+
+  auto const worldHasChanged = mWorldHasChanged;
+  if (worldHasChanged || horizontalHighlightChanged) {
     updateHorizontalDataProvider(
         worldData, highlightedTriangle, highlightedCeiling);
-    updateLiquidDataProvider(worldData);
-    mWorldHasChanged = false;
   }
-  // Unlike the horizontal provider, walls depend on playerPosition, so they
-  // need rebuilding on every call - the player moving is reason enough for
-  // a wall to flip which single surface it shows, even when nothing about the
-  // world itself changed.
-  updateWallDataProvider(worldData, playerPosition, highlightedWall);
+  if (worldHasChanged) {
+    updateLiquidDataProvider(worldData);
+  }
+  if (worldHasChanged ||
+      mWallUpdatePolicy == WallUpdatePolicy::EditorEveryUpdate) {
+    updateWallDataProvider(worldData, playerPosition, highlightedWall);
+  }
+  mWorldHasChanged = false;
 
   auto liquidEyeSurfaceHeight =
       worldData.getLiquidSurfaceHeight({playerPosition.x, -playerPosition.z});
