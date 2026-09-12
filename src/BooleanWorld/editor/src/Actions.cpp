@@ -363,6 +363,29 @@ bool setPrefabTags(
   return true;
 }
 
+bool setPrefabBuildVariable(
+    Document*, bw::core::DefinePrefabs* step, bw::core::Prefab* prefab,
+    string const& name, bw::core::BuildVariableValue value) {
+  auto const oldVariables = prefab->getBuildVariables();
+  step->setPrefabBuildVariable(prefab, name, move(value));
+  return prefab->getBuildVariables() != oldVariables;
+}
+
+bool removePrefabBuildVariable(
+    Document*, bw::core::DefinePrefabs* step, bw::core::Prefab* prefab,
+    string const& name) {
+  auto const oldVariables = prefab->getBuildVariables();
+  step->removePrefabBuildVariable(prefab, name);
+  return prefab->getBuildVariables() != oldVariables;
+}
+
+bool renamePrefabBuildVariable(
+    Document*, bw::core::DefinePrefabs* step, bw::core::Prefab* prefab,
+    string const& oldName, string const& newName) {
+  step->renamePrefabBuildVariable(prefab, oldName, newName);
+  return true;
+}
+
 bool bindPrefabField(
     Document*, bw::core::Layer* layer, bw::core::PrefabField* field,
     bw::core::DefinePrefabs* definitions) {

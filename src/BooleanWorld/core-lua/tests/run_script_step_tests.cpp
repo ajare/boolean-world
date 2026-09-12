@@ -1654,6 +1654,13 @@ void scriptsListAndFilterPrefabsByTags() {
 
     local tags = matches[1]:get_tags()
     assert(#tags == 2 and tags[1] == "outdoor" and tags[2] == "rock")
+    assert(matches[1].vars.weight == 2.5)
+    assert(matches[1].vars.shared == 3)
+    assert(matches[2].vars.shared == nil)
+    local seen = {}
+    for name, value in pairs(matches[1].vars) do seen[name] = value end
+    assert(seen.weight == 2.5 and seen.shared == 3)
+    assert(not pcall(function() matches[1].vars.weight = 7 end))
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -1664,9 +1671,12 @@ void scriptsListAndFilterPrefabsByTags() {
   auto* second = definitions->addPrefab("second");
   auto* third = definitions->addPrefab("third");
   definitions->setPrefabTags(first, {"rock", "outdoor"});
+  definitions->setPrefabBuildVariable(first, "weight", 2.5);
+  definitions->setPrefabBuildVariable(first, "shared", int64_t{3});
   definitions->setPrefabTags(second, {"rock"});
   definitions->setPrefabTags(third, {"rock", "outdoor", "large"});
 
+  layer.setBuildVariable("shared", int64_t{99});
   auto* step = addScriptStep(layer, runtime, "filter-prefabs");
   layer.rebuild();
   require(!step->hasFailed(),

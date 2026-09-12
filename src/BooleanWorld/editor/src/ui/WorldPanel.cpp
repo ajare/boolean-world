@@ -43,21 +43,60 @@ bool applyVariableEdit(
 
 }  // namespace
 
-void renderBuildVariablesEditor(ViewContext& context, bw::core::Layer* layer) {
+static void renderBuildVariablesEditorImpl(
+    ViewContext& context, bw::core::Layer* layer,
+    bw::core::DefinePrefabs* prefabStep, bw::core::Prefab* prefab) {
   auto* doc = context.doc;
   auto world = doc->getWorld();
-  auto const* key = layer ? static_cast<void const*>(layer)
-                          : static_cast<void const*>(world.get());
+  auto const* key = prefab ? static_cast<void const*>(prefab)
+                    : layer ? static_cast<void const*>(layer)
+                            : static_cast<void const*>(world.get());
   static map<void const*, BuildVariableEditorState> states;
   auto& state = states[key];
 
-  if (layer) {
+  if (prefab) {
+    if (!ImGui::CollapsingHeader("Variables##PrefabVariables")) return;
+  } else if (layer) {
     if (!ImGui::CollapsingHeader("Variables##LayerVariables")) return;
   } else {
     ImGui::SeparatorText("Variables");
   }
-  auto const& local = layer ? layer->getBuildVariables() : world->getBuildVariables();
-  auto effective = layer ? layer->getEffectiveBuildVariables() : local;
+  auto const local = prefab ? prefab->getBuildVariables()
+                     : layer ? layer->getBuildVariables()
+                             : world->getBuildVariables();
+  auto effective = prefab ? local
+                   : layer ? layer->getEffectiveBuildVariables()
+                           : local;
+  auto const setCommand = prefab ? CommandId::SetPrefabBuildVariable
+                          : layer ? CommandId::SetLayerBuildVariable
+                                  : CommandId::SetWorldBuildVariable;
+  auto const removeCommand = prefab ? CommandId::RemovePrefabBuildVariable
+                             : layer ? CommandId::RemoveLayerBuildVariable
+                                     : CommandId::RemoveWorldBuildVariable;
+  auto const renameCommand = prefab ? CommandId::RenamePrefabBuildVariable
+                             : layer ? CommandId::RenameLayerBuildVariable
+                                     : CommandId::RenameWorldBuildVariable;
+  auto setVariable = [&](string const& name,
+                         bw::core::BuildVariableValue value) {
+    if (prefab)
+      return setPrefabBuildVariable(
+          doc, prefabStep, prefab, name, move(value));
+    if (layer) return setLayerBuildVariable(doc, layer, name, move(value));
+    return setWorldBuildVariable(doc, name, move(value));
+  };
+  auto removeVariable = [&](string const& name) {
+    if (prefab)
+      return removePrefabBuildVariable(doc, prefabStep, prefab, name);
+    if (layer) return removeLayerBuildVariable(doc, layer, name);
+    return removeWorldBuildVariable(doc, name);
+  };
+  auto renameVariable = [&](string const& oldName, string const& newName) {
+    if (prefab)
+      return renamePrefabBuildVariable(
+          doc, prefabStep, prefab, oldName, newName);
+    if (layer) return renameLayerBuildVariable(doc, layer, oldName, newName);
+    return renameWorldBuildVariable(doc, oldName, newName);
+  };
 
   for (auto const& [name, effectiveValue] : effective) {
     ImGui::PushID(name.c_str());
@@ -78,11 +117,8 @@ void renderBuildVariablesEditor(ViewContext& context, bw::core::Layer* layer) {
           draftName != name) {
         auto oldName = name;
         auto newName = draftName;
-        auto command = layer ? CommandId::RenameLayerBuildVariable
-                             : CommandId::RenameWorldBuildVariable;
-        if (applyVariableEdit(doc, command, [&](Document*) {
-              if (layer) return renameLayerBuildVariable(doc, layer, oldName, newName);
-              return renameWorldBuildVariable(doc, oldName, newName); }, &state.error)) {
+        if (applyVariableEdit(doc, renameCommand, [&](Document*) {
+              return renameVariable(oldName, newName); }, &state.error)) {
           ImGui::PopID();
           break;
         }
@@ -101,11 +137,8 @@ void renderBuildVariablesEditor(ViewContext& context, bw::core::Layer* layer) {
         for (int i = 0; i < 4; ++i) {
           if (ImGui::Selectable(buildVariableTypes[i], i == selectedType)) {
             auto replacement = bw::core::defaultBuildVariableValue(buildVariableTypeAt(i));
-            auto command = layer ? CommandId::SetLayerBuildVariable
-                                 : CommandId::SetWorldBuildVariable;
-            applyVariableEdit(doc, command, [&](Document*) {
-              if (layer) return setLayerBuildVariable(doc, layer, name, replacement);
-              return setWorldBuildVariable(doc, name, replacement); }, &state.error);
+            applyVariableEdit(doc, setCommand, [&](Document*) {
+              return setVariable(name, replacement); }, &state.error);
           }
         }
         ImGui::EndCombo();
@@ -172,11 +205,8 @@ void renderBuildVariablesEditor(ViewContext& context, bw::core::Layer* layer) {
     ImGui::EndDisabled();
 
     if (changed && !inherited) {
-      auto command = layer ? CommandId::SetLayerBuildVariable
-                           : CommandId::SetWorldBuildVariable;
-      applyVariableEdit(doc, command, [&](Document*) {
-        if (layer) return setLayerBuildVariable(doc, layer, name, edited);
-        return setWorldBuildVariable(doc, name, edited); }, &state.error);
+      applyVariableEdit(doc, setCommand, [&](Document*) {
+        return setVariable(name, edited); }, &state.error);
     }
 
     ImGui::SameLine();
@@ -188,18 +218,15 @@ void renderBuildVariablesEditor(ViewContext& context, bw::core::Layer* layer) {
       ImGui::TextDisabled("World");
     } else {
       if (ImGui::SmallButton(ICON_FA_TRASH "##DeleteVariable")) {
-        auto command = layer ? CommandId::RemoveLayerBuildVariable
-                             : CommandId::RemoveWorldBuildVariable;
-        if (applyVariableEdit(doc, command, [&](Document*) {
-              if (layer) return removeLayerBuildVariable(doc, layer, name);
-              return removeWorldBuildVariable(doc, name); }, &state.error)) {
+        if (applyVariableEdit(doc, removeCommand, [&](Document*) {
+              return removeVariable(name); }, &state.error)) {
           ImGui::PopID();
           break;
         }
       }
-      if (layer) {
+      if (layer || prefab) {
         ImGui::SameLine();
-        ImGui::TextDisabled("Layer");
+        ImGui::TextDisabled(prefab ? "Prefab" : "Layer");
       }
     }
     ImGui::PopID();
@@ -221,11 +248,8 @@ void renderBuildVariablesEditor(ViewContext& context, bw::core::Layer* layer) {
     ImGui::SameLine();
     if (ImGui::Button("Add##ConfirmVariable")) {
       auto value = bw::core::defaultBuildVariableValue(state.addType);
-      auto command = layer ? CommandId::SetLayerBuildVariable
-                           : CommandId::SetWorldBuildVariable;
-      if (applyVariableEdit(doc, command, [&](Document*) {
-            if (layer) return setLayerBuildVariable(doc, layer, state.addName, value);
-            return setWorldBuildVariable(doc, state.addName, value); }, &state.error)) {
+      if (applyVariableEdit(doc, setCommand, [&](Document*) {
+            return setVariable(state.addName, value); }, &state.error)) {
         state.adding = false;
         state.addName.clear();
       }
@@ -245,6 +269,16 @@ void renderBuildVariablesEditor(ViewContext& context, bw::core::Layer* layer) {
   if (!state.error.empty()) {
     ImGui::TextColored(ImVec4(1, 0.35f, 0.35f, 1), "%s", state.error.c_str());
   }
+}
+
+void renderBuildVariablesEditor(ViewContext& context, bw::core::Layer* layer) {
+  renderBuildVariablesEditorImpl(context, layer, nullptr, nullptr);
+}
+
+void renderPrefabBuildVariablesEditor(
+    ViewContext& context, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab) {
+  renderBuildVariablesEditorImpl(context, nullptr, step, prefab);
 }
 
 void renderWorldView(ViewContext& context) {

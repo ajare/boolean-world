@@ -84,6 +84,16 @@ world:
               tileSize: 256
               tags:
                 []
+              vars:
+                - name: choose_pct
+                  type: float
+                  value: 25
+                - name: max_count
+                  type: integer
+                  value: 0
+                - name: min_count
+                  type: integer
+                  value: -1
               primitives:
                 - type: Mesh
                   vertexTransformerObject:
@@ -499,6 +509,16 @@ world:
               tileSize: 256
               tags:
                 []
+              vars:
+                - name: choose_pct
+                  type: float
+                  value: 25
+                - name: max_count
+                  type: integer
+                  value: 0
+                - name: min_count
+                  type: integer
+                  value: -1
               primitives:
                 - type: Mesh
                   vertexTransformerObject:
@@ -917,6 +937,16 @@ world:
               tileSize: 256
               tags:
                 []
+              vars:
+                - name: choose_pct
+                  type: float
+                  value: 25
+                - name: max_count
+                  type: integer
+                  value: 0
+                - name: min_count
+                  type: integer
+                  value: -1
               primitives:
                 - type: Mesh
                   vertexTransformerObject:
@@ -1321,6 +1351,16 @@ world:
               tileSize: 256
               tags:
                 []
+              vars:
+                - name: choose_pct
+                  type: float
+                  value: 25
+                - name: max_count
+                  type: integer
+                  value: 0
+                - name: min_count
+                  type: integer
+                  value: -1
               primitives:
                 - type: Mesh
                   vertexTransformerObject:
@@ -1788,7 +1828,7 @@ world:
           primitives:
             - type: Mesh
               vertexTransformerObject:
-                id: 641
+                id: 693
                 parentId: -1
                 position: [-16, 8]
                 transformOffset: [0, 0]

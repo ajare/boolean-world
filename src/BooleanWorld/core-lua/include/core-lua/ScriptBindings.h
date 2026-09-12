@@ -10,6 +10,8 @@
 
 #include <sol/sol.hpp>
 
+#include <core/BuildVariables.h>
+
 namespace bw {
 namespace core {
 
@@ -199,6 +201,9 @@ public:
 // Primitives are bound by borrowed pointer only. Lua never owns a C++ object
 // - the step that creates a Primitive owns it - so a script that raises
 // halfway through cannot leak or double-free one.
+[[nodiscard]] sol::table readonlyBuildVariables(
+    sol::state_view lua, BuildVariables const& variables);
+
 void bindScriptTypes(sol::state& lua);
 
 }  // namespace core

@@ -32,7 +32,7 @@ enum class BuildVariableType {
     BuildVariableType type);
 
 // ASCII Lua identifier, excluding reserved words. This guarantees dot access
-// through world.vars.name, layer.vars.name and step.vars.name.
+// through world.vars.name, layer.vars.name, step.vars.name and prefab.vars.name.
 [[nodiscard]] BW_API bool isValidBuildVariableName(std::string const& name);
 
 BW_API void validateBuildVariables(

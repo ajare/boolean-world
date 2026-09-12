@@ -245,6 +245,15 @@ bool setPrefabTileSize(
 bool setPrefabTags(
     Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
     bw::core::Prefab* prefab, std::set<std::string> const& tags);
+bool setPrefabBuildVariable(
+    Document* doc, bw::core::DefinePrefabs* step, bw::core::Prefab* prefab,
+    std::string const& name, bw::core::BuildVariableValue value);
+bool removePrefabBuildVariable(
+    Document* doc, bw::core::DefinePrefabs* step, bw::core::Prefab* prefab,
+    std::string const& name);
+bool renamePrefabBuildVariable(
+    Document* doc, bw::core::DefinePrefabs* step, bw::core::Prefab* prefab,
+    std::string const& oldName, std::string const& newName);
 
 bool bindPrefabField(
     Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,

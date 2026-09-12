@@ -114,6 +114,9 @@ void renderStatusbar(ViewContext& context);
 void renderWorldView(ViewContext& context);
 void renderBuildVariablesEditor(
     ViewContext& context, bw::core::Layer* layer = nullptr);
+void renderPrefabBuildVariablesEditor(
+    ViewContext& context, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab);
 void renderCreatePrimitiveView(ViewContext& context);
 void renderEditPrimitiveView(ViewContext& context);
 bool hasEditablePrimitiveSelection(Document* doc);

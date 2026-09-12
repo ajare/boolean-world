@@ -27,6 +27,39 @@ namespace core {
 
 using namespace std;
 
+sol::table readonlyBuildVariables(
+    sol::state_view lua, BuildVariables const& variables) {
+  auto values = lua.create_table();
+  auto names = lua.create_table(static_cast<int>(variables.size()), 0);
+  int index = 1;
+  for (auto const& [name, value] : variables) {
+    visit([&](auto const& concrete) { values[name] = concrete; }, value);
+    names[index++] = name;
+  }
+
+  sol::function factory = lua.script(R"(
+    local host_setmetatable, host_error = setmetatable, error
+    return function(values, names)
+      return host_setmetatable({}, {
+        __index = values,
+        __newindex = function(_, key)
+          host_error("build variable table is read-only: " .. tostring(key), 2)
+        end,
+        __pairs = function()
+          local i = 0
+          return function()
+            i = i + 1
+            local key = names[i]
+            if key ~= nil then return key, values[key] end
+          end
+        end,
+        __metatable = "protected build variable table"
+      })
+    end
+  )");
+  return factory(values, names);
+}
+
 namespace {
 
 constexpr char const* boundMarker = "__bw_script_types_bound";
@@ -1564,6 +1597,11 @@ void bindScriptTypes(sol::state& lua) {
         return sol::as_table(vector<string>(
             view.prefab->getTags().begin(), view.prefab->getTags().end()));
       },
+      "vars", sol::property(
+          [](PrefabView const& view, sol::this_state state) {
+            return readonlyBuildVariables(
+                sol::state_view(state), view.prefab->getBuildVariables());
+          }),
       "get_metadata_vertices",
       [](PrefabView const& view) {
         return sol::as_table(prefabMetadataVertices(*view.prefab, {}));

@@ -313,6 +313,19 @@ void prefabActionsCreateSelectRenameDeleteAndChangeTilingArguments() {
               prefab->getTags() ==
                   std::set<std::string>({"door", "interior"}),
           "Set Prefab tags action failed");
+  require(editor::setPrefabBuildVariable(
+              &document, step, prefab, "width", int64_t{4}) &&
+              std::get<int64_t>(
+                  prefab->getBuildVariables().at("width")) == 4,
+          "Set Prefab build variable action failed");
+  require(editor::renamePrefabBuildVariable(
+              &document, step, prefab, "width", "span") &&
+              prefab->getBuildVariables().contains("span"),
+          "Rename Prefab build variable action failed");
+  require(editor::removePrefabBuildVariable(
+              &document, step, prefab, "span") &&
+              prefab->getBuildVariables().empty(),
+          "Remove Prefab build variable action failed");
   require(editor::setPrefabTilingType(
               &document, layer, step, bw::core::PrefabTilingType::Square),
           "Set Prefab tiling type action failed");

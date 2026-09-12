@@ -38,6 +38,11 @@ Assignments and rebinding `world`, `layer`, or `step` fail. Names are
 case-sensitive Lua identifiers, excluding Lua keywords, and an override must
 retain its inherited type.
 
+Each Prefab may also define its own variables. They are available through the
+read-only `prefab.vars` table and use the same value types and identifier rules,
+but are independent authored values: they neither inherit World or Layer
+variables nor participate in the World–Layer–Step cascade.
+
 A LuaScript resource may declare Step build variables. Types are the lowercase
 strings `string`, `integer`, `float`, and `boolean`; every declaration requires
 a `default`. A string with no `Choices` is free text. A string with `Choices`
@@ -548,6 +553,19 @@ Returns the Prefab's canonical lowercase tags as a sorted array.
 local tags = prefab:get_tags()
 ```
 
+### `vars`
+
+A read-only table containing only the Prefab's authored variables. It supports
+lexicographically ordered `pairs()` iteration. Missing names return `nil` and
+assignments fail.
+
+```lua
+local weight = prefab.vars.weight
+```
+
+Prefab variables do not inherit variables with the same name from the World or
+Layer.
+
 ### `get_metadata_vertices()`
 
 Returns every annotated Prefab vertex as an array of read-only `PrefabVertex`
@@ -589,8 +607,8 @@ as `get_vertices_with_metadata`.
 local entrances = prefab:get_edges_with_metadata({kind = "entrance"})
 ```
 
-A script cannot inspect or mutate the Prefab's source Primitives, tags, or
-vertex or edge metadata. It can pass the handle to
+A script cannot inspect or mutate the Prefab's source Primitives, variables,
+tags, or vertex or edge metadata. It can pass the handle to
 `context:place_prefab_instance`.
 
 ## `PrefabVertex`

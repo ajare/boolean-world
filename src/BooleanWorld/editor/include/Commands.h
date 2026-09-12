@@ -134,7 +134,10 @@ namespace editor {
   X(SetLayerBuildVariable, "Set Layer build variable", setLayerBuildVariable) \
   X(RemoveLayerBuildVariable, "Remove Layer build variable", removeLayerBuildVariable) \
   X(RenameLayerBuildVariable, "Rename Layer build variable", renameLayerBuildVariable) \
-  X(SetNumTileMaps, "Set number of TileMaps", setNumTileMaps)
+  X(SetNumTileMaps, "Set number of TileMaps", setNumTileMaps) \
+  X(SetPrefabBuildVariable, "Set Prefab build variable", setPrefabBuildVariable) \
+  X(RemovePrefabBuildVariable, "Remove Prefab build variable", removePrefabBuildVariable) \
+  X(RenamePrefabBuildVariable, "Rename Prefab build variable", renamePrefabBuildVariable)
 
 #define EDITOR_GESTURE_COMMANDS(X) \
   X(Edit, "Edit") \
