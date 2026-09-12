@@ -535,6 +535,16 @@ void triplanarWallContinuityRendersThroughTheRealWorldProgram(
 }  // namespace
 
 int main(int argc, char** argv) {
+#if defined(__linux__)
+  // GLEW is built with GLX support, so do not let SDL prefer Wayland and
+  // create an EGL context that glewInit cannot use. Preserve explicit test
+  // environment overrides for driver-specific testing.
+  if (!SDL_getenv("SDL_VIDEODRIVER") &&
+      !SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11")) {
+    std::printf("Could not select SDL's X11 video driver for GLX\n");
+    return 1;
+  }
+#endif
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     std::printf("SDL_Init failed: %s\n", SDL_GetError());
     return 1;

@@ -66,6 +66,16 @@ float averageBrightness(std::uint32_t texture, std::uint32_t size) {
 }  // namespace
 
 int main() {
+#if defined(__linux__)
+  // GLEW is built with GLX support, so do not let SDL prefer Wayland and
+  // create an EGL context that glewInit cannot use. Preserve explicit test
+  // environment overrides for driver-specific testing.
+  if (!SDL_getenv("SDL_VIDEODRIVER") &&
+      !SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11")) {
+    std::printf("Could not select SDL's X11 video driver for GLX\n");
+    return 1;
+  }
+#endif
   if (!SDL_Init(SDL_INIT_VIDEO)) return 1;
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 4);
