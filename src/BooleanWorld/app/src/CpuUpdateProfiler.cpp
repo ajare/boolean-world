@@ -34,6 +34,7 @@ void CpuUpdateProfiler::setCaptureEnabled(bool enabled) {
   mCaptureEnabled = enabled;
   mLatestGameUpdateTimestampSeconds = 0.0;
   mLatestSynchronousWorldGenerationNs = 0;
+  mLatestWorldGenerationTimings = {};
   mSamples.clear();
 }
 
@@ -51,10 +52,12 @@ void CpuUpdateProfiler::setHistorySeconds(
 
 void CpuUpdateProfiler::setLatestGameUpdate(
     double timestampSeconds,
-    std::uint64_t synchronousWorldGenerationNs) {
+    std::uint64_t synchronousWorldGenerationNs,
+    CpuWorldGenerationTimings const& worldGenerationTimings) {
   if (mCaptureEnabled) {
     mLatestGameUpdateTimestampSeconds = timestampSeconds;
     mLatestSynchronousWorldGenerationNs = synchronousWorldGenerationNs;
+    mLatestWorldGenerationTimings = worldGenerationTimings;
   }
 }
 
@@ -70,12 +73,54 @@ void CpuUpdateProfiler::recordFrame(std::uint64_t gameNs,
       std::min(gameNs, mLatestSynchronousWorldGenerationNs);
   sample.durationsNs[index(CpuUpdateSubsystem::GameLogic)] =
       gameNs - generationNs;
-  sample.durationsNs[index(CpuUpdateSubsystem::SynchronousWorldGeneration)] =
-      generationNs;
+
+  auto remainingGenerationNs = generationNs;
+  auto recordGenerationPhase = [&](CpuUpdateSubsystem subsystem,
+                                   std::uint64_t measuredNs) {
+    auto const durationNs = std::min(remainingGenerationNs, measuredNs);
+    sample.durationsNs[index(subsystem)] = durationNs;
+    remainingGenerationNs -= durationNs;
+  };
+  recordGenerationPhase(
+      CpuUpdateSubsystem::WorldGenerationPSLG,
+      mLatestWorldGenerationTimings.buildPSLGNs);
+  recordGenerationPhase(
+      CpuUpdateSubsystem::WorldGenerationCycles,
+      mLatestWorldGenerationTimings.cycleExtractionNs);
+  recordGenerationPhase(
+      CpuUpdateSubsystem::WorldGenerationHierarchy,
+      mLatestWorldGenerationTimings.polygonHierarchyNs);
+  recordGenerationPhase(
+      CpuUpdateSubsystem::WorldGenerationClassification,
+      mLatestWorldGenerationTimings.classificationNs);
+  recordGenerationPhase(
+      CpuUpdateSubsystem::WorldGenerationTriangulation,
+      mLatestWorldGenerationTimings.triangulationNs);
+  recordGenerationPhase(
+      CpuUpdateSubsystem::WorldGenerationWalls,
+      mLatestWorldGenerationTimings.wallGenerationNs);
+  recordGenerationPhase(
+      CpuUpdateSubsystem::WorldGenerationDetail,
+      mLatestWorldGenerationTimings.detailGeometryNs);
+  recordGenerationPhase(
+      CpuUpdateSubsystem::WorldGenerationLiquid,
+      mLatestWorldGenerationTimings.liquidEquilibriumNs);
+  recordGenerationPhase(
+      CpuUpdateSubsystem::WorldGenerationAccelerationGrids,
+      mLatestWorldGenerationTimings.accelerationGridsNs);
+  recordGenerationPhase(
+      CpuUpdateSubsystem::WorldGenerationEmitterCapture,
+      mLatestWorldGenerationTimings.emitterCaptureNs);
+  recordGenerationPhase(
+      CpuUpdateSubsystem::WorldGenerationWayfinder,
+      mLatestWorldGenerationTimings.wayfinderMeshNs);
+  sample.durationsNs[index(CpuUpdateSubsystem::WorldGenerationOther)] =
+      remainingGenerationNs;
   sample.durationsNs[index(CpuUpdateSubsystem::Audio)] = audioNs;
 
   mSamples.push_back(sample);
   mLatestSynchronousWorldGenerationNs = 0;
+  mLatestWorldGenerationTimings = {};
 
   trimHistory(
       mSamples, mLatestGameUpdateTimestampSeconds, mHistorySeconds);

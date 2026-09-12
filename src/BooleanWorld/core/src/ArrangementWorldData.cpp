@@ -1,13 +1,13 @@
 #include "core/ArrangementWorldData.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <limits>
 #include <optional>
 
 #include <willpower/common/BoundingCircle.h>
 #include <willpower/common/MathsUtils.h>
+#include <willpower/common/Timer.h>
 #include <willpower/wayfinder/Mesh.h>
 
 #include "common/GameDefines.h"
@@ -126,21 +126,39 @@ ArrangementWorldData::ArrangementWorldData(
     WedgeGenerationParameters const& wedgeGenerationParameters,
     bool createWayfinderMesh)
     : mArrangement(std::move(arrangement)),
-      mTriangles(arr::BuildArrangementTriangles(*mArrangement)),
-      mWalls(arr::BuildArrangementWalls(*mArrangement)),
-      // Built here, on whichever thread constructs the snapshot - the
-      // generation worker in game - and immutable from then on, exactly like
-      // the two outputs above. Neither of those is altered by its presence.
-      mDetail(arr::BuildChipDetail(
-          *mArrangement, mWalls, wedgeGenerationParameters)),
-      mLiquidState(arr::ComputeLiquidState(*mArrangement, mTriangles)),
       mWedgeGenerationParameters(wedgeGenerationParameters) {
+  wp::Timer timer;
+  mTriangles = arr::BuildArrangementTriangles(*mArrangement);
   if (stats != nullptr) {
     stats->triangleCount = uint32_t(mTriangles.size());
+    stats->triangulationTimeNs = timer.elapsedNanoseconds();
+  }
+  timer.restart();
+
+  mWalls = arr::BuildArrangementWalls(*mArrangement);
+  if (stats != nullptr) {
     stats->wallCount = uint32_t(mWalls.size());
+    stats->wallGenerationTimeNs = timer.elapsedNanoseconds();
+  }
+  timer.restart();
+
+  // Built here, on whichever thread constructs the snapshot - the generation
+  // worker in game - and immutable from then on, exactly like the two outputs
+  // above. Neither of those is altered by its presence.
+  mDetail = arr::BuildChipDetail(
+      *mArrangement, mWalls, wedgeGenerationParameters);
+  if (stats != nullptr) {
     stats->chipCount = mDetail.getChipCount();
     stats->wedgeCount = mDetail.getWedgeCount();
+    stats->detailGeometryTimeNs = timer.elapsedNanoseconds();
   }
+  timer.restart();
+
+  mLiquidState = arr::ComputeLiquidState(*mArrangement, mTriangles);
+  if (stats != nullptr) {
+    stats->liquidEquilibriumTimeNs = timer.elapsedNanoseconds();
+  }
+  timer.restart();
 
   std::vector<ImmutableAccelerationGrid::ItemBounds> triangleBounds;
   triangleBounds.reserve(mTriangles.size());
@@ -245,6 +263,10 @@ ArrangementWorldData::ArrangementWorldData(
     mRenderedWallIndices.push_back(wallIndex);
   }
   mRenderedWallGrid = CreateGrid(extents, gridCellSize, renderedWallBounds);
+  if (stats != nullptr) {
+    stats->accelerationGridTimeNs = timer.elapsedNanoseconds();
+  }
+  timer.restart();
 
   // Capture is deliberately after detail geometry and its floor-Wedge index:
   // derived emitter height uses the same raised floor as player collision.
@@ -278,15 +300,15 @@ ArrangementWorldData::ArrangementWorldData(
         {emitter.position, height, emitter.soundId, emitter.guid,
          emitter.cullRadius, emitter.placementKey});
   }
+  if (stats != nullptr) {
+    stats->emitterCaptureTimeNs = timer.elapsedNanoseconds();
+  }
 
   if (createWayfinderMesh) {
-    auto start = std::chrono::steady_clock::now();
+    timer.restart();
     mWayfinderMesh = CreateWayfinderMesh(*mArrangement, mTriangles);
     if (stats != nullptr) {
-      stats->wayfinderMeshTimeNs = uint64_t(
-          std::chrono::duration_cast<std::chrono::nanoseconds>(
-              std::chrono::steady_clock::now() - start)
-              .count());
+      stats->wayfinderMeshTimeNs = timer.elapsedNanoseconds();
     }
   }
 }

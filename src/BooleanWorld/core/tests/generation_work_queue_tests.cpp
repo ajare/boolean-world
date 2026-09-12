@@ -421,6 +421,19 @@ void synchronousModeGeneratesOncePerUpdateAndIgnoresOrdinaryRequests() {
           "synchronous update did not finish its blocking Generation");
   require(generator.getLastSynchronousGenerationTimeNs() > 0,
           "synchronous update did not expose its blocking Generation time");
+  auto const timingStats = generator.getLastSynchronousGenerationStats();
+  require(timingStats.buildPSLGTimeNs +
+                  timingStats.cycleExtractionTimeNs +
+                  timingStats.polygonHierarchyTimeNs +
+                  timingStats.classificationTimeNs +
+                  timingStats.triangulationTimeNs +
+                  timingStats.wallGenerationTimeNs +
+                  timingStats.detailGeometryTimeNs +
+                  timingStats.liquidEquilibriumTimeNs +
+                  timingStats.accelerationGridTimeNs +
+                  timingStats.emitterCaptureTimeNs >
+              0,
+          "synchronous update did not expose its Generation phase timings");
 
   generator.generateBlocking();
   require(observer.startCount() == 3 &&
@@ -432,6 +445,12 @@ void synchronousModeGeneratesOncePerUpdateAndIgnoresOrdinaryRequests() {
   updateGenerator(generator, 0.25f);
   require(generator.getLastSynchronousGenerationTimeNs() == 0,
           "an asynchronous update retained a stale synchronous Generation time");
+  auto const resetTimingStats =
+      generator.getLastSynchronousGenerationStats();
+  require(resetTimingStats.buildPSLGTimeNs == 0 &&
+              resetTimingStats.classificationTimeNs == 0 &&
+              resetTimingStats.accelerationGridTimeNs == 0,
+          "an asynchronous update retained stale Generation phase timings");
 
   generator.unregisterGenerationCallback(token);
 }

@@ -26,21 +26,42 @@ void captureIsDisabledByDefault() {
           "CPU update capture was not disabled by default");
 }
 
-void separatesSynchronousWorldGenerationFromGameLogic() {
+void breaksSynchronousWorldGenerationIntoPhases() {
   CpuUpdateProfiler profiler;
   profiler.setCaptureEnabled(true);
 
-  profiler.setLatestGameUpdate(7.0, 30);
+  bw::app::CpuWorldGenerationTimings generationTimings{
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+  profiler.setLatestGameUpdate(7.0, 100, generationTimings);
   profiler.recordFrame(231, 5);
 
   auto const& sample = profiler.samples().back();
-  auto const& durations = sample.durationsNs;
+  std::array<std::uint64_t, bw::app::CpuUpdateSubsystemCount> const expected{
+      131, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 34, 5};
   require(sample.timestampSeconds == 7.0 &&
-              durations[index(CpuUpdateSubsystem::GameLogic)] == 201 &&
-              durations[index(
-                  CpuUpdateSubsystem::SynchronousWorldGeneration)] == 30 &&
-              durations[index(CpuUpdateSubsystem::Audio)] == 5,
-          "synchronous World Generation was not separated from game logic");
+              sample.durationsNs == expected,
+          "synchronous World Generation phases were not separated from game logic");
+}
+
+void clampsGenerationPhasesToMeasuredUpdateTime() {
+  CpuUpdateProfiler profiler;
+  profiler.setCaptureEnabled(true);
+
+  bw::app::CpuWorldGenerationTimings generationTimings;
+  generationTimings.buildPSLGNs = 40;
+  generationTimings.cycleExtractionNs = 20;
+  profiler.setLatestGameUpdate(1.0, 30, generationTimings);
+  profiler.recordFrame(20, 0);
+
+  auto const& durations = profiler.samples().back().durationsNs;
+  require(durations[index(CpuUpdateSubsystem::GameLogic)] == 0 &&
+              durations[index(CpuUpdateSubsystem::WorldGenerationPSLG)] ==
+                  20 &&
+              durations[index(CpuUpdateSubsystem::WorldGenerationCycles)] ==
+                  0 &&
+              durations[index(CpuUpdateSubsystem::WorldGenerationOther)] ==
+                  0,
+          "World Generation phases exceeded the measured game update");
 }
 
 void retainsFiveSecondsOfPresentedFrameRates() {
@@ -96,7 +117,8 @@ void usesTheConfiguredHistoryAndToggleClearsIt() {
 int main() {
   try {
     captureIsDisabledByDefault();
-    separatesSynchronousWorldGenerationFromGameLogic();
+    breaksSynchronousWorldGenerationIntoPhases();
+    clampsGenerationPhasesToMeasuredUpdateTime();
     retainsFiveSecondsOfPresentedFrameRates();
     usesTheConfiguredHistoryAndToggleClearsIt();
     std::cout << "CPU update profiler regression passed\n";

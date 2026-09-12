@@ -98,8 +98,18 @@ void reportsArrangementDiagnostics() {
           "arrangement diagnostics did not report solid-face triangles");
   require(stats.wallCount == 4,
           "arrangement diagnostics did not report border walls");
-  require(stats.buildPSLGTimeNs + stats.classificationTimeNs > 0,
-          "arrangement diagnostics did not record construction timings");
+  require(stats.buildPSLGTimeNs + stats.cycleExtractionTimeNs +
+                  stats.polygonHierarchyTimeNs +
+                  stats.classificationTimeNs >
+              0,
+          "arrangement diagnostics did not record topology phase timings");
+  require(stats.triangulationTimeNs + stats.wallGenerationTimeNs +
+                  stats.detailGeometryTimeNs +
+                  stats.liquidEquilibriumTimeNs +
+                  stats.accelerationGridTimeNs +
+                  stats.emitterCaptureTimeNs >
+              0,
+          "arrangement diagnostics did not record WorldData phase timings");
   require(worldData.getWayfinderMesh() != nullptr,
           "requested Wayfinder mesh was not returned in world data");
   require(worldData.getWayfinderMesh()->getNumSectors() == 1,

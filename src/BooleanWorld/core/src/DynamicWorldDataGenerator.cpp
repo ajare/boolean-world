@@ -63,6 +63,7 @@ void DynamicWorldDataGenerator::copyFrom(DynamicWorldDataGenerator const& other)
   mNumCommits.store(other.mNumCommits.load());
   mLastGenTime.store(other.mLastGenTime.load());
   mLastSynchronousGenerationTimeNs = 0;
+  mLastSynchronousGenerationStats = {};
   mPendingGenerationInput.reset();
   mGenerationWorkerRunning = false;
   mBlockingGenerationRunning = false;
@@ -143,6 +144,12 @@ uint64_t DynamicWorldDataGenerator::getLastGenTime() const {
 uint64_t DynamicWorldDataGenerator::getLastSynchronousGenerationTimeNs()
     const {
   return mLastSynchronousGenerationTimeNs;
+}
+
+ArrangementStats
+DynamicWorldDataGenerator::getLastSynchronousGenerationStats() const {
+  lock_guard<mutex> lock(mGenMutex);
+  return mLastSynchronousGenerationStats;
 }
 
 vector<DynamicWorldDataGenerator::GenerationPrimitiveMetadata>
@@ -340,7 +347,7 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
           mViewTriangle[0]};
 }
 
-void DynamicWorldDataGenerator::generateWorldData(
+Stats DynamicWorldDataGenerator::generateWorldData(
     GenerationInput input, bool discardIfSuperseded) {
   mLastGenerationStartTime = mGenerationScheduleTime.load();
   auto clippingId = mClippingIdGenerator++;
@@ -411,6 +418,7 @@ void DynamicWorldDataGenerator::generateWorldData(
 
   mNumGenerationsInProgress--;
   mNumGenerationsComplete++;
+  return stats;
 }
 
 void DynamicWorldDataGenerator::drainGenerationRequests() {
@@ -466,8 +474,9 @@ void DynamicWorldDataGenerator::runBlockingGeneration(World const* world) {
     mBlockingGenerationRunning = true;
   }
 
+  Stats generatedStats;
   try {
-    generateWorldData(snapshotGenerationInput(world, true));
+    generatedStats = generateWorldData(snapshotGenerationInput(world, true));
   } catch (...) {
     lock_guard<mutex> lock(mGenMutex);
     mBlockingGenerationRunning = false;
@@ -489,6 +498,10 @@ void DynamicWorldDataGenerator::runBlockingGeneration(World const* world) {
   if (startWorker) {
     mExecutorRuntime.thread_pool_executor()->post(
         [this] { drainGenerationRequests(); });
+  }
+  {
+    lock_guard<mutex> lock(mGenMutex);
+    mLastSynchronousGenerationStats = generatedStats.arrangement;
   }
   mLastSynchronousGenerationTimeNs = timer.elapsedNanoseconds();
 }
@@ -630,6 +643,10 @@ void DynamicWorldDataGenerator::generateBlocking() {
 void DynamicWorldDataGenerator::handleEvents(
     float frameTime, uint32_t events) {
   mLastSynchronousGenerationTimeNs = 0;
+  {
+    lock_guard<mutex> lock(mGenMutex);
+    mLastSynchronousGenerationStats = {};
+  }
   mGenerationScheduleTime.fetch_add(frameTime);
 
   if (mGenerationMode == GenerationMode::Synchronous) {

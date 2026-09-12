@@ -1596,8 +1596,34 @@ void StatePlayBooleanWorld::updateImpl(float frameTime) {
 
   auto& cpuProfiler = bw::app::cpuUpdateProfiler();
   if (cpuProfiler.captureEnabled()) {
+    auto const generationStats =
+        getWDG()->getLastSynchronousGenerationStats();
+    bw::app::CpuWorldGenerationTimings generationTimings;
+    generationTimings.buildPSLGNs = generationStats.buildPSLGTimeNs;
+    generationTimings.cycleExtractionNs =
+        generationStats.cycleExtractionTimeNs;
+    generationTimings.polygonHierarchyNs =
+        generationStats.polygonHierarchyTimeNs;
+    generationTimings.classificationNs =
+        generationStats.classificationTimeNs;
+    generationTimings.triangulationNs =
+        generationStats.triangulationTimeNs;
+    generationTimings.wallGenerationNs =
+        generationStats.wallGenerationTimeNs;
+    generationTimings.detailGeometryNs =
+        generationStats.detailGeometryTimeNs;
+    generationTimings.liquidEquilibriumNs =
+        generationStats.liquidEquilibriumTimeNs;
+    generationTimings.accelerationGridsNs =
+        generationStats.accelerationGridTimeNs;
+    generationTimings.emitterCaptureNs =
+        generationStats.emitterCaptureTimeNs;
+    generationTimings.wayfinderMeshNs =
+        generationStats.wayfinderMeshTimeNs;
     cpuProfiler.setLatestGameUpdate(
-        mGlobalTime, getWDG()->getLastSynchronousGenerationTimeNs());
+        mGlobalTime,
+        getWDG()->getLastSynchronousGenerationTimeNs(),
+        generationTimings);
   }
 }
 
@@ -2085,12 +2111,34 @@ void StatePlayBooleanWorld::debug_renderCpuUpdateTimings(
   static constexpr array<char const*, bw::app::CpuUpdateSubsystemCount>
       labels{
           "Game logic",
-          "Synchronous World Generation",
+          "World gen: PSLG",
+          "World gen: cycles",
+          "World gen: hierarchy",
+          "World gen: classification",
+          "World gen: triangulation",
+          "World gen: walls",
+          "World gen: detail geometry",
+          "World gen: Liquid equilibrium",
+          "World gen: acceleration grids",
+          "World gen: emitter capture",
+          "World gen: Wayfinder",
+          "World gen: other",
           "Audio",
       };
   static constexpr array<ImVec4, bw::app::CpuUpdateSubsystemCount> colours{
       ImVec4{0.35f, 0.80f, 0.40f, 1.0f},
-      ImVec4{0.95f, 0.35f, 0.25f, 1.0f},
+      ImVec4{0.95f, 0.30f, 0.25f, 1.0f},
+      ImVec4{0.95f, 0.48f, 0.22f, 1.0f},
+      ImVec4{0.95f, 0.65f, 0.20f, 1.0f},
+      ImVec4{0.85f, 0.78f, 0.22f, 1.0f},
+      ImVec4{0.30f, 0.65f, 0.95f, 1.0f},
+      ImVec4{0.25f, 0.82f, 0.90f, 1.0f},
+      ImVec4{0.62f, 0.42f, 0.90f, 1.0f},
+      ImVec4{0.20f, 0.48f, 0.90f, 1.0f},
+      ImVec4{0.22f, 0.72f, 0.65f, 1.0f},
+      ImVec4{0.72f, 0.40f, 0.82f, 1.0f},
+      ImVec4{0.68f, 0.55f, 0.35f, 1.0f},
+      ImVec4{0.55f, 0.57f, 0.62f, 1.0f},
       ImVec4{0.90f, 0.35f, 0.75f, 1.0f},
   };
 
@@ -2427,13 +2475,14 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
     ImGui::Spacing();
 
     ImGuiTableFlags flags =
-        ImGuiTableFlags_SizingStretchSame |
+        ImGuiTableFlags_SizingFixedFit |
         ImGuiTableFlags_Resizable |
         ImGuiTableFlags_BordersOuter |
         ImGuiTableFlags_BordersV |
-        ImGuiTableFlags_ContextMenuInBody;
+        ImGuiTableFlags_ContextMenuInBody |
+        ImGuiTableFlags_ScrollX;
 
-    if (ImGui::BeginTable("Generation", 19, flags)) {
+    if (ImGui::BeginTable("Generation", 27, flags)) {
       ImGui::TableSetupColumn("Id", ImGuiTableColumnFlags_WidthFixed, 128);
       ImGui::TableSetupColumn("Gen 0", ImGuiTableColumnFlags_WidthFixed, 128);
       ImGui::TableSetupColumn("Gen 1", ImGuiTableColumnFlags_WidthFixed, 128);
@@ -2451,7 +2500,15 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
       ImGui::TableSetupColumn("Chips");
       ImGui::TableSetupColumn("Wedges");
       ImGui::TableSetupColumn("PSLG (us)");
+      ImGui::TableSetupColumn("Cycles (us)");
+      ImGui::TableSetupColumn("Hierarchy (us)");
       ImGui::TableSetupColumn("Classify (us)");
+      ImGui::TableSetupColumn("Triangulate (us)");
+      ImGui::TableSetupColumn("Walls (us)");
+      ImGui::TableSetupColumn("Detail (us)");
+      ImGui::TableSetupColumn("Liquid (us)");
+      ImGui::TableSetupColumn("Grids (us)");
+      ImGui::TableSetupColumn("Emitters (us)");
       ImGui::TableSetupColumn("Wayfinder (us)");
       ImGui::TableHeadersRow();
 
@@ -2564,8 +2621,16 @@ void StatePlayBooleanWorld::debug_renderClipGenerationInfo(ImDrawList* drawList)
         showArrangementStat(14, arrangement.chipCount);
         showArrangementStat(15, arrangement.wedgeCount);
         showArrangementTime(16, arrangement.buildPSLGTimeNs);
-        showArrangementTime(17, arrangement.classificationTimeNs);
-        showArrangementTime(18, arrangement.wayfinderMeshTimeNs);
+        showArrangementTime(17, arrangement.cycleExtractionTimeNs);
+        showArrangementTime(18, arrangement.polygonHierarchyTimeNs);
+        showArrangementTime(19, arrangement.classificationTimeNs);
+        showArrangementTime(20, arrangement.triangulationTimeNs);
+        showArrangementTime(21, arrangement.wallGenerationTimeNs);
+        showArrangementTime(22, arrangement.detailGeometryTimeNs);
+        showArrangementTime(23, arrangement.liquidEquilibriumTimeNs);
+        showArrangementTime(24, arrangement.accelerationGridTimeNs);
+        showArrangementTime(25, arrangement.emitterCaptureTimeNs);
+        showArrangementTime(26, arrangement.wayfinderMeshTimeNs);
       }
 
       ImGui::EndTable();

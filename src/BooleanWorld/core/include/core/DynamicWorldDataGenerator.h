@@ -124,6 +124,7 @@ private:
   // update. Unlike mLastGenTime this includes snapshotting, callbacks, and any
   // wait for an asynchronous worker to finish.
   std::atomic_uint64_t mLastSynchronousGenerationTimeNs{0};
+  ArrangementStats mLastSynchronousGenerationStats;
 
   // Asynchronous work is a single running worker plus its latest request.
   std::optional<GenerationInput> mPendingGenerationInput;
@@ -147,7 +148,8 @@ private:
   // discardIfSuperseded drops the result when a newer request arrived while
   // this one was building. Only the asynchronous drain passes it: a caller
   // that generates directly is waiting for this result and must get it.
-  void generateWorldData(GenerationInput input, bool discardIfSuperseded = false);
+  Stats generateWorldData(
+      GenerationInput input, bool discardIfSuperseded = false);
 
   void drainGenerationRequests();
 
@@ -222,6 +224,8 @@ public:
   uint64_t getLastGenTime() const;
 
   uint64_t getLastSynchronousGenerationTimeNs() const;
+
+  ArrangementStats getLastSynchronousGenerationStats() const;
 
   std::vector<GenerationPrimitiveMetadata> getSourceClippingPrimitives() const;
 

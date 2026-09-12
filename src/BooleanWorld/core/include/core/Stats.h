@@ -26,8 +26,19 @@ struct ArrangementStats {
   uint32_t chipCount{0};
   // Additive ceiling Wedges attached to Border-wall top Arrises (ADR-0031).
   uint32_t wedgeCount{0};
+  // Arrangement topology and fold phases.
   uint64_t buildPSLGTimeNs{0};
+  uint64_t cycleExtractionTimeNs{0};
+  uint64_t polygonHierarchyTimeNs{0};
   uint64_t classificationTimeNs{0};
+
+  // Immutable WorldData derivation phases.
+  uint64_t triangulationTimeNs{0};
+  uint64_t wallGenerationTimeNs{0};
+  uint64_t detailGeometryTimeNs{0};
+  uint64_t liquidEquilibriumTimeNs{0};
+  uint64_t accelerationGridTimeNs{0};
+  uint64_t emitterCaptureTimeNs{0};
   uint64_t wayfinderMeshTimeNs{0};
 };
 

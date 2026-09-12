@@ -1045,7 +1045,17 @@ ArrangementResultPtr BuildArrangement(
   timer.restart();
 
   auto cycles = ExtractMinimalCycles(graph);
+  if (stats != nullptr) {
+    stats->cycleExtractionTimeNs = timer.elapsedNanoseconds();
+  }
+  timer.restart();
+
   auto hierarchy = BuildPolygonHierarchy(graph, cycles);
+  if (stats != nullptr) {
+    stats->polygonHierarchyTimeNs = timer.elapsedNanoseconds();
+  }
+  timer.restart();
+
   auto faces = BuildFaces(hierarchy);
 
   auto assignCycleSide = [&](int faceIndex, int cycleIndex, bool assignLeft) {
