@@ -87,6 +87,17 @@ using namespace std;
 map<string, string> gHelpFiles;
 
 SDL_Window* createWindow() {
+#if defined(__linux__)
+  // The vendored GLEW build uses its GLX backend. SDL otherwise prefers
+  // Wayland when both Wayland and XWayland are available, producing a valid
+  // EGL context that GLEW cannot initialise ("No GLX display"). Respect an
+  // explicit user choice, but default the editor to SDL's X11 backend.
+  if (!SDL_getenv("SDL_VIDEODRIVER") &&
+      !SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11")) {
+    throw runtime_error("Could not select SDL's X11 video driver for GLX.");
+  }
+#endif
+
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
     printf("Error: %s\n", SDL_GetError());
     return nullptr;
