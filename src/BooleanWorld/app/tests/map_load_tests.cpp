@@ -190,6 +190,7 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
 
   std::vector<bw::core::Primitive*> tunnels;
   std::vector<bw::core::Primitive*> rails;
+  std::vector<bw::core::Primitive*> railStops;
   std::vector<bw::core::Primitive*> bridges;
   std::vector<bw::core::Primitive*> posts;
   for (auto* primitive : layer->getPrimitives()) {
@@ -199,6 +200,9 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
     } else if (primitive->getType() == "Rectangle" &&
                primitive->getPriority() == 1) {
       rails.push_back(primitive);
+    } else if (primitive->getType() == "Rectangle" &&
+               primitive->getPriority() == 4) {
+      railStops.push_back(primitive);
     } else if (primitive->getType() == "Rectangle" &&
                primitive->getPriority() == 2) {
       bridges.push_back(primitive);
@@ -253,6 +257,25 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
       }
     }
     require(foundPartner, "a rail did not have an evenly spaced partner");
+  }
+
+  require(!railStops.empty() && railStops.size() <= rails.size(),
+          "the configured rail runs did not produce plausible end stops");
+  for (auto const* stop : railStops) {
+    auto const size = stop->getSize();
+    auto const& properties = stop->getProperties();
+    require(size.x == 8.0f && size.y == 12.0f,
+            "a rail stop did not have the configured footprint");
+    auto direction = std::fmod(properties.floorSpan.directionAngle, 360.0f);
+    if (direction < 0.0f) direction += 360.0f;
+    require(std::abs(properties.floorSpan.upperElevation -
+                     properties.floorSpan.lowerElevation - 8.0f) < 0.0001f &&
+                (direction == 90.0f || direction == 270.0f),
+            "a rail stop was not an 8-unit triangular wedge");
+    require(properties.floorMaterial.reference == "builtin.basalt" &&
+                properties.wallMaterial.reference == "builtin.basalt" &&
+                properties.ceilingMaterial.reference == "builtin.basalt",
+            "a rail stop did not use the mine floor material");
   }
 
   for (auto const [cellX, cellY] :

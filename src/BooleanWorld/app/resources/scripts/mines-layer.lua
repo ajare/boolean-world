@@ -5,6 +5,10 @@ local FLUSH_CONNECTOR_KEY = "flush-connector"
 local STOPE_CONNECTOR_KEY = "stope-connector"
 local STOPE_MAX_DISTANCE = 128
 local FLOOR_DROP_PER_CELL = 16
+local RAIL_STOP_CHANCE = 0.25
+local RAIL_STOP_LENGTH = 8
+local RAIL_STOP_WIDTH = 12
+local RAIL_STOP_HEIGHT = 8
 local CONNECTOR_KEYS = {FLUSH_CONNECTOR_KEY, STOPE_CONNECTOR_KEY}
 local DIRECTIONS = {"north", "east", "south", "west"}
 local DIRECTION_SET = {north = true, east = true, south = true, west = true}
@@ -1234,6 +1238,7 @@ local function create_tunnels_section_primitive(step_name, index,
                                           (last_y - first_y) ^ 2)
         local rail_orientation = math.deg(math.atan(-direction_y,
                                                      direction_x))
+        local rail_stop_floor_height = nil
         for _, side in ipairs({-1, 1}) do
             local rail_x = center_x + side * normal_x * 4
             local rail_y = center_y + side * normal_y * 4
@@ -1247,6 +1252,7 @@ local function create_tunnels_section_primitive(step_name, index,
             end
             assert(rail_floor_height ~= nil,
                    "a selected rail did not have a containing floor region")
+            rail_stop_floor_height = rail_stop_floor_height or rail_floor_height
 
             local rail = context:create_primitive("Rectangle")
             rail:set_size(rail_length, 1)
@@ -1268,6 +1274,40 @@ local function create_tunnels_section_primitive(step_name, index,
             rail:set_wall_material("builtin.rusted.iron")
             section_primitives[#section_primitives + 1] = rail
         end
+
+        -- Each end independently gets a wheel stop. The stop rises inward
+        -- from rail height, giving the Rectangle a triangular side profile
+        -- without extending beyond the rails.
+        local function add_rail_stop(endpoint_x, endpoint_y, inward_sign,
+                                     slope_angle)
+            if math.random() >= RAIL_STOP_CHANCE then
+                return
+            end
+
+            local stop = context:create_primitive("Rectangle")
+            stop:set_size(RAIL_STOP_LENGTH, RAIL_STOP_WIDTH)
+            stop:set_exact_bounds(true)
+            stop:set_position(
+                endpoint_x + inward_sign * direction_x * RAIL_STOP_LENGTH / 2,
+                endpoint_y + inward_sign * direction_y * RAIL_STOP_LENGTH / 2)
+            stop:set_orientation(rail_orientation)
+            stop:set_operation("union")
+            stop:set_priority(4)
+            stop:set_floor_elevation(
+                slope_angle, rail_stop_floor_height + 1,
+                rail_stop_floor_height + 1 + RAIL_STOP_HEIGHT)
+            stop:set_ceiling_elevation(0, layer.vars.corridor_base_height,
+                                       layer.vars.corridor_base_height)
+            stop:set_floor_material(layer.vars.mine_material)
+            stop:set_ceiling_material(layer.vars.mine_material)
+            stop:set_wall_material(layer.vars.mine_material)
+            section_primitives[#section_primitives + 1] = stop
+        end
+
+        -- Elevation-span angles are in local space: 270 degrees points along
+        -- local +X and 90 degrees along local -X.
+        add_rail_stop(first_x, first_y, 1, 270)
+        add_rail_stop(last_x, last_y, -1, 90)
     end
 
     local wooden_supports = create_wooden_supports(
