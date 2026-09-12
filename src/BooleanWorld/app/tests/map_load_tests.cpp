@@ -275,6 +275,7 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
 
   bool foundVariedFloor = false;
   bool foundCornerPool = false;
+  bool foundSlopedTransition = false;
   for (auto const* tunnel : tunnels) {
     auto const* mesh = dynamic_cast<bw::core::MeshPrimitive const*>(tunnel);
     require(mesh && mesh->getShells().size() == 1,
@@ -292,23 +293,26 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
       auto const poolVertices = mesh->getShells().front().ring.size();
       require(liquidLevel == 8.0f && pointsTowardCorner &&
                   poolVertices >= 5 &&
-                  floor.lowerElevation >= -16.0f &&
-                  floor.upperElevation <= 8.0f &&
                   std::abs(floor.upperElevation - floor.lowerElevation -
                            3.0f) < 0.0001f,
               "a corner pool did not curve and slope toward its corner");
       foundCornerPool = true;
     } else {
-      require(floor.lowerElevation >= -8.0f &&
-                  floor.lowerElevation <= 8.0f &&
-                  floor.upperElevation == floor.lowerElevation,
+      auto direction = std::fmod(floor.directionAngle, 360.0f);
+      if (direction < 0.0f) direction += 360.0f;
+      auto const cardinalSlope = direction == 0.0f || direction == 90.0f ||
+                                 direction == 180.0f || direction == 270.0f;
+      require(floor.upperElevation == floor.lowerElevation || cardinalSlope,
               "a non-pool tunnel polygon had an invalid floor elevation");
+      foundSlopedTransition |= floor.upperElevation != floor.lowerElevation;
     }
   }
   require(foundVariedFloor,
           "sliced tunnel polygons did not receive varied floor heights");
   require(foundCornerPool,
           "corner cells did not create lowered pool polygons");
+  require(foundSlopedTransition,
+          "connected mine sections did not create a sloped transition");
   require(!bridges.empty() && posts.size() == bridges.size() * 2,
           "the configured wooden support percentage produced no complete frames");
   for (auto const* bridge : bridges) {

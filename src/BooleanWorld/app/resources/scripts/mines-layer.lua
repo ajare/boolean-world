@@ -25,6 +25,8 @@ local EPSILON = 0.001
 local split_candidates_by_map = {}
 local corner_candidates_by_map = {}
 local longest_rail_runs_by_map = {}
+local slope_connector_candidates_by_map = {}
+local unmatched_slope_connectors = {}
 
 local function cell_key(x, y)
     return x .. "," .. y
@@ -612,6 +614,44 @@ local function create_tunnels_section_primitive(step_name, index,
         split_candidates_by_map[index] = split_candidates
         corner_candidates_by_map[index] = corner_candidates
     end
+
+    local slope_connector_candidates = slope_connector_candidates_by_map[index]
+    if slope_connector_candidates == nil then
+        slope_connector_candidates = {}
+        local function add_slope_connector(x, y, outward_x, outward_y)
+            local inward_x = -outward_x
+            local inward_y = -outward_y
+            local side_x = -outward_y
+            local side_y = outward_x
+            if cell_is_set(x, y) and
+                cell_is_set(x + inward_x, y + inward_y) and
+                not cell_is_set(x + side_x, y + side_y) and
+                not cell_is_set(x - side_x, y - side_y) then
+                slope_connector_candidates[#slope_connector_candidates + 1] = {
+                    x = x,
+                    y = y,
+                    outward_x = outward_x,
+                    outward_y = outward_y,
+                    side_x = side_x,
+                    side_y = side_y
+                }
+            end
+        end
+        for x = 0, width - 1 do
+            add_slope_connector(x, 0, 0, -1)
+            add_slope_connector(x, height - 1, 0, 1)
+        end
+        for y = 0, height - 1 do
+            add_slope_connector(0, y, -1, 0)
+            add_slope_connector(width - 1, y, 1, 0)
+        end
+        slope_connector_candidates_by_map[index] = slope_connector_candidates
+    end
+    local slope_connector_cells = {}
+    for _, connector in ipairs(slope_connector_candidates) do
+        slope_connector_cells[cell_key(connector.x, connector.y)] = true
+    end
+
     -- Choose at most one rail run before any random floor cuts are made. A
     -- dead end has exactly one set cardinal neighbour; its run continues in
     -- that neighbour's direction until the first unset cell. Prefer the
@@ -676,6 +716,18 @@ local function create_tunnels_section_primitive(step_name, index,
             selected_rail_run.cells[cell_index] = cell
             selected_rail_cells[cell_key(cell.x, cell.y)] = true
         end
+        local first_cell = selected_rail_run.cells[1]
+        if first_cell ~= nil and
+            slope_connector_cells[cell_key(first_cell.x, first_cell.y)] then
+            table.remove(selected_rail_run.cells, 1)
+            selected_rail_cells = {}
+            for _, cell in ipairs(selected_rail_run.cells) do
+                selected_rail_cells[cell_key(cell.x, cell.y)] = true
+            end
+            if #selected_rail_run.cells < 2 then
+                selected_rail_run = nil
+            end
+        end
     end
 
     local cell_floor_split_pct = layer.vars.cell_floor_split_pct
@@ -716,6 +768,66 @@ local function create_tunnels_section_primitive(step_name, index,
 
     for _, root in ipairs(roots) do
         add_ring(root, nil, 0)
+    end
+
+    local sliced_cells = {}
+    local slope_connector_points = {}
+    for _, connector in ipairs(slope_connector_candidates) do
+        local center_x = (connector.x + 0.5) * cell_size - map_size / 2
+        local center_y = (connector.y + 0.5) * cell_size - map_size / 2
+        local inner_offset = -cell_size / 4
+        local transition_length = cell_size * 0.75
+        local extra_cut_count = math.random(0, 4)
+        local cuts_succeeded = true
+        for cut_index = 0, extra_cut_count do
+            local fraction = cut_index / (extra_cut_count + 1)
+            local offset = inner_offset + transition_length * fraction
+            local cut_x = center_x + connector.outward_x * offset
+            local cut_y = center_y + connector.outward_y * offset
+            local first_x = cut_x +
+                                connector.side_x * corridor_width / 2
+            local first_y = cut_y +
+                                connector.side_y * corridor_width / 2
+            local second_x = cut_x -
+                                 connector.side_x * corridor_width / 2
+            local second_y = cut_y -
+                                 connector.side_y * corridor_width / 2
+            if mesh:slice_at(first_x, first_y, second_x, second_y) == nil then
+                cuts_succeeded = false
+                break
+            end
+        end
+        if cuts_succeeded then
+            local segments = {}
+            for segment_index = 0, extra_cut_count do
+                local first_fraction = segment_index /
+                                           (extra_cut_count + 1)
+                local second_fraction = (segment_index + 1) /
+                                            (extra_cut_count + 1)
+                local midpoint_fraction = (first_fraction +
+                                                second_fraction) / 2
+                local offset = inner_offset +
+                                   transition_length * midpoint_fraction
+                segments[#segments + 1] = {
+                    x = center_x + connector.outward_x * offset,
+                    y = center_y + connector.outward_y * offset,
+                    first_fraction = first_fraction,
+                    second_fraction = second_fraction
+                }
+            end
+            sliced_cells[cell_key(connector.x, connector.y)] = true
+            slope_connector_points[#slope_connector_points + 1] = {
+                inner_x = center_x +
+                    connector.outward_x * (inner_offset - 1),
+                inner_y = center_y +
+                    connector.outward_y * (inner_offset - 1),
+                boundary_x = center_x + connector.outward_x * cell_size / 2,
+                boundary_y = center_y + connector.outward_y * cell_size / 2,
+                outward_x = connector.outward_x,
+                outward_y = connector.outward_y,
+                segments = segments
+            }
+        end
     end
 
     -- Select pools before making ordinary floor cuts. Their complete 3--5
@@ -766,10 +878,14 @@ local function create_tunnels_section_primitive(step_name, index,
             end
 
             local overlaps_rail = false
+            local overlaps_connector = false
             for _, cell in ipairs(footprint) do
-                if selected_rail_cells[cell_key(cell.x, cell.y)] then
+                local key = cell_key(cell.x, cell.y)
+                if selected_rail_cells[key] then
                     overlaps_rail = true
-                    break
+                end
+                if slope_connector_cells[key] then
+                    overlaps_connector = true
                 end
             end
             local is_enlarged = candidate.extend_first or
@@ -783,7 +899,8 @@ local function create_tunnels_section_primitive(step_name, index,
                     break
                 end
             end
-            if not overlaps_rail and not overlaps then
+            if not overlaps_rail and not overlaps_connector and
+                not overlaps then
                 candidate.footprint = footprint
                 selected_pool_candidates[#selected_pool_candidates + 1] =
                     candidate
@@ -798,7 +915,6 @@ local function create_tunnels_section_primitive(step_name, index,
         end
     end
 
-    local sliced_cells = {}
     for _, candidate in ipairs(split_candidates) do
         local key = cell_key(candidate.x, candidate.y)
         if not selected_rail_cells[key] and not selected_pool_cells[key] and
@@ -1048,6 +1164,37 @@ local function create_tunnels_section_primitive(step_name, index,
         floor_regions[1] = {primitive = mesh, height = 0}
     end
 
+    local slope_connectors = {}
+    for _, connector in ipairs(slope_connector_points) do
+        local inner_region = nil
+        for _, region in ipairs(floor_regions) do
+            if region.primitive:contains_point(connector.inner_x,
+                                                connector.inner_y) then
+                inner_region = region
+                break
+            end
+        end
+        local complete = inner_region ~= nil
+        for _, segment in ipairs(connector.segments) do
+            for _, region in ipairs(floor_regions) do
+                if region.primitive:contains_point(segment.x, segment.y) then
+                    segment.primitive = region.primitive
+                    region.height = inner_region and inner_region.height or
+                                        region.height
+                    if inner_region ~= nil then
+                        region.primitive:set_floor_elevation(
+                            0, inner_region.height, inner_region.height)
+                    end
+                    break
+                end
+            end
+            complete = complete and segment.primitive ~= nil
+        end
+        if complete then
+            slope_connectors[#slope_connectors + 1] = connector
+        end
+    end
+
     for _, pool_point in ipairs(pool_points) do
         local pool_region = nil
         local adjacent_region = nil
@@ -1129,11 +1276,12 @@ local function create_tunnels_section_primitive(step_name, index,
     for _, support in ipairs(wooden_supports) do
         section_primitives[#section_primitives + 1] = support
     end
-    return primary, map_size, section_primitives
+    return primary, map_size, section_primitives, slope_connectors
 end
 
 local function place_tunnels_section(primitive, primitive_size,
-                                     section_primitives, cell_x, cell_y, angle)
+                                     section_primitives, slope_connectors,
+                                     cell_x, cell_y, angle)
     local position_x = (cell_x + 0.5) * primitive_size
     local position_y = (cell_y + 0.5) * primitive_size
     local base_floor_height = -math.sqrt(cell_x * cell_x + cell_y * cell_y) *
@@ -1175,9 +1323,75 @@ local function place_tunnels_section(primitive, primitive_size,
         apply_base_floor_height(section_primitive)
         context:place_primitive(section_primitive)
     end
+
+    for _, connector in ipairs(slope_connectors) do
+        local boundary_x, boundary_y = rotate_point(
+                                           connector.boundary_x,
+                                           connector.boundary_y, angle)
+        boundary_x = boundary_x + position_x
+        boundary_y = boundary_y + position_y
+        local key = string.format("%.3f,%.3f", boundary_x, boundary_y)
+        local outward_x, outward_y = rotate_point(
+                                         connector.outward_x,
+                                         connector.outward_y, angle)
+        local first_segment = connector.segments[1]
+        local _, floor = first_segment.primitive:get_floor_elevation()
+        local _, ceiling = first_segment.primitive:get_ceiling_elevation()
+        local placed = {
+            segments = connector.segments,
+            outward_x = connector.outward_x,
+            outward_y = connector.outward_y,
+            world_outward_x = outward_x,
+            world_outward_y = outward_y,
+            floor = floor,
+            ceiling = ceiling
+        }
+        local opposite = unmatched_slope_connectors[key]
+        if opposite ~= nil and
+            opposite.world_outward_x == -outward_x and
+            opposite.world_outward_y == -outward_y then
+            local meeting_floor = (placed.floor + opposite.floor) / 2
+            local meeting_ceiling = (placed.ceiling + opposite.ceiling) / 2
+            for _, end_connector in ipairs({placed, opposite}) do
+                local direction_angle = math.deg(math.atan(
+                                                    -end_connector.outward_x,
+                                                    end_connector.outward_y))
+                if direction_angle < 0 then
+                    direction_angle = direction_angle + 360
+                end
+                local function smoothstep(fraction)
+                    return fraction * fraction * (3 - 2 * fraction)
+                end
+                for _, segment in ipairs(end_connector.segments) do
+                    local first_weight = smoothstep(segment.first_fraction)
+                    local second_weight = smoothstep(segment.second_fraction)
+                    segment.primitive:set_floor_elevation(
+                        direction_angle,
+                        end_connector.floor +
+                            (meeting_floor - end_connector.floor) *
+                                first_weight,
+                        end_connector.floor +
+                            (meeting_floor - end_connector.floor) *
+                                second_weight)
+                    segment.primitive:set_ceiling_elevation(
+                        direction_angle,
+                        end_connector.ceiling +
+                            (meeting_ceiling - end_connector.ceiling) *
+                                first_weight,
+                        end_connector.ceiling +
+                            (meeting_ceiling - end_connector.ceiling) *
+                                second_weight)
+                end
+            end
+            unmatched_slope_connectors[key] = nil
+        else
+            unmatched_slope_connectors[key] = placed
+        end
+    end
 end
 
-local tile_map_mesh, tile_map_size, tile_map_section_primitives =
+local tile_map_mesh, tile_map_size, tile_map_section_primitives,
+      tile_map_slope_connectors =
     create_tunnels_section_primitive("TileMaps", 0,
                                      layer.vars.corridor_width)
 assert(tile_map_mesh ~= nil, "TileMaps[0] has no set cells")
@@ -1185,6 +1399,7 @@ local tile_map_x, tile_map_y =
     utilities.find_closest_empty_grid_cell(0, 0, tile_map_size)
 place_tunnels_section(tile_map_mesh, tile_map_size,
                       tile_map_section_primitives,
+                      tile_map_slope_connectors,
                       tile_map_x, tile_map_y, 0)
 
 dprint("Finding prefabs")
@@ -1279,13 +1494,15 @@ local placements_by_cell = {}
 local seed = unrotated_options[math.random(#unrotated_options)]
 local seed_x, seed_y = utilities.find_closest_empty_grid_cell(0, 0, GRID_SIZE)
 local seed_tile_map_index = math.random(0, 1)
-local seed_primitive, seed_primitive_size, seed_section_primitives =
+local seed_primitive, seed_primitive_size, seed_section_primitives,
+      seed_slope_connectors =
     create_tunnels_section_primitive("TileMaps", seed_tile_map_index,
                                      layer.vars.corridor_width)
 assert(seed_primitive ~= nil,
        string.format("TileMaps[%d] has no set cells", seed_tile_map_index))
 place_tunnels_section(seed_primitive, seed_primitive_size,
-                      seed_section_primitives, seed_x, seed_y, seed.angle)
+                      seed_section_primitives, seed_slope_connectors,
+                      seed_x, seed_y, seed.angle)
 local seed_placement = {x = seed_x, y = seed_y, option = seed}
 placements_by_cell[cell_key(seed_x, seed_y)] = seed_placement
 
@@ -1386,13 +1603,13 @@ for _ = 1, step.vars.iterations do
     local candidate = prefab_choice.candidates[
         math.random(#prefab_choice.candidates)]
     local tile_map_index = math.random(0, 1)
-    local primitive, primitive_size, section_primitives =
+    local primitive, primitive_size, section_primitives, slope_connectors =
         create_tunnels_section_primitive("TileMaps", tile_map_index,
                                          layer.vars.corridor_width)
     assert(primitive ~= nil,
            string.format("TileMaps[%d] has no set cells", tile_map_index))
     place_tunnels_section(primitive, primitive_size, section_primitives,
-                          candidate.x,
+                          slope_connectors, candidate.x,
                           candidate.y, ANGLES[math.random(#ANGLES)])
     local placement = {
         x = candidate.x,
