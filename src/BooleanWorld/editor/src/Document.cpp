@@ -2299,10 +2299,19 @@ bool Document::primitivePermitsDirectEditing(uint32_t primitiveIndex) const {
 
 bool Document::selectedPrimitivesPermitDirectEditing() const {
   auto const& selection = getSelectedPrimitiveIndices();
-  return !selection.empty() &&
-         all_of(selection.begin(), selection.end(), [&](uint32_t index) {
-           return primitivePermitsDirectEditing(index);
-         });
+  if (selection.empty() || !mWorld || !mWorld->getActiveLayer()) {
+    return false;
+  }
+
+  auto* activeStep = mWorld->getActiveLayer()->getActiveStep();
+  return all_of(selection.begin(), selection.end(), [&](uint32_t index) {
+    // The ghost is not owned by the step it previews: it stays in the first
+    // PrimitiveField while Create Primitive writes to the active step. Let it
+    // use that active step's creation capability for transform gestures too.
+    return index == uint32_t(ED_GHOST_INDEX)
+               ? activeStep->acceptsNewPrimitives()
+               : primitivePermitsDirectEditing(index);
+  });
 }
 
 uint32_t Document::getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const {

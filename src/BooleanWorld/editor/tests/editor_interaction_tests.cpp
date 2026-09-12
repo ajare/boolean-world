@@ -1613,6 +1613,51 @@ void draggingADifferencePrimitiveDoesNotClearItsSelectionOnRelease() {
   editor::undo(&document);
 }
 
+void selectedGhostMovesWhileAuthoringAPrefab() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs;
+  auto stepIndex = layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Tile");
+  definitions->setSelectedPrefab(prefab);
+  layer->setActiveStep(stepIndex);
+
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Primitive;
+  editor::EditorInteraction interaction;
+  auto* ghost = document.getGhost();
+  auto const start = ghost->getPosition();
+
+  auto press = pointerAt(start);
+  press.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, press);
+  require(document.getSelectedPrimitiveIndices() ==
+              std::set<uint32_t>{uint32_t(ED_GHOST_INDEX)},
+          "the Prefab authoring ghost could not be selected");
+  require(layer->getActiveStep()->acceptsNewPrimitives(),
+          "the selected Prefab did not accept the ghost's prospective Primitive");
+  require(document.selectedPrimitivesPermitDirectEditing(),
+          "the direct-editing gate rejected the selected Prefab authoring ghost");
+
+  auto drag = pointerAt(start + wp::Vector2{12.0f, 7.0f});
+  drag.leftDown = true;
+  drag.leftDragging = true;
+  drag.dragDelta = {12.0f, -7.0f};
+  interaction.updateSelection(&document, nullptr, settings, drag);
+  interaction.updateDrag(&document, settings, drag);
+  require(ghost->getPosition() == start + wp::Vector2{12.0f, 7.0f},
+          "the selected Prefab authoring ghost did not move");
+
+  auto release = drag;
+  release.leftDown = false;
+  release.leftDragging = false;
+  release.leftReleased = true;
+  release.dragDelta = {};
+  interaction.updateSelection(&document, nullptr, settings, release);
+  interaction.updateDrag(&document, settings, release);
+}
+
 void primitiveDragSnapsItsMovementToTheGridWhileTheGridIsShown() {
   editor::Document document;
   document.newDoc();
@@ -4422,6 +4467,7 @@ int main() {
     prefabMeshVerticesSnapToFineGridsBeforeToolkitDragThreshold();
     meshDragSnapsToGridBeforeValidating();
     draggingADifferencePrimitiveDoesNotClearItsSelectionOnRelease();
+    selectedGhostMovesWhileAuthoringAPrefab();
     primitiveDragSnapsItsMovementToTheGridWhileTheGridIsShown();
     meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive();
     vertexDeletionHealsRingAndRefusesAtMinimumCount();
