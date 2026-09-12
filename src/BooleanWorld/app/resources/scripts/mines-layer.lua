@@ -310,9 +310,9 @@ local function create_wooden_supports(tile_map, corridor_width, map_size,
                     for _, region in ipairs(floor_regions) do
                         if region.primitive:contains_point(center_x,
                                                            center_y) then
-                            frame_floor_angle = 0
-                            frame_floor_lower = region.height
-                            frame_floor_upper = region.height
+                            frame_floor_angle, frame_floor_lower,
+                                frame_floor_upper =
+                                region.primitive:get_floor_elevation()
                             break
                         end
                     end
@@ -578,11 +578,30 @@ local function create_tunnels_section_primitive(step_name, index,
                                     (neighbours[2].y - neighbours[1].y) / 2
                             }
                         else
+                            local function can_extend(direction, other_arm)
+                                -- Branches are allowed on the inner side. The
+                                -- outer edge continuing from the Corner must
+                                -- remain exposed so the pool boundary can
+                                -- follow it without crossing a wall.
+                                local second_x = x + direction.x * 2
+                                local second_y = y + direction.y * 2
+                                return cell_is_set(second_x, second_y) and
+                                           cell_is_set(
+                                               second_x + direction.x,
+                                               second_y + direction.y) and
+                                           not cell_is_set(
+                                               second_x - other_arm.x,
+                                               second_y - other_arm.y)
+                            end
                             corner_candidates[#corner_candidates + 1] = {
                                 x = x,
                                 y = y,
                                 first = neighbours[1],
-                                second = neighbours[2]
+                                second = neighbours[2],
+                                first_can_extend = can_extend(
+                                    neighbours[1], neighbours[2]),
+                                second_can_extend = can_extend(
+                                    neighbours[2], neighbours[1])
                             }
                         end
                     end
@@ -698,9 +717,90 @@ local function create_tunnels_section_primitive(step_name, index,
         add_ring(root, nil, 0)
     end
 
+    -- Select pools before making ordinary floor cuts. Their complete 3--5
+    -- cell footprints must remain unsliced, and enlarged pools must not
+    -- overlap one another.
+    local selected_pool_candidates = {}
+    local selected_pool_cells = {}
+    local selected_enlarged_pool_cells = {}
+
+    for _, candidate in ipairs(corner_candidates) do
+        local pool_roll = nil
+        if not selected_rail_cells[cell_key(candidate.x, candidate.y)] then
+            pool_roll = math.random()
+        end
+        if pool_roll ~= nil and pool_roll < corner_pool_chance then
+            candidate.pool_radius = 24 + pool_roll / corner_pool_chance * 12
+            candidate.extend_first = candidate.first_can_extend and
+                not selected_rail_cells[cell_key(
+                    candidate.x + candidate.first.x * 2,
+                    candidate.y + candidate.first.y * 2)]
+            candidate.extend_second = candidate.second_can_extend and
+                not selected_rail_cells[cell_key(
+                    candidate.x + candidate.second.x * 2,
+                    candidate.y + candidate.second.y * 2)]
+
+            local footprint = {
+                {x = candidate.x, y = candidate.y},
+                {
+                    x = candidate.x + candidate.first.x,
+                    y = candidate.y + candidate.first.y
+                },
+                {
+                    x = candidate.x + candidate.second.x,
+                    y = candidate.y + candidate.second.y
+                }
+            }
+            if candidate.extend_first then
+                footprint[#footprint + 1] = {
+                    x = candidate.x + candidate.first.x * 2,
+                    y = candidate.y + candidate.first.y * 2
+                }
+            end
+            if candidate.extend_second then
+                footprint[#footprint + 1] = {
+                    x = candidate.x + candidate.second.x * 2,
+                    y = candidate.y + candidate.second.y * 2
+                }
+            end
+
+            local overlaps_rail = false
+            for _, cell in ipairs(footprint) do
+                if selected_rail_cells[cell_key(cell.x, cell.y)] then
+                    overlaps_rail = true
+                    break
+                end
+            end
+            local is_enlarged = candidate.extend_first or
+                                    candidate.extend_second
+            local conflicting_cells = is_enlarged and selected_pool_cells or
+                                          selected_enlarged_pool_cells
+            local overlaps = false
+            for _, cell in ipairs(footprint) do
+                if conflicting_cells[cell_key(cell.x, cell.y)] then
+                    overlaps = true
+                    break
+                end
+            end
+            if not overlaps_rail and not overlaps then
+                candidate.footprint = footprint
+                selected_pool_candidates[#selected_pool_candidates + 1] =
+                    candidate
+                for _, cell in ipairs(footprint) do
+                    local key = cell_key(cell.x, cell.y)
+                    selected_pool_cells[key] = true
+                    if is_enlarged then
+                        selected_enlarged_pool_cells[key] = true
+                    end
+                end
+            end
+        end
+    end
+
     local sliced_cells = {}
     for _, candidate in ipairs(split_candidates) do
-        if not selected_rail_cells[cell_key(candidate.x, candidate.y)] and
+        local key = cell_key(candidate.x, candidate.y)
+        if not selected_rail_cells[key] and not selected_pool_cells[key] and
             math.random() < cell_floor_split_chance then
             local angle_hundredths = math.random(7000, 11000)
             if angle_hundredths == 9000 then
@@ -725,7 +825,7 @@ local function create_tunnels_section_primitive(step_name, index,
                                    center_x + cut_x * distance,
                                    center_y + cut_y * distance)
             if slice_edge ~= nil then
-                sliced_cells[cell_key(candidate.x, candidate.y)] = true
+                sliced_cells[key] = true
                 if math.random() < 0.5 then
                     local vertex = assert(mesh:split_edge(
                                               slice_edge,
@@ -741,21 +841,59 @@ local function create_tunnels_section_primitive(step_name, index,
         end
     end
 
+    local function roughen_pool_edge(edge, toward_x, toward_y)
+        local segment_count = math.random(3, 4)
+        local curve_amplitude = 1.5 + math.random() * 1.5
+        local offsets = {}
+        for vertex_index = 1, segment_count - 1 do
+            local curve = math.sin(math.pi * vertex_index / segment_count) *
+                              curve_amplitude
+            local roughness = (math.random() - 0.5) * 0.5
+            offsets[vertex_index] = curve + roughness
+        end
+        assert(mesh:roughen_edge(edge, offsets, toward_x, toward_y))
+    end
+
     local pool_points = {}
-    for _, candidate in ipairs(corner_candidates) do
-        if not selected_rail_cells[cell_key(candidate.x, candidate.y)] and
-            math.random() < corner_pool_chance then
-            local center_x = (candidate.x + 0.5) * cell_size - map_size / 2
-            local center_y = (candidate.y + 0.5) * cell_size - map_size / 2
-            local corner_x = center_x -
-                                 (candidate.first.x + candidate.second.x) *
-                                     corridor_width / 2
-            local corner_y = center_y -
-                                 (candidate.first.y + candidate.second.y) *
-                                     corridor_width / 2
-            -- Reach well past the wall midpoints so the isolated corner
-            -- triangle is broad enough to read as a pool.
-            local pool_radius = corridor_width * 0.75
+    for _, candidate in ipairs(selected_pool_candidates) do
+        local center_x = (candidate.x + 0.5) * cell_size - map_size / 2
+        local center_y = (candidate.y + 0.5) * cell_size - map_size / 2
+        local corner_x = center_x -
+                             (candidate.first.x + candidate.second.x) *
+                                 corridor_width / 2
+        local corner_y = center_y -
+                             (candidate.first.y + candidate.second.y) *
+                                 corridor_width / 2
+        local pool_radius = candidate.pool_radius
+
+        local function remember_pool(adjacent_x, adjacent_y)
+            for _, cell in ipairs(candidate.footprint) do
+                sliced_cells[cell_key(cell.x, cell.y)] = true
+            end
+            local corner_direction_x = corner_x - center_x
+            local corner_direction_y = corner_y - center_y
+            local pool_angle = math.deg(math.atan(-corner_direction_x,
+                                                   corner_direction_y))
+            if pool_angle < 0 then
+                pool_angle = pool_angle + 360
+            end
+            pool_points[#pool_points + 1] = {
+                x = corner_x +
+                    (candidate.first.x + candidate.second.x) *
+                        corridor_width / 8,
+                y = corner_y +
+                    (candidate.first.y + candidate.second.y) *
+                        corridor_width / 8,
+                adjacent_x = adjacent_x,
+                adjacent_y = adjacent_y,
+                angle = pool_angle
+            }
+        end
+
+        local function create_compact_pool()
+            -- Transverse cuts can join different Rings when a turn wraps a
+            -- Hole. This local fallback chord always stays inside the corner
+            -- cell, ensuring a selected corner still receives a pool.
             local first_x = corner_x + candidate.first.x * pool_radius
             local first_y = corner_y + candidate.first.y * pool_radius
             local second_x = corner_x + candidate.second.x * pool_radius
@@ -763,38 +901,120 @@ local function create_tunnels_section_primitive(step_name, index,
             local pool_edge = mesh:slice_at(first_x, first_y,
                                                  second_x, second_y)
             if pool_edge ~= nil then
-                local segment_count = math.random(3, 4)
-                local curve_amplitude = 1.5 + math.random() * 1.5
-                local offsets = {}
-                for vertex_index = 1, segment_count - 1 do
-                    local curve = math.sin(math.pi * vertex_index /
-                                               segment_count) * curve_amplitude
-                    local roughness = (math.random() - 0.5) * 0.5
-                    offsets[vertex_index] = curve + roughness
-                end
-                assert(mesh:roughen_edge(pool_edge, offsets,
-                                         corner_x, corner_y))
-                sliced_cells[cell_key(candidate.x, candidate.y)] = true
-                local corner_direction_x = corner_x - center_x
-                local corner_direction_y = corner_y - center_y
-                local pool_angle = math.deg(math.atan(
-                                                -corner_direction_x,
-                                                corner_direction_y))
-                if pool_angle < 0 then
-                    pool_angle = pool_angle + 360
-                end
-                pool_points[#pool_points + 1] = {
-                    x = corner_x +
+                roughen_pool_edge(pool_edge, corner_x, corner_y)
+                local adjacent_distance = pool_radius / 2 + 1
+                remember_pool(
+                    corner_x +
                         (candidate.first.x + candidate.second.x) *
-                            corridor_width / 8,
-                    y = corner_y +
+                            adjacent_distance,
+                    corner_y +
                         (candidate.first.y + candidate.second.y) *
-                            corridor_width / 8,
-                    adjacent_x = center_x,
-                    adjacent_y = center_y,
-                    angle = pool_angle
-                }
+                            adjacent_distance)
+                return true
             end
+            return false
+        end
+
+        if not candidate.extend_first and not candidate.extend_second then
+            create_compact_pool()
+        else
+        local function boundary_distance(cell_x, cell_y, side)
+            local neighbour_x = cell_x + side.x
+            local neighbour_y = cell_y + side.y
+            if neighbour_x < 0 or neighbour_x >= width or
+                neighbour_y < 0 or neighbour_y >= height then
+                -- Tunnel outlines remain flush at the Map boundary.
+                return cell_size / 2
+            end
+            return corridor_width / 2
+        end
+
+        -- Cap each arm separately. A long diagonal between enlarged arms
+        -- would leave the L-shaped tunnel and intersect its opposite walls.
+        -- The extra cell-size offset puts an ordinary cap in the immediate
+        -- neighbour and an enlarged cap in the second cell, while retaining
+        -- the old cut's position relative to that cell.
+        local first_distance = pool_radius + cell_size *
+                                   (candidate.extend_first and 2 or 1)
+        local first_cap_cell_x = candidate.x + candidate.first.x *
+                                     (candidate.extend_first and 2 or 1)
+        local first_cap_cell_y = candidate.y + candidate.first.y *
+                                     (candidate.extend_first and 2 or 1)
+        local first_center_x = corner_x +
+                                   candidate.first.x * first_distance +
+                                   candidate.second.x * corridor_width / 2
+        local first_center_y = corner_y +
+                                   candidate.first.y * first_distance +
+                                   candidate.second.y * corridor_width / 2
+        local first_outer_distance = boundary_distance(
+                                         first_cap_cell_x, first_cap_cell_y, {
+                                             x = -candidate.second.x,
+                                             y = -candidate.second.y
+                                         })
+        local first_inner_distance = boundary_distance(
+                                         first_cap_cell_x, first_cap_cell_y,
+                                         candidate.second)
+        local first_outer_x = first_center_x -
+                                  candidate.second.x * first_outer_distance
+        local first_outer_y = first_center_y -
+                                  candidate.second.y * first_outer_distance
+        local first_inner_x = first_center_x +
+                                  candidate.second.x * first_inner_distance
+        local first_inner_y = first_center_y +
+                                  candidate.second.y * first_inner_distance
+        local first_edge = mesh:slice_at(first_outer_x, first_outer_y,
+                                               first_inner_x, first_inner_y)
+
+        local second_distance = pool_radius + cell_size *
+                                    (candidate.extend_second and 2 or 1)
+        local second_cap_cell_x = candidate.x + candidate.second.x *
+                                      (candidate.extend_second and 2 or 1)
+        local second_cap_cell_y = candidate.y + candidate.second.y *
+                                      (candidate.extend_second and 2 or 1)
+        local second_center_x = corner_x +
+                                    candidate.second.x * second_distance +
+                                    candidate.first.x * corridor_width / 2
+        local second_center_y = corner_y +
+                                    candidate.second.y * second_distance +
+                                    candidate.first.y * corridor_width / 2
+        local second_outer_distance = boundary_distance(
+                                          second_cap_cell_x,
+                                          second_cap_cell_y, {
+                                              x = -candidate.first.x,
+                                              y = -candidate.first.y
+                                          })
+        local second_inner_distance = boundary_distance(
+                                          second_cap_cell_x,
+                                          second_cap_cell_y, candidate.first)
+        local second_outer_x = second_center_x -
+                                   candidate.first.x * second_outer_distance
+        local second_outer_y = second_center_y -
+                                   candidate.first.y * second_outer_distance
+        local second_inner_x = second_center_x +
+                                   candidate.first.x * second_inner_distance
+        local second_inner_y = second_center_y +
+                                   candidate.first.y * second_inner_distance
+        local second_edge = nil
+        if first_edge ~= nil then
+            second_edge = mesh:slice_at(second_outer_x, second_outer_y,
+                                              second_inner_x, second_inner_y)
+        end
+        if second_edge ~= nil then
+            roughen_pool_edge(first_edge, corner_x, corner_y)
+            roughen_pool_edge(second_edge, corner_x, corner_y)
+
+            -- Sample the dry floor just beyond the first arm's cap. The
+            -- midpoint keeps the point away from either corridor wall.
+            local adjacent_x = corner_x +
+                                   candidate.first.x * (first_distance + 1) +
+                                   candidate.second.x * corridor_width / 2
+            local adjacent_y = corner_y +
+                                   candidate.first.y * (first_distance + 1) +
+                                   candidate.second.y * corridor_width / 2
+            remember_pool(adjacent_x, adjacent_y)
+        else
+            create_compact_pool()
+        end
         end
     end
 
@@ -856,16 +1076,6 @@ local function create_tunnels_section_primitive(step_name, index,
         local first_y = (first.y + 0.5) * cell_size - map_size / 2
         local last_x = (last.x + 0.5) * cell_size - map_size / 2
         local last_y = (last.y + 0.5) * cell_size - map_size / 2
-        local rail_floor_height = nil
-        for _, region in ipairs(floor_regions) do
-            if region.primitive:contains_point(first_x, first_y) then
-                rail_floor_height = region.height
-                break
-            end
-        end
-        assert(rail_floor_height ~= nil,
-               "a selected rail run did not have a containing floor region")
-
         local direction_x = selected_rail_run.direction_x
         local direction_y = selected_rail_run.direction_y
         local normal_x = -direction_y
@@ -877,13 +1087,25 @@ local function create_tunnels_section_primitive(step_name, index,
         local rail_orientation = math.deg(math.atan(-direction_y,
                                                      direction_x))
         for _, side in ipairs({-1, 1}) do
+            local rail_x = center_x + side * normal_x * 4
+            local rail_y = center_y + side * normal_y * 4
+            local rail_floor_height = nil
+            for _, region in ipairs(floor_regions) do
+                if region.primitive:contains_point(rail_x, rail_y) then
+                    local _, lower = region.primitive:get_floor_elevation()
+                    rail_floor_height = lower
+                    break
+                end
+            end
+            assert(rail_floor_height ~= nil,
+                   "a selected rail did not have a containing floor region")
+
             local rail = context:create_primitive("Rectangle")
             rail:set_size(rail_length, 1)
             -- Tight bounds keep this long, narrow Rectangle from making an
             -- adjacent 256-unit placement cell look occupied.
             rail:set_exact_bounds(true)
-            rail:set_position(center_x + side * normal_x * 4,
-                              center_y + side * normal_y * 4)
+            rail:set_position(rail_x, rail_y)
             rail:set_orientation(rail_orientation)
             rail:set_operation("union")
             -- Rails override the tunnel floor; support bridges and posts have

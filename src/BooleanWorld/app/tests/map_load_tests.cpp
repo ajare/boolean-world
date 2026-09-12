@@ -291,7 +291,7 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
                                       cornerAngle == 315.0f;
       auto const poolVertices = mesh->getShells().front().ring.size();
       require(liquidLevel == 8.0f && pointsTowardCorner &&
-                  (poolVertices == 5 || poolVertices == 6) &&
+                  poolVertices >= 5 &&
                   floor.lowerElevation >= -16.0f &&
                   floor.upperElevation <= 8.0f &&
                   std::abs(floor.upperElevation - floor.lowerElevation -
