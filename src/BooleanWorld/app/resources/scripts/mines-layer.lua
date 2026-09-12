@@ -5,6 +5,10 @@ local FLUSH_CONNECTOR_KEY = "flush-connector"
 local STOPE_CONNECTOR_KEY = "stope-connector"
 local STOPE_MAX_DISTANCE = 128
 local FLOOR_DROP_PER_CELL = 16
+-- A corner basin falls three units from its lip. Half a unit of authored
+-- Liquid fills its low end without reaching the adjoining tunnel, so Water
+-- remains in the basin instead of settling through lower mine sections.
+local CORNER_POOL_LIQUID_LEVEL = 0.5
 local RAIL_STOP_CHANCE = 0.25
 local RAIL_STOP_LENGTH = 8
 local RAIL_STOP_WIDTH = 12
@@ -1091,7 +1095,7 @@ local function create_tunnels_section_primitive(step_name, index,
                                  corridor_width / 2
         local pool_radius = candidate.pool_radius
 
-        local function remember_pool(adjacent_x, adjacent_y)
+        local function remember_pool(adjacent_points)
             for _, cell in ipairs(candidate.footprint) do
                 sliced_cells[cell_key(cell.x, cell.y)] = true
             end
@@ -1109,8 +1113,7 @@ local function create_tunnels_section_primitive(step_name, index,
                 y = corner_y +
                     (candidate.first.y + candidate.second.y) *
                         corridor_width / 8,
-                adjacent_x = adjacent_x,
-                adjacent_y = adjacent_y,
+                adjacent_points = adjacent_points,
                 angle = pool_angle
             }
         end
@@ -1128,13 +1131,14 @@ local function create_tunnels_section_primitive(step_name, index,
             if pool_edge ~= nil then
                 roughen_pool_edge(pool_edge, corner_x, corner_y)
                 local adjacent_distance = pool_radius / 2 + 1
-                remember_pool(
-                    corner_x +
+                remember_pool({{
+                    x = corner_x +
                         (candidate.first.x + candidate.second.x) *
                             adjacent_distance,
-                    corner_y +
+                    y = corner_y +
                         (candidate.first.y + candidate.second.y) *
-                            adjacent_distance)
+                            adjacent_distance
+                }})
                 return true
             end
             return false
@@ -1236,7 +1240,16 @@ local function create_tunnels_section_primitive(step_name, index,
             local adjacent_y = corner_y +
                                    candidate.first.y * (first_distance + 1) +
                                    candidate.second.y * corridor_width / 2
-            remember_pool(adjacent_x, adjacent_y)
+            local second_adjacent_x = corner_x +
+                candidate.second.x * (second_distance + 1) +
+                candidate.first.x * corridor_width / 2
+            local second_adjacent_y = corner_y +
+                candidate.second.y * (second_distance + 1) +
+                candidate.first.y * corridor_width / 2
+            remember_pool({
+                {x = adjacent_x, y = adjacent_y},
+                {x = second_adjacent_x, y = second_adjacent_y}
+            })
         else
             create_compact_pool()
         end
@@ -1325,24 +1338,36 @@ local function create_tunnels_section_primitive(step_name, index,
 
     for _, pool_point in ipairs(pool_points) do
         local pool_region = nil
-        local adjacent_region = nil
+        local adjacent_regions = {}
         for _, region in ipairs(floor_regions) do
             if region.primitive:contains_point(pool_point.x, pool_point.y) then
                 pool_region = region
             end
-            if region.primitive:contains_point(pool_point.adjacent_x,
-                                                pool_point.adjacent_y) then
-                adjacent_region = region
+            for _, adjacent_point in ipairs(pool_point.adjacent_points) do
+                if region.primitive:contains_point(adjacent_point.x,
+                                                    adjacent_point.y) then
+                    adjacent_regions[#adjacent_regions + 1] = region
+                    break
+                end
             end
         end
+        local adjacent_region = adjacent_regions[1]
         assert(pool_region ~= nil and adjacent_region ~= nil and
                    pool_region ~= adjacent_region,
                "a corner pool did not produce a separate floor polygon")
+        -- Enlarged pools have a cap at the end of each arm. Keep both banks
+        -- on one sector-relative plane so one randomly lower arm cannot act
+        -- as a spillway into the rest of the mine.
+        for _, region in ipairs(adjacent_regions) do
+            region.height = adjacent_region.height
+            region.primitive:set_floor_elevation(
+                0, adjacent_region.height, adjacent_region.height)
+        end
         pool_region.height = adjacent_region.height
         pool_region.primitive:set_floor_elevation(
             pool_point.angle + 180, adjacent_region.height - 3,
             adjacent_region.height)
-        pool_region.primitive:set_liquid_level(8)
+        pool_region.primitive:set_liquid_level(CORNER_POOL_LIQUID_LEVEL)
     end
 
     if selected_rail_run ~= nil and #selected_rail_run.cells >= 2 then

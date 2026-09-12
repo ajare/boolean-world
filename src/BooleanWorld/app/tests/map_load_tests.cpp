@@ -315,7 +315,7 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
                                       cornerAngle == 225.0f ||
                                       cornerAngle == 315.0f;
       auto const poolVertices = mesh->getShells().front().ring.size();
-      require(liquidLevel == 8.0f && pointsTowardCorner &&
+      require(liquidLevel == 0.5f && pointsTowardCorner &&
                   poolVertices >= 5 &&
                   std::abs(floor.upperElevation - floor.lowerElevation -
                            3.0f) < 0.0001f,
@@ -350,6 +350,31 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
           "connected mine sections did not create a sloped transition");
   require(foundAngledSlopeCut,
           "sloped transitions did not use subtly skewed wall cuts");
+
+  auto const worldData = map.getWorld()->getWorldData();
+  auto const& liquidSurfaces = worldData->getLiquidSurfaceTriangles();
+  require(!liquidSurfaces.empty(),
+          "corner pools did not produce visible Water surfaces");
+  for (auto const& surface : liquidSurfaces) {
+    auto const center = (surface.positions[0] + surface.positions[1] +
+                         surface.positions[2]) /
+                        3.0f;
+    bw::core::Primitive const* containingPool = nullptr;
+    for (auto const* tunnel : tunnels) {
+      if (tunnel->getProperties().liquidLevel > 0.0f &&
+          tunnel->getPickingTriangulation().pointInside(center)) {
+        containingPool = tunnel;
+        break;
+      }
+    }
+    require(containingPool,
+            "Water escaped the generated corner pool footprints");
+    auto const& poolFloor = containingPool->getProperties().floorSpan;
+    require(surface.elevation <= poolFloor.upperElevation + 0.0001f &&
+                surface.elevation > poolFloor.lowerElevation,
+            "a corner pool Water surface did not follow its sector base height");
+  }
+
   require(!bridges.empty() && posts.size() == bridges.size() * 2,
           "the configured wooden support percentage produced no complete frames");
   auto evaluateFloor = [](bw::core::Primitive const* primitive,
